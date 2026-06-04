@@ -1,0 +1,4 @@
+numpy>=1.24
+
+# Meep Python bindings are typically installed from conda-forge:
+#   conda install -c conda-forge pymeep

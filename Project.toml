@@ -1,0 +1,40 @@
+name = "DiffMoM"
+uuid = "bff380b4-c285-4328-812e-213c0f6e21bc"
+license = "MIT"
+version = "0.1.0"
+authors = ["Jake W. Liu <jwliu@ntut.edu.tw>"]
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+IncompleteLU = "40713840-3770-5561-ab4c-a76e7d0d7895"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+Krylov = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+PlotlyKaleido = "f2990250-8cf9-495f-b13a-cce12b45703c"
+PlotlySupply = "a389b534-8bca-4fe3-8ff2-14829cd8824f"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[compat]
+CSV = "0.10"
+DataFrames = "1"
+FFTW = "1"
+IncompleteLU = "0.2.1"
+JSON = "1"
+Krylov = "0.9"
+PlotlyKaleido = "2.3.1"
+PlotlySupply = "1.6"
+SpecialFunctions = "2"
+StaticArrays = "1"
+julia = "1.10"
+
+[extras]
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Statistics", "Test"]

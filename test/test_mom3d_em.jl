@@ -1,0 +1,159 @@
+# Test 48: Coupled electric-magnetic 3D DDA solver
+
+using Test
+using LinearAlgebra
+
+if isdefined(Main, :DiffMoM)
+    using .DiffMoM
+else
+    using DiffMoM
+end
+
+println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
+
+@testset "Coupled electric-magnetic 3D DDA solver" begin
+    k0 = 2π
+
+    @testset "Free-space magnetodielectric limit" begin
+        grid = VoxelGrid3D((-0.1, 0.1), (-0.05, 0.05), (-0.05, 0.05), 2, 1, 1)
+        E_inc, H_inc = planewave_em_dda_3d(
+            grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
+        )
+        res = solve_em_dda_3d(grid, k0, 1.0 + 0im, 1.0 + 0im, E_inc, H_inc)
+
+        @test norm(reduce(vcat, res.E_total) - reduce(vcat, E_inc)) < 1e-13
+        @test norm(reduce(vcat, res.H_total) - reduce(vcat, H_inc)) < 1e-13
+        q, m = induced_dipoles_em_dda_3d(res)
+        @test all(iszero, q)
+        @test all(iszero, m)
+
+        Es, Hs = scattered_fields_em_dda_3d(res, [Vec3(1.0, 0.0, 0.0)])
+        @test norm(Es[1]) < 1e-13
+        @test norm(Hs[1]) < 1e-13
+    end
+
+    @testset "Electric-only reduction matches DDA" begin
+        grid = VoxelGrid3D((-0.12, 0.12), (-0.05, 0.05), (-0.05, 0.05), 2, 1, 1)
+        epsr = fill(2.4 + 0.04im, grid.nvoxels)
+        E_inc, H_inc = planewave_em_dda_3d(
+            grid, Vec3(0.0, 0.0, k0), 1.0 + 0.2im, Vec3(1.0, 0.0, 0.0),
+        )
+
+        res_e = solve_dda_3d(grid, k0, epsr, E_inc)
+        res_em = solve_em_dda_3d(grid, k0, epsr, 1.0 + 0im, E_inc, H_inc)
+
+        @test norm(reduce(vcat, res_em.E_total) - reduce(vcat, res_e.E_total)) /
+              norm(reduce(vcat, res_e.E_total)) < 1e-13
+
+        q_em, m_em = induced_dipoles_em_dda_3d(res_em)
+        q_e = induced_dipoles_dda_3d(res_e)
+        @test norm(reduce(vcat, q_em) - reduce(vcat, q_e)) / norm(reduce(vcat, q_e)) < 1e-13
+        @test norm(reduce(vcat, m_em)) < 1e-13
+    end
+
+    @testset "Single-voxel magnetic response" begin
+        grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
+        mur = 2.5 + 0im
+        E_inc, H_inc = planewave_em_dda_3d(
+            grid, Vec3(0.0, 0.0, k0), 2.0 + 0.1im, Vec3(1.0, 0.0, 0.0),
+        )
+        res = solve_em_dda_3d(grid, k0, 1.0 + 0im, mur, E_inc, H_inc)
+
+        alpha_m = magnetic_clausius_mossotti_polarizability(mur, grid.volumes[1])
+        q, m = induced_dipoles_em_dda_3d(res)
+
+        @test res.E_total[1] ≈ E_inc[1] atol=1e-14
+        @test res.H_total[1] ≈ H_inc[1] atol=1e-14
+        @test norm(q[1]) < 1e-15
+        @test m[1] ≈ alpha_m * H_inc[1] atol=1e-16
+    end
+
+    @testset "Explicit bianisotropic polarizability" begin
+        grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
+        alpha6 = zeros(ComplexF64, 6, 6)
+        alpha6[1, 1] = 1.0e-4
+        alpha6[1, 5] = 2.0e-4 - 1.0e-5im
+        alpha6[5, 1] = -3.0e-7 + 2.0e-8im
+        alpha6[5, 5] = 4.0e-7
+        alpha = BianisotropicPolarizability3D(alpha6)
+
+        E_inc = [CVec3(1.0 + 0.1im, 0.2 - 0.3im, 0.0 + 0im)]
+        H_inc = [CVec3(0.0 + 0im, 0.004 + 0.001im, 0.0 + 0im)]
+        res = solve_em_dda_3d(grid, k0, alpha, E_inc, H_inc)
+
+        x = ComplexF64[E_inc[1][1], E_inc[1][2], E_inc[1][3],
+                       H_inc[1][1], H_inc[1][2], H_inc[1][3]]
+        expected = alpha6 * x
+        q, m = induced_dipoles_em_dda_3d(res)
+
+        @test res.E_total[1] ≈ E_inc[1] atol=1e-14
+        @test res.H_total[1] ≈ H_inc[1] atol=1e-14
+        @test q[1] ≈ CVec3(expected[1], expected[2], expected[3]) atol=1e-16
+        @test m[1] ≈ CVec3(expected[4], expected[5], expected[6]) atol=1e-16
+    end
+
+    @testset "Bianisotropic constitutive closure" begin
+        grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
+        epsr = 2.4 + 0im
+        mur = 1.7 + 0im
+        C6 = Matrix{ComplexF64}(I, 6, 6)
+        C6[1, 1] = epsr
+        C6[2, 2] = epsr
+        C6[3, 3] = epsr
+        C6[4, 4] = mur
+        C6[5, 5] = mur
+        C6[6, 6] = mur
+        material = BianisotropicMaterial3D(C6)
+        alpha_mat = em_dda_polarizabilities(grid, k0, material)[1]
+        alpha_em = em_dda_polarizabilities(grid, k0, epsr, mur)[1]
+        @test alpha_mat ≈ alpha_em atol=1e-16
+
+        C6[1, 5] = 0.02
+        C6[5, 1] = 0.02
+        coupled = BianisotropicMaterial3D(C6)
+        alpha_coupled = bianisotropic_clausius_mossotti_polarizability(coupled, grid.volumes[1])
+        @test abs(alpha_coupled[1, 5]) > 0
+        @test abs(alpha_coupled[5, 1]) > 0
+    end
+
+    @testset "Matrix-free operator equivalence and storage" begin
+        grid = VoxelGrid3D((-0.15, 0.15), (-0.1, 0.1), (-0.05, 0.05), 3, 3, 2)
+        epsv = fill(2.3 + 0.03im, grid.nvoxels)
+        muv = fill(1.4 + 0.02im, grid.nvoxels)
+
+        A_dense, alpha = assemble_em_dda_3d(grid, k0, epsv, muv)
+        A_op = em_dda_operator_3d(grid, k0, epsv, muv)
+        @test A_op.alpha == alpha
+
+        x = ComplexF64[sin(0.13 * i) + 1im * cos(0.17 * i) for i in 1:size(A_op, 2)]
+        y = zeros(ComplexF64, size(A_op, 1))
+        mul!(y, A_op, x)
+        @test norm(y - A_dense * x) / norm(A_dense * x) < 1e-13
+        @test Base.summarysize(A_op) < Base.summarysize(A_dense) / 4
+
+        mul!(y, A_op, x)
+        @test (@allocated mul!(y, A_op, x)) < 4096
+    end
+
+    @testset "Matrix-free GMRES solve agrees with dense direct" begin
+        grid = VoxelGrid3D((-0.1, 0.1), (-0.05, 0.05), (-0.05, 0.05), 2, 1, 1)
+        E_inc, H_inc = planewave_em_dda_3d(
+            grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
+        )
+        res_direct = solve_em_dda_3d(grid, k0, 2.3 + 0.02im, 1.5 + 0.01im,
+                                     E_inc, H_inc)
+        res_gmres = solve_em_dda_3d(grid, k0, 2.3 + 0.02im, 1.5 + 0.01im,
+                                    E_inc, H_inc;
+                                    solver=:gmres, tol=1e-12, maxiter=50)
+
+        @test norm(reduce(vcat, res_gmres.E_total) - reduce(vcat, res_direct.E_total)) /
+              norm(reduce(vcat, res_direct.E_total)) < 1e-10
+        @test norm(reduce(vcat, res_gmres.H_total) - reduce(vcat, res_direct.H_total)) /
+              norm(reduce(vcat, res_direct.H_total)) < 1e-10
+        @test res_gmres.A isa EMDDAOperator3D
+        @test res_gmres.A_LU === nothing
+        @test res_gmres.solver == :gmres
+    end
+end
+
+println("  PASS")

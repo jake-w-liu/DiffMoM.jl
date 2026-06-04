@@ -1,0 +1,28 @@
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Local Python environment for validation scripts
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Generated figure artifacts (reproducible from plot scripts)
+figs/
+figs
+
+# Generated validation data/artifacts (can be regenerated)
+data/
+data
+
+# Generated documentation build artifacts
+docs/build/
+
+# Julia artifacts
+.julia/
+.julia_depot/
+.juliaup_depot/
+
+*.obj
