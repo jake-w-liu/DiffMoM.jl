@@ -1,8 +1,7 @@
 # DiffMoM.jl
 
 `DiffMoM.jl` is a Julia package for Method-of-Moments electromagnetic
-simulation and differentiable inverse design. The package name is `DiffMoM`,
-the module name is `DiffMoM`, and the current version is `0.1.0`.
+simulation and differentiable inverse design. 
 
 The current implementation includes surface EFIE MoM for PEC and impedance
 surfaces, 2D volume integral equation tools, 3D DDA/VIE-style material
@@ -12,7 +11,7 @@ analytical/external validation workflows.
 
 ## Installation
 
-From a local checkout:
+From a local checkout
 
 ```julia
 import Pkg
