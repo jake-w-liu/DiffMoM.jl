@@ -15,7 +15,8 @@
 #
 # Z_direct is the existing coplanar periodic EFIE; Z_image is assembled below.
 
-export assemble_Z_efie_grounded, assemble_excitation_grounded, reflection_coefficients_grounded
+export assemble_Z_efie_grounded, assemble_excitation_grounded
+export reflection_coefficients_grounded, reflection_coefficient_vectors_grounded
 
 # Full periodic Green's function G_per = G_0 + ΔG between two points (no singularity
 # extraction; valid only for non-coincident points, which holds for the image block).
@@ -183,6 +184,34 @@ function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
         R_g[i] = R_cur[i] * (1 - exp(-2im * m.kz * h))
         if m.m == 0 && m.n == 0
             R_g[i] -= exp(-2im * kzi * h)
+        end
+    end
+    return modes, R_g
+end
+
+"""
+    reflection_coefficient_vectors_grounded(mesh, rwg, I, k, lattice; height, kwargs...)
+
+Full vector Floquet reflection amplitudes for a grounded metasurface. This is
+the energy-budget counterpart to `reflection_coefficients_grounded`: it retains
+both transverse polarizations in every propagating order before applying the
+image-current phase factor and bare-ground background.
+"""
+function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I, k,
+                                                 lattice::PeriodicLattice; height::Real,
+                                                 pol::SVector{3,Float64}=SVector(1.0, 0.0, 0.0),
+                                                 kwargs...)
+    modes, R_cur = reflection_coefficient_vectors(mesh, rwg, I, k, lattice; kwargs...)
+    kzi = _kz_inc(k, lattice)
+    h = Float64(height)
+    R_g = copy(R_cur)
+    for (i, m) in enumerate(modes)
+        R_g[i] = R_cur[i] * (1 - exp(-2im * real(m.kz) * h))
+        if m.m == 0 && m.n == 0
+            pol_mode = _mode_transverse_projection(pol, m, k)
+            if !isnothing(pol_mode)
+                R_g[i] -= exp(-2im * kzi * h) .* ComplexF64.(pol_mode)
+            end
         end
     end
     return modes, R_g

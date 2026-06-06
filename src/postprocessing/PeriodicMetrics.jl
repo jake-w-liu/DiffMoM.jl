@@ -15,7 +15,8 @@
 #   where J̃_mn = (1/A) ∫_cell J(r') exp(i κ_t·r') dS'
 #   For PEC at normal incidence: R₀₀ = -1 (verified).
 
-export floquet_modes, reflection_coefficients, transmission_coefficients, specular_rcs_objective
+export floquet_modes, reflection_coefficients, reflection_coefficient_vectors
+export reflected_power_fractions, transmission_coefficients, specular_rcs_objective
 export power_balance
 export FloquetMode
 
@@ -72,6 +73,70 @@ struct FloquetMode
     propagating::Bool           # true if kz is real (mode carries power)
     theta_r::Float64            # reflection angle theta (NaN if evanescent)
     phi_r::Float64              # reflection angle phi (NaN if evanescent)
+end
+
+function _mode_transverse_projection(pol::SVector{3,<:Real}, mode::FloquetMode, k::Real)
+    khat = SVector(mode.kx / k, mode.ky / k, real(mode.kz) / k)
+    pol_real = SVector(Float64(pol[1]), Float64(pol[2]), Float64(pol[3]))
+    pol_mode_raw = pol_real - dot(pol_real, khat) * khat
+    pol_mode_norm = norm(pol_mode_raw)
+    return pol_mode_norm < 1e-12 ? nothing : pol_mode_raw / pol_mode_norm
+end
+
+function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
+                                               I_coeffs::Vector{<:Number},
+                                               k::Real, lattice::PeriodicLattice;
+                                               quad_order::Int=3,
+                                               N_orders::Int=3)
+    _assert_coplanar_periodic_metrics_mesh(mesh)
+    _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
+
+    modes = floquet_modes(k, lattice; N_orders=N_orders)
+    A_cell = lattice.dx * lattice.dy
+
+    xi, wq = tri_quad_rule(quad_order)
+    Nq = length(wq)
+    Nt = ntriangles(mesh)
+    N = rwg.nedges
+
+    quad_pts = [tri_quad_points(mesh, t, xi) for t in 1:Nt]
+    areas = [triangle_area(mesh, t) for t in 1:Nt]
+
+    tri_to_basis = [Int[] for _ in 1:Nt]
+    for n in 1:N
+        push!(tri_to_basis[rwg.tplus[n]], n)
+        push!(tri_to_basis[rwg.tminus[n]], n)
+    end
+
+    zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+    J_tildes = fill(zero_vec, length(modes))
+
+    for (mi, mode) in enumerate(modes)
+        if !mode.propagating
+            continue
+        end
+
+        integral = zero_vec
+        for t in 1:Nt
+            At = areas[t]
+            for q in 1:Nq
+                rq = quad_pts[t][q]
+
+                J_rq = zero_vec
+                for n_idx in tri_to_basis[t]
+                    fn = eval_rwg(rwg, n_idx, rq, t)
+                    J_rq += I_coeffs[n_idx] * fn
+                end
+
+                phase = exp(im * (mode.kx * rq[1] + mode.ky * rq[2]))
+                integral += J_rq * phase * wq[q] * (2 * At)
+            end
+        end
+
+        J_tildes[mi] = integral / A_cell
+    end
+
+    return modes, J_tildes
 end
 
 """
@@ -131,27 +196,9 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
                                  E0::Float64=1.0,
                                  pol::SVector{3,Float64}=SVector(1.0, 0.0, 0.0),
                                  eta0::Float64=376.730313668)
-    _assert_coplanar_periodic_metrics_mesh(mesh)
-    _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
-
-    modes = floquet_modes(k, lattice; N_orders=N_orders)
-    A_cell = lattice.dx * lattice.dy
-
-    xi, wq = tri_quad_rule(quad_order)
-    Nq = length(wq)
-    Nt = ntriangles(mesh)
-    N = rwg.nedges
-
-    # Precompute quad points and areas
-    quad_pts = [tri_quad_points(mesh, t, xi) for t in 1:Nt]
-    areas = [triangle_area(mesh, t) for t in 1:Nt]
-
-    # Map triangle to supporting basis functions
-    tri_to_basis = [Int[] for _ in 1:Nt]
-    for n in 1:N
-        push!(tri_to_basis[rwg.tplus[n]], n)
-        push!(tri_to_basis[rwg.tminus[n]], n)
-    end
+    modes, J_tildes = _floquet_current_fourier_coefficients(
+        mesh, rwg, I_coeffs, k, lattice; quad_order=quad_order, N_orders=N_orders
+    )
 
     R_coeffs = zeros(ComplexF64, length(modes))
 
@@ -160,56 +207,84 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
             continue
         end
 
-        # Integrate J(r') * exp(i κ_t · r') over unit cell
-        integral = SVector{3}(zero(ComplexF64), zero(ComplexF64), zero(ComplexF64))
-
-        for t in 1:Nt
-            At = areas[t]
-            for q in 1:Nq
-                rq = quad_pts[t][q]
-
-                # Evaluate total current J(rq) = Σ_n I_n f_n(rq)
-                J_rq = SVector{3}(zero(ComplexF64), zero(ComplexF64), zero(ComplexF64))
-                for n_idx in tri_to_basis[t]
-                    fn = eval_rwg(rwg, n_idx, rq, t)
-                    J_rq += I_coeffs[n_idx] * fn
-                end
-
-                # Phase factor
-                phase = exp(im * (mode.kx * rq[1] + mode.ky * rq[2]))
-
-                integral += J_rq * phase * wq[q] * (2 * At)
-            end
-        end
-
-        # J̃_mn = (1/A) ∫ J exp(i κ_t · r') dS'
-        J_tilde = integral / A_cell
-
         # Use a mode-transverse co-polar vector obtained by projecting the
         # incident polarization onto the mode's transverse plane.
         #
         # This avoids overestimating mode amplitudes when the global incident
         # polarization has a component parallel to the reflected mode direction.
-        khat = SVector(
-            mode.kx / k,
-            mode.ky / k,
-            real(mode.kz) / k,
-        )
-        pol_mode_raw = pol - dot(pol, khat) * khat
-        pol_mode_norm = norm(pol_mode_raw)
-        if pol_mode_norm < 1e-12
+        pol_mode = _mode_transverse_projection(pol, mode, k)
+        if isnothing(pol_mode)
             continue
         end
-        pol_mode = pol_mode_raw / pol_mode_norm
 
         # Co-polar reflection coefficient:
         #   R_mn = -(η₀ k)/(2 κz_mn E₀) × (ê_mode · J̃_mn)
         # where ê_mode is transverse to this mode's propagation direction.
         kz_mn = real(mode.kz)
-        R_coeffs[mi] = -(eta0 * k) / (2 * kz_mn * E0) * dot(pol_mode, J_tilde)
+        R_coeffs[mi] = -(eta0 * k) / (2 * kz_mn * E0) * dot(pol_mode, J_tildes[mi])
     end
 
     return modes, R_coeffs
+end
+
+"""
+    reflection_coefficient_vectors(mesh, rwg, I_coeffs, k, lattice; kwargs...)
+
+Compute the full mode-transverse reflected electric-field amplitude vector for
+each propagating Floquet order. Unlike `reflection_coefficients`, which reports
+one scalar co-polar projection per order, this vector form retains both
+orthogonal transverse polarizations and is therefore the correct quantity for
+total reflected-power budgets.
+
+Returns `(modes, R_vecs)`, where `R_vecs[i]` is a three-component complex vector
+normalized by the incident field amplitude.
+"""
+function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
+                                        I_coeffs::Vector{<:Number},
+                                        k::Real, lattice::PeriodicLattice;
+                                        quad_order::Int=3, N_orders::Int=3,
+                                        E0::Float64=1.0,
+                                        eta0::Float64=376.730313668)
+    modes, J_tildes = _floquet_current_fourier_coefficients(
+        mesh, rwg, I_coeffs, k, lattice; quad_order=quad_order, N_orders=N_orders
+    )
+
+    zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+    R_vecs = fill(zero_vec, length(modes))
+
+    for (mi, mode) in enumerate(modes)
+        if !mode.propagating
+            continue
+        end
+
+        kz_mn = real(mode.kz)
+        khat = SVector(mode.kx / k, mode.ky / k, kz_mn / k)
+        J_transverse = J_tildes[mi] - khat * dot(khat, J_tildes[mi])
+        R_vecs[mi] = -(eta0 * k) / (2 * kz_mn * E0) * J_transverse
+    end
+
+    return modes, R_vecs
+end
+
+"""
+    reflected_power_fractions(modes, R_vecs, k)
+
+Return the reflected power fraction carried by each Floquet order from full
+vector reflection amplitudes. The total reflected fraction is `sum(p)`.
+"""
+function reflected_power_fractions(modes::Vector{FloquetMode},
+                                   R_vecs::Vector{SVector{3,ComplexF64}},
+                                   k::Real)
+    length(modes) == length(R_vecs) ||
+        throw(DimensionMismatch("modes length ($(length(modes))) != R_vecs length ($(length(R_vecs)))"))
+
+    p = zeros(Float64, length(modes))
+    for (i, mode) in enumerate(modes)
+        if mode.propagating
+            p[i] = real(dot(R_vecs[i], R_vecs[i])) * real(mode.kz) / k
+        end
+    end
+    return p
 end
 
 """

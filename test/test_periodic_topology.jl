@@ -910,6 +910,24 @@ println("\n── Test 42: PeriodicMetrics ──")
         end
     end
 
+    # ── B: Vector Floquet power includes both transverse polarizations ──
+    @testset "B: Vector Floquet power counts cross polarization" begin
+        modes = floquet_modes(k_pm, lat_pm; N_orders=0)
+        idx00 = findfirst(m -> (m.m == 0 && m.n == 0), modes)
+        @test idx00 !== nothing
+
+        zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+        R_vecs = fill(zero_vec, length(modes))
+        R_vecs[idx00] = SVector{3,ComplexF64}(0.6 + 0im, 0.8 + 0im, 0.0 + 0im)
+        p = reflected_power_fractions(modes, R_vecs, k_pm)
+
+        # A scalar co-polar budget would see only 0.6^2. The vector budget must
+        # count the orthogonal 0.8 component too.
+        @test p[idx00] ≈ 1.0 atol=1e-14
+        @test abs2(0.6) < p[idx00]
+        @test_throws DimensionMismatch reflected_power_fractions(modes, R_vecs[1:end-1], k_pm)
+    end
+
     # ── B: Specular objective kwargs/defaults ──
     @testset "B: Specular objective kwargs/defaults" begin
         mesh_q = make_rect_plate(dx_pm, dy_pm, 2, 2)
@@ -1026,6 +1044,10 @@ println("\n── Test 42: PeriodicMetrics ──")
                               height=h, N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
             refl = sum(m.propagating ? abs2(Rg[i]) * real(m.kz) / kg : 0.0 for (i, m) in enumerate(modes_g))
             @test refl ≈ 1.0 atol = 3e-3
+            modes_v, Rv = reflection_coefficient_vectors_grounded(mesh_g, rwg_g, Ig, kg, lat_g;
+                              height=h, N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
+            @test modes_v == modes_g
+            @test sum(reflected_power_fractions(modes_v, Rv, kg)) ≈ 1.0 atol = 3e-3
         end
 
         # (3) Positive ground-plane height is required.

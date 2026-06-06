@@ -18,8 +18,8 @@ import PlotlySupply: savefig
 Random.seed!(42)
 
 const PKG_DIR  = dirname(@__DIR__)
-const DATA_DIR = joinpath(PKG_DIR, "data")
-const FIG_DIR  = joinpath(PKG_DIR, "figures")
+const DATA_DIR = joinpath(PKG_DIR, "..", "paper", "data")
+const FIG_DIR  = joinpath(PKG_DIR, "..", "paper", "figs")
 mkpath(DATA_DIR)
 mkpath(FIG_DIR)
 
