@@ -23,10 +23,9 @@
 # Convention: exp(+iωt), G_0 = exp(-ikR)/(4πR)
 #
 # NOTE:
-# The current Ewald correction path is implemented for coplanar periodic surfaces
-# (z = const over the unit cell), which is the use case in this repository's
-# periodic topology workflows. Non-coplanar source/observation offsets are
-# rejected at runtime to avoid silently returning non-physical values.
+# The topology workflows use coplanar source and observation meshes, but the
+# Ewald kernel itself accepts nonzero vertical separation Δz. The grounded-EFIE
+# image block relies on this path to couple the real sheet to its PEC image.
 
 export greens_periodic_correction, PeriodicLattice
 

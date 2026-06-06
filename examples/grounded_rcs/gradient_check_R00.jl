@@ -1,4 +1,8 @@
-using DiffMoM, LinearAlgebra, StaticArrays, Random, Printf
+using DiffMoM, LinearAlgebra, StaticArrays, Random, Printf, Statistics, CSV, DataFrames
+const PKG_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
+const PROJECT_ROOT = normpath(joinpath(PKG_ROOT, ".."))
+const DATA_DIR = joinpath(PROJECT_ROOT, "paper", "data")
+mkpath(DATA_DIR)
 const C0 = 2.99792458e8; lam = C0/10e9; k = 2π/lam; eta0 = 376.730313668
 dxc = 1.2*lam; Nx = 10; h = lam/4
 mesh = make_rect_plate(dxc, dxc, Nx, Nx); lat = PeriodicLattice(dxc, dxc, 0.0, 0.0, k)
@@ -32,12 +36,31 @@ end
 Random.seed!(7); rho = 0.3 .+ 0.4*rand(Nt)
 J0, g, R, Rgg = objgrad(rho)
 @printf("R00 my-formula=%+.5f%+.5fi | grounded-fn=%+.5f%+.5fi | match=%.2e\n", real(R), imag(R), real(Rgg), imag(Rgg), abs(R-Rgg))
-Random.seed!(3); idxs = rand(1:Nt, 6); hfd = 1e-5; maxerr = 0.0
-for t in idxs
+hfd = 1e-5
+rows = DataFrame(triangle=Int[], g_adjoint=Float64[], g_fd=Float64[],
+    abs_error=Float64[], rel_error=Float64[])
+maxerr = 0.0
+for t in 1:Nt
     rp = copy(rho); rp[t] += hfd; rm = copy(rho); rm[t] -= hfd
     Jp, = objgrad(rp); Jm, = objgrad(rm); gfd = (Jp - Jm)/(2hfd)
-    rel = abs(g[t] - gfd)/max(abs(gfd), 1e-12); global maxerr = max(maxerr, rel)
-    @printf("  t=%3d | adj=%+.4e fd=%+.4e relerr=%.2e\n", t, g[t], gfd, rel)
+    abs_error = abs(g[t] - gfd)
+    rel = abs_error/max(abs(gfd), 1e-12); global maxerr = max(maxerr, rel)
+    push!(rows, (t, g[t], gfd, abs_error, rel))
 end
-@printf("MAX gradient rel error=%.3e  %s\n", maxerr, maxerr < 1e-4 ? "PASS" : "FAIL")
+max_fd = maximum(abs.(rows.g_fd))
+scale_floor = 1e-4 * max_fd
+rows.scaled_error = rows.abs_error ./ max.(abs.(rows.g_fd), scale_floor)
+max_abs_error = maximum(rows.abs_error)
+max_scaled_error = maximum(rows.scaled_error)
+CSV.write(joinpath(DATA_DIR, "grounded_gradient_check.csv"), rows)
+CSV.write(joinpath(DATA_DIR, "grounded_gradient_summary.csv"),
+    DataFrame(max_rel_error=[maxerr], mean_rel_error=[mean(rows.rel_error)],
+        max_abs_error=[max_abs_error], max_scaled_error=[max_scaled_error],
+        fd_step=[hfd], variables_checked=[Nt], beta=[beta],
+        R_formula_match=[abs(R-Rgg)]))
+pass = max_abs_error < 1e-10 && max_scaled_error < 1e-2
+@printf("MAX gradient abs error=%.3e, max scaled error=%.3e  %s\n",
+    max_abs_error, max_scaled_error, pass ? "PASS" : "FAIL")
 @printf("initial |R00_grounded|=%.4f (%.2f dB vs bare ground)\n", abs(R), 20log10(abs(R)+1e-15))
+abs(R - Rgg) < 1e-10 || error("grounded R00 formula mismatch")
+pass || error("grounded R00 gradient finite-difference check failed")

@@ -1,6 +1,11 @@
 include(joinpath(@__DIR__, "framework_energy_honest.jl"))
 using Serialization, Printf
-const JLS = get(ENV, "GJLS", "/tmp/grounded_36.jls")
+const PKG_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
+const PROJECT_ROOT = normpath(joinpath(PKG_ROOT, ".."))
+const ARTIFACT_DIR = get(ENV, "GROUND_ARTIFACT_DIR",
+    joinpath(PROJECT_ROOT, "paper", "data", "grounded_artifacts"))
+const JLS = get(ENV, "GJLS", joinpath(ARTIFACT_DIR, "grounded_36.jls"))
+isfile(JLS) || error("missing grounded artifact: $(JLS)")
 D = deserialize(JLS)
 freq=D.freq; lam=C0/freq; k=2π/lam; dxc=D.dxl*lam; h=D.hfrac*lam; NMESH=D.NMESH
 mesh=make_rect_plate(dxc,dxc,NMESH,NMESH); lat=PeriodicLattice(dxc,dxc,0.0,0.0,k)
@@ -20,8 +25,9 @@ function build_design(Npix, rmin_pix)
 end
 
 # TEST 1 (decisive): re-evaluate the 24x24-optimized design at this finer mesh.
-if isfile("/tmp/honest_design.jls")
-    Dd = deserialize("/tmp/honest_design.jls")
+design_path = joinpath(ARTIFACT_DIR, "honest_design.jls")
+if isfile(design_path)
+    Dd = deserialize(design_path)
     E12,Hf12 = build_design(Dd.Npix, 2.0)
     R00,budget,bf = eval_honest(P, E12, Hf12, Dd.rho, 64.0)
     @printf("\n[convergence] 24x24-design re-evaluated at %dx%d: |R00|=%.4f (%.1f dB) | full vector budget=%.4f | binary=%.0f%%\n",
@@ -51,4 +57,4 @@ end
 E,Hf = build_design(12, 2.0); rho = opt_honest(E,Hf,12)
 R00,budget,bf = eval_honest(P,E,Hf,rho,64.0)
 @printf("FINAL %dx%d: |R00|=%.4f (%.1f dB) full vector budget=%.4f binary=%.0f%%\n", NMESH,NMESH,R00,20log10(R00+1e-15),budget,bf)
-serialize("/tmp/honest_design_$(NMESH).jls", (rho=rho, Npix=12, NMESH=NMESH))
+serialize(joinpath(ARTIFACT_DIR, "honest_design_$(NMESH).jls"), (rho=rho, Npix=12, NMESH=NMESH))

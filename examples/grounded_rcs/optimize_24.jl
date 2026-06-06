@@ -1,6 +1,17 @@
 include(joinpath(@__DIR__, "framework_energy_honest.jl"))
-using Serialization, Printf
-D = deserialize("/tmp/grounded_24.jls")
+using Serialization, Printf, CSV, DataFrames
+const PKG_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
+const PROJECT_ROOT = normpath(joinpath(PKG_ROOT, ".."))
+const ARTIFACT_DIR = get(ENV, "GROUND_ARTIFACT_DIR",
+    joinpath(PROJECT_ROOT, "paper", "data", "grounded_artifacts"))
+const DATA_DIR = joinpath(PROJECT_ROOT, "paper", "data")
+const DESIGN_PATH = joinpath(ARTIFACT_DIR, "honest_design.jls")
+mkpath(ARTIFACT_DIR)
+mkpath(DATA_DIR)
+
+ground_path = joinpath(ARTIFACT_DIR, "grounded_24.jls")
+isfile(ground_path) || error("missing grounded artifact: $(ground_path)")
+D = deserialize(ground_path)
 freq=D.freq; lam=C0/freq; k=2π/lam; dxc=D.dxl*lam; h=D.hfrac*lam; NMESH=D.NMESH
 mesh=make_rect_plate(dxc,dxc,NMESH,NMESH); lat=PeriodicLattice(dxc,dxc,0.0,0.0,k)
 rwg=build_rwg_periodic(mesh,lat;precheck=true,allow_boundary=true,require_closed=false)
@@ -33,11 +44,16 @@ let
         Jp,=objgrad_honest(P,E,Hf,rp,beta); Jm,=objgrad_honest(P,E,Hf,rm,beta)
         mx=max(mx, abs(g[t]-(Jp-Jm)/(2hfd))/max(abs((Jp-Jm)/(2hfd)),1e-12))
     end
-    @printf("honest-gradient FD check: max rel err=%.2e  %s\n", mx, mx < 1e-3 ? "PASS" : "FAIL"); flush(stdout)
+    pass = mx < 1e-3
+    @printf("honest-gradient FD check: max rel err=%.2e  %s\n", mx, pass ? "PASS" : "FAIL"); flush(stdout)
+    pass || error("grounded combined-adjoint FD check failed")
 end
 
 function opt_honest(E,Hf,Npix; seed=11)
     Random.seed!(seed); rho=rand(Npix*Npix)
+    history = DataFrame(beta=Float64[], R00_copol_dB=Float64[],
+        full_reflected_budget=Float64[], binary_pct=Float64[])
+    rho_by_beta = Dict{Float64, Vector{Float64}}()
     for beta in [1.0,2.0,4.0,8.0,16.0,32.0,64.0]
         step=0.2
         for it in 1:40
@@ -50,15 +66,19 @@ function opt_honest(E,Hf,Npix; seed=11)
             acc || (step*=0.5); step<1e-7 && break
         end
         R00,budget,bf=eval_honest(P,E,Hf,rho,beta)
+        push!(history, (beta, 20log10(R00+1e-15), budget, bf))
+        rho_by_beta[beta] = copy(rho)
         @printf("  β=%2d | |R00|=%.4f (%.1f dB) | full vector budget=%.4f | binary=%.0f%%\n",Int(beta),R00,20log10(R00+1e-15),budget,bf); flush(stdout)
     end
-    return rho
+    return rho, history, rho_by_beta
 end
 
 @printf("\n=== ENERGY-HONEST (J=|R00|², vector budget reported): Npix=12, %dx%d analysis ===\n",NMESH,NMESH); flush(stdout)
 let
-    E,Hf=build_design(12,2,2.0); rho=opt_honest(E,Hf,12)
+    E,Hf=build_design(12,2,2.0); rho, history, rho_by_beta=opt_honest(E,Hf,12)
     R00,budget,bf=eval_honest(P,E,Hf,rho,64.0)
     @printf("FINAL: |R00|=%.4f (%.1f dB) full vector budget=%.4f binary=%.0f%%\n",R00,20log10(R00+1e-15),budget,bf); flush(stdout)
-    serialize("/tmp/honest_design.jls", (rho=rho, Npix=12, mult=2))
+    CSV.write(joinpath(DATA_DIR, "grounded_beta_trace.csv"), history)
+    serialize(DESIGN_PATH, (rho=rho, Npix=12, mult=2, rho_by_beta=rho_by_beta))
+    println("saved $(DESIGN_PATH)")
 end

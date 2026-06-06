@@ -134,7 +134,7 @@ for t in subset
 end
 max_rel_gv = maximum(rel_errs)
 println("  Max relative error: $(round(max_rel_gv, sigdigits=3))")
-max_rel_gv < 1e-5 || @warn "Gradient check exceeds 1e-5 tolerance: $(max_rel_gv)"
+max_rel_gv < 1e-5 || error("Gradient check exceeds 1e-5 tolerance: $(max_rel_gv)")
 
 # ── Optimization ───────────────────────────────────────────────────────────
 # Binarization continuation: α_bin increases with β to gradually force binary
@@ -152,6 +152,7 @@ function run_rcs_binary_opt(Z_per, Mt, v, Q_spec, config, W, w_sum, rho0;
     trace = DataFrame(iter=Int[], beta=Float64[], J_spec=Float64[], J_bin=Float64[],
                       J_total=Float64[], gnorm=Float64[], vf=Float64[],
                       frac_binary=Float64[], R00=Float64[])
+    rho_by_beta = Dict{Float64, Vector{Float64}}()
     global_iter = 0
 
     for beta in betas
@@ -253,22 +254,43 @@ function run_rcs_binary_opt(Z_per, Mt, v, Q_spec, config, W, w_sum, rho0;
             end
             !accepted && (rho .= project!(rho_old .+ alpha_ls .* d))
         end
+        rho_by_beta[beta] = copy(rho)
     end
 
-    return rho, trace
+    return rho, trace, rho_by_beta
 end
 
 println("\n▸ Running RCS optimization with binarization (random init)")
 rho0 = rand(Nt)
 t0 = time()
-rho_opt, trace = run_rcs_binary_opt(
+rho_opt_last, trace, rho_by_beta = run_rcs_binary_opt(
     Z_per, Mt, v, Q_spec, config, W, w_sum, rho0;
     betas=betas, iters_per_beta=iters_per_beta, alpha_vf=alpha_vf,
     alpha_bin_max=alpha_bin_max, verbose=true)
 println("  Runtime: $(round(time()-t0, digits=1)) s")
 
+function evaluate_candidate(rho_raw)
+    _, rho_bar = filter_and_project(W, w_sum, rho_raw, betas[end])
+    Z_pen = assemble_Z_penalty(Mt, rho_bar, config)
+    I_c = (Z_per + Z_pen) \ v
+    modes_c, R_c = reflection_coefficients(mesh, rwg, Vector{ComplexF64}(I_c), k, lattice;
+                                           pol=pol_inc, E0=1.0)
+    R00_c = abs(R_c[spec_pos])
+    binary_c = count(x -> x < 0.05 || x > 0.95, rho_bar) / Nt
+    return (; rho_raw=copy(rho_raw), rho_bar, R00=R00_c, binary=binary_c)
+end
+
+candidates = [evaluate_candidate(rho_opt_last)]
+for beta in sort(collect(keys(rho_by_beta)))
+    push!(candidates, evaluate_candidate(rho_by_beta[beta]))
+end
+eligible = filter(c -> c.binary >= 0.85, candidates)
+isempty(eligible) && error("no redistribution candidate reached the binary threshold")
+best_candidate = eligible[argmin([c.R00 for c in eligible])]
+rho_opt = best_candidate.rho_raw
+
 # ── Final analysis ─────────────────────────────────────────────────────────
-_, rho_bar_final = filter_and_project(W, w_sum, rho_opt, betas[end])
+rho_bar_final = best_candidate.rho_bar
 Z_pen_opt = assemble_Z_penalty(Mt, rho_bar_final, config)
 I_opt = (Z_per + Z_pen_opt) \ v
 J_spec_opt = real(dot(I_opt, Q_spec * I_opt))
@@ -342,8 +364,9 @@ bl_gray    = analyze_baseline("Gray sheet (ρ=0.5)", rho_gray)
 bl_opt     = analyze_baseline("Optimized (binary)", rho_bar_final)
 
 # Advantage over checkerboard
-adv_dB = bl_opt.R00_red_dB - bl_checker.R00_red_dB
+adv_dB = bl_checker.R00_red_dB - bl_opt.R00_red_dB
 println("\n  Advantage over checkerboard: $(round(adv_dB, digits=2)) dB")
+bl_opt.R00 < bl_checker.R00 || error("optimized redistribution design does not beat checkerboard")
 
 # ── Save data ──────────────────────────────────────────────────────────────
 CSV.write(joinpath(DATA_DIR, "results_redistribution_trace.csv"), trace)
@@ -363,6 +386,32 @@ summary_df = DataFrame(
     vf = [bl_pec.vf, bl_checker.vf, bl_gray.vf, bl_opt.vf],
 )
 CSV.write(joinpath(DATA_DIR, "results_redistribution_summary.csv"), summary_df)
+
+function find_mode_index(modes, m, n)
+    idx = findfirst(x -> x.m == m && x.n == n, modes)
+    idx === nothing && error("missing Floquet mode ($(m),$(n))")
+    return idx
+end
+
+floquet_rows = DataFrame(mode_label=String[], m=Int[], n=Int[],
+    R_pec_abs=Float64[], R_checker_abs=Float64[], R_gray_abs=Float64[], R_opt_abs=Float64[],
+    pfrac_pec=Float64[], pfrac_checker=Float64[], pfrac_gray=Float64[], pfrac_opt=Float64[])
+for mode in bl_opt.modes
+    mode.propagating || continue
+    i_pec = find_mode_index(bl_pec.modes, mode.m, mode.n)
+    i_checker = find_mode_index(bl_checker.modes, mode.m, mode.n)
+    i_gray = find_mode_index(bl_gray.modes, mode.m, mode.n)
+    i_opt = find_mode_index(bl_opt.modes, mode.m, mode.n)
+    push!(floquet_rows, (
+        "($(mode.m),$(mode.n))", mode.m, mode.n,
+        abs(bl_pec.R[i_pec]), abs(bl_checker.R[i_checker]), abs(bl_gray.R[i_gray]), abs(bl_opt.R[i_opt]),
+        mode_power_fraction(bl_pec.modes[i_pec], bl_pec.R[i_pec], k),
+        mode_power_fraction(bl_checker.modes[i_checker], bl_checker.R[i_checker], k),
+        mode_power_fraction(bl_gray.modes[i_gray], bl_gray.R[i_gray], k),
+        mode_power_fraction(bl_opt.modes[i_opt], bl_opt.R[i_opt], k),
+    ))
+end
+CSV.write(joinpath(DATA_DIR, "results_redistribution_floquet.csv"), floquet_rows)
 println("  ✓ Saved data/results_redistribution_*.csv")
 
 # ── Figures ────────────────────────────────────────────────────────────────
