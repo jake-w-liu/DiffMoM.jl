@@ -421,6 +421,24 @@ const COLORS = ["#0072B2", "#D55E00", "#009E73", "#CC79A7"]
 const DASHES = ["solid", "dash", "dashdot", "dot"]
 const IEEE_W = 504
 const IEEE_H = 360
+const TOPOLOGY_FIG_W = 432
+const TOPOLOGY_FIG_H = 432
+
+function style_topology_heatmap!(fig, extent)
+    fig.data[1].fields[:showscale] = false
+    relayout!(fig,
+        title="",
+        xaxis=attr(title=raw"$x/\lambda$", range=[-extent, extent],
+            constrain="domain", showgrid=false, zeroline=false,
+            showline=true, mirror=true, ticks="outside"),
+        yaxis=attr(title=raw"$y/\lambda$", range=[-extent, extent],
+            scaleanchor="x", scaleratio=1, constrain="domain",
+            showgrid=false, zeroline=false, showline=true, mirror=true,
+            ticks="outside"),
+        margin=attr(l=58, r=18, t=14, b=52),
+        font=attr(size=12))
+    return fig
+end
 
 # Topology heatmap
 function density_to_grid(rho_bar_vec, cents, nx, ny, dxc, dyc)
@@ -442,18 +460,22 @@ end
 G_opt = density_to_grid(rho_bar_final, centroids, Nx, Ny, dx_cell, dy_cell)
 G_checker = density_to_grid(rho_checker, centroids, Nx, Ny, dx_cell, dy_cell)
 
-x_mm = collect(range(-dx_cell/2, dx_cell/2, length=Nx)) .* 1e3
-y_mm = collect(range(-dy_cell/2, dy_cell/2, length=Ny)) .* 1e3
+x_over_lambda = collect(range(-dx_cell/(2lambda), dx_cell/(2lambda), length=Nx))
+y_over_lambda = collect(range(-dy_cell/(2lambda), dy_cell/(2lambda), length=Ny))
 
-fig_opt = plot_heatmap(x_mm, y_mm, G_opt;
-    xlabel="x [mm]", ylabel="y [mm]", title="Optimized ($(round(100binary_frac, digits=0))% binary)",
-    zrange=[0, 1], colorscale="Greys", width=480, height=420)
-savefig(fig_opt, joinpath(FIG_DIR, "fig_results_redistribution_topology.pdf"))
+fig_opt = plot_heatmap(x_over_lambda, y_over_lambda, G_opt;
+    xlabel=raw"$x/\lambda$", ylabel=raw"$y/\lambda$", title="",
+    zrange=[0, 1], colorscale="Greys", width=TOPOLOGY_FIG_W, height=TOPOLOGY_FIG_H)
+style_topology_heatmap!(fig_opt, dx_cell / (2lambda))
+savefig(fig_opt, joinpath(FIG_DIR, "fig_results_redistribution_topology.pdf");
+    width=TOPOLOGY_FIG_W, height=TOPOLOGY_FIG_H)
 
-fig_check = plot_heatmap(x_mm, y_mm, G_checker;
-    xlabel="x [mm]", ylabel="y [mm]", title="Checkerboard baseline",
-    zrange=[0, 1], colorscale="Greys", width=480, height=420)
-savefig(fig_check, joinpath(FIG_DIR, "fig_results_redistribution_checker.pdf"))
+fig_check = plot_heatmap(x_over_lambda, y_over_lambda, G_checker;
+    xlabel=raw"$x/\lambda$", ylabel=raw"$y/\lambda$", title="",
+    zrange=[0, 1], colorscale="Greys", width=TOPOLOGY_FIG_W, height=TOPOLOGY_FIG_H)
+style_topology_heatmap!(fig_check, dx_cell / (2lambda))
+savefig(fig_check, joinpath(FIG_DIR, "fig_results_redistribution_checker.pdf");
+    width=TOPOLOGY_FIG_W, height=TOPOLOGY_FIG_H)
 
 # Convergence: |R00| vs iteration
 fig_conv = plot_scatter(collect(trace.iter), collect(trace.R00);
