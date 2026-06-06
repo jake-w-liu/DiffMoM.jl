@@ -206,12 +206,9 @@ function greens_periodic_correction(r::SVector{3}, rp::SVector{3}, k,
     drho_y = r[2] - rp[2]
     drho_z = r[3] - rp[3]
 
-    if abs(drho_z) > 1e-12
-        throw(ArgumentError(
-            "greens_periodic_correction currently supports coplanar points only " *
-            "(|z-z'| <= 1e-12). Got |z-z'|=$(abs(drho_z))."
-        ))
-    end
+    # Vertical separation drho_z = z - z' is supported: the spatial sum and
+    # self-correction already use the full 3D distance, and the spectral sum below
+    # carries the Δz-dependent Ewald kernel. drho_z = 0 recovers the coplanar form.
 
     # ── 1. Self-correction: (m=0, n=0) term ──
     R_self = sqrt(drho_x^2 + drho_y^2 + drho_z^2)
@@ -257,8 +254,15 @@ function greens_periodic_correction(r::SVector{3}, rp::SVector{3}, k,
             # Phase from observation-source offset
             phase_spec = exp(-im * (kappa_x * drho_x + kappa_y * drho_y))
 
-            # Ewald-damped spectral kernel: erfc(ikz/(2E)) / (2ikz)
-            spec_val = erfc(im * kz / (2E)) / (2im * kz)
+            # Ewald-damped spectral kernel with vertical separation Δz = drho_z.
+            # Reduces to erfc(ikz/(2E))/(2ikz) at Δz = 0 and to the physical
+            # plane-wave factor e^{-ikz|Δz|}/(2ikz) as E → ∞ (no Ewald damping):
+            #   spec(Δz) = [ e^{-ikz Δz} erfc(ikz/2E - E Δz)
+            #              + e^{+ikz Δz} erfc(ikz/2E + E Δz) ] / (4 i kz)
+            zk = im * kz / (2E)
+            Edz = E * drho_z
+            spec_val = (exp(-im * kz * drho_z) * erfc(zk - Edz) +
+                        exp( im * kz * drho_z) * erfc(zk + Edz)) / (4im * kz)
 
             val += phase_spec * spec_val / A
         end

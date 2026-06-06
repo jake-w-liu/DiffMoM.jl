@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "3285994f392a6dd7a53a3e2055c6bfe6e6407a00"
+project_hash = "49571e15aa42b2446464f359bc496ab4a633f3fb"
 
 [[deps.ATK_jll]]
 deps = ["Artifacts", "Glib_jll", "JLLWrappers", "Libdl"]
@@ -624,12 +624,12 @@ uuid = "f2990250-8cf9-495f-b13a-cce12b45703c"
 version = "2.3.1"
 
 [[deps.PlotlySupply]]
-deps = ["BatchAssign", "ElectronCall", "Infiltrator", "MeshGrid", "PlotlyBase", "Reexport"]
-git-tree-sha1 = "686d70f089c7877e11ecb003db70bc867db67c19"
-repo-rev = "v1.6.4"
+deps = ["Base64", "BatchAssign", "ElectronCall", "Infiltrator", "MeshGrid", "PlotlyBase", "Printf", "Reexport"]
+git-tree-sha1 = "920686561ef808050068a9c4af7ba18a25576a20"
+repo-rev = "v1.7.3"
 repo-url = "https://github.com/jake-w-liu/PlotlySupply.jl"
 uuid = "a389b534-8bca-4fe3-8ff2-14829cd8824f"
-version = "1.6.4"
+version = "1.7.3"
 
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]

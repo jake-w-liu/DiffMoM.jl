@@ -150,12 +150,32 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
     # Precompute ΔG for all unique triangle pairs. ΔG is smooth everywhere
     # (no singularity), so every pair is handled by standard quadrature.
     # Shared triangle pairs across RWG functions are evaluated only once.
+    #
+    # At normal incidence (no Bloch phase) the quasi-periodic Green's function is
+    # reciprocal, ΔG(a,b) = ΔG(b,a); the upper triangle then determines the whole
+    # cache, halving the Ewald sums. The mirrored write touches the transposed
+    # (tn,tm) entry, disjoint from every other thread's writes, so it is
+    # thread-safe. For oblique incidence the Bloch phase breaks the symmetry, so
+    # the full sweep is used.
     dG_cache = Array{CT, 4}(undef, Nq, Nq, Nt, Nt)
-    Threads.@threads for tm in 1:Nt
-        @inbounds for tn in 1:Nt
-            for qm in 1:Nq, qn in 1:Nq
-                dG_cache[qm, qn, tm, tn] =
-                    greens_periodic_correction(quad_pts[tm][qm], quad_pts[tn][qn], k, lattice)
+    if iszero(lattice.kx_bloch) && iszero(lattice.ky_bloch)
+        # :dynamic scheduling balances the triangular (uneven) workload.
+        Threads.@threads :dynamic for tm in 1:Nt
+            @inbounds for tn in tm:Nt
+                for qm in 1:Nq, qn in 1:Nq
+                    g = greens_periodic_correction(quad_pts[tm][qm], quad_pts[tn][qn], k, lattice)
+                    dG_cache[qm, qn, tm, tn] = g
+                    dG_cache[qn, qm, tn, tm] = g
+                end
+            end
+        end
+    else
+        Threads.@threads for tm in 1:Nt
+            @inbounds for tn in 1:Nt
+                for qm in 1:Nq, qn in 1:Nq
+                    dG_cache[qm, qn, tm, tn] =
+                        greens_periodic_correction(quad_pts[tm][qm], quad_pts[tn][qn], k, lattice)
+                end
             end
         end
     end

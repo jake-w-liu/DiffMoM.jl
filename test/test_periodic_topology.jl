@@ -142,12 +142,40 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         @test abs(dG) > 0  # should be nonzero for typical parameters
     end
 
-    # ── E: Non-coplanar point pairs are rejected ──
-    @testset "E: Non-coplanar unsupported" begin
-        lat = PeriodicLattice(dx, dy, 0.0, 0.0, k)
-        r  = SVector(0.0, 0.0, 1e-3)
-        rp = SVector(0.0, 0.0, 0.0)
-        @test_throws ArgumentError greens_periodic_correction(r, rp, k, lat)
+    # ── F: Vertical separation (z != z') supported and correct ──
+    @testset "F: Vertical-separation Green's function" begin
+        A = dx * dy
+        Eopt = sqrt(π / A)
+        latE(E) = PeriodicLattice(dx, dy, 0.0, 0.0, k, E, 8, 18)
+        g0(R) = exp(-im * k * R) / (4π * R)
+        # Pure Floquet spectral reference for the full G_per (converges for Δz != 0).
+        function gper_spec(dxr, dyr, dz; P=60)
+            v = 0.0 + 0.0im
+            for p in -P:P, q in -P:P
+                kxp = 2π * p / dx; kyq = 2π * q / dy
+                kz = sqrt(complex(k^2 - kxp^2 - kyq^2)); imag(kz) > 0 && (kz = -kz)
+                abs(kz) < 1e-9 * k && continue
+                v += exp(-im * (kxp * dxr + kyq * dyr)) * exp(-im * kz * abs(dz)) / (2im * kz) / A
+            end
+            return v
+        end
+        for (dxr, dyr, dz) in [(0.0, 0.0, 0.10dx), (0.13dx, -0.07dy, 0.10dx),
+                               (0.13dx, -0.07dy, 0.25dx), (-0.2dx, 0.1dy, 0.5dx)]
+            r  = SVector(dxr, dyr, dz)
+            rp = SVector(0.0, 0.0, 0.0)
+            R  = sqrt(dxr^2 + dyr^2 + dz^2)
+            g_lo = greens_periodic_correction(r, rp, k, latE(0.5Eopt))
+            g_md = greens_periodic_correction(r, rp, k, latE(1.0Eopt))
+            g_hi = greens_periodic_correction(r, rp, k, latE(2.0Eopt))
+            # Ewald result is invariant to the splitting parameter E.
+            @test abs(g_lo - g_md) ≤ 1e-9 * abs(g_md)
+            @test abs(g_hi - g_md) ≤ 1e-9 * abs(g_md)
+            # G_0 + ΔG matches the independent pure-Floquet-spectral representation.
+            @test abs((g0(R) + g_md) - gper_spec(dxr, dyr, dz)) ≤ 1e-7 * abs(gper_spec(dxr, dyr, dz))
+        end
+        # Δz = 0 still recovers the coplanar correction (no regression).
+        rc = SVector(0.13dx, -0.07dy, 0.0)
+        @test isfinite(abs(greens_periodic_correction(rc, SVector(0.0, 0.0, 0.0), k, latE(Eopt))))
     end
 
     # ── C: Large-period Ewald convergence (d up to 100λ) ──
@@ -825,10 +853,11 @@ println("\n── Test 42: PeriodicMetrics ──")
     @testset "B: Power balance residual bookkeeping" begin
         modes = floquet_modes(k_pm, lat_pm; N_orders=1)
         R = zeros(ComplexF64, length(modes))
-        # Put all reflected power into the specular mode for a simple check
+        # Specular reflection of a physical passive shunt sheet: R lies in the disk
+        # |R + 1/2| ≤ 1/2, i.e. Re(R) ≤ 0. Use a lossless value (|R|² = -Re R).
         idx00 = findfirst(m -> (m.m == 0 && m.n == 0), modes)
         @test idx00 !== nothing
-        R[idx00] = 0.5 + 0im
+        R[idx00] = -0.5 + 0.5im  # |R|² = 0.5 = -Re(R): lossless shunt sheet
 
         I_test = ComplexF64[1.0 + 0im, 2.0 + 0im]
         Z_pen = ComplexF64[2.0 0.0; 0.0 3.0]  # positive real penalty
@@ -848,15 +877,37 @@ println("\n── Test 42: PeriodicMetrics ──")
         @test pb_closure.trans_frac ≥ 0
         @test pb_closure.resid_frac ≈ 1 - pb_closure.refl_frac - pb_closure.abs_frac - pb_closure.trans_frac atol=1e-15 rtol=1e-14
 
-        # Floquet transmission mode with inferred T coefficients
+        # Floquet transmission mode: exact thin-sheet relation T₀₀ = 1 + R₀₀.
         T = transmission_coefficients(modes, R)
         @test length(T) == length(R)
-        @test T[idx00] ≈ 1 - R[idx00] atol=1e-14
+        @test T[idx00] ≈ 1 + R[idx00] atol=1e-14
 
         pb_floquet = power_balance(I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R;
                                    transmission=:floquet)
         @test pb_floquet.P_trans ≥ 0
         @test pb_floquet.P_resid ≈ pb_floquet.P_inc - pb_floquet.P_refl - pb_floquet.P_abs - pb_floquet.P_trans atol=1e-15 rtol=1e-14
+    end
+
+    # ── B: Lossless thin-sheet energy conservation (T₀₀ = 1 + R₀₀) ──
+    @testset "B: Lossless sheet energy conservation" begin
+        modes = floquet_modes(k_pm, lat_pm; N_orders=1)
+        idx00 = findfirst(m -> (m.m == 0 && m.n == 0), modes)
+        Z_zero = zeros(ComplexF64, 2, 2)            # no penalty ⇒ no absorption
+        I_dummy = ComplexF64[1.0 + 0im, 0.0 + 0im]
+        # Sweep the passive lossless circle R = -1/2 + 1/2 e^{iφ} (|R|² = -Re R).
+        for φ in range(0, 2π; length=9)
+            R = zeros(ComplexF64, length(modes))
+            R[idx00] = -0.5 + 0.5 * cis(φ)
+            @test real(R[idx00]) ≤ 1e-12                       # passivity: Re(R) ≤ 0
+            T = transmission_coefficients(modes, R)
+            @test T[idx00] ≈ 1 + R[idx00] atol=1e-14
+            # |R|² + |T|² = 1 for a lossless free-standing sheet at normal incidence.
+            @test abs2(R[idx00]) + abs2(T[idx00]) ≈ 1.0 atol=1e-12
+            pb = power_balance(I_dummy, Z_zero, dx_pm * dy_pm, k_pm, modes, R;
+                               transmission=:floquet)
+            @test pb.refl_frac + pb.trans_frac ≈ 1.0 atol=1e-12     # closed power budget
+            @test pb.resid_frac ≈ 0.0 atol=1e-12
+        end
     end
 
     # ── B: Specular objective kwargs/defaults ──
@@ -929,6 +980,56 @@ println("\n── Test 42: PeriodicMetrics ──")
         rwg_w = build_rwg(mesh_w; precheck=false)
         I_zero = zeros(ComplexF64, rwg_w.nedges)
         @test_throws ArgumentError reflection_coefficients(mesh_w, rwg_w, I_zero, k_pm, lat_pm)
+    end
+
+    # ── B/F: Grounded metasurface via image theory ──
+    @testset "B: Grounded metasurface (image theory)" begin
+        freq_g = 10e9; c0_g = 2.99792458e8; lam_g = c0_g / freq_g
+        kg = 2π / lam_g; eta0g = 376.730313668
+        dcg = 0.5 * lam_g; Nxg = 6
+        mesh_g = make_rect_plate(dcg, dcg, Nxg, Nxg)
+        lat_g = PeriodicLattice(dcg, dcg, 0.0, 0.0, kg)
+        rwg_g = build_rwg_periodic(mesh_g, lat_g; precheck=true, allow_boundary=true, require_closed=false)
+        pw_g = make_plane_wave(Vec3(0.0, 0.0, -kg), 1.0, Vec3(1.0, 0.0, 0.0))
+        R00g(I, h) = begin
+            modes, R = reflection_coefficients_grounded(mesh_g, rwg_g, I, kg, lat_g;
+                          height=h, N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
+            R[findfirst(m -> m.m == 0 && m.n == 0, modes)]
+        end
+
+        # (1) A full PEC sheet reflects fully (R00 = -1) at any height.
+        for h in (lam_g / 8, lam_g / 4)
+            Zg = assemble_Z_efie_grounded(mesh_g, rwg_g, kg, lat_g; height=h)
+            vg = Vector{ComplexF64}(assemble_excitation_grounded(mesh_g, rwg_g, pw_g, kg, lat_g; height=h))
+            @test abs(R00g(Zg \ vg, h)) ≈ 1.0 atol = 2e-3
+        end
+
+        # (2) A uniform reactive sheet matches the exact transmission-line solution
+        #     R00 = (Z_in - η0)/(Z_in + η0),  Z_in = Z_s || (j η0 tan kh).
+        Mt_g = precompute_triangle_mass(mesh_g, rwg_g)
+        Zper_g = assemble_Z_efie_periodic(mesh_g, rwg_g, kg, lat_g)
+        cfg_g = DensityConfig(; p=1.0, Z_max_factor=5.0, reactive=true)
+        Zpen_g = assemble_Z_penalty(Mt_g, fill(0.5, ntriangles(mesh_g)), cfg_g)
+        If = (Zper_g + Zpen_g) \ Vector{ComplexF64}(assemble_excitation(mesh_g, rwg_g, pw_g))
+        modes_f, Rf = reflection_coefficients(mesh_g, rwg_g, If, kg, lat_g; N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
+        Rfree = Rf[findfirst(m -> m.m == 0 && m.n == 0, modes_f)]
+        Zs = -eta0g * (1 + Rfree) / (2 * Rfree)
+        for h in (lam_g / 8, lam_g / 4, 3lam_g / 8)
+            Zg = assemble_Z_efie_grounded(mesh_g, rwg_g, kg, lat_g; height=h)
+            vg = Vector{ComplexF64}(assemble_excitation_grounded(mesh_g, rwg_g, pw_g, kg, lat_g; height=h))
+            Ig = (Zg + Zpen_g) \ vg
+            Zin = Zs * (im * eta0g * tan(kg * h)) / (Zs + im * eta0g * tan(kg * h))
+            Rtl = (Zin - eta0g) / (Zin + eta0g)
+            @test R00g(Ig, h) ≈ Rtl atol = 2e-3
+            # Lossless ⇒ all power reflected (no transmission past the ground, no absorption).
+            modes_g, Rg = reflection_coefficients_grounded(mesh_g, rwg_g, Ig, kg, lat_g;
+                              height=h, N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
+            refl = sum(m.propagating ? abs2(Rg[i]) * real(m.kz) / kg : 0.0 for (i, m) in enumerate(modes_g))
+            @test refl ≈ 1.0 atol = 3e-3
+        end
+
+        # (3) Positive ground-plane height is required.
+        @test_throws ArgumentError assemble_Z_efie_grounded(mesh_g, rwg_g, kg, lat_g; height=-1.0)
     end
 end
 println("  PASS ✓")

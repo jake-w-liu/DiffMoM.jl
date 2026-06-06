@@ -218,12 +218,18 @@ end
 Compute transmitted Floquet amplitudes from reflection amplitudes for a free-standing
 electric-current sheet model in identical media above and below the sheet.
 
-Convention used in this code path:
-- Incident order `(m,n) = incident_order`: two sign branches (`1 + R` and `1 - R`)
-  can arise from differing reflection-coefficient phase references in current-based
-  post-processing. We select the passive branch with smaller `|T|`.
-- Non-incident orders are purely scattered (`T = R`); only `|T|^2` is used
-  downstream for modal power.
+Exact thin-sheet relation (no branch selection):
+- An infinitesimal electric surface current radiates a field whose tangential component is
+  equal on both sides of the sheet, so the forward-scattered amplitude equals the
+  backward-scattered (reflection) amplitude. Field continuity of the total tangential field
+  then gives, for the incident order `(m,n) = incident_order`,
+      T₀₀ = 1 + R₀₀
+  (incident wave plus forward-scattered = 1 + R). This recovers the physical limits
+  exactly: a PEC sheet `R = -1` ⇒ `T = 0`; a transparent sheet `R = 0` ⇒ `T = 1`.
+  For a lossless (reactive) sheet it satisfies `|R₀₀|² + |T₀₀|² = 1` identically, so the
+  power budget closes without any heuristic branch choice.
+- Non-incident propagating orders are purely scattered; by the same forward/backward
+  symmetry their transmitted amplitude equals the reflected amplitude (`T_mn = R_mn`).
 """
 function transmission_coefficients(modes::Vector{FloquetMode},
                                    R_coeffs::Vector{ComplexF64};
@@ -235,12 +241,10 @@ function transmission_coefficients(modes::Vector{FloquetMode},
     m_inc, n_inc = incident_order
     for (i, mode) in enumerate(modes)
         if mode.m == m_inc && mode.n == n_inc
-            # Choose the lower-amplitude branch to enforce a passive incident-order
-            # transmission convention under sign/phase ambiguity in R extraction.
-            t_plus = 1 + R_coeffs[i]
-            t_minus = 1 - R_coeffs[i]
-            T_coeffs[i] = abs2(t_plus) <= abs2(t_minus) ? t_plus : t_minus
+            # Exact incident-order transmission for a free-standing current sheet.
+            T_coeffs[i] = 1 + R_coeffs[i]
         else
+            # Non-incident orders: forward amplitude equals the reflected amplitude.
             T_coeffs[i] = R_coeffs[i]
         end
     end

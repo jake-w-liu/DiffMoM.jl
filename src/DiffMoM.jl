@@ -83,5 +83,6 @@ include("postprocessing/PTD.jl")
 include("postprocessing/Mie.jl")
 include("postprocessing/Visualization.jl")
 include("postprocessing/PeriodicMetrics.jl")
+include("assembly/GroundedEFIE.jl")
 
 end # module
