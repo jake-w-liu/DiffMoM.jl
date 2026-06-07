@@ -16,6 +16,7 @@ Options:
   nf_preconditioner: an `AbstractPreconditionerData` for GMRES preconditioning, or `nothing`
   gmres_tol: GMRES relative tolerance (default 1e-8)
   gmres_maxiter: maximum GMRES iterations (default 200)
+  gmres_memory: Krylov restart/memory parameter (default 20)
 
 Returns (theta_opt, trace) where trace records (iter, J, |g|) per iteration.
 """
@@ -43,7 +44,8 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                         solver::Symbol=:direct,
                         nf_preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                         gmres_tol::Float64=1e-8,
-                        gmres_maxiter::Int=200)
+                        gmres_maxiter::Int=200,
+                        gmres_memory::Int=20)
     theta = copy(theta0)
     sense = maximize ? -1.0 : 1.0
 
@@ -122,7 +124,8 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
 
         I_coeffs = solve_forward(Z, rhs_eff_base;
                                   solver=solver, preconditioner=nf_preconditioner,
-                                  gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                                  gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                                  gmres_memory=gmres_memory)
         n_fwd_solves += 1
 
         # Objective (always report the true J)
@@ -131,7 +134,8 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         # Adjoint solve
         lambda = solve_adjoint(Z, Q, I_coeffs;
                                 solver=solver, preconditioner=nf_preconditioner,
-                                gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                                gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                                gmres_memory=gmres_memory)
         n_adj_solves += 1
 
         # Gradient of J (true objective)
@@ -222,7 +226,8 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
             )
             I_trial = solve_forward(Z_trial, rhs_eff_base;
                                      solver=solver, preconditioner=nf_preconditioner,
-                                     gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                                     gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                                     gmres_memory=gmres_memory)
             n_fwd_solves += 1
             J_trial_internal = sense * real(dot(I_trial, Q * I_trial))
 
@@ -256,6 +261,7 @@ Options:
   nf_preconditioner: an `AbstractPreconditionerData` for GMRES preconditioning, or `nothing`
   gmres_tol: GMRES relative tolerance (default 1e-8)
   gmres_maxiter: maximum GMRES iterations (default 200)
+  gmres_memory: Krylov restart/memory parameter (default 20)
 
 Returns (theta_opt, trace) where trace records (iter, J, |g|) per iteration.
 """
@@ -283,7 +289,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                               solver::Symbol=:direct,
                               nf_preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                               gmres_tol::Float64=1e-8,
-                              gmres_maxiter::Int=200)
+                              gmres_maxiter::Int=200,
+                              gmres_memory::Int=20)
     theta = copy(theta0)
 
     function project!(x)
@@ -349,7 +356,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
 
         I_c = solve_forward(Z, rhs_eff_base;
                              solver=solver, preconditioner=nf_preconditioner,
-                             gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                             gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                             gmres_memory=gmres_memory)
 
         # Directivity ratio
         f_val = real(dot(I_c, Q_target * I_c))
@@ -360,10 +368,12 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         # ∂(f/g)/∂θ = (g·∂f/∂θ - f·∂g/∂θ) / g²
         lam_t = solve_adjoint(Z, Q_target, I_c;
                                solver=solver, preconditioner=nf_preconditioner,
-                               gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                               gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                               gmres_memory=gmres_memory)
         lam_a = solve_adjoint(Z, Q_total, I_c;
                                solver=solver, preconditioner=nf_preconditioner,
-                               gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                               gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                               gmres_memory=gmres_memory)
         g_f = gradient_impedance(Mp_eff, I_c, lam_t; reactive=reactive)
         g_g = gradient_impedance(Mp_eff, I_c, lam_a; reactive=reactive)
         g_true = (g_val .* g_f .- f_val .* g_g) ./ (g_val^2)
@@ -434,7 +444,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             )
             I_trial = solve_forward(Z_trial, rhs_eff_base;
                                      solver=solver, preconditioner=nf_preconditioner,
-                                     gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                                     gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                                     gmres_memory=gmres_memory)
             f_trial = real(dot(I_trial, Q_target * I_trial))
             g_trial = real(dot(I_trial, Q_total * I_trial))
             J_trial = f_trial / g_trial

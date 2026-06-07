@@ -5,7 +5,7 @@ export solve_forward, solve_system, assemble_full_Z, assemble_full_Z!,
        select_preconditioner, transform_patch_matrices, prepare_conditioned_system
 
 """
-    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, verbose_gmres=false)
+    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false)
 
 Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmres`.
 
@@ -14,12 +14,14 @@ Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmre
 - `preconditioner`: a preconditioner object (e.g., `AbstractPreconditionerData`), or `nothing`
 - `gmres_tol`: relative tolerance for GMRES convergence
 - `gmres_maxiter`: maximum GMRES iterations
+- `gmres_memory`: Krylov restart/memory parameter
 """
 function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        solver::Symbol=:direct,
                        preconditioner=nothing,
                        gmres_tol::Float64=1e-8,
                        gmres_maxiter::Int=200,
+                       gmres_memory::Int=20,
                        verbose_gmres::Bool=false)
     if solver == :direct
         Z isa Matrix || error("Direct solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
@@ -28,6 +30,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
         x, stats = solve_gmres(Z, v;
                                 preconditioner=preconditioner,
                                 tol=gmres_tol, maxiter=gmres_maxiter,
+                                memory=gmres_memory,
                                 verbose=verbose_gmres)
         return x
     else
@@ -36,7 +39,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
 end
 
 """
-    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200)
+    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20)
 
 General linear solve Z x = rhs with solver dispatch.
 """
@@ -44,9 +47,11 @@ function solve_system(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number}
                       solver::Symbol=:direct,
                       preconditioner=nothing,
                       gmres_tol::Float64=1e-8,
-                      gmres_maxiter::Int=200)
+                      gmres_maxiter::Int=200,
+                      gmres_memory::Int=20)
     return solve_forward(Z, rhs; solver=solver, preconditioner=preconditioner,
-                          gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter)
+                          gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                          gmres_memory=gmres_memory)
 end
 
 """

@@ -17,7 +17,7 @@ function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
 end
 
 """
-    solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200)
+    solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20)
 
 Solve the adjoint system: Z† λ = Q I
 Returns λ ∈ C^N.
@@ -29,7 +29,8 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                        solver::Symbol=:direct,
                        preconditioner=nothing,
                        gmres_tol::Float64=1e-8,
-                       gmres_maxiter::Int=200)
+                       gmres_maxiter::Int=200,
+                       gmres_memory::Int=20)
     rhs = Q * I
     if solver == :direct
         Z isa Matrix || error("Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
@@ -37,7 +38,8 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
     elseif solver == :gmres
         x, stats = solve_gmres_adjoint(Z, rhs;
                                         preconditioner=preconditioner,
-                                        tol=gmres_tol, maxiter=gmres_maxiter)
+                                        tol=gmres_tol, maxiter=gmres_maxiter,
+                                        memory=gmres_memory)
         return x
     else
         error("Unknown solver: $solver (expected :direct or :gmres)")
@@ -45,7 +47,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
 end
 
 """
-    solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200)
+    solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20)
 
 Solve the adjoint system Z† λ = rhs where rhs is pre-computed.
 Unlike `solve_adjoint(Z, Q, I)` which internally computes rhs = Q*I,
@@ -56,14 +58,16 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                            solver::Symbol=:direct,
                            preconditioner=nothing,
                            gmres_tol::Float64=1e-8,
-                           gmres_maxiter::Int=200)
+                           gmres_maxiter::Int=200,
+                           gmres_memory::Int=20)
     if solver == :direct
         Z isa Matrix || error("Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
         return Z' \ Vector{ComplexF64}(rhs)
     elseif solver == :gmres
         x, stats = solve_gmres_adjoint(Z, Vector{ComplexF64}(rhs);
                                         preconditioner=preconditioner,
-                                        tol=gmres_tol, maxiter=gmres_maxiter)
+                                        tol=gmres_tol, maxiter=gmres_maxiter,
+                                        memory=gmres_memory)
         return x
     else
         error("Unknown solver: $solver (expected :direct or :gmres)")

@@ -125,7 +125,7 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `reactive`: impedance mode (false=resistive, true=reactive)
 - `lb`, `ub`: box constraints on θ
 - `preconditioner`: `AbstractPreconditionerData` for GMRES
-- `gmres_tol`, `gmres_maxiter`: GMRES parameters
+- `gmres_tol`, `gmres_maxiter`, `gmres_memory`: GMRES parameters
 - `verbose`: print progress
 
 # Returns
@@ -145,7 +145,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   ub=nothing,
                                   preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                                   gmres_tol::Float64=1e-6,
-                                  gmres_maxiter::Int=300)
+                                  gmres_maxiter::Int=300,
+                                  gmres_memory::Int=20)
     M = length(configs)    # number of angles
     P = length(theta0)     # number of design parameters
     theta = copy(theta0)
@@ -200,7 +201,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                       solver=solver,
                                       preconditioner=preconditioner,
                                       gmres_tol=gmres_tol,
-                                      gmres_maxiter=gmres_maxiter)
+                                      gmres_maxiter=gmres_maxiter,
+                                      gmres_memory=gmres_memory)
             n_fwd_solves += 1
         end
 
@@ -218,7 +220,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                                solver=solver,
                                                preconditioner=preconditioner,
                                                gmres_tol=gmres_tol,
-                                               gmres_maxiter=gmres_maxiter)
+                                               gmres_maxiter=gmres_maxiter,
+                                               gmres_memory=gmres_memory)
             n_adj_solves += 1
         end
 
@@ -317,7 +320,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                          solver=solver,
                                          preconditioner=preconditioner,
                                          gmres_tol=gmres_tol,
-                                         gmres_maxiter=gmres_maxiter)
+                                         gmres_maxiter=gmres_maxiter,
+                                         gmres_memory=gmres_memory)
                 n_fwd_solves += 1
                 J_trial += configs[a].weight * real(dot(I_trial, configs[a].Q * I_trial))
             end
