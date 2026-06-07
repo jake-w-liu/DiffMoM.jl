@@ -5,13 +5,14 @@ export solve_forward, solve_system, assemble_full_Z, assemble_full_Z!,
        select_preconditioner, transform_patch_matrices, prepare_conditioned_system
 
 """
-    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
+    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
 
 Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmres`.
 
 # Arguments
 - `solver`: `:direct` for LU factorization, `:gmres` for preconditioned GMRES
 - `preconditioner`: a preconditioner object (e.g., `AbstractPreconditionerData`), or `nothing`
+- `gmres_precond_side`: `:left` or `:right` preconditioner application side
 - `gmres_tol`: relative tolerance for GMRES convergence
 - `gmres_maxiter`: maximum GMRES iterations
 - `gmres_memory`: Krylov restart/memory parameter
@@ -22,6 +23,7 @@ Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmre
 function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        solver::Symbol=:direct,
                        preconditioner=nothing,
+                       gmres_precond_side::Symbol=:left,
                        gmres_tol::Float64=1e-8,
                        gmres_maxiter::Int=200,
                        gmres_memory::Int=20,
@@ -35,6 +37,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
     elseif solver == :gmres
         x, stats = solve_gmres(Z, v;
                                 preconditioner=preconditioner,
+                                precond_side=gmres_precond_side,
                                 tol=gmres_tol, maxiter=gmres_maxiter,
                                 memory=gmres_memory,
                                 verbose=verbose_gmres)
@@ -52,13 +55,14 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
 end
 
 """
-    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
+    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
 
 General linear solve Z x = rhs with solver dispatch.
 """
 function solve_system(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                       solver::Symbol=:direct,
                       preconditioner=nothing,
+                      gmres_precond_side::Symbol=:left,
                       gmres_tol::Float64=1e-8,
                       gmres_maxiter::Int=200,
                       gmres_memory::Int=20,
@@ -67,6 +71,7 @@ function solve_system(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number}
                       true_residual_factor::Float64=100.0)
     return solve_forward(Z, rhs; solver=solver, preconditioner=preconditioner,
                           gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                          gmres_precond_side=gmres_precond_side,
                           gmres_memory=gmres_memory,
                           check_gmres_convergence=check_gmres_convergence,
                           check_true_residual=check_true_residual,

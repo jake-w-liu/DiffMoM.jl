@@ -1752,6 +1752,30 @@ rel_sa_gmres = norm(lam_sa_gmres - lam_gm_direct) / max(norm(lam_gm_direct), 1e-
 println("  solve_adjoint :gmres rel error: $rel_sa_gmres")
 @assert rel_sa_gmres < 1e-6
 
+# Right-preconditioned wrapper dispatch. This is important for optimization
+# runs that audit the true physical residual rather than only the left-
+# preconditioned residual used by Krylov convergence.
+P_diag_gm = build_nearfield_preconditioner(Z_gm, mesh, rwg, 0.0;
+    factorization=:diag)
+I_sf_right = solve_forward(Z_gm, Vector{ComplexF64}(v);
+                            solver=:gmres,
+                            preconditioner=P_diag_gm,
+                            gmres_precond_side=:right,
+                            gmres_tol=1e-10,
+                            gmres_maxiter=500,
+                            check_true_residual=true)
+rel_sf_right = norm(I_sf_right - I_gm_direct) / max(norm(I_gm_direct), 1e-30)
+@assert rel_sf_right < 1e-6 "right-preconditioned solve_forward inaccurate: $rel_sf_right"
+lam_rhs_right = solve_adjoint_rhs(Z_gm, rhs_adj_gm;
+                                  solver=:gmres,
+                                  preconditioner=P_diag_gm,
+                                  gmres_precond_side=:right,
+                                  gmres_tol=1e-10,
+                                  gmres_maxiter=500,
+                                  check_true_residual=true)
+rel_adj_right = norm(lam_rhs_right - lam_gm_direct) / max(norm(lam_gm_direct), 1e-30)
+@assert rel_adj_right < 1e-6 "right-preconditioned solve_adjoint_rhs inaccurate: $rel_adj_right"
+
 # Optimization-facing GMRES wrappers must fail closed on unconverged solves.
 Z_fail = ComplexF64[4 1 0; 1 3 1; 0 1 2]
 rhs_fail = ComplexF64[1, 2, 3]

@@ -17,7 +17,7 @@ function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
 end
 
 """
-    solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
+    solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
 
 Solve the adjoint system: Z† λ = Q I
 Returns λ ∈ C^N.
@@ -30,6 +30,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                        I::AbstractVector{<:Number};
                        solver::Symbol=:direct,
                        preconditioner=nothing,
+                       gmres_precond_side::Symbol=:left,
                        gmres_tol::Float64=1e-8,
                        gmres_maxiter::Int=200,
                        gmres_memory::Int=20,
@@ -43,6 +44,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
     elseif solver == :gmres
         x, stats = solve_gmres_adjoint(Z, rhs;
                                         preconditioner=preconditioner,
+                                        precond_side=gmres_precond_side,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
                                         memory=gmres_memory)
         check_gmres_convergence &&
@@ -59,7 +61,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
 end
 
 """
-    solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
+    solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
 
 Solve the adjoint system Z† λ = rhs where rhs is pre-computed.
 Unlike `solve_adjoint(Z, Q, I)` which internally computes rhs = Q*I,
@@ -69,6 +71,7 @@ Q application or for multi-angle objectives.
 function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                            solver::Symbol=:direct,
                            preconditioner=nothing,
+                           gmres_precond_side::Symbol=:left,
                            gmres_tol::Float64=1e-8,
                            gmres_maxiter::Int=200,
                            gmres_memory::Int=20,
@@ -81,6 +84,7 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
     elseif solver == :gmres
         x, stats = solve_gmres_adjoint(Z, Vector{ComplexF64}(rhs);
                                         preconditioner=preconditioner,
+                                        precond_side=gmres_precond_side,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
                                         memory=gmres_memory)
         check_gmres_convergence &&

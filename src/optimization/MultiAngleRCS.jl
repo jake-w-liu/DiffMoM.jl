@@ -194,6 +194,7 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
   accepted-iterate preconditioner for exploratory trial solves; and
   `:current_then_rebuild` retries a failed current-preconditioner trial with a
   rebuilt trial preconditioner before rejecting the step
+- `gmres_precond_side`: `:left` or `:right` preconditioner application side
 - `gmres_tol`, `gmres_maxiter`, `gmres_memory`: GMRES parameters
 - `check_gmres_true_residual`: verify true physical residuals for GMRES solves
 - `gmres_true_residual_factor`: allowed true-residual multiple of `gmres_tol`
@@ -222,6 +223,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                                   preconditioner_builder=nothing,
                                   trial_preconditioner_mode::Symbol=:rebuild,
+                                  gmres_precond_side::Symbol=:left,
                                   gmres_tol::Float64=1e-6,
                                   gmres_maxiter::Int=300,
                                   gmres_memory::Int=20,
@@ -325,6 +327,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 solve_forward(Z_full, configs[a].v;
                               solver=solver,
                               preconditioner=P_iter,
+                              gmres_precond_side=gmres_precond_side,
                               gmres_tol=gmres_tol,
                               gmres_maxiter=gmres_maxiter,
                               gmres_memory=gmres_memory,
@@ -354,6 +357,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 solve_adjoint_rhs(Z_full, rhs_a;
                                   solver=solver,
                                   preconditioner=P_iter,
+                                  gmres_precond_side=gmres_precond_side,
                                   gmres_tol=gmres_tol,
                                   gmres_maxiter=gmres_maxiter,
                                   gmres_memory=gmres_memory,
@@ -480,6 +484,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                             solve_forward(Z_trial, configs[a].v;
                                           solver=solver,
                                           preconditioner=P_trial,
+                                          gmres_precond_side=gmres_precond_side,
                                           gmres_tol=gmres_tol,
                                           gmres_maxiter=gmres_maxiter,
                                           gmres_memory=gmres_memory,
