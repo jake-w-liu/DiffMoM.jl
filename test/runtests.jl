@@ -1752,6 +1752,25 @@ rel_sa_gmres = norm(lam_sa_gmres - lam_gm_direct) / max(norm(lam_gm_direct), 1e-
 println("  solve_adjoint :gmres rel error: $rel_sa_gmres")
 @assert rel_sa_gmres < 1e-6
 
+# Optimization-facing GMRES wrappers must fail closed on unconverged solves.
+Z_fail = ComplexF64[4 1 0; 1 3 1; 0 1 2]
+rhs_fail = ComplexF64[1, 2, 3]
+thrown_forward_unconverged = try
+    solve_forward(Z_fail, rhs_fail; solver=:gmres, gmres_tol=1e-14, gmres_maxiter=1)
+    false
+catch e
+    occursin("GMRES did not converge", sprint(showerror, e))
+end
+@assert thrown_forward_unconverged "Expected unconverged forward GMRES wrapper to fail closed"
+
+thrown_adjoint_unconverged = try
+    solve_adjoint_rhs(Z_fail, rhs_fail; solver=:gmres, gmres_tol=1e-14, gmres_maxiter=1)
+    false
+catch e
+    occursin("GMRES did not converge", sprint(showerror, e))
+end
+@assert thrown_adjoint_unconverged "Expected unconverged adjoint GMRES wrapper to fail closed"
+
 # Matrix-free EFIE operator: A*x should match dense Z*x
 A_mf = matrixfree_efie_operator(mesh, rwg, k; quad_order=3)
 x_probe = randn(ComplexF64, N)

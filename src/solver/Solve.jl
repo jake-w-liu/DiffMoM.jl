@@ -5,7 +5,7 @@ export solve_forward, solve_system, assemble_full_Z, assemble_full_Z!,
        select_preconditioner, transform_patch_matrices, prepare_conditioned_system
 
 """
-    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false)
+    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true)
 
 Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmres`.
 
@@ -15,6 +15,7 @@ Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmre
 - `gmres_tol`: relative tolerance for GMRES convergence
 - `gmres_maxiter`: maximum GMRES iterations
 - `gmres_memory`: Krylov restart/memory parameter
+- `check_gmres_convergence`: throw an error if GMRES returns an unconverged solve
 """
 function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        solver::Symbol=:direct,
@@ -22,7 +23,8 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        gmres_tol::Float64=1e-8,
                        gmres_maxiter::Int=200,
                        gmres_memory::Int=20,
-                       verbose_gmres::Bool=false)
+                       verbose_gmres::Bool=false,
+                       check_gmres_convergence::Bool=true)
     if solver == :direct
         Z isa Matrix || error("Direct solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
         return Z \ v
@@ -32,6 +34,9 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                                 tol=gmres_tol, maxiter=gmres_maxiter,
                                 memory=gmres_memory,
                                 verbose=verbose_gmres)
+        check_gmres_convergence &&
+            _assert_gmres_converged(stats, "forward";
+                                    tol=gmres_tol, maxiter=gmres_maxiter)
         return x
     else
         error("Unknown solver: $solver (expected :direct or :gmres)")
@@ -39,7 +44,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
 end
 
 """
-    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20)
+    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true)
 
 General linear solve Z x = rhs with solver dispatch.
 """
@@ -48,10 +53,12 @@ function solve_system(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number}
                       preconditioner=nothing,
                       gmres_tol::Float64=1e-8,
                       gmres_maxiter::Int=200,
-                      gmres_memory::Int=20)
+                      gmres_memory::Int=20,
+                      check_gmres_convergence::Bool=true)
     return solve_forward(Z, rhs; solver=solver, preconditioner=preconditioner,
                           gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                          gmres_memory=gmres_memory)
+                          gmres_memory=gmres_memory,
+                          check_gmres_convergence=check_gmres_convergence)
 end
 
 """

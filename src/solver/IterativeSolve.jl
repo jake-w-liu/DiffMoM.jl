@@ -14,6 +14,21 @@ export solve_gmres, solve_gmres_adjoint
     return Vector{ComplexF64}(rhs)
 end
 
+@inline function _gmres_final_residual(stats)
+    return hasproperty(stats, :residuals) && !isempty(stats.residuals) ?
+           stats.residuals[end] : NaN
+end
+
+function _assert_gmres_converged(stats, label::AbstractString; tol::Float64, maxiter::Int)
+    solved = hasproperty(stats, :solved) ? Bool(stats.solved) : false
+    solved && return stats
+    niter = hasproperty(stats, :niter) ? stats.niter : missing
+    status = hasproperty(stats, :status) ? stats.status : "unknown"
+    resid = _gmres_final_residual(stats)
+    error("$label GMRES did not converge: niter=$niter, status=$status, " *
+          "final_residual=$resid, tol=$tol, maxiter=$maxiter")
+end
+
 """
     solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, verbose=false)
 

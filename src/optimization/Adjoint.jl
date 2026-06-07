@@ -17,12 +17,14 @@ function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
 end
 
 """
-    solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20)
+    solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true)
 
 Solve the adjoint system: Z† λ = Q I
 Returns λ ∈ C^N.
 
 When `solver=:gmres`, uses GMRES with the adjoint preconditioner P⁻ᴴ.
+By default, an unconverged GMRES solve throws instead of returning an
+unverified adjoint vector.
 """
 function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                        I::AbstractVector{<:Number};
@@ -30,7 +32,8 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                        preconditioner=nothing,
                        gmres_tol::Float64=1e-8,
                        gmres_maxiter::Int=200,
-                       gmres_memory::Int=20)
+                       gmres_memory::Int=20,
+                       check_gmres_convergence::Bool=true)
     rhs = Q * I
     if solver == :direct
         Z isa Matrix || error("Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
@@ -40,6 +43,9 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                                         preconditioner=preconditioner,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
                                         memory=gmres_memory)
+        check_gmres_convergence &&
+            _assert_gmres_converged(stats, "adjoint";
+                                    tol=gmres_tol, maxiter=gmres_maxiter)
         return x
     else
         error("Unknown solver: $solver (expected :direct or :gmres)")
@@ -47,7 +53,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
 end
 
 """
-    solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20)
+    solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true)
 
 Solve the adjoint system Z† λ = rhs where rhs is pre-computed.
 Unlike `solve_adjoint(Z, Q, I)` which internally computes rhs = Q*I,
@@ -59,7 +65,8 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                            preconditioner=nothing,
                            gmres_tol::Float64=1e-8,
                            gmres_maxiter::Int=200,
-                           gmres_memory::Int=20)
+                           gmres_memory::Int=20,
+                           check_gmres_convergence::Bool=true)
     if solver == :direct
         Z isa Matrix || error("Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
         return Z' \ Vector{ComplexF64}(rhs)
@@ -68,6 +75,9 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                                         preconditioner=preconditioner,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
                                         memory=gmres_memory)
+        check_gmres_convergence &&
+            _assert_gmres_converged(stats, "adjoint";
+                                    tol=gmres_tol, maxiter=gmres_maxiter)
         return x
     else
         error("Unknown solver: $solver (expected :direct or :gmres)")
