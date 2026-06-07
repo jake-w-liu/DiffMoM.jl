@@ -25,6 +25,45 @@ struct AngleConfig
     weight::Float64                 # Weight in composite objective
 end
 
+function _multiangle_objective_scales(J_angles::Vector{Float64},
+                                      weights::Vector{Float64},
+                                      objective::Symbol,
+                                      reference_objectives::Vector{Float64},
+                                      smooth_beta::Float64)
+    M = length(J_angles)
+    length(weights) == M ||
+        error("weights length $(length(weights)) does not match objective length $M")
+    length(reference_objectives) == M ||
+        error("reference_objectives length $(length(reference_objectives)) does not match objective length $M")
+    all(isfinite, J_angles) || error("per-angle objective contains non-finite values")
+    all(isfinite, weights) || error("objective weights must be finite")
+    all(isfinite, reference_objectives) || error("reference objectives must be finite")
+    all(reference_objectives .> 0) || error("reference objectives must be positive")
+
+    tiny = 1e-300
+    J_safe = max.(J_angles, tiny)
+
+    if objective == :linear
+        return sum(weights .* J_angles), copy(weights)
+    elseif objective == :sum_log
+        all(weights .>= 0) || error("sum_log objective weights must be nonnegative")
+        return sum(weights .* log.(J_safe ./ reference_objectives)), weights ./ J_safe
+    elseif objective == :smoothmax_log
+        smooth_beta > 0 || error("smooth_beta must be positive")
+        all(weights .> 0) || error("smoothmax_log objective weights must be positive")
+        z = log.(J_safe ./ reference_objectives)
+        u = smooth_beta .* z .+ log.(weights)
+        umax = maximum(u)
+        expu = exp.(u .- umax)
+        denom = sum(expu)
+        probs = expu ./ denom
+        value = (umax + log(denom)) / smooth_beta
+        return value, probs ./ J_safe
+    else
+        error("Unknown multi-angle objective: $objective (expected :linear, :sum_log, or :smoothmax_log)")
+    end
+end
+
 function _default_transverse_pol(khat::Vec3)
     ref = abs(khat[1]) < 0.9 ? Vec3(1.0, 0.0, 0.0) : Vec3(0.0, 1.0, 0.0)
     p = ref - dot(ref, khat) * khat
@@ -126,6 +165,11 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `lb`, `ub`: box constraints on θ
 - `preconditioner`: `AbstractPreconditionerData` for GMRES
 - `gmres_tol`, `gmres_maxiter`, `gmres_memory`: GMRES parameters
+- `objective`: `:linear` for Σw_aJ_a, `:sum_log` for Σw_a log(J_a/J_ref,a),
+  or `:smoothmax_log` for a smooth worst-angle normalized log objective
+- `reference_objectives`: positive per-angle reference values for normalized
+  objectives, typically the PEC objective values
+- `smooth_beta`: sharpness parameter for `:smoothmax_log`
 - `verbose`: print progress
 
 # Returns
@@ -146,7 +190,10 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                                   gmres_tol::Float64=1e-6,
                                   gmres_maxiter::Int=300,
-                                  gmres_memory::Int=20)
+                                  gmres_memory::Int=20,
+                                  objective::Symbol=:linear,
+                                  reference_objectives::Union{Nothing, Vector{Float64}}=nothing,
+                                  smooth_beta::Float64=8.0)
     M = length(configs)    # number of angles
     P = length(theta0)     # number of design parameters
     theta = copy(theta0)
@@ -162,9 +209,15 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         return x
     end
     project!(theta)
+    objective in (:linear, :sum_log, :smoothmax_log) ||
+        error("Unknown multi-angle objective: $objective (expected :linear, :sum_log, or :smoothmax_log)")
+    weights = [cfg.weight for cfg in configs]
+    refs = reference_objectives === nothing ? ones(Float64, M) : copy(reference_objectives)
+    objective == :linear || all(refs .> 0) ||
+        error("reference_objectives must be positive for normalized objectives")
 
     if verbose
-        println("Multi-angle RCS optimization: $M angles, $P parameters, solver=$solver")
+        println("Multi-angle RCS optimization: $M angles, $P parameters, solver=$solver, objective=$objective")
         if !use_dense_lu && preconditioner !== nothing
             println("  GMRES preconditioned")
         end
@@ -212,16 +265,20 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             n_fwd_solves += 1
         end
 
-        # ── 3. Objective: J = Σ_a w_a (I_a† Q_a I_a) ──────────
-        J_val = 0.0
+        # ── 3. Objective and scalarization weights ───────────────
+        QI_all = Vector{Vector{ComplexF64}}(undef, M)
+        J_angles = zeros(Float64, M)
         for a in 1:M
-            J_val += configs[a].weight * real(dot(I_all[a], configs[a].Q * I_all[a]))
+            QI_all[a] = Vector{ComplexF64}(configs[a].Q * I_all[a])
+            J_angles[a] = real(dot(I_all[a], QI_all[a]))
         end
+        J_val, objective_scales = _multiangle_objective_scales(
+            J_angles, weights, objective, refs, smooth_beta)
 
         # ── 4. Adjoint solves: Z(θ)† λ_a = Q_a I_a ────────────
         lambda_all = Vector{Vector{ComplexF64}}(undef, M)
         for a in 1:M
-            rhs_a = configs[a].Q * I_all[a]
+            rhs_a = QI_all[a]
             lambda_all[a] = if use_dense_lu
                 Z_factor' \ Vector{ComplexF64}(rhs_a)
             else
@@ -235,11 +292,11 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             n_adj_solves += 1
         end
 
-        # ── 5. Gradient: g[p] = Σ_a w_a · ∂J_a/∂θ_p ───────────
+        # ── 5. Gradient: g[p] = Σ_a scalar_a · ∂J_a/∂θ_p ───────
         g = zeros(P)
         for a in 1:M
             g_a = gradient_impedance(Mp, I_all[a], lambda_all[a]; reactive=reactive)
-            g .+= configs[a].weight .* g_a
+            g .+= objective_scales[a] .* g_a
         end
         gnorm = norm(g)
 
@@ -326,7 +383,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             end
 
             # Evaluate trial objective
-            J_trial = 0.0
+            J_trial_angles = zeros(Float64, M)
             for a in 1:M
                 I_trial = if use_dense_lu
                     Z_trial_factor \ configs[a].v
@@ -339,8 +396,11 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   gmres_memory=gmres_memory)
                 end
                 n_fwd_solves += 1
-                J_trial += configs[a].weight * real(dot(I_trial, configs[a].Q * I_trial))
+                QI_trial = configs[a].Q * I_trial
+                J_trial_angles[a] = real(dot(I_trial, QI_trial))
             end
+            J_trial, _ = _multiangle_objective_scales(
+                J_trial_angles, weights, objective, refs, smooth_beta)
 
             # Armijo condition
             if J_trial <= J_val + 1e-4 * alpha_ls * gd

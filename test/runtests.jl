@@ -3162,6 +3162,50 @@ println("    J: $(round(trace_35[1].J, sigdigits=4)) → $(round(trace_35[end].J
 println("    |g|: $(round(trace_35[1].gnorm, sigdigits=4)) → $(round(trace_35[end].gnorm, sigdigits=4))")
 println("  35c: PASS")
 
+# 35d: normalized smooth worst-angle objective
+println("  35d: smoothmax_log normalized objective ...")
+J_probe = [2.0e-3, 7.5e-4]
+w_probe = [1.0, 1.3]
+ref_probe = [3.0e-3, 2.0e-3]
+beta_probe = 6.0
+phi_probe, scale_probe = DiffMoM._multiangle_objective_scales(
+    J_probe, w_probe, :smoothmax_log, ref_probe, beta_probe)
+@assert isfinite(phi_probe) "smoothmax objective should be finite"
+@assert all(isfinite, scale_probe) "smoothmax objective scales should be finite"
+for j in eachindex(J_probe)
+    h = 1e-7 * max(abs(J_probe[j]), 1.0e-12)
+    Jp = copy(J_probe); Jp[j] += h
+    Jm = copy(J_probe); Jm[j] -= h
+    phip, _ = DiffMoM._multiangle_objective_scales(
+        Jp, w_probe, :smoothmax_log, ref_probe, beta_probe)
+    phim, _ = DiffMoM._multiangle_objective_scales(
+        Jm, w_probe, :smoothmax_log, ref_probe, beta_probe)
+    fd_scale = (phip - phim) / (2h)
+    rel_scale = abs(fd_scale - scale_probe[j]) / max(abs(scale_probe[j]), 1e-30)
+    @assert rel_scale < 1e-5 "smoothmax objective scale mismatch at $j: $rel_scale"
+end
+
+refs_35 = Float64[]
+Z_ref_35 = assemble_full_Z(Z_efie, Mp_opt, theta_init)
+for cfg in configs_test
+    I_ref = Z_ref_35 \ cfg.v
+    push!(refs_35, real(dot(I_ref, cfg.Q * I_ref)))
+end
+theta_bal_35, trace_bal_35 = optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=3, tol=1e-12, alpha0=0.01,
+    reactive=false, verbose=false,
+    lb=fill(0.0, part_opt.P), ub=fill(1000.0, part_opt.P),
+    objective=:smoothmax_log,
+    reference_objectives=refs_35,
+    smooth_beta=6.0,
+)
+@assert length(trace_bal_35) == 3 "smoothmax objective should run exactly 3 iterations"
+@assert all(t -> isfinite(t.J), trace_bal_35) "smoothmax objectives should be finite"
+@assert all(t -> isfinite(t.gnorm), trace_bal_35) "smoothmax gradients should be finite"
+println("    smoothmax Φ: $(round(trace_bal_35[1].J, sigdigits=4)) → $(round(trace_bal_35[end].J, sigdigits=4))")
+println("  35d: PASS")
+
 println("  PASS ✓")
 
 # ─────────────────────────────────────────────────
