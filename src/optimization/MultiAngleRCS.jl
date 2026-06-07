@@ -434,39 +434,47 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         for ls in 1:20
             @. theta_trial = theta_old + alpha_ls * d
             project!(theta_trial)
-            if use_dense_lu
-                assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
-                Z_trial = Z_buf
-                Z_trial_factor = lu(Z_trial)
-            else
-                Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
-                Z_trial_factor = nothing
-            end
-            P_trial = active_preconditioner(theta_trial)
-
-            # Evaluate trial objective
-            for a in 1:M
-                I_trial = if use_dense_lu
-                    Z_trial_factor \ configs[a].v
+            trial_valid = true
+            J_trial = Inf
+            try
+                if use_dense_lu
+                    assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
+                    Z_trial = Z_buf
+                    Z_trial_factor = lu(Z_trial)
                 else
-                    solve_forward(Z_trial, configs[a].v;
-                                  solver=solver,
-                                  preconditioner=P_trial,
-                                  gmres_tol=gmres_tol,
-                                  gmres_maxiter=gmres_maxiter,
-                                  gmres_memory=gmres_memory,
-                                  check_true_residual=check_gmres_true_residual,
-                                  true_residual_factor=gmres_true_residual_factor)
+                    Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
+                    Z_trial_factor = nothing
                 end
-                n_fwd_solves += 1
-                QI_trial = configs[a].Q * I_trial
-                J_trial_angles[a] = real(dot(I_trial, QI_trial))
+                P_trial = active_preconditioner(theta_trial)
+
+                # Evaluate trial objective. A failed exploratory trial is not
+                # an accepted iterate; reject it and continue backtracking.
+                for a in 1:M
+                    I_trial = if use_dense_lu
+                        Z_trial_factor \ configs[a].v
+                    else
+                        solve_forward(Z_trial, configs[a].v;
+                                      solver=solver,
+                                      preconditioner=P_trial,
+                                      gmres_tol=gmres_tol,
+                                      gmres_maxiter=gmres_maxiter,
+                                      gmres_memory=gmres_memory,
+                                      check_true_residual=check_gmres_true_residual,
+                                      true_residual_factor=gmres_true_residual_factor)
+                    end
+                    n_fwd_solves += 1
+                    QI_trial = configs[a].Q * I_trial
+                    J_trial_angles[a] = real(dot(I_trial, QI_trial))
+                end
+                J_trial, _ = _multiangle_objective_scales(
+                    J_trial_angles, weights, objective, refs, smooth_beta)
+            catch err
+                trial_valid = false
+                verbose && println("Line-search trial $ls failed at iteration $iter; reducing step ($err)")
             end
-            J_trial, _ = _multiangle_objective_scales(
-                J_trial_angles, weights, objective, refs, smooth_beta)
 
             # Armijo condition
-            if J_trial <= J_val + 1e-4 * alpha_ls * gd
+            if trial_valid && J_trial <= J_val + 1e-4 * alpha_ls * gd
                 theta .= theta_trial
                 ls_success = true
                 break

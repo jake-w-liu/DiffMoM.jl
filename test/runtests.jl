@@ -2609,6 +2609,17 @@ err_adj = norm(I_adj_ilu - I_adj_ref) / norm(I_adj_ref)
 println("  30e: ILU adjoint GMRES — $(stats_adj.niter) iters, rel error $(round(err_adj, sigdigits=3))")
 @assert err_adj < 1e-4 "ILU adjoint GMRES relative error $(err_adj) > 1e-4"
 
+# 30f: ILU preconditioner adjoint must be the true Hermitian adjoint
+ilu_M = NearFieldOperator(P_ilu)
+ilu_M_adj = NearFieldAdjointOperator(P_ilu)
+ilu_x = randn(ComplexF64, size(ilu_Z, 1))
+ilu_y = randn(ComplexF64, size(ilu_Z, 1))
+ilu_lhs = dot(ilu_M * ilu_x, ilu_y)
+ilu_rhs_adj = dot(ilu_x, ilu_M_adj * ilu_y)
+ilu_adj_err = abs(ilu_lhs - ilu_rhs_adj) / max(abs(ilu_lhs), 1e-30)
+println("  30f: ILU preconditioner adjoint identity — $(round(ilu_adj_err, sigdigits=3))")
+@assert ilu_adj_err < 1e-12 "ILU preconditioner adjoint inconsistent: $ilu_adj_err"
+
 println("  PASS ✓")
 
 # ─────────────────────────────────────────────────

@@ -685,12 +685,35 @@ end
     return y
 end
 
+@inline function _ilu_u_adjoint_ldiv!(y::StridedVector{ComplexF64}, F::IncompleteLU.ILUFactorization{ComplexF64,Int})
+    U = F.U
+    @inbounds for col in 1:U.n
+        diag = conj(U.nzval[U.colptr[col]])
+        y[col] /= diag
+        y_col = y[col]
+        for idx in (U.colptr[col] + 1):(U.colptr[col + 1] - 1)
+            y[U.rowval[idx]] -= conj(U.nzval[idx]) * y_col
+        end
+    end
+    return y
+end
+
+@inline function _ilu_l_adjoint_ldiv!(y::StridedVector{ComplexF64}, F::IncompleteLU.ILUFactorization{ComplexF64,Int})
+    L = F.L
+    @inbounds for col in (L.n - 1):-1:1
+        for idx in L.colptr[col]:(L.colptr[col + 1] - 1)
+            y[col] -= conj(L.nzval[idx]) * y[L.rowval[idx]]
+        end
+    end
+    return y
+end
+
 @inline function _apply_preconditioner_adjoint!(y::StridedVector{ComplexF64}, P::ILUPreconditionerData)
-    # (LU)⁻ᴴ y = U⁻ᴴ L⁻ᴴ y
-    # Step 1: solve Uᴴ z = y  (Uᴴ is lower triangular)
-    ldiv!(adjoint(UpperTriangular(P.ilu_fac.U)), y)
-    # Step 2: solve Lᴴ x = z  (Lᴴ is unit upper triangular)
-    ldiv!(adjoint(UnitLowerTriangular(P.ilu_fac.L)), y)
+    # IncompleteLU.jl stores U row-wise (effectively transposed).  The
+    # adjoint preconditioner must mirror ldiv!(F, y) without interpreting
+    # F.U as an ordinary CSC upper-triangular matrix.
+    _ilu_u_adjoint_ldiv!(y, P.ilu_fac)
+    _ilu_l_adjoint_ldiv!(y, P.ilu_fac)
     return y
 end
 
