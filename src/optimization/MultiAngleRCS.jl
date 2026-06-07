@@ -188,7 +188,10 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `preconditioner`: fixed `AbstractPreconditionerData` for GMRES
 - `preconditioner_builder`: optional function `theta -> preconditioner` for
   matrix-free optimization with design-dependent preconditioners
+  (cached only for exactly unchanged `theta`)
 - `gmres_tol`, `gmres_maxiter`, `gmres_memory`: GMRES parameters
+- `check_gmres_true_residual`: verify true physical residuals for GMRES solves
+- `gmres_true_residual_factor`: allowed true-residual multiple of `gmres_tol`
 - `objective`: `:linear` for Σw_aJ_a, `:sum_log` for Σw_a log(J_a/J_ref,a),
   or `:smoothmax_log` for a smooth worst-angle normalized log objective
 - `reference_objectives`: positive per-angle reference values for normalized
@@ -216,6 +219,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   gmres_tol::Float64=1e-6,
                                   gmres_maxiter::Int=300,
                                   gmres_memory::Int=20,
+                                  check_gmres_true_residual::Bool=true,
+                                  gmres_true_residual_factor::Float64=100.0,
                                   objective::Symbol=:linear,
                                   reference_objectives::Union{Nothing, Vector{Float64}}=nothing,
                                   smooth_beta::Float64=8.0)
@@ -244,17 +249,31 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
     if verbose
         println("Multi-angle RCS optimization: $M angles, $P parameters, solver=$solver, objective=$objective")
         if !use_dense_lu && preconditioner_builder !== nothing
-            println("  GMRES preconditioner rebuilt from theta")
+            println("  GMRES preconditioner rebuilt when theta changes")
         elseif !use_dense_lu && preconditioner !== nothing
             println("  GMRES preconditioned")
         end
     end
 
+    cached_preconditioner_theta = Vector{Float64}(undef, 0)
+    cached_preconditioner = Ref{Union{Nothing, AbstractPreconditionerData}}(nothing)
+
     function active_preconditioner(theta_current::Vector{Float64})
         if use_dense_lu || preconditioner_builder === nothing
             return preconditioner
         end
-        return preconditioner_builder(theta_current)
+        if cached_preconditioner[] !== nothing &&
+           length(cached_preconditioner_theta) == length(theta_current) &&
+           cached_preconditioner_theta == theta_current
+            return cached_preconditioner[]
+        end
+        P_current = preconditioner_builder(theta_current)
+        P_current isa AbstractPreconditionerData ||
+            error("preconditioner_builder must return an AbstractPreconditionerData")
+        resize!(cached_preconditioner_theta, length(theta_current))
+        copyto!(cached_preconditioner_theta, theta_current)
+        cached_preconditioner[] = P_current
+        return P_current
     end
 
     # L-BFGS history
@@ -295,7 +314,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                               preconditioner=P_iter,
                               gmres_tol=gmres_tol,
                               gmres_maxiter=gmres_maxiter,
-                              gmres_memory=gmres_memory)
+                              gmres_memory=gmres_memory,
+                              check_true_residual=check_gmres_true_residual,
+                              true_residual_factor=gmres_true_residual_factor)
             end
             n_fwd_solves += 1
         end
@@ -322,7 +343,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   preconditioner=P_iter,
                                   gmres_tol=gmres_tol,
                                   gmres_maxiter=gmres_maxiter,
-                                  gmres_memory=gmres_memory)
+                                  gmres_memory=gmres_memory,
+                                  check_true_residual=check_gmres_true_residual,
+                                  true_residual_factor=gmres_true_residual_factor)
             end
             n_adj_solves += 1
         end
@@ -406,8 +429,11 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             empty!(y_list)
         end
 
+        theta_trial = similar(theta)
+        J_trial_angles = Vector{Float64}(undef, M)
         for ls in 1:20
-            theta_trial = project!(theta_old + alpha_ls * d)
+            @. theta_trial = theta_old + alpha_ls * d
+            project!(theta_trial)
             if use_dense_lu
                 assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
                 Z_trial = Z_buf
@@ -419,7 +445,6 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             P_trial = active_preconditioner(theta_trial)
 
             # Evaluate trial objective
-            J_trial_angles = zeros(Float64, M)
             for a in 1:M
                 I_trial = if use_dense_lu
                     Z_trial_factor \ configs[a].v
@@ -429,7 +454,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   preconditioner=P_trial,
                                   gmres_tol=gmres_tol,
                                   gmres_maxiter=gmres_maxiter,
-                                  gmres_memory=gmres_memory)
+                                  gmres_memory=gmres_memory,
+                                  check_true_residual=check_gmres_true_residual,
+                                  true_residual_factor=gmres_true_residual_factor)
                 end
                 n_fwd_solves += 1
                 QI_trial = configs[a].Q * I_trial
@@ -440,7 +467,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
 
             # Armijo condition
             if J_trial <= J_val + 1e-4 * alpha_ls * gd
-                theta = theta_trial
+                theta .= theta_trial
                 ls_success = true
                 break
             end

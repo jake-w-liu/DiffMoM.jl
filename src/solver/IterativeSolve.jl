@@ -29,6 +29,19 @@ function _assert_gmres_converged(stats, label::AbstractString; tol::Float64, max
           "final_residual=$resid, tol=$tol, maxiter=$maxiter")
 end
 
+function _assert_true_residual(A::AbstractMatrix, x::AbstractVector, rhs::AbstractVector,
+                               label::AbstractString;
+                               tol::Float64,
+                               factor::Float64=100.0)
+    factor > 0 || error("true residual factor must be positive")
+    rhs_c = _as_complex_rhs(rhs)
+    relres = norm(A * x - rhs_c) / max(norm(rhs_c), eps(Float64))
+    limit = max(factor * tol, sqrt(eps(Float64)))
+    relres <= limit && return relres
+    error("$label GMRES true residual too large: relative_residual=$relres, " *
+          "limit=$limit, tol=$tol, factor=$factor")
+end
+
 """
     solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, verbose=false)
 

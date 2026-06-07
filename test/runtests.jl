@@ -1771,6 +1771,26 @@ catch e
 end
 @assert thrown_adjoint_unconverged "Expected unconverged adjoint GMRES wrapper to fail closed"
 
+thrown_forward_true_residual = try
+    solve_forward(Z_fail, rhs_fail; solver=:gmres, gmres_tol=1e-14,
+                  gmres_maxiter=1, check_gmres_convergence=false,
+                  check_true_residual=true, true_residual_factor=1.0)
+    false
+catch e
+    occursin("true residual too large", sprint(showerror, e))
+end
+@assert thrown_forward_true_residual "Expected forward true-residual guard to fail closed"
+
+thrown_adjoint_true_residual = try
+    solve_adjoint_rhs(Z_fail, rhs_fail; solver=:gmres, gmres_tol=1e-14,
+                      gmres_maxiter=1, check_gmres_convergence=false,
+                      check_true_residual=true, true_residual_factor=1.0)
+    false
+catch e
+    occursin("true residual too large", sprint(showerror, e))
+end
+@assert thrown_adjoint_true_residual "Expected adjoint true-residual guard to fail closed"
+
 # Matrix-free EFIE operator: A*x should match dense Z*x
 A_mf = matrixfree_efie_operator(mesh, rwg, k; quad_order=3)
 x_probe = randn(ComplexF64, N)
@@ -3330,7 +3350,13 @@ configs_ico = build_multiangle_configs(mesh_ico_opt, rwg_ico, k_ico, angles_ico;
 @assert configs_ico[1].Q isa FarFieldQMatrix "MLFMA optimization should use matrix-free Q in this test"
 
 builder_calls_ico = Ref(0)
+duplicate_builder_calls_ico = Ref(0)
+last_builder_theta_ico = Ref{Union{Nothing, Vector{Float64}}}(nothing)
 preconditioner_builder_ico = θ -> begin
+    if last_builder_theta_ico[] !== nothing && last_builder_theta_ico[] == θ
+        duplicate_builder_calls_ico[] += 1
+    end
+    last_builder_theta_ico[] = copy(θ)
     builder_calls_ico[] += 1
     build_mlfma_preconditioner(A_mlfma, Mp_ico, θ; factorization=:ilu, ilu_tau=1e-2)
 end
@@ -3347,6 +3373,7 @@ theta_opt_ico, trace_ico = optimize_multiangle_rcs(
 @assert all(t -> isfinite(t.J), trace_ico) "All objectives should be finite"
 @assert all(t -> isfinite(t.gnorm), trace_ico) "All gradients should be finite"
 @assert builder_calls_ico[] >= length(trace_ico) "Dynamic MLFMA preconditioner builder was not exercised"
+@assert duplicate_builder_calls_ico[] == 0 "Dynamic preconditioner should be cached for unchanged theta"
 println("    J: $(round(trace_ico[1].J, sigdigits=4)) → $(round(trace_ico[end].J, sigdigits=4))")
 println("    |g|: $(round(trace_ico[1].gnorm, sigdigits=4)) → $(round(trace_ico[end].gnorm, sigdigits=4))")
 println("  36d: PASS")
