@@ -195,6 +195,10 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
   `:current_then_rebuild` retries a failed current-preconditioner trial with a
   rebuilt trial preconditioner before rejecting the step
 - `gmres_precond_side`: `:left` or `:right` preconditioner application side
+- `fallback_to_steepest`: retry projected steepest descent after a failed
+  L-BFGS line search before stopping
+- `lbfgs_line_search_maxiter`, `steepest_line_search_maxiter`: maximum Armijo
+  backtracking trials for L-BFGS and fallback steepest directions
 - `gmres_tol`, `gmres_maxiter`, `gmres_memory`: GMRES parameters
 - `check_gmres_true_residual`: verify true physical residuals for GMRES solves
 - `gmres_true_residual_factor`: allowed true-residual multiple of `gmres_tol`
@@ -224,6 +228,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   preconditioner_builder=nothing,
                                   trial_preconditioner_mode::Symbol=:rebuild,
                                   gmres_precond_side::Symbol=:left,
+                                  fallback_to_steepest::Bool=true,
+                                  lbfgs_line_search_maxiter::Int=20,
+                                  steepest_line_search_maxiter::Int=20,
                                   gmres_tol::Float64=1e-6,
                                   gmres_maxiter::Int=300,
                                   gmres_memory::Int=20,
@@ -251,6 +258,10 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         error("Unknown multi-angle objective: $objective (expected :linear, :sum_log, or :smoothmax_log)")
     trial_preconditioner_mode in (:rebuild, :current, :current_then_rebuild) ||
         error("trial_preconditioner_mode must be :rebuild, :current, or :current_then_rebuild")
+    lbfgs_line_search_maxiter > 0 ||
+        error("lbfgs_line_search_maxiter must be positive")
+    steepest_line_search_maxiter > 0 ||
+        error("steepest_line_search_maxiter must be positive")
     weights = [cfg.weight for cfg in configs]
     refs = reference_objectives === nothing ? ones(Float64, M) : copy(reference_objectives)
     objective == :linear || all(refs .> 0) ||
@@ -440,8 +451,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         # Check if L-BFGS direction is descent; if not, use steepest descent
         gd = dot(g, d)
         if gd >= 0
-            d = -g
-            gd = -gnorm^2
+            d = -alpha0 .* g
+            gd = -alpha0 * gnorm^2
             empty!(s_list)
             empty!(y_list)
         end
@@ -450,77 +461,96 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         J_trial_angles = Vector{Float64}(undef, M)
         use_current_trial_preconditioner =
             trial_preconditioner_mode in (:current, :current_then_rebuild)
-        for ls in 1:20
-            @. theta_trial = theta_old + alpha_ls * d
-            project!(theta_trial)
-            trial_valid = true
-            J_trial = Inf
-            trial_modes = if trial_preconditioner_mode == :current_then_rebuild
-                use_current_trial_preconditioner ? (:current, :rebuild) : (:rebuild,)
-            else
-                (trial_preconditioner_mode,)
-            end
-            trial_error = nothing
-            for trial_mode in trial_modes
-                try
-                    if use_dense_lu
-                        assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
-                        Z_trial = Z_buf
-                        Z_trial_factor = lu(Z_trial)
-                    else
-                        Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
-                        Z_trial_factor = nothing
-                    end
-                    P_trial = trial_mode == :current ? P_iter :
-                        active_preconditioner(theta_trial)
-
-                    # Evaluate trial objective. A failed exploratory trial is
-                    # not an accepted iterate. In adaptive mode, first
-                    # distinguish stale-preconditioner failure from a bad step.
-                    for a in 1:M
-                        I_trial = if use_dense_lu
-                            Z_trial_factor \ configs[a].v
+        function try_projected_line_search!(direction::Vector{Float64},
+                                            directional_derivative::Float64,
+                                            label::String,
+                                            max_line_search::Int)
+            alpha_try = 1.0
+            for ls in 1:max_line_search
+                @. theta_trial = theta_old + alpha_try * direction
+                project!(theta_trial)
+                trial_valid = true
+                J_trial = Inf
+                trial_modes = if trial_preconditioner_mode == :current_then_rebuild
+                    use_current_trial_preconditioner ? (:current, :rebuild) : (:rebuild,)
+                else
+                    (trial_preconditioner_mode,)
+                end
+                trial_error = nothing
+                for trial_mode in trial_modes
+                    try
+                        if use_dense_lu
+                            assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
+                            Z_trial = Z_buf
+                            Z_trial_factor = lu(Z_trial)
                         else
-                            solve_forward(Z_trial, configs[a].v;
-                                          solver=solver,
-                                          preconditioner=P_trial,
-                                          gmres_precond_side=gmres_precond_side,
-                                          gmres_tol=gmres_tol,
-                                          gmres_maxiter=gmres_maxiter,
-                                          gmres_memory=gmres_memory,
-                                          check_true_residual=check_gmres_true_residual,
-                                          true_residual_factor=gmres_true_residual_factor)
+                            Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
+                            Z_trial_factor = nothing
                         end
-                        n_fwd_solves += 1
-                        QI_trial = configs[a].Q * I_trial
-                        J_trial_angles[a] = real(dot(I_trial, QI_trial))
-                    end
-                    J_trial, _ = _multiangle_objective_scales(
-                        J_trial_angles, weights, objective, refs, smooth_beta)
-                    trial_valid = true
-                    break
-                catch err
-                    trial_valid = false
-                    trial_error = err
-                    if trial_preconditioner_mode == :current_then_rebuild &&
-                       trial_mode == :current
-                        use_current_trial_preconditioner = false
-                        verbose && println("Line-search trial $ls current-preconditioner solve failed at iteration $iter; retrying with rebuilt preconditioner ($err)")
-                        continue
+                        P_trial = trial_mode == :current ? P_iter :
+                            active_preconditioner(theta_trial)
+
+                        # Evaluate trial objective. A failed exploratory trial is
+                        # not an accepted iterate. In adaptive mode, first
+                        # distinguish stale-preconditioner failure from a bad step.
+                        for a in 1:M
+                            I_trial = if use_dense_lu
+                                Z_trial_factor \ configs[a].v
+                            else
+                                solve_forward(Z_trial, configs[a].v;
+                                              solver=solver,
+                                              preconditioner=P_trial,
+                                              gmres_precond_side=gmres_precond_side,
+                                              gmres_tol=gmres_tol,
+                                              gmres_maxiter=gmres_maxiter,
+                                              gmres_memory=gmres_memory,
+                                              check_true_residual=check_gmres_true_residual,
+                                              true_residual_factor=gmres_true_residual_factor)
+                            end
+                            n_fwd_solves += 1
+                            QI_trial = configs[a].Q * I_trial
+                            J_trial_angles[a] = real(dot(I_trial, QI_trial))
+                        end
+                        J_trial, _ = _multiangle_objective_scales(
+                            J_trial_angles, weights, objective, refs, smooth_beta)
+                        trial_valid = true
+                        break
+                    catch err
+                        trial_valid = false
+                        trial_error = err
+                        if trial_preconditioner_mode == :current_then_rebuild &&
+                           trial_mode == :current
+                            use_current_trial_preconditioner = false
+                            verbose && println("$label trial $ls current-preconditioner solve failed at iteration $iter; retrying with rebuilt preconditioner ($err)")
+                            continue
+                        end
                     end
                 end
-            end
-            if !trial_valid
-                verbose && println("Line-search trial $ls failed at iteration $iter; reducing step ($trial_error)")
-            end
+                if !trial_valid
+                    verbose && println("$label trial $ls failed at iteration $iter; reducing step ($trial_error)")
+                end
 
-            # Armijo condition
-            if trial_valid && J_trial <= J_val + 1e-4 * alpha_ls * gd
-                theta .= theta_trial
-                ls_success = true
-                break
+                # Armijo condition
+                if trial_valid &&
+                   J_trial <= J_val + 1e-4 * alpha_try * directional_derivative
+                    theta .= theta_trial
+                    return true
+                end
+                alpha_try *= 0.5
             end
-            alpha_ls *= 0.5
+            return false
+        end
+
+        ls_success = try_projected_line_search!(
+            d, gd, "Line-search", lbfgs_line_search_maxiter)
+        if !ls_success && fallback_to_steepest && !isempty(s_list)
+            empty!(s_list)
+            empty!(y_list)
+            d = -alpha0 .* g
+            gd = -alpha0 * gnorm^2
+            verbose && println("L-BFGS line search failed at iteration $iter; retrying projected steepest descent")
+            ls_success = try_projected_line_search!(
+                d, gd, "Steepest-descent line-search", steepest_line_search_maxiter)
         end
 
         if !ls_success

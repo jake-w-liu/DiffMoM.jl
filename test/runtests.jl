@@ -3449,6 +3449,28 @@ catch err
     occursin("trial_preconditioner_mode", sprint(showerror, err))
 end
 @assert bad_trial_mode "Invalid trial_preconditioner_mode should fail closed"
+bad_lbfgs_cap = try
+    optimize_multiangle_rcs(
+        A_mlfma, Mp_ico, configs_ico, theta_ico;
+        maxiter=0, verbose=false,
+        lbfgs_line_search_maxiter=0,
+    )
+    false
+catch err
+    occursin("lbfgs_line_search_maxiter", sprint(showerror, err))
+end
+@assert bad_lbfgs_cap "Invalid L-BFGS line-search cap should fail closed"
+bad_steepest_cap = try
+    optimize_multiangle_rcs(
+        A_mlfma, Mp_ico, configs_ico, theta_ico;
+        maxiter=0, verbose=false,
+        steepest_line_search_maxiter=0,
+    )
+    false
+catch err
+    occursin("steepest_line_search_maxiter", sprint(showerror, err))
+end
+@assert bad_steepest_cap "Invalid steepest line-search cap should fail closed"
 println("    builder calls: $(builder_calls_current_ico[]) for $(length(trace_current_ico)) iterations")
 println("  36e: PASS")
 
