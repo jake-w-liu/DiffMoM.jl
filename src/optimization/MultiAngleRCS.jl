@@ -431,10 +431,14 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 break
             end
             alpha_ls *= 0.5
-            if ls == 20
-                # Take the smallest step to accumulate curvature information
-                theta = project!(theta_old + alpha_ls * d)
-            end
+        end
+
+        if !ls_success
+            theta .= theta_old
+            empty!(s_list)
+            empty!(y_list)
+            verbose && println("Line search failed at iteration $iter; stopping without accepting trial step")
+            break
         end
     end
 

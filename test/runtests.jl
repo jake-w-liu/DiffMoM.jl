@@ -3169,6 +3169,8 @@ theta_opt_35, trace_35 = optimize_multiangle_rcs(
 @assert length(trace_35) == 5 "Should run exactly 5 iterations"
 @assert all(t -> isfinite(t.J), trace_35) "All objectives should be finite"
 @assert all(t -> isfinite(t.gnorm), trace_35) "All gradients should be finite"
+J_trace_35 = [t.J for t in trace_35]
+@assert all(J_trace_35[2:end] .<= J_trace_35[1:end-1] .+ 1e-12) "line search should not accept uphill objective steps"
 # Objective should generally decrease (check last < first with tolerance)
 println("    J: $(round(trace_35[1].J, sigdigits=4)) → $(round(trace_35[end].J, sigdigits=4))")
 println("    |g|: $(round(trace_35[1].gnorm, sigdigits=4)) → $(round(trace_35[end].gnorm, sigdigits=4))")
@@ -3215,6 +3217,8 @@ theta_bal_35, trace_bal_35 = optimize_multiangle_rcs(
 @assert length(trace_bal_35) == 3 "smoothmax objective should run exactly 3 iterations"
 @assert all(t -> isfinite(t.J), trace_bal_35) "smoothmax objectives should be finite"
 @assert all(t -> isfinite(t.gnorm), trace_bal_35) "smoothmax gradients should be finite"
+J_trace_bal_35 = [t.J for t in trace_bal_35]
+@assert all(J_trace_bal_35[2:end] .<= J_trace_bal_35[1:end-1] .+ 1e-12) "smoothmax line search should not accept uphill objective steps"
 println("    smoothmax Φ: $(round(trace_bal_35[1].J, sigdigits=4)) → $(round(trace_bal_35[end].J, sigdigits=4))")
 println("  35d: PASS")
 
