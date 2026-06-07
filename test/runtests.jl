@@ -3389,6 +3389,45 @@ println("    J: $(round(trace_ico[1].J, sigdigits=4)) → $(round(trace_ico[end]
 println("    |g|: $(round(trace_ico[1].gnorm, sigdigits=4)) → $(round(trace_ico[end].gnorm, sigdigits=4))")
 println("  36d: PASS")
 
+# 36e: Reuse accepted-iterate preconditioner for exploratory line-search trials,
+# with rebuilt-trial fallback when a solve fails the residual guard.
+println("  36e: MLFMA adaptive line-search trial preconditioner reuse ...")
+builder_calls_current_ico = Ref(0)
+preconditioner_builder_current_ico = θ -> begin
+    builder_calls_current_ico[] += 1
+    build_mlfma_preconditioner(A_mlfma, Mp_ico, θ; factorization=:ilu, ilu_tau=1e-2)
+end
+
+theta_current_ico, trace_current_ico = optimize_multiangle_rcs(
+    A_mlfma, Mp_ico, configs_ico, theta_ico;
+    maxiter=2, tol=1e-12, alpha0=0.01,
+    reactive=false, verbose=false,
+    lb=fill(0.0, part_ico.P), ub=fill(1000.0, part_ico.P),
+    preconditioner_builder=preconditioner_builder_current_ico,
+    trial_preconditioner_mode=:current_then_rebuild,
+    gmres_tol=1e-6, gmres_maxiter=300,
+    check_gmres_true_residual=true,
+)
+@assert length(theta_current_ico) == part_ico.P
+@assert length(trace_current_ico) == 2 "Current-preconditioner mode should run exactly 2 iterations"
+@assert builder_calls_current_ico[] <= length(trace_current_ico) + 1 "Line-search trials should avoid dynamic preconditioner rebuilds when current-preconditioner solves pass"
+J_trace_current_ico = [t.J for t in trace_current_ico]
+@assert all(J_trace_current_ico[2:end] .<= J_trace_current_ico[1:end-1] .+ 1e-12) "Current-preconditioner mode should not accept uphill objective steps"
+bad_trial_mode = try
+    optimize_multiangle_rcs(
+        A_mlfma, Mp_ico, configs_ico, theta_ico;
+        maxiter=0, verbose=false,
+        preconditioner_builder=preconditioner_builder_current_ico,
+        trial_preconditioner_mode=:invalid,
+    )
+    false
+catch err
+    occursin("trial_preconditioner_mode", sprint(showerror, err))
+end
+@assert bad_trial_mode "Invalid trial_preconditioner_mode should fail closed"
+println("    builder calls: $(builder_calls_current_ico[]) for $(length(trace_current_ico)) iterations")
+println("  36e: PASS")
+
 println("  PASS ✓")
 
 # ─────────────────────────────────────────────────

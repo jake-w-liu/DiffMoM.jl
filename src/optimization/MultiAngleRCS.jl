@@ -189,6 +189,11 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `preconditioner_builder`: optional function `theta -> preconditioner` for
   matrix-free optimization with design-dependent preconditioners
   (cached only for exactly unchanged `theta`)
+- `trial_preconditioner_mode`: `:rebuild` rebuilds the design-dependent
+  preconditioner for every line-search trial; `:current` reuses the current
+  accepted-iterate preconditioner for exploratory trial solves; and
+  `:current_then_rebuild` retries a failed current-preconditioner trial with a
+  rebuilt trial preconditioner before rejecting the step
 - `gmres_tol`, `gmres_maxiter`, `gmres_memory`: GMRES parameters
 - `check_gmres_true_residual`: verify true physical residuals for GMRES solves
 - `gmres_true_residual_factor`: allowed true-residual multiple of `gmres_tol`
@@ -216,6 +221,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   ub=nothing,
                                   preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                                   preconditioner_builder=nothing,
+                                  trial_preconditioner_mode::Symbol=:rebuild,
                                   gmres_tol::Float64=1e-6,
                                   gmres_maxiter::Int=300,
                                   gmres_memory::Int=20,
@@ -241,6 +247,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
     project!(theta)
     objective in (:linear, :sum_log, :smoothmax_log) ||
         error("Unknown multi-angle objective: $objective (expected :linear, :sum_log, or :smoothmax_log)")
+    trial_preconditioner_mode in (:rebuild, :current, :current_then_rebuild) ||
+        error("trial_preconditioner_mode must be :rebuild, :current, or :current_then_rebuild")
     weights = [cfg.weight for cfg in configs]
     refs = reference_objectives === nothing ? ones(Float64, M) : copy(reference_objectives)
     objective == :linear || all(refs .> 0) ||
@@ -250,6 +258,11 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         println("Multi-angle RCS optimization: $M angles, $P parameters, solver=$solver, objective=$objective")
         if !use_dense_lu && preconditioner_builder !== nothing
             println("  GMRES preconditioner rebuilt when theta changes")
+            if trial_preconditioner_mode == :current
+                println("  line-search trials reuse the current accepted-iterate preconditioner")
+            elseif trial_preconditioner_mode == :current_then_rebuild
+                println("  line-search trials try the current preconditioner, then rebuild on solve failure")
+            end
         elseif !use_dense_lu && preconditioner !== nothing
             println("  GMRES preconditioned")
         end
@@ -431,46 +444,69 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
 
         theta_trial = similar(theta)
         J_trial_angles = Vector{Float64}(undef, M)
+        use_current_trial_preconditioner =
+            trial_preconditioner_mode in (:current, :current_then_rebuild)
         for ls in 1:20
             @. theta_trial = theta_old + alpha_ls * d
             project!(theta_trial)
             trial_valid = true
             J_trial = Inf
-            try
-                if use_dense_lu
-                    assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
-                    Z_trial = Z_buf
-                    Z_trial_factor = lu(Z_trial)
-                else
-                    Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
-                    Z_trial_factor = nothing
-                end
-                P_trial = active_preconditioner(theta_trial)
-
-                # Evaluate trial objective. A failed exploratory trial is not
-                # an accepted iterate; reject it and continue backtracking.
-                for a in 1:M
-                    I_trial = if use_dense_lu
-                        Z_trial_factor \ configs[a].v
+            trial_modes = if trial_preconditioner_mode == :current_then_rebuild
+                use_current_trial_preconditioner ? (:current, :rebuild) : (:rebuild,)
+            else
+                (trial_preconditioner_mode,)
+            end
+            trial_error = nothing
+            for trial_mode in trial_modes
+                try
+                    if use_dense_lu
+                        assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
+                        Z_trial = Z_buf
+                        Z_trial_factor = lu(Z_trial)
                     else
-                        solve_forward(Z_trial, configs[a].v;
-                                      solver=solver,
-                                      preconditioner=P_trial,
-                                      gmres_tol=gmres_tol,
-                                      gmres_maxiter=gmres_maxiter,
-                                      gmres_memory=gmres_memory,
-                                      check_true_residual=check_gmres_true_residual,
-                                      true_residual_factor=gmres_true_residual_factor)
+                        Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
+                        Z_trial_factor = nothing
                     end
-                    n_fwd_solves += 1
-                    QI_trial = configs[a].Q * I_trial
-                    J_trial_angles[a] = real(dot(I_trial, QI_trial))
+                    P_trial = trial_mode == :current ? P_iter :
+                        active_preconditioner(theta_trial)
+
+                    # Evaluate trial objective. A failed exploratory trial is
+                    # not an accepted iterate. In adaptive mode, first
+                    # distinguish stale-preconditioner failure from a bad step.
+                    for a in 1:M
+                        I_trial = if use_dense_lu
+                            Z_trial_factor \ configs[a].v
+                        else
+                            solve_forward(Z_trial, configs[a].v;
+                                          solver=solver,
+                                          preconditioner=P_trial,
+                                          gmres_tol=gmres_tol,
+                                          gmres_maxiter=gmres_maxiter,
+                                          gmres_memory=gmres_memory,
+                                          check_true_residual=check_gmres_true_residual,
+                                          true_residual_factor=gmres_true_residual_factor)
+                        end
+                        n_fwd_solves += 1
+                        QI_trial = configs[a].Q * I_trial
+                        J_trial_angles[a] = real(dot(I_trial, QI_trial))
+                    end
+                    J_trial, _ = _multiangle_objective_scales(
+                        J_trial_angles, weights, objective, refs, smooth_beta)
+                    trial_valid = true
+                    break
+                catch err
+                    trial_valid = false
+                    trial_error = err
+                    if trial_preconditioner_mode == :current_then_rebuild &&
+                       trial_mode == :current
+                        use_current_trial_preconditioner = false
+                        verbose && println("Line-search trial $ls current-preconditioner solve failed at iteration $iter; retrying with rebuilt preconditioner ($err)")
+                        continue
+                    end
                 end
-                J_trial, _ = _multiangle_objective_scales(
-                    J_trial_angles, weights, objective, refs, smooth_beta)
-            catch err
-                trial_valid = false
-                verbose && println("Line-search trial $ls failed at iteration $iter; reducing step ($err)")
+            end
+            if !trial_valid
+                verbose && println("Line-search trial $ls failed at iteration $iter; reducing step ($trial_error)")
             end
 
             # Armijo condition
