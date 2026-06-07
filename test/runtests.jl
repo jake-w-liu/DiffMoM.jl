@@ -2703,6 +2703,21 @@ println("  31e: MLFMA+GMRES — $(stats_mlfma.niter) iters, sol rel error = $(ro
 @assert mlfma_sol_err < 0.1 "MLFMA solution error too large: $mlfma_sol_err (expected < 0.1)"
 println("  31e: PASS")
 
+# 31f: impedance-loaded MLFMA preconditioner
+part_mlfma_loaded = assign_patches_grid(mlfma_mesh; nx=2, ny=2, nz=1)
+Mp_mlfma_loaded = precompute_patch_mass(mlfma_mesh, mlfma_rwg, part_mlfma_loaded)
+theta_mlfma_loaded = fill(150.0, part_mlfma_loaded.P)
+A_mlfma_loaded = ImpedanceLoadedOperator(A_mlfma, Mp_mlfma_loaded, theta_mlfma_loaded, false)
+P_mlfma_loaded = build_mlfma_preconditioner(A_mlfma, Mp_mlfma_loaded, theta_mlfma_loaded;
+    factorization=:lu)
+I_mlfma_loaded, stats_mlfma_loaded = solve_gmres(A_mlfma_loaded, mlfma_v;
+    preconditioner=P_mlfma_loaded, tol=1e-4, maxiter=200)
+loaded_residual = norm(A_mlfma_loaded * I_mlfma_loaded - mlfma_v) / norm(mlfma_v)
+println("  31f: Loaded MLFMA preconditioner — $(stats_mlfma_loaded.niter) iters, residual = $(round(loaded_residual, sigdigits=3))")
+@assert stats_mlfma_loaded.solved "Loaded MLFMA GMRES should converge"
+@assert loaded_residual < 1e-4 "Loaded MLFMA residual too large: $loaded_residual"
+println("  31f: PASS")
+
 println("  PASS ✓")
 
 # ─────────────────────────────────────────────────
@@ -3280,8 +3295,9 @@ A_loaded = ImpedanceLoadedOperator(A_mlfma, Mp_ico, theta_ico, false)
 pw_ico = PlaneWaveExcitation(Vec3(0.0, 0.0, -k_ico), 1.0, Vec3(1.0, 0.0, 0.0))
 v_ico = assemble_excitation(mesh_ico_opt, rwg_ico, pw_ico)
 
-# Build preconditioner from MLFMA near-field
-P_mlfma = build_mlfma_preconditioner(A_mlfma; factorization=:ilu, ilu_tau=1e-2)
+# Build preconditioner from the impedance-loaded MLFMA near-field
+P_mlfma = build_mlfma_preconditioner(A_mlfma, Mp_ico, theta_ico;
+    factorization=:ilu, ilu_tau=1e-2)
 
 I_ico = solve_forward(A_loaded, v_ico; solver=:gmres, preconditioner=P_mlfma,
                        gmres_tol=1e-6, gmres_maxiter=300)
@@ -3313,16 +3329,24 @@ configs_ico = build_multiangle_configs(mesh_ico_opt, rwg_ico, k_ico, angles_ico;
                                         matrix_free_Q=true)
 @assert configs_ico[1].Q isa FarFieldQMatrix "MLFMA optimization should use matrix-free Q in this test"
 
+builder_calls_ico = Ref(0)
+preconditioner_builder_ico = θ -> begin
+    builder_calls_ico[] += 1
+    build_mlfma_preconditioner(A_mlfma, Mp_ico, θ; factorization=:ilu, ilu_tau=1e-2)
+end
+
 theta_opt_ico, trace_ico = optimize_multiangle_rcs(
     A_mlfma, Mp_ico, configs_ico, theta_ico;
     maxiter=3, tol=1e-12, alpha0=0.01,
     reactive=false, verbose=false,
     lb=fill(0.0, part_ico.P), ub=fill(1000.0, part_ico.P),
-    preconditioner=P_mlfma, gmres_tol=1e-6, gmres_maxiter=300
+    preconditioner_builder=preconditioner_builder_ico,
+    gmres_tol=1e-6, gmres_maxiter=300
 )
 @assert length(trace_ico) == 3 "Should run exactly 3 iterations"
 @assert all(t -> isfinite(t.J), trace_ico) "All objectives should be finite"
 @assert all(t -> isfinite(t.gnorm), trace_ico) "All gradients should be finite"
+@assert builder_calls_ico[] >= length(trace_ico) "Dynamic MLFMA preconditioner builder was not exercised"
 println("    J: $(round(trace_ico[1].J, sigdigits=4)) → $(round(trace_ico[end].J, sigdigits=4))")
 println("    |g|: $(round(trace_ico[1].gnorm, sigdigits=4)) → $(round(trace_ico[end].gnorm, sigdigits=4))")
 println("  36d: PASS")

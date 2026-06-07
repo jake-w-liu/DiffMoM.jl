@@ -809,18 +809,74 @@ function build_block_diag_preconditioner(A_mlfma)
     return BlockDiagPrecondData(lu_blocks, box_bf_indices, N, nnz_ratio)
 end
 
-"""
-    build_mlfma_preconditioner(A_mlfma; factorization=:ilu, ilu_tau=1e-2)
+function build_block_diag_preconditioner(A_mlfma,
+                                         Mp::Vector{<:AbstractMatrix},
+                                         theta::AbstractVector;
+                                         reactive::Bool=false)
+    length(Mp) == length(theta) ||
+        error("Mp length $(length(Mp)) must match theta length $(length(theta))")
+    octree = A_mlfma.octree
+    leaf_level = octree.levels[end]
+    N = size(A_mlfma, 1)
 
-Build a preconditioner for MLFMA by reordering Z_near to MLFMA ordering
-(block-banded structure) before factorization. This makes ILU dramatically
-faster and more effective than operating on the original scattered ordering.
+    lu_blocks = LinearAlgebra.LU{ComplexF64, Matrix{ComplexF64}, Vector{Int64}}[]
+    box_bf_indices = Vector{Int}[]
+    total_nnz = 0
+    for box in leaf_level.boxes
+        orig_idx = [octree.perm[i] for i in box.bf_range]
+        block = Matrix{ComplexF64}(A_mlfma.Z_near[orig_idx, orig_idx])
+        for p in eachindex(theta)
+            iszero(theta[p]) && continue
+            coeff = reactive ? (1im * theta[p]) : ComplexF64(theta[p])
+            block .-= coeff .* Matrix{ComplexF64}(Mp[p][orig_idx, orig_idx])
+        end
+        push!(lu_blocks, lu(block))
+        push!(box_bf_indices, orig_idx)
+        total_nnz += length(orig_idx)^2
+    end
 
-The resulting preconditioner handles the permutation automatically.
-"""
-function build_mlfma_preconditioner(A_mlfma;
-                                     factorization::Symbol=:ilu,
-                                     ilu_tau::Float64=1e-2)
+    nnz_ratio = total_nnz / N^2
+    mem_mb = round(total_nnz * 16 / 1e6, digits=1)
+    n_boxes = length(lu_blocks)
+    avg_bf = round(N / n_boxes, digits=0)
+    println("  Loaded block-diag preconditioner: $n_boxes blocks, avg $(Int(avg_bf)) BFs/block, $(mem_mb) MB")
+
+    return BlockDiagPrecondData(lu_blocks, box_bf_indices, N, nnz_ratio)
+end
+
+function _sparse_complex(A::SparseMatrixCSC)
+    return SparseMatrixCSC{ComplexF64, Int}(
+        size(A, 1), size(A, 2),
+        Vector{Int}(A.colptr),
+        Vector{Int}(A.rowval),
+        ComplexF64.(A.nzval),
+    )
+end
+
+function _sparse_complex(A::AbstractMatrix)
+    return _sparse_complex(sparse(A))
+end
+
+function _loaded_nearfield_matrix(Z_near::SparseMatrixCSC,
+                                  Mp::Vector{<:AbstractMatrix},
+                                  theta::AbstractVector;
+                                  reactive::Bool=false)
+    length(Mp) == length(theta) ||
+        error("Mp length $(length(Mp)) must match theta length $(length(theta))")
+    Z_loaded = _sparse_complex(Z_near)
+    for p in eachindex(theta)
+        iszero(theta[p]) && continue
+        coeff = reactive ? (1im * theta[p]) : ComplexF64(theta[p])
+        Z_loaded = Z_loaded - coeff * _sparse_complex(Mp[p])
+    end
+    dropzeros!(Z_loaded)
+    return Z_loaded
+end
+
+function _build_mlfma_preconditioner_from_nearfield(A_mlfma,
+                                                    Z_near::SparseMatrixCSC;
+                                                    factorization::Symbol=:ilu,
+                                                    ilu_tau::Float64=1e-2)
     octree = A_mlfma.octree
     perm = copy(octree.perm)
     N = size(A_mlfma, 1)
@@ -834,7 +890,7 @@ function build_mlfma_preconditioner(A_mlfma;
     # Reorder Z_near: Z_perm[i,j] = Z_near[perm[i], perm[j]]
     # In MLFMA ordering, the matrix has block-banded structure
     println("  Reordering Z_near to MLFMA ordering...")
-    Z_perm = A_mlfma.Z_near[perm, perm]
+    Z_perm = Z_near[perm, perm]
 
     nnz_ratio = nnz(Z_perm) / max(N * N, 1)
 
@@ -855,4 +911,42 @@ function build_mlfma_preconditioner(A_mlfma;
     end
 
     return PermutedPrecondData(inner, perm, iperm, N, nnz_ratio)
+end
+
+"""
+    build_mlfma_preconditioner(A_mlfma; factorization=:ilu, ilu_tau=1e-2)
+
+Build a preconditioner for MLFMA by reordering Z_near to MLFMA ordering
+(block-banded structure) before factorization. This makes ILU dramatically
+faster and more effective than operating on the original scattered ordering.
+
+The resulting preconditioner handles the permutation automatically.
+"""
+function build_mlfma_preconditioner(A_mlfma;
+                                     factorization::Symbol=:ilu,
+                                     ilu_tau::Float64=1e-2)
+    return _build_mlfma_preconditioner_from_nearfield(A_mlfma, A_mlfma.Z_near;
+        factorization=factorization,
+        ilu_tau=ilu_tau)
+end
+
+"""
+    build_mlfma_preconditioner(A_mlfma, Mp, theta; reactive=false, factorization=:ilu, ilu_tau=1e-2)
+
+Build an MLFMA near-field preconditioner for the current impedance-loaded
+operator `Z(theta) = Z_mlfma - sum(theta[p] * Mp[p])`. This is intended for
+matrix-free optimization, where a preconditioner built only from the PEC
+near field may become stale as the sheet impedance changes.
+"""
+function build_mlfma_preconditioner(A_mlfma,
+                                    Mp::Vector{<:AbstractMatrix},
+                                    theta::AbstractVector;
+                                    reactive::Bool=false,
+                                    factorization::Symbol=:ilu,
+                                    ilu_tau::Float64=1e-2)
+    Z_loaded = _loaded_nearfield_matrix(A_mlfma.Z_near, Mp, theta;
+        reactive=reactive)
+    return _build_mlfma_preconditioner_from_nearfield(A_mlfma, Z_loaded;
+        factorization=factorization,
+        ilu_tau=ilu_tau)
 end

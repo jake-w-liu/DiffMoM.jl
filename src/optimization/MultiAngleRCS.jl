@@ -185,7 +185,9 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `maxiter`, `tol`, `m_lbfgs`, `alpha0`: L-BFGS parameters
 - `reactive`: impedance mode (false=resistive, true=reactive)
 - `lb`, `ub`: box constraints on θ
-- `preconditioner`: `AbstractPreconditionerData` for GMRES
+- `preconditioner`: fixed `AbstractPreconditionerData` for GMRES
+- `preconditioner_builder`: optional function `theta -> preconditioner` for
+  matrix-free optimization with design-dependent preconditioners
 - `gmres_tol`, `gmres_maxiter`, `gmres_memory`: GMRES parameters
 - `objective`: `:linear` for Σw_aJ_a, `:sum_log` for Σw_a log(J_a/J_ref,a),
   or `:smoothmax_log` for a smooth worst-angle normalized log objective
@@ -210,6 +212,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   lb=nothing,
                                   ub=nothing,
                                   preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
+                                  preconditioner_builder=nothing,
                                   gmres_tol::Float64=1e-6,
                                   gmres_maxiter::Int=300,
                                   gmres_memory::Int=20,
@@ -240,9 +243,18 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
 
     if verbose
         println("Multi-angle RCS optimization: $M angles, $P parameters, solver=$solver, objective=$objective")
-        if !use_dense_lu && preconditioner !== nothing
+        if !use_dense_lu && preconditioner_builder !== nothing
+            println("  GMRES preconditioner rebuilt from theta")
+        elseif !use_dense_lu && preconditioner !== nothing
             println("  GMRES preconditioned")
         end
+    end
+
+    function active_preconditioner(theta_current::Vector{Float64})
+        if use_dense_lu || preconditioner_builder === nothing
+            return preconditioner
+        end
+        return preconditioner_builder(theta_current)
     end
 
     # L-BFGS history
@@ -270,6 +282,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             Z_full = ImpedanceLoadedOperator(Z_base, Mp, theta, reactive)
             Z_factor = nothing
         end
+        P_iter = active_preconditioner(theta)
 
         # ── 2. Forward solves: I_a = Z(θ)⁻¹ v_a ────────────────
         I_all = Vector{Vector{ComplexF64}}(undef, M)
@@ -279,7 +292,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             else
                 solve_forward(Z_full, configs[a].v;
                               solver=solver,
-                              preconditioner=preconditioner,
+                              preconditioner=P_iter,
                               gmres_tol=gmres_tol,
                               gmres_maxiter=gmres_maxiter,
                               gmres_memory=gmres_memory)
@@ -306,7 +319,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             else
                 solve_adjoint_rhs(Z_full, rhs_a;
                                   solver=solver,
-                                  preconditioner=preconditioner,
+                                  preconditioner=P_iter,
                                   gmres_tol=gmres_tol,
                                   gmres_maxiter=gmres_maxiter,
                                   gmres_memory=gmres_memory)
@@ -403,6 +416,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
                 Z_trial_factor = nothing
             end
+            P_trial = active_preconditioner(theta_trial)
 
             # Evaluate trial objective
             J_trial_angles = zeros(Float64, M)
@@ -412,7 +426,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 else
                     solve_forward(Z_trial, configs[a].v;
                                   solver=solver,
-                                  preconditioner=preconditioner,
+                                  preconditioner=P_trial,
                                   gmres_tol=gmres_tol,
                                   gmres_maxiter=gmres_maxiter,
                                   gmres_memory=gmres_memory)
