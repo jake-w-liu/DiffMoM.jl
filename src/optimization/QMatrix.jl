@@ -3,7 +3,73 @@
 # Q_mn = Σ_q w_q (p†·g_m)* (p†·g_n)
 # J(θ) = I† Q I  (radiated power in selected direction/polarization)
 
-export build_Q, apply_Q, pol_linear_x, pol_linear_y, cap_mask, direction_mask
+export FarFieldQMatrix, build_Q, build_Q_operator, apply_Q, pol_linear_x, pol_linear_y, cap_mask, direction_mask
+
+"""
+    FarFieldQMatrix
+
+Matrix-free representation of the Hermitian far-field objective matrix
+`Q = G' W G`. It stores the radiation-vector matrix and applies `Q*x`
+without forming the dense `N x N` matrix.
+"""
+struct FarFieldQMatrix <: AbstractMatrix{ComplexF64}
+    G_mat::Matrix{ComplexF64}
+    weights::Vector{Float64}
+    pol::Matrix{ComplexF64}
+    mask::Union{Nothing,BitVector}
+    N::Int
+end
+
+Base.size(Q::FarFieldQMatrix) = (Q.N, Q.N)
+Base.eltype(::FarFieldQMatrix) = ComplexF64
+
+function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
+    1 <= m <= Q.N || throw(BoundsError(Q, (m, n)))
+    1 <= n <= Q.N || throw(BoundsError(Q, (m, n)))
+    NΩ = length(Q.weights)
+    val = zero(ComplexF64)
+    @inbounds for q in 1:NΩ
+        if Q.mask !== nothing && !Q.mask[q]
+            continue
+        end
+        idx = 3 * (q - 1)
+        p = Q.pol[:, q]
+        gm = SVector{3,ComplexF64}(Q.G_mat[idx+1, m], Q.G_mat[idx+2, m], Q.G_mat[idx+3, m])
+        gn = SVector{3,ComplexF64}(Q.G_mat[idx+1, n], Q.G_mat[idx+2, n], Q.G_mat[idx+3, n])
+        val += Q.weights[q] * conj(dot(p, gm)) * dot(p, gn)
+    end
+    return val
+end
+
+function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
+                            Q::FarFieldQMatrix,
+                            I_coeffs::AbstractVector{ComplexF64})
+    length(result) == Q.N || throw(DimensionMismatch("result length $(length(result)) != $(Q.N)"))
+    length(I_coeffs) == Q.N || throw(DimensionMismatch("input length $(length(I_coeffs)) != $(Q.N)"))
+    fill!(result, zero(ComplexF64))
+
+    NΩ = length(Q.weights)
+    @inbounds for q in 1:NΩ
+        if Q.mask !== nothing && !Q.mask[q]
+            continue
+        end
+        idx = 3 * (q - 1)
+        p = Q.pol[:, q]
+        wq = Q.weights[q]
+
+        yq = zero(ComplexF64)
+        for n in 1:Q.N
+            gn = SVector{3,ComplexF64}(Q.G_mat[idx+1, n], Q.G_mat[idx+2, n], Q.G_mat[idx+3, n])
+            yq += dot(p, gn) * I_coeffs[n]
+        end
+
+        for m in 1:Q.N
+            gm = SVector{3,ComplexF64}(Q.G_mat[idx+1, m], Q.G_mat[idx+2, m], Q.G_mat[idx+3, m])
+            result[m] += wq * conj(dot(p, gm)) * yq
+        end
+    end
+    return result
+end
 
 """
     build_Q(G_mat, grid, pol; mask=nothing)
@@ -53,6 +119,23 @@ function build_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
     end
 
     return Q
+end
+
+"""
+    build_Q_operator(G_mat, grid, pol; mask=nothing)
+
+Build a matrix-free far-field objective operator with the same action as
+`build_Q(G_mat, grid, pol; mask)`, but without forming the dense matrix.
+"""
+function build_Q_operator(G_mat::Matrix{ComplexF64}, grid::SphGrid,
+                          pol::Matrix{ComplexF64}; mask=nothing)
+    NΩ = length(grid.w)
+    size(G_mat, 1) == 3 * NΩ ||
+        throw(DimensionMismatch("G_mat has $(size(G_mat, 1)) rows, expected $(3 * NΩ)"))
+    size(pol, 1) == 3 && size(pol, 2) == NΩ ||
+        throw(DimensionMismatch("pol must be 3 x $NΩ"))
+    mask_copy = mask === nothing ? nothing : BitVector(mask)
+    return FarFieldQMatrix(G_mat, copy(grid.w), pol, mask_copy, size(G_mat, 2))
 end
 
 """

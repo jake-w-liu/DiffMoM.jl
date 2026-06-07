@@ -943,6 +943,90 @@ function _apply_disagg_filter!(result::Matrix{ComplexF64},
     return result
 end
 
+"""
+Adjoint of `_apply_disagg_filter!`.
+
+The forward filter maps data from `parent_samp` to `child_samp`. This routine
+maps a cotangent on the child grid back to the parent grid by reversing the
+Fourier synthesis, per-mode theta filtering, and Fourier analysis steps.
+"""
+function _apply_disagg_filter_adjoint!(result::Matrix{ComplexF64},
+                                       data::Matrix{ComplexF64},
+                                       filters_m::Vector{Matrix{Float64}},
+                                       parent_samp::SphereSampling,
+                                       child_samp::SphereSampling,
+                                       scratch::DisaggFilterScratch)
+    nθp, nφp = parent_samp.ntheta, parent_samp.nphi
+    nθc, nφc = child_samp.ntheta, child_samp.nphi
+    M_eff = length(filters_m) - 1
+
+    a_coeff = scratch.a_coeff
+    b_coeff = scratch.b_coeff
+    a_out   = scratch.a_out
+    b_out   = scratch.b_out
+
+    fill!(a_coeff, zero(ComplexF64))
+    fill!(b_coeff, zero(ComplexF64))
+    fill!(a_out, zero(ComplexF64))
+    fill!(b_out, zero(ComplexF64))
+    fill!(result, zero(ComplexF64))
+
+    # Reverse of IDFT synthesis at child phi points.
+    for it in 1:nθc
+        for ip in 1:nφc
+            q = (it - 1) * nφc + ip
+            φ = scratch.child_phi[ip]
+            @inbounds for c in 1:4
+                dval = data[c, q]
+                a_out[c, it, 1] += dval
+                for m in 1:M_eff
+                    a_out[c, it, m + 1] += dval * cos(m * φ)
+                    b_out[c, it, m + 1] += dval * sin(m * φ)
+                end
+            end
+        end
+    end
+
+    # Reverse of per-m theta filtering.
+    for m in 0:M_eff
+        Ft = filters_m[m + 1]
+        for it_p in 1:nθp
+            @inbounds for c in 1:4
+                va = zero(ComplexF64)
+                vb = zero(ComplexF64)
+                for it_c in 1:nθc
+                    w = Ft[it_c, it_p]
+                    va += w * a_out[c, it_c, m + 1]
+                    if m > 0
+                        vb += w * b_out[c, it_c, m + 1]
+                    end
+                end
+                a_coeff[c, it_p, m + 1] = va
+                b_coeff[c, it_p, m + 1] = vb
+            end
+        end
+    end
+
+    # Reverse of DFT analysis at parent phi points.
+    for it in 1:nθp
+        for ip in 1:nφp
+            q = (it - 1) * nφp + ip
+            φ = scratch.parent_phi[ip]
+            @inbounds for c in 1:4
+                val = a_coeff[c, it, 1] / nφp
+                for m in 1:M_eff
+                    val += (2.0 / nφp) *
+                           (a_coeff[c, it, m + 1] * cos(m * φ) +
+                            b_coeff[c, it, m + 1] * sin(m * φ))
+                end
+                result[c, q] = val
+            end
+        end
+    end
+
+    return result
+end
+
 # ─── Workspace structs for allocation-free mul! ────────────────
 
 """
@@ -1055,6 +1139,7 @@ Base.eltype(::MLFMAOperator) = ComplexF64
 Base.size(A::MLFMAAdjointOperator) = size(A.op)
 Base.eltype(::MLFMAAdjointOperator) = ComplexF64
 LinearAlgebra.adjoint(A::MLFMAOperator) = MLFMAAdjointOperator(A)
+LinearAlgebra.adjoint(A::MLFMAAdjointOperator) = A.op
 
 # Fallback getindex via near-field (for preconditioner construction)
 function Base.getindex(A::MLFMAOperator, i::Int, j::Int)
@@ -1455,46 +1540,45 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperat
     # Near-field adjoint
     mul!(y, adjoint(A.op.Z_near), x)
 
-    # For the adjoint MLFMA, we swap the roles of aggregation and disaggregation:
-    # - Aggregate using the "receiving" patterns (conj of sending)
-    # - Translate with conjugated translation factors
-    # - Disaggregate using the "sending" patterns
-
     leaf_level = A.op.octree.levels[nL]
     leaf_samp = A.op.samplings[nL - 1]
 
-    # Aggregation at leaf: using conjugated patterns (receiving role)
+    # Clear all far-field adjoint buffers before accumulating cotangents.
+    for idx in 1:(nL - 1)
+        for bi in eachindex(agg[idx])
+            fill!(agg[idx][bi], zero(ComplexF64))
+        end
+        for bi in eachindex(incoming[idx])
+            fill!(incoming[idx][bi], zero(ComplexF64))
+        end
+    end
+
+    # Adjoint of the final leaf disaggregation in the forward matvec.
     for (bi, box) in enumerate(leaf_level.boxes)
-        a = agg[nL - 1][bi]
-        fill!(a, zero(ComplexF64))
+        inc_adj = incoming[nL - 1][bi]
         for n_perm in box.bf_range
             n = A.op.octree.perm[n_perm]
             xn = x[n]
             if abs(xn) > 0
                 @inbounds for q in 1:leaf_samp.npts
-                    # Adjoint: aggregate with conj(pattern) for vec, -conj for scalar
+                    weighted = leaf_samp.weights[q] * xn
                     for c in 1:3
-                        a[c, q] += xn * conj(A.op.bf_patterns[c, q, n])
+                        inc_adj[c, q] += weighted * A.op.bf_patterns[c, q, n]
                     end
-                    a[4, q] -= xn * conj(A.op.bf_patterns[4, q, n])
+                    inc_adj[4, q] -= weighted * A.op.bf_patterns[4, q, n]
                 end
             end
         end
     end
 
-    # Bottom-up aggregation (same structure as forward)
+    # Reverse of top-down disaggregation: child incoming cotangents accumulate
+    # into parent incoming cotangents.
     for l in (nL - 1):-1:2
         parent_level = A.op.octree.levels[l]
         child_level = A.op.octree.levels[l + 1]
         parent_samp = A.op.samplings[l - 1]
         child_samp = A.op.samplings[l]
         interp_idx = l - 1
-        nboxes_p = length(parent_level.boxes)
-
-        # Zero parent agg buffers
-        for bi in 1:nboxes_p
-            fill!(agg[l - 1][bi], zero(ComplexF64))
-        end
 
         for (ci, cbox) in enumerate(child_level.boxes)
             pid = cbox.parent
@@ -1502,60 +1586,55 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperat
             pbox = parent_level.boxes[pid]
             d = cbox.center - pbox.center
 
-            # Step 1: Spectral interpolation from child to parent sampling
-            interp_buf = ws.interp_result[interp_idx]
-            if !isempty(A.op.agg_filters) && interp_idx <= length(A.op.agg_filters)
-                _apply_disagg_filter!(interp_buf, agg[l][ci],
-                                       A.op.agg_filters[interp_idx],
-                                       child_samp, parent_samp,
-                                       ws.agg_disagg_scratch[interp_idx])
+            shifted = ws.shifted_buf[interp_idx]
+            if !isempty(A.op.disagg_filters) && interp_idx <= length(A.op.disagg_filters)
+                _apply_disagg_filter_adjoint!(shifted, incoming[l][ci],
+                                              A.op.disagg_filters[interp_idx],
+                                              parent_samp, child_samp,
+                                              ws.disagg_disagg_scratch[interp_idx])
             else
-                copyto!(interp_buf, agg[l][ci])
+                copyto!(shifted, incoming[l][ci])
             end
 
-            # Step 2: Phase shift child → parent center (at parent sampling)
-            _apply_phase_shift!(interp_buf, parent_samp, A.op.k, d, 1.0)
+            _apply_phase_shift!(shifted, parent_samp, A.op.k, d, 1.0)
 
-            agg[l - 1][pid] .+= interp_buf
+            incoming[l - 1][pid] .+= shifted
         end
     end
 
-    # Translation with conjugated factors
+    # Reverse of translation: destination incoming cotangents accumulate into
+    # source aggregation cotangents.
     for l in 2:nL
         level = A.op.octree.levels[l]
         samp = A.op.samplings[l - 1]
-        nboxes = length(level.boxes)
-
-        # Zero incoming buffers
-        for bi in 1:nboxes
-            fill!(incoming[l - 1][bi], zero(ComplexF64))
-        end
 
         tf = A.op.trans_factors[l - 1]
         for (bi, box) in enumerate(level.boxes)
-            dst = incoming[l - 1][bi]
+            dst_adj = incoming[l - 1][bi]
             for il_id in box.interaction_list
                 il_box = level.boxes[il_id]
                 dijk = (box.ijk[1] - il_box.ijk[1],
                         box.ijk[2] - il_box.ijk[2],
                         box.ijk[3] - il_box.ijk[3])
                 T = tf[dijk]
-                src = agg[l - 1][il_id]
+                src_adj = agg[l - 1][il_id]
                 @inbounds for q in 1:samp.npts
                     Tq = conj(T[q])  # conjugate for adjoint
                     for c in 1:4
-                        dst[c, q] += Tq * src[c, q]
+                        src_adj[c, q] += Tq * dst_adj[c, q]
                     end
                 end
             end
         end
     end
 
-    # Disaggregation (top-down): phase shift first, then spectral filter
+    # Reverse of bottom-up aggregation: parent aggregation cotangents accumulate
+    # into child aggregation cotangents.
     for l in 2:nL-1
         parent_level = A.op.octree.levels[l]
         child_level = A.op.octree.levels[l + 1]
         parent_samp = A.op.samplings[l - 1]
+        child_samp = A.op.samplings[l]
         interp_idx = l - 1
 
         for (ci, cbox) in enumerate(child_level.boxes)
@@ -1564,40 +1643,34 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperat
             pbox = parent_level.boxes[pid]
             d = cbox.center - pbox.center
 
-            # Step 1: Phase shift parent → child center (at parent sampling)
             shifted = ws.shifted_buf[interp_idx]
-            copyto!(shifted, incoming[l - 1][pid])
+            copyto!(shifted, agg[l - 1][pid])
             _apply_phase_shift!(shifted, parent_samp, A.op.k, d, -1.0)
 
-            # Step 2: Spectral filter from parent to child sampling (band-limiting)
-            if !isempty(A.op.disagg_filters) && interp_idx <= length(A.op.disagg_filters)
-                child_samp = A.op.samplings[l]
+            if !isempty(A.op.agg_filters) && interp_idx <= length(A.op.agg_filters)
                 filtered = ws.filter_result[interp_idx]
-                _apply_disagg_filter!(filtered, shifted,
-                                       A.op.disagg_filters[interp_idx],
-                                       parent_samp, child_samp,
-                                       ws.disagg_disagg_scratch[interp_idx])
+                _apply_disagg_filter_adjoint!(filtered, shifted,
+                                              A.op.agg_filters[interp_idx],
+                                              child_samp, parent_samp,
+                                              ws.agg_disagg_scratch[interp_idx])
             else
                 filtered = shifted
             end
 
-            # Child level l+1 → incoming index l (since incoming[j] ↔ level j+1)
-            incoming[l][ci] .+= filtered
+            agg[l][ci] .+= filtered
         end
     end
 
-    # Disaggregate to BFs: using the (non-conjugated) patterns
+    # Adjoint of the initial leaf aggregation in the forward matvec.
     for (bi, box) in enumerate(leaf_level.boxes)
         for n_perm in box.bf_range
             n = A.op.octree.perm[n_perm]
             val = zero(ComplexF64)
-            inc = incoming[nL - 1][bi]
+            a_adj = agg[nL - 1][bi]
             @inbounds for q in 1:leaf_samp.npts
-                dot4 = zero(ComplexF64)
                 for c in 1:4
-                    dot4 += A.op.bf_patterns[c, q, n] * inc[c, q]
+                    val += conj(A.op.bf_patterns[c, q, n]) * a_adj[c, q]
                 end
-                val += leaf_samp.weights[q] * dot4
             end
             y[n] += conj(A.op.prefactor) * val
         end

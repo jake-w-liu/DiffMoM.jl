@@ -21,7 +21,7 @@ struct AngleConfig
     k_vec::Vec3                     # Incidence wave vector (rad/m)
     pol::Vec3                       # Polarization (unit vector)
     v::Vector{ComplexF64}           # Pre-assembled excitation vector
-    Q::Matrix{ComplexF64}           # Backscatter Q matrix for this angle
+    Q::AbstractMatrix{ComplexF64}    # Backscatter Q operator for this angle
     weight::Float64                 # Weight in composite objective
 end
 
@@ -41,7 +41,7 @@ function _transverse_unit_pol(khat::Vec3, pol::Vec3)
 end
 
 """
-    build_multiangle_configs(mesh, rwg, k, angles; grid, backscatter_cone=10.0)
+    build_multiangle_configs(mesh, rwg, k, angles; grid, backscatter_cone=10.0, matrix_free_Q=false)
 
 Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
 
@@ -55,6 +55,7 @@ Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
   - `weight`: weight in objective (default 1.0)
 - `grid`: `SphGrid` for far-field evaluation (shared across all angles)
 - `backscatter_cone`: half-angle in degrees for backscatter mask (default 15°)
+- `matrix_free_Q`: if true, store a matrix-free far-field objective operator
 
 # Returns
 Vector of `AngleConfig`, one per incidence angle.
@@ -62,7 +63,8 @@ Vector of `AngleConfig`, one per incidence angle.
 function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
                                    angles::Vector{<:NamedTuple};
                                    grid::SphGrid,
-                                   backscatter_cone::Float64=15.0)
+                                   backscatter_cone::Float64=15.0,
+                                   matrix_free_Q::Bool=false)
     eta0 = 376.730313668
     G_mat = radiation_vectors(mesh, rwg, grid, k; eta0=eta0)
     pol_mat = pol_linear_x(grid)  # shared θ̂ polarization for all angles
@@ -89,8 +91,11 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
         mask = direction_mask(grid, bs_dir; half_angle=backscatter_cone * π / 180)
 
         # Build per-angle polarization: use θ̂ component at each observation point
-        # (standard co-pol RCS definition)
-        Q = build_Q(G_mat, grid, pol_mat; mask=mask)
+        # (standard co-pol RCS definition). For MLFMA-scale optimization, avoid
+        # forming dense N x N objective matrices.
+        Q = matrix_free_Q ?
+            build_Q_operator(G_mat, grid, pol_mat; mask=mask) :
+            build_Q(G_mat, grid, pol_mat; mask=mask)
 
         w = hasfield(typeof(ang), :weight) ? ang.weight : 1.0
 

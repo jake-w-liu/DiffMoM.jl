@@ -2659,7 +2659,16 @@ println("  31c: MLFMA matvec — rel error = $(round(mlfma_matvec_err, sigdigits
 @assert mlfma_matvec_err < 0.05 "MLFMA matvec error too large: $mlfma_matvec_err (expected < 0.05)"
 println("  31c: PASS")
 
-# 31d: MLFMA + GMRES convergence
+# 31d: MLFMA adjoint inner-product identity
+y_test = randn(ComplexF64, mlfma_N)
+lhs_adj = dot(y_test, A_mlfma * x_test)
+rhs_adj = dot(adjoint(A_mlfma) * y_test, x_test)
+mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
+println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
+@assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"
+println("  31d: PASS")
+
+# 31e: MLFMA + GMRES convergence
 mlfma_exc = PlaneWaveExcitation(Vec3(0.0, 0.0, -mlfma_k), 1.0, Vec3(1.0, 0.0, 0.0))
 mlfma_v = assemble_excitation(mlfma_mesh, mlfma_rwg, mlfma_exc)
 I_dense_ref = Z_dense_mlfma \ mlfma_v
@@ -2670,10 +2679,10 @@ I_mlfma, stats_mlfma = solve_gmres(A_mlfma, mlfma_v;
     preconditioner=P_mlfma, tol=1e-4, maxiter=200)
 
 mlfma_sol_err = norm(I_mlfma - I_dense_ref) / norm(I_dense_ref)
-println("  31d: MLFMA+GMRES — $(stats_mlfma.niter) iters, sol rel error = $(round(mlfma_sol_err, sigdigits=3))")
+println("  31e: MLFMA+GMRES — $(stats_mlfma.niter) iters, sol rel error = $(round(mlfma_sol_err, sigdigits=3))")
 @assert stats_mlfma.niter < 200 "MLFMA GMRES did not converge in 200 iterations"
 @assert mlfma_sol_err < 0.1 "MLFMA solution error too large: $mlfma_sol_err (expected < 0.1)"
-println("  31d: PASS")
+println("  31e: PASS")
 
 println("  PASS ✓")
 
@@ -3104,6 +3113,15 @@ configs_test = build_multiangle_configs(mesh, rwg, k, angles_2;
 @assert length(configs_test[1].v) == N "Excitation vector should have length N"
 @assert size(configs_test[1].Q) == (N, N) "Q matrix should be N×N"
 @assert configs_test[1].weight == 1.0
+configs_mfree = build_multiangle_configs(mesh, rwg, k, angles_2;
+                                          grid=grid_opt, backscatter_cone=15.0,
+                                          matrix_free_Q=true)
+@assert configs_mfree[1].Q isa FarFieldQMatrix "matrix_free_Q should use FarFieldQMatrix"
+x_q = randn(MersenneTwister(355), ComplexF64, N)
+Qx_dense = configs_test[1].Q * x_q
+Qx_mfree = configs_mfree[1].Q * x_q
+q_rel = norm(Qx_dense - Qx_mfree) / max(norm(Qx_dense), 1e-30)
+@assert q_rel < 1e-12 "Matrix-free Q action mismatch: $q_rel"
 configs_proj = build_multiangle_configs(
     mesh, rwg, k,
     [(theta_inc=π/4, phi_inc=0.0, pol=Vec3(1.0, 0.0, 0.0), weight=1.0)];
@@ -3212,7 +3230,9 @@ angles_ico = [
     (theta_inc=π/3, phi_inc=0.0, pol=Vec3(1.0, 0.0, 0.0), weight=1.0),
 ]
 configs_ico = build_multiangle_configs(mesh_ico_opt, rwg_ico, k_ico, angles_ico;
-                                        grid=grid_ico, backscatter_cone=15.0)
+                                        grid=grid_ico, backscatter_cone=15.0,
+                                        matrix_free_Q=true)
+@assert configs_ico[1].Q isa FarFieldQMatrix "MLFMA optimization should use matrix-free Q in this test"
 
 theta_opt_ico, trace_ico = optimize_multiangle_rcs(
     A_mlfma, Mp_ico, configs_ico, theta_ico;
