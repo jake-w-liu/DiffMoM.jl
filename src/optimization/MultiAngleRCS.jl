@@ -190,19 +190,25 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         if use_dense_lu
             assemble_full_Z!(Z_buf, Z_base, Mp, theta; reactive=reactive)
             Z_full = Z_buf
+            Z_factor = lu(Z_full)
         else
             Z_full = ImpedanceLoadedOperator(Z_base, Mp, theta, reactive)
+            Z_factor = nothing
         end
 
         # ── 2. Forward solves: I_a = Z(θ)⁻¹ v_a ────────────────
         I_all = Vector{Vector{ComplexF64}}(undef, M)
         for a in 1:M
-            I_all[a] = solve_forward(Z_full, configs[a].v;
-                                      solver=solver,
-                                      preconditioner=preconditioner,
-                                      gmres_tol=gmres_tol,
-                                      gmres_maxiter=gmres_maxiter,
-                                      gmres_memory=gmres_memory)
+            I_all[a] = if use_dense_lu
+                Z_factor \ configs[a].v
+            else
+                solve_forward(Z_full, configs[a].v;
+                              solver=solver,
+                              preconditioner=preconditioner,
+                              gmres_tol=gmres_tol,
+                              gmres_maxiter=gmres_maxiter,
+                              gmres_memory=gmres_memory)
+            end
             n_fwd_solves += 1
         end
 
@@ -216,12 +222,16 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         lambda_all = Vector{Vector{ComplexF64}}(undef, M)
         for a in 1:M
             rhs_a = configs[a].Q * I_all[a]
-            lambda_all[a] = solve_adjoint_rhs(Z_full, rhs_a;
-                                               solver=solver,
-                                               preconditioner=preconditioner,
-                                               gmres_tol=gmres_tol,
-                                               gmres_maxiter=gmres_maxiter,
-                                               gmres_memory=gmres_memory)
+            lambda_all[a] = if use_dense_lu
+                Z_factor' \ Vector{ComplexF64}(rhs_a)
+            else
+                solve_adjoint_rhs(Z_full, rhs_a;
+                                  solver=solver,
+                                  preconditioner=preconditioner,
+                                  gmres_tol=gmres_tol,
+                                  gmres_maxiter=gmres_maxiter,
+                                  gmres_memory=gmres_memory)
+            end
             n_adj_solves += 1
         end
 
@@ -309,19 +319,25 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             if use_dense_lu
                 assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
                 Z_trial = Z_buf
+                Z_trial_factor = lu(Z_trial)
             else
                 Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
+                Z_trial_factor = nothing
             end
 
             # Evaluate trial objective
             J_trial = 0.0
             for a in 1:M
-                I_trial = solve_forward(Z_trial, configs[a].v;
-                                         solver=solver,
-                                         preconditioner=preconditioner,
-                                         gmres_tol=gmres_tol,
-                                         gmres_maxiter=gmres_maxiter,
-                                         gmres_memory=gmres_memory)
+                I_trial = if use_dense_lu
+                    Z_trial_factor \ configs[a].v
+                else
+                    solve_forward(Z_trial, configs[a].v;
+                                  solver=solver,
+                                  preconditioner=preconditioner,
+                                  gmres_tol=gmres_tol,
+                                  gmres_maxiter=gmres_maxiter,
+                                  gmres_memory=gmres_memory)
+                end
                 n_fwd_solves += 1
                 J_trial += configs[a].weight * real(dot(I_trial, configs[a].Q * I_trial))
             end
