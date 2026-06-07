@@ -80,7 +80,7 @@ function _transverse_unit_pol(khat::Vec3, pol::Vec3)
 end
 
 """
-    build_multiangle_configs(mesh, rwg, k, angles; grid, backscatter_cone=10.0, matrix_free_Q=false)
+    build_multiangle_configs(mesh, rwg, k, angles; grid, backscatter_cone=10.0, matrix_free_Q=false, rcs_component=:copol)
 
 Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
 
@@ -95,6 +95,8 @@ Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
 - `grid`: `SphGrid` for far-field evaluation (shared across all angles)
 - `backscatter_cone`: half-angle in degrees for backscatter mask (default 15°)
 - `matrix_free_Q`: if true, store a matrix-free far-field objective operator
+- `rcs_component`: `:copol` for θ-polarized RCS, `:crosspol` for φ-polarized
+  RCS, or `:total` for the sum of both tangential components
 
 # Returns
 Vector of `AngleConfig`, one per incidence angle.
@@ -103,10 +105,14 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
                                    angles::Vector{<:NamedTuple};
                                    grid::SphGrid,
                                    backscatter_cone::Float64=15.0,
-                                   matrix_free_Q::Bool=false)
+                                   matrix_free_Q::Bool=false,
+                                   rcs_component::Symbol=:copol)
     eta0 = 376.730313668
     G_mat = radiation_vectors(mesh, rwg, grid, k; eta0=eta0)
-    pol_mat = pol_linear_x(grid)  # shared θ̂ polarization for all angles
+    pol_theta = pol_linear_x(grid)  # θ̂ polarization
+    pol_phi = pol_linear_y(grid)    # φ̂ polarization
+    rcs_component in (:copol, :crosspol, :total) ||
+        error("rcs_component must be :copol, :crosspol, or :total")
 
     configs = AngleConfig[]
     for ang in angles
@@ -129,12 +135,28 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
         # Q matrix targeting backscatter direction
         mask = direction_mask(grid, bs_dir; half_angle=backscatter_cone * π / 180)
 
-        # Build per-angle polarization: use θ̂ component at each observation point
-        # (standard co-pol RCS definition). For MLFMA-scale optimization, avoid
-        # forming dense N x N objective matrices.
-        Q = matrix_free_Q ?
-            build_Q_operator(G_mat, grid, pol_mat; mask=mask) :
-            build_Q(G_mat, grid, pol_mat; mask=mask)
+        # Build per-angle polarization objective. The default θ̂ component keeps
+        # historical co-pol behavior. The total option matches bistatic_rcs,
+        # which sums both tangential far-field components.
+        Q = if rcs_component == :copol
+            matrix_free_Q ?
+                build_Q_operator(G_mat, grid, pol_theta; mask=mask) :
+                build_Q(G_mat, grid, pol_theta; mask=mask)
+        elseif rcs_component == :crosspol
+            matrix_free_Q ?
+                build_Q_operator(G_mat, grid, pol_phi; mask=mask) :
+                build_Q(G_mat, grid, pol_phi; mask=mask)
+        else
+            if matrix_free_Q
+                sum_q_matrix(
+                    build_Q_operator(G_mat, grid, pol_theta; mask=mask),
+                    build_Q_operator(G_mat, grid, pol_phi; mask=mask),
+                )
+            else
+                build_Q(G_mat, grid, pol_theta; mask=mask) +
+                build_Q(G_mat, grid, pol_phi; mask=mask)
+            end
+        end
 
         w = hasfield(typeof(ang), :weight) ? ang.weight : 1.0
 

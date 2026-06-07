@@ -3122,6 +3122,18 @@ Qx_dense = configs_test[1].Q * x_q
 Qx_mfree = configs_mfree[1].Q * x_q
 q_rel = norm(Qx_dense - Qx_mfree) / max(norm(Qx_dense), 1e-30)
 @assert q_rel < 1e-12 "Matrix-free Q action mismatch: $q_rel"
+configs_total = build_multiangle_configs(mesh, rwg, k, angles_2;
+                                          grid=grid_opt, backscatter_cone=15.0,
+                                          rcs_component=:total)
+configs_total_mfree = build_multiangle_configs(mesh, rwg, k, angles_2;
+                                                grid=grid_opt, backscatter_cone=15.0,
+                                                matrix_free_Q=true,
+                                                rcs_component=:total)
+@assert configs_total_mfree[1].Q isa SumQMatrix "total matrix_free_Q should use SumQMatrix"
+Qx_total_dense = configs_total[1].Q * x_q
+Qx_total_mfree = configs_total_mfree[1].Q * x_q
+q_total_rel = norm(Qx_total_dense - Qx_total_mfree) / max(norm(Qx_total_dense), 1e-30)
+@assert q_total_rel < 1e-12 "Matrix-free total-Q action mismatch: $q_total_rel"
 configs_proj = build_multiangle_configs(
     mesh, rwg, k,
     [(theta_inc=π/4, phi_inc=0.0, pol=Vec3(1.0, 0.0, 0.0), weight=1.0)];

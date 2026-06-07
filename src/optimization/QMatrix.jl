@@ -3,7 +3,7 @@
 # Q_mn = Σ_q w_q (p†·g_m)* (p†·g_n)
 # J(θ) = I† Q I  (radiated power in selected direction/polarization)
 
-export FarFieldQMatrix, build_Q, build_Q_operator, apply_Q, pol_linear_x, pol_linear_y, cap_mask, direction_mask
+export FarFieldQMatrix, SumQMatrix, build_Q, build_Q_operator, apply_Q, pol_linear_x, pol_linear_y, cap_mask, direction_mask
 
 """
     FarFieldQMatrix
@@ -18,6 +18,31 @@ struct FarFieldQMatrix <: AbstractMatrix{ComplexF64}
     pol::Matrix{ComplexF64}
     mask::Union{Nothing,BitVector}
     N::Int
+end
+
+struct SumQMatrix{A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}} <: AbstractMatrix{ComplexF64}
+    A::A
+    B::B
+end
+
+function sum_q_matrix(A::AbstractMatrix{ComplexF64}, B::AbstractMatrix{ComplexF64})
+    size(A) == size(B) || throw(DimensionMismatch("summed Q matrices must have the same size"))
+    return SumQMatrix{typeof(A),typeof(B)}(A, B)
+end
+
+Base.size(Q::SumQMatrix) = size(Q.A)
+Base.eltype(::SumQMatrix) = ComplexF64
+Base.getindex(Q::SumQMatrix, i::Int, j::Int) = Q.A[i, j] + Q.B[i, j]
+
+function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
+                            Q::SumQMatrix,
+                            x::AbstractVector{ComplexF64})
+    length(result) == size(Q, 1) || throw(DimensionMismatch("result length $(length(result)) != $(size(Q, 1))"))
+    tmp = similar(result)
+    mul!(result, Q.A, x)
+    mul!(tmp, Q.B, x)
+    result .+= tmp
+    return result
 end
 
 Base.size(Q::FarFieldQMatrix) = (Q.N, Q.N)
