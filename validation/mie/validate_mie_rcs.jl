@@ -18,9 +18,6 @@ using Statistics
 using CSV
 using DataFrames
 using PlotlySupply
-import PlotlyKaleido
-PlotlyKaleido.start()
-
 # ── Icosphere generator ─────────────────────────────
 function make_icosphere(radius::Float64; subdivisions::Int=2)
     phi_gold = (1 + sqrt(5.0)) / 2
@@ -293,7 +290,7 @@ relayout!(p0, xaxis=attr(title="theta (deg)", range=[0, 180], dtick=30),
           legend=attr(x=0.60, y=0.95),
           margin=attr(l=60, r=30, t=60, b=50))
 fig0_path = joinpath(figdir, "mie_rcs_phi0.png")
-PlotlyKaleido.savefig(p0, fig0_path; width=900, height=550)
+savefig(p0, fig0_path; width=900, height=550)
 println("Plot saved: $fig0_path")
 
 # Plot 2: Phi = 90 (H-plane)
@@ -310,7 +307,7 @@ relayout!(p90, xaxis=attr(title="theta (deg)", range=[0, 180], dtick=30),
           legend=attr(x=0.60, y=0.95),
           margin=attr(l=60, r=30, t=60, b=50))
 fig90_path = joinpath(figdir, "mie_rcs_phi90.png")
-PlotlyKaleido.savefig(p90, fig90_path; width=900, height=550)
+savefig(p90, fig90_path; width=900, height=550)
 println("Plot saved: $fig90_path")
 
 # Plot 3: Both cuts overlaid
@@ -331,7 +328,7 @@ relayout!(p_both, xaxis=attr(title="theta (deg)", range=[0, 180], dtick=30),
           legend=attr(x=0.55, y=0.95),
           margin=attr(l=60, r=30, t=60, b=50))
 fig_both_path = joinpath(figdir, "mie_rcs_both_cuts.png")
-PlotlyKaleido.savefig(p_both, fig_both_path; width=900, height=550)
+savefig(p_both, fig_both_path; width=900, height=550)
 println("Plot saved: $fig_both_path")
 
 # Plot 4: Error (delta dB) for both cuts
@@ -351,7 +348,7 @@ relayout!(p_err, xaxis=attr(title="theta (deg)", range=[0, 180], dtick=30),
           legend=attr(x=0.60, y=0.95),
           margin=attr(l=60, r=30, t=60, b=50))
 fig_err_path = joinpath(figdir, "mie_rcs_error.png")
-PlotlyKaleido.savefig(p_err, fig_err_path; width=900, height=550)
+savefig(p_err, fig_err_path; width=900, height=550)
 println("Plot saved: $fig_err_path")
 
 println("\n" * "="^70)

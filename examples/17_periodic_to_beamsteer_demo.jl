@@ -346,6 +346,7 @@ fig_topo_opt = plot_heatmap(
     xlabel="x [mm]", ylabel="y [mm]",
     title="Optimized topology",
     colorscale="Greys", width=504, height=420)
+relayout!(fig_topo_opt, xaxis=attr(scaleanchor="y", scaleratio=1))
 savefig(fig_topo_opt, joinpath(FIG_DIR, "fig_results_beamsteer_topology_opt.pdf"))
 
 fig_topo_phase = plot_heatmap(
@@ -353,6 +354,7 @@ fig_topo_phase = plot_heatmap(
     xlabel="x [mm]", ylabel="y [mm]",
     title="Phase-ramp baseline",
     colorscale="Greys", width=504, height=420)
+relayout!(fig_topo_phase, xaxis=attr(scaleanchor="y", scaleratio=1))
 savefig(fig_topo_phase, joinpath(FIG_DIR, "fig_results_beamsteer_topology_phase.pdf"))
 
 println("\n  ✓ Saved: data/results_beamsteer_summary.csv")

@@ -7,10 +7,7 @@
 
 using CSV, DataFrames
 using PlotlySupply
-using PlotlyKaleido
 import PlotlySupply: savefig
-PlotlyKaleido.start(mathjax=false)
-
 const PKG_DIR = dirname(@__DIR__)
 const DATA_DIR = joinpath(PKG_DIR, "..", "data")
 const FIG_DIR = joinpath(PKG_DIR, "..", "figures")

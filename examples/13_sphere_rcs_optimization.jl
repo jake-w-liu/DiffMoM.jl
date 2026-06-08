@@ -247,7 +247,7 @@ println("PART B: Impedance Optimization to Reduce Backscatter RCS")
 println("─"^70)
 
 # ── B1. Spatial patch assignment ──────────────────────
-# Divide the sphere into patches using a 4×4×4 grid
+# Divide the sphere into patches with a 4×4×4 grid
 partition = assign_patches_grid(mesh; nx=4, ny=4, nz=4)
 P = partition.P
 println("\nSpatial patches: $P (from 4×4×4 grid, empty cells skipped)")
@@ -601,7 +601,7 @@ addtraces!(sf5, mesh3d(
     intensity = face_patch_ids,
     intensitymode = "cell",
     colorscale = "Greys",
-    colorbar = attr(title=attr(text="Patch ID", font=attr(size=28)),
+    colorbar = attr(title=attr(text="Patch ID", font=attr(size=28), side="right"),
                     tickfont=attr(size=22), len=0.65, thickness=25, x=0.92),
     showscale = true,
     flatshading = true,
@@ -644,7 +644,7 @@ addtraces!(sf6, mesh3d(
     intensity = face_impedance,
     intensitymode = "cell",
     colorscale = "YlOrRd",
-    colorbar = attr(title=attr(text="θ (Ω/sq)", font=attr(size=28)),
+    colorbar = attr(title=attr(text="θ (Ω/sq)", font=attr(size=28), side="right"),
                     tickfont=attr(size=22), len=0.65, thickness=25, x=0.92),
     showscale = true,
     flatshading = true,
