@@ -112,6 +112,7 @@ function aca_lowrank(cache::EFIEApplyCache,
 
     # Start with the first row
     pivot_row = 1
+    converged = false
 
     for k in 1:max_rank
         # Compute residual row at pivot_row
@@ -173,6 +174,11 @@ function aca_lowrank(cache::EFIEApplyCache,
         u_k = col_vec / pivot_val
         v_k = conj.(row_vec)  # store conjugate so block = U * V'
 
+        # Robustness: a non-finite pivot/update (e.g. NaN/Inf from a degenerate
+        # entry or near-zero pivot) would corrupt the low-rank factors. Stop and
+        # return the rank accumulated so far rather than propagating NaN/Inf.
+        (all(isfinite, u_k) && all(isfinite, v_k)) || break
+
         push!(U_cols, u_k)
         push!(V_cols, v_k)
         used_rows[pivot_row] = true
@@ -191,6 +197,7 @@ function aca_lowrank(cache::EFIEApplyCache,
 
         # Convergence check
         if norm_u * norm_v < tol * sqrt(frob_sq)
+            converged = true
             break
         end
 
@@ -209,6 +216,11 @@ function aca_lowrank(cache::EFIEApplyCache,
             break
         end
         pivot_row = next_row
+    end
+
+    if !converged && length(U_cols) == max_rank
+        @warn "ACA reached max_rank=$max_rank without meeting tolerance tol=$tol; " *
+              "the low-rank block may be inaccurate — increase max_rank or loosen tol." maxlog=1
     end
 
     rank = length(U_cols)

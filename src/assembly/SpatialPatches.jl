@@ -16,6 +16,7 @@ Returns a `PatchPartition` with consecutive patch IDs (empty cells skipped).
 """
 function assign_patches_grid(mesh::TriMesh; nx::Int=4, ny::Int=4, nz::Int=1)
     Nt = ntriangles(mesh)
+    Nt >= 1 || error("assign_patches_grid requires a non-empty mesh (got 0 triangles).")
     nx >= 1 && ny >= 1 && nz >= 1 || error("Grid dimensions must be >= 1")
 
     # Compute triangle centroids

@@ -475,7 +475,9 @@ function convert_cad_to_mesh(cad_path::AbstractString, output_path::AbstractStri
         push!(cmd, string(mesh_size))
     end
 
-    result = run(Cmd(cmd); wait=true)
+    # ignorestatus so a non-zero exit yields our explicit message (with the code)
+    # rather than a bare ProcessFailedException thrown by run() before the check.
+    result = run(ignorestatus(Cmd(cmd)); wait=true)
     result.exitcode == 0 || error("Gmsh conversion failed (exit code $(result.exitcode)).")
     isfile(output_path) || error("Gmsh did not produce output file: $output_path")
 

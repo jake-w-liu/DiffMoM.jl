@@ -111,25 +111,30 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
     zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     J_tildes = fill(zero_vec, length(modes))
 
-    for (mi, mode) in enumerate(modes)
-        if !mode.propagating
-            continue
+    # The surface current J(r_q) at each quadrature point is independent of the
+    # Floquet mode, so precompute it once instead of recomputing inside every mode.
+    J_at = [Vector{SVector{3,ComplexF64}}(undef, Nq) for _ in 1:Nt]
+    for t in 1:Nt
+        for q in 1:Nq
+            rq = quad_pts[t][q]
+            J_rq = zero_vec
+            for n_idx in tri_to_basis[t]
+                J_rq += I_coeffs[n_idx] * eval_rwg(rwg, n_idx, rq, t)
+            end
+            J_at[t][q] = J_rq
         end
+    end
+
+    for (mi, mode) in enumerate(modes)
+        mode.propagating || continue
 
         integral = zero_vec
         for t in 1:Nt
             At = areas[t]
             for q in 1:Nq
                 rq = quad_pts[t][q]
-
-                J_rq = zero_vec
-                for n_idx in tri_to_basis[t]
-                    fn = eval_rwg(rwg, n_idx, rq, t)
-                    J_rq += I_coeffs[n_idx] * fn
-                end
-
                 phase = exp(im * (mode.kx * rq[1] + mode.ky * rq[2]))
-                integral += J_rq * phase * wq[q] * (2 * At)
+                integral += J_at[t][q] * phase * wq[q] * (2 * At)
             end
         end
 

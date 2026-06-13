@@ -79,7 +79,7 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
             continue
         end
         idx = 3 * (q - 1)
-        p = Q.pol[:, q]
+        p = SVector{3,ComplexF64}(Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])  # avoid slice alloc
         wq = Q.weights[q]
 
         yq = zero(ComplexF64)
@@ -120,9 +120,9 @@ function build_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
         if mask !== nothing && !mask[q]
             continue
         end
-        p = pol[:, q]
+        p = SVector{3,ComplexF64}(pol[1, q], pol[2, q], pol[3, q])  # avoid slice alloc
+        idx = 3 * (q - 1)
         for n in 1:N
-            idx = 3 * (q - 1)
             gn = SVector{3,ComplexF64}(G_mat[idx+1, n], G_mat[idx+2, n], G_mat[idx+3, n])
             y[q, n] = dot(p, gn)
         end

@@ -209,4 +209,61 @@ For a general EM MoM solver, the codebase is approximately **45-55% complete** i
 
 
 ---
-*Last updated: February 13, 2026*
+
+## Known Issues / Deferred Findings (2026-06 bug hunt)
+
+The 2026-06 deep bug hunt fixed all critical/high correctness bugs (magnetic-dipole
+factor-i, PO far-field sign, MLFMA Legendre overflow at L≥90, periodic power balance
+at oblique incidence, grounded-EFIE NaN, etc.) and disabled the broken Müller SIE.
+The items below were verified real but deferred — each needs either a non-trivial
+refactor, a performance benchmark, or an accuracy reference to fix with confidence
+(Correct/Robust/Complete). None affects the current passing test suite.
+
+### Scaling / memory (industrial readiness)
+- **radiation_vectors phase cache is `O(NΩ·Nq·Nt)`** (`postprocessing/FarField.jl:81`).
+  A dense `ComplexF64` phase cache that does not scale; trade memory for recompute,
+  or block over directions, for large far-field grids.
+- **PeriodicEFIE ΔG cache is `O(Nq²·Nt²)`** (`assembly/PeriodicEFIE.jl:160`). Dense
+  per-pair cache; restructure to stream or exploit translational symmetry.
+- **MLFMA translation via `Dict{NTuple{3,Int}}` lookup in the hot matvec**
+  (`fast/MLFMA.jl:1444`). Precompute a per-box vector of translation-factor references.
+- **EM/DDA dense assembly recomputes each voxel-pair block ~36×** (`mom3d/EMDDA3D.jl`
+  dense path) via the generic `Matrix(getindex)` fallback; fill each 6×6 block once.
+  (Low priority — large problems use the matrix-free operator.)
+- **DDA/EM matvec lacks threading/@inbounds** (`mom3d/DDA3D.jl:274`). Output rows are
+  independent (thread-safe), but threading the EM matvec conflicts with its
+  `@allocated < 4096` test — needs a per-thread-buffer design.
+- **FFT-DDA materializes all 36 kernel blocks at once** (`mom3d/FFTDDA3D.jl:220`);
+  reuse one block buffer.
+- **DensityFiltering conic filter is `O(Nt²)`** (`optimization/DensityFiltering.jl:47`);
+  use spatial binning.
+- **Z_corr computes all N² entries even when symmetric at normal incidence**
+  (`assembly/PeriodicEFIE.jl:186`).
+- **assemble_multiple_excitations / assemble_multi recompute the mesh quadrature cache
+  per excitation** (`assembly/Excitation.jl:889,1089`); thread a shared cache through
+  the `assemble_*` functions.
+
+### Near-field / operator accuracy (needs a reference to validate a fix)
+- **NearField near-singular branch** (`postprocessing/NearField.jl:219`): the
+  scalar-potential gradient term uses the full `grad_greens` (1/R² singular,
+  un-subtracted) while the vector term is singularity-subtracted; and the vector
+  singular part uses only the zeroth-order `J_avg·∫1/R` (omits the linear remainder).
+  Both reduce near-surface accuracy; mirror the EFIE self-cell treatment.
+- **Dielectric SIE K operator near-singular refinement** only triggers for
+  edge-sharing/identical triangle pairs, not vertex-touching pairs
+  (`mom3d/SurfaceIE3D.jl:111`).
+
+### Müller SIE (disabled — see commit)
+- Re-enable requires μ/ε-weighted off-diagonal K + weighted RHS AND the second-kind
+  identity (n̂× Gram) term that the principal-value K operator omits, in both the
+  dense and matrix-free paths; verify by matching PMCHWT currents on a sphere
+  (consistent weighting alone only reaches ~23%/51% J/M error).
+
+### PTD (guarded)
+- The fringe coefficients are only correct for half-plane edges (n=2). Interior
+  wedges (`postprocessing/PTD.jl:240`) currently warn and use a half-plane
+  approximation; a general-γ stable `(1/2)tan(γ−v)` term is needed, validated
+  against PO-FACETS or analytic wedge diffraction.
+
+---
+*Last updated: June 13, 2026*

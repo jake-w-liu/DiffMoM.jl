@@ -332,8 +332,14 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
 
     prefactor = -1.0 / (2π)
 
+    # Precompute direction Vec3s once (avoids a column-slice allocation per direction).
+    rhat_vec = Vector{Vec3}(undef, NΩ)
+    @inbounds for q in 1:NΩ
+        rhat_vec[q] = Vec3(grid.rhat[1, q], grid.rhat[2, q], grid.rhat[3, q])
+    end
+
     for q in 1:NΩ
-        r_hat = Vec3(grid.rhat[:, q])
+        r_hat = rhat_vec[q]
 
         Ex = complex(0.0)
         Ey = complex(0.0)

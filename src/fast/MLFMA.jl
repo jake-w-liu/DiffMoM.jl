@@ -1264,10 +1264,10 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
             child_samp = samplings[l]      # level l+1 (finer)
             parent_samp = samplings[l - 1]  # level l (coarser)
 
-            # Aggregation: Lagrange interp (kept as fallback, not used)
-            It_sp, Ip_sp = build_interp_matrices(parent_samp, child_samp; order=6)
-            push!(interp_theta, Matrix(It_sp))
-            push!(interp_phi, Matrix(Ip_sp))
+            # NOTE: the dense Lagrange interpolation matrices (build_interp_matrices)
+            # are not used by the matvec — it uses the per-m spectral filters below.
+            # They are therefore not built/stored (saves O(npts²) dense memory and
+            # setup time per level); interp_theta/interp_phi remain empty for compat.
 
             # Per-m spectral filters using associated Legendre P_l^m
             L_child = child_samp.L
