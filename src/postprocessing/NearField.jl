@@ -115,9 +115,20 @@ function _precompute_nearfield_triangle_data(mesh::TriMesh, rwg::RWGData,
     J_samples = zeros(CVec3, Nq, Nt)
     div_samples = Vector{ComplexF64}(undef, Nt)
 
+    # Vertex values of the surface current J(r') on each triangle.  Because the
+    # RWG current is affine on a flat triangle, storing the three vertex values
+    # lets us reconstruct J at ANY point (e.g. the near-singular projection
+    # point) exactly via barycentric interpolation — needed by the
+    # singularity-subtracted near-field branch.
+    J_verts = Matrix{CVec3}(undef, 3, Nt)
+
     @inbounds for t in 1:Nt
         quad_pts[t] = tri_quad_points(mesh, t, xi)
         areas[t] = triangle_area(mesh, t)
+        v1 = _mesh_vertex(mesh, mesh.tri[1, t])
+        v2 = _mesh_vertex(mesh, mesh.tri[2, t])
+        v3 = _mesh_vertex(mesh, mesh.tri[3, t])
+        Jv1 = zero(CVec3); Jv2 = zero(CVec3); Jv3 = zero(CVec3)
         divt = 0.0 + 0im
 
         for n in tri_to_basis[t]
@@ -126,12 +137,42 @@ function _precompute_nearfield_triangle_data(mesh::TriMesh, rwg::RWGData,
             for q in 1:Nq
                 J_samples[q, t] += In * eval_rwg(rwg, n, quad_pts[t][q], t)
             end
+            Jv1 += In * eval_rwg(rwg, n, v1, t)
+            Jv2 += In * eval_rwg(rwg, n, v2, t)
+            Jv3 += In * eval_rwg(rwg, n, v3, t)
         end
 
+        J_verts[1, t] = Jv1
+        J_verts[2, t] = Jv2
+        J_verts[3, t] = Jv3
         div_samples[t] = divt
     end
 
-    return quad_pts, areas, J_samples, div_samples
+    return quad_pts, areas, J_samples, div_samples, J_verts
+end
+
+# Reconstruct the (affine) RWG current J at point `r` on triangle `t` from its
+# three precomputed vertex values, using barycentric interpolation.  Exact for
+# the linear RWG basis.  Used for the near-singular leading-term evaluation.
+@inline function _eval_J_affine(J_verts::AbstractMatrix{CVec3}, t::Int,
+                                r::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
+    e1 = V2 - V1
+    e2 = V3 - V1
+    d00 = dot(e1, e1)
+    d01 = dot(e1, e2)
+    d11 = dot(e2, e2)
+    rp = r - V1
+    d20 = dot(rp, e1)
+    d21 = dot(rp, e2)
+    denom = d00 * d11 - d01 * d01
+    if abs(denom) < 1e-30
+        return J_verts[1, t]
+    end
+    inv_denom = 1.0 / denom
+    lam2 = (d11 * d20 - d01 * d21) * inv_denom   # weight of V2
+    lam3 = (d00 * d21 - d01 * d20) * inv_denom   # weight of V3
+    lam1 = 1.0 - lam2 - lam3                     # weight of V1
+    return lam1 * J_verts[1, t] + lam2 * J_verts[2, t] + lam3 * J_verts[3, t]
 end
 
 function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
@@ -162,7 +203,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
-    quad_pts, areas, J_samples, div_samples =
+    quad_pts, areas, J_samples, div_samples, J_verts =
         _precompute_nearfield_triangle_data(mesh, rwg, I_coeffs, xi)
 
     Nobs = length(observation_points)
@@ -193,8 +234,6 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
         h_t_all[t] = sqrt(2 * areas[t])
     end
 
-    wq_sum_inv = 1.0 / sum(wq[qq] for qq in 1:Nq)
-
     Threads.@threads for i in 1:Nobs
         @inbounds begin
         robs = observation_points[i]
@@ -213,8 +252,31 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
             h_t = h_t_all[t]
             if dist < h_t / Nq
-                # ── Vector potential: singularity subtraction ──
+                # ── Near-singular branch: singularity subtraction on BOTH the
+                #    vector (1/R) and scalar-gradient (1/R²) potential terms,
+                #    mirroring the EFIE self-cell treatment in
+                #    SingularIntegrals.jl. ──
+                #
+                # Vector term  ∫_T J(r')/(4πR) dS' splits as
+                #   J(r'_*)·S/(4π)  +  ∫_T [J(r') − J(r'_*)]/(4πR) dS'
+                # where r'_* is the in-plane projection of the observation point.
+                # The remainder is bounded because the RWG current is affine.
+                #
+                # Scalar term  ∫_T ∇_r G dS' splits as
+                #   ∫_T ∇_r G_smooth dS'  +  (1/4π) ∇_r S
+                # where ∇_r G_smooth = ∇_r G − ∇_r(1/4πR), ∇_r(1/4πR) =
+                # −(r−r')/(4πR³), and ∇_r S is the analytical gradient of the
+                # 1/R potential integral.  This subtracts the 1/R² singularity
+                # that the old code integrated directly.
                 S = analytical_integral_1overR(robs, V1, V2, V3)
+
+                # In-plane projection r'_* of robs onto the triangle plane.
+                n_T = cross(V2 - V1, V3 - V1)
+                n_nrm = norm(n_T)
+                nhatT = n_nrm < 1e-30 ? SVector{3,Float64}(0.0, 0.0, 0.0) : n_T / n_nrm
+                h_proj = dot(robs - V1, nhatT)
+                r_star = robs - h_proj * nhatT
+                J_star = _eval_J_affine(J_verts, t, r_star, V1, V2, V3)
 
                 for q in 1:Nq
                     rq = quad_pts[t][q]
@@ -222,27 +284,48 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                     Gs = greens_smooth(robs, rq, k)
                     Jq = J_samples[q, t]
 
+                    # Vector smooth part
                     Ex += pref_vec * Jq[1] * (wt * Gs)
                     Ey += pref_vec * Jq[2] * (wt * Gs)
                     Ez += pref_vec * Jq[3] * (wt * Gs)
 
+                    # Vector singular remainder: [J(rq) − J(r'_*)]/(4πR)
+                    Rv = robs - rq
+                    R = sqrt(dot(Rv, Rv))
+                    if R > 1e-14
+                        dJ = Jq - J_star
+                        crem = (wt * inv4pi) / R
+                        Ex += pref_vec * dJ[1] * crem
+                        Ey += pref_vec * dJ[2] * crem
+                        Ez += pref_vec * dJ[3] * crem
+                    end
+
                     if abs(divt) > 0.0
+                        # Scalar smooth part: ∇G_smooth = ∇G − ∇(1/4πR)
                         gradG = grad_greens(robs, rq, k)
+                        if R > 1e-14
+                            inv4piR3 = inv4pi / (R * R * R)
+                            gradG = gradG + Rv * inv4piR3   # subtract −(r−r')/(4πR³)
+                        end
                         Ex += pref_scl * divt * (wt * gradG[1])
                         Ey += pref_scl * divt * (wt * gradG[2])
                         Ez += pref_scl * divt * (wt * gradG[3])
                     end
                 end
 
-                # Vector potential singular part: J_avg · ∫ 1/(4πR) dS'
-                J_avg = SVector{3,ComplexF64}(0.0, 0.0, 0.0)
-                for q in 1:Nq
-                    J_avg = J_avg + J_samples[q, t] * wq[q]
+                # Vector singular leading term: J(r'_*) · S/(4π)
+                Ex += pref_vec * J_star[1] * (inv4pi * S)
+                Ey += pref_vec * J_star[2] * (inv4pi * S)
+                Ez += pref_vec * J_star[3] * (inv4pi * S)
+
+                # Scalar singular term: (1/4π) ∇_r S (analytical)
+                if abs(divt) > 0.0
+                    gradS = grad_analytical_integral_1overR(robs, V1, V2, V3)
+                    cscl = pref_scl * divt * inv4pi
+                    Ex += cscl * gradS[1]
+                    Ey += cscl * gradS[2]
+                    Ez += cscl * gradS[3]
                 end
-                J_avg = J_avg * wq_sum_inv
-                Ex += pref_vec * J_avg[1] * (inv4pi * S)
-                Ey += pref_vec * J_avg[2] * (inv4pi * S)
-                Ez += pref_vec * J_avg[3] * (inv4pi * S)
             else
                 # ── Standard quadrature (far from surface) ──
                 for q in 1:Nq
@@ -333,11 +416,12 @@ sign convention as the rest of the package:
 - Multi-point input: `Matrix{ComplexF64}` of size `(3, Nobs)`
 
 # Limitations
-- This is a direct quadrature evaluator for observation points away from the
-  surface.
+- This is a direct quadrature evaluator. For observation points close to the
+  surface it automatically switches to a singularity-subtracted near-field
+  scheme (the vector `1/R` and scalar-gradient `1/R²` singularities are removed
+  analytically/semi-analytically, mirroring the EFIE self-cell treatment), so
+  near-surface accuracy no longer degrades with the singularity.
 - On-surface evaluation is not supported.
-- Very near-surface points can require higher `quad_order`; dedicated
-  near-singular quadrature is not implemented yet.
 """
 function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                            I_coeffs::AbstractVector{<:Number},

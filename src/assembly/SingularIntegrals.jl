@@ -6,7 +6,8 @@
 #   - Smooth part: standard product quadrature with G_smooth (bounded)
 #   - Singular part: semi-analytical (outer quadrature, analytical inner)
 
-export analytical_integral_1overR, self_cell_contribution, adjacent_cell_contribution
+export analytical_integral_1overR, grad_analytical_integral_1overR,
+       self_cell_contribution, adjacent_cell_contribution
 
 """
     analytical_integral_1overR(P, V1, V2, V3)
@@ -75,6 +76,81 @@ function analytical_integral_1overR(P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
     end
 
     return log_sum - abs_h * atan_sum
+end
+
+"""
+    grad_analytical_integral_1overR(P, V1, V2, V3)
+
+Analytical gradient (with respect to the observation point `P`) of the static
+potential integral `S(P) = ∫_T 1/|P - r'| dS'` over the flat triangle
+`T = (V1, V2, V3)`:
+
+  ∇_P S(P) = -∫_T (P - r') / |P - r'|³ dS'
+
+Closed form (Graglia 1993; Wilton et al. 1984), split into an in-plane part
+and a part along the triangle normal `n̂`:
+
+  ∇_P S = -Σ_edges û_i · log[(R⁺ + s⁺)/(R⁻ + s⁻)]
+          - n̂ · sign(h) · Σ_edges [atan(d_i s⁺/(R₀²+|h|R⁺)) − atan(d_i s⁻/(R₀²+|h|R⁻))]
+
+where `û_i = l̂_i × n̂` is the in-plane unit vector normal to edge `i`, `h` is the
+signed height of `P` above the triangle plane, and the remaining quantities are
+the same in-plane projections used by [`analytical_integral_1overR`](@ref).
+
+Returns an `SVector{3,Float64}`. This is the gradient counterpart of the scalar
+`analytical_integral_1overR`, used to subtract the `1/R²` singularity of the
+mixed-potential scalar term `∫_T ∇_r G dS'` near the surface.
+"""
+function grad_analytical_integral_1overR(P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
+    n_T = cross(V2 - V1, V3 - V1)
+    n_norm = norm(n_T)
+    if n_norm < 1e-30
+        return SVector{3,Float64}(0.0, 0.0, 0.0)
+    end
+    n_T = n_T / n_norm
+
+    h = dot(P - V1, n_T)
+    abs_h = abs(h)
+    sgn_h = h >= 0.0 ? 1.0 : -1.0
+    xi = P - h * n_T   # projection of P onto triangle plane
+
+    edges = ((V1, V2), (V2, V3), (V3, V1))
+    tang = SVector{3,Float64}(0.0, 0.0, 0.0)  # in-plane gradient component
+    atan_sum = 0.0
+
+    for (A, B) in edges
+        edge_vec = B - A
+        edge_len = norm(edge_vec)
+        if edge_len < 1e-30
+            continue
+        end
+        lhat = edge_vec / edge_len
+        nhat = cross(lhat, n_T)
+
+        d_i = dot(A - xi, nhat)
+
+        s_minus = dot(A - xi, lhat)
+        s_plus  = dot(B - xi, lhat)
+        R_minus = norm(P - A)
+        R_plus  = norm(P - B)
+        R0_sq = d_i^2 + h^2
+
+        # In-plane part: û_i log[(R⁺ + s⁺)/(R⁻ + s⁻)]
+        denom = s_minus + R_minus
+        numer = s_plus + R_plus
+        if abs(denom) > 1e-30 && abs(numer) > 1e-30
+            tang = tang + nhat * log(numer / denom)
+        end
+
+        # Normal part: arctan terms (vanish for P in-plane, where h = 0)
+        if abs_h > 1e-15 && abs(d_i) > 1e-15
+            atan_plus  = atan(d_i * s_plus  / (R0_sq + abs_h * R_plus))
+            atan_minus = atan(d_i * s_minus / (R0_sq + abs_h * R_minus))
+            atan_sum += atan_plus - atan_minus
+        end
+    end
+
+    return -tang - n_T * (sgn_h * atan_sum)
 end
 
 """

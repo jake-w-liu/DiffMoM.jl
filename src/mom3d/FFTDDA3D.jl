@@ -194,21 +194,13 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                    x::AbstractVector{ComplexF64}) =
     LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
-function _em_interaction_block_fft_3d(r::Vec3, k::Float64)
-    block = Matrix{ComplexF64}(undef, 6, 6)
+@inline function _em_interaction_field_fft_3d(r::Vec3, k::Float64, b::Int)
     origin = Vec3(0.0, 0.0, 0.0)
-    for b in 1:6
-        q = b <= 3 ? CVec3(ntuple(a -> a == b ? 1.0 + 0im : 0.0 + 0im, 3)) :
-            CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-        m = b > 3 ? CVec3(ntuple(a -> a == b - 3 ? 1.0 + 0im : 0.0 + 0im, 3)) :
-            CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-        E, H = _em_interaction_apply_3d(r, origin, k, q, m)
-        for a in 1:3
-            block[a, b] = E[a]
-            block[a + 3, b] = H[a]
-        end
-    end
-    return block
+    q = b <= 3 ? CVec3(ntuple(a -> a == b ? 1.0 + 0im : 0.0 + 0im, 3)) :
+        CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+    m = b > 3 ? CVec3(ntuple(a -> a == b - 3 ? 1.0 + 0im : 0.0 + 0im, 3)) :
+        CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+    return _em_interaction_apply_3d(r, origin, k, q, m)
 end
 
 function fft_em_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
@@ -218,28 +210,37 @@ function fft_em_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
     nx, ny, nz = grid.nx, grid.ny, grid.nz
     px, py, pz = 2nx - 1, 2ny - 1, 2nz - 1
     kernel_hat = Array{ComplexF64}(undef, px, py, pz, 6, 6)
-    kernel = zeros(ComplexF64, px, py, pz, 6, 6)
+    # Build and transform the spatial kernel one source column at a time,
+    # reusing a single padded buffer instead of materializing all 36 blocks
+    # simultaneously. The interaction for source component `b` carries all six
+    # output components `a`, so a single offset sweep fills `block[:, :, :, :]`
+    # for that `b`; the buffer is then transformed in place, column by column.
+    block = zeros(ComplexF64, px, py, pz, 6)
 
-    for oz in -(nz - 1):(nz - 1)
-        iz = _fft_dda_mod_index(oz, pz)
-        z = oz * grid.dz
-        for oy in -(ny - 1):(ny - 1)
-            iy = _fft_dda_mod_index(oy, py)
-            y = oy * grid.dy
-            for ox in -(nx - 1):(nx - 1)
-                ox == 0 && oy == 0 && oz == 0 && continue
-                ix = _fft_dda_mod_index(ox, px)
-                x = ox * grid.dx
-                block = _em_interaction_block_fft_3d(Vec3(x, y, z), k)
-                for a in 1:6, b in 1:6
-                    kernel[ix, iy, iz, a, b] = block[a, b]
+    for b in 1:6
+        fill!(block, 0.0 + 0.0im)
+        for oz in -(nz - 1):(nz - 1)
+            iz = _fft_dda_mod_index(oz, pz)
+            z = oz * grid.dz
+            for oy in -(ny - 1):(ny - 1)
+                iy = _fft_dda_mod_index(oy, py)
+                y = oy * grid.dy
+                for ox in -(nx - 1):(nx - 1)
+                    ox == 0 && oy == 0 && oz == 0 && continue
+                    ix = _fft_dda_mod_index(ox, px)
+                    x = ox * grid.dx
+                    E, H = _em_interaction_field_fft_3d(Vec3(x, y, z), k, b)
+                    for a in 1:3
+                        block[ix, iy, iz, a] = E[a]
+                        block[ix, iy, iz, a + 3] = H[a]
+                    end
                 end
             end
         end
-    end
-
-    for a in 1:6, b in 1:6
-        copyto!(view(kernel_hat, :, :, :, a, b), FFTW.fft(view(kernel, :, :, :, a, b)))
+        for a in 1:6
+            FFTW.fft!(view(block, :, :, :, a))
+            copyto!(view(kernel_hat, :, :, :, a, b), view(block, :, :, :, a))
+        end
     end
 
     return FFTEMDDAKernel3D((px, py, pz), kernel_hat)

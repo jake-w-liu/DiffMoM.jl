@@ -409,7 +409,13 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
     xread = y === x ? copy(x) : x
     N = A.grid.nvoxels
-    for i in 1:N
+    # Output voxels are independent, but threading is intentionally avoided here:
+    # test/test_mom3d_em.jl asserts (@allocated mul!(y, A_op, x)) < 4096 and the
+    # `Threads.@threads` task-spawn overhead allocates regardless of thread count,
+    # which would break that budget. `@inbounds` over the verified-safe indexing
+    # (1 <= i,j <= N, components 1..6, xread/y length 6N) keeps the loop at zero
+    # allocations while removing per-access bounds checks.
+    @inbounds for i in 1:N
         Ei, Hi = _split_em_field(_read_em_field6(xread, i))
         ri = A.grid.centers[i]
         for j in 1:N
@@ -434,6 +440,69 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                    A::EMDDAOperator3D,
                    x::AbstractVector{ComplexF64}) =
     LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
+
+# Compute the 6x6 off-diagonal interaction block coupling source voxel j to
+# observation voxel i (i != j). Column b is -[E; H] produced by the dipoles
+# alpha_j * e_b, matching `getindex(A, row, col)` exactly but evaluating the
+# pair interaction once per block instead of once per scalar entry.
+@inline function _em_dense_block(A::EMDDAOperator3D, i::Int, j::Int)
+    alphaj = A.alpha[j]
+    ri = A.grid.centers[i]
+    rj = A.grid.centers[j]
+    k = A.k0
+    cols = ntuple(b -> begin
+        basis = _CVec6DDA(ntuple(c -> c == b ? 1.0 + 0im : 0.0 + 0im, 6))
+        q, m = _split_em_field(alphaj * basis)
+        E, H = _em_interaction_apply_3d(ri, rj, k, q, m)
+        -_join_em_field(E, H)
+    end, 6)
+    return _CMat6DDA(ntuple(idx -> begin
+        b = div(idx - 1, 6) + 1
+        a = mod1(idx, 6)
+        cols[b][a]
+    end, 36))
+end
+
+# Fill the 6 columns owned by source voxel j (i.e. the block column of the dense
+# operator). Each j writes a disjoint set of columns, so this is safe to run
+# concurrently across j.
+@inline function _em_fill_block_column!(M::Matrix{ComplexF64}, A::EMDDAOperator3D,
+                                        j::Int, N::Int)
+    @inbounds begin
+        alphaj = A.alpha[j]
+        iszero(alphaj) && return nothing
+        for i in 1:N
+            i == j && continue
+            block = _em_dense_block(A, i, j)
+            for b in 1:6
+                col = _em_index(j, b)
+                for a in 1:6
+                    M[_em_index(i, a), col] = block[a, b]
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+# Dense materialization that fills each voxel-pair block once. The generic
+# `AbstractMatrix` fallback would call `getindex` per scalar entry, recomputing
+# every 6x6 voxel-pair interaction 36 times. The work for distinct source voxels
+# j writes disjoint columns, so it is threaded when worker threads exist.
+function Base.Matrix(A::EMDDAOperator3D)
+    N = A.grid.nvoxels
+    M = Matrix{ComplexF64}(I, 6N, 6N)
+    if Threads.nthreads() > 1
+        Threads.@threads for j in 1:N
+            _em_fill_block_column!(M, A, j, N)
+        end
+    else
+        for j in 1:N
+            _em_fill_block_column!(M, A, j, N)
+        end
+    end
+    return M
+end
 
 """
     assemble_em_dda_3d(grid, k0, eps_r, mu_r; radiative_correction=false)

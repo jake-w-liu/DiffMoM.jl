@@ -245,6 +245,64 @@ function precompute_translation_factors(level::OctreeLevel, k::Float64, sampling
     return factors
 end
 
+"""
+    TranslationPlan
+
+Flattened, per-level translation schedule built once from the interaction
+lists and the translation-factor `Dict`. Replaces the per-interaction
+`Dict{NTuple{3,Int}}` lookup (`tf[dijk]`) in the hot matvec loop with a plain
+array index.
+
+Interactions for destination box `bi` occupy the contiguous slice
+`offsets[bi]:offsets[bi+1]-1`. For interaction `e` in that slice,
+`src_idx[e]` is the source (interaction-list) box index and `T[e]` is a direct
+reference to the translation-factor vector for that box pair.
+"""
+struct TranslationPlan
+    offsets::Vector{Int}              # length nboxes+1, CSR-style row pointers
+    src_idx::Vector{Int}             # length n_interactions, source box index
+    T::Vector{Vector{ComplexF64}}    # length n_interactions, refs to T factors
+end
+
+"""
+    build_translation_plan(level, factors)
+
+Build a `TranslationPlan` for `level`, resolving every interaction-list entry
+to a direct reference to its precomputed translation-factor vector in
+`factors`. Done once at operator-build time so the matvec inner loop indexes an
+array instead of hashing a relative-position tuple.
+"""
+function build_translation_plan(level::OctreeLevel,
+                                 factors::Dict{NTuple{3,Int}, Vector{ComplexF64}})
+    nboxes = length(level.boxes)
+    offsets = Vector{Int}(undef, nboxes + 1)
+
+    n_interactions = 0
+    for box in level.boxes
+        n_interactions += length(box.interaction_list)
+    end
+
+    src_idx = Vector{Int}(undef, n_interactions)
+    T = Vector{Vector{ComplexF64}}(undef, n_interactions)
+
+    e = 0
+    for (bi, box) in enumerate(level.boxes)
+        offsets[bi] = e + 1
+        for il_id in box.interaction_list
+            il_box = level.boxes[il_id]
+            dijk = (box.ijk[1] - il_box.ijk[1],
+                    box.ijk[2] - il_box.ijk[2],
+                    box.ijk[3] - il_box.ijk[3])
+            e += 1
+            src_idx[e] = il_id
+            T[e] = factors[dijk]   # reference to existing vector, no copy
+        end
+    end
+    offsets[nboxes + 1] = e + 1
+
+    return TranslationPlan(offsets, src_idx, T)
+end
+
 # ─── Lagrange interpolation ─────────────────────────────────────
 
 """
@@ -1154,6 +1212,7 @@ struct MLFMAOperator <: AbstractMatrix{ComplexF64}
     prefactor::ComplexF64
     samplings::Vector{SphereSampling}        # indexed by level (2:nLevels), so samplings[l-1]
     trans_factors::Vector{Dict{NTuple{3,Int}, Vector{ComplexF64}}}  # indexed same
+    trans_plans::Vector{TranslationPlan}     # flattened per-level translation schedule, indexed same
     bf_patterns::Array{ComplexF64,3}         # (4, npts_leaf, N)
     interp_theta::Vector{Matrix{Float64}}    # aggregation: Lagrange interp child→parent (θ) [unused, kept for compat]
     interp_phi::Vector{Matrix{Float64}}      # aggregation: Lagrange interp child→parent (φ) [unused, kept for compat]
@@ -1243,9 +1302,14 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     verbose && print("  MLFMA: Computing translation factors... ")
     t0 = time()
     trans_factors = Vector{Dict{NTuple{3,Int}, Vector{ComplexF64}}}(undef, nL - 1)
+    trans_plans = Vector{TranslationPlan}(undef, nL - 1)
     for l in 2:nL
         trans_factors[l - 1] = precompute_translation_factors(
             octree.levels[l], k, samplings[l - 1])
+        # Flatten the interaction lists into a direct-index schedule so the
+        # matvec inner loop avoids the per-interaction tuple-hash Dict lookup.
+        trans_plans[l - 1] = build_translation_plan(
+            octree.levels[l], trans_factors[l - 1])
     end
     verbose && println("$(round(time()-t0, digits=2))s")
 
@@ -1284,7 +1348,7 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     workspace = _build_mlfma_workspace(octree, samplings, agg_filters, disagg_filters)
 
     return MLFMAOperator(octree, Z_near, k, eta0, prefactor,
-                          samplings, trans_factors, bf_patterns,
+                          samplings, trans_factors, trans_plans, bf_patterns,
                           interp_theta, interp_phi, agg_filters, disagg_filters, N,
                           workspace)
 end
@@ -1474,17 +1538,15 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
             fill!(incoming[l - 1][bi], zero(ComplexF64))
         end
 
-        tf = A.trans_factors[l - 1]
-        for (bi, box) in enumerate(level.boxes)
+        # Flattened translation schedule: indexes precomputed T-vector
+        # references directly instead of hashing a relative-position tuple.
+        plan = A.trans_plans[l - 1]
+        for bi in 1:nboxes
             dst = incoming[l - 1][bi]
-            for il_id in box.interaction_list
-                il_box = level.boxes[il_id]
-                dijk = (box.ijk[1] - il_box.ijk[1],
-                        box.ijk[2] - il_box.ijk[2],
-                        box.ijk[3] - il_box.ijk[3])
-                T = tf[dijk]
-                src = agg[l - 1][il_id]
-                @inbounds for q in 1:samp.npts
+            @inbounds for e in plan.offsets[bi]:(plan.offsets[bi + 1] - 1)
+                T = plan.T[e]
+                src = agg[l - 1][plan.src_idx[e]]
+                for q in 1:samp.npts
                     Tq = T[q]
                     for c in 1:4
                         dst[c, q] += Tq * src[c, q]
@@ -1640,18 +1702,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperat
     for l in 2:nL
         level = A.op.octree.levels[l]
         samp = A.op.samplings[l - 1]
+        nboxes = length(level.boxes)
 
-        tf = A.op.trans_factors[l - 1]
-        for (bi, box) in enumerate(level.boxes)
+        # Flattened translation schedule (same plan as the forward matvec);
+        # indexes precomputed T-vector references directly.
+        plan = A.op.trans_plans[l - 1]
+        for bi in 1:nboxes
             dst_adj = incoming[l - 1][bi]
-            for il_id in box.interaction_list
-                il_box = level.boxes[il_id]
-                dijk = (box.ijk[1] - il_box.ijk[1],
-                        box.ijk[2] - il_box.ijk[2],
-                        box.ijk[3] - il_box.ijk[3])
-                T = tf[dijk]
-                src_adj = agg[l - 1][il_id]
-                @inbounds for q in 1:samp.npts
+            @inbounds for e in plan.offsets[bi]:(plan.offsets[bi + 1] - 1)
+                T = plan.T[e]
+                src_adj = agg[l - 1][plan.src_idx[e]]
+                for q in 1:samp.npts
                     Tq = conj(T[q])  # conjugate for adjoint
                     for c in 1:4
                         src_adj[c, q] += Tq * dst_adj[c, q]

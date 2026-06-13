@@ -200,28 +200,64 @@ is finite. The common-denominator form avoids catastrophic cancellation.
 end
 
 """
-    _stable_YplusTan(v, n, sign_Y, sign_tan) -> Float64
+    _stable_YplusTanG(v, n, γ, sign_Y, sign_tan) -> Float64
 
-Compute sign_Y * Y + sign_tan * (1/2)tan(v) stably.
+Compute  sign_Y · Y + sign_tan · (1/2)·tan(γ − v)  stably for a general
+wedge of exterior angle γ = n·π.
 
-Y = (sin(π/n)/n) / [cos(π/n) - cos(2v/n)]. Near the reflection boundary
-where both Y and tan diverge, the combined expression stays finite.
+`Y = (sin(π/n)/n) / [cos(π/n) − cos(2v/n)]`. Both `Y` and `tan(γ−v)` are
+evaluated through a single common-denominator expression
+
+    S = [ sign_Y·a·cos(γ−v) + sign_tan·(1/2)·sin(γ−v)·D ] / [ D·cos(γ−v) ],
+
+with `a = sin(π/n)/n` and `D = cos(π/n) − cos(2v/n)`. This is the exact
+value of `sign_Y·Y + sign_tan·(1/2)tan(γ−v)` (verified algebraically) and
+avoids catastrophic cancellation when the two large terms partially cancel
+away from a pole.
+
+For the half-plane case `n = 2` (γ = 2π) one has `tan(2π−v) = −tan(v)`, so
+this reduces *exactly* to the legacy `sign_Y·Y − sign_tan·(1/2)tan(v)`
+expression (and to its fallback) — i.e. the previous code is recovered with
+the tan sign flipped, which is why the caller flips `sign_tan` below.
+
+At a true reflection boundary `Y` and `tan(γ−v)` diverge together; the GTD
+fringe coefficient genuinely blows up there (ray theory limitation), so the
+result is clamped to `±cap`, exactly as in the legacy half-plane path.
 """
-@inline function _stable_YplusTan(v::Float64, n::Float64, sign_Y::Int, sign_tan::Int;
-                                    cap::Float64=10.0)
-    cos_v = cos(v)
-    sin_v = sin(v)
-    sin_pi_n = sin(π / n)
-    cos_pi_n = cos(π / n)
-    D = cos_pi_n - cos(2v / n)
+@inline function _stable_YplusTanG(v::Float64, n::Float64, γ::Float64,
+                                     sign_Y::Int, sign_tan::Int; cap::Float64=10.0)
+    a = sin(π / n) / n                 # = sin(π/n)/n
+    D = cos(π / n) - cos(2v / n)       # Y = a/D, diverges at the shadow boundary
+    γv = γ - v
+    cos_γv = cos(γv)
+    sin_γv = sin(γv)
 
-    denom = 2n * cos_v * D
+    denom = D * cos_γv
     if abs(denom) < 1e-12
-        return abs(cos_v) < 1e-6 && abs(D) < 1e-6 ? 0.0 :
-               clamp(sign_tan * sin_v / max(abs(2cos_v), 1e-10) * sign(cos_v), -cap, cap)
+        # Pole of the common denominator. Two sub-cases:
+        #   • coincident pole (D ≈ 0 AND cos(γ−v) ≈ 0): the reflection boundary;
+        #     mirrors the legacy half-plane handling, which returns 0 there.
+        #   • isolated pole (only one factor ≈ 0): the surviving divergent term
+        #     dominates; return it capped with the correct sign.
+        small_D = abs(D) < 1e-6
+        small_c = abs(cos_γv) < 1e-6
+        if small_D && small_c
+            return 0.0
+        elseif small_D
+            # Y → ±∞ dominates: sign_Y·a/D  (tan term is finite, dropped).
+            # Floor |D| away from 0 (sign preserved) so the division never
+            # produces NaN/Inf before the clamp.
+            sD = D >= 0.0 ? 1.0 : -1.0
+            return clamp(sign_Y * a / (sD * max(abs(D), 1e-10)), -cap, cap)
+        else
+            # tan(γ−v) → ±∞ dominates: sign_tan·(1/2)·sin(γ−v)/cos(γ−v).
+            sC = cos_γv >= 0.0 ? 1.0 : -1.0
+            return clamp(sign_tan * 0.5 * sin_γv / (sC * max(abs(cos_γv), 1e-10)),
+                         -cap, cap)
+        end
     end
 
-    num = sign_Y * 2cos_v * sin_pi_n + sign_tan * n * sin_v * D
+    num = sign_Y * a * cos_γv + sign_tan * 0.5 * sin_γv * D
     return clamp(num / denom, -cap, cap)
 end
 
@@ -234,8 +270,10 @@ following Sáez de Adana et al., eqs. 4.131-4.136.
 Uses the bottom-side illuminated formula (eq 4.133-4.134) which matches
 the azimuth convention where δⁱ is computed from k̂.
 
-Uses numerically stable combined computation of (X - tan) and (Y + tan)
-to avoid catastrophic cancellation at shadow/reflection boundaries.
+Uses numerically stable combined computation of (X − tan) and (Y ± tan)
+to avoid catastrophic cancellation at shadow/reflection boundaries. The
+`(1/2)tan(γ−v)` reflection-boundary term is kept exact for *any* wedge
+angle γ = n·π (not only the half-plane n = 2), via `_stable_YplusTanG`.
 """
 function _ptd_fringe_fg(n::Float64, delta_s::Float64, delta_i::Float64,
                          gamma::Float64)
@@ -248,12 +286,13 @@ function _ptd_fringe_fg(n::Float64, delta_s::Float64, delta_i::Float64,
     # f = X - Y - 1/2 tan(u) - 1/2 tan(γ-v)
     # g = X + Y - 1/2 tan(u) + 1/2 tan(γ-v)
     #
-    # For n=2: tan(2π-v) = -tan(v), so -1/2 tan(γ-v) = +1/2 tan(v).
-    # Thus: -Y - 1/2 tan(γ-v) = -Y + 1/2 tan(v) → use _stable_YplusTan(v, n, -1, +1)
-    # This is CRITICAL: Y and tan(γ-v) BOTH diverge at the reflection boundary
-    # (v = γ/2 for n=2), and their combination must be computed stably.
-    B_bot = _stable_YplusTan(v, n, -1, +1)   # -Y + 1/2 tan(v) = -Y - 1/2 tan(γ-v) for n=2
-    C_bot = _stable_YplusTan(v, n, +1, -1)   # +Y - 1/2 tan(v) = +Y + 1/2 tan(γ-v) for n=2
+    # The (1/2)tan(γ-v) term is computed exactly through _stable_YplusTanG,
+    # which pairs it with ∓Y in a common-denominator form. Y and tan(γ-v)
+    # both diverge at the reflection boundary and must be combined stably.
+    # For n=2, γ=2π and tan(2π-v)=-tan(v), so this reduces exactly to the
+    # previous half-plane expression (verified to ≤1e-10).
+    B_bot = _stable_YplusTanG(v, n, gamma, -1, -1)   # -Y - 1/2 tan(γ-v)
+    C_bot = _stable_YplusTanG(v, n, gamma, +1, +1)   # +Y + 1/2 tan(γ-v)
 
     f = A + B_bot
     g = A + C_bot

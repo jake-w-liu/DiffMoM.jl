@@ -26,6 +26,15 @@ For each triangle pair (t, s):
   w_ts = max(0, r_min - dist(centroid_t, centroid_s))
 
 Returns (W::SparseMatrix, w_sum::Vector) where w_sum[t] = Σ_s W[t,s].
+
+A filter edge exists only when `dist < r_min`. Rather than testing all
+`O(Nt^2)` centroid pairs, centroids are bucketed into a uniform spatial grid
+with cell size `r_min`; any pair within `r_min` must then lie in the same or an
+adjacent cell, so only the 3×3×3 neighbour stencil of each cell is searched
+(~`O(Nt)` average for quasi-uniform meshes). The conic weight is symmetric
+(`w_ts = w_st`), so each unordered pair is computed once and stored on both
+sides, producing the identical sparsity pattern and values as the brute-force
+double loop.
 """
 function build_filter_weights(mesh::TriMesh, r_min::Float64)
     Nt = ntriangles(mesh)
@@ -39,19 +48,64 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
         centroids[t] = (v1 + v2 + v3) / 3
     end
 
-    # Build sparse weight matrix
     rows = Int[]
     cols = Int[]
     vals = Float64[]
 
-    for t in 1:Nt
-        for s in 1:Nt
-            d = norm(centroids[t] - centroids[s])
-            w = max(0.0, r_min - d)
-            if w > 0
-                push!(rows, t)
-                push!(cols, s)
-                push!(vals, w)
+    # Degenerate guards: with r_min <= 0 no off-diagonal weight is positive and
+    # even the self weight max(0, r_min - 0) = max(0, r_min) is zero, matching
+    # the brute-force loop (which would push nothing). Also avoid building a
+    # grid with a non-positive cell size.
+    if Nt == 0 || r_min <= 0
+        W = sparse(rows, cols, vals, Nt, Nt)
+        w_sum = vec(sum(W, dims=2))
+        return W, w_sum
+    end
+
+    # Spatial hash grid: cell size = r_min so neighbours within r_min lie in the
+    # 3×3×3 stencil around a centroid's cell. Cell indices are integers derived
+    # from a common origin (the minimum corner of the centroid bounding box).
+    inv_h = 1.0 / r_min
+    xmin = centroids[1][1]; ymin = centroids[1][2]; zmin = centroids[1][3]
+    @inbounds for t in 2:Nt
+        c = centroids[t]
+        xmin = min(xmin, c[1]); ymin = min(ymin, c[2]); zmin = min(zmin, c[3])
+    end
+    origin = Vec3(xmin, ymin, zmin)
+
+    cell_of(c) = (floor(Int, (c[1] - origin[1]) * inv_h),
+                  floor(Int, (c[2] - origin[2]) * inv_h),
+                  floor(Int, (c[3] - origin[3]) * inv_h))
+
+    buckets = Dict{NTuple{3,Int},Vector{Int}}()
+    cells = Vector{NTuple{3,Int}}(undef, Nt)
+    @inbounds for t in 1:Nt
+        key = cell_of(centroids[t])
+        cells[t] = key
+        push!(get!(() -> Int[], buckets, key), t)
+    end
+
+    @inbounds for t in 1:Nt
+        ct = centroids[t]
+        (cx, cy, cz) = cells[t]
+        for dz in -1:1, dy in -1:1, dx in -1:1
+            neigh = get(buckets, (cx + dx, cy + dy, cz + dz), nothing)
+            neigh === nothing && continue
+            for s in neigh
+                # Visit each unordered pair once (s > t) plus the diagonal once.
+                s < t && continue
+                # Use exactly the brute-force distance/weight expression so the
+                # stored values are bit-identical: norm(SVector) == sqrt(Σδ²).
+                d = norm(ct - centroids[s])
+                w = max(0.0, r_min - d)
+                w > 0 || continue
+                if s == t
+                    push!(rows, t); push!(cols, t); push!(vals, w)
+                else
+                    # Symmetric conic weight: store (t,s) and (s,t).
+                    push!(rows, t); push!(cols, s); push!(vals, w)
+                    push!(rows, s); push!(cols, t); push!(vals, w)
+                end
             end
         end
     end

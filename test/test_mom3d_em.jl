@@ -133,6 +133,37 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
 
         mul!(y, A_op, x)
         @test (@allocated mul!(y, A_op, x)) < 4096
+
+        # The optimized dense builder fills each 6x6 voxel-pair block once; it
+        # must be bit-identical to the generic per-entry `getindex` conversion.
+        A_generic = Array{ComplexF64}(undef, size(A_op))
+        for col in 1:size(A_op, 2), r in 1:size(A_op, 1)
+            A_generic[r, col] = A_op[r, col]
+        end
+        @test A_dense == A_generic
+
+        # Same property must hold for fully coupled (non block-diagonal) 6x6
+        # polarizabilities so the block builder is exercised off the diagonal.
+        a6 = zeros(ComplexF64, 6, 6)
+        for d in 1:3
+            a6[d, d] = 0.4 + 0.05im
+            a6[d + 3, d + 3] = 0.2 + 0.01im
+        end
+        a6[1, 5] = 0.03 + 0.01im
+        a6[5, 1] = 0.02 - 0.01im
+        a6[3, 4] = 0.015 + 0.0im
+        alpha6 = fill(a6, grid.nvoxels)
+        A_dense_b, _ = assemble_em_dda_3d(grid, k0, alpha6)
+        A_op_b = em_dda_operator_3d(grid, k0, alpha6)
+        A_generic_b = Array{ComplexF64}(undef, size(A_op_b))
+        for col in 1:size(A_op_b, 2), r in 1:size(A_op_b, 1)
+            A_generic_b[r, col] = A_op_b[r, col]
+        end
+        @test A_dense_b == A_generic_b
+        xb = ComplexF64[cos(0.07 * i) + 1im * sin(0.11 * i) for i in 1:size(A_op_b, 2)]
+        yb = zeros(ComplexF64, size(A_op_b, 1))
+        mul!(yb, A_op_b, xb)
+        @test norm(yb - A_dense_b * xb) / norm(A_dense_b * xb) < 1e-13
     end
 
     @testset "Matrix-free GMRES solve agrees with dense direct" begin

@@ -108,8 +108,45 @@ function assemble_Z_efie_periodic(mesh::TriMesh, rwg::RWGData, k,
 end
 
 """
+Return `true` when the assembled periodic correction `Z_corr` is provably
+symmetric (`Z_corr[m,n] == Z_corr[n,m]`), so the assembly may compute only the
+upper triangle and mirror it (matching `assemble_Z_efie`).
+
+Symmetry requires BOTH:
+
+1. Zero Bloch phase (`kx_bloch == ky_bloch == 0`): the quasi-periodic correction
+   is then reciprocal, `ΔG(a,b) == ΔG(b,a)`, so the kernel is symmetric.
+2. Real RWG coefficients: with real `f_m`/`∇·f_m` the entry kernel
+   `dot(f_m,f_n) - conj(∇·f_m)(∇·f_n)/k²` is symmetric under `m↔n`.
+
+Both are needed independently: a Bloch-paired RWG carrying complex coefficients
+combined with a zero-phase lattice (a mismatched build) yields a reciprocal `ΔG`
+but a *non*-symmetric `Z_corr`. Checking the coefficients directly guards that
+case rather than trusting `kx_bloch/ky_bloch` alone. Boundary-paired RWGs built
+at normal incidence have phase `exp(0)=1`, so their coefficients are real and the
+fast path still applies.
+"""
+function _periodic_correction_is_symmetric(rwg::RWGData, lattice::PeriodicLattice)
+    (iszero(lattice.kx_bloch) && iszero(lattice.ky_bloch)) || return false
+    all(iszero, imag.(rwg.coeff_plus)) || return false
+    all(iszero, imag.(rwg.coeff_minus)) || return false
+    return true
+end
+
+"""
 Assemble the periodic correction matrix using ΔG = G_per - G_0.
 Since ΔG is smooth everywhere, standard product quadrature is used for all entries.
+
+Memory: each source/observation triangle pair `(ts, tn)` is streamed through a
+single reused `Nq×Nq` ΔG block (`O(Nq²)`, independent of `Nt`) and scattered into
+per-task `N×N` accumulators that are reduced at the end. This avoids the dense
+`O(Nq²·Nt²)` ΔG cache the entry-wise assembly previously held resident, while
+evaluating each ΔG triangle-pair block exactly once (Ewald sums are unchanged).
+
+Symmetry: when `_periodic_correction_is_symmetric` holds, only target triangles
+`tn ≥ ts` are evaluated and each block contribution is mirrored into the
+transposed `(n,m)` entry, halving both the Ewald work and the scatter — matching
+the symmetry exploit in `assemble_Z_efie`. Otherwise the full `tn` sweep is used.
 """
 function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
                                        lattice::PeriodicLattice;
@@ -145,78 +182,93 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
         rwg_vals[n] = (vals_p, vals_m)
     end
 
-    CT = ComplexF64
-
-    # Precompute ΔG for all unique triangle pairs. ΔG is smooth everywhere
-    # (no singularity), so every pair is handled by standard quadrature.
-    # Shared triangle pairs across RWG functions are evaluated only once.
-    #
-    # At normal incidence (no Bloch phase) the quasi-periodic Green's function is
-    # reciprocal, ΔG(a,b) = ΔG(b,a); the upper triangle then determines the whole
-    # cache, halving the Ewald sums. The mirrored write touches the transposed
-    # (tn,tm) entry, disjoint from every other thread's writes, so it is
-    # thread-safe. For oblique incidence the Bloch phase breaks the symmetry, so
-    # the full sweep is used.
-    dG_cache = Array{CT, 4}(undef, Nq, Nq, Nt, Nt)
-    if iszero(lattice.kx_bloch) && iszero(lattice.ky_bloch)
-        # :dynamic scheduling balances the triangular (uneven) workload.
-        Threads.@threads :dynamic for tm in 1:Nt
-            @inbounds for tn in tm:Nt
-                for qm in 1:Nq, qn in 1:Nq
-                    g = greens_periodic_correction(quad_pts[tm][qm], quad_pts[tn][qn], k, lattice)
-                    dG_cache[qm, qn, tm, tn] = g
-                    dG_cache[qn, qm, tn, tm] = g
-                end
-            end
-        end
-    else
-        Threads.@threads for tm in 1:Nt
-            @inbounds for tn in 1:Nt
-                for qm in 1:Nq, qn in 1:Nq
-                    dG_cache[qm, qn, tm, tn] =
-                        greens_periodic_correction(quad_pts[tm][qm], quad_pts[tn][qn], k, lattice)
-                end
-            end
-        end
+    # Triangle → incident RWG map: for each triangle `t`, the list of
+    # (rwg index, slot) pairs that use `t` (slot 1 = T⁺, slot 2 = T⁻). At most
+    # three RWG functions touch a triangle on each side, so this is tiny.
+    tri_to_rwg = [Vector{Tuple{Int,Int}}() for _ in 1:Nt]
+    for n in 1:N
+        push!(tri_to_rwg[tri_ids[1, n]], (n, 1))
+        push!(tri_to_rwg[tri_ids[2, n]], (n, 2))
     end
 
+    CT = ComplexF64
     inv_k2 = 1 / (k^2)
-    Z_corr = zeros(CT, N, N)
+    symmetric = _periodic_correction_is_symmetric(rwg, lattice)
 
-    Threads.@threads for m_idx in 1:N
-        @inbounds for n_idx in 1:N
-            val = zero(CT)
+    # Partition the source triangles across tasks; each task owns a private N×N
+    # accumulator so the scatter sweep is lock-free without an O(Nq²·Nt²)
+    # resident ΔG cache. `@spawn` tasks may migrate between threads, so each
+    # buffer is bound to its chunk index `c` (not to `threadid()`, which is
+    # unsafe under migration). Chunks are interleaved (strided) to balance the
+    # triangular workload in the symmetric short sweep.
+    ntasks = max(1, min(Threads.nthreads(), Nt))
+    Z_bufs = [zeros(CT, N, N) for _ in 1:ntasks]
 
-            for itm in 1:2
-                tm = tri_ids[itm, m_idx]
-                Am = areas[tm]
-                dvm = div_vals[itm, m_idx]
-                fm_vals = itm == 1 ? rwg_vals[m_idx][1] : rwg_vals[m_idx][2]
+    @sync for c in 1:ntasks
+        Threads.@spawn begin
+            Zb = Z_bufs[c]
+            # Streaming ΔG slab for the current source triangle: slab[qm, qn].
+            slab = Matrix{CT}(undef, Nq, Nq)
+            for ts in c:ntasks:Nt
+                incident_s = tri_to_rwg[ts]
+                isempty(incident_s) && continue
+                Am = areas[ts]
 
-                for itn in 1:2
-                    tn = tri_ids[itn, n_idx]
+                tn_start = symmetric ? ts : 1
+                @inbounds for tn in tn_start:Nt
+                    incident_t = tri_to_rwg[tn]
+                    isempty(incident_t) && continue
                     An = areas[tn]
-                    dvn = div_vals[itn, n_idx]
-                    fn_vals = itn == 1 ? rwg_vals[n_idx][1] : rwg_vals[n_idx][2]
+                    for qn in 1:Nq, qm in 1:Nq
+                        slab[qm, qn] =
+                            greens_periodic_correction(quad_pts[ts][qm], quad_pts[tn][qn], k, lattice)
+                    end
 
-                    dvmn_inv_k2 = conj(dvm) * dvn * inv_k2
-                    for qm in 1:Nq
-                        fm = fm_vals[qm]
-                        for qn in 1:Nq
-                            fn = fn_vals[qn]
-                            dG = dG_cache[qm, qn, tm, tn]
-                            vec_part = dot(fm, fn) * dG
-                            scl_part = dvmn_inv_k2 * dG
-                            weight = wq[qm] * wq[qn] * (2 * Am) * (2 * An)
-                            val += (vec_part - scl_part) * weight
+                    wAA = (2 * Am) * (2 * An)
+                    for (m_idx, itm) in incident_s
+                        dvm = div_vals[itm, m_idx]
+                        fm_vals = itm == 1 ? rwg_vals[m_idx][1] : rwg_vals[m_idx][2]
+                        conj_dvm_ik2 = conj(dvm) * inv_k2
+
+                        for (n_idx, itn) in incident_t
+                            dvn = div_vals[itn, n_idx]
+                            fn_vals = itn == 1 ? rwg_vals[n_idx][1] : rwg_vals[n_idx][2]
+                            dvmn_inv_k2 = conj_dvm_ik2 * dvn
+
+                            val = zero(CT)
+                            for qm in 1:Nq
+                                fm = fm_vals[qm]
+                                wqm = wq[qm]
+                                for qn in 1:Nq
+                                    fn = fn_vals[qn]
+                                    dG = slab[qm, qn]
+                                    vec_part = dot(fm, fn) * dG
+                                    scl_part = dvmn_inv_k2 * dG
+                                    val += (vec_part - scl_part) * (wqm * wq[qn])
+                                end
+                            end
+                            val *= wAA
+
+                            Zb[m_idx, n_idx] += val
+                            if symmetric && tn != ts
+                                # Reciprocity + real coefficients: the (tn,ts)
+                                # block contribution to Z_corr[n,m] equals this
+                                # block's. Mirror it so only tn ≥ ts source pairs
+                                # are evaluated.
+                                Zb[n_idx, m_idx] += val
+                            end
                         end
                     end
                 end
             end
-
-            Z_corr[m_idx, n_idx] = -1im * omega_mu0 * val
         end
     end
+
+    Z_corr = Z_bufs[1]
+    @inbounds for b in 2:ntasks
+        Z_corr .+= Z_bufs[b]
+    end
+    Z_corr .*= -1im * omega_mu0
 
     return Z_corr
 end

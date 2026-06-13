@@ -551,6 +551,31 @@ function _excitation_quadrature_cache(mesh::TriMesh, quad_order::Int)
     return wq, quad_pts, areas
 end
 
+# Memoizing wrapper over `_excitation_quadrature_cache`. The mesh quadrature
+# (points + areas) only depends on `(mesh, quad_order)`, so when many
+# excitations are assembled against the same mesh (see `assemble_multi` and
+# `assemble_multiple_excitations`) the per-order cache is built exactly once and
+# shared. Different excitation types may request different orders (e.g.
+# `ImportedExcitation` uses `_effective_quad_order`), so the cache is keyed by
+# `quad_order`; each distinct order is materialized lazily on first use.
+struct ExcitationQuadCache
+    mesh::TriMesh
+    by_order::Dict{Int,Tuple{Vector{Float64},Vector{Vector{Vec3}},Vector{Float64}}}
+end
+
+ExcitationQuadCache(mesh::TriMesh) =
+    ExcitationQuadCache(mesh,
+        Dict{Int,Tuple{Vector{Float64},Vector{Vector{Vec3}},Vector{Float64}}}())
+
+# Return `(wq, quad_pts, areas)` for `quad_order`, computing and caching on miss.
+function _quad_cache_for(cache::ExcitationQuadCache, quad_order::Int)
+    cached = get(cache.by_order, quad_order, nothing)
+    cached === nothing || return cached
+    entry = _excitation_quadrature_cache(cache.mesh, quad_order)
+    cache.by_order[quad_order] = entry
+    return entry
+end
+
 """
     dipole_incident_field(r, dipole)
 
@@ -856,26 +881,30 @@ Assemble RHS vector v for given excitation.
 """
 function assemble_excitation(mesh::TriMesh, rwg::RWGData,
                              excitation::AbstractExcitation;
-                             quad_order::Int=3)
-    # Dispatch to specialized implementations
+                             quad_order::Int=3,
+                             quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
+    # Dispatch to specialized implementations. `quad_cache`, when provided,
+    # lets the mesh quadrature be shared across many excitations (see
+    # `assemble_multi`/`assemble_multiple_excitations`); the cache-free
+    # quantities (delta gap, port) ignore it.
     if excitation isa PlaneWaveExcitation
-        return assemble_plane_wave(mesh, rwg, excitation; quad_order=quad_order)
+        return assemble_plane_wave(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa PortExcitation
         return assemble_port(mesh, rwg, excitation)
     elseif excitation isa DeltaGapExcitation
         return assemble_delta_gap(mesh, rwg, excitation)
     elseif excitation isa DipoleExcitation
-        return assemble_dipole(mesh, rwg, excitation; quad_order=quad_order)
+        return assemble_dipole(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa LoopExcitation
-        return assemble_loop(mesh, rwg, excitation; quad_order=quad_order)
+        return assemble_loop(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa MonopoleExcitation
-        return assemble_monopole(mesh, rwg, excitation; quad_order=quad_order)
+        return assemble_monopole(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa ImportedExcitation
-        return assemble_imported_excitation(mesh, rwg, excitation; quad_order=quad_order)
+        return assemble_imported_excitation(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa PatternFeedExcitation
-        return assemble_pattern_feed(mesh, rwg, excitation; quad_order=quad_order)
+        return assemble_pattern_feed(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa MultiExcitation
-        return assemble_multi(mesh, rwg, excitation; quad_order=quad_order)
+        return assemble_multi(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     else
         error("Unsupported excitation type: $(typeof(excitation))")
     end
@@ -892,8 +921,11 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     M = length(excitations)
     V = zeros(ComplexF64, N, M)
+    # Build the mesh quadrature once and share it across all excitations.
+    quad_cache = ExcitationQuadCache(mesh)
     for m in 1:M
-        V[:, m] = assemble_excitation(mesh, rwg, excitations[m]; quad_order=quad_order)
+        V[:, m] = assemble_excitation(mesh, rwg, excitations[m];
+                                      quad_order=quad_order, quad_cache=quad_cache)
     end
     return V
 end
@@ -904,9 +936,12 @@ end
 
 function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
                              pw::PlaneWaveExcitation;
-                             quad_order::Int=3)
+                             quad_order::Int=3,
+                             quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
     N = rwg.nedges
-    wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order)
+    wq, quad_pts, areas = quad_cache === nothing ?
+        _excitation_quadrature_cache(mesh, quad_order) :
+        _quad_cache_for(quad_cache, quad_order)
     Nq = length(wq)
 
     CT = ComplexF64
@@ -956,9 +991,12 @@ end
 
 function assemble_dipole(mesh::TriMesh, rwg::RWGData,
                          dipole::DipoleExcitation;
-                         quad_order::Int=3)
+                         quad_order::Int=3,
+                         quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
     N = rwg.nedges
-    wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order)
+    wq, quad_pts, areas = quad_cache === nothing ?
+        _excitation_quadrature_cache(mesh, quad_order) :
+        _quad_cache_for(quad_cache, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -984,9 +1022,12 @@ end
 
 function assemble_loop(mesh::TriMesh, rwg::RWGData,
                        loop::LoopExcitation;
-                       quad_order::Int=3)
+                       quad_order::Int=3,
+                       quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
     N = rwg.nedges
-    wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order)
+    wq, quad_pts, areas = quad_cache === nothing ?
+        _excitation_quadrature_cache(mesh, quad_order) :
+        _quad_cache_for(quad_cache, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1007,9 +1048,12 @@ end
 
 function assemble_monopole(mesh::TriMesh, rwg::RWGData,
                            mono::MonopoleExcitation;
-                           quad_order::Int=3)
+                           quad_order::Int=3,
+                           quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
     N = rwg.nedges
-    wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order)
+    wq, quad_pts, areas = quad_cache === nothing ?
+        _excitation_quadrature_cache(mesh, quad_order) :
+        _quad_cache_for(quad_cache, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1030,10 +1074,13 @@ end
 
 function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
                                       imported::ImportedExcitation;
-                                      quad_order::Int=3)
+                                      quad_order::Int=3,
+                                      quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
     quad_order_eff = _effective_quad_order(quad_order, imported.min_quad_order)
     N = rwg.nedges
-    wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order_eff)
+    wq, quad_pts, areas = quad_cache === nothing ?
+        _excitation_quadrature_cache(mesh, quad_order_eff) :
+        _quad_cache_for(quad_cache, quad_order_eff)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1062,9 +1109,12 @@ end
 
 function assemble_pattern_feed(mesh::TriMesh, rwg::RWGData,
                                pat::PatternFeedExcitation;
-                               quad_order::Int=3)
+                               quad_order::Int=3,
+                               quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
     N = rwg.nedges
-    wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order)
+    wq, quad_pts, areas = quad_cache === nothing ?
+        _excitation_quadrature_cache(mesh, quad_order) :
+        _quad_cache_for(quad_cache, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1088,12 +1138,16 @@ end
 
 function assemble_multi(mesh::TriMesh, rwg::RWGData,
                         multi::MultiExcitation;
-                        quad_order::Int=3)
+                        quad_order::Int=3,
+                        quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
     length(multi.excitations) == length(multi.weights) ||
         error("MultiExcitation has mismatched lengths: $(length(multi.excitations)) excitations vs $(length(multi.weights)) weights.")
+    # Build (or reuse) the mesh quadrature once and share it across all children.
+    cache = quad_cache === nothing ? ExcitationQuadCache(mesh) : quad_cache
     v = zeros(ComplexF64, rwg.nedges)
     for (exc, w) in zip(multi.excitations, multi.weights)
-        v .+= w .* assemble_excitation(mesh, rwg, exc; quad_order=quad_order)
+        v .+= w .* assemble_excitation(mesh, rwg, exc;
+                                       quad_order=quad_order, quad_cache=cache)
     end
     return v
 end

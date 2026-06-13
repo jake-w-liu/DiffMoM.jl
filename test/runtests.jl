@@ -572,6 +572,65 @@ rel_nf_far = norm(E_nf_far - E_nf_ref) / max(norm(E_nf_ref), 1e-30)
 println("  Near-field far-zone rel. error: $rel_nf_far")
 @assert rel_nf_far < 0.08
 
+# Near-singular accuracy regression (finding #10): evaluate the field at a point
+# very close to the surface and compare the singularity-subtracted near-field
+# branch against a brute-force, sub-triangle-refined reference that resolves the
+# 1/R (vector) and 1/R² (scalar-gradient) singularities directly.  The corrected
+# branch must agree well; the historical "J_avg + full ∇G" treatment diverged.
+let
+    Tc_ref = [Int[] for _ in 1:ntriangles(mesh)]
+    for n in 1:rwg.nedges
+        push!(Tc_ref[rwg.tplus[n]], n)
+        push!(Tc_ref[rwg.tminus[n]], n)
+    end
+    pv = -1im * k * eta0
+    ps = -1im * eta0 / k
+    xi_ref, wq_ref = DiffMoM.tri_quad_rule(7)
+    function brute_nf(robs; nsub=80)
+        E = zeros(ComplexF64, 3)
+        for t in 1:ntriangles(mesh)
+            v1 = DiffMoM._mesh_vertex(mesh, mesh.tri[1, t])
+            v2 = DiffMoM._mesh_vertex(mesh, mesh.tri[2, t])
+            v3 = DiffMoM._mesh_vertex(mesh, mesh.tri[3, t])
+            divt = sum(ComplexF64(I_pec[n]) * div_rwg(rwg, n, t) for n in Tc_ref[t]; init=0.0 + 0im)
+            for ii in 0:nsub-1, jj in 0:nsub-1, which in 0:1
+                a0 = ii / nsub; b0 = jj / nsub; ds = 1 / nsub
+                if which == 0
+                    ca = (a0, b0); cb = (a0 + ds, b0); cc = (a0, b0 + ds)
+                else
+                    ca = (a0 + ds, b0); cb = (a0 + ds, b0 + ds); cc = (a0, b0 + ds)
+                end
+                (ca[1] + ca[2] > 1 + 1e-12 || cb[1] + cb[2] > 1 + 1e-12 || cc[1] + cc[2] > 1 + 1e-12) && continue
+                mapref(ab) = v1 * (1 - ab[1] - ab[2]) + v2 * ab[1] + v3 * ab[2]
+                p1 = mapref(ca); p2 = mapref(cb); p3 = mapref(cc)
+                subA = 0.5 * norm(cross(p2 - p1, p3 - p1))
+                for q in eachindex(wq_ref)
+                    xq = xi_ref[q]
+                    rq = p1 * (1 - xq[1] - xq[2]) + p2 * xq[1] + p3 * xq[2]
+                    w = wq_ref[q] * (2 * subA)
+                    Jq = sum(ComplexF64(I_pec[n]) * eval_rwg(rwg, n, rq, t) for n in Tc_ref[t]; init=CVec3(0, 0, 0))
+                    E += pv * Jq * (w * DiffMoM.greens(robs, rq, k))
+                    if abs(divt) > 0
+                        E += ps * divt * (w * DiffMoM.grad_greens(robs, rq, k))
+                    end
+                end
+            end
+        end
+        return CVec3(E)
+    end
+    max_rel_nearsing = 0.0
+    for hh in (0.01, 0.005, 0.002)
+        robs_ns = Vec3(0.013, -0.007, hh)
+        E_ns = compute_nearfield(mesh, rwg, I_pec, robs_ns, k; quad_order=3, eta0=eta0)
+        @assert all(isfinite, real(E_ns)) && all(isfinite, imag(E_ns))
+        E_ns_ref = brute_nf(robs_ns)
+        rel = norm(E_ns - E_ns_ref) / max(norm(E_ns_ref), 1e-30)
+        max_rel_nearsing = max(max_rel_nearsing, rel)
+    end
+    println("  Near-singular branch max rel. error vs refined reference: $max_rel_nearsing")
+    @assert max_rel_nearsing < 0.1
+end
+
 println("  PASS ✓")
 
 # ─────────────────────────────────────────────────

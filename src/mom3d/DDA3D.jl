@@ -281,7 +281,13 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
     xread = y === x ? copy(x) : x
     N = A.grid.nvoxels
-    for i in 1:N
+    # Output voxels are independent, but the matrix-free alloc budget
+    # (test/test_mom3d.jl asserts < 1024 bytes) is tighter than the task-spawn
+    # overhead of `Threads.@threads` (>= ~1.5 KB even for an empty loop), so
+    # threading here would break it. `@inbounds` over the verified-safe indexing
+    # (1 <= i,j <= N, components 1..3, xread/y length 3N) keeps the loop at zero
+    # allocations while removing per-access bounds checks.
+    @inbounds for i in 1:N
         Ei = _read_field_component(xread, i)
         ri = A.grid.centers[i]
         for j in 1:N
@@ -323,7 +329,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
     xread = y === x ? copy(x) : x
     N = A.grid.nvoxels
-    for i in 1:N
+    # Left serial for the same alloc-budget reason as the forward operator;
+    # `@inbounds` is applied over the verified-safe indexing.
+    @inbounds for i in 1:N
         Ei = _read_field_component(xread, i)
         alphai = conj(A.alpha[i])
         if !iszero(alphai)
@@ -370,9 +378,29 @@ function assemble_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r;
     alpha = dda_polarizabilities(grid, k, epsv; radiative_correction=radiative_correction)
 
     A = Matrix{ComplexF64}(I, 3N, 3N)
-    for j in 1:N
+    # Each source voxel j writes a disjoint block of columns, so the assembly is
+    # threaded over j when worker threads exist. There is no alloc budget on the
+    # dense build, unlike the matrix-free matvec.
+    if Threads.nthreads() > 1
+        Threads.@threads for j in 1:N
+            _dda_fill_block_column!(A, grid, alpha, k, j, N)
+        end
+    else
+        for j in 1:N
+            _dda_fill_block_column!(A, grid, alpha, k, j, N)
+        end
+    end
+
+    return A, alpha, epsv
+end
+
+# Fill the 3 columns owned by source voxel j. Each j writes disjoint columns,
+# so this is safe to run concurrently across j.
+@inline function _dda_fill_block_column!(A::Matrix{ComplexF64}, grid::VoxelGrid3D,
+                                         alpha, k::Float64, j::Int, N::Int)
+    @inbounds begin
         alphaj = alpha[j]
-        iszero(alphaj) && continue
+        iszero(alphaj) && return nothing
         rj = grid.centers[j]
         for i in 1:N
             i == j && continue
@@ -386,8 +414,7 @@ function assemble_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r;
             end
         end
     end
-
-    return A, alpha, epsv
+    return nothing
 end
 
 """

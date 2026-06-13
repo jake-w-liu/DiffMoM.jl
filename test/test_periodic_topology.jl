@@ -753,6 +753,40 @@ println("\n── Test 41: PeriodicEFIE ──")
         lat = PeriodicLattice(dx_pe, dy_pe, 0.0, 0.0, k_pe; N_spatial=2, N_spectral=2)
         @test_throws ArgumentError assemble_Z_efie_periodic(mesh_bad, rwg_bad, k_pe, lat)
     end
+
+    # ── A: Z_corr symmetry exploit (normal incidence) and oblique fallback ──
+    @testset "A: Z_corr symmetry / streaming assembly" begin
+        # Normal incidence with real RWG coefficients: ΔG is reciprocal and the
+        # entry kernel is symmetric, so the assembled correction is symmetric and
+        # the streaming/upper-triangle path is used.
+        @test DiffMoM._periodic_correction_is_symmetric(rwg_pe, lat_pe)
+        Zc_sym = DiffMoM._assemble_periodic_correction(mesh_pe, rwg_pe, k_pe, lat_pe;
+                                                       quad_order=3)
+        sym_err = maximum(abs.(Zc_sym .- transpose(Zc_sym))) / maximum(abs.(Zc_sym))
+        @test sym_err < 1e-12
+
+        # Oblique incidence with complex Bloch coefficients: the Bloch phase
+        # breaks reciprocity, the correction is not symmetric, and the detector
+        # must fall back to the full sweep.
+        dx_o = 1.2 * lambda_pe; dy_o = 1.2 * lambda_pe
+        mesh_o = make_rect_plate(dx_o, dy_o, 4, 4)
+        lat_o = PeriodicLattice(dx_o, dy_o, π/6, 0.0, k_pe; N_spatial=1, N_spectral=1)
+        rwg_o = build_rwg_periodic(mesh_o, lat_o; precheck=false)
+        @test !DiffMoM._periodic_correction_is_symmetric(rwg_o, lat_o)
+        Zc_obl = DiffMoM._assemble_periodic_correction(mesh_o, rwg_o, k_pe, lat_o;
+                                                       quad_order=3)
+        @test maximum(abs.(Zc_obl .- transpose(Zc_obl))) / maximum(abs.(Zc_obl)) > 1e-3
+        @test !any(isnan, Zc_obl) && !any(isinf, Zc_obl)
+
+        # Safety guard: a complex-coefficient (oblique-built) RWG combined with a
+        # zero-phase lattice yields a reciprocal ΔG but a NON-symmetric Z_corr;
+        # the detector must reject the symmetry fast path here.
+        lat_zero = PeriodicLattice(dx_o, dy_o, 0.0, 0.0, k_pe; N_spatial=1, N_spectral=1)
+        @test !DiffMoM._periodic_correction_is_symmetric(rwg_o, lat_zero)
+        Zc_mix = DiffMoM._assemble_periodic_correction(mesh_o, rwg_o, k_pe, lat_zero;
+                                                       quad_order=3)
+        @test maximum(abs.(Zc_mix .- transpose(Zc_mix))) / maximum(abs.(Zc_mix)) > 1e-3
+    end
 end
 println("  PASS ✓")
 
