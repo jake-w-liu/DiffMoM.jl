@@ -154,6 +154,37 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test res_gmres.A_LU === nothing
         @test res_gmres.solver == :gmres
     end
+
+    @testset "Magnetic coupling obeys radiation condition (regression)" begin
+        # Guards the magnetic-dipole electric-field cross term. With exp(+iωt),
+        # G=e^{-ikR}/(4πR), the field of a magnetic dipole is E = -ikη₀(∇G×m)
+        # (a REAL far-field coefficient, dual to the electric dipole). A spurious
+        # factor i there breaks the far-field radiation condition FE = -η₀(n̂×FH)
+        # and the large-R scattered-field condition E_s ≈ -η₀(n̂×H_s) whenever a
+        # scatterer has μ≠1 (m≠0). All other EM-DDA tests use μ=1 or a single
+        # voxel, so none of them exercise this inter-voxel coupling.
+        eta0 = 376.730313668
+        grid = VoxelGrid3D((-0.1, 0.1), (-0.05, 0.05), (-0.05, 0.05), 3, 1, 1)
+        E_inc, H_inc = planewave_em_dda_3d(
+            grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
+        )
+        res = solve_em_dda_3d(grid, k0, 2.3 + 0.02im, 1.8 + 0.01im, E_inc, H_inc)
+        _, m = induced_dipoles_em_dda_3d(res)
+        @test norm(reduce(vcat, m)) > 0   # m≠0, so the cross term is active
+
+        for th in range(0.3, π - 0.3, length=4), ph in range(0.0, 2π, length=4)
+            n = Vec3(sin(th) * cos(ph), sin(th) * sin(ph), cos(th))
+            FE, FH = farfield_em_dda_3d(res, n)
+            @test norm(FE + eta0 * cross(n, FH)) / max(norm(FE), eps()) < 1e-10
+        end
+
+        Rbig = 4.0e3   # ~640 wavelengths: deep far zone, 1/(kR) ~ 4e-5
+        for nraw in (Vec3(0.3, 0.4, 0.866), Vec3(-0.5, 0.2, 0.84))
+            n = nraw / norm(nraw)
+            Es, Hs = scattered_fields_em_dda_3d(res, [Rbig * n])
+            @test norm(Es[1] + eta0 * cross(n, Hs[1])) / max(norm(Es[1]), eps()) < 1e-3
+        end
+    end
 end
 
 println("  PASS")

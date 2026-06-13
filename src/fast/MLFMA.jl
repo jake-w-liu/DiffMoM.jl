@@ -668,6 +668,46 @@ function associated_legendre_m_all(l_max::Int, m::Int, x::Float64)
 end
 
 """
+    _normalized_legendre_m_all(l_max, m, x)
+
+Compute the normalized associated Legendre functions
+`P̄_l^m(x) = sqrt((2l+1)/2 · (l-m)!/(l+m)!) · P_l^m(x)` for `l = m, …, l_max`
+via a stable normalized recurrence. Unlike forming the unnormalized `P_l^m`
+and the factorial ratio separately (which overflow/underflow to NaN around
+`l ≈ 90`), the normalized values stay O(1) for all `l`, so the MLFMA θ filter
+is well-defined at coarse levels (large boxes ⇒ large `L`). Sign conventions
+are irrelevant here because the filter only uses the product `P̄_l^m(x_i)·P̄_l^m(x_j)`.
+"""
+function _normalized_legendre_m_all(l_max::Int, m::Int, x::Float64)
+    m >= 0 || error("m must be non-negative")
+    l_max >= m || error("l_max must be >= m")
+
+    P = Vector{Float64}(undef, l_max - m + 1)
+
+    # Seed P̄_m^m from P̄_0^0 = sqrt(1/2):
+    #   P̄_k^k = sqrt((2k+1)/(2k)) · sqrt(1-x²) · P̄_{k-1}^{k-1}
+    s = sqrt(max(1.0 - x * x, 0.0))
+    pmm = sqrt(0.5)
+    for k in 1:m
+        pmm *= sqrt((2k + 1) / (2k)) * s
+    end
+    P[1] = pmm
+    l_max == m && return P
+
+    # P̄_{m+1}^m = x · sqrt(2m+3) · P̄_m^m
+    P[2] = x * sqrt(2m + 3) * pmm
+
+    # P̄_l^m = a x P̄_{l-1}^m - b P̄_{l-2}^m
+    for l in (m + 2):l_max
+        a = sqrt((2l + 1) * (2l - 1) / ((l - m) * (l + m)))
+        b = sqrt((2l + 1) * (l + m - 1) * (l - m - 1) / ((2l - 3) * (l - m) * (l + m)))
+        P[l - m + 1] = a * x * P[l - m] - b * P[l - m - 1]
+    end
+
+    return P
+end
+
+"""
     _build_theta_filter_m(src_samp, tgt_samp, L_trunc, m)
 
 Build the θ spectral filter matrix for azimuthal mode m.
@@ -685,29 +725,22 @@ function _build_theta_filter_m(src_samp::SphereSampling, tgt_samp::SphereSamplin
     src_gl_nodes, src_gl_weights = gauss_legendre(nθs)
     tgt_gl_nodes, _ = gauss_legendre(nθt)
 
-    # Precompute normalization factors: (l-m)!/(l+m)! for l = m, ..., L_trunc
-    norm_fac = Vector{Float64}(undef, L_trunc - m + 1)
-    for l in m:L_trunc
-        # (l-m)!/(l+m)! = 1/[(l-m+1)(l-m+2)...(l+m)]
-        fac = 1.0
-        for j in (l - m + 1):(l + m)
-            fac *= j
-        end
-        norm_fac[l - m + 1] = 1.0 / fac
-    end
-
+    # Use normalized associated Legendre functions P̄_l^m, which absorb the
+    # (2l+1)/2 · (l-m)!/(l+m)! weight: the filter weight is then simply
+    # Σ_l P̄_l^m(x_i)·P̄_l^m(x_j). This avoids the separate huge-P_l^m /
+    # tiny-factorial product that overflows to NaN for L ≳ 90 (coarse levels).
     F = zeros(Float64, nθt, nθs)
     for j in 1:nθs
         xj = src_gl_nodes[j]
         wj = src_gl_weights[j]
-        Pj = associated_legendre_m_all(L_trunc, m, xj)
+        Pj = _normalized_legendre_m_all(L_trunc, m, xj)
         for i in 1:nθt
             xi = tgt_gl_nodes[i]
-            Pi = associated_legendre_m_all(L_trunc, m, xi)
+            Pi = _normalized_legendre_m_all(L_trunc, m, xi)
             val = 0.0
             for l in m:L_trunc
                 idx = l - m + 1
-                val += (2l + 1) / 2.0 * norm_fac[idx] * Pi[idx] * Pj[idx]
+                val += Pi[idx] * Pj[idx]
             end
             F[i, j] = wj * val
         end

@@ -138,7 +138,7 @@ function assemble_Z_efie_grounded(mesh::TriMesh, rwg::RWGData, k,
                                   lattice::PeriodicLattice; height::Real,
                                   quad_order::Int=3, eta0::Float64=376.730313668)
     height > 0 || throw(ArgumentError("ground-plane height must be positive (got $height)"))
-    Z_direct = assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=quad_order)
+    Z_direct = assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=quad_order, eta0=eta0)
     Z_image = _assemble_periodic_image_block(mesh, rwg, k, lattice, 2 * Float64(height);
                                              quad_order=quad_order, eta0=eta0)
     return Z_direct - Z_image
@@ -181,7 +181,11 @@ function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
     h = Float64(height)
     R_g = similar(R_cur)
     for (i, m) in enumerate(modes)
-        R_g[i] = R_cur[i] * (1 - exp(-2im * m.kz * h))
+        # Use real(m.kz): evanescent orders store kz = i·β (positive imaginary), so
+        # exp(-2im·kz·h) = exp(2βh) overflows and 0·Inf = NaN (R_cur is 0 there).
+        # The image phase delay is governed by the real vertical wavenumber; this
+        # matches reflection_coefficient_vectors_grounded.
+        R_g[i] = R_cur[i] * (1 - exp(-2im * real(m.kz) * h))
         if m.m == 0 && m.n == 0
             R_g[i] -= exp(-2im * kzi * h)
         end

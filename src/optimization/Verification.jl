@@ -74,9 +74,11 @@ function verify_gradient(f_objective::Function,
         f_real = θ -> real(f_objective(θ))
         g_fd = fd_grad(f_real, theta, p; h=h_fd)
 
-        denom = max(abs(g_cs), 1e-30)
-        rel_cs = abs(g_adj - g_cs) / denom
-        rel_fd = abs(g_adj - g_fd) / denom
+        # Normalize each comparison by a reliable scale. Complex-step is invalid for
+        # non-holomorphic objectives (e.g. I'·Q·I), so g_cs can be garbage; never use
+        # it to normalize the adjoint-vs-FD error. Use the FD/adjoint magnitude there.
+        rel_cs = abs(g_adj - g_cs) / max(abs(g_cs), 1e-30)
+        rel_fd = abs(g_adj - g_fd) / max(abs(g_fd), abs(g_adj), 1e-30)
 
         push!(results, (p=p, adj=g_adj, cs=g_cs, fd=g_fd,
                         rel_err_cs=rel_cs, rel_err_fd=rel_fd))

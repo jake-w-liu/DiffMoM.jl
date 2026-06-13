@@ -43,7 +43,10 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
     rhs = _coerce_adjoint_rhs_3d(grad_E_flat, res.grid.nvoxels, "grad_E_flat")
 
     if solver == :direct
-        lambda = adjoint(res.A) \ rhs
+        # Reuse the stored LU factorization of A when available: solving A' x = rhs
+        # from existing factors is O(N^2) and numerically identical to refactorizing
+        # adjoint(res.A), which is O(N^3) per call (costly in optimization loops).
+        lambda = res.A_LU === nothing ? (adjoint(res.A) \ rhs) : (res.A_LU' \ rhs)
         return Vector{ComplexF64}(lambda)
     elseif solver == :gmres
         lambda, stats = Krylov.gmres(adjoint(res.A), rhs;

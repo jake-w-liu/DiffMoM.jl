@@ -1341,7 +1341,10 @@ m_mag = CVec3(0.0 + 0im, 0.0 + 0im, 1e-4 + 0im) # A·m²
 dip_mag = make_dipole(Vec3(0.0, 0.0, 0.0), m_mag, Vec3(0.0, 0.0, 1.0), :magnetic, freq_exc)
 Rfar = 5.0
 E_mag_num = DiffMoM.dipole_incident_field(Vec3(Rfar, 0.0, 0.0), dip_mag)
-E_mag_ref = +1im * eta0 * k_exc^2 * m_mag[3] * exp(-1im * k_exc * Rfar) / (4π * Rfar)
+# Far-field E of a magnetic dipole: E = -ikη₀(∇G×m) → radiating term has a REAL
+# coefficient (dual to the electric dipole). Observed on +x with m∥ẑ, the
+# φ̂-component is +η₀k²m_z e^{-ikR}/(4πR) (no factor i).
+E_mag_ref = eta0 * k_exc^2 * m_mag[3] * exp(-1im * k_exc * Rfar) / (4π * Rfar)
 rel_mag = abs(E_mag_num[2] - E_mag_ref) / max(abs(E_mag_ref), 1e-30)
 println("  Magnetic-dipole far-field rel. error: $rel_mag")
 @assert rel_mag < 0.03
@@ -1469,22 +1472,24 @@ end
 max_crossfrac_dip = maximum(crossfrac_dip)
 max_crossfrac_loop = maximum(crossfrac_loop)
 
-# Co-pol phase consistency on φ=0 cut: Eϕ(loop)/Eθ(dipole) ≈ ±90° phase.
+# Co-pol phase consistency on φ=0 cut. Both Eθ(electric dipole) and Eϕ(loop /
+# magnetic dipole) have REAL far-field coefficients (× e^{-ikr}), being duals of
+# each other, so their ratio is real: Δϕ ∈ {0°, 180°}. Verify each sample lands
+# near 0° or 180° and that the deviation is consistent across the cut.
 wrap_to_pi(x) = atan(sin(x), cos(x))
-phase_err_pm90_deg = Float64[]
-phase_ratio_deg = Float64[]
+phase_dev_deg = Float64[]   # signed distance to the nearest of {0°, 180°}
 amp_floor_phase = 1e-12 * max(maximum(abs.(E_dip_theta_cmp)), maximum(abs.(E_loop_phi_cmp)))
 for i in eachindex(theta_pat)
     if abs(E_dip_theta_cmp[i]) > amp_floor_phase && abs(E_loop_phi_cmp[i]) > amp_floor_phase
         Δϕ = angle(E_loop_phi_cmp[i] / E_dip_theta_cmp[i])
-        push!(phase_ratio_deg, rad2deg(Δϕ))
-        err_pm90 = min(abs(wrap_to_pi(Δϕ - π / 2)), abs(wrap_to_pi(Δϕ + π / 2)))
-        push!(phase_err_pm90_deg, rad2deg(err_pm90))
+        d0 = wrap_to_pi(Δϕ)
+        dπ = wrap_to_pi(Δϕ - π)
+        dev = abs(d0) <= abs(dπ) ? d0 : dπ
+        push!(phase_dev_deg, rad2deg(dev))
     end
 end
-phase_mean_deg = mean(phase_ratio_deg)
-phase_std_deg = std(phase_ratio_deg)
-phase_max_err_pm90_deg = maximum(phase_err_pm90_deg)
+phase_std_deg = std(phase_dev_deg)
+phase_max_err_copol_deg = maximum(abs.(phase_dev_deg))
 
 println("  Dipole pattern RMSE:      $rmse_dip")
 println("  Dipole pattern max |err|: $maxabs_dip")
@@ -1494,9 +1499,8 @@ println("  Dipole null max:          $null_max_dip")
 println("  Loop null max:            $null_max_loop")
 println("  Dipole max cross-pol frac: $max_crossfrac_dip")
 println("  Loop max cross-pol frac:   $max_crossfrac_loop")
-println("  Phase mean (deg):          $phase_mean_deg")
-println("  Phase std (deg):           $phase_std_deg")
-println("  Phase max err to ±90° (deg): $phase_max_err_pm90_deg")
+println("  Phase dev std (deg):           $phase_std_deg")
+println("  Phase max err to {0,180}° (deg): $phase_max_err_copol_deg")
 
 # CI thresholds (pattern-shape gate)
 @assert rmse_dip < 1e-4 "Dipole pattern gate failed: RMSE=$rmse_dip"
@@ -1507,8 +1511,8 @@ println("  Phase max err to ±90° (deg): $phase_max_err_pm90_deg")
 @assert null_max_loop < 1e-10 "Loop pattern gate failed: null level=$null_max_loop"
 @assert max_crossfrac_dip < 1e-10 "Dipole polarization gate failed: max cross-pol frac=$max_crossfrac_dip"
 @assert max_crossfrac_loop < 1e-10 "Loop polarization gate failed: max cross-pol frac=$max_crossfrac_loop"
-@assert phase_max_err_pm90_deg < 1.0 "Dipole/loop phase gate failed: max err to ±90° = $phase_max_err_pm90_deg deg"
-@assert phase_std_deg < 0.1 "Dipole/loop phase gate failed: phase std = $phase_std_deg deg"
+@assert phase_max_err_copol_deg < 1.0 "Dipole/loop phase gate failed: max err to {0,180}° = $phase_max_err_copol_deg deg"
+@assert phase_std_deg < 0.1 "Dipole/loop phase gate failed: phase dev std = $phase_std_deg deg"
 
 println("  PASS ✓")
 

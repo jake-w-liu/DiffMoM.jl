@@ -360,16 +360,24 @@ function power_balance(I_coeffs::Vector{<:Number},
                        transmission::Symbol=:none,
                        T_coeffs::Union{Nothing,Vector{ComplexF64}}=nothing,
                        incident_order::Tuple{Int,Int}=(0, 0))
-    P_inc = abs(E0)^2 * A_cell / (2 * eta0)
+    # Per-mode z-directed Poynting flux ∝ |coef|²·real(kz)/k. The incident power
+    # crossing the cell is the z-flux of the incident order, which carries
+    # cos(θ_inc) = real(kz_inc)/k. Normalizing the fractions by this (rather than
+    # by the unprojected |E0|²A/2η) is required for energy conservation at oblique
+    # incidence; at normal incidence kz_inc = k and nothing changes.
+    base = abs(E0)^2 * A_cell / (2 * eta0)
+    inc_idx = findfirst(mode -> mode.m == incident_order[1] && mode.n == incident_order[2], modes)
+    cos_inc = inc_idx === nothing ? 1.0 : real(modes[inc_idx].kz) / k
+    P_inc = base * cos_inc
 
-    # Reflected power from Floquet modes
+    # Reflected power from Floquet modes (z-directed flux)
     P_refl = 0.0
     for (i, mode) in enumerate(modes)
         if mode.propagating
             P_refl += abs2(R_coeffs[i]) * real(mode.kz) / k
         end
     end
-    P_refl *= P_inc
+    P_refl *= base
 
     # Power absorbed by SIMP penalty impedance
     P_abs = 0.5 * real(dot(I_coeffs, Z_pen * I_coeffs))
@@ -393,7 +401,7 @@ function power_balance(I_coeffs::Vector{<:Number},
                 P_trans += abs2(Tc[i]) * real(mode.kz) / k
             end
         end
-        P_trans *= P_inc
+        P_trans *= base
     else
         error("Unknown transmission mode: $transmission (expected :none, :closure, or :floquet)")
     end
@@ -434,9 +442,12 @@ function specular_rcs_objective(mesh::TriMesh, rwg::RWGData,
                                 quad_order::Int=3,
                                 half_angle::Float64=π/18,
                                 polarization=:x)
-    # Specular direction: θ_r = θ_inc, φ_r = φ_inc + π
+    # Specular (0,0) reflected order keeps the incident transverse wavevector and
+    # flips only kz, so r̂ = (kx_bloch, ky_bloch, +kz_inc)/k: θ_r = θ_inc and
+    # φ_r = φ_inc = atan(ky_bloch, kx_bloch) (no +π — that would point at the
+    # mirror azimuth and miss the specular lobe at oblique incidence).
     theta_spec = asin(clamp(sqrt(lattice.kx_bloch^2 + lattice.ky_bloch^2) / k, 0.0, 1.0))
-    phi_spec = atan(lattice.ky_bloch, lattice.kx_bloch) + π
+    phi_spec = atan(lattice.ky_bloch, lattice.kx_bloch)
 
     # Build direction mask for specular cone
     spec_dir = Vec3(sin(theta_spec) * cos(phi_spec),

@@ -29,7 +29,8 @@ E_z^inc(r) = (-i/4) H₀⁽²⁾(k₀|r - r_src|) (unit amplitude)
 function linesource_2d(mesh::Mesh2D, k0::Float64, r_src::Vec2)
     E_inc = Vector{ComplexF64}(undef, mesh.ncells)
     for m in 1:mesh.ncells
-        E_inc[m] = greens_2d(mesh.centers[m], r_src, k0) * 4π  # normalized
+        # Unit-amplitude 2D line source: E_z = (-i/4) H₀⁽²⁾(k₀R) = greens_2d.
+        E_inc[m] = greens_2d(mesh.centers[m], r_src, k0)
     end
     return E_inc
 end

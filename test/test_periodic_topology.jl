@@ -910,6 +910,24 @@ println("\n── Test 42: PeriodicMetrics ──")
         end
     end
 
+    # ── B: Oblique-incidence power budget carries cos(θ_inc) (regression) ──
+    @testset "B: Oblique power balance normalizes by cos(theta_inc)" begin
+        # A lossless pure reflector (|R_00| = 1, all power in the specular order)
+        # must give refl_frac = 1 at any incidence angle. P_inc must therefore be
+        # the z-directed flux ∝ cos(θ_inc); otherwise refl_frac = cos(θ_inc) < 1.
+        dx_obl = 1.0 * lambda_pm; dy_obl = 1.0 * lambda_pm
+        lat_obl = PeriodicLattice(dx_obl, dy_obl, π/6, 0.0, k_pm)   # θ_inc = 30°
+        modes = floquet_modes(k_pm, lat_obl; N_orders=1)
+        idx00 = findfirst(m -> (m.m == 0 && m.n == 0), modes)
+        @test idx00 !== nothing && modes[idx00].propagating
+        R = zeros(ComplexF64, length(modes))
+        R[idx00] = -1.0 + 0im                                       # |R|² = 1, PEC-like
+        Z_zero = zeros(ComplexF64, 2, 2)
+        I_dummy = ComplexF64[1.0 + 0im, 0.0 + 0im]
+        pb = power_balance(I_dummy, Z_zero, dx_obl * dy_obl, k_pm, modes, R)
+        @test pb.refl_frac ≈ 1.0 atol=1e-12                         # was cos(30°)≈0.866 before fix
+    end
+
     # ── B: Vector Floquet power includes both transverse polarizations ──
     @testset "B: Vector Floquet power counts cross polarization" begin
         modes = floquet_modes(k_pm, lat_pm; N_orders=0)

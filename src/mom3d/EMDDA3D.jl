@@ -312,7 +312,7 @@ end
 
 @inline magnetic_dipole_electric_field_3d(r::Vec3, rp::Vec3, k::Float64, m::CVec3;
                                           eta0::Float64=_ETA0_DDA) =
-    eta0 * k * _grad_g_cross_3d(r, rp, k, m)
+    (-1im * eta0 * k) * _grad_g_cross_3d(r, rp, k, m)
 
 @inline function _em_interaction_apply_3d(ri::Vec3, rj::Vec3, k::Float64,
                                           q::CVec3, m::CVec3)
@@ -678,7 +678,7 @@ function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
     prefac = res.k0^2 / (4π)
     for j in 1:res.grid.nvoxels
         phase = exp(1im * res.k0 * dot(n, res.grid.centers[j]))
-        FE += prefac * phase * (proj * q[j] - 1im * eta * cross(n, m[j]))
+        FE += prefac * phase * (proj * q[j] - eta * cross(n, m[j]))
         FH += prefac * phase * ((1 / eta) * cross(n, q[j]) + proj * m[j])
     end
     return FE, FH

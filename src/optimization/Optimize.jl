@@ -426,6 +426,16 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         end
 
         d = -r
+
+        # Guard: if the L-BFGS two-loop direction is not a descent direction
+        # (dot(g, d) ≥ 0, which can happen with stale/indefinite curvature pairs),
+        # reset to steepest descent and clear the memory — matches optimize_lbfgs.
+        if real(dot(g_lbfgs, d)) >= 0
+            d = -g_lbfgs
+            empty!(s_list)
+            empty!(y_list)
+        end
+
         alpha_ls = 1.0
         theta_old = copy(theta)
         g_old = copy(g_lbfgs)

@@ -472,7 +472,7 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
             Fvec = if dipole.type == :electric
                 (k^2 / (4π * _EPS0)) * cross(rhat, cross(p, rhat))
             else
-                1im * _ETA0 * (k^2 / (4π)) * cross(p, rhat)
+                _ETA0 * (k^2 / (4π)) * cross(p, rhat)
             end
             Fθ[i, j] = dot(Fvec, eθ)
             Fϕ[i, j] = dot(Fvec, eϕ)
@@ -582,8 +582,10 @@ function dipole_incident_field(r::Vec3, dipole::DipoleExcitation)
         term2 = (3 * R_hat * dot(R_hat, p) - p) * (1 / R^2 + 1im * k / R)
         return (term1 + term2) * exp(-1im * k * R) / (4π * ϵ0 * R)
     elseif dipole.type == :magnetic
-        # E = (η0/4π) (k/R^2 + i k^2/R) e^{-ikR} (m × R̂)   [Balanis Ch. 5]
-        return (η0 / (4π)) * (k / R^2 + 1im * k^2 / R) * exp(-1im * k * R) * cross(p, R_hat)
+        # E = (η0/4π) (k^2/R - i k/R^2) e^{-ikR} (m × R̂)
+        # Derived from E = -i k η0 (∇G × m), G = e^{-ikR}/(4πR); radiating (1/R)
+        # term has a REAL coefficient, matching the electric-dipole convention.
+        return (η0 / (4π)) * (k^2 / R - 1im * k / R^2) * exp(-1im * k * R) * cross(p, R_hat)
     else
         error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
     end

@@ -206,7 +206,7 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     # Cross-checked against `dipole_incident_field` in this file (keep the
     # 1/R term, multiply by R·exp(+ikR)):
     #   Electric: E∞(r̂) = +k²/(4πε₀) · (r̂×p)×r̂ = +k²/(4πε₀) · perp(p)
-    #   Magnetic: E∞(r̂) = +iη₀·k²/(4π) · (m × r̂)
+    #   Magnetic: E∞(r̂) = +η₀·k²/(4π) · (m × r̂)   (real coeff, dual to electric)
     rh = Vec3(r_hat) / max(norm(Vec3(r_hat)), 1e-30)
     ϵ0 = 8.854187817e-12; μ0 = 4π * 1e-7
     η0 = sqrt(μ0 / ϵ0)
@@ -214,7 +214,7 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
         perp = dipole.moment - rh * dot(rh, dipole.moment)
         E_far = (k^2 / (4π * ϵ0)) * perp
     elseif dipole.type == :magnetic
-        E_far = 1im * (η0 * k^2 / (4π)) * cross(dipole.moment, rh)
+        E_far = (η0 * k^2 / (4π)) * cross(dipole.moment, rh)
     else
         error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
     end
