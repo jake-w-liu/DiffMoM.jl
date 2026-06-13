@@ -179,13 +179,72 @@ Compute complex reflection coefficients for propagating Floquet modes by integra
 
 ---
 
+### `reflection_coefficient_vectors(mesh, rwg, I_coeffs, k, lattice; quad_order=3, N_orders=3, E0=1.0, eta0=376.730313668)`
+
+Compute the full mode-transverse reflected electric-field amplitude vector for each
+propagating Floquet order. Unlike `reflection_coefficients`, which reports one scalar
+co-polar projection per order, this vector form retains both orthogonal transverse
+polarizations and is therefore the correct quantity for total reflected-power budgets.
+
+Note that this function has no `pol` keyword: it does not project onto an incident
+polarization but instead removes only the component parallel to each mode's propagation
+direction.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `mesh` | `TriMesh` | -- | Unit-cell mesh. |
+| `rwg` | `RWGData` | -- | RWG basis data. |
+| `I_coeffs` | `Vector{<:Number}` | -- | Solved current coefficients. |
+| `k` | `Real` | -- | Wavenumber. |
+| `lattice` | `PeriodicLattice` | -- | Periodic setup. |
+| `quad_order` | `Int` | `3` | Quadrature order for current integration. |
+| `N_orders` | `Int` | `3` | Floquet order truncation. |
+| `E0` | `Float64` | `1.0` | Incident field amplitude. |
+| `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
+
+**Returns:** `(modes, R_vecs)`:
+- `modes::Vector{FloquetMode}`
+- `R_vecs::Vector{SVector{3,ComplexF64}}` with the same length/order as `modes`; each entry is a three-component complex vector normalized by `E0` (evanescent-mode entries remain the zero vector).
+
+```julia
+modes, R_vecs = reflection_coefficient_vectors(mesh, rwg, I, k, lattice; N_orders=3)
+```
+
+---
+
+### `reflected_power_fractions(modes, R_vecs, k)`
+
+Return the reflected power fraction carried by each Floquet order from full vector
+reflection amplitudes (as produced by `reflection_coefficient_vectors`). The total
+reflected fraction is `sum(p)`.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `modes` | `Vector{FloquetMode}` | Floquet mode list. |
+| `R_vecs` | `Vector{SVector{3,ComplexF64}}` | Vector reflection amplitudes aligned with `modes`. |
+| `k` | `Real` | Free-space wavenumber. |
+
+**Returns:** `Vector{Float64}`, one per mode (evanescent-mode entries are zero).
+
+```julia
+modes, R_vecs = reflection_coefficient_vectors(mesh, rwg, I, k, lattice)
+p = reflected_power_fractions(modes, R_vecs, k)
+total_refl = sum(p)
+```
+
+---
+
 ### `transmission_coefficients(modes, R_coeffs; incident_order=(0, 0))`
 
 Convert reflection amplitudes to transmitted Floquet amplitudes for the free-standing sheet model used by this module.
 
 Convention:
-- Incident order `(m,n) = incident_order`: evaluates both `1 + R` and `1 - R`
-  and keeps the lower-amplitude branch (passive convention under sign/phase ambiguity).
+- Incident order `(m,n) = incident_order`: uses the exact thin-sheet relation `T = 1 + R`
+  (no branch selection).
 - Other orders: `T = R`.
 
 **Parameters:**
@@ -249,6 +308,13 @@ Z_per = assemble_Z_efie_periodic(mesh, rwg, k, lattice)
 I = solve_forward(Z_per, v)
 
 modes, R = reflection_coefficients(mesh, rwg, I, k, lattice; N_orders=3)
+
+# SIMP penalty impedance Z_pen (used for P_abs in power_balance).
+# See the topology-optimization API for precompute_triangle_mass / DensityConfig / assemble_Z_penalty.
+Mt = precompute_triangle_mass(mesh, rwg)
+config = DensityConfig(; p=3.0, Z_max_factor=10.0, vf_target=0.5, reactive=true)
+Z_pen = assemble_Z_penalty(Mt, rho_bar, config)   # rho_bar: filtered/projected densities, length = ntriangles(mesh)
+
 pb = power_balance(I, Z_pen, lattice.dx * lattice.dy, k, modes, R)
 
 Q_spec = specular_rcs_objective(mesh, rwg, grid, k, lattice; half_angle=pi/18)
@@ -272,7 +338,7 @@ Q_spec = specular_rcs_objective(mesh, rwg, grid, k, lattice; half_angle=pi/18)
 |------|----------|
 | `src/basis/PeriodicGreens.jl` | `PeriodicLattice`, `greens_periodic_correction` |
 | `src/assembly/PeriodicEFIE.jl` | `assemble_Z_efie_periodic` |
-| `src/postprocessing/PeriodicMetrics.jl` | `FloquetMode`, `floquet_modes`, `reflection_coefficients`, `transmission_coefficients`, `specular_rcs_objective`, `power_balance` |
+| `src/postprocessing/PeriodicMetrics.jl` | `FloquetMode`, `floquet_modes`, `reflection_coefficients`, `reflection_coefficient_vectors`, `reflected_power_fractions`, `transmission_coefficients`, `specular_rcs_objective`, `power_balance` |
 
 ---
 

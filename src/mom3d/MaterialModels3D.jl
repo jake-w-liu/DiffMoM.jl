@@ -124,7 +124,7 @@ struct DiagonalAnisotropicMaterial3D
 end
 
 """
-    TensorAnisotropicMaterial3D(eps_tensor; passive=true)
+    TensorAnisotropicMaterial3D(eps_r; passive=true)
 
 Static full 3x3 relative permittivity tensor model. Passive tensors require
 `(eps - eps') / (2im)` to be negative semidefinite.
@@ -168,7 +168,7 @@ struct DiagonalPermeability3D
 end
 
 """
-    TensorPermeability3D(mu_tensor; passive=true)
+    TensorPermeability3D(mu_r; passive=true)
 
 Static full 3x3 relative permeability tensor model.
 """

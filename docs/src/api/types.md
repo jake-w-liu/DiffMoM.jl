@@ -62,7 +62,7 @@ Stores edge-to-triangle connectivity and geometric factors for Rao-Wilton-Glisso
 RWG functions are the standard basis for surface MoM: they ensure continuity of the normal component of surface current across edges, which is required by the EFIE formulation.
 
 ```julia
-struct RWGData
+struct RWGData{T<:Number}
     mesh::TriMesh
     nedges::Int
     tplus::Vector{Int}          # T+ triangle index for each edge
@@ -73,8 +73,13 @@ struct RWGData
     len::Vector{Float64}        # edge length [m]
     area_plus::Vector{Float64}  # area of T+ [m^2]
     area_minus::Vector{Float64} # area of T- [m^2]
+    coeff_plus::Vector{T}       # multiplicative factor on T+ side
+    coeff_minus::Vector{T}      # multiplicative factor on T- side
+    has_periodic_bloch::Bool    # true when built with periodic Bloch constraints
 end
 ```
+
+`RWGData` is parameterized by the coefficient type `T<:Number` used to weight each side of a basis function. Standard RWG (built by `build_rwg`) uses `T = Float64` with unit side coefficients. Bloch-periodic paired edges (built by `build_rwg_periodic`) use `T = ComplexF64` so that a phase factor can be applied to one side.
 
 **Fields:**
 
@@ -87,6 +92,8 @@ end
 | `vplus_opp`, `vminus_opp` | `Vector{Int}` | `nedges` | Vertex index opposite the edge in triangle `tplus` / `tminus`. These "free vertices" define the direction of the RWG basis vector. |
 | `len` | `Vector{Float64}` | `nedges` | Edge length in meters. Appears as a scaling factor in the RWG basis formula. |
 | `area_plus`, `area_minus` | `Vector{Float64}` | `nedges` | Areas of the two support triangles in m^2. Used to normalize the basis function amplitude. |
+| `coeff_plus`, `coeff_minus` | `Vector{T}` | `nedges` | Multiplicative factors applied to the `tplus` / `tminus` side of each basis function. `1.0` for standard RWG; for Bloch-periodic paired edges the `tminus` side carries the Bloch phase factor. |
+| `has_periodic_bloch` | `Bool` | -- | `true` when the data was built with periodic Bloch constraints (`build_rwg_periodic`); `false` for standard RWG (`build_rwg`). |
 
 **Constructor:**
 
@@ -99,6 +106,8 @@ rwg = build_rwg(mesh; precheck=true, allow_boundary=true, require_closed=false, 
 - `require_closed=false`: If `true`, throw an error if any boundary edges exist.
 - `area_tol_rel=1e-12`: Relative tolerance for degenerate triangle detection.
 
+`build_rwg` returns an `RWGData{Float64}` with `coeff_plus = coeff_minus = 1.0` and `has_periodic_bloch = false`. For Bloch-periodic unit-cell problems, use `build_rwg_periodic`, which returns an `RWGData{ComplexF64}` whose paired boundary edges carry the Bloch phase on the `tminus` side and sets `has_periodic_bloch = true`.
+
 **Example:**
 
 ```julia
@@ -108,6 +117,40 @@ println("RWG basis count (N): ", rwg.nedges)      # = system matrix dimension
 println("Edge length of first basis: ", rwg.len[1], " m")
 println("Support triangles: T+ = ", rwg.tplus[1], ", T- = ", rwg.tminus[1])
 ```
+
+---
+
+## `LocalMassMatrix` -- Compact Sparse Local Mass Block
+
+A compact sparse-matrix type for local RWG mass blocks. It stores only triplet entries `(rows[k], cols[k], vals[k])` of an `n x n` matrix and exposes the `AbstractMatrix` interface so existing code can treat it like any other matrix. Duplicate triplets are allowed and are summed when accessed (via `getindex`, `mul!`, and the dense-accumulation helpers). This avoids the `O(n)` column-pointer storage cost of one `SparseMatrixCSC` per triangle/patch.
+
+```julia
+struct LocalMassMatrix{T<:Number} <: AbstractMatrix{T}
+    n::Int                  # matrix is n x n
+    rows::Vector{Int}       # row index of each stored entry
+    cols::Vector{Int}       # column index of each stored entry
+    vals::Vector{T}         # value of each stored entry
+end
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `n` | `Int` | Side length: the matrix is `n x n`. Must be nonnegative. |
+| `rows` | `Vector{Int}` | Row index of each stored triplet. |
+| `cols` | `Vector{Int}` | Column index of each stored triplet. |
+| `vals` | `Vector{T}` | Value of each stored triplet. `rows`, `cols`, and `vals` must have equal length. |
+
+**Constructor:**
+
+```julia
+M = LocalMassMatrix(n, rows, cols, vals)        # element type T inferred from vals
+```
+
+The element type `T` is inferred from `vals`; the constructor checks that `n >= 0` and that `rows`, `cols`, and `vals` have equal lengths.
+
+**Supported operations:** `size`, `eltype`, `getindex`, scalar `*` (left/right) and unary `-`, `mul!` (forward and adjoint), conversion to dense via `Array`/`Matrix`, and conversion to `SparseArrays.sparse`. `getindex(M, i, j)` returns the sum of all triplets at `(i, j)`.
 
 ---
 
@@ -503,6 +546,10 @@ Z_op = ImpedanceLoadedOperator(Z_base, Mp, theta)           # resistive
 Z_op = ImpedanceLoadedOperator(Z_base, Mp, theta, true)     # reactive
 ```
 
+The 3-argument form is a convenience constructor that sets `reactive = false`. The
+4-argument form passes the `reactive::Bool` flag through Julia's default struct
+constructor (the `reactive` value is a positional argument, not a keyword).
+
 **Supported operations:** `size`, `eltype`, `mul!`, `*`, `adjoint`. The adjoint returns an `ImpedanceLoadedAdjointOperator` for adjoint sensitivity solves. See [composite-operators.md](composite-operators.md) for full API details.
 
 **When to use:**
@@ -525,7 +572,7 @@ struct AngleConfig
     k_vec::Vec3
     pol::Vec3
     v::Vector{ComplexF64}
-    Q::Matrix{ComplexF64}
+    Q::AbstractMatrix{ComplexF64}
     weight::Float64
 end
 ```
@@ -537,7 +584,7 @@ end
 | `k_vec` | `Vec3` | Incidence wave vector `k * k_hat` (rad/m). |
 | `pol` | `Vec3` | Polarization unit vector (perpendicular to `k_vec`). |
 | `v` | `Vector{ComplexF64}` | Pre-assembled excitation vector for this angle. |
-| `Q` | `Matrix{ComplexF64}` | Backscatter Q-matrix targeting direction `-k_hat` with the specified cone angle. |
+| `Q` | `AbstractMatrix{ComplexF64}` | Backscatter Q operator targeting direction `-k_hat` with the specified cone angle. Concrete (dense `Matrix`) by default; a matrix-free Q operator when `build_multiangle_configs` is called with `matrix_free_Q=true`. |
 | `weight` | `Float64` | Weight `w_a` in the composite objective `J = sum_a w_a (I_a' Q_a I_a)`. |
 
 **Constructor:**
@@ -650,6 +697,7 @@ cv = CVec3(1.0 + 2.0im, 0.0, 0.0)   # complex electric field phasor
 | Type | Source File | Primary Users |
 |------|-------------|---------------|
 | `TriMesh`, `RWGData`, `PatchPartition`, `SphGrid`, `ScatteringResult` | `src/Types.jl` | All assembly, solve, and post-processing modules |
+| `LocalMassMatrix` | `src/Types.jl` | `src/assembly/Impedance.jl`, `src/assembly/DensityInterpolation.jl` |
 | `MatrixFreeEFIEOperator`, `MatrixFreeEFIEAdjointOperator` | `src/assembly/EFIE.jl` | `src/fast/ACA.jl`, `src/solver/NearFieldPreconditioner.jl`, `src/Workflow.jl` |
 | `AbstractPreconditionerData`, `NearFieldPreconditionerData`, `ILUPreconditionerData`, `DiagonalPreconditionerData`, `BlockDiagPrecondData`, `PermutedPrecondData` | `src/solver/NearFieldPreconditioner.jl` | `src/solver/IterativeSolve.jl`, `src/solver/Solve.jl`, `src/optimization/Optimize.jl` |
 | `NearFieldOperator`, `NearFieldAdjointOperator` | `src/solver/NearFieldPreconditioner.jl` | `src/solver/IterativeSolve.jl` (internal) |

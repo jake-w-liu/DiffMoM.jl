@@ -34,7 +34,7 @@ where `I` is the current coefficient vector and `Q` is a Hermitian positive-semi
 
 ---
 
-### `solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200)`
+### `solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
 
 Solve the adjoint system:
 
@@ -50,11 +50,16 @@ where `Z'` is the conjugate transpose of the system matrix. The adjoint variable
 |-----------|------|---------|-------------|
 | `Z` | `AbstractMatrix{<:Number}` | -- | System matrix (same Z used in the forward solve). |
 | `Q` | `Matrix{<:Number}` | -- | Objective matrix. |
-| `I` | `Vector{<:Number}` | -- | Current coefficients from the forward solve. |
+| `I` | `AbstractVector{<:Number}` | -- | Current coefficients from the forward solve. |
 | `solver` | `Symbol` | `:direct` | `:direct` for LU factorization, `:gmres` for GMRES. Same choice as the forward solve. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. When provided, the **adjoint** preconditioner `Z_nf^{-H}` is automatically applied. |
+| `gmres_precond_side` | `Symbol` | `:left` | Preconditioner application side (`:left` or `:right`). |
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. |
+| `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
+| `check_gmres_convergence` | `Bool` | `true` | If `true`, an unconverged GMRES solve throws instead of returning an unverified adjoint vector. |
+| `check_true_residual` | `Bool` | `false` | If `true`, verify the true residual `||Z' lambda - rhs||` after the GMRES solve. |
+| `true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol` when `check_true_residual=true`. |
 
 **Returns:** `Vector{ComplexF64}` adjoint variable `lambda`.
 
@@ -62,7 +67,7 @@ where `Z'` is the conjugate transpose of the system matrix. The adjoint variable
 
 ---
 
-### `solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200)`
+### `solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
 
 Solve the adjoint system with a pre-computed right-hand side:
 
@@ -83,8 +88,13 @@ Unlike `solve_adjoint(Z, Q, I)` which internally computes `rhs = Q * I`, this fu
 | `rhs` | `AbstractVector{<:Number}` | -- | Pre-computed right-hand side vector (e.g., `Q * I` or output of `apply_Q`). |
 | `solver` | `Symbol` | `:direct` | `:direct` for LU factorization, `:gmres` for GMRES. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. |
+| `gmres_precond_side` | `Symbol` | `:left` | Preconditioner application side (`:left` or `:right`). |
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. |
+| `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
+| `check_gmres_convergence` | `Bool` | `true` | If `true`, an unconverged GMRES solve throws instead of returning an unverified adjoint vector. |
+| `check_true_residual` | `Bool` | `false` | If `true`, verify the true residual `||Z' lambda - rhs||` after the GMRES solve. |
+| `true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol` when `check_true_residual=true`. |
 
 **Returns:** `Vector{ComplexF64}` adjoint variable `lambda`.
 
@@ -161,7 +171,7 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 | `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on `theta` (projected L-BFGS-B). `nothing` = no lower bound. |
 | `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on `theta`. `nothing` = no upper bound. |
 | `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. Each iteration requires one forward solve + one adjoint solve + one line-search solve. |
-| `tol` | `Float64` | `1e-6` | Gradient-norm convergence tolerance. The optimizer stops when `||g|| < tol`. |
+| `tol` | `Float64` | `1e-10` | Gradient-norm convergence tolerance. The optimizer stops when `||g|| < tol`. |
 | `m_lbfgs` | `Int` | `10` | L-BFGS memory length (number of past gradient pairs stored). Higher values give better Hessian approximation but use more memory. 5--20 is typical. |
 | `alpha0` | `Float64` | `0.01` | Initial step-size scaling for the first iteration. Subsequent step sizes are adapted by L-BFGS. |
 | `verbose` | `Bool` | `true` | Print iteration progress (iteration number, objective value, gradient norm). |
@@ -174,6 +184,7 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 | `nf_preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. Build once with `build_nearfield_preconditioner` and pass here. Ignored when `solver=:direct`. |
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations per solve. |
+| `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
 
 **Mass-based conditioning options (advanced):**
 
@@ -191,7 +202,7 @@ These options apply a mass-based left preconditioner `M` to the system `Z_eff = 
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized parameter vector.
-- `trace::Vector{NamedTuple}`: Iteration records with fields `(iter, J, gnorm)` -- iteration number, objective value, and gradient norm.
+- `trace::Vector{NamedTuple}`: Iteration records with fields `(iter, J, gnorm, n_fwd, n_adj)` -- iteration number, objective value, gradient norm, and cumulative forward/adjoint solve counts (including line-search solves).
 
 ---
 
@@ -216,9 +227,9 @@ using projected L-BFGS. This is the standard formulation for maximizing directiv
 | `Q_total` | `Matrix{ComplexF64}` | Objective matrix for denominator (total radiated power). |
 | `theta0` | `Vector{Float64}` | Initial parameter vector. |
 
-**Options:** Same as `optimize_lbfgs` (including all solver, NF preconditioner, and conditioning options), except `maximize` is implicitly true for the ratio. The routine internally minimizes `-J`.
+**Options:** Same as `optimize_lbfgs` (including all solver, NF preconditioner, and conditioning options), except `maximize` is implicitly true for the ratio (there is no `maximize` keyword) and `tol` defaults to `1e-6`. The routine internally minimizes `-J`.
 
-**Returns:** Same structure as `optimize_lbfgs`.
+**Returns:** Tuple `(theta_opt, trace)` where `theta_opt::Vector{Float64}` is the optimized parameter vector and `trace::Vector{NamedTuple}` records `(iter, J, gnorm)` per iteration (`J` is the directivity ratio).
 
 **How to build Q_target and Q_total:**
 ```julia
@@ -251,7 +262,7 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. |
-| `tol` | `Float64` | `1e-6` | Gradient-norm convergence tolerance. |
+| `tol` | `Float64` | `1e-10` | Gradient-norm convergence tolerance. |
 | `m_lbfgs` | `Int` | `10` | L-BFGS memory length. |
 | `alpha0` | `Float64` | `0.01` | Initial inverse-Hessian scaling. |
 | `verbose` | `Bool` | `true` | Print iteration progress. |
@@ -259,18 +270,30 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 | `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on theta. |
 | `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on theta. |
 | `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner (strongly recommended). |
+| `preconditioner_builder` | function or `nothing` | `nothing` | Optional `theta -> preconditioner` builder for design-dependent preconditioners (cached for unchanged `theta`). |
+| `trial_preconditioner_mode` | `Symbol` | `:rebuild` | Line-search preconditioner policy: `:rebuild`, `:current`, or `:current_then_rebuild`. |
+| `gmres_precond_side` | `Symbol` | `:left` | Preconditioner application side (`:left` or `:right`). |
+| `fallback_to_steepest` | `Bool` | `true` | Retry projected steepest descent after a failed L-BFGS line search before stopping. |
+| `lbfgs_line_search_maxiter` | `Int` | `20` | Max Armijo backtracking trials for the L-BFGS direction. |
+| `steepest_line_search_maxiter` | `Int` | `20` | Max Armijo backtracking trials for the fallback steepest direction. |
 | `gmres_tol` | `Float64` | `1e-6` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `300` | Maximum GMRES iterations per solve. |
+| `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
+| `check_gmres_true_residual` | `Bool` | `true` | Verify true physical residuals for GMRES solves. |
+| `gmres_true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol`. |
+| `objective` | `Symbol` | `:linear` | Scalarization: `:linear` (Σ w_a J_a), `:sum_log` (Σ w_a log(J_a/J_ref,a)), or `:smoothmax_log` (smooth worst-angle normalized log). |
+| `reference_objectives` | `Vector{Float64}` or `nothing` | `nothing` | Positive per-angle reference values for normalized objectives (typically the PEC objective values). |
+| `smooth_beta` | `Float64` | `8.0` | Sharpness parameter for `:smoothmax_log`. |
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized parameter vector.
-- `trace::Vector{NamedTuple}`: Iteration records with fields `(iter, J, gnorm)`.
+- `trace::Vector{NamedTuple}`: Iteration records with fields `(iter, J, gnorm, n_fwd, n_adj)` -- iteration number, objective value, gradient norm, and cumulative forward/adjoint solve counts (including line-search solves).
 
-**Per-iteration cost:** M forward solves + M adjoint solves + line-search forward solves (M per trial step). Always uses GMRES internally (the composite `ImpedanceLoadedOperator` is matrix-free).
+**Per-iteration cost:** M forward solves + M adjoint solves + line-search forward solves (M per trial step). When `Z_base` is a dense `Matrix{ComplexF64}`, a direct LU factorization is reused for all solves; for matrix-free operators (MLFMA, ACA) the composite `ImpedanceLoadedOperator` is solved with GMRES.
 
-**Objective:** `J(theta) = sum_a w_a * Re(I_a' Q_a I_a)` where `I_a = Z(theta)^{-1} v_a`.
+**Objective (default `:linear`):** `J(theta) = sum_a w_a * Re(I_a' Q_a I_a)` where `I_a = Z(theta)^{-1} v_a`. The `:sum_log` and `:smoothmax_log` objectives reweight the per-angle terms `J_a`.
 
-**Gradient:** `g[p] = sum_a w_a * gradient_impedance(Mp, I_a, lambda_a)` where `Z(theta)' lambda_a = Q_a I_a`.
+**Gradient (default `:linear`):** `g[p] = sum_a w_a * gradient_impedance(Mp, I_a, lambda_a)` where `Z(theta)' lambda_a = Q_a I_a`. For normalized objectives the per-angle weights `w_a` are replaced by the objective's effective scalarization weights.
 
 See the [Multi-Angle RCS chapter](../differentiable-design/05-multiangle-rcs.md) for a detailed walkthrough and examples.
 

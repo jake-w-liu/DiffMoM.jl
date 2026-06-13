@@ -140,7 +140,7 @@ configs = build_multiangle_configs(mesh, rwg, k, angles;
 | `k` | `Float64` | -- | Wavenumber (rad/m). |
 | `angles` | `Vector{<:NamedTuple}` | -- | Incidence angle specifications (see below). |
 | `grid` | `SphGrid` | -- | Spherical grid (keyword argument, shared across all angles). |
-| `backscatter_cone` | `Float64` | `10.0` | Half-angle of backscatter mask in degrees. |
+| `backscatter_cone` | `Float64` | `15.0` | Half-angle of backscatter mask in degrees. |
 
 **Angle specification format:**
 

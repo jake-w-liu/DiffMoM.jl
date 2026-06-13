@@ -53,28 +53,36 @@ struct MLFMAOperator <: AbstractMatrix{ComplexF64}
     prefactor::ComplexF64
     samplings::Vector{SphereSampling}
     trans_factors::Vector{Dict{NTuple{3,Int}, Vector{ComplexF64}}}
+    trans_plans::Vector{TranslationPlan}
     bf_patterns::Array{ComplexF64,3}
     interp_theta::Vector{Matrix{Float64}}
     interp_phi::Vector{Matrix{Float64}}
     agg_filters::Vector{Vector{Matrix{Float64}}}
     disagg_filters::Vector{Vector{Matrix{Float64}}}
     N::Int
+    workspace::MLFMAWorkspace
 end
 ```
 
-**Key fields:**
+**Fields:**
 
-| Field | Description |
-|-------|-------------|
-| `octree` | Octree spatial decomposition. See [octree.md](octree.md). |
-| `Z_near` | Sparse near-field matrix (neighbor interactions). |
-| `k` | Wavenumber (rad/m). |
-| `samplings` | Per-level spherical sampling grids (indexed by `level - 1`). |
-| `trans_factors` | Per-level precomputed translation factors. |
-| `bf_patterns` | `(4, npts_leaf, N)` radiation patterns per BF: components 1:3 = vector, 4 = scalar (div/k). |
-| `agg_filters` | Per-level per-m theta filters for aggregation (child to parent). |
-| `disagg_filters` | Per-level per-m theta filters for disaggregation (parent to child). |
-| `N` | Number of RWG unknowns. |
+| Field | Type | Description |
+|-------|------|-------------|
+| `octree` | `Octree` | Octree spatial decomposition. See [octree.md](octree.md). |
+| `Z_near` | `SparseMatrixCSC{ComplexF64,Int}` | Sparse near-field matrix (neighbor interactions), in original BF ordering. |
+| `k` | `Float64` | Wavenumber (rad/m). |
+| `eta0` | `Float64` | Free-space impedance used during assembly. |
+| `prefactor` | `ComplexF64` | Far-field scaling factor `-k^2 * eta0 / (16π^2)` applied to the disaggregated result. |
+| `samplings` | `Vector{SphereSampling}` | Per-level spherical sampling grids for levels `2:nLevels`, indexed by `level - 1`. |
+| `trans_factors` | `Vector{Dict{NTuple{3,Int}, Vector{ComplexF64}}}` | Per-level precomputed translation factors keyed by relative box position, indexed by `level - 1`. |
+| `trans_plans` | `Vector{TranslationPlan}` | *(internal)* Per-level flattened translation schedule that replaces the per-interaction `Dict` lookup in the matvec hot loop. Built from `trans_factors`. |
+| `bf_patterns` | `Array{ComplexF64,3}` | `(4, npts_leaf, N)` radiation patterns per BF: components 1:3 = vector, 4 = scalar (div/k). |
+| `interp_theta` | `Vector{Matrix{Float64}}` | *(internal, unused)* Kept empty for compatibility; the matvec uses the per-m spectral filters instead of dense Lagrange θ interpolation. |
+| `interp_phi` | `Vector{Matrix{Float64}}` | *(internal, unused)* Kept empty for compatibility; see `interp_theta`. |
+| `agg_filters` | `Vector{Vector{Matrix{Float64}}}` | Per-level per-m θ filters for aggregation (child to parent), indexed `[level][m+1]`. |
+| `disagg_filters` | `Vector{Vector{Matrix{Float64}}}` | Per-level per-m θ filters for disaggregation (parent to child), indexed `[level][m+1]`. |
+| `N` | `Int` | Number of RWG unknowns. |
+| `workspace` | `MLFMAWorkspace` | *(internal)* Pre-allocated buffers reused by every `mul!` to avoid per-call heap allocation. |
 
 **Supported operations:**
 

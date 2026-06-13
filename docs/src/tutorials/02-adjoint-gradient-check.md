@@ -51,7 +51,7 @@ For **reactive impedance** ($Z_s = i\theta_p$), $\partial Z/\partial\theta_p = -
       = -2\,\Im\{\lambda^\dagger M_p I\}.
 \]
 
-These closed‑form expressions are implemented in `gradient_impedance` (`src/optimization/Adjoint.jl:45`).
+These closed‑form expressions are implemented in `gradient_impedance` (`src/optimization/Adjoint.jl:117`).
 
 ### Finite‑Difference Verification
 
@@ -77,7 +77,7 @@ When the objective is holomorphic in $\theta$, the complex‑step method
 g_p^{\text{CS}} = \frac{\Im\{J(\theta + i\epsilon e_p)\}}{\epsilon},\qquad \epsilon \sim 10^{-30}
 \]
 
-provides machine‑precision gradients without subtractive cancellation. The function `verify_gradient` (`src/optimization/Verification.jl:42`) automatically compares adjoint, finite‑difference, and complex‑step results.
+provides machine‑precision gradients without subtractive cancellation. The function `verify_gradient` (`src/optimization/Verification.jl:53`) automatically compares adjoint, finite‑difference, and complex‑step results.
 
 ---
 
@@ -235,7 +235,7 @@ The curve should have a V‑shape; a flat plateau indicates numerical noise domi
 
 ### Preconditioning Consistency
 
-If you use left preconditioning (`preconditioner_M`), the derivative blocks must be transformed as $M_p \to M^{-1} M_p$. The function `transform_patch_matrices` (`src/solver/Solve.jl:135`) handles this automatically when `preconditioner_M` is passed to `gradient_impedance`. Verify that the same preconditioner is used in forward, adjoint, and gradient computations.
+If you use left preconditioning (`preconditioner_M`), the derivative blocks must be transformed as $M_p \to M^{-1} M_p$. The function `transform_patch_matrices` (`src/solver/Solve.jl:217`) performs this transformation, returning `(Mp_tilde, factor)`; pass the transformed blocks `Mp_tilde` to `gradient_impedance`. Verify that the same preconditioner is used in forward, adjoint, and gradient computations.
 
 ---
 
@@ -256,7 +256,7 @@ If errors show a consistent factor (e.g., 0.5, 2, 4), verify the gradient formul
 - Resistive: $+2\Re\{\lambda^\dagger M_p I\}$ (factor 2)
 - Reactive: $-2\Im\{\lambda^\dagger M_p I\}$ (factor −2)
 
-The `gradient_impedance` implementation (`src/optimization/Adjoint.jl:45`) already includes these factors; a scaling discrepancy suggests `Mp` is incorrectly normalized.
+The `gradient_impedance` implementation (`src/optimization/Adjoint.jl:117`) already includes these factors; a scaling discrepancy suggests `Mp` is incorrectly normalized.
 
 ### Error 3: Large Errors Only for Ill‑Conditioned Parameters
 
@@ -270,8 +270,8 @@ Parameters that affect nearly singular modes produce large finite‑difference t
 
 If verification passes without preconditioning but fails with `preconditioner_M`, ensure:
 
-1. **Same preconditioner in forward/adjoint solves**: `prepare_conditioned_system` returns `(Z_eff, rhs_eff, factor)`; use `factor` for both solves.
-2. **Transformed derivative blocks**: Call `gradient_impedance` with `preconditioner_factor=factor` (or `preconditioner_M`).
+1. **Same preconditioner in forward/adjoint solves**: `prepare_conditioned_system` returns `(Z_eff, rhs_eff, factor)`; reuse `factor` (via the `preconditioner_factor` keyword) for both solves.
+2. **Transformed derivative blocks**: Transform `Mp` with `transform_patch_matrices(Mp; preconditioner_factor=factor)` and pass the resulting `Mp_tilde` to `gradient_impedance`.
 3. **Consistent `reactive` flag**: Preconditioner transformation does not change the `reactive`/`resistive` distinction.
 
 ### Error 5: Complex‑Step Fails (NaN/Infinite Errors)
@@ -284,34 +284,29 @@ Complex‑step requires the objective to be holomorphic. If $J(\theta)$ involves
 
 | Task | Function | Source File | Key Lines |
 |------|----------|-------------|-----------|
-| **Adjoint solve** | `solve_adjoint(Z, Q, I)` | `src/optimization/Adjoint.jl` | 25–29 |
-| **Gradient computation** | `gradient_impedance(Mp, I, λ; reactive)` | `src/optimization/Adjoint.jl` | 45–64 |
+| **Adjoint solve** | `solve_adjoint(Z, Q, I)` | `src/optimization/Adjoint.jl` | 29–61 |
+| **Gradient computation** | `gradient_impedance(Mp, I, lambda; reactive)` | `src/optimization/Adjoint.jl` | 117–136 |
 | **Finite‑difference derivative** | `fd_grad(f, theta, p; h, scheme)` | `src/optimization/Verification.jl` | 27–39 |
 | **Complex‑step derivative** | `complex_step_grad(f, theta, p; eps)` | `src/optimization/Verification.jl` | 15–20 |
-| **Gradient verification** | `verify_gradient(f_obj, g_adj, theta; …)` | `src/optimization/Verification.jl` | 42–86 |
-| **Full system assembly** | `assemble_full_Z(Z_efie, Mp, theta; reactive)` | `src/solver/Solve.jl` | 34–44 |
-| **Forward solve** | `solve_forward(Z, v)` | `src/solver/Solve.jl` | 13–15 |
-| **Patch mass matrices** | `precompute_patch_mass(mesh, rwg, partition)` | `src/assembly/Impedance.jl` | 15–64 |
+| **Gradient verification** | `verify_gradient(f_objective, adjoint_grad, theta; …)` | `src/optimization/Verification.jl` | 53–88 |
+| **Full system assembly** | `assemble_full_Z(Z_efie, Mp, theta; reactive)` | `src/solver/Solve.jl` | 89–96 |
+| **Forward solve** | `solve_forward(Z, v)` | `src/solver/Solve.jl` | 23–55 |
+| **Patch mass matrices** | `precompute_patch_mass(mesh, rwg, partition)` | `src/assembly/Impedance.jl` | 15–71 |
 
-**Example from the beam‑steering tutorial** (`examples/03_beamsteering_physical_unitcell.jl:210‑226`):
+**Example from the impedance‑optimization script** (`examples/02_impedance_optimization.jl:95‑109`):
 
 ```julia
-function J_of_theta_reactive(theta_vec)
-    Z_t = copy(Z_efie)
-    for p in eachindex(theta_vec)
-        Z_t .-= (1im * theta_vec[p]) .* Mp[p]
-    end
-    I_t = Z_t \ v
-    f_t = real(dot(I_t, Q_target * I_t))
-    g_t = real(dot(I_t, Q_total * I_t))
-    return f_t / g_t   # directivity ratio
+# Verify gradient with finite differences
+function J_of_theta(θ)
+    Z_t = assemble_full_Z(Z_efie, Mp, θ)
+    I_t = Z_t \ Vector{ComplexF64}(v)
+    return real(dot(I_t, Q * I_t))
 end
 
-# Finite‑difference check at optimum
-for p in 1:5
-    g_fd = fd_grad(J_of_theta_reactive, theta_opt, p; h=1e-5)
-    rel_err = abs(g_opt[p] - g_fd) / max(abs(g_opt[p]), 1e-30)
-    println("p=$p: adj=$(g_opt[p])  fd=$g_fd  rel_err=$rel_err")
+for p in 1:min(5, P)
+    g_fd = fd_grad(J_of_theta, theta0, p; h=1e-5)
+    rel  = abs(g_adj[p] - g_fd) / max(abs(g_fd), 1e-30)
+    println("p=$p: adj=$(g_adj[p])  fd=$g_fd  rel_err=$rel")
 end
 ```
 

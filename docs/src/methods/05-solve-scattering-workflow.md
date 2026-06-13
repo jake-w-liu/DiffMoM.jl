@@ -120,10 +120,10 @@ Internally, `solve_scattering` executes these steps in order:
    - ACA: `build_aca_operator(mesh, rwg, k; leaf_size, eta, aca_tol, max_rank)`.
 7. **Preconditioner** (GMRES methods only):
    - `preconditioner=:auto` defaults to `:lu` for dense/ACA GMRES, and to `:ilu` for MLFMA.
-   - Dense GMRES: `build_nearfield_preconditioner(Z, mesh, rwg, cutoff)` -- extracts from dense matrix.
-   - ACA GMRES: `build_nearfield_preconditioner(mesh, rwg, k, cutoff)` -- assembles from geometry.
-   - MLFMA: `build_nearfield_preconditioner(A_mlfma.Z_near; factorization=...)`.
-   - Cutoff distance = `nf_cutoff_lambda * lambda`.
+   - Dense GMRES: `build_nearfield_preconditioner(Z, mesh, rwg, cutoff; factorization=...)` -- extracts the within-`cutoff` entries from the dense matrix.
+   - ACA GMRES: `build_nearfield_preconditioner(A_aca; factorization=...)` -- extracts the dense (inadmissible) blocks already stored in the `ACAOperator`. No `cutoff` is used here: the near-field sparsity is defined by the cluster tree's inadmissible blocks.
+   - MLFMA: `build_nearfield_preconditioner(A_mlfma.Z_near; factorization=...)` -- factorizes the octree near-field matrix directly.
+   - Cutoff distance = `nf_cutoff_lambda * lambda` (applies to the dense GMRES path only).
 8. **Solve**: direct uses `Z \ v`; GMRES uses `solve_gmres(Z_or_A, v; preconditioner=P_nf, tol, maxiter)`.
 9. **Return** a `ScatteringResult` with solution, timing, and diagnostics.
 
@@ -164,8 +164,9 @@ end
 | Keyword | Default | Description |
 |---------|---------|-------------|
 | `method` | `:auto` | One of `:auto`, `:dense_direct`, `:dense_gmres`, `:aca_gmres`, `:mlfma` |
-| `dense_direct_limit` | `2000` | $N$ threshold: below this, auto selects dense direct |
-| `dense_gmres_limit` | `10000` | $N$ threshold: above this, auto selects ACA GMRES |
+| `dense_direct_limit` | `2000` | $N$ threshold: at or below this, auto selects dense direct |
+| `dense_gmres_limit` | `10000` | $N$ threshold: at or below this (and above `dense_direct_limit`), auto selects dense GMRES; above it selects ACA GMRES |
+| `mlfma_threshold` | `50000` | $N$ threshold: above this, auto selects MLFMA instead of ACA GMRES |
 
 ### Mesh Validation
 
@@ -260,6 +261,7 @@ end
 ```julia
 result = solve_scattering(mesh, freq, pw)
 rwg = build_rwg(mesh)  # needed for far-field computation
+k = 2pi * freq / 299792458.0
 
 grid = make_sph_grid(91, 361)
 G_mat = radiation_vectors(mesh, rwg, grid, k)
@@ -308,8 +310,9 @@ end
 | RWG construction | `src/basis/RWG.jl` | `build_rwg` |
 | Dense EFIE assembly | `src/assembly/EFIE.jl` | `assemble_Z_efie` |
 | ACA H-matrix assembly | `src/fast/ACA.jl` | `build_aca_operator` |
-| NF preconditioner (from Z) | `src/solver/NearFieldPreconditioner.jl` | `build_nearfield_preconditioner(Z, mesh, rwg, cutoff)` |
-| NF preconditioner (geometry) | `src/solver/NearFieldPreconditioner.jl` | `build_nearfield_preconditioner(mesh, rwg, k, cutoff)` |
+| NF preconditioner (from dense Z) | `src/solver/NearFieldPreconditioner.jl` | `build_nearfield_preconditioner(Z, mesh, rwg, cutoff)` |
+| NF preconditioner (from ACA blocks) | `src/solver/NearFieldPreconditioner.jl` | `build_nearfield_preconditioner(A_aca)` |
+| NF preconditioner (from sparse Z_near) | `src/solver/NearFieldPreconditioner.jl` | `build_nearfield_preconditioner(Z_nf)` |
 | GMRES solve | `src/solver/IterativeSolve.jl` | `solve_gmres` |
 | Excitation assembly | `src/assembly/Excitation.jl` | `assemble_excitation` |
 
@@ -321,7 +324,7 @@ end
 
 1. **Threshold reasoning**: Explain why the default `dense_direct_limit` is 2000 and not 500 or 50,000. What hardware constraints determine the ideal threshold?
 
-2. **Preconditioner source**: For `:dense_gmres`, the near-field preconditioner is built from the already-assembled dense matrix `Z`. For `:aca_gmres`, the workflow builds it from geometry directly. Why might this be preferable to extracting entries through `A_aca[i,j]`?
+2. **Preconditioner source**: For `:dense_gmres`, the near-field preconditioner is built from the already-assembled dense matrix `Z` by keeping entries within `cutoff`. For `:aca_gmres`, `build_nearfield_preconditioner(A_aca)` instead reuses the dense (inadmissible) blocks already stored in the `ACAOperator`. Why is reusing those blocks preferable to recomputing EFIE entries from geometry, or to extracting entries one at a time via `A_aca[i,j]`?
 
 3. **Under-resolution risk**: A user sets `check_resolution=false` on a mesh where $h_{\max} = 0.5\lambda$. The solve succeeds. Why might the result be dangerously wrong?
 

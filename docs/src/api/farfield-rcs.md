@@ -84,6 +84,40 @@ Compute the far-field pattern `E_inf(r_hat_q) = sum_n I_n * g_n(r_hat_q)` at all
 
 ---
 
+### `incident_farfield(excitation, r_hat, k)`
+
+Asymptotic amplitude of the incident electric field radiated by `excitation` in direction `r_hat`, such that
+
+```
+E_inc(r * r_hat) ~ incident_farfield(excitation, r_hat, k) * exp(-ik r) / r   as r -> infinity
+```
+
+Summed with `compute_farfield` (the scattered contribution from the solved currents) this gives the **total** far-field pattern of a finite scatterer illuminated by a point-like source.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `excitation` | `AbstractExcitation` | Source model (see supported types below). |
+| `r_hat` | `Vec3` | Observation direction (normalized internally). |
+| `k` | `Real` | Wavenumber (rad/m). |
+
+**Returns:** `CVec3` (the complex far-field amplitude vector `E_inc^inf(r_hat)`).
+
+**Supported excitation models:**
+
+- `MonopoleExcitation`
+- `DipoleExcitation` (`type = :electric` or `:magnetic`)
+- `LoopExcitation` (treated as an equivalent magnetic dipole)
+- `PatternFeedExcitation` (tabulated far-field; requires positive frequency)
+- `MultiExcitation` composed of the supported models above (amplitudes summed with their weights)
+
+**Not supported:**
+
+- `PlaneWaveExcitation` -- a plane wave has no `1/r` decay, so its "far-field" contribution is a delta function in the incident direction, not a radiation pattern. Calling `incident_farfield` on any unsupported `AbstractExcitation` raises an error.
+
+---
+
 ## Near-Field Evaluation
 
 ### `compute_nearfield(mesh, rwg, I_coeffs, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing)`
@@ -337,6 +371,78 @@ Apply `Q * I` without forming `Q` explicitly (matrix-free). Useful when N is lar
 
 ---
 
+### `build_Q_operator(G_mat, grid, pol; mask=nothing)`
+
+Build a matrix-free far-field objective operator with the same action as `build_Q(G_mat, grid, pol; mask)`, but without forming the dense `N x N` matrix. Returns a [`FarFieldQMatrix`](#FarFieldQMatrix) that supports `mul!` (and `getindex`) so it can be used wherever a `Q` operator is expected.
+
+**Parameters:** Same as `build_Q`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `G_mat` | `Matrix{ComplexF64}` | Radiation-vector matrix `(3*N_omega, N)`. |
+| `grid` | `SphGrid` | Spherical grid with quadrature weights. |
+| `pol` | `Matrix{ComplexF64}` | `(3, N_omega)` polarization vectors. |
+| `mask` | `BitVector` or `nothing` | Optional mask selecting target directions. Copied into the operator. |
+
+**Returns:** `FarFieldQMatrix` (see below).
+
+**Validation:** The constructor checks that `G_mat` has `3*N_omega` rows and that `pol` is `3 x N_omega`, throwing a `DimensionMismatch` otherwise.
+
+---
+
+### `FarFieldQMatrix`
+
+Matrix-free representation of the Hermitian far-field objective matrix `Q = G' W G`. It stores the radiation-vector matrix and applies `Q * x` without forming the dense `N x N` matrix. Construct one with `build_Q_operator`.
+
+`FarFieldQMatrix <: AbstractMatrix{ComplexF64}`.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `G_mat` | `Matrix{ComplexF64}` | Radiation-vector matrix `(3*N_omega, N)`. |
+| `weights` | `Vector{Float64}` | Quadrature weights (copied from `grid.w`). |
+| `pol` | `Matrix{ComplexF64}` | `(3, N_omega)` polarization vectors. |
+| `mask` | `Union{Nothing,BitVector}` | Optional direction mask. |
+| `N` | `Int` | Operator dimension (`N x N`). |
+
+`size(Q)` is `(N, N)` and `eltype(Q)` is `ComplexF64`. The matrix-free product is exposed through `LinearAlgebra.mul!(result, Q, x)`; individual entries are also available via `Q[m, n]`.
+
+**Example (matrix-free objective):**
+
+```julia
+using LinearAlgebra
+
+grid = make_sph_grid(90, 36)
+G_mat = radiation_vectors(mesh, rwg, grid, k)
+pol = pol_linear_x(grid)
+
+Q = build_Q_operator(G_mat, grid, pol)   # FarFieldQMatrix
+
+QI = similar(I)
+mul!(QI, Q, I)         # Q * I without forming Q
+J = real(dot(I, QI))   # J = Re(I' Q I)
+```
+
+---
+
+### `SumQMatrix`
+
+Lazy sum of two `Q` operators, `Q = A + B`, evaluated matrix-free. Used to combine far-field objectives (for example, a target-region `Q` and a regularization or total-power `Q`) without materializing the sum.
+
+`SumQMatrix{A,B} <: AbstractMatrix{ComplexF64}`, parameterized on the two summand matrix types (each `<: AbstractMatrix{ComplexF64}`).
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `A` | `AbstractMatrix{ComplexF64}` | First summand. |
+| `B` | `AbstractMatrix{ComplexF64}` | Second summand (must have the same size as `A`). |
+
+`size(Q)` equals `size(Q.A)`, `eltype(Q)` is `ComplexF64`, `Q[i, j] = A[i, j] + B[i, j]`, and `LinearAlgebra.mul!(result, Q, x)` computes `A*x + B*x`. The two summands must have matching sizes.
+
+---
+
 ## Diagnostics and RCS
 
 ### `radiated_power(E_ff, grid; eta0=376.730313668)`
@@ -525,15 +631,65 @@ rel_error = abs.(rcs_mom .- rcs_mie) ./ max.(rcs_mie, 1e-30)
 
 ---
 
+### `mie_s1s2_dielectric(x, cosgamma, eps_r; mu_r=1.0+0im, nmax=nothing)`
+
+Compute Mie scattering amplitudes `S1` and `S2` for a homogeneous, isotropic dielectric (or magnetodielectric) sphere in vacuum. This is the dielectric counterpart of `mie_s1s2_pec`. The coefficients use outgoing spherical Hankel functions of the second kind, matching the package-wide `exp(+i omega t)` convention.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `x` | `Float64` | -- | Exterior size parameter `x = k0 * a` (`k0` is the free-space wavenumber, `a` the sphere radius). |
+| `cosgamma` | `Float64` | -- | Cosine of the scattering angle `gamma` (angle between incident and observation directions). |
+| `eps_r` | (any, converted to `ComplexF64`) | -- | Relative permittivity (may be complex; must be nonzero). |
+| `mu_r` | (any, converted to `ComplexF64`) | `1.0 + 0im` | Relative permeability (must be nonzero). |
+| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed from `|sqrt(eps_r*mu_r)| * x` if `nothing`. |
+
+**Returns:** Tuple `(S1, S2)` of `ComplexF64` scattering amplitudes.
+
+**Note:** This is a low-level function. For RCS values, use `mie_bistatic_rcs_dielectric` instead.
+
+---
+
+### `mie_bistatic_rcs_dielectric(k, a, k_inc_hat, pol_inc, rhat, eps_r; mu_r=1.0+0im, nmax=nothing)`
+
+Compute exact homogeneous-sphere bistatic RCS (linear units, m^2) from dielectric Mie theory. This is the dielectric counterpart of `mie_bistatic_rcs_pec`; the exterior medium is vacuum.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `k` | `Float64` | -- | Wavenumber (rad/m). Must be positive. |
+| `a` | `Float64` | -- | Sphere radius (meters). Must be positive. |
+| `k_inc_hat` | `Vec3` | -- | Incident propagation direction (normalized internally). |
+| `pol_inc` | `Vec3` | -- | Incident polarization (normalized internally; must be orthogonal to `k_inc_hat`). |
+| `rhat` | `Vec3` | -- | Observation direction (normalized internally). |
+| `eps_r` | (any, converted to `ComplexF64`) | -- | Relative permittivity (may be complex). |
+| `mu_r` | (any, converted to `ComplexF64`) | `1.0 + 0im` | Relative permeability. |
+| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed if `nothing`. |
+
+**Returns:** `Float64` RCS value in m^2.
+
+**Validation workflow:**
+```julia
+eps_r = 4.0 + 0im
+
+# Dielectric Mie reference over all grid directions
+rcs_mie = [mie_bistatic_rcs_dielectric(k, a, k_inc_hat, pol, grid.rhat[:, q], eps_r)
+           for q in 1:length(grid.w)]
+```
+
+---
+
 ## Code Mapping
 
 | File | Contents |
 |------|----------|
-| `src/postprocessing/FarField.jl` | `make_sph_grid`, `radiation_vectors`, `compute_farfield` |
-| `src/optimization/QMatrix.jl` | `build_Q`, `apply_Q`, `pol_linear_x`, `pol_linear_y`, `cap_mask`, `direction_mask` |
-| `src/postprocessing/Diagnostics.jl` | `radiated_power`, `projected_power`, `input_power`, `energy_ratio`, `condition_diagnostics` |
+| `src/postprocessing/FarField.jl` | `make_sph_grid`, `radiation_vectors`, `compute_farfield`, `incident_farfield` |
+| `src/optimization/QMatrix.jl` | `build_Q`, `build_Q_operator`, `apply_Q`, `FarFieldQMatrix`, `SumQMatrix`, `pol_linear_x`, `pol_linear_y`, `cap_mask`, `direction_mask` |
+| `src/postprocessing/Diagnostics.jl` | `radiated_power`, `projected_power`, `input_power`, `energy_ratio`, `condition_diagnostics`, `bistatic_rcs`, `backscatter_rcs` |
 | `src/assembly/Excitation.jl` | `assemble_v_plane_wave` |
-| `src/postprocessing/Mie.jl` | `mie_s1s2_pec`, `mie_bistatic_rcs_pec` |
+| `src/postprocessing/Mie.jl` | `mie_s1s2_pec`, `mie_bistatic_rcs_pec`, `mie_s1s2_dielectric`, `mie_bistatic_rcs_dielectric` |
 
 ---
 

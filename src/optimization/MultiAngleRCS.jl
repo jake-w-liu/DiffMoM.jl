@@ -80,7 +80,7 @@ function _transverse_unit_pol(khat::Vec3, pol::Vec3)
 end
 
 """
-    build_multiangle_configs(mesh, rwg, k, angles; grid, backscatter_cone=10.0, matrix_free_Q=false, rcs_component=:copol)
+    build_multiangle_configs(mesh, rwg, k, angles; grid, backscatter_cone=15.0, matrix_free_Q=false, rcs_component=:copol)
 
 Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
 

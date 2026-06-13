@@ -65,6 +65,31 @@ rwg = build_rwg(mesh)
 
 ---
 
+### `make_circular_plate(radius, Nr, Nphi)`
+
+Creates a triangulated circular plate (disk) in the xy-plane, centered at the origin. The disk is built from `Nr` concentric radial rings with `Nphi` azimuthal subdivisions each, plus a single center vertex. The innermost ring is connected to the center by a triangle fan; each outer annulus is split into quads, and each quad into two triangles.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `radius` | `Real` | Disk radius (meters). |
+| `Nr` | `Int` | Number of radial rings. More rings = finer radial resolution. |
+| `Nphi` | `Int` | Number of azimuthal samples per ring. Larger values give a smoother circular boundary. |
+
+**Returns:** `TriMesh` with `1 + Nr*Nphi` vertices and `Nphi + 2*(Nr-1)*Nphi` triangles.
+
+**Note:** This is an open surface (the outer ring forms boundary edges). Use `allow_boundary=true` in mesh checks and `build_rwg`.
+
+**Example:**
+```julia
+mesh = make_circular_plate(0.05, 6, 24)   # 5 cm radius disk
+report = assert_mesh_quality(mesh; allow_boundary=true, require_closed=false)
+println((nvertices(mesh), ntriangles(mesh)))
+```
+
+---
+
 ### `make_parabolic_reflector(D, f, Nr, Nphi; center=Vec3(0,0,0))`
 
 Creates an open parabolic reflector mesh aligned with +z, with surface equation:
@@ -334,6 +359,10 @@ coarsen_mesh_to_target_rwg(mesh, target_rwg;
 | `mesh` | `TriMesh` | -- | Input mesh (typically already repaired). |
 | `target_rwg` | `Int` | -- | Target number of RWG basis functions. The actual count will be close but may not match exactly, since coarsening is discrete. |
 | `max_iters` | `Int` | `10` | Maximum binary-search iterations for finding the right voxel size. |
+| `allow_boundary` | `Bool` | `true` | Allow boundary edges in the repair and RWG-counting of each candidate mesh. Set to `false` for closed surfaces where every edge must be interior. |
+| `require_closed` | `Bool` | `false` | Require that each candidate surface is closed (zero boundary edges). Use for enclosed bodies (spheres, aircraft hulls) where boundary edges indicate a mesh defect. |
+| `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection during candidate repair and RWG counting. A triangle is degenerate if its area is less than `area_tol_rel * bbox_diagonal^2`. |
+| `strict_nonmanifold` | `Bool` | `true` | Forwarded to the per-candidate `repair_mesh_for_simulation` call. Set to `false` only if you want to tolerate non-manifold edges (not recommended). |
 
 **Returns:** Named tuple `(mesh, rwg_count, target_rwg, best_gap, iterations)`.
 
@@ -685,7 +714,6 @@ rep = repair_mesh_for_simulation(mesh)
 | `src/geometry/MeshIO.jl` | Multi-format I/O: STL, Gmsh MSH, unified dispatcher, CAD conversion |
 | `examples/06_aircraft_rcs.jl` | End-to-end OBJ import -> repair -> coarsen -> RCS workflow |
 | `examples/12_plate_rcs_stl_roundtrip.jl` | Mesh import/export and visualization checks |
-| `examples/convert_aircraft_mat_to_obj.py` | MAT-to-OBJ conversion helper (SciPy) |
 
 ---
 

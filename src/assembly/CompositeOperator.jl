@@ -10,7 +10,8 @@
 export ImpedanceLoadedOperator, ImpedanceLoadedAdjointOperator
 
 """
-    ImpedanceLoadedOperator(Z_base, Mp, theta, reactive=false)
+    ImpedanceLoadedOperator(Z_base, Mp, theta)
+    ImpedanceLoadedOperator(Z_base, Mp, theta, reactive)
 
 Matrix-free operator representing Z(θ) = Z_base + Z_imp(θ) where
 Z_imp = -Σ_p coeff_p * M_p.
@@ -21,7 +22,8 @@ Supports `mul!`, `adjoint`, and `size` for use with Krylov.jl GMRES.
 - `Z_base`: any `AbstractMatrix{ComplexF64}` (MLFMAOperator, ACAOperator, dense Matrix)
 - `Mp`: vector of sparse patch mass matrices
 - `theta`: current impedance parameter vector
-- `reactive`: if true, Z_imp = -Σ (iθ_p) M_p; otherwise Z_imp = -Σ θ_p M_p
+- `reactive`: positional `Bool` flag (defaults to `false` in the 3-argument form);
+  if `true`, Z_imp = -Σ (iθ_p) M_p; otherwise Z_imp = -Σ θ_p M_p
 """
 struct ImpedanceLoadedOperator{T<:AbstractMatrix{ComplexF64},
                                 S<:AbstractMatrix} <: AbstractMatrix{ComplexF64}

@@ -124,6 +124,24 @@ Analytical integral `integral{ 1/|r - P| dS }` over a flat triangle with vertice
 
 ---
 
+### `grad_analytical_integral_1overR(P, V1, V2, V3)`
+
+Analytical gradient with respect to the observation point `P` of the static potential integral computed by `analytical_integral_1overR`:
+
+```
+nabla_P S(P) = -integral_T (P - r') / |P - r'|^3 dS'
+```
+
+This closed-form result (Graglia 1993; Wilton et al. 1984) splits into an in-plane part and a part along the triangle normal. It is the gradient counterpart of `analytical_integral_1overR`, used to subtract the `1/R^2` singularity of the mixed-potential scalar term near the surface.
+
+**Parameters:**
+- `P::Vec3`: Observation point.
+- `V1, V2, V3::Vec3`: Triangle vertices.
+
+**Returns:** `SVector{3,Float64}` (the gradient vector). Returns the zero vector for degenerate (zero-area) triangles.
+
+---
+
 ### `self_cell_contribution(...)`
 
 Compute the EFIE self-cell integral for basis functions `m` and `n` on the same triangle using singularity extraction. The integral splits into:
@@ -235,7 +253,7 @@ Precompute patch mass matrices `Mp[p]` where:
 Mp[p][m,n] = integral_{Gamma_p} f_m(r) . f_n(r) dS
 ```
 
-This is the overlap integral of two RWG basis functions restricted to patch `p`. These matrices are sparse (only nonzero when both basis `m` and `n` have support on triangles in patch `p`) and are precomputed once before optimization.
+This is the overlap integral of two RWG basis functions restricted to patch `p`. These matrices are stored as compact `LocalMassMatrix` objects (an `AbstractMatrix{T}` triplet form; only nonzero when both basis `m` and `n` have support on triangles in patch `p`) and are precomputed once before optimization.
 
 **Parameters:**
 
@@ -246,7 +264,7 @@ This is the overlap integral of two RWG basis functions restricted to patch `p`.
 | `partition` | `PatchPartition` | Mapping of triangles to patches. |
 | `quad_order` | `Int` | Quadrature order (default 3). |
 
-**Returns:** `Vector{SparseMatrixCSC{Float64,Int}}` of length `P` (one sparse matrix per patch).
+**Returns:** `Vector{LocalMassMatrix{T}}` of length `P` (one compact mass matrix per patch). `T` is `Float64` for real RWG coefficients, or `ComplexF64` for complex (Bloch) coefficients.
 
 ---
 
@@ -264,7 +282,7 @@ The negative sign follows the convention that positive `theta_p` reduces the tot
 - `Mp::Vector{<:AbstractMatrix}`: Patch mass matrices from `precompute_patch_mass`.
 - `theta::AbstractVector`: Parameter vector (real or complex, length `P`).
 
-**Returns:** `Matrix{ComplexF64}` of size `N x N`.
+**Returns:** Matrix of size `N x N` with element type `ComplexF64` if `theta` is real-valued, or `eltype(theta)` if `theta` is complex-valued.
 
 **For reactive loading:** Pass complex coefficients: `theta_complex = 1im .* theta_real`.
 
@@ -278,7 +296,7 @@ Returns the exact derivative matrix `dZ/d(theta_p) = -Mp[p]`. This is used inter
 - `Mp::Vector{<:AbstractMatrix}`: Patch mass matrices.
 - `p::Int`: Patch index (1-based).
 
-**Returns:** Sparse matrix (same type as `Mp[p]`).
+**Returns:** `-Mp[p]`, the negated patch mass matrix (same `LocalMassMatrix` type as `Mp[p]`).
 
 ---
 
@@ -307,23 +325,48 @@ where the coefficients depend on the loading mode:
 
 ---
 
-## Linear Solves
+### `assemble_full_Z!(Z, Z_efie, Mp, theta; reactive=false)`
 
-### `solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200, verbose_gmres=false)`
-
-Solve the MoM system `Z * I = v` for the surface current coefficients `I`. This is the central solve step: given the system matrix and excitation, compute the induced currents.
+In-place variant of `assemble_full_Z`. Writes `Z(theta) = Z_efie - sum_p c_p * Mp[p]` into the pre-allocated destination matrix `Z` (it first copies `Z_efie` into `Z` via `copyto!`, then subtracts the scaled patch mass matrices). Use this to avoid reallocating the full matrix on every objective/gradient evaluation in an optimization loop.
 
 **Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `Z` | `Matrix{<:Number}` | -- | System matrix (N x N). Typically from `assemble_full_Z` or `assemble_Z_efie`. |
-| `v` | `Vector{<:Number}` | -- | Excitation vector (length N). From `assemble_excitation` or `assemble_v_plane_wave`. |
+| `Z` | `Matrix{<:Number}` | -- | Pre-allocated destination matrix (N x N). Overwritten with the result. |
+| `Z_efie` | `Matrix{<:Number}` | -- | EFIE matrix from `assemble_Z_efie`. |
+| `Mp` | `Vector{<:AbstractMatrix}` | -- | Patch mass matrices. |
+| `theta` | `AbstractVector` | -- | Parameter vector. |
+| `reactive` | `Bool` | `false` | If `true`, treat `theta` as reactive (coefficient `i * theta_p`); otherwise resistive (coefficient `theta_p`). |
+
+**Returns:** The destination matrix `Z` (also modified in place).
+
+---
+
+## Linear Solves
+
+### `solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
+
+Solve the MoM system `Z * I = v` for the surface current coefficients `I`. This is the central solve step: given the system matrix and excitation, compute the induced currents.
+
+For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise); use `solver=:gmres` for operator-based systems.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `Z` | `AbstractMatrix{<:Number}` | -- | System matrix (N x N). Typically from `assemble_full_Z` or `assemble_Z_efie`. For `:direct`, must be a dense `Matrix`. |
+| `v` | `AbstractVector{<:Number}` | -- | Excitation vector (length N). From `assemble_excitation` or `assemble_v_plane_wave`. |
 | `solver` | `Symbol` | `:direct` | **`:direct`**: LU factorization (`Z \ v`). Exact, O(N^3). Best for N < ~2000. **`:gmres`**: Iterative GMRES. O(N^2 * n_iter). Best for large N with a good preconditioner. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. Ignored when `solver=:direct`. Build with `build_nearfield_preconditioner`. |
+| `gmres_precond_side` | `Symbol` | `:left` | `:left` or `:right` preconditioner application side (forwarded to `solve_gmres` as `precond_side`). |
 | `gmres_tol` | `Float64` | `1e-8` | Relative convergence tolerance for GMRES. Smaller = more accurate but more iterations. `1e-8` is conservative; `1e-6` is often sufficient. |
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. With a good preconditioner, convergence typically occurs in 10--50 iterations. Set higher (300--500) for difficult problems or tight tolerances. |
+| `gmres_memory` | `Int` | `20` | GMRES restart length / Krylov memory (forwarded to `solve_gmres` as `memory`). |
 | `verbose_gmres` | `Bool` | `false` | Print GMRES convergence information (iteration count, residual). |
+| `check_gmres_convergence` | `Bool` | `true` | If `true`, raise an error when GMRES returns an unconverged solve. |
+| `check_true_residual` | `Bool` | `false` | If `true`, additionally verify the true residual `norm(Z*x - v) / norm(v)`. |
+| `true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol` (only used when `check_true_residual=true`). |
 
 **Returns:** `Vector{ComplexF64}` solution `I` (surface current coefficients).
 
@@ -339,9 +382,9 @@ Solve the MoM system `Z * I = v` for the surface current coefficients `I`. This 
 
 ---
 
-### `solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_tol=1e-8, gmres_maxiter=200)`
+### `solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
 
-General linear solve `Z * x = rhs` with the same solver dispatch as `solve_forward`. This is an alias that forwards to `solve_forward`.
+General linear solve `Z * x = rhs` with the same solver dispatch as `solve_forward`. This is an alias that forwards to `solve_forward` (it accepts the same keyword arguments except `verbose_gmres`, which it does not forward).
 
 ---
 
@@ -370,11 +413,11 @@ Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field precond
 
 ---
 
-### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, verbose=false)`
+### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, verbose=false)`
 
 Solve the adjoint system `Z' * x = rhs` using GMRES with the adjoint preconditioner `Z_nf^{-H}` (inverse conjugate transpose of the near-field matrix). Used internally by `solve_adjoint` for sensitivity analysis.
 
-**Parameters:** Same as `solve_gmres` except `memory` (GMRES restart length) is not exposed; the Krylov.jl default is used for adjoint solves.
+**Parameters:** Same as `solve_gmres` (including `memory`, GMRES restart length, default `20`).
 
 **Returns:** Tuple `(x, stats)`.
 
@@ -444,10 +487,10 @@ Build the preconditioner directly from a matrix-free EFIE operator without alloc
 ### Overload 4: From geometry/physics inputs directly
 
 ```julia
-build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, neighbor_search=:spatial, factorization=:lu, ...)
+build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, factorization=:lu, ilu_tau=1e-3)
 ```
 
-Build the preconditioner directly from mesh, basis, and wavenumber — without requiring a pre-assembled matrix or explicit operator. Internally creates a `MatrixFreeEFIEOperator` and extracts the needed entries.
+Build the preconditioner directly from mesh, basis, and wavenumber — without requiring a pre-assembled matrix or explicit operator. Internally creates a `MatrixFreeEFIEOperator` and delegates to Overload 3 (spatial neighbor search, batched Green's evaluation).
 
 **Parameters:**
 
@@ -463,10 +506,52 @@ Build the preconditioner directly from mesh, basis, and wavenumber — without r
 | `allow_boundary` | `Bool` | `true` | Allow boundary edges. |
 | `require_closed` | `Bool` | `false` | Require closed surface. |
 | `area_tol_rel` | `Float64` | `1e-12` | Degenerate triangle tolerance. |
-| `neighbor_search` | `Symbol` | `:spatial` | Neighbor search method. |
-| `factorization` | `Symbol` | `:lu` | Factorization type. |
+| `factorization` | `Symbol` | `:lu` | Factorization type (`:lu`, `:ilu`, or `:diag`). |
+| `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU (only used when `factorization=:ilu`). |
+
+This overload does **not** accept a `neighbor_search` keyword; it uses the batched spatial path of Overload 3 internally.
 
 **Use case:** When you want a preconditioner but have not (or will not) assemble the full dense matrix. For example, in a pure matrix-free GMRES workflow.
+
+---
+
+### Overload 5: From an `ACAOperator`
+
+```julia
+build_nearfield_preconditioner(A_aca::ACAOperator; factorization=:lu, ilu_tau=1e-3)
+```
+
+Build a preconditioner by extracting the dense (inadmissible) blocks already computed inside the ACA H-matrix operator, using the cluster-tree permutation. No EFIE entries are recomputed — the near-field matrix is assembled directly from the stored block data.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `A_aca` | `ACAOperator` | -- | ACA H-matrix operator (see [aca-workflow.md](aca-workflow.md)). |
+| `factorization` | `Symbol` | `:lu` | Factorization type (`:lu`, `:ilu`, or `:diag`). |
+| `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU (only used when `factorization=:ilu`). |
+
+There is no `cutoff` argument: the near-field sparsity is defined by the ACA dense blocks themselves. This overload delegates to Overload 6 with the assembled sparse matrix.
+
+---
+
+### Overload 6: From a pre-assembled sparse near-field matrix
+
+```julia
+build_nearfield_preconditioner(Z_nf::SparseMatrixCSC{ComplexF64,Int}; factorization=:lu, ilu_tau=1e-3)
+```
+
+Build a preconditioner directly from an already-assembled sparse near-field matrix, skipping the distance-based neighbor search entirely. Useful for MLFMA, where `Z_near` is already assembled with the correct sparsity pattern from the octree.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `Z_nf` | `SparseMatrixCSC{ComplexF64,Int}` | -- | Pre-assembled sparse near-field matrix. |
+| `factorization` | `Symbol` | `:lu` | Factorization type (`:lu`, `:ilu`, or `:diag`). |
+| `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU (only used when `factorization=:ilu`). |
+
+**Returns:** `NearFieldPreconditionerData` (`:lu`), `ILUPreconditionerData` (`:ilu`), or `DiagonalPreconditionerData` (`:diag`). The stored `cutoff` field is set to `Inf` for these factorizations since no distance cutoff is used.
 
 ---
 
@@ -672,8 +757,9 @@ I, stats = solve_gmres(A, v; preconditioner=P_nf)
 | File | Contents |
 |------|----------|
 | `src/assembly/EFIE.jl` | Dense assembly (`assemble_Z_efie`), matrix-free operators (`MatrixFreeEFIEOperator`, `matrixfree_efie_operator`, `efie_entry`) |
-| `src/assembly/Impedance.jl` | Impedance blocks (`precompute_patch_mass`, `assemble_Z_impedance`) |
-| `src/solver/Solve.jl` | `solve_forward`, `solve_system`, `assemble_full_Z`, conditioning helpers |
+| `src/assembly/Impedance.jl` | Impedance blocks (`precompute_patch_mass`, `assemble_Z_impedance`, `assemble_dZ_dtheta`) |
+| `src/assembly/SingularIntegrals.jl` | Singularity extraction (`analytical_integral_1overR`, `grad_analytical_integral_1overR`, `self_cell_contribution`, `adjacent_cell_contribution`) |
+| `src/solver/Solve.jl` | `solve_forward`, `solve_system`, `assemble_full_Z`, `assemble_full_Z!`, conditioning helpers |
 | `src/solver/NearFieldPreconditioner.jl` | `build_nearfield_preconditioner`, `build_block_diag_preconditioner`, `build_mlfma_preconditioner`, `rwg_centers`, operator wrappers |
 | `src/solver/IterativeSolve.jl` | `solve_gmres`, `solve_gmres_adjoint` |
 

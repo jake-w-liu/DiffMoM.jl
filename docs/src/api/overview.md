@@ -24,14 +24,14 @@ The typical simulation pipeline follows these stages in order. Each stage builds
 
 Define or import the scatterer geometry and ensure the mesh is suitable for MoM simulation.
 
-- **Types:** `TriMesh`, `RWGData`, `PatchPartition`, `SphGrid`, `ScatteringResult`, `Vec3`, `CVec3`, `AbstractPreconditionerData`, `NearFieldPreconditionerData`, `ILUPreconditionerData`, `DiagonalPreconditionerData`, `BlockDiagPrecondData`, `PermutedPrecondData`
-  Core data structures used throughout the package. See [types.md](types.md) for field-level documentation.
+- **Types:** `TriMesh`, `RWGData`, `LocalMassMatrix`, `PatchPartition`, `SphGrid`, `ScatteringResult`, `Vec3`, `CVec3`, `AbstractPreconditionerData`, `NearFieldPreconditionerData`, `ILUPreconditionerData`, `DiagonalPreconditionerData`, `BlockDiagPrecondData`, `PermutedPrecondData`
+  Core data structures used throughout the package. `LocalMassMatrix` is a compact triplet-stored sparse matrix for per-triangle/per-patch RWG mass blocks. See [types.md](types.md) for field-level documentation.
 
 - **Helpers:** `nvertices`, `ntriangles`
   Quick queries on mesh size.
 
-- **Build/import:** `make_rect_plate`, `make_rect_plate_graded`, `make_parabolic_reflector`, `read_obj_mesh`, `write_obj_mesh`
-  Create meshes programmatically or load from Wavefront OBJ files.
+- **Build/import:** `make_rect_plate`, `make_rect_plate_graded`, `make_circular_plate`, `make_parabolic_reflector`, `read_obj_mesh`, `write_obj_mesh`
+  Create meshes programmatically or load from Wavefront OBJ files. `make_circular_plate(radius, Nr, Nphi)` triangulates a disk in the xy-plane using radial rings.
 
 - **Geometry queries:** `triangle_area`, `triangle_center`, `triangle_normal`, `mesh_unique_edges`, `mesh_wireframe_segments`
   Per-triangle geometry and edge extraction.
@@ -64,8 +64,8 @@ Construct RWG basis functions on the mesh, then assemble the EFIE system matrix 
 - **Quadrature:** `tri_quad_rule`, `tri_quad_points`
   Gaussian quadrature rules on the reference triangle.
 
-- **Singular integration:** `analytical_integral_1overR`, `self_cell_contribution`
-  Analytical and hybrid singular integrals for self-cell terms (when source and test triangles overlap).
+- **Singular integration:** `analytical_integral_1overR`, `grad_analytical_integral_1overR`, `self_cell_contribution`
+  Analytical and hybrid singular integrals for self-cell terms (when source and test triangles overlap). `grad_analytical_integral_1overR` is the closed-form gradient counterpart, used to subtract the `1/R²` singularity of the scalar-potential term near the surface.
 
 - **EFIE assembly:** `assemble_Z_efie`
   Build the dense N x N EFIE impedance matrix. This is the core MoM system matrix for PEC scatterers.
@@ -73,8 +73,8 @@ Construct RWG basis functions on the mesh, then assemble the EFIE system matrix 
 - **Matrix-free EFIE operators:** `matrixfree_efie_operator`, `matrixfree_efie_adjoint_operator`, `efie_entry`
   Matrix-free EFIE matvec without dense N x N allocation. Types: `MatrixFreeEFIEOperator`, `MatrixFreeEFIEAdjointOperator`. See [assembly-solve.md](assembly-solve.md) and [types.md](types.md).
 
-- **Impedance loading:** `precompute_patch_mass`, `assemble_Z_impedance`, `assemble_dZ_dtheta`, `assemble_full_Z`
-  Add surface impedance loading for design optimization. See [assembly-solve.md](assembly-solve.md).
+- **Impedance loading:** `precompute_patch_mass`, `assemble_Z_impedance`, `assemble_dZ_dtheta`, `assemble_full_Z`, `assemble_full_Z!`
+  Add surface impedance loading for design optimization. `assemble_full_Z!` is the in-place variant that writes `Z(θ) = Z_efie + Z_imp(θ)` into a pre-allocated matrix. See [assembly-solve.md](assembly-solve.md).
 
 - **Periodic kernels and EFIE:** `PeriodicLattice`, `greens_periodic_correction`, `assemble_Z_efie_periodic`
   Build periodic unit-cell operators with Ewald-accelerated Green's correction. See [periodic-methods.md](periodic-methods.md).
@@ -91,9 +91,10 @@ Apply an incident field, solve for currents, then compute scattered near-field,
 total electric field, or far-field observables.
 
 - **Excitation sources:** See [excitation.md](excitation.md) for the full excitation system.
-  - Types: `AbstractExcitation`, `PlaneWaveExcitation`, `PortExcitation`, `DeltaGapExcitation`, `DipoleExcitation`, `LoopExcitation`, `ImportedExcitation`, `PatternFeedExcitation`, `MultiExcitation`
-  - Constructors: `make_plane_wave`, `make_delta_gap`, `make_dipole`, `make_loop`, `make_imported_excitation`, `make_pattern_feed`, `make_analytic_dipole_pattern_feed`, `make_multi_excitation`
+  - Types: `AbstractExcitation`, `PlaneWaveExcitation`, `PortExcitation`, `DeltaGapExcitation`, `DipoleExcitation`, `LoopExcitation`, `MonopoleExcitation`, `ImportedExcitation`, `PatternFeedExcitation`, `MultiExcitation`
+  - Constructors: `make_plane_wave`, `make_delta_gap`, `make_dipole`, `make_loop`, `make_monopole`, `make_imported_excitation`, `make_pattern_feed`, `make_analytic_dipole_pattern_feed`, `make_multi_excitation`
   - Assembly: `pattern_feed_field`, `assemble_v_plane_wave`, `assemble_excitation`, `assemble_multiple_excitations`
+  - Monopole helpers: `make_monopole(position, axis, height, amplitude, frequency=1e9; include_image=true)` builds a center-fed linear monopole (dipole+image equivalent by default, or a physical half-wire for a meshed ground plane); `monopole_incident_field(r, mono)` evaluates its incident field.
   - Example scripts: `examples/07_pattern_feed.jl`
 
 - **Linear solves (direct):** `solve_forward`, `solve_system`
@@ -106,16 +107,17 @@ total electric field, or far-field observables.
   Build sparse near-field preconditioners that dramatically reduce GMRES iteration counts. `build_nearfield_preconditioner` has multiple overloads (dense matrix, abstract matrix, matrix-free operator, geometry/physics, or pre-assembled sparse). Supports sparse LU (`:lu`), incomplete LU (`:ilu`), or Jacobi diagonal (`:diag`) factorization. `build_block_diag_preconditioner` and `build_mlfma_preconditioner` are specialized for MLFMA operators. See [assembly-solve.md](assembly-solve.md) for details and performance data.
   - Types: `AbstractPreconditionerData`, `NearFieldPreconditionerData`, `ILUPreconditionerData`, `DiagonalPreconditionerData`, `BlockDiagPrecondData`, `PermutedPrecondData`, `NearFieldOperator`, `NearFieldAdjointOperator`
 
-- **Far-field computation:** `make_sph_grid`, `radiation_vectors`, `compute_farfield`
-  Sample the far-field radiation pattern on a spherical grid.
+- **Far-field computation:** `make_sph_grid`, `radiation_vectors`, `compute_farfield`, `incident_farfield`
+  Sample the far-field radiation pattern on a spherical grid. `incident_farfield(excitation, r_hat, k)` returns the asymptotic amplitude of the incident field radiated by an excitation (e.g. `MonopoleExcitation`, `DipoleExcitation`) in direction `r̂`.
 
 - **Near-field computation:** `compute_nearfield`, `compute_total_field`
   Evaluate the scattered electric field, or the total electric field
   `E_total = E_inc + E_sca`, at arbitrary observation points away from the
   surface using the mixed-potential EFIE representation for `E_sca`.
 
-- **Objective (Q-matrix) helpers:** `build_Q`, `apply_Q`, `pol_linear_x`, `pol_linear_y`, `cap_mask`, `direction_mask`
-  Build Hermitian PSD matrices for quadratic far-field objectives used in optimization. `direction_mask` generalizes `cap_mask` to arbitrary directions for multi-angle RCS optimization.
+- **Objective (Q-matrix) helpers:** `build_Q`, `build_Q_operator`, `apply_Q`, `pol_linear_x`, `pol_linear_y`, `cap_mask`, `direction_mask`
+  Build Hermitian PSD matrices for quadratic far-field objectives used in optimization. `direction_mask` generalizes `cap_mask` to arbitrary directions for multi-angle RCS optimization. `build_Q_operator` returns a matrix-free `FarFieldQMatrix` with the same action as `build_Q` without forming the dense `N x N` matrix.
+  - Types: `FarFieldQMatrix` (matrix-free `Q = G' W G` operator), `SumQMatrix` (lazy sum of two same-size Q operators).
 
 ### 3b) Fast Methods and High-Level Workflow
 
@@ -146,21 +148,43 @@ Validate simulation results and compute scattering cross sections.
 - **Radar cross section:** `bistatic_rcs`, `backscatter_rcs`
   Compute bistatic and monostatic RCS from far-field data.
 
-- **Analytical reference:** `mie_s1s2_pec`, `mie_bistatic_rcs_pec`
-  Mie series for PEC sphere scattering; use as a validation reference for your MoM results.
+- **Analytical reference:** `mie_s1s2_pec`, `mie_bistatic_rcs_pec`, `mie_s1s2_dielectric`, `mie_bistatic_rcs_dielectric`
+  Mie series for PEC and homogeneous dielectric/magnetodielectric sphere scattering; use as a validation reference for your MoM results. The dielectric variants take `eps_r` (and optional `mu_r`) and follow the package-wide `exp(+iωt)` convention.
 
-- **Periodic Floquet metrics:** `FloquetMode`, `floquet_modes`, `reflection_coefficients`, `transmission_coefficients`, `specular_rcs_objective`, `power_balance`
-  Post-process periodic unit-cell responses into Floquet coefficients and power accounting. See [periodic-methods.md](periodic-methods.md).
+- **Periodic Floquet metrics:** `FloquetMode`, `floquet_modes`, `reflection_coefficients`, `reflection_coefficient_vectors`, `reflected_power_fractions`, `transmission_coefficients`, `specular_rcs_objective`, `power_balance`
+  Post-process periodic unit-cell responses into Floquet coefficients and power accounting. `reflection_coefficient_vectors` returns full (vector) Floquet reflection coefficients and `reflected_power_fractions` gives the per-mode reflected power split. See [periodic-methods.md](periodic-methods.md).
 
-### 4b) Physical Optics
+### 4b) Physical Optics and PTD
 
-High-frequency approximate solver for electrically large problems where full MoM is too expensive.
+High-frequency approximate solvers for electrically large problems where full MoM is too expensive.
 
 - **Physical optics solve:** `solve_po`
   Compute PO surface currents and far-field scattering using the tangential magnetic field approximation on illuminated faces. Returns `POResult`. See [physical-optics.md](physical-optics.md).
 
-- **Types:** `POResult`
-  Result container for PO solutions, analogous to `ScatteringResult` for MoM. See [physical-optics.md](physical-optics.md).
+- **PTD edge diffraction:** `solve_ptd`, `extract_diffraction_edges`
+  Physical Theory of Diffraction: adds Ufimtsev fringe corrections from diffraction edges on top of the PO solution. `extract_diffraction_edges` pulls wedge/half-plane edges from a `TriMesh`; `solve_ptd(mesh, freq_hz, excitation; ...)` returns a `PTDResult` with combined PO+PTD, PO-only, and PTD-only far-fields. See [physical-optics.md](physical-optics.md).
+
+- **Types:** `POResult`, `DiffractionEdge`, `PTDResult`
+  `POResult` is the result container for PO solutions, analogous to `ScatteringResult` for MoM. `DiffractionEdge` stores the local wedge geometry of one diffraction edge; `PTDResult` is the PTD solver output. See [physical-optics.md](physical-optics.md).
+
+### 4c) Alternative Formulations and Material Solvers
+
+Beyond the PEC surface EFIE, the package provides volume and surface formulations for dielectric and general material scatterers, plus a grounded (half-space) variant of the periodic EFIE.
+
+- **2D volume integral equation (TM):** `assemble_vie_2d`, `solve_vie_2d`, `planewave_2d`, `linesource_2d`, `scattered_field_2d`, `jacobian_scattered_field_2d`, `greens_2d`, `mie_coefficients_2d`, `mie_total_field_2d`
+  TM (`E_z`-only) VIE-MoM on a uniform rectangular grid with pulse basis and point matching, for inhomogeneous dielectric domains. Includes plane-wave / line-source excitation, scattered-field evaluation, the contrast Jacobian for differentiable design, and a 2D Mie reference for circular cylinders. Types: `Vec2`, `CVec2`, `Mesh2D`, `VIEResult2D`. See [2D VIE](vie-2d.md).
+
+- **3D volume material solver (DDA / VIE-style):** `make_voxel_grid_3d`, `solve_dda_3d`, `assemble_dda_3d`, `dda_operator_3d`, `planewave_dda_3d`, `scattered_field_dda_3d`, `farfield_dda_3d`
+  Discretizes a material volume into a uniform Cartesian voxel grid and solves a vector DDA / volume-integral-equation system for the total fields. The coupled electric-magnetic (bianisotropic) path adds `solve_em_dda_3d`, `assemble_em_dda_3d`, `em_dda_operator_3d`, `planewave_em_dda_3d`, `scattered_fields_em_dda_3d`, `farfield_em_dda_3d`. FFT-accelerated operators (`fft_dda_operator_3d`, `fft_em_dda_operator_3d`) exploit the block-Toeplitz grid structure for fast GMRES; adjoint sensitivities use `solve_dda_adjoint_3d` and `gradient_epsr_dda_3d`. Types: `VoxelGrid3D`, `DDAOperator3D`, `DDAResult3D`, `EMDDAOperator3D`, `EMDDAResult3D`, `FFTDDAOperator3D`, `FFTEMDDAOperator3D`. See [3D Volume DDA](dda-volume-3d.md).
+
+- **3D material models:** `IsotropicMaterial3D`, `DiagonalAnisotropicMaterial3D`, `TensorAnisotropicMaterial3D`, `IsotropicPermeability3D`, `DiagonalPermeability3D`, `TensorPermeability3D`, `MagneticMaterial3D`, `BianisotropicMaterial3D`, `DrudePermittivity3D`, `LorentzPermittivity3D`, `DebyePermittivity3D`
+  Constitutive models (relative permittivity, permeability, magnetodielectric and bianisotropic media) consumed by the 3D volume solver, with static and dispersive (Drude / Lorentz / Debye) responses. Evaluators: `material_epsr_3d`, `material_mur_3d`, `material_bianisotropic_matrix_3d`, `drude_epsr_3d`, `lorentz_epsr_3d`, `debye_epsr_3d`. All follow the `exp(+iωt)` convention (passive loss is `imag(eps_r) <= 0`). See [Material Models](material-models-3d.md).
+
+- **Dielectric surface integral equation (3D):** `dielectric_medium_3d`, `assemble_dielectric_sie_3d`, `assemble_pmchwt_3d`, `assemble_muller_3d`, `solve_dielectric_sie_3d`
+  Closed-surface SIE for homogeneous isotropic dielectric bodies, solving for tangential `[J; M]` currents via the first-kind PMCHWT or second-kind Müller formulation. Matrix-free assembly is available for GMRES. Types: `DielectricMedium3D`, `DielectricSIEResult3D`, `MatrixFreeDielectricSIE3D`, `MatrixFreeMagneticFieldOperator3D`. Requires a closed mesh (`build_rwg(mesh; allow_boundary=false, require_closed=true)`). See [Dielectric SIE](dielectric-sie-3d.md).
+
+- **Grounded (half-space) EFIE:** `assemble_Z_efie_grounded`, `assemble_excitation_grounded`, `reflection_coefficients_grounded`, `reflection_coefficient_vectors_grounded`
+  Image-theory variant of the periodic EFIE for a coplanar metasurface at height `h` above an infinite PEC ground plane: `Z_grounded = Z_direct - Z_image`. Builds on the free-standing periodic EFIE and Floquet post-processing. See [Grounded EFIE](grounded-efie.md) and [periodic-methods.md](periodic-methods.md).
 
 ### 5) Differentiable Optimization
 
@@ -209,8 +233,13 @@ For a first read-through of the API documentation, follow this order:
 10. **[adjoint-optimize.md](adjoint-optimize.md)** — Adjoint gradients, L-BFGS optimization, and multi-angle RCS
 11. **[density-topology.md](density-topology.md)** — Density interpolation, filtering/projection, and density adjoint gradients
 12. **[verification.md](verification.md)** — Gradient correctness checks
-13. **[excitation.md](excitation.md)** — Extended excitation system (plane waves, ports, dipoles, imported fields, pattern feeds)
-14. **[physical-optics.md](physical-optics.md)** — Physical Optics high-frequency approximate solver
+13. **[excitation.md](excitation.md)** — Extended excitation system (plane waves, ports, dipoles, monopoles, imported fields, pattern feeds)
+14. **[physical-optics.md](physical-optics.md)** — Physical Optics and PTD high-frequency approximate solvers
+15. **[vie-2d.md](vie-2d.md)** — 2D TM volume integral equation (VIE) for inhomogeneous dielectric domains
+16. **[dda-volume-3d.md](dda-volume-3d.md)** — 3D volume material solver (DDA / EM-DDA / FFT-DDA)
+17. **[material-models-3d.md](material-models-3d.md)** — 3D constitutive material models (static and dispersive)
+18. **[dielectric-sie-3d.md](dielectric-sie-3d.md)** — Dielectric surface integral equation (PMCHWT / Müller)
+19. **[grounded-efie.md](grounded-efie.md)** — Grounded (half-space) periodic EFIE via image theory
 
 ---
 

@@ -40,19 +40,22 @@ Each triangle `t` carries a density variable `rho_t in [0,1]`:
 
 ```julia
 struct DensityConfig
-    p::Float64
-    Z_max::Float64
-    vf_target::Float64
+    p::Float64          # SIMP penalization power
+    Z_max::ComplexF64   # void penalty impedance (real = resistive, imaginary = reactive)
+    vf_target::Float64  # target volume (metal) fraction
 end
 ```
 
 with constructor defaults:
 
 ```julia
-DensityConfig(; p=3.0, Z_max_factor=1000.0, eta0=376.730313668, vf_target=0.5)
+DensityConfig(; p=3.0, Z_max_factor=1000.0, eta0=376.730313668, vf_target=0.5, reactive=false)
 ```
 
-and `Z_max = Z_max_factor * eta0` in code.
+The constructor sets `Z_max = ComplexF64(Z_max_factor * eta0)` when `reactive=false`
+(default; resistive penalty, introduces artificial absorption), or
+`Z_max = im * Z_max_factor * eta0` when `reactive=true` (purely reactive `jX`
+penalty, preserving power conservation).
 
 ### 1.3 Penalty Matrix
 
@@ -81,7 +84,9 @@ Implementation details:
 1. uses `tri_quad_rule(quad_order)` and mapped points `tri_quad_points(...)`,
 2. includes only basis functions with support on triangle `t`,
 3. multiplies quadrature sum by `2*A_t` (reference-to-physical Jacobian),
-4. stores each `M_t` as sparse (`spzeros(Float64, N, N)` then fill).
+4. stores each `M_t` as a `LocalMassMatrix` (coordinate/triplet sparse type with
+   fields `n, rows, cols, vals`); the element type is `Float64` for real RWG
+   coefficients and `ComplexF64` otherwise.
 
 ---
 
@@ -167,7 +172,7 @@ g_t
 `gradient_density_full(...)` computes:
 
 1. `g_rho_bar = gradient_density(...)`,
-2. `g_rho = gradient_chain_rule(g_rho_bar, rho_tilde, W, w_sum, beta; eta=...)`.
+2. `g_rho = gradient_chain_rule(g_rho_bar, rho_tilde, W, w_sum, beta, eta)`.
 
 This gives `dJ/drho` for raw optimization variables.
 
@@ -199,7 +204,7 @@ g_rho = gradient_density_full(Mt, I, lambda, rho_tilde, rho_bar, cfg, W, w_sum, 
 
 ## 6. Complexity and Practical Notes
 
-1. `build_filter_weights` is O(`Nt^2`) due to all-pairs centroid distances.
+1. `build_filter_weights` is O(`Nt`) on average using spatial bucketing: centroids are hashed into a uniform grid with cell size `r_min`, so any pair within `r_min` lies in the same or an adjacent cell and only the 3×3×3 neighbour stencil is searched. Brute-force all-pairs centroid distances would be O(`Nt^2`); see the `build_filter_weights` source docstring for the spatial-hashing details.
 2. `precompute_triangle_mass` is expensive for large `N`/`Nt` because each `M_t` is local but assembled explicitly.
 3. Large `Z_max` improves material contrast but can worsen linear-system conditioning.
 4. `gradient_density_full` is only correct when `rho_tilde/rho_bar` come from the same `(W, w_sum, beta, eta)` used in the forward pass.

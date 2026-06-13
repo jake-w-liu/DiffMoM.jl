@@ -19,7 +19,7 @@ Configuration type for density interpolation and penalty scaling.
 ```julia
 struct DensityConfig
     p::Float64          # SIMP penalization power
-    Z_max::Float64      # void penalty impedance
+    Z_max::ComplexF64   # void penalty impedance (real = resistive, imaginary = reactive)
     vf_target::Float64  # target metal volume fraction
 end
 ```
@@ -27,13 +27,16 @@ end
 ### Constructor
 
 ```julia
-DensityConfig(; p=3.0, Z_max_factor=1000.0, eta0=376.730313668, vf_target=0.5)
+DensityConfig(; p=3.0, Z_max_factor=1000.0, eta0=376.730313668, vf_target=0.5, reactive=false)
 ```
 
 Constructs:
 
 - `p`: SIMP power.
-- `Z_max = Z_max_factor * eta0`.
+- `Z_max = Z_max_factor * eta0`. With `reactive=true`, `Z_max` is purely imaginary
+  (`Z_max = im * Z_max_factor * eta0`, a `jX` reactive penalty) which preserves power
+  conservation; with `reactive=false` (default) `Z_max` is real (resistive penalty,
+  which introduces artificial absorption).
 - `vf_target`: target volume fraction.
 
 ---
@@ -56,7 +59,10 @@ M_t[m,n] = integral_t f_m . f_n dS
 | `rwg` | `RWGData` | -- | RWG basis data. |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 
-**Returns:** `Vector{SparseMatrixCSC{Float64,Int}}` of length `Nt`, one sparse matrix per triangle.
+**Returns:** `Vector{LocalMassMatrix{T}}` of length `Nt`, one compact local matrix per
+triangle. The element type `T` is `Float64` for real RWG coefficients and `ComplexF64`
+when the RWG coefficients are complex. `LocalMassMatrix` is an `AbstractMatrix` of size
+`N x N` (`N = rwg.nedges`) stored in compact triplet form.
 
 Only basis functions supported on triangle `t` contribute to `M_t`.
 
@@ -293,9 +299,9 @@ g_rho = gradient_density_full(Mt, I, lambda, rho_tilde, rho_bar, cfg, W, w_sum, 
 
 ## Notes
 
-- `build_filter_weights` is O(`Nt^2`) in both work and temporary pair checks, so very fine meshes can be expensive without spatial acceleration.
-- `precompute_triangle_mass` returns one sparse matrix per triangle; memory grows with both RWG count and local support overlap.
-- The penalty model uses real-valued `Z_max`; large values improve material contrast but can worsen conditioning.
+- `build_filter_weights` buckets triangle centroids into a uniform spatial grid (cell size `r_min`) and searches only the 3x3x3 neighbour stencil, so it is ~O(`Nt`) average for quasi-uniform meshes while producing the same weights as a brute-force pair loop.
+- `precompute_triangle_mass` returns one compact `LocalMassMatrix` per triangle; memory grows with both RWG count and local support overlap.
+- The penalty model uses a complex `Z_max` (`ComplexF64`): a real value gives a resistive penalty (artificial absorption), while `reactive=true` gives a purely imaginary `jX` penalty that preserves power conservation. Large magnitudes improve material contrast but can worsen conditioning.
 - `gradient_density_full` assumes `rho_tilde` and `rho_bar` come from the same `W`, `w_sum`, `beta`, `eta` pipeline used in the forward pass.
 
 ---

@@ -111,42 +111,6 @@ res_sie = solve_dielectric_sie_3d(mesh_closed, rwg_closed, k, 2.5 + 0im, rhs;
 - Dense and matrix-free PMCHWT/Muller dielectric SIE assembly/solves for closed homogeneous isotropic surfaces.
 - Validation scripts for internal consistency, Mie sphere benchmarks, Bempp-cl comparisons, Meep periodic comparisons, physical-optics checks, cost scaling, and robustness studies.
 
-## Examples
-
-All example commands are run from the package root.
-
-```bash
-julia --project=. examples/01_pec_plate_basics.jl
-julia --project=. examples/02_impedance_optimization.jl
-julia --project=. examples/03_beamsteering_physical_unitcell.jl
-julia --project=. examples/04_pec_sphere_mie.jl
-julia --project=. examples/05_solver_methods.jl
-julia --project=. examples/05b_aca_scaling.jl
-julia --project=. examples/07_pattern_feed.jl
-julia --project=. examples/08_solve_scattering_workflow.jl
-julia --project=. examples/09_mom_vs_po.jl
-julia --project=. examples/12_plate_rcs_stl_roundtrip.jl
-julia --project=. examples/13_sphere_rcs_optimization.jl
-julia --project=. examples/14_periodic_to_validation.jl
-julia --project=. examples/15_periodic_to_demo.jl
-julia --project=. examples/16_periodic_to_mesh_convergence.jl
-julia --project=. examples/17_periodic_to_beamsteer_demo.jl
-julia --project=. examples/18_periodic_to_multistart_study.jl
-julia --project=. examples/19_periodic_to_robustness_map.jl
-julia --project=. examples/20_periodic_to_redistribution_demo.jl
-julia --project=. examples/21_near_total_field_rayleigh_sphere.jl
-julia --project=. examples/22_po_ptd_comparison.jl
-julia --project=. examples/23_circular_plate_ptd.jl
-```
-
-Aircraft examples require `examples/demo_aircraft.obj`:
-
-```bash
-julia --project=. examples/06_aircraft_rcs.jl
-julia -t 4 --project=. examples/09a_aircraft_po.jl
-julia -t 4 --project=. examples/10_mlfma_scaling.jl
-julia -t 4 --project=. examples/11_mlfma_finer.jl
-```
 
 ## Validation
 
@@ -188,11 +152,7 @@ listed under `validation/meep/requirements.txt`.
 - `validation/` - analytical, external-solver, paper, scaling, robustness, and consistency workflows.
 - `data/` and `figures/` - generated outputs from tests, examples, and validation scripts.
 
-## Citation
 
-If this package contributes to your work, please cite:
-
-- J. W. Liu, *DiffMoM.jl: Open Differentiable Method-of-Moments Inverse-Design Pipeline*, GitHub repository, 2026.
 
 ## License
 
