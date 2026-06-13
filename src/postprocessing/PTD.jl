@@ -360,6 +360,16 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
 
             # ── PTD fringe coefficients (real-valued, eq 4.137-4.138) ──
             n = γ / π
+            # The stable fringe formula below substitutes (1/2)tan(γ-v) → ∓(1/2)tan(v),
+            # which only holds for half-plane edges (n=2, α=2π, e.g. flat-plate
+            # boundaries). For interior wedges (n≠2) this is a half-plane approximation,
+            # not the true (1/2)tan(γ-v) term, so the fringe correction is inaccurate.
+            if abs(n - 2.0) > 1e-3
+                @warn "PTD fringe coefficients are only validated for half-plane edges " *
+                      "(n=2, α=2π). Interior-wedge edges (n≈$(round(n, digits=3))) use a " *
+                      "half-plane approximation and are NOT accurate; treat PTD results " *
+                      "for faceted/closed bodies as approximate." maxlog=1
+            end
             f_ptd, g_ptd = _ptd_fringe_fg(n, delta_s, delta_i, γ)
 
             # ── Incident field at edge midpoint ──

@@ -319,8 +319,14 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                 eta0::Real=_ETA0_DDA,
                                 mesh_precheck::Bool=true,
                                 area_tol_rel::Float64=1e-12)
-    formulation in (:pmchwt, :muller) ||
-        error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
+    formulation == :pmchwt ||
+        error("Dielectric SIE formulation `$formulation` is not available. The `:muller` " *
+              "path is disabled because it produced currents inconsistent with PMCHWT " *
+              "(verified ~150% error on a sphere, stable under refinement — not a " *
+              "discretization effect): its off-diagonal K blocks and RHS were not μ/ε-" *
+              "weighted consistently with the diagonal, and the second-kind identity " *
+              "(n̂× Gram) term is missing for the principal-value K operator. " *
+              "Use `formulation=:pmchwt`.")
     _assert_closed_surface_sie_3d(mesh, rwg;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
@@ -404,8 +410,14 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
                                                eta0::Real=_ETA0_DDA,
                                                mesh_precheck::Bool=true,
                                                area_tol_rel::Float64=1e-12)
-    formulation in (:pmchwt, :muller) ||
-        error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
+    formulation == :pmchwt ||
+        error("Dielectric SIE formulation `$formulation` is not available. The `:muller` " *
+              "path is disabled because it produced currents inconsistent with PMCHWT " *
+              "(verified ~150% error on a sphere, stable under refinement — not a " *
+              "discretization effect): its off-diagonal K blocks and RHS were not μ/ε-" *
+              "weighted consistently with the diagonal, and the second-kind identity " *
+              "(n̂× Gram) term is missing for the principal-value K operator. " *
+              "Use `formulation=:pmchwt`.")
     _assert_closed_surface_sie_3d(mesh, rwg;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
@@ -568,6 +580,11 @@ end
 assemble_pmchwt_3d(mesh::TriMesh, rwg::RWGData, k0::Real, epsr_in=1.0 + 0im; kwargs...) =
     assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in; formulation=:pmchwt, kwargs...)
 
+# NOTE: the :muller formulation is currently disabled — it produced currents
+# inconsistent with PMCHWT (verified ~150% error, stable under refinement). A
+# correct second-kind Müller needs μ/ε-weighted off-diagonal K blocks + weighted
+# RHS AND the explicit identity (n̂× Gram) term for the principal-value K operator.
+# Until then this raises an informative error; use assemble_pmchwt_3d.
 assemble_muller_3d(mesh::TriMesh, rwg::RWGData, k0::Real, epsr_in=1.0 + 0im; kwargs...) =
     assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in; formulation=:muller, kwargs...)
 

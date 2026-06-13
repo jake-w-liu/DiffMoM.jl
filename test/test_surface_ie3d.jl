@@ -62,18 +62,16 @@ end
                                                     formulation=:pmchwt,
                                                     quad_order=1,
                                                     singular_quad_order=3)
-    A_mu = assemble_muller_3d(mesh, rwg, k0, eps_in;
-                              mur_in=mu_in,
-                              quad_order=1,
-                              singular_quad_order=3)
+    # The :muller formulation is disabled (it produced currents inconsistent with
+    # PMCHWT — see SurfaceIE3D); it must raise a clear error rather than assemble.
+    @test_throws ErrorException assemble_muller_3d(mesh, rwg, k0, eps_in;
+                                                   mur_in=mu_in,
+                                                   quad_order=1,
+                                                   singular_quad_order=3)
     @test size(A_pm) == (2N, 2N)
     @test size(A_pm_mf) == (2N, 2N)
-    @test size(A_mu) == (2N, 2N)
     @test all(isfinite, real.(A_pm))
     @test all(isfinite, imag.(A_pm))
-    @test all(isfinite, real.(A_mu))
-    @test all(isfinite, imag.(A_mu))
-    @test norm(A_pm - A_mu) / norm(A_pm) > 1e-4
     @test norm(Matrix(A_pm_mf) - A_pm) / norm(A_pm) < 1e-13
 
     x = ComplexF64[sin(0.11 * i) + 1im * cos(0.07 * i) for i in 1:2N]
@@ -114,13 +112,19 @@ end
     pw = make_plane_wave(Vec3(0.0, 0.0, k0), 1.0, Vec3(1.0, 0.0, 0.0))
     res_pw = solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, pw;
                                      mur_in=mu_in,
-                                     formulation=:muller,
+                                     formulation=:pmchwt,
                                      quad_order=1,
                                      singular_quad_order=3)
-    @test res_pw.formulation == :muller
+    @test res_pw.formulation == :pmchwt
     @test norm(res_pw.rhs) > 0
     @test norm(res_pw.A * vcat(res_pw.J, res_pw.M) - res_pw.rhs) /
           max(norm(res_pw.rhs), eps()) < 1e-10
+    # :muller is disabled and must error rather than return wrong currents.
+    @test_throws ErrorException solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, pw;
+                                                        mur_in=mu_in,
+                                                        formulation=:muller,
+                                                        quad_order=1,
+                                                        singular_quad_order=3)
 
     plate = make_rect_plate(1.0, 1.0, 1, 1)
     plate_rwg = build_rwg(plate)

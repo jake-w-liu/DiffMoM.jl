@@ -2577,6 +2577,13 @@ po_Eff_mom = compute_farfield(po_G, Vector{ComplexF64}(po_I), po_NΩ)
 sigma_mom = bistatic_rcs(po_Eff_mom; E0=1.0)
 sigma_mom_spec_dB = 10 * log10(max(sigma_mom[best_idx], 1e-30))
 
+# Complex-field SIGN check: PO far-field must match MoM's phase (not its negative).
+# RCS = |E|² is sign-blind, so this guards the +jk PO prefactor convention, which
+# matters for coherent PO+PTD / PO+MoM combination.
+po_Espec = po_result.E_ff[:, best_idx]
+mom_Espec = po_Eff_mom[:, best_idx]
+@assert norm(po_Espec - mom_Espec) < norm(po_Espec + mom_Espec) "PO far-field sign disagrees with MoM (prefactor sign error)"
+
 mom_po_diff_dB = abs(sigma_mom_spec_dB - sigma_spec_dB)
 println("  MoM specular RCS: $(round(sigma_mom_spec_dB, digits=2)) dBsm")
 println("  MoM vs PO specular diff: $(round(mom_po_diff_dB, digits=2)) dB")

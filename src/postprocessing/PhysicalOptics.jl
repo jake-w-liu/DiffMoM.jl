@@ -184,10 +184,12 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
     end
 
     # ─── Phase 2: Far-field integration ───
-    # E_scat(r̂) = (-jk E₀ / 2π) Σ_t [r̂ × (r̂ × V_t)] × I_t
-    # where I_t = ∫_t exp(jk(r̂ - k̂)·r') dS'  (analytical phase integral)
-
-    prefactor = -1im * k * E0 / (2π)
+    # E_scat(r̂) = (+jk E₀ / 2π) Σ_t [r̂ × (r̂ × V_t)] × I_t
+    # where I_t = ∫_t exp(jk(r̂ - k̂)·r') dS'  (analytical phase integral).
+    # The +jk sign matches the package far-field convention E∞ = +jkη₀/(4π) r̂×(r̂×N)
+    # (FarField.radiation_vectors, validated against the near-field propagator), so
+    # po.E_ff can be combined coherently with MoM/PTD fields; RCS = |E|² is unchanged.
+    prefactor = 1im * k * E0 / (2π)
 
     # Precompute rhat Vec3 (avoids column-slice allocation in hot loop)
     rhat_vec = Vector{Vec3}(undef, NΩ)
