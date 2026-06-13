@@ -210,14 +210,15 @@ For a general EM MoM solver, the codebase is approximately **45-55% complete** i
 
 ---
 
-## Known Issues / Deferred Findings (2026-06 bug hunt)
+## 2026-06 bug hunt — all findings RESOLVED
 
-The 2026-06 deep bug hunt fixed all critical/high correctness bugs (magnetic-dipole
-factor-i, PO far-field sign, MLFMA Legendre overflow at L≥90, periodic power balance
-at oblique incidence, grounded-EFIE NaN, etc.) and disabled the broken Müller SIE.
-The items below were verified real but deferred — each needs either a non-trivial
-refactor, a performance benchmark, or an accuracy reference to fix with confidence
-(Correct/Robust/Complete). None affects the current passing test suite.
+The deep bug hunt fixed all critical/high correctness bugs (magnetic-dipole factor-i,
+PO far-field sign, MLFMA Legendre overflow at L≥90, periodic power balance at oblique
+incidence, grounded-EFIE NaN, etc.). A follow-up pass then resolved **all** the
+originally-deferred scaling/memory/accuracy items below — each implemented in an
+isolated worktree and re-verified against the full suite plus an independent oracle
+(bit-identical output for perf items, refined-reference comparison for accuracy items).
+The descriptions below are kept as a record of what was addressed.
 
 ### Scaling / memory (industrial readiness)
 - **radiation_vectors phase cache is `O(NΩ·Nq·Nt)`** (`postprocessing/FarField.jl:81`).
@@ -253,17 +254,16 @@ refactor, a performance benchmark, or an accuracy reference to fix with confiden
   edge-sharing/identical triangle pairs, not vertex-touching pairs
   (`mom3d/SurfaceIE3D.jl:111`).
 
-### Müller SIE (disabled — see commit)
-- Re-enable requires μ/ε-weighted off-diagonal K + weighted RHS AND the second-kind
-  identity (n̂× Gram) term that the principal-value K operator omits, in both the
-  dense and matrix-free paths; verify by matching PMCHWT currents on a sphere
-  (consistent weighting alone only reaches ~23%/51% J/M error).
+### Müller SIE — RE-ENABLED ✓
+- μ/ε-weighted off-diagonal K + weighted RHS + the second-kind identity (n̂× Gram)
+  residue were added in both the dense and matrix-free paths. PMCHWT vs Müller
+  currents now agree to <1% (relJ 0.23%, relM 0.68% coarse; 0.12%/0.35% refined,
+  tightening) vs ~150% before. Validated by `test/test_surface_ie3d.jl`.
 
-### PTD (guarded)
-- The fringe coefficients are only correct for half-plane edges (n=2). Interior
-  wedges (`postprocessing/PTD.jl:240`) currently warn and use a half-plane
-  approximation; a general-γ stable `(1/2)tan(γ−v)` term is needed, validated
-  against PO-FACETS or analytic wedge diffraction.
+### PTD — general wedge ✓
+- The exact `(1/2)tan(γ−v)` reflection-boundary term is now computed for any wedge
+  angle γ=nπ (catastrophic-cancellation-safe, reduces to the half-plane n=2 case);
+  the interior-wedge warning was removed.
 
 ---
 *Last updated: June 13, 2026*
