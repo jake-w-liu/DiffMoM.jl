@@ -45,14 +45,20 @@ It now covers scattered near-field, total-field, and far-field postprocessing wo
   - [MLFMA](methods/06-mlfma.md)
   - [Periodic EFIE and Floquet Metrics](methods/07-periodic-efie-and-floquet-metrics.md)
   - [Density Topology Optimization Implementation](methods/08-density-topology-optimization.md)
-- **Part V — Validation**
+- **Part V — Alternative Formulations and Material Solvers**
+  - [2D Volume Integral Equation (TM Polarization)](formulations/01-2d-volume-ie.md)
+  - [3D Volume Material Scattering (DDA / VIE)](formulations/02-3d-volume-dda.md)
+  - [Material Models: Dispersive and Anisotropic Media](formulations/03-material-models.md)
+  - [Dielectric Surface Integral Equations (PMCHWT / Müller)](formulations/04-dielectric-sie.md)
+  - [Grounded (Half-Space) EFIE via Image Theory](formulations/05-grounded-efie.md)
+- **Part VI — Validation**
   - [Internal Consistency](validation/01-internal-consistency.md)
   - [Gradient Verification](validation/02-gradient-verification.md)
   - [Bempp Cross-Validation](validation/03-bempp-cross-validation.md)
   - [Sphere-vs-Mie Benchmark](validation/04-sphere-mie-benchmark.md)
   - [Meep Open-Source Cross-Validation](validation/05-meep-cross-validation.md)
   - [Near/Total-Field Rayleigh Sphere](validation/06-near-total-field-rayleigh-sphere.md)
-- **Part VI — Advanced Workflows**
+- **Part VII — Advanced Workflows**
   - [Complex OBJ Platforms](advanced/01-complex-obj-platforms.md)
   - [Large-Problem Strategy](advanced/02-large-problem-strategy.md)
   - [Robustness Studies](advanced/03-robustness-studies.md)

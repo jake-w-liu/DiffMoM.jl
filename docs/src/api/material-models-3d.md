@@ -28,6 +28,9 @@ The models split into four groups:
   `material_bianisotropic_matrix_3d`, and the standalone dispersive evaluators
   `drude_epsr_3d`, `lorentz_epsr_3d`, `debye_epsr_3d`.
 
+**See also:** for the theory and a worked walkthrough, see
+[Material Models: Dispersive and Anisotropic Media](../formulations/03-material-models.md).
+
 ---
 
 ## Permittivity Models

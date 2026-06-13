@@ -10,6 +10,9 @@ All routines require a **closed** mesh: build the RWG basis with `build_rwg(mesh
 
 This subsystem lives in `src/mom3d/SurfaceIE3D.jl`.
 
+**See also:** for the theory and a worked walkthrough, see
+[Dielectric Surface Integral Equations (PMCHWT / Müller)](../formulations/04-dielectric-sie.md).
+
 ---
 
 ## Media

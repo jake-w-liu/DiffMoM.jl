@@ -4,7 +4,7 @@
 #   E_z(r) = E_z^inc(r) + k₀² ∫_D χ(r') G₂D(r,r') E_z(r') dA'
 #
 # MoM discretization (pulse basis, point matching):
-#   Z E = E^inc,  where Z = I - k₀² diag(χ) D
+#   Z E = E^inc,  where Z = I - k₀² D diag(χ)   (χ_n scales column n: Z[m,n] = δ - k₀² χ_n D[m,n])
 
 export assemble_vie_2d, solve_vie_2d
 

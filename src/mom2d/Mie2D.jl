@@ -17,7 +17,8 @@ Arguments:
 - `nmax`: maximum order (auto-determined if `nothing`)
 - `pec`: if true, compute PEC cylinder coefficients
 
-Returns vector `c` indexed from -nmax:nmax (stored as c[n + nmax + 1]).
+Returns `(c, N)` where `c` is the coefficient vector indexed from -N:N
+(stored as c[n + N + 1]) and `N` is the (auto-selected) truncation order.
 """
 function mie_coefficients_2d(k0::Float64, a::Float64, eps_r::Float64;
                               nmax::Union{Nothing,Int}=nothing, pec::Bool=false)

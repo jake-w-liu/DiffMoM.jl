@@ -22,6 +22,9 @@ represented by the Hankel function of the second kind `H0(2)`. For the 3D surfac
 MoM types and pipeline, see [types.md](types.md) and
 [assembly-solve.md](assembly-solve.md).
 
+**See also:** for the theory and a worked walkthrough, see
+[2D Volume Integral Equation (TM Polarization)](../formulations/01-2d-volume-ie.md).
+
 ---
 
 ## Types and Mesh

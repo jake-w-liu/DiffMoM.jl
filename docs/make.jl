@@ -56,7 +56,14 @@ makedocs(
             "Periodic EFIE and Floquet Metrics" => "methods/07-periodic-efie-and-floquet-metrics.md",
             "Density Topology Optimization" => "methods/08-density-topology-optimization.md",
         ],
-        "Part V — Validation" => [
+        "Part V — Alternative Formulations and Material Solvers" => [
+            "2D Volume IE (TM)" => "formulations/01-2d-volume-ie.md",
+            "3D Volume Scattering (DDA / VIE)" => "formulations/02-3d-volume-dda.md",
+            "Material Models" => "formulations/03-material-models.md",
+            "Dielectric SIE (PMCHWT / Müller)" => "formulations/04-dielectric-sie.md",
+            "Grounded EFIE (Image Theory)" => "formulations/05-grounded-efie.md",
+        ],
+        "Part VI — Validation" => [
             "Internal Consistency" => "validation/01-internal-consistency.md",
             "Gradient Verification" => "validation/02-gradient-verification.md",
             "Bempp Cross-Validation" => "validation/03-bempp-cross-validation.md",
@@ -64,7 +71,7 @@ makedocs(
             "Meep Open-Source Cross-Validation" => "validation/05-meep-cross-validation.md",
             "Near/Total-Field Rayleigh Sphere" => "validation/06-near-total-field-rayleigh-sphere.md",
         ],
-        "Part VI — Advanced Workflows" => [
+        "Part VII — Advanced Workflows" => [
             "Complex OBJ Platforms" => "advanced/01-complex-obj-platforms.md",
             "Large-Problem Strategy" => "advanced/02-large-problem-strategy.md",
             "Robustness Studies" => "advanced/03-robustness-studies.md",

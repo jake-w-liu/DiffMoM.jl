@@ -36,6 +36,9 @@ This page is organized into five sections:
 4. FFT-accelerated operators
 5. Adjoint / gradient
 
+**See also:** for the theory and a worked walkthrough, see
+[3D Volume Material Scattering (DDA / VIE)](../formulations/02-3d-volume-dda.md).
+
 ---
 
 ## 1. Voxel Grid and Types

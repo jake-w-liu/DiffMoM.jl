@@ -27,6 +27,9 @@ post-processing. See [periodic-methods.md](periodic-methods.md) for
 plane-wave excitation model. For a complete end-to-end optimization workflow, see
 `examples/21_grounded_rcs_demo.jl` and the `examples/grounded_rcs/` directory.
 
+**See also:** for the theory and a worked walkthrough, see
+[Grounded (Half-Space) EFIE via Image Theory](../formulations/05-grounded-efie.md).
+
 ---
 
 ### `assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3, eta0=376.730313668)`
