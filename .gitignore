@@ -21,6 +21,8 @@ data
 docs/build/
 
 # Julia artifacts
+Manifest.toml
+**/Manifest.toml
 .julia/
 .julia_depot/
 .juliaup_depot/

@@ -218,7 +218,7 @@ The reported monostatic value is a **single sample** on the angular grid. The `a
 **Solutions:**
 
 - Ignore if preview is optional.
-- Install `PlotlySupply` and `PlotlyKaleido`.
+- Install or update `PlotlySupply`.
 - Generate only numerical diagnostics when running headless.
 
 ### Poor Residual (> 1e‑10)

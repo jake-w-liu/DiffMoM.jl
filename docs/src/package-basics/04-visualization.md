@@ -66,7 +66,7 @@ Each function accepts standard `PlotlySupply` keywords (e.g., `color`, `linewidt
 - **`size = (1200, 520)`** – total figure size in pixels (width × height).
 - **`color_a`, `color_b`** – distinct colors for the two meshes in comparison plots.
 
-All functions return a `PlotlySupply` plot object. PNG/PDF/SVG export is supported via PlotlyKaleido.
+All functions return a `PlotlySupply` plot object. PNG/PDF/SVG export is handled by PlotlySupply.
 
 ### 2.4 Integration with the MoM Pipeline
 
@@ -223,11 +223,10 @@ This ordering avoids expensive solves on obviously bad meshes.
 
 **Symptoms:** Julia throws an error about the plotting backend not being installed.
 
-**Solution:** The package uses PlotlySupply for plotting and PlotlyKaleido for file export. Ensure both are installed:
+**Solution:** The package uses PlotlySupply for plotting and file export. Ensure PlotlySupply is installed and up to date:
 ```julia
 import Pkg
 Pkg.add("PlotlySupply")
-Pkg.add("PlotlyKaleido")
 ```
 
 ### 4.4 File‑Save Failures
@@ -238,7 +237,7 @@ Pkg.add("PlotlyKaleido")
 
 - Check that the output directory exists (the function creates parent directories via `mkpath`).
 - Ensure write permissions for the destination.
-- PNG, PDF, and SVG export are supported via PlotlyKaleido. Ensure PlotlyKaleido is installed and working.
+- PNG, PDF, and SVG export are handled by PlotlySupply. Ensure PlotlySupply is installed and working.
 
 ---
 
@@ -277,7 +276,7 @@ Before relying on visualization for mesh validation, ensure you can:
 
 ## 8) Further Reading
 
-- **PlotlySupply / PlotlyKaleido:** The plotting backend used by the package for 3D visualization and file export (PNG/PDF/SVG).
+- **PlotlySupply:** The plotting backend used by the package for 3D visualization and file export (PNG/PDF/SVG).
 - **Mesh processing for EM:** Shepard, *Mesh Generation and Quality Criteria for Computational Electromagnetics* (2002).
 - **Visual debugging in scientific computing:** Johansson & Forssén, *Visualization as a Tool for Debugging Numerical Software* (2016).
 - **Package examples:** `examples/06_aircraft_rcs.jl` and `examples/12_plate_rcs_stl_roundtrip.jl` demonstrate end‑to‑end workflows.
