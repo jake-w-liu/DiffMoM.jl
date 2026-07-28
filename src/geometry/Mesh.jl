@@ -9,6 +9,55 @@ export mesh_unique_edges, mesh_wireframe_segments
 export mesh_resolution_report, mesh_resolution_ok
 export refine_mesh_to_target_edge, refine_mesh_for_mom
 
+@inline function _positive_finite_length(name::AbstractString, value::Real)
+    converted = Float64(value)
+    (isfinite(converted) && converted > 0.0) ||
+        throw(ArgumentError("$name must be finite and positive, got $value"))
+    return converted
+end
+
+@inline function _positive_subdivision(name::AbstractString, value::Int;
+                                       minimum::Int=1)
+    value >= minimum ||
+        throw(ArgumentError("$name must be at least $minimum, got $value"))
+    return value
+end
+
+function _rect_mesh_counts(Nx::Int, Ny::Int)
+    try
+        Nv = Base.Checked.checked_mul(
+            Base.Checked.checked_add(Nx, 1),
+            Base.Checked.checked_add(Ny, 1),
+        )
+        Nt = Base.Checked.checked_mul(Base.Checked.checked_mul(2, Nx), Ny)
+        return Nv, Nt
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("Requested rectangular mesh dimensions overflow Int: Nx=$Nx, Ny=$Ny"))
+    end
+end
+
+function _radial_mesh_counts(Nr::Int, Nphi::Int)
+    try
+        Nv = Base.Checked.checked_add(1, Base.Checked.checked_mul(Nr, Nphi))
+        Nt = Base.Checked.checked_mul(
+            Nphi,
+            Base.Checked.checked_sub(Base.Checked.checked_mul(2, Nr), 1),
+        )
+        return Nv, Nt
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("Requested radial mesh dimensions overflow Int: Nr=$Nr, Nphi=$Nphi"))
+    end
+end
+
+@inline function _require_finite_coordinates(xyz::AbstractMatrix{<:Real},
+                                             generator::AbstractString)
+    all(isfinite, xyz) ||
+        throw(ArgumentError("$generator produced non-finite coordinates; check the requested dimensions"))
+    return nothing
+end
+
 """
     make_rect_plate(Lx, Ly, Nx, Ny)
 
@@ -17,21 +66,26 @@ origin. Returns a `TriMesh` with `(Nx+1)*(Ny+1)` vertices and `2*Nx*Ny`
 triangles.
 """
 function make_rect_plate(Lx::Real, Ly::Real, Nx::Int, Ny::Int)
-    Nv = (Nx + 1) * (Ny + 1)
-    Nt = 2 * Nx * Ny
+    Lx_f = _positive_finite_length("Lx", Lx)
+    Ly_f = _positive_finite_length("Ly", Ly)
+    _positive_subdivision("Nx", Nx)
+    _positive_subdivision("Ny", Ny)
+    Nv, Nt = _rect_mesh_counts(Nx, Ny)
 
     xyz = zeros(3, Nv)
     tri = zeros(Int, 3, Nt)
 
     # Vertex grid
-    dx = Lx / Nx
-    dy = Ly / Ny
+    dx = Lx_f / Nx
+    dy = Ly_f / Ny
+    (dx > 0.0 && dy > 0.0) ||
+        throw(ArgumentError("Plate dimensions are too small for the requested Float64 subdivisions"))
     idx = 0
     for jy in 0:Ny
         for jx in 0:Nx
             idx += 1
-            xyz[1, idx] = -Lx / 2 + jx * dx
-            xyz[2, idx] = -Ly / 2 + jy * dy
+            xyz[1, idx] = -Lx_f / 2 + jx * dx
+            xyz[2, idx] = -Ly_f / 2 + jy * dy
             xyz[3, idx] = 0.0
         end
     end
@@ -60,6 +114,7 @@ function make_rect_plate(Lx::Real, Ly::Real, Nx::Int, Ny::Int)
         end
     end
 
+    _require_finite_coordinates(xyz, "make_rect_plate")
     return TriMesh(xyz, tri)
 end
 
@@ -72,8 +127,15 @@ the origin. Uses radial rings with azimuthal subdivision.
 Returns a `TriMesh` with approximately `Nr*Nphi + 1` vertices.
 """
 function make_circular_plate(radius::Real, Nr::Int, Nphi::Int)
+    radius_f = _positive_finite_length("radius", radius)
+    _positive_subdivision("Nr", Nr)
+    _positive_subdivision("Nphi", Nphi; minimum=3)
+    Nv, _ = _radial_mesh_counts(Nr, Nphi)
+    dr = radius_f / Nr
+    dr > 0.0 ||
+        throw(ArgumentError("radius is too small for the requested Float64 radial subdivisions"))
+
     # Vertices: center + Nr rings × Nphi points each
-    Nv = 1 + Nr * Nphi
     verts = zeros(3, Nv)
 
     # Center vertex
@@ -82,7 +144,7 @@ function make_circular_plate(radius::Real, Nr::Int, Nphi::Int)
     # Ring vertices
     idx = 1
     for ir in 1:Nr
-        r = radius * ir / Nr
+        r = radius_f * (ir / Nr)
         for ip in 1:Nphi
             phi = 2π * (ip - 1) / Nphi
             idx += 1
@@ -122,6 +184,7 @@ function make_circular_plate(radius::Real, Nr::Int, Nphi::Int)
     Nt = length(tris) ÷ 3
     tri = reshape(tris, 3, Nt)
 
+    _require_finite_coordinates(verts, "make_circular_plate")
     return TriMesh(verts, tri)
 end
 
@@ -136,13 +199,18 @@ When `grading_factor → 0`, the mapping degenerates; use `grading_factor ≥ 0.
 """
 function _grade_1d(N::Int, L::Real, grading_factor::Real)
     coords = Vector{Float64}(undef, N + 1)
-    inv_tanh_g = 1.0 / tanh(grading_factor)
+    tanh_g = tanh(grading_factor)
     half_L = L / 2
+    use_linear_limit = grading_factor < sqrt(eps(Float64))
     for j in 0:N
         u = j / N                           # uniform parameter [0, 1]
         s = 2u - 1                          # map to [-1, 1]
-        g = tanh(grading_factor * s) * inv_tanh_g  # graded [-1, 1]
+        g = use_linear_limit ? s : tanh(grading_factor * s) / tanh_g
         coords[j + 1] = half_L * g          # physical coordinate
+    end
+    @inbounds for j in 2:length(coords)
+        coords[j] > coords[j - 1] ||
+            throw(ArgumentError("grading_factor=$grading_factor collapses adjacent Float64 mesh coordinates"))
     end
     return coords
 end
@@ -164,13 +232,15 @@ center elements.
 """
 function make_rect_plate_graded(Lx::Real, Ly::Real, Nx::Int, Ny::Int;
                                  grading_factor::Real=3.0)
-    grading_factor > 0 || error("grading_factor must be positive, got $grading_factor")
+    Lx_f = _positive_finite_length("Lx", Lx)
+    Ly_f = _positive_finite_length("Ly", Ly)
+    grading_factor_f = _positive_finite_length("grading_factor", grading_factor)
+    _positive_subdivision("Nx", Nx)
+    _positive_subdivision("Ny", Ny)
+    Nv, Nt = _rect_mesh_counts(Nx, Ny)
 
-    xs = _grade_1d(Nx, Lx, grading_factor)
-    ys = _grade_1d(Ny, Ly, grading_factor)
-
-    Nv = (Nx + 1) * (Ny + 1)
-    Nt = 2 * Nx * Ny
+    xs = _grade_1d(Nx, Lx_f, grading_factor_f)
+    ys = _grade_1d(Ny, Ly_f, grading_factor_f)
 
     xyz = zeros(3, Nv)
     tri = zeros(Int, 3, Nt)
@@ -207,6 +277,7 @@ function make_rect_plate_graded(Lx::Real, Ly::Real, Nx::Int, Ny::Int;
         end
     end
 
+    _require_finite_coordinates(xyz, "make_rect_plate_graded")
     return TriMesh(xyz, tri)
 end
 
@@ -223,14 +294,15 @@ Returns a `TriMesh` suitable for open-surface EFIE runs (`allow_boundary=true`).
 """
 function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
                                   center::Vec3=Vec3(0.0, 0.0, 0.0))
-    D > 0 || error("Reflector diameter D must be positive.")
-    f > 0 || error("Reflector focal length f must be positive.")
-    Nr >= 2 || error("Nr must be at least 2.")
-    Nphi >= 3 || error("Nphi must be at least 3.")
+    D_f = _positive_finite_length("Reflector diameter D", D)
+    f_f = _positive_finite_length("Reflector focal length f", f)
+    _positive_subdivision("Nr", Nr; minimum=2)
+    _positive_subdivision("Nphi", Nphi; minimum=3)
+    all(isfinite, center) ||
+        throw(ArgumentError("Reflector center must contain only finite coordinates, got $center"))
+    Nv, Nt = _radial_mesh_counts(Nr, Nphi)
 
-    R = D / 2
-    Nv = 1 + Nr * Nphi
-    Nt = Nphi + 2 * (Nr - 1) * Nphi
+    R = D_f / 2
 
     xyz = zeros(3, Nv)
     tri = zeros(Int, 3, Nt)
@@ -243,8 +315,8 @@ function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
 
     # Ring vertices
     for ir in 1:Nr
-        r = R * ir / Nr
-        z = r^2 / (4f)
+        r = R * (ir / Nr)
+        z = r^2 / (4f_f)
         for j in 1:Nphi
             ϕ = 2π * (j - 1) / Nphi
             idx = vid(ir, j)
@@ -276,13 +348,89 @@ function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
         end
     end
 
+    _require_finite_coordinates(xyz, "make_parabolic_reflector")
     return TriMesh(xyz, tri)
 end
 
+function _mesh_coordinate_diagnostics(mesh::TriMesh)
+    Nv = nvertices(mesh)
+    finite_vertex = trues(Nv)
+    invalid_vertices = Int[]
+
+    xmin = Inf
+    ymin = Inf
+    zmin = Inf
+    xmax = -Inf
+    ymax = -Inf
+    zmax = -Inf
+    nfinite = 0
+
+    @inbounds for i in 1:Nv
+        x = mesh.xyz[1, i]
+        y = mesh.xyz[2, i]
+        z = mesh.xyz[3, i]
+        if isfinite(x) && isfinite(y) && isfinite(z)
+            nfinite += 1
+            xmin = min(xmin, x)
+            ymin = min(ymin, y)
+            zmin = min(zmin, z)
+            xmax = max(xmax, x)
+            ymax = max(ymax, y)
+            zmax = max(zmax, z)
+        else
+            finite_vertex[i] = false
+            push!(invalid_vertices, i)
+        end
+    end
+
+    scale = nfinite == 0 ? 0.0 : norm(Vec3(xmax - xmin, ymax - ymin, zmax - zmin))
+    isfinite(scale) ||
+        throw(ArgumentError("Mesh coordinate extent is too large for finite Float64 geometry"))
+    return scale, finite_vertex, invalid_vertices
+end
+
 function _bbox_diagonal(mesh::TriMesh)
-    mins = map(i -> minimum(@view mesh.xyz[i, :]), 1:3)
-    maxs = map(i -> maximum(@view mesh.xyz[i, :]), 1:3)
-    return norm(Vec3(maxs...) - Vec3(mins...))
+    size(mesh.xyz, 1) == 3 ||
+        throw(DimensionMismatch("Mesh xyz must have size (3, Nv), got $(size(mesh.xyz))"))
+
+    Nv = nvertices(mesh)
+    Nv == 0 && return 0.0
+    xmin = Inf
+    ymin = Inf
+    zmin = Inf
+    xmax = -Inf
+    ymax = -Inf
+    zmax = -Inf
+    @inbounds for i in 1:Nv
+        x = mesh.xyz[1, i]
+        y = mesh.xyz[2, i]
+        z = mesh.xyz[3, i]
+        (isfinite(x) && isfinite(y) && isfinite(z)) ||
+            throw(ArgumentError("Mesh contains non-finite vertex coordinates at vertex $i"))
+        xmin = min(xmin, x)
+        ymin = min(ymin, y)
+        zmin = min(zmin, z)
+        xmax = max(xmax, x)
+        ymax = max(ymax, y)
+        zmax = max(zmax, z)
+    end
+
+    scale = norm(Vec3(xmax - xmin, ymax - ymin, zmax - zmin))
+    isfinite(scale) ||
+        throw(ArgumentError("Mesh coordinate extent is too large for finite Float64 geometry"))
+    return scale
+end
+
+@inline function _area_tolerance(scale::Float64, area_tol_rel::Float64)
+    (isfinite(area_tol_rel) && area_tol_rel >= 0.0) ||
+        throw(ArgumentError("area_tol_rel must be finite and nonnegative, got $area_tol_rel"))
+    area_tol_rel == 0.0 && return 0.0
+
+    scaled = sqrt(area_tol_rel) * scale
+    area_tol_abs = scaled * scaled
+    isfinite(area_tol_abs) ||
+        throw(ArgumentError("Mesh scale and area_tol_rel produce a non-finite area tolerance"))
+    return area_tol_abs
 end
 
 """
@@ -290,6 +438,7 @@ end
 
 Compute mesh-quality diagnostics for a triangle surface mesh.
 The report includes:
+- non-finite vertex coordinates,
 - invalid triangles (index out of bounds or repeated vertices),
 - degenerate triangles (area below tolerance),
 - boundary-edge count,
@@ -303,8 +452,8 @@ function mesh_quality_report(mesh::TriMesh; area_tol_rel::Float64=1e-12, check_o
     size(mesh.xyz, 1) == 3 || error("Mesh xyz must have size (3, Nv)")
     size(mesh.tri, 1) == 3 || error("Mesh tri must have size (3, Nt)")
 
-    scale = max(_bbox_diagonal(mesh), 1.0)
-    area_tol_abs = area_tol_rel * scale^2
+    scale, finite_vertex, invalid_vertices = _mesh_coordinate_diagnostics(mesh)
+    area_tol_abs = _area_tolerance(scale, area_tol_rel)
 
     invalid_triangles = Int[]
     degenerate_triangles = Int[]
@@ -320,12 +469,18 @@ function mesh_quality_report(mesh::TriMesh; area_tol_rel::Float64=1e-12, check_o
 
         valid_idx = (1 <= i1 <= Nv) && (1 <= i2 <= Nv) && (1 <= i3 <= Nv)
         distinct = (i1 != i2) && (i2 != i3) && (i3 != i1)
-        if !(valid_idx && distinct)
+        finite_coords = valid_idx &&
+                        finite_vertex[i1] && finite_vertex[i2] && finite_vertex[i3]
+        if !(valid_idx && distinct && finite_coords)
             push!(invalid_triangles, t)
             continue
         end
 
-        if triangle_area(mesh, t) <= area_tol_abs
+        area = triangle_area(mesh, t)
+        if !isfinite(area)
+            push!(invalid_triangles, t)
+            continue
+        elseif area <= area_tol_abs
             push!(degenerate_triangles, t)
         end
 
@@ -364,10 +519,13 @@ function mesh_quality_report(mesh::TriMesh; area_tol_rel::Float64=1e-12, check_o
         n_boundary_edges = n_boundary_edges,
         n_nonmanifold_edges = n_nonmanifold_edges,
         n_orientation_conflicts = n_orientation_conflicts,
+        n_invalid_vertices = length(invalid_vertices),
         n_invalid_triangles = length(invalid_triangles),
         n_degenerate_triangles = length(degenerate_triangles),
+        invalid_vertices = invalid_vertices,
         invalid_triangles = invalid_triangles,
         degenerate_triangles = degenerate_triangles,
+        mesh_scale = scale,
         area_tol_abs = area_tol_abs,
     )
 end
@@ -376,6 +534,8 @@ end
     mesh_quality_ok(report; allow_boundary=true, require_closed=false)
 
 Return `true` if a mesh-quality report passes hard checks:
+- at least three vertices and one triangle,
+- no non-finite vertices,
 - no invalid triangles,
 - no degenerate triangles,
 - no non-manifold edges,
@@ -383,6 +543,12 @@ Return `true` if a mesh-quality report passes hard checks:
 - boundary edges allowed unless `allow_boundary=false` or `require_closed=true`.
 """
 function mesh_quality_ok(report; allow_boundary::Bool=true, require_closed::Bool=false)
+    if report.n_vertices < 3 || report.n_triangles < 1
+        return false
+    end
+    if report.n_invalid_vertices > 0
+        return false
+    end
     if report.n_invalid_triangles > 0
         return false
     end
@@ -417,6 +583,13 @@ function assert_mesh_quality(mesh::TriMesh;
     report = mesh_quality_report(mesh; area_tol_rel=area_tol_rel, check_orientation=true)
     problems = String[]
 
+    if report.n_vertices < 3 || report.n_triangles < 1
+        push!(problems, "mesh must contain at least 3 vertices and 1 triangle (got $(report.n_vertices) vertices, $(report.n_triangles) triangles)")
+    end
+    if report.n_invalid_vertices > 0
+        sample = join(report.invalid_vertices[1:min(end, 5)], ", ")
+        push!(problems, "vertices with non-finite coordinates: $(report.n_invalid_vertices) (sample: $sample)")
+    end
     if report.n_invalid_triangles > 0
         sample = join(report.invalid_triangles[1:min(end, 5)], ", ")
         push!(problems, "invalid triangles: $(report.n_invalid_triangles) (sample: $sample)")
@@ -543,7 +716,10 @@ end
 Estimate memory (GiB) for a dense complex `N × N` matrix with `ComplexF64`
 entries (16 bytes per entry).
 """
-estimate_dense_matrix_gib(N::Integer) = 16.0 * float(N) * float(N) / 1024.0^3
+function estimate_dense_matrix_gib(N::Integer)
+    N >= 0 || throw(ArgumentError("Matrix dimension N must be nonnegative, got $N"))
+    return 16.0 * float(N) * float(N) / 1024.0^3
+end
 
 """
     cluster_mesh_vertices(mesh, h)
@@ -753,8 +929,8 @@ function _clean_mesh_triangles(mesh::TriMesh;
     tri = mesh.tri
     xyz = mesh.xyz
 
-    scale = max(_bbox_diagonal(mesh), 1.0)
-    area_tol_abs = area_tol_rel * scale^2
+    scale, finite_vertex, _ = _mesh_coordinate_diagnostics(mesh)
+    area_tol_abs = _area_tolerance(scale, area_tol_rel)
 
     keep_triangle = trues(nt)
     removed_invalid = Int[]
@@ -768,7 +944,9 @@ function _clean_mesh_triangles(mesh::TriMesh;
         valid_idx = (1 <= i1 <= nv) && (1 <= i2 <= nv) && (1 <= i3 <= nv)
         distinct = (i1 != i2) && (i2 != i3) && (i3 != i1)
 
-        if !(valid_idx && distinct)
+        finite_coords = valid_idx &&
+                        finite_vertex[i1] && finite_vertex[i2] && finite_vertex[i3]
+        if !(valid_idx && distinct && finite_coords)
             if drop_invalid
                 keep_triangle[t] = false
                 push!(removed_invalid, t)
@@ -783,7 +961,7 @@ function _clean_mesh_triangles(mesh::TriMesh;
         v3 = Vec3(xyz[:, i3])
         area = 0.5 * norm(cross(v2 - v1, v3 - v1))
 
-        if area <= area_tol_abs
+        if !isfinite(area) || area <= area_tol_abs
             if drop_degenerate
                 keep_triangle[t] = false
                 push!(removed_degenerate, t)

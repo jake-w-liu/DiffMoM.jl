@@ -103,6 +103,43 @@ println("  RWG basis functions: $(rwg.nedges)")
 
 println("  PASS ✓")
 
+# Mesh generators reject inputs that would otherwise create empty, invalid, or
+# non-finite geometry.
+@test_throws ArgumentError make_rect_plate(1.0, 1.0, 0, 1)
+@test_throws ArgumentError make_rect_plate(Inf, 1.0, 1, 1)
+@test_throws ArgumentError make_circular_plate(1.0, 0, 8)
+@test_throws ArgumentError make_circular_plate(1.0, 1, 2)
+@test_throws ArgumentError make_rect_plate_graded(1.0, 1.0, 1, 0)
+@test_throws ArgumentError make_rect_plate_graded(1.0, 1.0, 1, 1; grading_factor=NaN)
+@test_throws ArgumentError make_rect_plate_graded(1.0, 1.0, 4, 4; grading_factor=1e6)
+@test_throws ArgumentError make_parabolic_reflector(1.0, Inf, 2, 8)
+@test_throws ArgumentError estimate_dense_matrix_gib(-1)
+
+# The relative area tolerance must follow the actual mesh scale. A valid
+# micrometre-scale plate must not be compared against a one-metre floor.
+mesh_micro = make_rect_plate(1e-6, 1e-6, 1, 1)
+report_micro = mesh_quality_report(mesh_micro)
+@test report_micro.n_degenerate_triangles == 0
+@test report_micro.area_tol_abs ≈ 2e-24
+@test mesh_quality_ok(report_micro; allow_boundary=true)
+
+# Non-finite geometry and empty meshes fail the quality gate explicitly.
+xyz_nonfinite = copy(mesh_micro.xyz)
+xyz_nonfinite[1, 1] = NaN
+report_nonfinite = mesh_quality_report(TriMesh(xyz_nonfinite, copy(mesh_micro.tri)))
+@test report_nonfinite.n_invalid_vertices == 1
+@test report_nonfinite.n_invalid_triangles == 2
+@test !mesh_quality_ok(report_nonfinite; allow_boundary=true)
+@test_throws ErrorException assert_mesh_quality(
+    TriMesh(xyz_nonfinite, copy(mesh_micro.tri));
+    allow_boundary=true,
+)
+
+empty_mesh = TriMesh(zeros(3, 0), zeros(Int, 3, 0))
+report_empty = mesh_quality_report(empty_mesh)
+@test !mesh_quality_ok(report_empty; allow_boundary=true)
+@test_throws ErrorException assert_mesh_quality(empty_mesh; allow_boundary=true)
+
 # ─────────────────────────────────────────────────
 # Test 1b: OBJ mesh import
 # ─────────────────────────────────────────────────

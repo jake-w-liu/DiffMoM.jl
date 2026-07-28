@@ -18,8 +18,8 @@ Creates a triangulated rectangular plate in the xy-plane, centered at the origin
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `Lx` | `Real` | Plate length in x-direction (meters). For a half-wavelength plate at 1 GHz: `Lx = 0.15`. |
-| `Ly` | `Real` | Plate length in y-direction (meters). |
+| `Lx` | `Real` | Finite, positive plate length in x-direction (meters). For a half-wavelength plate at 1 GHz: `Lx = 0.15`. |
+| `Ly` | `Real` | Finite, positive plate length in y-direction (meters). |
 | `Nx` | `Int` | Number of cells (subdivisions) along x. Must be >= 1. More cells = finer mesh = more RWG basis functions. |
 | `Ny` | `Int` | Number of cells along y. Must be >= 1. |
 
@@ -39,11 +39,11 @@ Creates a triangulated rectangular plate in the xy-plane with graded mesh densit
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `Lx` | `Real` | -- | Plate length in x-direction (meters). |
-| `Ly` | `Real` | -- | Plate length in y-direction (meters). |
-| `Nx` | `Int` | -- | Number of cells along x. |
-| `Ny` | `Int` | -- | Number of cells along y. |
-| `grading_factor` | `Real` | `3.0` | Controls edge clustering strength. Must be positive. |
+| `Lx` | `Real` | -- | Finite, positive plate length in x-direction (meters). |
+| `Ly` | `Real` | -- | Finite, positive plate length in y-direction (meters). |
+| `Nx` | `Int` | -- | Number of cells along x; must be at least 1. |
+| `Ny` | `Int` | -- | Number of cells along y; must be at least 1. |
+| `grading_factor` | `Real` | `3.0` | Controls edge clustering strength. Must be finite and positive. |
 
 **Returns:** `TriMesh` with `(Nx+1)*(Ny+1)` vertices and `2*Nx*Ny` triangles (same count as `make_rect_plate`).
 
@@ -73,9 +73,9 @@ Creates a triangulated circular plate (disk) in the xy-plane, centered at the or
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `radius` | `Real` | Disk radius (meters). |
-| `Nr` | `Int` | Number of radial rings. More rings = finer radial resolution. |
-| `Nphi` | `Int` | Number of azimuthal samples per ring. Larger values give a smoother circular boundary. |
+| `radius` | `Real` | Finite, positive disk radius (meters). |
+| `Nr` | `Int` | Number of radial rings; must be at least 1. More rings = finer radial resolution. |
+| `Nphi` | `Int` | Number of azimuthal samples per ring; must be at least 3. Larger values give a smoother circular boundary. |
 
 **Returns:** `TriMesh` with `1 + Nr*Nphi` vertices and `Nphi + 2*(Nr-1)*Nphi` triangles.
 
@@ -102,11 +102,11 @@ z = \frac{x^2 + y^2}{4f}, \qquad x^2 + y^2 \le (D/2)^2.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `D` | `Real` | Aperture diameter (meters). |
-| `f` | `Real` | Focal length (meters). The focal point is at `(0, 0, f)` relative to the apex. Common f/D ratios: 0.3--0.5. |
+| `D` | `Real` | Finite, positive aperture diameter (meters). |
+| `f` | `Real` | Finite, positive focal length (meters). The focal point is at `(0, 0, f)` relative to the apex. Common f/D ratios: 0.3--0.5. |
 | `Nr` | `Int` | Number of radial rings (>= 2). More rings = finer radial resolution. |
 | `Nphi` | `Int` | Number of azimuthal samples per ring (>= 3). Typically 20--40 for smooth curvature. |
-| `center` | `Vec3` | Reflector apex location, default `Vec3(0,0,0)`. |
+| `center` | `Vec3` | Finite reflector apex location, default `Vec3(0,0,0)`. |
 
 **Returns:** `TriMesh` with `1 + Nr*Nphi` vertices and `Nphi + 2*(Nr-1)*Nphi` triangles.
 
@@ -241,13 +241,14 @@ Compute comprehensive mesh-quality diagnostics.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `mesh` | `TriMesh` | -- | Triangle mesh to check. |
-| `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection. A triangle is "degenerate" if its area is less than `area_tol_rel * bbox_diagonal^2`. The default is extremely conservative; increase to `1e-8` if your mesh has intentionally tiny triangles. |
+| `area_tol_rel` | `Float64` | `1e-12` | Finite, nonnegative relative tolerance for degenerate triangle detection. A triangle is "degenerate" if its area is at most `area_tol_rel * bbox_diagonal^2`. |
 | `check_orientation` | `Bool` | `true` | Whether to check winding consistency across shared edges. Disable only if you know the mesh has intentional orientation discontinuities (rare). |
 
 **Returns:** Named tuple with fields:
 - `n_vertices`, `n_triangles`, `n_edges_total`, `n_interior_edges`, `n_boundary_edges`, `n_nonmanifold_edges`, `n_orientation_conflicts`
-- `n_invalid_triangles`, `n_degenerate_triangles`
-- `invalid_triangles`, `degenerate_triangles` (index vectors)
+- `n_invalid_vertices`, `n_invalid_triangles`, `n_degenerate_triangles`
+- `invalid_vertices`, `invalid_triangles`, `degenerate_triangles` (index vectors)
+- `mesh_scale` (the actual bounding-box diagonal; no unit-scale floor is applied)
 - `area_tol_abs` (the absolute tolerance used, derived from `area_tol_rel`)
 
 ---
@@ -267,6 +268,8 @@ Return `true` if a mesh-quality report passes all hard checks.
 **Returns:** `Bool`
 
 **Checks performed:**
+- At least three vertices and one triangle
+- No vertices with non-finite coordinates
 - No invalid triangles (repeated vertex indices)
 - No degenerate triangles (near-zero area)
 - No non-manifold edges (3+ incident triangles)
