@@ -103,6 +103,10 @@ function assemble_full_Z!(Z::Matrix{<:Number},
                           Mp::Vector{<:AbstractMatrix},
                           theta::AbstractVector;
                           reactive::Bool=false)
+    size(Z) == size(Z_efie) ||
+        throw(DimensionMismatch(
+            "output Z has size $(size(Z)), expected $(size(Z_efie))"))
+    _validate_impedance_inputs(Mp, theta, size(Z_efie))
     copyto!(Z, Z_efie)
     for p in eachindex(theta)
         coeff = reactive ? (1im * theta[p]) : theta[p]
@@ -122,7 +126,7 @@ Returns a dense `ComplexF64` matrix so it can be used directly in
 regularized solves.
 """
 function make_mass_regularizer(Mp::Vector{<:AbstractMatrix})
-    N = size(Mp[1], 1)
+    N = first(_validate_mass_matrix_sizes(Mp))
     R = zeros(ComplexF64, N, N)
     for p in eachindex(Mp)
         _add_scaled_matrix!(R, one(ComplexF64), Mp[p])

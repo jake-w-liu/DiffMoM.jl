@@ -5,6 +5,43 @@
 
 export assemble_Z_impedance, precompute_patch_mass, assemble_dZ_dtheta
 
+function _validate_mass_matrix_sizes(
+    Mp::AbstractVector{<:AbstractMatrix},
+    expected_size::Union{Nothing,Tuple{Int,Int}}=nothing,
+)
+    if isempty(Mp)
+        expected_size === nothing &&
+            throw(ArgumentError(
+                "Mp must contain at least one mass matrix because the output size cannot be inferred."))
+        expected_size[1] == expected_size[2] ||
+            throw(DimensionMismatch(
+                "impedance system matrix must be square, got size $expected_size"))
+        return expected_size
+    end
+
+    target_size = expected_size === nothing ? size(first(Mp)) : expected_size
+    target_size[1] == target_size[2] ||
+        throw(DimensionMismatch(
+            "impedance system matrix must be square, got size $target_size"))
+    for p in eachindex(Mp)
+        size(Mp[p]) == target_size ||
+            throw(DimensionMismatch(
+                "Mp[$p] has size $(size(Mp[p])), expected $target_size"))
+    end
+    return target_size
+end
+
+function _validate_impedance_inputs(
+    Mp::AbstractVector{<:AbstractMatrix},
+    theta::AbstractVector,
+    expected_size::Union{Nothing,Tuple{Int,Int}}=nothing,
+)
+    length(Mp) == length(theta) ||
+        throw(DimensionMismatch(
+            "Mp length $(length(Mp)) must match theta length $(length(theta))"))
+    return _validate_mass_matrix_sizes(Mp, expected_size)
+end
+
 """
     precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 
@@ -77,7 +114,7 @@ Assemble the impedance contribution to the MoM matrix:
 Z_imp = -Σ_p θ_p M_p
 """
 function assemble_Z_impedance(Mp::Vector{<:AbstractMatrix}, theta::AbstractVector)
-    N = size(Mp[1], 1)
+    N = first(_validate_impedance_inputs(Mp, theta))
     CT = eltype(theta) <: Complex ? eltype(theta) : ComplexF64
     Z_imp = zeros(CT, N, N)
     for p in eachindex(theta)

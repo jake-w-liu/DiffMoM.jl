@@ -924,8 +924,7 @@ function build_block_diag_preconditioner(A_mlfma,
                                          Mp::Vector{<:AbstractMatrix},
                                          theta::AbstractVector;
                                          reactive::Bool=false)
-    length(Mp) == length(theta) ||
-        error("Mp length $(length(Mp)) must match theta length $(length(theta))")
+    _validate_impedance_inputs(Mp, theta, size(A_mlfma))
     octree = A_mlfma.octree
     leaf_level = octree.levels[end]
     N = size(A_mlfma, 1)
@@ -972,8 +971,7 @@ function _loaded_nearfield_matrix(Z_near::SparseMatrixCSC,
                                   Mp::Vector{<:AbstractMatrix},
                                   theta::AbstractVector;
                                   reactive::Bool=false)
-    length(Mp) == length(theta) ||
-        error("Mp length $(length(Mp)) must match theta length $(length(theta))")
+    _validate_impedance_inputs(Mp, theta, size(Z_near))
     Z_loaded = _sparse_complex(Z_near)
     for p in eachindex(theta)
         iszero(theta[p]) && continue

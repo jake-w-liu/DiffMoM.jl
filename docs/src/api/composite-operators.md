@@ -52,6 +52,10 @@ ImpedanceLoadedOperator(Z_base, Mp, theta, reactive=false)
 | `theta` | `Vector{Float64}` | -- | Impedance parameters. |
 | `reactive` | `Bool` | `false` | Loading mode. |
 
+The constructor requires one `theta` value per matrix in `Mp`, requires the
+base operator to be square, and requires every mass matrix to have the same
+size as the base operator.
+
 **Example:**
 
 ```julia

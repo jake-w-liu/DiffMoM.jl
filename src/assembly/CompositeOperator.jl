@@ -31,12 +31,30 @@ struct ImpedanceLoadedOperator{T<:AbstractMatrix{ComplexF64},
     Mp::Vector{S}
     theta::Vector{Float64}
     reactive::Bool
+    function ImpedanceLoadedOperator{T,S}(
+        Z_base::T,
+        Mp::Vector{S},
+        theta::Vector{Float64},
+        reactive::Bool,
+    ) where {T<:AbstractMatrix{ComplexF64},S<:AbstractMatrix}
+        _validate_impedance_inputs(Mp, theta, size(Z_base))
+        return new{T,S}(Z_base, Mp, theta, reactive)
+    end
+end
+
+function ImpedanceLoadedOperator(
+    Z_base::T,
+    Mp::Vector{S},
+    theta::Vector{Float64},
+    reactive::Bool,
+) where {T<:AbstractMatrix{ComplexF64},S<:AbstractMatrix}
+    return ImpedanceLoadedOperator{T,S}(Z_base, Mp, theta, reactive)
 end
 
 function ImpedanceLoadedOperator(Z_base::AbstractMatrix{ComplexF64},
                                   Mp::Vector{<:AbstractMatrix},
                                   theta::Vector{Float64})
-    return ImpedanceLoadedOperator{typeof(Z_base), eltype(Mp)}(Z_base, Mp, theta, false)
+    return ImpedanceLoadedOperator(Z_base, Mp, theta, false)
 end
 
 struct ImpedanceLoadedAdjointOperator{T<:AbstractMatrix{ComplexF64},
@@ -62,6 +80,9 @@ LinearAlgebra.adjoint(A::ImpedanceLoadedAdjointOperator) = A.parent
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::ImpedanceLoadedOperator,
                             x::AbstractVector{ComplexF64})
+    length(A.Mp) == length(A.theta) ||
+        throw(DimensionMismatch(
+            "Mp length $(length(A.Mp)) must match theta length $(length(A.theta))"))
     mul!(y, A.Z_base, x)
     @inbounds for p in eachindex(A.theta)
         coeff = A.reactive ? (1im * A.theta[p]) : ComplexF64(A.theta[p])
@@ -81,6 +102,9 @@ end
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::ImpedanceLoadedAdjointOperator,
                             x::AbstractVector{ComplexF64})
+    length(A.parent.Mp) == length(A.parent.theta) ||
+        throw(DimensionMismatch(
+            "Mp length $(length(A.parent.Mp)) must match theta length $(length(A.parent.theta))"))
     mul!(y, adjoint(A.parent.Z_base), x)
     @inbounds for p in eachindex(A.parent.theta)
         # Conjugate of the coefficient for adjoint

@@ -586,6 +586,19 @@ Mp = precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 @test size(Mp[1], 3) == 1
 @test_throws BoundsError size(Mp[1], 0)
 @test_throws BoundsError size(Mp[1], -1)
+@test_throws DimensionMismatch assemble_Z_impedance(
+    Mp, zeros(Float64, length(Mp) - 1))
+@test_throws ArgumentError assemble_Z_impedance(
+    LocalMassMatrix{Float64}[], Float64[])
+undersized_mass = LocalMassMatrix(1, [1], [1], [1.0])
+@test_throws DimensionMismatch assemble_Z_impedance(
+    [undersized_mass, Mp[1]], [1.0, 1.0])
+@test_throws DimensionMismatch assemble_full_Z(
+    Z_efie, Mp, zeros(Float64, length(Mp) - 1))
+@test_throws DimensionMismatch assemble_full_Z(
+    Z_efie, [undersized_mass], [1.0])
+@test_throws DimensionMismatch assemble_full_Z!(
+    zeros(ComplexF64, N + 1, N + 1), Z_efie, Mp, zeros(Float64, length(Mp)))
 
 # Five-argument mul! must not read x when alpha is zero, including when x
 # contains non-finite values. Verify both beta branches and both orientations.
@@ -3595,6 +3608,15 @@ y_ref = Z_ref * x_test
 
 # Composite operator
 A_comp = ImpedanceLoadedOperator(Z_efie, Mp, theta_test, false)
+@test_throws DimensionMismatch ImpedanceLoadedOperator(
+    Z_efie, Mp, theta_test[1:(end - 1)], false)
+@test_throws DimensionMismatch ImpedanceLoadedOperator(
+    Z_efie, [undersized_mass], [1.0], false)
+A_comp_resized = ImpedanceLoadedOperator(
+    Z_efie, Mp, copy(theta_test), false)
+pop!(A_comp_resized.theta)
+@test_throws DimensionMismatch A_comp_resized * x_test
+@test_throws DimensionMismatch adjoint(A_comp_resized) * x_test
 y_comp = A_comp * x_test
 _assert_single_complex_output_allocation(A_comp, x_test)
 
