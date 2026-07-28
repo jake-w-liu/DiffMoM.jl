@@ -76,12 +76,29 @@ end
 Block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes.
 Each leaf box contributes a small dense diagonal block from Z_near,
 which is LU-factorized independently. Very fast to build and memory-efficient.
+One reusable, lock-protected work vector holds the largest block so repeated
+forward and adjoint applications do not allocate per-block RHS vectors.
 """
 struct BlockDiagPrecondData <: AbstractPreconditionerData
     lu_blocks::Vector{LinearAlgebra.LU{ComplexF64, Matrix{ComplexF64}, Vector{Int64}}}
     box_bf_indices::Vector{Vector{Int}}   # original BF indices per leaf box
     N::Int
     nnz_ratio::Float64
+    work::Vector{ComplexF64}
+    work_lock::ReentrantLock
+end
+
+function BlockDiagPrecondData(
+        lu_blocks::Vector{LinearAlgebra.LU{
+            ComplexF64, Matrix{ComplexF64}, Vector{Int64}}},
+        box_bf_indices::Vector{Vector{Int}},
+        N::Int,
+        nnz_ratio::Float64)
+    max_block_size = isempty(box_bf_indices) ?
+        0 : maximum(length, box_bf_indices)
+    return BlockDiagPrecondData(
+        lu_blocks, box_bf_indices, N, nnz_ratio,
+        zeros(ComplexF64, max_block_size), ReentrantLock())
 end
 
 """
@@ -91,6 +108,8 @@ Wraps an inner preconditioner (ILU or LU) that operates in a permuted ordering.
 On apply: permute input → apply inner preconditioner → unpermute output.
 Used for MLFMA where reordering Z_near to block-banded form before ILU
 dramatically speeds up factorization and improves quality.
+A reusable, lock-protected vector performs both permutations without
+allocating indexed copies on every application.
 """
 struct PermutedPrecondData{T<:AbstractPreconditionerData} <: AbstractPreconditionerData
     inner::T
@@ -98,6 +117,19 @@ struct PermutedPrecondData{T<:AbstractPreconditionerData} <: AbstractPreconditio
     iperm::Vector{Int}   # iperm[old] = new (permuted → original)
     N::Int
     nnz_ratio::Float64
+    work::Vector{ComplexF64}
+    work_lock::ReentrantLock
+end
+
+function PermutedPrecondData(inner::T,
+                             perm::Vector{Int},
+                             iperm::Vector{Int},
+                             N::Int,
+                             nnz_ratio::Float64) where {
+        T<:AbstractPreconditionerData}
+    return PermutedPrecondData(
+        inner, perm, iperm, N, nnz_ratio,
+        zeros(ComplexF64, N), ReentrantLock())
 end
 
 """
@@ -666,9 +698,25 @@ end
 end
 
 @inline function _apply_preconditioner!(y::StridedVector{ComplexF64}, P::BlockDiagPrecondData)
-    # Apply block solves using original BF indices (Z_near is in original ordering)
-    for (i, idx) in enumerate(P.box_bf_indices)
-        y[idx] = P.lu_blocks[i] \ y[idx]
+    # Gather each block into reusable contiguous storage so dense `ldiv!` can
+    # operate in place without allocating indexed RHS and result vectors.
+    lock(P.work_lock)
+    try
+        for (i, idx) in enumerate(P.box_bf_indices)
+            n = length(idx)
+            length(P.work) >= n ||
+                error("Block-diagonal preconditioner workspace is too small.")
+            @inbounds for j in 1:n
+                P.work[j] = y[idx[j]]
+            end
+            block_work = @view P.work[1:n]
+            ldiv!(P.lu_blocks[i], block_work)
+            @inbounds for j in 1:n
+                y[idx[j]] = P.work[j]
+            end
+        end
+    finally
+        unlock(P.work_lock)
     end
     return y
 end
@@ -718,24 +766,64 @@ end
 end
 
 @inline function _apply_preconditioner_adjoint!(y::StridedVector{ComplexF64}, P::BlockDiagPrecondData)
-    for (i, idx) in enumerate(P.box_bf_indices)
-        y[idx] = adjoint(P.lu_blocks[i]) \ y[idx]
+    lock(P.work_lock)
+    try
+        for (i, idx) in enumerate(P.box_bf_indices)
+            n = length(idx)
+            length(P.work) >= n ||
+                error("Block-diagonal preconditioner workspace is too small.")
+            @inbounds for j in 1:n
+                P.work[j] = y[idx[j]]
+            end
+            block_work = @view P.work[1:n]
+            ldiv!(adjoint(P.lu_blocks[i]), block_work)
+            @inbounds for j in 1:n
+                y[idx[j]] = P.work[j]
+            end
+        end
+    finally
+        unlock(P.work_lock)
     end
     return y
 end
 
 @inline function _apply_preconditioner!(y::StridedVector{ComplexF64}, P::PermutedPrecondData)
-    # Permute to reordered space, apply inner preconditioner, unpermute
-    y .= y[P.perm]                         # original → permuted ordering
-    _apply_preconditioner!(y, P.inner)      # solve in permuted ordering
-    y .= y[P.iperm]                         # permuted → original ordering
+    lock(P.work_lock)
+    try
+        length(y) == P.N && length(P.work) == P.N ||
+            error("Permuted preconditioner workspace size does not match N=$(P.N).")
+        copyto!(P.work, y)
+        @inbounds for new_index in 1:P.N
+            y[new_index] = P.work[P.perm[new_index]]
+        end
+        _apply_preconditioner!(y, P.inner)
+        copyto!(P.work, y)
+        @inbounds for old_index in 1:P.N
+            y[old_index] = P.work[P.iperm[old_index]]
+        end
+    finally
+        unlock(P.work_lock)
+    end
     return y
 end
 
 @inline function _apply_preconditioner_adjoint!(y::StridedVector{ComplexF64}, P::PermutedPrecondData)
-    y .= y[P.perm]
-    _apply_preconditioner_adjoint!(y, P.inner)
-    y .= y[P.iperm]
+    lock(P.work_lock)
+    try
+        length(y) == P.N && length(P.work) == P.N ||
+            error("Permuted preconditioner workspace size does not match N=$(P.N).")
+        copyto!(P.work, y)
+        @inbounds for new_index in 1:P.N
+            y[new_index] = P.work[P.perm[new_index]]
+        end
+        _apply_preconditioner_adjoint!(y, P.inner)
+        copyto!(P.work, y)
+        @inbounds for old_index in 1:P.N
+            y[old_index] = P.work[P.iperm[old_index]]
+        end
+    finally
+        unlock(P.work_lock)
+    end
     return y
 end
 

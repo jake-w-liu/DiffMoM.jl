@@ -387,6 +387,8 @@ struct BlockDiagPrecondData <: AbstractPreconditionerData
     box_bf_indices::Vector{Vector{Int}}
     N::Int
     nnz_ratio::Float64
+    work::Vector{ComplexF64}
+    work_lock::ReentrantLock
 end
 ```
 
@@ -398,6 +400,8 @@ end
 | `box_bf_indices` | `Vector{Vector{Int}}` | Original BF indices belonging to each leaf box. |
 | `N` | `Int` | Total number of basis functions. |
 | `nnz_ratio` | `Float64` | Fraction of nonzeros retained (`sum(block_size^2) / N^2`). |
+| `work` | `Vector{ComplexF64}` | Reusable contiguous RHS storage sized to the largest block. |
+| `work_lock` | `ReentrantLock` | Protects the shared workspace during concurrent applications. |
 
 **Constructor:**
 
@@ -420,6 +424,8 @@ struct PermutedPrecondData{T<:AbstractPreconditionerData} <: AbstractPreconditio
     iperm::Vector{Int}    # iperm[old] = new (permuted → original)
     N::Int
     nnz_ratio::Float64
+    work::Vector{ComplexF64}
+    work_lock::ReentrantLock
 end
 ```
 
@@ -432,6 +438,8 @@ end
 | `iperm` | `Vector{Int}` | Inverse permutation: `iperm[old_index] = new_index`. |
 | `N` | `Int` | Total number of basis functions. |
 | `nnz_ratio` | `Float64` | Fraction of nonzeros (from the inner preconditioner). |
+| `work` | `Vector{ComplexF64}` | Reusable length-`N` permutation workspace. |
+| `work_lock` | `ReentrantLock` | Protects the shared workspace during concurrent applications. |
 
 **Constructor:**
 

@@ -37,10 +37,19 @@ function _assert_single_complex_output_allocation(A, x)
 end
 
 function _assert_zero_allocation_mul!(A, x)
-    result = zeros(ComplexF64, size(A, 1))
+    result = zeros(ComplexF64, first(size(A)))
     mul!(result, A, x)
     allocation = @allocated mul!(result, A, x)
     @assert allocation <= 128
+    return result
+end
+
+function _assert_single_workspace_mul!(A, x)
+    result = zeros(ComplexF64, first(size(A)))
+    mul!(result, A, x)
+    allocation = @allocated mul!(result, A, x)
+    @assert allocation <=
+            _complex_vector_output_allocation(length(result)) + 128
     return result
 end
 
@@ -3017,6 +3026,9 @@ theta_mlfma_loaded = fill(150.0, part_mlfma_loaded.P)
 A_mlfma_loaded = ImpedanceLoadedOperator(A_mlfma, Mp_mlfma_loaded, theta_mlfma_loaded, false)
 P_mlfma_loaded = build_mlfma_preconditioner(A_mlfma, Mp_mlfma_loaded, theta_mlfma_loaded;
     factorization=:lu)
+@assert length(P_mlfma_loaded.work) == mlfma_N
+_assert_single_workspace_mul!(NearFieldOperator(P_mlfma_loaded), x_test)
+_assert_single_workspace_mul!(NearFieldAdjointOperator(P_mlfma_loaded), x_test)
 I_mlfma_loaded, stats_mlfma_loaded = solve_gmres(A_mlfma_loaded, mlfma_v;
     preconditioner=P_mlfma_loaded, tol=1e-4, maxiter=200)
 loaded_residual = norm(A_mlfma_loaded * I_mlfma_loaded - mlfma_v) / norm(mlfma_v)
@@ -3024,6 +3036,24 @@ println("  31f: Loaded MLFMA preconditioner — $(stats_mlfma_loaded.niter) iter
 @assert stats_mlfma_loaded.solved "Loaded MLFMA GMRES should converge"
 @assert loaded_residual < 1e-4 "Loaded MLFMA residual too large: $loaded_residual"
 println("  31f: PASS")
+
+# 31g: block-Jacobi preconditioner action and allocation
+P_mlfma_block = build_block_diag_preconditioner(A_mlfma)
+block_result = _assert_zero_allocation_mul!(
+    NearFieldOperator(P_mlfma_block), x_test)
+block_adjoint_result = _assert_zero_allocation_mul!(
+    NearFieldAdjointOperator(P_mlfma_block), x_test)
+block_reference = copy(x_test)
+block_adjoint_reference = copy(x_test)
+for (factor, indices) in zip(
+        P_mlfma_block.lu_blocks, P_mlfma_block.box_bf_indices)
+    block_reference[indices] = factor \ x_test[indices]
+    block_adjoint_reference[indices] = adjoint(factor) \ x_test[indices]
+end
+@assert block_result ≈ block_reference
+@assert block_adjoint_result ≈ block_adjoint_reference
+@assert length(P_mlfma_block.work) ==
+        maximum(length, P_mlfma_block.box_bf_indices)
 
 println("  PASS ✓")
 
@@ -3723,6 +3753,9 @@ v_ico = assemble_excitation(mesh_ico_opt, rwg_ico, pw_ico)
 # Build preconditioner from the impedance-loaded MLFMA near-field
 P_mlfma = build_mlfma_preconditioner(A_mlfma, Mp_ico, theta_ico;
     factorization=:ilu, ilu_tau=1e-2)
+_assert_zero_allocation_mul!(NearFieldOperator(P_mlfma), v_ico)
+_assert_zero_allocation_mul!(
+    NearFieldAdjointOperator(P_mlfma), v_ico)
 
 I_ico = solve_forward(A_loaded, v_ico; solver=:gmres, preconditioner=P_mlfma,
                        gmres_tol=1e-6, gmres_maxiter=300)

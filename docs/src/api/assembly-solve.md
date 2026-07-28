@@ -605,7 +605,7 @@ Build a block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes. Each
 
 **Returns:** `BlockDiagPrecondData`. See [types.md](types.md) for field details.
 
-**Complexity:** `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Memory: `n_boxes * n_bf^2 * 16` bytes (typically < 100 MB).
+**Complexity:** `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Memory: `n_boxes * n_bf^2 * 16` bytes for the factorizations plus one reusable largest-block work vector (typically < 100 MB total).
 
 **Example:**
 
@@ -629,7 +629,7 @@ Build a preconditioner for MLFMA by reordering `Z_near` to MLFMA BF ordering (bl
 | `factorization` | `Symbol` | `:ilu` | `:ilu` for incomplete LU (recommended), `:lu` for full sparse LU. |
 | `ilu_tau` | `Float64` | `1e-2` | Drop tolerance for ILU. |
 
-**Returns:** `PermutedPrecondData` wrapping an `ILUPreconditionerData` (or `NearFieldPreconditionerData` for `:lu`). See [types.md](types.md) for field details.
+**Returns:** `PermutedPrecondData` wrapping an `ILUPreconditionerData` (or `NearFieldPreconditionerData` for `:lu`). It retains one reusable length-`N` permutation vector, avoiding two transient full-vector allocations per application. See [types.md](types.md) for field details.
 
 **Example:**
 
