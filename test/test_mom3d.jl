@@ -14,6 +14,10 @@ println("\n── Test 46: 3D vector material DDA solver ──")
 
     @testset "Free-space limit" begin
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
+        @test_throws ArgumentError planewave_dda_3d(
+            grid, Vec3(0.0, 0.0, k0), NaN, Vec3(1.0, 0.0, 0.0))
+        @test_throws ArgumentError planewave_dda_3d(
+            grid, Vec3(0.0, 0.0, Inf), 1.0, Vec3(1.0, 0.0, 0.0))
         E_inc = planewave_dda_3d(grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0))
         res = solve_dda_3d(grid, k0, 1.0 + 0im, E_inc)
 

@@ -447,16 +447,22 @@ Evaluate a transverse plane wave at voxel centers:
     E_inc(r) = pol * E0 * exp(-i k_vec dot r)
 """
 function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
+    all(isfinite, k_vec) ||
+        throw(ArgumentError("k_vec components must be finite."))
     kn = norm(k_vec)
-    kn > 0 || error("k_vec must be nonzero.")
+    isfinite(kn) && kn > 0 ||
+        throw(ArgumentError("k_vec must have a finite, nonzero norm."))
     polv = _as_cvec3(pol, "pol")
     pn = norm(polv)
-    pn > 0 || error("pol must be nonzero.")
+    isfinite(pn) && pn > 0 ||
+        throw(ArgumentError("pol must have a finite, nonzero norm."))
     transverse_error = abs(dot(k_vec / kn, polv / pn))
     transverse_error <= 1e-10 ||
         error("Plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error.")
 
     amp = ComplexF64(E0)
+    isfinite(amp) ||
+        throw(ArgumentError("E0 must be finite, got $E0."))
     Einc = Vector{CVec3}(undef, grid.nvoxels)
     for j in 1:grid.nvoxels
         Einc[j] = polv * amp * exp(-1im * dot(k_vec, grid.centers[j]))

@@ -232,8 +232,10 @@ The incident field is sampled at the voxel centers by
 
 where `k_vec` $= k\,\hat{\mathbf{k}}$. The polarization must be **transverse** to
 the wave vector: the code enforces $|\hat{\mathbf{k}}\cdot\hat{\mathbf{p}}| \le 10^{-10}$
-and errors otherwise (both must be nonzero). The negative exponent matches the
-$e^{-ikR}$ convention from Section 1.
+and errors otherwise. The wavevector, polarization, and amplitude must be
+finite; the first two must also have nonzero finite norms. The EM counterpart
+additionally requires finite, positive `eta0`. The negative exponent matches
+the $e^{-ikR}$ convention from Section 1.
 
 ### 5.2 Solving the System
 

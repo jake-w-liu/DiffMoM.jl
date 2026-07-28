@@ -552,7 +552,9 @@ centers. Returns `(E_inc, H_inc)` with `H = khat x E / eta0`.
 function planewave_em_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol;
                              eta0::Real=_ETA0_DDA)
     eta = Float64(eta0)
-    eta > 0 || error("eta0 must be positive.")
+    isfinite(eta) && eta > 0 ||
+        throw(ArgumentError(
+            "eta0 must be finite and positive, got $eta0."))
     Einc = planewave_dda_3d(grid, k_vec, E0, pol)
     khat = k_vec / norm(k_vec)
     Hinc = Vector{CVec3}(undef, grid.nvoxels)
