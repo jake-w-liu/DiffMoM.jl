@@ -131,6 +131,9 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         y = zeros(ComplexF64, size(A_op, 1))
         mul!(y, A_op, x)
         @test norm(y - A_dense * x) / norm(A_dense * x) < 1e-13
+        fill!(y, ComplexF64(NaN, NaN))
+        mul!(y, A_op, x, 1.0 + 0im, 0.0 + 0im)
+        @test y ≈ A_dense * x rtol=1e-13
         @test Base.summarysize(A_op) < Base.summarysize(A_dense) / 4
 
         mul!(y, A_op, x)

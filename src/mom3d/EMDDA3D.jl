@@ -406,7 +406,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(x) == size(A, 2) || throw(DimensionMismatch("x length must be $(size(A, 2))."))
     length(y) == size(A, 1) || throw(DimensionMismatch("y length must be $(size(A, 1))."))
 
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
     xread = y === x ? copy(x) : x
+    overwrite = iszero(beta_scale)
     N = A.grid.nvoxels
     # Output voxels are independent, but threading is intentionally avoided here:
     # test/test_mom3d_em.jl asserts (@allocated mul!(y, A_op, x)) < 4096 and the
@@ -428,8 +438,14 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
 
         for a in 1:3
-            y[_em_index(i, a)] = alpha_scale * Ei[a] + beta_scale * y[_em_index(i, a)]
-            y[_em_index(i, a + 3)] = alpha_scale * Hi[a] + beta_scale * y[_em_index(i, a + 3)]
+            idx_e = _em_index(i, a)
+            idx_h = _em_index(i, a + 3)
+            y[idx_e] = overwrite ?
+                alpha_scale * Ei[a] :
+                alpha_scale * Ei[a] + beta_scale * y[idx_e]
+            y[idx_h] = overwrite ?
+                alpha_scale * Hi[a] :
+                alpha_scale * Hi[a] + beta_scale * y[idx_h]
         end
     end
     return y

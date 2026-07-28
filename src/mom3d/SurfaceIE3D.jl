@@ -639,6 +639,16 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(x) == N2 || throw(DimensionMismatch("x length must be $N2."))
     length(y) == N2 || throw(DimensionMismatch("y length must be $N2."))
 
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
+    overwrite = iszero(beta_scale)
     _copy_block_inputs_3d!(A.work_J, A.work_M, x)
 
     # E-row: c_ze_ext Ze_ext J + c_ze_int Ze_int J
@@ -656,7 +666,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         if A.c_g_e != 0
             v += A.c_g_e * A.tmp5[j]
         end
-        y[j] = alpha_scale * v + beta_scale * y[j]
+        y[j] = overwrite ?
+            alpha_scale * v :
+            alpha_scale * v + beta_scale * y[j]
     end
 
     # H-row: (c_zh_ext K_ext + c_zh_int K_int) J + c_g_h Gram J
@@ -674,7 +686,10 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         if A.c_g_h != 0
             v += A.c_g_h * A.tmp5[j]
         end
-        y[N + j] = alpha_scale * v + beta_scale * y[N + j]
+        idx = N + j
+        y[idx] = overwrite ?
+            alpha_scale * v :
+            alpha_scale * v + beta_scale * y[idx]
     end
     return y
 end

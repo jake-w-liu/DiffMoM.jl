@@ -278,7 +278,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(x) == size(A, 2) || throw(DimensionMismatch("x length must be $(size(A, 2))."))
     length(y) == size(A, 1) || throw(DimensionMismatch("y length must be $(size(A, 1))."))
 
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
     xread = y === x ? copy(x) : x
+    overwrite = iszero(beta_scale)
     N = A.grid.nvoxels
     # Output voxels are independent, but the matrix-free alloc budget
     # (test/test_mom3d.jl asserts < 1024 bytes) is tighter than the task-spawn
@@ -299,7 +309,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
         for a in 1:3
             idx = _dda_index(i, a)
-            y[idx] = alpha_scale * Ei[a] + beta_scale * y[idx]
+            y[idx] = overwrite ?
+                alpha_scale * Ei[a] :
+                alpha_scale * Ei[a] + beta_scale * y[idx]
         end
     end
     return y
@@ -325,7 +337,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(x) == size(Aadj, 2) || throw(DimensionMismatch("x length must be $(size(Aadj, 2))."))
     length(y) == size(Aadj, 1) || throw(DimensionMismatch("y length must be $(size(Aadj, 1))."))
 
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
     xread = y === x ? copy(x) : x
+    overwrite = iszero(beta_scale)
     N = A.grid.nvoxels
     # Left serial for the same alloc-budget reason as the forward operator;
     # `@inbounds` is applied over the verified-safe indexing.
@@ -345,7 +367,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
         for a in 1:3
             idx = _dda_index(i, a)
-            y[idx] = alpha_scale * Ei[a] + beta_scale * y[idx]
+            y[idx] = overwrite ?
+                alpha_scale * Ei[a] :
+                alpha_scale * Ei[a] + beta_scale * y[idx]
         end
     end
     return y

@@ -187,6 +187,9 @@ end
     y_mf = zeros(ComplexF64, 2N)
     mul!(y_mf, A_pm_mf, x)
     @test (@allocated mul!(y_mf, A_pm_mf, x)) < 1024
+    fill!(y_mf, ComplexF64(NaN, NaN))
+    mul!(y_mf, A_pm_mf, x, 1.0 + 0im, 0.0 + 0im)
+    @test y_mf ≈ A_pm * x rtol=1e-13
     A_pm_mf * x
     product_allocation = @allocated A_pm_mf * x
     zeros(ComplexF64, 2N)

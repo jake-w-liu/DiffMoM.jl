@@ -77,6 +77,9 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         y = zeros(ComplexF64, size(A_op, 1))
         mul!(y, A_op, x)
         @test norm(y - A_dense * x) / norm(A_dense * x) < 1e-13
+        fill!(y, ComplexF64(NaN, NaN))
+        mul!(y, A_op, x, 1.0 + 0im, 0.0 + 0im)
+        @test y ≈ A_dense * x rtol=1e-13
 
         A_adj = adjoint(A_op)
         @test size(A_adj, 3) == 1
@@ -84,6 +87,9 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         y_adj = zeros(ComplexF64, size(A_adj, 1))
         mul!(y_adj, A_adj, x)
         @test norm(y_adj - adjoint(A_dense) * x) / norm(adjoint(A_dense) * x) < 1e-13
+        fill!(y_adj, ComplexF64(NaN, NaN))
+        mul!(y_adj, A_adj, x, 1.0 + 0im, 0.0 + 0im)
+        @test y_adj ≈ adjoint(A_dense) * x rtol=1e-13
 
         # The matrix-free operator stores O(N) material/geometric data instead
         # of the O(N^2) dense interaction matrix.
