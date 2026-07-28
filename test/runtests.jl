@@ -1416,6 +1416,11 @@ v_new_exc = assemble_excitation(mesh_exc, rwg_exc, make_plane_wave(k_vec_exc, 1.
 rel_rhs_exc = norm(v_new_exc - v_old_exc) / max(norm(v_old_exc), 1e-30)
 println("  Plane-wave path-consistency RHS rel. diff: $rel_rhs_exc")
 @assert rel_rhs_exc < 1e-13
+wrong_mesh_cache = DiffMoM.ExcitationQuadCache(
+    make_rect_plate(0.08, 0.04, 3, 3))
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc, make_plane_wave(k_vec_exc, 1.0, pol_exc);
+    quad_order=3, quad_cache=wrong_mesh_cache)
 
 # Explicit quadrature check for plane-wave RHS assembly
 xi_exc, wq_exc = tri_quad_rule(3)

@@ -568,7 +568,10 @@ ExcitationQuadCache(mesh::TriMesh) =
         Dict{Int,Tuple{Vector{Float64},Vector{Vector{Vec3}},Vector{Float64}}}())
 
 # Return `(wq, quad_pts, areas)` for `quad_order`, computing and caching on miss.
-function _quad_cache_for(cache::ExcitationQuadCache, quad_order::Int)
+function _quad_cache_for(cache::ExcitationQuadCache, mesh::TriMesh, quad_order::Int)
+    (cache.mesh.xyz === mesh.xyz && cache.mesh.tri === mesh.tri) ||
+        throw(ArgumentError(
+            "quad_cache belongs to a different mesh; construct ExcitationQuadCache(mesh) for this mesh."))
     cached = get(cache.by_order, quad_order, nothing)
     cached === nothing || return cached
     entry = _excitation_quadrature_cache(cache.mesh, quad_order)
@@ -941,7 +944,7 @@ function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
         _excitation_quadrature_cache(mesh, quad_order) :
-        _quad_cache_for(quad_cache, quad_order)
+        _quad_cache_for(quad_cache, mesh, quad_order)
     Nq = length(wq)
 
     CT = ComplexF64
@@ -996,7 +999,7 @@ function assemble_dipole(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
         _excitation_quadrature_cache(mesh, quad_order) :
-        _quad_cache_for(quad_cache, quad_order)
+        _quad_cache_for(quad_cache, mesh, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1027,7 +1030,7 @@ function assemble_loop(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
         _excitation_quadrature_cache(mesh, quad_order) :
-        _quad_cache_for(quad_cache, quad_order)
+        _quad_cache_for(quad_cache, mesh, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1053,7 +1056,7 @@ function assemble_monopole(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
         _excitation_quadrature_cache(mesh, quad_order) :
-        _quad_cache_for(quad_cache, quad_order)
+        _quad_cache_for(quad_cache, mesh, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1080,7 +1083,7 @@ function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
         _excitation_quadrature_cache(mesh, quad_order_eff) :
-        _quad_cache_for(quad_cache, quad_order_eff)
+        _quad_cache_for(quad_cache, mesh, quad_order_eff)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
@@ -1114,7 +1117,7 @@ function assemble_pattern_feed(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
         _excitation_quadrature_cache(mesh, quad_order) :
-        _quad_cache_for(quad_cache, quad_order)
+        _quad_cache_for(quad_cache, mesh, quad_order)
     Nq = length(wq)
 
     v = zeros(ComplexF64, N)
