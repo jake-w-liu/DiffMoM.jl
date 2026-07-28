@@ -41,7 +41,13 @@ mutable struct ACAWorkspace
     x_perm::Vector{ComplexF64}
     y_perm::Vector{ComplexF64}
     tmp::Vector{ComplexF64}   # sized to max rank across all low-rank blocks
+    work_lock::ReentrantLock
 end
+
+ACAWorkspace(x_perm::Vector{ComplexF64},
+             y_perm::Vector{ComplexF64},
+             tmp::Vector{ComplexF64}) =
+    ACAWorkspace(x_perm, y_perm, tmp, ReentrantLock())
 
 """
     ACAOperator{TC} <: AbstractMatrix{ComplexF64}
@@ -464,36 +470,43 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator, x::Ab
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
 
     ws = A.workspace
-    x_perm = ws.x_perm
-    y_perm = ws.y_perm
+    lock(ws.work_lock)
+    try
+        x_perm = ws.x_perm
+        y_perm = ws.y_perm
 
-    # Permute x to tree order
-    @inbounds for k in 1:N
-        x_perm[k] = x[A.tree.perm[k]]
-    end
-    fill!(y_perm, zero(ComplexF64))
+        # Permute x to tree order
+        @inbounds for k in 1:N
+            x_perm[k] = x[A.tree.perm[k]]
+        end
+        fill!(y_perm, zero(ComplexF64))
 
-    # Dense blocks — BLAS gemv
-    for blk in A.dense_blocks
-        rows = blk.row_range
-        cols = blk.col_range
-        mul!(@view(y_perm[rows]), blk.data, @view(x_perm[cols]), one(ComplexF64), one(ComplexF64))
-    end
+        # Dense blocks — BLAS gemv
+        for blk in A.dense_blocks
+            rows = blk.row_range
+            cols = blk.col_range
+            mul!(@view(y_perm[rows]), blk.data, @view(x_perm[cols]),
+                 one(ComplexF64), one(ComplexF64))
+        end
 
-    # Low-rank blocks: y += U * (V' * x)
-    for blk in A.lowrank_blocks
-        k_rank = size(blk.U, 2)
-        k_rank == 0 && continue
-        rows = blk.row_range
-        cols = blk.col_range
-        tmp = @view(ws.tmp[1:k_rank])
-        mul!(tmp, blk.V', @view(x_perm[cols]))
-        mul!(@view(y_perm[rows]), blk.U, tmp, one(ComplexF64), one(ComplexF64))
-    end
+        # Low-rank blocks: y += U * (V' * x)
+        for blk in A.lowrank_blocks
+            k_rank = size(blk.U, 2)
+            k_rank == 0 && continue
+            rows = blk.row_range
+            cols = blk.col_range
+            tmp = @view(ws.tmp[1:k_rank])
+            mul!(tmp, blk.V', @view(x_perm[cols]))
+            mul!(@view(y_perm[rows]), blk.U, tmp,
+                 one(ComplexF64), one(ComplexF64))
+        end
 
-    # Un-permute y back to original order
-    @inbounds for k in 1:N
-        y[A.tree.perm[k]] = y_perm[k]
+        # Un-permute y back to original order
+        @inbounds for k in 1:N
+            y[A.tree.perm[k]] = y_perm[k]
+        end
+    finally
+        unlock(ws.work_lock)
     end
 
     return y
@@ -514,36 +527,43 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
 
     tree = A.op.tree
     ws = A.op.workspace
-    x_perm = ws.x_perm
-    y_perm = ws.y_perm
+    lock(ws.work_lock)
+    try
+        x_perm = ws.x_perm
+        y_perm = ws.y_perm
 
-    # Permute x to tree order
-    @inbounds for k in 1:N
-        x_perm[k] = x[tree.perm[k]]
-    end
-    fill!(y_perm, zero(ComplexF64))
+        # Permute x to tree order
+        @inbounds for k in 1:N
+            x_perm[k] = x[tree.perm[k]]
+        end
+        fill!(y_perm, zero(ComplexF64))
 
-    # Dense blocks: adjoint means transpose-conjugate
-    for blk in A.op.dense_blocks
-        rows = blk.row_range
-        cols = blk.col_range
-        mul!(@view(y_perm[cols]), blk.data', @view(x_perm[rows]), one(ComplexF64), one(ComplexF64))
-    end
+        # Dense blocks: adjoint means transpose-conjugate
+        for blk in A.op.dense_blocks
+            rows = blk.row_range
+            cols = blk.col_range
+            mul!(@view(y_perm[cols]), blk.data', @view(x_perm[rows]),
+                 one(ComplexF64), one(ComplexF64))
+        end
 
-    # Low-rank blocks: adjoint of U * V' is V * U'
-    for blk in A.op.lowrank_blocks
-        k_rank = size(blk.U, 2)
-        k_rank == 0 && continue
-        rows = blk.row_range
-        cols = blk.col_range
-        tmp = @view(ws.tmp[1:k_rank])
-        mul!(tmp, blk.U', @view(x_perm[rows]))
-        mul!(@view(y_perm[cols]), blk.V, tmp, one(ComplexF64), one(ComplexF64))
-    end
+        # Low-rank blocks: adjoint of U * V' is V * U'
+        for blk in A.op.lowrank_blocks
+            k_rank = size(blk.U, 2)
+            k_rank == 0 && continue
+            rows = blk.row_range
+            cols = blk.col_range
+            tmp = @view(ws.tmp[1:k_rank])
+            mul!(tmp, blk.U', @view(x_perm[rows]))
+            mul!(@view(y_perm[cols]), blk.V, tmp,
+                 one(ComplexF64), one(ComplexF64))
+        end
 
-    # Un-permute
-    @inbounds for k in 1:N
-        y[tree.perm[k]] = y_perm[k]
+        # Un-permute
+        @inbounds for k in 1:N
+            y[tree.perm[k]] = y_perm[k]
+        end
+    finally
+        unlock(ws.work_lock)
     end
 
     return y

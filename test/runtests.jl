@@ -71,6 +71,28 @@ function _sum_imported_source(imported, points)
     return result
 end
 
+function _assert_shared_workspace_concurrency(operators, inputs; rtol=1e-12)
+    length(operators) == length(inputs) ||
+        throw(DimensionMismatch("operators and inputs must have matching lengths"))
+    references = [operators[i] * inputs[i] for i in eachindex(inputs)]
+    Threads.nthreads() > 1 || return nothing
+
+    for _ in 1:4
+        gate = Base.Event()
+        tasks = map(eachindex(inputs)) do i
+            Threads.@spawn begin
+                wait(gate)
+                operators[i] * inputs[i]
+            end
+        end
+        yield()
+        notify(gate)
+        results = fetch.(tasks)
+        @assert results ≈ references rtol=rtol
+    end
+    return nothing
+end
+
 const DATADIR = joinpath(@__DIR__, "..", "data")
 mkpath(DATADIR)
 
@@ -2625,6 +2647,7 @@ A_aca_op = build_aca_operator(mesh, rwg, k;
                                leaf_size=8, eta=1.5, aca_tol=1e-8,
                                max_rank=50, quad_order=3, mesh_precheck=false)
 @assert size(A_aca_op) == (N, N)
+@assert A_aca_op.workspace.work_lock isa ReentrantLock
 
 # Compare matvec against dense Z
 Random.seed!(42)
@@ -2647,6 +2670,10 @@ _assert_single_complex_output_allocation(A_adj, x_test)
 rel_adj_err = norm(y_adj_aca - y_adj_dense) / norm(y_adj_dense)
 println("  Adjoint matvec relative error: $rel_adj_err")
 @assert rel_adj_err < 1e-5 "ACA adjoint matvec too inaccurate: $rel_adj_err"
+_assert_shared_workspace_concurrency(
+    [A_aca_op, A_adj, A_aca_op, A_adj],
+    [x_test, (0.2 - 0.3im) .* x_test, reverse(x_test), conj.(x_test)],
+)
 
 # Test getindex fallback (used by NF preconditioner)
 for _ in 1:10

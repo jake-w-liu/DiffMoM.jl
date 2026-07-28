@@ -162,7 +162,7 @@ The algorithm iteratively selects rows and columns to build a rank-k factorizati
 
 ### `ACAOperator{TC} <: AbstractMatrix{ComplexF64}`
 
-H-matrix operator assembled via ACA. Supports `mul!` for GMRES and `getindex` for preconditioner construction. It stores the EFIE matrix in compressed form: near-field blocks as dense sub-matrices, far-field blocks as low-rank factorizations.
+H-matrix operator assembled via ACA. Supports `mul!` for GMRES and `getindex` for preconditioner construction. It stores the EFIE matrix in compressed form: near-field blocks as dense sub-matrices, far-field blocks as low-rank factorizations. Its preallocated workspace is protected by a lock, so one operator can be shared safely across threads.
 
 ```julia
 struct ACAOperator{TC<:EFIEApplyCache} <: AbstractMatrix{ComplexF64}
@@ -171,6 +171,7 @@ struct ACAOperator{TC<:EFIEApplyCache} <: AbstractMatrix{ComplexF64}
     dense_blocks::Vector{DenseBlock}
     lowrank_blocks::Vector{LowRankBlock}
     N::Int
+    workspace::ACAWorkspace
 end
 ```
 
@@ -179,6 +180,7 @@ end
 - **`A[i, j]`**: Falls back to `_efie_entry(cache, i, j)` for element access. This allows the near-field preconditioner to be built from an `ACAOperator` without forming the dense matrix.
 - **`mul!(y, A, x)`**: O(N log^2 N) matvec via dense blocks (BLAS `gemv`) and low-rank blocks (`U * (V' * x)`).
 - **`adjoint(A)`**: Returns `ACAAdjointOperator` for adjoint GMRES solves.
+- **`workspace.work_lock`**: Serializes forward and adjoint access to the shared allocation-free workspace.
 
 ---
 
