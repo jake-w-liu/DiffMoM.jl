@@ -861,7 +861,8 @@ cell by their centroid and remapping triangles. Degenerate and duplicate
 triangles created by remapping are removed.
 """
 function cluster_mesh_vertices(mesh::TriMesh, h::Float64)
-    h > 0 || error("cluster_mesh_vertices: h must be > 0, got $h")
+    (isfinite(h) && h > 0.0) ||
+        throw(ArgumentError("cluster_mesh_vertices: h must be finite and positive, got $h"))
 
     nv = nvertices(mesh)
     mins = (
@@ -939,6 +940,9 @@ Iteratively remove triangles attached to non-manifold edges (edges with more
 than two incident triangles). Returns a mesh with only manifold/boundary edges.
 """
 function drop_nonmanifold_triangles(mesh::TriMesh; max_passes::Int=8)
+    max_passes >= 1 ||
+        throw(ArgumentError("drop_nonmanifold_triangles: max_passes must be at least 1, got $max_passes"))
+
     nt = ntriangles(mesh)
     keep = trues(nt)
 
@@ -990,7 +994,10 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
                                     require_closed::Bool=false,
                                     area_tol_rel::Float64=1e-12,
                                     strict_nonmanifold::Bool=true)
-    target_rwg > 0 || error("coarsen_mesh_to_target_rwg: target_rwg must be > 0")
+    target_rwg > 0 ||
+        throw(ArgumentError("coarsen_mesh_to_target_rwg: target_rwg must be positive, got $target_rwg"))
+    max_iters >= 1 ||
+        throw(ArgumentError("coarsen_mesh_to_target_rwg: max_iters must be at least 1, got $max_iters"))
 
     mins = [minimum(@view mesh.xyz[i, :]) for i in 1:3]
     maxs = [maximum(@view mesh.xyz[i, :]) for i in 1:3]
@@ -1393,12 +1400,17 @@ the maximum unique edge length.
 function mesh_resolution_report(mesh::TriMesh, freq_hz::Real;
                                 points_per_wavelength::Real=10.0,
                                 c0::Real=299792458.0)
-    freq_hz > 0 || error("mesh_resolution_report: freq_hz must be > 0")
-    points_per_wavelength > 0 || error("mesh_resolution_report: points_per_wavelength must be > 0")
-    c0 > 0 || error("mesh_resolution_report: c0 must be > 0")
+    freq_hz_f = _positive_finite_length("mesh_resolution_report: freq_hz", freq_hz)
+    points_per_wavelength_f = _positive_finite_length(
+        "mesh_resolution_report: points_per_wavelength", points_per_wavelength)
+    c0_f = _positive_finite_length("mesh_resolution_report: c0", c0)
 
-    λ = Float64(c0) / Float64(freq_hz)
-    target_h = λ / Float64(points_per_wavelength)
+    λ = c0_f / freq_hz_f
+    target_h = λ / points_per_wavelength_f
+    (isfinite(λ) && λ > 0.0 && isfinite(target_h) && target_h > 0.0) ||
+        throw(ArgumentError(
+            "mesh_resolution_report: frequency, c0, and points_per_wavelength " *
+            "must produce finite positive wavelength and edge target"))
 
     lens = _mesh_edge_lengths(mesh)
     isempty(lens) && error("mesh_resolution_report: mesh has no edges")
@@ -1413,9 +1425,9 @@ function mesh_resolution_report(mesh::TriMesh, freq_hz::Real;
     meets = h_max <= target_h
 
     return (
-        freq_hz = Float64(freq_hz),
+        freq_hz = freq_hz_f,
         wavelength_m = λ,
-        points_per_wavelength = Float64(points_per_wavelength),
+        points_per_wavelength = points_per_wavelength_f,
         target_max_edge_m = target_h,
         n_vertices = nvertices(mesh),
         n_triangles = ntriangles(mesh),
@@ -1515,9 +1527,12 @@ Uniformly refine a triangle mesh via midpoint subdivision until
 function refine_mesh_to_target_edge(mesh::TriMesh, target_max_edge_m::Real;
                                     max_iters::Int=8,
                                     max_triangles::Int=2_000_000)
-    target_max_edge_m > 0 || error("refine_mesh_to_target_edge: target_max_edge_m must be > 0")
-    max_iters >= 0 || error("refine_mesh_to_target_edge: max_iters must be >= 0")
-    max_triangles > 0 || error("refine_mesh_to_target_edge: max_triangles must be > 0")
+    target_max_edge_m_f = _positive_finite_length(
+        "refine_mesh_to_target_edge: target_max_edge_m", target_max_edge_m)
+    max_iters >= 0 ||
+        throw(ArgumentError("refine_mesh_to_target_edge: max_iters must be nonnegative, got $max_iters"))
+    max_triangles > 0 ||
+        throw(ArgumentError("refine_mesh_to_target_edge: max_triangles must be positive, got $max_triangles"))
 
     mesh_cur = mesh
     before_lens = _mesh_edge_lengths(mesh_cur)
@@ -1527,7 +1542,7 @@ function refine_mesh_to_target_edge(mesh::TriMesh, target_max_edge_m::Real;
     hist_edge_max = Float64[edge_max_before]
     hist_triangles = Int[ntriangles(mesh_cur)]
 
-    converged = edge_max_before <= target_max_edge_m
+    converged = edge_max_before <= target_max_edge_m_f
     iters = 0
 
     while !converged && iters < max_iters
@@ -1539,14 +1554,14 @@ function refine_mesh_to_target_edge(mesh::TriMesh, target_max_edge_m::Real;
         edge_max = maximum(lens)
         push!(hist_edge_max, edge_max)
         push!(hist_triangles, ntriangles(mesh_cur))
-        converged = edge_max <= target_max_edge_m
+        converged = edge_max <= target_max_edge_m_f
     end
 
     return (
         mesh = mesh_cur,
         iterations = iters,
         converged = converged,
-        target_max_edge_m = Float64(target_max_edge_m),
+        target_max_edge_m = target_max_edge_m_f,
         edge_max_before_m = edge_max_before,
         edge_max_after_m = hist_edge_max[end],
         triangles_before = hist_triangles[1],

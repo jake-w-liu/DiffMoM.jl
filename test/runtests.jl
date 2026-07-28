@@ -405,6 +405,8 @@ mesh_cluster_in = make_rect_plate(1.0, 1.0, 6, 6)
 mesh_cluster_out = cluster_mesh_vertices(mesh_cluster_in, 0.35)
 @assert nvertices(mesh_cluster_out) > 0
 @assert ntriangles(mesh_cluster_out) > 0
+@test_throws ArgumentError cluster_mesh_vertices(mesh_cluster_in, Inf)
+@test_throws ArgumentError cluster_mesh_vertices(mesh_cluster_in, NaN)
 
 mesh_edges_test = make_rect_plate(1.0, 1.0, 1, 1) # two triangles
 edges_test = mesh_unique_edges(mesh_edges_test)
@@ -433,6 +435,7 @@ mesh_nm = TriMesh(xyz_nm, tri_nm)
 mesh_nm_clean = drop_nonmanifold_triangles(mesh_nm)
 report_nm = mesh_quality_report(mesh_nm_clean)
 @assert report_nm.n_nonmanifold_edges == 0
+@test_throws ArgumentError drop_nonmanifold_triangles(mesh_nm; max_passes=0)
 
 mesh_coarse_in = make_rect_plate(1.0, 1.0, 12, 12)
 rwg_coarse_in = build_rwg(mesh_coarse_in; precheck=true, allow_boundary=true)
@@ -444,6 +447,7 @@ rwg_coarse_out = build_rwg(coarse_result.mesh; precheck=true, allow_boundary=tru
 @assert coarse_result.rwg_count == rwg_coarse_out.nedges
 @assert abs(coarse_result.rwg_count - target_rwg) <= target_rwg  # improved complexity scale
 @assert rwg_coarse_out.nedges < rwg_coarse_in.nedges
+@test_throws ArgumentError coarsen_mesh_to_target_rwg(mesh_coarse_in, target_rwg; max_iters=0)
 report_coarse_out = mesh_quality_report(coarse_result.mesh)
 @assert mesh_quality_ok(report_coarse_out; allow_boundary=true, require_closed=false)
 
@@ -451,11 +455,19 @@ report_res_before = mesh_resolution_report(mesh_edges_test, 3e8; points_per_wave
 @assert report_res_before.wavelength_m ≈ 299792458.0 / 3e8
 @assert report_res_before.edge_max_m > report_res_before.target_max_edge_m
 @assert !mesh_resolution_ok(report_res_before)
+@test_throws ArgumentError mesh_resolution_report(mesh_edges_test, Inf; points_per_wavelength=2.0)
+@test_throws ArgumentError mesh_resolution_report(mesh_edges_test, 3e8; points_per_wavelength=Inf)
+@test_throws ArgumentError mesh_resolution_report(
+    mesh_edges_test, 3e8; points_per_wavelength=2.0, c0=Inf)
+@test_throws ArgumentError mesh_resolution_report(
+    mesh_edges_test, floatmin(Float64); points_per_wavelength=2.0)
 
 refine_result = refine_mesh_to_target_edge(mesh_edges_test, 0.40; max_iters=3)
 @assert refine_result.triangles_after > refine_result.triangles_before
 @assert refine_result.edge_max_after_m <= 0.40 + 1e-12
 @assert refine_result.converged
+@test_throws ArgumentError refine_mesh_to_target_edge(mesh_edges_test, Inf)
+@test_throws ArgumentError refine_mesh_to_target_edge(mesh_edges_test, NaN)
 
 report_res_after = mesh_resolution_report(refine_result.mesh, 3e8; points_per_wavelength=2.0)
 @assert mesh_resolution_ok(report_res_after)
