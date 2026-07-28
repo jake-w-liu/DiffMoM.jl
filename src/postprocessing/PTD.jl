@@ -85,10 +85,19 @@ Extract diffraction-feature edges from a triangle mesh.
 Interior edges with dihedral angle above `min_dihedral_deg` are kept.
 Boundary edges (single adjacent face) are treated as half-planes (α = 2π).
 """
-function extract_diffraction_edges(mesh::TriMesh;
-                                    min_dihedral_deg::Float64=5.0,
-                                    include_boundary::Bool=true)
-    min_dihedral = deg2rad(min_dihedral_deg)
+@inline function _validated_min_dihedral(min_dihedral_deg::Float64)
+    (isfinite(min_dihedral_deg) &&
+     0.0 <= min_dihedral_deg <= 180.0) ||
+        throw(ArgumentError(
+            "min_dihedral_deg must be finite and in [0, 180], got $min_dihedral_deg"))
+    return deg2rad(min_dihedral_deg)
+end
+
+function _extract_diffraction_edges_validated(
+    mesh::TriMesh,
+    min_dihedral::Float64,
+    include_boundary::Bool,
+)
     Nt = ntriangles(mesh)
 
     edgemap = Dict{Tuple{Int,Int}, Vector{NTuple{3,Int}}}()
@@ -108,7 +117,8 @@ function extract_diffraction_edges(mesh::TriMesh;
             fo = rec[1]; va, vb = rec[2], rec[3]
             p1 = _mesh_vertex(mesh, va); p2 = _mesh_vertex(mesh, vb)
             e = p2 - p1; le = norm(e)
-            le > 1e-14 || continue
+            isfinite(le) && le > 0.0 ||
+                error("boundary edge ($va, $vb) has invalid length $le")
             t = e / le; c = (p1 + p2) / 2.0
             no = triangle_normal(mesh, fo)
             nn = Vec3(0.0, 0.0, 0.0)
@@ -124,14 +134,19 @@ function extract_diffraction_edges(mesh::TriMesh;
         va, vb = rec_o[2], rec_o[3]
         p1 = _mesh_vertex(mesh, va); p2 = _mesh_vertex(mesh, vb)
         e = p2 - p1; le = norm(e)
-        le > 1e-14 || continue
+        isfinite(le) && le > 0.0 ||
+            error("interior edge ($va, $vb) has invalid length $le")
         t = e / le; c = (p1 + p2) / 2.0
         no = triangle_normal(mesh, fo); nn = triangle_normal(mesh, fn)
         y = dot(t, cross(no, nn))
         x = clamp(dot(no, nn), -1.0, 1.0)
         δ = atan(y, x)
-        abs(δ) >= min_dihedral || continue
-        α = π + δ
+        abs(δ) > min_dihedral || continue
+
+        # With outward normals and the edge direction inherited from face_o,
+        # δ is the signed material fold angle. PTD uses the complementary
+        # free-space exterior angle α = nπ.
+        α = π - δ
         α <= 0.0 && (α += 2π); α > 2π && (α -= 2π)
         (α > 1e-10 && α <= 2π) || continue
         uo = _safe_uo(t, no)
@@ -144,6 +159,16 @@ function extract_diffraction_edges(mesh::TriMesh;
                                     fo, fn, no, nn, α, uo))
     end
     return out
+end
+
+function extract_diffraction_edges(mesh::TriMesh;
+                                    min_dihedral_deg::Float64=5.0,
+                                    include_boundary::Bool=true)
+    min_dihedral = _validated_min_dihedral(min_dihedral_deg)
+    assert_mesh_quality(
+        mesh; allow_boundary=true, require_closed=false)
+    return _extract_diffraction_edges_validated(
+        mesh, min_dihedral, include_boundary)
 end
 
 # ═══════════════════════════════════════════════════════════════════
@@ -341,13 +366,15 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
                    eta0::Float64=376.730313668,
                    min_dihedral_deg::Float64=5.0,
                    include_boundary::Bool=true)
+    min_dihedral = _validated_min_dihedral(min_dihedral_deg)
+
     # ── Phase 1: PO solution ──
     po = solve_po(mesh, freq_hz, excitation; grid=grid, c0=c0, eta0=eta0)
 
     # ── Phase 2: Extract diffraction edges ──
-    edges = extract_diffraction_edges(mesh;
-                min_dihedral_deg=min_dihedral_deg,
-                include_boundary=include_boundary)
+    # `solve_po` has already completed the mesh-quality validation.
+    edges = _extract_diffraction_edges_validated(
+        mesh, min_dihedral, include_boundary)
 
     k = po.k
     NΩ = length(grid.w)
@@ -377,54 +404,42 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
         rhat_vec[q] = Vec3(grid.rhat[1, q], grid.rhat[2, q], grid.rhat[3, q])
     end
 
-    for q in 1:NΩ
-        r_hat = rhat_vec[q]
+    # Edge-dependent incident quantities are invariant across observation
+    # directions. Keeping the edge loop outermost avoids recomputing them NΩ
+    # times without allocating an O(number-of-edges) workspace.
+    for edge in edges
+        ê = edge.tangent
+        L = edge.length
+        Q₀ = edge.center
+        γ = edge.alpha   # exterior wedge angle
 
-        Ex = complex(0.0)
-        Ey = complex(0.0)
-        Ez = complex(0.0)
+        # ── Incident cone angle and azimuth ──
+        sin_beta = norm(cross(ê, k_hat))
+        sin_beta > 1e-4 || continue
+        sin2_beta = sin_beta^2
+        delta_i = _ptd_edge_azimuth(k_hat, edge)
+        isnothing(delta_i) && continue
 
-        for edge in edges
-            ê = edge.tangent
-            L = edge.length
-            Q₀ = edge.center
-            γ = edge.alpha   # exterior wedge angle
+        # ── Incident field at edge midpoint ──
+        E_inc_Q0 = pol * E0 * exp(-1im * k * dot(k_hat, Q₀))
+        all(isfinite, E_inc_Q0) ||
+            throw(OverflowError(
+                "PTD incident edge field overflowed"))
+        tE = dot(ê, E_inc_Q0)
+        tH = dot(ê, cross(k_hat, E_inc_Q0))
 
-            # ── Cone angle (sin²β) ──
-            sin_beta = norm(cross(ê, k_hat))
+        for q in 1:NΩ
+            r_hat = rhat_vec[q]
+
+            # ── Scattered cone angle and azimuth ──
             sin_beta_s = norm(cross(ê, r_hat))
-            sin_beta > 1e-4 || continue
             sin_beta_s > 1e-4 || continue
-            sin2_beta = sin_beta^2
-
-            # ── Edge azimuth angles ──
-            delta_i = _ptd_edge_azimuth(k_hat, edge)
             delta_s = _ptd_edge_azimuth(r_hat, edge)
-            isnothing(delta_i) && continue
             isnothing(delta_s) && continue
 
             # ── PTD fringe coefficients (real-valued, eq 4.137-4.138) ──
             n = γ / π
-            # The stable fringe formula below substitutes (1/2)tan(γ-v) → ∓(1/2)tan(v),
-            # which only holds for half-plane edges (n=2, α=2π, e.g. flat-plate
-            # boundaries). For interior wedges (n≠2) this is a half-plane approximation,
-            # not the true (1/2)tan(γ-v) term, so the fringe correction is inaccurate.
-            if abs(n - 2.0) > 1e-3
-                @warn "PTD fringe coefficients are only validated for half-plane edges " *
-                      "(n=2, α=2π). Interior-wedge edges (n≈$(round(n, digits=3))) use a " *
-                      "half-plane approximation and are NOT accurate; treat PTD results " *
-                      "for faceted/closed bodies as approximate." maxlog=1
-            end
             f_ptd, g_ptd = _ptd_fringe_fg(n, delta_s, delta_i, γ)
-
-            # ── Incident field at edge midpoint ──
-            E_inc_Q0 = pol * E0 * exp(-1im * k * dot(k_hat, Q₀))
-
-            # Field projections onto edge tangent (eqs 4.145-4.146):
-            # t̂·Ēⁱ = electric field component along edge
-            # t̂·(k̂ᵢ×Ēⁱ) = (k̂×E) component along edge ∝ H tangential
-            tE = dot(ê, E_inc_Q0)                              # t̂·Ēⁱ
-            tH = dot(ê, cross(k_hat, E_inc_Q0))                # t̂·(k̂ᵢ×Ēⁱ)
 
             # ── Scattered field ──
             # Edge-fixed basis: ê_⊥ (soft/electric) and r̂×ê (hard/magnetic)
@@ -445,21 +460,24 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
 
             # ── Assemble scattered vector ──
             E_vec = (E_soft + E_hard) * line_integral
+            all(isfinite, E_vec) ||
+                throw(OverflowError(
+                    "PTD edge contribution overflowed at direction $q"))
 
-            Ex += E_vec[1]
-            Ey += E_vec[2]
-            Ez += E_vec[3]
+            E_ff_ptd[1, q] += E_vec[1]
+            E_ff_ptd[2, q] += E_vec[2]
+            E_ff_ptd[3, q] += E_vec[3]
         end
-
-        E_ff_ptd[1, q] = Ex
-        E_ff_ptd[2, q] = Ey
-        E_ff_ptd[3, q] = Ez
     end
+    all(isfinite, E_ff_ptd) ||
+        throw(OverflowError("PTD far field contains non-finite values"))
 
     # ── Phase 4: Combine PO + PTD ──
     E_ff_combined = po.E_ff + E_ff_ptd
+    all(isfinite, E_ff_combined) ||
+        throw(OverflowError("combined PO+PTD far field is non-finite"))
 
     return PTDResult(E_ff_combined, po.E_ff, E_ff_ptd,
                      po.J_s, po.illuminated, edges,
-                     grid, Float64(freq_hz), k)
+                     grid, po.freq_hz, k)
 end

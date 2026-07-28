@@ -37,33 +37,21 @@ function _validate_po_inputs(grid::SphGrid, freq_hz::Real,
     isfinite(eta0) && eta0 > 0 ||
         throw(ArgumentError(
             "eta0 must be finite and positive, got $eta0"))
-    isfinite(excitation.E0) ||
-        throw(ArgumentError(
-            "plane-wave amplitude E0 must be finite, got $(excitation.E0)"))
-    all(isfinite, excitation.k_vec) ||
-        throw(ArgumentError("plane-wave k_vec components must be finite"))
-    all(isfinite, excitation.pol) ||
-        throw(ArgumentError("plane-wave polarization components must be finite"))
+    k_norm = _validate_plane_wave_excitation(excitation)
 
     frequency = Float64(freq_hz)
-    k = 2π * frequency / c0
-    k_norm = norm(excitation.k_vec)
-    isfinite(k_norm) && k_norm > 0 ||
+    isfinite(frequency) && frequency > 0 ||
         throw(ArgumentError(
-            "plane-wave k_vec must have a finite, nonzero norm"))
+            "freq_hz must be representable as a finite positive Float64, got $freq_hz"))
+    k = 2π * frequency / c0
+    isfinite(k) && k > 0 ||
+        throw(ArgumentError(
+            "freq_hz and c0 must produce a finite positive wavenumber"))
     isapprox(k_norm, k; rtol=1e-8, atol=0.0) ||
         throw(ArgumentError(
             "plane-wave |k_vec|=$k_norm does not match 2π*freq_hz/c0=$k"))
 
-    pol_norm = norm(excitation.pol)
-    isfinite(pol_norm) && pol_norm > 0 ||
-        throw(ArgumentError(
-            "plane-wave polarization must have a finite, nonzero norm"))
     k_hat = excitation.k_vec / k_norm
-    transverse_error = abs(dot(k_hat, excitation.pol / pol_norm))
-    transverse_error <= 1e-10 ||
-        throw(ArgumentError(
-            "plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error"))
     return NΩ, frequency, k, Vec3(k_hat)
 end
 
@@ -174,9 +162,11 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
                   grid::SphGrid=make_sph_grid(36, 72),
                   c0::Float64=299792458.0,
                   eta0::Float64=376.730313668)
-    Nt = ntriangles(mesh)
     NΩ, frequency, k, k_hat =
         _validate_po_inputs(grid, freq_hz, excitation, c0, eta0)
+    assert_mesh_quality(
+        mesh; allow_boundary=true, require_closed=false)
+    Nt = ntriangles(mesh)
     k_vec = excitation.k_vec
     E0 = excitation.E0
     pol = excitation.pol
@@ -213,7 +203,12 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
 
             rc = triangle_center(mesh, t)
             phase = exp(-1im * dot(k_vec, rc))
-            J_s[t] = CVec3(complex.(2.0 * E0 / eta0 * V_t[t] * phase))
+            current =
+                CVec3(complex.(2.0 * E0 / eta0 * V_t[t] * phase))
+            all(isfinite, current) ||
+                throw(OverflowError(
+                    "PO surface current overflowed on triangle $t"))
+            J_s[t] = current
         else
             illuminated[t] = false
             V_t[t] = Vec3(0.0, 0.0, 0.0)
@@ -228,6 +223,8 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
     # (FarField.radiation_vectors, validated against the near-field propagator), so
     # po.E_ff can be combined coherently with MoM/PTD fields; RCS = |E|² is unchanged.
     prefactor = 1im * k * E0 / (2π)
+    isfinite(prefactor) ||
+        throw(OverflowError("PO far-field prefactor overflowed"))
 
     # Precompute rhat Vec3 (avoids column-slice allocation in hot loop)
     rhat_vec = Vector{Vec3}(undef, NΩ)
@@ -250,18 +247,26 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
             # Analytical phase integral over triangle
             I_t = _phase_integral_analytical(k, delta_k,
                       tri_v1[t], tri_v2[t], tri_v3[t], tri_area[t])
+            isfinite(I_t) ||
+                throw(OverflowError(
+                    "PO phase integral is non-finite for triangle $t, direction $q"))
 
             # r̂ × (r̂ × V_t) = (r̂·V_t)r̂ - V_t
             Vt = V_t[t]
             proj = r_hat * dot(r_hat, Vt) - Vt
 
             E_q += CVec3(complex.(prefactor * proj * I_t))
+            all(isfinite, E_q) ||
+                throw(OverflowError(
+                    "PO far-field accumulation overflowed at direction $q"))
         end
 
         E_ff[1, q] = E_q[1]
         E_ff[2, q] = E_q[2]
         E_ff[3, q] = E_q[3]
     end
+    all(isfinite, E_ff) ||
+        throw(OverflowError("PO far field contains non-finite values"))
 
     return POResult(E_ff, J_s, illuminated, grid, frequency, k)
 end

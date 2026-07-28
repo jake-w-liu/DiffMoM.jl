@@ -3541,6 +3541,20 @@ po_grid = make_sph_grid(36, 72)
     grid=po_grid)
 @test_throws ArgumentError solve_po(
     po_mesh, po_freq, pw_down; grid=po_grid, eta0=0.0)
+@test_throws ArgumentError solve_po(
+    po_mesh, po_freq,
+    PlaneWaveExcitation(
+        Vec3(0.0, 0.0, -po_k), 1.0, Vec3(2.0, 0.0, 0.0));
+    grid=po_grid)
+@test_throws ErrorException solve_po(
+    TriMesh(zeros(3, 0), zeros(Int, 3, 0)),
+    po_freq, pw_down; grid=po_grid)
+@test_throws OverflowError solve_po(
+    po_mesh, po_freq,
+    PlaneWaveExcitation(
+        Vec3(0.0, 0.0, -po_k), floatmax(Float64),
+        Vec3(1.0, 0.0, 0.0));
+    grid=make_sph_grid(2, 4))
 po_result = solve_po(po_mesh, po_freq, pw_down; grid=po_grid)
 
 n_illum = count(po_result.illuminated)
@@ -3601,6 +3615,64 @@ mom_po_diff_dB = abs(sigma_mom_spec_dB - sigma_spec_dB)
 println("  MoM specular RCS: $(round(sigma_mom_spec_dB, digits=2)) dBsm")
 println("  MoM vs PO specular diff: $(round(mom_po_diff_dB, digits=2)) dB")
 @assert mom_po_diff_dB < 3.0 "MoM vs PO specular difference $(mom_po_diff_dB) dB > 3.0 dB"
+
+# 29d: PTD edge geometry, general-wedge coefficients, and solve path
+@test_throws ArgumentError extract_diffraction_edges(
+    po_mesh; min_dihedral_deg=NaN)
+@test_throws ArgumentError extract_diffraction_edges(
+    po_mesh; min_dihedral_deg=-1.0)
+@test_throws ArgumentError extract_diffraction_edges(
+    po_mesh; min_dihedral_deg=181.0)
+@test isempty(extract_diffraction_edges(
+    po_mesh; min_dihedral_deg=0.0, include_boundary=false))
+
+ptd_wedge_xyz = [
+    0.0  1.0  0.0  0.0;
+    0.0  0.0  1.0  0.0;
+    0.0  0.0  0.0  1.0
+]
+ptd_wedge_tri = [
+    1  1;
+    2  4;
+    3  2
+]
+ptd_wedge_mesh = TriMesh(ptd_wedge_xyz, ptd_wedge_tri)
+ptd_wedge_edges = extract_diffraction_edges(
+    ptd_wedge_mesh; include_boundary=false)
+@test length(ptd_wedge_edges) == 1
+@test ptd_wedge_edges[1].alpha ≈ 3π / 2 atol=1e-14
+
+for (n_wedge, delta_s_wedge, delta_i_wedge) in
+    ((1.25, 1.1, 0.4), (1.5, 2.0, 0.7), (1.8, 2.5, 1.2))
+    gamma_wedge = n_wedge * π
+    u_wedge = 0.5 * (delta_s_wedge - delta_i_wedge)
+    v_wedge = 0.5 * (delta_s_wedge + delta_i_wedge)
+    a_wedge = sin(π / n_wedge) / n_wedge
+    X_wedge = a_wedge /
+        (cos(π / n_wedge) - cos(2u_wedge / n_wedge))
+    Y_wedge = a_wedge /
+        (cos(π / n_wedge) - cos(2v_wedge / n_wedge))
+    direct_f_wedge =
+        X_wedge - Y_wedge - 0.5tan(u_wedge) -
+        0.5tan(gamma_wedge - v_wedge)
+    direct_g_wedge =
+        X_wedge + Y_wedge - 0.5tan(u_wedge) +
+        0.5tan(gamma_wedge - v_wedge)
+    stable_f_wedge, stable_g_wedge = DiffMoM._ptd_fringe_fg(
+        n_wedge, delta_s_wedge, delta_i_wedge, gamma_wedge)
+    @test stable_f_wedge ≈ direct_f_wedge rtol=1e-12 atol=1e-12
+    @test stable_g_wedge ≈ direct_g_wedge rtol=1e-12 atol=1e-12
+end
+
+ptd_mesh = make_rect_plate(0.2, 0.2, 1, 1)
+ptd_grid = make_sph_grid(4, 8)
+ptd_result = solve_ptd(
+    ptd_mesh, po_freq, pw_down; grid=ptd_grid)
+@test size(ptd_result.E_ff) == (3, length(ptd_grid.w))
+@test length(ptd_result.edges) == 4
+@test all(isfinite, ptd_result.E_ff)
+@test ptd_result.E_ff ≈
+      ptd_result.E_ff_po + ptd_result.E_ff_ptd rtol=1e-14
 
 println("  PASS ✓")
 
