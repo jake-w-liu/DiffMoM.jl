@@ -282,7 +282,6 @@ function matrixfree_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
 end
 
 Base.size(A::MatrixFreeMagneticFieldOperator3D) = (A.rwg.nedges, A.rwg.nedges)
-Base.size(A::MatrixFreeMagneticFieldOperator3D, d::Int) = d <= 2 ? A.rwg.nedges : 1
 Base.eltype(::Type{MatrixFreeMagneticFieldOperator3D}) = ComplexF64
 Base.eltype(::MatrixFreeMagneticFieldOperator3D) = ComplexF64
 
@@ -554,8 +553,6 @@ end
 
 Base.size(A::MatrixFreeDielectricSIE3D) = (2 * A.Ze_ext.cache.rwg.nedges,
                                            2 * A.Ze_ext.cache.rwg.nedges)
-Base.size(A::MatrixFreeDielectricSIE3D, d::Int) =
-    d <= 2 ? 2 * A.Ze_ext.cache.rwg.nedges : 1
 Base.eltype(::Type{<:MatrixFreeDielectricSIE3D}) = ComplexF64
 Base.eltype(::MatrixFreeDielectricSIE3D) = ComplexF64
 

@@ -104,6 +104,8 @@ end
     K_mf = matrixfree_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
     @test size(K) == (N, N)
     @test size(K_mf) == (N, N)
+    @test size(K_mf, 3) == 1
+    @test_throws BoundsError size(K_mf, 0)
     @test all(isfinite, real.(K))
     @test all(isfinite, imag.(K))
     xk = ComplexF64[sin(0.2 * i) + 1im * cos(0.17 * i) for i in 1:N]
@@ -129,6 +131,8 @@ end
                               singular_quad_order=3)
     @test size(A_pm) == (2N, 2N)
     @test size(A_pm_mf) == (2N, 2N)
+    @test size(A_pm_mf, 3) == 1
+    @test_throws BoundsError size(A_pm_mf, -1)
     @test size(A_mu) == (2N, 2N)
     @test all(isfinite, real.(A_pm))
     @test all(isfinite, imag.(A_pm))

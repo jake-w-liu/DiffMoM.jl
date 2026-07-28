@@ -16,6 +16,8 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
 
     single = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
     A_single = fft_dda_operator_3d(single, k0, 3.0 + 0.1im)
+    @test size(A_single, 3) == 1
+    @test_throws BoundsError size(A_single, 0)
     x_single = ComplexF64[1.0 + 2.0im, -0.5 + 0.25im, 0.75 - 0.1im]
     y_single = zeros(ComplexF64, 3)
     mul!(y_single, A_single, x_single)
@@ -68,6 +70,8 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
     A_em_direct = em_dda_operator_3d(grid, k0, epsv, 1.3 + 0.02im)
     A_em_fft = fft_em_dda_operator_3d(grid, k0, epsv, 1.3 + 0.02im)
     @test size(A_em_fft) == size(A_em_direct)
+    @test size(A_em_fft, 3) == 1
+    @test_throws BoundsError size(A_em_fft, -1)
     @test A_em_fft.alpha == A_em_direct.alpha
     @test A_em_fft.kernel.pad_dims == A_fft.kernel.pad_dims
 

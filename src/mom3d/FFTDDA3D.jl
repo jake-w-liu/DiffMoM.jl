@@ -122,7 +122,6 @@ function fft_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r;
 end
 
 Base.size(A::FFTDDAOperator3D) = (3 * A.grid.nvoxels, 3 * A.grid.nvoxels)
-Base.size(A::FFTDDAOperator3D, d::Int) = d <= 2 ? 3 * A.grid.nvoxels : 1
 Base.eltype(::Type{<:FFTDDAOperator3D}) = ComplexF64
 Base.eltype(::FFTDDAOperator3D) = ComplexF64
 
@@ -302,7 +301,6 @@ function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
 end
 
 Base.size(A::FFTEMDDAOperator3D) = (6 * A.grid.nvoxels, 6 * A.grid.nvoxels)
-Base.size(A::FFTEMDDAOperator3D, d::Int) = d <= 2 ? 6 * A.grid.nvoxels : 1
 Base.eltype(::Type{<:FFTEMDDAOperator3D}) = ComplexF64
 Base.eltype(::FFTEMDDAOperator3D) = ComplexF64
 

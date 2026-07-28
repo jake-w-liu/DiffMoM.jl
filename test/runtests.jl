@@ -480,6 +480,16 @@ partition = PatchPartition(collect(1:Nt), Nt)
 Mp = precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 @assert length(Mp) == Nt
 
+# Invalid stored indices are rejected before the @inbounds numerical kernels
+# can observe them, and custom matrix dimensions follow AbstractArray rules.
+@test_throws ArgumentError LocalMassMatrix(-1, Int[], Int[], Float64[])
+@test_throws DimensionMismatch LocalMassMatrix(2, [1], [1, 2], [1.0])
+@test_throws ArgumentError LocalMassMatrix(2, [0], [1], [1.0])
+@test_throws ArgumentError LocalMassMatrix(2, [1], [3], [1.0])
+@test size(Mp[1], 3) == 1
+@test_throws BoundsError size(Mp[1], 0)
+@test_throws BoundsError size(Mp[1], -1)
+
 # Each M_p should be symmetric (real-valued mass matrix)
 for p in 1:min(3, Nt)
     @assert norm(Mp[p] - Mp[p]') < 1e-14 * norm(Mp[p])

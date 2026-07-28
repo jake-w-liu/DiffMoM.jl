@@ -374,7 +374,6 @@ function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
 end
 
 Base.size(A::EMDDAOperator3D) = (6 * A.grid.nvoxels, 6 * A.grid.nvoxels)
-Base.size(A::EMDDAOperator3D, d::Int) = d <= 2 ? 6 * A.grid.nvoxels : 1
 Base.eltype(::Type{<:EMDDAOperator3D}) = ComplexF64
 Base.eltype(::EMDDAOperator3D) = ComplexF64
 

@@ -70,6 +70,8 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         epsv = fill(2.5 + 0.1im, grid.nvoxels)
         A_dense, _, _ = assemble_dda_3d(grid, k0, epsv)
         A_op = dda_operator_3d(grid, k0, epsv)
+        @test size(A_op, 3) == 1
+        @test_throws BoundsError size(A_op, 0)
 
         x = ComplexF64[sin(0.17 * i) + 1im * cos(0.11 * i) for i in 1:size(A_op, 2)]
         y = zeros(ComplexF64, size(A_op, 1))
@@ -77,6 +79,8 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test norm(y - A_dense * x) / norm(A_dense * x) < 1e-13
 
         A_adj = adjoint(A_op)
+        @test size(A_adj, 3) == 1
+        @test_throws BoundsError size(A_adj, -1)
         y_adj = zeros(ComplexF64, size(A_adj, 1))
         mul!(y_adj, A_adj, x)
         @test norm(y_adj - adjoint(A_dense) * x) / norm(adjoint(A_dense) * x) < 1e-13

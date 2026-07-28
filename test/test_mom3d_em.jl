@@ -124,6 +124,8 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         A_dense, alpha = assemble_em_dda_3d(grid, k0, epsv, muv)
         A_op = em_dda_operator_3d(grid, k0, epsv, muv)
         @test A_op.alpha == alpha
+        @test size(A_op, 3) == 1
+        @test_throws BoundsError size(A_op, 0)
 
         x = ComplexF64[sin(0.13 * i) + 1im * cos(0.17 * i) for i in 1:size(A_op, 2)]
         y = zeros(ComplexF64, size(A_op, 1))

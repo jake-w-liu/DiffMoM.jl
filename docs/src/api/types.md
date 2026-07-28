@@ -138,8 +138,8 @@ end
 | Field | Type | Description |
 |-------|------|-------------|
 | `n` | `Int` | Side length: the matrix is `n x n`. Must be nonnegative. |
-| `rows` | `Vector{Int}` | Row index of each stored triplet. |
-| `cols` | `Vector{Int}` | Column index of each stored triplet. |
+| `rows` | `Vector{Int}` | Row index of each stored triplet; every index must be in `1:n`. |
+| `cols` | `Vector{Int}` | Column index of each stored triplet; every index must be in `1:n`. |
 | `vals` | `Vector{T}` | Value of each stored triplet. `rows`, `cols`, and `vals` must have equal length. |
 
 **Constructor:**
@@ -148,7 +148,9 @@ end
 M = LocalMassMatrix(n, rows, cols, vals)        # element type T inferred from vals
 ```
 
-The element type `T` is inferred from `vals`; the constructor checks that `n >= 0` and that `rows`, `cols`, and `vals` have equal lengths.
+The element type `T` is inferred from `vals`; the constructor checks that
+`n >= 0`, that `rows`, `cols`, and `vals` have equal lengths, and that every
+stored row and column index is in `1:n`.
 
 **Supported operations:** `size`, `eltype`, `getindex`, scalar `*` (left/right) and unary `-`, `mul!` (forward and adjoint), conversion to dense via `Array`/`Matrix`, and conversion to `SparseArrays.sparse`. `getindex(M, i, j)` returns the sum of all triplets at `(i, j)`.
 

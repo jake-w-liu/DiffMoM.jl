@@ -58,9 +58,16 @@ struct LocalMassMatrix{T<:Number} <: AbstractMatrix{T}
                                 rows::Vector{Int},
                                 cols::Vector{Int},
                                 vals::Vector{T}) where {T<:Number}
-        n >= 0 || error("LocalMassMatrix size must be nonnegative, got $n")
+        n >= 0 ||
+            throw(ArgumentError("LocalMassMatrix size must be nonnegative, got $n"))
         length(rows) == length(cols) == length(vals) ||
             throw(DimensionMismatch("LocalMassMatrix triplet arrays must have equal lengths."))
+        @inbounds for k in eachindex(rows)
+            1 <= rows[k] <= n ||
+                throw(ArgumentError("LocalMassMatrix row index $(rows[k]) at triplet $k is outside 1:$n"))
+            1 <= cols[k] <= n ||
+                throw(ArgumentError("LocalMassMatrix column index $(cols[k]) at triplet $k is outside 1:$n"))
+        end
         return new{T}(n, rows, cols, vals)
     end
 end
@@ -69,7 +76,6 @@ LocalMassMatrix(n::Int, rows::Vector{Int}, cols::Vector{Int}, vals::Vector{T}) w
     LocalMassMatrix{T}(n, rows, cols, vals)
 
 Base.size(M::LocalMassMatrix) = (M.n, M.n)
-Base.size(M::LocalMassMatrix, d::Int) = d <= 2 ? M.n : 1
 Base.eltype(::Type{LocalMassMatrix{T}}) where {T<:Number} = T
 Base.eltype(::LocalMassMatrix{T}) where {T<:Number} = T
 
