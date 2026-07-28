@@ -2995,6 +2995,14 @@ stl_bin_path = joinpath(DATADIR, "tmp_roundtrip_bin.stl")
 mesh_plate = make_rect_plate(0.1, 0.1, 3, 3)
 write_stl_mesh(stl_bin_path, mesh_plate)
 mesh_stl_bin = read_stl_mesh(stl_bin_path)
+# Binary STL integers and Float32 values are little-endian by specification.
+stl_bin_bytes = read(stl_bin_path)
+nt_stl = ntriangles(mesh_plate)
+@assert stl_bin_bytes[81] == UInt8(nt_stl & 0xff)
+@assert stl_bin_bytes[82] == UInt8((nt_stl >> 8) & 0xff)
+@assert stl_bin_bytes[83] == UInt8((nt_stl >> 16) & 0xff)
+@assert stl_bin_bytes[84] == UInt8((nt_stl >> 24) & 0xff)
+@assert DiffMoM._stl_is_binary(stl_bin_bytes)
 # STL uses Float32 internally, so vertex count may differ slightly from merging.
 # But triangle count must match since each facet is independent.
 @assert ntriangles(mesh_stl_bin) == ntriangles(mesh_plate) "STL binary round-trip triangle count mismatch: got $(ntriangles(mesh_stl_bin)), expected $(ntriangles(mesh_plate))"
@@ -3050,6 +3058,33 @@ write_stl_mesh(stl_tet_path, mesh_tet)
 mesh_tet_rt = read_stl_mesh(stl_tet_path)
 @assert nvertices(mesh_tet_rt) == 4 "Tetrahedron STL: expected 4 unique vertices after merge, got $(nvertices(mesh_tet_rt))"
 @assert ntriangles(mesh_tet_rt) == 4 "Tetrahedron STL: expected 4 triangles, got $(ntriangles(mesh_tet_rt))"
+
+# A positive merge tolerance is a Euclidean distance, including points across
+# spatial-hash cell boundaries; it must not merge farther points in one cell.
+raw_within_tol = [
+    (0.49, 0.0, 0.0), (4.0, 0.0, 0.0), (0.0, 4.0, 0.0),
+    (0.51, 0.0, 0.0), (4.0, 0.0, 0.0), (0.0, 4.0, 0.0),
+]
+raw_beyond_tol = [
+    (0.49, 0.49, 0.49), (4.0, 0.0, 0.0), (0.0, 4.0, 0.0),
+    (-0.49, -0.49, -0.49), (4.0, 0.0, 0.0), (0.0, 4.0, 0.0),
+]
+@assert nvertices(DiffMoM._merge_stl_vertices(
+    raw_within_tol, 2; merge_tol=1.0)) == 3
+@assert nvertices(DiffMoM._merge_stl_vertices(
+    raw_beyond_tol, 2; merge_tol=1.0)) == 4
+for invalid_tol in (-1.0, Inf, NaN)
+    @test_throws ArgumentError read_stl_mesh(stl_tet_path; merge_tol=invalid_tol)
+end
+
+# The binary reader streams fixed-size facet records; allocation must remain
+# well below the former whole-file/per-coordinate-slice implementation.
+stl_alloc_path = joinpath(DATADIR, "tmp_alloc_bin.stl")
+write_stl_mesh(stl_alloc_path, make_rect_plate(1.0, 1.0, 40, 40))
+read_stl_mesh(stl_alloc_path)  # warm compilation
+GC.gc()
+stl_read_alloc = @allocated read_stl_mesh(stl_alloc_path)
+@assert stl_read_alloc < 8 * filesize(stl_alloc_path)
 println("  32e: PASS")
 
 # 32f: MSH v2 import

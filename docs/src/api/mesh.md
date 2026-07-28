@@ -579,14 +579,16 @@ These functions (in `src/geometry/MeshIO.jl`) extend mesh I/O beyond OBJ to supp
 
 Read a triangle mesh from an STL file. Both binary and ASCII STL are auto-detected.
 
-STL stores three vertices per facet with no shared-vertex topology, so duplicate vertices must be merged. With the default `merge_tol=0.0`, vertices are merged when their coordinates are bitwise identical after Float32→Float64 conversion. Set `merge_tol` to a small positive value if your exporter introduces floating-point noise.
+STL stores three vertices per facet with no shared-vertex topology, so duplicate vertices must be merged. With the default `merge_tol=0.0`, vertices are merged when their coordinates are bitwise identical after Float32→Float64 conversion. Set `merge_tol` to a small positive value if your exporter introduces floating-point noise; positive values merge vertices whose Euclidean distance is at most the tolerance. The tolerance must be finite and nonnegative.
+
+Binary STL input is streamed one 50-byte facet record at a time, and all binary integers and Float32 fields are decoded as little-endian as required by the format.
 
 **Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `path` | `AbstractString` | -- | Path to the STL file. |
-| `merge_tol` | `Float64` | `0.0` | Vertex merge tolerance. `0.0` = exact merge (bitwise). Positive values use grid-based quantization. |
+| `merge_tol` | `Float64` | `0.0` | Vertex merge tolerance. `0.0` = exact merge (bitwise); positive values use Euclidean distance. |
 
 **Returns:** `TriMesh`
 

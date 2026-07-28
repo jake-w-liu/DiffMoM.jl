@@ -9,6 +9,144 @@ export convert_cad_to_mesh
 # STL: Binary and ASCII reader/writer
 # ───────────────────────────────────────────────────────────────
 
+abstract type _STLVertexMerger end
+
+struct _ExactSTLVertexMerger <: _STLVertexMerger
+    vertex_map::Dict{NTuple{3,UInt64},Int}
+    xyz::Vector{NTuple{3,Float64}}
+end
+
+struct _ToleranceSTLVertexMerger <: _STLVertexMerger
+    bucket_heads::Dict{NTuple{3,Int64},Int}
+    next_in_bucket::Vector{Int}
+    xyz::Vector{NTuple{3,Float64}}
+    tolerance::Float64
+end
+
+@inline function _validated_stl_merge_tol(merge_tol::Float64)
+    isfinite(merge_tol) && merge_tol >= 0 ||
+        throw(ArgumentError("merge_tol must be finite and nonnegative, got $merge_tol."))
+    return merge_tol
+end
+
+@inline function _new_stl_vertex_merger(merge_tol::Float64)
+    if iszero(merge_tol)
+        return _ExactSTLVertexMerger(
+            Dict{NTuple{3,UInt64},Int}(), NTuple{3,Float64}[])
+    end
+    return _ToleranceSTLVertexMerger(
+        Dict{NTuple{3,Int64},Int}(), Int[], NTuple{3,Float64}[], merge_tol)
+end
+
+@inline function _validated_stl_coordinate(coord::NTuple{3,Float64})
+    isfinite(coord[1]) && isfinite(coord[2]) && isfinite(coord[3]) ||
+        throw(ArgumentError("STL vertex coordinates must be finite, got $coord."))
+    return coord
+end
+
+@inline function _merge_stl_vertex!(merger::_ExactSTLVertexMerger,
+                                    coord::NTuple{3,Float64})
+    _validated_stl_coordinate(coord)
+    key = (reinterpret(UInt64, coord[1]),
+           reinterpret(UInt64, coord[2]),
+           reinterpret(UInt64, coord[3]))
+    id = get(merger.vertex_map, key, 0)
+    if iszero(id)
+        push!(merger.xyz, coord)
+        id = length(merger.xyz)
+        merger.vertex_map[key] = id
+    end
+    return id
+end
+
+function _stl_merge_cell_coordinate(x::Float64, tolerance::Float64)
+    scaled = x / tolerance
+    isfinite(scaled) ||
+        throw(ArgumentError(
+            "merge_tol=$tolerance is too small for STL coordinate $x."))
+    cell = try
+        floor(Int64, scaled)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError(
+            "merge_tol=$tolerance is too small for STL coordinate $x."))
+    end
+    typemin(Int64) < cell < typemax(Int64) ||
+        throw(ArgumentError(
+            "merge_tol=$tolerance is too small for STL coordinate $x."))
+    return cell
+end
+
+function _merge_stl_vertex!(merger::_ToleranceSTLVertexMerger,
+                            coord::NTuple{3,Float64})
+    _validated_stl_coordinate(coord)
+    tolerance = merger.tolerance
+    cell = (
+        _stl_merge_cell_coordinate(coord[1], tolerance),
+        _stl_merge_cell_coordinate(coord[2], tolerance),
+        _stl_merge_cell_coordinate(coord[3], tolerance),
+    )
+
+    best_id = 0
+    best_distance = Inf
+    @inbounds for dz in -1:1, dy in -1:1, dx in -1:1
+        neighbor_cell = (cell[1] + dx, cell[2] + dy, cell[3] + dz)
+        candidate_id = get(merger.bucket_heads, neighbor_cell, 0)
+        while !iszero(candidate_id)
+            candidate = merger.xyz[candidate_id]
+            distance = hypot(
+                hypot(coord[1] - candidate[1], coord[2] - candidate[2]),
+                coord[3] - candidate[3],
+            )
+            if distance <= tolerance &&
+                    (distance < best_distance ||
+                     (distance == best_distance &&
+                      (iszero(best_id) || candidate_id < best_id)))
+                best_id = candidate_id
+                best_distance = distance
+            end
+            candidate_id = merger.next_in_bucket[candidate_id]
+        end
+    end
+    !iszero(best_id) && return best_id
+
+    push!(merger.xyz, coord)
+    id = length(merger.xyz)
+    head = get(merger.bucket_heads, cell, 0)
+    push!(merger.next_in_bucket, head)
+    merger.bucket_heads[cell] = id
+    return id
+end
+
+function _stl_mesh_from_merger(merger::_STLVertexMerger, tri::Matrix{Int})
+    xyz_list = merger.xyz
+    xyz = Matrix{Float64}(undef, 3, length(xyz_list))
+    @inbounds for i in eachindex(xyz_list)
+        xyz[1, i] = xyz_list[i][1]
+        xyz[2, i] = xyz_list[i][2]
+        xyz[3, i] = xyz_list[i][3]
+    end
+    return TriMesh(xyz, tri)
+end
+
+@inline function _stl_uint32_le(bytes::AbstractVector{UInt8}, i::Int)
+    @inbounds return UInt32(bytes[i]) |
+                     (UInt32(bytes[i + 1]) << 8) |
+                     (UInt32(bytes[i + 2]) << 16) |
+                     (UInt32(bytes[i + 3]) << 24)
+end
+
+@inline _stl_float32_le(bytes::AbstractVector{UInt8}, i::Int) =
+    reinterpret(Float32, _stl_uint32_le(bytes, i))
+
+function _stl_binary_triangle_count(header::AbstractVector{UInt8},
+                                    file_size::Integer)
+    length(header) >= 84 || return nothing
+    ntri = Int(_stl_uint32_le(header, 81))
+    expected = Base.checked_add(84, Base.checked_mul(50, ntri))
+    return expected == file_size ? ntri : nothing
+end
+
 """
     read_stl_mesh(path; merge_tol=0.0)
 
@@ -19,123 +157,142 @@ duplicate vertices are merged. With the default `merge_tol=0.0`, vertices
 are merged when their Float64 coordinates are bitwise identical (suitable
 for most STL files). Set `merge_tol` to a small positive value (e.g.
 `1e-10 * bbox_diagonal`) if your exporter introduces tiny floating-point
-noise between shared vertices.
+noise between shared vertices. A positive tolerance merges vertices whose
+Euclidean distance is no greater than `merge_tol`.
 
 Returns a `TriMesh`.
 """
 function read_stl_mesh(path::AbstractString; merge_tol::Float64=0.0)
-    data = read(path)
-    if _stl_is_binary(data)
-        return _read_stl_binary(data; merge_tol=merge_tol)
-    else
-        return _read_stl_ascii(path; merge_tol=merge_tol)
+    tolerance = _validated_stl_merge_tol(merge_tol)
+    return open(path, "r") do io
+        seekend(io)
+        file_size = position(io)
+        seekstart(io)
+
+        if file_size >= 84
+            header = Vector{UInt8}(undef, 84)
+            read!(io, header)
+            ntri = _stl_binary_triangle_count(header, file_size)
+            if !isnothing(ntri)
+                return _read_stl_binary(io, ntri; merge_tol=tolerance)
+            end
+            seekstart(io)
+        end
+        return _read_stl_ascii(io, path; merge_tol=tolerance)
     end
 end
 
 function _stl_is_binary(data::Vector{UInt8})
-    length(data) < 84 && return false
-    ntri = reinterpret(UInt32, data[81:84])[1]
-    expected = 84 + 50 * Int(ntri)
-    return length(data) == expected
+    return !isnothing(_stl_binary_triangle_count(data, length(data)))
+end
+
+function _read_stl_binary(io::IO, ntri::Int; merge_tol::Float64=0.0)
+    ntri > 0 || error("STL binary file has 0 triangles.")
+    tolerance = _validated_stl_merge_tol(merge_tol)
+
+    merger = _new_stl_vertex_merger(tolerance)
+    tri = Matrix{Int}(undef, 3, ntri)
+    record = Vector{UInt8}(undef, 50)
+    for t in 1:ntri
+        read!(io, record)
+        for v in 1:3
+            offset = 13 + 12 * (v - 1)
+            coord = (
+                Float64(_stl_float32_le(record, offset)),
+                Float64(_stl_float32_le(record, offset + 4)),
+                Float64(_stl_float32_le(record, offset + 8)),
+            )
+            tri[v, t] = _merge_stl_vertex!(merger, coord)
+        end
+    end
+    return _stl_mesh_from_merger(merger, tri)
 end
 
 function _read_stl_binary(data::Vector{UInt8}; merge_tol::Float64=0.0)
-    ntri = Int(reinterpret(UInt32, data[81:84])[1])
-    ntri > 0 || error("STL binary file has 0 triangles.")
+    tolerance = _validated_stl_merge_tol(merge_tol)
+    ntri = _stl_binary_triangle_count(data, length(data))
+    isnothing(ntri) && error("Invalid or truncated binary STL data.")
+    io = IOBuffer(data)
+    seek(io, 84)
+    return _read_stl_binary(io, ntri; merge_tol=tolerance)
+end
 
-    raw_verts = Vector{NTuple{3,Float64}}(undef, 3 * ntri)
-    offset = 84
-    for t in 1:ntri
-        # Skip 12 bytes of normal (3 × Float32)
-        offset += 12
-        for v in 1:3
-            fx = reinterpret(Float32, data[offset+1:offset+4])[1]
-            fy = reinterpret(Float32, data[offset+5:offset+8])[1]
-            fz = reinterpret(Float32, data[offset+9:offset+12])[1]
-            raw_verts[3*(t-1) + v] = (Float64(fx), Float64(fy), Float64(fz))
-            offset += 12
+function _parse_stl_ascii_vertex(s::AbstractString)
+    fields = eachsplit(s)
+    item = iterate(fields)
+    isnothing(item) && error("Invalid STL vertex line: $s")
+    _, state = item
+
+    item = iterate(fields, state)
+    isnothing(item) && error("Invalid STL vertex line: $s")
+    x_field, state = item
+    item = iterate(fields, state)
+    isnothing(item) && error("Invalid STL vertex line: $s")
+    y_field, state = item
+    item = iterate(fields, state)
+    isnothing(item) && error("Invalid STL vertex line: $s")
+    z_field, _ = item
+
+    return (
+        parse(Float64, x_field),
+        parse(Float64, y_field),
+        parse(Float64, z_field),
+    )
+end
+
+function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0)
+    tolerance = _validated_stl_merge_tol(merge_tol)
+    merger = _new_stl_vertex_merger(tolerance)
+    tri_ids = Int[]
+    ntri = 0
+
+    for line in eachline(io)
+        s = strip(line)
+        if startswith(s, "facet normal")
+            ntri += 1
+        elseif startswith(s, "vertex")
+            coord = _parse_stl_ascii_vertex(s)
+            push!(tri_ids, _merge_stl_vertex!(merger, coord))
         end
-        offset += 2  # attribute byte count
     end
 
-    return _merge_stl_vertices(raw_verts, ntri; merge_tol=merge_tol)
+    expected_vertices = Base.checked_mul(3, ntri)
+    length(tri_ids) == expected_vertices ||
+        error("STL ASCII: expected $expected_vertices vertices for $ntri facets, got $(length(tri_ids)).")
+    ntri > 0 || error("STL ASCII file has 0 facets: $path")
+
+    # Copy out of the geometrically grown vector so the returned mesh does not
+    # retain unused capacity from ASCII parsing.
+    tri = Matrix{Int}(undef, 3, ntri)
+    copyto!(tri, tri_ids)
+    return _stl_mesh_from_merger(merger, tri)
 end
 
 function _read_stl_ascii(path::AbstractString; merge_tol::Float64=0.0)
-    raw_verts = NTuple{3,Float64}[]
-    ntri = 0
-
-    open(path, "r") do io
-        for line in eachline(io)
-            s = strip(line)
-            if startswith(s, "facet normal")
-                ntri += 1
-            elseif startswith(s, "vertex")
-                fields = split(s)
-                length(fields) >= 4 || error("Invalid STL vertex line: $s")
-                x = parse(Float64, fields[2])
-                y = parse(Float64, fields[3])
-                z = parse(Float64, fields[4])
-                push!(raw_verts, (x, y, z))
-            end
-        end
+    tolerance = _validated_stl_merge_tol(merge_tol)
+    return open(path, "r") do io
+        _read_stl_ascii(io, path; merge_tol=tolerance)
     end
-
-    length(raw_verts) == 3 * ntri ||
-        error("STL ASCII: expected $(3*ntri) vertices for $ntri facets, got $(length(raw_verts)).")
-    ntri > 0 || error("STL ASCII file has 0 facets: $path")
-
-    return _merge_stl_vertices(raw_verts, ntri; merge_tol=merge_tol)
 end
 
 function _merge_stl_vertices(raw_verts::Vector{NTuple{3,Float64}}, ntri::Int;
                               merge_tol::Float64=0.0)
-    vertex_map = Dict{NTuple{3,Int64},Int}()   # quantized key → unique vertex id
-    xyz_list = NTuple{3,Float64}[]
+    ntri >= 0 || throw(ArgumentError("ntri must be nonnegative, got $ntri."))
+    tolerance = _validated_stl_merge_tol(merge_tol)
+    expected_vertices = Base.checked_mul(3, ntri)
+    length(raw_verts) == expected_vertices ||
+        throw(DimensionMismatch(
+            "expected $expected_vertices STL vertices, got $(length(raw_verts))"))
+
+    merger = _new_stl_vertex_merger(tolerance)
     tri = Matrix{Int}(undef, 3, ntri)
-
-    if merge_tol <= 0.0
-        # Exact merge: use bitwise representation
-        for t in 1:ntri
-            for v in 1:3
-                coord = raw_verts[3*(t-1) + v]
-                key = (reinterpret(Int64, coord[1]),
-                       reinterpret(Int64, coord[2]),
-                       reinterpret(Int64, coord[3]))
-                id = get!(vertex_map, key) do
-                    push!(xyz_list, coord)
-                    length(xyz_list)
-                end
-                tri[v, t] = id
-            end
-        end
-    else
-        # Tolerance-based merge: quantize to grid
-        inv_tol = 1.0 / merge_tol
-        for t in 1:ntri
-            for v in 1:3
-                coord = raw_verts[3*(t-1) + v]
-                key = (round(Int64, coord[1] * inv_tol),
-                       round(Int64, coord[2] * inv_tol),
-                       round(Int64, coord[3] * inv_tol))
-                id = get!(vertex_map, key) do
-                    push!(xyz_list, coord)
-                    length(xyz_list)
-                end
-                tri[v, t] = id
-            end
+    @inbounds for t in 1:ntri
+        for v in 1:3
+            coord = raw_verts[3 * (t - 1) + v]
+            tri[v, t] = _merge_stl_vertex!(merger, coord)
         end
     end
-
-    nv = length(xyz_list)
-    xyz = Matrix{Float64}(undef, 3, nv)
-    for i in 1:nv
-        xyz[1, i] = xyz_list[i][1]
-        xyz[2, i] = xyz_list[i][2]
-        xyz[3, i] = xyz_list[i][3]
-    end
-
-    return TriMesh(xyz, tri)
+    return _stl_mesh_from_merger(merger, tri)
 end
 
 """
@@ -154,26 +311,36 @@ function write_stl_mesh(path::AbstractString, mesh::TriMesh;
     end
 end
 
+@inline _write_stl_uint32_le(io::IO, value::UInt32) =
+    write(io, htol(value))
+@inline _write_stl_uint16_le(io::IO, value::UInt16) =
+    write(io, htol(value))
+@inline _write_stl_float32_le(io::IO, value) =
+    _write_stl_uint32_le(io, reinterpret(UInt32, Float32(value)))
+
 function _write_stl_binary(path::AbstractString, mesh::TriMesh; header::AbstractString="")
     nt = ntriangles(mesh)
+    nt <= typemax(UInt32) ||
+        throw(ArgumentError("Binary STL supports at most $(typemax(UInt32)) triangles."))
     open(path, "w") do io
         # 80-byte header (padded with zeros)
-        hdr = Vector{UInt8}(codeunits(header))
-        resize!(hdr, 80)
-        hdr[length(codeunits(header))+1:end] .= 0x00
+        hdr = zeros(UInt8, 80)
+        header_bytes = codeunits(header)
+        copyto!(hdr, 1, header_bytes, 1, min(length(header_bytes), length(hdr)))
         write(io, hdr)
-        # Triangle count
-        write(io, UInt32(nt))
+        _write_stl_uint32_le(io, UInt32(nt))
         for t in 1:nt
             n = triangle_normal(mesh, t)
-            write(io, Float32(n[1]), Float32(n[2]), Float32(n[3]))
+            _write_stl_float32_le(io, n[1])
+            _write_stl_float32_le(io, n[2])
+            _write_stl_float32_le(io, n[3])
             for vi in 1:3
                 idx = mesh.tri[vi, t]
-                write(io, Float32(mesh.xyz[1, idx]),
-                          Float32(mesh.xyz[2, idx]),
-                          Float32(mesh.xyz[3, idx]))
+                _write_stl_float32_le(io, mesh.xyz[1, idx])
+                _write_stl_float32_le(io, mesh.xyz[2, idx])
+                _write_stl_float32_le(io, mesh.xyz[3, idx])
             end
-            write(io, UInt16(0))  # attribute byte count
+            _write_stl_uint16_le(io, UInt16(0))  # attribute byte count
         end
     end
     return path
