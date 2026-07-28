@@ -3598,6 +3598,9 @@ xyz_right = Float64[0 3 0; 0 0 4; 0 0 0]
 tri_right = reshape([1, 2, 3], 3, 1)
 mesh_right = TriMesh(xyz_right, tri_right)
 @assert abs(triangle_area(mesh_right, 1) - 6.0) < 1e-12 "Right triangle area should be 6.0"
+@test triangle_normal(mesh_right, 1) ≈ Vec3(0.0, 0.0, 1.0)
+triangle_normal(mesh_right, 1)
+@test (@allocated triangle_normal(mesh_right, 1)) == 0
 
 # Equilateral triangle with side s=2 → area = sqrt(3)
 s_eq = 2.0
@@ -3606,6 +3609,12 @@ tri_eq = reshape([1, 2, 3], 3, 1)
 mesh_eq = TriMesh(xyz_eq, tri_eq)
 expected_area = s_eq^2 * sqrt(3) / 4
 @assert abs(triangle_area(mesh_eq, 1) - expected_area) < 1e-12 "Equilateral triangle area mismatch"
+mesh_degenerate_normal = TriMesh(
+    Float64[0 1 2; 0 0 0; 0 0 0], tri_right)
+@test_throws DomainError triangle_normal(mesh_degenerate_normal, 1)
+mesh_extreme_normal = TriMesh(
+    Float64[0 1.0e300 0; 0 0 1.0e300; 0 0 0], tri_right)
+@test triangle_normal(mesh_extreme_normal, 1) ≈ Vec3(0.0, 0.0, 1.0)
 println("  32b: PASS")
 
 # 32c: STL binary round-trip

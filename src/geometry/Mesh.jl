@@ -1316,8 +1316,23 @@ function triangle_normal(mesh::TriMesh, t::Int)
     v1 = _mesh_vertex(mesh, mesh.tri[1, t])
     v2 = _mesh_vertex(mesh, mesh.tri[2, t])
     v3 = _mesh_vertex(mesh, mesh.tri[3, t])
-    n = cross(v2 - v1, v3 - v1)
-    return n / norm(n)
+    edge1 = v2 - v1
+    edge2 = v3 - v1
+    scale1 = max(abs(edge1[1]), abs(edge1[2]), abs(edge1[3]))
+    scale2 = max(abs(edge2[1]), abs(edge2[2]), abs(edge2[3]))
+    if !(isfinite(scale1) && isfinite(scale2) &&
+         scale1 > 0.0 && scale2 > 0.0)
+        throw(DomainError(
+            t,
+            "triangle $t is degenerate or has non-finite coordinates; cannot compute a unit normal"))
+    end
+    scaled_normal = cross(edge1 / scale1, edge2 / scale2)
+    normal_norm = norm(scaled_normal)
+    (isfinite(normal_norm) && normal_norm > 0.0) ||
+        throw(DomainError(
+            t,
+            "triangle $t is degenerate or has non-finite coordinates; cannot compute a unit normal"))
+    return scaled_normal / normal_norm
 end
 
 """
