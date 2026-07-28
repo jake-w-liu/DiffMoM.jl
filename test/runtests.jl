@@ -1421,6 +1421,28 @@ wrong_mesh_cache = DiffMoM.ExcitationQuadCache(
 @test_throws ArgumentError assemble_excitation(
     mesh_exc, rwg_exc, make_plane_wave(k_vec_exc, 1.0, pol_exc);
     quad_order=3, quad_cache=wrong_mesh_cache)
+shared_quad_cache = DiffMoM.ExcitationQuadCache(mesh_exc)
+@test shared_quad_cache.cache_lock isa ReentrantLock
+if Threads.nthreads() > 1
+    cache_orders = (3, 4, 3, 4, 3, 4, 3, 4)
+    for _ in 1:20
+        empty_cache = DiffMoM.ExcitationQuadCache(mesh_exc)
+        cache_gate = Base.Event()
+        cache_tasks = map(cache_orders) do order
+            Threads.@spawn begin
+                wait(cache_gate)
+                DiffMoM._quad_cache_for(empty_cache, mesh_exc, order)
+            end
+        end
+        yield()
+        notify(cache_gate)
+        cache_results = fetch.(cache_tasks)
+        @test sort!(collect(keys(empty_cache.by_order))) == [3, 4]
+        for (result, order) in zip(cache_results, cache_orders)
+            @test result === empty_cache.by_order[order]
+        end
+    end
+end
 
 # Explicit quadrature check for plane-wave RHS assembly
 xi_exc, wq_exc = tri_quad_rule(3)

@@ -561,22 +561,35 @@ end
 struct ExcitationQuadCache
     mesh::TriMesh
     by_order::Dict{Int,Tuple{Vector{Float64},Vector{Vector{Vec3}},Vector{Float64}}}
+    cache_lock::ReentrantLock
 end
 
 ExcitationQuadCache(mesh::TriMesh) =
     ExcitationQuadCache(mesh,
-        Dict{Int,Tuple{Vector{Float64},Vector{Vector{Vec3}},Vector{Float64}}}())
+        Dict{Int,Tuple{Vector{Float64},Vector{Vector{Vec3}},Vector{Float64}}}(),
+        ReentrantLock())
+
+ExcitationQuadCache(
+    mesh::TriMesh,
+    by_order::Dict{
+        Int,Tuple{Vector{Float64},Vector{Vector{Vec3}},Vector{Float64}}},
+) = ExcitationQuadCache(mesh, by_order, ReentrantLock())
 
 # Return `(wq, quad_pts, areas)` for `quad_order`, computing and caching on miss.
 function _quad_cache_for(cache::ExcitationQuadCache, mesh::TriMesh, quad_order::Int)
     (cache.mesh.xyz === mesh.xyz && cache.mesh.tri === mesh.tri) ||
         throw(ArgumentError(
             "quad_cache belongs to a different mesh; construct ExcitationQuadCache(mesh) for this mesh."))
-    cached = get(cache.by_order, quad_order, nothing)
-    cached === nothing || return cached
-    entry = _excitation_quadrature_cache(cache.mesh, quad_order)
-    cache.by_order[quad_order] = entry
-    return entry
+    lock(cache.cache_lock)
+    try
+        cached = get(cache.by_order, quad_order, nothing)
+        cached === nothing || return cached
+        entry = _excitation_quadrature_cache(cache.mesh, quad_order)
+        cache.by_order[quad_order] = entry
+        return entry
+    finally
+        unlock(cache.cache_lock)
+    end
 end
 
 """

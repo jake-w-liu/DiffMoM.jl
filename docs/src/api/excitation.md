@@ -309,7 +309,7 @@ Assemble the excitation vector for a plane wave directly. This is a convenience 
 - `rwg::RWGData`: RWG basis data.
 - `excitation::AbstractExcitation`: Any excitation type.
 - `quad_order::Int=3`: Quadrature order on reference triangle.
-- `quad_cache::Union{Nothing,ExcitationQuadCache}=nothing`: Optional precomputed mesh quadrature cache. When provided, the mesh quadrature (points and areas) is shared across many excitations assembled against the same mesh, avoiding redundant recomputation; a cache created for a different mesh is rejected. Cache-free contributions (delta-gap, port) ignore it. `assemble_multiple_excitations` builds and shares such a cache internally.
+- `quad_cache::Union{Nothing,ExcitationQuadCache}=nothing`: Optional precomputed mesh quadrature cache. When provided, the mesh quadrature (points and areas) is shared across many excitations assembled against the same mesh, avoiding redundant recomputation; a cache created for a different mesh is rejected. Lazy cache access is synchronized, so one cache may be shared across concurrent assemblies. Cache-free contributions (delta-gap, port) ignore it. `assemble_multiple_excitations` builds and shares such a cache internally.
 
 **Returns:** `Vector{ComplexF64}` excitation vector `v` of length `N`, where:
 
