@@ -12,16 +12,72 @@ export matrixfree_efie_operator, matrixfree_efie_adjoint_operator
 export efie_entry
 
 """
-Compact row storage for symmetric edge-adjacency between mesh triangles.
+Compact row storage for a symmetric adjacency relation between mesh triangles.
 
 Neighbors of triangle `t` occupy
-`neighbors[offsets[t]:(offsets[t + 1] - 1)]`. A manifold triangle has at
-most three such neighbors, so lookup scans a tiny row while storage remains
-`O(Nt + Nadj)` instead of the `O(Nt^2)` bits required by a `BitMatrix`.
+`neighbors[offsets[t]:(offsets[t + 1] - 1)]`. Storage is `O(Nt + Nadj)`
+instead of the `O(Nt^2)` bits required by a `BitMatrix`. The EFIE builder
+stores edge neighbors; the dielectric-SIE builder stores vertex neighbors.
 """
-struct TriangleAdjacency
+struct TriangleAdjacency <: AbstractMatrix{Bool}
     offsets::Vector{Int}
     neighbors::Vector{Int}
+end
+
+Base.size(adjacency::TriangleAdjacency) = begin
+    Nt = length(adjacency.offsets) - 1
+    (Nt, Nt)
+end
+Base.IndexStyle(::Type{TriangleAdjacency}) = IndexCartesian()
+
+@inline function _has_triangle_neighbor(adjacency::TriangleAdjacency,
+                                        t1::Int, t2::Int)
+    @inbounds for idx in adjacency.offsets[t1]:(adjacency.offsets[t1 + 1] - 1)
+        adjacency.neighbors[idx] == t2 && return true
+    end
+    return false
+end
+
+@inline function Base.getindex(adjacency::TriangleAdjacency, t1::Int, t2::Int)
+    @boundscheck checkbounds(adjacency, t1, t2)
+    return t1 != t2 && _has_triangle_neighbor(adjacency, t1, t2)
+end
+
+function _triangle_adjacency_from_pairs!(pairs::Vector{NTuple{2,Int}}, Nt::Int)
+    sort!(pairs)
+    if !isempty(pairs)
+        write_idx = 1
+        @inbounds for read_idx in 2:length(pairs)
+            if pairs[read_idx] != pairs[write_idx]
+                write_idx += 1
+                pairs[write_idx] = pairs[read_idx]
+            end
+        end
+        resize!(pairs, write_idx)
+    end
+
+    degree = zeros(Int, Nt)
+    @inbounds for (t1, t2) in pairs
+        degree[t1] += 1
+        degree[t2] += 1
+    end
+
+    offsets = Vector{Int}(undef, Nt + 1)
+    offsets[1] = 1
+    @inbounds for t in 1:Nt
+        offsets[t + 1] = offsets[t] + degree[t]
+        degree[t] = offsets[t]  # reuse as the fill cursor
+    end
+
+    neighbors = Vector{Int}(undef, offsets[end] - 1)
+    @inbounds for (t1, t2) in pairs
+        neighbors[degree[t1]] = t2
+        degree[t1] += 1
+        neighbors[degree[t2]] = t1
+        degree[t2] += 1
+    end
+
+    return TriangleAdjacency(offsets, neighbors)
 end
 
 """
@@ -74,41 +130,8 @@ function _build_triangle_adjacency(mesh::TriMesh)
     end
 
     # A malformed/duplicate face can make a triangle pair share more than one
-    # recorded edge. Sort and compact so the resident adjacency stays unique.
-    sort!(pairs)
-    if !isempty(pairs)
-        write_idx = 1
-        @inbounds for read_idx in 2:length(pairs)
-            if pairs[read_idx] != pairs[write_idx]
-                write_idx += 1
-                pairs[write_idx] = pairs[read_idx]
-            end
-        end
-        resize!(pairs, write_idx)
-    end
-
-    degree = zeros(Int, Nt)
-    @inbounds for (t1, t2) in pairs
-        degree[t1] += 1
-        degree[t2] += 1
-    end
-
-    offsets = Vector{Int}(undef, Nt + 1)
-    offsets[1] = 1
-    @inbounds for t in 1:Nt
-        offsets[t + 1] = offsets[t] + degree[t]
-        degree[t] = offsets[t]  # reuse as the fill cursor
-    end
-
-    neighbors = Vector{Int}(undef, offsets[end] - 1)
-    @inbounds for (t1, t2) in pairs
-        neighbors[degree[t1]] = t2
-        degree[t1] += 1
-        neighbors[degree[t2]] = t1
-        degree[t2] += 1
-    end
-
-    return TriangleAdjacency(offsets, neighbors)
+    # recorded edge. The common converter sorts and compacts those duplicates.
+    return _triangle_adjacency_from_pairs!(pairs, Nt)
 end
 
 @inline _adjacent_pair_count(adjacency::TriangleAdjacency) =
@@ -193,11 +216,7 @@ function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
 end
 
 @inline function _is_adjacent(cache::EFIEApplyCache, t1::Int, t2::Int)
-    adjacency = cache.adjacent
-    @inbounds for idx in adjacency.offsets[t1]:(adjacency.offsets[t1 + 1] - 1)
-        adjacency.neighbors[idx] == t2 && return true
-    end
-    return false
+    return _has_triangle_neighbor(cache.adjacent, t1, t2)
 end
 
 @inline function _efie_entry(cache::EFIEApplyCache, m::Int, n::Int)

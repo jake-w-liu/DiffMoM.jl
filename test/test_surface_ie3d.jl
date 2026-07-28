@@ -92,6 +92,30 @@ function _icosphere_mesh(radius::Float64, nsub::Int)
     return TriMesh(xyz, tri)
 end
 
+function _near_pair_query_checksum(near_pairs)
+    Nt = size(near_pairs, 1)
+    total = 0
+    @inbounds for i in 1:10_000
+        t1 = mod1(37i, Nt)
+        t2 = mod1(101i + 7, Nt)
+        total += near_pairs[t1, t2]
+    end
+    return total
+end
+
+function _near_pair_reference(mesh)
+    Nt = ntriangles(mesh)
+    reference = falses(Nt, Nt)
+    for t1 in 1:Nt, t2 in 1:Nt
+        t1 == t2 && continue
+        reference[t1, t2] = any(
+            mesh.tri[v1, t1] == mesh.tri[v2, t2]
+            for v1 in 1:3 for v2 in 1:3
+        )
+    end
+    return reference
+end
+
 @testset "Dielectric 3D SIE assembly/solve" begin
     mesh = _oriented_tetrahedron_mesh()
     rwg = build_rwg(mesh; allow_boundary=false, require_closed=true)
@@ -112,6 +136,24 @@ end
     yk = zeros(ComplexF64, N)
     mul!(yk, K_mf, xk)
     @test norm(yk - K * xk) / max(norm(K * xk), eps()) < 1e-13
+
+    # The near-singular relation is an exact compact Boolean matrix: every
+    # distinct triangle pair sharing at least one vertex is present.
+    near_ref = _near_pair_reference(mesh)
+    @test Matrix(K_mf.near_pairs) == near_ref
+    @test length(K_mf.near_pairs.neighbors) == count(near_ref)
+    @test_throws BoundsError K_mf.near_pairs[0, 1]
+    _near_pair_query_checksum(K_mf.near_pairs)
+    @test @allocated(_near_pair_query_checksum(K_mf.near_pairs)) == 0
+
+    # Persistent storage must track the local near-pair count, not Nt².
+    mesh_small = make_rect_plate(1.0, 1.0, 10, 10)
+    near_small = DiffMoM._triangle_near_pairs_3d(
+        mesh_small)
+    near_large = DiffMoM._triangle_near_pairs_3d(
+        make_rect_plate(1.0, 1.0, 40, 40))
+    @test Matrix(near_small) == _near_pair_reference(mesh_small)
+    @test Base.summarysize(near_large) < 25 * Base.summarysize(near_small)
 
     A_pm = assemble_pmchwt_3d(mesh, rwg, k0, eps_in;
                               mur_in=mu_in,

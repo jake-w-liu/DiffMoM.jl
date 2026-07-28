@@ -133,7 +133,7 @@ struct MatrixFreeMagneticFieldOperator3D <: AbstractMatrix{ComplexF64}
     wq_hi::Vector{Float64}
     pts_hi::Vector{Vector{Vec3}}
     areas_hi::Vector{Float64}
-    near_pairs::BitMatrix
+    near_pairs::TriangleAdjacency
 end
 ```
 
@@ -150,7 +150,7 @@ end
 | `wq_hi` | `Vector{Float64}` | Quadrature weights for the high-order (near-singular) rule. |
 | `pts_hi` | `Vector{Vector{Vec3}}` | High-order quadrature points per triangle. |
 | `areas_hi` | `Vector{Float64}` | Triangle areas for the high-order rule (m^2). |
-| `near_pairs` | `BitMatrix` | `near_pairs[ti, tj] = true` if triangles `ti`, `tj` share at least one vertex. |
+| `near_pairs` | `TriangleAdjacency` | Compact-row Boolean matrix; `near_pairs[ti, tj] = true` if distinct triangles `ti`, `tj` share at least one vertex. Storage is `O(Nt + Nnear)` rather than `O(Nt^2)`. |
 
 Construct with `matrixfree_magnetic_field_operator_3d`.
 

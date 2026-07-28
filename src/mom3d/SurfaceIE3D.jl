@@ -44,7 +44,7 @@ struct MatrixFreeMagneticFieldOperator3D <: AbstractMatrix{ComplexF64}
     wq_hi::Vector{Float64}
     pts_hi::Vector{Vector{Vec3}}
     areas_hi::Vector{Float64}
-    near_pairs::BitMatrix
+    near_pairs::TriangleAdjacency
 end
 
 mutable struct MatrixFreeDielectricSIE3D{
@@ -125,21 +125,54 @@ end
 # a fine-quadrature reference (verified ~0.99%->0.27% on an icosphere).
 function _triangle_near_pairs_3d(mesh::TriMesh)
     Nt = ntriangles(mesh)
-    near = falses(Nt, Nt)
-    vert_to_tri = Dict{Int, Vector{Int}}()
+    nrecords = Base.checked_mul(3, Nt)
+    vertex_records = Vector{NTuple{2,Int}}(undef, nrecords)
+    record_idx = 1
     for t in 1:Nt
         for iv in 1:3
-            v = mesh.tri[iv, t]
-            push!(get!(vert_to_tri, v, Int[]), t)
+            vertex_records[record_idx] = (mesh.tri[iv, t], t)
+            record_idx += 1
         end
     end
-    for tris in values(vert_to_tri)
-        for i in 1:length(tris), j in (i + 1):length(tris)
-            near[tris[i], tris[j]] = true
-            near[tris[j], tris[i]] = true
+    sort!(vertex_records)
+
+    # Reserve the exact number of candidate pairs before cross-vertex
+    # deduplication. Edge-sharing triangles appear once for each shared vertex.
+    pair_capacity = 0
+    first_record = 1
+    while first_record <= nrecords
+        next_vertex = first_record + 1
+        @inbounds while next_vertex <= nrecords &&
+                        vertex_records[next_vertex][1] == vertex_records[first_record][1]
+            next_vertex += 1
         end
+        degree = next_vertex - first_record
+        pair_capacity = Base.checked_add(
+            pair_capacity, Base.checked_mul(degree, degree - 1) ÷ 2)
+        first_record = next_vertex
     end
-    return near
+
+    pairs = NTuple{2,Int}[]
+    sizehint!(pairs, pair_capacity)
+    first_record = 1
+    while first_record <= nrecords
+        next_vertex = first_record + 1
+        @inbounds while next_vertex <= nrecords &&
+                        vertex_records[next_vertex][1] == vertex_records[first_record][1]
+            next_vertex += 1
+        end
+        @inbounds for i in first_record:(next_vertex - 1)
+            for j in (i + 1):(next_vertex - 1)
+                t1 = vertex_records[i][2]
+                t2 = vertex_records[j][2]
+                t1 == t2 && continue
+                push!(pairs, t1 < t2 ? (t1, t2) : (t2, t1))
+            end
+        end
+        first_record = next_vertex
+    end
+
+    return _triangle_adjacency_from_pairs!(pairs, Nt)
 end
 
 function _surface_quad_cache_3d(mesh::TriMesh, order::Int)
