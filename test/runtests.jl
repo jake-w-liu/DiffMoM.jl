@@ -1336,6 +1336,63 @@ if length(trace) >= 2
 
 end
 
+# Fail closed on invalid controls, undefined ratios, and rejected projected
+# steps. These small systems make the accepted iterate and solve counts exact.
+Z_opt_guard = ComplexF64[1.0;;]
+Mp_opt_guard = Matrix{Float64}[[1.0;;]]
+v_opt_guard = ComplexF64[1.0]
+Q_opt_guard = ComplexF64[1.0;;]
+theta_opt_guard = [0.0]
+@test_throws ArgumentError optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=1, tol=Inf, verbose=false)
+@test_throws ArgumentError optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=1, alpha0=Inf, verbose=false)
+@test_throws ArgumentError optimize_directivity(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, Q_opt_guard,
+    theta_opt_guard;
+    maxiter=1, regularization_alpha=Inf, verbose=false)
+@test_throws ArgumentError optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=1, lb=[1.0], ub=[0.0], verbose=false)
+
+theta_fixed_guard, trace_fixed_guard = optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=3, tol=0.0, lb=[0.0], ub=[0.0], verbose=false)
+@test theta_fixed_guard == theta_opt_guard
+@test length(trace_fixed_guard) == 1
+@test trace_fixed_guard[1].n_fwd == 1
+theta_backtracked_guard, trace_backtracked_guard = optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=1, tol=0.0, alpha0=0.5, maximize=true, verbose=false)
+@test theta_backtracked_guard ≈ [0.5]
+@test length(trace_backtracked_guard) == 1
+@test all(isfinite, theta_backtracked_guard)
+
+Z_dir_guard = Matrix{ComplexF64}(I, 2, 2)
+Mp_dir_guard = Matrix{Float64}[[1.0 0.0; 0.0 0.0]]
+v_dir_guard = ComplexF64[1.0, 1.0]
+Q_target_guard = ComplexF64[1.0 0.0; 0.0 0.0]
+Q_total_guard = Matrix{ComplexF64}(I, 2, 2)
+theta_dir_guard, trace_dir_guard = optimize_directivity(
+    Z_dir_guard, Mp_dir_guard, v_dir_guard, Q_target_guard, Q_total_guard,
+    theta_opt_guard;
+    maxiter=3, tol=0.0, lb=[0.0], ub=[0.0], verbose=false)
+@test theta_dir_guard == theta_opt_guard
+@test length(trace_dir_guard) == 1
+theta_dir_backtracked_guard, trace_dir_backtracked_guard = optimize_directivity(
+    Z_dir_guard, Mp_dir_guard, v_dir_guard, Q_target_guard, Q_total_guard,
+    theta_opt_guard;
+    maxiter=1, tol=0.0, alpha0=2.0, verbose=false)
+@test theta_dir_backtracked_guard ≈ [0.5]
+@test length(trace_dir_backtracked_guard) == 1
+@test all(isfinite, theta_dir_backtracked_guard)
+@test_throws DomainError optimize_directivity(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard,
+    zeros(ComplexF64, 1, 1), theta_opt_guard;
+    maxiter=1, verbose=false)
+
 println("  PASS ✓")
 
 # ─────────────────────────────────────────────────
@@ -4005,10 +4062,13 @@ println("  34d: PASS")
 # 34e: solve_adjoint_rhs
 println("  34e: solve_adjoint_rhs ...")
 rhs_adj = Q * I_dense
+rhs_adj_before = copy(rhs_adj)
 lam_direct = Z_dense' \ rhs_adj
 lam_rhs = solve_adjoint_rhs(Z_dense, rhs_adj; solver=:direct)
 @assert norm(lam_rhs - lam_direct) / norm(lam_direct) < 1e-12 "solve_adjoint_rhs direct mismatch"
+@test rhs_adj == rhs_adj_before
 lam_gmres = solve_adjoint_rhs(A_gmres, rhs_adj; solver=:gmres, gmres_tol=1e-8, gmres_maxiter=200)
+@test rhs_adj == rhs_adj_before
 adj_rhs_diff = norm(lam_gmres - lam_direct) / norm(lam_direct)
 println("    GMRES adjoint_rhs vs direct: $adj_rhs_diff")
 @assert adj_rhs_diff < 1e-4 "solve_adjoint_rhs GMRES too different: $adj_rhs_diff"

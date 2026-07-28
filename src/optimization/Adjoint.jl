@@ -78,9 +78,9 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                            true_residual_factor::Float64=100.0)
     if solver == :direct
         Z isa Matrix || error("Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
-        return Z' \ Vector{ComplexF64}(rhs)
+        return Z' \ _as_complex_rhs(rhs)
     elseif solver == :gmres
-        x, stats = solve_gmres_adjoint(Z, Vector{ComplexF64}(rhs);
+        x, stats = solve_gmres_adjoint(Z, _as_complex_rhs(rhs);
                                         preconditioner=preconditioner,
                                         precond_side=gmres_precond_side,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
