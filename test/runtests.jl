@@ -740,6 +740,11 @@ undersized_mass = LocalMassMatrix(1, [1], [1], [1.0])
     Mp, zeros(ComplexF64, N + 1), zeros(ComplexF64, N))
 @test_throws DimensionMismatch gradient_impedance(
     Mp, zeros(ComplexF64, N), zeros(ComplexF64, N + 1))
+gradient_probe_finite = ones(ComplexF64, N)
+@test_throws ArgumentError gradient_impedance(
+    Mp, fill(ComplexF64(NaN, 0.0), N), gradient_probe_finite)
+@test_throws ArgumentError gradient_impedance(
+    Mp, gradient_probe_finite, fill(ComplexF64(Inf, 0.0), N))
 
 # Five-argument mul! must not read x when alpha is zero, including when x
 # contains non-finite values. Verify both beta branches and both orientations.
@@ -2468,6 +2473,14 @@ println("  GMRES adjoint (no precond) rel error: $rel_adj_nop  iters: $(stats_ad
 I_sf_direct = solve_forward(Z_gm, Vector{ComplexF64}(v))
 rel_sf_direct = norm(I_sf_direct - I_gm_direct) / max(norm(I_gm_direct), 1e-30)
 @assert rel_sf_direct < 1e-12
+@test_throws DimensionMismatch solve_forward(
+    ones(ComplexF64, 2, 1), ComplexF64[1.0, 2.0])
+@test_throws ArgumentError solve_forward(
+    ComplexF64[NaN 0.0; 0.0 1.0], ComplexF64[1.0, 1.0])
+@test_throws ArgumentError solve_forward(
+    ComplexF64[1.0 0.0; 0.0 1.0], ComplexF64[NaN, 1.0])
+@test_throws ArgumentError solve_system(
+    ComplexF64[1.0 0.0; 0.0 1.0], ComplexF64[Inf, 1.0])
 
 # solve_forward dispatch: :gmres (unpreconditioned)
 I_sf_gmres = solve_forward(Z_gm, Vector{ComplexF64}(v);
@@ -2480,6 +2493,26 @@ println("  solve_forward :gmres rel error: $rel_sf_gmres")
 lam_sa_direct = solve_adjoint(Z_gm, Q, I_gm_direct)
 rel_sa_direct = norm(lam_sa_direct - lam_gm_direct) / max(norm(lam_gm_direct), 1e-30)
 @assert rel_sa_direct < 1e-12
+@test_throws ArgumentError solve_adjoint(
+    ComplexF64[1.0 0.0; 0.0 1.0],
+    ComplexF64[NaN 0.0; 0.0 1.0],
+    ComplexF64[1.0, 1.0],
+)
+@test_throws ArgumentError solve_adjoint_rhs(
+    ComplexF64[1.0 0.0; 0.0 1.0],
+    ComplexF64[NaN, 1.0],
+)
+objective_probe_I = ComplexF64[1.0, 2.0]
+objective_probe_Q = ComplexF64[2.0 0.5; 0.5 3.0]
+objective_probe_value = compute_objective(
+    objective_probe_I, objective_probe_Q)
+@test objective_probe_value ≈
+      real(dot(objective_probe_I, objective_probe_Q * objective_probe_I))
+compute_objective(objective_probe_I, objective_probe_Q)
+@test @allocated(compute_objective(
+    objective_probe_I, objective_probe_Q)) == 0
+@test_throws ArgumentError compute_objective(
+    objective_probe_I, ComplexF64[NaN 0.0; 0.0 1.0])
 
 # solve_adjoint dispatch: :gmres (unpreconditioned)
 lam_sa_gmres = solve_adjoint(Z_gm, Q, I_gm_direct;

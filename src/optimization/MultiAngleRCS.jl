@@ -25,24 +25,6 @@ struct AngleConfig
     weight::Float64                 # Weight in composite objective
 end
 
-@inline function _validate_known_matrix_entries(
-    matrix::AbstractMatrix,
-    label::AbstractString,
-)
-    values = if matrix isa StridedMatrix
-        matrix
-    elseif matrix isa SparseMatrixCSC
-        nonzeros(matrix)
-    elseif matrix isa LocalMassMatrix
-        matrix.vals
-    else
-        return nothing
-    end
-    all(isfinite, values) ||
-        throw(ArgumentError("$label must contain only finite values"))
-    return nothing
-end
-
 function _validate_multiangle_q(Q::AbstractMatrix{ComplexF64},
                                 label::AbstractString)
     if Q isa FarFieldQMatrix

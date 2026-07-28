@@ -95,6 +95,7 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      verbose::Bool=false,
                      check_gmres_convergence::Bool=true)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
+    _validate_linear_system_inputs(Z, rhs, "forward GMRES")
     rhs_c = _as_complex_rhs(rhs)
 
     if preconditioner === nothing
@@ -120,9 +121,10 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
     end
+    _assert_finite_linear_vector(x, "forward GMRES solution")
     check_gmres_convergence &&
-        _assert_gmres_result(x, stats, "forward";
-                             tol=tol, maxiter=maxiter)
+        _assert_gmres_converged(
+            stats, "forward"; tol=tol, maxiter=maxiter)
     return x, stats
 end
 
@@ -149,6 +151,7 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                               verbose::Bool=false,
                               check_gmres_convergence::Bool=true)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
+    _validate_linear_system_inputs(Z, rhs, "adjoint GMRES")
     rhs_c = _as_complex_rhs(rhs)
 
     if preconditioner === nothing
@@ -174,8 +177,9 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
     end
+    _assert_finite_linear_vector(x, "adjoint GMRES solution")
     check_gmres_convergence &&
-        _assert_gmres_result(x, stats, "adjoint";
-                             tol=tol, maxiter=maxiter)
+        _assert_gmres_converged(
+            stats, "adjoint"; tol=tol, maxiter=maxiter)
     return x, stats
 end

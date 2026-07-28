@@ -13,7 +13,11 @@ export solve_adjoint, solve_adjoint_rhs, gradient_impedance, compute_objective
 Compute the quadratic objective J = Re(I† Q I).
 """
 function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
-    return real(dot(I, Q * I))
+    _validate_linear_system_inputs(Q, I, "quadratic objective")
+    value = real(_dot_left_matrix_right(I, Q, I))
+    isfinite(value) ||
+        error("quadratic objective produced a non-finite value")
+    return value
 end
 
 """
@@ -37,11 +41,23 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                        check_gmres_convergence::Bool=true,
                        check_true_residual::Bool=false,
                        true_residual_factor::Float64=100.0)
+    solver in (:direct, :gmres) ||
+        throw(ArgumentError(
+            "Unknown solver: $solver (expected :direct or :gmres)"))
+    N = _validate_linear_system_inputs(Z, I, "adjoint solve")
+    size(Q) == (N, N) ||
+        throw(DimensionMismatch(
+            "adjoint objective matrix has size $(size(Q)), expected ($N, $N)"))
+    _validate_known_matrix_entries(Q, "adjoint objective matrix")
     rhs = Q * I
+    _assert_finite_linear_vector(rhs, "adjoint RHS")
     if solver == :direct
-        Z isa Matrix || error("Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
-        return Z' \ rhs
-    elseif solver == :gmres
+        Z isa Matrix ||
+            throw(ArgumentError(
+                "Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
+        return _assert_finite_linear_vector(
+            Z' \ rhs, "direct adjoint solution")
+    else
         x, stats = solve_gmres_adjoint(Z, rhs;
                                         preconditioner=preconditioner,
                                         precond_side=gmres_precond_side,
@@ -52,9 +68,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
             _assert_true_residual(adjoint(Z), x, rhs, "adjoint";
                                   tol=gmres_tol,
                                   factor=true_residual_factor)
-        return x
-    else
-        error("Unknown solver: $solver (expected :direct or :gmres)")
+        return _assert_finite_linear_vector(x, "GMRES adjoint solution")
     end
 end
 
@@ -76,10 +90,17 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                            check_gmres_convergence::Bool=true,
                            check_true_residual::Bool=false,
                            true_residual_factor::Float64=100.0)
+    solver in (:direct, :gmres) ||
+        throw(ArgumentError(
+            "Unknown solver: $solver (expected :direct or :gmres)"))
     if solver == :direct
-        Z isa Matrix || error("Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
-        return Z' \ _as_complex_rhs(rhs)
-    elseif solver == :gmres
+        Z isa Matrix ||
+            throw(ArgumentError(
+                "Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
+        _validate_linear_system_inputs(Z, rhs, "adjoint solve")
+        return _assert_finite_linear_vector(
+            Z' \ _as_complex_rhs(rhs), "direct adjoint solution")
+    else
         x, stats = solve_gmres_adjoint(Z, _as_complex_rhs(rhs);
                                         preconditioner=preconditioner,
                                         precond_side=gmres_precond_side,
@@ -90,9 +111,7 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
             _assert_true_residual(adjoint(Z), x, rhs, "adjoint";
                                   tol=gmres_tol,
                                   factor=true_residual_factor)
-        return x
-    else
-        error("Unknown solver: $solver (expected :direct or :gmres)")
+        return _assert_finite_linear_vector(x, "GMRES adjoint solution")
     end
 end
 
@@ -121,6 +140,13 @@ function gradient_impedance(Mp::Vector{<:AbstractMatrix},
     length(lambda) == matrix_size[1] ||
         throw(DimensionMismatch(
             "lambda length $(length(lambda)) != $(matrix_size[1])"))
+    all(isfinite, I) ||
+        throw(ArgumentError("I must contain only finite values"))
+    all(isfinite, lambda) ||
+        throw(ArgumentError("lambda must contain only finite values"))
+    @inbounds for p in eachindex(Mp)
+        _validate_known_matrix_entries(Mp[p], "Mp[$p]")
+    end
     P = length(Mp)
     g = zeros(Float64, P)
     for p in 1:P
@@ -135,5 +161,7 @@ function gradient_impedance(Mp::Vector{<:AbstractMatrix},
             g[p] = 2 * real(lMI)
         end
     end
+    all(isfinite, g) ||
+        error("gradient_impedance produced non-finite values")
     return g
 end

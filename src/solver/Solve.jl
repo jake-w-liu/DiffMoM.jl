@@ -4,6 +4,55 @@ export solve_forward, solve_system, assemble_full_Z, assemble_full_Z!,
        make_mass_regularizer, make_left_preconditioner,
        select_preconditioner, transform_patch_matrices, prepare_conditioned_system
 
+@inline function _validate_known_matrix_entries(
+    matrix::AbstractMatrix,
+    label::AbstractString,
+)
+    values = if matrix isa StridedMatrix
+        matrix
+    elseif matrix isa SparseMatrixCSC
+        nonzeros(matrix)
+    elseif matrix isa LocalMassMatrix
+        matrix.vals
+    else
+        return nothing
+    end
+    all(isfinite, values) ||
+        throw(ArgumentError("$label must contain only finite values"))
+    return nothing
+end
+
+function _validate_linear_system_inputs(
+    matrix::AbstractMatrix,
+    rhs::AbstractVector,
+    label::AbstractString,
+)
+    N = size(matrix, 1)
+    N >= 1 ||
+        throw(ArgumentError("$label matrix must be nonempty"))
+    size(matrix, 2) == N ||
+        throw(DimensionMismatch(
+            "$label matrix must be square, got size $(size(matrix))"))
+    length(rhs) == N ||
+        throw(DimensionMismatch(
+            "$label RHS length $(length(rhs)) must equal matrix size $N"))
+    _validate_known_matrix_entries(matrix, label)
+    all(isfinite, rhs) ||
+        throw(ArgumentError("$label RHS must contain only finite values"))
+    return N
+end
+
+@inline function _assert_finite_linear_vector(
+    vector::AbstractVector,
+    label::AbstractString,
+)
+    @inbounds for i in eachindex(vector)
+        isfinite(vector[i]) ||
+            error("$label contains a non-finite value at index $i: $(vector[i])")
+    end
+    return vector
+end
+
 """
     solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
 
@@ -31,10 +80,17 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        check_gmres_convergence::Bool=true,
                        check_true_residual::Bool=false,
                        true_residual_factor::Float64=100.0)
+    solver in (:direct, :gmres) ||
+        throw(ArgumentError(
+            "Unknown solver: $solver (expected :direct or :gmres)"))
     if solver == :direct
-        Z isa Matrix || error("Direct solver requires a dense Matrix; use solver=:gmres for operator-based systems.")
-        return Z \ v
-    elseif solver == :gmres
+        Z isa Matrix ||
+            throw(ArgumentError(
+                "Direct solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
+        _validate_linear_system_inputs(Z, v, "forward solve")
+        return _assert_finite_linear_vector(
+            Z \ v, "direct forward solution")
+    else
         x, stats = solve_gmres(Z, v;
                                 preconditioner=preconditioner,
                                 precond_side=gmres_precond_side,
@@ -46,9 +102,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
             _assert_true_residual(Z, x, v, "forward";
                                   tol=gmres_tol,
                                   factor=true_residual_factor)
-        return x
-    else
-        error("Unknown solver: $solver (expected :direct or :gmres)")
+        return _assert_finite_linear_vector(x, "GMRES forward solution")
     end
 end
 
