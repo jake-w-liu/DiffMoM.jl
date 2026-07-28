@@ -629,67 +629,199 @@ Supported records:
 
 Texture/normal indices (`f v/t/n`) are ignored. Positive and negative OBJ
 vertex indices are supported.
+
+The file is scanned once to determine the exact matrix sizes and a second
+time to fill them, avoiding per-field split vectors and intermediate
+vertex/face collections.
 """
-function read_obj_mesh(path::AbstractString)
-    vertices = Vector{NTuple{3,Float64}}()
-    faces = Vector{NTuple{3,Int}}()
+@inline function _obj_field_bounds(line::AbstractString, position::Int)
+    last = lastindex(line)
+    while position <= last && isspace(line[position])
+        position = nextind(line, position)
+    end
+    position > last && return (0, 0, position)
 
-    open(path, "r") do io
-        for raw_line in eachline(io)
-            line = strip(raw_line)
-            isempty(line) && continue
-            startswith(line, "#") && continue
+    first = position
+    while position <= last && !isspace(line[position])
+        position = nextind(line, position)
+    end
+    return (first, prevind(line, position), position)
+end
 
-            if startswith(line, "v ")
-                fields = split(line)
-                length(fields) < 4 && error("Invalid OBJ vertex line: $line")
-                x = parse(Float64, fields[2])
-                y = parse(Float64, fields[3])
-                z = parse(Float64, fields[4])
-                push!(vertices, (x, y, z))
+@inline function _obj_record_is(line::AbstractString, first::Int, last::Int,
+                                record::Char)
+    return first == last && line[first] == record
+end
 
-            elseif startswith(line, "f ")
-                fields = split(line)[2:end]
-                length(fields) < 3 && error("Invalid OBJ face line: $line")
+@inline function _required_obj_field(line::AbstractString, position::Int,
+                                     path::AbstractString, line_number::Int,
+                                     context::AbstractString)
+    first, last, next_position = _obj_field_bounds(line, position)
+    if iszero(first) || line[first] == '#'
+        error("Invalid OBJ $context at $path:$line_number: $line")
+    end
+    return SubString(line, first, last), next_position
+end
 
-                face_idx = Int[]
-                for token in fields
-                    vtoken = split(token, "/")[1]
-                    isempty(vtoken) && error("Invalid OBJ face token: $token")
-                    idx_raw = parse(Int, vtoken)
-                    idx = idx_raw > 0 ? idx_raw : (length(vertices) + idx_raw + 1)
-                    (1 <= idx <= length(vertices)) || error("OBJ face index out of range in line: $line")
-                    push!(face_idx, idx)
-                end
+function _count_obj_mesh(io::IO, path::AbstractString)
+    n_vertices = 0
+    n_triangles = 0
 
-                v1 = face_idx[1]
-                for j in 2:(length(face_idx) - 1)
-                    push!(faces, (v1, face_idx[j], face_idx[j + 1]))
-                end
+    for (line_number, line) in enumerate(eachline(io))
+        record_first, record_last, position =
+            _obj_field_bounds(line, firstindex(line))
+        iszero(record_first) && continue
+        line[record_first] == '#' && continue
+
+        if _obj_record_is(line, record_first, record_last, 'v')
+            n_fields = 0
+            while true
+                first, _, next_position = _obj_field_bounds(line, position)
+                iszero(first) && break
+                line[first] == '#' && break
+                n_fields = Base.checked_add(n_fields, 1)
+                position = next_position
             end
+            n_fields >= 3 ||
+                error("Invalid OBJ vertex at $path:$line_number: $line")
+            n_vertices = Base.checked_add(n_vertices, 1)
+        elseif _obj_record_is(line, record_first, record_last, 'f')
+            n_face_vertices = 0
+            while true
+                first, _, next_position = _obj_field_bounds(line, position)
+                iszero(first) && break
+                line[first] == '#' && break
+                n_face_vertices = Base.checked_add(n_face_vertices, 1)
+                position = next_position
+            end
+            n_face_vertices >= 3 ||
+                error("Invalid OBJ face at $path:$line_number: $line")
+            n_triangles = Base.checked_add(n_triangles, n_face_vertices - 2)
         end
     end
 
-    isempty(vertices) && error("OBJ mesh has no vertices: $path")
-    isempty(faces) && error("OBJ mesh has no faces: $path")
+    return n_vertices, n_triangles
+end
 
-    xyz = zeros(Float64, 3, length(vertices))
-    for i in eachindex(vertices)
-        x, y, z = vertices[i]
-        xyz[1, i] = x
-        xyz[2, i] = y
-        xyz[3, i] = z
+@inline function _parse_obj_vertex_index(line::AbstractString,
+                                         first::Int, last::Int,
+                                         n_vertices::Int,
+                                         path::AbstractString,
+                                         line_number::Int)
+    index_last = last
+    position = first
+    while position <= last
+        if line[position] == '/'
+            index_last = prevind(line, position)
+            break
+        end
+        position = nextind(line, position)
+    end
+    index_last >= first ||
+        error("Invalid OBJ face token at $path:$line_number: $line")
+
+    raw_index = parse(Int, SubString(line, first, index_last))
+    raw_index != 0 ||
+        error("OBJ vertex index zero is invalid at $path:$line_number: $line")
+    index = if raw_index > 0
+        raw_index
+    else
+        Base.checked_add(Base.checked_add(n_vertices, raw_index), 1)
+    end
+    1 <= index <= n_vertices ||
+        error("OBJ face index out of range at $path:$line_number: $line")
+    return index
+end
+
+function _fill_obj_mesh!(io::IO, path::AbstractString,
+                         xyz::Matrix{Float64}, tri::Matrix{Int})
+    vertices_written = 0
+    triangles_written = 0
+
+    for (line_number, line) in enumerate(eachline(io))
+        record_first, record_last, position =
+            _obj_field_bounds(line, firstindex(line))
+        iszero(record_first) && continue
+        line[record_first] == '#' && continue
+
+        if _obj_record_is(line, record_first, record_last, 'v')
+            x_field, position = _required_obj_field(
+                line, position, path, line_number, "vertex")
+            y_field, position = _required_obj_field(
+                line, position, path, line_number, "vertex")
+            z_field, _ = _required_obj_field(
+                line, position, path, line_number, "vertex")
+            coord = (
+                parse(Float64, x_field),
+                parse(Float64, y_field),
+                parse(Float64, z_field),
+            )
+            isfinite(coord[1]) && isfinite(coord[2]) && isfinite(coord[3]) ||
+                error("OBJ vertex coordinates must be finite at $path:$line_number: $line")
+
+            vertices_written < size(xyz, 2) ||
+                error("OBJ file changed while reading vertices: $path")
+            vertices_written += 1
+            @inbounds begin
+                xyz[1, vertices_written] = coord[1]
+                xyz[2, vertices_written] = coord[2]
+                xyz[3, vertices_written] = coord[3]
+            end
+        elseif _obj_record_is(line, record_first, record_last, 'f')
+            n_face_vertices = 0
+            first_vertex = 0
+            previous_vertex = 0
+
+            while true
+                first, last, next_position = _obj_field_bounds(line, position)
+                iszero(first) && break
+                line[first] == '#' && break
+                vertex = _parse_obj_vertex_index(
+                    line, first, last, vertices_written, path, line_number)
+                n_face_vertices += 1
+
+                if n_face_vertices == 1
+                    first_vertex = vertex
+                elseif n_face_vertices == 2
+                    previous_vertex = vertex
+                else
+                    triangles_written < size(tri, 2) ||
+                        error("OBJ file changed while reading faces: $path")
+                    triangles_written += 1
+                    @inbounds begin
+                        tri[1, triangles_written] = first_vertex
+                        tri[2, triangles_written] = previous_vertex
+                        tri[3, triangles_written] = vertex
+                    end
+                    previous_vertex = vertex
+                end
+                position = next_position
+            end
+
+            n_face_vertices >= 3 ||
+                error("Invalid OBJ face at $path:$line_number: $line")
+        end
     end
 
-    tri = zeros(Int, 3, length(faces))
-    for t in eachindex(faces)
-        i1, i2, i3 = faces[t]
-        tri[1, t] = i1
-        tri[2, t] = i2
-        tri[3, t] = i3
-    end
+    vertices_written == size(xyz, 2) ||
+        error("OBJ file changed while reading vertices: $path")
+    triangles_written == size(tri, 2) ||
+        error("OBJ file changed while reading faces: $path")
+    return nothing
+end
 
-    return TriMesh(xyz, tri)
+function read_obj_mesh(path::AbstractString)
+    return open(path, "r") do io
+        n_vertices, n_triangles = _count_obj_mesh(io, path)
+        n_vertices > 0 || error("OBJ mesh has no vertices: $path")
+        n_triangles > 0 || error("OBJ mesh has no faces: $path")
+
+        xyz = Matrix{Float64}(undef, 3, n_vertices)
+        tri = Matrix{Int}(undef, 3, n_triangles)
+        seekstart(io)
+        _fill_obj_mesh!(io, path, xyz, tri)
+        return TriMesh(xyz, tri)
+    end
 end
 
 """

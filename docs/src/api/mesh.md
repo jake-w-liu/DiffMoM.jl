@@ -137,7 +137,12 @@ Reads a triangle mesh from a Wavefront OBJ file. OBJ is a widely supported text 
 - `v x y z` -- vertex coordinates
 - `f i j k ...` -- polygon faces (polygons with more than 3 vertices are fan-triangulated automatically)
 
-Texture and normal indices (`f v/t/n`) are parsed but ignored. Both positive and negative OBJ vertex indices are supported.
+Texture and normal suffixes (`f v/t/n`) are accepted but ignored. Both
+positive and negative OBJ vertex indices are supported.
+
+The reader scans the file once to count the exact output dimensions and once
+to fill the mesh matrices. This avoids retaining the complete text file,
+per-field split vectors, or intermediate vertex and face collections.
 
 **Typical workflow for imported meshes:**
 ```julia

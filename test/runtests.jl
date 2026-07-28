@@ -147,16 +147,36 @@ println("\n── Test 1b: OBJ mesh import ──")
 
 obj_path = joinpath(DATADIR, "tmp_quad.obj")
 open(obj_path, "w") do io
-    println(io, "v 0 0 0")
-    println(io, "v 1 0 0")
-    println(io, "v 1 1 0")
+    println(io, "  v 0 0 0")
+    println(io, "v\t1 0 0")
+    println(io, "v 1 1 0 1")
     println(io, "v 0 1 0")
-    println(io, "f 1 2 3 4")
+    println(io, "vt 0 0")
+    println(io, "vn 0 0 1")
+    println(io, "f 1/1/1 2/2/1 3//1 -1 # inline comment")
 end
 
 mesh_obj = read_obj_mesh(obj_path)
 @assert nvertices(mesh_obj) == 4
 @assert ntriangles(mesh_obj) == 2
+@assert mesh_obj.tri == [1 1; 2 3; 3 4]
+
+obj_invalid_path = joinpath(DATADIR, "tmp_invalid.obj")
+open(obj_invalid_path, "w") do io
+    println(io, "v NaN 0 0")
+    println(io, "v 1 0 0")
+    println(io, "v 0 1 0")
+    println(io, "f 1 2 3")
+end
+@test_throws ErrorException read_obj_mesh(obj_invalid_path)
+
+open(obj_invalid_path, "w") do io
+    println(io, "v 0 0 0")
+    println(io, "v 1 0 0")
+    println(io, "v 0 1 0")
+    println(io, "f 0 2 3")
+end
+@test_throws ErrorException read_obj_mesh(obj_invalid_path)
 
 report_obj = assert_mesh_quality(mesh_obj; allow_boundary=true)
 @assert report_obj.n_nonmanifold_edges == 0
@@ -2970,6 +2990,28 @@ for i in 1:nvertices(mesh)
 end
 report_rt = mesh_quality_report(mesh_rt)
 @assert mesh_quality_ok(report_rt; allow_boundary=true)
+
+obj_alloc_path = joinpath(DATADIR, "tmp_alloc.obj")
+obj_grid_n = 20
+open(obj_alloc_path, "w") do io
+    for j in 0:obj_grid_n, i in 0:obj_grid_n
+        println(io, "v ", i / obj_grid_n, " ", j / obj_grid_n, " 0")
+    end
+    for j in 0:(obj_grid_n - 1), i in 0:(obj_grid_n - 1)
+        n1 = i + 1 + j * (obj_grid_n + 1)
+        n2 = n1 + 1
+        n4 = n1 + obj_grid_n + 1
+        n3 = n4 + 1
+        println(io, "f ", n1, " ", n2, " ", n3)
+        println(io, "f ", n1, " ", n3, " ", n4)
+    end
+end
+mesh_obj_alloc = read_obj_mesh(obj_alloc_path)  # warm compilation
+@assert nvertices(mesh_obj_alloc) == (obj_grid_n + 1)^2
+@assert ntriangles(mesh_obj_alloc) == 2 * obj_grid_n^2
+GC.gc()
+obj_read_alloc = @allocated read_obj_mesh(obj_alloc_path)
+@assert obj_read_alloc < 20 * filesize(obj_alloc_path)
 println("  32a: PASS")
 
 # 32b: triangle_area explicit test
