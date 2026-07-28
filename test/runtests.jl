@@ -668,6 +668,19 @@ pol_mat = pol_linear_x(grid)
 mask = cap_mask(grid; theta_max=30 * π / 180)
 Q = build_Q(G_mat, grid, pol_mat; mask=mask)
 Q_operator = build_Q_operator(G_mat, grid, pol_mat; mask=mask)
+oversized_mask = vcat(mask, true)
+@test_throws DimensionMismatch build_Q(
+    G_mat, grid, pol_mat; mask=oversized_mask)
+@test_throws DimensionMismatch build_Q_operator(
+    G_mat, grid, pol_mat; mask=oversized_mask)
+@test_throws DimensionMismatch apply_Q(
+    G_mat, grid, pol_mat, I_pec; mask=oversized_mask)
+@test_throws DimensionMismatch build_Q(
+    G_mat[1:(end - 1), :], grid, pol_mat; mask=mask)
+@test_throws DimensionMismatch build_Q(
+    G_mat, grid, pol_mat[:, 1:(end - 1)]; mask=mask)
+@test_throws DimensionMismatch apply_Q(
+    G_mat, grid, pol_mat, vcat(I_pec, 1.0 + 0im); mask=mask)
 
 # Q should be Hermitian PSD
 @assert norm(Q - Q') < 1e-12 * norm(Q)

@@ -56,6 +56,32 @@ end
 Base.size(Q::FarFieldQMatrix) = (Q.N, Q.N)
 Base.eltype(::FarFieldQMatrix) = ComplexF64
 
+function _validate_q_inputs(G_mat::Matrix{ComplexF64}, grid::SphGrid,
+                            pol::Matrix{ComplexF64}, mask)
+    NΩ = length(grid.w)
+    size(grid.rhat) == (3, NΩ) ||
+        throw(DimensionMismatch(
+            "grid.rhat has size $(size(grid.rhat)), expected (3, $NΩ)"))
+    length(grid.theta) == NΩ ||
+        throw(DimensionMismatch(
+            "grid.theta length $(length(grid.theta)) != $NΩ"))
+    length(grid.phi) == NΩ ||
+        throw(DimensionMismatch(
+            "grid.phi length $(length(grid.phi)) != $NΩ"))
+    size(G_mat, 1) == 3 * NΩ ||
+        throw(DimensionMismatch(
+            "G_mat has $(size(G_mat, 1)) rows, expected $(3 * NΩ)"))
+    size(pol) == (3, NΩ) ||
+        throw(DimensionMismatch(
+            "pol has size $(size(pol)), expected (3, $NΩ)"))
+    if mask !== nothing
+        length(mask) == NΩ ||
+            throw(DimensionMismatch(
+                "mask length $(length(mask)) != $NΩ"))
+    end
+    return NΩ, size(G_mat, 2)
+end
+
 function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
     1 <= m <= Q.N || throw(BoundsError(Q, (m, n)))
     1 <= n <= Q.N || throw(BoundsError(Q, (m, n)))
@@ -135,8 +161,7 @@ Returns Q ∈ C^{N×N}, Hermitian positive semidefinite.
 """
 function build_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
                  pol::Matrix{ComplexF64}; mask=nothing)
-    NΩ = length(grid.w)
-    N = size(G_mat, 2)
+    NΩ, N = _validate_q_inputs(G_mat, grid, pol, mask)
 
     # Compute scalar projections: y_q_n = p†(r̂_q) · g_n(r̂_q)
     # y is (NΩ, N)
@@ -179,13 +204,9 @@ Build a matrix-free far-field objective operator with the same action as
 """
 function build_Q_operator(G_mat::Matrix{ComplexF64}, grid::SphGrid,
                           pol::Matrix{ComplexF64}; mask=nothing)
-    NΩ = length(grid.w)
-    size(G_mat, 1) == 3 * NΩ ||
-        throw(DimensionMismatch("G_mat has $(size(G_mat, 1)) rows, expected $(3 * NΩ)"))
-    size(pol, 1) == 3 && size(pol, 2) == NΩ ||
-        throw(DimensionMismatch("pol must be 3 x $NΩ"))
+    _, N = _validate_q_inputs(G_mat, grid, pol, mask)
     mask_copy = mask === nothing ? nothing : BitVector(mask)
-    return FarFieldQMatrix(G_mat, copy(grid.w), pol, mask_copy, size(G_mat, 2))
+    return FarFieldQMatrix(G_mat, copy(grid.w), pol, mask_copy, N)
 end
 
 """
@@ -197,8 +218,10 @@ Returns Q*I ∈ C^N.
 function apply_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
                  pol::Matrix{ComplexF64}, I_coeffs::Vector{ComplexF64};
                  mask=nothing)
-    NΩ = length(grid.w)
-    N = size(G_mat, 2)
+    NΩ, N = _validate_q_inputs(G_mat, grid, pol, mask)
+    length(I_coeffs) == N ||
+        throw(DimensionMismatch(
+            "I_coeffs length $(length(I_coeffs)) != $N"))
 
     result = zeros(ComplexF64, N)
     for q in 1:NΩ

@@ -386,7 +386,7 @@ Build a matrix-free far-field objective operator with the same action as `build_
 
 **Returns:** `FarFieldQMatrix` (see below).
 
-**Validation:** The constructor checks that `G_mat` has `3*N_omega` rows and that `pol` is `3 x N_omega`, throwing a `DimensionMismatch` otherwise.
+**Validation:** `build_Q`, `apply_Q`, and `build_Q_operator` require consistent spherical-grid arrays, `3*N_omega` rows in `G_mat`, a `3 x N_omega` polarization matrix, and exactly `N_omega` mask entries. `apply_Q` also requires one current coefficient per column of `G_mat`. Shape mismatches throw `DimensionMismatch`.
 
 ---
 
