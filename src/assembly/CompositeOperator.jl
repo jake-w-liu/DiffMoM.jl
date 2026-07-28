@@ -98,6 +98,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
         return y
     end
+    _validate_impedance_coefficients(A.theta)
 
     mul!(y, A.Z_base, x, alpha_scale, beta_scale)
     @inbounds for p in eachindex(A.theta)
@@ -141,6 +142,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
         return y
     end
+    _validate_impedance_coefficients(A.parent.theta)
 
     mul!(y, adjoint(A.parent.Z_base), x, alpha_scale, beta_scale)
     @inbounds for p in eachindex(A.parent.theta)

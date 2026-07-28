@@ -112,6 +112,8 @@ function assemble_full_Z!(Z::Matrix{<:Number},
         coeff = reactive ? (1im * theta[p]) : theta[p]
         _add_scaled_matrix!(Z, -coeff, Mp[p])
     end
+    all(isfinite, Z) ||
+        error("full impedance-loaded system contains non-finite entries")
     return Z
 end
 

@@ -5,6 +5,15 @@
 
 export assemble_Z_impedance, precompute_patch_mass, assemble_dZ_dtheta
 
+@inline function _validate_impedance_coefficients(theta::AbstractVector)
+    @inbounds for p in eachindex(theta)
+        isfinite(theta[p]) ||
+            throw(ArgumentError(
+                "impedance coefficient theta[$p] must be finite, got $(theta[p])"))
+    end
+    return nothing
+end
+
 function _validate_mass_matrix_sizes(
     Mp::AbstractVector{<:AbstractMatrix},
     expected_size::Union{Nothing,Tuple{Int,Int}}=nothing,
@@ -39,6 +48,7 @@ function _validate_impedance_inputs(
     length(Mp) == length(theta) ||
         throw(DimensionMismatch(
             "Mp length $(length(Mp)) must match theta length $(length(theta))"))
+    _validate_impedance_coefficients(theta)
     return _validate_mass_matrix_sizes(Mp, expected_size)
 end
 
@@ -120,6 +130,8 @@ function assemble_Z_impedance(Mp::Vector{<:AbstractMatrix}, theta::AbstractVecto
     for p in eachindex(theta)
         _add_scaled_matrix!(Z_imp, -theta[p], Mp[p])
     end
+    all(isfinite, Z_imp) ||
+        error("impedance assembly produced non-finite matrix entries")
     return Z_imp
 end
 

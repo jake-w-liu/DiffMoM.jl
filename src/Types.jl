@@ -70,6 +70,9 @@ struct LocalMassMatrix{T<:Number} <: AbstractMatrix{T}
                 throw(ArgumentError("LocalMassMatrix row index $(rows[k]) at triplet $k is outside 1:$n"))
             1 <= cols[k] <= n ||
                 throw(ArgumentError("LocalMassMatrix column index $(cols[k]) at triplet $k is outside 1:$n"))
+            isfinite(vals[k]) ||
+                throw(ArgumentError(
+                    "LocalMassMatrix value at triplet $k must be finite, got $(vals[k])"))
         end
         return new{T}(n, rows, cols, vals)
     end

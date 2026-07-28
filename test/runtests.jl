@@ -693,6 +693,12 @@ undersized_mass = LocalMassMatrix(1, [1], [1], [1.0])
     Z_efie, [undersized_mass], [1.0])
 @test_throws DimensionMismatch assemble_full_Z!(
     zeros(ComplexF64, N + 1, N + 1), Z_efie, Mp, zeros(Float64, length(Mp)))
+@test_throws ArgumentError assemble_Z_impedance(
+    Mp, fill(Inf, length(Mp)))
+@test_throws ArgumentError assemble_full_Z(
+    Z_efie, Mp, fill(NaN, length(Mp)))
+@test_throws ArgumentError LocalMassMatrix(
+    1, [1], [1], [NaN])
 @test_throws ArgumentError gradient_impedance(
     Matrix{Float64}[], ComplexF64[], ComplexF64[])
 @test_throws DimensionMismatch gradient_impedance(
@@ -3935,6 +3941,8 @@ y_ref = Z_ref * x_test
 
 # Composite operator
 A_comp = ImpedanceLoadedOperator(Z_efie, Mp, theta_test, false)
+@test_throws ArgumentError ImpedanceLoadedOperator(
+    Z_efie, Mp, fill(Inf, length(theta_test)), false)
 @test_throws DimensionMismatch ImpedanceLoadedOperator(
     Z_efie, Mp, theta_test[1:(end - 1)], false)
 @test_throws DimensionMismatch ImpedanceLoadedOperator(
@@ -3944,6 +3952,11 @@ A_comp_resized = ImpedanceLoadedOperator(
 pop!(A_comp_resized.theta)
 @test_throws DimensionMismatch A_comp_resized * x_test
 @test_throws DimensionMismatch adjoint(A_comp_resized) * x_test
+A_comp_nonfinite = ImpedanceLoadedOperator(
+    Z_efie, Mp, copy(theta_test), false)
+A_comp_nonfinite.theta[1] = NaN
+@test_throws ArgumentError A_comp_nonfinite * x_test
+@test_throws ArgumentError adjoint(A_comp_nonfinite) * x_test
 y_comp = A_comp * x_test
 _assert_single_complex_output_allocation(A_comp, x_test)
 _assert_scaled_mul_contract(A_comp, x_test, reverse(x_test))
