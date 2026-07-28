@@ -786,6 +786,17 @@ E_ff_scaled_dir = incident_farfield(
     dipole_ff_validation, Vec3(0.0, 0.0, 1.0), 0.0)
 @test_throws ArgumentError incident_farfield(
     dipole_ff_validation, Vec3(0.0, 0.0, 1.0), Inf)
+@test_throws ArgumentError incident_farfield(
+    dipole_ff_validation, Vec3(0.0, 0.0, 1.0), 2 * k_ff_validation)
+dipole_ff_bad_frequency = DipoleExcitation(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    Inf,
+)
+@test_throws ArgumentError incident_farfield(
+    dipole_ff_bad_frequency, Vec3(0.0, 0.0, 1.0), k_ff_validation)
 
 # Compute far-field from PEC solution
 E_ff = compute_farfield(G_mat, I_pec, NΩ)
@@ -1639,6 +1650,8 @@ pol_exc = Vec3(1.0, 0.0, 0.0)
     mesh_exc, rwg_exc,
     make_plane_wave(k_vec_exc, 1.0, k_vec_exc);
     quad_order=3)
+@test_throws ArgumentError make_plane_wave(
+    k_vec_exc, 1.0, Vec3(2.0, 0.0, 0.0))
 
 v_old_exc = assemble_v_plane_wave(mesh_exc, rwg_exc, k_vec_exc, 1.0, pol_exc; quad_order=3)
 v_new_exc = assemble_excitation(mesh_exc, rwg_exc, make_plane_wave(k_vec_exc, 1.0, pol_exc); quad_order=3)
@@ -1694,6 +1707,8 @@ println("  Plane-wave vs explicit quadrature RHS rel. diff: $rel_rhs_manual_exc"
 
 gap_a = make_delta_gap(1, 1.0 + 0im, 1e-3)
 gap_b = make_delta_gap(1, 1.0 + 0im, 2e-3)
+@test_throws ArgumentError make_delta_gap(1, 1.0 + 0im, Inf)
+@test_throws ArgumentError make_delta_gap(1, Inf + 0im, 1e-3)
 v_gap_a = assemble_excitation(mesh_exc, rwg_exc, gap_a)
 v_gap_b = assemble_excitation(mesh_exc, rwg_exc, gap_b)
 ratio_gap = abs(v_gap_a[1]) / max(abs(v_gap_b[1]), 1e-30)
@@ -1706,13 +1721,15 @@ v_port = assemble_excitation(mesh_exc, rwg_exc, port_exc)
 @assert abs(v_port[1] - (2.0 / rwg_exc.len[1])) < 1e-14
 @assert abs(v_port[2] - (2.0 / rwg_exc.len[2])) < 1e-14
 @assert norm(v_port[3:end]) < 1e-14
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc, PortExcitation([1], Inf + 0im, 50.0 + 0im))
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc, PortExcitation([1], 1.0 + 0im, Inf + 0im))
 
-# Out-of-bounds port edges should be skipped gracefully
+# A partially invalid port definition must fail closed rather than silently
+# dropping intended driven edges.
 port_oob = PortExcitation([1, rwg_exc.nedges + 10], 1.0 + 0im, 50.0 + 0im)
-# Expected-by-design robustness behavior: out-of-range edges are warned and skipped.
-v_port_oob = @test_logs (:warn, r"Port edge .* is out of bounds .* Skipping") assemble_excitation(mesh_exc, rwg_exc, port_oob)
-@assert abs(v_port_oob[1] - (1.0 / rwg_exc.len[1])) < 1e-14
-@assert norm(v_port_oob[2:end]) < 1e-14
+@test_throws ArgumentError assemble_excitation(mesh_exc, rwg_exc, port_oob)
 
 thrown_multi = try
     bad_multi = make_multi_excitation([gap_a, gap_b], [1 + 0im])
@@ -1722,6 +1739,10 @@ catch
     true
 end
 @assert thrown_multi
+@test_throws ArgumentError make_multi_excitation(
+    typeof(gap_a)[], ComplexF64[])
+@test_throws ArgumentError make_multi_excitation(
+    [gap_a], ComplexF64[Inf + 0im])
 
 V_exc = assemble_multiple_excitations(mesh_exc, rwg_exc, [gap_a, make_plane_wave(k_vec_exc, 1.0, pol_exc)]; quad_order=3)
 @assert size(V_exc) == (rwg_exc.nedges, 2)
@@ -1770,6 +1791,8 @@ v_imp_Js = assemble_excitation(mesh_exc, rwg_exc, imp_etaJs; quad_order=3)
 rel_cur_js = norm(v_cur_Js - v_imp_Js) / max(norm(v_imp_Js), 1e-30)
 println("  ImportedExcitation(:surface_current_density) map rel. diff: $rel_cur_js")
 @assert rel_cur_js < 1e-13
+@test_throws ArgumentError make_imported_excitation(
+    Js_test; kind=:surface_current_density, eta_equiv=Inf + 0im)
 
 # Imported field can also be tuple/vector-like.
 imp_tuple = ImportedExcitation(r -> (r[1] + 0im, 0.0 + 0im, 0.0 + 0im); kind=:electric_field, min_quad_order=3)
@@ -1830,6 +1853,39 @@ end
 @assert !isdefined(DiffMoM, :CurrentDistributionExcitation)
 @assert !isdefined(DiffMoM, :ImportedFieldExcitation)
 @assert !isdefined(DiffMoM, :make_current_distribution)
+
+@test_throws ArgumentError make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    Inf,
+)
+@test_throws ArgumentError make_loop(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, 1.0),
+    -0.1,
+    1.0 + 0im,
+    freq_exc,
+)
+@test_throws ArgumentError make_monopole(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, 1.0),
+    0.1,
+    1.0 + 0im,
+    Inf,
+)
+pattern_guard_theta = [0.0, π]
+pattern_guard_phi = [0.0, π]
+pattern_guard_F = ones(ComplexF64, 2, 2)
+@test_throws ArgumentError make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_guard_F, Inf)
+pattern_guard_F_bad = copy(pattern_guard_F)
+pattern_guard_F_bad[1, 1] = Inf + 0im
+@test_throws ArgumentError make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F_bad, pattern_guard_F, freq_exc)
 
 m_mag = CVec3(0.0 + 0im, 0.0 + 0im, 1e-4 + 0im) # A·m²
 dip_mag = make_dipole(Vec3(0.0, 0.0, 0.0), m_mag, Vec3(0.0, 0.0, 1.0), :magnetic, freq_exc)

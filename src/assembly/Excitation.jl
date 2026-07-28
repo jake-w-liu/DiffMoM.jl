@@ -35,7 +35,11 @@ end
 
 Create a PlaneWaveExcitation.
 """
-make_plane_wave(k_vec, E0, pol) = PlaneWaveExcitation(k_vec, E0, pol)
+function make_plane_wave(k_vec, E0, pol)
+    excitation = PlaneWaveExcitation(k_vec, E0, pol)
+    _validate_plane_wave_excitation(excitation)
+    return excitation
+end
 
 """
     PortExcitation
@@ -118,13 +122,26 @@ struct MonopoleExcitation <: AbstractExcitation
                                   # false: physical wire only (for use with meshed ground)
     function MonopoleExcitation(pos, axis, height, amplitude, frequency;
                                 include_image::Bool = true)
+        position = Vec3(pos)
         axv = Vec3(axis)
         n = norm(axv)
-        n > 1e-12 || error("MonopoleExcitation: axis must be nonzero")
-        height > 0 || error("MonopoleExcitation: height must be positive, got $height")
-        frequency > 0 || error("MonopoleExcitation: frequency must be positive, got $frequency")
-        return new(Vec3(pos), axv / n, Float64(height),
-                   ComplexF64(amplitude), Float64(frequency), include_image)
+        height_f = Float64(height)
+        amplitude_c = ComplexF64(amplitude)
+        frequency_f = Float64(frequency)
+        all(isfinite, position) ||
+            throw(ArgumentError("MonopoleExcitation: position must be finite"))
+        (all(isfinite, axv) && isfinite(n) && n > 1e-12) ||
+            throw(ArgumentError("MonopoleExcitation: axis must be finite and nonzero"))
+        (isfinite(height_f) && height_f > 0.0) ||
+            throw(ArgumentError(
+                "MonopoleExcitation: height must be finite and positive, got $height"))
+        isfinite(amplitude_c) ||
+            throw(ArgumentError(
+                "MonopoleExcitation: amplitude must be finite, got $amplitude"))
+        (isfinite(frequency_f) && frequency_f > 0.0) ||
+            throw(ArgumentError(
+                "MonopoleExcitation: frequency must be finite and positive, got $frequency"))
+        return new(position, axv / n, height_f, amplitude_c, frequency_f, include_image)
     end
 end
 
@@ -151,7 +168,10 @@ struct ImportedExcitation{F<:Function} <: AbstractExcitation
         min_quad_order >= 1 || error("min_quad_order must be >= 1, got $min_quad_order.")
         kind in (:electric_field, :surface_current_density) ||
             error("Unsupported ImportedExcitation kind: $kind")
-        return new{F}(source_func, kind, ComplexF64(eta_equiv), Int(min_quad_order))
+        eta = ComplexF64(eta_equiv)
+        isfinite(eta) ||
+            throw(ArgumentError("eta_equiv must be finite, got $eta_equiv"))
+        return new{F}(source_func, kind, eta, Int(min_quad_order))
     end
 end
 
@@ -210,16 +230,30 @@ function make_multi_excitation(excitations, weights=nothing)
     if weights === nothing
         weights = ones(ComplexF64, length(excitations))
     end
-    if length(excitations) != length(weights)
-        error("MultiExcitation requires matching lengths: $(length(excitations)) excitations, $(length(weights)) weights.")
-    end
-    return MultiExcitation(excitations, weights)
+    excitation = MultiExcitation(excitations, weights)
+    _validate_excitation_model(excitation)
+    return excitation
 end
 
 # Helper functions
-make_delta_gap(edge, voltage, gap_length) = DeltaGapExcitation(edge, voltage, gap_length)
-make_dipole(position, moment, orientation, type, frequency=1e9) = DipoleExcitation(position, moment, orientation, type, frequency)
-make_loop(center, normal, radius, current, frequency=1e9) = LoopExcitation(center, normal, radius, current, frequency)
+function make_delta_gap(edge, voltage, gap_length)
+    excitation = DeltaGapExcitation(edge, voltage, gap_length)
+    _validate_excitation_model(excitation)
+    return excitation
+end
+
+function make_dipole(position, moment, orientation, type, frequency=1e9)
+    excitation = DipoleExcitation(position, moment, orientation, type, frequency)
+    _validate_excitation_model(excitation)
+    return excitation
+end
+
+function make_loop(center, normal, radius, current, frequency=1e9)
+    excitation = LoopExcitation(center, normal, radius, current, frequency)
+    _validate_excitation_model(excitation)
+    return excitation
+end
+
 make_monopole(position, axis, height, amplitude, frequency=1e9;
               include_image::Bool = true) =
     MonopoleExcitation(position, axis, height, amplitude, frequency;
@@ -235,8 +269,14 @@ function _validate_pattern_grid(theta::Vector{Float64}, phi::Vector{Float64})
     length(phi) ≥ 2 || error("Pattern feed requires at least 2 phi samples.")
     all(isfinite, theta) || error("Theta grid contains non-finite values.")
     all(isfinite, phi) || error("Phi grid contains non-finite values.")
-    all(diff(theta) .> 0) || error("Theta grid must be strictly increasing.")
-    all(diff(phi) .> 0) || error("Phi grid must be strictly increasing.")
+    @inbounds for i in 2:length(theta)
+        theta[i] > theta[i - 1] ||
+            error("Theta grid must be strictly increasing.")
+    end
+    @inbounds for i in 2:length(phi)
+        phi[i] > phi[i - 1] ||
+            error("Phi grid must be strictly increasing.")
+    end
 
     θtol = 1e-12
     if theta[1] < -θtol || theta[end] > π + θtol
@@ -289,14 +329,25 @@ function make_pattern_feed(theta::AbstractVector{<:Real},
     end
 
     _validate_pattern_grid(θ, ϕ)
-    frequency > 0 || error("Pattern feed frequency must be positive.")
+    (isfinite(frequency) && frequency > 0) ||
+        throw(ArgumentError(
+            "Pattern feed frequency must be finite and positive, got $frequency."))
+    all(isfinite, phase_center) ||
+        throw(ArgumentError("Pattern feed phase_center must be finite."))
     convention in (:exp_plus_iwt, :exp_minus_iwt) ||
         error("Unsupported pattern convention: $convention (expected :exp_plus_iwt or :exp_minus_iwt).")
 
     Fθ = _coerce_pattern_matrix(Ftheta, length(θ), length(ϕ), "Ftheta")
     Fϕ = _coerce_pattern_matrix(Fphi, length(θ), length(ϕ), "Fphi")
+    all(isfinite, Fθ) ||
+        throw(ArgumentError("Ftheta contains non-finite coefficients."))
+    all(isfinite, Fϕ) ||
+        throw(ArgumentError("Fphi contains non-finite coefficients."))
 
-    return PatternFeedExcitation(θ, ϕ, Fθ, Fϕ, Float64(frequency), phase_center, convention)
+    excitation = PatternFeedExcitation(
+        θ, ϕ, Fθ, Fϕ, Float64(frequency), phase_center, convention)
+    _validate_excitation_model(excitation)
+    return excitation
 end
 
 """
@@ -510,12 +561,167 @@ function _validate_plane_wave_excitation(pw::PlaneWaveExcitation)
     isfinite(pol_norm) && pol_norm > 0 ||
         throw(ArgumentError(
             "plane-wave polarization must have a finite, nonzero norm."))
+    isapprox(pol_norm, 1.0; rtol=1e-10, atol=1e-12) ||
+        throw(ArgumentError(
+            "plane-wave polarization must be a unit vector; norm=$pol_norm."))
 
     transverse_error = abs(dot(pw.k_vec / k_norm, pw.pol / pol_norm))
     transverse_error <= 1e-10 ||
         throw(ArgumentError(
             "plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error."))
     return k_norm
+end
+
+@inline function _validate_finite_vec3(value, label::AbstractString)
+    all(isfinite, value) ||
+        throw(ArgumentError("$label components must be finite."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::PlaneWaveExcitation)
+    _validate_plane_wave_excitation(excitation)
+    return nothing
+end
+
+function _validate_excitation_model(excitation::PortExcitation)
+    isempty(excitation.port_edges) &&
+        throw(ArgumentError("PortExcitation requires at least one port edge."))
+    @inbounds for i in eachindex(excitation.port_edges)
+        edge = excitation.port_edges[i]
+        edge >= 1 ||
+            throw(ArgumentError(
+                "PortExcitation edge $i must be positive, got $edge."))
+    end
+    isfinite(excitation.voltage) ||
+        throw(ArgumentError(
+            "PortExcitation voltage must be finite, got $(excitation.voltage)."))
+    isfinite(excitation.impedance) ||
+        throw(ArgumentError(
+            "PortExcitation impedance must be finite, got $(excitation.impedance)."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::DeltaGapExcitation)
+    excitation.edge >= 1 ||
+        throw(ArgumentError(
+            "DeltaGapExcitation edge must be positive, got $(excitation.edge)."))
+    isfinite(excitation.voltage) ||
+        throw(ArgumentError(
+            "DeltaGapExcitation voltage must be finite, got $(excitation.voltage)."))
+    (isfinite(excitation.gap_length) && excitation.gap_length > 0.0) ||
+        throw(ArgumentError(
+            "DeltaGapExcitation gap_length must be finite and positive, got $(excitation.gap_length)."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::DipoleExcitation)
+    _validate_finite_vec3(excitation.position, "DipoleExcitation position")
+    _validate_finite_vec3(excitation.moment, "DipoleExcitation moment")
+    _validate_finite_vec3(excitation.orientation, "DipoleExcitation orientation")
+    orientation_norm = norm(excitation.orientation)
+    (isfinite(orientation_norm) &&
+     isapprox(orientation_norm, 1.0; rtol=1e-10, atol=1e-12)) ||
+        throw(ArgumentError(
+            "DipoleExcitation orientation must be a unit vector; norm=$orientation_norm."))
+    excitation.type in (:electric, :magnetic) ||
+        throw(ArgumentError(
+            "DipoleExcitation type must be :electric or :magnetic, got $(excitation.type)."))
+    (isfinite(excitation.frequency) && excitation.frequency > 0.0) ||
+        throw(ArgumentError(
+            "DipoleExcitation frequency must be finite and positive, got $(excitation.frequency)."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::LoopExcitation)
+    _validate_finite_vec3(excitation.center, "LoopExcitation center")
+    _validate_finite_vec3(excitation.normal, "LoopExcitation normal")
+    normal_norm = norm(excitation.normal)
+    (isfinite(normal_norm) &&
+     isapprox(normal_norm, 1.0; rtol=1e-10, atol=1e-12)) ||
+        throw(ArgumentError(
+            "LoopExcitation normal must be a unit vector; norm=$normal_norm."))
+    (isfinite(excitation.radius) && excitation.radius > 0.0) ||
+        throw(ArgumentError(
+            "LoopExcitation radius must be finite and positive, got $(excitation.radius)."))
+    isfinite(excitation.current) ||
+        throw(ArgumentError(
+            "LoopExcitation current must be finite, got $(excitation.current)."))
+    (isfinite(excitation.frequency) && excitation.frequency > 0.0) ||
+        throw(ArgumentError(
+            "LoopExcitation frequency must be finite and positive, got $(excitation.frequency)."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::MonopoleExcitation)
+    _validate_finite_vec3(excitation.position, "MonopoleExcitation position")
+    _validate_finite_vec3(excitation.axis, "MonopoleExcitation axis")
+    isapprox(norm(excitation.axis), 1.0; rtol=1e-10, atol=1e-12) ||
+        throw(ArgumentError("MonopoleExcitation axis must be a unit vector."))
+    (isfinite(excitation.height) && excitation.height > 0.0) ||
+        throw(ArgumentError("MonopoleExcitation height must be finite and positive."))
+    isfinite(excitation.amplitude) ||
+        throw(ArgumentError("MonopoleExcitation amplitude must be finite."))
+    (isfinite(excitation.frequency) && excitation.frequency > 0.0) ||
+        throw(ArgumentError("MonopoleExcitation frequency must be finite and positive."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::ImportedExcitation)
+    isfinite(excitation.eta_equiv) ||
+        throw(ArgumentError(
+            "ImportedExcitation eta_equiv must be finite, got $(excitation.eta_equiv)."))
+    excitation.min_quad_order >= 1 ||
+        throw(ArgumentError(
+            "ImportedExcitation min_quad_order must be positive, got $(excitation.min_quad_order)."))
+    excitation.kind in (:electric_field, :surface_current_density) ||
+        throw(ArgumentError(
+            "Unsupported ImportedExcitation kind: $(excitation.kind)."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::PatternFeedExcitation)
+    _validate_pattern_grid(excitation.theta, excitation.phi)
+    expected_size = (length(excitation.theta), length(excitation.phi))
+    size(excitation.Ftheta) == expected_size ||
+        throw(DimensionMismatch(
+            "PatternFeedExcitation Ftheta has size $(size(excitation.Ftheta)), expected $expected_size."))
+    size(excitation.Fphi) == expected_size ||
+        throw(DimensionMismatch(
+            "PatternFeedExcitation Fphi has size $(size(excitation.Fphi)), expected $expected_size."))
+    all(isfinite, excitation.Ftheta) ||
+        throw(ArgumentError("PatternFeedExcitation Ftheta must be finite."))
+    all(isfinite, excitation.Fphi) ||
+        throw(ArgumentError("PatternFeedExcitation Fphi must be finite."))
+    (isfinite(excitation.frequency) && excitation.frequency > 0.0) ||
+        throw(ArgumentError(
+            "PatternFeedExcitation frequency must be finite and positive, got $(excitation.frequency)."))
+    _validate_finite_vec3(
+        excitation.phase_center, "PatternFeedExcitation phase_center")
+    excitation.convention in (:exp_plus_iwt, :exp_minus_iwt) ||
+        throw(ArgumentError(
+            "Unsupported pattern convention: $(excitation.convention)."))
+    return nothing
+end
+
+function _validate_excitation_model(excitation::MultiExcitation)
+    length(excitation.excitations) == length(excitation.weights) ||
+        throw(DimensionMismatch(
+            "MultiExcitation has $(length(excitation.excitations)) excitations " *
+            "but $(length(excitation.weights)) weights."))
+    isempty(excitation.excitations) &&
+        throw(ArgumentError("MultiExcitation requires at least one child excitation."))
+    @inbounds for i in eachindex(excitation.excitations)
+        isfinite(excitation.weights[i]) ||
+            throw(ArgumentError(
+                "MultiExcitation weight $i must be finite, got $(excitation.weights[i])."))
+        try
+            _validate_excitation_model(excitation.excitations[i])
+        catch err
+            throw(ArgumentError(
+                "MultiExcitation child $i failed validation: $(sprint(showerror, err))"))
+        end
+    end
+    return nothing
 end
 
 function _validate_plane_wave_wavenumber(pw::PlaneWaveExcitation,
@@ -781,34 +987,36 @@ function _validate_incident_electric_field_wavenumber(excitation::AbstractExcita
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::PlaneWaveExcitation, k)
+    _validate_excitation_model(excitation)
     return _check_incident_wavenumber_match(norm(excitation.k_vec), k, "PlaneWaveExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::DipoleExcitation, k)
-    excitation.frequency > 0 || error("Dipole frequency must be positive.")
+    _validate_excitation_model(excitation)
     k_model = 2π * excitation.frequency / _C0
     return _check_incident_wavenumber_match(k_model, k, "DipoleExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::LoopExcitation, k)
-    excitation.frequency > 0 || error("Loop frequency must be positive.")
+    _validate_excitation_model(excitation)
     k_model = 2π * excitation.frequency / _C0
     return _check_incident_wavenumber_match(k_model, k, "LoopExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::MonopoleExcitation, k)
-    excitation.frequency > 0 || error("Monopole frequency must be positive.")
+    _validate_excitation_model(excitation)
     k_model = 2π * excitation.frequency / _C0
     return _check_incident_wavenumber_match(k_model, k, "MonopoleExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::PatternFeedExcitation, k)
-    excitation.frequency > 0 || error("Pattern feed frequency must be positive.")
+    _validate_excitation_model(excitation)
     k_model = 2π * excitation.frequency / _C0
     return _check_incident_wavenumber_match(k_model, k, "PatternFeedExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::ImportedExcitation, k)
+    _validate_excitation_model(excitation)
     if excitation.kind == :electric_field
         return nothing
     end
@@ -833,8 +1041,7 @@ function _validate_incident_electric_field_wavenumber(excitation::DeltaGapExcita
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::MultiExcitation, k)
-    length(excitation.excitations) == length(excitation.weights) ||
-        error("compute_total_field: MultiExcitation has mismatched excitation/weight lengths.")
+    _validate_excitation_model(excitation)
     for (i, exc) in enumerate(excitation.excitations)
         try
             _validate_incident_electric_field_wavenumber(exc, k)
@@ -935,31 +1142,36 @@ function assemble_excitation(mesh::TriMesh, rwg::RWGData,
                              excitation::AbstractExcitation;
                              quad_order::Int=3,
                              quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
+    _validate_excitation_model(excitation)
     # Dispatch to specialized implementations. `quad_cache`, when provided,
     # lets the mesh quadrature be shared across many excitations (see
     # `assemble_multi`/`assemble_multiple_excitations`); the cache-free
     # quantities (delta gap, port) ignore it.
-    if excitation isa PlaneWaveExcitation
-        return assemble_plane_wave(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+    v = if excitation isa PlaneWaveExcitation
+        assemble_plane_wave(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa PortExcitation
-        return assemble_port(mesh, rwg, excitation)
+        assemble_port(mesh, rwg, excitation)
     elseif excitation isa DeltaGapExcitation
-        return assemble_delta_gap(mesh, rwg, excitation)
+        assemble_delta_gap(mesh, rwg, excitation)
     elseif excitation isa DipoleExcitation
-        return assemble_dipole(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+        assemble_dipole(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa LoopExcitation
-        return assemble_loop(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+        assemble_loop(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa MonopoleExcitation
-        return assemble_monopole(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+        assemble_monopole(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa ImportedExcitation
-        return assemble_imported_excitation(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+        assemble_imported_excitation(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa PatternFeedExcitation
-        return assemble_pattern_feed(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+        assemble_pattern_feed(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa MultiExcitation
-        return assemble_multi(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+        assemble_multi(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     else
         error("Unsupported excitation type: $(typeof(excitation))")
     end
+    all(isfinite, v) ||
+        error(
+            "Excitation assembly for $(typeof(excitation)) produced non-finite RHS values.")
+    return v
 end
 
 """
@@ -1018,15 +1230,16 @@ function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
 end
 
 function assemble_port(mesh::TriMesh, rwg::RWGData, port::PortExcitation)
+    @inbounds for e in port.port_edges
+        1 <= e <= rwg.nedges ||
+            throw(ArgumentError(
+                "PortExcitation edge $e is outside the valid RWG range 1:$(rwg.nedges)."))
+    end
     v = zeros(ComplexF64, rwg.nedges)
     # Simple delta-gap approximation across port edges
     for e in port.port_edges
-        if 1 <= e <= rwg.nedges
-            edge_len = rwg.len[e]
-            v[e] = port.voltage / edge_len  # Approximate as uniform field across edge
-        else
-            @warn "Port edge $e is out of bounds (1-$(rwg.nedges)). Skipping."
-        end
+        edge_len = rwg.len[e]
+        v[e] = port.voltage / edge_len  # Approximate as uniform field across edge
     end
     return v
 end
@@ -1152,6 +1365,8 @@ function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
                 else
                     imported.eta_equiv * src
                 end
+                Einc = _check_finite_cvec3(
+                    Einc, "ImportedExcitation mapped electric field")
                 v[n] += -wq[q] * dot(fn, Einc) * (2 * A)
             end
         end
@@ -1199,8 +1414,9 @@ function assemble_multi(mesh::TriMesh, rwg::RWGData,
     cache = quad_cache === nothing ? ExcitationQuadCache(mesh) : quad_cache
     v = zeros(ComplexF64, rwg.nedges)
     for (exc, w) in zip(multi.excitations, multi.weights)
-        v .+= w .* assemble_excitation(mesh, rwg, exc;
-                                       quad_order=quad_order, quad_cache=cache)
+        child = assemble_excitation(
+            mesh, rwg, exc; quad_order=quad_order, quad_cache=cache)
+        axpy!(w, child, v)
     end
     return v
 end

@@ -125,6 +125,53 @@ end
     return _validated_farfield_direction(r_hat), kf
 end
 
+@inline function _validate_incident_farfield_frequency(frequency::Float64,
+                                                       k::Float64,
+                                                       label::AbstractString)
+    (isfinite(frequency) && frequency > 0.0) ||
+        throw(ArgumentError(
+            "$label frequency must be finite and positive, got $frequency"))
+    expected_k = 2π * frequency / _C0
+    (isfinite(expected_k) &&
+     isapprox(k, expected_k; rtol=1e-8, atol=0.0)) ||
+        throw(ArgumentError(
+            "$label frequency implies wavenumber $expected_k, got $k"))
+    return nothing
+end
+
+@inline function _validate_incident_farfield_source(
+    excitation::Union{DipoleExcitation,LoopExcitation,MonopoleExcitation},
+    k::Float64,
+)
+    _validate_excitation_model(excitation)
+    _validate_incident_farfield_frequency(
+        excitation.frequency, k, _incident_farfield_source_label(excitation))
+    return nothing
+end
+
+@inline _incident_farfield_source_label(::DipoleExcitation) = "DipoleExcitation"
+@inline _incident_farfield_source_label(::LoopExcitation) = "LoopExcitation"
+@inline _incident_farfield_source_label(::MonopoleExcitation) = "MonopoleExcitation"
+
+@inline function _validate_incident_farfield_source(
+    excitation::PatternFeedExcitation,
+    k::Float64,
+)
+    # Keep the per-direction path O(1): construction and assembly perform the
+    # full coefficient-grid scan, while interpolation output is checked below.
+    (isfinite(excitation.frequency) && excitation.frequency > 0.0) ||
+        throw(ArgumentError(
+            "PatternFeedExcitation frequency must be finite and positive"))
+    all(isfinite, excitation.phase_center) ||
+        throw(ArgumentError("PatternFeedExcitation phase_center must be finite"))
+    excitation.convention in (:exp_plus_iwt, :exp_minus_iwt) ||
+        throw(ArgumentError(
+            "Unsupported pattern convention: $(excitation.convention)"))
+    _validate_incident_farfield_frequency(
+        excitation.frequency, k, "PatternFeedExcitation")
+    return nothing
+end
+
 """
     radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668)
 
@@ -269,6 +316,7 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
     # effect (cosθ < 0), and at the axial null (sinθ = 0).
     η0 = 376.730313668
     rh, kf = _validated_incident_farfield_args(r_hat, k)
+    _validate_incident_farfield_source(mono, kf)
     ax = mono.axis
     cosθ = clamp(dot(rh, ax), -1.0, 1.0)
 
@@ -299,7 +347,8 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
 
     Eθ_far = 1im * η0 * kf * sinθ / (4π) * integ
     phase = exp(1im * kf * dot(rh, Vec3(mono.position)))
-    return CVec3(Eθ_far * θ_hat) * phase
+    return _check_finite_cvec3(
+        CVec3(Eθ_far * θ_hat) * phase, "MonopoleExcitation far field")
 end
 
 function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
@@ -308,6 +357,7 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     #   Electric: E∞(r̂) = +k²/(4πε₀) · (r̂×p)×r̂ = +k²/(4πε₀) · perp(p)
     #   Magnetic: E∞(r̂) = +η₀·k²/(4π) · (m × r̂)   (real coeff, dual to electric)
     rh, kf = _validated_incident_farfield_args(r_hat, k)
+    _validate_incident_farfield_source(dipole, kf)
     ϵ0 = 8.854187817e-12; μ0 = 4π * 1e-7
     η0 = sqrt(μ0 / ϵ0)
     if dipole.type == :electric
@@ -319,16 +369,19 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
         error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
     end
     phase = exp(1im * kf * dot(rh, dipole.position))
-    return CVec3(E_far) * phase
+    return _check_finite_cvec3(
+        CVec3(E_far) * phase, "DipoleExcitation far field")
 end
 
 function incident_farfield(loop::LoopExcitation, r_hat::Vec3, k::Real)
     # A small circular current loop with current I and radius a radiates
     # in the far field as an equivalent magnetic dipole with moment
     # m = I·π·a²·n̂ placed at the loop centre.
+    _, kf = _validated_incident_farfield_args(r_hat, k)
+    _validate_incident_farfield_source(loop, kf)
     m = loop.current * π * loop.radius^2 * loop.normal
     dip = DipoleExcitation(loop.center, m, loop.normal, :magnetic, loop.frequency)
-    return incident_farfield(dip, r_hat, k)
+    return incident_farfield(dip, r_hat, kf)
 end
 
 function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
@@ -336,9 +389,8 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
     # E_inc(r·r̂) ~ (Fθ(θ,ϕ)·θ̂ + Fϕ(θ,ϕ)·ϕ̂) · exp(-ikR)/R
     # (with R = |r − phase_center|). At the far field, R ≈ r − r̂·pc,
     # so r·E·exp(+ikr) = E_far(r̂) · exp(+ik·r̂·phase_center).
-    (isfinite(pat.frequency) && pat.frequency > 0.0) ||
-        error("Pattern feed frequency must be finite and positive.")
     rh, kf = _validated_incident_farfield_args(r_hat, k)
+    _validate_incident_farfield_source(pat, kf)
 
     θ = acos(clamp(rh[3], -1.0, 1.0))
     ϕ = atan(rh[2], rh[1])
@@ -356,16 +408,22 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
 
     E_far = Fθ * eθ + Fϕ * eϕ
     phase = exp(1im * kf * dot(rh, pat.phase_center))
-    return CVec3(E_far) * phase
+    return _check_finite_cvec3(
+        CVec3(E_far) * phase, "PatternFeedExcitation far field")
 end
 
 function incident_farfield(multi::MultiExcitation, r_hat::Vec3, k::Real)
     _validated_incident_farfield_args(r_hat, k)
     length(multi.excitations) == length(multi.weights) ||
         error("MultiExcitation has mismatched excitation/weight lengths.")
+    isempty(multi.excitations) &&
+        throw(ArgumentError("MultiExcitation requires at least one child excitation."))
     E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    for (exc, w) in zip(multi.excitations, multi.weights)
+    for (i, (exc, w)) in enumerate(zip(multi.excitations, multi.weights))
+        isfinite(w) ||
+            throw(ArgumentError(
+                "MultiExcitation weight $i must be finite, got $w."))
         E = E + w * incident_farfield(exc, r_hat, k)
     end
-    return E
+    return _check_finite_cvec3(E, "MultiExcitation far field")
 end
