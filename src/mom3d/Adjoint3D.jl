@@ -6,12 +6,7 @@ function _coerce_adjoint_rhs_3d(grad_E, n::Int, label::AbstractString)
     if length(grad_E) == n
         return _flatten_fields_3d(grad_E, n, label)
     elseif length(grad_E) == 3n
-        out = ComplexF64.(collect(grad_E))
-        for v in out
-            isfinite(real(v)) && isfinite(imag(v)) ||
-                error("$label contains a non-finite component: $v.")
-        end
-        return out
+        return _copy_finite_complex_vector_3d(grad_E, 3n, label)
     else
         error("$label length ($(length(grad_E))) must be nvoxels ($n) or 3*nvoxels ($(3n)).")
     end

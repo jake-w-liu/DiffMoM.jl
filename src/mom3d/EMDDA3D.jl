@@ -102,13 +102,7 @@ function _coerce_mur_material_3d(mu_r, n::Int)
             error("mu_r length ($(length(mu_r))) must match nvoxels ($n).")
         first_mu = mu_r[1]
         if first_mu isa Number
-            muv = ComplexF64.(collect(mu_r))
-            for j in 1:n
-                muj = muv[j]
-                isfinite(real(muj)) && isfinite(imag(muj)) ||
-                    error("mu_r[$j] is not finite: $muj.")
-            end
-            return muv
+            return _copy_finite_complex_vector_3d(mu_r, n, "mu_r")
         elseif first_mu isa AbstractMatrix
             return [_as_cmat3(mu_r[j], "mu_r[$j]") for j in 1:n]
         elseif _is_diag_tensor_tuple(first_mu)

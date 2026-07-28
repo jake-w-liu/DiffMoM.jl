@@ -41,7 +41,7 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             grid.centers[1], grid.centers[2], Inf)
         @test_throws ArgumentError dda_operator_3d(grid, Inf, 2.5)
         @test_throws ArgumentError assemble_dda_3d(grid, Inf, 2.5)
-        @test_throws ErrorException dda_operator_3d(grid, k0, Inf)
+        @test_throws ArgumentError dda_operator_3d(grid, k0, Inf)
         @test_throws ArgumentError dda_operator_3d(
             grid, k0, (2.0, NaN, 2.0))
         @test_throws ArgumentError planewave_dda_3d(
@@ -138,6 +138,12 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             Base.summarysize(allocation_op.eps_r) +
             Base.summarysize(allocation_op.alpha)
         @test constructor_bytes <= stored_material_bytes + 4096
+
+        allocation_epsv = fill(2.5 + 0.1im, allocation_grid.nvoxels)
+        dda_operator_3d(allocation_grid, k0, allocation_epsv)
+        vector_constructor_bytes = @allocated dda_operator_3d(
+            allocation_grid, k0, allocation_epsv)
+        @test vector_constructor_bytes <= stored_material_bytes + 4096
 
         mul!(y, A_op, x)  # warm-up before allocation probe
         @test (@allocated mul!(y, A_op, x)) < 1024

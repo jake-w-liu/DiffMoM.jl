@@ -20,6 +20,9 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
             grid, Inf, 2.5, 1.2)
         @test_throws ArgumentError em_dda_operator_3d(
             grid, k0, 2.5, Inf)
+        @test_throws ArgumentError em_dda_operator_3d(
+            grid, k0, fill(2.5 + 0im, grid.nvoxels),
+            ComplexF64[1.2 + 0im, NaN + 0im])
         @test_throws ArgumentError bianisotropic_clausius_mossotti_polarizability(
             Matrix{ComplexF64}(I, 6, 6), grid.volumes[1];
             eta0=Inf)

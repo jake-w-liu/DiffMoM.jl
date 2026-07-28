@@ -230,6 +230,20 @@ end
     @test norm(y_mf - A_pm * x) / norm(A_pm * x) < 1e-13
 
     rhs0 = zeros(ComplexF64, 2N)
+    rhs_nonfinite = copy(rhs0)
+    rhs_nonfinite[1] = ComplexF64(NaN, 0.0)
+    @test_throws ArgumentError solve_dielectric_sie_3d(
+        mesh, rwg, k0, eps_in, rhs_nonfinite;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        quad_order=1,
+        singular_quad_order=3)
+    @test_throws DimensionMismatch solve_dielectric_sie_3d(
+        mesh, rwg, k0, eps_in, rhs0[1:(end - 1)];
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        quad_order=1,
+        singular_quad_order=3)
     res0 = solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, rhs0;
                                    mur_in=mu_in,
                                    formulation=:pmchwt,

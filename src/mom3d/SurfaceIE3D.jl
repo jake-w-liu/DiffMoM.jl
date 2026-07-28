@@ -848,7 +848,8 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  memory::Int=20,
                                  verbose::Bool=false,
                                  check_gmres_convergence::Bool=true)
-    rhsv = ComplexF64.(collect(rhs))
+    rhsv = _copy_finite_complex_vector_3d(
+        rhs, 2 * rwg.nedges, "rhs")
     if solver == :direct
         A, exterior, interior = _surface_sie_blocks_3d(
             mesh, rwg, k0, epsr_in, mur_in, epsr_ext, mur_ext;
@@ -859,8 +860,6 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             mesh_precheck=mesh_precheck,
             area_tol_rel=area_tol_rel,
         )
-        length(rhsv) == size(A, 1) ||
-            error("rhs length ($(length(rhsv))) must match dielectric SIE size ($(size(A, 1))).")
         fac = lu(A)
         x = fac \ rhsv
         J, M = _split_surface_currents_3d(x, rwg.nedges)
@@ -880,8 +879,6 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             mesh_precheck=mesh_precheck,
             area_tol_rel=area_tol_rel,
         )
-        length(rhsv) == size(A, 1) ||
-            error("rhs length ($(length(rhsv))) must match dielectric SIE size ($(size(A, 1))).")
         x, stats = solve_gmres(
             A, rhsv;
             memory=memory,

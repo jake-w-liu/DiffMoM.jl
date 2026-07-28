@@ -64,6 +64,31 @@ function _as_cvec3(v, label::AbstractString)
     return out
 end
 
+function _copy_finite_complex_vector_3d(
+    values,
+    expected_length::Int,
+    label::AbstractString,
+)
+    length(values) == expected_length ||
+        throw(DimensionMismatch(
+            "$label length ($(length(values))) must be $expected_length."))
+    out = Vector{ComplexF64}(undef, expected_length)
+    @inbounds for (j, value) in enumerate(values)
+        converted = try
+            ComplexF64(value)
+        catch err
+            err isa Union{InexactError,MethodError,OverflowError} || rethrow()
+            throw(ArgumentError(
+                "$label[$j] cannot be converted to ComplexF64."))
+        end
+        isfinite(converted) ||
+            throw(ArgumentError(
+                "$label[$j] must be finite, got $converted."))
+        out[j] = converted
+    end
+    return out
+end
+
 function _flatten_fields_3d(fields::AbstractVector, n::Int, label::AbstractString)
     length(fields) == n || error("$label length ($(length(fields))) must match nvoxels ($n).")
     out = Vector{ComplexF64}(undef, 3n)
@@ -87,18 +112,13 @@ end
 
 function _coerce_epsr_3d(eps_r, n::Int)
     if eps_r isa Number
-        epsv = fill(ComplexF64(eps_r), n)
+        epsc = ComplexF64(eps_r)
+        isfinite(epsc) ||
+            throw(ArgumentError("eps_r must be finite, got $eps_r."))
+        return fill(epsc, n)
     else
-        length(eps_r) == n ||
-            error("eps_r length ($(length(eps_r))) must match nvoxels ($n).")
-        epsv = ComplexF64.(collect(eps_r))
+        return _copy_finite_complex_vector_3d(eps_r, n, "eps_r")
     end
-    for j in 1:n
-        epsj = epsv[j]
-        isfinite(real(epsj)) && isfinite(imag(epsj)) ||
-            error("eps_r[$j] is not finite: $epsj.")
-    end
-    return epsv
 end
 
 function _as_cmat3(m, label::AbstractString)
