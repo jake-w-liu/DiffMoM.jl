@@ -1123,7 +1123,8 @@ end
 """
 Pre-allocated workspace for MLFMA `mul!`, eliminating per-call heap
 allocations. Created once by `build_mlfma_operator` and reused in every
-matvec.
+matvec. Forward and adjoint access is serialized so one operator can be
+shared safely across threads.
 """
 mutable struct MLFMAWorkspace
     # agg[idx][box] = (4, npts) buffer, idx = 1..nL-1 → octree level idx+1
@@ -1140,7 +1141,22 @@ mutable struct MLFMAWorkspace
     shifted_buf::Vector{Matrix{ComplexF64}}
     # Per-level-transition scratch: filter result (4, child_npts) for disaggregation
     filter_result::Vector{Matrix{ComplexF64}}
+    # Forward and adjoint matvecs reuse every buffer above.
+    work_lock::ReentrantLock
 end
+
+MLFMAWorkspace(
+    agg::Vector{Vector{Matrix{ComplexF64}}},
+    incoming::Vector{Vector{Matrix{ComplexF64}}},
+    agg_disagg_scratch::Vector{DisaggFilterScratch},
+    disagg_disagg_scratch::Vector{DisaggFilterScratch},
+    interp_result::Vector{Matrix{ComplexF64}},
+    shifted_buf::Vector{Matrix{ComplexF64}},
+    filter_result::Vector{Matrix{ComplexF64}},
+) = MLFMAWorkspace(
+    agg, incoming, agg_disagg_scratch, disagg_disagg_scratch,
+    interp_result, shifted_buf, filter_result, ReentrantLock(),
+)
 
 function _build_mlfma_workspace(octree::Octree,
                                  samplings::Vector{SphereSampling},
@@ -1454,7 +1470,7 @@ end
 
 # ─── Forward matvec ─────────────────────────────────────────────
 
-function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
+function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
                              x::AbstractVector)
     N = A.N
     nL = A.octree.nLevels
@@ -1613,6 +1629,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
     return y
 end
 
+function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
+                            x::AbstractVector)
+    work_lock = A.workspace.work_lock
+    lock(work_lock)
+    try
+        return _mlfma_forward_mul!(y, A, x)
+    finally
+        unlock(work_lock)
+    end
+end
+
 function Base.:*(A::MLFMAOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
     mul!(y, A, _complex_vector_input(x))
@@ -1621,7 +1648,7 @@ end
 
 # ─── Adjoint matvec ─────────────────────────────────────────────
 
-function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
+function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
                              x::AbstractVector)
     N = A.op.N
     nL = A.op.octree.nLevels
@@ -1771,6 +1798,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperat
     end
 
     return y
+end
+
+function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
+                            x::AbstractVector)
+    work_lock = A.op.workspace.work_lock
+    lock(work_lock)
+    try
+        return _mlfma_adjoint_mul!(y, A, x)
+    finally
+        unlock(work_lock)
+    end
 end
 
 function Base.:*(A::MLFMAAdjointOperator, x::AbstractVector)

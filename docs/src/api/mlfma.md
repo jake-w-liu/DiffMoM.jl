@@ -42,7 +42,7 @@ end
 
 ### `MLFMAOperator <: AbstractMatrix{ComplexF64}`
 
-Matrix-free operator that computes EFIE matrix-vector products using the MLFMA algorithm. Supports `size`, `eltype`, `mul!`, `*`, `adjoint`, and element access `A[i,j]` (falls back to `Z_near[i,j]`).
+Matrix-free operator that computes EFIE matrix-vector products using the MLFMA algorithm. Supports `size`, `eltype`, `mul!`, `*`, `adjoint`, and element access `A[i,j]` (falls back to `Z_near[i,j]`). Its preallocated workspace is lock-protected so the same operator can be shared safely across threads.
 
 ```julia
 struct MLFMAOperator <: AbstractMatrix{ComplexF64}
@@ -82,7 +82,7 @@ end
 | `agg_filters` | `Vector{Vector{Matrix{Float64}}}` | Per-level per-m θ filters for aggregation (child to parent), indexed `[level][m+1]`. |
 | `disagg_filters` | `Vector{Vector{Matrix{Float64}}}` | Per-level per-m θ filters for disaggregation (parent to child), indexed `[level][m+1]`. |
 | `N` | `Int` | Number of RWG unknowns. |
-| `workspace` | `MLFMAWorkspace` | *(internal)* Pre-allocated buffers reused by every `mul!` to avoid per-call heap allocation. |
+| `workspace` | `MLFMAWorkspace` | *(internal)* Pre-allocated buffers reused by every `mul!` to avoid per-call heap allocation; `workspace.work_lock` serializes forward and adjoint access. |
 
 **Supported operations:**
 

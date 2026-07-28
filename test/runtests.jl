@@ -3020,6 +3020,7 @@ println("  31b: PASS")
 # 31c: MLFMA matvec accuracy
 A_mlfma = build_mlfma_operator(mlfma_mesh, mlfma_rwg, mlfma_k;
     leaf_lambda=0.5, quad_order=3, verbose=false)
+@assert A_mlfma.workspace.work_lock isa ReentrantLock
 
 # Random test vector
 Random.seed!(42)
@@ -3042,6 +3043,10 @@ mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"
 println("  31d: PASS")
+_assert_shared_workspace_concurrency(
+    [A_mlfma, adjoint(A_mlfma), A_mlfma, adjoint(A_mlfma)],
+    [x_test, y_test, reverse(x_test), conj.(y_test)],
+)
 
 # 31e: MLFMA + GMRES convergence
 mlfma_exc = PlaneWaveExcitation(Vec3(0.0, 0.0, -mlfma_k), 1.0, Vec3(1.0, 0.0, 0.0))
