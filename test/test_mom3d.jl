@@ -15,6 +15,21 @@ println("\n── Test 46: 3D vector material DDA solver ──")
     @testset "Free-space limit" begin
         @test_throws ArgumentError VoxelGrid3D(
             (0.0, Inf), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+        @test_throws ArgumentError VoxelGrid3D(
+            Vec3[], Float64[], 0, 0, 1, 1,
+            1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+        @test_throws DimensionMismatch VoxelGrid3D(
+            [Vec3(0.5, 0.5, 0.5)], [1.0], 2, 1, 1, 1,
+            1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+        @test_throws ArgumentError VoxelGrid3D(
+            [Vec3(NaN, 0.5, 0.5)], [1.0], 1, 1, 1, 1,
+            1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+        @test_throws ArgumentError VoxelGrid3D(
+            [Vec3(0.5, 0.5, 0.5)], [2.0], 1, 1, 1, 1,
+            1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+        @test_throws ArgumentError VoxelGrid3D(
+            [Vec3(0.6, 0.5, 0.5)], [1.0], 1, 1, 1, 1,
+            1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
         @test_throws ArgumentError clausius_mossotti_polarizability(
             2.5, grid.volumes[1];

@@ -7,6 +7,16 @@
 export VoxelGrid3D, DDAOperator3D, DDAAdjointOperator3D, DDAResult3D
 export EMDDAOperator3D, EMDDAResult3D, make_voxel_grid_3d
 
+@inline function _checked_voxel_count_3d(nx::Int, ny::Int, nz::Int)
+    try
+        return Base.checked_mul(Base.checked_mul(nx, ny), nz)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "VoxelGrid3D dimensions overflow Int: nx=$nx, ny=$ny, nz=$nz."))
+    end
+end
+
 """
     VoxelGrid3D
 
@@ -27,6 +37,80 @@ struct VoxelGrid3D
     x0::Float64
     y0::Float64
     z0::Float64
+    function VoxelGrid3D(centers::Vector{Vec3},
+                         volumes::Vector{Float64},
+                         nvoxels::Int,
+                         nx::Int,
+                         ny::Int,
+                         nz::Int,
+                         dx::Float64,
+                         dy::Float64,
+                         dz::Float64,
+                         x0::Float64,
+                         y0::Float64,
+                         z0::Float64)
+        nx >= 1 && ny >= 1 && nz >= 1 ||
+            throw(ArgumentError(
+                "VoxelGrid3D requires nx, ny, nz >= 1."))
+        expected_nvoxels = _checked_voxel_count_3d(nx, ny, nz)
+        nvoxels == expected_nvoxels ||
+            throw(DimensionMismatch(
+                "VoxelGrid3D nvoxels=$nvoxels, expected nx*ny*nz=$expected_nvoxels."))
+        length(centers) == nvoxels ||
+            throw(DimensionMismatch(
+                "VoxelGrid3D has $(length(centers)) centers, expected $nvoxels."))
+        length(volumes) == nvoxels ||
+            throw(DimensionMismatch(
+                "VoxelGrid3D has $(length(volumes)) volumes, expected $nvoxels."))
+        all(isfinite, (dx, dy, dz)) &&
+            dx > 0.0 && dy > 0.0 && dz > 0.0 ||
+            throw(ArgumentError(
+                "VoxelGrid3D spacings must be finite and positive."))
+        all(isfinite, (x0, y0, z0)) ||
+            throw(ArgumentError(
+                "VoxelGrid3D origins must be finite."))
+
+        expected_volume = dx * dy * dz
+        isfinite(expected_volume) && expected_volume > 0.0 ||
+            throw(ArgumentError(
+                "VoxelGrid3D spacing product must be finite and positive."))
+        @inbounds for j in eachindex(centers, volumes)
+            all(isfinite, centers[j]) ||
+                throw(ArgumentError(
+                    "VoxelGrid3D center $j must be finite, got $(centers[j])."))
+            (isfinite(volumes[j]) && volumes[j] == expected_volume) ||
+                throw(ArgumentError(
+                    "VoxelGrid3D volume $j must equal dx*dy*dz=$expected_volume, got $(volumes[j])."))
+        end
+
+        index = 0
+        @inbounds for iz in 1:nz
+            expected_z = z0 + (iz - 0.5) * dz
+            for iy in 1:ny
+                expected_y = y0 + (iy - 0.5) * dy
+                for ix in 1:nx
+                    expected_x = x0 + (ix - 0.5) * dx
+                    index += 1
+                    center = centers[index]
+                    (isfinite(expected_x) &&
+                     isfinite(expected_y) &&
+                     isfinite(expected_z) &&
+                     isapprox(center[1], expected_x;
+                              rtol=8eps(Float64), atol=0.0) &&
+                     isapprox(center[2], expected_y;
+                              rtol=8eps(Float64), atol=0.0) &&
+                     isapprox(center[3], expected_z;
+                              rtol=8eps(Float64), atol=0.0)) ||
+                        throw(ArgumentError(
+                            "VoxelGrid3D center $index is inconsistent with the Cartesian grid."))
+                end
+            end
+        end
+
+        return new(
+            centers, volumes, nvoxels, nx, ny, nz,
+            dx, dy, dz, x0, y0, z0)
+    end
 end
 
 """
@@ -83,7 +167,7 @@ function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
     y2 > y1 || error("y_range must be increasing.")
     z2 > z1 || error("z_range must be increasing.")
 
-    nvoxels = Base.checked_mul(Base.checked_mul(nx, ny), nz)
+    nvoxels = _checked_voxel_count_3d(nx, ny, nz)
     dx = (x2 - x1) / nx
     dy = (y2 - y1) / ny
     dz = (z2 - z1) / nz
