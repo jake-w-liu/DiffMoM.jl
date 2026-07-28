@@ -278,7 +278,7 @@ end
                         rn = cache.quad_pts[tn][qn]
                         fn = fn_vals[qn]
 
-                        G = greens(rm, rn, cache.k)
+                        G = _greens_unchecked(rm, rn, cache.k)
 
                         vec_part = dot(fm, fn) * G
                         scl_part = dvmn_inv_k2 * G
@@ -341,7 +341,7 @@ Avoids calling eval_rwg in the hot inner loops.
             rn = quad_pts_tm_hi[qn]
             fn = fn_hi[qn]
 
-            Gs = greens_smooth(rm, rn, k)
+            Gs = _greens_smooth_unchecked(rm, rn, k)
             vec_part = dot(fm, fn) * Gs
             scl_part = dvmn_inv_k2 * Gs
             weight = wq_hi[qm] * wq_hi[qn] * (2 * Am) * (2 * Am)
@@ -355,7 +355,7 @@ Avoids calling eval_rwg in the hot inner loops.
         rm = quad_pts_tm_hi[qm]
         fm = fm_hi[qm]
 
-        S = analytical_integral_1overR(rm, V1, V2, V3)
+        S = _analytical_integral_1overR_unchecked(rm, V1, V2, V3)
         inner_scalar = inv4pi * S
 
         # Scalar potential singular part
@@ -423,7 +423,7 @@ Adjacent-cell contribution using precomputed high-order RWG values.
             rn = quad_pts_tn[qn]
             fn = fn_vals[qn]
 
-            Gs = greens_smooth(rm, rn, k)
+            Gs = _greens_smooth_unchecked(rm, rn, k)
             vec_part = dot(fm, fn) * Gs
             scl_part = dvmn_inv_k2 * Gs
             weight = wq[qm] * wq[qn] * (2 * Am) * (2 * An)
@@ -438,7 +438,7 @@ Adjacent-cell contribution using precomputed high-order RWG values.
         fm = fm_hi[qm]
 
         # Analytical inner integral: S = ∫_{T_n} 1/|rm - r'| dS'
-        S = analytical_integral_1overR(rm, V1n, V2n, V3n)
+        S = _analytical_integral_1overR_unchecked(rm, V1n, V2n, V3n)
         inner_scalar = inv4pi * S
 
         # Scalar potential singular part

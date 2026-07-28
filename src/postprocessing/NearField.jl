@@ -296,7 +296,8 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                 # −(r−r')/(4πR³), and ∇_r S is the analytical gradient of the
                 # 1/R potential integral.  This subtracts the 1/R² singularity
                 # that the old code integrated directly.
-                S = analytical_integral_1overR(robs, V1, V2, V3)
+                S = _analytical_integral_1overR_unchecked(
+                    robs, V1, V2, V3)
 
                 # In-plane projection r'_* of robs onto the triangle plane.
                 n_T = cross(V2 - V1, V3 - V1)
@@ -309,7 +310,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                 for q in 1:Nq
                     rq = quad_pts[t][q]
                     wt = wq[q] * (2 * At)
-                    Gs = greens_smooth(robs, rq, k)
+                    Gs = _greens_smooth_unchecked(robs, rq, k)
                     Jq = J_samples[q, t]
 
                     # Vector smooth part
@@ -330,7 +331,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
                     if abs(divt) > 0.0
                         # Scalar smooth part: ∇G_smooth = ∇G − ∇(1/4πR)
-                        gradG = grad_greens(robs, rq, k)
+                        gradG = _grad_greens_unchecked(robs, rq, k)
                         if R > 1e-14
                             inv4piR3 = inv4pi / (R * R * R)
                             gradG = gradG + Rv * inv4piR3   # subtract −(r−r')/(4πR³)
@@ -348,7 +349,8 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
                 # Scalar singular term: (1/4π) ∇_r S (analytical)
                 if abs(divt) > 0.0
-                    gradS = grad_analytical_integral_1overR(robs, V1, V2, V3)
+                    gradS = _grad_analytical_integral_1overR_unchecked(
+                        robs, V1, V2, V3)
                     cscl = pref_scl * divt * inv4pi
                     Ex += cscl * gradS[1]
                     Ey += cscl * gradS[2]
@@ -359,7 +361,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                 for q in 1:Nq
                     rq = quad_pts[t][q]
                     wt = wq[q] * (2 * At)
-                    G = greens(robs, rq, k)
+                    G = _greens_unchecked(robs, rq, k)
                     Jq = J_samples[q, t]
 
                     Ex += pref_vec * Jq[1] * (wt * G)
@@ -367,7 +369,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                     Ez += pref_vec * Jq[3] * (wt * G)
 
                     if abs(divt) > 0.0
-                        gradG = grad_greens(robs, rq, k)
+                        gradG = _grad_greens_unchecked(robs, rq, k)
                         Ex += pref_scl * divt * (wt * gradG[1])
                         Ey += pref_scl * divt * (wt * gradG[2])
                         Ez += pref_scl * divt * (wt * gradG[3])

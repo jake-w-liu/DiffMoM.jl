@@ -141,5 +141,13 @@ end
 Return ∂Z/∂θ_p = -M_p (exact, closed-form derivative).
 """
 function assemble_dZ_dtheta(Mp::Vector{<:AbstractMatrix}, p::Int)
-    return -Mp[p]
+    _validate_mass_matrix_sizes(Mp)
+    checkbounds(Bool, Mp, p) ||
+        throw(ArgumentError(
+            "patch index p=$p is outside 1:$(length(Mp))"))
+    _validate_known_matrix_entries(Mp[p], "Mp[$p]")
+    derivative = -Mp[p]
+    _validate_known_matrix_entries(
+        derivative, "impedance derivative for patch $p")
+    return derivative
 end

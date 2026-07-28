@@ -9,6 +9,35 @@
 export analytical_integral_1overR, grad_analytical_integral_1overR,
        self_cell_contribution, adjacent_cell_contribution
 
+@inline function _validate_static_triangle_integral_inputs(
+    P::Vec3,
+    V1::Vec3,
+    V2::Vec3,
+    V3::Vec3,
+)
+    all(isfinite, P) ||
+        throw(ArgumentError(
+            "static-integral observation point must be finite"))
+    all(isfinite, V1) && all(isfinite, V2) && all(isfinite, V3) ||
+        throw(ArgumentError(
+            "static-integral triangle vertices must be finite"))
+
+    edge1 = V2 - V1
+    edge2 = V3 - V1
+    scale1 = max(abs(edge1[1]), abs(edge1[2]), abs(edge1[3]))
+    scale2 = max(abs(edge2[1]), abs(edge2[2]), abs(edge2[3]))
+    (isfinite(scale1) && isfinite(scale2) &&
+     scale1 > 0.0 && scale2 > 0.0) ||
+        throw(ArgumentError(
+            "static-integral triangle must have finite nonzero edges"))
+    scaled_normal = cross(edge1 / scale1, edge2 / scale2)
+    normal_norm = norm(scaled_normal)
+    (isfinite(normal_norm) && normal_norm > 0.0) ||
+        throw(ArgumentError(
+            "static-integral triangle must be nondegenerate"))
+    return nothing
+end
+
 """
     analytical_integral_1overR(P, V1, V2, V3)
 
@@ -25,6 +54,20 @@ and all other quantities are in-plane projections relative to the projection
 of P onto the triangle plane.
 """
 function analytical_integral_1overR(P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
+    _validate_static_triangle_integral_inputs(P, V1, V2, V3)
+    value = _analytical_integral_1overR_unchecked(P, V1, V2, V3)
+    isfinite(value) ||
+        throw(OverflowError(
+            "analytical static triangle integral is non-finite"))
+    return value
+end
+
+function _analytical_integral_1overR_unchecked(
+    P::Vec3,
+    V1::Vec3,
+    V2::Vec3,
+    V3::Vec3,
+)
     n_T = cross(V2 - V1, V3 - V1)
     n_norm = norm(n_T)
     if n_norm < 1e-30
@@ -102,6 +145,20 @@ Returns an `SVector{3,Float64}`. This is the gradient counterpart of the scalar
 mixed-potential scalar term `∫_T ∇_r G dS'` near the surface.
 """
 function grad_analytical_integral_1overR(P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
+    _validate_static_triangle_integral_inputs(P, V1, V2, V3)
+    value = _grad_analytical_integral_1overR_unchecked(P, V1, V2, V3)
+    all(isfinite, value) ||
+        throw(OverflowError(
+            "analytical static triangle-integral gradient is non-finite"))
+    return value
+end
+
+function _grad_analytical_integral_1overR_unchecked(
+    P::Vec3,
+    V1::Vec3,
+    V2::Vec3,
+    V3::Vec3,
+)
     n_T = cross(V2 - V1, V3 - V1)
     n_norm = norm(n_T)
     if n_norm < 1e-30
@@ -200,7 +257,7 @@ function self_cell_contribution(
             rn = quad_pts_tm_hi[qn]
             fn = eval_rwg(rwg, n_src, rn, tm)
 
-            Gs = greens_smooth(rm, rn, k)
+            Gs = _greens_smooth_unchecked(rm, rn, k)
             vec_part = dot(fm, fn) * Gs
             scl_part = conj(div_m) * div_n * Gs / (k^2)
             weight = wq_hi[qm] * wq_hi[qn] * (2 * Am) * (2 * Am)
@@ -224,7 +281,7 @@ function self_cell_contribution(
         rm = quad_pts_tm_hi[qm]
         fm = eval_rwg(rwg, m_test, rm, tm)
 
-        S = analytical_integral_1overR(rm, V1, V2, V3)
+        S = _analytical_integral_1overR_unchecked(rm, V1, V2, V3)
         inner_scalar = inv4pi * S
 
         # Scalar potential singular part
@@ -323,7 +380,7 @@ function adjacent_cell_contribution(
             rn = quad_pts_tn[qn]
             fn = rwg_vals_n[qn]
 
-            Gs = greens_smooth(rm, rn, k)
+            Gs = _greens_smooth_unchecked(rm, rn, k)
             vec_part = dot(fm, fn) * Gs
             scl_part = conj(div_m) * div_n * Gs / (k^2)
             weight = wq[qm] * wq[qn] * (2 * Am) * (2 * An)
@@ -341,7 +398,7 @@ function adjacent_cell_contribution(
         fm = eval_rwg(rwg, m_test, rm, tm)
 
         # Analytical inner integral: S = ∫_{T_n} 1/|rm - r'| dS'
-        S = analytical_integral_1overR(rm, V1n, V2n, V3n)
+        S = _analytical_integral_1overR_unchecked(rm, V1n, V2n, V3n)
         inner_scalar = inv4pi * S
 
         # Scalar potential singular part (exact via analytical integral)

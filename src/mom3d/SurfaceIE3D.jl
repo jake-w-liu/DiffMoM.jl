@@ -295,7 +295,7 @@ end
         for qn in eachindex(wq)
             rn = pts[tn][qn]
             fn = eval_rwg(rwg, n, rn, tn)
-            kernel = cross(grad_greens(rm, rn, k), fn)
+            kernel = cross(_grad_greens_unchecked(rm, rn, k), fn)
             val += wq[qm] * wq[qn] * dot(fm, kernel) * (2 * Am) * (2 * An)
         end
     end

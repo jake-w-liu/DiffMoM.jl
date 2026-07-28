@@ -62,6 +62,26 @@ function _backscatter_rcs_allocation(E_ff, grid, k_inc_hat)
     return @allocated backscatter_rcs(E_ff, grid, k_inc_hat)
 end
 
+function _green_kernel_allocations(r, rp, k)
+    greens(r, rp, k)
+    greens_smooth(r, rp, k)
+    grad_greens(r, rp, k)
+    return (
+        @allocated(greens(r, rp, k)),
+        @allocated(greens_smooth(r, rp, k)),
+        @allocated(grad_greens(r, rp, k)),
+    )
+end
+
+function _static_integral_allocations(P, V1, V2, V3)
+    analytical_integral_1overR(P, V1, V2, V3)
+    grad_analytical_integral_1overR(P, V1, V2, V3)
+    return (
+        @allocated(analytical_integral_1overR(P, V1, V2, V3)),
+        @allocated(grad_analytical_integral_1overR(P, V1, V2, V3)),
+    )
+end
+
 function _bilinear_allocation(left, A, right)
     DiffMoM._dot_left_matrix_right(left, A, right)
     return @allocated DiffMoM._dot_left_matrix_right(left, A, right)
@@ -575,6 +595,12 @@ G_expected = exp(-1im * k0 * R) / (4π * R)
 
 # Check reciprocity: G(r,r') = G(r',r)
 @assert abs(greens(r1, r2, k0) - greens(r2, r1, k0)) < 1e-14
+@test_throws ArgumentError greens(r1, r2, NaN)
+@test_throws ArgumentError greens_smooth(
+    Vec3(NaN, 0.0, 0.0), r2, k0)
+@test_throws ArgumentError grad_greens(
+    r1, Vec3(Inf, 0.0, 0.0), k0)
+@test _green_kernel_allocations(r1, r2, k0) == (0, 0, 0)
 
 println("  PASS ✓")
 
@@ -753,6 +779,13 @@ partition = PatchPartition(collect(1:Nt), Nt)
 
 Mp = precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 @assert length(Mp) == Nt
+dZ_first = assemble_dZ_dtheta(Mp, 1)
+@test Matrix(dZ_first) == -Matrix(Mp[1])
+@test_throws ArgumentError assemble_dZ_dtheta(Mp, 0)
+@test_throws ArgumentError assemble_dZ_dtheta(
+    Matrix{Float64}[], 1)
+@test_throws ArgumentError assemble_dZ_dtheta(
+    [fill(NaN, N, N)], 1)
 
 # Invalid stored indices are rejected before the @inbounds numerical kernels
 # can observe them, and custom matrix dimensions follow AbstractArray rules.
@@ -3190,6 +3223,14 @@ centers_ct = rwg_centers(mesh, rwg)
 tree_ct = build_cluster_tree(centers_ct; leaf_size=8)
 @assert length(tree_ct.perm) == N
 @assert length(tree_ct.iperm) == N
+@test_throws ArgumentError build_cluster_tree(Vec3[])
+@test_throws ArgumentError build_cluster_tree(
+    [Vec3(NaN, 0.0, 0.0)])
+@test_throws ArgumentError build_cluster_tree(
+    [Vec3(-floatmax(Float64), 0.0, 0.0),
+     Vec3(floatmax(Float64), 0.0, 0.0)])
+@test_throws ArgumentError build_cluster_tree(
+    centers_ct; leaf_size=0)
 
 # perm and iperm should be inverses
 for i in 1:N
@@ -3215,6 +3256,10 @@ if length(leaves_ct) >= 2
     # Self-block is never admissible
     @assert !is_admissible(tree_ct, leaves_ct[1], leaves_ct[1])
 end
+@test_throws ArgumentError is_admissible(
+    tree_ct, 1, 1; eta=NaN)
+@test_throws ArgumentError is_admissible(
+    tree_ct, 1, 1; eta=0.0)
 
 println("  Tree: $(length(tree_ct.nodes)) nodes, $(length(leaves_ct)) leaves")
 println("  PASS ✓")
@@ -4983,6 +5028,29 @@ S_h10 = analytical_integral_1overR(P_cent + Vec3(0,0,1.0), V1, V2, V3)
 # Symmetry: integral should be the same for +h and -h
 S_neg_h = analytical_integral_1overR(P_cent - Vec3(0.0, 0.0, 0.5), V1, V2, V3)
 @assert abs(S_offplane - S_neg_h) < 1e-12 "Integral should be symmetric in h sign"
+
+# The exported gradient must agree with central differences of the scalar
+# closed form above and reject invalid geometry instead of returning zeros.
+grad_offplane = grad_analytical_integral_1overR(
+    P_offplane, V1, V2, V3)
+h_grad = 1e-6
+grad_offplane_fd = Vec3(ntuple(axis -> begin
+    displacement = Vec3(ntuple(
+        component -> component == axis ? h_grad : 0.0, 3))
+    (analytical_integral_1overR(
+         P_offplane + displacement, V1, V2, V3) -
+     analytical_integral_1overR(
+         P_offplane - displacement, V1, V2, V3)) / (2h_grad)
+end, 3))
+@test grad_offplane ≈ grad_offplane_fd rtol=1e-8 atol=1e-10
+@test_throws ArgumentError analytical_integral_1overR(
+    Vec3(NaN, 0.0, 0.0), V1, V2, V3)
+@test_throws ArgumentError analytical_integral_1overR(
+    P_offplane, V1, V1, V1)
+@test_throws ArgumentError grad_analytical_integral_1overR(
+    P_offplane, V1, V1, V1)
+@test _static_integral_allocations(
+    P_offplane, V1, V2, V3) == (0, 0)
 println("  Off-plane tests: PASS")
 println("  PASS ✓")
 

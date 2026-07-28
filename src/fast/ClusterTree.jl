@@ -50,8 +50,16 @@ bounding-box axis. `centers` is a `Vector{Vec3}` of point locations
 """
 function build_cluster_tree(centers::Vector{Vec3}; leaf_size::Int=64)
     N = length(centers)
-    N > 0 || error("build_cluster_tree: empty centers")
-    leaf_size >= 1 || error("build_cluster_tree: leaf_size must be >= 1")
+    N > 0 ||
+        throw(ArgumentError("build_cluster_tree: centers must not be empty"))
+    leaf_size >= 1 ||
+        throw(ArgumentError(
+            "build_cluster_tree: leaf_size must be at least 1, got $leaf_size"))
+    @inbounds for i in eachindex(centers)
+        all(isfinite, centers[i]) ||
+            throw(ArgumentError(
+                "build_cluster_tree: center $i must be finite, got $(centers[i])"))
+    end
 
     perm = collect(1:N)
     nodes = ClusterNode[]
@@ -66,6 +74,11 @@ function build_cluster_tree(centers::Vector{Vec3}; leaf_size::Int=64)
             bmax = Vec3(max(bmax[1], c[1]), max(bmax[2], c[2]), max(bmax[3], c[3]))
         end
 
+        span = bmax - bmin
+        all(isfinite, span) ||
+            throw(ArgumentError(
+                "build_cluster_tree: cluster coordinate extent is too large"))
+
         count = hi - lo + 1
         if count <= leaf_size
             push!(nodes, ClusterNode(lo:hi, bmin, bmax, 0, 0, level))
@@ -73,7 +86,6 @@ function build_cluster_tree(centers::Vector{Vec3}; leaf_size::Int=64)
         end
 
         # Split along longest axis
-        span = bmax - bmin
         axis = 1
         if span[2] > span[axis]
             axis = 2
@@ -117,6 +129,9 @@ Maximum dimension of the bounding box of cluster `node_idx`.
 function cluster_diameter(tree::ClusterTree, node_idx::Int)
     node = tree.nodes[node_idx]
     span = node.bbox_max - node.bbox_min
+    all(isfinite, span) && all(x -> x >= 0.0, span) ||
+        throw(ArgumentError(
+            "cluster $node_idx has invalid bounding-box extents"))
     return max(span[1], span[2], span[3])
 end
 
@@ -129,14 +144,19 @@ Returns 0 if the boxes overlap.
 function cluster_distance(tree::ClusterTree, i::Int, j::Int)
     ni = tree.nodes[i]
     nj = tree.nodes[j]
-    d2 = 0.0
-    for ax in 1:3
-        gap = max(ni.bbox_min[ax] - nj.bbox_max[ax],
-                  nj.bbox_min[ax] - ni.bbox_max[ax],
-                  0.0)
-        d2 += gap * gap
-    end
-    return sqrt(d2)
+    gap1 = max(ni.bbox_min[1] - nj.bbox_max[1],
+               nj.bbox_min[1] - ni.bbox_max[1], 0.0)
+    gap2 = max(ni.bbox_min[2] - nj.bbox_max[2],
+               nj.bbox_min[2] - ni.bbox_max[2], 0.0)
+    gap3 = max(ni.bbox_min[3] - nj.bbox_max[3],
+               nj.bbox_min[3] - ni.bbox_max[3], 0.0)
+    (isfinite(gap1) && isfinite(gap2) && isfinite(gap3)) ||
+        throw(OverflowError(
+            "cluster bounding-box separation is non-finite"))
+    distance = norm(Vec3(gap1, gap2, gap3))
+    isfinite(distance) ||
+        throw(OverflowError("cluster distance overflowed"))
+    return distance
 end
 
 """
@@ -148,6 +168,9 @@ Test the standard H-matrix admissibility condition:
 Returns `true` if the block (i, j) can be approximated as low-rank.
 """
 function is_admissible(tree::ClusterTree, i::Int, j::Int; eta::Float64=1.5)
+    (isfinite(eta) && eta > 0.0) ||
+        throw(ArgumentError(
+            "eta must be finite and positive, got $eta"))
     d = cluster_distance(tree, i, j)
     d <= 0.0 && return false  # overlapping or touching
     diam_min = min(cluster_diameter(tree, i), cluster_diameter(tree, j))

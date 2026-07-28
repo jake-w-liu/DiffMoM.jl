@@ -312,7 +312,8 @@ function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3
         val !== nothing && return val
         G_mat = Matrix{ComplexF64}(undef, Nq, Nq)
         @inbounds for qm in 1:Nq, qn in 1:Nq
-            G_mat[qm, qn] = greens(cache.quad_pts[tm][qm], cache.quad_pts[tn][qn], cache.k)
+            G_mat[qm, qn] = _greens_unchecked(
+                cache.quad_pts[tm][qm], cache.quad_pts[tn][qn], cache.k)
         end
         green_cache[(tm, tn)] = G_mat
         return G_mat
