@@ -1,10 +1,20 @@
 using Test
 if isdefined(Main, :DiffMoM)
-    using .DiffMoM
+using .DiffMoM
 else
     using DiffMoM
 end
 using LinearAlgebra
+
+function _complex_vector_allocation_2d(n::Int)
+    zeros(ComplexF64, n)
+    return @allocated zeros(ComplexF64, n)
+end
+
+function _complex_matrix_allocation_2d(m::Int, n::Int)
+    Matrix{ComplexF64}(undef, m, n)
+    return @allocated Matrix{ComplexF64}(undef, m, n)
+end
 
 @testset "2D TM MoM" begin
 
@@ -285,6 +295,22 @@ using LinearAlgebra
             vr, [mesh.centers[1]])
         @test_throws ArgumentError jacobian_scattered_field_2d(
             vr, [Vec2(NaN, 0.0)])
+
+        # Scattered-field evaluation streams Green-function values and should
+        # allocate only its returned vector. The Jacobian needs exactly its
+        # returned G_obs/J matrices plus one N×N sensitivity workspace.
+        scattered_field_2d(vr, r_obs)
+        jacobian_scattered_field_2d(vr, r_obs)
+        scattered_alloc = @allocated scattered_field_2d(vr, r_obs)
+        jacobian_alloc = @allocated jacobian_scattered_field_2d(vr, r_obs)
+        vector_output_alloc = _complex_vector_allocation_2d(length(r_obs))
+        rectangular_output_alloc =
+            _complex_matrix_allocation_2d(length(r_obs), mesh.ncells)
+        square_workspace_alloc =
+            _complex_matrix_allocation_2d(mesh.ncells, mesh.ncells)
+        @test scattered_alloc <= vector_output_alloc + 128
+        @test jacobian_alloc <=
+              2 * rectangular_output_alloc + square_workspace_alloc + 2048
 
         # Verify 5 random cells against finite differences
         delta = 1e-7

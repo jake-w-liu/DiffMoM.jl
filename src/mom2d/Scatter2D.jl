@@ -74,7 +74,6 @@ function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
     _validate_vie_result_2d(vr)
     _validate_observation_points_2d(
         r_obs, vr.mesh, "scattered_field_2d")
-    G_obs = _green_obs_matrix_unchecked(r_obs, vr.mesh, vr.k0)
     A = vr.mesh.cell_area
     k0sq = vr.k0^2
     N = vr.mesh.ncells
@@ -82,9 +81,13 @@ function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
 
     E_scat = zeros(ComplexF64, M)
     @inbounds for m in 1:M
+        field = zero(ComplexF64)
         for n in 1:N
-            E_scat[m] += k0sq * vr.chi[n] * vr.E_total[n] * G_obs[m, n] * A
+            field +=
+                k0sq * vr.chi[n] * vr.E_total[n] *
+                _greens_2d_unchecked(r_obs[m], vr.mesh.centers[n], vr.k0) * A
         end
+        E_scat[m] = field
     end
     all(isfinite, E_scat) ||
         error("scattered_field_2d produced non-finite field values.")
@@ -118,21 +121,24 @@ function jacobian_scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2
     # ∂E_scat(r_obs[m])/∂χ_p = k₀² A Σ_n G_obs[m,n] [δ_{np} E_p + χ_n k₀² E_p S[n,p]]
     #   = k₀² A E_p [G_obs[m,p] + k₀² Σ_n χ_n G_obs[m,n] S[n,p]]
 
-    # Precompute W = I + k₀² diag(χ) S  (N×N)
-    W = Matrix{ComplexF64}(undef, N, N)
+    # Transform S in place into W = I + k₀² diag(χ) S. S is not needed
+    # afterwards, so this avoids a second N×N complex matrix.
     @inbounds for p in 1:N
         for n in 1:N
-            W[n, p] = k0sq * vr.chi[n] * S[n, p]
+            S[n, p] *= k0sq * vr.chi[n]
         end
-        W[p, p] += 1.0
+        S[p, p] += 1.0
     end
 
-    # J = k₀² A × G_obs × W × diag(E)
+    # J = k₀² A × G_obs × W × diag(E). Multiply directly into J rather
+    # than materializing a separate G_obs*W matrix.
     J = Matrix{ComplexF64}(undef, M, N)
-    GW = G_obs * W  # M×N
+    mul!(J, G_obs, S)
+    prefactor = k0sq * A
     @inbounds for p in 1:N
+        column_scale = prefactor * vr.E_total[p]
         for m in 1:M
-            J[m, p] = k0sq * A * GW[m, p] * vr.E_total[p]
+            J[m, p] *= column_scale
         end
     end
 
