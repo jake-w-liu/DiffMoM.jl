@@ -292,13 +292,14 @@ One-call scattering solve that automatically selects the solver method, validate
 |---------|------|---------|-------------|
 | `gmres_tol` | `Float64` | `1e-6` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `300` | Maximum GMRES iterations. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject unconverged or non-finite GMRES results. |
 
 **NF preconditioner settings:**
 
 | Keyword | Type | Default | Description |
 |---------|------|---------|-------------|
 | `nf_cutoff_lambda` | `Float64` | `1.0` | Near-field cutoff in wavelengths. |
-| `preconditioner` | `Symbol` | `:auto` | `:auto` (LU for GMRES methods), `:lu`, `:diag`, or `:none`. |
+| `preconditioner` | `Symbol` | `:auto` | `:auto` (LU for dense/ACA, ILU for MLFMA), `:lu`, `:ilu` (MLFMA), `:diag`, or `:none`. |
 
 **ACA settings:**
 

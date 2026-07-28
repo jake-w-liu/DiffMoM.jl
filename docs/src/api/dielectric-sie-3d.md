@@ -339,7 +339,7 @@ Construct with `matrixfree_dielectric_sie_operator_3d`. For PMCHWT the weights a
 
 ## Solve
 
-### `solve_dielectric_sie_3d(mesh, rwg, k0, epsr_in, rhs; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, solver=:direct, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, tol=1e-8, maxiter=200, memory=20, verbose=false)`
+### `solve_dielectric_sie_3d(mesh, rwg, k0, epsr_in, rhs; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, solver=:direct, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve a closed-surface PMCHWT/Müller dielectric SIE system and return the split surface currents plus solver metadata. The `rhs` argument may be either a length-`2N` vector or a `PlaneWaveExcitation`; in the latter case the RHS is assembled internally via `assemble_dielectric_sie_rhs_3d` for the given formulation (with the exterior/interior media built from the supplied parameters).
 
@@ -368,6 +368,7 @@ With `solver=:direct` the dense `2N x 2N` matrix is assembled and LU-factorized.
 | `maxiter` | `Int` | `200` | GMRES maximum iterations (`itmax`); used only for `solver=:gmres`. |
 | `memory` | `Int` | `20` | GMRES restart memory; used only for `solver=:gmres`. |
 | `verbose` | `Bool` | `false` | If `true`, print GMRES progress; used only for `solver=:gmres`. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES result instead of returning partial surface currents. |
 
 **Returns:** `DielectricSIEResult3D` with the solved currents `J`, `M` and solver metadata.
 

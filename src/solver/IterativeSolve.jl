@@ -29,6 +29,29 @@ function _assert_gmres_converged(stats, label::AbstractString; tol::Float64, max
           "final_residual=$resid, tol=$tol, maxiter=$maxiter")
 end
 
+function _assert_gmres_result(x::AbstractVector, stats, label::AbstractString;
+                              tol::Float64, maxiter::Int)
+    _assert_gmres_converged(stats, label; tol=tol, maxiter=maxiter)
+    @inbounds for i in eachindex(x)
+        isfinite(x[i]) ||
+            error("$label GMRES returned a non-finite solution component at index $i: $(x[i])")
+    end
+    return stats
+end
+
+@inline function _validate_gmres_options(tol::Float64, maxiter::Int,
+                                         memory::Int, precond_side::Symbol)
+    (isfinite(tol) && tol > 0.0) ||
+        throw(ArgumentError("GMRES tol must be finite and positive, got $tol"))
+    maxiter >= 1 ||
+        throw(ArgumentError("GMRES maxiter must be at least 1, got $maxiter"))
+    memory >= 1 ||
+        throw(ArgumentError("GMRES memory must be at least 1, got $memory"))
+    precond_side in (:left, :right) ||
+        throw(ArgumentError("Invalid precond_side: $precond_side (expected :left or :right)"))
+    return nothing
+end
+
 function _assert_true_residual(A::AbstractMatrix, x::AbstractVector, rhs::AbstractVector,
                                label::AbstractString;
                                tol::Float64,
@@ -43,7 +66,9 @@ function _assert_true_residual(A::AbstractMatrix, x::AbstractVector, rhs::Abstra
 end
 
 """
-    solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, verbose=false)
+    solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8,
+                maxiter=200, memory=20, verbose=false,
+                check_gmres_convergence=true)
 
 Solve Z x = rhs using GMRES from Krylov.jl.
 
@@ -52,6 +77,9 @@ If `preconditioner` is an `AbstractPreconditionerData`, it is applied via:
 - `precond_side=:right`: right preconditioner N in Krylov.gmres
 
 Returns `(x, stats)` where `stats` is the Krylov.jl convergence info.
+By default, an unconverged or non-finite result throws. Set
+`check_gmres_convergence=false` only when intentionally inspecting a partial
+iterate and its `stats`.
 """
 function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
@@ -59,7 +87,9 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      tol::Float64=1e-8,
                      maxiter::Int=200,
                      memory::Int=20,
-                     verbose::Bool=false)
+                     verbose::Bool=false,
+                     check_gmres_convergence::Bool=true)
+    _validate_gmres_options(tol, maxiter, memory, precond_side)
     rhs_c = _as_complex_rhs(rhs)
 
     if preconditioner === nothing
@@ -84,21 +114,26 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
-    else
-        error("Invalid precond_side: $precond_side (expected :left or :right)")
     end
+    check_gmres_convergence &&
+        _assert_gmres_result(x, stats, "forward";
+                             tol=tol, maxiter=maxiter)
     return x, stats
 end
 
 """
-    solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, verbose=false)
+    solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left,
+                        tol=1e-8, maxiter=200, memory=20, verbose=false,
+                        check_gmres_convergence=true)
 
 Solve Z† x = rhs using GMRES, with the adjoint preconditioner Z_nf⁻ᴴ.
 
 This is used for the adjoint linear system in sensitivity analysis:
   Z†(θ) λ = ∂Φ/∂I*
 
-Returns `(x, stats)`.
+Returns `(x, stats)`. By default, an unconverged or non-finite result throws.
+Set `check_gmres_convergence=false` only when intentionally inspecting a
+partial iterate and its `stats`.
 """
 function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                               preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
@@ -106,7 +141,9 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                               tol::Float64=1e-8,
                               maxiter::Int=200,
                               memory::Int=20,
-                              verbose::Bool=false)
+                              verbose::Bool=false,
+                              check_gmres_convergence::Bool=true)
+    _validate_gmres_options(tol, maxiter, memory, precond_side)
     rhs_c = _as_complex_rhs(rhs)
 
     if preconditioner === nothing
@@ -131,8 +168,9 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
-    else
-        error("Invalid precond_side: $precond_side (expected :left or :right)")
     end
+    check_gmres_convergence &&
+        _assert_gmres_result(x, stats, "adjoint";
+                             tol=tol, maxiter=maxiter)
     return x, stats
 end

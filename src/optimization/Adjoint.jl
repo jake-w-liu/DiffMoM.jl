@@ -46,10 +46,8 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                                         preconditioner=preconditioner,
                                         precond_side=gmres_precond_side,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
-                                        memory=gmres_memory)
-        check_gmres_convergence &&
-            _assert_gmres_converged(stats, "adjoint";
-                                    tol=gmres_tol, maxiter=gmres_maxiter)
+                                        memory=gmres_memory,
+                                        check_gmres_convergence=check_gmres_convergence)
         check_true_residual &&
             _assert_true_residual(adjoint(Z), x, rhs, "adjoint";
                                   tol=gmres_tol,
@@ -86,10 +84,8 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                                         preconditioner=preconditioner,
                                         precond_side=gmres_precond_side,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
-                                        memory=gmres_memory)
-        check_gmres_convergence &&
-            _assert_gmres_converged(stats, "adjoint";
-                                    tol=gmres_tol, maxiter=gmres_maxiter)
+                                        memory=gmres_memory,
+                                        check_gmres_convergence=check_gmres_convergence)
         check_true_residual &&
             _assert_true_residual(adjoint(Z), x, rhs, "adjoint";
                                   tol=gmres_tol,

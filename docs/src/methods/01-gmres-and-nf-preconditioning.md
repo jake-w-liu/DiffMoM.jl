@@ -526,7 +526,7 @@ The near-field preconditioner works with any system matrix that supports element
 
 ### 7.4 Convergence Monitoring
 
-After a GMRES solve, inspect the convergence statistics:
+Successful calls return convergence statistics:
 
 ```julia
 I, stats = solve_gmres(Z, v; preconditioner=P_nf)
@@ -535,6 +535,12 @@ println("Converged: ", stats.solved)
 println("Iterations: ", stats.niter)
 println("Final residual: ", stats.residuals[end])
 ```
+
+The public `solve_gmres` and `solve_gmres_adjoint` entry points fail closed by
+default when `stats.solved` is false or the returned vector is non-finite. To
+inspect an unconverged partial iterate, pass
+`check_gmres_convergence=false` explicitly and then check `stats.solved`,
+`stats.status`, and `stats.residuals`.
 
 If `stats.niter` equals `maxiter` and the residual is above tolerance, the solver has **stagnated**. Common remedies:
 

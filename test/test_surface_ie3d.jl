@@ -167,13 +167,37 @@ end
                                         solver=:gmres,
                                         quad_order=1,
                                         singular_quad_order=3,
-                                        tol=1e-12,
+                                        tol=1e-10,
                                         maxiter=50)
     x_direct = vcat(res_direct.J, res_direct.M)
     x_gmres = vcat(res_gmres.J, res_gmres.M)
     @test res_gmres.A isa MatrixFreeDielectricSIE3D
     @test res_gmres.A_LU === nothing
     @test norm(x_gmres - x_direct) / max(norm(x_direct), eps()) < 1e-9
+    @test_throws ErrorException solve_dielectric_sie_3d(
+        mesh, rwg, k0, eps_in, rhs;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        solver=:gmres,
+        quad_order=1,
+        singular_quad_order=3,
+        tol=1e-14,
+        maxiter=1,
+        memory=1,
+    )
+    res_sie_partial = solve_dielectric_sie_3d(
+        mesh, rwg, k0, eps_in, rhs;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        solver=:gmres,
+        quad_order=1,
+        singular_quad_order=3,
+        tol=1e-14,
+        maxiter=1,
+        memory=1,
+        check_gmres_convergence=false,
+    )
+    @test !res_sie_partial.stats.solved
 
     pw = make_plane_wave(Vec3(0.0, 0.0, k0), 1.0, Vec3(1.0, 0.0, 0.0))
     res_pw = solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, pw;

@@ -246,6 +246,11 @@ modes are available:
 | `:direct` | dense `3N x 3N` via `assemble_dda_3d` + LU | $O(N^2)$ storage, $O(N^3)$ factor | tiny grids; reusing the LU for the adjoint |
 | `:gmres` | matrix-free `DDAOperator3D` | $O(N^2)$/matvec, near-zero alloc | any non-tiny grid |
 
+The iterative path validates its tolerance, iteration limit, and restart
+memory. It also rejects unconverged or non-finite fields by default. Set
+`check_gmres_convergence=false` only when deliberately retrieving a partial
+iterate for solver diagnostics.
+
 For larger grids, build `fft_dda_operator_3d(grid, k0, eps_r)` and drive it with
 a Krylov solver directly: on a uniform grid the dipole-interaction matrix is
 block-Toeplitz, so the dense all-pairs sum becomes a zero-padded convolution

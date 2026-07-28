@@ -49,6 +49,17 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
     lambda_gmres = solve_dda_adjoint_3d(res, weights .* E;
                                         solver=:gmres, tol=1e-12, maxiter=50)
     @test norm(lambda_gmres - lambda) / norm(lambda) < 1e-6
+
+    @test_throws ErrorException solve_dda_adjoint_3d(
+        res, weights .* E;
+        solver=:gmres, tol=1e-14, maxiter=1, memory=1,
+    )
+    lambda_partial = solve_dda_adjoint_3d(
+        res, weights .* E;
+        solver=:gmres, tol=1e-14, maxiter=1, memory=1,
+        check_gmres_convergence=false,
+    )
+    @test length(lambda_partial) == length(lambda)
 end
 
 println("  PASS")

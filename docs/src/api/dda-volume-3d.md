@@ -372,7 +372,7 @@ be `<= 1e-10`, else an error is raised).
 
 ---
 
-### `solve_dda_3d(grid, k0, eps_r, E_inc; radiative_correction=false, solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false)`
+### `solve_dda_3d(grid, k0, eps_r, E_inc; radiative_correction=false, solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the 3D vector electric material scattering problem for the total electric
 field at voxel centers.
@@ -391,6 +391,7 @@ field at voxel centers.
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
 | `verbose` | `Bool` | `false` | Print GMRES progress. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES result instead of returning a partial field. |
 
 **Returns:** `DDAResult3D`.
 
@@ -635,7 +636,7 @@ voxel centers, with `H = k_hat x E / eta0`.
 
 ---
 
-### `solve_em_dda_3d(grid, k0, eps_r, mu_r, E_inc, H_inc; radiative_correction=false, solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false)`
+### `solve_em_dda_3d(grid, k0, eps_r, mu_r, E_inc, H_inc; radiative_correction=false, solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the coupled electric-magnetic volume DDA for magnetodielectric voxels.
 Additional methods accept explicit per-voxel `6x6` polarizabilities
@@ -658,6 +659,7 @@ Additional methods accept explicit per-voxel `6x6` polarizabilities
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
 | `verbose` | `Bool` | `false` | Print GMRES progress. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite `:gmres`/`:fft_gmres` result. |
 
 **Returns:** `EMDDAResult3D`.
 
@@ -899,7 +901,7 @@ These functions provide material design sensitivities for the electric DDA path
 via the adjoint method, mirroring the surface-EFIE adjoint workflow in
 [adjoint-optimize.md](adjoint-optimize.md).
 
-### `solve_dda_adjoint_3d(result, grad_E_flat; solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false)`
+### `solve_dda_adjoint_3d(result, grad_E_flat; solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the 3D DDA adjoint system `A' * lambda = grad_E_flat` for an existing
 `DDAResult3D`. For an objective `J = real(E' * Q * E)`, pass
@@ -918,6 +920,7 @@ factorization from the forward solve (O(N^2) per call) when available.
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
 | `verbose` | `Bool` | `false` | Print GMRES progress. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES adjoint. |
 
 **Returns:** `Vector{ComplexF64}` adjoint variable `lambda` of length `3*nvoxels`.
 

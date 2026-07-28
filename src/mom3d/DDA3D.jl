@@ -452,7 +452,8 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
                       tol::Float64=1e-8,
                       maxiter::Int=200,
                       memory::Int=20,
-                      verbose::Bool=false)
+                      verbose::Bool=false,
+                      check_gmres_convergence::Bool=true)
     rhs = _flatten_fields_3d(E_inc, grid.nvoxels, "E_inc")
 
     if solver == :direct
@@ -471,12 +472,14 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
             grid, k0, eps_r;
             radiative_correction=radiative_correction,
         )
-        E_total_flat, stats = Krylov.gmres(A, rhs;
-                                           memory=memory,
-                                           rtol=tol,
-                                           atol=0.0,
-                                           itmax=maxiter,
-                                           verbose=(verbose ? 1 : 0))
+        E_total_flat, stats = solve_gmres(
+            A, rhs;
+            memory=memory,
+            tol=tol,
+            maxiter=maxiter,
+            verbose=verbose,
+            check_gmres_convergence=check_gmres_convergence,
+        )
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),
                            A.eps_r, A.alpha, A, nothing, :gmres, stats,

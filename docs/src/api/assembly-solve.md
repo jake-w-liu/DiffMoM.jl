@@ -392,7 +392,7 @@ General linear solve `Z * x = rhs` with the same solver dispatch as `solve_forwa
 
 These are the low-level GMRES interfaces using Krylov.jl. Most users should use `solve_forward(...; solver=:gmres)` instead, which wraps these.
 
-### `solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, verbose=false)`
+### `solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field preconditioning.
 
@@ -408,16 +408,18 @@ Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field precond
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart length (number of Krylov vectors stored). Larger values may improve convergence for difficult problems at the cost of O(N * memory) storage. |
 | `verbose` | `Bool` | `false` | Print convergence info. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite result. Set to `false` only to inspect a partial iterate and its stats. |
 
-**Returns:** Tuple `(x, stats)` where `x` is the solution and `stats` is the Krylov.jl convergence info. Access iteration count with `stats.niter`.
+**Returns:** Tuple `(x, stats)` where `x` is the verified solution and `stats` is the Krylov.jl convergence info. Access iteration count with `stats.niter`.
 
 ---
 
-### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, verbose=false)`
+### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the adjoint system `Z' * x = rhs` using GMRES with the adjoint preconditioner `Z_nf^{-H}` (inverse conjugate transpose of the near-field matrix). Used internally by `solve_adjoint` for sensitivity analysis.
 
-**Parameters:** Same as `solve_gmres` (including `memory`, GMRES restart length, default `20`).
+**Parameters:** Same as `solve_gmres`, including the default fail-closed
+`check_gmres_convergence=true` behavior.
 
 **Returns:** Tuple `(x, stats)`.
 

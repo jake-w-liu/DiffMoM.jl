@@ -40,10 +40,8 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                                 precond_side=gmres_precond_side,
                                 tol=gmres_tol, maxiter=gmres_maxiter,
                                 memory=gmres_memory,
-                                verbose=verbose_gmres)
-        check_gmres_convergence &&
-            _assert_gmres_converged(stats, "forward";
-                                    tol=gmres_tol, maxiter=gmres_maxiter)
+                                verbose=verbose_gmres,
+                                check_gmres_convergence=check_gmres_convergence)
         check_true_residual &&
             _assert_true_residual(Z, x, v, "forward";
                                   tol=gmres_tol,

@@ -186,6 +186,17 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test res_gmres.A isa EMDDAOperator3D
         @test res_gmres.A_LU === nothing
         @test res_gmres.solver == :gmres
+
+        @test_throws ErrorException solve_em_dda_3d(
+            grid, k0, 2.3 + 0.02im, 1.5 + 0.01im, E_inc, H_inc;
+            solver=:gmres, tol=1e-14, maxiter=1, memory=1,
+        )
+        res_partial = solve_em_dda_3d(
+            grid, k0, 2.3 + 0.02im, 1.5 + 0.01im, E_inc, H_inc;
+            solver=:gmres, tol=1e-14, maxiter=1, memory=1,
+            check_gmres_convergence=false,
+        )
+        @test !res_partial.stats.solved
     end
 
     @testset "Magnetic coupling obeys radiation condition (regression)" begin

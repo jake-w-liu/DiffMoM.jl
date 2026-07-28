@@ -722,7 +722,8 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  tol::Float64=1e-8,
                                  maxiter::Int=200,
                                  memory::Int=20,
-                                 verbose::Bool=false)
+                                 verbose::Bool=false,
+                                 check_gmres_convergence::Bool=true)
     rhsv = ComplexF64.(collect(rhs))
     if solver == :direct
         A, exterior, interior = _surface_sie_blocks_3d(
@@ -757,12 +758,14 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         )
         length(rhsv) == size(A, 1) ||
             error("rhs length ($(length(rhsv))) must match dielectric SIE size ($(size(A, 1))).")
-        x, stats = Krylov.gmres(A, rhsv;
-                                memory=memory,
-                                rtol=tol,
-                                atol=0.0,
-                                itmax=maxiter,
-                                verbose=(verbose ? 1 : 0))
+        x, stats = solve_gmres(
+            A, rhsv;
+            memory=memory,
+            tol=tol,
+            maxiter=maxiter,
+            verbose=verbose,
+            check_gmres_convergence=check_gmres_convergence,
+        )
         J, M = _split_surface_currents_3d(x, rwg.nedges)
         return DielectricSIEResult3D(copy(J), copy(M), A, rhsv, nothing,
                                      :gmres, stats,
@@ -787,7 +790,8 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  tol::Float64=1e-8,
                                  maxiter::Int=200,
                                  memory::Int=20,
-                                 verbose::Bool=false)
+                                 verbose::Bool=false,
+                                 check_gmres_convergence::Bool=true)
     exterior = dielectric_medium_3d(k0, epsr_ext, mur_ext; eta0=eta0)
     interior = dielectric_medium_3d(k0, epsr_in, mur_in; eta0=eta0)
     rhs = assemble_dielectric_sie_rhs_3d(
@@ -812,5 +816,6 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         maxiter=maxiter,
         memory=memory,
         verbose=verbose,
+        check_gmres_convergence=check_gmres_convergence,
     )
 end

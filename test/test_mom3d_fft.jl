@@ -95,6 +95,14 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
     @test res_fft.solver == :fft_gmres
     @test res_fft.E_total[1] ≈ E_inc[1] atol=1e-13
     @test res_fft.H_total[1] ≈ H_inc[1] atol=1e-13
+
+    @test_throws ErrorException solve_em_dda_3d(
+        grid, k0, epsv, 1.3 + 0.02im,
+        planewave_em_dda_3d(
+            grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
+        )...;
+        solver=:fft_gmres, tol=1e-14, maxiter=1, memory=1,
+    )
 end
 
 println("  PASS")

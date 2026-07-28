@@ -1905,6 +1905,36 @@ catch e
 end
 @assert thrown_adjoint_unconverged "Expected unconverged adjoint GMRES wrapper to fail closed"
 
+# The low-level public entry points enforce the same default. An explicit
+# opt-out returns the partial iterate together with unsolved Krylov stats.
+@test_throws ErrorException solve_gmres(
+    Z_fail, rhs_fail;
+    tol=1e-14, maxiter=1, memory=1,
+)
+_, stats_forward_partial = solve_gmres(
+    Z_fail, rhs_fail;
+    tol=1e-14, maxiter=1, memory=1,
+    check_gmres_convergence=false,
+)
+@test !stats_forward_partial.solved
+
+@test_throws ErrorException solve_gmres_adjoint(
+    Z_fail, rhs_fail;
+    tol=1e-14, maxiter=1, memory=1,
+)
+_, stats_adjoint_partial = solve_gmres_adjoint(
+    Z_fail, rhs_fail;
+    tol=1e-14, maxiter=1, memory=1,
+    check_gmres_convergence=false,
+)
+@test !stats_adjoint_partial.solved
+
+# Invalid Krylov controls fail before entering the iterative kernel.
+@test_throws ArgumentError solve_gmres(Z_fail, rhs_fail; tol=NaN)
+@test_throws ArgumentError solve_gmres(Z_fail, rhs_fail; maxiter=0)
+@test_throws ArgumentError solve_gmres(Z_fail, rhs_fail; memory=0)
+@test_throws ArgumentError solve_gmres(Z_fail, rhs_fail; precond_side=:invalid)
+
 thrown_forward_true_residual = try
     solve_forward(Z_fail, rhs_fail; solver=:gmres, gmres_tol=1e-14,
                   gmres_maxiter=1, check_gmres_convergence=false,
@@ -2603,6 +2633,35 @@ result_dgm = solve_scattering(mesh, freq, pw_exc;
 rel_dgm = norm(result_dgm.I_coeffs - I_pec) / norm(I_pec)
 println("  Forced dense_gmres vs direct: rel_err=$rel_dgm")
 @assert rel_dgm < 1e-6 "Workflow dense GMRES solution mismatch: $rel_dgm"
+
+# High-level workflows must not package an unconverged partial iterate as a
+# ScatteringResult. Callers can explicitly opt out when diagnosing Krylov.
+@test_throws ErrorException solve_scattering(
+    mesh, freq, v;
+    method=:dense_gmres,
+    preconditioner=:none,
+    gmres_tol=1e-14,
+    gmres_maxiter=1,
+    check_resolution=false,
+    verbose=false,
+)
+result_dgm_partial = solve_scattering(
+    mesh, freq, v;
+    method=:dense_gmres,
+    preconditioner=:none,
+    gmres_tol=1e-14,
+    gmres_maxiter=1,
+    check_gmres_convergence=false,
+    check_resolution=false,
+    verbose=false,
+)
+@test result_dgm_partial.gmres_iters == 1
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, v;
+    preconditioner=:invalid,
+    check_resolution=false,
+    verbose=false,
+)
 
 # Test with pre-assembled excitation vector
 result_vec = solve_scattering(mesh, freq, v;

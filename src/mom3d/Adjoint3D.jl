@@ -24,7 +24,9 @@ function _dalpha_depsr_clausius_mossotti(eps_r::ComplexF64, volume::Real)
 end
 
 """
-    solve_dda_adjoint_3d(res, grad_E_flat; solver=:direct, tol=1e-8, maxiter=200, memory=20)
+    solve_dda_adjoint_3d(res, grad_E_flat; solver=:direct, tol=1e-8,
+                         maxiter=200, memory=20,
+                         check_gmres_convergence=true)
 
 Solve the 3D DDA adjoint system
 
@@ -39,7 +41,8 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
                               tol::Float64=1e-8,
                               maxiter::Int=200,
                               memory::Int=20,
-                              verbose::Bool=false)
+                              verbose::Bool=false,
+                              check_gmres_convergence::Bool=true)
     rhs = _coerce_adjoint_rhs_3d(grad_E_flat, res.grid.nvoxels, "grad_E_flat")
 
     if solver == :direct
@@ -49,12 +52,14 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
         lambda = res.A_LU === nothing ? (adjoint(res.A) \ rhs) : (res.A_LU' \ rhs)
         return Vector{ComplexF64}(lambda)
     elseif solver == :gmres
-        lambda, stats = Krylov.gmres(adjoint(res.A), rhs;
-                                     memory=memory,
-                                     rtol=tol,
-                                     atol=0.0,
-                                     itmax=maxiter,
-                                     verbose=(verbose ? 1 : 0))
+        lambda, stats = solve_gmres_adjoint(
+            res.A, rhs;
+            memory=memory,
+            tol=tol,
+            maxiter=maxiter,
+            verbose=verbose,
+            check_gmres_convergence=check_gmres_convergence,
+        )
         return Vector{ComplexF64}(lambda)
     else
         error("Unsupported DDA adjoint solver: $solver (expected :direct or :gmres).")

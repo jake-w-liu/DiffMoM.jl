@@ -42,10 +42,11 @@ produce a warning (or error if `error_on_underresolved=true`).
 ## Solver settings
 - `gmres_tol=1e-6`: GMRES relative tolerance
 - `gmres_maxiter=300`: maximum GMRES iterations
+- `check_gmres_convergence=true`: reject unconverged or non-finite GMRES results
 
 ## NF preconditioner
 - `nf_cutoff_lambda=1.0`: near-field cutoff in wavelengths
-- `preconditioner=:auto`: one of `:auto`, `:lu`, `:diag`, `:none`
+- `preconditioner=:auto`: one of `:auto`, `:lu`, `:ilu` (MLFMA), `:diag`, `:none`
 
 ## ACA settings
 - `aca_tol=1e-6`: ACA low-rank approximation tolerance
@@ -72,6 +73,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           error_on_underresolved::Bool=false,
                           gmres_tol::Float64=1e-6,
                           gmres_maxiter::Int=300,
+                          check_gmres_convergence::Bool=true,
                           nf_cutoff_lambda::Float64=1.0,
                           preconditioner::Symbol=:auto,
                           aca_tol::Float64=1e-6,
@@ -84,6 +86,8 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     freq_hz > 0 || error("solve_scattering: freq_hz must be > 0")
     method in (:auto, :dense_direct, :dense_gmres, :aca_gmres, :mlfma) ||
         error("solve_scattering: method must be :auto, :dense_direct, :dense_gmres, :aca_gmres, or :mlfma")
+    preconditioner in (:auto, :lu, :ilu, :diag, :none) ||
+        throw(ArgumentError("solve_scattering: preconditioner must be :auto, :lu, :ilu, :diag, or :none"))
 
     warnings = String[]
     lambda = Float64(c0) / Float64(freq_hz)
@@ -220,19 +224,22 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
         elseif selected_method == :dense_gmres
             I_coeffs, stats = solve_gmres(Z, v;
                                            preconditioner=P_nf,
-                                           tol=gmres_tol, maxiter=gmres_maxiter)
+                                           tol=gmres_tol, maxiter=gmres_maxiter,
+                                           check_gmres_convergence=check_gmres_convergence)
             gmres_iters = stats.niter
             gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         elseif selected_method == :aca_gmres
             I_coeffs, stats = solve_gmres(A_aca, v;
                                            preconditioner=P_nf,
-                                           tol=gmres_tol, maxiter=gmres_maxiter)
+                                           tol=gmres_tol, maxiter=gmres_maxiter,
+                                           check_gmres_convergence=check_gmres_convergence)
             gmres_iters = stats.niter
             gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         elseif selected_method == :mlfma
             I_coeffs, stats = solve_gmres(A_mlfma, v;
                                            preconditioner=P_nf,
-                                           tol=gmres_tol, maxiter=gmres_maxiter)
+                                           tol=gmres_tol, maxiter=gmres_maxiter,
+                                           check_gmres_convergence=check_gmres_convergence)
             gmres_iters = stats.niter
             gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         end

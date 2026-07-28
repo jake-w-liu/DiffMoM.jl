@@ -119,6 +119,17 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test res_gmres.A isa DDAOperator3D
         @test res_gmres.A_LU === nothing
         @test res_gmres.solver == :gmres
+
+        @test_throws ErrorException solve_dda_3d(
+            grid, k0, epsv, E_inc;
+            solver=:gmres, tol=1e-14, maxiter=1, memory=1,
+        )
+        res_partial = solve_dda_3d(
+            grid, k0, epsv, E_inc;
+            solver=:gmres, tol=1e-14, maxiter=1, memory=1,
+            check_gmres_convergence=false,
+        )
+        @test !res_partial.stats.solved
     end
 
     @testset "Voxelized small dielectric sphere polarizability" begin

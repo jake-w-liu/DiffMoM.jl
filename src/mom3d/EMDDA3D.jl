@@ -553,7 +553,8 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
                                      tol::Float64=1e-8,
                                      maxiter::Int=200,
                                      memory::Int=20,
-                                     verbose::Bool=false)
+                                     verbose::Bool=false,
+                                     check_gmres_convergence::Bool=true)
     rhs = _flatten_em_fields_3d(E_inc, H_inc, grid.nvoxels, "E_inc", "H_inc")
 
     if solver == :direct
@@ -566,12 +567,14 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
                              Aop.alpha, A, fac, :direct, nothing,
                              grid, Float64(k0), Aop.radiative_correction)
     elseif solver == :gmres
-        total_flat, stats = Krylov.gmres(Aop, rhs;
-                                         memory=memory,
-                                         rtol=tol,
-                                         atol=0.0,
-                                         itmax=maxiter,
-                                         verbose=(verbose ? 1 : 0))
+        total_flat, stats = solve_gmres(
+            Aop, rhs;
+            memory=memory,
+            tol=tol,
+            maxiter=maxiter,
+            verbose=verbose,
+            check_gmres_convergence=check_gmres_convergence,
+        )
         E_total, H_total = _unflatten_em_fields_3d(total_flat, grid.nvoxels)
         E_rhs, H_rhs = _unflatten_em_fields_3d(rhs, grid.nvoxels)
         return EMDDAResult3D(E_total, H_total, E_rhs, H_rhs,
@@ -594,7 +597,8 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
-                         verbose::Bool=false)
+                         verbose::Bool=false,
+                         check_gmres_convergence::Bool=true)
     solve_mode = solver == :fft_gmres ? :gmres : solver
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
@@ -613,6 +617,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
         maxiter=maxiter,
         memory=memory,
         verbose=verbose,
+        check_gmres_convergence=check_gmres_convergence,
     )
 end
 
@@ -629,7 +634,8 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6,
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
-                         verbose::Bool=false)
+                         verbose::Bool=false,
+                         check_gmres_convergence::Bool=true)
     solve_mode = solver == :fft_gmres ? :gmres : solver
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
@@ -648,6 +654,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6,
         maxiter=maxiter,
         memory=memory,
         verbose=verbose,
+        check_gmres_convergence=check_gmres_convergence,
     )
 end
 
@@ -661,6 +668,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
                          maxiter::Int=200,
                          memory::Int=20,
                          verbose::Bool=false,
+                         check_gmres_convergence::Bool=true,
                          eta0::Real=_ETA0_DDA)
     solve_mode = solver == :fft_gmres ? :gmres : solver
     Aop = solver == :fft_gmres ?
@@ -682,6 +690,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
         maxiter=maxiter,
         memory=memory,
         verbose=verbose,
+        check_gmres_convergence=check_gmres_convergence,
     )
 end
 
