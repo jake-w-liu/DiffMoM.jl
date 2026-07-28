@@ -16,6 +16,13 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
 
     @testset "Free-space magnetodielectric limit" begin
         grid = VoxelGrid3D((-0.1, 0.1), (-0.05, 0.05), (-0.05, 0.05), 2, 1, 1)
+        @test_throws ArgumentError em_dda_operator_3d(
+            grid, Inf, 2.5, 1.2)
+        @test_throws ArgumentError em_dda_operator_3d(
+            grid, k0, 2.5, Inf)
+        @test_throws ArgumentError bianisotropic_clausius_mossotti_polarizability(
+            Matrix{ComplexF64}(I, 6, 6), grid.volumes[1];
+            eta0=Inf)
         @test_throws ArgumentError planewave_em_dda_3d(
             grid, Vec3(0.0, 0.0, k0), 1.0 + 0im,
             Vec3(1.0, 0.0, 0.0); eta0=Inf)

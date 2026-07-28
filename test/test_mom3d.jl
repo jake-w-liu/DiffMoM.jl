@@ -13,7 +13,22 @@ println("\n── Test 46: 3D vector material DDA solver ──")
     k0 = 2π
 
     @testset "Free-space limit" begin
+        @test_throws ArgumentError VoxelGrid3D(
+            (0.0, Inf), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
+        @test_throws ArgumentError clausius_mossotti_polarizability(
+            2.5, grid.volumes[1];
+            k0=Inf,
+            radiative_correction=true)
+        @test_throws ArgumentError clausius_mossotti_polarizability(
+            Inf, grid.volumes[1])
+        @test_throws ArgumentError electric_dipole_dyadic_3d(
+            grid.centers[1], grid.centers[2], Inf)
+        @test_throws ArgumentError dda_operator_3d(grid, Inf, 2.5)
+        @test_throws ArgumentError assemble_dda_3d(grid, Inf, 2.5)
+        @test_throws ErrorException dda_operator_3d(grid, k0, Inf)
+        @test_throws ArgumentError dda_operator_3d(
+            grid, k0, (2.0, NaN, 2.0))
         @test_throws ArgumentError planewave_dda_3d(
             grid, Vec3(0.0, 0.0, k0), NaN, Vec3(1.0, 0.0, 0.0))
         @test_throws ArgumentError planewave_dda_3d(

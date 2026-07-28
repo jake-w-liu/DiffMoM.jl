@@ -89,7 +89,10 @@ end
 
 function _coerce_mur_material_3d(mu_r, n::Int)
     if mu_r isa Number
-        return fill(ComplexF64(mu_r), n)
+        muc = ComplexF64(mu_r)
+        isfinite(muc) ||
+            throw(ArgumentError("mu_r must be finite, got $mu_r."))
+        return fill(muc, n)
     elseif mu_r isa AbstractMatrix
         return fill(_as_cmat3(mu_r, "mu_r"), n)
     elseif _is_diag_tensor_tuple(mu_r)
@@ -136,7 +139,8 @@ function _coerce_alpha6_3d(alpha6, n::Int)
 end
 
 @inline function _scale6_matrix_3d(eta0::Float64)
-    eta0 > 0 || error("eta0 must be positive.")
+    isfinite(eta0) && eta0 > 0 ||
+        throw(ArgumentError("eta0 must be finite and positive, got $eta0."))
     return SMatrix{6,6,ComplexF64,36}(ntuple(idx -> begin
         row = mod1(idx, 6)
         col = div(idx - 1, 6) + 1
@@ -145,7 +149,8 @@ end
 end
 
 @inline function _inv_scale6_matrix_3d(eta0::Float64)
-    eta0 > 0 || error("eta0 must be positive.")
+    isfinite(eta0) && eta0 > 0 ||
+        throw(ArgumentError("eta0 must be finite and positive, got $eta0."))
     return SMatrix{6,6,ComplexF64,36}(ntuple(idx -> begin
         row = mod1(idx, 6)
         col = div(idx - 1, 6) + 1
@@ -203,11 +208,9 @@ function bianisotropic_clausius_mossotti_polarizability(C6, volume::Real;
                                                         k0::Real=0.0,
                                                         radiative_correction::Bool=false,
                                                         eta0::Real=_ETA0_DDA)
-    V = Float64(volume)
-    V > 0 || error("volume must be positive.")
-    k = Float64(k0)
-    k >= 0 || error("k0 must be nonnegative.")
-    eta = Float64(eta0)
+    V = _finite_positive_real_3d(volume, "volume")
+    k = _finite_nonnegative_k0_3d(k0)
+    eta = _finite_positive_real_3d(eta0, "eta0")
     C = C6 isa BianisotropicMaterial3D ? C6.C6 : _as_cmat6_3d(C6, "C6")
     denom = C + 2 * SMatrix{6,6,ComplexF64,36}(I)
     abs(det(denom)) > 100 * eps(Float64) ||
@@ -228,8 +231,7 @@ magnetodielectric voxels.
 """
 function em_dda_polarizabilities(grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
                                  radiative_correction::Bool=false)
-    k = Float64(k0)
-    k >= 0 || error("k0 must be nonnegative.")
+    k = _finite_nonnegative_k0_3d(k0)
     epsv = _coerce_epsr_material_3d(eps_r, grid.nvoxels)
     muv = _coerce_mur_material_3d(mu_r, grid.nvoxels)
     alpha = Vector{_CMat6DDA}(undef, grid.nvoxels)
@@ -251,7 +253,7 @@ end
 
 function em_dda_polarizabilities(grid::VoxelGrid3D, k0::Real, alpha6;
                                  radiative_correction::Bool=false)
-    Float64(k0) >= 0 || error("k0 must be nonnegative.")
+    _finite_nonnegative_k0_3d(k0)
     return _coerce_alpha6_3d(alpha6, grid.nvoxels)
 end
 
@@ -259,8 +261,7 @@ function em_dda_polarizabilities(grid::VoxelGrid3D, k0::Real,
                                  material::BianisotropicMaterial3D;
                                  radiative_correction::Bool=false,
                                  eta0::Real=_ETA0_DDA)
-    k = Float64(k0)
-    k >= 0 || error("k0 must be nonnegative.")
+    k = _finite_nonnegative_k0_3d(k0)
     alpha = bianisotropic_clausius_mossotti_polarizability(
         material, grid.volumes[1];
         k0=k,
@@ -286,8 +287,7 @@ function em_dda_polarizabilities(grid::VoxelGrid3D, k0::Real,
                                  eta0::Real=_ETA0_DDA)
     length(materials) == grid.nvoxels ||
         error("bianisotropic material length ($(length(materials))) must match nvoxels ($(grid.nvoxels)).")
-    k = Float64(k0)
-    k >= 0 || error("k0 must be nonnegative.")
+    k = _finite_nonnegative_k0_3d(k0)
     return [bianisotropic_clausius_mossotti_polarizability(
                 materials[j], grid.volumes[j];
                 k0=k,
@@ -331,8 +331,7 @@ magnetodielectric material voxels.
 """
 function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
                             radiative_correction::Bool=false)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, eps_r, mu_r;
         radiative_correction=radiative_correction,
@@ -349,8 +348,7 @@ from a normalized bianisotropic constitutive tensor instead.
 """
 function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, alpha6;
                             radiative_correction::Bool=false)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, alpha6;
         radiative_correction=radiative_correction,
@@ -363,8 +361,7 @@ function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
                                             AbstractVector{<:BianisotropicMaterial3D}};
                             radiative_correction::Bool=false,
                             eta0::Real=_ETA0_DDA)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, material;
         radiative_correction=radiative_correction,
@@ -761,10 +758,11 @@ Return `(F_E, F_H)` such that `E_scat ~= exp(-ikr) F_E / r` and
 """
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
                             eta0::Real=_ETA0_DDA)
-    eta = Float64(eta0)
-    eta > 0 || error("eta0 must be positive.")
+    eta = _finite_positive_real_3d(eta0, "eta0")
+    all(isfinite, rhat) ||
+        throw(ArgumentError("rhat components must be finite."))
     rn = norm(rhat)
-    rn > 0 || error("rhat must be nonzero.")
+    isfinite(rn) && rn > 0 || error("rhat must be finite and nonzero.")
     n = rhat / rn
     proj = _I3_DDA - n * transpose(n)
     FE = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)

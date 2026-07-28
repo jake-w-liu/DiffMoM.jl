@@ -77,15 +77,23 @@ function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
     x1, x2 = Float64(x_range[1]), Float64(x_range[2])
     y1, y2 = Float64(y_range[1]), Float64(y_range[2])
     z1, z2 = Float64(z_range[1]), Float64(z_range[2])
+    all(isfinite, (x1, x2, y1, y2, z1, z2)) ||
+        throw(ArgumentError("VoxelGrid3D range endpoints must be finite."))
     x2 > x1 || error("x_range must be increasing.")
     y2 > y1 || error("y_range must be increasing.")
     z2 > z1 || error("z_range must be increasing.")
 
+    nvoxels = Base.checked_mul(Base.checked_mul(nx, ny), nz)
     dx = (x2 - x1) / nx
     dy = (y2 - y1) / ny
     dz = (z2 - z1) / nz
+    all(isfinite, (dx, dy, dz)) && dx > 0 && dy > 0 && dz > 0 ||
+        throw(ArgumentError(
+            "VoxelGrid3D spacings must be finite and positive."))
     volume = dx * dy * dz
-    nvoxels = nx * ny * nz
+    isfinite(volume) && volume > 0 ||
+        throw(ArgumentError(
+            "VoxelGrid3D voxel volume must be finite and positive, got $volume."))
 
     centers = Vector{Vec3}(undef, nvoxels)
     volumes = fill(volume, nvoxels)

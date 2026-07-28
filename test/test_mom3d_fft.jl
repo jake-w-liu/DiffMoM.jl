@@ -34,6 +34,11 @@ end
     k0 = 2π
 
     single = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
+    @test_throws ArgumentError fft_dda_kernel_3d(single, Inf)
+    @test_throws ArgumentError fft_dda_operator_3d(single, Inf, 3.0)
+    @test_throws ArgumentError fft_em_dda_kernel_3d(single, Inf)
+    @test_throws ArgumentError fft_em_dda_operator_3d(
+        single, Inf, 3.0, 1.2)
     A_single = fft_dda_operator_3d(single, k0, 3.0 + 0.1im)
     @test size(A_single, 3) == 1
     @test_throws BoundsError size(A_single, 0)

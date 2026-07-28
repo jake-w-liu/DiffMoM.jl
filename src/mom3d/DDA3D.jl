@@ -28,6 +28,28 @@ const _CMat3DDA = SMatrix{3,3,ComplexF64,9}
 @inline _dda_voxel(linear_index::Int) = div(linear_index - 1, 3) + 1
 @inline _dda_component(linear_index::Int) = mod(linear_index - 1, 3) + 1
 
+@inline function _finite_nonnegative_k0_3d(k0::Real)
+    k = Float64(k0)
+    isfinite(k) && k >= 0 ||
+        throw(ArgumentError("k0 must be finite and nonnegative, got $k0."))
+    return k
+end
+
+@inline function _finite_positive_k0_3d(k0::Real)
+    k = Float64(k0)
+    isfinite(k) && k > 0 ||
+        throw(ArgumentError("k0 must be finite and positive, got $k0."))
+    return k
+end
+
+@inline function _finite_positive_real_3d(value::Real, label::AbstractString)
+    converted = Float64(value)
+    isfinite(converted) && converted > 0 ||
+        throw(ArgumentError(
+            "$label must be finite and positive, got $value."))
+    return converted
+end
+
 @inline function _read_field_component(x::AbstractVector, j::Int)
     return CVec3(x[_dda_index(j, 1)], x[_dda_index(j, 2)], x[_dda_index(j, 3)])
 end
@@ -93,6 +115,8 @@ end
 function _diag_tensor_from_tuple(t, label::AbstractString)
     length(t) == 3 || error("$label diagonal tensor tuple must have three entries.")
     vals = ComplexF64.(t)
+    all(isfinite, vals) ||
+        throw(ArgumentError("$label contains a non-finite component."))
     return _CMat3DDA((vals[1], 0, 0,
                       0, vals[2], 0,
                       0, 0, vals[3]))
@@ -102,7 +126,7 @@ _is_diag_tensor_tuple(x) = x isa Tuple && length(x) == 3 && all(v -> v isa Numbe
 
 function _coerce_epsr_material_3d(eps_r, n::Int)
     if eps_r isa Number
-        return fill(ComplexF64(eps_r), n)
+        return _coerce_epsr_3d(eps_r, n)
     elseif eps_r isa AbstractMatrix
         return fill(_as_cmat3(eps_r, "eps_r"), n)
     elseif _is_diag_tensor_tuple(eps_r)
@@ -147,11 +171,11 @@ correction consistent with the package's `exp(+i omega t)` convention is used.
 function clausius_mossotti_polarizability(eps_r::Number, volume::Real;
                                           k0::Real=0.0,
                                           radiative_correction::Bool=false)
-    V = Float64(volume)
-    V > 0 || error("volume must be positive.")
-    k = Float64(k0)
-    k >= 0 || error("k0 must be nonnegative.")
+    V = _finite_positive_real_3d(volume, "volume")
+    k = _finite_nonnegative_k0_3d(k0)
     epsc = ComplexF64(eps_r)
+    isfinite(epsc) ||
+        throw(ArgumentError("eps_r must be finite, got $eps_r."))
     abs(epsc + 2) > 100 * eps(Float64) ||
         error("Clausius-Mossotti polarizability is singular for eps_r near -2.")
     alpha0 = 3 * V * (epsc - 1) / (epsc + 2)
@@ -164,10 +188,8 @@ end
 function clausius_mossotti_polarizability(eps_r::AbstractMatrix, volume::Real;
                                           k0::Real=0.0,
                                           radiative_correction::Bool=false)
-    V = Float64(volume)
-    V > 0 || error("volume must be positive.")
-    k = Float64(k0)
-    k >= 0 || error("k0 must be nonnegative.")
+    V = _finite_positive_real_3d(volume, "volume")
+    k = _finite_nonnegative_k0_3d(k0)
     epsm = _as_cmat3(eps_r, "eps_r")
     denom = epsm + 2 * _CI3_DDA
     abs(det(denom)) > 100 * eps(Float64) ||
@@ -208,8 +230,7 @@ counterpart to `assemble_dda_3d`.
 """
 function dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r;
                          radiative_correction::Bool=false)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     epsv = _coerce_epsr_material_3d(eps_r, grid.nvoxels)
     alpha = dda_polarizabilities(grid, k, epsv; radiative_correction=radiative_correction)
     return DDAOperator3D(grid, k, epsv, alpha, radiative_correction)
@@ -224,11 +245,14 @@ It maps normalized dipole moment `q = p / eps0` at `rp` to electric field at
 polarizability model.
 """
 function electric_dipole_dyadic_3d(r::Vec3, rp::Vec3, k0::Real)
-    k = Float64(k0)
-    k >= 0 || error("k0 must be nonnegative.")
+    k = _finite_nonnegative_k0_3d(k0)
+    all(isfinite, r) && all(isfinite, rp) ||
+        throw(ArgumentError(
+            "electric dipole observation and source points must be finite."))
     R_vec = r - rp
     R = norm(R_vec)
-    R > 0 || error("electric_dipole_dyadic_3d is singular for coincident points.")
+    isfinite(R) && R > 0 ||
+        error("electric_dipole_dyadic_3d requires distinct finite points.")
     Rhat = R_vec / R
     rr = Rhat * transpose(Rhat)
     expfac = exp(-1im * k * R) / (4π)
@@ -393,8 +417,7 @@ Returns `(A, alpha, epsv)`, where `A` is a `3N x 3N` dense matrix.
 """
 function assemble_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r;
                          radiative_correction::Bool=false)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     N = grid.nvoxels
     epsv = _coerce_epsr_material_3d(eps_r, N)
     alpha = dda_polarizabilities(grid, k, epsv; radiative_correction=radiative_correction)
@@ -563,8 +586,10 @@ Return the far-field amplitude `F(rhat)` such that
 for unit observation direction `rhat`.
 """
 function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
+    all(isfinite, rhat) ||
+        throw(ArgumentError("rhat components must be finite."))
     rn = norm(rhat)
-    rn > 0 || error("rhat must be nonzero.")
+    isfinite(rn) && rn > 0 || error("rhat must be finite and nonzero.")
     n = rhat / rn
     proj = _I3_DDA - n * transpose(n)
     F = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)

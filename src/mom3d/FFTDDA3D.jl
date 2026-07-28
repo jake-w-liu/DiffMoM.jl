@@ -89,8 +89,7 @@ FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
 @inline _fft_dda_mod_index(offset::Int, nfft::Int) = mod(offset, nfft) + 1
 
 function fft_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
     px, py, pz = 2nx - 1, 2ny - 1, 2nz - 1
@@ -129,8 +128,7 @@ a zero-padded block Toeplitz convolution over Cartesian grid offsets.
 """
 function fft_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r;
                              radiative_correction::Bool=false)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     epsv = _coerce_epsr_material_3d(eps_r, grid.nvoxels)
     alpha = dda_polarizabilities(grid, k, epsv; radiative_correction=radiative_correction)
     kernel = fft_dda_kernel_3d(grid, k)
@@ -237,8 +235,7 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 end
 
 function fft_em_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
     px, py, pz = 2nx - 1, 2ny - 1, 2nz - 1
@@ -287,8 +284,7 @@ uniform `VoxelGrid3D`.
 """
 function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
                                 radiative_correction::Bool=false)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, eps_r, mu_r;
         radiative_correction=radiative_correction,
@@ -302,8 +298,7 @@ end
 
 function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, alpha6;
                                 radiative_correction::Bool=false)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, alpha6;
         radiative_correction=radiative_correction,
@@ -320,8 +315,7 @@ function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
                                                 AbstractVector{<:BianisotropicMaterial3D}};
                                 radiative_correction::Bool=false,
                                 eta0::Real=_ETA0_DDA)
-    k = Float64(k0)
-    k > 0 || error("k0 must be positive.")
+    k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, material;
         radiative_correction=radiative_correction,
