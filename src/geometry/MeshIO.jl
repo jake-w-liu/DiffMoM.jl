@@ -9,6 +9,35 @@ export convert_cad_to_mesh
 # STL: Binary and ASCII reader/writer
 # ───────────────────────────────────────────────────────────────
 
+@inline function _ascii_field_bounds(line::AbstractString, position::Int)
+    last = lastindex(line)
+    while position <= last && isspace(line[position])
+        position = nextind(line, position)
+    end
+    position > last && return (0, 0, position)
+
+    first = position
+    while position <= last && !isspace(line[position])
+        position = nextind(line, position)
+    end
+    return (first, prevind(line, position), position)
+end
+
+@inline function _required_ascii_field(line::AbstractString, position::Int,
+                                       context::AbstractString)
+    first, last, next_position = _ascii_field_bounds(line, position)
+    iszero(first) && error("Invalid $context: $line")
+    return SubString(line, first, last), next_position
+end
+
+@inline function _required_ascii_field(line::AbstractString, position::Int,
+                                       context::AbstractString,
+                                       path::AbstractString)
+    first, last, next_position = _ascii_field_bounds(line, position)
+    iszero(first) && error("Invalid $context in $path: $line")
+    return SubString(line, first, last), next_position
+end
+
 abstract type _STLVertexMerger end
 
 struct _ExactSTLVertexMerger <: _STLVertexMerger
@@ -218,20 +247,11 @@ function _read_stl_binary(data::Vector{UInt8}; merge_tol::Float64=0.0)
 end
 
 function _parse_stl_ascii_vertex(s::AbstractString)
-    fields = eachsplit(s)
-    item = iterate(fields)
-    isnothing(item) && error("Invalid STL vertex line: $s")
-    _, state = item
-
-    item = iterate(fields, state)
-    isnothing(item) && error("Invalid STL vertex line: $s")
-    x_field, state = item
-    item = iterate(fields, state)
-    isnothing(item) && error("Invalid STL vertex line: $s")
-    y_field, state = item
-    item = iterate(fields, state)
-    isnothing(item) && error("Invalid STL vertex line: $s")
-    z_field, _ = item
+    position = firstindex(s)
+    _, position = _required_ascii_field(s, position, "STL vertex line")
+    x_field, position = _required_ascii_field(s, position, "STL vertex line")
+    y_field, position = _required_ascii_field(s, position, "STL vertex line")
+    z_field, _ = _required_ascii_field(s, position, "STL vertex line")
 
     return (
         parse(Float64, x_field),
@@ -376,75 +396,183 @@ end
 """
     read_msh_mesh(path)
 
-Read a triangle surface mesh from a Gmsh MSH file (v2 or v4 ASCII).
+Read a triangle surface mesh from a Gmsh MSH file (ASCII v2.x or v4.x).
+The parser streams each section and rejects binary or unsupported versions.
 
 Only 3-node triangle elements (Gmsh type 2) are extracted; all other
 element types (lines, quads, tetrahedra, etc.) are silently ignored.
-Node IDs are remapped to 1-based contiguous indices.
+Node IDs are remapped to 1-based contiguous indices. Section counts,
+end markers, tag bounds, duplicate node tags, and missing references are
+validated.
 
 Returns a `TriMesh`.
 """
 function read_msh_mesh(path::AbstractString)
-    lines = readlines(path)
-    isempty(lines) && error("MSH file is empty: $path")
-
-    # Detect version from $MeshFormat
-    version = 0.0
-    for (i, l) in enumerate(lines)
-        if strip(l) == "\$MeshFormat"
-            parts = split(strip(lines[i+1]))
-            version = parse(Float64, parts[1])
-            break
+    return open(path, "r") do io
+        version = _read_msh_format(io, path)
+        seekstart(io)
+        if 2.0 <= version < 3.0
+            return _read_msh_v2(io, path)
+        elseif 4.0 <= version < 5.0
+            return _read_msh_v4(io, path)
         end
-    end
-    version > 0 || error("MSH file missing \$MeshFormat section: $path")
-
-    if version >= 4.0
-        return _read_msh_v4(lines, path)
-    else
-        return _read_msh_v2(lines, path)
+        error("Unsupported MSH version $version in $path; supported ASCII versions are 2.x and 4.x.")
     end
 end
 
-function _read_msh_v2(lines::Vector{String}, path::AbstractString)
+function _required_msh_line(io::IO, path::AbstractString, context::AbstractString)
+    while !eof(io)
+        line = strip(readline(io))
+        isempty(line) || return line
+    end
+    error("Unexpected end of MSH file $path while reading $context.")
+end
+
+function _parse_msh_format_line(line::AbstractString, path::AbstractString)
+    position = firstindex(line)
+    version_field, position =
+        _required_ascii_field(line, position, "MSH format line", path)
+    file_type_field, position =
+        _required_ascii_field(line, position, "MSH format line", path)
+    data_size_field, _ =
+        _required_ascii_field(line, position, "MSH format line", path)
+
+    version = parse(Float64, version_field)
+    file_type = parse(Int, file_type_field)
+    data_size = parse(Int, data_size_field)
+    isfinite(version) && version > 0 ||
+        error("Invalid MSH version $version in $path.")
+    file_type == 0 ||
+        error("Binary MSH files are not supported: $path.")
+    data_size > 0 ||
+        error("Invalid MSH data-size field $data_size in $path.")
+    return version
+end
+
+function _read_msh_format(io::IO, path::AbstractString)
+    while !eof(io)
+        line = strip(readline(io))
+        line == "\$MeshFormat" || continue
+        format_line = _required_msh_line(io, path, "\$MeshFormat")
+        version = _parse_msh_format_line(format_line, path)
+        end_marker = _required_msh_line(io, path, "\$EndMeshFormat")
+        end_marker == "\$EndMeshFormat" ||
+            error("MSH file $path is missing \$EndMeshFormat.")
+        return version
+    end
+    error("MSH file missing \$MeshFormat section: $path")
+end
+
+function _parse_msh_int(line::AbstractString, path::AbstractString,
+                        context::AbstractString)
+    value_field, _ = _required_ascii_field(
+        line, firstindex(line), context, path)
+    return parse(Int, value_field)
+end
+
+function _parse_msh_int4(line::AbstractString, path::AbstractString,
+                         context::AbstractString)
+    position = firstindex(line)
+    field1, position = _required_ascii_field(
+        line, position, context, path)
+    field2, position = _required_ascii_field(
+        line, position, context, path)
+    field3, position = _required_ascii_field(
+        line, position, context, path)
+    field4, _ = _required_ascii_field(
+        line, position, context, path)
+    return (
+        parse(Int, field1),
+        parse(Int, field2),
+        parse(Int, field3),
+        parse(Int, field4),
+    )
+end
+
+function _parse_msh_v2_node(line::AbstractString, path::AbstractString)
+    position = firstindex(line)
+    tag_field, position =
+        _required_ascii_field(line, position, "MSH v2 node", path)
+    x_field, position =
+        _required_ascii_field(line, position, "MSH v2 node", path)
+    y_field, position =
+        _required_ascii_field(line, position, "MSH v2 node", path)
+    z_field, _ =
+        _required_ascii_field(line, position, "MSH v2 node", path)
+    coord = (
+        parse(Float64, x_field),
+        parse(Float64, y_field),
+        parse(Float64, z_field),
+    )
+    isfinite(coord[1]) && isfinite(coord[2]) && isfinite(coord[3]) ||
+        error("MSH node coordinates must be finite in $path: $line")
+    return parse(Int, tag_field), coord
+end
+
+function _parse_msh_v2_element(line::AbstractString, path::AbstractString)
+    position = firstindex(line)
+    element_tag_field, position =
+        _required_ascii_field(line, position, "MSH v2 element", path)
+    type_field, position =
+        _required_ascii_field(line, position, "MSH v2 element", path)
+    ntags_field, position =
+        _required_ascii_field(line, position, "MSH v2 element", path)
+
+    element_tag = parse(Int, element_tag_field)
+    element_tag > 0 || error("MSH element tags must be positive in $path.")
+    element_type = parse(Int, type_field)
+    ntags = parse(Int, ntags_field)
+    ntags >= 0 || error("Negative MSH v2 element tag count in $path: $line")
+    for _ in 1:ntags
+        _, position = _required_ascii_field(
+            line, position, "MSH v2 element tags", path)
+    end
+    element_type == 2 || return nothing
+
+    n1_field, position =
+        _required_ascii_field(line, position, "MSH v2 triangle", path)
+    n2_field, position =
+        _required_ascii_field(line, position, "MSH v2 triangle", path)
+    n3_field, _ =
+        _required_ascii_field(line, position, "MSH v2 triangle", path)
+    return (parse(Int, n1_field), parse(Int, n2_field), parse(Int, n3_field))
+end
+
+function _read_msh_v2(io::IO, path::AbstractString)
     nodes = Dict{Int, NTuple{3,Float64}}()
     triangles = NTuple{3,Int}[]
 
-    i = 1
-    while i <= length(lines)
-        s = strip(lines[i])
-
-        if s == "\$Nodes"
-            i += 1
-            n_nodes = parse(Int, strip(lines[i]))
+    while !eof(io)
+        section = strip(readline(io))
+        if section == "\$Nodes"
+            count_line = _required_msh_line(io, path, "MSH v2 node count")
+            n_nodes = _parse_msh_int(count_line, path, "MSH v2 node count")
+            n_nodes >= 0 || error("Negative MSH v2 node count in $path.")
+            sizehint!(nodes, Base.checked_add(length(nodes), n_nodes))
             for _ in 1:n_nodes
-                i += 1
-                parts = split(strip(lines[i]))
-                nid = parse(Int, parts[1])
-                x = parse(Float64, parts[2])
-                y = parse(Float64, parts[3])
-                z = parse(Float64, parts[4])
-                nodes[nid] = (x, y, z)
+                line = _required_msh_line(io, path, "MSH v2 node")
+                node_tag, coord = _parse_msh_v2_node(line, path)
+                node_tag > 0 || error("MSH node tags must be positive in $path.")
+                haskey(nodes, node_tag) &&
+                    error("Duplicate MSH node tag $node_tag in $path.")
+                nodes[node_tag] = coord
             end
-
-        elseif s == "\$Elements"
-            i += 1
-            n_elems = parse(Int, strip(lines[i]))
+            end_marker = _required_msh_line(io, path, "\$EndNodes")
+            end_marker == "\$EndNodes" ||
+                error("MSH file $path is missing \$EndNodes.")
+        elseif section == "\$Elements"
+            count_line = _required_msh_line(io, path, "MSH v2 element count")
+            n_elems = _parse_msh_int(count_line, path, "MSH v2 element count")
+            n_elems >= 0 || error("Negative MSH v2 element count in $path.")
             for _ in 1:n_elems
-                i += 1
-                parts = split(strip(lines[i]))
-                etype = parse(Int, parts[2])
-                if etype == 2  # 3-node triangle
-                    ntags = parse(Int, parts[3])
-                    offset = 3 + ntags
-                    n1 = parse(Int, parts[offset + 1])
-                    n2 = parse(Int, parts[offset + 2])
-                    n3 = parse(Int, parts[offset + 3])
-                    push!(triangles, (n1, n2, n3))
-                end
+                line = _required_msh_line(io, path, "MSH v2 element")
+                triangle = _parse_msh_v2_element(line, path)
+                isnothing(triangle) || push!(triangles, triangle)
             end
+            end_marker = _required_msh_line(io, path, "\$EndElements")
+            end_marker == "\$EndElements" ||
+                error("MSH file $path is missing \$EndElements.")
         end
-        i += 1
     end
 
     isempty(nodes) && error("MSH v2 file has no nodes: $path")
@@ -453,62 +581,154 @@ function _read_msh_v2(lines::Vector{String}, path::AbstractString)
     return _build_trimesh_from_msh(nodes, triangles)
 end
 
-function _read_msh_v4(lines::Vector{String}, path::AbstractString)
+function _read_msh_integer_block(io::IO, path::AbstractString, count::Int,
+                                 context::AbstractString)
+    values = Vector{Int}(undef, count)
+    filled = 0
+    while filled < count
+        line = _required_msh_line(io, path, context)
+        position = firstindex(line)
+        while true
+            first, last, next_position = _ascii_field_bounds(line, position)
+            iszero(first) && break
+            filled < count ||
+                error("Too many integer values while reading $context in $path.")
+            filled += 1
+            values[filled] = parse(Int, SubString(line, first, last))
+            position = next_position
+        end
+    end
+    return values
+end
+
+function _parse_msh_xyz(line::AbstractString, path::AbstractString)
+    position = firstindex(line)
+    x_field, position =
+        _required_ascii_field(line, position, "MSH node coordinates", path)
+    y_field, position =
+        _required_ascii_field(line, position, "MSH node coordinates", path)
+    z_field, _ =
+        _required_ascii_field(line, position, "MSH node coordinates", path)
+    coord = (
+        parse(Float64, x_field),
+        parse(Float64, y_field),
+        parse(Float64, z_field),
+    )
+    isfinite(coord[1]) && isfinite(coord[2]) && isfinite(coord[3]) ||
+        error("MSH node coordinates must be finite in $path: $line")
+    return coord
+end
+
+function _parse_msh_v4_element(line::AbstractString, path::AbstractString,
+                               is_triangle::Bool)
+    position = firstindex(line)
+    tag_field, position =
+        _required_ascii_field(line, position, "MSH v4 element", path)
+    element_tag = parse(Int, tag_field)
+    is_triangle || return element_tag, nothing
+
+    n1_field, position =
+        _required_ascii_field(line, position, "MSH v4 triangle", path)
+    n2_field, position =
+        _required_ascii_field(line, position, "MSH v4 triangle", path)
+    n3_field, _ =
+        _required_ascii_field(line, position, "MSH v4 triangle", path)
+    return element_tag, (
+        parse(Int, n1_field),
+        parse(Int, n2_field),
+        parse(Int, n3_field),
+    )
+end
+
+function _read_msh_v4(io::IO, path::AbstractString)
     nodes = Dict{Int, NTuple{3,Float64}}()
     triangles = NTuple{3,Int}[]
 
-    i = 1
-    while i <= length(lines)
-        s = strip(lines[i])
+    while !eof(io)
+        section = strip(readline(io))
+        if section == "\$Nodes"
+            header_line = _required_msh_line(io, path, "MSH v4 node header")
+            n_entity_blocks, total_nodes, min_node_tag, max_node_tag =
+                _parse_msh_int4(header_line, path, "MSH v4 node header")
+            n_entity_blocks >= 0 && total_nodes >= 0 ||
+                error("Negative MSH v4 node count in $path.")
+            sizehint!(nodes, Base.checked_add(length(nodes), total_nodes))
 
-        if s == "\$Nodes"
-            i += 1
-            header = split(strip(lines[i]))
-            n_entity_blocks = parse(Int, header[1])
-            # header[2] = total nodes (not needed for parsing)
+            nodes_read = 0
+            actual_min_tag = typemax(Int)
+            actual_max_tag = typemin(Int)
             for _ in 1:n_entity_blocks
-                i += 1
-                block_header = split(strip(lines[i]))
-                n_nodes_in_block = parse(Int, block_header[4])
-                # Read node tags
-                node_tags = Vector{Int}(undef, n_nodes_in_block)
-                for k in 1:n_nodes_in_block
-                    i += 1
-                    node_tags[k] = parse(Int, strip(lines[i]))
+                block_line = _required_msh_line(io, path, "MSH v4 node block header")
+                entity_dim, _, parametric, n_nodes_in_block =
+                    _parse_msh_int4(block_line, path, "MSH v4 node block header")
+                0 <= entity_dim <= 3 ||
+                    error("Invalid MSH entity dimension $entity_dim in $path.")
+                parametric in (0, 1) ||
+                    error("Invalid MSH parametric flag $parametric in $path.")
+                n_nodes_in_block >= 0 ||
+                    error("Negative MSH v4 node-block count in $path.")
+
+                node_tags = _read_msh_integer_block(
+                    io, path, n_nodes_in_block, "MSH v4 node tags")
+                for node_tag in node_tags
+                    node_tag > 0 || error("MSH node tags must be positive in $path.")
+                    haskey(nodes, node_tag) &&
+                        error("Duplicate MSH node tag $node_tag in $path.")
+                    line = _required_msh_line(io, path, "MSH v4 node coordinates")
+                    nodes[node_tag] = _parse_msh_xyz(line, path)
+                    actual_min_tag = min(actual_min_tag, node_tag)
+                    actual_max_tag = max(actual_max_tag, node_tag)
                 end
-                # Read node coordinates
-                for k in 1:n_nodes_in_block
-                    i += 1
-                    parts = split(strip(lines[i]))
-                    x = parse(Float64, parts[1])
-                    y = parse(Float64, parts[2])
-                    z = parse(Float64, parts[3])
-                    nodes[node_tags[k]] = (x, y, z)
-                end
+                nodes_read = Base.checked_add(nodes_read, n_nodes_in_block)
             end
+            nodes_read == total_nodes ||
+                error("MSH v4 node header declares $total_nodes nodes, read $nodes_read in $path.")
+            if total_nodes > 0
+                actual_min_tag == min_node_tag && actual_max_tag == max_node_tag ||
+                    error("MSH v4 node-tag bounds do not match the header in $path.")
+            end
+            end_marker = _required_msh_line(io, path, "\$EndNodes")
+            end_marker == "\$EndNodes" ||
+                error("MSH file $path is missing \$EndNodes.")
+        elseif section == "\$Elements"
+            header_line = _required_msh_line(io, path, "MSH v4 element header")
+            n_entity_blocks, total_elements, min_element_tag, max_element_tag =
+                _parse_msh_int4(header_line, path, "MSH v4 element header")
+            n_entity_blocks >= 0 && total_elements >= 0 ||
+                error("Negative MSH v4 element count in $path.")
 
-        elseif s == "\$Elements"
-            i += 1
-            header = split(strip(lines[i]))
-            n_entity_blocks = parse(Int, header[1])
+            elements_read = 0
+            actual_min_tag = typemax(Int)
+            actual_max_tag = typemin(Int)
             for _ in 1:n_entity_blocks
-                i += 1
-                block_header = split(strip(lines[i]))
-                etype = parse(Int, block_header[3])
-                n_elems_in_block = parse(Int, block_header[4])
+                block_line = _required_msh_line(io, path, "MSH v4 element block header")
+                _, _, element_type, n_elems_in_block =
+                    _parse_msh_int4(block_line, path, "MSH v4 element block header")
+                n_elems_in_block >= 0 ||
+                    error("Negative MSH v4 element-block count in $path.")
                 for _ in 1:n_elems_in_block
-                    i += 1
-                    if etype == 2  # 3-node triangle
-                        parts = split(strip(lines[i]))
-                        n1 = parse(Int, parts[2])
-                        n2 = parse(Int, parts[3])
-                        n3 = parse(Int, parts[4])
-                        push!(triangles, (n1, n2, n3))
-                    end
+                    line = _required_msh_line(io, path, "MSH v4 element")
+                    element_tag, triangle =
+                        _parse_msh_v4_element(line, path, element_type == 2)
+                    element_tag > 0 ||
+                        error("MSH element tags must be positive in $path.")
+                    actual_min_tag = min(actual_min_tag, element_tag)
+                    actual_max_tag = max(actual_max_tag, element_tag)
+                    isnothing(triangle) || push!(triangles, triangle)
                 end
+                elements_read = Base.checked_add(elements_read, n_elems_in_block)
             end
+            elements_read == total_elements ||
+                error("MSH v4 element header declares $total_elements elements, read $elements_read in $path.")
+            if total_elements > 0
+                actual_min_tag == min_element_tag &&
+                    actual_max_tag == max_element_tag ||
+                    error("MSH v4 element-tag bounds do not match the header in $path.")
+            end
+            end_marker = _required_msh_line(io, path, "\$EndElements")
+            end_marker == "\$EndElements" ||
+                error("MSH file $path is missing \$EndElements.")
         end
-        i += 1
     end
 
     isempty(nodes) && error("MSH v4 file has no nodes: $path")
@@ -520,15 +740,11 @@ end
 function _build_trimesh_from_msh(nodes::Dict{Int, NTuple{3,Float64}},
                                   triangles::Vector{NTuple{3,Int}})
     # Remap node IDs to 1-based contiguous
-    sorted_ids = sort(collect(keys(nodes)))
-    id_map = Dict{Int,Int}()
-    for (new_id, old_id) in enumerate(sorted_ids)
-        id_map[old_id] = new_id
-    end
+    sorted_ids = sort!(collect(keys(nodes)))
 
     nv = length(sorted_ids)
     xyz = Matrix{Float64}(undef, 3, nv)
-    for (old_id, new_id) in id_map
+    @inbounds for (new_id, old_id) in enumerate(sorted_ids)
         c = nodes[old_id]
         xyz[1, new_id] = c[1]
         xyz[2, new_id] = c[2]
@@ -537,10 +753,37 @@ function _build_trimesh_from_msh(nodes::Dict{Int, NTuple{3,Float64}},
 
     nt = length(triangles)
     tri = Matrix{Int}(undef, 3, nt)
-    for t in 1:nt
-        tri[1, t] = id_map[triangles[t][1]]
-        tri[2, t] = id_map[triangles[t][2]]
-        tri[3, t] = id_map[triangles[t][3]]
+    contiguous_ids = true
+    @inbounds for i in eachindex(sorted_ids)
+        if sorted_ids[i] != i
+            contiguous_ids = false
+            break
+        end
+    end
+    if contiguous_ids
+        @inbounds for t in 1:nt
+            for v in 1:3
+                node_tag = triangles[t][v]
+                1 <= node_tag <= nv ||
+                    error("MSH triangle references missing node tag $node_tag.")
+                tri[v, t] = node_tag
+            end
+        end
+    else
+        id_map = Dict{Int,Int}()
+        sizehint!(id_map, nv)
+        @inbounds for (new_id, old_id) in enumerate(sorted_ids)
+            id_map[old_id] = new_id
+        end
+        @inbounds for t in 1:nt
+            for v in 1:3
+                node_tag = triangles[t][v]
+                new_id = get(id_map, node_tag, 0)
+                !iszero(new_id) ||
+                    error("MSH triangle references missing node tag $node_tag.")
+                tri[v, t] = new_id
+            end
+        end
     end
 
     return TriMesh(xyz, tri)

@@ -623,7 +623,9 @@ Write a `TriMesh` to an STL file. Default is binary (compact, fast). Set `ascii=
 
 Read a triangle surface mesh from a Gmsh MSH file (v2 or v4 ASCII).
 
-Only 3-node triangle elements (Gmsh element type 2) are extracted. Lines, quads, tetrahedra, and other element types are silently ignored. Node IDs are remapped to 1-based contiguous indices.
+Only ASCII MSH 2.x and 4.x files are accepted; binary MSH and unsupported major versions are rejected explicitly. Input is streamed section-by-section, so the reader does not retain the complete text file or per-field split vectors.
+
+Only 3-node triangle elements (Gmsh element type 2) are extracted. Lines, quads, tetrahedra, and other element types are silently ignored. Node IDs are remapped to 1-based contiguous indices. Declared section counts, end markers, tag bounds, duplicate node tags, missing node references, and finite coordinates are validated while parsing.
 
 **Parameters:**
 

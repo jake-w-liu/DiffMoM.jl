@@ -3114,6 +3114,38 @@ mesh_msh_v2 = read_msh_mesh(msh_v2_path)
 report_msh_v2 = mesh_quality_report(mesh_msh_v2)
 @assert report_msh_v2.n_invalid_triangles == 0
 @assert report_msh_v2.n_degenerate_triangles == 0
+
+# The MSH reader streams records and tokenizes without per-field heap objects.
+msh_alloc_path = joinpath(DATADIR, "tmp_alloc_v2.msh")
+msh_grid_n = 20
+open(msh_alloc_path, "w") do io
+    nv_grid = (msh_grid_n + 1)^2
+    nt_grid = 2 * msh_grid_n^2
+    println(io, "\$MeshFormat\n2.2 0 8\n\$EndMeshFormat\n\$Nodes")
+    println(io, nv_grid)
+    for j in 0:msh_grid_n, i in 0:msh_grid_n
+        node_id = i + 1 + j * (msh_grid_n + 1)
+        println(io, node_id, " ", i / msh_grid_n, " ", j / msh_grid_n, " 0")
+    end
+    println(io, "\$EndNodes\n\$Elements")
+    println(io, nt_grid)
+    element_id = 1
+    for j in 0:(msh_grid_n - 1), i in 0:(msh_grid_n - 1)
+        n1 = i + 1 + j * (msh_grid_n + 1)
+        n2 = n1 + 1
+        n4 = n1 + msh_grid_n + 1
+        n3 = n4 + 1
+        println(io, element_id, " 2 0 ", n1, " ", n2, " ", n3)
+        element_id += 1
+        println(io, element_id, " 2 0 ", n1, " ", n3, " ", n4)
+        element_id += 1
+    end
+    println(io, "\$EndElements")
+end
+read_msh_mesh(msh_alloc_path)  # warm compilation
+GC.gc()
+msh_read_alloc = @allocated read_msh_mesh(msh_alloc_path)
+@assert msh_read_alloc < 20 * filesize(msh_alloc_path)
 println("  32f: PASS")
 
 # 32g: MSH v4 import
@@ -3124,11 +3156,9 @@ open(msh_v4_path, "w") do io
     println(io, "4.1 0 8")
     println(io, "\$EndMeshFormat")
     println(io, "\$Nodes")
-    println(io, "1 3 1 3")               # 1 entity block, 3 nodes, min tag 1, max tag 3
+    println(io, "1 3 10 30")             # 1 entity block, 3 nodes, non-contiguous tags
     println(io, "2 1 0 3")               # entity dim=2, tag=1, parametric=0, 3 nodes
-    println(io, "1")                      # node tags
-    println(io, "2")
-    println(io, "3")
+    println(io, "10 20 30")               # node tags may share one whitespace-delimited line
     println(io, "0.0 0.0 0.0")          # node coordinates
     println(io, "1.0 0.0 0.0")
     println(io, "0.5 1.0 0.0")
@@ -3136,7 +3166,7 @@ open(msh_v4_path, "w") do io
     println(io, "\$Elements")
     println(io, "1 1 1 1")               # 1 entity block, 1 element, min tag 1, max tag 1
     println(io, "2 1 2 1")               # entity dim=2, tag=1, type=2 (triangle), 1 element
-    println(io, "1 1 2 3")               # element tag 1, nodes 1 2 3
+    println(io, "1 10 20 30")            # element tag 1, nodes 10 20 30
     println(io, "\$EndElements")
 end
 mesh_msh_v4 = read_msh_mesh(msh_v4_path)
@@ -3146,6 +3176,27 @@ mesh_msh_v4 = read_msh_mesh(msh_v4_path)
 @assert abs(mesh_msh_v4.xyz[1, 1] - 0.0) < 1e-12
 @assert abs(mesh_msh_v4.xyz[1, 2] - 1.0) < 1e-12
 @assert abs(mesh_msh_v4.xyz[2, 3] - 1.0) < 1e-12
+
+msh_binary_path = joinpath(DATADIR, "tmp_binary_header.msh")
+open(msh_binary_path, "w") do io
+    println(io, "\$MeshFormat\n4.1 1 8\n\$EndMeshFormat")
+end
+@test_throws ErrorException read_msh_mesh(msh_binary_path)
+
+msh_unsupported_path = joinpath(DATADIR, "tmp_unsupported_version.msh")
+open(msh_unsupported_path, "w") do io
+    println(io, "\$MeshFormat\n3.0 0 8\n\$EndMeshFormat")
+end
+@test_throws ErrorException read_msh_mesh(msh_unsupported_path)
+
+msh_missing_node_path = joinpath(DATADIR, "tmp_missing_node.msh")
+open(msh_missing_node_path, "w") do io
+    println(io, "\$MeshFormat\n2.2 0 8\n\$EndMeshFormat\n\$Nodes\n3")
+    println(io, "1 0 0 0\n2 1 0 0\n3 0 1 0\n\$EndNodes")
+    println(io, "\$Elements\n1\n1 2 0 1 2 99\n\$EndElements")
+end
+@test_throws ErrorException read_msh_mesh(msh_missing_node_path)
+@test_throws ErrorException DiffMoM._parse_msh_v2_node("1 NaN 0 0", msh_v2_path)
 println("  32g: PASS")
 
 # 32h: Unified read_mesh / write_mesh dispatcher
