@@ -3784,6 +3784,7 @@ pop!(A_comp_resized.theta)
 @test_throws DimensionMismatch adjoint(A_comp_resized) * x_test
 y_comp = A_comp * x_test
 _assert_single_complex_output_allocation(A_comp, x_test)
+_assert_scaled_mul_contract(A_comp, x_test, reverse(x_test))
 
 matvec_err = norm(y_comp - y_ref) / norm(y_ref)
 println("    Forward matvec relative error: $matvec_err")
@@ -3796,6 +3797,7 @@ println("  34b: Adjoint matvec accuracy ...")
 y_adj_ref = Z_ref' * x_test
 y_adj_comp = adjoint(A_comp) * x_test
 _assert_single_complex_output_allocation(adjoint(A_comp), x_test)
+_assert_scaled_mul_contract(adjoint(A_comp), x_test, reverse(x_test))
 
 adj_err = norm(y_adj_comp - y_adj_ref) / norm(y_adj_ref)
 println("    Adjoint matvec relative error: $adj_err")

@@ -79,17 +79,38 @@ LinearAlgebra.adjoint(A::ImpedanceLoadedAdjointOperator) = A.parent
 
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::ImpedanceLoadedOperator,
-                            x::AbstractVector{ComplexF64})
+                            x::AbstractVector{ComplexF64},
+                            alpha_scale::Number,
+                            beta_scale::Number)
+    N = size(A, 1)
+    length(x) == N ||
+        throw(DimensionMismatch("x length $(length(x)) != $N"))
+    length(y) == N ||
+        throw(DimensionMismatch("y length $(length(y)) != $N"))
     length(A.Mp) == length(A.theta) ||
         throw(DimensionMismatch(
             "Mp length $(length(A.Mp)) must match theta length $(length(A.theta))"))
-    mul!(y, A.Z_base, x)
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
+    mul!(y, A.Z_base, x, alpha_scale, beta_scale)
     @inbounds for p in eachindex(A.theta)
         coeff = A.reactive ? (1im * A.theta[p]) : ComplexF64(A.theta[p])
-        mul!(y, A.Mp[p], x, -coeff, one(ComplexF64))
+        mul!(y, A.Mp[p], x, -alpha_scale * coeff, one(ComplexF64))
     end
     return y
 end
+
+LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
+                   A::ImpedanceLoadedOperator,
+                   x::AbstractVector{ComplexF64}) =
+    LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::ImpedanceLoadedOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
@@ -101,18 +122,39 @@ end
 
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::ImpedanceLoadedAdjointOperator,
-                            x::AbstractVector{ComplexF64})
+                            x::AbstractVector{ComplexF64},
+                            alpha_scale::Number,
+                            beta_scale::Number)
+    N = size(A, 1)
+    length(x) == N ||
+        throw(DimensionMismatch("x length $(length(x)) != $N"))
+    length(y) == N ||
+        throw(DimensionMismatch("y length $(length(y)) != $N"))
     length(A.parent.Mp) == length(A.parent.theta) ||
         throw(DimensionMismatch(
             "Mp length $(length(A.parent.Mp)) must match theta length $(length(A.parent.theta))"))
-    mul!(y, adjoint(A.parent.Z_base), x)
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
+    mul!(y, adjoint(A.parent.Z_base), x, alpha_scale, beta_scale)
     @inbounds for p in eachindex(A.parent.theta)
         # Conjugate of the coefficient for adjoint
         coeff = A.parent.reactive ? (-1im * A.parent.theta[p]) : ComplexF64(A.parent.theta[p])
-        mul!(y, A.parent.Mp[p]', x, -coeff, one(ComplexF64))
+        mul!(y, A.parent.Mp[p]', x, -alpha_scale * coeff, one(ComplexF64))
     end
     return y
 end
+
+LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
+                   A::ImpedanceLoadedAdjointOperator,
+                   x::AbstractVector{ComplexF64}) =
+    LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::ImpedanceLoadedAdjointOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
