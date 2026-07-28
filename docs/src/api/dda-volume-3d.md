@@ -785,6 +785,7 @@ FFT-accelerated coupled-dipole operator for a uniform `VoxelGrid3D`. It applies
 | `radiative_correction` | `Bool` | Whether the radiation-reaction correction was applied. |
 | `kernel` | `FFTDDAKernel3D` | The precomputed Fourier kernel. |
 | `qhat`, `conv` | `Array{ComplexF64}` | Preallocated FFT workspaces reused across matvecs. |
+| `work_lock` | `ReentrantLock` | Serializes access to the reusable workspaces for thread-safe shared use. |
 
 ---
 
@@ -864,6 +865,7 @@ FFT-accelerated coupled electric-magnetic DDA operator. It applies
 | `radiative_correction` | `Bool` | Whether the radiation-reaction correction was applied. |
 | `kernel` | `FFTEMDDAKernel3D` | The precomputed Fourier kernel. |
 | `qhat`, `conv` | `Array{ComplexF64}` | Preallocated FFT workspaces reused across matvecs. |
+| `work_lock` | `ReentrantLock` | Serializes access to the reusable workspaces for thread-safe shared use. |
 
 ---
 

@@ -34,7 +34,17 @@ struct FFTDDAOperator3D{TEps<:AbstractVector,TAlpha<:AbstractVector} <: Abstract
     kernel::FFTDDAKernel3D
     qhat::Array{ComplexF64,4}
     conv::Array{ComplexF64,3}
+    work_lock::ReentrantLock
 end
+
+FFTDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
+                 eps_r::TEps, alpha::TAlpha, radiative_correction::Bool,
+                 kernel::FFTDDAKernel3D, qhat::Array{ComplexF64,4},
+                 conv::Array{ComplexF64,3}) where
+                {TEps<:AbstractVector,TAlpha<:AbstractVector} =
+    FFTDDAOperator3D{TEps,TAlpha}(grid, k0, eps_r, alpha,
+                                 radiative_correction, kernel, qhat, conv,
+                                 ReentrantLock())
 
 """
     FFTEMDDAKernel3D
@@ -65,7 +75,16 @@ struct FFTEMDDAOperator3D{TAlpha<:AbstractVector} <: AbstractMatrix{ComplexF64}
     kernel::FFTEMDDAKernel3D
     qhat::Array{ComplexF64,4}
     conv::Array{ComplexF64,3}
+    work_lock::ReentrantLock
 end
+
+FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
+                   alpha::TAlpha, radiative_correction::Bool,
+                   kernel::FFTEMDDAKernel3D, qhat::Array{ComplexF64,4},
+                   conv::Array{ComplexF64,3}) where
+                  {TAlpha<:AbstractVector} =
+    FFTEMDDAOperator3D{TAlpha}(grid, k0, alpha, radiative_correction,
+                              kernel, qhat, conv, ReentrantLock())
 
 @inline _fft_dda_mod_index(offset::Int, nfft::Int) = mod(offset, nfft) + 1
 
@@ -148,41 +167,56 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(x) == size(A, 2) || throw(DimensionMismatch("x length must be $(size(A, 2))."))
     length(y) == size(A, 1) || throw(DimensionMismatch("y length must be $(size(A, 1))."))
 
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
     xread = y === x ? copy(x) : x
-    grid = A.grid
-    nx, ny, nz = grid.nx, grid.ny, grid.nz
-    px, py, pz = A.kernel.pad_dims
+    overwrite = iszero(beta_scale)
+    lock(A.work_lock)
+    try
+        grid = A.grid
+        nx, ny, nz = grid.nx, grid.ny, grid.nz
+        qhat = A.qhat
+        conv = A.conv
+        fill!(qhat, 0.0 + 0.0im)
 
-    qhat = A.qhat
-    conv = A.conv
-    fill!(qhat, 0.0 + 0.0im)
-
-    idx = 0
-    for iz in 1:nz, iy in 1:ny, ix in 1:nx
-        idx += 1
-        qvec = _alpha_apply(A.alpha[idx], _read_field_component(xread, idx))
-        for b in 1:3
-            qhat[ix, iy, iz, b] = qvec[b]
-        end
-    end
-
-    for b in 1:3
-        FFTW.fft!(view(qhat, :, :, :, b))
-    end
-
-    for a in 1:3
-        fill!(conv, 0.0 + 0.0im)
-        for b in 1:3
-            conv .+= view(A.kernel.kernel_hat, :, :, :, a, b) .* view(qhat, :, :, :, b)
-        end
-        FFTW.ifft!(conv)
         idx = 0
         for iz in 1:nz, iy in 1:ny, ix in 1:nx
             idx += 1
-            row = _dda_index(idx, a)
-            value = xread[row] - conv[ix, iy, iz]
-            y[row] = alpha_scale * value + beta_scale * y[row]
+            qvec = _alpha_apply(A.alpha[idx], _read_field_component(xread, idx))
+            for b in 1:3
+                qhat[ix, iy, iz, b] = qvec[b]
+            end
         end
+
+        for b in 1:3
+            FFTW.fft!(view(qhat, :, :, :, b))
+        end
+
+        for a in 1:3
+            fill!(conv, 0.0 + 0.0im)
+            for b in 1:3
+                conv .+= view(A.kernel.kernel_hat, :, :, :, a, b) .* view(qhat, :, :, :, b)
+            end
+            FFTW.ifft!(conv)
+            idx = 0
+            for iz in 1:nz, iy in 1:ny, ix in 1:nx
+                idx += 1
+                row = _dda_index(idx, a)
+                value = xread[row] - conv[ix, iy, iz]
+                y[row] = overwrite ?
+                    alpha_scale * value :
+                    alpha_scale * value + beta_scale * y[row]
+            end
+        end
+    finally
+        unlock(A.work_lock)
     end
 
     return y
@@ -331,39 +365,56 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(x) == size(A, 2) || throw(DimensionMismatch("x length must be $(size(A, 2))."))
     length(y) == size(A, 1) || throw(DimensionMismatch("y length must be $(size(A, 1))."))
 
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
+
     xread = y === x ? copy(x) : x
-    grid = A.grid
-    nx, ny, nz = grid.nx, grid.ny, grid.nz
-    qhat = A.qhat
-    conv = A.conv
-    fill!(qhat, 0.0 + 0.0im)
+    overwrite = iszero(beta_scale)
+    lock(A.work_lock)
+    try
+        grid = A.grid
+        nx, ny, nz = grid.nx, grid.ny, grid.nz
+        qhat = A.qhat
+        conv = A.conv
+        fill!(qhat, 0.0 + 0.0im)
 
-    idx = 0
-    for iz in 1:nz, iy in 1:ny, ix in 1:nx
-        idx += 1
-        q6 = A.alpha[idx] * _read_em_field6(xread, idx)
-        for b in 1:6
-            qhat[ix, iy, iz, b] = q6[b]
-        end
-    end
-
-    for b in 1:6
-        FFTW.fft!(view(qhat, :, :, :, b))
-    end
-
-    for a in 1:6
-        fill!(conv, 0.0 + 0.0im)
-        for b in 1:6
-            conv .+= view(A.kernel.kernel_hat, :, :, :, a, b) .* view(qhat, :, :, :, b)
-        end
-        FFTW.ifft!(conv)
         idx = 0
         for iz in 1:nz, iy in 1:ny, ix in 1:nx
             idx += 1
-            row = _em_index(idx, a)
-            value = xread[row] - conv[ix, iy, iz]
-            y[row] = alpha_scale * value + beta_scale * y[row]
+            q6 = A.alpha[idx] * _read_em_field6(xread, idx)
+            for b in 1:6
+                qhat[ix, iy, iz, b] = q6[b]
+            end
         end
+
+        for b in 1:6
+            FFTW.fft!(view(qhat, :, :, :, b))
+        end
+
+        for a in 1:6
+            fill!(conv, 0.0 + 0.0im)
+            for b in 1:6
+                conv .+= view(A.kernel.kernel_hat, :, :, :, a, b) .* view(qhat, :, :, :, b)
+            end
+            FFTW.ifft!(conv)
+            idx = 0
+            for iz in 1:nz, iy in 1:ny, ix in 1:nx
+                idx += 1
+                row = _em_index(idx, a)
+                value = xread[row] - conv[ix, iy, iz]
+                y[row] = overwrite ?
+                    alpha_scale * value :
+                    alpha_scale * value + beta_scale * y[row]
+            end
+        end
+    finally
+        unlock(A.work_lock)
     end
 
     return y

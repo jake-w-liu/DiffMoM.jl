@@ -11,6 +11,25 @@ end
 
 println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
 
+function _test_shared_fft_operator_concurrency(A, inputs)
+    references = [A * input for input in inputs]
+    Threads.nthreads() > 1 || return
+
+    for _ in 1:4
+        gate = Base.Event()
+        tasks = map(eachindex(inputs)) do i
+            Threads.@spawn begin
+                wait(gate)
+                A * inputs[i]
+            end
+        end
+        yield()
+        notify(gate)
+        results = fetch.(tasks)
+        @test results ≈ references rtol=1e-12
+    end
+end
+
 @testset "FFT-accelerated 3D DDA/EM-DDA matvec" begin
     k0 = 2π
 
@@ -33,6 +52,7 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
     @test A_fft.alpha == A_direct.alpha
     @test A_fft.eps_r == A_direct.eps_r
     @test A_fft.kernel.pad_dims == (2grid.nx - 1, 2grid.ny - 1, 2grid.nz - 1)
+    @test A_fft.work_lock isa ReentrantLock
 
     x = ComplexF64[sin(0.19 * i) + 1im * cos(0.07 * i) for i in 1:size(A_fft, 2)]
     y_direct = zeros(ComplexF64, size(A_direct, 1))
@@ -42,6 +62,9 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
     mul!(y_fft, A_fft, x)
 
     @test norm(y_fft - y_direct) / norm(y_direct) < 1e-12
+    fill!(y_fft, ComplexF64(NaN, NaN))
+    mul!(y_fft, A_fft, x, 1.0 + 0im, 0.0 + 0im)
+    @test y_fft ≈ y_direct rtol=1e-12
 
     mul!(y_fft, A_fft, x)  # warm-up allocation probe
     @test (@allocated mul!(y_fft, A_fft, x)) < 8192
@@ -52,6 +75,10 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
     mul!(y_scaled_fft, A_fft, x, 0.3 - 0.2im, -0.4 + 0.1im)
 
     @test norm(y_scaled_fft - y_scaled_direct) / norm(y_scaled_direct) < 1e-12
+    _test_shared_fft_operator_concurrency(
+        A_fft,
+        [x, (0.2 - 0.3im) .* x, reverse(x), conj.(x)],
+    )
 
     eps_tensor = [ComplexF64[
         2.4  0.03 0.0
@@ -74,6 +101,7 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
     @test_throws BoundsError size(A_em_fft, -1)
     @test A_em_fft.alpha == A_em_direct.alpha
     @test A_em_fft.kernel.pad_dims == A_fft.kernel.pad_dims
+    @test A_em_fft.work_lock isa ReentrantLock
 
     x_em = ComplexF64[sin(0.09 * i) + 1im * cos(0.05 * i) for i in 1:size(A_em_fft, 2)]
     y_em_direct = zeros(ComplexF64, size(A_em_direct, 1))
@@ -81,9 +109,16 @@ println("\n── Test 47: FFT-accelerated 3D DDA/EM-DDA matvec ──")
     mul!(y_em_direct, A_em_direct, x_em)
     mul!(y_em_fft, A_em_fft, x_em)
     @test norm(y_em_fft - y_em_direct) / norm(y_em_direct) < 1e-12
+    fill!(y_em_fft, ComplexF64(NaN, NaN))
+    mul!(y_em_fft, A_em_fft, x_em, 1.0 + 0im, 0.0 + 0im)
+    @test y_em_fft ≈ y_em_direct rtol=1e-12
 
     mul!(y_em_fft, A_em_fft, x_em)
     @test (@allocated mul!(y_em_fft, A_em_fft, x_em)) < 32768
+    _test_shared_fft_operator_concurrency(
+        A_em_fft,
+        [x_em, (0.2 - 0.3im) .* x_em, reverse(x_em), conj.(x_em)],
+    )
 
     E_inc, H_inc = planewave_em_dda_3d(
         single, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
