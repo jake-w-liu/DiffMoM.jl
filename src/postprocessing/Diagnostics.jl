@@ -8,17 +8,38 @@ function _validate_farfield_samples(E_ff::Matrix{<:Number}, grid::SphGrid)
     size(E_ff) == (3, NΩ) ||
         throw(DimensionMismatch(
             "E_ff has size $(size(E_ff)), expected (3, $NΩ)"))
+    all(isfinite, E_ff) ||
+        throw(ArgumentError("E_ff must contain only finite values"))
     return NΩ
 end
 
 @inline function _farfield_intensity(E_ff::Matrix{<:Number}, q::Int)
-    return abs2(E_ff[1, q]) + abs2(E_ff[2, q]) + abs2(E_ff[3, q])
+    intensity =
+        abs2(E_ff[1, q]) + abs2(E_ff[2, q]) + abs2(E_ff[3, q])
+    isfinite(intensity) ||
+        throw(OverflowError(
+            "far-field intensity overflowed at sample $q"))
+    return intensity
 end
 
 function _rcs_scale(E0::Real)
-    isfinite(E0) && !iszero(E0) ||
+    E0_float = try
+        Float64(E0)
+    catch err
+        throw(ArgumentError(
+            "E0 must be representable as Float64: $(sprint(showerror, err))"))
+    end
+    isfinite(E0_float) && !iszero(E0_float) ||
         throw(ArgumentError("E0 must be finite and nonzero, got $E0"))
-    return 4π / abs2(E0)
+    root_scale = sqrt(4π) / abs(E0_float)
+    (isfinite(root_scale) && root_scale > 0.0) ||
+        throw(OverflowError(
+            "RCS scale is not representable for E0=$E0"))
+    scale = root_scale * root_scale
+    (isfinite(scale) && scale > 0.0) ||
+        throw(OverflowError(
+            "RCS scale is not representable for E0=$E0"))
+    return scale
 end
 
 """
@@ -38,8 +59,14 @@ function radiated_power(E_ff::Matrix{<:Number}, grid::SphGrid;
     P = 0.0
     @inbounds for q in 1:NΩ
         P += grid.w[q] * _farfield_intensity(E_ff, q)
+        isfinite(P) ||
+            throw(OverflowError(
+                "radiated-power accumulation overflowed at sample $q"))
     end
-    return P / (2 * eta0)
+    power = (P / eta0) / 2
+    isfinite(power) ||
+        throw(OverflowError("radiated power is non-finite"))
+    return power
 end
 
 """
@@ -58,7 +85,12 @@ function projected_power(E_ff::Matrix{<:Number}, grid::SphGrid,
     size(pol) == (3, NΩ) ||
         throw(DimensionMismatch(
             "pol has size $(size(pol)), expected (3, $NΩ)"))
+    all(isfinite, pol) ||
+        throw(ArgumentError("pol must contain only finite values"))
     if mask !== nothing
+        mask isa AbstractVector{Bool} ||
+            throw(ArgumentError(
+                "mask must be an AbstractVector{Bool}, got $(typeof(mask))"))
         length(mask) == NΩ ||
             throw(DimensionMismatch(
                 "mask length $(length(mask)) != $NΩ"))
@@ -72,7 +104,13 @@ function projected_power(E_ff::Matrix{<:Number}, grid::SphGrid,
         yq = conj(pol[1, q]) * E_ff[1, q] +
              conj(pol[2, q]) * E_ff[2, q] +
              conj(pol[3, q]) * E_ff[3, q]
+        isfinite(yq) ||
+            throw(OverflowError(
+                "polarization projection overflowed at sample $q"))
         P += grid.w[q] * abs2(yq)
+        isfinite(P) ||
+            throw(OverflowError(
+                "projected-power accumulation overflowed at sample $q"))
     end
     return P
 end
@@ -87,7 +125,19 @@ For a PEC scatterer with Z I = v, this is the power extracted from the
 incident field by the induced currents.
 """
 function input_power(I::Vector{<:Number}, v::Vector{<:Number})
-    return -0.5 * real(dot(I, v))
+    length(I) == length(v) ||
+        throw(DimensionMismatch(
+            "I length $(length(I)) != v length $(length(v))"))
+    !isempty(I) ||
+        throw(ArgumentError("I and v must contain at least one entry"))
+    all(isfinite, I) ||
+        throw(ArgumentError("I must contain only finite values"))
+    all(isfinite, v) ||
+        throw(ArgumentError("v must contain only finite values"))
+    power = -0.5 * real(dot(I, v))
+    isfinite(power) ||
+        throw(OverflowError("input-power evaluation overflowed"))
+    return power
 end
 
 """
@@ -102,7 +152,13 @@ function energy_ratio(I::Vector{<:Number}, v::Vector{<:Number},
                       eta0::Float64=376.730313668)
     P_in  = input_power(I, v)
     P_rad = radiated_power(E_ff, grid; eta0=eta0)
-    return P_rad / P_in
+    !iszero(P_in) ||
+        throw(DomainError(
+            P_in, "energy ratio is undefined for zero input power"))
+    ratio = P_rad / P_in
+    isfinite(ratio) ||
+        throw(OverflowError("energy ratio is non-finite"))
+    return ratio
 end
 
 """
@@ -111,10 +167,19 @@ end
 Return condition number and singular value extremes of the MoM matrix.
 """
 function condition_diagnostics(Z::Matrix{<:Number})
+    (size(Z, 1) > 0 && size(Z, 2) > 0) ||
+        throw(ArgumentError(
+            "Z must have at least one row and one column, got size $(size(Z))"))
+    all(isfinite, Z) ||
+        throw(ArgumentError("Z must contain only finite values"))
     svs = svdvals(Z)
-    return (cond = svs[1] / svs[end],
-            sv_max = svs[1],
-            sv_min = svs[end])
+    all(isfinite, svs) ||
+        throw(OverflowError(
+            "singular-value computation produced non-finite values"))
+    sv_max = first(svs)
+    sv_min = last(svs)
+    κ = iszero(sv_min) ? Inf : sv_max / sv_min
+    return (cond=κ, sv_max=sv_max, sv_min=sv_min)
 end
 
 """
@@ -129,11 +194,16 @@ function bistatic_rcs(E_ff::Matrix{<:Number}; E0::Real=1.0)
     size(E_ff, 1) == 3 ||
         throw(DimensionMismatch(
             "E_ff has $(size(E_ff, 1)) rows, expected 3"))
+    all(isfinite, E_ff) ||
+        throw(ArgumentError("E_ff must contain only finite values"))
     NΩ = size(E_ff, 2)
     scale = _rcs_scale(E0)
     σ = zeros(Float64, NΩ)
     @inbounds for q in 1:NΩ
         σ[q] = scale * _farfield_intensity(E_ff, q)
+        isfinite(σ[q]) ||
+            throw(OverflowError(
+                "bistatic RCS overflowed at sample $q"))
     end
     return σ
 end
@@ -153,12 +223,9 @@ function backscatter_rcs(E_ff::Matrix{<:Number}, grid::SphGrid,
     NΩ = _validate_farfield_samples(E_ff, grid)
     all(isfinite, k_inc_hat) ||
         throw(ArgumentError("k_inc_hat components must be finite"))
-    k_norm = norm(k_inc_hat)
-    isfinite(k_norm) && k_norm > 0 ||
-        throw(ArgumentError("k_inc_hat must have a finite, nonzero norm"))
     scale = _rcs_scale(E0)
 
-    khat = k_inc_hat / k_norm
+    khat = _validated_farfield_direction(k_inc_hat)
     r_back = -khat
 
     best_idx = 1
@@ -174,9 +241,12 @@ function backscatter_rcs(E_ff::Matrix{<:Number}, grid::SphGrid,
     end
 
     ang_err = acos(clamp(best_dot, -1.0, 1.0)) * 180 / π
+    sigma = scale * _farfield_intensity(E_ff, best_idx)
+    isfinite(sigma) ||
+        throw(OverflowError("backscatter RCS overflowed"))
 
     return (
-        sigma = scale * _farfield_intensity(E_ff, best_idx),
+        sigma = sigma,
         index = best_idx,
         theta = grid.theta[best_idx],
         phi = grid.phi[best_idx],

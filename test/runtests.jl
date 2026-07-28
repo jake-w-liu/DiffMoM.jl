@@ -953,7 +953,20 @@ pol_oversized = hcat(pol_mat, zeros(ComplexF64, 3))
     E_ff, grid, pol_oversized; mask=mask)
 @test_throws DimensionMismatch projected_power(
     E_ff, grid, pol_mat; mask=vcat(mask, true))
+@test_throws ArgumentError projected_power(
+    E_ff, grid, pol_mat; mask=Int.(mask))
 @test_throws ArgumentError radiated_power(E_ff, grid; eta0=0.0)
+E_ff_nonfinite = copy(E_ff)
+E_ff_nonfinite[1, 1] = ComplexF64(NaN, 0.0)
+pol_nonfinite = copy(pol_mat)
+pol_nonfinite[1, 1] = ComplexF64(Inf, 0.0)
+@test_throws ArgumentError radiated_power(E_ff_nonfinite, grid)
+@test_throws ArgumentError projected_power(
+    E_ff_nonfinite, grid, pol_mat; mask=mask)
+@test_throws ArgumentError projected_power(
+    E_ff, grid, pol_nonfinite; mask=mask)
+@test_throws OverflowError radiated_power(
+    fill(ComplexF64(floatmax(Float64), 0.0), size(E_ff)), grid)
 rel_q_err = abs(P_qform - P_direct) / max(abs(P_qform), 1e-30)
 println("  Objective consistency (I†QI vs direct projected power): $rel_q_err")
 @assert rel_q_err < 1e-12
@@ -978,12 +991,33 @@ sigma = bistatic_rcs(E_ff; E0=1.0)
 @test_throws DimensionMismatch bistatic_rcs(E_ff[1:2, :])
 @test_throws ArgumentError bistatic_rcs(E_ff; E0=0.0)
 @test_throws ArgumentError bistatic_rcs(E_ff; E0=Inf)
+@test_throws ArgumentError bistatic_rcs(E_ff_nonfinite)
+@test_throws OverflowError bistatic_rcs(E_ff; E0=nextfloat(0.0))
+@test_throws OverflowError bistatic_rcs(E_ff; E0=floatmax(Float64))
 
 bs = backscatter_rcs(E_ff, grid, Vec3(0.0, 0.0, -1.0); E0=1.0)
 @assert 1 <= bs.index <= NΩ
 @assert bs.sigma >= 0.0
 @test_throws ArgumentError backscatter_rcs(
     E_ff, grid, Vec3(0.0, 0.0, 0.0); E0=1.0)
+@test_throws ArgumentError backscatter_rcs(
+    E_ff_nonfinite, grid, Vec3(0.0, 0.0, -1.0); E0=1.0)
+@test_throws DimensionMismatch input_power(
+    ComplexF64[1.0], ComplexF64[1.0, 2.0])
+@test_throws ArgumentError input_power(ComplexF64[], ComplexF64[])
+@test_throws ArgumentError input_power(
+    ComplexF64[NaN], ComplexF64[1.0])
+@test_throws DomainError energy_ratio(
+    ComplexF64[0.0], ComplexF64[1.0],
+    zeros(ComplexF64, size(E_ff)), grid)
+@test_throws ArgumentError condition_diagnostics(
+    zeros(ComplexF64, 0, 0))
+@test_throws ArgumentError condition_diagnostics(
+    ComplexF64[NaN 0.0; 0.0 1.0])
+zero_condition = condition_diagnostics(zeros(ComplexF64, 2, 2))
+@test zero_condition.cond == Inf
+@test zero_condition.sv_max == 0.0
+@test zero_condition.sv_min == 0.0
 @assert _radiated_power_allocation(E_ff, grid) <= 128
 @assert _projected_power_allocation(E_ff, grid, pol_mat, mask) <= 128
 @assert _bistatic_rcs_allocation(E_ff) <=
