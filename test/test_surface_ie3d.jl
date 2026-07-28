@@ -135,6 +135,7 @@ end
     xk = ComplexF64[sin(0.2 * i) + 1im * cos(0.17 * i) for i in 1:N]
     yk = zeros(ComplexF64, N)
     mul!(yk, K_mf, xk)
+    @test (@allocated mul!(yk, K_mf, xk)) < 1024
     @test norm(yk - K * xk) / max(norm(K * xk), eps()) < 1e-13
 
     # The near-singular relation is an exact compact Boolean matrix: every
@@ -185,6 +186,12 @@ end
     x = ComplexF64[sin(0.11 * i) + 1im * cos(0.07 * i) for i in 1:2N]
     y_mf = zeros(ComplexF64, 2N)
     mul!(y_mf, A_pm_mf, x)
+    @test (@allocated mul!(y_mf, A_pm_mf, x)) < 1024
+    A_pm_mf * x
+    product_allocation = @allocated A_pm_mf * x
+    zeros(ComplexF64, 2N)
+    output_allocation = @allocated zeros(ComplexF64, 2N)
+    @test product_allocation <= output_allocation + 128
     @test norm(y_mf - A_pm * x) / norm(A_pm * x) < 1e-13
 
     rhs0 = zeros(ComplexF64, 2N)

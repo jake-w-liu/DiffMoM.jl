@@ -16,6 +16,22 @@ using DataFrames
 include(joinpath(@__DIR__, "..", "src", "DiffMoM.jl"))
 using .DiffMoM
 
+complex_vector_input = ComplexF64[1 + 2im, 3 - 4im]
+@assert DiffMoM._complex_vector_input(complex_vector_input) === complex_vector_input
+DiffMoM._complex_vector_input(complex_vector_input)  # warm compilation
+@assert @allocated(DiffMoM._complex_vector_input(complex_vector_input)) == 0
+@assert DiffMoM._complex_vector_input(Float32[1, 2]) == ComplexF64[1, 2]
+
+function _assert_single_complex_output_allocation(A, x)
+    result = A * x
+    A * x  # warm the exact operator/vector specialization
+    product_allocation = @allocated A * x
+    zeros(ComplexF64, length(result))
+    output_allocation = @allocated zeros(ComplexF64, length(result))
+    @assert product_allocation <= output_allocation + 128
+    return nothing
+end
+
 const DATADIR = joinpath(@__DIR__, "..", "data")
 mkpath(DATADIR)
 
@@ -2557,6 +2573,7 @@ Random.seed!(42)
 x_test = randn(ComplexF64, N)
 y_dense = Z_efie * x_test
 y_aca = A_aca_op * x_test
+_assert_single_complex_output_allocation(A_aca_op, x_test)
 
 rel_matvec_err = norm(y_aca - y_dense) / norm(y_dense)
 println("  Dense blocks: $(length(A_aca_op.dense_blocks)), Low-rank blocks: $(length(A_aca_op.lowrank_blocks))")
@@ -2567,6 +2584,7 @@ println("  Matvec relative error: $rel_matvec_err")
 A_adj = adjoint(A_aca_op)
 y_adj_dense = Z_efie' * x_test
 y_adj_aca = A_adj * x_test
+_assert_single_complex_output_allocation(A_adj, x_test)
 
 rel_adj_err = norm(y_adj_aca - y_adj_dense) / norm(y_adj_dense)
 println("  Adjoint matvec relative error: $rel_adj_err")
@@ -2923,6 +2941,7 @@ Random.seed!(42)
 x_test = randn(ComplexF64, mlfma_N)
 y_dense = Z_dense_mlfma * x_test
 y_mlfma = A_mlfma * x_test
+_assert_single_complex_output_allocation(A_mlfma, x_test)
 
 mlfma_matvec_err = norm(y_mlfma - y_dense) / norm(y_dense)
 println("  31c: MLFMA matvec — rel error = $(round(mlfma_matvec_err, sigdigits=3))")
@@ -2933,6 +2952,7 @@ println("  31c: PASS")
 y_test = randn(ComplexF64, mlfma_N)
 lhs_adj = dot(y_test, A_mlfma * x_test)
 rhs_adj = dot(adjoint(A_mlfma) * y_test, x_test)
+_assert_single_complex_output_allocation(adjoint(A_mlfma), y_test)
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"
@@ -3422,6 +3442,7 @@ y_ref = Z_ref * x_test
 # Composite operator
 A_comp = ImpedanceLoadedOperator(Z_efie, Mp, theta_test, false)
 y_comp = A_comp * x_test
+_assert_single_complex_output_allocation(A_comp, x_test)
 
 matvec_err = norm(y_comp - y_ref) / norm(y_ref)
 println("    Forward matvec relative error: $matvec_err")
@@ -3433,6 +3454,7 @@ println("  34a: PASS")
 println("  34b: Adjoint matvec accuracy ...")
 y_adj_ref = Z_ref' * x_test
 y_adj_comp = adjoint(A_comp) * x_test
+_assert_single_complex_output_allocation(adjoint(A_comp), x_test)
 
 adj_err = norm(y_adj_comp - y_adj_ref) / norm(y_adj_ref)
 println("    Adjoint matvec relative error: $adj_err")

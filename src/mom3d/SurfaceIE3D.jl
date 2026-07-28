@@ -34,9 +34,10 @@ struct DielectricSIEResult3D{TA<:AbstractMatrix{ComplexF64},TLU,TStats}
     interior::DielectricMedium3D
 end
 
-struct MatrixFreeMagneticFieldOperator3D <: AbstractMatrix{ComplexF64}
+struct MatrixFreeMagneticFieldOperator3D{
+        TRWG<:RWGData} <: AbstractMatrix{ComplexF64}
     mesh::TriMesh
-    rwg::RWGData
+    rwg::TRWG
     k::ComplexF64
     wq::Vector{Float64}
     pts::Vector{Vector{Vec3}}
@@ -315,7 +316,7 @@ function matrixfree_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
 end
 
 Base.size(A::MatrixFreeMagneticFieldOperator3D) = (A.rwg.nedges, A.rwg.nedges)
-Base.eltype(::Type{MatrixFreeMagneticFieldOperator3D}) = ComplexF64
+Base.eltype(::Type{<:MatrixFreeMagneticFieldOperator3D}) = ComplexF64
 Base.eltype(::MatrixFreeMagneticFieldOperator3D) = ComplexF64
 
 @inline function _mfie_entry_3d(A::MatrixFreeMagneticFieldOperator3D, m::Int, n::Int)
@@ -685,7 +686,7 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
 function Base.:*(A::MatrixFreeDielectricSIE3D, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
-    mul!(y, A, ComplexF64.(collect(x)))
+    mul!(y, A, _complex_vector_input(x))
     return y
 end
 

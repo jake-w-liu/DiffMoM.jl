@@ -6,6 +6,9 @@ export nvertices, ntriangles
 const Vec3 = SVector{3,Float64}
 const CVec3 = SVector{3,ComplexF64}
 
+@inline _complex_vector_input(x::AbstractVector{ComplexF64}) = x
+@inline _complex_vector_input(x::AbstractVector) = Vector{ComplexF64}(x)
+
 """
 Triangle mesh: vertices and triangle connectivity.
 """

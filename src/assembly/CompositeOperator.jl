@@ -72,7 +72,7 @@ end
 
 function Base.:*(A::ImpedanceLoadedOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
-    mul!(y, A, Vector{ComplexF64}(x))
+    mul!(y, A, _complex_vector_input(x))
     return y
 end
 
@@ -92,6 +92,6 @@ end
 
 function Base.:*(A::ImpedanceLoadedAdjointOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
-    mul!(y, A, Vector{ComplexF64}(x))
+    mul!(y, A, _complex_vector_input(x))
     return y
 end
