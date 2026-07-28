@@ -4051,6 +4051,16 @@ phi_probe, scale_probe = DiffMoM._multiangle_objective_scales(
     J_probe, w_probe, :smoothmax_log, ref_probe, beta_probe)
 @assert isfinite(phi_probe) "smoothmax objective should be finite"
 @assert all(isfinite, scale_probe) "smoothmax objective scales should be finite"
+@test_throws ArgumentError DiffMoM._multiangle_objective_scales(
+    J_probe, w_probe, :smoothmax_log, ref_probe, Inf)
+@test_throws ArgumentError DiffMoM._multiangle_objective_scales(
+    J_probe, w_probe, :smoothmax_log, ref_probe, NaN)
+@test_throws ArgumentError DiffMoM._multiangle_objective_scales(
+    Float64[], Float64[], :linear, Float64[], beta_probe)
+phi_sharp_probe, scale_sharp_probe = DiffMoM._multiangle_objective_scales(
+    J_probe, w_probe, :smoothmax_log, ref_probe, floatmax(Float64))
+@test isfinite(phi_sharp_probe)
+@test all(isfinite, scale_sharp_probe)
 for j in eachindex(J_probe)
     h = 1e-7 * max(abs(J_probe[j]), 1.0e-12)
     Jp = copy(J_probe); Jp[j] += h
@@ -4063,6 +4073,23 @@ for j in eachindex(J_probe)
     rel_scale = abs(fd_scale - scale_probe[j]) / max(abs(scale_probe[j]), 1e-30)
     @assert rel_scale < 1e-5 "smoothmax objective scale mismatch at $j: $rel_scale"
 end
+
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, AngleConfig[], theta_init;
+    maxiter=1, verbose=false,
+)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=1, tol=Inf, verbose=false,
+)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=1, tol=NaN, verbose=false,
+)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=1, alpha0=Inf, verbose=false,
+)
 
 refs_35 = Float64[]
 Z_ref_35 = assemble_full_Z(Z_efie, Mp_opt, theta_init)

@@ -31,34 +31,91 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
                                       reference_objectives::Vector{Float64},
                                       smooth_beta::Float64)
     M = length(J_angles)
+    M >= 1 ||
+        throw(ArgumentError("multi-angle objective requires at least one angle"))
     length(weights) == M ||
         error("weights length $(length(weights)) does not match objective length $M")
     length(reference_objectives) == M ||
         error("reference_objectives length $(length(reference_objectives)) does not match objective length $M")
-    all(isfinite, J_angles) || error("per-angle objective contains non-finite values")
-    all(isfinite, weights) || error("objective weights must be finite")
-    all(isfinite, reference_objectives) || error("reference objectives must be finite")
-    all(reference_objectives .> 0) || error("reference objectives must be positive")
+    @inbounds for i in 1:M
+        isfinite(J_angles[i]) ||
+            error("per-angle objective contains a non-finite value at index $i")
+        isfinite(weights[i]) ||
+            error("objective weight $i must be finite, got $(weights[i])")
+        (isfinite(reference_objectives[i]) && reference_objectives[i] > 0.0) ||
+            error(
+                "reference objective $i must be finite and positive, got $(reference_objectives[i])")
+    end
 
+    # A positive floor keeps log objectives and their derivatives defined when
+    # numerical roundoff produces a zero or slightly negative quadratic form.
     tiny = 1e-300
-    J_safe = max.(J_angles, tiny)
+    scales = Vector{Float64}(undef, M)
 
     if objective == :linear
-        return sum(weights .* J_angles), copy(weights)
+        copyto!(scales, weights)
+        value = dot(weights, J_angles)
+        isfinite(value) ||
+            error("linear multi-angle objective overflowed to a non-finite value")
+        return value, scales
     elseif objective == :sum_log
-        all(weights .>= 0) || error("sum_log objective weights must be nonnegative")
-        return sum(weights .* log.(J_safe ./ reference_objectives)), weights ./ J_safe
+        value = 0.0
+        @inbounds for i in 1:M
+            wi = weights[i]
+            wi >= 0.0 ||
+                error("sum_log objective weight $i must be nonnegative, got $wi")
+            Ji = max(J_angles[i], tiny)
+            log_ratio = log(Ji) - log(reference_objectives[i])
+            value += wi * log_ratio
+            scales[i] = wi / Ji
+        end
+        (isfinite(value) && all(isfinite, scales)) ||
+            error("sum_log objective or derivative scales overflowed")
+        return value, scales
     elseif objective == :smoothmax_log
-        smooth_beta > 0 || error("smooth_beta must be positive")
-        all(weights .> 0) || error("smoothmax_log objective weights must be positive")
-        z = log.(J_safe ./ reference_objectives)
-        u = smooth_beta .* z .+ log.(weights)
-        umax = maximum(u)
-        expu = exp.(u .- umax)
-        denom = sum(expu)
-        probs = expu ./ denom
-        value = (umax + log(denom)) / smooth_beta
-        return value, probs ./ J_safe
+        (isfinite(smooth_beta) && smooth_beta > 0.0) ||
+            throw(ArgumentError(
+                "smooth_beta must be finite and positive, got $smooth_beta"))
+
+        # Stabilize around max(z), before multiplying by beta. This avoids the
+        # `Inf - Inf` failure of the conventional beta*z log-sum-exp formula
+        # for large but finite beta, while preserving weight ratios for ties.
+        zmax = -Inf
+        @inbounds for i in 1:M
+            weights[i] > 0.0 ||
+                error(
+                    "smoothmax_log objective weight $i must be positive, got $(weights[i])")
+            Ji = max(J_angles[i], tiny)
+            zi = log(Ji) - log(reference_objectives[i])
+            zmax = max(zmax, zi)
+        end
+
+        shiftmax = -Inf
+        @inbounds for i in 1:M
+            Ji = max(J_angles[i], tiny)
+            zi = log(Ji) - log(reference_objectives[i])
+            shift = smooth_beta * (zi - zmax) + log(weights[i])
+            shiftmax = max(shiftmax, shift)
+        end
+
+        denom = 0.0
+        @inbounds for i in 1:M
+            Ji = max(J_angles[i], tiny)
+            zi = log(Ji) - log(reference_objectives[i])
+            shift = smooth_beta * (zi - zmax) + log(weights[i])
+            denom += exp(shift - shiftmax)
+        end
+
+        value = zmax + (shiftmax + log(denom)) / smooth_beta
+        @inbounds for i in 1:M
+            Ji = max(J_angles[i], tiny)
+            zi = log(Ji) - log(reference_objectives[i])
+            shift = smooth_beta * (zi - zmax) + log(weights[i])
+            scales[i] = exp(shift - shiftmax) / (denom * Ji)
+        end
+        (isfinite(value) && all(isfinite, scales)) ||
+            error("smoothmax_log objective or derivative scales overflowed")
+        return value, scales
     else
         error("Unknown multi-angle objective: $objective (expected :linear, :sum_log, or :smoothmax_log)")
     end
@@ -241,6 +298,18 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   smooth_beta::Float64=8.0)
     M = length(configs)    # number of angles
     P = length(theta0)     # number of design parameters
+    M >= 1 ||
+        throw(ArgumentError("optimize_multiangle_rcs requires at least one angle configuration"))
+    P >= 1 ||
+        throw(ArgumentError("optimize_multiangle_rcs requires at least one design parameter"))
+    maxiter >= 0 ||
+        throw(ArgumentError("maxiter must be nonnegative, got $maxiter"))
+    (isfinite(tol) && tol >= 0.0) ||
+        throw(ArgumentError("tol must be finite and nonnegative, got $tol"))
+    m_lbfgs >= 0 ||
+        throw(ArgumentError("m_lbfgs must be nonnegative, got $m_lbfgs"))
+    (isfinite(alpha0) && alpha0 > 0.0) ||
+        throw(ArgumentError("alpha0 must be finite and positive, got $alpha0"))
     theta = copy(theta0)
 
     # Use dense LU when Z_base is a dense Matrix for exact solves;
