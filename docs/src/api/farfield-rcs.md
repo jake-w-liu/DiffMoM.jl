@@ -84,6 +84,8 @@ Compute the far-field pattern `E_inf(r_hat_q) = sum_n I_n * g_n(r_hat_q)` at all
 
 **Returns:** `Matrix{ComplexF64}` of shape `(3, N_omega)` containing far-field electric-field phasors `E_inf(r_hat_q)`.
 
+`N_omega` must be positive, `G_mat` must have exactly `3*N_omega` rows, and the current-vector length must equal the number of columns in `G_mat`.
+
 ---
 
 ### `incident_farfield(excitation, r_hat, k)`
@@ -467,6 +469,8 @@ P_rad = 1/(2*eta0) * integral{ |E_inf(r_hat)|^2 dOmega }
 
 **Returns:** `Float64` radiated power in watts.
 
+`E_ff` must have exactly shape `(3, N_omega)`, and `eta0` must be finite and positive.
+
 ---
 
 ### `projected_power(E_ff, grid, pol; mask=nothing)`
@@ -486,6 +490,8 @@ When `mask` is provided, only selected directions contribute. This is the discre
 - `mask`: Optional direction mask.
 
 **Returns:** `Float64` projected power.
+
+The field and polarization matrices must both have exactly shape `(3, N_omega)`; an optional mask must have exactly `N_omega` entries.
 
 ---
 
@@ -545,7 +551,7 @@ sigma(r_hat_q) = 4*pi * |E_inf(r_hat_q)|^2 / |E0|^2
 
 **Parameters:**
 - `E_ff::Matrix{<:Number}`: Far-field matrix `(3, N_omega)`.
-- `E0::Real=1.0`: Incident field amplitude (must match the amplitude used in excitation assembly).
+- `E0::Real=1.0`: Finite, nonzero incident field amplitude (must match the amplitude used in excitation assembly).
 
 **Returns:** `Vector{Float64}` of length `N_omega` containing RCS values in m^2 (linear units, not dBsm).
 
@@ -560,7 +566,7 @@ Return monostatic (backscatter) RCS for a given incidence direction. The backsca
 **Parameters:**
 - `E_ff::Matrix{<:Number}`: Far-field matrix `(3, N_omega)`.
 - `grid::SphGrid`: Spherical grid.
-- `k_inc_hat::Vec3`: Incident propagation direction (unit vector).
+- `k_inc_hat::Vec3`: Finite, nonzero incident propagation direction (normalized internally).
 - `E0::Real=1.0`: Incident field amplitude.
 
 **Returns:** Named tuple `(sigma, index, theta, phi, angular_error_deg)`:

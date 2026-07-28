@@ -32,6 +32,31 @@ function _bit_vector_output_allocation(n::Int)
     return @allocated BitVector(undef, n)
 end
 
+function _float_vector_output_allocation(n::Int)
+    zeros(Float64, n)
+    return @allocated zeros(Float64, n)
+end
+
+function _radiated_power_allocation(E_ff, grid)
+    radiated_power(E_ff, grid)
+    return @allocated radiated_power(E_ff, grid)
+end
+
+function _projected_power_allocation(E_ff, grid, pol, mask)
+    projected_power(E_ff, grid, pol; mask=mask)
+    return @allocated projected_power(E_ff, grid, pol; mask=mask)
+end
+
+function _bistatic_rcs_allocation(E_ff)
+    bistatic_rcs(E_ff)
+    return @allocated bistatic_rcs(E_ff)
+end
+
+function _backscatter_rcs_allocation(E_ff, grid, k_inc_hat)
+    backscatter_rcs(E_ff, grid, k_inc_hat)
+    return @allocated backscatter_rcs(E_ff, grid, k_inc_hat)
+end
+
 function _assert_single_complex_output_allocation(A, x)
     result = A * x
     A * x  # warm the exact operator/vector specialization
@@ -656,6 +681,11 @@ G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=eta0)
 # Compute far-field from PEC solution
 E_ff = compute_farfield(G_mat, I_pec, NΩ)
 @assert size(E_ff) == (3, NΩ)
+@test_throws ArgumentError compute_farfield(G_mat, I_pec, 0)
+@test_throws DimensionMismatch compute_farfield(
+    G_mat[1:(end - 1), :], I_pec, NΩ)
+@test_throws DimensionMismatch compute_farfield(
+    G_mat, vcat(I_pec, 1.0 + 0im), NΩ)
 
 # Far-field should be transverse: r̂ · E∞ ≈ 0
 max_radial = let mr = 0.0
@@ -700,6 +730,16 @@ println("  Q is Hermitian PSD ✓")
 #   (2) direct angular integration of projected far field
 P_qform = real(dot(I_pec, Q * I_pec))
 P_direct = projected_power(E_ff, grid, pol_mat; mask=mask)
+E_ff_oversized = hcat(E_ff, zeros(ComplexF64, 3))
+pol_oversized = hcat(pol_mat, zeros(ComplexF64, 3))
+@test_throws DimensionMismatch radiated_power(E_ff_oversized, grid)
+@test_throws DimensionMismatch projected_power(
+    E_ff_oversized, grid, pol_oversized; mask=vcat(mask, true))
+@test_throws DimensionMismatch projected_power(
+    E_ff, grid, pol_oversized; mask=mask)
+@test_throws DimensionMismatch projected_power(
+    E_ff, grid, pol_mat; mask=vcat(mask, true))
+@test_throws ArgumentError radiated_power(E_ff, grid; eta0=0.0)
 rel_q_err = abs(P_qform - P_direct) / max(abs(P_qform), 1e-30)
 println("  Objective consistency (I†QI vs direct projected power): $rel_q_err")
 @assert rel_q_err < 1e-12
@@ -721,10 +761,21 @@ mul!(q_scaled, Q_operator, I_pec, 2.0, -0.5)
 sigma = bistatic_rcs(E_ff; E0=1.0)
 @assert length(sigma) == NΩ
 @assert all(sigma .>= 0.0)
+@test_throws DimensionMismatch bistatic_rcs(E_ff[1:2, :])
+@test_throws ArgumentError bistatic_rcs(E_ff; E0=0.0)
+@test_throws ArgumentError bistatic_rcs(E_ff; E0=Inf)
 
 bs = backscatter_rcs(E_ff, grid, Vec3(0.0, 0.0, -1.0); E0=1.0)
 @assert 1 <= bs.index <= NΩ
 @assert bs.sigma >= 0.0
+@test_throws ArgumentError backscatter_rcs(
+    E_ff, grid, Vec3(0.0, 0.0, 0.0); E0=1.0)
+@assert _radiated_power_allocation(E_ff, grid) <= 128
+@assert _projected_power_allocation(E_ff, grid, pol_mat, mask) <= 128
+@assert _bistatic_rcs_allocation(E_ff) <=
+        _float_vector_output_allocation(NΩ) + 128
+@assert _backscatter_rcs_allocation(
+    E_ff, grid, Vec3(0.0, 0.0, -1.0)) <= 128
 
 println("  PASS ✓")
 

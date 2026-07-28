@@ -318,8 +318,8 @@ function direction_mask(grid::SphGrid, direction::Vec3; half_angle::Real=π/18)
     all(isfinite, direction) ||
         throw(ArgumentError("direction components must be finite"))
     direction_norm = norm(direction)
-    direction_norm > 0 ||
-        throw(ArgumentError("direction must be nonzero"))
+    isfinite(direction_norm) && direction_norm > 0 ||
+        throw(ArgumentError("direction must have a finite, nonzero norm"))
 
     d = direction / direction_norm
     threshold = cos(half_angle)

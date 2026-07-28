@@ -153,7 +153,16 @@ Compute the far-field E∞(r̂_q) = Σ_n I_n g_n(r̂_q) for all grid points.
 Returns a (3, NΩ) complex matrix.
 """
 function compute_farfield(G_mat::Matrix{ComplexF64}, I_coeffs::Vector{ComplexF64}, NΩ::Int)
-    # G_mat is (3*NΩ, N), I_coeffs is (N,)
+    NΩ > 0 ||
+        throw(ArgumentError("NΩ must be positive, got $NΩ"))
+    expected_rows = Base.checked_mul(3, NΩ)
+    size(G_mat, 1) == expected_rows ||
+        throw(DimensionMismatch(
+            "G_mat has $(size(G_mat, 1)) rows, expected $expected_rows"))
+    length(I_coeffs) == size(G_mat, 2) ||
+        throw(DimensionMismatch(
+            "I_coeffs length $(length(I_coeffs)) != $(size(G_mat, 2))"))
+
     E_flat = G_mat * I_coeffs   # (3*NΩ,)
     E = reshape(E_flat, 3, NΩ)
     return E
