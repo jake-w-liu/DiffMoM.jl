@@ -229,6 +229,49 @@ println("DiffMoM Test Suite")
 println("="^60)
 
 # ─────────────────────────────────────────────────
+# Gradient verification utility validation
+# ─────────────────────────────────────────────────
+theta_verify = [1.0, -0.5]
+objective_verify = theta -> theta[1]^2 + 3theta[2]^2
+gradient_verify = [2.0, -3.0]
+
+@test complex_step_grad(objective_verify, theta_verify, 1) ≈ 2.0
+@test fd_grad(objective_verify, theta_verify, 2) ≈ -3.0 rtol=1e-9
+@test fd_grad(
+    objective_verify, theta_verify, 1; scheme=:forward) ≈ 2.0 rtol=1e-5
+verified_gradient = verify_gradient(
+    objective_verify, gradient_verify, theta_verify; indices=(2, 1))
+@test getproperty.(verified_gradient, :p) == [2, 1]
+@test maximum(getproperty.(verified_gradient, :rel_err_fd)) < 1e-9
+
+@test_throws ArgumentError complex_step_grad(
+    objective_verify, theta_verify, 1; eps=0.0)
+@test_throws ArgumentError complex_step_grad(
+    _ -> Inf, theta_verify, 1)
+@test_throws ArgumentError complex_step_grad(
+    theta -> 1im + theta[1]^2, theta_verify, 1)
+@test_throws ArgumentError complex_step_grad(
+    objective_verify, [NaN, 0.0], 1)
+@test_throws ArgumentError complex_step_grad(
+    objective_verify, theta_verify, 0)
+@test_throws ArgumentError fd_grad(
+    objective_verify, theta_verify, 1; h=0.0)
+@test_throws ArgumentError fd_grad(
+    objective_verify, theta_verify, 1; h=Inf)
+@test_throws ArgumentError fd_grad(
+    objective_verify, [floatmax(Float64), 0.0], 1)
+@test_throws ArgumentError fd_grad(
+    objective_verify, theta_verify, 1; scheme=:invalid)
+@test_throws DimensionMismatch verify_gradient(
+    objective_verify, Float64[], theta_verify)
+@test_throws ArgumentError verify_gradient(
+    objective_verify, [NaN, -3.0], theta_verify)
+@test_throws ArgumentError verify_gradient(
+    objective_verify, gradient_verify, theta_verify; indices=(3,))
+@test_throws ArgumentError verify_gradient(
+    objective_verify, gradient_verify, theta_verify; indices=(true,))
+
+# ─────────────────────────────────────────────────
 # Test 1: Mesh and RWG Construction
 # ─────────────────────────────────────────────────
 println("\n── Test 1: Mesh and RWG construction ──")
