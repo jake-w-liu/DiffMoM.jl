@@ -89,6 +89,28 @@ function _assert_zero_allocation_mul!(A, x)
     return result
 end
 
+function _assert_scaled_mul_contract(A, x, y_initial)
+    alpha_scale = 1.25 - 0.5im
+    beta_scale = -0.75 + 0.25im
+    reference = A * x
+
+    result = copy(y_initial)
+    mul!(result, A, x, alpha_scale, beta_scale)
+    @assert result ≈ alpha_scale .* reference .+ beta_scale .* y_initial rtol=1e-12
+    allocation = @allocated mul!(result, A, x, alpha_scale, beta_scale)
+    @assert allocation <= 128
+
+    fill!(result, ComplexF64(NaN, NaN))
+    mul!(result, A, x, alpha_scale, zero(ComplexF64))
+    @assert result ≈ alpha_scale .* reference rtol=1e-12
+
+    poisoned_input = fill(ComplexF64(NaN, NaN), length(x))
+    copyto!(result, y_initial)
+    mul!(result, A, poisoned_input, zero(ComplexF64), beta_scale)
+    @assert result ≈ beta_scale .* y_initial rtol=1e-12
+    return nothing
+end
+
 function _assert_single_workspace_mul!(A, x)
     result = zeros(ComplexF64, first(size(A)))
     mul!(result, A, x)
@@ -3217,6 +3239,8 @@ y_test = randn(ComplexF64, mlfma_N)
 lhs_adj = dot(y_test, A_mlfma * x_test)
 rhs_adj = dot(adjoint(A_mlfma) * y_test, x_test)
 _assert_single_complex_output_allocation(adjoint(A_mlfma), y_test)
+_assert_scaled_mul_contract(A_mlfma, x_test, y_test)
+_assert_scaled_mul_contract(adjoint(A_mlfma), y_test, x_test)
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"

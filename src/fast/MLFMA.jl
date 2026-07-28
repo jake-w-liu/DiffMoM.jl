@@ -1471,18 +1471,27 @@ end
 # ─── Forward matvec ─────────────────────────────────────────────
 
 function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
-                             x::AbstractVector)
+                             x::AbstractVector, alpha_scale::Number,
+                             beta_scale::Number)
     N = A.N
     nL = A.octree.nLevels
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
 
     ws = A.workspace
     agg = ws.agg
     incoming = ws.incoming
 
     # 1. Near-field
-    mul!(y, A.Z_near, x)
+    mul!(y, A.Z_near, x, alpha_scale, beta_scale)
 
     # 2. Aggregation at leaf level
     leaf_level = A.octree.levels[nL]
@@ -1622,7 +1631,7 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
                 dot4 -= conj(A.bf_patterns[4, q, n]) * inc[4, q]
                 val += leaf_samp.weights[q] * dot4
             end
-            y[n] += A.prefactor * val
+            y[n] += alpha_scale * A.prefactor * val
         end
     end
 
@@ -1630,15 +1639,20 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
 end
 
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
-                            x::AbstractVector)
+                            x::AbstractVector, alpha_scale::Number,
+                            beta_scale::Number)
     work_lock = A.workspace.work_lock
     lock(work_lock)
     try
-        return _mlfma_forward_mul!(y, A, x)
+        return _mlfma_forward_mul!(y, A, x, alpha_scale, beta_scale)
     finally
         unlock(work_lock)
     end
 end
+
+LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
+                   x::AbstractVector) =
+    LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::MLFMAOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
@@ -1649,18 +1663,27 @@ end
 # ─── Adjoint matvec ─────────────────────────────────────────────
 
 function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
-                             x::AbstractVector)
+                             x::AbstractVector, alpha_scale::Number,
+                             beta_scale::Number)
     N = A.op.N
     nL = A.op.octree.nLevels
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
 
     ws = A.op.workspace
     agg = ws.agg
     incoming = ws.incoming
 
     # Near-field adjoint
-    mul!(y, adjoint(A.op.Z_near), x)
+    mul!(y, adjoint(A.op.Z_near), x, alpha_scale, beta_scale)
 
     leaf_level = A.op.octree.levels[nL]
     leaf_samp = A.op.samplings[nL - 1]
@@ -1793,7 +1816,7 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
                     val += conj(A.op.bf_patterns[c, q, n]) * a_adj[c, q]
                 end
             end
-            y[n] += conj(A.op.prefactor) * val
+            y[n] += alpha_scale * conj(A.op.prefactor) * val
         end
     end
 
@@ -1801,15 +1824,20 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
 end
 
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
-                            x::AbstractVector)
+                            x::AbstractVector, alpha_scale::Number,
+                            beta_scale::Number)
     work_lock = A.op.workspace.work_lock
     lock(work_lock)
     try
-        return _mlfma_adjoint_mul!(y, A, x)
+        return _mlfma_adjoint_mul!(y, A, x, alpha_scale, beta_scale)
     finally
         unlock(work_lock)
     end
 end
+
+LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
+                   x::AbstractVector) =
+    LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::MLFMAAdjointOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
