@@ -57,6 +57,11 @@ function _backscatter_rcs_allocation(E_ff, grid, k_inc_hat)
     return @allocated backscatter_rcs(E_ff, grid, k_inc_hat)
 end
 
+function _bilinear_allocation(left, A, right)
+    DiffMoM._dot_left_matrix_right(left, A, right)
+    return @allocated DiffMoM._dot_left_matrix_right(left, A, right)
+end
+
 function _assert_single_complex_output_allocation(A, x)
     result = A * x
     A * x  # warm the exact operator/vector specialization
@@ -599,6 +604,21 @@ println("  PASS ✓")
 # Test 5: Impedance Term and Derivatives
 # ─────────────────────────────────────────────────
 println("\n── Test 5: Impedance term and derivatives ──")
+
+dense_bilinear_matrix = randn(MersenneTwister(500), ComplexF64, 32, 32)
+dense_bilinear_left = randn(MersenneTwister(501), ComplexF64, 32)
+dense_bilinear_right = randn(MersenneTwister(502), ComplexF64, 32)
+@assert DiffMoM._dot_left_matrix_right(
+    dense_bilinear_left, dense_bilinear_matrix, dense_bilinear_right) ≈
+    dot(dense_bilinear_left, dense_bilinear_matrix * dense_bilinear_right)
+@assert _bilinear_allocation(
+    dense_bilinear_left, dense_bilinear_matrix, dense_bilinear_right) <= 128
+sparse_bilinear_matrix = sparse(dense_bilinear_matrix)
+@assert DiffMoM._dot_left_matrix_right(
+    dense_bilinear_left, sparse_bilinear_matrix, dense_bilinear_right) ≈
+    dot(dense_bilinear_left, sparse_bilinear_matrix * dense_bilinear_right)
+@assert _bilinear_allocation(
+    dense_bilinear_left, sparse_bilinear_matrix, dense_bilinear_right) <= 128
 
 Nt = ntriangles(mesh)
 # Simple partition: one patch per triangle

@@ -184,6 +184,17 @@ function _dot_left_matrix_right(left::AbstractVector, A::AbstractMatrix, right::
     return dot(left, A * right)
 end
 
+function _dot_left_matrix_right(left::AbstractVector, A::StridedMatrix,
+                                right::AbstractVector)
+    return dot(left, A, right)
+end
+
+function _dot_left_matrix_right(left::AbstractVector,
+                                A::SparseArrays.AbstractSparseMatrixCSC,
+                                right::AbstractVector)
+    return dot(left, A, right)
+end
+
 function _dot_left_matrix_right(left::AbstractVector, A::LocalMassMatrix, right::AbstractVector)
     length(left) == A.n || throw(DimensionMismatch("left length $(length(left)) != $(A.n)"))
     length(right) == A.n || throw(DimensionMismatch("right length $(length(right)) != $(A.n)"))
