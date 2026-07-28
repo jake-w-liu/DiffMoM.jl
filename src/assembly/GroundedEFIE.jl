@@ -66,66 +66,85 @@ function _assemble_periodic_image_block(mesh::TriMesh, rwg::RWGData, k,
         rwg_vals[n] = (vals_p, vals_m)
     end
 
+    tri_to_rwg = [Vector{Tuple{Int,Int}}() for _ in 1:Nt]
+    for n in 1:N
+        push!(tri_to_rwg[tri_ids[1, n]], (n, 1))
+        push!(tri_to_rwg[tri_ids[2, n]], (n, 2))
+    end
+
     CT = ComplexF64
-    # G_per_full between observation (real, z0) and image source (z0 - 2h).
-    #
-    # Reciprocity at normal incidence: _gper_full(a@z0, b@z0-2h) =
-    # _gper_full(b@z0, a@z0-2h) (verified to machine precision), so the upper
-    # triangle determines the cache; the mirrored (tn,tm) write is disjoint from
-    # other threads. Oblique incidence (Bloch phase) uses the full sweep.
-    G_cache = Array{CT,4}(undef, Nq, Nq, Nt, Nt)
-    if iszero(lattice.kx_bloch) && iszero(lattice.ky_bloch)
-        # :dynamic scheduling balances the triangular (uneven) workload.
-        Threads.@threads :dynamic for tm in 1:Nt
-            @inbounds for tn in tm:Nt
-                for qm in 1:Nq, qn in 1:Nq
-                    g = _gper_full(quad_pts[tm][qm], quad_pts_img[tn][qn], kw, lattice)
-                    G_cache[qm, qn, tm, tn] = g
-                    G_cache[qn, qm, tn, tm] = g
+    inv_k2 = 1 / (kw^2)
+    symmetric = _periodic_correction_is_symmetric(rwg, lattice)
+
+    # Stream one source/image triangle-pair block at a time. The global result is
+    # protected row-wise, while each task retains only one Nq×Nq Green-function
+    # slab and the rows incident on its current source triangle. This removes the
+    # former O(Nq²·Nt²) resident Green-function cache.
+    ntasks = max(1, min(Threads.nthreads(), Nt))
+    max_incident = maximum(length, tri_to_rwg; init=0)
+    Z_img = zeros(CT, N, N)
+    row_locks = [Threads.SpinLock() for _ in 1:N]
+
+    @sync for c in 1:ntasks
+        Threads.@spawn begin
+            slab = Matrix{CT}(undef, Nq, Nq)
+            row_buffer = zeros(CT, max_incident, N)
+            for ts in c:ntasks:Nt
+                incident_s = tri_to_rwg[ts]
+                isempty(incident_s) && continue
+                fill!(row_buffer, zero(CT))
+                Am = areas[ts]
+
+                tn_start = symmetric ? ts : 1
+                @inbounds for tn in tn_start:Nt
+                    incident_t = tri_to_rwg[tn]
+                    isempty(incident_t) && continue
+                    An = areas[tn]
+
+                    for qn in 1:Nq, qm in 1:Nq
+                        slab[qm, qn] =
+                            _gper_full(quad_pts[ts][qm], quad_pts_img[tn][qn], kw, lattice)
+                    end
+
+                    wAA = (2 * Am) * (2 * An)
+                    for (source_slot, (m_idx, itm)) in enumerate(incident_s)
+                        dvm = div_vals[itm, m_idx]
+                        fm_vals = itm == 1 ? rwg_vals[m_idx][1] : rwg_vals[m_idx][2]
+                        conj_dvm_ik2 = conj(dvm) * inv_k2
+
+                        for (n_idx, itn) in incident_t
+                            dvn = div_vals[itn, n_idx]
+                            fn_vals = itn == 1 ? rwg_vals[n_idx][1] : rwg_vals[n_idx][2]
+                            dvmn_inv_k2 = conj_dvm_ik2 * dvn
+
+                            val = zero(CT)
+                            for qm in 1:Nq
+                                fm = fm_vals[qm]
+                                wqm = wq[qm]
+                                for qn in 1:Nq
+                                    fn = fn_vals[qn]
+                                    G = slab[qm, qn]
+                                    val += (dot(fm, fn) * G - dvmn_inv_k2 * G) *
+                                           (wqm * wq[qn])
+                                end
+                            end
+                            val *= wAA
+
+                            if symmetric && tn == ts
+                                val *= 0.5
+                            end
+                            row_buffer[source_slot, n_idx] += val
+                        end
+                    end
                 end
-            end
-        end
-    else
-        Threads.@threads for tm in 1:Nt
-            @inbounds for tn in 1:Nt
-                for qm in 1:Nq, qn in 1:Nq
-                    G_cache[qm, qn, tm, tn] =
-                        _gper_full(quad_pts[tm][qm], quad_pts_img[tn][qn], kw, lattice)
-                end
+                _merge_periodic_triangle_rows!(
+                    Z_img, row_locks, row_buffer, incident_s)
             end
         end
     end
 
-    inv_k2 = 1 / (kw^2)
-    Z_img = zeros(CT, N, N)
-    Threads.@threads for m_idx in 1:N
-        @inbounds for n_idx in 1:N
-            val = zero(CT)
-            for itm in 1:2
-                tm = tri_ids[itm, m_idx]
-                Am = areas[tm]
-                dvm = div_vals[itm, m_idx]
-                fm_vals = itm == 1 ? rwg_vals[m_idx][1] : rwg_vals[m_idx][2]
-                for itn in 1:2
-                    tn = tri_ids[itn, n_idx]
-                    An = areas[tn]
-                    dvn = div_vals[itn, n_idx]
-                    fn_vals = itn == 1 ? rwg_vals[n_idx][1] : rwg_vals[n_idx][2]
-                    dvmn_inv_k2 = conj(dvm) * dvn * inv_k2
-                    for qm in 1:Nq
-                        fm = fm_vals[qm]
-                        for qn in 1:Nq
-                            fn = fn_vals[qn]
-                            G = G_cache[qm, qn, tm, tn]
-                            weight = wq[qm] * wq[qn] * (2 * Am) * (2 * An)
-                            val += (dot(fm, fn) * G - dvmn_inv_k2 * G) * weight
-                        end
-                    end
-                end
-            end
-            Z_img[m_idx, n_idx] = -1im * omega_mu0 * val
-        end
-    end
+    symmetric && _complete_periodic_triangle_symmetry!(Z_img)
+    Z_img .*= -1im * omega_mu0
     return Z_img
 end
 

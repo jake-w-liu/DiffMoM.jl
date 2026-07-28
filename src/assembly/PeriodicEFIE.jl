@@ -129,9 +129,47 @@ fast path still applies.
 """
 function _periodic_correction_is_symmetric(rwg::RWGData, lattice::PeriodicLattice)
     (iszero(lattice.kx_bloch) && iszero(lattice.ky_bloch)) || return false
-    all(iszero, imag.(rwg.coeff_plus)) || return false
-    all(iszero, imag.(rwg.coeff_minus)) || return false
+    all(isreal, rwg.coeff_plus) || return false
+    all(isreal, rwg.coeff_minus) || return false
     return true
+end
+
+# Merge the rows accumulated for one source triangle into the global matrix.
+# A task holds each row lock only once per source triangle, rather than once per
+# scalar contribution. This bounds synchronization overhead while keeping the
+# per-task scratch proportional to the number of basis functions incident on one
+# triangle.
+function _merge_periodic_triangle_rows!(Z, row_locks, row_buffer, incident_s)
+    N = size(Z, 2)
+    @inbounds for (slot, (m_idx, _)) in enumerate(incident_s)
+        row_lock = row_locks[m_idx]
+        lock(row_lock)
+        try
+            for n_idx in 1:N
+                Z[m_idx, n_idx] += row_buffer[slot, n_idx]
+            end
+        finally
+            unlock(row_lock)
+        end
+    end
+    return nothing
+end
+
+# The symmetric triangle-pair sweep stores half of every same-triangle block
+# and one orientation of every distinct-triangle block. Reciprocity then makes
+# P + transpose(P) the complete matrix. This in-place form avoids allocating a
+# transposed copy.
+function _complete_periodic_triangle_symmetry!(Z)
+    N = size(Z, 1)
+    @inbounds for m_idx in 1:N
+        Z[m_idx, m_idx] += Z[m_idx, m_idx]
+        for n_idx in (m_idx + 1):N
+            z = Z[m_idx, n_idx] + Z[n_idx, m_idx]
+            Z[m_idx, n_idx] = z
+            Z[n_idx, m_idx] = z
+        end
+    end
+    return Z
 end
 
 """
@@ -140,14 +178,15 @@ Since ΔG is smooth everywhere, standard product quadrature is used for all entr
 
 Memory: each source/observation triangle pair `(ts, tn)` is streamed through a
 single reused `Nq×Nq` ΔG block (`O(Nq²)`, independent of `Nt`) and scattered into
-per-task `N×N` accumulators that are reduced at the end. This avoids the dense
-`O(Nq²·Nt²)` ΔG cache the entry-wise assembly previously held resident, while
-evaluating each ΔG triangle-pair block exactly once (Ewald sums are unchanged).
+one global `N×N` result through per-task row buffers. The scratch is
+`O(nthreads·(Nq² + dmax·N))`, where `dmax` is the maximum number of RWGs incident
+on one triangle, rather than `O(nthreads·N²)`. Each ΔG triangle-pair block is still
+evaluated exactly once (Ewald sums are unchanged).
 
 Symmetry: when `_periodic_correction_is_symmetric` holds, only target triangles
-`tn ≥ ts` are evaluated and each block contribution is mirrored into the
-transposed `(n,m)` entry, halving both the Ewald work and the scatter — matching
-the symmetry exploit in `assemble_Z_efie`. Otherwise the full `tn` sweep is used.
+`tn ≥ ts` are evaluated, halving the Ewald work. The missing triangle orientation
+is restored after the parallel sweep from reciprocity. Otherwise the full `tn`
+sweep is used.
 """
 function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
                                        lattice::PeriodicLattice;
@@ -197,23 +236,24 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
     inv_k2 = 1 / (kw^2)
     symmetric = _periodic_correction_is_symmetric(rwg, lattice)
 
-    # Partition the source triangles across tasks; each task owns a private N×N
-    # accumulator so the scatter sweep is lock-free without an O(Nq²·Nt²)
-    # resident ΔG cache. `@spawn` tasks may migrate between threads, so each
-    # buffer is bound to its chunk index `c` (not to `threadid()`, which is
-    # unsafe under migration). Chunks are interleaved (strided) to balance the
-    # triangular workload in the symmetric short sweep.
+    # Partition source triangles across tasks. Each task owns only a small
+    # `max_incident×N` row buffer and one quadrature slab; completed rows are
+    # merged under per-output-row locks. `@spawn` tasks may migrate between
+    # threads, so scratch is bound to chunk index `c`, not `threadid()`.
+    # Interleaved chunks balance the triangular symmetric sweep.
     ntasks = max(1, min(Threads.nthreads(), Nt))
-    Z_bufs = [zeros(CT, N, N) for _ in 1:ntasks]
+    max_incident = maximum(length, tri_to_rwg; init=0)
+    Z_corr = zeros(CT, N, N)
+    row_locks = [Threads.SpinLock() for _ in 1:N]
 
     @sync for c in 1:ntasks
         Threads.@spawn begin
-            Zb = Z_bufs[c]
-            # Streaming ΔG slab for the current source triangle: slab[qm, qn].
             slab = Matrix{CT}(undef, Nq, Nq)
+            row_buffer = zeros(CT, max_incident, N)
             for ts in c:ntasks:Nt
                 incident_s = tri_to_rwg[ts]
                 isempty(incident_s) && continue
+                fill!(row_buffer, zero(CT))
                 Am = areas[ts]
 
                 tn_start = symmetric ? ts : 1
@@ -227,7 +267,7 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
                     end
 
                     wAA = (2 * Am) * (2 * An)
-                    for (m_idx, itm) in incident_s
+                    for (source_slot, (m_idx, itm)) in enumerate(incident_s)
                         dvm = div_vals[itm, m_idx]
                         fm_vals = itm == 1 ? rwg_vals[m_idx][1] : rwg_vals[m_idx][2]
                         conj_dvm_ik2 = conj(dvm) * inv_k2
@@ -251,25 +291,22 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
                             end
                             val *= wAA
 
-                            Zb[m_idx, n_idx] += val
-                            if symmetric && tn != ts
-                                # Reciprocity + real coefficients: the (tn,ts)
-                                # block contribution to Z_corr[n,m] equals this
-                                # block's. Mirror it so only tn ≥ ts source pairs
-                                # are evaluated.
-                                Zb[n_idx, m_idx] += val
+                            # Same-triangle blocks occur in both P and transpose(P)
+                            # during symmetry completion, so store half here.
+                            if symmetric && tn == ts
+                                val *= 0.5
                             end
+                            row_buffer[source_slot, n_idx] += val
                         end
                     end
                 end
+                _merge_periodic_triangle_rows!(
+                    Z_corr, row_locks, row_buffer, incident_s)
             end
         end
     end
 
-    Z_corr = Z_bufs[1]
-    @inbounds for b in 2:ntasks
-        Z_corr .+= Z_bufs[b]
-    end
+    symmetric && _complete_periodic_triangle_symmetry!(Z_corr)
     Z_corr .*= -1im * omega_mu0
 
     return Z_corr

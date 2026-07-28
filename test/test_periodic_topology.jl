@@ -797,10 +797,21 @@ println("\n── Test 41: PeriodicEFIE ──")
         # entry kernel is symmetric, so the assembled correction is symmetric and
         # the streaming/upper-triangle path is used.
         @test DiffMoM._periodic_correction_is_symmetric(rwg_pe, lat_pe)
+        @test @allocated(DiffMoM._periodic_correction_is_symmetric(rwg_pe, lat_pe)) == 0
         Zc_sym = DiffMoM._assemble_periodic_correction(mesh_pe, rwg_pe, k_pe, lat_pe;
                                                        quad_order=3)
         sym_err = maximum(abs.(Zc_sym .- transpose(Zc_sym))) / maximum(abs.(Zc_sym))
         @test sym_err < 1e-12
+
+        # Symmetry completion is P + transpose(P), including doubled diagonal
+        # entries, and operates in place without a transposed matrix allocation.
+        P0 = ComplexF64[0.5 + 1im  2 - 3im;
+                        4 + 5im    3 - 2im]
+        P = copy(P0)
+        @test DiffMoM._complete_periodic_triangle_symmetry!(P) === P
+        @test P == P0 + transpose(P0)
+        copyto!(P, P0)
+        @test @allocated(DiffMoM._complete_periodic_triangle_symmetry!(P)) == 0
 
         # Oblique incidence with complex Bloch coefficients: the Bloch phase
         # breaks reciprocity, the correction is not symmetric, and the detector
@@ -1179,6 +1190,27 @@ println("\n── Test 42: PeriodicMetrics ──")
         @test_throws ArgumentError reflection_coefficient_vectors_grounded(
             mesh_g, rwg_g, I_zero, 1.01kg, lat_g; height=lam_g / 8
         )
+
+        # The streamed image-block assembler must retain the full non-reciprocal
+        # sweep at oblique incidence and when complex Bloch basis coefficients are
+        # paired with a zero-phase lattice.
+        mesh_go = make_rect_plate(dcg, dcg, 2, 2)
+        lat_go = PeriodicLattice(dcg, dcg, π/7, π/9, kg;
+                                 N_spatial=1, N_spectral=1)
+        rwg_go = build_rwg_periodic(mesh_go, lat_go; precheck=false)
+        Zimg_go = DiffMoM._assemble_periodic_image_block(
+            mesh_go, rwg_go, kg, lat_go, lam_g / 4; quad_order=1)
+        @test all(isfinite, Zimg_go)
+        @test maximum(abs.(Zimg_go .- transpose(Zimg_go))) /
+              maximum(abs.(Zimg_go)) > 1e-3
+
+        lat_gz = PeriodicLattice(dcg, dcg, 0.0, 0.0, kg;
+                                 N_spatial=1, N_spectral=1)
+        @test !DiffMoM._periodic_correction_is_symmetric(rwg_go, lat_gz)
+        Zimg_gz = DiffMoM._assemble_periodic_image_block(
+            mesh_go, rwg_go, kg, lat_gz, lam_g / 4; quad_order=1)
+        @test maximum(abs.(Zimg_gz .- transpose(Zimg_gz))) /
+              maximum(abs.(Zimg_gz)) > 1e-3
     end
 end
 println("  PASS ✓")

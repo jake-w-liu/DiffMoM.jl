@@ -133,6 +133,14 @@ Z_{mn}^{\text{corr}} = -i\omega\mu_0 \left[
 
 with `omega_mu0 = k * eta0` in implementation.
 
+The correction assembler evaluates one `Nq × Nq` Green-function slab at a time
+and scatters it into a single dense result. Each worker keeps only the rows for
+the RWGs incident on its current source triangle. Its scratch memory is therefore
+`O(nthreads * (Nq^2 + dmax * N))`, in addition to the required `O(N^2)` result,
+rather than one `N × N` accumulator per worker. At normal incidence with real
+RWG coefficients, reciprocity also permits a half triangle-pair sweep; oblique
+Bloch phase or complex coefficients select the full sweep.
+
 ---
 
 ## 4. Floquet Mode Enumeration

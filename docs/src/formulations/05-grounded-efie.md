@@ -116,7 +116,10 @@ Z_{\text{img}}[m,n] = -i\,\omega\mu_0 \iint \!\left[\, \mathbf{f}_m\cdot\mathbf{
 In the implementation $\omega\mu_0 = k\,\eta_0$ (with default $\eta_0 = 376.730313668\,\Omega$), $1/k^2$ is the inverse-square factor on the charge term, and the divergence term uses $\overline{\nabla\cdot\mathbf{f}_m}\,(\nabla\cdot\mathbf{f}_n)$. The same $-i\omega\mu_0\big[\iint\mathbf{f}\cdot\mathbf{f}\,G - \tfrac{1}{k^2}\iint(\nabla\cdot\mathbf{f})(\nabla\cdot\mathbf{f})\,G\big]$ form is the documented entry kernel of the free-standing periodic EFIE, so $Z_{\text{direct}}$ and $Z_{\text{image}}$ are dimensionally and structurally identical -- only the Green's-function argument ($\Delta z = 0$ vs. $\Delta z = 2h$) differs.
 
 !!! note "Fast symmetric path"
-    At normal incidence ($k_{x,\text{bloch}} = k_{y,\text{bloch}} = 0$) the kernel cache is reciprocal, so only the upper triangle of the $G$-cache is computed and mirrored. Oblique incidence (nonzero Bloch phase) uses the full sweep.
+    At normal incidence with real RWG coefficients, reciprocity permits an upper-triangle source/image sweep followed by in-place symmetry completion. Oblique incidence or complex basis coefficients use the full sweep.
+
+!!! note "Bounded assembly scratch"
+    The image block streams one `Nq × Nq` Green-function slab at a time into the required dense result. Each worker retains only `dmax × N` row scratch, where `dmax` is the maximum number of RWGs incident on one triangle. It does not retain an `Nq × Nq × Nt × Nt` Green-function cache.
 
 ---
 
