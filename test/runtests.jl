@@ -4292,6 +4292,25 @@ configs_default_pol = build_multiangle_configs(
 )
 khat_default = Vec3(sin(π/4) * cos(0.2), sin(π/4) * sin(0.2), cos(π/4))
 @assert abs(dot(khat_default, configs_default_pol[1].pol)) < 1e-12 "Default multi-angle polarization must be transverse"
+@test_throws ArgumentError build_multiangle_configs(
+    mesh, rwg, k, NamedTuple[];
+    grid=grid_opt,
+)
+@test_throws ArgumentError build_multiangle_configs(
+    mesh, rwg, k,
+    [(theta_inc=Inf, phi_inc=0.0, weight=1.0)];
+    grid=grid_opt,
+)
+@test_throws ArgumentError build_multiangle_configs(
+    mesh, rwg, k,
+    [(theta_inc=0.0, phi_inc=0.0, weight=Inf)];
+    grid=grid_opt,
+)
+@test_throws ArgumentError build_multiangle_configs(
+    mesh, rwg, k, angles_2;
+    grid=grid_opt,
+    backscatter_cone=181.0,
+)
 println("  35b: PASS")
 
 # 35c: optimize_multiangle_rcs smoke test
@@ -4366,6 +4385,75 @@ end
     Z_efie, Mp_opt, configs_test, theta_init;
     maxiter=1, alpha0=Inf, verbose=false,
 )
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, fill(NaN, part_opt.P);
+    maxiter=0, verbose=false,
+)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=0, lb=NaN, verbose=false,
+)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=0, lb=2.0, ub=1.0, verbose=false,
+)
+@test_throws DimensionMismatch optimize_multiangle_rcs(
+    ones(ComplexF64, N, N + 1), Mp_opt, configs_test, theta_init;
+    maxiter=0, verbose=false,
+)
+@test_throws DimensionMismatch optimize_multiangle_rcs(
+    Z_efie, Matrix{ComplexF64}[], configs_test, theta_init;
+    maxiter=0, verbose=false,
+)
+bad_config_35 = AngleConfig(
+    configs_test[1].k_vec,
+    configs_test[1].pol,
+    ComplexF64[configs_test[1].v; 0.0 + 0im],
+    configs_test[1].Q,
+    configs_test[1].weight,
+)
+@test_throws DimensionMismatch optimize_multiangle_rcs(
+    Z_efie, Mp_opt, [bad_config_35], theta_init;
+    maxiter=0, verbose=false,
+)
+@test_throws DimensionMismatch optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=0, objective=:sum_log,
+    reference_objectives=Float64[], verbose=false,
+)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_efie, Mp_opt, configs_test, theta_init;
+    maxiter=0, objective=:smoothmax_log,
+    reference_objectives=ones(length(configs_test)),
+    smooth_beta=Inf, verbose=false,
+)
+
+# Projected Armijo must use the actual feasible step. The first synthetic
+# variable has a dominant outward gradient but is pinned at its lower bound;
+# the second variable remains free and must still take a decreasing step.
+projected_cfg_35 = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1.0 + 0im],
+    ComplexF64[1.0 + 0im;;],
+    1.0,
+)
+projected_theta_35, projected_trace_35 = optimize_multiangle_rcs(
+    ComplexF64[5.0 + 0im;;],
+    [ComplexF64[1000.0 + 0im;;], ComplexF64[1.0 + 0im;;]],
+    [projected_cfg_35],
+    [0.0, 0.0];
+    maxiter=2,
+    tol=0.0,
+    alpha0=0.01,
+    lb=[0.0, -Inf],
+    ub=[Inf, Inf],
+    verbose=false,
+)
+@test length(projected_trace_35) == 2
+@test projected_theta_35[1] == 0.0
+@test projected_theta_35[2] < 0.0
+@test projected_trace_35[2].J < projected_trace_35[1].J
 
 refs_35 = Float64[]
 Z_ref_35 = assemble_full_Z(Z_efie, Mp_opt, theta_init)

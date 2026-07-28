@@ -25,6 +25,116 @@ struct AngleConfig
     weight::Float64                 # Weight in composite objective
 end
 
+@inline function _validate_known_matrix_entries(
+    matrix::AbstractMatrix,
+    label::AbstractString,
+)
+    values = if matrix isa StridedMatrix
+        matrix
+    elseif matrix isa SparseMatrixCSC
+        nonzeros(matrix)
+    elseif matrix isa LocalMassMatrix
+        matrix.vals
+    else
+        return nothing
+    end
+    all(isfinite, values) ||
+        throw(ArgumentError("$label must contain only finite values"))
+    return nothing
+end
+
+function _validate_multiangle_q(Q::AbstractMatrix{ComplexF64},
+                                label::AbstractString)
+    if Q isa FarFieldQMatrix
+        size(Q.G_mat) == (3 * length(Q.weights), Q.N) ||
+            throw(DimensionMismatch(
+                "$label FarFieldQMatrix storage is inconsistent"))
+        size(Q.pol) == (3, length(Q.weights)) ||
+            throw(DimensionMismatch(
+                "$label FarFieldQMatrix polarization storage is inconsistent"))
+        Q.mask === nothing || length(Q.mask) == length(Q.weights) ||
+            throw(DimensionMismatch(
+                "$label FarFieldQMatrix mask storage is inconsistent"))
+        all(isfinite, Q.G_mat) ||
+            throw(ArgumentError("$label radiation vectors must be finite"))
+        all(isfinite, Q.weights) ||
+            throw(ArgumentError("$label quadrature weights must be finite"))
+        all(isfinite, Q.pol) ||
+            throw(ArgumentError("$label polarization vectors must be finite"))
+    elseif Q isa SumQMatrix
+        _validate_multiangle_q(Q.A, "$label first summand")
+        _validate_multiangle_q(Q.B, "$label second summand")
+    else
+        _validate_known_matrix_entries(Q, label)
+    end
+    return nothing
+end
+
+function _validate_angle_config(config::AngleConfig, index::Int, N::Int)
+    all(isfinite, config.k_vec) ||
+        throw(ArgumentError(
+            "angle configuration $index k_vec components must be finite"))
+    k_norm = norm(config.k_vec)
+    isfinite(k_norm) && k_norm > 0.0 ||
+        throw(ArgumentError(
+            "angle configuration $index k_vec must have a finite, nonzero norm"))
+    all(isfinite, config.pol) ||
+        throw(ArgumentError(
+            "angle configuration $index polarization components must be finite"))
+    pol_norm = norm(config.pol)
+    isfinite(pol_norm) &&
+    isapprox(pol_norm, 1.0; rtol=1e-10, atol=1e-12) ||
+        throw(ArgumentError(
+            "angle configuration $index polarization must be a unit vector"))
+    transverse_error =
+        abs(dot(config.k_vec / k_norm, config.pol / pol_norm))
+    transverse_error <= 1e-10 ||
+        throw(ArgumentError(
+            "angle configuration $index polarization must be transverse to k_vec"))
+    length(config.v) == N ||
+        throw(DimensionMismatch(
+            "angle configuration $index excitation length $(length(config.v)) != $N"))
+    all(isfinite, config.v) ||
+        throw(ArgumentError(
+            "angle configuration $index excitation must contain only finite values"))
+    size(config.Q) == (N, N) ||
+        throw(DimensionMismatch(
+            "angle configuration $index Q has size $(size(config.Q)), expected ($N, $N)"))
+    _validate_multiangle_q(config.Q, "angle configuration $index Q")
+    isfinite(config.weight) ||
+        throw(ArgumentError(
+            "angle configuration $index weight must be finite, got $(config.weight)"))
+    return k_norm
+end
+
+function _validate_multiangle_problem(
+    Z_base::AbstractMatrix{ComplexF64},
+    Mp::Vector{<:AbstractMatrix},
+    configs::Vector{AngleConfig},
+    theta0::Vector{Float64},
+)
+    N = size(Z_base, 1)
+    N >= 1 ||
+        throw(ArgumentError("multi-angle system must contain at least one unknown"))
+    size(Z_base, 2) == N ||
+        throw(DimensionMismatch(
+            "Z_base must be square, got size $(size(Z_base))"))
+    _validate_impedance_inputs(Mp, theta0, size(Z_base))
+    _validate_known_matrix_entries(Z_base, "Z_base")
+    @inbounds for p in eachindex(Mp)
+        _validate_known_matrix_entries(Mp[p], "Mp[$p]")
+    end
+
+    first_k = _validate_angle_config(configs[1], 1, N)
+    @inbounds for i in 2:length(configs)
+        k_norm = _validate_angle_config(configs[i], i, N)
+        isapprox(k_norm, first_k; rtol=1e-10, atol=0.0) ||
+            throw(ArgumentError(
+                "angle configuration $i has |k_vec|=$k_norm, expected $first_k"))
+    end
+    return N
+end
+
 function _multiangle_objective_scales(J_angles::Vector{Float64},
                                       weights::Vector{Float64},
                                       objective::Symbol,
@@ -164,17 +274,60 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
                                    backscatter_cone::Float64=15.0,
                                    matrix_free_Q::Bool=false,
                                    rcs_component::Symbol=:copol)
+    (isfinite(k) && k > 0.0) ||
+        throw(ArgumentError(
+            "multi-angle wavenumber must be finite and positive, got $k"))
+    isempty(angles) &&
+        throw(ArgumentError(
+            "build_multiangle_configs requires at least one incidence angle"))
+    (isfinite(backscatter_cone) && 0.0 <= backscatter_cone <= 180.0) ||
+        throw(ArgumentError(
+            "backscatter_cone must be finite and lie in [0, 180] degrees, got $backscatter_cone"))
+    rcs_component in (:copol, :crosspol, :total) ||
+        throw(ArgumentError(
+            "rcs_component must be :copol, :crosspol, or :total"))
+
+    for (i, ang) in enumerate(angles)
+        hasproperty(ang, :theta_inc) ||
+            throw(ArgumentError("incidence angle $i is missing theta_inc"))
+        hasproperty(ang, :phi_inc) ||
+            throw(ArgumentError("incidence angle $i is missing phi_inc"))
+        θ_i = ang.theta_inc
+        φ_i = ang.phi_inc
+        θ_i isa Real && isfinite(θ_i) && 0.0 <= θ_i <= π ||
+            throw(ArgumentError(
+                "incidence angle $i theta_inc must be finite and lie in [0, π], got $θ_i"))
+        φ_i isa Real && isfinite(φ_i) ||
+            throw(ArgumentError(
+                "incidence angle $i phi_inc must be finite, got $φ_i"))
+        if hasproperty(ang, :pol)
+            pol = try
+                Vec3(ang.pol)
+            catch err
+                throw(ArgumentError(
+                    "incidence angle $i pol must be convertible to Vec3: $(sprint(showerror, err))"))
+            end
+            all(isfinite, pol) ||
+                throw(ArgumentError(
+                    "incidence angle $i pol components must be finite"))
+        end
+        if hasproperty(ang, :weight)
+            weight = ang.weight
+            weight isa Real && isfinite(weight) ||
+                throw(ArgumentError(
+                    "incidence angle $i weight must be a finite real number, got $weight"))
+        end
+    end
+
     eta0 = 376.730313668
     G_mat = radiation_vectors(mesh, rwg, grid, k; eta0=eta0)
     pol_theta = pol_linear_x(grid)  # θ̂ polarization
     pol_phi = pol_linear_y(grid)    # φ̂ polarization
-    rcs_component in (:copol, :crosspol, :total) ||
-        error("rcs_component must be :copol, :crosspol, or :total")
 
     configs = AngleConfig[]
     for ang in angles
-        θ_i = ang.theta_inc
-        φ_i = ang.phi_inc
+        θ_i = Float64(ang.theta_inc)
+        φ_i = Float64(ang.phi_inc)
 
         # Incidence direction: k̂ = (sinθ cosφ, sinθ sinφ, cosθ)
         khat = Vec3(sin(θ_i) * cos(φ_i), sin(θ_i) * sin(φ_i), cos(θ_i))
@@ -184,7 +337,9 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
         bs_dir = -khat
 
         # Excitation
-        pw_pol_raw = hasfield(typeof(ang), :pol) ? Vec3(ang.pol) : _default_transverse_pol(khat)
+        pw_pol_raw =
+            hasproperty(ang, :pol) ? Vec3(ang.pol) :
+            _default_transverse_pol(khat)
         pw_pol = _transverse_unit_pol(khat, pw_pol_raw)
         E0 = 1.0
         v = assemble_excitation(mesh, rwg, PlaneWaveExcitation(k_vec, E0, pw_pol))
@@ -215,7 +370,7 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
             end
         end
 
-        w = hasfield(typeof(ang), :weight) ? ang.weight : 1.0
+        w = hasproperty(ang, :weight) ? Float64(ang.weight) : 1.0
 
         push!(configs, AngleConfig(k_vec, pw_pol, v, Q, w))
     end
@@ -310,31 +465,70 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         throw(ArgumentError("m_lbfgs must be nonnegative, got $m_lbfgs"))
     (isfinite(alpha0) && alpha0 > 0.0) ||
         throw(ArgumentError("alpha0 must be finite and positive, got $alpha0"))
-    theta = copy(theta0)
+    objective in (:linear, :sum_log, :smoothmax_log) ||
+        throw(ArgumentError(
+            "Unknown multi-angle objective: $objective (expected :linear, :sum_log, or :smoothmax_log)"))
+    trial_preconditioner_mode in (:rebuild, :current, :current_then_rebuild) ||
+        throw(ArgumentError(
+            "trial_preconditioner_mode must be :rebuild, :current, or :current_then_rebuild"))
+    lbfgs_line_search_maxiter > 0 ||
+        throw(ArgumentError("lbfgs_line_search_maxiter must be positive"))
+    steepest_line_search_maxiter > 0 ||
+        throw(ArgumentError("steepest_line_search_maxiter must be positive"))
+    _validate_optimizer_bounds(lb, ub, P)
+    _validate_multiangle_problem(Z_base, Mp, configs, theta0)
 
     # Use dense LU when Z_base is a dense Matrix for exact solves;
     # fall back to GMRES for matrix-free operators (MLFMA, ACA)
     use_dense_lu = Z_base isa Matrix{ComplexF64}
     solver = use_dense_lu ? :direct : :gmres
+    if !use_dense_lu
+        _validate_gmres_options(
+            gmres_tol, gmres_maxiter, gmres_memory, gmres_precond_side)
+        if check_gmres_true_residual
+            (isfinite(gmres_true_residual_factor) &&
+             gmres_true_residual_factor > 0.0) ||
+                throw(ArgumentError(
+                    "gmres_true_residual_factor must be finite and positive, got $gmres_true_residual_factor"))
+        end
+    end
 
+    theta = copy(theta0)
     function project!(x)
-        lb !== nothing && (x .= max.(x, lb))
-        ub !== nothing && (x .= min.(x, ub))
+        @inbounds for p in eachindex(x)
+            lb === nothing ||
+                (x[p] = max(x[p], _optimizer_bound_value(lb, p)))
+            ub === nothing ||
+                (x[p] = min(x[p], _optimizer_bound_value(ub, p)))
+        end
         return x
     end
     project!(theta)
-    objective in (:linear, :sum_log, :smoothmax_log) ||
-        error("Unknown multi-angle objective: $objective (expected :linear, :sum_log, or :smoothmax_log)")
-    trial_preconditioner_mode in (:rebuild, :current, :current_then_rebuild) ||
-        error("trial_preconditioner_mode must be :rebuild, :current, or :current_then_rebuild")
-    lbfgs_line_search_maxiter > 0 ||
-        error("lbfgs_line_search_maxiter must be positive")
-    steepest_line_search_maxiter > 0 ||
-        error("steepest_line_search_maxiter must be positive")
+
     weights = [cfg.weight for cfg in configs]
     refs = reference_objectives === nothing ? ones(Float64, M) : copy(reference_objectives)
-    objective == :linear || all(refs .> 0) ||
-        error("reference_objectives must be positive for normalized objectives")
+    length(refs) == M ||
+        throw(DimensionMismatch(
+            "reference_objectives length $(length(refs)) must match angle count $M"))
+    @inbounds for i in 1:M
+        isfinite(refs[i]) && refs[i] > 0.0 ||
+            throw(ArgumentError(
+                "reference objective $i must be finite and positive, got $(refs[i])"))
+        if objective == :sum_log
+            weights[i] >= 0.0 ||
+                throw(ArgumentError(
+                    "sum_log objective weight $i must be nonnegative, got $(weights[i])"))
+        elseif objective == :smoothmax_log
+            weights[i] > 0.0 ||
+                throw(ArgumentError(
+                    "smoothmax_log objective weight $i must be positive, got $(weights[i])"))
+        end
+    end
+    if objective == :smoothmax_log
+        (isfinite(smooth_beta) && smooth_beta > 0.0) ||
+            throw(ArgumentError(
+                "smooth_beta must be finite and positive, got $smooth_beta"))
+    end
 
     if verbose
         println("Multi-angle RCS optimization: $M angles, $P parameters, solver=$solver, objective=$objective")
@@ -451,9 +645,13 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         g = zeros(P)
         for a in 1:M
             g_a = gradient_impedance(Mp, I_all[a], lambda_all[a]; reactive=reactive)
-            g .+= objective_scales[a] .* g_a
+            axpy!(objective_scales[a], g_a, g)
         end
+        _assert_finite_optimizer_vector(g, "multi-angle objective gradient")
         gnorm = norm(g)
+        isfinite(gnorm) ||
+            error(
+                "multi-angle objective gradient norm is non-finite at iteration $iter")
 
         push!(trace, (iter=iter, J=J_val, gnorm=gnorm, n_fwd=n_fwd_solves, n_adj=n_adj_solves))
         if verbose
@@ -479,7 +677,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             s_k = theta - theta_old
             y_k = g - g_old
             sy = dot(s_k, y_k)
-            if sy > 1e-30
+            if isfinite(sy) && sy > 1e-30 && m_lbfgs > 0
                 push!(s_list, s_k)
                 push!(y_list, y_k)
                 if length(s_list) > m_lbfgs
@@ -500,8 +698,19 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             q .-= alpha_vec[i] .* y_list[i]
         end
 
-        gamma = m_cur > 0 ? dot(s_list[end], y_list[end]) / dot(y_list[end], y_list[end]) : alpha0
-        r = gamma .* q
+        gamma =
+            m_cur > 0 ?
+            dot(s_list[end], y_list[end]) /
+            dot(y_list[end], y_list[end]) :
+            alpha0
+        if !(isfinite(gamma) && gamma > 0.0)
+            gamma = alpha0
+            copyto!(q, g)
+            empty!(s_list)
+            empty!(y_list)
+        end
+        r = q
+        rmul!(r, gamma)
 
         for i in 1:m_cur
             rho_i = 1.0 / dot(y_list[i], s_list[i])
@@ -510,34 +719,49 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         end
 
         # ── 8. Projected line search ─────────────────────────────
-        d = -r
+        d = r
+        rmul!(d, -1.0)
         alpha_ls = 1.0
-        theta_old = copy(theta)
-        g_old = copy(g)
+        copyto!(theta_old, theta)
+        copyto!(g_old, g)
 
         ls_success = false
 
         # Check if L-BFGS direction is descent; if not, use steepest descent
         gd = dot(g, d)
-        if gd >= 0
-            d = -alpha0 .* g
+        if !isfinite(gd) || gd >= 0
+            copyto!(d, g)
+            rmul!(d, -alpha0)
             gd = -alpha0 * gnorm^2
             empty!(s_list)
             empty!(y_list)
         end
+        isfinite(gd) ||
+            error(
+                "multi-angle search directional derivative is non-finite at iteration $iter")
 
         theta_trial = similar(theta)
         J_trial_angles = Vector{Float64}(undef, M)
         use_current_trial_preconditioner =
             trial_preconditioner_mode in (:current, :current_then_rebuild)
         function try_projected_line_search!(direction::Vector{Float64},
-                                            directional_derivative::Float64,
                                             label::String,
                                             max_line_search::Int)
             alpha_try = 1.0
             for ls in 1:max_line_search
                 @. theta_trial = theta_old + alpha_try * direction
                 project!(theta_trial)
+                theta_trial == theta_old && break
+                if !all(isfinite, theta_trial)
+                    alpha_try *= 0.5
+                    continue
+                end
+                projected_gd = _projected_directional_derivative(
+                    g, theta_trial, theta_old)
+                if !(isfinite(projected_gd) && projected_gd < 0.0)
+                    alpha_try *= 0.5
+                    continue
+                end
                 trial_valid = true
                 J_trial = Inf
                 trial_modes = if trial_preconditioner_mode == :current_then_rebuild
@@ -585,6 +809,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                         trial_valid = true
                         break
                     catch err
+                        _recoverable_optimizer_trial_error(err) || rethrow()
                         trial_valid = false
                         trial_error = err
                         if trial_preconditioner_mode == :current_then_rebuild &&
@@ -601,7 +826,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
 
                 # Armijo condition
                 if trial_valid &&
-                   J_trial <= J_val + 1e-4 * alpha_try * directional_derivative
+                   J_trial <= J_val + 1e-4 * projected_gd
                     theta .= theta_trial
                     return true
                 end
@@ -611,15 +836,17 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         end
 
         ls_success = try_projected_line_search!(
-            d, gd, "Line-search", lbfgs_line_search_maxiter)
+            d, "Line-search", lbfgs_line_search_maxiter)
         if !ls_success && fallback_to_steepest && !isempty(s_list)
             empty!(s_list)
             empty!(y_list)
-            d = -alpha0 .* g
+            copyto!(d, g)
+            rmul!(d, -alpha0)
             gd = -alpha0 * gnorm^2
             verbose && println("L-BFGS line search failed at iteration $iter; retrying projected steepest descent")
             ls_success = try_projected_line_search!(
-                d, gd, "Steepest-descent line-search", steepest_line_search_maxiter)
+                d, "Steepest-descent line-search",
+                steepest_line_search_maxiter)
         end
 
         if !ls_success
