@@ -4642,6 +4642,11 @@ println("  PASS ✓")
 include("test_periodic_topology.jl")
 
 # ─────────────────────────────────────────────────
+# 2D TM volume-integral-equation solver
+# ─────────────────────────────────────────────────
+include("test_mom2d.jl")
+
+# ─────────────────────────────────────────────────
 # 3D vector material DDA solver
 # ─────────────────────────────────────────────────
 include("test_material_models3d.jl")
@@ -4655,5 +4660,5 @@ include("test_surface_ie3d.jl")
 # Summary
 # ─────────────────────────────────────────────────
 println("\n" * "="^60)
-println("ALL 51 TESTS PASSED")
+println("ALL 52 TESTS PASSED")
 println("="^60)

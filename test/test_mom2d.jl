@@ -1,5 +1,9 @@
 using Test
-using DiffMoM
+if isdefined(Main, :DiffMoM)
+    using .DiffMoM
+else
+    using DiffMoM
+end
 using LinearAlgebra
 
 @testset "2D TM MoM" begin
@@ -130,6 +134,8 @@ using LinearAlgebra
         k0a = k0 * a
         c0_ref = -besselj(0, k0a) / besselh(0, 2, k0a)
         @test c[N + 1] ≈ c0_ref atol=1e-14  # n=0 coefficient
+        @test_throws ArgumentError mie_coefficients_2d(Inf, a, 1.0; pec=true)
+        @test_throws ArgumentError mie_coefficients_2d(k0, a, 1.0; nmax=-1, pec=true)
 
         # Total field on cylinder surface should be near zero for PEC
         # Tolerance limited by Mie series truncation at finite nmax
@@ -151,6 +157,43 @@ using LinearAlgebra
         for n in 1:min(N, 5)
             @test c[-n + N + 1] ≈ c[n + N + 1] atol=1e-12
         end
+
+        # The exact epsilon-near-zero limit is finite and agrees with a
+        # sufficiently small positive permittivity.
+        c_enz, N_enz = mie_coefficients_2d(k0, a, 0.0; nmax=6)
+        c_near_enz, _ = mie_coefficients_2d(k0, a, 1e-14; nmax=6)
+        @test N_enz == 6
+        @test all(isfinite, c_enz)
+        @test norm(c_enz - c_near_enz) / max(norm(c_near_enz), eps()) < 1e-10
+        @test_throws ArgumentError mie_coefficients_2d(
+            k0, a, Inf; nmax=3)
+    end
+
+    @testset "Mie series - validation and allocation" begin
+        k0 = 2π
+        a = 0.5
+        eps_r = 2.5
+        observations = [Vec2(2a, 0.0), Vec2(3a, a)]
+
+        @test_throws DomainError mie_scattered_field_2d(
+            k0, a, eps_r, [Vec2(0.5a, 0.0)]; nmax=3)
+        @test_throws ArgumentError mie_scattered_field_2d(
+            k0, a, eps_r, [Vec2(NaN, 2a)]; nmax=3)
+        @test_throws ArgumentError mie_scattered_field_2d(
+            k0, a, eps_r, observations; phi_inc=Inf, nmax=3)
+
+        mie_coefficients_2d(k0, a, eps_r; nmax=10)
+        mie_scattered_field_2d(k0, a, eps_r, observations; nmax=10)
+        mie_total_field_2d(k0, a, eps_r, observations; nmax=10)
+        coeff_alloc = @allocated mie_coefficients_2d(
+            k0, a, eps_r; nmax=10)
+        scattered_alloc = @allocated mie_scattered_field_2d(
+            k0, a, eps_r, observations; nmax=10)
+        total_alloc = @allocated mie_total_field_2d(
+            k0, a, eps_r, observations; nmax=10)
+        @test coeff_alloc <= 512
+        @test scattered_alloc <= 640
+        @test total_alloc <= scattered_alloc
     end
 
     @testset "MoM vs Mie convergence" begin
