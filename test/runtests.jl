@@ -37,6 +37,11 @@ function _float_vector_output_allocation(n::Int)
     return @allocated zeros(Float64, n)
 end
 
+function _complex_matrix_output_allocation(m::Int, n::Int)
+    Matrix{ComplexF64}(undef, m, n)
+    return @allocated Matrix{ComplexF64}(undef, m, n)
+end
+
 function _radiated_power_allocation(E_ff, grid)
     radiated_power(E_ff, grid)
     return @allocated radiated_power(E_ff, grid)
@@ -1560,6 +1565,30 @@ I_raw = Z_raw \ v
 # Build mass-based regularizer and left preconditioner
 R_mass = make_mass_regularizer(Mp)
 M_left = make_left_preconditioner(Mp; eps_rel=1e-6)
+make_mass_regularizer(Mp)
+make_left_preconditioner(Mp; eps_rel=1e-6)
+@test (@allocated make_mass_regularizer(Mp)) <=
+      _complex_matrix_output_allocation(N, N) + 128
+@test (@allocated make_left_preconditioner(Mp; eps_rel=1e-6)) <=
+      _complex_matrix_output_allocation(N, N) + 128
+@test ishermitian(R_mass)
+@test_throws ArgumentError make_left_preconditioner(Mp; eps_rel=0.0)
+@test_throws ArgumentError make_left_preconditioner(Mp; eps_rel=Inf)
+@test_throws ArgumentError make_mass_regularizer(
+    [ComplexF64[NaN 0.0; 0.0 1.0]])
+
+@test_throws ArgumentError select_preconditioner(
+    Matrix{ComplexF64}[]; mode=:off)
+@test_throws ArgumentError select_preconditioner(
+    Mp; mode=:off, n_threshold=-1)
+@test_throws ArgumentError select_preconditioner(
+    Mp; mode=:off, eps_rel=NaN)
+@test_throws DimensionMismatch select_preconditioner(
+    Mp; preconditioner_M=ones(ComplexF64, N + 1, N + 1))
+bad_preconditioner_probe = Matrix{ComplexF64}(I, N, N)
+bad_preconditioner_probe[1, 1] = NaN + 0im
+@test_throws ArgumentError select_preconditioner(
+    Mp; preconditioner_M=bad_preconditioner_probe)
 
 # Auto-preconditioning selector behavior
 M_auto_off, enabled_auto_off, reason_auto_off = select_preconditioner(
@@ -1618,6 +1647,25 @@ Z_reg, v_reg, _ = prepare_conditioned_system(
     regularization_R=R_mass,
     preconditioner_M=nothing,
 )
+@test_throws DimensionMismatch prepare_conditioned_system(
+    ones(ComplexF64, 2, 1), ComplexF64[1.0, 2.0])
+@test_throws ArgumentError prepare_conditioned_system(
+    Z_raw, v;
+    regularization_alpha=NaN,
+    regularization_R=R_mass,
+)
+@test_throws ArgumentError prepare_conditioned_system(
+    Z_raw, v;
+    regularization_alpha=-1.0,
+    regularization_R=R_mass,
+)
+@test_throws DimensionMismatch prepare_conditioned_system(
+    Z_raw, v;
+    regularization_alpha=1.0,
+    regularization_R=ones(ComplexF64, N + 1, N + 1),
+)
+@test_throws ArgumentError prepare_conditioned_system(
+    Z_raw, v; preconditioner_M=bad_preconditioner_probe)
 I_reg = Z_reg \ v_reg
 rel_I_reg = norm(I_reg - I_raw) / max(norm(I_raw), 1e-30)
 println("  Regularized solution change (alpha=$alpha_reg): $rel_I_reg")
@@ -1630,6 +1678,10 @@ Mp_pre, fac_pre = transform_patch_matrices(
     preconditioner_M=M_left,
     preconditioner_factor=fac_pre,
 )
+@test_throws DimensionMismatch transform_patch_matrices(
+    Mp; preconditioner_M=ones(ComplexF64, N + 1, N + 1))
+@test_throws ArgumentError transform_patch_matrices(
+    Mp; preconditioner_M=bad_preconditioner_probe)
 lambda_pre = solve_adjoint(Z_pre, Q, I_pre)
 g_pre = gradient_impedance(Mp_pre, I_pre, lambda_pre)
 

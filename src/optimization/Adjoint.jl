@@ -145,7 +145,7 @@ function gradient_impedance(Mp::Vector{<:AbstractMatrix},
     all(isfinite, lambda) ||
         throw(ArgumentError("lambda must contain only finite values"))
     @inbounds for p in eachindex(Mp)
-        _validate_known_matrix_entries(Mp[p], "Mp[$p]")
+        _validate_known_matrix_entries(Mp[p], "patch mass matrix")
     end
     P = length(Mp)
     g = zeros(Float64, P)

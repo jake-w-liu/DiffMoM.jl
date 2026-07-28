@@ -171,6 +171,60 @@ function assemble_full_Z!(Z::Matrix{<:Number},
     return Z
 end
 
+function _validated_mass_matrix_size(Mp::Vector{<:AbstractMatrix})
+    N = first(_validate_mass_matrix_sizes(Mp))
+    @inbounds for p in eachindex(Mp)
+        _validate_known_matrix_entries(Mp[p], "patch mass matrix")
+    end
+    return N
+end
+
+function _validated_conditioning_matrix(
+    matrix,
+    N::Int,
+    label::AbstractString,
+)
+    converted = try
+        Matrix{ComplexF64}(matrix)
+    catch err
+        throw(ArgumentError(
+            "$label must be convertible to a dense ComplexF64 matrix: $(sprint(showerror, err))"))
+    end
+    size(converted) == (N, N) ||
+        throw(DimensionMismatch(
+            "$label has size $(size(converted)), expected ($N, $N)"))
+    all(isfinite, converted) ||
+        throw(ArgumentError("$label must contain only finite values"))
+    return converted
+end
+
+function _validate_conditioning_factor(
+    factor,
+    N::Int,
+    label::AbstractString,
+)
+    size(factor) == (N, N) ||
+        throw(DimensionMismatch(
+            "$label has size $(size(factor)), expected ($N, $N)"))
+    if applicable(issuccess, factor) && !issuccess(factor)
+        throw(ArgumentError("$label is not a successful factorization"))
+    end
+    if hasproperty(factor, :factors)
+        factors = getproperty(factor, :factors)
+        factors isa AbstractMatrix &&
+            _validate_known_matrix_entries(factors, label)
+    end
+    return factor
+end
+
+@inline function _ldiv_reusing_input(factor, rhs)
+    if applicable(ldiv!, factor, rhs)
+        ldiv!(factor, rhs)
+        return rhs
+    end
+    return factor \ rhs
+end
+
 """
     make_mass_regularizer(Mp)
 
@@ -182,13 +236,26 @@ Returns a dense `ComplexF64` matrix so it can be used directly in
 regularized solves.
 """
 function make_mass_regularizer(Mp::Vector{<:AbstractMatrix})
-    N = first(_validate_mass_matrix_sizes(Mp))
+    N = _validated_mass_matrix_size(Mp)
     R = zeros(ComplexF64, N, N)
     for p in eachindex(Mp)
         _add_scaled_matrix!(R, one(ComplexF64), Mp[p])
     end
-    # Enforce Hermitian symmetry up to numerical tolerance
-    return 0.5 .* (R + R')
+    all(isfinite, R) ||
+        error("mass regularizer accumulation produced non-finite values")
+
+    # Enforce Hermitian symmetry in place, avoiding two extra N×N matrices.
+    @inbounds for j in 1:N
+        R[j, j] = complex(real(R[j, j]), 0.0)
+        for i in 1:(j - 1)
+            value = 0.5 * (R[i, j] + conj(R[j, i]))
+            R[i, j] = value
+            R[j, i] = conj(value)
+        end
+    end
+    all(isfinite, R) ||
+        error("mass regularizer symmetrization produced non-finite values")
+    return R
 end
 
 """
@@ -202,11 +269,23 @@ Build a simple mass-based left preconditioner matrix:
 """
 function make_left_preconditioner(Mp::Vector{<:AbstractMatrix};
                                   eps_rel::Float64=1e-8)
+    (isfinite(eps_rel) && eps_rel > 0.0) ||
+        throw(ArgumentError(
+            "eps_rel must be finite and positive, got $eps_rel"))
     R = make_mass_regularizer(Mp)
     N = size(R, 1)
     scale = max(real(tr(R)) / N, 1.0)
+    isfinite(scale) ||
+        error("mass preconditioner scale is non-finite")
     ϵ = eps_rel * scale
-    return R + (ϵ .* Matrix{ComplexF64}(I, N, N))
+    isfinite(ϵ) && ϵ > 0.0 ||
+        error("mass preconditioner diagonal shift is non-finite or nonpositive")
+    @inbounds for i in 1:N
+        R[i, i] += ϵ
+    end
+    all(isfinite, R) ||
+        error("mass preconditioner contains non-finite values")
+    return R
 end
 
 """
@@ -237,13 +316,23 @@ function select_preconditioner(Mp::Vector{<:AbstractMatrix};
                                n_threshold::Int=256,
                                iterative_solver::Bool=false,
                                eps_rel::Float64=1e-6)
-    mode ∈ (:off, :on, :auto) || error("Invalid preconditioner mode: $mode (expected :off, :on, or :auto)")
+    mode ∈ (:off, :on, :auto) ||
+        throw(ArgumentError(
+            "Invalid preconditioner mode: $mode (expected :off, :on, or :auto)"))
+    n_threshold >= 0 ||
+        throw(ArgumentError(
+            "n_threshold must be nonnegative, got $n_threshold"))
+    (isfinite(eps_rel) && eps_rel > 0.0) ||
+        throw(ArgumentError(
+            "eps_rel must be finite and positive, got $eps_rel"))
+    N = _validated_mass_matrix_size(Mp)
 
     if preconditioner_M !== nothing
-        return Matrix{ComplexF64}(preconditioner_M), true, "user-provided preconditioner"
+        matrix = _validated_conditioning_matrix(
+            preconditioner_M, N, "preconditioner_M")
+        return matrix, true, "user-provided preconditioner"
     end
 
-    N = size(Mp[1], 1)
     if mode == :off
         return nothing, false, "mode=:off"
     elseif mode == :on
@@ -275,12 +364,29 @@ case.
 function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
                                   preconditioner_M=nothing,
                                   preconditioner_factor=nothing)
+    N = _validated_mass_matrix_size(Mp)
     if preconditioner_M === nothing && preconditioner_factor === nothing
         return Mp, nothing
     end
 
-    fac = preconditioner_factor === nothing ? lu(Matrix{ComplexF64}(preconditioner_M)) : preconditioner_factor
-    Mp_tilde = [fac \ Matrix{ComplexF64}(Mp[p]) for p in eachindex(Mp)]
+    preconditioner_matrix =
+        preconditioner_M === nothing ? nothing :
+        _validated_conditioning_matrix(
+            preconditioner_M, N, "preconditioner_M")
+    fac = if preconditioner_factor === nothing
+        lu(preconditioner_matrix)
+    else
+        _validate_conditioning_factor(
+            preconditioner_factor, N, "preconditioner_factor")
+    end
+
+    Mp_tilde = Vector{Matrix{ComplexF64}}(undef, length(Mp))
+    @inbounds for p in eachindex(Mp)
+        transformed = Matrix{ComplexF64}(Mp[p])
+        Mp_tilde[p] = _ldiv_reusing_input(fac, transformed)
+        all(isfinite, Mp_tilde[p]) ||
+            error("transformed patch matrix $p contains non-finite values")
+    end
     return Mp_tilde, fac
 end
 
@@ -306,21 +412,49 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
                                     regularization_R=nothing,
                                     preconditioner_M=nothing,
                                     preconditioner_factor=nothing)
+    N = _validate_linear_system_inputs(
+        Z_raw, rhs, "conditioned system")
+    (isfinite(regularization_alpha) && regularization_alpha >= 0.0) ||
+        throw(ArgumentError(
+            "regularization_alpha must be finite and nonnegative, got $regularization_alpha"))
     Z_eff = Matrix{ComplexF64}(Z_raw)
     rhs_eff = Vector{ComplexF64}(rhs)
 
-    if regularization_alpha != 0.0
+    if regularization_alpha > 0.0
         regularization_R === nothing &&
-            error("regularization_alpha is nonzero but regularization_R is nothing")
-        Z_eff .+= regularization_alpha .* Matrix{ComplexF64}(regularization_R)
+            throw(ArgumentError(
+                "regularization_alpha is positive but regularization_R is nothing"))
+        R = _validated_conditioning_matrix(
+            regularization_R, N, "regularization_R")
+        @inbounds @simd for i in eachindex(Z_eff, R)
+            Z_eff[i] += regularization_alpha * R[i]
+        end
+        all(isfinite, Z_eff) ||
+            error("regularized system matrix contains non-finite values")
     end
 
     if preconditioner_M === nothing && preconditioner_factor === nothing
         return Z_eff, rhs_eff, nothing
     end
 
-    fac = preconditioner_factor === nothing ? lu(Matrix{ComplexF64}(preconditioner_M)) : preconditioner_factor
-    Z_eff = fac \ Z_eff
-    rhs_eff = fac \ rhs_eff
+    preconditioner_matrix =
+        preconditioner_M === nothing ? nothing :
+        _validated_conditioning_matrix(
+            preconditioner_M, N, "preconditioner_M")
+    fac = if preconditioner_factor === nothing
+        preconditioner_matrix === nothing &&
+            throw(ArgumentError(
+                "preconditioner_M is required when preconditioner_factor is nothing"))
+        lu(preconditioner_matrix)
+    else
+        _validate_conditioning_factor(
+            preconditioner_factor, N, "preconditioner_factor")
+    end
+    Z_eff = _ldiv_reusing_input(fac, Z_eff)
+    rhs_eff = _ldiv_reusing_input(fac, rhs_eff)
+    all(isfinite, Z_eff) ||
+        error("conditioned system matrix contains non-finite values")
+    all(isfinite, rhs_eff) ||
+        error("conditioned RHS contains non-finite values")
     return Z_eff, rhs_eff, fac
 end

@@ -104,7 +104,7 @@ function _validate_multiangle_problem(
     _validate_impedance_inputs(Mp, theta0, size(Z_base))
     _validate_known_matrix_entries(Z_base, "Z_base")
     @inbounds for p in eachindex(Mp)
-        _validate_known_matrix_entries(Mp[p], "Mp[$p]")
+        _validate_known_matrix_entries(Mp[p], "patch mass matrix")
     end
 
     first_k = _validate_angle_config(configs[1], 1, N)
