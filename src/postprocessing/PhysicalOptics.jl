@@ -25,6 +25,48 @@ struct POResult
     k::Float64
 end
 
+function _validate_po_inputs(grid::SphGrid, freq_hz::Real,
+                             excitation::PlaneWaveExcitation,
+                             c0::Float64, eta0::Float64)
+    NΩ = _validate_sph_grid(grid)
+    isfinite(freq_hz) && freq_hz > 0 ||
+        throw(ArgumentError(
+            "freq_hz must be finite and positive, got $freq_hz"))
+    isfinite(c0) && c0 > 0 ||
+        throw(ArgumentError("c0 must be finite and positive, got $c0"))
+    isfinite(eta0) && eta0 > 0 ||
+        throw(ArgumentError(
+            "eta0 must be finite and positive, got $eta0"))
+    isfinite(excitation.E0) ||
+        throw(ArgumentError(
+            "plane-wave amplitude E0 must be finite, got $(excitation.E0)"))
+    all(isfinite, excitation.k_vec) ||
+        throw(ArgumentError("plane-wave k_vec components must be finite"))
+    all(isfinite, excitation.pol) ||
+        throw(ArgumentError("plane-wave polarization components must be finite"))
+
+    frequency = Float64(freq_hz)
+    k = 2π * frequency / c0
+    k_norm = norm(excitation.k_vec)
+    isfinite(k_norm) && k_norm > 0 ||
+        throw(ArgumentError(
+            "plane-wave k_vec must have a finite, nonzero norm"))
+    isapprox(k_norm, k; rtol=1e-8, atol=0.0) ||
+        throw(ArgumentError(
+            "plane-wave |k_vec|=$k_norm does not match 2π*freq_hz/c0=$k"))
+
+    pol_norm = norm(excitation.pol)
+    isfinite(pol_norm) && pol_norm > 0 ||
+        throw(ArgumentError(
+            "plane-wave polarization must have a finite, nonzero norm"))
+    k_hat = excitation.k_vec / k_norm
+    transverse_error = abs(dot(k_hat, excitation.pol / pol_norm))
+    transverse_error <= 1e-10 ||
+        throw(ArgumentError(
+            "plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error"))
+    return NΩ, frequency, k, Vec3(k_hat)
+end
+
 # ─── Analytical phase integral helpers (POFacets G.m / fact.m) ───
 
 """
@@ -133,15 +175,11 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
                   c0::Float64=299792458.0,
                   eta0::Float64=376.730313668)
     Nt = ntriangles(mesh)
-    NΩ = length(grid.w)
-
-    k = 2π * freq_hz / c0
+    NΩ, frequency, k, k_hat =
+        _validate_po_inputs(grid, freq_hz, excitation, c0, eta0)
     k_vec = excitation.k_vec
     E0 = excitation.E0
     pol = excitation.pol
-
-    # Incident direction unit vector (propagation direction)
-    k_hat = Vec3(k_vec / norm(k_vec))
 
     # H_inc polarization direction: (k̂ × pol)
     h_pol = cross(k_hat, Vec3(pol))
@@ -225,5 +263,5 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
         E_ff[3, q] = E_q[3]
     end
 
-    return POResult(E_ff, J_s, illuminated, grid, Float64(freq_hz), k)
+    return POResult(E_ff, J_s, illuminated, grid, frequency, k)
 end

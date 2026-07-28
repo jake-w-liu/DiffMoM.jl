@@ -65,6 +65,11 @@ Compute the Physical Optics scattered far-field for a PEC body.
 
 **Returns:** `POResult`.
 
+The frequency, `c0`, and `eta0` must be finite and positive. The excitation
+must have a finite amplitude, a finite nonzero wavevector whose norm matches
+`2π*freq_hz/c0`, and a finite nonzero polarization transverse to that
+wavevector. The spherical-grid arrays must have consistent nonempty shapes.
+
 **Physics:**
 
 For a plane wave `E_inc = E0 * pol * exp(-jk . r)`:

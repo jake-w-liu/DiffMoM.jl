@@ -2979,6 +2979,21 @@ po_k = 2π / po_lam
 # Wave traveling in -z: should illuminate the +z-facing surface
 pw_down = make_plane_wave(Vec3(0.0, 0.0, -po_k), 1.0, Vec3(1.0, 0.0, 0.0))
 po_grid = make_sph_grid(36, 72)
+@test_throws ArgumentError solve_po(po_mesh, 0.0, pw_down; grid=po_grid)
+@test_throws ArgumentError solve_po(
+    po_mesh, po_freq,
+    make_plane_wave(Vec3(0.0, 0.0, 0.0), 1.0, Vec3(1.0, 0.0, 0.0));
+    grid=po_grid)
+@test_throws ArgumentError solve_po(
+    po_mesh, po_freq,
+    make_plane_wave(Vec3(0.0, 0.0, -2po_k), 1.0, Vec3(1.0, 0.0, 0.0));
+    grid=po_grid)
+@test_throws ArgumentError solve_po(
+    po_mesh, po_freq,
+    make_plane_wave(Vec3(0.0, 0.0, -po_k), 1.0, Vec3(0.0, 0.0, 1.0));
+    grid=po_grid)
+@test_throws ArgumentError solve_po(
+    po_mesh, po_freq, pw_down; grid=po_grid, eta0=0.0)
 po_result = solve_po(po_mesh, po_freq, pw_down; grid=po_grid)
 
 n_illum = count(po_result.illuminated)
