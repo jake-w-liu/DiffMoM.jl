@@ -143,6 +143,13 @@ end
     eps_in = 2.2 - 0.03im
     mu_in = 1.3 - 0.02im
 
+    @test_throws ErrorException dielectric_medium_3d(Inf)
+    @test_throws ErrorException dielectric_medium_3d(k0; eta0=Inf)
+    @test_throws ErrorException dielectric_medium_3d(
+        k0, 1e308 + 0im, 1e308 + 0im)
+    @test_throws ErrorException dielectric_medium_3d(
+        k0, 1e-308 + 0im, 1e-308 + 0im)
+
     K = assemble_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
     K_mf = matrixfree_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
     @test size(K) == (N, N)
@@ -277,6 +284,45 @@ end
     @test !res_sie_partial.stats.solved
 
     pw = make_plane_wave(Vec3(0.0, 0.0, k0), 1.0, Vec3(1.0, 0.0, 0.0))
+    exterior = dielectric_medium_3d(k0)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg,
+        make_plane_wave(Vec3(0.0, 0.0, 0.0), 1.0, Vec3(1.0, 0.0, 0.0)),
+        exterior;
+        quad_order=1)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg,
+        make_plane_wave(Vec3(0.0, 0.0, k0), NaN, Vec3(1.0, 0.0, 0.0)),
+        exterior;
+        quad_order=1)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg,
+        make_plane_wave(Vec3(0.0, 0.0, k0), 1.0, Vec3(0.0, 0.0, 0.0)),
+        exterior;
+        quad_order=1)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg,
+        make_plane_wave(Vec3(0.0, 0.0, k0), 1.0, Vec3(0.0, 0.0, 1.0)),
+        exterior;
+        quad_order=1)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg,
+        make_plane_wave(Vec3(0.0, 0.0, 2k0), 1.0, Vec3(1.0, 0.0, 0.0)),
+        exterior;
+        quad_order=1)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg, pw, exterior;
+        quad_order=1,
+        formulation=:invalid)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg, pw,
+        DielectricMedium3D(1.0 + 0im, 1.0 + 0im, k0 + 0.1im, 1.0 + 0im);
+        quad_order=1)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg, pw,
+        DielectricMedium3D(1.0 + 0im, 1.0 + 0im, k0 + 0im, 0.0 + 0im);
+        quad_order=1)
+
     res_pw = solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, pw;
                                      mur_in=mu_in,
                                      formulation=:pmchwt,

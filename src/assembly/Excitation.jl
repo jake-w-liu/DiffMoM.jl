@@ -495,6 +495,42 @@ function plane_wave_field(r::Vec3, k_vec::Vec3, E0, pol::Vec3)
     return pol * E0 * exp(-1im * dot(k_vec, r))
 end
 
+function _validate_plane_wave_excitation(pw::PlaneWaveExcitation)
+    all(isfinite, pw.k_vec) ||
+        throw(ArgumentError("plane-wave k_vec components must be finite."))
+    k_norm = norm(pw.k_vec)
+    isfinite(k_norm) && k_norm > 0 ||
+        throw(ArgumentError("plane-wave k_vec must have a finite, nonzero norm."))
+
+    isfinite(pw.E0) ||
+        throw(ArgumentError("plane-wave amplitude E0 must be finite, got $(pw.E0)."))
+    all(isfinite, pw.pol) ||
+        throw(ArgumentError("plane-wave polarization components must be finite."))
+    pol_norm = norm(pw.pol)
+    isfinite(pol_norm) && pol_norm > 0 ||
+        throw(ArgumentError(
+            "plane-wave polarization must have a finite, nonzero norm."))
+
+    transverse_error = abs(dot(pw.k_vec / k_norm, pw.pol / pol_norm))
+    transverse_error <= 1e-10 ||
+        throw(ArgumentError(
+            "plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error."))
+    return k_norm
+end
+
+function _validate_plane_wave_wavenumber(pw::PlaneWaveExcitation,
+                                         expected_k::Real,
+                                         context::AbstractString)
+    k_norm = _validate_plane_wave_excitation(pw)
+    expected = Float64(expected_k)
+    isfinite(expected) && expected > 0 ||
+        throw(ArgumentError("$context expected wavenumber must be finite and positive, got $expected."))
+    isapprox(k_norm, expected; rtol=1e-8, atol=0.0) ||
+        throw(ArgumentError(
+            "$context plane-wave |k_vec|=$k_norm does not match the problem wavenumber $expected."))
+    return k_norm
+end
+
 const _TRI_QUAD_ORDERS = (1, 3, 4, 7)
 
 @inline function _check_finite_cvec3(v::CVec3, label::AbstractString)
@@ -954,6 +990,7 @@ function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
                              pw::PlaneWaveExcitation;
                              quad_order::Int=3,
                              quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
+    _validate_plane_wave_excitation(pw)
     N = rwg.nedges
     wq, quad_pts, areas = quad_cache === nothing ?
         _excitation_quadrature_cache(mesh, quad_order) :

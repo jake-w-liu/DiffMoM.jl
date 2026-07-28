@@ -130,15 +130,22 @@ end
 function dielectric_medium_3d(k0::Real, eps_r=1.0 + 0im, mu_r=1.0 + 0im;
                               eta0::Real=_ETA0_DDA)
     k0f = Float64(k0)
-    k0f > 0 || error("k0 must be positive.")
+    isfinite(k0f) && k0f > 0 ||
+        error("k0 must be finite and positive.")
     eta0f = Float64(eta0)
-    eta0f > 0 || error("eta0 must be positive.")
+    isfinite(eta0f) && eta0f > 0 ||
+        error("eta0 must be finite and positive.")
     epsc = _finite_complex_surface_3d(eps_r, "eps_r")
     muc = _finite_complex_surface_3d(mu_r, "mu_r")
     abs(epsc) > 0 || error("eps_r must be nonzero.")
     abs(muc) > 0 || error("mu_r must be nonzero.")
-    return DielectricMedium3D(epsc, muc, k0f * sqrt(epsc * muc),
-                              eta0f * sqrt(muc / epsc))
+    k_medium = k0f * sqrt(epsc * muc)
+    eta_medium = eta0f * sqrt(muc / epsc)
+    isfinite(k_medium) && !iszero(k_medium) ||
+        error("derived medium wavenumber must be finite and nonzero; got $k_medium.")
+    isfinite(eta_medium) && !iszero(eta_medium) ||
+        error("derived medium wave impedance must be finite and nonzero; got $eta_medium.")
+    return DielectricMedium3D(epsc, muc, k_medium, eta_medium)
 end
 
 function _assert_closed_surface_sie_3d(mesh::TriMesh, rwg::RWGData;
@@ -408,9 +415,13 @@ end
 function _assemble_plane_wave_h_rhs_3d(mesh::TriMesh, rwg::RWGData,
                                        pw::PlaneWaveExcitation, eta::Complex;
                                        quad_order::Int=3)
+    k_norm = _validate_plane_wave_excitation(pw)
+    isfinite(real(eta)) && isfinite(imag(eta)) && !iszero(eta) ||
+        throw(ArgumentError(
+            "exterior wave impedance must be finite and nonzero, got $eta."))
     N = rwg.nedges
     wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order)
-    khat = pw.k_vec / norm(pw.k_vec)
+    khat = pw.k_vec / k_norm
     rhs = zeros(ComplexF64, N)
     for n in 1:N
         for t in (rwg.tplus[n], rwg.tminus[n])
@@ -447,12 +458,30 @@ function assemble_dielectric_sie_rhs_3d(mesh::TriMesh, rwg::RWGData,
                                         quad_order::Int=3,
                                         formulation::Symbol=:pmchwt,
                                         interior::Union{Nothing,DielectricMedium3D}=nothing)
+    formulation in (:pmchwt, :muller) ||
+        throw(ArgumentError(
+            "formulation must be :pmchwt or :muller, got $formulation."))
+    formulation == :muller && interior === nothing &&
+        throw(ArgumentError(
+            "Muller RHS scaling requires the interior medium."))
+    isfinite(real(exterior.k)) && isfinite(imag(exterior.k)) ||
+        throw(ArgumentError(
+            "exterior wavenumber must be finite, got $(exterior.k)."))
+    isfinite(real(exterior.eta)) && isfinite(imag(exterior.eta)) &&
+        !iszero(exterior.eta) ||
+        throw(ArgumentError(
+            "exterior wave impedance must be finite and nonzero, got $(exterior.eta)."))
+    exterior_k_imag_tol = max(1e-10 * max(abs(real(exterior.k)), 1.0), 1e-12)
+    abs(imag(exterior.k)) <= exterior_k_imag_tol ||
+        throw(ArgumentError(
+            "PlaneWaveExcitation uses a real k_vec and requires a real exterior wavenumber; got $(exterior.k)."))
+    _validate_plane_wave_wavenumber(
+        excitation, abs(real(exterior.k)), "dielectric SIE")
+
     vE = assemble_excitation(mesh, rwg, excitation; quad_order=quad_order)
     vH = _assemble_plane_wave_h_rhs_3d(mesh, rwg, excitation, exterior.eta;
                                        quad_order=quad_order)
     if formulation == :muller
-        interior === nothing &&
-            error("Muller RHS scaling requires the interior medium.")
         c_ze_ext, _, c_zh_ext, _ =
             _surface_sie_coefficients_3d(:muller, exterior, interior)
         return vcat(c_ze_ext .* vE, c_zh_ext .* vH)

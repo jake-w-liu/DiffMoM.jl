@@ -1553,6 +1553,23 @@ k_exc = 2π * freq_exc / 299792458.0
 k_vec_exc = Vec3(0.0, 0.0, -k_exc)
 pol_exc = Vec3(1.0, 0.0, 0.0)
 
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc,
+    make_plane_wave(Vec3(0.0, 0.0, 0.0), 1.0, pol_exc);
+    quad_order=3)
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc,
+    make_plane_wave(k_vec_exc, NaN, pol_exc);
+    quad_order=3)
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc,
+    make_plane_wave(k_vec_exc, 1.0, Vec3(0.0, 0.0, 0.0));
+    quad_order=3)
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc,
+    make_plane_wave(k_vec_exc, 1.0, k_vec_exc);
+    quad_order=3)
+
 v_old_exc = assemble_v_plane_wave(mesh_exc, rwg_exc, k_vec_exc, 1.0, pol_exc; quad_order=3)
 v_new_exc = assemble_excitation(mesh_exc, rwg_exc, make_plane_wave(k_vec_exc, 1.0, pol_exc); quad_order=3)
 rel_rhs_exc = norm(v_new_exc - v_old_exc) / max(norm(v_old_exc), 1e-30)
