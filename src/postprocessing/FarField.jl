@@ -13,11 +13,16 @@ quadrature weights w = sin(θ) dθ dφ.
 Returns a SphGrid.
 """
 function make_sph_grid(Ntheta::Int, Nphi::Int)
+    Ntheta > 0 ||
+        throw(ArgumentError("Ntheta must be positive, got $Ntheta"))
+    Nphi > 0 ||
+        throw(ArgumentError("Nphi must be positive, got $Nphi"))
+
     # Simple uniform grid (sufficient for moderate resolution)
     dtheta = π / Ntheta
     dphi   = 2π / Nphi
 
-    NΩ = Ntheta * Nphi
+    NΩ = Base.checked_mul(Ntheta, Nphi)
     rhat  = zeros(3, NΩ)
     theta = zeros(NΩ)
     phi   = zeros(NΩ)
@@ -41,6 +46,22 @@ function make_sph_grid(Ntheta::Int, Nphi::Int)
     return SphGrid(rhat, theta, phi, w)
 end
 
+function _validate_sph_grid(grid::SphGrid)
+    NΩ = length(grid.w)
+    NΩ > 0 ||
+        throw(ArgumentError("spherical grid must contain at least one direction"))
+    size(grid.rhat) == (3, NΩ) ||
+        throw(DimensionMismatch(
+            "grid.rhat has size $(size(grid.rhat)), expected (3, $NΩ)"))
+    length(grid.theta) == NΩ ||
+        throw(DimensionMismatch(
+            "grid.theta length $(length(grid.theta)) != $NΩ"))
+    length(grid.phi) == NΩ ||
+        throw(DimensionMismatch(
+            "grid.phi length $(length(grid.phi)) != $NΩ"))
+    return NΩ
+end
+
 """
     radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668)
 
@@ -53,7 +74,7 @@ Returns G_mat of size (3*NΩ, N) such that
 function radiation_vectors(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
                            quad_order::Int=3, eta0=376.730313668)
     N = rwg.nedges
-    NΩ = length(grid.w)
+    NΩ = _validate_sph_grid(grid)
     Nt = ntriangles(mesh)
     prefactor = 1im * k * eta0 / (4π)
 

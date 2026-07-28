@@ -25,6 +25,8 @@ Create a spherical sampling grid using a uniform midpoint rule in theta and phi,
 
 **Total directions:** `N_omega = Ntheta * Nphi`. The grid uses midpoint sampling: `theta = (it - 0.5) * d_theta`, `phi = (ip - 0.5) * d_phi`.
 
+Both sample counts must be positive.
+
 **Choosing resolution:**
 
 | Resolution | `Ntheta` | `Nphi` | Total | Use case |
@@ -278,6 +280,8 @@ Create a boolean mask selecting directions within a cone of half-angle `theta_ma
 
 **Returns:** `BitVector` of length `N_omega` with `true` for directions where `theta <= theta_max`.
 
+`theta_max` must be finite and lie in `[0, pi]`.
+
 **Typical values:**
 - `pi/36` (5 deg): Tight pencil beam.
 - `pi/18` (10 deg): Standard broadside target.
@@ -295,9 +299,11 @@ Create a boolean mask selecting directions within a cone of `half_angle` (radian
 |-----------|------|---------|-------------|
 | `grid` | `SphGrid` | -- | Spherical grid. |
 | `direction` | `Vec3` | -- | Center direction of the cone (automatically normalized). |
-| `half_angle` | `Float64` | `pi/18` (~10 deg) | Half-angle of the selection cone in radians. |
+| `half_angle` | `Real` | `pi/18` (~10 deg) | Half-angle of the selection cone in radians. |
 
 **Returns:** `BitVector` of length `N_omega` with `true` for directions where `dot(rhat_q, direction/|direction|) >= cos(half_angle)`.
+
+`direction` must be finite and nonzero, and `half_angle` must be finite and lie in `[0, pi]`.
 
 **Relationship to `cap_mask`:**
 

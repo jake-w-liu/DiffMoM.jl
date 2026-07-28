@@ -58,16 +58,7 @@ Base.eltype(::FarFieldQMatrix) = ComplexF64
 
 function _validate_q_inputs(G_mat::Matrix{ComplexF64}, grid::SphGrid,
                             pol::Matrix{ComplexF64}, mask)
-    NΩ = length(grid.w)
-    size(grid.rhat) == (3, NΩ) ||
-        throw(DimensionMismatch(
-            "grid.rhat has size $(size(grid.rhat)), expected (3, $NΩ)"))
-    length(grid.theta) == NΩ ||
-        throw(DimensionMismatch(
-            "grid.theta length $(length(grid.theta)) != $NΩ"))
-    length(grid.phi) == NΩ ||
-        throw(DimensionMismatch(
-            "grid.phi length $(length(grid.phi)) != $NΩ"))
+    NΩ = _validate_sph_grid(grid)
     size(G_mat, 1) == 3 * NΩ ||
         throw(DimensionMismatch(
             "G_mat has $(size(G_mat, 1)) rows, expected $(3 * NΩ)"))
@@ -259,7 +250,7 @@ broadside radiation along z).
 Returns (3, NΩ) complex matrix.
 """
 function pol_linear_x(grid::SphGrid)
-    NΩ = length(grid.w)
+    NΩ = _validate_sph_grid(grid)
     pol = zeros(ComplexF64, 3, NΩ)
     for q in 1:NΩ
         θ = grid.theta[q]
@@ -280,7 +271,7 @@ the common `φ = 0` incidence plane in periodic workflows.
 Returns `(3, NΩ)` complex matrix.
 """
 function pol_linear_y(grid::SphGrid)
-    NΩ = length(grid.w)
+    NΩ = _validate_sph_grid(grid)
     pol = zeros(ComplexF64, 3, NΩ)
     for q in 1:NΩ
         φ = grid.phi[q]
@@ -297,7 +288,15 @@ Create a mask selecting directions within a cone of half-angle θ_max
 around the z-axis (broadside).
 """
 function cap_mask(grid::SphGrid; theta_max=π/18)
-    return grid.theta .<= theta_max
+    NΩ = _validate_sph_grid(grid)
+    isfinite(theta_max) && 0 <= theta_max <= π ||
+        throw(ArgumentError(
+            "theta_max must be finite and lie in [0, π], got $theta_max"))
+    mask = BitVector(undef, NΩ)
+    @inbounds for q in 1:NΩ
+        mask[q] = grid.theta[q] <= theta_max
+    end
+    return mask
 end
 
 """
@@ -311,8 +310,24 @@ around an arbitrary `direction` vector. Generalizes `cap_mask` to any direction.
 mask = direction_mask(grid, Vec3(0,0,-1); half_angle=10*π/180)
 ```
 """
-function direction_mask(grid::SphGrid, direction::Vec3; half_angle::Float64=π/18)
-    d = direction / norm(direction)
-    NΩ = length(grid.w)
-    return BitVector([dot(Vec3(grid.rhat[:, q]), d) >= cos(half_angle) for q in 1:NΩ])
+function direction_mask(grid::SphGrid, direction::Vec3; half_angle::Real=π/18)
+    NΩ = _validate_sph_grid(grid)
+    isfinite(half_angle) && 0 <= half_angle <= π ||
+        throw(ArgumentError(
+            "half_angle must be finite and lie in [0, π], got $half_angle"))
+    all(isfinite, direction) ||
+        throw(ArgumentError("direction components must be finite"))
+    direction_norm = norm(direction)
+    direction_norm > 0 ||
+        throw(ArgumentError("direction must be nonzero"))
+
+    d = direction / direction_norm
+    threshold = cos(half_angle)
+    mask = BitVector(undef, NΩ)
+    @inbounds for q in 1:NΩ
+        mask[q] = grid.rhat[1, q] * d[1] +
+                  grid.rhat[2, q] * d[2] +
+                  grid.rhat[3, q] * d[3] >= threshold
+    end
+    return mask
 end

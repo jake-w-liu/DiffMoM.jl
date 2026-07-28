@@ -27,6 +27,11 @@ function _complex_vector_output_allocation(n::Int)
     return @allocated zeros(ComplexF64, n)
 end
 
+function _bit_vector_output_allocation(n::Int)
+    BitVector(undef, n)
+    return @allocated BitVector(undef, n)
+end
+
 function _assert_single_complex_output_allocation(A, x)
     result = A * x
     A * x  # warm the exact operator/vector specialization
@@ -639,6 +644,8 @@ println("  PASS ✓")
 # ─────────────────────────────────────────────────
 println("\n── Test 6: Far-field and Q matrix ──")
 
+@test_throws ArgumentError make_sph_grid(0, 16)
+@test_throws ArgumentError make_sph_grid(8, 0)
 grid = make_sph_grid(8, 16)
 NΩ = length(grid.w)
 println("  Far-field grid: $NΩ directions")
@@ -3697,6 +3704,18 @@ println("  35a: direction_mask ...")
 grid_test = make_sph_grid(18, 36)
 mask_z = direction_mask(grid_test, Vec3(0.0, 0.0, 1.0); half_angle=10.0 * π / 180)
 mask_mz = direction_mask(grid_test, Vec3(0.0, 0.0, -1.0); half_angle=10.0 * π / 180)
+@test_throws ArgumentError cap_mask(grid_test; theta_max=-0.1)
+@test_throws ArgumentError cap_mask(grid_test; theta_max=π + 0.1)
+@test_throws ArgumentError direction_mask(
+    grid_test, Vec3(0.0, 0.0, 0.0); half_angle=0.1)
+@test_throws ArgumentError direction_mask(
+    grid_test, Vec3(0.0, 0.0, 1.0); half_angle=-0.1)
+@test_throws ArgumentError direction_mask(
+    grid_test, Vec3(0.0, 0.0, 1.0); half_angle=π + 0.1)
+direction_mask(grid_test, Vec3(0.0, 0.0, 1.0); half_angle=0.1)
+@test @allocated(direction_mask(
+    grid_test, Vec3(0.0, 0.0, 1.0); half_angle=0.1)) <=
+    _bit_vector_output_allocation(length(grid_test.w)) + 128
 @assert sum(mask_z) > 0 "Should have points near +z"
 @assert sum(mask_mz) > 0 "Should have points near -z"
 # +z and -z masks should not overlap (for small cone)
