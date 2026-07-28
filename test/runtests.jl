@@ -2313,6 +2313,18 @@ catch e
     occursin("true residual too large", sprint(showerror, e))
 end
 @assert thrown_forward_true_residual "Expected forward true-residual guard to fail closed"
+@test_throws ArgumentError solve_forward(
+    Z_fail, rhs_fail;
+    solver=:gmres, gmres_tol=1e-14, gmres_maxiter=1,
+    check_gmres_convergence=false, check_true_residual=true,
+    true_residual_factor=Inf,
+)
+@test_throws ArgumentError solve_forward(
+    Z_fail, rhs_fail;
+    solver=:gmres, gmres_tol=1e-14, gmres_maxiter=1,
+    check_gmres_convergence=false, check_true_residual=true,
+    true_residual_factor=NaN,
+)
 
 thrown_adjoint_true_residual = try
     solve_adjoint_rhs(Z_fail, rhs_fail; solver=:gmres, gmres_tol=1e-14,
@@ -2323,6 +2335,12 @@ catch e
     occursin("true residual too large", sprint(showerror, e))
 end
 @assert thrown_adjoint_true_residual "Expected adjoint true-residual guard to fail closed"
+@test_throws ArgumentError solve_adjoint_rhs(
+    Z_fail, rhs_fail;
+    solver=:gmres, gmres_tol=1e-14, gmres_maxiter=1,
+    check_gmres_convergence=false, check_true_residual=true,
+    true_residual_factor=Inf,
+)
 
 # Matrix-free EFIE operator: A*x should match dense Z*x
 A_mf = matrixfree_efie_operator(mesh, rwg, k; quad_order=3)

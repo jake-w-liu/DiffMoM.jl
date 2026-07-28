@@ -56,11 +56,16 @@ function _assert_true_residual(A::AbstractMatrix, x::AbstractVector, rhs::Abstra
                                label::AbstractString;
                                tol::Float64,
                                factor::Float64=100.0)
-    factor > 0 || error("true residual factor must be positive")
+    (isfinite(factor) && factor > 0.0) ||
+        throw(ArgumentError(
+            "true residual factor must be finite and positive, got $factor"))
     rhs_c = _as_complex_rhs(rhs)
-    relres = norm(A * x - rhs_c) / max(norm(rhs_c), eps(Float64))
+    residual = Vector{ComplexF64}(undef, length(rhs_c))
+    mul!(residual, A, x)
+    @. residual -= rhs_c
+    relres = norm(residual) / max(norm(rhs_c), eps(Float64))
     limit = max(factor * tol, sqrt(eps(Float64)))
-    relres <= limit && return relres
+    isfinite(relres) && relres <= limit && return relres
     error("$label GMRES true residual too large: relative_residual=$relres, " *
           "limit=$limit, tol=$tol, factor=$factor")
 end
