@@ -65,7 +65,13 @@ function _validate_q_inputs(G_mat::Matrix{ComplexF64}, grid::SphGrid,
     size(pol) == (3, NΩ) ||
         throw(DimensionMismatch(
             "pol has size $(size(pol)), expected (3, $NΩ)"))
+    all(isfinite, G_mat) ||
+        throw(ArgumentError("G_mat must contain only finite values"))
+    all(isfinite, pol) ||
+        throw(ArgumentError("pol must contain only finite values"))
     if mask !== nothing
+        mask isa AbstractVector{Bool} ||
+            throw(ArgumentError("mask must be a boolean vector"))
         length(mask) == NΩ ||
             throw(DimensionMismatch(
                 "mask length $(length(mask)) != $NΩ"))

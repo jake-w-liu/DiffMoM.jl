@@ -953,6 +953,16 @@ mask = cap_mask(grid; theta_max=30 * π / 180)
 Q = build_Q(G_mat, grid, pol_mat; mask=mask)
 Q_operator = build_Q_operator(G_mat, grid, pol_mat; mask=mask)
 oversized_mask = vcat(mask, true)
+nonfinite_G = copy(G_mat)
+nonfinite_G[1, 1] = ComplexF64(NaN, 0.0)
+nonfinite_pol = copy(pol_mat)
+nonfinite_pol[1, 1] = ComplexF64(NaN, 0.0)
+@test_throws ArgumentError build_Q(
+    nonfinite_G, grid, pol_mat; mask=mask)
+@test_throws ArgumentError build_Q_operator(
+    G_mat, grid, nonfinite_pol; mask=mask)
+@test_throws ArgumentError apply_Q(
+    G_mat, grid, pol_mat, I_pec; mask=Int.(mask))
 @test_throws DimensionMismatch build_Q(
     G_mat, grid, pol_mat; mask=oversized_mask)
 @test_throws DimensionMismatch build_Q_operator(
@@ -2445,6 +2455,28 @@ pat_plus = make_analytic_dipole_pattern_feed(
     phi_pat_deg_pf;
     angles_in_degrees=true,
 )
+
+function _pattern_feed_constructor_bytes(pat::PatternFeedExcitation)
+    return @allocated make_pattern_feed(
+        pat.theta, pat.phi, pat.Ftheta, pat.Fphi, pat.frequency;
+        phase_center=pat.phase_center,
+        convention=pat.convention,
+    )
+end
+_pattern_feed_constructor_bytes(pat_plus)
+pat_plus_copy = make_pattern_feed(
+    pat_plus.theta, pat_plus.phi, pat_plus.Ftheta, pat_plus.Fphi,
+    pat_plus.frequency;
+    phase_center=pat_plus.phase_center,
+    convention=pat_plus.convention,
+)
+pattern_constructor_bytes = _pattern_feed_constructor_bytes(pat_plus)
+pattern_stored_bytes =
+    Base.summarysize(pat_plus_copy.theta) +
+    Base.summarysize(pat_plus_copy.phi) +
+    Base.summarysize(pat_plus_copy.Ftheta) +
+    Base.summarysize(pat_plus_copy.Fphi)
+@test pattern_constructor_bytes <= pattern_stored_bytes + 32768
 
 # Adapter-style constructor using two pattern objects with fields x, y, U
 struct _PatternLike

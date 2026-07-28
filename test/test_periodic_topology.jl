@@ -1109,6 +1109,11 @@ println("\n── Test 42: PeriodicMetrics ──")
                                       polarization=:tm)
         Q_custom = specular_rcs_objective(mesh_q, rwg_q, grid_q, k_pm, lat_pm;
                                           polarization=pol_y)
+        DiffMoM._specular_objective_polarization(grid_q, pol_y)
+        custom_pol = DiffMoM._specular_objective_polarization(grid_q, pol_y)
+        custom_pol_bytes = @allocated DiffMoM._specular_objective_polarization(
+            grid_q, pol_y)
+        @test custom_pol_bytes <= Base.summarysize(custom_pol) + 1024
 
         @test size(Q_y) == size(Q_default)
         @test Q_phi ≈ Q_y rtol=1e-13 atol=1e-13
@@ -1121,6 +1126,11 @@ println("\n── Test 42: PeriodicMetrics ──")
                                                           polarization=:circular)
         @test_throws DimensionMismatch specular_rcs_objective(mesh_q, rwg_q, grid_q, k_pm, lat_pm;
                                                               polarization=zeros(ComplexF64, 2, length(grid_q.w)))
+        nonfinite_pol = copy(pol_y)
+        nonfinite_pol[1, 1] = ComplexF64(NaN, 0.0)
+        @test_throws ArgumentError specular_rcs_objective(
+            mesh_q, rwg_q, grid_q, k_pm, lat_pm;
+            polarization=nonfinite_pol)
         @test_throws ArgumentError specular_rcs_objective(
             mesh_q, rwg_q, grid_q, 1.01k_pm, lat_pm
         )

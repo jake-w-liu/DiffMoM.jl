@@ -38,7 +38,12 @@ function _specular_objective_polarization(grid::SphGrid, polarization)
             throw(DimensionMismatch(
                 "Custom polarization matrix must have size (3, $NΩ); got $(size(polarization))."
             ))
-        return ComplexF64.(Matrix(polarization))
+        converted = Matrix{ComplexF64}(polarization)
+        all(isfinite, converted) ||
+            throw(ArgumentError(
+                "Custom polarization matrix must contain only finite values."
+            ))
+        return converted
     else
         throw(ArgumentError(
             "Unsupported polarization input of type $(typeof(polarization)). " *
@@ -468,9 +473,9 @@ function specular_rcs_objective(mesh::TriMesh, rwg::RWGData,
                     cos(theta_spec))
     mask = direction_mask(grid, spec_dir; half_angle=half_angle)
 
+    pol = _specular_objective_polarization(grid, polarization)
     # Build radiation vectors and Q matrix
     G_mat = radiation_vectors(mesh, rwg, grid, kw; quad_order=quad_order)
-    pol = _specular_objective_polarization(grid, polarization)
     Q = build_Q(G_mat, grid, pol; mask=mask)
 
     return Q

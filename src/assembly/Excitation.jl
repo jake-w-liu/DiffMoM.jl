@@ -293,14 +293,19 @@ function _validate_pattern_grid(theta::Vector{Float64}, phi::Vector{Float64})
 end
 
 function _coerce_pattern_matrix(U, nθ::Int, nϕ::Int, name::AbstractString)
-    M = ComplexF64.(Matrix(U))
-    if size(M) == (nθ, nϕ)
+    if size(U) == (nθ, nϕ)
+        return Matrix{ComplexF64}(U)
+    elseif size(U) == (nϕ, nθ)
+        @warn "$name matrix shape $(size(U)) appears transposed; auto-transposing to ($nθ, $nϕ)."
+        M = Matrix{ComplexF64}(undef, nθ, nϕ)
+        @inbounds for (j, source_row) in enumerate(axes(U, 1))
+            for (i, source_col) in enumerate(axes(U, 2))
+                M[i, j] = ComplexF64(U[source_row, source_col])
+            end
+        end
         return M
-    elseif size(M) == (nϕ, nθ)
-        @warn "$name matrix shape $(size(M)) appears transposed; auto-transposing to ($nθ, $nϕ)."
-        return permutedims(M)
     else
-        error("$name matrix shape $(size(M)) is incompatible with grids (Nθ=$nθ, Nϕ=$nϕ).")
+        error("$name matrix shape $(size(U)) is incompatible with grids (Nθ=$nθ, Nϕ=$nϕ).")
     end
 end
 
@@ -321,8 +326,8 @@ function make_pattern_feed(theta::AbstractVector{<:Real},
                            phase_center::Vec3=Vec3(0.0, 0.0, 0.0),
                            angles_in_degrees::Bool=false,
                            convention::Symbol=:exp_plus_iwt)
-    θ = Float64.(collect(theta))
-    ϕ = Float64.(collect(phi))
+    θ = collect(Float64, theta)
+    ϕ = collect(Float64, phi)
     if angles_in_degrees
         θ .*= π / 180
         ϕ .*= π / 180
@@ -507,8 +512,8 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
                                            angles_in_degrees::Bool=false,
                                            convention::Symbol=:exp_plus_iwt)
     dipole.frequency > 0 || error("Dipole frequency must be positive.")
-    θ = Float64.(collect(theta))
-    ϕ = Float64.(collect(phi))
+    θ = collect(Float64, theta)
+    ϕ = collect(Float64, phi)
     if angles_in_degrees
         θ .*= π / 180
         ϕ .*= π / 180
