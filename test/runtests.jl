@@ -3785,12 +3785,26 @@ println("  Relative symmetry error: $(round(100*rel_sym, digits=4))%")
 
 # Verify adjacent pairs are detected in the cache
 cache_adj = DiffMoM._build_efie_cache(mesh_adj, rwg_adj, k_adj; quad_order=4)
-n_adj_pairs = count(cache_adj.adjacent) ÷ 2  # BitMatrix is symmetric, count unique pairs
-@assert n_adj_pairs > 0 "Should detect adjacent triangle pairs"
+n_adj_pairs = DiffMoM._adjacent_pair_count(cache_adj.adjacent)
+@assert n_adj_pairs == 40 "4×4 split-quad grid should have 40 edge-adjacent pairs"
+@assert length(cache_adj.adjacent.offsets) == ntriangles(mesh_adj) + 1
+@assert length(cache_adj.adjacent.neighbors) == 2n_adj_pairs
 # For a 4×4 grid of quads (32 triangles), there are many internal edges
-# Each internal edge connects 2 triangles → pair stored symmetrically in BitMatrix
+# Each internal edge connects 2 triangles → pair stored in both compact rows.
 println("  Adjacent pairs: $n_adj_pairs")
 println("  High-order quad points: $(length(cache_adj.wq_hi)) (standard: $(cache_adj.Nq))")
+
+# The resident adjacency representation must scale with mesh edges, not all
+# triangle pairs. A 4× increase in linear grid resolution creates 16× as many
+# triangles; compact storage should grow by roughly 16×, while a dense pair
+# matrix would grow by 256×.
+adj_mem_small = DiffMoM._build_triangle_adjacency(make_rect_plate(1.0, 1.0, 10, 10))
+adj_mem_large = DiffMoM._build_triangle_adjacency(make_rect_plate(1.0, 1.0, 40, 40))
+adj_bytes_small = Base.summarysize(adj_mem_small)
+adj_bytes_large = Base.summarysize(adj_mem_large)
+@assert adj_bytes_large < 20adj_bytes_small
+@assert length(adj_mem_large.neighbors) <= 3 * (length(adj_mem_large.offsets) - 1)
+println("  Adjacency storage: $adj_bytes_small → $adj_bytes_large bytes (200 → 3200 triangles)")
 
 # Convergence test: compare Z at two quad orders
 Z_lo = assemble_Z_efie(mesh_adj, rwg_adj, k_adj; quad_order=3)

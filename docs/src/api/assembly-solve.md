@@ -188,6 +188,10 @@ For problems where the dense N x N matrix would exceed available memory, or when
 
 Create a `MatrixFreeEFIEOperator` that behaves like the dense EFIE matrix but computes entries on demand from a precomputed `EFIEApplyCache`.
 
+The cache stores triangle edge-adjacency in compact-row form (`offsets` plus
+contiguous `neighbors`), so self/adjacent singular-integration metadata remains
+linear in mesh size rather than allocating an `N_t × N_t` pair matrix.
+
 **Parameters:** Same as `assemble_Z_efie` (mesh, rwg, k, quad_order, eta0, mesh_precheck, allow_boundary, require_closed, area_tol_rel).
 
 **Returns:** `MatrixFreeEFIEOperator{ComplexF64}` -- an `AbstractMatrix{ComplexF64}` of size `(N, N)`.

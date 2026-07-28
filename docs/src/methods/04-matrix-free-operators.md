@@ -48,7 +48,7 @@ A matrix-free operator stores the *recipe* for computing any entry $Z_{mn}$ on d
 | Storage | $O(N^2)$ | $O(N)$ (cache only) |
 | Matvec cost | $O(N^2)$ (memory read) | $O(N^2 N_q^2)$ (recomputation) |
 | Single entry | $O(1)$ (lookup) | $O(N_q^2)$ (compute) |
-| Setup cost | $O(N^2 N_q^2)$ (full assembly) | $O(N N_q)$ (cache build) |
+| Setup cost | $O(N^2 N_q^2)$ (full assembly) | $O(N N_q + N_t\log N_t)$ (cache build) |
 
 The matvec has the same asymptotic $O(N^2)$ complexity, but the matrix-free version carries a larger constant factor $N_q^2$ from recomputing Green's function evaluations. For memory-limited problems, this is an acceptable trade.
 
@@ -71,10 +71,15 @@ The internal struct `EFIEApplyCache` precomputes all geometry and basis function
 | `tri_ids` | `Matrix{Int}` $(2 \times N)$ | Two support triangles per RWG edge |
 | `div_vals` | `Matrix{Float64}` $(2 \times N)$ | Precomputed $\nabla \cdot \mathbf{f}_n$ per support triangle |
 | `rwg_vals` | `Vector{NTuple{2,Vector{Vec3}}}` | RWG values at all quad points |
+| `adjacent` | `TriangleAdjacency` | Compact-row edge-neighbor table (`offsets` + `neighbors`) |
+| `wq_hi`, `quad_pts_hi`, `rwg_vals_hi` | vectors | High-order data for self/adjacent near-singular integration |
 
 Each RWG basis function $\mathbf{f}_n$ lives on two triangles $T_n^+$ and $T_n^-$. The cache precomputes quadrature points on every triangle, RWG basis values at those points, and divergence values -- so that evaluating $Z_{mn}$ reduces to looking up cached values and computing $G(\mathbf{r}, \mathbf{r}')$ at the quadrature point pairs.
 
-Construction cost is $O(N_t \cdot N_q + N \cdot N_q)$, negligible compared to $O(N^2)$ per matvec.
+Triangle edge records are sorted once to build the compact adjacency, adding
+$O(N_t\log N_t)$ setup work. Resident cache storage remains
+$O(N_tN_q + NN_q + N_{\mathrm{adj}})$; it does not contain an
+$N_t\times N_t$ adjacency matrix.
 
 ---
 
@@ -84,14 +89,15 @@ For a given pair $(m, n)$, `_efie_entry(cache, m, n)` computes $Z_{mn}$ by:
 
 1. Looping over the 2 support triangles of basis $m$ times 2 of basis $n$ (4 triangle pairs).
 2. **Self-cell** ($T_m^{(i)} = T_n^{(j)}$): calls `self_cell_contribution` for singular integration.
-3. **Non-self**: double loop over $N_q \times N_q$ quadrature points, accumulating:
+3. **Edge-adjacent**: uses the high-order near-singular integration path.
+4. **Other pairs**: double loop over $N_q \times N_q$ quadrature points, accumulating:
 
 ```math
 \text{vec} = \bigl(\mathbf{f}_m(\mathbf{r}) \cdot \mathbf{f}_n(\mathbf{r}')\bigr) G(\mathbf{r}, \mathbf{r}'), \quad
 \text{scl} = \frac{(\nabla \cdot \mathbf{f}_m)(\nabla' \cdot \mathbf{f}_n)}{k^2} G(\mathbf{r}, \mathbf{r}')
 ```
 
-4. Final multiply by $-i\omega\mu_0$.
+5. Final multiply by $-i\omega\mu_0$.
 
 Each entry costs at most $4 \times N_q^2$ Green's function evaluations:
 

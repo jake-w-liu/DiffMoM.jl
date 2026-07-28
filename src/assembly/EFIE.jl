@@ -11,6 +11,109 @@ export MatrixFreeEFIEOperator, MatrixFreeEFIEAdjointOperator
 export matrixfree_efie_operator, matrixfree_efie_adjoint_operator
 export efie_entry
 
+"""
+Compact row storage for symmetric edge-adjacency between mesh triangles.
+
+Neighbors of triangle `t` occupy
+`neighbors[offsets[t]:(offsets[t + 1] - 1)]`. A manifold triangle has at
+most three such neighbors, so lookup scans a tiny row while storage remains
+`O(Nt + Nadj)` instead of the `O(Nt^2)` bits required by a `BitMatrix`.
+"""
+struct TriangleAdjacency
+    offsets::Vector{Int}
+    neighbors::Vector{Int}
+end
+
+"""
+Build a deduplicated triangle edge-adjacency table in compact row storage.
+
+The temporary edge records and triangle pairs are sorted in place. This avoids
+one heap-allocated vector per mesh edge and leaves only the two compact vectors
+resident in `EFIEApplyCache`.
+"""
+function _build_triangle_adjacency(mesh::TriMesh)
+    Nt = ntriangles(mesh)
+    nrecords = Base.checked_mul(3, Nt)
+    edge_records = Vector{NTuple{3,Int}}(undef, nrecords)
+
+    record_idx = 1
+    @inbounds for t in 1:Nt
+        v1 = mesh.tri[1, t]
+        v2 = mesh.tri[2, t]
+        v3 = mesh.tri[3, t]
+        for (va, vb) in ((v1, v2), (v2, v3), (v3, v1))
+            edge_records[record_idx] =
+                va < vb ? (va, vb, t) : (vb, va, t)
+            record_idx += 1
+        end
+    end
+    sort!(edge_records)
+
+    pairs = NTuple{2,Int}[]
+    sizehint!(pairs, nrecords ÷ 2)
+    first_record = 1
+    while first_record <= nrecords
+        next_edge = first_record + 1
+        @inbounds while next_edge <= nrecords &&
+                        edge_records[next_edge][1] == edge_records[first_record][1] &&
+                        edge_records[next_edge][2] == edge_records[first_record][2]
+            next_edge += 1
+        end
+
+        # All triangles in this group share the same mesh edge. Generating every
+        # pair preserves the previous behavior for non-manifold edges as well.
+        @inbounds for i in first_record:(next_edge - 1)
+            for j in (i + 1):(next_edge - 1)
+                t1 = edge_records[i][3]
+                t2 = edge_records[j][3]
+                t1 == t2 && continue
+                push!(pairs, t1 < t2 ? (t1, t2) : (t2, t1))
+            end
+        end
+        first_record = next_edge
+    end
+
+    # A malformed/duplicate face can make a triangle pair share more than one
+    # recorded edge. Sort and compact so the resident adjacency stays unique.
+    sort!(pairs)
+    if !isempty(pairs)
+        write_idx = 1
+        @inbounds for read_idx in 2:length(pairs)
+            if pairs[read_idx] != pairs[write_idx]
+                write_idx += 1
+                pairs[write_idx] = pairs[read_idx]
+            end
+        end
+        resize!(pairs, write_idx)
+    end
+
+    degree = zeros(Int, Nt)
+    @inbounds for (t1, t2) in pairs
+        degree[t1] += 1
+        degree[t2] += 1
+    end
+
+    offsets = Vector{Int}(undef, Nt + 1)
+    offsets[1] = 1
+    @inbounds for t in 1:Nt
+        offsets[t + 1] = offsets[t] + degree[t]
+        degree[t] = offsets[t]  # reuse as the fill cursor
+    end
+
+    neighbors = Vector{Int}(undef, offsets[end] - 1)
+    @inbounds for (t1, t2) in pairs
+        neighbors[degree[t1]] = t2
+        degree[t1] += 1
+        neighbors[degree[t2]] = t1
+        degree[t2] += 1
+    end
+
+    return TriangleAdjacency(offsets, neighbors)
+end
+
+@inline _adjacent_pair_count(adjacency::TriangleAdjacency) =
+    length(adjacency.neighbors) ÷ 2
+
 struct EFIEApplyCache{TK, Tω, TD, TV}
     mesh::TriMesh
     rwg::RWGData
@@ -25,7 +128,7 @@ struct EFIEApplyCache{TK, Tω, TD, TV}
     div_vals::Matrix{TD}                 # (2, N)
     rwg_vals::Vector{NTuple{2,Vector{TV}}}
     # Adjacent-cell near-singular integration data
-    adjacent::BitMatrix                  # (Nt, Nt) adjacency matrix
+    adjacent::TriangleAdjacency          # compact edge-adjacency rows
     wq_hi::Vector{Float64}              # high-order quadrature weights
     quad_pts_hi::Vector{Vector{Vec3}}    # high-order quadrature points per triangle
     rwg_vals_hi::Vector{NTuple{2,Vector{TV}}}  # RWG values at high-order quad pts
@@ -82,32 +185,7 @@ function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
         rwg_vals_hi[n] = (vals_p_hi, vals_m_hi)
     end
 
-    # Build triangle adjacency BitMatrix from mesh connectivity
-    # Two triangles are adjacent if they share a mesh edge (pair of vertex indices)
-    adjacent = falses(Nt, Nt)
-    edge_to_tri = Dict{NTuple{2,Int}, Vector{Int}}()
-    for t in 1:Nt
-        v1 = mesh.tri[1, t]
-        v2 = mesh.tri[2, t]
-        v3 = mesh.tri[3, t]
-        for (va, vb) in ((v1, v2), (v2, v3), (v3, v1))
-            ekey = va < vb ? (va, vb) : (vb, va)
-            if haskey(edge_to_tri, ekey)
-                push!(edge_to_tri[ekey], t)
-            else
-                edge_to_tri[ekey] = [t]
-            end
-        end
-    end
-    for (_, tris) in edge_to_tri
-        for i in 1:length(tris)
-            for j in (i+1):length(tris)
-                t1, t2 = tris[i], tris[j]
-                adjacent[t1, t2] = true
-                adjacent[t2, t1] = true
-            end
-        end
-    end
+    adjacent = _build_triangle_adjacency(mesh)
 
     return EFIEApplyCache(mesh, rwg, k, inv_k2, omega_mu0, wq, Nq, quad_pts, areas,
                           tri_ids, div_vals, rwg_vals,
@@ -115,7 +193,11 @@ function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
 end
 
 @inline function _is_adjacent(cache::EFIEApplyCache, t1::Int, t2::Int)
-    return @inbounds cache.adjacent[t1, t2]
+    adjacency = cache.adjacent
+    @inbounds for idx in adjacency.offsets[t1]:(adjacency.offsets[t1 + 1] - 1)
+        adjacency.neighbors[idx] == t2 && return true
+    end
+    return false
 end
 
 @inline function _efie_entry(cache::EFIEApplyCache, m::Int, n::Int)

@@ -176,7 +176,13 @@ For each outer quadrature point `r_m` on `tm`:
 
 ### 5.3 Adjacent-Cell Detection
 
-`EFIEApplyCache` builds an edge-to-triangle map at construction time and stores all adjacent pairs in a `Set{NTuple{2,Int}}`. The function `_is_adjacent(cache, t1, t2)` performs O(1) lookup.
+`EFIEApplyCache` builds edge-to-triangle records at construction time and stores
+the deduplicated symmetric adjacency in compact-row form: one `offsets` vector
+and one contiguous `neighbors` vector. Resident storage is
+`O(N_t + N_{\mathrm{adj}})` rather than an `N_t × N_t` pair matrix. On a
+manifold triangle mesh each row has at most three edge-neighbors, so
+`_is_adjacent(cache, t1, t2)` scans only a tiny row with no hashing or
+allocation.
 
 ---
 
