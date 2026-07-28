@@ -59,7 +59,70 @@ function _validate_sph_grid(grid::SphGrid)
     length(grid.phi) == NΩ ||
         throw(DimensionMismatch(
             "grid.phi length $(length(grid.phi)) != $NΩ"))
+
+    @inbounds for q in 1:NΩ
+        θ = grid.theta[q]
+        ϕ = grid.phi[q]
+        wq = grid.w[q]
+        (isfinite(θ) && isfinite(ϕ)) ||
+            throw(ArgumentError(
+                "spherical grid angles must be finite; direction $q has theta=$θ, phi=$ϕ"))
+        (isfinite(wq) && wq >= 0.0) ||
+            throw(ArgumentError(
+                "spherical grid weights must be finite and nonnegative; weight $q is $wq"))
+
+        x = grid.rhat[1, q]
+        y = grid.rhat[2, q]
+        z = grid.rhat[3, q]
+        (isfinite(x) && isfinite(y) && isfinite(z)) ||
+            throw(ArgumentError(
+                "spherical grid directions must be finite; direction $q is ($x, $y, $z)"))
+        nrm = sqrt(x * x + y * y + z * z)
+        (isfinite(nrm) && isapprox(nrm, 1.0; rtol=1e-10, atol=1e-12)) ||
+            throw(ArgumentError(
+                "spherical grid directions must be unit vectors; direction $q has norm $nrm"))
+    end
     return NΩ
+end
+
+@inline function _validated_farfield_scalar(value::Number,
+                                            label::AbstractString;
+                                            positive_real::Bool=false)
+    (isfinite(real(value)) && isfinite(imag(value))) ||
+        throw(ArgumentError("$label must be finite, got $value"))
+    if positive_real
+        isreal(value) && real(value) > 0.0 ||
+            throw(ArgumentError("$label must be real and positive, got $value"))
+    else
+        abs(value) > 0.0 ||
+            throw(ArgumentError("$label must be nonzero, got $value"))
+    end
+    return value
+end
+
+@inline function _validated_farfield_direction(r_hat::Vec3)
+    x = r_hat[1]
+    y = r_hat[2]
+    z = r_hat[3]
+    (isfinite(x) && isfinite(y) && isfinite(z)) ||
+        throw(ArgumentError("far-field direction components must be finite, got $r_hat"))
+
+    # Scale before taking the norm so valid very large or subnormal direction
+    # vectors do not overflow or underflow during normalization.
+    scale = max(abs(x), abs(y), abs(z))
+    scale > 0.0 ||
+        throw(ArgumentError("far-field direction must be nonzero"))
+    scaled = r_hat / scale
+    scaled_norm = norm(scaled)
+    (isfinite(scaled_norm) && scaled_norm > 0.0) ||
+        throw(ArgumentError("far-field direction must have a finite, nonzero norm"))
+    return scaled / scaled_norm
+end
+
+@inline function _validated_incident_farfield_args(r_hat::Vec3, k::Real)
+    kf = Float64(k)
+    _validated_farfield_scalar(kf, "far-field wavenumber"; positive_real=true)
+    return _validated_farfield_direction(r_hat), kf
 end
 
 """
@@ -75,6 +138,8 @@ function radiation_vectors(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
                            quad_order::Int=3, eta0=376.730313668)
     N = rwg.nedges
     NΩ = _validate_sph_grid(grid)
+    _validated_farfield_scalar(k, "radiation_vectors wavenumber")
+    _validated_farfield_scalar(eta0, "radiation_vectors eta0")
     Nt = ntriangles(mesh)
     prefactor = 1im * k * eta0 / (4π)
 
@@ -106,7 +171,7 @@ function radiation_vectors(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
     # per basis function and reused across all NΩ·Nq·3 G_mat writes for that
     # triangle. Each thread owns its own buffer (no sharing across threads), and
     # each task writes only to column n of G_mat, so there are no data races.
-    G_mat = zeros(ComplexF64, 3 * NΩ, N)
+    G_mat = zeros(ComplexF64, Base.checked_mul(3, NΩ), N)
 
     Threads.@threads for n in 1:N
         phase_buf = Matrix{ComplexF64}(undef, NΩ, Nq)   # phase_buf[q_dir, q_surf]
@@ -203,7 +268,7 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
     # Returns zero below the ground plane when image theory is in
     # effect (cosθ < 0), and at the axial null (sinθ = 0).
     η0 = 376.730313668
-    rh = Vec3(r_hat) / max(norm(Vec3(r_hat)), 1e-30)
+    rh, kf = _validated_incident_farfield_args(r_hat, k)
     ax = mono.axis
     cosθ = clamp(dot(rh, ax), -1.0, 1.0)
 
@@ -216,7 +281,7 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
 
     I_0 = -1im * 2π * mono.amplitude / η0
     h = mono.height
-    λ = 2π / k
+    λ = 2π / kf
     z_lo = mono.include_image ? -h : 0.0
     span = h - z_lo
     N = max(64, 2 * Int(ceil(50.0 * span / λ)))
@@ -226,14 +291,14 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
     integ = 0.0 + 0im
     @inbounds for i in 0:N
         z = z_lo + i * dz
-        I_z = I_0 * sin(k * (h - abs(z)))  # abs(z) reduces to z for z ≥ 0
+        I_z = I_0 * sin(kf * (h - abs(z)))  # abs(z) reduces to z for z ≥ 0
         w = (i == 0 || i == N) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
-        integ += w * I_z * exp(1im * k * z * cosθ)
+        integ += w * I_z * exp(1im * kf * z * cosθ)
     end
     integ *= dz / 3.0
 
-    Eθ_far = 1im * η0 * k * sinθ / (4π) * integ
-    phase = exp(1im * k * dot(rh, Vec3(mono.position)))
+    Eθ_far = 1im * η0 * kf * sinθ / (4π) * integ
+    phase = exp(1im * kf * dot(rh, Vec3(mono.position)))
     return CVec3(Eθ_far * θ_hat) * phase
 end
 
@@ -242,18 +307,18 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     # 1/R term, multiply by R·exp(+ikR)):
     #   Electric: E∞(r̂) = +k²/(4πε₀) · (r̂×p)×r̂ = +k²/(4πε₀) · perp(p)
     #   Magnetic: E∞(r̂) = +η₀·k²/(4π) · (m × r̂)   (real coeff, dual to electric)
-    rh = Vec3(r_hat) / max(norm(Vec3(r_hat)), 1e-30)
+    rh, kf = _validated_incident_farfield_args(r_hat, k)
     ϵ0 = 8.854187817e-12; μ0 = 4π * 1e-7
     η0 = sqrt(μ0 / ϵ0)
     if dipole.type == :electric
         perp = dipole.moment - rh * dot(rh, dipole.moment)
-        E_far = (k^2 / (4π * ϵ0)) * perp
+        E_far = (kf^2 / (4π * ϵ0)) * perp
     elseif dipole.type == :magnetic
-        E_far = (η0 * k^2 / (4π)) * cross(dipole.moment, rh)
+        E_far = (η0 * kf^2 / (4π)) * cross(dipole.moment, rh)
     else
         error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
     end
-    phase = exp(1im * k * dot(rh, dipole.position))
+    phase = exp(1im * kf * dot(rh, dipole.position))
     return CVec3(E_far) * phase
 end
 
@@ -271,8 +336,9 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
     # E_inc(r·r̂) ~ (Fθ(θ,ϕ)·θ̂ + Fϕ(θ,ϕ)·ϕ̂) · exp(-ikR)/R
     # (with R = |r − phase_center|). At the far field, R ≈ r − r̂·pc,
     # so r·E·exp(+ikr) = E_far(r̂) · exp(+ik·r̂·phase_center).
-    pat.frequency > 0 || error("Pattern feed frequency must be positive.")
-    rh = Vec3(r_hat) / max(norm(Vec3(r_hat)), 1e-30)
+    (isfinite(pat.frequency) && pat.frequency > 0.0) ||
+        error("Pattern feed frequency must be finite and positive.")
+    rh, kf = _validated_incident_farfield_args(r_hat, k)
 
     θ = acos(clamp(rh[3], -1.0, 1.0))
     ϕ = atan(rh[2], rh[1])
@@ -289,11 +355,12 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
     end
 
     E_far = Fθ * eθ + Fϕ * eϕ
-    phase = exp(1im * k * dot(rh, pat.phase_center))
+    phase = exp(1im * kf * dot(rh, pat.phase_center))
     return CVec3(E_far) * phase
 end
 
 function incident_farfield(multi::MultiExcitation, r_hat::Vec3, k::Real)
+    _validated_incident_farfield_args(r_hat, k)
     length(multi.excitations) == length(multi.weights) ||
         error("MultiExcitation has mismatched excitation/weight lengths.")
     E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)

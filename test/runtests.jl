@@ -747,6 +747,45 @@ println("  Far-field grid: $NΩ directions")
 
 G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=eta0)
 @assert size(G_mat) == (3 * NΩ, N)
+@test_throws ArgumentError radiation_vectors(mesh, rwg, grid, Inf; eta0=eta0)
+@test_throws ArgumentError radiation_vectors(mesh, rwg, grid, k; eta0=Inf)
+
+bad_rhat_grid = SphGrid(
+    hcat(grid.rhat[:, 1:(end - 1)], zeros(3)),
+    copy(grid.theta),
+    copy(grid.phi),
+    copy(grid.w),
+)
+@test_throws ArgumentError radiation_vectors(mesh, rwg, bad_rhat_grid, k; eta0=eta0)
+bad_weight_grid = SphGrid(
+    copy(grid.rhat),
+    copy(grid.theta),
+    copy(grid.phi),
+    vcat(grid.w[1:(end - 1)], -1.0),
+)
+@test_throws ArgumentError radiation_vectors(mesh, rwg, bad_weight_grid, k; eta0=eta0)
+
+dipole_ff_validation = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    1.0e9,
+)
+k_ff_validation = 2π * 1.0e9 / 299792458.0
+E_ff_unit_dir = incident_farfield(
+    dipole_ff_validation, Vec3(0.0, 0.0, 1.0), k_ff_validation)
+E_ff_scaled_dir = incident_farfield(
+    dipole_ff_validation, Vec3(0.0, 0.0, 1.0e300), k_ff_validation)
+@test E_ff_scaled_dir ≈ E_ff_unit_dir
+@test_throws ArgumentError incident_farfield(
+    dipole_ff_validation, Vec3(0.0, 0.0, 0.0), k_ff_validation)
+@test_throws ArgumentError incident_farfield(
+    dipole_ff_validation, Vec3(NaN, 0.0, 1.0), k_ff_validation)
+@test_throws ArgumentError incident_farfield(
+    dipole_ff_validation, Vec3(0.0, 0.0, 1.0), 0.0)
+@test_throws ArgumentError incident_farfield(
+    dipole_ff_validation, Vec3(0.0, 0.0, 1.0), Inf)
 
 # Compute far-field from PEC solution
 E_ff = compute_farfield(G_mat, I_pec, NΩ)
