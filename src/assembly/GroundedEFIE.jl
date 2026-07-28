@@ -18,12 +18,16 @@
 export assemble_Z_efie_grounded, assemble_excitation_grounded
 export reflection_coefficients_grounded, reflection_coefficient_vectors_grounded
 
+@inline _validated_ground_height(height::Real) =
+    _positive_periodic_parameter("ground-plane height", height)
+
 # Full periodic Green's function G_per = G_0 + ΔG between two points (no singularity
 # extraction; valid only for non-coincident points, which holds for the image block).
 @inline function _gper_full(r::SVector{3}, rp::SVector{3}, k, lattice::PeriodicLattice)
+    kw = _validated_lattice_wavenumber(k, lattice)
     R = norm(r - rp)
-    g0 = exp(-im * k * R) / (4π * R)
-    return g0 + greens_periodic_correction(r, rp, k, lattice)
+    g0 = exp(-im * kw * R) / (4π * R)
+    return g0 + greens_periodic_correction(r, rp, kw, lattice)
 end
 
 # Mixed-potential EFIE block between the real layer (mesh, z = z0) and its mirror
@@ -32,11 +36,13 @@ function _assemble_periodic_image_block(mesh::TriMesh, rwg::RWGData, k,
                                         lattice::PeriodicLattice, two_h::Float64;
                                         quad_order::Int=3,
                                         eta0::Float64=376.730313668)
+    kw = _validated_lattice_wavenumber(k, lattice)
+    _positive_periodic_parameter("twice the ground-plane height", two_h)
     N = rwg.nedges
     Nt = ntriangles(mesh)
     Tcoef = promote_type(eltype(rwg.coeff_plus), eltype(rwg.coeff_minus))
     TVec = SVector{3,Tcoef}
-    omega_mu0 = k * eta0
+    omega_mu0 = kw * eta0
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
@@ -73,7 +79,7 @@ function _assemble_periodic_image_block(mesh::TriMesh, rwg::RWGData, k,
         Threads.@threads :dynamic for tm in 1:Nt
             @inbounds for tn in tm:Nt
                 for qm in 1:Nq, qn in 1:Nq
-                    g = _gper_full(quad_pts[tm][qm], quad_pts_img[tn][qn], k, lattice)
+                    g = _gper_full(quad_pts[tm][qm], quad_pts_img[tn][qn], kw, lattice)
                     G_cache[qm, qn, tm, tn] = g
                     G_cache[qn, qm, tn, tm] = g
                 end
@@ -84,13 +90,13 @@ function _assemble_periodic_image_block(mesh::TriMesh, rwg::RWGData, k,
             @inbounds for tn in 1:Nt
                 for qm in 1:Nq, qn in 1:Nq
                     G_cache[qm, qn, tm, tn] =
-                        _gper_full(quad_pts[tm][qm], quad_pts_img[tn][qn], k, lattice)
+                        _gper_full(quad_pts[tm][qm], quad_pts_img[tn][qn], kw, lattice)
                 end
             end
         end
     end
 
-    inv_k2 = 1 / (k^2)
+    inv_k2 = 1 / (kw^2)
     Z_img = zeros(CT, N, N)
     Threads.@threads for m_idx in 1:N
         @inbounds for n_idx in 1:N
@@ -137,9 +143,11 @@ with the mirror currents at depth 2h (full periodic Green's function, no singula
 function assemble_Z_efie_grounded(mesh::TriMesh, rwg::RWGData, k,
                                   lattice::PeriodicLattice; height::Real,
                                   quad_order::Int=3, eta0::Float64=376.730313668)
-    height > 0 || throw(ArgumentError("ground-plane height must be positive (got $height)"))
-    Z_direct = assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=quad_order, eta0=eta0)
-    Z_image = _assemble_periodic_image_block(mesh, rwg, k, lattice, 2 * Float64(height);
+    kw = _validated_lattice_wavenumber(k, lattice)
+    h = _validated_ground_height(height)
+    two_h = _positive_periodic_parameter("twice the ground-plane height", 2 * h)
+    Z_direct = assemble_Z_efie_periodic(mesh, rwg, kw, lattice; quad_order=quad_order, eta0=eta0)
+    Z_image = _assemble_periodic_image_block(mesh, rwg, kw, lattice, two_h;
                                              quad_order=quad_order, eta0=eta0)
     return Z_direct - Z_image
 end
@@ -157,8 +165,10 @@ wave referenced at the metasurface plane (z=0), the total tangential drive is sc
 """
 function assemble_excitation_grounded(mesh::TriMesh, rwg::RWGData, pw, k,
                                       lattice::PeriodicLattice; height::Real, quad_order::Int=3)
+    kw = _validated_lattice_wavenumber(k, lattice)
+    h = _validated_ground_height(height)
     v_inc = assemble_excitation(mesh, rwg, pw; quad_order=quad_order)
-    factor = 1 - exp(-2im * _kz_inc(k, lattice) * height)
+    factor = 1 - exp(-2im * _kz_inc(kw, lattice) * h)
     return factor .* v_inc
 end
 
@@ -176,9 +186,10 @@ sheet at z=0 gives R_00 = -1 for any h.
 """
 function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
                                           lattice::PeriodicLattice; height::Real, kwargs...)
-    modes, R_cur = reflection_coefficients(mesh, rwg, I, k, lattice; kwargs...)
-    kzi = _kz_inc(k, lattice)
-    h = Float64(height)
+    kw = _validated_lattice_wavenumber(k, lattice)
+    h = _validated_ground_height(height)
+    modes, R_cur = reflection_coefficients(mesh, rwg, I, kw, lattice; kwargs...)
+    kzi = _kz_inc(kw, lattice)
     R_g = similar(R_cur)
     for (i, m) in enumerate(modes)
         # Use real(m.kz): evanescent orders store kz = i·β (positive imaginary), so
@@ -205,14 +216,15 @@ function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I,
                                                  lattice::PeriodicLattice; height::Real,
                                                  pol::SVector{3,Float64}=SVector(1.0, 0.0, 0.0),
                                                  kwargs...)
-    modes, R_cur = reflection_coefficient_vectors(mesh, rwg, I, k, lattice; kwargs...)
-    kzi = _kz_inc(k, lattice)
-    h = Float64(height)
+    kw = _validated_lattice_wavenumber(k, lattice)
+    h = _validated_ground_height(height)
+    modes, R_cur = reflection_coefficient_vectors(mesh, rwg, I, kw, lattice; kwargs...)
+    kzi = _kz_inc(kw, lattice)
     R_g = copy(R_cur)
     for (i, m) in enumerate(modes)
         R_g[i] = R_cur[i] * (1 - exp(-2im * real(m.kz) * h))
         if m.m == 0 && m.n == 0
-            pol_mode = _mode_transverse_projection(pol, m, k)
+            pol_mode = _mode_transverse_projection(pol, m, kw)
             if !isnothing(pol_mode)
                 R_g[i] -= exp(-2im * kzi * h) .* ComplexF64.(pol_mode)
             end

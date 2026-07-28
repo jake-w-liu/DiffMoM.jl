@@ -88,10 +88,11 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                                                k::Real, lattice::PeriodicLattice;
                                                quad_order::Int=3,
                                                N_orders::Int=3)
+    kw = _validated_lattice_wavenumber(k, lattice)
     _assert_coplanar_periodic_metrics_mesh(mesh)
     _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
 
-    modes = floquet_modes(k, lattice; N_orders=N_orders)
+    modes = floquet_modes(kw, lattice; N_orders=N_orders)
     A_cell = lattice.dx * lattice.dy
 
     xi, wq = tri_quad_rule(quad_order)
@@ -150,21 +151,25 @@ end
 Enumerate all Floquet modes (m, n) for the given lattice and classify
 them as propagating or evanescent.
 
+`k` must match `lattice.k`, and `N_orders` must be nonnegative.
+
 Returns a vector of FloquetMode structs.
 """
 function floquet_modes(k::Real, lattice::PeriodicLattice; N_orders::Int=3)
+    kw = _validated_lattice_wavenumber(k, lattice)
+    order = _periodic_truncation_order("N_orders", N_orders)
     modes = FloquetMode[]
 
-    for m in -N_orders:N_orders
-        for n in -N_orders:N_orders
+    for m in -order:order
+        for n in -order:order
             kx_mn = lattice.kx_bloch + 2π * m / lattice.dx
             ky_mn = lattice.ky_bloch + 2π * n / lattice.dy
             kt2 = kx_mn^2 + ky_mn^2
 
-            kz2 = k^2 - kt2
+            kz2 = kw^2 - kt2
             if kz2 > 0
                 kz = sqrt(kz2)
-                theta_r = acos(clamp(real(kz) / k, -1.0, 1.0))
+                theta_r = acos(clamp(real(kz) / kw, -1.0, 1.0))
                 phi_r = atan(ky_mn, kx_mn)
                 push!(modes, FloquetMode(m, n, kx_mn, ky_mn, kz, true, theta_r, phi_r))
             else
@@ -201,8 +206,9 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
                                  E0::Float64=1.0,
                                  pol::SVector{3,Float64}=SVector(1.0, 0.0, 0.0),
                                  eta0::Float64=376.730313668)
+    kw = _validated_lattice_wavenumber(k, lattice)
     modes, J_tildes = _floquet_current_fourier_coefficients(
-        mesh, rwg, I_coeffs, k, lattice; quad_order=quad_order, N_orders=N_orders
+        mesh, rwg, I_coeffs, kw, lattice; quad_order=quad_order, N_orders=N_orders
     )
 
     R_coeffs = zeros(ComplexF64, length(modes))
@@ -217,7 +223,7 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
         #
         # This avoids overestimating mode amplitudes when the global incident
         # polarization has a component parallel to the reflected mode direction.
-        pol_mode = _mode_transverse_projection(pol, mode, k)
+        pol_mode = _mode_transverse_projection(pol, mode, kw)
         if isnothing(pol_mode)
             continue
         end
@@ -226,7 +232,7 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
         #   R_mn = -(η₀ k)/(2 κz_mn E₀) × (ê_mode · J̃_mn)
         # where ê_mode is transverse to this mode's propagation direction.
         kz_mn = real(mode.kz)
-        R_coeffs[mi] = -(eta0 * k) / (2 * kz_mn * E0) * dot(pol_mode, J_tildes[mi])
+        R_coeffs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) * dot(pol_mode, J_tildes[mi])
     end
 
     return modes, R_coeffs
@@ -250,8 +256,9 @@ function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
                                         quad_order::Int=3, N_orders::Int=3,
                                         E0::Float64=1.0,
                                         eta0::Float64=376.730313668)
+    kw = _validated_lattice_wavenumber(k, lattice)
     modes, J_tildes = _floquet_current_fourier_coefficients(
-        mesh, rwg, I_coeffs, k, lattice; quad_order=quad_order, N_orders=N_orders
+        mesh, rwg, I_coeffs, kw, lattice; quad_order=quad_order, N_orders=N_orders
     )
 
     zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
@@ -263,9 +270,9 @@ function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
         end
 
         kz_mn = real(mode.kz)
-        khat = SVector(mode.kx / k, mode.ky / k, kz_mn / k)
+        khat = SVector(mode.kx / kw, mode.ky / kw, kz_mn / kw)
         J_transverse = J_tildes[mi] - khat * dot(khat, J_tildes[mi])
-        R_vecs[mi] = -(eta0 * k) / (2 * kz_mn * E0) * J_transverse
+        R_vecs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) * J_transverse
     end
 
     return modes, R_vecs
@@ -447,11 +454,12 @@ function specular_rcs_objective(mesh::TriMesh, rwg::RWGData,
                                 quad_order::Int=3,
                                 half_angle::Float64=π/18,
                                 polarization=:x)
+    kw = _validated_lattice_wavenumber(k, lattice)
     # Specular (0,0) reflected order keeps the incident transverse wavevector and
     # flips only kz, so r̂ = (kx_bloch, ky_bloch, +kz_inc)/k: θ_r = θ_inc and
     # φ_r = φ_inc = atan(ky_bloch, kx_bloch) (no +π — that would point at the
     # mirror azimuth and miss the specular lobe at oblique incidence).
-    theta_spec = asin(clamp(sqrt(lattice.kx_bloch^2 + lattice.ky_bloch^2) / k, 0.0, 1.0))
+    theta_spec = asin(clamp(sqrt(lattice.kx_bloch^2 + lattice.ky_bloch^2) / kw, 0.0, 1.0))
     phi_spec = atan(lattice.ky_bloch, lattice.kx_bloch)
 
     # Build direction mask for specular cone
@@ -461,7 +469,7 @@ function specular_rcs_objective(mesh::TriMesh, rwg::RWGData,
     mask = direction_mask(grid, spec_dir; half_angle=half_angle)
 
     # Build radiation vectors and Q matrix
-    G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=quad_order)
+    G_mat = radiation_vectors(mesh, rwg, grid, kw; quad_order=quad_order)
     pol = _specular_objective_polarization(grid, polarization)
     Q = build_Q(G_mat, grid, pol; mask=mask)
 

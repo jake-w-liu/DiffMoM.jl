@@ -27,6 +27,11 @@ post-processing. See [periodic-methods.md](periodic-methods.md) for
 plane-wave excitation model. For a complete end-to-end optimization workflow, see
 `examples/21_grounded_rcs_demo.jl` and the `examples/grounded_rcs/` directory.
 
+All grounded entry points require a finite positive `height` and require the
+call-site wavenumber `k` to match `lattice.k` within `1e-12` relative tolerance.
+This prevents a lattice's frequency-derived Bloch/Ewald data from being reused
+at a different frequency.
+
 **See also:** for the theory and a worked walkthrough, see
 [Grounded (Half-Space) EFIE via Image Theory](../formulations/05-grounded-efie.md).
 
@@ -47,15 +52,15 @@ evaluated with the full periodic Green's function at vertical separation `2*heig
 |-----------|------|---------|-------------|
 | `mesh` | `TriMesh` | -- | Geometry mesh of the unit cell (coplanar, `z = const`). |
 | `rwg` | `RWGData` | -- | Bloch-paired RWG basis data from `build_rwg_periodic`. |
-| `k` | Real | -- | Free-space wavenumber (rad/m). |
+| `k` | Real | -- | Positive free-space wavenumber (rad/m); must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup. |
-| `height` | `Real` | -- | Distance `h` of the metasurface above the PEC ground plane (meters). Must be positive. |
+| `height` | `Real` | -- | Finite positive distance `h` above the PEC ground plane (meters). |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance (Ohm). |
 
 **Returns:** Dense `Matrix{ComplexF64}` `Z_grounded = Z_direct - Z_image` of size `N x N`.
 
-A non-positive `height` raises `ArgumentError`.
+An invalid height or mismatched wavenumber raises `ArgumentError`.
 
 ```julia
 lam = 2.99792458e8 / 10e9
@@ -83,10 +88,10 @@ of the specular order (`kz_inc = k cos(theta_inc)`).
 |-----------|------|---------|-------------|
 | `mesh` | `TriMesh` | -- | Geometry mesh of the unit cell. |
 | `rwg` | `RWGData` | -- | Bloch-paired RWG basis data from `build_rwg_periodic`. |
-| `k` | Real | -- | Free-space wavenumber (rad/m). |
+| `k` | Real | -- | Positive free-space wavenumber (rad/m); must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup (carries the Bloch wavenumbers). |
 | `pw` | -- | -- | Plane-wave excitation model (e.g. from `make_plane_wave`), passed through to `assemble_excitation`. |
-| `height` | `Real` | -- | Distance `h` of the metasurface above the PEC ground plane (meters). |
+| `height` | `Real` | -- | Finite positive distance `h` above the PEC ground plane (meters). |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 
 **Returns:** `Vector{ComplexF64}` of length `N` (the free-standing excitation scaled by `1 - exp(-2i kz_inc h)`).
@@ -123,9 +128,9 @@ the image phase. Limiting behavior: an empty cell gives the bare-ground
 | `mesh` | `TriMesh` | -- | Geometry mesh of the unit cell. |
 | `rwg` | `RWGData` | -- | Bloch-paired RWG basis data from `build_rwg_periodic`. |
 | `I` | `Vector{<:Number}` | -- | Solved RWG current coefficients (length `N`). |
-| `k` | Real | -- | Free-space wavenumber (rad/m). |
+| `k` | Real | -- | Positive free-space wavenumber (rad/m); must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup. |
-| `height` | `Real` | -- | Distance `h` of the metasurface above the PEC ground plane (meters). |
+| `height` | `Real` | -- | Finite positive distance `h` above the PEC ground plane (meters). |
 | `kwargs...` | -- | -- | Forwarded to `reflection_coefficients` (e.g. `N_orders`, `E0`, `pol`, `quad_order`, `eta0`). |
 
 **Returns:** Tuple `(modes, R_g)`, where `modes` is the `Vector{FloquetMode}` of
@@ -158,9 +163,9 @@ mode-transverse projection of `pol` (skipped when that projection is undefined).
 | `mesh` | `TriMesh` | -- | Geometry mesh of the unit cell. |
 | `rwg` | `RWGData` | -- | Bloch-paired RWG basis data from `build_rwg_periodic`. |
 | `I` | `Vector{<:Number}` | -- | Solved RWG current coefficients (length `N`). |
-| `k` | Real | -- | Free-space wavenumber (rad/m). |
+| `k` | Real | -- | Positive free-space wavenumber (rad/m); must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup. |
-| `height` | `Real` | -- | Distance `h` of the metasurface above the PEC ground plane (meters). |
+| `height` | `Real` | -- | Finite positive distance `h` above the PEC ground plane (meters). |
 | `pol` | `SVector{3,Float64}` | `SVector(1.0, 0.0, 0.0)` | Incident polarization used to project the bare-ground `(0,0)` background onto the mode-transverse plane. |
 | `kwargs...` | -- | -- | Forwarded to `reflection_coefficient_vectors` (e.g. `N_orders`, `E0`, `quad_order`, `eta0`). |
 

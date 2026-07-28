@@ -37,15 +37,17 @@ PeriodicLattice(dx, dy, theta_inc, phi_inc, k; N_spatial=4, N_spectral=4)
 
 Inputs:
 
-- `dx`, `dy`: unit-cell periods (meters).
-- `theta_inc`, `phi_inc`: incident angles (radians).
-- `k`: free-space wavenumber.
-- `N_spatial`, `N_spectral`: minimum truncation orders for Ewald sums.
+- `dx`, `dy`: finite, positive unit-cell periods (meters).
+- `theta_inc`, `phi_inc`: finite incident angles (radians).
+- `k`: finite, positive free-space wavenumber.
+- `N_spatial`, `N_spectral`: nonnegative minimum truncation orders for Ewald sums.
 
 Constructor behavior:
 - Computes Bloch transverse wavenumbers `kx_bloch`, `ky_bloch`.
 - Auto-selects Ewald splitting `E` for numerical stability.
 - Auto-enlarges spectral truncation when needed to include propagating Floquet modes.
+- Rejects invalid physical parameters before evaluating Ewald formulas. The full
+  eight-field constructor enforces the same finite/positive/truncation invariants.
 
 ---
 
@@ -62,10 +64,14 @@ DeltaG(r,rp) = G_per(r,rp) - G_0(r,rp)
 using Helmholtz-Ewald decomposition (self-correction + spatial images + spectral sum).
 
 Current implementation scope:
-- Intended for coplanar periodic unit-cell surfaces (`z = const`).
-- Non-coplanar point pairs (`|z-z'| > 1e-12`) are rejected at runtime.
+- Supports both coplanar point pairs and finite vertical separation `z-z'`; the
+  grounded-EFIE image block uses the latter path.
 - For periodic EFIE/Floquet postprocessing with boundary-touching conductors, use
   `build_rwg_periodic(mesh, lattice; ...)`; non-Bloch RWG input is rejected.
+- `k` must match `lattice.k` (within `1e-12` relative tolerance). A lattice stores
+  Bloch phases, Ewald splitting, and spectral truncation derived from its
+  construction wavenumber, so reusing it at a different `k` is invalid.
+- All point coordinates must be finite.
 
 **Parameters:**
 
@@ -73,7 +79,7 @@ Current implementation scope:
 |-----------|------|-------------|
 | `r` | `SVector{3}` | Observation point. |
 | `rp` | `SVector{3}` | Source point. |
-| `k` | Real | Wavenumber (rad/m). |
+| `k` | Real | Positive wavenumber (rad/m); must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | Periodic lattice setup. |
 
 **Returns:** `ComplexF64` correction value.
@@ -102,7 +108,7 @@ where:
 |-----------|------|---------|-------------|
 | `mesh` | `TriMesh` | -- | Geometry mesh. |
 | `rwg` | `RWGData` | -- | RWG basis data. |
-| `k` | Real | -- | Wavenumber (rad/m). |
+| `k` | Real | -- | Positive wavenumber (rad/m); must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup. |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
@@ -146,9 +152,9 @@ Enumerate modes `(m,n)` for `m,n in [-N_orders, N_orders]` and classify each as 
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `k` | `Real` | -- | Free-space wavenumber. |
+| `k` | `Real` | -- | Positive free-space wavenumber; must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Periodic lattice and Bloch setup. |
-| `N_orders` | `Int` | `3` | Truncation order in each lattice direction. |
+| `N_orders` | `Int` | `3` | Nonnegative truncation order in each lattice direction. |
 
 **Returns:** `Vector{FloquetMode}`.
 

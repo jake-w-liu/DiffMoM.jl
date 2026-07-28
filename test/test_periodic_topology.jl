@@ -37,6 +37,24 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         lat_obl = PeriodicLattice(dx, dy, π/6, 0.0, k)
         @test lat_obl.kx_bloch ≈ k * 0.5 rtol=1e-14
         @test lat_obl.ky_bloch ≈ 0.0 atol=1e-15
+
+        # Physical/numerical invariants are enforced at both constructors.
+        for bad_period in (0.0, -dx, Inf, NaN)
+            @test_throws ArgumentError PeriodicLattice(bad_period, dy, 0.0, 0.0, k)
+            @test_throws ArgumentError PeriodicLattice(dx, bad_period, 0.0, 0.0, k)
+        end
+        for bad_angle in (Inf, -Inf, NaN)
+            @test_throws ArgumentError PeriodicLattice(dx, dy, bad_angle, 0.0, k)
+            @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, bad_angle, k)
+        end
+        for bad_k in (0.0, -k, Inf, NaN)
+            @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, bad_k)
+        end
+        @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k; N_spatial=-1)
+        @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k; N_spectral=-1)
+        @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k, 0.0, 4, 4)
+        @test_throws ArgumentError PeriodicLattice(dx, dy, NaN, 0.0, k, E_opt, 4, 4)
+        @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k, E_opt, -1, 4)
     end
 
     # ── A: Ewald spatial kernel returns real value ──
@@ -130,6 +148,22 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         # Self-point (R=0): exercises analytical limit in self-correction
         dG_self = greens_periodic_correction(r, r, k, lat)
         @test !isnan(abs(dG_self)) && !isinf(abs(dG_self))
+    end
+
+    # ── E: Call-site wavenumber must agree with the lattice ──
+    @testset "E: Wavenumber and coordinate validation" begin
+        lat = PeriodicLattice(dx, dy, π/7, π/5, k)
+        r = SVector(0.17dx, -0.11dy, 0.03dx)
+        rp = SVector(-0.08dx, 0.05dy, -0.02dx)
+        @test_throws ArgumentError greens_periodic_correction(r, rp, 1.01k, lat)
+        @test_throws ArgumentError greens_periodic_correction(
+            SVector(NaN, 0.0, 0.0), rp, k, lat
+        )
+
+        # A rounding-equivalent value is normalized to the stored lattice k.
+        g_ref = greens_periodic_correction(r, rp, k, lat)
+        g_roundoff = greens_periodic_correction(r, rp, k * (1 + 5e-13), lat)
+        @test g_roundoff == g_ref
     end
 
     # ── D: Oblique incidence ──
@@ -633,6 +667,9 @@ println("\n── Test 41: PeriodicEFIE ──")
         Z_per = assemble_Z_efie_periodic(mesh_pe, rwg_pe, k_pe, lat_pe)
         @test size(Z_per) == (N_pe, N_pe)
         @test eltype(Z_per) == ComplexF64
+        @test_throws ArgumentError assemble_Z_efie_periodic(
+            mesh_pe, rwg_pe, 1.01k_pe, lat_pe
+        )
     end
 
     # ── A: Bloch-paired RWG required for boundary-touching periodic meshes ──
@@ -806,6 +843,8 @@ println("\n── Test 42: PeriodicMetrics ──")
             modes = floquet_modes(k_pm, lat_pm; N_orders=N_ord)
             @test length(modes) == (2 * N_ord + 1)^2
         end
+        @test_throws ArgumentError floquet_modes(k_pm, lat_pm; N_orders=-1)
+        @test_throws ArgumentError floquet_modes(1.01k_pm, lat_pm; N_orders=1)
     end
 
     # ── A: Only specular mode propagates for λ/2 cell at normal incidence ──
@@ -1031,6 +1070,9 @@ println("\n── Test 42: PeriodicMetrics ──")
                                                           polarization=:circular)
         @test_throws DimensionMismatch specular_rcs_objective(mesh_q, rwg_q, grid_q, k_pm, lat_pm;
                                                               polarization=zeros(ComplexF64, 2, length(grid_q.w)))
+        @test_throws ArgumentError specular_rcs_objective(
+            mesh_q, rwg_q, grid_q, 1.01k_pm, lat_pm
+        )
     end
 
     # ── E: Non-coplanar meshes are rejected for reflection coefficients ──
@@ -1050,6 +1092,12 @@ println("\n── Test 42: PeriodicMetrics ──")
         rwg_w = build_rwg(mesh_w; precheck=false)
         I_zero = zeros(ComplexF64, rwg_w.nedges)
         @test_throws ArgumentError reflection_coefficients(mesh_w, rwg_w, I_zero, k_pm, lat_pm)
+        @test_throws ArgumentError reflection_coefficients(
+            mesh_w, rwg_w, I_zero, 1.01k_pm, lat_pm
+        )
+        @test_throws ArgumentError reflection_coefficient_vectors(
+            mesh_w, rwg_w, I_zero, 1.01k_pm, lat_pm
+        )
     end
 
     # ── B/F: Grounded metasurface via image theory ──
@@ -1102,8 +1150,35 @@ println("\n── Test 42: PeriodicMetrics ──")
             @test sum(reflected_power_fractions(modes_v, Rv, kg)) ≈ 1.0 atol = 3e-3
         end
 
-        # (3) Positive ground-plane height is required.
-        @test_throws ArgumentError assemble_Z_efie_grounded(mesh_g, rwg_g, kg, lat_g; height=-1.0)
+        # (3) A finite positive height and matching lattice wavenumber are required
+        # across every grounded public entry point.
+        I_zero = zeros(ComplexF64, rwg_g.nedges)
+        for bad_h in (-1.0, 0.0, Inf, NaN)
+            @test_throws ArgumentError assemble_Z_efie_grounded(
+                mesh_g, rwg_g, kg, lat_g; height=bad_h
+            )
+            @test_throws ArgumentError assemble_excitation_grounded(
+                mesh_g, rwg_g, pw_g, kg, lat_g; height=bad_h
+            )
+            @test_throws ArgumentError reflection_coefficients_grounded(
+                mesh_g, rwg_g, I_zero, kg, lat_g; height=bad_h
+            )
+            @test_throws ArgumentError reflection_coefficient_vectors_grounded(
+                mesh_g, rwg_g, I_zero, kg, lat_g; height=bad_h
+            )
+        end
+        @test_throws ArgumentError assemble_Z_efie_grounded(
+            mesh_g, rwg_g, 1.01kg, lat_g; height=lam_g / 8
+        )
+        @test_throws ArgumentError assemble_excitation_grounded(
+            mesh_g, rwg_g, pw_g, 1.01kg, lat_g; height=lam_g / 8
+        )
+        @test_throws ArgumentError reflection_coefficients_grounded(
+            mesh_g, rwg_g, I_zero, 1.01kg, lat_g; height=lam_g / 8
+        )
+        @test_throws ArgumentError reflection_coefficient_vectors_grounded(
+            mesh_g, rwg_g, I_zero, 1.01kg, lat_g; height=lam_g / 8
+        )
     end
 end
 println("  PASS ✓")

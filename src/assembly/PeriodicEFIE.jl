@@ -92,16 +92,17 @@ function assemble_Z_efie_periodic(mesh::TriMesh, rwg::RWGData, k,
                                   lattice::PeriodicLattice;
                                   quad_order::Int=3,
                                   eta0::Float64=376.730313668)
+    kw = _validated_lattice_wavenumber(k, lattice)
     _assert_coplanar_periodic_mesh(mesh)
     _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
 
     # Step 1: Free-space EFIE (handles self-cell singularity)
-    Z_free = assemble_Z_efie(mesh, rwg, k;
+    Z_free = assemble_Z_efie(mesh, rwg, kw;
                              quad_order=quad_order, eta0=eta0,
                              mesh_precheck=false)
 
     # Step 2: Periodic image correction (smooth, no singularity)
-    Z_corr = _assemble_periodic_correction(mesh, rwg, k, lattice;
+    Z_corr = _assemble_periodic_correction(mesh, rwg, kw, lattice;
                                             quad_order=quad_order, eta0=eta0)
 
     return Z_free + Z_corr
@@ -152,11 +153,12 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
                                        lattice::PeriodicLattice;
                                        quad_order::Int=3,
                                        eta0::Float64=376.730313668)
+    kw = _validated_lattice_wavenumber(k, lattice)
     N = rwg.nedges
     Nt = ntriangles(mesh)
     Tcoef = promote_type(eltype(rwg.coeff_plus), eltype(rwg.coeff_minus))
     TVec = SVector{3,Tcoef}
-    omega_mu0 = k * eta0
+    omega_mu0 = kw * eta0
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
@@ -192,7 +194,7 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
     end
 
     CT = ComplexF64
-    inv_k2 = 1 / (k^2)
+    inv_k2 = 1 / (kw^2)
     symmetric = _periodic_correction_is_symmetric(rwg, lattice)
 
     # Partition the source triangles across tasks; each task owns a private N×N
@@ -221,7 +223,7 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
                     An = areas[tn]
                     for qn in 1:Nq, qm in 1:Nq
                         slab[qm, qn] =
-                            greens_periodic_correction(quad_pts[ts][qm], quad_pts[tn][qn], k, lattice)
+                            greens_periodic_correction(quad_pts[ts][qm], quad_pts[tn][qn], kw, lattice)
                     end
 
                     wAA = (2 * Am) * (2 * An)

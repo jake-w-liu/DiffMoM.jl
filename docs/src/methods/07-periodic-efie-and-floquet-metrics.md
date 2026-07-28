@@ -37,6 +37,9 @@ k_y^{\text{Bloch}} = k \sin\theta_{\text{inc}} \sin\phi_{\text{inc}}.
 ```
 
 This is implemented in `PeriodicLattice(dx, dy, theta_inc, phi_inc, k; ...)`.
+The constructor requires finite positive periods and wavenumber, finite angles,
+and nonnegative truncation orders. It rejects invalid values before evaluating
+the Ewald formulas.
 
 ### 1.2 Ewald Splitting and Stability Clamp
 
@@ -82,11 +85,15 @@ The periodic kernel contribution used by the assembly is:
 3. Floquet/spectral sum.
 
 Scope in current implementation:
-- The periodic correction/evaluation path is used for coplanar periodic unit cells.
-- Non-coplanar point offsets (`|z-z'| > 1e-12`) are rejected at runtime.
+- The kernel supports both coplanar point pairs and finite vertical separation;
+  the grounded-EFIE image interaction uses the vertical-separation path.
 - For boundary-touching periodic conductors, assembly/postprocessing require
   Bloch-paired RWG data from `build_rwg_periodic(mesh, lattice; ...)` and reject
   non-Bloch RWG input with `ArgumentError`.
+- Every API that accepts both `k` and `lattice` requires `k` to match
+  `lattice.k` within `1e-12` relative tolerance. The stored Bloch phase, Ewald
+  split, and spectral truncation were all derived from that construction
+  wavenumber and cannot be reused at a materially different frequency.
 
 ### 2.2 Wood-Anomaly Guard
 
