@@ -1985,6 +1985,90 @@ pattern_guard_F_bad[1, 1] = Inf + 0im
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F_bad, pattern_guard_F, freq_exc)
 
+# Direct point-field evaluators must reject invalid models/points rather than
+# leaking NaN/Inf fields. Their checked public paths remain allocation-free;
+# assembly and total-field loops use already-validated internal kernels.
+field_guard_r = Vec3(0.4, 0.2, 0.3)
+field_guard_k = Vec3(k_exc, 0.0, 0.0)
+field_guard_pol = Vec3(0.0, 1.0, 0.0)
+@test_throws ArgumentError plane_wave_field(
+    Vec3(NaN, 0.0, 0.0), field_guard_k, 1.0, field_guard_pol)
+@test_throws ArgumentError plane_wave_field(
+    field_guard_r, Vec3(Inf, 0.0, 0.0), 1.0, field_guard_pol)
+@test_throws ArgumentError plane_wave_field(
+    field_guard_r, field_guard_k, Inf, field_guard_pol)
+@test_throws ArgumentError plane_wave_field(
+    field_guard_r, field_guard_k, 1.0, Vec3(0.0, 2.0, 0.0))
+@test_throws ArgumentError plane_wave_field(
+    field_guard_r, field_guard_k, 1.0, Vec3(1.0, 0.0, 0.0))
+@test_throws ErrorException plane_wave_field(
+    Vec3(1e308, 0.0, 0.0),
+    Vec3(1e308, 0.0, 0.0),
+    1.0,
+    field_guard_pol,
+)
+
+pattern_guard = make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_guard_F, freq_exc)
+pattern_guard_bad = PatternFeedExcitation(
+    copy(pattern_guard.theta),
+    copy(pattern_guard.phi),
+    copy(pattern_guard.Ftheta),
+    copy(pattern_guard.Fphi),
+    pattern_guard.frequency,
+    pattern_guard.phase_center,
+    pattern_guard.convention,
+)
+pattern_guard_bad.Ftheta[1, 1] = NaN + 0im
+@test_throws ArgumentError pattern_feed_field(
+    Vec3(NaN, 0.0, 0.0), pattern_guard)
+@test_throws ArgumentError pattern_feed_field(
+    field_guard_r, pattern_guard_bad)
+
+dipole_guard = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(1e-12 + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    freq_exc,
+)
+loop_guard = make_loop(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, 1.0),
+    0.01,
+    1.0 + 0im,
+    freq_exc,
+)
+monopole_guard = make_monopole(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, 1.0),
+    0.05,
+    1.0 + 0im,
+    freq_exc,
+)
+@test_throws ArgumentError DiffMoM.dipole_incident_field(
+    Vec3(NaN, 0.0, 0.0), dipole_guard)
+@test_throws ArgumentError DiffMoM.loop_incident_field(
+    Vec3(NaN, 0.0, 0.0), loop_guard)
+@test_throws ArgumentError monopole_incident_field(
+    Vec3(NaN, 0.0, 0.0), monopole_guard)
+
+plane_wave_field(field_guard_r, field_guard_k, 1.0, field_guard_pol)
+pattern_feed_field(field_guard_r, pattern_guard)
+DiffMoM.dipole_incident_field(field_guard_r, dipole_guard)
+DiffMoM.loop_incident_field(field_guard_r, loop_guard)
+monopole_incident_field(field_guard_r, monopole_guard)
+@test (@allocated plane_wave_field(
+    field_guard_r, field_guard_k, 1.0, field_guard_pol)) == 0
+@test (@allocated pattern_feed_field(field_guard_r, pattern_guard)) == 0
+@test (@allocated DiffMoM.dipole_incident_field(
+    field_guard_r, dipole_guard)) == 0
+@test (@allocated DiffMoM.loop_incident_field(
+    field_guard_r, loop_guard)) == 0
+@test (@allocated monopole_incident_field(
+    field_guard_r, monopole_guard)) == 0
+
 m_mag = CVec3(0.0 + 0im, 0.0 + 0im, 1e-4 + 0im) # A·m²
 dip_mag = make_dipole(Vec3(0.0, 0.0, 0.0), m_mag, Vec3(0.0, 0.0, 1.0), :magnetic, freq_exc)
 Rfar = 5.0

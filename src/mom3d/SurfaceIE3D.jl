@@ -430,7 +430,8 @@ function _assemble_plane_wave_h_rhs_3d(mesh::TriMesh, rwg::RWGData,
             for q in eachindex(wq)
                 rq = pts[q]
                 fn = eval_rwg(rwg, n, rq, t)
-                Einc = plane_wave_field(rq, pw.k_vec, pw.E0, pw.pol)
+                Einc = _plane_wave_field_unchecked(
+                    rq, pw.k_vec, pw.E0, pw.pol)
                 Hinc = cross(khat, Einc) / eta
                 rhs[n] += -wq[q] * dot(fn, Hinc) * (2 * A)
             end
