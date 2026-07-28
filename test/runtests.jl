@@ -587,6 +587,22 @@ Mp = precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 @test_throws BoundsError size(Mp[1], 0)
 @test_throws BoundsError size(Mp[1], -1)
 
+# Five-argument mul! must not read x when alpha is zero, including when x
+# contains non-finite values. Verify both beta branches and both orientations.
+mass_contract = LocalMassMatrix(
+    2, [1, 2], [2, 1], ComplexF64[2 + 0im, 3 + 0im])
+mass_nonfinite = fill(ComplexF64(NaN, NaN), 2)
+mass_initial = ComplexF64[5 - 2im, -3 + 4im]
+for mass_op in (mass_contract, adjoint(mass_contract))
+    mass_result = copy(mass_initial)
+    mul!(mass_result, mass_op, mass_nonfinite, 0.0 + 0im, 2.0 + 0im)
+    @test mass_result == 2 .* mass_initial
+
+    fill!(mass_result, ComplexF64(NaN, NaN))
+    mul!(mass_result, mass_op, mass_nonfinite, 0.0 + 0im, 0.0 + 0im)
+    @test mass_result == zeros(ComplexF64, 2)
+end
+
 # Each M_p should be symmetric (real-valued mass matrix)
 for p in 1:min(3, Nt)
     @assert norm(Mp[p] - Mp[p]') < 1e-14 * norm(Mp[p])

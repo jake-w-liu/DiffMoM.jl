@@ -117,9 +117,17 @@ function LinearAlgebra.mul!(y::AbstractVector, M::LocalMassMatrix, x::AbstractVe
                             alpha::Number, beta::Number)
     length(x) == M.n || throw(DimensionMismatch("x length $(length(x)) != $(M.n)"))
     length(y) == M.n || throw(DimensionMismatch("y length $(length(y)) != $(M.n)"))
-    if beta == 0
+    if iszero(alpha)
+        if iszero(beta)
+            fill!(y, zero(eltype(y)))
+        elseif beta != one(beta)
+            y .*= beta
+        end
+        return y
+    end
+    if iszero(beta)
         fill!(y, zero(eltype(y)))
-    else
+    elseif beta != one(beta)
         y .*= beta
     end
     @inbounds for k in eachindex(M.vals)
@@ -138,9 +146,17 @@ function LinearAlgebra.mul!(y::AbstractVector,
     M = parent(A)
     length(x) == M.n || throw(DimensionMismatch("x length $(length(x)) != $(M.n)"))
     length(y) == M.n || throw(DimensionMismatch("y length $(length(y)) != $(M.n)"))
-    if beta == 0
+    if iszero(alpha)
+        if iszero(beta)
+            fill!(y, zero(eltype(y)))
+        elseif beta != one(beta)
+            y .*= beta
+        end
+        return y
+    end
+    if iszero(beta)
         fill!(y, zero(eltype(y)))
-    else
+    elseif beta != one(beta)
         y .*= beta
     end
     @inbounds for k in eachindex(M.vals)
