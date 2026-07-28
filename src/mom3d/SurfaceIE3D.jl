@@ -78,6 +78,46 @@ mutable struct MatrixFreeDielectricSIE3D{
     tmp3::Vector{ComplexF64}
     tmp4::Vector{ComplexF64}
     tmp5::Vector{ComplexF64}
+    work_lock::ReentrantLock
+end
+
+function MatrixFreeDielectricSIE3D(
+        formulation::Symbol,
+        exterior::DielectricMedium3D,
+        interior::DielectricMedium3D,
+        Ze_ext::TZe,
+        Ze_int::TZe,
+        Zh_ext::TZh,
+        Zh_int::TZh,
+        K_ext::TK,
+        K_int::TK,
+        c_ze_ext::ComplexF64,
+        c_ze_int::ComplexF64,
+        c_zh_ext::ComplexF64,
+        c_zh_int::ComplexF64,
+        Gram::Matrix{ComplexF64},
+        c_g_e::ComplexF64,
+        c_g_h::ComplexF64,
+        work_J::Vector{ComplexF64},
+        work_M::Vector{ComplexF64},
+        tmp1::Vector{ComplexF64},
+        tmp2::Vector{ComplexF64},
+        tmp3::Vector{ComplexF64},
+        tmp4::Vector{ComplexF64},
+        tmp5::Vector{ComplexF64},
+    ) where {
+        TZe<:MatrixFreeEFIEOperator,
+        TZh<:MatrixFreeEFIEOperator,
+        TK<:MatrixFreeMagneticFieldOperator3D,
+    }
+    return MatrixFreeDielectricSIE3D{TZe,TZh,TK}(
+        formulation, exterior, interior,
+        Ze_ext, Ze_int, Zh_ext, Zh_int, K_ext, K_int,
+        c_ze_ext, c_ze_int, c_zh_ext, c_zh_int,
+        Gram, c_g_e, c_g_h,
+        work_J, work_M, tmp1, tmp2, tmp3, tmp4, tmp5,
+        ReentrantLock(),
+    )
 end
 
 function _finite_complex_surface_3d(x, label::AbstractString)
@@ -649,47 +689,52 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     end
 
     overwrite = iszero(beta_scale)
-    _copy_block_inputs_3d!(A.work_J, A.work_M, x)
+    lock(A.work_lock)
+    try
+        _copy_block_inputs_3d!(A.work_J, A.work_M, x)
 
-    # E-row: c_ze_ext Ze_ext J + c_ze_int Ze_int J
-    #        - (c_ze_ext K_ext + c_ze_int K_int) M + c_g_e Gram M
-    mul!(A.tmp1, A.Ze_ext, A.work_J)
-    mul!(A.tmp2, A.Ze_int, A.work_J)
-    mul!(A.tmp3, A.K_ext, A.work_M)
-    mul!(A.tmp4, A.K_int, A.work_M)
-    if A.c_g_e != 0
-        mul!(A.tmp5, A.Gram, A.work_M)
-    end
-    @inbounds for j in 1:N
-        v = A.c_ze_ext * A.tmp1[j] + A.c_ze_int * A.tmp2[j] -
-            (A.c_ze_ext * A.tmp3[j] + A.c_ze_int * A.tmp4[j])
+        # E-row: c_ze_ext Ze_ext J + c_ze_int Ze_int J
+        #        - (c_ze_ext K_ext + c_ze_int K_int) M + c_g_e Gram M
+        mul!(A.tmp1, A.Ze_ext, A.work_J)
+        mul!(A.tmp2, A.Ze_int, A.work_J)
+        mul!(A.tmp3, A.K_ext, A.work_M)
+        mul!(A.tmp4, A.K_int, A.work_M)
         if A.c_g_e != 0
-            v += A.c_g_e * A.tmp5[j]
+            mul!(A.tmp5, A.Gram, A.work_M)
         end
-        y[j] = overwrite ?
-            alpha_scale * v :
-            alpha_scale * v + beta_scale * y[j]
-    end
+        @inbounds for j in 1:N
+            v = A.c_ze_ext * A.tmp1[j] + A.c_ze_int * A.tmp2[j] -
+                (A.c_ze_ext * A.tmp3[j] + A.c_ze_int * A.tmp4[j])
+            if A.c_g_e != 0
+                v += A.c_g_e * A.tmp5[j]
+            end
+            y[j] = overwrite ?
+                alpha_scale * v :
+                alpha_scale * v + beta_scale * y[j]
+        end
 
-    # H-row: (c_zh_ext K_ext + c_zh_int K_int) J + c_g_h Gram J
-    #        + c_zh_ext Zh_ext M + c_zh_int Zh_int M
-    mul!(A.tmp1, A.K_ext, A.work_J)
-    mul!(A.tmp2, A.K_int, A.work_J)
-    mul!(A.tmp3, A.Zh_ext, A.work_M)
-    mul!(A.tmp4, A.Zh_int, A.work_M)
-    if A.c_g_h != 0
-        mul!(A.tmp5, A.Gram, A.work_J)
-    end
-    @inbounds for j in 1:N
-        v = A.c_zh_ext * A.tmp1[j] + A.c_zh_int * A.tmp2[j] +
-            A.c_zh_ext * A.tmp3[j] + A.c_zh_int * A.tmp4[j]
+        # H-row: (c_zh_ext K_ext + c_zh_int K_int) J + c_g_h Gram J
+        #        + c_zh_ext Zh_ext M + c_zh_int Zh_int M
+        mul!(A.tmp1, A.K_ext, A.work_J)
+        mul!(A.tmp2, A.K_int, A.work_J)
+        mul!(A.tmp3, A.Zh_ext, A.work_M)
+        mul!(A.tmp4, A.Zh_int, A.work_M)
         if A.c_g_h != 0
-            v += A.c_g_h * A.tmp5[j]
+            mul!(A.tmp5, A.Gram, A.work_J)
         end
-        idx = N + j
-        y[idx] = overwrite ?
-            alpha_scale * v :
-            alpha_scale * v + beta_scale * y[idx]
+        @inbounds for j in 1:N
+            v = A.c_zh_ext * A.tmp1[j] + A.c_zh_int * A.tmp2[j] +
+                A.c_zh_ext * A.tmp3[j] + A.c_zh_int * A.tmp4[j]
+            if A.c_g_h != 0
+                v += A.c_g_h * A.tmp5[j]
+            end
+            idx = N + j
+            y[idx] = overwrite ?
+                alpha_scale * v :
+                alpha_scale * v + beta_scale * y[idx]
+        end
+    finally
+        unlock(A.work_lock)
     end
     return y
 end

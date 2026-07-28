@@ -116,6 +116,25 @@ function _near_pair_reference(mesh)
     return reference
 end
 
+function _test_shared_sie_operator_concurrency(A, dense_A, inputs)
+    references = [dense_A * input for input in inputs]
+    Threads.nthreads() > 1 || return
+
+    for _ in 1:4
+        gate = Base.Event()
+        tasks = map(eachindex(inputs)) do i
+            Threads.@spawn begin
+                wait(gate)
+                A * inputs[i]
+            end
+        end
+        yield()
+        notify(gate)
+        results = fetch.(tasks)
+        @test results ≈ references rtol=1e-12
+    end
+end
+
 @testset "Dielectric 3D SIE assembly/solve" begin
     mesh = _oriented_tetrahedron_mesh()
     rwg = build_rwg(mesh; allow_boundary=false, require_closed=true)
@@ -176,6 +195,7 @@ end
     @test size(A_pm_mf) == (2N, 2N)
     @test size(A_pm_mf, 3) == 1
     @test_throws BoundsError size(A_pm_mf, -1)
+    @test A_pm_mf.work_lock isa ReentrantLock
     @test size(A_mu) == (2N, 2N)
     @test all(isfinite, real.(A_pm))
     @test all(isfinite, imag.(A_pm))
@@ -190,6 +210,11 @@ end
     fill!(y_mf, ComplexF64(NaN, NaN))
     mul!(y_mf, A_pm_mf, x, 1.0 + 0im, 0.0 + 0im)
     @test y_mf ≈ A_pm * x rtol=1e-13
+    _test_shared_sie_operator_concurrency(
+        A_pm_mf,
+        A_pm,
+        [x, (0.2 - 0.3im) .* x, reverse(x), conj.(x)],
+    )
     A_pm_mf * x
     product_allocation = @allocated A_pm_mf * x
     zeros(ComplexF64, 2N)

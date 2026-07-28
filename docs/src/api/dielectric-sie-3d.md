@@ -285,7 +285,7 @@ x, stats = Krylov.gmres(A, rhs)
 
 ### `struct MatrixFreeDielectricSIE3D`
 
-Matrix-free `2N x 2N` dielectric SIE operator. It is a `mutable struct <: AbstractMatrix{ComplexF64}` and supports `size`, `eltype`, `getindex` (single entry via `A[row,col]`), `mul!` (including the 5-argument `mul!(y, A, x, alpha, beta)` form), and `*`. It carries preallocated work buffers, so it is intended to be reused across matvecs.
+Matrix-free `2N x 2N` dielectric SIE operator. It is a `mutable struct <: AbstractMatrix{ComplexF64}` and supports `size`, `eltype`, `getindex` (single entry via `A[row,col]`), `mul!` (including the 5-argument `mul!(y, A, x, alpha, beta)` form), and `*`. It carries preallocated work buffers protected by a lock, so it can be reused across matvecs and shared safely across threads.
 
 ```julia
 mutable struct MatrixFreeDielectricSIE3D{TZe,TZh,TK} <: AbstractMatrix{ComplexF64}
@@ -312,6 +312,7 @@ mutable struct MatrixFreeDielectricSIE3D{TZe,TZh,TK} <: AbstractMatrix{ComplexF6
     tmp3::Vector{ComplexF64}
     tmp4::Vector{ComplexF64}
     tmp5::Vector{ComplexF64}
+    work_lock::ReentrantLock
 end
 ```
 
@@ -332,6 +333,7 @@ end
 | `c_g_h` | `ComplexF64` | H-row off-diagonal Gram coefficient `(c_zh_ext - c_zh_int) * 0.5`. |
 | `work_J`, `work_M` | `Vector{ComplexF64}` | Length-`N` input buffers for the `J`/`M` sub-blocks. |
 | `tmp1`-`tmp5` | `Vector{ComplexF64}` | Length-`N` scratch buffers for the matvec. |
+| `work_lock` | `ReentrantLock` | Serializes access to the reusable work buffers for thread-safe shared use. |
 
 Construct with `matrixfree_dielectric_sie_operator_3d`. For PMCHWT the weights are all `1` and the Gram term is skipped; for Müller they are the mu/eps weights and the Gram term is active.
 
