@@ -139,19 +139,19 @@ Canonical spatially imported excitation model for incident-field assembly.
   current `J_s(r)` and the assembly uses the local map
   `E_inc(r) = eta_equiv * J_s(r)`.
 """
-struct ImportedExcitation <: AbstractExcitation
-    source_func::Function         # source(r) -> CVec3
+struct ImportedExcitation{F<:Function} <: AbstractExcitation
+    source_func::F                # source(r) -> CVec3
     kind::Symbol                  # :electric_field or :surface_current_density
     eta_equiv::ComplexF64         # used only for :surface_current_density
     min_quad_order::Int           # minimum quadrature order target
-    function ImportedExcitation(source_func::Function;
+    function ImportedExcitation(source_func::F;
                                 kind::Symbol=:electric_field,
                                 eta_equiv::Number=376.730313668 + 0im,
-                                min_quad_order::Integer=3)
+                                min_quad_order::Integer=3) where {F<:Function}
         min_quad_order >= 1 || error("min_quad_order must be >= 1, got $min_quad_order.")
         kind in (:electric_field, :surface_current_density) ||
             error("Unsupported ImportedExcitation kind: $kind")
-        return new(source_func, kind, ComplexF64(eta_equiv), Int(min_quad_order))
+        return new{F}(source_func, kind, ComplexF64(eta_equiv), Int(min_quad_order))
     end
 end
 

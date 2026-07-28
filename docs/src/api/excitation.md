@@ -147,7 +147,8 @@ mono = make_monopole(position, axis, height, amplitude, frequency=1e9;
 A general imported or distributed source model. You provide a function `source(r) -> CVec3` that returns the incident field (or surface current density) at any point `r` on the mesh. This is the most flexible excitation type, supporting externally computed fields from other solvers or measurements.
 
 **Fields:**
-- `source_func::Function`: Spatial function `source(r) -> CVec3`.
+- `source_func::F`: Spatial function `source(r) -> CVec3`; its concrete function
+  type is retained so repeated quadrature calls do not require dynamic dispatch.
 - `kind::Symbol`: How to interpret the source function:
   - `:electric_field` -- `source(r)` is the incident electric field `E_inc(r)` directly.
   - `:surface_current_density` -- `source(r)` is an impressed surface current density `J_s(r)`, mapped via `E_inc(r) = eta_equiv * J_s(r)` (local equivalent-sheet approximation).

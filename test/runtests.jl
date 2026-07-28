@@ -63,6 +63,14 @@ function _apply_q_allocation(G_mat, grid, pol, x, mask)
     return @allocated apply_Q(G_mat, grid, pol, x; mask=mask)
 end
 
+function _sum_imported_source(imported, points)
+    result = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+    @inbounds for point in points
+        result += imported.source_func(point)
+    end
+    return result
+end
+
 const DATADIR = joinpath(@__DIR__, "..", "data")
 mkpath(DATADIR)
 
@@ -1444,6 +1452,11 @@ v_imp_E = assemble_excitation(mesh_exc, rwg_exc, imp_E; quad_order=3)
 rel_cur_imp = norm(v_cur_E - v_imp_E) / max(norm(v_imp_E), 1e-30)
 println("  ImportedExcitation(:electric_field) self-consistency rel. diff: $rel_cur_imp")
 @assert rel_cur_imp < 1e-13
+imported_points = [Vec3(i / 128, 0.25, -0.5) for i in 1:128]
+imported_sum_ref = sum(E_field_test, imported_points)
+@assert _sum_imported_source(imp_E, imported_points) == imported_sum_ref
+_sum_imported_source(imp_E, imported_points)
+@assert @allocated(_sum_imported_source(imp_E, imported_points)) <= 128
 
 # Source function can return tuple/vector-like 3-component data.
 E_field_tuple(r) = (r[1] + 0im, (0.5 * r[2]) + 0im, 0.0 + 0im)
