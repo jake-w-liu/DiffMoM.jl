@@ -464,10 +464,20 @@ end
 
 # ─── Matvec ───────────────────────────────────────────────────────
 
-function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator, x::AbstractVector)
+function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
+                            x::AbstractVector, alpha_scale::Number,
+                            beta_scale::Number)
     N = A.N
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
 
     ws = A.workspace
     lock(ws.work_lock)
@@ -502,8 +512,22 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator, x::Ab
         end
 
         # Un-permute y back to original order
-        @inbounds for k in 1:N
-            y[A.tree.perm[k]] = y_perm[k]
+        if iszero(beta_scale)
+            if alpha_scale == one(alpha_scale)
+                @inbounds for k in 1:N
+                    y[A.tree.perm[k]] = y_perm[k]
+                end
+            else
+                @inbounds for k in 1:N
+                    y[A.tree.perm[k]] = alpha_scale * y_perm[k]
+                end
+            end
+        else
+            @inbounds for k in 1:N
+                original_idx = A.tree.perm[k]
+                y[original_idx] =
+                    alpha_scale * y_perm[k] + beta_scale * y[original_idx]
+            end
         end
     finally
         unlock(ws.work_lock)
@@ -511,6 +535,10 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator, x::Ab
 
     return y
 end
+
+LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
+                   x::AbstractVector) =
+    LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::ACAOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))
@@ -520,10 +548,20 @@ end
 
 # ─── Adjoint matvec ───────────────────────────────────────────────
 
-function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator, x::AbstractVector)
+function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator,
+                            x::AbstractVector, alpha_scale::Number,
+                            beta_scale::Number)
     N = A.op.N
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            y .*= beta_scale
+        end
+        return y
+    end
 
     tree = A.op.tree
     ws = A.op.workspace
@@ -559,8 +597,22 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
         end
 
         # Un-permute
-        @inbounds for k in 1:N
-            y[tree.perm[k]] = y_perm[k]
+        if iszero(beta_scale)
+            if alpha_scale == one(alpha_scale)
+                @inbounds for k in 1:N
+                    y[tree.perm[k]] = y_perm[k]
+                end
+            else
+                @inbounds for k in 1:N
+                    y[tree.perm[k]] = alpha_scale * y_perm[k]
+                end
+            end
+        else
+            @inbounds for k in 1:N
+                original_idx = tree.perm[k]
+                y[original_idx] =
+                    alpha_scale * y_perm[k] + beta_scale * y[original_idx]
+            end
         end
     finally
         unlock(ws.work_lock)
@@ -568,6 +620,10 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
 
     return y
 end
+
+LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator,
+                   x::AbstractVector) =
+    LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::ACAAdjointOperator, x::AbstractVector)
     y = zeros(ComplexF64, size(A, 1))

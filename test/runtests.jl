@@ -2840,6 +2840,7 @@ x_test = randn(ComplexF64, N)
 y_dense = Z_efie * x_test
 y_aca = A_aca_op * x_test
 _assert_single_complex_output_allocation(A_aca_op, x_test)
+_assert_scaled_mul_contract(A_aca_op, x_test, reverse(x_test))
 
 rel_matvec_err = norm(y_aca - y_dense) / norm(y_dense)
 println("  Dense blocks: $(length(A_aca_op.dense_blocks)), Low-rank blocks: $(length(A_aca_op.lowrank_blocks))")
@@ -2851,6 +2852,7 @@ A_adj = adjoint(A_aca_op)
 y_adj_dense = Z_efie' * x_test
 y_adj_aca = A_adj * x_test
 _assert_single_complex_output_allocation(A_adj, x_test)
+_assert_scaled_mul_contract(A_adj, x_test, reverse(x_test))
 
 rel_adj_err = norm(y_adj_aca - y_adj_dense) / norm(y_adj_dense)
 println("  Adjoint matvec relative error: $rel_adj_err")
