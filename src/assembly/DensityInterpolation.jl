@@ -25,6 +25,22 @@ struct DensityConfig
     p::Float64          # SIMP penalization power (typically 3)
     Z_max::ComplexF64   # void penalty impedance (real = resistive, imaginary = reactive)
     vf_target::Float64  # target volume fraction (metal fraction)
+
+    function DensityConfig(p::Real, Z_max::Number, vf_target::Real)
+        p_value = Float64(p)
+        Z_value = ComplexF64(Z_max)
+        vf_value = Float64(vf_target)
+        isfinite(p_value) && p_value >= 1 ||
+            throw(ArgumentError(
+                "SIMP power p must be finite and at least 1, got $p"))
+        isfinite(Z_value) && !iszero(Z_value) ||
+            throw(ArgumentError(
+                "Z_max must be finite and nonzero, got $Z_max"))
+        isfinite(vf_value) && 0 <= vf_value <= 1 ||
+            throw(ArgumentError(
+                "vf_target must be finite and lie in [0, 1], got $vf_target"))
+        return new(p_value, Z_value, vf_value)
+    end
 end
 
 """
@@ -37,8 +53,34 @@ If `reactive=false` (default), Z_max is real (resistive penalty, introduces arti
 function DensityConfig(; p::Float64=3.0, Z_max_factor::Float64=1000.0,
                        eta0::Float64=376.730313668, vf_target::Float64=0.5,
                        reactive::Bool=false)
+    isfinite(Z_max_factor) && Z_max_factor > 0 ||
+        throw(ArgumentError(
+            "Z_max_factor must be finite and positive, got $Z_max_factor"))
+    isfinite(eta0) && eta0 > 0 ||
+        throw(ArgumentError(
+            "eta0 must be finite and positive, got $eta0"))
     Z_max = reactive ? im * Z_max_factor * eta0 : ComplexF64(Z_max_factor * eta0)
     return DensityConfig(p, Z_max, vf_target)
+end
+
+function _validate_density_values(values::AbstractVector{<:Real},
+                                  expected_length::Int,
+                                  name::AbstractString)
+    length(values) == expected_length ||
+        throw(DimensionMismatch(
+            "$name length $(length(values)) != $expected_length"))
+    all(value -> isfinite(value) && 0 <= value <= 1, values) ||
+        throw(ArgumentError(
+            "$name entries must all be finite and lie in [0, 1]"))
+    return nothing
+end
+
+function _validate_density_mass_inputs(
+    Mt::AbstractVector{<:AbstractMatrix},
+    rho_bar::AbstractVector{<:Real},
+)
+    _validate_density_values(rho_bar, length(Mt), "rho_bar")
+    return _validate_mass_matrix_sizes(Mt)
 end
 
 """
@@ -126,8 +168,7 @@ function assemble_Z_penalty(Mt::Vector{<:AbstractMatrix},
                             rho_bar::AbstractVector{<:Real},
                             config::DensityConfig)
     Nt = length(Mt)
-    @assert length(rho_bar) == Nt "rho_bar length ($(length(rho_bar))) must match number of triangles ($Nt)"
-    N = size(Mt[1], 1)
+    N = first(_validate_density_mass_inputs(Mt, rho_bar))
     CT = ComplexF64
 
     Z_pen = zeros(CT, N, N)
@@ -151,6 +192,8 @@ This is exact and closed-form (no finite differences needed).
 function assemble_dZ_drhobar(Mt::Vector{<:AbstractMatrix},
                              rho_bar::AbstractVector{<:Real},
                              config::DensityConfig, t::Int)
+    1 <= t <= length(Mt) || throw(BoundsError(Mt, t))
+    _validate_density_mass_inputs(Mt, rho_bar)
     coeff = -config.p * rho_bar[t]^(config.p - 1) * config.Z_max
     return coeff * Mt[t]
 end

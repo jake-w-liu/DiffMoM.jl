@@ -34,6 +34,13 @@ function gradient_density(Mt::Vector{<:AbstractMatrix},
                           rho_bar::AbstractVector{<:Real},
                           config::DensityConfig)
     Nt = length(Mt)
+    matrix_size = _validate_density_mass_inputs(Mt, rho_bar)
+    length(I) == matrix_size[2] ||
+        throw(DimensionMismatch(
+            "I length $(length(I)) != $(matrix_size[2])"))
+    length(lambda) == matrix_size[1] ||
+        throw(DimensionMismatch(
+            "lambda length $(length(lambda)) != $(matrix_size[1])"))
     g = zeros(Float64, Nt)
 
     for t in 1:Nt
@@ -67,6 +74,8 @@ function gradient_density_full(Mt::Vector{<:AbstractMatrix},
                                W::AbstractSparseMatrix,
                                w_sum::AbstractVector,
                                beta::Real; eta::Real=0.5)
+    _validate_density_values(rho_tilde, length(Mt), "rho_tilde")
+
     # Step 1: gradient w.r.t. projected densities
     g_rho_bar = gradient_density(Mt, I, lambda, rho_bar, config)
 

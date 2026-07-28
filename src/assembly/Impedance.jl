@@ -12,7 +12,7 @@ function _validate_mass_matrix_sizes(
     if isempty(Mp)
         expected_size === nothing &&
             throw(ArgumentError(
-                "Mp must contain at least one mass matrix because the output size cannot be inferred."))
+                "mass-matrix collection must not be empty because the output size cannot be inferred."))
         expected_size[1] == expected_size[2] ||
             throw(DimensionMismatch(
                 "impedance system matrix must be square, got size $expected_size"))

@@ -280,6 +280,12 @@ println("\n── Test 38: DensityInterpolation ──")
         @test abs(config.Z_max) ≈ 1000.0 * eta0 rtol=1e-12
         @test config.p ≈ 3.0
         @test config.vf_target ≈ 0.5
+        @test_throws ArgumentError DensityConfig(; p=0.0)
+        @test_throws ArgumentError DensityConfig(; p=0.5)
+        @test_throws ArgumentError DensityConfig(; Z_max_factor=0.0)
+        @test_throws ArgumentError DensityConfig(; eta0=0.0)
+        @test_throws ArgumentError DensityConfig(; vf_target=1.1)
+        @test_throws ArgumentError DensityConfig(3.0, 0.0 + 0im, 0.5)
     end
 
     # ── A: Correct count of mass matrices ──
@@ -376,7 +382,14 @@ println("\n── Test 38: DensityInterpolation ──")
 
     # ── E: Dimension mismatch assertion ──
     @testset "E: Dimension mismatch" begin
-        @test_throws AssertionError assemble_Z_penalty(Mt, zeros(Nt_di + 1), config)
+        @test_throws DimensionMismatch assemble_Z_penalty(
+            Mt, zeros(Nt_di + 1), config)
+        @test_throws ArgumentError assemble_Z_penalty(
+            Mt, fill(NaN, Nt_di), config)
+        @test_throws ArgumentError assemble_Z_penalty(
+            Mt, fill(1.1, Nt_di), config)
+        @test_throws DimensionMismatch assemble_dZ_drhobar(
+            Mt, zeros(Nt_di + 1), config, 1)
     end
 end
 println("  PASS ✓")
@@ -588,6 +601,15 @@ println("\n── Test 40: DensityAdjoint ──")
     @testset "B: Gradient is real-valued" begin
         g = gradient_density(Mt_da, I_sol_da, lambda_adj_da, rho_bar_da, config_da)
         @test eltype(g) == Float64
+        @test_throws DimensionMismatch gradient_density(
+            Mt_da, I_sol_da, lambda_adj_da, vcat(rho_bar_da, 0.5), config_da)
+        @test_throws DimensionMismatch gradient_density(
+            Mt_da, vcat(I_sol_da, 0.0 + 0im), lambda_adj_da,
+            rho_bar_da, config_da)
+        @test_throws DimensionMismatch gradient_density_full(
+            Mt_da, I_sol_da, lambda_adj_da,
+            vcat(rho_tilde_da, 0.5), rho_bar_da, config_da,
+            W_da, w_sum_da, beta_da)
     end
 
     # ── A: Zero gradient for zero objective ──

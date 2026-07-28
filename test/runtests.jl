@@ -659,6 +659,12 @@ undersized_mass = LocalMassMatrix(1, [1], [1], [1.0])
     Z_efie, [undersized_mass], [1.0])
 @test_throws DimensionMismatch assemble_full_Z!(
     zeros(ComplexF64, N + 1, N + 1), Z_efie, Mp, zeros(Float64, length(Mp)))
+@test_throws ArgumentError gradient_impedance(
+    Matrix{Float64}[], ComplexF64[], ComplexF64[])
+@test_throws DimensionMismatch gradient_impedance(
+    Mp, zeros(ComplexF64, N + 1), zeros(ComplexF64, N))
+@test_throws DimensionMismatch gradient_impedance(
+    Mp, zeros(ComplexF64, N), zeros(ComplexF64, N + 1))
 
 # Five-argument mul! must not read x when alpha is zero, including when x
 # contains non-finite values. Verify both beta branches and both orientations.

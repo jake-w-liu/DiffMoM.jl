@@ -114,6 +114,13 @@ function gradient_impedance(Mp::Vector{<:AbstractMatrix},
                             I::Vector{<:Number},
                             lambda::Vector{<:Number};
                             reactive::Bool=false)
+    matrix_size = _validate_mass_matrix_sizes(Mp)
+    length(I) == matrix_size[2] ||
+        throw(DimensionMismatch(
+            "I length $(length(I)) != $(matrix_size[2])"))
+    length(lambda) == matrix_size[1] ||
+        throw(DimensionMismatch(
+            "lambda length $(length(lambda)) != $(matrix_size[1])"))
     P = length(Mp)
     g = zeros(Float64, P)
     for p in 1:P

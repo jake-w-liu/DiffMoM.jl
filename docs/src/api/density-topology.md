@@ -39,6 +39,10 @@ Constructs:
   which introduces artificial absorption).
 - `vf_target`: target volume fraction.
 
+`p` must be finite and at least `1`; `Z_max_factor` and `eta0` must be finite
+and positive; and `vf_target` must be finite and lie in `[0, 1]`. Direct
+three-argument construction likewise requires finite, nonzero `Z_max`.
+
 ---
 
 ## Density-Interpolated Penalty Assembly
@@ -91,6 +95,10 @@ with `p = config.p`, `Z_max = config.Z_max`.
 Behavior:
 - `rho_bar[t] = 1`: no penalty on triangle `t`.
 - `rho_bar[t] = 0`: maximum penalty `Z_max * M_t`.
+
+The density count must equal the mass-matrix count, all mass matrices must
+have one common square shape, and every density must be finite and lie in
+`[0, 1]`.
 
 ---
 
