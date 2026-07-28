@@ -26,6 +26,7 @@ For each triangle pair (t, s):
   w_ts = max(0, r_min - dist(centroid_t, centroid_s))
 
 Returns (W::SparseMatrix, w_sum::Vector) where w_sum[t] = Σ_s W[t,s].
+`r_min` must be finite and positive.
 
 A filter edge exists only when `dist < r_min`. Rather than testing all
 `O(Nt^2)` centroid pairs, centroids are bucketed into a uniform spatial grid
@@ -37,6 +38,9 @@ sides, producing the identical sparsity pattern and values as the brute-force
 double loop.
 """
 function build_filter_weights(mesh::TriMesh, r_min::Float64)
+    isfinite(r_min) && r_min > 0 ||
+        throw(ArgumentError(
+            "r_min must be finite and positive, got $r_min"))
     Nt = ntriangles(mesh)
 
     # Compute triangle centroids
@@ -52,11 +56,7 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
     cols = Int[]
     vals = Float64[]
 
-    # Degenerate guards: with r_min <= 0 no off-diagonal weight is positive and
-    # even the self weight max(0, r_min - 0) = max(0, r_min) is zero, matching
-    # the brute-force loop (which would push nothing). Also avoid building a
-    # grid with a non-positive cell size.
-    if Nt == 0 || r_min <= 0
+    if Nt == 0
         W = sparse(rows, cols, vals, Nt, Nt)
         w_sum = vec(sum(W, dims=2))
         return W, w_sum
@@ -121,9 +121,34 @@ end
 
 Apply the conic density filter:
   ρ̃_t = Σ_s W[t,s] ρ_s / w_sum[t]
+
+The input dimensions must match and every normalization weight must be finite
+and positive.
 """
-function apply_filter(W::AbstractSparseMatrix, w_sum::AbstractVector, rho::AbstractVector)
-    return (W * rho) ./ w_sum
+function _validate_filter_inputs(W::AbstractSparseMatrix,
+                                 w_sum::AbstractVector{<:Real},
+                                 input::AbstractVector, transpose::Bool)
+    expected_input = transpose ? size(W, 1) : size(W, 2)
+    expected_sum = size(W, 1)
+    length(input) == expected_input ||
+        throw(DimensionMismatch(
+            "input length $(length(input)) != $expected_input"))
+    length(w_sum) == expected_sum ||
+        throw(DimensionMismatch(
+            "w_sum length $(length(w_sum)) != $expected_sum"))
+    all(value -> isfinite(value) && value > 0, w_sum) ||
+        throw(ArgumentError(
+            "w_sum entries must all be finite and positive"))
+    return nothing
+end
+
+function apply_filter(W::AbstractSparseMatrix,
+                      w_sum::AbstractVector{<:Real},
+                      rho::AbstractVector)
+    _validate_filter_inputs(W, w_sum, rho, false)
+    result = W * rho
+    result ./= w_sum
+    return result
 end
 
 """
@@ -133,10 +158,48 @@ Apply the transpose of the filter for gradient backpropagation:
   g_ρ = Wᵀ (g_ρ̃ ./ w_sum)
 
 This is the adjoint of apply_filter with respect to ρ.
+The input dimensions must match and every normalization weight must be finite
+and positive.
 """
-function apply_filter_transpose(W::AbstractSparseMatrix, w_sum::AbstractVector,
+function apply_filter_transpose(W::AbstractSparseMatrix,
+                                w_sum::AbstractVector{<:Real},
                                 g_rho_tilde::AbstractVector)
+    _validate_filter_inputs(W, w_sum, g_rho_tilde, true)
     return W' * (g_rho_tilde ./ w_sum)
+end
+
+function apply_filter_transpose(W::SparseMatrixCSC,
+                                w_sum::AbstractVector{<:Real},
+                                g_rho_tilde::AbstractVector)
+    _validate_filter_inputs(W, w_sum, g_rho_tilde, true)
+    scaled_type = Base.promote_op(
+        /, eltype(g_rho_tilde), eltype(w_sum))
+    result_type = Base.promote_op(*, eltype(W), scaled_type)
+    result = zeros(result_type, size(W, 2))
+    rows = rowvals(W)
+    values = nonzeros(W)
+    @inbounds for col in 1:size(W, 2)
+        value = zero(result_type)
+        for index in nzrange(W, col)
+            row = rows[index]
+            value += conj(values[index]) *
+                     (g_rho_tilde[row] / w_sum[row])
+        end
+        result[col] = value
+    end
+    return result
+end
+
+function _projection_constants(beta::Real, eta::Real)
+    isfinite(beta) && beta > 0 ||
+        throw(ArgumentError(
+            "beta must be finite and positive, got $beta"))
+    isfinite(eta) && 0 <= eta <= 1 ||
+        throw(ArgumentError(
+            "eta must be finite and lie in [0, 1], got $eta"))
+    offset = tanh(beta * eta)
+    denominator = offset + tanh(beta * (1 - eta))
+    return offset, denominator
 end
 
 """
@@ -147,10 +210,12 @@ Smooth Heaviside projection:
 
 - β controls sharpness (β=1 nearly linear, β=64 nearly binary)
 - η is the threshold (default 0.5)
+- β must be finite and positive; η must be finite and lie in [0, 1]
 """
 function heaviside_project(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
-    denom = tanh(beta * eta) + tanh(beta * (1 - eta))
-    return [(tanh(beta * eta) + tanh(beta * (rt - eta))) / denom for rt in rho_tilde]
+    offset, denominator = _projection_constants(beta, eta)
+    return [(offset + tanh(beta * (rt - eta))) / denominator
+            for rt in rho_tilde]
 end
 
 """
@@ -162,8 +227,9 @@ Derivative of the Heaviside projection:
 Returns a vector of per-element derivatives.
 """
 function heaviside_derivative(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
-    denom = tanh(beta * eta) + tanh(beta * (1 - eta))
-    return [beta * (1 - tanh(beta * (rt - eta))^2) / denom for rt in rho_tilde]
+    _, denominator = _projection_constants(beta, eta)
+    return [beta * (1 - tanh(beta * (rt - eta))^2) / denominator
+            for rt in rho_tilde]
 end
 
 """

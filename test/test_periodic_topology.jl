@@ -395,6 +395,9 @@ println("\n── Test 39: DensityFiltering ──")
 
     # ── A: Filter weight structure ──
     @testset "A: Filter weight properties" begin
+        @test_throws ArgumentError build_filter_weights(mesh_df, 0.0)
+        @test_throws ArgumentError build_filter_weights(mesh_df, -r_min)
+        @test_throws ArgumentError build_filter_weights(mesh_df, Inf)
         @test size(W) == (Nt_df, Nt_df)
         # All weights non-negative (conic: max(0, r_min - d))
         @test all(nonzeros(W) .≥ 0)
@@ -414,10 +417,25 @@ println("\n── Test 39: DensityFiltering ──")
             # ρ̃_t = Σ w_ts c / Σ w_ts = c (exact identity)
             @test isapprox(rho_tilde, fill(c, Nt_df), atol=1e-14)
         end
+        @test_throws DimensionMismatch apply_filter(
+            W, w_sum, zeros(Nt_df + 1))
+        @test_throws DimensionMismatch apply_filter(
+            W, vcat(w_sum, 1.0), zeros(Nt_df))
+        @test_throws ArgumentError apply_filter(
+            W, zeros(Nt_df), zeros(Nt_df))
+        filter_probe = rand(MersenneTwister(3901), Nt_df)
+        @test _filter_allocation(W, w_sum, filter_probe) <=
+              _float_vector_output_allocation(Nt_df) + 128
+        @test _filter_transpose_allocation(W, w_sum, filter_probe) <=
+              _float_vector_output_allocation(Nt_df) + 128
     end
 
     # ── A: Heaviside boundary values (exact by construction) ──
     @testset "A: Heaviside H(0)=0, H(1)=1, H(η)=0.5" begin
+        @test_throws ArgumentError heaviside_project([0.5], 0.0)
+        @test_throws ArgumentError heaviside_project([0.5], Inf)
+        @test_throws ArgumentError heaviside_project([0.5], 1.0, -0.1)
+        @test_throws ArgumentError heaviside_derivative([0.5], 1.0, 1.1)
         for beta in [1.0, 4.0, 16.0, 64.0]
             # H(0) = [tanh(βη) + tanh(-βη)] / denom = 0 (odd function cancels)
             @test heaviside_project([0.0], beta)[1] ≈ 0.0 atol=1e-14

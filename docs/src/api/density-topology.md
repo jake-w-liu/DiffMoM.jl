@@ -138,6 +138,8 @@ where `c_t` are triangle centroids.
 - `W::SparseMatrixCSC{Float64,Int}` (size `Nt x Nt`)
 - `w_sum::Vector{Float64}` with `w_sum[t] = sum_s W[t,s]`
 
+`r_min` must be finite and positive.
+
 ---
 
 ### `apply_filter(W, w_sum, rho)`
@@ -150,6 +152,8 @@ rho_tilde = (W * rho) ./ w_sum
 
 **Returns:** Filtered density vector `rho_tilde`.
 
+The vector dimensions must match the filter, and every entry of `w_sum` must be finite and positive.
+
 ---
 
 ### `apply_filter_transpose(W, w_sum, g_rho_tilde)`
@@ -161,6 +165,8 @@ g_rho = W' * (g_rho_tilde ./ w_sum)
 ```
 
 **Returns:** Gradient with respect to raw densities `rho`.
+
+The vector dimensions must match the filter, and every entry of `w_sum` must be finite and positive.
 
 ---
 
@@ -182,6 +188,8 @@ rho_bar = [tanh(beta*eta) + tanh(beta*(rho_tilde - eta))] /
 | `eta` | `Real` | `0.5` | Threshold parameter. |
 
 **Returns:** Projected densities `rho_bar`.
+
+`beta` must be finite and positive; `eta` must be finite and lie in `[0, 1]`.
 
 ---
 

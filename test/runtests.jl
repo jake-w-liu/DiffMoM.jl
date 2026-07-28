@@ -62,6 +62,16 @@ function _bilinear_allocation(left, A, right)
     return @allocated DiffMoM._dot_left_matrix_right(left, A, right)
 end
 
+function _filter_allocation(W, w_sum, rho)
+    apply_filter(W, w_sum, rho)
+    return @allocated apply_filter(W, w_sum, rho)
+end
+
+function _filter_transpose_allocation(W, w_sum, gradient)
+    apply_filter_transpose(W, w_sum, gradient)
+    return @allocated apply_filter_transpose(W, w_sum, gradient)
+end
+
 function _assert_single_complex_output_allocation(A, x)
     result = A * x
     A * x  # warm the exact operator/vector specialization
