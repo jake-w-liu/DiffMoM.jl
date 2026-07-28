@@ -83,20 +83,30 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           verbose::Bool=true,
                           quad_order::Int=3,
                           c0::Real=C0_DEFAULT)
-    freq_hz > 0 || error("solve_scattering: freq_hz must be > 0")
+    frequency = Float64(freq_hz)
+    isfinite(frequency) && frequency > 0 ||
+        throw(ArgumentError(
+            "solve_scattering: freq_hz must be finite and positive, got $freq_hz"))
+    propagation_speed = Float64(c0)
+    isfinite(propagation_speed) && propagation_speed > 0 ||
+        throw(ArgumentError(
+            "solve_scattering: c0 must be finite and positive, got $c0"))
     method in (:auto, :dense_direct, :dense_gmres, :aca_gmres, :mlfma) ||
         error("solve_scattering: method must be :auto, :dense_direct, :dense_gmres, :aca_gmres, or :mlfma")
     preconditioner in (:auto, :lu, :ilu, :diag, :none) ||
         throw(ArgumentError("solve_scattering: preconditioner must be :auto, :lu, :ilu, :diag, or :none"))
 
     warnings = String[]
-    lambda = Float64(c0) / Float64(freq_hz)
-    k = 2π * Float64(freq_hz) / Float64(c0)
+    lambda = propagation_speed / frequency
+    k = 2π * frequency / propagation_speed
+    excitation isa PlaneWaveExcitation &&
+        _validate_plane_wave_wavenumber(
+            excitation, k, "solve_scattering")
 
     # ── Step 1: Mesh validation ──
-    mesh_report = mesh_resolution_report(mesh, Float64(freq_hz);
+    mesh_report = mesh_resolution_report(mesh, frequency;
                                           points_per_wavelength=Float64(points_per_wavelength),
-                                          c0=Float64(c0))
+                                          c0=propagation_speed)
 
     if check_resolution && !mesh_report.meets_target
         msg = "Mesh under-resolved: edge_max/lambda=$(round(mesh_report.edge_max_over_lambda, digits=3)), " *

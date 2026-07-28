@@ -2932,6 +2932,20 @@ result_auto = solve_scattering(mesh, freq, pw_exc;
                                 verbose=false, check_resolution=false)
 @assert result_auto.method == :dense_direct "Expected :dense_direct for N=$(result_auto.N), got $(result_auto.method)"
 @assert result_auto.N == N
+@test_throws ArgumentError solve_scattering(
+    mesh, Inf, pw_exc;
+    verbose=false,
+    check_resolution=false)
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, pw_exc;
+    c0=Inf,
+    verbose=false,
+    check_resolution=false)
+@test_throws ArgumentError solve_scattering(
+    mesh, freq,
+    make_plane_wave(2 .* k_vec, E0, pol);
+    verbose=false,
+    check_resolution=false)
 
 # Verify solution matches manual dense solve
 rel_workflow_err = norm(result_auto.I_coeffs - I_pec) / norm(I_pec)
@@ -2997,7 +3011,11 @@ result_vec = solve_scattering(mesh, freq, v;
 @assert norm(result_vec.I_coeffs - I_pec) / norm(I_pec) < 1e-10
 
 # Test mesh resolution warning
-result_warn = solve_scattering(mesh, 1e6, pw_exc;
+warning_freq = 1e6
+warning_k = 2π * warning_freq / c0
+warning_pw = make_plane_wave(
+    Vec3(0.0, 0.0, -warning_k), E0, pol)
+result_warn = solve_scattering(mesh, warning_freq, warning_pw;
                                 verbose=false, check_resolution=true)
 # At 1 MHz, lambda = 300m, mesh is massively over-resolved → no warning
 @assert isempty(result_warn.warnings) || result_warn.mesh_report.meets_target
