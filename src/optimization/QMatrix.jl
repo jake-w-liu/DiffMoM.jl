@@ -37,11 +37,19 @@ Base.getindex(Q::SumQMatrix, i::Int, j::Int) = Q.A[i, j] + Q.B[i, j]
 function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                             Q::SumQMatrix,
                             x::AbstractVector{ComplexF64})
+    return LinearAlgebra.mul!(
+        result, Q, x, one(ComplexF64), zero(ComplexF64))
+end
+
+function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
+                            Q::SumQMatrix,
+                            x::AbstractVector{ComplexF64},
+                            alpha_scale::Number,
+                            beta_scale::Number)
     length(result) == size(Q, 1) || throw(DimensionMismatch("result length $(length(result)) != $(size(Q, 1))"))
-    tmp = similar(result)
-    mul!(result, Q.A, x)
-    mul!(tmp, Q.B, x)
-    result .+= tmp
+    length(x) == size(Q, 2) || throw(DimensionMismatch("input length $(length(x)) != $(size(Q, 2))"))
+    mul!(result, Q.A, x, alpha_scale, beta_scale)
+    mul!(result, Q.B, x, alpha_scale, one(ComplexF64))
     return result
 end
 
@@ -58,7 +66,8 @@ function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
             continue
         end
         idx = 3 * (q - 1)
-        p = Q.pol[:, q]
+        p = SVector{3,ComplexF64}(
+            Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
         gm = SVector{3,ComplexF64}(Q.G_mat[idx+1, m], Q.G_mat[idx+2, m], Q.G_mat[idx+3, m])
         gn = SVector{3,ComplexF64}(Q.G_mat[idx+1, n], Q.G_mat[idx+2, n], Q.G_mat[idx+3, n])
         val += Q.weights[q] * conj(dot(p, gm)) * dot(p, gn)
@@ -69,9 +78,25 @@ end
 function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                             Q::FarFieldQMatrix,
                             I_coeffs::AbstractVector{ComplexF64})
+    return LinearAlgebra.mul!(
+        result, Q, I_coeffs, one(ComplexF64), zero(ComplexF64))
+end
+
+function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
+                            Q::FarFieldQMatrix,
+                            I_coeffs::AbstractVector{ComplexF64},
+                            alpha_scale::Number,
+                            beta_scale::Number)
     length(result) == Q.N || throw(DimensionMismatch("result length $(length(result)) != $(Q.N)"))
     length(I_coeffs) == Q.N || throw(DimensionMismatch("input length $(length(I_coeffs)) != $(Q.N)"))
-    fill!(result, zero(ComplexF64))
+    if iszero(beta_scale)
+        fill!(result, zero(ComplexF64))
+    elseif beta_scale != one(beta_scale)
+        @inbounds for m in eachindex(result)
+            result[m] *= beta_scale
+        end
+    end
+    iszero(alpha_scale) && return result
 
     NΩ = length(Q.weights)
     @inbounds for q in 1:NΩ
@@ -90,7 +115,7 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
 
         for m in 1:Q.N
             gm = SVector{3,ComplexF64}(Q.G_mat[idx+1, m], Q.G_mat[idx+2, m], Q.G_mat[idx+3, m])
-            result[m] += wq * conj(dot(p, gm)) * yq
+            result[m] += alpha_scale * wq * conj(dot(p, gm)) * yq
         end
     end
     return result
@@ -180,7 +205,8 @@ function apply_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
         if mask !== nothing && !mask[q]
             continue
         end
-        p = pol[:, q]
+        p = SVector{3,ComplexF64}(
+            pol[1, q], pol[2, q], pol[3, q])
         wq = grid.w[q]
 
         # Compute y_q = p† · E∞(r̂_q) = Σ_n I_n (p† · g_n)

@@ -22,14 +22,36 @@ DiffMoM._complex_vector_input(complex_vector_input)  # warm compilation
 @assert @allocated(DiffMoM._complex_vector_input(complex_vector_input)) == 0
 @assert DiffMoM._complex_vector_input(Float32[1, 2]) == ComplexF64[1, 2]
 
+function _complex_vector_output_allocation(n::Int)
+    zeros(ComplexF64, n)  # warm the exact array-size specialization
+    return @allocated zeros(ComplexF64, n)
+end
+
 function _assert_single_complex_output_allocation(A, x)
     result = A * x
     A * x  # warm the exact operator/vector specialization
     product_allocation = @allocated A * x
-    zeros(ComplexF64, length(result))
-    output_allocation = @allocated zeros(ComplexF64, length(result))
+    output_allocation = _complex_vector_output_allocation(length(result))
     @assert product_allocation <= output_allocation + 128
     return nothing
+end
+
+function _assert_zero_allocation_mul!(A, x)
+    result = zeros(ComplexF64, size(A, 1))
+    mul!(result, A, x)
+    allocation = @allocated mul!(result, A, x)
+    @assert allocation <= 128
+    return result
+end
+
+function _matrix_entry_allocation(A, i::Int, j::Int)
+    A[i, j]
+    return @allocated A[i, j]
+end
+
+function _apply_q_allocation(G_mat, grid, pol, x, mask)
+    apply_Q(G_mat, grid, pol, x; mask=mask)
+    return @allocated apply_Q(G_mat, grid, pol, x; mask=mask)
 end
 
 const DATADIR = joinpath(@__DIR__, "..", "data")
@@ -577,6 +599,7 @@ println("  Max radial E-field component: $max_radial")
 pol_mat = pol_linear_x(grid)
 mask = cap_mask(grid; theta_max=30 * π / 180)
 Q = build_Q(G_mat, grid, pol_mat; mask=mask)
+Q_operator = build_Q_operator(G_mat, grid, pol_mat; mask=mask)
 
 # Q should be Hermitian PSD
 @assert norm(Q - Q') < 1e-12 * norm(Q)
@@ -592,6 +615,19 @@ P_direct = projected_power(E_ff, grid, pol_mat; mask=mask)
 rel_q_err = abs(P_qform - P_direct) / max(abs(P_qform), 1e-30)
 println("  Objective consistency (I†QI vs direct projected power): $rel_q_err")
 @assert rel_q_err < 1e-12
+
+QI_operator = _assert_zero_allocation_mul!(Q_operator, I_pec)
+@assert norm(QI_operator - Q * I_pec) / max(norm(Q * I_pec), 1e-30) < 1e-12
+@assert _matrix_entry_allocation(Q_operator, 1, 1) <= 128
+QI_apply = apply_Q(G_mat, grid, pol_mat, I_pec; mask=mask)
+@assert norm(QI_apply - Q * I_pec) / max(norm(Q * I_pec), 1e-30) < 1e-12
+@assert _apply_q_allocation(G_mat, grid, pol_mat, I_pec, mask) <=
+        _complex_vector_output_allocation(N) + 128
+
+q_initial = randn(MersenneTwister(606), ComplexF64, N)
+q_scaled = copy(q_initial)
+mul!(q_scaled, Q_operator, I_pec, 2.0, -0.5)
+@assert q_scaled ≈ 2.0 .* (Q * I_pec) .- 0.5 .* q_initial
 
 # RCS helper checks
 sigma = bistatic_rcs(E_ff; E0=1.0)
@@ -3549,6 +3585,14 @@ Qx_total_dense = configs_total[1].Q * x_q
 Qx_total_mfree = configs_total_mfree[1].Q * x_q
 q_total_rel = norm(Qx_total_dense - Qx_total_mfree) / max(norm(Qx_total_dense), 1e-30)
 @assert q_total_rel < 1e-12 "Matrix-free total-Q action mismatch: $q_total_rel"
+@assert _assert_zero_allocation_mul!(configs_total_mfree[1].Q, x_q) ≈
+        Qx_total_dense
+_assert_single_complex_output_allocation(configs_total_mfree[1].Q, x_q)
+
+q_sum_initial = randn(MersenneTwister(356), ComplexF64, N)
+q_sum_scaled = copy(q_sum_initial)
+mul!(q_sum_scaled, configs_total_mfree[1].Q, x_q, -1.25, 0.75)
+@assert q_sum_scaled ≈ -1.25 .* Qx_total_dense .+ 0.75 .* q_sum_initial
 configs_proj = build_multiangle_configs(
     mesh, rwg, k,
     [(theta_inc=π/4, phi_inc=0.0, pol=Vec3(1.0, 0.0, 0.0), weight=1.0)];
