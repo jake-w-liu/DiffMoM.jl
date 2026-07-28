@@ -80,6 +80,10 @@ end
     return max(1e-12, 1e-10 * _bbox_diagonal(mesh))
 end
 
+function _collect_observation_points(points::Vector{Vec3})
+    return points
+end
+
 function _collect_observation_points(points::AbstractVector{<:Vec3})
     return collect(points)
 end
@@ -184,10 +188,37 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                                    surface_tol::Union{Nothing,Float64}=nothing)
     length(I_coeffs) == rwg.nedges ||
         throw(DimensionMismatch("I_coeffs length $(length(I_coeffs)) != rwg.nedges=$(rwg.nedges)."))
-    abs(k) > 0 || error("compute_nearfield: k must be nonzero.")
+    (isfinite(real(k)) && isfinite(imag(k)) && abs(k) > 0.0) ||
+        throw(ArgumentError("compute_nearfield: k must be finite and nonzero, got $k."))
+    (isfinite(eta0) && eta0 > 0.0) ||
+        throw(ArgumentError(
+            "compute_nearfield: eta0 must be finite and positive, got $eta0."))
+
+    @inbounds for i in eachindex(I_coeffs)
+        isfinite(I_coeffs[i]) ||
+            throw(ArgumentError(
+                "compute_nearfield: current coefficient $i must be finite, got $(I_coeffs[i])."))
+    end
+    @inbounds for i in eachindex(observation_points)
+        p = observation_points[i]
+        all(isfinite, p) ||
+            throw(ArgumentError(
+                "compute_nearfield: observation point $i must be finite, got $p."))
+    end
 
     tol = isnothing(surface_tol) ? _default_nearfield_surface_tol(mesh) : surface_tol
-    tol >= 0 || error("compute_nearfield: surface_tol must be nonnegative.")
+    (isfinite(tol) && tol >= 0.0) ||
+        throw(ArgumentError(
+            "compute_nearfield: surface_tol must be finite and nonnegative, got $tol."))
+
+    pref_vec = -1im * k * eta0
+    pref_scl = -1im * eta0 / k
+    (isfinite(pref_vec) && isfinite(pref_scl)) ||
+        throw(ArgumentError(
+            "compute_nearfield: k and eta0 produce non-finite field prefactors."))
+
+    Nobs = length(observation_points)
+    Nobs == 0 && return zeros(ComplexF64, 3, 0)
 
     if check_surface
         for (i, p) in enumerate(observation_points)
@@ -206,11 +237,8 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
     quad_pts, areas, J_samples, div_samples, J_verts =
         _precompute_nearfield_triangle_data(mesh, rwg, I_coeffs, xi)
 
-    Nobs = length(observation_points)
     Nt = ntriangles(mesh)
     E = zeros(ComplexF64, 3, Nobs)
-    pref_vec = -1im * k * eta0
-    pref_scl = -1im * eta0 / k
 
     # Near-singular quadrature is activated per-triangle when the observation
     # point is closer than the triangle's characteristic edge length.
@@ -354,17 +382,10 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
         end  # @inbounds
     end
 
-    return E
-end
-
-function _compute_incident_field_matrix(excitation::AbstractExcitation,
-                                        observation_points::Vector{Vec3}, k)
-    _validate_incident_electric_field_wavenumber(excitation, k)
-    Nobs = length(observation_points)
-    E = zeros(ComplexF64, 3, Nobs)
-    @inbounds for i in 1:Nobs
-        E[:, i] .= _incident_electric_field(excitation, observation_points[i], k)
-    end
+    all(isfinite, E) ||
+        error(
+            "compute_nearfield produced non-finite field values despite finite inputs; " *
+            "check the observation distance and numerical scales.")
     return E
 end
 
@@ -376,13 +397,24 @@ function _compute_total_field_matrix(mesh::TriMesh, rwg::RWGData,
                                      eta0::Float64=376.730313668,
                                      check_surface::Bool=true,
                                      surface_tol::Union{Nothing,Float64}=nothing)
-    E_inc = _compute_incident_field_matrix(excitation, observation_points, k)
-    E_sca = _compute_nearfield_matrix(mesh, rwg, I_coeffs, observation_points, k;
-                                      quad_order=quad_order,
-                                      eta0=eta0,
-                                      check_surface=check_surface,
-                                      surface_tol=surface_tol)
-    return E_inc + E_sca
+    _validate_incident_electric_field_wavenumber(excitation, k)
+    E_total = _compute_nearfield_matrix(mesh, rwg, I_coeffs, observation_points, k;
+                                        quad_order=quad_order,
+                                        eta0=eta0,
+                                        check_surface=check_surface,
+                                        surface_tol=surface_tol)
+    @inbounds for i in eachindex(observation_points)
+        E_inc = _check_finite_cvec3(
+            _incident_electric_field(excitation, observation_points[i], k),
+            "incident electric field",
+        )
+        E_total[1, i] += E_inc[1]
+        E_total[2, i] += E_inc[2]
+        E_total[3, i] += E_inc[3]
+    end
+    all(isfinite, E_total) ||
+        error("compute_total_field produced non-finite field values.")
+    return E_total
 end
 
 """

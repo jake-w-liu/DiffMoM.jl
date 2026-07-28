@@ -901,6 +901,25 @@ E_nf = compute_nearfield(mesh, rwg, I_pec, obs_points, k; quad_order=3, eta0=eta
 @assert size(E_nf) == (3, length(obs_points))
 @assert all(isfinite, real.(E_nf))
 @assert all(isfinite, imag.(E_nf))
+@test size(compute_nearfield(
+    mesh, rwg, I_pec, Vec3[], k; quad_order=3, eta0=eta0)) == (3, 0)
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, obs_points, Inf; quad_order=3, eta0=eta0)
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, obs_points, k; quad_order=3, eta0=Inf)
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, obs_points, k; quad_order=3, eta0=-eta0)
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, obs_points, k;
+    quad_order=3, eta0=eta0, check_surface=false, surface_tol=Inf)
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, Vec3(NaN, 0.0, 0.15), k;
+    quad_order=3, eta0=eta0, check_surface=false)
+I_nf_nonfinite = copy(I_pec)
+I_nf_nonfinite[1] = Inf + 0im
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_nf_nonfinite, obs_points, k;
+    quad_order=3, eta0=eta0, check_surface=false)
 
 obs_mat = hcat(obs_points...)
 E_nf_mat = compute_nearfield(mesh, rwg, I_pec, obs_mat, k; quad_order=3, eta0=eta0)
