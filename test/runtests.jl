@@ -551,6 +551,41 @@ S1_mie, S2_mie = mie_s1s2_pec(k_mie * a_mie, μ_mie)
 σ_mie = mie_bistatic_rcs_pec(k_mie, a_mie, khat_mie, pol_mie, rhat_mie)
 @assert σ_mie >= 0
 @assert abs(σ_mie - σ_formula) / max(abs(σ_formula), 1e-30) < 1e-10
+S1_clamped, S2_clamped = mie_s1s2_pec(k_mie * a_mie, 1.0 + 5e-13)
+S1_endpoint, S2_endpoint = mie_s1s2_pec(k_mie * a_mie, 1.0)
+@test S1_clamped == S1_endpoint
+@test S2_clamped == S2_endpoint
+@test_throws ArgumentError mie_s1s2_pec(Inf, 0.0; nmax=3)
+@test_throws ArgumentError mie_s1s2_pec(1.0, NaN; nmax=3)
+@test_throws ArgumentError mie_s1s2_pec(1.0, 0.0; nmax=2.5)
+@test_throws ArgumentError mie_bistatic_rcs_pec(
+    1.0, 1.0, Vec3(0.0, 0.0, 0.0), pol_mie, rhat_mie; nmax=3)
+@test_throws OverflowError mie_bistatic_rcs_pec(
+    1.0e-300, 1.0e300, khat_mie, pol_mie, rhat_mie; nmax=3)
+
+S1_dielectric_mie, S2_dielectric_mie =
+    mie_s1s2_dielectric(k_mie * a_mie, μ_mie, 2.5)
+@test isfinite(S1_dielectric_mie)
+@test isfinite(S2_dielectric_mie)
+σ_dielectric_mie = mie_bistatic_rcs_dielectric(
+    k_mie, a_mie, khat_mie, pol_mie, rhat_mie, 2.5)
+@test isfinite(σ_dielectric_mie) && σ_dielectric_mie >= 0.0
+@test_throws ArgumentError mie_s1s2_dielectric(
+    1.0, 0.0, Inf; nmax=3)
+@test_throws ArgumentError mie_s1s2_dielectric(
+    1.0, 0.0, 2.0; mu_r=Inf, nmax=3)
+@test_throws OverflowError mie_bistatic_rcs_dielectric(
+    1.0e-300, 1.0e300, khat_mie, pol_mie, rhat_mie, 2.0; nmax=3)
+
+mie_s1s2_pec(2.0, 0.2; nmax=20)
+mie_s1s2_dielectric(2.0, 0.2, 2.5; nmax=20)
+mie_bistatic_rcs_pec(
+    2.0, 1.0, khat_mie, pol_mie, rhat_mie; nmax=20)
+@test (@allocated mie_s1s2_pec(2.0, 0.2; nmax=20)) == 0
+@test (@allocated mie_s1s2_dielectric(
+    2.0, 0.2, 2.5; nmax=20)) == 0
+@test (@allocated mie_bistatic_rcs_pec(
+    2.0, 1.0, khat_mie, pol_mie, rhat_mie; nmax=20)) == 0
 
 # Independent energy-consistency check:
 # integrate differential cross section over sphere and compare to
