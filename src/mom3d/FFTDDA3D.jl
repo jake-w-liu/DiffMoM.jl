@@ -130,7 +130,8 @@ function fft_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r;
                              radiative_correction::Bool=false)
     k = _finite_positive_k0_3d(k0)
     epsv = _coerce_epsr_material_3d(eps_r, grid.nvoxels)
-    alpha = dda_polarizabilities(grid, k, epsv; radiative_correction=radiative_correction)
+    alpha = _dda_polarizabilities_from_coerced(
+        grid, k, epsv, radiative_correction)
     kernel = fft_dda_kernel_3d(grid, k)
     px, py, pz = kernel.pad_dims
     qhat = zeros(ComplexF64, px, py, pz, 3)

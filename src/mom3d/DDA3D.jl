@@ -208,14 +208,32 @@ Compute normalized electric polarizability for every voxel in `grid`.
 """
 function dda_polarizabilities(grid::VoxelGrid3D, k0::Real, eps_r;
                               radiative_correction::Bool=false)
+    k = _finite_nonnegative_k0_3d(k0)
     epsv = _coerce_epsr_material_3d(eps_r, grid.nvoxels)
-    alpha = Vector{typeof(clausius_mossotti_polarizability(epsv[1], grid.volumes[1];
-                                                           k0=k0,
-                                                           radiative_correction=radiative_correction))}(undef, grid.nvoxels)
-    for j in 1:grid.nvoxels
+    return _dda_polarizabilities_from_coerced(
+        grid, k, epsv, radiative_correction)
+end
+
+function _dda_polarizabilities_from_coerced(
+    grid::VoxelGrid3D,
+    k::Float64,
+    epsv::AbstractVector,
+    radiative_correction::Bool,
+)
+    length(epsv) == grid.nvoxels ||
+        throw(DimensionMismatch(
+            "eps_r length ($(length(epsv))) must match nvoxels ($(grid.nvoxels))."))
+    first_alpha = clausius_mossotti_polarizability(
+        epsv[1], grid.volumes[1];
+        k0=k,
+        radiative_correction=radiative_correction,
+    )
+    alpha = Vector{typeof(first_alpha)}(undef, grid.nvoxels)
+    alpha[1] = first_alpha
+    @inbounds for j in 2:grid.nvoxels
         alpha[j] = clausius_mossotti_polarizability(
             epsv[j], grid.volumes[j];
-            k0=k0,
+            k0=k,
             radiative_correction=radiative_correction,
         )
     end
@@ -232,7 +250,8 @@ function dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r;
                          radiative_correction::Bool=false)
     k = _finite_positive_k0_3d(k0)
     epsv = _coerce_epsr_material_3d(eps_r, grid.nvoxels)
-    alpha = dda_polarizabilities(grid, k, epsv; radiative_correction=radiative_correction)
+    alpha = _dda_polarizabilities_from_coerced(
+        grid, k, epsv, radiative_correction)
     return DDAOperator3D(grid, k, epsv, alpha, radiative_correction)
 end
 
@@ -420,7 +439,8 @@ function assemble_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r;
     k = _finite_positive_k0_3d(k0)
     N = grid.nvoxels
     epsv = _coerce_epsr_material_3d(eps_r, N)
-    alpha = dda_polarizabilities(grid, k, epsv; radiative_correction=radiative_correction)
+    alpha = _dda_polarizabilities_from_coerced(
+        grid, k, epsv, radiative_correction)
 
     A = Matrix{ComplexF64}(I, 3N, 3N)
     # Each source voxel j writes a disjoint block of columns, so the assembly is

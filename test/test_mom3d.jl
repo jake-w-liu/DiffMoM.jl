@@ -129,6 +129,16 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         # of the O(N^2) dense interaction matrix.
         @test Base.summarysize(A_op) < Base.summarysize(A_dense) / 20
 
+        allocation_grid = VoxelGrid3D(
+            (-0.5, 0.5), (-0.5, 0.5), (-0.5, 0.5), 512, 1, 1)
+        allocation_op = dda_operator_3d(allocation_grid, k0, 2.5 + 0.1im)
+        constructor_bytes = @allocated dda_operator_3d(
+            allocation_grid, k0, 2.5 + 0.1im)
+        stored_material_bytes =
+            Base.summarysize(allocation_op.eps_r) +
+            Base.summarysize(allocation_op.alpha)
+        @test constructor_bytes <= stored_material_bytes + 4096
+
         mul!(y, A_op, x)  # warm-up before allocation probe
         @test (@allocated mul!(y, A_op, x)) < 1024
 
