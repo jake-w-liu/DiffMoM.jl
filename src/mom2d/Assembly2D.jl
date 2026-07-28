@@ -16,21 +16,32 @@ Assemble VIE system matrix: Z[m,n] = δ[m,n] - k₀² χ[n] D[m,n]
 Returns (Z, D) where D is the Green's function integral matrix.
 """
 function assemble_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64})
-    @assert length(chi) == mesh.ncells "chi length must match number of cells"
+    _validate_mesh_2d(mesh)
+    _validate_positive_finite_2d(k0, "assemble_vie_2d wavenumber")
+    length(chi) == mesh.ncells ||
+        throw(DimensionMismatch(
+            "chi length $(length(chi)) must match $(mesh.ncells) mesh cells."))
+    all(isfinite, chi) ||
+        throw(ArgumentError("chi must contain only finite values."))
+    k0sq = k0^2
+    isfinite(k0sq) ||
+        throw(ArgumentError(
+            "assemble_vie_2d squared wavenumber must be finite, got $k0sq."))
 
-    D = assemble_D_matrix(mesh, k0)
+    D = _assemble_D_matrix_unchecked(mesh, k0)
     N = mesh.ncells
 
     Z = Matrix{ComplexF64}(undef, N, N)
-    k0sq = k0^2
 
-    for n in 1:N
+    @inbounds for n in 1:N
         for m in 1:N
             Z[m, n] = -k0sq * chi[n] * D[m, n]
         end
         Z[n, n] += 1.0  # add identity
     end
 
+    all(isfinite, Z) ||
+        error("assemble_vie_2d produced non-finite system-matrix entries.")
     return Z, D
 end
 
@@ -42,11 +53,19 @@ Returns `VIEResult2D` with all computed quantities for downstream use.
 """
 function solve_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
                       E_inc::AbstractVector{ComplexF64})
-    @assert length(E_inc) == mesh.ncells "E_inc length must match number of cells"
+    length(E_inc) == mesh.ncells ||
+        throw(DimensionMismatch(
+            "E_inc length $(length(E_inc)) must match $(mesh.ncells) mesh cells."))
+    all(isfinite, E_inc) ||
+        throw(ArgumentError("E_inc must contain only finite values."))
 
     Z, D = assemble_vie_2d(mesh, k0, chi)
     Z_lu = lu(Z)
+    issuccess(Z_lu) ||
+        error("solve_vie_2d system matrix factorization failed.")
     E_total = Z_lu \ E_inc
+    all(isfinite, E_total) ||
+        error("solve_vie_2d produced non-finite total-field values.")
 
     return VIEResult2D(E_total, Vector(E_inc), Vector(chi), D, Z, Z_lu, mesh, k0)
 end

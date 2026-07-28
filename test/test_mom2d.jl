@@ -25,8 +25,12 @@ using LinearAlgebra
         @test equivalent_radius(mesh)^2 * π ≈ mesh.cell_area atol=1e-14
 
         # Invalid inputs
-        @test_throws AssertionError Mesh2D((1.0, -1.0), (-0.5, 0.5), 4, 2)
-        @test_throws AssertionError Mesh2D((-1.0, 1.0), (-0.5, 0.5), 0, 2)
+        @test_throws ArgumentError Mesh2D((1.0, -1.0), (-0.5, 0.5), 4, 2)
+        @test_throws ArgumentError Mesh2D((-1.0, 1.0), (-0.5, 0.5), 0, 2)
+        @test_throws ArgumentError Mesh2D((0.0, Inf), (-0.5, 0.5), 4, 2)
+        @test_throws ArgumentError Mesh2D((-1.0, 1.0), (NaN, 0.5), 4, 2)
+        @test_throws ArgumentError Mesh2D(
+            (-1.0, 1.0), (-0.5, 0.5), typemax(Int), 2)
     end
 
     @testset "2D Green's function" begin
@@ -47,6 +51,9 @@ using LinearAlgebra
 
         # Self-term: returns zero (handled by self_cell_integral)
         @test greens_2d(r1, r1, k) == 0.0 + 0.0im
+        @test_throws ArgumentError greens_2d(r1, r2, 0.0)
+        @test_throws ArgumentError greens_2d(r1, r2, Inf)
+        @test_throws ArgumentError greens_2d(Vec2(NaN, 0.0), r2, k)
 
         # Decay with distance
         G_near = abs(greens_2d(r1, Vec2(0.5, 0.0), k))
@@ -69,8 +76,10 @@ using LinearAlgebra
         @test abs(imag(D_self)) > 0
 
         # Positive equivalent radius required
-        @test_throws AssertionError self_cell_integral_2d(k, 0.0)
-        @test_throws AssertionError self_cell_integral_2d(0.0, a_eq)
+        @test_throws ArgumentError self_cell_integral_2d(k, 0.0)
+        @test_throws ArgumentError self_cell_integral_2d(0.0, a_eq)
+        @test_throws ArgumentError self_cell_integral_2d(Inf, a_eq)
+        @test_throws ArgumentError self_cell_integral_2d(k, Inf)
     end
 
     @testset "VIE assembly and solve" begin
@@ -88,6 +97,12 @@ using LinearAlgebra
         # With chi = 0 (free space), Z = I
         Z0, _ = assemble_vie_2d(mesh, k0, zeros(mesh.ncells))
         @test Z0 ≈ I(mesh.ncells) atol=1e-14
+        @test_throws DimensionMismatch assemble_vie_2d(
+            mesh, k0, zeros(mesh.ncells - 1))
+        @test_throws ArgumentError assemble_vie_2d(
+            mesh, k0, fill(NaN, mesh.ncells))
+        @test_throws ArgumentError assemble_vie_2d(
+            mesh, Inf, zeros(mesh.ncells))
 
         # Solve with plane wave
         E_inc = planewave_2d(mesh, k0, 0.0)
@@ -97,6 +112,12 @@ using LinearAlgebra
         @test length(vr.E_total) == 25
         @test !any(isnan, vr.E_total)
         @test !any(isinf, vr.E_total)
+        E_inc_bad = copy(E_inc)
+        E_inc_bad[1] = NaN + 0im
+        @test_throws ArgumentError solve_vie_2d(
+            mesh, k0, chi, E_inc_bad)
+        @test_throws DimensionMismatch solve_vie_2d(
+            mesh, k0, chi, E_inc[1:end-1])
 
         # In free space (chi=0), total field = incident field
         vr_free = solve_vie_2d(mesh, k0, zeros(mesh.ncells), E_inc)
@@ -112,6 +133,9 @@ using LinearAlgebra
             E_inc = planewave_2d(mesh, k0, phi_inc)
             @test all(abs.(E_inc) .≈ 1.0)  # unit amplitude for plane wave
         end
+        @test_throws ArgumentError planewave_2d(mesh, Inf, 0.0)
+        @test_throws ArgumentError planewave_2d(mesh, k0, Inf)
+        @test_throws ArgumentError planewave_2d(mesh, k0, 0.0; E0=Inf)
 
         # Phase consistency: E(r) = exp(-ik₀ k̂·r)
         E_inc = planewave_2d(mesh, k0, 0.0)
@@ -251,6 +275,16 @@ using LinearAlgebra
         @test size(J) == (12, mesh.ncells)
         @test !any(isnan, J)
         @test !any(isinf, J)
+        @test_throws ArgumentError green_obs_matrix(
+            [Vec2(NaN, 0.0)], mesh, k0)
+        @test_throws DomainError green_obs_matrix(
+            [mesh.centers[1]], mesh, k0)
+        @test_throws ArgumentError scattered_field_2d(
+            vr, [Vec2(NaN, 0.0)])
+        @test_throws DomainError scattered_field_2d(
+            vr, [mesh.centers[1]])
+        @test_throws ArgumentError jacobian_scattered_field_2d(
+            vr, [Vec2(NaN, 0.0)])
 
         # Verify 5 random cells against finite differences
         delta = 1e-7
@@ -292,6 +326,11 @@ using LinearAlgebra
         @test length(E_inc) == mesh.ncells
         @test !any(isnan, E_inc)
         @test !any(isinf, E_inc)
+        @test_throws ArgumentError linesource_2d(mesh, Inf, r_src)
+        @test_throws ArgumentError linesource_2d(
+            mesh, k0, Vec2(NaN, 0.0))
+        @test_throws DomainError linesource_2d(
+            mesh, k0, mesh.centers[1])
 
         # Amplitude should decrease with distance from source
         # Find nearest and farthest cells
