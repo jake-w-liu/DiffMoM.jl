@@ -151,12 +151,55 @@ function rwg_centers(mesh::TriMesh, rwg::RWGData)
     return centers
 end
 
-@inline function _cell_key(r::Vec3, inv_cell::Float64)
+const _MAX_SPATIAL_HASH_AXIS_INDEX = Float64(typemax(Int) ÷ 4)
+
+function _spatial_hash_parameters(centers::Vector{Vec3}, cutoff::Float64)
+    first_center = first(centers)
+    all(isfinite, first_center) ||
+        throw(ArgumentError(
+            "RWG center 1 must be finite, got $first_center"))
+
+    xmin = xmax = first_center[1]
+    ymin = ymax = first_center[2]
+    zmin = zmax = first_center[3]
+    @inbounds for i in 2:length(centers)
+        center = centers[i]
+        all(isfinite, center) ||
+            throw(ArgumentError(
+                "RWG center $i must be finite, got $center"))
+        xmin = min(xmin, center[1]); xmax = max(xmax, center[1])
+        ymin = min(ymin, center[2]); ymax = max(ymax, center[2])
+        zmin = min(zmin, center[3]); zmax = max(zmax, center[3])
+    end
+
+    xspan = xmax - xmin
+    yspan = ymax - ymin
+    zspan = zmax - zmin
+    all(isfinite, (xspan, yspan, zspan)) ||
+        throw(ArgumentError(
+            "RWG-center extent is outside the supported Float64 range"))
+    max_span = max(xspan, yspan, zspan)
+
+    # A hash cell may be wider than the physical cutoff: any pair within the
+    # cutoff still lies in the same or an adjacent cell. Widen only when needed
+    # to keep origin-relative cell indices safely representable as Int.
+    cell_size = max(cutoff, max_span / _MAX_SPATIAL_HASH_AXIS_INDEX)
+    isfinite(cell_size) && cell_size > 0.0 ||
+        throw(ArgumentError(
+            "spatial-hash cell size is not representable for cutoff=$cutoff"))
+    return Vec3(xmin, ymin, zmin), cell_size
+end
+
+@inline function _cell_key(r::Vec3, origin::Vec3, cell_size::Float64)
     return (
-        floor(Int, r[1] * inv_cell),
-        floor(Int, r[2] * inv_cell),
-        floor(Int, r[3] * inv_cell),
+        floor(Int, (r[1] - origin[1]) / cell_size),
+        floor(Int, (r[2] - origin[2]) / cell_size),
+        floor(Int, (r[3] - origin[3]) / cell_size),
     )
+end
+
+@inline function _within_nearfield_cutoff(a::Vec3, b::Vec3, cutoff::Float64)
+    return hypot(a[1] - b[1], a[2] - b[2], a[3] - b[3]) <= cutoff
 end
 
 function _nearfield_triplets_bruteforce(centers::Vector{Vec3}, cutoff::Float64, getvalue)
@@ -195,13 +238,10 @@ function _nearfield_triplets_bruteforce(centers::Vector{Vec3}, cutoff::Float64, 
         return I_idx, J_idx, V_val
     end
 
-    cutoff2 = cutoff * cutoff
     @inbounds for m in 1:N
         cm = centers[m]
         for n in 1:N
-            δ = cm - centers[n]
-            d2 = dot(δ, δ)
-            if m == n || d2 <= cutoff2
+            if m == n || _within_nearfield_cutoff(cm, centers[n], cutoff)
                 push!(I_idx, m)
                 push!(J_idx, n)
                 push!(V_val, ComplexF64(getvalue(m, n)))
@@ -225,14 +265,13 @@ function _nearfield_triplets_spatial(centers::Vector{Vec3}, cutoff::Float64, get
         return _nearfield_triplets_bruteforce(centers, cutoff, getvalue)
     end
 
-    inv_cell = 1.0 / cutoff
+    origin, cell_size = _spatial_hash_parameters(centers, cutoff)
     buckets = Dict{NTuple{3,Int}, Vector{Int}}()
     @inbounds for i in 1:N
-        key = _cell_key(centers[i], inv_cell)
+        key = _cell_key(centers[i], origin, cell_size)
         push!(get!(() -> Int[], buckets, key), i)
     end
 
-    cutoff2 = cutoff * cutoff
     est_pairs = max(N, min(N * N, 27 * N))
     sizehint!(I_idx, est_pairs)
     sizehint!(J_idx, est_pairs)
@@ -240,7 +279,7 @@ function _nearfield_triplets_spatial(centers::Vector{Vec3}, cutoff::Float64, get
 
     @inbounds for m in 1:N
         cm = centers[m]
-        key = _cell_key(cm, inv_cell)
+        key = _cell_key(cm, origin, cell_size)
         for dz in -1:1
             for dy in -1:1
                 for dx in -1:1
@@ -253,9 +292,7 @@ function _nearfield_triplets_spatial(centers::Vector{Vec3}, cutoff::Float64, get
                             push!(J_idx, n)
                             push!(V_val, ComplexF64(getvalue(m, n)))
                         else
-                            δ = cm - centers[n]
-                            d2 = dot(δ, δ)
-                            if d2 <= cutoff2
+                            if _within_nearfield_cutoff(cm, centers[n], cutoff)
                                 push!(I_idx, m)
                                 push!(J_idx, n)
                                 push!(V_val, ComplexF64(getvalue(m, n)))
@@ -288,14 +325,13 @@ function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3
     end
 
     # Spatial hash
-    inv_cell = 1.0 / cutoff
+    origin, cell_size = _spatial_hash_parameters(centers, cutoff)
     buckets = Dict{NTuple{3,Int}, Vector{Int}}()
     @inbounds for i in 1:N
-        key = _cell_key(centers[i], inv_cell)
+        key = _cell_key(centers[i], origin, cell_size)
         push!(get!(() -> Int[], buckets, key), i)
     end
 
-    cutoff2 = cutoff * cutoff
     est_pairs = max(N, min(N * N, 27 * N))
     I_idx = Int[];       sizehint!(I_idx, est_pairs)
     J_idx = Int[];       sizehint!(J_idx, est_pairs)
@@ -321,13 +357,14 @@ function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3
 
     @inbounds for m in 1:N
         cm = centers[m]
-        key = _cell_key(cm, inv_cell)
+        key = _cell_key(cm, origin, cell_size)
         for dz in -1:1, dy in -1:1, dx in -1:1
             key_n = (key[1] + dx, key[2] + dy, key[3] + dz)
             n_list = get(buckets, key_n, nothing)
             n_list === nothing && continue
             for n in n_list
-                is_near = (m == n) || (let δ = cm - centers[n]; dot(δ, δ) end) <= cutoff2
+                is_near = (m == n) ||
+                    _within_nearfield_cutoff(cm, centers[n], cutoff)
                 is_near || continue
 
                 # Compute EFIE entry with cached Green's

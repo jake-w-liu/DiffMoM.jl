@@ -3045,6 +3045,26 @@ rel_nf_spatial_vs_brute = norm(y_nf_spatial - y_nf_bruteforce) / max(norm(y_nf_b
 println("  NF spatial vs brute rel diff: $rel_nf_spatial_vs_brute")
 @assert rel_nf_spatial_vs_brute < 1e-12
 
+# Spatial hashing must be translation-invariant even when coordinate/cutoff
+# ratios exceed Int, and distance comparisons must not turn Inf <= Inf into a
+# false near-field classification.
+translated_nf_xyz = copy(mesh.xyz)
+translated_nf_xyz[1, :] .+= 1.0e9
+translated_nf_mesh = TriMesh(translated_nf_xyz, copy(mesh.tri))
+translated_nf_rwg = build_rwg(translated_nf_mesh)
+tiny_cutoff = 1.0e-12
+P_nf_translated = build_nearfield_preconditioner(
+    Z_efie, translated_nf_mesh, translated_nf_rwg, tiny_cutoff)
+P_nf_translated_brute = build_nearfield_preconditioner(
+    Z_efie, translated_nf_mesh, translated_nf_rwg, tiny_cutoff;
+    neighbor_search=:bruteforce)
+@test P_nf_translated.nnz_ratio == P_nf_translated_brute.nnz_ratio
+
+extreme_centers = Vec3[Vec3(0.0, 0.0, 0.0), Vec3(1.0e200, 0.0, 0.0)]
+extreme_I, extreme_J, _ = DiffMoM._nearfield_triplets_bruteforce(
+    extreme_centers, 1.0e190, (m, n) -> 1.0 + 0im)
+@test collect(zip(extreme_I, extreme_J)) == [(1, 1), (2, 2)]
+
 # Build near-field preconditioner without dense Z (matrix-free and geometry paths)
 P_nf_mf = build_nearfield_preconditioner(A_mf, lambda0)
 @assert P_nf_mf.cutoff == lambda0
