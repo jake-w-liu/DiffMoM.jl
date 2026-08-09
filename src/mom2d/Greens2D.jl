@@ -6,6 +6,55 @@
 
 export greens_2d, self_cell_integral_2d
 
+const _SELF_CELL_SERIES_CUTOFF_2D = 0.5
+const _EULER_GAMMA_2D = Float64(Base.MathConstants.eulergamma)
+
+@inline function _scale_by_positive_square_2d(value::Float64, scale::Float64)
+    iszero(value) && return value
+    value_fraction, value_exponent = frexp(value)
+    scale_fraction, scale_exponent = frexp(scale)
+    return ldexp(
+        value_fraction * scale_fraction * scale_fraction,
+        value_exponent + 2 * scale_exponent,
+    )
+end
+
+function _small_self_cell_integral_2d(k::Float64, a_eq::Float64, ka::Float64)
+    # Work with the finite ratios J₁(z)/z and
+    # (zY₁(z) + 2/π)/z².  Evaluating zH₁⁽²⁾(z) - 2i/π directly loses the
+    # logarithmic real part once z² approaches machine precision.
+    z2_over_4 = (ka / 2)^2
+    term = 1.0
+    j_series = 1.0
+    harmonic = 0.0
+    y_series = 1.0 - 2 * _EULER_GAMMA_2D
+
+    for order in 1:32
+        harmonic += inv(Float64(order))
+        term *= -z2_over_4 / (order * (order + 1))
+        j_series += term
+        digamma_sum = 2 * harmonic + inv(Float64(order + 1)) -
+                       2 * _EULER_GAMMA_2D
+        y_series += digamma_sum * term
+        abs(term) <= eps(Float64) * abs(j_series) && break
+    end
+
+    j_ratio = j_series / 2
+    log_ka = iszero(ka) ? log(k) + log(a_eq) : log(ka)
+    y_ratio = (2 / π) * (log_ka - log(2.0)) * j_ratio -
+              y_series / (2π)
+    normalized_real = -(π / 2) * y_ratio
+    normalized_imag = -(π / 2) * j_ratio
+    value = ComplexF64(
+        _scale_by_positive_square_2d(normalized_real, a_eq),
+        _scale_by_positive_square_2d(normalized_imag, a_eq),
+    )
+    isfinite(value) ||
+        throw(OverflowError(
+            "self-cell integral is outside the representable ComplexF64 range."))
+    return value
+end
+
 """
     greens_2d(r, rp, k)
 
@@ -56,6 +105,9 @@ function self_cell_integral_2d(k::Float64, a_eq::Float64)
     isfinite(ka) ||
         throw(ArgumentError(
             "self-cell size parameter k*a_eq must be finite, got $ka."))
+    if ka <= _SELF_CELL_SERIES_CUTOFF_2D
+        return _small_self_cell_integral_2d(k, a_eq, ka)
+    end
     H1 = besselh(1, 2, ka)
     value = (-im * π / (2 * k^2)) * (ka * H1 - 2im / π)
     isfinite(value) ||

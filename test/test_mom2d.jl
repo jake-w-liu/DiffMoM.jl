@@ -85,6 +85,22 @@ end
         @test abs(real(D_self)) > 0
         @test abs(imag(D_self)) > 0
 
+        # The direct Hankel antiderivative cancels its logarithmic real part
+        # when (k*a)^2 approaches machine precision.  Check the stable small-
+        # argument branch against the leading analytic expansion, whose next
+        # correction is O((k*a)^2 log(k*a)).
+        tiny_k = 1e-6
+        tiny_a = 1e-6
+        tiny_ka = tiny_k * tiny_a
+        tiny_expected = ComplexF64(
+            -(tiny_a^2 / 2) *
+            (log(tiny_ka / 2) + Float64(Base.MathConstants.eulergamma) - 0.5),
+            -(π * tiny_a^2 / 4),
+        )
+        tiny_integral = self_cell_integral_2d(tiny_k, tiny_a)
+        @test tiny_integral ≈ tiny_expected rtol=2e-15
+        @test @allocated(self_cell_integral_2d(tiny_k, tiny_a)) == 0
+
         # Positive equivalent radius required
         @test_throws ArgumentError self_cell_integral_2d(k, 0.0)
         @test_throws ArgumentError self_cell_integral_2d(0.0, a_eq)
