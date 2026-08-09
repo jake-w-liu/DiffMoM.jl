@@ -43,6 +43,18 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
               Matrix{ComplexF64}(I, 6, 6)
         @test_throws OverflowError bianisotropic_clausius_mossotti_polarizability(
             Matrix{Float64}(10I, 6, 6), 1.0e308)
+        near_resonance_delta = 1.0e-10
+        near_resonance_scalar = clausius_mossotti_polarizability(
+            -2.0 + near_resonance_delta, 1.0)
+        near_resonance_coupled =
+            bianisotropic_clausius_mossotti_polarizability(
+                Matrix{Float64}(
+                    (-2.0 + near_resonance_delta) * I, 6, 6),
+                1.0)
+        @test near_resonance_coupled == near_resonance_scalar *
+                                           Matrix{ComplexF64}(I, 6, 6)
+        @test_throws ErrorException bianisotropic_clausius_mossotti_polarizability(
+            Matrix{Float64}(-2I, 6, 6), 1.0)
         @test_throws ArgumentError planewave_em_dda_3d(
             grid, Vec3(0.0, 0.0, k0), 1.0 + 0im,
             Vec3(1.0, 0.0, 0.0); eta0=Inf)

@@ -242,10 +242,10 @@ returned polarizability acts on the solver fields `[E; H]` and returns
     eta = _finite_positive_real_3d(eta0, "eta0")
     C = C6 isa BianisotropicMaterial3D ? C6.C6 : _as_cmat6_3d(C6, "C6")
     denom = C + 2 * SMatrix{6,6,ComplexF64,36}(I)
-    abs(det(denom)) > 100 * eps(Float64) ||
-        error("Bianisotropic Clausius-Mossotti polarizability is singular for C6 + 2I.")
+    inverse_denom = _validated_clausius_mossotti_inverse_3d(
+        denom, "Bianisotropic Clausius-Mossotti denominator C6 + 2I")
     I6 = SMatrix{6,6,ComplexF64,36}(I)
-    alpha_norm = V * (3 * ((C - I6) / denom))
+    alpha_norm = V * (3 * ((C - I6) * inverse_denom))
     if all(isfinite, alpha_norm)
         if radiative_correction
             alpha_norm = alpha_norm / (I6 + 1im * k^3 * alpha_norm / (6π))

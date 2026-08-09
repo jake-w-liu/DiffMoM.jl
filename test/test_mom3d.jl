@@ -62,6 +62,17 @@ println("\n── Test 46: 3D vector material DDA solver ──")
                                            Matrix{ComplexF64}(I, 3, 3)
         @test_throws OverflowError clausius_mossotti_polarizability(
             Matrix{Float64}(10I, 3, 3), 1.0e308)
+        near_resonance_delta = 1.0e-10
+        near_resonance_scalar = clausius_mossotti_polarizability(
+            -2.0 + near_resonance_delta, 1.0)
+        near_resonance_tensor = clausius_mossotti_polarizability(
+            Matrix{Float64}(
+                (-2.0 + near_resonance_delta) * I, 3, 3),
+            1.0)
+        @test near_resonance_tensor == near_resonance_scalar *
+                                          Matrix{ComplexF64}(I, 3, 3)
+        @test_throws ErrorException clausius_mossotti_polarizability(
+            Matrix{Float64}(-2I, 3, 3), 1.0)
         @test_throws ArgumentError electric_dipole_dyadic_3d(
             grid.centers[1], grid.centers[2], Inf)
         @test_throws ArgumentError dda_operator_3d(grid, Inf, 2.5)

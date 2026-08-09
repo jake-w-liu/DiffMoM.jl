@@ -272,6 +272,35 @@ function _clausius_mossotti_bigfloat(
     end
 end
 
+@inline function _validated_clausius_mossotti_inverse_3d(
+    denominator::SMatrix{N,N,ComplexF64,L},
+    label::AbstractString,
+) where {N,L}
+    scale = 0.0
+    @inbounds for component in denominator
+        scale = max(scale, abs(real(component)), abs(imag(component)))
+    end
+    tolerance = 100 * eps(Float64)
+    scale > tolerance || error("$label is singular or too close to singular.")
+
+    normalized = denominator / scale
+    factorization = lu(normalized; check=false)
+    issuccess(factorization) || error("$label is singular or too close to singular.")
+    inverse_normalized = inv(factorization)
+
+    inverse_norm = 0.0
+    @inbounds for row in 1:N
+        row_sum = 0.0
+        for col in 1:N
+            row_sum += abs(inverse_normalized[row, col])
+        end
+        inverse_norm = max(inverse_norm, row_sum)
+    end
+    scale / inverse_norm > tolerance ||
+        error("$label is singular or too close to singular.")
+    return inverse_normalized / scale
+end
+
 function _clausius_mossotti_bigfloat(
     epsm::AbstractMatrix{ComplexF64},
     V::Float64,
@@ -345,9 +374,9 @@ function clausius_mossotti_polarizability(eps_r::AbstractMatrix, volume::Real;
     k = _finite_nonnegative_k0_3d(k0)
     epsm = _as_cmat3(eps_r, "eps_r")
     denom = epsm + 2 * _CI3_DDA
-    abs(det(denom)) > 100 * eps(Float64) ||
-        error("Tensor Clausius-Mossotti polarizability is singular for eps_r + 2I.")
-    alpha0 = V * (3 * ((epsm - _CI3_DDA) / denom))
+    inverse_denom = _validated_clausius_mossotti_inverse_3d(
+        denom, "Tensor Clausius-Mossotti denominator eps_r + 2I")
+    alpha0 = V * (3 * ((epsm - _CI3_DDA) * inverse_denom))
     if all(isfinite, alpha0)
         if !radiative_correction
             return alpha0
