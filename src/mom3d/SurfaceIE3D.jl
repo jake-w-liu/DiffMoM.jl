@@ -127,6 +127,20 @@ function _finite_complex_surface_3d(x, label::AbstractString)
     return z
 end
 
+const _SURFACE_MEDIUM_FALLBACK_PRECISION = 256
+
+function _dielectric_medium_bigfloat_3d(k0::Float64, eta0::Float64,
+                                         eps_r::ComplexF64,
+                                         mu_r::ComplexF64)
+    return setprecision(BigFloat, _SURFACE_MEDIUM_FALLBACK_PRECISION) do
+        eps_b = Complex{BigFloat}(eps_r)
+        mu_b = Complex{BigFloat}(mu_r)
+        k_medium = ComplexF64(BigFloat(k0) * sqrt(eps_b * mu_b))
+        eta_medium = ComplexF64(BigFloat(eta0) * sqrt(mu_b / eps_b))
+        return k_medium, eta_medium
+    end
+end
+
 function dielectric_medium_3d(k0::Real, eps_r=1.0 + 0im, mu_r=1.0 + 0im;
                               eta0::Real=_ETA0_DDA)
     k0f = Float64(k0)
@@ -141,6 +155,11 @@ function dielectric_medium_3d(k0::Real, eps_r=1.0 + 0im, mu_r=1.0 + 0im;
     abs(muc) > 0 || error("mu_r must be nonzero.")
     k_medium = k0f * sqrt(epsc * muc)
     eta_medium = eta0f * sqrt(muc / epsc)
+    if !(isfinite(k_medium) && !iszero(k_medium) &&
+         isfinite(eta_medium) && !iszero(eta_medium))
+        k_medium, eta_medium = _dielectric_medium_bigfloat_3d(
+            k0f, eta0f, epsc, muc)
+    end
     isfinite(k_medium) && !iszero(k_medium) ||
         error("derived medium wavenumber must be finite and nonzero; got $k_medium.")
     isfinite(eta_medium) && !iszero(eta_medium) ||

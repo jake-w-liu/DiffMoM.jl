@@ -145,10 +145,26 @@ end
 
     @test_throws ErrorException dielectric_medium_3d(Inf)
     @test_throws ErrorException dielectric_medium_3d(k0; eta0=Inf)
-    @test_throws ErrorException dielectric_medium_3d(
+    large_balanced = dielectric_medium_3d(
         k0, 1e308 + 0im, 1e308 + 0im)
-    @test_throws ErrorException dielectric_medium_3d(
+    small_balanced = dielectric_medium_3d(
         k0, 1e-308 + 0im, 1e-308 + 0im)
+    @test large_balanced.k == ComplexF64(k0 * 1e308)
+    @test small_balanced.k == ComplexF64(k0 * 1e-308)
+    @test large_balanced.eta == ComplexF64(DiffMoM._ETA0_DDA)
+    @test small_balanced.eta == ComplexF64(DiffMoM._ETA0_DDA)
+
+    high_eps = dielectric_medium_3d(k0, 1e300 + 0im, 1e-300 + 0im)
+    high_mu = dielectric_medium_3d(k0, 1e-300 + 0im, 1e300 + 0im)
+    low_eta_ref, high_eta_ref = setprecision(BigFloat, 256) do
+        eta0_b = BigFloat(DiffMoM._ETA0_DDA)
+        return ComplexF64(eta0_b * sqrt(BigFloat(1e-300) / BigFloat(1e300))),
+               ComplexF64(eta0_b * sqrt(BigFloat(1e300) / BigFloat(1e-300)))
+    end
+    @test high_eps.k == ComplexF64(k0)
+    @test high_mu.k == ComplexF64(k0)
+    @test high_eps.eta == low_eta_ref
+    @test high_mu.eta == high_eta_ref
 
     K = assemble_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
     K_mf = matrixfree_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
