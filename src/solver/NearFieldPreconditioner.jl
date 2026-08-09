@@ -132,6 +132,57 @@ function PermutedPrecondData(inner::T,
         zeros(ComplexF64, N), ReentrantLock())
 end
 
+function _validate_preconditioner_factorization(factorization::Symbol,
+                                                ilu_tau::Float64;
+                                                allow_diag::Bool=true)
+    allowed = allow_diag ? (:lu, :ilu, :diag) : (:lu, :ilu)
+    factorization in allowed ||
+        throw(ArgumentError(
+            "invalid factorization=$factorization; expected one of $allowed"
+        ))
+    if factorization == :ilu
+        isfinite(ilu_tau) && ilu_tau >= 0.0 ||
+            throw(ArgumentError(
+                "ilu_tau must be finite and nonnegative, got $ilu_tau"
+            ))
+    end
+    return nothing
+end
+
+function _validate_nearfield_build_controls(cutoff::Float64,
+                                            neighbor_search::Symbol,
+                                            factorization::Symbol,
+                                            ilu_tau::Float64)
+    !isnan(cutoff) && cutoff >= 0.0 ||
+        throw(ArgumentError(
+            "near-field cutoff must be nonnegative and not NaN, got $cutoff"
+        ))
+    neighbor_search in (:spatial, :bruteforce) ||
+        throw(ArgumentError(
+            "invalid neighbor_search=$neighbor_search; expected :spatial or :bruteforce"
+        ))
+    _validate_preconditioner_factorization(factorization, ilu_tau)
+    return nothing
+end
+
+function _validate_nearfield_triplet_values(values::Vector{ComplexF64})
+    all(isfinite, values) ||
+        throw(ArgumentError(
+            "near-field matrix entries must contain only finite values"))
+    return nothing
+end
+
+function _validate_sparse_preconditioner_matrix(Z::SparseMatrixCSC,
+                                                label::AbstractString)
+    size(Z, 1) == size(Z, 2) ||
+        throw(DimensionMismatch("$label must be square, got size $(size(Z))"))
+    size(Z, 1) >= 1 ||
+        throw(ArgumentError("$label must contain at least one row and column"))
+    all(isfinite, nonzeros(Z)) ||
+        throw(ArgumentError("$label must contain only finite stored values"))
+    return size(Z, 1)
+end
+
 """
     rwg_centers(mesh, rwg)
 
@@ -427,12 +478,21 @@ function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3
 end
 
 function _build_diagonal_preconditioner_data(getvalue, N::Int, cutoff::Float64)
+    N >= 1 ||
+        throw(ArgumentError(
+            "cannot build a preconditioner for a zero-dimensional system"))
     diag_entries = Vector{ComplexF64}(undef, N)
     maxabs = 0.0
     @inbounds for i in 1:N
         zii = ComplexF64(getvalue(i, i))
+        isfinite(zii) ||
+            throw(ArgumentError(
+                "near-field diagonal entry $i must be finite, got $zii"))
         diag_entries[i] = zii
         ai = abs(zii)
+        isfinite(ai) ||
+            throw(OverflowError(
+                "magnitude of near-field diagonal entry $i is not representable"))
         if ai > maxabs
             maxabs = ai
         end
@@ -448,9 +508,12 @@ function _build_diagonal_preconditioner_data(getvalue, N::Int, cutoff::Float64)
     dinv = similar(diag_entries)
     @inbounds for i in 1:N
         dinv[i] = inv(diag_entries[i])
+        isfinite(dinv[i]) ||
+            throw(OverflowError(
+                "inverse of near-field diagonal entry $i is non-finite"))
     end
 
-    nnz_ratio = N == 0 ? 0.0 : (N / (N * N))
+    nnz_ratio = inv(Float64(N))
     return DiagonalPreconditionerData(dinv, cutoff, nnz_ratio)
 end
 
@@ -460,11 +523,14 @@ function _build_nearfield_preconditioner_from_entries(mesh::TriMesh, rwg::RWGDat
                                                        factorization::Symbol=:lu,
                                                        ilu_tau::Float64=1e-3)
     N = rwg.nedges
+    _validate_nearfield_build_controls(
+        cutoff, neighbor_search, factorization, ilu_tau)
+    N >= 1 ||
+        throw(ArgumentError(
+            "cannot build a preconditioner for a zero-dimensional RWG system"))
 
     if factorization == :diag
         return _build_diagonal_preconditioner_data(getvalue, N, cutoff)
-    elseif factorization ∉ (:lu, :ilu)
-        error("Invalid factorization: $factorization (expected :lu, :ilu, or :diag)")
     end
 
     centers = rwg_centers(mesh, rwg)
@@ -473,12 +539,12 @@ function _build_nearfield_preconditioner_from_entries(mesh::TriMesh, rwg::RWGDat
         _nearfield_triplets_spatial(centers, cutoff, getvalue)
     elseif neighbor_search == :bruteforce
         _nearfield_triplets_bruteforce(centers, cutoff, getvalue)
-    else
-        error("Invalid neighbor_search: $neighbor_search (expected :spatial or :bruteforce)")
     end
 
+    _validate_nearfield_triplet_values(V_val)
+
     Z_nf = sparse(I_idx, J_idx, V_val, N, N)
-    nnz_ratio = nnz(Z_nf) / max(N * N, 1)
+    nnz_ratio = (Float64(nnz(Z_nf)) / Float64(N)) / Float64(N)
 
     if factorization == :ilu
         ilu_fac = IncompleteLU.ilu(Z_nf, τ = ilu_tau)
@@ -501,7 +567,8 @@ functions m and n is ≤ `cutoff`. The sparse matrix is then LU-factorized.
 - `Z::Matrix{ComplexF64}`: the full N×N MoM matrix
 - `mesh::TriMesh`: the triangle mesh
 - `rwg::RWGData`: RWG basis function data
-- `cutoff::Float64`: distance cutoff (e.g., 0.5λ to 2λ)
+- `cutoff::Float64`: nonnegative distance cutoff (e.g., 0.5λ to 2λ);
+  `Inf` retains every entry
 - `neighbor_search`: `:spatial` (default) or `:bruteforce` reference mode
 
 # Returns
@@ -513,8 +580,12 @@ function build_nearfield_preconditioner(Z::Matrix{<:Number}, mesh::TriMesh,
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3)
     N = rwg.nedges
+    _validate_nearfield_build_controls(
+        cutoff, neighbor_search, factorization, ilu_tau)
     size(Z, 1) == N && size(Z, 2) == N ||
         throw(DimensionMismatch("Z has size $(size(Z)), expected ($N, $N) for RWG basis"))
+    all(isfinite, Z) ||
+        throw(ArgumentError("Z must contain only finite values"))
     return _build_nearfield_preconditioner_from_entries(mesh, rwg, cutoff,
         (m, n) -> Z[m, n];
         neighbor_search=neighbor_search,
@@ -535,6 +606,8 @@ function build_nearfield_preconditioner(A::AbstractMatrix{<:Number}, mesh::TriMe
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3)
     N = rwg.nedges
+    _validate_nearfield_build_controls(
+        cutoff, neighbor_search, factorization, ilu_tau)
     size(A, 1) == N && size(A, 2) == N ||
         throw(DimensionMismatch("A has size $(size(A)), expected ($N, $N) for RWG basis"))
     return _build_nearfield_preconditioner_from_entries(mesh, rwg, cutoff,
@@ -558,16 +631,15 @@ function build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff::Float
                                          ilu_tau::Float64=1e-3)
     cache = A.cache
     N = cache.rwg.nedges
+    _validate_nearfield_build_controls(
+        cutoff, neighbor_search, factorization, ilu_tau)
+    N >= 1 ||
+        throw(ArgumentError(
+            "cannot build a preconditioner for a zero-dimensional RWG system"))
 
     if factorization == :diag
         return _build_diagonal_preconditioner_data(
             (m, n) -> _efie_entry(cache, m, n), N, cutoff)
-    elseif factorization ∉ (:lu, :ilu)
-        error("Invalid factorization: $factorization (expected :lu, :ilu, or :diag)")
-    end
-
-    if neighbor_search ∉ (:spatial, :bruteforce)
-        error("Invalid neighbor_search: $neighbor_search (expected :spatial or :bruteforce)")
     end
 
     centers = rwg_centers(cache.mesh, cache.rwg)
@@ -578,8 +650,10 @@ function build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff::Float
         _nearfield_triplets_batched(cache, centers, cutoff)
     end
 
+    _validate_nearfield_triplet_values(V_val)
+
     Z_nf = sparse(I_idx, J_idx, V_val, N, N)
-    nnz_ratio = nnz(Z_nf) / max(N * N, 1)
+    nnz_ratio = (Float64(nnz(Z_nf)) / Float64(N)) / Float64(N)
 
     if factorization == :ilu
         ilu_fac = IncompleteLU.ilu(Z_nf, τ = ilu_tau)
@@ -605,6 +679,8 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
                                          area_tol_rel::Float64=1e-12,
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3)
+    _validate_nearfield_build_controls(
+        cutoff, :spatial, factorization, ilu_tau)
     A = matrixfree_efie_operator(mesh, rwg, k;
         quad_order=quad_order,
         eta0=eta0,
@@ -630,6 +706,7 @@ data using the cluster-tree permutation.
 function build_nearfield_preconditioner(A_aca::ACAOperator;
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3)
+    _validate_preconditioner_factorization(factorization, ilu_tau)
     N = A_aca.N
     perm = A_aca.tree.perm   # tree-order → original index
 
@@ -671,8 +748,9 @@ already assembled with the correct sparsity pattern from the octree).
 function build_nearfield_preconditioner(Z_nf::SparseMatrixCSC{ComplexF64,Int};
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3)
-    N = size(Z_nf, 1)
-    nnz_ratio = nnz(Z_nf) / max(N * N, 1)
+    _validate_preconditioner_factorization(factorization, ilu_tau)
+    N = _validate_sparse_preconditioner_matrix(Z_nf, "Z_nf")
+    nnz_ratio = (Float64(nnz(Z_nf)) / Float64(N)) / Float64(N)
 
     if factorization == :ilu
         ilu_fac = IncompleteLU.ilu(Z_nf, τ = ilu_tau)
@@ -681,24 +759,8 @@ function build_nearfield_preconditioner(Z_nf::SparseMatrixCSC{ComplexF64,Int};
         Z_nf_fac = lu(Z_nf)
         return NearFieldPreconditionerData(Z_nf_fac, Inf, nnz_ratio)
     elseif factorization == :diag
-        dinv = Vector{ComplexF64}(undef, N)
-        maxabs = 0.0
-        @inbounds for i in 1:N
-            zii = Z_nf[i, i]
-            dinv[i] = zii
-            ai = abs(zii)
-            if ai > maxabs; maxabs = ai; end
-        end
-        floor_abs = 1e-10 * max(maxabs, 1.0)
-        @inbounds for i in 1:N
-            if abs(dinv[i]) < floor_abs
-                dinv[i] = floor_abs + 0im
-            end
-            dinv[i] = inv(dinv[i])
-        end
-        return DiagonalPreconditionerData(dinv, Inf, nnz_ratio)
-    else
-        error("Invalid factorization: $factorization (expected :lu, :ilu, or :diag)")
+        return _build_diagonal_preconditioner_data(
+            (i, _) -> Z_nf[i, i], N, Inf)
     end
 end
 
@@ -1024,9 +1086,16 @@ function _build_mlfma_preconditioner_from_nearfield(A_mlfma,
                                                     Z_near::SparseMatrixCSC;
                                                     factorization::Symbol=:ilu,
                                                     ilu_tau::Float64=1e-2)
+    _validate_preconditioner_factorization(
+        factorization, ilu_tau; allow_diag=false)
     octree = A_mlfma.octree
     perm = copy(octree.perm)
     N = size(A_mlfma, 1)
+    _validate_sparse_preconditioner_matrix(Z_near, "MLFMA near-field matrix")
+    size(Z_near) == (N, N) ||
+        throw(DimensionMismatch(
+            "MLFMA near-field matrix has size $(size(Z_near)), expected ($N, $N)"
+        ))
 
     # Build inverse permutation
     iperm = zeros(Int, N)
@@ -1039,7 +1108,7 @@ function _build_mlfma_preconditioner_from_nearfield(A_mlfma,
     println("  Reordering Z_near to MLFMA ordering...")
     Z_perm = Z_near[perm, perm]
 
-    nnz_ratio = nnz(Z_perm) / max(N * N, 1)
+    nnz_ratio = (Float64(nnz(Z_perm)) / Float64(N)) / Float64(N)
 
     if factorization == :ilu
         println("  Running ILU(τ=$(ilu_tau)) on reordered matrix ($(nnz(Z_perm)) nnz)...")
@@ -1053,8 +1122,6 @@ function _build_mlfma_preconditioner_from_nearfield(A_mlfma,
         Z_perm = nothing; GC.gc()
         inner = NearFieldPreconditionerData(Z_fac, Inf, nnz_ratio)
         println("  LU done in $(round(t, digits=1))s")
-    else
-        error("Invalid factorization: $factorization (expected :ilu or :lu)")
     end
 
     return PermutedPrecondData(inner, perm, iperm, N, nnz_ratio)
@@ -1072,6 +1139,8 @@ The resulting preconditioner handles the permutation automatically.
 function build_mlfma_preconditioner(A_mlfma;
                                      factorization::Symbol=:ilu,
                                      ilu_tau::Float64=1e-2)
+    _validate_preconditioner_factorization(
+        factorization, ilu_tau; allow_diag=false)
     return _build_mlfma_preconditioner_from_nearfield(A_mlfma, A_mlfma.Z_near;
         factorization=factorization,
         ilu_tau=ilu_tau)
@@ -1091,6 +1160,8 @@ function build_mlfma_preconditioner(A_mlfma,
                                     reactive::Bool=false,
                                     factorization::Symbol=:ilu,
                                     ilu_tau::Float64=1e-2)
+    _validate_preconditioner_factorization(
+        factorization, ilu_tau; allow_diag=false)
     Z_loaded = _loaded_nearfield_matrix(A_mlfma.Z_near, Mp, theta;
         reactive=reactive)
     return _build_mlfma_preconditioner_from_nearfield(A_mlfma, Z_loaded;

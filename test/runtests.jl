@@ -3098,6 +3098,20 @@ catch
 end
 @assert thrown_bad_factorization "Expected error for invalid factorization mode"
 
+@test_throws ArgumentError build_nearfield_preconditioner(
+    Z_efie, mesh, rwg, NaN)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    Z_efie, mesh, rwg, -1.0)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    Z_efie, mesh, rwg, lambda0;
+    neighbor_search=:invalid_mode, factorization=:diag)
+Z_nf_nonfinite = copy(Z_efie)
+Z_nf_nonfinite[1, 1] = NaN + 0im
+@test_throws ArgumentError build_nearfield_preconditioner(
+    Z_nf_nonfinite, mesh, rwg, lambda0)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    Z_nf_nonfinite, mesh, rwg, lambda0; factorization=:diag)
+
 # Diagonal/Jacobi preconditioner path
 P_diag = build_nearfield_preconditioner(A_mf, lambda0; factorization=:diag)
 @assert P_diag isa DiagonalPreconditionerData
@@ -3893,6 +3907,11 @@ P_ilu = build_nearfield_preconditioner(ilu_Z, ilu_mesh, ilu_rwg, cutoff_ilu;
 @assert P_ilu isa ILUPreconditionerData
 @assert P_ilu.nnz_ratio > 0 && P_ilu.nnz_ratio <= 1.0
 println("  30a: ILU preconditioner built — nnz=$(round(P_ilu.nnz_ratio * 100, digits=1))%, τ=$(P_ilu.tau)")
+for invalid_tau in (-1.0, Inf, NaN)
+    @test_throws ArgumentError build_nearfield_preconditioner(
+        ilu_Z, ilu_mesh, ilu_rwg, cutoff_ilu;
+        factorization=:ilu, ilu_tau=invalid_tau)
+end
 
 # 30b: ILU-preconditioned GMRES converges
 I_ilu, stats_ilu = solve_gmres(ilu_Z, ilu_rhs; preconditioner=P_ilu, tol=1e-8, maxiter=500)
@@ -4081,6 +4100,14 @@ I_dense_ref = Z_dense_mlfma \ mlfma_v
 
 # Build preconditioner from MLFMA near-field
 P_mlfma = build_nearfield_preconditioner(A_mlfma.Z_near; factorization=:lu)
+@test_throws DimensionMismatch build_nearfield_preconditioner(
+    spzeros(ComplexF64, 2, 3); factorization=:diag)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    spzeros(ComplexF64, 0, 0); factorization=:diag)
+nonfinite_sparse_nf = spdiagm(0 => ones(ComplexF64, 2))
+nonfinite_sparse_nf[1, 1] = Inf + 0im
+@test_throws ArgumentError build_nearfield_preconditioner(
+    nonfinite_sparse_nf; factorization=:diag)
 I_mlfma, stats_mlfma = solve_gmres(A_mlfma, mlfma_v;
     preconditioner=P_mlfma, tol=1e-4, maxiter=200)
 
