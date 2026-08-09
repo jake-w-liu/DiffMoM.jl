@@ -123,6 +123,9 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     # ── Step 2: Build RWG ──
     rwg = build_rwg(mesh)
     N = rwg.nedges
+    N >= 1 ||
+        throw(ArgumentError(
+            "solve_scattering: mesh produces no RWG unknowns; at least two triangles sharing an edge are required"))
     verbose && println("  N = $N RWG unknowns ($(round(estimate_dense_matrix_gib(N), sigdigits=3)) GiB dense)")
 
     # ── Step 3: Method selection ──
@@ -150,6 +153,9 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
         v = assemble_excitation(mesh, rwg, excitation; quad_order=quad_order)
     end
     length(v) == N || error("solve_scattering: excitation length $(length(v)) != N=$N")
+    all(isfinite, v) ||
+        throw(ArgumentError(
+            "solve_scattering: excitation vector must contain only finite values"))
 
     # ── Step 5: Assembly ──
     local A_mlfma
@@ -230,7 +236,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
 
     t_solve = @elapsed begin
         if selected_method == :dense_direct
-            I_coeffs = Z \ v
+            I_coeffs = solve_forward(Z, v; solver=:direct)
         elseif selected_method == :dense_gmres
             I_coeffs, stats = solve_gmres(Z, v;
                                            preconditioner=P_nf,

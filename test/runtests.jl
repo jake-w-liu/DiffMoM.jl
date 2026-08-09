@@ -3511,6 +3511,20 @@ result_auto = solve_scattering(mesh, freq, pw_exc;
     make_plane_wave(2 .* k_vec, E0, pol);
     verbose=false,
     check_resolution=false)
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, fill(ComplexF64(NaN, 0.0), N);
+    verbose=false,
+    check_resolution=false)
+
+single_triangle_mesh = TriMesh(
+    Float64[0 1 0; 0 0 1; 0 0 0],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+@test build_rwg(single_triangle_mesh).nedges == 0
+@test_throws ArgumentError solve_scattering(
+    single_triangle_mesh, freq, ComplexF64[];
+    verbose=false,
+    check_resolution=false)
 
 # Verify solution matches manual dense solve
 rel_workflow_err = norm(result_auto.I_coeffs - I_pec) / norm(I_pec)
