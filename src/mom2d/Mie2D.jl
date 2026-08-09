@@ -302,11 +302,13 @@ function mie_scattered_field_2d(k0::Float64, a::Float64, eps_r::Float64,
     E_scat = zeros(ComplexF64, M)
 
     for m in 1:M
-        rho = sqrt(dot(r_obs[m], r_obs[m]))
+        rho = hypot(r_obs[m][1], r_obs[m][2])
         phi = atan(r_obs[m][2], r_obs[m][1])
 
         for n in -N:N
-            E_scat[m] += (-im + 0.0)^n * c[n + N + 1] * besselh(n, 2, k0 * rho) *
+            coefficient = c[n + N + 1]
+            iszero(coefficient) && continue
+            E_scat[m] += (-im + 0.0)^n * coefficient * besselh(n, 2, k0 * rho) *
                          exp(im * n * (phi - phi_inc))
         end
         isfinite(E_scat[m]) ||

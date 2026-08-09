@@ -248,6 +248,18 @@ end
         mie_coefficients_2d(1.0, tiny_size, 4.0)
         @test @allocated(mie_coefficients_2d(1.0, tiny_size, 4.0)) < 500_000
 
+        tiny_surface = [Vec2(tiny_size, 0.0)]
+        tiny_pec_scattered = mie_scattered_field_2d(
+            1.0, tiny_size, 1.0, tiny_surface; pec=true)
+        @test all(isfinite, tiny_pec_scattered)
+        @test tiny_pec_scattered[1] ≈ -1.0 + 0.0im rtol=1e-15
+        @test all(isfinite, mie_total_field_2d(
+            1.0, tiny_size, 1.0, tiny_surface; pec=true))
+        @test all(isfinite, mie_scattered_field_2d(
+            1.0, tiny_size, 4.0, tiny_surface))
+        @test all(isfinite, mie_scattered_field_2d(
+            1.0, tiny_size, 0.0, tiny_surface))
+
         # Symmetry: c_{-n} should satisfy specific relations
         # For symmetric incidence (phi_inc=0), c_{-n} = c_n
         for n in 1:min(N, 5)
