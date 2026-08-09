@@ -17,6 +17,26 @@ export EMDDAOperator3D, EMDDAResult3D, make_voxel_grid_3d
     end
 end
 
+@inline _voxel_axis_center_3d(origin::Float64, spacing::Float64, index::Int) =
+    muladd(Float64(index) - 0.5, spacing, origin)
+
+function _validate_voxel_axis_3d(origin::Float64, spacing::Float64,
+                                 count::Int, label::AbstractString)
+    previous = _voxel_axis_center_3d(origin, spacing, 1)
+    isfinite(previous) ||
+        throw(ArgumentError(
+            "VoxelGrid3D $label-axis center 1 is non-finite."))
+    @inbounds for index in 2:count
+        current = _voxel_axis_center_3d(origin, spacing, index)
+        (isfinite(current) && current > previous) ||
+            throw(ArgumentError(
+                "VoxelGrid3D $label-axis centers are not representably distinct " *
+                "at indices $(index - 1) and $index."))
+        previous = current
+    end
+    return nothing
+end
+
 """
     VoxelGrid3D
 
@@ -70,6 +90,10 @@ struct VoxelGrid3D
             throw(ArgumentError(
                 "VoxelGrid3D origins must be finite."))
 
+        _validate_voxel_axis_3d(x0, dx, nx, "x")
+        _validate_voxel_axis_3d(y0, dy, ny, "y")
+        _validate_voxel_axis_3d(z0, dz, nz, "z")
+
         expected_volume = dx * dy * dz
         isfinite(expected_volume) && expected_volume > 0.0 ||
             throw(ArgumentError(
@@ -85,11 +109,11 @@ struct VoxelGrid3D
 
         index = 0
         @inbounds for iz in 1:nz
-            expected_z = z0 + (iz - 0.5) * dz
+            expected_z = _voxel_axis_center_3d(z0, dz, iz)
             for iy in 1:ny
-                expected_y = y0 + (iy - 0.5) * dy
+                expected_y = _voxel_axis_center_3d(y0, dy, iy)
                 for ix in 1:nx
-                    expected_x = x0 + (ix - 0.5) * dx
+                    expected_x = _voxel_axis_center_3d(x0, dx, ix)
                     index += 1
                     center = centers[index]
                     (isfinite(expected_x) &&
@@ -174,6 +198,9 @@ function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
     all(isfinite, (dx, dy, dz)) && dx > 0 && dy > 0 && dz > 0 ||
         throw(ArgumentError(
             "VoxelGrid3D spacings must be finite and positive."))
+    _validate_voxel_axis_3d(x1, dx, nx, "x")
+    _validate_voxel_axis_3d(y1, dy, ny, "y")
+    _validate_voxel_axis_3d(z1, dz, nz, "z")
     volume = dx * dy * dz
     isfinite(volume) && volume > 0 ||
         throw(ArgumentError(
@@ -184,11 +211,11 @@ function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
 
     idx = 0
     for iz in 1:nz
-        zc = z1 + (iz - 0.5) * dz
+        zc = _voxel_axis_center_3d(z1, dz, iz)
         for iy in 1:ny
-            yc = y1 + (iy - 0.5) * dy
+            yc = _voxel_axis_center_3d(y1, dy, iy)
             for ix in 1:nx
-                xc = x1 + (ix - 0.5) * dx
+                xc = _voxel_axis_center_3d(x1, dx, ix)
                 idx += 1
                 centers[idx] = Vec3(xc, yc, zc)
             end

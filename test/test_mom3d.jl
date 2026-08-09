@@ -30,6 +30,9 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test_throws ArgumentError VoxelGrid3D(
             [Vec3(0.6, 0.5, 0.5)], [1.0], 1, 1, 1, 1,
             1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+        @test_throws ArgumentError VoxelGrid3D(
+            (1.0, nextfloat(1.0)), (0.0, 1.0), (0.0, 1.0),
+            3, 1, 1)
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
         @test_throws ArgumentError clausius_mossotti_polarizability(
             2.5, grid.volumes[1];
