@@ -48,8 +48,17 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                             beta_scale::Number)
     length(result) == size(Q, 1) || throw(DimensionMismatch("result length $(length(result)) != $(size(Q, 1))"))
     length(x) == size(Q, 2) || throw(DimensionMismatch("input length $(length(x)) != $(size(Q, 2))"))
-    mul!(result, Q.A, x, alpha_scale, beta_scale)
-    mul!(result, Q.B, x, alpha_scale, one(ComplexF64))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(result, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            result .*= beta_scale
+        end
+        return result
+    end
+    xread = Base.mightalias(result, x) ? copy(x) : x
+    mul!(result, Q.A, xread, alpha_scale, beta_scale)
+    mul!(result, Q.B, xread, alpha_scale, one(ComplexF64))
     return result
 end
 
@@ -112,6 +121,17 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                             beta_scale::Number)
     length(result) == Q.N || throw(DimensionMismatch("result length $(length(result)) != $(Q.N)"))
     length(I_coeffs) == Q.N || throw(DimensionMismatch("input length $(length(I_coeffs)) != $(Q.N)"))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(result, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            @inbounds for m in eachindex(result)
+                result[m] *= beta_scale
+            end
+        end
+        return result
+    end
+    input_read = Base.mightalias(result, I_coeffs) ? copy(I_coeffs) : I_coeffs
     if iszero(beta_scale)
         fill!(result, zero(ComplexF64))
     elseif beta_scale != one(beta_scale)
@@ -119,8 +139,6 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
             result[m] *= beta_scale
         end
     end
-    iszero(alpha_scale) && return result
-
     NΩ = length(Q.weights)
     @inbounds for q in 1:NΩ
         if Q.mask !== nothing && !Q.mask[q]
@@ -133,7 +151,7 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
         yq = zero(ComplexF64)
         for n in 1:Q.N
             gn = SVector{3,ComplexF64}(Q.G_mat[idx+1, n], Q.G_mat[idx+2, n], Q.G_mat[idx+3, n])
-            yq += dot(p, gn) * I_coeffs[n]
+            yq += dot(p, gn) * input_read[n]
         end
 
         for m in 1:Q.N

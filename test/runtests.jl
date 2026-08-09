@@ -1149,6 +1149,9 @@ println("  Objective consistency (I†QI vs direct projected power): $rel_q_err"
 QI_operator = _assert_zero_allocation_mul!(Q_operator, I_pec)
 @assert norm(QI_operator - Q * I_pec) / max(norm(Q * I_pec), 1e-30) < 1e-12
 @assert _matrix_entry_allocation(Q_operator, 1, 1) <= 128
+Q_sum_operator = DiffMoM.sum_q_matrix(Q_operator, Q_operator)
+QI_sum_operator = _assert_zero_allocation_mul!(Q_sum_operator, I_pec)
+@assert QI_sum_operator ≈ 2 .* (Q * I_pec) rtol=1e-12
 QI_apply = apply_Q(G_mat, grid, pol_mat, I_pec; mask=mask)
 @assert norm(QI_apply - Q * I_pec) / max(norm(Q * I_pec), 1e-30) < 1e-12
 @assert _apply_q_allocation(G_mat, grid, pol_mat, I_pec, mask) <=
@@ -1158,6 +1161,23 @@ q_initial = randn(MersenneTwister(606), ComplexF64, N)
 q_scaled = copy(q_initial)
 mul!(q_scaled, Q_operator, I_pec, 2.0, -0.5)
 @assert q_scaled ≈ 2.0 .* (Q * I_pec) .- 0.5 .* q_initial
+for q_operator in (Q_operator, Q_sum_operator)
+    _assert_scaled_mul_contract(q_operator, I_pec, q_initial)
+
+    q_overlap_storage = vcat(I_pec, 2.0 - 3.0im)
+    q_overlap_x = view(q_overlap_storage, 1:N)
+    q_overlap_y = view(q_overlap_storage, 2:(N + 1))
+    q_overlap_x_initial = copy(q_overlap_x)
+    q_overlap_y_initial = copy(q_overlap_y)
+    q_overlap_alpha = 1.2 - 0.1im
+    q_overlap_beta = -0.4 + 0.2im
+    q_overlap_expected =
+        q_overlap_alpha .* (q_operator * q_overlap_x_initial) .+
+        q_overlap_beta .* q_overlap_y_initial
+    mul!(q_overlap_y, q_operator, q_overlap_x,
+         q_overlap_alpha, q_overlap_beta)
+    @test q_overlap_y ≈ q_overlap_expected rtol=1e-12
+end
 
 # RCS helper checks
 sigma = bistatic_rcs(E_ff; E0=1.0)
