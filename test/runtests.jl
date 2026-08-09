@@ -140,6 +140,23 @@ function _assert_scaled_mul_contract(A, x, y_initial)
     return nothing
 end
 
+function _assert_zero_allocation_overlap_mul_contract(A, x, y_tail)
+    alpha_scale = 1.2 - 0.1im
+    beta_scale = -0.4 + 0.2im
+    storage = vcat(x, ComplexF64(y_tail))
+    overlap_x = view(storage, 1:length(x))
+    overlap_y = view(storage, 2:(length(x) + 1))
+    x_initial = copy(overlap_x)
+    y_initial = copy(overlap_y)
+    expected = alpha_scale .* (A * x_initial) .+ beta_scale .* y_initial
+    mul!(overlap_y, A, overlap_x, alpha_scale, beta_scale)
+    @assert overlap_y ≈ expected rtol=1e-12
+    allocation = @allocated mul!(
+        overlap_y, A, overlap_x, alpha_scale, beta_scale)
+    @assert allocation <= 128
+    return nothing
+end
+
 function _assert_single_workspace_mul!(A, x)
     result = zeros(ComplexF64, first(size(A)))
     mul!(result, A, x)
@@ -4209,6 +4226,9 @@ rhs_adj = dot(adjoint(A_mlfma) * y_test, x_test)
 _assert_single_complex_output_allocation(adjoint(A_mlfma), y_test)
 _assert_scaled_mul_contract(A_mlfma, x_test, y_test)
 _assert_scaled_mul_contract(adjoint(A_mlfma), y_test, x_test)
+_assert_zero_allocation_overlap_mul_contract(A_mlfma, x_test, 2.0 - 3.0im)
+_assert_zero_allocation_overlap_mul_contract(
+    adjoint(A_mlfma), y_test, -4.0 + 1.5im)
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"

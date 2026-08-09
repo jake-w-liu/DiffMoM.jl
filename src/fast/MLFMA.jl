@@ -1157,6 +1157,8 @@ mutable struct MLFMAWorkspace
     shifted_buf::Vector{Matrix{ComplexF64}}
     # Per-level-transition scratch: filter result (4, child_npts) for disaggregation
     filter_result::Vector{Matrix{ComplexF64}}
+    # Input snapshot used only when x and y overlap.
+    input_copy::Vector{ComplexF64}
     # Forward and adjoint matvecs reuse every buffer above.
     work_lock::ReentrantLock
 end
@@ -1169,9 +1171,10 @@ MLFMAWorkspace(
     interp_result::Vector{Matrix{ComplexF64}},
     shifted_buf::Vector{Matrix{ComplexF64}},
     filter_result::Vector{Matrix{ComplexF64}},
+    input_copy::Vector{ComplexF64},
 ) = MLFMAWorkspace(
     agg, incoming, agg_disagg_scratch, disagg_disagg_scratch,
-    interp_result, shifted_buf, filter_result, ReentrantLock(),
+    interp_result, shifted_buf, filter_result, input_copy, ReentrantLock(),
 )
 
 function _build_mlfma_workspace(octree::Octree,
@@ -1231,7 +1234,8 @@ function _build_mlfma_workspace(octree::Octree,
 
     return MLFMAWorkspace(agg, incoming,
                            agg_disagg_scratch, disagg_disagg_scratch,
-                           interp_result_vec, shifted_buf_vec, filter_result_vec)
+                           interp_result_vec, shifted_buf_vec, filter_result_vec,
+                           zeros(ComplexF64, length(octree.perm)))
 end
 
 # ─── MLFMAOperator ──────────────────────────────────────────────
@@ -1512,9 +1516,15 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
     ws = A.workspace
     agg = ws.agg
     incoming = ws.incoming
+    xread = if Base.mightalias(y, x)
+        copyto!(ws.input_copy, x)
+        ws.input_copy
+    else
+        x
+    end
 
     # 1. Near-field
-    mul!(y, A.Z_near, x, alpha_scale, beta_scale)
+    mul!(y, A.Z_near, xread, alpha_scale, beta_scale)
 
     # 2. Aggregation at leaf level
     leaf_level = A.octree.levels[nL]
@@ -1526,7 +1536,7 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
         fill!(a, zero(ComplexF64))
         for n_perm in box.bf_range
             n = A.octree.perm[n_perm]
-            xn = x[n]
+            xn = xread[n]
             if abs(xn) > 0
                 @inbounds for q in 1:leaf_samp.npts
                     for c in 1:4
@@ -1704,9 +1714,15 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
     ws = A.op.workspace
     agg = ws.agg
     incoming = ws.incoming
+    xread = if Base.mightalias(y, x)
+        copyto!(ws.input_copy, x)
+        ws.input_copy
+    else
+        x
+    end
 
     # Near-field adjoint
-    mul!(y, adjoint(A.op.Z_near), x, alpha_scale, beta_scale)
+    mul!(y, adjoint(A.op.Z_near), xread, alpha_scale, beta_scale)
 
     leaf_level = A.op.octree.levels[nL]
     leaf_samp = A.op.samplings[nL - 1]
@@ -1726,7 +1742,7 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
         inc_adj = incoming[nL - 1][bi]
         for n_perm in box.bf_range
             n = A.op.octree.perm[n_perm]
-            xn = x[n]
+            xn = xread[n]
             if abs(xn) > 0
                 @inbounds for q in 1:leaf_samp.npts
                     weighted = leaf_samp.weights[q] * xn
