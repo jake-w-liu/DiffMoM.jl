@@ -52,10 +52,23 @@ Uses the empirical formula: L = floor(k*d + 2.16 * p^(2/3) * (k*e)^(1/3))
 where d = √3 * e (box diagonal), e = box edge length.
 """
 function truncation_order(box_edge::Float64, k::Float64; precision::Int=3)
+    isfinite(box_edge) && box_edge > 0.0 ||
+        throw(ArgumentError(
+            "truncation_order: box_edge must be finite and positive, got $box_edge"))
+    isfinite(k) && k > 0.0 ||
+        throw(ArgumentError(
+            "truncation_order: k must be finite and positive, got $k"))
+    precision >= 1 ||
+        throw(ArgumentError(
+            "truncation_order: precision must be at least 1, got $precision"))
     d = sqrt(3.0) * box_edge    # box diagonal
     kd = k * d                   # main truncation term uses diagonal
     ke = k * box_edge            # excess term uses edge (standard convention)
-    L = floor(Int, kd + 2.16 * precision^(2/3) * ke^(1/3))
+    estimate = kd + 2.16 * precision^(2/3) * ke^(1/3)
+    isfinite(estimate) && estimate <= typemax(Int) ||
+        throw(OverflowError(
+            "truncation_order: order estimate is not representable"))
+    L = floor(Int, estimate)
     return max(L, 3)
 end
 
@@ -67,9 +80,12 @@ Create a spherical sampling grid for truncation order L.
 φ: Uniform with Nφ = 2L+2 points on [0, 2π)
 """
 function make_sphere_sampling(L::Int)
-    ntheta = L + 1
-    nphi = 2 * L + 2
-    npts = ntheta * nphi
+    L >= 0 ||
+        throw(ArgumentError(
+            "make_sphere_sampling: L must be nonnegative, got $L"))
+    ntheta = Base.checked_add(L, 1)
+    nphi = Base.checked_add(Base.checked_mul(2, L), 2)
+    npts = Base.checked_mul(ntheta, nphi)
 
     # Gauss-Legendre nodes on [-1,1] → θ via acos
     gl_nodes, gl_weights = gauss_legendre(ntheta)
@@ -1277,6 +1293,13 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
                                precision::Int=3,
                                eta0::Float64=376.730313668,
                                verbose::Bool=false)
+    _validated_octree_leaf_edge(k, leaf_lambda)
+    precision >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: precision must be at least 1, got $precision"))
+    isfinite(eta0) && eta0 > 0.0 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: eta0 must be finite and positive, got $eta0"))
     N = rwg.nedges
     centers = rwg_centers(mesh, rwg)
 

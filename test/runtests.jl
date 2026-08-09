@@ -3926,6 +3926,40 @@ println("  Setup: $(mlfma_Nx)×$(mlfma_Ny) plate, N=$mlfma_N, freq=$(mlfma_freq/
 
 # 31a: Octree construction
 mlfma_centers = rwg_centers(mlfma_mesh, mlfma_rwg)
+@test_throws ArgumentError build_octree(Vec3[], mlfma_k)
+for invalid_octree_k in (0.0, -mlfma_k, Inf, NaN)
+    @test_throws ArgumentError build_octree(mlfma_centers, invalid_octree_k)
+end
+for invalid_leaf_lambda in (0.0, -0.5, Inf, NaN)
+    @test_throws ArgumentError build_octree(
+        mlfma_centers, mlfma_k; leaf_lambda=invalid_leaf_lambda)
+end
+@test_throws ArgumentError build_octree(
+    [Vec3(NaN, 0.0, 0.0)], mlfma_k)
+@test_throws OverflowError build_octree(
+    [Vec3(-floatmax(Float64), 0.0, 0.0),
+     Vec3(floatmax(Float64), 0.0, 0.0)], mlfma_k)
+@test_throws OverflowError build_octree(
+    mlfma_centers, mlfma_k; leaf_lambda=1.0e-100)
+
+for invalid_truncation_input in (
+    (0.0, mlfma_k, 3), (1.0, 0.0, 3), (1.0, mlfma_k, 0)
+)
+    @test_throws ArgumentError DiffMoM.truncation_order(
+        invalid_truncation_input[1], invalid_truncation_input[2];
+        precision=invalid_truncation_input[3])
+end
+@test_throws ArgumentError DiffMoM.make_sphere_sampling(-1)
+@test_throws OverflowError DiffMoM.make_sphere_sampling(typemax(Int))
+
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; precision=0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; eta0=0.0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, 0.0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; leaf_lambda=0.0)
 octree = build_octree(mlfma_centers, mlfma_k; leaf_lambda=0.5)
 
 # Verify all BFs are assigned via permutation

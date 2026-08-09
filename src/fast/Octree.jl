@@ -35,6 +35,23 @@ struct Octree
     root_edge::Float64              # edge length of root box
 end
 
+# Leave one Float64 significand bit for the half-cell offset used in box centers.
+const _MAX_OCTREE_DEPTH = min(8 * sizeof(Int) - 2, precision(Float64) - 1)
+
+@inline function _validated_octree_leaf_edge(k::Float64, leaf_lambda::Float64)
+    isfinite(k) && k > 0.0 ||
+        throw(ArgumentError(
+            "build_octree: k must be finite and positive, got $k"))
+    isfinite(leaf_lambda) && leaf_lambda > 0.0 ||
+        throw(ArgumentError(
+            "build_octree: leaf_lambda must be finite and positive, got $leaf_lambda"))
+    leaf_edge = leaf_lambda * (2π / k)
+    isfinite(leaf_edge) && leaf_edge > 0.0 ||
+        throw(OverflowError(
+            "build_octree: k=$k and leaf_lambda=$leaf_lambda produce an unrepresentable leaf edge"))
+    return leaf_edge
+end
+
 """
     build_octree(centers, k; leaf_lambda=0.25)
 
@@ -47,9 +64,13 @@ Returns an `Octree` with BFs permuted for spatial locality.
 """
 function build_octree(centers::Vector{Vec3}, k::Float64; leaf_lambda::Float64=0.25)
     N = length(centers)
-    N > 0 || error("build_octree: empty centers")
-    λ = 2π / k
-    leaf_edge = leaf_lambda * λ
+    N > 0 || throw(ArgumentError("build_octree: centers must not be empty"))
+    leaf_edge = _validated_octree_leaf_edge(k, leaf_lambda)
+    @inbounds for i in eachindex(centers)
+        all(isfinite, centers[i]) ||
+            throw(ArgumentError(
+                "build_octree: center $i must be finite, got $(centers[i])"))
+    end
 
     # 1. Bounding cube
     cmin = Vec3(Inf, Inf, Inf)
@@ -59,28 +80,52 @@ function build_octree(centers::Vector{Vec3}, k::Float64; leaf_lambda::Float64=0.
         cmax = Vec3(max(cmax[1], c[1]), max(cmax[2], c[2]), max(cmax[3], c[3]))
     end
     span = cmax - cmin
+    all(isfinite, span) ||
+        throw(OverflowError(
+            "build_octree: center coordinate extent is not representable"))
     max_span = max(span[1], span[2], span[3], leaf_edge)
     # Pad by 1% to avoid edge cases
     pad = 0.01 * max_span
-    origin = cmin - Vec3(pad, pad, pad)
     cube_edge = max_span + 2 * pad
+    isfinite(cube_edge) && cube_edge > 0.0 ||
+        throw(OverflowError(
+            "build_octree: padded root-box edge is not representable"))
 
     # 2. Number of levels
-    nLevels = max(2, ceil(Int, log2(cube_edge / leaf_edge)) + 1)
-    # Adjust leaf_edge so root box = leaf_edge * 2^(nLevels-1)
-    root_edge = leaf_edge * (1 << (nLevels - 1))
+    depth_float = max(1.0, ceil(log2(cube_edge) - log2(leaf_edge)))
+    isfinite(depth_float) && depth_float <= _MAX_OCTREE_DEPTH ||
+        throw(OverflowError(
+            "build_octree: geometry requires octree depth $depth_float, " *
+            "but Float64/Int indexing supports at most $_MAX_OCTREE_DEPTH"))
+    depth = Int(depth_float)
+    root_edge = ldexp(leaf_edge, depth)
+    if root_edge < cube_edge
+        depth < _MAX_OCTREE_DEPTH ||
+            throw(OverflowError(
+                "build_octree: padded geometry does not fit in the maximum representable octree depth"))
+        depth += 1
+        root_edge = ldexp(leaf_edge, depth)
+    end
+    isfinite(root_edge) && root_edge > 0.0 ||
+        throw(OverflowError(
+            "build_octree: root-box edge is not representable"))
+    nLevels = depth + 1
+    grid_side = 1 << depth
 
     # Re-center origin so the root box is centered on the geometry
-    geo_center = (cmin + cmax) / 2
+    geo_center = cmin + span / 2
     origin = geo_center - Vec3(root_edge / 2, root_edge / 2, root_edge / 2)
+    all(isfinite, origin) ||
+        throw(OverflowError(
+            "build_octree: root-box origin is not representable"))
 
     # 3. Assign each BF to a leaf box
     leaf_ijk = Vector{NTuple{3,Int}}(undef, N)
     for n in 1:N
         rel = centers[n] - origin
-        i = clamp(floor(Int, rel[1] / leaf_edge), 0, (1 << (nLevels - 1)) - 1)
-        j = clamp(floor(Int, rel[2] / leaf_edge), 0, (1 << (nLevels - 1)) - 1)
-        kk = clamp(floor(Int, rel[3] / leaf_edge), 0, (1 << (nLevels - 1)) - 1)
+        i = clamp(floor(Int, rel[1] / leaf_edge), 0, grid_side - 1)
+        j = clamp(floor(Int, rel[2] / leaf_edge), 0, grid_side - 1)
+        kk = clamp(floor(Int, rel[3] / leaf_edge), 0, grid_side - 1)
         leaf_ijk[n] = (i, j, kk)
     end
 
@@ -129,7 +174,7 @@ function build_octree(centers::Vector{Vec3}, k::Float64; leaf_lambda::Float64=0.
 
     for l in (nLevels - 1):-1:1
         child_level = levels[l + 1]
-        edge_l = leaf_edge * (1 << (nLevels - l))
+        edge_l = ldexp(leaf_edge, nLevels - l)
         parent_boxes = OctreeBox[]
         parent_ijk_map = Dict{NTuple{3,Int}, Int}()
 
