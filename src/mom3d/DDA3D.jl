@@ -1213,15 +1213,70 @@ function scattered_field_dda_3d(res::DDAResult3D, r_obs::AbstractVector{Vec3})
         E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
-            E += _electric_dipole_apply_3d(
+            E += _electric_dipole_alpha_apply_3d(
                 r_obs[m], res.grid.centers[j], res.k0,
-                _scaled_alpha_apply_3d(
-                    res.alpha[j], res.E_total[j], 1.0,
-                    "DDA induced dipole", j))
+                res.alpha[j], res.E_total[j])
         end
         out[m] = E
     end
     return out
+end
+
+function _farfield_alpha_contribution_bigfloat_dda_3d(
+        alpha,
+        field::CVec3,
+        k::Float64,
+        direction::Vec3,
+        center::Vec3)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        q = _alpha_apply_bigfloat_vector_3d(alpha, field)
+        n = SVector{3,BigFloat}(
+            BigFloat(direction[1]),
+            BigFloat(direction[2]),
+            BigFloat(direction[3]),
+        )
+        projected = q - n * sum(n[index] * q[index] for index in 1:3)
+        phase_argument = BigFloat(k) * sum(
+            n[index] * BigFloat(center[index]) for index in 1:3)
+        phase = exp(Complex{BigFloat}(0, phase_argument))
+        prefactor = BigFloat(k)^2 / (4 * BigFloat(pi))
+        value = phase * prefactor * projected
+        converted = CVec3(
+            ComplexF64(value[1]),
+            ComplexF64(value[2]),
+            ComplexF64(value[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "DDA far-field contribution is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@inline function _farfield_alpha_contribution_dda_3d(
+        alpha,
+        field::CVec3,
+        k::Float64,
+        direction::Vec3,
+        center::Vec3,
+        projection)
+    q = _alpha_apply(alpha, field)
+    if all(isfinite, q) &&
+       !_alpha_field_product_loses_range_3d(alpha, field)
+        phase_argument = k * dot(direction, center)
+        if isfinite(phase_argument)
+            contribution = exp(1im * phase_argument) * (projection * q)
+            prefactor, scale_fraction, scale_exponent =
+                _farfield_prefactor_dda_3d(k)
+            value = iszero(scale_fraction) ?
+                    prefactor * contribution :
+                    _scale_farfield_vector_dda_3d(
+                        contribution, scale_fraction, scale_exponent)
+            all(isfinite, value) && return value
+        end
+    end
+    return _farfield_alpha_contribution_bigfloat_dda_3d(
+        alpha, field, k, direction, center)
 end
 
 """
@@ -1237,19 +1292,11 @@ function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
     F = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    prefactor, scale_fraction, scale_exponent =
-        _farfield_prefactor_dda_3d(res.k0)
-    scaled_prefactor = !iszero(scale_fraction)
     for j in 1:res.grid.nvoxels
         iszero(res.alpha[j]) && continue
-        phase = exp(1im * res.k0 * dot(n, res.grid.centers[j]))
-        contribution = phase * (proj * _scaled_alpha_apply_3d(
-            res.alpha[j], res.E_total[j], 1.0,
-            "DDA induced dipole", j))
-        F += scaled_prefactor ?
-             _scale_farfield_vector_dda_3d(
-                 contribution, scale_fraction, scale_exponent) :
-             prefactor * contribution
+        F += _farfield_alpha_contribution_dda_3d(
+            res.alpha[j], res.E_total[j], res.k0,
+            n, res.grid.centers[j], proj)
     end
     all(isfinite, F) ||
         throw(OverflowError("DDA far-field amplitude is non-finite."))

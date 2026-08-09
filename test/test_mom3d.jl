@@ -188,6 +188,51 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         matrixfree_adjoint = adjoint(operator) * adjoint_rhs
         @test all(isfinite, matrixfree_adjoint)
         @test matrixfree_adjoint ≈ dense_adjoint rtol=16eps(Float64)
+
+        incident = fill(CVec3(10.0 + 0im, 10.0 + 0im, 10.0 + 0im), 2)
+        result = solve_dda_3d(grid, k, 2.0 + 0im, incident)
+        observation = Vec3(3spacing, spacing / 2, spacing / 2)
+        scattered = scattered_field_dda_3d(result, [observation])[1]
+        scattered_reference = setprecision(BigFloat, 256) do
+            total = zeros(Complex{BigFloat}, 3)
+            for j in 1:grid.nvoxels
+                separation = [
+                    BigFloat(observation[a]) - BigFloat(grid.centers[j][a])
+                    for a in 1:3
+                ]
+                distance = sqrt(sum(abs2, separation))
+                direction = separation / distance
+                dipole = Complex{BigFloat}(result.alpha[j]) .*
+                          Complex{BigFloat}.(result.E_total[j])
+                radial = sum(direction[a] * dipole[a] for a in 1:3)
+                transverse = dipole - radial * direction
+                near = 3 * radial * direction - dipole
+                kb = BigFloat(k)
+                phase = exp(Complex{BigFloat}(0, -kb * distance)) /
+                        (4 * BigFloat(pi))
+                total .+= phase .* (
+                    (kb^2 / distance) .* transverse +
+                    (inv(distance^3) + Complex{BigFloat}(0, 1) * kb /
+                     distance^2) .* near)
+            end
+            CVec3(ComplexF64(total[1]), ComplexF64(total[2]),
+                  ComplexF64(total[3]))
+        end
+        @test all(isfinite, scattered)
+        @test scattered ≈ scattered_reference rtol=16eps(Float64)
+
+        direction = Vec3(1.0, 0.0, 0.0)
+        projection = Matrix{Float64}(I, 3, 3) - direction * transpose(direction)
+        prefactor = k^2 / (4π)
+        farfield_reference = zero(CVec3)
+        for j in 1:grid.nvoxels
+            phase = exp(1im * k * dot(direction, grid.centers[j]))
+            farfield_reference += phase * (
+                projection * ((prefactor * result.alpha[j]) * result.E_total[j]))
+        end
+        farfield = farfield_dda_3d(result, direction)
+        @test all(isfinite, farfield)
+        @test farfield ≈ farfield_reference rtol=16eps(Float64)
     end
 
     @testset "Induced dipole exponent range" begin

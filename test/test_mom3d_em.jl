@@ -151,6 +151,42 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test all(isfinite, complex_dense)
         @test complex_operator * complex_fields ≈
               complex_dense * complex_fields rtol=16eps(Float64)
+
+        post_fields = fill(
+            CVec3(10.0 + 0im, 10.0 + 0im, 10.0 + 0im),
+            interaction_grid.nvoxels)
+        zero_fields = fill(zero(CVec3), interaction_grid.nvoxels)
+        observation = [Vec3(
+            3large_spacing, large_spacing / 2, large_spacing / 2)]
+        direction = Vec3(1.0, 0.0, 0.0)
+        dda_result = solve_dda_3d(
+            interaction_grid, 1.0e-103, 2.0 + 0im, post_fields)
+        dda_scattered = scattered_field_dda_3d(dda_result, observation)[1]
+        dda_farfield = farfield_dda_3d(dda_result, direction)
+
+        electric_result = solve_em_dda_3d(
+            interaction_grid, 1.0e-103, 2.0 + 0im, 1.0 + 0im,
+            post_fields, zero_fields)
+        electric_scattered, magnetic_cross =
+            scattered_fields_em_dda_3d(electric_result, observation)
+        electric_farfield, magnetic_farfield_cross =
+            farfield_em_dda_3d(electric_result, direction)
+        @test electric_scattered[1] ≈ dda_scattered rtol=16eps(Float64)
+        @test electric_farfield ≈ dda_farfield rtol=16eps(Float64)
+        @test all(isfinite, magnetic_cross[1])
+        @test all(isfinite, magnetic_farfield_cross)
+
+        magnetic_result = solve_em_dda_3d(
+            interaction_grid, 1.0e-103, 1.0 + 0im, 2.0 + 0im,
+            zero_fields, post_fields)
+        electric_cross, magnetic_scattered =
+            scattered_fields_em_dda_3d(magnetic_result, observation)
+        electric_farfield_cross, magnetic_farfield =
+            farfield_em_dda_3d(magnetic_result, direction)
+        @test magnetic_scattered[1] ≈ dda_scattered rtol=16eps(Float64)
+        @test magnetic_farfield ≈ dda_farfield rtol=16eps(Float64)
+        @test all(isfinite, electric_cross[1])
+        @test all(isfinite, electric_farfield_cross)
     end
 
     @testset "Electric-only reduction matches DDA" begin

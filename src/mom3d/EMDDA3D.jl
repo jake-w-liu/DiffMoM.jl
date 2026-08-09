@@ -871,16 +871,16 @@ Compute scattered electric and magnetic fields at observation points by
 summing induced electric and magnetic dipoles. Returns `(E_scat, H_scat)`.
 """
 function scattered_fields_em_dda_3d(res::EMDDAResult3D, r_obs::AbstractVector{Vec3})
-    q, m = induced_dipoles_em_dda_3d(res)
     Eout = Vector{CVec3}(undef, length(r_obs))
     Hout = Vector{CVec3}(undef, length(r_obs))
     for p in eachindex(r_obs)
         E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         H = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         for j in 1:res.grid.nvoxels
-            iszero(q[j]) && iszero(m[j]) && continue
-            Es, Hs = _em_interaction_apply_3d(r_obs[p], res.grid.centers[j],
-                                              res.k0, q[j], m[j])
+            iszero(res.alpha[j]) && continue
+            Es, Hs = _em_alpha_interaction_apply_3d(
+                r_obs[p], res.grid.centers[j], res.k0, res.alpha[j],
+                _join_em_field(res.E_total[j], res.H_total[j]))
             E += Es
             H += Hs
         end
@@ -888,6 +888,90 @@ function scattered_fields_em_dda_3d(res::EMDDAResult3D, r_obs::AbstractVector{Ve
         Hout[p] = H
     end
     return Eout, Hout
+end
+
+function _em_farfield_alpha_contribution_bigfloat_3d(
+        alpha::_CMat6DDA,
+        field::_CVec6DDA,
+        k::Float64,
+        direction::Vec3,
+        center::Vec3,
+        eta::Float64)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        dipoles = _alpha_apply_bigfloat_vector_3d(alpha, field)
+        q = SVector{3,Complex{BigFloat}}(
+            dipoles[1], dipoles[2], dipoles[3])
+        m = SVector{3,Complex{BigFloat}}(
+            dipoles[4], dipoles[5], dipoles[6])
+        n = SVector{3,BigFloat}(
+            BigFloat(direction[1]),
+            BigFloat(direction[2]),
+            BigFloat(direction[3]),
+        )
+        projected_q = q - n * sum(n[index] * q[index] for index in 1:3)
+        projected_m = m - n * sum(n[index] * m[index] for index in 1:3)
+        eta_big = BigFloat(eta)
+        E_term = projected_q - eta_big * cross(n, m)
+        H_term = cross(n, q) / eta_big + projected_m
+        phase_argument = BigFloat(k) * sum(
+            n[index] * BigFloat(center[index]) for index in 1:3)
+        phase = exp(Complex{BigFloat}(0, phase_argument))
+        prefactor = BigFloat(k)^2 / (4 * BigFloat(pi))
+        E_value = phase * prefactor * E_term
+        H_value = phase * prefactor * H_term
+        converted_E = CVec3(
+            ComplexF64(E_value[1]),
+            ComplexF64(E_value[2]),
+            ComplexF64(E_value[3]),
+        )
+        converted_H = CVec3(
+            ComplexF64(H_value[1]),
+            ComplexF64(H_value[2]),
+            ComplexF64(H_value[3]),
+        )
+        all(isfinite, converted_E) && all(isfinite, converted_H) ||
+            throw(OverflowError(
+                "EM DDA far-field contribution is outside the representable ComplexF64 range."))
+        return converted_E, converted_H
+    end
+end
+
+@inline function _em_farfield_alpha_contribution_3d(
+        alpha::_CMat6DDA,
+        field::_CVec6DDA,
+        k::Float64,
+        direction::Vec3,
+        center::Vec3,
+        eta::Float64,
+        projection)
+    dipoles = alpha * field
+    if all(isfinite, dipoles) &&
+       !_alpha_field_product_loses_range_3d(alpha, field)
+        q, m = _split_em_field(dipoles)
+        phase_argument = k * dot(direction, center)
+        if isfinite(phase_argument)
+            phase = exp(1im * phase_argument)
+            E_contribution = phase * (
+                projection * q - eta * cross(direction, m))
+            H_contribution = phase * (
+                (1 / eta) * cross(direction, q) + projection * m)
+            prefactor, scale_fraction, scale_exponent =
+                _farfield_prefactor_dda_3d(k)
+            if iszero(scale_fraction)
+                E_value = prefactor * E_contribution
+                H_value = prefactor * H_contribution
+            else
+                E_value = _scale_farfield_vector_dda_3d(
+                    E_contribution, scale_fraction, scale_exponent)
+                H_value = _scale_farfield_vector_dda_3d(
+                    H_contribution, scale_fraction, scale_exponent)
+            end
+            all(isfinite, E_value) && all(isfinite, H_value) &&
+                return E_value, H_value
+        end
+    end
+    return _em_farfield_alpha_contribution_bigfloat_3d(
+        alpha, field, k, direction, center, eta)
 end
 
 """
@@ -903,23 +987,15 @@ function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
     proj = _I3_DDA - n * transpose(n)
     FE = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     FH = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    q, m = induced_dipoles_em_dda_3d(res)
-    prefactor, scale_fraction, scale_exponent =
-        _farfield_prefactor_dda_3d(res.k0)
-    scaled_prefactor = !iszero(scale_fraction)
     for j in 1:res.grid.nvoxels
-        phase = exp(1im * res.k0 * dot(n, res.grid.centers[j]))
-        E_contribution = phase * (proj * q[j] - eta * cross(n, m[j]))
-        H_contribution = phase * ((1 / eta) * cross(n, q[j]) + proj * m[j])
-        if scaled_prefactor
-            FE += _scale_farfield_vector_dda_3d(
-                E_contribution, scale_fraction, scale_exponent)
-            FH += _scale_farfield_vector_dda_3d(
-                H_contribution, scale_fraction, scale_exponent)
-        else
-            FE += prefactor * E_contribution
-            FH += prefactor * H_contribution
-        end
+        iszero(res.alpha[j]) && continue
+        E_contribution, H_contribution =
+            _em_farfield_alpha_contribution_3d(
+                res.alpha[j],
+                _join_em_field(res.E_total[j], res.H_total[j]),
+                res.k0, n, res.grid.centers[j], eta, proj)
+        FE += E_contribution
+        FH += H_contribution
     end
     all(isfinite, FE) && all(isfinite, FH) ||
         throw(OverflowError("EM DDA far-field amplitude is non-finite."))
