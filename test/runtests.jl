@@ -513,6 +513,21 @@ mesh_coarse_in = make_rect_plate(1.0, 1.0, 12, 12)
 rwg_coarse_in = build_rwg(mesh_coarse_in; precheck=true, allow_boundary=true)
 @assert rwg_coarse_in.nedges > 60
 
+coarse_exact = coarsen_mesh_to_target_rwg(
+    mesh_coarse_in, rwg_coarse_in.nedges; max_iters=1)
+@test coarse_exact.mesh === mesh_coarse_in
+@test coarse_exact.rwg_count == rwg_coarse_in.nedges
+@test coarse_exact.best_gap == 0
+@test coarse_exact.iterations == 0
+
+coarse_close_target = rwg_coarse_in.nedges - 1
+coarse_close = coarsen_mesh_to_target_rwg(
+    mesh_coarse_in, coarse_close_target; max_iters=1)
+@test coarse_close.mesh === mesh_coarse_in
+@test coarse_close.rwg_count == rwg_coarse_in.nedges
+@test coarse_close.best_gap == 1
+@test coarse_close.iterations == 0
+
 target_rwg = 60
 coarse_result = coarsen_mesh_to_target_rwg(mesh_coarse_in, target_rwg; max_iters=8)
 rwg_coarse_out = build_rwg(coarse_result.mesh; precheck=true, allow_boundary=true)

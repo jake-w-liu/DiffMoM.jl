@@ -984,6 +984,7 @@ end
 
 Auto-coarsen a mesh by voxel clustering to approach a target RWG count.
 Each candidate mesh is non-manifold cleaned and repaired before RWG counting.
+An input mesh already no more than 15% above the target is returned unchanged.
 
 Returns a named tuple:
 `(mesh, rwg_count, target_rwg, best_gap, iterations)`.
@@ -999,6 +1000,18 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
     max_iters >= 1 ||
         throw(ArgumentError("coarsen_mesh_to_target_rwg: max_iters must be at least 1, got $max_iters"))
 
+    best_rwg = build_rwg(mesh; precheck=true, allow_boundary=allow_boundary,
+                         require_closed=require_closed, area_tol_rel=area_tol_rel).nedges
+    best_mesh = mesh
+    best_gap = abs(best_rwg - target_rwg)
+    niter = 0
+
+    initial_ratio = best_rwg / target_rwg
+    if initial_ratio <= 1.15
+        return (mesh=best_mesh, rwg_count=best_rwg, target_rwg=target_rwg,
+                best_gap=best_gap, iterations=niter)
+    end
+
     mins = [minimum(@view mesh.xyz[i, :]) for i in 1:3]
     maxs = [maximum(@view mesh.xyz[i, :]) for i in 1:3]
     span = maxs .- mins
@@ -1011,12 +1024,6 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
     end
     target_vertices = max(80, Int(round(target_rwg / 3)))
     h = cbrt(bbox_vol / target_vertices)
-
-    best_mesh = mesh
-    best_gap = typemax(Int)
-    best_rwg = build_rwg(mesh; precheck=true, allow_boundary=allow_boundary,
-                         require_closed=require_closed, area_tol_rel=area_tol_rel).nedges
-    niter = 0
 
     for iter in 1:max_iters
         cand = cluster_mesh_vertices(mesh, h)
@@ -1050,7 +1057,8 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
 
         ratio = nrwg / max(target_rwg, 1)
         if 0.85 <= ratio <= 1.15
-            return (mesh=cand_mesh, rwg_count=nrwg, target_rwg=target_rwg, best_gap=gap, iterations=iter)
+            return (mesh=best_mesh, rwg_count=best_rwg, target_rwg=target_rwg,
+                    best_gap=best_gap, iterations=iter)
         end
 
         h *= ratio^(1 / 3)
