@@ -83,9 +83,11 @@ function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
     @inbounds for m in 1:M
         field = zero(ComplexF64)
         for n in 1:N
-            field +=
-                k0sq * vr.chi[n] * vr.E_total[n] *
-                _greens_2d_unchecked(r_obs[m], vr.mesh.centers[n], vr.k0) * A
+            field += _range_safe_product_2d(
+                k0sq, vr.chi[n], vr.E_total[n],
+                _greens_2d_unchecked(
+                    r_obs[m], vr.mesh.centers[n], vr.k0),
+                A, "scattered_field_2d source contribution")
         end
         E_scat[m] = field
     end
@@ -114,31 +116,24 @@ function jacobian_scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2
     N = vr.mesh.ncells
     M = length(r_obs)
 
-    # S = Z⁻¹ D: solve Z S = D column-by-column using existing LU factorization
-    S = vr.Z_LU \ vr.D
-
-    # Build Jacobian:
-    # ∂E_scat(r_obs[m])/∂χ_p = k₀² A Σ_n G_obs[m,n] [δ_{np} E_p + χ_n k₀² E_p S[n,p]]
-    #   = k₀² A E_p [G_obs[m,p] + k₀² Σ_n χ_n G_obs[m,n] S[n,p]]
-
-    # Transform S in place into W = I + k₀² diag(χ) S. S is not needed
-    # afterwards, so this avoids a second N×N complex matrix.
-    @inbounds for p in 1:N
-        for n in 1:N
-            S[n, p] *= k0sq * vr.chi[n]
-        end
-        S[p, p] += 1.0
-    end
+    # The direct sensitivity expression contains
+    # W = I + k₀² diag(χ) Z⁻¹D. Forming it that way can underflow Z⁻¹D
+    # before the product is rescaled, or lose W through cancellation. Since
+    # D is reciprocal (Dᵀ = D), the push-through identity gives
+    # W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ. Solving the transposed system directly
+    # preserves the available exponent range and needs only one N×N workspace.
+    W = Matrix{ComplexF64}(I, N, N)
+    ldiv!(transpose(vr.Z_LU), W)
 
     # J = k₀² A × G_obs × W × diag(E). Multiply directly into J rather
     # than materializing a separate G_obs*W matrix.
     J = Matrix{ComplexF64}(undef, M, N)
-    mul!(J, G_obs, S)
-    prefactor = k0sq * A
+    mul!(J, G_obs, W)
     @inbounds for p in 1:N
-        column_scale = prefactor * vr.E_total[p]
         for m in 1:M
-            J[m, p] *= column_scale
+            J[m, p] = _range_safe_product_2d(
+                k0sq, A, vr.E_total[p], J[m, p],
+                "jacobian_scattered_field_2d entry")
         end
     end
 

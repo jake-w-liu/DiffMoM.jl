@@ -8,6 +8,127 @@
 
 export assemble_vie_2d, solve_vie_2d
 
+const _VIE_PRODUCT_FALLBACK_PRECISION_2D = 256
+
+@inline _complex_component_scale_2d(value::ComplexF64) =
+    max(abs(real(value)), abs(imag(value)))
+
+@inline function _usable_nonzero_product_2d(value::ComplexF64)
+    isfinite(value) || return false
+    scale = _complex_component_scale_2d(value)
+    return scale >= floatmin(Float64)
+end
+
+@noinline function _product_bigfloat_2d(
+        first::Float64,
+        second::Float64,
+        third::ComplexF64,
+        label::AbstractString)
+    return setprecision(BigFloat, _VIE_PRODUCT_FALLBACK_PRECISION_2D) do
+        value = BigFloat(first) * BigFloat(second) *
+                Complex{BigFloat}(third)
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@noinline function _product_bigfloat_2d(
+        first::Float64,
+        second::Float64,
+        third::ComplexF64,
+        fourth::ComplexF64,
+        label::AbstractString)
+    return setprecision(BigFloat, _VIE_PRODUCT_FALLBACK_PRECISION_2D) do
+        value = BigFloat(first) * BigFloat(second) *
+                Complex{BigFloat}(third) * Complex{BigFloat}(fourth)
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@noinline function _product_bigfloat_2d(
+        first::Float64,
+        second::Float64,
+        third::ComplexF64,
+        fourth::ComplexF64,
+        fifth::Float64,
+        label::AbstractString)
+    return setprecision(BigFloat, _VIE_PRODUCT_FALLBACK_PRECISION_2D) do
+        value = BigFloat(first) * BigFloat(second) *
+                Complex{BigFloat}(third) * Complex{BigFloat}(fourth) *
+                BigFloat(fifth)
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@inline function _range_safe_product_2d(
+        first::Float64,
+        second::Float64,
+        third::ComplexF64,
+        label::AbstractString)
+    (iszero(first) || iszero(second) || iszero(third)) &&
+        return zero(ComplexF64)
+
+    value = (first * second) * third
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * third) * second
+    _usable_nonzero_product_2d(value) && return value
+    value = (second * third) * first
+    _usable_nonzero_product_2d(value) && return value
+    return _product_bigfloat_2d(first, second, third, label)
+end
+
+@inline function _range_safe_product_2d(
+        first::Float64,
+        second::Float64,
+        third::ComplexF64,
+        fourth::ComplexF64,
+        label::AbstractString)
+    (iszero(first) || iszero(second) || iszero(third) || iszero(fourth)) &&
+        return zero(ComplexF64)
+
+    value = (first * second) * (third * fourth)
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * third) * (second * fourth)
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * fourth) * (second * third)
+    _usable_nonzero_product_2d(value) && return value
+    return _product_bigfloat_2d(
+        first, second, third, fourth, label)
+end
+
+@inline function _range_safe_product_2d(
+        first::Float64,
+        second::Float64,
+        third::ComplexF64,
+        fourth::ComplexF64,
+        fifth::Float64,
+        label::AbstractString)
+    (iszero(first) || iszero(second) || iszero(third) ||
+     iszero(fourth) || iszero(fifth)) && return zero(ComplexF64)
+
+    value = (first * fifth) * (second * third) * fourth
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * fourth) * (second * third) * fifth
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * second) * (third * fourth) * fifth
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * third) * (second * fourth) * fifth
+    _usable_nonzero_product_2d(value) && return value
+    return _product_bigfloat_2d(
+        first, second, third, fourth, fifth, label)
+end
+
 """
     assemble_vie_2d(mesh, k0, chi)
 
@@ -35,7 +156,9 @@ function assemble_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64}
 
     @inbounds for n in 1:N
         for m in 1:N
-            Z[m, n] = -k0sq * chi[n] * D[m, n]
+            Z[m, n] = -_range_safe_product_2d(
+                k0sq, chi[n], D[m, n],
+                "assemble_vie_2d interaction coefficient")
         end
         Z[n, n] += 1.0  # add identity
     end

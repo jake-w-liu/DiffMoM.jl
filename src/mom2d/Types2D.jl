@@ -141,7 +141,7 @@ struct VIEResult2D
     E_inc::Vector{ComplexF64}       # incident field at cell centers
     chi::Vector{Float64}            # contrast profile (εᵣ - 1)
     D::Matrix{ComplexF64}           # Green's function integral matrix
-    Z::Matrix{ComplexF64}           # system matrix (I - k² diag(χ) D)
+    Z::Matrix{ComplexF64}           # system matrix (I - k² D diag(χ))
     Z_LU::LinearAlgebra.LU{ComplexF64, Matrix{ComplexF64}, Vector{Int64}}
     mesh::Mesh2D
     k0::Float64                     # free-space wavenumber

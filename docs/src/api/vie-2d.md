@@ -132,7 +132,7 @@ struct VIEResult2D
     E_inc::Vector{ComplexF64}     # incident field at cell centers
     chi::Vector{Float64}          # contrast profile (eps_r - 1)
     D::Matrix{ComplexF64}         # Green's function integral matrix
-    Z::Matrix{ComplexF64}         # system matrix (I - k0^2 diag(chi) D)
+    Z::Matrix{ComplexF64}         # system matrix (I - k0^2 D diag(chi))
     Z_LU::LinearAlgebra.LU{ComplexF64, Matrix{ComplexF64}, Vector{Int64}}
     mesh::Mesh2D
     k0::Float64                   # free-space wavenumber
@@ -147,7 +147,7 @@ end
 | `E_inc` | `Vector{ComplexF64}` | Incident field `E_z_inc` at the cell centers (length `ncells`). |
 | `chi` | `Vector{Float64}` | Dielectric contrast `eps_r - 1` per cell (length `ncells`). |
 | `D` | `Matrix{ComplexF64}` | Green's function integral matrix `D[m,n]` (size `ncells x ncells`). |
-| `Z` | `Matrix{ComplexF64}` | System matrix `Z = I - k0^2 diag(chi) D` (size `ncells x ncells`). |
+| `Z` | `Matrix{ComplexF64}` | System matrix `Z = I - k0^2 D diag(chi)` (size `ncells x ncells`). |
 | `Z_LU` | `LU{ComplexF64, ...}` | Cached LU factorization of `Z` (reused by the Jacobian). |
 | `mesh` | `Mesh2D` | The mesh used for the solve. |
 | `k0` | `Float64` | Free-space wavenumber (rad/m). |
@@ -435,8 +435,9 @@ E_scat = scattered_field_2d(vr, r_obs)
 Compute the Jacobian of the scattered field with respect to the per-cell contrast,
 `J[m,p] = d E_scat(r_obs[m]) / d chi_p`, via implicit differentiation of the VIE
 system. Since `Z E = E_inc`, the field sensitivity is
-`dE/dchi_p = k0^2 E_p Z^-1 D[:,p]`; the routine precomputes `S = Z^-1 D` (reusing
-the cached `Z_LU`) for efficiency.
+`dE/dchi_p = k0^2 E_p Z^-1 D[:,p]`. For reciprocal `D`, the routine evaluates
+the equivalent factor `W = (I - k0^2 diag(chi) D)^-1 = Z^-T` through the cached
+`Z_LU`; this avoids underflow and cancellation in `I + k0^2 diag(chi) Z^-1 D`.
 
 **Parameters:**
 

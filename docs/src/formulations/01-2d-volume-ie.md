@@ -257,13 +257,13 @@ Since $Z = I - k_0^2\,D\,\mathrm{diag}(\chi)$, only column $p$ of $D\,\mathrm{di
 \frac{\partial \mathbf{E}}{\partial \chi_p} = k_0^2\, E_p\, Z^{-1} D[:,p].
 ```
 
-The routine precomputes $S = Z^{-1} D$ once (reusing the cached `Z_LU`), forms $W = I + k_0^2\,\mathrm{diag}(\chi)\,S$, and assembles the Jacobian by chaining the field sensitivity through the scattered-field map:
+The Jacobian contains $W = I + k_0^2\,\mathrm{diag}(\chi)\,Z^{-1}D$. For the reciprocal Green matrix $D^T=D$, the push-through identity gives $W=(I-k_0^2\,\mathrm{diag}(\chi)D)^{-1}=Z^{-T}$. The routine therefore solves the transposed system through the cached `Z_LU`; this avoids underflow and cancellation that can occur when $Z^{-1}D$ and the identity term are formed separately. It then assembles the Jacobian by chaining the field sensitivity through the scattered-field map:
 
 ```math
 J = k_0^2\, A\; G_\text{obs}\; W\; \mathrm{diag}(\mathbf{E}_\text{total}), \qquad J \in \mathbb{C}^{M \times N}.
 ```
 
-This reuses the existing factorization, so the Jacobian costs one block solve ($Z^{-1}D$) plus dense products -- no re-factorization. **Correctness depends on `Z_LU` matching the `chi`/`mesh`/`k0` stored in the `VIEResult2D`; do not mutate those fields after the solve.** The test suite validates $J$ column-by-column against finite differences ($\delta = 10^{-7}$) on interior, exterior, and random cells, asserting relative error below $10^{-4}$ (finite-difference-limited).
+This reuses the existing factorization, so the Jacobian costs one transposed block solve plus dense products -- no re-factorization. **Correctness depends on `Z_LU` matching the `chi`/`mesh`/`k0` stored in the `VIEResult2D`; do not mutate those fields after the solve.** The test suite validates $J$ column-by-column against finite differences ($\delta = 10^{-7}$) on interior, exterior, and random cells, asserting relative error below $10^{-4}$ (finite-difference-limited).
 
 ---
 

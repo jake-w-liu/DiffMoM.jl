@@ -191,6 +191,48 @@ end
         @test vr_free.E_total ≈ E_inc atol=1e-12
     end
 
+    @testset "Extreme VIE product scaling" begin
+        # Every physical input and final result is representable, but k₀²χ
+        # overflows and Z⁻¹D underflows if those intermediates are formed.
+        mesh = Mesh2D((0.0, 1e-100), (0.0, 1e-100), 1, 1)
+        k0 = 1e100
+        chi = [1e200]
+        E_inc = ComplexF64[1.0 + 0.0im]
+        r_obs = [Vec2(2e-100, 5e-101)]
+
+        Z, D = assemble_vie_2d(mesh, k0, chi)
+        vr = solve_vie_2d(mesh, k0, chi, E_inc)
+        G_obs = green_obs_matrix(r_obs, mesh, k0)
+        E_scat = scattered_field_2d(vr, r_obs)
+        J, _ = jacobian_scattered_field_2d(vr, r_obs)
+
+        Z_ref, E_ref, E_scat_ref, J_ref =
+            setprecision(BigFloat, 256) do
+                k_big = BigFloat(k0)
+                chi_big = BigFloat(chi[1])
+                area_big = BigFloat(mesh.cell_area)
+                D_big = Complex{BigFloat}(D[1, 1])
+                G_big = Complex{BigFloat}(G_obs[1, 1])
+                Z_big = one(Complex{BigFloat}) -
+                        k_big^2 * chi_big * D_big
+                E_big = inv(Z_big)
+                scattered_big =
+                    k_big^2 * area_big * chi_big * E_big * G_big
+                jacobian_big = k_big^2 * area_big * G_big / Z_big^2
+                return ComplexF64(Z_big), ComplexF64(E_big),
+                       ComplexF64(scattered_big), ComplexF64(jacobian_big)
+            end
+
+        @test Z[1, 1] ≈ Z_ref rtol=2e-15
+        @test vr.E_total[1] ≈ E_ref rtol=2e-15
+        @test E_scat[1] ≈ E_scat_ref rtol=2e-15
+        @test J[1, 1] == J_ref
+        @test all(isfinite, Z)
+        @test all(isfinite, vr.E_total)
+        @test all(isfinite, E_scat)
+        @test all(isfinite, J)
+    end
+
     @testset "Plane wave excitation" begin
         mesh = Mesh2D((-1.0, 1.0), (-1.0, 1.0), 4, 4)
         k0 = 2π
