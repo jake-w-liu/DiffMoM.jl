@@ -169,6 +169,16 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             result, ones(ComplexF64, 3grid.nvoxels)))
     end
 
+    @testset "Induced dipole exponent range" begin
+        spacing = 4.0e102
+        grid = VoxelGrid3D(
+            (0.0, spacing), (0.0, spacing), (0.0, spacing), 1, 1, 1)
+        E_inc = [CVec3(10.0 + 0im, 0.0 + 0im, 0.0 + 0im)]
+        result = solve_dda_3d(grid, 1.0e-100, 2.0 + 0im, E_inc)
+        @test all(isfinite, result.E_total[1])
+        @test_throws OverflowError induced_dipoles_dda_3d(result)
+    end
+
     @testset "Single-voxel Rayleigh dipole far field" begin
         grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
         epsr = 2.5 + 0im

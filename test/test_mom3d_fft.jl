@@ -76,6 +76,18 @@ end
     @test all(isfinite, tiny_em_fft * tiny_em_x)
     @test tiny_em_fft * tiny_em_x ≈ tiny_em_direct * tiny_em_x rtol=8eps(Float64)
 
+    cancellation_alpha = zeros(ComplexF64, 6, 6)
+    cancellation_alpha[1, 1] = 1.0e308
+    cancellation_alpha[1, 2] = -1.0e308
+    cancellation_direct = em_dda_operator_3d(tiny_grid, 1.0, cancellation_alpha)
+    cancellation_fft = fft_em_dda_operator_3d(tiny_grid, 1.0, cancellation_alpha)
+    cancellation_x = ComplexF64[
+        2, 2, 0, 0, 0, 0,
+        2, 2, 0, 0, 0, 0,
+    ]
+    @test cancellation_direct * cancellation_x == cancellation_x
+    @test cancellation_fft * cancellation_x == cancellation_x
+
     grid = VoxelGrid3D((-0.15, 0.15), (-0.1, 0.1), (-0.05, 0.05), 3, 2, 2)
     epsv = ComplexF64[2.2 + 0.03im + 0.01 * sin(j) for j in 1:grid.nvoxels]
 

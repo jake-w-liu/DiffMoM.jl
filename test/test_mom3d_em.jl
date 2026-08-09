@@ -88,6 +88,42 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test all(iszero, farfield_em_dda_3d(res, extreme_direction))
     end
 
+    @testset "Polarizability application exponent safety" begin
+        large_spacing = 4.0e102
+        large_grid = VoxelGrid3D(
+            (0.0, large_spacing),
+            (0.0, large_spacing),
+            (0.0, large_spacing),
+            1, 1, 1)
+        large_E = [CVec3(10.0 + 0im, 0.0 + 0im, 0.0 + 0im)]
+        zero_H = [zero(CVec3)]
+        large_result = solve_em_dda_3d(
+            large_grid, 1.0e-100, 2.0 + 0im, 1.0 + 0im,
+            large_E, zero_H)
+        @test_throws OverflowError induced_dipoles_em_dda_3d(large_result)
+
+        cancel_alpha = zeros(ComplexF64, 6, 6)
+        cancel_alpha[1, 1] = 1.0e308
+        cancel_alpha[1, 2] = -1.0e308
+        single = VoxelGrid3D(
+            (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+        cancel_E = [CVec3(2.0 + 0im, 2.0 + 0im, 0.0 + 0im)]
+        cancel_result = solve_em_dda_3d(
+            single, 1.0, cancel_alpha, cancel_E, zero_H)
+        q, m = induced_dipoles_em_dda_3d(cancel_result)
+        @test q == [zero(CVec3)]
+        @test m == [zero(CVec3)]
+
+        pair = VoxelGrid3D(
+            (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
+        operator = em_dda_operator_3d(pair, 1.0, cancel_alpha)
+        fields = ComplexF64[
+            2, 2, 0, 0, 0, 0,
+            2, 2, 0, 0, 0, 0,
+        ]
+        @test operator * fields == fields
+    end
+
     @testset "Electric-only reduction matches DDA" begin
         grid = VoxelGrid3D((-0.12, 0.12), (-0.05, 0.05), (-0.05, 0.05), 2, 1, 1)
         epsr = fill(2.4 + 0.04im, grid.nvoxels)

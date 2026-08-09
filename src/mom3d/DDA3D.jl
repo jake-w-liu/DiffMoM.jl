@@ -259,6 +259,83 @@ end
 # exponent-range recovery path bounded in time and memory.
 const _POLARIZABILITY_FALLBACK_PRECISION = 256
 
+@noinline function _scaled_alpha_apply_bigfloat_3d(
+        alpha::Number,
+        field::SVector{N,ComplexF64},
+        divisor::Float64,
+        label::AbstractString,
+        voxel::Int) where {N}
+    value = setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        alpha_big = Complex{BigFloat}(alpha)
+        divisor_big = BigFloat(divisor)
+        SVector{N,ComplexF64}(ntuple(index -> ComplexF64(
+            alpha_big * Complex{BigFloat}(field[index]) / divisor_big), N))
+    end
+    all(isfinite, value) ||
+        throw(OverflowError(
+            "$label at voxel $voxel is outside the representable ComplexF64 range."))
+    return value
+end
+
+@noinline function _scaled_alpha_apply_bigfloat_3d(
+        alpha::SMatrix{N,N,ComplexF64,L},
+        field::SVector{N,ComplexF64},
+        divisor::Float64,
+        label::AbstractString,
+        voxel::Int) where {N,L}
+    value = setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        divisor_big = BigFloat(divisor)
+        entries = ntuple(row -> begin
+            accumulator = zero(Complex{BigFloat})
+            @inbounds for column in 1:N
+                accumulator += Complex{BigFloat}(alpha[row, column]) *
+                               Complex{BigFloat}(field[column])
+            end
+            ComplexF64(accumulator / divisor_big)
+        end, N)
+        SVector{N,ComplexF64}(entries)
+    end
+    all(isfinite, value) ||
+        throw(OverflowError(
+            "$label at voxel $voxel is outside the representable ComplexF64 range."))
+    return value
+end
+
+@inline function _scaled_alpha_apply_3d(
+        alpha::Number,
+        field::SVector{N,ComplexF64},
+        divisor::Float64,
+        label::AbstractString,
+        voxel::Int) where {N}
+    alpha_value = ComplexF64(alpha)
+    scaled_alpha = alpha_value / divisor
+    scale_lost = !iszero(alpha_value) && iszero(scaled_alpha)
+    value = scaled_alpha * field
+    !scale_lost && all(isfinite, value) && return value
+    return _scaled_alpha_apply_bigfloat_3d(
+        alpha_value, field, divisor, label, voxel)
+end
+
+@inline function _scaled_alpha_apply_3d(
+        alpha::SMatrix{N,N,ComplexF64,L},
+        field::SVector{N,ComplexF64},
+        divisor::Float64,
+        label::AbstractString,
+        voxel::Int) where {N,L}
+    scaled_alpha = alpha / divisor
+    scale_lost = false
+    @inbounds for index in eachindex(alpha)
+        if !iszero(alpha[index]) && iszero(scaled_alpha[index])
+            scale_lost = true
+            break
+        end
+    end
+    value = scaled_alpha * field
+    !scale_lost && all(isfinite, value) && return value
+    return _scaled_alpha_apply_bigfloat_3d(
+        alpha, field, divisor, label, voxel)
+end
+
 function _clausius_mossotti_bigfloat(
     epsc::ComplexF64,
     V::Float64,
@@ -721,7 +798,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             i == j && continue
             alphaj = A.alpha[j]
             iszero(alphaj) && continue
-            qj = _alpha_apply(alphaj, _read_field_component(xread, j))
+            qj = _scaled_alpha_apply_3d(
+                alphaj, _read_field_component(xread, j), 1.0,
+                "DDA induced dipole", j)
             Ei -= _electric_dipole_apply_3d(ri, A.grid.centers[j], A.k0, qj)
         end
 
@@ -952,7 +1031,9 @@ Return normalized induced electric dipoles `q_j = p_j / eps0 = alpha_j E_j`.
 function induced_dipoles_dda_3d(res::DDAResult3D)
     q = Vector{CVec3}(undef, res.grid.nvoxels)
     for j in 1:res.grid.nvoxels
-        q[j] = _alpha_apply(res.alpha[j], res.E_total[j])
+        q[j] = _scaled_alpha_apply_3d(
+            res.alpha[j], res.E_total[j], 1.0,
+            "DDA induced dipole", j)
     end
     return q
 end
@@ -972,7 +1053,9 @@ function scattered_field_dda_3d(res::DDAResult3D, r_obs::AbstractVector{Vec3})
             iszero(res.alpha[j]) && continue
             E += _electric_dipole_apply_3d(
                 r_obs[m], res.grid.centers[j], res.k0,
-                _alpha_apply(res.alpha[j], res.E_total[j]))
+                _scaled_alpha_apply_3d(
+                    res.alpha[j], res.E_total[j], 1.0,
+                    "DDA induced dipole", j))
         end
         out[m] = E
     end
@@ -998,7 +1081,9 @@ function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     for j in 1:res.grid.nvoxels
         iszero(res.alpha[j]) && continue
         phase = exp(1im * res.k0 * dot(n, res.grid.centers[j]))
-        contribution = phase * (proj * _alpha_apply(res.alpha[j], res.E_total[j]))
+        contribution = phase * (proj * _scaled_alpha_apply_3d(
+            res.alpha[j], res.E_total[j], 1.0,
+            "DDA induced dipole", j))
         F += scaled_prefactor ?
              _scale_farfield_vector_dda_3d(
                  contribution, scale_fraction, scale_exponent) :

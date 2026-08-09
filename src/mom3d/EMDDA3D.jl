@@ -486,7 +486,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             i == j && continue
             alphaj = A.alpha[j]
             iszero(alphaj) && continue
-            q, m = _split_em_field(alphaj * _read_em_field6(xread, j))
+            q, m = _split_em_field(_scaled_alpha_apply_3d(
+                alphaj, _read_em_field6(xread, j), 1.0,
+                "EM DDA induced dipole", j))
             Es, Hs = _em_interaction_apply_3d(ri, A.grid.centers[j], A.k0, q, m)
             Ei -= Es
             Hi -= Hs
@@ -781,7 +783,10 @@ function induced_dipoles_em_dda_3d(res::EMDDAResult3D)
     q = Vector{CVec3}(undef, res.grid.nvoxels)
     m = Vector{CVec3}(undef, res.grid.nvoxels)
     for j in 1:res.grid.nvoxels
-        q[j], m[j] = _split_em_field(res.alpha[j] * _join_em_field(res.E_total[j], res.H_total[j]))
+        dipoles = _scaled_alpha_apply_3d(
+            res.alpha[j], _join_em_field(res.E_total[j], res.H_total[j]),
+            1.0, "EM DDA induced dipole", j)
+        q[j], m[j] = _split_em_field(dipoles)
     end
     return q, m
 end

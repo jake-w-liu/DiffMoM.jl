@@ -196,12 +196,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         idx = 0
         for iz in 1:nz, iy in 1:ny, ix in 1:nx
             idx += 1
-            qvec = _alpha_apply(
-                A.alpha[idx], _read_field_component(xread, idx)) /
-                A.kernel.interaction_scale
-            all(isfinite, qvec) ||
-                throw(OverflowError(
-                    "scaled FFT DDA dipole is outside the representable ComplexF64 range."))
+            qvec = _scaled_alpha_apply_3d(
+                A.alpha[idx], _read_field_component(xread, idx),
+                A.kernel.interaction_scale, "scaled FFT DDA dipole", idx)
             for b in 1:3
                 qhat[ix, iy, iz, b] = qvec[b]
             end
@@ -403,11 +400,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         idx = 0
         for iz in 1:nz, iy in 1:ny, ix in 1:nx
             idx += 1
-            q6 = (A.alpha[idx] * _read_em_field6(xread, idx)) /
-                 A.kernel.interaction_scale
-            all(isfinite, q6) ||
-                throw(OverflowError(
-                    "scaled FFT EM-DDA dipole is outside the representable ComplexF64 range."))
+            q6 = _scaled_alpha_apply_3d(
+                A.alpha[idx], _read_em_field6(xread, idx),
+                A.kernel.interaction_scale, "scaled FFT EM-DDA dipole", idx)
             for b in 1:6
                 qhat[ix, iy, iz, b] = q6[b]
             end
