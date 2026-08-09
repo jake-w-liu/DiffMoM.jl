@@ -224,6 +224,20 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         mul!(y_adj, A_adj, x, 1.0 + 0im, 0.0 + 0im)
         @test y_adj ≈ adjoint(A_dense) * x rtol=1e-13
 
+        overlap_storage = vcat(x, 0.0 + 0im)
+        overlap_x = view(overlap_storage, 1:length(x))
+        overlap_y = view(overlap_storage, 2:(length(x) + 1))
+        overlap_expected = A_dense * copy(overlap_x)
+        mul!(overlap_y, A_op, overlap_x)
+        @test overlap_y ≈ overlap_expected rtol=1e-13
+
+        adjoint_overlap_storage = vcat(x, 0.0 + 0im)
+        adjoint_overlap_x = view(adjoint_overlap_storage, 1:length(x))
+        adjoint_overlap_y = view(adjoint_overlap_storage, 2:(length(x) + 1))
+        adjoint_overlap_expected = adjoint(A_dense) * copy(adjoint_overlap_x)
+        mul!(adjoint_overlap_y, A_adj, adjoint_overlap_x)
+        @test adjoint_overlap_y ≈ adjoint_overlap_expected rtol=1e-13
+
         # The matrix-free operator stores O(N) material/geometric data instead
         # of the O(N^2) dense interaction matrix.
         @test Base.summarysize(A_op) < Base.summarysize(A_dense) / 20

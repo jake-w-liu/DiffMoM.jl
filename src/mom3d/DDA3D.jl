@@ -519,7 +519,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         return y
     end
 
-    xread = y === x ? copy(x) : x
+    xread = Base.mightalias(y, x) ? copy(x) : x
     overwrite = iszero(beta_scale)
     N = A.grid.nvoxels
     # Output voxels are independent, but the matrix-free alloc budget
@@ -578,7 +578,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         return y
     end
 
-    xread = y === x ? copy(x) : x
+    xread = Base.mightalias(y, x) ? copy(x) : x
     overwrite = iszero(beta_scale)
     N = A.grid.nvoxels
     # Left serial for the same alloc-budget reason as the forward operator;

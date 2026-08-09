@@ -175,7 +175,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         return y
     end
 
-    xread = y === x ? copy(x) : x
+    xread = Base.mightalias(y, x) ? copy(x) : x
     overwrite = iszero(beta_scale)
     lock(A.work_lock)
     try
@@ -369,7 +369,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         return y
     end
 
-    xread = y === x ? copy(x) : x
+    xread = Base.mightalias(y, x) ? copy(x) : x
     overwrite = iszero(beta_scale)
     lock(A.work_lock)
     try

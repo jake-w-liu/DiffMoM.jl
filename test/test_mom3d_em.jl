@@ -270,6 +270,13 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         yb = zeros(ComplexF64, size(A_op_b, 1))
         mul!(yb, A_op_b, xb)
         @test norm(yb - A_dense_b * xb) / norm(A_dense_b * xb) < 1e-13
+
+        overlap_storage = vcat(xb, 0.0 + 0im)
+        overlap_x = view(overlap_storage, 1:length(xb))
+        overlap_y = view(overlap_storage, 2:(length(xb) + 1))
+        overlap_expected = A_dense_b * copy(overlap_x)
+        mul!(overlap_y, A_op_b, overlap_x)
+        @test overlap_y ≈ overlap_expected rtol=1e-13
     end
 
     @testset "Matrix-free GMRES solve agrees with dense direct" begin

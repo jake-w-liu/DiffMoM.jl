@@ -80,6 +80,12 @@ end
     mul!(y_scaled_fft, A_fft, x, 0.3 - 0.2im, -0.4 + 0.1im)
 
     @test norm(y_scaled_fft - y_scaled_direct) / norm(y_scaled_direct) < 1e-12
+    overlap_storage = vcat(x, 0.0 + 0im)
+    overlap_x = view(overlap_storage, 1:length(x))
+    overlap_y = view(overlap_storage, 2:(length(x) + 1))
+    overlap_expected = A_direct * copy(overlap_x)
+    mul!(overlap_y, A_fft, overlap_x)
+    @test overlap_y ≈ overlap_expected rtol=1e-12
     _test_shared_fft_operator_concurrency(
         A_fft,
         [x, (0.2 - 0.3im) .* x, reverse(x), conj.(x)],
@@ -117,6 +123,13 @@ end
     fill!(y_em_fft, ComplexF64(NaN, NaN))
     mul!(y_em_fft, A_em_fft, x_em, 1.0 + 0im, 0.0 + 0im)
     @test y_em_fft ≈ y_em_direct rtol=1e-12
+
+    overlap_em_storage = vcat(x_em, 0.0 + 0im)
+    overlap_em_x = view(overlap_em_storage, 1:length(x_em))
+    overlap_em_y = view(overlap_em_storage, 2:(length(x_em) + 1))
+    overlap_em_expected = A_em_direct * copy(overlap_em_x)
+    mul!(overlap_em_y, A_em_fft, overlap_em_x)
+    @test overlap_em_y ≈ overlap_em_expected rtol=1e-12
 
     mul!(y_em_fft, A_em_fft, x_em)
     @test (@allocated mul!(y_em_fft, A_em_fft, x_em)) < 32768
