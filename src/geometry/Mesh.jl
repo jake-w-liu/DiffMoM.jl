@@ -894,6 +894,19 @@ function estimate_dense_matrix_gib(N::Integer)
     return 16.0 * float(N) * float(N) / 1024.0^3
 end
 
+@inline function _sorted_triangle_vertices(a::Int, b::Int, c::Int)
+    if a > b
+        a, b = b, a
+    end
+    if b > c
+        b, c = c, b
+    end
+    if a > b
+        a, b = b, a
+    end
+    return (a, b, c)
+end
+
 """
     cluster_mesh_vertices(mesh, h)
 
@@ -964,8 +977,7 @@ function cluster_mesh_vertices(mesh::TriMesh, h::Float64)
         if a == b || b == c || c == a
             continue
         end
-        ss = sort([a, b, c])
-        key = (ss[1], ss[2], ss[3])
+        key = _sorted_triangle_vertices(a, b, c)
         if key in seen
             continue
         end

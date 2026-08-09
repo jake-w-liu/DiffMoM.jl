@@ -499,6 +499,17 @@ mesh_cluster_extreme_out = cluster_mesh_vertices(
 @test ntriangles(mesh_cluster_extreme_out) == 1
 @test all(==(cluster_extreme_x), mesh_cluster_extreme_out.xyz[1, :])
 
+# A no-merge pass must preserve topology without allocating a temporary
+# three-element sort buffer for every triangle.
+mesh_cluster_alloc = make_rect_plate(1.0, 1.0, 40, 40)
+mesh_cluster_alloc_out = cluster_mesh_vertices(mesh_cluster_alloc, 1.0e-12)
+@test mesh_cluster_alloc_out.xyz == mesh_cluster_alloc.xyz
+@test mesh_cluster_alloc_out.tri == mesh_cluster_alloc.tri
+GC.gc()
+cluster_alloc_bytes = @allocated cluster_mesh_vertices(
+    mesh_cluster_alloc, 1.0e-12)
+@test cluster_alloc_bytes < 1_500_000
+
 mesh_edges_test = make_rect_plate(1.0, 1.0, 1, 1) # two triangles
 edges_test = mesh_unique_edges(mesh_edges_test)
 @assert length(edges_test) == 5
