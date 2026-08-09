@@ -102,7 +102,8 @@ end
 Compute the Jacobian J[m,p] = ∂E_scat(r_obs[m])/∂χ_p.
 
 Uses implicit differentiation: Z E = E^inc ⟹ ∂E/∂χ_p = k₀² E_p Z⁻¹ D[:,p].
-Precomputes S = Z⁻¹ D for efficiency.
+For reciprocal D, evaluates the equivalent factor
+W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ through the cached LU factorization.
 
 Returns (J, G_obs) where J is M_rx × N_cells.
 """
