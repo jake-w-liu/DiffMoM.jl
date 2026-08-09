@@ -19,6 +19,13 @@ const _VIE_PRODUCT_FALLBACK_PRECISION_2D = 256
     return scale >= floatmin(Float64)
 end
 
+@inline function _scaled_components_are_normal_2d(
+        scaled::ComplexF64, unscaled::ComplexF64)
+    real_ok = iszero(real(unscaled)) || abs(real(scaled)) >= floatmin(Float64)
+    imag_ok = iszero(imag(unscaled)) || abs(imag(scaled)) >= floatmin(Float64)
+    return real_ok && imag_ok
+end
+
 @noinline function _product_bigfloat_2d(
         first::Float64,
         second::Float64,
@@ -27,6 +34,26 @@ end
     return setprecision(BigFloat, _VIE_PRODUCT_FALLBACK_PRECISION_2D) do
         value = BigFloat(first) * BigFloat(second) *
                 Complex{BigFloat}(third)
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@noinline function _product_bigfloat_2d(
+        first::Float64,
+        second::Float64,
+        third::Float64,
+        fourth::ComplexF64,
+        fifth::ComplexF64,
+        sixth::Float64,
+        label::AbstractString)
+    return setprecision(BigFloat, _VIE_PRODUCT_FALLBACK_PRECISION_2D) do
+        value = BigFloat(first) * BigFloat(second) * BigFloat(third) *
+                Complex{BigFloat}(fourth) * Complex{BigFloat}(fifth) *
+                BigFloat(sixth)
         converted = ComplexF64(value)
         isfinite(converted) ||
             throw(OverflowError(
@@ -91,6 +118,32 @@ end
 @inline function _range_safe_product_2d(
         first::Float64,
         second::Float64,
+        third::Float64,
+        fourth::ComplexF64,
+        fifth::ComplexF64,
+        sixth::Float64,
+        label::AbstractString)
+    (iszero(first) || iszero(second) || iszero(third) ||
+     iszero(fourth) || iszero(fifth) || iszero(sixth)) &&
+        return zero(ComplexF64)
+
+    value = (first * sixth) * (second * third) * (fourth * fifth)
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * fourth) * (second * fifth) * (third * sixth)
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * third) * (second * sixth) * (fourth * fifth)
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * fifth) * (second * sixth) * (third * fourth)
+    _usable_nonzero_product_2d(value) && return value
+    value = (first * second) * (third * sixth) * (fourth * fifth)
+    _usable_nonzero_product_2d(value) && return value
+    return _product_bigfloat_2d(
+        first, second, third, fourth, fifth, sixth, label)
+end
+
+@inline function _range_safe_product_2d(
+        first::Float64,
+        second::Float64,
         third::ComplexF64,
         fourth::ComplexF64,
         label::AbstractString)
@@ -144,25 +197,74 @@ function assemble_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64}
             "chi length $(length(chi)) must match $(mesh.ncells) mesh cells."))
     all(isfinite, chi) ||
         throw(ArgumentError("chi must contain only finite values."))
-    k0sq = k0^2
-    isfinite(k0sq) ||
-        throw(ArgumentError(
-            "assemble_vie_2d squared wavenumber must be finite, got $k0sq."))
-
-    D = _assemble_D_matrix_unchecked(mesh, k0)
     N = mesh.ncells
+    area = mesh.cell_area
+    a_eq = _equivalent_radius_unchecked(mesh)
+    D_self = self_cell_integral_2d(k0, a_eq)
+    ka = k0 * a_eq
+    k0sq = k0^2
+    stored_square_usable = isfinite(k0sq) && k0sq >= floatmin(Float64)
+    stored_self_usable = stored_square_usable &&
+                         abs(real(D_self)) >= floatmin(Float64) &&
+                         abs(imag(D_self)) >= floatmin(Float64)
+    small_self = ka <= _SELF_CELL_SERIES_CUTOFF_2D
+    self_kernel = if small_self
+        _small_self_cell_normalized_2d(k0, a_eq, ka)
+    else
+        H1 = besselh(1, 2, ka)
+        isfinite(H1) ||
+            error("assemble_vie_2d produced a non-finite self-cell Hankel value.")
+        value = (-im * π / 2) * (ka * H1 - 2im / π)
+        isfinite(value) ||
+            error("assemble_vie_2d produced a non-finite scaled self-cell value.")
+        value
+    end
 
+    D = Matrix{ComplexF64}(undef, N, N)
     Z = Matrix{ComplexF64}(undef, N, N)
 
     @inbounds for n in 1:N
+        chi_n = ComplexF64(chi[n])
+        self_coefficient = if stored_self_usable
+            _range_safe_product_2d(
+                k0sq, chi[n], D_self,
+                "assemble_vie_2d self-cell interaction coefficient")
+        elseif small_self
+            _range_safe_product_2d(
+                ka, ka, chi_n, self_kernel,
+                "assemble_vie_2d self-cell interaction coefficient")
+        else
+            _range_safe_product_2d(
+                1.0, chi[n], self_kernel,
+                "assemble_vie_2d self-cell interaction coefficient")
+        end
         for m in 1:N
-            Z[m, n] = -_range_safe_product_2d(
-                k0sq, chi[n], D[m, n],
-                "assemble_vie_2d interaction coefficient")
+            if m == n
+                D[m, n] = D_self
+                Z[m, n] = -self_coefficient
+            else
+                green = _greens_2d_unchecked(
+                    mesh.centers[m], mesh.centers[n], k0)
+                D_entry = green * area
+                D[m, n] = D_entry
+                coefficient = if stored_square_usable &&
+                                 _scaled_components_are_normal_2d(D_entry, green)
+                    _range_safe_product_2d(
+                        k0sq, chi[n], D_entry,
+                        "assemble_vie_2d interaction coefficient")
+                else
+                    _range_safe_product_2d(
+                        k0, k0, chi_n, green, area,
+                        "assemble_vie_2d interaction coefficient")
+                end
+                Z[m, n] = -coefficient
+            end
         end
         Z[n, n] += 1.0  # add identity
     end
 
+    all(isfinite, D) ||
+        error("assemble_vie_2d produced non-finite Green-matrix entries.")
     all(isfinite, Z) ||
         error("assemble_vie_2d produced non-finite system-matrix entries.")
     return Z, D

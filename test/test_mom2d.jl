@@ -148,6 +148,27 @@ end
         tiny_integral = self_cell_integral_2d(tiny_k, tiny_a)
         @test tiny_integral ≈ tiny_expected rtol=2e-15
         @test @allocated(self_cell_integral_2d(tiny_k, tiny_a)) == 0
+        self_cell_integral_2d(k, 0.2)
+        @test @allocated(self_cell_integral_2d(k, 0.2)) == 0
+
+        # k² overflows, but the analytic integral remains a representable
+        # subnormal value after the 1/k² scaling.
+        extreme_k = 1e160
+        extreme_a = 1e-160
+        extreme_expected = setprecision(BigFloat, 256) do
+            k_big = BigFloat(extreme_k)
+            a_big = BigFloat(extreme_a)
+            ka_big = k_big * a_big
+            H1_big = Complex{BigFloat}(
+                besselj(1, ka_big), -bessely(1, ka_big))
+            imaginary_unit =
+                Complex{BigFloat}(zero(BigFloat), one(BigFloat))
+            return ComplexF64(
+                (-imaginary_unit * BigFloat(π) / (2 * k_big^2)) *
+                (ka_big * H1_big -
+                 2 * imaginary_unit / BigFloat(π)))
+        end
+        @test self_cell_integral_2d(extreme_k, extreme_a) == extreme_expected
 
         # Positive equivalent radius required
         @test_throws ArgumentError self_cell_integral_2d(k, 0.0)
@@ -164,6 +185,20 @@ end
         Z, D = assemble_vie_2d(mesh, k0, chi)
         @test size(Z) == (25, 25)
         @test size(D) == (25, 25)
+        @test D == DiffMoM.assemble_D_matrix(mesh, k0)
+        Z_reference = Matrix{ComplexF64}(undef, mesh.ncells, mesh.ncells)
+        @inbounds for n in 1:mesh.ncells
+            for m in 1:mesh.ncells
+                Z_reference[m, n] = -k0^2 * chi[n] * D[m, n]
+            end
+            Z_reference[n, n] += 1.0
+        end
+        @test Z == Z_reference
+        assemble_vie_2d(mesh, k0, chi)
+        assembly_alloc = @allocated assemble_vie_2d(mesh, k0, chi)
+        matrix_alloc = _complex_matrix_allocation_2d(
+            mesh.ncells, mesh.ncells)
+        @test assembly_alloc <= 2 * matrix_alloc + 512
 
         # Z should be invertible
         @test cond(Z) < 1e10
@@ -238,6 +273,73 @@ end
         @test all(isfinite, vr.E_total)
         @test all(isfinite, E_scat)
         @test all(isfinite, J)
+
+        # A still larger finite wavenumber has an overflowing square while
+        # k₀²D and k₀²A remain order one. The stored D self term is subnormal,
+        # so assembly must evaluate the combined coefficient before rounding D.
+        square_overflow_mesh = Mesh2D(
+            (0.0, 1e-160), (0.0, Float64(π) * 1e-160), 1, 1)
+        square_overflow_k0 = 1e160
+        square_overflow_chi = [1.0]
+        square_overflow_incident = ComplexF64[1.0 + 0.0im]
+        square_overflow_observation = [Vec2(
+            2e-160, square_overflow_mesh.centers[1][2])]
+
+        Z_overflow, D_overflow = assemble_vie_2d(
+            square_overflow_mesh, square_overflow_k0,
+            square_overflow_chi)
+        vr_overflow = solve_vie_2d(
+            square_overflow_mesh, square_overflow_k0,
+            square_overflow_chi, square_overflow_incident)
+        G_overflow = green_obs_matrix(
+            square_overflow_observation, square_overflow_mesh,
+            square_overflow_k0)
+        scattered_overflow = scattered_field_2d(
+            vr_overflow, square_overflow_observation)
+        jacobian_overflow, _ = jacobian_scattered_field_2d(
+            vr_overflow, square_overflow_observation)
+
+        D_overflow_ref, Z_overflow_ref, E_overflow_ref,
+        G_overflow_ref, scattered_overflow_ref, jacobian_overflow_ref =
+            setprecision(BigFloat, 256) do
+                k_big = BigFloat(square_overflow_k0)
+                area_big = BigFloat(square_overflow_mesh.cell_area)
+                a_big = sqrt(area_big / BigFloat(π))
+                ka_big = k_big * a_big
+                imaginary_unit =
+                    Complex{BigFloat}(zero(BigFloat), one(BigFloat))
+                H1_big = Complex{BigFloat}(
+                    besselj(1, ka_big), -bessely(1, ka_big))
+                D_big = (-imaginary_unit * BigFloat(π) /
+                         (2 * k_big^2)) *
+                        (ka_big * H1_big -
+                         2 * imaginary_unit / BigFloat(π))
+                dx_big = BigFloat(square_overflow_observation[1][1]) -
+                         BigFloat(square_overflow_mesh.centers[1][1])
+                dy_big = BigFloat(square_overflow_observation[1][2]) -
+                         BigFloat(square_overflow_mesh.centers[1][2])
+                phase_big = k_big * sqrt(dx_big^2 + dy_big^2)
+                G_big = (-imaginary_unit / 4) * Complex{BigFloat}(
+                    besselj(0, phase_big), -bessely(0, phase_big))
+                Z_big = one(Complex{BigFloat}) - k_big^2 * D_big
+                E_big = inv(Z_big)
+                scattered_big = k_big^2 * area_big * E_big * G_big
+                jacobian_big = k_big^2 * area_big * G_big / Z_big^2
+                return ComplexF64(D_big), ComplexF64(Z_big),
+                       ComplexF64(E_big), ComplexF64(G_big),
+                       ComplexF64(scattered_big), ComplexF64(jacobian_big)
+            end
+
+        @test D_overflow[1, 1] == D_overflow_ref
+        @test Z_overflow[1, 1] ≈ Z_overflow_ref rtol=2e-15
+        @test vr_overflow.E_total[1] ≈ E_overflow_ref rtol=2e-15
+        @test G_overflow[1, 1] ≈ G_overflow_ref rtol=2e-15
+        @test scattered_overflow[1] ≈ scattered_overflow_ref rtol=2e-15
+        @test jacobian_overflow[1, 1] ≈ jacobian_overflow_ref rtol=2e-15
+        @test all(isfinite, Z_overflow)
+        @test all(isfinite, vr_overflow.E_total)
+        @test all(isfinite, scattered_overflow)
+        @test all(isfinite, jacobian_overflow)
     end
 
     @testset "Plane wave excitation" begin

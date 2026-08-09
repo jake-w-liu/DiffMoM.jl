@@ -9,6 +9,7 @@ export greens_2d, self_cell_integral_2d
 const _SELF_CELL_SERIES_CUTOFF_2D = 0.5
 const _GREENS_SERIES_CUTOFF_2D = 0.5
 const _EULER_GAMMA_2D = Float64(Base.MathConstants.eulergamma)
+const _SELF_CELL_FALLBACK_PRECISION_2D = 256
 
 function _small_greens_2d(k::Float64, distance::Float64, phase::Float64)
     phase2_over_4 = (phase / 2)^2
@@ -43,7 +44,8 @@ end
     )
 end
 
-function _small_self_cell_integral_2d(k::Float64, a_eq::Float64, ka::Float64)
+function _small_self_cell_normalized_2d(
+        k::Float64, a_eq::Float64, ka::Float64)
     # Work with the finite ratios J₁(z)/z and
     # (zY₁(z) + 2/π)/z².  Evaluating zH₁⁽²⁾(z) - 2i/π directly loses the
     # logarithmic real part once z² approaches machine precision.
@@ -69,14 +71,37 @@ function _small_self_cell_integral_2d(k::Float64, a_eq::Float64, ka::Float64)
               y_series / (2π)
     normalized_real = -(π / 2) * y_ratio
     normalized_imag = -(π / 2) * j_ratio
+    return ComplexF64(normalized_real, normalized_imag)
+end
+
+function _small_self_cell_integral_2d(k::Float64, a_eq::Float64, ka::Float64)
+    normalized = _small_self_cell_normalized_2d(k, a_eq, ka)
     value = ComplexF64(
-        _scale_by_positive_square_2d(normalized_real, a_eq),
-        _scale_by_positive_square_2d(normalized_imag, a_eq),
+        _scale_by_positive_square_2d(real(normalized), a_eq),
+        _scale_by_positive_square_2d(imag(normalized), a_eq),
     )
     isfinite(value) ||
         throw(OverflowError(
             "self-cell integral is outside the representable ComplexF64 range."))
     return value
+end
+
+@noinline function _self_cell_integral_big_2d(
+        k::Float64, ka::Float64, H1::ComplexF64)
+    return setprecision(BigFloat, _SELF_CELL_FALLBACK_PRECISION_2D) do
+        k_big = BigFloat(k)
+        ka_big = BigFloat(ka)
+        pi_big = BigFloat(π)
+        imaginary_unit = Complex{BigFloat}(zero(BigFloat), one(BigFloat))
+        value = (-imaginary_unit * pi_big / (2 * k_big^2)) *
+                (ka_big * Complex{BigFloat}(H1) -
+                 2 * imaginary_unit / pi_big)
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "self-cell integral is outside the representable ComplexF64 range."))
+        return converted
+    end
 end
 
 """
@@ -136,10 +161,17 @@ function self_cell_integral_2d(k::Float64, a_eq::Float64)
         return _small_self_cell_integral_2d(k, a_eq, ka)
     end
     H1 = besselh(1, 2, ka)
-    value = (-im * π / (2 * k^2)) * (ka * H1 - 2im / π)
-    isfinite(value) ||
-        error("self_cell_integral_2d produced a non-finite value.")
-    return value
+    isfinite(H1) ||
+        error("self_cell_integral_2d produced a non-finite Hankel value.")
+    k_squared = k^2
+    if isfinite(k_squared) && !iszero(k_squared)
+        value = (-im * π / (2 * k_squared)) * (ka * H1 - 2im / π)
+        if isfinite(value) &&
+           max(abs(real(value)), abs(imag(value))) >= floatmin(Float64)
+            return value
+        end
+    end
+    return _self_cell_integral_big_2d(k, ka, H1)
 end
 
 """

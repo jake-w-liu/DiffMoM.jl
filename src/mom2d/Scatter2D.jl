@@ -76,6 +76,7 @@ function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
         r_obs, vr.mesh, "scattered_field_2d")
     A = vr.mesh.cell_area
     k0sq = vr.k0^2
+    stored_square_usable = isfinite(k0sq) && k0sq >= floatmin(Float64)
     N = vr.mesh.ncells
     M = length(r_obs)
 
@@ -83,11 +84,18 @@ function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
     @inbounds for m in 1:M
         field = zero(ComplexF64)
         for n in 1:N
-            field += _range_safe_product_2d(
-                k0sq, vr.chi[n], vr.E_total[n],
-                _greens_2d_unchecked(
-                    r_obs[m], vr.mesh.centers[n], vr.k0),
-                A, "scattered_field_2d source contribution")
+            green = _greens_2d_unchecked(
+                r_obs[m], vr.mesh.centers[n], vr.k0)
+            contribution = if stored_square_usable
+                _range_safe_product_2d(
+                    k0sq, vr.chi[n], vr.E_total[n], green, A,
+                    "scattered_field_2d source contribution")
+            else
+                _range_safe_product_2d(
+                    vr.k0, vr.k0, vr.chi[n], vr.E_total[n], green, A,
+                    "scattered_field_2d source contribution")
+            end
+            field += contribution
         end
         E_scat[m] = field
     end
@@ -114,6 +122,7 @@ function jacobian_scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2
     G_obs = _green_obs_matrix_unchecked(r_obs, vr.mesh, vr.k0)
     A = vr.mesh.cell_area
     k0sq = vr.k0^2
+    stored_square_usable = isfinite(k0sq) && k0sq >= floatmin(Float64)
     N = vr.mesh.ncells
     M = length(r_obs)
 
@@ -132,9 +141,15 @@ function jacobian_scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2
     mul!(J, G_obs, W)
     @inbounds for p in 1:N
         for m in 1:M
-            J[m, p] = _range_safe_product_2d(
-                k0sq, A, vr.E_total[p], J[m, p],
-                "jacobian_scattered_field_2d entry")
+            J[m, p] = if stored_square_usable
+                _range_safe_product_2d(
+                    k0sq, A, vr.E_total[p], J[m, p],
+                    "jacobian_scattered_field_2d entry")
+            else
+                _range_safe_product_2d(
+                    vr.k0, vr.k0, vr.E_total[p], J[m, p], A,
+                    "jacobian_scattered_field_2d entry")
+            end
         end
     end
 
