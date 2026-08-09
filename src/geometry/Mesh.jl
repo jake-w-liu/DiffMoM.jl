@@ -836,8 +836,41 @@ function _validate_text_mesh_header(header::AbstractString, format::AbstractStri
     return nothing
 end
 
+function _validate_obj_mesh_for_write(mesh::TriMesh)
+    size(mesh.xyz, 1) == 3 ||
+        throw(DimensionMismatch(
+            "OBJ vertex coordinates must have size (3, Nv), got $(size(mesh.xyz))."))
+    size(mesh.tri, 1) == 3 ||
+        throw(DimensionMismatch(
+            "OBJ triangle connectivity must have size (3, Nt), got $(size(mesh.tri))."))
+
+    nv = nvertices(mesh)
+    nt = ntriangles(mesh)
+    nv > 0 || throw(ArgumentError("Cannot write an OBJ mesh with 0 vertices."))
+    nt > 0 || throw(ArgumentError("Cannot write an OBJ mesh with 0 triangles."))
+
+    @inbounds for vertex in 1:nv
+        x = mesh.xyz[1, vertex]
+        y = mesh.xyz[2, vertex]
+        z = mesh.xyz[3, vertex]
+        (isfinite(x) && isfinite(y) && isfinite(z)) ||
+            throw(ArgumentError(
+                "OBJ vertex $vertex has non-finite coordinates: ($x, $y, $z)."))
+    end
+    @inbounds for triangle in 1:nt
+        for local_vertex in 1:3
+            vertex = mesh.tri[local_vertex, triangle]
+            1 <= vertex <= nv ||
+                throw(ArgumentError(
+                    "OBJ triangle $triangle references vertex $vertex outside 1:$nv."))
+        end
+    end
+    return nothing
+end
+
 function write_obj_mesh(path::AbstractString, mesh::TriMesh; header::AbstractString="Exported by DiffMoM")
     _validate_text_mesh_header(header, "OBJ")
+    _validate_obj_mesh_for_write(mesh)
     open(path, "w") do io
         println(io, "# $header")
         for i in 1:nvertices(mesh)

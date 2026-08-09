@@ -4195,6 +4195,30 @@ for unsafe_header in ("safe\nv 9 9 9", "safe\rf 1 2 3")
     @test read(obj_header_path) == obj_header_sentinel
 end
 
+# Invalid meshes must be rejected before opening the destination.  These are
+# precisely the structural/value constraints imposed by read_obj_mesh.
+obj_validation_path = joinpath(DATADIR, "tmp_obj_mesh_validation.obj")
+obj_validation_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
+obj_empty_mesh = TriMesh(zeros(Float64, 3, 0), Matrix{Int}(undef, 3, 0))
+obj_nonfinite_mesh = TriMesh(
+    Float64[0 Inf 0; 0 0 1; 0 0 0], reshape([1, 2, 3], 3, 1))
+obj_bad_index_mesh = TriMesh(
+    Float64[0 1 0; 0 0 1; 0 0 0], reshape([1, 2, 4], 3, 1))
+for bad_mesh in (obj_empty_mesh, obj_nonfinite_mesh, obj_bad_index_mesh)
+    write(obj_validation_path, obj_validation_sentinel)
+    @test_throws ArgumentError write_obj_mesh(obj_validation_path, bad_mesh)
+    @test read(obj_validation_path) == obj_validation_sentinel
+end
+for bad_shape_mesh in (
+    TriMesh(zeros(Float64, 2, 3), reshape([1, 2, 3], 3, 1)),
+    TriMesh(zeros(Float64, 3, 3), reshape([1, 2], 2, 1)),
+)
+    write(obj_validation_path, obj_validation_sentinel)
+    @test_throws DimensionMismatch write_obj_mesh(
+        obj_validation_path, bad_shape_mesh)
+    @test read(obj_validation_path) == obj_validation_sentinel
+end
+
 obj_alloc_path = joinpath(DATADIR, "tmp_alloc.obj")
 obj_grid_n = 20
 open(obj_alloc_path, "w") do io
