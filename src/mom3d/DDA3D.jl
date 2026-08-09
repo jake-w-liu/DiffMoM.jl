@@ -243,6 +243,17 @@ end
 @inline _alpha_block(G, alpha::Number) = G * alpha
 @inline _alpha_block(G, alpha::_CMat3DDA) = G * alpha
 
+@inline function _alpha_basis_vector_3d(alpha::Number, column::Int)
+    z = zero(ComplexF64)
+    value = ComplexF64(alpha)
+    return column == 1 ? CVec3(value, z, z) :
+           column == 2 ? CVec3(z, value, z) : CVec3(z, z, value)
+end
+
+@inline function _alpha_basis_vector_3d(alpha::_CMat3DDA, column::Int)
+    return CVec3(alpha[1, column], alpha[2, column], alpha[3, column])
+end
+
 # The fallback only receives binary64 inputs. Use more than four input
 # significands for the small (at most 6x6) solves, while keeping this rare
 # exponent-range recovery path bounded in time and memory.
@@ -452,35 +463,209 @@ It maps normalized dipole moment `q = p / eps0` at `rp` to electric field at
 `r`. The singular self term is not defined and must be handled by the chosen
 polarizability model.
 """
-function electric_dipole_dyadic_3d(r::Vec3, rp::Vec3, k0::Real)
-    k = _finite_nonnegative_k0_3d(k0)
+@inline function _electric_dipole_geometry_3d(r::Vec3, rp::Vec3, k::Float64)
     all(isfinite, r) && all(isfinite, rp) ||
         throw(ArgumentError(
             "electric dipole observation and source points must be finite."))
     R_vec = r - rp
-    R = norm(R_vec)
-    isfinite(R) && R > 0 ||
+    R = hypot(R_vec[1], R_vec[2], R_vec[3])
+    isfinite(R) ||
+        throw(OverflowError(
+            "electric dipole point separation is outside the representable Float64 range."))
+    R > 0 ||
         error("electric_dipole_dyadic_3d requires distinct finite points.")
     Rhat = R_vec / R
-    rr = Rhat * transpose(Rhat)
-    expfac = exp(-1im * k * R) / (4π)
+    phase = k * R
+    isfinite(phase) ||
+        throw(OverflowError(
+            "electric dipole phase k0*R is outside the representable Float64 range."))
+    return R, Rhat, phase, cis(-phase) / (4π)
+end
 
-    transverse = (k^2 / R) * (_I3_DDA - rr)
-    near = (1 / R^3 + 1im * k / R^2) * (3 * rr - _I3_DDA)
-    return expfac * (transverse + near)
+@inline function _scale_dipole_component_3d(value::Float64,
+                                             amplitude::Float64,
+                                             k::Float64, k_power::Int,
+                                             R::Float64, R_power::Int)
+    (iszero(value) || iszero(amplitude) || (k_power > 0 && iszero(k))) &&
+        return copysign(0.0, value)
+
+    value_fraction, value_exponent = frexp(value)
+    amplitude_fraction, amplitude_exponent = frexp(amplitude)
+    R_fraction, R_exponent = frexp(R)
+    fraction = value_fraction * amplitude_fraction
+    exponent = value_exponent + amplitude_exponent - R_power * R_exponent
+
+    if k_power > 0
+        k_fraction, k_exponent = frexp(k)
+        @inbounds for _ in 1:k_power
+            fraction *= k_fraction
+        end
+        exponent += k_power * k_exponent
+    end
+    @inbounds for _ in 1:R_power
+        fraction /= R_fraction
+    end
+    return ldexp(fraction, exponent)
+end
+
+@inline function _scale_dipole_value_3d(value::ComplexF64,
+                                         amplitude::Float64,
+                                         k::Float64, k_power::Int,
+                                         R::Float64, R_power::Int)
+    return ComplexF64(
+        _scale_dipole_component_3d(
+            real(value), amplitude, k, k_power, R, R_power),
+        _scale_dipole_component_3d(
+            imag(value), amplitude, k, k_power, R, R_power),
+    )
+end
+
+@inline function _scale_dipole_vector_3d(value::CVec3,
+                                          amplitude::Float64,
+                                          k::Float64, k_power::Int,
+                                          R::Float64, R_power::Int)
+    return CVec3(
+        _scale_dipole_value_3d(value[1], amplitude, k, k_power, R, R_power),
+        _scale_dipole_value_3d(value[2], amplitude, k, k_power, R, R_power),
+        _scale_dipole_value_3d(value[3], amplitude, k, k_power, R, R_power),
+    )
+end
+
+function _electric_dipole_apply_bigfloat_3d(r::Vec3, rp::Vec3, k::Float64,
+                                             q::CVec3)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        R_vec = SVector{3,BigFloat}(
+            BigFloat(r[1]) - BigFloat(rp[1]),
+            BigFloat(r[2]) - BigFloat(rp[2]),
+            BigFloat(r[3]) - BigFloat(rp[3]),
+        )
+        R = sqrt(sum(abs2, R_vec))
+        R > 0 || error(
+            "electric_dipole_dyadic_3d requires distinct finite points.")
+        Rhat = R_vec / R
+        qb = SVector{3,Complex{BigFloat}}(
+            Complex{BigFloat}(q[1]),
+            Complex{BigFloat}(q[2]),
+            Complex{BigFloat}(q[3]),
+        )
+        rq = sum(Rhat[index] * qb[index] for index in 1:3)
+        transverse_vector = qb - rq * Rhat
+        near_vector = 3 * rq * Rhat - qb
+        kb = BigFloat(k)
+        expfac = exp(Complex{BigFloat}(0, -kb * R)) /
+                 (4 * BigFloat(pi))
+        value = expfac * (
+            (kb^2 / R) * transverse_vector +
+            (inv(R^3) + Complex{BigFloat}(0, 1) * kb / R^2) * near_vector)
+        converted = CVec3(
+            ComplexF64(value[1]),
+            ComplexF64(value[2]),
+            ComplexF64(value[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "electric dipole field is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@inline function _electric_dipole_apply_with_geometry_3d(
+    r::Vec3,
+    rp::Vec3,
+    k::Float64,
+    q::CVec3,
+    R::Float64,
+    Rhat::Vec3,
+    expfac::ComplexF64,
+)
+    q_scale = max(abs(q[1]), abs(q[2]), abs(q[3]))
+    isfinite(q_scale) ||
+        throw(ArgumentError("electric dipole moment must be finite."))
+    iszero(q_scale) && return CVec3(
+        0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+
+    rq_direct = dot(Rhat, q)
+    ordinary_value = expfac * (
+        (k^2 / R) * (q - rq_direct * Rhat) +
+        (1 / R^3 + 1im * k / R^2) * (3 * rq_direct * Rhat - q))
+    all(isfinite, ordinary_value) && return ordinary_value
+
+    q_normalized = q / q_scale
+    rq = dot(Rhat, q_normalized)
+    transverse_vector = q_normalized - rq * Rhat
+    near_vector = 3 * rq * Rhat - q_normalized
+    transverse = _scale_dipole_vector_3d(
+        transverse_vector, q_scale, k, 2, R, 1)
+    near_real = _scale_dipole_vector_3d(
+        near_vector, q_scale, k, 0, R, 3)
+    near_imag = _scale_dipole_vector_3d(
+        near_vector, q_scale, k, 1, R, 2)
+    value = expfac * (transverse + near_real + 1im * near_imag)
+    all(isfinite, value) && return value
+    return _electric_dipole_apply_bigfloat_3d(r, rp, k, q)
+end
+
+@inline function _electric_dipole_alpha_block_3d(
+    r::Vec3,
+    rp::Vec3,
+    k::Float64,
+    alpha,
+)
+    R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
+    column1 = _electric_dipole_apply_with_geometry_3d(
+        r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, Rhat, expfac)
+    column2 = _electric_dipole_apply_with_geometry_3d(
+        r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, Rhat, expfac)
+    column3 = _electric_dipole_apply_with_geometry_3d(
+        r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, Rhat, expfac)
+    return _CMat3DDA((
+        column1[1], column1[2], column1[3],
+        column2[1], column2[2], column2[3],
+        column3[1], column3[2], column3[3],
+    ))
+end
+
+@inline function _electric_dipole_alpha_adjoint_apply_3d(
+    r::Vec3,
+    rp::Vec3,
+    k::Float64,
+    alpha::Number,
+    value::CVec3,
+)
+    return conj(_electric_dipole_apply_3d(
+        r, rp, k, ComplexF64(alpha) * conj(value)))
+end
+
+@inline function _electric_dipole_alpha_adjoint_apply_3d(
+    r::Vec3,
+    rp::Vec3,
+    k::Float64,
+    alpha::_CMat3DDA,
+    value::CVec3,
+)
+    R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
+    column1 = _electric_dipole_apply_with_geometry_3d(
+        r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, Rhat, expfac)
+    column2 = _electric_dipole_apply_with_geometry_3d(
+        r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, Rhat, expfac)
+    column3 = _electric_dipole_apply_with_geometry_3d(
+        r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, Rhat, expfac)
+    return CVec3(
+        dot(column1, value),
+        dot(column2, value),
+        dot(column3, value),
+    )
+end
+
+function electric_dipole_dyadic_3d(r::Vec3, rp::Vec3, k0::Real)
+    k = _finite_nonnegative_k0_3d(k0)
+    return _electric_dipole_alpha_block_3d(r, rp, k, 1.0 + 0im)
 end
 
 @inline function _electric_dipole_apply_3d(r::Vec3, rp::Vec3, k::Float64, q::CVec3)
-    R_vec = r - rp
-    R = norm(R_vec)
-    R > 0 || error("electric dipole application is singular for coincident points.")
-    Rhat = R_vec / R
-    rq = dot(Rhat, q)
-    expfac = exp(-1im * k * R) / (4π)
-
-    transverse = (k^2 / R) * (q - rq * Rhat)
-    near = (1 / R^3 + 1im * k / R^2) * (3 * rq * Rhat - q)
-    return expfac * (transverse + near)
+    R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
+    return _electric_dipole_apply_with_geometry_3d(
+        r, rp, k, q, R, Rhat, expfac)
 end
 
 Base.size(A::DDAOperator3D) = (3 * A.grid.nvoxels, 3 * A.grid.nvoxels)
@@ -498,8 +683,9 @@ function Base.getindex(A::DDAOperator3D, row::Int, col::Int)
         return a == b ? 1.0 + 0im : 0.0 + 0im
     end
     iszero(A.alpha[j]) && return 0.0 + 0im
-    G = electric_dipole_dyadic_3d(A.grid.centers[i], A.grid.centers[j], A.k0)
-    return -_alpha_block(G, A.alpha[j])[a, b]
+    block = _electric_dipole_alpha_block_3d(
+        A.grid.centers[i], A.grid.centers[j], A.k0, A.alpha[j])
+    return -block[a, b]
 end
 
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
@@ -585,16 +771,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     # `@inbounds` is applied over the verified-safe indexing.
     @inbounds for i in 1:N
         Ei = _read_field_component(xread, i)
-        alphai = conj(A.alpha[i])
+        alphai = A.alpha[i]
         if !iszero(alphai)
             ri = A.grid.centers[i]
             acc = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
             for j in 1:N
                 i == j && continue
                 xj = _read_field_component(xread, j)
-                acc += conj(_electric_dipole_apply_3d(ri, A.grid.centers[j], A.k0, conj(xj)))
+                acc += _electric_dipole_alpha_adjoint_apply_3d(
+                    ri, A.grid.centers[j], A.k0, alphai, xj)
             end
-            Ei -= _alpha_adjoint_apply(A.alpha[i], acc)
+            Ei -= acc
         end
 
         for a in 1:3
@@ -658,8 +845,8 @@ end
         rj = grid.centers[j]
         for i in 1:N
             i == j && continue
-            G = electric_dipole_dyadic_3d(grid.centers[i], rj, k)
-            block = _alpha_block(G, alphaj)
+            block = _electric_dipole_alpha_block_3d(
+                grid.centers[i], rj, k, alphaj)
             for c in 1:3
                 col = _dda_index(j, c)
                 for a in 1:3
@@ -783,8 +970,9 @@ function scattered_field_dda_3d(res::DDAResult3D, r_obs::AbstractVector{Vec3})
         E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
-            G = electric_dipole_dyadic_3d(r_obs[m], res.grid.centers[j], res.k0)
-            E += G * _alpha_apply(res.alpha[j], res.E_total[j])
+            E += _electric_dipole_apply_3d(
+                r_obs[m], res.grid.centers[j], res.k0,
+                _alpha_apply(res.alpha[j], res.E_total[j]))
         end
         out[m] = E
     end

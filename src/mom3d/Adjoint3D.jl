@@ -82,16 +82,19 @@ function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
 
     for j in 1:N
         Ej = res.E_total[j]
+        dalpha = _dalpha_depsr_clausius_mossotti(
+            res.eps_r[j], res.grid.volumes[j])
+        differentiated_dipole = dalpha * Ej
         acc = 0.0 + 0im
         rj = res.grid.centers[j]
         for i in 1:N
             i == j && continue
             lambdai = _read_field_component(lambda_flat, i)
-            GEj = _electric_dipole_apply_3d(res.grid.centers[i], rj, res.k0, Ej)
+            GEj = _electric_dipole_apply_3d(
+                res.grid.centers[i], rj, res.k0, differentiated_dipole)
             acc += dot(lambdai, GEj)
         end
-        dalpha = _dalpha_depsr_clausius_mossotti(res.eps_r[j], res.grid.volumes[j])
-        grad[j] = 2 * real(dalpha * acc)
+        grad[j] = 2 * real(acc)
     end
 
     return grad

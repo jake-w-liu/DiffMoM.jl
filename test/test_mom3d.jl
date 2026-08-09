@@ -124,6 +124,46 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test norm(block12 - transpose(block21)) < 1e-13
     end
 
+    @testset "Exponent-safe subnormal-volume interactions" begin
+        spacing = 1.0e-103
+        grid = VoxelGrid3D(
+            (0.0, 2spacing), (0.0, spacing), (0.0, spacing), 2, 1, 1)
+        A, alpha, _ = assemble_dda_3d(grid, 1.0, 2.0)
+        longitudinal_ref, transverse_ref = setprecision(BigFloat, 256) do
+            R = abs(BigFloat(grid.centers[2][1]) -
+                    BigFloat(grid.centers[1][1]))
+            alpha_b = Complex{BigFloat}(alpha[2])
+            expfac = exp(Complex{BigFloat}(0, -R)) /
+                     (4 * BigFloat(pi))
+            near = inv(R^3) + Complex{BigFloat}(0, 1) / R^2
+            transverse = inv(R)
+            return ComplexF64(-2 * alpha_b * expfac * near),
+                   ComplexF64(-alpha_b * expfac * (transverse - near))
+        end
+
+        @test all(isfinite, A)
+        @test A[1, 4] ≈ longitudinal_ref rtol=8eps(Float64)
+        @test A[2, 5] ≈ transverse_ref rtol=8eps(Float64)
+        @test A[3, 6] ≈ transverse_ref rtol=8eps(Float64)
+
+        A_op = dda_operator_3d(grid, 1.0, 2.0)
+        x = ComplexF64[1.0 + 0.2im, -0.4 + 0.3im, 0.7 - 0.1im,
+                       -0.2 + 0.5im, 0.8 - 0.4im, 0.1 + 0.6im]
+        @test all(isfinite, A_op * x)
+        @test A_op * x ≈ A * x rtol=8eps(Float64)
+        @test all(isfinite, adjoint(A_op) * x)
+        @test adjoint(A_op) * x ≈ adjoint(A) * x rtol=8eps(Float64)
+
+        E_inc = [CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im),
+                 CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)]
+        result = solve_dda_3d(grid, 1.0, 2.0, E_inc)
+        @test all(isfinite, reduce(vcat, result.E_total))
+        @test all(isfinite, scattered_field_dda_3d(
+            result, [Vec3(3spacing, spacing / 2, spacing / 2)])[1])
+        @test all(isfinite, gradient_epsr_dda_3d(
+            result, ones(ComplexF64, 3grid.nvoxels)))
+    end
+
     @testset "Single-voxel Rayleigh dipole far field" begin
         grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
         epsr = 2.5 + 0im
