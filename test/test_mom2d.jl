@@ -51,6 +51,13 @@ end
         @test_throws ArgumentError Mesh2D((0.0, Inf), (-0.5, 0.5), 4, 2)
         @test_throws ArgumentError Mesh2D((-1.0, 1.0), (NaN, 0.5), 4, 2)
         @test_throws ArgumentError Mesh2D(
+            (1.0, nextfloat(1.0)), (0.0, 1.0), 3, 1)
+        large_origin = 1.0e16
+        duplicate_center = Vec2(large_origin + 2.0, 0.5)
+        @test_throws ArgumentError Mesh2D(
+            [duplicate_center, duplicate_center], 4.0,
+            2, 2, 1, 4.0, 1.0, large_origin, 0.0)
+        @test_throws ArgumentError Mesh2D(
             (-1.0, 1.0), (-0.5, 0.5), typemax(Int), 2)
     end
 

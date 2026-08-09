@@ -28,6 +28,25 @@ end
     end
 end
 
+@inline _mesh_axis_center_2d(origin::Float64, spacing::Float64, index::Int) =
+    muladd(Float64(index) - 0.5, spacing, origin)
+
+function _validate_mesh_axis_2d(origin::Float64, spacing::Float64,
+                                count::Int, label::AbstractString)
+    previous = _mesh_axis_center_2d(origin, spacing, 1)
+    isfinite(previous) ||
+        throw(ArgumentError("Mesh2D $label-axis center 1 is non-finite."))
+    @inbounds for index in 2:count
+        current = _mesh_axis_center_2d(origin, spacing, index)
+        (isfinite(current) && current > previous) ||
+            throw(ArgumentError(
+                "Mesh2D $label-axis centers are not representably distinct " *
+                "at indices $(index - 1) and $index."))
+        previous = current
+    end
+    return nothing
+end
+
 """
     Mesh2D
 
@@ -44,6 +63,14 @@ struct Mesh2D
     dy::Float64                 # cell height
     x0::Float64                 # domain lower-left x
     y0::Float64                 # domain lower-left y
+    function Mesh2D(centers::Vector{Vec2}, cell_area::Float64,
+                    ncells::Int, nx::Int, ny::Int,
+                    dx::Float64, dy::Float64,
+                    x0::Float64, y0::Float64)
+        mesh = new(centers, cell_area, ncells, nx, ny, dx, dy, x0, y0)
+        _validate_mesh_2d(mesh)
+        return mesh
+    end
 end
 
 """
@@ -66,27 +93,26 @@ function Mesh2D(x_range::Tuple{Float64,Float64}, y_range::Tuple{Float64,Float64}
     y_range[2] > y_range[1] ||
         throw(ArgumentError("y_range must be strictly increasing, got $y_range."))
 
+    ncells = _checked_cell_count_2d(nx, ny)
     dx = (x_range[2] - x_range[1]) / nx
     dy = (y_range[2] - y_range[1]) / ny
     _validate_positive_finite_2d(dx, "Mesh2D dx")
     _validate_positive_finite_2d(dy, "Mesh2D dy")
+    _validate_mesh_axis_2d(x_range[1], dx, nx, "x")
+    _validate_mesh_axis_2d(y_range[1], dy, ny, "y")
     cell_area = dx * dy
     _validate_positive_finite_2d(cell_area, "Mesh2D cell area")
-    ncells = _checked_cell_count_2d(nx, ny)
 
     centers = Vector{Vec2}(undef, ncells)
     idx = 0
     for iy in 1:ny
-        yc = y_range[1] + (iy - 0.5) * dy
+        yc = _mesh_axis_center_2d(y_range[1], dy, iy)
         for ix in 1:nx
-            xc = x_range[1] + (ix - 0.5) * dx
+            xc = _mesh_axis_center_2d(x_range[1], dx, ix)
             idx += 1
             centers[idx] = Vec2(xc, yc)
         end
     end
-    all(center -> all(isfinite, center), centers) ||
-        throw(ArgumentError(
-            "Mesh2D center construction produced non-finite coordinates."))
 
     return Mesh2D(centers, cell_area, ncells, nx, ny, dx, dy, x_range[1], y_range[1])
 end
@@ -105,16 +131,29 @@ function _validate_mesh_2d(mesh::Mesh2D)
     _validate_positive_finite_2d(mesh.dx, "Mesh2D dx")
     _validate_positive_finite_2d(mesh.dy, "Mesh2D dy")
     _validate_positive_finite_2d(mesh.cell_area, "Mesh2D cell area")
-    expected_area = mesh.dx * mesh.dy
-    isfinite(expected_area) && mesh.cell_area == expected_area ||
-        throw(ArgumentError(
-            "Mesh2D cell_area=$(mesh.cell_area) is inconsistent with dx*dy=$expected_area."))
     isfinite(mesh.x0) ||
         throw(ArgumentError("Mesh2D x0 must be finite, got $(mesh.x0)."))
     isfinite(mesh.y0) ||
         throw(ArgumentError("Mesh2D y0 must be finite, got $(mesh.y0)."))
-    all(center -> all(isfinite, center), mesh.centers) ||
-        throw(ArgumentError("Mesh2D centers must contain only finite coordinates."))
+    _validate_mesh_axis_2d(mesh.x0, mesh.dx, mesh.nx, "x")
+    _validate_mesh_axis_2d(mesh.y0, mesh.dy, mesh.ny, "y")
+    expected_area = mesh.dx * mesh.dy
+    isfinite(expected_area) && mesh.cell_area == expected_area ||
+        throw(ArgumentError(
+            "Mesh2D cell_area=$(mesh.cell_area) is inconsistent with dx*dy=$expected_area."))
+
+    index = 0
+    @inbounds for iy in 1:mesh.ny
+        expected_y = _mesh_axis_center_2d(mesh.y0, mesh.dy, iy)
+        for ix in 1:mesh.nx
+            expected_x = _mesh_axis_center_2d(mesh.x0, mesh.dx, ix)
+            index += 1
+            center = mesh.centers[index]
+            (center[1] == expected_x && center[2] == expected_y) ||
+                throw(ArgumentError(
+                    "Mesh2D center $index is inconsistent with the Cartesian grid."))
+        end
+    end
     return nothing
 end
 
