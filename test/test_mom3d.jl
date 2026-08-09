@@ -106,6 +106,38 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test planewave_dda_3d(
             centered_grid, Vec3(0.0, 0.0, 1.0), 1.0, extreme_pol) ==
               [extreme_pol]
+        planewave_dda_3d(
+            centered_grid, Vec3(0.0, 0.0, 1.0), 1.0,
+            Vec3(1.0, 0.0, 0.0))
+        planewave_alloc = @allocated planewave_dda_3d(
+            centered_grid, Vec3(0.0, 0.0, 1.0), 1.0,
+            Vec3(1.0, 0.0, 0.0))
+        Vector{CVec3}(undef, centered_grid.nvoxels)
+        planewave_output_alloc = @allocated Vector{CVec3}(
+            undef, centered_grid.nvoxels)
+        @test planewave_alloc <= planewave_output_alloc + 128
+
+        phase_x = 1e200
+        phase_overflow_grid = VoxelGrid3D(
+            (phase_x, nextfloat(phase_x)),
+            (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+        phase_kvec = Vec3(1e200, 0.0, 0.0)
+        phase_pol = Vec3(0.0, 1.0, 0.0)
+        phase_reference = setprecision(BigFloat, 256) do
+            argument = BigFloat(phase_kvec[1]) *
+                       BigFloat(phase_overflow_grid.centers[1][1])
+            ComplexF64(exp(
+                Complex{BigFloat}(zero(BigFloat), -argument)))
+        end
+        phase_E = planewave_dda_3d(
+            phase_overflow_grid, phase_kvec, 1.0, phase_pol)
+        @test phase_E == [CVec3(0.0 + 0im, phase_reference, 0.0 + 0im)]
+        phase_E_em, phase_H_em = planewave_em_dda_3d(
+            phase_overflow_grid, phase_kvec, 1.0, phase_pol)
+        @test phase_E_em == phase_E
+        @test phase_H_em == [CVec3(
+            0.0 + 0im, 0.0 + 0im,
+            phase_reference / 376.730313668)]
         @test_throws OverflowError planewave_dda_3d(
             centered_grid, Vec3(0.0, 0.0, 1.0), 1.0e200,
             CVec3(1.0e200 + 0im, 0.0 + 0im, 0.0 + 0im))

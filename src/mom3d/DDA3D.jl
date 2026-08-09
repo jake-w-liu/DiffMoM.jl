@@ -1106,6 +1106,21 @@ Evaluate a transverse plane wave at voxel centers:
 
     E_inc(r) = pol * E0 * exp(-i k_vec dot r)
 """
+@noinline function _planewave_phase_bigfloat_dda_3d(
+        k_vec::Vec3, center::Vec3, voxel::Int)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        phase_argument = sum(
+            BigFloat(k_vec[index]) * BigFloat(center[index])
+            for index in 1:3)
+        value = ComplexF64(
+            exp(Complex{BigFloat}(zero(BigFloat), -phase_argument)))
+        isfinite(value) ||
+            throw(OverflowError(
+                "DDA plane-wave phase is non-finite at voxel $voxel."))
+        return value
+    end
+end
+
 function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
     khat = _normalized_real_direction_dda_3d(k_vec, "k_vec")
     polv = _as_cvec3(pol, "pol")
@@ -1124,10 +1139,11 @@ function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
     Einc = Vector{CVec3}(undef, grid.nvoxels)
     for j in 1:grid.nvoxels
         phase_argument = dot(k_vec, grid.centers[j])
-        isfinite(phase_argument) ||
-            throw(OverflowError(
-                "DDA plane-wave phase is non-finite at voxel $j."))
-        field = field_amplitude * exp(-1im * phase_argument)
+        phase = isfinite(phase_argument) ?
+                exp(-1im * phase_argument) :
+                _planewave_phase_bigfloat_dda_3d(
+                    k_vec, grid.centers[j], j)
+        field = field_amplitude * phase
         all(isfinite, field) ||
             throw(OverflowError(
                 "DDA plane-wave field is non-finite at voxel $j."))
