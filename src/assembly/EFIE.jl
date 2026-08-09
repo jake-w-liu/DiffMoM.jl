@@ -578,11 +578,12 @@ function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEOperator{T}, 
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
 
+    xread = Base.mightalias(y, x) ? copy(x) : x
     fill!(y, zero(T))
     @inbounds for m in 1:N
         acc = zero(T)
         for n in 1:N
-            acc += efie_entry(A, m, n) * x[n]
+            acc += efie_entry(A, m, n) * xread[n]
         end
         y[m] = acc
     end
@@ -600,11 +601,12 @@ function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEAdjointOperat
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
 
+    xread = Base.mightalias(y, x) ? copy(x) : x
     fill!(y, zero(T))
     @inbounds for n in 1:N
         acc = zero(T)
         for m in 1:N
-            acc += conj(efie_entry(A.op, m, n)) * x[m]
+            acc += conj(efie_entry(A.op, m, n)) * xread[m]
         end
         y[n] = acc
     end

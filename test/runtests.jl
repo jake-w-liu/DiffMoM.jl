@@ -2967,6 +2967,19 @@ rel_matvec = norm(Ax_mf - Ax_dense) / max(norm(Ax_dense), 1e-30)
 println("  matrix-free matvec rel error: $rel_matvec")
 @assert rel_matvec < 1e-10
 
+for efie_op in (A_mf, adjoint(A_mf))
+    efie_overlap_storage = vcat(x_probe, 0.0 + 0im)
+    efie_overlap_x = view(efie_overlap_storage, 1:N)
+    efie_overlap_y = view(efie_overlap_storage, 2:(N + 1))
+    efie_overlap_expected = efie_op * copy(efie_overlap_x)
+    mul!(efie_overlap_y, efie_op, efie_overlap_x)
+    @test efie_overlap_y ≈ efie_overlap_expected rtol=1e-12
+
+    efie_nonalias_y = zeros(ComplexF64, N)
+    mul!(efie_nonalias_y, efie_op, x_probe)
+    @test (@allocated mul!(efie_nonalias_y, efie_op, x_probe)) < 128
+end
+
 # GMRES on matrix-free operator
 I_mf_gmres, stats_mf = solve_gmres(A_mf, v; tol=1e-8, maxiter=300)
 rel_mf = norm(I_mf_gmres - I_pec) / max(norm(I_pec), 1e-30)
