@@ -5,6 +5,111 @@
 
 export mie_coefficients_2d, mie_scattered_field_2d, mie_total_field_2d
 
+const _MIE2D_FALLBACK_PRECISION = 256
+const _MIE2D_SMALL_ARGUMENT_CUTOFF = 1e-25
+const _MIE2D_INTERNAL_SERIES_LIMIT = 0.5
+
+function _besselj_integer_series_big_2d(
+    order::Int,
+    z::Complex{BigFloat},
+)
+    order >= 0 || throw(ArgumentError("Bessel order must be nonnegative."))
+    half_z = z / 2
+    term = one(z)
+    @inbounds for factor in 1:order
+        term *= half_z / factor
+    end
+    value = term
+    recurrence_factor = -(half_z * half_z)
+    for series_order in 1:128
+        term *= recurrence_factor /
+                (BigFloat(series_order) *
+                 (BigFloat(order) + BigFloat(series_order)))
+        updated = value + term
+        updated == value && return updated
+        value = updated
+    end
+    error("complex Bessel-J power series did not converge.")
+end
+
+@inline function _besselj_and_derivative_big_2d(
+    order::Int,
+    z::Complex{BigFloat},
+)
+    value = _besselj_integer_series_big_2d(order, z)
+    next_value = _besselj_integer_series_big_2d(order + 1, z)
+    previous_value = order == 0 ? -next_value :
+                     _besselj_integer_series_big_2d(order - 1, z)
+    return value, (previous_value - next_value) / 2
+end
+
+@inline function _exterior_bessel_values_big_2d(order::Int, x::BigFloat)
+    Jn = besselj(order, x)
+    Yn = bessely(order, x)
+    Jnext = besselj(order + 1, x)
+    Ynext = bessely(order + 1, x)
+    Jprevious = order == 0 ? -Jnext : besselj(order - 1, x)
+    Yprevious = order == 0 ? -Ynext : bessely(order - 1, x)
+    dJn = (Jprevious - Jnext) / 2
+    dYn = (Yprevious - Ynext) / 2
+    return Jn, Complex{BigFloat}(Jn, -Yn), dJn,
+           Complex{BigFloat}(dJn, -dYn)
+end
+
+function _small_mie2d_fallback_supported(
+    k0::Float64,
+    a::Float64,
+    eps_r::Float64,
+    pec::Bool,
+)
+    (pec || eps_r == 0.0) && return true
+    return setprecision(BigFloat, 128) do
+        internal_size = BigFloat(k0) * BigFloat(a) * sqrt(abs(BigFloat(eps_r)))
+        internal_size <= BigFloat(_MIE2D_INTERNAL_SERIES_LIMIT)
+    end
+end
+
+function _mie_coefficients_small_bigfloat_2d(
+    k0::Float64,
+    a::Float64,
+    eps_r::Float64,
+    N::Int,
+    coefficient_count::Int,
+    pec::Bool,
+)
+    coefficients = Vector{ComplexF64}(undef, coefficient_count)
+    center = N + 1
+    setprecision(BigFloat, _MIE2D_FALLBACK_PRECISION) do
+        x = BigFloat(k0) * BigFloat(a)
+        material_root = pec || eps_r == 0.0 ?
+                        zero(Complex{BigFloat}) :
+                        sqrt(Complex{BigFloat}(BigFloat(eps_r), zero(BigFloat)))
+        internal_argument = material_root * x
+
+        @inbounds for order in 0:N
+            Jn, Hn, dJn, dHn = _exterior_bessel_values_big_2d(order, x)
+            coefficient = if pec
+                -Jn / Hn
+            elseif eps_r == 0.0
+                order_big = BigFloat(order)
+                -(order_big * Jn - x * dJn) /
+                 (order_big * Hn - x * dHn)
+            else
+                Jinternal, dJinternal =
+                    _besselj_and_derivative_big_2d(order, internal_argument)
+                -(material_root * dJinternal * Jn - Jinternal * dJn) /
+                 (material_root * dJinternal * Hn - Jinternal * dHn)
+            end
+            converted = ComplexF64(coefficient)
+            isfinite(converted) ||
+                error("2D Mie coefficient at order $order is non-finite.")
+            coefficients[center + order] = converted
+            coefficients[center - order] = converted
+        end
+    end
+    return coefficients, N
+end
+
 @inline function _validated_mie2d_positive(value::Float64,
                                            label::AbstractString)
     (isfinite(value) && value > 0.0) ||
@@ -14,9 +119,9 @@ end
 
 function _validated_mie2d_order(k0a::Float64,
                                 nmax::Union{Nothing,Int})
-    (isfinite(k0a) && k0a > 0.0) ||
+    (isfinite(k0a) && k0a >= 0.0) ||
         throw(ArgumentError(
-            "2D Mie size parameter k0*a must be finite and positive, got $k0a"))
+            "2D Mie size parameter k0*a must be finite and nonnegative, got $k0a"))
     N = if nmax === nothing
         estimate = k0a + 4 * cbrt(k0a) + 2
         (isfinite(estimate) && estimate <= typemax(Int)) ||
@@ -75,6 +180,12 @@ function mie_coefficients_2d(k0::Float64, a::Float64, eps_r::Float64;
     # intermediates for electrically tiny matched cylinders.
     if !pec && eps_r == 1.0
         return zeros(ComplexF64, coefficient_count), N
+    end
+
+    if k0a <= _MIE2D_SMALL_ARGUMENT_CUTOFF &&
+       _small_mie2d_fallback_supported(k0, a, eps_r, pec)
+        return _mie_coefficients_small_bigfloat_2d(
+            k0, a, eps_r, N, coefficient_count, pec)
     end
 
     c = Vector{ComplexF64}(undef, coefficient_count)

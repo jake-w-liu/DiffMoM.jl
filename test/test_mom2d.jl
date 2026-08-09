@@ -226,6 +226,28 @@ end
         @test matched_order == 10
         @test all(iszero, matched_coefficients)
 
+        tiny_size = 1e-160
+        tiny_coefficients, tiny_order =
+            mie_coefficients_2d(1.0, tiny_size, 4.0)
+        @test tiny_order == 10
+        @test all(isfinite, tiny_coefficients)
+        @test tiny_coefficients[tiny_order + 1] ≈
+              ComplexF64(0.0, -(3π / 4) * tiny_size^2) rtol=5e-4
+
+        tiny_enz, tiny_enz_order =
+            mie_coefficients_2d(1.0, tiny_size, 0.0)
+        @test all(isfinite, tiny_enz)
+        @test tiny_enz[tiny_enz_order + 1] ≈
+              ComplexF64(0.0, (π / 4) * tiny_size^2) rtol=5e-4
+
+        underflow_coefficients, underflow_order =
+            mie_coefficients_2d(1e-200, 1e-200, 4.0)
+        @test underflow_order == 10
+        @test all(iszero, underflow_coefficients)
+
+        mie_coefficients_2d(1.0, tiny_size, 4.0)
+        @test @allocated(mie_coefficients_2d(1.0, tiny_size, 4.0)) < 500_000
+
         # Symmetry: c_{-n} should satisfy specific relations
         # For symmetric incidence (phi_inc=0), c_{-n} = c_n
         for n in 1:min(N, 5)
