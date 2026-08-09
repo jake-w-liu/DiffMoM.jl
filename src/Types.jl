@@ -214,6 +214,20 @@ Patch partition: maps each triangle to a design patch.
 struct PatchPartition
     tri_patch::Vector{Int}      # length Nt: patch id for each triangle
     P::Int                      # number of patches
+
+    function PatchPartition(tri_patch::Vector{Int}, P::Int)
+        P >= 0 ||
+            throw(ArgumentError(
+                "PatchPartition patch count must be nonnegative, got $P"))
+        @inbounds for t in eachindex(tri_patch)
+            1 <= tri_patch[t] <= P ||
+                throw(ArgumentError(
+                    "PatchPartition triangle $t has patch ID $(tri_patch[t]), " *
+                    "expected an ID in 1:$P"
+                ))
+        end
+        return new(tri_patch, P)
+    end
 end
 
 """

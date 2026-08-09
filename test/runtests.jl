@@ -822,6 +822,15 @@ Nt = ntriangles(mesh)
 # Simple partition: one patch per triangle
 partition = PatchPartition(collect(1:Nt), Nt)
 
+@test_throws ArgumentError PatchPartition([1], -1)
+@test_throws ArgumentError PatchPartition([0], 1)
+@test_throws ArgumentError PatchPartition([2], 1)
+@test_throws DimensionMismatch precompute_patch_mass(
+    mesh, rwg, PatchPartition([1], 1))
+mutated_partition = PatchPartition(fill(1, Nt), 1)
+mutated_partition.tri_patch[1] = 0
+@test_throws ArgumentError precompute_patch_mass(mesh, rwg, mutated_partition)
+
 Mp = precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 @assert length(Mp) == Nt
 dZ_first = assemble_dZ_dtheta(Mp, 1)
@@ -4539,6 +4548,15 @@ part_grid = assign_patches_grid(mesh; nx=3, ny=2, nz=1)
 @assert part_grid.P >= 1 "Grid partition should have at least 1 patch"
 @assert part_grid.P <= 6 "Grid partition should have at most nx*ny patches"
 @assert all(1 .<= part_grid.tri_patch .<= part_grid.P) "All patch IDs should be in [1, P]"
+translated_xyz = copy(mesh.xyz)
+translated_xyz[3, :] .+= 1.0e9
+translated_grid = assign_patches_grid(
+    TriMesh(translated_xyz, copy(mesh.tri)); nx=3, ny=2, nz=1)
+@test translated_grid.tri_patch == part_grid.tri_patch
+@test_throws ArgumentError assign_patches_grid(empty_mesh)
+@test_throws ArgumentError assign_patches_grid(mesh; nx=0)
+@test_throws ArgumentError assign_patches_grid(
+    mesh; nx=typemax(Int), ny=2, nz=1)
 println("    $Nt triangles → $(part_grid.P) patches")
 println("  33a: PASS")
 
@@ -4553,6 +4571,10 @@ part_region = assign_patches_by_region(mesh, [region_top, region_bot])
 n_top = count(==(1), part_region.tri_patch)
 n_bot = count(==(2), part_region.tri_patch)
 @assert n_top > 0 && n_bot > 0 "Both regions should have triangles"
+@test_throws ArgumentError assign_patches_by_region(empty_mesh, [region_top])
+@test_throws ArgumentError assign_patches_by_region(mesh, Function[])
+@test_throws ArgumentError region_halfspace(axis=:invalid, threshold=0.0)
+@test_throws ArgumentError region_halfspace(axis=:x, threshold=NaN)
 println("    Region 1 (y>=0): $n_top tris,  Region 2 (y<0): $n_bot tris")
 println("  33b: PASS")
 
@@ -4565,12 +4587,22 @@ pred_box = region_box(; lo=Vec3(-0.01, -0.01, -1.0), hi=Vec3(0.01, 0.01, 1.0))
 @assert pred_sphere(Vec3(100.0, 0.0, 0.0)) == false "Far point should be outside sphere"
 @assert pred_box(Vec3(0.0, 0.0, 0.0)) == true "Origin should be inside box"
 @assert pred_box(Vec3(1.0, 0.0, 0.0)) == false "Point outside should fail"
+@test_throws ArgumentError region_sphere(
+    center=Vec3(NaN, 0.0, 0.0), radius=1.0)
+@test_throws ArgumentError region_sphere(
+    center=Vec3(0.0, 0.0, 0.0), radius=-1.0)
+@test_throws ArgumentError region_box(
+    lo=Vec3(1.0, 0.0, 0.0), hi=Vec3(0.0, 1.0, 1.0))
+@test_throws ArgumentError region_box(
+    lo=Vec3(-Inf, -1.0, -1.0), hi=Vec3(Inf, 1.0, 1.0))
 println("  33c: PASS")
 
 # 33d: Uniform k-means partitioning
 println("  33d: Uniform k-means partitioning ...")
 n_target = 5
 part_kmeans = assign_patches_uniform(mesh; n_patches=n_target)
+@test_throws ArgumentError assign_patches_uniform(empty_mesh; n_patches=1)
+@test_throws ArgumentError assign_patches_uniform(mesh; n_patches=0)
 @assert length(part_kmeans.tri_patch) == ntriangles(mesh)
 @assert part_kmeans.P >= 1 && part_kmeans.P <= n_target
 @assert all(1 .<= part_kmeans.tri_patch .<= part_kmeans.P)

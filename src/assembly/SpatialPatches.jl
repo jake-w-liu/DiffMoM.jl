@@ -6,6 +6,35 @@
 export assign_patches_grid, assign_patches_by_region, assign_patches_uniform
 export region_halfspace, region_sphere, region_box
 
+@inline function _patch_grid_axis_index(value::Float64, lo::Float64,
+                                        hi::Float64, ncells::Int)
+    span = hi - lo
+    isfinite(span) && span >= 0.0 ||
+        throw(ArgumentError(
+            "mesh centroid span is outside the supported Float64 range: [$lo, $hi]"
+        ))
+    iszero(span) && return 0
+    value <= lo && return 0
+    value >= hi && return ncells - 1
+
+    scaled = ((value - lo) / span) * Float64(ncells)
+    isfinite(scaled) ||
+        throw(ArgumentError(
+            "mesh centroid $value cannot be assigned within bounds [$lo, $hi]"
+        ))
+    scaled >= Float64(ncells) && return ncells - 1
+    return clamp(floor(Int, scaled), 0, ncells - 1)
+end
+
+@inline function _patch_grid_strides(nx::Int, ny::Int, nz::Int)
+    nx <= typemax(Int) ÷ ny ||
+        throw(ArgumentError("nx * ny exceeds the supported Int range"))
+    nxy = nx * ny
+    nxy <= typemax(Int) ÷ nz ||
+        throw(ArgumentError("nx * ny * nz exceeds the supported Int range"))
+    return nxy
+end
+
 """
     assign_patches_grid(mesh; nx=4, ny=4, nz=1)
 
@@ -16,38 +45,40 @@ Returns a `PatchPartition` with consecutive patch IDs (empty cells skipped).
 """
 function assign_patches_grid(mesh::TriMesh; nx::Int=4, ny::Int=4, nz::Int=1)
     Nt = ntriangles(mesh)
-    Nt >= 1 || error("assign_patches_grid requires a non-empty mesh (got 0 triangles).")
-    nx >= 1 && ny >= 1 && nz >= 1 || error("Grid dimensions must be >= 1")
+    Nt >= 1 ||
+        throw(ArgumentError(
+            "assign_patches_grid requires a non-empty mesh (got 0 triangles)"))
+    nx >= 1 && ny >= 1 && nz >= 1 ||
+        throw(ArgumentError("grid dimensions must be at least 1"))
+    nxy = _patch_grid_strides(nx, ny, nz)
 
     # Compute triangle centroids
     centroids = [triangle_center(mesh, t) for t in 1:Nt]
+    for (t, centroid) in enumerate(centroids)
+        all(isfinite, centroid) ||
+            throw(ArgumentError(
+                "triangle $t has a non-finite centroid $centroid"))
+    end
 
     # Bounding box
-    xs = [c[1] for c in centroids]
-    ys = [c[2] for c in centroids]
-    zs = [c[3] for c in centroids]
-    xmin, xmax = minimum(xs), maximum(xs)
-    ymin, ymax = minimum(ys), maximum(ys)
-    zmin, zmax = minimum(zs), maximum(zs)
-
-    # Add small padding to avoid edge cases
-    eps_pad = 1e-12 * max(xmax - xmin, ymax - ymin, zmax - zmin, 1e-10)
-    xmin -= eps_pad; xmax += eps_pad
-    ymin -= eps_pad; ymax += eps_pad
-    zmin -= eps_pad; zmax += eps_pad
-
-    dx = (xmax - xmin) / nx
-    dy = (ymax - ymin) / ny
-    dz = (zmax - zmin) / nz
+    xmin = xmax = centroids[1][1]
+    ymin = ymax = centroids[1][2]
+    zmin = zmax = centroids[1][3]
+    @inbounds for t in 2:Nt
+        c = centroids[t]
+        xmin = min(xmin, c[1]); xmax = max(xmax, c[1])
+        ymin = min(ymin, c[2]); ymax = max(ymax, c[2])
+        zmin = min(zmin, c[3]); zmax = max(zmax, c[3])
+    end
 
     # Assign each triangle to a grid cell
     raw_ids = zeros(Int, Nt)
-    for t in 1:Nt
+    @inbounds for t in 1:Nt
         c = centroids[t]
-        ix = clamp(floor(Int, (c[1] - xmin) / dx), 0, nx - 1)
-        iy = clamp(floor(Int, (c[2] - ymin) / dy), 0, ny - 1)
-        iz = clamp(floor(Int, (c[3] - zmin) / dz), 0, nz - 1)
-        raw_ids[t] = ix + iy * nx + iz * nx * ny + 1  # 1-based
+        ix = _patch_grid_axis_index(c[1], xmin, xmax, nx)
+        iy = _patch_grid_axis_index(c[2], ymin, ymax, ny)
+        iz = _patch_grid_axis_index(c[3], zmin, zmax, nz)
+        raw_ids[t] = ix + iy * nx + iz * nxy + 1  # 1-based
     end
 
     # Renumber to consecutive IDs (skip empty cells)
@@ -73,11 +104,16 @@ Returns a `PatchPartition`.
 function assign_patches_by_region(mesh::TriMesh, regions::Vector{<:Function})
     Nt = ntriangles(mesh)
     R = length(regions)
-    R >= 1 || error("At least one region predicate required")
+    Nt >= 1 ||
+        throw(ArgumentError(
+            "assign_patches_by_region requires a non-empty mesh (got 0 triangles)"))
+    R >= 1 || throw(ArgumentError("at least one region predicate is required"))
 
     tri_patch = zeros(Int, Nt)
     for t in 1:Nt
         c = triangle_center(mesh, t)
+        all(isfinite, c) ||
+            throw(ArgumentError("triangle $t has a non-finite centroid $c"))
         assigned = false
         for r in 1:R
             if regions[r](c)
@@ -105,7 +141,9 @@ Create a predicate selecting triangles whose centroid satisfies
 """
 function region_halfspace(; axis::Symbol, threshold::Float64, above::Bool=true)
     idx = axis == :x ? 1 : axis == :y ? 2 : axis == :z ? 3 :
-          error("axis must be :x, :y, or :z")
+          throw(ArgumentError("axis must be :x, :y, or :z; got $axis"))
+    isfinite(threshold) ||
+        throw(ArgumentError("threshold must be finite, got $threshold"))
     if above
         return c::Vec3 -> c[idx] >= threshold
     else
@@ -120,6 +158,11 @@ Create a predicate selecting triangles whose centroid is within `radius`
 of `center`.
 """
 function region_sphere(; center::Vec3, radius::Float64)
+    all(isfinite, center) ||
+        throw(ArgumentError("sphere center must be finite, got $center"))
+    isfinite(radius) && radius >= 0.0 ||
+        throw(ArgumentError(
+            "sphere radius must be finite and nonnegative, got $radius"))
     return c::Vec3 -> norm(c - center) <= radius
 end
 
@@ -130,6 +173,12 @@ Create a predicate selecting triangles whose centroid is inside the
 axis-aligned box [lo, hi].
 """
 function region_box(; lo::Vec3, hi::Vec3)
+    all(isfinite, lo) && all(isfinite, hi) ||
+        throw(ArgumentError("box bounds must be finite, got lo=$lo and hi=$hi"))
+    all(lo .<= hi) ||
+        throw(ArgumentError(
+            "box lower bounds must not exceed upper bounds, got lo=$lo and hi=$hi"
+        ))
     return c::Vec3 -> (c[1] >= lo[1] && c[1] <= hi[1] &&
                         c[2] >= lo[2] && c[2] <= hi[2] &&
                         c[3] >= lo[3] && c[3] <= hi[3])
@@ -145,10 +194,20 @@ Returns a `PatchPartition`.
 """
 function assign_patches_uniform(mesh::TriMesh; n_patches::Int)
     Nt = ntriangles(mesh)
-    n_patches >= 1 || error("n_patches must be >= 1")
-    n_patches <= Nt || error("n_patches ($n_patches) exceeds triangle count ($Nt)")
+    Nt >= 1 ||
+        throw(ArgumentError(
+            "assign_patches_uniform requires a non-empty mesh (got 0 triangles)"))
+    n_patches >= 1 || throw(ArgumentError("n_patches must be at least 1"))
+    n_patches <= Nt ||
+        throw(ArgumentError(
+            "n_patches ($n_patches) exceeds triangle count ($Nt)"))
 
     centroids = [triangle_center(mesh, t) for t in 1:Nt]
+    for (t, centroid) in enumerate(centroids)
+        all(isfinite, centroid) ||
+            throw(ArgumentError(
+                "triangle $t has a non-finite centroid $centroid"))
+    end
 
     # Initialize cluster centers via uniform sampling
     rng = Random.MersenneTwister(42)  # deterministic

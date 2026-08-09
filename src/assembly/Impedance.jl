@@ -64,6 +64,19 @@ function precompute_patch_mass(mesh::TriMesh, rwg::RWGData,
     N = rwg.nedges
     Nt = ntriangles(mesh)
     P = partition.P
+    length(partition.tri_patch) == Nt ||
+        throw(DimensionMismatch(
+            "partition.tri_patch length $(length(partition.tri_patch)) " *
+            "does not match mesh triangle count $Nt"
+        ))
+    P >= 0 ||
+        throw(ArgumentError("partition.P must be nonnegative, got $P"))
+    @inbounds for t in 1:Nt
+        1 <= partition.tri_patch[t] <= P ||
+            throw(ArgumentError(
+                "partition.tri_patch[$t]=$(partition.tri_patch[t]) is outside 1:$P"
+            ))
+    end
     Tcoef = promote_type(eltype(rwg.coeff_plus), eltype(rwg.coeff_minus))
     Tmass = Tcoef <: Real ? Float64 : ComplexF64
 
