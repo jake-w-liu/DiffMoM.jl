@@ -72,11 +72,11 @@ end
 
 @inline function _greens_2d_unchecked(r::Vec2, rp::Vec2, k::Float64)
     R_vec = r - rp
-    R = norm(R_vec)
+    R = hypot(R_vec[1], R_vec[2])
     isfinite(R) ||
         throw(ArgumentError(
             "greens_2d point separation must be finite, got $R."))
-    if R < 1e-30
+    if iszero(R)
         return zero(ComplexF64)
     end
     kR = k * R

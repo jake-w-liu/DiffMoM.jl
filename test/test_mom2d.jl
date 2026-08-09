@@ -76,6 +76,14 @@ end
         @test_throws ArgumentError greens_2d(r1, r2, Inf)
         @test_throws ArgumentError greens_2d(Vec2(NaN, 0.0), r2, k)
 
+        # Distinct subnormal-scale separations remain finite; squaring the
+        # displacement or applying an absolute coincidence cutoff loses them.
+        tiny_separation = 1e-200
+        tiny_point = Vec2(tiny_separation, 0.0)
+        tiny_green = greens_2d(r1, tiny_point, 1.0)
+        tiny_reference = (-im / 4) * besselh(0, 2, tiny_separation)
+        @test tiny_green ≈ tiny_reference rtol=2e-15
+
         # Decay with distance
         G_near = abs(greens_2d(r1, Vec2(0.5, 0.0), k))
         G_far = abs(greens_2d(r1, Vec2(5.0, 0.0), k))
@@ -384,6 +392,12 @@ end
             mesh, k0, Vec2(NaN, 0.0))
         @test_throws DomainError linesource_2d(
             mesh, k0, mesh.centers[1])
+
+        tiny_mesh = Mesh2D((-1.0, 1.0), (-1.0, 1.0), 1, 1)
+        tiny_source = Vec2(1e-200, 0.0)
+        tiny_incident = linesource_2d(tiny_mesh, 1.0, tiny_source)
+        @test tiny_incident[1] ≈
+              greens_2d(tiny_mesh.centers[1], tiny_source, 1.0) rtol=2e-15
 
         # Amplitude should decrease with distance from source
         # Find nearest and farthest cells

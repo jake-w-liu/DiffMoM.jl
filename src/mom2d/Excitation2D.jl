@@ -46,8 +46,9 @@ function linesource_2d(mesh::Mesh2D, k0::Float64, r_src::Vec2)
     _validate_finite_vec2_2d(r_src, "linesource_2d source point")
     E_inc = Vector{ComplexF64}(undef, mesh.ncells)
     @inbounds for m in 1:mesh.ncells
-        separation = norm(mesh.centers[m] - r_src)
-        separation >= 1e-30 ||
+        displacement = mesh.centers[m] - r_src
+        separation = hypot(displacement[1], displacement[2])
+        !iszero(separation) ||
             throw(DomainError(
                 r_src,
                 "linesource_2d is singular because the source coincides with cell center $m.",
