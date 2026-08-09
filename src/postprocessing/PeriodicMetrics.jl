@@ -198,9 +198,20 @@ end
 
 function _mode_transverse_projection(pol::SVector{3,<:Real}, mode::FloquetMode, k::Real)
     khat = SVector(mode.kx / k, mode.ky / k, real(mode.kz) / k)
-    pol_real = SVector(Float64(pol[1]), Float64(pol[2]), Float64(pol[3]))
-    pol_mode_raw = pol_real - dot(pol_real, khat) * khat
+    _validate_periodic_polarization(pol)
+    # Only the polarization direction matters.  Scaling before projection keeps
+    # valid very large and subnormal inputs away from overflow/underflow.
+    pol_scale = max(abs(pol[1]), abs(pol[2]), abs(pol[3]))
+    pol_scaled = SVector(
+        Float64(pol[1] / pol_scale),
+        Float64(pol[2] / pol_scale),
+        Float64(pol[3] / pol_scale),
+    )
+    pol_mode_raw = pol_scaled - dot(pol_scaled, khat) * khat
     pol_mode_norm = norm(pol_mode_raw)
+    isfinite(pol_mode_norm) ||
+        throw(OverflowError(
+            "periodic polarization projection produced a non-finite norm"))
     return pol_mode_norm < 1e-12 ? nothing : pol_mode_raw / pol_mode_norm
 end
 

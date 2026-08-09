@@ -1298,6 +1298,36 @@ println("\n── Test 42: PeriodicMetrics ──")
                 mesh_g, rwg_g, I_zero, kg, lat_g; height=bad_h
             )
         end
+        for bad_pol in (
+            SVector(0.0, 0.0, 0.0),
+            SVector(Inf, 0.0, 0.0),
+            SVector(NaN, 0.0, 0.0),
+        )
+            @test_throws ArgumentError reflection_coefficient_vectors_grounded(
+                mesh_g, rwg_g, I_zero, kg, lat_g;
+                height=lam_g / 8, pol=bad_pol, N_orders=0, quad_order=1
+            )
+        end
+        modes_unit, R_unit = reflection_coefficient_vectors_grounded(
+            mesh_g, rwg_g, I_zero, kg, lat_g;
+            height=lam_g / 8, pol=SVector(1.0, 0.0, 0.0),
+            N_orders=0, quad_order=1
+        )
+        unit_idx = only(eachindex(modes_unit))
+        @test norm(R_unit[unit_idx]) ≈ 1.0 atol=1e-14
+        for extreme_pol in (
+            SVector(floatmax(Float64), 0.0, 0.0),
+            SVector(nextfloat(0.0), 0.0, 0.0),
+        )
+            modes_extreme, R_extreme = reflection_coefficient_vectors_grounded(
+                mesh_g, rwg_g, I_zero, kg, lat_g;
+                height=lam_g / 8, pol=extreme_pol,
+                N_orders=0, quad_order=1
+            )
+            @test modes_extreme == modes_unit
+            @test R_extreme[unit_idx] ≈ R_unit[unit_idx] atol=1e-14
+            @test all(isfinite, R_extreme[unit_idx])
+        end
         @test_throws ArgumentError assemble_Z_efie_grounded(
             mesh_g, rwg_g, 1.01kg, lat_g; height=lam_g / 8
         )

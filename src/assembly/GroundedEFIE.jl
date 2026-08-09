@@ -237,6 +237,7 @@ function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I,
                                                  kwargs...)
     kw = _validated_lattice_wavenumber(k, lattice)
     h = _validated_ground_height(height)
+    _validate_periodic_polarization(pol)
     modes, R_cur = reflection_coefficient_vectors(mesh, rwg, I, kw, lattice; kwargs...)
     kzi = _kz_inc(kw, lattice)
     R_g = copy(R_cur)
