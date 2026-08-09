@@ -157,15 +157,44 @@ struct EFIEApplyCache{TK, Tω, TD, TV}
     rwg_vals_hi::Vector{NTuple{2,Vector{TV}}}  # RWG values at high-order quad pts
 end
 
+@inline function _validated_efie_prefactors(k, eta0)
+    k isa Number ||
+        throw(ArgumentError(
+            "EFIE wavenumber must be numeric, got $(typeof(k))"))
+    isfinite(k) && !iszero(k) ||
+        throw(ArgumentError(
+            "EFIE wavenumber must be finite and nonzero, got $k"))
+    eta0 isa Number ||
+        throw(ArgumentError(
+            "EFIE eta0 must be numeric, finite, and nonzero, got $eta0"))
+    isfinite(eta0) && !iszero(eta0) ||
+        throw(ArgumentError(
+            "EFIE eta0 must be numeric, finite, and nonzero, got $eta0"))
+
+    kw = float(k)
+    eta = float(eta0)
+    k2 = kw * kw
+    isfinite(k2) && !iszero(k2) ||
+        throw(OverflowError(
+            "EFIE wavenumber squared is not representable for k=$k"))
+    inv_k2 = inv(k2)
+    isfinite(inv_k2) && !iszero(inv_k2) ||
+        throw(OverflowError(
+            "EFIE inverse wavenumber squared is not representable for k=$k"))
+    omega_mu0 = kw * eta
+    isfinite(omega_mu0) && !iszero(omega_mu0) ||
+        throw(OverflowError(
+            "EFIE k*eta0 prefactor is not representable for k=$k and eta0=$eta0"))
+    return kw, inv_k2, omega_mu0
+end
+
 function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
                            quad_order::Int=3, eta0=376.730313668)
+    kw, inv_k2, omega_mu0 = _validated_efie_prefactors(k, eta0)
     N = rwg.nedges
     Nt = ntriangles(mesh)
     Tcoef = promote_type(eltype(rwg.coeff_plus), eltype(rwg.coeff_minus))
     TVec = SVector{3,Tcoef}
-
-    omega_mu0 = k * eta0   # ωμ₀ = k η₀
-    inv_k2 = 1 / k^2
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
@@ -210,7 +239,7 @@ function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
 
     adjacent = _build_triangle_adjacency(mesh)
 
-    return EFIEApplyCache(mesh, rwg, k, inv_k2, omega_mu0, wq, Nq, quad_pts, areas,
+    return EFIEApplyCache(mesh, rwg, kw, inv_k2, omega_mu0, wq, Nq, quad_pts, areas,
                           tri_ids, div_vals, rwg_vals,
                           adjacent, wq_hi, quad_pts_hi, rwg_vals_hi)
 end

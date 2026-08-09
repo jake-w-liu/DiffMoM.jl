@@ -740,6 +740,32 @@ Z_efie = assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=eta0)
 N = rwg.nedges
 println("  Z_efie size: $N × $N")
 @assert size(Z_efie) == (N, N)
+@assert all(isfinite, Z_efie)
+
+for invalid_efie_k in (0.0, Inf, -Inf, NaN)
+    @test_throws ArgumentError assemble_Z_efie(
+        mesh, rwg, invalid_efie_k; quad_order=1, eta0=eta0,
+        mesh_precheck=false)
+end
+for unrepresentable_efie_k in (1.0e-300, 1.0e300)
+    @test_throws OverflowError assemble_Z_efie(
+        mesh, rwg, unrepresentable_efie_k; quad_order=1, eta0=eta0,
+        mesh_precheck=false)
+end
+for invalid_efie_eta0 in (0.0, Inf, NaN)
+    @test_throws ArgumentError assemble_Z_efie(
+        mesh, rwg, k; quad_order=1, eta0=invalid_efie_eta0,
+        mesh_precheck=false)
+end
+@test_throws ArgumentError matrixfree_efie_operator(
+    mesh, rwg, 0.0; quad_order=1, eta0=eta0, mesh_precheck=false)
+@test_throws ArgumentError matrixfree_efie_operator(
+    mesh, rwg, k; quad_order=1, eta0=Inf, mesh_precheck=false)
+
+Z_efie_complex_k = assemble_Z_efie(
+    mesh, rwg, complex(k, 1.0e-20); quad_order=1, eta0=eta0,
+    mesh_precheck=false)
+@test all(isfinite, Z_efie_complex_k)
 
 # Z should have nonzero entries
 @assert norm(Z_efie) > 0
