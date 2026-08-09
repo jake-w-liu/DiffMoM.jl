@@ -73,11 +73,29 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             grid, Vec3(0.0, 0.0, k0), NaN, Vec3(1.0, 0.0, 0.0))
         @test_throws ArgumentError planewave_dda_3d(
             grid, Vec3(0.0, 0.0, Inf), 1.0, Vec3(1.0, 0.0, 0.0))
+        centered_grid = VoxelGrid3D(
+            (-0.5, 0.5), (-0.5, 0.5), (-0.5, 0.5), 1, 1, 1)
+        extreme_direction = Vec3(floatmax(Float64), floatmax(Float64), 0.0)
+        transverse_pol = Vec3(inv(sqrt(2.0)), -inv(sqrt(2.0)), 0.0)
+        extreme_E = planewave_dda_3d(
+            centered_grid, extreme_direction, 1.0, transverse_pol)
+        @test extreme_E == [CVec3(transverse_pol)]
+        extreme_pol = CVec3(
+            floatmax(Float64) + 0im,
+            floatmax(Float64) + 0im,
+            0.0 + 0im)
+        @test planewave_dda_3d(
+            centered_grid, Vec3(0.0, 0.0, 1.0), 1.0, extreme_pol) ==
+              [extreme_pol]
+        @test_throws OverflowError planewave_dda_3d(
+            centered_grid, Vec3(0.0, 0.0, 1.0), 1.0e200,
+            CVec3(1.0e200 + 0im, 0.0 + 0im, 0.0 + 0im))
         E_inc = planewave_dda_3d(grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0))
         res = solve_dda_3d(grid, k0, 1.0 + 0im, E_inc)
 
         @test norm(reduce(vcat, res.E_total) - reduce(vcat, E_inc)) < 1e-13
         @test norm(scattered_field_dda_3d(res, [Vec3(1.0, 0.0, 0.0)])[1]) < 1e-13
+        @test iszero(farfield_dda_3d(res, extreme_direction))
         @test all(iszero, res.alpha)
     end
 

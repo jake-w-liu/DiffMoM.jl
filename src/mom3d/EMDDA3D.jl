@@ -591,10 +591,14 @@ function planewave_em_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol;
         throw(ArgumentError(
             "eta0 must be finite and positive, got $eta0."))
     Einc = planewave_dda_3d(grid, k_vec, E0, pol)
-    khat = k_vec / norm(k_vec)
+    khat = _normalized_real_direction_dda_3d(k_vec, "k_vec")
     Hinc = Vector{CVec3}(undef, grid.nvoxels)
     for j in 1:grid.nvoxels
-        Hinc[j] = cross(khat, Einc[j]) / eta
+        field = cross(khat, Einc[j]) / eta
+        all(isfinite, field) ||
+            throw(OverflowError(
+                "EM DDA plane-wave magnetic field is non-finite at voxel $j."))
+        Hinc[j] = field
     end
     return Einc, Hinc
 end
@@ -797,11 +801,7 @@ Return `(F_E, F_H)` such that `E_scat ~= exp(-ikr) F_E / r` and
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
                             eta0::Real=_ETA0_DDA)
     eta = _finite_positive_real_3d(eta0, "eta0")
-    all(isfinite, rhat) ||
-        throw(ArgumentError("rhat components must be finite."))
-    rn = norm(rhat)
-    isfinite(rn) && rn > 0 || error("rhat must be finite and nonzero.")
-    n = rhat / rn
+    n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
     FE = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     FH = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)

@@ -64,6 +64,39 @@ function _as_cvec3(v, label::AbstractString)
     return out
 end
 
+@inline function _normalized_real_direction_dda_3d(
+    value::Vec3,
+    label::AbstractString,
+)
+    all(isfinite, value) ||
+        throw(ArgumentError("$label components must be finite."))
+    scale = max(abs(value[1]), abs(value[2]), abs(value[3]))
+    scale > 0.0 ||
+        throw(ArgumentError("$label must be nonzero."))
+    scaled = value / scale
+    scaled_norm = norm(scaled)
+    isfinite(scaled_norm) && scaled_norm > 0.0 ||
+        throw(ArgumentError("$label must have a finite, nonzero norm."))
+    return scaled / scaled_norm
+end
+
+@inline function _normalized_complex_direction_dda_3d(
+    value::CVec3,
+    label::AbstractString,
+)
+    scale = 0.0
+    @inbounds for component in value
+        scale = max(scale, abs(real(component)), abs(imag(component)))
+    end
+    scale > 0.0 ||
+        throw(ArgumentError("$label must be nonzero."))
+    scaled = value / scale
+    scaled_norm = norm(scaled)
+    isfinite(scaled_norm) && scaled_norm > 0.0 ||
+        throw(ArgumentError("$label must have a finite, nonzero norm."))
+    return scaled / scaled_norm
+end
+
 function _copy_finite_complex_vector_3d(
     values,
     expected_length::Int,
@@ -581,25 +614,31 @@ Evaluate a transverse plane wave at voxel centers:
     E_inc(r) = pol * E0 * exp(-i k_vec dot r)
 """
 function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
-    all(isfinite, k_vec) ||
-        throw(ArgumentError("k_vec components must be finite."))
-    kn = norm(k_vec)
-    isfinite(kn) && kn > 0 ||
-        throw(ArgumentError("k_vec must have a finite, nonzero norm."))
+    khat = _normalized_real_direction_dda_3d(k_vec, "k_vec")
     polv = _as_cvec3(pol, "pol")
-    pn = norm(polv)
-    isfinite(pn) && pn > 0 ||
-        throw(ArgumentError("pol must have a finite, nonzero norm."))
-    transverse_error = abs(dot(k_vec / kn, polv / pn))
+    polhat = _normalized_complex_direction_dda_3d(polv, "pol")
+    transverse_error = abs(dot(khat, polhat))
     transverse_error <= 1e-10 ||
         error("Plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error.")
 
     amp = ComplexF64(E0)
     isfinite(amp) ||
         throw(ArgumentError("E0 must be finite, got $E0."))
+    field_amplitude = polv * amp
+    all(isfinite, field_amplitude) ||
+        throw(OverflowError(
+            "pol * E0 produced a non-finite DDA plane-wave amplitude."))
     Einc = Vector{CVec3}(undef, grid.nvoxels)
     for j in 1:grid.nvoxels
-        Einc[j] = polv * amp * exp(-1im * dot(k_vec, grid.centers[j]))
+        phase_argument = dot(k_vec, grid.centers[j])
+        isfinite(phase_argument) ||
+            throw(OverflowError(
+                "DDA plane-wave phase is non-finite at voxel $j."))
+        field = field_amplitude * exp(-1im * phase_argument)
+        all(isfinite, field) ||
+            throw(OverflowError(
+                "DDA plane-wave field is non-finite at voxel $j."))
+        Einc[j] = field
     end
     return Einc
 end
@@ -697,11 +736,7 @@ Return the far-field amplitude `F(rhat)` such that
 for unit observation direction `rhat`.
 """
 function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
-    all(isfinite, rhat) ||
-        throw(ArgumentError("rhat components must be finite."))
-    rn = norm(rhat)
-    isfinite(rn) && rn > 0 || error("rhat must be finite and nonzero.")
-    n = rhat / rn
+    n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
     F = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     prefac = res.k0^2 / (4π)

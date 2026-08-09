@@ -46,6 +46,19 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test_throws ArgumentError planewave_em_dda_3d(
             grid, Vec3(0.0, 0.0, k0), 1.0 + 0im,
             Vec3(1.0, 0.0, 0.0); eta0=Inf)
+        centered_grid = VoxelGrid3D(
+            (-0.5, 0.5), (-0.5, 0.5), (-0.5, 0.5), 1, 1, 1)
+        extreme_direction = Vec3(floatmax(Float64), floatmax(Float64), 0.0)
+        extreme_E, extreme_H = planewave_em_dda_3d(
+            centered_grid, extreme_direction, 1.0, Vec3(0.0, 0.0, 1.0))
+        @test extreme_E == [CVec3(0.0 + 0im, 0.0 + 0im, 1.0 + 0im)]
+        expected_H = CVec3(inv(sqrt(2.0)), -inv(sqrt(2.0)), 0.0) /
+                     376.730313668
+        @test extreme_H[1] ≈ expected_H rtol=4eps(Float64)
+        @test_throws OverflowError planewave_em_dda_3d(
+            centered_grid, Vec3(0.0, 0.0, 1.0), 1.0,
+            Vec3(1.0, 0.0, 0.0);
+            eta0=nextfloat(0.0))
         E_inc, H_inc = planewave_em_dda_3d(
             grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
         )
@@ -60,6 +73,7 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         Es, Hs = scattered_fields_em_dda_3d(res, [Vec3(1.0, 0.0, 0.0)])
         @test norm(Es[1]) < 1e-13
         @test norm(Hs[1]) < 1e-13
+        @test all(iszero, farfield_em_dda_3d(res, extreme_direction))
     end
 
     @testset "Electric-only reduction matches DDA" begin
