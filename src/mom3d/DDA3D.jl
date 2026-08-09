@@ -608,32 +608,115 @@ end
     )
 end
 
+@inline _complex_component_scale_3d(value::ComplexF64) =
+    max(abs(real(value)), abs(imag(value)))
+
+@inline function _floating_product_loses_range_3d(
+        left::ComplexF64,
+        right::ComplexF64)
+    (iszero(left) || iszero(right)) && return false
+    product = left * right
+    isfinite(product) || return true
+    scale = _complex_component_scale_3d(product)
+    return iszero(scale) || scale < floatmin(Float64)
+end
+
+@inline function _alpha_field_product_loses_range_3d(
+        alpha::Number,
+        field::SVector{N,ComplexF64}) where {N}
+    coefficient = ComplexF64(alpha)
+    @inbounds for component in field
+        _floating_product_loses_range_3d(coefficient, component) && return true
+    end
+    return false
+end
+
+@inline function _alpha_field_product_loses_range_3d(
+        alpha::SMatrix{N,N,ComplexF64,L},
+        field::SVector{N,ComplexF64}) where {N,L}
+    @inbounds for column in 1:N, row in 1:N
+        _floating_product_loses_range_3d(
+            alpha[row, column], field[column]) && return true
+    end
+    return false
+end
+
+@inline function _alpha_apply_bigfloat_vector_3d(
+        alpha::Number,
+        field::SVector{N,ComplexF64}) where {N}
+    coefficient = Complex{BigFloat}(alpha)
+    return SVector{N,Complex{BigFloat}}(ntuple(
+        index -> coefficient * Complex{BigFloat}(field[index]), N))
+end
+
+@inline function _alpha_apply_bigfloat_vector_3d(
+        alpha::SMatrix{N,N,ComplexF64,L},
+        field::SVector{N,ComplexF64}) where {N,L}
+    return SVector{N,Complex{BigFloat}}(ntuple(row -> begin
+        accumulator = zero(Complex{BigFloat})
+        @inbounds for column in 1:N
+            accumulator += Complex{BigFloat}(alpha[row, column]) *
+                           Complex{BigFloat}(field[column])
+        end
+        accumulator
+    end, N))
+end
+
+@inline function _alpha_adjoint_apply_bigfloat_vector_3d(
+        alpha::Number,
+        field::SVector{N,Complex{BigFloat}}) where {N}
+    coefficient = conj(Complex{BigFloat}(alpha))
+    return SVector{N,Complex{BigFloat}}(ntuple(
+        index -> coefficient * field[index], N))
+end
+
+@inline function _alpha_adjoint_apply_bigfloat_vector_3d(
+        alpha::SMatrix{N,N,ComplexF64,L},
+        field::SVector{N,Complex{BigFloat}}) where {N,L}
+    return SVector{N,Complex{BigFloat}}(ntuple(row -> begin
+        accumulator = zero(Complex{BigFloat})
+        @inbounds for column in 1:N
+            accumulator += conj(Complex{BigFloat}(alpha[column, row])) *
+                           field[column]
+        end
+        accumulator
+    end, N))
+end
+
+function _electric_dipole_value_bigfloat_3d(
+        r::Vec3,
+        rp::Vec3,
+        k::Float64,
+        q::SVector{3,Complex{BigFloat}})
+    R_vec = SVector{3,BigFloat}(
+        BigFloat(r[1]) - BigFloat(rp[1]),
+        BigFloat(r[2]) - BigFloat(rp[2]),
+        BigFloat(r[3]) - BigFloat(rp[3]),
+    )
+    R = sqrt(sum(abs2, R_vec))
+    R > 0 || error(
+        "electric_dipole_dyadic_3d requires distinct finite points.")
+    Rhat = R_vec / R
+    rq = sum(Rhat[index] * q[index] for index in 1:3)
+    transverse_vector = q - rq * Rhat
+    near_vector = 3 * rq * Rhat - q
+    kb = BigFloat(k)
+    expfac = exp(Complex{BigFloat}(0, -kb * R)) /
+             (4 * BigFloat(pi))
+    return expfac * (
+        (kb^2 / R) * transverse_vector +
+        (inv(R^3) + Complex{BigFloat}(0, 1) * kb / R^2) * near_vector)
+end
+
 function _electric_dipole_apply_bigfloat_3d(r::Vec3, rp::Vec3, k::Float64,
                                              q::CVec3)
     return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
-        R_vec = SVector{3,BigFloat}(
-            BigFloat(r[1]) - BigFloat(rp[1]),
-            BigFloat(r[2]) - BigFloat(rp[2]),
-            BigFloat(r[3]) - BigFloat(rp[3]),
-        )
-        R = sqrt(sum(abs2, R_vec))
-        R > 0 || error(
-            "electric_dipole_dyadic_3d requires distinct finite points.")
-        Rhat = R_vec / R
         qb = SVector{3,Complex{BigFloat}}(
             Complex{BigFloat}(q[1]),
             Complex{BigFloat}(q[2]),
             Complex{BigFloat}(q[3]),
         )
-        rq = sum(Rhat[index] * qb[index] for index in 1:3)
-        transverse_vector = qb - rq * Rhat
-        near_vector = 3 * rq * Rhat - qb
-        kb = BigFloat(k)
-        expfac = exp(Complex{BigFloat}(0, -kb * R)) /
-                 (4 * BigFloat(pi))
-        value = expfac * (
-            (kb^2 / R) * transverse_vector +
-            (inv(R^3) + Complex{BigFloat}(0, 1) * kb / R^2) * near_vector)
+        value = _electric_dipole_value_bigfloat_3d(r, rp, k, qb)
         converted = CVec3(
             ComplexF64(value[1]),
             ComplexF64(value[2]),
@@ -642,6 +725,69 @@ function _electric_dipole_apply_bigfloat_3d(r::Vec3, rp::Vec3, k::Float64,
         all(isfinite, converted) ||
             throw(OverflowError(
                 "electric dipole field is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+function _electric_dipole_alpha_apply_bigfloat_3d(
+        r::Vec3,
+        rp::Vec3,
+        k::Float64,
+        alpha,
+        field::CVec3)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        q = _alpha_apply_bigfloat_vector_3d(alpha, field)
+        value = _electric_dipole_value_bigfloat_3d(r, rp, k, q)
+        converted = CVec3(
+            ComplexF64(value[1]),
+            ComplexF64(value[2]),
+            ComplexF64(value[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "DDA interaction field is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@inline function _electric_dipole_alpha_apply_3d(
+        r::Vec3,
+        rp::Vec3,
+        k::Float64,
+        alpha,
+        field::CVec3)
+    q = _alpha_apply(alpha, field)
+    if all(isfinite, q) &&
+       !_alpha_field_product_loses_range_3d(alpha, field)
+        return _electric_dipole_apply_3d(r, rp, k, q)
+    end
+    return _electric_dipole_alpha_apply_bigfloat_3d(
+        r, rp, k, alpha, field)
+end
+
+function _electric_dipole_alpha_adjoint_apply_bigfloat_3d(
+        r::Vec3,
+        rp::Vec3,
+        k::Float64,
+        alpha::_CMat3DDA,
+        value::CVec3)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        conjugated_value = SVector{3,Complex{BigFloat}}(ntuple(
+            index -> conj(Complex{BigFloat}(value[index])), 3))
+        green_conjugated = _electric_dipole_value_bigfloat_3d(
+            r, rp, k, conjugated_value)
+        green_adjoint = SVector{3,Complex{BigFloat}}(ntuple(
+            index -> conj(green_conjugated[index]), 3))
+        result = _alpha_adjoint_apply_bigfloat_vector_3d(
+            alpha, green_adjoint)
+        converted = CVec3(
+            ComplexF64(result[1]),
+            ComplexF64(result[2]),
+            ComplexF64(result[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "adjoint DDA interaction is outside the representable ComplexF64 range."))
         return converted
     end
 end
@@ -656,8 +802,15 @@ end
     expfac::ComplexF64,
 )
     q_scale = max(abs(q[1]), abs(q[2]), abs(q[3]))
-    isfinite(q_scale) ||
-        throw(ArgumentError("electric dipole moment must be finite."))
+    if !isfinite(q_scale)
+        all(isfinite, q) ||
+            throw(ArgumentError("electric dipole moment must be finite."))
+        q_scale = max(
+            _complex_component_scale_3d(q[1]),
+            _complex_component_scale_3d(q[2]),
+            _complex_component_scale_3d(q[3]),
+        )
+    end
     iszero(q_scale) && return CVec3(
         0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
 
@@ -709,8 +862,11 @@ end
     alpha::Number,
     value::CVec3,
 )
-    return conj(_electric_dipole_apply_3d(
-        r, rp, k, ComplexF64(alpha) * conj(value)))
+    conjugated_value = CVec3(
+        conj(value[1]), conj(value[2]), conj(value[3]))
+    result = _electric_dipole_alpha_apply_3d(
+        r, rp, k, alpha, conjugated_value)
+    return CVec3(conj(result[1]), conj(result[2]), conj(result[3]))
 end
 
 @inline function _electric_dipole_alpha_adjoint_apply_3d(
@@ -720,18 +876,25 @@ end
     alpha::_CMat3DDA,
     value::CVec3,
 )
-    R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
-    column1 = _electric_dipole_apply_with_geometry_3d(
-        r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, Rhat, expfac)
-    column2 = _electric_dipole_apply_with_geometry_3d(
-        r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, Rhat, expfac)
-    column3 = _electric_dipole_apply_with_geometry_3d(
-        r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, Rhat, expfac)
-    return CVec3(
-        dot(column1, value),
-        dot(column2, value),
-        dot(column3, value),
-    )
+    try
+        R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
+        column1 = _electric_dipole_apply_with_geometry_3d(
+            r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, Rhat, expfac)
+        column2 = _electric_dipole_apply_with_geometry_3d(
+            r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, Rhat, expfac)
+        column3 = _electric_dipole_apply_with_geometry_3d(
+            r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, Rhat, expfac)
+        result = CVec3(
+            dot(column1, value),
+            dot(column2, value),
+            dot(column3, value),
+        )
+        all(isfinite, result) && return result
+    catch err
+        err isa OverflowError || rethrow()
+    end
+    return _electric_dipole_alpha_adjoint_apply_bigfloat_3d(
+        r, rp, k, alpha, value)
 end
 
 function electric_dipole_dyadic_3d(r::Vec3, rp::Vec3, k0::Real)
@@ -798,10 +961,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             i == j && continue
             alphaj = A.alpha[j]
             iszero(alphaj) && continue
-            qj = _scaled_alpha_apply_3d(
-                alphaj, _read_field_component(xread, j), 1.0,
-                "DDA induced dipole", j)
-            Ei -= _electric_dipole_apply_3d(ri, A.grid.centers[j], A.k0, qj)
+            Ei -= _electric_dipole_alpha_apply_3d(
+                ri, A.grid.centers[j], A.k0, alphaj,
+                _read_field_component(xread, j))
         end
 
         for a in 1:3

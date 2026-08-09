@@ -381,6 +381,80 @@ end
     return E, H
 end
 
+function _em_interaction_value_bigfloat_3d(
+        ri::Vec3,
+        rj::Vec3,
+        k::Float64,
+        q::SVector{3,Complex{BigFloat}},
+        m::SVector{3,Complex{BigFloat}})
+    R_vec = SVector{3,BigFloat}(
+        BigFloat(ri[1]) - BigFloat(rj[1]),
+        BigFloat(ri[2]) - BigFloat(rj[2]),
+        BigFloat(ri[3]) - BigFloat(rj[3]),
+    )
+    R = sqrt(sum(abs2, R_vec))
+    R > 0 || error("cross Green interaction is singular for coincident points.")
+    Rhat = R_vec / R
+    kb = BigFloat(k)
+    scalar_green = exp(Complex{BigFloat}(0, -kb * R)) /
+                   (4 * BigFloat(pi) * R)
+    radial_derivative =
+        (Complex{BigFloat}(0, -kb) - inv(R)) * scalar_green
+    gradient_cross_q = radial_derivative * cross(Rhat, q)
+    gradient_cross_m = radial_derivative * cross(Rhat, m)
+    eta = BigFloat(_ETA0_DDA)
+    electric_q = _electric_dipole_value_bigfloat_3d(ri, rj, k, q)
+    electric_m = _electric_dipole_value_bigfloat_3d(ri, rj, k, m)
+    E = electric_q + Complex{BigFloat}(0, -eta * kb) * gradient_cross_m
+    H = Complex{BigFloat}(0, kb / eta) * gradient_cross_q + electric_m
+    return E, H
+end
+
+function _em_alpha_interaction_apply_bigfloat_3d(
+        ri::Vec3,
+        rj::Vec3,
+        k::Float64,
+        alpha::_CMat6DDA,
+        field::_CVec6DDA)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        dipoles = _alpha_apply_bigfloat_vector_3d(alpha, field)
+        q = SVector{3,Complex{BigFloat}}(
+            dipoles[1], dipoles[2], dipoles[3])
+        m = SVector{3,Complex{BigFloat}}(
+            dipoles[4], dipoles[5], dipoles[6])
+        E, H = _em_interaction_value_bigfloat_3d(ri, rj, k, q, m)
+        converted_E = CVec3(
+            ComplexF64(E[1]), ComplexF64(E[2]), ComplexF64(E[3]))
+        converted_H = CVec3(
+            ComplexF64(H[1]), ComplexF64(H[2]), ComplexF64(H[3]))
+        all(isfinite, converted_E) && all(isfinite, converted_H) ||
+            throw(OverflowError(
+                "EM DDA interaction field is outside the representable ComplexF64 range."))
+        return converted_E, converted_H
+    end
+end
+
+@inline function _em_alpha_interaction_apply_3d(
+        ri::Vec3,
+        rj::Vec3,
+        k::Float64,
+        alpha::_CMat6DDA,
+        field::_CVec6DDA)
+    dipoles = alpha * field
+    if all(isfinite, dipoles) &&
+       !_alpha_field_product_loses_range_3d(alpha, field)
+        q, m = _split_em_field(dipoles)
+        try
+            E, H = _em_interaction_apply_3d(ri, rj, k, q, m)
+            all(isfinite, E) && all(isfinite, H) && return E, H
+        catch err
+            err isa OverflowError || rethrow()
+        end
+    end
+    return _em_alpha_interaction_apply_bigfloat_3d(
+        ri, rj, k, alpha, field)
+end
+
 """
     em_dda_operator_3d(grid, k0, eps_r, mu_r; radiative_correction=false)
 
@@ -486,10 +560,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             i == j && continue
             alphaj = A.alpha[j]
             iszero(alphaj) && continue
-            q, m = _split_em_field(_scaled_alpha_apply_3d(
-                alphaj, _read_em_field6(xread, j), 1.0,
-                "EM DDA induced dipole", j))
-            Es, Hs = _em_interaction_apply_3d(ri, A.grid.centers[j], A.k0, q, m)
+            Es, Hs = _em_alpha_interaction_apply_3d(
+                ri, A.grid.centers[j], A.k0, alphaj,
+                _read_em_field6(xread, j))
             Ei -= Es
             Hi -= Hs
         end

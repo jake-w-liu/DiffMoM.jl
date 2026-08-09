@@ -169,6 +169,27 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             result, ones(ComplexF64, 3grid.nvoxels)))
     end
 
+    @testset "Exponent-safe combined polarizability interactions" begin
+        spacing = 4.0e102
+        grid = VoxelGrid3D(
+            (0.0, 2spacing), (0.0, spacing), (0.0, spacing), 2, 1, 1)
+        k = 1.0e-103
+        A, _, _ = assemble_dda_3d(grid, k, 2.0 + 0im)
+        operator = dda_operator_3d(grid, k, 2.0 + 0im)
+
+        fields = fill(10.0 + 0im, 3grid.nvoxels)
+        dense_forward = A * fields
+        matrixfree_forward = operator * fields
+        @test all(isfinite, matrixfree_forward)
+        @test matrixfree_forward ≈ dense_forward rtol=16eps(Float64)
+
+        adjoint_rhs = ComplexF64[1, 2, 3, 4, 5, 6]
+        dense_adjoint = adjoint(A) * adjoint_rhs
+        matrixfree_adjoint = adjoint(operator) * adjoint_rhs
+        @test all(isfinite, matrixfree_adjoint)
+        @test matrixfree_adjoint ≈ dense_adjoint rtol=16eps(Float64)
+    end
+
     @testset "Induced dipole exponent range" begin
         spacing = 4.0e102
         grid = VoxelGrid3D(

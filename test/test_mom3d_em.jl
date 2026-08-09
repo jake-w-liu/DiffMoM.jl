@@ -122,6 +122,35 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
             2, 2, 0, 0, 0, 0,
         ]
         @test operator * fields == fields
+
+        interaction_grid = VoxelGrid3D(
+            (0.0, 2large_spacing),
+            (0.0, large_spacing),
+            (0.0, large_spacing),
+            2, 1, 1)
+        large_alpha = zeros(ComplexF64, 6, 6)
+        for component in 1:6
+            large_alpha[component, component] = 4.8e307
+        end
+        large_operator = em_dda_operator_3d(
+            interaction_grid, 1.0e-103, large_alpha)
+        large_fields = fill(10.0 + 0im, 6interaction_grid.nvoxels)
+        dense_large = Matrix(large_operator) * large_fields
+        matrixfree_large = large_operator * large_fields
+        @test all(isfinite, matrixfree_large)
+        @test matrixfree_large ≈ dense_large rtol=16eps(Float64)
+
+        complex_alpha = zeros(ComplexF64, 6, 6)
+        complex_alpha[1, 1] = 1.3e308 + 1.3e308im
+        complex_operator = em_dda_operator_3d(
+            interaction_grid, 1.0e-103, complex_alpha)
+        complex_dense = Matrix(complex_operator)
+        complex_fields = zeros(ComplexF64, 6interaction_grid.nvoxels)
+        complex_fields[1] = 1.0 + 0im
+        complex_fields[7] = 1.0 + 0im
+        @test all(isfinite, complex_dense)
+        @test complex_operator * complex_fields ≈
+              complex_dense * complex_fields rtol=16eps(Float64)
     end
 
     @testset "Electric-only reduction matches DDA" begin
