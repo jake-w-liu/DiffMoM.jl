@@ -97,6 +97,42 @@ end
     return scaled / scaled_norm
 end
 
+@inline function _farfield_prefactor_dda_3d(k::Float64)
+    prefactor = k * k / (4π)
+    if isfinite(prefactor) && prefactor > 0.0
+        return prefactor, 0.0, 0
+    end
+
+    k_fraction, k_exponent = frexp(k)
+    fraction, exponent = frexp(k_fraction * k_fraction / (4π))
+    return prefactor, fraction, 2k_exponent + exponent
+end
+
+@inline function _scale_farfield_component_dda_3d(
+    value::ComplexF64,
+    fraction::Float64,
+    exponent::Int,
+)
+    real_fraction, real_exponent = frexp(real(value))
+    imag_fraction, imag_exponent = frexp(imag(value))
+    return ComplexF64(
+        ldexp(real_fraction * fraction, real_exponent + exponent),
+        ldexp(imag_fraction * fraction, imag_exponent + exponent),
+    )
+end
+
+@inline function _scale_farfield_vector_dda_3d(
+    value::CVec3,
+    fraction::Float64,
+    exponent::Int,
+)
+    return CVec3(
+        _scale_farfield_component_dda_3d(value[1], fraction, exponent),
+        _scale_farfield_component_dda_3d(value[2], fraction, exponent),
+        _scale_farfield_component_dda_3d(value[3], fraction, exponent),
+    )
+end
+
 function _copy_finite_complex_vector_3d(
     values,
     expected_length::Int,
@@ -739,12 +775,20 @@ function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
     F = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    prefac = res.k0^2 / (4π)
+    prefactor, scale_fraction, scale_exponent =
+        _farfield_prefactor_dda_3d(res.k0)
+    scaled_prefactor = !iszero(scale_fraction)
     for j in 1:res.grid.nvoxels
         iszero(res.alpha[j]) && continue
         phase = exp(1im * res.k0 * dot(n, res.grid.centers[j]))
-        F += prefac * phase * (proj * _alpha_apply(res.alpha[j], res.E_total[j]))
+        contribution = phase * (proj * _alpha_apply(res.alpha[j], res.E_total[j]))
+        F += scaled_prefactor ?
+             _scale_farfield_vector_dda_3d(
+                 contribution, scale_fraction, scale_exponent) :
+             prefactor * contribution
     end
+    all(isfinite, F) ||
+        throw(OverflowError("DDA far-field amplitude is non-finite."))
     return F
 end
 

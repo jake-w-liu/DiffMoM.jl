@@ -806,12 +806,25 @@ function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
     FE = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     FH = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     q, m = induced_dipoles_em_dda_3d(res)
-    prefac = res.k0^2 / (4π)
+    prefactor, scale_fraction, scale_exponent =
+        _farfield_prefactor_dda_3d(res.k0)
+    scaled_prefactor = !iszero(scale_fraction)
     for j in 1:res.grid.nvoxels
         phase = exp(1im * res.k0 * dot(n, res.grid.centers[j]))
-        FE += prefac * phase * (proj * q[j] - eta * cross(n, m[j]))
-        FH += prefac * phase * ((1 / eta) * cross(n, q[j]) + proj * m[j])
+        E_contribution = phase * (proj * q[j] - eta * cross(n, m[j]))
+        H_contribution = phase * ((1 / eta) * cross(n, q[j]) + proj * m[j])
+        if scaled_prefactor
+            FE += _scale_farfield_vector_dda_3d(
+                E_contribution, scale_fraction, scale_exponent)
+            FH += _scale_farfield_vector_dda_3d(
+                H_contribution, scale_fraction, scale_exponent)
+        else
+            FE += prefactor * E_contribution
+            FH += prefactor * H_contribution
+        end
     end
+    all(isfinite, FE) && all(isfinite, FH) ||
+        throw(OverflowError("EM DDA far-field amplitude is non-finite."))
     return FE, FH
 end
 

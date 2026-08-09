@@ -112,6 +112,41 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test m[1] ≈ alpha_m * H_inc[1] atol=1e-16
     end
 
+    @testset "Far-field prefactor exponent range" begin
+        spacing = 1.0e-34
+        grid = VoxelGrid3D(
+            (-spacing / 2, spacing / 2),
+            (-spacing / 2, spacing / 2),
+            (-spacing / 2, spacing / 2),
+            1, 1, 1)
+        large_k = 1.0e200
+        E_inc = [CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)]
+        H_inc = [CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)]
+        res = solve_em_dda_3d(
+            grid, large_k, 2.5, 1.0, E_inc, H_inc)
+        FE, FH = farfield_em_dda_3d(res, Vec3(0.0, 1.0, 0.0))
+        expected_E = setprecision(BigFloat, 256) do
+            ComplexF64(
+                BigFloat(large_k)^2 * Complex{BigFloat}(res.alpha[1][1, 1]) /
+                (4 * BigFloat(pi)))
+        end
+
+        @test all(isfinite, FE)
+        @test all(isfinite, FH)
+        @test FE[1] ≈ expected_E rtol=4eps(Float64)
+        @test iszero(FE[2])
+        @test iszero(FE[3])
+        @test iszero(FH[1])
+        @test iszero(FH[2])
+        @test FH[3] ≈ -expected_E / 376.730313668 rtol=4eps(Float64)
+        overflow_grid = VoxelGrid3D(
+            (-0.5, 0.5), (-0.5, 0.5), (-0.5, 0.5), 1, 1, 1)
+        overflow_res = solve_em_dda_3d(
+            overflow_grid, large_k, 2.5, 1.0, E_inc, H_inc)
+        @test_throws OverflowError farfield_em_dda_3d(
+            overflow_res, Vec3(0.0, 1.0, 0.0))
+    end
+
     @testset "Explicit bianisotropic polarizability" begin
         grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
         alpha6 = zeros(ComplexF64, 6, 6)

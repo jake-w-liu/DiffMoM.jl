@@ -126,6 +126,51 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test abs(res.alpha[1] - clausius_mossotti_polarizability(epsr, grid.volumes[1])) < 1e-16
     end
 
+    @testset "Far-field prefactor exponent range" begin
+        spacing = 1.0e-34
+        grid = VoxelGrid3D(
+            (-spacing / 2, spacing / 2),
+            (-spacing / 2, spacing / 2),
+            (-spacing / 2, spacing / 2),
+            1, 1, 1)
+        large_k = 1.0e200
+        E_inc = [CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)]
+        res = solve_dda_3d(grid, large_k, 2.5, E_inc)
+        field = farfield_dda_3d(res, Vec3(0.0, 1.0, 0.0))
+        expected = setprecision(BigFloat, 256) do
+            ComplexF64(
+                BigFloat(large_k)^2 * Complex{BigFloat}(res.alpha[1]) /
+                (4 * BigFloat(pi)))
+        end
+
+        @test all(isfinite, field)
+        @test field[1] ≈ expected rtol=4eps(Float64)
+        @test iszero(field[2])
+        @test iszero(field[3])
+
+        large_spacing = 1.0e100
+        large_grid = VoxelGrid3D(
+            (-large_spacing / 2, large_spacing / 2),
+            (-large_spacing / 2, large_spacing / 2),
+            (-large_spacing / 2, large_spacing / 2),
+            1, 1, 1)
+        small_k = 1.0e-200
+        large_res = solve_dda_3d(large_grid, small_k, 2.5, E_inc)
+        small_field = farfield_dda_3d(large_res, Vec3(0.0, 1.0, 0.0))
+        expected_small = setprecision(BigFloat, 256) do
+            ComplexF64(
+                BigFloat(small_k)^2 * Complex{BigFloat}(large_res.alpha[1]) /
+                (4 * BigFloat(pi)))
+        end
+        @test small_field[1] == expected_small
+        @test !iszero(small_field[1])
+        @test_throws OverflowError farfield_dda_3d(
+            solve_dda_3d(
+                VoxelGrid3D((-0.5, 0.5), (-0.5, 0.5), (-0.5, 0.5), 1, 1, 1),
+                large_k, 2.5, E_inc),
+            Vec3(0.0, 1.0, 0.0))
+    end
+
     @testset "Anisotropic tensor polarizability" begin
         grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
         eps_tensor = ComplexF64[
