@@ -395,7 +395,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     N = size(A, 1)
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
-    xread = y === x ? copy(x) : x
+    xread = Base.mightalias(y, x) ? copy(x) : x
     @inbounds for m in 1:N
         acc = 0.0 + 0.0im
         for n in 1:N

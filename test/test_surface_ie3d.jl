@@ -164,6 +164,13 @@ end
     @test (@allocated mul!(yk, K_mf, xk)) < 1024
     @test norm(yk - K * xk) / max(norm(K * xk), eps()) < 1e-13
 
+    overlap_storage = vcat(xk, 0.0 + 0im)
+    overlap_x = view(overlap_storage, 1:length(xk))
+    overlap_y = view(overlap_storage, 2:(length(xk) + 1))
+    overlap_expected = K * copy(overlap_x)
+    mul!(overlap_y, K_mf, overlap_x)
+    @test overlap_y ≈ overlap_expected rtol=1e-13
+
     # The near-singular relation is an exact compact Boolean matrix: every
     # distinct triangle pair sharing at least one vertex is present.
     near_ref = _near_pair_reference(mesh)
