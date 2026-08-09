@@ -3117,6 +3117,15 @@ P_diag = build_nearfield_preconditioner(A_mf, lambda0; factorization=:diag)
 @assert P_diag isa DiagonalPreconditionerData
 @assert P_diag.cutoff == lambda0
 @assert 0.0 < P_diag.nnz_ratio <= 1.0
+M_diag = NearFieldOperator(P_diag)
+M_diag_adj = NearFieldAdjointOperator(P_diag)
+@test_throws DimensionMismatch M_diag * ones(ComplexF64, N - 1)
+@test_throws DimensionMismatch M_diag * ones(ComplexF64, N + 1)
+@test_throws DimensionMismatch M_diag_adj * ones(ComplexF64, N - 1)
+@test_throws DimensionMismatch mul!(
+    zeros(ComplexF64, N - 1), M_diag, ones(ComplexF64, N - 1))
+@test_throws DimensionMismatch mul!(
+    zeros(ComplexF64, N), M_diag_adj, ones(ComplexF64, N - 1))
 I_diag, stats_diag = solve_gmres(A_mf, v; preconditioner=P_diag, tol=1e-8, maxiter=300)
 rel_diag = norm(I_diag - I_pec) / max(norm(I_pec), 1e-30)
 println("  Diag precond + matrix-free rel error: $rel_diag  iters: $(stats_diag.niter)")

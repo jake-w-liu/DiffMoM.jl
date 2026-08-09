@@ -930,14 +930,31 @@ end
 Base.size(op::NearFieldOperator) = (_preconditioner_size(op.P), _preconditioner_size(op.P))
 Base.eltype(::NearFieldOperator) = ComplexF64
 
+@inline function _validate_preconditioner_application_lengths(
+        P::AbstractPreconditionerData,
+        y::Union{Nothing,AbstractVector},
+        x::AbstractVector)
+    N = _preconditioner_size(P)
+    length(x) == N ||
+        throw(DimensionMismatch(
+            "preconditioner input length $(length(x)) != system size $N"))
+    if y !== nothing
+        length(y) == N ||
+            throw(DimensionMismatch(
+                "preconditioner output length $(length(y)) != system size $N"))
+    end
+    return nothing
+end
+
 function Base.:*(op::NearFieldOperator, v::AbstractVector)
+    _validate_preconditioner_application_lengths(op.P, nothing, v)
     y = Vector{ComplexF64}(v)
     _apply_preconditioner!(y, op.P)
     return y
 end
 
 function LinearAlgebra.mul!(y::StridedVector{ComplexF64}, op::NearFieldOperator, x::StridedVector{ComplexF64})
-    length(y) == length(x) || throw(DimensionMismatch("x length $(length(x)) != $(length(y))"))
+    _validate_preconditioner_application_lengths(op.P, y, x)
     if y !== x
         copyto!(y, x)
     end
@@ -946,7 +963,7 @@ function LinearAlgebra.mul!(y::StridedVector{ComplexF64}, op::NearFieldOperator,
 end
 
 function LinearAlgebra.mul!(y::AbstractVector, op::NearFieldOperator, x::AbstractVector)
-    length(y) == length(x) || throw(DimensionMismatch("x length $(length(x)) != $(length(y))"))
+    _validate_preconditioner_application_lengths(op.P, y, x)
     y .= op * x
     return y
 end
@@ -964,13 +981,14 @@ Base.size(op::NearFieldAdjointOperator) = (_preconditioner_size(op.P), _precondi
 Base.eltype(::NearFieldAdjointOperator) = ComplexF64
 
 function Base.:*(op::NearFieldAdjointOperator, v::AbstractVector)
+    _validate_preconditioner_application_lengths(op.P, nothing, v)
     y = Vector{ComplexF64}(v)
     _apply_preconditioner_adjoint!(y, op.P)
     return y
 end
 
 function LinearAlgebra.mul!(y::StridedVector{ComplexF64}, op::NearFieldAdjointOperator, x::StridedVector{ComplexF64})
-    length(y) == length(x) || throw(DimensionMismatch("x length $(length(x)) != $(length(y))"))
+    _validate_preconditioner_application_lengths(op.P, y, x)
     if y !== x
         copyto!(y, x)
     end
@@ -979,7 +997,7 @@ function LinearAlgebra.mul!(y::StridedVector{ComplexF64}, op::NearFieldAdjointOp
 end
 
 function LinearAlgebra.mul!(y::AbstractVector, op::NearFieldAdjointOperator, x::AbstractVector)
-    length(y) == length(x) || throw(DimensionMismatch("x length $(length(x)) != $(length(y))"))
+    _validate_preconditioner_application_lengths(op.P, y, x)
     y .= op * x
     return y
 end
