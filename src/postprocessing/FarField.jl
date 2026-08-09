@@ -207,32 +207,17 @@ function radiation_vectors(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
         rhat_vec[q] = Vec3(grid.rhat[1, q], grid.rhat[2, q], grid.rhat[3, q])
     end
 
-    # Assemble G_mat with parallelization over basis functions.
-    #
-    # The phase exp(ik * rhat · rp) depends only on (rhat, rp) — not on the basis
-    # function — so it is shared by all RWG functions touching the same triangle.
-    # Rather than materialize the full O(NΩ·Nq·Nt) phase array (which does not
-    # scale to large far-field grids / meshes), we cache only one per-triangle
-    # O(NΩ·Nq) buffer *local to each thread*. A basis function touches its two
-    # triangles (tplus, tminus) in turn, so the buffer is rebuilt at most twice
-    # per basis function and reused across all NΩ·Nq·3 G_mat writes for that
-    # triangle. Each thread owns its own buffer (no sharing across threads), and
-    # each task writes only to column n of G_mat, so there are no data races.
+    # Assemble G_mat with parallelization over basis functions. Each phase value
+    # is consumed exactly once for a given basis/triangle/quadrature/direction
+    # tuple, so compute it inline instead of allocating an NΩ × Nq buffer for
+    # every basis function. Each task writes only to column n of G_mat, so there
+    # are no data races.
     G_mat = zeros(ComplexF64, Base.checked_mul(3, NΩ), N)
 
     Threads.@threads for n in 1:N
-        phase_buf = Matrix{ComplexF64}(undef, NΩ, Nq)   # phase_buf[q_dir, q_surf]
         @inbounds for t in (rwg.tplus[n], rwg.tminus[n])
             A = areas[t]
             pts = quad_pts[t]
-
-            # Fill the per-triangle phase buffer once, then reuse it below.
-            for q_surf in 1:Nq
-                rp = pts[q_surf]
-                for q_dir in 1:NΩ
-                    phase_buf[q_dir, q_surf] = exp(1im * k * dot(rhat_vec[q_dir], rp))
-                end
-            end
 
             for q_surf in 1:Nq
                 rp = pts[q_surf]
@@ -241,7 +226,7 @@ function radiation_vectors(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
 
                 for q_dir in 1:NΩ
                     rh = rhat_vec[q_dir]
-                    phase = phase_buf[q_dir, q_surf]
+                    phase = exp(1im * k * dot(rh, rp))
 
                     contrib = fn * (wt * phase)
                     rh_cross_N_cross = rh * dot(rh, contrib) - contrib

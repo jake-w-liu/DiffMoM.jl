@@ -42,6 +42,10 @@ function _complex_matrix_output_allocation(m::Int, n::Int)
     return @allocated Matrix{ComplexF64}(undef, m, n)
 end
 
+function _radiation_vectors_allocation(mesh, rwg, grid, k)
+    return @allocated radiation_vectors(mesh, rwg, grid, k; quad_order=3)
+end
+
 function _radiated_power_allocation(E_ff, grid)
     radiated_power(E_ff, grid)
     return @allocated radiated_power(E_ff, grid)
@@ -876,6 +880,21 @@ G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=eta0)
 @assert size(G_mat) == (3 * NΩ, N)
 @test_throws ArgumentError radiation_vectors(mesh, rwg, grid, Inf; eta0=eta0)
 @test_throws ArgumentError radiation_vectors(mesh, rwg, grid, k; eta0=Inf)
+
+# Phase factors are single-use values. Keep transient storage bounded rather
+# than allocating one NΩ × Nq phase matrix for every RWG basis function.
+mesh_radiation_alloc = make_rect_plate(1.0, 1.0, 12, 12)
+rwg_radiation_alloc = build_rwg(mesh_radiation_alloc)
+grid_radiation_alloc = make_sph_grid(8, 16)
+radiation_vectors(
+    mesh_radiation_alloc, rwg_radiation_alloc, grid_radiation_alloc, 2π;
+    quad_order=3)
+GC.gc()
+radiation_alloc = _radiation_vectors_allocation(
+    mesh_radiation_alloc, rwg_radiation_alloc, grid_radiation_alloc, 2π)
+radiation_output_bytes =
+    sizeof(ComplexF64) * 3 * length(grid_radiation_alloc.w) * rwg_radiation_alloc.nedges
+@test radiation_alloc <= radiation_output_bytes + 512_000
 
 bad_rhat_grid = SphGrid(
     hcat(grid.rhat[:, 1:(end - 1)], zeros(3)),
