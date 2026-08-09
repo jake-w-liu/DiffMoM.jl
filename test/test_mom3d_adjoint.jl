@@ -62,6 +62,43 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
         check_gmres_convergence=false,
     )
     @test length(lambda_partial) == length(lambda)
+
+    spacing = 4.0e102
+    extreme_grid = VoxelGrid3D(
+        (0.0, 2spacing), (0.0, spacing), (0.0, spacing), 2, 1, 1)
+    extreme_k = 1.0e-103
+    extreme_incident = fill(
+        CVec3(1.0 + 0im, 0.5 + 0im, -0.25 + 0im), 2)
+    extreme_result = solve_dda_3d(
+        extreme_grid, extreme_k, 2.0 + 0im, extreme_incident)
+    extreme_lambda = ones(ComplexF64, 6)
+    extreme_gradient = gradient_epsr_dda_3d(
+        extreme_result, extreme_lambda)
+    extreme_reference = setprecision(BigFloat, 256) do
+        distance = abs(
+            BigFloat(extreme_grid.centers[2][1]) -
+            BigFloat(extreme_grid.centers[1][1]))
+        kb = BigFloat(extreme_k)
+        phase = exp(Complex{BigFloat}(0, -kb * distance)) /
+                (4 * BigFloat(pi))
+        map(1:2) do j
+            derivative = 9 * BigFloat(extreme_grid.volumes[j]) /
+                         (Complex{BigFloat}(extreme_result.eps_r[j]) + 2)^2
+            dipole = [
+                derivative * Complex{BigFloat}(extreme_result.E_total[j][a])
+                for a in 1:3
+            ]
+            transverse = Complex{BigFloat}[0, dipole[2], dipole[3]]
+            near = Complex{BigFloat}[2dipole[1], -dipole[2], -dipole[3]]
+            interaction = phase .* (
+                (kb^2 / distance) .* transverse +
+                (inv(distance^3) + Complex{BigFloat}(0, 1) * kb /
+                 distance^2) .* near)
+            Float64(2 * real(sum(interaction)))
+        end
+    end
+    @test all(isfinite, extreme_gradient)
+    @test extreme_gradient ≈ extreme_reference rtol=16eps(Float64)
 end
 
 println("  PASS")

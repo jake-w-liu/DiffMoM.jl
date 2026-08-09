@@ -15,7 +15,20 @@ end
 function _dalpha_depsr_clausius_mossotti(eps_r::ComplexF64, volume::Real)
     abs(eps_r + 2) > 100 * eps(Float64) ||
         error("Clausius-Mossotti polarizability derivative is singular for eps_r near -2.")
-    return 9 * Float64(volume) / (eps_r + 2)^2
+    V = Float64(volume)
+    derivative = 9 * V / (eps_r + 2)^2
+    isfinite(derivative) && !iszero(derivative) && return derivative
+
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        eps_big = Complex{BigFloat}(eps_r)
+        value = 9 * BigFloat(V) / (eps_big + 2)^2
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "Clausius-Mossotti polarizability derivative is outside " *
+                "the representable ComplexF64 range."))
+        return converted
+    end
 end
 
 """
@@ -84,17 +97,21 @@ function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
         Ej = res.E_total[j]
         dalpha = _dalpha_depsr_clausius_mossotti(
             res.eps_r[j], res.grid.volumes[j])
-        differentiated_dipole = dalpha * Ej
         acc = 0.0 + 0im
         rj = res.grid.centers[j]
         for i in 1:N
             i == j && continue
             lambdai = _read_field_component(lambda_flat, i)
-            GEj = _electric_dipole_apply_3d(
-                res.grid.centers[i], rj, res.k0, differentiated_dipole)
+            GEj = _electric_dipole_alpha_apply_3d(
+                res.grid.centers[i], rj, res.k0, dalpha, Ej)
             acc += dot(lambdai, GEj)
         end
-        grad[j] = 2 * real(acc)
+        value = 2 * real(acc)
+        isfinite(value) ||
+            throw(OverflowError(
+                "DDA material gradient at voxel $j is outside the " *
+                "representable Float64 range."))
+        grad[j] = value
     end
 
     return grad
