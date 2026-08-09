@@ -91,6 +91,16 @@ LinearAlgebra.adjoint(A::ACAOperator) = ACAAdjointOperator{typeof(A)}(A)
 
 # ─── ACA low-rank approximation ──────────────────────────────────
 
+@inline function _validate_aca_options(tol::Float64, max_rank::Int)
+    (isfinite(tol) && tol > 0.0) ||
+        throw(ArgumentError(
+            "ACA tolerance must be finite and positive, got $tol"))
+    max_rank >= 1 ||
+        throw(ArgumentError(
+            "ACA max_rank must be at least 1, got $max_rank"))
+    return nothing
+end
+
 """
     aca_lowrank(cache, row_indices, col_indices; tol=1e-6, max_rank=50)
 
@@ -105,6 +115,7 @@ function aca_lowrank(cache::EFIEApplyCache,
                      col_indices::AbstractVector{Int};
                      tol::Float64=1e-6,
                      max_rank::Int=50)
+    _validate_aca_options(tol, max_rank)
     m = length(row_indices)
     n = length(col_indices)
     max_rank = min(max_rank, m, n)
@@ -407,6 +418,7 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                             allow_boundary::Bool=true,
                             require_closed::Bool=false,
                             area_tol_rel::Float64=1e-12)
+    _validate_aca_options(aca_tol, max_rank)
     if mesh_precheck
         assert_mesh_quality(mesh;
             allow_boundary=allow_boundary,

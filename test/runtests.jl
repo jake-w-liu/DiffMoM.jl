@@ -3337,6 +3337,14 @@ println("\n── Test 25: ACA low-rank approximation accuracy ──")
 
 # Build EFIE cache for ACA entry evaluation
 cache_aca = DiffMoM._build_efie_cache(mesh, rwg, k; quad_order=3, eta0=eta0)
+for invalid_aca_tol in (0.0, -1.0, Inf, NaN)
+    @test_throws ArgumentError aca_lowrank(
+        cache_aca, [1], [1]; tol=invalid_aca_tol, max_rank=1)
+end
+for invalid_aca_rank in (0, -1)
+    @test_throws ArgumentError aca_lowrank(
+        cache_aca, [1], [1]; tol=1e-6, max_rank=invalid_aca_rank)
+end
 
 # Find two well-separated leaf clusters for testing
 tree_aca = build_cluster_tree(centers_ct; leaf_size=8)
@@ -3443,6 +3451,11 @@ println("  PASS ✓")
 # Test 26: ACA operator matvec accuracy
 # ─────────────────────────────────────────────────
 println("\n── Test 26: ACA operator matvec accuracy ──")
+
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; aca_tol=Inf, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_rank=0, mesh_precheck=false)
 
 A_aca_op = build_aca_operator(mesh, rwg, k;
                                leaf_size=8, eta=1.5, aca_tol=1e-8,
