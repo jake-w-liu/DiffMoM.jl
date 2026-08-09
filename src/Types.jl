@@ -128,13 +128,14 @@ function LinearAlgebra.mul!(y::AbstractVector, M::LocalMassMatrix, x::AbstractVe
         end
         return y
     end
+    xread = Base.mightalias(y, x) ? copy(x) : x
     if iszero(beta)
         fill!(y, zero(eltype(y)))
     elseif beta != one(beta)
         y .*= beta
     end
     @inbounds for k in eachindex(M.vals)
-        y[M.rows[k]] += alpha * M.vals[k] * x[M.cols[k]]
+        y[M.rows[k]] += alpha * M.vals[k] * xread[M.cols[k]]
     end
     return y
 end
@@ -157,13 +158,14 @@ function LinearAlgebra.mul!(y::AbstractVector,
         end
         return y
     end
+    xread = Base.mightalias(y, x) ? copy(x) : x
     if iszero(beta)
         fill!(y, zero(eltype(y)))
     elseif beta != one(beta)
         y .*= beta
     end
     @inbounds for k in eachindex(M.vals)
-        y[M.cols[k]] += alpha * conj(M.vals[k]) * x[M.rows[k]]
+        y[M.cols[k]] += alpha * conj(M.vals[k]) * xread[M.rows[k]]
     end
     return y
 end

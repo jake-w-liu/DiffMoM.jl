@@ -941,7 +941,24 @@ for mass_op in (mass_contract, adjoint(mass_contract))
     fill!(mass_result, ComplexF64(NaN, NaN))
     mul!(mass_result, mass_op, mass_nonfinite, 0.0 + 0im, 0.0 + 0im)
     @test mass_result == zeros(ComplexF64, 2)
+
+    mass_overlap_storage = ComplexF64[1 + 0im, 4 + 0im, 9 + 0im]
+    mass_overlap_x = view(mass_overlap_storage, 1:2)
+    mass_overlap_y = view(mass_overlap_storage, 2:3)
+    mass_overlap_x_initial = copy(mass_overlap_x)
+    mass_overlap_y_initial = copy(mass_overlap_y)
+    mass_overlap_expected =
+        1.25 .* (mass_op * mass_overlap_x_initial) .+
+        0.5 .* mass_overlap_y_initial
+    mul!(mass_overlap_y, mass_op, mass_overlap_x,
+         1.25 + 0im, 0.5 + 0im)
+    @test mass_overlap_y ≈ mass_overlap_expected
 end
+
+mass_allocation_x = ComplexF64[1 + 2im, 3 - 4im]
+mass_allocation_y = zeros(ComplexF64, 2)
+mul!(mass_allocation_y, mass_contract, mass_allocation_x)
+@test (@allocated mul!(mass_allocation_y, mass_contract, mass_allocation_x)) < 128
 
 # Each M_p should be symmetric (real-valued mass matrix)
 for p in 1:min(3, Nt)
