@@ -221,6 +221,11 @@ end
         c, N = mie_coefficients_2d(k0, a, eps_r)
         @test !any(isnan, c)
 
+        matched_coefficients, matched_order =
+            mie_coefficients_2d(1.0, 1e-200, 1.0)
+        @test matched_order == 10
+        @test all(iszero, matched_coefficients)
+
         # Symmetry: c_{-n} should satisfy specific relations
         # For symmetric incidence (phi_inc=0), c_{-n} = c_n
         for n in 1:min(N, 5)

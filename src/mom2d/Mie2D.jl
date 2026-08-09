@@ -70,6 +70,13 @@ function mie_coefficients_2d(k0::Float64, a::Float64, eps_r::Float64;
             throw(ArgumentError("eps_r must be finite, got $eps_r"))
     end
 
+    # A cylinder identical to the exterior medium has exactly zero contrast.
+    # Returning the analytic result also avoids overflow in high-order Hankel
+    # intermediates for electrically tiny matched cylinders.
+    if !pec && eps_r == 1.0
+        return zeros(ComplexF64, coefficient_count), N
+    end
+
     c = Vector{ComplexF64}(undef, coefficient_count)
     center = N + 1
 
