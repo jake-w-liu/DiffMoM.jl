@@ -4125,6 +4125,43 @@ for t in 1:ntriangles(mesh_plate)
         end
     end
 end
+
+# Reject invalid or unrepresentable meshes before opening the destination, so
+# predictable validation failures cannot replace an existing file with a
+# partial STL.  Large finite Float64 coordinates remain valid for ASCII STL.
+stl_validation_path = joinpath(DATADIR, "tmp_stl_validation.stl")
+stl_validation_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
+mesh_empty_stl = TriMesh(zeros(Float64, 3, 0), Matrix{Int}(undef, 3, 0))
+for ascii_stl in (false, true)
+    write(stl_validation_path, stl_validation_sentinel)
+    @test_throws ArgumentError write_stl_mesh(
+        stl_validation_path, mesh_empty_stl; ascii=ascii_stl)
+    @test read(stl_validation_path) == stl_validation_sentinel
+end
+mesh_extreme_stl = TriMesh(
+    Float64[0.0 1.0e100 0.0; 0.0 0.0 1.0e100; 0.0 0.0 0.0],
+    reshape([1, 2, 3], 3, 1),
+)
+write(stl_validation_path, stl_validation_sentinel)
+@test_throws ArgumentError write_stl_mesh(stl_validation_path, mesh_extreme_stl)
+@test read(stl_validation_path) == stl_validation_sentinel
+
+stl_extreme_ascii_path = joinpath(DATADIR, "tmp_stl_extreme_ascii.stl")
+write_stl_mesh(stl_extreme_ascii_path, mesh_extreme_stl; ascii=true)
+mesh_extreme_stl_rt = read_stl_mesh(stl_extreme_ascii_path)
+@test mesh_extreme_stl_rt.xyz == mesh_extreme_stl.xyz
+@test mesh_extreme_stl_rt.tri == mesh_extreme_stl.tri
+
+mesh_bad_stl_index = TriMesh(
+    Float64[0 1 0; 0 0 1; 0 0 0], reshape([1, 2, 4], 3, 1))
+write(stl_validation_path, stl_validation_sentinel)
+@test_throws ArgumentError write_stl_mesh(stl_validation_path, mesh_bad_stl_index)
+@test read(stl_validation_path) == stl_validation_sentinel
+
+write(stl_validation_path, stl_validation_sentinel)
+@test_throws DomainError write_stl_mesh(
+    stl_validation_path, mesh_degenerate_normal)
+@test read(stl_validation_path) == stl_validation_sentinel
 println("  32c: PASS")
 
 # 32d: STL ASCII round-trip

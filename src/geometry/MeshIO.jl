@@ -338,10 +338,49 @@ end
 @inline _write_stl_float32_le(io::IO, value) =
     _write_stl_uint32_le(io, reinterpret(UInt32, Float32(value)))
 
-function _write_stl_binary(path::AbstractString, mesh::TriMesh; header::AbstractString="")
+function _validate_stl_mesh_for_write(mesh::TriMesh; binary::Bool)
+    size(mesh.xyz, 1) == 3 ||
+        throw(DimensionMismatch(
+            "STL vertex coordinates must have size (3, Nv), got $(size(mesh.xyz))."))
+    size(mesh.tri, 1) == 3 ||
+        throw(DimensionMismatch(
+            "STL triangle connectivity must have size (3, Nt), got $(size(mesh.tri))."))
+
     nt = ntriangles(mesh)
-    nt <= typemax(UInt32) ||
-        throw(ArgumentError("Binary STL supports at most $(typemax(UInt32)) triangles."))
+    nt > 0 || throw(ArgumentError("Cannot write an STL mesh with 0 triangles."))
+    if binary
+        nt <= typemax(UInt32) ||
+            throw(ArgumentError(
+                "Binary STL supports at most $(typemax(UInt32)) triangles."))
+    end
+
+    nv = nvertices(mesh)
+    @inbounds for t in 1:nt
+        for local_vertex in 1:3
+            vertex = mesh.tri[local_vertex, t]
+            1 <= vertex <= nv ||
+                throw(ArgumentError(
+                    "STL triangle $t references vertex $vertex outside 1:$nv."))
+            coord = (mesh.xyz[1, vertex], mesh.xyz[2, vertex], mesh.xyz[3, vertex])
+            _validated_stl_coordinate(coord)
+            if binary
+                coord32 = (Float32(coord[1]), Float32(coord[2]), Float32(coord[3]))
+                isfinite(coord32[1]) && isfinite(coord32[2]) && isfinite(coord32[3]) ||
+                    throw(ArgumentError(
+                        "STL vertex coordinates at triangle $t, local vertex $local_vertex " *
+                        "are outside the finite Float32 range required by binary STL: $coord."))
+            end
+        end
+        # Validate degeneracy before opening the destination.  Both STL writers
+        # require a finite unit normal for every facet.
+        triangle_normal(mesh, t)
+    end
+    return nothing
+end
+
+function _write_stl_binary(path::AbstractString, mesh::TriMesh; header::AbstractString="")
+    _validate_stl_mesh_for_write(mesh; binary=true)
+    nt = ntriangles(mesh)
     open(path, "w") do io
         # 80-byte header (padded with zeros)
         hdr = zeros(UInt8, 80)
@@ -367,6 +406,7 @@ function _write_stl_binary(path::AbstractString, mesh::TriMesh; header::Abstract
 end
 
 function _write_stl_ascii(path::AbstractString, mesh::TriMesh; header::AbstractString="")
+    _validate_stl_mesh_for_write(mesh; binary=false)
     nt = ntriangles(mesh)
     open(path, "w") do io
         println(io, "solid ", header)
