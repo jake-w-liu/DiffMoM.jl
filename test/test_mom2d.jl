@@ -282,6 +282,15 @@ end
         @test all(isfinite, mie_scattered_field_2d(
             1.0, tiny_size, 0.0, tiny_surface))
 
+        underflow_size = 1e-200
+        underflow_surface = [Vec2(underflow_size, 0.0)]
+        @test mie_scattered_field_2d(
+            underflow_size, underflow_size, 1.0, underflow_surface) ==
+              zeros(ComplexF64, 1)
+        @test mie_total_field_2d(
+            underflow_size, underflow_size, 1.0, underflow_surface) ==
+              ones(ComplexF64, 1)
+
         # Symmetry: c_{-n} should satisfy specific relations
         # For symmetric incidence (phi_inc=0), c_{-n} = c_n
         for n in 1:min(N, 5)

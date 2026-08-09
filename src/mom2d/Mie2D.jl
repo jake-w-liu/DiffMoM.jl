@@ -255,7 +255,8 @@ end
 
 function _validate_mie2d_observations(k0::Float64, a::Float64,
                                       r_obs::AbstractVector{Vec2},
-                                      phi_inc::Float64)
+                                      phi_inc::Float64;
+                                      require_representable_phase::Bool=true)
     isfinite(phi_inc) ||
         throw(ArgumentError("phi_inc must be finite, got $phi_inc"))
     @inbounds for m in eachindex(r_obs)
@@ -269,10 +270,12 @@ function _validate_mie2d_observations(k0::Float64, a::Float64,
             throw(DomainError(
                 rho,
                 "r_obs[$m] lies inside the cylinder: radius $rho < a=$a"))
-        argument = k0 * rho
-        (isfinite(argument) && argument > 0.0) ||
-            throw(ArgumentError(
-                "k0*norm(r_obs[$m]) must be finite and positive, got $argument"))
+        if require_representable_phase
+            argument = k0 * rho
+            (isfinite(argument) && argument > 0.0) ||
+                throw(ArgumentError(
+                    "k0*norm(r_obs[$m]) must be finite and positive, got $argument"))
+        end
     end
     return nothing
 end
@@ -295,7 +298,16 @@ function mie_scattered_field_2d(k0::Float64, a::Float64, eps_r::Float64,
                                  phi_inc::Float64=0.0, nmax=nothing, pec::Bool=false)
     k0 = _validated_mie2d_positive(k0, "k0")
     a = _validated_mie2d_positive(a, "a")
-    _validate_mie2d_observations(k0, a, r_obs, phi_inc)
+    if !pec
+        isfinite(eps_r) ||
+            throw(ArgumentError("eps_r must be finite, got $eps_r"))
+    end
+    matched_medium = !pec && eps_r == 1.0
+    _validate_mie2d_observations(
+        k0, a, r_obs, phi_inc;
+        require_representable_phase=!matched_medium,
+    )
+    matched_medium && return zeros(ComplexF64, length(r_obs))
     c, N = mie_coefficients_2d(k0, a, eps_r; nmax=nmax, pec=pec)
 
     M = length(r_obs)
