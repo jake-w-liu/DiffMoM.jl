@@ -156,16 +156,32 @@ end
     alpha::_CMat6DDA,
     eta0::Float64,
 )
-    return _CMat6DDA(ntuple(idx -> begin
-        row = mod1(idx, 6)
-        col = div(idx - 1, 6) + 1
+    inverse_eta0 = inv(eta0)
+    factors = @SMatrix [
+        1.0 1.0 1.0 eta0 eta0 eta0
+        1.0 1.0 1.0 eta0 eta0 eta0
+        1.0 1.0 1.0 eta0 eta0 eta0
+        inverse_eta0 inverse_eta0 inverse_eta0 1.0 1.0 1.0
+        inverse_eta0 inverse_eta0 inverse_eta0 1.0 1.0 1.0
+        inverse_eta0 inverse_eta0 inverse_eta0 1.0 1.0 1.0
+    ]
+    return alpha .* factors
+end
+
+@inline function _transformed_alpha6_isfinite_3d(
+    alpha::_CMat6DDA,
+    eta0::Float64,
+)
+    inverse_eta0 = inv(eta0)
+    @inbounds for col in 1:6, row in 1:6
         factor = if row <= 3
             col <= 3 ? 1.0 : eta0
         else
-            col <= 3 ? inv(eta0) : 1.0
+            col <= 3 ? inverse_eta0 : 1.0
         end
-        alpha[idx] * factor
-    end, 36))
+        isfinite(alpha[row, col] * factor) || return false
+    end
+    return true
 end
 
 @inline _alpha3_matrix(alpha::Number) = ComplexF64(alpha) * _CI3_DDA
@@ -214,10 +230,13 @@ bianisotropic relative material matrix `C6`. `C6` acts on `[E; eta0*H]`; the
 returned polarizability acts on the solver fields `[E; H]` and returns
 `[q; m]`.
 """
-function bianisotropic_clausius_mossotti_polarizability(C6, volume::Real;
-                                                        k0::Real=0.0,
-                                                        radiative_correction::Bool=false,
-                                                        eta0::Real=_ETA0_DDA)
+@inline function bianisotropic_clausius_mossotti_polarizability(
+    C6,
+    volume::Real;
+    k0::Real=0.0,
+    radiative_correction::Bool=false,
+    eta0::Real=_ETA0_DDA,
+)::_CMat6DDA
     V = _finite_positive_real_3d(volume, "volume")
     k = _finite_nonnegative_k0_3d(k0)
     eta = _finite_positive_real_3d(eta0, "eta0")
@@ -231,10 +250,11 @@ function bianisotropic_clausius_mossotti_polarizability(C6, volume::Real;
         if radiative_correction
             alpha_norm = alpha_norm / (I6 + 1im * k^3 * alpha_norm / (6π))
         end
-        if all(isfinite, alpha_norm)
-            alpha = _transform_normalized_alpha6_3d(alpha_norm, eta)
-            all(isfinite, alpha) && return alpha
-        end
+        # Check scalar entries before materializing the 576-byte transformed
+        # SMatrix, so heterogeneous voxel builds do not box a temporary matrix.
+        all(isfinite, alpha_norm) &&
+            _transformed_alpha6_isfinite_3d(alpha_norm, eta) &&
+            return _transform_normalized_alpha6_3d(alpha_norm, eta)
     end
 
     converted = setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do

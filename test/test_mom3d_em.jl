@@ -193,6 +193,16 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         alpha_coupled = bianisotropic_clausius_mossotti_polarizability(coupled, grid.volumes[1])
         @test abs(alpha_coupled[1, 5]) > 0
         @test abs(alpha_coupled[5, 1]) > 0
+
+        allocation_grid = VoxelGrid3D(
+            (0.0, 256.0), (0.0, 1.0), (0.0, 1.0), 256, 1, 1)
+        material_vector = fill(coupled, allocation_grid.nvoxels)
+        alpha_vector = em_dda_polarizabilities(
+            allocation_grid, k0, material_vector)
+        allocated = @allocated em_dda_polarizabilities(
+            allocation_grid, k0, material_vector)
+        @test all(==(alpha_vector[1]), alpha_vector)
+        @test allocated <= Base.summarysize(alpha_vector) + 4096
     end
 
     @testset "Matrix-free operator equivalence and storage" begin
