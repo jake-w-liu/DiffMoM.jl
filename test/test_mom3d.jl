@@ -30,6 +30,11 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test_throws ArgumentError VoxelGrid3D(
             [Vec3(0.6, 0.5, 0.5)], [1.0], 1, 1, 1, 1,
             1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+        large_origin = 1.0e16
+        duplicate_center = Vec3(large_origin + 2.0, 0.5, 0.5)
+        @test_throws ArgumentError VoxelGrid3D(
+            [duplicate_center, duplicate_center], [4.0, 4.0],
+            2, 2, 1, 1, 4.0, 1.0, 1.0, large_origin, 0.0, 0.0)
         @test_throws ArgumentError VoxelGrid3D(
             (1.0, nextfloat(1.0)), (0.0, 1.0), (0.0, 1.0),
             3, 1, 1)

@@ -119,12 +119,9 @@ struct VoxelGrid3D
                     (isfinite(expected_x) &&
                      isfinite(expected_y) &&
                      isfinite(expected_z) &&
-                     isapprox(center[1], expected_x;
-                              rtol=8eps(Float64), atol=0.0) &&
-                     isapprox(center[2], expected_y;
-                              rtol=8eps(Float64), atol=0.0) &&
-                     isapprox(center[3], expected_z;
-                              rtol=8eps(Float64), atol=0.0)) ||
+                     center[1] == expected_x &&
+                     center[2] == expected_y &&
+                     center[3] == expected_z) ||
                         throw(ArgumentError(
                             "VoxelGrid3D center $index is inconsistent with the Cartesian grid."))
                 end
