@@ -907,6 +907,30 @@ end
     return (a, b, c)
 end
 
+@inline function _cluster_cell_index(value::Float64,
+                                     origin::Float64,
+                                     h::Float64)
+    (isfinite(value) && isfinite(origin)) ||
+        throw(ArgumentError(
+            "cluster_mesh_vertices: vertex coordinates must be finite"))
+    delta = value - origin
+    # Opposite-sign finite coordinates can have an unrepresentable difference
+    # even when division by a large cell size makes the cell index small.
+    scaled = isfinite(delta) ? delta / h : value / h - origin / h
+    (isfinite(scaled) && scaled >= 0.0) ||
+        throw(ArgumentError(
+            "cluster_mesh_vertices: coordinate offset is not representable " *
+            "for value=$value, origin=$origin, h=$h"))
+    return try
+        floor(Int, scaled)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError(
+            "cluster_mesh_vertices: cell index is outside the Int range " *
+            "for value=$value, origin=$origin, h=$h"))
+    end
+end
+
 """
     cluster_mesh_vertices(mesh, h)
 
@@ -937,9 +961,9 @@ function cluster_mesh_vertices(mesh::TriMesh, h::Float64)
         y = mesh.xyz[2, i]
         z = mesh.xyz[3, i]
         key = (
-            floor(Int, (x - mins[1]) / h),
-            floor(Int, (y - mins[2]) / h),
-            floor(Int, (z - mins[3]) / h),
+            _cluster_cell_index(x, mins[1], h),
+            _cluster_cell_index(y, mins[2], h),
+            _cluster_cell_index(z, mins[3], h),
         )
         id = get(key_to_id, key, 0)
         if iszero(id)

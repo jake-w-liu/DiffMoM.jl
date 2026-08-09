@@ -499,6 +499,22 @@ mesh_cluster_extreme_out = cluster_mesh_vertices(
 @test ntriangles(mesh_cluster_extreme_out) == 1
 @test all(==(cluster_extreme_x), mesh_cluster_extreme_out.xyz[1, :])
 
+# Origin subtraction may overflow for finite opposite-sign coordinates even
+# when division by a large cell size makes the cell index representable.
+mesh_cluster_wide = TriMesh(
+    Float64[
+        -1.0e308 1.0e308 -1.0e308;
+        -1.0e308 -1.0e308 1.0e308;
+        0 0 0
+    ],
+    reshape([1, 2, 3], 3, 1),
+)
+mesh_cluster_wide_out = cluster_mesh_vertices(mesh_cluster_wide, 1.5e308)
+@test mesh_cluster_wide_out.xyz == mesh_cluster_wide.xyz
+@test mesh_cluster_wide_out.tri == mesh_cluster_wide.tri
+@test_throws ArgumentError cluster_mesh_vertices(
+    mesh_cluster_in, nextfloat(0.0))
+
 # A no-merge pass must preserve topology without allocating a temporary
 # three-element sort buffer for every triangle.
 mesh_cluster_alloc = make_rect_plate(1.0, 1.0, 40, 40)
