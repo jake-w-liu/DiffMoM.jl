@@ -3640,6 +3640,17 @@ result_auto = solve_scattering(mesh, freq, pw_exc;
     mesh, freq, fill(ComplexF64(NaN, 0.0), N);
     verbose=false,
     check_resolution=false)
+for invalid_thresholds in (
+    (dense_direct_limit=-1, dense_gmres_limit=100, mlfma_threshold=200),
+    (dense_direct_limit=100, dense_gmres_limit=99, mlfma_threshold=200),
+    (dense_direct_limit=100, dense_gmres_limit=200, mlfma_threshold=199),
+)
+    @test_throws ArgumentError solve_scattering(
+        mesh, freq, pw_exc;
+        invalid_thresholds...,
+        verbose=false,
+        check_resolution=false)
+end
 
 single_triangle_mesh = TriMesh(
     Float64[0 1 0; 0 0 1; 0 0 0],

@@ -95,6 +95,17 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
         error("solve_scattering: method must be :auto, :dense_direct, :dense_gmres, :aca_gmres, or :mlfma")
     preconditioner in (:auto, :lu, :ilu, :diag, :none) ||
         throw(ArgumentError("solve_scattering: preconditioner must be :auto, :lu, :ilu, :diag, or :none"))
+    dense_direct_limit >= 0 ||
+        throw(ArgumentError(
+            "solve_scattering: dense_direct_limit must be nonnegative, got $dense_direct_limit"))
+    dense_gmres_limit >= dense_direct_limit ||
+        throw(ArgumentError(
+            "solve_scattering: dense_gmres_limit ($dense_gmres_limit) must be at least " *
+            "dense_direct_limit ($dense_direct_limit)"))
+    mlfma_threshold >= dense_gmres_limit ||
+        throw(ArgumentError(
+            "solve_scattering: mlfma_threshold ($mlfma_threshold) must be at least " *
+            "dense_gmres_limit ($dense_gmres_limit)"))
 
     warnings = String[]
     lambda = propagation_speed / frequency
