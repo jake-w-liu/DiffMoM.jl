@@ -128,7 +128,8 @@ function equivalent_radius(mesh::Mesh2D)
     return _equivalent_radius_unchecked(mesh)
 end
 
-@inline _equivalent_radius_unchecked(mesh::Mesh2D) = sqrt(mesh.cell_area / π)
+@inline _equivalent_radius_unchecked(mesh::Mesh2D) =
+    sqrt(mesh.cell_area) / sqrt(π)
 
 """
     VIEResult2D

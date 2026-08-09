@@ -34,6 +34,17 @@ end
         # Equivalent radius: πa² = cell_area
         @test equivalent_radius(mesh)^2 * π ≈ mesh.cell_area atol=1e-14
 
+        # Preserve positive subnormal cell areas instead of underflowing the
+        # division by π before the square root.
+        subnormal_mesh = Mesh2D(
+            (0.0, nextfloat(0.0)), (0.0, 1.0), 1, 1)
+        @test equivalent_radius(subnormal_mesh) > 0.0
+        Z_subnormal, D_subnormal = assemble_vie_2d(
+            subnormal_mesh, 1.0, [0.0])
+        @test Z_subnormal == ones(ComplexF64, 1, 1)
+        @test all(isfinite, D_subnormal)
+        @test !iszero(D_subnormal[1, 1])
+
         # Invalid inputs
         @test_throws ArgumentError Mesh2D((1.0, -1.0), (-0.5, 0.5), 4, 2)
         @test_throws ArgumentError Mesh2D((-1.0, 1.0), (-0.5, 0.5), 0, 2)
