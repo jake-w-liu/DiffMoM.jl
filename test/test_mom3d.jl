@@ -37,6 +37,31 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             radiative_correction=true)
         @test_throws ArgumentError clausius_mossotti_polarizability(
             Inf, grid.volumes[1])
+        large_alpha = clausius_mossotti_polarizability(2.0, 1.0e308)
+        @test large_alpha == ComplexF64(7.5e307)
+        large_tensor_alpha = clausius_mossotti_polarizability(
+            Matrix{Float64}(2I, 3, 3), 1.0e308)
+        @test all(isfinite, large_tensor_alpha)
+        @test large_tensor_alpha == ComplexF64(7.5e307) *
+                                      Matrix{ComplexF64}(I, 3, 3)
+        @test_throws OverflowError clausius_mossotti_polarizability(10.0, 1.0e308)
+
+        corrected_alpha = clausius_mossotti_polarizability(
+            2.5, 1.0;
+            k0=6.0e102,
+            radiative_correction=true)
+        @test isfinite(corrected_alpha)
+        @test real(corrected_alpha) == 0.0
+        @test imag(corrected_alpha) ≈ -8.726646259971649e-308 rtol=1e-14
+        corrected_tensor_alpha = clausius_mossotti_polarizability(
+            Matrix{Float64}(2.5I, 3, 3), 1.0;
+            k0=6.0e102,
+            radiative_correction=true)
+        @test all(isfinite, corrected_tensor_alpha)
+        @test corrected_tensor_alpha == corrected_alpha *
+                                           Matrix{ComplexF64}(I, 3, 3)
+        @test_throws OverflowError clausius_mossotti_polarizability(
+            Matrix{Float64}(10I, 3, 3), 1.0e308)
         @test_throws ArgumentError electric_dipole_dyadic_3d(
             grid.centers[1], grid.centers[2], Inf)
         @test_throws ArgumentError dda_operator_3d(grid, Inf, 2.5)

@@ -26,6 +26,23 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test_throws ArgumentError bianisotropic_clausius_mossotti_polarizability(
             Matrix{ComplexF64}(I, 6, 6), grid.volumes[1];
             eta0=Inf)
+        large_bianisotropic_alpha =
+            bianisotropic_clausius_mossotti_polarizability(
+                Matrix{Float64}(2I, 6, 6), 1.0e308)
+        @test all(isfinite, large_bianisotropic_alpha)
+        @test large_bianisotropic_alpha == ComplexF64(7.5e307) *
+                                            Matrix{ComplexF64}(I, 6, 6)
+        corrected_bianisotropic_alpha =
+            bianisotropic_clausius_mossotti_polarizability(
+                Matrix{Float64}(2.5I, 6, 6), 1.0;
+                k0=6.0e102,
+                radiative_correction=true)
+        @test all(isfinite, corrected_bianisotropic_alpha)
+        @test corrected_bianisotropic_alpha ==
+              ComplexF64(0.0, -8.726646259971649e-308) *
+              Matrix{ComplexF64}(I, 6, 6)
+        @test_throws OverflowError bianisotropic_clausius_mossotti_polarizability(
+            Matrix{Float64}(10I, 6, 6), 1.0e308)
         @test_throws ArgumentError planewave_em_dda_3d(
             grid, Vec3(0.0, 0.0, k0), 1.0 + 0im,
             Vec3(1.0, 0.0, 0.0); eta0=Inf)

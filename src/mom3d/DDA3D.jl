@@ -174,6 +174,62 @@ end
 @inline _alpha_block(G, alpha::Number) = G * alpha
 @inline _alpha_block(G, alpha::_CMat3DDA) = G * alpha
 
+# The fallback only receives binary64 inputs. Use more than four input
+# significands for the small (at most 6x6) solves, while keeping this rare
+# exponent-range recovery path bounded in time and memory.
+const _POLARIZABILITY_FALLBACK_PRECISION = 256
+
+function _clausius_mossotti_bigfloat(
+    epsc::ComplexF64,
+    V::Float64,
+    k::Float64,
+    radiative_correction::Bool,
+)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        epsb = Complex{BigFloat}(BigFloat(real(epsc)), BigFloat(imag(epsc)))
+        alpha = 3 * BigFloat(V) * (epsb - 1) / (epsb + 2)
+        if radiative_correction
+            denominator = 1 + Complex{BigFloat}(0, 1) * BigFloat(k)^3 * alpha /
+                              (6 * BigFloat(pi))
+            iszero(denominator) &&
+                error("Radiatively corrected Clausius-Mossotti polarizability is singular.")
+            alpha /= denominator
+        end
+        converted = ComplexF64(alpha)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "Clausius-Mossotti polarizability is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+function _clausius_mossotti_bigfloat(
+    epsm::AbstractMatrix{ComplexF64},
+    V::Float64,
+    k::Float64,
+    radiative_correction::Bool,
+    label::AbstractString,
+)
+    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        n = size(epsm, 1)
+        epsb = Complex{BigFloat}.(epsm)
+        identity_b = Matrix{Complex{BigFloat}}(I, n, n)
+        alpha = 3 * BigFloat(V) *
+                ((epsb - identity_b) / (epsb + 2 * identity_b))
+        if radiative_correction
+            denominator = identity_b +
+                          Complex{BigFloat}(0, 1) * BigFloat(k)^3 * alpha /
+                          (6 * BigFloat(pi))
+            alpha /= denominator
+        end
+        converted = ComplexF64.(alpha)
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "$label is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
 """
     clausius_mossotti_polarizability(eps_r, volume; k0=0, radiative_correction=false)
 
@@ -198,11 +254,19 @@ function clausius_mossotti_polarizability(eps_r::Number, volume::Real;
         throw(ArgumentError("eps_r must be finite, got $eps_r."))
     abs(epsc + 2) > 100 * eps(Float64) ||
         error("Clausius-Mossotti polarizability is singular for eps_r near -2.")
-    alpha0 = 3 * V * (epsc - 1) / (epsc + 2)
-    if radiative_correction
-        return alpha0 / (1 + 1im * k^3 * alpha0 / (6π))
+    # Apply the material ratio before the possibly large volume. This avoids
+    # overflowing `3V` when the final polarizability is representable.
+    alpha0 = V * (3 * ((epsc - 1) / (epsc + 2)))
+    if isfinite(alpha0)
+        if !radiative_correction
+            return alpha0
+        end
+        corrected = alpha0 / (1 + 1im * k^3 * alpha0 / (6π))
+        isfinite(corrected) && return corrected
     end
-    return alpha0
+    # This path is rare and retains representable results when exponent range,
+    # rather than mathematical singularity, defeated binary64 intermediates.
+    return _clausius_mossotti_bigfloat(epsc, V, k, radiative_correction)
 end
 
 function clausius_mossotti_polarizability(eps_r::AbstractMatrix, volume::Real;
@@ -214,11 +278,18 @@ function clausius_mossotti_polarizability(eps_r::AbstractMatrix, volume::Real;
     denom = epsm + 2 * _CI3_DDA
     abs(det(denom)) > 100 * eps(Float64) ||
         error("Tensor Clausius-Mossotti polarizability is singular for eps_r + 2I.")
-    alpha0 = 3 * V * ((epsm - _CI3_DDA) / denom)
-    if radiative_correction
-        return alpha0 / (_CI3_DDA + 1im * k^3 * alpha0 / (6π))
+    alpha0 = V * (3 * ((epsm - _CI3_DDA) / denom))
+    if all(isfinite, alpha0)
+        if !radiative_correction
+            return alpha0
+        end
+        corrected = alpha0 / (_CI3_DDA + 1im * k^3 * alpha0 / (6π))
+        all(isfinite, corrected) && return corrected
     end
-    return alpha0
+    converted = _clausius_mossotti_bigfloat(
+        epsm, V, k, radiative_correction,
+        "Tensor Clausius-Mossotti polarizability")
+    return _CMat3DDA(Tuple(converted))
 end
 
 """

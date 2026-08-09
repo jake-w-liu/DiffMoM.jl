@@ -152,6 +152,22 @@ end
     end, 36))
 end
 
+@inline function _transform_normalized_alpha6_3d(
+    alpha::_CMat6DDA,
+    eta0::Float64,
+)
+    return _CMat6DDA(ntuple(idx -> begin
+        row = mod1(idx, 6)
+        col = div(idx - 1, 6) + 1
+        factor = if row <= 3
+            col <= 3 ? 1.0 : eta0
+        else
+            col <= 3 ? inv(eta0) : 1.0
+        end
+        alpha[idx] * factor
+    end, 36))
+end
+
 @inline _alpha3_matrix(alpha::Number) = ComplexF64(alpha) * _CI3_DDA
 @inline _alpha3_matrix(alpha::_CMat3DDA) = alpha
 
@@ -209,12 +225,40 @@ function bianisotropic_clausius_mossotti_polarizability(C6, volume::Real;
     denom = C + 2 * SMatrix{6,6,ComplexF64,36}(I)
     abs(det(denom)) > 100 * eps(Float64) ||
         error("Bianisotropic Clausius-Mossotti polarizability is singular for C6 + 2I.")
-    alpha_norm = 3 * V * ((C - SMatrix{6,6,ComplexF64,36}(I)) / denom)
-    if radiative_correction
-        I6 = SMatrix{6,6,ComplexF64,36}(I)
-        alpha_norm = alpha_norm / (I6 + 1im * k^3 * alpha_norm / (6π))
+    I6 = SMatrix{6,6,ComplexF64,36}(I)
+    alpha_norm = V * (3 * ((C - I6) / denom))
+    if all(isfinite, alpha_norm)
+        if radiative_correction
+            alpha_norm = alpha_norm / (I6 + 1im * k^3 * alpha_norm / (6π))
+        end
+        if all(isfinite, alpha_norm)
+            alpha = _transform_normalized_alpha6_3d(alpha_norm, eta)
+            all(isfinite, alpha) && return alpha
+        end
     end
-    return _inv_scale6_matrix_3d(eta) * alpha_norm * _scale6_matrix_3d(eta)
+
+    converted = setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+        Cb = Matrix{Complex{BigFloat}}(C)
+        identity_b = Matrix{Complex{BigFloat}}(I, 6, 6)
+        alpha = 3 * BigFloat(V) * ((Cb - identity_b) / (Cb + 2 * identity_b))
+        if radiative_correction
+            denominator = identity_b +
+                          Complex{BigFloat}(0, 1) * BigFloat(k)^3 * alpha /
+                          (6 * BigFloat(pi))
+            alpha /= denominator
+        end
+        scales = (BigFloat(1), BigFloat(1), BigFloat(1),
+                  BigFloat(eta), BigFloat(eta), BigFloat(eta))
+        for col in 1:6, row in 1:6
+            alpha[row, col] *= scales[col] / scales[row]
+        end
+        out = ComplexF64.(alpha)
+        all(isfinite, out) ||
+            throw(OverflowError(
+                "Bianisotropic Clausius-Mossotti polarizability is outside the representable ComplexF64 range."))
+        out
+    end
+    return _CMat6DDA(Tuple(converted))
 end
 
 """
