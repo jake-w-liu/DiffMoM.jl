@@ -4,6 +4,21 @@
 
 export planewave_2d, linesource_2d
 
+const _PLANEWAVE_PHASE_FALLBACK_PRECISION_2D = 256
+
+@noinline function _planewave_phase_big_2d(
+        k0::Float64, khat::Vec2, center::Vec2, cell::Int)
+    return setprecision(BigFloat, _PLANEWAVE_PHASE_FALLBACK_PRECISION_2D) do
+        phase = BigFloat(k0) *
+                (BigFloat(khat[1]) * BigFloat(center[1]) +
+                 BigFloat(khat[2]) * BigFloat(center[2]))
+        value = ComplexF64(exp(Complex{BigFloat}(zero(BigFloat), -phase)))
+        isfinite(value) ||
+            error("planewave_2d produced a non-finite phase at cell $cell.")
+        return value
+    end
+end
+
 """
     planewave_2d(mesh, k0, phi_inc; E0=1.0)
 
@@ -24,10 +39,11 @@ function planewave_2d(mesh::Mesh2D, k0::Float64, phi_inc::Float64; E0::Float64=1
     E_inc = Vector{ComplexF64}(undef, mesh.ncells)
     @inbounds for m in 1:mesh.ncells
         phase = k0 * dot(khat, mesh.centers[m])
-        isfinite(phase) ||
-            throw(ArgumentError(
-                "planewave_2d phase must be finite at cell $m, got $phase."))
-        E_inc[m] = E0 * exp(-im * phase)
+        phase_factor = isfinite(phase) ?
+                       exp(-im * phase) :
+                       _planewave_phase_big_2d(
+                           k0, khat, mesh.centers[m], m)
+        E_inc[m] = E0 * phase_factor
     end
     all(isfinite, E_inc) ||
         error("planewave_2d produced non-finite incident-field values.")

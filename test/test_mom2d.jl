@@ -354,6 +354,24 @@ end
         @test_throws ArgumentError planewave_2d(mesh, Inf, 0.0)
         @test_throws ArgumentError planewave_2d(mesh, k0, Inf)
         @test_throws ArgumentError planewave_2d(mesh, k0, 0.0; E0=Inf)
+        planewave_2d(mesh, k0, 0.0)
+        planewave_alloc = @allocated planewave_2d(mesh, k0, 0.0)
+        @test planewave_alloc <=
+              _complex_vector_allocation_2d(mesh.ncells) + 128
+
+        # The phase k₀ k̂⋅r overflows Float64 although its exponential is a
+        # finite unit phasor. Check the exceptional path independently.
+        extreme_x = 1e200
+        extreme_mesh = Mesh2D(
+            (extreme_x, nextfloat(extreme_x)), (0.0, 1.0), 1, 1)
+        extreme_k0 = 1e200
+        extreme_incident = planewave_2d(extreme_mesh, extreme_k0, 0.0)
+        extreme_reference = setprecision(BigFloat, 256) do
+            phase = BigFloat(extreme_k0) *
+                    BigFloat(extreme_mesh.centers[1][1])
+            ComplexF64(exp(Complex{BigFloat}(zero(BigFloat), -phase)))
+        end
+        @test extreme_incident == [extreme_reference]
 
         # Phase consistency: E(r) = exp(-ik₀ k̂·r)
         E_inc = planewave_2d(mesh, k0, 0.0)
