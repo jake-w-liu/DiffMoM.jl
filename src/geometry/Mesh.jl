@@ -829,7 +829,15 @@ end
 
 Write a `TriMesh` to a Wavefront OBJ file using triangle faces.
 """
+function _validate_text_mesh_header(header::AbstractString, format::AbstractString)
+    if occursin('\n', header) || occursin('\r', header)
+        throw(ArgumentError("$format header must be a single line."))
+    end
+    return nothing
+end
+
 function write_obj_mesh(path::AbstractString, mesh::TriMesh; header::AbstractString="Exported by DiffMoM")
+    _validate_text_mesh_header(header, "OBJ")
     open(path, "w") do io
         println(io, "# $header")
         for i in 1:nvertices(mesh)

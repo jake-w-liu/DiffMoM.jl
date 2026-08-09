@@ -407,6 +407,7 @@ end
 
 function _write_stl_ascii(path::AbstractString, mesh::TriMesh; header::AbstractString="")
     _validate_stl_mesh_for_write(mesh; binary=false)
+    _validate_text_mesh_header(header, "ASCII STL")
     nt = ntriangles(mesh)
     open(path, "w") do io
         println(io, "solid ", header)

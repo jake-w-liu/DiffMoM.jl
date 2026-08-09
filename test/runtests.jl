@@ -4184,6 +4184,17 @@ end
 report_rt = mesh_quality_report(mesh_rt)
 @assert mesh_quality_ok(report_rt; allow_boundary=true)
 
+# A header is metadata, not an escape hatch into the line-oriented OBJ grammar.
+# Reject both Unix and classic-Mac line breaks before replacing an existing file.
+obj_header_path = joinpath(DATADIR, "tmp_obj_header_validation.obj")
+obj_header_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
+for unsafe_header in ("safe\nv 9 9 9", "safe\rf 1 2 3")
+    write(obj_header_path, obj_header_sentinel)
+    @test_throws ArgumentError write_obj_mesh(
+        obj_header_path, mesh; header=unsafe_header)
+    @test read(obj_header_path) == obj_header_sentinel
+end
+
 obj_alloc_path = joinpath(DATADIR, "tmp_alloc.obj")
 obj_grid_n = 20
 open(obj_alloc_path, "w") do io
@@ -4588,6 +4599,14 @@ write_stl_mesh(stl_ascii_rt_path, mesh_small; ascii=true)
 mesh_ascii_rt = read_stl_mesh(stl_ascii_rt_path)
 @assert ntriangles(mesh_ascii_rt) == ntriangles(mesh_small) "STL ASCII round-trip triangle mismatch"
 @assert nvertices(mesh_ascii_rt) == nvertices(mesh_small) "STL ASCII round-trip vertex mismatch"
+stl_header_path = joinpath(DATADIR, "tmp_stl_header_validation.stl")
+stl_header_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
+for unsafe_header in ("safe\nvertex 9 9 9", "safe\rfacet normal 0 0 1")
+    write(stl_header_path, stl_header_sentinel)
+    @test_throws ArgumentError write_stl_mesh(
+        stl_header_path, mesh_small; ascii=true, header=unsafe_header)
+    @test read(stl_header_path) == stl_header_sentinel
+end
 println("  32l: PASS")
 
 println("  PASS ✓")
