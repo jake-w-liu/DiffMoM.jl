@@ -3718,6 +3718,15 @@ result_dgm_partial = solve_scattering(
     check_resolution=false,
     verbose=false,
 )
+for non_mlfma_method in (:dense_gmres, :aca_gmres)
+    @test_throws ArgumentError solve_scattering(
+        mesh, freq, v;
+        method=non_mlfma_method,
+        preconditioner=:ilu,
+        check_resolution=false,
+        verbose=false,
+    )
+end
 
 # Test with pre-assembled excitation vector
 result_vec = solve_scattering(mesh, freq, v;

@@ -155,6 +155,12 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     else
         verbose && println("  Method: $selected_method (user-specified)")
     end
+    if preconditioner == :ilu &&
+       selected_method in (:dense_gmres, :aca_gmres)
+        throw(ArgumentError(
+            "solve_scattering: preconditioner=:ilu is supported only by the MLFMA path; " *
+            "use :lu, :diag, :none, or :auto with $selected_method"))
+    end
 
     # ── Step 4: Excitation vector ──
     local v::Vector{ComplexF64}
