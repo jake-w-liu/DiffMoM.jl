@@ -303,6 +303,8 @@ println("\n── Test 46: 3D vector material DDA solver ──")
 
         mul!(y, A_op, x)  # warm-up before allocation probe
         @test (@allocated mul!(y, A_op, x)) < 1024
+        mul!(y_adj, A_adj, x)
+        @test (@allocated mul!(y_adj, A_adj, x)) < 1024
 
         eps_tensor = [ComplexF64[
             2.4 + 0.02im 0.03          0.0

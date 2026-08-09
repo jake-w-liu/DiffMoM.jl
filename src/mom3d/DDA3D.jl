@@ -742,7 +742,7 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
 Base.adjoint(A::DDAOperator3D) = DDAAdjointOperator3D(A)
 Base.size(A::DDAAdjointOperator3D) = reverse(size(A.parent))
-Base.eltype(::Type{DDAAdjointOperator3D}) = ComplexF64
+Base.eltype(::Type{<:DDAAdjointOperator3D}) = ComplexF64
 Base.eltype(::DDAAdjointOperator3D) = ComplexF64
 Base.getindex(A::DDAAdjointOperator3D, row::Int, col::Int) = conj(A.parent[col, row])
 

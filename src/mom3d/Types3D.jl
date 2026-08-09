@@ -249,8 +249,9 @@ end
 
 Hermitian-adjoint wrapper for `DDAOperator3D`.
 """
-struct DDAAdjointOperator3D <: AbstractMatrix{ComplexF64}
-    parent::DDAOperator3D
+struct DDAAdjointOperator3D{TOperator<:DDAOperator3D} <:
+       AbstractMatrix{ComplexF64}
+    parent::TOperator
 end
 
 """
