@@ -480,6 +480,25 @@ mesh_cluster_out = cluster_mesh_vertices(mesh_cluster_in, 0.35)
 @test_throws ArgumentError cluster_mesh_vertices(mesh_cluster_in, Inf)
 @test_throws ArgumentError cluster_mesh_vertices(mesh_cluster_in, NaN)
 
+# Online cluster centroids must not overflow when several individually finite
+# extreme coordinates occupy the same voxel.
+cluster_extreme_x = 1.0e308
+cluster_extreme_step = 1.0e293
+mesh_cluster_extreme = TriMesh(
+    Float64[
+        cluster_extreme_x cluster_extreme_x cluster_extreme_x cluster_extreme_x cluster_extreme_x cluster_extreme_x;
+        0 cluster_extreme_step 0 0 cluster_extreme_step 0;
+        0 0 cluster_extreme_step 0 0 cluster_extreme_step
+    ],
+    Int[1 4; 2 5; 3 6],
+)
+mesh_cluster_extreme_out = cluster_mesh_vertices(
+    mesh_cluster_extreme, 1.0e292)
+@test all(isfinite, mesh_cluster_extreme_out.xyz)
+@test nvertices(mesh_cluster_extreme_out) == 3
+@test ntriangles(mesh_cluster_extreme_out) == 1
+@test all(==(cluster_extreme_x), mesh_cluster_extreme_out.xyz[1, :])
+
 mesh_edges_test = make_rect_plate(1.0, 1.0, 1, 1) # two triangles
 edges_test = mesh_unique_edges(mesh_edges_test)
 @assert length(edges_test) == 5

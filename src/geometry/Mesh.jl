@@ -928,27 +928,31 @@ function cluster_mesh_vertices(mesh::TriMesh, h::Float64)
             floor(Int, (y - mins[2]) / h),
             floor(Int, (z - mins[3]) / h),
         )
-        id = get!(key_to_id, key) do
-            push!(sx, 0.0)
-            push!(sy, 0.0)
-            push!(sz, 0.0)
-            push!(sc, 0)
-            length(sx)
+        id = get(key_to_id, key, 0)
+        if iszero(id)
+            push!(sx, x)
+            push!(sy, y)
+            push!(sz, z)
+            push!(sc, 1)
+            id = length(sx)
+            key_to_id[key] = id
+        else
+            count = Base.checked_add(sc[id], 1)
+            inv_count = 1.0 / count
+            sx[id] += (x - sx[id]) * inv_count
+            sy[id] += (y - sy[id]) * inv_count
+            sz[id] += (z - sz[id]) * inv_count
+            sc[id] = count
         end
         vmap[i] = id
-        sx[id] += x
-        sy[id] += y
-        sz[id] += z
-        sc[id] += 1
     end
 
     nnew = length(sx)
     xyz_new = zeros(Float64, 3, nnew)
     for i in 1:nnew
-        invc = 1.0 / sc[i]
-        xyz_new[1, i] = sx[i] * invc
-        xyz_new[2, i] = sy[i] * invc
-        xyz_new[3, i] = sz[i] * invc
+        xyz_new[1, i] = sx[i]
+        xyz_new[2, i] = sy[i]
+        xyz_new[3, i] = sz[i]
     end
 
     tri_vec = Int[]
