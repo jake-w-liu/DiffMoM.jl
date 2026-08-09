@@ -46,6 +46,35 @@ end
     y_single = zeros(ComplexF64, 3)
     mul!(y_single, A_single, x_single)
     @test y_single ≈ x_single
+    @test A_single.kernel.interaction_scale == single.volumes[1]
+
+    tiny_spacing = 1.0e-103
+    tiny_grid = VoxelGrid3D(
+        (0.0, 2tiny_spacing),
+        (0.0, tiny_spacing),
+        (0.0, tiny_spacing),
+        2, 1, 1,
+    )
+    tiny_direct = dda_operator_3d(tiny_grid, 1.0, 2.0)
+    tiny_fft = fft_dda_operator_3d(tiny_grid, 1.0, 2.0)
+    tiny_x = ComplexF64[
+        1.0 + 0.2im, -0.4 + 0.3im, 0.7 - 0.1im,
+        -0.2 + 0.5im, 0.8 - 0.4im, 0.1 + 0.6im,
+    ]
+    @test tiny_fft.kernel.interaction_scale == tiny_grid.volumes[1]
+    @test all(isfinite, tiny_fft.kernel.kernel_hat)
+    @test all(isfinite, tiny_fft * tiny_x)
+    @test tiny_fft * tiny_x ≈ tiny_direct * tiny_x rtol=8eps(Float64)
+
+    tiny_em_direct = em_dda_operator_3d(tiny_grid, 1.0, 2.0, 1.5)
+    tiny_em_fft = fft_em_dda_operator_3d(tiny_grid, 1.0, 2.0, 1.5)
+    tiny_em_x = ComplexF64[
+        sin(index) + 1im * cos(0.2index) for index in 1:12
+    ]
+    @test tiny_em_fft.kernel.interaction_scale == tiny_grid.volumes[1]
+    @test all(isfinite, tiny_em_fft.kernel.kernel_hat)
+    @test all(isfinite, tiny_em_fft * tiny_em_x)
+    @test tiny_em_fft * tiny_em_x ≈ tiny_em_direct * tiny_em_x rtol=8eps(Float64)
 
     grid = VoxelGrid3D((-0.15, 0.15), (-0.1, 0.1), (-0.05, 0.05), 3, 2, 2)
     epsv = ComplexF64[2.2 + 0.03im + 0.01 * sin(j) for j in 1:grid.nvoxels]
@@ -57,6 +86,7 @@ end
     @test A_fft.alpha == A_direct.alpha
     @test A_fft.eps_r == A_direct.eps_r
     @test A_fft.kernel.pad_dims == (2grid.nx - 1, 2grid.ny - 1, 2grid.nz - 1)
+    @test A_fft.kernel.interaction_scale == grid.volumes[1]
     @test A_fft.work_lock isa ReentrantLock
 
     x = ComplexF64[sin(0.19 * i) + 1im * cos(0.07 * i) for i in 1:size(A_fft, 2)]
@@ -112,6 +142,7 @@ end
     @test_throws BoundsError size(A_em_fft, -1)
     @test A_em_fft.alpha == A_em_direct.alpha
     @test A_em_fft.kernel.pad_dims == A_fft.kernel.pad_dims
+    @test A_em_fft.kernel.interaction_scale == grid.volumes[1]
     @test A_em_fft.work_lock isa ReentrantLock
 
     x_em = ComplexF64[sin(0.09 * i) + 1im * cos(0.05 * i) for i in 1:size(A_em_fft, 2)]

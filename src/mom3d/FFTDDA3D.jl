@@ -9,10 +9,13 @@ export fft_em_dda_kernel_3d, fft_em_dda_operator_3d
     FFTDDAKernel3D
 
 Fourier-space block Toeplitz embedding of the free-space DDA dyadic for a
-uniform `VoxelGrid3D`. The stored kernel excludes the singular self offset.
+uniform `VoxelGrid3D`. The stored kernel excludes the singular self offset and
+is multiplied by `interaction_scale`; the operator divides induced dipoles by
+the same scale before convolution.
 """
 struct FFTDDAKernel3D
     pad_dims::NTuple{3,Int}
+    interaction_scale::Float64
     kernel_hat::Array{ComplexF64,5}
 end
 
@@ -51,10 +54,12 @@ FFTDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
 
 Fourier-space block Toeplitz embedding of the coupled electric-magnetic DDA
 interaction. The stored kernel maps induced `[q; m]` dipoles to scattered
-`[E; H]` fields and excludes the singular self offset.
+`[E; H]` fields, excludes the singular self offset, and is multiplied by
+`interaction_scale`; the operator applies the inverse scale to the dipoles.
 """
 struct FFTEMDDAKernel3D
     pad_dims::NTuple{3,Int}
+    interaction_scale::Float64
     kernel_hat::Array{ComplexF64,5}
 end
 
@@ -90,6 +95,7 @@ FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
 
 function fft_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
     k = _finite_positive_k0_3d(k0)
+    interaction_scale = grid.volumes[1]
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
     px, py, pz = 2nx - 1, 2ny - 1, 2nz - 1
@@ -108,15 +114,17 @@ function fft_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
                     ox == 0 && oy == 0 && oz == 0 && continue
                     ix = _fft_dda_mod_index(ox, px)
                     x = ox * grid.dx
-                    G = electric_dipole_dyadic_3d(Vec3(x, y, z), Vec3(0.0, 0.0, 0.0), k)
-                    kernel[ix, iy, iz] = G[a, b]
+                    scaled_G = _electric_dipole_alpha_block_3d(
+                        Vec3(x, y, z), Vec3(0.0, 0.0, 0.0), k,
+                        ComplexF64(interaction_scale))
+                    kernel[ix, iy, iz] = scaled_G[a, b]
                 end
             end
         end
         copyto!(view(kernel_hat, :, :, :, a, b), FFTW.fft(kernel))
     end
 
-    return FFTDDAKernel3D((px, py, pz), kernel_hat)
+    return FFTDDAKernel3D((px, py, pz), interaction_scale, kernel_hat)
 end
 
 """
@@ -188,7 +196,12 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         idx = 0
         for iz in 1:nz, iy in 1:ny, ix in 1:nx
             idx += 1
-            qvec = _alpha_apply(A.alpha[idx], _read_field_component(xread, idx))
+            qvec = _alpha_apply(
+                A.alpha[idx], _read_field_component(xread, idx)) /
+                A.kernel.interaction_scale
+            all(isfinite, qvec) ||
+                throw(OverflowError(
+                    "scaled FFT DDA dipole is outside the representable ComplexF64 range."))
             for b in 1:3
                 qhat[ix, iy, iz, b] = qvec[b]
             end
@@ -226,17 +239,24 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                    x::AbstractVector{ComplexF64}) =
     LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
-@inline function _em_interaction_field_fft_3d(r::Vec3, k::Float64, b::Int)
+@inline function _em_interaction_field_fft_3d(
+    r::Vec3,
+    k::Float64,
+    b::Int,
+    interaction_scale::Float64,
+)
     origin = Vec3(0.0, 0.0, 0.0)
-    q = b <= 3 ? CVec3(ntuple(a -> a == b ? 1.0 + 0im : 0.0 + 0im, 3)) :
+    scale = ComplexF64(interaction_scale)
+    q = b <= 3 ? CVec3(ntuple(a -> a == b ? scale : 0.0 + 0im, 3)) :
         CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    m = b > 3 ? CVec3(ntuple(a -> a == b - 3 ? 1.0 + 0im : 0.0 + 0im, 3)) :
+    m = b > 3 ? CVec3(ntuple(a -> a == b - 3 ? scale : 0.0 + 0im, 3)) :
         CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     return _em_interaction_apply_3d(r, origin, k, q, m)
 end
 
 function fft_em_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
     k = _finite_positive_k0_3d(k0)
+    interaction_scale = grid.volumes[1]
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
     px, py, pz = 2nx - 1, 2ny - 1, 2nz - 1
@@ -260,7 +280,8 @@ function fft_em_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
                     ox == 0 && oy == 0 && oz == 0 && continue
                     ix = _fft_dda_mod_index(ox, px)
                     x = ox * grid.dx
-                    E, H = _em_interaction_field_fft_3d(Vec3(x, y, z), k, b)
+                    E, H = _em_interaction_field_fft_3d(
+                        Vec3(x, y, z), k, b, interaction_scale)
                     for a in 1:3
                         block[ix, iy, iz, a] = E[a]
                         block[ix, iy, iz, a + 3] = H[a]
@@ -274,7 +295,7 @@ function fft_em_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
         end
     end
 
-    return FFTEMDDAKernel3D((px, py, pz), kernel_hat)
+    return FFTEMDDAKernel3D((px, py, pz), interaction_scale, kernel_hat)
 end
 
 """
@@ -382,7 +403,11 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         idx = 0
         for iz in 1:nz, iy in 1:ny, ix in 1:nx
             idx += 1
-            q6 = A.alpha[idx] * _read_em_field6(xread, idx)
+            q6 = (A.alpha[idx] * _read_em_field6(xread, idx)) /
+                 A.kernel.interaction_scale
+            all(isfinite, q6) ||
+                throw(OverflowError(
+                    "scaled FFT EM-DDA dipole is outside the representable ComplexF64 range."))
             for b in 1:6
                 qhat[ix, iy, iz, b] = q6[b]
             end
