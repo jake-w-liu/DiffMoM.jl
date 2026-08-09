@@ -1158,7 +1158,8 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
             radiative_correction=radiative_correction,
         )
         fac = lu(A)
-        E_total_flat = fac \ rhs
+        E_total_flat = _assert_finite_linear_vector(
+            fac \ rhs, "direct DDA solution")
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),
                            epsv, alpha, A, fac, :direct, nothing,

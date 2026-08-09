@@ -187,6 +187,25 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test magnetic_farfield ≈ dda_farfield rtol=16eps(Float64)
         @test all(isfinite, electric_cross[1])
         @test all(isfinite, electric_farfield_cross)
+
+        solve_grid = VoxelGrid3D(
+            (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
+        unit_alpha = zeros(ComplexF64, 6, 6)
+        unit_alpha[1, 1] = 1.0 + 0im
+        unit_operator = em_dda_operator_3d(solve_grid, 1.0, unit_alpha)
+        near_singular_alpha = zeros(ComplexF64, 6, 6)
+        near_singular_alpha[1, 1] =
+            prevfloat(1.0) / unit_operator[1, 7]
+        near_singular_operator = em_dda_operator_3d(
+            solve_grid, 1.0, near_singular_alpha)
+        @test 0 < abs(1 - near_singular_operator[1, 7]) < 1.0e-14
+        huge_E = [
+            CVec3(1.0e308 + 0im, 0.0 + 0im, 0.0 + 0im),
+            CVec3(-1.0e308 + 0im, 0.0 + 0im, 0.0 + 0im),
+        ]
+        huge_H = fill(zero(CVec3), solve_grid.nvoxels)
+        @test_throws ErrorException solve_em_dda_3d(
+            solve_grid, 1.0, near_singular_alpha, huge_E, huge_H)
     end
 
     @testset "Electric-only reduction matches DDA" begin

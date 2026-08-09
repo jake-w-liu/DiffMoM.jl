@@ -58,7 +58,8 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
         # from existing factors is O(N^2) and numerically identical to refactorizing
         # adjoint(res.A), which is O(N^3) per call (costly in optimization loops).
         lambda = res.A_LU === nothing ? (adjoint(res.A) \ rhs) : (res.A_LU' \ rhs)
-        return Vector{ComplexF64}(lambda)
+        return Vector{ComplexF64}(_assert_finite_linear_vector(
+            lambda, "direct DDA adjoint solution"))
     elseif solver == :gmres
         lambda, stats = solve_gmres_adjoint(
             res.A, rhs;

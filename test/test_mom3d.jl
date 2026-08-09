@@ -245,6 +245,36 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test_throws OverflowError induced_dipoles_dda_3d(result)
     end
 
+    @testset "Direct solve rejects non-finite output" begin
+        grid = VoxelGrid3D(
+            (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
+        probe = dda_operator_3d(grid, 1.0, 2.0 + 0im)
+        coupling_per_alpha = probe[1, 4] / probe.alpha[1]
+        target = 1.0
+        near_singular_eps = nothing
+        for _ in 1:32
+            target = prevfloat(target)
+            desired_alpha = target / coupling_per_alpha
+            ratio = desired_alpha / (3 * grid.volumes[1])
+            candidate_eps = (1 + 2ratio) / (1 - ratio)
+            candidate = dda_operator_3d(grid, 1.0, candidate_eps)
+            gap = abs(1 - candidate[1, 4])
+            if 0 < gap < 1.0e-14
+                near_singular_eps = candidate_eps
+                break
+            end
+        end
+        @test near_singular_eps !== nothing
+        near_singular_eps === nothing && error(
+            "failed to construct the near-singular DDA regression system")
+        huge_incident = [
+            CVec3(1.0e308 + 0im, 0.0 + 0im, 0.0 + 0im),
+            CVec3(-1.0e308 + 0im, 0.0 + 0im, 0.0 + 0im),
+        ]
+        @test_throws ErrorException solve_dda_3d(
+            grid, 1.0, near_singular_eps, huge_incident)
+    end
+
     @testset "Single-voxel Rayleigh dipole far field" begin
         grid = VoxelGrid3D((-0.05, 0.05), (-0.05, 0.05), (-0.05, 0.05), 1, 1, 1)
         epsr = 2.5 + 0im

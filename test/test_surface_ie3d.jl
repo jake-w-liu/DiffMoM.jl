@@ -291,6 +291,13 @@ end
         formulation=:pmchwt,
         quad_order=1,
         singular_quad_order=3)
+    rhs_out_of_range = fill(1.0e308 + 0im, 2N)
+    @test_throws ErrorException solve_dielectric_sie_3d(
+        mesh, rwg, k0, eps_in, rhs_out_of_range;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        quad_order=1,
+        singular_quad_order=3)
     res0 = solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, rhs0;
                                    mur_in=mu_in,
                                    formulation=:pmchwt,
