@@ -4575,6 +4575,25 @@ part_kmeans = assign_patches_uniform(mesh; n_patches=n_target)
 @assert part_kmeans.P >= 1 && part_kmeans.P <= n_target
 @assert all(1 .<= part_kmeans.tri_patch .<= part_kmeans.P)
 println("    Requested $n_target patches → got $(part_kmeans.P)")
+
+# Coincident centroids can empty a k-means cluster; IDs must still be compact.
+duplicate_patch_mesh = TriMesh(
+    Float64[0 1 0; 0 0 1; 0 0 0],
+    [1 1; 2 2; 3 3],
+)
+duplicate_partition = assign_patches_uniform(
+    duplicate_patch_mesh; n_patches=2)
+@test duplicate_partition.P == 1
+@test duplicate_partition.tri_patch == [1, 1]
+
+# Cluster sums and member counts are reused across k-means iterations. Keep a
+# regression ratchet against rebuilding one temporary member vector per cluster.
+patch_alloc_mesh = make_rect_plate(1.0, 1.0, 20, 20)
+assign_patches_uniform(patch_alloc_mesh; n_patches=20)  # warm compilation
+GC.gc()
+patch_uniform_alloc = @allocated assign_patches_uniform(
+    patch_alloc_mesh; n_patches=20)
+@assert patch_uniform_alloc < 500_000 "Uniform patch assignment allocated $patch_uniform_alloc bytes"
 println("  33d: PASS")
 
 println("  PASS ✓")

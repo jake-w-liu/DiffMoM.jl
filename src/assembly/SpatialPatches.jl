@@ -157,6 +157,8 @@ function assign_patches_uniform(mesh::TriMesh; n_patches::Int)
 
     tri_patch = zeros(Int, Nt)
     max_kmeans_iter = 100
+    center_sums = zeros(Float64, 3, n_patches)
+    member_counts = zeros(Int, n_patches)
 
     for _ in 1:max_kmeans_iter
         # Assign each triangle to nearest center
@@ -180,10 +182,22 @@ function assign_patches_uniform(mesh::TriMesh; n_patches::Int)
         !changed && break
 
         # Update centers
+        fill!(center_sums, 0.0)
+        fill!(member_counts, 0)
+        @inbounds for t in 1:Nt
+            k = tri_patch[t]
+            center_sums[1, k] += centroids[t][1]
+            center_sums[2, k] += centroids[t][2]
+            center_sums[3, k] += centroids[t][3]
+            member_counts[k] += 1
+        end
         for k in 1:n_patches
-            members = [centroids[t] for t in 1:Nt if tri_patch[t] == k]
-            if !isempty(members)
-                centers[k] = sum(members) / length(members)
+            if !iszero(member_counts[k])
+                centers[k] = Vec3(
+                    center_sums[1, k] / member_counts[k],
+                    center_sums[2, k] / member_counts[k],
+                    center_sums[3, k] / member_counts[k],
+                )
             end
         end
     end
@@ -192,7 +206,9 @@ function assign_patches_uniform(mesh::TriMesh; n_patches::Int)
     used = sort(unique(tri_patch))
     if length(used) < n_patches
         id_map = Dict(old => new for (new, old) in enumerate(used))
-        tri_patch = [id_map[tri_patch[t]] for t in 1:Nt]
+        @inbounds for t in 1:Nt
+            tri_patch[t] = id_map[tri_patch[t]]
+        end
         return PatchPartition(tri_patch, length(used))
     end
 
