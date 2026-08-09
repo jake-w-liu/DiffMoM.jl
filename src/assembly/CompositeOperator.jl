@@ -100,10 +100,11 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     end
     _validate_impedance_coefficients(A.theta)
 
-    mul!(y, A.Z_base, x, alpha_scale, beta_scale)
+    xread = Base.mightalias(y, x) ? copy(x) : x
+    mul!(y, A.Z_base, xread, alpha_scale, beta_scale)
     @inbounds for p in eachindex(A.theta)
         coeff = A.reactive ? (1im * A.theta[p]) : ComplexF64(A.theta[p])
-        mul!(y, A.Mp[p], x, -alpha_scale * coeff, one(ComplexF64))
+        mul!(y, A.Mp[p], xread, -alpha_scale * coeff, one(ComplexF64))
     end
     return y
 end
@@ -144,11 +145,12 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     end
     _validate_impedance_coefficients(A.parent.theta)
 
-    mul!(y, adjoint(A.parent.Z_base), x, alpha_scale, beta_scale)
+    xread = Base.mightalias(y, x) ? copy(x) : x
+    mul!(y, adjoint(A.parent.Z_base), xread, alpha_scale, beta_scale)
     @inbounds for p in eachindex(A.parent.theta)
         # Conjugate of the coefficient for adjoint
         coeff = A.parent.reactive ? (-1im * A.parent.theta[p]) : ComplexF64(A.parent.theta[p])
-        mul!(y, A.parent.Mp[p]', x, -alpha_scale * coeff, one(ComplexF64))
+        mul!(y, A.parent.Mp[p]', xread, -alpha_scale * coeff, one(ComplexF64))
     end
     return y
 end

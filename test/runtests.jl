@@ -4861,6 +4861,20 @@ y_comp = A_comp * x_test
 _assert_single_complex_output_allocation(A_comp, x_test)
 _assert_scaled_mul_contract(A_comp, x_test, reverse(x_test))
 
+composite_alpha = 1.2 - 0.1im
+composite_beta = -0.4 + 0.2im
+composite_overlap_storage = vcat(x_test, 5.0 + 4.0im)
+composite_overlap_x = view(composite_overlap_storage, 1:N)
+composite_overlap_y = view(composite_overlap_storage, 2:(N + 1))
+composite_overlap_x_initial = copy(composite_overlap_x)
+composite_overlap_y_initial = copy(composite_overlap_y)
+composite_overlap_expected =
+    composite_alpha .* (A_comp * composite_overlap_x_initial) .+
+    composite_beta .* composite_overlap_y_initial
+mul!(composite_overlap_y, A_comp, composite_overlap_x,
+     composite_alpha, composite_beta)
+@test composite_overlap_y ≈ composite_overlap_expected rtol=1e-12
+
 matvec_err = norm(y_comp - y_ref) / norm(y_ref)
 println("    Forward matvec relative error: $matvec_err")
 @assert matvec_err < 1e-12 "Forward matvec error too large: $matvec_err"
@@ -4873,6 +4887,18 @@ y_adj_ref = Z_ref' * x_test
 y_adj_comp = adjoint(A_comp) * x_test
 _assert_single_complex_output_allocation(adjoint(A_comp), x_test)
 _assert_scaled_mul_contract(adjoint(A_comp), x_test, reverse(x_test))
+
+composite_adjoint_overlap_storage = vcat(x_test, -2.0 + 3.0im)
+composite_adjoint_overlap_x = view(composite_adjoint_overlap_storage, 1:N)
+composite_adjoint_overlap_y = view(composite_adjoint_overlap_storage, 2:(N + 1))
+composite_adjoint_overlap_x_initial = copy(composite_adjoint_overlap_x)
+composite_adjoint_overlap_y_initial = copy(composite_adjoint_overlap_y)
+composite_adjoint_overlap_expected =
+    composite_alpha .* (adjoint(A_comp) * composite_adjoint_overlap_x_initial) .+
+    composite_beta .* composite_adjoint_overlap_y_initial
+mul!(composite_adjoint_overlap_y, adjoint(A_comp), composite_adjoint_overlap_x,
+     composite_alpha, composite_beta)
+@test composite_adjoint_overlap_y ≈ composite_adjoint_overlap_expected rtol=1e-12
 
 adj_err = norm(y_adj_comp - y_adj_ref) / norm(y_adj_ref)
 println("    Adjoint matvec relative error: $adj_err")
