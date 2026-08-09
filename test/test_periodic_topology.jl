@@ -1010,6 +1010,45 @@ println("\n── Test 42: PeriodicMetrics ──")
                                    transmission=:floquet)
         @test pb_floquet.P_trans ≥ 0
         @test pb_floquet.P_resid ≈ pb_floquet.P_inc - pb_floquet.P_refl - pb_floquet.P_abs - pb_floquet.P_trans atol=1e-15 rtol=1e-14
+
+        @test_throws DimensionMismatch power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R[1:end-1])
+        @test_throws DimensionMismatch power_balance(
+            I_test, zeros(ComplexF64, 1, 2), dx_pm * dy_pm, k_pm, modes, R)
+        @test_throws ArgumentError power_balance(
+            ComplexF64[NaN + 0im, 0.0 + 0im], Z_pen,
+            dx_pm * dy_pm, k_pm, modes, R)
+        Z_nonfinite = copy(Z_pen)
+        Z_nonfinite[1, 1] = Inf + 0im
+        @test_throws ArgumentError power_balance(
+            I_test, Z_nonfinite, dx_pm * dy_pm, k_pm, modes, R)
+        R_nonfinite = copy(R)
+        R_nonfinite[idx00] = NaN + 0im
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R_nonfinite)
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, 0.0, k_pm, modes, R)
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, 0.0, modes, R)
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R; E0=0.0)
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R; eta0=0.0)
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R;
+            incident_order=(99, 99))
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R;
+            transmission=:unsupported)
+        T_nonfinite = copy(T)
+        T_nonfinite[idx00] = Inf + 0im
+        @test_throws ArgumentError power_balance(
+            I_test, Z_pen, dx_pm * dy_pm, k_pm, modes, R;
+            transmission=:floquet, T_coeffs=T_nonfinite)
+
+        @test_throws ArgumentError transmission_coefficients(
+            modes, R; incident_order=(99, 99))
+        @test_throws ArgumentError transmission_coefficients(modes, R_nonfinite)
     end
 
     # ── B: Lossless thin-sheet energy conservation (T₀₀ = 1 + R₀₀) ──
@@ -1068,6 +1107,11 @@ println("\n── Test 42: PeriodicMetrics ──")
         @test p[idx00] ≈ 1.0 atol=1e-14
         @test abs2(0.6) < p[idx00]
         @test_throws DimensionMismatch reflected_power_fractions(modes, R_vecs[1:end-1], k_pm)
+        @test_throws ArgumentError reflected_power_fractions(modes, R_vecs, 0.0)
+        R_vecs_nonfinite = copy(R_vecs)
+        R_vecs_nonfinite[idx00] = SVector{3,ComplexF64}(NaN + 0im, 0.0 + 0im, 0.0 + 0im)
+        @test_throws ArgumentError reflected_power_fractions(
+            modes, R_vecs_nonfinite, k_pm)
     end
 
     # ── B: Specular objective kwargs/defaults ──
@@ -1159,6 +1203,32 @@ println("\n── Test 42: PeriodicMetrics ──")
         @test_throws ArgumentError reflection_coefficient_vectors(
             mesh_w, rwg_w, I_zero, 1.01k_pm, lat_pm
         )
+    end
+
+    @testset "D: Reflection metric inputs validated" begin
+        mesh_i = make_rect_plate(0.5dx_pm, 0.5dy_pm, 2, 2)
+        rwg_i = build_rwg(mesh_i; precheck=false)
+        I_zero = zeros(ComplexF64, rwg_i.nedges)
+
+        @test_throws DimensionMismatch reflection_coefficients(
+            mesh_i, rwg_i, I_zero[1:end-1], k_pm, lat_pm)
+        @test_throws DimensionMismatch reflection_coefficients(
+            mesh_i, rwg_i, [I_zero; 0.0 + 0im], k_pm, lat_pm)
+        I_nonfinite = copy(I_zero)
+        I_nonfinite[1] = NaN + 0im
+        @test_throws ArgumentError reflection_coefficients(
+            mesh_i, rwg_i, I_nonfinite, k_pm, lat_pm)
+        @test_throws ArgumentError reflection_coefficients(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm; E0=0.0)
+        @test_throws ArgumentError reflection_coefficients(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm; eta0=0.0)
+        @test_throws ArgumentError reflection_coefficients(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm;
+            pol=SVector(0.0, 0.0, 0.0))
+        @test_throws ArgumentError reflection_coefficient_vectors(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm; E0=0.0)
+        @test_throws ArgumentError reflection_coefficient_vectors(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm; eta0=Inf)
     end
 
     # ── B/F: Grounded metasurface via image theory ──

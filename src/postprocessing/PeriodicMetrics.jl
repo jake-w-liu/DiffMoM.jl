@@ -80,6 +80,122 @@ struct FloquetMode
     phi_r::Float64              # reflection angle phi (NaN if evanescent)
 end
 
+function _validate_periodic_current_coefficients(rwg::RWGData,
+                                                 I_coeffs::Vector{<:Number})
+    length(I_coeffs) == rwg.nedges ||
+        throw(DimensionMismatch(
+            "I_coeffs length $(length(I_coeffs)) != rwg.nedges=$(rwg.nedges)"
+        ))
+    all(isfinite, I_coeffs) ||
+        throw(ArgumentError("I_coeffs must contain only finite values"))
+    return nothing
+end
+
+@inline function _validate_periodic_field_normalization(E0::Float64,
+                                                        eta0::Float64)
+    isfinite(E0) && !iszero(E0) ||
+        throw(ArgumentError("E0 must be finite and nonzero, got $E0"))
+    isfinite(eta0) && eta0 > 0.0 ||
+        throw(ArgumentError("eta0 must be finite and positive, got $eta0"))
+    return nothing
+end
+
+function _validate_periodic_polarization(pol::SVector{3,<:Real})
+    all(isfinite, pol) ||
+        throw(ArgumentError("pol components must be finite, got $pol"))
+    any(x -> !iszero(x), pol) ||
+        throw(ArgumentError("pol must be nonzero"))
+    return nothing
+end
+
+function _validate_floquet_mode_orders(modes::Vector{FloquetMode})
+    seen = Set{Tuple{Int,Int}}()
+    for (i, mode) in enumerate(modes)
+        order = (mode.m, mode.n)
+        order in seen &&
+            throw(ArgumentError(
+                "modes contains duplicate Floquet order $order at index $i"
+            ))
+        push!(seen, order)
+    end
+    return nothing
+end
+
+@inline function _floquet_mode_flux_factor(mode::FloquetMode, k::Float64,
+                                           index::Int)
+    all(isfinite, (mode.kx, mode.ky, mode.kz)) ||
+        throw(ArgumentError(
+            "Floquet mode $index ($(mode.m), $(mode.n)) has non-finite wavevector components"
+        ))
+
+    kx_norm = mode.kx / k
+    ky_norm = mode.ky / k
+    kz_real_norm = real(mode.kz) / k
+    kz_imag_norm = imag(mode.kz) / k
+    all(isfinite, (kx_norm, ky_norm, kz_real_norm, kz_imag_norm)) ||
+        throw(ArgumentError(
+            "Floquet mode $index ($(mode.m), $(mode.n)) is not representable at k=$k"
+        ))
+
+    component_tol = 64eps(Float64)
+    if mode.propagating
+        kz_real_norm > 0.0 ||
+            throw(ArgumentError(
+                "propagating Floquet mode $index ($(mode.m), $(mode.n)) must have positive real kz"
+            ))
+        abs(kz_imag_norm) <= component_tol ||
+            throw(ArgumentError(
+                "propagating Floquet mode $index ($(mode.m), $(mode.n)) must have real kz"
+            ))
+        dispersion = kx_norm^2 + ky_norm^2 + kz_real_norm^2
+        isfinite(dispersion) && isapprox(dispersion, 1.0; rtol=1e-10, atol=1e-12) ||
+            throw(ArgumentError(
+                "Floquet mode $index ($(mode.m), $(mode.n)) is inconsistent with k=$k"
+            ))
+        return kz_real_norm
+    end
+
+    abs(kz_real_norm) <= component_tol ||
+        throw(ArgumentError(
+            "evanescent Floquet mode $index ($(mode.m), $(mode.n)) must have imaginary kz"
+        ))
+    kz_imag_norm >= -component_tol ||
+        throw(ArgumentError(
+            "evanescent Floquet mode $index ($(mode.m), $(mode.n)) must use nonnegative imaginary kz"
+        ))
+    dispersion = kx_norm^2 + ky_norm^2 - kz_imag_norm^2
+    isfinite(dispersion) && isapprox(dispersion, 1.0; rtol=1e-10, atol=1e-12) ||
+        throw(ArgumentError(
+            "Floquet mode $index ($(mode.m), $(mode.n)) is inconsistent with k=$k"
+        ))
+    return 0.0
+end
+
+function _validate_floquet_modes(modes::Vector{FloquetMode}, k::Float64)
+    _validate_floquet_mode_orders(modes)
+    for (i, mode) in enumerate(modes)
+        _floquet_mode_flux_factor(mode, k, i)
+    end
+    return nothing
+end
+
+function _incident_floquet_mode_index(modes::Vector{FloquetMode},
+                                      incident_order::Tuple{Int,Int})
+    inc_idx = findfirst(
+        mode -> mode.m == incident_order[1] && mode.n == incident_order[2],
+        modes,
+    )
+    inc_idx === nothing &&
+        throw(ArgumentError(
+            "incident Floquet order $incident_order is not present in modes"
+        ))
+    modes[inc_idx].propagating ||
+        throw(ArgumentError(
+            "incident Floquet order $incident_order must be propagating"
+        ))
+    return inc_idx
+end
+
 function _mode_transverse_projection(pol::SVector{3,<:Real}, mode::FloquetMode, k::Real)
     khat = SVector(mode.kx / k, mode.ky / k, real(mode.kz) / k)
     pol_real = SVector(Float64(pol[1]), Float64(pol[2]), Float64(pol[3]))
@@ -94,11 +210,16 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                                                quad_order::Int=3,
                                                N_orders::Int=3)
     kw = _validated_lattice_wavenumber(k, lattice)
+    _validate_periodic_current_coefficients(rwg, I_coeffs)
     _assert_coplanar_periodic_metrics_mesh(mesh)
     _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
 
     modes = floquet_modes(kw, lattice; N_orders=N_orders)
     A_cell = lattice.dx * lattice.dy
+    isfinite(A_cell) && A_cell > 0.0 ||
+        throw(ArgumentError(
+            "periodic cell area must be finite and positive, got $A_cell"
+        ))
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
@@ -127,6 +248,10 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
             for n_idx in tri_to_basis[t]
                 J_rq += I_coeffs[n_idx] * eval_rwg(rwg, n_idx, rq, t)
             end
+            all(isfinite, J_rq) ||
+                throw(OverflowError(
+                    "surface-current evaluation became non-finite on triangle $t, quadrature point $q"
+                ))
             J_at[t][q] = J_rq
         end
     end
@@ -141,10 +266,18 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                 rq = quad_pts[t][q]
                 phase = exp(im * (mode.kx * rq[1] + mode.ky * rq[2]))
                 integral += J_at[t][q] * phase * wq[q] * (2 * At)
+                all(isfinite, integral) ||
+                    throw(OverflowError(
+                        "Floquet current integral became non-finite for order ($(mode.m), $(mode.n))"
+                    ))
             end
         end
 
         J_tildes[mi] = integral / A_cell
+        all(isfinite, J_tildes[mi]) ||
+            throw(OverflowError(
+                "Floquet current coefficient became non-finite for order ($(mode.m), $(mode.n))"
+            ))
     end
 
     return modes, J_tildes
@@ -212,6 +345,8 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
                                  pol::SVector{3,Float64}=SVector(1.0, 0.0, 0.0),
                                  eta0::Float64=376.730313668)
     kw = _validated_lattice_wavenumber(k, lattice)
+    _validate_periodic_field_normalization(E0, eta0)
+    _validate_periodic_polarization(pol)
     modes, J_tildes = _floquet_current_fourier_coefficients(
         mesh, rwg, I_coeffs, kw, lattice; quad_order=quad_order, N_orders=N_orders
     )
@@ -238,6 +373,10 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
         # where ê_mode is transverse to this mode's propagation direction.
         kz_mn = real(mode.kz)
         R_coeffs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) * dot(pol_mode, J_tildes[mi])
+        isfinite(R_coeffs[mi]) ||
+            throw(OverflowError(
+                "reflection coefficient became non-finite for order ($(mode.m), $(mode.n))"
+            ))
     end
 
     return modes, R_coeffs
@@ -262,6 +401,7 @@ function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
                                         E0::Float64=1.0,
                                         eta0::Float64=376.730313668)
     kw = _validated_lattice_wavenumber(k, lattice)
+    _validate_periodic_field_normalization(E0, eta0)
     modes, J_tildes = _floquet_current_fourier_coefficients(
         mesh, rwg, I_coeffs, kw, lattice; quad_order=quad_order, N_orders=N_orders
     )
@@ -278,6 +418,10 @@ function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
         khat = SVector(mode.kx / kw, mode.ky / kw, kz_mn / kw)
         J_transverse = J_tildes[mi] - khat * dot(khat, J_tildes[mi])
         R_vecs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) * J_transverse
+        all(isfinite, R_vecs[mi]) ||
+            throw(OverflowError(
+                "vector reflection coefficient became non-finite for order ($(mode.m), $(mode.n))"
+            ))
     end
 
     return modes, R_vecs
@@ -294,11 +438,26 @@ function reflected_power_fractions(modes::Vector{FloquetMode},
                                    k::Real)
     length(modes) == length(R_vecs) ||
         throw(DimensionMismatch("modes length ($(length(modes))) != R_vecs length ($(length(R_vecs)))"))
+    kw = _positive_periodic_parameter("k", k)
+    _validate_floquet_modes(modes, kw)
 
     p = zeros(Float64, length(modes))
     for (i, mode) in enumerate(modes)
+        all(isfinite, R_vecs[i]) ||
+            throw(ArgumentError(
+                "R_vecs[$i] for order ($(mode.m), $(mode.n)) must be finite"
+            ))
         if mode.propagating
-            p[i] = real(dot(R_vecs[i], R_vecs[i])) * real(mode.kz) / k
+            intensity = sum(abs2, R_vecs[i])
+            isfinite(intensity) ||
+                throw(OverflowError(
+                    "reflection intensity overflowed for order ($(mode.m), $(mode.n))"
+                ))
+            p[i] = intensity * _floquet_mode_flux_factor(mode, kw, i)
+            isfinite(p[i]) ||
+                throw(OverflowError(
+                    "reflected power fraction overflowed for order ($(mode.m), $(mode.n))"
+                ))
         end
     end
     return p
@@ -328,6 +487,10 @@ function transmission_coefficients(modes::Vector{FloquetMode},
                                    incident_order::Tuple{Int,Int}=(0, 0))
     length(modes) == length(R_coeffs) ||
         throw(DimensionMismatch("modes length ($(length(modes))) != R_coeffs length ($(length(R_coeffs)))"))
+    _validate_floquet_mode_orders(modes)
+    _incident_floquet_mode_index(modes, incident_order)
+    all(isfinite, R_coeffs) ||
+        throw(ArgumentError("R_coeffs must contain only finite values"))
 
     T_coeffs = similar(R_coeffs)
     m_inc, n_inc = incident_order
@@ -377,27 +540,74 @@ function power_balance(I_coeffs::Vector{<:Number},
                        transmission::Symbol=:none,
                        T_coeffs::Union{Nothing,Vector{ComplexF64}}=nothing,
                        incident_order::Tuple{Int,Int}=(0, 0))
+    transmission in (:none, :closure, :floquet) ||
+        throw(ArgumentError(
+            "Unknown transmission mode: $transmission (expected :none, :closure, or :floquet)"
+        ))
+    ncurrents = length(I_coeffs)
+    size(Z_pen) == (ncurrents, ncurrents) ||
+        throw(DimensionMismatch(
+            "Z_pen has size $(size(Z_pen)), expected ($ncurrents, $ncurrents)"
+        ))
+    length(modes) == length(R_coeffs) ||
+        throw(DimensionMismatch(
+            "modes length ($(length(modes))) != R_coeffs length ($(length(R_coeffs)))"
+        ))
+    all(isfinite, I_coeffs) ||
+        throw(ArgumentError("I_coeffs must contain only finite values"))
+    all(isfinite, Z_pen) ||
+        throw(ArgumentError("Z_pen must contain only finite values"))
+    all(isfinite, R_coeffs) ||
+        throw(ArgumentError("R_coeffs must contain only finite values"))
+
+    area = _positive_periodic_parameter("A_cell", A_cell)
+    kw = _positive_periodic_parameter("k", k)
+    _validate_periodic_field_normalization(E0, eta0)
+    _validate_floquet_modes(modes, kw)
+    inc_idx = _incident_floquet_mode_index(modes, incident_order)
+
     # Per-mode z-directed Poynting flux ∝ |coef|²·real(kz)/k. The incident power
     # crossing the cell is the z-flux of the incident order, which carries
     # cos(θ_inc) = real(kz_inc)/k. Normalizing the fractions by this (rather than
     # by the unprojected |E0|²A/2η) is required for energy conservation at oblique
     # incidence; at normal incidence kz_inc = k and nothing changes.
-    base = abs(E0)^2 * A_cell / (2 * eta0)
-    inc_idx = findfirst(mode -> mode.m == incident_order[1] && mode.n == incident_order[2], modes)
-    cos_inc = inc_idx === nothing ? 1.0 : real(modes[inc_idx].kz) / k
+    base = abs2(E0) * area / (2 * eta0)
+    isfinite(base) && base > 0.0 ||
+        throw(ArgumentError(
+            "incident-power normalization is not representable for E0=$E0, A_cell=$area, eta0=$eta0"
+        ))
+    cos_inc = _floquet_mode_flux_factor(modes[inc_idx], kw, inc_idx)
     P_inc = base * cos_inc
+    isfinite(P_inc) && P_inc > 0.0 ||
+        throw(ArgumentError(
+            "incident power is not representable for incident order $incident_order"
+        ))
 
     # Reflected power from Floquet modes (z-directed flux)
     P_refl = 0.0
     for (i, mode) in enumerate(modes)
         if mode.propagating
-            P_refl += abs2(R_coeffs[i]) * real(mode.kz) / k
+            mode_power = abs2(R_coeffs[i]) * _floquet_mode_flux_factor(mode, kw, i)
+            isfinite(mode_power) ||
+                throw(OverflowError(
+                    "reflected power overflowed for order ($(mode.m), $(mode.n))"
+                ))
+            P_refl += mode_power
+            isfinite(P_refl) ||
+                throw(OverflowError("reflected-power accumulation overflowed"))
         end
     end
     P_refl *= base
+    isfinite(P_refl) ||
+        throw(OverflowError("reflected power is non-finite"))
 
     # Power absorbed by SIMP penalty impedance
-    P_abs = 0.5 * real(dot(I_coeffs, Z_pen * I_coeffs))
+    ZI = Z_pen * I_coeffs
+    all(isfinite, ZI) ||
+        throw(OverflowError("Z_pen * I_coeffs produced non-finite values"))
+    P_abs = 0.5 * real(dot(I_coeffs, ZI))
+    isfinite(P_abs) ||
+        throw(OverflowError("absorbed-power evaluation produced a non-finite value"))
 
     # Transmitted power
     P_trans = 0.0
@@ -412,15 +622,24 @@ function power_balance(I_coeffs::Vector{<:Number},
             T_coeffs
         length(Tc) == length(modes) ||
             throw(DimensionMismatch("T_coeffs length ($(length(Tc))) != modes length ($(length(modes)))"))
+        all(isfinite, Tc) ||
+            throw(ArgumentError("T_coeffs must contain only finite values"))
 
         for (i, mode) in enumerate(modes)
             if mode.propagating
-                P_trans += abs2(Tc[i]) * real(mode.kz) / k
+                mode_power = abs2(Tc[i]) * _floquet_mode_flux_factor(mode, kw, i)
+                isfinite(mode_power) ||
+                    throw(OverflowError(
+                        "transmitted power overflowed for order ($(mode.m), $(mode.n))"
+                    ))
+                P_trans += mode_power
+                isfinite(P_trans) ||
+                    throw(OverflowError("transmitted-power accumulation overflowed"))
             end
         end
         P_trans *= base
-    else
-        error("Unknown transmission mode: $transmission (expected :none, :closure, or :floquet)")
+        isfinite(P_trans) ||
+            throw(OverflowError("transmitted power is non-finite"))
     end
 
     refl_frac = P_refl / P_inc
@@ -428,6 +647,8 @@ function power_balance(I_coeffs::Vector{<:Number},
     trans_frac = P_trans / P_inc
     P_resid = P_inc - P_refl - P_abs - P_trans
     resid_frac = P_resid / P_inc
+    all(isfinite, (refl_frac, abs_frac, trans_frac, P_resid, resid_frac)) ||
+        throw(OverflowError("power-balance result contains non-finite values"))
 
     return (P_inc=P_inc, P_refl=P_refl, P_abs=P_abs, P_trans=P_trans, P_resid=P_resid,
             refl_frac=refl_frac, abs_frac=abs_frac, trans_frac=trans_frac, resid_frac=resid_frac)
