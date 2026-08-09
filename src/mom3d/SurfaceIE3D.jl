@@ -584,20 +584,36 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
     return A, exterior, interior
 end
 
+@inline function _surface_sie_pair_weights_3d(exterior::ComplexF64,
+                                              interior::ComplexF64,
+                                              singular_message::String)
+    scale = max(abs(real(exterior)), abs(imag(exterior)),
+                abs(real(interior)), abs(imag(interior)))
+    scale > 0 || error(singular_message)
+    exterior_scaled = exterior / scale
+    interior_scaled = interior / scale
+    sum_scaled = exterior_scaled + interior_scaled
+    iszero(sum_scaled) && error(singular_message)
+    interior_weight = interior_scaled / sum_scaled
+    exterior_weight = exterior_scaled / sum_scaled
+    isfinite(interior_weight) && isfinite(exterior_weight) ||
+        error("Muller formulation produced non-finite material weights.")
+    return interior_weight, exterior_weight
+end
+
 function _surface_sie_coefficients_3d(formulation::Symbol,
                                       exterior::DielectricMedium3D,
                                       interior::DielectricMedium3D)
     if formulation == :pmchwt
         return (1.0 + 0im, 1.0 + 0im, 1.0 + 0im, 1.0 + 0im)
     elseif formulation == :muller
-        mu_sum = exterior.mu_r + interior.mu_r
-        eps_sum = exterior.eps_r + interior.eps_r
-        abs(mu_sum) > 0 || error("Muller formulation is singular for mu_ext + mu_in = 0.")
-        abs(eps_sum) > 0 || error("Muller formulation is singular for eps_ext + eps_in = 0.")
-        return (interior.mu_r / mu_sum,
-                exterior.mu_r / mu_sum,
-                interior.eps_r / eps_sum,
-                exterior.eps_r / eps_sum)
+        c_mu_int, c_mu_ext = _surface_sie_pair_weights_3d(
+            exterior.mu_r, interior.mu_r,
+            "Muller formulation is singular for mu_ext + mu_in = 0.")
+        c_eps_int, c_eps_ext = _surface_sie_pair_weights_3d(
+            exterior.eps_r, interior.eps_r,
+            "Muller formulation is singular for eps_ext + eps_in = 0.")
+        return c_mu_int, c_mu_ext, c_eps_int, c_eps_ext
     else
         error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
     end

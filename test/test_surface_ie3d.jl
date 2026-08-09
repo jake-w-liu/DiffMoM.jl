@@ -166,6 +166,30 @@ end
     @test high_eps.eta == low_eta_ref
     @test high_mu.eta == high_eta_ref
 
+    extreme_muller_medium = dielectric_medium_3d(
+        k0, 1e-308 + 0im, 1e308 + 0im; eta0=1e-300)
+    extreme_muller_coefficients = DiffMoM._surface_sie_coefficients_3d(
+        :muller, extreme_muller_medium, extreme_muller_medium)
+    @test collect(extreme_muller_coefficients) ≈ fill(0.5 + 0im, 4)
+
+    complex_extreme = ComplexF64(1e308, 1e308)
+    complex_extreme_medium = DielectricMedium3D(
+        complex_extreme, complex_extreme, 1.0 + 0im, 1.0 + 0im)
+    complex_extreme_coefficients = DiffMoM._surface_sie_coefficients_3d(
+        :muller, complex_extreme_medium, complex_extreme_medium)
+    @test collect(complex_extreme_coefficients) ≈ fill(0.5 + 0im, 4)
+
+    unit_medium = DielectricMedium3D(
+        1.0 + 0im, 1.0 + 0im, 1.0 + 0im, 1.0 + 0im)
+    cancel_mu_medium = DielectricMedium3D(
+        1.0 + 0im, -1.0 + 0im, 1.0 + 0im, 1.0 + 0im)
+    cancel_eps_medium = DielectricMedium3D(
+        -1.0 + 0im, 1.0 + 0im, 1.0 + 0im, 1.0 + 0im)
+    @test_throws ErrorException DiffMoM._surface_sie_coefficients_3d(
+        :muller, unit_medium, cancel_mu_medium)
+    @test_throws ErrorException DiffMoM._surface_sie_coefficients_3d(
+        :muller, unit_medium, cancel_eps_medium)
+
     K = assemble_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
     K_mf = matrixfree_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
     @test size(K) == (N, N)
