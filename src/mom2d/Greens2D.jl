@@ -7,7 +7,31 @@
 export greens_2d, self_cell_integral_2d
 
 const _SELF_CELL_SERIES_CUTOFF_2D = 0.5
+const _GREENS_SERIES_CUTOFF_2D = 0.5
 const _EULER_GAMMA_2D = Float64(Base.MathConstants.eulergamma)
+
+function _small_greens_2d(k::Float64, distance::Float64, phase::Float64)
+    phase2_over_4 = (phase / 2)^2
+    term = 1.0
+    j0_series = 1.0
+    harmonic = 0.0
+    y0_correction = 0.0
+
+    for order in 1:32
+        harmonic += inv(Float64(order))
+        term *= -phase2_over_4 / (order * order)
+        j0_series += term
+        y0_correction -= harmonic * term
+        abs(term) <= eps(Float64) * abs(j0_series) && break
+    end
+
+    log_phase = iszero(phase) ? log(k) + log(distance) : log(phase)
+    logarithmic_factor = log_phase - log(2.0) + _EULER_GAMMA_2D
+    return ComplexF64(
+        -(logarithmic_factor * j0_series + y0_correction) / (2π),
+        -j0_series / 4,
+    )
+end
 
 @inline function _scale_by_positive_square_2d(value::Float64, scale::Float64)
     iszero(value) && return value
@@ -83,6 +107,9 @@ end
     isfinite(kR) ||
         throw(ArgumentError(
             "greens_2d phase argument k*R must be finite, got $kR."))
+    if kR <= _GREENS_SERIES_CUTOFF_2D
+        return _small_greens_2d(k, R, kR)
+    end
     value = (-im / 4) * besselh(0, 2, kR)
     isfinite(value) ||
         error("greens_2d produced a non-finite Green's function value.")

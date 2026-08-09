@@ -84,6 +84,28 @@ end
         tiny_reference = (-im / 4) * besselh(0, 2, tiny_separation)
         @test tiny_green ≈ tiny_reference rtol=2e-15
 
+        underflow_k = 1e-200
+        underflow_distance = 1e-200
+        underflow_point = Vec2(underflow_distance, 0.0)
+        underflow_expected = ComplexF64(
+            -(log(underflow_k) + log(underflow_distance) - log(2.0) +
+              Float64(Base.MathConstants.eulergamma)) / (2π),
+            -0.25,
+        )
+        underflow_green = greens_2d(r1, underflow_point, underflow_k)
+        @test underflow_green ≈ underflow_expected rtol=2e-15
+
+        subnormal_k = 1e-300
+        subnormal_distance = 1e-20
+        subnormal_expected = ComplexF64(
+            -(log(subnormal_k * subnormal_distance) - log(2.0) +
+              Float64(Base.MathConstants.eulergamma)) / (2π),
+            -0.25,
+        )
+        @test greens_2d(r1, Vec2(subnormal_distance, 0.0), subnormal_k) ≈
+              subnormal_expected rtol=2e-15
+        @test @allocated(greens_2d(r1, underflow_point, underflow_k)) == 0
+
         # Decay with distance
         G_near = abs(greens_2d(r1, Vec2(0.5, 0.0), k))
         G_far = abs(greens_2d(r1, Vec2(5.0, 0.0), k))
