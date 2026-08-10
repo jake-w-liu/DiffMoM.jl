@@ -119,8 +119,9 @@ end
 function _extreme_cancelling_matvec_input(
         matrix::AbstractMatrix{ComplexF64},
         row::Int,
-        columns::NTuple{3,Int})
-    target = 0.55 * floatmax(Float64)
+        columns::NTuple{3,Int};
+        fraction::Float64=0.55)
+    target = fraction * floatmax(Float64)
     target_terms = (target, target, -target)
     input = zeros(ComplexF64, size(matrix, 2))
     setprecision(BigFloat, 4096) do
@@ -229,6 +230,29 @@ end
     mul!(yk, K_mf, xk)
     @test (@allocated mul!(yk, K_mf, xk)) < 1024
     @test norm(yk - K * xk) / max(norm(K * xk), eps()) < 1e-13
+
+    # At higher electrical size the MFIE row has several order-one terms.
+    # These three are individually representable and the complete result is
+    # representable, but their ordinary order overflows before cancellation.
+    extreme_K_mesh = _icosphere_mesh(1.0, 0)
+    extreme_K_rwg = build_rwg(
+        extreme_K_mesh; allow_boundary=false, require_closed=true)
+    extreme_K_mf = matrixfree_magnetic_field_operator_3d(
+        extreme_K_mesh, extreme_K_rwg, 100.0;
+        quad_order=1, singular_quad_order=3)
+    extreme_K_dense = Matrix(extreme_K_mf)
+    extreme_K_input = _extreme_cancelling_matvec_input(
+        extreme_K_dense, 1, (10, 5, 18); fraction=0.51)
+    extreme_K_terms = extreme_K_dense .* transpose(extreme_K_input)
+    extreme_K_reference = _bigfloat_matvec_reference(
+        extreme_K_dense, extreme_K_input)
+    @test all(isfinite, extreme_K_input)
+    @test all(isfinite, extreme_K_terms)
+    @test all(isfinite, extreme_K_reference)
+    extreme_K_result = extreme_K_mf * extreme_K_input
+    @test all(isfinite, extreme_K_result)
+    @test extreme_K_result[1] == extreme_K_reference[1]
+    @test extreme_K_result ≈ extreme_K_reference rtol=2e-15
 
     overlap_storage = vcat(xk, 0.0 + 0im)
     overlap_x = view(overlap_storage, 1:length(xk))

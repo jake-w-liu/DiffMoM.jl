@@ -48,6 +48,11 @@ struct MatrixFreeMagneticFieldOperator3D{
     near_pairs::TriangleAdjacency
 end
 
+# Matches the exact ComplexF64 row-reduction bound used by the matrix-free
+# EFIE primitive. The ordinary path remains allocation-free; only an exponent-
+# range overflow or an overflowing sum of term magnitudes enters this path.
+const _MFIE_MATVEC_FALLBACK_PRECISION_3D = 4352
+
 mutable struct MatrixFreeDielectricSIE3D{
         TZe<:MatrixFreeEFIEOperator,
         TZh<:MatrixFreeEFIEOperator,
@@ -408,6 +413,25 @@ end
 Base.getindex(A::MatrixFreeMagneticFieldOperator3D, i::Int, j::Int) =
     _mfie_entry_3d(A, i, j)
 
+@noinline function _matrixfree_mfie_row_bigfloat_3d(
+        A::MatrixFreeMagneticFieldOperator3D,
+        x::AbstractVector,
+        row::Int)
+    return setprecision(BigFloat, _MFIE_MATVEC_FALLBACK_PRECISION_3D) do
+        total = zero(Complex{BigFloat})
+        @inbounds for column in axes(A, 2)
+            total += Complex{BigFloat}(_mfie_entry_3d(A, row, column)) *
+                     Complex{BigFloat}(x[column])
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "matrix-free magnetic-field operator output is outside " *
+                "the representable ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::MatrixFreeMagneticFieldOperator3D,
                             x::AbstractVector)
@@ -417,10 +441,25 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     xread = Base.mightalias(y, x) ? copy(x) : x
     @inbounds for m in 1:N
         acc = 0.0 + 0.0im
-        for n in 1:N
-            acc += _mfie_entry_3d(A, m, n) * xread[n]
+        magnitude_sum = 0.0
+        needs_fallback = false
+        try
+            for n in 1:N
+                term = _mfie_entry_3d(A, m, n) * xread[n]
+                next_acc = acc + term
+                magnitude_sum += max(abs(real(term)), abs(imag(term)))
+                if !isfinite(next_acc) || !isfinite(magnitude_sum)
+                    needs_fallback = true
+                    break
+                end
+                acc = next_acc
+            end
+        catch err
+            err isa OverflowError || rethrow()
+            needs_fallback = true
         end
-        y[m] = acc
+        y[m] = needs_fallback ?
+               _matrixfree_mfie_row_bigfloat_3d(A, xread, m) : acc
     end
     return y
 end
