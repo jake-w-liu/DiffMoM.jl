@@ -4123,6 +4123,31 @@ y_adj_aca = A_adj * x_test
 _assert_single_complex_output_allocation(A_adj, x_test)
 _assert_scaled_mul_contract(A_adj, x_test, reverse(x_test))
 
+scaled_aca_input = ComplexF64[
+    1.0e100 * (sin(0.17 * i) + 1im * cos(0.11 * i)) for i in 1:N
+]
+scaled_aca_factor = 1.0e308 + 0im
+for scaled_aca_operator in (A_aca_op, A_adj)
+    scaled_aca_product = scaled_aca_operator * scaled_aca_input
+    scaled_aca_previous = -scaled_aca_product
+    @test all(isfinite, scaled_aca_product)
+    @test any(!isfinite, scaled_aca_factor .* scaled_aca_product)
+    scaled_aca_reference = setprecision(BigFloat, 4608) do
+        ComplexF64[
+            Complex{BigFloat}(scaled_aca_factor) *
+                Complex{BigFloat}(scaled_aca_product[i]) +
+            Complex{BigFloat}(scaled_aca_factor) *
+                Complex{BigFloat}(scaled_aca_previous[i])
+            for i in eachindex(scaled_aca_product)
+        ]
+    end
+    @test all(isfinite, scaled_aca_reference)
+    scaled_aca_result = copy(scaled_aca_previous)
+    mul!(scaled_aca_result, scaled_aca_operator, scaled_aca_input,
+         scaled_aca_factor, scaled_aca_factor)
+    @test scaled_aca_result == scaled_aca_reference
+end
+
 rel_adj_err = norm(y_adj_aca - y_adj_dense) / norm(y_adj_dense)
 println("  Adjoint matvec relative error: $rel_adj_err")
 @assert rel_adj_err < 1e-5 "ACA adjoint matvec too inaccurate: $rel_adj_err"

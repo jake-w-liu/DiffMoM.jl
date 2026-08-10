@@ -8,6 +8,64 @@
 export ACAOperator, ACAAdjointOperator, build_aca_operator
 export aca_lowrank
 
+# A component of αv + βy contains four products of Float64 components. Their
+# exact binary terms can span bit positions -2148 through 2049, requiring at
+# most 4198 significant bits after cancellation. Keep a guard margin while
+# confining the allocation-heavy path to exceptional exponent ranges.
+const _ACA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
+
+@noinline function _aca_scaled_output_bigfloat(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    return setprecision(
+            BigFloat, _ACA_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(alpha_scale) *
+                Complex{BigFloat}(value)
+        if !overwrite
+            total += Complex{BigFloat}(beta_scale) *
+                     Complex{BigFloat}(previous)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "ACA scaled output is outside the representable " *
+                "ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@inline function _aca_scaled_output(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    alpha_term = alpha_scale * value
+    if overwrite
+        converted = ComplexF64(alpha_term)
+        return isfinite(converted) ? converted :
+               _aca_scaled_output_bigfloat(
+                   value, previous, alpha_scale, beta_scale, true, row)
+    end
+
+    beta_term = beta_scale * previous
+    combined = alpha_term + beta_term
+    magnitude_sum =
+        max(abs(real(alpha_term)), abs(imag(alpha_term))) +
+        max(abs(real(beta_term)), abs(imag(beta_term)))
+    converted = ComplexF64(combined)
+    if isfinite(converted) && isfinite(magnitude_sum)
+        return converted
+    end
+    return _aca_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, false, row)
+end
+
 """
     DenseBlock
 
@@ -532,14 +590,18 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
                 end
             else
                 @inbounds for k in 1:N
-                    y[A.tree.perm[k]] = alpha_scale * y_perm[k]
+                    original_idx = A.tree.perm[k]
+                    y[original_idx] = _aca_scaled_output(
+                        y_perm[k], y[original_idx], alpha_scale,
+                        beta_scale, true, original_idx)
                 end
             end
         else
             @inbounds for k in 1:N
                 original_idx = A.tree.perm[k]
-                y[original_idx] =
-                    alpha_scale * y_perm[k] + beta_scale * y[original_idx]
+                y[original_idx] = _aca_scaled_output(
+                    y_perm[k], y[original_idx], alpha_scale,
+                    beta_scale, false, original_idx)
             end
         end
     finally
@@ -617,14 +679,18 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
                 end
             else
                 @inbounds for k in 1:N
-                    y[tree.perm[k]] = alpha_scale * y_perm[k]
+                    original_idx = tree.perm[k]
+                    y[original_idx] = _aca_scaled_output(
+                        y_perm[k], y[original_idx], alpha_scale,
+                        beta_scale, true, original_idx)
                 end
             end
         else
             @inbounds for k in 1:N
                 original_idx = tree.perm[k]
-                y[original_idx] =
-                    alpha_scale * y_perm[k] + beta_scale * y[original_idx]
+                y[original_idx] = _aca_scaled_output(
+                    y_perm[k], y[original_idx], alpha_scale,
+                    beta_scale, false, original_idx)
             end
         end
     finally
