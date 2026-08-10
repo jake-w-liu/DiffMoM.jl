@@ -7,6 +7,46 @@
 
 export solve_adjoint, solve_adjoint_rhs, gradient_impedance, compute_objective
 
+# Expanding Re(I' * Q * I) produces at most four real triple products per
+# matrix entry. Three finite Float64 coefficients need at most 6295 bits, and
+# a dense Matrix contains fewer than typemax(Int) entries. The extra 65 bits
+# cover every addressable sum, with the remaining precision as guard margin.
+const _IEEE_QUADRATIC_FALLBACK_PRECISION = 6656
+
+@noinline function _quadratic_objective_bigfloat(
+    I::Vector{<:Number},
+    Q::Matrix{<:Number},
+    ::Type{T},
+) where {T<:AbstractFloat}
+    return setprecision(BigFloat, _IEEE_QUADRATIC_FALLBACK_PRECISION) do
+        total = zero(BigFloat)
+        @inbounds for row in axes(Q, 1)
+            left_value = I[row]
+            left_real = BigFloat(real(left_value))
+            left_imag = BigFloat(imag(left_value))
+            for column in axes(Q, 2)
+                matrix_value = Q[row, column]
+                right_value = I[column]
+                matrix_real = BigFloat(real(matrix_value))
+                matrix_imag = BigFloat(imag(matrix_value))
+                right_real = BigFloat(real(right_value))
+                right_imag = BigFloat(imag(right_value))
+                product_real = matrix_real * right_real -
+                               matrix_imag * right_imag
+                product_imag = matrix_real * right_imag +
+                               matrix_imag * right_real
+                total += left_real * product_real +
+                         left_imag * product_imag
+            end
+        end
+        converted = convert(T, total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "quadratic objective is outside the representable $T range"))
+        return converted
+    end
+end
+
 """
     compute_objective(I, Q)
 
@@ -15,9 +55,11 @@ Compute the quadratic objective J = Re(I† Q I).
 function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
     _validate_linear_system_inputs(Q, I, "quadratic objective")
     value = real(_dot_left_matrix_right(I, Q, I))
-    isfinite(value) ||
+    isfinite(value) && return value
+    value_type = typeof(value)
+    value_type <: Union{Float32,Float64} ||
         error("quadratic objective produced a non-finite value")
-    return value
+    return _quadratic_objective_bigfloat(I, Q, value_type)
 end
 
 """

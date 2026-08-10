@@ -2965,6 +2965,42 @@ compute_objective(objective_probe_I, objective_probe_Q)
     objective_probe_I, objective_probe_Q)) == 0
 @test_throws ArgumentError compute_objective(
     objective_probe_I, ComplexF64[NaN 0.0; 0.0 1.0])
+objective_extreme_scale = floatmax(Float64)
+objective_extreme_I = ComplexF64[
+    objective_extreme_scale,
+    objective_extreme_scale,
+    objective_extreme_scale,
+    objective_extreme_scale,
+    1.0,
+]
+objective_extreme_Q = zeros(ComplexF64, 5, 5)
+objective_extreme_Q[1, 1:4] .= ComplexF64[
+    objective_extreme_scale,
+    objective_extreme_scale,
+    -objective_extreme_scale,
+    -objective_extreme_scale,
+]
+objective_extreme_Q[5, 5] = 3.0
+@test !isfinite(real(DiffMoM._dot_left_matrix_right(
+    objective_extreme_I, objective_extreme_Q, objective_extreme_I)))
+objective_extreme_reference = setprecision(BigFloat, 8192) do
+    real(dot(
+        Complex{BigFloat}.(objective_extreme_I),
+        Matrix{Complex{BigFloat}}(objective_extreme_Q),
+        Complex{BigFloat}.(objective_extreme_I),
+    ))
+end
+@test objective_extreme_reference == BigFloat(3)
+@test compute_objective(objective_extreme_I, objective_extreme_Q) == 3.0
+@test compute_objective(
+    Float64[objective_extreme_scale, objective_extreme_scale,
+            objective_extreme_scale, objective_extreme_scale, 1.0],
+    real.(objective_extreme_Q),
+) == 3.0
+@test_throws OverflowError compute_objective(
+    ComplexF64[objective_extreme_scale],
+    reshape(ComplexF64[1.0], 1, 1),
+)
 
 # solve_adjoint dispatch: :gmres (unpreconditioned)
 lam_sa_gmres = solve_adjoint(Z_gm, Q, I_gm_direct;
