@@ -277,6 +277,149 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test_throws OverflowError induced_dipoles_dda_3d(result)
     end
 
+    @testset "Far-field accumulation exponent range" begin
+        # Construct a solved four-voxel system whose first two individually
+        # representable far-field terms overflow when added, while all four
+        # cancel to a finite result.
+        grid = VoxelGrid3D(
+            (0.0, 32.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
+        k = 1.0
+        epsr = 1.0e16 + 0im
+        A, alpha, _ = assemble_dda_3d(
+            grid, k, epsr; radiative_correction=false)
+        direction = Vec3(0.0, 1.0, 0.0)
+        source_coefficient = abs(k^2 * alpha[1] / (4π))
+        target_amplitude =
+            (0.75 * floatmax(Float64)) / source_coefficient
+        target = [
+            CVec3(sign * target_amplitude + 0im, 0im, 0im)
+            for sign in (1.0, 1.0, -1.0, -1.0)
+        ]
+        rhs = A * reduce(vcat, target)
+        @test all(isfinite, rhs)
+        incident = [
+            CVec3(rhs[3j - 2], rhs[3j - 1], rhs[3j])
+            for j in 1:grid.nvoxels
+        ]
+        result = solve_dda_3d(
+            grid, k, epsr, incident; radiative_correction=false)
+
+        terms, reference = setprecision(BigFloat, 4096) do
+            n = BigFloat.(direction)
+            prefactor = BigFloat(k)^2 / (4 * BigFloat(pi))
+            total = zeros(Complex{BigFloat}, 3)
+            contributions = CVec3[]
+            for j in 1:grid.nvoxels
+                dipole = Complex{BigFloat}(result.alpha[j]) .*
+                         Complex{BigFloat}.(result.E_total[j])
+                projected = dipole - n * sum(
+                    n[index] * dipole[index] for index in 1:3)
+                phase_argument = BigFloat(k) * sum(
+                    n[index] * BigFloat(grid.centers[j][index])
+                    for index in 1:3)
+                contribution = exp(Complex{BigFloat}(
+                    zero(BigFloat), phase_argument)) * prefactor * projected
+                push!(contributions, CVec3(
+                    ComplexF64(contribution[1]),
+                    ComplexF64(contribution[2]),
+                    ComplexF64(contribution[3])))
+                total .+= contribution
+            end
+            contributions,
+            CVec3(ComplexF64(total[1]), ComplexF64(total[2]),
+                  ComplexF64(total[3]))
+        end
+        @test all(all(isfinite, term) for term in terms)
+        @test !isfinite(terms[1][1] + terms[2][1])
+
+        field = farfield_dda_3d(result, direction)
+        @test all(isfinite, field)
+        @test all(
+            isapprox(real(field[index]), real(reference[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(field[index]), imag(reference[index]);
+                     rtol=16eps(Float64), atol=0.0)
+            for index in 1:3)
+
+        # Exercise cancellation across almost the entire Float64 exponent
+        # range. The finite result is around 10^-94 even though each source
+        # term is around 10^308, so a short BigFloat mantissa is insufficient.
+        dy = ldexp(1.0, -158)
+        dx = 32dy
+        precision_grid = VoxelGrid3D(
+            (0.0, 2dx), (0.0, 2dy), (0.0, 1.0e308), 2, 2, 1)
+        precision_k = ldexp(1.0, -509)
+        precision_direction = Vec3(inv(sqrt(2.0)), inv(sqrt(2.0)), 0.0)
+        base_field = ldexp(1.0, 1023)
+        weights = (1.0, 1.0, -17 / 16, -15 / 16)
+        precision_fields = [
+            CVec3(weights[j] * base_field + 0im, 0im, 0im)
+            for j in 1:precision_grid.nvoxels
+        ]
+        precision_alpha = fill(1.0e308 + 0im, precision_grid.nvoxels)
+        precision_result = DDAResult3D(
+            precision_fields,
+            copy(precision_fields),
+            fill(-3.0 + 0im, precision_grid.nvoxels),
+            precision_alpha,
+            zeros(ComplexF64, 3precision_grid.nvoxels,
+                  3precision_grid.nvoxels),
+            nothing,
+            :direct,
+            nothing,
+            precision_grid,
+            precision_k,
+            false,
+        )
+
+        precision_terms, precision_reference =
+            setprecision(BigFloat, 4096) do
+                n = BigFloat.(precision_direction)
+                prefactor = BigFloat(precision_k)^2 /
+                            (4 * BigFloat(pi))
+                total = zeros(Complex{BigFloat}, 3)
+                contributions = CVec3[]
+                for j in 1:precision_grid.nvoxels
+                    dipole = Complex{BigFloat}(precision_alpha[j]) .*
+                             Complex{BigFloat}.(precision_fields[j])
+                    projected = dipole - n * sum(
+                        n[index] * dipole[index] for index in 1:3)
+                    phase_argument = BigFloat(precision_k) * sum(
+                        n[index] *
+                        BigFloat(precision_grid.centers[j][index])
+                        for index in 1:3)
+                    contribution = exp(Complex{BigFloat}(
+                        zero(BigFloat), phase_argument)) *
+                        prefactor * projected
+                    push!(contributions, CVec3(
+                        ComplexF64(contribution[1]),
+                        ComplexF64(contribution[2]),
+                        ComplexF64(contribution[3])))
+                    total .+= contribution
+                end
+                contributions,
+                CVec3(ComplexF64(total[1]), ComplexF64(total[2]),
+                      ComplexF64(total[3]))
+            end
+        @test all(all(isfinite, term) for term in precision_terms)
+        @test !isfinite(
+            precision_terms[1][1] + precision_terms[2][1])
+        @test 1.0e-100 < abs(real(precision_reference[1])) < 1.0e-90
+
+        precision_field =
+            farfield_dda_3d(precision_result, precision_direction)
+        @test all(
+            isapprox(
+                real(precision_field[index]),
+                real(precision_reference[index]);
+                rtol=16eps(Float64), atol=0.0) &&
+            isapprox(
+                imag(precision_field[index]),
+                imag(precision_reference[index]);
+                rtol=16eps(Float64), atol=0.0)
+            for index in 1:3)
+    end
+
     @testset "Direct solve rejects non-finite output" begin
         grid = VoxelGrid3D(
             (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
@@ -320,6 +463,8 @@ println("\n── Test 46: 3D vector material DDA solver ──")
                    exp(1im * k0 * dot(n, grid.centers[1]))
 
         @test norm(farfield_dda_3d(res, n) - expected) / norm(expected) < 1e-13
+        farfield_dda_3d(res, n)
+        @test @allocated(farfield_dda_3d(res, n)) <= 128
         @test abs(res.alpha[1] - clausius_mossotti_polarizability(epsr, grid.volumes[1])) < 1e-16
     end
 

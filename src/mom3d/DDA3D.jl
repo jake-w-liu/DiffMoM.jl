@@ -22,6 +22,9 @@ const _CI3_DDA = @SMatrix [1.0 + 0im 0.0 + 0im 0.0 + 0im;
                            0.0 + 0im 1.0 + 0im 0.0 + 0im;
                            0.0 + 0im 0.0 + 0im 1.0 + 0im]
 const _CMat3DDA = SMatrix{3,3,ComplexF64,9}
+# A floatmax-scale sum can cancel to the smallest Float64 subnormal, spanning
+# 2099 binary orders of magnitude. Keep a guard margin for products and sums.
+const _DDA_ACCUMULATION_FALLBACK_PRECISION = 2304
 
 @inline _dda_index(voxel::Int, comp::Int) = 3 * (voxel - 1) + comp
 
@@ -1296,6 +1299,65 @@ end
         alpha, field, k, direction, center)
 end
 
+@noinline function _farfield_sum_bigfloat_dda_3d(
+        res::DDAResult3D,
+        direction::Vec3)
+    return setprecision(
+            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        n = SVector{3,BigFloat}(
+            BigFloat(direction[1]),
+            BigFloat(direction[2]),
+            BigFloat(direction[3]),
+        )
+        prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
+        total = zero(SVector{3,Complex{BigFloat}})
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            q = _alpha_apply_bigfloat_vector_3d(
+                res.alpha[j], res.E_total[j])
+            projected = q - n * sum(
+                n[index] * q[index] for index in 1:3)
+            phase_argument = BigFloat(res.k0) * sum(
+                n[index] * BigFloat(res.grid.centers[j][index])
+                for index in 1:3)
+            total += exp(Complex{BigFloat}(0, phase_argument)) *
+                     prefactor * projected
+        end
+        converted = CVec3(
+            ComplexF64(total[1]),
+            ComplexF64(total[2]),
+            ComplexF64(total[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "DDA far-field amplitude is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+function _farfield_sum_dda_3d(
+        res::DDAResult3D,
+        direction::Vec3,
+        projection)
+    total = zero(CVec3)
+    try
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            contribution = _farfield_alpha_contribution_dda_3d(
+                res.alpha[j], res.E_total[j], res.k0,
+                direction, res.grid.centers[j], projection)
+            next_total = total + contribution
+            all(isfinite, next_total) ||
+                return _farfield_sum_bigfloat_dda_3d(res, direction)
+            total = next_total
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        return _farfield_sum_bigfloat_dda_3d(res, direction)
+    end
+    return total
+end
+
 """
     farfield_dda_3d(result, rhat)
 
@@ -1308,16 +1370,7 @@ for unit observation direction `rhat`.
 function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
-    F = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    for j in 1:res.grid.nvoxels
-        iszero(res.alpha[j]) && continue
-        F += _farfield_alpha_contribution_dda_3d(
-            res.alpha[j], res.E_total[j], res.k0,
-            n, res.grid.centers[j], proj)
-    end
-    all(isfinite, F) ||
-        throw(OverflowError("DDA far-field amplitude is non-finite."))
-    return F
+    return _farfield_sum_dda_3d(res, n, proj)
 end
 
 function farfield_dda_3d(res::DDAResult3D, rhat::AbstractVector{Vec3})
