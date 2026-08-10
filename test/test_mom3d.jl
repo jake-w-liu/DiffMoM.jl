@@ -502,6 +502,45 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             for index in 1:3)
     end
 
+    @testset "Direct solve right-hand-side exponent range" begin
+        grid = VoxelGrid3D(
+            (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
+        k = 1.0
+        probe = dda_operator_3d(
+            grid, k, 2.0 + 0im; radiative_correction=false)
+        coupling_per_alpha = probe[1, 4] / probe.alpha[1]
+        desired_alpha = (-2.0 + 0im) / coupling_per_alpha
+        ratio = desired_alpha / (3 * grid.volumes[1])
+        epsr = (1 + 2ratio) / (1 - ratio)
+        A, _, _ = assemble_dda_3d(
+            grid, k, epsr; radiative_correction=false)
+        @test A[1, 4] ≈ -2.0 + 0im rtol=2eps(Float64)
+
+        amplitude = 0.8 * floatmax(Float64)
+        incident = [
+            CVec3(amplitude + 0im, 0im, 0im),
+            CVec3(amplitude + 0im, 0im, 0im),
+        ]
+        rhs = reduce(vcat, incident)
+        reference = setprecision(BigFloat, 4096) do
+            ComplexF64.(
+                Matrix{Complex{BigFloat}}(A) \
+                Complex{BigFloat}.(rhs))
+        end
+        @test all(isfinite, reference)
+
+        result = solve_dda_3d(
+            grid, k, epsr, incident; radiative_correction=false)
+        solution = reduce(vcat, result.E_total)
+        @test all(isfinite, solution)
+        @test all(
+            isapprox(real(solution[index]), real(reference[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(solution[index]), imag(reference[index]);
+                     rtol=16eps(Float64), atol=0.0)
+            for index in eachindex(reference))
+    end
+
     @testset "Direct solve rejects non-finite output" begin
         grid = VoxelGrid3D(
             (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)

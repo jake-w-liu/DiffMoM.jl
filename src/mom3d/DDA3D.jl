@@ -25,6 +25,8 @@ const _CMat3DDA = SMatrix{3,3,ComplexF64,9}
 # A floatmax-scale sum can cancel to the smallest Float64 subnormal, spanning
 # 2099 binary orders of magnitude. Keep a guard margin for products and sums.
 const _DDA_ACCUMULATION_FALLBACK_PRECISION = 2304
+const _DDA_RHS_SCALE_LOWER = sqrt(floatmin(Float64))
+const _DDA_RHS_SCALE_UPPER = sqrt(floatmax(Float64))
 
 @inline _dda_index(voxel::Int, comp::Int) = 3 * (voxel - 1) + comp
 
@@ -614,6 +616,31 @@ end
 @inline _complex_component_scale_3d(value::ComplexF64) =
     max(abs(real(value)), abs(imag(value)))
 
+function _solve_factored_rhs_3d(
+        factorization,
+        rhs::AbstractVector{ComplexF64},
+        label::AbstractString)
+    rhs_scale = 0.0
+    @inbounds for value in rhs
+        rhs_scale = max(rhs_scale, _complex_component_scale_3d(value))
+    end
+
+    solution = if !iszero(rhs_scale) &&
+                  (rhs_scale < _DDA_RHS_SCALE_LOWER ||
+                   rhs_scale > _DDA_RHS_SCALE_UPPER)
+        scaled = Vector(rhs)
+        scaled ./= rhs_scale
+        ldiv!(factorization, scaled)
+        @inbounds for index in eachindex(scaled)
+            scaled[index] *= rhs_scale
+        end
+        scaled
+    else
+        factorization \ rhs
+    end
+    return _assert_finite_linear_vector(solution, label)
+end
+
 @inline function _floating_product_loses_range_3d(
         left::ComplexF64,
         right::ComplexF64)
@@ -1177,8 +1204,8 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
             radiative_correction=radiative_correction,
         )
         fac = lu(A)
-        E_total_flat = _assert_finite_linear_vector(
-            fac \ rhs, "direct DDA solution")
+        E_total_flat = _solve_factored_rhs_3d(
+            fac, rhs, "direct DDA solution")
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),
                            epsv, alpha, A, fac, :direct, nothing,

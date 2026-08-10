@@ -212,6 +212,55 @@ end
             solve_grid, 1.0, near_singular_alpha, huge_E, huge_H)
     end
 
+    @testset "Direct solve right-hand-side exponent range" begin
+        grid = VoxelGrid3D(
+            (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
+        k = 1.0
+        probe = dda_operator_3d(
+            grid, k, 2.0 + 0im; radiative_correction=false)
+        coupling_per_alpha = probe[1, 4] / probe.alpha[1]
+        desired_alpha = (-2.0 + 0im) / coupling_per_alpha
+        alpha6 = zeros(ComplexF64, 6, 6)
+        alpha6[1:3, 1:3] .=
+            desired_alpha .* Matrix{ComplexF64}(I, 3, 3)
+        operator = em_dda_operator_3d(grid, k, alpha6)
+        A = Matrix(operator)
+        @test A[1, 7] ≈ -2.0 + 0im rtol=2eps(Float64)
+
+        amplitude = 0.8 * floatmax(Float64)
+        incident_E = [
+            CVec3(amplitude + 0im, 0im, 0im),
+            CVec3(amplitude + 0im, 0im, 0im),
+        ]
+        incident_H = fill(zero(CVec3), grid.nvoxels)
+        rhs = ComplexF64[]
+        for j in 1:grid.nvoxels
+            append!(rhs, incident_E[j])
+            append!(rhs, incident_H[j])
+        end
+        reference = setprecision(BigFloat, 4096) do
+            ComplexF64.(
+                Matrix{Complex{BigFloat}}(A) \
+                Complex{BigFloat}.(rhs))
+        end
+        @test all(isfinite, reference)
+
+        result = solve_em_dda_3d(
+            grid, k, alpha6, incident_E, incident_H)
+        solution = ComplexF64[]
+        for j in 1:grid.nvoxels
+            append!(solution, result.E_total[j])
+            append!(solution, result.H_total[j])
+        end
+        @test all(isfinite, solution)
+        @test all(
+            isapprox(real(solution[index]), real(reference[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(solution[index]), imag(reference[index]);
+                     rtol=16eps(Float64), atol=0.0)
+            for index in eachindex(reference))
+    end
+
     @testset "Electric-only reduction matches DDA" begin
         grid = VoxelGrid3D((-0.12, 0.12), (-0.05, 0.05), (-0.05, 0.05), 2, 1, 1)
         epsr = fill(2.4 + 0.04im, grid.nvoxels)
