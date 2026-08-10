@@ -5313,6 +5313,83 @@ J_trace_35 = [t.J for t in trace_35]
 # Objective should generally decrease (check last < first with tolerance)
 println("    J: $(round(trace_35[1].J, sigdigits=4)) → $(round(trace_35[end].J, sigdigits=4))")
 println("    |g|: $(round(trace_35[1].gnorm, sigdigits=4)) → $(round(trace_35[end].gnorm, sigdigits=4))")
+
+# Dense Q products at both accepted iterates and exploratory line-search points
+# must restart exact accumulation when BLAS loses an otherwise finite sum.
+multiangle_extreme_scale = 0.8 * floatmax(Float64)
+multiangle_extreme_Q = zeros(ComplexF64, 4, 4)
+multiangle_extreme_Q[1, :] .= ComplexF64[1.0, 1.0, -1.0, -1.0]
+multiangle_extreme_v = fill(ComplexF64(multiangle_extreme_scale), 4)
+@test !isfinite((multiangle_extreme_Q * multiangle_extreme_v)[1])
+multiangle_extreme_reference = setprecision(BigFloat, 4096) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(multiangle_extreme_Q) *
+        Complex{BigFloat}.(multiangle_extreme_v))
+end
+@test multiangle_extreme_reference == zeros(ComplexF64, 4)
+multiangle_extreme_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    multiangle_extreme_v,
+    multiangle_extreme_Q,
+    1.0,
+)
+multiangle_extreme_theta, multiangle_extreme_trace =
+    optimize_multiangle_rcs(
+        Matrix{ComplexF64}(I, 4, 4),
+        [zeros(ComplexF64, 4, 4)],
+        [multiangle_extreme_config],
+        [0.0];
+        maxiter=1,
+        verbose=false,
+    )
+@test multiangle_extreme_theta == [0.0]
+@test length(multiangle_extreme_trace) == 1
+@test multiangle_extreme_trace[1].J == 0.0
+@test multiangle_extreme_trace[1].gnorm == 0.0
+
+multiangle_line_Q = zeros(ComplexF64, 5, 5)
+multiangle_line_coefficient = 0.4 * floatmax(Float64)
+multiangle_line_Q[1, 1:4] .= ComplexF64[
+    multiangle_line_coefficient,
+    multiangle_line_coefficient,
+    -multiangle_line_coefficient,
+    -multiangle_line_coefficient,
+]
+multiangle_line_Q[5, 5] = -0.5
+multiangle_line_trial_current = fill(ComplexF64(2.0), 5)
+@test !isfinite((multiangle_line_Q * multiangle_line_trial_current)[1])
+multiangle_line_reference = setprecision(BigFloat, 8192) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(multiangle_line_Q) *
+        Complex{BigFloat}.(multiangle_line_trial_current))
+end
+@test multiangle_line_reference == ComplexF64[0.0, 0.0, 0.0, 0.0, -1.0]
+@test real(dot(
+    multiangle_line_trial_current,
+    multiangle_line_reference,
+)) == -2.0
+multiangle_line_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ones(ComplexF64, 5),
+    multiangle_line_Q,
+    1.0,
+)
+multiangle_line_theta, multiangle_line_trace = optimize_multiangle_rcs(
+    Matrix{ComplexF64}(I, 5, 5),
+    [Matrix{ComplexF64}(I, 5, 5)],
+    [multiangle_line_config],
+    [0.0];
+    maxiter=1,
+    tol=0.0,
+    m_lbfgs=0,
+    alpha0=0.5,
+    verbose=false,
+    fallback_to_steepest=false,
+)
+@test multiangle_line_theta == [0.5]
+@test length(multiangle_line_trace) == 1
 println("  35c: PASS")
 
 # 35d: normalized smooth worst-angle objective

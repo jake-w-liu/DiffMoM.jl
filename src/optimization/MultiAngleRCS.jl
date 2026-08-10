@@ -117,6 +117,27 @@ function _validate_multiangle_problem(
     return N
 end
 
+function _multiangle_q_product_and_objective(
+    Q::AbstractMatrix{ComplexF64},
+    current::Vector{ComplexF64},
+    label::AbstractString,
+)
+    product = if Q isa Matrix{ComplexF64}
+        _finite_matrix_vector_product(Q, current, label)
+    else
+        converted = Vector{ComplexF64}(Q * current)
+        _assert_finite_linear_vector(converted, label)
+    end
+
+    objective = real(dot(current, product))
+    if !isfinite(objective)
+        Q isa Matrix{ComplexF64} ||
+            error("$label produced a non-finite objective")
+        objective = compute_objective(current, Q)
+    end
+    return product, objective
+end
+
 function _multiangle_objective_scales(J_angles::Vector{Float64},
                                       weights::Vector{Float64},
                                       objective::Symbol,
@@ -597,8 +618,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         QI_all = Vector{Vector{ComplexF64}}(undef, M)
         J_angles = zeros(Float64, M)
         for a in 1:M
-            QI_all[a] = Vector{ComplexF64}(configs[a].Q * I_all[a])
-            J_angles[a] = real(dot(I_all[a], QI_all[a]))
+            QI_all[a], J_angles[a] = _multiangle_q_product_and_objective(
+                configs[a].Q, I_all[a], "multi-angle Q product")
         end
         J_val, objective_scales = _multiangle_objective_scales(
             J_angles, weights, objective, refs, smooth_beta)
@@ -783,8 +804,10 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                               true_residual_factor=gmres_true_residual_factor)
                             end
                             n_fwd_solves += 1
-                            QI_trial = configs[a].Q * I_trial
-                            J_trial_angles[a] = real(dot(I_trial, QI_trial))
+                            _, J_trial_angles[a] =
+                                _multiangle_q_product_and_objective(
+                                    configs[a].Q, I_trial,
+                                    "multi-angle trial Q product")
                         end
                         J_trial, _ = _multiangle_objective_scales(
                             J_trial_angles, weights, objective, refs, smooth_beta)
