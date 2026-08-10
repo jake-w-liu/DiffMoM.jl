@@ -7,18 +7,47 @@
 
 export solve_adjoint, solve_adjoint_rhs, gradient_impedance, compute_objective
 
-# Expanding Re(I' * Q * I) produces at most four real triple products per
-# matrix entry. Three finite Float64 coefficients need at most 6295 bits, and
-# a dense Matrix contains fewer than typemax(Int) entries. The extra 65 bits
-# cover every addressable sum, with the remaining precision as guard margin.
-const _IEEE_QUADRATIC_FALLBACK_PRECISION = 6656
+# Expanding one component of left' * A * right produces at most four real
+# triple products per stored matrix entry. Three finite Float64 coefficients
+# need at most 6295 bits, and an addressable matrix has at most typemax(Int)
+# entries. The extra 65 bits cover the full sum, with the remaining precision
+# as guard margin.
+const _IEEE_BILINEAR_FALLBACK_PRECISION = 6656
+
+@inline function _bilinear_component_bigfloat(
+    left_real::BigFloat,
+    left_imag::BigFloat,
+    matrix_real::BigFloat,
+    matrix_imag::BigFloat,
+    right_real::BigFloat,
+    right_imag::BigFloat,
+    ::Val{:real},
+)
+    product_real = matrix_real * right_real - matrix_imag * right_imag
+    product_imag = matrix_real * right_imag + matrix_imag * right_real
+    return left_real * product_real + left_imag * product_imag
+end
+
+@inline function _bilinear_component_bigfloat(
+    left_real::BigFloat,
+    left_imag::BigFloat,
+    matrix_real::BigFloat,
+    matrix_imag::BigFloat,
+    right_real::BigFloat,
+    right_imag::BigFloat,
+    ::Val{:imag},
+)
+    product_real = matrix_real * right_real - matrix_imag * right_imag
+    product_imag = matrix_real * right_imag + matrix_imag * right_real
+    return left_real * product_imag - left_imag * product_real
+end
 
 @noinline function _quadratic_objective_bigfloat(
     I::Vector{<:Number},
     Q::Matrix{<:Number},
     ::Type{T},
 ) where {T<:AbstractFloat}
-    return setprecision(BigFloat, _IEEE_QUADRATIC_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
         total = zero(BigFloat)
         @inbounds for row in axes(Q, 1)
             left_value = I[row]
@@ -31,12 +60,12 @@ const _IEEE_QUADRATIC_FALLBACK_PRECISION = 6656
                 matrix_imag = BigFloat(imag(matrix_value))
                 right_real = BigFloat(real(right_value))
                 right_imag = BigFloat(imag(right_value))
-                product_real = matrix_real * right_real -
-                               matrix_imag * right_imag
-                product_imag = matrix_real * right_imag +
-                               matrix_imag * right_real
-                total += left_real * product_real +
-                         left_imag * product_imag
+                total += _bilinear_component_bigfloat(
+                    left_real, left_imag,
+                    matrix_real, matrix_imag,
+                    right_real, right_imag,
+                    Val(:real),
+                )
             end
         end
         converted = convert(T, total)
@@ -45,6 +74,125 @@ const _IEEE_QUADRATIC_FALLBACK_PRECISION = 6656
                 "quadratic objective is outside the representable $T range"))
         return converted
     end
+end
+
+@inline _bilinear_component(value::Number, ::Val{:real}) = real(value)
+@inline _bilinear_component(value::Number, ::Val{:imag}) = imag(value)
+function _accumulate_bilinear_component_bigfloat(
+    left::AbstractVector,
+    matrix::AbstractMatrix,
+    right::AbstractVector,
+    component,
+)
+    total = zero(BigFloat)
+    @inbounds for row in axes(matrix, 1)
+        left_value = left[row]
+        left_real = BigFloat(real(left_value))
+        left_imag = BigFloat(imag(left_value))
+        for column in axes(matrix, 2)
+            matrix_value = matrix[row, column]
+            right_value = right[column]
+            total += _bilinear_component_bigfloat(
+                left_real, left_imag,
+                BigFloat(real(matrix_value)),
+                BigFloat(imag(matrix_value)),
+                BigFloat(real(right_value)),
+                BigFloat(imag(right_value)),
+                component,
+            )
+        end
+    end
+    return total
+end
+
+function _accumulate_bilinear_component_bigfloat(
+    left::AbstractVector,
+    matrix::SparseArrays.AbstractSparseMatrixCSC,
+    right::AbstractVector,
+    component,
+)
+    total = zero(BigFloat)
+    rows = rowvals(matrix)
+    values = nonzeros(matrix)
+    @inbounds for column in axes(matrix, 2)
+        right_value = right[column]
+        right_real = BigFloat(real(right_value))
+        right_imag = BigFloat(imag(right_value))
+        for position in nzrange(matrix, column)
+            left_value = left[rows[position]]
+            matrix_value = values[position]
+            total += _bilinear_component_bigfloat(
+                BigFloat(real(left_value)),
+                BigFloat(imag(left_value)),
+                BigFloat(real(matrix_value)),
+                BigFloat(imag(matrix_value)),
+                right_real, right_imag,
+                component,
+            )
+        end
+    end
+    return total
+end
+
+
+function _accumulate_bilinear_component_bigfloat(
+    left::AbstractVector,
+    matrix::LocalMassMatrix,
+    right::AbstractVector,
+    component,
+)
+    total = zero(BigFloat)
+    @inbounds for position in eachindex(matrix.vals)
+        left_value = left[matrix.rows[position]]
+        matrix_value = matrix.vals[position]
+        right_value = right[matrix.cols[position]]
+        total += _bilinear_component_bigfloat(
+            BigFloat(real(left_value)),
+            BigFloat(imag(left_value)),
+            BigFloat(real(matrix_value)),
+            BigFloat(imag(matrix_value)),
+            BigFloat(real(right_value)),
+            BigFloat(imag(right_value)),
+            component,
+        )
+    end
+    return total
+end
+
+@noinline function _bilinear_component_bigfloat(
+    left::AbstractVector,
+    matrix::AbstractMatrix,
+    right::AbstractVector,
+    component,
+    ::Type{T},
+    label::AbstractString,
+) where {T<:AbstractFloat}
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        total = _accumulate_bilinear_component_bigfloat(
+            left, matrix, right, component)
+        converted = convert(T, total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label is outside the representable $T range"))
+        return converted
+    end
+end
+
+function _finite_bilinear_component(
+    left::AbstractVector,
+    matrix::AbstractMatrix,
+    right::AbstractVector,
+    component,
+    label::AbstractString,
+)
+    value = _bilinear_component(
+        _dot_left_matrix_right(left, matrix, right), component)
+    isfinite(value) && return value
+    value_type = typeof(value)
+    value_type <: Union{Float32,Float64} ||
+        error("$label produced a non-finite value")
+    return _bilinear_component_bigfloat(
+        left, matrix, right, component, value_type, label)
 end
 
 """
@@ -191,16 +339,19 @@ function gradient_impedance(Mp::Vector{<:AbstractMatrix},
     end
     P = length(Mp)
     g = zeros(Float64, P)
+    component = reactive ? Val(:imag) : Val(:real)
     for p in 1:P
-        lMI = _dot_left_matrix_right(lambda, Mp[p], I)
+        lMI_component = _finite_bilinear_component(
+            lambda, Mp[p], I, component,
+            "gradient_impedance bilinear product")
         if reactive
             # ∂Z/∂θ_p = -iM_p
             # g[p] = -2 Re{ λ† (-iM_p) I } = 2 Re{ i λ† M_p I } = -2 Im{ λ† M_p I }
-            g[p] = -2 * imag(lMI)
+            g[p] = -2 * lMI_component
         else
             # ∂Z/∂θ_p = -M_p
             # g[p] = -2 Re{ λ† (-M_p) I } = 2 Re{ λ† M_p I }
-            g[p] = 2 * real(lMI)
+            g[p] = 2 * lMI_component
         end
     end
     all(isfinite, g) ||

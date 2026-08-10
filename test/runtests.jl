@@ -944,6 +944,79 @@ gradient_probe_finite = ones(ComplexF64, N)
 @test_throws ArgumentError gradient_impedance(
     Mp, gradient_probe_finite, fill(ComplexF64(Inf, 0.0), N))
 
+# Fused bilinear products can overflow before exact cancellation. Exercise the
+# dense, sparse, and compact local storage paths without changing ordinary
+# output-only allocation behavior.
+gradient_extreme_scale = floatmax(Float64)
+gradient_extreme_left = ComplexF64[
+    gradient_extreme_scale,
+    gradient_extreme_scale,
+    gradient_extreme_scale,
+    gradient_extreme_scale,
+    1.0,
+]
+gradient_extreme_right = copy(gradient_extreme_left)
+gradient_extreme_matrix = zeros(ComplexF64, 5, 5)
+gradient_extreme_matrix[1, 1:4] .= ComplexF64[
+    gradient_extreme_scale,
+    gradient_extreme_scale,
+    -gradient_extreme_scale,
+    -gradient_extreme_scale,
+]
+gradient_extreme_matrix[5, 5] = 3.0
+gradient_extreme_reference = setprecision(BigFloat, 8192) do
+    dot(
+        Complex{BigFloat}.(gradient_extreme_left),
+        Matrix{Complex{BigFloat}}(gradient_extreme_matrix),
+        Complex{BigFloat}.(gradient_extreme_right),
+    )
+end
+@test gradient_extreme_reference == Complex{BigFloat}(3)
+gradient_extreme_local = LocalMassMatrix(
+    5,
+    [1, 1, 1, 1, 5],
+    [1, 2, 3, 4, 5],
+    ComplexF64[
+        gradient_extreme_scale,
+        gradient_extreme_scale,
+        -gradient_extreme_scale,
+        -gradient_extreme_scale,
+        3.0,
+    ],
+)
+for gradient_matrix in (
+    gradient_extreme_matrix,
+    sparse(gradient_extreme_matrix),
+    gradient_extreme_local,
+)
+    @test gradient_impedance(
+        [gradient_matrix], gradient_extreme_right,
+        gradient_extreme_left) == [6.0]
+end
+@test gradient_impedance(
+    [im .* gradient_extreme_matrix],
+    gradient_extreme_right,
+    gradient_extreme_left;
+    reactive=true,
+) == [-6.0]
+@test_throws OverflowError gradient_impedance(
+    [reshape(ComplexF64[1.0], 1, 1)],
+    ComplexF64[gradient_extreme_scale],
+    ComplexF64[gradient_extreme_scale],
+)
+gradient_allocation_matrices = [ComplexF64[2.0 0.0; 0.0 3.0]]
+gradient_allocation_vector = ComplexF64[1.0, 2.0]
+gradient_impedance(
+    gradient_allocation_matrices,
+    gradient_allocation_vector,
+    gradient_allocation_vector,
+)
+@test @allocated(gradient_impedance(
+    gradient_allocation_matrices,
+    gradient_allocation_vector,
+    gradient_allocation_vector,
+)) <= _float_vector_output_allocation(1) + 128
+
 # Five-argument mul! must not read x when alpha is zero, including when x
 # contains non-finite values. Verify both beta branches and both orientations.
 mass_contract = LocalMassMatrix(
