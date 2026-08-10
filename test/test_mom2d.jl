@@ -342,6 +342,38 @@ end
         @test all(isfinite, jacobian_overflow)
     end
 
+    @testset "Extreme VIE right-hand-side scaling" begin
+        mesh = Mesh2D((0.0, 1.0), (0.0, 0.25), 4, 1)
+        k0 = 0.1
+        chi = fill(1e4, mesh.ncells)
+        observation = [Vec2(1.25, 0.125)]
+        Z, _ = assemble_vie_2d(mesh, k0, chi)
+        G_obs = green_obs_matrix(observation, mesh, k0)
+
+        target_pattern = ComplexF64[1.0, 1.0, -1.0, -1.0]
+        source_scales = ComplexF64[
+            k0^2 * chi[n] * G_obs[1, n] * mesh.cell_area
+            for n in 1:mesh.ncells
+        ]
+        unit_field = target_pattern ./ source_scales
+        unit_rhs = Z * unit_field
+        rhs_multiplier = 0.8 * floatmax(Float64)
+        E_inc = rhs_multiplier .* unit_rhs
+        @test all(isfinite, E_inc)
+
+        vr = solve_vie_2d(mesh, k0, chi, E_inc)
+        reference = setprecision(BigFloat, 256) do
+            Z_big = Matrix{Complex{BigFloat}}(Z)
+            rhs_big = Complex{BigFloat}.(E_inc)
+            ComplexF64.(Z_big \ rhs_big)
+        end
+
+        @test all(isfinite, vr.E_total)
+        @test all(
+            isapprox(vr.E_total[index], reference[index]; rtol=2e-14)
+            for index in eachindex(reference))
+    end
+
     @testset "Plane wave excitation" begin
         mesh = Mesh2D((-1.0, 1.0), (-1.0, 1.0), 4, 4)
         k0 = 2π

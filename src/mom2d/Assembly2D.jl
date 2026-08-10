@@ -9,6 +9,8 @@
 export assemble_vie_2d, solve_vie_2d
 
 const _VIE_PRODUCT_FALLBACK_PRECISION_2D = 256
+const _VIE_RHS_SCALE_LOWER_2D = sqrt(floatmin(Float64))
+const _VIE_RHS_SCALE_UPPER_2D = sqrt(floatmax(Float64))
 
 @inline _complex_component_scale_2d(value::ComplexF64) =
     max(abs(real(value)), abs(imag(value)))
@@ -24,6 +26,28 @@ end
     real_ok = iszero(real(unscaled)) || abs(real(scaled)) >= floatmin(Float64)
     imag_ok = iszero(imag(unscaled)) || abs(imag(scaled)) >= floatmin(Float64)
     return real_ok && imag_ok
+end
+
+function _solve_vie_factored_2d(
+        factorization,
+        E_inc::AbstractVector{ComplexF64})
+    rhs_scale = 0.0
+    @inbounds for value in E_inc
+        rhs_scale = max(rhs_scale, _complex_component_scale_2d(value))
+    end
+
+    if !iszero(rhs_scale) &&
+       (rhs_scale < _VIE_RHS_SCALE_LOWER_2D ||
+        rhs_scale > _VIE_RHS_SCALE_UPPER_2D)
+        E_total = Vector(E_inc)
+        E_total ./= rhs_scale
+        ldiv!(factorization, E_total)
+        @inbounds for index in eachindex(E_total)
+            E_total[index] *= rhs_scale
+        end
+        return E_total
+    end
+    return factorization \ E_inc
 end
 
 @noinline function _product_bigfloat_2d(
@@ -288,7 +312,7 @@ function solve_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
     Z_lu = lu(Z)
     issuccess(Z_lu) ||
         error("solve_vie_2d system matrix factorization failed.")
-    E_total = Z_lu \ E_inc
+    E_total = _solve_vie_factored_2d(Z_lu, E_inc)
     all(isfinite, E_total) ||
         error("solve_vie_2d produced non-finite total-field values.")
 
