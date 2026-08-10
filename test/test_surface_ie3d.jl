@@ -404,6 +404,23 @@ end
     @test product_allocation <= output_allocation + 128
     @test norm(y_mf - A_pm * x) / norm(A_pm * x) < 1e-13
 
+    # The two scaled terms are individually outside Float64 range but cancel
+    # exactly. The five-argument mul! contract must combine them before the
+    # final ComplexF64 conversion instead of producing Inf - Inf = NaN.
+    scaled_product = A_pm_mf * x
+    scaled_initial = -scaled_product
+    extreme_scale = 1e308 + 0im
+    scaled_result = copy(scaled_initial)
+    scaled_reference = setprecision(BigFloat, 4096) do
+        ComplexF64.(
+            Complex{BigFloat}(extreme_scale) .* Complex{BigFloat}.(scaled_product) .+
+            Complex{BigFloat}(extreme_scale) .* Complex{BigFloat}.(scaled_initial))
+    end
+    mul!(scaled_result, A_pm_mf, x, extreme_scale, extreme_scale)
+    @test scaled_reference == zeros(ComplexF64, 2N)
+    @test all(isfinite, scaled_result)
+    @test scaled_result == scaled_reference
+
     rhs0 = zeros(ComplexF64, 2N)
     rhs_nonfinite = copy(rhs0)
     rhs_nonfinite[1] = ComplexF64(NaN, 0.0)

@@ -847,6 +847,57 @@ end
     return value
 end
 
+@noinline function _surface_sie_scaled_output_bigfloat_3d(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    return setprecision(BigFloat, _MFIE_MATVEC_FALLBACK_PRECISION_3D) do
+        total = Complex{BigFloat}(alpha_scale) *
+                Complex{BigFloat}(value)
+        if !overwrite
+            total += Complex{BigFloat}(beta_scale) *
+                     Complex{BigFloat}(previous)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "matrix-free dielectric SIE scaled output is outside the " *
+                "representable ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@inline function _surface_sie_scaled_output_3d(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    alpha_term = alpha_scale * value
+    if overwrite
+        converted = ComplexF64(alpha_term)
+        return isfinite(converted) ? converted :
+               _surface_sie_scaled_output_bigfloat_3d(
+                   value, previous, alpha_scale, beta_scale, true, row)
+    end
+
+    beta_term = beta_scale * previous
+    combined = alpha_term + beta_term
+    magnitude_sum =
+        max(abs(real(alpha_term)), abs(imag(alpha_term))) +
+        max(abs(real(beta_term)), abs(imag(beta_term)))
+    converted = ComplexF64(combined)
+    if isfinite(converted) && isfinite(magnitude_sum)
+        return converted
+    end
+    return _surface_sie_scaled_output_bigfloat_3d(
+        value, previous, alpha_scale, beta_scale, false, row)
+end
+
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::MatrixFreeDielectricSIE3D,
                             x::AbstractVector{ComplexF64},
@@ -882,9 +933,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
         @inbounds for j in 1:N
             v = _surface_sie_block_sum_3d(A, j, true)
-            y[j] = overwrite ?
-                alpha_scale * v :
-                alpha_scale * v + beta_scale * y[j]
+            y[j] = _surface_sie_scaled_output_3d(
+                v, y[j], alpha_scale, beta_scale, overwrite, j)
         end
 
         # H-row: (c_zh_ext K_ext + c_zh_int K_int) J + c_g_h Gram J
@@ -899,9 +949,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         @inbounds for j in 1:N
             v = _surface_sie_block_sum_3d(A, j, false)
             idx = N + j
-            y[idx] = overwrite ?
-                alpha_scale * v :
-                alpha_scale * v + beta_scale * y[idx]
+            y[idx] = _surface_sie_scaled_output_3d(
+                v, y[idx], alpha_scale, beta_scale, overwrite, idx)
         end
     finally
         unlock(A.work_lock)
