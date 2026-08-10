@@ -330,6 +330,24 @@ function mie_scattered_field_2d(k0::Float64, a::Float64, eps_r::Float64,
     return E_scat
 end
 
+@noinline function _mie_incident_phase_big_2d(
+        k0::Float64,
+        direction::Vec2,
+        observation::Vec2,
+        index)
+    return setprecision(BigFloat, _MIE2D_FALLBACK_PRECISION) do
+        phase = BigFloat(k0) *
+                (BigFloat(direction[1]) * BigFloat(observation[1]) +
+                 BigFloat(direction[2]) * BigFloat(observation[2]))
+        value = ComplexF64(
+            exp(Complex{BigFloat}(zero(BigFloat), -phase)))
+        isfinite(value) ||
+            error(
+                "2D Mie incident field at observation $index is non-finite")
+        return value
+    end
+end
+
 """
     mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false)
 
@@ -344,7 +362,12 @@ function mie_total_field_2d(k0::Float64, a::Float64, eps_r::Float64,
 
     khat = Vec2(cos(phi_inc), sin(phi_inc))
     for m in eachindex(r_obs)
-        E_total[m] += exp(-im * k0 * dot(khat, r_obs[m]))
+        phase = k0 * dot(khat, r_obs[m])
+        incident = isfinite(phase) ?
+                   exp(-im * phase) :
+                   _mie_incident_phase_big_2d(
+                       k0, khat, r_obs[m], m)
+        E_total[m] += incident
         isfinite(E_total[m]) ||
             error("2D Mie total field at observation $m is non-finite")
     end

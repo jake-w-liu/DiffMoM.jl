@@ -520,6 +520,22 @@ end
             underflow_size, underflow_size, 1.0, underflow_surface) ==
               ones(ComplexF64, 1)
 
+        # In a matched medium the scattered field vanishes, but the incident
+        # phase product can overflow even though its complex exponential is
+        # finite and representable.
+        extreme_k = 1.0e200
+        extreme_radius = 1.0e-200
+        extreme_observation = [Vec2(1.0e200, 0.0)]
+        extreme_reference = setprecision(BigFloat, 256) do
+            phase = BigFloat(extreme_k) *
+                    BigFloat(extreme_observation[1][1])
+            ComplexF64(exp(
+                Complex{BigFloat}(zero(BigFloat), -phase)))
+        end
+        @test mie_total_field_2d(
+            extreme_k, extreme_radius, 1.0,
+            extreme_observation) == [extreme_reference]
+
         # Symmetry: c_{-n} should satisfy specific relations
         # For symmetric incidence (phi_inc=0), c_{-n} = c_n
         for n in 1:min(N, 5)
