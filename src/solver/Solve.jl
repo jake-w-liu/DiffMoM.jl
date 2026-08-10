@@ -53,6 +53,44 @@ end
     return vector
 end
 
+function _solve_factored_linear_system(
+    factorization,
+    rhs::AbstractVector{<:Number},
+    label::AbstractString,
+)
+    scalar_type = promote_type(eltype(factorization), eltype(rhs))
+    real_type = typeof(real(zero(scalar_type)))
+    use_ieee_scaling = real_type <: Union{Float32,Float64}
+
+    rhs_scale = zero(real_type)
+    if use_ieee_scaling
+        @inbounds for value in rhs
+            rhs_scale = max(
+                rhs_scale,
+                real_type(abs(real(value))),
+                real_type(abs(imag(value))),
+            )
+        end
+    end
+
+    solution = if use_ieee_scaling && !iszero(rhs_scale) &&
+                  (rhs_scale < sqrt(floatmin(real_type)) ||
+                   rhs_scale > sqrt(floatmax(real_type)))
+        scaled = Vector{scalar_type}(undef, length(rhs))
+        @inbounds for index in eachindex(rhs)
+            scaled[index] = rhs[index] / rhs_scale
+        end
+        ldiv!(factorization, scaled)
+        @inbounds for index in eachindex(scaled)
+            scaled[index] *= rhs_scale
+        end
+        scaled
+    else
+        factorization \ rhs
+    end
+    return _assert_finite_linear_vector(solution, label)
+end
+
 """
     solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
 
@@ -88,8 +126,8 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
             throw(ArgumentError(
                 "Direct solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
         _validate_linear_system_inputs(Z, v, "forward solve")
-        return _assert_finite_linear_vector(
-            Z \ v, "direct forward solution")
+        return _solve_factored_linear_system(
+            lu(Z), v, "direct forward solution")
     else
         x, stats = solve_gmres(Z, v;
                                 preconditioner=preconditioner,

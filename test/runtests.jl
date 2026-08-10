@@ -2845,6 +2845,43 @@ rel_sf_direct = norm(I_sf_direct - I_gm_direct) / max(norm(I_gm_direct), 1e-30)
 @test_throws ArgumentError solve_system(
     ComplexF64[1.0 0.0; 0.0 1.0], ComplexF64[Inf, 1.0])
 
+# Direct LU substitution can overflow on an extreme finite RHS even when the
+# mathematical solution is finite. Exercise every public direct dispatch and
+# the corresponding subnormal scale-up path.
+Z_extreme_rhs = ComplexF64[1.0 -2.0; -2.0 1.0]
+rhs_extreme = fill(ComplexF64(0.8 * floatmax(Float64)), 2)
+extreme_reference = setprecision(BigFloat, 4096) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(Z_extreme_rhs) \
+        Complex{BigFloat}.(rhs_extreme))
+end
+Q_extreme_rhs = Matrix{ComplexF64}(I, 2, 2)
+direct_extreme_solutions = (
+    solve_forward(Z_extreme_rhs, rhs_extreme),
+    solve_system(Z_extreme_rhs, rhs_extreme),
+    solve_adjoint_rhs(Z_extreme_rhs, rhs_extreme),
+    solve_adjoint(Z_extreme_rhs, Q_extreme_rhs, rhs_extreme),
+)
+for solution in direct_extreme_solutions
+    @test all(isfinite, solution)
+    @test all(
+        isapprox(real(solution[index]), real(extreme_reference[index]);
+                 rtol=8eps(Float64), atol=0.0) &&
+        isapprox(imag(solution[index]), imag(extreme_reference[index]);
+                 rtol=8eps(Float64), atol=0.0)
+        for index in eachindex(extreme_reference))
+end
+real_extreme_solution = solve_forward(
+    Float64[1.0 -2.0; -2.0 1.0],
+    fill(0.8 * floatmax(Float64), 2))
+@test all(
+    isapprox(real_extreme_solution[index], real(extreme_reference[index]);
+             rtol=8eps(Float64), atol=0.0)
+    for index in eachindex(extreme_reference))
+tiny_direct_rhs = fill(ComplexF64(nextfloat(0.0)), 2)
+@test solve_forward(Matrix{ComplexF64}(I, 2, 2), tiny_direct_rhs) ==
+      tiny_direct_rhs
+
 # solve_forward dispatch: :gmres (unpreconditioned)
 I_sf_gmres = solve_forward(Z_gm, Vector{ComplexF64}(v);
                             solver=:gmres, gmres_tol=1e-10, gmres_maxiter=500)
