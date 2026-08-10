@@ -699,6 +699,33 @@ end
         @test overlap_y ≈ overlap_expected rtol=1e-13
     end
 
+    @testset "Matrix-free scaled-output exponent range" begin
+        scale_grid = VoxelGrid3D(
+            (0.0, 0.2), (0.0, 0.1), (0.0, 0.1), 2, 1, 1)
+        operator = em_dda_operator_3d(
+            scale_grid, k0, 2.5 + 0.1im, 1.3 + 0.02im)
+        input = ComplexF64[
+            10 * (sin(0.17 * i) + 1im * cos(0.11 * i))
+            for i in 1:size(operator, 2)
+        ]
+        product = operator * input
+        previous = -product
+        scale = 1.0e308 + 0im
+        @test all(isfinite, product)
+        @test any(!isfinite, scale .* product)
+        reference = setprecision(BigFloat, 4608) do
+            ComplexF64[
+                Complex{BigFloat}(scale) * Complex{BigFloat}(product[i]) +
+                Complex{BigFloat}(scale) * Complex{BigFloat}(previous[i])
+                for i in eachindex(product)
+            ]
+        end
+        @test all(isfinite, reference)
+        result = copy(previous)
+        mul!(result, operator, input, scale, scale)
+        @test result == reference
+    end
+
     @testset "Matrix-free exponent-range cancellation" begin
         component_scale = value ->
             max(abs(real(value)), abs(imag(value)))

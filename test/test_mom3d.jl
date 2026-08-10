@@ -735,6 +735,38 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test norm(y_tensor - A_tensor_dense * x) / norm(A_tensor_dense * x) < 1e-13
     end
 
+    @testset "Matrix-free scaled-output exponent range" begin
+        scale_grid = VoxelGrid3D(
+            (0.0, 0.2), (0.0, 0.1), (0.0, 0.1), 2, 1, 1)
+        scale_operator = dda_operator_3d(
+            scale_grid, k0, 2.5 + 0.1im)
+        scale_input = ComplexF64[
+            10 * (sin(0.17 * i) + 1im * cos(0.11 * i))
+            for i in 1:size(scale_operator, 2)
+        ]
+        scale = 1.0e308 + 0im
+
+        for operator in (scale_operator, adjoint(scale_operator))
+            product = operator * scale_input
+            previous = -product
+            @test all(isfinite, product)
+            @test any(!isfinite, scale .* product)
+            reference = setprecision(BigFloat, 4608) do
+                ComplexF64[
+                    Complex{BigFloat}(scale) *
+                        Complex{BigFloat}(product[i]) +
+                    Complex{BigFloat}(scale) *
+                        Complex{BigFloat}(previous[i])
+                    for i in eachindex(product)
+                ]
+            end
+            @test all(isfinite, reference)
+            result = copy(previous)
+            mul!(result, operator, scale_input, scale, scale)
+            @test result == reference
+        end
+    end
+
     @testset "Matrix-free exponent-range cancellation" begin
         component_scale = value ->
             max(abs(real(value)), abs(imag(value)))

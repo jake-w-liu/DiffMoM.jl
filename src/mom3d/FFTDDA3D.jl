@@ -266,9 +266,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                     idx += 1
                     row = _dda_index(idx, a)
                     value = xread[row] - conv[ix, iy, iz]
-                    y[row] = overwrite ?
-                        alpha_scale * value :
-                        alpha_scale * value + beta_scale * y[row]
+                    y[row] = _dda_scaled_output_3d(
+                        value, y[row], alpha_scale, beta_scale,
+                        overwrite, row)
                 end
             end
         end
@@ -498,9 +498,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                     idx += 1
                     row = _em_index(idx, a)
                     value = xread[row] - conv[ix, iy, iz]
-                    y[row] = overwrite ?
-                        alpha_scale * value :
-                        alpha_scale * value + beta_scale * y[row]
+                    y[row] = _dda_scaled_output_3d(
+                        value, y[row], alpha_scale, beta_scale,
+                        overwrite, row)
                 end
             end
         end

@@ -25,11 +25,68 @@ const _CMat3DDA = SMatrix{3,3,ComplexF64,9}
 # A floatmax-scale sum can cancel to the smallest Float64 subnormal, spanning
 # 2099 binary orders of magnitude. Keep a guard margin for products and sums.
 const _DDA_ACCUMULATION_FALLBACK_PRECISION = 2304
+# A component of αv + βy contains four products of Float64 components. Their
+# exact binary terms can span bit positions -2148 through 2049, requiring at
+# most 4198 significant bits after cancellation. Keep a guard margin while
+# confining the allocation-heavy path to exceptional exponent ranges.
+const _DDA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
 
 @inline _dda_index(voxel::Int, comp::Int) = 3 * (voxel - 1) + comp
 
 @inline _dda_voxel(linear_index::Int) = div(linear_index - 1, 3) + 1
 @inline _dda_component(linear_index::Int) = mod(linear_index - 1, 3) + 1
+
+@noinline function _dda_scaled_output_bigfloat_3d(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    return setprecision(
+            BigFloat, _DDA_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(alpha_scale) *
+                Complex{BigFloat}(value)
+        if !overwrite
+            total += Complex{BigFloat}(beta_scale) *
+                     Complex{BigFloat}(previous)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "DDA-family scaled output is outside the representable " *
+                "ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@inline function _dda_scaled_output_3d(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    alpha_term = alpha_scale * value
+    if overwrite
+        converted = ComplexF64(alpha_term)
+        return isfinite(converted) ? converted :
+               _dda_scaled_output_bigfloat_3d(
+                   value, previous, alpha_scale, beta_scale, true, row)
+    end
+
+    beta_term = beta_scale * previous
+    combined = alpha_term + beta_term
+    magnitude_sum =
+        max(abs(real(alpha_term)), abs(imag(alpha_term))) +
+        max(abs(real(beta_term)), abs(imag(beta_term)))
+    converted = ComplexF64(combined)
+    if isfinite(converted) && isfinite(magnitude_sum)
+        return converted
+    end
+    return _dda_scaled_output_bigfloat_3d(
+        value, previous, alpha_scale, beta_scale, false, row)
+end
 
 @inline function _finite_nonnegative_k0_3d(k0::Real)
     k = Float64(k0)
@@ -1068,9 +1125,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
         for a in 1:3
             idx = _dda_index(i, a)
-            y[idx] = overwrite ?
-                alpha_scale * Ei[a] :
-                alpha_scale * Ei[a] + beta_scale * y[idx]
+            y[idx] = _dda_scaled_output_3d(
+                Ei[a], y[idx], alpha_scale, beta_scale, overwrite, idx)
         end
     end
     return y
@@ -1144,9 +1200,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
         for a in 1:3
             idx = _dda_index(i, a)
-            y[idx] = overwrite ?
-                alpha_scale * Ei[a] :
-                alpha_scale * Ei[a] + beta_scale * y[idx]
+            y[idx] = _dda_scaled_output_3d(
+                Ei[a], y[idx], alpha_scale, beta_scale, overwrite, idx)
         end
     end
     return y

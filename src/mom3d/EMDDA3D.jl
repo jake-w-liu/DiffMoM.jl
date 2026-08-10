@@ -626,12 +626,10 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         for a in 1:3
             idx_e = _em_index(i, a)
             idx_h = _em_index(i, a + 3)
-            y[idx_e] = overwrite ?
-                alpha_scale * Ei[a] :
-                alpha_scale * Ei[a] + beta_scale * y[idx_e]
-            y[idx_h] = overwrite ?
-                alpha_scale * Hi[a] :
-                alpha_scale * Hi[a] + beta_scale * y[idx_h]
+            y[idx_e] = _dda_scaled_output_3d(
+                Ei[a], y[idx_e], alpha_scale, beta_scale, overwrite, idx_e)
+            y[idx_h] = _dda_scaled_output_3d(
+                Hi[a], y[idx_h], alpha_scale, beta_scale, overwrite, idx_h)
         end
     end
     return y

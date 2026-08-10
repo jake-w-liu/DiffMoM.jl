@@ -325,6 +325,50 @@ end
         [x_em, (0.2 - 0.3im) .* x_em, reverse(x_em), conj.(x_em)],
     )
 
+    @testset "Scaled-output exponent range" begin
+        scale_grid = VoxelGrid3D(
+            (0.0, 0.2), (0.0, 0.1), (0.0, 0.1), 2, 1, 1)
+        operators_and_inputs = (
+            (
+                fft_dda_operator_3d(
+                    scale_grid, k0, 2.5 + 0.1im),
+                ComplexF64[
+                    10 * (sin(0.17 * i) + 1im * cos(0.11 * i))
+                    for i in 1:6
+                ],
+            ),
+            (
+                fft_em_dda_operator_3d(
+                    scale_grid, k0, 2.5 + 0.1im, 1.3 + 0.02im),
+                ComplexF64[
+                    10 * (sin(0.17 * i) + 1im * cos(0.11 * i))
+                    for i in 1:12
+                ],
+            ),
+        )
+        scale = 1.0e308 + 0im
+
+        for (operator, input) in operators_and_inputs
+            product = operator * input
+            previous = -product
+            @test all(isfinite, product)
+            @test any(!isfinite, scale .* product)
+            reference = setprecision(BigFloat, 4608) do
+                ComplexF64[
+                    Complex{BigFloat}(scale) *
+                        Complex{BigFloat}(product[i]) +
+                    Complex{BigFloat}(scale) *
+                        Complex{BigFloat}(previous[i])
+                    for i in eachindex(product)
+                ]
+            end
+            @test all(isfinite, reference)
+            result = copy(previous)
+            mul!(result, operator, input, scale, scale)
+            @test result == reference
+        end
+    end
+
     E_inc, H_inc = planewave_em_dda_3d(
         single, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
     )
