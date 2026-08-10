@@ -35,6 +35,31 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
     lambda = solve_dda_adjoint_3d(res, weights .* E)
     grad = gradient_epsr_dda_3d(res, lambda)
 
+    tiny_scale = nextfloat(0.0)
+    tiny_rhs = floatmin(Float64)
+    tiny_grid = VoxelGrid3D(
+        (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+    tiny_matrix = Matrix(Diagonal(fill(ComplexF64(tiny_scale), 3)))
+    tiny_result = DDAResult3D(
+        [CVec3(0im, 0im, 0im)],
+        [CVec3(0im, 0im, 0im)],
+        ComplexF64[1.0],
+        ComplexF64[1.0],
+        tiny_matrix,
+        lu(tiny_matrix),
+        :direct,
+        nothing,
+        tiny_grid,
+        1.0,
+        false,
+    )
+    tiny_reference = setprecision(BigFloat, 4096) do
+        fill(ComplexF64(BigFloat(tiny_rhs) / BigFloat(tiny_scale)), 3)
+    end
+    @test tiny_reference == fill(ComplexF64(2.0^52), 3)
+    @test solve_dda_adjoint_3d(
+        tiny_result, fill(ComplexF64(tiny_rhs), 3)) == tiny_reference
+
     h = 1e-6
     grad_fd = similar(grad)
     for j in eachindex(epsr)

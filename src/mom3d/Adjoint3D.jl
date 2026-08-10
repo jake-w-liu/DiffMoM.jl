@@ -57,7 +57,15 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
         # Reuse the stored LU factorization of A when available: solving A' x = rhs
         # from existing factors is O(N^2) and numerically identical to refactorizing
         # adjoint(res.A), which is O(N^3) per call (costly in optimization loops).
-        lambda = res.A_LU === nothing ? (adjoint(res.A) \ rhs) : (res.A_LU' \ rhs)
+        adjoint_A = adjoint(res.A)
+        adjoint_factorization = res.A_LU === nothing ?
+                                lu(adjoint_A) : adjoint(res.A_LU)
+        lambda = _solve_factored_linear_system(
+            adjoint_factorization,
+            adjoint_A,
+            rhs,
+            "direct DDA adjoint solution",
+        )
         return Vector{ComplexF64}(_assert_finite_linear_vector(
             lambda, "direct DDA adjoint solution"))
     elseif solver == :gmres
