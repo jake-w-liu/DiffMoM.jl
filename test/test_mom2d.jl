@@ -402,6 +402,29 @@ end
             imag(scattered), imag(scattered_reference); rtol=2e-15)
     end
 
+    @testset "Ill-conditioned VIE solve accuracy" begin
+        mesh = Mesh2D((0.0, 1.0), (0.0, 0.5), 2, 1)
+        k0 = 1e150
+        chi = [-1e-240, 1e60]
+        Z, _ = assemble_vie_2d(mesh, k0, chi)
+
+        # The right-hand side is exactly the second stored matrix column, so
+        # the exact solution of the stored system is the second unit vector.
+        # Working-precision LU loses the first component by about 267 orders
+        # of magnitude because this matrix has reciprocal condition ~1e-300.
+        E_inc = copy(@view Z[:, 2])
+        vr = solve_vie_2d(mesh, k0, chi, E_inc)
+        reference = setprecision(BigFloat, 4096) do
+            Z_big = Complex{BigFloat}.(Z)
+            rhs_big = Complex{BigFloat}.(E_inc)
+            ComplexF64.(Z_big \ rhs_big)
+        end
+
+        @test reference == ComplexF64[0.0, 1.0]
+        @test vr.E_total == reference
+        @test all(isfinite, vr.E_total)
+    end
+
     @testset "Plane wave excitation" begin
         mesh = Mesh2D((-1.0, 1.0), (-1.0, 1.0), 4, 4)
         k0 = 2π

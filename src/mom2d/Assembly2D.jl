@@ -11,6 +11,8 @@ export assemble_vie_2d, solve_vie_2d
 const _VIE_PRODUCT_FALLBACK_PRECISION_2D = 256
 const _VIE_RHS_SCALE_LOWER_2D = sqrt(floatmin(Float64))
 const _VIE_RHS_SCALE_UPPER_2D = sqrt(floatmax(Float64))
+const _VIE_SOLVE_MIN_FALLBACK_PRECISION_2D = 256
+const _VIE_SOLVE_FALLBACK_GUARD_BITS_2D = 128
 
 @inline _complex_component_scale_2d(value::ComplexF64) =
     max(abs(real(value)), abs(imag(value)))
@@ -28,9 +30,50 @@ end
     return real_ok && imag_ok
 end
 
+function _vie_reciprocal_condition_2d(factorization, Z::Matrix{ComplexF64})
+    matrix_norm = opnorm(Z, 1)
+    isfinite(matrix_norm) || return 0.0
+    iszero(matrix_norm) && return 0.0
+    reciprocal_condition = LinearAlgebra.LAPACK.gecon!(
+        '1', factorization.factors, matrix_norm)
+    isfinite(reciprocal_condition) || return 0.0
+    return reciprocal_condition
+end
+
+@noinline function _solve_vie_high_precision_2d(
+        Z::Matrix{ComplexF64},
+        E_inc::AbstractVector{ComplexF64},
+        reciprocal_condition::Float64)
+    reciprocal_condition > 0.0 ||
+        error(
+            "solve_vie_2d system is too ill-conditioned for a reliable " *
+            "Float64 reciprocal-condition estimate.")
+    condition_bits = ceil(Int, -log2(reciprocal_condition))
+    precision_bits = max(
+        _VIE_SOLVE_MIN_FALLBACK_PRECISION_2D,
+        condition_bits + _VIE_SOLVE_FALLBACK_GUARD_BITS_2D)
+    return setprecision(BigFloat, precision_bits) do
+        Z_big = Complex{BigFloat}.(Z)
+        rhs_big = Complex{BigFloat}.(E_inc)
+        solution_big = ldiv!(lu(Z_big), rhs_big)
+        solution = ComplexF64.(solution_big)
+        all(isfinite, solution) ||
+            error(
+                "solve_vie_2d high-precision solution is outside the " *
+                "representable ComplexF64 range.")
+        return solution
+    end
+end
+
 function _solve_vie_factored_2d(
         factorization,
+        Z::Matrix{ComplexF64},
         E_inc::AbstractVector{ComplexF64})
+    reciprocal_condition = _vie_reciprocal_condition_2d(factorization, Z)
+    reciprocal_condition <= eps(Float64) &&
+        return _solve_vie_high_precision_2d(
+            Z, E_inc, reciprocal_condition)
+
     rhs_scale = 0.0
     @inbounds for value in E_inc
         rhs_scale = max(rhs_scale, _complex_component_scale_2d(value))
@@ -312,7 +355,7 @@ function solve_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
     Z_lu = lu(Z)
     issuccess(Z_lu) ||
         error("solve_vie_2d system matrix factorization failed.")
-    E_total = _solve_vie_factored_2d(Z_lu, E_inc)
+    E_total = _solve_vie_factored_2d(Z_lu, Z, E_inc)
     all(isfinite, E_total) ||
         error("solve_vie_2d produced non-finite total-field values.")
 
