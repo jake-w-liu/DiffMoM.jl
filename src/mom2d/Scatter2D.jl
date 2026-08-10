@@ -6,6 +6,36 @@
 
 export scattered_field_2d, green_obs_matrix, jacobian_scattered_field_2d
 
+@noinline function _jacobian_scattered_field_high_precision_2d(
+        vr::VIEResult2D,
+        G_obs::Matrix{ComplexF64},
+        reciprocal_condition::Float64)
+    precision_bits = _vie_solve_fallback_precision_2d(
+        reciprocal_condition, "jacobian_scattered_field_2d")
+    return setprecision(BigFloat, precision_bits) do
+        Z_big = Complex{BigFloat}.(vr.Z)
+        sensitivity_transpose = ldiv!(
+            lu(Z_big), Complex{BigFloat}.(transpose(G_obs)))
+        k0_squared_area = BigFloat(vr.k0)^2 * BigFloat(vr.mesh.cell_area)
+        M, N = size(G_obs)
+        J = Matrix{ComplexF64}(undef, M, N)
+        @inbounds for p in 1:N
+            field = Complex{BigFloat}(vr.E_total[p])
+            for m in 1:M
+                value = k0_squared_area * field *
+                        sensitivity_transpose[p, m]
+                converted = ComplexF64(value)
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "jacobian_scattered_field_2d entry is outside the " *
+                        "representable ComplexF64 range at ($m, $p)."))
+                J[m, p] = converted
+            end
+        end
+        return J
+    end
+end
+
 """
     green_obs_matrix(r_obs, mesh, k0)
 
@@ -169,24 +199,33 @@ function jacobian_scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2
     # W = I + k₀² diag(χ) Z⁻¹D. Forming it that way can underflow Z⁻¹D
     # before the product is rescaled, or lose W through cancellation. Since
     # D is reciprocal (Dᵀ = D), the push-through identity gives
-    # W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ. Solving the transposed system directly
-    # preserves the available exponent range and needs only one N×N workspace.
-    W = Matrix{ComplexF64}(I, N, N)
-    ldiv!(transpose(vr.Z_LU), W)
+    # W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ. Evaluate G_obs*W through
+    # (G_obs*Z⁻ᵀ)ᵀ = Z⁻¹*G_obsᵀ. This reuses the cached forward LU and needs
+    # an N×M workspace instead of materializing the N×N inverse.
+    reciprocal_condition = _vie_reciprocal_condition_2d(vr.Z_LU, vr.Z)
+    if reciprocal_condition <= eps(Float64)
+        J = _jacobian_scattered_field_high_precision_2d(
+            vr, G_obs, reciprocal_condition)
+        return J, G_obs
+    end
+    sensitivity_transpose = Matrix(transpose(G_obs))
+    sensitivity_transpose = _solve_vie_factored_2d!(
+        sensitivity_transpose, vr.Z_LU, vr.Z,
+        "jacobian_scattered_field_2d", reciprocal_condition)
 
-    # J = k₀² A × G_obs × W × diag(E). Multiply directly into J rather
-    # than materializing a separate G_obs*W matrix.
+    # J = k₀² A × (G_obs × W) × diag(E).
     J = Matrix{ComplexF64}(undef, M, N)
-    mul!(J, G_obs, W)
     @inbounds for p in 1:N
         for m in 1:M
             J[m, p] = if stored_square_usable
                 _range_safe_product_2d(
-                    k0sq, A, vr.E_total[p], J[m, p],
+                    k0sq, A, vr.E_total[p],
+                    sensitivity_transpose[p, m],
                     "jacobian_scattered_field_2d entry")
             else
                 _range_safe_product_2d(
-                    vr.k0, vr.k0, vr.E_total[p], J[m, p], A,
+                    vr.k0, vr.k0, vr.E_total[p],
+                    sensitivity_transpose[p, m], A,
                     "jacobian_scattered_field_2d entry")
             end
         end

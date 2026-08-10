@@ -16,6 +16,11 @@ function _complex_matrix_allocation_2d(m::Int, n::Int)
     return @allocated Matrix{ComplexF64}(undef, m, n)
 end
 
+function _real_vector_allocation_2d(n::Int)
+    zeros(Float64, n)
+    return @allocated zeros(Float64, n)
+end
+
 @testset "2D TM MoM" begin
 
     @testset "Mesh2D construction" begin
@@ -423,6 +428,22 @@ end
         @test reference == ComplexF64[0.0, 1.0]
         @test vr.E_total == reference
         @test all(isfinite, vr.E_total)
+
+        observation = [Vec2(2.0, 0.25)]
+        J, G_obs = jacobian_scattered_field_2d(vr, observation)
+        jacobian_reference = setprecision(BigFloat, 4096) do
+            Z_big = Complex{BigFloat}.(Z)
+            G_big = Complex{BigFloat}.(G_obs)
+            E_big = Complex{BigFloat}.(vr.E_total)
+            sensitivity_transpose = Z_big \ transpose(G_big)
+            ComplexF64.(
+                BigFloat(k0)^2 * BigFloat(mesh.cell_area) .*
+                transpose(sensitivity_transpose) .* transpose(E_big))
+        end
+
+        @test !iszero(jacobian_reference[1, 2])
+        @test J == jacobian_reference
+        @test all(isfinite, J)
     end
 
     @testset "Plane wave excitation" begin
@@ -670,8 +691,9 @@ end
             vr, [Vec2(NaN, 0.0)])
 
         # Scattered-field evaluation streams Green-function values and should
-        # allocate only its returned vector. The Jacobian needs exactly its
-        # returned G_obs/J matrices plus one N×N sensitivity workspace.
+        # allocate only its returned vector. The Jacobian needs its returned
+        # G_obs/J matrices, one N×M transposed-sensitivity workspace, and the
+        # O(N) LAPACK reciprocal-condition work vectors.
         scattered_field_2d(vr, r_obs)
         jacobian_scattered_field_2d(vr, r_obs)
         scattered_alloc = @allocated scattered_field_2d(vr, r_obs)
@@ -679,11 +701,12 @@ end
         vector_output_alloc = _complex_vector_allocation_2d(length(r_obs))
         rectangular_output_alloc =
             _complex_matrix_allocation_2d(length(r_obs), mesh.ncells)
-        square_workspace_alloc =
-            _complex_matrix_allocation_2d(mesh.ncells, mesh.ncells)
+        condition_workspace_alloc =
+            _complex_vector_allocation_2d(2 * mesh.ncells) +
+            _real_vector_allocation_2d(2 * mesh.ncells)
         @test scattered_alloc <= vector_output_alloc + 128
         @test jacobian_alloc <=
-              2 * rectangular_output_alloc + square_workspace_alloc + 2048
+              3 * rectangular_output_alloc + condition_workspace_alloc + 512
 
         # Verify 5 random cells against finite differences
         delta = 1e-7
