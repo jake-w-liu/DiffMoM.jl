@@ -143,6 +143,39 @@ function _bigfloat_matvec_reference(
     end
 end
 
+function _bigfloat_sie_matvec_reference(
+        operator::MatrixFreeDielectricSIE3D,
+        input::AbstractVector{ComplexF64})
+    N = div(length(input), 2)
+    J = copy(@view input[1:N])
+    M = copy(@view input[(N + 1):(2N)])
+    Ze_ext_J = operator.Ze_ext * J
+    Ze_int_J = operator.Ze_int * J
+    K_ext_M = operator.K_ext * M
+    K_int_M = operator.K_int * M
+    K_ext_J = operator.K_ext * J
+    K_int_J = operator.K_int * J
+    Zh_ext_M = operator.Zh_ext * M
+    Zh_int_M = operator.Zh_int * M
+    Gram_M = operator.c_g_e != 0 ? operator.Gram * M : zeros(ComplexF64, N)
+    Gram_J = operator.c_g_h != 0 ? operator.Gram * J : zeros(ComplexF64, N)
+    return setprecision(BigFloat, 4096) do
+        electric =
+            Complex{BigFloat}(operator.c_ze_ext) .* Complex{BigFloat}.(Ze_ext_J) .+
+            Complex{BigFloat}(operator.c_ze_int) .* Complex{BigFloat}.(Ze_int_J) .-
+            Complex{BigFloat}(operator.c_ze_ext) .* Complex{BigFloat}.(K_ext_M) .-
+            Complex{BigFloat}(operator.c_ze_int) .* Complex{BigFloat}.(K_int_M) .+
+            Complex{BigFloat}(operator.c_g_e) .* Complex{BigFloat}.(Gram_M)
+        magnetic =
+            Complex{BigFloat}(operator.c_zh_ext) .* Complex{BigFloat}.(K_ext_J) .+
+            Complex{BigFloat}(operator.c_zh_int) .* Complex{BigFloat}.(K_int_J) .+
+            Complex{BigFloat}(operator.c_zh_ext) .* Complex{BigFloat}.(Zh_ext_M) .+
+            Complex{BigFloat}(operator.c_zh_int) .* Complex{BigFloat}.(Zh_int_M) .+
+            Complex{BigFloat}(operator.c_g_h) .* Complex{BigFloat}.(Gram_J)
+        return ComplexF64.(vcat(electric, magnetic))
+    end
+end
+
 function _test_shared_sie_operator_concurrency(A, dense_A, inputs)
     references = [dense_A * input for input in inputs]
     Threads.nthreads() > 1 || return
@@ -335,6 +368,22 @@ end
     @test all(isfinite, extreme_efie_adjoint_reference)
     @test adjoint(Ze_mf) * extreme_efie_adjoint_input ==
           extreme_efie_adjoint_reference
+
+    extreme_sie_input = _extreme_cancelling_matvec_input(
+        Matrix(A_pm_mf), 1, (6, 4, 9); fraction=0.51)
+    extreme_sie_terms = Matrix(A_pm_mf) .* transpose(extreme_sie_input)
+    extreme_sie_reference = _bigfloat_sie_matvec_reference(
+        A_pm_mf, extreme_sie_input)
+    extreme_sie_dense_reference = _bigfloat_matvec_reference(
+        Matrix(A_pm_mf), extreme_sie_input)
+    @test all(isfinite, extreme_sie_input)
+    @test all(isfinite, extreme_sie_terms)
+    @test all(isfinite, extreme_sie_reference)
+    extreme_sie_result = A_pm_mf * extreme_sie_input
+    @test all(isfinite, extreme_sie_result)
+    @test extreme_sie_result[1] == extreme_sie_reference[1]
+    @test extreme_sie_result ≈ extreme_sie_reference rtol=2e-15
+    @test extreme_sie_result ≈ extreme_sie_dense_reference rtol=2e-15
 
     x = ComplexF64[sin(0.11 * i) + 1im * cos(0.07 * i) for i in 1:2N]
     y_mf = zeros(ComplexF64, 2N)

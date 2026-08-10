@@ -773,6 +773,80 @@ end
     return nothing
 end
 
+@noinline function _surface_sie_block_sum_bigfloat_3d(
+        A::MatrixFreeDielectricSIE3D,
+        row::Int,
+        electric_row::Bool)
+    return setprecision(BigFloat, _MFIE_MATVEC_FALLBACK_PRECISION_3D) do
+        total = if electric_row
+            Complex{BigFloat}(A.c_ze_ext) *
+                Complex{BigFloat}(A.tmp1[row]) +
+            Complex{BigFloat}(A.c_ze_int) *
+                Complex{BigFloat}(A.tmp2[row]) -
+            Complex{BigFloat}(A.c_ze_ext) *
+                Complex{BigFloat}(A.tmp3[row]) -
+            Complex{BigFloat}(A.c_ze_int) *
+                Complex{BigFloat}(A.tmp4[row]) +
+            Complex{BigFloat}(A.c_g_e) *
+                Complex{BigFloat}(A.tmp5[row])
+        else
+            Complex{BigFloat}(A.c_zh_ext) *
+                Complex{BigFloat}(A.tmp1[row]) +
+            Complex{BigFloat}(A.c_zh_int) *
+                Complex{BigFloat}(A.tmp2[row]) +
+            Complex{BigFloat}(A.c_zh_ext) *
+                Complex{BigFloat}(A.tmp3[row]) +
+            Complex{BigFloat}(A.c_zh_int) *
+                Complex{BigFloat}(A.tmp4[row]) +
+            Complex{BigFloat}(A.c_g_h) *
+                Complex{BigFloat}(A.tmp5[row])
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "matrix-free dielectric SIE block output is outside the " *
+                "representable ComplexF64 range at row " *
+                "$(electric_row ? row : length(A.tmp1) + row)."))
+        return converted
+    end
+end
+
+@inline function _surface_sie_block_sum_3d(
+        A::MatrixFreeDielectricSIE3D,
+        row::Int,
+        electric_row::Bool)
+    terms = if electric_row
+        (
+            A.c_ze_ext * A.tmp1[row],
+            A.c_ze_int * A.tmp2[row],
+            -A.c_ze_ext * A.tmp3[row],
+            -A.c_ze_int * A.tmp4[row],
+            A.c_g_e * A.tmp5[row],
+        )
+    else
+        (
+            A.c_zh_ext * A.tmp1[row],
+            A.c_zh_int * A.tmp2[row],
+            A.c_zh_ext * A.tmp3[row],
+            A.c_zh_int * A.tmp4[row],
+            A.c_g_h * A.tmp5[row],
+        )
+    end
+
+    value = zero(ComplexF64)
+    magnitude_sum = 0.0
+    @inbounds for term in terms
+        next_value = value + term
+        magnitude_sum += max(abs(real(term)), abs(imag(term)))
+        if !isfinite(next_value) || !isfinite(magnitude_sum)
+            return _surface_sie_block_sum_bigfloat_3d(
+                A, row, electric_row)
+        end
+        value = next_value
+    end
+    return value
+end
+
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::MatrixFreeDielectricSIE3D,
                             x::AbstractVector{ComplexF64},
@@ -807,11 +881,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             mul!(A.tmp5, A.Gram, A.work_M)
         end
         @inbounds for j in 1:N
-            v = A.c_ze_ext * A.tmp1[j] + A.c_ze_int * A.tmp2[j] -
-                (A.c_ze_ext * A.tmp3[j] + A.c_ze_int * A.tmp4[j])
-            if A.c_g_e != 0
-                v += A.c_g_e * A.tmp5[j]
-            end
+            v = _surface_sie_block_sum_3d(A, j, true)
             y[j] = overwrite ?
                 alpha_scale * v :
                 alpha_scale * v + beta_scale * y[j]
@@ -827,11 +897,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             mul!(A.tmp5, A.Gram, A.work_J)
         end
         @inbounds for j in 1:N
-            v = A.c_zh_ext * A.tmp1[j] + A.c_zh_int * A.tmp2[j] +
-                A.c_zh_ext * A.tmp3[j] + A.c_zh_int * A.tmp4[j]
-            if A.c_g_h != 0
-                v += A.c_g_h * A.tmp5[j]
-            end
+            v = _surface_sie_block_sum_3d(A, j, false)
             idx = N + j
             y[idx] = overwrite ?
                 alpha_scale * v :
