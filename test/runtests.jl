@@ -2044,6 +2044,89 @@ Mp_pre, fac_pre = transform_patch_matrices(
     Mp; preconditioner_M=ones(ComplexF64, N + 1, N + 1))
 @test_throws ArgumentError transform_patch_matrices(
     Mp; preconditioner_M=bad_preconditioner_probe)
+
+conditioning_tiny_scale = nextfloat(0.0)
+conditioning_rhs_scale = floatmin(Float64)
+conditioning_preconditioner = Matrix(Diagonal(
+    fill(ComplexF64(conditioning_tiny_scale), 2)))
+conditioning_rhs_matrix = Matrix(Diagonal(
+    fill(ComplexF64(conditioning_rhs_scale), 2)))
+conditioning_rhs_vector = fill(ComplexF64(conditioning_rhs_scale), 2)
+conditioning_reference_scale = setprecision(BigFloat, 4096) do
+    Float64(BigFloat(conditioning_rhs_scale) /
+            BigFloat(conditioning_tiny_scale))
+end
+@test conditioning_reference_scale == 2.0^52
+conditioning_reference_matrix = Matrix(Diagonal(
+    fill(ComplexF64(conditioning_reference_scale), 2)))
+conditioning_reference_vector = fill(
+    ComplexF64(conditioning_reference_scale), 2)
+
+conditioning_Mp, conditioning_factor = transform_patch_matrices(
+    [conditioning_rhs_matrix];
+    preconditioner_M=conditioning_preconditioner,
+)
+@test conditioning_Mp[1] == conditioning_reference_matrix
+conditioning_Mp_factor_only, _ = transform_patch_matrices(
+    [conditioning_rhs_matrix];
+    preconditioner_factor=conditioning_factor,
+)
+@test conditioning_Mp_factor_only[1] == conditioning_reference_matrix
+
+conditioning_Z, conditioning_v, _ = prepare_conditioned_system(
+    conditioning_rhs_matrix,
+    conditioning_rhs_vector;
+    preconditioner_M=conditioning_preconditioner,
+)
+@test conditioning_Z == conditioning_reference_matrix
+@test conditioning_v == conditioning_reference_vector
+conditioning_Z_factor_only, conditioning_v_factor_only, _ =
+    prepare_conditioned_system(
+        conditioning_rhs_matrix,
+        conditioning_rhs_vector;
+        preconditioner_factor=conditioning_factor,
+    )
+@test conditioning_Z_factor_only == conditioning_reference_matrix
+@test conditioning_v_factor_only == conditioning_reference_vector
+conditioning_Z_regularized, conditioning_v_regularized, _ =
+    prepare_conditioned_system(
+        zeros(ComplexF64, 2, 2),
+        conditioning_rhs_vector;
+        regularization_alpha=1.0,
+        regularization_R=conditioning_rhs_matrix,
+        preconditioner_M=conditioning_preconditioner,
+    )
+@test conditioning_Z_regularized == conditioning_reference_matrix
+@test conditioning_v_regularized == conditioning_reference_vector
+
+conditioning_zero_Mp = [zeros(ComplexF64, 2, 2)]
+conditioning_zero_Q = zeros(ComplexF64, 2, 2)
+conditioning_theta, conditioning_trace = optimize_lbfgs(
+    conditioning_rhs_matrix,
+    conditioning_zero_Mp,
+    conditioning_rhs_vector,
+    conditioning_zero_Q,
+    [0.0];
+    maxiter=1,
+    verbose=false,
+    preconditioner_M=conditioning_preconditioner,
+)
+@test conditioning_theta == [0.0]
+@test conditioning_trace[1].J == 0.0
+conditioning_directivity_theta, conditioning_directivity_trace =
+    optimize_directivity(
+        conditioning_rhs_matrix,
+        conditioning_zero_Mp,
+        conditioning_rhs_vector,
+        conditioning_zero_Q,
+        Matrix{ComplexF64}(I, 2, 2),
+        [0.0];
+        maxiter=1,
+        verbose=false,
+        preconditioner_M=conditioning_preconditioner,
+    )
+@test conditioning_directivity_theta == [0.0]
+@test conditioning_directivity_trace[1].J == 0.0
 lambda_pre = solve_adjoint(Z_pre, Q, I_pre)
 g_pre = gradient_impedance(Mp_pre, I_pre, lambda_pre)
 

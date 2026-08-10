@@ -53,6 +53,24 @@ end
     return vector
 end
 
+@inline function _assert_finite_linear_array(
+    array::AbstractArray,
+    label::AbstractString,
+)
+    @inbounds for index in eachindex(array)
+        isfinite(array[index]) ||
+            error("$label contains a non-finite value at index $index: $(array[index])")
+    end
+    return array
+end
+
+@inline function _linear_array_is_finite(array::AbstractArray)
+    @inbounds for value in array
+        isfinite(value) || return false
+    end
+    return true
+end
+
 # A finite Float64 is an integer multiple of 2^-1074 with an integer
 # coefficient of at most 2098 bits. A product therefore needs at most 4196
 # bits, and summing both real products of every complex term across any
@@ -176,7 +194,7 @@ end
 
 @noinline function _solve_scaled_ieee_linear_system(
     matrix::AbstractMatrix{<:Number},
-    rhs::AbstractVector{<:Number},
+    rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
     ::Type{T},
     label::AbstractString,
 ) where {T<:Number}
@@ -195,21 +213,21 @@ end
         scaled_matrix[row, column] = _ldexp_ieee_value(
             matrix[row, column], -matrix_exponent, T)
     end
-    scaled_rhs = Vector{T}(undef, length(rhs))
+    scaled_rhs = Array{T}(undef, size(rhs))
     @inbounds for index in eachindex(rhs)
         scaled_rhs[index] = _ldexp_ieee_value(
             rhs[index], -rhs_exponent, T)
     end
 
     scaled_solution = lu(scaled_matrix) \ scaled_rhs
-    _assert_finite_linear_vector(
+    _assert_finite_linear_array(
         scaled_solution, "$label scaled intermediate")
     solution_exponent = rhs_exponent - matrix_exponent
     @inbounds for index in eachindex(scaled_solution)
         scaled_solution[index] = _ldexp_ieee_value(
             scaled_solution[index], solution_exponent, T)
     end
-    return _assert_finite_linear_vector(scaled_solution, label)
+    return _assert_finite_linear_array(scaled_solution, label)
 end
 
 @inline function _recoverable_direct_solve_error(err)
@@ -222,7 +240,7 @@ end
 function _solve_factored_linear_system(
     factorization,
     matrix::AbstractMatrix{<:Number},
-    rhs::AbstractVector{<:Number},
+    rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
     label::AbstractString,
 )
     scalar_type = promote_type(eltype(matrix), eltype(rhs))
@@ -241,12 +259,64 @@ function _solve_factored_linear_system(
     @inbounds for value in solution
         if !isfinite(value)
             use_ieee_scaling ||
-                return _assert_finite_linear_vector(solution, label)
+                return _assert_finite_linear_array(solution, label)
             return _solve_scaled_ieee_linear_system(
                 matrix, rhs, scalar_type, label)
         end
     end
     return solution
+end
+
+
+@noinline function _factorization_matrix_for_fallback(
+    factorization,
+    label::AbstractString,
+)
+    matrix = Matrix(factorization)
+    size(matrix, 1) == size(matrix, 2) ||
+        throw(DimensionMismatch(
+            "$label factorization reconstructed a non-square matrix of size $(size(matrix))"))
+    _validate_known_matrix_entries(matrix, "$label factorization matrix")
+    return matrix
+end
+
+function _solve_factored_linear_system!(
+    destination::Union{AbstractVector{T},AbstractMatrix{T}},
+    factorization,
+    matrix::Union{Nothing,AbstractMatrix{<:Number}},
+    rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
+    label::AbstractString,
+) where {T<:Number}
+    size(destination) == size(rhs) ||
+        throw(DimensionMismatch(
+            "$label destination has size $(size(destination)), expected $(size(rhs))"))
+    copyto!(destination, rhs)
+
+    solve_error = nothing
+    solution = try
+        _ldiv_reusing_input(factorization, destination)
+    catch err
+        _recoverable_direct_solve_error(err) || rethrow()
+        solve_error = err
+        nothing
+    end
+    solution !== nothing && _linear_array_is_finite(solution) &&
+        return solution
+
+    fallback_matrix = matrix === nothing ?
+                      _factorization_matrix_for_fallback(
+                          factorization, label) : matrix
+    scalar_type = promote_type(eltype(fallback_matrix), eltype(rhs), T)
+    real_type = typeof(real(zero(scalar_type)))
+    use_ieee_scaling = real_type <: Union{Float32,Float64} &&
+                       scalar_type <:
+                           Union{Float32,Float64,ComplexF32,ComplexF64}
+    if !use_ieee_scaling
+        solve_error === nothing || throw(solve_error)
+        return _assert_finite_linear_array(solution, label)
+    end
+    return _solve_scaled_ieee_linear_system(
+        fallback_matrix, rhs, scalar_type, label)
 end
 
 """
@@ -578,10 +648,14 @@ function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
 
     Mp_tilde = Vector{Matrix{ComplexF64}}(undef, length(Mp))
     @inbounds for p in eachindex(Mp)
-        transformed = Matrix{ComplexF64}(Mp[p])
-        Mp_tilde[p] = _ldiv_reusing_input(fac, transformed)
-        all(isfinite, Mp_tilde[p]) ||
-            error("transformed patch matrix $p contains non-finite values")
+        transformed = Matrix{ComplexF64}(undef, N, N)
+        Mp_tilde[p] = _solve_factored_linear_system!(
+            transformed,
+            fac,
+            preconditioner_matrix,
+            Mp[p],
+            "transformed patch matrix $p",
+        )
     end
     return Mp_tilde, fac
 end
@@ -615,6 +689,7 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
             "regularization_alpha must be finite and nonnegative, got $regularization_alpha"))
     Z_eff = Matrix{ComplexF64}(Z_raw)
     rhs_eff = Vector{ComplexF64}(rhs)
+    R = nothing
 
     if regularization_alpha > 0.0
         regularization_R === nothing &&
@@ -646,11 +721,37 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
         _validate_conditioning_factor(
             preconditioner_factor, N, "preconditioner_factor")
     end
-    Z_eff = _ldiv_reusing_input(fac, Z_eff)
-    rhs_eff = _ldiv_reusing_input(fac, rhs_eff)
-    all(isfinite, Z_eff) ||
-        error("conditioned system matrix contains non-finite values")
-    all(isfinite, rhs_eff) ||
-        error("conditioned RHS contains non-finite values")
+    conditioned_Z = try
+        _ldiv_reusing_input(fac, Z_eff)
+    catch err
+        _recoverable_direct_solve_error(err) || rethrow()
+        nothing
+    end
+    if conditioned_Z === nothing || !_linear_array_is_finite(conditioned_Z)
+        fallback_matrix = preconditioner_matrix === nothing ?
+                          _factorization_matrix_for_fallback(
+                              fac, "conditioned system matrix") :
+                          preconditioner_matrix
+        original_Z = Matrix{ComplexF64}(Z_raw)
+        if regularization_alpha > 0.0
+            @inbounds @simd for i in eachindex(original_Z, R)
+                original_Z[i] += regularization_alpha * R[i]
+            end
+        end
+        conditioned_Z = _solve_scaled_ieee_linear_system(
+            fallback_matrix,
+            original_Z,
+            ComplexF64,
+            "conditioned system matrix",
+        )
+    end
+    Z_eff = conditioned_Z
+    rhs_eff = _solve_factored_linear_system!(
+        rhs_eff,
+        fac,
+        preconditioner_matrix,
+        rhs,
+        "conditioned RHS",
+    )
     return Z_eff, rhs_eff, fac
 end

@@ -284,7 +284,14 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         Mp;
         preconditioner_M=precond_M_eff,
     )
-    rhs_eff_base = precond_fac === nothing ? Vector{ComplexF64}(v) : (precond_fac \ Vector{ComplexF64}(v))
+    rhs_eff_base = precond_fac === nothing ?
+                   Vector{ComplexF64}(v) :
+                   _solve_factored_linear_system(
+                       precond_fac,
+                       precond_M_eff,
+                       v,
+                       "optimizer conditioned RHS",
+                   )
 
     if solver == :gmres && verbose
         if nf_preconditioner !== nothing
@@ -604,7 +611,14 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         Mp;
         preconditioner_M=precond_M_eff,
     )
-    rhs_eff_base = precond_fac === nothing ? Vector{ComplexF64}(v) : (precond_fac \ Vector{ComplexF64}(v))
+    rhs_eff_base = precond_fac === nothing ?
+                   Vector{ComplexF64}(v) :
+                   _solve_factored_linear_system(
+                       precond_fac,
+                       precond_M_eff,
+                       v,
+                       "directivity optimizer conditioned RHS",
+                   )
 
     if solver == :gmres && verbose
         if nf_preconditioner !== nothing
