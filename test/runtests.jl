@@ -1251,6 +1251,8 @@ pol_mat = pol_linear_x(grid)
 mask = cap_mask(grid; theta_max=30 * π / 180)
 Q = build_Q(G_mat, grid, pol_mat; mask=mask)
 Q_operator = build_Q_operator(G_mat, grid, pol_mat; mask=mask)
+@test length(Q_operator.work) == N
+@test Q_operator.work_lock isa ReentrantLock
 oversized_mask = vcat(mask, true)
 nonfinite_G = copy(G_mat)
 nonfinite_G[1, 1] = ComplexF64(NaN, 0.0)
@@ -1345,6 +1347,76 @@ for q_operator in (Q_operator, Q_sum_operator)
          q_overlap_alpha, q_overlap_beta)
     @test q_overlap_y ≈ q_overlap_expected rtol=1e-12
 end
+
+q_extreme_pol = reshape(ComplexF64[1, 0, 0], 3, 1)
+q_extreme_term = 0.6 * floatmax(Float64)
+q_extreme_G = zeros(ComplexF64, 3, 3)
+q_extreme_G[1, :] .= 1.0 + 0im
+q_extreme_operator = FarFieldQMatrix(
+    q_extreme_G, [1.0], q_extreme_pol, nothing, 3)
+q_extreme_input = ComplexF64[
+    q_extreme_term, q_extreme_term, -q_extreme_term]
+q_extreme_reference_value = setprecision(BigFloat, 4608) do
+    ComplexF64(
+        BigFloat(q_extreme_term) + BigFloat(q_extreme_term) -
+        BigFloat(q_extreme_term))
+end
+@test !isfinite(q_extreme_term + q_extreme_term)
+q_extreme_reference = fill(q_extreme_reference_value, 3)
+q_extreme_result = q_extreme_operator * q_extreme_input
+@test q_extreme_result == q_extreme_reference
+q_extreme_alias = copy(q_extreme_input)
+mul!(q_extreme_alias, q_extreme_operator, q_extreme_alias)
+@test q_extreme_alias == q_extreme_reference
+
+# Exercise the complementary N <= NΩ cold workspace and entry-reduction path
+# with positive quadrature weights. The first row has +t,+t,-t contributions;
+# the second row remains a small finite value.
+q_outer_G = zeros(ComplexF64, 9, 2)
+q_outer_G[1, :] .= ComplexF64[q_extreme_term, 1]
+q_outer_G[4, :] .= ComplexF64[q_extreme_term, 1]
+q_outer_G[7, :] .= ComplexF64[-q_extreme_term, 1]
+q_outer_pol = zeros(ComplexF64, 3, 3)
+q_outer_pol[1, :] .= 1.0 + 0im
+q_outer_operator = FarFieldQMatrix(
+    q_outer_G, ones(3), q_outer_pol, nothing, 2)
+q_outer_input = ComplexF64[0, 1]
+q_outer_reference = ComplexF64[q_extreme_reference_value, 3]
+@test q_outer_operator * q_outer_input == q_outer_reference
+@test q_outer_operator[1, 2] == q_extreme_reference_value
+
+q_scale_operator = FarFieldQMatrix(
+    reshape(ComplexF64[1, 0, 0], 3, 1),
+    [1.0], q_extreme_pol, nothing, 1)
+q_scale_input = ComplexF64[10]
+q_scale_product = q_scale_operator * q_scale_input
+q_scale_previous = -q_scale_product
+q_scale_factor = 1.0e308 + 0im
+@test any(!isfinite, q_scale_factor .* q_scale_product)
+q_scale_reference = setprecision(BigFloat, 4608) do
+    ComplexF64[
+        Complex{BigFloat}(q_scale_factor) *
+            Complex{BigFloat}(q_scale_product[i]) +
+        Complex{BigFloat}(q_scale_factor) *
+            Complex{BigFloat}(q_scale_previous[i])
+        for i in eachindex(q_scale_product)
+    ]
+end
+q_scale_result = copy(q_scale_previous)
+mul!(q_scale_result, q_scale_operator, q_scale_input,
+     q_scale_factor, q_scale_factor)
+@test q_scale_result == q_scale_reference
+q_scale_alias = copy(q_scale_input)
+mul!(q_scale_alias, q_scale_operator, q_scale_alias,
+     q_scale_factor, -q_scale_factor)
+@test q_scale_alias == zeros(ComplexF64, 1)
+@test _assert_zero_allocation_mul!(q_scale_operator, q_scale_input) ==
+      q_scale_product
+
+_assert_shared_workspace_concurrency(
+    fill(Q_operator, 4),
+    [I_pec, (0.2 - 0.3im) .* I_pec, reverse(I_pec), conj.(I_pec)],
+)
 
 # RCS helper checks
 sigma = bistatic_rcs(E_ff; E0=1.0)

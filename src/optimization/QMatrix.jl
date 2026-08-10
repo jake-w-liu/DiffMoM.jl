@@ -18,6 +18,186 @@ struct FarFieldQMatrix <: AbstractMatrix{ComplexF64}
     pol::Matrix{ComplexF64}
     mask::Union{Nothing,BitVector}
     N::Int
+    work::Vector{ComplexF64}
+    work_lock::ReentrantLock
+end
+
+FarFieldQMatrix(G_mat::Matrix{ComplexF64},
+                weights::Vector{Float64},
+                pol::Matrix{ComplexF64},
+                mask::Union{Nothing,BitVector},
+                N::Int) =
+    FarFieldQMatrix(
+        G_mat, weights, pol, mask, N,
+        zeros(ComplexF64, N), ReentrantLock())
+
+# A primitive real term in G'WGx contains up to six finite Float64 factors.
+# Their exact product needs at most 12588 bits; the number of addressable
+# quadrature/input terms adds fewer than 70 bits. Keep the remainder as guard
+# precision in the exceptional path.
+const _FARFIELD_Q_FALLBACK_PRECISION = 12800
+const _FARFIELD_Q_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
+
+@inline function _farfield_q_projection_bigfloat(
+        Q::FarFieldQMatrix,
+        q::Int,
+        column::Int)
+    offset = 3 * (q - 1)
+    total = zero(Complex{BigFloat})
+    @inbounds for component in 1:3
+        total += conj(Complex{BigFloat}(Q.pol[component, q])) *
+                 Complex{BigFloat}(Q.G_mat[offset + component, column])
+    end
+    return total
+end
+
+@noinline function _farfield_q_product_bigfloat!(
+        result::Vector{ComplexF64},
+        Q::FarFieldQMatrix,
+        input::AbstractVector{ComplexF64})
+    return setprecision(BigFloat, _FARFIELD_Q_FALLBACK_PRECISION) do
+        quadrature_count = length(Q.weights)
+        if Q.N <= quadrature_count
+            totals = fill(zero(Complex{BigFloat}), Q.N)
+            @inbounds for q in 1:quadrature_count
+                Q.mask !== nothing && !Q.mask[q] && continue
+                projected_input = zero(Complex{BigFloat})
+                for n in 1:Q.N
+                    projected_input +=
+                        _farfield_q_projection_bigfloat(Q, q, n) *
+                        Complex{BigFloat}(input[n])
+                end
+                weight = BigFloat(Q.weights[q])
+                for m in 1:Q.N
+                    totals[m] += weight *
+                        conj(_farfield_q_projection_bigfloat(Q, q, m)) *
+                        projected_input
+                end
+            end
+            @inbounds for m in 1:Q.N
+                converted = ComplexF64(totals[m])
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "FarFieldQMatrix product is outside the " *
+                        "representable ComplexF64 range at row $m."))
+                result[m] = converted
+            end
+        else
+            projected_inputs = fill(
+                zero(Complex{BigFloat}), quadrature_count)
+            @inbounds for q in 1:quadrature_count
+                Q.mask !== nothing && !Q.mask[q] && continue
+                for n in 1:Q.N
+                    projected_inputs[q] +=
+                        _farfield_q_projection_bigfloat(Q, q, n) *
+                        Complex{BigFloat}(input[n])
+                end
+            end
+            @inbounds for m in 1:Q.N
+                total = zero(Complex{BigFloat})
+                for q in 1:quadrature_count
+                    Q.mask !== nothing && !Q.mask[q] && continue
+                    total += BigFloat(Q.weights[q]) *
+                        conj(_farfield_q_projection_bigfloat(Q, q, m)) *
+                        projected_inputs[q]
+                end
+                converted = ComplexF64(total)
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "FarFieldQMatrix product is outside the " *
+                        "representable ComplexF64 range at row $m."))
+                result[m] = converted
+            end
+        end
+        return result
+    end
+end
+
+function _farfield_q_product!(
+        result::Vector{ComplexF64},
+        Q::FarFieldQMatrix,
+        input::AbstractVector{ComplexF64})
+    fill!(result, zero(ComplexF64))
+    quadrature_count = length(Q.weights)
+    @inbounds for q in 1:quadrature_count
+        Q.mask !== nothing && !Q.mask[q] && continue
+        offset = 3 * (q - 1)
+        p = SVector{3,ComplexF64}(
+            Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
+        projected_input = zero(ComplexF64)
+        for n in 1:Q.N
+            gn = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, n],
+                Q.G_mat[offset + 2, n],
+                Q.G_mat[offset + 3, n])
+            projected_input += dot(p, gn) * input[n]
+        end
+        isfinite(projected_input) ||
+            return _farfield_q_product_bigfloat!(result, Q, input)
+
+        weight = Q.weights[q]
+        for m in 1:Q.N
+            gm = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, m],
+                Q.G_mat[offset + 2, m],
+                Q.G_mat[offset + 3, m])
+            result[m] += weight * conj(dot(p, gm)) * projected_input
+        end
+    end
+    all(isfinite, result) ||
+        return _farfield_q_product_bigfloat!(result, Q, input)
+    return result
+end
+
+@noinline function _farfield_q_scaled_output_bigfloat(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    return setprecision(
+            BigFloat, _FARFIELD_Q_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(alpha_scale) *
+                Complex{BigFloat}(value)
+        if !overwrite
+            total += Complex{BigFloat}(beta_scale) *
+                     Complex{BigFloat}(previous)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "FarFieldQMatrix scaled output is outside the " *
+                "representable ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@inline function _farfield_q_scaled_output(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    alpha_term = alpha_scale * value
+    if overwrite
+        converted = ComplexF64(alpha_term)
+        return isfinite(converted) ? converted :
+               _farfield_q_scaled_output_bigfloat(
+                   value, previous, alpha_scale, beta_scale, true, row)
+    end
+    beta_term = beta_scale * previous
+    combined = alpha_term + beta_term
+    magnitude_sum =
+        max(abs(real(alpha_term)), abs(imag(alpha_term))) +
+        max(abs(real(beta_term)), abs(imag(beta_term)))
+    converted = ComplexF64(combined)
+    if isfinite(converted) && isfinite(magnitude_sum)
+        return converted
+    end
+    return _farfield_q_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, false, row)
 end
 
 struct SumQMatrix{A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}} <: AbstractMatrix{ComplexF64}
@@ -65,6 +245,27 @@ end
 Base.size(Q::FarFieldQMatrix) = (Q.N, Q.N)
 Base.eltype(::FarFieldQMatrix) = ComplexF64
 
+@noinline function _farfield_q_entry_bigfloat(
+        Q::FarFieldQMatrix,
+        m::Int,
+        n::Int)
+    return setprecision(BigFloat, _FARFIELD_Q_FALLBACK_PRECISION) do
+        total = zero(Complex{BigFloat})
+        @inbounds for q in eachindex(Q.weights)
+            Q.mask !== nothing && !Q.mask[q] && continue
+            total += BigFloat(Q.weights[q]) *
+                conj(_farfield_q_projection_bigfloat(Q, q, m)) *
+                _farfield_q_projection_bigfloat(Q, q, n)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "FarFieldQMatrix entry is outside the representable " *
+                "ComplexF64 range at index ($m, $n)."))
+        return converted
+    end
+end
+
 function _validate_q_inputs(G_mat::Matrix{ComplexF64}, grid::SphGrid,
                             pol::Matrix{ComplexF64}, mask)
     NΩ = _validate_sph_grid(grid)
@@ -104,7 +305,7 @@ function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
         gn = SVector{3,ComplexF64}(Q.G_mat[idx+1, n], Q.G_mat[idx+2, n], Q.G_mat[idx+3, n])
         val += Q.weights[q] * conj(dot(p, gm)) * dot(p, gn)
     end
-    return val
+    return isfinite(val) ? val : _farfield_q_entry_bigfloat(Q, m, n)
 end
 
 function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
@@ -132,32 +333,17 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
         return result
     end
     input_read = Base.mightalias(result, I_coeffs) ? copy(I_coeffs) : I_coeffs
-    if iszero(beta_scale)
-        fill!(result, zero(ComplexF64))
-    elseif beta_scale != one(beta_scale)
+    overwrite = iszero(beta_scale)
+    lock(Q.work_lock)
+    try
+        _farfield_q_product!(Q.work, Q, input_read)
         @inbounds for m in eachindex(result)
-            result[m] *= beta_scale
+            result[m] = _farfield_q_scaled_output(
+                Q.work[m], result[m], alpha_scale, beta_scale,
+                overwrite, m)
         end
-    end
-    NΩ = length(Q.weights)
-    @inbounds for q in 1:NΩ
-        if Q.mask !== nothing && !Q.mask[q]
-            continue
-        end
-        idx = 3 * (q - 1)
-        p = SVector{3,ComplexF64}(Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])  # avoid slice alloc
-        wq = Q.weights[q]
-
-        yq = zero(ComplexF64)
-        for n in 1:Q.N
-            gn = SVector{3,ComplexF64}(Q.G_mat[idx+1, n], Q.G_mat[idx+2, n], Q.G_mat[idx+3, n])
-            yq += dot(p, gn) * input_read[n]
-        end
-
-        for m in 1:Q.N
-            gm = SVector{3,ComplexF64}(Q.G_mat[idx+1, m], Q.G_mat[idx+2, m], Q.G_mat[idx+3, m])
-            result[m] += alpha_scale * wq * conj(dot(p, gm)) * yq
-        end
+    finally
+        unlock(Q.work_lock)
     end
     return result
 end
