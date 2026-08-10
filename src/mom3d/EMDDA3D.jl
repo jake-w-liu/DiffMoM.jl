@@ -975,6 +975,92 @@ end
         alpha, field, k, direction, center, eta)
 end
 
+@noinline function _em_farfield_sum_bigfloat_3d(
+        res::EMDDAResult3D,
+        direction::Vec3,
+        eta::Float64)
+    return setprecision(
+            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        n = SVector{3,BigFloat}(
+            BigFloat(direction[1]),
+            BigFloat(direction[2]),
+            BigFloat(direction[3]),
+        )
+        eta_big = BigFloat(eta)
+        prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
+        total_E = zero(SVector{3,Complex{BigFloat}})
+        total_H = zero(SVector{3,Complex{BigFloat}})
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            dipoles = _alpha_apply_bigfloat_vector_3d(
+                res.alpha[j],
+                _join_em_field(res.E_total[j], res.H_total[j]))
+            q = SVector{3,Complex{BigFloat}}(
+                dipoles[1], dipoles[2], dipoles[3])
+            m = SVector{3,Complex{BigFloat}}(
+                dipoles[4], dipoles[5], dipoles[6])
+            projected_q = q - n * sum(
+                n[index] * q[index] for index in 1:3)
+            projected_m = m - n * sum(
+                n[index] * m[index] for index in 1:3)
+            phase_argument = BigFloat(res.k0) * sum(
+                n[index] * BigFloat(res.grid.centers[j][index])
+                for index in 1:3)
+            phase_prefactor =
+                exp(Complex{BigFloat}(0, phase_argument)) * prefactor
+            total_E += phase_prefactor *
+                       (projected_q - eta_big * cross(n, m))
+            total_H += phase_prefactor *
+                       (cross(n, q) / eta_big + projected_m)
+        end
+        converted_E = CVec3(
+            ComplexF64(total_E[1]),
+            ComplexF64(total_E[2]),
+            ComplexF64(total_E[3]),
+        )
+        converted_H = CVec3(
+            ComplexF64(total_H[1]),
+            ComplexF64(total_H[2]),
+            ComplexF64(total_H[3]),
+        )
+        all(isfinite, converted_E) && all(isfinite, converted_H) ||
+            throw(OverflowError(
+                "EM DDA far-field amplitude is outside the representable ComplexF64 range."))
+        return converted_E, converted_H
+    end
+end
+
+function _em_farfield_sum_3d(
+        res::EMDDAResult3D,
+        direction::Vec3,
+        eta::Float64,
+        projection)
+    total_E = zero(CVec3)
+    total_H = zero(CVec3)
+    try
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            contribution_E, contribution_H =
+                _em_farfield_alpha_contribution_3d(
+                    res.alpha[j],
+                    _join_em_field(res.E_total[j], res.H_total[j]),
+                    res.k0, direction, res.grid.centers[j], eta,
+                    projection)
+            next_E = total_E + contribution_E
+            next_H = total_H + contribution_H
+            all(isfinite, next_E) && all(isfinite, next_H) ||
+                return _em_farfield_sum_bigfloat_3d(
+                    res, direction, eta)
+            total_E = next_E
+            total_H = next_H
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        return _em_farfield_sum_bigfloat_3d(res, direction, eta)
+    end
+    return total_E, total_H
+end
+
 """
     farfield_em_dda_3d(result, rhat)
 
@@ -986,21 +1072,7 @@ function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
     eta = _finite_positive_real_3d(eta0, "eta0")
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
-    FE = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    FH = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    for j in 1:res.grid.nvoxels
-        iszero(res.alpha[j]) && continue
-        E_contribution, H_contribution =
-            _em_farfield_alpha_contribution_3d(
-                res.alpha[j],
-                _join_em_field(res.E_total[j], res.H_total[j]),
-                res.k0, n, res.grid.centers[j], eta, proj)
-        FE += E_contribution
-        FH += H_contribution
-    end
-    all(isfinite, FE) && all(isfinite, FH) ||
-        throw(OverflowError("EM DDA far-field amplitude is non-finite."))
-    return FE, FH
+    return _em_farfield_sum_3d(res, n, eta, proj)
 end
 
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::AbstractVector{Vec3};

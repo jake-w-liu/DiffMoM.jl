@@ -242,6 +242,9 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         @test res.H_total[1] ≈ H_inc[1] atol=1e-14
         @test norm(q[1]) < 1e-15
         @test m[1] ≈ alpha_m * H_inc[1] atol=1e-16
+        farfield_em_dda_3d(res, Vec3(0.0, 1.0, 0.0))
+        @test @allocated(
+            farfield_em_dda_3d(res, Vec3(0.0, 1.0, 0.0))) <= 128
     end
 
     @testset "Far-field prefactor exponent range" begin
@@ -277,6 +280,111 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
             overflow_grid, large_k, 2.5, 1.0, E_inc, H_inc)
         @test_throws OverflowError farfield_em_dda_3d(
             overflow_res, Vec3(0.0, 1.0, 0.0))
+    end
+
+    @testset "Far-field accumulation exponent range" begin
+        grid = VoxelGrid3D(
+            (0.0, 32.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
+        k = 1.0
+        epsr = 1.0e16 + 0im
+        mur = 1.0 + 0im
+        operator = em_dda_operator_3d(
+            grid, k, epsr, mur; radiative_correction=false)
+        direction = Vec3(0.0, 1.0, 0.0)
+        source_coefficient =
+            abs(k^2 * operator.alpha[1][1, 1] / (4π))
+        target_amplitude =
+            (0.75 * floatmax(Float64)) / source_coefficient
+        target_E = [
+            CVec3(sign * target_amplitude + 0im, 0im, 0im)
+            for sign in (1.0, 1.0, -1.0, -1.0)
+        ]
+        target_H = fill(zero(CVec3), grid.nvoxels)
+        target = ComplexF64[]
+        for j in 1:grid.nvoxels
+            append!(target, target_E[j])
+            append!(target, target_H[j])
+        end
+        rhs = operator * target
+        @test all(isfinite, rhs)
+        E_inc = [
+            CVec3(rhs[6j - 5], rhs[6j - 4], rhs[6j - 3])
+            for j in 1:grid.nvoxels
+        ]
+        H_inc = [
+            CVec3(rhs[6j - 2], rhs[6j - 1], rhs[6j])
+            for j in 1:grid.nvoxels
+        ]
+        result = solve_em_dda_3d(
+            grid, k, epsr, mur, E_inc, H_inc;
+            radiative_correction=false)
+
+        electric_terms, magnetic_terms, electric_reference,
+        magnetic_reference = setprecision(BigFloat, 4096) do
+            n = BigFloat.(direction)
+            eta = BigFloat(376.730313668)
+            prefactor = BigFloat(k)^2 / (4 * BigFloat(pi))
+            total_E = zeros(Complex{BigFloat}, 3)
+            total_H = zeros(Complex{BigFloat}, 3)
+            terms_E = CVec3[]
+            terms_H = CVec3[]
+            for j in 1:grid.nvoxels
+                field = Complex{BigFloat}[
+                    result.E_total[j][1], result.E_total[j][2],
+                    result.E_total[j][3], result.H_total[j][1],
+                    result.H_total[j][2], result.H_total[j][3],
+                ]
+                dipoles = Complex{BigFloat}.(result.alpha[j]) * field
+                q = dipoles[1:3]
+                m = dipoles[4:6]
+                projected_q = q - n * sum(
+                    n[index] * q[index] for index in 1:3)
+                projected_m = m - n * sum(
+                    n[index] * m[index] for index in 1:3)
+                phase_argument = BigFloat(k) * sum(
+                    n[index] * BigFloat(grid.centers[j][index])
+                    for index in 1:3)
+                phase_prefactor = exp(Complex{BigFloat}(
+                    zero(BigFloat), phase_argument)) * prefactor
+                contribution_E = phase_prefactor .* (
+                    projected_q - eta .* cross(n, m))
+                contribution_H = phase_prefactor .* (
+                    cross(n, q) ./ eta + projected_m)
+                push!(terms_E, CVec3(
+                    ComplexF64(contribution_E[1]),
+                    ComplexF64(contribution_E[2]),
+                    ComplexF64(contribution_E[3])))
+                push!(terms_H, CVec3(
+                    ComplexF64(contribution_H[1]),
+                    ComplexF64(contribution_H[2]),
+                    ComplexF64(contribution_H[3])))
+                total_E .+= contribution_E
+                total_H .+= contribution_H
+            end
+            terms_E,
+            terms_H,
+            CVec3(ComplexF64(total_E[1]), ComplexF64(total_E[2]),
+                  ComplexF64(total_E[3])),
+            CVec3(ComplexF64(total_H[1]), ComplexF64(total_H[2]),
+                  ComplexF64(total_H[3]))
+        end
+        @test all(all(isfinite, term) for term in electric_terms)
+        @test all(all(isfinite, term) for term in magnetic_terms)
+        @test !isfinite(electric_terms[1][1] + electric_terms[2][1])
+
+        field_E, field_H = farfield_em_dda_3d(result, direction)
+        @test all(isfinite, field_E)
+        @test all(isfinite, field_H)
+        @test all(
+            isapprox(real(field_E[index]), real(electric_reference[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(field_E[index]), imag(electric_reference[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(real(field_H[index]), real(magnetic_reference[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(field_H[index]), imag(magnetic_reference[index]);
+                     rtol=16eps(Float64), atol=0.0)
+            for index in 1:3)
     end
 
     @testset "Explicit bianisotropic polarizability" begin
