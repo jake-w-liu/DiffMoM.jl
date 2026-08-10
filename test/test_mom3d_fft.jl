@@ -88,6 +88,71 @@ end
     @test cancellation_direct * cancellation_x == cancellation_x
     @test cancellation_fft * cancellation_x == cancellation_x
 
+    range_grid = VoxelGrid3D(
+        (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
+    range_k = 1.0
+    axial_green = DiffMoM._electric_dipole_apply_3d(
+        range_grid.centers[1],
+        range_grid.centers[2],
+        range_k,
+        CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im),
+    )[1]
+    target_alpha = inv(axial_green)
+    range_epsr = (3 + 2target_alpha) / (3 - target_alpha)
+    range_direct = dda_operator_3d(range_grid, range_k, range_epsr)
+    range_fft = fft_dda_operator_3d(range_grid, range_k, range_epsr)
+    range_amplitude = 0.5floatmax(Float64)
+    range_x = ComplexF64[
+        range_amplitude, 0.0, 0.0,
+        range_amplitude, 0.0, 0.0,
+    ]
+    @test_throws OverflowError DiffMoM._scaled_alpha_apply_3d(
+        range_fft.alpha[1],
+        CVec3(range_amplitude + 0im, 0.0 + 0im, 0.0 + 0im),
+        range_fft.kernel.interaction_scale,
+        "FFT range regression",
+        1,
+    )
+    range_direct_y = zeros(ComplexF64, length(range_x))
+    range_fft_y = similar(range_direct_y)
+    mul!(range_direct_y, range_direct, range_x)
+    mul!(range_fft_y, range_fft, range_x)
+    @test all(isfinite, range_direct_y)
+    @test range_fft_y == range_direct_y
+
+    range_initial_y = ComplexF64[
+        0.01index - 0.02im * index for index in eachindex(range_x)]
+    range_direct_scaled = copy(range_initial_y)
+    range_fft_scaled = copy(range_initial_y)
+    mul!(range_direct_scaled, range_direct, range_x,
+         0.3 - 0.2im, -0.4 + 0.1im)
+    mul!(range_fft_scaled, range_fft, range_x,
+         0.3 - 0.2im, -0.4 + 0.1im)
+    @test range_fft_scaled == range_direct_scaled
+
+    range_em_direct = em_dda_operator_3d(
+        range_grid, range_k, range_epsr, 1.0)
+    range_em_fft = fft_em_dda_operator_3d(
+        range_grid, range_k, range_epsr, 1.0)
+    range_em_x = ComplexF64[
+        range_amplitude, 0.0, 0.0, 0.0, 0.0, 0.0,
+        range_amplitude, 0.0, 0.0, 0.0, 0.0, 0.0,
+    ]
+    @test_throws OverflowError DiffMoM._scaled_alpha_apply_3d(
+        range_em_fft.alpha[1],
+        DiffMoM._CVec6DDA(
+            range_amplitude, 0.0, 0.0, 0.0, 0.0, 0.0),
+        range_em_fft.kernel.interaction_scale,
+        "FFT EM-DDA range regression",
+        1,
+    )
+    range_em_direct_y = zeros(ComplexF64, length(range_em_x))
+    range_em_fft_y = similar(range_em_direct_y)
+    mul!(range_em_direct_y, range_em_direct, range_em_x)
+    mul!(range_em_fft_y, range_em_fft, range_em_x)
+    @test all(isfinite, range_em_direct_y)
+    @test range_em_fft_y == range_em_direct_y
+
     grid = VoxelGrid3D((-0.15, 0.15), (-0.1, 0.1), (-0.05, 0.05), 3, 2, 2)
     epsv = ComplexF64[2.2 + 0.03im + 0.01 * sin(j) for j in 1:grid.nvoxels]
 

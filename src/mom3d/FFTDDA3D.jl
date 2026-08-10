@@ -185,6 +185,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
     xread = Base.mightalias(y, x) ? copy(x) : x
     overwrite = iszero(beta_scale)
+    needs_direct_fallback = false
     lock(A.work_lock)
     try
         grid = A.grid
@@ -194,38 +195,54 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         fill!(qhat, 0.0 + 0.0im)
 
         idx = 0
-        for iz in 1:nz, iy in 1:ny, ix in 1:nx
-            idx += 1
-            qvec = _scaled_alpha_apply_3d(
-                A.alpha[idx], _read_field_component(xread, idx),
-                A.kernel.interaction_scale, "scaled FFT DDA dipole", idx)
-            for b in 1:3
-                qhat[ix, iy, iz, b] = qvec[b]
-            end
-        end
-
-        for b in 1:3
-            FFTW.fft!(view(qhat, :, :, :, b))
-        end
-
-        for a in 1:3
-            fill!(conv, 0.0 + 0.0im)
-            for b in 1:3
-                conv .+= view(A.kernel.kernel_hat, :, :, :, a, b) .* view(qhat, :, :, :, b)
-            end
-            FFTW.ifft!(conv)
-            idx = 0
+        try
             for iz in 1:nz, iy in 1:ny, ix in 1:nx
                 idx += 1
-                row = _dda_index(idx, a)
-                value = xread[row] - conv[ix, iy, iz]
-                y[row] = overwrite ?
-                    alpha_scale * value :
-                    alpha_scale * value + beta_scale * y[row]
+                qvec = _scaled_alpha_apply_3d(
+                    A.alpha[idx], _read_field_component(xread, idx),
+                    A.kernel.interaction_scale, "scaled FFT DDA dipole", idx)
+                for b in 1:3
+                    qhat[ix, iy, iz, b] = qvec[b]
+                end
+            end
+        catch err
+            err isa OverflowError || rethrow()
+            needs_direct_fallback = true
+        end
+
+        if !needs_direct_fallback
+            for b in 1:3
+                FFTW.fft!(view(qhat, :, :, :, b))
+            end
+
+            for a in 1:3
+                fill!(conv, 0.0 + 0.0im)
+                for b in 1:3
+                    conv .+=
+                        view(A.kernel.kernel_hat, :, :, :, a, b) .*
+                        view(qhat, :, :, :, b)
+                end
+                FFTW.ifft!(conv)
+                idx = 0
+                for iz in 1:nz, iy in 1:ny, ix in 1:nx
+                    idx += 1
+                    row = _dda_index(idx, a)
+                    value = xread[row] - conv[ix, iy, iz]
+                    y[row] = overwrite ?
+                        alpha_scale * value :
+                        alpha_scale * value + beta_scale * y[row]
+                end
             end
         end
     finally
         unlock(A.work_lock)
+    end
+
+    if needs_direct_fallback
+        direct = DDAOperator3D(
+            A.grid, A.k0, A.eps_r, A.alpha, A.radiative_correction)
+        return LinearAlgebra.mul!(
+            y, direct, xread, alpha_scale, beta_scale)
     end
 
     return y
@@ -389,6 +406,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
     xread = Base.mightalias(y, x) ? copy(x) : x
     overwrite = iszero(beta_scale)
+    needs_direct_fallback = false
     lock(A.work_lock)
     try
         grid = A.grid
@@ -398,38 +416,55 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         fill!(qhat, 0.0 + 0.0im)
 
         idx = 0
-        for iz in 1:nz, iy in 1:ny, ix in 1:nx
-            idx += 1
-            q6 = _scaled_alpha_apply_3d(
-                A.alpha[idx], _read_em_field6(xread, idx),
-                A.kernel.interaction_scale, "scaled FFT EM-DDA dipole", idx)
-            for b in 1:6
-                qhat[ix, iy, iz, b] = q6[b]
-            end
-        end
-
-        for b in 1:6
-            FFTW.fft!(view(qhat, :, :, :, b))
-        end
-
-        for a in 1:6
-            fill!(conv, 0.0 + 0.0im)
-            for b in 1:6
-                conv .+= view(A.kernel.kernel_hat, :, :, :, a, b) .* view(qhat, :, :, :, b)
-            end
-            FFTW.ifft!(conv)
-            idx = 0
+        try
             for iz in 1:nz, iy in 1:ny, ix in 1:nx
                 idx += 1
-                row = _em_index(idx, a)
-                value = xread[row] - conv[ix, iy, iz]
-                y[row] = overwrite ?
-                    alpha_scale * value :
-                    alpha_scale * value + beta_scale * y[row]
+                q6 = _scaled_alpha_apply_3d(
+                    A.alpha[idx], _read_em_field6(xread, idx),
+                    A.kernel.interaction_scale,
+                    "scaled FFT EM-DDA dipole", idx)
+                for b in 1:6
+                    qhat[ix, iy, iz, b] = q6[b]
+                end
+            end
+        catch err
+            err isa OverflowError || rethrow()
+            needs_direct_fallback = true
+        end
+
+        if !needs_direct_fallback
+            for b in 1:6
+                FFTW.fft!(view(qhat, :, :, :, b))
+            end
+
+            for a in 1:6
+                fill!(conv, 0.0 + 0.0im)
+                for b in 1:6
+                    conv .+=
+                        view(A.kernel.kernel_hat, :, :, :, a, b) .*
+                        view(qhat, :, :, :, b)
+                end
+                FFTW.ifft!(conv)
+                idx = 0
+                for iz in 1:nz, iy in 1:ny, ix in 1:nx
+                    idx += 1
+                    row = _em_index(idx, a)
+                    value = xread[row] - conv[ix, iy, iz]
+                    y[row] = overwrite ?
+                        alpha_scale * value :
+                        alpha_scale * value + beta_scale * y[row]
+                end
             end
         end
     finally
         unlock(A.work_lock)
+    end
+
+    if needs_direct_fallback
+        direct = EMDDAOperator3D(
+            A.grid, A.k0, A.alpha, A.radiative_correction)
+        return LinearAlgebra.mul!(
+            y, direct, xread, alpha_scale, beta_scale)
     end
 
     return y
