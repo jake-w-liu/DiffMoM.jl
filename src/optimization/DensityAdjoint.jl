@@ -17,6 +17,42 @@
 
 export gradient_density, gradient_density_full
 
+# The exceptional path combines the exact Float64 bilinear accumulator with
+# Z_max and the SIMP derivative scale. Five finite Float64 factors plus the
+# full stored-entry sum need fewer than 10560 bits; retain a guard margin for
+# the non-integer density power.
+const _IEEE_DENSITY_GRADIENT_FALLBACK_PRECISION = 11008
+
+@noinline function _density_gradient_bigfloat(
+    matrix::AbstractMatrix,
+    I::Vector{<:Number},
+    lambda::Vector{<:Number},
+    rho_bar::Real,
+    config::DensityConfig,
+)
+    return setprecision(
+            BigFloat, _IEEE_DENSITY_GRADIENT_FALLBACK_PRECISION) do
+        bilinear_real = _accumulate_bilinear_component_bigfloat(
+            lambda, matrix, I, Val(:real))
+        bilinear_imag = _accumulate_bilinear_component_bigfloat(
+            lambda, matrix, I, Val(:imag))
+        impedance_real = BigFloat(real(config.Z_max))
+        impedance_imag = BigFloat(imag(config.Z_max))
+        weighted_bilinear = impedance_real * bilinear_real -
+                            impedance_imag * bilinear_imag
+        p = BigFloat(config.p)
+        density_power = isone(config.p) ?
+                        one(BigFloat) :
+                        BigFloat(rho_bar)^(p - 1)
+        value = 2 * p * density_power * weighted_bilinear
+        converted = Float64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "density gradient is outside the representable Float64 range"))
+        return converted
+    end
+end
+
 """
     gradient_density(Mt, I, lambda, rho_bar, config)
 
@@ -41,6 +77,13 @@ function gradient_density(Mt::Vector{<:AbstractMatrix},
     length(lambda) == matrix_size[1] ||
         throw(DimensionMismatch(
             "lambda length $(length(lambda)) != $(matrix_size[1])"))
+    all(isfinite, I) ||
+        throw(ArgumentError("I must contain only finite values"))
+    all(isfinite, lambda) ||
+        throw(ArgumentError("lambda must contain only finite values"))
+    @inbounds for t in eachindex(Mt)
+        _validate_known_matrix_entries(Mt[t], "triangle mass matrix")
+    end
     g = zeros(Float64, Nt)
 
     for t in 1:Nt
@@ -48,9 +91,14 @@ function gradient_density(Mt::Vector{<:AbstractMatrix},
         # g[t] = -2 Re{ λ† (∂Z/∂ρ̄_t) I }
         #      = 2p ρ̄_t^(p-1) Re{ Z_max λ† M_t I }
         lMI = _dot_left_matrix_right(lambda, Mt[t], I)
-        g[t] = 2 * config.p * rho_bar[t]^(config.p - 1) * real(config.Z_max * lMI)
+        value = 2 * config.p * rho_bar[t]^(config.p - 1) *
+                real(config.Z_max * lMI)
+        g[t] = isfinite(value) ? value : _density_gradient_bigfloat(
+            Mt[t], I, lambda, rho_bar[t], config)
     end
 
+    all(isfinite, g) ||
+        error("gradient_density produced non-finite values")
     return g
 end
 

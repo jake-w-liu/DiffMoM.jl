@@ -610,6 +610,113 @@ println("\n── Test 40: DensityAdjoint ──")
             Mt_da, I_sol_da, lambda_adj_da,
             vcat(rho_tilde_da, 0.5), rho_bar_da, config_da,
             W_da, w_sum_da, beta_da)
+
+        density_extreme_scale = floatmax(Float64)
+        density_extreme_I = ComplexF64[
+            density_extreme_scale,
+            density_extreme_scale,
+            density_extreme_scale,
+            density_extreme_scale,
+            1.0,
+        ]
+        density_extreme_lambda = copy(density_extreme_I)
+        density_extreme_matrix = zeros(ComplexF64, 5, 5)
+        density_extreme_matrix[1, 1:4] .= ComplexF64[
+            density_extreme_scale,
+            density_extreme_scale,
+            -density_extreme_scale,
+            -density_extreme_scale,
+        ]
+        density_extreme_matrix[5, 5] = 3.0
+        density_extreme_reference = setprecision(BigFloat, 8192) do
+            dot(
+                Complex{BigFloat}.(density_extreme_lambda),
+                Matrix{Complex{BigFloat}}(density_extreme_matrix),
+                Complex{BigFloat}.(density_extreme_I),
+            )
+        end
+        @test density_extreme_reference == Complex{BigFloat}(3)
+        density_extreme_local = LocalMassMatrix(
+            5,
+            [1, 1, 1, 1, 5],
+            [1, 2, 3, 4, 5],
+            ComplexF64[
+                density_extreme_scale,
+                density_extreme_scale,
+                -density_extreme_scale,
+                -density_extreme_scale,
+                3.0,
+            ],
+        )
+        density_extreme_config = DensityConfig(1.0, 1.0, 0.5)
+        for density_matrix in (
+            density_extreme_matrix,
+            sparse(density_extreme_matrix),
+            density_extreme_local,
+        )
+            @test gradient_density(
+                [density_matrix],
+                density_extreme_I,
+                density_extreme_lambda,
+                [1.0],
+                density_extreme_config,
+            ) == [6.0]
+        end
+        density_extreme_reactive_config = DensityConfig(
+            1.0, 0.0 + 1.0im, 0.5)
+        @test gradient_density(
+            [-im .* density_extreme_matrix],
+            density_extreme_I,
+            density_extreme_lambda,
+            [1.0],
+            density_extreme_reactive_config,
+        ) == [6.0]
+        @test_throws ArgumentError gradient_density(
+            [reshape(ComplexF64[1.0], 1, 1)],
+            ComplexF64[NaN], ComplexF64[1.0], [1.0],
+            density_extreme_config)
+        @test_throws ArgumentError gradient_density(
+            [reshape(ComplexF64[1.0], 1, 1)],
+            ComplexF64[1.0], ComplexF64[Inf], [1.0],
+            density_extreme_config)
+        @test_throws ArgumentError gradient_density(
+            [reshape(ComplexF64[NaN], 1, 1)],
+            ComplexF64[1.0], ComplexF64[1.0], [1.0],
+            density_extreme_config)
+        @test_throws OverflowError gradient_density(
+            [reshape(ComplexF64[1.0], 1, 1)],
+            ComplexF64[density_extreme_scale],
+            ComplexF64[density_extreme_scale],
+            [1.0],
+            density_extreme_config)
+        density_scale_config = DensityConfig(
+            floatmax(Float64), 1.0, 0.5)
+        @test 2 * density_scale_config.p * 0.25 == Inf
+        @test gradient_density(
+            [reshape(ComplexF64[0.25], 1, 1)],
+            ComplexF64[1.0],
+            ComplexF64[1.0],
+            [1.0],
+            density_scale_config,
+        ) == [0.5 * floatmax(Float64)]
+
+        density_allocation_matrices = [ComplexF64[2.0 0.0; 0.0 3.0]]
+        density_allocation_vector = ComplexF64[1.0, 2.0]
+        density_allocation_rho = [0.5]
+        gradient_density(
+            density_allocation_matrices,
+            density_allocation_vector,
+            density_allocation_vector,
+            density_allocation_rho,
+            config_da,
+        )
+        @test @allocated(gradient_density(
+            density_allocation_matrices,
+            density_allocation_vector,
+            density_allocation_vector,
+            density_allocation_rho,
+            config_da,
+        )) <= _float_vector_output_allocation(1) + 128
     end
 
     # ── A: Zero gradient for zero objective ──
