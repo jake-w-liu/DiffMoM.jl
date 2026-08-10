@@ -527,6 +527,46 @@ function Base.getindex(A::EMDDAOperator3D, row::Int, col::Int)
     return -(a <= 3 ? E[a] : H[a - 3])
 end
 
+@noinline function _em_dda_operator_field_bigfloat_3d(
+        A::EMDDAOperator3D,
+        x::AbstractVector{ComplexF64},
+        voxel::Int)
+    return setprecision(
+            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        total = SVector{6,Complex{BigFloat}}(ntuple(
+            component -> Complex{BigFloat}(
+                x[_em_index(voxel, component)]), 6))
+        observation = A.grid.centers[voxel]
+        @inbounds for source_voxel in 1:A.grid.nvoxels
+            source_voxel == voxel && continue
+            alpha = A.alpha[source_voxel]
+            iszero(alpha) && continue
+            dipoles = _alpha_apply_bigfloat_vector_3d(
+                alpha, _read_em_field6(x, source_voxel))
+            q = SVector{3,Complex{BigFloat}}(
+                dipoles[1], dipoles[2], dipoles[3])
+            m = SVector{3,Complex{BigFloat}}(
+                dipoles[4], dipoles[5], dipoles[6])
+            E, H = _em_interaction_value_bigfloat_3d(
+                observation,
+                A.grid.centers[source_voxel],
+                A.k0,
+                q,
+                m,
+            )
+            total -= SVector{6,Complex{BigFloat}}(
+                E[1], E[2], E[3], H[1], H[2], H[3])
+        end
+        converted = _CVec6DDA(ntuple(
+            component -> ComplexF64(total[component]), 6))
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "EM DDA operator output at voxel $voxel is outside the " *
+                "representable ComplexF64 range."))
+        return converted
+    end
+end
+
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::EMDDAOperator3D,
                             x::AbstractVector{ComplexF64},
@@ -556,15 +596,31 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     @inbounds for i in 1:N
         Ei, Hi = _split_em_field(_read_em_field6(xread, i))
         ri = A.grid.centers[i]
-        for j in 1:N
-            i == j && continue
-            alphaj = A.alpha[j]
-            iszero(alphaj) && continue
-            Es, Hs = _em_alpha_interaction_apply_3d(
-                ri, A.grid.centers[j], A.k0, alphaj,
-                _read_em_field6(xread, j))
-            Ei -= Es
-            Hi -= Hs
+        needs_fallback = false
+        try
+            for j in 1:N
+                i == j && continue
+                alphaj = A.alpha[j]
+                iszero(alphaj) && continue
+                Es, Hs = _em_alpha_interaction_apply_3d(
+                    ri, A.grid.centers[j], A.k0, alphaj,
+                    _read_em_field6(xread, j))
+                next_Ei = Ei - Es
+                next_Hi = Hi - Hs
+                if !all(isfinite, next_Ei) || !all(isfinite, next_Hi)
+                    needs_fallback = true
+                    break
+                end
+                Ei = next_Ei
+                Hi = next_Hi
+            end
+        catch err
+            err isa OverflowError || rethrow()
+            needs_fallback = true
+        end
+        if needs_fallback
+            Ei, Hi = _split_em_field(
+                _em_dda_operator_field_bigfloat_3d(A, xread, i))
         end
 
         for a in 1:3

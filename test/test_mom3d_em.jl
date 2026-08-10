@@ -2,6 +2,7 @@
 
 using Test
 using LinearAlgebra
+using StaticArrays
 
 if isdefined(Main, :DiffMoM)
     using .DiffMoM
@@ -696,6 +697,160 @@ end
         overlap_expected = A_dense_b * copy(overlap_x)
         mul!(overlap_y, A_op_b, overlap_x)
         @test overlap_y ≈ overlap_expected rtol=1e-13
+    end
+
+    @testset "Matrix-free exponent-range cancellation" begin
+        component_scale = value ->
+            max(abs(real(value)), abs(imag(value)))
+        interaction_block = function (grid, observation, source, k)
+            block = Matrix{ComplexF64}(undef, 6, 6)
+            for component in 1:6
+                basis_dipoles = DiffMoM._CVec6DDA(ntuple(index ->
+                    index == component ? 1.0 + 0im : 0.0 + 0im, 6))
+                q, m = DiffMoM._split_em_field(basis_dipoles)
+                E, H = DiffMoM._em_interaction_apply_3d(
+                    grid.centers[observation],
+                    grid.centers[source],
+                    k,
+                    q,
+                    m,
+                )
+                block[:, component] = vcat(E, H)
+            end
+            block
+        end
+
+        grid = VoxelGrid3D(
+            (0.0, 3.0), (0.0, 3.0), (0.0, 1.0), 3, 3, 1)
+        n = grid.nvoxels
+        k = 1.0
+        target = 5
+        sources = (2, 4, 6, 8)
+        signs = (1.0, 1.0, -1.0, -1.0)
+        target_field = ComplexF64[0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+        source_dipoles = fill(zero(DiffMoM._CVec6DDA), n)
+        for (source, sign) in zip(sources, signs)
+            source_dipoles[source] = DiffMoM._CVec6DDA(
+                interaction_block(grid, target, source, k) \
+                (sign * target_field))
+        end
+
+        normalized_fields = fill(zero(DiffMoM._CVec6DDA), n)
+        scale_denominator = 0.0
+        for observation in 1:n
+            field = zero(DiffMoM._CVec6DDA)
+            for source in 1:n
+                observation == source && continue
+                q, m = DiffMoM._split_em_field(source_dipoles[source])
+                E, H = DiffMoM._em_interaction_apply_3d(
+                    grid.centers[observation],
+                    grid.centers[source],
+                    k,
+                    q,
+                    m,
+                )
+                contribution = DiffMoM._join_em_field(E, H)
+                field += contribution
+                scale_denominator = max(
+                    scale_denominator,
+                    maximum(component_scale, contribution),
+                )
+            end
+            normalized_fields[observation] = field
+            scale_denominator = max(
+                scale_denominator,
+                maximum(component_scale, field),
+            )
+        end
+        scale = 0.60 * floatmax(Float64) / scale_denominator
+        fields = DiffMoM._CVec6DDA[
+            scale * field for field in normalized_fields]
+        alpha = Vector{DiffMoM._CMat6DDA}(undef, n)
+        for voxel in 1:n
+            field_norm = sum(abs2, normalized_fields[voxel])
+            alpha[voxel] = iszero(field_norm) ?
+                zero(DiffMoM._CMat6DDA) :
+                DiffMoM._CMat6DDA(
+                    source_dipoles[voxel] *
+                    adjoint(normalized_fields[voxel]) /
+                    field_norm)
+        end
+        operator = em_dda_operator_3d(grid, k, alpha)
+        x = reduce(vcat, fields)
+
+        ordinary = similar(x)
+        maximum_contribution = 0.0
+        for observation in 1:n
+            field = fields[observation]
+            for source in 1:n
+                observation == source && continue
+                E, H = DiffMoM._em_alpha_interaction_apply_3d(
+                    grid.centers[observation],
+                    grid.centers[source],
+                    k,
+                    operator.alpha[source],
+                    fields[source],
+                )
+                contribution = DiffMoM._join_em_field(E, H)
+                @test all(isfinite, contribution)
+                maximum_contribution = max(
+                    maximum_contribution,
+                    maximum(component_scale, contribution),
+                )
+                field -= contribution
+            end
+            ordinary[(6observation - 5):(6observation)] = field
+        end
+        overflow_indices = findall(!isfinite, ordinary)
+        @test !isempty(overflow_indices)
+        @test maximum(component_scale, x) < floatmax(Float64)
+        @test maximum_contribution < floatmax(Float64)
+
+        reference = setprecision(BigFloat, 4096) do
+            dipoles_big = [DiffMoM._alpha_apply_bigfloat_vector_3d(
+                operator.alpha[source], fields[source])
+                for source in 1:n]
+            result = Vector{ComplexF64}(undef, 6n)
+            for observation in 1:n
+                total = SVector{6,Complex{BigFloat}}(ntuple(
+                    component -> Complex{BigFloat}(
+                        fields[observation][component]), 6))
+                for source in 1:n
+                    observation == source && continue
+                    source_dipoles = dipoles_big[source]
+                    q = SVector{3,Complex{BigFloat}}(
+                        source_dipoles[1],
+                        source_dipoles[2],
+                        source_dipoles[3],
+                    )
+                    m = SVector{3,Complex{BigFloat}}(
+                        source_dipoles[4],
+                        source_dipoles[5],
+                        source_dipoles[6],
+                    )
+                    E, H = DiffMoM._em_interaction_value_bigfloat_3d(
+                        grid.centers[observation],
+                        grid.centers[source],
+                        k,
+                        q,
+                        m,
+                    )
+                    total -= SVector{6,Complex{BigFloat}}(
+                        E[1], E[2], E[3], H[1], H[2], H[3])
+                end
+                for component in 1:6
+                    result[6(observation - 1) + component] =
+                        ComplexF64(total[component])
+                end
+            end
+            result
+        end
+        @test all(isfinite, reference)
+
+        y = similar(x)
+        mul!(y, operator, x)
+        @test all(isfinite, y)
+        @test y[overflow_indices] == reference[overflow_indices]
     end
 
     @testset "Matrix-free GMRES solve agrees with dense direct" begin
