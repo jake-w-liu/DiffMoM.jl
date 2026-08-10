@@ -599,7 +599,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         I_all = Vector{Vector{ComplexF64}}(undef, M)
         for a in 1:M
             I_all[a] = if use_dense_lu
-                Z_factor \ configs[a].v
+                _solve_factored_linear_system(
+                    Z_factor, Z_full, configs[a].v,
+                    "multi-angle direct forward solution")
             else
                 solve_forward(Z_full, configs[a].v;
                               solver=solver,
@@ -629,7 +631,11 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         for a in 1:M
             rhs_a = QI_all[a]
             lambda_all[a] = if use_dense_lu
-                Z_factor' \ Vector{ComplexF64}(rhs_a)
+                adjoint_Z = adjoint(Z_full)
+                _solve_factored_linear_system(
+                    adjoint(Z_factor), adjoint_Z,
+                    Vector{ComplexF64}(rhs_a),
+                    "multi-angle direct adjoint solution")
             else
                 solve_adjoint_rhs(Z_full, rhs_a;
                                   solver=solver,
@@ -791,7 +797,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                         # distinguish stale-preconditioner failure from a bad step.
                         for a in 1:M
                             I_trial = if use_dense_lu
-                                Z_trial_factor \ configs[a].v
+                                _solve_factored_linear_system(
+                                    Z_trial_factor, Z_trial, configs[a].v,
+                                    "multi-angle trial direct solution")
                             else
                                 solve_forward(Z_trial, configs[a].v;
                                               solver=solver,

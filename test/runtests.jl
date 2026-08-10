@@ -5429,6 +5429,91 @@ multiangle_line_theta, multiangle_line_trace = optimize_multiangle_rcs(
 )
 @test multiangle_line_theta == [0.5]
 @test length(multiangle_line_trace) == 1
+
+multiangle_tiny_matrix = reshape(ComplexF64[nextfloat(0.0)], 1, 1)
+multiangle_tiny_rhs = ComplexF64[floatmin(Float64)]
+multiangle_tiny_reference = setprecision(BigFloat, 4096) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(multiangle_tiny_matrix) \
+        Complex{BigFloat}.(multiangle_tiny_rhs))
+end
+@test multiangle_tiny_reference == ComplexF64[2.0^52]
+multiangle_tiny_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    multiangle_tiny_rhs,
+    zeros(ComplexF64, 1, 1),
+    1.0,
+)
+multiangle_tiny_theta, multiangle_tiny_trace = optimize_multiangle_rcs(
+    multiangle_tiny_matrix,
+    [zeros(ComplexF64, 1, 1)],
+    [multiangle_tiny_config],
+    [0.0];
+    maxiter=1,
+    verbose=false,
+)
+@test multiangle_tiny_theta == [0.0]
+@test multiangle_tiny_trace[1].J == 0.0
+
+multiangle_adjoint_matrix = ComplexF64[1.0 -2.0; -2.0 1.0]
+multiangle_adjoint_current = ComplexF64[1.0, -1.0]
+multiangle_adjoint_qscale = 0.4 * floatmax(Float64)
+multiangle_adjoint_Q = ComplexF64[
+    multiangle_adjoint_qscale -multiangle_adjoint_qscale;
+    multiangle_adjoint_qscale -multiangle_adjoint_qscale
+]
+multiangle_adjoint_rhs =
+    multiangle_adjoint_Q * multiangle_adjoint_current
+multiangle_adjoint_reference = setprecision(BigFloat, 4096) do
+    ComplexF64.(
+        adjoint(Matrix{Complex{BigFloat}}(multiangle_adjoint_matrix)) \
+        Complex{BigFloat}.(multiangle_adjoint_rhs))
+end
+@test multiangle_adjoint_reference == fill(
+    ComplexF64(-0.8 * floatmax(Float64)), 2)
+multiangle_adjoint_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    multiangle_adjoint_matrix * multiangle_adjoint_current,
+    multiangle_adjoint_Q,
+    1.0,
+)
+multiangle_adjoint_theta, multiangle_adjoint_trace =
+    optimize_multiangle_rcs(
+        multiangle_adjoint_matrix,
+        [zeros(ComplexF64, 2, 2)],
+        [multiangle_adjoint_config],
+        [0.0];
+        maxiter=1,
+        verbose=false,
+    )
+@test multiangle_adjoint_theta == [0.0]
+@test multiangle_adjoint_trace[1].J == 0.0
+
+multiangle_trial_scale = floatmin(Float64)
+multiangle_trial_alpha = multiangle_trial_scale - nextfloat(0.0)
+multiangle_trial_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ComplexF64[multiangle_trial_scale],
+    reshape(ComplexF64[-multiangle_trial_scale / 2], 1, 1),
+    1.0,
+)
+multiangle_trial_theta, multiangle_trial_trace = optimize_multiangle_rcs(
+    reshape(ComplexF64[multiangle_trial_scale], 1, 1),
+    [reshape(ComplexF64[1.0], 1, 1)],
+    [multiangle_trial_config],
+    [0.0];
+    maxiter=1,
+    tol=0.0,
+    m_lbfgs=0,
+    alpha0=multiangle_trial_alpha,
+    verbose=false,
+    fallback_to_steepest=false,
+)
+@test multiangle_trial_theta == [multiangle_trial_alpha]
+@test length(multiangle_trial_trace) == 1
 println("  35c: PASS")
 
 # 35d: normalized smooth worst-angle objective
