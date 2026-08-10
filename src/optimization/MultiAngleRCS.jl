@@ -180,6 +180,40 @@ end
     end
 end
 
+@noinline function _multiangle_gradient_bigfloat(
+    Mp::Vector{<:AbstractMatrix},
+    I_all::Vector{Vector{ComplexF64}},
+    lambda_all::Vector{Vector{ComplexF64}},
+    objective_scales::Vector{Float64},
+    reactive::Bool,
+)
+    parameter_count = length(Mp)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        totals = fill(zero(BigFloat), parameter_count)
+        @inbounds for angle in eachindex(
+            I_all, lambda_all, objective_scales)
+            angle_gradient = gradient_impedance(
+                Mp, I_all[angle], lambda_all[angle]; reactive=reactive)
+            scale = BigFloat(objective_scales[angle])
+            for parameter in eachindex(totals, angle_gradient)
+                totals[parameter] +=
+                    scale * BigFloat(angle_gradient[parameter])
+            end
+        end
+
+        gradient = Vector{Float64}(undef, parameter_count)
+        @inbounds for parameter in eachindex(gradient, totals)
+            gradient[parameter] = Float64(totals[parameter])
+            isfinite(gradient[parameter]) ||
+                throw(OverflowError(
+                    "multi-angle objective gradient at parameter $parameter " *
+                    "is outside the representable Float64 range"))
+        end
+        return gradient
+    end
+end
+
 function _multiangle_objective_scales(J_angles::Vector{Float64},
                                       weights::Vector{Float64},
                                       objective::Symbol,
@@ -698,9 +732,18 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
 
         # ── 5. Gradient: g[p] = Σ_a scalar_a · ∂J_a/∂θ_p ───────
         g = zeros(P)
+        gradient_finite = true
         for a in 1:M
             g_a = gradient_impedance(Mp, I_all[a], lambda_all[a]; reactive=reactive)
             axpy!(objective_scales[a], g_a, g)
+            if !_linear_array_is_finite(g)
+                gradient_finite = false
+                break
+            end
+        end
+        if !gradient_finite
+            g = _multiangle_gradient_bigfloat(
+                Mp, I_all, lambda_all, objective_scales, reactive)
         end
         _assert_finite_optimizer_vector(g, "multi-angle objective gradient")
         gnorm = norm(g)

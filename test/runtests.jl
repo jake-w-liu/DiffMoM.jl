@@ -5827,6 +5827,39 @@ multiangle_scalar_theta, multiangle_scalar_trace = optimize_multiangle_rcs(
 @test multiangle_scalar_theta == [0.0]
 @test multiangle_scalar_trace[1].J == 0.0
 
+multiangle_gradient_config_positive = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1.0],
+    reshape(ComplexF64[1.0], 1, 1),
+    multiangle_scalar_scale,
+)
+multiangle_gradient_config_negative = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1.0],
+    reshape(ComplexF64[-1.0], 1, 1),
+    multiangle_scalar_scale,
+)
+multiangle_gradient_reference = setprecision(BigFloat, 4096) do
+    BigFloat(multiangle_scalar_scale) * BigFloat(2.0) +
+    BigFloat(multiangle_scalar_scale) * BigFloat(-2.0)
+end
+multiangle_gradient_theta, multiangle_gradient_trace =
+    optimize_multiangle_rcs(
+        reshape(ComplexF64[1.0], 1, 1),
+        [reshape(ComplexF64[1.0], 1, 1)],
+        [multiangle_gradient_config_positive,
+         multiangle_gradient_config_negative],
+        [0.0];
+        maxiter=1,
+        verbose=false,
+    )
+@test multiangle_gradient_reference == 0.0
+@test multiangle_gradient_theta == [0.0]
+@test multiangle_gradient_trace[1].J == 0.0
+@test multiangle_gradient_trace[1].gnorm == 0.0
+
 DiffMoM._multiangle_objective_scales(
     J_probe, w_probe, :linear, ref_probe, beta_probe)
 @test @allocated(DiffMoM._multiangle_objective_scales(
