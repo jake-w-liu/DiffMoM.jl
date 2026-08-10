@@ -3109,6 +3109,57 @@ end
             objective_extreme_scale, objective_extreme_scale, 1.0],
     real.(objective_extreme_Q),
 ) == 3.0
+objective_product_workspace = similar(objective_extreme_I)
+DiffMoM._finite_matrix_vector_product!(
+    objective_product_workspace,
+    objective_extreme_Q,
+    objective_extreme_I,
+    "optimizer objective regression",
+)
+@test objective_product_workspace == ComplexF64[0, 0, 0, 0, 3]
+objective_product_probe = similar(objective_probe_I)
+DiffMoM._finite_matrix_vector_product!(
+    objective_product_probe,
+    objective_probe_Q,
+    objective_probe_I,
+    "optimizer allocation probe",
+)
+@test @allocated(DiffMoM._finite_matrix_vector_product!(
+    objective_product_probe,
+    objective_probe_Q,
+    objective_probe_I,
+    "optimizer allocation probe",
+)) == 0
+
+objective_optimizer_Z = Matrix{ComplexF64}(I, 5, 5)
+objective_optimizer_Mp = [zeros(ComplexF64, 5, 5)]
+objective_optimizer_theta, objective_optimizer_trace = optimize_lbfgs(
+    objective_optimizer_Z,
+    objective_optimizer_Mp,
+    objective_extreme_I,
+    objective_extreme_Q,
+    [0.0];
+    maxiter=1,
+    verbose=false,
+)
+@test objective_optimizer_theta == [0.0]
+@test objective_optimizer_trace[1].J == 3.0
+
+objective_directivity_Q = zeros(ComplexF64, 5, 5)
+objective_directivity_Q[5, 5] = 1.0
+directivity_optimizer_theta, directivity_optimizer_trace =
+    optimize_directivity(
+        objective_optimizer_Z,
+        objective_optimizer_Mp,
+        objective_extreme_I,
+        objective_extreme_Q,
+        objective_directivity_Q,
+        [0.0];
+        maxiter=1,
+        verbose=false,
+    )
+@test directivity_optimizer_theta == [0.0]
+@test directivity_optimizer_trace[1].J == 3.0
 @test_throws OverflowError compute_objective(
     ComplexF64[objective_extreme_scale],
     reshape(ComplexF64[1.0], 1, 1),

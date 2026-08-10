@@ -210,6 +210,16 @@ function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
     return _quadratic_objective_bigfloat(I, Q, value_type)
 end
 
+@inline function _quadratic_objective_from_product(
+    I::Vector{<:Number},
+    Q::Matrix{<:Number},
+    QI::AbstractVector{<:Number},
+)
+    value = real(dot(I, QI))
+    isfinite(value) && return value
+    return compute_objective(I, Q)
+end
+
 """
     solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
 

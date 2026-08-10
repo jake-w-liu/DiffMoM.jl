@@ -129,6 +129,24 @@ function _finite_matrix_vector_product(
     return result
 end
 
+function _finite_matrix_vector_product!(
+    result::AbstractVector{T},
+    matrix::AbstractMatrix{<:Number},
+    vector::AbstractVector{<:Number},
+    label::AbstractString,
+) where {T<:Number}
+    mul!(result, matrix, vector)
+    @inbounds for index in eachindex(result)
+        if !isfinite(result[index])
+            T <: Union{Float32,Float64,ComplexF32,ComplexF64} ||
+                return _assert_finite_linear_vector(result, label)
+            return _matrix_vector_product_bigfloat!(
+                result, matrix, vector, label)
+        end
+    end
+    return result
+end
+
 @inline function _maximum_ieee_component(values, ::Type{R}) where {R<:AbstractFloat}
     maximum_component = zero(R)
     @inbounds for value in values

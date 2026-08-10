@@ -331,8 +331,9 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         _assert_finite_optimizer_vector(I_coeffs, "forward solution")
 
         # Objective (always report the true J)
-        mul!(QI, Q, I_coeffs)
-        J_val = real(dot(I_coeffs, QI))
+        _finite_matrix_vector_product!(
+            QI, Q, I_coeffs, "accepted objective product")
+        J_val = _quadratic_objective_from_product(I_coeffs, Q, QI)
         isfinite(J_val) ||
             error("objective is non-finite at iteration $iter: $J_val")
 
@@ -467,8 +468,11 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                 n_fwd_solves += 1
                 trial_finite = all(isfinite, I_trial)
                 if trial_finite
-                    mul!(QI, Q, I_trial)
-                    J_trial_internal = sense * real(dot(I_trial, QI))
+                    _finite_matrix_vector_product!(
+                        QI, Q, I_trial, "trial objective product")
+                    J_trial_internal = sense *
+                                       _quadratic_objective_from_product(
+                                           I_trial, Q, QI)
                     trial_finite = isfinite(J_trial_internal)
                 end
             catch err
@@ -640,10 +644,14 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         _assert_finite_optimizer_vector(I_c, "forward solution")
 
         # Directivity ratio
-        mul!(QI_target, Q_target, I_c)
-        mul!(QI_total, Q_total, I_c)
-        f_val = real(dot(I_c, QI_target))
-        g_val = real(dot(I_c, QI_total))
+        _finite_matrix_vector_product!(
+            QI_target, Q_target, I_c,
+            "accepted directivity numerator product")
+        _finite_matrix_vector_product!(
+            QI_total, Q_total, I_c,
+            "accepted directivity denominator product")
+        f_val = _quadratic_objective_from_product(I_c, Q_target, QI_target)
+        g_val = _quadratic_objective_from_product(I_c, Q_total, QI_total)
         J_ratio = _directivity_ratio(f_val, g_val, "accepted iterate")
 
         # Two separate adjoint solves for numerically stable ratio gradient
@@ -777,10 +785,16 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                                          gmres_memory=gmres_memory)
                 trial_valid = all(isfinite, I_trial)
                 if trial_valid
-                    mul!(QI_target, Q_target, I_trial)
-                    mul!(QI_total, Q_total, I_trial)
-                    f_trial = real(dot(I_trial, QI_target))
-                    g_trial = real(dot(I_trial, QI_total))
+                    _finite_matrix_vector_product!(
+                        QI_target, Q_target, I_trial,
+                        "trial directivity numerator product")
+                    _finite_matrix_vector_product!(
+                        QI_total, Q_total, I_trial,
+                        "trial directivity denominator product")
+                    f_trial = _quadratic_objective_from_product(
+                        I_trial, Q_target, QI_target)
+                    g_trial = _quadratic_objective_from_product(
+                        I_trial, Q_total, QI_total)
                     trial_valid =
                         isfinite(f_trial) && isfinite(g_trial) && g_trial > 0.0
                     if trial_valid
