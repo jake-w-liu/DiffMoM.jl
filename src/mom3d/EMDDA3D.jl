@@ -713,7 +713,7 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
         A = Matrix(Aop)
         fac = lu(A)
         total_flat = _solve_factored_linear_system(
-            fac, rhs, "direct EM DDA solution")
+            fac, A, rhs, "direct EM DDA solution")
         E_total, H_total = _unflatten_em_fields_3d(total_flat, grid.nvoxels)
         E_rhs, H_rhs = _unflatten_em_fields_3d(rhs, grid.nvoxels)
         return EMDDAResult3D(E_total, H_total, E_rhs, H_rhs,

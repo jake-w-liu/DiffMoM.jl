@@ -129,42 +129,106 @@ function _finite_matrix_vector_product(
     return result
 end
 
+@inline function _maximum_ieee_component(values, ::Type{R}) where {R<:AbstractFloat}
+    maximum_component = zero(R)
+    @inbounds for value in values
+        maximum_component = max(
+            maximum_component,
+            abs(R(real(value))),
+            abs(R(imag(value))),
+        )
+    end
+    return maximum_component
+end
+
+@inline function _ldexp_ieee_value(value, shift::Int, ::Type{T}) where {T<:Real}
+    return T(ldexp(T(real(value)), shift))
+end
+
+@inline function _ldexp_ieee_value(
+    value,
+    shift::Int,
+    ::Type{Complex{R}},
+) where {R<:AbstractFloat}
+    return Complex{R}(
+        ldexp(R(real(value)), shift),
+        ldexp(R(imag(value)), shift),
+    )
+end
+
+@noinline function _solve_scaled_ieee_linear_system(
+    matrix::AbstractMatrix{<:Number},
+    rhs::AbstractVector{<:Number},
+    ::Type{T},
+    label::AbstractString,
+) where {T<:Number}
+    real_type = typeof(real(zero(T)))
+    matrix_scale = _maximum_ieee_component(matrix, real_type)
+    iszero(matrix_scale) &&
+        throw(LinearAlgebra.SingularException(1))
+    rhs_scale = _maximum_ieee_component(rhs, real_type)
+    _, matrix_exponent = frexp(matrix_scale)
+    _, rhs_exponent = iszero(rhs_scale) ?
+                      (one(real_type), matrix_exponent) :
+                      frexp(rhs_scale)
+
+    scaled_matrix = Matrix{T}(undef, size(matrix))
+    @inbounds for column in axes(matrix, 2), row in axes(matrix, 1)
+        scaled_matrix[row, column] = _ldexp_ieee_value(
+            matrix[row, column], -matrix_exponent, T)
+    end
+    scaled_rhs = Vector{T}(undef, length(rhs))
+    @inbounds for index in eachindex(rhs)
+        scaled_rhs[index] = _ldexp_ieee_value(
+            rhs[index], -rhs_exponent, T)
+    end
+
+    scaled_solution = lu(scaled_matrix) \ scaled_rhs
+    _assert_finite_linear_vector(
+        scaled_solution, "$label scaled intermediate")
+    solution_exponent = rhs_exponent - matrix_exponent
+    @inbounds for index in eachindex(scaled_solution)
+        scaled_solution[index] = _ldexp_ieee_value(
+            scaled_solution[index], solution_exponent, T)
+    end
+    return _assert_finite_linear_vector(scaled_solution, label)
+end
+
+@inline function _recoverable_direct_solve_error(err)
+    return err isa LinearAlgebra.SingularException ||
+           err isa LinearAlgebra.LAPACKException ||
+           err isa LinearAlgebra.ZeroPivotException ||
+           err isa OverflowError
+end
+
 function _solve_factored_linear_system(
     factorization,
+    matrix::AbstractMatrix{<:Number},
     rhs::AbstractVector{<:Number},
     label::AbstractString,
 )
-    scalar_type = promote_type(eltype(factorization), eltype(rhs))
+    scalar_type = promote_type(eltype(matrix), eltype(rhs))
     real_type = typeof(real(zero(scalar_type)))
-    use_ieee_scaling = real_type <: Union{Float32,Float64}
+    use_ieee_scaling = real_type <: Union{Float32,Float64} &&
+                       scalar_type <:
+                           Union{Float32,Float64,ComplexF32,ComplexF64}
 
-    rhs_scale = zero(real_type)
-    if use_ieee_scaling
-        @inbounds for value in rhs
-            rhs_scale = max(
-                rhs_scale,
-                real_type(abs(real(value))),
-                real_type(abs(imag(value))),
-            )
-        end
-    end
-
-    solution = if use_ieee_scaling && !iszero(rhs_scale) &&
-                  (rhs_scale < sqrt(floatmin(real_type)) ||
-                   rhs_scale > sqrt(floatmax(real_type)))
-        scaled = Vector{scalar_type}(undef, length(rhs))
-        @inbounds for index in eachindex(rhs)
-            scaled[index] = rhs[index] / rhs_scale
-        end
-        ldiv!(factorization, scaled)
-        @inbounds for index in eachindex(scaled)
-            scaled[index] *= rhs_scale
-        end
-        scaled
-    else
+    solution = try
         factorization \ rhs
+    catch err
+        use_ieee_scaling && _recoverable_direct_solve_error(err) || rethrow()
+        return _solve_scaled_ieee_linear_system(
+            matrix, rhs, scalar_type, label)
     end
-    return _assert_finite_linear_vector(solution, label)
+    @inbounds for value in solution
+        if !isfinite(value)
+            use_ieee_scaling ||
+                return _assert_finite_linear_vector(solution, label)
+            return _solve_scaled_ieee_linear_system(
+                matrix, rhs, scalar_type, label)
+        end
+    end
+    return solution
 end
 
 """
@@ -203,7 +267,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                 "Direct solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
         _validate_linear_system_inputs(Z, v, "forward solve")
         return _solve_factored_linear_system(
-            lu(Z), v, "direct forward solution")
+            lu(Z), Z, v, "direct forward solution")
     else
         x, stats = solve_gmres(Z, v;
                                 preconditioner=preconditioner,

@@ -1178,7 +1178,7 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
         )
         fac = lu(A)
         E_total_flat = _solve_factored_linear_system(
-            fac, rhs, "direct DDA solution")
+            fac, A, rhs, "direct DDA solution")
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),
                            epsv, alpha, A, fac, :direct, nothing,

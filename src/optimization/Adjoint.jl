@@ -244,8 +244,9 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
         Z isa Matrix ||
             throw(ArgumentError(
                 "Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
+        adjoint_Z = adjoint(Z)
         return _solve_factored_linear_system(
-            lu(adjoint(Z)), rhs, "direct adjoint solution")
+            lu(adjoint_Z), adjoint_Z, rhs, "direct adjoint solution")
     else
         x, stats = solve_gmres_adjoint(Z, rhs;
                                         preconditioner=preconditioner,
@@ -288,8 +289,10 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                 "Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
         _validate_linear_system_inputs(Z, rhs, "adjoint solve")
         complex_rhs = _as_complex_rhs(rhs)
+        adjoint_Z = adjoint(Z)
         return _solve_factored_linear_system(
-            lu(adjoint(Z)), complex_rhs, "direct adjoint solution")
+            lu(adjoint_Z), adjoint_Z, complex_rhs,
+            "direct adjoint solution")
     else
         x, stats = solve_gmres_adjoint(Z, _as_complex_rhs(rhs);
                                         preconditioner=preconditioner,

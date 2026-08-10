@@ -2955,6 +2955,45 @@ tiny_direct_rhs = fill(ComplexF64(nextfloat(0.0)), 2)
 @test solve_forward(Matrix{ComplexF64}(I, 2, 2), tiny_direct_rhs) ==
       tiny_direct_rhs
 
+# A subnormal matrix can make LAPACK substitution form a non-finite reciprocal
+# even when jointly scaling the matrix and RHS reveals a modest exact solution.
+tiny_direct_matrix = reshape(ComplexF64[nextfloat(0.0)], 1, 1)
+tiny_matrix_rhs = ComplexF64[floatmin(Float64)]
+tiny_matrix_reference = setprecision(BigFloat, 4096) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(tiny_direct_matrix) \
+        Complex{BigFloat}.(tiny_matrix_rhs))
+end
+@test tiny_matrix_reference == ComplexF64[2.0^52]
+tiny_matrix_solutions = (
+    solve_forward(tiny_direct_matrix, tiny_matrix_rhs),
+    solve_system(tiny_direct_matrix, tiny_matrix_rhs),
+    solve_adjoint_rhs(tiny_direct_matrix, tiny_matrix_rhs),
+    solve_adjoint(
+        tiny_direct_matrix,
+        reshape(ComplexF64[1.0], 1, 1),
+        tiny_matrix_rhs,
+    ),
+)
+@test all(solution == tiny_matrix_reference
+          for solution in tiny_matrix_solutions)
+@test solve_forward(
+    reshape(Float64[nextfloat(0.0)], 1, 1),
+    Float64[floatmin(Float64)],
+) == Float64[2.0^52]
+@test solve_forward(
+    reshape(Float32[nextfloat(0.0f0)], 1, 1),
+    Float32[floatmin(Float32)],
+) == Float32[2.0f0^23]
+@test solve_forward(
+    reshape(ComplexF32[nextfloat(0.0f0)], 1, 1),
+    ComplexF32[floatmin(Float32)],
+) == ComplexF32[2.0f0^23]
+@test_throws ErrorException solve_forward(
+    tiny_direct_matrix,
+    ComplexF64[floatmax(Float64)],
+)
+
 # BLAS can overflow while forming Q*I even when cancellation makes the exact
 # adjoint RHS finite. The exceptional product restart must recover the full
 # sum without adding workspace allocations to ordinary dense products.
