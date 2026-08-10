@@ -153,6 +153,85 @@ end
     @test all(isfinite, range_em_direct_y)
     @test range_em_fft_y == range_em_direct_y
 
+    transform_overflow_scale = 4.0
+    transform_overflow_kernel = FFTDDAKernel3D(
+        range_fft.kernel.pad_dims,
+        transform_overflow_scale *
+            range_fft.kernel.interaction_scale,
+        transform_overflow_scale .* range_fft.kernel.kernel_hat,
+    )
+    transform_overflow_fft = FFTDDAOperator3D(
+        range_grid,
+        range_k,
+        range_fft.eps_r,
+        range_fft.alpha,
+        false,
+        transform_overflow_kernel,
+        zeros(ComplexF64,
+              transform_overflow_kernel.pad_dims..., 3),
+        zeros(ComplexF64, transform_overflow_kernel.pad_dims...),
+    )
+    transform_overflow_y = similar(range_direct_y)
+    mul!(transform_overflow_y, transform_overflow_fft, range_x)
+    @test !all(isfinite, transform_overflow_fft.qhat)
+    @test transform_overflow_y == range_direct_y
+
+    convolution_overflow_scale = 8.0
+    convolution_overflow_kernel = FFTDDAKernel3D(
+        range_fft.kernel.pad_dims,
+        convolution_overflow_scale *
+            range_fft.kernel.interaction_scale,
+        convolution_overflow_scale .* range_fft.kernel.kernel_hat,
+    )
+    convolution_overflow_fft = FFTDDAOperator3D(
+        range_grid,
+        range_k,
+        range_fft.eps_r,
+        range_fft.alpha,
+        false,
+        convolution_overflow_kernel,
+        zeros(ComplexF64,
+              convolution_overflow_kernel.pad_dims..., 3),
+        zeros(ComplexF64, convolution_overflow_kernel.pad_dims...),
+    )
+    convolution_initial_y = copy(range_initial_y)
+    convolution_direct_y = copy(convolution_initial_y)
+    convolution_fft_y = copy(convolution_initial_y)
+    mul!(convolution_direct_y, range_direct, range_x,
+         0.3 - 0.2im, -0.4 + 0.1im)
+    mul!(convolution_fft_y, convolution_overflow_fft, range_x,
+         0.3 - 0.2im, -0.4 + 0.1im)
+    @test all(isfinite, convolution_overflow_fft.qhat)
+    @test !DiffMoM._fft_convolution_range_safe_3d(
+        DiffMoM._fft_array_component_scale_3d(
+            convolution_overflow_kernel.kernel_hat),
+        DiffMoM._fft_array_component_scale_3d(
+            convolution_overflow_fft.qhat),
+        3,
+        length(convolution_overflow_fft.conv),
+    )
+    @test convolution_fft_y == convolution_direct_y
+
+    em_convolution_kernel = FFTEMDDAKernel3D(
+        range_em_fft.kernel.pad_dims,
+        convolution_overflow_scale *
+            range_em_fft.kernel.interaction_scale,
+        convolution_overflow_scale .* range_em_fft.kernel.kernel_hat,
+    )
+    em_convolution_fft = FFTEMDDAOperator3D(
+        range_grid,
+        range_k,
+        range_em_fft.alpha,
+        false,
+        em_convolution_kernel,
+        zeros(ComplexF64, em_convolution_kernel.pad_dims..., 6),
+        zeros(ComplexF64, em_convolution_kernel.pad_dims...),
+    )
+    em_convolution_y = similar(range_em_direct_y)
+    mul!(em_convolution_y, em_convolution_fft, range_em_x)
+    @test all(isfinite, em_convolution_fft.qhat)
+    @test em_convolution_y == range_em_direct_y
+
     grid = VoxelGrid3D((-0.15, 0.15), (-0.1, 0.1), (-0.05, 0.05), 3, 2, 2)
     epsv = ComplexF64[2.2 + 0.03im + 0.01 * sin(j) for j in 1:grid.nvoxels]
 

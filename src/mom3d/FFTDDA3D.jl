@@ -19,6 +19,16 @@ struct FFTDDAKernel3D
     kernel_hat::Array{ComplexF64,5}
 end
 
+function _fft_array_component_scale_3d(values)
+    scale = 0.0
+    @inbounds for value in values
+        component_scale = _complex_component_scale_3d(value)
+        isfinite(component_scale) || return Inf
+        scale = max(scale, component_scale)
+    end
+    return scale
+end
+
 """
     FFTDDAOperator3D
 
@@ -92,6 +102,24 @@ FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
                               kernel, qhat, conv, ReentrantLock())
 
 @inline _fft_dda_mod_index(offset::Int, nfft::Int) = mod(offset, nfft) + 1
+
+@inline function _fft_convolution_range_safe_3d(
+        kernel_scale::Float64,
+        transformed_dipole_scale::Float64,
+        channels::Int,
+        transform_size::Int)
+    isfinite(kernel_scale) && isfinite(transformed_dipole_scale) ||
+        return false
+    (iszero(kernel_scale) || iszero(transformed_dipole_scale)) &&
+        return true
+    # A complex product needs at most two real products per component. The
+    # channel reduction contributes `channels` terms and an unnormalized FFT
+    # butterfly can transiently sum up to `transform_size` frequency values.
+    factor = 2.0 * Float64(channels) * Float64(transform_size)
+    isfinite(factor) || return false
+    component_limit = floatmax(Float64) / factor
+    return kernel_scale <= component_limit / transformed_dipole_scale
+end
 
 function fft_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
     k = _finite_positive_k0_3d(k0)
@@ -215,6 +243,16 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 FFTW.fft!(view(qhat, :, :, :, b))
             end
 
+            transformed_scale = _fft_array_component_scale_3d(qhat)
+            needs_direct_fallback = !_fft_convolution_range_safe_3d(
+                _fft_array_component_scale_3d(A.kernel.kernel_hat),
+                transformed_scale,
+                3,
+                length(conv),
+            )
+        end
+
+        if !needs_direct_fallback
             for a in 1:3
                 fill!(conv, 0.0 + 0.0im)
                 for b in 1:3
@@ -437,6 +475,16 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 FFTW.fft!(view(qhat, :, :, :, b))
             end
 
+            transformed_scale = _fft_array_component_scale_3d(qhat)
+            needs_direct_fallback = !_fft_convolution_range_safe_3d(
+                _fft_array_component_scale_3d(A.kernel.kernel_hat),
+                transformed_scale,
+                6,
+                length(conv),
+            )
+        end
+
+        if !needs_direct_fallback
             for a in 1:6
                 fill!(conv, 0.0 + 0.0im)
                 for b in 1:6
