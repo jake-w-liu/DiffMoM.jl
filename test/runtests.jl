@@ -3243,6 +3243,84 @@ directivity_optimizer_theta, directivity_optimizer_trace =
     )
 @test directivity_optimizer_theta == [0.0]
 @test directivity_optimizer_trace[1].J == 3.0
+
+directivity_overflow_scale = 0.5 * floatmax(Float64)
+directivity_overflow_Q = reshape(
+    ComplexF64[directivity_overflow_scale], 1, 1)
+directivity_overflow_reference = setprecision(BigFloat, 4096) do
+    objective = BigFloat(2.0) *
+                BigFloat(directivity_overflow_scale) *
+                BigFloat(2.0)
+    @test objective > BigFloat(floatmax(Float64))
+    Float64(objective / objective)
+end
+directivity_overflow_theta, directivity_overflow_trace =
+    optimize_directivity(
+        reshape(ComplexF64[1.0], 1, 1),
+        [zeros(ComplexF64, 1, 1)],
+        ComplexF64[2.0],
+        directivity_overflow_Q,
+        directivity_overflow_Q,
+        [0.0];
+        maxiter=1,
+        verbose=false,
+    )
+@test directivity_overflow_reference == 1.0
+@test directivity_overflow_theta == [0.0]
+@test directivity_overflow_trace[1].J == 1.0
+
+directivity_scale_Z = Matrix{ComplexF64}(I, 2, 2)
+directivity_scale_Mp = [ComplexF64[1.0 0.0; 0.0 0.0]]
+directivity_scale_rhs = ones(ComplexF64, 2)
+directivity_scale_target = Matrix{ComplexF64}(I, 2, 2)
+directivity_scale_total = ComplexF64[1.0 0.0; 0.0 0.5]
+_, directivity_scale_reference_trace = optimize_directivity(
+    directivity_scale_Z,
+    directivity_scale_Mp,
+    directivity_scale_rhs,
+    directivity_scale_target,
+    directivity_scale_total,
+    [0.0];
+    maxiter=1,
+    tol=10.0,
+    verbose=false,
+)
+directivity_common_scale = 0.75 * floatmax(Float64)
+directivity_scale_theta, directivity_scale_trace = optimize_directivity(
+    directivity_scale_Z,
+    directivity_scale_Mp,
+    directivity_scale_rhs,
+    directivity_common_scale .* directivity_scale_target,
+    directivity_common_scale .* directivity_scale_total,
+    [0.0];
+    maxiter=1,
+    tol=10.0,
+    verbose=false,
+)
+@test directivity_scale_theta == [0.0]
+@test directivity_scale_trace[1].J ≈
+      directivity_scale_reference_trace[1].J rtol=4eps(Float64)
+@test directivity_scale_trace[1].gnorm ≈
+      directivity_scale_reference_trace[1].gnorm rtol=4eps(Float64)
+
+directivity_product_target = similar(directivity_scale_rhs)
+directivity_product_total = similar(directivity_scale_rhs)
+DiffMoM._directivity_products_and_objectives!(
+    directivity_product_target,
+    directivity_product_total,
+    directivity_scale_target,
+    directivity_scale_total,
+    directivity_scale_rhs,
+    "directivity allocation probe",
+)
+@test @allocated(DiffMoM._directivity_products_and_objectives!(
+    directivity_product_target,
+    directivity_product_total,
+    directivity_scale_target,
+    directivity_scale_total,
+    directivity_scale_rhs,
+    "directivity allocation probe",
+)) == 0
 @test_throws OverflowError compute_objective(
     ComplexF64[objective_extreme_scale],
     reshape(ComplexF64[1.0], 1, 1),

@@ -162,11 +162,215 @@ end
     return ratio
 end
 
+function _directivity_bigfloat_product(
+    matrix::Matrix{ComplexF64},
+    current::Vector{ComplexF64},
+)
+    result = Vector{Complex{BigFloat}}(undef, length(current))
+    @inbounds for row in axes(matrix, 1)
+        total_real = zero(BigFloat)
+        total_imag = zero(BigFloat)
+        for column in axes(matrix, 2)
+            matrix_value = matrix[row, column]
+            current_value = current[column]
+            matrix_real = BigFloat(real(matrix_value))
+            matrix_imag = BigFloat(imag(matrix_value))
+            current_real = BigFloat(real(current_value))
+            current_imag = BigFloat(imag(current_value))
+            total_real += matrix_real * current_real -
+                          matrix_imag * current_imag
+            total_imag += matrix_real * current_imag +
+                          matrix_imag * current_real
+        end
+        result[row] = Complex{BigFloat}(total_real, total_imag)
+    end
+    return result
+end
+
+function _directivity_bigfloat_objective(
+    current::Vector{ComplexF64},
+    product::Vector{Complex{BigFloat}},
+)
+    total = zero(BigFloat)
+    @inbounds for index in eachindex(current, product)
+        current_value = current[index]
+        product_value = product[index]
+        total += BigFloat(real(current_value)) * real(product_value) +
+                 BigFloat(imag(current_value)) * imag(product_value)
+    end
+    return total
+end
+
+@inline function _update_directivity_exponent_bounds(
+    value::BigFloat,
+    minimum_exponent::Int,
+    maximum_exponent::Int,
+)
+    iszero(value) && return minimum_exponent, maximum_exponent
+    value_exponent = exponent(abs(value))
+    return min(minimum_exponent, value_exponent),
+           max(maximum_exponent, value_exponent)
+end
+
+@noinline function _scaled_directivity_products_bigfloat!(
+    target_product::Vector{ComplexF64},
+    total_product::Vector{ComplexF64},
+    Q_target::Matrix{ComplexF64},
+    Q_total::Matrix{ComplexF64},
+    current::Vector{ComplexF64},
+    label::AbstractString,
+)
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        target_big = _directivity_bigfloat_product(Q_target, current)
+        total_big = _directivity_bigfloat_product(Q_total, current)
+        target_objective = _directivity_bigfloat_objective(
+            current, target_big)
+        total_objective = _directivity_bigfloat_objective(
+            current, total_big)
+        total_objective > 0 ||
+            throw(DomainError(
+                Float64(total_objective),
+                "$label directivity denominator must be positive",
+            ))
+
+        minimum_exponent = typemax(Int)
+        maximum_exponent = typemin(Int)
+        @inbounds for product in (target_big, total_big), value in product
+            minimum_exponent, maximum_exponent =
+                _update_directivity_exponent_bounds(
+                    real(value), minimum_exponent, maximum_exponent)
+            minimum_exponent, maximum_exponent =
+                _update_directivity_exponent_bounds(
+                    imag(value), minimum_exponent, maximum_exponent)
+        end
+        minimum_exponent, maximum_exponent =
+            _update_directivity_exponent_bounds(
+                target_objective, minimum_exponent, maximum_exponent)
+        minimum_exponent, maximum_exponent =
+            _update_directivity_exponent_bounds(
+                total_objective, minimum_exponent, maximum_exponent)
+
+        lower_shift = maximum_exponent - 1022
+        upper_shift = minimum_exponent + 1074
+        lower_shift <= upper_shift ||
+            throw(OverflowError(
+                "$label directivity products span more exponent range than " *
+                "one common Float64 scale can represent"))
+        scale_shift = clamp(
+            maximum_exponent, lower_shift, upper_shift)
+
+        @inbounds for index in eachindex(target_product, target_big)
+            target_product[index] = ComplexF64(
+                Float64(ldexp(real(target_big[index]), -scale_shift)),
+                Float64(ldexp(imag(target_big[index]), -scale_shift)),
+            )
+            total_product[index] = ComplexF64(
+                Float64(ldexp(real(total_big[index]), -scale_shift)),
+                Float64(ldexp(imag(total_big[index]), -scale_shift)),
+            )
+        end
+        _assert_finite_optimizer_vector(
+            target_product, "$label scaled directivity numerator product")
+        _assert_finite_optimizer_vector(
+            total_product, "$label scaled directivity denominator product")
+        target_scaled = Float64(ldexp(target_objective, -scale_shift))
+        total_scaled = Float64(ldexp(total_objective, -scale_shift))
+        isfinite(target_scaled) ||
+            throw(OverflowError(
+                "$label scaled directivity numerator is outside Float64 range"))
+        isfinite(total_scaled) && total_scaled > 0 ||
+            throw(OverflowError(
+                "$label scaled directivity denominator is outside Float64 range"))
+        return target_scaled, total_scaled
+    end
+end
+
+function _directivity_products_and_objectives!(
+    target_product::Vector{ComplexF64},
+    total_product::Vector{ComplexF64},
+    Q_target::Matrix{ComplexF64},
+    Q_total::Matrix{ComplexF64},
+    current::Vector{ComplexF64},
+    label::AbstractString,
+)
+    try
+        _finite_matrix_vector_product!(
+            target_product, Q_target, current,
+            "directivity numerator product")
+        _finite_matrix_vector_product!(
+            total_product, Q_total, current,
+            "directivity denominator product")
+        target_value = _quadratic_objective_from_product(
+            current, Q_target, target_product)
+        total_value = _quadratic_objective_from_product(
+            current, Q_total, total_product)
+        return target_value, total_value
+    catch err
+        err isa OverflowError || rethrow()
+    end
+    return _scaled_directivity_products_bigfloat!(
+        target_product,
+        total_product,
+        Q_target,
+        Q_total,
+        current,
+        label,
+    )
+end
+
+@noinline function _directivity_gradient_component_bigfloat(
+    target_gradient::Float64,
+    total_gradient::Float64,
+    ratio::Float64,
+    denominator::Float64,
+    parameter::Int,
+)
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        value = (
+            BigFloat(target_gradient) -
+            BigFloat(ratio) * BigFloat(total_gradient)
+        ) / BigFloat(denominator)
+        converted = Float64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "directivity gradient at parameter $parameter is outside " *
+                "the representable Float64 range"))
+        return converted
+    end
+end
+
+function _combine_directivity_gradient!(
+    target_gradient::Vector{Float64},
+    total_gradient::Vector{Float64},
+    ratio::Float64,
+    denominator::Float64,
+)
+    @inbounds for parameter in eachindex(target_gradient, total_gradient)
+        value = muladd(
+            -ratio,
+            total_gradient[parameter],
+            target_gradient[parameter],
+        ) / denominator
+        if !isfinite(value)
+            value = _directivity_gradient_component_bigfloat(
+                target_gradient[parameter],
+                total_gradient[parameter],
+                ratio,
+                denominator,
+                parameter,
+            )
+        end
+        target_gradient[parameter] = value
+    end
+    return target_gradient
+end
+
 @inline function _recoverable_optimizer_trial_error(err)
     return err isa LinearAlgebra.SingularException ||
            err isa LinearAlgebra.LAPACKException ||
            err isa LinearAlgebra.PosDefException ||
            err isa LinearAlgebra.ZeroPivotException ||
+           err isa OverflowError ||
            err isa DomainError ||
            err isa ErrorException
 end
@@ -658,14 +862,14 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         _assert_finite_optimizer_vector(I_c, "forward solution")
 
         # Directivity ratio
-        _finite_matrix_vector_product!(
-            QI_target, Q_target, I_c,
-            "accepted directivity numerator product")
-        _finite_matrix_vector_product!(
-            QI_total, Q_total, I_c,
-            "accepted directivity denominator product")
-        f_val = _quadratic_objective_from_product(I_c, Q_target, QI_target)
-        g_val = _quadratic_objective_from_product(I_c, Q_total, QI_total)
+        f_val, g_val = _directivity_products_and_objectives!(
+            QI_target,
+            QI_total,
+            Q_target,
+            Q_total,
+            I_c,
+            "accepted iterate",
+        )
         J_ratio = _directivity_ratio(f_val, g_val, "accepted iterate")
 
         # Two separate adjoint solves for numerically stable ratio gradient
@@ -682,7 +886,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         _assert_finite_optimizer_vector(lam_a, "total-power adjoint solution")
         g_f = gradient_impedance(Mp_eff, I_c, lam_t; reactive=reactive)
         g_g = gradient_impedance(Mp_eff, I_c, lam_a; reactive=reactive)
-        @. g_f = (g_f - J_ratio * g_g) / g_val
+        _combine_directivity_gradient!(g_f, g_g, J_ratio, g_val)
         _assert_finite_optimizer_vector(g_f, "directivity gradient")
         gnorm = norm(g_f)
         isfinite(gnorm) ||
@@ -799,22 +1003,18 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                                          gmres_memory=gmres_memory)
                 trial_valid = all(isfinite, I_trial)
                 if trial_valid
-                    _finite_matrix_vector_product!(
-                        QI_target, Q_target, I_trial,
-                        "trial directivity numerator product")
-                    _finite_matrix_vector_product!(
-                        QI_total, Q_total, I_trial,
-                        "trial directivity denominator product")
-                    f_trial = _quadratic_objective_from_product(
-                        I_trial, Q_target, QI_target)
-                    g_trial = _quadratic_objective_from_product(
-                        I_trial, Q_total, QI_total)
-                    trial_valid =
-                        isfinite(f_trial) && isfinite(g_trial) && g_trial > 0.0
-                    if trial_valid
-                        J_trial = f_trial / g_trial
-                        trial_valid = isfinite(J_trial)
-                    end
+                    f_trial, g_trial =
+                        _directivity_products_and_objectives!(
+                            QI_target,
+                            QI_total,
+                            Q_target,
+                            Q_total,
+                            I_trial,
+                            "trial iterate",
+                        )
+                    J_trial = _directivity_ratio(
+                        f_trial, g_trial, "trial iterate")
+                    trial_valid = true
                 end
             catch err
                 _recoverable_optimizer_trial_error(err) || rethrow()
