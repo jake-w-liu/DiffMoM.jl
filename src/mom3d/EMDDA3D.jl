@@ -871,22 +871,80 @@ end
 Compute scattered electric and magnetic fields at observation points by
 summing induced electric and magnetic dipoles. Returns `(E_scat, H_scat)`.
 """
+@noinline function _scattered_fields_sum_bigfloat_em_dda_3d(
+        res::EMDDAResult3D,
+        observation::Vec3)
+    return setprecision(
+            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        total_E = zero(SVector{3,Complex{BigFloat}})
+        total_H = zero(SVector{3,Complex{BigFloat}})
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            dipoles = _alpha_apply_bigfloat_vector_3d(
+                res.alpha[j],
+                _join_em_field(res.E_total[j], res.H_total[j]))
+            q = SVector{3,Complex{BigFloat}}(
+                dipoles[1], dipoles[2], dipoles[3])
+            m = SVector{3,Complex{BigFloat}}(
+                dipoles[4], dipoles[5], dipoles[6])
+            contribution_E, contribution_H =
+                _em_interaction_value_bigfloat_3d(
+                    observation, res.grid.centers[j], res.k0, q, m)
+            total_E += contribution_E
+            total_H += contribution_H
+        end
+        converted_E = CVec3(
+            ComplexF64(total_E[1]),
+            ComplexF64(total_E[2]),
+            ComplexF64(total_E[3]),
+        )
+        converted_H = CVec3(
+            ComplexF64(total_H[1]),
+            ComplexF64(total_H[2]),
+            ComplexF64(total_H[3]),
+        )
+        all(isfinite, converted_E) && all(isfinite, converted_H) ||
+            throw(OverflowError(
+                "EM DDA scattered field is outside the representable ComplexF64 range."))
+        return converted_E, converted_H
+    end
+end
+
+function _scattered_fields_sum_em_dda_3d(
+        res::EMDDAResult3D,
+        observation::Vec3)
+    total_E = zero(CVec3)
+    total_H = zero(CVec3)
+    try
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            contribution_E, contribution_H =
+                _em_alpha_interaction_apply_3d(
+                    observation, res.grid.centers[j], res.k0,
+                    res.alpha[j],
+                    _join_em_field(res.E_total[j], res.H_total[j]))
+            next_E = total_E + contribution_E
+            next_H = total_H + contribution_H
+            all(isfinite, next_E) && all(isfinite, next_H) ||
+                return _scattered_fields_sum_bigfloat_em_dda_3d(
+                    res, observation)
+            total_E = next_E
+            total_H = next_H
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        return _scattered_fields_sum_bigfloat_em_dda_3d(
+            res, observation)
+    end
+    return total_E, total_H
+end
+
 function scattered_fields_em_dda_3d(res::EMDDAResult3D, r_obs::AbstractVector{Vec3})
     Eout = Vector{CVec3}(undef, length(r_obs))
     Hout = Vector{CVec3}(undef, length(r_obs))
-    for p in eachindex(r_obs)
-        E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-        H = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-        for j in 1:res.grid.nvoxels
-            iszero(res.alpha[j]) && continue
-            Es, Hs = _em_alpha_interaction_apply_3d(
-                r_obs[p], res.grid.centers[j], res.k0, res.alpha[j],
-                _join_em_field(res.E_total[j], res.H_total[j]))
-            E += Es
-            H += Hs
-        end
-        Eout[p] = E
-        Hout[p] = H
+    @inbounds for p in eachindex(r_obs)
+        Eout[p], Hout[p] =
+            _scattered_fields_sum_em_dda_3d(res, r_obs[p])
     end
     return Eout, Hout
 end

@@ -11,6 +11,10 @@ end
 
 println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
 
+@noinline function _allocate_em_field_outputs_3d(n::Int)
+    return Vector{CVec3}(undef, n), Vector{CVec3}(undef, n)
+end
+
 @testset "Coupled electric-magnetic 3D DDA solver" begin
     k0 = 2π
 
@@ -245,6 +249,14 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
         farfield_em_dda_3d(res, Vec3(0.0, 1.0, 0.0))
         @test @allocated(
             farfield_em_dda_3d(res, Vec3(0.0, 1.0, 0.0))) <= 128
+        observations = [Vec3(1.0, 0.0, 0.0)]
+        scattered_fields_em_dda_3d(res, observations)
+        _allocate_em_field_outputs_3d(length(observations))
+        output_allocation = @allocated _allocate_em_field_outputs_3d(
+            length(observations))
+        scattered_allocation = @allocated scattered_fields_em_dda_3d(
+            res, observations)
+        @test scattered_allocation <= output_allocation + 128
     end
 
     @testset "Far-field prefactor exponent range" begin
@@ -383,6 +395,136 @@ println("\n── Test 48: Coupled electric-magnetic 3D DDA solver ──")
             isapprox(real(field_H[index]), real(magnetic_reference[index]);
                      rtol=16eps(Float64), atol=0.0) &&
             isapprox(imag(field_H[index]), imag(magnetic_reference[index]);
+                     rtol=16eps(Float64), atol=0.0)
+            for index in 1:3)
+    end
+
+    @testset "Scattered-field accumulation exponent range" begin
+        grid = VoxelGrid3D(
+            (2.0, 18.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
+        observation = Vec3(0.0, 0.5, 0.5)
+        k = 1.0
+        alpha6 = zeros(ComplexF64, 6, 6)
+        alpha6[1:3, 1:3] .=
+            1.0e4 .* Matrix{ComplexF64}(I, 3, 3)
+        operator = em_dda_operator_3d(grid, k, alpha6)
+        target_magnitude = 0.75 * floatmax(Float64)
+        signs = (1.0, 1.0, -1.0, -1.0)
+        fields_E = CVec3[]
+        for j in 1:grid.nvoxels
+            dyadic = electric_dipole_dyadic_3d(
+                observation, grid.centers[j], k)
+            push!(fields_E, CVec3(
+                0im,
+                signs[j] * target_magnitude /
+                (alpha6[2, 2] * dyadic[2, 2]),
+                0im,
+            ))
+        end
+        fields_H = fill(zero(CVec3), grid.nvoxels)
+        @test all(all(isfinite, field) for field in fields_E)
+        result = EMDDAResult3D(
+            fields_E,
+            fields_H,
+            copy(fields_E),
+            copy(fields_H),
+            operator.alpha,
+            operator,
+            nothing,
+            :direct,
+            nothing,
+            grid,
+            k,
+            false,
+        )
+
+        terms_E, terms_H, reference_E, reference_H =
+            setprecision(BigFloat, 4096) do
+                eta = BigFloat(376.730313668)
+                total_E = zeros(Complex{BigFloat}, 3)
+                total_H = zeros(Complex{BigFloat}, 3)
+                contributions_E = CVec3[]
+                contributions_H = CVec3[]
+                for j in 1:grid.nvoxels
+                    field = Complex{BigFloat}[
+                        fields_E[j][1], fields_E[j][2], fields_E[j][3],
+                        fields_H[j][1], fields_H[j][2], fields_H[j][3],
+                    ]
+                    dipoles = Complex{BigFloat}.(operator.alpha[j]) * field
+                    q = dipoles[1:3]
+                    m = dipoles[4:6]
+                    separation = [
+                        BigFloat(observation[index]) -
+                        BigFloat(grid.centers[j][index])
+                        for index in 1:3
+                    ]
+                    distance = sqrt(sum(abs2, separation))
+                    direction = separation / distance
+                    radial_q = sum(
+                        direction[index] * q[index] for index in 1:3)
+                    radial_m = sum(
+                        direction[index] * m[index] for index in 1:3)
+                    transverse_q = q - radial_q * direction
+                    transverse_m = m - radial_m * direction
+                    near_q = 3 * radial_q * direction - q
+                    near_m = 3 * radial_m * direction - m
+                    kb = BigFloat(k)
+                    scalar_green = exp(Complex{BigFloat}(
+                        zero(BigFloat), -kb * distance)) /
+                        (4 * BigFloat(pi) * distance)
+                    radial_derivative =
+                        (Complex{BigFloat}(0, -kb) - inv(distance)) *
+                        scalar_green
+                    electric_q = scalar_green .* (
+                        kb^2 .* transverse_q +
+                        (inv(distance^2) +
+                         Complex{BigFloat}(0, 1) * kb / distance) .* near_q)
+                    electric_m = scalar_green .* (
+                        kb^2 .* transverse_m +
+                        (inv(distance^2) +
+                         Complex{BigFloat}(0, 1) * kb / distance) .* near_m)
+                    contribution_E = electric_q +
+                        Complex{BigFloat}(0, -eta * kb) *
+                        radial_derivative .* cross(direction, m)
+                    contribution_H =
+                        Complex{BigFloat}(0, kb / eta) *
+                        radial_derivative .* cross(direction, q) +
+                        electric_m
+                    push!(contributions_E, CVec3(
+                        ComplexF64(contribution_E[1]),
+                        ComplexF64(contribution_E[2]),
+                        ComplexF64(contribution_E[3])))
+                    push!(contributions_H, CVec3(
+                        ComplexF64(contribution_H[1]),
+                        ComplexF64(contribution_H[2]),
+                        ComplexF64(contribution_H[3])))
+                    total_E .+= contribution_E
+                    total_H .+= contribution_H
+                end
+                contributions_E,
+                contributions_H,
+                CVec3(ComplexF64(total_E[1]), ComplexF64(total_E[2]),
+                      ComplexF64(total_E[3])),
+                CVec3(ComplexF64(total_H[1]), ComplexF64(total_H[2]),
+                      ComplexF64(total_H[3]))
+            end
+        @test all(all(isfinite, term) for term in terms_E)
+        @test all(all(isfinite, term) for term in terms_H)
+        @test !isfinite(terms_E[1][2] + terms_E[2][2])
+        @test !iszero(reference_H[3])
+
+        scattered_E, scattered_H =
+            scattered_fields_em_dda_3d(result, [observation])
+        @test all(isfinite, scattered_E[1])
+        @test all(isfinite, scattered_H[1])
+        @test all(
+            isapprox(real(scattered_E[1][index]), real(reference_E[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(scattered_E[1][index]), imag(reference_E[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(real(scattered_H[1][index]), real(reference_H[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(scattered_H[1][index]), imag(reference_H[index]);
                      rtol=16eps(Float64), atol=0.0)
             for index in 1:3)
     end
