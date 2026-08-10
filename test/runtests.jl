@@ -1413,9 +1413,49 @@ mul!(q_scale_alias, q_scale_operator, q_scale_alias,
 @test _assert_zero_allocation_mul!(q_scale_operator, q_scale_input) ==
       q_scale_product
 
+q_sum_scale_operator = DiffMoM.sum_q_matrix(
+    Matrix{ComplexF64}(I, 1, 1), Matrix{ComplexF64}(I, 1, 1))
+q_sum_scale_input = ComplexF64[10]
+q_sum_scale_previous = ComplexF64[-20]
+q_sum_scale_result = copy(q_sum_scale_previous)
+mul!(q_sum_scale_result, q_sum_scale_operator, q_sum_scale_input,
+     q_scale_factor, q_scale_factor)
+@test q_sum_scale_result == zeros(ComplexF64, 1)
+
+q_sum_scale_alias = copy(q_sum_scale_input)
+mul!(q_sum_scale_alias, q_sum_scale_operator, q_sum_scale_alias,
+     floatmax(Float64) / 2, -floatmax(Float64))
+@test q_sum_scale_alias == zeros(ComplexF64, 1)
+
+# Each summand is a Hermitian PSD outer product. Applying the scale to each
+# summand separately overflows their cancelling first components, although the
+# exact scaled sum is finite.
+q_sum_vector_a = ComplexF64[1.0e154, 1]
+q_sum_vector_b = ComplexF64[1.0e154, -1]
+q_sum_psd_a = q_sum_vector_a * q_sum_vector_a'
+q_sum_psd_b = q_sum_vector_b * q_sum_vector_b'
+q_sum_psd_operator = DiffMoM.sum_q_matrix(q_sum_psd_a, q_sum_psd_b)
+q_sum_psd_input = ComplexF64[0, 1.0e154]
+q_sum_psd_reference = ComplexF64[0, 4.0e154]
+q_sum_psd_result = zeros(ComplexF64, 2)
+mul!(q_sum_psd_result, q_sum_psd_operator, q_sum_psd_input, 2.0, 0.0)
+@test q_sum_psd_result == q_sum_psd_reference
+@test q_sum_psd_operator * q_sum_psd_input ==
+      ComplexF64[0, 2.0e154]
+@test_throws OverflowError q_sum_psd_operator[1, 1]
+
 _assert_shared_workspace_concurrency(
     fill(Q_operator, 4),
     [I_pec, (0.2 - 0.3im) .* I_pec, reverse(I_pec), conj.(I_pec)],
+)
+_assert_shared_workspace_concurrency(
+    fill(q_sum_psd_operator, 4),
+    [
+        q_sum_psd_input,
+        -q_sum_psd_input,
+        0.5 .* q_sum_psd_input,
+        1im .* q_sum_psd_input,
+    ],
 )
 
 # RCS helper checks

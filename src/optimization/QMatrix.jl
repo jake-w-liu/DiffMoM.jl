@@ -200,19 +200,173 @@ end
         value, previous, alpha_scale, beta_scale, false, row)
 end
 
+const _SUM_Q_PRODUCT_FALLBACK_PRECISION = 4608
+const _SUM_Q_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
+
 struct SumQMatrix{A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}} <: AbstractMatrix{ComplexF64}
     A::A
     B::B
+    work_a::Vector{ComplexF64}
+    work_b::Vector{ComplexF64}
+    work_lock::ReentrantLock
 end
 
+function SumQMatrix{A,B}(matrix_a::A, matrix_b::B) where {
+        A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}}
+    size(matrix_a) == size(matrix_b) ||
+        throw(DimensionMismatch(
+            "summed Q matrices must have the same size"))
+    row_count = size(matrix_a, 1)
+    return SumQMatrix{A,B}(
+        matrix_a, matrix_b,
+        zeros(ComplexF64, row_count),
+        zeros(ComplexF64, row_count),
+        ReentrantLock())
+end
+
+SumQMatrix(matrix_a::A, matrix_b::B) where {
+        A<:AbstractMatrix{ComplexF64},B<:AbstractMatrix{ComplexF64}} =
+    SumQMatrix{A,B}(matrix_a, matrix_b)
+
 function sum_q_matrix(A::AbstractMatrix{ComplexF64}, B::AbstractMatrix{ComplexF64})
-    size(A) == size(B) || throw(DimensionMismatch("summed Q matrices must have the same size"))
-    return SumQMatrix{typeof(A),typeof(B)}(A, B)
+    return SumQMatrix(A, B)
 end
 
 Base.size(Q::SumQMatrix) = size(Q.A)
 Base.eltype(::SumQMatrix) = ComplexF64
-Base.getindex(Q::SumQMatrix, i::Int, j::Int) = Q.A[i, j] + Q.B[i, j]
+
+@noinline function _sum_q_entry_bigfloat(
+        value_a::ComplexF64,
+        value_b::ComplexF64,
+        row::Int,
+        column::Int)
+    return setprecision(BigFloat, _SUM_Q_PRODUCT_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(value_a) + Complex{BigFloat}(value_b)
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "SumQMatrix entry is outside the representable " *
+                "ComplexF64 range at index ($row, $column)."))
+        return converted
+    end
+end
+
+function Base.getindex(Q::SumQMatrix, row::Int, column::Int)
+    value_a = Q.A[row, column]
+    value_b = Q.B[row, column]
+    combined = value_a + value_b
+    real_magnitude = abs(real(value_a)) + abs(real(value_b))
+    imag_magnitude = abs(imag(value_a)) + abs(imag(value_b))
+    if isfinite(combined) &&
+       isfinite(real_magnitude) &&
+       isfinite(imag_magnitude)
+        return combined
+    end
+    return _sum_q_entry_bigfloat(
+        value_a, value_b, row, column)
+end
+
+@noinline function _sum_q_scaled_product_bigfloat!(
+        output::Vector{ComplexF64},
+        Q::SumQMatrix,
+        input::AbstractVector{ComplexF64},
+        previous::AbstractVector{ComplexF64},
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool)
+    return setprecision(BigFloat, _SUM_Q_PRODUCT_FALLBACK_PRECISION) do
+        alpha_big = Complex{BigFloat}(alpha_scale)
+        beta_big = overwrite ? zero(Complex{BigFloat}) :
+                   Complex{BigFloat}(beta_scale)
+        @inbounds for row in eachindex(output)
+            product = zero(Complex{BigFloat})
+            for column in axes(Q, 2)
+                input_value = Complex{BigFloat}(input[column])
+                product +=
+                    Complex{BigFloat}(Q.A[row, column]) * input_value
+                product +=
+                    Complex{BigFloat}(Q.B[row, column]) * input_value
+            end
+            total = alpha_big * product
+            if !overwrite
+                total += beta_big * Complex{BigFloat}(previous[row])
+            end
+            converted = ComplexF64(total)
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "SumQMatrix scaled product is outside the " *
+                    "representable ComplexF64 range at row $row."))
+            output[row] = converted
+        end
+        return output
+    end
+end
+
+@noinline function _sum_q_scaled_output_bigfloat(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    return setprecision(
+            BigFloat, _SUM_Q_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(alpha_scale) *
+                Complex{BigFloat}(value)
+        if !overwrite
+            total += Complex{BigFloat}(beta_scale) *
+                     Complex{BigFloat}(previous)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "SumQMatrix scaled output is outside the " *
+                "representable ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@inline function _sum_q_scaled_output(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    alpha_term = alpha_scale * value
+    if overwrite
+        converted = ComplexF64(alpha_term)
+        return isfinite(converted) ? converted :
+               _sum_q_scaled_output_bigfloat(
+                   value, previous, alpha_scale, beta_scale, true, row)
+    end
+
+    beta_term = beta_scale * previous
+    combined = alpha_term + beta_term
+    real_magnitude = abs(real(alpha_term)) + abs(real(beta_term))
+    imag_magnitude = abs(imag(alpha_term)) + abs(imag(beta_term))
+    converted = ComplexF64(combined)
+    if isfinite(converted) &&
+       isfinite(real_magnitude) &&
+       isfinite(imag_magnitude)
+        return converted
+    end
+    return _sum_q_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, false, row)
+end
+
+function _sum_q_child_products!(
+        Q::SumQMatrix,
+        input::AbstractVector{ComplexF64})
+    try
+        mul!(Q.work_a, Q.A, input)
+        mul!(Q.work_b, Q.B, input)
+    catch error
+        error isa OverflowError || rethrow()
+        return false
+    end
+    return all(isfinite, Q.work_a) && all(isfinite, Q.work_b)
+end
 
 function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                             Q::SumQMatrix,
@@ -232,13 +386,57 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
         if iszero(beta_scale)
             fill!(result, zero(ComplexF64))
         elseif beta_scale != one(beta_scale)
-            result .*= beta_scale
+            lock(Q.work_lock)
+            try
+                @inbounds for row in eachindex(result)
+                    Q.work_b[row] = _sum_q_scaled_output(
+                        zero(ComplexF64), result[row], alpha_scale,
+                        beta_scale, false, row)
+                end
+                copyto!(result, Q.work_b)
+            finally
+                unlock(Q.work_lock)
+            end
         end
         return result
     end
     xread = Base.mightalias(result, x) ? copy(x) : x
-    mul!(result, Q.A, xread, alpha_scale, beta_scale)
-    mul!(result, Q.B, xread, alpha_scale, one(ComplexF64))
+    overwrite = iszero(beta_scale)
+    lock(Q.work_lock)
+    try
+        fallback_required = !_sum_q_child_products!(Q, xread)
+        if !fallback_required
+            @inbounds for row in eachindex(Q.work_a)
+                value_a = Q.work_a[row]
+                value_b = Q.work_b[row]
+                combined = value_a + value_b
+                real_magnitude = abs(real(value_a)) + abs(real(value_b))
+                imag_magnitude = abs(imag(value_a)) + abs(imag(value_b))
+                if !isfinite(combined) ||
+                   !isfinite(real_magnitude) ||
+                   !isfinite(imag_magnitude)
+                    fallback_required = true
+                    break
+                end
+                Q.work_a[row] = combined
+            end
+        end
+
+        if fallback_required
+            _sum_q_scaled_product_bigfloat!(
+                Q.work_b, Q, xread, result,
+                alpha_scale, beta_scale, overwrite)
+        else
+            @inbounds for row in eachindex(Q.work_a)
+                Q.work_b[row] = _sum_q_scaled_output(
+                    Q.work_a[row], result[row],
+                    alpha_scale, beta_scale, overwrite, row)
+            end
+        end
+        copyto!(result, Q.work_b)
+    finally
+        unlock(Q.work_lock)
+    end
     return result
 end
 
