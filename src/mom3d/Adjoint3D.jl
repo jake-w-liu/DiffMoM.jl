@@ -31,6 +31,47 @@ function _dalpha_depsr_clausius_mossotti(eps_r::ComplexF64, volume::Real)
     end
 end
 
+@noinline function _dda_material_gradient_bigfloat(
+    res::DDAResult3D,
+    lambda_flat::Vector{ComplexF64},
+    voxel::Int,
+    dalpha::ComplexF64,
+)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        total = zero(BigFloat)
+        source_center = res.grid.centers[voxel]
+        source_field = res.E_total[voxel]
+        @inbounds for observation_voxel in 1:res.grid.nvoxels
+            observation_voxel == voxel && continue
+            lambda_value = _read_field_component(
+                lambda_flat, observation_voxel)
+            interaction = _electric_dipole_alpha_apply_3d(
+                res.grid.centers[observation_voxel],
+                source_center,
+                res.k0,
+                dalpha,
+                source_field,
+            )
+            for component in 1:3
+                lambda_component = lambda_value[component]
+                interaction_component = interaction[component]
+                total +=
+                    BigFloat(real(lambda_component)) *
+                    BigFloat(real(interaction_component)) +
+                    BigFloat(imag(lambda_component)) *
+                    BigFloat(imag(interaction_component))
+            end
+        end
+        converted = Float64(2 * total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "DDA material gradient at voxel $voxel is outside the " *
+                "representable Float64 range."))
+        return converted
+    end
+end
+
 """
     solve_dda_adjoint_3d(res, grad_E_flat; solver=:direct, tol=1e-8,
                          maxiter=200, memory=20,
@@ -116,10 +157,10 @@ function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
             acc += dot(lambdai, GEj)
         end
         value = 2 * real(acc)
-        isfinite(value) ||
-            throw(OverflowError(
-                "DDA material gradient at voxel $j is outside the " *
-                "representable Float64 range."))
+        if !isfinite(value)
+            value = _dda_material_gradient_bigfloat(
+                res, lambda_flat, j, dalpha)
+        end
         grad[j] = value
     end
 

@@ -125,6 +125,81 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
     @test all(isfinite, extreme_gradient)
     @test extreme_gradient ≈ extreme_reference rtol=16eps(Float64)
 
+    cancellation_grid = VoxelGrid3D(
+        (0.0, 5.0), (0.0, 1.0), (0.0, 1.0), 5, 1, 1)
+    cancellation_fields = [
+        voxel == 1 ? CVec3(128.0 + 0im, 0im, 0im) :
+                     CVec3(0im, 0im, 0im)
+        for voxel in 1:cancellation_grid.nvoxels
+    ]
+    cancellation_matrix = Matrix{ComplexF64}(
+        I, 3cancellation_grid.nvoxels, 3cancellation_grid.nvoxels)
+    cancellation_result = DDAResult3D(
+        cancellation_fields,
+        copy(cancellation_fields),
+        fill(1.0 + 0im, cancellation_grid.nvoxels),
+        fill(1.0 + 0im, cancellation_grid.nvoxels),
+        cancellation_matrix,
+        lu(cancellation_matrix),
+        :direct,
+        nothing,
+        cancellation_grid,
+        1.0,
+        false,
+    )
+    cancellation_derivative = DiffMoM._dalpha_depsr_clausius_mossotti(
+        1.0 + 0im, cancellation_grid.volumes[1])
+    cancellation_target = 0.75 * floatmax(Float64)
+    cancellation_signs = (1.0, 1.0, -1.0, -1.0)
+    cancellation_lambda = zeros(
+        ComplexF64, 3cancellation_grid.nvoxels)
+    cancellation_terms = ComplexF64[]
+    for (offset, observation_voxel) in
+        enumerate(2:cancellation_grid.nvoxels)
+        interaction = DiffMoM._electric_dipole_alpha_apply_3d(
+            cancellation_grid.centers[observation_voxel],
+            cancellation_grid.centers[1],
+            1.0,
+            cancellation_derivative,
+            cancellation_fields[1],
+        )
+        lambda_component = conj(
+            cancellation_signs[offset] * cancellation_target /
+            interaction[1])
+        cancellation_lambda[3(observation_voxel - 1) + 1] =
+            lambda_component
+        push!(cancellation_terms, dot(
+            CVec3(lambda_component, 0im, 0im), interaction))
+    end
+    @test all(isfinite, cancellation_terms)
+    @test !isfinite(foldl(+, cancellation_terms))
+    cancellation_reference = setprecision(BigFloat, 4096) do
+        total = zero(BigFloat)
+        for (offset, observation_voxel) in
+            enumerate(2:cancellation_grid.nvoxels)
+            interaction = DiffMoM._electric_dipole_alpha_apply_3d(
+                cancellation_grid.centers[observation_voxel],
+                cancellation_grid.centers[1],
+                1.0,
+                cancellation_derivative,
+                cancellation_fields[1],
+            )
+            lambda_component =
+                cancellation_lambda[3(observation_voxel - 1) + 1]
+            total +=
+                BigFloat(real(lambda_component)) *
+                BigFloat(real(interaction[1])) +
+                BigFloat(imag(lambda_component)) *
+                BigFloat(imag(interaction[1]))
+        end
+        Float64(2 * total)
+    end
+    cancellation_gradient = gradient_epsr_dda_3d(
+        cancellation_result, cancellation_lambda)
+    @test cancellation_reference == 3.995537081919199e292
+    @test cancellation_gradient[1] == cancellation_reference
+    @test cancellation_gradient[2:end] == zeros(4)
+
     solve_grid = VoxelGrid3D(
         (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
     probe = dda_operator_3d(solve_grid, 1.0, 2.0 + 0im)
