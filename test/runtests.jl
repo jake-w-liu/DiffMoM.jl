@@ -1045,10 +1045,87 @@ for mass_op in (mass_contract, adjoint(mass_contract))
     @test mass_overlap_y ≈ mass_overlap_expected
 end
 
+# Duplicate local triplets and five-argument output scaling must retain a
+# finite exact result when ordinary intermediate additions/products overflow.
+mass_extreme_term = 0.6 * floatmax(Float64)
+mass_extreme = LocalMassMatrix(
+    1,
+    [1, 1, 1],
+    [1, 1, 1],
+    ComplexF64[mass_extreme_term, mass_extreme_term, -mass_extreme_term],
+)
+mass_extreme_reference = setprecision(BigFloat, 4608) do
+    ComplexF64(
+        BigFloat(mass_extreme_term) + BigFloat(mass_extreme_term) -
+        BigFloat(mass_extreme_term))
+end
+@test !isfinite(mass_extreme_term + mass_extreme_term)
+@test isfinite(mass_extreme_reference)
+@test mass_extreme[1, 1] == mass_extreme_reference
+@test Matrix(mass_extreme)[1, 1] == mass_extreme_reference
+@test sparse(mass_extreme)[1, 1] == mass_extreme_reference
+
+mass_extreme_dense_accumulation = zeros(ComplexF64, 1, 1)
+DiffMoM._add_scaled_matrix!(
+    mass_extreme_dense_accumulation, 1.0 + 0im, mass_extreme)
+@test mass_extreme_dense_accumulation[1, 1] == mass_extreme_reference
+
+mass_scale = 1.0e308 + 0im
+mass_scale_input = ComplexF64[10]
+mass_scale_operator = LocalMassMatrix(1, [1], [1], ComplexF64[1])
+for mass_op in (
+    mass_extreme,
+    adjoint(mass_extreme),
+)
+    @test (mass_op * ComplexF64[1])[1] == mass_extreme_reference
+end
+for mass_op in (
+    mass_scale_operator,
+    adjoint(mass_scale_operator),
+)
+    mass_scale_product = mass_op * mass_scale_input
+    mass_scale_previous = -mass_scale_product
+    @test any(!isfinite, mass_scale .* mass_scale_product)
+    mass_scale_reference = setprecision(BigFloat, 4608) do
+        ComplexF64[
+            Complex{BigFloat}(mass_scale) *
+                Complex{BigFloat}(mass_scale_product[i]) +
+            Complex{BigFloat}(mass_scale) *
+                Complex{BigFloat}(mass_scale_previous[i])
+            for i in eachindex(mass_scale_product)
+        ]
+    end
+    mass_scale_result = copy(mass_scale_previous)
+    mul!(mass_scale_result, mass_op, mass_scale_input,
+         mass_scale, mass_scale)
+    @test mass_scale_result == mass_scale_reference
+
+    mass_scale_alias = copy(mass_scale_input)
+    mul!(mass_scale_alias, mass_op, mass_scale_alias,
+         mass_scale, -mass_scale)
+    @test mass_scale_alias == zeros(ComplexF64, 1)
+end
+
+mass_scale_cancelling_entries = LocalMassMatrix(
+    1, [1, 1], [1, 1], ComplexF64[10, -10])
+mass_scaled_matrix = mass_scale * mass_scale_cancelling_entries
+@test mass_scaled_matrix[1, 1] == 0.0 + 0.0im
+
+mass_unrepresentable = LocalMassMatrix(
+    1, [1, 1], [1, 1], ComplexF64[floatmax(Float64), floatmax(Float64)])
+@test_throws OverflowError mass_unrepresentable[1, 1]
+@test_throws OverflowError Matrix(mass_unrepresentable)
+@test_throws OverflowError sparse(mass_unrepresentable)
+@test_throws OverflowError mass_unrepresentable * ComplexF64[1]
+
 mass_allocation_x = ComplexF64[1 + 2im, 3 - 4im]
 mass_allocation_y = zeros(ComplexF64, 2)
 mul!(mass_allocation_y, mass_contract, mass_allocation_x)
 @test (@allocated mul!(mass_allocation_y, mass_contract, mass_allocation_x)) < 128
+mul!(mass_allocation_y, mass_contract, mass_allocation_x,
+     1.25 - 0.5im, -0.75 + 0.25im)
+@test (@allocated mul!(mass_allocation_y, mass_contract, mass_allocation_x,
+                      1.25 - 0.5im, -0.75 + 0.25im)) < 128
 
 # Each M_p should be symmetric (real-valued mass matrix)
 for p in 1:min(3, Nt)

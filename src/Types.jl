@@ -85,18 +85,117 @@ Base.size(M::LocalMassMatrix) = (M.n, M.n)
 Base.eltype(::Type{LocalMassMatrix{T}}) where {T<:Number} = T
 Base.eltype(::LocalMassMatrix{T}) where {T<:Number} = T
 
+# Each component of α * M[k] * x contains at most four real triple products.
+# Three finite Float64 coefficients need at most 6295 bits, and summing every
+# addressable triplet adds fewer than 64 bits. The remaining precision is a
+# guard margin for the exceptional accumulation path.
+const _LOCAL_MASS_FALLBACK_PRECISION = 6656
+
+@inline function _local_mass_component_scale(value::Number)
+    return max(
+        abs(Float64(real(value))),
+        abs(Float64(imag(value))),
+    )
+end
+
+@inline function _local_mass_finite(value::Number)
+    return isfinite(real(value)) && isfinite(imag(value))
+end
+
+@inline function _local_mass_convert_bigfloat(
+        ::Type{T},
+        value::Complex{BigFloat},
+        label::AbstractString,
+        index) where {T}
+    converted = if T <: Real
+        iszero(imag(value)) || throw(InexactError(:mul!, T, value))
+        convert(T, real(value))
+    else
+        convert(T, value)
+    end
+    _local_mass_finite(converted) ||
+        throw(OverflowError(
+            "$label is outside the representable $T range at index $index"))
+    return converted
+end
+
+@noinline function _local_mass_entry_bigfloat(
+        M::LocalMassMatrix{T},
+        i::Int,
+        j::Int) where {T<:Number}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        total = zero(Complex{BigFloat})
+        @inbounds for k in eachindex(M.vals)
+            if M.rows[k] == i && M.cols[k] == j
+                total += Complex{BigFloat}(M.vals[k])
+            end
+        end
+        return _local_mass_convert_bigfloat(
+            T, total, "LocalMassMatrix entry", (i, j))
+    end
+end
+
 function Base.getindex(M::LocalMassMatrix{T}, i::Int, j::Int) where {T<:Number}
     (1 <= i <= M.n && 1 <= j <= M.n) || throw(BoundsError(M, (i, j)))
     acc = zero(T)
+    magnitude_sum = 0.0
     @inbounds for k in eachindex(M.vals)
         if M.rows[k] == i && M.cols[k] == j
-            acc += M.vals[k]
+            value = M.vals[k]
+            next_acc = acc + value
+            magnitude_sum += _local_mass_component_scale(value)
+            if !_local_mass_finite(next_acc) || !isfinite(magnitude_sum)
+                return _local_mass_entry_bigfloat(M, i, j)
+            end
+            acc = next_acc
         end
     end
     return acc
 end
 
+@noinline function _scale_local_mass_bigfloat(
+        a::Number,
+        M::LocalMassMatrix,
+        ::Type{T}) where {T}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        rows = Int[]
+        cols = Int[]
+        vals = T[]
+        scale = Complex{BigFloat}(a)
+        order = sortperm(eachindex(M.vals); by=k -> (M.rows[k], M.cols[k]))
+        position = firstindex(order)
+        @inbounds while position <= lastindex(order)
+            k = order[position]
+            row = M.rows[k]
+            col = M.cols[k]
+            total = zero(Complex{BigFloat})
+            while position <= lastindex(order)
+                j = order[position]
+                M.rows[j] == row && M.cols[j] == col || break
+                total += scale * Complex{BigFloat}(M.vals[j])
+                position += 1
+            end
+            converted = _local_mass_convert_bigfloat(
+                T, total, "scaled LocalMassMatrix entry", (row, col))
+            push!(rows, row)
+            push!(cols, col)
+            push!(vals, converted)
+        end
+        return LocalMassMatrix(M.n, rows, cols, vals)
+    end
+end
+
 function Base.:*(a::Number, M::LocalMassMatrix)
+    result_type = Base.promote_op(*, typeof(a), eltype(M))
+    if _local_mass_finite(a)
+        @inbounds for value in M.vals
+            scaled = a * value
+            if !_local_mass_finite(scaled) ||
+               (!iszero(a) && !iszero(value) && iszero(scaled))
+                return _scale_local_mass_bigfloat(a, M, result_type)
+            end
+        end
+    end
     vals = [a * v for v in M.vals]
     return LocalMassMatrix(M.n, copy(M.rows), copy(M.cols), vals)
 end
@@ -109,12 +208,133 @@ function Base.Array{T,2}(M::LocalMassMatrix) where {T}
     @inbounds for k in eachindex(M.vals)
         A[M.rows[k], M.cols[k]] += T(M.vals[k])
     end
+    @inbounds for k in eachindex(M.vals)
+        row = M.rows[k]
+        col = M.cols[k]
+        if !_local_mass_finite(A[row, col])
+            A[row, col] = T(M[row, col])
+        end
+    end
     return A
 end
 
 Base.Array(M::LocalMassMatrix{T}) where {T<:Number} = Array{T,2}(M)
 Base.Matrix(M::LocalMassMatrix{T}) where {T<:Number} = Array{T,2}(M)
-SparseArrays.sparse(M::LocalMassMatrix) = sparse(M.rows, M.cols, M.vals, M.n, M.n)
+
+function SparseArrays.sparse(M::LocalMassMatrix)
+    result = sparse(M.rows, M.cols, M.vals, M.n, M.n)
+    values = nonzeros(result)
+    rows = rowvals(result)
+    @inbounds for col in axes(result, 2)
+        for ptr in nzrange(result, col)
+            if !_local_mass_finite(values[ptr])
+                values[ptr] = M[rows[ptr], col]
+            end
+        end
+    end
+    return result
+end
+
+function _local_mass_mul_needs_bigfloat(
+        y::AbstractVector,
+        M::LocalMassMatrix,
+        x::AbstractVector,
+        alpha::Number,
+        beta::Number,
+        adjoint_operator::Bool)
+    _local_mass_finite(alpha) && _local_mass_finite(beta) || return false
+    magnitude_sum = 0.0
+    scan_all_previous = !iszero(beta) && beta != one(beta)
+    if scan_all_previous
+        @inbounds for previous in y
+            _local_mass_finite(previous) || return false
+            term = beta * previous
+            if !_local_mass_finite(term) ||
+               (!iszero(previous) && iszero(term))
+                return true
+            end
+            magnitude_sum += _local_mass_component_scale(term)
+            isfinite(magnitude_sum) || return true
+        end
+    end
+    @inbounds for k in eachindex(M.vals)
+        target_index = adjoint_operator ? M.cols[k] : M.rows[k]
+        if beta == one(beta)
+            previous = y[target_index]
+            _local_mass_finite(previous) || return false
+            magnitude_sum += _local_mass_component_scale(previous)
+            isfinite(magnitude_sum) || return true
+        end
+        source_index = adjoint_operator ? M.rows[k] : M.cols[k]
+        matrix_value = adjoint_operator ? conj(M.vals[k]) : M.vals[k]
+        source_value = x[source_index]
+        _local_mass_finite(source_value) || return false
+        term = alpha * matrix_value * source_value
+        if !_local_mass_finite(term) ||
+           (!iszero(alpha) && !iszero(matrix_value) &&
+            !iszero(source_value) && iszero(term))
+            return true
+        end
+        magnitude_sum += _local_mass_component_scale(term)
+        isfinite(magnitude_sum) || return true
+    end
+    return false
+end
+
+@noinline function _local_mass_mul_bigfloat!(
+        y::AbstractVector{T},
+        M::LocalMassMatrix,
+        x::AbstractVector,
+        alpha::Number,
+        beta::Number,
+        adjoint_operator::Bool) where {T}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        alpha_big = Complex{BigFloat}(alpha)
+        beta_big = Complex{BigFloat}(beta)
+        order = sortperm(eachindex(M.vals); by=k ->
+            adjoint_operator ? M.cols[k] : M.rows[k])
+        position = firstindex(order)
+        if iszero(beta) || beta == one(beta)
+            iszero(beta) && fill!(y, zero(T))
+            @inbounds while position <= lastindex(order)
+                k = order[position]
+                row = adjoint_operator ? M.cols[k] : M.rows[k]
+                total = iszero(beta) ? zero(Complex{BigFloat}) :
+                        Complex{BigFloat}(y[row])
+                while position <= lastindex(order)
+                    j = order[position]
+                    target_index = adjoint_operator ? M.cols[j] : M.rows[j]
+                    target_index == row || break
+                    source_index = adjoint_operator ? M.rows[j] : M.cols[j]
+                    matrix_value = adjoint_operator ? conj(M.vals[j]) : M.vals[j]
+                    total += alpha_big * Complex{BigFloat}(matrix_value) *
+                             Complex{BigFloat}(x[source_index])
+                    position += 1
+                end
+                y[row] = _local_mass_convert_bigfloat(
+                    T, total, "LocalMassMatrix product", row)
+            end
+            return y
+        end
+
+        @inbounds for row in 1:M.n
+            total = beta_big * Complex{BigFloat}(y[row])
+            while position <= lastindex(order)
+                k = order[position]
+                target_index = adjoint_operator ? M.cols[k] : M.rows[k]
+                target_index == row || break
+                source_index = adjoint_operator ? M.rows[k] : M.cols[k]
+                matrix_value = adjoint_operator ? conj(M.vals[k]) : M.vals[k]
+                total += alpha_big * Complex{BigFloat}(matrix_value) *
+                         Complex{BigFloat}(x[source_index])
+                position += 1
+            end
+            y[row] = _local_mass_convert_bigfloat(
+                T, total, "LocalMassMatrix product", row)
+        end
+        return y
+    end
+end
 
 function LinearAlgebra.mul!(y::AbstractVector, M::LocalMassMatrix, x::AbstractVector,
                             alpha::Number, beta::Number)
@@ -129,6 +349,11 @@ function LinearAlgebra.mul!(y::AbstractVector, M::LocalMassMatrix, x::AbstractVe
         return y
     end
     xread = Base.mightalias(y, x) ? copy(x) : x
+    if _local_mass_mul_needs_bigfloat(
+            y, M, xread, alpha, beta, false)
+        return _local_mass_mul_bigfloat!(
+            y, M, xread, alpha, beta, false)
+    end
     if iszero(beta)
         fill!(y, zero(eltype(y)))
     elseif beta != one(beta)
@@ -159,6 +384,11 @@ function LinearAlgebra.mul!(y::AbstractVector,
         return y
     end
     xread = Base.mightalias(y, x) ? copy(x) : x
+    if _local_mass_mul_needs_bigfloat(
+            y, M, xread, alpha, beta, true)
+        return _local_mass_mul_bigfloat!(
+            y, M, xread, alpha, beta, true)
+    end
     if iszero(beta)
         fill!(y, zero(eltype(y)))
     elseif beta != one(beta)
@@ -178,7 +408,58 @@ function _add_scaled_matrix!(Y::AbstractMatrix, alpha::Number, A::AbstractMatrix
     return Y
 end
 
+function _local_mass_add_needs_bigfloat(
+        Y::AbstractMatrix,
+        alpha::Number,
+        A::LocalMassMatrix)
+    _local_mass_finite(alpha) || return false
+    magnitude_sum = 0.0
+    @inbounds for k in eachindex(A.vals)
+        current = Y[A.rows[k], A.cols[k]]
+        _local_mass_finite(current) || return false
+        term = alpha * A.vals[k]
+        if !_local_mass_finite(term) ||
+           (!iszero(alpha) && !iszero(A.vals[k]) && iszero(term))
+            return true
+        end
+        magnitude_sum += _local_mass_component_scale(current)
+        magnitude_sum += _local_mass_component_scale(term)
+        isfinite(magnitude_sum) || return true
+    end
+    return false
+end
+
+@noinline function _add_scaled_local_mass_bigfloat!(
+        Y::AbstractMatrix{T},
+        alpha::Number,
+        A::LocalMassMatrix) where {T}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        scale = Complex{BigFloat}(alpha)
+        order = sortperm(eachindex(A.vals); by=k -> (A.rows[k], A.cols[k]))
+        position = firstindex(order)
+        @inbounds while position <= lastindex(order)
+            k = order[position]
+            row = A.rows[k]
+            col = A.cols[k]
+            total = Complex{BigFloat}(Y[row, col])
+            while position <= lastindex(order)
+                j = order[position]
+                A.rows[j] == row && A.cols[j] == col || break
+                total += scale * Complex{BigFloat}(A.vals[j])
+                position += 1
+            end
+            Y[row, col] = _local_mass_convert_bigfloat(
+                T, total, "scaled LocalMassMatrix accumulation", (row, col))
+        end
+        return Y
+    end
+end
+
 function _add_scaled_matrix!(Y::AbstractMatrix, alpha::Number, A::LocalMassMatrix)
+    iszero(alpha) && return Y
+    if _local_mass_add_needs_bigfloat(Y, alpha, A)
+        return _add_scaled_local_mass_bigfloat!(Y, alpha, A)
+    end
     @inbounds for k in eachindex(A.vals)
         Y[A.rows[k], A.cols[k]] += alpha * A.vals[k]
     end
