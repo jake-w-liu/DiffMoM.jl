@@ -931,6 +931,89 @@ function Base.getindex(A::DDAOperator3D, row::Int, col::Int)
     return -block[a, b]
 end
 
+@noinline function _dda_operator_field_bigfloat_3d(
+        A::DDAOperator3D,
+        x::AbstractVector{ComplexF64},
+        voxel::Int)
+    return setprecision(
+            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        total = SVector{3,Complex{BigFloat}}(ntuple(
+            component -> Complex{BigFloat}(
+                x[_dda_index(voxel, component)]), 3))
+        observation = A.grid.centers[voxel]
+        @inbounds for source_voxel in 1:A.grid.nvoxels
+            source_voxel == voxel && continue
+            alpha = A.alpha[source_voxel]
+            iszero(alpha) && continue
+            source_field = _read_field_component(x, source_voxel)
+            dipole = _alpha_apply_bigfloat_vector_3d(
+                alpha, source_field)
+            total -= _electric_dipole_value_bigfloat_3d(
+                observation,
+                A.grid.centers[source_voxel],
+                A.k0,
+                dipole,
+            )
+        end
+        converted = CVec3(
+            ComplexF64(total[1]),
+            ComplexF64(total[2]),
+            ComplexF64(total[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "DDA operator output at voxel $voxel is outside the " *
+                "representable ComplexF64 range."))
+        return converted
+    end
+end
+
+@noinline function _dda_adjoint_operator_field_bigfloat_3d(
+        A::DDAOperator3D,
+        x::AbstractVector{ComplexF64},
+        voxel::Int)
+    return setprecision(
+            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        total = SVector{3,Complex{BigFloat}}(ntuple(
+            component -> Complex{BigFloat}(
+                x[_dda_index(voxel, component)]), 3))
+        alpha = A.alpha[voxel]
+        if !iszero(alpha)
+            observation = A.grid.centers[voxel]
+            @inbounds for source_voxel in 1:A.grid.nvoxels
+                source_voxel == voxel && continue
+                source_field = _read_field_component(x, source_voxel)
+                conjugated_field = SVector{3,Complex{BigFloat}}(ntuple(
+                    component -> conj(Complex{BigFloat}(
+                        source_field[component])), 3))
+                conjugated_interaction =
+                    _electric_dipole_value_bigfloat_3d(
+                        observation,
+                        A.grid.centers[source_voxel],
+                        A.k0,
+                        conjugated_field,
+                    )
+                adjoint_interaction =
+                    SVector{3,Complex{BigFloat}}(ntuple(
+                        component -> conj(
+                            conjugated_interaction[component]), 3))
+                total -= _alpha_adjoint_apply_bigfloat_vector_3d(
+                    alpha, adjoint_interaction)
+            end
+        end
+        converted = CVec3(
+            ComplexF64(total[1]),
+            ComplexF64(total[2]),
+            ComplexF64(total[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "adjoint DDA operator output at voxel $voxel is outside " *
+                "the representable ComplexF64 range."))
+        return converted
+    end
+end
+
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                             A::DDAOperator3D,
                             x::AbstractVector{ComplexF64},
@@ -960,13 +1043,27 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     @inbounds for i in 1:N
         Ei = _read_field_component(xread, i)
         ri = A.grid.centers[i]
-        for j in 1:N
-            i == j && continue
-            alphaj = A.alpha[j]
-            iszero(alphaj) && continue
-            Ei -= _electric_dipole_alpha_apply_3d(
-                ri, A.grid.centers[j], A.k0, alphaj,
-                _read_field_component(xread, j))
+        needs_fallback = false
+        try
+            for j in 1:N
+                i == j && continue
+                alphaj = A.alpha[j]
+                iszero(alphaj) && continue
+                next_Ei = Ei - _electric_dipole_alpha_apply_3d(
+                    ri, A.grid.centers[j], A.k0, alphaj,
+                    _read_field_component(xread, j))
+                if !all(isfinite, next_Ei)
+                    needs_fallback = true
+                    break
+                end
+                Ei = next_Ei
+            end
+        catch err
+            err isa OverflowError || rethrow()
+            needs_fallback = true
+        end
+        if needs_fallback
+            Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
         end
 
         for a in 1:3
@@ -1019,13 +1116,30 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         if !iszero(alphai)
             ri = A.grid.centers[i]
             acc = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-            for j in 1:N
-                i == j && continue
-                xj = _read_field_component(xread, j)
-                acc += _electric_dipole_alpha_adjoint_apply_3d(
-                    ri, A.grid.centers[j], A.k0, alphai, xj)
+            needs_fallback = false
+            try
+                for j in 1:N
+                    i == j && continue
+                    xj = _read_field_component(xread, j)
+                    next_acc = acc +
+                               _electric_dipole_alpha_adjoint_apply_3d(
+                        ri, A.grid.centers[j], A.k0, alphai, xj)
+                    if !all(isfinite, next_acc)
+                        needs_fallback = true
+                        break
+                    end
+                    acc = next_acc
+                end
+            catch err
+                err isa OverflowError || rethrow()
+                needs_fallback = true
             end
-            Ei -= acc
+            if needs_fallback
+                Ei = _dda_adjoint_operator_field_bigfloat_3d(
+                    A, xread, i)
+            else
+                Ei -= acc
+            end
         end
 
         for a in 1:3

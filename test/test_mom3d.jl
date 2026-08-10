@@ -2,6 +2,7 @@
 
 using Test
 using LinearAlgebra
+using StaticArrays
 
 if !isdefined(Main, :DiffMoM)
     using DiffMoM
@@ -732,6 +733,346 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         y_tensor = zeros(ComplexF64, size(A_tensor_op, 1))
         mul!(y_tensor, A_tensor_op, x)
         @test norm(y_tensor - A_tensor_dense * x) / norm(A_tensor_dense * x) < 1e-13
+    end
+
+    @testset "Matrix-free exponent-range cancellation" begin
+        component_scale = value ->
+            max(abs(real(value)), abs(imag(value)))
+        dipole_block = function (grid, observation, source, k)
+            block = Matrix{ComplexF64}(undef, 3, 3)
+            for component in 1:3
+                basis = CVec3(ntuple(index ->
+                    index == component ? 1.0 + 0im : 0.0 + 0im, 3))
+                block[:, component] = DiffMoM._electric_dipole_apply_3d(
+                    grid.centers[observation],
+                    grid.centers[source],
+                    k,
+                    basis,
+                )
+            end
+            block
+        end
+        adjoint_dipole_block = function (grid, observation, source, k)
+            block = Matrix{ComplexF64}(undef, 3, 3)
+            for component in 1:3
+                basis = CVec3(ntuple(index ->
+                    index == component ? 1.0 + 0im : 0.0 + 0im, 3))
+                block[:, component] =
+                    DiffMoM._electric_dipole_alpha_adjoint_apply_3d(
+                        grid.centers[observation],
+                        grid.centers[source],
+                        k,
+                        1.0 + 0im,
+                        basis,
+                    )
+            end
+            block
+        end
+
+        forward_grid = VoxelGrid3D(
+            (0.0, 4.0), (0.0, 3.0), (0.0, 1.0), 4, 3, 1)
+        forward_n = forward_grid.nvoxels
+        forward_k = 1.0
+        forward_target = 5
+        forward_sources = (3, 7, 8, 11)
+        cancellation_signs = (1.0, 1.0, -1.0, -1.0)
+        forward_dipoles = fill(zero(CVec3), forward_n)
+        target_value = ComplexF64[0.0, 0.0, 1.0]
+        for (source, sign) in zip(
+                forward_sources, cancellation_signs)
+            forward_dipoles[source] = CVec3(
+                dipole_block(
+                    forward_grid, forward_target, source, forward_k) \
+                (sign * target_value))
+        end
+        forward_fields_normalized = fill(zero(CVec3), forward_n)
+        forward_scale_denominator = 0.0
+        for observation in 1:forward_n
+            field = zero(CVec3)
+            for source in 1:forward_n
+                observation == source && continue
+                contribution = DiffMoM._electric_dipole_apply_3d(
+                    forward_grid.centers[observation],
+                    forward_grid.centers[source],
+                    forward_k,
+                    forward_dipoles[source],
+                )
+                field += contribution
+                forward_scale_denominator = max(
+                    forward_scale_denominator,
+                    maximum(component_scale, contribution),
+                )
+            end
+            forward_fields_normalized[observation] = field
+            forward_scale_denominator = max(
+                forward_scale_denominator,
+                maximum(component_scale, field),
+            )
+        end
+        forward_scale =
+            0.60 * floatmax(Float64) / forward_scale_denominator
+        forward_fields = CVec3[
+            forward_scale * field
+            for field in forward_fields_normalized
+        ]
+        forward_alpha = Vector{DiffMoM._CMat3DDA}(undef, forward_n)
+        for voxel in 1:forward_n
+            field_norm = sum(abs2, forward_fields_normalized[voxel])
+            forward_alpha[voxel] = iszero(field_norm) ?
+                zero(DiffMoM._CMat3DDA) :
+                DiffMoM._CMat3DDA(
+                    forward_dipoles[voxel] *
+                    adjoint(forward_fields_normalized[voxel]) /
+                    field_norm)
+        end
+        forward_operator = DDAOperator3D(
+            forward_grid,
+            forward_k,
+            fill(1.0 + 0im, forward_n),
+            forward_alpha,
+            false,
+        )
+        forward_x = reduce(vcat, forward_fields)
+        ordinary_forward = similar(forward_x)
+        maximum_forward_contribution = 0.0
+        for observation in 1:forward_n
+            field = forward_fields[observation]
+            for source in 1:forward_n
+                observation == source && continue
+                contribution =
+                    DiffMoM._electric_dipole_alpha_apply_3d(
+                        forward_grid.centers[observation],
+                        forward_grid.centers[source],
+                        forward_k,
+                        forward_alpha[source],
+                        forward_fields[source],
+                    )
+                @test all(isfinite, contribution)
+                maximum_forward_contribution = max(
+                    maximum_forward_contribution,
+                    maximum(component_scale, contribution),
+                )
+                field -= contribution
+            end
+            ordinary_forward[(3observation - 2):(3observation)] = field
+        end
+        forward_overflow_indices = findall(!isfinite, ordinary_forward)
+        @test !isempty(forward_overflow_indices)
+        @test maximum(component_scale, forward_x) < floatmax(Float64)
+        @test maximum_forward_contribution < floatmax(Float64)
+
+        forward_reference = setprecision(BigFloat, 4096) do
+            dipoles_big = Vector{SVector{3,Complex{BigFloat}}}(
+                undef, forward_n)
+            for source in 1:forward_n
+                field_big = SVector{3,Complex{BigFloat}}(ntuple(
+                    component -> Complex{BigFloat}(
+                        forward_fields[source][component]), 3))
+                dipoles_big[source] =
+                    SVector{3,Complex{BigFloat}}(ntuple(row -> begin
+                        total = zero(Complex{BigFloat})
+                        for column in 1:3
+                            total += Complex{BigFloat}(
+                                forward_alpha[source][row, column]) *
+                                     field_big[column]
+                        end
+                        total
+                    end, 3))
+            end
+            reference = Vector{ComplexF64}(undef, 3forward_n)
+            for observation in 1:forward_n
+                total = SVector{3,Complex{BigFloat}}(ntuple(
+                    component -> Complex{BigFloat}(
+                        forward_fields[observation][component]), 3))
+                for source in 1:forward_n
+                    observation == source && continue
+                    total -= DiffMoM._electric_dipole_value_bigfloat_3d(
+                        forward_grid.centers[observation],
+                        forward_grid.centers[source],
+                        forward_k,
+                        dipoles_big[source],
+                    )
+                end
+                for component in 1:3
+                    reference[3(observation - 1) + component] =
+                        ComplexF64(total[component])
+                end
+            end
+            reference
+        end
+        @test all(isfinite, forward_reference)
+        forward_y = similar(forward_x)
+        mul!(forward_y, forward_operator, forward_x)
+        @test all(isfinite, forward_y)
+        @test forward_y[forward_overflow_indices] ==
+              forward_reference[forward_overflow_indices]
+
+        adjoint_grid = VoxelGrid3D(
+            (0.0, 3.0), (0.0, 2.0), (0.0, 1.0), 3, 2, 1)
+        adjoint_n = adjoint_grid.nvoxels
+        adjoint_k = 5.0
+        adjoint_target = 5
+        adjoint_sources = (1, 3, 4, 6)
+        adjoint_fields_normalized = fill(zero(CVec3), adjoint_n)
+        for (source, sign) in zip(
+                adjoint_sources, cancellation_signs)
+            adjoint_fields_normalized[source] = CVec3(
+                adjoint_dipole_block(
+                    adjoint_grid, adjoint_target, source, adjoint_k) \
+                (sign * target_value))
+        end
+        raw_adjoint_interaction = function (observation, source, field)
+            DiffMoM._electric_dipole_alpha_adjoint_apply_3d(
+                adjoint_grid.centers[observation],
+                adjoint_grid.centers[source],
+                adjoint_k,
+                1.0 + 0im,
+                field,
+            )
+        end
+        target_field = zero(CVec3)
+        for source in 1:adjoint_n
+            source == adjoint_target && continue
+            target_field += raw_adjoint_interaction(
+                adjoint_target,
+                source,
+                adjoint_fields_normalized[source],
+            )
+        end
+        adjoint_fields_normalized[adjoint_target] = target_field
+        raw_adjoint_sums = fill(zero(CVec3), adjoint_n)
+        for observation in 1:adjoint_n
+            for source in 1:adjoint_n
+                observation == source && continue
+                raw_adjoint_sums[observation] += raw_adjoint_interaction(
+                    observation,
+                    source,
+                    adjoint_fields_normalized[source],
+                )
+            end
+        end
+        adjoint_alpha = fill(zero(DiffMoM._CMat3DDA), adjoint_n)
+        adjoint_alpha[adjoint_target] = DiffMoM._CI3_DDA
+        for voxel in adjoint_sources
+            interaction_norm = sum(abs2, raw_adjoint_sums[voxel])
+            adjoint_alpha[voxel] = DiffMoM._CMat3DDA(
+                raw_adjoint_sums[voxel] *
+                adjoint(adjoint_fields_normalized[voxel]) /
+                interaction_norm)
+        end
+        adjoint_scale_denominator = 0.0
+        for observation in 1:adjoint_n
+            adjoint_scale_denominator = max(
+                adjoint_scale_denominator,
+                maximum(
+                    component_scale,
+                    adjoint_fields_normalized[observation],
+                ),
+            )
+            for source in 1:adjoint_n
+                observation == source && continue
+                contribution =
+                    DiffMoM._electric_dipole_alpha_adjoint_apply_3d(
+                        adjoint_grid.centers[observation],
+                        adjoint_grid.centers[source],
+                        adjoint_k,
+                        adjoint_alpha[observation],
+                        adjoint_fields_normalized[source],
+                    )
+                adjoint_scale_denominator = max(
+                    adjoint_scale_denominator,
+                    maximum(component_scale, contribution),
+                )
+            end
+        end
+        adjoint_scale =
+            0.60 * floatmax(Float64) / adjoint_scale_denominator
+        adjoint_fields = CVec3[
+            adjoint_scale * field
+            for field in adjoint_fields_normalized
+        ]
+        adjoint_operator = DDAOperator3D(
+            adjoint_grid,
+            adjoint_k,
+            fill(1.0 + 0im, adjoint_n),
+            adjoint_alpha,
+            false,
+        )
+        adjoint_x = reduce(vcat, adjoint_fields)
+        ordinary_adjoint = similar(adjoint_x)
+        maximum_adjoint_contribution = 0.0
+        for observation in 1:adjoint_n
+            field = adjoint_fields[observation]
+            accumulated = zero(CVec3)
+            for source in 1:adjoint_n
+                observation == source && continue
+                contribution =
+                    DiffMoM._electric_dipole_alpha_adjoint_apply_3d(
+                        adjoint_grid.centers[observation],
+                        adjoint_grid.centers[source],
+                        adjoint_k,
+                        adjoint_alpha[observation],
+                        adjoint_fields[source],
+                    )
+                @test all(isfinite, contribution)
+                maximum_adjoint_contribution = max(
+                    maximum_adjoint_contribution,
+                    maximum(component_scale, contribution),
+                )
+                accumulated += contribution
+            end
+            ordinary_adjoint[
+                (3observation - 2):(3observation)] = field - accumulated
+        end
+        adjoint_overflow_indices = findall(!isfinite, ordinary_adjoint)
+        @test !isempty(adjoint_overflow_indices)
+        @test maximum(component_scale, adjoint_x) < floatmax(Float64)
+        @test maximum_adjoint_contribution < floatmax(Float64)
+
+        adjoint_reference = setprecision(BigFloat, 4096) do
+            fields_big = [SVector{3,Complex{BigFloat}}(ntuple(
+                component -> Complex{BigFloat}(
+                    adjoint_fields[voxel][component]), 3))
+                for voxel in 1:adjoint_n]
+            reference = Vector{ComplexF64}(undef, 3adjoint_n)
+            for observation in 1:adjoint_n
+                total = fields_big[observation]
+                for source in 1:adjoint_n
+                    observation == source && continue
+                    conjugated_field =
+                        SVector{3,Complex{BigFloat}}(ntuple(
+                            component -> conj(
+                                fields_big[source][component]), 3))
+                    conjugated_interaction =
+                        DiffMoM._electric_dipole_value_bigfloat_3d(
+                            adjoint_grid.centers[observation],
+                            adjoint_grid.centers[source],
+                            adjoint_k,
+                            conjugated_field,
+                        )
+                    adjoint_interaction =
+                        SVector{3,Complex{BigFloat}}(ntuple(
+                            component -> conj(
+                                conjugated_interaction[component]), 3))
+                    total -=
+                        DiffMoM._alpha_adjoint_apply_bigfloat_vector_3d(
+                            adjoint_alpha[observation],
+                            adjoint_interaction,
+                        )
+                end
+                for component in 1:3
+                    reference[3(observation - 1) + component] =
+                        ComplexF64(total[component])
+                end
+            end
+            reference
+        end
+        @test all(isfinite, adjoint_reference)
+        adjoint_y = similar(adjoint_x)
+        mul!(adjoint_y, adjoint(adjoint_operator), adjoint_x)
+        @test all(isfinite, adjoint_y)
+        @test adjoint_y[adjoint_overflow_indices] ==
+              adjoint_reference[adjoint_overflow_indices]
     end
 
     @testset "Matrix-free GMRES solve agrees with dense direct" begin
