@@ -420,6 +420,88 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             for index in 1:3)
     end
 
+    @testset "Scattered-field accumulation exponent range" begin
+        grid = VoxelGrid3D(
+            (2.0, 18.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
+        observation = Vec3(0.0, 0.5, 0.5)
+        k = 1.0
+        alpha = fill(1.0e4 + 0im, grid.nvoxels)
+        target_magnitude = 0.75 * floatmax(Float64)
+        signs = (1.0, 1.0, -1.0, -1.0)
+        fields = CVec3[]
+        for j in 1:grid.nvoxels
+            dyadic = electric_dipole_dyadic_3d(
+                observation, grid.centers[j], k)
+            push!(fields, CVec3(
+                signs[j] * target_magnitude /
+                (alpha[j] * dyadic[1, 1]),
+                0im,
+                0im,
+            ))
+        end
+        @test all(all(isfinite, field) for field in fields)
+        result = DDAResult3D(
+            fields,
+            copy(fields),
+            fill(1.0 + 0im, grid.nvoxels),
+            alpha,
+            zeros(ComplexF64, 3grid.nvoxels, 3grid.nvoxels),
+            nothing,
+            :direct,
+            nothing,
+            grid,
+            k,
+            false,
+        )
+
+        terms, reference = setprecision(BigFloat, 4096) do
+            total = zeros(Complex{BigFloat}, 3)
+            contributions = CVec3[]
+            for j in 1:grid.nvoxels
+                separation = [
+                    BigFloat(observation[index]) -
+                    BigFloat(grid.centers[j][index])
+                    for index in 1:3
+                ]
+                distance = sqrt(sum(abs2, separation))
+                direction = separation / distance
+                dipole = Complex{BigFloat}(alpha[j]) .*
+                         Complex{BigFloat}.(fields[j])
+                radial = sum(
+                    direction[index] * dipole[index]
+                    for index in 1:3)
+                transverse = dipole - radial * direction
+                near = 3 * radial * direction - dipole
+                phase = exp(Complex{BigFloat}(
+                    zero(BigFloat), -BigFloat(k) * distance)) /
+                    (4 * BigFloat(pi))
+                contribution = phase .* (
+                    (BigFloat(k)^2 / distance) .* transverse +
+                    (inv(distance^3) + Complex{BigFloat}(0, 1) *
+                     BigFloat(k) / distance^2) .* near)
+                push!(contributions, CVec3(
+                    ComplexF64(contribution[1]),
+                    ComplexF64(contribution[2]),
+                    ComplexF64(contribution[3])))
+                total .+= contribution
+            end
+            contributions,
+            CVec3(ComplexF64(total[1]), ComplexF64(total[2]),
+                  ComplexF64(total[3]))
+        end
+        @test all(all(isfinite, term) for term in terms)
+        @test !isfinite(terms[1][1] + terms[2][1])
+
+        scattered = scattered_field_dda_3d(result, [observation])[1]
+        @test all(isfinite, scattered)
+        @test all(
+            isapprox(real(scattered[index]), real(reference[index]);
+                     rtol=16eps(Float64), atol=0.0) &&
+            isapprox(imag(scattered[index]), imag(reference[index]);
+                     rtol=16eps(Float64), atol=0.0)
+            for index in 1:3)
+    end
+
     @testset "Direct solve rejects non-finite output" begin
         grid = VoxelGrid3D(
             (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
@@ -465,6 +547,13 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test norm(farfield_dda_3d(res, n) - expected) / norm(expected) < 1e-13
         farfield_dda_3d(res, n)
         @test @allocated(farfield_dda_3d(res, n)) <= 128
+        observations = [Vec3(1.0, 0.0, 0.0)]
+        scattered_field_dda_3d(res, observations)
+        output_allocation =
+            @allocated Vector{CVec3}(undef, length(observations))
+        scattered_allocation =
+            @allocated scattered_field_dda_3d(res, observations)
+        @test scattered_allocation <= output_allocation + 128
         @test abs(res.alpha[1] - clausius_mossotti_polarizability(epsr, grid.volumes[1])) < 1e-16
     end
 

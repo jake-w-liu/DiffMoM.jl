@@ -1227,17 +1227,58 @@ Compute scattered electric field at observation points by summing the radiated
 field of all induced dipoles. Observation points must not coincide with voxel
 centers.
 """
+@noinline function _scattered_field_sum_bigfloat_dda_3d(
+        res::DDAResult3D,
+        observation::Vec3)
+    return setprecision(
+            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
+        total = zero(SVector{3,Complex{BigFloat}})
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            dipole = _alpha_apply_bigfloat_vector_3d(
+                res.alpha[j], res.E_total[j])
+            total += _electric_dipole_value_bigfloat_3d(
+                observation, res.grid.centers[j], res.k0, dipole)
+        end
+        converted = CVec3(
+            ComplexF64(total[1]),
+            ComplexF64(total[2]),
+            ComplexF64(total[3]),
+        )
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "DDA scattered field is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+function _scattered_field_sum_dda_3d(
+        res::DDAResult3D,
+        observation::Vec3)
+    total = zero(CVec3)
+    try
+        @inbounds for j in 1:res.grid.nvoxels
+            iszero(res.alpha[j]) && continue
+            contribution = _electric_dipole_alpha_apply_3d(
+                observation, res.grid.centers[j], res.k0,
+                res.alpha[j], res.E_total[j])
+            next_total = total + contribution
+            all(isfinite, next_total) ||
+                return _scattered_field_sum_bigfloat_dda_3d(
+                    res, observation)
+            total = next_total
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        return _scattered_field_sum_bigfloat_dda_3d(res, observation)
+    end
+    return total
+end
+
 function scattered_field_dda_3d(res::DDAResult3D, r_obs::AbstractVector{Vec3})
     out = Vector{CVec3}(undef, length(r_obs))
-    for m in eachindex(r_obs)
-        E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-        for j in 1:res.grid.nvoxels
-            iszero(res.alpha[j]) && continue
-            E += _electric_dipole_alpha_apply_3d(
-                r_obs[m], res.grid.centers[j], res.k0,
-                res.alpha[j], res.E_total[j])
-        end
-        out[m] = E
+    @inbounds for m in eachindex(r_obs)
+        out[m] = _scattered_field_sum_dda_3d(res, r_obs[m])
     end
     return out
 end
