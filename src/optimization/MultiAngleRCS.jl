@@ -138,6 +138,48 @@ function _multiangle_q_product_and_objective(
     return product, objective
 end
 
+@noinline function _multiangle_linear_objective_bigfloat(
+    J_angles::Vector{Float64},
+    weights::Vector{Float64},
+)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        total = zero(BigFloat)
+        @inbounds for index in eachindex(J_angles, weights)
+            total += BigFloat(weights[index]) * BigFloat(J_angles[index])
+        end
+        converted = Float64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "linear multi-angle objective is outside the representable Float64 range"))
+        return converted
+    end
+end
+
+@noinline function _multiangle_sum_log_objective_bigfloat(
+    J_angles::Vector{Float64},
+    weights::Vector{Float64},
+    reference_objectives::Vector{Float64},
+    tiny::Float64,
+)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        total = zero(BigFloat)
+        @inbounds for index in eachindex(
+            J_angles, weights, reference_objectives)
+            objective_value = BigFloat(max(J_angles[index], tiny))
+            reference_value = BigFloat(reference_objectives[index])
+            total += BigFloat(weights[index]) *
+                     (log(objective_value) - log(reference_value))
+        end
+        converted = Float64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "sum_log multi-angle objective is outside the representable Float64 range"))
+        return converted
+    end
+end
+
 function _multiangle_objective_scales(J_angles::Vector{Float64},
                                       weights::Vector{Float64},
                                       objective::Symbol,
@@ -169,7 +211,8 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
         copyto!(scales, weights)
         value = dot(weights, J_angles)
         isfinite(value) ||
-            error("linear multi-angle objective overflowed to a non-finite value")
+            (value = _multiangle_linear_objective_bigfloat(
+                J_angles, weights))
         return value, scales
     elseif objective == :sum_log
         value = 0.0
@@ -182,8 +225,11 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
             value += wi * log_ratio
             scales[i] = wi / Ji
         end
-        (isfinite(value) && all(isfinite, scales)) ||
-            error("sum_log objective or derivative scales overflowed")
+        isfinite(value) ||
+            (value = _multiangle_sum_log_objective_bigfloat(
+                J_angles, weights, reference_objectives, tiny))
+        all(isfinite, scales) ||
+            error("sum_log derivative scales overflowed")
         return value, scales
     elseif objective == :smoothmax_log
         (isfinite(smooth_beta) && smooth_beta > 0.0) ||

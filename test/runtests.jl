@@ -5738,6 +5738,100 @@ phi_probe, scale_probe = DiffMoM._multiangle_objective_scales(
     J_probe, w_probe, :smoothmax_log, ref_probe, beta_probe)
 @assert isfinite(phi_probe) "smoothmax objective should be finite"
 @assert all(isfinite, scale_probe) "smoothmax objective scales should be finite"
+
+multiangle_scalar_scale = floatmax(Float64)
+multiangle_linear_values = Float64[2.0, -2.0]
+multiangle_scalar_weights = fill(multiangle_scalar_scale, 2)
+multiangle_linear_reference = setprecision(BigFloat, 4096) do
+    total = zero(BigFloat)
+    for index in eachindex(
+        multiangle_linear_values, multiangle_scalar_weights)
+        total += BigFloat(multiangle_scalar_weights[index]) *
+                 BigFloat(multiangle_linear_values[index])
+    end
+    Float64(total)
+end
+multiangle_linear_value, multiangle_linear_scales =
+    DiffMoM._multiangle_objective_scales(
+        multiangle_linear_values,
+        multiangle_scalar_weights,
+        :linear,
+        ones(2),
+        beta_probe,
+    )
+@test multiangle_linear_reference == 0.0
+@test multiangle_linear_value == multiangle_linear_reference
+@test multiangle_linear_scales == multiangle_scalar_weights
+@test_throws OverflowError DiffMoM._multiangle_objective_scales(
+    Float64[2.0, 2.0],
+    multiangle_scalar_weights,
+    :linear,
+    ones(2),
+    beta_probe,
+)
+
+multiangle_sum_log_values = Float64[10.0, 10.0]
+multiangle_sum_log_references = Float64[
+    10.0 / exp(2.0),
+    10.0 / exp(-2.0),
+]
+multiangle_sum_log_reference = setprecision(BigFloat, 4096) do
+    total = zero(BigFloat)
+    for index in eachindex(
+        multiangle_sum_log_values,
+        multiangle_scalar_weights,
+        multiangle_sum_log_references,
+    )
+        total += BigFloat(multiangle_scalar_weights[index]) * (
+            log(BigFloat(multiangle_sum_log_values[index])) -
+            log(BigFloat(multiangle_sum_log_references[index]))
+        )
+    end
+    Float64(total)
+end
+multiangle_sum_log_value, multiangle_sum_log_scales =
+    DiffMoM._multiangle_objective_scales(
+        multiangle_sum_log_values,
+        multiangle_scalar_weights,
+        :sum_log,
+        multiangle_sum_log_references,
+        beta_probe,
+    )
+@test multiangle_sum_log_value ≈
+      multiangle_sum_log_reference rtol=2eps(Float64)
+@test multiangle_sum_log_scales ==
+      multiangle_scalar_weights ./ multiangle_sum_log_values
+
+multiangle_scalar_config_positive = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1.0],
+    reshape(ComplexF64[2.0], 1, 1),
+    multiangle_scalar_scale,
+)
+multiangle_scalar_config_negative = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1.0],
+    reshape(ComplexF64[-2.0], 1, 1),
+    multiangle_scalar_scale,
+)
+multiangle_scalar_theta, multiangle_scalar_trace = optimize_multiangle_rcs(
+    reshape(ComplexF64[1.0], 1, 1),
+    [zeros(ComplexF64, 1, 1)],
+    [multiangle_scalar_config_positive, multiangle_scalar_config_negative],
+    [0.0];
+    maxiter=1,
+    verbose=false,
+)
+@test multiangle_scalar_theta == [0.0]
+@test multiangle_scalar_trace[1].J == 0.0
+
+DiffMoM._multiangle_objective_scales(
+    J_probe, w_probe, :linear, ref_probe, beta_probe)
+@test @allocated(DiffMoM._multiangle_objective_scales(
+    J_probe, w_probe, :linear, ref_probe, beta_probe)) <=
+      _float_vector_output_allocation(length(J_probe)) + 128
 @test_throws ArgumentError DiffMoM._multiangle_objective_scales(
     J_probe, w_probe, :smoothmax_log, ref_probe, Inf)
 @test_throws ArgumentError DiffMoM._multiangle_objective_scales(
