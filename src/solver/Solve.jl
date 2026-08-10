@@ -53,6 +53,82 @@ end
     return vector
 end
 
+# A finite Float64 is an integer multiple of 2^-1074 with an integer
+# coefficient of at most 2098 bits. A product therefore needs at most 4196
+# bits, and summing both real products of every complex term across any
+# Int-indexable vector adds fewer than 64 bits. This precision makes the
+# exceptional dense product exact for Float32/Float64 inputs while retaining a
+# guard margin. The ordinary BLAS/generic multiplication path is unchanged.
+const _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION = 4352
+
+@noinline function _matrix_vector_product_bigfloat!(
+    result::AbstractVector{T},
+    matrix::AbstractMatrix{<:Number},
+    vector::AbstractVector{<:Number},
+    label::AbstractString,
+) where {T<:Number}
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        if T <: Real
+            @inbounds for row in axes(matrix, 1)
+                total = zero(BigFloat)
+                for column in axes(matrix, 2)
+                    total += BigFloat(matrix[row, column]) *
+                             BigFloat(vector[column])
+                end
+                converted = convert(T, total)
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "$label is outside the representable $T range at index $row"))
+                result[row] = converted
+            end
+        else
+            @inbounds for row in axes(matrix, 1)
+                total_real = zero(BigFloat)
+                total_imag = zero(BigFloat)
+                for column in axes(matrix, 2)
+                    matrix_value = matrix[row, column]
+                    vector_value = vector[column]
+                    matrix_real = BigFloat(real(matrix_value))
+                    matrix_imag = BigFloat(imag(matrix_value))
+                    vector_real = BigFloat(real(vector_value))
+                    vector_imag = BigFloat(imag(vector_value))
+                    total_real += matrix_real * vector_real -
+                                  matrix_imag * vector_imag
+                    total_imag += matrix_real * vector_imag +
+                                  matrix_imag * vector_real
+                end
+                converted = convert(
+                    T, Complex{BigFloat}(total_real, total_imag))
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "$label is outside the representable $T range at index $row"))
+                result[row] = converted
+            end
+        end
+        return result
+    end
+end
+
+function _finite_matrix_vector_product(
+    matrix::AbstractMatrix{<:Number},
+    vector::AbstractVector{<:Number},
+    label::AbstractString,
+)
+    result = matrix * vector
+    @inbounds for index in eachindex(result)
+        if !isfinite(result[index])
+            scalar_type = eltype(result)
+            scalar_type <:
+                Union{Float32,Float64,ComplexF32,ComplexF64} ||
+                return _assert_finite_linear_vector(result, label)
+            return _matrix_vector_product_bigfloat!(
+                result, matrix, vector, label)
+        end
+    end
+    return result
+end
+
 function _solve_factored_linear_system(
     factorization,
     rhs::AbstractVector{<:Number},

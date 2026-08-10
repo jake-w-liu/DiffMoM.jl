@@ -2882,6 +2882,58 @@ tiny_direct_rhs = fill(ComplexF64(nextfloat(0.0)), 2)
 @test solve_forward(Matrix{ComplexF64}(I, 2, 2), tiny_direct_rhs) ==
       tiny_direct_rhs
 
+# BLAS can overflow while forming Q*I even when cancellation makes the exact
+# adjoint RHS finite. The exceptional product restart must recover the full
+# sum without adding workspace allocations to ordinary dense products.
+adjoint_product_scale = 0.8 * floatmax(Float64)
+Q_extreme_product = zeros(ComplexF64, 4, 4)
+Q_extreme_product[1, :] .= ComplexF64[1.0, 1.0, -1.0, -1.0]
+I_extreme_product = fill(ComplexF64(adjoint_product_scale), 4)
+ordinary_extreme_product = Q_extreme_product * I_extreme_product
+@test !isfinite(ordinary_extreme_product[1])
+extreme_product_reference = setprecision(BigFloat, 4096) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(Q_extreme_product) *
+        Complex{BigFloat}.(I_extreme_product))
+end
+@test extreme_product_reference == zeros(ComplexF64, 4)
+@test solve_adjoint(
+    Matrix{ComplexF64}(I, 4, 4),
+    Q_extreme_product,
+    I_extreme_product,
+) == extreme_product_reference
+Q_extreme_operands = zeros(ComplexF64, 4, 4)
+Q_extreme_operands[1, :] .= ComplexF64[
+    floatmax(Float64),
+    floatmax(Float64),
+    -floatmax(Float64),
+    -floatmax(Float64),
+]
+I_extreme_operands = fill(ComplexF64(floatmax(Float64)), 4)
+@test !all(isfinite, Q_extreme_operands * I_extreme_operands)
+@test solve_adjoint(
+    Matrix{ComplexF64}(I, 4, 4),
+    Q_extreme_operands,
+    I_extreme_operands,
+) == zeros(ComplexF64, 4)
+Q_extreme_product_real = real.(Q_extreme_product)
+@test DiffMoM._finite_matrix_vector_product(
+    Q_extreme_product_real,
+    fill(adjoint_product_scale, 4),
+    "real product",
+) == zeros(Float64, 4)
+@test_throws OverflowError solve_adjoint(
+    Matrix{ComplexF64}(I, 1, 1),
+    reshape(ComplexF64[2.0], 1, 1),
+    ComplexF64[floatmax(Float64)],
+)
+I_product_allocation = fill(1.0 + 0.0im, 4)
+DiffMoM._finite_matrix_vector_product(
+    Q_extreme_product, I_product_allocation, "allocation probe")
+@test @allocated(DiffMoM._finite_matrix_vector_product(
+    Q_extreme_product, I_product_allocation, "allocation probe")) <=
+      _complex_vector_output_allocation(length(I_product_allocation)) + 128
+
 # solve_forward dispatch: :gmres (unpreconditioned)
 I_sf_gmres = solve_forward(Z_gm, Vector{ComplexF64}(v);
                             solver=:gmres, gmres_tol=1e-10, gmres_maxiter=500)

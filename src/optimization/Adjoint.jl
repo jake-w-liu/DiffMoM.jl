@@ -49,8 +49,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
         throw(DimensionMismatch(
             "adjoint objective matrix has size $(size(Q)), expected ($N, $N)"))
     _validate_known_matrix_entries(Q, "adjoint objective matrix")
-    rhs = Q * I
-    _assert_finite_linear_vector(rhs, "adjoint RHS")
+    rhs = _finite_matrix_vector_product(Q, I, "adjoint RHS")
     if solver == :direct
         Z isa Matrix ||
             throw(ArgumentError(
