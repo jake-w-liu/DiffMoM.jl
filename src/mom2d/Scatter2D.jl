@@ -64,6 +64,61 @@ function _green_obs_matrix_unchecked(
     return G_obs
 end
 
+@noinline function _scattered_field_sum_big_2d(
+        vr::VIEResult2D, observation::Vec2)
+    return setprecision(BigFloat, _VIE_PRODUCT_FALLBACK_PRECISION_2D) do
+        k_big = BigFloat(vr.k0)
+        area_big = BigFloat(vr.mesh.cell_area)
+        field = zero(Complex{BigFloat})
+        @inbounds for n in 1:vr.mesh.ncells
+            (iszero(vr.chi[n]) || iszero(vr.E_total[n])) && continue
+            green = _greens_2d_unchecked(
+                observation, vr.mesh.centers[n], vr.k0)
+            field += k_big^2 * BigFloat(vr.chi[n]) *
+                     Complex{BigFloat}(vr.E_total[n]) *
+                     Complex{BigFloat}(green) * area_big
+        end
+        converted = ComplexF64(field)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "scattered_field_2d result is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
+function _scattered_field_sum_2d(
+        vr::VIEResult2D,
+        observation::Vec2,
+        k0sq::Float64,
+        stored_square_usable::Bool)
+    field = zero(ComplexF64)
+    try
+        @inbounds for n in 1:vr.mesh.ncells
+            green = _greens_2d_unchecked(
+                observation, vr.mesh.centers[n], vr.k0)
+            contribution = if stored_square_usable
+                _range_safe_product_2d(
+                    k0sq, vr.chi[n], vr.E_total[n], green,
+                    vr.mesh.cell_area,
+                    "scattered_field_2d source contribution")
+            else
+                _range_safe_product_2d(
+                    vr.k0, vr.k0, vr.chi[n], vr.E_total[n], green,
+                    vr.mesh.cell_area,
+                    "scattered_field_2d source contribution")
+            end
+            next_field = field + contribution
+            isfinite(next_field) ||
+                return _scattered_field_sum_big_2d(vr, observation)
+            field = next_field
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        return _scattered_field_sum_big_2d(vr, observation)
+    end
+    return field
+end
+
 """
     scattered_field_2d(vie_result, r_obs)
 
@@ -74,30 +129,14 @@ function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
     _validate_vie_result_2d(vr)
     _validate_observation_points_2d(
         r_obs, vr.mesh, "scattered_field_2d")
-    A = vr.mesh.cell_area
     k0sq = vr.k0^2
     stored_square_usable = isfinite(k0sq) && k0sq >= floatmin(Float64)
-    N = vr.mesh.ncells
     M = length(r_obs)
 
     E_scat = zeros(ComplexF64, M)
     @inbounds for m in 1:M
-        field = zero(ComplexF64)
-        for n in 1:N
-            green = _greens_2d_unchecked(
-                r_obs[m], vr.mesh.centers[n], vr.k0)
-            contribution = if stored_square_usable
-                _range_safe_product_2d(
-                    k0sq, vr.chi[n], vr.E_total[n], green, A,
-                    "scattered_field_2d source contribution")
-            else
-                _range_safe_product_2d(
-                    vr.k0, vr.k0, vr.chi[n], vr.E_total[n], green, A,
-                    "scattered_field_2d source contribution")
-            end
-            field += contribution
-        end
-        E_scat[m] = field
+        E_scat[m] = _scattered_field_sum_2d(
+            vr, r_obs[m], k0sq, stored_square_usable)
     end
     all(isfinite, E_scat) ||
         error("scattered_field_2d produced non-finite field values.")

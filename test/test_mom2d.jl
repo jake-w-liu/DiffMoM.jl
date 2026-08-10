@@ -372,6 +372,34 @@ end
         @test all(
             isapprox(vr.E_total[index], reference[index]; rtol=2e-14)
             for index in eachindex(reference))
+
+        # Each source contribution is representable, but the first two
+        # positive terms overflow when accumulated before the cancelling
+        # negative terms. The complete field remains representable.
+        source_terms, scattered_reference =
+            setprecision(BigFloat, 256) do
+                terms = ComplexF64[]
+                field = zero(Complex{BigFloat})
+                for n in 1:mesh.ncells
+                    contribution =
+                        BigFloat(k0)^2 * BigFloat(chi[n]) *
+                        Complex{BigFloat}(vr.E_total[n]) *
+                        Complex{BigFloat}(G_obs[1, n]) *
+                        BigFloat(mesh.cell_area)
+                    push!(terms, ComplexF64(contribution))
+                    field += contribution
+                end
+                terms, ComplexF64(field)
+            end
+        @test all(isfinite, source_terms)
+        @test !isfinite(source_terms[1] + source_terms[2])
+
+        scattered = scattered_field_2d(vr, observation)[1]
+        @test isfinite(scattered)
+        @test isapprox(
+            real(scattered), real(scattered_reference); rtol=2e-15)
+        @test isapprox(
+            imag(scattered), imag(scattered_reference); rtol=2e-15)
     end
 
     @testset "Plane wave excitation" begin
