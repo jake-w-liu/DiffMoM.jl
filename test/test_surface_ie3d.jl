@@ -116,6 +116,32 @@ function _near_pair_reference(mesh)
     return reference
 end
 
+function _extreme_cancelling_matvec_input(
+        matrix::AbstractMatrix{ComplexF64},
+        row::Int,
+        columns::NTuple{3,Int})
+    target = 0.55 * floatmax(Float64)
+    target_terms = (target, target, -target)
+    input = zeros(ComplexF64, size(matrix, 2))
+    setprecision(BigFloat, 4096) do
+        for (column, target_term) in zip(columns, target_terms)
+            input[column] = ComplexF64(
+                Complex{BigFloat}(BigFloat(target_term), 0) /
+                Complex{BigFloat}(matrix[row, column]))
+        end
+    end
+    return input
+end
+
+function _bigfloat_matvec_reference(
+        matrix::AbstractMatrix{ComplexF64},
+        input::AbstractVector{ComplexF64})
+    return setprecision(BigFloat, 4096) do
+        ComplexF64.(Complex{BigFloat}.(matrix) *
+                    Complex{BigFloat}.(input))
+    end
+end
+
 function _test_shared_sie_operator_concurrency(A, dense_A, inputs)
     references = [dense_A * input for input in inputs]
     Threads.nthreads() > 1 || return
@@ -256,6 +282,35 @@ end
     @test all(isfinite, real.(A_mu))
     @test norm(A_pm - A_mu) / norm(A_pm) > 1e-4   # distinct formulation
     @test norm(Matrix(A_pm_mf) - A_pm) / norm(A_pm) < 1e-13
+
+    # Every individual EFIE product is representable, but the ordinary row
+    # order can overflow before later cancellation. Exercise both forward and
+    # adjoint public matrix-free reductions against a high-precision oracle.
+    Ze_mf = A_pm_mf.Ze_ext
+    Ze_dense = Matrix(Ze_mf)
+    extreme_columns = (2, 6, 1)
+    extreme_efie_input = _extreme_cancelling_matvec_input(
+        Ze_dense, 1, extreme_columns)
+    extreme_efie_terms = Ze_dense .* transpose(extreme_efie_input)
+    extreme_efie_reference = _bigfloat_matvec_reference(
+        Ze_dense, extreme_efie_input)
+    @test all(isfinite, extreme_efie_input)
+    @test all(isfinite, extreme_efie_terms)
+    @test all(isfinite, extreme_efie_reference)
+    @test Ze_mf * extreme_efie_input == extreme_efie_reference
+
+    Ze_adjoint_dense = Matrix(adjoint(Ze_mf))
+    extreme_efie_adjoint_input = _extreme_cancelling_matvec_input(
+        Ze_adjoint_dense, 1, extreme_columns)
+    extreme_efie_adjoint_terms =
+        Ze_adjoint_dense .* transpose(extreme_efie_adjoint_input)
+    extreme_efie_adjoint_reference = _bigfloat_matvec_reference(
+        Ze_adjoint_dense, extreme_efie_adjoint_input)
+    @test all(isfinite, extreme_efie_adjoint_input)
+    @test all(isfinite, extreme_efie_adjoint_terms)
+    @test all(isfinite, extreme_efie_adjoint_reference)
+    @test adjoint(Ze_mf) * extreme_efie_adjoint_input ==
+          extreme_efie_adjoint_reference
 
     x = ComplexF64[sin(0.11 * i) + 1im * cos(0.07 * i) for i in 1:2N]
     y_mf = zeros(ComplexF64, 2N)

@@ -555,6 +555,13 @@ struct MatrixFreeEFIEAdjointOperator{T, TO<:MatrixFreeEFIEOperator{T}} <: Abstra
     op::TO
 end
 
+# A finite Float64 is an integer multiple of 2^-1074 with an integer
+# coefficient of at most 2098 bits. A complex product therefore needs at most
+# 4196 bits, and summing both real products across any Int-indexable row adds
+# fewer than 64 bits. This precision makes the exceptional reduction exact for
+# ComplexF64 inputs while leaving the ordinary zero-allocation path unchanged.
+const _EFIE_MATVEC_FALLBACK_PRECISION = 4352
+
 Base.size(A::MatrixFreeEFIEOperator) = (A.cache.rwg.nedges, A.cache.rwg.nedges)
 Base.eltype(::MatrixFreeEFIEOperator{T}) where {T} = T
 
@@ -573,19 +580,72 @@ function Base.getindex(A::MatrixFreeEFIEAdjointOperator, i::Int, j::Int)
     return conj(efie_entry(A.op, j, i))
 end
 
+@noinline function _matrixfree_efie_row_bigfloat(
+        A::MatrixFreeEFIEOperator{ComplexF64},
+        x::AbstractVector,
+        row::Int)
+    return setprecision(BigFloat, _EFIE_MATVEC_FALLBACK_PRECISION) do
+        total = zero(Complex{BigFloat})
+        @inbounds for column in axes(A, 2)
+            total += Complex{BigFloat}(efie_entry(A, row, column)) *
+                     Complex{BigFloat}(x[column])
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "matrix-free EFIE output is outside the representable " *
+                "ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@noinline function _matrixfree_efie_adjoint_row_bigfloat(
+        A::MatrixFreeEFIEAdjointOperator{ComplexF64},
+        x::AbstractVector,
+        row::Int)
+    return setprecision(BigFloat, _EFIE_MATVEC_FALLBACK_PRECISION) do
+        total = zero(Complex{BigFloat})
+        @inbounds for column in axes(A, 2)
+            total += conj(Complex{BigFloat}(
+                         efie_entry(A.op, column, row))) *
+                     Complex{BigFloat}(x[column])
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "adjoint matrix-free EFIE output is outside the " *
+                "representable ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
 function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEOperator{T}, x::AbstractVector) where {T<:Number}
     N = size(A, 1)
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
 
     xread = Base.mightalias(y, x) ? copy(x) : x
-    fill!(y, zero(T))
     @inbounds for m in 1:N
         acc = zero(T)
-        for n in 1:N
-            acc += efie_entry(A, m, n) * xread[n]
+        magnitude_sum = 0.0
+        needs_fallback = false
+        try
+            for n in 1:N
+                term = efie_entry(A, m, n) * xread[n]
+                next_acc = acc + term
+                magnitude_sum += max(abs(real(term)), abs(imag(term)))
+                if !isfinite(next_acc) || !isfinite(magnitude_sum)
+                    needs_fallback = true
+                    break
+                end
+                acc = next_acc
+            end
+        catch err
+            err isa OverflowError || rethrow()
+            needs_fallback = true
         end
-        y[m] = acc
+        y[m] = needs_fallback ?
+               _matrixfree_efie_row_bigfloat(A, xread, m) : acc
     end
     return y
 end
@@ -602,13 +662,27 @@ function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEAdjointOperat
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
 
     xread = Base.mightalias(y, x) ? copy(x) : x
-    fill!(y, zero(T))
     @inbounds for n in 1:N
         acc = zero(T)
-        for m in 1:N
-            acc += conj(efie_entry(A.op, m, n)) * xread[m]
+        magnitude_sum = 0.0
+        needs_fallback = false
+        try
+            for m in 1:N
+                term = conj(efie_entry(A.op, m, n)) * xread[m]
+                next_acc = acc + term
+                magnitude_sum += max(abs(real(term)), abs(imag(term)))
+                if !isfinite(next_acc) || !isfinite(magnitude_sum)
+                    needs_fallback = true
+                    break
+                end
+                acc = next_acc
+            end
+        catch err
+            err isa OverflowError || rethrow()
+            needs_fallback = true
         end
-        y[n] = acc
+        y[n] = needs_fallback ?
+               _matrixfree_efie_adjoint_row_bigfloat(A, xread, n) : acc
     end
     return y
 end
