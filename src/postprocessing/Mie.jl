@@ -3,6 +3,13 @@
 export mie_s1s2_pec, mie_bistatic_rcs_pec
 export mie_s1s2_dielectric, mie_bistatic_rcs_dielectric
 
+const _MAX_MIE_ORDER = 100_000
+const _MIE_STACKLESS_LOG_DERIVATIVE_ORDER = 64
+const _MAX_MIE_CONTINUED_FRACTION_ITERATIONS = 100_000
+const _MIE_CONTINUED_FRACTION_TOLERANCE = 8 * eps(Float64)
+const _MIE_CONTINUED_FRACTION_TINY = 1.0e-300
+const _MIE_FALLBACK_PRECISION = 512
+
 @inline function _validated_mie_positive(value::Float64,
                                          label::AbstractString)
     (isfinite(value) && value > 0.0) ||
@@ -46,7 +53,12 @@ function _validated_mie_order(nmax, size_parameter::Float64)
             throw(ArgumentError(
                 "automatic Mie truncation order is not representable for size parameter $size_parameter"))
         end
-        return max(3, order)
+        order = max(3, order)
+        order <= _MAX_MIE_ORDER ||
+            throw(ArgumentError(
+                "automatic Mie truncation order $order exceeds the supported " *
+                "limit $_MAX_MIE_ORDER"))
+        return order
     end
     order = try
         Int(nmax)
@@ -57,7 +69,219 @@ function _validated_mie_order(nmax, size_parameter::Float64)
     end
     order >= 1 ||
         throw(ArgumentError("nmax must be at least 1, got $order"))
+    order <= _MAX_MIE_ORDER ||
+        throw(ArgumentError(
+            "nmax=$order exceeds the supported Mie order limit " *
+            "$_MAX_MIE_ORDER"))
     return order
+end
+
+@noinline function _mie_material_refractive_index_exact(
+    epsc::ComplexF64,
+    muc::ComplexF64,
+)
+    return setprecision(BigFloat, _MIE_FALLBACK_PRECISION) do
+        product = Complex{BigFloat}(epsc) * Complex{BigFloat}(muc)
+        converted = ComplexF64(sqrt(product))
+        (isfinite(converted) && !iszero(converted)) ||
+            throw(ArgumentError(
+                "eps_r * mu_r has no representable nonzero square root"))
+        return converted
+    end
+end
+
+@inline function _mie_material_refractive_index(
+    epsc::ComplexF64,
+    muc::ComplexF64,
+)
+    product = epsc * muc
+    if isfinite(product) && !iszero(product)
+        refractive_index = sqrt(product)
+        isfinite(refractive_index) && !iszero(refractive_index) &&
+            return refractive_index
+    end
+    return _mie_material_refractive_index_exact(epsc, muc)
+end
+
+@noinline function _mie_internal_size_parameter_exact(
+    refractive_index::ComplexF64,
+    x::Float64,
+)
+    return setprecision(BigFloat, _MIE_FALLBACK_PRECISION) do
+        exact = Complex{BigFloat}(refractive_index) * BigFloat(x)
+        converted = ComplexF64(exact)
+        (isfinite(converted) && !iszero(converted)) ||
+            throw(ArgumentError(
+                "internal Mie size parameter is outside the representable " *
+                "nonzero ComplexF64 range"))
+        return converted
+    end
+end
+
+@inline function _mie_internal_size_parameter(
+    refractive_index::ComplexF64,
+    x::Float64,
+)
+    z = refractive_index * x
+    isfinite(z) && !iszero(z) && return z
+    return _mie_internal_size_parameter_exact(refractive_index, x)
+end
+
+@inline function _mie_lentz_nonzero(value::ComplexF64)
+    magnitude = abs(value)
+    magnitude >= _MIE_CONTINUED_FRACTION_TINY && return value
+    iszero(magnitude) &&
+        return ComplexF64(_MIE_CONTINUED_FRACTION_TINY, 0.0)
+    return value * (_MIE_CONTINUED_FRACTION_TINY / magnitude)
+end
+
+@inline function _mie_riccati_log_derivative(
+    n::Int,
+    z::ComplexF64,
+)
+    inverse_z = inv(z)
+    isfinite(inverse_z) ||
+        throw(ArgumentError(
+            "internal Mie size parameter reciprocal is not representable"))
+
+    # D_n(z) = psi'_n(z)/psi_n(z) = J_(n-1/2)(z)/J_(n+1/2)(z) - n/z.
+    # Evaluate the Bessel ratio as a continued fraction with the modified
+    # Lentz algorithm. This remains bounded when sin(z) and cos(z) themselves
+    # overflow and avoids the unstable forward recurrence for n >> abs(z).
+    b0 = (2n + 1) * inverse_z
+    fraction = _mie_lentz_nonzero(b0)
+    numerator_factor = fraction
+    denominator_factor = 0.0 + 0.0im
+
+    for iteration in 1:_MAX_MIE_CONTINUED_FRACTION_ITERATIONS
+        b = (2n + 1 + 2iteration) * inverse_z
+        denominator_factor = _mie_lentz_nonzero(b - denominator_factor)
+        denominator_factor = inv(denominator_factor)
+        numerator_factor = _mie_lentz_nonzero(
+            b - inv(numerator_factor))
+        update = numerator_factor * denominator_factor
+        fraction *= update
+
+        (isfinite(update) && isfinite(fraction)) ||
+            error(
+                "internal Mie logarithmic-derivative continued fraction " *
+                "produced a non-finite value at order $n")
+        if abs(update - 1) <= _MIE_CONTINUED_FRACTION_TOLERANCE
+            result = fraction - n * inverse_z
+            isfinite(result) ||
+                error(
+                    "internal Mie logarithmic derivative is non-finite at " *
+                    "order $n")
+            return result
+        end
+    end
+
+    throw(ArgumentError(
+        "internal Mie logarithmic derivative at order $n requires more than " *
+        "$_MAX_MIE_CONTINUED_FRACTION_ITERATIONS continued-fraction iterations"))
+end
+
+function _mie_riccati_log_derivatives(
+    nstop::Int,
+    z::ComplexF64,
+)
+    values = Vector{ComplexF64}(undef, nstop)
+    values[nstop] = _mie_riccati_log_derivative(nstop, z)
+    inverse_z = inv(z)
+    @inbounds for n in (nstop - 1):-1:1
+        order_over_z = (n + 1) * inverse_z
+        values[n] = order_over_z - inv(values[n + 1] + order_over_z)
+        isfinite(values[n]) ||
+            error(
+                "internal Mie logarithmic derivative is non-finite at order $n")
+    end
+    return values
+end
+
+@inline function _mie_pair_component_scale(
+    first::ComplexF64,
+    second::ComplexF64,
+)
+    return max(
+        abs(real(first)), abs(imag(first)),
+        abs(real(second)), abs(imag(second)),
+    )
+end
+
+@inline function _mie_normalized_pair(
+    first::ComplexF64,
+    second::ComplexF64,
+    label::AbstractString,
+)
+    scale = _mie_pair_component_scale(first, second)
+    (isfinite(scale) && scale > 0.0) ||
+        error("$label cannot be normalized from $first and $second")
+    return first / scale, second / scale
+end
+
+@inline function _mie_log_derivative_pair(
+    derivative::ComplexF64,
+)
+    scale = max(
+        1.0, abs(real(derivative)), abs(imag(derivative)))
+    return ComplexF64(inv(scale), 0.0), derivative / scale
+end
+
+@inline function _mie_use_scaled_forward_recurrence(
+    z::ComplexF64,
+    nstop::Int,
+)
+    # The normalized forward transfer is a small perturbation of a unitary
+    # swap when |z| dominates the accumulated recurrence coefficients. At this
+    # conservative boundary, sum((2n+1)/|z|, n=0:N) is below about 0.26.
+    threshold = 4.0 * nstop * nstop + 32.0
+    return abs(z) >= threshold
+end
+
+@inline function _mie_scaled_riccati_initial_pair(z::ComplexF64)
+    real_z = real(z)
+    imaginary_z = imag(z)
+    sine_real, cosine_real = sincos(real_z)
+    decay_argument = -2.0 * abs(imaginary_z)
+    decayed = exp(decay_argument)
+    one_minus_decayed = -expm1(decay_argument)
+    even_scale = 0.5 * (1.0 + decayed)
+    odd_scale = 0.5 * sign(imaginary_z) * one_minus_decayed
+
+    scaled_sine = ComplexF64(
+        sine_real * even_scale,
+        cosine_real * odd_scale,
+    )
+    scaled_cosine = ComplexF64(
+        cosine_real * even_scale,
+        -sine_real * odd_scale,
+    )
+    inverse_z = inv(z)
+    psi_zero = scaled_sine
+    psi_one = scaled_sine * inverse_z - scaled_cosine
+    return _mie_normalized_pair(
+        psi_zero, psi_one, "internal Mie scaled forward recurrence")
+end
+
+@inline function _mie_dielectric_coefficients(
+    scaled_m::ComplexF64,
+    scaled_mu::ComplexF64,
+    interior_function::ComplexF64,
+    interior_derivative::ComplexF64,
+    psi_n::Float64,
+    psi_p_n::Float64,
+    xi_n::ComplexF64,
+    xi_p_n::ComplexF64,
+)
+    num_a = scaled_m * interior_function * psi_p_n -
+            scaled_mu * interior_derivative * psi_n
+    den_a = scaled_m * interior_function * xi_p_n -
+            scaled_mu * interior_derivative * xi_n
+    num_b = scaled_mu * interior_function * psi_p_n -
+            scaled_m * interior_derivative * psi_n
+    den_b = scaled_mu * interior_function * xi_p_n -
+            scaled_m * interior_derivative * xi_n
+    return -num_a / den_a, -num_b / den_b
 end
 
 @inline function _assert_finite_mie_amplitudes(S1::ComplexF64,
@@ -176,16 +400,11 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
     cosγ = _validated_mie_cosine(cosγ, "cosγ")
     epsc = _validated_mie_material(eps_r, "eps_r")
     muc = _validated_mie_material(mu_r, "mu_r")
-    material_product = epsc * muc
-    (isfinite(material_product) && abs(material_product) > 0.0) ||
-        throw(ArgumentError(
-            "eps_r * mu_r must be finite and nonzero, got $material_product"))
-    m = sqrt(material_product)
-    z = m * x
-    (isfinite(z) && abs(z) > 0.0) ||
-        throw(ArgumentError(
-            "internal Mie size parameter must be finite and nonzero, got $z"))
-    nstop = _validated_mie_order(nmax, abs(z))
+    nstop = _validated_mie_order(nmax, x)
+    epsc == 1.0 + 0.0im && muc == 1.0 + 0.0im &&
+        return 0.0 + 0.0im, 0.0 + 0.0im
+    m = _mie_material_refractive_index(epsc, muc)
+    z = _mie_internal_size_parameter(m, x)
 
     sin_x = sin(x)
     cos_x = cos(x)
@@ -194,10 +413,16 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
     j_n = sin_x / x^2 - cos_x / x
     y_n = -cos_x / x^2 - sin_x / x
 
-    sin_z = sin(z)
-    cos_z = cos(z)
-    j_m_nm1 = sin_z / z
-    j_m_n = sin_z / z^2 - cos_z / z
+    use_scaled_forward = _mie_use_scaled_forward_recurrence(z, nstop)
+    log_derivatives = !use_scaled_forward &&
+                      nstop > _MIE_STACKLESS_LOG_DERIVATIVE_ORDER ?
+        _mie_riccati_log_derivatives(nstop, z) : nothing
+    internal_previous, internal_current = use_scaled_forward ?
+        _mie_scaled_riccati_initial_pair(z) :
+        (0.0 + 0.0im, 0.0 + 0.0im)
+    inverse_internal_z = inv(z)
+    scaled_m, scaled_mu = _mie_normalized_pair(
+        m, muc, "dielectric Mie material factors")
 
     π_prev2 = 0.0
     π_prev1 = 1.0
@@ -212,20 +437,34 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
         psi_p_n = psi_nm1 - (n / x) * psi_n
         xi_p_n = xi_nm1 - (n / x) * xi_n
 
-        psi_m_nm1 = z * j_m_nm1
-        psi_m_n = z * j_m_n
-        psi_m_p_n = psi_m_nm1 - (n / z) * psi_m_n
-
-        num_a = m * psi_m_n * psi_p_n - muc * psi_n * psi_m_p_n
-        den_a = m * psi_m_n * xi_p_n - muc * xi_n * psi_m_p_n
-        num_b = muc * psi_m_n * psi_p_n - m * psi_n * psi_m_p_n
-        den_b = muc * psi_m_n * xi_p_n - m * xi_n * psi_m_p_n
+        interior_function, interior_derivative = if use_scaled_forward
+            derivative = internal_previous -
+                         (n * inverse_internal_z) * internal_current
+            _mie_normalized_pair(
+                internal_current,
+                derivative,
+                "internal Mie scaled forward recurrence",
+            )
+        else
+            log_derivative = log_derivatives === nothing ?
+                _mie_riccati_log_derivative(n, z) :
+                @inbounds(log_derivatives[n])
+            _mie_log_derivative_pair(log_derivative)
+        end
 
         # The leading minus keeps the phase convention aligned with the PEC
         # h^(2) implementation above. RCS is invariant to the resulting global
         # scattered-field phase, but amplitude users expect one convention.
-        a_n = -num_a / den_a
-        b_n = -num_b / den_b
+        a_n, b_n = _mie_dielectric_coefficients(
+            scaled_m,
+            scaled_mu,
+            interior_function,
+            interior_derivative,
+            psi_n,
+            psi_p_n,
+            xi_n,
+            xi_p_n,
+        )
 
         if n == 1
             π_n = 1.0
@@ -248,9 +487,16 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
             exterior_recurrence = (2n + 1) / x
             j_nm1, j_n = j_n, exterior_recurrence * j_n - j_nm1
             y_nm1, y_n = y_n, exterior_recurrence * y_n - y_nm1
-            interior_recurrence = (2n + 1) / z
-            j_m_nm1, j_m_n =
-                j_m_n, interior_recurrence * j_m_n - j_m_nm1
+            if use_scaled_forward
+                internal_next =
+                    ((2n + 1) * inverse_internal_z) * internal_current -
+                    internal_previous
+                internal_previous, internal_current = _mie_normalized_pair(
+                    internal_current,
+                    internal_next,
+                    "internal Mie scaled forward recurrence",
+                )
+            end
         end
     end
 

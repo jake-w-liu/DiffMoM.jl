@@ -733,6 +733,102 @@ S1_dielectric_mie, S2_dielectric_mie =
 @test_throws OverflowError mie_bistatic_rcs_dielectric(
     1.0e-300, 1.0e300, khat_mie, pol_mie, rhat_mie, 2.0; nmax=3)
 
+# Dielectric truncation follows the exterior size parameter, while the
+# internal Riccati-Bessel logarithmic derivative remains stable when n >> |mx|.
+dielectric_low_index_auto_reference = (
+    4.6088330451342935 - 3.146310706699757im,
+    3.561319349966622 + 2.9102874774898675im,
+)
+dielectric_low_index_converged_reference = (
+    4.608833045134293 - 3.1463107067010153im,
+    3.561319349966622 + 2.9102874774420013im,
+)
+dielectric_low_index_auto = mie_s1s2_dielectric(10.0, 0.3, 0.01)
+dielectric_low_index_converged =
+    mie_s1s2_dielectric(10.0, 0.3, 0.01; nmax=40)
+for component in 1:2
+    @test isapprox(
+        dielectric_low_index_auto[component],
+        dielectric_low_index_auto_reference[component];
+        rtol=16eps(Float64),
+        atol=0.0,
+    )
+    @test isapprox(
+        dielectric_low_index_converged[component],
+        dielectric_low_index_converged_reference[component];
+        rtol=8eps(Float64),
+        atol=0.0,
+    )
+end
+
+# Normalize both the material factors and the internal function/derivative
+# pair so no raw material-times-log-derivative product can overflow.
+dielectric_extreme_impedance_reference = (
+    -0.1993938916576317 + 0.10751820637457842im,
+    -0.4582979515538648 - 0.5883400318961542im,
+)
+dielectric_extreme_impedance = mie_s1s2_dielectric(
+    1.0, 0.3, nextfloat(0.0); mu_r=1.0e308, nmax=1)
+for component in 1:2
+    @test isapprox(
+        dielectric_extreme_impedance[component],
+        dielectric_extreme_impedance_reference[component];
+        rtol=8eps(Float64),
+        atol=0.0,
+    )
+end
+
+# A conservatively selected, normalized forward recurrence handles very large
+# internal real arguments in O(nmax) work instead of exhausting the CF cap.
+dielectric_large_internal_reference = (
+    -0.44596372945719465 - 0.694106100496583im,
+    -0.12062065641203042 + 0.3061794991004623im,
+)
+dielectric_large_internal = mie_s1s2_dielectric(
+    1.0, 0.125, 1.0e16; nmax=7)
+for component in 1:2
+    @test isapprox(
+        dielectric_large_internal[component],
+        dielectric_large_internal_reference[component];
+        rtol=8eps(Float64),
+        atol=0.0,
+    )
+end
+
+# Direct complex sin/cos overflows for this passive lossy material even though
+# the coefficient ratios are finite.
+dielectric_lossy_reference = (
+    -0.45852058587254385 - 0.6473396256779773im,
+    -0.1977908038030188 + 0.1842542218799932im,
+)
+dielectric_lossy = mie_s1s2_dielectric(
+    1.0, 0.3, 1.0 - 1.0e8im; nmax=3)
+for component in 1:2
+    @test isapprox(
+        dielectric_lossy[component],
+        dielectric_lossy_reference[component];
+        rtol=8eps(Float64),
+        atol=0.0,
+    )
+end
+
+# Balanced material and geometry scales retain a finite internal size
+# parameter even though the raw material product underflows.
+dielectric_balanced = mie_s1s2_dielectric(
+    1.0e300, 0.3, 1.0e-300; mu_r=1.0e-300, nmax=1)
+dielectric_balanced_reference =
+    -1.582279580752163 - 0.7627820860517617im
+@test isapprox(
+    dielectric_balanced[1], dielectric_balanced_reference;
+    rtol=4eps(Float64), atol=0.0)
+@test isapprox(
+    dielectric_balanced[2], dielectric_balanced_reference;
+    rtol=4eps(Float64), atol=0.0)
+@test mie_s1s2_dielectric(10.0, 0.3, 1.0; nmax=20) ==
+      (0.0 + 0.0im, 0.0 + 0.0im)
+@test_throws ArgumentError mie_s1s2_dielectric(
+    1.0, 0.3, 2.0; nmax=DiffMoM._MAX_MIE_ORDER + 1)
+
 mie_s1s2_pec(2.0, 0.2; nmax=20)
 mie_s1s2_dielectric(2.0, 0.2, 2.5; nmax=20)
 mie_bistatic_rcs_pec(
@@ -740,6 +836,14 @@ mie_bistatic_rcs_pec(
 @test (@allocated mie_s1s2_pec(2.0, 0.2; nmax=20)) == 0
 @test (@allocated mie_s1s2_dielectric(
     2.0, 0.2, 2.5; nmax=20)) == 0
+@test (@allocated mie_s1s2_dielectric(
+    1.0, 0.3, nextfloat(0.0); mu_r=1.0e308, nmax=1)) == 0
+@test (@allocated mie_s1s2_dielectric(
+    1.0, 0.125, 1.0e16; nmax=7)) == 0
+@test (@allocated mie_s1s2_dielectric(
+    10.0, 0.3, 0.01; nmax=65)) <= 2_048
+@test (@allocated mie_s1s2_dielectric(
+    1.0e300, 0.3, 1.0e-300; mu_r=1.0e-300, nmax=1)) <= 10_000
 @test (@allocated mie_bistatic_rcs_pec(
     2.0, 1.0, khat_mie, pol_mie, rhat_mie; nmax=20)) == 0
 
