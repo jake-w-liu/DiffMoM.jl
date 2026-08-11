@@ -807,12 +807,9 @@ end
     k::Float64,
     kx::Float64,
     ky::Float64,
-    m::Int,
-    n::Int,
 )
     magnitude, propagating = _periodic_longitudinal_magnitude(
-        k, kx, ky,
-        "Floquet longitudinal wavevector for order ($m, $n)")
+        k, kx, ky, "Floquet longitudinal wavevector")
     kz = propagating ?
          ComplexF64(magnitude, 0.0) :
          ComplexF64(0.0, magnitude)
@@ -825,7 +822,9 @@ end
 Enumerate all Floquet modes (m, n) for the given lattice and classify
 them as propagating or evanescent.
 
-`k` must match `lattice.k`, and `N_orders` must be nonnegative.
+`k` must match `lattice.k`, and `N_orders` must be between zero and 499,
+inclusive. This bounds the two-dimensional enumeration to at most one million
+lattice terms.
 
 Returns a vector of FloquetMode structs.
 """
@@ -833,6 +832,7 @@ function floquet_modes(k::Real, lattice::PeriodicLattice; N_orders::Int=3)
     kw = _validated_lattice_wavenumber(k, lattice)
     order = _periodic_truncation_order("N_orders", N_orders)
     modes = FloquetMode[]
+    sizehint!(modes, _periodic_term_count(order))
 
     for m in -order:order
         for n in -order:order
@@ -841,7 +841,7 @@ function floquet_modes(k::Real, lattice::PeriodicLattice; N_orders::Int=3)
             ky_mn = _floquet_transverse_component(
                 lattice.ky_bloch, n, lattice.dy, "y")
             kz, propagating = _floquet_longitudinal_component(
-                kw, kx_mn, ky_mn, m, n)
+                kw, kx_mn, ky_mn)
 
             if propagating
                 theta_r = acos(clamp(real(kz) / kw, 0.0, 1.0))

@@ -52,6 +52,17 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         end
         @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k; N_spatial=-1)
         @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k; N_spectral=-1)
+        maximum_periodic_order = DiffMoM._MAX_PERIODIC_TRUNCATION
+        @test DiffMoM._periodic_term_count(maximum_periodic_order) <=
+              DiffMoM._MAX_PERIODIC_TERM_COUNT
+        @test DiffMoM._periodic_term_count(maximum_periodic_order + 1) >
+              DiffMoM._MAX_PERIODIC_TERM_COUNT
+        @test_throws ArgumentError PeriodicLattice(
+            dx, dy, 0.0, 0.0, k;
+            N_spatial=maximum_periodic_order + 1)
+        @test_throws ArgumentError PeriodicLattice(
+            dx, dy, 0.0, 0.0, k;
+            N_spectral=maximum_periodic_order + 1)
         @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k, 0.0, 4, 4)
         @test_throws ArgumentError PeriodicLattice(dx, dy, NaN, 0.0, k, E_opt, 4, 4)
         @test_throws ArgumentError PeriodicLattice(dx, dy, 0.0, 0.0, k, E_opt, -1, 4)
@@ -1026,6 +1037,11 @@ println("\n── Test 42: PeriodicMetrics ──")
             @test length(modes) == (2 * N_ord + 1)^2
         end
         @test_throws ArgumentError floquet_modes(k_pm, lat_pm; N_orders=-1)
+        @test_throws ArgumentError floquet_modes(
+            k_pm,
+            lat_pm;
+            N_orders=DiffMoM._MAX_PERIODIC_TRUNCATION + 1,
+        )
         @test_throws ArgumentError floquet_modes(1.01k_pm, lat_pm; N_orders=1)
     end
 
@@ -1068,7 +1084,7 @@ println("\n── Test 42: PeriodicMetrics ──")
 
         floquet_modes(k_pm, lat_pm; N_orders=3)
         @test @allocated(floquet_modes(
-            k_pm, lat_pm; N_orders=3)) <= 100_000
+            k_pm, lat_pm; N_orders=3)) <= 20_000
     end
 
     @testset "A: Extreme-range Floquet current coefficients" begin

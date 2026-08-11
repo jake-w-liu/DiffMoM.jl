@@ -40,7 +40,8 @@ Inputs:
 - `dx`, `dy`: finite, positive unit-cell periods (meters).
 - `theta_inc`, `phi_inc`: finite incident angles (radians).
 - `k`: finite, positive free-space wavenumber.
-- `N_spatial`, `N_spectral`: nonnegative minimum truncation orders for Ewald sums.
+- `N_spatial`, `N_spectral`: minimum truncation orders for Ewald sums, each in
+  `0:499` (at most one million two-dimensional lattice terms).
 
 Constructor behavior:
 - Computes Bloch transverse wavenumbers `kx_bloch`, `ky_bloch`.
@@ -154,7 +155,7 @@ Enumerate modes `(m,n)` for `m,n in [-N_orders, N_orders]` and classify each as 
 |-----------|------|---------|-------------|
 | `k` | `Real` | -- | Positive free-space wavenumber; must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Periodic lattice and Bloch setup. |
-| `N_orders` | `Int` | `3` | Nonnegative truncation order in each lattice direction. |
+| `N_orders` | `Int` | `3` | Truncation order in each lattice direction (`0:499`; at most one million modes). |
 
 **Returns:** `Vector{FloquetMode}`.
 

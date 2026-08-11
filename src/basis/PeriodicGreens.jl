@@ -34,8 +34,18 @@ export greens_periodic_correction, PeriodicLattice
 # With α = 2: exp(2) ≈ 7.4, losing < 1 digit. Safe for any period.
 const _EWALD_MAX_EXP_ARG = 2.0
 # Every truncation is traversed as a two-dimensional `(2N+1)^2` lattice.
-# Keep that count representable in `Int` before any range is constructed.
-const _MAX_PERIODIC_TRUNCATION = (isqrt(typemax(Int)) - 1) ÷ 2
+# Bound a single traversal to one million terms: this keeps explicit Floquet
+# storage below about 72 MB and prevents an accepted input from committing the
+# process to a practically unbounded loop. The derived order is 499, yielding
+# 998,001 terms; order 500 would exceed the budget.
+const _MAX_PERIODIC_TERM_COUNT = 1_000_000
+const _MAX_PERIODIC_TRUNCATION =
+    (isqrt(_MAX_PERIODIC_TERM_COUNT) - 1) ÷ 2
+
+@inline function _periodic_term_count(order::Int)
+    side = Base.checked_add(Base.checked_mul(2, order), 1)
+    return Base.checked_mul(side, side)
+end
 
 @inline function _finite_periodic_parameter(name::AbstractString, value::Real)
     value_f = Float64(value)
@@ -57,9 +67,13 @@ end
     value <= _MAX_PERIODIC_TRUNCATION ||
         throw(ArgumentError(
             "$name=$value is too large; maximum supported value is " *
-            "$_MAX_PERIODIC_TRUNCATION"
+            "$_MAX_PERIODIC_TRUNCATION " *
+            "($_MAX_PERIODIC_TERM_COUNT lattice terms)"
         ))
-    return Int(value)
+    order = Int(value)
+    _periodic_term_count(order) <= _MAX_PERIODIC_TERM_COUNT ||
+        error("periodic truncation resource-bound invariant violated")
+    return order
 end
 
 function _auto_periodic_truncation(name::AbstractString, value::Float64)
@@ -137,7 +151,8 @@ Construct a PeriodicLattice with Ewald splitting from physical parameters.
    automatically increased for large periods to maintain convergence)
 
 Periods and `k` must be finite and positive, angles must be finite, and
-truncation orders must be nonnegative. Invalid inputs throw `ArgumentError`.
+truncation orders must be between zero and `_MAX_PERIODIC_TRUNCATION` (499),
+inclusive. Invalid inputs throw `ArgumentError`.
 
 For periods d >> λ, the splitting parameter E is increased above sqrt(π/A)
 to maintain numerical stability, and N_spectral is enlarged to include all
