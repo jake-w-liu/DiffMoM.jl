@@ -1047,6 +1047,68 @@ println("\n── Test 42: PeriodicMetrics ──")
             k_pm, lat_pm; N_orders=3)) <= 100_000
     end
 
+    @testset "A: Extreme-range Floquet current coefficients" begin
+        current_mesh = make_rect_plate(0.1, 0.1, 4, 4)
+        current_rwg = build_rwg(current_mesh)
+        current_lattice = PeriodicLattice(
+            1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0, 0)
+        unit_currents = fill(ComplexF64(1.0), current_rwg.nedges)
+        extreme_scale = floatmax(Float64)
+        extreme_currents = fill(
+            ComplexF64(extreme_scale), current_rwg.nedges)
+
+        _, unit_coefficients = DiffMoM._floquet_current_fourier_coefficients(
+            current_mesh, current_rwg, unit_currents,
+            1.0, current_lattice; N_orders=0)
+        _, extreme_coefficients =
+            DiffMoM._floquet_current_fourier_coefficients(
+                current_mesh, current_rwg, extreme_currents,
+                1.0, current_lattice; N_orders=0)
+        expected_extreme = SVector{3,ComplexF64}(ntuple(component ->
+            setprecision(BigFloat, 512) do
+                ComplexF64(
+                    Complex{BigFloat}(unit_coefficients[1][component]) *
+                    BigFloat(extreme_scale))
+            end,
+            3,
+        ))
+        @test all(isfinite, extreme_coefficients[1])
+        @test extreme_coefficients[1] ≈ expected_extreme rtol=8eps(Float64)
+
+        DiffMoM._floquet_current_fourier_coefficients(
+            current_mesh, current_rwg, extreme_currents,
+            1.0, current_lattice; N_orders=0)
+        @test @allocated(
+            DiffMoM._floquet_current_fourier_coefficients(
+                current_mesh, current_rwg, extreme_currents,
+                1.0, current_lattice; N_orders=0)) <= 400_000
+
+        phase_mesh = make_rect_plate(1.0e93, 1.0e93, 2, 2)
+        phase_mesh.xyz[1, :] .+= 3.0e108
+        phase_mesh.xyz[2, :] .-= 3.0e108
+        phase_rwg = build_rwg(phase_mesh)
+        phase_k = 1.0e200
+        phase_lattice = PeriodicLattice(
+            1.0e94, 1.0e94,
+            6.0e199, 6.0e199,
+            phase_k, 1.0, 0, 0)
+        phase_modes, phase_coefficients =
+            DiffMoM._floquet_current_fourier_coefficients(
+                phase_mesh,
+                phase_rwg,
+                ones(ComplexF64, phase_rwg.nedges),
+                phase_k,
+                phase_lattice;
+                N_orders=0,
+            )
+        phase_points = tri_quad_points(
+            phase_mesh, 1, tri_quad_rule(3)[1])
+        raw_phase_argument = phase_modes[1].kx * phase_points[1][1] +
+                             phase_modes[1].ky * phase_points[1][2]
+        @test !isfinite(raw_phase_argument)
+        @test all(isfinite, phase_coefficients[1])
+    end
+
     # ── A: Only specular mode propagates for λ/2 cell at normal incidence ──
     @testset "A: Only specular mode for λ/2 cell" begin
         modes = floquet_modes(k_pm, lat_pm; N_orders=3)

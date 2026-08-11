@@ -448,6 +448,240 @@ function _mode_transverse_projection(pol::SVector{3,<:Real}, mode::FloquetMode, 
     return pol_mode_norm < 1e-12 ? nothing : pol_mode_raw / pol_mode_norm
 end
 
+const _FLOQUET_MODE_FALLBACK_PRECISION = 256
+const _FLOQUET_CURRENT_FALLBACK_PRECISION =
+    _IEEE_BILINEAR_FALLBACK_PRECISION
+
+@inline function _periodic_phase_requires_fallback(
+    mode::FloquetMode,
+    point,
+)
+    return _ieee_dense_extreme_factor(mode.kx, Float64) ||
+           _ieee_dense_extreme_factor(mode.ky, Float64) ||
+           _ieee_dense_extreme_factor(point[1], Float64) ||
+           _ieee_dense_extreme_factor(point[2], Float64)
+end
+
+
+@noinline function _periodic_phase_exact(
+    mode::FloquetMode,
+    point,
+)
+    return setprecision(BigFloat, _FLOQUET_MODE_FALLBACK_PRECISION) do
+        argument = BigFloat(mode.kx) * BigFloat(point[1]) +
+                   BigFloat(mode.ky) * BigFloat(point[2])
+        value = ComplexF64(exp(Complex{BigFloat}(0, argument)))
+        isfinite(value) ||
+            throw(OverflowError(
+                "Floquet phase is not representable for order " *
+                "($(mode.m), $(mode.n))"))
+        return value
+    end
+end
+
+
+@inline function _periodic_phase(mode::FloquetMode, point)
+    _periodic_phase_requires_fallback(mode, point) &&
+        return _periodic_phase_exact(mode, point)
+    argument = mode.kx * point[1] + mode.ky * point[2]
+    isfinite(argument) || return _periodic_phase_exact(mode, point)
+    return exp(im * argument)
+end
+
+
+function _periodic_fourier_requires_fallback(
+    I_coeffs,
+    A_cell::Float64,
+    areas,
+    modes,
+    quad_pts,
+    weights,
+)
+    _ieee_bilinear_values_require_fallback(I_coeffs, Float64) && return true
+    _ieee_dense_extreme_factor(A_cell, Float64) && return true
+    _ieee_bilinear_values_require_fallback(areas, Float64) && return true
+    _ieee_bilinear_values_require_fallback(weights, Float64) && return true
+    @inbounds for mode in modes
+        mode.propagating || continue
+        (_ieee_dense_extreme_factor(mode.kx, Float64) ||
+         _ieee_dense_extreme_factor(mode.ky, Float64)) && return true
+    end
+    @inbounds for triangle_points in quad_pts
+        for point in triangle_points
+            _ieee_bilinear_values_require_fallback(point, Float64) &&
+                return true
+        end
+    end
+    return false
+end
+
+
+@inline function _periodic_accumulate_complex_product!(
+    real_accumulator::_IEEEBilinearAccumulator{Float64},
+    imag_accumulator::_IEEEBilinearAccumulator{Float64},
+    first::Number,
+    second::Number,
+)
+    first_real = Float64(real(first))
+    first_imag = Float64(imag(first))
+    second_real = Float64(real(second))
+    second_imag = Float64(imag(second))
+    unity = 1.0
+    _ieee_bilinear_add_triple!(
+        real_accumulator, first_real, second_real, unity, 1)
+    _ieee_bilinear_add_triple!(
+        real_accumulator, first_imag, second_imag, unity, -1)
+    _ieee_bilinear_add_triple!(
+        imag_accumulator, first_real, second_imag, unity, 1)
+    _ieee_bilinear_add_triple!(
+        imag_accumulator, first_imag, second_real, unity, 1)
+    return nothing
+end
+
+
+function _periodic_finish_current_coefficient(
+    I_coeffs,
+    basis_integrals,
+    area_scale::Float64,
+    A_cell::Float64,
+    mode::FloquetMode,
+    component::Int,
+)
+    real_accumulator = _IEEEBilinearAccumulator(Float64)
+    imag_accumulator = _IEEEBilinearAccumulator(Float64)
+    @inbounds for basis_index in eachindex(I_coeffs, basis_integrals)
+        _periodic_accumulate_complex_product!(
+            real_accumulator, imag_accumulator,
+            I_coeffs[basis_index],
+            basis_integrals[basis_index][component])
+    end
+    label = "Floquet current coefficient component $component for order " *
+            "($(mode.m), $(mode.n))"
+    real_value = _ieee_bilinear_finish(
+        real_accumulator, label, area_scale, A_cell)
+    imag_value = _ieee_bilinear_finish(
+        imag_accumulator, label, area_scale, A_cell)
+    return ComplexF64(real_value, imag_value)
+end
+
+
+@noinline function _floquet_current_fourier_coefficients_bigfloat(
+    rwg::RWGData,
+    I_coeffs,
+    modes,
+    A_cell::Float64,
+    quad_pts,
+    areas,
+    tri_to_basis,
+    weights,
+)
+    return setprecision(BigFloat, _FLOQUET_CURRENT_FALLBACK_PRECISION) do
+        zero_vec = SVector{3,ComplexF64}(0.0, 0.0, 0.0)
+        coefficients = fill(zero_vec, length(modes))
+        @inbounds for (mode_index, mode) in enumerate(modes)
+            mode.propagating || continue
+            integral = zeros(Complex{BigFloat}, 3)
+            for triangle in eachindex(quad_pts, areas, tri_to_basis)
+                area = BigFloat(areas[triangle])
+                for quadrature_index in eachindex(weights)
+                    point = quad_pts[triangle][quadrature_index]
+                    argument = BigFloat(mode.kx) * BigFloat(point[1]) +
+                               BigFloat(mode.ky) * BigFloat(point[2])
+                    phase = exp(Complex{BigFloat}(0, argument))
+                    current = zeros(Complex{BigFloat}, 3)
+                    for basis_index in tri_to_basis[triangle]
+                        basis_value = eval_rwg(
+                            rwg, basis_index, point, triangle)
+                        coefficient = Complex{BigFloat}(
+                            I_coeffs[basis_index])
+                        for component in 1:3
+                            current[component] += coefficient *
+                                BigFloat(basis_value[component])
+                        end
+                    end
+                    weight = BigFloat(weights[quadrature_index]) * 2area
+                    for component in 1:3
+                        integral[component] +=
+                            current[component] * phase * weight
+                    end
+                end
+            end
+            converted = SVector{3,ComplexF64}(ntuple(component ->
+                ComplexF64(integral[component] / BigFloat(A_cell)), 3))
+            all(isfinite, converted) ||
+                throw(OverflowError(
+                    "Floquet current coefficient is outside the ComplexF64 " *
+                    "range for order ($(mode.m), $(mode.n))"))
+            coefficients[mode_index] = converted
+        end
+        return coefficients
+    end
+end
+
+
+function _floquet_current_fourier_coefficients_exact(
+    rwg::RWGData,
+    I_coeffs,
+    modes,
+    A_cell::Float64,
+    quad_pts,
+    areas,
+    tri_to_basis,
+    weights,
+)
+    _ieee_bilinear_supported_eltype(eltype(I_coeffs), Float64) ||
+        return _floquet_current_fourier_coefficients_bigfloat(
+            rwg, I_coeffs, modes, A_cell, quad_pts,
+            areas, tri_to_basis, weights)
+
+    maximum_area = maximum(areas)
+    area_scale = ldexp(1.0, exponent(maximum_area))
+    area_ratios = areas ./ area_scale
+    if any(index -> !iszero(areas[index]) && iszero(area_ratios[index]),
+           eachindex(areas))
+        return _floquet_current_fourier_coefficients_bigfloat(
+            rwg, I_coeffs, modes, A_cell, quad_pts,
+            areas, tri_to_basis, weights)
+    end
+
+    zero_vec = SVector{3,ComplexF64}(0.0, 0.0, 0.0)
+    coefficients = fill(zero_vec, length(modes))
+    basis_integrals = fill(zero_vec, rwg.nedges)
+    @inbounds for (mode_index, mode) in enumerate(modes)
+        mode.propagating || continue
+        fill!(basis_integrals, zero_vec)
+        for triangle in eachindex(quad_pts, areas, tri_to_basis)
+            area_weight = 2 * area_ratios[triangle]
+            for quadrature_index in eachindex(weights)
+                point = quad_pts[triangle][quadrature_index]
+                phase = _periodic_phase(mode, point)
+                weight = weights[quadrature_index] * area_weight
+                for basis_index in tri_to_basis[triangle]
+                    basis_value = eval_rwg(
+                        rwg, basis_index, point, triangle)
+                    contribution = basis_value * phase * weight
+                    all(isfinite, contribution) ||
+                        return _floquet_current_fourier_coefficients_bigfloat(
+                            rwg, I_coeffs, modes, A_cell, quad_pts,
+                            areas, tri_to_basis, weights)
+                    basis_integrals[basis_index] += contribution
+                    all(isfinite, basis_integrals[basis_index]) ||
+                        return _floquet_current_fourier_coefficients_bigfloat(
+                            rwg, I_coeffs, modes, A_cell, quad_pts,
+                            areas, tri_to_basis, weights)
+                end
+            end
+        end
+        coefficients[mode_index] = SVector{3,ComplexF64}(ntuple(
+            component -> _periodic_finish_current_coefficient(
+                I_coeffs, basis_integrals,
+                area_scale, A_cell, mode, component),
+            3,
+        ))
+    end
+    return coefficients
+end
+
 function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                                                I_coeffs::Vector{<:Number},
                                                k::Real, lattice::PeriodicLattice;
@@ -482,6 +716,13 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
     zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     J_tildes = fill(zero_vec, length(modes))
 
+    if _periodic_fourier_requires_fallback(
+            I_coeffs, A_cell, areas, modes, quad_pts, wq)
+        return modes, _floquet_current_fourier_coefficients_exact(
+            rwg, I_coeffs, modes, A_cell, quad_pts,
+            areas, tri_to_basis, wq)
+    end
+
     # The surface current J(r_q) at each quadrature point is independent of the
     # Floquet mode, so precompute it once instead of recomputing inside every mode.
     J_at = [Vector{SVector{3,ComplexF64}}(undef, Nq) for _ in 1:Nt]
@@ -508,7 +749,7 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
             At = areas[t]
             for q in 1:Nq
                 rq = quad_pts[t][q]
-                phase = exp(im * (mode.kx * rq[1] + mode.ky * rq[2]))
+                phase = _periodic_phase(mode, rq)
                 integral += J_at[t][q] * phase * wq[q] * (2 * At)
                 all(isfinite, integral) ||
                     throw(OverflowError(
@@ -526,8 +767,6 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
 
     return modes, J_tildes
 end
-
-const _FLOQUET_MODE_FALLBACK_PRECISION = 256
 
 @noinline function _floquet_transverse_component_exact(
     bloch_component::Float64,
