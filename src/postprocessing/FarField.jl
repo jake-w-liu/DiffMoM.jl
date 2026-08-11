@@ -350,16 +350,7 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     #   Magnetic: E∞(r̂) = +η₀·k²/(4π) · (m × r̂)   (real coeff, dual to electric)
     rh, kf = _validated_incident_farfield_args(r_hat, k)
     _validate_incident_farfield_source(dipole, kf)
-    ϵ0 = 8.854187817e-12; μ0 = 4π * 1e-7
-    η0 = sqrt(μ0 / ϵ0)
-    if dipole.type == :electric
-        perp = dipole.moment - rh * dot(rh, dipole.moment)
-        E_far = (kf^2 / (4π * ϵ0)) * perp
-    elseif dipole.type == :magnetic
-        E_far = (η0 * kf^2 / (4π)) * cross(dipole.moment, rh)
-    else
-        error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
-    end
+    E_far = _dipole_farfield_unphased(dipole, rh, kf)
     phase = exp(1im * kf * dot(rh, dipole.position))
     return _check_finite_cvec3(
         CVec3(E_far) * phase, "DipoleExcitation far field")
@@ -371,7 +362,7 @@ function incident_farfield(loop::LoopExcitation, r_hat::Vec3, k::Real)
     # m = I·π·a²·n̂ placed at the loop centre.
     _, kf = _validated_incident_farfield_args(r_hat, k)
     _validate_incident_farfield_source(loop, kf)
-    m = loop.current * π * loop.radius^2 * loop.normal
+    m = _loop_equivalent_moment(loop)
     dip = DipoleExcitation(loop.center, m, loop.normal, :magnetic, loop.frequency)
     return incident_farfield(dip, r_hat, kf)
 end

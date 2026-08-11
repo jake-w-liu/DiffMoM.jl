@@ -2983,6 +2983,69 @@ for resource_call in (
     )
 end
 
+source_scaling_k = 1.0e200
+source_scaling_frequency =
+    (source_scaling_k / (2π)) * 299792458.0
+source_scaling_dipole = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(1.0e-300 + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    source_scaling_frequency,
+)
+source_scaling_dipole_far = incident_farfield(
+    source_scaling_dipole, Vec3(0.0, 0.0, 1.0), source_scaling_k)
+source_scaling_dipole_reference = setprecision(BigFloat, 512) do
+    scale = BigFloat(source_scaling_k)^2 /
+            (4 * BigFloat(pi) * BigFloat(DiffMoM._EPS0)) *
+            BigFloat(1.0e-300)
+    CVec3(ComplexF64(scale), 0.0 + 0im, 0.0 + 0im)
+end
+@test source_scaling_dipole_far == source_scaling_dipole_reference
+@test (@allocated incident_farfield(
+    source_scaling_dipole,
+    Vec3(0.0, 0.0, 1.0),
+    source_scaling_k,
+)) <= 20_000
+
+source_scaling_pattern = make_analytic_dipole_pattern_feed(
+    source_scaling_dipole, [0.0, π], [0.0, π])
+@test source_scaling_pattern.Ftheta[1, 1] ==
+      source_scaling_dipole_reference[1]
+@test all(isfinite, source_scaling_pattern.Ftheta)
+@test all(isfinite, source_scaling_pattern.Fphi)
+
+source_scaling_loop = make_loop(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, 1.0),
+    1.0e200,
+    1.0e-300 + 0im,
+    freq_exc,
+)
+source_scaling_loop_far = incident_farfield(
+    source_scaling_loop, Vec3(1.0, 0.0, 0.0), k_exc)
+source_scaling_loop_reference = setprecision(BigFloat, 512) do
+    moment = BigFloat(1.0e-300) * BigFloat(pi) *
+             BigFloat(1.0e200)^2
+    scale = BigFloat(DiffMoM._ETA0) * BigFloat(k_exc)^2 /
+            (4 * BigFloat(pi)) * moment
+    CVec3(0.0 + 0im, ComplexF64(scale), 0.0 + 0im)
+end
+@test source_scaling_loop_far == source_scaling_loop_reference
+@test all(isfinite, DiffMoM.loop_incident_field(
+    Vec3(1.0, 0.0, 0.0), source_scaling_loop))
+
+incident_farfield(dipole_guard, Vec3(0.0, 0.0, 1.0), k_exc)
+DiffMoM._loop_equivalent_moment(loop_guard)
+let dipole = dipole_guard,
+    direction = Vec3(0.0, 0.0, 1.0),
+    wavenumber = k_exc,
+    loop = loop_guard
+    @test (@allocated incident_farfield(
+        dipole, direction, wavenumber)) == 0
+    @test (@allocated DiffMoM._loop_equivalent_moment(loop)) == 0
+end
+
 plane_wave_field(field_guard_r, field_guard_k, 1.0, field_guard_pol)
 pattern_feed_field(field_guard_r, pattern_guard)
 DiffMoM.dipole_incident_field(field_guard_r, dipole_guard)

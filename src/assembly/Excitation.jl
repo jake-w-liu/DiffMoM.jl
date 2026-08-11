@@ -270,6 +270,116 @@ const _ETA0 = sqrt(_MU0 / _EPS0)
 # monopolize a solve with an effectively unbounded loop.
 const _MAX_MONOPOLE_SIMPSON_INTERVALS = 100_000
 const _MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH = 50.0
+const _SOURCE_SCALING_FALLBACK_PRECISION = 512
+const _SOURCE_SCALING_SAFE_EXPONENT = 128
+
+@inline function _source_scaling_extreme_component(value::Real)
+    magnitude = abs(Float64(value))
+    iszero(magnitude) && return false
+    value_exponent = exponent(magnitude)
+    return value_exponent < -_SOURCE_SCALING_SAFE_EXPONENT ||
+           value_exponent > _SOURCE_SCALING_SAFE_EXPONENT
+end
+
+@inline function _source_scaling_extreme_value(value::Number)
+    return _source_scaling_extreme_component(real(value)) ||
+           _source_scaling_extreme_component(imag(value))
+end
+
+@inline function _dipole_scaling_requires_fallback(
+    k::Float64,
+    moment::CVec3,
+)
+    _source_scaling_extreme_value(k) && return true
+    @inbounds for component in moment
+        _source_scaling_extreme_value(component) && return true
+    end
+    return false
+end
+
+@inline function _loop_scaling_requires_fallback(loop::LoopExcitation)
+    _source_scaling_extreme_value(loop.radius) && return true
+    _source_scaling_extreme_value(loop.current) && return true
+    return false
+end
+
+@inline function _finite_source_vector(
+    value,
+    label::AbstractString,
+)
+    converted = CVec3(ntuple(index -> ComplexF64(value[index]), 3))
+    all(isfinite, converted) ||
+        throw(OverflowError("$label is outside the ComplexF64 range"))
+    return converted
+end
+
+@noinline function _dipole_farfield_unphased_exact(
+    dipole::DipoleExcitation,
+    rhat::Vec3,
+    k::Float64,
+)
+    return setprecision(BigFloat, _SOURCE_SCALING_FALLBACK_PRECISION) do
+        direction = SVector{3,BigFloat}(
+            ntuple(index -> BigFloat(rhat[index]), 3))
+        moment = SVector{3,Complex{BigFloat}}(
+            ntuple(index -> Complex{BigFloat}(dipole.moment[index]), 3))
+        wavenumber = BigFloat(k)
+        value = if dipole.type == :electric
+            projection = moment - direction * dot(direction, moment)
+            (wavenumber * wavenumber /
+             (4 * BigFloat(pi) * BigFloat(_EPS0))) * projection
+        elseif dipole.type == :magnetic
+            (BigFloat(_ETA0) * wavenumber * wavenumber /
+             (4 * BigFloat(pi))) * cross(moment, direction)
+        else
+            error(
+                "Dipole type must be :electric or :magnetic, got $(dipole.type).")
+        end
+        return _finite_source_vector(value, "DipoleExcitation far field")
+    end
+end
+
+@inline function _dipole_farfield_unphased(
+    dipole::DipoleExcitation,
+    rhat::Vec3,
+    k::Float64,
+)
+    _dipole_scaling_requires_fallback(k, dipole.moment) &&
+        return _dipole_farfield_unphased_exact(dipole, rhat, k)
+
+    value = if dipole.type == :electric
+        projection = dipole.moment -
+                     rhat * dot(rhat, dipole.moment)
+        (k^2 / (4π * _EPS0)) * projection
+    elseif dipole.type == :magnetic
+        (_ETA0 * k^2 / (4π)) * cross(dipole.moment, rhat)
+    else
+        error(
+            "Dipole type must be :electric or :magnetic, got $(dipole.type).")
+    end
+    all(isfinite, value) ||
+        return _dipole_farfield_unphased_exact(dipole, rhat, k)
+    return CVec3(value)
+end
+
+@noinline function _loop_equivalent_moment_exact(loop::LoopExcitation)
+    return setprecision(BigFloat, _SOURCE_SCALING_FALLBACK_PRECISION) do
+        radius = BigFloat(loop.radius)
+        scale = Complex{BigFloat}(loop.current) * BigFloat(pi) *
+                radius * radius
+        value = SVector{3,Complex{BigFloat}}(ntuple(
+            index -> scale * BigFloat(loop.normal[index]), 3))
+        return _finite_source_vector(value, "LoopExcitation equivalent moment")
+    end
+end
+
+@inline function _loop_equivalent_moment(loop::LoopExcitation)
+    _loop_scaling_requires_fallback(loop) &&
+        return _loop_equivalent_moment_exact(loop)
+    value = loop.current * π * loop.radius^2 * loop.normal
+    all(isfinite, value) || return _loop_equivalent_moment_exact(loop)
+    return CVec3(value)
+end
 
 @inline function _monopole_simpson_interval_count(
     height::Float64,
@@ -590,16 +700,11 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
     Fϕ = zeros(ComplexF64, nθ, nϕ)
 
     k = 2π * dipole.frequency / _C0
-    p = dipole.moment
 
     for i in 1:nθ
         for j in 1:nϕ
             rhat, eθ, eϕ = _spherical_basis(θ[i], ϕ[j])
-            Fvec = if dipole.type == :electric
-                (k^2 / (4π * _EPS0)) * cross(rhat, cross(p, rhat))
-            else
-                _ETA0 * (k^2 / (4π)) * cross(p, rhat)
-            end
+            Fvec = _dipole_farfield_unphased(dipole, rhat, k)
             Fθ[i, j] = dot(Fvec, eθ)
             Fϕ[i, j] = dot(Fvec, eϕ)
         end
@@ -994,7 +1099,7 @@ function loop_incident_field(r::Vec3, loop::LoopExcitation)
 end
 
 @inline function _loop_incident_field_unchecked(r::Vec3, loop::LoopExcitation)
-    m = loop.current * π * loop.radius^2 * loop.normal
+    m = _loop_equivalent_moment(loop)
     dip = DipoleExcitation(loop.center, m, loop.normal, :magnetic, loop.frequency)
     return _dipole_incident_field_unchecked(r, dip)
 end
