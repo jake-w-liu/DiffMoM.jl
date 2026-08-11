@@ -264,6 +264,68 @@ const _EPS0 = 8.854187817e-12
 const _MU0 = 4π * 1e-7
 const _ETA0 = sqrt(_MU0 / _EPS0)
 
+# A monopole field evaluation performs this quadrature for every observation
+# point. Bound the work before converting a floating-point estimate to Int so
+# finite but electrically enormous sources cannot overflow the conversion or
+# monopolize a solve with an effectively unbounded loop.
+const _MAX_MONOPOLE_SIMPSON_INTERVALS = 100_000
+const _MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH = 50.0
+
+@inline function _monopole_simpson_interval_count(
+    height::Float64,
+    k::Float64,
+    span_factor::Float64,
+    minimum::Int,
+    label::AbstractString,
+)
+    (isfinite(height) && height > 0.0) ||
+        throw(ArgumentError("$label height must be finite and positive"))
+    (isfinite(k) && k > 0.0) ||
+        throw(ArgumentError(
+            "$label wavenumber must be finite and positive, got $k"))
+
+    wavelength = 2π / k
+    max_half_intervals = _MAX_MONOPOLE_SIMPSON_INTERVALS ÷ 2
+    max_span_wavelengths =
+        max_half_intervals /
+        _MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH
+
+    # Compare before forming span_factor*height or height/wavelength. This
+    # keeps the resource check finite even when either derived value would
+    # overflow. If wavelength itself overflows, height*k remains bounded and
+    # gives the electrical span without forming that wavelength.
+    if isfinite(wavelength)
+        max_height = (max_span_wavelengths / span_factor) * wavelength
+        if isfinite(max_height) && height > max_height
+            throw(ArgumentError(
+                "$label would require more than " *
+                "$_MAX_MONOPOLE_SIMPSON_INTERVALS Simpson intervals"))
+        end
+        raw_half_intervals =
+            _MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH *
+            span_factor * (height / wavelength)
+        if !isfinite(raw_half_intervals) ||
+           raw_half_intervals > max_half_intervals
+            throw(ArgumentError(
+                "$label would require more than " *
+                "$_MAX_MONOPOLE_SIMPSON_INTERVALS Simpson intervals"))
+        end
+        half_intervals = ceil(Int, raw_half_intervals)
+    else
+        raw_half_intervals =
+            (_MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH *
+             span_factor / (2π)) * (height * k)
+        half_intervals = ceil(Int, raw_half_intervals)
+    end
+
+    intervals = max(minimum, 2 * half_intervals)
+    intervals <= _MAX_MONOPOLE_SIMPSON_INTERVALS ||
+        throw(ArgumentError(
+            "$label would require more than " *
+            "$_MAX_MONOPOLE_SIMPSON_INTERVALS Simpson intervals"))
+    return intervals
+end
+
 function _validate_pattern_grid(theta::Vector{Float64}, phi::Vector{Float64})
     length(theta) ≥ 2 || error("Pattern feed requires at least 2 theta samples.")
     length(phi) ≥ 2 || error("Pattern feed requires at least 2 phi samples.")
@@ -980,7 +1042,6 @@ end
 function _monopole_incident_field_unchecked(r::Vec3, mono::MonopoleExcitation)
     k = 2π * mono.frequency / _C0
     I_0 = -1im * 2π * mono.amplitude / _ETA0
-    λ = 2π / k
     h = mono.height
 
     if mono.include_image
@@ -992,12 +1053,12 @@ function _monopole_incident_field_unchecked(r::Vec3, mono::MonopoleExcitation)
             return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         end
         # Simpson on z' ∈ [-h, h]
-        N = max(128, 2 * Int(ceil(50.0 * 2 * h / λ)))
-        iseven(N) || (N += 1)
-        dz = 2h / N
+        N = _monopole_simpson_interval_count(
+            h, k, 2.0, 128, "monopole incident field")
+        dz = (2.0 / N) * h
         E_sum = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         @inbounds for i in 0:N
-            z_p = -h + i * dz
+            z_p = h * (-1.0 + 2.0 * (i / N))
             r_p = mono.position + z_p * mono.axis
             I_z = I_0 * sin(k * (h - abs(z_p)))
             w = (i == 0 || i == N) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
@@ -1009,12 +1070,12 @@ function _monopole_incident_field_unchecked(r::Vec3, mono::MonopoleExcitation)
         )
     else
         # physical half-wire only (no image): radiates into all 4π
-        N = max(64, 2 * Int(ceil(50.0 * h / λ)))
-        iseven(N) || (N += 1)
+        N = _monopole_simpson_interval_count(
+            h, k, 1.0, 64, "monopole incident field")
         dz = h / N
         E_sum = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         @inbounds for i in 0:N
-            z_p = i * dz
+            z_p = h * (i / N)
             r_p = mono.position + z_p * mono.axis
             I_z = I_0 * sin(k * (h - z_p))
             w = (i == 0 || i == N) ? 1.0 : (isodd(i) ? 4.0 : 2.0)

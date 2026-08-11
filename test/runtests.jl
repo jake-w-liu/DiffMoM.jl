@@ -2942,6 +2942,47 @@ monopole_guard = make_monopole(
 @test_throws ArgumentError monopole_incident_field(
     Vec3(NaN, 0.0, 0.0), monopole_guard)
 
+# The Simpson workload is bounded before Float64-to-Int conversion. The helper
+# accepts the exact configured boundary without allocating and both public
+# field paths reject an electrically impossible workload with a domain error.
+@test DiffMoM._monopole_simpson_interval_count(
+    999.99, 2π, 1.0, 64, "test monopole") ==
+    DiffMoM._MAX_MONOPOLE_SIMPSON_INTERVALS
+DiffMoM._monopole_simpson_interval_count(
+    999.99, 2π, 1.0, 64, "test monopole")
+@test (@allocated DiffMoM._monopole_simpson_interval_count(
+    999.99, 2π, 1.0, 64, "test monopole")) == 0
+@test_throws ArgumentError DiffMoM._monopole_simpson_interval_count(
+    1000.01, 2π, 1.0, 64, "test monopole")
+
+resource_frequency = 1.0e100
+resource_monopole = make_monopole(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, 1.0),
+    1.0e220,
+    1.0 + 0im,
+    resource_frequency,
+)
+resource_k = 2π * resource_frequency / 299792458.0
+for resource_call in (
+    () -> monopole_incident_field(
+        Vec3(1.0, 0.0, 1.0), resource_monopole),
+    () -> incident_farfield(
+        resource_monopole, Vec3(1.0, 0.0, 0.0), resource_k),
+)
+    resource_error = try
+        resource_call()
+        nothing
+    catch err
+        err
+    end
+    @test resource_error isa ArgumentError
+    @test occursin(
+        "more than $(DiffMoM._MAX_MONOPOLE_SIMPSON_INTERVALS) Simpson intervals",
+        sprint(showerror, resource_error),
+    )
+end
+
 plane_wave_field(field_guard_r, field_guard_k, 1.0, field_guard_pol)
 pattern_feed_field(field_guard_r, pattern_guard)
 DiffMoM.dipole_incident_field(field_guard_r, dipole_guard)

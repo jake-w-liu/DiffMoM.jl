@@ -321,16 +321,16 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
 
     I_0 = -1im * 2π * mono.amplitude / η0
     h = mono.height
-    λ = 2π / kf
-    z_lo = mono.include_image ? -h : 0.0
-    span = h - z_lo
-    N = max(64, 2 * Int(ceil(50.0 * span / λ)))
-    iseven(N) || (N += 1)
-    dz = span / N
+    span_factor = mono.include_image ? 2.0 : 1.0
+    N = _monopole_simpson_interval_count(
+        h, kf, span_factor, 64, "MonopoleExcitation far field")
+    dz = (span_factor / N) * h
 
     integ = 0.0 + 0im
     @inbounds for i in 0:N
-        z = z_lo + i * dz
+        unit_position = mono.include_image ?
+                        (-1.0 + 2.0 * (i / N)) : (i / N)
+        z = h * unit_position
         I_z = I_0 * sin(kf * (h - abs(z)))  # abs(z) reduces to z for z ≥ 0
         w = (i == 0 || i == N) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
         integ += w * I_z * exp(1im * kf * z * cosθ)
