@@ -2889,12 +2889,16 @@ field_guard_pol = Vec3(0.0, 1.0, 0.0)
     field_guard_r, field_guard_k, 1.0, Vec3(0.0, 2.0, 0.0))
 @test_throws ArgumentError plane_wave_field(
     field_guard_r, field_guard_k, 1.0, Vec3(1.0, 0.0, 0.0))
-@test_throws ErrorException plane_wave_field(
-    Vec3(1e308, 0.0, 0.0),
-    Vec3(1e308, 0.0, 0.0),
+field_guard_extreme_phase = setprecision(BigFloat, 512) do
+    argument = BigFloat(1.0e308) * BigFloat(1.0e308)
+    ComplexF64(exp(Complex{BigFloat}(0, -argument)))
+end
+@test plane_wave_field(
+    Vec3(1.0e308, 0.0, 0.0),
+    Vec3(1.0e308, 0.0, 0.0),
     1.0,
     field_guard_pol,
-)
+) == CVec3(0.0 + 0im, field_guard_extreme_phase, 0.0 + 0im)
 
 pattern_guard = make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
@@ -3007,6 +3011,88 @@ end
     Vec3(0.0, 0.0, 1.0),
     source_scaling_k,
 )) <= 20_000
+
+# Form phase arguments without overflowing Float64 and retain small terms when
+# their exponent is far below another term in the same dot product.
+source_phase_first = Vec3(1.0e200, 1.0, 0.0)
+source_phase_second = Vec3(1.0e200, 1.0, 0.0)
+source_phase_reference = setprecision(BigFloat, 8192) do
+    argument = sum(
+        BigFloat(source_phase_first[i]) * BigFloat(source_phase_second[i])
+        for i in 1:3)
+    ComplexF64(exp(Complex{BigFloat}(0, argument)))
+end
+@test DiffMoM._source_phase(
+    1.0, source_phase_first, source_phase_second, 1.0,
+    "source phase regression") == source_phase_reference
+@test plane_wave_field(
+    source_phase_first,
+    source_phase_second,
+    1.0,
+    Vec3(0.0, 1.0, 0.0),
+) == CVec3(0.0 + 0im, conj(source_phase_reference), 0.0 + 0im)
+@test (@allocated DiffMoM._source_phase(
+    1.0, source_phase_first, source_phase_second, 1.0,
+    "source phase regression")) <= 20_000
+
+translated_scaling_dipole = make_dipole(
+    Vec3(1.0e200, 0.0, 0.0),
+    CVec3(0.0 + 0im, 1.0e-300 + 0im, 0.0 + 0im),
+    Vec3(0.0, 1.0, 0.0),
+    :electric,
+    source_scaling_frequency,
+)
+translated_scaling_far = incident_farfield(
+    translated_scaling_dipole, Vec3(1.0, 0.0, 0.0), source_scaling_k)
+translated_scaling_reference = setprecision(BigFloat, 8192) do
+    amplitude = BigFloat(source_scaling_k)^2 /
+                (4 * BigFloat(pi) * BigFloat(DiffMoM._EPS0)) *
+                BigFloat(1.0e-300)
+    phase = exp(Complex{BigFloat}(
+        0, BigFloat(source_scaling_k) * BigFloat(1.0e200)))
+    CVec3(
+        0.0 + 0im,
+        ComplexF64(amplitude) * ComplexF64(phase),
+        0.0 + 0im,
+    )
+end
+@test translated_scaling_far == translated_scaling_reference
+@test all(isfinite, translated_scaling_far)
+@test (@allocated incident_farfield(
+    translated_scaling_dipole,
+    Vec3(1.0, 0.0, 0.0),
+    source_scaling_k,
+)) <= 20_000
+
+# The direct angular-frequency product overflows at this finite frequency, but
+# the represented wavenumber and far field remain finite.
+high_source_frequency = 1.0e308
+high_source_k = DiffMoM._frequency_to_wavenumber(
+    high_source_frequency, DiffMoM._C0, "DipoleExcitation")
+high_frequency_dipole = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(0.0 + 0im, 1.0e-320 + 0im, 0.0 + 0im),
+    Vec3(0.0, 1.0, 0.0),
+    :electric,
+    high_source_frequency,
+)
+high_frequency_far = incident_farfield(
+    high_frequency_dipole, Vec3(1.0, 0.0, 0.0), high_source_k)
+high_frequency_reference = setprecision(BigFloat, 512) do
+    amplitude = BigFloat(high_source_k)^2 /
+                (4 * BigFloat(pi) * BigFloat(DiffMoM._EPS0)) *
+                BigFloat(1.0e-320)
+    CVec3(0.0 + 0im, ComplexF64(amplitude), 0.0 + 0im)
+end
+@test high_frequency_far == high_frequency_reference
+@test all(isfinite, high_frequency_far)
+
+let frequency = 1.0e9
+    DiffMoM._frequency_to_wavenumber(
+        frequency, DiffMoM._C0, "allocation regression")
+    @test (@allocated DiffMoM._frequency_to_wavenumber(
+        frequency, DiffMoM._C0, "allocation regression")) == 0
+end
 
 source_scaling_pattern = make_analytic_dipole_pattern_feed(
     source_scaling_dipole, [0.0, π], [0.0, π])

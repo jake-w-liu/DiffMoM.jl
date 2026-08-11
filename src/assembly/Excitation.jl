@@ -272,6 +272,22 @@ const _MAX_MONOPOLE_SIMPSON_INTERVALS = 100_000
 const _MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH = 50.0
 const _SOURCE_SCALING_FALLBACK_PRECISION = 512
 const _SOURCE_SCALING_SAFE_EXPONENT = 128
+const _SOURCE_PHASE_PRODUCT_GUARD_BITS = 256
+
+@inline function _frequency_to_wavenumber(
+    frequency::Float64,
+    wave_speed::Float64,
+    label::AbstractString,
+)
+    angular_frequency = 2π * frequency
+    k = isfinite(angular_frequency) ?
+        angular_frequency / wave_speed :
+        frequency * (2π / wave_speed)
+    (isfinite(k) && k > 0.0) ||
+        throw(ArgumentError(
+            "$label frequency is outside the representable wavenumber range"))
+    return k
+end
 
 @inline function _source_scaling_extreme_component(value::Real)
     magnitude = abs(Float64(value))
@@ -284,6 +300,92 @@ end
 @inline function _source_scaling_extreme_value(value::Number)
     return _source_scaling_extreme_component(real(value)) ||
            _source_scaling_extreme_component(imag(value))
+end
+
+@inline function _source_phase_requires_fallback(
+    scale::Float64,
+    first_vector::Vec3,
+    second_vector::Vec3,
+)
+    _source_scaling_extreme_value(scale) && return true
+    @inbounds for component in 1:3
+        (_source_scaling_extreme_value(first_vector[component]) ||
+         _source_scaling_extreme_value(second_vector[component])) && return true
+    end
+    return false
+end
+
+@noinline function _source_phase_exact(
+    scale::Float64,
+    first_vector::Vec3,
+    second_vector::Vec3,
+    phase_sign::Float64,
+    label::AbstractString,
+)
+    # Each term is the product of three binary Float64 values and therefore has
+    # at most 159 significant bits. Include the full exponent span between
+    # nonzero terms so a small phase contribution is not rounded away when it
+    # is added to a much larger one. The guard exceeds the product width and
+    # leaves room for normalization during the two additions.
+    scale_exponent = exponent(abs(scale))
+    minimum_term_exponent = typemax(Int)
+    maximum_term_exponent = typemin(Int)
+    @inbounds for component in 1:3
+        first_value = first_vector[component]
+        second_value = second_vector[component]
+        if !iszero(first_value) && !iszero(second_value)
+            term_exponent = scale_exponent +
+                            exponent(abs(first_value)) +
+                            exponent(abs(second_value))
+            minimum_term_exponent = min(minimum_term_exponent, term_exponent)
+            maximum_term_exponent = max(maximum_term_exponent, term_exponent)
+        end
+    end
+    precision = minimum_term_exponent == typemax(Int) ?
+        _SOURCE_SCALING_FALLBACK_PRECISION :
+        max(
+            _SOURCE_SCALING_FALLBACK_PRECISION,
+            maximum_term_exponent - minimum_term_exponent +
+            _SOURCE_PHASE_PRODUCT_GUARD_BITS,
+        )
+
+    return setprecision(BigFloat, precision) do
+        argument = BigFloat(scale) * sum(
+            BigFloat(first_vector[component]) *
+            BigFloat(second_vector[component]) for component in 1:3)
+        value = ComplexF64(exp(Complex{BigFloat}(
+            zero(BigFloat), BigFloat(phase_sign) * argument)))
+        isfinite(value) ||
+            throw(OverflowError("$label phase is not representable"))
+        return value
+    end
+end
+
+@inline function _source_phase(
+    scale::Float64,
+    first_vector::Vec3,
+    second_vector::Vec3,
+    phase_sign::Float64,
+    label::AbstractString,
+)
+    iszero(scale) && return 1.0 + 0.0im
+    has_nonzero_term = false
+    @inbounds for component in 1:3
+        if !iszero(first_vector[component]) &&
+           !iszero(second_vector[component])
+            has_nonzero_term = true
+            break
+        end
+    end
+    has_nonzero_term || return 1.0 + 0.0im
+    _source_phase_requires_fallback(scale, first_vector, second_vector) &&
+        return _source_phase_exact(
+            scale, first_vector, second_vector, phase_sign, label)
+    argument = scale * dot(first_vector, second_vector)
+    isfinite(argument) ||
+        return _source_phase_exact(
+            scale, first_vector, second_vector, phase_sign, label)
+    return exp((phase_sign * 1im) * argument)
 end
 
 @inline function _dipole_scaling_requires_fallback(
@@ -663,7 +765,8 @@ end
         Fϕ = conj(Fϕ)
     end
 
-    k = 2π * pat.frequency / _C0
+    k = _frequency_to_wavenumber(
+        pat.frequency, _C0, "PatternFeedExcitation")
     phase = exp(-1im * k * R) / R
     return _check_finite_field(
         phase * (Fθ * eθ + Fϕ * eϕ),
@@ -699,7 +802,8 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
     Fθ = zeros(ComplexF64, nθ, nϕ)
     Fϕ = zeros(ComplexF64, nθ, nϕ)
 
-    k = 2π * dipole.frequency / _C0
+    k = _frequency_to_wavenumber(
+        dipole.frequency, _C0, "DipoleExcitation")
 
     for i in 1:nθ
         for j in 1:nϕ
@@ -729,8 +833,10 @@ function plane_wave_field(r::Vec3, k_vec::Vec3, E0, pol::Vec3)
 end
 
 @inline function _plane_wave_field_unchecked(r::Vec3, k_vec::Vec3, E0, pol::Vec3)
+    phase = _source_phase(
+        1.0, k_vec, r, -1.0, "plane-wave incident field")
     return _check_finite_field(
-        pol * E0 * exp(-1im * dot(k_vec, r)),
+        pol * E0 * phase,
         "plane-wave incident field",
     )
 end
@@ -1054,7 +1160,8 @@ end
     η0 = sqrt(μ0 / ϵ0)
     c0 = 1 / sqrt(ϵ0 * μ0)
 
-    k = 2π * dipole.frequency / c0
+    k = _frequency_to_wavenumber(
+        dipole.frequency, c0, "DipoleExcitation")
 
     R_vec = r - dipole.position
     R = norm(R_vec)
@@ -1145,7 +1252,8 @@ function monopole_incident_field(r::Vec3, mono::MonopoleExcitation)
 end
 
 function _monopole_incident_field_unchecked(r::Vec3, mono::MonopoleExcitation)
-    k = 2π * mono.frequency / _C0
+    k = _frequency_to_wavenumber(
+        mono.frequency, _C0, "MonopoleExcitation")
     I_0 = -1im * 2π * mono.amplitude / _ETA0
     h = mono.height
 
@@ -1223,25 +1331,29 @@ end
 
 function _validate_incident_electric_field_wavenumber(excitation::DipoleExcitation, k)
     _validate_excitation_model(excitation)
-    k_model = 2π * excitation.frequency / _C0
+    k_model = _frequency_to_wavenumber(
+        excitation.frequency, _C0, "DipoleExcitation")
     return _check_incident_wavenumber_match(k_model, k, "DipoleExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::LoopExcitation, k)
     _validate_excitation_model(excitation)
-    k_model = 2π * excitation.frequency / _C0
+    k_model = _frequency_to_wavenumber(
+        excitation.frequency, _C0, "LoopExcitation")
     return _check_incident_wavenumber_match(k_model, k, "LoopExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::MonopoleExcitation, k)
     _validate_excitation_model(excitation)
-    k_model = 2π * excitation.frequency / _C0
+    k_model = _frequency_to_wavenumber(
+        excitation.frequency, _C0, "MonopoleExcitation")
     return _check_incident_wavenumber_match(k_model, k, "MonopoleExcitation")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::PatternFeedExcitation, k)
     _validate_excitation_model(excitation)
-    k_model = 2π * excitation.frequency / _C0
+    k_model = _frequency_to_wavenumber(
+        excitation.frequency, _C0, "PatternFeedExcitation")
     return _check_incident_wavenumber_match(k_model, k, "PatternFeedExcitation")
 end
 
