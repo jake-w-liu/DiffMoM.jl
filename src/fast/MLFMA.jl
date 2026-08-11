@@ -1529,6 +1529,9 @@ end
 # ─── Forward matvec ─────────────────────────────────────────────
 
 const _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
+const _MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT = 896
+const _MLFMA_INTERNAL_RESCALE_STEP = 128
+const _MLFMA_INTERNAL_MAX_RESCALE_ATTEMPTS = 18
 
 @noinline function _mlfma_scaled_output_bigfloat(
         value::ComplexF64,
@@ -1581,6 +1584,98 @@ end
     end
     return _mlfma_scaled_output_bigfloat(
         value, previous, alpha_scale, beta_scale, false, row)
+end
+
+@inline function _mlfma_product_is_finite(product::Vector{ComplexF64})
+    @inbounds for value in product
+        isfinite(value) || return false
+    end
+    return true
+end
+
+function _mlfma_initial_recovery_shift(x::AbstractVector)
+    maximum_exponent = typemin(Int)
+    @inbounds for index in eachindex(x)
+        value = ComplexF64(x[index])
+        isfinite(value) ||
+            throw(ArgumentError(
+                "MLFMA input contains a non-finite value at index $index: $value"))
+        real_value = real(value)
+        imag_value = imag(value)
+        if !iszero(real_value)
+            maximum_exponent = max(
+                maximum_exponent, exponent(abs(real_value)))
+        end
+        if !iszero(imag_value)
+            maximum_exponent = max(
+                maximum_exponent, exponent(abs(imag_value)))
+        end
+    end
+    maximum_exponent == typemin(Int) && return _MLFMA_INTERNAL_RESCALE_STEP
+    return max(
+        maximum_exponent - _MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT,
+        _MLFMA_INTERNAL_RESCALE_STEP,
+    )
+end
+
+function _mlfma_scale_input_losslessly!(
+        destination::Vector{ComplexF64},
+        source::AbstractVector,
+        shift::Int)
+    shift > 0 || throw(ArgumentError("MLFMA recovery shift must be positive"))
+    length(destination) == length(source) ||
+        throw(DimensionMismatch(
+            "MLFMA recovery input lengths do not match"))
+    @inbounds for index in eachindex(destination, source)
+        value = ComplexF64(source[index])
+        isfinite(value) ||
+            throw(ArgumentError(
+                "MLFMA input contains a non-finite value at index $index: $value"))
+        scaled = ComplexF64(
+            ldexp(real(value), -shift),
+            ldexp(imag(value), -shift),
+        )
+        if ldexp(real(scaled), shift) != real(value) ||
+           ldexp(imag(scaled), shift) != imag(value)
+            throw(OverflowError(
+                "MLFMA input spans too much exponent range for a lossless " *
+                "internal rescaling at index $index"))
+        end
+        destination[index] = scaled
+    end
+    return destination
+end
+
+@noinline function _mlfma_shifted_scaled_output!(
+        product::Vector{ComplexF64},
+        previous::AbstractVector{ComplexF64},
+        alpha_scale::Number,
+        beta_scale::Number,
+        product_shift::Int,
+        overwrite::Bool)
+    return setprecision(
+            BigFloat, _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        alpha_big = Complex{BigFloat}(alpha_scale)
+        beta_big = Complex{BigFloat}(beta_scale)
+        @inbounds for row in eachindex(product, previous)
+            value = product[row]
+            unscaled_value = Complex{BigFloat}(
+                ldexp(BigFloat(real(value)), product_shift),
+                ldexp(BigFloat(imag(value)), product_shift),
+            )
+            total = alpha_big * unscaled_value
+            if !overwrite
+                total += beta_big * Complex{BigFloat}(previous[row])
+            end
+            converted = ComplexF64(total)
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "MLFMA scaled output is outside the representable " *
+                    "ComplexF64 range at row $row."))
+            product[row] = converted
+        end
+        return product
+    end
 end
 
 function _mlfma_forward_product!(
@@ -1741,6 +1836,29 @@ function _mlfma_forward_product!(
     return product
 end
 
+@noinline function _mlfma_recover_forward_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAOperator,
+        x::AbstractVector)
+    shift = _mlfma_initial_recovery_shift(x)
+    scaled_input = A.workspace.input_copy
+    _mlfma_scale_input_losslessly!(scaled_input, x, shift)
+    _mlfma_forward_product!(product, A, scaled_input)
+    attempts = 1
+    while !_mlfma_product_is_finite(product)
+        attempts < _MLFMA_INTERNAL_MAX_RESCALE_ATTEMPTS ||
+            throw(OverflowError(
+                "MLFMA forward product remains non-finite after " *
+                "$attempts lossless internal rescaling attempts"))
+        _mlfma_scale_input_losslessly!(
+            scaled_input, scaled_input, _MLFMA_INTERNAL_RESCALE_STEP)
+        shift += _MLFMA_INTERNAL_RESCALE_STEP
+        _mlfma_forward_product!(product, A, scaled_input)
+        attempts += 1
+    end
+    return shift
+end
+
 function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
                              x::AbstractVector, alpha_scale::Number,
                              beta_scale::Number)
@@ -1771,11 +1889,21 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
     end
     length(ws.entry_output) == N || resize!(ws.entry_output, N)
     _mlfma_forward_product!(ws.entry_output, A, xread)
+    product_shift = _mlfma_product_is_finite(ws.entry_output) ?
+                    0 :
+                    _mlfma_recover_forward_product!(
+                        ws.entry_output, A, xread)
     overwrite = iszero(beta_scale)
-    @inbounds for row in eachindex(y)
-        ws.entry_output[row] = _mlfma_scaled_output(
-            ws.entry_output[row], y[row],
-            alpha_scale, beta_scale, overwrite, row)
+    if iszero(product_shift)
+        @inbounds for row in eachindex(y)
+            ws.entry_output[row] = _mlfma_scaled_output(
+                ws.entry_output[row], y[row],
+                alpha_scale, beta_scale, overwrite, row)
+        end
+    else
+        _mlfma_shifted_scaled_output!(
+            ws.entry_output, y, alpha_scale, beta_scale,
+            product_shift, overwrite)
     end
     copyto!(y, ws.entry_output)
     return y
@@ -1956,6 +2084,29 @@ function _mlfma_adjoint_product!(
     return product
 end
 
+@noinline function _mlfma_recover_adjoint_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAAdjointOperator,
+        x::AbstractVector)
+    shift = _mlfma_initial_recovery_shift(x)
+    scaled_input = A.op.workspace.input_copy
+    _mlfma_scale_input_losslessly!(scaled_input, x, shift)
+    _mlfma_adjoint_product!(product, A, scaled_input)
+    attempts = 1
+    while !_mlfma_product_is_finite(product)
+        attempts < _MLFMA_INTERNAL_MAX_RESCALE_ATTEMPTS ||
+            throw(OverflowError(
+                "MLFMA adjoint product remains non-finite after " *
+                "$attempts lossless internal rescaling attempts"))
+        _mlfma_scale_input_losslessly!(
+            scaled_input, scaled_input, _MLFMA_INTERNAL_RESCALE_STEP)
+        shift += _MLFMA_INTERNAL_RESCALE_STEP
+        _mlfma_adjoint_product!(product, A, scaled_input)
+        attempts += 1
+    end
+    return shift
+end
+
 function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
                              x::AbstractVector, alpha_scale::Number,
                              beta_scale::Number)
@@ -1986,11 +2137,21 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
     end
     length(ws.entry_output) == N || resize!(ws.entry_output, N)
     _mlfma_adjoint_product!(ws.entry_output, A, xread)
+    product_shift = _mlfma_product_is_finite(ws.entry_output) ?
+                    0 :
+                    _mlfma_recover_adjoint_product!(
+                        ws.entry_output, A, xread)
     overwrite = iszero(beta_scale)
-    @inbounds for row in eachindex(y)
-        ws.entry_output[row] = _mlfma_scaled_output(
-            ws.entry_output[row], y[row],
-            alpha_scale, beta_scale, overwrite, row)
+    if iszero(product_shift)
+        @inbounds for row in eachindex(y)
+            ws.entry_output[row] = _mlfma_scaled_output(
+                ws.entry_output[row], y[row],
+                alpha_scale, beta_scale, overwrite, row)
+        end
+    else
+        _mlfma_shifted_scaled_output!(
+            ws.entry_output, y, alpha_scale, beta_scale,
+            product_shift, overwrite)
     end
     copyto!(y, ws.entry_output)
     return y

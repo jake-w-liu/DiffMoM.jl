@@ -5037,6 +5037,42 @@ mul!(mlfma_adjoint_extreme_result, adjoint(A_mlfma),
      mlfma_extreme_scale, mlfma_extreme_scale)
 @test mlfma_adjoint_extreme_result == zeros(ComplexF64, mlfma_N)
 
+# Internal aggregation can overflow before a finite final MLFMA product is
+# formed. Recover it with a lossless power-of-two input rescaling, including
+# five-argument scaling, cancellation, and aliased output.
+mlfma_internal_extreme_input =
+    fill(ComplexF64(floatmax(Float64), 0.0), mlfma_N)
+mlfma_internal_extreme_scale = inv(floatmax(Float64))
+mlfma_internal_scaled_input =
+    mlfma_internal_extreme_scale .* mlfma_internal_extreme_input
+for mlfma_internal_operator in (A_mlfma, adjoint(A_mlfma))
+    mlfma_internal_reference =
+        mlfma_internal_operator * mlfma_internal_scaled_input
+    mlfma_internal_raw =
+        mlfma_internal_operator * mlfma_internal_extreme_input
+    @test all(isfinite, mlfma_internal_raw)
+    @test mlfma_internal_extreme_scale .* mlfma_internal_raw ==
+          mlfma_internal_reference
+
+    mlfma_internal_result = zeros(ComplexF64, mlfma_N)
+    mul!(mlfma_internal_result, mlfma_internal_operator,
+         mlfma_internal_extreme_input,
+         mlfma_internal_extreme_scale, 0.0)
+    @test mlfma_internal_result == mlfma_internal_reference
+
+    mlfma_internal_cancellation = -mlfma_internal_reference
+    mul!(mlfma_internal_cancellation, mlfma_internal_operator,
+         mlfma_internal_extreme_input,
+         mlfma_internal_extreme_scale, 1.0)
+    @test mlfma_internal_cancellation == zeros(ComplexF64, mlfma_N)
+
+    mlfma_internal_alias = copy(mlfma_internal_extreme_input)
+    mul!(mlfma_internal_alias, mlfma_internal_operator,
+         mlfma_internal_alias,
+         mlfma_internal_extreme_scale, 0.0)
+    @test mlfma_internal_alias == mlfma_internal_reference
+end
+
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"
