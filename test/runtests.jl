@@ -1385,6 +1385,33 @@ q_outer_reference = ComplexF64[q_extreme_reference_value, 3]
 @test q_outer_operator * q_outer_input == q_outer_reference
 @test q_outer_operator[1, 2] == q_extreme_reference_value
 
+q_inner_underflow_G = zeros(ComplexF64, 3, 2)
+q_inner_underflow_G[1, :] .= ComplexF64[1.0e150, 1.0e-300]
+q_inner_underflow_operator = FarFieldQMatrix(
+    q_inner_underflow_G, [1.0e150], q_extreme_pol, nothing, 2)
+q_inner_underflow_input = ComplexF64[0, 1.0e-100]
+q_inner_underflow_reference = ComplexF64[1.0e-100, 0]
+@test q_inner_underflow_operator * q_inner_underflow_input ==
+      q_inner_underflow_reference
+q_inner_underflow_alias = copy(q_inner_underflow_input)
+mul!(q_inner_underflow_alias, q_inner_underflow_operator,
+     q_inner_underflow_alias)
+@test q_inner_underflow_alias == q_inner_underflow_reference
+
+q_outer_underflow_G = zeros(ComplexF64, 3, 2)
+q_outer_underflow_G[1, :] .= ComplexF64[1.0e-300, 1]
+q_outer_underflow_operator = FarFieldQMatrix(
+    q_outer_underflow_G, [1.0e-300], q_extreme_pol, nothing, 2)
+q_outer_underflow_input = ComplexF64[0, 1.0e300]
+@test q_outer_underflow_operator * q_outer_underflow_input ==
+      ComplexF64[1.0e-300, 1]
+
+q_entry_underflow_G = zeros(ComplexF64, 3, 2)
+q_entry_underflow_G[1, :] .= ComplexF64[1.0e-300, 1.0e300]
+q_entry_underflow_operator = FarFieldQMatrix(
+    q_entry_underflow_G, [1.0e-300], q_extreme_pol, nothing, 2)
+@test q_entry_underflow_operator[1, 2] == 1.0e-300 + 0im
+
 q_scale_operator = FarFieldQMatrix(
     reshape(ComplexF64[1, 0, 0], 3, 1),
     [1.0], q_extreme_pol, nothing, 1)

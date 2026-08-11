@@ -5,6 +5,29 @@
 
 export FarFieldQMatrix, SumQMatrix, build_Q, build_Q_operator, apply_Q, pol_linear_x, pol_linear_y, cap_mask, direction_mask
 
+# A primitive G'WGx term contains at most six input factors. Restricting each
+# to ±128 binary exponents keeps the product, complex-component additions,
+# and any addressable reduction count inside the normal Float64 exponent range.
+const _FARFIELD_Q_SAFE_FACTOR_EXPONENT = 128
+
+@inline function _farfield_q_extreme_factor(value::Number)
+    scale = max(abs(real(value)), abs(imag(value)))
+    isfinite(scale) || return true
+    iszero(scale) && return false
+    value_exponent = exponent(scale)
+    return value_exponent < -_FARFIELD_Q_SAFE_FACTOR_EXPONENT ||
+           value_exponent > _FARFIELD_Q_SAFE_FACTOR_EXPONENT
+end
+
+function _farfield_q_has_extreme_operator_factor(
+        G_mat::Matrix{ComplexF64},
+        weights::Vector{Float64},
+        pol::Matrix{ComplexF64})
+    return any(_farfield_q_extreme_factor, G_mat) ||
+           any(_farfield_q_extreme_factor, weights) ||
+           any(_farfield_q_extreme_factor, pol)
+end
+
 """
     FarFieldQMatrix
 
@@ -20,6 +43,7 @@ struct FarFieldQMatrix <: AbstractMatrix{ComplexF64}
     N::Int
     work::Vector{ComplexF64}
     work_lock::ReentrantLock
+    extreme_operator_factor::Bool
 end
 
 FarFieldQMatrix(G_mat::Matrix{ComplexF64},
@@ -29,7 +53,21 @@ FarFieldQMatrix(G_mat::Matrix{ComplexF64},
                 N::Int) =
     FarFieldQMatrix(
         G_mat, weights, pol, mask, N,
-        zeros(ComplexF64, N), ReentrantLock())
+        zeros(ComplexF64, N), ReentrantLock(),
+        _farfield_q_has_extreme_operator_factor(
+            G_mat, weights, pol))
+
+FarFieldQMatrix(G_mat::Matrix{ComplexF64},
+                weights::Vector{Float64},
+                pol::Matrix{ComplexF64},
+                mask::Union{Nothing,BitVector},
+                N::Int,
+                work::Vector{ComplexF64},
+                work_lock::ReentrantLock) =
+    FarFieldQMatrix(
+        G_mat, weights, pol, mask, N, work, work_lock,
+        _farfield_q_has_extreme_operator_factor(
+            G_mat, weights, pol))
 
 # A primitive real term in G'WGx contains up to six finite Float64 factors.
 # Their exact product needs at most 12588 bits; the number of addressable
@@ -37,6 +75,36 @@ FarFieldQMatrix(G_mat::Matrix{ComplexF64},
 # precision in the exceptional path.
 const _FARFIELD_Q_FALLBACK_PRECISION = 12800
 const _FARFIELD_Q_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
+
+@inline function _farfield_q_has_subnormal_component(value::ComplexF64)
+    scale = max(abs(real(value)), abs(imag(value)))
+    return !iszero(scale) && scale < floatmin(Float64)
+end
+
+@inline function _farfield_q_product_underflowed(
+        left::Number,
+        right::Number,
+        product::ComplexF64)
+    product_scale = max(abs(real(product)), abs(imag(product)))
+    product_scale >= floatmin(Float64) && return false
+    return !iszero(product_scale) ||
+           (!iszero(left) && !iszero(right))
+end
+
+@inline function _farfield_q_projection_underflowed(
+        polarization::SVector{3,ComplexF64},
+        radiation::SVector{3,ComplexF64},
+        projection::ComplexF64)
+    _farfield_q_has_subnormal_component(projection) && return true
+    iszero(projection) || return false
+    @inbounds for component in 1:3
+        left = conj(polarization[component])
+        right = radiation[component]
+        term = left * right
+        _farfield_q_product_underflowed(left, right, term) && return true
+    end
+    return false
+end
 
 @inline function _farfield_q_projection_bigfloat(
         Q::FarFieldQMatrix,
@@ -113,7 +181,14 @@ end
     end
 end
 
-function _farfield_q_product!(
+@inline function _farfield_q_requires_checked_products(
+        Q::FarFieldQMatrix,
+        input::AbstractVector{ComplexF64})
+    Q.extreme_operator_factor && return true
+    return any(_farfield_q_extreme_factor, input)
+end
+
+function _farfield_q_product_unchecked!(
         result::Vector{ComplexF64},
         Q::FarFieldQMatrix,
         input::AbstractVector{ComplexF64})
@@ -122,31 +197,103 @@ function _farfield_q_product!(
     @inbounds for q in 1:quadrature_count
         Q.mask !== nothing && !Q.mask[q] && continue
         offset = 3 * (q - 1)
-        p = SVector{3,ComplexF64}(
+        polarization = SVector{3,ComplexF64}(
             Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
         projected_input = zero(ComplexF64)
         for n in 1:Q.N
-            gn = SVector{3,ComplexF64}(
+            radiation = SVector{3,ComplexF64}(
                 Q.G_mat[offset + 1, n],
                 Q.G_mat[offset + 2, n],
                 Q.G_mat[offset + 3, n])
-            projected_input += dot(p, gn) * input[n]
+            projected_input += dot(polarization, radiation) * input[n]
         end
         isfinite(projected_input) ||
             return _farfield_q_product_bigfloat!(result, Q, input)
 
         weight = Q.weights[q]
         for m in 1:Q.N
-            gm = SVector{3,ComplexF64}(
+            radiation = SVector{3,ComplexF64}(
                 Q.G_mat[offset + 1, m],
                 Q.G_mat[offset + 2, m],
                 Q.G_mat[offset + 3, m])
-            result[m] += weight * conj(dot(p, gm)) * projected_input
+            result[m] +=
+                weight * conj(dot(polarization, radiation)) *
+                projected_input
         end
     end
     all(isfinite, result) ||
         return _farfield_q_product_bigfloat!(result, Q, input)
     return result
+end
+
+function _farfield_q_product_checked!(
+        result::Vector{ComplexF64},
+        Q::FarFieldQMatrix,
+        input::AbstractVector{ComplexF64})
+    fill!(result, zero(ComplexF64))
+    quadrature_count = length(Q.weights)
+    @inbounds for q in 1:quadrature_count
+        Q.mask !== nothing && !Q.mask[q] && continue
+        offset = 3 * (q - 1)
+        polarization = SVector{3,ComplexF64}(
+            Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
+        projected_input = zero(ComplexF64)
+        for n in 1:Q.N
+            radiation = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, n],
+                Q.G_mat[offset + 2, n],
+                Q.G_mat[offset + 3, n])
+            projection = dot(polarization, radiation)
+            _farfield_q_projection_underflowed(
+                polarization, radiation, projection) &&
+                return _farfield_q_product_bigfloat!(result, Q, input)
+            term = projection * input[n]
+            _farfield_q_product_underflowed(
+                projection, input[n], term) &&
+                return _farfield_q_product_bigfloat!(result, Q, input)
+            projected_input += term
+            _farfield_q_has_subnormal_component(projected_input) &&
+                return _farfield_q_product_bigfloat!(result, Q, input)
+        end
+        isfinite(projected_input) ||
+            return _farfield_q_product_bigfloat!(result, Q, input)
+
+        weight = Q.weights[q]
+        for m in 1:Q.N
+            radiation = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, m],
+                Q.G_mat[offset + 2, m],
+                Q.G_mat[offset + 3, m])
+            projection = dot(polarization, radiation)
+            _farfield_q_projection_underflowed(
+                polarization, radiation, projection) &&
+                return _farfield_q_product_bigfloat!(result, Q, input)
+            weighted_projection = weight * conj(projection)
+            _farfield_q_product_underflowed(
+                weight, conj(projection), weighted_projection) &&
+                return _farfield_q_product_bigfloat!(result, Q, input)
+            contribution = weighted_projection * projected_input
+            _farfield_q_product_underflowed(
+                weighted_projection, projected_input, contribution) &&
+                return _farfield_q_product_bigfloat!(result, Q, input)
+            result[m] += contribution
+            _farfield_q_has_subnormal_component(result[m]) &&
+                return _farfield_q_product_bigfloat!(result, Q, input)
+        end
+    end
+    all(isfinite, result) ||
+        return _farfield_q_product_bigfloat!(result, Q, input)
+    return result
+end
+
+function _farfield_q_product!(
+        result::Vector{ComplexF64},
+        Q::FarFieldQMatrix,
+        input::AbstractVector{ComplexF64})
+    if _farfield_q_requires_checked_products(Q, input)
+        return _farfield_q_product_checked!(result, Q, input)
+    end
+    return _farfield_q_product_unchecked!(result, Q, input)
 end
 
 @noinline function _farfield_q_scaled_output_bigfloat(
@@ -491,17 +638,63 @@ function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
     1 <= m <= Q.N || throw(BoundsError(Q, (m, n)))
     1 <= n <= Q.N || throw(BoundsError(Q, (m, n)))
     NΩ = length(Q.weights)
+    if !Q.extreme_operator_factor
+        val = zero(ComplexF64)
+        @inbounds for q in 1:NΩ
+            Q.mask !== nothing && !Q.mask[q] && continue
+            offset = 3 * (q - 1)
+            polarization = SVector{3,ComplexF64}(
+                Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
+            radiation_m = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, m],
+                Q.G_mat[offset + 2, m],
+                Q.G_mat[offset + 3, m])
+            radiation_n = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, n],
+                Q.G_mat[offset + 2, n],
+                Q.G_mat[offset + 3, n])
+            val += Q.weights[q] *
+                   conj(dot(polarization, radiation_m)) *
+                   dot(polarization, radiation_n)
+        end
+        return isfinite(val) ? val :
+               _farfield_q_entry_bigfloat(Q, m, n)
+    end
+
     val = zero(ComplexF64)
     @inbounds for q in 1:NΩ
         if Q.mask !== nothing && !Q.mask[q]
             continue
         end
-        idx = 3 * (q - 1)
-        p = SVector{3,ComplexF64}(
+        offset = 3 * (q - 1)
+        polarization = SVector{3,ComplexF64}(
             Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
-        gm = SVector{3,ComplexF64}(Q.G_mat[idx+1, m], Q.G_mat[idx+2, m], Q.G_mat[idx+3, m])
-        gn = SVector{3,ComplexF64}(Q.G_mat[idx+1, n], Q.G_mat[idx+2, n], Q.G_mat[idx+3, n])
-        val += Q.weights[q] * conj(dot(p, gm)) * dot(p, gn)
+        radiation_m = SVector{3,ComplexF64}(
+            Q.G_mat[offset + 1, m],
+            Q.G_mat[offset + 2, m],
+            Q.G_mat[offset + 3, m])
+        radiation_n = SVector{3,ComplexF64}(
+            Q.G_mat[offset + 1, n],
+            Q.G_mat[offset + 2, n],
+            Q.G_mat[offset + 3, n])
+        projection_m = dot(polarization, radiation_m)
+        projection_n = dot(polarization, radiation_n)
+        (_farfield_q_projection_underflowed(
+             polarization, radiation_m, projection_m) ||
+         _farfield_q_projection_underflowed(
+             polarization, radiation_n, projection_n)) &&
+            return _farfield_q_entry_bigfloat(Q, m, n)
+        weighted_projection = Q.weights[q] * conj(projection_m)
+        _farfield_q_product_underflowed(
+            Q.weights[q], conj(projection_m), weighted_projection) &&
+            return _farfield_q_entry_bigfloat(Q, m, n)
+        contribution = weighted_projection * projection_n
+        _farfield_q_product_underflowed(
+            weighted_projection, projection_n, contribution) &&
+            return _farfield_q_entry_bigfloat(Q, m, n)
+        val += contribution
+        _farfield_q_has_subnormal_component(val) &&
+            return _farfield_q_entry_bigfloat(Q, m, n)
     end
     return isfinite(val) ? val : _farfield_q_entry_bigfloat(Q, m, n)
 end
