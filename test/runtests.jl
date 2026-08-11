@@ -110,6 +110,37 @@ function _mlfma_precision_rejection_allocations(mesh, rwg, k)
     end
 end
 
+function _aca_dense_approximation(operator::ACAOperator)
+    approximation_tree = zeros(ComplexF64, operator.N, operator.N)
+    for block in operator.dense_blocks
+        approximation_tree[block.row_range, block.col_range] .= block.data
+    end
+    for block in operator.lowrank_blocks
+        approximation_tree[block.row_range, block.col_range] .=
+            block.U * adjoint(block.V)
+    end
+    inverse_permutation = invperm(operator.tree.perm)
+    return approximation_tree[
+        inverse_permutation, inverse_permutation]
+end
+
+function _aca_operator_with_blocks(
+        base::ACAOperator,
+        dense_blocks::Vector{DiffMoM.DenseBlock},
+        lowrank_blocks::Vector{DiffMoM.LowRankBlock})
+    maximum_rank = isempty(lowrank_blocks) ? 1 :
+                   max(1, maximum(size(block.U, 2)
+                                  for block in lowrank_blocks))
+    workspace = DiffMoM.ACAWorkspace(
+        Vector{ComplexF64}(undef, base.N),
+        zeros(ComplexF64, base.N),
+        Vector{ComplexF64}(undef, maximum_rank),
+    )
+    return ACAOperator(
+        base.cache, base.tree, dense_blocks, lowrank_blocks,
+        base.N, workspace)
+end
+
 function _spherical_hankel_bigfloat_reference(l_max::Int, x::Float64)
     return setprecision(BigFloat, 8192) do
         x_big = BigFloat(x)
@@ -5145,6 +5176,44 @@ for invalid_aca_rank in (0, -1)
         cache_aca, [1], [1]; tol=1e-6, max_rank=invalid_aca_rank)
 end
 
+# A relative ACA tolerance must be invariant under a common physical scale.
+# This 3-RWG plate produces four admissible 1×1 far blocks; the former
+# absolute pivot floor erased every one at the smaller impedance.
+aca_scale_mesh = make_rect_plate(1.0, 1.0, 1, 2)
+aca_scale_rwg = build_rwg(aca_scale_mesh)
+aca_scale_errors = Float64[]
+aca_scale_ranks = Vector{Int}[]
+for aca_scale_eta0 in (1.0, 1e-100)
+    aca_scale_operator = build_aca_operator(
+        aca_scale_mesh,
+        aca_scale_rwg,
+        2π;
+        leaf_size=1,
+        eta=1.5,
+        aca_tol=1e-6,
+        max_rank=3,
+        quad_order=1,
+        eta0=aca_scale_eta0,
+    )
+    aca_scale_dense = assemble_Z_efie(
+        aca_scale_mesh,
+        aca_scale_rwg,
+        2π;
+        quad_order=1,
+        eta0=aca_scale_eta0,
+    )
+    aca_scale_approximation = _aca_dense_approximation(aca_scale_operator)
+    push!(aca_scale_errors,
+          norm(aca_scale_approximation - aca_scale_dense) /
+          norm(aca_scale_dense))
+    push!(aca_scale_ranks,
+          [size(block.U, 2) for block in aca_scale_operator.lowrank_blocks])
+end
+@test aca_scale_ranks[1] == aca_scale_ranks[2]
+@test !isempty(aca_scale_ranks[2])
+@test all(>(0), aca_scale_ranks[2])
+@test maximum(aca_scale_errors) <= 1e-12
+
 # Find two well-separated leaf clusters for testing
 tree_aca = build_cluster_tree(centers_ct; leaf_size=8)
 leaves_aca = leaf_nodes(tree_aca)
@@ -5261,6 +5330,114 @@ A_aca_op = build_aca_operator(mesh, rwg, k;
                                max_rank=50, quad_order=3, mesh_precheck=false)
 @assert size(A_aca_op) == (N, N)
 @assert A_aca_op.workspace.work_lock isa ReentrantLock
+
+# Block BLAS must not lose a finite cancellation before the result is
+# unpermuted. The matrices below encode exact 2M - 2M cancellations, where
+# M is floatmax(Float64), in the forward/adjoint dense and low-rank paths.
+aca_range_base = build_aca_operator(
+    aca_scale_mesh,
+    aca_scale_rwg,
+    2π;
+    leaf_size=1,
+    eta=1.5,
+    aca_tol=1e-6,
+    max_rank=3,
+    quad_order=1,
+    eta0=1.0,
+)
+aca_range_N = aca_range_base.N
+aca_range_rows = 1:aca_range_N
+aca_range_input = fill(complex(floatmax(Float64)), aca_range_N)
+aca_range_zero = zeros(ComplexF64, aca_range_N)
+
+aca_forward_dense_data = zeros(ComplexF64, aca_range_N, aca_range_N)
+aca_forward_dense_data[1, 1] = 2.0
+aca_forward_dense_data[1, 2] = -2.0
+aca_forward_dense = _aca_operator_with_blocks(
+    aca_range_base,
+    [DiffMoM.DenseBlock(
+        aca_range_rows, aca_range_rows, aca_forward_dense_data)],
+    DiffMoM.LowRankBlock[],
+)
+@test aca_forward_dense * aca_range_input == aca_range_zero
+
+aca_adjoint_dense_data = zeros(ComplexF64, aca_range_N, aca_range_N)
+aca_adjoint_dense_data[1, 1] = 2.0
+aca_adjoint_dense_data[2, 1] = -2.0
+aca_adjoint_dense = _aca_operator_with_blocks(
+    aca_range_base,
+    [DiffMoM.DenseBlock(
+        aca_range_rows, aca_range_rows, aca_adjoint_dense_data)],
+    DiffMoM.LowRankBlock[],
+)
+@test adjoint(aca_adjoint_dense) * aca_range_input == aca_range_zero
+
+aca_forward_U = zeros(ComplexF64, aca_range_N, 1)
+aca_forward_V = zeros(ComplexF64, aca_range_N, 1)
+aca_forward_U[1, 1] = 1.0
+aca_forward_V[1, 1] = 2.0
+aca_forward_V[2, 1] = -2.0
+aca_forward_lowrank = _aca_operator_with_blocks(
+    aca_range_base,
+    DiffMoM.DenseBlock[],
+    [DiffMoM.LowRankBlock(
+        aca_range_rows, aca_range_rows,
+        aca_forward_U, aca_forward_V)],
+)
+@test aca_forward_lowrank * aca_range_input == aca_range_zero
+
+aca_adjoint_U = zeros(ComplexF64, aca_range_N, 1)
+aca_adjoint_V = zeros(ComplexF64, aca_range_N, 1)
+aca_adjoint_U[1, 1] = 2.0
+aca_adjoint_U[2, 1] = -2.0
+aca_adjoint_V[1, 1] = 1.0
+aca_adjoint_lowrank = _aca_operator_with_blocks(
+    aca_range_base,
+    DiffMoM.DenseBlock[],
+    [DiffMoM.LowRankBlock(
+        aca_range_rows, aca_range_rows,
+        aca_adjoint_U, aca_adjoint_V)],
+)
+@test adjoint(aca_adjoint_lowrank) * aca_range_input == aca_range_zero
+
+# Apply alpha before converting an underflowed internal product, and retain
+# cancellation against beta*y when both Float64 intermediates overflow.
+aca_rescued_data = zeros(ComplexF64, aca_range_N, aca_range_N)
+aca_rescued_data[1, 1] = 1e-300
+aca_rescued_operator = _aca_operator_with_blocks(
+    aca_range_base,
+    [DiffMoM.DenseBlock(
+        aca_range_rows, aca_range_rows, aca_rescued_data)],
+    DiffMoM.LowRankBlock[],
+)
+aca_rescued_input = zeros(ComplexF64, aca_range_N)
+aca_rescued_input[aca_range_base.tree.perm[1]] = 1e-100
+aca_rescued_result = zeros(ComplexF64, aca_range_N)
+mul!(aca_rescued_result, aca_rescued_operator, aca_rescued_input,
+     1e300, 0.0)
+aca_rescued_reference = setprecision(BigFloat, 512) do
+    ComplexF64(
+        BigFloat(1e300) * BigFloat(1e-300) * BigFloat(1e-100))
+end
+@test aca_rescued_result[aca_range_base.tree.perm[1]] ==
+      aca_rescued_reference
+
+aca_beta_data = zeros(ComplexF64, aca_range_N, aca_range_N)
+aca_beta_data[1, 1] = 2.0
+aca_beta_operator = _aca_operator_with_blocks(
+    aca_range_base,
+    [DiffMoM.DenseBlock(
+        aca_range_rows, aca_range_rows, aca_beta_data)],
+    DiffMoM.LowRankBlock[],
+)
+aca_beta_input = zeros(ComplexF64, aca_range_N)
+aca_beta_input[aca_range_base.tree.perm[1]] =
+    complex(floatmax(Float64))
+aca_beta_result = zeros(ComplexF64, aca_range_N)
+aca_beta_result[aca_range_base.tree.perm[1]] =
+    -complex(floatmax(Float64))
+mul!(aca_beta_result, aca_beta_operator, aca_beta_input, 1.0, 2.0)
+@test aca_beta_result == aca_range_zero
 
 # Compare matvec against dense Z
 Random.seed!(42)

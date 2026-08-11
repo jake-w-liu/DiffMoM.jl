@@ -413,6 +413,8 @@ struct ACAOperator{TC<:EFIEApplyCache} <: AbstractMatrix{ComplexF64}
     dense_blocks::Vector{DenseBlock}   # near-field blocks
     lowrank_blocks::Vector{LowRankBlock}  # far-field blocks
     N::Int                             # matrix dimension
+    workspace::ACAWorkspace            # reusable, lock-protected buffers
+    extreme_operator_factor::Bool      # exceptional-product routing
 end
 ```
 

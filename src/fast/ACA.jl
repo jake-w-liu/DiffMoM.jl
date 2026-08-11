@@ -14,6 +14,15 @@ export aca_lowrank
 # confining the allocation-heavy path to exceptional exponent ranges.
 const _ACA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
 
+# A real component of alpha*U*conj(V)*x can contain four finite Float64
+# factors. Written as integer multiples of 2^-1074, the exact product needs
+# at most 8,392 coefficient bits; any addressable reduction adds fewer than
+# 64 bits. The guard margin makes the exceptional block product exact while
+# the fixed output chunk keeps its working memory independent of N.
+const _ACA_PRODUCT_FALLBACK_PRECISION = 8704
+const _ACA_BIGFLOAT_OUTPUT_CHUNK = 512
+const _ACA_SAFE_FACTOR_EXPONENT = 128
+
 @noinline function _aca_scaled_output_bigfloat(
         value::ComplexF64,
         previous::ComplexF64,
@@ -92,6 +101,41 @@ struct LowRankBlock
     V::Matrix{ComplexF64}
 end
 
+@inline function _aca_extreme_component(component::Float64)
+    scale = abs(component)
+    isfinite(scale) || return true
+    iszero(scale) && return false
+    value_exponent = exponent(scale)
+    return value_exponent < -_ACA_SAFE_FACTOR_EXPONENT ||
+           value_exponent > _ACA_SAFE_FACTOR_EXPONENT
+end
+
+@inline function _aca_extreme_factor(value::ComplexF64)
+    return _aca_extreme_component(real(value)) ||
+           _aca_extreme_component(imag(value))
+end
+
+@inline function _aca_internal_product_requires_fallback(
+        value::ComplexF64)
+    real_scale = abs(real(value))
+    imag_scale = abs(imag(value))
+    return !isfinite(real_scale) || !isfinite(imag_scale) ||
+           max(real_scale, imag_scale) < floatmin(Float64)
+end
+
+function _aca_blocks_have_extreme_factor(
+        dense_blocks::Vector{DenseBlock},
+        lowrank_blocks::Vector{LowRankBlock})
+    @inbounds for block in dense_blocks
+        any(_aca_extreme_factor, block.data) && return true
+    end
+    @inbounds for block in lowrank_blocks
+        any(_aca_extreme_factor, block.U) && return true
+        any(_aca_extreme_factor, block.V) && return true
+    end
+    return false
+end
+
 """
 Pre-allocated workspace for ACA `mul!`, eliminating per-call allocations.
 """
@@ -120,7 +164,30 @@ struct ACAOperator{TC<:EFIEApplyCache} <: AbstractMatrix{ComplexF64}
     lowrank_blocks::Vector{LowRankBlock}
     N::Int
     workspace::ACAWorkspace
+    extreme_operator_factor::Bool
 end
+
+
+ACAOperator{TC}(
+        cache::TC,
+        tree::ClusterTree,
+        dense_blocks::Vector{DenseBlock},
+        lowrank_blocks::Vector{LowRankBlock},
+        N::Int,
+        workspace::ACAWorkspace) where {TC<:EFIEApplyCache} =
+    ACAOperator{TC}(
+        cache, tree, dense_blocks, lowrank_blocks, N, workspace,
+        _aca_blocks_have_extreme_factor(dense_blocks, lowrank_blocks))
+
+ACAOperator(
+        cache::TC,
+        tree::ClusterTree,
+        dense_blocks::Vector{DenseBlock},
+        lowrank_blocks::Vector{LowRankBlock},
+        N::Int,
+        workspace::ACAWorkspace) where {TC<:EFIEApplyCache} =
+    ACAOperator{TC}(
+        cache, tree, dense_blocks, lowrank_blocks, N, workspace)
 
 """
     ACAAdjointOperator{TA} <: AbstractMatrix{ComplexF64}
@@ -176,7 +243,8 @@ function aca_lowrank(cache::EFIEApplyCache,
     _validate_aca_options(tol, max_rank)
     m = length(row_indices)
     n = length(col_indices)
-    max_rank = min(max_rank, m, n)
+    full_rank = min(m, n)
+    max_rank = min(max_rank, full_rank)
 
     U_cols = Vector{Vector{ComplexF64}}()
     V_cols = Vector{Vector{ComplexF64}}()
@@ -217,7 +285,7 @@ function aca_lowrank(cache::EFIEApplyCache,
         end
 
         # If no valid pivot, try any column
-        if pivot_col == 0 || best_val < 1e-30
+        if pivot_col == 0 || iszero(best_val)
             for jj in 1:n
                 if !used_cols[jj]
                     pivot_col = jj
@@ -226,7 +294,7 @@ function aca_lowrank(cache::EFIEApplyCache,
             end
             pivot_col == 0 && break
             best_val = abs(row_vec[pivot_col])
-            best_val < 1e-30 && break
+            iszero(best_val) && break
         end
 
         pivot_val = row_vec[pivot_col]
@@ -261,14 +329,14 @@ function aca_lowrank(cache::EFIEApplyCache,
 
         # Update Frobenius norm estimate
         # ||A_k||_F^2 = ||A_{k-1}||_F^2 + 2 Re{Σ_{j<k} (u_j'u_k)(v_k'v_j)} + ||u_k||^2 ||v_k||^2
-        norm_u = sqrt(real(dot(u_k, u_k)))
-        norm_v = sqrt(real(dot(v_k, v_k)))
+        norm_u = norm(u_k)
+        norm_v = norm(v_k)
         cross_term = 0.0
         for prev in 1:(length(U_cols)-1)
             cross_term += 2.0 * real(dot(U_cols[prev], u_k) * conj(dot(V_cols[prev], v_k)))
         end
         frob_sq += norm_u^2 * norm_v^2 + cross_term
-        frob_sq = max(frob_sq, 1e-30)  # guard
+        frob_sq = max(frob_sq, 0.0)  # guard against roundoff below zero
 
         # Convergence check
         if norm_u * norm_v < tol * sqrt(frob_sq)
@@ -293,7 +361,7 @@ function aca_lowrank(cache::EFIEApplyCache,
         pivot_row = next_row
     end
 
-    if !converged && length(U_cols) == max_rank
+    if !converged && length(U_cols) == max_rank && max_rank < full_rank
         @warn "ACA reached max_rank=$max_rank without meeting tolerance tol=$tol; " *
               "the low-rank block may be inaccurate — increase max_rank or loosen tol." maxlog=1
     end
@@ -535,6 +603,162 @@ end
 
 # ─── Matvec ───────────────────────────────────────────────────────
 
+@noinline function _aca_product_bigfloat!(
+        y::AbstractVector{ComplexF64},
+        A::ACAOperator,
+        x_perm::Vector{ComplexF64},
+        normal_product::Vector{ComplexF64},
+        alpha_scale::Number,
+        beta_scale::Number,
+        adjoint_mode::Val{ADJOINT}) where {ADJOINT}
+    N = A.N
+    return setprecision(BigFloat, _ACA_PRODUCT_FALLBACK_PRECISION) do
+        chunk_capacity = min(N, _ACA_BIGFLOAT_OUTPUT_CHUNK)
+        totals = Vector{Complex{BigFloat}}(undef, chunk_capacity)
+        alpha_big = Complex{BigFloat}(alpha_scale)
+        include_previous = !iszero(beta_scale)
+        beta_big = include_previous ?
+                   Complex{BigFloat}(beta_scale) :
+                   zero(Complex{BigFloat})
+
+        for chunk_first in 1:_ACA_BIGFLOAT_OUTPUT_CHUNK:N
+            chunk_last = min(N, chunk_first + _ACA_BIGFLOAT_OUTPUT_CHUNK - 1)
+            chunk_length = chunk_last - chunk_first + 1
+            chunk_needs_fallback = false
+            @inbounds for output_index in chunk_first:chunk_last
+                if _aca_internal_product_requires_fallback(
+                        normal_product[output_index])
+                    chunk_needs_fallback = true
+                    break
+                end
+            end
+
+            if chunk_needs_fallback
+                @inbounds for offset in 1:chunk_length
+                    totals[offset] = zero(Complex{BigFloat})
+                end
+            end
+
+            if chunk_needs_fallback && ADJOINT
+                @inbounds for block in A.dense_blocks
+                    output_range = block.col_range
+                    output_first = max(first(output_range), chunk_first)
+                    output_last = min(last(output_range), chunk_last)
+                    output_first > output_last && continue
+                    input_range = block.row_range
+                    for output_index in output_first:output_last
+                        total = totals[output_index - chunk_first + 1]
+                        local_column = output_index - first(output_range) + 1
+                        for input_index in input_range
+                            local_row = input_index - first(input_range) + 1
+                            total +=
+                                conj(Complex{BigFloat}(
+                                    block.data[local_row, local_column])) *
+                                Complex{BigFloat}(x_perm[input_index])
+                        end
+                        totals[output_index - chunk_first + 1] = total
+                    end
+                end
+
+                @inbounds for block in A.lowrank_blocks
+                    output_range = block.col_range
+                    output_first = max(first(output_range), chunk_first)
+                    output_last = min(last(output_range), chunk_last)
+                    output_first > output_last && continue
+                    input_range = block.row_range
+                    for rank in axes(block.U, 2)
+                        inner = zero(Complex{BigFloat})
+                        for input_index in input_range
+                            local_row = input_index - first(input_range) + 1
+                            inner +=
+                                conj(Complex{BigFloat}(
+                                    block.U[local_row, rank])) *
+                                Complex{BigFloat}(x_perm[input_index])
+                        end
+                        for output_index in output_first:output_last
+                            local_column =
+                                output_index - first(output_range) + 1
+                            totals[output_index - chunk_first + 1] +=
+                                Complex{BigFloat}(
+                                    block.V[local_column, rank]) * inner
+                        end
+                    end
+                end
+            elseif chunk_needs_fallback
+                @inbounds for block in A.dense_blocks
+                    output_range = block.row_range
+                    output_first = max(first(output_range), chunk_first)
+                    output_last = min(last(output_range), chunk_last)
+                    output_first > output_last && continue
+                    input_range = block.col_range
+                    for output_index in output_first:output_last
+                        total = totals[output_index - chunk_first + 1]
+                        local_row = output_index - first(output_range) + 1
+                        for input_index in input_range
+                            local_column = input_index - first(input_range) + 1
+                            total +=
+                                Complex{BigFloat}(
+                                    block.data[local_row, local_column]) *
+                                Complex{BigFloat}(x_perm[input_index])
+                        end
+                        totals[output_index - chunk_first + 1] = total
+                    end
+                end
+
+                @inbounds for block in A.lowrank_blocks
+                    output_range = block.row_range
+                    output_first = max(first(output_range), chunk_first)
+                    output_last = min(last(output_range), chunk_last)
+                    output_first > output_last && continue
+                    input_range = block.col_range
+                    for rank in axes(block.V, 2)
+                        inner = zero(Complex{BigFloat})
+                        for input_index in input_range
+                            local_column =
+                                input_index - first(input_range) + 1
+                            inner +=
+                                conj(Complex{BigFloat}(
+                                    block.V[local_column, rank])) *
+                                Complex{BigFloat}(x_perm[input_index])
+                        end
+                        for output_index in output_first:output_last
+                            local_row = output_index - first(output_range) + 1
+                            totals[output_index - chunk_first + 1] +=
+                                Complex{BigFloat}(
+                                    block.U[local_row, rank]) * inner
+                        end
+                    end
+                end
+            end
+
+            @inbounds for output_index in chunk_first:chunk_last
+                original_index = A.tree.perm[output_index]
+                normal_value = normal_product[output_index]
+                if _aca_internal_product_requires_fallback(normal_value)
+                    total = alpha_big *
+                            totals[output_index - chunk_first + 1]
+                    if include_previous
+                        total += beta_big *
+                                 Complex{BigFloat}(y[original_index])
+                    end
+                    converted = ComplexF64(total)
+                    isfinite(converted) ||
+                        throw(OverflowError(
+                            "ACA $(ADJOINT ? "adjoint " : "")product is " *
+                            "outside the representable ComplexF64 range at " *
+                            "row $original_index."))
+                    y[original_index] = converted
+                else
+                    y[original_index] = _aca_scaled_output(
+                        normal_value, y[original_index], alpha_scale,
+                        beta_scale, !include_previous, original_index)
+                end
+            end
+        end
+        return y
+    end
+end
+
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
                             x::AbstractVector, alpha_scale::Number,
                             beta_scale::Number)
@@ -545,7 +769,11 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
         if iszero(beta_scale)
             fill!(y, zero(ComplexF64))
         elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
+            @inbounds for row in eachindex(y)
+                y[row] = _aca_scaled_output(
+                    zero(ComplexF64), y[row], alpha_scale,
+                    beta_scale, false, row)
+            end
         end
         return y
     end
@@ -556,9 +784,12 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
         x_perm = ws.x_perm
         y_perm = ws.y_perm
 
-        # Permute x to tree order
+        # Permute x to tree order and decide whether Float64 block products
+        # can preserve their full exponent range.
+        needs_fallback = A.extreme_operator_factor
         @inbounds for k in 1:N
             x_perm[k] = x[A.tree.perm[k]]
+            needs_fallback |= _aca_extreme_factor(x_perm[k])
         end
         fill!(y_perm, zero(ComplexF64))
 
@@ -580,6 +811,13 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
             mul!(tmp, blk.V', @view(x_perm[cols]))
             mul!(@view(y_perm[rows]), blk.U, tmp,
                  one(ComplexF64), one(ComplexF64))
+        end
+
+        if needs_fallback &&
+           any(_aca_internal_product_requires_fallback, y_perm)
+            return _aca_product_bigfloat!(
+                y, A, x_perm, y_perm,
+                alpha_scale, beta_scale, Val(false))
         end
 
         # Un-permute y back to original order
@@ -633,7 +871,11 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
         if iszero(beta_scale)
             fill!(y, zero(ComplexF64))
         elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
+            @inbounds for row in eachindex(y)
+                y[row] = _aca_scaled_output(
+                    zero(ComplexF64), y[row], alpha_scale,
+                    beta_scale, false, row)
+            end
         end
         return y
     end
@@ -645,9 +887,12 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
         x_perm = ws.x_perm
         y_perm = ws.y_perm
 
-        # Permute x to tree order
+        # Permute x to tree order and decide whether Float64 block products
+        # can preserve their full exponent range.
+        needs_fallback = A.op.extreme_operator_factor
         @inbounds for k in 1:N
             x_perm[k] = x[tree.perm[k]]
+            needs_fallback |= _aca_extreme_factor(x_perm[k])
         end
         fill!(y_perm, zero(ComplexF64))
 
@@ -669,6 +914,13 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
             mul!(tmp, blk.U', @view(x_perm[rows]))
             mul!(@view(y_perm[cols]), blk.V, tmp,
                  one(ComplexF64), one(ComplexF64))
+        end
+
+        if needs_fallback &&
+           any(_aca_internal_product_requires_fallback, y_perm)
+            return _aca_product_bigfloat!(
+                y, A.op, x_perm, y_perm,
+                alpha_scale, beta_scale, Val(true))
         end
 
         # Un-permute

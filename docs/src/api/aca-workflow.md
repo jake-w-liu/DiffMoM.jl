@@ -172,13 +172,14 @@ struct ACAOperator{TC<:EFIEApplyCache} <: AbstractMatrix{ComplexF64}
     lowrank_blocks::Vector{LowRankBlock}
     N::Int
     workspace::ACAWorkspace
+    extreme_operator_factor::Bool
 end
 ```
 
 **Key properties:**
 - **`size(A)` = `(N, N)`**: Same dimensions as the full EFIE matrix.
 - **`A[i, j]`**: Falls back to `_efie_entry(cache, i, j)` for element access. This allows the near-field preconditioner to be built from an `ACAOperator` without forming the dense matrix.
-- **`mul!(y, A, x)`**: O(N log^2 N) matvec via dense blocks (BLAS `gemv`) and low-rank blocks (`U * (V' * x)`).
+- **`mul!(y, A, x)`**: O(N log^2 N) matvec via dense blocks (BLAS `gemv`) and low-rank blocks (`U * (V' * x)`). Inputs or stored factors with exceptional binary exponents use a bounded-memory high-precision path so finite cancellation is not lost to intermediate overflow or underflow.
 - **`adjoint(A)`**: Returns `ACAAdjointOperator` for adjoint GMRES solves.
 - **`workspace.work_lock`**: Serializes forward and adjoint access to the shared allocation-free workspace.
 
