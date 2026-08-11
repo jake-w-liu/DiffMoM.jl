@@ -84,6 +84,32 @@ function _spherical_hankel_allocations(l_max::Int, x::Float64)
     return @allocated DiffMoM.spherical_hankel2_all(l_max, x)
 end
 
+function _sphere_sampling_rejection_allocations(L::Int)
+    try
+        DiffMoM.make_sphere_sampling(L)
+    catch error
+        error isa ArgumentError || rethrow()
+    end
+    return @allocated try
+        DiffMoM.make_sphere_sampling(L)
+    catch error
+        error isa ArgumentError || rethrow()
+    end
+end
+
+function _mlfma_precision_rejection_allocations(mesh, rwg, k)
+    try
+        build_mlfma_operator(mesh, rwg, k; precision=1_000_000)
+    catch error
+        error isa ArgumentError || rethrow()
+    end
+    return @allocated try
+        build_mlfma_operator(mesh, rwg, k; precision=1_000_000)
+    catch error
+        error isa ArgumentError || rethrow()
+    end
+end
+
 function _spherical_hankel_bigfloat_reference(l_max::Int, x::Float64)
     return setprecision(BigFloat, 8192) do
         x_big = BigFloat(x)
@@ -5774,8 +5800,12 @@ for invalid_truncation_input in (
         invalid_truncation_input[1], invalid_truncation_input[2];
         precision=invalid_truncation_input[3])
 end
+@test DiffMoM.truncation_order(1.1e308, 1e-308; precision=3) == 6
 @test_throws ArgumentError DiffMoM.make_sphere_sampling(-1)
+@test_throws ArgumentError DiffMoM.make_sphere_sampling(3; max_points=0)
+@test_throws ArgumentError DiffMoM.make_sphere_sampling(1_000_000)
 @test_throws OverflowError DiffMoM.make_sphere_sampling(typemax(Int))
+@test _sphere_sampling_rejection_allocations(1_000_000) <= 4_096
 
 for invalid_hankel_input in ((-1, 1.0), (3, 0.0), (3, Inf), (3, NaN))
     @test_throws ArgumentError DiffMoM.spherical_hankel2_all(
@@ -5842,6 +5872,16 @@ mlfma_tiny_translation = DiffMoM.compute_translation_factor(
     mlfma_mesh, mlfma_rwg, 0.0)
 @test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; leaf_lambda=0.0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_sampling_points=0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_setup_bytes=0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; precision=1_000_000)
+@test _mlfma_precision_rejection_allocations(
+    mlfma_mesh, mlfma_rwg, mlfma_k) <= 4_096
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_setup_bytes=1)
 octree = build_octree(mlfma_centers, mlfma_k; leaf_lambda=0.5)
 
 # Verify all BFs are assigned via permutation

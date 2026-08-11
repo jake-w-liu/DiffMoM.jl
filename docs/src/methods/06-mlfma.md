@@ -268,7 +268,12 @@ result = solve_scattering(mesh, freq, pw;
 | `leaf_lambda` | 0.25 | Leaf box edge in wavelengths; tune by accuracy/time sweep for your problem. |
 | `precision` | 3 | Precision parameter $p$ in truncation formula |
 | `quad_order` | 3 | Quadrature order for near-field and radiation patterns |
+| `max_sampling_points` | 2,100,000 | Per-level spherical-grid point limit |
+| `max_setup_bytes` | 2,000,000,000 | Estimated MLFMA-specific setup-storage limit |
 | `verbose` | false | Print build progress information |
+
+Sampling and setup limits are validated before near-field assembly and large
+spherical/filter allocations. Raise them only with an explicit memory budget.
 
 ### 9.2 `build_mlfma_preconditioner` Keywords
 

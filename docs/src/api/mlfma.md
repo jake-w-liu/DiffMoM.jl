@@ -122,9 +122,16 @@ Build an MLFMA operator for the EFIE system. This is the main entry point for co
 | `quad_order` | `Int` | `3` | Surface quadrature order for radiation patterns and near-field. |
 | `precision` | `Int` | `3` | Translation truncation precision parameter (digits of accuracy). |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
+| `max_sampling_points` | `Int` | `2_100_000` | Maximum spherical-grid points at any level. |
+| `max_setup_bytes` | `Int` | `2_000_000_000` | Maximum estimated bytes for MLFMA-specific sampling, translation, filter, pattern, and workspace storage. |
 | `verbose` | `Bool` | `false` | Print progress messages. |
 
 **Returns:** `MLFMAOperator`.
+
+The two resource limits are checked before near-field assembly or spherical
+sampling allocation. Increase them explicitly only after budgeting the setup
+memory for the target geometry. Direct calls to `make_sphere_sampling` use the
+same `2_100_000`-point default and accept a `max_points` override.
 
 **Choosing `leaf_lambda`:**
 

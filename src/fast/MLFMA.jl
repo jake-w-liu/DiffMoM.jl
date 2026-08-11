@@ -10,6 +10,10 @@
 export MLFMAOperator, MLFMAAdjointOperator, build_mlfma_operator
 export SphereSampling, assemble_mlfma_nearfield
 
+const _MLFMA_TRUNCATION_FALLBACK_PRECISION = 256
+const _DEFAULT_MAX_SPHERE_SAMPLING_POINTS = 2_100_000
+const _DEFAULT_MAX_MLFMA_SETUP_BYTES = 2_000_000_000
+
 # ─── Spherical sampling ─────────────────────────────────────────
 
 struct SphereSampling
@@ -61,10 +65,27 @@ function truncation_order(box_edge::Float64, k::Float64; precision::Int=3)
     precision >= 1 ||
         throw(ArgumentError(
             "truncation_order: precision must be at least 1, got $precision"))
-    d = sqrt(3.0) * box_edge    # box diagonal
-    kd = k * d                   # main truncation term uses diagonal
-    ke = k * box_edge            # excess term uses edge (standard convention)
-    estimate = kd + 2.16 * precision^(2/3) * ke^(1/3)
+
+    needs_exact = _octree_scale_requires_exact(box_edge) ||
+                  _octree_scale_requires_exact(k)
+    ke = k * box_edge
+    needs_exact |= !isfinite(ke) || iszero(ke)
+    if needs_exact
+        return setprecision(BigFloat, _MLFMA_TRUNCATION_FALLBACK_PRECISION) do
+            ke_big = BigFloat(k) * BigFloat(box_edge)
+            precision_big = BigFloat(precision)
+            estimate_big = sqrt(BigFloat(3)) * ke_big +
+                           BigFloat(2.16) *
+                           precision_big^(BigFloat(2) / 3) * cbrt(ke_big)
+            estimate_big <= typemax(Int) ||
+                throw(OverflowError(
+                    "truncation_order: order estimate is not representable"))
+            return max(floor(Int, estimate_big), 3)
+        end
+    end
+
+    kd = sqrt(3.0) * ke          # main term uses the box diagonal
+    estimate = kd + 2.16 * precision^(2/3) * cbrt(ke)
     isfinite(estimate) && estimate <= typemax(Int) ||
         throw(OverflowError(
             "truncation_order: order estimate is not representable"))
@@ -73,19 +94,38 @@ function truncation_order(box_edge::Float64, k::Float64; precision::Int=3)
 end
 
 """
-    make_sphere_sampling(L)
+    make_sphere_sampling(L; max_points=2_100_000)
 
 Create a spherical sampling grid for truncation order L.
 θ: Gauss-Legendre with Nθ = L+1 points
 φ: Uniform with Nφ = 2L+2 points on [0, 2π)
 """
-function make_sphere_sampling(L::Int)
+@inline function _validated_sphere_sampling_dimensions(
+    L::Int,
+    max_points::Int,
+)
     L >= 0 ||
         throw(ArgumentError(
             "make_sphere_sampling: L must be nonnegative, got $L"))
+    max_points >= 1 ||
+        throw(ArgumentError(
+            "make_sphere_sampling: max_points must be positive, got $max_points"))
     ntheta = Base.checked_add(L, 1)
     nphi = Base.checked_add(Base.checked_mul(2, L), 2)
     npts = Base.checked_mul(ntheta, nphi)
+    npts <= max_points ||
+        throw(ArgumentError(
+            "make_sphere_sampling: L=$L requires $npts points, exceeding " *
+            "the max_points=$max_points resource limit"))
+    return ntheta, nphi, npts
+end
+
+function make_sphere_sampling(
+    L::Int;
+    max_points::Int=_DEFAULT_MAX_SPHERE_SAMPLING_POINTS,
+)
+    ntheta, nphi, npts =
+        _validated_sphere_sampling_dimensions(L, max_points)
 
     # Gauss-Legendre nodes on [-1,1] → θ via acos
     gl_nodes, gl_weights = gauss_legendre(ntheta)
@@ -118,6 +158,113 @@ function make_sphere_sampling(L::Int)
     end
 
     return SphereSampling(L, ntheta, nphi, npts, theta, phi, weights, khat)
+end
+
+function _mlfma_level_interaction_counts(level::OctreeLevel)
+    offsets = Set{NTuple{3,Int}}()
+    interaction_count = 0
+    for box in level.boxes
+        interaction_count = Base.checked_add(
+            interaction_count, length(box.interaction_list))
+        for source_id in box.interaction_list
+            source = level.boxes[source_id]
+            push!(offsets, (
+                box.ijk[1] - source.ijk[1],
+                box.ijk[2] - source.ijk[2],
+                box.ijk[3] - source.ijk[3],
+            ))
+        end
+    end
+    return length(offsets), interaction_count
+end
+
+function _estimated_mlfma_setup_bytes(
+    octree::Octree,
+    orders::Vector{Int},
+    N::Int,
+)
+    length(orders) == octree.nLevels - 1 ||
+        throw(ArgumentError(
+            "MLFMA resource estimate requires one order per non-root level"))
+
+    nlevels = length(orders)
+    ntheta = Vector{Int}(undef, nlevels)
+    nphi = Vector{Int}(undef, nlevels)
+    npts = Vector{Int}(undef, nlevels)
+    total = BigInt(0)
+
+    for index in eachindex(orders)
+        ntheta[index], nphi[index], npts[index] =
+            _validated_sphere_sampling_dimensions(
+                orders[index], typemax(Int))
+
+        level = octree.levels[index + 1]
+        nboxes = length(level.boxes)
+        unique_offsets, interaction_count =
+            _mlfma_level_interaction_counts(level)
+
+        # Persistent sampling arrays plus the peak dense eigenvector workspace
+        # used by the Gauss-Legendre construction.
+        total += BigInt(48) * npts[index]
+        total += BigInt(16) * ntheta[index] * ntheta[index]
+
+        # Translation tables and their flattened interaction plans.
+        total += BigInt(16) * unique_offsets * npts[index]
+        total += BigInt(16) * interaction_count +
+                 BigInt(8) * (nboxes + 1)
+
+        # Aggregation and incoming workspaces: two 4×npts ComplexF64 arrays
+        # for every occupied box.
+        total += BigInt(128) * nboxes * npts[index]
+    end
+
+    # Four ComplexF64 radiation-pattern components per leaf sample and BF.
+    total += BigInt(64) * npts[end] * N
+
+    for index in 1:nlevels-1
+        parent_ntheta = ntheta[index]
+        child_ntheta = ntheta[index + 1]
+        parent_npts = npts[index]
+        child_npts = npts[index + 1]
+        modes = orders[index + 1] + 1
+
+        # Both aggregation and disaggregation banks store one dense Float64
+        # theta matrix per azimuthal mode.
+        total += BigInt(16) * modes * parent_ntheta * child_ntheta
+
+        # Two reusable DisaggFilterScratch instances per level transition.
+        total += BigInt(256) * modes *
+                 (parent_ntheta + child_ntheta)
+
+        # Interpolation, shifted, and filter-result ComplexF64 buffers.
+        total += BigInt(64) * (2 * parent_npts + child_npts)
+    end
+
+    # Account for Julia array/dictionary headers, alignment, and bounded setup
+    # temporaries not represented by the raw payload formulas above.
+    return cld(5 * total, 4)
+end
+
+function _validate_mlfma_setup_resources(
+    octree::Octree,
+    orders::Vector{Int},
+    N::Int,
+    max_setup_bytes::Int,
+)
+    max_setup_bytes >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_setup_bytes must be positive, got $max_setup_bytes"))
+    estimated_bytes = _estimated_mlfma_setup_bytes(octree, orders, N)
+    estimated_bytes <= max_setup_bytes || begin
+        estimated_gib = round(Float64(estimated_bytes) / 2.0^30; digits=3)
+        limit_gib = round(max_setup_bytes / 2.0^30; digits=3)
+        throw(ArgumentError(
+            "build_mlfma_operator: estimated MLFMA sampling, translation, " *
+            "filter, pattern, and workspace storage is $estimated_gib GiB, " *
+            "exceeding max_setup_bytes=$max_setup_bytes ($limit_gib GiB). " *
+            "Increase the limit explicitly only after budgeting memory."))
+    end
+    return estimated_bytes
 end
 
 # ─── Special functions ──────────────────────────────────────────
@@ -1407,6 +1554,8 @@ Build an MLFMA operator for the EFIE system.
 - `quad_order=3`: surface quadrature order
 - `precision=3`: translation truncation precision parameter
 - `eta0=376.730313668`: free-space impedance
+- `max_sampling_points=2_100_000`: per-level spherical-grid resource limit
+- `max_setup_bytes=2_000_000_000`: estimated MLFMA setup-storage limit
 - `verbose=false`: print progress
 """
 function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
@@ -1414,14 +1563,31 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
                                quad_order::Int=3,
                                precision::Int=3,
                                eta0::Float64=376.730313668,
+                               max_sampling_points::Int=
+                                   _DEFAULT_MAX_SPHERE_SAMPLING_POINTS,
+                               max_setup_bytes::Int=
+                                   _DEFAULT_MAX_MLFMA_SETUP_BYTES,
                                verbose::Bool=false)
-    _validated_octree_leaf_edge(k, leaf_lambda)
+    leaf_edge = _validated_octree_leaf_edge(k, leaf_lambda)
     precision >= 1 ||
         throw(ArgumentError(
             "build_mlfma_operator: precision must be at least 1, got $precision"))
     isfinite(eta0) && eta0 > 0.0 ||
         throw(ArgumentError(
             "build_mlfma_operator: eta0 must be finite and positive, got $eta0"))
+    max_sampling_points >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_sampling_points must be positive, got $max_sampling_points"))
+    max_setup_bytes >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_setup_bytes must be positive, got $max_setup_bytes"))
+
+    # Reject an impossible precision request before constructing the tree or
+    # assembling any matrix. Coarser levels are checked after tree creation.
+    leaf_order = truncation_order(leaf_edge, k; precision=precision)
+    _validated_sphere_sampling_dimensions(
+        leaf_order, max_sampling_points)
+
     N = rwg.nedges
     centers = rwg_centers(mesh, rwg)
 
@@ -1432,7 +1598,24 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     verbose && println("$(round(time()-t0, digits=2))s, $(octree.nLevels) levels, " *
                        "$(length(octree.levels[octree.nLevels].boxes)) leaf boxes")
 
-    # 2. Near-field matrix
+    # 2. Determine every sampling order and reject oversized setup plans
+    # before near-field assembly or spherical-grid allocation.
+    nL = octree.nLevels
+    orders = Vector{Int}(undef, nL - 1)
+    for l in 2:nL
+        edge_l = octree.levels[l].edge_length
+        orders[l - 1] = truncation_order(edge_l, k; precision=precision)
+        _validated_sphere_sampling_dimensions(
+            orders[l - 1], max_sampling_points)
+    end
+    estimated_setup_bytes = _validate_mlfma_setup_resources(
+        octree, orders, N, max_setup_bytes)
+    verbose && println(
+        "  MLFMA: Estimated setup storage — ",
+        round(Float64(estimated_setup_bytes) / 2.0^20; digits=2),
+        " MiB")
+
+    # 3. Near-field matrix
     verbose && print("  MLFMA: Assembling near-field... ")
     t0 = time()
     Z_near = assemble_mlfma_nearfield(octree, mesh, rwg, k;
@@ -1440,18 +1623,16 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     nnz_ratio = nnz(Z_near) / N^2
     verbose && println("$(round(time()-t0, digits=2))s, nnz=$(round(nnz_ratio*100, digits=1))%")
 
-    # 3. Spherical sampling at each level (for levels 2:nLevels)
-    nL = octree.nLevels
+    # 4. Spherical sampling at each level (for levels 2:nLevels)
     samplings = Vector{SphereSampling}(undef, nL - 1)
     for l in 2:nL
-        edge_l = octree.levels[l].edge_length
-        L_l = truncation_order(edge_l, k; precision=precision)
-        samplings[l - 1] = make_sphere_sampling(L_l)
+        samplings[l - 1] = make_sphere_sampling(
+            orders[l - 1]; max_points=max_sampling_points)
     end
     verbose && println("  MLFMA: Sampling — leaf L=$(samplings[end].L), " *
                        "npts=$(samplings[end].npts)")
 
-    # 4. BF radiation patterns at leaf level
+    # 5. BF radiation patterns at leaf level
     verbose && print("  MLFMA: Computing radiation patterns... ")
     t0 = time()
     leaf_sampling = samplings[nL - 1]
@@ -1459,7 +1640,7 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
                                                  quad_order=quad_order)
     verbose && println("$(round(time()-t0, digits=2))s")
 
-    # 5. Translation factors at each level
+    # 6. Translation factors at each level
     verbose && print("  MLFMA: Computing translation factors... ")
     t0 = time()
     trans_factors = Vector{Dict{NTuple{3,Int}, Vector{ComplexF64}}}(undef, nL - 1)
@@ -1474,7 +1655,7 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     end
     verbose && println("$(round(time()-t0, digits=2))s")
 
-    # 6. Interpolation (aggregation) and spectral filter (disaggregation) matrices
+    # 7. Interpolation (aggregation) and spectral filter (disaggregation) matrices
     #    Aggregation uses Lagrange interpolation (child→parent, upsampling).
     #    Disaggregation uses addition-theorem spectral filter (parent→child, band-limiting).
     interp_theta = Vector{Matrix{Float64}}()
