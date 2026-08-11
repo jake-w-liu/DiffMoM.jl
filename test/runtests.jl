@@ -1412,6 +1412,35 @@ q_entry_underflow_operator = FarFieldQMatrix(
     q_entry_underflow_G, [1.0e-300], q_extreme_pol, nothing, 2)
 @test q_entry_underflow_operator[1, 2] == 1.0e-300 + 0im
 
+# The dense builder and one-shot apply wrapper must use the same checked
+# extreme-factor path as FarFieldQMatrix instead of losing a representable
+# outer product after an underflowed intermediate multiplication.
+q_wrapper_grid = SphGrid(
+    reshape(Float64[0, 0, 1], 3, 1),
+    [0.0], [0.0], [1.0e-300])
+q_wrapper_G = zeros(ComplexF64, 3, 2)
+q_wrapper_G[1, :] .= ComplexF64[1.0e-200, 1.0e300]
+q_wrapper_reference = setprecision(BigFloat, 12800) do
+    projected = BigFloat[1.0e-200, 1.0e300]
+    weight = BigFloat(1.0e-300)
+    ComplexF64[
+        weight * projected[row] * projected[column]
+        for row in eachindex(projected), column in eachindex(projected)
+    ]
+end
+q_wrapper_input = ComplexF64[0, 1]
+q_wrapper_dense = build_Q(
+    q_wrapper_G, q_wrapper_grid, q_extreme_pol)
+@test all(isfinite, q_wrapper_dense)
+@test q_wrapper_dense[1, 2] == q_wrapper_reference[1, 2]
+@test q_wrapper_dense ≈ q_wrapper_reference rtol=5e-16 atol=0.0
+@test apply_Q(
+    q_wrapper_G, q_wrapper_grid, q_extreme_pol,
+    q_wrapper_input) == q_wrapper_reference[:, 2]
+@test_throws ArgumentError apply_Q(
+    q_wrapper_G, q_wrapper_grid, q_extreme_pol,
+    ComplexF64[NaN, 0])
+
 q_scale_operator = FarFieldQMatrix(
     reshape(ComplexF64[1, 0, 0], 3, 1),
     [1.0], q_extreme_pol, nothing, 1)

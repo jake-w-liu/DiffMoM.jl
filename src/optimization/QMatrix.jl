@@ -739,6 +739,27 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
     return result
 end
 
+@noinline function _build_q_checked(
+        G_mat::Matrix{ComplexF64},
+        weights::Vector{Float64},
+        pol::Matrix{ComplexF64},
+        mask,
+        N::Int)
+    mask_copy = mask === nothing ? nothing : BitVector(mask)
+    operator = FarFieldQMatrix(
+        G_mat, weights, pol, mask_copy, N,
+        ComplexF64[], ReentrantLock(), true)
+    result = zeros(ComplexF64, N, N)
+    @inbounds for column in 1:N
+        for row in 1:column
+            value = operator[row, column]
+            result[row, column] = value
+            result[column, row] = conj(value)
+        end
+    end
+    return result
+end
+
 """
     build_Q(G_mat, grid, pol; mask=nothing)
 
@@ -754,6 +775,11 @@ Returns Q ∈ C^{N×N}, Hermitian positive semidefinite.
 function build_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
                  pol::Matrix{ComplexF64}; mask=nothing)
     NΩ, N = _validate_q_inputs(G_mat, grid, pol, mask)
+    if _farfield_q_has_extreme_operator_factor(
+            G_mat, grid.w, pol)
+        return _build_q_checked(
+            G_mat, grid.w, pol, mask, N)
+    end
 
     # Compute scalar projections: y_q_n = p†(r̂_q) · g_n(r̂_q)
     # y is (NΩ, N)
@@ -814,8 +840,23 @@ function apply_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
     length(I_coeffs) == N ||
         throw(DimensionMismatch(
             "I_coeffs length $(length(I_coeffs)) != $N"))
+    all(isfinite, I_coeffs) ||
+        throw(ArgumentError(
+            "I_coeffs must contain only finite values"))
 
     result = zeros(ComplexF64, N)
+    extreme_operator_factor =
+        _farfield_q_has_extreme_operator_factor(
+            G_mat, grid.w, pol)
+    if extreme_operator_factor ||
+       any(_farfield_q_extreme_factor, I_coeffs)
+        mask_copy = mask === nothing ? nothing : BitVector(mask)
+        operator = FarFieldQMatrix(
+            G_mat, grid.w, pol, mask_copy, N,
+            result, ReentrantLock(), extreme_operator_factor)
+        return _farfield_q_product!(
+            result, operator, I_coeffs)
+    end
     for q in 1:NΩ
         if mask !== nothing && !mask[q]
             continue
