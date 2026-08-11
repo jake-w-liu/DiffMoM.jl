@@ -619,6 +619,58 @@ function build_nearfield_preconditioner(A::AbstractMatrix{<:Number}, mesh::TriMe
 end
 
 """
+    build_nearfield_preconditioner(A::MLFMAOperator, mesh, rwg, cutoff)
+
+Build a distance-truncated preconditioner from the near-field matrix already
+stored by an MLFMA operator. Scalar indexing of `MLFMAOperator` represents the
+complete operator and requires a full matvec, so this specialization preserves
+the intended near-field construction cost.
+"""
+function build_nearfield_preconditioner(
+        A::MLFMAOperator,
+        mesh::TriMesh,
+        rwg::RWGData,
+        cutoff::Float64;
+        neighbor_search::Symbol=:spatial,
+        factorization::Symbol=:lu,
+        ilu_tau::Float64=1e-3)
+    N = rwg.nedges
+    _validate_nearfield_build_controls(
+        cutoff, neighbor_search, factorization, ilu_tau)
+    size(A) == (N, N) ||
+        throw(DimensionMismatch(
+            "A has size $(size(A)), expected ($N, $N) for RWG basis"))
+    return _build_nearfield_preconditioner_from_entries(
+        mesh, rwg, cutoff, (m, n) -> A.Z_near[m, n];
+        neighbor_search=neighbor_search,
+        factorization=factorization,
+        ilu_tau=ilu_tau,
+    )
+end
+
+function build_nearfield_preconditioner(
+        A::MLFMAAdjointOperator,
+        mesh::TriMesh,
+        rwg::RWGData,
+        cutoff::Float64;
+        neighbor_search::Symbol=:spatial,
+        factorization::Symbol=:lu,
+        ilu_tau::Float64=1e-3)
+    N = rwg.nedges
+    _validate_nearfield_build_controls(
+        cutoff, neighbor_search, factorization, ilu_tau)
+    size(A) == (N, N) ||
+        throw(DimensionMismatch(
+            "A has size $(size(A)), expected ($N, $N) for RWG basis"))
+    return _build_nearfield_preconditioner_from_entries(
+        mesh, rwg, cutoff, (m, n) -> conj(A.op.Z_near[n, m]);
+        neighbor_search=neighbor_search,
+        factorization=factorization,
+        ilu_tau=ilu_tau,
+    )
+end
+
+"""
     build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff)
 
 Build a near-field preconditioner from a matrix-free EFIE operator using

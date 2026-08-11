@@ -4869,6 +4869,10 @@ println("  31b: PASS")
 A_mlfma = build_mlfma_operator(mlfma_mesh, mlfma_rwg, mlfma_k;
     leaf_lambda=0.5, quad_order=3, verbose=false)
 @assert A_mlfma.workspace.work_lock isa ReentrantLock
+@test isempty(A_mlfma.workspace.entry_output)
+build_nearfield_preconditioner(
+    A_mlfma, mlfma_mesh, mlfma_rwg, 0.0; factorization=:diag)
+@test isempty(A_mlfma.workspace.entry_output)
 
 # Random test vector
 Random.seed!(42)
@@ -4881,6 +4885,32 @@ mlfma_matvec_err = norm(y_mlfma - y_dense) / norm(y_dense)
 println("  31c: MLFMA matvec — rel error = $(round(mlfma_matvec_err, sigdigits=3))")
 @assert mlfma_matvec_err < 0.05 "MLFMA matvec error too large: $mlfma_matvec_err (expected < 0.05)"
 println("  31c: PASS")
+
+mlfma_far_row = 0
+mlfma_far_column = 0
+for box in leaf_level.boxes
+    isempty(box.bf_range) && continue
+    for far_box_id in box.interaction_list
+        far_box = leaf_level.boxes[far_box_id]
+        isempty(far_box.bf_range) && continue
+        global mlfma_far_row = octree.perm[first(box.bf_range)]
+        global mlfma_far_column = octree.perm[first(far_box.bf_range)]
+        break
+    end
+    mlfma_far_row > 0 && break
+end
+@test mlfma_far_row > 0
+@test iszero(A_mlfma.Z_near[mlfma_far_row, mlfma_far_column])
+mlfma_basis_input = zeros(ComplexF64, mlfma_N)
+mlfma_basis_input[mlfma_far_column] = 1
+mlfma_basis_product = A_mlfma * mlfma_basis_input
+mlfma_far_entry = A_mlfma[mlfma_far_row, mlfma_far_column]
+@test mlfma_far_entry == mlfma_basis_product[mlfma_far_row]
+@test !iszero(mlfma_far_entry)
+@test adjoint(A_mlfma)[mlfma_far_column, mlfma_far_row] ==
+      conj(mlfma_far_entry)
+@test _matrix_entry_allocation(
+          A_mlfma, mlfma_far_row, mlfma_far_column) <= 128
 
 # 31d: MLFMA adjoint inner-product identity
 y_test = randn(ComplexF64, mlfma_N)
@@ -4900,6 +4930,28 @@ _assert_shared_workspace_concurrency(
     [A_mlfma, adjoint(A_mlfma), A_mlfma, adjoint(A_mlfma)],
     [x_test, y_test, reverse(x_test), conj.(y_test)],
 )
+if Threads.nthreads() > 1
+    for _ in 1:4
+        mlfma_index_gate = Base.Event()
+        mlfma_index_task = Threads.@spawn begin
+            wait(mlfma_index_gate)
+            A_mlfma[mlfma_far_row, mlfma_far_column]
+        end
+        mlfma_product_task = Threads.@spawn begin
+            wait(mlfma_index_gate)
+            (A_mlfma * mlfma_basis_input)[mlfma_far_row]
+        end
+        mlfma_adjoint_index_task = Threads.@spawn begin
+            wait(mlfma_index_gate)
+            adjoint(A_mlfma)[mlfma_far_column, mlfma_far_row]
+        end
+        yield()
+        notify(mlfma_index_gate)
+        @test fetch(mlfma_index_task) == mlfma_far_entry
+        @test fetch(mlfma_product_task) == mlfma_far_entry
+        @test fetch(mlfma_adjoint_index_task) == conj(mlfma_far_entry)
+    end
+end
 
 # 31e: MLFMA + GMRES convergence
 mlfma_exc = PlaneWaveExcitation(Vec3(0.0, 0.0, -mlfma_k), 1.0, Vec3(1.0, 0.0, 0.0))

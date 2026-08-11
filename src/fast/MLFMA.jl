@@ -1159,6 +1159,9 @@ mutable struct MLFMAWorkspace
     filter_result::Vector{Matrix{ComplexF64}}
     # Input snapshot used only when x and y overlap.
     input_copy::Vector{ComplexF64}
+    # Lazily sized output used by scalar indexing. Most MLFMA workflows never
+    # index the full operator and therefore pay no storage for this buffer.
+    entry_output::Vector{ComplexF64}
     # Forward and adjoint matvecs reuse every buffer above.
     work_lock::ReentrantLock
 end
@@ -1174,7 +1177,24 @@ MLFMAWorkspace(
     input_copy::Vector{ComplexF64},
 ) = MLFMAWorkspace(
     agg, incoming, agg_disagg_scratch, disagg_disagg_scratch,
-    interp_result, shifted_buf, filter_result, input_copy, ReentrantLock(),
+    interp_result, shifted_buf, filter_result, input_copy,
+    ComplexF64[], ReentrantLock(),
+)
+
+MLFMAWorkspace(
+    agg::Vector{Vector{Matrix{ComplexF64}}},
+    incoming::Vector{Vector{Matrix{ComplexF64}}},
+    agg_disagg_scratch::Vector{DisaggFilterScratch},
+    disagg_disagg_scratch::Vector{DisaggFilterScratch},
+    interp_result::Vector{Matrix{ComplexF64}},
+    shifted_buf::Vector{Matrix{ComplexF64}},
+    filter_result::Vector{Matrix{ComplexF64}},
+    input_copy::Vector{ComplexF64},
+    work_lock::ReentrantLock,
+) = MLFMAWorkspace(
+    agg, incoming, agg_disagg_scratch, disagg_disagg_scratch,
+    interp_result, shifted_buf, filter_result, input_copy,
+    ComplexF64[], work_lock,
 )
 
 function _build_mlfma_workspace(octree::Octree,
@@ -1269,14 +1289,26 @@ Base.eltype(::MLFMAAdjointOperator) = ComplexF64
 LinearAlgebra.adjoint(A::MLFMAOperator) = MLFMAAdjointOperator(A)
 LinearAlgebra.adjoint(A::MLFMAAdjointOperator) = A.op
 
-# Fallback getindex via near-field (for preconditioner construction)
 function Base.getindex(A::MLFMAOperator, i::Int, j::Int)
-    # Return near-field entry if available, else 0
-    return A.Z_near[i, j]
+    checkbounds(A, i, j)
+    ws = A.workspace
+    lock(ws.work_lock)
+    try
+        length(ws.entry_output) == A.N || resize!(ws.entry_output, A.N)
+        fill!(ws.input_copy, zero(ComplexF64))
+        ws.input_copy[j] = one(ComplexF64)
+        _mlfma_forward_mul!(
+            ws.entry_output, A, ws.input_copy,
+            one(ComplexF64), zero(ComplexF64))
+        return ws.entry_output[i]
+    finally
+        unlock(ws.work_lock)
+    end
 end
 
 function Base.getindex(A::MLFMAAdjointOperator, i::Int, j::Int)
-    return conj(A.op.Z_near[j, i])
+    checkbounds(A, i, j)
+    return conj(A.op[j, i])
 end
 
 """
