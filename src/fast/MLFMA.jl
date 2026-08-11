@@ -126,54 +126,141 @@ end
     spherical_hankel2_all(l_max, x)
 
 Compute h_l^(2)(x) = j_l(x) - i*y_l(x) for l = 0, 1, ..., l_max.
-Uses forward recurrence (stable for moderate l_max ≤ 50).
+The dominant `y_l` solution is advanced forward. The minimal `j_l` solution
+uses forward recurrence only through the oscillatory regime and otherwise
+uses Miller's backward recurrence.
 """
+@noinline function _spherical_bessel_j_miller_exact(
+    l_max::Int,
+    x::Float64,
+    l_start::Int,
+)
+    return setprecision(BigFloat, 512) do
+        x_big = BigFloat(x)
+        values = Vector{BigFloat}(undef, Base.checked_add(l_start, 2))
+        values[l_start + 2] = zero(BigFloat)
+        values[l_start + 1] = one(BigFloat)
+        for l in (l_start - 1):-1:0
+            recurrence_numerator = 2 * BigFloat(l) + 3
+            values[l + 1] = (recurrence_numerator / x_big) * values[l + 2] -
+                            values[l + 3]
+        end
+
+        sx, cx = sincos(x_big)
+        j0 = sx / x_big
+        j1 = (j0 - cx) / x_big
+        reference_order = abs(j0) >= abs(j1) ? 0 : 1
+        reference = reference_order == 0 ? j0 : j1
+        scale = reference / values[reference_order + 1]
+
+        result = Vector{Float64}(undef, Base.checked_add(l_max, 1))
+        @inbounds for l in 0:l_max
+            result[l + 1] = Float64(values[l + 1] * scale)
+        end
+        return result
+    end
+end
+
 function spherical_hankel2_all(l_max::Int, x::Float64)
-    h = Vector{ComplexF64}(undef, l_max + 1)
+    l_max >= 0 ||
+        throw(ArgumentError(
+            "spherical_hankel2_all: l_max must be nonnegative, got $l_max"))
+    isfinite(x) && !iszero(x) ||
+        throw(ArgumentError(
+            "spherical_hankel2_all: x must be finite and nonzero, got $x"))
 
-    if abs(x) < 1e-30
-        fill!(h, zero(ComplexF64))
-        return h
-    end
-
+    result_length = Base.checked_add(l_max, 1)
+    h = Vector{ComplexF64}(undef, result_length)
     sx, cx = sincos(x)
+    inv_x = inv(x)
 
-    # y_l forward recurrence (always stable — y_l diverges as l → ∞)
-    y0 = -cx / x
-    y1 = -cx / x^2 - sx / x
-    yl = Vector{Float64}(undef, l_max + 1)
-    yl[1] = y0
+    # Stage y1 with 1/x rather than 1/x^2. This preserves finite results when
+    # x^2 underflows and avoids an unnecessary square.
+    j0 = sx * inv_x
+    y0 = -cx * inv_x
+    y = Vector{Float64}(undef, result_length)
+    y[1] = y0
+    isfinite(y0) ||
+        throw(OverflowError(
+            "spherical_hankel2_all: order 0 is not representable for x=$x"))
+
     if l_max >= 1
-        yl[2] = y1
+        y[2] = (-cx * inv_x - sx) * inv_x
+        isfinite(y[2]) ||
+            throw(OverflowError(
+                "spherical_hankel2_all: order 1 is not representable for x=$x"))
     end
-    for l in 1:l_max-1
-        yl[l + 2] = (2l + 1) / x * yl[l + 1] - yl[l]
-    end
-
-    # j_l via backward recurrence (Miller's algorithm) — stable for all l.
-    # Forward recurrence is unstable for l > x.
-    l_start = l_max + max(15, ceil(Int, sqrt(40.0 * l_max)))
-    jl_unnorm = Vector{Float64}(undef, l_start + 2)
-    jl_unnorm[l_start + 2] = 0.0
-    jl_unnorm[l_start + 1] = 1.0
-    for l in (l_start - 1):-1:0
-        jl_unnorm[l + 1] = (2l + 3) / x * jl_unnorm[l + 2] - jl_unnorm[l + 3]
+    @inbounds for l in 1:l_max-1
+        recurrence_factor = muladd(2.0, Float64(l), 1.0) * inv_x
+        y[l + 2] = recurrence_factor * y[l + 1] - y[l]
+        isfinite(y[l + 2]) ||
+            throw(OverflowError(
+                "spherical_hankel2_all: order $(l + 1) is not representable for x=$x"))
     end
 
-    # Normalize using the Wronskian (DLMF 10.51.2):
-    #   j_{n-1}(x)*y_n(x) - j_n(x)*y_{n-1}(x) = 1/x²
-    # At n=1: j_0*y_1 - j_1*y_0 = -1/x²
-    # With unnormalized j values: scale * (j0u*y1 - j1u*y0) = -1/x²
-    wronskian_unnorm = jl_unnorm[1] * y1 - jl_unnorm[2] * y0
-    scale = (-1.0 / x^2) / wronskian_unnorm
-
-    jl = Vector{Float64}(undef, l_max + 1)
-    for l in 0:l_max
-        jl[l + 1] = jl_unnorm[l + 1] * scale
+    j = Vector{Float64}(undef, result_length)
+    j[1] = j0
+    if l_max >= 1
+        if abs(x) <= 0.125
+            x2 = x * x
+            series = evalpoly(
+                x2,
+                (1.0, -1 / 10, 1 / 280, -1 / 15120,
+                 1 / 1330560, -1 / 172972800),
+            )
+            j[2] = (x / 3) * series
+        else
+            j[2] = (j0 - cx) * inv_x
+        end
     end
 
-    for l in 0:l_max
-        h[l + 1] = jl[l + 1] - im * yl[l + 1]
+    if l_max >= 2 && abs(x) > l_max
+        @inbounds for l in 1:l_max-1
+            recurrence_factor = muladd(2.0, Float64(l), 1.0) * inv_x
+            j[l + 2] = recurrence_factor * j[l + 1] - j[l]
+        end
+    elseif l_max >= 2
+        l_start = Base.checked_add(
+            l_max, max(15, ceil(Int, sqrt(40.0 * l_max))))
+        unnormalized = Vector{Float64}(undef, Base.checked_add(l_start, 2))
+        unnormalized[l_start + 2] = 0.0
+        unnormalized[l_start + 1] = 1.0
+        finite_recurrence = true
+        @inbounds for l in (l_start - 1):-1:0
+            unnormalized[l + 1] =
+                muladd(2.0, Float64(l), 3.0) * inv_x *
+                unnormalized[l + 2] - unnormalized[l + 3]
+            if !isfinite(unnormalized[l + 1])
+                finite_recurrence = false
+                break
+            end
+        end
+
+        if finite_recurrence
+            reference_order = abs(j[1]) >= abs(j[2]) ? 0 : 1
+            reference = j[reference_order + 1]
+            scale = reference / unnormalized[reference_order + 1]
+            finite_recurrence = isfinite(scale)
+            if finite_recurrence
+                @inbounds for l in 0:l_max
+                    j[l + 1] = unnormalized[l + 1] * scale
+                    if !isfinite(j[l + 1])
+                        finite_recurrence = false
+                        break
+                    end
+                end
+            end
+        end
+        if !finite_recurrence
+            j = _spherical_bessel_j_miller_exact(l_max, x, l_start)
+        end
+    end
+
+    @inbounds for l in 0:l_max
+        h[l + 1] = ComplexF64(j[l + 1], -y[l + 1])
+        isfinite(h[l + 1]) ||
+            throw(OverflowError(
+                "spherical_hankel2_all: order $l is not representable for x=$x"))
     end
     return h
 end
