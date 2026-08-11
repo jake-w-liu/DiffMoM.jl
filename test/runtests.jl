@@ -5108,6 +5108,41 @@ for mlfma_internal_operator in (A_mlfma, adjoint(A_mlfma))
     @test mlfma_internal_tiny_alias == mlfma_internal_tiny_result
 end
 
+# A normal component must not mask subnormal components that become observable
+# after alpha/beta cancellation. Real and imaginary components are assigned to
+# exponent bands independently so one ComplexF64 value can straddle bands.
+mlfma_banded_normal_input = zeros(ComplexF64, mlfma_N)
+mlfma_banded_normal_input[1] = 1.0
+mlfma_banded_tiny_input =
+    fill(ComplexF64(nextfloat(0.0), 0.0), mlfma_N)
+mlfma_banded_tiny_input[1] = ComplexF64(0.0, nextfloat(0.0))
+mlfma_banded_mixed_input =
+    mlfma_banded_normal_input + mlfma_banded_tiny_input
+mlfma_banded_scale = floatmax(Float64)
+for mlfma_banded_operator in (A_mlfma, adjoint(A_mlfma))
+    mlfma_banded_normal_product =
+        mlfma_banded_operator * mlfma_banded_normal_input
+    mlfma_banded_reference =
+        mlfma_banded_operator *
+        (mlfma_banded_scale .* mlfma_banded_tiny_input)
+    mlfma_banded_result = -mlfma_banded_normal_product
+    mul!(mlfma_banded_result, mlfma_banded_operator,
+         mlfma_banded_mixed_input,
+         mlfma_banded_scale, mlfma_banded_scale)
+    @test all(isfinite, mlfma_banded_result)
+    @test all(!iszero, mlfma_banded_result)
+    @test mlfma_banded_result ≈
+          mlfma_banded_reference rtol=1e-13 atol=0.0
+
+    mlfma_banded_alias = copy(mlfma_banded_mixed_input)
+    mlfma_banded_alias_reference = copy(mlfma_banded_mixed_input)
+    mul!(mlfma_banded_alias_reference, mlfma_banded_operator,
+         mlfma_banded_mixed_input, 1.0, 0.5)
+    mul!(mlfma_banded_alias, mlfma_banded_operator,
+         mlfma_banded_alias, 1.0, 0.5)
+    @test mlfma_banded_alias == mlfma_banded_alias_reference
+end
+
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"

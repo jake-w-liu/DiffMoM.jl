@@ -1532,6 +1532,7 @@ const _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
 const _MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT = 896
 const _MLFMA_INTERNAL_RESCALE_STEP = 128
 const _MLFMA_INTERNAL_MAX_RESCALE_ATTEMPTS = 18
+const _MLFMA_INPUT_BAND_WIDTH = 32
 
 @noinline function _mlfma_scaled_output_bigfloat(
         value::ComplexF64,
@@ -1618,22 +1619,31 @@ function _mlfma_initial_recovery_shift(x::AbstractVector)
     )
 end
 
-function _mlfma_initial_underflow_upshift(x::AbstractVector)
+function _mlfma_input_exponent_bounds(x::AbstractVector)
+    minimum_exponent = typemax(Int)
     maximum_exponent = typemin(Int)
     @inbounds for index in eachindex(x)
         value = ComplexF64(x[index])
-        isfinite(value) || return 0
+        isfinite(value) ||
+            throw(ArgumentError(
+                "MLFMA input contains a non-finite value at index $index: $value"))
         real_value = real(value)
         imag_value = imag(value)
         if !iszero(real_value)
-            maximum_exponent = max(
-                maximum_exponent, exponent(abs(real_value)))
+            value_exponent = exponent(abs(real_value))
+            minimum_exponent = min(minimum_exponent, value_exponent)
+            maximum_exponent = max(maximum_exponent, value_exponent)
         end
         if !iszero(imag_value)
-            maximum_exponent = max(
-                maximum_exponent, exponent(abs(imag_value)))
+            value_exponent = exponent(abs(imag_value))
+            minimum_exponent = min(minimum_exponent, value_exponent)
+            maximum_exponent = max(maximum_exponent, value_exponent)
         end
     end
+    return minimum_exponent, maximum_exponent
+end
+
+@inline function _mlfma_initial_underflow_upshift(maximum_exponent::Int)
     maximum_exponent == typemin(Int) && return 0
     maximum_exponent >= -_MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT && return 0
     return -maximum_exponent
@@ -1725,6 +1735,152 @@ end
         end
         return product
     end
+end
+
+@noinline function _mlfma_banded_scaled_output!(
+        output::Vector{ComplexF64},
+        products::Matrix{ComplexF64},
+        product_shifts::Vector{Int},
+        previous::AbstractVector{ComplexF64},
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool)
+    return setprecision(
+            BigFloat, _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        alpha_big = Complex{BigFloat}(alpha_scale)
+        beta_big = Complex{BigFloat}(beta_scale)
+        @inbounds for row in axes(products, 1)
+            total = overwrite ? zero(Complex{BigFloat}) :
+                    beta_big * Complex{BigFloat}(previous[row])
+            for band in axes(products, 2)
+                value = products[row, band]
+                unscaled_value = Complex{BigFloat}(
+                    ldexp(BigFloat(real(value)), product_shifts[band]),
+                    ldexp(BigFloat(imag(value)), product_shifts[band]),
+                )
+                total += alpha_big * unscaled_value
+            end
+            converted = ComplexF64(total)
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "MLFMA scaled output is outside the representable " *
+                    "ComplexF64 range at row $row."))
+            output[row] = converted
+        end
+        return output
+    end
+end
+
+@inline _mlfma_internal_workspace(A::MLFMAOperator) = A.workspace
+@inline _mlfma_internal_workspace(A::MLFMAAdjointOperator) = A.op.workspace
+
+@inline function _mlfma_internal_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAOperator,
+        x::AbstractVector)
+    return _mlfma_forward_product!(product, A, x)
+end
+
+@inline function _mlfma_internal_recover_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAOperator,
+        x::AbstractVector)
+    return _mlfma_recover_forward_product!(product, A, x)
+end
+
+@noinline function _mlfma_banded_mul!(
+        output::Vector{ComplexF64},
+        A,
+        x::AbstractVector,
+        previous::AbstractVector{ComplexF64},
+        alpha_scale::Number,
+        beta_scale::Number,
+        minimum_exponent::Int,
+        maximum_exponent::Int,
+        overwrite::Bool)
+    source = Vector{ComplexF64}(x)
+    bucket_count = fld(
+        maximum_exponent - minimum_exponent,
+        _MLFMA_INPUT_BAND_WIDTH,
+    ) + 1
+    band_maxima = fill(typemin(Int), bucket_count)
+    @inbounds for value in source
+        for component in (real(value), imag(value))
+            iszero(component) && continue
+            value_exponent = exponent(abs(component))
+            bucket = fld(
+                maximum_exponent - value_exponent,
+                _MLFMA_INPUT_BAND_WIDTH,
+            ) + 1
+            band_maxima[bucket] = max(
+                band_maxima[bucket], value_exponent)
+        end
+    end
+
+    occupied_count = count(!=(typemin(Int)), band_maxima)
+    products = Matrix{ComplexF64}(
+        undef, length(output), occupied_count)
+    product_shifts = Vector{Int}(undef, occupied_count)
+    workspace = _mlfma_internal_workspace(A)
+    scaled_input = workspace.input_copy
+    occupied_band = 0
+    @inbounds for bucket in eachindex(band_maxima)
+        band_maximum = band_maxima[bucket]
+        band_maximum == typemin(Int) && continue
+        occupied_band += 1
+        fill!(scaled_input, zero(ComplexF64))
+        for index in eachindex(source, scaled_input)
+            value = source[index]
+            real_value = real(value)
+            imag_value = imag(value)
+            scaled_real = zero(Float64)
+            scaled_imag = zero(Float64)
+            if !iszero(real_value)
+                real_exponent = exponent(abs(real_value))
+                real_bucket = fld(
+                    maximum_exponent - real_exponent,
+                    _MLFMA_INPUT_BAND_WIDTH,
+                ) + 1
+                if real_bucket == bucket
+                    scaled_real = ldexp(real_value, -band_maximum)
+                    ldexp(scaled_real, band_maximum) == real_value ||
+                        throw(OverflowError(
+                            "MLFMA real input component could not be " *
+                            "rescaled losslessly at index $index"))
+                end
+            end
+            if !iszero(imag_value)
+                imag_exponent = exponent(abs(imag_value))
+                imag_bucket = fld(
+                    maximum_exponent - imag_exponent,
+                    _MLFMA_INPUT_BAND_WIDTH,
+                ) + 1
+                if imag_bucket == bucket
+                    scaled_imag = ldexp(imag_value, -band_maximum)
+                    ldexp(scaled_imag, band_maximum) == imag_value ||
+                        throw(OverflowError(
+                            "MLFMA imaginary input component could not be " *
+                            "rescaled losslessly at index $index"))
+                end
+            end
+            scaled_input[index] = ComplexF64(scaled_real, scaled_imag)
+        end
+
+        _mlfma_internal_product!(output, A, scaled_input)
+        recovery_shift = if _mlfma_product_is_finite(output)
+            0
+        else
+            _mlfma_internal_recover_product!(output, A, scaled_input)
+        end
+        product_shifts[occupied_band] = band_maximum + recovery_shift
+        for row in eachindex(output)
+            products[row, occupied_band] = output[row]
+        end
+    end
+
+    return _mlfma_banded_scaled_output!(
+        output, products, product_shifts, previous,
+        alpha_scale, beta_scale, overwrite)
 end
 
 function _mlfma_forward_product!(
@@ -1937,7 +2093,20 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
         x
     end
     length(ws.entry_output) == N || resize!(ws.entry_output, N)
-    underflow_upshift = _mlfma_initial_underflow_upshift(xread)
+    minimum_exponent, maximum_exponent =
+        _mlfma_input_exponent_bounds(xread)
+    overwrite = iszero(beta_scale)
+    if maximum_exponent != typemin(Int) &&
+       maximum_exponent - minimum_exponent >= _MLFMA_INPUT_BAND_WIDTH
+        _mlfma_banded_mul!(
+            ws.entry_output, A, xread, y,
+            alpha_scale, beta_scale,
+            minimum_exponent, maximum_exponent, overwrite)
+        copyto!(y, ws.entry_output)
+        return y
+    end
+    underflow_upshift =
+        _mlfma_initial_underflow_upshift(maximum_exponent)
     product_input = if iszero(underflow_upshift)
         xread
     else
@@ -1950,7 +2119,6 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
         product_shift += _mlfma_recover_forward_product!(
             ws.entry_output, A, product_input)
     end
-    overwrite = iszero(beta_scale)
     if iszero(product_shift)
         @inbounds for row in eachindex(y)
             ws.entry_output[row] = _mlfma_scaled_output(
@@ -2164,6 +2332,20 @@ end
     return shift
 end
 
+@inline function _mlfma_internal_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAAdjointOperator,
+        x::AbstractVector)
+    return _mlfma_adjoint_product!(product, A, x)
+end
+
+@inline function _mlfma_internal_recover_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAAdjointOperator,
+        x::AbstractVector)
+    return _mlfma_recover_adjoint_product!(product, A, x)
+end
+
 function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
                              x::AbstractVector, alpha_scale::Number,
                              beta_scale::Number)
@@ -2193,7 +2375,20 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
         x
     end
     length(ws.entry_output) == N || resize!(ws.entry_output, N)
-    underflow_upshift = _mlfma_initial_underflow_upshift(xread)
+    minimum_exponent, maximum_exponent =
+        _mlfma_input_exponent_bounds(xread)
+    overwrite = iszero(beta_scale)
+    if maximum_exponent != typemin(Int) &&
+       maximum_exponent - minimum_exponent >= _MLFMA_INPUT_BAND_WIDTH
+        _mlfma_banded_mul!(
+            ws.entry_output, A, xread, y,
+            alpha_scale, beta_scale,
+            minimum_exponent, maximum_exponent, overwrite)
+        copyto!(y, ws.entry_output)
+        return y
+    end
+    underflow_upshift =
+        _mlfma_initial_underflow_upshift(maximum_exponent)
     product_input = if iszero(underflow_upshift)
         xread
     else
@@ -2206,7 +2401,6 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
         product_shift += _mlfma_recover_adjoint_product!(
             ws.entry_output, A, product_input)
     end
-    overwrite = iszero(beta_scale)
     if iszero(product_shift)
         @inbounds for row in eachindex(y)
             ws.entry_output[row] = _mlfma_scaled_output(
