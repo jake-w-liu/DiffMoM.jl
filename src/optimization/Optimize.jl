@@ -201,6 +201,93 @@ function _directivity_bigfloat_objective(
     return total
 end
 
+@inline function _directivity_ratio_from_bigfloat(
+    target_objective::BigFloat,
+    total_objective::BigFloat,
+    label::AbstractString,
+)
+    total_objective > 0 ||
+        throw(DomainError(
+            Float64(total_objective),
+            "$label directivity denominator must be positive",
+        ))
+    ratio_big = target_objective / total_objective
+    ratio = Float64(ratio_big)
+    isfinite(ratio) ||
+        throw(OverflowError(
+            "$label directivity ratio is outside the representable Float64 range"))
+    return ratio_big, ratio
+end
+
+@noinline function _directivity_ratio_bigfloat(
+    Q_target::Matrix{ComplexF64},
+    Q_total::Matrix{ComplexF64},
+    current::Vector{ComplexF64},
+    label::AbstractString,
+)
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        target_big = _directivity_bigfloat_product(Q_target, current)
+        total_big = _directivity_bigfloat_product(Q_total, current)
+        target_objective = _directivity_bigfloat_objective(
+            current, target_big)
+        total_objective = _directivity_bigfloat_objective(
+            current, total_big)
+        _, ratio = _directivity_ratio_from_bigfloat(
+            target_objective, total_objective, label)
+        return ratio
+    end
+end
+
+@noinline function _directivity_ratio_gradient_bigfloat(
+    system::Matrix{ComplexF64},
+    Mp::Vector{<:AbstractMatrix},
+    Q_target::Matrix{ComplexF64},
+    Q_total::Matrix{ComplexF64},
+    current::Vector{ComplexF64},
+    label::AbstractString;
+    reactive::Bool,
+)
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        target_big = _directivity_bigfloat_product(Q_target, current)
+        total_big = _directivity_bigfloat_product(Q_total, current)
+        target_objective = _directivity_bigfloat_objective(
+            current, target_big)
+        total_objective = _directivity_bigfloat_objective(
+            current, total_big)
+        ratio_big, ratio = _directivity_ratio_from_bigfloat(
+            target_objective, total_objective, label)
+
+        # Solve once for the normalized ratio derivative. Forming the
+        # difference before conversion preserves cancellation between the two
+        # objective products even when neither RHS fits in one Float64 scale.
+        @inbounds for index in eachindex(target_big, total_big)
+            target_big[index] = (
+                target_big[index] - ratio_big * total_big[index]
+            ) / total_objective
+        end
+        adjoint_system = Matrix{Complex{BigFloat}}(adjoint(system))
+        ldiv!(lu!(adjoint_system), target_big)
+        all(isfinite, target_big) ||
+            error("$label high-precision directivity adjoint solve produced non-finite values")
+
+        gradient = Vector{Float64}(undef, length(Mp))
+        component = reactive ? Val(:imag) : Val(:real)
+        @inbounds for parameter in eachindex(Mp)
+            bilinear_component = _accumulate_bilinear_component_bigfloat(
+                target_big, Mp[parameter], current, component)
+            gradient_big = reactive ?
+                           -2 * bilinear_component :
+                           2 * bilinear_component
+            gradient[parameter] = Float64(gradient_big)
+            isfinite(gradient[parameter]) ||
+                throw(OverflowError(
+                    "$label directivity gradient at parameter $parameter is " *
+                    "outside the representable Float64 range"))
+        end
+        return ratio, gradient
+    end
+end
+
 @inline function _update_directivity_exponent_bounds(
     value::BigFloat,
     minimum_exponent::Int,
@@ -861,32 +948,46 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                              gmres_memory=gmres_memory)
         _assert_finite_optimizer_vector(I_c, "forward solution")
 
-        # Directivity ratio
-        f_val, g_val = _directivity_products_and_objectives!(
-            QI_target,
-            QI_total,
-            Q_target,
-            Q_total,
-            I_c,
-            "accepted iterate",
-        )
-        J_ratio = _directivity_ratio(f_val, g_val, "accepted iterate")
+        local J_ratio::Float64
+        local g_f::Vector{Float64}
+        try
+            f_val, g_val = _directivity_products_and_objectives!(
+                QI_target,
+                QI_total,
+                Q_target,
+                Q_total,
+                I_c,
+                "accepted iterate",
+            )
+            J_ratio = _directivity_ratio(f_val, g_val, "accepted iterate")
 
-        # Two separate adjoint solves for numerically stable ratio gradient
-        # ∂(f/g)/∂θ = (g·∂f/∂θ - f·∂g/∂θ) / g²
-        lam_t = solve_adjoint_rhs(Z, QI_target;
-                                   solver=solver, preconditioner=nf_preconditioner,
-                                   gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                   gmres_memory=gmres_memory)
-        lam_a = solve_adjoint_rhs(Z, QI_total;
-                                   solver=solver, preconditioner=nf_preconditioner,
-                                   gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                   gmres_memory=gmres_memory)
-        _assert_finite_optimizer_vector(lam_t, "target adjoint solution")
-        _assert_finite_optimizer_vector(lam_a, "total-power adjoint solution")
-        g_f = gradient_impedance(Mp_eff, I_c, lam_t; reactive=reactive)
-        g_g = gradient_impedance(Mp_eff, I_c, lam_a; reactive=reactive)
-        _combine_directivity_gradient!(g_f, g_g, J_ratio, g_val)
+            # Two separate adjoint solves for numerically stable ratio gradient
+            # ∂(f/g)/∂θ = (g·∂f/∂θ - f·∂g/∂θ) / g²
+            lam_t = solve_adjoint_rhs(Z, QI_target;
+                                       solver=solver, preconditioner=nf_preconditioner,
+                                       gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                                       gmres_memory=gmres_memory)
+            lam_a = solve_adjoint_rhs(Z, QI_total;
+                                       solver=solver, preconditioner=nf_preconditioner,
+                                       gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
+                                       gmres_memory=gmres_memory)
+            _assert_finite_optimizer_vector(lam_t, "target adjoint solution")
+            _assert_finite_optimizer_vector(lam_a, "total-power adjoint solution")
+            g_f = gradient_impedance(Mp_eff, I_c, lam_t; reactive=reactive)
+            g_g = gradient_impedance(Mp_eff, I_c, lam_a; reactive=reactive)
+            _combine_directivity_gradient!(g_f, g_g, J_ratio, g_val)
+        catch err
+            err isa OverflowError || rethrow()
+            J_ratio, g_f = _directivity_ratio_gradient_bigfloat(
+                Z,
+                Mp_eff,
+                Q_target,
+                Q_total,
+                I_c,
+                "accepted iterate";
+                reactive=reactive,
+            )
+        end
         _assert_finite_optimizer_vector(g_f, "directivity gradient")
         gnorm = norm(g_f)
         isfinite(gnorm) ||
@@ -1003,17 +1104,27 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                                          gmres_memory=gmres_memory)
                 trial_valid = all(isfinite, I_trial)
                 if trial_valid
-                    f_trial, g_trial =
-                        _directivity_products_and_objectives!(
-                            QI_target,
-                            QI_total,
+                    try
+                        f_trial, g_trial =
+                            _directivity_products_and_objectives!(
+                                QI_target,
+                                QI_total,
+                                Q_target,
+                                Q_total,
+                                I_trial,
+                                "trial iterate",
+                            )
+                        J_trial = _directivity_ratio(
+                            f_trial, g_trial, "trial iterate")
+                    catch err
+                        err isa OverflowError || rethrow()
+                        J_trial = _directivity_ratio_bigfloat(
                             Q_target,
                             Q_total,
                             I_trial,
                             "trial iterate",
                         )
-                    J_trial = _directivity_ratio(
-                        f_trial, g_trial, "trial iterate")
+                    end
                     trial_valid = true
                 end
             catch err

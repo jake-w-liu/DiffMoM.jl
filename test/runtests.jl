@@ -3537,6 +3537,68 @@ DiffMoM._directivity_products_and_objectives!(
     directivity_scale_rhs,
     "directivity allocation probe",
 )) == 0
+
+# A valid ratio and gradient can remain representable even when the two QI
+# vectors cannot share any lossless Float64 scale. The cold path must combine
+# the normalized adjoint RHS before converting it back to Float64.
+directivity_span_max = floatmax(Float64)
+directivity_span_min = nextfloat(0.0)
+directivity_span_current = ComplexF64[2.0, 0.5]
+directivity_span_target = ComplexF64[
+    0.5 * directivity_span_max 0.0
+    0.0 8.0 * directivity_span_min
+]
+directivity_span_total = ComplexF64[
+    directivity_span_max 0.0
+    0.0 directivity_span_min
+]
+directivity_span_Mp = ComplexF64[
+    0.0 0.0
+    0.0 directivity_span_max
+]
+directivity_span_reference = setprecision(BigFloat, 8192) do
+    current_big = Complex{BigFloat}.(directivity_span_current)
+    target_big = Matrix{Complex{BigFloat}}(directivity_span_target)
+    total_big = Matrix{Complex{BigFloat}}(directivity_span_total)
+    Mp_big = Matrix{Complex{BigFloat}}(directivity_span_Mp)
+    target_product = target_big * current_big
+    total_product = total_big * current_big
+    mass_product = Mp_big * current_big
+    numerator = real(dot(current_big, target_product))
+    denominator = real(dot(current_big, total_product))
+    ratio = numerator / denominator
+    target_gradient = 2 * real(dot(target_product, mass_product))
+    total_gradient = 2 * real(dot(total_product, mass_product))
+    gradient = (target_gradient - ratio * total_gradient) / denominator
+    return Float64(ratio), Float64(gradient)
+end
+@test directivity_span_reference == (0.5, directivity_span_min)
+directivity_span_theta, directivity_span_trace = optimize_directivity(
+    Matrix{ComplexF64}(I, 2, 2),
+    [directivity_span_Mp],
+    directivity_span_current,
+    directivity_span_target,
+    directivity_span_total,
+    [0.0];
+    maxiter=1,
+    tol=1.0,
+    verbose=false,
+)
+@test directivity_span_theta == [0.0]
+@test directivity_span_trace[1].J == directivity_span_reference[1]
+@test directivity_span_trace[1].gnorm == directivity_span_reference[2]
+directivity_span_reactive_ratio, directivity_span_reactive_gradient =
+    DiffMoM._directivity_ratio_gradient_bigfloat(
+        Matrix{ComplexF64}(I, 2, 2),
+        [im .* directivity_span_Mp],
+        directivity_span_target,
+        directivity_span_total,
+        directivity_span_current,
+        "reactive directivity span regression";
+        reactive=true,
+    )
+@test directivity_span_reactive_ratio == directivity_span_reference[1]
+@test directivity_span_reactive_gradient == [-directivity_span_reference[2]]
 @test_throws OverflowError compute_objective(
     ComplexF64[objective_extreme_scale],
     reshape(ComplexF64[1.0], 1, 1),
