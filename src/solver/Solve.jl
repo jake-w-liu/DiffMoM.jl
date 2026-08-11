@@ -79,6 +79,44 @@ end
 # guard margin. The ordinary BLAS/generic multiplication path is unchanged.
 const _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION = 4352
 
+# With Float64 component exponents restricted to ±128, every exact real
+# product is a multiple of at least 2^-360 and every addressable reduction is
+# smaller than 2^322. For Float32, the corresponding ±16 bounds are 2^-78
+# and 2^98. Thus a nonzero exact result cannot underflow and a finite result
+# cannot overflow on the ordinary path. Inputs outside these bounds use the
+# exact exceptional path so individually rounded-away terms can still combine
+# into a representable result.
+@inline _ieee_dense_safe_factor_exponent(::Type{Float64}) = 128
+@inline _ieee_dense_safe_factor_exponent(::Type{Float32}) = 16
+
+@inline function _ieee_dense_extreme_factor(
+        value::Number,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    scale = max(
+        abs(R(real(value))),
+        abs(R(imag(value))),
+    )
+    isfinite(scale) || return true
+    iszero(scale) && return false
+    safe_exponent = _ieee_dense_safe_factor_exponent(R)
+    value_exponent = exponent(scale)
+    return value_exponent < -safe_exponent ||
+           value_exponent > safe_exponent
+end
+
+function _ieee_dense_product_requires_fallback(
+        matrix::AbstractMatrix,
+        vector::AbstractVector,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    @inbounds for value in matrix
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    @inbounds for value in vector
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    return false
+end
+
 @noinline function _matrix_vector_product_bigfloat!(
     result::AbstractVector{T},
     matrix::AbstractMatrix{<:Number},
@@ -134,9 +172,18 @@ function _finite_matrix_vector_product(
     label::AbstractString,
 )
     result = matrix * vector
+    scalar_type = eltype(result)
+    if scalar_type <:
+       Union{Float32,Float64,ComplexF32,ComplexF64}
+        real_type = typeof(real(zero(scalar_type)))
+        if _ieee_dense_product_requires_fallback(
+                matrix, vector, real_type)
+            return _matrix_vector_product_bigfloat!(
+                result, matrix, vector, label)
+        end
+    end
     @inbounds for index in eachindex(result)
         if !isfinite(result[index])
-            scalar_type = eltype(result)
             scalar_type <:
                 Union{Float32,Float64,ComplexF32,ComplexF64} ||
                 return _assert_finite_linear_vector(result, label)
@@ -153,6 +200,14 @@ function _finite_matrix_vector_product!(
     vector::AbstractVector{<:Number},
     label::AbstractString,
 ) where {T<:Number}
+    if T <: Union{Float32,Float64,ComplexF32,ComplexF64}
+        real_type = typeof(real(zero(T)))
+        if _ieee_dense_product_requires_fallback(
+                matrix, vector, real_type)
+            return _matrix_vector_product_bigfloat!(
+                result, matrix, vector, label)
+        end
+    end
     mul!(result, matrix, vector)
     @inbounds for index in eachindex(result)
         if !isfinite(result[index])

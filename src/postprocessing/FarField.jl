@@ -259,8 +259,15 @@ function compute_farfield(G_mat::Matrix{ComplexF64}, I_coeffs::Vector{ComplexF64
     length(I_coeffs) == size(G_mat, 2) ||
         throw(DimensionMismatch(
             "I_coeffs length $(length(I_coeffs)) != $(size(G_mat, 2))"))
+    all(isfinite, G_mat) ||
+        throw(ArgumentError(
+            "G_mat must contain only finite values"))
+    all(isfinite, I_coeffs) ||
+        throw(ArgumentError(
+            "I_coeffs must contain only finite values"))
 
-    E_flat = G_mat * I_coeffs   # (3*NΩ,)
+    E_flat = _finite_matrix_vector_product(
+        G_mat, I_coeffs, "far-field product") # (3*NΩ,)
     E = reshape(E_flat, 3, NΩ)
     return E
 end

@@ -1232,6 +1232,30 @@ E_ff = compute_farfield(G_mat, I_pec, NΩ)
     G_mat[1:(end - 1), :], I_pec, NΩ)
 @test_throws DimensionMismatch compute_farfield(
     G_mat, vcat(I_pec, 1.0 + 0im), NΩ)
+farfield_nonfinite_G = copy(G_mat)
+farfield_nonfinite_G[1, 1] = ComplexF64(NaN, 0.0)
+@test_throws ArgumentError compute_farfield(
+    farfield_nonfinite_G, I_pec, NΩ)
+farfield_nonfinite_I = copy(I_pec)
+farfield_nonfinite_I[1] = ComplexF64(NaN, 0.0)
+@test_throws ArgumentError compute_farfield(
+    G_mat, farfield_nonfinite_I, NΩ)
+
+# Each product rounds to zero separately, but their exact sum rounds to the
+# minimum ComplexF64 subnormal and must survive the dense-product restart.
+farfield_underflow_G = zeros(ComplexF64, 3, 2)
+farfield_underflow_G[1, :] .= nextfloat(0.0)
+farfield_underflow_I = fill(ComplexF64(0.4), 2)
+farfield_underflow_reference = setprecision(BigFloat, 4352) do
+    ComplexF64(sum(
+        Complex{BigFloat}(farfield_underflow_G[1, column]) *
+        Complex{BigFloat}(farfield_underflow_I[column])
+        for column in axes(farfield_underflow_G, 2)))
+end
+@test farfield_underflow_reference == ComplexF64(nextfloat(0.0))
+@test compute_farfield(
+    farfield_underflow_G, farfield_underflow_I, 1)[1, 1] ==
+      farfield_underflow_reference
 
 # Far-field should be transverse: r̂ · E∞ ≈ 0
 max_radial = let mr = 0.0
@@ -3362,6 +3386,37 @@ Q_extreme_product_real = real.(Q_extreme_product)
     fill(adjoint_product_scale, 4),
     "real product",
 ) == zeros(Float64, 4)
+dense_underflow_matrix = fill(nextfloat(0.0), 1, 2)
+dense_underflow_input = fill(0.4, 2)
+dense_underflow_reference = setprecision(BigFloat, 4352) do
+    Float64[sum(
+        BigFloat(dense_underflow_matrix[1, column]) *
+        BigFloat(dense_underflow_input[column])
+        for column in axes(dense_underflow_matrix, 2))]
+end
+@test dense_underflow_reference == Float64[nextfloat(0.0)]
+@test DiffMoM._finite_matrix_vector_product(
+    dense_underflow_matrix, dense_underflow_input,
+    "Float64 underflow regression") == dense_underflow_reference
+dense_underflow_workspace = zeros(Float64, 1)
+DiffMoM._finite_matrix_vector_product!(
+    dense_underflow_workspace,
+    dense_underflow_matrix, dense_underflow_input,
+    "in-place Float64 underflow regression")
+@test dense_underflow_workspace == dense_underflow_reference
+
+dense_underflow_matrix32 = fill(nextfloat(0.0f0), 1, 2)
+dense_underflow_input32 = fill(0.4f0, 2)
+dense_underflow_reference32 = setprecision(BigFloat, 4352) do
+    Float32[sum(
+        BigFloat(dense_underflow_matrix32[1, column]) *
+        BigFloat(dense_underflow_input32[column])
+        for column in axes(dense_underflow_matrix32, 2))]
+end
+@test dense_underflow_reference32 == Float32[nextfloat(0.0f0)]
+@test DiffMoM._finite_matrix_vector_product(
+    dense_underflow_matrix32, dense_underflow_input32,
+    "Float32 underflow regression") == dense_underflow_reference32
 @test_throws OverflowError solve_adjoint(
     Matrix{ComplexF64}(I, 1, 1),
     reshape(ComplexF64[2.0], 1, 1),
