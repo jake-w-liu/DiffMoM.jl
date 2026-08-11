@@ -1159,8 +1159,7 @@ mutable struct MLFMAWorkspace
     filter_result::Vector{Matrix{ComplexF64}}
     # Input snapshot used only when x and y overlap.
     input_copy::Vector{ComplexF64}
-    # Lazily sized output used by scalar indexing. Most MLFMA workflows never
-    # index the full operator and therefore pay no storage for this buffer.
+    # Lazily sized unscaled-product buffer, also used by scalar indexing.
     entry_output::Vector{ComplexF64}
     # Forward and adjoint matvecs reuse every buffer above.
     work_lock::ReentrantLock
@@ -1529,34 +1528,73 @@ end
 
 # ─── Forward matvec ─────────────────────────────────────────────
 
-function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
-                             x::AbstractVector, alpha_scale::Number,
-                             beta_scale::Number)
-    N = A.N
-    nL = A.octree.nLevels
-    length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
-    length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
-    if iszero(alpha_scale)
-        if iszero(beta_scale)
-            fill!(y, zero(ComplexF64))
-        elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
+const _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
+
+@noinline function _mlfma_scaled_output_bigfloat(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    return setprecision(
+            BigFloat, _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(alpha_scale) *
+                Complex{BigFloat}(value)
+        if !overwrite
+            total += Complex{BigFloat}(beta_scale) *
+                     Complex{BigFloat}(previous)
         end
-        return y
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "MLFMA scaled output is outside the representable " *
+                "ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@inline function _mlfma_scaled_output(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int)
+    alpha_term = alpha_scale * value
+    if overwrite
+        converted = ComplexF64(alpha_term)
+        return isfinite(converted) ? converted :
+               _mlfma_scaled_output_bigfloat(
+                   value, previous, alpha_scale, beta_scale, true, row)
     end
 
+    beta_term = beta_scale * previous
+    combined = alpha_term + beta_term
+    real_magnitude = abs(real(alpha_term)) + abs(real(beta_term))
+    imag_magnitude = abs(imag(alpha_term)) + abs(imag(beta_term))
+    converted = ComplexF64(combined)
+    if isfinite(converted) &&
+       isfinite(real_magnitude) &&
+       isfinite(imag_magnitude)
+        return converted
+    end
+    return _mlfma_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, false, row)
+end
+
+function _mlfma_forward_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAOperator,
+        x::AbstractVector)
+    nL = A.octree.nLevels
     ws = A.workspace
     agg = ws.agg
     incoming = ws.incoming
-    xread = if Base.mightalias(y, x)
-        copyto!(ws.input_copy, x)
-        ws.input_copy
-    else
-        x
-    end
 
     # 1. Near-field
-    mul!(y, A.Z_near, xread, alpha_scale, beta_scale)
+    mul!(product, A.Z_near, x,
+         one(ComplexF64), zero(ComplexF64))
 
     # 2. Aggregation at leaf level
     leaf_level = A.octree.levels[nL]
@@ -1568,7 +1606,7 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
         fill!(a, zero(ComplexF64))
         for n_perm in box.bf_range
             n = A.octree.perm[n_perm]
-            xn = xread[n]
+            xn = x[n]
             if abs(xn) > 0
                 @inbounds for q in 1:leaf_samp.npts
                     for c in 1:4
@@ -1696,10 +1734,50 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
                 dot4 -= conj(A.bf_patterns[4, q, n]) * inc[4, q]
                 val += leaf_samp.weights[q] * dot4
             end
-            y[n] += alpha_scale * A.prefactor * val
+            product[n] += A.prefactor * val
         end
     end
 
+    return product
+end
+
+function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
+                             x::AbstractVector, alpha_scale::Number,
+                             beta_scale::Number)
+    N = A.N
+    length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
+    length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    ws = A.workspace
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            length(ws.entry_output) == N || resize!(ws.entry_output, N)
+            @inbounds for row in eachindex(y)
+                ws.entry_output[row] = _mlfma_scaled_output(
+                    zero(ComplexF64), y[row], alpha_scale,
+                    beta_scale, false, row)
+            end
+            copyto!(y, ws.entry_output)
+        end
+        return y
+    end
+
+    xread = if Base.mightalias(y, x)
+        copyto!(ws.input_copy, x)
+        ws.input_copy
+    else
+        x
+    end
+    length(ws.entry_output) == N || resize!(ws.entry_output, N)
+    _mlfma_forward_product!(ws.entry_output, A, xread)
+    overwrite = iszero(beta_scale)
+    @inbounds for row in eachindex(y)
+        ws.entry_output[row] = _mlfma_scaled_output(
+            ws.entry_output[row], y[row],
+            alpha_scale, beta_scale, overwrite, row)
+    end
+    copyto!(y, ws.entry_output)
     return y
 end
 
@@ -1727,34 +1805,18 @@ end
 
 # ─── Adjoint matvec ─────────────────────────────────────────────
 
-function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
-                             x::AbstractVector, alpha_scale::Number,
-                             beta_scale::Number)
-    N = A.op.N
+function _mlfma_adjoint_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAAdjointOperator,
+        x::AbstractVector)
     nL = A.op.octree.nLevels
-    length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
-    length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
-    if iszero(alpha_scale)
-        if iszero(beta_scale)
-            fill!(y, zero(ComplexF64))
-        elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
-        end
-        return y
-    end
-
     ws = A.op.workspace
     agg = ws.agg
     incoming = ws.incoming
-    xread = if Base.mightalias(y, x)
-        copyto!(ws.input_copy, x)
-        ws.input_copy
-    else
-        x
-    end
 
     # Near-field adjoint
-    mul!(y, adjoint(A.op.Z_near), xread, alpha_scale, beta_scale)
+    mul!(product, adjoint(A.op.Z_near), x,
+         one(ComplexF64), zero(ComplexF64))
 
     leaf_level = A.op.octree.levels[nL]
     leaf_samp = A.op.samplings[nL - 1]
@@ -1774,7 +1836,7 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
         inc_adj = incoming[nL - 1][bi]
         for n_perm in box.bf_range
             n = A.op.octree.perm[n_perm]
-            xn = xread[n]
+            xn = x[n]
             if abs(xn) > 0
                 @inbounds for q in 1:leaf_samp.npts
                     weighted = leaf_samp.weights[q] * xn
@@ -1887,10 +1949,50 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
                     val += conj(A.op.bf_patterns[c, q, n]) * a_adj[c, q]
                 end
             end
-            y[n] += alpha_scale * conj(A.op.prefactor) * val
+            product[n] += conj(A.op.prefactor) * val
         end
     end
 
+    return product
+end
+
+function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOperator,
+                             x::AbstractVector, alpha_scale::Number,
+                             beta_scale::Number)
+    N = A.op.N
+    length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
+    length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    ws = A.op.workspace
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            length(ws.entry_output) == N || resize!(ws.entry_output, N)
+            @inbounds for row in eachindex(y)
+                ws.entry_output[row] = _mlfma_scaled_output(
+                    zero(ComplexF64), y[row], alpha_scale,
+                    beta_scale, false, row)
+            end
+            copyto!(y, ws.entry_output)
+        end
+        return y
+    end
+
+    xread = if Base.mightalias(y, x)
+        copyto!(ws.input_copy, x)
+        ws.input_copy
+    else
+        x
+    end
+    length(ws.entry_output) == N || resize!(ws.entry_output, N)
+    _mlfma_adjoint_product!(ws.entry_output, A, xread)
+    overwrite = iszero(beta_scale)
+    @inbounds for row in eachindex(y)
+        ws.entry_output[row] = _mlfma_scaled_output(
+            ws.entry_output[row], y[row],
+            alpha_scale, beta_scale, overwrite, row)
+    end
+    copyto!(y, ws.entry_output)
     return y
 end
 

@@ -4922,6 +4922,32 @@ _assert_scaled_mul_contract(adjoint(A_mlfma), y_test, x_test)
 _assert_zero_allocation_overlap_mul_contract(A_mlfma, x_test, 2.0 - 3.0im)
 _assert_zero_allocation_overlap_mul_contract(
     adjoint(A_mlfma), y_test, -4.0 + 1.5im)
+
+mlfma_extreme_product_unscaled = A_mlfma * x_test
+mlfma_extreme_input =
+    (10.0 / maximum(abs, mlfma_extreme_product_unscaled)) .* x_test
+mlfma_extreme_product = A_mlfma * mlfma_extreme_input
+mlfma_extreme_scale = 1.0e308 + 0im
+@test any(!isfinite, mlfma_extreme_scale .* mlfma_extreme_product)
+mlfma_extreme_result = -mlfma_extreme_product
+mul!(mlfma_extreme_result, A_mlfma, mlfma_extreme_input,
+     mlfma_extreme_scale, mlfma_extreme_scale)
+@test mlfma_extreme_result == zeros(ComplexF64, mlfma_N)
+
+mlfma_adjoint_extreme_product_unscaled = adjoint(A_mlfma) * y_test
+mlfma_adjoint_extreme_input =
+    (10.0 / maximum(abs, mlfma_adjoint_extreme_product_unscaled)) .*
+    y_test
+mlfma_adjoint_extreme_product =
+    adjoint(A_mlfma) * mlfma_adjoint_extreme_input
+@test any(!isfinite,
+          mlfma_extreme_scale .* mlfma_adjoint_extreme_product)
+mlfma_adjoint_extreme_result = -mlfma_adjoint_extreme_product
+mul!(mlfma_adjoint_extreme_result, adjoint(A_mlfma),
+     mlfma_adjoint_extreme_input,
+     mlfma_extreme_scale, mlfma_extreme_scale)
+@test mlfma_adjoint_extreme_result == zeros(ComplexF64, mlfma_N)
+
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"
