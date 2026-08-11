@@ -381,16 +381,18 @@ function _directivity_products_and_objectives!(
     label::AbstractString,
 )
     try
-        _finite_matrix_vector_product!(
+        target_product_used_fallback = _finite_matrix_vector_product_status!(
             target_product, Q_target, current,
             "directivity numerator product")
-        _finite_matrix_vector_product!(
+        total_product_used_fallback = _finite_matrix_vector_product_status!(
             total_product, Q_total, current,
             "directivity denominator product")
         target_value = _quadratic_objective_from_product(
-            current, Q_target, target_product)
+            current, Q_target, target_product,
+            target_product_used_fallback)
         total_value = _quadratic_objective_from_product(
-            current, Q_total, total_product)
+            current, Q_total, total_product,
+            total_product_used_fallback)
         return target_value, total_value
     catch err
         err isa OverflowError || rethrow()
@@ -629,9 +631,11 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         _assert_finite_optimizer_vector(I_coeffs, "forward solution")
 
         # Objective (always report the true J)
-        _finite_matrix_vector_product!(
-            QI, Q, I_coeffs, "accepted objective product")
-        J_val = _quadratic_objective_from_product(I_coeffs, Q, QI)
+        objective_product_used_fallback =
+            _finite_matrix_vector_product_status!(
+                QI, Q, I_coeffs, "accepted objective product")
+        J_val = _quadratic_objective_from_product(
+            I_coeffs, Q, QI, objective_product_used_fallback)
         isfinite(J_val) ||
             error("objective is non-finite at iteration $iter: $J_val")
 
@@ -766,11 +770,13 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                 n_fwd_solves += 1
                 trial_finite = all(isfinite, I_trial)
                 if trial_finite
-                    _finite_matrix_vector_product!(
-                        QI, Q, I_trial, "trial objective product")
+                    trial_product_used_fallback =
+                        _finite_matrix_vector_product_status!(
+                            QI, Q, I_trial, "trial objective product")
                     J_trial_internal = sense *
                                        _quadratic_objective_from_product(
-                                           I_trial, Q, QI)
+                                           I_trial, Q, QI,
+                                           trial_product_used_fallback)
                     trial_finite = isfinite(J_trial_internal)
                 end
             catch err

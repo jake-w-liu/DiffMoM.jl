@@ -201,7 +201,7 @@ function _finite_matrix_vector_product(
     return result
 end
 
-function _finite_matrix_vector_product!(
+function _finite_matrix_vector_product_status!(
     result::AbstractVector{T},
     matrix::AbstractMatrix{<:Number},
     vector::AbstractVector{<:Number},
@@ -211,19 +211,32 @@ function _finite_matrix_vector_product!(
         real_type = typeof(real(zero(T)))
         if _ieee_dense_product_requires_fallback(
                 matrix, vector, real_type)
-            return _matrix_vector_product_bigfloat!(
+            _matrix_vector_product_bigfloat!(
                 result, matrix, vector, label)
+            return true
         end
     end
     mul!(result, matrix, vector)
     @inbounds for index in eachindex(result)
         if !isfinite(result[index])
             T <: Union{Float32,Float64,ComplexF32,ComplexF64} ||
-                return _assert_finite_linear_vector(result, label)
-            return _matrix_vector_product_bigfloat!(
+                _assert_finite_linear_vector(result, label)
+            _matrix_vector_product_bigfloat!(
                 result, matrix, vector, label)
+            return true
         end
     end
+    return false
+end
+
+function _finite_matrix_vector_product!(
+    result::AbstractVector{T},
+    matrix::AbstractMatrix{<:Number},
+    vector::AbstractVector{<:Number},
+    label::AbstractString,
+) where {T<:Number}
+    _finite_matrix_vector_product_status!(
+        result, matrix, vector, label)
     return result
 end
 

@@ -3534,6 +3534,146 @@ end
             objective_extreme_scale, objective_extreme_scale, 1.0],
     real.(objective_extreme_Q),
 ) == 3.0
+
+# A Hermitian quadratic form can contain representable three-factor terms
+# even when either staged matrix-vector orientation rounds one term to zero.
+objective_underflow_unit = nextfloat(0.0)
+objective_underflow_Q = ComplexF64[
+    0.0 objective_underflow_unit
+    objective_underflow_unit 0.0
+]
+objective_underflow_local = LocalMassMatrix(
+    2,
+    [1, 2],
+    [2, 1],
+    fill(ComplexF64(objective_underflow_unit), 2),
+)
+for objective_underflow_I in (
+    ComplexF64[ldexp(1.0, 664), ldexp(1.0, -664)],
+    ComplexF64[ldexp(1.0, -664), ldexp(1.0, 664)],
+)
+    objective_underflow_reference = setprecision(BigFloat, 6656) do
+        Float64(real(dot(
+            Complex{BigFloat}.(objective_underflow_I),
+            Matrix{Complex{BigFloat}}(objective_underflow_Q),
+            Complex{BigFloat}.(objective_underflow_I),
+        )))
+    end
+    @test objective_underflow_reference ==
+          2 * objective_underflow_unit
+    @test compute_objective(
+        objective_underflow_I, objective_underflow_Q,
+    ) == objective_underflow_reference
+    for objective_underflow_matrix in (
+        objective_underflow_Q,
+        sparse(objective_underflow_Q),
+        objective_underflow_local,
+    )
+        @test DiffMoM._finite_bilinear_component(
+            objective_underflow_I,
+            objective_underflow_matrix,
+            objective_underflow_I,
+            Val(:real),
+            "quadratic underflow regression",
+        ) == objective_underflow_reference
+    end
+    objective_underflow_product = zeros(ComplexF64, 2)
+    objective_underflow_product_used_fallback =
+        DiffMoM._finite_matrix_vector_product_status!(
+            objective_underflow_product,
+            objective_underflow_Q,
+            objective_underflow_I,
+            "quadratic underflow product regression",
+        )
+    @test objective_underflow_product_used_fallback
+    @test DiffMoM._quadratic_objective_from_product(
+        objective_underflow_I,
+        objective_underflow_Q,
+        objective_underflow_product,
+    ) == objective_underflow_reference
+    @test DiffMoM._quadratic_objective_from_product(
+        objective_underflow_I,
+        objective_underflow_Q,
+        objective_underflow_product,
+        objective_underflow_product_used_fallback,
+    ) == objective_underflow_reference
+end
+
+objective_underflow_duplicate_local = LocalMassMatrix(
+    2,
+    [1, 1, 2, 2],
+    [2, 2, 1, 1],
+    fill(ComplexF64(objective_underflow_unit), 4),
+)
+objective_underflow_duplicate_I = ComplexF64[
+    ldexp(1.0, 664), ldexp(1.0, -664)
+]
+@test DiffMoM._finite_bilinear_component(
+    objective_underflow_duplicate_I,
+    objective_underflow_duplicate_local,
+    objective_underflow_duplicate_I,
+    Val(:real),
+    "duplicate LocalMassMatrix quadratic underflow regression",
+) == 4 * objective_underflow_unit
+
+objective_underflow_unit32 = nextfloat(0.0f0)
+objective_underflow_Q32 = ComplexF32[
+    0.0f0 objective_underflow_unit32
+    objective_underflow_unit32 0.0f0
+]
+objective_underflow_I32 = ComplexF32[
+    ldexp(1.0f0, 60), ldexp(1.0f0, -60)
+]
+objective_underflow_reference32 = setprecision(BigFloat, 6656) do
+    Float32(real(dot(
+        Complex{BigFloat}.(objective_underflow_I32),
+        Matrix{Complex{BigFloat}}(objective_underflow_Q32),
+        Complex{BigFloat}.(objective_underflow_I32),
+    )))
+end
+@test objective_underflow_reference32 ==
+      2 * objective_underflow_unit32
+@test compute_objective(
+    objective_underflow_I32, objective_underflow_Q32,
+) == objective_underflow_reference32
+objective_underflow_product32 = zeros(ComplexF32, 2)
+objective_underflow_product_used_fallback32 =
+    DiffMoM._finite_matrix_vector_product_status!(
+        objective_underflow_product32,
+        objective_underflow_Q32,
+        objective_underflow_I32,
+        "Float32 quadratic underflow product regression",
+    )
+@test objective_underflow_product_used_fallback32
+@test DiffMoM._quadratic_objective_from_product(
+    objective_underflow_I32,
+    objective_underflow_Q32,
+    objective_underflow_product32,
+    objective_underflow_product_used_fallback32,
+) == objective_underflow_reference32
+
+# The exceptional accumulator must have storage-bounded allocation even when
+# every dense entry contributes. This case previously allocated per entry.
+objective_dense_fallback_size = 96
+objective_dense_fallback_signs = ComplexF64[
+    isodd(index) ? 1.0 : -1.0
+    for index in 1:objective_dense_fallback_size
+]
+objective_dense_fallback_Q =
+    objective_dense_fallback_signs *
+    transpose(objective_dense_fallback_signs)
+objective_dense_fallback_I = ones(
+    ComplexF64, objective_dense_fallback_size)
+objective_dense_fallback_I[1] = nextfloat(0.0)
+@test compute_objective(
+    objective_dense_fallback_I, objective_dense_fallback_Q) == 1.0
+compute_objective(
+    objective_dense_fallback_I, objective_dense_fallback_Q)
+@test @allocated(compute_objective(
+    objective_dense_fallback_I,
+    objective_dense_fallback_Q,
+)) <= 1_000_000
+
 objective_product_workspace = similar(objective_extreme_I)
 DiffMoM._finite_matrix_vector_product!(
     objective_product_workspace,
@@ -3554,6 +3694,18 @@ DiffMoM._finite_matrix_vector_product!(
     objective_probe_Q,
     objective_probe_I,
     "optimizer allocation probe",
+)) == 0
+@test !DiffMoM._finite_matrix_vector_product_status!(
+    objective_product_probe,
+    objective_probe_Q,
+    objective_probe_I,
+    "optimizer status allocation probe",
+)
+@test @allocated(DiffMoM._finite_matrix_vector_product_status!(
+    objective_product_probe,
+    objective_probe_Q,
+    objective_probe_I,
+    "optimizer status allocation probe",
 )) == 0
 
 objective_optimizer_Z = Matrix{ComplexF64}(I, 5, 5)
