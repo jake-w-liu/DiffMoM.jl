@@ -349,7 +349,7 @@ In-place variant of `assemble_full_Z`. Writes `Z(theta) = Z_efie - sum_p c_p * M
 
 ## Linear Solves
 
-### `solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
+### `solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)`
 
 Solve the MoM system `Z * I = v` for the surface current coefficients `I`. This is the central solve step: given the system matrix and excitation, compute the induced currents.
 
@@ -369,7 +369,7 @@ For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise
 | `gmres_memory` | `Int` | `20` | GMRES restart length / Krylov memory (forwarded to `solve_gmres` as `memory`). |
 | `verbose_gmres` | `Bool` | `false` | Print GMRES convergence information (iteration count, residual). |
 | `check_gmres_convergence` | `Bool` | `true` | If `true`, raise an error when GMRES returns an unconverged solve. |
-| `check_true_residual` | `Bool` | `false` | If `true`, additionally verify the true residual `norm(Z*x - v) / norm(v)`. |
+| `check_true_residual` | `Bool` | `true` | Verify the true relative residual without an absolute denominator floor. |
 | `true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol` (only used when `check_true_residual=true`). |
 
 **Returns:** `Vector{ComplexF64}` solution `I` (surface current coefficients).
@@ -386,7 +386,7 @@ For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise
 
 ---
 
-### `solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
+### `solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)`
 
 General linear solve `Z * x = rhs` with the same solver dispatch as `solve_forward`. This is an alias that forwards to `solve_forward` (it accepts the same keyword arguments except `verbose_gmres`, which it does not forward).
 
@@ -412,9 +412,13 @@ Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field precond
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart length (number of Krylov vectors stored). Larger values may improve convergence for difficult problems at the cost of O(N * memory) storage. |
 | `verbose` | `Bool` | `false` | Print convergence info. |
-| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite result. Set to `false` only to inspect a partial iterate and its stats. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged, inconsistent, or non-finite result. Set to `false` only to inspect a partial iterate and its stats. |
 
 **Returns:** Tuple `(x, stats)` where `x` is the verified solution and `stats` is the Krylov.jl convergence info. Access iteration count with `stats.niter`.
+
+Stored dense and sparse systems with extreme global scale are normalized by
+exact powers of two before iteration. This prevents absolute Krylov breakdown
+thresholds from misclassifying a globally tiny, well-conditioned system.
 
 ---
 

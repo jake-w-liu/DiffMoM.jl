@@ -124,7 +124,7 @@ Internally, `solve_scattering` executes these steps in order:
    - ACA GMRES: `build_nearfield_preconditioner(A_aca; factorization=...)` -- extracts the dense (inadmissible) blocks already stored in the `ACAOperator`. No `cutoff` is used here: the near-field sparsity is defined by the cluster tree's inadmissible blocks.
    - MLFMA: `build_nearfield_preconditioner(A_mlfma.Z_near; factorization=...)` -- factorizes the octree near-field matrix directly.
    - Cutoff distance = `nf_cutoff_lambda * lambda` (applies to the dense GMRES path only).
-8. **Solve**: direct uses `Z \ v`; GMRES uses `solve_gmres(Z_or_A, v; preconditioner=P_nf, tol, maxiter)` and rejects unconverged or non-finite results by default.
+8. **Solve**: direct uses `Z \ v`; GMRES uses `solve_gmres(Z_or_A, v; preconditioner=P_nf, tol, maxiter)` and rejects unconverged, inconsistent, or non-finite results by default. Higher-level solve wrappers also verify the physical relative residual by default.
 9. **Return** a `ScatteringResult` with solution, timing, and diagnostics.
 
 ---

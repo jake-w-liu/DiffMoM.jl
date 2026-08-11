@@ -3891,6 +3891,100 @@ rel_adj_nop = norm(lam_gmres_nop - lam_gm_direct) / max(norm(lam_gm_direct), 1e-
 println("  GMRES adjoint (no precond) rel error: $rel_adj_nop  iters: $(stats_adj_nop.niter)")
 @assert rel_adj_nop < 1e-6
 
+# Krylov's internal absolute breakdown threshold must not classify a globally
+# tiny, perfectly conditioned system as an inconsistent least-squares solve.
+for tiny_gmres_scale in (1e-200, 1e-300, nextfloat(0.0))
+    tiny_gmres_matrix = reshape(
+        ComplexF64[tiny_gmres_scale], 1, 1)
+    tiny_gmres_rhs = ComplexF64[tiny_gmres_scale]
+    tiny_gmres_solution, tiny_gmres_stats = solve_gmres(
+        tiny_gmres_matrix, tiny_gmres_rhs;
+        tol=1e-8, maxiter=3,
+    )
+    @test tiny_gmres_stats.solved
+    @test !tiny_gmres_stats.inconsistent
+    @test isapprox(
+        tiny_gmres_solution[1], 1.0 + 0.0im;
+        rtol=eps(Float64), atol=0.0,
+    )
+    @test DiffMoM._assert_true_residual(
+        tiny_gmres_matrix, tiny_gmres_solution, tiny_gmres_rhs,
+        "tiny GMRES regression";
+        tol=1e-8, factor=1.0,
+    ) <= eps(Float64)
+    @test solve_forward(
+        tiny_gmres_matrix, tiny_gmres_rhs;
+        solver=:gmres, gmres_tol=1e-8, gmres_maxiter=3,
+    ) == tiny_gmres_solution
+end
+
+tiny_gmres_matrix = reshape(ComplexF64[1e-200], 1, 1)
+large_gmres_solution, large_gmres_stats = solve_gmres(
+    tiny_gmres_matrix, ComplexF64[1.0];
+    tol=1e-8, maxiter=3,
+)
+@test large_gmres_stats.solved && !large_gmres_stats.inconsistent
+@test large_gmres_solution == ComplexF64[1e200]
+
+imaginary_gmres_matrix = reshape(ComplexF64[1e-200im], 1, 1)
+imaginary_gmres_rhs = ComplexF64[1e-200im]
+imaginary_adjoint_solution, imaginary_adjoint_stats =
+    solve_gmres_adjoint(
+        imaginary_gmres_matrix, imaginary_gmres_rhs;
+        tol=1e-8, maxiter=3,
+    )
+@test imaginary_adjoint_stats.solved
+@test !imaginary_adjoint_stats.inconsistent
+@test imaginary_adjoint_solution == ComplexF64[-1.0]
+
+identity_gmres_preconditioner = DiagonalPreconditionerData(
+    ComplexF64[1.0], Inf, 1.0)
+for tiny_gmres_side in (:left, :right)
+    preconditioned_tiny_solution, preconditioned_tiny_stats = solve_gmres(
+        tiny_gmres_matrix, ComplexF64[1e-200];
+        preconditioner=identity_gmres_preconditioner,
+        precond_side=tiny_gmres_side,
+        tol=1e-8,
+        maxiter=3,
+    )
+    @test preconditioned_tiny_solution == ComplexF64[1.0]
+    @test preconditioned_tiny_stats.solved
+    @test !preconditioned_tiny_stats.inconsistent
+end
+
+@test DiffMoM._true_residual_ratio(
+    tiny_gmres_matrix,
+    ComplexF64[0.0],
+    ComplexF64[1e-200],
+    "tiny residual probe",
+) == 1.0
+@test_throws ErrorException DiffMoM._assert_true_residual(
+    tiny_gmres_matrix,
+    ComplexF64[0.0],
+    ComplexF64[1e-200],
+    "tiny residual probe";
+    tol=1e-8,
+    factor=1.0,
+)
+@test DiffMoM._assert_true_residual(
+    tiny_gmres_matrix,
+    ComplexF64[0.0],
+    ComplexF64[0.0],
+    "zero RHS residual probe";
+    tol=1e-8,
+    factor=1.0,
+) == 0.0
+@test_throws ErrorException DiffMoM._assert_gmres_converged(
+    (solved=true,
+     inconsistent=true,
+     niter=0,
+     status="found approximate least-squares solution",
+     residuals=[0.0]),
+    "inconsistent stats regression";
+    tol=1e-8,
+    maxiter=3,
+)
+
 # solve_forward dispatch: :direct
 I_sf_direct = solve_forward(Z_gm, Vector{ComplexF64}(v))
 rel_sf_direct = norm(I_sf_direct - I_gm_direct) / max(norm(I_gm_direct), 1e-30)

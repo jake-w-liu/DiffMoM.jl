@@ -395,7 +395,7 @@ function _solve_factored_linear_system!(
 end
 
 """
-    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
+    solve_forward(Z, v; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, verbose_gmres=false, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)
 
 Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmres`.
 
@@ -419,7 +419,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        gmres_memory::Int=20,
                        verbose_gmres::Bool=false,
                        check_gmres_convergence::Bool=true,
-                       check_true_residual::Bool=false,
+                       check_true_residual::Bool=true,
                        true_residual_factor::Float64=100.0)
     solver in (:direct, :gmres) ||
         throw(ArgumentError(
@@ -448,7 +448,7 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
 end
 
 """
-    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)
+    solve_system(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)
 
 General linear solve Z x = rhs with solver dispatch.
 """
@@ -460,7 +460,7 @@ function solve_system(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number}
                       gmres_maxiter::Int=200,
                       gmres_memory::Int=20,
                       check_gmres_convergence::Bool=true,
-                      check_true_residual::Bool=false,
+                      check_true_residual::Bool=true,
                       true_residual_factor::Float64=100.0)
     return solve_forward(Z, rhs; solver=solver, preconditioner=preconditioner,
                           gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,

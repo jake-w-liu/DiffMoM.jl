@@ -34,7 +34,7 @@ where `I` is the current coefficient vector and `Q` is a Hermitian positive-semi
 
 ---
 
-### `solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
+### `solve_adjoint(Z, Q, I; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)`
 
 Solve the adjoint system:
 
@@ -58,7 +58,7 @@ where `Z'` is the conjugate transpose of the system matrix. The adjoint variable
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
 | `check_gmres_convergence` | `Bool` | `true` | If `true`, an unconverged GMRES solve throws instead of returning an unverified adjoint vector. |
-| `check_true_residual` | `Bool` | `false` | If `true`, verify the true residual `||Z' lambda - rhs||` after the GMRES solve. |
+| `check_true_residual` | `Bool` | `true` | Verify the true relative residual after the GMRES solve without an absolute denominator floor. |
 | `true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol` when `check_true_residual=true`. |
 
 **Returns:** `Vector{ComplexF64}` adjoint variable `lambda`.
@@ -67,7 +67,7 @@ where `Z'` is the conjugate transpose of the system matrix. The adjoint variable
 
 ---
 
-### `solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=false, true_residual_factor=100.0)`
+### `solve_adjoint_rhs(Z, rhs; solver=:direct, preconditioner=nothing, gmres_precond_side=:left, gmres_tol=1e-8, gmres_maxiter=200, gmres_memory=20, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)`
 
 Solve the adjoint system with a pre-computed right-hand side:
 
@@ -93,7 +93,7 @@ Unlike `solve_adjoint(Z, Q, I)` which internally computes `rhs = Q * I`, this fu
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
 | `check_gmres_convergence` | `Bool` | `true` | If `true`, an unconverged GMRES solve throws instead of returning an unverified adjoint vector. |
-| `check_true_residual` | `Bool` | `false` | If `true`, verify the true residual `||Z' lambda - rhs||` after the GMRES solve. |
+| `check_true_residual` | `Bool` | `true` | Verify the true relative residual after the GMRES solve without an absolute denominator floor. |
 | `true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol` when `check_true_residual=true`. |
 
 **Returns:** `Vector{ComplexF64}` adjoint variable `lambda`.
