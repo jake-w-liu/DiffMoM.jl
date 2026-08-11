@@ -5561,6 +5561,9 @@ A_comp_nonfinite.theta[1] = NaN
 @test_throws ArgumentError A_comp_nonfinite * x_test
 @test_throws ArgumentError adjoint(A_comp_nonfinite) * x_test
 y_comp = A_comp * x_test
+@test A_comp[1, 1] ≈ Z_ref[1, 1] rtol=1e-12
+@test adjoint(A_comp)[1, 1] ≈ Z_ref'[1, 1] rtol=1e-12
+@test _matrix_entry_allocation(A_comp, 1, 1) <= 128
 _assert_single_complex_output_allocation(A_comp, x_test)
 _assert_scaled_mul_contract(A_comp, x_test, reverse(x_test))
 
@@ -5577,6 +5580,55 @@ composite_overlap_expected =
 mul!(composite_overlap_y, A_comp, composite_overlap_x,
      composite_alpha, composite_beta)
 @test composite_overlap_y ≈ composite_overlap_expected rtol=1e-12
+
+composite_identity = Matrix{ComplexF64}(I, 1, 1)
+composite_scale_operator = ImpedanceLoadedOperator(
+    composite_identity, [composite_identity], [-1.0], false)
+composite_scale_input = ComplexF64[10]
+composite_scale_previous = ComplexF64[-20]
+composite_scale_result = copy(composite_scale_previous)
+mul!(composite_scale_result, composite_scale_operator,
+     composite_scale_input, 1.0e308, 1.0e308)
+@test composite_scale_result == zeros(ComplexF64, 1)
+
+composite_scale_adjoint_result = copy(composite_scale_previous)
+mul!(composite_scale_adjoint_result, adjoint(composite_scale_operator),
+     composite_scale_input, 1.0e308, 1.0e308)
+@test composite_scale_adjoint_result == zeros(ComplexF64, 1)
+
+composite_scale_alias = copy(composite_scale_input)
+mul!(composite_scale_alias, composite_scale_operator,
+     composite_scale_alias,
+     floatmax(Float64) / 2, -floatmax(Float64))
+@test composite_scale_alias == zeros(ComplexF64, 1)
+
+composite_max_matrix = fill(
+    ComplexF64(floatmax(Float64), 0.0), 1, 1)
+composite_cancel_operator = ImpedanceLoadedOperator(
+    composite_max_matrix, [composite_max_matrix], [1.0], false)
+composite_cancel_input = ComplexF64[2]
+@test composite_cancel_operator * composite_cancel_input ==
+      zeros(ComplexF64, 1)
+@test adjoint(composite_cancel_operator) * composite_cancel_input ==
+      zeros(ComplexF64, 1)
+@test composite_cancel_operator[1, 1] == 0
+
+composite_overflow_operator = ImpedanceLoadedOperator(
+    composite_max_matrix, [composite_identity], [0.0], false)
+@test_throws OverflowError composite_overflow_operator *
+                           composite_cancel_input
+
+composite_reactive_scale_operator = ImpedanceLoadedOperator(
+    composite_identity, [composite_identity], [1.0], true)
+composite_reactive_result = ComplexF64[-10 + 10im]
+mul!(composite_reactive_result, composite_reactive_scale_operator,
+     composite_scale_input, 1.0e308, 1.0e308)
+@test composite_reactive_result == zeros(ComplexF64, 1)
+composite_reactive_adjoint_result = ComplexF64[-10 - 10im]
+mul!(composite_reactive_adjoint_result,
+     adjoint(composite_reactive_scale_operator),
+     composite_scale_input, 1.0e308, 1.0e308)
+@test composite_reactive_adjoint_result == zeros(ComplexF64, 1)
 
 matvec_err = norm(y_comp - y_ref) / norm(y_ref)
 println("    Forward matvec relative error: $matvec_err")
@@ -5645,6 +5697,24 @@ adj_rhs_diff = norm(lam_gmres - lam_direct) / norm(lam_direct)
 println("    GMRES adjoint_rhs vs direct: $adj_rhs_diff")
 @assert adj_rhs_diff < 1e-4 "solve_adjoint_rhs GMRES too different: $adj_rhs_diff"
 println("  34e: PASS")
+
+_assert_shared_workspace_concurrency(
+    fill(A_comp, 4),
+    [x_test, reverse(x_test), conj.(x_test), (0.2 - 0.3im) .* x_test],
+)
+_assert_shared_workspace_concurrency(
+    fill(adjoint(A_comp), 4),
+    [x_test, reverse(x_test), conj.(x_test), (0.2 - 0.3im) .* x_test],
+)
+_assert_shared_workspace_concurrency(
+    fill(composite_cancel_operator, 4),
+    [
+        composite_cancel_input,
+        -composite_cancel_input,
+        1im .* composite_cancel_input,
+        (0.5 - 0.25im) .* composite_cancel_input,
+    ],
+)
 
 println("  PASS ✓")
 
