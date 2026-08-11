@@ -1221,6 +1221,122 @@ println("\n── Test 42: PeriodicMetrics ──")
             modes, R_vecs_nonfinite, k_pm)
     end
 
+    @testset "B: Extreme-range periodic power metrics" begin
+        incident_mode = FloquetMode(
+            0, 0, 0.0, 0.0, 1.0 + 0.0im,
+            true, 0.0, 0.0)
+        grazing_mode = FloquetMode(
+            1, 0, 1.0, 0.0, 1.0e-200 + 0.0im,
+            true, π / 2, 0.0)
+        extreme_modes = [incident_mode, grazing_mode]
+        zero_mode_vector = SVector{3,ComplexF64}(0.0, 0.0, 0.0)
+        extreme_mode_vectors = [
+            zero_mode_vector,
+            SVector{3,ComplexF64}(1.0e200, 0.0, 0.0),
+        ]
+        grazing_power_reference = setprecision(BigFloat, 6656) do
+            Float64(BigFloat(1.0e200)^2 * BigFloat(1.0e-200))
+        end
+        @test reflected_power_fractions(
+            extreme_modes, extreme_mode_vectors, 1.0) ==
+              [0.0, grazing_power_reference]
+
+        zero_penalty = zeros(ComplexF64, 1, 1)
+        dummy_current = ComplexF64[1.0]
+        zero_reflection = ComplexF64[0.0]
+        overflow_normalized = power_balance(
+            dummy_current,
+            zero_penalty,
+            1.0e-200,
+            1.0,
+            [incident_mode],
+            zero_reflection;
+            eta0=1.0e200,
+            E0=1.0e200,
+        )
+        underflow_normalized = power_balance(
+            dummy_current,
+            zero_penalty,
+            1.0e200,
+            1.0,
+            [incident_mode],
+            zero_reflection;
+            eta0=1.0e-200,
+            E0=1.0e-200,
+        )
+        @test overflow_normalized.P_inc == 0.5
+        @test underflow_normalized.P_inc == 0.5
+
+        extreme_reflection = ComplexF64[0.0, 1.0e200]
+        reflected_balance = power_balance(
+            dummy_current,
+            zero_penalty,
+            1.0,
+            1.0,
+            extreme_modes,
+            extreme_reflection,
+        )
+        reflected_power_reference = setprecision(BigFloat, 6656) do
+            Float64(
+                BigFloat(grazing_power_reference) /
+                (2 * BigFloat(376.730313668)))
+        end
+        @test reflected_balance.P_refl == reflected_power_reference
+
+        transmitted_balance = power_balance(
+            dummy_current,
+            zero_penalty,
+            1.0,
+            1.0,
+            extreme_modes,
+            zeros(ComplexF64, 2);
+            transmission=:floquet,
+            T_coeffs=extreme_reflection,
+        )
+        @test transmitted_balance.P_trans == reflected_power_reference
+
+        minimum_subnormal = nextfloat(0.0)
+        underflow_penalty = ComplexF64[
+            0.0 minimum_subnormal
+            minimum_subnormal 0.0
+        ]
+        underflow_current = ComplexF64[
+            ldexp(1.0, 664), ldexp(1.0, -664)
+        ]
+        absorbed_underflow = power_balance(
+            underflow_current,
+            underflow_penalty,
+            1.0,
+            1.0,
+            [incident_mode],
+            zero_reflection,
+        )
+        @test absorbed_underflow.P_abs == minimum_subnormal
+
+        maximum_finite = floatmax(Float64)
+        absorbed_maximum = power_balance(
+            ComplexF64[1.0, 1.0],
+            ComplexF64[maximum_finite 0.0; 0.0 maximum_finite],
+            maximum_finite,
+            1.0,
+            [incident_mode],
+            zero_reflection;
+            eta0=0.5,
+        )
+        @test absorbed_maximum.P_inc == maximum_finite
+        @test absorbed_maximum.P_abs == maximum_finite
+        @test absorbed_maximum.P_resid == 0.0
+        @test absorbed_maximum.abs_frac == 1.0
+
+        reflected_power_fractions(
+            extreme_modes, extreme_mode_vectors, 1.0)
+        @test @allocated(reflected_power_fractions(
+            extreme_modes,
+            extreme_mode_vectors,
+            1.0,
+        )) <= 250_000
+    end
+
     # ── B: Specular objective kwargs/defaults ──
     @testset "B: Specular objective kwargs/defaults" begin
         mesh_q = make_rect_plate(dx_pm, dy_pm, 2, 2)
@@ -1336,6 +1452,29 @@ println("\n── Test 42: PeriodicMetrics ──")
             mesh_i, rwg_i, I_zero, k_pm, lat_pm; E0=0.0)
         @test_throws ArgumentError reflection_coefficient_vectors(
             mesh_i, rwg_i, I_zero, k_pm, lat_pm; eta0=Inf)
+
+        _, zero_scalar_reflection = reflection_coefficients(
+            mesh_i,
+            rwg_i,
+            I_zero,
+            k_pm,
+            lat_pm;
+            N_orders=0,
+            E0=nextfloat(0.0),
+            eta0=floatmax(Float64),
+        )
+        _, zero_vector_reflection = reflection_coefficient_vectors(
+            mesh_i,
+            rwg_i,
+            I_zero,
+            k_pm,
+            lat_pm;
+            N_orders=0,
+            E0=nextfloat(0.0),
+            eta0=floatmax(Float64),
+        )
+        @test all(iszero, zero_scalar_reflection)
+        @test all(iszero, zero_vector_reflection)
     end
 
     # ── B/F: Grounded metasurface via image theory ──

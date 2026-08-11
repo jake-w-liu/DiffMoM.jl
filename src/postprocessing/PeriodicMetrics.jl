@@ -171,6 +171,239 @@ end
     return 0.0
 end
 
+@noinline function _periodic_scaled_intensity_exact(
+    amplitudes,
+    flux_factor::Float64,
+    label::AbstractString,
+)
+    accumulator = _IEEEBilinearAccumulator(Float64)
+    @inbounds for amplitude in amplitudes
+        amplitude_real = Float64(real(amplitude))
+        amplitude_imag = Float64(imag(amplitude))
+        _ieee_bilinear_add_triple!(
+            accumulator, flux_factor,
+            amplitude_real, amplitude_real, 1)
+        _ieee_bilinear_add_triple!(
+            accumulator, flux_factor,
+            amplitude_imag, amplitude_imag, 1)
+    end
+    return _ieee_bilinear_finish(accumulator, label)::Float64
+end
+
+@inline function _periodic_scaled_intensity(
+    amplitudes,
+    flux_factor::Float64,
+    label::AbstractString,
+)::Float64
+    needs_fallback = _ieee_dense_extreme_factor(
+        flux_factor, Float64) ||
+        _ieee_bilinear_values_require_fallback(amplitudes, Float64)
+    needs_fallback &&
+        return _periodic_scaled_intensity_exact(
+            amplitudes, flux_factor, label)
+
+    intensity = 0.0
+    @inbounds for amplitude in amplitudes
+        intensity += abs2(amplitude)
+    end
+    power_factor = intensity * flux_factor
+    isfinite(power_factor) ||
+        return _periodic_scaled_intensity_exact(
+            amplitudes, flux_factor, label)
+    return power_factor
+end
+
+@noinline function _periodic_coefficient_power_sum_exact(
+    modes::Vector{FloquetMode},
+    coefficients::Vector{ComplexF64},
+    k::Float64,
+    label::AbstractString,
+)
+    accumulator = _IEEEBilinearAccumulator(Float64)
+    @inbounds for (index, mode) in enumerate(modes)
+        mode.propagating || continue
+        flux_factor = _floquet_mode_flux_factor(mode, k, index)
+        coefficient = coefficients[index]
+        coefficient_real = real(coefficient)
+        coefficient_imag = imag(coefficient)
+        _ieee_bilinear_add_triple!(
+            accumulator, flux_factor,
+            coefficient_real, coefficient_real, 1)
+        _ieee_bilinear_add_triple!(
+            accumulator, flux_factor,
+            coefficient_imag, coefficient_imag, 1)
+    end
+    return _ieee_bilinear_finish(accumulator, label)::Float64
+end
+
+function _periodic_coefficient_power_sum(
+    modes::Vector{FloquetMode},
+    coefficients::Vector{ComplexF64},
+    k::Float64,
+    label::AbstractString,
+)
+    needs_fallback = _ieee_bilinear_values_require_fallback(
+        coefficients, Float64)
+    power_sum = 0.0
+    @inbounds for (index, mode) in enumerate(modes)
+        mode.propagating || continue
+        flux_factor = _floquet_mode_flux_factor(mode, k, index)
+        needs_fallback |= _ieee_dense_extreme_factor(
+            flux_factor, Float64)
+        needs_fallback && continue
+        power_sum += abs2(coefficients[index]) * flux_factor
+        isfinite(power_sum) ||
+            return _periodic_coefficient_power_sum_exact(
+                modes, coefficients, k, label)
+    end
+    needs_fallback &&
+        return _periodic_coefficient_power_sum_exact(
+            modes, coefficients, k, label)
+    return power_sum
+end
+
+@noinline function _periodic_incident_power_base_exact(
+    E0::Float64,
+    area::Float64,
+    eta0::Float64,
+)
+    accumulator = _IEEEBilinearAccumulator(Float64)
+    _ieee_bilinear_add_triple!(accumulator, area, E0, E0, 1)
+    return _ieee_bilinear_finish(
+        accumulator, "incident-power normalization", 0.5, eta0)
+end
+
+@inline function _periodic_incident_power_base(
+    E0::Float64,
+    area::Float64,
+    eta0::Float64,
+)
+    needs_fallback = _ieee_dense_extreme_factor(E0, Float64) ||
+                     _ieee_dense_extreme_factor(area, Float64) ||
+                     _ieee_dense_extreme_factor(eta0, Float64)
+    needs_fallback &&
+        return _periodic_incident_power_base_exact(E0, area, eta0)
+    base = abs2(E0) * area / (2 * eta0)
+    (!isfinite(base) || iszero(base)) &&
+        return _periodic_incident_power_base_exact(E0, area, eta0)
+    return base
+end
+
+@noinline function _periodic_finite_product_exact(
+    first::Float64,
+    second::Float64,
+    label::AbstractString,
+)
+    return setprecision(BigFloat, 256) do
+        converted = Float64(BigFloat(first) * BigFloat(second))
+        isfinite(converted) ||
+            throw(OverflowError("$label is outside the Float64 range"))
+        return converted
+    end
+end
+
+@inline function _periodic_finite_product(
+    first::Float64,
+    second::Float64,
+    label::AbstractString,
+)
+    product = first * second
+    needs_fallback = _ieee_dense_extreme_factor(first, Float64) ||
+                     _ieee_dense_extreme_factor(second, Float64) ||
+                     !isfinite(product) ||
+                     (!iszero(first) && !iszero(second) && iszero(product))
+    needs_fallback &&
+        return _periodic_finite_product_exact(first, second, label)
+    return product
+end
+
+@inline function _periodic_reflection_requires_fallback(
+    current_coefficient,
+    eta0::Float64,
+    k::Float64,
+    kz::Float64,
+    E0::Float64,
+)
+    return _ieee_bilinear_values_require_fallback(
+               current_coefficient, Float64) ||
+           _ieee_dense_extreme_factor(eta0, Float64) ||
+           _ieee_dense_extreme_factor(k, Float64) ||
+           _ieee_dense_extreme_factor(kz, Float64) ||
+           _ieee_dense_extreme_factor(E0, Float64)
+end
+
+@noinline function _periodic_scalar_reflection_exact(
+    polarization,
+    current_coefficient,
+    eta0::Float64,
+    k::Float64,
+    kz::Float64,
+    E0::Float64,
+    mode::FloquetMode,
+)
+    return setprecision(BigFloat, _PROJECTED_POWER_FALLBACK_PRECISION) do
+        projection_real = zero(BigFloat)
+        projection_imag = zero(BigFloat)
+        @inbounds for component in eachindex(polarization, current_coefficient)
+            polarization_component = BigFloat(polarization[component])
+            current_value = current_coefficient[component]
+            projection_real +=
+                polarization_component * BigFloat(real(current_value))
+            projection_imag +=
+                polarization_component * BigFloat(imag(current_value))
+        end
+        scale = -BigFloat(eta0) * BigFloat(k) /
+                (2 * BigFloat(kz) * BigFloat(E0))
+        coefficient = ComplexF64(Complex{BigFloat}(
+            scale * projection_real, scale * projection_imag))
+        isfinite(coefficient) ||
+            throw(OverflowError(
+                "reflection coefficient is outside the ComplexF64 range " *
+                "for order ($(mode.m), $(mode.n))"))
+        return coefficient
+    end
+end
+
+@noinline function _periodic_vector_reflection_exact(
+    khat,
+    current_coefficient,
+    eta0::Float64,
+    k::Float64,
+    kz::Float64,
+    E0::Float64,
+    mode::FloquetMode,
+)
+    return setprecision(BigFloat, _PROJECTED_POWER_FALLBACK_PRECISION) do
+        longitudinal_real = zero(BigFloat)
+        longitudinal_imag = zero(BigFloat)
+        @inbounds for component in eachindex(khat, current_coefficient)
+            direction_component = BigFloat(khat[component])
+            current_value = current_coefficient[component]
+            longitudinal_real +=
+                direction_component * BigFloat(real(current_value))
+            longitudinal_imag +=
+                direction_component * BigFloat(imag(current_value))
+        end
+        scale = -BigFloat(eta0) * BigFloat(k) /
+                (2 * BigFloat(kz) * BigFloat(E0))
+        coefficient = SVector{3,ComplexF64}(ntuple(component -> begin
+            direction_component = BigFloat(khat[component])
+            current_value = current_coefficient[component]
+            transverse_real = BigFloat(real(current_value)) -
+                              direction_component * longitudinal_real
+            transverse_imag = BigFloat(imag(current_value)) -
+                              direction_component * longitudinal_imag
+            ComplexF64(Complex{BigFloat}(
+                scale * transverse_real, scale * transverse_imag))
+        end, 3))
+        all(isfinite, coefficient) ||
+            throw(OverflowError(
+                "vector reflection coefficient is outside the ComplexF64 " *
+                "range for order ($(mode.m), $(mode.n))"))
+        return coefficient
+    end
+end
+
 function _validate_floquet_modes(modes::Vector{FloquetMode}, k::Float64)
     _validate_floquet_mode_orders(modes)
     for (i, mode) in enumerate(modes)
@@ -383,11 +616,20 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
         #   R_mn = -(η₀ k)/(2 κz_mn E₀) × (ê_mode · J̃_mn)
         # where ê_mode is transverse to this mode's propagation direction.
         kz_mn = real(mode.kz)
-        R_coeffs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) * dot(pol_mode, J_tildes[mi])
-        isfinite(R_coeffs[mi]) ||
-            throw(OverflowError(
-                "reflection coefficient became non-finite for order ($(mode.m), $(mode.n))"
-            ))
+        needs_fallback = _periodic_reflection_requires_fallback(
+            J_tildes[mi], eta0, kw, kz_mn, E0)
+        if needs_fallback
+            R_coeffs[mi] = _periodic_scalar_reflection_exact(
+                pol_mode, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
+        else
+            R_coeffs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) *
+                           dot(pol_mode, J_tildes[mi])
+            if !isfinite(R_coeffs[mi])
+                R_coeffs[mi] = _periodic_scalar_reflection_exact(
+                    pol_mode, J_tildes[mi],
+                    eta0, kw, kz_mn, E0, mode)
+            end
+        end
     end
 
     return modes, R_coeffs
@@ -427,12 +669,21 @@ function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
 
         kz_mn = real(mode.kz)
         khat = SVector(mode.kx / kw, mode.ky / kw, kz_mn / kw)
-        J_transverse = J_tildes[mi] - khat * dot(khat, J_tildes[mi])
-        R_vecs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) * J_transverse
-        all(isfinite, R_vecs[mi]) ||
-            throw(OverflowError(
-                "vector reflection coefficient became non-finite for order ($(mode.m), $(mode.n))"
-            ))
+        needs_fallback = _periodic_reflection_requires_fallback(
+            J_tildes[mi], eta0, kw, kz_mn, E0)
+        if needs_fallback
+            R_vecs[mi] = _periodic_vector_reflection_exact(
+                khat, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
+        else
+            J_transverse = J_tildes[mi] -
+                           khat * dot(khat, J_tildes[mi])
+            R_vecs[mi] = -(eta0 * kw) /
+                         (2 * kz_mn * E0) * J_transverse
+            if !all(isfinite, R_vecs[mi])
+                R_vecs[mi] = _periodic_vector_reflection_exact(
+                    khat, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
+            end
+        end
     end
 
     return modes, R_vecs
@@ -459,16 +710,10 @@ function reflected_power_fractions(modes::Vector{FloquetMode},
                 "R_vecs[$i] for order ($(mode.m), $(mode.n)) must be finite"
             ))
         if mode.propagating
-            intensity = sum(abs2, R_vecs[i])
-            isfinite(intensity) ||
-                throw(OverflowError(
-                    "reflection intensity overflowed for order ($(mode.m), $(mode.n))"
-                ))
-            p[i] = intensity * _floquet_mode_flux_factor(mode, kw, i)
-            isfinite(p[i]) ||
-                throw(OverflowError(
-                    "reflected power fraction overflowed for order ($(mode.m), $(mode.n))"
-                ))
+            flux_factor = _floquet_mode_flux_factor(mode, kw, i)
+            p[i] = _periodic_scaled_intensity(
+                R_vecs[i], flux_factor,
+                "reflected power fraction for order ($(mode.m), $(mode.n))")
         end
     end
     return p
@@ -582,41 +827,29 @@ function power_balance(I_coeffs::Vector{<:Number},
     # cos(θ_inc) = real(kz_inc)/k. Normalizing the fractions by this (rather than
     # by the unprojected |E0|²A/2η) is required for energy conservation at oblique
     # incidence; at normal incidence kz_inc = k and nothing changes.
-    base = abs2(E0) * area / (2 * eta0)
+    base = _periodic_incident_power_base(E0, area, eta0)
     isfinite(base) && base > 0.0 ||
         throw(ArgumentError(
             "incident-power normalization is not representable for E0=$E0, A_cell=$area, eta0=$eta0"
         ))
     cos_inc = _floquet_mode_flux_factor(modes[inc_idx], kw, inc_idx)
-    P_inc = base * cos_inc
+    P_inc = _periodic_finite_product(
+        base, cos_inc, "incident power")
     isfinite(P_inc) && P_inc > 0.0 ||
         throw(ArgumentError(
             "incident power is not representable for incident order $incident_order"
         ))
 
     # Reflected power from Floquet modes (z-directed flux)
-    P_refl = 0.0
-    for (i, mode) in enumerate(modes)
-        if mode.propagating
-            mode_power = abs2(R_coeffs[i]) * _floquet_mode_flux_factor(mode, kw, i)
-            isfinite(mode_power) ||
-                throw(OverflowError(
-                    "reflected power overflowed for order ($(mode.m), $(mode.n))"
-                ))
-            P_refl += mode_power
-            isfinite(P_refl) ||
-                throw(OverflowError("reflected-power accumulation overflowed"))
-        end
-    end
-    P_refl *= base
-    isfinite(P_refl) ||
-        throw(OverflowError("reflected power is non-finite"))
+    reflected_factor = _periodic_coefficient_power_sum(
+        modes, R_coeffs, kw, "reflected power factor")
+    P_refl = _periodic_finite_product(
+        reflected_factor, base, "reflected power")
 
     # Power absorbed by SIMP penalty impedance
-    ZI = Z_pen * I_coeffs
-    all(isfinite, ZI) ||
-        throw(OverflowError("Z_pen * I_coeffs produced non-finite values"))
-    P_abs = 0.5 * real(dot(I_coeffs, ZI))
+    P_abs = _finite_scaled_bilinear_component(
+        I_coeffs, Z_pen, I_coeffs, Val(:real),
+        0.5, "absorbed power")
     isfinite(P_abs) ||
         throw(OverflowError("absorbed-power evaluation produced a non-finite value"))
 
@@ -636,21 +869,10 @@ function power_balance(I_coeffs::Vector{<:Number},
         all(isfinite, Tc) ||
             throw(ArgumentError("T_coeffs must contain only finite values"))
 
-        for (i, mode) in enumerate(modes)
-            if mode.propagating
-                mode_power = abs2(Tc[i]) * _floquet_mode_flux_factor(mode, kw, i)
-                isfinite(mode_power) ||
-                    throw(OverflowError(
-                        "transmitted power overflowed for order ($(mode.m), $(mode.n))"
-                    ))
-                P_trans += mode_power
-                isfinite(P_trans) ||
-                    throw(OverflowError("transmitted-power accumulation overflowed"))
-            end
-        end
-        P_trans *= base
-        isfinite(P_trans) ||
-            throw(OverflowError("transmitted power is non-finite"))
+        transmitted_factor = _periodic_coefficient_power_sum(
+            modes, Tc, kw, "transmitted power factor")
+        P_trans = _periodic_finite_product(
+            transmitted_factor, base, "transmitted power")
     end
 
     refl_frac = P_refl / P_inc

@@ -13,6 +13,7 @@ export solve_adjoint, solve_adjoint_rhs, gradient_impedance, compute_objective
 # entries. The extra 65 bits cover the full sum, with the remaining precision
 # as guard margin.
 const _IEEE_BILINEAR_FALLBACK_PRECISION = 6656
+const _IEEE_SCALED_BILINEAR_FALLBACK_PRECISION = 8704
 
 @inline function _bilinear_component_bigfloat(
     left_real::BigFloat,
@@ -560,11 +561,12 @@ end
     component,
     ::Type{R},
     label::AbstractString,
+    multiplier::R=one(R),
 ) where {R<:Union{Float32,Float64}}
     accumulator = _IEEEBilinearAccumulator(R)
     _accumulate_bilinear_component_ieee!(
         accumulator, left, matrix, right, component)
-    return _ieee_bilinear_finish(accumulator, label)
+    return _ieee_bilinear_finish(accumulator, label, multiplier)
 end
 
 function _accumulate_bilinear_component_bigfloat(
@@ -676,6 +678,62 @@ end
                 "$label is outside the representable $T range"))
         return converted
     end
+end
+
+@noinline function _scaled_bilinear_component_bigfloat(
+    left::AbstractVector,
+    matrix::AbstractMatrix,
+    right::AbstractVector,
+    component,
+    ::Type{T},
+    multiplier::T,
+    label::AbstractString,
+) where {T<:AbstractFloat}
+    return setprecision(
+            BigFloat, _IEEE_SCALED_BILINEAR_FALLBACK_PRECISION) do
+        total = _accumulate_bilinear_component_bigfloat(
+            left, matrix, right, component)
+        converted = T(BigFloat(multiplier) * total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label is outside the representable $T range"))
+        return converted
+    end
+end
+
+function _finite_scaled_bilinear_component(
+    left::AbstractVector,
+    matrix::AbstractMatrix,
+    right::AbstractVector,
+    component,
+    multiplier::Real,
+    label::AbstractString,
+)
+    raw_value = _bilinear_component(
+        _dot_left_matrix_right(left, matrix, right), component)
+    value = multiplier * raw_value
+    value_type = typeof(value)
+    if value_type <: Union{Float32,Float64}
+        needs_fallback = !isfinite(value) ||
+            _ieee_dense_extreme_factor(multiplier, value_type) ||
+            _ieee_bilinear_requires_fallback(
+                left, matrix, right, value_type)
+        if needs_fallback
+            typed_multiplier = value_type(multiplier)
+            if _ieee_bilinear_superaccumulator_supported(
+                    left, matrix, right, value_type)
+                return _bilinear_component_ieee_exact(
+                    left, matrix, right, component, value_type,
+                    label, typed_multiplier)::value_type
+            end
+            return _scaled_bilinear_component_bigfloat(
+                left, matrix, right, component, value_type,
+                typed_multiplier, label)::value_type
+        end
+        return value
+    end
+    isfinite(value) || error("$label produced a non-finite value")
+    return value
 end
 
 function _finite_bilinear_component(
