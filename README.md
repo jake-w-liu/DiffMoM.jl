@@ -11,6 +11,8 @@ analytical/external validation workflows.
 
 ## Installation
 
+DiffMoM requires Julia 1.12 or newer.
+
 From a local checkout
 
 ```julia

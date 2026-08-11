@@ -16,6 +16,8 @@ using DataFrames
 include(joinpath(@__DIR__, "..", "src", "DiffMoM.jl"))
 using .DiffMoM
 
+include("test_runtime_contract.jl")
+
 complex_vector_input = ComplexF64[1 + 2im, 3 - 4im]
 @assert DiffMoM._complex_vector_input(complex_vector_input) === complex_vector_input
 DiffMoM._complex_vector_input(complex_vector_input)  # warm compilation

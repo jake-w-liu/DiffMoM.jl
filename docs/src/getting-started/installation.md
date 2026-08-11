@@ -19,7 +19,7 @@ After this chapter, you should be able to:
 
 ## 1) Prerequisites
 
-- Julia `1.10` or newer.
+- Julia `1.12` or newer.
 - A local checkout of the repository (recommended for learning/tutorial use).
 
 Check Julia version:
