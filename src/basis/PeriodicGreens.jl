@@ -246,6 +246,71 @@ end
 # Spectral sum utilities
 # ─────────────────────────────────────────────────────────────────
 
+const _PERIODIC_LONGITUDINAL_FALLBACK_PRECISION = 256
+
+@noinline function _periodic_longitudinal_magnitude_exact(
+    k::Float64,
+    kappa_x::Float64,
+    kappa_y::Float64,
+    label::AbstractString,
+)
+    return setprecision(
+            BigFloat, _PERIODIC_LONGITUDINAL_FALLBACK_PRECISION) do
+        k_big = BigFloat(k)
+        kappa_x_big = BigFloat(kappa_x)
+        kappa_y_big = BigFloat(kappa_y)
+        radicand = k_big * k_big -
+                   kappa_x_big * kappa_x_big -
+                   kappa_y_big * kappa_y_big
+        propagating = radicand > 0
+        magnitude_big = sqrt(abs(radicand))
+        magnitude = Float64(magnitude_big)
+        isfinite(magnitude) ||
+            throw(OverflowError("$label is outside the Float64 range"))
+        if !iszero(magnitude_big) && iszero(magnitude)
+            throw(ArgumentError("$label is below the Float64 range"))
+        end
+        return magnitude, propagating
+    end
+end
+
+@inline function _periodic_longitudinal_magnitude(
+    k::Float64,
+    kappa_x::Float64,
+    kappa_y::Float64,
+    label::AbstractString,
+)
+    isfinite(k) && k >= 0.0 ||
+        throw(ArgumentError("k must be finite and nonnegative, got $k"))
+    all(isfinite, (kappa_x, kappa_y)) ||
+        throw(ArgumentError(
+            "transverse wavevector must be finite, got " *
+            "($kappa_x, $kappa_y)"))
+
+    scale = max(k, abs(kappa_x), abs(kappa_y))
+    iszero(scale) && return 0.0, false
+    k_scaled = k / scale
+    kappa_x_scaled = kappa_x / scale
+    kappa_y_scaled = kappa_y / scale
+    k_squared = k_scaled * k_scaled
+    transverse_squared =
+        kappa_x_scaled * kappa_x_scaled +
+        kappa_y_scaled * kappa_y_scaled
+    radicand_scaled = k_squared - transverse_squared
+    uncertainty = 64eps(Float64) * (k_squared + transverse_squared)
+    if abs(radicand_scaled) <= uncertainty
+        return _periodic_longitudinal_magnitude_exact(
+            k, kappa_x, kappa_y, label)
+    end
+
+    magnitude = scale * sqrt(abs(radicand_scaled))
+    if !isfinite(magnitude) || iszero(magnitude)
+        return _periodic_longitudinal_magnitude_exact(
+            k, kappa_x, kappa_y, label)
+    end
+    return magnitude, radicand_scaled > 0.0
+end
+
 """
     _spectral_kz(k, kappa_x, kappa_y)
 
@@ -253,13 +318,11 @@ Compute kz = sqrt(k² - κ²) with branch cut ensuring Im(kz) ≤ 0
 (outgoing/decaying convention for exp(+iωt)).
 """
 function _spectral_kz(k::Float64, kappa_x::Float64, kappa_y::Float64)
-    kt_sq = kappa_x^2 + kappa_y^2
-    kz = sqrt(complex(k^2 - kt_sq))
-    # Enforce Im(kz) ≤ 0 for outgoing wave convention
-    if imag(kz) > 0
-        kz = -kz
-    end
-    return kz
+    magnitude, propagating = _periodic_longitudinal_magnitude(
+        k, kappa_x, kappa_y, "spectral longitudinal wavevector")
+    return propagating ?
+           ComplexF64(magnitude, 0.0) :
+           ComplexF64(0.0, -magnitude)
 end
 
 # ─────────────────────────────────────────────────────────────────

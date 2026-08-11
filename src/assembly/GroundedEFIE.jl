@@ -172,7 +172,16 @@ function assemble_Z_efie_grounded(mesh::TriMesh, rwg::RWGData, k,
 end
 
 # Incident vertical wavenumber of the specular order (= k cosθ_inc).
-@inline _kz_inc(k, lattice) = sqrt(max(k^2 - lattice.kx_bloch^2 - lattice.ky_bloch^2, 0.0))
+@inline function _kz_inc(k, lattice)
+    magnitude, propagating = _periodic_longitudinal_magnitude(
+        Float64(k), lattice.kx_bloch, lattice.ky_bloch,
+        "incident longitudinal wavevector")
+    (propagating || iszero(magnitude)) ||
+        throw(ArgumentError(
+            "incident Bloch wavevector ($(lattice.kx_bloch), " *
+            "$(lattice.ky_bloch)) exceeds k=$k"))
+    return magnitude
+end
 
 """
     assemble_excitation_grounded(mesh, rwg, pw, k, lattice; height, quad_order=3)

@@ -803,38 +803,6 @@ end
 end
 
 
-@noinline function _floquet_longitudinal_component_exact(
-    k::Float64,
-    kx::Float64,
-    ky::Float64,
-    m::Int,
-    n::Int,
-)
-    return setprecision(BigFloat, _FLOQUET_MODE_FALLBACK_PRECISION) do
-        kb = BigFloat(k)
-        kxb = BigFloat(kx)
-        kyb = BigFloat(ky)
-        radicand = kb * kb - kxb * kxb - kyb * kyb
-        propagating = radicand > 0
-        magnitude_big = sqrt(abs(radicand))
-        magnitude = Float64(magnitude_big)
-        isfinite(magnitude) ||
-            throw(OverflowError(
-                "Floquet longitudinal wavevector is outside the Float64 " *
-                "range for order ($m, $n)"))
-        if !iszero(magnitude_big) && iszero(magnitude)
-            throw(ArgumentError(
-                "Floquet longitudinal wavevector is below the Float64 " *
-                "range for order ($m, $n)"))
-        end
-        kz = propagating ?
-             ComplexF64(magnitude, 0.0) :
-             ComplexF64(0.0, magnitude)
-        return kz, propagating
-    end
-end
-
-
 @inline function _floquet_longitudinal_component(
     k::Float64,
     kx::Float64,
@@ -842,26 +810,9 @@ end
     m::Int,
     n::Int,
 )
-    # Scaling all three components before squaring prevents both overflow and
-    # underflow. Near the propagating/evanescent boundary, use exact Float64
-    # input values so cancellation cannot change the mode classification.
-    scale = max(k, abs(kx), abs(ky))
-    k_scaled = k / scale
-    kx_scaled = kx / scale
-    ky_scaled = ky / scale
-    k_squared = k_scaled * k_scaled
-    transverse_squared = kx_scaled * kx_scaled + ky_scaled * ky_scaled
-    radicand_scaled = k_squared - transverse_squared
-    uncertainty = 64eps(Float64) * (k_squared + transverse_squared)
-    if abs(radicand_scaled) <= uncertainty
-        return _floquet_longitudinal_component_exact(k, kx, ky, m, n)
-    end
-
-    magnitude = scale * sqrt(abs(radicand_scaled))
-    if !isfinite(magnitude) || iszero(magnitude)
-        return _floquet_longitudinal_component_exact(k, kx, ky, m, n)
-    end
-    propagating = radicand_scaled > 0.0
+    magnitude, propagating = _periodic_longitudinal_magnitude(
+        k, kx, ky,
+        "Floquet longitudinal wavevector for order ($m, $n)")
     kz = propagating ?
          ComplexF64(magnitude, 0.0) :
          ComplexF64(0.0, magnitude)
@@ -1259,7 +1210,8 @@ function specular_rcs_objective(mesh::TriMesh, rwg::RWGData,
     # flips only kz, so r̂ = (kx_bloch, ky_bloch, +kz_inc)/k: θ_r = θ_inc and
     # φ_r = φ_inc = atan(ky_bloch, kx_bloch) (no +π — that would point at the
     # mirror azimuth and miss the specular lobe at oblique incidence).
-    theta_spec = asin(clamp(sqrt(lattice.kx_bloch^2 + lattice.ky_bloch^2) / kw, 0.0, 1.0))
+    kz_inc = _kz_inc(kw, lattice)
+    theta_spec = acos(clamp(kz_inc / kw, 0.0, 1.0))
     phi_spec = atan(lattice.ky_bloch, lattice.kx_bloch)
 
     # Build direction mask for specular cone

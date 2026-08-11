@@ -103,6 +103,30 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         kz_evan = DiffMoM._spectral_kz(k, 2k, 0.0)
         @test abs(real(kz_evan)) < 1e-14
         @test imag(kz_evan) ≈ -sqrt(3) * k rtol=1e-14
+
+        large_k = 1.0e200
+        @test DiffMoM._spectral_kz(large_k, 0.0, 0.0) ==
+              ComplexF64(large_k, 0.0)
+        maximum_finite = floatmax(Float64)
+        @test DiffMoM._spectral_kz(
+            maximum_finite, maximum_finite, maximum_finite) ==
+              ComplexF64(0.0, -maximum_finite)
+        grazing_kappa = prevfloat(1.0)
+        grazing_reference = setprecision(BigFloat, 256) do
+            Float64(sqrt(BigFloat(1.0)^2 - BigFloat(grazing_kappa)^2))
+        end
+        @test DiffMoM._spectral_kz(1.0, grazing_kappa, 0.0) ==
+              ComplexF64(grazing_reference, 0.0)
+
+        large_k_lattice = PeriodicLattice(
+            1.0, 1.0, 0.0, 0.0, large_k, 1.0, 0, 0)
+        @test DiffMoM._kz_inc(large_k, large_k_lattice) == large_k
+        invalid_incident_lattice = PeriodicLattice(
+            1.0, 1.0,
+            maximum_finite, maximum_finite,
+            maximum_finite, 1.0, 0, 0)
+        @test_throws ArgumentError DiffMoM._kz_inc(
+            maximum_finite, invalid_incident_lattice)
     end
 
     # ── B: Reciprocity ΔG(r,rp) = ΔG(rp,r) for normal incidence ──
