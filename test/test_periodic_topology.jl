@@ -1005,6 +1005,48 @@ println("\n── Test 42: PeriodicMetrics ──")
         @test_throws ArgumentError floquet_modes(1.01k_pm, lat_pm; N_orders=1)
     end
 
+    @testset "A: Extreme-range Floquet modes" begin
+        large_k = 1.0e200
+        large_k_lattice = PeriodicLattice(
+            1.0, 1.0, 0.0, 0.0, large_k, 1.0, 0, 0)
+        large_k_modes = floquet_modes(
+            large_k, large_k_lattice; N_orders=1)
+        @test all(mode -> all(isfinite, (mode.kx, mode.ky, mode.kz)),
+                  large_k_modes)
+        @test all(mode -> mode.propagating, large_k_modes)
+        @test all(mode -> real(mode.kz) == large_k, large_k_modes)
+
+        maximum_finite = floatmax(Float64)
+        balanced_lattice = PeriodicLattice(
+            1.0, 1.0,
+            maximum_finite, maximum_finite,
+            maximum_finite, 1.0, 0, 0)
+        balanced_mode = only(floquet_modes(
+            maximum_finite, balanced_lattice; N_orders=0))
+        @test !balanced_mode.propagating
+        @test balanced_mode.kz == ComplexF64(0.0, maximum_finite)
+
+        grazing_kx = prevfloat(1.0)
+        grazing_lattice = PeriodicLattice(
+            1.0, 1.0, grazing_kx, 0.0, 1.0, 1.0, 0, 0)
+        grazing_mode = only(floquet_modes(
+            1.0, grazing_lattice; N_orders=0))
+        grazing_reference = setprecision(BigFloat, 256) do
+            Float64(sqrt(BigFloat(1.0)^2 - BigFloat(grazing_kx)^2))
+        end
+        @test grazing_mode.propagating
+        @test real(grazing_mode.kz) == grazing_reference
+
+        tiny_period_lattice = PeriodicLattice(
+            nextfloat(0.0), 1.0, 0.0, 0.0, 1.0, 1.0, 0, 0)
+        @test_throws OverflowError floquet_modes(
+            1.0, tiny_period_lattice; N_orders=1)
+
+        floquet_modes(k_pm, lat_pm; N_orders=3)
+        @test @allocated(floquet_modes(
+            k_pm, lat_pm; N_orders=3)) <= 100_000
+    end
+
     # ── A: Only specular mode propagates for λ/2 cell at normal incidence ──
     @testset "A: Only specular mode for λ/2 cell" begin
         modes = floquet_modes(k_pm, lat_pm; N_orders=3)

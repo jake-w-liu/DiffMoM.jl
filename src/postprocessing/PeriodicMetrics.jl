@@ -527,6 +527,108 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
     return modes, J_tildes
 end
 
+const _FLOQUET_MODE_FALLBACK_PRECISION = 256
+
+@noinline function _floquet_transverse_component_exact(
+    bloch_component::Float64,
+    order::Int,
+    period::Float64,
+    axis::AbstractString,
+)
+    return setprecision(BigFloat, _FLOQUET_MODE_FALLBACK_PRECISION) do
+        # Preserve the Float64 value of 2π used by the ordinary path while
+        # avoiding an overflowing reciprocal-lattice intermediate.
+        component = BigFloat(bloch_component) +
+                    BigFloat(2π) * BigFloat(order) / BigFloat(period)
+        converted = Float64(component)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "Floquet $axis wavevector is outside the Float64 range " *
+                "for order $order and period $period"))
+        return converted
+    end
+end
+
+
+@inline function _floquet_transverse_component(
+    bloch_component::Float64,
+    order::Int,
+    period::Float64,
+    axis::AbstractString,
+)
+    iszero(order) && return bloch_component
+    component = bloch_component + (2π * order) / period
+    isfinite(component) && return component
+    return _floquet_transverse_component_exact(
+        bloch_component, order, period, axis)
+end
+
+
+@noinline function _floquet_longitudinal_component_exact(
+    k::Float64,
+    kx::Float64,
+    ky::Float64,
+    m::Int,
+    n::Int,
+)
+    return setprecision(BigFloat, _FLOQUET_MODE_FALLBACK_PRECISION) do
+        kb = BigFloat(k)
+        kxb = BigFloat(kx)
+        kyb = BigFloat(ky)
+        radicand = kb * kb - kxb * kxb - kyb * kyb
+        propagating = radicand > 0
+        magnitude_big = sqrt(abs(radicand))
+        magnitude = Float64(magnitude_big)
+        isfinite(magnitude) ||
+            throw(OverflowError(
+                "Floquet longitudinal wavevector is outside the Float64 " *
+                "range for order ($m, $n)"))
+        if !iszero(magnitude_big) && iszero(magnitude)
+            throw(ArgumentError(
+                "Floquet longitudinal wavevector is below the Float64 " *
+                "range for order ($m, $n)"))
+        end
+        kz = propagating ?
+             ComplexF64(magnitude, 0.0) :
+             ComplexF64(0.0, magnitude)
+        return kz, propagating
+    end
+end
+
+
+@inline function _floquet_longitudinal_component(
+    k::Float64,
+    kx::Float64,
+    ky::Float64,
+    m::Int,
+    n::Int,
+)
+    # Scaling all three components before squaring prevents both overflow and
+    # underflow. Near the propagating/evanescent boundary, use exact Float64
+    # input values so cancellation cannot change the mode classification.
+    scale = max(k, abs(kx), abs(ky))
+    k_scaled = k / scale
+    kx_scaled = kx / scale
+    ky_scaled = ky / scale
+    k_squared = k_scaled * k_scaled
+    transverse_squared = kx_scaled * kx_scaled + ky_scaled * ky_scaled
+    radicand_scaled = k_squared - transverse_squared
+    uncertainty = 64eps(Float64) * (k_squared + transverse_squared)
+    if abs(radicand_scaled) <= uncertainty
+        return _floquet_longitudinal_component_exact(k, kx, ky, m, n)
+    end
+
+    magnitude = scale * sqrt(abs(radicand_scaled))
+    if !isfinite(magnitude) || iszero(magnitude)
+        return _floquet_longitudinal_component_exact(k, kx, ky, m, n)
+    end
+    propagating = radicand_scaled > 0.0
+    kz = propagating ?
+         ComplexF64(magnitude, 0.0) :
+         ComplexF64(0.0, magnitude)
+    return kz, propagating
+end
+
 """
     floquet_modes(k, lattice; N_orders=3)
 
@@ -544,18 +646,18 @@ function floquet_modes(k::Real, lattice::PeriodicLattice; N_orders::Int=3)
 
     for m in -order:order
         for n in -order:order
-            kx_mn = lattice.kx_bloch + 2π * m / lattice.dx
-            ky_mn = lattice.ky_bloch + 2π * n / lattice.dy
-            kt2 = kx_mn^2 + ky_mn^2
+            kx_mn = _floquet_transverse_component(
+                lattice.kx_bloch, m, lattice.dx, "x")
+            ky_mn = _floquet_transverse_component(
+                lattice.ky_bloch, n, lattice.dy, "y")
+            kz, propagating = _floquet_longitudinal_component(
+                kw, kx_mn, ky_mn, m, n)
 
-            kz2 = kw^2 - kt2
-            if kz2 > 0
-                kz = sqrt(kz2)
-                theta_r = acos(clamp(real(kz) / kw, -1.0, 1.0))
+            if propagating
+                theta_r = acos(clamp(real(kz) / kw, 0.0, 1.0))
                 phi_r = atan(ky_mn, kx_mn)
                 push!(modes, FloquetMode(m, n, kx_mn, ky_mn, kz, true, theta_r, phi_r))
             else
-                kz = im * sqrt(-kz2)
                 push!(modes, FloquetMode(m, n, kx_mn, ky_mn, kz, false, NaN, NaN))
             end
         end
