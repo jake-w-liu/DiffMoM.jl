@@ -568,7 +568,7 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             CVec3(1.0e308 + 0im, 0.0 + 0im, 0.0 + 0im),
             CVec3(-1.0e308 + 0im, 0.0 + 0im, 0.0 + 0im),
         ]
-        @test_throws ErrorException solve_dda_3d(
+        @test_throws OverflowError solve_dda_3d(
             grid, 1.0, near_singular_eps, huge_incident)
     end
 

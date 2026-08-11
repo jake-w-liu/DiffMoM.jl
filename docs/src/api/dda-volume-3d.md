@@ -155,7 +155,7 @@ Result from a 3D electric discrete-dipole material solve, returned by
 | `eps_r` | `AbstractVector` | Per-voxel relative permittivity (scalar or tensor). |
 | `alpha` | `AbstractVector` | Per-voxel normalized polarizability `p / (eps0 * E)` in m^3, so induced dipoles are `alpha[j] * E_total[j]`. |
 | `A` | `AbstractMatrix{ComplexF64}` | The solved operator: a dense `Matrix` for `:direct`, or a `DDAOperator3D` for `:gmres`. |
-| `A_LU` | -- | Stored LU factorization for `:direct` (reused by the adjoint solve), or `nothing` for `:gmres`. |
+| `A_LU` | -- | Stored verified dense factorization for `:direct` (reused by the adjoint solve), or `nothing` for `:gmres`. |
 | `solver` | `Symbol` | `:direct` or `:gmres`. |
 | `stats` | -- | Krylov solver statistics for `:gmres`, or `nothing` for `:direct`. |
 | `grid` | `VoxelGrid3D` | The voxel grid. |
@@ -198,7 +198,7 @@ Result from a coupled electric-magnetic DDA solve, returned by
 | `H_inc` | `Vector{CVec3}` | Incident magnetic field at each voxel center. |
 | `alpha` | `AbstractVector` | Per-voxel `6x6` polarizability. |
 | `A` | `AbstractMatrix{ComplexF64}` | The solved operator (dense `Matrix` for `:direct`; matrix-free operator otherwise). |
-| `A_LU` | -- | Stored LU factorization for `:direct`, or `nothing` otherwise. |
+| `A_LU` | -- | Stored verified dense factorization for `:direct`, or `nothing` otherwise. |
 | `solver` | `Symbol` | Reported solver: `:direct`, `:gmres`, or `:fft_gmres`. |
 | `stats` | -- | Krylov statistics for iterative solves, or `nothing` for `:direct`. |
 | `grid` | `VoxelGrid3D` | The voxel grid. |
@@ -908,8 +908,9 @@ via the adjoint method, mirroring the surface-EFIE adjoint workflow in
 Solve the 3D DDA adjoint system `A' * lambda = grad_E_flat` for an existing
 `DDAResult3D`. For an objective `J = real(E' * Q * E)`, pass
 `grad_E_flat = Q * E`; `gradient_epsr_dda_3d` applies the corresponding factor
-of two for real design parameters. The `:direct` mode reuses the stored LU
-factorization from the forward solve (O(N^2) per call) when available.
+of two for real design parameters. The `:direct` mode reuses the stored
+verified dense factorization from the forward solve (O(N^2) per call) when
+available.
 
 **Parameters:**
 

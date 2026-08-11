@@ -1049,9 +1049,10 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             mesh_precheck=mesh_precheck,
             area_tol_rel=area_tol_rel,
         )
-        fac = lu(A)
-        x = _assert_finite_linear_vector(
-            fac \ rhsv, "direct dielectric SIE solution")
+        fac = _factor_dense_linear_system(
+            A, ComplexF64, "direct dielectric SIE factorization")
+        x = _solve_factored_linear_system(
+            fac, A, rhsv, "direct dielectric SIE solution")
         J, M = _split_surface_currents_3d(x, rwg.nedges)
         return DielectricSIEResult3D(copy(J), copy(M), A, rhsv, fac,
                                      :direct, nothing,

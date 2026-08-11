@@ -4069,10 +4069,300 @@ tiny_matrix_solutions = (
     reshape(ComplexF32[nextfloat(0.0f0)], 1, 1),
     ComplexF32[floatmin(Float32)],
 ) == ComplexF32[2.0f0^23]
-@test_throws ErrorException solve_forward(
+@test_throws OverflowError solve_forward(
     tiny_direct_matrix,
     ComplexF64[floatmax(Float64)],
 )
+
+# A finite LU result is not sufficient evidence of a correct solve. LAPACK's
+# unscaled elimination loses the second row of this mixed-range matrix and
+# returns [0.5, -0.5], whose componentwise backward error is 0.2. The direct
+# paths must retry with row/column power-of-two equilibration and verify the
+# result against the physical matrix.
+direct_mixed_matrix = ComplexF64[
+    1e200  1e200
+    1e-200 2e-200
+]
+direct_mixed_rhs = ComplexF64[0.0, -1e-200]
+direct_mixed_reference = setprecision(BigFloat, 512) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(direct_mixed_matrix) \
+        Complex{BigFloat}.(direct_mixed_rhs))
+end
+@test direct_mixed_reference == ComplexF64[1.0, -1.0]
+direct_unverified_candidate = ComplexF64[0.5, -0.5]
+@test DiffMoM._direct_backward_error(
+    direct_mixed_matrix,
+    direct_unverified_candidate,
+    direct_mixed_rhs,
+    ComplexF64,
+) == 0.2
+@test DiffMoM._direct_backward_error(
+    direct_mixed_matrix,
+    direct_mixed_reference,
+    direct_mixed_rhs,
+    ComplexF64,
+) <= DiffMoM._direct_backward_error_limit(Float64, 2)
+
+direct_mixed_Q = Matrix{ComplexF64}(I, 2, 2)
+for solution in (
+        solve_forward(direct_mixed_matrix, direct_mixed_rhs),
+        solve_system(direct_mixed_matrix, direct_mixed_rhs),
+        solve_adjoint(
+            Matrix(adjoint(direct_mixed_matrix)),
+            direct_mixed_Q,
+            direct_mixed_rhs,
+        ),
+        solve_adjoint_rhs(
+            Matrix(adjoint(direct_mixed_matrix)), direct_mixed_rhs),
+    )
+    @test solution ≈ direct_mixed_reference rtol=4eps(Float64)
+end
+@test solve_forward(
+    real.(direct_mixed_matrix), real.(direct_mixed_rhs)) ≈
+      real.(direct_mixed_reference) rtol=4eps(Float64)
+
+direct_mixed_adjoint_rhs = ComplexF64[0.0, -1.0]
+direct_mixed_adjoint_reference = setprecision(BigFloat, 512) do
+    ComplexF64.(
+        adjoint(Matrix{Complex{BigFloat}}(direct_mixed_matrix)) \
+        Complex{BigFloat}.(direct_mixed_adjoint_rhs))
+end
+direct_mixed_adjoint_solution = solve_adjoint_rhs(
+    direct_mixed_matrix, direct_mixed_adjoint_rhs)
+@test direct_mixed_adjoint_solution ≈
+      direct_mixed_adjoint_reference rtol=4eps(Float64)
+@test dot(direct_mixed_adjoint_rhs, direct_mixed_reference) ≈
+      dot(direct_mixed_adjoint_solution, direct_mixed_rhs) rtol=4eps(Float64)
+
+direct_mixed_rhs_matrix = hcat(
+    direct_mixed_rhs, ComplexF64[1e200, 1e-200])
+direct_mixed_matrix_reference = setprecision(BigFloat, 512) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(direct_mixed_matrix) \
+        Matrix{Complex{BigFloat}}(direct_mixed_rhs_matrix))
+end
+direct_mixed_factor = lu(direct_mixed_matrix)
+@test DiffMoM._solve_factored_linear_system(
+    direct_mixed_factor,
+    direct_mixed_matrix,
+    direct_mixed_rhs_matrix,
+    "mixed-range matrix RHS",
+) ≈ direct_mixed_matrix_reference rtol=8eps(Float64)
+direct_mixed_alias = copy(direct_mixed_rhs_matrix)
+@test DiffMoM._solve_factored_linear_system!(
+    direct_mixed_alias,
+    direct_mixed_factor,
+    direct_mixed_matrix,
+    direct_mixed_alias,
+    "mixed-range aliased matrix RHS",
+) ≈ direct_mixed_matrix_reference rtol=8eps(Float64)
+
+direct_matrix_alias = ComplexF64[2.0 0.0; 0.0 3.0]
+direct_matrix_alias_factor = lu(copy(direct_matrix_alias))
+@test DiffMoM._solve_factored_linear_system!(
+    direct_matrix_alias,
+    direct_matrix_alias_factor,
+    direct_matrix_alias,
+    Matrix{ComplexF64}(I, 2, 2),
+    "physical matrix alias",
+) ≈ ComplexF64[0.5 0.0; 0.0 1 / 3] rtol=4eps(Float64)
+
+_, direct_mixed_conditioning_factor = transform_patch_matrices(
+    [Matrix{ComplexF64}(I, 2, 2)];
+    preconditioner_M=direct_mixed_matrix,
+)
+@test direct_mixed_conditioning_factor \ direct_mixed_rhs ≈
+      direct_mixed_reference rtol=4eps(Float64)
+direct_mixed_conditioning_destination = copy(direct_mixed_rhs)
+direct_mixed_conditioning_returned = ldiv!(
+    direct_mixed_conditioning_factor,
+    direct_mixed_conditioning_destination,
+)
+@test direct_mixed_conditioning_returned ===
+      direct_mixed_conditioning_destination
+@test direct_mixed_conditioning_destination ≈
+      direct_mixed_reference rtol=4eps(Float64)
+
+# A raw LU factor does not retain the physical input matrix, so factor-only
+# verification must fail closed. Factors returned by the conditioning APIs
+# retain their matrix and remain reusable through the documented factor-only
+# path below.
+direct_factor_only_destination = copy(direct_mixed_rhs)
+@test_throws ArgumentError DiffMoM._solve_factored_linear_system!(
+    direct_factor_only_destination,
+    direct_mixed_factor,
+    nothing,
+    direct_mixed_rhs,
+    "mixed-range factor-only solve",
+)
+@test direct_factor_only_destination == direct_mixed_rhs
+
+# Ordinary factor exponents do not make Matrix(factor) a physical oracle
+# either: Wilkinson growth loses input entries while reconstructing L*U.
+direct_wilkinson_size = 55
+direct_wilkinson_matrix = zeros(
+    ComplexF64, direct_wilkinson_size, direct_wilkinson_size)
+for row in 1:direct_wilkinson_size
+    direct_wilkinson_matrix[row, row] = 1.0
+    for column in 1:(row - 1)
+        direct_wilkinson_matrix[row, column] = -1.0
+    end
+    direct_wilkinson_matrix[row, end] =
+        1.0 + (mod(7row, 17) - 8) * eps(Float64)
+end
+direct_wilkinson_matrix[end, end] = 1.0
+direct_wilkinson_reference = ComplexF64[
+    (-1)^index * (1 + index / 100)
+    for index in 1:direct_wilkinson_size
+]
+direct_wilkinson_rhs = setprecision(BigFloat, 512) do
+    ComplexF64[
+        sum(
+            Complex{BigFloat}(direct_wilkinson_matrix[row, column]) *
+            Complex{BigFloat}(direct_wilkinson_reference[column])
+            for column in 1:direct_wilkinson_size
+        )
+        for row in 1:direct_wilkinson_size
+    ]
+end
+direct_wilkinson_factor = lu(direct_wilkinson_matrix)
+direct_wilkinson_factor_exponent = maximum(
+    exponent(abs(value)) for value in direct_wilkinson_factor.factors
+    if !iszero(value))
+@test direct_wilkinson_factor_exponent <= 128
+@test maximum(abs, Matrix(direct_wilkinson_factor) -
+                   direct_wilkinson_matrix) >= 0.5
+direct_wilkinson_bad = direct_wilkinson_factor \ direct_wilkinson_rhs
+@test DiffMoM._direct_backward_error(
+    direct_wilkinson_matrix,
+    direct_wilkinson_bad,
+    direct_wilkinson_rhs,
+    ComplexF64,
+) > DiffMoM._direct_backward_error_limit(
+    Float64, direct_wilkinson_size)
+@test_throws ArgumentError prepare_conditioned_system(
+    Matrix{ComplexF64}(I, direct_wilkinson_size, direct_wilkinson_size),
+    direct_wilkinson_rhs;
+    preconditioner_factor=direct_wilkinson_factor,
+)
+_, direct_wilkinson_solution, _ = prepare_conditioned_system(
+    Matrix{ComplexF64}(I, direct_wilkinson_size, direct_wilkinson_size),
+    direct_wilkinson_rhs;
+    preconditioner_M=direct_wilkinson_matrix,
+    preconditioner_factor=direct_wilkinson_factor,
+)
+@test DiffMoM._direct_backward_error(
+    direct_wilkinson_matrix,
+    direct_wilkinson_solution,
+    direct_wilkinson_rhs,
+    ComplexF64,
+) <= DiffMoM._direct_backward_error_limit(Float64, direct_wilkinson_size)
+@test direct_wilkinson_solution ≈
+      direct_wilkinson_reference rtol=8eps(Float64)
+
+# Equilibration may round away an irrelevant component; the physical residual
+# check determines whether doing so was safe.
+direct_mixed_component_matrix = copy(direct_mixed_matrix)
+direct_mixed_component_matrix[1, 1] += nextfloat(0.0)im
+direct_mixed_component_reference = setprecision(BigFloat, 512) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(direct_mixed_component_matrix) \
+        Complex{BigFloat}.(direct_mixed_rhs))
+end
+@test solve_forward(
+    direct_mixed_component_matrix, direct_mixed_rhs) ≈
+      direct_mixed_component_reference rtol=8eps(Float64)
+
+# A subnormal component can be the only rank-restoring information. The
+# balanced Float64 factor intentionally rounds it away, so the final exact
+# physical-matrix factorization must recover the representable solution.
+direct_rank_restoring_scale = nextfloat(0.0)
+direct_rank_restoring_large = ldexp(1.0, 500)
+direct_rank_restoring_small = ldexp(1.0, -500)
+direct_rank_restoring_matrix = ComplexF64[
+    complex(direct_rank_restoring_large, direct_rank_restoring_scale) direct_rank_restoring_large
+    direct_rank_restoring_small                                    direct_rank_restoring_small
+]
+direct_rank_restoring_rhs = ComplexF64[
+    complex(0.0, direct_rank_restoring_scale), 0.0]
+direct_rank_restoring_reference = setprecision(BigFloat, 4352) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(direct_rank_restoring_matrix) \
+        Complex{BigFloat}.(direct_rank_restoring_rhs))
+end
+@test direct_rank_restoring_reference == ComplexF64[1.0, -1.0]
+direct_rank_restoring_factor = DiffMoM._factor_dense_linear_system(
+    direct_rank_restoring_matrix,
+    ComplexF64,
+    "rank-restoring regression",
+)
+@test direct_rank_restoring_factor isa DiffMoM._BigFloatDenseLUPlan
+@test isnothing(DiffMoM._validate_bigfloat_plan_size(
+    DiffMoM._MAX_DIRECT_BIGFLOAT_VALUES - 1,
+    1,
+    "direct fallback resource boundary",
+))
+@test_throws ArgumentError DiffMoM._validate_bigfloat_plan_size(
+    DiffMoM._MAX_DIRECT_BIGFLOAT_VALUES,
+    1,
+    "direct fallback resource overflow",
+)
+@test solve_forward(
+    direct_rank_restoring_matrix, direct_rank_restoring_rhs) ==
+      direct_rank_restoring_reference
+direct_rank_restoring_adjoint_rhs = ComplexF64[
+    complex(direct_rank_restoring_large, -direct_rank_restoring_scale),
+    direct_rank_restoring_large,
+]
+@test adjoint(direct_rank_restoring_factor) \
+      direct_rank_restoring_adjoint_rhs == ComplexF64[1.0, 0.0]
+
+# The initial unscaled LU can also report a false zero pivot: its elimination
+# multiplier underflows although the exact determinant is -1.
+direct_false_singular_matrix = ComplexF64[
+    1e200  1e200
+    1e-200 0.0
+]
+direct_false_singular_rhs = ComplexF64[1e200, 0.0]
+@test_throws LinearAlgebra.SingularException lu(direct_false_singular_matrix)
+direct_false_singular_reference = setprecision(BigFloat, 512) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(direct_false_singular_matrix) \
+        Complex{BigFloat}.(direct_false_singular_rhs))
+end
+@test direct_false_singular_reference == ComplexF64[0.0, 1.0]
+@test solve_forward(
+    direct_false_singular_matrix, direct_false_singular_rhs) ≈
+      direct_false_singular_reference rtol=4eps(Float64)
+@test solve_adjoint_rhs(
+    Matrix(adjoint(direct_false_singular_matrix)),
+    direct_false_singular_rhs) ≈
+      direct_false_singular_reference rtol=4eps(Float64)
+direct_false_singular_inverse = setprecision(BigFloat, 512) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(direct_false_singular_matrix) \
+        Matrix{Complex{BigFloat}}(I, 2, 2))
+end
+direct_false_singular_Mp, direct_false_singular_factor =
+    transform_patch_matrices(
+        [Matrix{ComplexF64}(I, 2, 2)];
+        preconditioner_M=direct_false_singular_matrix,
+    )
+@test direct_false_singular_Mp[1] ≈
+      direct_false_singular_inverse rtol=8eps(Float64)
+@test direct_false_singular_factor.factorization isa
+      DiffMoM._EquilibratedDenseLUPlan
+direct_false_singular_Z, direct_false_singular_v, _ =
+    prepare_conditioned_system(
+        Matrix{ComplexF64}(I, 2, 2),
+        direct_false_singular_rhs;
+        preconditioner_factor=direct_false_singular_factor,
+    )
+@test direct_false_singular_Z ≈
+      direct_false_singular_inverse rtol=8eps(Float64)
+@test direct_false_singular_v ≈
+      direct_false_singular_reference rtol=8eps(Float64)
 
 # BLAS can overflow while forming Q*I even when cancellation makes the exact
 # adjoint RHS finite. The exceptional product restart must recover the full
@@ -7475,6 +7765,36 @@ multiangle_tiny_theta, multiangle_tiny_trace = optimize_multiangle_rcs(
 )
 @test multiangle_tiny_theta == [0.0]
 @test multiangle_tiny_trace[1].J == 0.0
+
+multiangle_false_singular_matrix = ComplexF64[
+    1e200  1e200
+    1e-200 0.0
+]
+multiangle_false_singular_rhs = ComplexF64[1e200, 0.0]
+multiangle_false_singular_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    multiangle_false_singular_rhs,
+    Matrix{ComplexF64}(I, 2, 2),
+    1.0,
+)
+multiangle_false_singular_theta, multiangle_false_singular_trace =
+    optimize_multiangle_rcs(
+        multiangle_false_singular_matrix,
+        [zeros(ComplexF64, 2, 2)],
+        [multiangle_false_singular_config],
+        [0.0];
+        maxiter=1,
+        verbose=false,
+    )
+@test multiangle_false_singular_theta == [0.0]
+@test multiangle_false_singular_trace == [(
+    iter=1,
+    J=1.0,
+    gnorm=0.0,
+    n_fwd=1,
+    n_adj=1,
+)]
 
 multiangle_adjoint_matrix = ComplexF64[1.0 -2.0; -2.0 1.0]
 multiangle_adjoint_current = ComplexF64[1.0, -1.0]

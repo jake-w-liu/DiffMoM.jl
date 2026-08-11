@@ -201,13 +201,13 @@ v = assemble_excitation(mesh, rwg, pw; quad_order=3)
 
 #### Direct Solution (Default)
 ```julia
-I = solve_forward(Z, v)  # Uses LU factorization (LAPACK)
+I = solve_forward(Z, v)  # Uses a verified dense factorization
 ```
 
 **Advantages:**
 - Robust for ill-conditioned systems
 - Reusable factorization for multiple RHS
-- Exact solution (to machine precision)
+- Componentwise backward-error verification before a result is accepted
 
 **Limitations:**
 - $O(N^3)$ time complexity

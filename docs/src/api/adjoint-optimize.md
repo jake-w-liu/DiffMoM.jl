@@ -51,7 +51,7 @@ where `Z'` is the conjugate transpose of the system matrix. The adjoint variable
 | `Z` | `AbstractMatrix{<:Number}` | -- | System matrix (same Z used in the forward solve). |
 | `Q` | `Matrix{<:Number}` | -- | Objective matrix. |
 | `I` | `AbstractVector{<:Number}` | -- | Current coefficients from the forward solve. |
-| `solver` | `Symbol` | `:direct` | `:direct` for LU factorization, `:gmres` for GMRES. Same choice as the forward solve. |
+| `solver` | `Symbol` | `:direct` | `:direct` for a verified dense factorization, `:gmres` for GMRES. Same choice as the forward solve. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. When provided, the **adjoint** preconditioner `Z_nf^{-H}` is automatically applied. |
 | `gmres_precond_side` | `Symbol` | `:left` | Preconditioner application side (`:left` or `:right`). |
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
@@ -86,7 +86,7 @@ Unlike `solve_adjoint(Z, Q, I)` which internally computes `rhs = Q * I`, this fu
 |-----------|------|---------|-------------|
 | `Z` | `AbstractMatrix{<:Number}` | -- | System matrix (same Z used in the forward solve). |
 | `rhs` | `AbstractVector{<:Number}` | -- | Pre-computed right-hand side vector (e.g., `Q * I` or output of `apply_Q`). |
-| `solver` | `Symbol` | `:direct` | `:direct` for LU factorization, `:gmres` for GMRES. |
+| `solver` | `Symbol` | `:direct` | `:direct` for a verified dense factorization, `:gmres` for GMRES. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. |
 | `gmres_precond_side` | `Symbol` | `:left` | Preconditioner application side (`:left` or `:right`). |
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
@@ -180,7 +180,7 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `solver` | `Symbol` | `:direct` | `:direct` for LU factorization (exact, O(N^3) per solve), `:gmres` for iterative GMRES. |
+| `solver` | `Symbol` | `:direct` | `:direct` for a verified dense factorization (O(N^3) per factorization), `:gmres` for iterative GMRES. |
 | `nf_preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. Build once with `build_nearfield_preconditioner` and pass here. Ignored when `solver=:direct`. |
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations per solve. |
@@ -289,7 +289,7 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 - `theta_opt::Vector{Float64}`: Optimized parameter vector.
 - `trace::Vector{NamedTuple}`: Iteration records with fields `(iter, J, gnorm, n_fwd, n_adj)` -- iteration number, objective value, gradient norm, and cumulative forward/adjoint solve counts (including line-search solves).
 
-**Per-iteration cost:** M forward solves + M adjoint solves + line-search forward solves (M per trial step). When `Z_base` is a dense `Matrix{ComplexF64}`, a direct LU factorization is reused for all solves; for matrix-free operators (MLFMA, ACA) the composite `ImpedanceLoadedOperator` is solved with GMRES.
+**Per-iteration cost:** M forward solves + M adjoint solves + line-search forward solves (M per trial step). When `Z_base` is a dense `Matrix{ComplexF64}`, one verified dense factorization is reused for all solves; for matrix-free operators (MLFMA, ACA) the composite `ImpedanceLoadedOperator` is solved with GMRES.
 
 **Objective (default `:linear`):** `J(theta) = sum_a w_a * Re(I_a' Q_a I_a)` where `I_a = Z(theta)^{-1} v_a`. The `:sum_log` and `:smoothmax_log` objectives reweight the per-angle terms `J_a`.
 

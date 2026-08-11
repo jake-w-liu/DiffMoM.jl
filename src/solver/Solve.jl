@@ -240,31 +240,479 @@ function _finite_matrix_vector_product!(
     return result
 end
 
-@inline function _maximum_ieee_component(values, ::Type{R}) where {R<:AbstractFloat}
-    maximum_component = zero(R)
-    @inbounds for value in values
-        maximum_component = max(
-            maximum_component,
-            abs(R(real(value))),
-            abs(R(imag(value))),
+struct _EquilibratedDenseLUPlan{T<:Number,F}
+    factorization::F
+    row_shifts::Vector{Int}
+    column_shifts::Vector{Int}
+end
+
+@inline function _direct_component_exponent(component::Real, ::Type{R}) where {
+        R<:Union{Float32,Float64}}
+    converted = abs(R(component))
+    iszero(converted) && return typemin(Int)
+    return exponent(converted)
+end
+
+@inline function _direct_value_exponent(value::Number, ::Type{R}) where {
+        R<:Union{Float32,Float64}}
+    return max(
+        _direct_component_exponent(real(value), R),
+        _direct_component_exponent(imag(value), R),
+    )
+end
+
+@inline function _direct_scaled_component(
+        component::Real,
+        shift::Int,
+        ::Type{R},
+        label::AbstractString) where {R<:Union{Float32,Float64}}
+    converted = R(component)
+    scaled = ldexp(converted, shift)
+    isfinite(scaled) ||
+        throw(OverflowError(
+            "$label equilibration produced a non-finite component."))
+    return scaled
+end
+
+
+@inline function _direct_scaled_value(
+        value::Number,
+        shift::Int,
+        ::Type{T},
+        label::AbstractString) where {T<:Union{Float32,Float64}}
+    return T(_direct_scaled_component(
+        real(value), shift, T, label))
+end
+
+@inline function _direct_scaled_value(
+        value::Number,
+        shift::Int,
+        ::Type{Complex{R}},
+        label::AbstractString) where {R<:Union{Float32,Float64}}
+    return Complex{R}(
+        _direct_scaled_component(real(value), shift, R, label),
+        _direct_scaled_component(imag(value), shift, R, label),
+    )
+end
+
+function _factor_equilibrated_ieee_matrix(
+        matrix::AbstractMatrix{<:Number},
+        ::Type{T},
+        label::AbstractString) where {
+        T<:Union{Float32,Float64,ComplexF32,ComplexF64}}
+    N = size(matrix, 1)
+    size(matrix, 2) == N ||
+        throw(DimensionMismatch(
+            "$label matrix must be square, got size $(size(matrix))"))
+    real_type = typeof(real(zero(T)))
+    row_shifts = Vector{Int}(undef, N)
+    @inbounds for row in axes(matrix, 1)
+        maximum_exponent = typemin(Int)
+        for column in axes(matrix, 2)
+            maximum_exponent = max(
+                maximum_exponent,
+                _direct_value_exponent(matrix[row, column], real_type),
+            )
+        end
+        maximum_exponent == typemin(Int) &&
+            throw(LinearAlgebra.SingularException(row))
+        row_shifts[row] = -maximum_exponent
+    end
+
+    column_shifts = Vector{Int}(undef, N)
+    @inbounds for column in axes(matrix, 2)
+        maximum_exponent = typemin(Int)
+        for row in axes(matrix, 1)
+            entry_exponent =
+                _direct_value_exponent(matrix[row, column], real_type)
+            entry_exponent == typemin(Int) && continue
+            maximum_exponent = max(
+                maximum_exponent,
+                entry_exponent + row_shifts[row],
+            )
+        end
+        maximum_exponent == typemin(Int) &&
+            throw(LinearAlgebra.SingularException(column))
+        column_shifts[column] = -maximum_exponent
+    end
+
+    equilibrated = Matrix{T}(undef, N, N)
+    @inbounds for column in axes(matrix, 2), row in axes(matrix, 1)
+        equilibrated[row, column] = _direct_scaled_value(
+            matrix[row, column],
+            row_shifts[row] + column_shifts[column],
+            T,
+            label,
         )
     end
-    return maximum_component
+    factorization = lu!(equilibrated)
+    return _EquilibratedDenseLUPlan{T,typeof(factorization)}(
+        factorization, row_shifts, column_shifts)
 end
 
-@inline function _ldexp_ieee_value(value, shift::Int, ::Type{T}) where {T<:Real}
-    return T(ldexp(T(real(value)), shift))
+function _direct_rhs_exponent(
+        rhs::AbstractVector,
+        row_shifts::Vector{Int},
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    maximum_exponent = typemin(Int)
+    @inbounds for row in eachindex(rhs, row_shifts)
+        value_exponent = _direct_value_exponent(rhs[row], R)
+        value_exponent == typemin(Int) && continue
+        maximum_exponent = max(
+            maximum_exponent,
+            value_exponent + row_shifts[row],
+        )
+    end
+    return maximum_exponent == typemin(Int) ? 0 : maximum_exponent
 end
 
-@inline function _ldexp_ieee_value(
-    value,
-    shift::Int,
-    ::Type{Complex{R}},
-) where {R<:AbstractFloat}
-    return Complex{R}(
-        ldexp(R(real(value)), shift),
-        ldexp(R(imag(value)), shift),
-    )
+function _solve_equilibrated_plan(
+        plan::_EquilibratedDenseLUPlan{T},
+        rhs::AbstractVector{<:Number},
+        label::AbstractString) where {T<:Number}
+    N = length(plan.row_shifts)
+    length(rhs) == N ||
+        throw(DimensionMismatch(
+            "$label RHS length $(length(rhs)) must equal matrix size $N"))
+    real_type = typeof(real(zero(T)))
+    rhs_exponent = _direct_rhs_exponent(
+        rhs, plan.row_shifts, real_type)
+    solution = Vector{T}(undef, N)
+    @inbounds for row in 1:N
+        solution[row] = _direct_scaled_value(
+            rhs[row],
+            plan.row_shifts[row] - rhs_exponent,
+            T,
+            "$label RHS",
+        )
+    end
+    ldiv!(plan.factorization, solution)
+    @inbounds for column in 1:N
+        solution[column] = _direct_scaled_value(
+            solution[column],
+            plan.column_shifts[column] + rhs_exponent,
+            T,
+            "$label solution",
+        )
+    end
+    return _assert_finite_linear_vector(solution, label)
+end
+
+function _solve_equilibrated_plan(
+        plan::_EquilibratedDenseLUPlan{T},
+        rhs::AbstractMatrix{<:Number},
+        label::AbstractString) where {T<:Number}
+    N = length(plan.row_shifts)
+    size(rhs, 1) == N ||
+        throw(DimensionMismatch(
+            "$label RHS has $(size(rhs, 1)) rows, expected $N"))
+    real_type = typeof(real(zero(T)))
+    rhs_exponents = Vector{Int}(undef, size(rhs, 2))
+    solution = Matrix{T}(undef, size(rhs))
+    @inbounds for rhs_column in axes(rhs, 2)
+        rhs_vector = @view rhs[:, rhs_column]
+        rhs_exponent = _direct_rhs_exponent(
+            rhs_vector, plan.row_shifts, real_type)
+        rhs_exponents[rhs_column] = rhs_exponent
+        for row in 1:N
+            solution[row, rhs_column] = _direct_scaled_value(
+                rhs[row, rhs_column],
+                plan.row_shifts[row] - rhs_exponent,
+                T,
+                "$label RHS",
+            )
+        end
+    end
+    ldiv!(plan.factorization, solution)
+    @inbounds for rhs_column in axes(solution, 2), column in 1:N
+        solution[column, rhs_column] = _direct_scaled_value(
+            solution[column, rhs_column],
+            plan.column_shifts[column] + rhs_exponents[rhs_column],
+            T,
+            "$label solution",
+        )
+    end
+    return _assert_finite_linear_array(solution, label)
+end
+
+Base.size(plan::_EquilibratedDenseLUPlan) =
+    size(plan.factorization)
+Base.size(plan::_EquilibratedDenseLUPlan, dimension::Integer) =
+    size(plan.factorization, dimension)
+Base.:\(plan::_EquilibratedDenseLUPlan, rhs) =
+    _solve_equilibrated_plan(plan, rhs, "equilibrated dense solve")
+LinearAlgebra.issuccess(plan::_EquilibratedDenseLUPlan) =
+    issuccess(plan.factorization)
+function LinearAlgebra.ldiv!(plan::_EquilibratedDenseLUPlan, rhs)
+    solution = _solve_equilibrated_plan(
+        plan, rhs, "equilibrated dense solve")
+    copyto!(rhs, solution)
+    return rhs
+end
+function LinearAlgebra.adjoint(plan::_EquilibratedDenseLUPlan{T}) where {T}
+    factorization = adjoint(plan.factorization)
+    return _EquilibratedDenseLUPlan{T,typeof(factorization)}(
+        factorization, plan.column_shifts, plan.row_shifts)
+end
+
+@inline function _direct_backward_error_limit(
+        ::Type{R}, N::Int) where {R<:Union{Float32,Float64}}
+    return min(0.1, max(64.0 * Float64(N) * eps(R), 64.0 * eps(R)))
+end
+
+function _direct_backward_error_fast(
+        matrix::AbstractMatrix,
+        solution::AbstractVector,
+        rhs::AbstractVector,
+        ::Type{T}) where {T<:Number}
+    maximum_error = 0.0
+    @inbounds for row in axes(matrix, 1)
+        computed = zero(T)
+        denominator = abs(T(rhs[row]))
+        for column in axes(matrix, 2)
+            matrix_value = T(matrix[row, column])
+            solution_value = T(solution[column])
+            computed += matrix_value * solution_value
+            denominator += abs(matrix_value) * abs(solution_value)
+        end
+        residual = abs(computed - T(rhs[row]))
+        row_error = iszero(denominator) ?
+                    (iszero(residual) ? 0.0 : Inf) :
+                    Float64(residual / denominator)
+        maximum_error = max(maximum_error, row_error)
+    end
+    return maximum_error
+end
+
+@noinline function _direct_backward_error_bigfloat(
+        matrix::AbstractMatrix,
+        solution::AbstractVector,
+        rhs::AbstractVector)
+    return setprecision(BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        maximum_error = zero(BigFloat)
+        @inbounds for row in axes(matrix, 1)
+            computed = zero(Complex{BigFloat})
+            denominator = abs(Complex{BigFloat}(rhs[row]))
+            for column in axes(matrix, 2)
+                matrix_value = Complex{BigFloat}(matrix[row, column])
+                solution_value = Complex{BigFloat}(solution[column])
+                computed += matrix_value * solution_value
+                denominator += abs(matrix_value) * abs(solution_value)
+            end
+            residual = abs(computed - Complex{BigFloat}(rhs[row]))
+            row_error = iszero(denominator) ?
+                        (iszero(residual) ? zero(BigFloat) : BigFloat(Inf)) :
+                        residual / denominator
+            maximum_error = max(maximum_error, row_error)
+        end
+        return Float64(maximum_error)
+    end
+end
+
+function _direct_backward_error(
+        matrix::AbstractMatrix,
+        solution::AbstractVector,
+        rhs::AbstractVector,
+        ::Type{T}) where {
+        T<:Union{Float32,Float64,ComplexF32,ComplexF64}}
+    real_type = typeof(real(zero(T)))
+    needs_fallback =
+        _ieee_dense_product_requires_fallback(
+            matrix, solution, real_type) ||
+        any(value -> _ieee_dense_extreme_factor(value, real_type), rhs)
+    return needs_fallback ?
+           _direct_backward_error_bigfloat(matrix, solution, rhs) :
+           _direct_backward_error_fast(matrix, solution, rhs, T)
+end
+
+function _direct_backward_error(
+        matrix::AbstractMatrix,
+        solution::AbstractMatrix,
+        rhs::AbstractMatrix,
+        ::Type{T}) where {
+        T<:Union{Float32,Float64,ComplexF32,ComplexF64}}
+    maximum_error = 0.0
+    @inbounds for rhs_column in axes(rhs, 2)
+        maximum_error = max(
+            maximum_error,
+            _direct_backward_error(
+                matrix,
+                @view(solution[:, rhs_column]),
+                @view(rhs[:, rhs_column]),
+                T,
+            ),
+        )
+    end
+    return maximum_error
+end
+
+@noinline function _direct_residual_bigfloat(
+        matrix::AbstractMatrix,
+        solution::AbstractVector,
+        rhs::AbstractVector,
+        ::Type{T},
+        label::AbstractString) where {T<:Number}
+    return setprecision(BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        residual = Vector{T}(undef, length(rhs))
+        @inbounds for row in axes(matrix, 1)
+            if T <: Real
+                total = zero(BigFloat)
+                for column in axes(matrix, 2)
+                    total += BigFloat(matrix[row, column]) *
+                             BigFloat(solution[column])
+                end
+                residual[row] = T(BigFloat(rhs[row]) - total)
+            else
+                total = zero(Complex{BigFloat})
+                for column in axes(matrix, 2)
+                    total += Complex{BigFloat}(matrix[row, column]) *
+                             Complex{BigFloat}(solution[column])
+                end
+                residual[row] = T(Complex{BigFloat}(rhs[row]) - total)
+            end
+            isfinite(residual[row]) ||
+                throw(OverflowError(
+                    "$label refinement residual is outside the " *
+                    "representable $T range at row $row."))
+        end
+        return residual
+    end
+end
+
+@noinline function _direct_residual_bigfloat(
+        matrix::AbstractMatrix,
+        solution::AbstractMatrix,
+        rhs::AbstractMatrix,
+        ::Type{T},
+        label::AbstractString) where {T<:Number}
+    residual = Matrix{T}(undef, size(rhs))
+    @inbounds for rhs_column in axes(rhs, 2)
+        residual[:, rhs_column] .= _direct_residual_bigfloat(
+            matrix,
+            @view(solution[:, rhs_column]),
+            @view(rhs[:, rhs_column]),
+            T,
+            label,
+        )
+    end
+    return residual
+end
+
+@noinline function _direct_add_correction!(
+        solution::AbstractArray{T},
+        correction::AbstractArray,
+        label::AbstractString) where {T<:Number}
+    return setprecision(BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        @inbounds for index in eachindex(solution, correction)
+            converted = if T <: Real
+                T(BigFloat(solution[index]) + BigFloat(correction[index]))
+            else
+                T(Complex{BigFloat}(solution[index]) +
+                  Complex{BigFloat}(correction[index]))
+            end
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "$label refined solution is outside the " *
+                    "representable $T range at index $index."))
+            solution[index] = converted
+        end
+        return solution
+    end
+end
+
+# A 4352-bit BigFloat carries roughly 0.5 KiB of significand storage. Bound
+# the cold exact factorization to about one million retained matrix/RHS values
+# so an adversarial ill-scaled dense solve fails clearly instead of requesting
+# unbounded multi-gigabyte workspace.
+const _MAX_DIRECT_BIGFLOAT_VALUES = 1_000_000
+
+struct _BigFloatDenseLUPlan{T<:Number,F}
+    factorization::F
+end
+
+function _validate_bigfloat_plan_size(
+        matrix_values::Int,
+        rhs_values::Int,
+        label::AbstractString)
+    rhs_values <= _MAX_DIRECT_BIGFLOAT_VALUES &&
+        matrix_values <= _MAX_DIRECT_BIGFLOAT_VALUES - rhs_values ||
+        throw(ArgumentError(
+            "$label exact fallback exceeds the " *
+            "$_MAX_DIRECT_BIGFLOAT_VALUES-value resource limit."))
+    return nothing
+end
+
+
+@noinline function _factor_bigfloat_ieee_matrix(
+        matrix::AbstractMatrix{<:Number},
+        ::Type{T},
+        label::AbstractString) where {
+        T<:Union{Float32,Float64,ComplexF32,ComplexF64}}
+    _validate_bigfloat_plan_size(length(matrix), 0, label)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        big_type = T <: Real ? BigFloat : Complex{BigFloat}
+        matrix_big = Matrix{big_type}(undef, size(matrix))
+        @inbounds for index in eachindex(matrix_big, matrix)
+            matrix_big[index] = big_type(matrix[index])
+        end
+        factorization = lu!(matrix_big)
+        return _BigFloatDenseLUPlan{T,typeof(factorization)}(
+            factorization)
+    end
+end
+
+@noinline function _solve_bigfloat_plan(
+        plan::_BigFloatDenseLUPlan{T},
+        rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
+        label::AbstractString) where {T<:Number}
+    matrix_values = size(plan, 1) * size(plan, 2)
+    _validate_bigfloat_plan_size(matrix_values, length(rhs), label)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        big_type = T <: Real ? BigFloat : Complex{BigFloat}
+        rhs_big = Array{big_type}(undef, size(rhs))
+        @inbounds for index in eachindex(rhs_big, rhs)
+            rhs_big[index] = big_type(rhs[index])
+        end
+        solution_big = plan.factorization \ rhs_big
+        solution = Array{T}(undef, size(rhs))
+        @inbounds for index in eachindex(solution, solution_big)
+            solution[index] = T(solution_big[index])
+            isfinite(solution[index]) ||
+                throw(OverflowError(
+                    "$label exact solution is outside the representable " *
+                    "$T range at index $index."))
+        end
+        return solution
+    end
+end
+
+Base.size(plan::_BigFloatDenseLUPlan) = size(plan.factorization)
+Base.size(plan::_BigFloatDenseLUPlan, dimension::Integer) =
+    size(plan.factorization, dimension)
+Base.:\(plan::_BigFloatDenseLUPlan, rhs) =
+    _solve_bigfloat_plan(plan, rhs, "exact dense solve")
+LinearAlgebra.issuccess(plan::_BigFloatDenseLUPlan) =
+    issuccess(plan.factorization)
+function LinearAlgebra.ldiv!(plan::_BigFloatDenseLUPlan, rhs)
+    solution = _solve_bigfloat_plan(plan, rhs, "exact dense solve")
+    copyto!(rhs, solution)
+    return rhs
+end
+function LinearAlgebra.adjoint(plan::_BigFloatDenseLUPlan{T}) where {T}
+    factorization = adjoint(plan.factorization)
+    return _BigFloatDenseLUPlan{T,typeof(factorization)}(factorization)
+end
+
+@noinline function _solve_bigfloat_ieee_linear_system(
+        matrix::AbstractMatrix{<:Number},
+        rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
+        ::Type{T},
+        label::AbstractString) where {
+        T<:Union{Float32,Float64,ComplexF32,ComplexF64}}
+    plan = _factor_bigfloat_ieee_matrix(matrix, T, label)
+    return _solve_bigfloat_plan(plan, rhs, label)
 end
 
 @noinline function _solve_scaled_ieee_linear_system(
@@ -273,36 +721,46 @@ end
     ::Type{T},
     label::AbstractString,
 ) where {T<:Number}
+    T <: Union{Float32,Float64,ComplexF32,ComplexF64} ||
+        throw(ArgumentError(
+            "$label equilibration requires an IEEE Float32/Float64 system."))
     real_type = typeof(real(zero(T)))
-    matrix_scale = _maximum_ieee_component(matrix, real_type)
-    iszero(matrix_scale) &&
-        throw(LinearAlgebra.SingularException(1))
-    rhs_scale = _maximum_ieee_component(rhs, real_type)
-    _, matrix_exponent = frexp(matrix_scale)
-    _, rhs_exponent = iszero(rhs_scale) ?
-                      (one(real_type), matrix_exponent) :
-                      frexp(rhs_scale)
-
-    scaled_matrix = Matrix{T}(undef, size(matrix))
-    @inbounds for column in axes(matrix, 2), row in axes(matrix, 1)
-        scaled_matrix[row, column] = _ldexp_ieee_value(
-            matrix[row, column], -matrix_exponent, T)
+    limit = _direct_backward_error_limit(real_type, size(matrix, 1))
+    plan = try
+        _factor_equilibrated_ieee_matrix(matrix, T, label)
+    catch err
+        _recoverable_direct_solve_error(err) || rethrow()
+        exact_solution = _solve_bigfloat_ieee_linear_system(
+            matrix, rhs, T, label)
+        exact_backward_error = _direct_backward_error(
+            matrix, exact_solution, rhs, T)
+        isfinite(exact_backward_error) && exact_backward_error <= limit &&
+            return exact_solution
+        error("$label failed componentwise backward-error verification: " *
+              "backward_error=$exact_backward_error, limit=$limit")
     end
-    scaled_rhs = Array{T}(undef, size(rhs))
-    @inbounds for index in eachindex(rhs)
-        scaled_rhs[index] = _ldexp_ieee_value(
-            rhs[index], -rhs_exponent, T)
+    solution = _solve_equilibrated_plan(plan, rhs, label)
+    for refinement in 0:2
+        backward_error = _direct_backward_error(
+            matrix, solution, rhs, T)
+        isfinite(backward_error) && backward_error <= limit &&
+            return solution
+        if refinement == 2
+            exact_solution = _solve_bigfloat_ieee_linear_system(
+                matrix, rhs, T, label)
+            exact_backward_error = _direct_backward_error(
+                matrix, exact_solution, rhs, T)
+            isfinite(exact_backward_error) && exact_backward_error <= limit &&
+                return exact_solution
+            error("$label failed componentwise backward-error verification: " *
+                  "backward_error=$exact_backward_error, limit=$limit")
+        end
+        residual = _direct_residual_bigfloat(
+            matrix, solution, rhs, T, label)
+        correction = _solve_equilibrated_plan(plan, residual, label)
+        _direct_add_correction!(solution, correction, label)
     end
-
-    scaled_solution = lu(scaled_matrix) \ scaled_rhs
-    _assert_finite_linear_array(
-        scaled_solution, "$label scaled intermediate")
-    solution_exponent = rhs_exponent - matrix_exponent
-    @inbounds for index in eachindex(scaled_solution)
-        scaled_solution[index] = _ldexp_ieee_value(
-            scaled_solution[index], solution_exponent, T)
-    end
-    return _assert_finite_linear_array(scaled_solution, label)
+    error("$label internal refinement invariant failed")
 end
 
 @inline function _recoverable_direct_solve_error(err)
@@ -311,6 +769,28 @@ end
            err isa LinearAlgebra.ZeroPivotException ||
            err isa OverflowError
 end
+
+function _factor_dense_linear_system(
+        matrix::AbstractMatrix{<:Number},
+        ::Type{T},
+        label::AbstractString) where {T<:Number}
+    real_type = typeof(real(zero(T)))
+    use_ieee_scaling = real_type <: Union{Float32,Float64} &&
+                       T <: Union{Float32,Float64,ComplexF32,ComplexF64}
+    try
+        return lu(matrix)
+    catch err
+        use_ieee_scaling && _recoverable_direct_solve_error(err) || rethrow()
+        try
+            return _factor_equilibrated_ieee_matrix(matrix, T, label)
+        catch balanced_error
+            _recoverable_direct_solve_error(balanced_error) || rethrow()
+            return _factor_bigfloat_ieee_matrix(matrix, T, label)
+        end
+    end
+end
+
+@inline _direct_factorization_backend(factorization) = factorization
 
 function _solve_factored_linear_system(
     factorization,
@@ -324,8 +804,9 @@ function _solve_factored_linear_system(
                        scalar_type <:
                            Union{Float32,Float64,ComplexF32,ComplexF64}
 
+    solve_factorization = _direct_factorization_backend(factorization)
     solution = try
-        factorization \ rhs
+        solve_factorization \ rhs
     catch err
         use_ieee_scaling && _recoverable_direct_solve_error(err) || rethrow()
         return _solve_scaled_ieee_linear_system(
@@ -339,20 +820,77 @@ function _solve_factored_linear_system(
                 matrix, rhs, scalar_type, label)
         end
     end
+    if use_ieee_scaling
+        backward_error = _direct_backward_error(
+            matrix, solution, rhs, scalar_type)
+        limit = _direct_backward_error_limit(
+            real_type, size(matrix, 1))
+        if !isfinite(backward_error) || backward_error > limit
+            return _solve_scaled_ieee_linear_system(
+                matrix, rhs, scalar_type, label)
+        end
+    end
     return solution
 end
 
+function _solve_dense_linear_system(
+        matrix::AbstractMatrix{<:Number},
+        rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
+        label::AbstractString)
+    scalar_type = promote_type(eltype(matrix), eltype(rhs))
+    factorization = _factor_dense_linear_system(
+        matrix, scalar_type, label)
+    return _solve_factored_linear_system(
+        factorization, matrix, rhs, label)
+end
 
-@noinline function _factorization_matrix_for_fallback(
-    factorization,
-    label::AbstractString,
-)
-    matrix = Matrix(factorization)
-    size(matrix, 1) == size(matrix, 2) ||
-        throw(DimensionMismatch(
-            "$label factorization reconstructed a non-square matrix of size $(size(matrix))"))
-    _validate_known_matrix_entries(matrix, "$label factorization matrix")
-    return matrix
+
+# Preserve the physical conditioning matrix alongside package-created LU
+# factors. Matrix(lu_factor) reconstructs the rounded L*U product rather than
+# the input matrix and is therefore not a valid residual oracle in general.
+struct _ConditioningFactorization{F,M<:AbstractMatrix}
+    factorization::F
+    matrix::M
+end
+
+Base.size(factor::_ConditioningFactorization) = size(factor.factorization)
+Base.size(factor::_ConditioningFactorization, dimension::Integer) =
+    size(factor.factorization, dimension)
+Base.Matrix(factor::_ConditioningFactorization) = copy(factor.matrix)
+Base.:\(factor::_ConditioningFactorization, rhs) =
+    _solve_factored_linear_system(
+        factor.factorization,
+        factor.matrix,
+        rhs,
+        "conditioned factor solution",
+    )
+LinearAlgebra.issuccess(factor::_ConditioningFactorization) =
+    issuccess(factor.factorization)
+LinearAlgebra.ldiv!(factor::_ConditioningFactorization, rhs) =
+    _solve_factored_linear_system!(
+        rhs,
+        factor.factorization,
+        factor.matrix,
+        rhs,
+        "conditioned factor solution",
+    )
+@inline _direct_factorization_backend(
+    factorization::_ConditioningFactorization) =
+    factorization.factorization
+
+function _matrix_for_verified_factor_solve(
+        factorization,
+        matrix::Union{Nothing,AbstractMatrix{<:Number}},
+        label::AbstractString)
+    matrix !== nothing && return matrix
+    factorization isa _ConditioningFactorization &&
+        return factorization.matrix
+    # Matrix(factorization) reconstructs the rounded L*U product, not the
+    # physical input matrix. It therefore cannot serve as a residual oracle,
+    # even when every factor entry has an ordinary exponent.
+    throw(ArgumentError(
+        "$label requires preconditioner_M when using an externally " *
+        "constructed preconditioner_factor."))
 end
 
 function _solve_factored_linear_system!(
@@ -365,33 +903,49 @@ function _solve_factored_linear_system!(
     size(destination) == size(rhs) ||
         throw(DimensionMismatch(
             "$label destination has size $(size(destination)), expected $(size(rhs))"))
-    copyto!(destination, rhs)
+    fallback_matrix = _matrix_for_verified_factor_solve(
+        factorization, matrix, label)
+    matrix_reference = Base.mightalias(destination, fallback_matrix) ?
+                       copy(fallback_matrix) : fallback_matrix
+    # Keep the physical RHS available for verification and exceptional retry
+    # when callers intentionally reuse its storage as the destination.
+    rhs_reference = Base.mightalias(destination, rhs) ? copy(rhs) : rhs
+    copyto!(destination, rhs_reference)
 
     solve_error = nothing
+    solve_factorization = _direct_factorization_backend(factorization)
     solution = try
-        _ldiv_reusing_input(factorization, destination)
+        _ldiv_reusing_input(solve_factorization, destination)
     catch err
         _recoverable_direct_solve_error(err) || rethrow()
         solve_error = err
         nothing
     end
-    solution !== nothing && _linear_array_is_finite(solution) &&
-        return solution
-
-    fallback_matrix = matrix === nothing ?
-                      _factorization_matrix_for_fallback(
-                          factorization, label) : matrix
-    scalar_type = promote_type(eltype(fallback_matrix), eltype(rhs), T)
+    scalar_type = promote_type(
+        eltype(matrix_reference), eltype(rhs_reference), T)
     real_type = typeof(real(zero(scalar_type)))
     use_ieee_scaling = real_type <: Union{Float32,Float64} &&
                        scalar_type <:
                            Union{Float32,Float64,ComplexF32,ComplexF64}
+    if solution !== nothing && _linear_array_is_finite(solution)
+        if !use_ieee_scaling
+            return solution
+        end
+        backward_error = _direct_backward_error(
+            matrix_reference, solution, rhs_reference, scalar_type)
+        limit = _direct_backward_error_limit(
+            real_type, size(matrix_reference, 1))
+        isfinite(backward_error) && backward_error <= limit &&
+            return solution
+    end
     if !use_ieee_scaling
         solve_error === nothing || throw(solve_error)
         return _assert_finite_linear_array(solution, label)
     end
-    return _solve_scaled_ieee_linear_system(
-        fallback_matrix, rhs, scalar_type, label)
+    fallback_solution = _solve_scaled_ieee_linear_system(
+        matrix_reference, rhs_reference, scalar_type, label)
+    copyto!(destination, fallback_solution)
+    return destination
 end
 
 """
@@ -429,8 +983,8 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
             throw(ArgumentError(
                 "Direct solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
         _validate_linear_system_inputs(Z, v, "forward solve")
-        return _solve_factored_linear_system(
-            lu(Z), Z, v, "direct forward solution")
+        return _solve_dense_linear_system(
+            Z, v, "direct forward solution")
     else
         x, stats = solve_gmres(Z, v;
                                 preconditioner=preconditioner,
@@ -550,8 +1104,14 @@ function _validate_conditioning_factor(
     if applicable(issuccess, factor) && !issuccess(factor)
         throw(ArgumentError("$label is not a successful factorization"))
     end
-    if hasproperty(factor, :factors)
-        factors = getproperty(factor, :factors)
+    factors = if hasfield(typeof(factor), :factors)
+        getfield(factor, :factors)
+    elseif hasproperty(factor, :factors)
+        getproperty(factor, :factors)
+    else
+        nothing
+    end
+    if factors !== nothing
         factors isa AbstractMatrix &&
             _validate_known_matrix_entries(factors, label)
     end
@@ -697,7 +1257,9 @@ Transform derivative blocks under left preconditioning:
 
 When `preconditioner_M === nothing`, returns `Mp` unchanged.
 If `preconditioner_factor` is provided, it is reused instead of factorizing
-`preconditioner_M`.
+`preconditioner_M`. A factor created by this API retains its physical matrix
+and can be reused alone. Pair an externally constructed factor with its
+`preconditioner_M` so residual verification uses the original matrix.
 
 Returns `(Mp_tilde, factor)` where `factor` is `nothing` for the unpreconditioned
 case.
@@ -715,7 +1277,14 @@ function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
         _validated_conditioning_matrix(
             preconditioner_M, N, "preconditioner_M")
     fac = if preconditioner_factor === nothing
-        lu(preconditioner_matrix)
+        _ConditioningFactorization(
+            _factor_dense_linear_system(
+                preconditioner_matrix,
+                ComplexF64,
+                "preconditioner factorization",
+            ),
+            preconditioner_matrix,
+        )
     else
         _validate_conditioning_factor(
             preconditioner_factor, N, "preconditioner_factor")
@@ -748,8 +1317,10 @@ Build the linear system used by forward/adjoint solves:
   rhs_eff = M^{-1} rhs
 
 If no regularization/preconditioning is requested, returns `(Z_raw, rhs, nothing)`.
-Returns `(Z_eff, rhs_eff, factor)` where `factor` is the LU factorization used
-for preconditioning (or `nothing`).
+Returns `(Z_eff, rhs_eff, factor)` where `factor` is the reusable verified
+factorization used for preconditioning (or `nothing`). Package-created factors
+retain their physical matrix and can be reused alone; externally constructed
+factors must remain paired with `preconditioner_M`.
 """
 function prepare_conditioned_system(Z_raw::Matrix{<:Number},
                                     rhs::Vector{<:Number};
@@ -791,36 +1362,25 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
         preconditioner_matrix === nothing &&
             throw(ArgumentError(
                 "preconditioner_M is required when preconditioner_factor is nothing"))
-        lu(preconditioner_matrix)
+        _ConditioningFactorization(
+            _factor_dense_linear_system(
+                preconditioner_matrix,
+                ComplexF64,
+                "preconditioner factorization",
+            ),
+            preconditioner_matrix,
+        )
     else
         _validate_conditioning_factor(
             preconditioner_factor, N, "preconditioner_factor")
     end
-    conditioned_Z = try
-        _ldiv_reusing_input(fac, Z_eff)
-    catch err
-        _recoverable_direct_solve_error(err) || rethrow()
-        nothing
-    end
-    if conditioned_Z === nothing || !_linear_array_is_finite(conditioned_Z)
-        fallback_matrix = preconditioner_matrix === nothing ?
-                          _factorization_matrix_for_fallback(
-                              fac, "conditioned system matrix") :
-                          preconditioner_matrix
-        original_Z = Matrix{ComplexF64}(Z_raw)
-        if regularization_alpha > 0.0
-            @inbounds @simd for i in eachindex(original_Z, R)
-                original_Z[i] += regularization_alpha * R[i]
-            end
-        end
-        conditioned_Z = _solve_scaled_ieee_linear_system(
-            fallback_matrix,
-            original_Z,
-            ComplexF64,
-            "conditioned system matrix",
-        )
-    end
-    Z_eff = conditioned_Z
+    Z_eff = _solve_factored_linear_system!(
+        Z_eff,
+        fac,
+        preconditioner_matrix,
+        Z_eff,
+        "conditioned system matrix",
+    )
     rhs_eff = _solve_factored_linear_system!(
         rhs_eff,
         fac,

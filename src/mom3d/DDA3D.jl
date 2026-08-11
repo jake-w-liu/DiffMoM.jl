@@ -1345,7 +1345,8 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
             grid, k0, eps_r;
             radiative_correction=radiative_correction,
         )
-        fac = lu(A)
+        fac = _factor_dense_linear_system(
+            A, ComplexF64, "direct DDA factorization")
         E_total_flat = _solve_factored_linear_system(
             fac, A, rhs, "direct DDA solution")
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)

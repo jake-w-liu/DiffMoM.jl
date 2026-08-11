@@ -145,8 +145,9 @@ object is useful later if you want total-field samples via `compute_total_field`
 I = solve_forward(Z, v)
 ```
 
-The package uses a dense LU factorization (via `LinearAlgebra.lu!`) to solve
-`Z I = v`. The solution `I` is a complex vector of RWG coefficients.
+The package uses a verified dense factorization to solve `Z I = v`, with
+power-of-two equilibration and a high-precision fallback for exceptional
+numeric ranges. The solution `I` is a complex vector of RWG coefficients.
 
 ### Step 2.7: Sample Near and Total Fields (Optional)
 

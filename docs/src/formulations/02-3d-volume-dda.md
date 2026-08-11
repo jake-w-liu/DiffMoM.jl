@@ -530,7 +530,7 @@ provides an adjoint sensitivity that mirrors the surface-EFIE adjoint workflow.
 Given an objective $J = \Re(\mathbf{E}^{\dagger}\,\mathbf{Q}\,\mathbf{E})$:
 
 1. Solve the forward system for $\mathbf{E}$.
-2. Solve the adjoint system $A^{\dagger}\boldsymbol{\lambda} = \mathbf{Q}\mathbf{E}$ with `solve_dda_adjoint_3d` (the `:direct` mode reuses the stored LU from the forward solve).
+2. Solve the adjoint system $A^{\dagger}\boldsymbol{\lambda} = \mathbf{Q}\mathbf{E}$ with `solve_dda_adjoint_3d` (the `:direct` mode reuses the stored verified dense factorization from the forward solve).
 3. Form the real gradient with `gradient_epsr_dda_3d`:
 
 ```math

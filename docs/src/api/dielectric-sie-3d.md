@@ -419,7 +419,7 @@ end
 | `M` | `Vector{ComplexF64}` | Magnetic surface-current RWG coefficients (length `N`). |
 | `A` | `AbstractMatrix{ComplexF64}` | The system operator: a dense `Matrix{ComplexF64}` for `solver=:direct`, or a `MatrixFreeDielectricSIE3D` for `solver=:gmres`. |
 | `rhs` | `Vector{ComplexF64}` | The right-hand side used (length `2N`). |
-| `A_LU` | LU factorization or `Nothing` | LU factorization of `A` for `solver=:direct`; `nothing` for `solver=:gmres`. |
+| `A_LU` | Dense factorization or `Nothing` | Verified reusable factorization of `A` for `solver=:direct`; `nothing` for `solver=:gmres`. |
 | `solver` | `Symbol` | `:direct` or `:gmres`. |
 | `stats` | Krylov stats or `Nothing` | `Krylov.gmres` statistics for `solver=:gmres`; `nothing` for `solver=:direct`. |
 | `formulation` | `Symbol` | `:pmchwt` or `:muller`. |

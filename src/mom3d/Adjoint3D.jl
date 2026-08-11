@@ -95,12 +95,16 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
     rhs = _coerce_adjoint_rhs_3d(grad_E_flat, res.grid.nvoxels, "grad_E_flat")
 
     if solver == :direct
-        # Reuse the stored LU factorization of A when available: solving A' x = rhs
-        # from existing factors is O(N^2) and numerically identical to refactorizing
-        # adjoint(res.A), which is O(N^3) per call (costly in optimization loops).
+        # Reuse the stored verified factorization of A when available. Solving
+        # from existing factors is O(N^2), while refactorizing adjoint(res.A)
+        # is O(N^3) per call (costly in optimization loops).
         adjoint_A = adjoint(res.A)
         adjoint_factorization = res.A_LU === nothing ?
-                                lu(adjoint_A) : adjoint(res.A_LU)
+                                _factor_dense_linear_system(
+                                    adjoint_A,
+                                    ComplexF64,
+                                    "direct DDA adjoint factorization",
+                                ) : adjoint(res.A_LU)
         lambda = _solve_factored_linear_system(
             adjoint_factorization,
             adjoint_A,

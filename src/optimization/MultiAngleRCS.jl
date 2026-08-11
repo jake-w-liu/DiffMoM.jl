@@ -668,7 +668,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         if use_dense_lu
             assemble_full_Z!(Z_buf, Z_base, Mp, theta; reactive=reactive)
             Z_full = Z_buf
-            Z_factor = lu(Z_full)
+            Z_factor = _factor_dense_linear_system(
+                Z_full, ComplexF64,
+                "multi-angle direct factorization")
         else
             Z_full = ImpedanceLoadedOperator(Z_base, Mp, theta, reactive)
             Z_factor = nothing
@@ -873,7 +875,11 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                         if use_dense_lu
                             assemble_full_Z!(Z_buf, Z_base, Mp, theta_trial; reactive=reactive)
                             Z_trial = Z_buf
-                            Z_trial_factor = lu(Z_trial)
+                            Z_trial_factor = _factor_dense_linear_system(
+                                Z_trial,
+                                ComplexF64,
+                                "multi-angle trial direct factorization",
+                            )
                         else
                             Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
                             Z_trial_factor = nothing

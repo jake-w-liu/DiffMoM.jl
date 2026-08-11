@@ -765,7 +765,8 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
 
     if solver == :direct
         A = Matrix(Aop)
-        fac = lu(A)
+        fac = _factor_dense_linear_system(
+            A, ComplexF64, "direct EM DDA factorization")
         total_flat = _solve_factored_linear_system(
             fac, A, rhs, "direct EM DDA solution")
         E_total, H_total = _unflatten_em_fields_3d(total_flat, grid.nvoxels)

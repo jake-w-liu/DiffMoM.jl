@@ -92,7 +92,7 @@ Z_{\text{eff}} = M^{-1} Z_{\text{reg}},
 \text{rhs}_{\text{eff}} = M^{-1}\,\text{rhs}.
 ```
 
-The LU factorization of `M` is returned for reuse.
+The verified factorization of `M` is returned for reuse.
 
 ### 2.3 Preconditioner Mode Selection
 

@@ -361,7 +361,7 @@ For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise
 |-----------|------|---------|-------------|
 | `Z` | `AbstractMatrix{<:Number}` | -- | System matrix (N x N). Typically from `assemble_full_Z` or `assemble_Z_efie`. For `:direct`, must be a dense `Matrix`. |
 | `v` | `AbstractVector{<:Number}` | -- | Excitation vector (length N). From `assemble_excitation` or `assemble_v_plane_wave`. |
-| `solver` | `Symbol` | `:direct` | **`:direct`**: LU factorization (`Z \ v`). Exact, O(N^3). Best for N < ~2000. **`:gmres`**: Iterative GMRES. O(N^2 * n_iter). Best for large N with a good preconditioner. |
+| `solver` | `Symbol` | `:direct` | **`:direct`**: verified dense factorization with automatic equilibration and a high-precision fallback for exceptional ranges. O(N^3). Best for N < ~2000. **`:gmres`**: Iterative GMRES. O(N^2 * n_iter). Best for large N with a good preconditioner. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. Ignored when `solver=:direct`. Build with `build_nearfield_preconditioner`. |
 | `gmres_precond_side` | `Symbol` | `:left` | `:left` or `:right` preconditioner application side (forwarded to `solve_gmres` as `precond_side`). |
 | `gmres_tol` | `Float64` | `1e-8` | Relative convergence tolerance for GMRES. Smaller = more accurate but more iterations. `1e-8` is conservative; `1e-6` is often sufficient. |
@@ -700,7 +700,7 @@ If `preconditioner_M` is explicitly provided, it takes precedence over the `mode
 
 Transform derivative blocks under left preconditioning: `Mp_tilde[p] = M^{-1} * Mp[p]`.
 
-When no preconditioner is active (`preconditioner_M === nothing`), returns `Mp` unchanged. If `preconditioner_factor` is provided (a pre-computed LU factorization of M), it is reused to avoid redundant factorization.
+When no preconditioner is active (`preconditioner_M === nothing`), returns `Mp` unchanged. A factor created by this API retains the physical matrix and can be reused alone. To reuse an externally constructed factor, also pass its original `preconditioner_M`; the original matrix is required for residual verification.
 
 **Returns:** Tuple `(Mp_tilde, factor)`.
 
@@ -718,7 +718,12 @@ rhs_eff = M^{-1} * rhs
 
 If no regularization or preconditioning is requested, returns `(Z_raw, rhs, nothing)` unchanged.
 
-**Returns:** Tuple `(Z_eff, rhs_eff, factor)` where `factor` is the LU factorization of M (or `nothing`).
+Package-created factors returned by the conditioning APIs retain the original
+preconditioner matrix and may be passed alone. An externally constructed factor
+must be paired with its original `preconditioner_M` so the transformed solves
+can be verified against the physical matrix.
+
+**Returns:** Tuple `(Z_eff, rhs_eff, factor)` where `factor` is the reusable verified factorization for M (or `nothing`).
 
 ---
 

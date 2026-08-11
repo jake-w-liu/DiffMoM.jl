@@ -229,7 +229,7 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
         1.0e308, 0, 0,
         -1.0e308, 0, 0,
     ]
-    @test_throws ErrorException solve_dda_adjoint_3d(
+    @test_throws OverflowError solve_dda_adjoint_3d(
         near_singular_result, huge_adjoint_rhs)
 end
 

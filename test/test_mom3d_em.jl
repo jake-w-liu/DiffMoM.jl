@@ -209,7 +209,7 @@ end
             CVec3(-1.0e308 + 0im, 0.0 + 0im, 0.0 + 0im),
         ]
         huge_H = fill(zero(CVec3), solve_grid.nvoxels)
-        @test_throws ErrorException solve_em_dda_3d(
+        @test_throws OverflowError solve_em_dda_3d(
             solve_grid, 1.0, near_singular_alpha, huge_E, huge_H)
     end
 
