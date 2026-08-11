@@ -79,6 +79,40 @@ function _green_kernel_allocations(r, rp, k)
     )
 end
 
+function _green_kernel_bigfloat_reference(r::Vec3, rp::Vec3, k::Number)
+    return setprecision(BigFloat, 8192) do
+        dx = BigFloat(r[1]) - BigFloat(rp[1])
+        dy = BigFloat(r[2]) - BigFloat(rp[2])
+        dz = BigFloat(r[3]) - BigFloat(rp[3])
+        distance = sqrt(dx * dx + dy * dy + dz * dz)
+        q = Complex{BigFloat}(BigFloat(imag(k)), -BigFloat(real(k)))
+        inv_four_pi = inv(4 * BigFloat(π))
+
+        if iszero(distance)
+            return (
+                0.0 + 0.0im,
+                ComplexF64(q * inv_four_pi),
+                CVec3(0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im),
+            )
+        end
+
+        phase_argument = q * distance
+        phase = exp(phase_argument)
+        green = ComplexF64(phase * (inv_four_pi / distance))
+        smooth = ComplexF64(
+            expm1(phase_argument) * (inv_four_pi / distance))
+        radial_factor = phase * inv_four_pi *
+                        (phase_argument - one(phase_argument))
+        gradient = CVec3(ntuple(component -> begin
+            delta = component == 1 ? dx : component == 2 ? dy : dz
+            ComplexF64(iszero(delta) ? zero(phase_argument) :
+                       ((radial_factor * (delta / distance)) / distance) /
+                       distance)
+        end, 3))
+        return green, smooth, gradient
+    end
+end
+
 function _static_integral_allocations(P, V1, V2, V3)
     analytical_integral_1overR(P, V1, V2, V3)
     grad_analytical_integral_1overR(P, V1, V2, V3)
@@ -685,6 +719,110 @@ G_expected = exp(-1im * k0 * R) / (4π * R)
 @test_throws ArgumentError grad_greens(
     r1, Vec3(Inf, 0.0, 0.0), k0)
 @test _green_kernel_allocations(r1, r2, k0) == (0, 0, 0)
+
+# These references evaluate the mathematical kernels at 8192-bit precision
+# from the exact Float64 inputs before converting the complete result.
+green_tiny_point = Vec3(1e-31, 0.0, 0.0)
+green_tiny_reference = _green_kernel_bigfloat_reference(
+    r1, green_tiny_point, 1.0)
+@test greens(r1, green_tiny_point, 1.0) == green_tiny_reference[1]
+green_tiny_smooth = greens_smooth(r1, green_tiny_point, 1.0)
+@test isapprox(real(green_tiny_smooth), real(green_tiny_reference[2]);
+               rtol=2eps(Float64), atol=0.0)
+@test imag(green_tiny_smooth) == imag(green_tiny_reference[2])
+@test !iszero(real(green_tiny_smooth))
+green_tiny_gradient = grad_greens(r1, green_tiny_point, 1.0)
+@test isapprox(real(green_tiny_gradient[1]),
+               real(green_tiny_reference[3][1]);
+               rtol=2eps(Float64), atol=0.0)
+@test isapprox(imag(green_tiny_gradient[1]),
+               imag(green_tiny_reference[3][1]);
+               rtol=2eps(Float64), atol=0.0)
+@test !iszero(imag(green_tiny_gradient[1]))
+@test green_tiny_gradient[2:3] == green_tiny_reference[3][2:3]
+
+green_subnormal_point = Vec3(1e-200, 0.0, 0.0)
+green_subnormal_reference = _green_kernel_bigfloat_reference(
+    r1, green_subnormal_point, 1.0)
+@test greens(r1, green_subnormal_point, 1.0) ==
+      green_subnormal_reference[1]
+@test greens_smooth(r1, green_subnormal_point, 1.0) ==
+      green_subnormal_reference[2]
+@test_throws OverflowError grad_greens(
+    r1, green_subnormal_point, 1.0)
+
+green_large_point = Vec3(1e160, 0.0, 0.0)
+green_large_reference = _green_kernel_bigfloat_reference(
+    r1, green_large_point, 1e-160)
+@test greens(r1, green_large_point, 1e-160) == green_large_reference[1]
+@test greens_smooth(r1, green_large_point, 1e-160) ==
+      green_large_reference[2]
+@test grad_greens(r1, green_large_point, 1e-160) ==
+      green_large_reference[3]
+
+green_phase_point = Vec3(2.0, 0.0, 0.0)
+green_phase_reference = _green_kernel_bigfloat_reference(
+    r1, green_phase_point, 1e308)
+@test greens(r1, green_phase_point, 1e308) == green_phase_reference[1]
+@test greens_smooth(r1, green_phase_point, 1e308) ==
+      green_phase_reference[2]
+@test grad_greens(r1, green_phase_point, 1e308) ==
+      green_phase_reference[3]
+
+green_max_point = Vec3(
+    floatmax(Float64), floatmax(Float64), floatmax(Float64))
+green_min_point = -green_max_point
+green_max_reference = _green_kernel_bigfloat_reference(
+    green_max_point, green_min_point, floatmax(Float64))
+@test greens(green_max_point, green_min_point, floatmax(Float64)) ==
+      green_max_reference[1]
+@test greens_smooth(
+    green_max_point, green_min_point, floatmax(Float64)) ==
+      green_max_reference[2]
+@test grad_greens(
+    green_max_point, green_min_point, floatmax(Float64)) ==
+      green_max_reference[3]
+
+green_growth_k = ComplexF64(0.0, log(1e308) / 1e308)
+green_growth_point = Vec3(1e308, 0.0, 0.0)
+green_growth_reference = _green_kernel_bigfloat_reference(
+    green_growth_point, r1, green_growth_k)
+@test greens(green_growth_point, r1, green_growth_k) ==
+      green_growth_reference[1]
+@test greens_smooth(green_growth_point, r1, green_growth_k) ==
+      green_growth_reference[2]
+@test grad_greens(green_growth_point, r1, green_growth_k) ==
+      green_growth_reference[3]
+
+green_phase_one_reference = _green_kernel_bigfloat_reference(
+    r1, Vec3(1e-15, 0.0, 0.0), 1e15)
+@test isapprox(
+    greens_smooth(r1, Vec3(1e-15, 0.0, 0.0), 1e15),
+    green_phase_one_reference[2];
+    rtol=2eps(Float64),
+    atol=0.0,
+)
+
+@test greens(r1, r1, 2.3 + 0.4im) == 0.0 + 0.0im
+@test greens_smooth(r1, r1, 2.3 + 0.4im) ==
+      _green_kernel_bigfloat_reference(r1, r1, 2.3 + 0.4im)[2]
+@test grad_greens(r1, r1, 2.3 + 0.4im) ==
+      CVec3(0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im)
+
+# These are true Float64 output-range boundaries, not intermediate failures.
+@test_throws OverflowError greens(r1, Vec3(1e-310, 0.0, 0.0), 0.0)
+@test isfinite(greens(r1, Vec3(1e-309, 0.0, 0.0), 0.0))
+@test_throws OverflowError grad_greens(
+    r1, Vec3(1e-200, 0.0, 0.0), 0.0)
+@test all(isfinite, grad_greens(
+    r1, Vec3(3e-155, 0.0, 0.0), 0.0))
+
+@test _green_kernel_allocations(
+    r1, Vec3(0.4, -0.2, 0.1), 2.3 + 1e-30im) == (0, 0, 0)
+@test _green_kernel_allocations(
+    r1, Vec3(1e-15, 0.0, 0.0), 1.0) == (0, 0, 0)
+@test sum(_green_kernel_allocations(
+    green_max_point, green_min_point, floatmax(Float64))) <= 100_000
 
 println("  PASS ✓")
 
