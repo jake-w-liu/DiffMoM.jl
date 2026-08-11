@@ -51,6 +51,104 @@ using .DiffMoM
                                resonance_freq_hz=2.0e14, gamma_hz=1.0e13)) <= 0
     @test imag(debye_epsr_3d(1.0e9; eps_static=4.0, eps_inf=2.0, tau_s=1.0e-10)) <= 0
 
+    @test drude_epsr_3d(
+        1.0e200;
+        eps_inf=1.0,
+        plasma_freq_hz=2.0e200,
+        gamma_hz=0.0,
+    ) == -3.0 + 0.0im
+    @test drude_epsr_3d(
+        1.0e308;
+        eps_inf=1.0,
+        plasma_freq_hz=1.0e308,
+        gamma_hz=0.0,
+    ) == 0.0 + 0.0im
+    damped_drude = drude_epsr_3d(
+        1.0e-200;
+        eps_inf=1.0,
+        plasma_freq_hz=1.0e100,
+        gamma_hz=1.0e308,
+    )
+    damped_drude_reference = setprecision(BigFloat, 512) do
+        denominator = BigFloat(1.0e-200)^2 -
+                      Complex{BigFloat}(0, 1) *
+                      BigFloat(1.0e308) * BigFloat(1.0e-200)
+        ComplexF64(
+            BigFloat(1.0) - BigFloat(1.0e100)^2 / denominator)
+    end
+    @test damped_drude == damped_drude_reference
+    @test lorentz_epsr_3d(
+        2.0e200;
+        eps_inf=1.0,
+        strength=3.0,
+        resonance_freq_hz=1.0e200,
+        gamma_hz=0.0,
+    ) == 0.0 + 0.0im
+    @test_throws ErrorException lorentz_epsr_3d(
+        1.0e200;
+        eps_inf=1.0,
+        strength=3.0,
+        resonance_freq_hz=1.0e200,
+        gamma_hz=0.0,
+    )
+    @test debye_epsr_3d(
+        1.0e308;
+        eps_static=3.0,
+        eps_inf=1.0,
+        tau_s=1.0e308,
+    ) == 1.0 + 0.0im
+
+    drude_epsr_3d(
+        2.0e14;
+        eps_inf=1.0,
+        plasma_freq_hz=1.0e15,
+        gamma_hz=1.0e13,
+    )
+    @test @allocated(drude_epsr_3d(
+        2.0e14;
+        eps_inf=1.0,
+        plasma_freq_hz=1.0e15,
+        gamma_hz=1.0e13,
+    )) == 0
+    lorentz_epsr_3d(
+        1.0e14;
+        eps_inf=1.0,
+        strength=0.5,
+        resonance_freq_hz=2.0e14,
+        gamma_hz=1.0e13,
+    )
+    @test @allocated(lorentz_epsr_3d(
+        1.0e14;
+        eps_inf=1.0,
+        strength=0.5,
+        resonance_freq_hz=2.0e14,
+        gamma_hz=1.0e13,
+    )) == 0
+    debye_epsr_3d(
+        1.0e9;
+        eps_static=4.0,
+        eps_inf=2.0,
+        tau_s=1.0e-10,
+    )
+    @test @allocated(debye_epsr_3d(
+        1.0e9;
+        eps_static=4.0,
+        eps_inf=2.0,
+        tau_s=1.0e-10,
+    )) == 0
+    drude_epsr_3d(
+        1.0e200;
+        eps_inf=1.0,
+        plasma_freq_hz=2.0e200,
+        gamma_hz=0.0,
+    )
+    @test @allocated(drude_epsr_3d(
+        1.0e200;
+        eps_inf=1.0,
+        plasma_freq_hz=2.0e200,
+        gamma_hz=0.0,
+    )) <= 20_000
+
     @test_throws ErrorException IsotropicMaterial3D(2.0 + 0.1im)
     @test IsotropicMaterial3D(2.0 + 0.1im; passive=false).eps_r == 2.0 + 0.1im
     @test_throws ErrorException DiagonalAnisotropicMaterial3D((2.0, 3.0))
