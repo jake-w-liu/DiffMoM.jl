@@ -89,19 +89,26 @@ const _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION = 4352
 @inline _ieee_dense_safe_factor_exponent(::Type{Float64}) = 128
 @inline _ieee_dense_safe_factor_exponent(::Type{Float32}) = 16
 
-@inline function _ieee_dense_extreme_factor(
-        value::Number,
+@inline function _ieee_dense_extreme_component(
+        component::Real,
         ::Type{R}) where {R<:Union{Float32,Float64}}
-    scale = max(
-        abs(R(real(value))),
-        abs(R(imag(value))),
-    )
+    scale = abs(R(component))
     isfinite(scale) || return true
     iszero(scale) && return false
     safe_exponent = _ieee_dense_safe_factor_exponent(R)
     value_exponent = exponent(scale)
     return value_exponent < -safe_exponent ||
            value_exponent > safe_exponent
+end
+
+@inline function _ieee_dense_extreme_factor(
+        value::Number,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    # Inspect both components independently. A normal real component must not
+    # hide a subnormal imaginary component whose individually rounded products
+    # can combine into a representable result.
+    return _ieee_dense_extreme_component(real(value), R) ||
+           _ieee_dense_extreme_component(imag(value), R)
 end
 
 function _ieee_dense_product_requires_fallback(

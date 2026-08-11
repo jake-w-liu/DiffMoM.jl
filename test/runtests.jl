@@ -3417,6 +3417,48 @@ end
 @test DiffMoM._finite_matrix_vector_product(
     dense_underflow_matrix32, dense_underflow_input32,
     "Float32 underflow regression") == dense_underflow_reference32
+
+dense_mixed_component_matrix = ComplexF64[
+    1.0 + nextfloat(0.0)im  -1.0 + nextfloat(0.0)im
+]
+dense_mixed_component_input = fill(ComplexF64(0.4), 2)
+dense_mixed_component_reference = setprecision(BigFloat, 4352) do
+    ComplexF64.(
+        Matrix{Complex{BigFloat}}(dense_mixed_component_matrix) *
+        Complex{BigFloat}.(dense_mixed_component_input))
+end
+@test dense_mixed_component_reference ==
+      ComplexF64[Complex(0.0, nextfloat(0.0))]
+@test DiffMoM._finite_matrix_vector_product(
+    dense_mixed_component_matrix,
+    dense_mixed_component_input,
+    "mixed-component Float64 underflow regression",
+) == dense_mixed_component_reference
+dense_mixed_component_workspace = zeros(ComplexF64, 1)
+DiffMoM._finite_matrix_vector_product!(
+    dense_mixed_component_workspace,
+    dense_mixed_component_matrix,
+    dense_mixed_component_input,
+    "in-place mixed-component Float64 underflow regression",
+)
+@test dense_mixed_component_workspace == dense_mixed_component_reference
+
+dense_mixed_component_matrix32 = ComplexF32[
+    1.0f0 + nextfloat(0.0f0)im  -1.0f0 + nextfloat(0.0f0)im
+]
+dense_mixed_component_input32 = fill(ComplexF32(0.4f0), 2)
+dense_mixed_component_reference32 = setprecision(BigFloat, 4352) do
+    ComplexF32.(
+        Matrix{Complex{BigFloat}}(dense_mixed_component_matrix32) *
+        Complex{BigFloat}.(dense_mixed_component_input32))
+end
+@test dense_mixed_component_reference32 ==
+      ComplexF32[Complex(0.0f0, nextfloat(0.0f0))]
+@test DiffMoM._finite_matrix_vector_product(
+    dense_mixed_component_matrix32,
+    dense_mixed_component_input32,
+    "mixed-component Float32 underflow regression",
+) == dense_mixed_component_reference32
 @test_throws OverflowError solve_adjoint(
     Matrix{ComplexF64}(I, 1, 1),
     reshape(ComplexF64[2.0], 1, 1),
