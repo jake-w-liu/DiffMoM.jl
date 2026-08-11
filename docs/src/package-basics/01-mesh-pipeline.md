@@ -119,9 +119,10 @@ report = mesh_quality_report(mesh;
 
 1. **Invalid triangles**: Index out of bounds or repeated vertices
 2. **Degenerate triangles**: Area below tolerance $A_{\min} = \epsilon_{\text{rel}} \times L_{\text{bbox}}^2$
-3. **Boundary edges**: Edges with only one incident triangle (acceptable for open surfaces)
-4. **Non-manifold edges**: Edges with ≥3 incident triangles (topologically invalid)
-5. **Orientation conflicts**: Interior edges where adjacent triangles disagree on edge direction
+3. **Duplicate triangles**: The same three vertex indices in any winding
+4. **Boundary edges**: Edges with only one incident triangle (acceptable for open surfaces)
+5. **Non-manifold edges**: Edges with ≥3 incident triangles (topologically invalid)
+6. **Orientation conflicts**: Interior edges where adjacent triangles disagree on edge direction
 
 #### Interpretation and Acceptance:
 
@@ -233,7 +234,11 @@ rep = repair_mesh_for_simulation(mesh_raw;
     strict_nonmanifold=true,
     fix_orientation=true)
 mesh_repaired = rep.mesh
-println("Repaired: removed $(length(rep.removed_invalid) + length(rep.removed_degenerate)) triangles")
+removed_triangles = length(rep.removed_invalid) +
+                    length(rep.removed_degenerate) +
+                    length(rep.removed_duplicate) +
+                    rep.removed_nonmanifold
+println("Repaired: removed $removed_triangles triangles")
 
 # 4. Coarsen to target complexity
 target_rwg = 5000

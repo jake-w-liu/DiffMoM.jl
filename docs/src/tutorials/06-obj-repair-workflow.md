@@ -6,7 +6,7 @@ CAD‑exported meshes often contain defects that violate the topological assumpt
 
 You will learn to:
 
-- **Identify mesh defects** (non‑manifold edges, degenerate triangles, orientation conflicts) using `mesh_quality_report`.
+- **Identify mesh defects** (duplicate faces, non‑manifold edges, degenerate triangles, orientation conflicts) using `mesh_quality_report`.
 - **Apply automated repair** with `repair_obj_mesh` or `repair_mesh_for_simulation`, understanding the trade‑offs of each flag.
 - **Visualize repaired and coarsened meshes** side‑by‑side to verify geometric fidelity.
 - **Enforce a quality checklist** with `assert_mesh_quality` before simulation.
@@ -36,6 +36,7 @@ After this tutorial, you should be able to:
 | **Non‑manifold edge** | Edge shared by >2 triangles (common in CAD “seams”) | RWG construction fails; basis functions undefined |
 | **Degenerate triangle** | Zero‑area triangle (collapsed vertices) | Singular mass matrix; integration weights NaN |
 | **Invalid triangle** | Vertex index out of bounds (corrupt OBJ) | Array bounds error during assembly |
+| **Duplicate triangle** | Same three vertex indices repeated in any winding | Coincident double surface and invalid RWG topology |
 | **Orientation conflict** | Adjacent triangles have opposing normals (inside‑out flip) | EFIE sign errors; scattered field phase reversed |
 | **Boundary edge** | Edge belonging to only one triangle (open surface) | OK for open surfaces; must set `allow_boundary=true` |
 | **Non‑watertight mesh** | Holes or missing triangles (unintended gaps) | May still simulate but physics unrealistic |
@@ -100,6 +101,7 @@ When you run the demo script, it prints a repair summary:
 Repairing mesh...
   Removed invalid: ...
   Removed degenerate: ...
+  Removed duplicate: ...
   Removed non-manifold: ...
   Flipped: ...
   Repaired mesh: ... vertices, ... triangles
@@ -126,6 +128,8 @@ mesh_repaired = result.mesh
 println("Flipped $(length(result.flipped_triangles)) triangles")
 println("Removed $(length(result.removed_degenerate)) degenerate triangles")
 println("Removed $(length(result.removed_invalid)) invalid triangles")
+println("Removed $(length(result.removed_duplicate)) duplicate triangles")
+println("Removed $(length(result.removed_vertices)) unreferenced vertices")
 ```
 
 The function returns a named tuple containing before/after statistics and lists of modified triangles.

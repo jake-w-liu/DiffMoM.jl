@@ -482,16 +482,19 @@ The function `mesh_quality_report(mesh)` scans the mesh and returns a structured
 | `n_invalid_vertices` + `invalid_vertices` | Vertex has a NaN or infinite coordinate. | Invalid arithmetic or corrupt mesh input. |
 | `n_invalid_triangles` + `invalid_triangles` | Triangle has out-of-range indices or repeated vertices. | Off-by-one indexing, corrupt connectivity. |
 | `n_degenerate_triangles` + `degenerate_triangles` | Triangle area is below tolerance (`area_tol_abs`). | Collapsed/near-collapsed elements. |
+| `n_duplicate_triangles` + `duplicate_triangles` | A later triangle repeats the same three vertex indices in any winding. | Duplicate CAD facets or orientation repair applied to coincident faces. |
 | `n_nonmanifold_edges` | An edge has more than two incident triangles. | Non-manifold topology, T-junction style defects. |
 | `n_orientation_conflicts` | Interior-edge orientation is inconsistent. | Mixed triangle winding conventions. |
 | `n_boundary_edges` | Edges with one incident triangle (open boundary). | Open surfaces or missing facets. |
 | `n_edges_total`, `n_interior_edges` | Topology summary counts. | Mesh-connectivity diagnostics. |
 
-The report also includes `mesh_scale` (the actual bounding-box diagonal) and
+The report also includes `mesh_scale` (the bounding-box diagonal of finite
+vertices referenced by syntactically valid, positive-area triangles) and
 `area_tol_abs`, the absolute area threshold derived from
-`area_tol_rel * mesh_scale^2`. No fixed unit-scale floor is applied, so the
-check behaves consistently for geometries expressed at different physical
-scales.
+`area_tol_rel * mesh_scale^2`. Orphan vertices and unconditionally invalid
+faces do not inflate the tolerance, and no fixed unit-scale floor is applied,
+so the check behaves consistently for geometries expressed at different
+physical scales.
 
 ### 6.3 Using `mesh_quality_report` and `mesh_quality_ok`
 

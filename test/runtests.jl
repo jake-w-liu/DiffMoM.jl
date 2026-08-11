@@ -492,6 +492,28 @@ report_empty = mesh_quality_report(empty_mesh)
 @test !mesh_quality_ok(report_empty; allow_boundary=true)
 @test_throws ErrorException assert_mesh_quality(empty_mesh; allow_boundary=true)
 
+# Face identity is independent of winding. A reversed duplicate must not make
+# a coincident two-sided triangle look like a closed manifold surface.
+duplicate_face_mesh = TriMesh(
+    Float64[0 1 0; 0 0 1; 0 0 0],
+    Int[1 3; 2 2; 3 1],
+)
+duplicate_face_report = mesh_quality_report(duplicate_face_mesh)
+@test duplicate_face_report.n_duplicate_triangles == 1
+@test duplicate_face_report.duplicate_triangles == [2]
+@test duplicate_face_report.n_boundary_edges == 3
+@test !mesh_quality_ok(duplicate_face_report; allow_boundary=true)
+@test !mesh_quality_ok(
+    duplicate_face_report; allow_boundary=false, require_closed=true)
+@test_throws ErrorException assert_mesh_quality(
+    duplicate_face_mesh; allow_boundary=true)
+@test_throws ErrorException assert_mesh_quality(
+    duplicate_face_mesh; allow_boundary=false, require_closed=true)
+@test_throws ErrorException build_rwg(
+    duplicate_face_mesh; allow_boundary=true)
+@test_throws ErrorException build_rwg(
+    duplicate_face_mesh; allow_boundary=false, require_closed=true)
+
 # ─────────────────────────────────────────────────
 # Test 1b: OBJ mesh import
 # ─────────────────────────────────────────────────
@@ -582,6 +604,120 @@ repair_mixed = repair_mesh_for_simulation(
 @assert ntriangles(repair_mixed.mesh) == 1
 @assert length(repair_mixed.removed_invalid) == 1
 @assert length(repair_mixed.removed_degenerate) == 1
+
+repair_duplicate = repair_mesh_for_simulation(
+    duplicate_face_mesh; allow_boundary=true)
+@test repair_duplicate.removed_duplicate == [2]
+@test ntriangles(repair_duplicate.mesh) == 1
+@test repair_duplicate.mesh.tri == reshape(Int[1, 2, 3], 3, 1)
+@test repair_duplicate.after.n_duplicate_triangles == 0
+
+# Duplicate removal must precede non-manifold cleanup: the third face below is
+# a reversed copy of the first, not a reason to discard the valid square.
+square_with_duplicate = TriMesh(
+    copy(mesh_obj.xyz),
+    hcat(mesh_obj.tri, Int[3, 2, 1]),
+)
+repair_square_duplicate = repair_mesh_for_simulation(
+    square_with_duplicate; allow_boundary=true)
+@test repair_square_duplicate.removed_duplicate == [3]
+@test repair_square_duplicate.removed_nonmanifold == 0
+@test repair_square_duplicate.mesh.tri == mesh_obj.tri
+
+# Dropped invalid triangles and unused vertices are compacted and remapped.
+# This lets documented repair discard an unused/non-referenced NaN vertex.
+invalid_unused_vertex_mesh = TriMesh(
+    Float64[0 1 0 NaN; 0 0 1 0; 0 0 0 0],
+    Int[1 1; 2 2; 3 4],
+)
+repair_invalid_unused = repair_mesh_for_simulation(
+    invalid_unused_vertex_mesh;
+    allow_boundary=true,
+    fix_orientation=false,
+)
+@test repair_invalid_unused.removed_invalid == [2]
+@test repair_invalid_unused.removed_vertices == [4]
+@test repair_invalid_unused.vertex_old_to_new == [1, 2, 3, 0]
+@test nvertices(repair_invalid_unused.mesh) == 3
+@test ntriangles(repair_invalid_unused.mesh) == 1
+@test all(isfinite, repair_invalid_unused.mesh.xyz)
+@test_throws ErrorException repair_mesh_for_simulation(
+    invalid_unused_vertex_mesh;
+    allow_boundary=true,
+    drop_invalid=false,
+)
+
+# Orphan vertices do not define triangle scale. Otherwise a distant but
+# unreferenced coordinate can make a valid retained face fail the relative
+# area tolerance before compaction runs.
+for orphan_coordinate in (1.0e6, 1.0e308)
+    orphan_vertex_mesh = TriMesh(
+        Float64[0 1 0 orphan_coordinate; 0 0 1 0; 0 0 0 0],
+        reshape(Int[1, 2, 3], 3, 1),
+    )
+    orphan_report = mesh_quality_report(orphan_vertex_mesh)
+    @test orphan_report.mesh_scale ≈ sqrt(2.0)
+    @test orphan_report.n_degenerate_triangles == 0
+    orphan_repair = repair_mesh_for_simulation(
+        orphan_vertex_mesh; allow_boundary=true)
+    @test orphan_repair.removed_vertices == [4]
+    @test orphan_repair.vertex_old_to_new == [1, 2, 3, 0]
+    @test triangle_area(orphan_repair.mesh, 1) == 0.5
+end
+
+# A triangle is excluded from the scale as a unit when any of its coordinates
+# is non-finite; its other finite vertices must not poison retained geometry.
+invalid_far_triangle_mesh = TriMesh(
+    Float64[0 1 0 1.0e6 0 0; 0 0 1 0 0 0; 0 0 0 0 0 NaN],
+    Int[1 4; 2 5; 3 6],
+)
+invalid_far_report = mesh_quality_report(invalid_far_triangle_mesh)
+@test invalid_far_report.mesh_scale ≈ sqrt(2.0)
+@test invalid_far_report.invalid_triangles == [2]
+@test invalid_far_report.n_degenerate_triangles == 0
+invalid_far_repair = repair_mesh_for_simulation(
+    invalid_far_triangle_mesh; allow_boundary=true)
+@test invalid_far_repair.removed_invalid == [2]
+@test invalid_far_repair.removed_vertices == [4, 5, 6]
+@test invalid_far_repair.vertex_old_to_new == [1, 2, 3, 0, 0, 0]
+
+degenerate_far_triangle_mesh = TriMesh(
+    Float64[0 1 0 1.0e6 2.0e6 3.0e6; 0 0 1 0 0 0; 0 0 0 0 0 0],
+    Int[1 4; 2 5; 3 6],
+)
+degenerate_far_report = mesh_quality_report(degenerate_far_triangle_mesh)
+@test degenerate_far_report.mesh_scale ≈ sqrt(2.0)
+@test degenerate_far_report.degenerate_triangles == [2]
+degenerate_far_repair = repair_mesh_for_simulation(
+    degenerate_far_triangle_mesh; allow_boundary=true)
+@test degenerate_far_repair.removed_degenerate == [2]
+@test degenerate_far_repair.removed_vertices == [4, 5, 6]
+@test degenerate_far_repair.vertex_old_to_new == [1, 2, 3, 0, 0, 0]
+
+unused_nonfinite_vertex_mesh = TriMesh(
+    Float64[0 1 0 NaN; 0 0 1 0; 0 0 0 0],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+repair_unused_nonfinite = repair_mesh_for_simulation(
+    unused_nonfinite_vertex_mesh; allow_boundary=true)
+@test isempty(repair_unused_nonfinite.removed_invalid)
+@test repair_unused_nonfinite.removed_vertices == [4]
+@test repair_unused_nonfinite.vertex_old_to_new == [1, 2, 3, 0]
+
+# Cleaning uses scalar-indexed geometry, one retained connectivity buffer, and
+# reuses quality reports on the no-flip path. Keep these bounded allocations
+# from regressing to per-triangle column slices or redundant full scans.
+mesh_repair_alloc = make_rect_plate(1.0, 1.0, 40, 40)
+DiffMoM._clean_mesh_triangles(mesh_repair_alloc)
+repair_mesh_for_simulation(mesh_repair_alloc)
+GC.gc()
+mesh_clean_allocated = @allocated DiffMoM._clean_mesh_triangles(
+    mesh_repair_alloc)
+GC.gc()
+mesh_repair_allocated = @allocated repair_mesh_for_simulation(
+    mesh_repair_alloc)
+@test mesh_clean_allocated < 1_100_000
+@test mesh_repair_allocated < 5_500_000
 
 repair_in_path = joinpath(DATADIR, "tmp_repair_in.obj")
 open(repair_in_path, "w") do io
@@ -690,6 +826,23 @@ mesh_nm_clean = drop_nonmanifold_triangles(mesh_nm)
 report_nm = mesh_quality_report(mesh_nm_clean)
 @assert report_nm.n_nonmanifold_edges == 0
 @test_throws ArgumentError drop_nonmanifold_triangles(mesh_nm; max_passes=0)
+mesh_nm_with_orphan = TriMesh(
+    hcat(Float64[9.0, 9.0, 9.0], xyz_nm),
+    tri_nm .+ 1,
+)
+mesh_nm_with_orphan_xyz = copy(mesh_nm_with_orphan.xyz)
+mesh_nm_with_orphan_tri = copy(mesh_nm_with_orphan.tri)
+repair_nm = repair_mesh_for_simulation(
+    mesh_nm_with_orphan; allow_boundary=true)
+@test repair_nm.removed_nonmanifold == 3
+@test repair_nm.removed_vertices == [1, 2, 3, 5, 6]
+@test repair_nm.vertex_old_to_new == [0, 0, 0, 1, 0, 0, 2, 3]
+@test nvertices(repair_nm.mesh) == 3
+@test ntriangles(repair_nm.mesh) == 1
+@test mesh_nm_with_orphan.xyz == mesh_nm_with_orphan_xyz
+@test mesh_nm_with_orphan.tri == mesh_nm_with_orphan_tri
+@test !Base.mightalias(repair_nm.mesh.xyz, mesh_nm_with_orphan.xyz)
+@test !Base.mightalias(repair_nm.mesh.tri, mesh_nm_with_orphan.tri)
 
 mesh_coarse_in = make_rect_plate(1.0, 1.0, 12, 12)
 rwg_coarse_in = build_rwg(mesh_coarse_in; precheck=true, allow_boundary=true)

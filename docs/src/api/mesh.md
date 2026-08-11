@@ -233,6 +233,7 @@ Mesh quality checks catch problems that would cause assembly failures or silentl
 |---------|--------------------------|
 | Invalid triangles (repeated vertex indices) | Assembly crash or NaN in matrix |
 | Degenerate triangles (zero or near-zero area) | Singular matrix entries, division by zero |
+| Duplicate triangles (same vertex triplet in any winding) | Coincident double surfaces and invalid RWG topology |
 | Non-manifold edges (shared by 3+ triangles) | RWG basis construction failure |
 | Orientation conflicts (inconsistent winding) | Wrong sign in matrix entries, incorrect physics |
 | Boundary edges (edge with only 1 triangle) | Not an error for open surfaces; error for closed bodies |
@@ -251,9 +252,9 @@ Compute comprehensive mesh-quality diagnostics.
 
 **Returns:** Named tuple with fields:
 - `n_vertices`, `n_triangles`, `n_edges_total`, `n_interior_edges`, `n_boundary_edges`, `n_nonmanifold_edges`, `n_orientation_conflicts`
-- `n_invalid_vertices`, `n_invalid_triangles`, `n_degenerate_triangles`
-- `invalid_vertices`, `invalid_triangles`, `degenerate_triangles` (index vectors)
-- `mesh_scale` (the actual bounding-box diagonal; no unit-scale floor is applied)
+- `n_invalid_vertices`, `n_invalid_triangles`, `n_degenerate_triangles`, `n_duplicate_triangles`
+- `invalid_vertices`, `invalid_triangles`, `degenerate_triangles`, `duplicate_triangles` (index vectors)
+- `mesh_scale` (the bounding-box diagonal of finite vertices referenced by syntactically valid, positive-area triangles; orphan and unconditionally invalid faces do not inflate it)
 - `area_tol_abs` (the absolute tolerance used, derived from `area_tol_rel`)
 
 ---
@@ -277,6 +278,7 @@ Return `true` if a mesh-quality report passes all hard checks.
 - No vertices with non-finite coordinates
 - No invalid triangles (repeated vertex indices)
 - No degenerate triangles (near-zero area)
+- No duplicate triangles (same three vertex indices in any winding)
 - No non-manifold edges (3+ incident triangles)
 - No orientation conflicts (inconsistent winding across shared edges)
 - Boundary edges: allowed unless `allow_boundary=false` or `require_closed=true`
@@ -313,9 +315,11 @@ repair_mesh_for_simulation(mesh;
 
 1. **Drop invalid triangles** (`drop_invalid=true`): Remove triangles with repeated vertex indices.
 2. **Drop degenerate triangles** (`drop_degenerate=true`): Remove triangles with near-zero area (controlled by `area_tol_rel`).
-3. **Drop non-manifold triangles** (`auto_drop_nonmanifold=true`): Iteratively remove triangles that create non-manifold edges (edges shared by 3+ triangles). This is common in messy CAD exports.
-4. **Fix orientation** (`fix_orientation=true`): Walk the mesh and flip triangles to achieve consistent winding across all interior edges.
-5. **Final check**: Verify the repaired mesh passes `mesh_quality_ok`.
+3. **Drop duplicate faces**: Keep the first occurrence of each orientation-independent vertex triplet.
+4. **Compact vertices**: Remove vertices no longer referenced by retained triangles and remap connectivity.
+5. **Drop non-manifold triangles** (`auto_drop_nonmanifold=true`): Iteratively remove triangles that create non-manifold edges (edges shared by 3+ triangles), then compact again. This is common in messy CAD exports.
+6. **Fix orientation** (`fix_orientation=true`): Walk the mesh and flip triangles to achieve consistent winding across all interior edges.
+7. **Final check**: Verify the repaired mesh passes `mesh_quality_ok`.
 
 **Key parameters:**
 
@@ -329,7 +333,9 @@ repair_mesh_for_simulation(mesh;
 **Returns:** Named tuple containing:
 - `mesh::TriMesh`: The repaired mesh.
 - `before`, `cleaned`, `after`: Quality reports at each stage.
-- `removed_invalid`, `removed_degenerate`: Indices of removed triangles.
+- `removed_invalid`, `removed_degenerate`, `removed_duplicate`: Original indices of removed triangles.
+- `removed_vertices`: Original indices of vertices removed during compaction.
+- `vertex_old_to_new`: Original-to-repaired vertex map (`0` means removed).
 - `removed_nonmanifold::Int`: Count of triangles dropped during non-manifold cleanup.
 - `flipped_triangles`: Indices of triangles whose orientation was flipped.
 - `area_tol_abs`: Absolute area tolerance used.

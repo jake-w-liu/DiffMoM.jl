@@ -357,33 +357,54 @@ function _mesh_coordinate_diagnostics(mesh::TriMesh)
     finite_vertex = trues(Nv)
     invalid_vertices = Int[]
 
+    @inbounds for i in 1:Nv
+        x = mesh.xyz[1, i]
+        y = mesh.xyz[2, i]
+        z = mesh.xyz[3, i]
+        if !(isfinite(x) && isfinite(y) && isfinite(z))
+            finite_vertex[i] = false
+            push!(invalid_vertices, i)
+        end
+    end
+
     xmin = Inf
     ymin = Inf
     zmin = Inf
     xmax = -Inf
     ymax = -Inf
     zmax = -Inf
-    nfinite = 0
+    has_finite_reference = false
 
-    @inbounds for i in 1:Nv
-        x = mesh.xyz[1, i]
-        y = mesh.xyz[2, i]
-        z = mesh.xyz[3, i]
-        if isfinite(x) && isfinite(y) && isfinite(z)
-            nfinite += 1
+    # Area tolerances describe retained geometry, not orphan vertices or faces
+    # that are unconditionally invalid/zero-area. Only distinct, in-range,
+    # finite, positive-area faces contribute to the bounding box.
+    @inbounds for t in 1:ntriangles(mesh)
+        i1 = mesh.tri[1, t]
+        i2 = mesh.tri[2, t]
+        i3 = mesh.tri[3, t]
+        valid_idx = (1 <= i1 <= Nv) && (1 <= i2 <= Nv) && (1 <= i3 <= Nv)
+        distinct = (i1 != i2) && (i2 != i3) && (i3 != i1)
+        valid_idx && distinct || continue
+        finite_vertex[i1] && finite_vertex[i2] && finite_vertex[i3] ||
+            continue
+        area = triangle_area(mesh, t)
+        isfinite(area) && area > 0.0 || continue
+        for i in (i1, i2, i3)
+            has_finite_reference = true
+            x = mesh.xyz[1, i]
+            y = mesh.xyz[2, i]
+            z = mesh.xyz[3, i]
             xmin = min(xmin, x)
             ymin = min(ymin, y)
             zmin = min(zmin, z)
             xmax = max(xmax, x)
             ymax = max(ymax, y)
             zmax = max(zmax, z)
-        else
-            finite_vertex[i] = false
-            push!(invalid_vertices, i)
         end
     end
 
-    scale = nfinite == 0 ? 0.0 : norm(Vec3(xmax - xmin, ymax - ymin, zmax - zmin))
+    scale = has_finite_reference ?
+            norm(Vec3(xmax - xmin, ymax - ymin, zmax - zmin)) : 0.0
     isfinite(scale) ||
         throw(ArgumentError("Mesh coordinate extent is too large for finite Float64 geometry"))
     return scale, finite_vertex, invalid_vertices
@@ -433,6 +454,16 @@ end
     return area_tol_abs
 end
 
+@inline function _triangle_face_key(i1::Int, i2::Int, i3::Int)
+    first, second = minmax(i1, i2)
+    if i3 < first
+        return (i3, first, second)
+    elseif i3 > second
+        return (first, second, i3)
+    end
+    return (first, i3, second)
+end
+
 """
     mesh_quality_report(mesh; area_tol_rel=1e-12, check_orientation=true)
 
@@ -441,6 +472,7 @@ The report includes:
 - non-finite vertex coordinates,
 - invalid triangles (index out of bounds or repeated vertices),
 - degenerate triangles (area below tolerance),
+- duplicate triangles (the same three vertex indices in any winding),
 - boundary-edge count,
 - non-manifold-edge count (>2 incident triangles),
 - orientation-conflict count on interior edges.
@@ -457,6 +489,8 @@ function mesh_quality_report(mesh::TriMesh; area_tol_rel::Float64=1e-12, check_o
 
     invalid_triangles = Int[]
     degenerate_triangles = Int[]
+    duplicate_triangles = Int[]
+    seen_faces = Set{NTuple{3,Int}}()
 
     # edge_map[(i,j)] = directions of edge traversal in each incident triangle
     # direction +1 means (i->j) where i<j, -1 means (j->i)
@@ -476,6 +510,14 @@ function mesh_quality_report(mesh::TriMesh; area_tol_rel::Float64=1e-12, check_o
             continue
         end
 
+        face_key = _triangle_face_key(i1, i2, i3)
+        is_duplicate = face_key in seen_faces
+        if is_duplicate
+            push!(duplicate_triangles, t)
+        else
+            push!(seen_faces, face_key)
+        end
+
         area = triangle_area(mesh, t)
         if !isfinite(area)
             push!(invalid_triangles, t)
@@ -483,6 +525,10 @@ function mesh_quality_report(mesh::TriMesh; area_tol_rel::Float64=1e-12, check_o
         elseif area <= area_tol_abs
             push!(degenerate_triangles, t)
         end
+
+        # Count topology once per unoriented face. Including duplicates here
+        # can make a coincident double surface look closed and manifold.
+        is_duplicate && continue
 
         for (a, b) in ((i1, i2), (i2, i3), (i3, i1))
             key = a < b ? (a, b) : (b, a)
@@ -522,9 +568,11 @@ function mesh_quality_report(mesh::TriMesh; area_tol_rel::Float64=1e-12, check_o
         n_invalid_vertices = length(invalid_vertices),
         n_invalid_triangles = length(invalid_triangles),
         n_degenerate_triangles = length(degenerate_triangles),
+        n_duplicate_triangles = length(duplicate_triangles),
         invalid_vertices = invalid_vertices,
         invalid_triangles = invalid_triangles,
         degenerate_triangles = degenerate_triangles,
+        duplicate_triangles = duplicate_triangles,
         mesh_scale = scale,
         area_tol_abs = area_tol_abs,
     )
@@ -538,6 +586,7 @@ Return `true` if a mesh-quality report passes hard checks:
 - no non-finite vertices,
 - no invalid triangles,
 - no degenerate triangles,
+- no duplicate triangles,
 - no non-manifold edges,
 - no orientation conflicts,
 - boundary edges allowed unless `allow_boundary=false` or `require_closed=true`.
@@ -553,6 +602,9 @@ function mesh_quality_ok(report; allow_boundary::Bool=true, require_closed::Bool
         return false
     end
     if report.n_degenerate_triangles > 0
+        return false
+    end
+    if report.n_duplicate_triangles > 0
         return false
     end
     if report.n_nonmanifold_edges > 0
@@ -581,6 +633,16 @@ function assert_mesh_quality(mesh::TriMesh;
                              require_closed::Bool=false,
                              area_tol_rel::Float64=1e-12)
     report = mesh_quality_report(mesh; area_tol_rel=area_tol_rel, check_orientation=true)
+    return _assert_mesh_quality_report(
+        report;
+        allow_boundary=allow_boundary,
+        require_closed=require_closed,
+    )
+end
+
+function _assert_mesh_quality_report(report;
+                                     allow_boundary::Bool=true,
+                                     require_closed::Bool=false)
     problems = String[]
 
     if report.n_vertices < 3 || report.n_triangles < 1
@@ -597,6 +659,12 @@ function assert_mesh_quality(mesh::TriMesh;
     if report.n_degenerate_triangles > 0
         sample = join(report.degenerate_triangles[1:min(end, 5)], ", ")
         push!(problems, "degenerate triangles: $(report.n_degenerate_triangles) (sample: $sample), area_tol_abs=$(report.area_tol_abs)")
+    end
+    if report.n_duplicate_triangles > 0
+        sample = join(report.duplicate_triangles[1:min(end, 5)], ", ")
+        push!(problems,
+              "duplicate triangles: $(report.n_duplicate_triangles) " *
+              "(later coincident face indices; sample: $sample)")
     end
     if report.n_nonmanifold_edges > 0
         push!(problems, "non-manifold edges: $(report.n_nonmanifold_edges)")
@@ -1148,6 +1216,41 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
     return (mesh=best_mesh, rwg_count=best_rwg, target_rwg=target_rwg, best_gap=best_gap, iterations=niter)
 end
 
+function _compact_mesh_vertices(
+        xyz::Matrix{Float64}, tri::Matrix{Int})
+    nv = size(xyz, 2)
+    referenced = falses(nv)
+    @inbounds for vertex in tri
+        referenced[vertex] = true
+    end
+
+    old_to_new = zeros(Int, nv)
+    removed_vertices = Int[]
+    nretained = 0
+    @inbounds for old_vertex in 1:nv
+        if referenced[old_vertex]
+            nretained += 1
+            old_to_new[old_vertex] = nretained
+        else
+            push!(removed_vertices, old_vertex)
+        end
+    end
+
+    xyz_clean = Matrix{Float64}(undef, 3, nretained)
+    @inbounds for old_vertex in 1:nv
+        new_vertex = old_to_new[old_vertex]
+        iszero(new_vertex) && continue
+        xyz_clean[1, new_vertex] = xyz[1, old_vertex]
+        xyz_clean[2, new_vertex] = xyz[2, old_vertex]
+        xyz_clean[3, new_vertex] = xyz[3, old_vertex]
+    end
+
+    @inbounds for index in eachindex(tri)
+        tri[index] = old_to_new[tri[index]]
+    end
+    return TriMesh(xyz_clean, tri), removed_vertices, old_to_new
+end
+
 function _clean_mesh_triangles(mesh::TriMesh;
                                drop_invalid::Bool=true,
                                drop_degenerate::Bool=true,
@@ -1157,12 +1260,17 @@ function _clean_mesh_triangles(mesh::TriMesh;
     tri = mesh.tri
     xyz = mesh.xyz
 
-    scale, finite_vertex, _ = _mesh_coordinate_diagnostics(mesh)
+    scale, finite_vertex, invalid_vertices = _mesh_coordinate_diagnostics(mesh)
     area_tol_abs = _area_tolerance(scale, area_tol_rel)
+    !drop_invalid && !isempty(invalid_vertices) &&
+        error("Mesh contains $(length(invalid_vertices)) non-finite " *
+              "vertices and `drop_invalid=false`.")
 
     keep_triangle = trues(nt)
     removed_invalid = Int[]
     removed_degenerate = Int[]
+    removed_duplicate = Int[]
+    retained_faces = Set{NTuple{3,Int}}()
 
     for t in 1:nt
         i1 = tri[1, t]
@@ -1184,24 +1292,39 @@ function _clean_mesh_triangles(mesh::TriMesh;
             end
         end
 
-        v1 = Vec3(xyz[:, i1])
-        v2 = Vec3(xyz[:, i2])
-        v3 = Vec3(xyz[:, i3])
-        area = 0.5 * norm(cross(v2 - v1, v3 - v1))
+        area = triangle_area(mesh, t)
 
         if !isfinite(area) || area <= area_tol_abs
             if drop_degenerate
                 keep_triangle[t] = false
                 push!(removed_degenerate, t)
+                continue
             else
                 error("Triangle $t is degenerate (area=$area <= $area_tol_abs) and `drop_degenerate=false`.")
             end
         end
+
+        face_key = _triangle_face_key(i1, i2, i3)
+        if face_key in retained_faces
+            keep_triangle[t] = false
+            push!(removed_duplicate, t)
+            continue
+        end
+        push!(retained_faces, face_key)
     end
 
-    tri_clean = copy(tri[:, keep_triangle])
-    cleaned_mesh = TriMesh(copy(xyz), tri_clean)
-    return cleaned_mesh, removed_invalid, removed_degenerate, area_tol_abs
+    tri_retained = tri[:, keep_triangle]
+    cleaned_mesh, removed_vertices, vertex_old_to_new =
+        _compact_mesh_vertices(xyz, tri_retained)
+    return (
+        cleaned_mesh,
+        removed_invalid,
+        removed_degenerate,
+        removed_duplicate,
+        removed_vertices,
+        vertex_old_to_new,
+        area_tol_abs,
+    )
 end
 
 function _edge_orientation_adjacency(mesh::TriMesh)
@@ -1290,6 +1413,8 @@ end
 
 Repair a triangle mesh so it can pass solver prechecks:
 - optionally remove invalid/degenerate triangles,
+- remove duplicate faces independent of winding,
+- compact vertices that are no longer referenced,
 - optionally drop triangles causing non-manifold edges (enabled by default),
 - orient triangles consistently across manifold interior edges.
 
@@ -1309,7 +1434,13 @@ function repair_mesh_for_simulation(mesh::TriMesh;
                                     auto_drop_nonmanifold::Bool=true)
     report_before = mesh_quality_report(mesh; area_tol_rel=area_tol_rel, check_orientation=true)
 
-    cleaned_mesh, removed_invalid, removed_degenerate, area_tol_abs = _clean_mesh_triangles(
+    cleaned_mesh,
+    removed_invalid,
+    removed_degenerate,
+    removed_duplicate,
+    removed_vertices,
+    vertex_old_to_new,
+    area_tol_abs = _clean_mesh_triangles(
         mesh;
         drop_invalid=drop_invalid,
         drop_degenerate=drop_degenerate,
@@ -1321,7 +1452,19 @@ function repair_mesh_for_simulation(mesh::TriMesh;
     if auto_drop_nonmanifold && report_cleaned.n_nonmanifold_edges > 0
         mesh_nm = drop_nonmanifold_triangles(cleaned_mesh)
         removed_nonmanifold = ntriangles(cleaned_mesh) - ntriangles(mesh_nm)
-        cleaned_mesh = mesh_nm
+        cleaned_mesh, _, cleaned_to_final =
+            _compact_mesh_vertices(mesh_nm.xyz, mesh_nm.tri)
+        @inbounds for old_vertex in eachindex(vertex_old_to_new)
+            cleaned_vertex = vertex_old_to_new[old_vertex]
+            iszero(cleaned_vertex) && continue
+            vertex_old_to_new[old_vertex] =
+                cleaned_to_final[cleaned_vertex]
+        end
+        empty!(removed_vertices)
+        @inbounds for old_vertex in eachindex(vertex_old_to_new)
+            iszero(vertex_old_to_new[old_vertex]) &&
+                push!(removed_vertices, old_vertex)
+        end
         report_cleaned = mesh_quality_report(cleaned_mesh; area_tol_rel=area_tol_rel, check_orientation=true)
     end
 
@@ -1331,17 +1474,21 @@ function repair_mesh_for_simulation(mesh::TriMesh;
 
     repaired_mesh = cleaned_mesh
     flipped_triangles = Int[]
+    report_after = report_cleaned
     if fix_orientation && report_cleaned.n_orientation_conflicts > 0
         flip_flag = _compute_orientation_flips(cleaned_mesh)
         repaired_mesh, flipped_triangles = _apply_orientation_flips(cleaned_mesh, flip_flag)
+        report_after = mesh_quality_report(
+            repaired_mesh;
+            area_tol_rel=area_tol_rel,
+            check_orientation=true,
+        )
     end
 
-    report_after = mesh_quality_report(repaired_mesh; area_tol_rel=area_tol_rel, check_orientation=true)
-    assert_mesh_quality(
-        repaired_mesh;
+    _assert_mesh_quality_report(
+        report_after;
         allow_boundary=allow_boundary,
         require_closed=require_closed,
-        area_tol_rel=area_tol_rel,
     )
 
     return (
@@ -1351,6 +1498,9 @@ function repair_mesh_for_simulation(mesh::TriMesh;
         after = report_after,
         removed_invalid = removed_invalid,
         removed_degenerate = removed_degenerate,
+        removed_duplicate = removed_duplicate,
+        removed_vertices = removed_vertices,
+        vertex_old_to_new = vertex_old_to_new,
         removed_nonmanifold = removed_nonmanifold,
         flipped_triangles = flipped_triangles,
         area_tol_abs = area_tol_abs,
