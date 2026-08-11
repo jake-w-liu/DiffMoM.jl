@@ -3,6 +3,60 @@
 export radiated_power, projected_power, input_power, energy_ratio, condition_diagnostics
 export bistatic_rcs, backscatter_rcs
 
+const _PROJECTED_POWER_FALLBACK_PRECISION = 11264
+const _PROJECTED_POWER_MIN_FALLBACK_PRECISION = 256
+
+function _projected_power_component_bounds(values)
+    minimum_low_bit = typemax(Int)
+    maximum_high_bit = typemin(Int)
+    @inbounds for value in values
+        for component in (real(value), imag(value))
+            converted = try
+                Float64(component)
+            catch
+                return nothing
+            end
+            isfinite(converted) || return nothing
+            iszero(converted) && continue
+            high_bit = exponent(abs(converted))
+            minimum_low_bit = min(minimum_low_bit, high_bit - 52)
+            maximum_high_bit = max(maximum_high_bit, high_bit)
+        end
+    end
+    maximum_high_bit == typemin(Int) && return :zero
+    return minimum_low_bit, maximum_high_bit
+end
+
+function _projected_power_fallback_precision(
+    E_ff::Matrix{<:Number},
+    grid::SphGrid,
+    pol::AbstractMatrix{<:Complex},
+)
+    weight_bounds = _projected_power_component_bounds(grid.w)
+    field_bounds = _projected_power_component_bounds(E_ff)
+    polarization_bounds = _projected_power_component_bounds(pol)
+    any(isnothing, (weight_bounds, field_bounds, polarization_bounds)) &&
+        return _PROJECTED_POWER_FALLBACK_PRECISION
+    any(==(:zero), (weight_bounds, field_bounds, polarization_bounds)) &&
+        return _PROJECTED_POWER_MIN_FALLBACK_PRECISION
+
+    minimum_bit = weight_bounds[1] +
+                  2 * field_bounds[1] +
+                  2 * polarization_bounds[1]
+    maximum_bit = weight_bounds[2] +
+                  2 * field_bounds[2] +
+                  2 * polarization_bounds[2] + 4
+    # Five significands contribute at most four carry bits. The remaining 70
+    # bits cover both complex square expansions and every Int-addressable
+    # sample, so accumulation is exact at the selected precision.
+    required_precision = maximum_bit - minimum_bit + 70
+    return clamp(
+        required_precision,
+        _PROJECTED_POWER_MIN_FALLBACK_PRECISION,
+        _PROJECTED_POWER_FALLBACK_PRECISION,
+    )
+end
+
 function _validate_farfield_samples(E_ff::Matrix{<:Number}, grid::SphGrid)
     NΩ = _validate_sph_grid(grid)
     size(E_ff) == (3, NΩ) ||
@@ -22,7 +76,7 @@ end
     return intensity
 end
 
-function _rcs_scale(E0::Real)
+function _validated_rcs_amplitude(E0::Real)
     E0_float = try
         Float64(E0)
     catch err
@@ -31,15 +85,151 @@ function _rcs_scale(E0::Real)
     end
     isfinite(E0_float) && !iszero(E0_float) ||
         throw(ArgumentError("E0 must be finite and nonzero, got $E0"))
-    root_scale = sqrt(4π) / abs(E0_float)
-    (isfinite(root_scale) && root_scale > 0.0) ||
-        throw(OverflowError(
-            "RCS scale is not representable for E0=$E0"))
-    scale = root_scale * root_scale
-    (isfinite(scale) && scale > 0.0) ||
-        throw(OverflowError(
-            "RCS scale is not representable for E0=$E0"))
-    return scale
+    return abs(E0_float)
+end
+
+@noinline function _rcs_sample_bigfloat(
+    E_ff::Matrix{<:Number},
+    q::Int,
+    E0_abs::Float64,
+)::Float64
+    return setprecision(BigFloat, 256) do
+        intensity = zero(BigFloat)
+        @inbounds for component in axes(E_ff, 1)
+            value = E_ff[component, q]
+            value_real = BigFloat(real(value))
+            value_imag = BigFloat(imag(value))
+            intensity += value_real * value_real + value_imag * value_imag
+        end
+        denominator = BigFloat(E0_abs)^2
+        sigma_big = 4 * BigFloat(π) * intensity / denominator
+        sigma = Float64(sigma_big)
+        isfinite(sigma) ||
+            throw(OverflowError("RCS overflowed at sample $q"))
+        return sigma
+    end
+end
+
+@inline function _rcs_sample(
+    E_ff::Matrix{<:Number},
+    q::Int,
+    E0_abs::Float64,
+)::Float64
+    if !_ieee_bilinear_supported_eltype(eltype(E_ff), Float64)
+        return _rcs_sample_bigfloat(E_ff, q, E0_abs)
+    end
+
+    value_1 = E_ff[1, q]
+    value_2 = E_ff[2, q]
+    value_3 = E_ff[3, q]
+    if _ieee_dense_extreme_factor(E0_abs, Float64) ||
+       _ieee_dense_extreme_factor(value_1, Float64) ||
+       _ieee_dense_extreme_factor(value_2, Float64) ||
+       _ieee_dense_extreme_factor(value_3, Float64)
+        return _rcs_sample_bigfloat(E_ff, q, E0_abs)
+    end
+    magnitude_1 = hypot(Float64(real(value_1)), Float64(imag(value_1)))
+    magnitude_2 = hypot(Float64(real(value_2)), Float64(imag(value_2)))
+    magnitude_3 = hypot(Float64(real(value_3)), Float64(imag(value_3)))
+    field_scale = max(magnitude_1, magnitude_2, magnitude_3)
+    iszero(field_scale) && return 0.0
+
+    scaled_intensity = abs2(magnitude_1 / field_scale) +
+                       abs2(magnitude_2 / field_scale) +
+                       abs2(magnitude_3 / field_scale)
+    amplitude_ratio = field_scale / E0_abs
+    if !isfinite(amplitude_ratio) ||
+       amplitude_ratio < floatmin(Float64)
+        return _rcs_sample_bigfloat(E_ff, q, E0_abs)
+    end
+    root_sigma = sqrt(4π * scaled_intensity) * amplitude_ratio
+    sigma = root_sigma * root_sigma
+    if !isfinite(sigma) || sigma < floatmin(Float64)
+        return _rcs_sample_bigfloat(E_ff, q, E0_abs)
+    end
+    return sigma
+end
+
+@noinline function _radiated_power_exact(
+    E_ff::Matrix{<:Number},
+    grid::SphGrid,
+    eta0::Float64,
+)
+    if _ieee_bilinear_supported_eltype(eltype(E_ff), Float64)
+        accumulator = _IEEEBilinearAccumulator(Float64)
+        @inbounds for q in eachindex(grid.w)
+            weight = grid.w[q]
+            for component in axes(E_ff, 1)
+                value = E_ff[component, q]
+                value_real = Float64(real(value))
+                value_imag = Float64(imag(value))
+                _ieee_bilinear_add_triple!(
+                    accumulator, weight, value_real, value_real, 1)
+                _ieee_bilinear_add_triple!(
+                    accumulator, weight, value_imag, value_imag, 1)
+            end
+        end
+        return _ieee_bilinear_finish(
+            accumulator, "radiated power", 0.5, eta0)
+    end
+
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        total = zero(BigFloat)
+        @inbounds for q in eachindex(grid.w)
+            intensity = zero(BigFloat)
+            for component in axes(E_ff, 1)
+                value = E_ff[component, q]
+                value_real = BigFloat(real(value))
+                value_imag = BigFloat(imag(value))
+                intensity += value_real * value_real + value_imag * value_imag
+            end
+            total += BigFloat(grid.w[q]) * intensity
+        end
+        power = Float64(total / (2 * BigFloat(eta0)))
+        isfinite(power) ||
+            throw(OverflowError("radiated power is non-finite"))
+        return power
+    end
+end
+
+@noinline function _projected_power_exact(
+    E_ff::Matrix{<:Number},
+    grid::SphGrid,
+    pol::AbstractMatrix{<:Complex},
+    mask,
+)
+    precision_bits = _projected_power_fallback_precision(E_ff, grid, pol)
+    return setprecision(BigFloat, precision_bits) do
+        total = zero(BigFloat)
+        @inbounds for q in eachindex(grid.w)
+            if mask !== nothing && !mask[q]
+                continue
+            end
+            projection_real = zero(BigFloat)
+            projection_imag = zero(BigFloat)
+            for component in axes(E_ff, 1)
+                polarization = pol[component, q]
+                field = E_ff[component, q]
+                polarization_real = BigFloat(real(polarization))
+                polarization_imag = BigFloat(imag(polarization))
+                field_real = BigFloat(real(field))
+                field_imag = BigFloat(imag(field))
+                projection_real +=
+                    polarization_real * field_real +
+                    polarization_imag * field_imag
+                projection_imag +=
+                    polarization_real * field_imag -
+                    polarization_imag * field_real
+            end
+            total += BigFloat(grid.w[q]) *
+                     (projection_real * projection_real +
+                      projection_imag * projection_imag)
+        end
+        power = Float64(total)
+        isfinite(power) ||
+            throw(OverflowError("projected power is non-finite"))
+        return power
+    end
 end
 
 """
@@ -56,16 +246,18 @@ function radiated_power(E_ff::Matrix{<:Number}, grid::SphGrid;
     NΩ = _validate_farfield_samples(E_ff, grid)
     isfinite(eta0) && eta0 > 0 ||
         throw(ArgumentError("eta0 must be finite and positive, got $eta0"))
+    needs_fallback = _ieee_bilinear_values_require_fallback(
+        E_ff, Float64) ||
+        _ieee_bilinear_values_require_fallback(grid.w, Float64) ||
+        _ieee_dense_extreme_factor(eta0, Float64)
+    needs_fallback && return _radiated_power_exact(E_ff, grid, eta0)
     P = 0.0
     @inbounds for q in 1:NΩ
         P += grid.w[q] * _farfield_intensity(E_ff, q)
-        isfinite(P) ||
-            throw(OverflowError(
-                "radiated-power accumulation overflowed at sample $q"))
+        isfinite(P) || return _radiated_power_exact(E_ff, grid, eta0)
     end
     power = (P / eta0) / 2
-    isfinite(power) ||
-        throw(OverflowError("radiated power is non-finite"))
+    isfinite(power) || return _radiated_power_exact(E_ff, grid, eta0)
     return power
 end
 
@@ -96,6 +288,13 @@ function projected_power(E_ff::Matrix{<:Number}, grid::SphGrid,
                 "mask length $(length(mask)) != $NΩ"))
     end
 
+    needs_fallback = _ieee_bilinear_values_require_fallback(
+        E_ff, Float64) ||
+        _ieee_bilinear_values_require_fallback(pol, Float64) ||
+        _ieee_bilinear_values_require_fallback(grid.w, Float64)
+    needs_fallback &&
+        return _projected_power_exact(E_ff, grid, pol, mask)
+
     P = 0.0
     @inbounds for q in 1:NΩ
         if mask !== nothing && !mask[q]
@@ -105,12 +304,10 @@ function projected_power(E_ff::Matrix{<:Number}, grid::SphGrid,
              conj(pol[2, q]) * E_ff[2, q] +
              conj(pol[3, q]) * E_ff[3, q]
         isfinite(yq) ||
-            throw(OverflowError(
-                "polarization projection overflowed at sample $q"))
+            return _projected_power_exact(E_ff, grid, pol, mask)
         P += grid.w[q] * abs2(yq)
         isfinite(P) ||
-            throw(OverflowError(
-                "projected-power accumulation overflowed at sample $q"))
+            return _projected_power_exact(E_ff, grid, pol, mask)
     end
     return P
 end
@@ -134,10 +331,8 @@ function input_power(I::Vector{<:Number}, v::Vector{<:Number})
         throw(ArgumentError("I must contain only finite values"))
     all(isfinite, v) ||
         throw(ArgumentError("v must contain only finite values"))
-    power = -0.5 * real(dot(I, v))
-    isfinite(power) ||
-        throw(OverflowError("input-power evaluation overflowed"))
-    return power
+    return _finite_scaled_dot_component(
+        I, v, Val(:real), -0.5, "input power")
 end
 
 """
@@ -197,13 +392,10 @@ function bistatic_rcs(E_ff::Matrix{<:Number}; E0::Real=1.0)
     all(isfinite, E_ff) ||
         throw(ArgumentError("E_ff must contain only finite values"))
     NΩ = size(E_ff, 2)
-    scale = _rcs_scale(E0)
+    E0_abs = _validated_rcs_amplitude(E0)
     σ = zeros(Float64, NΩ)
     @inbounds for q in 1:NΩ
-        σ[q] = scale * _farfield_intensity(E_ff, q)
-        isfinite(σ[q]) ||
-            throw(OverflowError(
-                "bistatic RCS overflowed at sample $q"))
+        σ[q] = _rcs_sample(E_ff, q, E0_abs)
     end
     return σ
 end
@@ -223,7 +415,7 @@ function backscatter_rcs(E_ff::Matrix{<:Number}, grid::SphGrid,
     NΩ = _validate_farfield_samples(E_ff, grid)
     all(isfinite, k_inc_hat) ||
         throw(ArgumentError("k_inc_hat components must be finite"))
-    scale = _rcs_scale(E0)
+    E0_abs = _validated_rcs_amplitude(E0)
 
     khat = _validated_farfield_direction(k_inc_hat)
     r_back = -khat
@@ -241,9 +433,7 @@ function backscatter_rcs(E_ff::Matrix{<:Number}, grid::SphGrid,
     end
 
     ang_err = acos(clamp(best_dot, -1.0, 1.0)) * 180 / π
-    sigma = scale * _farfield_intensity(E_ff, best_idx)
-    isfinite(sigma) ||
-        throw(OverflowError("backscatter RCS overflowed"))
+    sigma = _rcs_sample(E_ff, best_idx, E0_abs)
 
     return (
         sigma = sigma,

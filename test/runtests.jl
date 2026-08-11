@@ -1335,6 +1335,92 @@ pol_nonfinite[1, 1] = ComplexF64(Inf, 0.0)
     E_ff, grid, pol_nonfinite; mask=mask)
 @test_throws OverflowError radiated_power(
     fill(ComplexF64(floatmax(Float64), 0.0), size(E_ff)), grid)
+
+diagnostic_rhat = reshape(Float64[0.0, 0.0, 1.0], 3, 1)
+diagnostic_overflow_grid = SphGrid(
+    diagnostic_rhat, [0.0], [0.0], [1.0e-200])
+diagnostic_underflow_grid = SphGrid(
+    diagnostic_rhat, [0.0], [0.0], [1.0e200])
+diagnostic_radiated_overflow_field = reshape(
+    ComplexF64[1.0e200, 0.0, 0.0], 3, 1)
+diagnostic_radiated_underflow_field = reshape(
+    ComplexF64[1.0e-200, 0.0, 0.0], 3, 1)
+diagnostic_radiated_references = setprecision(BigFloat, 6656) do
+    (
+        overflow = Float64(
+            BigFloat(1.0e-200) * BigFloat(1.0e200)^2 /
+            (2 * BigFloat(376.730313668))),
+        underflow = Float64(
+            BigFloat(1.0e200) * BigFloat(1.0e-200)^2 /
+            (2 * BigFloat(376.730313668))),
+    )
+end
+@test radiated_power(
+    diagnostic_radiated_overflow_field,
+    diagnostic_overflow_grid,
+) == diagnostic_radiated_references.overflow
+@test radiated_power(
+    diagnostic_radiated_underflow_field,
+    diagnostic_underflow_grid,
+) == diagnostic_radiated_references.underflow
+
+diagnostic_projected_overflow_field = reshape(
+    ComplexF64[1.0e100, 0.0, 0.0], 3, 1)
+diagnostic_projected_underflow_field = reshape(
+    ComplexF64[1.0e-100, 0.0, 0.0], 3, 1)
+diagnostic_projected_overflow_pol = reshape(
+    ComplexF64[1.0e100, 0.0, 0.0], 3, 1)
+diagnostic_projected_underflow_pol = reshape(
+    ComplexF64[1.0e-100, 0.0, 0.0], 3, 1)
+diagnostic_projected_references = setprecision(BigFloat, 11264) do
+    (
+        overflow = Float64(
+            BigFloat(1.0e-200) *
+            (BigFloat(1.0e100) * BigFloat(1.0e100))^2),
+        underflow = Float64(
+            BigFloat(1.0e200) *
+            (BigFloat(1.0e-100) * BigFloat(1.0e-100))^2),
+    )
+end
+@test projected_power(
+    diagnostic_projected_overflow_field,
+    diagnostic_overflow_grid,
+    diagnostic_projected_overflow_pol,
+) == diagnostic_projected_references.overflow
+@test projected_power(
+    diagnostic_projected_underflow_field,
+    diagnostic_underflow_grid,
+    diagnostic_projected_underflow_pol,
+) == diagnostic_projected_references.underflow
+
+diagnostic_allocation_size = 96
+diagnostic_allocation_rhat = zeros(3, diagnostic_allocation_size)
+diagnostic_allocation_rhat[3, :] .= 1.0
+diagnostic_allocation_grid = SphGrid(
+    diagnostic_allocation_rhat,
+    zeros(diagnostic_allocation_size),
+    zeros(diagnostic_allocation_size),
+    fill(1.0e-200, diagnostic_allocation_size),
+)
+diagnostic_allocation_field = zeros(
+    ComplexF64, 3, diagnostic_allocation_size)
+diagnostic_allocation_field[1, :] .= 1.0e100
+diagnostic_allocation_pol = zeros(
+    ComplexF64, 3, diagnostic_allocation_size)
+diagnostic_allocation_pol[1, :] .= 1.0e100
+diagnostic_allocation_mask = trues(diagnostic_allocation_size)
+projected_power(
+    diagnostic_allocation_field,
+    diagnostic_allocation_grid,
+    diagnostic_allocation_pol;
+    mask=diagnostic_allocation_mask,
+)
+@test @allocated(projected_power(
+    diagnostic_allocation_field,
+    diagnostic_allocation_grid,
+    diagnostic_allocation_pol;
+    mask=diagnostic_allocation_mask,
+)) <= 1_000_000
 rel_q_err = abs(P_qform - P_direct) / max(abs(P_qform), 1e-30)
 println("  Objective consistency (I†QI vs direct projected power): $rel_q_err")
 @assert rel_q_err < 1e-12
@@ -1547,7 +1633,17 @@ sigma = bistatic_rcs(E_ff; E0=1.0)
 @test_throws ArgumentError bistatic_rcs(E_ff; E0=Inf)
 @test_throws ArgumentError bistatic_rcs(E_ff_nonfinite)
 @test_throws OverflowError bistatic_rcs(E_ff; E0=nextfloat(0.0))
-@test_throws OverflowError bistatic_rcs(E_ff; E0=floatmax(Float64))
+@test bistatic_rcs(E_ff; E0=floatmax(Float64)) == zeros(NΩ)
+
+diagnostic_rcs_reference = setprecision(BigFloat, 256) do
+    Float64(4 * BigFloat(π))
+end
+@test only(bistatic_rcs(
+    diagnostic_radiated_overflow_field; E0=1.0e200)) ==
+      diagnostic_rcs_reference
+@test only(bistatic_rcs(
+    diagnostic_radiated_underflow_field; E0=1.0e-200)) ==
+      diagnostic_rcs_reference
 
 bs = backscatter_rcs(E_ff, grid, Vec3(0.0, 0.0, -1.0); E0=1.0)
 @assert 1 <= bs.index <= NΩ
@@ -1556,11 +1652,23 @@ bs = backscatter_rcs(E_ff, grid, Vec3(0.0, 0.0, -1.0); E0=1.0)
     E_ff, grid, Vec3(0.0, 0.0, 0.0); E0=1.0)
 @test_throws ArgumentError backscatter_rcs(
     E_ff_nonfinite, grid, Vec3(0.0, 0.0, -1.0); E0=1.0)
+@test backscatter_rcs(
+    diagnostic_radiated_overflow_field,
+    diagnostic_overflow_grid,
+    Vec3(0.0, 0.0, -1.0);
+    E0=1.0e200,
+).sigma == diagnostic_rcs_reference
 @test_throws DimensionMismatch input_power(
     ComplexF64[1.0], ComplexF64[1.0, 2.0])
 @test_throws ArgumentError input_power(ComplexF64[], ComplexF64[])
 @test_throws ArgumentError input_power(
     ComplexF64[NaN], ComplexF64[1.0])
+diagnostic_input_scale = floatmax(Float64)
+diagnostic_input_I = ComplexF64[
+    diagnostic_input_scale, diagnostic_input_scale, 1.0]
+diagnostic_input_v = ComplexF64[
+    diagnostic_input_scale, -diagnostic_input_scale, -4.0]
+@test input_power(diagnostic_input_I, diagnostic_input_v) == 2.0
 @test_throws DomainError energy_ratio(
     ComplexF64[0.0], ComplexF64[1.0],
     zeros(ComplexF64, size(E_ff)), grid)
@@ -1578,6 +1686,15 @@ zero_condition = condition_diagnostics(zeros(ComplexF64, 2, 2))
         _float_vector_output_allocation(NΩ) + 128
 @assert _backscatter_rcs_allocation(
     E_ff, grid, Vec3(0.0, 0.0, -1.0)) <= 128
+radiated_power(
+    diagnostic_allocation_field, diagnostic_allocation_grid)
+@test @allocated(radiated_power(
+    diagnostic_allocation_field,
+    diagnostic_allocation_grid,
+)) <= 250_000
+input_power(diagnostic_input_I, diagnostic_input_v)
+@test @allocated(input_power(
+    diagnostic_input_I, diagnostic_input_v)) <= 100_000
 
 println("  PASS ✓")
 

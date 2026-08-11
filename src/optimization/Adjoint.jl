@@ -393,6 +393,8 @@ end
 function _ieee_bilinear_finish(
     accumulator::_IEEEBilinearAccumulator{R},
     label::AbstractString,
+    multiplier::R=one(R),
+    divisor::R=one(R),
 ) where {R<:Union{Float32,Float64}}
     _ieee_bilinear_normalize!(accumulator)
     words = accumulator.words
@@ -404,12 +406,115 @@ function _ieee_bilinear_finish(
     return setprecision(BigFloat, precision_bits) do
         exact_value = ldexp(
             BigFloat(integer_total), _ieee_bilinear_base_exponent(R))
+        multiplier == one(R) ||
+            (exact_value *= BigFloat(multiplier))
+        divisor == one(R) ||
+            (exact_value /= BigFloat(divisor))
         converted = R(exact_value)
         isfinite(converted) ||
             throw(OverflowError(
                 "$label is outside the representable $R range"))
         return converted
     end
+end
+
+@noinline function _dot_component_ieee_exact(
+    left::AbstractVector,
+    right::AbstractVector,
+    component,
+    ::Type{R},
+    multiplier::R,
+    label::AbstractString,
+) where {R<:Union{Float32,Float64}}
+    accumulator = _IEEEBilinearAccumulator(R)
+    unity = one(R)
+    @inbounds for index in eachindex(left, right)
+        left_value = left[index]
+        right_value = right[index]
+        if component isa Val{:real}
+            _ieee_bilinear_add_triple!(
+                accumulator, R(real(left_value)),
+                R(real(right_value)), unity, 1)
+            _ieee_bilinear_add_triple!(
+                accumulator, R(imag(left_value)),
+                R(imag(right_value)), unity, 1)
+        else
+            _ieee_bilinear_add_triple!(
+                accumulator, R(real(left_value)),
+                R(imag(right_value)), unity, 1)
+            _ieee_bilinear_add_triple!(
+                accumulator, R(imag(left_value)),
+                R(real(right_value)), unity, -1)
+        end
+    end
+    return _ieee_bilinear_finish(
+        accumulator, label, multiplier)::R
+end
+
+@noinline function _dot_component_bigfloat_exact(
+    left::AbstractVector,
+    right::AbstractVector,
+    component,
+    ::Type{R},
+    multiplier::R,
+    label::AbstractString,
+) where {R<:Union{Float32,Float64}}
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        total = zero(BigFloat)
+        @inbounds for index in eachindex(left, right)
+            left_value = left[index]
+            right_value = right[index]
+            left_real = BigFloat(real(left_value))
+            left_imag = BigFloat(imag(left_value))
+            right_real = BigFloat(real(right_value))
+            right_imag = BigFloat(imag(right_value))
+            if component isa Val{:real}
+                total += left_real * right_real + left_imag * right_imag
+            else
+                total += left_real * right_imag - left_imag * right_real
+            end
+        end
+        converted = R(BigFloat(multiplier) * total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label is outside the representable $R range"))
+        return converted
+    end
+end
+
+function _finite_scaled_dot_component(
+    left::AbstractVector,
+    right::AbstractVector,
+    component,
+    multiplier::Real,
+    label::AbstractString,
+)
+    raw_value = _bilinear_component(dot(left, right), component)
+    value = multiplier * raw_value
+    value_type = typeof(value)
+    if value_type <: Union{Float32,Float64}
+        needs_fallback = !isfinite(value) ||
+            _ieee_dense_extreme_factor(multiplier, value_type) ||
+            _ieee_bilinear_values_require_fallback(left, value_type) ||
+            _ieee_bilinear_values_require_fallback(right, value_type)
+        if needs_fallback
+            typed_multiplier = value_type(multiplier)
+            if _ieee_bilinear_supported_eltype(eltype(left), value_type) &&
+               _ieee_bilinear_supported_eltype(eltype(right), value_type) &&
+               _ieee_bilinear_values_are_finite(left) &&
+               _ieee_bilinear_values_are_finite(right)
+                return _dot_component_ieee_exact(
+                    left, right, component, value_type,
+                    typed_multiplier, label)
+            end
+            return _dot_component_bigfloat_exact(
+                left, right, component, value_type,
+                typed_multiplier, label)
+        end
+        return value
+    end
+    isfinite(value) || error("$label produced a non-finite value")
+    return value
 end
 
 @inline _ieee_bilinear_supported_eltype(
