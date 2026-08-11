@@ -37,6 +37,23 @@ end
 
 # Leave one Float64 significand bit for the half-cell offset used in box centers.
 const _MAX_OCTREE_DEPTH = min(8 * sizeof(Int) - 2, precision(Float64) - 1)
+const _OCTREE_GEOMETRY_FALLBACK_PRECISION = 256
+
+@inline function _octree_scale_requires_exact(value::Float64)
+    iszero(value) && return false
+    value_exponent = exponent(value)
+    return value_exponent < -128 || value_exponent > 128
+end
+
+@noinline function _octree_leaf_edge_exact(
+    k::Float64,
+    leaf_lambda::Float64,
+)
+    return setprecision(BigFloat, _OCTREE_GEOMETRY_FALLBACK_PRECISION) do
+        value = (2 * BigFloat(π) * BigFloat(leaf_lambda)) / BigFloat(k)
+        return Float64(value)
+    end
+end
 
 @inline function _validated_octree_leaf_edge(k::Float64, leaf_lambda::Float64)
     isfinite(k) && k > 0.0 ||
@@ -45,11 +62,32 @@ const _MAX_OCTREE_DEPTH = min(8 * sizeof(Int) - 2, precision(Float64) - 1)
     isfinite(leaf_lambda) && leaf_lambda > 0.0 ||
         throw(ArgumentError(
             "build_octree: leaf_lambda must be finite and positive, got $leaf_lambda"))
-    leaf_edge = leaf_lambda * (2π / k)
+    leaf_edge = if _octree_scale_requires_exact(k) ||
+                   _octree_scale_requires_exact(leaf_lambda)
+        _octree_leaf_edge_exact(k, leaf_lambda)
+    else
+        (leaf_lambda / k) * (2π)
+    end
     isfinite(leaf_edge) && leaf_edge > 0.0 ||
         throw(OverflowError(
             "build_octree: k=$k and leaf_lambda=$leaf_lambda produce an unrepresentable leaf edge"))
     return leaf_edge
+end
+
+@inline function _validated_octree_box_center(
+    origin::Vec3,
+    ijk::NTuple{3,Int},
+    edge::Float64,
+)
+    center = Vec3(
+        muladd(Float64(ijk[1]) + 0.5, edge, origin[1]),
+        muladd(Float64(ijk[2]) + 0.5, edge, origin[2]),
+        muladd(Float64(ijk[3]) + 0.5, edge, origin[3]),
+    )
+    all(isfinite, center) ||
+        throw(OverflowError(
+            "build_octree: box $ijk has an unrepresentable center"))
+    return center
 end
 
 """
@@ -149,11 +187,8 @@ function build_octree(centers::Vector{Vec3}, k::Float64; leaf_lambda::Float64=0.
             n_end += 1
         end
         box_id = length(leaf_boxes) + 1
-        box_center = origin + Vec3(
-            (cur_ijk[1] + 0.5) * leaf_edge,
-            (cur_ijk[2] + 0.5) * leaf_edge,
-            (cur_ijk[3] + 0.5) * leaf_edge,
-        )
+        box_center = _validated_octree_box_center(
+            origin, cur_ijk, leaf_edge)
         push!(leaf_boxes, OctreeBox(
             box_id, cur_ijk, box_center, leaf_edge,
             n_start:n_end,  # bf_range
@@ -183,11 +218,8 @@ function build_octree(centers::Vector{Vec3}, k::Float64; leaf_lambda::Float64=0.
             if !haskey(parent_ijk_map, p_ijk)
                 pid = length(parent_boxes) + 1
                 parent_ijk_map[p_ijk] = pid
-                p_center = origin + Vec3(
-                    (p_ijk[1] + 0.5) * edge_l,
-                    (p_ijk[2] + 0.5) * edge_l,
-                    (p_ijk[3] + 0.5) * edge_l,
-                )
+                p_center = _validated_octree_box_center(
+                    origin, p_ijk, edge_l)
                 push!(parent_boxes, OctreeBox(
                     pid, p_ijk, p_center, edge_l,
                     1:0,        # bf_range (non-leaf)

@@ -5739,6 +5739,34 @@ end
 @test_throws OverflowError build_octree(
     mlfma_centers, mlfma_k; leaf_lambda=1.0e-100)
 
+balanced_octree = build_octree(
+    [Vec3(0.0, 0.0, 0.0)], 1e-308; leaf_lambda=1e-308)
+@test balanced_octree.levels[end].edge_length == 2π
+@test all(all(isfinite, box.center)
+          for level in balanced_octree.levels for box in level.boxes)
+@test_throws OverflowError build_octree(
+    [Vec3(floatmax(Float64), 0.0, 0.0)],
+    2π / 5e306;
+    leaf_lambda=1.0,
+)
+
+octree_fused_center = DiffMoM._validated_octree_box_center(
+    Vec3(-floatmax(Float64), 0.0, 0.0),
+    (1, 0, 0),
+    floatmax(Float64),
+)
+@test octree_fused_center[1] == floatmax(Float64) / 2
+@test all(isfinite, octree_fused_center)
+
+DiffMoM._validated_octree_leaf_edge(2.0, 0.5)
+@test (@allocated DiffMoM._validated_octree_leaf_edge(2.0, 0.5)) == 0
+@test (@allocated DiffMoM._validated_octree_leaf_edge(1e-308, 1e-308)) <=
+      1_024
+DiffMoM._validated_octree_box_center(
+    Vec3(0.0, 0.0, 0.0), (0, 0, 0), 1.0)
+@test (@allocated DiffMoM._validated_octree_box_center(
+    Vec3(0.0, 0.0, 0.0), (0, 0, 0), 1.0)) == 0
+
 for invalid_truncation_input in (
     (0.0, mlfma_k, 3), (1.0, 0.0, 3), (1.0, mlfma_k, 0)
 )
