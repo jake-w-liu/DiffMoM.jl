@@ -17,6 +17,111 @@ export build_filter_weights, apply_filter, apply_filter_transpose
 export heaviside_project, heaviside_derivative
 export filter_and_project, gradient_chain_rule
 
+@inline function _filter_cell_indices_fit_int(
+    centroids::Vector{Vec3},
+    origin::Vec3,
+    r_min::Float64,
+)
+    inv_h = 1.0 / r_min
+    isfinite(inv_h) || return false
+    int_upper_bound = Float64(typemax(Int))
+    @inbounds for centroid in centroids
+        for component in 1:3
+            delta = centroid[component] - origin[component]
+            scaled = delta * inv_h
+            (isfinite(scaled) && scaled >= 0.0 &&
+             scaled < int_upper_bound) || return false
+        end
+    end
+    return true
+end
+
+function _filter_triplets_from_cells(
+    centroids::Vector{Vec3},
+    r_min::Float64,
+    cells::Vector{NTuple{3,T}},
+    buckets::Dict{NTuple{3,T},Vector{Int}},
+) where {T<:Integer}
+    Nt = length(centroids)
+    rows = Int[]
+    cols = Int[]
+    vals = Float64[]
+    sizehint!(rows, Nt)
+    sizehint!(cols, Nt)
+    sizehint!(vals, Nt)
+
+    @inbounds for t in 1:Nt
+        ct = centroids[t]
+        (cx, cy, cz) = cells[t]
+        for dz in -1:1, dy in -1:1, dx in -1:1
+            neigh = get(buckets, (cx + dx, cy + dy, cz + dz), nothing)
+            neigh === nothing && continue
+            for s in neigh
+                # Visit each unordered pair once (s > t) plus the diagonal once.
+                s < t && continue
+                # Use exactly the brute-force distance/weight expression so the
+                # stored values are bit-identical: norm(SVector) == sqrt(Σδ²).
+                d = norm(ct - centroids[s])
+                w = max(0.0, r_min - d)
+                w > 0 || continue
+                if s == t
+                    push!(rows, t); push!(cols, t); push!(vals, w)
+                else
+                    # Symmetric conic weight: store (t,s) and (s,t).
+                    push!(rows, t); push!(cols, s); push!(vals, w)
+                    push!(rows, s); push!(cols, t); push!(vals, w)
+                end
+            end
+        end
+    end
+    return rows, cols, vals
+end
+
+function _filter_weight_triplets_int(
+    centroids::Vector{Vec3},
+    origin::Vec3,
+    r_min::Float64,
+)
+    Nt = length(centroids)
+    inv_h = 1.0 / r_min
+    buckets = Dict{NTuple{3,Int},Vector{Int}}()
+    cells = Vector{NTuple{3,Int}}(undef, Nt)
+    @inbounds for t in 1:Nt
+        centroid = centroids[t]
+        key = ntuple(component ->
+            floor(Int, (centroid[component] - origin[component]) * inv_h), 3)
+        cells[t] = key
+        push!(get!(() -> Int[], buckets, key), t)
+    end
+    return _filter_triplets_from_cells(
+        centroids, r_min, cells, buckets)
+end
+
+@noinline function _filter_weight_triplets_bigint(
+    centroids::Vector{Vec3},
+    origin::Vec3,
+    r_min::Float64,
+)
+    Nt = length(centroids)
+    exact_origin = ntuple(
+        component -> Rational{BigInt}(origin[component]), 3)
+    exact_cell_size = Rational{BigInt}(r_min)
+    buckets = Dict{NTuple{3,BigInt},Vector{Int}}()
+    cells = Vector{NTuple{3,BigInt}}(undef, Nt)
+    @inbounds for t in 1:Nt
+        centroid = centroids[t]
+        key = ntuple(component -> begin
+            exact_delta = Rational{BigInt}(centroid[component]) -
+                          exact_origin[component]
+            floor(BigInt, exact_delta / exact_cell_size)
+        end, 3)
+        cells[t] = key
+        push!(get!(() -> Int[], buckets, key), t)
+    end
+    return _filter_triplets_from_cells(
+        centroids, r_min, cells, buckets)
+end
+
 """
     build_filter_weights(mesh, r_min)
 
@@ -52,11 +157,10 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
         centroids[t] = (v1 + v2 + v3) / 3
     end
 
-    rows = Int[]
-    cols = Int[]
-    vals = Float64[]
-
     if Nt == 0
+        rows = Int[]
+        cols = Int[]
+        vals = Float64[]
         W = sparse(rows, cols, vals, Nt, Nt)
         w_sum = vec(sum(W, dims=2))
         return W, w_sum
@@ -65,7 +169,6 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
     # Spatial hash grid: cell size = r_min so neighbours within r_min lie in the
     # 3×3×3 stencil around a centroid's cell. Cell indices are integers derived
     # from a common origin (the minimum corner of the centroid bounding box).
-    inv_h = 1.0 / r_min
     xmin = centroids[1][1]; ymin = centroids[1][2]; zmin = centroids[1][3]
     @inbounds for t in 2:Nt
         c = centroids[t]
@@ -73,41 +176,11 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
     end
     origin = Vec3(xmin, ymin, zmin)
 
-    cell_of(c) = (floor(Int, (c[1] - origin[1]) * inv_h),
-                  floor(Int, (c[2] - origin[2]) * inv_h),
-                  floor(Int, (c[3] - origin[3]) * inv_h))
-
-    buckets = Dict{NTuple{3,Int},Vector{Int}}()
-    cells = Vector{NTuple{3,Int}}(undef, Nt)
-    @inbounds for t in 1:Nt
-        key = cell_of(centroids[t])
-        cells[t] = key
-        push!(get!(() -> Int[], buckets, key), t)
-    end
-
-    @inbounds for t in 1:Nt
-        ct = centroids[t]
-        (cx, cy, cz) = cells[t]
-        for dz in -1:1, dy in -1:1, dx in -1:1
-            neigh = get(buckets, (cx + dx, cy + dy, cz + dz), nothing)
-            neigh === nothing && continue
-            for s in neigh
-                # Visit each unordered pair once (s > t) plus the diagonal once.
-                s < t && continue
-                # Use exactly the brute-force distance/weight expression so the
-                # stored values are bit-identical: norm(SVector) == sqrt(Σδ²).
-                d = norm(ct - centroids[s])
-                w = max(0.0, r_min - d)
-                w > 0 || continue
-                if s == t
-                    push!(rows, t); push!(cols, t); push!(vals, w)
-                else
-                    # Symmetric conic weight: store (t,s) and (s,t).
-                    push!(rows, t); push!(cols, s); push!(vals, w)
-                    push!(rows, s); push!(cols, t); push!(vals, w)
-                end
-            end
-        end
+    rows, cols, vals = if _filter_cell_indices_fit_int(
+            centroids, origin, r_min)
+        _filter_weight_triplets_int(centroids, origin, r_min)
+    else
+        _filter_weight_triplets_bigint(centroids, origin, r_min)
     end
 
     W = sparse(rows, cols, vals, Nt, Nt)

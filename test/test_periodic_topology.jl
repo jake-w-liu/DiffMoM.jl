@@ -446,6 +446,26 @@ println("\n── Test 39: DensityFiltering ──")
         @test_throws ArgumentError build_filter_weights(mesh_df, 0.0)
         @test_throws ArgumentError build_filter_weights(mesh_df, -r_min)
         @test_throws ArgumentError build_filter_weights(mesh_df, Inf)
+
+        # Cell coordinates may exceed Int even though the mesh and filter
+        # radius are finite. The wide-key path must retain the sparse hash and
+        # produce the exact two isolated self-weights.
+        wide_xyz = [
+            0.0 1.0 0.0 1.0e200 1.0e200 + 1.0e190 1.0e200
+            0.0 0.0 1.0 0.0     0.0                 1.0e190
+            0.0 0.0 0.0 0.0     0.0                 0.0
+        ]
+        wide_tri = [1 4; 2 5; 3 6]
+        wide_mesh = TriMesh(wide_xyz, wide_tri)
+        wide_radius = 1.0e-200
+        W_wide, sums_wide = build_filter_weights(wide_mesh, wide_radius)
+        @test Matrix(W_wide) == [wide_radius 0.0; 0.0 wide_radius]
+        @test sums_wide == [wide_radius, wide_radius]
+        build_filter_weights(wide_mesh, wide_radius)
+        let mesh = wide_mesh, radius = wide_radius
+            @test (@allocated build_filter_weights(mesh, radius)) <= 100_000
+        end
+
         @test size(W) == (Nt_df, Nt_df)
         # All weights non-negative (conic: max(0, r_min - d))
         @test all(nonzeros(W) .≥ 0)
