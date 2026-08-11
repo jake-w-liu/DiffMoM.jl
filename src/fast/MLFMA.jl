@@ -1618,6 +1618,27 @@ function _mlfma_initial_recovery_shift(x::AbstractVector)
     )
 end
 
+function _mlfma_initial_underflow_upshift(x::AbstractVector)
+    maximum_exponent = typemin(Int)
+    @inbounds for index in eachindex(x)
+        value = ComplexF64(x[index])
+        isfinite(value) || return 0
+        real_value = real(value)
+        imag_value = imag(value)
+        if !iszero(real_value)
+            maximum_exponent = max(
+                maximum_exponent, exponent(abs(real_value)))
+        end
+        if !iszero(imag_value)
+            maximum_exponent = max(
+                maximum_exponent, exponent(abs(imag_value)))
+        end
+    end
+    maximum_exponent == typemin(Int) && return 0
+    maximum_exponent >= -_MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT && return 0
+    return -maximum_exponent
+end
+
 function _mlfma_scale_input_losslessly!(
         destination::Vector{ComplexF64},
         source::AbstractVector,
@@ -1637,6 +1658,34 @@ function _mlfma_scale_input_losslessly!(
         )
         if ldexp(real(scaled), shift) != real(value) ||
            ldexp(imag(scaled), shift) != imag(value)
+            throw(OverflowError(
+                "MLFMA input spans too much exponent range for a lossless " *
+                "internal rescaling at index $index"))
+        end
+        destination[index] = scaled
+    end
+    return destination
+end
+
+function _mlfma_upscale_input_losslessly!(
+        destination::Vector{ComplexF64},
+        source::AbstractVector,
+        shift::Int)
+    shift > 0 || throw(ArgumentError("MLFMA recovery shift must be positive"))
+    length(destination) == length(source) ||
+        throw(DimensionMismatch(
+            "MLFMA recovery input lengths do not match"))
+    @inbounds for index in eachindex(destination, source)
+        value = ComplexF64(source[index])
+        isfinite(value) ||
+            throw(ArgumentError(
+                "MLFMA input contains a non-finite value at index $index: $value"))
+        scaled = ComplexF64(
+            ldexp(real(value), shift),
+            ldexp(imag(value), shift),
+        )
+        if ldexp(real(scaled), -shift) != real(value) ||
+           ldexp(imag(scaled), -shift) != imag(value)
             throw(OverflowError(
                 "MLFMA input spans too much exponent range for a lossless " *
                 "internal rescaling at index $index"))
@@ -1888,11 +1937,19 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
         x
     end
     length(ws.entry_output) == N || resize!(ws.entry_output, N)
-    _mlfma_forward_product!(ws.entry_output, A, xread)
-    product_shift = _mlfma_product_is_finite(ws.entry_output) ?
-                    0 :
-                    _mlfma_recover_forward_product!(
-                        ws.entry_output, A, xread)
+    underflow_upshift = _mlfma_initial_underflow_upshift(xread)
+    product_input = if iszero(underflow_upshift)
+        xread
+    else
+        _mlfma_upscale_input_losslessly!(
+            ws.input_copy, xread, underflow_upshift)
+    end
+    _mlfma_forward_product!(ws.entry_output, A, product_input)
+    product_shift = -underflow_upshift
+    if !_mlfma_product_is_finite(ws.entry_output)
+        product_shift += _mlfma_recover_forward_product!(
+            ws.entry_output, A, product_input)
+    end
     overwrite = iszero(beta_scale)
     if iszero(product_shift)
         @inbounds for row in eachindex(y)
@@ -2136,11 +2193,19 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
         x
     end
     length(ws.entry_output) == N || resize!(ws.entry_output, N)
-    _mlfma_adjoint_product!(ws.entry_output, A, xread)
-    product_shift = _mlfma_product_is_finite(ws.entry_output) ?
-                    0 :
-                    _mlfma_recover_adjoint_product!(
-                        ws.entry_output, A, xread)
+    underflow_upshift = _mlfma_initial_underflow_upshift(xread)
+    product_input = if iszero(underflow_upshift)
+        xread
+    else
+        _mlfma_upscale_input_losslessly!(
+            ws.input_copy, xread, underflow_upshift)
+    end
+    _mlfma_adjoint_product!(ws.entry_output, A, product_input)
+    product_shift = -underflow_upshift
+    if !_mlfma_product_is_finite(ws.entry_output)
+        product_shift += _mlfma_recover_adjoint_product!(
+            ws.entry_output, A, product_input)
+    end
     overwrite = iszero(beta_scale)
     if iszero(product_shift)
         @inbounds for row in eachindex(y)

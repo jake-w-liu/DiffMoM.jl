@@ -5073,6 +5073,41 @@ for mlfma_internal_operator in (A_mlfma, adjoint(A_mlfma))
     @test mlfma_internal_alias == mlfma_internal_reference
 end
 
+# Conversely, an output scale can recover products that would underflow inside
+# the MLFMA passes. Upscale the input exactly before the pass and compensate in
+# the final high-precision output combination.
+mlfma_internal_tiny_input =
+    fill(ComplexF64(nextfloat(0.0), 0.0), mlfma_N)
+mlfma_internal_tiny_scale = floatmax(Float64)
+mlfma_internal_rescaled_tiny_input =
+    mlfma_internal_tiny_scale .* mlfma_internal_tiny_input
+for mlfma_internal_operator in (A_mlfma, adjoint(A_mlfma))
+    mlfma_internal_tiny_reference =
+        mlfma_internal_operator * mlfma_internal_rescaled_tiny_input
+    @test all(isfinite, mlfma_internal_tiny_reference)
+    @test all(!iszero, mlfma_internal_tiny_reference)
+
+    mlfma_internal_tiny_result = zeros(ComplexF64, mlfma_N)
+    mul!(mlfma_internal_tiny_result, mlfma_internal_operator,
+         mlfma_internal_tiny_input,
+         mlfma_internal_tiny_scale, 0.0)
+    @test mlfma_internal_tiny_result ≈
+          mlfma_internal_tiny_reference rtol=1e-13 atol=0.0
+
+    mlfma_internal_tiny_cancellation = -mlfma_internal_tiny_result
+    mul!(mlfma_internal_tiny_cancellation, mlfma_internal_operator,
+         mlfma_internal_tiny_input,
+         mlfma_internal_tiny_scale, 1.0)
+    @test maximum(abs, mlfma_internal_tiny_cancellation) <=
+          eps(Float64) * maximum(abs, mlfma_internal_tiny_result)
+
+    mlfma_internal_tiny_alias = copy(mlfma_internal_tiny_input)
+    mul!(mlfma_internal_tiny_alias, mlfma_internal_operator,
+         mlfma_internal_tiny_alias,
+         mlfma_internal_tiny_scale, 0.0)
+    @test mlfma_internal_tiny_alias == mlfma_internal_tiny_result
+end
+
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
 println("  31d: MLFMA adjoint identity — rel error = $(round(mlfma_adj_err, sigdigits=3))")
 @assert mlfma_adj_err < 1e-10 "MLFMA adjoint identity failed: $mlfma_adj_err"
