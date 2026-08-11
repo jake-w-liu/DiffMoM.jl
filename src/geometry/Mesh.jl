@@ -1522,6 +1522,261 @@ end
 
 @inline _mesh_vertex(mesh::TriMesh, i::Int) = Vec3(mesh.xyz[1, i], mesh.xyz[2, i], mesh.xyz[3, i])
 
+# Exact differences between two Float64 endpoints can span 2,099 binary
+# places. A cross product can double that span, so 4,352 bits cover the exact
+# endpoint differences and determinant products with a guard margin. These
+# fallbacks are cold: ordinary finite geometry stays allocation-free.
+const _TRIANGLE_GEOMETRY_FALLBACK_PRECISION = 4352
+
+@inline function _finite_triangle_vertices(v1::Vec3, v2::Vec3, v3::Vec3)
+    return isfinite(v1[1]) && isfinite(v1[2]) && isfinite(v1[3]) &&
+           isfinite(v2[1]) && isfinite(v2[2]) && isfinite(v2[3]) &&
+           isfinite(v3[1]) && isfinite(v3[2]) && isfinite(v3[3])
+end
+
+@inline function _compensated_determinant(a::Float64, b::Float64,
+                                          c::Float64, d::Float64)
+    first_product = a * b
+    second_product = c * d
+    leading = first_product - second_product
+    correction = fma(a, b, -first_product) - fma(c, d, -second_product)
+    return leading + correction
+end
+
+@inline function _two_difference_error(first::Float64, second::Float64,
+                                       difference::Float64)
+    virtual_second = first - difference
+    virtual_first = difference + virtual_second
+    second_roundoff = virtual_second - second
+    first_roundoff = first - virtual_first
+    return first_roundoff + second_roundoff
+end
+
+@inline function _scaled_component_is_well_resolved(value::Float64)
+    # Products of two admitted components stay above 2^-900. Their complete
+    # 106-bit product expansions therefore remain normal Float64 numbers, so
+    # a compensated zero determinant is a proof of exact collinearity rather
+    # than an underflowed nonzero determinant.
+    return value == 0.0 || abs(value) >= ldexp(1.0, -450)
+end
+
+@inline function _scaled_triangle_cross(v1::Vec3, v2::Vec3, v3::Vec3)
+    e1x = v2[1] - v1[1]
+    e1y = v2[2] - v1[2]
+    e1z = v2[3] - v1[3]
+    e2x = v3[1] - v1[1]
+    e2y = v3[2] - v1[2]
+    e2z = v3[3] - v1[3]
+
+    if !(isfinite(e1x) && isfinite(e1y) && isfinite(e1z) &&
+         isfinite(e2x) && isfinite(e2y) && isfinite(e2z))
+        return false, 0.0, 0.0, 0.0, 0, 0, 0.0
+    end
+
+    scale1 = max(abs(e1x), abs(e1y), abs(e1z))
+    scale2 = max(abs(e2x), abs(e2y), abs(e2z))
+    if !(scale1 > 0.0 && scale2 > 0.0)
+        return false, 0.0, 0.0, 0.0, 0, 0, 0.0
+    end
+
+    _, scale1_exponent = frexp(scale1)
+    _, scale2_exponent = frexp(scale2)
+    a1 = ldexp(e1x, -scale1_exponent)
+    a2 = ldexp(e1y, -scale1_exponent)
+    a3 = ldexp(e1z, -scale1_exponent)
+    b1 = ldexp(e2x, -scale2_exponent)
+    b2 = ldexp(e2y, -scale2_exponent)
+    b3 = ldexp(e2z, -scale2_exponent)
+
+    e1x_error = _two_difference_error(v2[1], v1[1], e1x)
+    e1y_error = _two_difference_error(v2[2], v1[2], e1y)
+    e1z_error = _two_difference_error(v2[3], v1[3], e1z)
+    e2x_error = _two_difference_error(v3[1], v1[1], e2x)
+    e2y_error = _two_difference_error(v3[2], v1[2], e2y)
+    e2z_error = _two_difference_error(v3[3], v1[3], e2z)
+    a1_error = ldexp(e1x_error, -scale1_exponent)
+    a2_error = ldexp(e1y_error, -scale1_exponent)
+    a3_error = ldexp(e1z_error, -scale1_exponent)
+    b1_error = ldexp(e2x_error, -scale2_exponent)
+    b2_error = ldexp(e2y_error, -scale2_exponent)
+    b3_error = ldexp(e2z_error, -scale2_exponent)
+
+    # A nonzero component lost while scaling can later be rescued by the
+    # product of the two edge scales. Defer that exceptional case instead of
+    # silently treating it as zero.
+    if ((e1x != 0.0 && a1 == 0.0) ||
+        (e1y != 0.0 && a2 == 0.0) ||
+        (e1z != 0.0 && a3 == 0.0) ||
+        (e2x != 0.0 && b1 == 0.0) ||
+        (e2y != 0.0 && b2 == 0.0) ||
+        (e2z != 0.0 && b3 == 0.0) ||
+        (e1x_error != 0.0 && a1_error == 0.0) ||
+        (e1y_error != 0.0 && a2_error == 0.0) ||
+        (e1z_error != 0.0 && a3_error == 0.0) ||
+        (e2x_error != 0.0 && b1_error == 0.0) ||
+        (e2y_error != 0.0 && b2_error == 0.0) ||
+        (e2z_error != 0.0 && b3_error == 0.0))
+        return false, 0.0, 0.0, 0.0,
+               scale1_exponent, scale2_exponent, 0.0
+    end
+
+    cx = _compensated_determinant(a2, b3, a3, b2)
+    cy = _compensated_determinant(a3, b1, a1, b3)
+    cz = _compensated_determinant(a1, b2, a2, b1)
+    cross_norm = hypot(hypot(cx, cy), cz)
+    edge1_norm = hypot(hypot(a1, a2), a3)
+    edge2_norm = hypot(hypot(b1, b2), b3)
+    edge1_error_norm = hypot(hypot(a1_error, a2_error), a3_error)
+    edge2_error_norm = hypot(hypot(b1_error, b2_error), b3_error)
+    subtraction_uncertainty =
+        edge1_error_norm * edge2_norm +
+        edge1_norm * edge2_error_norm +
+        edge1_error_norm * edge2_error_norm
+    arithmetic_uncertainty =
+        32 * eps(Float64)^2 * edge1_norm * edge2_norm
+    uncertainty = subtraction_uncertainty + arithmetic_uncertainty
+    # Near collinearity amplifies both endpoint-subtraction residuals and the
+    # compensated determinant's remaining second-order roundoff. Require a
+    # 20-bit separation from that estimate; otherwise the exact fallback
+    # keeps thin translated triangles from inheriting amplified Float64
+    # endpoint-subtraction error.
+    cancellation_floor = max(
+        128 * eps(Float64) * edge1_norm * edge2_norm,
+        1_048_576 * uncertainty,
+    )
+    if cross_norm == 0.0 &&
+       e1x_error == 0.0 && e1y_error == 0.0 && e1z_error == 0.0 &&
+       e2x_error == 0.0 && e2y_error == 0.0 && e2z_error == 0.0 &&
+       _scaled_component_is_well_resolved(a1) &&
+       _scaled_component_is_well_resolved(a2) &&
+       _scaled_component_is_well_resolved(a3) &&
+       _scaled_component_is_well_resolved(b1) &&
+       _scaled_component_is_well_resolved(b2) &&
+       _scaled_component_is_well_resolved(b3)
+        return true, cx, cy, cz,
+               scale1_exponent, scale2_exponent, cross_norm
+    end
+    if !(isfinite(cross_norm) && cross_norm > cancellation_floor)
+        return false, cx, cy, cz,
+               scale1_exponent, scale2_exponent, cross_norm
+    end
+    return true, cx, cy, cz,
+           scale1_exponent, scale2_exponent, cross_norm
+end
+
+@inline function _scaled_triangle_area(cross_norm::Float64,
+                                       scale1_exponent::Int,
+                                       scale2_exponent::Int)
+    cross_norm == 0.0 && return 0.0
+    norm_fraction, norm_exponent = frexp(cross_norm)
+    area = ldexp(
+        0.5 * norm_fraction,
+        norm_exponent + scale1_exponent + scale2_exponent,
+    )
+    return area
+end
+
+@noinline function _triangle_area_big(v1::Vec3, v2::Vec3, v3::Vec3)
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        e1x = BigFloat(v2[1]) - BigFloat(v1[1])
+        e1y = BigFloat(v2[2]) - BigFloat(v1[2])
+        e1z = BigFloat(v2[3]) - BigFloat(v1[3])
+        e2x = BigFloat(v3[1]) - BigFloat(v1[1])
+        e2y = BigFloat(v3[2]) - BigFloat(v1[2])
+        e2z = BigFloat(v3[3]) - BigFloat(v1[3])
+        cx = e1y * e2z - e1z * e2y
+        cy = e1z * e2x - e1x * e2z
+        cz = e1x * e2y - e1y * e2x
+        area = Float64(hypot(hypot(cx, cy), cz) / 2)
+        isfinite(area) ||
+            throw(OverflowError("triangle area is outside the representable Float64 range"))
+        return area
+    end
+end
+
+@noinline function _triangle_normal_big(v1::Vec3, v2::Vec3, v3::Vec3,
+                                        triangle_index::Int)
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        e1x = BigFloat(v2[1]) - BigFloat(v1[1])
+        e1y = BigFloat(v2[2]) - BigFloat(v1[2])
+        e1z = BigFloat(v2[3]) - BigFloat(v1[3])
+        e2x = BigFloat(v3[1]) - BigFloat(v1[1])
+        e2y = BigFloat(v3[2]) - BigFloat(v1[2])
+        e2z = BigFloat(v3[3]) - BigFloat(v1[3])
+        cx = e1y * e2z - e1z * e2y
+        cy = e1z * e2x - e1x * e2z
+        cz = e1x * e2y - e1y * e2x
+        cross_norm = hypot(hypot(cx, cy), cz)
+        cross_norm > 0 ||
+            throw(DomainError(
+                triangle_index,
+                "triangle $triangle_index is degenerate; cannot compute a unit normal"))
+        normal = Vec3(
+            Float64(cx / cross_norm),
+            Float64(cy / cross_norm),
+            Float64(cz / cross_norm),
+        )
+        all(isfinite, normal) ||
+            throw(OverflowError(
+                "triangle $triangle_index unit normal is outside the representable Float64 range"))
+        return normal
+    end
+end
+
+@inline function _two_sum(first::Float64, second::Float64)
+    total = first + second
+    virtual_second = total - first
+    error = (first - (total - virtual_second)) + (second - virtual_second)
+    return total, error
+end
+
+@noinline function _mean3_big(first::Float64, second::Float64, third::Float64)
+    # Preserve a subnormal addend across cancellation of opposite maximum
+    # finite values, independent of vertex order.
+    return setprecision(BigFloat, 2304) do
+        Float64((BigFloat(first) + BigFloat(second) + BigFloat(third)) / 3)
+    end
+end
+
+@inline function _mean3_finite(first::Float64, second::Float64, third::Float64)
+    max_component = max(abs(first), abs(second), abs(third))
+    max_component == 0.0 && return 0.0
+
+    _, scale_exponent = frexp(max_component)
+    first_scaled = ldexp(first, -scale_exponent)
+    second_scaled = ldexp(second, -scale_exponent)
+    third_scaled = ldexp(third, -scale_exponent)
+    if ((first != 0.0 && first_scaled == 0.0) ||
+        (second != 0.0 && second_scaled == 0.0) ||
+        (third != 0.0 && third_scaled == 0.0))
+        return _mean3_big(first, second, third)
+    end
+
+    leading12, error12 = _two_sum(first_scaled, second_scaled)
+    leading123, error3 = _two_sum(leading12, third_scaled)
+    correction_leading, correction_error = _two_sum(error12, error3)
+    sum_leading, sum_error = _two_sum(leading123, correction_leading)
+    tail = sum_error + correction_error
+    corrected = sum_leading + tail
+
+    # A nonzero expansion that rounds all the way to zero can still be rescued
+    # by the power-of-two scale. That exceptional case needs BigFloat;
+    # ordinary same-scale cancellation stays allocation-free. The restored
+    # subnormal boundary is settled separately below.
+    if corrected == 0.0 && (sum_leading != 0.0 || tail != 0.0)
+        return _mean3_big(first, second, third)
+    end
+    corrected == 0.0 && return 0.0
+
+    mean_fraction, mean_exponent = frexp(corrected)
+    mean = ldexp(mean_fraction / 3, mean_exponent + scale_exponent)
+    # Dividing the normalized significand before restoring the exponent can
+    # choose the wrong side of a subnormal rounding tie. Re-evaluate that cold
+    # boundary from the stored coordinates.
+    return abs(mean) <= floatmin(Float64) ?
+           _mean3_big(first, second, third) : mean
+end
+
 """
     triangle_area(mesh, t)
 
@@ -1531,7 +1786,24 @@ function triangle_area(mesh::TriMesh, t::Int)
     v1 = _mesh_vertex(mesh, mesh.tri[1, t])
     v2 = _mesh_vertex(mesh, mesh.tri[2, t])
     v3 = _mesh_vertex(mesh, mesh.tri[3, t])
-    return 0.5 * norm(cross(v2 - v1, v3 - v1))
+    _finite_triangle_vertices(v1, v2, v3) ||
+        throw(DomainError(t, "triangle $t has non-finite coordinates"))
+    fast, _, _, _, scale1_exponent, scale2_exponent, cross_norm =
+        _scaled_triangle_cross(v1, v2, v3)
+    fast || return _triangle_area_big(v1, v2, v3)
+    cross_norm == 0.0 && return 0.0
+
+    area = _scaled_triangle_area(
+        cross_norm, scale1_exponent, scale2_exponent)
+    # Endpoint-subtraction residuals can move a rounded result across either
+    # representability boundary even when the triangle is well-conditioned.
+    # Settle subnormal and upper-half-range results from the stored endpoints.
+    if !isfinite(area) ||
+       area <= floatmin(Float64) ||
+       area >= 0.5 * floatmax(Float64)
+        return _triangle_area_big(v1, v2, v3)
+    end
+    return area
 end
 
 """
@@ -1543,7 +1815,13 @@ function triangle_center(mesh::TriMesh, t::Int)
     v1 = _mesh_vertex(mesh, mesh.tri[1, t])
     v2 = _mesh_vertex(mesh, mesh.tri[2, t])
     v3 = _mesh_vertex(mesh, mesh.tri[3, t])
-    return (v1 + v2 + v3) / 3
+    _finite_triangle_vertices(v1, v2, v3) ||
+        throw(DomainError(t, "triangle $t has non-finite coordinates"))
+    return Vec3(
+        _mean3_finite(v1[1], v2[1], v3[1]),
+        _mean3_finite(v1[2], v2[2], v3[2]),
+        _mean3_finite(v1[3], v2[3], v3[3]),
+    )
 end
 
 """
@@ -1555,23 +1833,18 @@ function triangle_normal(mesh::TriMesh, t::Int)
     v1 = _mesh_vertex(mesh, mesh.tri[1, t])
     v2 = _mesh_vertex(mesh, mesh.tri[2, t])
     v3 = _mesh_vertex(mesh, mesh.tri[3, t])
-    edge1 = v2 - v1
-    edge2 = v3 - v1
-    scale1 = max(abs(edge1[1]), abs(edge1[2]), abs(edge1[3]))
-    scale2 = max(abs(edge2[1]), abs(edge2[2]), abs(edge2[3]))
-    if !(isfinite(scale1) && isfinite(scale2) &&
-         scale1 > 0.0 && scale2 > 0.0)
+    _finite_triangle_vertices(v1, v2, v3) ||
         throw(DomainError(
             t,
-            "triangle $t is degenerate or has non-finite coordinates; cannot compute a unit normal"))
+            "triangle $t has non-finite coordinates; cannot compute a unit normal"))
+    fast, cx, cy, cz, _, _, cross_norm =
+        _scaled_triangle_cross(v1, v2, v3)
+    if fast
+        cross_norm > 0.0 ||
+            throw(DomainError(t, "triangle $t is degenerate; cannot compute a unit normal"))
+        return Vec3(cx / cross_norm, cy / cross_norm, cz / cross_norm)
     end
-    scaled_normal = cross(edge1 / scale1, edge2 / scale2)
-    normal_norm = norm(scaled_normal)
-    (isfinite(normal_norm) && normal_norm > 0.0) ||
-        throw(DomainError(
-            t,
-            "triangle $t is degenerate or has non-finite coordinates; cannot compute a unit normal"))
-    return scaled_normal / normal_norm
+    return _triangle_normal_big(v1, v2, v3, t)
 end
 
 """
@@ -1631,9 +1904,61 @@ function _mesh_edge_lengths(mesh::TriMesh)
     edges = mesh_unique_edges(mesh)
     lens = Vector{Float64}(undef, length(edges))
     for (k, (i, j)) in enumerate(edges)
-        lens[k] = norm(_mesh_vertex(mesh, i) - _mesh_vertex(mesh, j))
+        first = _mesh_vertex(mesh, i)
+        second = _mesh_vertex(mesh, j)
+        (all(isfinite, first) && all(isfinite, second)) ||
+            throw(DomainError((i, j), "mesh edge has non-finite coordinates"))
+        dx = second[1] - first[1]
+        dy = second[2] - first[2]
+        dz = second[3] - first[3]
+        if isfinite(dx) && isfinite(dy) && isfinite(dz)
+            length_float = hypot(hypot(dx, dy), dz)
+            # Rounded endpoint differences can hide an exact distance just
+            # across either side of Float64's upper boundary. The cold exact
+            # path settles the entire upper half-range, including a rounded
+            # `Inf`, where that distinction can matter.
+            lens[k] = (!isfinite(length_float) ||
+                       length_float >= 0.5 * floatmax(Float64)) ?
+                      _mesh_edge_length_big(first, second) : length_float
+        else
+            lens[k] = _mesh_edge_length_big(first, second)
+        end
     end
     return lens
+end
+
+@noinline function _mesh_edge_length_big(first::Vec3, second::Vec3)
+    return setprecision(BigFloat, 2304) do
+        dx = BigFloat(second[1]) - BigFloat(first[1])
+        dy = BigFloat(second[2]) - BigFloat(first[2])
+        dz = BigFloat(second[3]) - BigFloat(first[3])
+        length_float = Float64(hypot(hypot(dx, dy), dz))
+        isfinite(length_float) ||
+            throw(OverflowError(
+                "mesh edge length is outside the representable Float64 range"))
+        return length_float
+    end
+end
+
+function _finite_nonnegative_mean(values::Vector{Float64})
+    isempty(values) && return 0.0
+    maximum_value = maximum(values)
+    (isfinite(maximum_value) && maximum_value >= 0.0) ||
+        throw(ArgumentError("edge lengths must be finite and nonnegative"))
+    maximum_value == 0.0 && return 0.0
+
+    scaled_sum = 0.0
+    compensation = 0.0
+    @inbounds for value in values
+        (isfinite(value) && value >= 0.0) ||
+            throw(ArgumentError("edge lengths must be finite and nonnegative"))
+        scaled = value / maximum_value
+        corrected = scaled - compensation
+        updated = scaled_sum + corrected
+        compensation = (updated - scaled_sum) - corrected
+        scaled_sum = updated
+    end
+    return maximum_value * (scaled_sum / length(values))
 end
 
 function _percentile_from_sorted(sorted_vals::Vector{Float64}, p::Float64)
@@ -1673,7 +1998,7 @@ function mesh_resolution_report(mesh::TriMesh, freq_hz::Real;
     h_min = lens_sorted[1]
     h_med = _percentile_from_sorted(lens_sorted, 0.50)
     h_p95 = _percentile_from_sorted(lens_sorted, 0.95)
-    h_mean = sum(lens_sorted) / length(lens_sorted)
+    h_mean = _finite_nonnegative_mean(lens_sorted)
     h_max = lens_sorted[end]
 
     meets = h_max <= target_h
@@ -1717,35 +2042,124 @@ function mesh_resolution_ok(report; criterion::Symbol=:max)
     error("mesh_resolution_ok: unknown criterion=$(criterion). Use :max, :p95, or :median.")
 end
 
-function _midpoint_refine_once(mesh::TriMesh)
+const _DEFAULT_REFINEMENT_MAX_OUTPUT_BYTES = 512 * 1024 * 1024
+
+@noinline function _midpoint_big(first::Float64, second::Float64)
+    return setprecision(BigFloat, 2304) do
+        Float64((BigFloat(first) + BigFloat(second)) / 2)
+    end
+end
+
+@inline function _safe_midpoint_component(first::Float64, second::Float64)
+    # Canonical numeric order makes the rounded midpoint independent of the
+    # edge's vertex labels. `isless` also gives signed zeros a stable order.
+    lower, upper = isless(second, first) ? (second, first) : (first, second)
+    midpoint = if signbit(lower) == signbit(upper)
+        lower + (upper - lower) / 2
+    else
+        (lower + upper) / 2
+    end
+    if abs(midpoint) <= floatmin(Float64)
+        leading, error = _two_sum(lower, upper)
+        leading == 0.0 && error == 0.0 && return midpoint
+        return _midpoint_big(lower, upper)
+    end
+    return midpoint
+end
+
+@inline function _safe_edge_midpoint(first::Vec3, second::Vec3)
+    return Vec3(
+        _safe_midpoint_component(first[1], second[1]),
+        _safe_midpoint_component(first[2], second[2]),
+        _safe_midpoint_component(first[3], second[3]),
+    )
+end
+
+function _checked_mesh_payload_bytes(vertex_count::Int, triangle_count::Int)
+    try
+        vertex_bytes = Base.Checked.checked_mul(3 * sizeof(Float64), vertex_count)
+        triangle_bytes = Base.Checked.checked_mul(3 * sizeof(Int), triangle_count)
+        return Base.Checked.checked_add(vertex_bytes, triangle_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "refined mesh storage size overflows Int: vertices=$vertex_count, triangles=$triangle_count"))
+    end
+end
+
+function _midpoint_refine_once(mesh::TriMesh, max_output_bytes::Int)
     Nv = nvertices(mesh)
     Nt = ntriangles(mesh)
-
-    xyz_list = [_mesh_vertex(mesh, i) for i in 1:Nv]
-    edge_mid = Dict{Tuple{Int,Int}, Int}()
-
-    function midpoint_index(i::Int, j::Int)
-        key = i < j ? (i, j) : (j, i)
-        if haskey(edge_mid, key)
-            return edge_mid[key]
-        end
-        vm = 0.5 * (xyz_list[i] + xyz_list[j])
-        push!(xyz_list, vm)
-        idx = length(xyz_list)
-        edge_mid[key] = idx
-        return idx
+    output_triangles = try
+        Base.Checked.checked_mul(4, Nt)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("midpoint refinement triangle count overflows Int for $Nt input triangles"))
     end
 
-    tri_new = Matrix{Int}(undef, 3, 4 * Nt)
+    # Reject only from a guaranteed lower bound before counting unique edges.
+    # The exact payload check below must decide borderline accepted cases.
+    minimum_output_payload_bytes =
+        _checked_mesh_payload_bytes(Nv, output_triangles)
+    minimum_output_payload_bytes <= max_output_bytes ||
+        return (mesh=nothing, stop_reason=:max_output_bytes,
+                output_payload_bytes=minimum_output_payload_bytes)
+
+    edges = mesh_unique_edges(mesh)
+    output_vertices = try
+        Base.Checked.checked_add(Nv, length(edges))
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "midpoint refinement vertex count overflows Int for $Nv vertices and $(length(edges)) edges"))
+    end
+    output_payload_bytes = _checked_mesh_payload_bytes(output_vertices, output_triangles)
+    output_payload_bytes <= max_output_bytes ||
+        return (mesh=nothing, stop_reason=:max_output_bytes,
+                output_payload_bytes=output_payload_bytes)
+
+    edge_mid = Dict{Tuple{Int,Int},Int}()
+    sizehint!(edge_mid, length(edges))
+    midpoints = Vector{Vec3}(undef, length(edges))
+    @inbounds for (edge_index, (i, j)) in enumerate(edges)
+        first = _mesh_vertex(mesh, i)
+        second = _mesh_vertex(mesh, j)
+        (all(isfinite, first) && all(isfinite, second)) ||
+            throw(DomainError((i, j), "cannot refine an edge with non-finite coordinates"))
+        midpoint = _safe_edge_midpoint(first, second)
+        all(isfinite, midpoint) ||
+            throw(OverflowError("midpoint refinement produced a non-finite coordinate"))
+        if first != second && (midpoint == first || midpoint == second)
+            return (mesh=nothing, stop_reason=:coordinate_resolution,
+                    output_payload_bytes=output_payload_bytes)
+        end
+        midpoint == first && midpoint == second &&
+            return (mesh=nothing, stop_reason=:coordinate_resolution,
+                    output_payload_bytes=output_payload_bytes)
+        midpoints[edge_index] = midpoint
+        edge_mid[(i, j)] = Nv + edge_index
+    end
+
+    xyz_new = Matrix{Float64}(undef, 3, output_vertices)
+    copyto!(view(xyz_new, :, 1:Nv), mesh.xyz)
+    @inbounds for edge_index in eachindex(midpoints)
+        midpoint = midpoints[edge_index]
+        output_index = Nv + edge_index
+        xyz_new[1, output_index] = midpoint[1]
+        xyz_new[2, output_index] = midpoint[2]
+        xyz_new[3, output_index] = midpoint[3]
+    end
+
+    tri_new = Matrix{Int}(undef, 3, output_triangles)
     tid = 0
-    for t in 1:Nt
+    @inbounds for t in 1:Nt
         a = mesh.tri[1, t]
         b = mesh.tri[2, t]
         c = mesh.tri[3, t]
 
-        mab = midpoint_index(a, b)
-        mbc = midpoint_index(b, c)
-        mca = midpoint_index(c, a)
+        mab = edge_mid[minmax(a, b)]
+        mbc = edge_mid[minmax(b, c)]
+        mca = edge_mid[minmax(c, a)]
 
         tid += 1
         tri_new[1, tid] = a
@@ -1765,28 +2179,31 @@ function _midpoint_refine_once(mesh::TriMesh)
         tri_new[3, tid] = mca
     end
 
-    xyz_new = zeros(3, length(xyz_list))
-    for i in 1:length(xyz_list)
-        xyz_new[:, i] = xyz_list[i]
-    end
-    return TriMesh(xyz_new, tri_new)
+    return (mesh=TriMesh(xyz_new, tri_new), stop_reason=:refined,
+            output_payload_bytes=output_payload_bytes)
 end
 
 """
-    refine_mesh_to_target_edge(mesh, target_max_edge_m; max_iters=8, max_triangles=2_000_000)
+    refine_mesh_to_target_edge(mesh, target_max_edge_m;
+        max_iters=8, max_triangles=2_000_000,
+        max_output_bytes=536_870_912)
 
 Uniformly refine a triangle mesh via midpoint subdivision until
 `edge_max_m <= target_max_edge_m` or limits are reached.
 """
 function refine_mesh_to_target_edge(mesh::TriMesh, target_max_edge_m::Real;
                                     max_iters::Int=8,
-                                    max_triangles::Int=2_000_000)
+                                    max_triangles::Int=2_000_000,
+                                    max_output_bytes::Int=_DEFAULT_REFINEMENT_MAX_OUTPUT_BYTES)
     target_max_edge_m_f = _positive_finite_length(
         "refine_mesh_to_target_edge: target_max_edge_m", target_max_edge_m)
     max_iters >= 0 ||
         throw(ArgumentError("refine_mesh_to_target_edge: max_iters must be nonnegative, got $max_iters"))
     max_triangles > 0 ||
         throw(ArgumentError("refine_mesh_to_target_edge: max_triangles must be positive, got $max_triangles"))
+    max_output_bytes > 0 ||
+        throw(ArgumentError(
+            "refine_mesh_to_target_edge: max_output_bytes must be positive, got $max_output_bytes"))
 
     mesh_cur = mesh
     before_lens = _mesh_edge_lengths(mesh_cur)
@@ -1798,10 +2215,19 @@ function refine_mesh_to_target_edge(mesh::TriMesh, target_max_edge_m::Real;
 
     converged = edge_max_before <= target_max_edge_m_f
     iters = 0
+    stop_reason = converged ? :target_reached : :max_iterations
 
     while !converged && iters < max_iters
-        ntriangles(mesh_cur) * 4 <= max_triangles || break
-        mesh_cur = _midpoint_refine_once(mesh_cur)
+        ntriangles(mesh_cur) <= max_triangles ÷ 4 || begin
+            stop_reason = :max_triangles
+            break
+        end
+        refined = _midpoint_refine_once(mesh_cur, max_output_bytes)
+        if refined.mesh === nothing
+            stop_reason = refined.stop_reason
+            break
+        end
+        mesh_cur = refined.mesh
         iters += 1
 
         lens = _mesh_edge_lengths(mesh_cur)
@@ -1809,12 +2235,14 @@ function refine_mesh_to_target_edge(mesh::TriMesh, target_max_edge_m::Real;
         push!(hist_edge_max, edge_max)
         push!(hist_triangles, ntriangles(mesh_cur))
         converged = edge_max <= target_max_edge_m_f
+        stop_reason = converged ? :target_reached : :max_iterations
     end
 
     return (
         mesh = mesh_cur,
         iterations = iters,
         converged = converged,
+        stop_reason = stop_reason,
         target_max_edge_m = target_max_edge_m_f,
         edge_max_before_m = edge_max_before,
         edge_max_after_m = hist_edge_max[end],
@@ -1826,7 +2254,9 @@ function refine_mesh_to_target_edge(mesh::TriMesh, target_max_edge_m::Real;
 end
 
 """
-    refine_mesh_for_mom(mesh, freq_hz; points_per_wavelength=10.0, max_iters=8, max_triangles=2_000_000)
+    refine_mesh_for_mom(mesh, freq_hz;
+        points_per_wavelength=10.0, max_iters=8,
+        max_triangles=2_000_000, max_output_bytes=536_870_912)
 
 Refine a mesh to satisfy a frequency-based MoM edge-length target:
 `target_max_edge_m = λ / points_per_wavelength`.
@@ -1835,13 +2265,15 @@ function refine_mesh_for_mom(mesh::TriMesh, freq_hz::Real;
                              points_per_wavelength::Real=10.0,
                              max_iters::Int=8,
                              max_triangles::Int=2_000_000,
+                             max_output_bytes::Int=_DEFAULT_REFINEMENT_MAX_OUTPUT_BYTES,
                              c0::Real=299792458.0)
     report_before = mesh_resolution_report(mesh, freq_hz;
                                            points_per_wavelength=points_per_wavelength,
                                            c0=c0)
     result = refine_mesh_to_target_edge(mesh, report_before.target_max_edge_m;
                                         max_iters=max_iters,
-                                        max_triangles=max_triangles)
+                                        max_triangles=max_triangles,
+                                        max_output_bytes=max_output_bytes)
     report_after = mesh_resolution_report(result.mesh, freq_hz;
                                           points_per_wavelength=points_per_wavelength,
                                           c0=c0)

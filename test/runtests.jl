@@ -888,8 +888,72 @@ refine_result = refine_mesh_to_target_edge(mesh_edges_test, 0.40; max_iters=3)
 @assert refine_result.triangles_after > refine_result.triangles_before
 @assert refine_result.edge_max_after_m <= 0.40 + 1e-12
 @assert refine_result.converged
+@test refine_result.stop_reason == :target_reached
 @test_throws ArgumentError refine_mesh_to_target_edge(mesh_edges_test, Inf)
 @test_throws ArgumentError refine_mesh_to_target_edge(mesh_edges_test, NaN)
+@test_throws ArgumentError refine_mesh_to_target_edge(
+    mesh_edges_test, 0.40; max_output_bytes=0)
+
+refine_triangle_limit = refine_mesh_to_target_edge(
+    mesh_edges_test, 0.40; max_iters=3, max_triangles=2)
+@test !refine_triangle_limit.converged
+@test refine_triangle_limit.iterations == 0
+@test refine_triangle_limit.stop_reason == :max_triangles
+@test refine_triangle_limit.mesh === mesh_edges_test
+
+refine_byte_limit = refine_mesh_to_target_edge(
+    mesh_edges_test, 0.40; max_iters=3, max_output_bytes=1)
+@test !refine_byte_limit.converged
+@test refine_byte_limit.iterations == 0
+@test refine_byte_limit.stop_reason == :max_output_bytes
+@test refine_byte_limit.mesh === mesh_edges_test
+
+# The payload cap is exact, not a worst-case unique-edge estimate. This plate
+# has four input vertices, five unique edges, and eight output triangles.
+refine_exact_payload_bytes =
+    3 * sizeof(Float64) * (4 + 5) + 3 * sizeof(Int) * 8
+refine_exact_byte_limit = refine_mesh_to_target_edge(
+    mesh_edges_test, 0.1;
+    max_iters=1,
+    max_triangles=100,
+    max_output_bytes=refine_exact_payload_bytes,
+)
+@test refine_exact_byte_limit.iterations == 1
+@test nvertices(refine_exact_byte_limit.mesh) == 9
+@test ntriangles(refine_exact_byte_limit.mesh) == 8
+
+midpoint_first = -0.7380437951395766
+midpoint_second = -0.0993679039589958
+@test DiffMoM._safe_midpoint_component(midpoint_first, midpoint_second) ==
+      DiffMoM._safe_midpoint_component(midpoint_second, midpoint_first)
+@test DiffMoM._safe_midpoint_component(midpoint_first, midpoint_second) ==
+      -0.41870584954928625
+midpoint_minsub = nextfloat(0.0)
+@test DiffMoM._safe_midpoint_component(
+    -127 * midpoint_minsub, -126 * midpoint_minsub) ==
+      -126 * midpoint_minsub
+@test DiffMoM._safe_midpoint_component(
+    -128 * midpoint_minsub, -126 * midpoint_minsub) ==
+      -127 * midpoint_minsub
+
+# Adjacent Float64 coordinates cannot always be split by a representable
+# midpoint. Stop before mutation instead of emitting repeated/non-finite
+# vertices and NaN edge diagnostics.
+refine_resolution_mesh = TriMesh(
+    Float64[1.0e308 nextfloat(1.0e308) 1.0e308; 0 0 1; 0 0 0],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+refine_resolution_xyz = copy(refine_resolution_mesh.xyz)
+refine_resolution_tri = copy(refine_resolution_mesh.tri)
+refine_resolution_result = refine_mesh_to_target_edge(
+    refine_resolution_mesh, 0.1; max_iters=1)
+@test !refine_resolution_result.converged
+@test refine_resolution_result.iterations == 0
+@test refine_resolution_result.stop_reason == :coordinate_resolution
+@test refine_resolution_result.mesh === refine_resolution_mesh
+@test all(isfinite, refine_resolution_result.mesh.xyz)
+@test refine_resolution_mesh.xyz == refine_resolution_xyz
+@test refine_resolution_mesh.tri == refine_resolution_tri
 
 report_res_after = mesh_resolution_report(refine_result.mesh, 3e8; points_per_wavelength=2.0)
 @assert mesh_resolution_ok(report_res_after)
@@ -7016,8 +7080,25 @@ tri_right = reshape([1, 2, 3], 3, 1)
 mesh_right = TriMesh(xyz_right, tri_right)
 @assert abs(triangle_area(mesh_right, 1) - 6.0) < 1e-12 "Right triangle area should be 6.0"
 @test triangle_normal(mesh_right, 1) ≈ Vec3(0.0, 0.0, 1.0)
+@test triangle_center(mesh_right, 1) == Vec3(1.0, 4 / 3, 0.0)
+triangle_area(mesh_right, 1)
+triangle_center(mesh_right, 1)
 triangle_normal(mesh_right, 1)
+@test (@allocated triangle_area(mesh_right, 1)) == 0
+@test (@allocated triangle_center(mesh_right, 1)) == 0
 @test (@allocated triangle_normal(mesh_right, 1)) == 0
+
+mesh_cancelled_ordinary_center = TriMesh(
+    Float64[0.1 0.2 -0.3; 0 1 0; 0 0 0],
+    tri_right,
+)
+ordinary_cancelled_center_reference = setprecision(BigFloat, 256) do
+    Float64((BigFloat(0.1) + BigFloat(0.2) - BigFloat(0.3)) / 3)
+end
+@test triangle_center(mesh_cancelled_ordinary_center, 1)[1] ==
+      ordinary_cancelled_center_reference
+triangle_center(mesh_cancelled_ordinary_center, 1)
+@test (@allocated triangle_center(mesh_cancelled_ordinary_center, 1)) == 0
 
 # Equilateral triangle with side s=2 → area = sqrt(3)
 s_eq = 2.0
@@ -7032,6 +7113,234 @@ mesh_degenerate_normal = TriMesh(
 mesh_extreme_normal = TriMesh(
     Float64[0 1.0e300 0; 0 0 1.0e300; 0 0 0], tri_right)
 @test triangle_normal(mesh_extreme_normal, 1) ≈ Vec3(0.0, 0.0, 1.0)
+
+# Endpoint subtraction, determinant products, and centroid sums can overflow
+# even when the exact Float64 result is finite. Compare against an independent
+# high-precision evaluation of the stored binary coordinates.
+max_float = floatmax(Float64)
+mesh_opposite_extremes = TriMesh(
+    Float64[-max_float max_float -max_float; 0 0 1.0e-308; 0 0 0],
+    tri_right,
+)
+opposite_area_reference = setprecision(BigFloat, 4352) do
+    x1, y1, z1 = BigFloat.(mesh_opposite_extremes.xyz[:, 1])
+    x2, y2, z2 = BigFloat.(mesh_opposite_extremes.xyz[:, 2])
+    x3, y3, z3 = BigFloat.(mesh_opposite_extremes.xyz[:, 3])
+    e1x, e1y, e1z = x2 - x1, y2 - y1, z2 - z1
+    e2x, e2y, e2z = x3 - x1, y3 - y1, z3 - z1
+    cx = e1y * e2z - e1z * e2y
+    cy = e1z * e2x - e1x * e2z
+    cz = e1x * e2y - e1y * e2x
+    Float64(hypot(hypot(cx, cy), cz) / 2)
+end
+@test triangle_area(mesh_opposite_extremes, 1) == opposite_area_reference
+@test triangle_normal(mesh_opposite_extremes, 1) == Vec3(0.0, 0.0, 1.0)
+
+cancel_scale = nextfloat(sqrt(max_float))
+cancel_offset = nextfloat(cancel_scale)
+mesh_cancelled_cross = TriMesh(
+    Float64[0 cancel_scale cancel_scale; 0 cancel_scale cancel_offset; 0 0 0],
+    tri_right,
+)
+cancelled_area_reference = setprecision(BigFloat, 4352) do
+    scale_big = BigFloat(cancel_scale)
+    offset_big = BigFloat(cancel_offset)
+    Float64(abs(scale_big * offset_big - scale_big * scale_big) / 2)
+end
+@test triangle_area(mesh_cancelled_cross, 1) == cancelled_area_reference
+@test triangle_normal(mesh_cancelled_cross, 1) == Vec3(0.0, 0.0, 1.0)
+
+mesh_thin_translated = TriMesh(
+    Float64[
+         0.7310586165167978 0.22185094509767112 0.03875638900935915
+        -0.9841919634964176 -0.003812620537511413 0.3486999802587598
+         0.2402064357666356 0.3521966389914236 0.39246468226059505
+    ],
+    tri_right,
+)
+thin_area_reference, thin_normal_reference = setprecision(BigFloat, 512) do
+    first = BigFloat.(mesh_thin_translated.xyz[:, 1])
+    edge1 = BigFloat.(mesh_thin_translated.xyz[:, 2]) - first
+    edge2 = BigFloat.(mesh_thin_translated.xyz[:, 3]) - first
+    cross_big = (
+        edge1[2] * edge2[3] - edge1[3] * edge2[2],
+        edge1[3] * edge2[1] - edge1[1] * edge2[3],
+        edge1[1] * edge2[2] - edge1[2] * edge2[1],
+    )
+    cross_norm_big = hypot(hypot(cross_big[1], cross_big[2]), cross_big[3])
+    Float64(cross_norm_big / 2),
+    Vec3(ntuple(component -> Float64(
+        cross_big[component] / cross_norm_big), 3))
+end
+@test triangle_area(mesh_thin_translated, 1) == thin_area_reference
+@test triangle_normal(mesh_thin_translated, 1) == thin_normal_reference
+
+mesh_huge_collinear = TriMesh(
+    Float64[0 1.0e200 2.0e200; 0 1.0e200 2.0e200; 0 0 0],
+    tri_right,
+)
+@test triangle_area(mesh_huge_collinear, 1) == 0.0
+triangle_area(mesh_huge_collinear, 1)
+@test (@allocated triangle_area(mesh_huge_collinear, 1)) == 0
+@test_throws DomainError triangle_normal(mesh_huge_collinear, 1)
+
+mesh_area_overflow = TriMesh(
+    Float64[0 max_float 0; 0 0 max_float; 0 0 0],
+    tri_right,
+)
+@test_throws OverflowError triangle_area(mesh_area_overflow, 1)
+
+# Endpoint subtraction can flip a top-range area classification in either
+# direction even when the scaled cross product is well-conditioned.
+area_boundary_a = 2.2224518734910558e154
+area_boundary_shift = 1.4855885759426881e138
+mesh_hidden_area_overflow = TriMesh(
+    Float64[
+        -area_boundary_shift area_boundary_a -area_boundary_shift
+        -area_boundary_shift -area_boundary_shift 1.617756637437081e154
+        0 0 0
+    ],
+    tri_right,
+)
+@test_throws OverflowError triangle_area(mesh_hidden_area_overflow, 1)
+
+mesh_hidden_finite_area = TriMesh(
+    Float64[
+        area_boundary_shift area_boundary_a area_boundary_shift
+        area_boundary_shift area_boundary_shift 1.6177566374370813e154
+        0 0 0
+    ],
+    tri_right,
+)
+@test triangle_area(mesh_hidden_finite_area, 1) == floatmax(Float64)
+
+mesh_hidden_subnormal_area = TriMesh(
+    Float64[
+        -1.2314112129908113e-178 1.6017659002066176e-162 -1.2314112129908113e-178
+        -2.4628224259816226e-178 -2.4628224259816226e-178 3.084505955442772e-162
+        0 0 0
+    ],
+    tri_right,
+)
+@test triangle_area(mesh_hidden_subnormal_area, 1) == nextfloat(0.0)
+
+mesh_extreme_center = TriMesh(
+    Float64[1.0e308 1.0e308 1.0e308; 0 1 0; 0 0 1],
+    tri_right,
+)
+extreme_center_reference = setprecision(BigFloat, 256) do
+    Vec3(ntuple(component -> Float64(
+        sum(BigFloat(mesh_extreme_center.xyz[component, vertex]) for vertex in 1:3) / 3), 3))
+end
+@test triangle_center(mesh_extreme_center, 1) == extreme_center_reference
+
+min_subnormal = nextfloat(0.0)
+mesh_cancelled_center = TriMesh(
+    Float64[max_float -max_float 2 * min_subnormal; 0 0 0; 0 0 0],
+    tri_right,
+)
+@test triangle_center(mesh_cancelled_center, 1) ==
+      Vec3(min_subnormal, 0.0, 0.0)
+mesh_permuted_cancelled_center = TriMesh(
+    Float64[max_float 2 * min_subnormal -max_float; 0 0 0; 0 0 0],
+    tri_right,
+)
+@test triangle_center(mesh_permuted_cancelled_center, 1) ==
+      Vec3(min_subnormal, 0.0, 0.0)
+
+mesh_subnormal_center = TriMesh(
+    Float64[-64 * min_subnormal -2 * min_subnormal 64 * min_subnormal;
+            0 1 0;
+            0 0 1],
+    tri_right,
+)
+subnormal_center_reference = setprecision(BigFloat, 256) do
+    Float64((BigFloat(-64 * min_subnormal) +
+             BigFloat(-2 * min_subnormal) +
+             BigFloat(64 * min_subnormal)) / 3)
+end
+@test subnormal_center_reference == -min_subnormal
+@test triangle_center(mesh_subnormal_center, 1)[1] == subnormal_center_reference
+
+mesh_nonfinite_geometry = TriMesh(
+    Float64[0 1 NaN; 0 0 1; 0 0 0],
+    tri_right,
+)
+@test_throws DomainError triangle_area(mesh_nonfinite_geometry, 1)
+@test_throws DomainError triangle_center(mesh_nonfinite_geometry, 1)
+@test_throws DomainError triangle_normal(mesh_nonfinite_geometry, 1)
+@test_throws DomainError mesh_resolution_report(
+    mesh_nonfinite_geometry, 1.0; points_per_wavelength=1.0, c0=1.0)
+
+mesh_unrepresentable_edge = TriMesh(
+    Float64[0 1.3e308 0; 0 1.3e308 1; 0 0 0],
+    tri_right,
+)
+@test_throws OverflowError mesh_resolution_report(
+    mesh_unrepresentable_edge, 1.0; points_per_wavelength=1.0, c0=1.0)
+@test_throws OverflowError refine_mesh_to_target_edge(
+    mesh_unrepresentable_edge, 1.0e308; max_iters=1)
+
+# Rounded coordinate differences can put an exact over-range diagonal exactly
+# at floatmax. The stored-coordinate oracle still requires rejection.
+edge_boundary_x = 1.271161006153646e308
+edge_boundary_shift = -2.4948003869183998e292
+mesh_hidden_edge_overflow = TriMesh(
+    Float64[
+        edge_boundary_shift edge_boundary_x edge_boundary_shift
+        edge_boundary_shift edge_boundary_x edge_boundary_shift
+        0 0 1
+    ],
+    tri_right,
+)
+@test hypot(
+    edge_boundary_x - edge_boundary_shift,
+    edge_boundary_x - edge_boundary_shift,
+) == floatmax(Float64)
+@test_throws OverflowError mesh_resolution_report(
+    mesh_hidden_edge_overflow, 1.0;
+    points_per_wavelength=1.0,
+    c0=floatmax(Float64),
+)
+@test_throws OverflowError refine_mesh_to_target_edge(
+    mesh_hidden_edge_overflow, floatmax(Float64); max_iters=1)
+
+# The reverse boundary case has a rounded `hypot == Inf`, while exact stored
+# endpoint differences still round back to floatmax and must remain usable.
+edge_finite_d1 = -1.2674639246533443e308
+edge_finite_d2 = 1.2748473660926795e308
+edge_finite_s1 = -9.959243144578252e291
+edge_finite_s2 = 9.959243144578252e291
+mesh_hidden_finite_edge = TriMesh(
+    Float64[
+        edge_finite_s1 edge_finite_d1 edge_finite_s1
+        edge_finite_s2 edge_finite_d2 edge_finite_s2
+        0 0 1
+    ],
+    tri_right,
+)
+@test hypot(
+    edge_finite_d1 - edge_finite_s1,
+    edge_finite_d2 - edge_finite_s2,
+) == Inf
+hidden_finite_edge_report = mesh_resolution_report(
+    mesh_hidden_finite_edge, 1.0;
+    points_per_wavelength=1.0,
+    c0=floatmax(Float64),
+)
+@test hidden_finite_edge_report.edge_max_m == floatmax(Float64)
+@test hidden_finite_edge_report.meets_target
+
+mesh_resolution_extreme_mean = TriMesh(
+    Float64[0 5.0e307 1.0e308; 0 0 0; 0 0 0],
+    tri_right,
+)
+resolution_extreme_report = mesh_resolution_report(
+    mesh_resolution_extreme_mean, 1.0; points_per_wavelength=1.0, c0=1.0)
+resolution_mean_reference = setprecision(BigFloat, 256) do
+    Float64((BigFloat(5.0e307) + BigFloat(5.0e307) + BigFloat(1.0e308)) / 3)
+end
+@test resolution_extreme_report.edge_mean_m == resolution_mean_reference
 println("  32b: PASS")
 
 # 32c: STL binary round-trip

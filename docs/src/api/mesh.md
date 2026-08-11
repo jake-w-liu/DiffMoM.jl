@@ -498,7 +498,7 @@ Evaluate a `mesh_resolution_report` against a selected criterion.
 
 These functions increase mesh density via uniform midpoint subdivision. Each refinement pass splits every triangle into 4 by inserting midpoint vertices on each edge, halving all edge lengths. Use these when an imported mesh is too coarse for the simulation frequency.
 
-### `refine_mesh_to_target_edge(mesh, target_max_edge_m; max_iters=8, max_triangles=2_000_000)`
+### `refine_mesh_to_target_edge(mesh, target_max_edge_m; max_iters=8, max_triangles=2_000_000, max_output_bytes=536_870_912)`
 
 Uniformly refine a triangle mesh via midpoint subdivision until `edge_max <= target_max_edge_m` or limits are reached.
 
@@ -510,6 +510,7 @@ Uniformly refine a triangle mesh via midpoint subdivision until `edge_max <= tar
 | `target_max_edge_m` | `Real` | -- | Target maximum edge length (meters). |
 | `max_iters` | `Int` | `8` | Maximum refinement passes. Each pass multiplies the triangle count by 4. |
 | `max_triangles` | `Int` | `2_000_000` | Safety limit on total triangles. Refinement stops before exceeding this. |
+| `max_output_bytes` | `Int` | `536_870_912` | Safety limit on the raw coordinate and connectivity payload of the next refined mesh. |
 
 **Returns:** Named tuple:
 
@@ -518,16 +519,17 @@ Uniformly refine a triangle mesh via midpoint subdivision until `edge_max <= tar
 | `mesh` | `TriMesh` | Refined mesh. |
 | `iterations` | `Int` | Number of refinement passes performed. |
 | `converged` | `Bool` | `true` if `edge_max <= target_max_edge_m`. |
+| `stop_reason` | `Symbol` | `:target_reached`, `:max_iterations`, `:max_triangles`, `:max_output_bytes`, or `:coordinate_resolution`. The final value explains why refinement stopped. |
 | `target_max_edge_m` | `Float64` | The target used. |
 | `edge_max_before_m`, `edge_max_after_m` | `Float64` | Max edge length before and after refinement. |
 | `triangles_before`, `triangles_after` | `Int` | Triangle count before and after. |
 | `history_edge_max_m`, `history_triangles` | `Vector` | Per-iteration history for diagnostics. |
 
-**Scaling:** Each pass multiplies triangles by 4 and halves the maximum edge length. After `k` passes: `Nt_new = 4^k * Nt_original`, `h_max_new ~ h_max / 2^k`.
+**Scaling:** Each pass multiplies triangles by 4 and halves the maximum edge length. After `k` passes: `Nt_new = 4^k * Nt_original`, `h_max_new ~ h_max / 2^k`. Counts and raw output bytes are checked before allocating the refined coordinate and connectivity matrices. If a distinct edge has no representable interior `Float64` midpoint, the input mesh is returned unchanged for that pass with `stop_reason=:coordinate_resolution`.
 
 ---
 
-### `refine_mesh_for_mom(mesh, freq_hz; points_per_wavelength=10.0, max_iters=8, max_triangles=2_000_000, c0=299792458.0)`
+### `refine_mesh_for_mom(mesh, freq_hz; points_per_wavelength=10.0, max_iters=8, max_triangles=2_000_000, max_output_bytes=536_870_912, c0=299792458.0)`
 
 Refine a mesh to satisfy a frequency-based MoM edge-length target: `target_max_edge = lambda / points_per_wavelength`. This is a convenience wrapper that computes the target from the frequency and calls `refine_mesh_to_target_edge`.
 
@@ -540,6 +542,7 @@ Refine a mesh to satisfy a frequency-based MoM edge-length target: `target_max_e
 | `points_per_wavelength` | `Real` | `10.0` | Resolution target. |
 | `max_iters` | `Int` | `8` | Maximum refinement passes. |
 | `max_triangles` | `Int` | `2_000_000` | Triangle count limit. |
+| `max_output_bytes` | `Int` | `536_870_912` | Raw output-mesh payload limit, passed through to `refine_mesh_to_target_edge`. |
 | `c0` | `Real` | `299792458.0` | Speed of light (m/s). |
 
 **Returns:** Same as `refine_mesh_to_target_edge`, plus `report_before` and `report_after` (resolution reports at the given frequency before and after refinement).
