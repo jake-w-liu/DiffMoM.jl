@@ -593,7 +593,11 @@ These functions (in `src/geometry/MeshIO.jl`) extend mesh I/O beyond OBJ to supp
 
 Read a triangle mesh from an STL file. Both binary and ASCII STL are auto-detected.
 
-STL stores three vertices per facet with no shared-vertex topology, so duplicate vertices must be merged. With the default `merge_tol=0.0`, vertices are merged when their coordinates are bitwise identical after Float32→Float64 conversion. Set `merge_tol` to a small positive value if your exporter introduces floating-point noise; positive values merge vertices whose Euclidean distance is at most the tolerance. The tolerance must be finite and nonnegative.
+STL stores three vertices per facet with no shared-vertex topology, so duplicate vertices must be merged. With the default `merge_tol=0.0`, vertices are merged when their imported Float64 coordinates are bitwise identical, except that signed zeros are normalized. Binary values are first converted from Float32; ASCII values are parsed directly as Float64. Set `merge_tol` to a small positive value if your exporter introduces floating-point noise; positive values merge vertices whose Euclidean distance is at most the tolerance. The tolerance must be finite and nonnegative.
+
+Positive merge tolerances are evaluated relative to the imported geometry,
+so translating a mesh does not make the spatial index overflow. Each ASCII
+facet must contain exactly three vertex records.
 
 Binary STL input is streamed one 50-byte facet record at a time, and all binary integers and Float32 fields are decoded as little-endian as required by the format.
 
@@ -629,7 +633,13 @@ Write a `TriMesh` to an STL file. Default is binary (compact, fast). Set `ascii=
 
 **Returns:** `path`
 
-**Note:** Binary STL uses Float32 for coordinates, so vertex positions lose precision beyond ~7 significant digits. For archiving with full Float64 precision, use OBJ.
+**Note:** Binary STL uses Float32 for coordinates, so vertex positions lose
+precision beyond about 7 significant digits. Before opening the destination,
+the writer verifies the quantized facets and rejects output if distinct
+Float64 vertices would merge, a facet would collapse or reverse, or
+duplicate/non-manifold topology would result. Facet normals are computed from
+the coordinates that will actually be written. Use `ascii=true` or OBJ when
+Float32 cannot preserve the mesh.
 
 ---
 

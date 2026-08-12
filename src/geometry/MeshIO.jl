@@ -45,12 +45,22 @@ struct _ExactSTLVertexMerger <: _STLVertexMerger
     xyz::Vector{NTuple{3,Float64}}
 end
 
-struct _ToleranceSTLVertexMerger <: _STLVertexMerger
+mutable struct _ToleranceSTLVertexMerger <: _STLVertexMerger
     bucket_heads::Dict{NTuple{3,Int64},Int}
+    big_bucket_heads::Dict{NTuple{3,BigInt},Int}
     next_in_bucket::Vector{Int}
     xyz::Vector{NTuple{3,Float64}}
     tolerance::Float64
+    origin::NTuple{3,Float64}
+    has_origin::Bool
+    use_big_cells::Bool
 end
+
+const _STL_SMALL_CELL_LIMIT = 1_099_511_627_776.0 # 2^40
+# At this limit, subtraction and division move a cell coordinate by much less
+# than one unit. Two points at most one tolerance apart can therefore differ
+# by at most two rounded cell indices on an axis.
+const _STL_SMALL_NEIGHBOR_RADIUS = 2
 
 @inline function _validated_stl_merge_tol(merge_tol::Float64)
     isfinite(merge_tol) && merge_tol >= 0 ||
@@ -64,7 +74,15 @@ end
             Dict{NTuple{3,UInt64},Int}(), NTuple{3,Float64}[])
     end
     return _ToleranceSTLVertexMerger(
-        Dict{NTuple{3,Int64},Int}(), Int[], NTuple{3,Float64}[], merge_tol)
+        Dict{NTuple{3,Int64},Int}(),
+        Dict{NTuple{3,BigInt},Int}(),
+        Int[],
+        NTuple{3,Float64}[],
+        merge_tol,
+        (0.0, 0.0, 0.0),
+        false,
+        false,
+    )
 end
 
 @inline function _validated_stl_coordinate(coord::NTuple{3,Float64})
@@ -76,64 +94,170 @@ end
 @inline function _merge_stl_vertex!(merger::_ExactSTLVertexMerger,
                                     coord::NTuple{3,Float64})
     _validated_stl_coordinate(coord)
-    key = (reinterpret(UInt64, coord[1]),
-           reinterpret(UInt64, coord[2]),
-           reinterpret(UInt64, coord[3]))
+    canonical_coord = (
+        iszero(coord[1]) ? 0.0 : coord[1],
+        iszero(coord[2]) ? 0.0 : coord[2],
+        iszero(coord[3]) ? 0.0 : coord[3],
+    )
+    key = (reinterpret(UInt64, canonical_coord[1]),
+           reinterpret(UInt64, canonical_coord[2]),
+           reinterpret(UInt64, canonical_coord[3]))
     id = get(merger.vertex_map, key, 0)
     if iszero(id)
-        push!(merger.xyz, coord)
+        push!(merger.xyz, canonical_coord)
         id = length(merger.xyz)
         merger.vertex_map[key] = id
     end
     return id
 end
 
-function _stl_merge_cell_coordinate(x::Float64, tolerance::Float64)
-    scaled = x / tolerance
-    isfinite(scaled) ||
-        throw(ArgumentError(
-            "merge_tol=$tolerance is too small for STL coordinate $x."))
-    cell = try
-        floor(Int64, scaled)
-    catch err
-        err isa InexactError || rethrow()
-        throw(ArgumentError(
-            "merge_tol=$tolerance is too small for STL coordinate $x."))
+@inline function _stl_small_merge_cell_coordinate(x::Float64,
+                                                  origin::Float64,
+                                                  tolerance::Float64)
+    scaled = (x - origin) / tolerance
+    if isfinite(scaled) && abs(scaled) <= _STL_SMALL_CELL_LIMIT
+        return true, floor(Int64, scaled)
     end
-    typemin(Int64) < cell < typemax(Int64) ||
-        throw(ArgumentError(
-            "merge_tol=$tolerance is too small for STL coordinate $x."))
-    return cell
+    return false, Int64(0)
+end
+
+@noinline function _stl_exact_merge_cell_coordinate(x::Float64,
+                                                    origin::Float64,
+                                                    tolerance::Float64)
+    quotient = (Rational{BigInt}(x) - Rational{BigInt}(origin)) /
+               Rational{BigInt}(tolerance)
+    return fld(numerator(quotient), denominator(quotient))
+end
+
+@inline function _stl_small_merge_cell(coord::NTuple{3,Float64},
+                                       origin::NTuple{3,Float64},
+                                       tolerance::Float64)
+    fit_x, cell_x = _stl_small_merge_cell_coordinate(
+        coord[1], origin[1], tolerance)
+    fit_y, cell_y = _stl_small_merge_cell_coordinate(
+        coord[2], origin[2], tolerance)
+    fit_z, cell_z = _stl_small_merge_cell_coordinate(
+        coord[3], origin[3], tolerance)
+    return fit_x && fit_y && fit_z, (cell_x, cell_y, cell_z)
+end
+
+@noinline function _stl_exact_merge_cell(coord::NTuple{3,Float64},
+                                         origin::NTuple{3,Float64},
+                                         tolerance::Float64)
+    return (
+        _stl_exact_merge_cell_coordinate(coord[1], origin[1], tolerance),
+        _stl_exact_merge_cell_coordinate(coord[2], origin[2], tolerance),
+        _stl_exact_merge_cell_coordinate(coord[3], origin[3], tolerance),
+    )
+end
+
+@noinline function _promote_stl_merger_cells!(merger::_ToleranceSTLVertexMerger)
+    empty!(merger.big_bucket_heads)
+    fill!(merger.next_in_bucket, 0)
+    @inbounds for id in eachindex(merger.xyz)
+        cell = _stl_exact_merge_cell(
+            merger.xyz[id], merger.origin, merger.tolerance)
+        head = get(merger.big_bucket_heads, cell, 0)
+        merger.next_in_bucket[id] = head
+        merger.big_bucket_heads[cell] = id
+    end
+    # `empty!` retains the old hash table capacity. Promotion is permanent, so
+    # release the obsolete small-cell index instead of retaining two O(N)
+    # bucket tables for the rest of the import.
+    merger.bucket_heads = Dict{NTuple{3,Int64},Int}()
+    merger.use_big_cells = true
+    return nothing
+end
+
+@noinline function _stl_vertices_within_tolerance_exact(
+        first::NTuple{3,Float64}, second::NTuple{3,Float64},
+        tolerance::Float64)
+    dx = Rational{BigInt}(first[1]) - Rational{BigInt}(second[1])
+    dy = Rational{BigInt}(first[2]) - Rational{BigInt}(second[2])
+    dz = Rational{BigInt}(first[3]) - Rational{BigInt}(second[3])
+    tolerance_exact = Rational{BigInt}(tolerance)
+    return dx * dx + dy * dy + dz * dz <= tolerance_exact * tolerance_exact
+end
+
+@inline function _stl_vertices_within_tolerance(
+        first::NTuple{3,Float64}, second::NTuple{3,Float64},
+        tolerance::Float64, distance::Float64)
+    distance == 0.0 && return true
+    if isfinite(distance)
+        separation = abs(distance - tolerance)
+        uncertainty = 32 * eps(Float64) * max(distance, tolerance)
+        separation > uncertainty && return distance <= tolerance
+    end
+    return _stl_vertices_within_tolerance_exact(first, second, tolerance)
+end
+
+@inline function _consider_stl_merge_candidate(
+        merger::_ToleranceSTLVertexMerger,
+        coord::NTuple{3,Float64}, candidate_id::Int,
+        best_id::Int, best_distance::Float64)
+    candidate = merger.xyz[candidate_id]
+    distance = hypot(
+        hypot(coord[1] - candidate[1], coord[2] - candidate[2]),
+        coord[3] - candidate[3],
+    )
+    if _stl_vertices_within_tolerance(
+            coord, candidate, merger.tolerance, distance) &&
+       (iszero(best_id) || distance < best_distance ||
+        (distance == best_distance && candidate_id < best_id))
+        return candidate_id, distance
+    end
+    return best_id, best_distance
 end
 
 function _merge_stl_vertex!(merger::_ToleranceSTLVertexMerger,
                             coord::NTuple{3,Float64})
     _validated_stl_coordinate(coord)
+    if !merger.has_origin
+        merger.origin = coord
+        merger.has_origin = true
+    end
     tolerance = merger.tolerance
-    cell = (
-        _stl_merge_cell_coordinate(coord[1], tolerance),
-        _stl_merge_cell_coordinate(coord[2], tolerance),
-        _stl_merge_cell_coordinate(coord[3], tolerance),
-    )
-
     best_id = 0
     best_distance = Inf
-    @inbounds for dz in -1:1, dy in -1:1, dx in -1:1
-        neighbor_cell = (cell[1] + dx, cell[2] + dy, cell[3] + dz)
+
+    fits_small, small_cell = _stl_small_merge_cell(
+        coord, merger.origin, tolerance)
+    if !merger.use_big_cells && !fits_small
+        _promote_stl_merger_cells!(merger)
+    end
+
+    if merger.use_big_cells
+        cell = _stl_exact_merge_cell(coord, merger.origin, tolerance)
+        @inbounds for dz in -1:1, dy in -1:1, dx in -1:1
+            neighbor_cell = (cell[1] + dx, cell[2] + dy, cell[3] + dz)
+            candidate_id = get(merger.big_bucket_heads, neighbor_cell, 0)
+            while !iszero(candidate_id)
+                best_id, best_distance = _consider_stl_merge_candidate(
+                    merger, coord, candidate_id, best_id, best_distance)
+                candidate_id = merger.next_in_bucket[candidate_id]
+            end
+        end
+        !iszero(best_id) && return best_id
+
+        push!(merger.xyz, coord)
+        id = length(merger.xyz)
+        head = get(merger.big_bucket_heads, cell, 0)
+        push!(merger.next_in_bucket, head)
+        merger.big_bucket_heads[cell] = id
+        return id
+    end
+
+    radius = _STL_SMALL_NEIGHBOR_RADIUS
+    @inbounds for dz in -radius:radius, dy in -radius:radius, dx in -radius:radius
+        neighbor_cell = (
+            small_cell[1] + dx,
+            small_cell[2] + dy,
+            small_cell[3] + dz,
+        )
         candidate_id = get(merger.bucket_heads, neighbor_cell, 0)
         while !iszero(candidate_id)
-            candidate = merger.xyz[candidate_id]
-            distance = hypot(
-                hypot(coord[1] - candidate[1], coord[2] - candidate[2]),
-                coord[3] - candidate[3],
-            )
-            if distance <= tolerance &&
-                    (distance < best_distance ||
-                     (distance == best_distance &&
-                      (iszero(best_id) || candidate_id < best_id)))
-                best_id = candidate_id
-                best_distance = distance
-            end
+            best_id, best_distance = _consider_stl_merge_candidate(
+                merger, coord, candidate_id, best_id, best_distance)
             candidate_id = merger.next_in_bucket[candidate_id]
         end
     end
@@ -141,9 +265,9 @@ function _merge_stl_vertex!(merger::_ToleranceSTLVertexMerger,
 
     push!(merger.xyz, coord)
     id = length(merger.xyz)
-    head = get(merger.bucket_heads, cell, 0)
+    head = get(merger.bucket_heads, small_cell, 0)
     push!(merger.next_in_bucket, head)
-    merger.bucket_heads[cell] = id
+    merger.bucket_heads[small_cell] = id
     return id
 end
 
@@ -183,8 +307,10 @@ Read a triangle mesh from an STL file (binary or ASCII, auto-detected).
 
 STL stores three vertices per facet with no shared-vertex topology, so
 duplicate vertices are merged. With the default `merge_tol=0.0`, vertices
-are merged when their Float64 coordinates are bitwise identical (suitable
-for most STL files). Set `merge_tol` to a small positive value (e.g.
+are merged when their imported Float64 coordinates are bitwise identical
+after normalizing signed zero (binary values are first converted from
+Float32; ASCII values are parsed directly as Float64). Set `merge_tol` to a
+small positive value (e.g.
 `1e-10 * bbox_diagonal`) if your exporter introduces tiny floating-point
 noise between shared vertices. A positive tolerance merges vertices whose
 Euclidean distance is no greater than `merge_tol`.
@@ -248,10 +374,13 @@ end
 
 function _parse_stl_ascii_vertex(s::AbstractString)
     position = firstindex(s)
-    _, position = _required_ascii_field(s, position, "STL vertex line")
+    keyword, position = _required_ascii_field(s, position, "STL vertex line")
+    keyword == "vertex" || error("Invalid STL vertex line: $s")
     x_field, position = _required_ascii_field(s, position, "STL vertex line")
     y_field, position = _required_ascii_field(s, position, "STL vertex line")
-    z_field, _ = _required_ascii_field(s, position, "STL vertex line")
+    z_field, position = _required_ascii_field(s, position, "STL vertex line")
+    extra_first, _, _ = _ascii_field_bounds(s, position)
+    iszero(extra_first) || error("Invalid STL vertex line: $s")
 
     return (
         parse(Float64, x_field),
@@ -265,20 +394,46 @@ function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0)
     merger = _new_stl_vertex_merger(tolerance)
     tri_ids = Int[]
     ntri = 0
+    inside_facet = false
+    facet_vertex_count = 0
 
     for line in eachline(io)
         s = strip(line)
-        if startswith(s, "facet normal")
-            ntri += 1
-        elseif startswith(s, "vertex")
+        first, last, position = _ascii_field_bounds(s, firstindex(s))
+        keyword = iszero(first) ? nothing : SubString(s, first, last)
+        if keyword == "facet"
+            qualifier, _ = _required_ascii_field(
+                s, position, "STL facet declaration", path)
+            qualifier == "normal" ||
+                error("Invalid STL facet declaration in $path: $s")
+            !inside_facet ||
+                error("STL ASCII contains a nested facet in $path: $s")
+            inside_facet = true
+            facet_vertex_count = 0
+        elseif keyword == "vertex"
+            inside_facet ||
+                error("STL ASCII contains a vertex outside a facet in $path: $s")
+            facet_vertex_count < 3 ||
+                error("STL ASCII facet $(ntri + 1) in $path has more than 3 vertices.")
             coord = _parse_stl_ascii_vertex(s)
             push!(tri_ids, _merge_stl_vertex!(merger, coord))
+            facet_vertex_count += 1
+        elseif keyword == "endfacet"
+            s == "endfacet" ||
+                error("Invalid STL endfacet record in $path: $s")
+            inside_facet ||
+                error("STL ASCII contains endfacet without a matching facet in $path.")
+            facet_vertex_count == 3 ||
+                error(
+                    "STL ASCII facet $(ntri + 1) in $path has " *
+                    "$facet_vertex_count vertices; exactly 3 are required.")
+            ntri += 1
+            inside_facet = false
         end
     end
 
-    expected_vertices = Base.checked_mul(3, ntri)
-    length(tri_ids) == expected_vertices ||
-        error("STL ASCII: expected $expected_vertices vertices for $ntri facets, got $(length(tri_ids)).")
+    !inside_facet ||
+        error("STL ASCII has an unterminated facet $(ntri + 1) in $path.")
     ntri > 0 || error("STL ASCII file has 0 facets: $path")
 
     # Copy out of the geometrically grown vector so the returned mesh does not
@@ -319,7 +474,10 @@ end
     write_stl_mesh(path, mesh; header="Exported by DiffMoM", ascii=false)
 
 Write a `TriMesh` to an STL file. Default is binary STL (compact, fast).
-Set `ascii=true` for a human-readable ASCII STL.
+Set `ascii=true` for a human-readable ASCII STL. Binary output is rejected
+before the destination is opened if Float32 coordinate quantization would
+merge distinct Float64 vertices, reverse a facet, or make the round-trip
+topology invalid.
 """
 function write_stl_mesh(path::AbstractString, mesh::TriMesh;
                          header::AbstractString="Exported by DiffMoM",
@@ -337,6 +495,222 @@ end
     write(io, htol(value))
 @inline _write_stl_float32_le(io::IO, value) =
     _write_stl_uint32_le(io, reinterpret(UInt32, Float32(value)))
+
+@inline _canonical_stl_float32_bits(value::Float32) =
+    iszero(value) ? UInt32(0) : reinterpret(UInt32, value)
+
+@inline _canonical_stl_float64_bits(value::Float64) =
+    iszero(value) ? UInt64(0) : reinterpret(UInt64, value)
+
+@inline function _binary_stl_coordinate(mesh::TriMesh, local_vertex::Int,
+                                        triangle::Int)
+    vertex = mesh.tri[local_vertex, triangle]
+    return (
+        Float32(mesh.xyz[1, vertex]),
+        Float32(mesh.xyz[2, vertex]),
+        Float32(mesh.xyz[3, vertex]),
+    )
+end
+
+@inline function _binary_stl_coordinate_key(coord::NTuple{3,Float32})
+    return (
+        _canonical_stl_float32_bits(coord[1]),
+        _canonical_stl_float32_bits(coord[2]),
+        _canonical_stl_float32_bits(coord[3]),
+    )
+end
+
+@inline function _binary_stl_original_coordinate_key(mesh::TriMesh,
+                                                     vertex::Int)
+    return (
+        _canonical_stl_float64_bits(mesh.xyz[1, vertex]),
+        _canonical_stl_float64_bits(mesh.xyz[2, vertex]),
+        _canonical_stl_float64_bits(mesh.xyz[3, vertex]),
+    )
+end
+
+@inline function _sorted_stl_face(first::Int, second::Int, third::Int)
+    if first > second
+        first, second = second, first
+    end
+    if second > third
+        second, third = third, second
+    end
+    if first > second
+        first, second = second, first
+    end
+    return (first, second, third)
+end
+
+@inline _sorted_stl_edge(first::Int, second::Int) =
+    first < second ? (first, second) : (second, first)
+
+function _binary_stl_unit_normal(first::NTuple{3,Float32},
+                                 second::NTuple{3,Float32},
+                                 third::NTuple{3,Float32},
+                                 triangle::Int)
+    v1 = Vec3(Float64(first[1]), Float64(first[2]), Float64(first[3]))
+    v2 = Vec3(Float64(second[1]), Float64(second[2]), Float64(second[3]))
+    v3 = Vec3(Float64(third[1]), Float64(third[2]), Float64(third[3]))
+    fast, cx, cy, cz, _, _, cross_norm = _scaled_triangle_cross(v1, v2, v3)
+    normal = if fast
+        cross_norm > 0.0 ||
+            throw(DomainError(
+                triangle,
+                "triangle $triangle is degenerate after binary STL Float32 quantization"))
+        Vec3(cx / cross_norm, cy / cross_norm, cz / cross_norm)
+    else
+        _triangle_normal_big(v1, v2, v3, triangle)
+    end
+    return normal
+end
+
+@inline function _binary_stl_serialized_normal(normal::Vec3, triangle::Int)
+    normal32 = (Float32(normal[1]), Float32(normal[2]), Float32(normal[3]))
+    isfinite(normal32[1]) && isfinite(normal32[2]) && isfinite(normal32[3]) ||
+        throw(OverflowError(
+            "triangle $triangle normal is outside the binary STL Float32 range"))
+    return normal32
+end
+
+@inline function _binary_stl_facet_normal(first::NTuple{3,Float32},
+                                          second::NTuple{3,Float32},
+                                          third::NTuple{3,Float32},
+                                          triangle::Int)
+    normal = _binary_stl_unit_normal(first, second, third, triangle)
+    return _binary_stl_serialized_normal(normal, triangle)
+end
+
+function _validated_binary_stl_unit_normal(first::NTuple{3,Float32},
+                                           second::NTuple{3,Float32},
+                                           third::NTuple{3,Float32},
+                                           triangle::Int)
+    try
+        return _binary_stl_unit_normal(first, second, third, triangle)
+    catch err
+        if err isa DomainError
+            throw(ArgumentError(
+                "Binary STL Float32 quantization makes triangle $triangle " *
+                "degenerate; use ascii=true to preserve Float64 coordinates."))
+        end
+        rethrow()
+    end
+end
+
+@noinline function _binary_stl_orientation_sign_exact(
+        mesh::TriMesh, triangle::Int,
+        first::NTuple{3,Float32}, second::NTuple{3,Float32},
+        third::NTuple{3,Float32})
+    source_vertices = ntuple(local_vertex -> begin
+        vertex = mesh.tri[local_vertex, triangle]
+        ntuple(component -> Rational{BigInt}(mesh.xyz[component, vertex]), 3)
+    end, 3)
+    quantized_coordinates = (first, second, third)
+    quantized_vertices = ntuple(local_vertex -> begin
+        vertex = quantized_coordinates[local_vertex]
+        ntuple(
+            component -> Rational{BigInt}(Float64(vertex[component])), 3)
+    end, 3)
+
+    function exact_cross(vertices)
+        edge1 = ntuple(
+            component -> vertices[2][component] - vertices[1][component], 3)
+        edge2 = ntuple(
+            component -> vertices[3][component] - vertices[1][component], 3)
+        return (
+            edge1[2] * edge2[3] - edge1[3] * edge2[2],
+            edge1[3] * edge2[1] - edge1[1] * edge2[3],
+            edge1[1] * edge2[2] - edge1[2] * edge2[1],
+        )
+    end
+
+    source_cross = exact_cross(source_vertices)
+    quantized_cross = exact_cross(quantized_vertices)
+    orientation =
+        source_cross[1] * quantized_cross[1] +
+        source_cross[2] * quantized_cross[2] +
+        source_cross[3] * quantized_cross[3]
+    return orientation > 0 ? 1 : (orientation < 0 ? -1 : 0)
+end
+
+function _validate_binary_stl_quantization(mesh::TriMesh)
+    quantized_vertices = Dict{NTuple{3,UInt32},Int}()
+    faces = Set{NTuple{3,Int}}()
+    edge_counts = Dict{NTuple{2,Int},UInt8}()
+
+    @inbounds for triangle in 1:ntriangles(mesh)
+        first = _binary_stl_coordinate(mesh, 1, triangle)
+        second = _binary_stl_coordinate(mesh, 2, triangle)
+        third = _binary_stl_coordinate(mesh, 3, triangle)
+        coordinates = (first, second, third)
+        vertex_ids = (0, 0, 0)
+
+        for local_vertex in 1:3
+            coord = coordinates[local_vertex]
+            source_vertex = mesh.tri[local_vertex, triangle]
+            quantized_key = _binary_stl_coordinate_key(coord)
+            representative = get(quantized_vertices, quantized_key, 0)
+            vertex_id = if iszero(representative)
+                quantized_vertices[quantized_key] = source_vertex
+                source_vertex
+            else
+                _binary_stl_original_coordinate_key(mesh, representative) ==
+                    _binary_stl_original_coordinate_key(mesh, source_vertex) ||
+                    throw(ArgumentError(
+                        "Binary STL Float32 quantization merges distinct " *
+                        "Float64 vertices at triangle $triangle, local vertex " *
+                        "$local_vertex; use ascii=true to preserve the mesh topology."))
+                representative
+            end
+            vertex_ids = Base.setindex(vertex_ids, vertex_id, local_vertex)
+        end
+
+        (vertex_ids[1] != vertex_ids[2] &&
+         vertex_ids[2] != vertex_ids[3] &&
+         vertex_ids[3] != vertex_ids[1]) ||
+            throw(ArgumentError(
+                "Binary STL coordinate merging collapses triangle $triangle; " *
+                "use ascii=true to preserve the mesh topology."))
+        original_normal = triangle_normal(mesh, triangle)
+        quantized_normal = _validated_binary_stl_unit_normal(
+            first, second, third, triangle)
+        orientation_dot =
+            original_normal[1] * quantized_normal[1] +
+            original_normal[2] * quantized_normal[2] +
+            original_normal[3] * quantized_normal[3]
+        # The serialized Float32 normal can round across a nearly orthogonal
+        # orientation test. Ordinary facets remain close to dot=1; settle the
+        # ambiguous hemisphere from the exact stored and quantized endpoints.
+        orientation_sign = orientation_dot > 0.5 ? 1 :
+            _binary_stl_orientation_sign_exact(
+                mesh, triangle, first, second, third)
+        orientation_sign > 0 ||
+            throw(ArgumentError(
+                "Binary STL Float32 quantization reverses or destroys the " *
+                "orientation of triangle $triangle; use ascii=true to " *
+                "preserve the oriented surface."))
+
+        face = _sorted_stl_face(vertex_ids...)
+        face in faces &&
+            throw(ArgumentError(
+                "Binary STL coordinate merging creates a duplicate face at " *
+                "triangle $triangle; use ascii=true to preserve the mesh topology."))
+        push!(faces, face)
+
+        for edge in (
+                _sorted_stl_edge(vertex_ids[1], vertex_ids[2]),
+                _sorted_stl_edge(vertex_ids[2], vertex_ids[3]),
+                _sorted_stl_edge(vertex_ids[3], vertex_ids[1]))
+            count = get(edge_counts, edge, UInt8(0)) + UInt8(1)
+            count <= 2 ||
+                throw(ArgumentError(
+                    "Binary STL coordinate merging creates a non-manifold edge " *
+                    "at triangle $triangle; use ascii=true to preserve the mesh topology."))
+            edge_counts[edge] = count
+        end
+    end
+    return nothing
+end
 
 function _validate_stl_mesh_for_write(mesh::TriMesh; binary::Bool)
     size(mesh.xyz, 1) == 3 ||
@@ -371,10 +745,11 @@ function _validate_stl_mesh_for_write(mesh::TriMesh; binary::Bool)
                         "are outside the finite Float32 range required by binary STL: $coord."))
             end
         end
-        # Validate degeneracy before opening the destination.  Both STL writers
-        # require a finite unit normal for every facet.
-        triangle_normal(mesh, t)
+        # ASCII validation is complete here. Binary validation below checks
+        # both the source and quantized facet normals.
+        binary || triangle_normal(mesh, t)
     end
+    binary && _validate_binary_stl_quantization(mesh)
     return nothing
 end
 
@@ -389,15 +764,17 @@ function _write_stl_binary(path::AbstractString, mesh::TriMesh; header::Abstract
         write(io, hdr)
         _write_stl_uint32_le(io, UInt32(nt))
         for t in 1:nt
-            n = triangle_normal(mesh, t)
+            first = _binary_stl_coordinate(mesh, 1, t)
+            second = _binary_stl_coordinate(mesh, 2, t)
+            third = _binary_stl_coordinate(mesh, 3, t)
+            n = _binary_stl_facet_normal(first, second, third, t)
             _write_stl_float32_le(io, n[1])
             _write_stl_float32_le(io, n[2])
             _write_stl_float32_le(io, n[3])
-            for vi in 1:3
-                idx = mesh.tri[vi, t]
-                _write_stl_float32_le(io, mesh.xyz[1, idx])
-                _write_stl_float32_le(io, mesh.xyz[2, idx])
-                _write_stl_float32_le(io, mesh.xyz[3, idx])
+            for coord in (first, second, third)
+                _write_stl_float32_le(io, coord[1])
+                _write_stl_float32_le(io, coord[2])
+                _write_stl_float32_le(io, coord[3])
             end
             _write_stl_uint16_le(io, UInt16(0))  # attribute byte count
         end

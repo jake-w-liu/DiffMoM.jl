@@ -7410,6 +7410,105 @@ write(stl_validation_path, stl_validation_sentinel)
 @test_throws DomainError write_stl_mesh(
     stl_validation_path, mesh_degenerate_normal)
 @test read(stl_validation_path) == stl_validation_sentinel
+
+# Binary STL must reject Float32 quantization that changes topology, and it
+# must do so before opening an existing destination. ASCII retains Float64.
+mesh_stl_quantization_collapse = TriMesh(
+    Float64[1.0 1.0 + 1.0e-8 1.0; 0.0 0.0 1.0; 0.0 0.0 0.0],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+write(stl_validation_path, stl_validation_sentinel)
+@test_throws ArgumentError write_stl_mesh(
+    stl_validation_path, mesh_stl_quantization_collapse)
+@test read(stl_validation_path) == stl_validation_sentinel
+stl_quantization_ascii_path = joinpath(DATADIR, "tmp_stl_quantization_ascii.stl")
+write_stl_mesh(
+    stl_quantization_ascii_path, mesh_stl_quantization_collapse; ascii=true)
+mesh_stl_quantization_ascii = read_stl_mesh(stl_quantization_ascii_path)
+@test nvertices(mesh_stl_quantization_ascii) == 3
+@test mesh_quality_ok(
+    mesh_quality_report(mesh_stl_quantization_ascii); allow_boundary=true)
+
+# Distinct Float32 vertices can still become collinear after quantization.
+mesh_stl_quantized_collinear = TriMesh(
+    Float64[0.0 1.0 2.0; 0.0 1.0 2.0 + 1.0e-8; 0.0 0.0 0.0],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+write(stl_validation_path, stl_validation_sentinel)
+@test_throws ArgumentError write_stl_mesh(
+    stl_validation_path, mesh_stl_quantized_collinear)
+@test read(stl_validation_path) == stl_validation_sentinel
+
+# Quantization can also reverse a nondegenerate facet without merging any
+# vertex. Preserve the oriented surface or reject binary output.
+mesh_stl_quantized_winding = TriMesh(
+    Float64[
+        -2.0766889876912712e-47 0.9999999719816558 2.0000001011465844
+        5.5201520571433606e-46 0.9999999895400845 2.0000001223452344
+        0.0 0.0 0.0
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+@test triangle_normal(mesh_stl_quantized_winding, 1) == Vec3(0.0, 0.0, -1.0)
+write(stl_validation_path, stl_validation_sentinel)
+@test_throws ArgumentError write_stl_mesh(
+    stl_validation_path, mesh_stl_quantized_winding)
+@test read(stl_validation_path) == stl_validation_sentinel
+stl_winding_ascii_path = joinpath(DATADIR, "tmp_stl_winding_ascii.stl")
+write_stl_mesh(stl_winding_ascii_path, mesh_stl_quantized_winding; ascii=true)
+mesh_stl_winding_ascii = read_stl_mesh(stl_winding_ascii_path)
+@test triangle_normal(mesh_stl_winding_ascii, 1) ==
+      triangle_normal(mesh_stl_quantized_winding, 1)
+
+# Near orthogonality, rounding the serialized normal itself can give the
+# opposite orientation sign. The predicate must use the endpoint geometry.
+mesh_stl_near_orthogonal_winding = TriMesh(
+    Float64[
+        0.0 6.992565167042597e-40 6.992602567486016e-40
+        0.0 6.992942005328153e-40 6.992975788750699e-40
+        0.0 6.992513989908744e-40 6.992544152654118e-40
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+near_orthogonal_coords = ntuple(local_vertex ->
+    DiffMoM._binary_stl_coordinate(
+        mesh_stl_near_orthogonal_winding, local_vertex, 1), 3)
+@test DiffMoM._binary_stl_orientation_sign_exact(
+    mesh_stl_near_orthogonal_winding,
+    1,
+    near_orthogonal_coords...,
+) == -1
+write(stl_validation_path, stl_validation_sentinel)
+@test_throws ArgumentError write_stl_mesh(
+    stl_validation_path, mesh_stl_near_orthogonal_winding)
+@test read(stl_validation_path) == stl_validation_sentinel
+
+# The serialized facet normal must describe the quantized coordinates, not
+# the higher-precision source triangle.
+mesh_stl_quantized_normal = TriMesh(
+    Float64[
+        293.24681575467264 -190.57731472668434 -526.9051943781989
+        511.2936686990998 -526.0714577166923 -327.5233177931973
+        -545.1941430238312 1082.7882577480282 -305.01398683138245
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+stl_quantized_normal_path = joinpath(DATADIR, "tmp_stl_quantized_normal.stl")
+write_stl_mesh(stl_quantized_normal_path, mesh_stl_quantized_normal)
+stl_quantized_normal_bytes = read(stl_quantized_normal_path)
+stored_stl_normal = (
+    DiffMoM._stl_float32_le(stl_quantized_normal_bytes, 85),
+    DiffMoM._stl_float32_le(stl_quantized_normal_bytes, 89),
+    DiffMoM._stl_float32_le(stl_quantized_normal_bytes, 93),
+)
+quantized_normal_mesh = TriMesh(
+    Float64.(Float32.(mesh_stl_quantized_normal.xyz)),
+    copy(mesh_stl_quantized_normal.tri),
+)
+expected_stl_normal = Tuple(Float32.(triangle_normal(quantized_normal_mesh, 1)))
+source_stl_normal = Tuple(Float32.(triangle_normal(mesh_stl_quantized_normal, 1)))
+@test stored_stl_normal == expected_stl_normal
+@test stored_stl_normal != source_stl_normal
 println("  32c: PASS")
 
 # 32d: STL ASCII round-trip
@@ -7436,6 +7535,27 @@ end
 mesh_stl_ascii = read_stl_mesh(stl_ascii_path)
 @assert nvertices(mesh_stl_ascii) == 4 "STL ASCII: expected 4 unique vertices, got $(nvertices(mesh_stl_ascii))"
 @assert ntriangles(mesh_stl_ascii) == 2 "STL ASCII: expected 2 triangles, got $(ntriangles(mesh_stl_ascii))"
+
+# Facet boundaries, rather than a global vertex count, define ASCII STL
+# triangles. Do not regroup six vertices from one facet into two triangles.
+stl_malformed_facets_path = joinpath(DATADIR, "tmp_stl_malformed_facets.stl")
+open(stl_malformed_facets_path, "w") do io
+    println(io, "solid malformed")
+    println(io, "facet normal 0 0 1")
+    println(io, "outer loop")
+    for coord in ((0, 0, 0), (1, 0, 0), (0, 1, 0),
+                  (2, 0, 0), (3, 0, 0), (2, 1, 0))
+        println(io, "vertex $(coord[1]) $(coord[2]) $(coord[3])")
+    end
+    println(io, "endloop")
+    println(io, "endfacet")
+    println(io, "facet normal 0 0 1")
+    println(io, "outer loop")
+    println(io, "endloop")
+    println(io, "endfacet")
+    println(io, "endsolid malformed")
+end
+@test_throws ErrorException read_stl_mesh(stl_malformed_facets_path)
 println("  32d: PASS")
 
 # 32e: STL vertex merging (tetrahedron)
@@ -7464,6 +7584,45 @@ raw_beyond_tol = [
     raw_within_tol, 2; merge_tol=1.0)) == 3
 @assert nvertices(DiffMoM._merge_stl_vertices(
     raw_beyond_tol, 2; merge_tol=1.0)) == 4
+
+# Signed zero denotes the same STL coordinate, and a positive tolerance must
+# not depend on the mesh's absolute translation.
+raw_signed_zero = [
+    (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0),
+    (-0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0),
+]
+mesh_signed_zero = DiffMoM._merge_stl_vertices(raw_signed_zero, 2)
+@test nvertices(mesh_signed_zero) == 3
+@test all(x -> !iszero(x) || !signbit(x), mesh_signed_zero.xyz)
+
+raw_translation_origin = [
+    (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0),
+    (5.0e-11, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0),
+]
+raw_translation_shifted = map(
+    coord -> (coord[1] + 1.0e10, coord[2], coord[3]),
+    raw_translation_origin,
+)
+@test nvertices(DiffMoM._merge_stl_vertices(
+    raw_translation_origin, 2; merge_tol=1.0e-10)) == 3
+@test nvertices(DiffMoM._merge_stl_vertices(
+    raw_translation_shifted, 2; merge_tol=1.0e-10)) == 3
+
+# A late full-range coordinate promotes the spatial index to exact BigInt
+# cells. The obsolete small-cell hash table must release its O(N) capacity.
+stl_promoted_merger = DiffMoM._new_stl_vertex_merger(1.0)
+for i in 1:1000
+    DiffMoM._merge_stl_vertex!(
+        stl_promoted_merger, (10.0 * i, 0.0, 0.0))
+end
+stl_small_index_bytes = Base.summarysize(stl_promoted_merger.bucket_heads)
+@test DiffMoM._merge_stl_vertex!(
+    stl_promoted_merger, (floatmax(Float64), 0.0, 0.0)) == 1001
+@test stl_promoted_merger.use_big_cells
+@test isempty(stl_promoted_merger.bucket_heads)
+@test Base.summarysize(stl_promoted_merger.bucket_heads) < 1024
+@test stl_small_index_bytes >
+      100 * Base.summarysize(stl_promoted_merger.bucket_heads)
 for invalid_tol in (-1.0, Inf, NaN)
     @test_throws ArgumentError read_stl_mesh(stl_tet_path; merge_tol=invalid_tol)
 end
@@ -7471,10 +7630,13 @@ end
 # The binary reader streams fixed-size facet records; allocation must remain
 # well below the former whole-file/per-coordinate-slice implementation.
 stl_alloc_path = joinpath(DATADIR, "tmp_alloc_bin.stl")
-write_stl_mesh(stl_alloc_path, make_rect_plate(1.0, 1.0, 40, 40))
+stl_alloc_mesh = make_rect_plate(1.0, 1.0, 40, 40)
+write_stl_mesh(stl_alloc_path, stl_alloc_mesh)
 read_stl_mesh(stl_alloc_path)  # warm compilation
 GC.gc()
+stl_write_alloc = @allocated write_stl_mesh(stl_alloc_path, stl_alloc_mesh)
 stl_read_alloc = @allocated read_stl_mesh(stl_alloc_path)
+@assert stl_write_alloc < 16 * filesize(stl_alloc_path)
 @assert stl_read_alloc < 8 * filesize(stl_alloc_path)
 println("  32e: PASS")
 
