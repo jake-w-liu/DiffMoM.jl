@@ -4159,6 +4159,16 @@ end
 pattern_guard_theta = [0.0, π]
 pattern_guard_phi = [0.0, π]
 pattern_guard_F = ones(ComplexF64, 2, 2)
+pattern_guard_storage_bytes =
+    sizeof(Float64) * 4 + 2 * sizeof(ComplexF64) * 4
+@test make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_guard_F, freq_exc;
+    max_storage_bytes=pattern_guard_storage_bytes) isa PatternFeedExcitation
+@test_throws ArgumentError make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_guard_F, freq_exc;
+    max_storage_bytes=pattern_guard_storage_bytes - 1)
 @test_throws ArgumentError make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F, pattern_guard_F, Inf)
@@ -4651,6 +4661,17 @@ pat_plus = make_analytic_dipole_pattern_feed(
     phi_pat_deg_pf;
     angles_in_degrees=true,
 )
+pat_plus_storage_bytes =
+    sizeof(Float64) * (length(theta_pat_deg_pf) + length(phi_pat_deg_pf)) +
+    2 * sizeof(ComplexF64) * length(theta_pat_deg_pf) * length(phi_pat_deg_pf)
+@test make_analytic_dipole_pattern_feed(
+    dip_pf, theta_pat_deg_pf, phi_pat_deg_pf;
+    angles_in_degrees=true,
+    max_storage_bytes=pat_plus_storage_bytes) isa PatternFeedExcitation
+@test_throws ArgumentError make_analytic_dipole_pattern_feed(
+    dip_pf, theta_pat_deg_pf, phi_pat_deg_pf;
+    angles_in_degrees=true,
+    max_storage_bytes=pat_plus_storage_bytes - 1)
 
 function _pattern_feed_constructor_bytes(pat::PatternFeedExcitation)
     return @allocated make_pattern_feed(

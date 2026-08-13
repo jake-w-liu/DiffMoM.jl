@@ -211,13 +211,19 @@ where `R = |r - r_c|` is the distance from the phase center.
 # From arrays
 pf = make_pattern_feed(theta, phi, Ftheta, Fphi, frequency;
                         phase_center=Vec3(0,0,0), angles_in_degrees=false,
-                        convention=:exp_plus_iwt)
+                        convention=:exp_plus_iwt,
+                        max_storage_bytes=2_000_000_000)
 
 # From pattern objects (RadiationPatterns.jl compatible)
 pf = make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency; ...)
 ```
 
 The second form accepts pattern objects with `.x`, `.y`, `.U` fields (e.g., `RadiationPatterns.jl` `Pattern` objects).
+
+`max_storage_bytes` bounds the raw payload of the copied angle grids and the
+two stored `ComplexF64` coefficient matrices. The same keyword is available on
+the pattern-object overload and `make_analytic_dipole_pattern_feed`; the latter
+checks the limit before allocating its coefficient matrices.
 
 **Important:** Use two complex patterns (E_theta and E_phi), not a power-only pattern, to preserve polarization and phase.
 

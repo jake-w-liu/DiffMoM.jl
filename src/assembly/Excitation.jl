@@ -583,6 +583,29 @@ function _coerce_pattern_matrix(U, nθ::Int, nϕ::Int, name::AbstractString)
     end
 end
 
+function _validate_pattern_feed_storage(
+        nθ::Int, nϕ::Int, max_storage_bytes::Integer,
+        label::AbstractString="pattern-feed")
+    theta_bytes = _checked_array_payload_bytes(
+        Float64, nθ; label="$label theta grid")
+    phi_bytes = _checked_array_payload_bytes(
+        Float64, nϕ; label="$label phi grid")
+    matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, nθ, nϕ; label="$label coefficient matrix")
+    storage_bytes = try
+        Base.Checked.checked_add(
+            Base.Checked.checked_add(theta_bytes, phi_bytes),
+            Base.Checked.checked_mul(2, matrix_bytes))
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("$label persistent payload estimate overflows Int"))
+    end
+    return _enforce_payload_limit(
+        storage_bytes, max_storage_bytes,
+        "$label angle grids and coefficient matrices",
+        "max_storage_bytes")
+end
+
 """
     make_pattern_feed(theta, phi, Ftheta, Fphi, frequency;
                       phase_center=Vec3(0,0,0),
@@ -599,7 +622,13 @@ function make_pattern_feed(theta::AbstractVector{<:Real},
                            frequency::Real;
                            phase_center::Vec3=Vec3(0.0, 0.0, 0.0),
                            angles_in_degrees::Bool=false,
-                           convention::Symbol=:exp_plus_iwt)
+                           convention::Symbol=:exp_plus_iwt,
+                           max_storage_bytes::Integer=
+                               _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    nθ = length(theta)
+    nϕ = length(phi)
+    _validate_pattern_feed_storage(nθ, nϕ, max_storage_bytes)
+
     θ = collect(Float64, theta)
     ϕ = collect(Float64, phi)
     if angles_in_degrees
@@ -639,7 +668,9 @@ Convenience constructor for importing two pattern objects (e.g., from
 function make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency::Real;
                            phase_center::Vec3=Vec3(0.0, 0.0, 0.0),
                            angles_in_degrees::Bool=true,
-                           convention::Symbol=:exp_plus_iwt)
+                           convention::Symbol=:exp_plus_iwt,
+                           max_storage_bytes::Integer=
+                               _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     θ = getproperty(Etheta_pattern, :x)
     ϕ = getproperty(Etheta_pattern, :y)
     θ2 = getproperty(Ephi_pattern, :x)
@@ -649,6 +680,8 @@ function make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency::Real;
     end
     length(θ) > 0 || error("Pattern grid theta is empty.")
     length(ϕ) > 0 || error("Pattern grid phi is empty.")
+    _validate_pattern_feed_storage(
+        length(θ), length(ϕ), max_storage_bytes)
     θf = Float64.(θ)
     ϕf = Float64.(ϕ)
     θ2f = Float64.(θ2)
@@ -661,7 +694,8 @@ function make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency::Real;
     return make_pattern_feed(θ, ϕ, Fθ, Fϕ, frequency;
                              phase_center=phase_center,
                              angles_in_degrees=angles_in_degrees,
-                             convention=convention)
+                             convention=convention,
+                             max_storage_bytes=max_storage_bytes)
 end
 
 @inline function _spherical_basis(θ::Float64, ϕ::Float64)
@@ -785,8 +819,13 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
                                            phi::AbstractVector{<:Real};
                                            phase_center::Vec3=dipole.position,
                                            angles_in_degrees::Bool=false,
-                                           convention::Symbol=:exp_plus_iwt)
+                                           convention::Symbol=:exp_plus_iwt,
+                                           max_storage_bytes::Integer=
+                                               _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     dipole.frequency > 0 || error("Dipole frequency must be positive.")
+    _validate_pattern_feed_storage(
+        length(theta), length(phi), max_storage_bytes,
+        "analytical pattern-feed")
     θ = collect(Float64, theta)
     ϕ = collect(Float64, phi)
     if angles_in_degrees
@@ -814,10 +853,10 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
         end
     end
 
-    return make_pattern_feed(θ, ϕ, Fθ, Fϕ, dipole.frequency;
-                             phase_center=phase_center,
-                             angles_in_degrees=false,
-                             convention=convention)
+    excitation = PatternFeedExcitation(
+        θ, ϕ, Fθ, Fϕ, dipole.frequency, phase_center, convention)
+    _validate_excitation_model(excitation)
+    return excitation
 end
 
 """
