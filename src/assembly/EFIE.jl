@@ -496,7 +496,12 @@ Adjacent-cell contribution using precomputed high-order RWG values.
 end
 
 """
-    assemble_Z_efie(mesh, rwg, k; quad_order=3, mesh_precheck=true, allow_boundary=true, require_closed=false)
+    assemble_Z_efie(mesh, rwg, k;
+                    quad_order=3,
+                    mesh_precheck=true,
+                    allow_boundary=true,
+                    require_closed=false,
+                    max_output_bytes=2_000_000_000)
 
 Assemble the dense EFIE matrix `Z_efie ∈ C^{N×N}`.
 `k` is the wavenumber (can be complex for complex-step).
@@ -506,7 +511,15 @@ function assemble_Z_efie(mesh::TriMesh, rwg::RWGData, k;
                          mesh_precheck::Bool=true,
                          allow_boundary::Bool=true,
                          require_closed::Bool=false,
-                         area_tol_rel::Float64=1e-12)
+                         area_tol_rel::Float64=1e-12,
+                         max_output_bytes::Integer=
+                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    N = rwg.nedges
+    matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, N, N; label="dense EFIE matrix")
+    _enforce_payload_limit(
+        matrix_bytes, max_output_bytes,
+        "dense EFIE matrix", "max_output_bytes")
     if mesh_precheck
         assert_mesh_quality(mesh;
             allow_boundary=allow_boundary,
@@ -516,7 +529,6 @@ function assemble_Z_efie(mesh::TriMesh, rwg::RWGData, k;
     end
 
     cache = _build_efie_cache(mesh, rwg, k; quad_order=quad_order, eta0=eta0)
-    N = rwg.nedges
     CT = ComplexF64
     Z = zeros(CT, N, N)
 

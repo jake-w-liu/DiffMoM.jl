@@ -154,7 +154,7 @@ This is a low-level internal helper; most users should call `assemble_Z_efie` wh
 
 ## EFIE Assembly
 
-### `assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12)`
+### `assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, max_output_bytes=2_000_000_000)`
 
 Build the dense N x N EFIE impedance matrix. This is the core MoM system matrix: for a PEC scatterer with no impedance loading, the MoM equation is `Z_efie * I = v`.
 
@@ -173,6 +173,7 @@ Assembly is O(N^2) in both time and memory. Each entry `Z[m,n]` involves a doubl
 | `allow_boundary` | `Bool` | `true` | Allow boundary edges during precheck. |
 | `require_closed` | `Bool` | `false` | Require closed surface during precheck. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the returned dense matrix, enforced before mesh/cache work. Use a matrix-free operator when exceeded. |
 
 **Returns:** `Matrix{ComplexF64}` of size `N x N` where `N = rwg.nedges`.
 
@@ -192,7 +193,7 @@ The cache stores triangle edge-adjacency in compact-row form (`offsets` plus
 contiguous `neighbors`), so self/adjacent singular-integration metadata remains
 linear in mesh size rather than allocating an `N_t × N_t` pair matrix.
 
-**Parameters:** Same as `assemble_Z_efie` (mesh, rwg, k, quad_order, eta0, mesh_precheck, allow_boundary, require_closed, area_tol_rel).
+**Parameters:** Same physical and validation parameters as `assemble_Z_efie` (mesh, rwg, k, quad_order, eta0, mesh_precheck, allow_boundary, require_closed, area_tol_rel). The dense-only `max_output_bytes` keyword does not apply.
 
 **Returns:** `MatrixFreeEFIEOperator{ComplexF64}` -- an `AbstractMatrix{ComplexF64}` of size `(N, N)`.
 

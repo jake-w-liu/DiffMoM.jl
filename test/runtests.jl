@@ -1984,6 +1984,17 @@ k = 2π / lambda0
 eta0 = 376.730313668
 
 Z_efie = assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=eta0)
+efie_matrix_bytes = sizeof(ComplexF64) * rwg.nedges^2
+@test_throws ArgumentError assemble_Z_efie(
+    mesh, rwg, k;
+    quad_order=3,
+    eta0=eta0,
+    max_output_bytes=efie_matrix_bytes - 1)
+@test assemble_Z_efie(
+    mesh, rwg, k;
+    quad_order=3,
+    eta0=eta0,
+    max_output_bytes=efie_matrix_bytes) == Z_efie
 N = rwg.nedges
 println("  Z_efie size: $N × $N")
 @assert size(Z_efie) == (N, N)
