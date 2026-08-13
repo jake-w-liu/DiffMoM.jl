@@ -709,11 +709,14 @@ If `preconditioner_M` is explicitly provided, it takes precedence over the `mode
 
 ---
 
-### `transform_patch_matrices(Mp; preconditioner_M=nothing, preconditioner_factor=nothing)`
+### `transform_patch_matrices(Mp; preconditioner_M=nothing, preconditioner_factor=nothing, max_output_bytes=2_000_000_000)`
 
 Transform derivative blocks under left preconditioning: `Mp_tilde[p] = M^{-1} * Mp[p]`.
 
 When no preconditioner is active (`preconditioner_M === nothing`), returns `Mp` unchanged. A factor created by this API retains the physical matrix and can be reused alone. To reuse an externally constructed factor, also pass its original `preconditioner_M`; the original matrix is required for residual verification.
+
+`max_output_bytes` bounds the combined raw payload of all returned dense
+transformed patch matrices and is checked before the first matrix allocation.
 
 **Returns:** Tuple `(Mp_tilde, factor)`.
 

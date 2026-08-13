@@ -1254,7 +1254,8 @@ end
                           preconditioner_M=nothing,
                           n_threshold=256,
                           iterative_solver=false,
-                          eps_rel=1e-6)
+                          eps_rel=1e-6,
+                          max_output_bytes=2_000_000_000)
 
 Select the effective left preconditioner matrix used by the solver.
 
@@ -1275,7 +1276,9 @@ function select_preconditioner(Mp::Vector{<:AbstractMatrix};
                                preconditioner_M=nothing,
                                n_threshold::Int=256,
                                iterative_solver::Bool=false,
-                               eps_rel::Float64=1e-6)
+                               eps_rel::Float64=1e-6,
+                               max_output_bytes::Integer=
+                                   _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     mode ∈ (:off, :on, :auto) ||
         throw(ArgumentError(
             "Invalid preconditioner mode: $mode (expected :off, :on, or :auto)"))
@@ -1296,12 +1299,18 @@ function select_preconditioner(Mp::Vector{<:AbstractMatrix};
     if mode == :off
         return nothing, false, "mode=:off"
     elseif mode == :on
-        return make_left_preconditioner(Mp; eps_rel=eps_rel), true, "mode=:on"
+        return make_left_preconditioner(
+            Mp; eps_rel=eps_rel, max_output_bytes=max_output_bytes), true,
+            "mode=:on"
     else
         if iterative_solver
-            return make_left_preconditioner(Mp; eps_rel=eps_rel), true, "mode=:auto (iterative_solver=true)"
+            return make_left_preconditioner(
+                Mp; eps_rel=eps_rel, max_output_bytes=max_output_bytes), true,
+                "mode=:auto (iterative_solver=true)"
         elseif N >= n_threshold
-            return make_left_preconditioner(Mp; eps_rel=eps_rel), true, "mode=:auto (N=$N >= $n_threshold)"
+            return make_left_preconditioner(
+                Mp; eps_rel=eps_rel, max_output_bytes=max_output_bytes), true,
+                "mode=:auto (N=$N >= $n_threshold)"
         else
             return nothing, false, "mode=:auto (N=$N < $n_threshold)"
         end
@@ -1309,7 +1318,9 @@ function select_preconditioner(Mp::Vector{<:AbstractMatrix};
 end
 
 """
-    transform_patch_matrices(Mp; preconditioner_M=nothing, preconditioner_factor=nothing)
+    transform_patch_matrices(Mp; preconditioner_M=nothing,
+                             preconditioner_factor=nothing,
+                             max_output_bytes=2_000_000_000)
 
 Transform derivative blocks under left preconditioning:
   M_p_tilde = M^{-1} M_p
@@ -1321,15 +1332,31 @@ and can be reused alone. Pair an externally constructed factor with its
 `preconditioner_M` so residual verification uses the original matrix.
 
 Returns `(Mp_tilde, factor)` where `factor` is `nothing` for the unpreconditioned
-case.
+case. `max_output_bytes` bounds the combined raw payload of the returned dense
+transformed matrices before allocation.
 """
 function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
                                   preconditioner_M=nothing,
-                                  preconditioner_factor=nothing)
+                                  preconditioner_factor=nothing,
+                                  max_output_bytes::Integer=
+                                      _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     N = _validated_mass_matrix_size(Mp)
     if preconditioner_M === nothing && preconditioner_factor === nothing
         return Mp, nothing
     end
+
+    matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, N, N; label="transformed patch matrix")
+    output_bytes = try
+        Base.Checked.checked_mul(length(Mp), matrix_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "transformed patch-matrix payload estimate overflows Int"))
+    end
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "transformed patch matrices", "max_output_bytes")
 
     preconditioner_matrix =
         preconditioner_M === nothing ? nothing :

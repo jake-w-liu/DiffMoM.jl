@@ -596,7 +596,9 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     R_mat = if regularization_alpha == 0.0
         nothing
     else
-        regularization_R === nothing ? make_mass_regularizer(Mp) : Matrix{ComplexF64}(regularization_R)
+        regularization_R === nothing ?
+            make_mass_regularizer(Mp; max_output_bytes=max_workspace_bytes) :
+            Matrix{ComplexF64}(regularization_R)
     end
 
     precond_M_eff, precond_enabled, precond_reason = select_preconditioner(
@@ -606,6 +608,7 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         n_threshold=auto_precondition_n_threshold,
         iterative_solver=iterative_solver,
         eps_rel=auto_precondition_eps_rel,
+        max_output_bytes=max_workspace_bytes,
     )
     verbose && (preconditioning == :auto || preconditioner_M !== nothing || precond_enabled) &&
         println("  preconditioning: ", precond_enabled ? "ON ($precond_reason)" : "OFF ($precond_reason)")
@@ -613,6 +616,7 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     Mp_eff, precond_fac = transform_patch_matrices(
         Mp;
         preconditioner_M=precond_M_eff,
+        max_output_bytes=max_workspace_bytes,
     )
     rhs_eff_base = precond_fac === nothing ?
                    Vector{ComplexF64}(v) :
@@ -935,7 +939,9 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     R_mat = if regularization_alpha == 0.0
         nothing
     else
-        regularization_R === nothing ? make_mass_regularizer(Mp) : Matrix{ComplexF64}(regularization_R)
+        regularization_R === nothing ?
+            make_mass_regularizer(Mp; max_output_bytes=max_workspace_bytes) :
+            Matrix{ComplexF64}(regularization_R)
     end
 
     precond_M_eff, precond_enabled, precond_reason = select_preconditioner(
@@ -945,6 +951,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         n_threshold=auto_precondition_n_threshold,
         iterative_solver=iterative_solver,
         eps_rel=auto_precondition_eps_rel,
+        max_output_bytes=max_workspace_bytes,
     )
     verbose && (preconditioning == :auto || preconditioner_M !== nothing || precond_enabled) &&
         println("  preconditioning: ", precond_enabled ? "ON ($precond_reason)" : "OFF ($precond_reason)")
@@ -952,6 +959,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     Mp_eff, precond_fac = transform_patch_matrices(
         Mp;
         preconditioner_M=precond_M_eff,
+        max_output_bytes=max_workspace_bytes,
     )
     rhs_eff_base = precond_fac === nothing ?
                    Vector{ComplexF64}(v) :

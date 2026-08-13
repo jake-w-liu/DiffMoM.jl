@@ -3419,6 +3419,15 @@ theta_opt_guard = [0.0]
     theta_opt_guard;
     maxiter=0, verbose=false,
     max_workspace_bytes=sizeof(ComplexF64) - 1)
+@test transform_patch_matrices(
+    Mp_opt_guard;
+    preconditioner_M=Z_opt_guard,
+    max_output_bytes=sizeof(ComplexF64))[1] ==
+    Matrix{ComplexF64}[[1.0 + 0im;;]]
+@test_throws ArgumentError transform_patch_matrices(
+    Mp_opt_guard;
+    preconditioner_M=Z_opt_guard,
+    max_output_bytes=sizeof(ComplexF64) - 1)
 @test_throws ArgumentError optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
     maxiter=1, tol=Inf, verbose=false)
