@@ -38,6 +38,45 @@ For a regular triangulation: `N ~ 3 * Nt / 2` (interior edges scale with triangl
 
 ---
 
+## `build_rwg_periodic(mesh, lattice; ...)`
+
+Constructs Bloch-periodic RWG data. Interior edges produce ordinary RWGs;
+opposite `xmin/xmax` and `ymin/ymax` boundary edges are paired one-to-one, with
+the `T-` coefficient multiplied by the corresponding Bloch phase.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `precheck` | `true` | Run the same mesh-quality check as `build_rwg`. |
+| `allow_boundary` | `true` | Permit unit-cell boundary edges. |
+| `require_closed` | `false` | Require a closed mesh when set. |
+| `area_tol_rel` | `1e-12` | Relative triangle-area tolerance used by the precheck. |
+| `boundary_atol_abs` | `nothing` | Adaptive absolute floor, or an explicit nonnegative coordinate tolerance. |
+| `boundary_atol_rel` | `1e-9` | Relative coordinate tolerance, applied separately to `dx` and `dy`. |
+
+Numeric boundary tolerances must be finite and nonnegative. Each resulting x/y
+tolerance must be strictly less than half of its period. With the default
+`boundary_atol_abs=nothing`, the legacy `1e-12` coordinate floor is retained
+when both periods are greater than `2e-12`; smaller cells use no absolute floor.
+Pass a numeric value to select an explicit absolute tolerance.
+Every edge must have exactly one partner on the opposite side. Missing,
+duplicate, ambiguous, or excessively dense candidate neighborhoods raise
+`ArgumentError`. Pairing is spatially indexed with bounded candidate work and
+linear storage rather than comparing every pair of boundary edges.
+
+The Bloch coefficient is evaluated from the exact product of the stored
+Float64 Bloch wavenumber and period. This preserves phase for very large finite
+products and uses high-precision range reduction when the Float64 product would
+overflow.
+
+```julia
+lattice = PeriodicLattice(dx, dy, theta_inc, phi_inc, k)
+rwg = build_rwg_periodic(mesh, lattice;
+                         boundary_atol_abs=nothing,
+                         boundary_atol_rel=1e-9)
+```
+
+---
+
 ## `eval_rwg(rwg, n, r, t)`
 
 Evaluates RWG basis function `n` at a physical point `r` on triangle `t`. This gives the vector-valued basis function used in the EFIE inner products.
@@ -144,7 +183,7 @@ println("  f_1 at T+ centroid = ", f_val)
 
 | File | Contents |
 |------|----------|
-| `src/basis/RWG.jl` | `build_rwg`, `eval_rwg`, `div_rwg`, `basis_triangles` |
+| `src/basis/RWG.jl` | `build_rwg`, `build_rwg_periodic`, `eval_rwg`, `div_rwg`, `basis_triangles` |
 | `src/geometry/Mesh.jl` | Geometry helpers used internally (`triangle_area`, `triangle_center`, etc.) |
 
 ---

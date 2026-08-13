@@ -922,6 +922,252 @@ println("\n── Test 41: PeriodicEFIE ──")
         @test any(abs.(imag.(rwg_bloch.coeff_minus)) .> 1e-8)
     end
 
+    @testset "D: Periodic RWG range, tolerance, and resource safety" begin
+        # Boundary tolerances are scale-aware per axis. No fixed metric floor
+        # may erase a sub-picometer cell, and a long x period must not inflate
+        # the y-boundary tolerance.
+        for (dx_safe, dy_safe) in (
+                (1e-15, 1e-15),
+                (2e-12, 2e-12),
+                (1e12, 1.0))
+            mesh_safe = make_rect_plate(dx_safe, dy_safe, 1, 1)
+            lat_safe = PeriodicLattice(
+                dx_safe, dy_safe, 0.0, 0.0, 1.0, 1.0, 0, 0)
+            rwg_safe = build_rwg_periodic(
+                mesh_safe, lat_safe; precheck=false)
+            @test rwg_safe.nedges == 3
+            @test rwg_safe.has_periodic_bloch
+        end
+        # One relative tolerance can underflow to exact matching while the
+        # other remains positive; zero-width hash dimensions stay valid.
+        mixed_dx = 1e-323
+        mixed_mesh = make_rect_plate(mixed_dx, 1.0, 1, 1)
+        mixed_lattice = PeriodicLattice(
+            mixed_dx, 1.0, 0.0, 0.0, 1.0, 1.0, 0, 0)
+        mixed_rwg = build_rwg_periodic(
+            mixed_mesh, mixed_lattice; precheck=false)
+        @test mixed_rwg.nedges == 3
+        mixed_basis = 1
+        mixed_triangle = mixed_rwg.tplus[mixed_basis]
+        mixed_point = Vec3(
+            mixed_mesh.xyz[:, mixed_mesh.tri[1, mixed_triangle]])
+        mixed_value_reference = setprecision(BigFloat, 2304) do
+            opposite = mixed_rwg.vplus_opp[mixed_basis]
+            scale = Complex{BigFloat}(mixed_rwg.coeff_plus[mixed_basis]) *
+                    BigFloat(mixed_rwg.len[mixed_basis]) /
+                    (BigFloat(2) * BigFloat(
+                        mixed_rwg.area_plus[mixed_basis]))
+            SVector{3,ComplexF64}(ntuple(component -> ComplexF64(
+                scale * (BigFloat(mixed_point[component]) -
+                         BigFloat(mixed_mesh.xyz[component, opposite]))), 3))
+        end
+        @test eval_rwg(
+            mixed_rwg, mixed_basis, mixed_point,
+            mixed_triangle) == mixed_value_reference
+        @test all(isfinite, mixed_value_reference)
+        mixed_centroid = triangle_center(mixed_mesh, mixed_triangle)
+        @test_throws OverflowError eval_rwg(
+            mixed_rwg, mixed_basis, mixed_centroid, mixed_triangle)
+        @test_throws OverflowError div_rwg(
+            mixed_rwg, mixed_basis, mixed_triangle)
+        huge_cell_size = 1.4e154
+        huge_cell_mesh = make_rect_plate(
+            huge_cell_size, huge_cell_size, 1, 1)
+        huge_cell_lattice = PeriodicLattice(
+            huge_cell_size, huge_cell_size, 0.0, 0.0,
+            1e-154, 1.0, 0, 0)
+        huge_cell_rwg = build_rwg_periodic(
+            huge_cell_mesh, huge_cell_lattice; precheck=false)
+        huge_basis = 1
+        huge_triangle = huge_cell_rwg.tplus[huge_basis]
+        huge_point = Vec3(
+            huge_cell_mesh.xyz[:, huge_cell_mesh.tri[1, huge_triangle]])
+        huge_value = eval_rwg(
+            huge_cell_rwg, huge_basis, huge_point, huge_triangle)
+        huge_reference = setprecision(BigFloat, 2304) do
+            opposite = huge_cell_rwg.vplus_opp[huge_basis]
+            scale = Complex{BigFloat}(huge_cell_rwg.coeff_plus[huge_basis]) *
+                    BigFloat(huge_cell_rwg.len[huge_basis]) /
+                    (BigFloat(2) * BigFloat(
+                        huge_cell_rwg.area_plus[huge_basis]))
+            SVector{3,ComplexF64}(ntuple(component -> ComplexF64(
+                scale * (BigFloat(huge_point[component]) -
+                         BigFloat(huge_cell_mesh.xyz[component, opposite]))), 3))
+        end
+        @test huge_value == huge_reference
+        @test all(isfinite, huge_value)
+        phase_cell_dx = 1e308
+        phase_cell_mesh = make_rect_plate(phase_cell_dx, 1.0, 1, 1)
+        phase_cell_lattice = PeriodicLattice(
+            phase_cell_dx, 1.0, (Float64(π) / 2) / phase_cell_dx, 0.0,
+            1e-308, 1.0, 0, 0)
+        phase_cell_rwg = build_rwg_periodic(
+            phase_cell_mesh, phase_cell_lattice; precheck=false)
+        phase_basis = findfirst(
+            coefficient -> !iszero(imag(coefficient)),
+            phase_cell_rwg.coeff_minus)
+        @test phase_basis !== nothing
+        phase_triangle = phase_cell_rwg.tminus[phase_basis]
+        phase_opposite = phase_cell_rwg.vminus_opp[phase_basis]
+        phase_vertex = argmax(local_vertex -> begin
+            vertex = phase_cell_mesh.tri[local_vertex, phase_triangle]
+            abs(phase_cell_mesh.xyz[1, vertex] -
+                phase_cell_mesh.xyz[1, phase_opposite])
+        end, 1:3)
+        phase_point = Vec3(
+            phase_cell_mesh.xyz[:, phase_cell_mesh.tri[phase_vertex, phase_triangle]])
+        phase_value = eval_rwg(
+            phase_cell_rwg, phase_basis, phase_point, phase_triangle)
+        phase_reference = setprecision(BigFloat, 2304) do
+            scale = Complex{BigFloat}(
+                        phase_cell_rwg.coeff_minus[phase_basis]) *
+                    BigFloat(phase_cell_rwg.len[phase_basis]) /
+                    (BigFloat(2) * BigFloat(
+                        phase_cell_rwg.area_minus[phase_basis]))
+            SVector{3,ComplexF64}(ntuple(component -> ComplexF64(
+                scale * (BigFloat(
+                             phase_cell_mesh.xyz[component, phase_opposite]) -
+                         BigFloat(phase_point[component]))), 3))
+        end
+        @test phase_value ≈ phase_reference rtol=0.0 atol=4eps(Float64)
+        @test !iszero(real(phase_value[1]))
+        ordinary_rwg_mesh = make_rect_plate(1.0, 1.0, 2, 2)
+        ordinary_rwg = build_rwg(ordinary_rwg_mesh; precheck=false)
+        ordinary_basis = 1
+        ordinary_triangle = ordinary_rwg.tplus[ordinary_basis]
+        ordinary_point = triangle_center(
+            ordinary_rwg_mesh, ordinary_triangle)
+        eval_rwg(
+            ordinary_rwg, ordinary_basis, ordinary_point, ordinary_triangle)
+        div_rwg(ordinary_rwg, ordinary_basis, ordinary_triangle)
+        @test @allocated(eval_rwg(
+            ordinary_rwg, ordinary_basis, ordinary_point,
+            ordinary_triangle)) == 0
+        @test @allocated(div_rwg(
+            ordinary_rwg, ordinary_basis, ordinary_triangle)) == 0
+        # Preserve the historical 1e-12 import-noise floor for ordinary cells.
+        legacy_size = 1e-6
+        legacy_mesh = make_rect_plate(legacy_size, legacy_size, 1, 1)
+        legacy_mesh.xyz[1, legacy_mesh.xyz[1, :] .== -0.5legacy_size] .+= 5e-13
+        legacy_lattice = PeriodicLattice(
+            legacy_size, legacy_size, 0.0, 0.0, 1.0, 1.0, 0, 0)
+        @test build_rwg_periodic(
+            legacy_mesh, legacy_lattice; precheck=false).nedges == 3
+
+        mesh_tol = make_rect_plate(2.0, 1.0, 1, 1)
+        lat_tol = PeriodicLattice(2.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0, 0)
+        for bad_tolerance in (-1.0, Inf, -Inf, NaN)
+            @test_throws ArgumentError build_rwg_periodic(
+                mesh_tol, lat_tol; precheck=false,
+                boundary_atol_abs=bad_tolerance)
+            @test_throws ArgumentError build_rwg_periodic(
+                mesh_tol, lat_tol; precheck=false,
+                boundary_atol_rel=bad_tolerance)
+        end
+        @test_throws ArgumentError build_rwg_periodic(
+            mesh_tol, lat_tol; precheck=false, boundary_atol_abs=0.5)
+        @test_throws ArgumentError build_rwg_periodic(
+            mesh_tol, lat_tol; precheck=false, boundary_atol_rel=0.5)
+
+        # The exact Float64-input product defines the phase. These cases cover
+        # a badly reduced finite product and products that overflow Float64.
+        for (wavenumber, period) in (
+            (1e100, 1e100),
+            (1e200, 1e200),
+            (floatmax(Float64), floatmax(Float64)),
+        )
+            phase_reference = setprecision(BigFloat, 2304) do
+                ComplexF64(cis(-BigFloat(wavenumber) * BigFloat(period)))
+            end
+            @test DiffMoM._periodic_rwg_bloch_phase(
+                wavenumber, period) ≈ phase_reference rtol=0.0 atol=8eps(Float64)
+        end
+        DiffMoM._periodic_rwg_bloch_phase(2.0, 3.0)
+        @test @allocated(
+            DiffMoM._periodic_rwg_bloch_phase(2.0, 3.0)) == 0
+
+        mesh_phase = make_rect_plate(2.0, 1.0, 1, 1)
+        lat_phase = PeriodicLattice(2.0, 1.0, 1e308, 0.0,
+                                    1.0, 1.0, 0, 0)
+        rwg_phase = build_rwg_periodic(
+            mesh_phase, lat_phase; precheck=false)
+        phase_reference = setprecision(BigFloat, 2304) do
+            ComplexF64(cis(-BigFloat(1e308) * BigFloat(2.0)))
+        end
+        @test any(==(phase_reference), rwg_phase.coeff_minus)
+        @test all(isfinite, rwg_phase.coeff_minus)
+
+        # Pairing accepts reversed endpoint order and remains independent of
+        # side-B ordering. Duplicate geometric candidates are rejected.
+        PeriodicEdge = DiffMoM._PeriodicBoundaryEdge
+        function synthetic_edge(y1, z1, y2, z2, x, id)
+            return PeriodicEdge(
+                (id, id + 1), id, 1,
+                Vec3(x, y1, z1), Vec3(x, y2, z2))
+        end
+        side_a = [synthetic_edge(0.0, 10.0, 1.0, 0.0, -1.0, 1)]
+        side_b = [synthetic_edge(0.9, 0.1, 0.1, 9.9, 1.0, 3)]
+        @test DiffMoM._periodic_boundary_matches(
+            side_a, side_b, :x, (0.2, 0.2)) == [1]
+        # Independent endpoint-coordinate ordering can change under a legal
+        # perturbation. The orientation-invariant index must still find it.
+        crossing_a = [synthetic_edge(0.0, 0.0, 0.1, 100.0, -1.0, 1)]
+        crossing_b = [synthetic_edge(0.15, 0.0, -0.05, 100.0, 1.0, 3)]
+        @test DiffMoM._periodic_boundary_matches(
+            crossing_a, crossing_b, :x, (0.2, 0.2)) == [1]
+        unequal_tol_a = [synthetic_edge(0.0, 0.0, 100.0, 1.0, -1.0, 1)]
+        unequal_tol_b = [synthetic_edge(0.5, 0.0, 100.5, 1.0, 1.0, 3)]
+        @test DiffMoM._periodic_boundary_matches(
+            unequal_tol_a, unequal_tol_b, :x, (1.0, 0.01)) == [1]
+        signed_zero_a = [
+            synthetic_edge(-0.0, 0.0, 1.0, -0.0, -1.0, 1),
+        ]
+        signed_zero_b = [
+            synthetic_edge(1.0, 0.0, 0.0, -0.0, 1.0, 3),
+        ]
+        @test DiffMoM._periodic_boundary_matches(
+            signed_zero_a, signed_zero_b, :x, (0.0, 0.0)) == [1]
+        full_range_a = [synthetic_edge(
+            -floatmax(Float64), nextfloat(0.0),
+            floatmax(Float64), 1.0, -1.0, 1)]
+        full_range_b = [synthetic_edge(
+            floatmax(Float64), 1.0,
+            -floatmax(Float64), nextfloat(0.0), 1.0, 3)]
+        @test DiffMoM._periodic_boundary_matches(
+            full_range_a, full_range_b, :x, (1e-300, 1e-300)) == [1]
+        duplicate_b = [
+            synthetic_edge(0.1, 0.0, 1.1, 0.0, 1.0, 3),
+            synthetic_edge(-0.1, 0.0, 0.9, 0.0, 1.0, 5),
+        ]
+        ambiguous_a = [
+            synthetic_edge(0.0, 0.0, 1.0, 0.0, -1.0, 1),
+            synthetic_edge(100.0, 0.0, 101.0, 0.0, -1.0, 7),
+        ]
+        @test_throws ArgumentError DiffMoM._periodic_boundary_matches(
+            ambiguous_a, duplicate_b, :x, (0.2, 0.2))
+        @test_throws ArgumentError DiffMoM._periodic_boundary_matches(
+            ambiguous_a, reverse(duplicate_b), :x, (0.2, 0.2))
+        @test_throws ArgumentError DiffMoM._periodic_boundary_matches(
+            ambiguous_a[1:1], PeriodicEdge[], :x, (0.2, 0.2))
+
+        # Warm allocation must scale linearly with the boundary-edge count.
+        function periodic_strip_allocation(n)
+            mesh = make_rect_plate(1.0, 1.0, 1, n)
+            lattice = PeriodicLattice(
+                1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0, 0)
+            rwg = build_rwg_periodic(mesh, lattice; precheck=false)
+            rwg.nedges == 3n || error("periodic strip edge-count invariant failed")
+            return nothing
+        end
+        periodic_strip_allocation(32)
+        GC.gc()
+        allocation_1000 = @allocated periodic_strip_allocation(1000)
+        GC.gc()
+        allocation_2000 = @allocated periodic_strip_allocation(2000)
+        @test allocation_2000 <= 2.5 * allocation_1000
+        @test allocation_2000 < 12_000_000
+    end
+
     # ── F: ACA dense blocks match EFIE for complex Bloch RWG coefficients ──
     @testset "F: ACA dense blocks with Bloch RWG" begin
         dx_fp = 1.2 * lambda_pe
