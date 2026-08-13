@@ -853,7 +853,9 @@ end
 end
 
 """
-    build_Q(G_mat, grid, pol; mask=nothing)
+    build_Q(G_mat, grid, pol;
+            mask=nothing,
+            max_work_bytes=2_000_000_000)
 
 Build the Hermitian PSD matrix Q from radiation vectors and polarization.
 
@@ -864,11 +866,29 @@ Build the Hermitian PSD matrix Q from radiation vectors and polarization.
 
 Returns Q ∈ C^{N×N}, Hermitian positive semidefinite.
 """
-function build_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
-                 pol::Matrix{ComplexF64}; mask=nothing)
+function build_Q(
+        G_mat::Matrix{ComplexF64}, grid::SphGrid,
+        pol::Matrix{ComplexF64};
+        mask=nothing,
+        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     NΩ, N = _validate_q_inputs(G_mat, grid, pol, mask)
-    if _farfield_q_has_extreme_operator_factor(
-            G_mat, grid.w, pol)
+    projection_bytes = _checked_array_payload_bytes(
+        ComplexF64, NΩ, N; label="build_Q projection workspace")
+    matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, N, N; label="build_Q output matrix")
+    checked_products = _farfield_q_has_extreme_operator_factor(
+        G_mat, grid.w, pol)
+    work_bytes = try
+        checked_products ? matrix_bytes :
+            Base.Checked.checked_add(projection_bytes, matrix_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("build_Q raw-work estimate overflows Int"))
+    end
+    _enforce_payload_limit(
+        work_bytes, max_work_bytes,
+        "build_Q dense output and workspace", "max_work_bytes")
+    if checked_products
         return _build_q_checked(
             G_mat, grid.w, pol, mask, N)
     end

@@ -41,7 +41,7 @@ Both sample counts must be positive.
 
 ## Radiation Operators
 
-### `radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668)`
+### `radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668, max_output_bytes=2_000_000_000)`
 
 Compute the per-basis radiation vectors `g_n(r_hat_q)` for all N basis functions at all N_omega grid directions. This is the far-field "transfer matrix": it maps surface current coefficients to far-field amplitudes.
 
@@ -55,6 +55,7 @@ Compute the per-basis radiation vectors `g_n(r_hat_q)` for all N basis functions
 | `k` | Real or Complex | -- | Wavenumber (rad/m). |
 | `quad_order` | `Int` | `3` | Quadrature order on reference triangle. |
 | `eta0` | `Real` | `376.730313668` | Free-space impedance (Ohm). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned dense radiation-vector matrix, checked before quadrature caches or output allocation. |
 
 **Returns:** `Matrix{ComplexF64}` `G_mat` of size `(3*N_omega, N)`.
 
@@ -329,18 +330,19 @@ Q_back = build_Q(G_mat, grid, pol; mask=mask)
 
 ---
 
-### `build_Q(G_mat, grid, pol; mask=nothing)`
+### `build_Q(G_mat, grid, pol; mask=nothing, max_work_bytes=2_000_000_000)`
 
 Build the Hermitian positive-semidefinite matrix `Q` for the quadratic far-field objective `J = Re(I' Q I)`.
 
 **Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `G_mat` | `Matrix{ComplexF64}` | Radiation-vector matrix `(3*N_omega, N)`. |
-| `grid` | `SphGrid` | Spherical grid with quadrature weights. |
-| `pol` | `Matrix{ComplexF64}` | `(3, N_omega)` polarization vectors (from `pol_linear_x` or custom). |
-| `mask` | `BitVector` or `nothing` | Optional mask selecting target directions. If `nothing`, all directions contribute. |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `G_mat` | `Matrix{ComplexF64}` | -- | Radiation-vector matrix `(3*N_omega, N)`. |
+| `grid` | `SphGrid` | -- | Spherical grid with quadrature weights. |
+| `pol` | `Matrix{ComplexF64}` | -- | `(3, N_omega)` polarization vectors (from `pol_linear_x` or custom). |
+| `mask` | `BitVector` or `nothing` | `nothing` | Optional mask selecting target directions. If `nothing`, all directions contribute. |
+| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum raw dense payload: `Q` plus the projection workspace on the ordinary path, or `Q` alone on the checked exceptional path. Use `build_Q_operator` when this limit is exceeded. |
 
 **Returns:** `Matrix{ComplexF64}` `Q` of size `N x N`, Hermitian PSD.
 

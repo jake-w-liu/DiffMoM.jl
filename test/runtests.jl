@@ -2351,6 +2351,17 @@ G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=eta0)
 @assert size(G_mat) == (3 * NΩ, N)
 @test_throws ArgumentError radiation_vectors(mesh, rwg, grid, Inf; eta0=eta0)
 @test_throws ArgumentError radiation_vectors(mesh, rwg, grid, k; eta0=Inf)
+radiation_output_limit = sizeof(ComplexF64) * 3NΩ * N
+@test_throws ArgumentError radiation_vectors(
+    mesh, rwg, grid, k;
+    quad_order=3,
+    eta0=eta0,
+    max_output_bytes=radiation_output_limit - 1)
+@test radiation_vectors(
+    mesh, rwg, grid, k;
+    quad_order=3,
+    eta0=eta0,
+    max_output_bytes=radiation_output_limit) == G_mat
 
 # Phase factors are single-use values. Keep transient storage bounded rather
 # than allocating one NΩ × Nq phase matrix for every RWG basis function.
@@ -2466,6 +2477,15 @@ pol_mat = pol_linear_x(grid)
 mask = cap_mask(grid; theta_max=30 * π / 180)
 Q = build_Q(G_mat, grid, pol_mat; mask=mask)
 Q_operator = build_Q_operator(G_mat, grid, pol_mat; mask=mask)
+q_work_limit = sizeof(ComplexF64) * (NΩ * N + N * N)
+@test_throws ArgumentError build_Q(
+    G_mat, grid, pol_mat;
+    mask=mask,
+    max_work_bytes=q_work_limit - 1)
+@test build_Q(
+    G_mat, grid, pol_mat;
+    mask=mask,
+    max_work_bytes=q_work_limit) == Q
 @test length(Q_operator.work) == N
 @test Q_operator.work_lock isa ReentrantLock
 oversized_mask = vcat(mask, true)

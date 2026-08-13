@@ -207,7 +207,10 @@ end
 end
 
 """
-    radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668)
+    radiation_vectors(mesh, rwg, grid, k;
+                      quad_order=3,
+                      eta0=376.730313668,
+                      max_output_bytes=2_000_000_000)
 
 Compute the per-basis radiation vectors g_n(r̂_q) for all basis functions
 and all grid directions.
@@ -215,12 +218,27 @@ and all grid directions.
 Returns G_mat of size (3*NΩ, N) such that
   G_mat[(3*(q-1)+1):(3*q), n] = g_n(r̂_q) ∈ C³
 """
-function radiation_vectors(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
-                           quad_order::Int=3, eta0=376.730313668)
+function radiation_vectors(
+        mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
+        quad_order::Int=3,
+        eta0=376.730313668,
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     N = rwg.nedges
     NΩ = _validate_sph_grid(grid)
     _validated_farfield_scalar(k, "radiation_vectors wavenumber")
     _validated_farfield_scalar(eta0, "radiation_vectors eta0")
+    output_rows = try
+        Base.Checked.checked_mul(3, NΩ)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "radiation-vector row count overflows Int"))
+    end
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, output_rows, N; label="radiation-vector matrix")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "radiation-vector matrix", "max_output_bytes")
     Nt = ntriangles(mesh)
     prefactor = 1im * k * eta0 / (4π)
 
@@ -246,7 +264,7 @@ function radiation_vectors(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
     # tuple, so compute it inline instead of allocating an NΩ × Nq buffer for
     # every basis function. Each task writes only to column n of G_mat, so there
     # are no data races.
-    G_mat = zeros(ComplexF64, Base.checked_mul(3, NΩ), N)
+    G_mat = zeros(ComplexF64, output_rows, N)
 
     Threads.@threads for n in 1:N
         @inbounds for t in (rwg.tplus[n], rwg.tminus[n])

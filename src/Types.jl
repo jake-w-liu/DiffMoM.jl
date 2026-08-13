@@ -6,6 +6,56 @@ export nvertices, ntriangles
 const Vec3 = SVector{3,Float64}
 const CVec3 = SVector{3,ComplexF64}
 
+# Public routines that materialize dense arrays use this as their default raw
+# payload ceiling.  The limit is deliberately configurable at each call site;
+# it bounds the arrays owned by that operation, not Julia object headers or
+# allocator bookkeeping.
+const _DEFAULT_MAX_DENSE_PAYLOAD_BYTES = 2_000_000_000
+
+function _validated_resource_limit(
+        name::AbstractString, value::Integer)
+    limit = try
+        Int(value)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError("$name is outside the Int range"))
+    end
+    limit > 0 ||
+        throw(ArgumentError("$name must be positive, got $value"))
+    return limit
+end
+
+function _checked_array_payload_bytes(
+        ::Type{T}, dimensions::Integer...;
+        label::AbstractString="array") where {T}
+    entries = 1
+    try
+        for dimension in dimensions
+            dimension >= 0 ||
+                throw(ArgumentError(
+                    "$label dimensions must be nonnegative, got $dimensions"))
+            entries = Base.Checked.checked_mul(entries, Int(dimension))
+        end
+        return Base.Checked.checked_mul(entries, sizeof(T))
+    catch err
+        err isa OverflowError || err isa InexactError || rethrow()
+        throw(ArgumentError("$label raw-payload estimate overflows Int"))
+    end
+end
+
+function _enforce_payload_limit(
+        payload_bytes::Int,
+        max_bytes::Integer,
+        label::AbstractString,
+        limit_name::AbstractString)
+    limit = _validated_resource_limit(limit_name, max_bytes)
+    payload_bytes <= limit ||
+        throw(ArgumentError(
+            "$label requires $payload_bytes raw bytes, exceeding " *
+            "$limit_name=$limit"))
+    return payload_bytes
+end
+
 @inline _complex_vector_input(x::AbstractVector{ComplexF64}) = x
 @inline _complex_vector_input(x::AbstractVector) = Vector{ComplexF64}(x)
 
