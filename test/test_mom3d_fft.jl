@@ -40,6 +40,20 @@ end
     @test_throws ArgumentError fft_em_dda_operator_3d(
         single, Inf, 3.0, 1.2)
     A_single = fft_dda_operator_3d(single, k0, 3.0 + 0.1im)
+    fft_dda_storage_bytes = sizeof(ComplexF64) * 13
+    @test_throws ArgumentError fft_dda_operator_3d(
+        single, k0, 3.0 + 0.1im;
+        max_storage_bytes=fft_dda_storage_bytes - 1)
+    @test size(fft_dda_operator_3d(
+        single, k0, 3.0 + 0.1im;
+        max_storage_bytes=fft_dda_storage_bytes)) == size(A_single)
+    fft_em_storage_bytes = sizeof(ComplexF64) * 43
+    @test_throws ArgumentError fft_em_dda_operator_3d(
+        single, k0, 2.0, 1.5;
+        max_storage_bytes=fft_em_storage_bytes - 1)
+    @test size(fft_em_dda_operator_3d(
+        single, k0, 2.0, 1.5;
+        max_storage_bytes=fft_em_storage_bytes)) == (6, 6)
     @test size(A_single, 3) == 1
     @test_throws BoundsError size(A_single, 0)
     x_single = ComplexF64[1.0 + 2.0im, -0.5 + 0.25im, 0.75 - 0.1im]

@@ -103,6 +103,27 @@ FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
 
 @inline _fft_dda_mod_index(offset::Int, nfft::Int) = mod(offset, nfft) + 1
 
+function _validated_fft_dda_storage_3d(
+        grid::VoxelGrid3D,
+        channels::Int,
+        max_storage_bytes::Integer,
+        label::AbstractString)
+    px = Base.Checked.checked_sub(Base.Checked.checked_mul(2, grid.nx), 1)
+    py = Base.Checked.checked_sub(Base.Checked.checked_mul(2, grid.ny), 1)
+    pz = Base.Checked.checked_sub(Base.Checked.checked_mul(2, grid.nz), 1)
+    # Persistent storage comprises the channels-by-channels Fourier kernel,
+    # the channels-wide transformed-source workspace, and one convolution slab.
+    persistent_arrays = Base.Checked.checked_add(
+        Base.Checked.checked_mul(channels, channels), channels + 1)
+    storage_bytes = _checked_array_payload_bytes(
+        ComplexF64, persistent_arrays, px, py, pz;
+        label="$label persistent arrays")
+    _enforce_payload_limit(
+        storage_bytes, max_storage_bytes,
+        "$label persistent arrays", "max_storage_bytes")
+    return (px, py, pz), storage_bytes
+end
+
 @inline function _fft_convolution_range_safe_3d(
         kernel_scale::Float64,
         transformed_dipole_scale::Float64,
@@ -121,12 +142,15 @@ FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
     return kernel_scale <= component_limit / transformed_dipole_scale
 end
 
-function fft_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
+function fft_dda_kernel_3d(
+        grid::VoxelGrid3D, k0::Real;
+        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     k = _finite_positive_k0_3d(k0)
     interaction_scale = grid.volumes[1]
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
-    px, py, pz = 2nx - 1, 2ny - 1, 2nz - 1
+    (px, py, pz), _ = _validated_fft_dda_storage_3d(
+        grid, 3, max_storage_bytes, "FFT DDA operator")
     kernel_hat = Array{ComplexF64}(undef, px, py, pz, 3, 3)
     kernel = zeros(ComplexF64, px, py, pz)
 
@@ -162,13 +186,18 @@ Construct an FFT-accelerated DDA material operator for a uniform `VoxelGrid3D`.
 The matvec matches `dda_operator_3d` while replacing the dense all-pairs sum by
 a zero-padded block Toeplitz convolution over Cartesian grid offsets.
 """
-function fft_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r;
-                             radiative_correction::Bool=false)
+function fft_dda_operator_3d(
+        grid::VoxelGrid3D, k0::Real, eps_r;
+        radiative_correction::Bool=false,
+        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _validated_fft_dda_storage_3d(
+        grid, 3, max_storage_bytes, "FFT DDA operator")
     k = _finite_positive_k0_3d(k0)
     epsv = _coerce_epsr_material_3d(eps_r, grid.nvoxels)
     alpha = _dda_polarizabilities_from_coerced(
         grid, k, epsv, radiative_correction)
-    kernel = fft_dda_kernel_3d(grid, k)
+    kernel = fft_dda_kernel_3d(
+        grid, k; max_storage_bytes=max_storage_bytes)
     px, py, pz = kernel.pad_dims
     qhat = zeros(ComplexF64, px, py, pz, 3)
     conv = zeros(ComplexF64, px, py, pz)
@@ -306,12 +335,15 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     return _em_interaction_apply_3d(r, origin, k, q, m)
 end
 
-function fft_em_dda_kernel_3d(grid::VoxelGrid3D, k0::Real)
+function fft_em_dda_kernel_3d(
+        grid::VoxelGrid3D, k0::Real;
+        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     k = _finite_positive_k0_3d(k0)
     interaction_scale = grid.volumes[1]
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
-    px, py, pz = 2nx - 1, 2ny - 1, 2nz - 1
+    (px, py, pz), _ = _validated_fft_dda_storage_3d(
+        grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     kernel_hat = Array{ComplexF64}(undef, px, py, pz, 6, 6)
     # Build and transform the spatial kernel one source column at a time,
     # reusing a single padded buffer instead of materializing all 36 blocks
@@ -356,28 +388,38 @@ end
 Construct an FFT-accelerated coupled electric-magnetic DDA operator for a
 uniform `VoxelGrid3D`.
 """
-function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
-                                radiative_correction::Bool=false)
+function fft_em_dda_operator_3d(
+        grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
+        radiative_correction::Bool=false,
+        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _validated_fft_dda_storage_3d(
+        grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, eps_r, mu_r;
         radiative_correction=radiative_correction,
     )
-    kernel = fft_em_dda_kernel_3d(grid, k)
+    kernel = fft_em_dda_kernel_3d(
+        grid, k; max_storage_bytes=max_storage_bytes)
     px, py, pz = kernel.pad_dims
     qhat = zeros(ComplexF64, px, py, pz, 6)
     conv = zeros(ComplexF64, px, py, pz)
     return FFTEMDDAOperator3D(grid, k, alpha, radiative_correction, kernel, qhat, conv)
 end
 
-function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, alpha6;
-                                radiative_correction::Bool=false)
+function fft_em_dda_operator_3d(
+        grid::VoxelGrid3D, k0::Real, alpha6;
+        radiative_correction::Bool=false,
+        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _validated_fft_dda_storage_3d(
+        grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, alpha6;
         radiative_correction=radiative_correction,
     )
-    kernel = fft_em_dda_kernel_3d(grid, k)
+    kernel = fft_em_dda_kernel_3d(
+        grid, k; max_storage_bytes=max_storage_bytes)
     px, py, pz = kernel.pad_dims
     qhat = zeros(ComplexF64, px, py, pz, 6)
     conv = zeros(ComplexF64, px, py, pz)
@@ -388,14 +430,18 @@ function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
                                 material::Union{BianisotropicMaterial3D,
                                                 AbstractVector{<:BianisotropicMaterial3D}};
                                 radiative_correction::Bool=false,
-                                eta0::Real=_ETA0_DDA)
+                                eta0::Real=_ETA0_DDA,
+                                max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _validated_fft_dda_storage_3d(
+        grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     k = _finite_positive_k0_3d(k0)
     alpha = em_dda_polarizabilities(
         grid, k, material;
         radiative_correction=radiative_correction,
         eta0=eta0,
     )
-    kernel = fft_em_dda_kernel_3d(grid, k)
+    kernel = fft_em_dda_kernel_3d(
+        grid, k; max_storage_bytes=max_storage_bytes)
     px, py, pz = kernel.pad_dims
     qhat = zeros(ComplexF64, px, py, pz, 6)
     conv = zeros(ComplexF64, px, py, pz)

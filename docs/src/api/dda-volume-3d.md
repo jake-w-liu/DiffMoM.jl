@@ -755,7 +755,7 @@ Constructed by `fft_dda_kernel_3d`.
 
 ---
 
-### `fft_dda_kernel_3d(grid, k0)`
+### `fft_dda_kernel_3d(grid, k0; max_storage_bytes=2_000_000_000)`
 
 Build the `FFTDDAKernel3D` for the electric DDA operator: it sweeps Cartesian
 grid offsets `(ox, oy, oz)` (excluding the origin), fills the `3x3` dyadic
@@ -770,6 +770,8 @@ of the 9 component arrays.
 | `k0` | `Real` | -- | Wavenumber (rad/m), must be positive. |
 
 **Returns:** `FFTDDAKernel3D`.
+
+`max_storage_bytes` bounds the combined raw payload of the Fourier kernel and operator work arrays before kernel allocation.
 
 ---
 
@@ -795,7 +797,7 @@ FFT-accelerated coupled-dipole operator for a uniform `VoxelGrid3D`. It applies
 
 ---
 
-### `fft_dda_operator_3d(grid, k0, eps_r; radiative_correction=false)`
+### `fft_dda_operator_3d(grid, k0, eps_r; radiative_correction=false, max_storage_bytes=2_000_000_000)`
 
 Construct an `FFTDDAOperator3D`. The matvec matches `dda_operator_3d` while
 replacing the dense all-pairs sum by the zero-padded block-Toeplitz convolution.
@@ -810,6 +812,8 @@ replacing the dense all-pairs sum by the zero-padded block-Toeplitz convolution.
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 
 **Returns:** `FFTDDAOperator3D`.
+
+`max_storage_bytes` bounds all persistent padded complex arrays (kernel, transformed sources, and convolution workspace).
 
 **Example:**
 
@@ -837,7 +841,7 @@ interaction. The stored kernel maps induced `[q; m]` dipoles to scattered
 
 ---
 
-### `fft_em_dda_kernel_3d(grid, k0)`
+### `fft_em_dda_kernel_3d(grid, k0; max_storage_bytes=2_000_000_000)`
 
 Build the `FFTEMDDAKernel3D` for the coupled EM DDA operator by sweeping
 Cartesian grid offsets, evaluating the `6x6` electromagnetic interaction at each
@@ -851,6 +855,8 @@ offset, and storing the FFT of each component array.
 | `k0` | `Real` | -- | Wavenumber (rad/m), must be positive. |
 
 **Returns:** `FFTEMDDAKernel3D`.
+
+`max_storage_bytes` bounds the combined raw payload of the Fourier kernel and operator work arrays before kernel allocation.
 
 ---
 
@@ -875,7 +881,7 @@ FFT-accelerated coupled electric-magnetic DDA operator. It applies
 
 ---
 
-### `fft_em_dda_operator_3d(grid, k0, eps_r, mu_r; radiative_correction=false)`
+### `fft_em_dda_operator_3d(grid, k0, eps_r, mu_r; radiative_correction=false, max_storage_bytes=2_000_000_000)`
 
 Construct an `FFTEMDDAOperator3D`. Additional methods accept explicit per-voxel
 `6x6` polarizabilities (`fft_em_dda_operator_3d(grid, k0, alpha6; ...)`) or a
@@ -893,6 +899,8 @@ Construct an `FFTEMDDAOperator3D`. Additional methods accept explicit per-voxel
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 
 **Returns:** `FFTEMDDAOperator3D`.
+
+Every overload accepts `max_storage_bytes`, which bounds all persistent padded complex arrays before material or kernel construction.
 
 **Example:**
 
