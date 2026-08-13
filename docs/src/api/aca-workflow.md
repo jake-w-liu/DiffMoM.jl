@@ -326,6 +326,7 @@ One-call scattering solve that automatically selects the solver method, validate
 | `verbose` | `Bool` | `true` | Print progress info (N, method, timing). |
 | `quad_order` | `Int` | `3` | Quadrature order for EFIE entry evaluation. |
 | `c0` | `Real` | `299792458.0` | Speed of light (m/s). |
+| `max_dense_matrix_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for `:dense_direct` and `:dense_gmres`; checked before excitation assembly and EFIE allocation. |
 
 **Returns:** `ScatteringResult` (see [types.md](types.md)).
 

@@ -6892,6 +6892,17 @@ result_auto = solve_scattering(mesh, freq, pw_exc;
                                 verbose=false, check_resolution=false)
 @assert result_auto.method == :dense_direct "Expected :dense_direct for N=$(result_auto.N), got $(result_auto.method)"
 @assert result_auto.N == N
+workflow_dense_bytes = sizeof(ComplexF64) * N^2
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, pw_exc;
+    max_dense_matrix_bytes=workflow_dense_bytes - 1,
+    verbose=false,
+    check_resolution=false)
+@test solve_scattering(
+    mesh, freq, pw_exc;
+    max_dense_matrix_bytes=workflow_dense_bytes,
+    verbose=false,
+    check_resolution=false).I_coeffs == result_auto.I_coeffs
 @test_throws ArgumentError solve_scattering(
     mesh, Inf, pw_exc;
     verbose=false,

@@ -58,6 +58,7 @@ produce a warning (or error if `error_on_underresolved=true`).
 - `verbose=true`: print progress info
 - `quad_order=3`: quadrature order for EFIE entries
 - `c0=299792458.0`: speed of light (m/s)
+- `max_dense_matrix_bytes=2_000_000_000`: raw-payload ceiling for dense EFIE methods
 
 # Returns
 A `ScatteringResult` with fields: `I_coeffs`, `method`, `N`, timing info,
@@ -82,7 +83,9 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           aca_max_rank::Int=50,
                           verbose::Bool=true,
                           quad_order::Int=3,
-                          c0::Real=C0_DEFAULT)
+                          c0::Real=C0_DEFAULT,
+                          max_dense_matrix_bytes::Integer=
+                              _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     frequency = Float64(freq_hz)
     isfinite(frequency) && frequency > 0 ||
         throw(ArgumentError(
@@ -162,6 +165,14 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             "use :lu, :diag, :none, or :auto with $selected_method"))
     end
 
+    if selected_method in (:dense_direct, :dense_gmres)
+        dense_bytes = _checked_array_payload_bytes(
+            ComplexF64, N, N; label="solve_scattering dense EFIE matrix")
+        _enforce_payload_limit(
+            dense_bytes, max_dense_matrix_bytes,
+            "solve_scattering dense EFIE matrix", "max_dense_matrix_bytes")
+    end
+
     # ── Step 4: Excitation vector ──
     local v::Vector{ComplexF64}
     if excitation isa AbstractVector
@@ -178,7 +189,11 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     local A_mlfma
     t_assembly = @elapsed begin
         if selected_method == :dense_direct || selected_method == :dense_gmres
-            Z = assemble_Z_efie(mesh, rwg, k; quad_order=quad_order, mesh_precheck=false)
+            Z = assemble_Z_efie(
+                mesh, rwg, k;
+                quad_order=quad_order,
+                mesh_precheck=false,
+                max_output_bytes=max_dense_matrix_bytes)
         elseif selected_method == :aca_gmres
             A_aca = build_aca_operator(mesh, rwg, k;
                                        leaf_size=aca_leaf_size, eta=aca_eta,
