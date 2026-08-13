@@ -453,6 +453,18 @@ println("\n── Test 39: DensityFiltering ──")
         @test_throws ArgumentError build_filter_weights(mesh_df, 0.0)
         @test_throws ArgumentError build_filter_weights(mesh_df, -r_min)
         @test_throws ArgumentError build_filter_weights(mesh_df, Inf)
+        @test_throws ArgumentError build_filter_weights(
+            mesh_df, r_min; max_triplet_bytes=0)
+
+        filter_triplet_bytes = nnz(W) *
+            (2 * sizeof(Int) + sizeof(Float64))
+        W_capped, sums_capped = build_filter_weights(
+            mesh_df, r_min; max_triplet_bytes=filter_triplet_bytes)
+        @test W_capped == W
+        @test sums_capped == w_sum
+        @test_throws ArgumentError build_filter_weights(
+            mesh_df, r_min;
+            max_triplet_bytes=filter_triplet_bytes - 1)
 
         # Cell coordinates may exceed Int even though the mesh and filter
         # radius are finite. The wide-key path must retain the sparse hash and

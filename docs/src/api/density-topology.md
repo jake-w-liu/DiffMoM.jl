@@ -126,7 +126,7 @@ dZ/drho_bar[t] = -p * rho_bar[t]^(p-1) * Z_max * M_t
 
 ## Filtering and Projection
 
-### `build_filter_weights(mesh, r_min)`
+### `build_filter_weights(mesh, r_min; max_triplet_bytes=536_870_912)`
 
 Build the sparse conic filter weights:
 
@@ -142,6 +142,7 @@ where `c_t` are triangle centroids.
 |-----------|------|-------------|
 | `mesh` | `TriMesh` | Mesh with `Nt` triangles. |
 | `r_min` | `Float64` | Filter radius (meters). |
+| `max_triplet_bytes` | `Integer` | Maximum raw payload of the temporary row, column, and value triplet arrays. The exact triplet count is checked before those arrays are allocated. |
 
 **Returns:** Tuple `(W, w_sum)` where:
 - `W::SparseMatrixCSC{Float64,Int}` (size `Nt x Nt`)

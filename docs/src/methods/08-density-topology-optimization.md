@@ -94,7 +94,7 @@ Implementation details:
 
 ### 3.1 Conic Filter
 
-`build_filter_weights(mesh, r_min)` builds:
+`build_filter_weights(mesh, r_min; max_triplet_bytes=536_870_912)` builds:
 
 ```math
 W_{ts} = \max(0, r_{\min} - \|\mathbf{c}_t - \mathbf{c}_s\|),
@@ -115,6 +115,9 @@ Filtered density:
 Code path:
 - forward map: `apply_filter(W, w_sum, rho)`,
 - adjoint transpose map: `apply_filter_transpose(W, w_sum, g_rho_tilde) = W' * (g_rho_tilde ./ w_sum)`.
+
+The builder counts retained sparse entries before allocating its row, column,
+and value arrays. `max_triplet_bytes` bounds their combined raw payload.
 
 ### 3.2 Smooth Heaviside Projection
 

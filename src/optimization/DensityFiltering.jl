@@ -17,6 +17,10 @@ export build_filter_weights, apply_filter, apply_filter_transpose
 export heaviside_project, heaviside_derivative
 export filter_and_project, gradient_chain_rule
 
+const _DEFAULT_MAX_FILTER_TRIPLET_BYTES = 512 * 1024 * 1024
+const _FILTER_TRIPLET_ENTRY_BYTES =
+    2 * sizeof(Int) + sizeof(Float64)
+
 @inline function _filter_cell_indices_fit_int(
     centroids::Vector{Vec3},
     origin::Vec3,
@@ -36,44 +40,80 @@ export filter_and_project, gradient_chain_rule
     return true
 end
 
-function _filter_triplets_from_cells(
+function _filter_triplet_count(
     centroids::Vector{Vec3},
     r_min::Float64,
     cells::Vector{NTuple{3,T}},
     buckets::Dict{NTuple{3,T},Vector{Int}},
+    byte_limit::Int,
 ) where {T<:Integer}
-    Nt = length(centroids)
-    rows = Int[]
-    cols = Int[]
-    vals = Float64[]
-    sizehint!(rows, Nt)
-    sizehint!(cols, Nt)
-    sizehint!(vals, Nt)
+    entry_limit = div(byte_limit, _FILTER_TRIPLET_ENTRY_BYTES)
+    entry_count = 0
 
-    @inbounds for t in 1:Nt
+    @inbounds for t in eachindex(centroids)
         ct = centroids[t]
         (cx, cy, cz) = cells[t]
         for dz in -1:1, dy in -1:1, dx in -1:1
             neigh = get(buckets, (cx + dx, cy + dy, cz + dz), nothing)
             neigh === nothing && continue
             for s in neigh
-                # Visit each unordered pair once (s > t) plus the diagonal once.
                 s < t && continue
-                # Use exactly the brute-force distance/weight expression so the
-                # stored values are bit-identical: norm(SVector) == sqrt(Σδ²).
                 d = norm(ct - centroids[s])
                 w = max(0.0, r_min - d)
                 w > 0 || continue
-                if s == t
-                    push!(rows, t); push!(cols, t); push!(vals, w)
-                else
-                    # Symmetric conic weight: store (t,s) and (s,t).
-                    push!(rows, t); push!(cols, s); push!(vals, w)
-                    push!(rows, s); push!(cols, t); push!(vals, w)
+                required = s == t ? 1 : 2
+                required <= entry_limit - entry_count ||
+                    throw(ArgumentError(
+                        "filter triplet payload exceeds " *
+                        "max_triplet_bytes=$byte_limit after " *
+                        "$entry_count retained entries"))
+                entry_count += required
+            end
+        end
+    end
+    return entry_count
+end
+
+function _filter_triplets_from_cells(
+    centroids::Vector{Vec3},
+    r_min::Float64,
+    cells::Vector{NTuple{3,T}},
+    buckets::Dict{NTuple{3,T},Vector{Int}},
+    byte_limit::Int,
+) where {T<:Integer}
+    entry_count = _filter_triplet_count(
+        centroids, r_min, cells, buckets, byte_limit)
+    rows = Vector{Int}(undef, entry_count)
+    cols = Vector{Int}(undef, entry_count)
+    vals = Vector{Float64}(undef, entry_count)
+    cursor = 0
+
+    @inbounds for t in eachindex(centroids)
+        ct = centroids[t]
+        (cx, cy, cz) = cells[t]
+        for dz in -1:1, dy in -1:1, dx in -1:1
+            neigh = get(buckets, (cx + dx, cy + dy, cz + dz), nothing)
+            neigh === nothing && continue
+            for s in neigh
+                s < t && continue
+                d = norm(ct - centroids[s])
+                w = max(0.0, r_min - d)
+                w > 0 || continue
+                cursor += 1
+                rows[cursor] = t
+                cols[cursor] = s
+                vals[cursor] = w
+                if s != t
+                    cursor += 1
+                    rows[cursor] = s
+                    cols[cursor] = t
+                    vals[cursor] = w
                 end
             end
         end
     end
+    cursor == entry_count ||
+        error("internal filter triplet count changed between passes")
     return rows, cols, vals
 end
 
@@ -81,6 +121,7 @@ function _filter_weight_triplets_int(
     centroids::Vector{Vec3},
     origin::Vec3,
     r_min::Float64,
+    byte_limit::Int,
 )
     Nt = length(centroids)
     inv_h = 1.0 / r_min
@@ -94,13 +135,14 @@ function _filter_weight_triplets_int(
         push!(get!(() -> Int[], buckets, key), t)
     end
     return _filter_triplets_from_cells(
-        centroids, r_min, cells, buckets)
+        centroids, r_min, cells, buckets, byte_limit)
 end
 
 @noinline function _filter_weight_triplets_bigint(
     centroids::Vector{Vec3},
     origin::Vec3,
     r_min::Float64,
+    byte_limit::Int,
 )
     Nt = length(centroids)
     exact_origin = ntuple(
@@ -119,11 +161,12 @@ end
         push!(get!(() -> Int[], buckets, key), t)
     end
     return _filter_triplets_from_cells(
-        centroids, r_min, cells, buckets)
+        centroids, r_min, cells, buckets, byte_limit)
 end
 
 """
-    build_filter_weights(mesh, r_min)
+    build_filter_weights(mesh, r_min;
+                         max_triplet_bytes=536_870_912)
 
 Build the sparse conic filter weight matrix W and normalization vector w_sum.
 
@@ -132,6 +175,9 @@ For each triangle pair (t, s):
 
 Returns (W::SparseMatrix, w_sum::Vector) where w_sum[t] = Σ_s W[t,s].
 `r_min` must be finite and positive.
+`max_triplet_bytes` is a positive raw-payload limit for the temporary row,
+column, and value arrays used to construct `W`. The required number of
+triplets is counted and checked before those arrays are allocated.
 
 A filter edge exists only when `dist < r_min`. Rather than testing all
 `O(Nt^2)` centroid pairs, centroids are bucketed into a uniform spatial grid
@@ -142,10 +188,15 @@ adjacent cell, so only the 3×3×3 neighbour stencil of each cell is searched
 sides, producing the identical sparsity pattern and values as the brute-force
 double loop.
 """
-function build_filter_weights(mesh::TriMesh, r_min::Float64)
+function build_filter_weights(
+        mesh::TriMesh,
+        r_min::Float64;
+        max_triplet_bytes::Integer=_DEFAULT_MAX_FILTER_TRIPLET_BYTES)
     isfinite(r_min) && r_min > 0 ||
         throw(ArgumentError(
             "r_min must be finite and positive, got $r_min"))
+    byte_limit = _validated_resource_limit(
+        "max_triplet_bytes", max_triplet_bytes)
     Nt = ntriangles(mesh)
 
     # Compute triangle centroids
@@ -178,9 +229,11 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
 
     rows, cols, vals = if _filter_cell_indices_fit_int(
             centroids, origin, r_min)
-        _filter_weight_triplets_int(centroids, origin, r_min)
+        _filter_weight_triplets_int(
+            centroids, origin, r_min, byte_limit)
     else
-        _filter_weight_triplets_bigint(centroids, origin, r_min)
+        _filter_weight_triplets_bigint(
+            centroids, origin, r_min, byte_limit)
     end
 
     # Global scaling leaves W*rho ./ row_sums(W) and its adjoint unchanged,
