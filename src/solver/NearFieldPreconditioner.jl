@@ -28,6 +28,57 @@ export NearFieldPreconditionerData,
        NearFieldAdjointOperator,
        rwg_centers
 
+const _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES = 256 * 1024 * 1024
+const _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES = 250_000
+const _NEARFIELD_TRIPLET_ENTRY_BYTES =
+    2 * sizeof(Int) + sizeof(ComplexF64)
+
+mutable struct _NearFieldTripletBudget
+    count::Int
+    entry_limit::Int
+    byte_limit::Int
+end
+
+function _nearfield_triplet_budget(max_triplet_bytes::Integer)
+    byte_limit = _validated_resource_limit(
+        "max_triplet_bytes", max_triplet_bytes)
+    return _NearFieldTripletBudget(
+        0, div(byte_limit, _NEARFIELD_TRIPLET_ENTRY_BYTES), byte_limit)
+end
+
+@inline function _register_nearfield_triplet!(
+        budget::_NearFieldTripletBudget)
+    budget.count < budget.entry_limit ||
+        throw(ArgumentError(
+            "near-field triplet payload exceeds " *
+            "max_triplet_bytes=$(budget.byte_limit) after " *
+            "$(budget.count) retained entries"))
+    budget.count += 1
+    return nothing
+end
+
+function _preflight_nearfield_triplets!(
+        budget::_NearFieldTripletBudget,
+        required_entries::Int)
+    required_entries <= budget.entry_limit ||
+        throw(ArgumentError(
+            "near-field triplet payload requires at least " *
+            "$required_entries entries, " *
+            "exceeding max_triplet_bytes=$(budget.byte_limit)"))
+    return required_entries
+end
+
+@inline function _checked_nearfield_product(a::Int, b::Int,
+                                             label::AbstractString)
+    try
+        return Base.Checked.checked_mul(a, b)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("$label exceeds the supported Int range"))
+    end
+end
+
 abstract type AbstractPreconditionerData end
 
 """
@@ -253,68 +304,126 @@ end
     return hypot(a[1] - b[1], a[2] - b[2], a[3] - b[3]) <= cutoff
 end
 
-function _nearfield_triplets_bruteforce(centers::Vector{Vec3}, cutoff::Float64, getvalue)
+@inline function _foreach_nearfield_pair_bruteforce(
+        centers::Vector{Vec3}, cutoff::Float64, visit)
     N = length(centers)
-    I_idx = Int[]
-    J_idx = Int[]
-    V_val = ComplexF64[]
-
-    if N == 0
-        return I_idx, J_idx, V_val
-    end
-
-    if cutoff <= 0
-        sizehint!(I_idx, N)
-        sizehint!(J_idx, N)
-        sizehint!(V_val, N)
+    if cutoff <= 0.0
         @inbounds for m in 1:N
-            push!(I_idx, m)
-            push!(J_idx, m)
-            push!(V_val, ComplexF64(getvalue(m, m)))
+            visit(m, m)
         end
-        return I_idx, J_idx, V_val
-    end
-
-    if !isfinite(cutoff)
-        sizehint!(I_idx, N * N)
-        sizehint!(J_idx, N * N)
-        sizehint!(V_val, N * N)
+    elseif !isfinite(cutoff)
+        @inbounds for m in 1:N, n in 1:N
+            visit(m, n)
+        end
+    else
         @inbounds for m in 1:N
+            cm = centers[m]
             for n in 1:N
-                push!(I_idx, m)
-                push!(J_idx, n)
-                push!(V_val, ComplexF64(getvalue(m, n)))
+                if m == n ||
+                   _within_nearfield_cutoff(cm, centers[n], cutoff)
+                    visit(m, n)
+                end
             end
         end
-        return I_idx, J_idx, V_val
     end
+    return nothing
+end
 
-    @inbounds for m in 1:N
+@inline function _foreach_nearfield_pair_spatial(
+        centers::Vector{Vec3}, cutoff::Float64,
+        origin::Vec3, cell_size::Float64,
+        buckets::Dict{NTuple{3,Int},Vector{Int}}, visit)
+    @inbounds for m in eachindex(centers)
         cm = centers[m]
-        for n in 1:N
-            if m == n || _within_nearfield_cutoff(cm, centers[n], cutoff)
-                push!(I_idx, m)
-                push!(J_idx, n)
-                push!(V_val, ComplexF64(getvalue(m, n)))
+        key = _cell_key(cm, origin, cell_size)
+        for dz in -1:1, dy in -1:1, dx in -1:1
+            key_n = (key[1] + dx, key[2] + dy, key[3] + dz)
+            n_list = get(buckets, key_n, nothing)
+            n_list === nothing && continue
+            for n in n_list
+                if m == n ||
+                   _within_nearfield_cutoff(cm, centers[n], cutoff)
+                    visit(m, n)
+                end
             end
         end
     end
+    return nothing
+end
+
+function _count_nearfield_pairs!(
+        foreach_pair, budget::_NearFieldTripletBudget)
+    foreach_pair() do _, _
+        _register_nearfield_triplet!(budget)
+    end
+    return budget.count
+end
+
+function _materialize_nearfield_triplets(
+        count::Int, foreach_pair, getvalue)
+    I_idx = Vector{Int}(undef, count)
+    J_idx = Vector{Int}(undef, count)
+    V_val = Vector{ComplexF64}(undef, count)
+    position = Ref(0)
+    foreach_pair() do m, n
+        position[] += 1
+        I_idx[position[]] = m
+        J_idx[position[]] = n
+        V_val[position[]] = ComplexF64(getvalue(m, n))
+    end
+    position[] == count ||
+        error("near-field neighbor enumeration changed between count and fill passes")
     return I_idx, J_idx, V_val
 end
 
-function _nearfield_triplets_spatial(centers::Vector{Vec3}, cutoff::Float64, getvalue)
+function _nearfield_triplets_bruteforce(
+        centers::Vector{Vec3}, cutoff::Float64, getvalue;
+        max_triplet_bytes::Integer=_DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
+        _budget::Union{Nothing,_NearFieldTripletBudget}=nothing)
     N = length(centers)
-    I_idx = Int[]
-    J_idx = Int[]
-    V_val = ComplexF64[]
+    budget = _budget === nothing ?
+        _nearfield_triplet_budget(max_triplet_bytes) : _budget
+    N == 0 && return Int[], Int[], ComplexF64[]
 
-    if N == 0
-        return I_idx, J_idx, V_val
+    if cutoff <= 0
+        _preflight_nearfield_triplets!(budget, N)
+        return _materialize_nearfield_triplets(
+            N,
+            visit -> _foreach_nearfield_pair_bruteforce(
+                centers, cutoff, visit),
+            getvalue)
+    elseif !isfinite(cutoff)
+        required_entries = _checked_nearfield_product(
+            N, N, "near-field all-pairs entry count")
+        _preflight_nearfield_triplets!(budget, required_entries)
+        return _materialize_nearfield_triplets(
+            required_entries,
+            visit -> _foreach_nearfield_pair_bruteforce(
+                centers, cutoff, visit),
+            getvalue)
     end
+
+    foreach_pair = visit -> _foreach_nearfield_pair_bruteforce(
+        centers, cutoff, visit)
+    count = _count_nearfield_pairs!(foreach_pair, budget)
+    return _materialize_nearfield_triplets(count, foreach_pair, getvalue)
+end
+
+function _nearfield_triplets_spatial(
+        centers::Vector{Vec3}, cutoff::Float64, getvalue;
+        max_triplet_bytes::Integer=_DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
+        _budget::Union{Nothing,_NearFieldTripletBudget}=nothing)
+    N = length(centers)
+    budget = _budget === nothing ?
+        _nearfield_triplet_budget(max_triplet_bytes) : _budget
+    N == 0 && return Int[], Int[], ComplexF64[]
 
     if cutoff <= 0 || !isfinite(cutoff)
-        return _nearfield_triplets_bruteforce(centers, cutoff, getvalue)
+        return _nearfield_triplets_bruteforce(
+            centers, cutoff, getvalue; _budget=budget)
     end
+
+    _preflight_nearfield_triplets!(budget, N)
 
     origin, cell_size = _spatial_hash_parameters(centers, cutoff)
     buckets = Dict{NTuple{3,Int}, Vector{Int}}()
@@ -323,38 +432,10 @@ function _nearfield_triplets_spatial(centers::Vector{Vec3}, cutoff::Float64, get
         push!(get!(() -> Int[], buckets, key), i)
     end
 
-    est_pairs = max(N, min(N * N, 27 * N))
-    sizehint!(I_idx, est_pairs)
-    sizehint!(J_idx, est_pairs)
-    sizehint!(V_val, est_pairs)
-
-    @inbounds for m in 1:N
-        cm = centers[m]
-        key = _cell_key(cm, origin, cell_size)
-        for dz in -1:1
-            for dy in -1:1
-                for dx in -1:1
-                    key_n = (key[1] + dx, key[2] + dy, key[3] + dz)
-                    n_list = get(buckets, key_n, nothing)
-                    n_list === nothing && continue
-                    for n in n_list
-                        if m == n
-                            push!(I_idx, m)
-                            push!(J_idx, n)
-                            push!(V_val, ComplexF64(getvalue(m, n)))
-                        else
-                            if _within_nearfield_cutoff(cm, centers[n], cutoff)
-                                push!(I_idx, m)
-                                push!(J_idx, n)
-                                push!(V_val, ComplexF64(getvalue(m, n)))
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return I_idx, J_idx, V_val
+    foreach_pair = visit -> _foreach_nearfield_pair_spatial(
+        centers, cutoff, origin, cell_size, buckets, visit)
+    count = _count_nearfield_pairs!(foreach_pair, budget)
+    return _materialize_nearfield_triplets(count, foreach_pair, getvalue)
 end
 
 """
@@ -365,15 +446,25 @@ the fly, but caches Green's quadrature matrices G[qm,qn] per unique
 (tm, tn) triangle pair so that shared pairs are evaluated only once.
 Self-cell and adjacent-cell terms bypass the cache entirely.
 """
-function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3},
-                                      cutoff::Float64)
+function _nearfield_triplets_batched(
+        cache::EFIEApplyCache, centers::Vector{Vec3}, cutoff::Float64;
+        max_triplet_bytes::Integer=_DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
+        max_green_cache_bytes::Integer=
+            _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES,
+        max_green_cache_entries::Integer=
+            _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES)
     N = length(centers)
     N == 0 && return Int[], Int[], ComplexF64[]
+    budget = _nearfield_triplet_budget(max_triplet_bytes)
 
     if cutoff <= 0 || !isfinite(cutoff)
-        return _nearfield_triplets_spatial(centers, cutoff,
-                                            (m, n) -> _efie_entry(cache, m, n))
+        return _nearfield_triplets_spatial(
+            centers, cutoff, (m, n) -> _efie_entry(cache, m, n);
+            _budget=budget)
     end
+
+
+    _preflight_nearfield_triplets!(budget, N)
 
     # Spatial hash
     origin, cell_size = _spatial_hash_parameters(centers, cutoff)
@@ -383,27 +474,59 @@ function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3
         push!(get!(() -> Int[], buckets, key), i)
     end
 
-    est_pairs = max(N, min(N * N, 27 * N))
-    I_idx = Int[];       sizehint!(I_idx, est_pairs)
-    J_idx = Int[];       sizehint!(J_idx, est_pairs)
-    V_val = ComplexF64[]; sizehint!(V_val, est_pairs)
+    foreach_pair = visit -> _foreach_nearfield_pair_spatial(
+        centers, cutoff, origin, cell_size, buckets, visit)
+    pair_count = _count_nearfield_pairs!(foreach_pair, budget)
+    I_idx = Vector{Int}(undef, pair_count)
+    J_idx = Vector{Int}(undef, pair_count)
+    V_val = Vector{ComplexF64}(undef, pair_count)
+    position = 0
 
     Nq     = cache.Nq
     inv_k2 = cache.inv_k2
 
-    # Lazy Green's cache: computed once per unique (tm, tn) pair
-    green_cache = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+    green_workspace_limit = _validated_resource_limit(
+        "max_green_cache_bytes", max_green_cache_bytes)
+    green_entry_limit = _validated_resource_limit(
+        "max_green_cache_entries", max_green_cache_entries)
+    green_matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, Nq, Nq; label="near-field Green matrix")
+    matrix_slots = div(green_workspace_limit, green_matrix_bytes)
 
-    @inline function _get_greens(tm::Int, tn::Int)
-        val = get(green_cache, (tm, tn), nothing)
-        val !== nothing && return val
-        G_mat = Matrix{ComplexF64}(undef, Nq, Nq)
+    # Reserve one matrix slot for a reusable scratch matrix after the cache is
+    # full. This keeps uncached triangle pairs bounded instead of growing the
+    # dictionary without limit.
+    max_cached_greens = min(green_entry_limit, max(0, matrix_slots - 1))
+    green_cache = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+    green_scratch = Ref{Union{Nothing,Matrix{ComplexF64}}}(nothing)
+
+    @inline function _fill_greens!(G_mat::Matrix{ComplexF64},
+                                    tm::Int, tn::Int)
         @inbounds for qm in 1:Nq, qn in 1:Nq
             G_mat[qm, qn] = _greens_unchecked(
                 cache.quad_pts[tm][qm], cache.quad_pts[tn][qn], cache.k)
         end
-        green_cache[(tm, tn)] = G_mat
         return G_mat
+    end
+
+    @inline function _get_greens(tm::Int, tn::Int)
+        val = get(green_cache, (tm, tn), nothing)
+        val !== nothing && return val
+        matrix_slots >= 1 ||
+            throw(ArgumentError(
+                "one near-field Green matrix requires $green_matrix_bytes " *
+                "raw bytes, exceeding max_green_cache_bytes=" *
+                "$green_workspace_limit"))
+        if length(green_cache) < max_cached_greens
+            G_mat = _fill_greens!(
+                Matrix{ComplexF64}(undef, Nq, Nq), tm, tn)
+            green_cache[(tm, tn)] = G_mat
+            return G_mat
+        end
+        if green_scratch[] === nothing
+            green_scratch[] = Matrix{ComplexF64}(undef, Nq, Nq)
+        end
+        return _fill_greens!(something(green_scratch[]), tm, tn)
     end
 
     @inbounds for m in 1:N
@@ -417,6 +540,7 @@ function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3
                 is_near = (m == n) ||
                     _within_nearfield_cutoff(cm, centers[n], cutoff)
                 is_near || continue
+                position += 1
 
                 # Compute EFIE entry with cached Green's
                 val = zero(ComplexF64)
@@ -467,13 +591,15 @@ function _nearfield_triplets_batched(cache::EFIEApplyCache, centers::Vector{Vec3
                     end
                 end
 
-                push!(I_idx, m)
-                push!(J_idx, n)
-                push!(V_val, -1im * cache.omega_mu0 * val)
+                I_idx[position] = m
+                J_idx[position] = n
+                V_val[position] = -1im * cache.omega_mu0 * val
             end
         end
     end
 
+    position == pair_count ||
+        error("near-field neighbor enumeration changed between count and fill passes")
     return I_idx, J_idx, V_val
 end
 
@@ -521,7 +647,9 @@ function _build_nearfield_preconditioner_from_entries(mesh::TriMesh, rwg::RWGDat
                                                        getvalue;
                                                        neighbor_search::Symbol=:spatial,
                                                        factorization::Symbol=:lu,
-                                                       ilu_tau::Float64=1e-3)
+                                                       ilu_tau::Float64=1e-3,
+                                                       max_triplet_bytes::Integer=
+                                                           _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -536,9 +664,11 @@ function _build_nearfield_preconditioner_from_entries(mesh::TriMesh, rwg::RWGDat
     centers = rwg_centers(mesh, rwg)
 
     I_idx, J_idx, V_val = if neighbor_search == :spatial
-        _nearfield_triplets_spatial(centers, cutoff, getvalue)
+        _nearfield_triplets_spatial(
+            centers, cutoff, getvalue; max_triplet_bytes)
     elseif neighbor_search == :bruteforce
-        _nearfield_triplets_bruteforce(centers, cutoff, getvalue)
+        _nearfield_triplets_bruteforce(
+            centers, cutoff, getvalue; max_triplet_bytes)
     end
 
     _validate_nearfield_triplet_values(V_val)
@@ -578,7 +708,9 @@ function build_nearfield_preconditioner(Z::Matrix{<:Number}, mesh::TriMesh,
                                          rwg::RWGData, cutoff::Float64;
                                          neighbor_search::Symbol=:spatial,
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3)
+                                         ilu_tau::Float64=1e-3,
+                                         max_triplet_bytes::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -591,6 +723,7 @@ function build_nearfield_preconditioner(Z::Matrix{<:Number}, mesh::TriMesh,
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
+        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -604,7 +737,9 @@ function build_nearfield_preconditioner(A::AbstractMatrix{<:Number}, mesh::TriMe
                                          rwg::RWGData, cutoff::Float64;
                                          neighbor_search::Symbol=:spatial,
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3)
+                                         ilu_tau::Float64=1e-3,
+                                         max_triplet_bytes::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -615,6 +750,7 @@ function build_nearfield_preconditioner(A::AbstractMatrix{<:Number}, mesh::TriMe
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
+        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -633,7 +769,9 @@ function build_nearfield_preconditioner(
         cutoff::Float64;
         neighbor_search::Symbol=:spatial,
         factorization::Symbol=:lu,
-        ilu_tau::Float64=1e-3)
+        ilu_tau::Float64=1e-3,
+        max_triplet_bytes::Integer=
+            _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -645,6 +783,7 @@ function build_nearfield_preconditioner(
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
+        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -655,7 +794,9 @@ function build_nearfield_preconditioner(
         cutoff::Float64;
         neighbor_search::Symbol=:spatial,
         factorization::Symbol=:lu,
-        ilu_tau::Float64=1e-3)
+        ilu_tau::Float64=1e-3,
+        max_triplet_bytes::Integer=
+            _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -667,6 +808,7 @@ function build_nearfield_preconditioner(
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
+        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -680,7 +822,13 @@ precomputed once and reused across RWG pairs that share triangles.
 function build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff::Float64;
                                          neighbor_search::Symbol=:spatial,
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3)
+                                         ilu_tau::Float64=1e-3,
+                                         max_triplet_bytes::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
+                                         max_green_cache_bytes::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES,
+                                         max_green_cache_entries::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES)
     cache = A.cache
     N = cache.rwg.nedges
     _validate_nearfield_build_controls(
@@ -697,9 +845,14 @@ function build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff::Float
     centers = rwg_centers(cache.mesh, cache.rwg)
     I_idx, J_idx, V_val = if neighbor_search == :bruteforce
         _nearfield_triplets_bruteforce(centers, cutoff,
-                                        (m, n) -> _efie_entry(cache, m, n))
+                                        (m, n) -> _efie_entry(cache, m, n);
+                                        max_triplet_bytes)
     else
-        _nearfield_triplets_batched(cache, centers, cutoff)
+        _nearfield_triplets_batched(
+            cache, centers, cutoff;
+            max_triplet_bytes,
+            max_green_cache_bytes,
+            max_green_cache_entries)
     end
 
     _validate_nearfield_triplet_values(V_val)
@@ -730,7 +883,13 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
                                          require_closed::Bool=false,
                                          area_tol_rel::Float64=1e-12,
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3)
+                                         ilu_tau::Float64=1e-3,
+                                         max_triplet_bytes::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
+                                         max_green_cache_bytes::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES,
+                                         max_green_cache_entries::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES)
     _validate_nearfield_build_controls(
         cutoff, :spatial, factorization, ilu_tau)
     A = matrixfree_efie_operator(mesh, rwg, k;
@@ -744,6 +903,9 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
     return build_nearfield_preconditioner(A, cutoff;
         factorization=factorization,
         ilu_tau=ilu_tau,
+        max_triplet_bytes=max_triplet_bytes,
+        max_green_cache_bytes=max_green_cache_bytes,
+        max_green_cache_entries=max_green_cache_entries,
     )
 end
 
@@ -757,14 +919,29 @@ data using the cluster-tree permutation.
 """
 function build_nearfield_preconditioner(A_aca::ACAOperator;
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3)
+                                         ilu_tau::Float64=1e-3,
+                                         max_triplet_bytes::Integer=
+                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
     _validate_preconditioner_factorization(factorization, ilu_tau)
     N = A_aca.N
     perm = A_aca.tree.perm   # tree-order → original index
 
     # Pre-allocate triplets: dense blocks tile the near field without overlap
-    total_entries = sum(length(db.row_range) * length(db.col_range)
-                        for db in A_aca.dense_blocks; init=0)
+    budget = _nearfield_triplet_budget(max_triplet_bytes)
+    total_entries = 0
+    for db in A_aca.dense_blocks
+        block_entries = _checked_nearfield_product(
+            length(db.row_range), length(db.col_range),
+            "ACA near-field dense-block entry count")
+        total_entries = try
+            Base.Checked.checked_add(total_entries, block_entries)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError(
+                "ACA near-field triplet count exceeds the supported Int range"))
+        end
+        _preflight_nearfield_triplets!(budget, total_entries)
+    end
     I_idx = Vector{Int}(undef, total_entries)
     J_idx = Vector{Int}(undef, total_entries)
     V_val = Vector{ComplexF64}(undef, total_entries)

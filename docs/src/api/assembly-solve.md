@@ -448,7 +448,7 @@ Multiple overloads of `build_nearfield_preconditioner` are available, depending 
 ### Overload 1: From a dense matrix
 
 ```julia
-build_nearfield_preconditioner(Z::Matrix, mesh, rwg, cutoff; neighbor_search=:spatial, factorization=:lu, ilu_tau=1e-3)
+build_nearfield_preconditioner(Z::Matrix, mesh, rwg, cutoff; neighbor_search=:spatial, factorization=:lu, ilu_tau=1e-3, max_triplet_bytes=536_870_912)
 ```
 
 Build a preconditioner by extracting near-field entries from a pre-assembled dense N x N matrix `Z`.
@@ -464,6 +464,7 @@ Build a preconditioner by extracting near-field entries from a pre-assembled den
 | `neighbor_search` | `Symbol` | `:spatial` | **`:spatial`** (default): O(N) spatial hashing for neighbor finding. **`:bruteforce`**: O(N^2) all-pairs reference mode. Use `:bruteforce` only for testing/validation. |
 | `factorization` | `Symbol` | `:lu` | **`:lu`** (default): Sparse LU factorization. Returns `NearFieldPreconditionerData`. **`:ilu`**: Incomplete LU with drop tolerance `ilu_tau`. Returns `ILUPreconditionerData`. **`:diag`**: Jacobi/diagonal preconditioner (only retains `Z[i,i]`). Returns `DiagonalPreconditionerData`. |
 | `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU factorization (only used when `factorization=:ilu`). |
+| `max_triplet_bytes` | `Integer` | `536_870_912` | Maximum raw payload of the three temporary sparse-triplet arrays. The limit is checked incrementally and before predictable all-pairs allocation. |
 
 **Returns:** `NearFieldPreconditionerData` (for `:lu`), `ILUPreconditionerData` (for `:ilu`), or `DiagonalPreconditionerData` (for `:diag`).
 
@@ -482,7 +483,7 @@ Same as Overload 1, but accepts any `AbstractMatrix{<:Number}` including custom 
 ### Overload 3: From a `MatrixFreeEFIEOperator`
 
 ```julia
-build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff; neighbor_search=:spatial, factorization=:lu, ilu_tau=1e-3)
+build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff; neighbor_search=:spatial, factorization=:lu, ilu_tau=1e-3, max_triplet_bytes=536_870_912, max_green_cache_bytes=268_435_456, max_green_cache_entries=250_000)
 ```
 
 Build the preconditioner directly from a matrix-free EFIE operator without allocating a full dense matrix. The mesh and RWG data are extracted from the operator's internal cache. This is the most memory-efficient path for large problems.
@@ -495,13 +496,16 @@ Build the preconditioner directly from a matrix-free EFIE operator without alloc
 | `cutoff` | `Float64` | -- | Distance cutoff in meters. |
 | `neighbor_search` | `Symbol` | `:spatial` | Neighbor search method. |
 | `factorization` | `Symbol` | `:lu` | Factorization type. |
+| `max_triplet_bytes` | `Integer` | `536_870_912` | Maximum raw payload of temporary near-field triplets. |
+| `max_green_cache_bytes` | `Integer` | `268_435_456` | Maximum raw payload retained by cached and scratch quadrature Green matrices. After the cache fills, one bounded matrix is reused. |
+| `max_green_cache_entries` | `Integer` | `250_000` | Maximum number of cached triangle-pair Green matrices; an independent count limit also bounds dictionary overhead. |
 
 ---
 
 ### Overload 4: From geometry/physics inputs directly
 
 ```julia
-build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, factorization=:lu, ilu_tau=1e-3)
+build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, factorization=:lu, ilu_tau=1e-3, max_triplet_bytes=536_870_912, max_green_cache_bytes=268_435_456, max_green_cache_entries=250_000)
 ```
 
 Build the preconditioner directly from mesh, basis, and wavenumber — without requiring a pre-assembled matrix or explicit operator. Internally creates a `MatrixFreeEFIEOperator` and delegates to Overload 3 (spatial neighbor search, batched Green's evaluation).
@@ -522,6 +526,9 @@ Build the preconditioner directly from mesh, basis, and wavenumber — without r
 | `area_tol_rel` | `Float64` | `1e-12` | Degenerate triangle tolerance. |
 | `factorization` | `Symbol` | `:lu` | Factorization type (`:lu`, `:ilu`, or `:diag`). |
 | `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU (only used when `factorization=:ilu`). |
+| `max_triplet_bytes` | `Integer` | `536_870_912` | Maximum raw temporary triplet payload. |
+| `max_green_cache_bytes` | `Integer` | `268_435_456` | Maximum cached/scratch Green-matrix raw payload. |
+| `max_green_cache_entries` | `Integer` | `250_000` | Maximum number of retained triangle-pair Green matrices. |
 
 This overload does **not** accept a `neighbor_search` keyword; it uses the batched spatial path of Overload 3 internally.
 
@@ -532,7 +539,7 @@ This overload does **not** accept a `neighbor_search` keyword; it uses the batch
 ### Overload 5: From an `ACAOperator`
 
 ```julia
-build_nearfield_preconditioner(A_aca::ACAOperator; factorization=:lu, ilu_tau=1e-3)
+build_nearfield_preconditioner(A_aca::ACAOperator; factorization=:lu, ilu_tau=1e-3, max_triplet_bytes=536_870_912)
 ```
 
 Build a preconditioner by extracting the dense (inadmissible) blocks already computed inside the ACA H-matrix operator, using the cluster-tree permutation. No EFIE entries are recomputed — the near-field matrix is assembled directly from the stored block data.
@@ -544,6 +551,7 @@ Build a preconditioner by extracting the dense (inadmissible) blocks already com
 | `A_aca` | `ACAOperator` | -- | ACA H-matrix operator (see [aca-workflow.md](aca-workflow.md)). |
 | `factorization` | `Symbol` | `:lu` | Factorization type (`:lu`, `:ilu`, or `:diag`). |
 | `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU (only used when `factorization=:ilu`). |
+| `max_triplet_bytes` | `Integer` | `536_870_912` | Maximum raw payload of triplets extracted from dense ACA blocks; checked before allocation. |
 
 There is no `cutoff` argument: the near-field sparsity is defined by the ACA dense blocks themselves. This overload delegates to Overload 6 with the assembled sparse matrix.
 

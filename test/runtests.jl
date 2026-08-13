@@ -6169,11 +6169,42 @@ extreme_I, extreme_J, _ = DiffMoM._nearfield_triplets_bruteforce(
     extreme_centers, 1.0e190, (m, n) -> 1.0 + 0im)
 @test collect(zip(extreme_I, extreme_J)) == [(1, 1), (2, 2)]
 
+# Triplet payload limits are enforced before all-pairs preallocation, and the
+# exact raw boundary (two Int indices plus one ComplexF64 per entry) is usable.
+nearfield_pair_bytes = 2 * sizeof(Int) + sizeof(ComplexF64)
+bounded_I, bounded_J, bounded_V = DiffMoM._nearfield_triplets_bruteforce(
+    extreme_centers, Inf, (m, n) -> ComplexF64(m, n);
+    max_triplet_bytes=4 * nearfield_pair_bytes)
+@test length(bounded_I) == length(bounded_J) == length(bounded_V) == 4
+@test_throws ArgumentError DiffMoM._nearfield_triplets_bruteforce(
+    extreme_centers, Inf, (m, n) -> ComplexF64(m, n);
+    max_triplet_bytes=4 * nearfield_pair_bytes - 1)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    Z_efie, mesh, rwg, lambda0;
+    max_triplet_bytes=max(1, N * nearfield_pair_bytes - 1))
+
 # Build near-field preconditioner without dense Z (matrix-free and geometry paths)
 P_nf_mf = build_nearfield_preconditioner(A_mf, lambda0)
 @assert P_nf_mf.cutoff == lambda0
 @assert 0.0 < P_nf_mf.nnz_ratio <= 1.0
 @assert abs(P_nf_mf.nnz_ratio - P_nf.nnz_ratio) < 1e-12
+
+# A one-matrix Green workspace disables retention while preserving the exact
+# assembled preconditioner; a smaller workspace fails before that matrix is
+# allocated when a regular triangle pair is encountered.
+nearfield_green_bytes = sizeof(ComplexF64) * A_mf.cache.Nq^2
+P_nf_mf_scratch = build_nearfield_preconditioner(
+    A_mf, lambda0;
+    max_green_cache_bytes=nearfield_green_bytes,
+    max_green_cache_entries=1)
+@test P_nf_mf_scratch.nnz_ratio == P_nf_mf.nnz_ratio
+scratch_probe = NearFieldOperator(P_nf_mf_scratch) * x_nf_cmp
+@test isapprox(
+    scratch_probe, NearFieldOperator(P_nf_mf) * x_nf_cmp;
+    rtol=1e-12, atol=1e-12)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    A_mf, lambda0;
+    max_green_cache_bytes=max(1, nearfield_green_bytes - 1))
 
 P_nf_mf_bruteforce = build_nearfield_preconditioner(
     A_mf, lambda0; neighbor_search=:bruteforce
