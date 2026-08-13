@@ -251,6 +251,15 @@ end
         :muller, unit_medium, cancel_eps_medium)
 
     K = assemble_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
+    dense_block_bytes = sizeof(ComplexF64) * N^2
+    @test_throws ArgumentError assemble_magnetic_field_operator_3d(
+        mesh, rwg, k0;
+        quad_order=1,
+        max_output_bytes=dense_block_bytes - 1)
+    @test assemble_magnetic_field_operator_3d(
+        mesh, rwg, k0;
+        quad_order=1,
+        max_output_bytes=dense_block_bytes) == K
     K_mf = matrixfree_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
     @test size(K) == (N, N)
     @test size(K_mf) == (N, N)
@@ -316,6 +325,19 @@ end
                               mur_in=mu_in,
                               quad_order=1,
                               singular_quad_order=3)
+    dense_sie_work_bytes = 10 * dense_block_bytes
+    @test_throws ArgumentError assemble_pmchwt_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        quad_order=1,
+        singular_quad_order=3,
+        max_work_bytes=dense_sie_work_bytes - 1)
+    @test assemble_pmchwt_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        quad_order=1,
+        singular_quad_order=3,
+        max_work_bytes=dense_sie_work_bytes) == A_pm
     A_pm_mf = matrixfree_dielectric_sie_operator_3d(mesh, rwg, k0, eps_in;
                                                     mur_in=mu_in,
                                                     formulation=:pmchwt,
@@ -328,6 +350,25 @@ end
                               mur_in=mu_in,
                               quad_order=1,
                               singular_quad_order=3)
+    @test A_pm_mf.Gram isa Matrix{ComplexF64}
+    A_mu_mf = matrixfree_dielectric_sie_operator_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        formulation=:muller,
+        quad_order=1,
+        singular_quad_order=3)
+    @test A_mu_mf.Gram isa LocalMassMatrix{ComplexF64}
+    @test Matrix(A_mu_mf) ≈ A_mu rtol=1e-13
+    gram_storage_bytes = sizeof(Int) *
+                         (length(A_mu_mf.Gram.rows) + length(A_mu_mf.Gram.cols)) +
+                         sizeof(ComplexF64) * length(A_mu_mf.Gram.vals)
+    @test_throws ArgumentError matrixfree_dielectric_sie_operator_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        formulation=:muller,
+        quad_order=1,
+        singular_quad_order=3,
+        max_gram_storage_bytes=gram_storage_bytes - 1)
     @test size(A_pm) == (2N, 2N)
     @test size(A_pm_mf) == (2N, 2N)
     @test size(A_pm_mf, 3) == 1
@@ -422,6 +463,13 @@ end
     @test scaled_result == scaled_reference
 
     rhs0 = zeros(ComplexF64, 2N)
+    @test_throws ArgumentError solve_dielectric_sie_3d(
+        mesh, rwg, k0, eps_in, rhs0;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        quad_order=1,
+        singular_quad_order=3,
+        max_work_bytes=dense_sie_work_bytes - 1)
     rhs_nonfinite = copy(rhs0)
     rhs_nonfinite[1] = ComplexF64(NaN, 0.0)
     @test_throws ArgumentError solve_dielectric_sie_3d(

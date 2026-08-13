@@ -56,7 +56,8 @@ const _MFIE_MATVEC_FALLBACK_PRECISION_3D = 4352
 mutable struct MatrixFreeDielectricSIE3D{
         TZe<:MatrixFreeEFIEOperator,
         TZh<:MatrixFreeEFIEOperator,
-        TK<:MatrixFreeMagneticFieldOperator3D} <: AbstractMatrix{ComplexF64}
+        TK<:MatrixFreeMagneticFieldOperator3D,
+        TG<:AbstractMatrix{ComplexF64}} <: AbstractMatrix{ComplexF64}
     formulation::Symbol
     exterior::DielectricMedium3D
     interior::DielectricMedium3D
@@ -73,7 +74,7 @@ mutable struct MatrixFreeDielectricSIE3D{
     # Second-kind identity (nhat x Gram) residue omitted by the PV K operator.
     # c_g_e/c_g_h are the off-diagonal Gram coefficients for the E-/H-rows.
     # For PMCHWT they are zero (equal row weights); the matvec then skips Gram.
-    Gram::Matrix{ComplexF64}
+    Gram::TG
     c_g_e::ComplexF64
     c_g_h::ComplexF64
     work_J::Vector{ComplexF64}
@@ -100,7 +101,7 @@ function MatrixFreeDielectricSIE3D(
         c_ze_int::ComplexF64,
         c_zh_ext::ComplexF64,
         c_zh_int::ComplexF64,
-        Gram::Matrix{ComplexF64},
+        Gram::TG,
         c_g_e::ComplexF64,
         c_g_h::ComplexF64,
         work_J::Vector{ComplexF64},
@@ -114,8 +115,9 @@ function MatrixFreeDielectricSIE3D(
         TZe<:MatrixFreeEFIEOperator,
         TZh<:MatrixFreeEFIEOperator,
         TK<:MatrixFreeMagneticFieldOperator3D,
+        TG<:AbstractMatrix{ComplexF64},
     }
-    return MatrixFreeDielectricSIE3D{TZe,TZh,TK}(
+    return MatrixFreeDielectricSIE3D{TZe,TZh,TK,TG}(
         formulation, exterior, interior,
         Ze_ext, Ze_int, Zh_ext, Zh_int, K_ext, K_int,
         c_ze_ext, c_ze_int, c_zh_ext, c_zh_int,
@@ -271,7 +273,9 @@ operator omits; in the Muller system it appears off-diagonal with coefficient
 `(c_ext - c_int)*(1/2)`. (It cancels identically in PMCHWT, where the two
 off-diagonal coefficients are equal, so PMCHWT is unaffected.)
 """
-function _ncross_gram_3d(mesh::TriMesh, rwg::RWGData; quad_order::Int=3)
+function _ncross_gram_3d(mesh::TriMesh, rwg::RWGData;
+                         quad_order::Int=3,
+                         max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     xi, wq = tri_quad_rule(quad_order)
     Nt = ntriangles(mesh)
     N = rwg.nedges
@@ -283,28 +287,62 @@ function _ncross_gram_3d(mesh::TriMesh, rwg::RWGData; quad_order::Int=3)
         areas[t] = triangle_area(mesh, t)
         normals[t] = triangle_normal(mesh, t)
     end
-    G = zeros(ComplexF64, N, N)
-    Threads.@threads for m in 1:N
-        tmp = (rwg.tplus[m], rwg.tminus[m])
-        @inbounds for n in 1:N
-            tnp = (rwg.tplus[n], rwg.tminus[n])
+    tri_to_basis = [Int[] for _ in 1:Nt]
+    for n in 1:N
+        push!(tri_to_basis[rwg.tplus[n]], n)
+        push!(tri_to_basis[rwg.tminus[n]], n)
+    end
+
+    nentries = 0
+    try
+        for basis_on_t in tri_to_basis
+            nentries = Base.Checked.checked_add(
+                nentries,
+                Base.Checked.checked_mul(length(basis_on_t), length(basis_on_t)))
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("nhat x Gram triplet count overflows Int"))
+    end
+    index_bytes = _checked_array_payload_bytes(
+        Int, 2, nentries; label="nhat x Gram row/column triplets")
+    value_bytes = _checked_array_payload_bytes(
+        ComplexF64, nentries; label="nhat x Gram value triplets")
+    triplet_bytes = try
+        Base.Checked.checked_add(index_bytes, value_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("nhat x Gram triplet payload estimate overflows Int"))
+    end
+    _enforce_payload_limit(
+        triplet_bytes, max_storage_bytes,
+        "nhat x Gram triplets", "max_storage_bytes")
+
+    rows = Vector{Int}(undef, nentries)
+    cols = Vector{Int}(undef, nentries)
+    vals = Vector{ComplexF64}(undef, nentries)
+    entry = 1
+    @inbounds for t in 1:Nt
+        A = areas[t]
+        nh = normals[t]
+        ptst = pts[t]
+        basis_on_t = tri_to_basis[t]
+        for m in basis_on_t, n in basis_on_t
             acc = 0.0 + 0.0im
-            for t in tmp
-                (t == tnp[1] || t == tnp[2]) || continue
-                A = areas[t]
-                nh = normals[t]
-                ptst = pts[t]
-                for q in eachindex(wq)
-                    r = ptst[q]
-                    fm = eval_rwg(rwg, m, r, t)
-                    fn = eval_rwg(rwg, n, r, t)
-                    acc += wq[q] * dot(fm, cross(nh, fn)) * (2 * A)
-                end
+            for q in eachindex(wq)
+                r = ptst[q]
+                fm = eval_rwg(rwg, m, r, t)
+                fn = eval_rwg(rwg, n, r, t)
+                acc += wq[q] * dot(fm, cross(nh, fn)) * (2 * A)
             end
-            G[m, n] = acc
+            rows[entry] = m
+            cols[entry] = n
+            vals[entry] = acc
+            entry += 1
         end
     end
-    return G
+    entry == nentries + 1 || error("internal nhat x Gram triplet count mismatch")
+    return LocalMassMatrix(N, rows, cols, vals)
 end
 
 @inline function _mfie_triangle_pair_entry_3d(rwg::RWGData, m::Int, n::Int,
@@ -327,7 +365,8 @@ end
 end
 
 """
-    assemble_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3)
+    assemble_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3,
+                                        max_output_bytes=2_000_000_000)
 
 Assemble the dense magnetic-field principal-value operator
 `K[m,n] = <f_m, PV ∫ grad(G) x f_n dS'>`. This is the off-diagonal surface
@@ -337,7 +376,14 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                              quad_order::Int=3,
                                              singular_quad_order::Int=7,
                                              mesh_precheck::Bool=true,
-                                             area_tol_rel::Float64=1e-12)
+                                             area_tol_rel::Float64=1e-12,
+                                             max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, rwg.nedges, rwg.nedges;
+        label="magnetic-field operator matrix")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "magnetic-field operator matrix", "max_output_bytes")
     _assert_closed_surface_sie_3d(mesh, rwg;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
@@ -548,6 +594,22 @@ function assemble_dielectric_sie_rhs_3d(mesh::TriMesh, rwg::RWGData,
     return vcat(vE, vH)
 end
 
+function _validated_surface_sie_dense_work_3d(
+        N::Int,
+        matrix_count::Int,
+        max_work_bytes::Integer,
+        label::AbstractString)
+    work_bytes = _checked_array_payload_bytes(
+        ComplexF64, matrix_count, N, N;
+        label="$label work matrices")
+    work_limit = _validated_resource_limit(
+        "max_work_bytes", max_work_bytes)
+    _enforce_payload_limit(
+        work_bytes, work_limit,
+        "$label work matrices", "max_work_bytes")
+    return work_limit
+end
+
 function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                 epsr_in, mur_in, epsr_ext, mur_ext;
                                 formulation::Symbol,
@@ -555,9 +617,13 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                 singular_quad_order::Int=7,
                                 eta0::Real=_ETA0_DDA,
                                 mesh_precheck::Bool=true,
-                                area_tol_rel::Float64=1e-12)
+                                area_tol_rel::Float64=1e-12,
+                                max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     formulation in (:pmchwt, :muller) ||
         error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
+    work_limit = _validated_surface_sie_dense_work_3d(
+        rwg.nedges, 10, max_work_bytes,
+        "dense dielectric SIE assembly")
     _assert_closed_surface_sie_3d(mesh, rwg;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
@@ -568,30 +634,36 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
     Ze_ext = assemble_Z_efie(mesh, rwg, exterior.k;
                              quad_order=quad_order,
                              eta0=exterior.eta,
-                             mesh_precheck=false)
+                             mesh_precheck=false,
+                             max_output_bytes=work_limit)
     Ze_int = assemble_Z_efie(mesh, rwg, interior.k;
                              quad_order=quad_order,
                              eta0=interior.eta,
-                             mesh_precheck=false)
+                             mesh_precheck=false,
+                             max_output_bytes=work_limit)
     Zh_ext = assemble_Z_efie(mesh, rwg, exterior.k;
                              quad_order=quad_order,
                              eta0=1 / exterior.eta,
-                             mesh_precheck=false)
+                             mesh_precheck=false,
+                             max_output_bytes=work_limit)
     Zh_int = assemble_Z_efie(mesh, rwg, interior.k;
                              quad_order=quad_order,
                              eta0=1 / interior.eta,
-                             mesh_precheck=false)
+                             mesh_precheck=false,
+                             max_output_bytes=work_limit)
     K_ext = assemble_magnetic_field_operator_3d(
         mesh, rwg, exterior.k;
         quad_order=quad_order,
         singular_quad_order=singular_quad_order,
         mesh_precheck=false,
+        max_output_bytes=work_limit,
     )
     K_int = assemble_magnetic_field_operator_3d(
         mesh, rwg, interior.k;
         quad_order=quad_order,
         singular_quad_order=singular_quad_order,
         mesh_precheck=false,
+        max_output_bytes=work_limit,
     )
 
     # Row weights (PMCHWT => all 1; Muller => mu/eps weights). The SAME weights
@@ -599,27 +671,32 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
     c_ze_ext, c_ze_int, c_zh_ext, c_zh_int =
         _surface_sie_coefficients_3d(formulation, exterior, interior)
 
-    # Diagonal T blocks (mu/eps-weighted per row).
-    A11 = c_ze_ext * Ze_ext + c_ze_int * Ze_int
-    A22 = c_zh_ext * Zh_ext + c_zh_int * Zh_int
+    # Fill the returned block matrix in place. Together with the six regional
+    # operators above this keeps the dense resident payload to ten N-by-N
+    # matrices; scalar combinations do not create additional dense temporaries.
+    N = rwg.nedges
+    A = Matrix{ComplexF64}(undef, 2N, 2N)
+    A11 = @view A[1:N, 1:N]
+    A12 = @view A[1:N, (N + 1):(2N)]
+    A21 = @view A[(N + 1):(2N), 1:N]
+    A22 = @view A[(N + 1):(2N), (N + 1):(2N)]
+    A11 .= c_ze_ext .* Ze_ext .+ c_ze_int .* Ze_int
+    A22 .= c_zh_ext .* Zh_ext .+ c_zh_int .* Zh_int
+    A12 .= .-(c_ze_ext .* K_ext .+ c_ze_int .* K_int)
+    A21 .= c_zh_ext .* K_ext .+ c_zh_int .* K_int
 
-    # Off-diagonal K blocks: weighted principal-value K plus the second-kind
-    # identity (nhat x Gram) residue that the PV K operator omits. The E-row
-    # carries K with sign -, the H-row with sign +. The identity term enters
-    # with coefficient (c_ext - c_int)*(1/2); it cancels in PMCHWT (equal
-    # coefficients) and is essential for the Muller currents to match PMCHWT.
-    K_E = c_ze_ext * K_ext + c_ze_int * K_int
-    K_H = c_zh_ext * K_ext + c_zh_int * K_int
+    # The second-kind identity is local. Keep its O(Nt) triplets compact and
+    # accumulate them directly into the two off-diagonal dense blocks.
     if (c_ze_ext != c_ze_int) || (c_zh_ext != c_zh_int)
-        Gram = _ncross_gram_3d(mesh, rwg; quad_order=quad_order)
-        A12 = -(K_E + (c_ze_ext - c_ze_int) * 0.5 * Gram)
-        A21 = K_H + (c_zh_ext - c_zh_int) * 0.5 * Gram
-    else
-        A12 = -K_E
-        A21 = K_H
+        Gram = _ncross_gram_3d(
+            mesh, rwg;
+            quad_order=quad_order,
+            max_storage_bytes=work_limit)
+        _add_scaled_matrix!(
+            A12, -(c_ze_ext - c_ze_int) * 0.5, Gram)
+        _add_scaled_matrix!(
+            A21, (c_zh_ext - c_zh_int) * 0.5, Gram)
     end
-
-    A = [A11 A12; A21 A22]
     return A, exterior, interior
 end
 
@@ -668,7 +745,8 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
                                                singular_quad_order::Int=7,
                                                eta0::Real=_ETA0_DDA,
                                                mesh_precheck::Bool=true,
-                                               area_tol_rel::Float64=1e-12)
+                                               area_tol_rel::Float64=1e-12,
+                                               max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     formulation in (:pmchwt, :muller) ||
         error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
     _assert_closed_surface_sie_3d(mesh, rwg;
@@ -714,7 +792,10 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
     c_g_e = -(c_ze_ext - c_ze_int) * 0.5
     c_g_h = (c_zh_ext - c_zh_int) * 0.5
     Gram = (c_g_e != 0 || c_g_h != 0) ?
-        _ncross_gram_3d(mesh, rwg; quad_order=quad_order) :
+        _ncross_gram_3d(
+            mesh, rwg;
+            quad_order=quad_order,
+            max_storage_bytes=max_gram_storage_bytes) :
         zeros(ComplexF64, 0, 0)
     return MatrixFreeDielectricSIE3D(
         formulation, exterior, interior,
@@ -970,7 +1051,9 @@ function Base.:*(A::MatrixFreeDielectricSIE3D, x::AbstractVector)
 end
 
 """
-    assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in; formulation=:pmchwt, ...)
+    assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in;
+                               formulation=:pmchwt,
+                               max_work_bytes=2_000_000_000, ...)
 
 Assemble a dense closed-surface dielectric SIE matrix for isotropic homogeneous
 interior/exterior media. Unknowns are stacked RWG coefficients `[J; M]`.
@@ -985,7 +1068,8 @@ function assemble_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                     singular_quad_order::Int=7,
                                     eta0::Real=_ETA0_DDA,
                                     mesh_precheck::Bool=true,
-                                    area_tol_rel::Float64=1e-12)
+                                    area_tol_rel::Float64=1e-12,
+                                    max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     A, _, _ = _surface_sie_blocks_3d(
         mesh, rwg, k0, epsr_in, mur_in, epsr_ext, mur_ext;
         formulation=formulation,
@@ -994,6 +1078,7 @@ function assemble_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         eta0=eta0,
         mesh_precheck=mesh_precheck,
         area_tol_rel=area_tol_rel,
+        max_work_bytes=max_work_bytes,
     )
     return A
 end
@@ -1036,7 +1121,16 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  maxiter::Int=200,
                                  memory::Int=20,
                                  verbose::Bool=false,
-                                 check_gmres_convergence::Bool=true)
+                                 check_gmres_convergence::Bool=true,
+                                 max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    solver in (:direct, :gmres) ||
+        error("Unsupported dielectric SIE solver: $solver (expected :direct or :gmres).")
+    if solver == :direct
+        _validated_surface_sie_dense_work_3d(
+            rwg.nedges, 10, max_work_bytes,
+            "direct dielectric SIE solve")
+    end
     rhsv = _copy_finite_complex_vector_3d(
         rhs, 2 * rwg.nedges, "rhs")
     if solver == :direct
@@ -1048,6 +1142,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             eta0=eta0,
             mesh_precheck=mesh_precheck,
             area_tol_rel=area_tol_rel,
+            max_work_bytes=max_work_bytes,
         )
         fac = _factor_dense_linear_system(
             A, ComplexF64, "direct dielectric SIE factorization")
@@ -1069,6 +1164,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             eta0=eta0,
             mesh_precheck=mesh_precheck,
             area_tol_rel=area_tol_rel,
+            max_gram_storage_bytes=max_gram_storage_bytes,
         )
         x, stats = solve_gmres(
             A, rhsv;
@@ -1082,8 +1178,6 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         return DielectricSIEResult3D(copy(J), copy(M), A, rhsv, nothing,
                                      :gmres, stats,
                                      formulation, A.exterior, A.interior)
-    else
-        error("Unsupported dielectric SIE solver: $solver (expected :direct or :gmres).")
     end
 end
 
@@ -1103,7 +1197,16 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  maxiter::Int=200,
                                  memory::Int=20,
                                  verbose::Bool=false,
-                                 check_gmres_convergence::Bool=true)
+                                 check_gmres_convergence::Bool=true,
+                                 max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    solver in (:direct, :gmres) ||
+        error("Unsupported dielectric SIE solver: $solver (expected :direct or :gmres).")
+    if solver == :direct
+        _validated_surface_sie_dense_work_3d(
+            rwg.nedges, 10, max_work_bytes,
+            "direct dielectric SIE solve")
+    end
     exterior = dielectric_medium_3d(k0, epsr_ext, mur_ext; eta0=eta0)
     interior = dielectric_medium_3d(k0, epsr_in, mur_in; eta0=eta0)
     rhs = assemble_dielectric_sie_rhs_3d(
@@ -1129,5 +1232,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         memory=memory,
         verbose=verbose,
         check_gmres_convergence=check_gmres_convergence,
+        max_work_bytes=max_work_bytes,
+        max_gram_storage_bytes=max_gram_storage_bytes,
     )
 end
