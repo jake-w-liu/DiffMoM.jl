@@ -2336,6 +2336,13 @@ println("\n── Test 6: Far-field and Q matrix ──")
 
 @test_throws ArgumentError make_sph_grid(0, 16)
 @test_throws ArgumentError make_sph_grid(8, 0)
+@test_throws ArgumentError make_sph_grid(8, 16; max_points=127)
+@test_throws ArgumentError make_sph_grid(
+    8, 16; max_raw_bytes=128 * 6sizeof(Float64) - 1)
+@test length(make_sph_grid(
+    8, 16;
+    max_points=128,
+    max_raw_bytes=128 * 6sizeof(Float64)).w) == 128
 grid = make_sph_grid(8, 16)
 NΩ = length(grid.w)
 println("  Far-field grid: $NΩ directions")

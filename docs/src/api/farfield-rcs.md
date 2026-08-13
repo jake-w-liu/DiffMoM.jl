@@ -10,16 +10,18 @@ For an analytical near-/total-field benchmark, see [validation/06-near-total-fie
 
 ## Spherical Sampling
 
-### `make_sph_grid(Ntheta, Nphi)`
+### `make_sph_grid(Ntheta, Nphi; max_points=2_100_000, max_raw_bytes=134_400_000)`
 
 Create a spherical sampling grid using a uniform midpoint rule in theta and phi, with quadrature weights `w = sin(theta) * d_theta * d_phi`.
 
 **Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `Ntheta` | `Int` | Number of theta (polar angle) samples. More samples = finer angular resolution in the elevation plane. |
-| `Nphi` | `Int` | Number of phi (azimuthal angle) samples. More samples = finer resolution in the azimuthal plane. |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `Ntheta` | `Int` | -- | Number of theta (polar angle) samples. More samples = finer angular resolution in the elevation plane. |
+| `Nphi` | `Int` | -- | Number of phi (azimuthal angle) samples. More samples = finer resolution in the azimuthal plane. |
+| `max_points` | `Int` | `2_100_000` | Maximum accepted angular point count, checked before allocation. |
+| `max_raw_bytes` | `Int` | `134_400_000` | Maximum raw payload for `rhat`, `theta`, `phi`, and `w`, checked before allocation. |
 
 **Returns:** `SphGrid` with fields `rhat`, `theta`, `phi`, `w` (see [types.md](types.md)).
 

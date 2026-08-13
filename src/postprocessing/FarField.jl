@@ -5,24 +5,59 @@
 
 export make_sph_grid, radiation_vectors, compute_farfield, incident_farfield
 
+const _DEFAULT_MAX_SPH_GRID_POINTS = 2_100_000
+const _DEFAULT_MAX_SPH_GRID_RAW_BYTES = 134_400_000
+const _SPH_GRID_RAW_BYTES_PER_POINT = 6sizeof(Float64)
+
 """
-    make_sph_grid(Ntheta, Nphi)
+    make_sph_grid(Ntheta, Nphi;
+                  max_points=2_100_000,
+                  max_raw_bytes=134_400_000)
 
 Create a spherical grid using a uniform midpoint rule in θ and φ, with
 quadrature weights w = sin(θ) dθ dφ.
 Returns a SphGrid.
 """
-function make_sph_grid(Ntheta::Int, Nphi::Int)
+function make_sph_grid(
+        Ntheta::Int, Nphi::Int;
+        max_points::Int=_DEFAULT_MAX_SPH_GRID_POINTS,
+        max_raw_bytes::Int=_DEFAULT_MAX_SPH_GRID_RAW_BYTES)
     Ntheta > 0 ||
         throw(ArgumentError("Ntheta must be positive, got $Ntheta"))
     Nphi > 0 ||
         throw(ArgumentError("Nphi must be positive, got $Nphi"))
+    max_points > 0 ||
+        throw(ArgumentError("max_points must be positive, got $max_points"))
+    max_raw_bytes > 0 ||
+        throw(ArgumentError(
+            "max_raw_bytes must be positive, got $max_raw_bytes"))
 
     # Simple uniform grid (sufficient for moderate resolution)
     dtheta = π / Ntheta
     dphi   = 2π / Nphi
 
-    NΩ = Base.checked_mul(Ntheta, Nphi)
+    NΩ = try
+        Base.checked_mul(Ntheta, Nphi)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "Ntheta*Nphi overflows Int: $Ntheta*$Nphi"))
+    end
+    NΩ <= max_points ||
+        throw(ArgumentError(
+            "spherical grid requires $NΩ points, exceeding " *
+            "max_points=$max_points"))
+    raw_bytes = try
+        Base.checked_mul(NΩ, _SPH_GRID_RAW_BYTES_PER_POINT)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "spherical-grid raw storage estimate overflows Int"))
+    end
+    raw_bytes <= max_raw_bytes ||
+        throw(ArgumentError(
+            "spherical grid requires $raw_bytes raw bytes, exceeding " *
+            "max_raw_bytes=$max_raw_bytes"))
     rhat  = zeros(3, NΩ)
     theta = zeros(NΩ)
     phi   = zeros(NΩ)
