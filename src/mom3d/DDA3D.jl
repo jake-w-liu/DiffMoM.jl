@@ -1212,8 +1212,28 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                    x::AbstractVector{ComplexF64}) =
     LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
+function _validated_dense_dda_system_size(
+        grid::VoxelGrid3D,
+        max_output_bytes::Integer)
+    system_size = try
+        Base.Checked.checked_mul(3, grid.nvoxels)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("DDA system dimension overflows Int"))
+    end
+    matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, system_size, system_size;
+        label="dense DDA system matrix")
+    _enforce_payload_limit(
+        matrix_bytes, max_output_bytes,
+        "dense DDA system matrix", "max_output_bytes")
+    return system_size
+end
+
 """
-    assemble_dda_3d(grid, k0, eps_r; radiative_correction=false)
+    assemble_dda_3d(grid, k0, eps_r;
+                    radiative_correction=false,
+                    max_output_bytes=2_000_000_000)
 
 Assemble the dense coupled-dipole system
 
@@ -1223,18 +1243,21 @@ for isotropic complex relative permittivity `eps_r`.
 
 Returns `(A, alpha, epsv)`, where `A` is a `3N x 3N` dense matrix.
 """
-function assemble_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r;
-                         radiative_correction::Bool=false)
+function assemble_dda_3d(
+        grid::VoxelGrid3D, k0::Real, eps_r;
+        radiative_correction::Bool=false,
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     k = _finite_positive_k0_3d(k0)
     N = grid.nvoxels
+    system_size = _validated_dense_dda_system_size(
+        grid, max_output_bytes)
     epsv = _coerce_epsr_material_3d(eps_r, N)
     alpha = _dda_polarizabilities_from_coerced(
         grid, k, epsv, radiative_correction)
 
-    A = Matrix{ComplexF64}(I, 3N, 3N)
+    A = Matrix{ComplexF64}(I, system_size, system_size)
     # Each source voxel j writes a disjoint block of columns, so the assembly is
-    # threaded over j when worker threads exist. There is no alloc budget on the
-    # dense build, unlike the matrix-free matvec.
+    # threaded over j when worker threads exist.
     if Threads.nthreads() > 1
         Threads.@threads for j in 1:N
             _dda_fill_block_column!(A, grid, alpha, k, j, N)
@@ -1333,17 +1356,22 @@ voxel centers.
 function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
                       radiative_correction::Bool=false,
                       solver::Symbol=:direct,
+                      max_matrix_bytes::Integer=
+                          _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
                       tol::Float64=1e-8,
                       maxiter::Int=200,
                       memory::Int=20,
                       verbose::Bool=false,
                       check_gmres_convergence::Bool=true)
+    solver == :direct && _validated_dense_dda_system_size(
+        grid, max_matrix_bytes)
     rhs = _flatten_fields_3d(E_inc, grid.nvoxels, "E_inc")
 
     if solver == :direct
         A, alpha, epsv = assemble_dda_3d(
             grid, k0, eps_r;
             radiative_correction=radiative_correction,
+            max_output_bytes=max_matrix_bytes,
         )
         fac = _factor_dense_linear_system(
             A, ComplexF64, "direct DDA factorization")

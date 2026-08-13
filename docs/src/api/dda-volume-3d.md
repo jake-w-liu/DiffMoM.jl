@@ -322,7 +322,7 @@ where `R = |r - rp|` and `r_hat = (r - rp)/R`.
 
 ---
 
-### `assemble_dda_3d(grid, k0, eps_r; radiative_correction=false)`
+### `assemble_dda_3d(grid, k0, eps_r; radiative_correction=false, max_output_bytes=2_000_000_000)`
 
 Assemble the dense coupled-dipole system
 
@@ -342,6 +342,7 @@ threaded over source voxels when worker threads are available. Prefer
 | `k0` | `Real` | -- | Wavenumber (rad/m), must be positive. |
 | `eps_r` | scalar / tensor / vector | -- | Relative permittivity specification. |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the dense `3N x 3N` matrix, enforced before material vectors or matrix allocation. |
 
 **Returns:** Tuple `(A, alpha, epsv)`:
 - `A::Matrix{ComplexF64}`: dense `3N x 3N` system matrix.
@@ -374,7 +375,7 @@ be `<= 1e-10`, else an error is raised).
 
 ---
 
-### `solve_dda_3d(grid, k0, eps_r, E_inc; radiative_correction=false, solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
+### `solve_dda_3d(grid, k0, eps_r, E_inc; radiative_correction=false, solver=:direct, max_matrix_bytes=2_000_000_000, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the 3D vector electric material scattering problem for the total electric
 field at voxel centers.
@@ -389,6 +390,7 @@ field at voxel centers.
 | `E_inc` | `AbstractVector` (of `CVec3`) | -- | Incident E-field per voxel (e.g. from `planewave_dda_3d`). |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 | `solver` | `Symbol` | `:direct` | `:direct` (dense LU) or `:gmres` (matrix-free). |
+| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the direct solver's dense matrix; ignored by `:gmres`. |
 | `tol` | `Float64` | `1e-8` | GMRES relative tolerance (`rtol`). |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
@@ -595,7 +597,7 @@ Construct a matrix-free `EMDDAOperator3D`. Several methods are available:
 
 ---
 
-### `assemble_em_dda_3d(grid, k0, eps_r, mu_r; radiative_correction=false)`
+### `assemble_em_dda_3d(grid, k0, eps_r, mu_r; radiative_correction=false, max_output_bytes=2_000_000_000)`
 
 Assemble the dense coupled electric-magnetic DDA system. Prefer
 `em_dda_operator_3d` (or `fft_em_dda_operator_3d`) for larger grids to avoid
@@ -612,6 +614,7 @@ polarizabilities.
 | `eps_r` | scalar / tensor / vector | -- | Relative permittivity specification. |
 | `mu_r` | scalar / tensor / vector | -- | Relative permeability specification. |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the dense `6N x 6N` matrix, enforced before allocation. |
 
 **Returns:** Tuple `(A, alpha)`:
 - `A::Matrix{ComplexF64}`: dense `6N x 6N` system matrix.
@@ -638,7 +641,7 @@ voxel centers, with `H = k_hat x E / eta0`.
 
 ---
 
-### `solve_em_dda_3d(grid, k0, eps_r, mu_r, E_inc, H_inc; radiative_correction=false, solver=:direct, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
+### `solve_em_dda_3d(grid, k0, eps_r, mu_r, E_inc, H_inc; radiative_correction=false, solver=:direct, max_matrix_bytes=2_000_000_000, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the coupled electric-magnetic volume DDA for magnetodielectric voxels.
 Additional methods accept explicit per-voxel `6x6` polarizabilities
@@ -657,6 +660,7 @@ Additional methods accept explicit per-voxel `6x6` polarizabilities
 | `H_inc` | `AbstractVector` (of `CVec3`) | -- | Incident H-field per voxel. |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 | `solver` | `Symbol` | `:direct` | `:direct`, `:gmres`, or `:fft_gmres` (uses the FFT operator). |
+| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the direct solver's dense matrix; ignored by iterative solvers. |
 | `tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |

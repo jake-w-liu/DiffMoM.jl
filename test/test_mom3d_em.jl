@@ -225,7 +225,12 @@ end
         alpha6[1:3, 1:3] .=
             desired_alpha .* Matrix{ComplexF64}(I, 3, 3)
         operator = em_dda_operator_3d(grid, k, alpha6)
+        matrix_bytes = sizeof(ComplexF64) * (6grid.nvoxels)^2
+        @test_throws ArgumentError assemble_em_dda_3d(
+            grid, k, alpha6; max_output_bytes=matrix_bytes - 1)
         A = Matrix(operator)
+        @test assemble_em_dda_3d(
+            grid, k, alpha6; max_output_bytes=matrix_bytes)[1] == A
         @test A[1, 7] ≈ -2.0 + 0im rtol=2eps(Float64)
 
         amplitude = 0.8 * floatmax(Float64)

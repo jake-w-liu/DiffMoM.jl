@@ -164,7 +164,13 @@ println("\n── Test 46: 3D vector material DDA solver ──")
 
     @testset "Reciprocal dyadic block symmetry" begin
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
-        A, alpha, epsv = assemble_dda_3d(grid, k0, 2.5 + 0im)
+        matrix_bytes = sizeof(ComplexF64) * (3grid.nvoxels)^2
+        @test_throws ArgumentError assemble_dda_3d(
+            grid, k0, 2.5 + 0im;
+            max_output_bytes=matrix_bytes - 1)
+        A, alpha, epsv = assemble_dda_3d(
+            grid, k0, 2.5 + 0im;
+            max_output_bytes=matrix_bytes)
         @test all(epsv .== 2.5 + 0im)
         @test alpha[1] == alpha[2]
 

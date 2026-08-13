@@ -688,9 +688,31 @@ end
 # `AbstractMatrix` fallback would call `getindex` per scalar entry, recomputing
 # every 6x6 voxel-pair interaction 36 times. The work for distinct source voxels
 # j writes disjoint columns, so it is threaded when worker threads exist.
-function Base.Matrix(A::EMDDAOperator3D)
+function _validated_dense_em_dda_system_size(
+        grid::VoxelGrid3D,
+        max_output_bytes::Integer)
+    system_size = try
+        Base.Checked.checked_mul(6, grid.nvoxels)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("EM DDA system dimension overflows Int"))
+    end
+    matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, system_size, system_size;
+        label="dense EM DDA system matrix")
+    _enforce_payload_limit(
+        matrix_bytes, max_output_bytes,
+        "dense EM DDA system matrix", "max_output_bytes")
+    return system_size
+end
+
+function _dense_em_dda_matrix(
+        A::EMDDAOperator3D,
+        max_output_bytes::Integer)
     N = A.grid.nvoxels
-    M = Matrix{ComplexF64}(I, 6N, 6N)
+    system_size = _validated_dense_em_dda_system_size(
+        A.grid, max_output_bytes)
+    M = Matrix{ComplexF64}(I, system_size, system_size)
     if Threads.nthreads() > 1
         Threads.@threads for j in 1:N
             _em_fill_block_column!(M, A, j, N)
@@ -703,28 +725,37 @@ function Base.Matrix(A::EMDDAOperator3D)
     return M
 end
 
+Base.Matrix(A::EMDDAOperator3D) =
+    _dense_em_dda_matrix(A, _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+
 """
     assemble_em_dda_3d(grid, k0, eps_r, mu_r; radiative_correction=false)
 
 Assemble the dense coupled electric-magnetic DDA system. Prefer
 `em_dda_operator_3d` for larger grids to avoid `O(N^2)` dense storage.
 """
-function assemble_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
-                            radiative_correction::Bool=false)
+function assemble_em_dda_3d(
+        grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
+        radiative_correction::Bool=false,
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _validated_dense_em_dda_system_size(grid, max_output_bytes)
     Aop = em_dda_operator_3d(
         grid, k0, eps_r, mu_r;
         radiative_correction=radiative_correction,
     )
-    return Matrix(Aop), Aop.alpha
+    return _dense_em_dda_matrix(Aop, max_output_bytes), Aop.alpha
 end
 
-function assemble_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6;
-                            radiative_correction::Bool=false)
+function assemble_em_dda_3d(
+        grid::VoxelGrid3D, k0::Real, alpha6;
+        radiative_correction::Bool=false,
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _validated_dense_em_dda_system_size(grid, max_output_bytes)
     Aop = em_dda_operator_3d(
         grid, k0, alpha6;
         radiative_correction=radiative_correction,
     )
-    return Matrix(Aop), Aop.alpha
+    return _dense_em_dda_matrix(Aop, max_output_bytes), Aop.alpha
 end
 
 """
@@ -756,6 +787,8 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
                                      E_inc::AbstractVector, H_inc::AbstractVector;
                                      solver::Symbol=:direct,
                                      reported_solver::Symbol=solver,
+                                     max_matrix_bytes::Integer=
+                                         _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
                                      tol::Float64=1e-8,
                                      maxiter::Int=200,
                                      memory::Int=20,
@@ -764,7 +797,7 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
     rhs = _flatten_em_fields_3d(E_inc, H_inc, grid.nvoxels, "E_inc", "H_inc")
 
     if solver == :direct
-        A = Matrix(Aop)
+        A = _dense_em_dda_matrix(Aop, max_matrix_bytes)
         fac = _factor_dense_linear_system(
             A, ComplexF64, "direct EM DDA factorization")
         total_flat = _solve_factored_linear_system(
@@ -802,12 +835,16 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
                          E_inc::AbstractVector, H_inc::AbstractVector;
                          radiative_correction::Bool=false,
                          solver::Symbol=:direct,
+                         max_matrix_bytes::Integer=
+                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
                          verbose::Bool=false,
                          check_gmres_convergence::Bool=true)
     solve_mode = solver == :fft_gmres ? :gmres : solver
+    solve_mode == :direct && _validated_dense_em_dda_system_size(
+        grid, max_matrix_bytes)
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
             grid, k0, eps_r, mu_r;
@@ -821,6 +858,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
         grid, k0, Aop, E_inc, H_inc;
         solver=solve_mode,
         reported_solver=solver,
+        max_matrix_bytes=max_matrix_bytes,
         tol=tol,
         maxiter=maxiter,
         memory=memory,
@@ -839,12 +877,16 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6,
                          E_inc::AbstractVector, H_inc::AbstractVector;
                          radiative_correction::Bool=false,
                          solver::Symbol=:direct,
+                         max_matrix_bytes::Integer=
+                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
                          verbose::Bool=false,
                          check_gmres_convergence::Bool=true)
     solve_mode = solver == :fft_gmres ? :gmres : solver
+    solve_mode == :direct && _validated_dense_em_dda_system_size(
+        grid, max_matrix_bytes)
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
             grid, k0, alpha6;
@@ -858,6 +900,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6,
         grid, k0, Aop, E_inc, H_inc;
         solver=solve_mode,
         reported_solver=solver,
+        max_matrix_bytes=max_matrix_bytes,
         tol=tol,
         maxiter=maxiter,
         memory=memory,
@@ -872,6 +915,8 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
                          E_inc::AbstractVector, H_inc::AbstractVector;
                          radiative_correction::Bool=false,
                          solver::Symbol=:direct,
+                         max_matrix_bytes::Integer=
+                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
@@ -879,6 +924,8 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
                          check_gmres_convergence::Bool=true,
                          eta0::Real=_ETA0_DDA)
     solve_mode = solver == :fft_gmres ? :gmres : solver
+    solve_mode == :direct && _validated_dense_em_dda_system_size(
+        grid, max_matrix_bytes)
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
             grid, k0, material;
@@ -894,6 +941,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
         grid, k0, Aop, E_inc, H_inc;
         solver=solve_mode,
         reported_solver=solver,
+        max_matrix_bytes=max_matrix_bytes,
         tol=tol,
         maxiter=maxiter,
         memory=memory,
