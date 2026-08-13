@@ -1899,6 +1899,57 @@ println("\n── Test 42: PeriodicMetrics ──")
         rwg_i = build_rwg(mesh_i; precheck=false)
         I_zero = zeros(ComplexF64, rwg_i.nedges)
 
+        _, periodic_weights = tri_quad_rule(3)
+        periodic_mode_count = DiffMoM._periodic_term_count(0)
+        periodic_work_bytes = DiffMoM._periodic_reflection_work_bytes(
+            ntriangles(mesh_i), rwg_i.nedges, length(periodic_weights),
+            periodic_mode_count)
+        periodic_terms = DiffMoM._periodic_fourier_term_count(
+            ntriangles(mesh_i), rwg_i.nedges, length(periodic_weights), 1)
+        @test_throws ArgumentError reflection_coefficients(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm;
+            N_orders=0, max_work_bytes=periodic_work_bytes - 1)
+        @test_throws ArgumentError reflection_coefficient_vectors(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm;
+            N_orders=0, max_fourier_terms=periodic_terms - 1)
+        maximum_mode_count = DiffMoM._periodic_term_count(
+            DiffMoM._MAX_PERIODIC_TRUNCATION)
+        maximum_base_bytes = DiffMoM._periodic_reflection_base_bytes(
+            maximum_mode_count)
+        try
+            reflection_coefficients(
+                mesh_i, rwg_i, I_zero, k_pm, lat_pm;
+                N_orders=DiffMoM._MAX_PERIODIC_TRUNCATION,
+                max_work_bytes=maximum_base_bytes - 1,
+            )
+        catch
+        end
+        @test @allocated(
+            try
+                reflection_coefficients(
+                    mesh_i, rwg_i, I_zero, k_pm, lat_pm;
+                    N_orders=DiffMoM._MAX_PERIODIC_TRUNCATION,
+                    max_work_bytes=maximum_base_bytes - 1,
+                )
+            catch
+            end) <= 4_000
+        limited_modes, limited_coefficients = reflection_coefficients(
+            mesh_i, rwg_i, I_zero, k_pm, lat_pm;
+            N_orders=0,
+            max_work_bytes=periodic_work_bytes,
+            max_fourier_terms=periodic_terms)
+        @test length(limited_modes) == periodic_mode_count
+        @test all(iszero, limited_coefficients)
+
+        extreme_periodic_terms = DiffMoM._periodic_fourier_term_count(
+            ntriangles(mesh_i), rwg_i.nedges, length(periodic_weights), 1;
+            exact=true)
+        I_extreme = fill(ComplexF64(floatmax(Float64)), rwg_i.nedges)
+        @test_throws ArgumentError reflection_coefficients(
+            mesh_i, rwg_i, I_extreme, k_pm, lat_pm;
+            N_orders=0,
+            max_exact_fourier_terms=extreme_periodic_terms - 1)
+
         @test_throws DimensionMismatch reflection_coefficients(
             mesh_i, rwg_i, I_zero[1:end-1], k_pm, lat_pm)
         @test_throws DimensionMismatch reflection_coefficients(

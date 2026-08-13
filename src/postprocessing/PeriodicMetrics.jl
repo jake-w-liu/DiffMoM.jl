@@ -451,6 +451,77 @@ end
 const _FLOQUET_MODE_FALLBACK_PRECISION = 256
 const _FLOQUET_CURRENT_FALLBACK_PRECISION =
     _IEEE_BILINEAR_FALLBACK_PRECISION
+const _DEFAULT_MAX_PERIODIC_REFLECTION_WORK_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_PERIODIC_FOURIER_TERMS = 200_000_000
+const _DEFAULT_MAX_PERIODIC_EXACT_FOURIER_TERMS = 2_000_000
+
+function _periodic_reflection_base_bytes(mode_count::Int)
+    # Modes, Fourier coefficients, and the largest public reflection output
+    # coexist at a wrapper boundary.  Charging the vector-valued output also
+    # safely covers the scalar and grounded wrappers.
+    total = BigInt(sizeof(FloquetMode) +
+                   2 * sizeof(SVector{3,ComplexF64})) * mode_count
+    total <= typemax(Int) ||
+        throw(ArgumentError(
+            "periodic reflection raw-workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _preflight_periodic_reflection_base(
+        N_orders::Int, max_work_bytes::Integer)
+    order = _periodic_truncation_order("N_orders", N_orders)
+    mode_count = _periodic_term_count(order)
+    work_limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    _enforce_payload_limit(
+        _periodic_reflection_base_bytes(mode_count), work_limit,
+        "periodic reflection modes and outputs", "max_work_bytes")
+    return mode_count, work_limit
+end
+
+function _periodic_reflection_work_bytes(
+        Nt::Int, N::Int, Nq::Int, mode_count::Int)
+    total = BigInt(_periodic_reflection_base_bytes(mode_count))
+    # Per-triangle quadrature points and cached currents.  The pointer payload
+    # of the three outer vectors is included alongside their element payloads.
+    total += BigInt(3 * sizeof(Ptr{Cvoid}) +
+                    2 * sizeof(Float64)) * Nt
+    total += BigInt(sizeof(Vec3) + sizeof(SVector{3,ComplexF64})) * Nt * Nq
+    # Triangle-to-basis indices, exact-path basis integrals, and the tiny
+    # quadrature-rule arrays.  Area ratios are included in the 2*Float64 term
+    # above, even though they exist only on an exceptional path.
+    total += BigInt(2 * sizeof(Int) +
+                    sizeof(SVector{3,ComplexF64})) * N
+    total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    total <= typemax(Int) ||
+        throw(ArgumentError(
+            "periodic reflection raw-workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _periodic_fourier_term_count(
+        Nt::Int, N::Int, Nq::Int, propagating_count::Int;
+        exact::Bool=false)
+    count = if exact
+        BigInt(propagating_count) *
+        (BigInt(Nq) * (BigInt(Nt) + 2BigInt(N)) + 3BigInt(N))
+    else
+        BigInt(Nq) * (BigInt(propagating_count) * Nt + 2BigInt(N))
+    end
+    count <= typemax(Int) ||
+        throw(ArgumentError(
+            "periodic Fourier-term estimate overflows Int"))
+    return Int(count)
+end
+
+function _enforce_periodic_fourier_term_limit(
+        term_count::Int, max_terms::Integer, limit_name::AbstractString)
+    limit = _validated_resource_limit(limit_name, max_terms)
+    term_count <= limit ||
+        throw(ArgumentError(
+            "periodic current Fourier integration requires $term_count " *
+            "terms, exceeding $limit_name=$limit"))
+    return term_count
+end
 
 @inline function _periodic_phase_requires_fallback(
     mode::FloquetMode,
@@ -686,11 +757,23 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                                                I_coeffs::Vector{<:Number},
                                                k::Real, lattice::PeriodicLattice;
                                                quad_order::Int=3,
-                                               N_orders::Int=3)
+                                               N_orders::Int=3,
+                                               max_work_bytes::Integer=
+                                                   _DEFAULT_MAX_PERIODIC_REFLECTION_WORK_BYTES,
+                                               max_fourier_terms::Integer=
+                                                   _DEFAULT_MAX_PERIODIC_FOURIER_TERMS,
+                                               max_exact_fourier_terms::Integer=
+                                                   _DEFAULT_MAX_PERIODIC_EXACT_FOURIER_TERMS)
     kw = _validated_lattice_wavenumber(k, lattice)
     _validate_periodic_current_coefficients(rwg, I_coeffs)
     _assert_coplanar_periodic_metrics_mesh(mesh)
     _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
+
+    mode_count, work_limit = _preflight_periodic_reflection_base(
+        N_orders, max_work_bytes)
+    _validated_resource_limit("max_fourier_terms", max_fourier_terms)
+    _validated_resource_limit(
+        "max_exact_fourier_terms", max_exact_fourier_terms)
 
     modes = floquet_modes(kw, lattice; N_orders=N_orders)
     A_cell = lattice.dx * lattice.dy
@@ -703,6 +786,14 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
     Nq = length(wq)
     Nt = ntriangles(mesh)
     N = rwg.nedges
+    _enforce_payload_limit(
+        _periodic_reflection_work_bytes(Nt, N, Nq, mode_count), work_limit,
+        "periodic reflection output and workspace", "max_work_bytes")
+    propagating_count = count(mode -> mode.propagating, modes)
+    ordinary_terms = _periodic_fourier_term_count(
+        Nt, N, Nq, propagating_count)
+    _enforce_periodic_fourier_term_limit(
+        ordinary_terms, max_fourier_terms, "max_fourier_terms")
 
     quad_pts = [tri_quad_points(mesh, t, xi) for t in 1:Nt]
     areas = [triangle_area(mesh, t) for t in 1:Nt]
@@ -714,14 +805,19 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
     end
 
     zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    J_tildes = fill(zero_vec, length(modes))
-
     if _periodic_fourier_requires_fallback(
             I_coeffs, A_cell, areas, modes, quad_pts, wq)
+        exact_terms = _periodic_fourier_term_count(
+            Nt, N, Nq, propagating_count; exact=true)
+        _enforce_periodic_fourier_term_limit(
+            exact_terms, max_exact_fourier_terms,
+            "max_exact_fourier_terms")
         return modes, _floquet_current_fourier_coefficients_exact(
             rwg, I_coeffs, modes, A_cell, quad_pts,
             areas, tri_to_basis, wq)
     end
+
+    J_tildes = fill(zero_vec, length(modes))
 
     # The surface current J(r_q) at each quadrature point is independent of the
     # Floquet mode, so precompute it once instead of recomputing inside every mode.
@@ -870,6 +966,10 @@ the incident field amplitude.
 
 Sanity check: for a PEC plate at normal incidence, R₀₀ = -1.
 
+`max_work_bytes` bounds retained raw array payload. `max_fourier_terms` bounds
+ordinary current-integration work, and `max_exact_fourier_terms` separately
+bounds an exceptional exact retry.
+
 Returns (modes, R_coeffs) where R_coeffs[i] is the complex reflection
 coefficient for modes[i].
 """
@@ -879,12 +979,24 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
                                  quad_order::Int=3, N_orders::Int=3,
                                  E0::Float64=1.0,
                                  pol::SVector{3,Float64}=SVector(1.0, 0.0, 0.0),
-                                 eta0::Float64=376.730313668)
+                                 eta0::Float64=376.730313668,
+                                 max_work_bytes::Integer=
+                                     _DEFAULT_MAX_PERIODIC_REFLECTION_WORK_BYTES,
+                                 max_fourier_terms::Integer=
+                                     _DEFAULT_MAX_PERIODIC_FOURIER_TERMS,
+                                 max_exact_fourier_terms::Integer=
+                                     _DEFAULT_MAX_PERIODIC_EXACT_FOURIER_TERMS)
     kw = _validated_lattice_wavenumber(k, lattice)
     _validate_periodic_field_normalization(E0, eta0)
     _validate_periodic_polarization(pol)
+    _preflight_periodic_reflection_base(N_orders, max_work_bytes)
     modes, J_tildes = _floquet_current_fourier_coefficients(
-        mesh, rwg, I_coeffs, kw, lattice; quad_order=quad_order, N_orders=N_orders
+        mesh, rwg, I_coeffs, kw, lattice;
+        quad_order=quad_order,
+        N_orders=N_orders,
+        max_work_bytes=max_work_bytes,
+        max_fourier_terms=max_fourier_terms,
+        max_exact_fourier_terms=max_exact_fourier_terms,
     )
 
     R_coeffs = zeros(ComplexF64, length(modes))
@@ -938,17 +1050,33 @@ total reflected-power budgets.
 
 Returns `(modes, R_vecs)`, where `R_vecs[i]` is a three-component complex vector
 normalized by the incident field amplitude.
+
+`max_work_bytes` bounds retained raw array payload. `max_fourier_terms` bounds
+ordinary current-integration work, and `max_exact_fourier_terms` separately
+bounds an exceptional exact retry.
 """
 function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
                                         I_coeffs::Vector{<:Number},
                                         k::Real, lattice::PeriodicLattice;
                                         quad_order::Int=3, N_orders::Int=3,
                                         E0::Float64=1.0,
-                                        eta0::Float64=376.730313668)
+                                        eta0::Float64=376.730313668,
+                                        max_work_bytes::Integer=
+                                            _DEFAULT_MAX_PERIODIC_REFLECTION_WORK_BYTES,
+                                        max_fourier_terms::Integer=
+                                            _DEFAULT_MAX_PERIODIC_FOURIER_TERMS,
+                                        max_exact_fourier_terms::Integer=
+                                            _DEFAULT_MAX_PERIODIC_EXACT_FOURIER_TERMS)
     kw = _validated_lattice_wavenumber(k, lattice)
     _validate_periodic_field_normalization(E0, eta0)
+    _preflight_periodic_reflection_base(N_orders, max_work_bytes)
     modes, J_tildes = _floquet_current_fourier_coefficients(
-        mesh, rwg, I_coeffs, kw, lattice; quad_order=quad_order, N_orders=N_orders
+        mesh, rwg, I_coeffs, kw, lattice;
+        quad_order=quad_order,
+        N_orders=N_orders,
+        max_work_bytes=max_work_bytes,
+        max_fourier_terms=max_fourier_terms,
+        max_exact_fourier_terms=max_exact_fourier_terms,
     )
 
     zero_vec = SVector{3,ComplexF64}(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)

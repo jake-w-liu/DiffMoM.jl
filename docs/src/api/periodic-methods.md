@@ -162,7 +162,7 @@ Enumerate modes `(m,n)` for `m,n in [-N_orders, N_orders]` and classify each as 
 
 ---
 
-### `reflection_coefficients(mesh, rwg, I_coeffs, k, lattice; quad_order=3, N_orders=3, E0=1.0, pol=SVector(1.0, 0.0, 0.0), eta0=376.730313668)`
+### `reflection_coefficients(mesh, rwg, I_coeffs, k, lattice; quad_order=3, N_orders=3, E0=1.0, pol=SVector(1.0, 0.0, 0.0), eta0=376.730313668, max_work_bytes=536_870_912, max_fourier_terms=200_000_000, max_exact_fourier_terms=2_000_000)`
 
 Compute complex reflection coefficients for propagating Floquet modes by integrating the current Fourier coefficient over the unit cell.
 
@@ -180,6 +180,9 @@ Compute complex reflection coefficients for propagating Floquet modes by integra
 | `E0` | `Float64` | `1.0` | Incident field amplitude. |
 | `pol` | `SVector{3,Float64}` | `SVector(1.0, 0.0, 0.0)` | Incident polarization vector used in coefficient projection. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
+| `max_work_bytes` | `Integer` | `536_870_912` | Maximum raw payload for modes, outputs, and retained Fourier-integration workspaces. |
+| `max_fourier_terms` | `Integer` | `200_000_000` | Maximum ordinary current-integration terms, including current samples and all propagating modes. |
+| `max_exact_fourier_terms` | `Integer` | `2_000_000` | Maximum terms in an exceptional exact current-integration retry. |
 
 **Returns:** `(modes, R_coeffs)`:
 - `modes::Vector{FloquetMode}`
@@ -187,7 +190,7 @@ Compute complex reflection coefficients for propagating Floquet modes by integra
 
 ---
 
-### `reflection_coefficient_vectors(mesh, rwg, I_coeffs, k, lattice; quad_order=3, N_orders=3, E0=1.0, eta0=376.730313668)`
+### `reflection_coefficient_vectors(mesh, rwg, I_coeffs, k, lattice; quad_order=3, N_orders=3, E0=1.0, eta0=376.730313668, max_work_bytes=536_870_912, max_fourier_terms=200_000_000, max_exact_fourier_terms=2_000_000)`
 
 Compute the full mode-transverse reflected electric-field amplitude vector for each
 propagating Floquet order. Unlike `reflection_coefficients`, which reports one scalar
@@ -211,6 +214,9 @@ direction.
 | `N_orders` | `Int` | `3` | Floquet order truncation. |
 | `E0` | `Float64` | `1.0` | Incident field amplitude. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
+| `max_work_bytes` | `Integer` | `536_870_912` | Maximum raw payload for modes, outputs, and retained Fourier-integration workspaces. |
+| `max_fourier_terms` | `Integer` | `200_000_000` | Maximum ordinary current-integration terms, including current samples and all propagating modes. |
+| `max_exact_fourier_terms` | `Integer` | `2_000_000` | Maximum terms in an exceptional exact current-integration retry. |
 
 **Returns:** `(modes, R_vecs)`:
 - `modes::Vector{FloquetMode}`
