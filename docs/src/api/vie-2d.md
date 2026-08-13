@@ -93,7 +93,7 @@ end
 
 ---
 
-### `Mesh2D(x_range, y_range, nx, ny)`
+### `Mesh2D(x_range, y_range, nx, ny; max_cells=20_000_000, max_raw_bytes=536_870_912)`
 
 Create a uniform rectangular grid over `[x_range[1], x_range[2]] x [y_range[1], y_range[2]]`
 with `nx x ny` cells. Cell centers are placed at the midpoint of each cell.
@@ -106,6 +106,8 @@ with `nx x ny` cells. Cell centers are placed at the midpoint of each cell.
 | `y_range` | `Tuple{Float64,Float64}` | -- | Lower and upper y bounds of the domain (m). Must be increasing. |
 | `nx` | `Int` | -- | Number of cells in x. Must be `>= 1`. |
 | `ny` | `Int` | -- | Number of cells in y. Must be `>= 1`. |
+| `max_cells` | `Integer` | `20_000_000` | Maximum accepted cell count, checked before allocation. |
+| `max_raw_bytes` | `Integer` | `536_870_912` | Maximum raw payload of the center vector, checked before allocation. |
 
 **Returns:** `Mesh2D` with `ncells = nx * ny` cells.
 

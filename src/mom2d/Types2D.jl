@@ -6,6 +6,8 @@ export Vec2, CVec2, Mesh2D, VIEResult2D, equivalent_radius
 
 const Vec2 = SVector{2,Float64}
 const CVec2 = SVector{2,ComplexF64}
+const _DEFAULT_MAX_MESH2D_CELLS = 20_000_000
+const _DEFAULT_MAX_MESH2D_RAW_BYTES = 536_870_912
 
 @inline function _validate_finite_vec2_2d(value::Vec2, label::AbstractString)
     all(isfinite, value) ||
@@ -74,16 +76,38 @@ struct Mesh2D
 end
 
 """
-    Mesh2D(x_range, y_range, nx, ny)
+    Mesh2D(x_range, y_range, nx, ny;
+           max_cells=20_000_000,
+           max_raw_bytes=536_870_912)
 
 Create a uniform rectangular grid over [x_range[1], x_range[2]] × [y_range[1], y_range[2]]
 with `nx × ny` cells.
 """
 function Mesh2D(x_range::Tuple{Float64,Float64}, y_range::Tuple{Float64,Float64},
-                nx::Int, ny::Int)
+                nx::Int, ny::Int;
+                max_cells::Integer=_DEFAULT_MAX_MESH2D_CELLS,
+                max_raw_bytes::Integer=_DEFAULT_MAX_MESH2D_RAW_BYTES)
     nx >= 1 && ny >= 1 ||
         throw(ArgumentError(
             "Grid must have at least 1 cell in each direction, got nx=$nx, ny=$ny."))
+    cell_limit = try
+        Int(max_cells)
+    catch err
+        err isa Union{InexactError,OverflowError} || rethrow()
+        throw(ArgumentError("max_cells is outside the Int range"))
+    end
+    byte_limit = try
+        Int(max_raw_bytes)
+    catch err
+        err isa Union{InexactError,OverflowError} || rethrow()
+        throw(ArgumentError("max_raw_bytes is outside the Int range"))
+    end
+    cell_limit >= 1 ||
+        throw(ArgumentError(
+            "max_cells must be positive, got $max_cells."))
+    byte_limit >= 1 ||
+        throw(ArgumentError(
+            "max_raw_bytes must be positive, got $max_raw_bytes."))
     all(isfinite, x_range) ||
         throw(ArgumentError("x_range endpoints must be finite, got $x_range."))
     all(isfinite, y_range) ||
@@ -94,6 +118,20 @@ function Mesh2D(x_range::Tuple{Float64,Float64}, y_range::Tuple{Float64,Float64}
         throw(ArgumentError("y_range must be strictly increasing, got $y_range."))
 
     ncells = _checked_cell_count_2d(nx, ny)
+    ncells <= cell_limit ||
+        throw(ArgumentError(
+            "Mesh2D requires $ncells cells, exceeding " *
+            "max_cells=$cell_limit."))
+    raw_bytes = try
+        Base.checked_mul(ncells, sizeof(Vec2))
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("Mesh2D raw storage estimate overflows Int."))
+    end
+    raw_bytes <= byte_limit ||
+        throw(ArgumentError(
+            "Mesh2D requires $raw_bytes raw center bytes, exceeding " *
+            "max_raw_bytes=$byte_limit."))
     dx = (x_range[2] - x_range[1]) / nx
     dy = (y_range[2] - y_range[1]) / ny
     _validate_positive_finite_2d(dx, "Mesh2D dx")

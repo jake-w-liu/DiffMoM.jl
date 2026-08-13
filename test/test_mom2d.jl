@@ -57,6 +57,14 @@ end
         @test_throws ArgumentError Mesh2D((-1.0, 1.0), (NaN, 0.5), 4, 2)
         @test_throws ArgumentError Mesh2D(
             (1.0, nextfloat(1.0)), (0.0, 1.0), 3, 1)
+        @test_throws ArgumentError Mesh2D(
+            (0.0, 1.0), (0.0, 1.0), 3, 3; max_cells=8)
+        @test_throws ArgumentError Mesh2D(
+            (0.0, 1.0), (0.0, 1.0), 3, 3;
+            max_raw_bytes=9sizeof(Vec2) - 1)
+        @test Mesh2D(
+            (0.0, 1.0), (0.0, 1.0), 3, 3;
+            max_cells=9, max_raw_bytes=9sizeof(Vec2)).ncells == 9
         large_origin = 1.0e16
         duplicate_center = Vec2(large_origin + 2.0, 0.5)
         @test_throws ArgumentError Mesh2D(
