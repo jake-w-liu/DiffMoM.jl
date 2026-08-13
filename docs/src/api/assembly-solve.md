@@ -273,7 +273,7 @@ This is the overlap integral of two RWG basis functions restricted to patch `p`.
 
 ---
 
-### `assemble_Z_impedance(Mp, theta)`
+### `assemble_Z_impedance(Mp, theta; max_output_bytes=2_000_000_000)`
 
 Build the impedance contribution from patch mass matrices and parameter vector:
 
@@ -291,6 +291,8 @@ The negative sign follows the convention that positive `theta_p` reduces the tot
 
 **For reactive loading:** Pass complex coefficients: `theta_complex = 1im .* theta_real`.
 
+`max_output_bytes` bounds the raw payload of the dense returned matrix before allocation.
+
 ---
 
 ### `assemble_dZ_dtheta(Mp, p)`
@@ -305,7 +307,7 @@ Returns the exact derivative matrix `dZ/d(theta_p) = -Mp[p]`. This is used inter
 
 ---
 
-### `assemble_full_Z(Z_efie, Mp, theta; reactive=false)`
+### `assemble_full_Z(Z_efie, Mp, theta; reactive=false, max_output_bytes=2_000_000_000)`
 
 Convenience function to assemble the full system matrix combining EFIE and impedance loading:
 
@@ -325,6 +327,7 @@ where the coefficients depend on the loading mode:
 | `Mp` | `Vector{<:AbstractMatrix}` | -- | Patch mass matrices. |
 | `theta` | `AbstractVector` | -- | Parameter vector (always real-valued; the `reactive` flag controls the mapping). |
 | `reactive` | `Bool` | `false` | If `true`, treat `theta` as reactive parameters (multiplied by `im` internally). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the returned dense matrix, checked before copying `Z_efie`. |
 
 **Returns:** `Matrix{ComplexF64}`.
 

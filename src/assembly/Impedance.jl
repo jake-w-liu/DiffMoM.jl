@@ -131,14 +131,21 @@ function precompute_patch_mass(mesh::TriMesh, rwg::RWGData,
 end
 
 """
-    assemble_Z_impedance(Mp, theta)
+    assemble_Z_impedance(Mp, theta; max_output_bytes=2_000_000_000)
 
 Assemble the impedance contribution to the MoM matrix:
 Z_imp = -Σ_p θ_p M_p
 """
-function assemble_Z_impedance(Mp::Vector{<:AbstractMatrix}, theta::AbstractVector)
+function assemble_Z_impedance(
+        Mp::Vector{<:AbstractMatrix}, theta::AbstractVector;
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     N = first(_validate_impedance_inputs(Mp, theta))
     CT = eltype(theta) <: Complex ? eltype(theta) : ComplexF64
+    output_bytes = _checked_array_payload_bytes(
+        CT, N, N; label="impedance matrix")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "impedance matrix", "max_output_bytes")
     Z_imp = zeros(CT, N, N)
     for p in eachindex(theta)
         _add_scaled_matrix!(Z_imp, -theta[p], Mp[p])

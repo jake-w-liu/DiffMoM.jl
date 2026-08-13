@@ -2331,6 +2331,11 @@ end
 theta = fill(100.0 + 50.0im, Nt)  # complex impedance
 Z_imp = assemble_Z_impedance(Mp, theta)
 @assert size(Z_imp) == (N, N)
+impedance_output_bytes = sizeof(eltype(Z_imp)) * length(Z_imp)
+@test_throws ArgumentError assemble_Z_impedance(
+    Mp, theta; max_output_bytes=impedance_output_bytes - 1)
+@test assemble_Z_impedance(
+    Mp, theta; max_output_bytes=impedance_output_bytes) == Z_imp
 
 # Resistive/reactive decomposition sanity checks
 Z_imp_res = assemble_Z_impedance(Mp, fill(100.0, Nt))
@@ -3272,6 +3277,13 @@ println("\n── Test 7: Adjoint gradient verification (CRITICAL) ──")
 # Setup: impedance sheet problem with real impedance parameters
 theta_real = fill(200.0, Nt)  # real impedance values
 Z_full = assemble_full_Z(Z_efie, Mp, theta_real)
+full_Z_output_bytes = sizeof(eltype(Z_full)) * length(Z_full)
+@test_throws ArgumentError assemble_full_Z(
+    Z_efie, Mp, theta_real;
+    max_output_bytes=full_Z_output_bytes - 1)
+@test assemble_full_Z(
+    Z_efie, Mp, theta_real;
+    max_output_bytes=full_Z_output_bytes) == Z_full
 I_imp = Z_full \ v
 
 # Objective

@@ -370,6 +370,13 @@ println("\n── Test 38: DensityInterpolation ──")
     @testset "A: Z_penalty = 0 for all-metal" begin
         rho_bar_metal = ones(Nt_di)
         Z_pen = assemble_Z_penalty(Mt, rho_bar_metal, config)
+        penalty_output_bytes = sizeof(ComplexF64) * N_di^2
+        @test_throws ArgumentError assemble_Z_penalty(
+            Mt, rho_bar_metal, config;
+            max_output_bytes=penalty_output_bytes - 1)
+        @test assemble_Z_penalty(
+            Mt, rho_bar_metal, config;
+            max_output_bytes=penalty_output_bytes) == Z_pen
         # (1 - 1^p) = 0 → zero penalty
         @test norm(Z_pen) < 1e-14
     end

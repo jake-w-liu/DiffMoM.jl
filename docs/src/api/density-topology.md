@@ -72,7 +72,7 @@ Only basis functions supported on triangle `t` contribute to `M_t`.
 
 ---
 
-### `assemble_Z_penalty(Mt, rho_bar, config)`
+### `assemble_Z_penalty(Mt, rho_bar, config; max_output_bytes=2_000_000_000)`
 
 Assemble the density penalty matrix:
 
@@ -89,6 +89,7 @@ with `p = config.p`, `Z_max = config.Z_max`.
 | `Mt` | `Vector{<:AbstractMatrix}` | Triangle mass matrices from `precompute_triangle_mass`. |
 | `rho_bar` | `AbstractVector{<:Real}` | Projected densities, length `Nt`. |
 | `config` | `DensityConfig` | Density optimization configuration. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the dense penalty matrix, checked before allocation. |
 
 **Returns:** `Matrix{ComplexF64}` dense penalty matrix.
 

@@ -1068,7 +1068,8 @@ function solve_system(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number}
 end
 
 """
-    assemble_full_Z(Z_efie, Mp, theta; reactive=false)
+    assemble_full_Z(Z_efie, Mp, theta; reactive=false,
+                    max_output_bytes=2_000_000_000)
 
 Assemble the full MoM matrix: Z(θ) = Z_efie + Z_imp(θ)
 
@@ -1078,7 +1079,14 @@ For reactive impedance:             Z_imp = -Σ_p (iθ_p) M_p
 function assemble_full_Z(Z_efie::Matrix{<:Number},
                          Mp::Vector{<:AbstractMatrix},
                          theta::AbstractVector;
-                         reactive::Bool=false)
+                         reactive::Bool=false,
+                         max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    output_bytes = _checked_array_payload_bytes(
+        eltype(Z_efie), size(Z_efie)...;
+        label="full impedance-loaded system matrix")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "full impedance-loaded system matrix", "max_output_bytes")
     Z = copy(Z_efie)
     assemble_full_Z!(Z, Z_efie, Mp, theta; reactive=reactive)
     return Z

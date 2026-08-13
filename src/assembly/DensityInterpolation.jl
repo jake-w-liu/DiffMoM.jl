@@ -153,7 +153,8 @@ function precompute_triangle_mass(mesh::TriMesh, rwg::RWGData; quad_order::Int=3
 end
 
 """
-    assemble_Z_penalty(Mt, rho_bar, config)
+    assemble_Z_penalty(Mt, rho_bar, config;
+                       max_output_bytes=2_000_000_000)
 
 Assemble the density penalty matrix:
 
@@ -166,10 +167,17 @@ When ρ̄_t = 0 (void):  penalty contribution = Z_max * M_t (large impedance)
 """
 function assemble_Z_penalty(Mt::Vector{<:AbstractMatrix},
                             rho_bar::AbstractVector{<:Real},
-                            config::DensityConfig)
+                            config::DensityConfig;
+                            max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     Nt = length(Mt)
     N = first(_validate_density_mass_inputs(Mt, rho_bar))
     CT = ComplexF64
+
+    output_bytes = _checked_array_payload_bytes(
+        CT, N, N; label="density penalty matrix")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "density penalty matrix", "max_output_bytes")
 
     Z_pen = zeros(CT, N, N)
     for t in 1:Nt
