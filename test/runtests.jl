@@ -2383,16 +2383,33 @@ G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=eta0)
 @test_throws ArgumentError radiation_vectors(mesh, rwg, grid, Inf; eta0=eta0)
 @test_throws ArgumentError radiation_vectors(mesh, rwg, grid, k; eta0=Inf)
 radiation_output_limit = sizeof(ComplexF64) * 3NΩ * N
+radiation_work_limit = DiffMoM._radiation_vectors_work_bytes(
+    ntriangles(mesh), length(tri_quad_rule(3)[2]), NΩ,
+    radiation_output_limit)
+radiation_term_limit = DiffMoM._radiation_vectors_term_count(
+    N, length(tri_quad_rule(3)[2]), NΩ)
 @test_throws ArgumentError radiation_vectors(
     mesh, rwg, grid, k;
     quad_order=3,
     eta0=eta0,
     max_output_bytes=radiation_output_limit - 1)
+@test_throws ArgumentError radiation_vectors(
+    mesh, rwg, grid, k;
+    quad_order=3,
+    eta0=eta0,
+    max_work_bytes=radiation_work_limit - 1)
+@test_throws ArgumentError radiation_vectors(
+    mesh, rwg, grid, k;
+    quad_order=3,
+    eta0=eta0,
+    max_terms=radiation_term_limit - 1)
 @test radiation_vectors(
     mesh, rwg, grid, k;
     quad_order=3,
     eta0=eta0,
-    max_output_bytes=radiation_output_limit) == G_mat
+    max_output_bytes=radiation_output_limit,
+    max_work_bytes=radiation_work_limit,
+    max_terms=radiation_term_limit) == G_mat
 
 # Phase factors are single-use values. Keep transient storage bounded rather
 # than allocating one NΩ × Nq phase matrix for every RWG basis function.

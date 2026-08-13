@@ -8,6 +8,30 @@ export make_sph_grid, radiation_vectors, compute_farfield, incident_farfield
 const _DEFAULT_MAX_SPH_GRID_POINTS = 2_100_000
 const _DEFAULT_MAX_SPH_GRID_RAW_BYTES = 134_400_000
 const _SPH_GRID_RAW_BYTES_PER_POINT = 6sizeof(Float64)
+const _DEFAULT_MAX_RADIATION_WORK_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_RADIATION_TERMS = 200_000_000
+
+function _radiation_vectors_work_bytes(
+        Nt::Int, Nq::Int, NΩ::Int, output_bytes::Int)
+    total = BigInt(output_bytes)
+    # Quadrature points/areas, cached observation directions, quadrature-rule
+    # arrays, and the outer quadrature-vector references coexist with G_mat.
+    total += BigInt(sizeof(Ptr{Cvoid}) + sizeof(Float64)) * Nt
+    total += BigInt(sizeof(Vec3)) * Nt * Nq
+    total += BigInt(sizeof(Vec3)) * NΩ
+    total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    total <= typemax(Int) ||
+        throw(ArgumentError(
+            "radiation-vector raw-workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _radiation_vectors_term_count(N::Int, Nq::Int, NΩ::Int)
+    terms = BigInt(2) * N * Nq * NΩ
+    terms <= typemax(Int) ||
+        throw(ArgumentError("radiation-vector term estimate overflows Int"))
+    return Int(terms)
+end
 
 """
     make_sph_grid(Ntheta, Nphi;
@@ -210,10 +234,16 @@ end
     radiation_vectors(mesh, rwg, grid, k;
                       quad_order=3,
                       eta0=376.730313668,
-                      max_output_bytes=2_000_000_000)
+                      max_output_bytes=2_000_000_000,
+                      max_work_bytes=536_870_912,
+                      max_terms=200_000_000)
 
 Compute the per-basis radiation vectors g_n(r̂_q) for all basis functions
 and all grid directions.
+
+`max_output_bytes` bounds the returned matrix. `max_work_bytes` bounds that
+matrix together with retained quadrature and direction workspaces, while
+`max_terms` bounds the basis/support/quadrature/direction loop count.
 
 Returns G_mat of size (3*NΩ, N) such that
   G_mat[(3*(q-1)+1):(3*q), n] = g_n(r̂_q) ∈ C³
@@ -222,7 +252,9 @@ function radiation_vectors(
         mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
         quad_order::Int=3,
         eta0=376.730313668,
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_work_bytes::Integer=_DEFAULT_MAX_RADIATION_WORK_BYTES,
+        max_terms::Integer=_DEFAULT_MAX_RADIATION_TERMS)
     N = rwg.nedges
     NΩ = _validate_sph_grid(grid)
     _validated_farfield_scalar(k, "radiation_vectors wavenumber")
@@ -240,10 +272,20 @@ function radiation_vectors(
         output_bytes, max_output_bytes,
         "radiation-vector matrix", "max_output_bytes")
     Nt = ntriangles(mesh)
-    prefactor = 1im * k * eta0 / (4π)
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
+    _enforce_payload_limit(
+        _radiation_vectors_work_bytes(Nt, Nq, NΩ, output_bytes),
+        max_work_bytes,
+        "radiation-vector output and workspace", "max_work_bytes")
+    term_count = _radiation_vectors_term_count(N, Nq, NΩ)
+    term_limit = _validated_resource_limit("max_terms", max_terms)
+    term_count <= term_limit ||
+        throw(ArgumentError(
+            "radiation-vector assembly requires $term_count terms, " *
+            "exceeding max_terms=$term_limit"))
+    prefactor = 1im * k * eta0 / (4π)
 
     # Precompute quad points and areas per triangle
     quad_pts = Vector{Vector{Vec3}}(undef, Nt)
