@@ -1536,21 +1536,30 @@ function assemble_excitation(mesh::TriMesh, rwg::RWGData,
 end
 
 """
-    assemble_multiple_excitations(mesh, rwg, excitations; quad_order=3)
+    assemble_multiple_excitations(mesh, rwg, excitations;
+                                  quad_order=3,
+                                  max_output_bytes=2_000_000_000)
 
 Assemble RHS matrix V where each column corresponds to an excitation.
 """
 function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
                                        excitations::Vector{<:AbstractExcitation};
-                                       quad_order::Int=3)
+                                       quad_order::Int=3,
+                                       max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     N = rwg.nedges
     M = length(excitations)
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, N, M;
+        label="multiple-excitation RHS matrix")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "multiple-excitation RHS matrix", "max_output_bytes")
     V = zeros(ComplexF64, N, M)
     # Build the mesh quadrature once and share it across all excitations.
     quad_cache = ExcitationQuadCache(mesh)
     for m in 1:M
-        V[:, m] = assemble_excitation(mesh, rwg, excitations[m];
-                                      quad_order=quad_order, quad_cache=quad_cache)
+        V[:, m] .= assemble_excitation(mesh, rwg, excitations[m];
+                                       quad_order=quad_order, quad_cache=quad_cache)
     end
     return V
 end

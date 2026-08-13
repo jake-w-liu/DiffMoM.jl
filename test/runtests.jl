@@ -3997,6 +3997,17 @@ V_exc = assemble_multiple_excitations(mesh_exc, rwg_exc, [gap_a, make_plane_wave
 @assert size(V_exc) == (rwg_exc.nedges, 2)
 @assert norm(V_exc[:, 1] - v_gap_a) / max(norm(v_gap_a), 1e-30) < 1e-13
 @assert norm(V_exc[:, 2] - v_new_exc) / max(norm(v_new_exc), 1e-30) < 1e-13
+multiple_excitation_bytes = sizeof(ComplexF64) * length(V_exc)
+@test_throws ArgumentError assemble_multiple_excitations(
+    mesh_exc, rwg_exc,
+    [gap_a, make_plane_wave(k_vec_exc, 1.0, pol_exc)];
+    quad_order=3,
+    max_output_bytes=multiple_excitation_bytes - 1)
+@test assemble_multiple_excitations(
+    mesh_exc, rwg_exc,
+    [gap_a, make_plane_wave(k_vec_exc, 1.0, pol_exc)];
+    quad_order=3,
+    max_output_bytes=multiple_excitation_bytes) == V_exc
 
 weights_exc = ComplexF64[0.3 - 0.1im, -0.2 + 0.7im]
 multi_exc = make_multi_excitation([gap_a, make_plane_wave(k_vec_exc, 1.0, pol_exc)], weights_exc)
