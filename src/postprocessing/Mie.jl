@@ -9,6 +9,215 @@ const _MAX_MIE_CONTINUED_FRACTION_ITERATIONS = 100_000
 const _MIE_CONTINUED_FRACTION_TOLERANCE = 8 * eps(Float64)
 const _MIE_CONTINUED_FRACTION_TINY = 1.0e-300
 const _MIE_FALLBACK_PRECISION = 512
+const _MIE_EXTERIOR_SERIES_THRESHOLD = 1.0
+const _MIE_EXACT_SERIES_PRECISION = 512
+
+@inline function _mie_exterior_initial_pair(x::Float64)
+    if x > _MIE_EXTERIOR_SERIES_THRESHOLD
+        sin_x = sin(x)
+        cos_x = cos(x)
+        return sin_x / x,
+               -cos_x / x,
+               sin_x / x^2 - cos_x / x,
+               -cos_x / x^2 - sin_x / x
+    end
+
+    x2 = x * x
+    j0 = 1.0
+    j1 = x / 3
+    term0 = 1.0
+    term1 = j1
+    for k in 1:12
+        term0 *= -x2 / ((2k) * (2k + 1))
+        j0 += term0
+        term1 *= -x2 / ((2k) * (2k + 3))
+        j1 += term1
+        abs(term0) + abs(term1) <= eps(Float64) *
+                                   (abs(j0) + abs(j1)) && break
+    end
+    inverse_x = inv(x)
+    y0 = -cos(x) * inverse_x
+    y1 = -cos(x) * inverse_x^2 - sin(x) * inverse_x
+    return j0, y0, j1, y1
+end
+
+@inline function _mie_requires_exact_exterior(
+    x::Float64,
+    nstop::Int,
+)
+    _, exponent = frexp(x)
+    inverse_exponent = max(0, -exponent)
+    return Base.checked_mul(nstop + 1, inverse_exponent) >= 1000
+end
+
+@inline function _mie_riccati_psi_series(
+    order::Int,
+    argument::Complex{BigFloat},
+    leading::Complex{BigFloat},
+)
+    term = one(argument)
+    value_series = term
+    derivative_series = BigFloat(order + 1) * term
+    argument_squared = argument * argument
+    for series_order in 1:128
+        term *= -argument_squared /
+                (BigFloat(2series_order) *
+                 BigFloat(2order + 2series_order + 1))
+        updated = value_series + term
+        derivative_series +=
+            BigFloat(order + 1 + 2series_order) * term
+        if updated == value_series
+            value_series = updated
+            break
+        end
+        value_series = updated
+    end
+    return leading * value_series,
+           (leading / argument) * derivative_series
+end
+
+@noinline function _mie_s1s2_pec_exact_exterior(
+    x::Float64,
+    cosine::Float64,
+    nstop::Int,
+)
+    return setprecision(BigFloat, _MIE_EXACT_SERIES_PRECISION) do
+        xb = BigFloat(x)
+        argument = Complex{BigFloat}(xb, zero(BigFloat))
+        leading = argument
+        chi_previous = -cos(xb)
+        chi_current = -cos(xb) / xb - sin(xb)
+        pi_previous2 = 0.0
+        pi_previous1 = 1.0
+        first_sum = zero(Complex{BigFloat})
+        second_sum = zero(Complex{BigFloat})
+
+        for order in 1:nstop
+            leading *= argument / BigFloat(2order + 1)
+            psi, psi_derivative =
+                _mie_riccati_psi_series(order, argument, leading)
+            chi_derivative = chi_previous -
+                             (BigFloat(order) / xb) * chi_current
+            xi = psi - Complex{BigFloat}(zero(BigFloat), chi_current)
+            xi_derivative = psi_derivative -
+                            Complex{BigFloat}(zero(BigFloat), chi_derivative)
+            coefficient_a = -psi_derivative / xi_derivative
+            coefficient_b = -psi / xi
+
+            pi_order, pi_previous = if order == 1
+                (1.0, 0.0)
+            else
+                (((2order - 1) / (order - 1)) * cosine * pi_previous1 -
+                 (order / (order - 1)) * pi_previous2,
+                 pi_previous1)
+            end
+            tau_order = order * cosine * pi_order -
+                        (order + 1) * pi_previous
+            angular_scale = BigFloat(2order + 1) /
+                            BigFloat(order * (order + 1))
+            first_sum += angular_scale *
+                         (coefficient_a * BigFloat(pi_order) +
+                          coefficient_b * BigFloat(tau_order))
+            second_sum += angular_scale *
+                          (coefficient_a * BigFloat(tau_order) +
+                           coefficient_b * BigFloat(pi_order))
+
+            if order >= 2
+                pi_previous2, pi_previous1 = pi_previous1, pi_order
+            end
+            if order < nstop
+                chi_next = (BigFloat(2order + 1) / xb) * chi_current -
+                           chi_previous
+                chi_previous, chi_current = chi_current, chi_next
+            end
+        end
+        converted = ComplexF64(first_sum), ComplexF64(second_sum)
+        return _assert_finite_mie_amplitudes(
+            converted[1], converted[2], "PEC Mie series")
+    end
+end
+
+@noinline function _mie_s1s2_dielectric_exact_exterior(
+    x::Float64,
+    cosine::Float64,
+    epsc::ComplexF64,
+    muc::ComplexF64,
+    nstop::Int,
+)
+    return setprecision(BigFloat, _MIE_EXACT_SERIES_PRECISION) do
+        xb = BigFloat(x)
+        exterior_argument = Complex{BigFloat}(xb, zero(BigFloat))
+        epsilon = Complex{BigFloat}(epsc)
+        permeability = Complex{BigFloat}(muc)
+        refractive_index = sqrt(epsilon * permeability)
+        internal_argument = refractive_index * xb
+        exterior_leading = exterior_argument
+        internal_leading = internal_argument
+        chi_previous = -cos(xb)
+        chi_current = -cos(xb) / xb - sin(xb)
+        pi_previous2 = 0.0
+        pi_previous1 = 1.0
+        first_sum = zero(Complex{BigFloat})
+        second_sum = zero(Complex{BigFloat})
+
+        for order in 1:nstop
+            denominator = BigFloat(2order + 1)
+            exterior_leading *= exterior_argument / denominator
+            internal_leading *= internal_argument / denominator
+            psi, psi_derivative = _mie_riccati_psi_series(
+                order, exterior_argument, exterior_leading)
+            interior_function, interior_derivative =
+                _mie_riccati_psi_series(
+                    order, internal_argument, internal_leading)
+            chi_derivative = chi_previous -
+                             (BigFloat(order) / xb) * chi_current
+            xi = psi - Complex{BigFloat}(zero(BigFloat), chi_current)
+            xi_derivative = psi_derivative -
+                            Complex{BigFloat}(zero(BigFloat), chi_derivative)
+
+            numerator_a = refractive_index * interior_function * psi_derivative -
+                          permeability * interior_derivative * psi
+            denominator_a = refractive_index * interior_function * xi_derivative -
+                            permeability * interior_derivative * xi
+            numerator_b = permeability * interior_function * psi_derivative -
+                          refractive_index * interior_derivative * psi
+            denominator_b = permeability * interior_function * xi_derivative -
+                            refractive_index * interior_derivative * xi
+            coefficient_a = -numerator_a / denominator_a
+            coefficient_b = -numerator_b / denominator_b
+
+            pi_order, pi_previous = if order == 1
+                (1.0, 0.0)
+            else
+                (((2order - 1) / (order - 1)) * cosine * pi_previous1 -
+                 (order / (order - 1)) * pi_previous2,
+                 pi_previous1)
+            end
+            tau_order = order * cosine * pi_order -
+                        (order + 1) * pi_previous
+            angular_scale = BigFloat(2order + 1) /
+                            BigFloat(order * (order + 1))
+            first_sum += angular_scale *
+                         (coefficient_a * BigFloat(pi_order) +
+                          coefficient_b * BigFloat(tau_order))
+            second_sum += angular_scale *
+                          (coefficient_a * BigFloat(tau_order) +
+                           coefficient_b * BigFloat(pi_order))
+
+            if order >= 2
+                pi_previous2, pi_previous1 = pi_previous1, pi_order
+            end
+            if order < nstop
+                chi_next = (BigFloat(2order + 1) / xb) * chi_current -
+                           chi_previous
+                chi_previous, chi_current = chi_current, chi_next
+            end
+        end
+        converted = ComplexF64(first_sum), ComplexF64(second_sum)
+        return _assert_finite_mie_amplitudes(
+            converted[1], converted[2], "dielectric Mie series")
+    end
+end
 
 @inline function _validated_mie_positive(value::Float64,
                                          label::AbstractString)
@@ -328,13 +537,10 @@ function mie_s1s2_pec(x::Float64, μ::Float64; nmax=nothing)
     x = _validated_mie_positive(x, "x")
     μ = _validated_mie_cosine(μ, "μ")
     nstop = _validated_mie_order(nmax, x)
+    _mie_requires_exact_exterior(x, nstop) &&
+        return _mie_s1s2_pec_exact_exterior(x, μ, nstop)
 
-    sin_x = sin(x)
-    cos_x = cos(x)
-    j_nm1 = sin_x / x
-    y_nm1 = -cos_x / x
-    j_n = sin_x / x^2 - cos_x / x
-    y_n = -cos_x / x^2 - sin_x / x
+    j_nm1, y_nm1, j_n, y_n = _mie_exterior_initial_pair(x)
 
     # Angular functions:
     #   π_n = P_n^1(μ)/sin(θ),  τ_n = dP_n^1(μ)/dθ
@@ -403,15 +609,13 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
     nstop = _validated_mie_order(nmax, x)
     epsc == 1.0 + 0.0im && muc == 1.0 + 0.0im &&
         return 0.0 + 0.0im, 0.0 + 0.0im
+    _mie_requires_exact_exterior(x, nstop) &&
+        return _mie_s1s2_dielectric_exact_exterior(
+            x, cosγ, epsc, muc, nstop)
     m = _mie_material_refractive_index(epsc, muc)
     z = _mie_internal_size_parameter(m, x)
 
-    sin_x = sin(x)
-    cos_x = cos(x)
-    j_nm1 = sin_x / x
-    y_nm1 = -cos_x / x
-    j_n = sin_x / x^2 - cos_x / x
-    y_n = -cos_x / x^2 - sin_x / x
+    j_nm1, y_nm1, j_n, y_n = _mie_exterior_initial_pair(x)
 
     use_scaled_forward = _mie_use_scaled_forward_recurrence(z, nstop)
     log_derivatives = !use_scaled_forward &&

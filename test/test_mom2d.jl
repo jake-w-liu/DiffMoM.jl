@@ -500,6 +500,10 @@ end
         @test c[N + 1] ≈ c0_ref atol=1e-14  # n=0 coefficient
         @test_throws ArgumentError mie_coefficients_2d(Inf, a, 1.0; pec=true)
         @test_throws ArgumentError mie_coefficients_2d(k0, a, 1.0; nmax=-1, pec=true)
+        @test_throws ArgumentError mie_coefficients_2d(
+            k0, a, 1.0; nmax=DiffMoM._MAX_MIE2D_ORDER + 1, pec=true)
+        @test_throws ArgumentError DiffMoM._validated_mie2d_order(
+            1.0e8, nothing)
 
         # Total field on cylinder surface should be near zero for PEC
         # Tolerance limited by Mie series truncation at finite nmax

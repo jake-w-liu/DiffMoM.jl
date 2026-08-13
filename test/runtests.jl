@@ -897,8 +897,43 @@ mesh_cluster_wide = TriMesh(
 mesh_cluster_wide_out = cluster_mesh_vertices(mesh_cluster_wide, 1.5e308)
 @test mesh_cluster_wide_out.xyz == mesh_cluster_wide.xyz
 @test mesh_cluster_wide_out.tri == mesh_cluster_wide.tri
-@test_throws ArgumentError cluster_mesh_vertices(
+mesh_cluster_huge_index = cluster_mesh_vertices(mesh_cluster_wide, 0.25)
+@test mesh_cluster_huge_index.xyz == mesh_cluster_wide.xyz
+@test mesh_cluster_huge_index.tri == mesh_cluster_wide.tri
+mesh_cluster_min_cell = cluster_mesh_vertices(
     mesh_cluster_in, nextfloat(0.0))
+@test mesh_cluster_min_cell.xyz == mesh_cluster_in.xyz
+@test mesh_cluster_min_cell.tri == mesh_cluster_in.tri
+@test_throws ArgumentError cluster_mesh_vertices(
+    mesh_cluster_in, nextfloat(0.0); max_exact_cell_indices=1)
+
+# Merged centers are the correctly rounded mean of the stored coordinates;
+# avoid double-rounding a wide exact integer before division by the count.
+cluster_mean_base = Float64(2^53)
+cluster_mean_third = nextfloat(cluster_mean_base, 5)
+cluster_mean_mesh = TriMesh(
+    Float64[
+        cluster_mean_base cluster_mean_base cluster_mean_third cluster_mean_base cluster_mean_base;
+        0 0 0 32 0;
+        0 0 0 0 32
+    ],
+    reshape(Int[1, 4, 5], 3, 1),
+)
+cluster_mean_result = cluster_mesh_vertices(cluster_mean_mesh, 16.0)
+cluster_mean_reference = setprecision(BigFloat, 4352) do
+    Float64((BigFloat(cluster_mean_base) + BigFloat(cluster_mean_base) +
+             BigFloat(cluster_mean_third)) / 3)
+end
+@test cluster_mean_result.xyz[1, 1] == cluster_mean_reference
+
+# The common merged-cell path must not allocate one BigFloat mean per output
+# coordinate.
+mesh_cluster_merge_alloc = make_rect_plate(1.0, 1.0, 100, 100)
+cluster_mesh_vertices(mesh_cluster_merge_alloc, 0.015)
+GC.gc()
+cluster_merge_alloc = @allocated cluster_mesh_vertices(
+    mesh_cluster_merge_alloc, 0.015)
+@test cluster_merge_alloc < 12_000_000
 
 # A no-merge pass must preserve topology without allocating a temporary
 # three-element sort buffer for every triangle.
@@ -939,6 +974,18 @@ mesh_nm_clean = drop_nonmanifold_triangles(mesh_nm)
 report_nm = mesh_quality_report(mesh_nm_clean)
 @assert report_nm.n_nonmanifold_edges == 0
 @test_throws ArgumentError drop_nonmanifold_triangles(mesh_nm; max_passes=0)
+for malformed_rows in (1, 2)
+    malformed_drop_mesh = TriMesh(
+        Float64[0 1 0; 0 0 1; 0 0 0],
+        reshape(collect(1:malformed_rows), malformed_rows, 1),
+    )
+    @test_throws DimensionMismatch drop_nonmanifold_triangles(
+        malformed_drop_mesh)
+end
+mesh_nm_alloc = make_rect_plate(1.0, 1.0, 100, 100)
+drop_nonmanifold_triangles(mesh_nm_alloc)
+GC.gc()
+@test @allocated(drop_nonmanifold_triangles(mesh_nm_alloc)) < 5_000_000
 mesh_nm_with_orphan = TriMesh(
     hcat(Float64[9.0, 9.0, 9.0], xyz_nm),
     tri_nm .+ 1,
@@ -976,6 +1023,58 @@ coarse_close = coarsen_mesh_to_target_rwg(
 @test coarse_close.best_gap == 1
 @test coarse_close.iterations == 0
 
+# A valid boundary mesh can have no interior RWG functions; preserve the
+# documented no-op behavior when it is already below the target.
+zero_rwg_mesh = TriMesh(
+    Float64[0 1 0; 0 0 1; 0 0 0], reshape(Int[1, 2, 3], 3, 1))
+zero_rwg_result = coarsen_mesh_to_target_rwg(zero_rwg_mesh, 1)
+@test zero_rwg_result.mesh === zero_rwg_mesh
+@test zero_rwg_result.rwg_count == 0
+@test zero_rwg_result.iterations == 0
+for invalid_vertex in (0, 4)
+    invalid_coarsen_mesh = TriMesh(
+        copy(zero_rwg_mesh.xyz),
+        reshape(Int[1, 2, invalid_vertex], 3, 1),
+    )
+    @test_throws ArgumentError coarsen_mesh_to_target_rwg(
+        invalid_coarsen_mesh, 1)
+end
+for coordinate_rows in (1, 2)
+    malformed_coordinate_mesh = TriMesh(
+        zeros(Float64, coordinate_rows, 3),
+        reshape(Int[1, 2, 3], 3, 1),
+    )
+    @test_throws DimensionMismatch coarsen_mesh_to_target_rwg(
+        malformed_coordinate_mesh, 1)
+end
+for connectivity_rows in (1, 2)
+    malformed_connectivity_mesh = TriMesh(
+        copy(zero_rwg_mesh.xyz),
+        reshape(collect(1:connectivity_rows), connectivity_rows, 1),
+    )
+    @test_throws DimensionMismatch coarsen_mesh_to_target_rwg(
+        malformed_connectivity_mesh, 1)
+end
+for invalid_coordinate in (NaN, Inf)
+    invalid_orphan_mesh = TriMesh(
+        hcat(zero_rwg_mesh.xyz, Float64[invalid_coordinate, 0.0, 0.0]),
+        copy(zero_rwg_mesh.tri),
+    )
+    @test_throws ArgumentError coarsen_mesh_to_target_rwg(
+        invalid_orphan_mesh, 1)
+end
+
+# Candidate over-collapse and owned quality failures are coarse-side bracket
+# events, not fatal errors or resource-limit suppression.
+@test DiffMoM._recoverable_coarsening_candidate_error(
+    ArgumentError(
+        "cluster_mesh_vertices: clustering removed all triangles"))
+@test DiffMoM._recoverable_coarsening_candidate_error(
+    ErrorException(
+        "drop_nonmanifold_triangles: empty mesh after cleanup."))
+@test !DiffMoM._recoverable_coarsening_candidate_error(
+    OverflowError("Mesh quality precheck failed:"))
+
 target_rwg = 60
 coarse_result = coarsen_mesh_to_target_rwg(mesh_coarse_in, target_rwg; max_iters=8)
 rwg_coarse_out = build_rwg(coarse_result.mesh; precheck=true, allow_boundary=true)
@@ -985,6 +1084,73 @@ rwg_coarse_out = build_rwg(coarse_result.mesh; precheck=true, allow_boundary=tru
 @test_throws ArgumentError coarsen_mesh_to_target_rwg(mesh_coarse_in, target_rwg; max_iters=0)
 report_coarse_out = mesh_quality_report(coarse_result.mesh)
 @assert mesh_quality_ok(report_coarse_out; allow_boundary=true, require_closed=false)
+
+# Coarsening is surface-dimensional and scale invariant; a fixed absolute
+# length floor must not collapse a nanoscale plate or overflow a huge one.
+for scale in (1.0e-100, 1.0e150, 1.0e155)
+    scaled_input = make_rect_plate(scale, scale, 12, 12)
+    scaled_result = coarsen_mesh_to_target_rwg(
+        scaled_input, target_rwg; max_iters=8)
+    if scale < 1.0e155
+        @test scaled_result.rwg_count == coarse_result.rwg_count
+        @test scaled_result.best_gap == coarse_result.best_gap
+    else
+        # Some coarser triangles have unrepresentable areas at this scale;
+        # they bracket the search while the best valid candidate is retained.
+        @test scaled_result.best_gap < rwg_coarse_in.nedges - target_rwg
+        @test scaled_result.rwg_count == build_rwg(
+            scaled_result.mesh; precheck=true, allow_boundary=true).nedges
+    end
+    @test mesh_quality_ok(
+        mesh_quality_report(scaled_result.mesh); allow_boundary=true)
+end
+
+# An overflowing total area is kept as a scaled pair; sizing must not rescan
+# every triangle with allocating BigFloat arithmetic.
+coarse_area_alloc_mesh = make_rect_plate(1.0e155, 1.0e155, 40, 40)
+DiffMoM._mesh_surface_area_for_coarsening(coarse_area_alloc_mesh)
+GC.gc()
+@test @allocated(
+    DiffMoM._mesh_surface_area_for_coarsening(coarse_area_alloc_mesh)) < 5_000_000
+coarse_tiny_area_alloc_mesh = make_rect_plate(1.0e-160, 1.0e-160, 40, 40)
+DiffMoM._mesh_surface_area_for_coarsening(coarse_tiny_area_alloc_mesh)
+GC.gc()
+@test @allocated(
+    DiffMoM._mesh_surface_area_for_coarsening(
+        coarse_tiny_area_alloc_mesh)) < 5_000_000
+
+coarse_tiny_runtime_mesh = make_rect_plate(1.0e-160, 1.0e-160, 12, 12)
+coarsen_mesh_to_target_rwg(
+    coarse_tiny_runtime_mesh, target_rwg; max_iters=2)
+GC.gc()
+@test @allocated(coarsen_mesh_to_target_rwg(
+    coarse_tiny_runtime_mesh, target_rwg; max_iters=2)) < 20_000_000
+
+# Orphan coordinates cannot set the normalization scale of retained geometry.
+coarse_orphan_input = TriMesh(
+    hcat(mesh_coarse_in.xyz, Float64[1.0e308, 1.0e308, 1.0e308]),
+    copy(mesh_coarse_in.tri),
+)
+coarse_orphan_result = coarsen_mesh_to_target_rwg(
+    coarse_orphan_input, target_rwg; max_iters=8)
+@test coarse_orphan_result.rwg_count == coarse_result.rwg_count
+@test coarse_orphan_result.best_gap == coarse_result.best_gap
+@test nvertices(coarse_orphan_result.mesh) < nvertices(coarse_orphan_input)
+for orphan_value in (-1.0e308, 1.0e308)
+    signed_orphan_input = TriMesh(
+        hcat(mesh_coarse_in.xyz,
+             Float64[orphan_value, orphan_value, orphan_value]),
+        copy(mesh_coarse_in.tri),
+    )
+    signed_orphan_result = coarsen_mesh_to_target_rwg(
+        signed_orphan_input, 200; max_iters=8)
+    base_target_200 = coarsen_mesh_to_target_rwg(
+        mesh_coarse_in, 200; max_iters=8)
+    @test signed_orphan_result.rwg_count == base_target_200.rwg_count
+    @test signed_orphan_result.best_gap == base_target_200.best_gap
+    @test signed_orphan_result.mesh.xyz == base_target_200.mesh.xyz
+    @test signed_orphan_result.mesh.tri == base_target_200.mesh.tri
+end
 
 report_res_before = mesh_resolution_report(mesh_edges_test, 3e8; points_per_wavelength=2.0)
 @assert report_res_before.wavelength_m ≈ 299792458.0 / 3e8
@@ -1272,6 +1438,24 @@ S1_endpoint, S2_endpoint = mie_s1s2_pec(k_mie * a_mie, 1.0)
 @test_throws OverflowError mie_bistatic_rcs_pec(
     1.0e-300, 1.0e300, khat_mie, pol_mie, rhat_mie; nmax=3)
 
+# Stable exterior Riccati seeds avoid cancellation in j₁ for Rayleigh-size
+# spheres. These are independent 100-digit direct-reference values.
+mie_small_pec_reference = (
+    -7.166666666666666e-49 - 8.5e-25im,
+    -3.666666666666666e-49 + 2.0e-25im,
+)
+mie_small_pec = mie_s1s2_pec(1.0e-8, 0.3; nmax=1)
+for component in 1:2
+    @test isapprox(
+        mie_small_pec[component], mie_small_pec_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
+mie_series_boundary_reference = 0.04160159881993972
+@test isapprox(
+    DiffMoM._mie_exterior_initial_pair(0.125)[3],
+    mie_series_boundary_reference;
+    rtol=4eps(Float64), atol=0.0)
+
 S1_dielectric_mie, S2_dielectric_mie =
     mie_s1s2_dielectric(k_mie * a_mie, μ_mie, 2.5)
 @test isfinite(S1_dielectric_mie)
@@ -1285,6 +1469,30 @@ S1_dielectric_mie, S2_dielectric_mie =
     1.0, 0.0, 2.0; mu_r=Inf, nmax=3)
 @test_throws OverflowError mie_bistatic_rcs_dielectric(
     1.0e-300, 1.0e300, khat_mie, pol_mie, rhat_mie, 2.0; nmax=3)
+mie_small_dielectric_reference = (
+    -1.6666666666666676e-49 - 5.000000000000002e-25im,
+    -5.000000000000003e-50 - 1.5000000000000022e-25im,
+)
+mie_small_dielectric = mie_s1s2_dielectric(
+    1.0e-8, 0.3, 4.0; nmax=1)
+for component in 1:2
+    @test isapprox(
+        mie_small_dielectric[component],
+        mie_small_dielectric_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
+@test mie_s1s2_pec(1.0e-155, 0.3; nmax=3) ==
+      (0.0 + 0.0im, 0.0 + 0.0im)
+@test mie_s1s2_dielectric(1.0e-155, 0.3, 4.0; nmax=3) ==
+      (0.0 + 0.0im, 0.0 + 0.0im)
+mie_exact_exterior = mie_s1s2_dielectric(
+    1.0e-80, 0.3, 4.0; nmax=3)
+@test isapprox(
+    mie_exact_exterior[1], -5.0e-241im;
+    rtol=8eps(Float64), atol=0.0)
+@test isapprox(
+    mie_exact_exterior[2], -1.5e-241im;
+    rtol=8eps(Float64), atol=0.0)
 
 # Dielectric truncation follows the exterior size parameter, while the
 # internal Riccati-Bessel logarithmic derivative remains stable when n >> |mx|.
@@ -7335,6 +7543,11 @@ thin_area_reference, thin_normal_reference = setprecision(BigFloat, 512) do
 end
 @test triangle_area(mesh_thin_translated, 1) == thin_area_reference
 @test triangle_normal(mesh_thin_translated, 1) == thin_normal_reference
+@test DiffMoM._validate_coarsening_candidate_area_range(
+    mesh_thin_translated) === nothing
+thin_coarsen = coarsen_mesh_to_target_rwg(
+    mesh_thin_translated, 1; area_tol_rel=0.0)
+@test thin_coarsen.mesh === mesh_thin_translated
 
 mesh_huge_collinear = TriMesh(
     Float64[0 1.0e200 2.0e200; 0 1.0e200 2.0e200; 0 0 0],
@@ -7384,6 +7597,16 @@ mesh_hidden_subnormal_area = TriMesh(
     tri_right,
 )
 @test triangle_area(mesh_hidden_subnormal_area, 1) == nextfloat(0.0)
+@test_throws OverflowError DiffMoM._validate_coarsening_candidate_area_range(
+    mesh_hidden_area_overflow)
+@test DiffMoM._validate_coarsening_candidate_area_range(
+    mesh_hidden_finite_area) === nothing
+@test DiffMoM._validate_coarsening_candidate_area_range(
+    mesh_hidden_subnormal_area) === nothing
+hidden_subnormal_coarsen = coarsen_mesh_to_target_rwg(
+    mesh_hidden_subnormal_area, 1; area_tol_rel=0.0)
+@test hidden_subnormal_coarsen.mesh === mesh_hidden_subnormal_area
+@test hidden_subnormal_coarsen.rwg_count == 0
 
 mesh_extreme_center = TriMesh(
     Float64[1.0e308 1.0e308 1.0e308; 0 1 0; 0 0 1],

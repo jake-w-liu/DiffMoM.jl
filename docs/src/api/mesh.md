@@ -389,6 +389,15 @@ Convenience wrapper: read an OBJ, repair it, and write the repaired mesh to a ne
 
 Auto-coarsen a mesh by voxel clustering to approach a target RWG basis count. This is useful when an imported mesh is too fine (too many unknowns) for the available memory or computation time.
 
+The initial voxel size is derived from physical surface area rather than a
+bounding-box volume, so planar meshes and uniformly scaled meshes follow the
+same search. Candidates that over-collapse are treated as the coarse side of
+the search bracket; the best previously valid mesh is retained. Candidate
+quality checks run on a translated, power-of-two-normalized copy, while the
+returned mesh retains the original physical coordinates. This preserves
+relative geometry checks without repeated high-precision work at extreme
+coordinate scales.
+
 **Full signature:**
 ```julia
 coarsen_mesh_to_target_rwg(mesh, target_rwg;
@@ -402,7 +411,7 @@ coarsen_mesh_to_target_rwg(mesh, target_rwg;
 |-----------|------|---------|-------------|
 | `mesh` | `TriMesh` | -- | Input mesh (typically already repaired). |
 | `target_rwg` | `Int` | -- | Target number of RWG basis functions. The actual count will be close but may not match exactly, since coarsening is discrete. |
-| `max_iters` | `Int` | `10` | Maximum binary-search iterations for finding the right voxel size. |
+| `max_iters` | `Int` | `10` | Maximum bracketed ratio-update iterations for finding the voxel size. |
 | `allow_boundary` | `Bool` | `true` | Allow boundary edges in the repair and RWG-counting of each candidate mesh. Set to `false` for closed surfaces where every edge must be interior. |
 | `require_closed` | `Bool` | `false` | Require that each candidate surface is closed (zero boundary edges). Use for enclosed bodies (spheres, aircraft hulls) where boundary edges indicate a mesh defect. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection during candidate repair and RWG counting. A triangle is degenerate if its area is less than `area_tol_rel * bbox_diagonal^2`. |
@@ -416,11 +425,12 @@ coarsen_mesh_to_target_rwg(mesh, target_rwg;
 
 ### `cluster_mesh_vertices(mesh, h)`
 
-Low-level voxel clustering: partition space into cubic cells of side `h`, replace all vertices in each cell with their centroid, and remap triangles. Degenerate and duplicate triangles created by remapping are removed.
+Low-level voxel clustering: partition space into cubic cells of side `h`, replace all vertices in each cell with their correctly rounded centroid, and remap triangles. Degenerate and duplicate triangles created by remapping are removed. Exact dyadic cell keys cover the full finite Float64 coordinate range, including indices above `typemax(Int)`.
 
 **Parameters:**
 - `mesh::TriMesh`: Input mesh.
 - `h::Float64`: Voxel cell size in meters (> 0). Smaller `h` = less coarsening.
+- `max_exact_cell_indices::Integer=10_000`: Cap on distinct coordinates that require cold exact cell-boundary classification.
 
 **Returns:** `TriMesh` (coarsened mesh).
 
@@ -428,11 +438,16 @@ Low-level voxel clustering: partition space into cubic cells of side `h`, replac
 
 ### `drop_nonmanifold_triangles(mesh; max_passes=8)`
 
-Iteratively remove triangles attached to non-manifold edges (edges with more than two incident triangles). Each pass may expose new non-manifold edges, so multiple passes are needed.
+Remove triangles attached to non-manifold edges (edges with more than two
+incident triangles). Edge incidences are counted with a compact saturating
+counter and all offending triangles are removed simultaneously. Removing
+triangles cannot increase an edge incidence, so one count-and-filter pass is
+sufficient.
 
 **Parameters:**
 - `mesh::TriMesh`: Input mesh.
-- `max_passes::Int=8`: Maximum iteration count. Usually converges in 2--3 passes.
+- `max_passes::Int=8`: Retained for API compatibility and validated as positive;
+  cleanup uses the single sufficient simultaneous-removal pass.
 
 **Returns:** `TriMesh` with only manifold and boundary edges.
 

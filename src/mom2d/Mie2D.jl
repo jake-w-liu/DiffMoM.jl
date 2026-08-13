@@ -8,6 +8,7 @@ export mie_coefficients_2d, mie_scattered_field_2d, mie_total_field_2d
 const _MIE2D_FALLBACK_PRECISION = 256
 const _MIE2D_SMALL_ARGUMENT_CUTOFF = 1e-25
 const _MIE2D_INTERNAL_SERIES_LIMIT = 0.5
+const _MAX_MIE2D_ORDER = 100_000
 
 function _besselj_integer_series_big_2d(
     order::Int,
@@ -146,6 +147,10 @@ function _validated_mie2d_order(k0a::Float64,
         err isa OverflowError || rethrow()
         throw(ArgumentError("nmax=$N is too large to index a coefficient vector"))
     end
+    N <= _MAX_MIE2D_ORDER ||
+        throw(ArgumentError(
+            "2D Mie order $N exceeds the supported limit " *
+            "$_MAX_MIE2D_ORDER"))
     return N, coefficient_count
 end
 

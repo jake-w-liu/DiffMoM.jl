@@ -1646,90 +1646,288 @@ end
     return (a, b, c)
 end
 
+const _DEFAULT_CLUSTER_MAX_EXACT_CELL_INDICES = 10_000
+const _CLUSTER_FLOAT_EXPONENT_MIN = -1074
+const _CLUSTER_FLOAT_EXPONENT_MAX = 971
+const _CLUSTER_FLOAT_EXPONENT_COUNT =
+    _CLUSTER_FLOAT_EXPONENT_MAX - _CLUSTER_FLOAT_EXPONENT_MIN + 1
+
+@noinline function _cluster_cell_index_exact(value::Float64,
+                                              origin::Float64,
+                                              h::Float64)
+    value == origin && return BigInt(0)
+    value_significand, value_exponent, value_sign = Base.decompose(value)
+    origin_significand, origin_exponent, origin_sign = Base.decompose(origin)
+    common_exponent = if iszero(value)
+        origin_exponent
+    elseif iszero(origin)
+        value_exponent
+    else
+        min(value_exponent, origin_exponent)
+    end
+    numerator = BigInt(value_sign) * BigInt(value_significand)
+    numerator <<= value_exponent - common_exponent
+    origin_integer = BigInt(origin_sign) * BigInt(origin_significand)
+    origin_integer <<= origin_exponent - common_exponent
+    numerator -= origin_integer
+    numerator >= 0 ||
+        throw(ArgumentError(
+            "cluster_mesh_vertices: value=$value is below origin=$origin"))
+
+    h_significand, h_exponent, _ = Base.decompose(h)
+    if h_exponent >= common_exponent
+        denominator = BigInt(h_significand)
+        denominator <<= h_exponent - common_exponent
+        return fld(numerator, denominator)
+    end
+    numerator <<= common_exponent - h_exponent
+    return fld(numerator, BigInt(h_significand))
+end
+
 @inline function _cluster_cell_index(value::Float64,
                                      origin::Float64,
-                                     h::Float64)
+                                     h::Float64,
+                                     exact_indices::Base.RefValue{Int},
+                                     exact_index_limit::Int)
     (isfinite(value) && isfinite(origin)) ||
         throw(ArgumentError(
             "cluster_mesh_vertices: vertex coordinates must be finite"))
+    value == origin && return 0
     delta = value - origin
-    # Opposite-sign finite coordinates can have an unrepresentable difference
-    # even when division by a large cell size makes the cell index small.
-    scaled = isfinite(delta) ? delta / h : value / h - origin / h
-    (isfinite(scaled) && scaled >= 0.0) ||
+    if isfinite(delta) && delta >= 0.0
+        scaled = delta / h
+        if isfinite(scaled) && 0.0 <= scaled < Float64(typemax(Int))
+            subtraction_error = _two_difference_error(
+                value, origin, delta)
+            scaled_error = subtraction_error / h
+            uncertainty = if isfinite(scaled_error)
+                abs(scaled_error) +
+                8 * eps(Float64) * max(1.0, abs(scaled))
+            else
+                Inf
+            end
+            distance_to_boundary = abs(scaled - round(scaled))
+            if distance_to_boundary > uncertainty
+                return floor(Int, scaled)
+            end
+        end
+    end
+
+    exact_indices[] < exact_index_limit ||
         throw(ArgumentError(
-            "cluster_mesh_vertices: coordinate offset is not representable " *
-            "for value=$value, origin=$origin, h=$h"))
-    return try
-        floor(Int, scaled)
-    catch err
-        err isa InexactError || rethrow()
-        throw(ArgumentError(
-            "cluster_mesh_vertices: cell index is outside the Int range " *
-            "for value=$value, origin=$origin, h=$h"))
+            "cluster_mesh_vertices exceeded max_exact_cell_indices=" *
+            "$exact_index_limit; too many distinct coordinates require " *
+            "exact voxel classification"))
+    exact_indices[] += 1
+    exact_index = _cluster_cell_index_exact(value, origin, h)
+    return exact_index <= typemax(Int) ? Int(exact_index) : exact_index
+end
+
+@inline function _cluster_cell_index_cached(
+        value::Float64, origin::Float64, h::Float64,
+        cache::Dict{UInt64,Union{Int,BigInt}},
+        exact_indices::Base.RefValue{Int}, exact_index_limit::Int)
+    key = reinterpret(UInt64, iszero(value) ? 0.0 : value)
+    haskey(cache, key) && return cache[key]
+    index = _cluster_cell_index(
+        value, origin, h, exact_indices, exact_index_limit)
+    cache[key] = index
+    return index
+end
+
+@noinline function _cluster_exact_mean(
+        xyz::Matrix{Float64}, component::Int, first_vertex::Int,
+        next_vertex::Vector{Int}, count::Int,
+        exponent_bins::Vector{Int128})
+    fill!(exponent_bins, Int128(0))
+    vertex = first_vertex
+    while !iszero(vertex)
+        value = xyz[component, vertex]
+        if !iszero(value)
+            significand, exponent, sign = Base.decompose(value)
+            index = exponent - _CLUSTER_FLOAT_EXPONENT_MIN + 1
+            exponent_bins[index] += Int128(sign) * Int128(significand)
+        end
+        vertex = next_vertex[vertex]
+    end
+    first_nonzero = 0
+    last_nonzero = 0
+    @inbounds for index in eachindex(exponent_bins)
+        if !iszero(exponent_bins[index])
+            iszero(first_nonzero) && (first_nonzero = index)
+            last_nonzero = index
+        end
+    end
+    iszero(first_nonzero) && return 0.0
+
+    # Collapse a narrow dyadic span exactly in Int128. Ordinary voxel clusters
+    # share only a few exponents, so this keeps merged centers allocation-free.
+    occupied_span = last_nonzero - first_nonzero
+    if occupied_span <= 72
+        exact_integer = Int128(exponent_bins[last_nonzero])
+        overflowed = false
+        @inbounds for index in (last_nonzero - 1):-1:first_nonzero
+            if exact_integer > (typemax(Int128) >> 1) ||
+               exact_integer < (typemin(Int128) >> 1)
+                overflowed = true
+                break
+            end
+            exact_integer <<= 1
+            addend = exponent_bins[index]
+            if (addend > 0 && exact_integer > typemax(Int128) - addend) ||
+               (addend < 0 && exact_integer < typemin(Int128) - addend)
+                overflowed = true
+                break
+            end
+            exact_integer += addend
+        end
+        if !overflowed
+            exact_exponent = _CLUSTER_FLOAT_EXPONENT_MIN + first_nonzero - 1
+            divisor = Int128(count)
+            common_factor = gcd(abs(exact_integer), divisor)
+            reduced_integer = exact_integer ÷ common_factor
+            reduced_divisor = divisor ÷ common_factor
+            result = if ispow2(reduced_divisor)
+                ldexp(
+                    Float64(reduced_integer),
+                    exact_exponent - trailing_zeros(reduced_divisor))
+            elseif abs(exact_integer) <= Int128(1) << 53
+                ldexp(
+                    Float64(exact_integer) / count,
+                    exact_exponent)
+            else
+                NaN
+            end
+            # Subnormal rounding can depend on bits discarded by the first
+            # conversion. Settle those boundary cases in the exact path below.
+            isfinite(result) && abs(result) >= floatmin(Float64) &&
+                return result
+        end
+    end
+
+    exact_significand = BigInt(exponent_bins[last_nonzero])
+    @inbounds for index in (last_nonzero - 1):-1:first_nonzero
+        exact_significand <<= 1
+        exact_significand += exponent_bins[index]
+    end
+    exact_exponent = _CLUSTER_FLOAT_EXPONENT_MIN + first_nonzero - 1
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        result = Float64(ldexp(
+            BigFloat(exact_significand) / BigFloat(count), exact_exponent))
+        isfinite(result) ||
+            throw(OverflowError(
+                "cluster_mesh_vertices: cluster centroid is outside the " *
+                "representable Float64 range"))
+        result
     end
 end
 
+function _cluster_exact_centers(
+        mesh::TriMesh, first_vertices::Vector{Int},
+        next_vertex::Vector{Int}, counts::Vector{Int})
+    nclusters = length(first_vertices)
+    xyz = Matrix{Float64}(undef, 3, nclusters)
+    exponent_bins = zeros(Int128, _CLUSTER_FLOAT_EXPONENT_COUNT)
+    @inbounds for cluster in 1:nclusters
+        first_vertex = first_vertices[cluster]
+        count = counts[cluster]
+        if count == 1
+            xyz[1, cluster] = mesh.xyz[1, first_vertex]
+            xyz[2, cluster] = mesh.xyz[2, first_vertex]
+            xyz[3, cluster] = mesh.xyz[3, first_vertex]
+            continue
+        end
+        for component in 1:3
+            xyz[component, cluster] = _cluster_exact_mean(
+                mesh.xyz, component, first_vertex, next_vertex, count,
+                exponent_bins)
+        end
+    end
+    return xyz
+end
+
 """
-    cluster_mesh_vertices(mesh, h)
+    cluster_mesh_vertices(mesh, h; max_exact_cell_indices=10_000)
 
 Voxel-cluster a mesh using cubic cell size `h`, replacing all vertices in each
 cell by their centroid and remapping triangles. Degenerate and duplicate
 triangles created by remapping are removed.
 """
-function cluster_mesh_vertices(mesh::TriMesh, h::Float64)
+function cluster_mesh_vertices(
+        mesh::TriMesh, h::Float64;
+        max_exact_cell_indices::Integer=
+            _DEFAULT_CLUSTER_MAX_EXACT_CELL_INDICES)
     (isfinite(h) && h > 0.0) ||
         throw(ArgumentError("cluster_mesh_vertices: h must be finite and positive, got $h"))
+    exact_index_limit = _validated_mesh_resource_limit(
+        "max_exact_cell_indices", max_exact_cell_indices)
 
     nv = nvertices(mesh)
+    nv >= 1 ||
+        throw(ArgumentError(
+            "cluster_mesh_vertices requires at least one vertex"))
     mins = (
         minimum(@view mesh.xyz[1, :]),
         minimum(@view mesh.xyz[2, :]),
         minimum(@view mesh.xyz[3, :]),
     )
 
-    key_to_id = Dict{NTuple{3,Int},Int}()
+    small_key_to_id = Dict{NTuple{3,Int},Int}()
+    large_key_to_id = Dict{NTuple{3,BigInt},Int}()
+    x_index_cache = Dict{UInt64,Union{Int,BigInt}}()
+    y_index_cache = Dict{UInt64,Union{Int,BigInt}}()
+    z_index_cache = Dict{UInt64,Union{Int,BigInt}}()
+    exact_indices = Ref(0)
     vmap = Vector{Int}(undef, nv)
-    sx = Float64[]
-    sy = Float64[]
-    sz = Float64[]
-    sc = Int[]
+    first_vertices = Int[]
+    cluster_counts = Int[]
+    next_vertex = zeros(Int, nv)
 
     for i in 1:nv
         x = mesh.xyz[1, i]
         y = mesh.xyz[2, i]
         z = mesh.xyz[3, i]
-        key = (
-            _cluster_cell_index(x, mins[1], h),
-            _cluster_cell_index(y, mins[2], h),
-            _cluster_cell_index(z, mins[3], h),
-        )
-        id = get(key_to_id, key, 0)
-        if iszero(id)
-            push!(sx, x)
-            push!(sy, y)
-            push!(sz, z)
-            push!(sc, 1)
-            id = length(sx)
-            key_to_id[key] = id
+        ix = _cluster_cell_index_cached(
+            x, mins[1], h, x_index_cache, exact_indices, exact_index_limit)
+        iy = _cluster_cell_index_cached(
+            y, mins[2], h, y_index_cache, exact_indices, exact_index_limit)
+        iz = _cluster_cell_index_cached(
+            z, mins[3], h, z_index_cache, exact_indices, exact_index_limit)
+        small_key = ix isa Int && iy isa Int && iz isa Int
+        id = if small_key
+            get(small_key_to_id, (ix::Int, iy::Int, iz::Int), 0)
         else
-            count = Base.checked_add(sc[id], 1)
-            inv_count = 1.0 / count
-            sx[id] += (x - sx[id]) * inv_count
-            sy[id] += (y - sy[id]) * inv_count
-            sz[id] += (z - sz[id]) * inv_count
-            sc[id] = count
+            large_key = (
+                ix isa BigInt ? ix : BigInt(ix),
+                iy isa BigInt ? iy : BigInt(iy),
+                iz isa BigInt ? iz : BigInt(iz),
+            )
+            get(large_key_to_id, large_key, 0)
+        end
+        if iszero(id)
+            push!(first_vertices, i)
+            push!(cluster_counts, 1)
+            id = length(first_vertices)
+            if small_key
+                small_key_to_id[(ix::Int, iy::Int, iz::Int)] = id
+            else
+                large_key = (
+                    ix isa BigInt ? ix : BigInt(ix),
+                    iy isa BigInt ? iy : BigInt(iy),
+                    iz isa BigInt ? iz : BigInt(iz),
+                )
+                large_key_to_id[large_key] = id
+            end
+        else
+            cluster_counts[id] = Base.checked_add(cluster_counts[id], 1)
+            next_vertex[i] = first_vertices[id]
+            first_vertices[id] = i
         end
         vmap[i] = id
     end
 
-    nnew = length(sx)
-    xyz_new = zeros(Float64, 3, nnew)
-    for i in 1:nnew
-        xyz_new[1, i] = sx[i]
-        xyz_new[2, i] = sy[i]
-        xyz_new[3, i] = sz[i]
-    end
+    xyz_new = _cluster_exact_centers(
+        mesh, first_vertices, next_vertex, cluster_counts)
 
     tri_vec = Int[]
     seen = Set{NTuple{3,Int}}()
@@ -1748,7 +1946,9 @@ function cluster_mesh_vertices(mesh::TriMesh, h::Float64)
         push!(tri_vec, a, b, c)
     end
 
-    isempty(tri_vec) && error("cluster_mesh_vertices: clustering removed all triangles.")
+    isempty(tri_vec) &&
+        throw(ArgumentError(
+            "cluster_mesh_vertices: clustering removed all triangles"))
     tri_new = reshape(tri_vec, 3, :)
     return TriMesh(xyz_new, tri_new)
 end
@@ -1756,44 +1956,46 @@ end
 """
     drop_nonmanifold_triangles(mesh; max_passes=8)
 
-Iteratively remove triangles attached to non-manifold edges (edges with more
-than two incident triangles). Returns a mesh with only manifold/boundary edges.
+Remove all triangles attached to non-manifold edges (edges with more than two
+incident triangles) in one simultaneous pass. Returns a mesh with only
+manifold/boundary edges. `max_passes` is retained for API compatibility.
 """
 function drop_nonmanifold_triangles(mesh::TriMesh; max_passes::Int=8)
     max_passes >= 1 ||
         throw(ArgumentError("drop_nonmanifold_triangles: max_passes must be at least 1, got $max_passes"))
+    size(mesh.xyz, 1) == 3 ||
+        throw(DimensionMismatch(
+            "drop_nonmanifold_triangles requires a 3×Nv coordinate matrix"))
+    size(mesh.tri, 1) == 3 ||
+        throw(DimensionMismatch(
+            "drop_nonmanifold_triangles requires a 3×Nt connectivity matrix"))
 
     nt = ntriangles(mesh)
-    keep = trues(nt)
-
-    for _ in 1:max_passes
-        edge_to_tris = Dict{Tuple{Int,Int}, Vector{Int}}()
-        for t in 1:nt
-            keep[t] || continue
-            i1 = mesh.tri[1, t]
-            i2 = mesh.tri[2, t]
-            i3 = mesh.tri[3, t]
-            for (a, b) in ((i1, i2), (i2, i3), (i3, i1))
-                key = a < b ? (a, b) : (b, a)
-                push!(get!(edge_to_tris, key, Int[]), t)
-            end
+    edge_counts = Dict{Tuple{Int,Int},UInt8}()
+    @inbounds for triangle in 1:nt
+        i1 = mesh.tri[1, triangle]
+        i2 = mesh.tri[2, triangle]
+        i3 = mesh.tri[3, triangle]
+        for (first, second) in ((i1, i2), (i2, i3), (i3, i1))
+            edge = first < second ? (first, second) : (second, first)
+            count = get(edge_counts, edge, UInt8(0))
+            edge_counts[edge] = min(UInt8(3), count + UInt8(1))
         end
-
-        bad = falses(nt)
-        nbad_edges = 0
-        for tris in values(edge_to_tris)
-            if length(tris) > 2
-                nbad_edges += 1
-                for t in tris
-                    bad[t] = true
-                end
-            end
-        end
-
-        nbad_edges == 0 && break
-        keep .&= .!bad
     end
 
+    keep = trues(nt)
+    @inbounds for triangle in 1:nt
+        i1 = mesh.tri[1, triangle]
+        i2 = mesh.tri[2, triangle]
+        i3 = mesh.tri[3, triangle]
+        for (first, second) in ((i1, i2), (i2, i3), (i3, i1))
+            edge = first < second ? (first, second) : (second, first)
+            if edge_counts[edge] == UInt8(3)
+                keep[triangle] = false
+                break
+            end
+        end
+    end
     tri_new = copy(mesh.tri[:, keep])
     isempty(tri_new) && error("drop_nonmanifold_triangles: empty mesh after cleanup.")
     return TriMesh(copy(mesh.xyz), tri_new)
@@ -1820,8 +2022,31 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
     max_iters >= 1 ||
         throw(ArgumentError("coarsen_mesh_to_target_rwg: max_iters must be at least 1, got $max_iters"))
 
-    best_rwg = build_rwg(mesh; precheck=true, allow_boundary=allow_boundary,
-                         require_closed=require_closed, area_tol_rel=area_tol_rel).nedges
+    normalized_input = _normalize_mesh_for_coarsening(mesh)
+    try
+        assert_mesh_quality(
+            normalized_input;
+            allow_boundary=allow_boundary,
+            require_closed=require_closed,
+            area_tol_rel=area_tol_rel,
+        )
+    catch err
+        # A translated Float64 copy can lose the low subtraction part of a
+        # very thin but valid face. Settle only a failed normalized precheck
+        # against the stored physical endpoints; the ordinary/extreme-scale
+        # path remains allocation-free of per-face BigFloat arithmetic.
+        err isa ErrorException &&
+        startswith(sprint(showerror, err), "Mesh quality precheck failed:") ||
+            rethrow()
+        assert_mesh_quality(
+            mesh;
+            allow_boundary=allow_boundary,
+            require_closed=require_closed,
+            area_tol_rel=area_tol_rel,
+        )
+    end
+    _validate_coarsening_candidate_area_range(mesh)
+    best_rwg = _count_rwg_edges(mesh)
     best_mesh = mesh
     best_gap = abs(best_rwg - target_rwg)
     niter = 0
@@ -1832,40 +2057,58 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
                 best_gap=best_gap, iterations=niter)
     end
 
-    mins = [minimum(@view mesh.xyz[i, :]) for i in 1:3]
-    maxs = [maximum(@view mesh.xyz[i, :]) for i in 1:3]
-    span = maxs .- mins
-    bbox_vol_raw = prod(span)
-    if bbox_vol_raw <= 1e-18
-        max_span = max(maximum(span), 1e-6)
-        bbox_vol = max_span^3
-    else
-        bbox_vol = bbox_vol_raw
-    end
+    working_mesh, _, _ = _compact_mesh_vertices(
+        mesh.xyz, copy(mesh.tri))
     target_vertices = max(80, Int(round(target_rwg / 3)))
-    h = cbrt(bbox_vol / target_vertices)
+    surface_area = _mesh_surface_area_for_coarsening(working_mesh)
+    h = _coarsening_initial_cell_size(surface_area, target_vertices)
+    invalid_upper = Inf
+    valid_lower = 0.0
 
     for iter in 1:max_iters
-        cand = cluster_mesh_vertices(mesh, h)
-        cand = drop_nonmanifold_triangles(cand)
-        cand_rep = repair_mesh_for_simulation(
-            cand;
-            allow_boundary=allow_boundary,
-            require_closed=require_closed,
-            area_tol_rel=area_tol_rel,
-            drop_invalid=true,
-            drop_degenerate=true,
-            fix_orientation=true,
-            strict_nonmanifold=strict_nonmanifold,
-        )
-        cand_mesh = cand_rep.mesh
-        nrwg = build_rwg(
-            cand_mesh;
-            precheck=true,
-            allow_boundary=allow_boundary,
-            require_closed=require_closed,
-            area_tol_rel=area_tol_rel,
-        ).nedges
+        candidate = try
+            cand = cluster_mesh_vertices(working_mesh, h)
+            cand = drop_nonmanifold_triangles(cand)
+            normalized_cand = _normalize_mesh_for_coarsening(cand)
+            cand_rep = repair_mesh_for_simulation(
+                normalized_cand;
+                allow_boundary=allow_boundary,
+                require_closed=require_closed,
+                area_tol_rel=area_tol_rel,
+                drop_invalid=true,
+                drop_degenerate=true,
+                fix_orientation=true,
+                strict_nonmanifold=strict_nonmanifold,
+            )
+            cand_mesh = _restore_coarsened_mesh(cand, cand_rep)
+            assert_mesh_quality(
+                cand_mesh;
+                allow_boundary=allow_boundary,
+                require_closed=require_closed,
+                area_tol_rel=area_tol_rel,
+            )
+            _validate_coarsening_candidate_area_range(cand_mesh)
+            nrwg = _count_rwg_edges(cand_mesh)
+            (mesh=cand_mesh, rwg=nrwg)
+        catch err
+            _recoverable_coarsening_candidate_error(err) || rethrow()
+            nothing
+        end
+        niter = iter
+
+        if candidate === nothing
+            invalid_upper = min(invalid_upper, h)
+            if valid_lower > 0.0
+                h = _geometric_midpoint(valid_lower, invalid_upper)
+            else
+                h *= 0.5
+            end
+            h > 0.0 && isfinite(h) || break
+            continue
+        end
+
+        cand_mesh = candidate.mesh
+        nrwg = candidate.rwg
 
         gap = abs(nrwg - target_rwg)
         if gap < best_gap
@@ -1873,18 +2116,312 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
             best_mesh = cand_mesh
             best_rwg = nrwg
         end
-        niter = iter
-
         ratio = nrwg / max(target_rwg, 1)
         if 0.85 <= ratio <= 1.15
             return (mesh=best_mesh, rwg_count=best_rwg, target_rwg=target_rwg,
                     best_gap=best_gap, iterations=iter)
         end
 
-        h *= ratio^(1 / 3)
+        if nrwg > target_rwg
+            valid_lower = max(valid_lower, h)
+            proposed = _scale_positive_float(h, sqrt(ratio))
+            h = isfinite(invalid_upper) && proposed >= invalid_upper ?
+                _geometric_midpoint(valid_lower, invalid_upper) : proposed
+        else
+            invalid_upper = min(invalid_upper, h)
+            h = valid_lower > 0.0 ?
+                _geometric_midpoint(valid_lower, invalid_upper) : h * 0.5
+        end
+        h > 0.0 && isfinite(h) || break
     end
 
     return (mesh=best_mesh, rwg_count=best_rwg, target_rwg=target_rwg, best_gap=best_gap, iterations=niter)
+end
+
+function _normalize_mesh_for_coarsening(mesh::TriMesh)
+    size(mesh.xyz, 1) == 3 ||
+        throw(DimensionMismatch(
+            "coarsening requires a 3×Nv coordinate matrix"))
+    size(mesh.tri, 1) == 3 ||
+        throw(DimensionMismatch(
+            "coarsening requires a 3×Nt connectivity matrix"))
+    nvertices(mesh) > 0 ||
+        throw(ArgumentError("cannot normalize an empty coarsening candidate"))
+    all(isfinite, mesh.xyz) ||
+        throw(ArgumentError(
+            "coarsening candidate contains non-finite vertex coordinates"))
+    referenced = falses(nvertices(mesh))
+    for vertex in mesh.tri
+        1 <= vertex <= nvertices(mesh) ||
+            throw(ArgumentError(
+                "coarsening candidate contains vertex index $vertex " *
+                "outside 1:$(nvertices(mesh))"))
+        referenced[vertex] = true
+    end
+    origin_vertex = findfirst(referenced)
+    origin_vertex === nothing &&
+        throw(ArgumentError("cannot normalize a coarsening candidate without faces"))
+    origin = _mesh_vertex(mesh, origin_vertex)
+    maximum_exponent = typemin(Int)
+    @inbounds for vertex in 1:nvertices(mesh)
+        referenced[vertex] || continue
+        for component in 1:3
+            value = mesh.xyz[component, vertex]
+            reference = origin[component]
+            difference = value - reference
+            if isfinite(difference)
+                if !iszero(difference)
+                    _, exponent = frexp(abs(difference))
+                    maximum_exponent = max(maximum_exponent, exponent)
+                end
+            else
+                value_exponent = iszero(value) ? typemin(Int) :
+                                 last(frexp(abs(value)))
+                reference_exponent = iszero(reference) ? typemin(Int) :
+                                     last(frexp(abs(reference)))
+                maximum_exponent = max(
+                    maximum_exponent,
+                    max(value_exponent, reference_exponent) + 1)
+            end
+        end
+    end
+    maximum_exponent != typemin(Int) ||
+        throw(ArgumentError(
+            "coarsening candidate has no representable coordinate extent"))
+
+    xyz = Matrix{Float64}(undef, 3, nvertices(mesh))
+    @inbounds for vertex in 1:nvertices(mesh)
+        if !referenced[vertex]
+            xyz[1, vertex] = 0.0
+            xyz[2, vertex] = 0.0
+            xyz[3, vertex] = 0.0
+            continue
+        end
+        for component in 1:3
+            value = mesh.xyz[component, vertex]
+            reference = origin[component]
+            difference = value - reference
+            normalized = if isfinite(difference)
+                ldexp(difference, -maximum_exponent)
+            else
+                ldexp(value, -maximum_exponent) -
+                ldexp(reference, -maximum_exponent)
+            end
+            isfinite(normalized) ||
+                throw(OverflowError(
+                    "coarsening candidate normalization produced a non-finite coordinate"))
+            xyz[component, vertex] = normalized
+        end
+    end
+    return TriMesh(xyz, copy(mesh.tri))
+end
+
+function _restore_coarsened_mesh(mesh::TriMesh, repair)
+    mapping = repair.vertex_old_to_new
+    xyz = Matrix{Float64}(undef, 3, nvertices(repair.mesh))
+    @inbounds for old_vertex in eachindex(mapping)
+        new_vertex = mapping[old_vertex]
+        iszero(new_vertex) && continue
+        xyz[1, new_vertex] = mesh.xyz[1, old_vertex]
+        xyz[2, new_vertex] = mesh.xyz[2, old_vertex]
+        xyz[3, new_vertex] = mesh.xyz[3, old_vertex]
+    end
+    return TriMesh(xyz, copy(repair.mesh.tri))
+end
+
+function _count_rwg_edges(mesh::TriMesh)
+    counts = Dict{Tuple{Int,Int},UInt8}()
+    @inbounds for triangle in 1:ntriangles(mesh)
+        first = mesh.tri[1, triangle]
+        second = mesh.tri[2, triangle]
+        third = mesh.tri[3, triangle]
+        for (left, right) in
+                ((first, second), (second, third), (third, first))
+            edge = left < right ? (left, right) : (right, left)
+            count = get(counts, edge, UInt8(0))
+            counts[edge] = min(UInt8(3), count + UInt8(1))
+        end
+    end
+    result = 0
+    @inbounds for count in values(counts)
+        count == UInt8(2) && (result += 1)
+    end
+    return result
+end
+
+@inline function _coarsening_candidate_edge_length(
+    first::Vec3,
+    second::Vec3,
+)
+    dx = second[1] - first[1]
+    dy = second[2] - first[2]
+    dz = second[3] - first[3]
+    if isfinite(dx) && isfinite(dy) && isfinite(dz)
+        length_float = hypot(hypot(dx, dy), dz)
+        if isfinite(length_float) &&
+           length_float < 0.5 * floatmax(Float64)
+            return length_float
+        end
+    end
+    return _mesh_edge_length_big(first, second)
+end
+
+function _validate_coarsening_candidate_area_range(mesh::TriMesh)
+    @inbounds for triangle in 1:ntriangles(mesh)
+        first = _mesh_vertex(mesh, mesh.tri[1, triangle])
+        second = _mesh_vertex(mesh, mesh.tri[2, triangle])
+        third = _mesh_vertex(mesh, mesh.tri[3, triangle])
+        fast, _, _, _, first_exponent, second_exponent, cross_norm =
+            _scaled_triangle_cross(first, second, third)
+        area = if fast && cross_norm > 0.0
+            cross_fraction, cross_exponent = frexp(cross_norm)
+            approximate = ldexp(
+                cross_fraction,
+                cross_exponent + first_exponent + second_exponent - 1)
+            if !isfinite(approximate) ||
+               approximate <= floatmin(Float64) ||
+               approximate >= 0.5 * floatmax(Float64)
+                triangle_area(mesh, triangle)
+            else
+                approximate
+            end
+        else
+            triangle_area(mesh, triangle)
+        end
+        isfinite(area) && area > 0.0 ||
+            throw(OverflowError(
+                "triangle area is outside the representable Float64 range"))
+        _coarsening_candidate_edge_length(first, second)
+        _coarsening_candidate_edge_length(second, third)
+        _coarsening_candidate_edge_length(third, first)
+    end
+    return nothing
+end
+
+@inline function _recoverable_coarsening_candidate_error(err)
+    message = sprint(showerror, err)
+    if err isa OverflowError
+        return message in (
+            "OverflowError: triangle area is outside the representable Float64 range",
+            "OverflowError: mesh edge length is outside the representable Float64 range",
+        )
+    end
+    if err isa ArgumentError || err isa DomainError
+        return startswith(
+                   message,
+                   "ArgumentError: cluster_mesh_vertices: clustering removed all triangles") ||
+               startswith(
+                   message,
+                   "ArgumentError: repair_mesh_for_simulation: empty mesh after cleanup")
+    end
+    return err isa ErrorException &&
+           (startswith(
+                message,
+                "drop_nonmanifold_triangles: empty mesh after cleanup.") ||
+            startswith(message, "Mesh quality precheck failed:"))
+end
+
+function _mesh_surface_area_for_coarsening(mesh::TriMesh)
+    scale_exponent = typemin(Int)
+    normalized_sum = 0.0
+    compensation = 0.0
+    @inbounds for triangle in 1:ntriangles(mesh)
+        first = _mesh_vertex(mesh, mesh.tri[1, triangle])
+        second = _mesh_vertex(mesh, mesh.tri[2, triangle])
+        third = _mesh_vertex(mesh, mesh.tri[3, triangle])
+        fast, _, _, _, scale1_exponent, scale2_exponent, cross_norm =
+            _scaled_triangle_cross(first, second, third)
+        area_fraction, area_exponent = if fast && cross_norm > 0.0
+            cross_fraction, cross_exponent = frexp(cross_norm)
+            (cross_fraction,
+             cross_exponent + scale1_exponent + scale2_exponent - 1)
+        else
+            area = try
+                triangle_area(mesh, triangle)
+            catch err
+                err isa OverflowError || rethrow()
+                throw(ArgumentError(
+                    "coarsen_mesh_to_target_rwg requires representable " *
+                    "positive input-triangle areas"))
+            end
+            area > 0.0 ||
+                throw(ArgumentError(
+                    "coarsen_mesh_to_target_rwg requires positive triangle areas"))
+            frexp(area)
+        end
+        if scale_exponent == typemin(Int)
+            scale_exponent = area_exponent
+        elseif area_exponent > scale_exponent
+            ratio = ldexp(1.0, scale_exponent - area_exponent)
+            normalized_sum *= ratio
+            compensation *= ratio
+            scale_exponent = area_exponent
+        end
+        normalized = ldexp(area_fraction, area_exponent - scale_exponent)
+        previous = normalized_sum
+        updated = previous + normalized
+        correction = abs(previous) >= abs(normalized) ?
+            (previous - updated) + normalized :
+            (normalized - updated) + previous
+        normalized_sum = updated
+        compensation += correction
+    end
+    scale_exponent == typemin(Int) &&
+        throw(ArgumentError(
+            "coarsen_mesh_to_target_rwg requires positive surface area"))
+    normalized = normalized_sum + compensation
+    isfinite(normalized) && normalized > 0.0 ||
+        throw(ArgumentError(
+            "coarsen_mesh_to_target_rwg requires positive surface area"))
+    return (normalized=normalized, exponent=scale_exponent)
+end
+
+@inline function _coarsening_initial_cell_size(
+        surface_area, target_vertices::Int)
+    sum_fraction, sum_exponent = frexp(surface_area.normalized)
+    target_fraction, target_exponent = frexp(Float64(target_vertices))
+    quotient_fraction = sum_fraction / target_fraction
+    quotient_exponent =
+        surface_area.exponent + sum_exponent - target_exponent
+    quotient_fraction, normalization_exponent = frexp(quotient_fraction)
+    quotient_exponent += normalization_exponent
+    if isodd(quotient_exponent)
+        quotient_fraction *= 2
+        quotient_exponent -= 1
+    end
+    h = ldexp(sqrt(quotient_fraction), quotient_exponent ÷ 2)
+    isfinite(h) && h > 0.0 ||
+        throw(ArgumentError(
+            "coarsening cell size is outside the positive finite " *
+            "Float64 range"))
+    return h
+end
+
+@inline function _scale_positive_float(value::Float64, factor::Float64)
+    value_fraction, value_exponent = frexp(value)
+    factor_fraction, factor_exponent = frexp(factor)
+    return ldexp(
+        value_fraction * factor_fraction,
+        value_exponent + factor_exponent)
+end
+
+@inline function _geometric_midpoint(lower::Float64, upper::Float64)
+    lower > 0.0 && upper >= lower && isfinite(upper) ||
+        throw(ArgumentError(
+            "invalid coarsening bracket [$lower, $upper]"))
+    ratio = upper / lower
+    if isfinite(ratio)
+        return _scale_positive_float(lower, sqrt(ratio))
+    end
+    lower_fraction, lower_exponent = frexp(lower)
+    upper_fraction, upper_exponent = frexp(upper)
+    exponent_sum = lower_exponent + upper_exponent
+    fraction = sqrt(lower_fraction * upper_fraction)
+    if isodd(exponent_sum)
+        fraction *= sqrt(2.0)
+        exponent_sum -= 1
+    end
+    return ldexp(fraction, exponent_sum ÷ 2)
 end
 
 function _compact_mesh_vertices(
@@ -2582,21 +3119,10 @@ function _mesh_edge_lengths(mesh::TriMesh)
         second = _mesh_vertex(mesh, j)
         (all(isfinite, first) && all(isfinite, second)) ||
             throw(DomainError((i, j), "mesh edge has non-finite coordinates"))
-        dx = second[1] - first[1]
-        dy = second[2] - first[2]
-        dz = second[3] - first[3]
-        if isfinite(dx) && isfinite(dy) && isfinite(dz)
-            length_float = hypot(hypot(dx, dy), dz)
-            # Rounded endpoint differences can hide an exact distance just
-            # across either side of Float64's upper boundary. The cold exact
-            # path settles the entire upper half-range, including a rounded
-            # `Inf`, where that distinction can matter.
-            lens[k] = (!isfinite(length_float) ||
-                       length_float >= 0.5 * floatmax(Float64)) ?
-                      _mesh_edge_length_big(first, second) : length_float
-        else
-            lens[k] = _mesh_edge_length_big(first, second)
-        end
+        # Rounded endpoint differences can hide an exact distance just across
+        # either side of Float64's upper boundary. The shared cold exact path
+        # settles the entire upper half-range, including a rounded `Inf`.
+        lens[k] = _coarsening_candidate_edge_length(first, second)
     end
     return lens
 end
