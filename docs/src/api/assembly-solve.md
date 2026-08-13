@@ -650,19 +650,19 @@ I, stats = solve_gmres(A_mlfma, v; preconditioner=P_mlfma)
 
 These advanced functions implement mass-based preconditioning and regularization. They are used internally by the optimizers but can also be called directly for custom workflows.
 
-### `make_mass_regularizer(Mp)`
+### `make_mass_regularizer(Mp; max_output_bytes=2_000_000_000)`
 
 Build a Hermitian positive-semidefinite mass-based regularizer: `R = sum_p Mp[p]`.
 
 Adding `alpha * R` to the system matrix improves conditioning at the cost of introducing a small perturbation.
 
-**Parameters:** `Mp::Vector{<:AbstractMatrix}`: Patch mass matrices.
+**Parameters:** `Mp::Vector{<:AbstractMatrix}`: Patch mass matrices. `max_output_bytes` bounds the raw payload of the dense result before allocation.
 
 **Returns:** Dense `Matrix{ComplexF64}` `R`.
 
 ---
 
-### `make_left_preconditioner(Mp; eps_rel=1e-8)`
+### `make_left_preconditioner(Mp; eps_rel=1e-8, max_output_bytes=2_000_000_000)`
 
 Build a simple mass-based left preconditioner: `M = R + eps * I`, where `R = sum_p Mp[p]` and `eps = eps_rel * max(tr(R)/N, 1.0)`.
 
@@ -671,6 +671,7 @@ The small diagonal shift ensures M is invertible even if R is rank-deficient.
 **Parameters:**
 - `Mp::Vector{<:AbstractMatrix}`: Patch mass matrices.
 - `eps_rel::Float64=1e-8`: Relative diagonal shift. Larger values improve numerical stability but reduce preconditioning effectiveness.
+- `max_output_bytes::Integer=2_000_000_000`: Raw-payload ceiling for the dense result, checked before allocation.
 
 **Returns:** `Matrix{ComplexF64}` `M`.
 

@@ -3576,6 +3576,15 @@ I_raw = Z_raw \ v
 # Build mass-based regularizer and left preconditioner
 R_mass = make_mass_regularizer(Mp)
 M_left = make_left_preconditioner(Mp; eps_rel=1e-6)
+mass_regularizer_bytes = sizeof(ComplexF64) * N^2
+@test_throws ArgumentError make_mass_regularizer(
+    Mp; max_output_bytes=mass_regularizer_bytes - 1)
+@test make_mass_regularizer(
+    Mp; max_output_bytes=mass_regularizer_bytes) == R_mass
+@test_throws ArgumentError make_left_preconditioner(
+    Mp;
+    eps_rel=1e-6,
+    max_output_bytes=mass_regularizer_bytes - 1)
 make_mass_regularizer(Mp)
 make_left_preconditioner(Mp; eps_rel=1e-6)
 @test (@allocated make_mass_regularizer(Mp)) <=

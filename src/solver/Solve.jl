@@ -1169,7 +1169,7 @@ end
 end
 
 """
-    make_mass_regularizer(Mp)
+    make_mass_regularizer(Mp; max_output_bytes=2_000_000_000)
 
 Build a Hermitian positive-semidefinite mass-based regularizer from patch
 mass matrices:
@@ -1178,8 +1178,15 @@ mass matrices:
 Returns a dense `ComplexF64` matrix so it can be used directly in
 regularized solves.
 """
-function make_mass_regularizer(Mp::Vector{<:AbstractMatrix})
+function make_mass_regularizer(
+        Mp::Vector{<:AbstractMatrix};
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     N = _validated_mass_matrix_size(Mp)
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, N, N; label="mass regularizer matrix")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "mass regularizer matrix", "max_output_bytes")
     R = zeros(ComplexF64, N, N)
     for p in eachindex(Mp)
         _add_scaled_matrix!(R, one(ComplexF64), Mp[p])
@@ -1202,7 +1209,8 @@ function make_mass_regularizer(Mp::Vector{<:AbstractMatrix})
 end
 
 """
-    make_left_preconditioner(Mp; eps_rel=1e-8)
+    make_left_preconditioner(Mp; eps_rel=1e-8,
+                             max_output_bytes=2_000_000_000)
 
 Build a simple mass-based left preconditioner matrix:
   M = R + ϵ I,  R = Σ_p M_p
@@ -1211,11 +1219,12 @@ Build a simple mass-based left preconditioner matrix:
   ϵ = eps_rel * max(tr(R)/N, 1).
 """
 function make_left_preconditioner(Mp::Vector{<:AbstractMatrix};
-                                  eps_rel::Float64=1e-8)
+                                  eps_rel::Float64=1e-8,
+                                  max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     (isfinite(eps_rel) && eps_rel > 0.0) ||
         throw(ArgumentError(
             "eps_rel must be finite and positive, got $eps_rel"))
-    R = make_mass_regularizer(Mp)
+    R = make_mass_regularizer(Mp; max_output_bytes=max_output_bytes)
     N = size(R, 1)
     scale = max(real(tr(R)) / N, 1.0)
     isfinite(scale) ||
