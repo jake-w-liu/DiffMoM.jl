@@ -301,7 +301,7 @@ function _stl_binary_triangle_count(header::AbstractVector{UInt8},
 end
 
 """
-    read_stl_mesh(path; merge_tol=0.0)
+    read_stl_mesh(path; merge_tol=0.0, resource_limits...)
 
 Read a triangle mesh from an STL file (binary or ASCII, auto-detected).
 
@@ -316,24 +316,45 @@ noise between shared vertices. A positive tolerance merges vertices whose
 Euclidean distance is no greater than `merge_tol`.
 
 Returns a `TriMesh`.
+
+Vertex, triangle, raw output-payload, input-file, and ASCII line limits are
+configurable. Binary facet counts are validated before connectivity
+allocation; unique-vertex limits are enforced while records are streamed.
 """
-function read_stl_mesh(path::AbstractString; merge_tol::Float64=0.0)
+function read_stl_mesh(path::AbstractString; merge_tol::Float64=0.0,
+                       max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                       max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                       max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES,
+                       max_input_bytes::Integer=_DEFAULT_MESH_MAX_INPUT_BYTES,
+                       max_line_bytes::Integer=_DEFAULT_MESH_MAX_LINE_BYTES)
     tolerance = _validated_stl_merge_tol(merge_tol)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_mesh_resource_limit("max_triangles", max_triangles)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
+    line_limit = _validated_mesh_resource_limit("max_line_bytes", max_line_bytes)
     return open(path, "r") do io
-        seekend(io)
-        file_size = position(io)
-        seekstart(io)
+        file_size = _mesh_input_size(io, path; max_input_bytes)
 
         if file_size >= 84
             header = Vector{UInt8}(undef, 84)
             read!(io, header)
             ntri = _stl_binary_triangle_count(header, file_size)
             if !isnothing(ntri)
-                return _read_stl_binary(io, ntri; merge_tol=tolerance)
+                return _read_stl_binary(
+                    io, ntri; merge_tol=tolerance,
+                    max_vertices=vertex_limit,
+                    max_triangles=triangle_limit,
+                    max_raw_bytes=byte_limit)
             end
             seekstart(io)
         end
-        return _read_stl_ascii(io, path; merge_tol=tolerance)
+        reader = _BoundedMeshTextIO(
+            io, path; max_input_bytes, max_line_bytes=line_limit)
+        return _read_stl_ascii(
+            reader, path; merge_tol=tolerance,
+            max_vertices=vertex_limit,
+            max_triangles=triangle_limit,
+            max_raw_bytes=byte_limit)
     end
 end
 
@@ -341,9 +362,17 @@ function _stl_is_binary(data::Vector{UInt8})
     return !isnothing(_stl_binary_triangle_count(data, length(data)))
 end
 
-function _read_stl_binary(io::IO, ntri::Int; merge_tol::Float64=0.0)
+function _read_stl_binary(io::IO, ntri::Int; merge_tol::Float64=0.0,
+                          max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                          max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                          max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
     ntri > 0 || error("STL binary file has 0 triangles.")
     tolerance = _validated_stl_merge_tol(merge_tol)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
+    _validate_mesh_resource_request(
+        0, ntri, "binary STL input";
+        max_vertices=vertex_limit, max_triangles, max_raw_bytes)
 
     merger = _new_stl_vertex_merger(tolerance)
     tri = Matrix{Int}(undef, 3, ntri)
@@ -358,18 +387,39 @@ function _read_stl_binary(io::IO, ntri::Int; merge_tol::Float64=0.0)
                 Float64(_stl_float32_le(record, offset + 8)),
             )
             tri[v, t] = _merge_stl_vertex!(merger, coord)
+            length(merger.xyz) <= vertex_limit ||
+                throw(ArgumentError(
+                    "binary STL input exceeds max_vertices=$vertex_limit " *
+                    "at triangle $t"))
+            _mesh_raw_payload_bytes(length(merger.xyz), ntri) <= byte_limit ||
+                throw(ArgumentError(
+                    "binary STL input exceeds max_raw_bytes=$byte_limit " *
+                    "at triangle $t"))
         end
     end
     return _stl_mesh_from_merger(merger, tri)
 end
 
-function _read_stl_binary(data::Vector{UInt8}; merge_tol::Float64=0.0)
+function _read_stl_binary(
+        data::Vector{UInt8}; merge_tol::Float64=0.0,
+        max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+        max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+        max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES,
+        max_input_bytes::Integer=_DEFAULT_MESH_MAX_INPUT_BYTES)
     tolerance = _validated_stl_merge_tol(merge_tol)
+    input_limit = _validated_mesh_resource_limit(
+        "max_input_bytes", max_input_bytes)
+    length(data) <= input_limit ||
+        throw(ArgumentError(
+            "binary STL data contains $(length(data)) bytes, exceeding " *
+            "max_input_bytes=$input_limit"))
     ntri = _stl_binary_triangle_count(data, length(data))
     isnothing(ntri) && error("Invalid or truncated binary STL data.")
     io = IOBuffer(data)
     seek(io, 84)
-    return _read_stl_binary(io, ntri; merge_tol=tolerance)
+    return _read_stl_binary(
+        io, ntri; merge_tol=tolerance,
+        max_vertices, max_triangles, max_raw_bytes)
 end
 
 function _parse_stl_ascii_vertex(s::AbstractString)
@@ -389,8 +439,14 @@ function _parse_stl_ascii_vertex(s::AbstractString)
     )
 end
 
-function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0)
+function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0,
+                         max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                         max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                         max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
     tolerance = _validated_stl_merge_tol(merge_tol)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_mesh_resource_limit("max_triangles", max_triangles)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
     merger = _new_stl_vertex_merger(tolerance)
     tri_ids = Int[]
     ntri = 0
@@ -408,6 +464,10 @@ function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0)
                 error("Invalid STL facet declaration in $path: $s")
             !inside_facet ||
                 error("STL ASCII contains a nested facet in $path: $s")
+            ntri < triangle_limit ||
+                throw(ArgumentError(
+                    "ASCII STL input exceeds max_triangles=$triangle_limit " *
+                    "in $path"))
             inside_facet = true
             facet_vertex_count = 0
         elseif keyword == "vertex"
@@ -417,6 +477,13 @@ function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0)
                 error("STL ASCII facet $(ntri + 1) in $path has more than 3 vertices.")
             coord = _parse_stl_ascii_vertex(s)
             push!(tri_ids, _merge_stl_vertex!(merger, coord))
+            length(merger.xyz) <= vertex_limit ||
+                throw(ArgumentError(
+                    "ASCII STL input exceeds max_vertices=$vertex_limit " *
+                    "in $path"))
+            _mesh_raw_payload_bytes(length(merger.xyz), ntri + 1) <= byte_limit ||
+                throw(ArgumentError(
+                    "ASCII STL input exceeds max_raw_bytes=$byte_limit in $path"))
             facet_vertex_count += 1
         elseif keyword == "endfacet"
             s == "endfacet" ||
@@ -428,6 +495,13 @@ function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0)
                     "STL ASCII facet $(ntri + 1) in $path has " *
                     "$facet_vertex_count vertices; exactly 3 are required.")
             ntri += 1
+            ntri <= triangle_limit ||
+                throw(ArgumentError(
+                    "ASCII STL input exceeds max_triangles=$triangle_limit " *
+                    "in $path"))
+            _mesh_raw_payload_bytes(length(merger.xyz), ntri) <= byte_limit ||
+                throw(ArgumentError(
+                    "ASCII STL input exceeds max_raw_bytes=$byte_limit in $path"))
             inside_facet = false
         end
     end
@@ -443,21 +517,40 @@ function _read_stl_ascii(io::IO, path::AbstractString; merge_tol::Float64=0.0)
     return _stl_mesh_from_merger(merger, tri)
 end
 
-function _read_stl_ascii(path::AbstractString; merge_tol::Float64=0.0)
+function _read_stl_ascii(
+        path::AbstractString; merge_tol::Float64=0.0,
+        max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+        max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+        max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES,
+        max_input_bytes::Integer=_DEFAULT_MESH_MAX_INPUT_BYTES,
+        max_line_bytes::Integer=_DEFAULT_MESH_MAX_LINE_BYTES)
     tolerance = _validated_stl_merge_tol(merge_tol)
     return open(path, "r") do io
-        _read_stl_ascii(io, path; merge_tol=tolerance)
+        _mesh_input_size(io, path; max_input_bytes)
+        reader = _BoundedMeshTextIO(
+            io, path; max_input_bytes, max_line_bytes)
+        _read_stl_ascii(
+            reader, path; merge_tol=tolerance,
+            max_vertices, max_triangles, max_raw_bytes)
     end
 end
 
 function _merge_stl_vertices(raw_verts::Vector{NTuple{3,Float64}}, ntri::Int;
-                              merge_tol::Float64=0.0)
+                             merge_tol::Float64=0.0,
+                             max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                             max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                             max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
     ntri >= 0 || throw(ArgumentError("ntri must be nonnegative, got $ntri."))
     tolerance = _validated_stl_merge_tol(merge_tol)
     expected_vertices = Base.checked_mul(3, ntri)
     length(raw_verts) == expected_vertices ||
         throw(DimensionMismatch(
             "expected $expected_vertices STL vertices, got $(length(raw_verts))"))
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
+    _validate_mesh_resource_request(
+        0, ntri, "STL vertex merge";
+        max_vertices=vertex_limit, max_triangles, max_raw_bytes=byte_limit)
 
     merger = _new_stl_vertex_merger(tolerance)
     tri = Matrix{Int}(undef, 3, ntri)
@@ -465,6 +558,14 @@ function _merge_stl_vertices(raw_verts::Vector{NTuple{3,Float64}}, ntri::Int;
         for v in 1:3
             coord = raw_verts[3 * (t - 1) + v]
             tri[v, t] = _merge_stl_vertex!(merger, coord)
+            length(merger.xyz) <= vertex_limit ||
+                throw(ArgumentError(
+                    "STL vertex merge exceeds max_vertices=$vertex_limit " *
+                    "at triangle $t"))
+            _mesh_raw_payload_bytes(length(merger.xyz), ntri) <= byte_limit ||
+                throw(ArgumentError(
+                    "STL vertex merge exceeds max_raw_bytes=$byte_limit " *
+                    "at triangle $t"))
         end
     end
     return _stl_mesh_from_merger(merger, tri)
@@ -812,7 +913,7 @@ end
 # ───────────────────────────────────────────────────────────────
 
 """
-    read_msh_mesh(path)
+    read_msh_mesh(path; resource_limits...)
 
 Read a triangle surface mesh from a Gmsh MSH file (ASCII v2.x or v4.x).
 The parser streams each section and rejects binary or unsupported versions.
@@ -823,16 +924,35 @@ Node IDs are remapped to 1-based contiguous indices. Section counts,
 end markers, tag bounds, duplicate node tags, and missing references are
 validated.
 
+Declared node counts are validated before allocation. Vertex, extracted
+triangle, raw output-payload, input-file, and text-line limits are
+configurable.
+
 Returns a `TriMesh`.
 """
-function read_msh_mesh(path::AbstractString)
+function read_msh_mesh(path::AbstractString;
+                       max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                       max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                       max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES,
+                       max_input_bytes::Integer=_DEFAULT_MESH_MAX_INPUT_BYTES,
+                       max_line_bytes::Integer=_DEFAULT_MESH_MAX_LINE_BYTES)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_mesh_resource_limit("max_triangles", max_triangles)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
     return open(path, "r") do io
-        version = _read_msh_format(io, path)
-        seekstart(io)
+        _mesh_input_size(io, path; max_input_bytes)
+        reader = _BoundedMeshTextIO(
+            io, path; max_input_bytes, max_line_bytes)
+        version = _read_msh_format(reader, path)
+        seekstart(reader)
         if 2.0 <= version < 3.0
-            return _read_msh_v2(io, path)
+            return _read_msh_v2(
+                reader, path; max_vertices=vertex_limit,
+                max_triangles=triangle_limit, max_raw_bytes=byte_limit)
         elseif 4.0 <= version < 5.0
-            return _read_msh_v4(io, path)
+            return _read_msh_v4(
+                reader, path; max_vertices=vertex_limit,
+                max_triangles=triangle_limit, max_raw_bytes=byte_limit)
         end
         error("Unsupported MSH version $version in $path; supported ASCII versions are 2.x and 4.x.")
     end
@@ -956,7 +1076,14 @@ function _parse_msh_v2_element(line::AbstractString, path::AbstractString)
     return (parse(Int, n1_field), parse(Int, n2_field), parse(Int, n3_field))
 end
 
-function _read_msh_v2(io::IO, path::AbstractString)
+function _read_msh_v2(
+        io::IO, path::AbstractString;
+        max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+        max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+        max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_mesh_resource_limit("max_triangles", max_triangles)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
     nodes = Dict{Int, NTuple{3,Float64}}()
     triangles = NTuple{3,Int}[]
 
@@ -966,7 +1093,21 @@ function _read_msh_v2(io::IO, path::AbstractString)
             count_line = _required_msh_line(io, path, "MSH v2 node count")
             n_nodes = _parse_msh_int(count_line, path, "MSH v2 node count")
             n_nodes >= 0 || error("Negative MSH v2 node count in $path.")
-            sizehint!(nodes, Base.checked_add(length(nodes), n_nodes))
+            requested_nodes = try
+                Base.Checked.checked_add(length(nodes), n_nodes)
+            catch err
+                err isa OverflowError || rethrow()
+                throw(ArgumentError(
+                    "MSH v2 node count overflows the supported Int range in $path"))
+            end
+            requested_nodes <= vertex_limit ||
+                throw(ArgumentError(
+                    "MSH v2 input exceeds max_vertices=$vertex_limit in $path"))
+            _mesh_raw_payload_bytes(requested_nodes, length(triangles)) <= byte_limit ||
+                throw(ArgumentError(
+                    "MSH v2 input exceeds max_raw_bytes=$byte_limit in $path"))
+            # Do not size-hint from an untrusted declaration. The dictionary
+            # grows only as node records are successfully parsed.
             for _ in 1:n_nodes
                 line = _required_msh_line(io, path, "MSH v2 node")
                 node_tag, coord = _parse_msh_v2_node(line, path)
@@ -985,7 +1126,16 @@ function _read_msh_v2(io::IO, path::AbstractString)
             for _ in 1:n_elems
                 line = _required_msh_line(io, path, "MSH v2 element")
                 triangle = _parse_msh_v2_element(line, path)
-                isnothing(triangle) || push!(triangles, triangle)
+                if !isnothing(triangle)
+                    length(triangles) < triangle_limit ||
+                        throw(ArgumentError(
+                            "MSH v2 input exceeds max_triangles=$triangle_limit in $path"))
+                    _mesh_raw_payload_bytes(
+                        length(nodes), length(triangles) + 1) <= byte_limit ||
+                        throw(ArgumentError(
+                            "MSH v2 input exceeds max_raw_bytes=$byte_limit in $path"))
+                    push!(triangles, triangle)
+                end
             end
             end_marker = _required_msh_line(io, path, "\$EndElements")
             end_marker == "\$EndElements" ||
@@ -1001,18 +1151,21 @@ end
 
 function _read_msh_integer_block(io::IO, path::AbstractString, count::Int,
                                  context::AbstractString)
-    values = Vector{Int}(undef, count)
-    filled = 0
-    while filled < count
+    count >= 0 ||
+        throw(ArgumentError("$context count must be nonnegative, got $count"))
+    # Do not reserve from an untrusted section count. Grow only after actual
+    # integer tokens have been read, so a truncated tiny file cannot force a
+    # count-sized allocation before failing at EOF.
+    values = Int[]
+    while length(values) < count
         line = _required_msh_line(io, path, context)
         position = firstindex(line)
         while true
             first, last, next_position = _ascii_field_bounds(line, position)
             iszero(first) && break
-            filled < count ||
+            length(values) < count ||
                 error("Too many integer values while reading $context in $path.")
-            filled += 1
-            values[filled] = parse(Int, SubString(line, first, last))
+            push!(values, parse(Int, SubString(line, first, last)))
             position = next_position
         end
     end
@@ -1058,7 +1211,14 @@ function _parse_msh_v4_element(line::AbstractString, path::AbstractString,
     )
 end
 
-function _read_msh_v4(io::IO, path::AbstractString)
+function _read_msh_v4(
+        io::IO, path::AbstractString;
+        max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+        max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+        max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_mesh_resource_limit("max_triangles", max_triangles)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
     nodes = Dict{Int, NTuple{3,Float64}}()
     triangles = NTuple{3,Int}[]
 
@@ -1070,7 +1230,21 @@ function _read_msh_v4(io::IO, path::AbstractString)
                 _parse_msh_int4(header_line, path, "MSH v4 node header")
             n_entity_blocks >= 0 && total_nodes >= 0 ||
                 error("Negative MSH v4 node count in $path.")
-            sizehint!(nodes, Base.checked_add(length(nodes), total_nodes))
+            requested_nodes = try
+                Base.Checked.checked_add(length(nodes), total_nodes)
+            catch err
+                err isa OverflowError || rethrow()
+                throw(ArgumentError(
+                    "MSH v4 node count overflows the supported Int range in $path"))
+            end
+            requested_nodes <= vertex_limit ||
+                throw(ArgumentError(
+                    "MSH v4 input exceeds max_vertices=$vertex_limit in $path"))
+            _mesh_raw_payload_bytes(requested_nodes, length(triangles)) <= byte_limit ||
+                throw(ArgumentError(
+                    "MSH v4 input exceeds max_raw_bytes=$byte_limit in $path"))
+            # Do not size-hint from an untrusted declaration. The dictionary
+            # grows only as node records are successfully parsed.
 
             nodes_read = 0
             actual_min_tag = typemax(Int)
@@ -1085,6 +1259,10 @@ function _read_msh_v4(io::IO, path::AbstractString)
                     error("Invalid MSH parametric flag $parametric in $path.")
                 n_nodes_in_block >= 0 ||
                     error("Negative MSH v4 node-block count in $path.")
+                n_nodes_in_block <= total_nodes - nodes_read ||
+                    error(
+                        "MSH v4 node block declares $n_nodes_in_block nodes " *
+                        "beyond the $total_nodes-node section total in $path.")
 
                 node_tags = _read_msh_integer_block(
                     io, path, n_nodes_in_block, "MSH v4 node tags")
@@ -1124,6 +1302,10 @@ function _read_msh_v4(io::IO, path::AbstractString)
                     _parse_msh_int4(block_line, path, "MSH v4 element block header")
                 n_elems_in_block >= 0 ||
                     error("Negative MSH v4 element-block count in $path.")
+                n_elems_in_block <= total_elements - elements_read ||
+                    error(
+                        "MSH v4 element block declares $n_elems_in_block elements " *
+                        "beyond the $total_elements-element section total in $path.")
                 for _ in 1:n_elems_in_block
                     line = _required_msh_line(io, path, "MSH v4 element")
                     element_tag, triangle =
@@ -1132,7 +1314,16 @@ function _read_msh_v4(io::IO, path::AbstractString)
                         error("MSH element tags must be positive in $path.")
                     actual_min_tag = min(actual_min_tag, element_tag)
                     actual_max_tag = max(actual_max_tag, element_tag)
-                    isnothing(triangle) || push!(triangles, triangle)
+                    if !isnothing(triangle)
+                        length(triangles) < triangle_limit ||
+                            throw(ArgumentError(
+                                "MSH v4 input exceeds max_triangles=$triangle_limit in $path"))
+                        _mesh_raw_payload_bytes(
+                            length(nodes), length(triangles) + 1) <= byte_limit ||
+                            throw(ArgumentError(
+                                "MSH v4 input exceeds max_raw_bytes=$byte_limit in $path"))
+                        push!(triangles, triangle)
+                    end
                 end
                 elements_read = Base.checked_add(elements_read, n_elems_in_block)
             end
@@ -1212,21 +1403,23 @@ end
 # ───────────────────────────────────────────────────────────────
 
 """
-    read_mesh(path)
+    read_mesh(path; kwargs...)
 
 Read a triangle mesh from a file, dispatching by file extension:
 - `.obj` → `read_obj_mesh`
 - `.stl` → `read_stl_mesh`
 - `.msh` → `read_msh_mesh`
+
+Keyword arguments are forwarded to the selected format reader.
 """
-function read_mesh(path::AbstractString)
+function read_mesh(path::AbstractString; kwargs...)
     ext = lowercase(splitext(path)[2])
     if ext == ".obj"
-        return read_obj_mesh(path)
+        return read_obj_mesh(path; kwargs...)
     elseif ext == ".stl"
-        return read_stl_mesh(path)
+        return read_stl_mesh(path; kwargs...)
     elseif ext == ".msh"
-        return read_msh_mesh(path)
+        return read_msh_mesh(path; kwargs...)
     else
         error("Unsupported mesh format '$(ext)'. Supported: .obj, .stl, .msh")
     end
@@ -1255,7 +1448,9 @@ end
 # ───────────────────────────────────────────────────────────────
 
 """
-    convert_cad_to_mesh(cad_path, output_path; mesh_size=0.0, gmsh_exe="gmsh")
+    convert_cad_to_mesh(cad_path, output_path;
+                        mesh_size=0.0, gmsh_exe="gmsh",
+                        reader_kwargs=NamedTuple())
 
 Convert a CAD file (STEP, IGES, BREP) to a triangle surface mesh by
 calling the Gmsh CLI. Gmsh must be installed and accessible from PATH
@@ -1273,7 +1468,8 @@ mesh = convert_cad_to_mesh("model.step", "model.msh"; mesh_size=0.01)
 """
 function convert_cad_to_mesh(cad_path::AbstractString, output_path::AbstractString;
                               mesh_size::Float64=0.0,
-                              gmsh_exe::AbstractString="gmsh")
+                              gmsh_exe::AbstractString="gmsh",
+                              reader_kwargs::NamedTuple=NamedTuple())
     isfile(cad_path) || error("CAD file not found: $cad_path")
 
     cad_ext = lowercase(splitext(cad_path)[2])
@@ -1309,5 +1505,5 @@ function convert_cad_to_mesh(cad_path::AbstractString, output_path::AbstractStri
     result.exitcode == 0 || error("Gmsh conversion failed (exit code $(result.exitcode)).")
     isfile(output_path) || error("Gmsh did not produce output file: $output_path")
 
-    return read_mesh(output_path)
+    return read_mesh(output_path; reader_kwargs...)
 end

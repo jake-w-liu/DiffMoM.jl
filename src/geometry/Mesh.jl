@@ -9,6 +9,242 @@ export mesh_unique_edges, mesh_wireframe_segments
 export mesh_resolution_report, mesh_resolution_ok
 export refine_mesh_to_target_edge, refine_mesh_for_mom
 
+const _DEFAULT_MESH_MAX_VERTICES = 5_000_000
+const _DEFAULT_MESH_MAX_TRIANGLES = 10_000_000
+const _DEFAULT_MESH_MAX_RAW_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MESH_MAX_INPUT_BYTES = 1024 * 1024 * 1024
+const _DEFAULT_MESH_MAX_LINE_BYTES = 1024 * 1024
+const _MESH_INPUT_SCAN_BUFFER_BYTES = 64 * 1024
+
+@inline function _validated_mesh_resource_limit(
+        name::AbstractString, value::Integer)
+    value isa Bool &&
+        throw(ArgumentError("$name must be a positive integer byte/count limit, got $value"))
+    value > 0 ||
+        throw(ArgumentError("$name must be positive, got $value"))
+    value <= typemax(Int) ||
+        throw(ArgumentError("$name is outside the supported Int range: $value"))
+    return Int(value)
+end
+
+function _mesh_input_size(io::IO, path::AbstractString;
+                          max_input_bytes::Integer=_DEFAULT_MESH_MAX_INPUT_BYTES)
+    input_limit = _validated_mesh_resource_limit(
+        "max_input_bytes", max_input_bytes)
+    input_bytes = try
+        seekend(io)
+        position(io)
+    catch err
+        throw(ArgumentError(
+            "Could not determine the byte size of mesh input $path: " *
+            sprint(showerror, err)))
+    finally
+        seekstart(io)
+    end
+    input_bytes <= input_limit ||
+        throw(ArgumentError(
+            "Mesh input $path contains $input_bytes bytes, exceeding " *
+            "max_input_bytes=$input_limit"))
+    return input_bytes
+end
+
+mutable struct _BoundedMeshTextIO{I<:IO} <: IO
+    io::I
+    path::String
+    input_limit::Int
+    line_limit::Int
+    buffer::Vector{UInt8}
+    buffer_position::Int
+    buffer_length::Int
+    bytes_read::Int
+    line_number::Int
+end
+
+function _BoundedMeshTextIO(
+        io::I, path::AbstractString;
+        max_input_bytes::Integer=_DEFAULT_MESH_MAX_INPUT_BYTES,
+        max_line_bytes::Integer=_DEFAULT_MESH_MAX_LINE_BYTES) where {I<:IO}
+    input_limit = _validated_mesh_resource_limit(
+        "max_input_bytes", max_input_bytes)
+    line_limit = _validated_mesh_resource_limit(
+        "max_line_bytes", max_line_bytes)
+    buffer = Vector{UInt8}(undef, min(
+        _MESH_INPUT_SCAN_BUFFER_BYTES, input_limit))
+    return _BoundedMeshTextIO(
+        io, String(path), input_limit, line_limit, buffer,
+        1, 0, 0, 1)
+end
+
+function Base.seekstart(reader::_BoundedMeshTextIO)
+    seekstart(reader.io)
+    reader.buffer_position = 1
+    reader.buffer_length = 0
+    reader.bytes_read = 0
+    reader.line_number = 1
+    return reader
+end
+
+@inline function _refill_mesh_text_buffer!(reader::_BoundedMeshTextIO)
+    remaining = reader.input_limit - reader.bytes_read
+    if remaining == 0
+        eof(reader.io) ||
+            throw(ArgumentError(
+                "Mesh input $(reader.path) exceeds " *
+                "max_input_bytes=$(reader.input_limit) while parsing"))
+        reader.buffer_position = 1
+        reader.buffer_length = 0
+        return false
+    end
+    requested = min(length(reader.buffer), remaining)
+    bytes_read = readbytes!(reader.io, reader.buffer, requested)
+    reader.buffer_position = 1
+    reader.buffer_length = bytes_read
+    reader.bytes_read = Base.Checked.checked_add(reader.bytes_read, bytes_read)
+    return bytes_read > 0
+end
+
+function Base.eof(reader::_BoundedMeshTextIO)
+    reader.buffer_position <= reader.buffer_length && return false
+    _refill_mesh_text_buffer!(reader) && return false
+    return true
+end
+
+function Base.readline(reader::_BoundedMeshTextIO; keep::Bool=false)
+    line = UInt8[]
+    while true
+        if reader.buffer_position > reader.buffer_length
+            _refill_mesh_text_buffer!(reader) || break
+        end
+        newline = 0
+        @inbounds for index in reader.buffer_position:reader.buffer_length
+            if reader.buffer[index] == UInt8('\n')
+                newline = index
+                break
+            end
+        end
+        segment_end = iszero(newline) ? reader.buffer_length : newline - 1
+        segment_length = max(0, segment_end - reader.buffer_position + 1)
+        if iszero(newline)
+            resulting_length = try
+                Base.Checked.checked_add(length(line), segment_length)
+            catch err
+                err isa OverflowError || rethrow()
+                throw(ArgumentError(
+                    "Mesh input $(reader.path) line $(reader.line_number) " *
+                    "length overflows the supported Int range"))
+            end
+            # A CR at the end of a refill can be the first byte of a CRLF
+            # terminator split across buffers. Defer counting only that one
+            # byte until the next refill proves whether LF follows it.
+            pending_cr = segment_length > 0 &&
+                reader.buffer[segment_end] == UInt8('\r')
+            (resulting_length <= reader.line_limit ||
+             (pending_cr && resulting_length - 1 <= reader.line_limit)) ||
+                throw(ArgumentError(
+                    "Mesh input $(reader.path) line $(reader.line_number) " *
+                    "exceeds max_line_bytes=$(reader.line_limit) while parsing"))
+            if segment_length > 0
+                old_length = length(line)
+                resize!(line, resulting_length)
+                copyto!(
+                    line, old_length + 1, reader.buffer,
+                    reader.buffer_position, segment_length)
+            end
+            reader.buffer_position = reader.buffer_length + 1
+            continue
+        end
+
+        trailing_cr_in_segment = segment_length > 0 &&
+            reader.buffer[segment_end] == UInt8('\r')
+        trailing_cr_in_line = segment_length == 0 && !isempty(line) &&
+            line[end] == UInt8('\r')
+        # `max_line_bytes` bounds parsed line content, independent of whether
+        # CRLF happens to straddle the 64 KiB refill boundary.
+        prefix_content_length = length(line) - Int(trailing_cr_in_line)
+        segment_content_length = segment_length - Int(trailing_cr_in_segment)
+        resulting_content_length = try
+            Base.Checked.checked_add(
+                prefix_content_length, segment_content_length)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError(
+                "Mesh input $(reader.path) line $(reader.line_number) " *
+                "length overflows the supported Int range"))
+        end
+        resulting_content_length <= reader.line_limit ||
+            throw(ArgumentError(
+                "Mesh input $(reader.path) line $(reader.line_number) " *
+                "exceeds max_line_bytes=$(reader.line_limit) while parsing"))
+
+        if !keep && trailing_cr_in_line
+            pop!(line)
+        end
+        bytes_to_copy = keep ? segment_length : segment_content_length
+        if bytes_to_copy > 0
+            old_length = length(line)
+            resize!(line, old_length + bytes_to_copy)
+            copyto!(
+                line, old_length + 1, reader.buffer,
+                reader.buffer_position, bytes_to_copy)
+        end
+        if !iszero(newline)
+            reader.buffer_position = newline + 1
+            reader.line_number = Base.Checked.checked_add(
+                reader.line_number, 1)
+            if keep
+                push!(line, UInt8('\n'))
+            end
+            return String(line)
+        end
+    end
+    length(line) <= reader.line_limit ||
+        throw(ArgumentError(
+            "Mesh input $(reader.path) line $(reader.line_number) " *
+            "exceeds max_line_bytes=$(reader.line_limit) while parsing"))
+    return String(line)
+end
+
+@inline function _mesh_raw_payload_bytes(nvertices::Int, ntriangles::Int)
+    try
+        values = Base.Checked.checked_add(nvertices, ntriangles)
+        return Base.Checked.checked_mul(24, values)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "Mesh raw coordinate/connectivity payload overflows the " *
+            "supported Int byte-count range for $nvertices vertices and " *
+            "$ntriangles triangles"))
+    end
+end
+
+@inline function _validate_mesh_resource_request(
+        nvertices::Int, ntriangles::Int, context::AbstractString;
+        max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+        max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+        max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_mesh_resource_limit("max_triangles", max_triangles)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
+    nvertices >= 0 && ntriangles >= 0 ||
+        throw(ArgumentError(
+            "$context requires nonnegative mesh counts, got " *
+            "$nvertices vertices and $ntriangles triangles"))
+    nvertices <= vertex_limit ||
+        throw(ArgumentError(
+            "$context requires $nvertices vertices, exceeding " *
+            "max_vertices=$vertex_limit"))
+    ntriangles <= triangle_limit ||
+        throw(ArgumentError(
+            "$context requires $ntriangles triangles, exceeding " *
+            "max_triangles=$triangle_limit"))
+    payload_bytes = _mesh_raw_payload_bytes(nvertices, ntriangles)
+    payload_bytes <= byte_limit ||
+        throw(ArgumentError(
+            "$context requires at least $payload_bytes bytes for raw " *
+            "coordinates and connectivity, exceeding max_raw_bytes=$byte_limit"))
+    return payload_bytes
+end
+
 @inline function _positive_finite_length(name::AbstractString, value::Real)
     converted = Float64(value)
     (isfinite(converted) && converted > 0.0) ||
@@ -59,33 +295,75 @@ end
 end
 
 """
-    make_rect_plate(Lx, Ly, Nx, Ny)
+    make_rect_plate(Lx, Ly, Nx, Ny; resource_limits...)
 
 Generate a triangulated rectangular plate in the xy-plane, centered at the
 origin. Returns a `TriMesh` with `(Nx+1)*(Ny+1)` vertices and `2*Nx*Ny`
 triangles.
+
+Output is rejected before mesh-matrix allocation when its vertex count,
+triangle count, or raw `xyz`/`tri` payload exceeds the configured limits.
 """
-function make_rect_plate(Lx::Real, Ly::Real, Nx::Int, Ny::Int)
+function make_rect_plate(Lx::Real, Ly::Real, Nx::Int, Ny::Int;
+                         max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                         max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                         max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
     Lx_f = _positive_finite_length("Lx", Lx)
     Ly_f = _positive_finite_length("Ly", Ly)
     _positive_subdivision("Nx", Nx)
     _positive_subdivision("Ny", Ny)
     Nv, Nt = _rect_mesh_counts(Nx, Ny)
+    _validate_mesh_resource_request(
+        Nv, Nt, "make_rect_plate";
+        max_vertices, max_triangles, max_raw_bytes)
+
+    # Validate representable cell spacing before allocating the output.
+    dx = Lx_f / Nx
+    dy = Ly_f / Ny
+    (dx > 0.0 && dy > 0.0) ||
+        throw(ArgumentError("Plate dimensions are too small for the requested Float64 subdivisions"))
+    if !_rectangular_triangle_area_is_representable(dx, dy)
+        # Extremely large cells may have unrepresentable triangle areas while
+        # still being useful to low-level periodic/RWG range tests. Reject the
+        # opposite boundary: a triangle whose exact Float64 area rounds to 0.
+        area_fraction_x, area_exponent_x = frexp(dx)
+        area_fraction_y, area_exponent_y = frexp(dy)
+        triangle_area = ldexp(
+            0.5 * area_fraction_x * area_fraction_y,
+            area_exponent_x + area_exponent_y)
+        triangle_area == 0.0 &&
+        !_rectangular_triangle_area_is_representable_big(dx, dy) &&
+            throw(ArgumentError(
+                "Plate triangle area underflows to zero for the requested " *
+                "dimensions and subdivisions"))
+    end
+    half_x = Lx_f / 2
+    half_y = Ly_f / 2
+    half_x > 0.0 && half_y > 0.0 ||
+        throw(ArgumentError(
+            "Plate half-extents are not representable as positive Float64 values"))
+    2 * half_x == Lx_f && 2 * half_y == Ly_f ||
+        throw(ArgumentError(
+            "Plate dimensions cannot be represented exactly by a " *
+            "Float64 grid symmetric about the origin"))
+    (-half_x + dx) > -half_x && (-half_y + dy) > -half_y ||
+        throw(ArgumentError(
+            "Plate cell spacing does not advance the first Float64 grid point"))
 
     xyz = zeros(3, Nv)
     tri = zeros(Int, 3, Nt)
 
     # Vertex grid
-    dx = Lx_f / Nx
-    dy = Ly_f / Ny
-    (dx > 0.0 && dy > 0.0) ||
-        throw(ArgumentError("Plate dimensions are too small for the requested Float64 subdivisions"))
+    @inline axis_coordinate(half_extent, cells, index) =
+        index == cells ? half_extent :
+        index == 0 ? -half_extent :
+        half_extent * (2 * (index / cells) - 1)
     idx = 0
     for jy in 0:Ny
         for jx in 0:Nx
             idx += 1
-            xyz[1, idx] = -Lx_f / 2 + jx * dx
-            xyz[2, idx] = -Ly_f / 2 + jy * dy
+            xyz[1, idx] = axis_coordinate(half_x, Nx, jx)
+            xyz[2, idx] = axis_coordinate(half_y, Ny, jy)
             xyz[3, idx] = 0.0
         end
     end
@@ -118,28 +396,62 @@ function make_rect_plate(Lx::Real, Ly::Real, Nx::Int, Ny::Int)
     return TriMesh(xyz, tri)
 end
 
+@inline function _rectangular_triangle_area_is_representable(
+        dx::Float64, dy::Float64)
+    dx_fraction, dx_exponent = frexp(dx)
+    dy_fraction, dy_exponent = frexp(dy)
+    area = ldexp(
+        0.5 * dx_fraction * dy_fraction,
+        dx_exponent + dy_exponent)
+    if area == 0.0
+        return _rectangular_triangle_area_is_representable_big(dx, dy)
+    end
+    return isfinite(area) && area > 0.0
+end
+
+@noinline function _rectangular_triangle_area_is_representable_big(
+        dx::Float64, dy::Float64)
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        area = Float64(BigFloat(dx) * BigFloat(dy) / 2)
+        isfinite(area) && area > 0.0
+    end
+end
+
 """
-    make_circular_plate(radius, Nr, Nphi)
+    make_circular_plate(radius, Nr, Nphi; resource_limits...)
 
 Generate a triangulated circular plate (disk) in the xy-plane, centered at
 the origin. Uses radial rings with azimuthal subdivision.
 
 Returns a `TriMesh` with approximately `Nr*Nphi + 1` vertices.
+Output resource limits are checked before mesh-matrix allocation.
 """
-function make_circular_plate(radius::Real, Nr::Int, Nphi::Int)
+function make_circular_plate(radius::Real, Nr::Int, Nphi::Int;
+                             max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                             max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                             max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
     radius_f = _positive_finite_length("radius", radius)
     _positive_subdivision("Nr", Nr)
     _positive_subdivision("Nphi", Nphi; minimum=3)
-    Nv, _ = _radial_mesh_counts(Nr, Nphi)
+    Nv, Nt_expected = _radial_mesh_counts(Nr, Nphi)
+    _validate_mesh_resource_request(
+        Nv, Nt_expected, "make_circular_plate";
+        max_vertices, max_triangles, max_raw_bytes)
     dr = radius_f / Nr
     dr > 0.0 ||
         throw(ArgumentError("radius is too small for the requested Float64 radial subdivisions"))
+    _radial_projected_area_is_representable(dr, Nphi) ||
+        throw(ArgumentError(
+            "Circular-plate innermost triangles do not have a representable " *
+            "positive Float64 area for the requested radius and subdivisions"))
 
     # Vertices: center + Nr rings × Nphi points each
     verts = zeros(3, Nv)
 
-    # Center vertex
-    verts[:, 1] = [0.0, 0.0, 0.0]
+    # Center vertex. Scalar stores avoid a temporary column vector.
+    verts[1, 1] = 0.0
+    verts[2, 1] = 0.0
+    verts[3, 1] = 0.0
 
     # Ring vertices
     idx = 1
@@ -153,8 +465,10 @@ function make_circular_plate(radius::Real, Nr::Int, Nphi::Int)
         end
     end
 
-    # Triangles
-    tris = Int[]
+    # The topology count is known exactly. Allocate the returned connectivity
+    # once instead of growing a flat vector and retaining its spare capacity.
+    tri = Matrix{Int}(undef, 3, Nt_expected)
+    tid = 0
 
     # Inner ring: triangles from center to first ring
     for ip in 1:Nphi
@@ -163,7 +477,10 @@ function make_circular_plate(radius::Real, Nr::Int, Nphi::Int)
         v3 = 1 + mod(ip, Nphi) + 1  # wraps: ip=Nphi -> next is 1+1=2
         # Fix: the next vertex in the ring
         v3 = ip < Nphi ? 1 + ip + 1 : 1 + 1
-        push!(tris, v1, v2, v3)
+        tid += 1
+        tri[1, tid] = v1
+        tri[2, tid] = v2
+        tri[3, tid] = v3
     end
 
     # Outer rings: quads split into two triangles
@@ -176,16 +493,39 @@ function make_circular_plate(radius::Real, Nr::Int, Nphi::Int)
             v2 = off_outer + ip
             v3 = off_outer + ip_next
             v4 = off_inner + ip_next
-            push!(tris, v1, v2, v3)
-            push!(tris, v1, v3, v4)
+            tid += 1
+            tri[1, tid] = v1
+            tri[2, tid] = v2
+            tri[3, tid] = v3
+            tid += 1
+            tri[1, tid] = v1
+            tri[2, tid] = v3
+            tri[3, tid] = v4
         end
     end
-
-    Nt = length(tris) ÷ 3
-    tri = reshape(tris, 3, Nt)
+    tid == Nt_expected || error(
+        "Internal circular-mesh topology count mismatch: wrote $tid " *
+        "triangles, expected $Nt_expected")
 
     _require_finite_coordinates(verts, "make_circular_plate")
     return TriMesh(verts, tri)
+end
+
+@inline function _radial_projected_area_is_representable(
+        first_radius::Float64, azimuthal_subdivisions::Int)
+    origin = Vec3(0.0, 0.0, 0.0)
+    first = Vec3(first_radius, 0.0, 0.0)
+    angle = 2π / azimuthal_subdivisions
+    second = Vec3(
+        first_radius * cos(angle), first_radius * sin(angle), 0.0)
+    fast, _, _, _, scale1_exponent, scale2_exponent, cross_norm =
+        _scaled_triangle_cross(origin, first, second)
+    if fast && cross_norm > 0.0
+        area = _scaled_triangle_area(
+            cross_norm, scale1_exponent, scale2_exponent)
+        isfinite(area) && area > 0.0 && return true
+    end
+    return _triangle_area_big(origin, first, second) > 0.0
 end
 
 """
@@ -216,7 +556,8 @@ function _grade_1d(N::Int, L::Real, grading_factor::Real)
 end
 
 """
-    make_rect_plate_graded(Lx, Ly, Nx, Ny; grading_factor=3.0)
+    make_rect_plate_graded(Lx, Ly, Nx, Ny;
+                           grading_factor=3.0, resource_limits...)
 
 Generate a triangulated rectangular plate in the xy-plane with graded mesh
 density near the edges.  Same topology as `make_rect_plate` but vertex
@@ -229,18 +570,43 @@ positions are redistributed using a tanh grading function.
 
 Practical range: 1.0–5.0.  Values above 6 may create highly skewed
 center elements.
+
+Output resource limits are checked before coordinate-vector or mesh-matrix
+allocation.
 """
 function make_rect_plate_graded(Lx::Real, Ly::Real, Nx::Int, Ny::Int;
-                                 grading_factor::Real=3.0)
+                                 grading_factor::Real=3.0,
+                                 max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                                 max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                                 max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
     Lx_f = _positive_finite_length("Lx", Lx)
     Ly_f = _positive_finite_length("Ly", Ly)
     grading_factor_f = _positive_finite_length("grading_factor", grading_factor)
     _positive_subdivision("Nx", Nx)
     _positive_subdivision("Ny", Ny)
     Nv, Nt = _rect_mesh_counts(Nx, Ny)
+    _validate_mesh_resource_request(
+        Nv, Nt, "make_rect_plate_graded";
+        max_vertices, max_triangles, max_raw_bytes)
+
+    half_x = Lx_f / 2
+    half_y = Ly_f / 2
+    half_x > 0.0 && half_y > 0.0 &&
+    2 * half_x == Lx_f && 2 * half_y == Ly_f ||
+        throw(ArgumentError(
+            "Graded-plate dimensions cannot be represented exactly by a " *
+            "Float64 grid symmetric about the origin"))
 
     xs = _grade_1d(Nx, Lx_f, grading_factor_f)
     ys = _grade_1d(Ny, Ly_f, grading_factor_f)
+    @inbounds for ix in 1:Nx, iy in 1:Ny
+        dx = xs[ix + 1] - xs[ix]
+        dy = ys[iy + 1] - ys[iy]
+        _rectangular_triangle_area_is_representable(dx, dy) ||
+            throw(ArgumentError(
+                "Graded-plate triangle area is outside the positive " *
+                "representable Float64 range near cell ($ix, $iy)"))
+    end
 
     xyz = zeros(3, Nv)
     tri = zeros(Int, 3, Nt)
@@ -282,7 +648,8 @@ function make_rect_plate_graded(Lx::Real, Ly::Real, Nx::Int, Ny::Int;
 end
 
 """
-    make_parabolic_reflector(D, f, Nr, Nphi; center=Vec3(0,0,0))
+    make_parabolic_reflector(D, f, Nr, Nphi;
+                             center=Vec3(0,0,0), resource_limits...)
 
 Generate a triangulated open parabolic reflector with aperture diameter `D`
 and focal length `f`, aligned with +z:
@@ -291,9 +658,13 @@ and focal length `f`, aligned with +z:
 
 The mesh uses `Nr` radial rings and `Nphi` azimuth samples per ring.
 Returns a `TriMesh` suitable for open-surface EFIE runs (`allow_boundary=true`).
+Output resource limits are checked before mesh-matrix allocation.
 """
 function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
-                                  center::Vec3=Vec3(0.0, 0.0, 0.0))
+                                  center::Vec3=Vec3(0.0, 0.0, 0.0),
+                                  max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                                  max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                                  max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
     D_f = _positive_finite_length("Reflector diameter D", D)
     f_f = _positive_finite_length("Reflector focal length f", f)
     _positive_subdivision("Nr", Nr; minimum=2)
@@ -301,14 +672,29 @@ function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
     all(isfinite, center) ||
         throw(ArgumentError("Reflector center must contain only finite coordinates, got $center"))
     Nv, Nt = _radial_mesh_counts(Nr, Nphi)
+    _validate_mesh_resource_request(
+        Nv, Nt, "make_parabolic_reflector";
+        max_vertices, max_triangles, max_raw_bytes)
 
     R = D_f / 2
+    R > 0.0 ||
+        throw(ArgumentError(
+            "Reflector diameter D is too small to represent a positive " *
+            "Float64 aperture radius"))
+    first_radius = R / Nr
+    first_radius > 0.0 ||
+        throw(ArgumentError(
+            "Reflector radial spacing is not representable for Nr=$Nr"))
+    _validate_parabolic_reflector_extent(
+        center, R, D_f, f_f, Nr, Nphi)
 
     xyz = zeros(3, Nv)
     tri = zeros(Int, 3, Nt)
 
-    # Vertex 1: apex
-    xyz[:, 1] = center
+    # Vertex 1: apex. Scalar stores avoid a temporary column vector.
+    xyz[1, 1] = center[1]
+    xyz[2, 1] = center[2]
+    xyz[3, 1] = center[3]
 
     @inline vid(ir, j) = 2 + (ir - 1) * Nphi + (j - 1)  # ir=1:Nr, j=1:Nphi
     @inline jnext(j) = (j == Nphi) ? 1 : (j + 1)
@@ -316,7 +702,7 @@ function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
     # Ring vertices
     for ir in 1:Nr
         r = R * (ir / Nr)
-        z = r^2 / (4f_f)
+        z = _parabolic_reflector_height(r, f_f)
         for j in 1:Nphi
             ϕ = 2π * (j - 1) / Nphi
             idx = vid(ir, j)
@@ -330,7 +716,9 @@ function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
     tid = 0
     for j in 1:Nphi
         tid += 1
-        tri[:, tid] = [1, vid(1, j), vid(1, jnext(j))]
+        tri[1, tid] = 1
+        tri[2, tid] = vid(1, j)
+        tri[3, tid] = vid(1, jnext(j))
     end
 
     # Ring-to-ring quads split into 2 triangles
@@ -342,14 +730,237 @@ function make_parabolic_reflector(D::Real, f::Real, Nr::Int, Nphi::Int;
             v11 = vid(ir + 1, jnext(j))
 
             tid += 1
-            tri[:, tid] = [v00, v10, v11]
+            tri[1, tid] = v00
+            tri[2, tid] = v10
+            tri[3, tid] = v11
             tid += 1
-            tri[:, tid] = [v00, v11, v01]
+            tri[1, tid] = v00
+            tri[2, tid] = v11
+            tri[3, tid] = v01
         end
     end
 
     _require_finite_coordinates(xyz, "make_parabolic_reflector")
     return TriMesh(xyz, tri)
+end
+
+@inline function _parabolic_reflector_height(radius::Float64,
+                                              focal_length::Float64)
+    radius == 0.0 && return 0.0
+    radius_fraction, radius_exponent = frexp(radius)
+    focal_fraction, focal_exponent = frexp(focal_length)
+    fraction = (radius_fraction * radius_fraction) / (4 * focal_fraction)
+    height = ldexp(fraction, 2 * radius_exponent - focal_exponent)
+    if height == 0.0 || !isfinite(height)
+        return _parabolic_reflector_height_big(radius, focal_length)
+    end
+    isfinite(height) ||
+        throw(OverflowError(
+            "Parabolic-reflector height is outside the representable Float64 range"))
+    height > 0.0 ||
+        throw(ArgumentError(
+            "Positive parabolic-reflector height underflows Float64 for " *
+            "radius=$radius and focal_length=$focal_length"))
+    return height
+end
+
+@noinline function _parabolic_reflector_height_big(
+        radius::Float64, focal_length::Float64)
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        height = Float64(
+            BigFloat(radius) * BigFloat(radius) / (4 * BigFloat(focal_length)))
+        isfinite(height) ||
+            throw(OverflowError(
+                "Parabolic-reflector height is outside the representable " *
+                "Float64 range"))
+        height > 0.0 ||
+            throw(ArgumentError(
+                "Positive parabolic-reflector height underflows Float64 for " *
+                "radius=$radius and focal_length=$focal_length"))
+        return height
+    end
+end
+
+@inline function _parabolic_reflector_point(
+        center::Vec3, radius::Float64, height::Float64,
+        sample::Int, azimuthal_subdivisions::Int)
+    angle = 2π * (sample - 1) / azimuthal_subdivisions
+    return Vec3(
+        center[1] + radius * cos(angle),
+        center[2] + radius * sin(angle),
+        center[3] + height,
+    )
+end
+
+@inline function _parabolic_triangle_area_representable(
+        first::Vec3, second::Vec3, third::Vec3)
+    all(isfinite, first) && all(isfinite, second) && all(isfinite, third) ||
+        return 0.0
+    fast, _, _, _, scale1_exponent, scale2_exponent, cross_norm =
+        _scaled_triangle_cross(first, second, third)
+    if fast
+        cross_norm > 0.0 || return 0.0
+        area = _scaled_triangle_area(
+            cross_norm, scale1_exponent, scale2_exponent)
+        if isfinite(area) && area > floatmin(Float64) &&
+           area < 0.5 * floatmax(Float64)
+            return area
+        end
+    end
+    return _parabolic_triangle_area_big(first, second, third)
+end
+
+@noinline function _parabolic_triangle_area_big(
+        first::Vec3, second::Vec3, third::Vec3)
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        e1x = BigFloat(second[1]) - BigFloat(first[1])
+        e1y = BigFloat(second[2]) - BigFloat(first[2])
+        e1z = BigFloat(second[3]) - BigFloat(first[3])
+        e2x = BigFloat(third[1]) - BigFloat(first[1])
+        e2y = BigFloat(third[2]) - BigFloat(first[2])
+        e2z = BigFloat(third[3]) - BigFloat(first[3])
+        cx = e1y * e2z - e1z * e2y
+        cy = e1z * e2x - e1x * e2z
+        cz = e1x * e2y - e1y * e2x
+        cross_norm = hypot(hypot(cx, cy), cz)
+        area = Float64(cross_norm / 2)
+        return isfinite(area) && area > 0.0 ? area : 0.0
+    end
+end
+
+@noinline function _validate_parabolic_reflector_extent(
+        center::Vec3, radius::Float64, diameter::Float64,
+        focal_length::Float64,
+        radial_subdivisions::Int, azimuthal_subdivisions::Int)
+    apex = center
+    previous_ring = Vector{Vec3}(undef, azimuthal_subdivisions)
+    current_ring = similar(previous_ring)
+    xmin = xmax = center[1]
+    ymin = ymax = center[2]
+    zmin = zmax = center[3]
+    minimum_area = Inf
+
+    for ring in 1:radial_subdivisions
+        radial_fraction = ring / radial_subdivisions
+        ring_radius = ring == radial_subdivisions ? radius :
+                      radius * radial_fraction
+        ring_radius > 0.0 ||
+            throw(ArgumentError(
+                "Parabolic-reflector ring $ring radius is not representable"))
+        ring_height = _parabolic_reflector_height(
+            ring_radius, focal_length)
+        for sample in 1:azimuthal_subdivisions
+            point = _parabolic_reflector_point(
+                center, ring_radius, ring_height,
+                sample, azimuthal_subdivisions)
+            all(isfinite, point) ||
+                throw(OverflowError(
+                    "Parabolic-reflector sampled coordinates are outside " *
+                    "the representable Float64 range for D=$diameter, " *
+                    "f=$focal_length"))
+            point[3] > center[3] ||
+                throw(ArgumentError(
+                    "Parabolic-reflector ring $ring height is not " *
+                    "representable relative to the requested center"))
+            projected = (point[1], point[2])
+            projected != (center[1], center[2]) ||
+                throw(ArgumentError(
+                    "Parabolic-reflector ring $ring sample $sample " *
+                    "collapses onto the apex in Float64"))
+            if ring > 1
+                previous_projected = (
+                    previous_ring[sample][1], previous_ring[sample][2])
+                projected != previous_projected ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector projected samples do not " *
+                        "advance between rings $(ring - 1) and $ring"))
+            end
+            current_ring[sample] = point
+            xmin = min(xmin, point[1]); xmax = max(xmax, point[1])
+            ymin = min(ymin, point[2]); ymax = max(ymax, point[2])
+            zmin = min(zmin, point[3]); zmax = max(zmax, point[3])
+        end
+
+        # Sample order follows one traversal of the ring. A repeated projected
+        # point can be detected without an O(Nphi) hash table: any repetition
+        # makes at least one consecutive polar angle fail to advance.
+        previous_angle = -Inf
+        for sample in 1:azimuthal_subdivisions
+            point = current_ring[sample]
+            angle = atan(point[2] - center[2], point[1] - center[1])
+            angle < 0.0 && (angle += 2π)
+            if sample > 1
+                angle > previous_angle ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector ring $ring projected samples " *
+                        "are not unique and ordered in Float64"))
+            end
+            previous_angle = angle
+        end
+
+        current_scale = hypot(
+            hypot(xmax - xmin, ymax - ymin), zmax - zmin)
+        isfinite(current_scale) ||
+            throw(ArgumentError(
+                "Parabolic-reflector sampled extent is outside the " *
+                "supported Float64 quality range"))
+        current_tolerance = _area_tolerance(current_scale, 1.0e-12)
+        minimum_area > current_tolerance ||
+            throw(ArgumentError(
+                "Parabolic-reflector sampled Float64 geometry contains a " *
+                "triangle with area $minimum_area at or below the solver " *
+                "quality tolerance $current_tolerance"))
+
+        for sample in 1:azimuthal_subdivisions
+            following = sample == azimuthal_subdivisions ? 1 : sample + 1
+            if ring == 1
+                area = _parabolic_triangle_area_representable(
+                    apex, current_ring[sample], current_ring[following])
+                area > 0.0 ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector innermost triangle $sample " *
+                        "does not have a representable positive Float64 area"))
+                area > current_tolerance ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector sampled Float64 geometry " *
+                        "contains a triangle with area $area at or below " *
+                        "the solver quality tolerance $current_tolerance"))
+                minimum_area = min(minimum_area, area)
+            else
+                first_area = _parabolic_triangle_area_representable(
+                    previous_ring[sample], current_ring[sample],
+                    current_ring[following])
+                first_area > 0.0 ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector ring-cell triangle at ring " *
+                        "$ring, sample $sample does not have a representable " *
+                        "positive Float64 area"))
+                first_area > current_tolerance ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector sampled Float64 geometry " *
+                        "contains a triangle with area $first_area at or " *
+                        "below the solver quality tolerance " *
+                        "$current_tolerance"))
+                second_area = _parabolic_triangle_area_representable(
+                    previous_ring[sample], current_ring[following],
+                    previous_ring[following])
+                second_area > 0.0 ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector ring-cell triangle at ring " *
+                        "$ring, sample $sample does not have a representable " *
+                        "positive Float64 area"))
+                second_area > current_tolerance ||
+                    throw(ArgumentError(
+                        "Parabolic-reflector sampled Float64 geometry " *
+                        "contains a triangle with area $second_area at or " *
+                        "below the solver quality tolerance " *
+                        "$current_tolerance"))
+                minimum_area = min(minimum_area, first_area, second_area)
+            end
+        end
+        previous_ring, current_ring = current_ring, previous_ring
+    end
+    return nothing
 end
 
 function _mesh_coordinate_diagnostics(mesh::TriMesh)
@@ -731,7 +1342,14 @@ end
     return SubString(line, first, last), next_position
 end
 
-function _count_obj_mesh(io::IO, path::AbstractString)
+function _count_obj_mesh(
+        io::IO, path::AbstractString;
+        max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+        max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+        max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES)
+    vertex_limit = _validated_mesh_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_mesh_resource_limit("max_triangles", max_triangles)
+    byte_limit = _validated_mesh_resource_limit("max_raw_bytes", max_raw_bytes)
     n_vertices = 0
     n_triangles = 0
 
@@ -742,7 +1360,23 @@ function _count_obj_mesh(io::IO, path::AbstractString)
         line[record_first] == '#' && continue
 
         if _obj_record_is(line, record_first, record_last, 'v')
-            n_fields = 0
+            x_field, next_position = _required_obj_field(
+                line, position, path, line_number, "vertex")
+            y_field, next_position = _required_obj_field(
+                line, next_position, path, line_number, "vertex")
+            z_field, next_position = _required_obj_field(
+                line, next_position, path, line_number, "vertex")
+            coord = (
+                parse(Float64, x_field),
+                parse(Float64, y_field),
+                parse(Float64, z_field),
+            )
+            isfinite(coord[1]) && isfinite(coord[2]) && isfinite(coord[3]) ||
+                error(
+                    "OBJ vertex coordinates must be finite at " *
+                    "$path:$line_number: $line")
+            n_fields = 3
+            position = next_position
             while true
                 first, _, next_position = _obj_field_bounds(line, position)
                 iszero(first) && break
@@ -753,18 +1387,36 @@ function _count_obj_mesh(io::IO, path::AbstractString)
             n_fields >= 3 ||
                 error("Invalid OBJ vertex at $path:$line_number: $line")
             n_vertices = Base.checked_add(n_vertices, 1)
+            n_vertices <= vertex_limit ||
+                throw(ArgumentError(
+                    "OBJ mesh exceeds max_vertices=$vertex_limit at " *
+                    "$path:$line_number"))
+            _mesh_raw_payload_bytes(n_vertices, n_triangles) <= byte_limit ||
+                throw(ArgumentError(
+                    "OBJ mesh exceeds max_raw_bytes=$byte_limit at " *
+                    "$path:$line_number"))
         elseif _obj_record_is(line, record_first, record_last, 'f')
             n_face_vertices = 0
             while true
-                first, _, next_position = _obj_field_bounds(line, position)
+                first, last, next_position = _obj_field_bounds(line, position)
                 iszero(first) && break
                 line[first] == '#' && break
+                _parse_obj_vertex_index(
+                    line, first, last, n_vertices, path, line_number)
                 n_face_vertices = Base.checked_add(n_face_vertices, 1)
                 position = next_position
             end
             n_face_vertices >= 3 ||
                 error("Invalid OBJ face at $path:$line_number: $line")
             n_triangles = Base.checked_add(n_triangles, n_face_vertices - 2)
+            n_triangles <= triangle_limit ||
+                throw(ArgumentError(
+                    "OBJ mesh exceeds max_triangles=$triangle_limit at " *
+                    "$path:$line_number"))
+            _mesh_raw_payload_bytes(n_vertices, n_triangles) <= byte_limit ||
+                throw(ArgumentError(
+                    "OBJ mesh exceeds max_raw_bytes=$byte_limit at " *
+                    "$path:$line_number"))
         end
     end
 
@@ -878,16 +1530,35 @@ function _fill_obj_mesh!(io::IO, path::AbstractString,
     return nothing
 end
 
-function read_obj_mesh(path::AbstractString)
+"""
+    read_obj_mesh(path; resource_limits...)
+
+Read a Wavefront OBJ mesh. Polygon faces are fan-triangulated. Vertex,
+triangle, raw output-payload, input-file, and text-line limits are enforced
+before the corresponding large allocation or line parse.
+"""
+function read_obj_mesh(path::AbstractString;
+                       max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+                       max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+                       max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES,
+                       max_input_bytes::Integer=_DEFAULT_MESH_MAX_INPUT_BYTES,
+                       max_line_bytes::Integer=_DEFAULT_MESH_MAX_LINE_BYTES)
     return open(path, "r") do io
-        n_vertices, n_triangles = _count_obj_mesh(io, path)
+        _mesh_input_size(io, path; max_input_bytes)
+        reader = _BoundedMeshTextIO(
+            io, path; max_input_bytes, max_line_bytes)
+        n_vertices, n_triangles = _count_obj_mesh(
+            reader, path; max_vertices, max_triangles, max_raw_bytes)
         n_vertices > 0 || error("OBJ mesh has no vertices: $path")
         n_triangles > 0 || error("OBJ mesh has no faces: $path")
+        _validate_mesh_resource_request(
+            n_vertices, n_triangles, "OBJ mesh $path";
+            max_vertices, max_triangles, max_raw_bytes)
 
         xyz = Matrix{Float64}(undef, 3, n_vertices)
         tri = Matrix{Int}(undef, 3, n_triangles)
-        seekstart(io)
-        _fill_obj_mesh!(io, path, xyz, tri)
+        seekstart(reader)
+        _fill_obj_mesh!(reader, path, xyz, tri)
         return TriMesh(xyz, tri)
     end
 end
@@ -1508,13 +2179,16 @@ function repair_mesh_for_simulation(mesh::TriMesh;
 end
 
 """
-    repair_obj_mesh(input_path, output_path; kwargs...)
+    repair_obj_mesh(input_path, output_path; reader_kwargs=NamedTuple(), kwargs...)
 
 Read an OBJ mesh, repair it for solver prechecks, and write a repaired OBJ.
 Returns the same metadata as `repair_mesh_for_simulation`, plus `output_path`.
+OBJ resource limits may be passed in the `reader_kwargs` named tuple.
 """
-function repair_obj_mesh(input_path::AbstractString, output_path::AbstractString; kwargs...)
-    mesh = read_obj_mesh(input_path)
+function repair_obj_mesh(
+        input_path::AbstractString, output_path::AbstractString;
+        reader_kwargs::NamedTuple=NamedTuple(), kwargs...)
+    mesh = read_obj_mesh(input_path; reader_kwargs...)
     result = repair_mesh_for_simulation(mesh; kwargs...)
     write_obj_mesh(output_path, result.mesh; header="Repaired from $input_path by DiffMoM")
     return (; result..., output_path=output_path)

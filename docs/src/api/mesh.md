@@ -10,6 +10,22 @@ A mesh that fails quality checks will cause errors or silently wrong results in 
 
 ## Creation and IO
 
+Mesh generators and readers share these resource keywords:
+
+| Keyword | Default | Meaning |
+|---------|---------|---------|
+| `max_vertices` | `5_000_000` | Maximum vertices in the returned mesh. |
+| `max_triangles` | `10_000_000` | Maximum triangles in the returned mesh. |
+| `max_raw_bytes` | `536_870_912` | Maximum raw `xyz` plus `tri` matrix payload (`24*(Nv+Nt)` bytes). |
+
+Text readers additionally accept `max_input_bytes=1_073_741_824` and
+`max_line_bytes=1_048_576`. STL accepts those input limits for ASCII files
+and the input-size limit for both encodings. Limits must be positive
+integers. They are checked before the corresponding count-sized output
+allocation; streaming readers also enforce counts while records are parsed.
+`max_line_bytes` counts parsed content bytes and excludes either an LF or
+CRLF line terminator.
+
 ### `make_rect_plate(Lx, Ly, Nx, Ny)`
 
 Creates a triangulated rectangular plate in the xy-plane, centered at the origin. This is the most common mesh for development and testing.
@@ -22,6 +38,7 @@ Creates a triangulated rectangular plate in the xy-plane, centered at the origin
 | `Ly` | `Real` | Finite, positive plate length in y-direction (meters). |
 | `Nx` | `Int` | Number of cells (subdivisions) along x. Must be >= 1. More cells = finer mesh = more RWG basis functions. |
 | `Ny` | `Int` | Number of cells along y. Must be >= 1. |
+| resource keywords | `Integer` | Shared output limits described above. |
 
 **Returns:** `TriMesh` with `(Nx+1)*(Ny+1)` vertices and `2*Nx*Ny` triangles (each rectangular cell is split into 2 triangles).
 
@@ -44,6 +61,7 @@ Creates a triangulated rectangular plate in the xy-plane with graded mesh densit
 | `Nx` | `Int` | -- | Number of cells along x; must be at least 1. |
 | `Ny` | `Int` | -- | Number of cells along y; must be at least 1. |
 | `grading_factor` | `Real` | `3.0` | Controls edge clustering strength. Must be finite and positive. |
+| resource keywords | `Integer` | See the shared output limits above. |
 
 **Returns:** `TriMesh` with `(Nx+1)*(Ny+1)` vertices and `2*Nx*Ny` triangles (same count as `make_rect_plate`).
 
@@ -76,6 +94,7 @@ Creates a triangulated circular plate (disk) in the xy-plane, centered at the or
 | `radius` | `Real` | Finite, positive disk radius (meters). |
 | `Nr` | `Int` | Number of radial rings; must be at least 1. More rings = finer radial resolution. |
 | `Nphi` | `Int` | Number of azimuthal samples per ring; must be at least 3. Larger values give a smoother circular boundary. |
+| resource keywords | `Integer` | Shared output limits described above. |
 
 **Returns:** `TriMesh` with `1 + Nr*Nphi` vertices and `Nphi + 2*(Nr-1)*Nphi` triangles.
 
@@ -107,10 +126,15 @@ z = \frac{x^2 + y^2}{4f}, \qquad x^2 + y^2 \le (D/2)^2.
 | `Nr` | `Int` | Number of radial rings (>= 2). More rings = finer radial resolution. |
 | `Nphi` | `Int` | Number of azimuthal samples per ring (>= 3). Typically 20--40 for smooth curvature. |
 | `center` | `Vec3` | Finite reflector apex location, default `Vec3(0,0,0)`. |
+| resource keywords | `Integer` | Shared output limits described above. |
 
 **Returns:** `TriMesh` with `1 + Nr*Nphi` vertices and `Nphi + 2*(Nr-1)*Nphi` triangles.
 
 **Note:** This is an open surface (has boundary edges). Use `allow_boundary=true` in mesh checks and `build_rwg`.
+The generator rejects requested rings whose sampled Float64 coordinates do
+not remain distinct on the translated paraboloid, whose positive sag is lost
+to rounding, whose triangle area is not representable, or whose thinnest
+sampled triangle is at or below the solver's scale-relative quality tolerance.
 
 **Example:**
 ```julia
@@ -121,7 +145,7 @@ println((nvertices(mesh), ntriangles(mesh)))
 
 ---
 
-### `read_obj_mesh(path)`
+### `read_obj_mesh(path; resource_limits...)`
 
 Reads a triangle mesh from a Wavefront OBJ file. OBJ is a widely supported text format exported by most CAD tools and mesh generators.
 
@@ -130,6 +154,7 @@ Reads a triangle mesh from a Wavefront OBJ file. OBJ is a widely supported text 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `path` | `AbstractString` | Path to the OBJ file. |
+| resource keywords | `Integer` | Shared output and text-input limits described above. |
 
 **Returns:** `TriMesh`
 
@@ -143,6 +168,10 @@ positive and negative OBJ vertex indices are supported.
 The reader scans the file once to count the exact output dimensions and once
 to fill the mesh matrices. This avoids retaining the complete text file,
 per-field split vectors, or intermediate vertex and face collections.
+
+`repair_obj_mesh(input, output; reader_kwargs=(...), repair_kwargs...)`
+accepts OBJ reader limits in `reader_kwargs`; remaining keywords configure
+`repair_mesh_for_simulation`.
 
 **Typical workflow for imported meshes:**
 ```julia
@@ -342,13 +371,14 @@ repair_mesh_for_simulation(mesh;
 
 ---
 
-### `repair_obj_mesh(input_path, output_path; kwargs...)`
+### `repair_obj_mesh(input_path, output_path; reader_kwargs=NamedTuple(), kwargs...)`
 
 Convenience wrapper: read an OBJ, repair it, and write the repaired mesh to a new OBJ file.
 
 **Parameters:**
 - `input_path::AbstractString`: Path to input OBJ file.
 - `output_path::AbstractString`: Path to output OBJ file.
+- `reader_kwargs::NamedTuple`: OBJ resource limits forwarded to `read_obj_mesh`.
 - `kwargs...`: Forwarded to `repair_mesh_for_simulation`.
 
 **Returns:** Same metadata as `repair_mesh_for_simulation`, plus the `output_path`.
@@ -589,7 +619,7 @@ println("Achieved N=$(coarse.rwg_count) (target was $target_N)")
 
 These functions (in `src/geometry/MeshIO.jl`) extend mesh I/O beyond OBJ to support STL, Gmsh MSH, and CAD conversion.
 
-### `read_stl_mesh(path; merge_tol=0.0)`
+### `read_stl_mesh(path; merge_tol=0.0, resource_limits...)`
 
 Read a triangle mesh from an STL file. Both binary and ASCII STL are auto-detected.
 
@@ -607,6 +637,7 @@ Binary STL input is streamed one 50-byte facet record at a time, and all binary 
 |-----------|------|---------|-------------|
 | `path` | `AbstractString` | -- | Path to the STL file. |
 | `merge_tol` | `Float64` | `0.0` | Vertex merge tolerance. `0.0` = exact merge (bitwise); positive values use Euclidean distance. |
+| resource keywords | `Integer` | Shared output/input limits described above. `max_line_bytes` applies only when the file is parsed as ASCII. |
 
 **Returns:** `TriMesh`
 
@@ -643,7 +674,7 @@ Float32 cannot preserve the mesh.
 
 ---
 
-### `read_msh_mesh(path)`
+### `read_msh_mesh(path; resource_limits...)`
 
 Read a triangle surface mesh from a Gmsh MSH file (v2 or v4 ASCII).
 
@@ -656,6 +687,7 @@ Only 3-node triangle elements (Gmsh element type 2) are extracted. Lines, quads,
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `path` | `AbstractString` | Path to the MSH file. |
+| resource keywords | `Integer` | Shared output and text-input limits described above. |
 
 **Returns:** `TriMesh`
 
@@ -669,7 +701,7 @@ mesh = read_msh_mesh("model.msh")
 
 ---
 
-### `read_mesh(path)`
+### `read_mesh(path; kwargs...)`
 
 Unified mesh reader that dispatches by file extension:
 
@@ -680,6 +712,8 @@ Unified mesh reader that dispatches by file extension:
 | `.msh` | `read_msh_mesh` |
 
 Throws an error on unsupported extensions.
+Keyword arguments are forwarded to the selected reader, including the common
+resource limits and STL-specific `merge_tol`.
 
 **Example:**
 ```julia
@@ -702,7 +736,7 @@ Keyword arguments are forwarded to the underlying writer.
 
 ---
 
-### `convert_cad_to_mesh(cad_path, output_path; mesh_size=0.0, gmsh_exe="gmsh")`
+### `convert_cad_to_mesh(cad_path, output_path; mesh_size=0.0, gmsh_exe="gmsh", reader_kwargs=NamedTuple())`
 
 Convert a CAD file (STEP, IGES, BREP) to a triangle surface mesh by calling the Gmsh CLI. Gmsh must be installed and on PATH.
 
@@ -714,6 +748,7 @@ Convert a CAD file (STEP, IGES, BREP) to a triangle surface mesh by calling the 
 | `output_path` | `AbstractString` | -- | Output mesh file (.msh, .stl, or .obj). |
 | `mesh_size` | `Float64` | `0.0` | Maximum element size (`-clmax`). `0.0` = Gmsh default. |
 | `gmsh_exe` | `AbstractString` | `"gmsh"` | Path to the Gmsh executable. |
+| `reader_kwargs` | `NamedTuple` | `NamedTuple()` | Resource limits forwarded to the selected mesh reader after Gmsh finishes. |
 
 **Returns:** `TriMesh` (the imported mesh).
 

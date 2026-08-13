@@ -23,11 +23,15 @@ Partition mesh triangles by dividing the bounding box into an `nx * ny * nz` gri
 | `ny` | `Int` | `4` | Number of grid divisions along y. |
 | `nz` | `Int` | `1` | Number of grid divisions along z. Set to 1 for planar or nearly-planar geometries. |
 
+Each axis is limited to 10,000,000 cells so classification and exact-boundary
+fallback work remain bounded. Classification also fails closed if more than
+1,000 distinct coordinates on one axis require exact boundary resolution.
+
 **Returns:** `PatchPartition` with `P <= nx * ny * nz` patches (empty cells skipped).
 
 **Algorithm:**
 1. Compute triangle centroids via `triangle_center(mesh, t)`.
-2. Compute the bounding box of all centroids (with small epsilon padding).
+2. Compute the exact Float64 bounding box of all centroids.
 3. Map each centroid to a grid cell `(ix, iy, iz)` via floor division.
 4. Convert to a linear index: `id = ix + iy*nx + iz*nx*ny + 1`.
 5. Renumber to consecutive patch IDs (skip empty cells).
@@ -70,7 +74,9 @@ Assign triangles to patches based on spatial predicate functions. Each element o
 | `mesh` | `TriMesh` | Triangle mesh. |
 | `regions` | `Vector{<:Function}` | Predicate functions, tested in order. First match wins. |
 
-**Returns:** `PatchPartition` with `P = length(regions) + 1` patches (including background).
+**Returns:** `PatchPartition` whose IDs are the used region/background IDs;
+`P` is the highest used ID, so unused trailing regions or an empty background
+do not add a patch.
 
 **Example:**
 
@@ -87,9 +93,9 @@ partition = assign_patches_by_region(mesh, regions)
 **Controlling PEC regions:** To keep some patches as PEC (uncoated), set their box constraints to zero in the optimizer:
 
 ```julia
-# Only optimize patches 1 and 2; patch 3 (background) stays PEC
-lb = [0.0, 0.0, 0.0]
-ub = [500.0, 500.0, 0.0]   # ub=lb=0 for PEC patches
+# Both complementary regions are used, so this example has two patches.
+lb = [0.0, 0.0]
+ub = [500.0, 500.0]
 ```
 
 ---
@@ -134,6 +140,10 @@ Create a predicate selecting triangles whose centroid is within `radius` of `cen
 | `radius` | `Float64` | Selection radius (meters). |
 
 **Returns:** `Function` (predicate `Vec3 -> Bool`).
+
+Near the spherical boundary, the predicate caches exact high-precision
+classifications. It fails closed after 1,000 distinct numerically ambiguous
+boundary points so adversarial meshes cannot trigger unbounded fallback work.
 
 **Example:**
 
@@ -187,7 +197,7 @@ partition = assign_patches_by_region(mesh, regions)
 
 ## K-Means Partitioning
 
-### `assign_patches_uniform(mesh; n_patches)`
+### `assign_patches_uniform(mesh; n_patches, max_distance_evaluations=50_000_000)`
 
 Partition all triangles into `n_patches` spatial groups using k-means clustering of triangle centroids. This produces spatially compact patches of roughly equal size, regardless of geometry.
 
@@ -197,14 +207,21 @@ Partition all triangles into `n_patches` spatial groups using k-means clustering
 |-----------|------|-------------|
 | `mesh` | `TriMesh` | Triangle mesh. |
 | `n_patches` | `Int` | Desired number of patches (must be >= 1 and <= `ntriangles(mesh)`). |
+| `max_distance_evaluations` | `Integer` | Positive total cap on centroid-to-center distance evaluations. The call fails rather than returning an unconverged partition when the cap is exhausted. |
 
 **Returns:** `PatchPartition` with `P <= n_patches` patches (may be fewer if clusters merge).
 
 **Algorithm:**
 1. Compute triangle centroids.
 2. Initialize k-means cluster centers via random permutation (seed=42 for determinism).
-3. Run Lloyd's algorithm (max 100 iterations) assigning each triangle to its nearest center.
+3. Run Lloyd's algorithm (max 100 iterations) assigning each triangle to its nearest center, subject to `max_distance_evaluations`.
 4. Renumber to consecutive IDs if any clusters are empty.
+
+Center updates and distance comparisons are range-safe for finite Float64
+geometry. At the `n_patches == ntriangles(mesh)` endpoint, exact duplicate
+centroids are grouped directly in linear expected time instead of running a
+quadratic Lloyd scan. Numerically indistinguishable center distances fail
+closed after 1,000 exact fallback comparisons.
 
 **Example:**
 
@@ -221,7 +238,7 @@ println("Patches: ", partition.P)   # 10
 | Method | Strengths | Weaknesses |
 |--------|-----------|------------|
 | `assign_patches_grid` | Axis-aligned, predictable layout, fast | Poor for curved or irregular shapes |
-| `assign_patches_uniform` | Adapts to geometry shape, equal-size patches | Slightly slower (iterative), non-deterministic without fixed seed |
+| `assign_patches_uniform` | Adapts to geometry shape, equal-size patches | Slightly slower (iterative); initialization is deterministic (seed 42) |
 | `assign_patches_by_region` | Maximum user control, semantically meaningful | Requires manual predicate construction |
 
 ---

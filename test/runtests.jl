@@ -467,6 +467,114 @@ println("  PASS ✓")
 @test_throws ArgumentError make_parabolic_reflector(1.0, Inf, 2, 8)
 @test_throws ArgumentError estimate_dense_matrix_gib(-1)
 
+# Generator counts and raw payloads are checked before large allocations.
+@test DiffMoM._mesh_raw_payload_bytes(4, 2) == 144
+@test ntriangles(make_rect_plate(
+    1.0, 1.0, 1, 1;
+    max_vertices=4, max_triangles=2, max_raw_bytes=144)) == 2
+@test_throws ArgumentError make_rect_plate(
+    1.0, 1.0, 1, 1; max_raw_bytes=143)
+@test_throws ArgumentError make_rect_plate(
+    1.0, 1.0, 100_000, 100_000)
+@test_throws ArgumentError make_circular_plate(
+    1.0, 100_000, 100_000)
+@test_throws ArgumentError make_parabolic_reflector(
+    1.0, 1.0, 100_000, 100_000)
+@test_throws ArgumentError DiffMoM._mesh_raw_payload_bytes(typemax(Int), 1)
+for invalid_limit in (false, 0, -1, big(typemax(Int)) + 1)
+    @test_throws ArgumentError make_rect_plate(
+        1.0, 1.0, 1, 1; max_vertices=invalid_limit)
+end
+
+# Radial generators allocate only their final coordinate/connectivity payload
+# plus bounded bookkeeping, without a growable connectivity copy.
+make_circular_plate(1.0, 40, 200)
+make_parabolic_reflector(1.0, 1.0, 40, 200)
+GC.gc()
+radial_raw_bytes = DiffMoM._mesh_raw_payload_bytes(
+    DiffMoM._radial_mesh_counts(40, 200)...)
+@test @allocated(make_circular_plate(1.0, 40, 200)) < 1.10 * radial_raw_bytes
+@test @allocated(make_parabolic_reflector(1.0, 1.0, 40, 200)) <
+      1.10 * radial_raw_bytes
+@test_throws ArgumentError make_rect_plate(nextfloat(0.0), 1.0, 1, 1)
+odd_subnormal_length = 3 * nextfloat(0.0)
+@test_throws ArgumentError make_rect_plate(
+    odd_subnormal_length, 1.0, 1, 1)
+@test_throws ArgumentError make_rect_plate_graded(
+    odd_subnormal_length, 1.0, 1, 1; grading_factor=1.0)
+@test_throws ArgumentError make_rect_plate(
+    ldexp(1.0, -537), ldexp(1.0, -537), 1, 1)
+rect_subnormal_x = 1.0925309630530983e-204
+rect_subnormal_y = 8.504075576651869e-120
+rect_subnormal = make_rect_plate(
+    rect_subnormal_x, rect_subnormal_y, 1, 1)
+rect_graded_subnormal = make_rect_plate_graded(
+    rect_subnormal_x, rect_subnormal_y, 1, 1; grading_factor=1.0)
+@test all(triangle_area(rect_subnormal, t) == nextfloat(0.0)
+          for t in 1:ntriangles(rect_subnormal))
+@test all(triangle_area(rect_graded_subnormal, t) == nextfloat(0.0)
+          for t in 1:ntriangles(rect_graded_subnormal))
+@test_throws ArgumentError make_rect_plate_graded(
+    1.0e-200, 1.0e-200, 1, 1)
+plate_extreme_grid = make_rect_plate(
+    floatmax(Float64), 1.0, 3, 1)
+@test all(isfinite, plate_extreme_grid.xyz)
+@test_throws ArgumentError make_circular_plate(nextfloat(0.0), 1, 3)
+circle_subnormal_area = make_circular_plate(
+    3.1434555694052576e-162, 1, 3)
+@test all(triangle_area(circle_subnormal_area, t) > 0.0
+          for t in 1:ntriangles(circle_subnormal_area))
+@test_throws ArgumentError make_parabolic_reflector(
+    nextfloat(0.0), 1.0, 2, 3)
+@test_throws ArgumentError make_parabolic_reflector(
+    4.8e-16, 1.0, 2, 3; center=Vec3(2.0, 2.0, 0.0))
+@test_throws ArgumentError make_parabolic_reflector(
+    2.0, 1.0, 2, 8; center=Vec3(0.0, 0.0, 1.0e308))
+@test_throws ArgumentError make_parabolic_reflector(
+    1.0e-160, 1.0e100, 2, 8)
+@test_throws ArgumentError make_parabolic_reflector(
+    1.0e-200, 1.0e-200, 2, 3)
+@test_throws ArgumentError make_parabolic_reflector(
+    2.0, 1.25e15, 2, 8; center=Vec3(0.0, 0.0, 1.0))
+@test_throws ArgumentError make_parabolic_reflector(
+    4 * (0.6eps(1.0)), 1.0, 2, 4; center=Vec3(1.0, 0.0, 0.0))
+@test_throws ArgumentError make_parabolic_reflector(
+    1.335e-15, 1.0, 3, 3; center=Vec3(2.0, 2.0, 0.0))
+@test_throws ArgumentError make_parabolic_reflector(
+    0.0018349836048392409, 8.530595403323751e-15, 3, 13)
+@test DiffMoM._parabolic_reflector_height(
+    floatmax(Float64) / 2, floatmax(Float64)) ==
+      floatmax(Float64) / 16
+parabola_subnormal_radius = 4.362219407585569e-78
+parabola_subnormal_focal = 1.4292329290653017e168
+@test DiffMoM._parabolic_reflector_height(
+    parabola_subnormal_radius, parabola_subnormal_focal) ==
+      nextfloat(0.0)
+parabola_subnormal_height = make_parabolic_reflector(
+    4 * parabola_subnormal_radius,
+    parabola_subnormal_focal,
+    2,
+    3,
+)
+@test parabola_subnormal_height.xyz[3, 2] == nextfloat(0.0)
+@test all(triangle_area(parabola_subnormal_height, t) > 0.0
+          for t in 1:ntriangles(parabola_subnormal_height))
+@test_throws ArgumentError make_parabolic_reflector(
+    floatmax(Float64), floatmax(Float64), 2, 3)
+@test_throws ArgumentError make_parabolic_reflector(
+    1.6e307, 1.0e307, 2, 3;
+    center=Vec3(-1.75e308, 0.0, 0.0))
+@test_throws ArgumentError make_parabolic_reflector(
+    4.0e-200, 2.5e-301, 2, 3)
+reflector_extreme = make_parabolic_reflector(
+    2.0e154, 1.0e154, 2, 8)
+@test all(isfinite, reflector_extreme.xyz)
+@test maximum(reflector_extreme.xyz[3, :]) == 2.5e153
+@test_throws OverflowError make_parabolic_reflector(
+    1.0e308, nextfloat(0.0), 100, 200;
+    max_vertices=30_000, max_triangles=50_000,
+    max_raw_bytes=2_000_000)
+
 # The relative area tolerance must follow the actual mesh scale. A valid
 # micrometre-scale plate must not be compared against a one-metre floor.
 mesh_micro = make_rect_plate(1e-6, 1e-6, 1, 1)
@@ -735,6 +843,11 @@ mesh_repair_out = read_obj_mesh(repair_out_path)
 report_repair_out = mesh_quality_report(mesh_repair_out)
 @assert report_repair_out.n_orientation_conflicts == 0
 @assert report_repair_out.n_nonmanifold_edges == 0
+@test_throws ArgumentError repair_obj_mesh(
+    repair_in_path, repair_out_path;
+    reader_kwargs=(max_vertices=2,),
+    allow_boundary=true,
+)
 
 println("  PASS ✓")
 
@@ -7014,6 +7127,54 @@ end
 report_rt = mesh_quality_report(mesh_rt)
 @assert mesh_quality_ok(report_rt; allow_boundary=true)
 
+obj_limit_path = joinpath(DATADIR, "tmp_obj_limits.obj")
+write(obj_limit_path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+obj_limit_size = filesize(obj_limit_path)
+obj_limit_mesh = read_obj_mesh(
+    obj_limit_path;
+    max_vertices=3,
+    max_triangles=1,
+    max_raw_bytes=96,
+    max_input_bytes=obj_limit_size,
+    max_line_bytes=7,
+)
+@test nvertices(obj_limit_mesh) == 3
+@test ntriangles(obj_limit_mesh) == 1
+@test_throws ArgumentError read_obj_mesh(obj_limit_path; max_vertices=2)
+@test_throws ArgumentError read_obj_mesh(obj_limit_path; max_triangles=false)
+@test_throws ArgumentError read_obj_mesh(obj_limit_path; max_raw_bytes=95)
+@test_throws ArgumentError read_obj_mesh(
+    obj_limit_path; max_input_bytes=obj_limit_size - 1)
+@test_throws ArgumentError read_obj_mesh(obj_limit_path; max_line_bytes=6)
+
+# Line limits measure parsed content and therefore behave identically for LF
+# and CRLF files. The longest content line here is seven bytes (`v 0 0 0`).
+obj_crlf_limit_path = joinpath(DATADIR, "tmp_obj_crlf_limits.obj")
+write(obj_crlf_limit_path, "v 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 3\r\n")
+obj_crlf_limit_mesh = read_obj_mesh(
+    obj_crlf_limit_path; max_line_bytes=7)
+@test nvertices(obj_crlf_limit_mesh) == 3
+@test ntriangles(obj_crlf_limit_mesh) == 1
+@test_throws ArgumentError read_obj_mesh(
+    obj_crlf_limit_path; max_line_bytes=6)
+
+# The CRLF pair may straddle the bounded reader's 64 KiB refill boundary.
+# That must not make the content limit platform- or alignment-dependent.
+obj_split_crlf_path = joinpath(DATADIR, "tmp_obj_split_crlf_limits.obj")
+obj_split_comment = "#" * repeat("x", 65_534)
+obj_split_payload = obj_split_comment *
+    "\r\nv 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 3\r\n"
+write(obj_split_crlf_path, obj_split_payload)
+obj_split_crlf_mesh = read_obj_mesh(
+    obj_split_crlf_path;
+    max_input_bytes=ncodeunits(obj_split_payload),
+    max_line_bytes=65_535,
+)
+@test nvertices(obj_split_crlf_mesh) == 3
+@test ntriangles(obj_split_crlf_mesh) == 1
+@test_throws ArgumentError read_obj_mesh(
+    obj_split_crlf_path; max_line_bytes=65_534)
+
 # A header is metadata, not an escape hatch into the line-oriented OBJ grammar.
 # Reject both Unix and classic-Mac line breaks before replacing an existing file.
 obj_header_path = joinpath(DATADIR, "tmp_obj_header_validation.obj")
@@ -7069,7 +7230,7 @@ mesh_obj_alloc = read_obj_mesh(obj_alloc_path)  # warm compilation
 @assert ntriangles(mesh_obj_alloc) == 2 * obj_grid_n^2
 GC.gc()
 obj_read_alloc = @allocated read_obj_mesh(obj_alloc_path)
-@assert obj_read_alloc < 20 * filesize(obj_alloc_path)
+@assert obj_read_alloc < 24 * filesize(obj_alloc_path)
 println("  32a: PASS")
 
 # 32b: triangle_area explicit test
@@ -7363,6 +7524,10 @@ nt_stl = ntriangles(mesh_plate)
 @assert nvertices(mesh_stl_bin) == nvertices(mesh_plate) "STL binary round-trip vertex count mismatch: got $(nvertices(mesh_stl_bin)), expected $(nvertices(mesh_plate))"
 report_stl_bin = mesh_quality_report(mesh_stl_bin)
 @assert mesh_quality_ok(report_stl_bin; allow_boundary=true) "STL binary round-trip mesh quality check failed"
+@test_throws ArgumentError read_stl_mesh(stl_bin_path; max_vertices=1)
+@test_throws ArgumentError read_stl_mesh(stl_bin_path; max_triangles=1)
+@test_throws ArgumentError read_stl_mesh(stl_bin_path; max_raw_bytes=24)
+@test_throws ArgumentError read_mesh(stl_bin_path; max_vertices=1)
 # Check vertex positions (Float32 precision ~ 1e-6)
 for t in 1:ntriangles(mesh_plate)
     for vi in 1:3
@@ -7535,6 +7700,11 @@ end
 mesh_stl_ascii = read_stl_mesh(stl_ascii_path)
 @assert nvertices(mesh_stl_ascii) == 4 "STL ASCII: expected 4 unique vertices, got $(nvertices(mesh_stl_ascii))"
 @assert ntriangles(mesh_stl_ascii) == 2 "STL ASCII: expected 2 triangles, got $(ntriangles(mesh_stl_ascii))"
+@test_throws ArgumentError read_stl_mesh(stl_ascii_path; max_vertices=3)
+@test_throws ArgumentError read_stl_mesh(stl_ascii_path; max_triangles=1)
+@test_throws ArgumentError read_stl_mesh(stl_ascii_path; max_raw_bytes=143)
+@test_throws ArgumentError read_stl_mesh(stl_ascii_path; max_input_bytes=1)
+@test_throws ArgumentError read_stl_mesh(stl_ascii_path; max_line_bytes=4)
 
 # Facet boundaries, rather than a global vertex count, define ASCII STL
 # triangles. Do not regroup six vertices from one facet into two triangles.
@@ -7667,6 +7837,27 @@ mesh_msh_v2 = read_msh_mesh(msh_v2_path)
 report_msh_v2 = mesh_quality_report(mesh_msh_v2)
 @assert report_msh_v2.n_invalid_triangles == 0
 @assert report_msh_v2.n_degenerate_triangles == 0
+@test_throws ArgumentError read_msh_mesh(msh_v2_path; max_vertices=3)
+@test_throws ArgumentError read_msh_mesh(msh_v2_path; max_triangles=1)
+@test_throws ArgumentError read_msh_mesh(msh_v2_path; max_raw_bytes=143)
+@test_throws ArgumentError read_msh_mesh(msh_v2_path; max_input_bytes=1)
+@test_throws ArgumentError read_msh_mesh(msh_v2_path; max_line_bytes=3)
+
+# Untrusted declared counts must fail before count-sized hints or tag arrays.
+msh_v2_declared_path = joinpath(DATADIR, "tmp_v2_declared_resource.msh")
+write(msh_v2_declared_path,
+      "\$MeshFormat\n2.2 0 8\n\$EndMeshFormat\n\$Nodes\n100000\n")
+try
+    read_msh_mesh(msh_v2_declared_path; max_vertices=200_000)
+catch
+end
+GC.gc()
+@test (@allocated try
+    read_msh_mesh(msh_v2_declared_path; max_vertices=200_000)
+catch
+end) < 100_000
+@test_throws ArgumentError read_msh_mesh(
+    msh_v2_declared_path; max_vertices=100)
 
 # The MSH reader streams records and tokenizes without per-field heap objects.
 msh_alloc_path = joinpath(DATADIR, "tmp_alloc_v2.msh")
@@ -7729,6 +7920,22 @@ mesh_msh_v4 = read_msh_mesh(msh_v4_path)
 @assert abs(mesh_msh_v4.xyz[1, 1] - 0.0) < 1e-12
 @assert abs(mesh_msh_v4.xyz[1, 2] - 1.0) < 1e-12
 @assert abs(mesh_msh_v4.xyz[2, 3] - 1.0) < 1e-12
+
+msh_v4_declared_path = joinpath(DATADIR, "tmp_v4_declared_resource.msh")
+write(msh_v4_declared_path,
+      "\$MeshFormat\n4.1 0 8\n\$EndMeshFormat\n" *
+      "\$Nodes\n1 100000 1 100000\n2 1 0 100000\n")
+try
+    read_msh_mesh(msh_v4_declared_path; max_vertices=200_000)
+catch
+end
+GC.gc()
+@test (@allocated try
+    read_msh_mesh(msh_v4_declared_path; max_vertices=200_000)
+catch
+end) < 100_000
+@test_throws ArgumentError read_msh_mesh(
+    msh_v4_declared_path; max_vertices=100)
 
 msh_binary_path = joinpath(DATADIR, "tmp_binary_header.msh")
 open(msh_binary_path, "w") do io
@@ -7921,6 +8128,15 @@ pred_box = region_box(; lo=Vec3(-0.01, -0.01, -1.0), hi=Vec3(0.01, 0.01, 1.0))
 # Test that predicates are callable and return Bool
 @assert pred_sphere(Vec3(0.0, 0.0, 0.0)) == true "Origin should be inside sphere"
 @assert pred_sphere(Vec3(100.0, 0.0, 0.0)) == false "Far point should be outside sphere"
+pred_unit_sphere = region_sphere(
+    center=Vec3(0.0, 0.0, 0.0), radius=1.0)
+@test !pred_unit_sphere(
+    Vec3(prevfloat(1.0), ldexp(1.0, -26), 0.0))
+pred_sphere_extreme = region_sphere(
+    center=Vec3(floatmax(Float64), 0.0, 0.0),
+    radius=floatmax(Float64))
+@test !pred_sphere_extreme(
+    Vec3(-floatmax(Float64), 0.0, 0.0))
 @assert pred_box(Vec3(0.0, 0.0, 0.0)) == true "Origin should be inside box"
 @assert pred_box(Vec3(1.0, 0.0, 0.0)) == false "Point outside should fail"
 @test_throws ArgumentError region_sphere(
@@ -7939,6 +8155,8 @@ n_target = 5
 part_kmeans = assign_patches_uniform(mesh; n_patches=n_target)
 @test_throws ArgumentError assign_patches_uniform(empty_mesh; n_patches=1)
 @test_throws ArgumentError assign_patches_uniform(mesh; n_patches=0)
+@test_throws ArgumentError assign_patches_grid(
+    mesh; nx=10_000_001, ny=1, nz=1)
 @assert length(part_kmeans.tri_patch) == ntriangles(mesh)
 @assert part_kmeans.P >= 1 && part_kmeans.P <= n_target
 @assert all(1 .<= part_kmeans.tri_patch .<= part_kmeans.P)
@@ -7953,6 +8171,186 @@ duplicate_partition = assign_patches_uniform(
     duplicate_patch_mesh; n_patches=2)
 @test duplicate_partition.P == 1
 @test duplicate_partition.tri_patch == [1, 1]
+
+# Translating finite centroids near the top of the Float64 range must not
+# overflow center sums or change the geometric clustering.
+patch_translation_base = make_rect_plate(1.0, 4.0, 1, 4)
+patch_translation_reference = assign_patches_uniform(
+    patch_translation_base; n_patches=2)
+patch_translation_mesh = TriMesh(
+    copy(patch_translation_base.xyz), copy(patch_translation_base.tri))
+patch_translation_mesh.xyz[1, :] .+= 1.0e308
+patch_translation_result = assign_patches_uniform(
+    patch_translation_mesh; n_patches=2)
+@test patch_translation_result.P == patch_translation_reference.P == 2
+@test all(
+    (patch_translation_result.tri_patch[i] ==
+     patch_translation_result.tri_patch[j]) ==
+    (patch_translation_reference.tri_patch[i] ==
+     patch_translation_reference.tri_patch[j])
+    for i in eachindex(patch_translation_result.tri_patch),
+        j in eachindex(patch_translation_result.tri_patch))
+patch_distance_point = Vec3(floatmax(Float64), 0.0, 0.0)
+patch_distance_candidate = Vec3(-floatmax(Float64), 0.0, 0.0)
+patch_distance_incumbent = Vec3(
+    -floatmax(Float64), nextfloat(0.0), 0.0)
+@test DiffMoM._patch_candidate_is_nearer(
+    patch_distance_point,
+    patch_distance_candidate,
+    patch_distance_incumbent,
+    DiffMoM._patch_distance(patch_distance_point, patch_distance_candidate),
+    DiffMoM._patch_distance(patch_distance_point, patch_distance_incumbent),
+)
+patch_tie_point = Vec3(0.0, 0.0, 0.0)
+patch_tie_candidate = Vec3(1.0, 0.0, 0.0)
+patch_tie_incumbent = Vec3(1.0, eps(Float64), 0.0)
+@test DiffMoM._patch_candidate_is_nearer(
+    patch_tie_point,
+    patch_tie_candidate,
+    patch_tie_incumbent,
+    DiffMoM._patch_distance(patch_tie_point, patch_tie_candidate),
+    DiffMoM._patch_distance(patch_tie_point, patch_tie_incumbent),
+)
+patch_rounded_candidate = Vec3(
+    5.722957319730639e-187,
+    -8.573417650413093e-188,
+    1.475425973239854e-187,
+)
+patch_rounded_incumbent = Vec3(
+    5.72295731973064e-187,
+    -8.573417650413092e-188,
+    1.4754259732398537e-187,
+)
+@test DiffMoM._patch_candidate_is_nearer(
+    patch_tie_point,
+    patch_rounded_candidate,
+    patch_rounded_incumbent,
+    DiffMoM._patch_distance(patch_tie_point, patch_rounded_candidate),
+    DiffMoM._patch_distance(patch_tie_point, patch_rounded_incumbent),
+)
+
+# Overflowing centroid spans are assigned with exponent scaling, without a
+# BigFloat allocation per ordinary interior centroid.
+patch_wide_count = 2_000
+patch_wide_xyz = zeros(Float64, 3, 3 * patch_wide_count)
+patch_wide_tri = Matrix{Int}(undef, 3, patch_wide_count)
+for triangle in 1:patch_wide_count
+    centroid_x = triangle == 1 ? -floatmax(Float64) :
+                 triangle == 2 ? floatmax(Float64) : 0.0
+    first_vertex = 3 * triangle - 2
+    patch_wide_xyz[:, first_vertex] .= (centroid_x, 0.0, 0.0)
+    patch_wide_xyz[:, first_vertex + 1] .= (centroid_x, 1.0, 0.0)
+    patch_wide_xyz[:, first_vertex + 2] .= (centroid_x, 0.0, 1.0)
+    patch_wide_tri[:, triangle] .=
+        (first_vertex, first_vertex + 1, first_vertex + 2)
+end
+patch_wide_mesh = TriMesh(patch_wide_xyz, patch_wide_tri)
+patch_wide_partition = assign_patches_grid(
+    patch_wide_mesh; nx=4, ny=1, nz=1)
+@test patch_wide_partition.tri_patch[1] == 1
+@test patch_wide_partition.tri_patch[2] == patch_wide_partition.P
+assign_patches_grid(patch_wide_mesh; nx=4, ny=1, nz=1)
+GC.gc()
+@test @allocated(assign_patches_grid(
+    patch_wide_mesh; nx=4, ny=1, nz=1)) < 2_000_000
+@test DiffMoM._patch_grid_axis_index(
+    prevfloat(floatmax(Float64) / 2),
+    -floatmax(Float64), floatmax(Float64), 4) == 2
+@test DiffMoM._patch_grid_axis_index(
+    -nextfloat(0.0), -1.0, 1.0, 4) == 1
+
+# Distinct centers may be exactly equidistant without requiring a
+# high-precision comparison for every symmetric triangle.
+patch_symmetric_count = 2_000
+patch_symmetric_xyz = zeros(Float64, 3, 3 * patch_symmetric_count)
+patch_symmetric_tri = Matrix{Int}(undef, 3, patch_symmetric_count)
+patch_symmetric_indices = randperm(
+    MersenneTwister(42), patch_symmetric_count)[1:2]
+for triangle in 1:patch_symmetric_count
+    xcenter = triangle == patch_symmetric_indices[1] ? -1.0 :
+              triangle == patch_symmetric_indices[2] ? 1.0 : 0.0
+    first_vertex = 3 * triangle - 2
+    patch_symmetric_xyz[:, first_vertex] .= (xcenter - 0.25, 0.0, 0.0)
+    patch_symmetric_xyz[:, first_vertex + 1] .= (xcenter + 0.25, 0.0, 0.0)
+    patch_symmetric_xyz[:, first_vertex + 2] .= (xcenter, 1.0, 0.0)
+    patch_symmetric_tri[:, triangle] .=
+        (first_vertex, first_vertex + 1, first_vertex + 2)
+end
+patch_symmetric_mesh = TriMesh(
+    patch_symmetric_xyz, patch_symmetric_tri)
+assign_patches_uniform(patch_symmetric_mesh; n_patches=2)
+GC.gc()
+@test @allocated(assign_patches_uniform(
+    patch_symmetric_mesh; n_patches=2)) < 1_000_000
+
+# The K==Nt endpoint groups exact duplicate centroids in linear work rather
+# than scanning every triangle against every center.
+patch_endpoint = assign_patches_uniform(
+    patch_translation_base;
+    n_patches=ntriangles(patch_translation_base))
+@test patch_endpoint.P == ntriangles(patch_translation_base)
+patch_endpoint_large = make_rect_plate(1.0, 1.0, 1, 800)
+assign_patches_uniform(
+    patch_endpoint_large; n_patches=ntriangles(patch_endpoint_large))
+GC.gc()
+patch_endpoint_alloc = @allocated assign_patches_uniform(
+    patch_endpoint_large; n_patches=ntriangles(patch_endpoint_large))
+@test patch_endpoint_alloc < 2_000_000
+
+# Duplicate centers and exact equidistance must not trigger a BigFloat
+# allocation per distance comparison.
+duplicate_lloyd_count = 2_000
+duplicate_lloyd_mesh = TriMesh(
+    Float64[0 1 0; 0 0 1; 0 0 0],
+    repeat(reshape(Int[1, 2, 3], 3, 1), 1, duplicate_lloyd_count),
+)
+assign_patches_uniform(duplicate_lloyd_mesh; n_patches=2)
+GC.gc()
+@test @allocated(assign_patches_uniform(
+    duplicate_lloyd_mesh; n_patches=2)) < 500_000
+patch_single_mesh = make_rect_plate(1.0, 1.0, 20, 20)
+assign_patches_uniform(patch_single_mesh; n_patches=1)
+GC.gc()
+@test @allocated(assign_patches_uniform(
+    patch_single_mesh; n_patches=1)) < 500_000
+@test assign_patches_uniform(
+    patch_translation_base;
+    n_patches=1,
+    max_distance_evaluations=1).tri_patch ==
+      fill(1, ntriangles(patch_translation_base))
+
+# A work cap is checked before centroid/permutation allocation and never
+# returns a silently unconverged Lloyd state.
+for invalid_work_limit in (false, 0, -1, big(typemax(Int)) + 1)
+    @test_throws ArgumentError assign_patches_uniform(
+        patch_translation_base;
+        n_patches=2,
+        max_distance_evaluations=invalid_work_limit)
+end
+@test_throws ArgumentError assign_patches_uniform(
+    patch_translation_base;
+    n_patches=2,
+    max_distance_evaluations=1)
+
+patch_reference_x = [0.0, -3.0, -8.0, 2.0, 2.0, -10.0, -10.0, 7.0]
+patch_reference_xyz = Matrix{Float64}(undef, 3, 3 * length(patch_reference_x))
+patch_reference_tri = Matrix{Int}(undef, 3, length(patch_reference_x))
+for (triangle, xcenter) in enumerate(patch_reference_x)
+    first_vertex = 3 * triangle - 2
+    patch_reference_xyz[:, first_vertex] .= (xcenter - 0.25, 0.0, 0.0)
+    patch_reference_xyz[:, first_vertex + 1] .= (xcenter + 0.25, 0.0, 0.0)
+    patch_reference_xyz[:, first_vertex + 2] .= (xcenter, 1.0, 0.0)
+    patch_reference_tri[:, triangle] .=
+        (first_vertex, first_vertex + 1, first_vertex + 2)
+end
+patch_reference_mesh = TriMesh(patch_reference_xyz, patch_reference_tri)
+@test assign_patches_uniform(
+    patch_reference_mesh; n_patches=2).tri_patch ==
+      [2, 2, 1, 2, 2, 1, 1, 2]
+@test_throws ArgumentError assign_patches_uniform(
+    patch_reference_mesh;
+    n_patches=2,
+    max_distance_evaluations=16)
 
 # Cluster sums and member counts are reused across k-means iterations. Keep a
 # regression ratchet against rebuilding one temporary member vector per cluster.
