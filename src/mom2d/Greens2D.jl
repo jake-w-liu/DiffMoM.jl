@@ -175,7 +175,8 @@ function self_cell_integral_2d(k::Float64, a_eq::Float64)
 end
 
 """
-    assemble_D_matrix(mesh::Mesh2D, k)
+    assemble_D_matrix(mesh::Mesh2D, k;
+                      max_output_bytes=2_000_000_000)
 
 Assemble the Green's function integral matrix D where:
   D[m,n] = ∫_{cell_n} G₂D(r_m, r') dA'
@@ -183,9 +184,17 @@ Assemble the Green's function integral matrix D where:
 For m ≠ n: midpoint approximation D[m,n] ≈ G₂D(r_m, r_n) × A_n
 For m = n: analytical self-cell integral with equivalent circular cell.
 """
-function assemble_D_matrix(mesh::Mesh2D, k::Float64)
+function assemble_D_matrix(
+        mesh::Mesh2D, k::Float64;
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     _validate_mesh_2d(mesh)
     _validate_positive_finite_2d(k, "assemble_D_matrix wavenumber")
+    payload_bytes = _checked_array_payload_bytes(
+        ComplexF64, mesh.ncells, mesh.ncells;
+        label="assemble_D_matrix output")
+    _enforce_payload_limit(
+        payload_bytes, max_output_bytes,
+        "assemble_D_matrix output", "max_output_bytes")
     return _assemble_D_matrix_unchecked(mesh, k)
 end
 

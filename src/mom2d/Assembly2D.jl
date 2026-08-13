@@ -286,13 +286,16 @@ end
 end
 
 """
-    assemble_vie_2d(mesh, k0, chi)
+    assemble_vie_2d(mesh, k0, chi;
+                    max_output_bytes=2_000_000_000)
 
 Assemble VIE system matrix: Z[m,n] = δ[m,n] - k₀² χ[n] D[m,n]
 
 Returns (Z, D) where D is the Green's function integral matrix.
 """
-function assemble_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64})
+function assemble_vie_2d(
+        mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64};
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     _validate_mesh_2d(mesh)
     _validate_positive_finite_2d(k0, "assemble_vie_2d wavenumber")
     length(chi) == mesh.ncells ||
@@ -301,6 +304,18 @@ function assemble_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64}
     all(isfinite, chi) ||
         throw(ArgumentError("chi must contain only finite values."))
     N = mesh.ncells
+    matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, N, N; label="assemble_vie_2d matrix")
+    output_bytes = try
+        Base.Checked.checked_mul(2, matrix_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "assemble_vie_2d output-payload estimate overflows Int"))
+    end
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "assemble_vie_2d Z and D matrices", "max_output_bytes")
     area = mesh.cell_area
     a_eq = _equivalent_radius_unchecked(mesh)
     D_self = self_cell_integral_2d(k0, a_eq)
@@ -374,20 +389,24 @@ function assemble_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64}
 end
 
 """
-    solve_vie_2d(mesh, k0, chi, E_inc)
+    solve_vie_2d(mesh, k0, chi, E_inc;
+                 max_output_bytes=2_000_000_000)
 
 Solve the 2D VIE for internal total fields.
 Returns `VIEResult2D` with all computed quantities for downstream use.
 """
-function solve_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
-                      E_inc::AbstractVector{ComplexF64})
+function solve_vie_2d(
+        mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
+        E_inc::AbstractVector{ComplexF64};
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     length(E_inc) == mesh.ncells ||
         throw(DimensionMismatch(
             "E_inc length $(length(E_inc)) must match $(mesh.ncells) mesh cells."))
     all(isfinite, E_inc) ||
         throw(ArgumentError("E_inc must contain only finite values."))
 
-    Z, D = assemble_vie_2d(mesh, k0, chi)
+    Z, D = assemble_vie_2d(
+        mesh, k0, chi; max_output_bytes=max_output_bytes)
     Z_lu = _factor_vie_system_2d(Z, "solve_vie_2d")
     issuccess(Z_lu) ||
         error("solve_vie_2d system matrix factorization failed.")

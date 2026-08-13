@@ -199,6 +199,15 @@ end
         @test size(Z) == (25, 25)
         @test size(D) == (25, 25)
         @test D == DiffMoM.assemble_D_matrix(mesh, k0)
+        matrix_bytes = sizeof(ComplexF64) * mesh.ncells^2
+        @test_throws ArgumentError DiffMoM.assemble_D_matrix(
+            mesh, k0; max_output_bytes=matrix_bytes - 1)
+        @test DiffMoM.assemble_D_matrix(
+            mesh, k0; max_output_bytes=matrix_bytes) == D
+        @test_throws ArgumentError assemble_vie_2d(
+            mesh, k0, chi; max_output_bytes=2matrix_bytes - 1)
+        @test assemble_vie_2d(
+            mesh, k0, chi; max_output_bytes=2matrix_bytes) == (Z, D)
         Z_reference = Matrix{ComplexF64}(undef, mesh.ncells, mesh.ncells)
         @inbounds for n in 1:mesh.ncells
             for m in 1:mesh.ncells
@@ -240,6 +249,9 @@ end
             mesh, k0, chi, E_inc_bad)
         @test_throws DimensionMismatch solve_vie_2d(
             mesh, k0, chi, E_inc[1:end-1])
+        @test_throws ArgumentError solve_vie_2d(
+            mesh, k0, chi, E_inc;
+            max_output_bytes=2matrix_bytes - 1)
 
         # In free space (chi=0), total field = incident field
         vr_free = solve_vie_2d(mesh, k0, zeros(mesh.ncells), E_inc)
@@ -877,6 +889,21 @@ end
             vr, [mesh.centers[1]])
         @test_throws ArgumentError jacobian_scattered_field_2d(
             vr, [Vec2(NaN, 0.0)])
+        observation_matrix_bytes =
+            sizeof(ComplexF64) * length(r_obs) * mesh.ncells
+        @test_throws ArgumentError green_obs_matrix(
+            r_obs, mesh, k0;
+            max_output_bytes=observation_matrix_bytes - 1)
+        @test green_obs_matrix(
+            r_obs, mesh, k0;
+            max_output_bytes=observation_matrix_bytes) ==
+              green_obs_matrix(r_obs, mesh, k0)
+        @test_throws ArgumentError jacobian_scattered_field_2d(
+            vr, r_obs;
+            max_work_bytes=3observation_matrix_bytes - 1)
+        @test jacobian_scattered_field_2d(
+            vr, r_obs;
+            max_work_bytes=3observation_matrix_bytes)[1] == J
 
         # Scattered-field evaluation streams Green-function values and should
         # allocate only its returned vector. The Jacobian needs its returned

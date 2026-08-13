@@ -246,7 +246,7 @@ D_self = self_cell_integral_2d(k, equivalent_radius(mesh))
 
 ## Assembly and Solve
 
-### `assemble_vie_2d(mesh, k0, chi)`
+### `assemble_vie_2d(mesh, k0, chi; max_output_bytes=2_000_000_000)`
 
 Assemble the VIE system matrix using pulse basis / point matching:
 
@@ -265,6 +265,7 @@ where `D[m,n] = integral_{cell_n} G_2D(r_m, rp) dA'` is the Green's integral mat
 | `mesh` | `Mesh2D` | -- | The 2D grid. |
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
 | `chi` | `AbstractVector{Float64}` | -- | Per-cell dielectric contrast `eps_r - 1` (length `ncells`). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of the dense `Z` and `D` matrices, checked before allocation. |
 
 **Returns:** Tuple `(Z, D)` of `Matrix{ComplexF64}`, each of size `ncells x ncells`:
 the system matrix `Z` and the Green's integral matrix `D`.
@@ -280,7 +281,7 @@ Z, D = assemble_vie_2d(mesh, k0, chi)
 
 ---
 
-### `solve_vie_2d(mesh, k0, chi, E_inc)`
+### `solve_vie_2d(mesh, k0, chi, E_inc; max_output_bytes=2_000_000_000)`
 
 Solve the 2D VIE for the internal total field by assembling `Z` (via
 `assemble_vie_2d`), LU-factorizing it, and solving `Z * E_total = E_inc`. Bundles
@@ -295,6 +296,7 @@ Jacobian evaluation.
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
 | `chi` | `AbstractVector{Float64}` | -- | Per-cell dielectric contrast (length `ncells`). |
 | `E_inc` | `AbstractVector{ComplexF64}` | -- | Incident field at cell centers (length `ncells`), e.g. from `planewave_2d` or `linesource_2d`. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Dense `Z`/`D` raw-payload limit forwarded to `assemble_vie_2d`. |
 
 **Returns:** `VIEResult2D` with the total field `E_total`, the incident field, the
 contrast profile, the matrices `D` and `Z`, the verified factorization, the mesh, and
@@ -376,7 +378,7 @@ E_inc = linesource_2d(mesh, 2pi, Vec2(3.0, 0.0))
 
 ## Scattered Field and Jacobian
 
-### `green_obs_matrix(r_obs, mesh, k0)`
+### `green_obs_matrix(r_obs, mesh, k0; max_output_bytes=2_000_000_000)`
 
 Compute the observation Green's function matrix `G_obs[m,n] = G_2D(r_obs[m], r_n)`,
 mapping each cell center `r_n` to each observation point. Observation points must
@@ -389,6 +391,7 @@ be outside the scattering domain.
 | `r_obs` | `AbstractVector{Vec2}` | -- | Observation points (m), length M. |
 | `mesh` | `Mesh2D` | -- | The 2D grid. |
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned observation matrix. |
 
 **Returns:** `Matrix{ComplexF64}` of size `M x ncells`.
 
@@ -432,7 +435,7 @@ E_scat = scattered_field_2d(vr, r_obs)
 
 ---
 
-### `jacobian_scattered_field_2d(vie_result, r_obs)`
+### `jacobian_scattered_field_2d(vie_result, r_obs; max_work_bytes=2_000_000_000)`
 
 Compute the Jacobian of the scattered field with respect to the per-cell contrast,
 `J[m,p] = d E_scat(r_obs[m]) / d chi_p`, via implicit differentiation of the VIE
@@ -447,6 +450,7 @@ the equivalent factor `W = (I - k0^2 diag(chi) D)^-1 = Z^-T` through the cached
 |-----------|------|---------|-------------|
 | `vie_result` | `VIEResult2D` | -- | Solved result from `solve_vie_2d`. |
 | `r_obs` | `AbstractVector{Vec2}` | -- | Observation points (m), length M (outside the domain). |
+| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of `G_obs`, the transposed-sensitivity workspace, and `J`. |
 
 **Returns:** Tuple `(J, G_obs)`:
 - `J::Matrix{ComplexF64}` of size `M x ncells` (the Jacobian).

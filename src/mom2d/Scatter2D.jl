@@ -37,15 +37,24 @@ export scattered_field_2d, green_obs_matrix, jacobian_scattered_field_2d
 end
 
 """
-    green_obs_matrix(r_obs, mesh, k0)
+    green_obs_matrix(r_obs, mesh, k0;
+                     max_output_bytes=2_000_000_000)
 
 Compute the observation Green's function matrix G_obs[m,n] = G₂D(r_obs[m], r_n).
 Observation points must be outside the scattering domain.
 """
-function green_obs_matrix(r_obs::AbstractVector{Vec2}, mesh::Mesh2D, k0::Float64)
+function green_obs_matrix(
+        r_obs::AbstractVector{Vec2}, mesh::Mesh2D, k0::Float64;
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     _validate_mesh_2d(mesh)
     _validate_positive_finite_2d(k0, "green_obs_matrix wavenumber")
     _validate_observation_points_2d(r_obs, mesh, "green_obs_matrix")
+    payload_bytes = _checked_array_payload_bytes(
+        ComplexF64, length(r_obs), mesh.ncells;
+        label="green_obs_matrix output")
+    _enforce_payload_limit(
+        payload_bytes, max_output_bytes,
+        "green_obs_matrix output", "max_output_bytes")
     return _green_obs_matrix_unchecked(r_obs, mesh, k0)
 end
 
@@ -174,7 +183,8 @@ function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
 end
 
 """
-    jacobian_scattered_field_2d(vie_result, r_obs)
+    jacobian_scattered_field_2d(
+        vie_result, r_obs; max_work_bytes=2_000_000_000)
 
 Compute the Jacobian J[m,p] = ∂E_scat(r_obs[m])/∂χ_p.
 
@@ -184,10 +194,27 @@ W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ through the cached LU factorization.
 
 Returns (J, G_obs) where J is M_rx × N_cells.
 """
-function jacobian_scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
+function jacobian_scattered_field_2d(
+        vr::VIEResult2D, r_obs::AbstractVector{Vec2};
+        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     _validate_vie_result_2d(vr; require_system=true)
     _validate_observation_points_2d(
         r_obs, vr.mesh, "jacobian_scattered_field_2d")
+    rectangular_bytes = _checked_array_payload_bytes(
+        ComplexF64, length(r_obs), vr.mesh.ncells;
+        label="jacobian_scattered_field_2d rectangular matrix")
+    # G_obs, the transposed sensitivity solve, and the returned Jacobian have
+    # identical raw payloads and coexist on the ordinary path.
+    work_bytes = try
+        Base.Checked.checked_mul(3, rectangular_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "jacobian_scattered_field_2d raw-work estimate overflows Int"))
+    end
+    _enforce_payload_limit(
+        work_bytes, max_work_bytes,
+        "jacobian_scattered_field_2d dense matrices", "max_work_bytes")
     G_obs = _green_obs_matrix_unchecked(r_obs, vr.mesh, vr.k0)
     A = vr.mesh.cell_area
     k0sq = vr.k0^2
