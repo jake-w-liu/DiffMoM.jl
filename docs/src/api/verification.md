@@ -34,7 +34,7 @@ Complex-step derivative of a scalar function `f(theta)` with respect to paramete
 | `f` | `Function` | -- | Scalar-valued function `f(theta)` that must accept `ComplexF64` input. The function must be holomorphic in the perturbed parameter for the result to be valid. |
 | `theta` | `Vector{Float64}` | -- | Parameter vector at which to evaluate the derivative. |
 | `p` | `Int` | -- | Index of the parameter to differentiate (1-based). |
-| `eps` | `Float64` | `1e-30` | Complex-step perturbation magnitude. The default `1e-30` is well below machine precision and introduces no round-off error (unlike finite differences). |
+| `eps` | `Float64` | `1e-30` | Initial complex-step perturbation magnitude. If the imaginary response underflows to zero, the implementation increases this by exact powers of two until a representable signal is obtained or reports the derivative as inconclusive. |
 
 **Returns:** `Float64` approximation of `df/d(theta_p)`.
 

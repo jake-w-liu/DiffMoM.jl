@@ -61,6 +61,8 @@ struct MLFMAOperator <: AbstractMatrix{ComplexF64}
     disagg_filters::Vector{Vector{Matrix{Float64}}}
     N::Int
     workspace::MLFMAWorkspace
+    max_matvec_scratch_bytes::Int
+    max_exact_combine_work::Int
 end
 ```
 
@@ -82,7 +84,9 @@ end
 | `agg_filters` | `Vector{Vector{Matrix{Float64}}}` | Per-level per-m θ filters for aggregation (child to parent), indexed `[level][m+1]`. |
 | `disagg_filters` | `Vector{Vector{Matrix{Float64}}}` | Per-level per-m θ filters for disaggregation (parent to child), indexed `[level][m+1]`. |
 | `N` | `Int` | Number of RWG unknowns. |
-| `workspace` | `MLFMAWorkspace` | *(internal)* Pre-allocated buffers reused by every `mul!` to avoid per-call heap allocation; `workspace.work_lock` serializes forward and adjoint access. |
+| `workspace` | `MLFMAWorkspace` | *(internal)* Pre-allocated ordinary-path buffers reused by `mul!`; exceptional exponent-banded products use bounded temporary storage. `workspace.work_lock` serializes forward and adjoint access. |
+| `max_matvec_scratch_bytes` | `Int` | Maximum raw temporary payload allowed for one exceptional exponent-banded matvec. |
+| `max_exact_combine_work` | `Int` | Maximum row-by-band high-precision combination work allowed in one matvec. |
 
 **Supported operations:**
 
@@ -124,14 +128,23 @@ Build an MLFMA operator for the EFIE system. This is the main entry point for co
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
 | `max_sampling_points` | `Int` | `2_100_000` | Maximum spherical-grid points at any level. |
 | `max_setup_bytes` | `Int` | `2_000_000_000` | Maximum estimated bytes for MLFMA-specific sampling, translation, filter, pattern, and workspace storage. |
+| `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact count of leaf-neighbor matrix triplets. |
+| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw payload of the three near-field triplet arrays. |
+| `max_translation_terms` | `Int` | `50_000_000` | Maximum Legendre recurrence terms for one unique translation offset. |
+| `max_matvec_scratch_bytes` | `Int` | `536_870_912` | Maximum raw temporary payload for an exceptional exponent-banded matvec. |
+| `max_exact_combine_work` | `Int` | `2_000_000` | Maximum row-by-band high-precision combination work in one matvec. |
 | `verbose` | `Bool` | `false` | Print progress messages. |
 
 **Returns:** `MLFMAOperator`.
 
-The two resource limits are checked before near-field assembly or spherical
-sampling allocation. Increase them explicitly only after budgeting the setup
-memory for the target geometry. Direct calls to `make_sphere_sampling` use the
-same `2_100_000`-point default and accept a `max_points` override.
+The setup, near-field, and translation-work limits are checked before the
+corresponding allocation or recurrence work. Translation evaluation uses an
+in-place three-term Legendre recurrence, so its temporary storage is O(1) per
+sample direction. The other resource limits are checked before near-field
+assembly or spherical sampling allocation. Increase them explicitly only
+after budgeting memory for the target geometry. Direct calls to
+`make_sphere_sampling` use the same `2_100_000`-point default and accept a
+`max_points` override.
 
 **Choosing `leaf_lambda`:**
 
@@ -158,7 +171,7 @@ println("GMRES iters: ", stats.niter)
 
 ---
 
-### `assemble_mlfma_nearfield(octree, mesh, rwg, k; quad_order=3, eta0=376.730313668)`
+### `assemble_mlfma_nearfield(octree, mesh, rwg, k; quad_order=3, eta0=376.730313668, max_nearfield_entries=50_000_000, max_nearfield_bytes=2_000_000_000)`
 
 Assemble the near-field (neighbor interaction) sparse matrix for MLFMA. Only computes EFIE entries `Z[m,n]` for BF pairs `(m, n)` that belong to neighboring leaf boxes in the octree. Returns a CSC sparse matrix in the original BF ordering.
 
@@ -172,10 +185,14 @@ Assemble the near-field (neighbor interaction) sparse matrix for MLFMA. Only com
 | `k` | `Float64` | -- | Wavenumber (rad/m). |
 | `quad_order` | `Int` | `3` | Quadrature order for EFIE entry evaluation. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
+| `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact leaf-neighbor triplet count. |
+| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw triplet-array payload. |
 
 **Returns:** `SparseMatrixCSC{ComplexF64, Int}` of size `(N, N)`.
 
-**Note:** This is called internally by `build_mlfma_operator`. You typically do not need to call it directly unless building a custom workflow.
+**Note:** Resource limits are checked before the EFIE cache or triplet arrays
+are allocated. This is called internally by `build_mlfma_operator`; direct
+custom workflows receive the same fail-closed limits.
 
 ---
 

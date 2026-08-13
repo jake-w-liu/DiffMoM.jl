@@ -175,13 +175,13 @@ end
 
 Result from 2D VIE forward solve.
 """
-struct VIEResult2D
+struct VIEResult2D{F}
     E_total::Vector{ComplexF64}     # total field at cell centers
     E_inc::Vector{ComplexF64}       # incident field at cell centers
     chi::Vector{Float64}            # contrast profile (εᵣ - 1)
     D::Matrix{ComplexF64}           # Green's function integral matrix
     Z::Matrix{ComplexF64}           # system matrix (I - k² D diag(χ))
-    Z_LU::LinearAlgebra.LU{ComplexF64, Matrix{ComplexF64}, Vector{Int64}}
+    Z_LU::F
     mesh::Mesh2D
     k0::Float64                     # free-space wavenumber
 end

@@ -844,9 +844,20 @@ end
 function _validate_plane_wave_parameters(k_vec::Vec3, E0, pol::Vec3)
     all(isfinite, k_vec) ||
         throw(ArgumentError("plane-wave k_vec components must be finite."))
-    k_norm = norm(k_vec)
-    isfinite(k_norm) && k_norm > 0 ||
+    k_scale = maximum(abs, k_vec)
+    k_scale > 0.0 ||
         throw(ArgumentError("plane-wave k_vec must have a finite, nonzero norm."))
+    k_scaled = k_vec / k_scale
+    k_scaled_norm = norm(k_scaled)
+    isfinite(k_scaled_norm) && k_scaled_norm > 0.0 ||
+        throw(ArgumentError("plane-wave k_vec must have a finite, nonzero norm."))
+    k_fraction, k_exponent = frexp(k_scale)
+    norm_fraction, norm_exponent = frexp(k_fraction * k_scaled_norm)
+    combined_exponent = Base.checked_add(k_exponent, norm_exponent)
+    k_norm = ldexp(norm_fraction, combined_exponent)
+    isfinite(k_norm) && k_norm > 0.0 ||
+        throw(ArgumentError(
+            "plane-wave k_vec norm is outside the finite Float64 range."))
 
     E0 isa Number ||
         throw(ArgumentError(
@@ -855,7 +866,13 @@ function _validate_plane_wave_parameters(k_vec::Vec3, E0, pol::Vec3)
         throw(ArgumentError("plane-wave amplitude E0 must be finite, got $E0."))
     all(isfinite, pol) ||
         throw(ArgumentError("plane-wave polarization components must be finite."))
-    pol_norm = norm(pol)
+    pol_scale = maximum(abs, pol)
+    pol_scale > 0.0 ||
+        throw(ArgumentError(
+            "plane-wave polarization must have a finite, nonzero norm."))
+    pol_scaled = pol / pol_scale
+    pol_scaled_norm = norm(pol_scaled)
+    pol_norm = pol_scale * pol_scaled_norm
     isfinite(pol_norm) && pol_norm > 0 ||
         throw(ArgumentError(
             "plane-wave polarization must have a finite, nonzero norm."))
@@ -863,7 +880,8 @@ function _validate_plane_wave_parameters(k_vec::Vec3, E0, pol::Vec3)
         throw(ArgumentError(
             "plane-wave polarization must be a unit vector; norm=$pol_norm."))
 
-    transverse_error = abs(dot(k_vec / k_norm, pol / pol_norm))
+    transverse_error = abs(dot(
+        k_scaled / k_scaled_norm, pol_scaled / pol_scaled_norm))
     transverse_error <= 1e-10 ||
         throw(ArgumentError(
             "plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error."))

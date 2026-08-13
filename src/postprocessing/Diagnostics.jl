@@ -3,7 +3,7 @@
 export radiated_power, projected_power, input_power, energy_ratio, condition_diagnostics
 export bistatic_rcs, backscatter_rcs
 
-const _PROJECTED_POWER_FALLBACK_PRECISION = 11264
+const _PROJECTED_POWER_FALLBACK_PRECISION = 65_536
 const _PROJECTED_POWER_MIN_FALLBACK_PRECISION = 256
 
 function _projected_power_component_bounds(values)
@@ -11,15 +11,33 @@ function _projected_power_component_bounds(values)
     maximum_high_bit = typemin(Int)
     @inbounds for value in values
         for component in (real(value), imag(value))
-            converted = try
-                Float64(component)
-            catch
-                return nothing
+            isfinite(component) || return nothing
+            iszero(component) && continue
+            if component isa BigFloat
+                rational_component = Rational{BigInt}(component)
+                numerator_bits = abs(numerator(rational_component))
+                denominator_bits = denominator(rational_component)
+                denominator_exponent = ndigits(denominator_bits; base=2) - 1
+                high_bit = ndigits(numerator_bits; base=2) - 1 -
+                           denominator_exponent
+                low_bit = trailing_zeros(numerator_bits) -
+                          denominator_exponent
+            elseif component isa AbstractFloat
+                high_bit = exponent(abs(component))
+                component_precision = precision(component)
+                low_bit = high_bit - component_precision + 1
+            else
+                converted = try
+                    Float64(component)
+                catch
+                    return nothing
+                end
+                isfinite(converted) || return nothing
+                high_bit = exponent(abs(converted))
+                component_precision = precision(converted)
+                low_bit = high_bit - component_precision + 1
             end
-            isfinite(converted) || return nothing
-            iszero(converted) && continue
-            high_bit = exponent(abs(converted))
-            minimum_low_bit = min(minimum_low_bit, high_bit - 52)
+            minimum_low_bit = min(minimum_low_bit, low_bit)
             maximum_high_bit = max(maximum_high_bit, high_bit)
         end
     end
@@ -50,11 +68,12 @@ function _projected_power_fallback_precision(
     # bits cover both complex square expansions and every Int-addressable
     # sample, so accumulation is exact at the selected precision.
     required_precision = maximum_bit - minimum_bit + 70
-    return clamp(
-        required_precision,
-        _PROJECTED_POWER_MIN_FALLBACK_PRECISION,
-        _PROJECTED_POWER_FALLBACK_PRECISION,
-    )
+    required_precision <= _PROJECTED_POWER_FALLBACK_PRECISION ||
+        throw(ArgumentError(
+            "projected-power exact reduction requires $required_precision " *
+            "bits, exceeding the supported limit " *
+            "$_PROJECTED_POWER_FALLBACK_PRECISION"))
+    return max(required_precision, _PROJECTED_POWER_MIN_FALLBACK_PRECISION)
 end
 
 function _validate_farfield_samples(E_ff::Matrix{<:Number}, grid::SphGrid)

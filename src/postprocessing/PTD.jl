@@ -32,7 +32,7 @@ struct DiffractionEdge
     center::Vec3               # edge midpoint
     tangent::Vec3              # unit tangent (p2-p1)/|p2-p1|
     length::Float64            # edge length
-    face_o::Int                # "outer" face index (lower face index)
+    face_o::Int                # canonical first wedge face
     face_n::Int                # "inner" face index (0 for boundary)
     normal_o::Vec3             # unit normal of face_o
     normal_n::Vec3             # unit normal of face_n (zero for boundary)
@@ -60,6 +60,89 @@ struct PTDResult
     grid::SphGrid
     freq_hz::Float64
     k::Float64
+end
+
+const _PTD_EXACT_PRECISION = 8704
+const _MAX_PTD_EXACT_DIRECTION_VALUES = 12_288
+
+@inline function _ptd_register_exact_direction!(
+        exact_totals::Dict{Int,Vector{Complex{BigFloat}}},
+        direction::Int,
+        current_count::Int)
+    haskey(exact_totals, direction) && return current_count
+    next_count = Base.checked_add(current_count, 1)
+    next_count <= _MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3 ||
+        throw(ArgumentError(
+            "solve_ptd exact-direction accumulation exceeds the " *
+            "$_MAX_PTD_EXACT_DIRECTION_VALUES-value resource limit"))
+    return next_count
+end
+
+@noinline function _ptd_incident_components_exact(
+    amplitude::Float64,
+    polarization::Vec3,
+    incident_direction::Vec3,
+    tangent::Vec3,
+    phase::ComplexF64,
+)
+    return setprecision(BigFloat, _PTD_EXACT_PRECISION) do
+        phase_big = Complex{BigFloat}(phase)
+        incident = ntuple(component ->
+            BigFloat(amplitude) * BigFloat(polarization[component]) *
+            phase_big, 3)
+        tangent_electric = sum(
+            BigFloat(tangent[component]) * incident[component]
+            for component in 1:3)
+        magnetic = (
+            BigFloat(incident_direction[2]) * incident[3] -
+                BigFloat(incident_direction[3]) * incident[2],
+            BigFloat(incident_direction[3]) * incident[1] -
+                BigFloat(incident_direction[1]) * incident[3],
+            BigFloat(incident_direction[1]) * incident[2] -
+                BigFloat(incident_direction[2]) * incident[1],
+        )
+        tangent_magnetic = sum(
+            BigFloat(tangent[component]) * magnetic[component]
+            for component in 1:3)
+        return tangent_electric, tangent_magnetic
+    end
+end
+
+@noinline function _ptd_accumulate_direction_exact!(
+    exact_totals::Dict{Int,Vector{Complex{BigFloat}}},
+    field::Matrix{ComplexF64},
+    direction::Int,
+    prefactor::Float64,
+    sin2_beta::Float64,
+    f_ptd::Float64,
+    g_ptd::Float64,
+    tE::Number,
+    tH::Number,
+    beta_hat::Vec3,
+    phi_hat::Vec3,
+    length::Float64,
+    sinc_value::Float64,
+    phase::ComplexF64,
+)
+    return setprecision(BigFloat, _PTD_EXACT_PRECISION) do
+        totals = get!(exact_totals, direction) do
+            Complex{BigFloat}[
+                Complex{BigFloat}(field[component, direction])
+                for component in 1:3]
+        end
+        common = BigFloat(prefactor) * BigFloat(length) *
+                 BigFloat(sinc_value) * Complex{BigFloat}(phase) /
+                 BigFloat(sin2_beta)
+        @inbounds for component in 1:3
+            contribution = common * (
+                -BigFloat(f_ptd) * Complex{BigFloat}(tE) *
+                    BigFloat(beta_hat[component]) -
+                BigFloat(g_ptd) * Complex{BigFloat}(tH) *
+                    BigFloat(phi_hat[component]))
+            totals[component] += contribution
+        end
+    end
+    return nothing
 end
 
 # ═══════════════════════════════════════════════════════════════════
@@ -119,7 +202,7 @@ function _extract_diffraction_edges_validated(
             e = p2 - p1; le = norm(e)
             isfinite(le) && le > 0.0 ||
                 error("boundary edge ($va, $vb) has invalid length $le")
-            t = e / le; c = (p1 + p2) / 2.0
+            t = e / le; c = _safe_edge_midpoint(p1, p2)
             no = triangle_normal(mesh, fo)
             nn = Vec3(0.0, 0.0, 0.0)
             uo = _safe_uo(t, no)
@@ -129,15 +212,31 @@ function _extract_diffraction_edges_validated(
         end
         length(recs) == 2 || continue
         rec1, rec2 = recs[1], recs[2]
-        rec_o, rec_n = rec1[1] <= rec2[1] ? (rec1, rec2) : (rec2, rec1)
+        # Each record retains the edge direction induced by its consistently
+        # oriented face.  Swapping the two faces also reverses that direction,
+        # so dot(t, cross(no, nn)) and the exterior wedge angle are invariant.
+        # Select by the face's mesh-independent canonical vertex key: unlike
+        # sorting normals or coordinates independently, this keeps the whole
+        # oriented face record together under rigid rotations and face-column
+        # permutations.
+        face1 = sort((mesh.tri[1, rec1[1]],
+                      mesh.tri[2, rec1[1]],
+                      mesh.tri[3, rec1[1]]))
+        face2 = sort((mesh.tri[1, rec2[1]],
+                      mesh.tri[2, rec2[1]],
+                      mesh.tri[3, rec2[1]]))
+        key1 = (face1[1], face1[2], face1[3])
+        key2 = (face2[1], face2[2], face2[3])
+        rec_o, rec_n = isless(key2, key1) ? (rec2, rec1) : (rec1, rec2)
+        no = triangle_normal(mesh, rec_o[1])
+        nn = triangle_normal(mesh, rec_n[1])
         fo, fn = rec_o[1], rec_n[1]
         va, vb = rec_o[2], rec_o[3]
         p1 = _mesh_vertex(mesh, va); p2 = _mesh_vertex(mesh, vb)
         e = p2 - p1; le = norm(e)
         isfinite(le) && le > 0.0 ||
             error("interior edge ($va, $vb) has invalid length $le")
-        t = e / le; c = (p1 + p2) / 2.0
-        no = triangle_normal(mesh, fo); nn = triangle_normal(mesh, fn)
+        t = e / le; c = _safe_edge_midpoint(p1, p2)
         y = dot(t, cross(no, nn))
         x = clamp(dot(no, nn), -1.0, 1.0)
         δ = atan(y, x)
@@ -213,11 +312,15 @@ is finite. The common-denominator form avoids catastrophic cancellation.
     D = cos_pi_n - cos(2u / n)
 
     denom = 2n * cos_u * D
-    if abs(denom) < 1e-12
-        # L'Hôpital limit: at cos(u) = 0 AND D = 0 → limit is 0
-        # at cos(u) = 0 but D ≠ 0 → 1/(2cos(u)) diverges → clamp
-        return abs(cos_u) < 1e-6 && abs(D) < 1e-6 ? 0.0 :
-               clamp(-(1.0 + sin_u) / max(abs(2cos_u), 1e-10) * sign(cos_u), -cap, cap)
+    if abs(denom) < sqrt(eps(Float64))
+        return setprecision(BigFloat, 512) do
+            ub = BigFloat(u)
+            nb = BigFloat(n)
+            value = (sin(BigFloat(π) / nb) / nb) /
+                    (cos(BigFloat(π) / nb) - cos(2ub / nb)) -
+                    tan(ub) / 2
+            clamp(Float64(value), -cap, cap)
+        end
     end
 
     num = 2cos_u * sin_pi_n - n * sin_u * D
@@ -246,8 +349,10 @@ expression (and to its fallback) — i.e. the previous code is recovered with
 the tan sign flipped, which is why the caller flips `sign_tan` below.
 
 At a true reflection boundary `Y` and `tan(γ−v)` diverge together; the GTD
-fringe coefficient genuinely blows up there (ray theory limitation), so the
-result is clamped to `±cap`, exactly as in the legacy half-plane path.
+fringe coefficient genuinely blows up there (ray theory limitation). One-sided
+values are clamped to `±cap`. Exactly on the boundary there is no unique
+one-sided value, so `_ptd_fringe_fg` uses the symmetric principal-value
+convention and omits that edge correction.
 """
 @inline function _stable_YplusTanG(v::Float64, n::Float64, γ::Float64,
                                      sign_Y::Int, sign_tan::Int; cap::Float64=10.0)
@@ -258,27 +363,16 @@ result is clamped to `±cap`, exactly as in the legacy half-plane path.
     sin_γv = sin(γv)
 
     denom = D * cos_γv
-    if abs(denom) < 1e-12
-        # Pole of the common denominator. Two sub-cases:
-        #   • coincident pole (D ≈ 0 AND cos(γ−v) ≈ 0): the reflection boundary;
-        #     mirrors the legacy half-plane handling, which returns 0 there.
-        #   • isolated pole (only one factor ≈ 0): the surviving divergent term
-        #     dominates; return it capped with the correct sign.
-        small_D = abs(D) < 1e-6
-        small_c = abs(cos_γv) < 1e-6
-        if small_D && small_c
-            return 0.0
-        elseif small_D
-            # Y → ±∞ dominates: sign_Y·a/D  (tan term is finite, dropped).
-            # Floor |D| away from 0 (sign preserved) so the division never
-            # produces NaN/Inf before the clamp.
-            sD = D >= 0.0 ? 1.0 : -1.0
-            return clamp(sign_Y * a / (sD * max(abs(D), 1e-10)), -cap, cap)
-        else
-            # tan(γ−v) → ±∞ dominates: sign_tan·(1/2)·sin(γ−v)/cos(γ−v).
-            sC = cos_γv >= 0.0 ? 1.0 : -1.0
-            return clamp(sign_tan * 0.5 * sin_γv / (sC * max(abs(cos_γv), 1e-10)),
-                         -cap, cap)
+    if abs(denom) < sqrt(eps(Float64))
+        return setprecision(BigFloat, 512) do
+            vb = BigFloat(v)
+            nb = BigFloat(n)
+            gammab = BigFloat(γ)
+            y_value = (sin(BigFloat(π) / nb) / nb) /
+                      (cos(BigFloat(π) / nb) - cos(2vb / nb))
+            value = BigFloat(sign_Y) * y_value +
+                    BigFloat(sign_tan) * tan(gammab - vb) / 2
+            clamp(Float64(value), -cap, cap)
         end
     end
 
@@ -305,7 +399,7 @@ function _ptd_fringe_fg(n::Float64, delta_s::Float64, delta_i::Float64,
     u = 0.5 * (delta_s - delta_i)
     v = 0.5 * (delta_s + delta_i)
     # A = X - (1/2)tan(u)  [stable, bounded at shadow boundary]
-    A = _stable_XminusTan(u, n)
+    A = _stable_XminusTan(u, n; cap=Inf)
 
     # Bottom-side formula (eq 4.133-4.134):
     # f = X - Y - 1/2 tan(u) - 1/2 tan(γ-v)
@@ -316,11 +410,18 @@ function _ptd_fringe_fg(n::Float64, delta_s::Float64, delta_i::Float64,
     # both diverge at the reflection boundary and must be combined stably.
     # For n=2, γ=2π and tan(2π-v)=-tan(v), so this reduces exactly to the
     # previous half-plane expression (verified to ≤1e-10).
-    B_bot = _stable_YplusTanG(v, n, gamma, -1, -1)   # -Y - 1/2 tan(γ-v)
-    C_bot = _stable_YplusTanG(v, n, gamma, +1, +1)   # +Y + 1/2 tan(γ-v)
+    B_bot = _stable_YplusTanG(v, n, gamma, -1, -1; cap=Inf)
+    C_bot = _stable_YplusTanG(v, n, gamma, +1, +1; cap=Inf)
 
-    f = A + B_bot
-    g = A + C_bot
+    f = clamp(A + B_bot, -10.0, 10.0)
+    g = clamp(A + C_bot, -10.0, 10.0)
+    if !isfinite(f) || !isfinite(g)
+        # At the exact GTD ray boundary, the two one-sided limits diverge with
+        # opposite signs.  A coordinate-independent symmetric convention is
+        # to omit the singular edge term; neighboring rays retain their
+        # correctly signed, capped values.
+        return 0.0, 0.0
+    end
 
     return (f, g)
 end
@@ -368,13 +469,27 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
                    include_boundary::Bool=true)
     min_dihedral = _validated_min_dihedral(min_dihedral_deg)
 
-    # ── Phase 1: PO solution ──
-    po = solve_po(mesh, freq_hz, excitation; grid=grid, c0=c0, eta0=eta0)
-
-    # ── Phase 2: Extract diffraction edges ──
-    # `solve_po` has already completed the mesh-quality validation.
+    # Validate and reject unsupported interior wedges before the potentially
+    # expensive PO integration.  `solve_po` repeats these inexpensive guards
+    # for its own public contract once the geometry is known to be supported.
+    _validate_po_inputs(grid, freq_hz, excitation, c0, eta0)
+    assert_mesh_quality(mesh; allow_boundary=true, require_closed=false)
     edges = _extract_diffraction_edges_validated(
         mesh, min_dihedral, include_boundary)
+
+    # The implemented Sáez de Adana coefficient branch is the validated
+    # half-plane/boundary formula. Applying its bottom-side convention to an
+    # interior wedge requires a physical illuminated-side classification;
+    # choosing a side by face order, vertex labels, coordinates, or normals
+    # makes the field depend on mesh representation. Fail closed until both
+    # interior side branches are implemented and benchmarked.
+    any(edge -> edge.face_n != 0, edges) &&
+        throw(ArgumentError(
+            "solve_ptd currently supports boundary half-plane edges only; " *
+            "interior-wedge PTD requires an invariant illuminated-side formulation"))
+
+    # ── Phase 1: PO solution ──
+    po = solve_po(mesh, freq_hz, excitation; grid=grid, c0=c0, eta0=eta0)
 
     k = po.k
     NΩ = length(grid.w)
@@ -395,6 +510,8 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
     # and θ̂, φ̂ are the far-field polarization basis vectors.
 
     E_ff_ptd = zeros(ComplexF64, 3, NΩ)
+    exact_direction_totals = Dict{Int,Vector{Complex{BigFloat}}}()
+    exact_direction_count = 0
 
     prefactor = -1.0 / (2π)
 
@@ -421,12 +538,27 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
         isnothing(delta_i) && continue
 
         # ── Incident field at edge midpoint ──
-        E_inc_Q0 = pol * E0 * exp(-1im * k * dot(k_hat, Q₀))
-        all(isfinite, E_inc_Q0) ||
-            throw(OverflowError(
-                "PTD incident edge field overflowed"))
-        tE = dot(ê, E_inc_Q0)
-        tH = dot(ê, cross(k_hat, E_inc_Q0))
+        incident_phase = _source_phase(
+            k, k_hat, Q₀, -1.0, "PTD incident edge field")
+        incident_requires_exact =
+            _ieee_dense_extreme_factor(E0, Float64) ||
+            _ieee_dense_extreme_factor(incident_phase, Float64)
+        @inbounds for component in 1:3
+            incident_requires_exact |=
+                _ieee_dense_extreme_factor(pol[component], Float64) ||
+                _ieee_dense_extreme_factor(k_hat[component], Float64) ||
+                _ieee_dense_extreme_factor(ê[component], Float64)
+        end
+        tE, tH = if incident_requires_exact
+            _ptd_incident_components_exact(
+                E0, pol, k_hat, ê, incident_phase)
+        else
+            E_inc_Q0 = pol * E0 * incident_phase
+            all(isfinite, E_inc_Q0) ||
+                throw(OverflowError(
+                    "PTD incident edge field overflowed"))
+            dot(ê, E_inc_Q0), dot(ê, cross(k_hat, E_inc_Q0))
+        end
 
         for q in 1:NΩ
             r_hat = rhat_vec[q]
@@ -442,31 +574,96 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
             f_ptd, g_ptd = _ptd_fringe_fg(n, delta_s, delta_i, γ)
 
             # ── Scattered field ──
-            # Edge-fixed basis: ê_⊥ (soft/electric) and r̂×ê (hard/magnetic)
-            ê_perp = ê - dot(ê, r_hat) * r_hat
-            r_cross_e = cross(r_hat, ê)
-
-            E_soft = prefactor / sin2_beta * (-f_ptd * tE) * ê_perp
-            E_hard = prefactor / sin2_beta * (-g_ptd * tH) * r_cross_e
+            basis = _ptd_beta_phi_basis(r_hat, ê)
+            isnothing(basis) && continue
+            beta_hat, phi_hat = basis
 
             # ── Edge line integral (sinc × phase) ──
             delta_k = r_hat - k_hat
             q_edge = dot(delta_k, ê)
-            kqL_half = k * q_edge * L / 2.0
-            sinc_val = abs(kqL_half) > 1e-15 ? sin(kqL_half) / kqL_half : 1.0
-            phase = exp(1im * k * dot(delta_k, Q₀))
+            kqL_half = (k * q_edge) * (L / 2.0)
+            sinc_val = if isfinite(kqL_half)
+                abs(kqL_half) > 1e-15 ?
+                    sin(kqL_half) / kqL_half : 1.0
+            else
+                setprecision(BigFloat, 4352) do
+                    argument = BigFloat(k) * BigFloat(q_edge) *
+                               BigFloat(L) / 2
+                    converted = Float64(sin(argument) / argument)
+                    isfinite(converted) ||
+                        throw(OverflowError(
+                            "PTD edge sinc factor is outside the Float64 range"))
+                    converted
+                end
+            end
+            phase = _source_phase(
+                k, delta_k, Q₀, 1.0, "PTD scattered edge field")
 
-            line_integral = L * sinc_val * phase
+            # Treat the complete edge contribution as one product.  Forming
+            # the field coefficient before multiplying by a tiny edge length
+            # can overflow even when the physical contribution is finite.
+            needs_exact = incident_requires_exact ||
+                          haskey(exact_direction_totals, q)
+            @inbounds for factor in (
+                prefactor, sin2_beta, f_ptd, g_ptd,
+                real(tE), imag(tE), real(tH), imag(tH),
+                L, sinc_val, real(phase), imag(phase),
+            )
+                needs_exact |= _ieee_dense_extreme_factor(factor, Float64)
+            end
+            if needs_exact
+                exact_direction_count = _ptd_register_exact_direction!(
+                    exact_direction_totals, q, exact_direction_count)
+                _ptd_accumulate_direction_exact!(
+                    exact_direction_totals, E_ff_ptd, q,
+                    prefactor, sin2_beta,
+                    f_ptd, g_ptd, tE, tH, beta_hat, phi_hat,
+                    L, sinc_val, phase)
+                continue
+            end
 
-            # ── Assemble scattered vector ──
-            E_vec = (E_soft + E_hard) * line_integral
-            all(isfinite, E_vec) ||
+            common = (prefactor * L * sinc_val * phase) / sin2_beta
+            E_vec = common *
+                (-f_ptd * tE * beta_hat - g_ptd * tH * phi_hat)
+            if !all(isfinite, E_vec)
+                exact_direction_count = _ptd_register_exact_direction!(
+                    exact_direction_totals, q, exact_direction_count)
+                _ptd_accumulate_direction_exact!(
+                    exact_direction_totals, E_ff_ptd, q,
+                    prefactor, sin2_beta,
+                    f_ptd, g_ptd, tE, tH, beta_hat, phi_hat,
+                    L, sinc_val, phase)
+                continue
+            end
+
+            updated = CVec3(
+                E_ff_ptd[1, q] + E_vec[1],
+                E_ff_ptd[2, q] + E_vec[2],
+                E_ff_ptd[3, q] + E_vec[3],
+            )
+            if !all(isfinite, updated)
+                exact_direction_count = _ptd_register_exact_direction!(
+                    exact_direction_totals, q, exact_direction_count)
+                _ptd_accumulate_direction_exact!(
+                    exact_direction_totals, E_ff_ptd, q,
+                    prefactor, sin2_beta,
+                    f_ptd, g_ptd, tE, tH, beta_hat, phi_hat,
+                    L, sinc_val, phase)
+                continue
+            end
+            E_ff_ptd[1, q] = updated[1]
+            E_ff_ptd[2, q] = updated[2]
+            E_ff_ptd[3, q] = updated[3]
+        end
+    end
+    for (direction, totals) in exact_direction_totals
+        @inbounds for component in 1:3
+            converted = ComplexF64(totals[component])
+            isfinite(converted) ||
                 throw(OverflowError(
-                    "PTD edge contribution overflowed at direction $q"))
-
-            E_ff_ptd[1, q] += E_vec[1]
-            E_ff_ptd[2, q] += E_vec[2]
-            E_ff_ptd[3, q] += E_vec[3]
+                    "PTD far field is outside the ComplexF64 range at " *
+                    "direction $direction"))
+            E_ff_ptd[component, direction] = converted
         end
     end
     all(isfinite, E_ff_ptd) ||

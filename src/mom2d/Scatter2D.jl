@@ -202,16 +202,37 @@ function jacobian_scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2
     # W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ. Evaluate G_obs*W through
     # (G_obs*Z⁻ᵀ)ᵀ = Z⁻¹*G_obsᵀ. This reuses the cached forward LU and needs
     # an N×M workspace instead of materializing the N×N inverse.
-    reciprocal_condition = _vie_reciprocal_condition_2d(vr.Z_LU, vr.Z)
-    if reciprocal_condition <= eps(Float64)
-        J = _jacobian_scattered_field_high_precision_2d(
-            vr, G_obs, reciprocal_condition)
+    sensitivity_transpose = Matrix{ComplexF64}(undef, N, M)
+    sensitivity_transpose = _solve_factored_linear_system!(
+        sensitivity_transpose, vr.Z_LU, vr.Z,
+        transpose(G_obs), "jacobian_scattered_field_2d")
+
+    if vr.Z_LU isa _BigFloatDenseLUPlan
+        # In the exact-factor branch, converting Z⁻¹Gᵀ to ComplexF64 before
+        # multiplying by k₀² can erase a representable final Jacobian entry.
+        # Retain the exact solve through the complete physical product.
+        J = setprecision(BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+            big_type = Complex{BigFloat}
+            rhs_big = Matrix{big_type}(undef, N, M)
+            @inbounds for p in 1:N, m in 1:M
+                rhs_big[p, m] = big_type(G_obs[m, p])
+            end
+            sensitivity_big = vr.Z_LU.factorization \ rhs_big
+            result = Matrix{ComplexF64}(undef, M, N)
+            scale = BigFloat(vr.k0)^2 * BigFloat(A)
+            @inbounds for p in 1:N, m in 1:M
+                value = scale * big_type(vr.E_total[p]) *
+                        sensitivity_big[p, m]
+                result[m, p] = ComplexF64(value)
+                isfinite(result[m, p]) ||
+                    throw(OverflowError(
+                        "jacobian_scattered_field_2d entry is outside " *
+                        "the representable ComplexF64 range."))
+            end
+            result
+        end
         return J, G_obs
     end
-    sensitivity_transpose = Matrix(transpose(G_obs))
-    sensitivity_transpose = _solve_vie_factored_2d!(
-        sensitivity_transpose, vr.Z_LU, vr.Z,
-        "jacobian_scattered_field_2d", reciprocal_condition)
 
     # J = k₀² A × (G_obs × W) × diag(E).
     J = Matrix{ComplexF64}(undef, M, N)

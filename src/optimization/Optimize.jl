@@ -435,15 +435,21 @@ function _combine_directivity_gradient!(
     denominator::Float64,
 )
     @inbounds for parameter in eachindex(target_gradient, total_gradient)
+        target_value = target_gradient[parameter]
+        total_value = total_gradient[parameter]
         value = muladd(
             -ratio,
-            total_gradient[parameter],
-            target_gradient[parameter],
+            total_value,
+            target_value,
         ) / denominator
-        if !isfinite(value)
+        if !isfinite(value) ||
+           _ieee_dense_extreme_factor(target_value, Float64) ||
+           _ieee_dense_extreme_factor(total_value, Float64) ||
+           _ieee_dense_extreme_factor(ratio, Float64) ||
+           _ieee_dense_extreme_factor(denominator, Float64)
             value = _directivity_gradient_component_bigfloat(
-                target_gradient[parameter],
-                total_gradient[parameter],
+                target_value,
+                total_value,
                 ratio,
                 denominator,
                 parameter,
@@ -459,9 +465,7 @@ end
            err isa LinearAlgebra.LAPACKException ||
            err isa LinearAlgebra.PosDefException ||
            err isa LinearAlgebra.ZeroPivotException ||
-           err isa OverflowError ||
-           err isa DomainError ||
-           err isa ErrorException
+           err isa OverflowError
 end
 
 @inline function _projected_directional_derivative(
@@ -469,6 +473,31 @@ end
     trial::AbstractVector{Float64},
     current::AbstractVector{Float64},
 )
+    needs_fallback = false
+    @inbounds for p in eachindex(gradient, trial, current)
+        if _ieee_dense_extreme_factor(gradient[p], Float64) ||
+           _ieee_dense_extreme_factor(trial[p], Float64) ||
+           _ieee_dense_extreme_factor(current[p], Float64)
+            needs_fallback = true
+            break
+        end
+    end
+    if needs_fallback
+        return setprecision(
+                BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+            derivative_big = zero(BigFloat)
+            @inbounds for p in eachindex(gradient, trial, current)
+                derivative_big += BigFloat(gradient[p]) *
+                    (BigFloat(trial[p]) - BigFloat(current[p]))
+            end
+            converted = Float64(derivative_big)
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "projected directional derivative is outside the " *
+                    "representable Float64 range"))
+            converted
+        end
+    end
     derivative = 0.0
     @inbounds @simd for p in eachindex(gradient, trial, current)
         derivative += gradient[p] * (trial[p] - current[p])

@@ -10,6 +10,136 @@
 
 export POResult, solve_po
 
+const _PO_PHASE_FALLBACK_PRECISION = 4352
+
+@noinline function _po_surface_current_exact(
+    amplitude::Float64,
+    impedance::Float64,
+    direction::Vec3,
+    phase::ComplexF64,
+    triangle::Int,
+)
+    return setprecision(BigFloat, _PO_PHASE_FALLBACK_PRECISION) do
+        scale = 2 * BigFloat(amplitude) / BigFloat(impedance)
+        phase_big = Complex{BigFloat}(phase)
+        return CVec3(ntuple(component -> begin
+            value = ComplexF64(
+                scale * BigFloat(direction[component]) * phase_big)
+            isfinite(value) ||
+                throw(OverflowError(
+                    "PO surface current is outside the ComplexF64 range " *
+                    "on triangle $triangle"))
+            value
+        end, 3))
+    end
+end
+
+@inline function _po_surface_current(
+        amplitude::Float64,
+        impedance::Float64,
+        direction::Vec3,
+        phase::ComplexF64,
+        triangle::Int)
+    needs_exact = _ieee_dense_extreme_factor(amplitude, Float64) ||
+                  _ieee_dense_extreme_factor(impedance, Float64) ||
+                  _ieee_dense_extreme_factor(phase, Float64)
+    @inbounds for component in direction
+        needs_exact |= _ieee_dense_extreme_factor(component, Float64)
+    end
+    needs_exact && return _po_surface_current_exact(
+        amplitude, impedance, direction, phase, triangle)
+    scale = (2.0 * amplitude) / impedance
+    value = CVec3(complex.(scale * direction * phase))
+    all(isfinite, value) && return value
+    return _po_surface_current_exact(
+        amplitude, impedance, direction, phase, triangle)
+end
+
+@noinline function _po_farfield_contribution_exact(
+    k::Float64,
+    amplitude::Float64,
+    projection::Vec3,
+    phase_integral::ComplexF64,
+    triangle::Int,
+    direction::Int,
+)
+    return setprecision(BigFloat, _PO_PHASE_FALLBACK_PRECISION) do
+        scale = Complex{BigFloat}(0, 1) * BigFloat(k) *
+                BigFloat(amplitude) / BigFloat(2π)
+        integral = Complex{BigFloat}(phase_integral)
+        value = CVec3(ntuple(component -> begin
+            converted = ComplexF64(
+                scale * BigFloat(projection[component]) * integral)
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "PO far-field contribution is outside the ComplexF64 " *
+                    "range for triangle $triangle, direction $direction"))
+            converted
+        end, 3))
+        return value
+    end
+end
+
+@noinline function _po_farfield_contribution_geometry_exact(
+    k::Float64,
+    amplitude::Float64,
+    projection::Vec3,
+    delta_k::Vec3,
+    p1::Vec3,
+    p2::Vec3,
+    p3::Vec3,
+    area::Float64,
+    triangle::Int,
+    direction::Int,
+)
+    return setprecision(BigFloat, _PO_PHASE_FALLBACK_PRECISION) do
+        vertices = sort((p1, p2, p3); by=Tuple)
+        canonical_p1, canonical_p2, canonical_p3 =
+            vertices[2], vertices[3], vertices[1]
+        integral = _phase_integral_analytical_big_value(
+            k, delta_k, canonical_p1, canonical_p2, canonical_p3,
+            area, 1e-5, 5)
+        scale = Complex{BigFloat}(0, 1) * BigFloat(k) *
+                BigFloat(amplitude) / BigFloat(2π)
+        value = CVec3(ntuple(component -> begin
+            converted = ComplexF64(
+                scale * BigFloat(projection[component]) * integral)
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "PO far-field contribution is outside the ComplexF64 " *
+                    "range for triangle $triangle, direction $direction"))
+            converted
+        end, 3))
+        return value
+    end
+end
+
+@inline function _po_farfield_contribution(
+    prefactor::ComplexF64,
+    k::Float64,
+    amplitude::Float64,
+    projection::Vec3,
+    phase_integral::ComplexF64,
+    scale_requires_fallback::Bool,
+    triangle::Int,
+    direction::Int,
+)
+    needs_fallback = scale_requires_fallback ||
+        _ieee_dense_extreme_factor(phase_integral, Float64)
+    @inbounds for component in projection
+        needs_fallback |= _ieee_dense_extreme_factor(component, Float64)
+    end
+    needs_fallback &&
+        return _po_farfield_contribution_exact(
+            k, amplitude, projection, phase_integral, triangle, direction)
+
+    value = CVec3(complex.(prefactor * projection * phase_integral))
+    all(isfinite, value) ||
+        return _po_farfield_contribution_exact(
+            k, amplitude, projection, phase_integral, triangle, direction)
+    return value
+end
+
 """
     POResult
 
@@ -43,10 +173,8 @@ function _validate_po_inputs(grid::SphGrid, freq_hz::Real,
     isfinite(frequency) && frequency > 0 ||
         throw(ArgumentError(
             "freq_hz must be representable as a finite positive Float64, got $freq_hz"))
-    k = 2π * frequency / c0
-    isfinite(k) && k > 0 ||
-        throw(ArgumentError(
-            "freq_hz and c0 must produce a finite positive wavenumber"))
+    k = _frequency_to_wavenumber(
+        frequency, c0, "Physical Optics wavenumber")
     isapprox(k_norm, k; rtol=1e-8, atol=0.0) ||
         throw(ArgumentError(
             "plane-wave |k_vec|=$k_norm does not match 2π*freq_hz/c0=$k"))
@@ -62,12 +190,171 @@ Recursive helper G(n, w) for Taylor-series phase integral (POFacets G.m).
 """
 function _po_G(n::Int, w)
     jw = 1im * w
-    g = (exp(jw) - 1) / jw
+    iszero(jw) && return one(jw) / (n + 1)
+    if abs(jw) < 0.25
+        # G_n(w) = integral_0^1 t^n exp(iwt) dt.  The moment series is
+        # cancellation-free and its terms decrease geometrically here.
+        term = one(jw)
+        g = term / (n + 1)
+        for order in 1:128
+            term *= jw / order
+            updated = g + term / (n + order + 1)
+            updated == g && return updated
+            g = updated
+        end
+        return g
+    end
+    exp_jw = exp(jw)
+    g = expm1(jw) / jw
     for m in 1:n
         g_prev = g
-        g = (exp(jw) - m * g_prev) / jw
+        g = (exp_jw - m * g_prev) / jw
     end
     return g
+end
+
+function _phase_integral_analytical_big_value(
+        k::Union{Float64,BigFloat},
+        delta_k::Union{Vec3,SVector{3,BigFloat}},
+        p1::Vec3, p2::Vec3, p3::Vec3, Area::Float64,
+        Lt::Float64, Nt::Int)
+    kb = BigFloat(k)
+    delta = SVector{3,BigFloat}(BigFloat.(delta_k))
+    vertex1 = SVector{3,BigFloat}(BigFloat.(p1))
+    vertex2 = SVector{3,BigFloat}(BigFloat.(p2))
+    vertex3 = SVector{3,BigFloat}(BigFloat.(p3))
+    Dp = kb * dot(vertex1 - vertex3, delta)
+    Dq = kb * dot(vertex2 - vertex3, delta)
+    Do = kb * dot(vertex3, delta)
+    DD = Dq - Dp
+    expDo = exp(Complex{BigFloat}(0, Do))
+    expDp = exp(Complex{BigFloat}(0, Dp))
+    expDq = exp(Complex{BigFloat}(0, Dq))
+    threshold = BigFloat(Lt)
+    area = BigFloat(Area)
+    imaginary = Complex{BigFloat}(0, 1)
+
+    return if abs(Dp) < threshold && abs(Dq) >= threshold
+        sum_value = zero(Complex{BigFloat})
+        for order in 0:Nt
+            sum_value += (imaginary * Dp)^order / factorial(order) *
+                (-inv(BigFloat(order + 1)) +
+                 expDq * _po_G(order, Complex{BigFloat}(-Dq)))
+        end
+        sum_value * 2area * expDo / (imaginary * Dq)
+    elseif abs(Dp) < threshold && abs(Dq) < threshold
+        sum_value = zero(Complex{BigFloat})
+        for first_order in 0:Nt, second_order in 0:Nt
+            sum_value += (imaginary * Dp)^first_order *
+                (imaginary * Dq)^second_order /
+                factorial(first_order + second_order + 2)
+        end
+        sum_value * 2area * expDo
+    elseif abs(Dp) >= threshold && abs(Dq) < threshold
+        sum_value = zero(Complex{BigFloat})
+        for order in 0:Nt
+            sum_value += (imaginary * Dq)^order / factorial(order) *
+                _po_G(order + 1, Complex{BigFloat}(-Dp)) /
+                BigFloat(order + 1)
+        end
+        sum_value * 2area * expDo * expDp
+    elseif abs(Dp) >= threshold && abs(Dq) >= threshold &&
+           abs(DD) < threshold
+        sum_value = zero(Complex{BigFloat})
+        for order in 0:Nt
+            sum_value += (-imaginary * DD)^order / factorial(order) *
+                (-_po_G(order, Complex{BigFloat}(Dq)) +
+                 expDq / BigFloat(order + 1))
+        end
+        sum_value * 2area * expDo / (imaginary * Dq)
+    else
+        2area * expDo *
+            (expDp / (Dp * DD) - expDq / (Dq * DD) - inv(Dp * Dq))
+    end
+end
+
+@noinline function _po_farfield_direction_geometry_exact(
+        k::Float64,
+        amplitude::Float64,
+        r_hat::Vec3,
+        k_hat::Vec3,
+        directions::Vector{Vec3},
+        vertex1::Vector{Vec3},
+        vertex2::Vector{Vec3},
+        vertex3::Vector{Vec3},
+        areas::Vector{Float64},
+        illuminated::BitVector,
+        direction_index::Int)
+    return setprecision(BigFloat, _PO_PHASE_FALLBACK_PRECISION) do
+        totals = zeros(Complex{BigFloat}, 3)
+        k_big = BigFloat(k)
+        r_big = SVector{3,BigFloat}(BigFloat.(r_hat))
+        incident_big = SVector{3,BigFloat}(BigFloat.(k_hat))
+        delta_big = r_big - incident_big
+        scale = Complex{BigFloat}(0, 1) * k_big *
+                BigFloat(amplitude) / BigFloat(2π)
+        @inbounds for triangle in eachindex(illuminated)
+            illuminated[triangle] || continue
+            vertices = sort(
+                (vertex1[triangle], vertex2[triangle], vertex3[triangle]);
+                by=Tuple)
+            canonical_first, canonical_second, canonical_third =
+                vertices[2], vertices[3], vertices[1]
+            integral = _phase_integral_analytical_big_value(
+                k_big, delta_big,
+                canonical_first, canonical_second, canonical_third,
+                areas[triangle], 1e-5, 5)
+            surface_direction = SVector{3,BigFloat}(
+                BigFloat.(directions[triangle]))
+            projection = r_big * dot(r_big, surface_direction) -
+                         surface_direction
+            for component in 1:3
+                totals[component] += scale *
+                    projection[component] * integral
+            end
+        end
+        return CVec3(ntuple(component -> begin
+            converted = ComplexF64(totals[component])
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "PO far field is outside the ComplexF64 range at " *
+                    "direction $direction_index"))
+            converted
+        end, 3))
+    end
+end
+
+@inline function _po_phase_geometry_requires_exact(
+        k::Float64,
+        delta_k::Vec3,
+        first::Vec3,
+        second::Vec3,
+        third::Vec3,
+        area::Float64)
+    _ieee_dense_extreme_factor(area, Float64) && return true
+    @inbounds for vertex in (first, second, third)
+        for component in vertex
+            _ieee_dense_extreme_factor(component, Float64) && return true
+        end
+    end
+    return _source_phase_requires_fallback(k, first - third, delta_k) ||
+           _source_phase_requires_fallback(k, second - third, delta_k) ||
+           _source_phase_requires_fallback(k, third, delta_k)
+end
+
+@noinline function _phase_integral_analytical_big(
+        k::Float64, delta_k::Vec3,
+        p1::Vec3, p2::Vec3, p3::Vec3, Area::Float64,
+        Lt::Float64, Nt::Int)
+    return setprecision(BigFloat, _PO_PHASE_FALLBACK_PRECISION) do
+        integral = _phase_integral_analytical_big_value(
+            k, delta_k, p1, p2, p3, Area, Lt, Nt)
+        converted = ComplexF64(integral)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "PO phase integral is outside the ComplexF64 range"))
+        converted
+    end
 end
 
 """
@@ -83,6 +370,23 @@ function _phase_integral_analytical(k::Float64, delta_k::Vec3,
                                     p1::Vec3, p2::Vec3, p3::Vec3,
                                     Area::Float64;
                                     Lt::Float64=1e-5, Nt::Int=5)
+    Nt >= 0 || throw(ArgumentError("PO phase series order must be nonnegative"))
+    (isfinite(Lt) && Lt > 0.0) ||
+        throw(ArgumentError("PO phase threshold must be finite and positive"))
+    # The closed form chooses one vertex as the phase origin.  Its truncated
+    # near-pole expansions must not depend on the caller's cyclic triangle
+    # ordering, so choose that origin and the two remaining vertices from the
+    # geometry itself.
+    vertices = sort((p1, p2, p3); by=Tuple)
+    p1, p2, p3 = vertices[2], vertices[3], vertices[1]
+    edge1 = p1 - p3
+    edge2 = p2 - p3
+    if _source_phase_requires_fallback(k, edge1, delta_k) ||
+       _source_phase_requires_fallback(k, edge2, delta_k) ||
+       _source_phase_requires_fallback(k, p3, delta_k)
+        return _phase_integral_analytical_big(
+            k, delta_k, p1, p2, p3, Area, Lt, Nt)
+    end
     # Phase at vertices relative to v3
     Dp = k * dot(Vec3(p1 - p3), delta_k)
     Dq = k * dot(Vec3(p2 - p3), delta_k)
@@ -124,7 +428,7 @@ function _phase_integral_analytical(k::Float64, delta_k::Vec3,
         # Special case 4: DD small
         sic = zero(ComplexF64)
         for n in 0:Nt
-            sic += (1im * DD)^n / factorial(n) *
+            sic += (-1im * DD)^n / factorial(n) *
                    (-_po_G(n, ComplexF64(Dq)) + expDq / (n + 1))
         end
         Ic = sic * 2 * Area * expDo / (1im * Dq)
@@ -192,7 +496,7 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
         tri_v1[t] = v1
         tri_v2[t] = v2
         tri_v3[t] = v3
-        tri_area[t] = 0.5 * norm(cross(v2 - v1, v3 - v1))
+        tri_area[t] = triangle_area(mesh, t)
 
         n_hat = triangle_normal(mesh, t)
 
@@ -202,13 +506,10 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
             V_t[t] = cross(n_hat, h_pol)  # n̂ × (k̂ × pol)
 
             rc = triangle_center(mesh, t)
-            phase = exp(-1im * dot(k_vec, rc))
-            current =
-                CVec3(complex.(2.0 * E0 / eta0 * V_t[t] * phase))
-            all(isfinite, current) ||
-                throw(OverflowError(
-                    "PO surface current overflowed on triangle $t"))
-            J_s[t] = current
+            phase = _source_phase(
+                1.0, k_vec, rc, -1.0, "PO incident field")
+            J_s[t] = _po_surface_current(
+                E0, eta0, V_t[t], phase, t)
         else
             illuminated[t] = false
             V_t[t] = Vec3(0.0, 0.0, 0.0)
@@ -222,9 +523,10 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
     # The +jk sign matches the package far-field convention E∞ = +jkη₀/(4π) r̂×(r̂×N)
     # (FarField.radiation_vectors, validated against the near-field propagator), so
     # po.E_ff can be combined coherently with MoM/PTD fields; RCS = |E|² is unchanged.
-    prefactor = 1im * k * E0 / (2π)
-    isfinite(prefactor) ||
-        throw(OverflowError("PO far-field prefactor overflowed"))
+    scale_requires_fallback =
+        _ieee_dense_extreme_factor(k, Float64) ||
+        _ieee_dense_extreme_factor(E0, Float64)
+    prefactor = scale_requires_fallback ? 0.0im : 1im * k * E0 / (2π)
 
     # Precompute rhat Vec3 (avoids column-slice allocation in hot loop)
     rhat_vec = Vector{Vec3}(undef, NΩ)
@@ -239,23 +541,45 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
         # Phase: exp(jk(r̂ - k̂_prop)·r')
         delta_k = r_hat - k_hat
 
+        direction_requires_exact = scale_requires_fallback
+        if !direction_requires_exact
+            @inbounds for t in 1:Nt
+                !illuminated[t] && continue
+                if _po_phase_geometry_requires_exact(
+                        k, delta_k, tri_v1[t], tri_v2[t], tri_v3[t],
+                        tri_area[t])
+                    direction_requires_exact = true
+                    break
+                end
+            end
+        end
+        if direction_requires_exact
+            E_q = _po_farfield_direction_geometry_exact(
+                k, E0, r_hat, k_hat, V_t,
+                tri_v1, tri_v2, tri_v3, tri_area, illuminated, q)
+            E_ff[1, q] = E_q[1]
+            E_ff[2, q] = E_q[2]
+            E_ff[3, q] = E_q[3]
+            continue
+        end
+
         E_q = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
 
         for t in 1:Nt
             !illuminated[t] && continue
 
+            # r̂ × (r̂ × V_t) = (r̂·V_t)r̂ - V_t
+            Vt = V_t[t]
+            proj = r_hat * dot(r_hat, Vt) - Vt
             # Analytical phase integral over triangle
             I_t = _phase_integral_analytical(k, delta_k,
                       tri_v1[t], tri_v2[t], tri_v3[t], tri_area[t])
             isfinite(I_t) ||
                 throw(OverflowError(
                     "PO phase integral is non-finite for triangle $t, direction $q"))
-
-            # r̂ × (r̂ × V_t) = (r̂·V_t)r̂ - V_t
-            Vt = V_t[t]
-            proj = r_hat * dot(r_hat, Vt) - Vt
-
-            E_q += CVec3(complex.(prefactor * proj * I_t))
+            contribution = _po_farfield_contribution(
+                prefactor, k, E0, proj, I_t, false, t, q)
+            E_q += contribution
             all(isfinite, E_q) ||
                 throw(OverflowError(
                     "PO far-field accumulation overflowed at direction $q"))

@@ -512,6 +512,34 @@ println("\n── Test 39: DensityFiltering ──")
             # H(η=0.5) = tanh(β/2) / (2tanh(β/2)) = 0.5 for any β
             @test heaviside_project([0.5], beta)[1] ≈ 0.5 atol=1e-14
         end
+        @test heaviside_project([0.01], 100.0, 0.5)[1] ==
+              2.3767774103081315e-43
+        @test heaviside_derivative([0.01], 100.0, 0.5)[1] ==
+              5.49757001582043e-41
+        projection_minsub_beta = nextfloat(0.0)
+        @test heaviside_project(
+            [0.5], projection_minsub_beta, 0.0) == [0.5]
+        @test heaviside_derivative(
+            [0.5], projection_minsub_beta, 0.0) == [1.0]
+        projection_max_beta = floatmax(Float64)
+        @test heaviside_project(
+            [0.5], projection_max_beta, 0.5) == [0.5]
+        @test heaviside_derivative(
+            [0.5], projection_max_beta, 0.5) ==
+              [projection_max_beta / 2]
+        projection_big_input = BigFloat[BigFloat(1) / 3]
+        projection_big_result = heaviside_project(
+            projection_big_input, BigFloat(4), BigFloat(0.5))
+        projection_big_derivative = heaviside_derivative(
+            projection_big_input, BigFloat(4), BigFloat(0.5))
+        @test eltype(projection_big_result) == BigFloat
+        @test eltype(projection_big_derivative) == BigFloat
+        projection_float32 = heaviside_project(
+            Float32[0.25], Float32(4), Float32(0.5))
+        projection_float32_derivative = heaviside_derivative(
+            Float32[0.25], Float32(4), Float32(0.5))
+        @test eltype(projection_float32) == Float32
+        @test eltype(projection_float32_derivative) == Float32
     end
 
     # ── B: Heaviside monotonicity ──

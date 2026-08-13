@@ -431,6 +431,7 @@ Low-level voxel clustering: partition space into cubic cells of side `h`, replac
 - `mesh::TriMesh`: Input mesh.
 - `h::Float64`: Voxel cell size in meters (> 0). Smaller `h` = less coarsening.
 - `max_exact_cell_indices::Integer=10_000`: Cap on distinct coordinates that require cold exact cell-boundary classification.
+- `max_exact_area_checks::Integer=1_000`: Cap on unique remapped faces that require cold exact area classification at Float64 underflow/cancellation boundaries.
 
 **Returns:** `TriMesh` (coarsened mesh).
 

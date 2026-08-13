@@ -12,55 +12,67 @@
 export compute_nearfield, compute_total_field
 
 @inline function _point_triangle_distance(p::Vec3, a::Vec3, b::Vec3, c::Vec3)
-    ab = b - a
-    ac = c - a
-    ap = p - a
+    ab_raw = b - a
+    ac_raw = c - a
+    ap_raw = p - a
+    bp_raw = p - b
+    cp_raw = p - c
+    scale = max(
+        maximum(abs, ab_raw), maximum(abs, ac_raw),
+        maximum(abs, ap_raw), maximum(abs, bp_raw),
+        maximum(abs, cp_raw))
+    isfinite(scale) && scale > 0.0 ||
+        throw(ArgumentError(
+            "point-triangle distance geometry has no finite nonzero scale"))
+    ab = ab_raw / scale
+    ac = ac_raw / scale
+    ap = ap_raw / scale
     d1 = dot(ab, ap)
     d2 = dot(ac, ap)
     if d1 <= 0.0 && d2 <= 0.0
-        return norm(ap)
+        return scale * norm(ap)
     end
 
-    bp = p - b
+    bp = bp_raw / scale
     d3 = dot(ab, bp)
     d4 = dot(ac, bp)
     if d3 >= 0.0 && d4 <= d3
-        return norm(bp)
+        return scale * norm(bp)
     end
 
     vc = d1 * d4 - d3 * d2
     if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0
         v = d1 / (d1 - d3)
-        proj = a + v * ab
-        return norm(p - proj)
+        return scale * norm(ap - v * ab)
     end
 
-    cp = p - c
+    cp = cp_raw / scale
     d5 = dot(ab, cp)
     d6 = dot(ac, cp)
     if d6 >= 0.0 && d5 <= d6
-        return norm(cp)
+        return scale * norm(cp)
     end
 
     vb = d5 * d2 - d1 * d6
     if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0
         w = d2 / (d2 - d6)
-        proj = a + w * ac
-        return norm(p - proj)
+        return scale * norm(ap - w * ac)
     end
 
     va = d3 * d6 - d5 * d4
     if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0
         w = (d4 - d3) / ((d4 - d3) + (d5 - d6))
-        proj = b + w * (c - b)
-        return norm(p - proj)
+        return scale * norm(bp - w * (ac - ab))
     end
 
     denom = 1.0 / (va + vb + vc)
     v = vb * denom
     w = vc * denom
-    proj = a + v * ab + w * ac
-    return norm(p - proj)
+    distance = scale * norm(ap - v * ab - w * ac)
+    isfinite(distance) ||
+        throw(OverflowError(
+            "point-triangle distance is outside the Float64 range"))
+    return distance
 end
 
 function _surface_distance(mesh::TriMesh, p::Vec3)
@@ -77,7 +89,12 @@ function _surface_distance(mesh::TriMesh, p::Vec3)
 end
 
 @inline function _default_nearfield_surface_tol(mesh::TriMesh)
-    return max(1e-12, 1e-10 * _bbox_diagonal(mesh))
+    diagonal = _bbox_diagonal(mesh)
+    tolerance = 1e-10 * diagonal
+    if iszero(tolerance) && diagonal > 0.0
+        return nextfloat(0.0)
+    end
+    return tolerance
 end
 
 function _collect_observation_points(points::Vector{Vec3})
@@ -162,19 +179,40 @@ end
                                 r::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
     e1 = V2 - V1
     e2 = V3 - V1
-    d00 = dot(e1, e1)
-    d01 = dot(e1, e2)
-    d11 = dot(e2, e2)
     rp = r - V1
-    d20 = dot(rp, e1)
-    d21 = dot(rp, e2)
-    denom = d00 * d11 - d01 * d01
-    if abs(denom) < 1e-30
-        return J_verts[1, t]
+    scale = max(maximum(abs, e1), maximum(abs, e2), maximum(abs, rp))
+    isfinite(scale) && scale > 0.0 || return J_verts[1, t]
+    e1 /= scale
+    e2 /= scale
+    rp /= scale
+    cross_edges = cross(e1, e2)
+    drop_axis = argmax(abs.(cross_edges))
+    first_axis, second_axis = drop_axis == 1 ? (2, 3) :
+                              drop_axis == 2 ? (1, 3) : (1, 2)
+    denominator = e1[first_axis] * e2[second_axis] -
+                  e1[second_axis] * e2[first_axis]
+    if !(isfinite(denominator) && !iszero(denominator))
+        return setprecision(BigFloat, 4352) do
+            e1a = BigFloat(V2[first_axis]) - BigFloat(V1[first_axis])
+            e1b = BigFloat(V2[second_axis]) - BigFloat(V1[second_axis])
+            e2a = BigFloat(V3[first_axis]) - BigFloat(V1[first_axis])
+            e2b = BigFloat(V3[second_axis]) - BigFloat(V1[second_axis])
+            rpa = BigFloat(r[first_axis]) - BigFloat(V1[first_axis])
+            rpb = BigFloat(r[second_axis]) - BigFloat(V1[second_axis])
+            determinant = e1a * e2b - e1b * e2a
+            iszero(determinant) && return J_verts[1, t]
+            lam2_big = (rpa * e2b - rpb * e2a) / determinant
+            lam3_big = (e1a * rpb - e1b * rpa) / determinant
+            lam1_big = 1 - lam2_big - lam3_big
+            ComplexF64(lam1_big) * J_verts[1, t] +
+            ComplexF64(lam2_big) * J_verts[2, t] +
+            ComplexF64(lam3_big) * J_verts[3, t]
+        end
     end
-    inv_denom = 1.0 / denom
-    lam2 = (d11 * d20 - d01 * d21) * inv_denom   # weight of V2
-    lam3 = (d00 * d21 - d01 * d20) * inv_denom   # weight of V3
+    lam2 = (rp[first_axis] * e2[second_axis] -
+            rp[second_axis] * e2[first_axis]) / denominator
+    lam3 = (e1[first_axis] * rp[second_axis] -
+            e1[second_axis] * rp[first_axis]) / denominator
     lam1 = 1.0 - lam2 - lam3                     # weight of V1
     return lam1 * J_verts[1, t] + lam2 * J_verts[2, t] + lam3 * J_verts[3, t]
 end
@@ -211,12 +249,6 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
         throw(ArgumentError(
             "compute_nearfield: surface_tol must be finite and nonnegative, got $tol."))
 
-    pref_vec = -1im * k * eta0
-    pref_scl = -1im * eta0 / k
-    (isfinite(pref_vec) && isfinite(pref_scl)) ||
-        throw(ArgumentError(
-            "compute_nearfield: k and eta0 produce non-finite field prefactors."))
-
     Nobs = length(observation_points)
     Nobs == 0 && return zeros(ComplexF64, 3, 0)
 
@@ -232,10 +264,71 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
         end
     end
 
+    # Preserve the exact zero field without forming irrelevant mixed-scale
+    # prefactors. Surface and input validation above still runs in full.
+    all(iszero, I_coeffs) && return zeros(ComplexF64, 3, Nobs)
+
+    effective_currents = I_coeffs
+    effective_eta0 = eta0
+    pref_vec = -1im * k * effective_eta0
+    pref_scl = -1im * effective_eta0 / k
+    if !(isfinite(pref_vec) && isfinite(pref_scl))
+        # Transfer an exact power of two from eta0 into every current.  Both
+        # potential terms depend on eta0*I, so this leaves the physical field
+        # unchanged while keeping the standalone prefactors representable.
+        # The transfer is accepted only when every converted current survives
+        # it exactly; otherwise a joint high-precision field kernel is needed
+        # and this routine fails closed.
+        shift = 0
+        while shift < 2_150
+            shift += 1
+            candidate_eta0 = ldexp(eta0, -shift)
+            iszero(candidate_eta0) && break
+            candidate_vec = -1im * k * candidate_eta0
+            candidate_scl = -1im * candidate_eta0 / k
+            if isfinite(candidate_vec) && isfinite(candidate_scl)
+                # This is the smallest scalar-feasible shift.  A larger
+                # positive shift only increases every current magnitude, so
+                # it cannot repair an overflow or an inexact round trip.
+                representable = true
+                @inbounds for index in eachindex(I_coeffs)
+                    value = ComplexF64(I_coeffs[index])
+                    real_scaled = ldexp(real(value), shift)
+                    imag_scaled = ldexp(imag(value), shift)
+                    if !isfinite(real_scaled) || !isfinite(imag_scaled) ||
+                       ldexp(real_scaled, -shift) != real(value) ||
+                       ldexp(imag_scaled, -shift) != imag(value)
+                        representable = false
+                        break
+                    end
+                end
+                representable || break
+                scaled = Vector{ComplexF64}(undef, length(I_coeffs))
+                @inbounds for index in eachindex(I_coeffs)
+                    value = ComplexF64(I_coeffs[index])
+                    scaled[index] = ComplexF64(
+                        ldexp(real(value), shift),
+                        ldexp(imag(value), shift),
+                    )
+                end
+                effective_currents = scaled
+                effective_eta0 = candidate_eta0
+                pref_vec = candidate_vec
+                pref_scl = candidate_scl
+                break
+            end
+        end
+        (isfinite(pref_vec) && isfinite(pref_scl)) ||
+            throw(OverflowError(
+                "compute_nearfield cannot represent the coupled k, eta0, " *
+                "and current scaling in ComplexF64"))
+    end
+
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
     quad_pts, areas, J_samples, div_samples, J_verts =
-        _precompute_nearfield_triangle_data(mesh, rwg, I_coeffs, xi)
+        _precompute_nearfield_triangle_data(
+            mesh, rwg, effective_currents, xi)
 
     Nt = ntriangles(mesh)
     E = zeros(ComplexF64, 3, Nobs)
@@ -296,13 +389,11 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                 # −(r−r')/(4πR³), and ∇_r S is the analytical gradient of the
                 # 1/R potential integral.  This subtracts the 1/R² singularity
                 # that the old code integrated directly.
-                S = _analytical_integral_1overR_unchecked(
+                S = analytical_integral_1overR(
                     robs, V1, V2, V3)
 
                 # In-plane projection r'_* of robs onto the triangle plane.
-                n_T = cross(V2 - V1, V3 - V1)
-                n_nrm = norm(n_T)
-                nhatT = n_nrm < 1e-30 ? SVector{3,Float64}(0.0, 0.0, 0.0) : n_T / n_nrm
+                nhatT = triangle_normal(mesh, t)
                 h_proj = dot(robs - V1, nhatT)
                 r_star = robs - h_proj * nhatT
                 J_star = _eval_J_affine(J_verts, t, r_star, V1, V2, V3)
@@ -321,7 +412,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                     # Vector singular remainder: [J(rq) − J(r'_*)]/(4πR)
                     Rv = robs - rq
                     R = sqrt(dot(Rv, Rv))
-                    if R > 1e-14
+                    if !iszero(R)
                         dJ = Jq - J_star
                         crem = (wt * inv4pi) / R
                         Ex += pref_vec * dJ[1] * crem
@@ -332,9 +423,10 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                     if abs(divt) > 0.0
                         # Scalar smooth part: ∇G_smooth = ∇G − ∇(1/4πR)
                         gradG = _grad_greens_unchecked(robs, rq, k)
-                        if R > 1e-14
-                            inv4piR3 = inv4pi / (R * R * R)
-                            gradG = gradG + Rv * inv4piR3   # subtract −(r−r')/(4πR³)
+                        if !iszero(R)
+                            direction = Rv / R
+                            inv4piR2 = (inv4pi / R) / R
+                            gradG = gradG + direction * inv4piR2
                         end
                         Ex += pref_scl * divt * (wt * gradG[1])
                         Ey += pref_scl * divt * (wt * gradG[2])
@@ -349,7 +441,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
                 # Scalar singular term: (1/4π) ∇_r S (analytical)
                 if abs(divt) > 0.0
-                    gradS = _grad_analytical_integral_1overR_unchecked(
+                    gradS = grad_analytical_integral_1overR(
                         robs, V1, V2, V3)
                     cscl = pref_scl * divt * inv4pi
                     Ex += cscl * gradS[1]
@@ -443,7 +535,8 @@ sign convention as the rest of the package:
 - `eta0=376.730313668`: free-space impedance
 - `check_surface=true`: reject points on the surface
 - `surface_tol=nothing`: optional minimum point-to-surface tolerance; defaults to
-  `max(1e-12, 1e-10 * bbox_diagonal(mesh))`
+  `1e-10 * bbox_diagonal(mesh)` (rounded up to the least positive Float64
+  when that product underflows)
 
 # Returns
 - Single-point input: `CVec3`

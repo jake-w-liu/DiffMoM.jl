@@ -151,10 +151,10 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
     # Compute triangle centroids
     centroids = Vector{Vec3}(undef, Nt)
     for t in 1:Nt
-        v1 = _mesh_vertex(mesh, mesh.tri[1, t])
-        v2 = _mesh_vertex(mesh, mesh.tri[2, t])
-        v3 = _mesh_vertex(mesh, mesh.tri[3, t])
-        centroids[t] = (v1 + v2 + v3) / 3
+        centroids[t] = triangle_center(mesh, t)
+        all(isfinite, centroids[t]) ||
+            throw(ArgumentError(
+                "triangle $t centroid is outside the finite Float64 range"))
     end
 
     if Nt == 0
@@ -181,6 +181,17 @@ function build_filter_weights(mesh::TriMesh, r_min::Float64)
         _filter_weight_triplets_int(centroids, origin, r_min)
     else
         _filter_weight_triplets_bigint(centroids, origin, r_min)
+    end
+
+    # Global scaling leaves W*rho ./ row_sums(W) and its adjoint unchanged,
+    # while preventing the finite conic weights from overflowing their row
+    # reductions when r_min is close to floatmax.
+    maximum_weight = isempty(vals) ? 0.0 : maximum(vals)
+    if maximum_weight > 1.0
+        inv_scale = inv(maximum_weight)
+        @inbounds for index in eachindex(vals)
+            vals[index] *= inv_scale
+        end
     end
 
     W = sparse(rows, cols, vals, Nt, Nt)
@@ -272,7 +283,81 @@ function _projection_constants(beta::Real, eta::Real)
             "eta must be finite and lie in [0, 1], got $eta"))
     offset = tanh(beta * eta)
     denominator = offset + tanh(beta * (1 - eta))
+    if !(isfinite(denominator) && denominator > 0)
+        return setprecision(BigFloat, 4352) do
+            beta_big = BigFloat(beta)
+            eta_big = BigFloat(eta)
+            offset_big = tanh(beta_big * eta_big)
+            denominator_big = offset_big +
+                              tanh(beta_big * (1 - eta_big))
+            offset_big, denominator_big
+        end
+    end
     return offset, denominator
+end
+
+
+@noinline function _heaviside_project_bigfloat(
+        rho_tilde::AbstractVector, beta::Real, eta::Real)
+    return setprecision(BigFloat, 4352) do
+        beta_big = BigFloat(beta)
+        eta_big = BigFloat(eta)
+        offset = tanh(beta_big * eta_big)
+        denominator = offset + tanh(beta_big * (1 - eta_big))
+        [Float64((offset + tanh(beta_big *
+                  (BigFloat(rt) - eta_big))) / denominator)
+         for rt in rho_tilde]
+    end
+end
+
+@noinline function _heaviside_derivative_bigfloat(
+        rho_tilde::AbstractVector, beta::Real, eta::Real)
+    return setprecision(BigFloat, 4352) do
+        beta_big = BigFloat(beta)
+        eta_big = BigFloat(eta)
+        denominator = tanh(beta_big * eta_big) +
+                      tanh(beta_big * (1 - eta_big))
+        [Float64(beta_big *
+                 (1 - tanh(beta_big * (BigFloat(rt) - eta_big))^2) /
+                 denominator)
+         for rt in rho_tilde]
+    end
+end
+
+@inline function _projection_result_type(
+    rho_tilde::AbstractVector,
+    beta::Real,
+    eta::Real,
+)
+    promoted = promote_type(eltype(rho_tilde), typeof(beta), typeof(eta))
+    return promoted <: AbstractFloat ? promoted : Float64
+end
+
+@inline function _projection_convert_result(
+    values::Vector{Float64},
+    ::Type{Float64},
+)
+    return values
+end
+
+@inline function _projection_convert_result(
+    values::Vector{Float64},
+    ::Type{T},
+) where {T<:AbstractFloat}
+    return T.(values)
+end
+
+@inline function _projection_logcosh(value::Float64)
+    magnitude = abs(value)
+    return magnitude + log1p(exp(-2magnitude)) - log(2.0)
+end
+
+@inline function _projection_logsinh_positive(value::Float64)
+    value > 0.0 || return -Inf
+    if value < 20.0
+        return log(sinh(value))
+    end
+    return value + log1p(-exp(-2value)) - log(2.0)
 end
 
 """
@@ -286,9 +371,75 @@ Smooth Heaviside projection:
 - β must be finite and positive; η must be finite and lie in [0, 1]
 """
 function heaviside_project(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
+    if beta isa BigFloat || eta isa BigFloat || eltype(rho_tilde) <: BigFloat
+        isfinite(beta) && beta > 0 ||
+            throw(ArgumentError(
+                "beta must be finite and positive, got $beta"))
+        isfinite(eta) && 0 <= eta <= 1 ||
+            throw(ArgumentError(
+                "eta must be finite and lie in [0, 1], got $eta"))
+        T = promote_type(eltype(rho_tilde), typeof(beta), typeof(eta))
+        beta_value = T(beta)
+        eta_value = T(eta)
+        offset = tanh(beta_value * eta_value)
+        denominator = offset + tanh(beta_value * (one(T) - eta_value))
+        return T[(offset + tanh(beta_value * (T(rt) - eta_value))) /
+                 denominator for rt in rho_tilde]
+    end
+    result_type = _projection_result_type(rho_tilde, beta, eta)
     offset, denominator = _projection_constants(beta, eta)
-    return [(offset + tanh(beta * (rt - eta))) / denominator
-            for rt in rho_tilde]
+    if offset isa BigFloat
+        return _projection_convert_result(
+            _heaviside_project_bigfloat(rho_tilde, beta, eta), result_type)
+    end
+    result = Vector{Float64}(undef, length(rho_tilde))
+    beta_float = Float64(beta)
+    eta_float = Float64(eta)
+    beta_float > 0x1.0p52 &&
+        return _projection_convert_result(
+            _heaviside_project_bigfloat(rho_tilde, beta, eta), result_type)
+    log_denominator_sinh = _projection_logsinh_positive(beta_float)
+    log_cosh_right = _projection_logcosh(beta_float * (1 - eta_float))
+    previous_rt = -Inf
+    previous_value = -Inf
+    @inbounds for (output_index, index) in enumerate(eachindex(rho_tilde))
+        rt = Float64(rho_tilde[index])
+        isfinite(rt) ||
+            throw(ArgumentError(
+                "rho_tilde entries must be finite, got $rt at index $index"))
+        if iszero(rt)
+            result[output_index] = copysign(0.0, rt)
+            continue
+        end
+        beta_rho = beta_float * rt
+        (isfinite(beta_rho) &&
+         !(iszero(beta_rho) && !iszero(beta_float) && !iszero(rt))) ||
+            return _projection_convert_result(
+                _heaviside_project_bigfloat(rho_tilde, beta, eta), result_type)
+        abs(beta_float * (rt - eta_float)) > 32.0 &&
+            return _projection_convert_result(
+                _heaviside_project_bigfloat(rho_tilde, beta, eta), result_type)
+        log_magnitude = _projection_logsinh_positive(abs(beta_rho)) +
+                        log_cosh_right - log_denominator_sinh -
+                        _projection_logcosh(beta_float * (rt - eta_float))
+        value = copysign(exp(log_magnitude), rt)
+        isfinite(value) ||
+            return _projection_convert_result(
+                _heaviside_project_bigfloat(rho_tilde, beta, eta), result_type)
+        # The analytical projection maps [0,1] into [0,1]. Log-domain
+        # reconstruction can overshoot an endpoint by a few ulps after the
+        # exact value has saturated there; clamp that rounding artifact.
+        bounded = clamp(value, 0.0, 1.0)
+        # Preserve the mathematical monotonicity for already sorted inputs
+        # when saturated log-domain values differ only through rounding.
+        if rt >= previous_rt && bounded < previous_value
+            bounded = previous_value
+        end
+        result[output_index] = bounded
+        previous_rt = rt
+        previous_value = bounded
+    end
+    return _projection_convert_result(result, result_type)
 end
 
 """
@@ -300,9 +451,57 @@ Derivative of the Heaviside projection:
 Returns a vector of per-element derivatives.
 """
 function heaviside_derivative(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
+    if beta isa BigFloat || eta isa BigFloat || eltype(rho_tilde) <: BigFloat
+        isfinite(beta) && beta > 0 ||
+            throw(ArgumentError(
+                "beta must be finite and positive, got $beta"))
+        isfinite(eta) && 0 <= eta <= 1 ||
+            throw(ArgumentError(
+                "eta must be finite and lie in [0, 1], got $eta"))
+        T = promote_type(eltype(rho_tilde), typeof(beta), typeof(eta))
+        beta_value = T(beta)
+        eta_value = T(eta)
+        denominator = tanh(beta_value * eta_value) +
+                      tanh(beta_value * (one(T) - eta_value))
+        return T[beta_value *
+                 (one(T) - tanh(beta_value * (T(rt) - eta_value))^2) /
+                 denominator for rt in rho_tilde]
+    end
+    result_type = _projection_result_type(rho_tilde, beta, eta)
     _, denominator = _projection_constants(beta, eta)
-    return [beta * (1 - tanh(beta * (rt - eta))^2) / denominator
-            for rt in rho_tilde]
+    if denominator isa BigFloat
+        return _projection_convert_result(
+            _heaviside_derivative_bigfloat(rho_tilde, beta, eta), result_type)
+    end
+    result = Vector{Float64}(undef, length(rho_tilde))
+    beta_float = Float64(beta)
+    eta_float = Float64(eta)
+    beta_float > 0x1.0p52 &&
+        return _projection_convert_result(
+            _heaviside_derivative_bigfloat(rho_tilde, beta, eta), result_type)
+    common_log = log(beta_float) +
+                 _projection_logcosh(beta_float * eta_float) +
+                 _projection_logcosh(beta_float * (1 - eta_float)) -
+                 _projection_logsinh_positive(beta_float)
+    @inbounds for (output_index, index) in enumerate(eachindex(rho_tilde))
+        rt = Float64(rho_tilde[index])
+        isfinite(rt) ||
+            throw(ArgumentError(
+                "rho_tilde entries must be finite, got $rt at index $index"))
+        argument = beta_float * (rt - eta_float)
+        isfinite(argument) ||
+            return _projection_convert_result(
+                _heaviside_derivative_bigfloat(rho_tilde, beta, eta), result_type)
+        abs(argument) > 32.0 &&
+            return _projection_convert_result(
+                _heaviside_derivative_bigfloat(rho_tilde, beta, eta), result_type)
+        value = exp(common_log - 2_projection_logcosh(argument))
+        isfinite(value) ||
+            return _projection_convert_result(
+                _heaviside_derivative_bigfloat(rho_tilde, beta, eta), result_type)
+        result[output_index] = value
+    end
+    return _projection_convert_result(result, result_type)
 end
 
 """

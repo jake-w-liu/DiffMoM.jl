@@ -163,7 +163,7 @@ This defines the **system matrix**
 
 assembled exactly this way in `assemble_vie_2d` (`src/mom2d/Assembly2D.jl`): the loop fills $-k_0^2\,\chi_n D_{mn}$ then adds $1$ on the diagonal. Note the ordering: $\chi_n$ multiplies column $n$ of $D$, so the diagonal factor sits on the **right** -- $D\,\mathrm{diag}(\chi)$ scales the columns of $D$, giving $(D\,\mathrm{diag}(\chi))_{mn} = D_{mn}\,\chi_n$. Left-multiplying instead, $(\mathrm{diag}(\chi)\,D)_{mn} = \chi_m\,D_{mn}$, scales rows and does **not** match the code. Since $\mathrm{diag}(\chi)\,D \neq D\,\mathrm{diag}(\chi)$ in general, the right-multiplied form is the correct one. When $\chi = 0$ (free space), $Z$ reduces to the identity, so $\mathbf{E}_\text{total} = \mathbf{E}^\text{inc}$ -- a sanity check the test suite asserts to `atol=1e-14`.
 
-`solve_vie_2d` assembles $Z$, factorizes it once with an LU decomposition, solves $Z\,\mathbf{E}_\text{total} = \mathbf{E}^\text{inc}$, and bundles everything (including the cached `Z_LU`) into a `VIEResult2D` for downstream reuse.
+`solve_vie_2d` assembles $Z$, constructs one verified reusable factorization, solves $Z\,\mathbf{E}_\text{total} = \mathbf{E}^\text{inc}$, and bundles everything (including the cached `Z_LU` solve plan) into a `VIEResult2D` for downstream reuse. Ordinary systems use LU; a bounded high-precision plan is retained when Float64 conditioning cannot certify forward accuracy.
 
 ---
 
@@ -257,7 +257,7 @@ Since $Z = I - k_0^2\,D\,\mathrm{diag}(\chi)$, only column $p$ of $D\,\mathrm{di
 \frac{\partial \mathbf{E}}{\partial \chi_p} = k_0^2\, E_p\, Z^{-1} D[:,p].
 ```
 
-The Jacobian contains $W = I + k_0^2\,\mathrm{diag}(\chi)\,Z^{-1}D$. For the reciprocal Green matrix $D^T=D$, the push-through identity gives $W=(I-k_0^2\,\mathrm{diag}(\chi)D)^{-1}=Z^{-T}$. The routine therefore solves the transposed system through the cached `Z_LU`; this avoids underflow and cancellation that can occur when $Z^{-1}D$ and the identity term are formed separately. It then assembles the Jacobian by chaining the field sensitivity through the scattered-field map:
+The Jacobian contains $W = I + k_0^2\,\mathrm{diag}(\chi)\,Z^{-1}D$. For the reciprocal Green matrix $D^T=D$, the push-through identity gives $W=(I-k_0^2\,\mathrm{diag}(\chi)D)^{-1}=Z^{-T}$. The routine therefore solves the transposed system through the cached verified `Z_LU` plan; this avoids underflow and cancellation that can occur when $Z^{-1}D$ and the identity term are formed separately. It then assembles the Jacobian by chaining the field sensitivity through the scattered-field map:
 
 ```math
 J = k_0^2\, A\; G_\text{obs}\; W\; \mathrm{diag}(\mathbf{E}_\text{total}), \qquad J \in \mathbb{C}^{M \times N}.

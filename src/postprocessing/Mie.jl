@@ -10,7 +10,72 @@ const _MIE_CONTINUED_FRACTION_TOLERANCE = 8 * eps(Float64)
 const _MIE_CONTINUED_FRACTION_TINY = 1.0e-300
 const _MIE_FALLBACK_PRECISION = 512
 const _MIE_EXTERIOR_SERIES_THRESHOLD = 1.0
-const _MIE_EXACT_SERIES_PRECISION = 512
+const _MIE_EXACT_SERIES_PRECISION = 2304
+const _MAX_MIE_EXACT_PRECISION = 16_384
+const _MAX_MIE_EXACT_WORK = 2_000_000
+
+@inline function _validate_mie_exact_work(
+    nstop::Int,
+    precision::Int=_MIE_EXACT_SERIES_PRECISION,
+)
+    nstop >= 1 || throw(ArgumentError("exact Mie order must be positive"))
+    precision >= 2 ||
+        throw(ArgumentError("exact Mie precision must be at least 2 bits"))
+    precision <= _MAX_MIE_EXACT_PRECISION ||
+        throw(ArgumentError(
+            "exact Mie precision $precision exceeds the supported limit " *
+            "$_MAX_MIE_EXACT_PRECISION bits"))
+    # The cold kernels store and advance O(nstop) precision-bit values. Charge
+    # both axes so a high explicit order cannot combine with range-recovery
+    # precision to create unbounded work.
+    work = BigInt(max(nstop, 1)) * BigInt(precision)
+    work <= BigInt(_MAX_MIE_EXACT_WORK) ||
+        throw(ArgumentError(
+            "exact Mie order $nstop at $precision-bit precision exceeds " *
+            "the exact-work limit $_MAX_MIE_EXACT_WORK"))
+    return nothing
+end
+
+@inline function _mie_exact_series_precision(x::Real, nstop::Int)
+    x > 0 || throw(ArgumentError("exact Mie size parameter must be positive"))
+    _validate_mie_exact_work(nstop, _MIE_EXACT_SERIES_PRECISION)
+    return _MIE_EXACT_SERIES_PRECISION
+end
+
+@inline function _mie_dielectric_exact_series_precision(
+    x::Real,
+    epsc::ComplexF64,
+    muc::ComplexF64,
+    nstop::Int,
+)
+    x > 0 || throw(ArgumentError("exact Mie size parameter must be positive"))
+    size_exponent = exponent(x)
+    # Magnetodielectric parameters provide two independent cancellation
+    # degrees of freedom.  For n=1, the first surviving term can be O(x^3);
+    # for n>=2 the first two even denominator terms can vanish but the x^4
+    # term cannot.  Retain that worst exponent span plus a fixed guard for
+    # Float64 material-data precision and the final rounded reduction.
+    cancellation_order = nstop == 1 ? 3 : 4
+    cancellation_bits = Base.checked_mul(
+        cancellation_order, max(0, -size_exponent))
+    required = Base.checked_add(256, cancellation_bits)
+    precision = max(_MIE_EXACT_SERIES_PRECISION, required)
+    # Large oscillatory internal arguments need enough bits for range
+    # reduction of sin/cos/Bessel seeds.  Form the exponent in BigFloat so the
+    # material product and m*x cannot overflow before the bound is known.
+    internal_exponent = setprecision(BigFloat, _MIE_FALLBACK_PRECISION) do
+        refractive_index = sqrt(
+            Complex{BigFloat}(epsc) * Complex{BigFloat}(muc))
+        internal_argument = refractive_index * BigFloat(x)
+        iszero(internal_argument) ? typemin(Int) :
+            exponent(abs(internal_argument))
+    end
+    internal_exponent > 0 &&
+        (precision = max(
+            precision, Base.checked_add(256, internal_exponent)))
+    _validate_mie_exact_work(nstop, precision)
+    return precision
+end
 
 @inline function _mie_exterior_initial_pair(x::Float64)
     if x > _MIE_EXTERIOR_SERIES_THRESHOLD
@@ -47,7 +112,73 @@ end
 )
     _, exponent = frexp(x)
     inverse_exponent = max(0, -exponent)
-    return Base.checked_mul(nstop + 1, inverse_exponent) >= 1000
+    Base.checked_mul(nstop + 1, inverse_exponent) >= 1000 && return true
+    nstop <= x && return false
+
+    # Propagate a cancellation-free log upper bound for the Neumann/Riccati
+    # recurrence. Triangle inequality makes this conservative even near the
+    # turning region, where the double-factorial asymptotic is not a bound.
+    chi_previous = -cos(x)
+    chi_current = -cos(x) / x - sin(x)
+    turning_order = min(nstop - 1, max(1, floor(Int, x)))
+    @inbounds for order in 1:(turning_order - 1)
+        chi_following = ((2order + 1) / x) * chi_current - chi_previous
+        isfinite(chi_following) || return true
+        chi_previous, chi_current = chi_current, chi_following
+    end
+
+    log_previous = log(max(abs(chi_previous), floatmin(Float64)))
+    log_current = log(max(abs(chi_current), floatmin(Float64)))
+    limit = log(floatmax(Float64)) - 8.0
+    @inbounds for order in turning_order:(nstop - 1)
+        log_factor = log(Float64(2order + 1)) - log(x)
+        first = log_factor + log_current
+        maximum_log = max(first, log_previous)
+        log_following = maximum_log +
+                        log(exp(first - maximum_log) +
+                            exp(log_previous - maximum_log))
+        log_following >= limit && return true
+        log_previous, log_current = log_current, log_following
+    end
+    return false
+end
+
+@inline function _mie_exterior_is_overtruncated(x::Float64, nstop::Int)
+    nstop > 3 || return false
+    stable_limit = x + 4cbrt(x) + 2
+    # The automatic order is ceil(stable_limit), so it remains on the normal
+    # recurrence path.  Comparing nstop - 1 avoids converting an enormous
+    # finite size parameter to Int for explicit, bounded orders.
+    return Float64(nstop - 1) >= stable_limit
+end
+
+@inline function _mie_spherical_bessel_j_series(order::Int, x::Float64)
+    order >= 0 || throw(ArgumentError("spherical-Bessel order must be nonnegative"))
+    leading = one(Float64)
+    @inbounds for index in 1:order
+        leading *= x / Float64(2index + 1)
+    end
+    term = leading
+    value = term
+    x_squared = x * x
+    @inbounds for series_order in 1:128
+        term *= -x_squared /
+                (Float64(2series_order) *
+                 Float64(2order + 2series_order + 1))
+        updated = value + term
+        updated == value && return value
+        value = updated
+    end
+    return value
+end
+
+@inline function _mie_stable_spherical_bessel_j(order::Int, x::Float64)
+    # SpecialFunctions intentionally returns zero for positive spherical
+    # orders at |x| <= sqrt(eps).  The convergent series retains representable
+    # small values and is also stable throughout the exterior series range.
+    return x <= _MIE_EXTERIOR_SERIES_THRESHOLD ?
+        _mie_spherical_bessel_j_series(order, x) :
+        sphericalbesselj(order, x)
 end
 
 @inline function _mie_riccati_psi_series(
@@ -76,15 +207,114 @@ end
            (leading / argument) * derivative_series
 end
 
+@inline function _mie_riccati_pair_big(
+        order::Int, argument::Complex{BigFloat},
+        leading::Complex{BigFloat})
+    return _mie_riccati_psi_series(order, argument, leading)
+end
+
+function _mie_riccati_psi_pairs_miller_big(
+        argument::BigFloat, nstop::Int)
+    start = Base.checked_add(
+        nstop, max(32, ceil(Int, sqrt(80.0 * nstop))))
+    values = Vector{BigFloat}(undef, Base.checked_add(start, 2))
+    values[start + 2] = zero(BigFloat)
+    values[start + 1] = one(BigFloat)
+    @inbounds for order in (start - 1):-1:0
+        values[order + 1] =
+            (BigFloat(2order + 3) / argument) * values[order + 2] -
+            values[order + 3]
+    end
+    psi_zero = sin(argument)
+    psi_one = psi_zero / argument - cos(argument)
+    reference_order = abs(psi_zero) >= abs(psi_one) ? 0 : 1
+    reference = reference_order == 0 ? psi_zero : psi_one
+    scale = reference / values[reference_order + 1]
+    result = Vector{Tuple{BigFloat,BigFloat}}(undef, nstop)
+    previous = psi_zero
+    @inbounds for order in 1:nstop
+        current = values[order + 1] * scale
+        derivative = previous - (BigFloat(order) / argument) * current
+        result[order] = (current, derivative)
+        previous = current
+    end
+    return result
+end
+
+function _mie_riccati_psi_pairs_forward_big(
+        argument::BigFloat, nstop::Int)
+    result = Vector{Tuple{BigFloat,BigFloat}}(undef, nstop)
+    previous = sin(argument)
+    current = previous / argument - cos(argument)
+    inverse = inv(argument)
+    @inbounds for order in 1:nstop
+        derivative = previous - BigFloat(order) * inverse * current
+        result[order] = (current, derivative)
+        if order < nstop
+            following = BigFloat(2order + 1) * inverse * current - previous
+            previous, current = current, following
+        end
+    end
+    return result
+end
+
+@inline function _mie_riccati_psi_pairs_big(
+        argument::BigFloat, nstop::Int)
+    # Forward recurrence is stable on the oscillatory side of the turning
+    # point. Miller recurrence is used only once the requested order extends
+    # beyond the exterior size parameter.
+    return BigFloat(nstop) <= argument ?
+        _mie_riccati_psi_pairs_forward_big(argument, nstop) :
+        _mie_riccati_psi_pairs_miller_big(argument, nstop)
+end
+
+function _mie_internal_function_pairs_big(
+        nstop::Int, argument::Complex{BigFloat})
+    pairs = Vector{Tuple{Complex{BigFloat},Complex{BigFloat}}}(
+        undef, nstop)
+    if abs(imag(argument)) > 10_000
+        limiting_derivative = Complex{BigFloat}(
+            zero(BigFloat), -sign(imag(argument)))
+        scale = max(one(BigFloat), abs(limiting_derivative))
+        @inbounds for order in 1:nstop
+            pairs[order] = (
+                Complex{BigFloat}(inv(scale), 0),
+                limiting_derivative / scale,
+            )
+        end
+        return pairs
+    end
+    previous = sin(argument)
+    current = previous / argument - cos(argument)
+    inverse = inv(argument)
+    @inbounds for order in 1:nstop
+        derivative = previous - BigFloat(order) * inverse * current
+        scale = max(abs(current), abs(derivative))
+        (isfinite(scale) && scale > 0) ||
+            error("internal exact Mie function pair cannot be normalized")
+        pairs[order] = (current / scale, derivative / scale)
+        if order < nstop
+            following = BigFloat(2order + 1) * inverse * current - previous
+            pair_scale = max(abs(current), abs(following))
+            previous, current = current / pair_scale, following / pair_scale
+        end
+    end
+    return pairs
+end
+
 @noinline function _mie_s1s2_pec_exact_exterior(
     x::Float64,
     cosine::Float64,
     nstop::Int,
 )
-    return setprecision(BigFloat, _MIE_EXACT_SERIES_PRECISION) do
+    precision = _mie_exact_series_precision(x, nstop)
+    return setprecision(BigFloat, precision) do
         xb = BigFloat(x)
         argument = Complex{BigFloat}(xb, zero(BigFloat))
         leading = argument
+        use_exterior_series = xb <= 1
+        exterior_pairs = use_exterior_series ? nothing :
+            _mie_riccati_psi_pairs_big(xb, nstop)
         chi_previous = -cos(xb)
         chi_current = -cos(xb) / xb - sin(xb)
         pi_previous2 = 0.0
@@ -93,9 +323,15 @@ end
         second_sum = zero(Complex{BigFloat})
 
         for order in 1:nstop
-            leading *= argument / BigFloat(2order + 1)
-            psi, psi_derivative =
-                _mie_riccati_psi_series(order, argument, leading)
+            use_exterior_series &&
+                (leading *= argument / BigFloat(2order + 1))
+            psi, psi_derivative = if use_exterior_series
+                _mie_riccati_pair_big(order, argument, leading)
+            else
+                pair = @inbounds exterior_pairs[order]
+                Complex{BigFloat}(pair[1], zero(BigFloat)),
+                Complex{BigFloat}(pair[2], zero(BigFloat))
+            end
             chi_derivative = chi_previous -
                              (BigFloat(order) / xb) * chi_current
             xi = psi - Complex{BigFloat}(zero(BigFloat), chi_current)
@@ -144,14 +380,31 @@ end
     muc::ComplexF64,
     nstop::Int,
 )
-    return setprecision(BigFloat, _MIE_EXACT_SERIES_PRECISION) do
+    precision = _mie_dielectric_exact_series_precision(
+        x, epsc, muc, nstop)
+    return setprecision(BigFloat, precision) do
         xb = BigFloat(x)
         exterior_argument = Complex{BigFloat}(xb, zero(BigFloat))
         epsilon = Complex{BigFloat}(epsc)
         permeability = Complex{BigFloat}(muc)
         refractive_index = sqrt(epsilon * permeability)
         internal_argument = refractive_index * xb
+        use_internal_series = abs(internal_argument) <= 1
+        internal_function_pairs = if use_internal_series
+            nothing
+        else
+            converted_internal = ComplexF64(internal_argument)
+            if isfinite(converted_internal) && !iszero(converted_internal)
+                _mie_internal_function_pairs(nstop, converted_internal)
+            else
+                _mie_internal_function_pairs_big(
+                    nstop, internal_argument)
+            end
+        end
         exterior_leading = exterior_argument
+        use_exterior_series = xb <= 1
+        exterior_pairs = use_exterior_series ? nothing :
+            _mie_riccati_psi_pairs_big(xb, nstop)
         internal_leading = internal_argument
         chi_previous = -cos(xb)
         chi_current = -cos(xb) / xb - sin(xb)
@@ -162,13 +415,27 @@ end
 
         for order in 1:nstop
             denominator = BigFloat(2order + 1)
-            exterior_leading *= exterior_argument / denominator
-            internal_leading *= internal_argument / denominator
-            psi, psi_derivative = _mie_riccati_psi_series(
-                order, exterior_argument, exterior_leading)
-            interior_function, interior_derivative =
+            use_exterior_series &&
+                (exterior_leading *= exterior_argument / denominator)
+            use_internal_series &&
+                (internal_leading *= internal_argument / denominator)
+            psi, psi_derivative = if use_exterior_series
+                _mie_riccati_pair_big(
+                    order, exterior_argument, exterior_leading)
+            else
+                pair = @inbounds exterior_pairs[order]
+                Complex{BigFloat}(pair[1], zero(BigFloat)),
+                Complex{BigFloat}(pair[2], zero(BigFloat))
+            end
+            interior_function, interior_derivative = if use_internal_series
                 _mie_riccati_psi_series(
                     order, internal_argument, internal_leading)
+            else
+                function_pair, derivative_pair =
+                    @inbounds internal_function_pairs[order]
+                Complex{BigFloat}(function_pair),
+                Complex{BigFloat}(derivative_pair)
+            end
             chi_derivative = chi_previous -
                              (BigFloat(order) / xb) * chi_current
             xi = psi - Complex{BigFloat}(zero(BigFloat), chi_current)
@@ -217,6 +484,37 @@ end
         return _assert_finite_mie_amplitudes(
             converted[1], converted[2], "dielectric Mie series")
     end
+end
+
+function _mie_internal_function_pairs(
+        nstop::Int, z::ComplexF64)
+    pairs = Vector{Tuple{ComplexF64,ComplexF64}}(undef, nstop)
+    if _mie_use_scaled_forward_recurrence(z, nstop)
+        previous, current = _mie_scaled_riccati_initial_pair(z)
+        inverse_z = inv(z)
+        @inbounds for order in 1:nstop
+            derivative = previous - (order * inverse_z) * current
+            pairs[order] = _mie_normalized_pair(
+                current, derivative,
+                "internal Mie scaled forward recurrence")
+            if order < nstop
+                following = ((2order + 1) * inverse_z) * current - previous
+                previous, current = _mie_normalized_pair(
+                    current, following,
+                    "internal Mie scaled forward recurrence")
+            end
+        end
+        return pairs
+    end
+
+    derivatives = nstop > _MIE_STACKLESS_LOG_DERIVATIVE_ORDER ?
+        _mie_riccati_log_derivatives(nstop, z) : nothing
+    @inbounds for order in 1:nstop
+        derivative = derivatives === nothing ?
+            _mie_riccati_log_derivative(order, z) : derivatives[order]
+        pairs[order] = _mie_log_derivative_pair(derivative)
+    end
+    return pairs
 end
 
 @inline function _validated_mie_positive(value::Float64,
@@ -283,6 +581,23 @@ function _validated_mie_order(nmax, size_parameter::Float64)
             "nmax=$order exceeds the supported Mie order limit " *
             "$_MAX_MIE_ORDER"))
     return order
+end
+
+function _validated_mie_exceptional_product_order(nmax, x::BigFloat)
+    x > 0 || throw(ArgumentError("Mie size parameter must be positive"))
+    if nmax === nothing
+        x < BigFloat(floatmin(Float64)) && return 3
+        throw(ArgumentError(
+            "automatic Mie truncation is unavailable when k*a exceeds " *
+            "the Float64 range; provide an explicit bounded nmax"))
+    end
+    return _validated_mie_order(nmax, 1.0)
+end
+
+@noinline function _mie_exact_size_parameter(k::Float64, a::Float64)
+    return setprecision(BigFloat, _MIE_EXACT_SERIES_PRECISION) do
+        BigFloat(k) * BigFloat(a)
+    end
 end
 
 @noinline function _mie_material_refractive_index_exact(
@@ -526,6 +841,247 @@ end
     return sigma
 end
 
+@noinline function _mie_rcs_from_scaled_components(
+        first::ComplexF64, first_weight::Float64,
+        second::ComplexF64, second_weight::Float64,
+        k::Float64, label::AbstractString)
+    return setprecision(BigFloat, _MIE_FALLBACK_PRECISION) do
+        first_big = Complex{BigFloat}(first) * BigFloat(first_weight)
+        second_big = Complex{BigFloat}(second) * BigFloat(second_weight)
+        norm_squared = abs2(first_big) + abs2(second_big)
+        sigma = Float64(4BigFloat(π) * norm_squared / BigFloat(k)^2)
+        isfinite(sigma) ||
+            throw(OverflowError(
+                "$label is outside the representable Float64 range"))
+        return sigma
+    end
+end
+
+@noinline function _mie_bistatic_rcs_pec_big(
+        x, cosine::Float64, nstop::Int,
+        first_weight::Float64, second_weight::Float64,
+        k::Float64)
+    precision = _mie_exact_series_precision(x, nstop)
+    return setprecision(BigFloat, precision) do
+        xb = BigFloat(x)
+        argument = Complex{BigFloat}(xb, zero(BigFloat))
+        leading = argument
+        use_exterior_series = xb <= 1
+        exterior_pairs = use_exterior_series ? nothing :
+            _mie_riccati_psi_pairs_big(xb, nstop)
+        chi_previous = -cos(xb)
+        chi_current = -cos(xb) / xb - sin(xb)
+        pi_previous2 = BigFloat(0)
+        pi_previous1 = BigFloat(1)
+        first_sum = zero(Complex{BigFloat})
+        second_sum = zero(Complex{BigFloat})
+        for order in 1:nstop
+            use_exterior_series &&
+                (leading *= argument / BigFloat(2order + 1))
+            psi, psi_derivative = if use_exterior_series
+                _mie_riccati_pair_big(order, argument, leading)
+            else
+                pair = @inbounds exterior_pairs[order]
+                Complex{BigFloat}(pair[1], zero(BigFloat)),
+                Complex{BigFloat}(pair[2], zero(BigFloat))
+            end
+            chi_derivative = chi_previous -
+                             (BigFloat(order) / xb) * chi_current
+            xi = psi - Complex{BigFloat}(0, chi_current)
+            xi_derivative = psi_derivative -
+                            Complex{BigFloat}(0, chi_derivative)
+            coefficient_a = -psi_derivative / xi_derivative
+            coefficient_b = -psi / xi
+            pi_order, pi_previous = if order == 1
+                (BigFloat(1), BigFloat(0))
+            else
+                (((BigFloat(2order - 1) / BigFloat(order - 1)) *
+                  BigFloat(cosine) * pi_previous1 -
+                  (BigFloat(order) / BigFloat(order - 1)) * pi_previous2),
+                 pi_previous1)
+            end
+            tau_order = BigFloat(order) * BigFloat(cosine) * pi_order -
+                        BigFloat(order + 1) * pi_previous
+            angular_scale = BigFloat(2order + 1) /
+                            BigFloat(order * (order + 1))
+            first_sum += angular_scale *
+                         (coefficient_a * pi_order + coefficient_b * tau_order)
+            second_sum += angular_scale *
+                          (coefficient_a * tau_order + coefficient_b * pi_order)
+            if order >= 2
+                pi_previous2, pi_previous1 = pi_previous1, pi_order
+            end
+            if order < nstop
+                chi_next = (BigFloat(2order + 1) / xb) * chi_current -
+                           chi_previous
+                chi_previous, chi_current = chi_current, chi_next
+            end
+        end
+        amplitude_squared = abs2(first_sum * BigFloat(first_weight)) +
+                            abs2(second_sum * BigFloat(second_weight))
+        sigma = Float64(
+            4BigFloat(π) * amplitude_squared / BigFloat(k)^2)
+        isfinite(sigma) ||
+            throw(OverflowError(
+                "PEC bistatic RCS is outside the representable Float64 range"))
+        return sigma
+    end
+end
+
+@noinline function _mie_bistatic_rcs_dielectric_big(
+        x, cosine::Float64,
+        epsc::ComplexF64, muc::ComplexF64, nstop::Int,
+        first_weight::Float64, second_weight::Float64,
+        k::Float64)
+    precision = _mie_dielectric_exact_series_precision(
+        x, epsc, muc, nstop)
+    return setprecision(BigFloat, precision) do
+        xb = BigFloat(x)
+        exterior_argument = Complex{BigFloat}(xb, 0)
+        epsilon = Complex{BigFloat}(epsc)
+        permeability = Complex{BigFloat}(muc)
+        refractive_index = sqrt(epsilon * permeability)
+        internal_argument = refractive_index * xb
+        use_internal_series = abs(internal_argument) <= 1
+        internal_function_pairs = if use_internal_series
+            nothing
+        else
+            converted_internal = ComplexF64(internal_argument)
+            if isfinite(converted_internal) && !iszero(converted_internal)
+                _mie_internal_function_pairs(nstop, converted_internal)
+            else
+                _mie_internal_function_pairs_big(
+                    nstop, internal_argument)
+            end
+        end
+        exterior_leading = exterior_argument
+        use_exterior_series = xb <= 1
+        exterior_pairs = use_exterior_series ? nothing :
+            _mie_riccati_psi_pairs_big(xb, nstop)
+        internal_leading = internal_argument
+        chi_previous = -cos(xb)
+        chi_current = -cos(xb) / xb - sin(xb)
+        pi_previous2 = BigFloat(0)
+        pi_previous1 = BigFloat(1)
+        first_sum = zero(Complex{BigFloat})
+        second_sum = zero(Complex{BigFloat})
+        for order in 1:nstop
+            denominator = BigFloat(2order + 1)
+            use_exterior_series &&
+                (exterior_leading *= exterior_argument / denominator)
+            use_internal_series &&
+                (internal_leading *= internal_argument / denominator)
+            psi, psi_derivative = if use_exterior_series
+                _mie_riccati_pair_big(
+                    order, exterior_argument, exterior_leading)
+            else
+                pair = @inbounds exterior_pairs[order]
+                Complex{BigFloat}(pair[1], zero(BigFloat)),
+                Complex{BigFloat}(pair[2], zero(BigFloat))
+            end
+            interior_function, interior_derivative = if use_internal_series
+                _mie_riccati_psi_series(
+                    order, internal_argument, internal_leading)
+            else
+                function_pair, derivative_pair =
+                    @inbounds internal_function_pairs[order]
+                Complex{BigFloat}(function_pair),
+                Complex{BigFloat}(derivative_pair)
+            end
+            chi_derivative = chi_previous -
+                             (BigFloat(order) / xb) * chi_current
+            xi = psi - Complex{BigFloat}(0, chi_current)
+            xi_derivative = psi_derivative -
+                            Complex{BigFloat}(0, chi_derivative)
+            numerator_a = refractive_index * interior_function * psi_derivative -
+                          permeability * interior_derivative * psi
+            denominator_a = refractive_index * interior_function * xi_derivative -
+                            permeability * interior_derivative * xi
+            numerator_b = permeability * interior_function * psi_derivative -
+                          refractive_index * interior_derivative * psi
+            denominator_b = permeability * interior_function * xi_derivative -
+                            refractive_index * interior_derivative * xi
+            coefficient_a = -numerator_a / denominator_a
+            coefficient_b = -numerator_b / denominator_b
+            pi_order, pi_previous = if order == 1
+                (BigFloat(1), BigFloat(0))
+            else
+                (((BigFloat(2order - 1) / BigFloat(order - 1)) *
+                  BigFloat(cosine) * pi_previous1 -
+                  (BigFloat(order) / BigFloat(order - 1)) * pi_previous2),
+                 pi_previous1)
+            end
+            tau_order = BigFloat(order) * BigFloat(cosine) * pi_order -
+                        BigFloat(order + 1) * pi_previous
+            angular_scale = BigFloat(2order + 1) /
+                            BigFloat(order * (order + 1))
+            first_sum += angular_scale *
+                         (coefficient_a * pi_order + coefficient_b * tau_order)
+            second_sum += angular_scale *
+                          (coefficient_a * tau_order + coefficient_b * pi_order)
+            if order >= 2
+                pi_previous2, pi_previous1 = pi_previous1, pi_order
+            end
+            if order < nstop
+                chi_next = (BigFloat(2order + 1) / xb) * chi_current -
+                           chi_previous
+                chi_previous, chi_current = chi_current, chi_next
+            end
+        end
+        amplitude_squared = abs2(first_sum * BigFloat(first_weight)) +
+                            abs2(second_sum * BigFloat(second_weight))
+        sigma = Float64(
+            4BigFloat(π) * amplitude_squared / BigFloat(k)^2)
+        isfinite(sigma) ||
+            throw(OverflowError(
+                "dielectric bistatic RCS is outside the representable " *
+                "Float64 range"))
+        return sigma
+    end
+end
+
+@inline function _mie_rcs_from_components(
+        first::ComplexF64, first_weight::Float64,
+        second::ComplexF64, second_weight::Float64,
+        k::Float64, label::AbstractString)
+    first_component = first * first_weight
+    second_component = second * second_weight
+    weighted_component_is_unresolved(amplitude, weight) = begin
+        iszero(weight) && return false
+        @inbounds for primitive in (real(amplitude), imag(amplitude))
+            iszero(primitive) && continue
+            product = primitive * weight
+            (!isfinite(product) || abs(product) < floatmin(Float64)) &&
+                return true
+        end
+        return false
+    end
+    if weighted_component_is_unresolved(first, first_weight) ||
+       weighted_component_is_unresolved(second, second_weight)
+        return _mie_rcs_from_scaled_components(
+            first, first_weight, second, second_weight, k, label)
+    end
+    first_scaled = first_component / k
+    second_scaled = second_component / k
+    if isfinite(first_scaled) && isfinite(second_scaled) &&
+       !(iszero(first_scaled) && !iszero(first_component)) &&
+       !(iszero(second_scaled) && !iszero(second_component))
+        scale = max(abs(first_scaled), abs(second_scaled))
+        if isfinite(scale) && scale > 0.0
+            normalized = abs2(first_scaled / scale) +
+                         abs2(second_scaled / scale)
+            sigma = (4π * normalized) * scale * scale
+            isfinite(sigma) && !(
+                iszero(sigma) && normalized > 0.0 && scale > 0.0) &&
+                return sigma
+        elseif iszero(scale)
+            return 0.0
+        end
+    end
+    return _mie_rcs_from_scaled_components(
+        first, first_weight, second, second_weight, k, label)
+end
+
 """
     mie_s1s2_pec(x, μ; nmax=nothing)
 
@@ -537,10 +1093,17 @@ function mie_s1s2_pec(x::Float64, μ::Float64; nmax=nothing)
     x = _validated_mie_positive(x, "x")
     μ = _validated_mie_cosine(μ, "μ")
     nstop = _validated_mie_order(nmax, x)
-    _mie_requires_exact_exterior(x, nstop) &&
+    over_truncated = _mie_exterior_is_overtruncated(x, nstop)
+    if _mie_requires_exact_exterior(x, nstop)
+        _validate_mie_exact_work(nstop)
         return _mie_s1s2_pec_exact_exterior(x, μ, nstop)
+    end
 
     j_nm1, y_nm1, j_n, y_n = _mie_exterior_initial_pair(x)
+    if over_truncated
+        j_nm1 = _mie_stable_spherical_bessel_j(0, x)
+        j_n = _mie_stable_spherical_bessel_j(1, x)
+    end
 
     # Angular functions:
     #   π_n = P_n^1(μ)/sin(θ),  τ_n = dP_n^1(μ)/dθ
@@ -582,7 +1145,9 @@ function mie_s1s2_pec(x::Float64, μ::Float64; nmax=nothing)
         end
         if n < nstop
             recurrence = (2n + 1) / x
-            j_nm1, j_n = j_n, recurrence * j_n - j_nm1
+            j_nm1, j_n = j_n, over_truncated ?
+                _mie_stable_spherical_bessel_j(n + 1, x) :
+                recurrence * j_n - j_nm1
             y_nm1, y_n = y_n, recurrence * y_n - y_nm1
         end
     end
@@ -609,13 +1174,33 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
     nstop = _validated_mie_order(nmax, x)
     epsc == 1.0 + 0.0im && muc == 1.0 + 0.0im &&
         return 0.0 + 0.0im, 0.0 + 0.0im
-    _mie_requires_exact_exterior(x, nstop) &&
+    over_truncated = _mie_exterior_is_overtruncated(x, nstop)
+    if _mie_requires_exact_exterior(x, nstop)
+        _validate_mie_exact_work(nstop)
         return _mie_s1s2_dielectric_exact_exterior(
             x, cosγ, epsc, muc, nstop)
+    end
     m = _mie_material_refractive_index(epsc, muc)
+    z_product = m * x
+    if !isfinite(z_product) || iszero(z_product)
+        _validate_mie_exact_work(nstop)
+        return _mie_s1s2_dielectric_exact_exterior(
+            x, cosγ, epsc, muc, nstop)
+    end
     z = _mie_internal_size_parameter(m, x)
+    inverse_z = inv(z)
+    maximum_seed = Float64(2nstop + 3) * inverse_z
+    if !isfinite(inverse_z) || !isfinite(maximum_seed)
+        _validate_mie_exact_work(nstop)
+        return _mie_s1s2_dielectric_exact_exterior(
+            x, cosγ, epsc, muc, nstop)
+    end
 
     j_nm1, y_nm1, j_n, y_n = _mie_exterior_initial_pair(x)
+    if over_truncated
+        j_nm1 = _mie_stable_spherical_bessel_j(0, x)
+        j_n = _mie_stable_spherical_bessel_j(1, x)
+    end
 
     use_scaled_forward = _mie_use_scaled_forward_recurrence(z, nstop)
     log_derivatives = !use_scaled_forward &&
@@ -689,7 +1274,9 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
         end
         if n < nstop
             exterior_recurrence = (2n + 1) / x
-            j_nm1, j_n = j_n, exterior_recurrence * j_n - j_nm1
+            j_nm1, j_n = j_n, over_truncated ?
+                _mie_stable_spherical_bessel_j(n + 1, x) :
+                exterior_recurrence * j_n - j_nm1
             y_nm1, y_n = y_n, exterior_recurrence * y_n - y_nm1
             if use_scaled_forward
                 internal_next =
@@ -736,7 +1323,6 @@ function mie_bistatic_rcs_pec(k::Float64, a::Float64,
         throw(ArgumentError("pol_inc must be orthogonal to k_inc_hat"))
 
     μ = clamp(dot(khat, rhat_u), -1.0, 1.0)
-    S1, S2 = mie_s1s2_pec(k * a, μ; nmax=nmax)
 
     e_perp = cross(khat, rhat_u)
     if norm(e_perp) < 1e-12
@@ -752,9 +1338,31 @@ function mie_bistatic_rcs_pec(k::Float64, a::Float64,
     coeff_perp = dot(phat, e_perp)
     coeff_para = dot(phat, e_par_i)
 
-    fvec = ((S1 * coeff_perp) .* e_perp .+ (S2 * coeff_para) .* e_par_s) / (1im * k)
+    x = k * a
+    if !isfinite(x) || iszero(x)
+        x_exact = _mie_exact_size_parameter(k, a)
+        nstop = _validated_mie_exceptional_product_order(nmax, x_exact)
+        _validate_mie_exact_work(nstop)
+        return _mie_bistatic_rcs_pec_big(
+            x_exact, μ, nstop, coeff_perp, coeff_para, k)
+    end
+    S1, S2 = mie_s1s2_pec(x, μ; nmax=nmax)
 
-    return _mie_rcs_from_amplitude(fvec, "PEC bistatic RCS")
+    weighted_first = S1 * coeff_perp
+    weighted_second = S2 * coeff_para
+    ordinary_sigma = _mie_rcs_from_components(
+        S1, coeff_perp, S2, coeff_para, k, "PEC bistatic RCS")
+    if x <= 1.0 &&
+       (iszero(ordinary_sigma) ||
+        (iszero(weighted_first) && !iszero(coeff_perp)) ||
+        (iszero(weighted_second) && !iszero(coeff_para)))
+        nstop = _validated_mie_order(nmax, x)
+        _validate_mie_exact_work(nstop)
+        return _mie_bistatic_rcs_pec_big(
+            x, μ, nstop, coeff_perp, coeff_para, k)
+    end
+
+    return ordinary_sigma
 end
 
 """
@@ -779,9 +1387,14 @@ function mie_bistatic_rcs_dielectric(k::Float64, a::Float64,
         throw(ArgumentError("pol_inc must be orthogonal to k_inc_hat"))
 
     cosγ = clamp(dot(khat, rhat_u), -1.0, 1.0)
-    S1, S2 = mie_s1s2_dielectric(k * a, cosγ, eps_r;
-                                 mu_r=mu_r, nmax=nmax)
-
+    epsc = _validated_mie_material(eps_r, "eps_r")
+    muc = _validated_mie_material(mu_r, "mu_r")
+    # Keep the analytic matched-medium shortcut consistent with the ordinary
+    # amplitude path: an explicitly supplied truncation order is still part of
+    # the public input contract and must be validated even though no series is
+    # needed for the zero-contrast result.
+    nmax === nothing || _validated_mie_order(nmax, 1.0)
+    epsc == 1.0 + 0.0im && muc == 1.0 + 0.0im && return 0.0
     e_perp = cross(khat, rhat_u)
     if norm(e_perp) < 1e-12
         e_perp = _orthonormal_to(khat)
@@ -796,7 +1409,33 @@ function mie_bistatic_rcs_dielectric(k::Float64, a::Float64,
     coeff_perp = dot(phat, e_perp)
     coeff_para = dot(phat, e_par_i)
 
-    fvec = ((S1 * coeff_perp) .* e_perp .+ (S2 * coeff_para) .* e_par_s) / (1im * k)
+    x = k * a
+    if !isfinite(x) || iszero(x)
+        x_exact = _mie_exact_size_parameter(k, a)
+        nstop = _validated_mie_exceptional_product_order(nmax, x_exact)
+        _validate_mie_exact_work(nstop)
+        return _mie_bistatic_rcs_dielectric_big(
+            x_exact, cosγ, epsc, muc, nstop,
+            coeff_perp, coeff_para, k)
+    end
+    S1, S2 = mie_s1s2_dielectric(x, cosγ, epsc;
+                                 mu_r=muc, nmax=nmax)
 
-    return _mie_rcs_from_amplitude(fvec, "dielectric bistatic RCS")
+    weighted_first = S1 * coeff_perp
+    weighted_second = S2 * coeff_para
+    ordinary_sigma = _mie_rcs_from_components(
+        S1, coeff_perp, S2, coeff_para, k,
+        "dielectric bistatic RCS")
+    if x <= 1.0 &&
+       (iszero(ordinary_sigma) ||
+        (iszero(weighted_first) && !iszero(coeff_perp)) ||
+        (iszero(weighted_second) && !iszero(coeff_para)))
+        nstop = _validated_mie_order(nmax, x)
+        _validate_mie_exact_work(nstop)
+        return _mie_bistatic_rcs_dielectric_big(
+            x, cosγ, epsc, muc, nstop,
+            coeff_perp, coeff_para, k)
+    end
+
+    return ordinary_sigma
 end

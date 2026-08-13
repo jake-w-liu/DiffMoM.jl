@@ -120,11 +120,17 @@ PO contribution, extracts diffraction edges from the mesh, and adds the edge
 fringe far-field using the Sáez de Adana et al. formulation.
 
 !!! warning "Validity"
-    The fringe coefficients are validated only for **half-plane edges** (`n = 2`,
-    `α = 2π`), e.g. the boundary edges of flat plates. Interior wedge edges
-    (`n ≠ 2`) fall back to a half-plane approximation and are **not** accurate;
-    `solve_ptd` emits a `@warn` once when such edges are present. Treat PTD
-    results for faceted/closed bodies as approximate.
+    `solve_ptd` currently evaluates **boundary half-plane edges only**
+    (`n = 2`, `α = 2π`). If an interior wedge passes `min_dihedral_deg`, the
+    solver fails closed because the implemented bottom-side coefficient branch
+    does not yet provide a mesh-label-independent illuminated-side convention.
+    `extract_diffraction_edges` can still be used to inspect interior wedge
+    geometry.
+
+    When mixed-scale inputs require 8704-bit direction accumulation,
+    `solve_ptd` retains at most 12,288 high-precision field values (4,096
+    observation directions) and then fails with `ArgumentError`. This bounds
+    exceptional memory independently of the ordinary `ComplexF64` output.
 
 ### `DiffractionEdge`
 
@@ -142,7 +148,7 @@ struct DiffractionEdge
     center::Vec3     # edge midpoint
     tangent::Vec3    # unit tangent (p2-p1)/|p2-p1|
     length::Float64  # edge length
-    face_o::Int      # "outer" face index (lower face index)
+    face_o::Int      # canonical first wedge-face index
     face_n::Int      # "inner" face index (0 for boundary)
     normal_o::Vec3   # unit normal of face_o
     normal_n::Vec3   # unit normal of face_n (zero for boundary)

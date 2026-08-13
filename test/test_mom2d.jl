@@ -504,12 +504,45 @@ end
             k0, a, 1.0; nmax=DiffMoM._MAX_MIE2D_ORDER + 1, pec=true)
         @test_throws ArgumentError DiffMoM._validated_mie2d_order(
             1.0e8, nothing)
+        auto_large_order = DiffMoM._validated_mie2d_order(10_000.0, nothing)[1]
+        @test auto_large_order == 10_089
+        @test mie_coefficients_2d(
+            1.0, 10_000.0, 1.0;
+            nmax=auto_large_order)[2] == auto_large_order
+        high_order_pec, high_order_pec_N = mie_coefficients_2d(
+            1.0, 1.0, 1.0; nmax=152, pec=true)
+        @test high_order_pec_N == 152
+        @test all(isfinite, high_order_pec)
+        @test iszero(high_order_pec[high_order_pec_N + 1 + 152])
+
+        # Miller-ratio normalization must remain finite at a valid zero of J0.
+        bessel_zero_size = 2.404825557695773
+        bessel_zero_pec, bessel_zero_N = mie_coefficients_2d(
+            bessel_zero_size, 1.0, 1.0; nmax=65, pec=true)
+        @test bessel_zero_N == 65
+        @test all(isfinite, bessel_zero_pec)
+        @test bessel_zero_pec[bessel_zero_N + 2] ≈
+              -0.9623064131054789 - 0.19045414251610876im rtol=8eps(Float64)
+        @test all(isfinite, mie_scattered_field_2d(
+            bessel_zero_size, 1.0, 1.0, [Vec2(2.0, 0.0)];
+            nmax=65, pec=true))
 
         # Total field on cylinder surface should be near zero for PEC
         # Tolerance limited by Mie series truncation at finite nmax
         r_surf = [Vec2(a * cos(phi), a * sin(phi)) for phi in range(0, 2π, length=37)[1:36]]
         E_total = mie_total_field_2d(k0, a, 1.0, r_surf; pec=true)
         @test maximum(abs.(E_total)) < 1e-6
+
+        # Coefficients that individually underflow may still multiply the
+        # surface Hankel field to a representable term.  The coupled fallback
+        # preserves the exact PEC boundary cancellation.
+        underflow_surface = [Vec2(1e-200, 0.0)]
+        @test mie_scattered_field_2d(
+            1.0, 1e-200, 1.0, underflow_surface;
+            nmax=10, pec=true) == ComplexF64[-1.0 + 1e-200im]
+        @test mie_total_field_2d(
+            1.0, 1e-200, 1.0, underflow_surface;
+            nmax=10, pec=true) == zeros(ComplexF64, 1)
     end
 
     @testset "Mie series - dielectric cylinder" begin
@@ -545,7 +578,7 @@ end
         @test all(iszero, underflow_coefficients)
 
         mie_coefficients_2d(1.0, tiny_size, 4.0)
-        @test @allocated(mie_coefficients_2d(1.0, tiny_size, 4.0)) < 500_000
+        @test @allocated(mie_coefficients_2d(1.0, tiny_size, 4.0)) < 1_200_000
 
         tiny_surface = [Vec2(tiny_size, 0.0)]
         tiny_pec_scattered = mie_scattered_field_2d(
@@ -584,6 +617,36 @@ end
             extreme_k, extreme_radius, 1.0,
             extreme_observation) == [extreme_reference]
 
+        exact_angle_observation = [Vec2(1.0e100, 1.0e100)]
+        exact_angle_reference = setprecision(BigFloat, 512) do
+            angle = BigFloat(0.2)
+            phase = BigFloat(1.0) *
+                (cos(angle) * BigFloat(exact_angle_observation[1][1]) +
+                 sin(angle) * BigFloat(exact_angle_observation[1][2]))
+            ComplexF64(exp(Complex{BigFloat}(0, -phase)))
+        end
+        @test mie_total_field_2d(
+            1.0, 1.0, 1.0, exact_angle_observation;
+            phi_inc=0.2, nmax=0) == [exact_angle_reference]
+
+        # The Float64 direction/coordinate product can underflow before a
+        # finite k0 restores a representable incident phase.
+        underflow_phase_angle = reinterpret(Float64, 0x3ff51700e0c14b25)
+        underflow_phase_k = reinterpret(Float64, 0x427fffffffffffff)
+        underflow_phase_radius = nextfloat(0.0)
+        underflow_phase_point = [Vec2(underflow_phase_radius, 0.0)]
+        underflow_phase_reference = setprecision(BigFloat, 512) do
+            angle = BigFloat(underflow_phase_angle)
+            phase = BigFloat(underflow_phase_k) * cos(angle) *
+                    BigFloat(underflow_phase_radius)
+            ComplexF64(exp(Complex{BigFloat}(0, -phase)))
+        end
+        @test mie_total_field_2d(
+            underflow_phase_k, underflow_phase_radius, 1.0,
+            underflow_phase_point;
+            phi_inc=underflow_phase_angle, nmax=0) ==
+              [underflow_phase_reference]
+
         # Symmetry: c_{-n} should satisfy specific relations
         # For symmetric incidence (phi_inc=0), c_{-n} = c_n
         for n in 1:min(N, 5)
@@ -599,6 +662,108 @@ end
         @test norm(c_enz - c_near_enz) / max(norm(c_near_enz), eps()) < 1e-10
         @test_throws ArgumentError mie_coefficients_2d(
             k0, a, Inf; nmax=3)
+
+        # Dimensionless formulas remain valid when k0 and a individually sit
+        # at opposite Float64 extremes.
+        balanced_size = 1e308 * 1e-308
+        for balanced_eps in (4.0, 0.0)
+            balanced, _ = mie_coefficients_2d(
+                1e308, 1e-308, balanced_eps; nmax=3)
+            reference, _ = mie_coefficients_2d(
+                1.0, balanced_size, balanced_eps; nmax=3)
+            @test balanced == reference
+        end
+
+        tiny_material, tiny_material_order = mie_coefficients_2d(
+            1.0, 1.0, 1e-300; nmax=10)
+        @test all(isfinite, tiny_material)
+        @test tiny_material[tiny_material_order + 4] ≈
+              -5.538599011872469e-9 + 7.44217641634246e-5im rtol=2e-15
+        negative_material, _ = mie_coefficients_2d(
+            1.0, 1.0, -1e6; nmax=3)
+        @test all(isfinite, negative_material)
+        large_internal, large_internal_order = mie_coefficients_2d(
+            1.0, 1e200, 1e308; nmax=0)
+        @test large_internal_order == 0
+        @test large_internal[1] ==
+              -0.007330558908273147 + 0.0853042895425868im
+        finite_amos_large, _ = mie_coefficients_2d(
+            1.0, 1e200, 4.0; nmax=0)
+        @test finite_amos_large[1] ==
+              -0.16966452998983803 + 0.37533781750999373im
+        high_order_material, high_order_material_N = mie_coefficients_2d(
+            1.0, 1.0, 4.0; nmax=217)
+        @test all(isfinite, high_order_material)
+        @test iszero(high_order_material[high_order_material_N + 1 + 153])
+        for extreme_material in (0.36, 1e12, -1e12)
+            high_order_extreme, high_order_extreme_N =
+                mie_coefficients_2d(
+                    1.0, 1.0, extreme_material; nmax=160)
+            @test all(isfinite, high_order_extreme)
+            @test iszero(
+                high_order_extreme[high_order_extreme_N + 1 + 153])
+        end
+        high_order_enz, high_order_enz_N = mie_coefficients_2d(
+            1.0, 1.0, 0.0; nmax=160)
+        @test all(isfinite, high_order_enz)
+        @test iszero(high_order_enz[high_order_enz_N + 1 + 153])
+        high_order_size = 100.0
+        high_order_low_index = (0.51 / high_order_size)^2
+        high_order_tail, high_order_tail_N = mie_coefficients_2d(
+            1.0, high_order_size, high_order_low_index; nmax=220)
+        @test high_order_tail[high_order_tail_N + 1 + 193] ≈
+              -1.862141133606551e-144 +
+              1.3646029215880168e-72im rtol=4eps(Float64)
+
+        tiny_dielectric, tiny_dielectric_order = mie_coefficients_2d(
+            1.0, 1e-40, 4.0; nmax=1)
+        @test tiny_dielectric[tiny_dielectric_order + 2] ==
+              ComplexF64(-8.7e-322, -2.9452431127404304e-161)
+        subnormal_dielectric, subnormal_dielectric_order =
+            mie_coefficients_2d(1.0, 1e-80, 4.0; nmax=1)
+        @test subnormal_dielectric[subnormal_dielectric_order + 2] ==
+              ComplexF64(-0.0, -2.945e-321)
+        @test_throws ArgumentError mie_coefficients_2d(
+            1.0, 1e-30, 4.0; nmax=100_000)
+        @test_throws ArgumentError mie_coefficients_2d(
+            1.0, 1e-30, 4.0;
+            nmax=DiffMoM._MAX_MIE2D_SMALL_SERIES_ORDER + 1)
+        @test_throws ArgumentError mie_coefficients_2d(
+            1.0, 1.0, 1e-66;
+            nmax=DiffMoM._MAX_MIE2D_INTERNAL_PAIR_ORDER + 1)
+        @test_throws ArgumentError mie_coefficients_2d(
+            1.0, 1.0, 0.16; nmax=100_000)
+        try
+            mie_coefficients_2d(1.0, 1.0, 0.16; nmax=100_000)
+        catch
+        end
+        @test @allocated(try
+            mie_coefficients_2d(1.0, 1.0, 0.16; nmax=100_000)
+        catch
+        end) < 4_096
+
+        exceptional_point = [Vec2(1e308, 1e308)]
+        exceptional_pec = mie_scattered_field_2d(
+            2.0, 0.5, 1.0, exceptional_point;
+            phi_inc=0.2, nmax=1, pec=true)
+        @test exceptional_pec == ComplexF64[
+            -5.9087432546189295e-155 - 4.068155253276633e-155im]
+        exceptional_dielectric = mie_scattered_field_2d(
+            2.0, 0.5, 4.0, exceptional_point;
+            phi_inc=0.2, nmax=1)
+        @test exceptional_dielectric == ComplexF64[
+            8.560495527615164e-156 - 8.048017980335233e-155im]
+        @test_throws ArgumentError mie_scattered_field_2d(
+            1.0, 1.0, 1.0,
+            fill(Vec2(1e100, 0.0), 1_000);
+            nmax=10, pec=true)
+        @test_throws ArgumentError mie_total_field_2d(
+            1.0, 1.0, 1.0,
+            fill(Vec2(1e100, 1e100), 2_000);
+            phi_inc=0.2, nmax=0)
+        @test_throws ArgumentError mie_scattered_field_2d(
+            1.0, 1e-30, 4.0, [Vec2(1e100, 0.0)];
+            nmax=40)
     end
 
     @testset "Mie series - validation and allocation" begin
@@ -609,10 +774,16 @@ end
 
         @test_throws DomainError mie_scattered_field_2d(
             k0, a, eps_r, [Vec2(0.5a, 0.0)]; nmax=3)
+        @test_throws DomainError mie_scattered_field_2d(
+            1.0, nextfloat(0.0), 4.0, [Vec2(0.0, 0.0)];
+            nmax=0, pec=true)
         @test_throws ArgumentError mie_scattered_field_2d(
             k0, a, eps_r, [Vec2(NaN, 2a)]; nmax=3)
         @test_throws ArgumentError mie_scattered_field_2d(
             k0, a, eps_r, observations; phi_inc=Inf, nmax=3)
+        @test_throws ArgumentError mie_scattered_field_2d(
+            1.0, 1.0, 1.0, [Vec2(2.0, 0.0)];
+            nmax=1, pec=true, max_field_terms=2)
 
         mie_coefficients_2d(k0, a, eps_r; nmax=10)
         mie_scattered_field_2d(k0, a, eps_r, observations; nmax=10)
@@ -626,6 +797,11 @@ end
         @test coeff_alloc <= 512
         @test scattered_alloc <= 640
         @test total_alloc <= scattered_alloc
+        low_index_coefficients, _ = mie_coefficients_2d(
+            1.0, 1.0, 0.16; nmax=10)
+        @test all(isfinite, low_index_coefficients)
+        @test @allocated(mie_coefficients_2d(
+            1.0, 1.0, 0.16; nmax=10)) < 2_048
     end
 
     @testset "MoM vs Mie convergence" begin

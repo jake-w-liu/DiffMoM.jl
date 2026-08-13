@@ -184,7 +184,12 @@ end
 @inline function _farfield_q_requires_checked_products(
         Q::FarFieldQMatrix,
         input::AbstractVector{ComplexF64})
-    Q.extreme_operator_factor && return true
+    # The public matrix stores mutable arrays.  Recompute the classification so
+    # caller mutation cannot invalidate the construction-time cache and route
+    # an extreme product through the unchecked kernel.
+    (Q.extreme_operator_factor ||
+     _farfield_q_has_extreme_operator_factor(
+         Q.G_mat, Q.weights, Q.pol)) && return true
     return any(_farfield_q_extreme_factor, input)
 end
 
@@ -327,6 +332,14 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
+    needs_fallback =
+        _ieee_dense_extreme_factor(value, Float64) ||
+        _ieee_dense_extreme_factor(alpha_scale, Float64) ||
+        (!overwrite &&
+         (_ieee_dense_extreme_factor(previous, Float64) ||
+          _ieee_dense_extreme_factor(beta_scale, Float64)))
+    needs_fallback && return _farfield_q_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, overwrite, row)
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
@@ -480,6 +493,14 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
+    needs_fallback =
+        _ieee_dense_extreme_factor(value, Float64) ||
+        _ieee_dense_extreme_factor(alpha_scale, Float64) ||
+        (!overwrite &&
+         (_ieee_dense_extreme_factor(previous, Float64) ||
+          _ieee_dense_extreme_factor(beta_scale, Float64)))
+    needs_fallback && return _sum_q_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, overwrite, row)
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
@@ -513,6 +534,65 @@ function _sum_q_child_products!(
         return false
     end
     return all(isfinite, Q.work_a) && all(isfinite, Q.work_b)
+end
+
+@inline function _sum_q_matrix_has_extreme_factor(matrix::Matrix{ComplexF64})
+    return any(value -> _ieee_dense_extreme_factor(value, Float64), matrix)
+end
+
+@inline function _sum_q_matrix_has_extreme_factor(
+        matrix::SparseArrays.AbstractSparseMatrixCSC{ComplexF64})
+    return any(
+        value -> _ieee_dense_extreme_factor(value, Float64),
+        nonzeros(matrix))
+end
+
+@inline _sum_q_matrix_has_extreme_factor(matrix::FarFieldQMatrix) =
+    matrix.extreme_operator_factor ||
+    _farfield_q_has_extreme_operator_factor(
+        matrix.G_mat, matrix.weights, matrix.pol)
+
+@inline function _sum_q_matrix_has_extreme_factor(matrix::SumQMatrix)
+    return _sum_q_matrix_has_extreme_factor(matrix.A) ||
+           _sum_q_matrix_has_extreme_factor(matrix.B)
+end
+
+# Generic matrices may be matrix-free: enumerating their entries here changes
+# an O(N) `mul!` into O(N^2) work (and an entry can itself be expensive).
+# Storage-backed matrix types and DiffMoM's structured types have specialized
+# methods above.  For an unknown matrix, inspect the computed child product and
+# fail over only if that product exposes an exceptional result.
+@inline _sum_q_matrix_has_extreme_factor(::AbstractMatrix) = false
+
+@inline _sum_q_exact_entries_supported(::Matrix{ComplexF64}) = true
+@inline _sum_q_exact_entries_supported(
+    ::SparseArrays.AbstractSparseMatrixCSC{ComplexF64}) = true
+@inline _sum_q_exact_entries_supported(::FarFieldQMatrix) = true
+@inline _sum_q_exact_entries_supported(Q::SumQMatrix) =
+    _sum_q_exact_entries_supported(Q.A) &&
+    _sum_q_exact_entries_supported(Q.B)
+@inline _sum_q_exact_entries_supported(::AbstractMatrix) = false
+
+@inline function _sum_q_combination_requires_fallback(
+        first::ComplexF64, second::ComplexF64, combined::ComplexF64)
+    @inbounds for component in 1:2
+        first_part = component == 1 ? real(first) : imag(first)
+        second_part = component == 1 ? real(second) : imag(second)
+        combined_part = component == 1 ? real(combined) : imag(combined)
+        magnitude = abs(first_part) + abs(second_part)
+        (!isfinite(magnitude) ||
+         (!iszero(magnitude) && abs(combined_part) < floatmin(Float64))) &&
+            return true
+    end
+    return false
+end
+
+@inline function _sum_q_requires_exact_product(
+        Q::SumQMatrix, input::AbstractVector{ComplexF64})
+    any(value -> _ieee_dense_extreme_factor(value, Float64), input) &&
+        return true
+    return _sum_q_matrix_has_extreme_factor(Q.A) ||
+           _sum_q_matrix_has_extreme_factor(Q.B)
 end
 
 function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
@@ -551,7 +631,8 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
     overwrite = iszero(beta_scale)
     lock(Q.work_lock)
     try
-        fallback_required = !_sum_q_child_products!(Q, xread)
+        fallback_required = _sum_q_requires_exact_product(Q, xread) ||
+                            !_sum_q_child_products!(Q, xread)
         if !fallback_required
             @inbounds for row in eachindex(Q.work_a)
                 value_a = Q.work_a[row]
@@ -561,7 +642,9 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
                 imag_magnitude = abs(imag(value_a)) + abs(imag(value_b))
                 if !isfinite(combined) ||
                    !isfinite(real_magnitude) ||
-                   !isfinite(imag_magnitude)
+                   !isfinite(imag_magnitude) ||
+                   _sum_q_combination_requires_fallback(
+                       value_a, value_b, combined)
                     fallback_required = true
                     break
                 end
@@ -570,6 +653,11 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
         end
 
         if fallback_required
+            (_sum_q_exact_entries_supported(Q.A) &&
+             _sum_q_exact_entries_supported(Q.B)) ||
+                throw(OverflowError(
+                    "SumQMatrix cannot certify an exceptional product for " *
+                    "a generic matrix-free child without exact-entry support"))
             _sum_q_scaled_product_bigfloat!(
                 Q.work_b, Q, xread, result,
                 alpha_scale, beta_scale, overwrite)
@@ -638,7 +726,9 @@ function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
     1 <= m <= Q.N || throw(BoundsError(Q, (m, n)))
     1 <= n <= Q.N || throw(BoundsError(Q, (m, n)))
     NΩ = length(Q.weights)
-    if !Q.extreme_operator_factor
+    if !(Q.extreme_operator_factor ||
+         _farfield_q_has_extreme_operator_factor(
+             Q.G_mat, Q.weights, Q.pol))
         val = zero(ComplexF64)
         @inbounds for q in 1:NΩ
             Q.mask !== nothing && !Q.mask[q] && continue
@@ -718,7 +808,9 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
             fill!(result, zero(ComplexF64))
         elseif beta_scale != one(beta_scale)
             @inbounds for m in eachindex(result)
-                result[m] *= beta_scale
+                result[m] = _farfield_q_scaled_output(
+                    zero(ComplexF64), result[m], alpha_scale,
+                    beta_scale, false, m)
             end
         end
         return result
@@ -959,11 +1051,14 @@ function direction_mask(grid::SphGrid, direction::Vec3; half_angle::Real=π/18)
             "half_angle must be finite and lie in [0, π], got $half_angle"))
     all(isfinite, direction) ||
         throw(ArgumentError("direction components must be finite"))
-    direction_norm = norm(direction)
-    isfinite(direction_norm) && direction_norm > 0 ||
+    direction_scale = maximum(abs, direction)
+    direction_scale > 0 ||
+        throw(ArgumentError("direction must have a nonzero norm"))
+    scaled_direction = direction / direction_scale
+    scaled_norm = norm(scaled_direction)
+    isfinite(scaled_norm) && scaled_norm > 0 ||
         throw(ArgumentError("direction must have a finite, nonzero norm"))
-
-    d = direction / direction_norm
+    d = scaled_direction / scaled_norm
     threshold = cos(half_angle)
     mask = BitVector(undef, NΩ)
     @inbounds for q in 1:NΩ

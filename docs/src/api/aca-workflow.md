@@ -232,6 +232,12 @@ Dense near-field blocks use triangle-pair batched Green's function evaluation fo
 | `quad_order` | `Int` | `3` | Quadrature order for EFIE entry evaluation. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
 | `mesh_precheck` | `Bool` | `true` | Run mesh quality checks. |
+| `max_block_tasks` | `Int` | `2_000_000` | Maximum number of enumerated H-matrix blocks. |
+| `max_storage_bytes` | `Int` | `2_000_000_000` | Cap on raw persistent dense/low-rank block payload, including dense fallback replacements. |
+
+Resource caps are checked before parallel block storage is allocated. If a
+low-rank update becomes non-finite, that block is rebuilt densely instead of
+retaining a partial ACA factorization.
 
 **Returns:** `ACAOperator`
 

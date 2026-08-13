@@ -90,9 +90,20 @@ function gradient_density(Mt::Vector{<:AbstractMatrix},
         # ∂Z/∂ρ̄_t = -p * ρ̄_t^(p-1) * Z_max * M_t
         # g[t] = -2 Re{ λ† (∂Z/∂ρ̄_t) I }
         #      = 2p ρ̄_t^(p-1) Re{ Z_max λ† M_t I }
+        density_power = rho_bar[t]^(config.p - 1)
+        needs_fallback =
+            _ieee_bilinear_requires_fallback(
+                lambda, Mt[t], I, Float64) ||
+            _ieee_dense_extreme_factor(config.Z_max, Float64) ||
+            _ieee_dense_extreme_factor(config.p, Float64) ||
+            _ieee_dense_extreme_factor(density_power, Float64)
+        if needs_fallback
+            g[t] = _density_gradient_bigfloat(
+                Mt[t], I, lambda, rho_bar[t], config)
+            continue
+        end
         lMI = _dot_left_matrix_right(lambda, Mt[t], I)
-        value = 2 * config.p * rho_bar[t]^(config.p - 1) *
-                real(config.Z_max * lMI)
+        value = 2 * config.p * density_power * real(config.Z_max * lMI)
         g[t] = isfinite(value) ? value : _density_gradient_bigfloat(
             Mt[t], I, lambda, rho_bar[t], config)
     end

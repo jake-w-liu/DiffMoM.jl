@@ -48,8 +48,8 @@ For a sphere of radius $a$ illuminated by a plane wave $\mathbf{E}^\text{inc} = 
 where $a_n, b_n$ are the Mie coefficients for a PEC sphere:
 
 \[
-a_n = -\frac{j_n(ka)}{h_n^{(1)}(ka)}, \qquad
-b_n = -\frac{[ka\,j_n(ka)]'}{[ka\,h_n^{(1)}(ka)]'}.
+a_n = -\frac{j_n(ka)}{h_n^{(2)}(ka)}, \qquad
+b_n = -\frac{[ka\,j_n(ka)]'}{[ka\,h_n^{(2)}(ka)]'}.
 \]
 
 The function `mie_bistatic_rcs_pec(k, a, khat_inc, pol, rhat)` (`src/postprocessing/Mie.jl:3`) computes this series truncated at $n_\text{max} = \max(3,\, \lceil x + 4\,x^{1/3} + 2 \rceil)$ where $x = ka$, providing machine‑precision reference values.

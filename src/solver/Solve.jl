@@ -691,6 +691,24 @@ end
 Base.size(plan::_BigFloatDenseLUPlan) = size(plan.factorization)
 Base.size(plan::_BigFloatDenseLUPlan, dimension::Integer) =
     size(plan.factorization, dimension)
+
+# A `_BigFloatDenseLUPlan` already represents the exact stored IEEE matrix at
+# the bounded fallback precision. Rechecking its rounded Float64 solution with
+# a Float64 backward error can reject the correctly rounded forward solution
+# of a severely ill-conditioned system. Solve from the cached exact factors
+# and convert only the completed solution.
+function _solve_factored_linear_system(
+    factorization::_BigFloatDenseLUPlan,
+    matrix::AbstractMatrix{<:Number},
+    rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
+    label::AbstractString,
+)
+    size(matrix) == size(factorization) ||
+        throw(DimensionMismatch(
+            "$label matrix has size $(size(matrix)), expected $(size(factorization))"))
+    return _solve_bigfloat_plan(factorization, rhs, label)
+end
+
 Base.:\(plan::_BigFloatDenseLUPlan, rhs) =
     _solve_bigfloat_plan(plan, rhs, "exact dense solve")
 LinearAlgebra.issuccess(plan::_BigFloatDenseLUPlan) =
@@ -945,6 +963,30 @@ function _solve_factored_linear_system!(
     fallback_solution = _solve_scaled_ieee_linear_system(
         matrix_reference, rhs_reference, scalar_type, label)
     copyto!(destination, fallback_solution)
+    return destination
+end
+
+
+function _solve_factored_linear_system!(
+    destination::Union{AbstractVector{T},AbstractMatrix{T}},
+    factorization::_BigFloatDenseLUPlan,
+    matrix::Union{Nothing,AbstractMatrix{<:Number}},
+    rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
+    label::AbstractString,
+) where {T<:Number}
+    size(destination) == size(rhs) ||
+        throw(DimensionMismatch(
+            "$label destination has size $(size(destination)), expected $(size(rhs))"))
+    matrix_reference = _matrix_for_verified_factor_solve(
+        factorization, matrix, label)
+    size(matrix_reference) == size(factorization) ||
+        throw(DimensionMismatch(
+            "$label matrix has size $(size(matrix_reference)), expected $(size(factorization))"))
+    # `_solve_bigfloat_plan` finishes reading `rhs` before `destination` is
+    # touched, so an in-place caller does not require a second physical-RHS
+    # copy on this cold exact path.
+    solution = _solve_bigfloat_plan(factorization, rhs, label)
+    copyto!(destination, solution)
     return destination
 end
 

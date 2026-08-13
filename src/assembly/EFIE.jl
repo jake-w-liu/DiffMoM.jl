@@ -401,8 +401,8 @@ Avoids calling eval_rwg in the hot inner loops.
             fn = fn_hi[qn]
 
             R_vec = rm - rn
-            R = sqrt(dot(R_vec, R_vec))
-            if R < 1e-14
+            R = hypot(hypot(R_vec[1], R_vec[2]), R_vec[3])
+            if iszero(R)
                 continue
             end
 
@@ -480,8 +480,8 @@ Adjacent-cell contribution using precomputed high-order RWG values.
             fn_qn = fn_hi[qn]
 
             R_vec = rm - rn
-            R = sqrt(dot(R_vec, R_vec))
-            if R < 1e-14
+            R = hypot(hypot(R_vec[1], R_vec[2]), R_vec[3])
+            if iszero(R)
                 continue
             end
 

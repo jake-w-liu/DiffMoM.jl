@@ -624,7 +624,7 @@ Compute PEC-sphere bistatic RCS using Mie series. This provides an exact analyti
 | `k_inc_hat` | `Vec3` | Incident propagation direction (unit vector). |
 | `pol_inc` | `Vec3` | Incident polarization (unit vector, must be orthogonal to `k_inc_hat`). |
 | `rhat` | `Vec3` | Observation direction (unit vector). |
-| `nmax` | `Nothing` or `Int` | Maximum Mie series order. Auto-computed if `nothing`. |
+| `nmax` | `Nothing` or `Int` | Maximum Mie series order. Auto-computed if `nothing`; an underflowed exact `k*a` uses order 3. If `k*a` overflows `Float64`, an explicit bounded order is required. Exceptional products use a precision- and work-bounded exact fallback. |
 
 **Returns:** `Float64` RCS value in m^2.
 
@@ -655,7 +655,7 @@ Compute Mie scattering amplitudes `S1` and `S2` for a homogeneous, isotropic die
 | `cosgamma` | `Float64` | -- | Cosine of the scattering angle `gamma` (angle between incident and observation directions). |
 | `eps_r` | (any, converted to `ComplexF64`) | -- | Relative permittivity (may be complex; must be nonzero). |
 | `mu_r` | (any, converted to `ComplexF64`) | `1.0 + 0im` | Relative permeability (must be nonzero). |
-| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed from `|sqrt(eps_r*mu_r)| * x` if `nothing`. |
+| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed from the exterior size parameter `x` if `nothing`. |
 
 **Returns:** Tuple `(S1, S2)` of `ComplexF64` scattering amplitudes.
 
@@ -678,7 +678,7 @@ Compute exact homogeneous-sphere bistatic RCS (linear units, m^2) from dielectri
 | `rhat` | `Vec3` | -- | Observation direction (normalized internally). |
 | `eps_r` | (any, converted to `ComplexF64`) | -- | Relative permittivity (may be complex). |
 | `mu_r` | (any, converted to `ComplexF64`) | `1.0 + 0im` | Relative permeability. |
-| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed if `nothing`. |
+| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed if `nothing`; an underflowed exact `k*a` uses order 3. If `k*a` overflows `Float64`, an explicit bounded order is required. Exceptional products use a precision- and work-bounded exact fallback. |
 
 **Returns:** `Float64` RCS value in m^2.
 

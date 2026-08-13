@@ -13,6 +13,12 @@ export SphereSampling, assemble_mlfma_nearfield
 const _MLFMA_TRUNCATION_FALLBACK_PRECISION = 256
 const _DEFAULT_MAX_SPHERE_SAMPLING_POINTS = 2_100_000
 const _DEFAULT_MAX_MLFMA_SETUP_BYTES = 2_000_000_000
+const _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES = 50_000_000
+const _DEFAULT_MAX_MLFMA_TRANSLATION_TERMS = 50_000_000
+const _DEFAULT_MAX_MLFMA_MATVEC_SCRATCH_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_MLFMA_EXACT_COMBINE_WORK = 2_000_000
+const _MLFMA_NEARFIELD_TRIPLET_BYTES =
+    sizeof(Int) + sizeof(Int) + sizeof(ComplexF64)
 
 # ─── Spherical sampling ─────────────────────────────────────────
 
@@ -267,6 +273,44 @@ function _validate_mlfma_setup_resources(
     return estimated_bytes
 end
 
+function _mlfma_nearfield_entry_count(octree::Octree)
+    leaf_level = octree.levels[octree.nLevels]
+    total = BigInt(0)
+    @inbounds for box in leaf_level.boxes
+        destination_count = length(box.bf_range)
+        for neighbor_id in box.neighbors
+            total += BigInt(destination_count) *
+                     length(leaf_level.boxes[neighbor_id].bf_range)
+        end
+    end
+    return total
+end
+
+function _validate_mlfma_nearfield_resources(
+    octree::Octree,
+    max_nearfield_entries::Int,
+    max_nearfield_bytes::Int,
+    label::AbstractString="MLFMA near-field assembly",
+)
+    max_nearfield_entries >= 1 ||
+        throw(ArgumentError(
+            "$label: max_nearfield_entries must be positive, got $max_nearfield_entries"))
+    max_nearfield_bytes >= 1 ||
+        throw(ArgumentError(
+            "$label: max_nearfield_bytes must be positive, got $max_nearfield_bytes"))
+    entries = _mlfma_nearfield_entry_count(octree)
+    raw_bytes = entries * _MLFMA_NEARFIELD_TRIPLET_BYTES
+    entries <= max_nearfield_entries ||
+        throw(ArgumentError(
+            "$label: estimated near-field entry count " *
+            "$entries exceeds max_nearfield_entries=$max_nearfield_entries"))
+    raw_bytes <= max_nearfield_bytes ||
+        throw(ArgumentError(
+            "$label: estimated near-field triplet payload " *
+            "$raw_bytes bytes exceeds max_nearfield_bytes=$max_nearfield_bytes"))
+    return Int(entries)
+end
+
 # ─── Special functions ──────────────────────────────────────────
 
 """
@@ -440,18 +484,51 @@ T_L(k̂; d) = Σ_{l=0}^{L} (-i)^l (2l+1) h_l^(2)(k|d|) P_l(k̂·d̂)
 
 Returns a vector of length npts.
 """
-function compute_translation_factor(d_vec::Vec3, k::Float64, sampling::SphereSampling)
-    d = norm(d_vec)
-    d_hat = d_vec / d
-    L = sampling.L
+function compute_translation_factor(
+        d_vec::Vec3, k::Float64, sampling::SphereSampling;
+        max_terms::Int=_DEFAULT_MAX_MLFMA_TRANSLATION_TERMS)
+    isfinite(k) && k > 0.0 ||
+        throw(ArgumentError(
+            "compute_translation_factor: k must be finite and positive, got $k"))
+    all(isfinite, d_vec) ||
+        throw(ArgumentError(
+            "compute_translation_factor: displacement must be finite, got $d_vec"))
+    displacement_scale = max(
+        abs(d_vec[1]), abs(d_vec[2]), abs(d_vec[3]))
+    displacement_scale > 0.0 ||
+        throw(ArgumentError(
+            "compute_translation_factor: displacement must be nonzero"))
+    scaled_displacement = d_vec / displacement_scale
+    scaled_norm = hypot(
+        hypot(scaled_displacement[1], scaled_displacement[2]),
+        scaled_displacement[3])
+    d_hat = scaled_displacement / scaled_norm
+    argument = _mlfma_scaled_translation_argument(
+        k, displacement_scale, scaled_norm)
+    return _compute_translation_factor(
+        d_hat, argument, sampling; max_terms=max_terms)
+end
 
-    h = spherical_hankel2_all(L, k * d)
+function _compute_translation_factor(
+        d_hat::Vec3, argument::Float64, sampling::SphereSampling;
+        max_terms::Int=_DEFAULT_MAX_MLFMA_TRANSLATION_TERMS)
+    L = sampling.L
+    term_count = Base.checked_mul(sampling.npts, Base.checked_add(L, 1))
+    max_terms >= 1 ||
+        throw(ArgumentError(
+            "compute_translation_factor: max_terms must be positive, got $max_terms"))
+    term_count <= max_terms ||
+        throw(ArgumentError(
+            "compute_translation_factor requires $term_count Legendre terms, " *
+            "exceeding max_terms=$max_terms"))
+    h = spherical_hankel2_all(L, argument)
 
     # Precompute (-i)^l * (2l+1) * h_l
     coeffs = Vector{ComplexF64}(undef, L + 1)
     neg_i_pow = ComplexF64(1.0)  # (-i)^0 = 1
     for l in 0:L
-        coeffs[l + 1] = neg_i_pow * (2l + 1) * h[l + 1]
+        coefficient = neg_i_pow * (2l + 1) * h[l + 1]
+        coeffs[l + 1] = coefficient
         neg_i_pow *= -im
     end
 
@@ -459,14 +536,108 @@ function compute_translation_factor(d_vec::Vec3, k::Float64, sampling::SphereSam
     for q in 1:sampling.npts
         cos_alpha = dot(Vec3(sampling.khat[1, q], sampling.khat[2, q], sampling.khat[3, q]), d_hat)
         cos_alpha = clamp(cos_alpha, -1.0, 1.0)
-        Pl = legendre_all(L, cos_alpha)
-        val = zero(ComplexF64)
-        for l in 0:L
-            val += coeffs[l + 1] * Pl[l + 1]
+        p_previous = 1.0
+        val = coeffs[1]
+        if L >= 1
+            p_current = cos_alpha
+            val += coeffs[2] * p_current
+            for l in 1:(L - 1)
+                p_following = ((2l + 1) * cos_alpha * p_current -
+                               l * p_previous) / (l + 1)
+                val += coeffs[l + 2] * p_following
+                p_previous, p_current = p_current, p_following
+            end
+        end
+        if !isfinite(val)
+            val = _mlfma_translation_sum_big(
+                cos_alpha, h, L)
         end
         T[q] = val
     end
     return T
+end
+
+@noinline function _mlfma_translation_sum_big(
+        cosine::Float64, h::Vector{ComplexF64}, L::Int)
+    return setprecision(BigFloat, 512) do
+        p_previous = one(BigFloat)
+        neg_i_pow = Complex{BigFloat}(1)
+        value = neg_i_pow * Complex{BigFloat}(h[1])
+        if L >= 1
+            p_current = BigFloat(cosine)
+            neg_i_pow *= Complex{BigFloat}(0, -1)
+            value += neg_i_pow * BigFloat(3) *
+                     Complex{BigFloat}(h[2]) * p_current
+            for l in 1:(L - 1)
+                p_following =
+                    (BigFloat(2l + 1) * BigFloat(cosine) * p_current -
+                     BigFloat(l) * p_previous) / BigFloat(l + 1)
+                neg_i_pow *= Complex{BigFloat}(0, -1)
+                value += neg_i_pow * BigFloat(2l + 3) *
+                         Complex{BigFloat}(h[l + 2]) * p_following
+                p_previous, p_current = p_current, p_following
+            end
+        end
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "compute_translation_factor result is outside the " *
+                "representable ComplexF64 range"))
+        return converted
+    end
+end
+
+function _compute_grid_translation_factor(
+        dijk::NTuple{3,Int}, edge::Float64, k::Float64,
+        sampling::SphereSampling;
+        max_terms::Int=_DEFAULT_MAX_MLFMA_TRANSLATION_TERMS)
+    isfinite(edge) && edge > 0.0 ||
+        throw(ArgumentError(
+            "precompute_translation_factors: edge must be finite and positive, got $edge"))
+    isfinite(k) && k > 0.0 ||
+        throw(ArgumentError(
+            "precompute_translation_factors: k must be finite and positive, got $k"))
+    direction = Vec3(Float64(dijk[1]), Float64(dijk[2]), Float64(dijk[3]))
+    all(isfinite, direction) ||
+        throw(OverflowError(
+            "precompute_translation_factors: grid displacement is outside the Float64 range"))
+    direction_norm = hypot(hypot(direction[1], direction[2]), direction[3])
+    direction_norm > 0.0 ||
+        throw(ArgumentError(
+            "precompute_translation_factors: grid displacement must be nonzero"))
+    d_hat = direction / direction_norm
+    argument = _mlfma_scaled_translation_argument(k, edge, direction_norm)
+    return _compute_translation_factor(
+        d_hat, argument, sampling; max_terms=max_terms)
+end
+
+@noinline function _mlfma_translation_argument_exact(
+    k::Float64,
+    displacement_scale::Float64,
+    scaled_norm::Float64,
+)
+    return setprecision(BigFloat, 256) do
+        converted = Float64(
+            BigFloat(k) * BigFloat(displacement_scale) * BigFloat(scaled_norm))
+        isfinite(converted) && converted > 0.0 ||
+            throw(OverflowError(
+                "compute_translation_factor: k*norm(displacement) is outside the positive finite Float64 range"))
+        converted
+    end
+end
+
+@inline function _mlfma_scaled_translation_argument(
+    k::Float64,
+    displacement_scale::Float64,
+    scaled_norm::Float64,
+)
+    first = k * displacement_scale
+    if isfinite(first) && first > 0.0
+        argument = first * scaled_norm
+        isfinite(argument) && argument > 0.0 && return argument
+    end
+    return _mlfma_translation_argument_exact(
+        k, displacement_scale, scaled_norm)
 end
 
 """
@@ -475,7 +646,9 @@ end
 Precompute translation factors for all unique relative positions
 in the interaction lists at the given level.
 """
-function precompute_translation_factors(level::OctreeLevel, k::Float64, sampling::SphereSampling)
+function precompute_translation_factors(
+        level::OctreeLevel, k::Float64, sampling::SphereSampling;
+        max_terms::Int=_DEFAULT_MAX_MLFMA_TRANSLATION_TERMS)
     edge = level.edge_length
     factors = Dict{NTuple{3,Int}, Vector{ComplexF64}}()
 
@@ -487,8 +660,8 @@ function precompute_translation_factors(level::OctreeLevel, k::Float64, sampling
                     box.ijk[2] - il_box.ijk[2],
                     box.ijk[3] - il_box.ijk[3])
             if !haskey(factors, dijk)
-                d_vec = Vec3(dijk[1] * edge, dijk[2] * edge, dijk[3] * edge)
-                factors[dijk] = compute_translation_factor(d_vec, k, sampling)
+                factors[dijk] = _compute_grid_translation_factor(
+                    dijk, edge, k, sampling; max_terms=max_terms)
             end
         end
     end
@@ -791,21 +964,34 @@ end
 # ─── Near-field sparse matrix ───────────────────────────────────
 
 """
-    assemble_mlfma_nearfield(octree, mesh, rwg, k; quad_order=3, eta0=376.730313668)
+    assemble_mlfma_nearfield(octree, mesh, rwg, k; kwargs...)
 
 Assemble the near-field (neighbor interaction) sparse matrix for MLFMA.
 Only computes entries for BF pairs in neighboring leaf boxes.
 Returns a CSC sparse matrix in original BF ordering.
+The exact triplet count and raw triplet payload are capped before the EFIE
+cache or output arrays are allocated.
 """
 function assemble_mlfma_nearfield(octree::Octree, mesh::TriMesh, rwg::RWGData, k::Float64;
-                                   quad_order::Int=3, eta0::Float64=376.730313668)
+                                   quad_order::Int=3,
+                                   eta0::Float64=376.730313668,
+                                   max_nearfield_entries::Int=
+                                       _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES,
+                                   max_nearfield_bytes::Int=
+                                       _DEFAULT_MAX_MLFMA_SETUP_BYTES)
     N = rwg.nedges
+    entry_count = _validate_mlfma_nearfield_resources(
+        octree, max_nearfield_entries, max_nearfield_bytes,
+        "assemble_mlfma_nearfield")
     cache = _build_efie_cache(mesh, rwg, k; quad_order=quad_order, eta0=eta0)
     leaf_level = octree.levels[octree.nLevels]
 
     rows = Int[]
     cols = Int[]
     vals = ComplexF64[]
+    sizehint!(rows, entry_count)
+    sizehint!(cols, entry_count)
+    sizehint!(vals, entry_count)
 
     for box in leaf_level.boxes
         for nbr_id in box.neighbors
@@ -1509,7 +1695,35 @@ struct MLFMAOperator <: AbstractMatrix{ComplexF64}
     disagg_filters::Vector{Vector{Matrix{Float64}}}  # disaggregation: per-m θ filters [level][m+1]
     N::Int
     workspace::MLFMAWorkspace               # pre-allocated buffers for mul!
+    max_matvec_scratch_bytes::Int
+    max_exact_combine_work::Int
 end
+
+# Preserve the public positional constructor that existed before the bounded
+# exceptional-matvec resource controls became fields on the operator.
+MLFMAOperator(
+    octree::Octree,
+    Z_near::SparseMatrixCSC{ComplexF64,Int},
+    k::Float64,
+    eta0::Float64,
+    prefactor::ComplexF64,
+    samplings::Vector{SphereSampling},
+    trans_factors::Vector{Dict{NTuple{3,Int},Vector{ComplexF64}}},
+    trans_plans::Vector{TranslationPlan},
+    bf_patterns::Array{ComplexF64,3},
+    interp_theta::Vector{Matrix{Float64}},
+    interp_phi::Vector{Matrix{Float64}},
+    agg_filters::Vector{Vector{Matrix{Float64}}},
+    disagg_filters::Vector{Vector{Matrix{Float64}}},
+    N::Int,
+    workspace::MLFMAWorkspace,
+) = MLFMAOperator(
+    octree, Z_near, k, eta0, prefactor, samplings, trans_factors,
+    trans_plans, bf_patterns, interp_theta, interp_phi, agg_filters,
+    disagg_filters, N, workspace,
+    _DEFAULT_MAX_MLFMA_MATVEC_SCRATCH_BYTES,
+    _DEFAULT_MAX_MLFMA_EXACT_COMBINE_WORK,
+)
 
 struct MLFMAAdjointOperator <: AbstractMatrix{ComplexF64}
     op::MLFMAOperator
@@ -1556,6 +1770,11 @@ Build an MLFMA operator for the EFIE system.
 - `eta0=376.730313668`: free-space impedance
 - `max_sampling_points=2_100_000`: per-level spherical-grid resource limit
 - `max_setup_bytes=2_000_000_000`: estimated MLFMA setup-storage limit
+- `max_nearfield_entries=50_000_000`: exact near-field triplet-count limit
+- `max_nearfield_bytes=2_000_000_000`: raw near-field triplet-payload limit
+- `max_translation_terms=50_000_000`: per-offset Legendre work limit
+- `max_matvec_scratch_bytes=536_870_912`: exponent-band scratch limit
+- `max_exact_combine_work=2_000_000`: exact band-combination work limit
 - `verbose=false`: print progress
 """
 function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
@@ -1567,6 +1786,16 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
                                    _DEFAULT_MAX_SPHERE_SAMPLING_POINTS,
                                max_setup_bytes::Int=
                                    _DEFAULT_MAX_MLFMA_SETUP_BYTES,
+                               max_nearfield_entries::Int=
+                                   _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES,
+                               max_nearfield_bytes::Int=
+                                   _DEFAULT_MAX_MLFMA_SETUP_BYTES,
+                               max_translation_terms::Int=
+                                   _DEFAULT_MAX_MLFMA_TRANSLATION_TERMS,
+                               max_matvec_scratch_bytes::Int=
+                                   _DEFAULT_MAX_MLFMA_MATVEC_SCRATCH_BYTES,
+                               max_exact_combine_work::Int=
+                                   _DEFAULT_MAX_MLFMA_EXACT_COMBINE_WORK,
                                verbose::Bool=false)
     leaf_edge = _validated_octree_leaf_edge(k, leaf_lambda)
     precision >= 1 ||
@@ -1581,6 +1810,21 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     max_setup_bytes >= 1 ||
         throw(ArgumentError(
             "build_mlfma_operator: max_setup_bytes must be positive, got $max_setup_bytes"))
+    max_nearfield_entries >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_nearfield_entries must be positive, got $max_nearfield_entries"))
+    max_nearfield_bytes >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_nearfield_bytes must be positive, got $max_nearfield_bytes"))
+    max_translation_terms >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_translation_terms must be positive, got $max_translation_terms"))
+    max_matvec_scratch_bytes >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_matvec_scratch_bytes must be positive, got $max_matvec_scratch_bytes"))
+    max_exact_combine_work >= 1 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_exact_combine_work must be positive, got $max_exact_combine_work"))
 
     # Reject an impossible precision request before constructing the tree or
     # assembling any matrix. Coarser levels are checked after tree creation.
@@ -1610,16 +1854,23 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     end
     estimated_setup_bytes = _validate_mlfma_setup_resources(
         octree, orders, N, max_setup_bytes)
+    nearfield_entries = _validate_mlfma_nearfield_resources(
+        octree, max_nearfield_entries, max_nearfield_bytes,
+        "build_mlfma_operator")
     verbose && println(
         "  MLFMA: Estimated setup storage — ",
         round(Float64(estimated_setup_bytes) / 2.0^20; digits=2),
         " MiB")
+    verbose && println(
+        "  MLFMA: Near-field triplets — ", nearfield_entries)
 
     # 3. Near-field matrix
     verbose && print("  MLFMA: Assembling near-field... ")
     t0 = time()
     Z_near = assemble_mlfma_nearfield(octree, mesh, rwg, k;
-                                       quad_order=quad_order, eta0=eta0)
+                                       quad_order=quad_order, eta0=eta0,
+                                       max_nearfield_entries=max_nearfield_entries,
+                                       max_nearfield_bytes=max_nearfield_bytes)
     nnz_ratio = nnz(Z_near) / N^2
     verbose && println("$(round(time()-t0, digits=2))s, nnz=$(round(nnz_ratio*100, digits=1))%")
 
@@ -1647,7 +1898,8 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     trans_plans = Vector{TranslationPlan}(undef, nL - 1)
     for l in 2:nL
         trans_factors[l - 1] = precompute_translation_factors(
-            octree.levels[l], k, samplings[l - 1])
+            octree.levels[l], k, samplings[l - 1];
+            max_terms=max_translation_terms)
         # Flatten the interaction lists into a direct-index schedule so the
         # matvec inner loop avoids the per-interaction tuple-hash Dict lookup.
         trans_plans[l - 1] = build_translation_plan(
@@ -1692,7 +1944,8 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     return MLFMAOperator(octree, Z_near, k, eta0, prefactor,
                           samplings, trans_factors, trans_plans, bf_patterns,
                           interp_theta, interp_phi, agg_filters, disagg_filters, N,
-                          workspace)
+                          workspace, max_matvec_scratch_bytes,
+                          max_exact_combine_work)
 end
 
 # ─── Phase shift helper ─────────────────────────────────────────
@@ -1797,10 +2050,34 @@ end
 # ─── Forward matvec ─────────────────────────────────────────────
 
 const _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
-const _MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT = 896
 const _MLFMA_INTERNAL_RESCALE_STEP = 128
 const _MLFMA_INTERNAL_MAX_RESCALE_ATTEMPTS = 18
 const _MLFMA_INPUT_BAND_WIDTH = 32
+# Every nonzero input band is shifted to at least this exponent before the
+# internal product.  Since a band spans fewer than 32 binary exponents, even
+# its smallest component multiplied by the smallest positive Float64 remains
+# normal.  This prevents product underflow without inspecting a rounded output
+# (which cannot distinguish underflow from a genuine nullspace result).
+const _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT = 128
+
+@inline function _mlfma_scaled_component_requires_fallback(
+        scale::Number, value::ComplexF64)
+    scale_value = ComplexF64(scale)
+    @inbounds for (scale_component, real_component, imag_component) in (
+        (real(scale_value), real(value), imag(value)),
+        (imag(scale_value), imag(value), real(value)),
+    )
+        first_product = scale_component * real_component
+        second_product = scale_component * imag_component
+        if (iszero(first_product) && !iszero(scale_component) &&
+            !iszero(real_component)) ||
+           (iszero(second_product) && !iszero(scale_component) &&
+            !iszero(imag_component))
+            return true
+        end
+    end
+    return false
+end
 
 @noinline function _mlfma_scaled_output_bigfloat(
         value::ComplexF64,
@@ -1836,7 +2113,9 @@ end
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
-        return isfinite(converted) ? converted :
+        return isfinite(converted) &&
+               !_mlfma_scaled_component_requires_fallback(
+                   alpha_scale, value) ? converted :
                _mlfma_scaled_output_bigfloat(
                    value, previous, alpha_scale, beta_scale, true, row)
     end
@@ -1848,7 +2127,13 @@ end
     converted = ComplexF64(combined)
     if isfinite(converted) &&
        isfinite(real_magnitude) &&
-       isfinite(imag_magnitude)
+       isfinite(imag_magnitude) &&
+       !_mlfma_scaled_component_requires_fallback(alpha_scale, value) &&
+       !_mlfma_scaled_component_requires_fallback(beta_scale, previous) &&
+       !((iszero(real(converted)) && real_magnitude > 0.0) ||
+         (iszero(imag(converted)) && imag_magnitude > 0.0) ||
+         (0.0 < abs(real(converted)) < floatmin(Float64)) ||
+         (0.0 < abs(imag(converted)) < floatmin(Float64)))
         return converted
     end
     return _mlfma_scaled_output_bigfloat(
@@ -1882,7 +2167,7 @@ function _mlfma_initial_recovery_shift(x::AbstractVector)
     end
     maximum_exponent == typemin(Int) && return _MLFMA_INTERNAL_RESCALE_STEP
     return max(
-        maximum_exponent - _MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT,
+        maximum_exponent - _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT,
         _MLFMA_INTERNAL_RESCALE_STEP,
     )
 end
@@ -1913,8 +2198,8 @@ end
 
 @inline function _mlfma_initial_underflow_upshift(maximum_exponent::Int)
     maximum_exponent == typemin(Int) && return 0
-    maximum_exponent >= -_MLFMA_INTERNAL_INPUT_EXPONENT_LIMIT && return 0
-    return -maximum_exponent
+    maximum_exponent >= _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT && return 0
+    return _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT - maximum_exponent
 end
 
 function _mlfma_scale_input_losslessly!(
@@ -1980,29 +2265,40 @@ end
         beta_scale::Number,
         product_shift::Int,
         overwrite::Bool)
-    return setprecision(
-            BigFloat, _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION) do
-        alpha_big = Complex{BigFloat}(alpha_scale)
-        beta_big = Complex{BigFloat}(beta_scale)
-        @inbounds for row in eachindex(product, previous)
-            value = product[row]
-            unscaled_value = Complex{BigFloat}(
-                ldexp(BigFloat(real(value)), product_shift),
-                ldexp(BigFloat(imag(value)), product_shift),
-            )
-            total = alpha_big * unscaled_value
-            if !overwrite
-                total += beta_big * Complex{BigFloat}(previous[row])
+    @inbounds for row in eachindex(product, previous)
+        value = product[row]
+        real_unscaled = ldexp(real(value), product_shift)
+        imag_unscaled = ldexp(imag(value), product_shift)
+        lost_component =
+            (iszero(real_unscaled) && !iszero(real(value))) ||
+            (iszero(imag_unscaled) && !iszero(imag(value)))
+        if isfinite(real_unscaled) && isfinite(imag_unscaled) &&
+           !lost_component
+            product[row] = _mlfma_scaled_output(
+                ComplexF64(real_unscaled, imag_unscaled), previous[row],
+                alpha_scale, beta_scale, overwrite, row)
+        else
+            product[row] = setprecision(
+                    BigFloat, _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION) do
+                unscaled_value = Complex{BigFloat}(
+                    ldexp(BigFloat(real(value)), product_shift),
+                    ldexp(BigFloat(imag(value)), product_shift),
+                )
+                total = Complex{BigFloat}(alpha_scale) * unscaled_value
+                if !overwrite
+                    total += Complex{BigFloat}(beta_scale) *
+                             Complex{BigFloat}(previous[row])
+                end
+                converted = ComplexF64(total)
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "MLFMA scaled output is outside the representable " *
+                        "ComplexF64 range at row $row."))
+                converted
             end
-            converted = ComplexF64(total)
-            isfinite(converted) ||
-                throw(OverflowError(
-                    "MLFMA scaled output is outside the representable " *
-                    "ComplexF64 range at row $row."))
-            product[row] = converted
         end
-        return product
     end
+    return product
 end
 
 @noinline function _mlfma_banded_scaled_output!(
@@ -2041,6 +2337,14 @@ end
 
 @inline _mlfma_internal_workspace(A::MLFMAOperator) = A.workspace
 @inline _mlfma_internal_workspace(A::MLFMAAdjointOperator) = A.op.workspace
+@inline _mlfma_matvec_scratch_limit(A::MLFMAOperator) =
+    A.max_matvec_scratch_bytes
+@inline _mlfma_matvec_scratch_limit(A::MLFMAAdjointOperator) =
+    A.op.max_matvec_scratch_bytes
+@inline _mlfma_exact_combine_limit(A::MLFMAOperator) =
+    A.max_exact_combine_work
+@inline _mlfma_exact_combine_limit(A::MLFMAAdjointOperator) =
+    A.op.max_exact_combine_work
 
 @inline function _mlfma_internal_product!(
         product::Vector{ComplexF64},
@@ -2066,13 +2370,29 @@ end
         minimum_exponent::Int,
         maximum_exponent::Int,
         overwrite::Bool)
-    source = Vector{ComplexF64}(x)
     bucket_count = fld(
         maximum_exponent - minimum_exponent,
         _MLFMA_INPUT_BAND_WIDTH,
     ) + 1
+    scratch_limit = _mlfma_matvec_scratch_limit(A)
+    bucket_bytes = try
+        Base.Checked.checked_mul(sizeof(Int), bucket_count)
+    catch error
+        error isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "MLFMA exponent-band index scratch size overflows Int"))
+    end
+    bucket_bytes <= scratch_limit ||
+        throw(ArgumentError(
+            "MLFMA exponent-band matvec requires at least $bucket_bytes " *
+            "scratch bytes, exceeding max_matvec_scratch_bytes=$scratch_limit"))
     band_maxima = fill(typemin(Int), bucket_count)
-    @inbounds for value in source
+    @inbounds for raw_value in x
+        # Exponent bounds, band classification, and the eventual source copy
+        # must observe exactly the same ComplexF64 values.  In particular, an
+        # underflowing BigFloat input must not select a bucket that was omitted
+        # when `_mlfma_input_exponent_bounds` converted it to ComplexF64.
+        value = ComplexF64(raw_value)
         for component in (real(value), imag(value))
             iszero(component) && continue
             value_exponent = exponent(abs(component))
@@ -2086,6 +2406,48 @@ end
     end
 
     occupied_count = count(!=(typemin(Int)), band_maxima)
+    complex_bytes = try
+        Base.Checked.checked_mul(
+            sizeof(ComplexF64),
+            Base.Checked.checked_mul(length(output), occupied_count + 1))
+    catch error
+        error isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "MLFMA exponent-band matvec scratch size overflows Int"))
+    end
+    shift_bytes = try
+        Base.Checked.checked_mul(sizeof(Int), occupied_count)
+    catch error
+        error isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "MLFMA exponent-band shift scratch size overflows Int"))
+    end
+    scratch_bytes = try
+        Base.Checked.checked_add(
+            complex_bytes,
+            Base.Checked.checked_add(bucket_bytes, shift_bytes))
+    catch error
+        error isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "MLFMA exponent-band total scratch size overflows Int"))
+    end
+    scratch_bytes <= scratch_limit ||
+        throw(ArgumentError(
+            "MLFMA exponent-band matvec requires $scratch_bytes scratch " *
+            "bytes, exceeding max_matvec_scratch_bytes=$scratch_limit"))
+    exact_work = try
+        Base.Checked.checked_mul(length(output), occupied_count)
+    catch error
+        error isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "MLFMA exponent-band combination work overflows Int"))
+    end
+    exact_limit = _mlfma_exact_combine_limit(A)
+    exact_work <= exact_limit ||
+        throw(ArgumentError(
+            "MLFMA exponent-band matvec requires $exact_work exact " *
+            "combination units, exceeding max_exact_combine_work=$exact_limit"))
+    source = Vector{ComplexF64}(x)
     products = Matrix{ComplexF64}(
         undef, length(output), occupied_count)
     product_shifts = Vector{Int}(undef, occupied_count)
@@ -2110,8 +2472,16 @@ end
                     _MLFMA_INPUT_BAND_WIDTH,
                 ) + 1
                 if real_bucket == bucket
-                    scaled_real = ldexp(real_value, -band_maximum)
-                    ldexp(scaled_real, band_maximum) == real_value ||
+                    scaled_real = ldexp(
+                        real_value,
+                        -band_maximum +
+                        _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT,
+                    )
+                    ldexp(
+                        scaled_real,
+                        band_maximum -
+                        _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT,
+                    ) == real_value ||
                         throw(OverflowError(
                             "MLFMA real input component could not be " *
                             "rescaled losslessly at index $index"))
@@ -2124,8 +2494,16 @@ end
                     _MLFMA_INPUT_BAND_WIDTH,
                 ) + 1
                 if imag_bucket == bucket
-                    scaled_imag = ldexp(imag_value, -band_maximum)
-                    ldexp(scaled_imag, band_maximum) == imag_value ||
+                    scaled_imag = ldexp(
+                        imag_value,
+                        -band_maximum +
+                        _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT,
+                    )
+                    ldexp(
+                        scaled_imag,
+                        band_maximum -
+                        _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT,
+                    ) == imag_value ||
                         throw(OverflowError(
                             "MLFMA imaginary input component could not be " *
                             "rescaled losslessly at index $index"))
@@ -2140,7 +2518,9 @@ end
         else
             _mlfma_internal_recover_product!(output, A, scaled_input)
         end
-        product_shifts[occupied_band] = band_maximum + recovery_shift
+        product_shifts[occupied_band] =
+            band_maximum - _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT +
+            recovery_shift
         for row in eachindex(output)
             products[row, occupied_band] = output[row]
         end
@@ -2354,7 +2734,7 @@ function _mlfma_forward_mul!(y::AbstractVector{ComplexF64}, A::MLFMAOperator,
         return y
     end
 
-    xread = if Base.mightalias(y, x)
+    xread = if Base.mightalias(y, x) || eltype(x) !== ComplexF64
         copyto!(ws.input_copy, x)
         ws.input_copy
     else
@@ -2636,7 +3016,7 @@ function _mlfma_adjoint_mul!(y::AbstractVector{ComplexF64}, A::MLFMAAdjointOpera
         return y
     end
 
-    xread = if Base.mightalias(y, x)
+    xread = if Base.mightalias(y, x) || eltype(x) !== ComplexF64
         copyto!(ws.input_copy, x)
         ws.input_copy
     else

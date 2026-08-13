@@ -9,7 +9,7 @@
 export analytical_integral_1overR, grad_analytical_integral_1overR,
        self_cell_contribution, adjacent_cell_contribution
 
-@inline function _validate_static_triangle_integral_inputs(
+@inline function _static_triangle_integral_fast_geometry(
     P::Vec3,
     V1::Vec3,
     V2::Vec3,
@@ -27,15 +27,68 @@ export analytical_integral_1overR, grad_analytical_integral_1overR,
     scale1 = max(abs(edge1[1]), abs(edge1[2]), abs(edge1[3]))
     scale2 = max(abs(edge2[1]), abs(edge2[2]), abs(edge2[3]))
     (isfinite(scale1) && isfinite(scale2) &&
-     scale1 > 0.0 && scale2 > 0.0) ||
-        throw(ArgumentError(
-            "static-integral triangle must have finite nonzero edges"))
+     scale1 > 0.0 && scale2 > 0.0) || return nothing
     scaled_normal = cross(edge1 / scale1, edge2 / scale2)
     normal_norm = norm(scaled_normal)
-    (isfinite(normal_norm) && normal_norm > 0.0) ||
-        throw(ArgumentError(
-            "static-integral triangle must be nondegenerate"))
-    return nothing
+    (isfinite(normal_norm) && normal_norm > 0.0) || return nothing
+    scale = maximum((
+        scale1, scale2, maximum(abs, P - V1)))
+    isfinite(scale) && scale > 0.0 || return nothing
+    # A single normalization scale is useful only if it preserves every
+    # nonzero stored difference.  Otherwise an off-plane observation or a thin
+    # edge can become exactly coplanar/degenerate and change the closed form.
+    point_offset = P - V1
+    @inbounds for vector in (edge1, edge2, point_offset)
+        for component in vector
+            if !iszero(component) && iszero(component / scale)
+                return nothing
+            end
+        end
+    end
+    # Branching on the signed plane height also has to be certified.  Even
+    # when every normalized coordinate survives, cancellation followed by a
+    # subnormal product can round a genuinely off-plane point onto the plane.
+    scaled_edge1 = edge1 / scale
+    scaled_edge2 = edge2 / scale
+    scaled_offset = point_offset / scale
+    scaled_normal_for_height = cross(scaled_edge1, scaled_edge2)
+    fast_height = dot(scaled_offset, scaled_normal_for_height)
+    if iszero(fast_height)
+        exactly_coplanar = setprecision(
+                BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+            first_big = SVector{3,BigFloat}(BigFloat.(V1))
+            edge1_big = SVector{3,BigFloat}(BigFloat.(V2)) - first_big
+            edge2_big = SVector{3,BigFloat}(BigFloat.(V3)) - first_big
+            offset_big = SVector{3,BigFloat}(BigFloat.(P)) - first_big
+            iszero(dot(offset_big, cross(edge1_big, edge2_big)))
+        end
+        exactly_coplanar || return nothing
+    end
+    return (origin=V1, scale=scale)
+end
+
+@noinline function _static_triangle_integral_big_geometry(
+        P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
+    return setprecision(
+            BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        point = SVector{3,BigFloat}(BigFloat.(P))
+        first = SVector{3,BigFloat}(BigFloat.(V1))
+        second = SVector{3,BigFloat}(BigFloat.(V2))
+        third = SVector{3,BigFloat}(BigFloat.(V3))
+        edge1 = second - first
+        edge2 = third - first
+        normal = cross(edge1, edge2)
+        normal_norm = norm(normal)
+        normal_norm > 0 ||
+            throw(ArgumentError(
+                "static-integral triangle must be nondegenerate"))
+        scale = max(
+            maximum(abs, edge1), maximum(abs, edge2),
+            maximum(abs, point - first))
+        scale > 0 ||
+            throw(ArgumentError("static-integral geometry has zero extent"))
+        return point, first, second, third, scale
+    end
 end
 
 """
@@ -54,23 +107,51 @@ and all other quantities are in-plane projections relative to the projection
 of P onto the triangle plane.
 """
 function analytical_integral_1overR(P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
-    _validate_static_triangle_integral_inputs(P, V1, V2, V3)
-    value = _analytical_integral_1overR_unchecked(P, V1, V2, V3)
+    geometry = _static_triangle_integral_fast_geometry(P, V1, V2, V3)
+    geometry === nothing &&
+        return _analytical_integral_1overR_big(P, V1, V2, V3)
+    value = geometry.scale * _analytical_integral_1overR_unchecked(
+        (P - geometry.origin) / geometry.scale,
+        Vec3(0.0, 0.0, 0.0),
+        (V2 - geometry.origin) / geometry.scale,
+        (V3 - geometry.origin) / geometry.scale,
+    )
     isfinite(value) ||
         throw(OverflowError(
             "analytical static triangle integral is non-finite"))
     return value
 end
 
+
+@noinline function _analytical_integral_1overR_big(
+        P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
+    return setprecision(
+            BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        point, first, second, third, scale =
+            _static_triangle_integral_big_geometry(P, V1, V2, V3)
+        value = scale * _analytical_integral_1overR_unchecked(
+            (point - first) / scale,
+            SVector{3,BigFloat}(0, 0, 0),
+            (second - first) / scale,
+            (third - first) / scale,
+        )
+        converted = Float64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "analytical static triangle integral is non-finite"))
+        converted
+    end
+end
+
 function _analytical_integral_1overR_unchecked(
-    P::Vec3,
-    V1::Vec3,
-    V2::Vec3,
-    V3::Vec3,
-)
+    P::SVector{3,T},
+    V1::SVector{3,T},
+    V2::SVector{3,T},
+    V3::SVector{3,T},
+) where {T<:AbstractFloat}
     n_T = cross(V2 - V1, V3 - V1)
     n_norm = norm(n_T)
-    if n_norm < 1e-30
+    if iszero(n_norm)
         return 0.0
     end
     n_T = n_T / n_norm
@@ -81,13 +162,13 @@ function _analytical_integral_1overR_unchecked(
     xi = P - h * n_T   # projection of P onto triangle plane
 
     edges = ((V1, V2), (V2, V3), (V3, V1))
-    log_sum = 0.0
-    atan_sum = 0.0
+    log_sum = zero(T)
+    atan_sum = zero(T)
 
     for (A, B) in edges
         edge_vec = B - A
         edge_len = norm(edge_vec)
-        if edge_len < 1e-30
+        if iszero(edge_len)
             continue
         end
         lhat = edge_vec / edge_len
@@ -102,16 +183,16 @@ function _analytical_integral_1overR_unchecked(
         R0_sq = d_i^2 + h^2
 
         # Log term: d_i * log[(s⁺ + R⁺)/(s⁻ + R⁻)]
-        if abs(d_i) > 1e-15
+        if !iszero(d_i)
             denom = s_minus + R_minus
             numer = s_plus + R_plus
-            if abs(denom) > 1e-30 && abs(numer) > 1e-30
+            if denom > 0.0 && numer > 0.0
                 log_sum += d_i * log(numer / denom)
             end
         end
 
         # Arctan term (only contributes when P is off-plane)
-        if abs_h > 1e-15 && abs(d_i) > 1e-15
+        if !iszero(abs_h) && !iszero(d_i)
             atan_plus  = atan(d_i * s_plus  / (R0_sq + abs_h * R_plus))
             atan_minus = atan(d_i * s_minus / (R0_sq + abs_h * R_minus))
             atan_sum += atan_plus - atan_minus
@@ -145,24 +226,53 @@ Returns an `SVector{3,Float64}`. This is the gradient counterpart of the scalar
 mixed-potential scalar term `∫_T ∇_r G dS'` near the surface.
 """
 function grad_analytical_integral_1overR(P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
-    _validate_static_triangle_integral_inputs(P, V1, V2, V3)
-    value = _grad_analytical_integral_1overR_unchecked(P, V1, V2, V3)
+    geometry = _static_triangle_integral_fast_geometry(P, V1, V2, V3)
+    geometry === nothing &&
+        return _grad_analytical_integral_1overR_big(P, V1, V2, V3)
+    # The gradient of this degree-one homogeneous potential is degree zero.
+    value = _grad_analytical_integral_1overR_unchecked(
+        (P - geometry.origin) / geometry.scale,
+        Vec3(0.0, 0.0, 0.0),
+        (V2 - geometry.origin) / geometry.scale,
+        (V3 - geometry.origin) / geometry.scale,
+    )
     all(isfinite, value) ||
         throw(OverflowError(
             "analytical static triangle-integral gradient is non-finite"))
     return value
 end
 
+
+@noinline function _grad_analytical_integral_1overR_big(
+        P::Vec3, V1::Vec3, V2::Vec3, V3::Vec3)
+    return setprecision(
+            BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        point, first, second, third, scale =
+            _static_triangle_integral_big_geometry(P, V1, V2, V3)
+        value = _grad_analytical_integral_1overR_unchecked(
+            (point - first) / scale,
+            SVector{3,BigFloat}(0, 0, 0),
+            (second - first) / scale,
+            (third - first) / scale,
+        )
+        converted = Vec3(Float64.(value))
+        all(isfinite, converted) ||
+            throw(OverflowError(
+                "analytical static triangle-integral gradient is non-finite"))
+        converted
+    end
+end
+
 function _grad_analytical_integral_1overR_unchecked(
-    P::Vec3,
-    V1::Vec3,
-    V2::Vec3,
-    V3::Vec3,
-)
+    P::SVector{3,T},
+    V1::SVector{3,T},
+    V2::SVector{3,T},
+    V3::SVector{3,T},
+) where {T<:AbstractFloat}
     n_T = cross(V2 - V1, V3 - V1)
     n_norm = norm(n_T)
-    if n_norm < 1e-30
-        return SVector{3,Float64}(0.0, 0.0, 0.0)
+    if iszero(n_norm)
+        return SVector{3,T}(zero(T), zero(T), zero(T))
     end
     n_T = n_T / n_norm
 
@@ -172,13 +282,13 @@ function _grad_analytical_integral_1overR_unchecked(
     xi = P - h * n_T   # projection of P onto triangle plane
 
     edges = ((V1, V2), (V2, V3), (V3, V1))
-    tang = SVector{3,Float64}(0.0, 0.0, 0.0)  # in-plane gradient component
-    atan_sum = 0.0
+    tang = SVector{3,T}(zero(T), zero(T), zero(T))
+    atan_sum = zero(T)
 
     for (A, B) in edges
         edge_vec = B - A
         edge_len = norm(edge_vec)
-        if edge_len < 1e-30
+        if iszero(edge_len)
             continue
         end
         lhat = edge_vec / edge_len
@@ -195,12 +305,12 @@ function _grad_analytical_integral_1overR_unchecked(
         # In-plane part: û_i log[(R⁺ + s⁺)/(R⁻ + s⁻)]
         denom = s_minus + R_minus
         numer = s_plus + R_plus
-        if abs(denom) > 1e-30 && abs(numer) > 1e-30
+        if denom > 0.0 && numer > 0.0
             tang = tang + nhat * log(numer / denom)
         end
 
         # Normal part: arctan terms (vanish for P in-plane, where h = 0)
-        if abs_h > 1e-15 && abs(d_i) > 1e-15
+        if !iszero(abs_h) && !iszero(d_i)
             atan_plus  = atan(d_i * s_plus  / (R0_sq + abs_h * R_plus))
             atan_minus = atan(d_i * s_minus / (R0_sq + abs_h * R_minus))
             atan_sum += atan_plus - atan_minus
@@ -281,7 +391,7 @@ function self_cell_contribution(
         rm = quad_pts_tm_hi[qm]
         fm = eval_rwg(rwg, m_test, rm, tm)
 
-        S = _analytical_integral_1overR_unchecked(rm, V1, V2, V3)
+        S = analytical_integral_1overR(rm, V1, V2, V3)
         inner_scalar = inv4pi * S
 
         # Scalar potential singular part
@@ -298,8 +408,8 @@ function self_cell_contribution(
             fn = eval_rwg(rwg, n_src, rn, tm)
 
             R_vec = rm - rn
-            R = sqrt(dot(R_vec, R_vec))
-            if R < 1e-14
+            R = hypot(hypot(R_vec[1], R_vec[2]), R_vec[3])
+            if iszero(R)
                 continue  # [f_n(rn) - f_n(rm)] = 0 when rn = rm
             end
 
@@ -398,7 +508,7 @@ function adjacent_cell_contribution(
         fm = eval_rwg(rwg, m_test, rm, tm)
 
         # Analytical inner integral: S = ∫_{T_n} 1/|rm - r'| dS'
-        S = _analytical_integral_1overR_unchecked(rm, V1n, V2n, V3n)
+        S = analytical_integral_1overR(rm, V1n, V2n, V3n)
         inner_scalar = inv4pi * S
 
         # Scalar potential singular part (exact via analytical integral)
@@ -413,8 +523,8 @@ function adjacent_cell_contribution(
             fn_hi = eval_rwg(rwg, n_src, rn, tn)
 
             R_vec = rm - rn
-            R = sqrt(dot(R_vec, R_vec))
-            if R < 1e-14
+            R = hypot(hypot(R_vec[1], R_vec[2]), R_vec[3])
+            if iszero(R)
                 continue
             end
 

@@ -111,6 +111,24 @@ function _solve_vie_factored_2d(
     return _solve_vie_factored_2d!(copy(rhs), factorization, Z, label)
 end
 
+function _factor_vie_system_2d(Z::Matrix{ComplexF64}, label::AbstractString)
+    raw_factor = try
+        lu(Z)
+    catch err
+        _recoverable_direct_solve_error(err) || rethrow()
+        nothing
+    end
+    if raw_factor !== nothing && issuccess(raw_factor)
+        reciprocal_condition = _vie_reciprocal_condition_2d(raw_factor, Z)
+        reciprocal_condition > eps(Float64) && return raw_factor
+    end
+    # A small componentwise residual does not imply an accurate field for a
+    # severely ill-conditioned VIE system. Factor the stored Float64 matrix
+    # exactly in the bounded high-precision backend and cache that plan for
+    # both the forward solve and subsequent Jacobian block solves.
+    return _factor_bigfloat_ieee_matrix(Z, ComplexF64, label)
+end
+
 @noinline function _product_bigfloat_2d(
         first::Float64,
         second::Float64,
@@ -370,10 +388,10 @@ function solve_vie_2d(mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
         throw(ArgumentError("E_inc must contain only finite values."))
 
     Z, D = assemble_vie_2d(mesh, k0, chi)
-    Z_lu = lu(Z)
+    Z_lu = _factor_vie_system_2d(Z, "solve_vie_2d")
     issuccess(Z_lu) ||
         error("solve_vie_2d system matrix factorization failed.")
-    E_total = _solve_vie_factored_2d(
+    E_total = _solve_factored_linear_system(
         Z_lu, Z, E_inc, "solve_vie_2d")
     all(isfinite, E_total) ||
         error("solve_vie_2d produced non-finite total-field values.")

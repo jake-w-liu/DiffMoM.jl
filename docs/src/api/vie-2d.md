@@ -123,17 +123,17 @@ println("Cells: ", mesh.ncells, ", dx = ", mesh.dx, ", area = ", mesh.cell_area)
 
 Result bundle from a 2D VIE forward solve, returned by `solve_vie_2d`. It carries
 the total and incident fields, the contrast profile, the assembled matrices, the
-cached LU factorization, the mesh, and the wavenumber, so downstream routines
+cached verified factorization, the mesh, and the wavenumber, so downstream routines
 (`scattered_field_2d`, `jacobian_scattered_field_2d`) can reuse them.
 
 ```julia
-struct VIEResult2D
+struct VIEResult2D{F}
     E_total::Vector{ComplexF64}   # total field at cell centers
     E_inc::Vector{ComplexF64}     # incident field at cell centers
     chi::Vector{Float64}          # contrast profile (eps_r - 1)
     D::Matrix{ComplexF64}         # Green's function integral matrix
     Z::Matrix{ComplexF64}         # system matrix (I - k0^2 D diag(chi))
-    Z_LU::LinearAlgebra.LU{ComplexF64, Matrix{ComplexF64}, Vector{Int64}}
+    Z_LU::F                         # reusable verified solve plan
     mesh::Mesh2D
     k0::Float64                   # free-space wavenumber
 end
@@ -148,7 +148,7 @@ end
 | `chi` | `Vector{Float64}` | Dielectric contrast `eps_r - 1` per cell (length `ncells`). |
 | `D` | `Matrix{ComplexF64}` | Green's function integral matrix `D[m,n]` (size `ncells x ncells`). |
 | `Z` | `Matrix{ComplexF64}` | System matrix `Z = I - k0^2 D diag(chi)` (size `ncells x ncells`). |
-| `Z_LU` | `LU{ComplexF64, ...}` | Cached LU factorization of `Z` (reused by the Jacobian). |
+| `Z_LU` | factorization/solve plan | Cached verified factorization of `Z` (reused by the Jacobian). Ordinary systems use LU; range- or condition-sensitive systems may use a bounded high-precision plan. |
 | `mesh` | `Mesh2D` | The mesh used for the solve. |
 | `k0` | `Float64` | Free-space wavenumber (rad/m). |
 
@@ -295,7 +295,7 @@ Jacobian evaluation.
 | `E_inc` | `AbstractVector{ComplexF64}` | -- | Incident field at cell centers (length `ncells`), e.g. from `planewave_2d` or `linesource_2d`. |
 
 **Returns:** `VIEResult2D` with the total field `E_total`, the incident field, the
-contrast profile, the matrices `D` and `Z`, the LU factorization, the mesh, and
+contrast profile, the matrices `D` and `Z`, the verified factorization, the mesh, and
 `k0`.
 
 **Example:**
@@ -476,15 +476,24 @@ are returned indexed from `-N:N`, stored at `c[n + N + 1]`.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `k0` | `Float64` | -- | Free-space wavenumber (rad/m). Must be `> 0`. |
-| `a` | `Float64` | -- | Cylinder radius (m). Must be `> 0`. |
+| `k0` | `Float64` | -- | Free-space wavenumber (rad/m). Must be `> 0`; the product `k0*a` must be representable as `Float64`. |
+| `a` | `Float64` | -- | Cylinder radius (m). Must be `> 0`; the product `k0*a` must be representable as `Float64`. |
 | `eps_r` | `Float64` | -- | Relative permittivity (ignored when `pec=true`). |
-| `nmax` | `Union{Nothing,Int}` | `nothing` | Maximum order N. Auto-determined from `k0 a` when `nothing`. |
+| `nmax` | `Union{Nothing,Int}` | `nothing` | Maximum order N (hard limit 100,000). Auto-determined from `k0 a` when `nothing`. |
 | `pec` | `Bool` | `false` | If `true`, compute PEC cylinder coefficients. |
 
 **Returns:** Tuple `(c, N)`:
 - `c::Vector{ComplexF64}` of length `2N + 1` (coefficient for order `n` at index `n + N + 1`).
 - `N::Int` the maximum order used.
+
+Small-argument and high-order boundary cases use capped exact arithmetic. A
+request whose precision-weighted exact-work estimate exceeds the internal
+2,000,000-unit budget fails before the allocating fallback begins; reduce
+`nmax` in that case. The current small-argument power-series fallback has an
+additional maximum order of 256 so its quadratic arbitrary-precision work
+cannot dominate the coefficient payload.
+Internal size parameters at or below `0.5` additionally support at most 256
+orders because their normalized pair construction is the exact cold path.
 
 **Example:**
 
@@ -495,7 +504,7 @@ c0 = c[N + 1]   # n = 0 coefficient
 
 ---
 
-### `mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false)`
+### `mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000)`
 
 Compute the exact scattered field at observation points for a circular cylinder:
 
@@ -516,8 +525,15 @@ evaluated with unit incident amplitude.
 | `phi_inc` | `Float64` | `0.0` | Incidence angle (rad); `0` is +x. |
 | `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie order (auto if `nothing`). |
 | `pec` | `Bool` | `false` | If `true`, treat as a PEC cylinder. |
+| `max_field_terms` | `Int` | `50_000_000` | Maximum aggregate ordinary partial-wave terms across all observation points. |
 
 **Returns:** `Vector{ComplexF64}` of scattered-field values, length M.
+
+Observations whose radial phase cannot be resolved accurately in ordinary
+Float64 arithmetic use capped exact evaluation. The aggregate
+`number_of_exceptional_points * (N + 1) * precision` work must not exceed the
+2,000,000-unit exact-work budget; the request fails before coefficient and
+field buffers are allocated when that bound is exceeded.
 
 **Example:**
 
@@ -529,15 +545,16 @@ E_scat_mie = mie_scattered_field_2d(2pi, a, 4.0, r_obs; phi_inc=0.0)
 
 ---
 
-### `mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false)`
+### `mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000)`
 
 Compute the exact total field (incident plus scattered) at observation points
-outside the cylinder (`rho > a`). The incident term is the plane wave
+on or outside the cylinder (`rho >= a`). The incident term is the plane wave
 `exp(-i k0 k_hat . r)` with `k_hat = (cos(phi_inc), sin(phi_inc))`, and the
 scattered term is `mie_scattered_field_2d`.
 
 **Parameters:** Same as `mie_scattered_field_2d` (`k0`, `a`, `eps_r`, `r_obs`;
-keywords `phi_inc=0.0`, `nmax=nothing`, `pec=false`).
+keywords `phi_inc=0.0`, `nmax=nothing`, `pec=false`, and
+`max_field_terms=50_000_000`).
 
 **Returns:** `Vector{ComplexF64}` of total-field values, length M.
 

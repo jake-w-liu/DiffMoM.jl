@@ -1647,6 +1647,7 @@ end
 end
 
 const _DEFAULT_CLUSTER_MAX_EXACT_CELL_INDICES = 10_000
+const _DEFAULT_CLUSTER_MAX_EXACT_AREA_CHECKS = 1_000
 const _CLUSTER_FLOAT_EXPONENT_MIN = -1074
 const _CLUSTER_FLOAT_EXPONENT_MAX = 971
 const _CLUSTER_FLOAT_EXPONENT_COUNT =
@@ -1847,7 +1848,8 @@ function _cluster_exact_centers(
 end
 
 """
-    cluster_mesh_vertices(mesh, h; max_exact_cell_indices=10_000)
+    cluster_mesh_vertices(mesh, h; max_exact_cell_indices=10_000,
+                          max_exact_area_checks=1_000)
 
 Voxel-cluster a mesh using cubic cell size `h`, replacing all vertices in each
 cell by their centroid and remapping triangles. Degenerate and duplicate
@@ -1856,16 +1858,35 @@ triangles created by remapping are removed.
 function cluster_mesh_vertices(
         mesh::TriMesh, h::Float64;
         max_exact_cell_indices::Integer=
-            _DEFAULT_CLUSTER_MAX_EXACT_CELL_INDICES)
+            _DEFAULT_CLUSTER_MAX_EXACT_CELL_INDICES,
+        max_exact_area_checks::Integer=
+            _DEFAULT_CLUSTER_MAX_EXACT_AREA_CHECKS)
     (isfinite(h) && h > 0.0) ||
         throw(ArgumentError("cluster_mesh_vertices: h must be finite and positive, got $h"))
     exact_index_limit = _validated_mesh_resource_limit(
         "max_exact_cell_indices", max_exact_cell_indices)
+    exact_area_limit = _validated_mesh_resource_limit(
+        "max_exact_area_checks", max_exact_area_checks)
+
+    size(mesh.xyz, 1) == 3 ||
+        throw(DimensionMismatch(
+            "cluster_mesh_vertices requires a 3×Nv coordinate matrix"))
+    size(mesh.tri, 1) == 3 ||
+        throw(DimensionMismatch(
+            "cluster_mesh_vertices requires a 3×Nt connectivity matrix"))
+    all(isfinite, mesh.xyz) ||
+        throw(ArgumentError(
+            "cluster_mesh_vertices: vertex coordinates must be finite"))
 
     nv = nvertices(mesh)
     nv >= 1 ||
         throw(ArgumentError(
             "cluster_mesh_vertices requires at least one vertex"))
+    @inbounds for vertex in mesh.tri
+        1 <= vertex <= nv ||
+            throw(ArgumentError(
+                "cluster_mesh_vertices: vertex index $vertex is outside 1:$nv"))
+    end
     mins = (
         minimum(@view mesh.xyz[1, :]),
         minimum(@view mesh.xyz[2, :]),
@@ -1931,6 +1952,7 @@ function cluster_mesh_vertices(
 
     tri_vec = Int[]
     seen = Set{NTuple{3,Int}}()
+    exact_area_checks = 0
     for t in 1:ntriangles(mesh)
         a = vmap[mesh.tri[1, t]]
         b = vmap[mesh.tri[2, t]]
@@ -1939,10 +1961,37 @@ function cluster_mesh_vertices(
             continue
         end
         key = _sorted_triangle_vertices(a, b, c)
-        if key in seen
-            continue
-        end
+        key in seen && continue
         push!(seen, key)
+        first = Vec3(xyz_new[1, a], xyz_new[2, a], xyz_new[3, a])
+        second = Vec3(xyz_new[1, b], xyz_new[2, b], xyz_new[3, b])
+        third = Vec3(xyz_new[1, c], xyz_new[2, c], xyz_new[3, c])
+        fast, _, _, _, first_exponent, second_exponent, cross_norm =
+            _scaled_triangle_cross(first, second, third)
+        has_positive_area = if fast && cross_norm > 0.0
+            area = _scaled_triangle_area(
+                cross_norm, first_exponent, second_exponent)
+            if area > 0.0
+                true
+            else
+                exact_area_checks += 1
+                exact_area_checks <= exact_area_limit ||
+                    throw(ArgumentError(
+                        "cluster_mesh_vertices exceeded " *
+                        "max_exact_area_checks=$exact_area_limit"))
+                _triangle_area_rounds_positive_big(first, second, third)
+            end
+        elseif fast
+            false
+        else
+            exact_area_checks += 1
+            exact_area_checks <= exact_area_limit ||
+                throw(ArgumentError(
+                    "cluster_mesh_vertices exceeded " *
+                    "max_exact_area_checks=$exact_area_limit"))
+            _triangle_area_rounds_positive_big(first, second, third)
+        end
+        has_positive_area || continue
         push!(tri_vec, a, b, c)
     end
 
@@ -2023,28 +2072,12 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
         throw(ArgumentError("coarsen_mesh_to_target_rwg: max_iters must be at least 1, got $max_iters"))
 
     normalized_input = _normalize_mesh_for_coarsening(mesh)
-    try
-        assert_mesh_quality(
-            normalized_input;
-            allow_boundary=allow_boundary,
-            require_closed=require_closed,
-            area_tol_rel=area_tol_rel,
-        )
-    catch err
-        # A translated Float64 copy can lose the low subtraction part of a
-        # very thin but valid face. Settle only a failed normalized precheck
-        # against the stored physical endpoints; the ordinary/extreme-scale
-        # path remains allocation-free of per-face BigFloat arithmetic.
-        err isa ErrorException &&
-        startswith(sprint(showerror, err), "Mesh quality precheck failed:") ||
-            rethrow()
-        assert_mesh_quality(
-            mesh;
-            allow_boundary=allow_boundary,
-            require_closed=require_closed,
-            area_tol_rel=area_tol_rel,
-        )
-    end
+    _assert_coarsening_mesh_quality(
+        mesh, normalized_input;
+        allow_boundary=allow_boundary,
+        require_closed=require_closed,
+        area_tol_rel=area_tol_rel,
+    )
     _validate_coarsening_candidate_area_range(mesh)
     best_rwg = _count_rwg_edges(mesh)
     best_mesh = mesh
@@ -2070,19 +2103,38 @@ function coarsen_mesh_to_target_rwg(mesh::TriMesh, target_rwg::Int;
             cand = cluster_mesh_vertices(working_mesh, h)
             cand = drop_nonmanifold_triangles(cand)
             normalized_cand = _normalize_mesh_for_coarsening(cand)
+            normalized_scale =
+                _coarsening_referenced_bbox_scale(normalized_cand)
+            normalized_tolerance = normalized_scale === nothing ? Inf :
+                _area_tolerance(normalized_scale, area_tol_rel)
+            physical_scale = _coarsening_referenced_bbox_scale(cand)
+            physical_tolerance = physical_scale === nothing ? Inf :
+                _area_tolerance(physical_scale, area_tol_rel)
+            physical_rounding_can_change = normalized_scale === nothing ||
+                _coarsening_physical_rounding_can_change(
+                    cand, normalized_cand,
+                    normalized_tolerance, area_tol_rel) ||
+                _coarsening_area_near_tolerance(
+                    normalized_cand, normalized_tolerance, false)
+            repair_input = physical_rounding_can_change ?
+                           cand : normalized_cand
+            repair_area_tol_rel = physical_tolerance == 0.0 ?
+                                  0.0 : area_tol_rel
             cand_rep = repair_mesh_for_simulation(
-                normalized_cand;
+                repair_input;
                 allow_boundary=allow_boundary,
                 require_closed=require_closed,
-                area_tol_rel=area_tol_rel,
+                area_tol_rel=repair_area_tol_rel,
                 drop_invalid=true,
                 drop_degenerate=true,
                 fix_orientation=true,
                 strict_nonmanifold=strict_nonmanifold,
             )
-            cand_mesh = _restore_coarsened_mesh(cand, cand_rep)
-            assert_mesh_quality(
-                cand_mesh;
+            cand_mesh = physical_rounding_can_change ?
+                        cand_rep.mesh :
+                        _restore_coarsened_mesh(cand, cand_rep)
+            _assert_coarsening_mesh_quality(
+                cand_mesh, cand_rep.mesh;
                 allow_boundary=allow_boundary,
                 require_closed=require_closed,
                 area_tol_rel=area_tol_rel,
@@ -2158,36 +2210,49 @@ function _normalize_mesh_for_coarsening(mesh::TriMesh)
                 "outside 1:$(nvertices(mesh))"))
         referenced[vertex] = true
     end
-    origin_vertex = findfirst(referenced)
-    origin_vertex === nothing &&
+    findfirst(referenced) === nothing &&
         throw(ArgumentError("cannot normalize a coarsening candidate without faces"))
-    origin = _mesh_vertex(mesh, origin_vertex)
     maximum_exponent = typemin(Int)
     @inbounds for vertex in 1:nvertices(mesh)
         referenced[vertex] || continue
         for component in 1:3
             value = mesh.xyz[component, vertex]
-            reference = origin[component]
-            difference = value - reference
-            if isfinite(difference)
-                if !iszero(difference)
-                    _, exponent = frexp(abs(difference))
-                    maximum_exponent = max(maximum_exponent, exponent)
-                end
-            else
-                value_exponent = iszero(value) ? typemin(Int) :
-                                 last(frexp(abs(value)))
-                reference_exponent = iszero(reference) ? typemin(Int) :
-                                     last(frexp(abs(reference)))
-                maximum_exponent = max(
-                    maximum_exponent,
-                    max(value_exponent, reference_exponent) + 1)
-            end
+            iszero(value) && continue
+            _, exponent = frexp(abs(value))
+            maximum_exponent = max(maximum_exponent, exponent)
         end
     end
     maximum_exponent != typemin(Int) ||
         throw(ArgumentError(
             "coarsening candidate has no representable coordinate extent"))
+
+    # A common power-of-two scale preserves the stored Float64 geometry and
+    # its orientation; unlike translation, it cannot discard a subtraction
+    # tail at a borderline triangle. Keep ordinary coordinates unchanged and
+    # move only extreme magnitudes into a range where areas are normal.
+    shift = maximum_exponent > 450 ? 450 - maximum_exponent :
+            maximum_exponent < -450 ? -450 - maximum_exponent : 0
+
+    # Some valid meshes contain referenced components spanning the complete
+    # Float64 exponent range. If one common scale cannot preserve every stored
+    # component exactly, retain the physical scale and let the certified cold
+    # geometry paths settle it instead of rejecting valid input.
+    if !iszero(shift)
+        exact_scale = true
+        @inbounds for vertex in 1:nvertices(mesh)
+            referenced[vertex] || continue
+            for component in 1:3
+                value = mesh.xyz[component, vertex]
+                scaled = ldexp(value, shift)
+                if !isfinite(scaled) || ldexp(scaled, -shift) != value
+                    exact_scale = false
+                    break
+                end
+            end
+            exact_scale || break
+        end
+        exact_scale || (shift = 0)
+    end
 
     xyz = Matrix{Float64}(undef, 3, nvertices(mesh))
     @inbounds for vertex in 1:nvertices(mesh)
@@ -2199,14 +2264,7 @@ function _normalize_mesh_for_coarsening(mesh::TriMesh)
         end
         for component in 1:3
             value = mesh.xyz[component, vertex]
-            reference = origin[component]
-            difference = value - reference
-            normalized = if isfinite(difference)
-                ldexp(difference, -maximum_exponent)
-            else
-                ldexp(value, -maximum_exponent) -
-                ldexp(reference, -maximum_exponent)
-            end
+            normalized = ldexp(value, shift)
             isfinite(normalized) ||
                 throw(OverflowError(
                     "coarsening candidate normalization produced a non-finite coordinate"))
@@ -2214,6 +2272,138 @@ function _normalize_mesh_for_coarsening(mesh::TriMesh)
         end
     end
     return TriMesh(xyz, copy(mesh.tri))
+end
+
+@inline function _coarsening_area_near_tolerance(
+        mesh::TriMesh, tolerance::Float64, physical_scale_required::Bool)
+    tolerance == 0.0 && return false
+    physical_scale_required && return true
+    @inbounds for triangle in 1:ntriangles(mesh)
+        area = triangle_area(mesh, triangle)
+        separation = abs(area - tolerance)
+        uncertainty = 256 * eps(Float64) * max(area, tolerance)
+        separation <= uncertainty && return true
+    end
+    return false
+end
+
+function _assert_coarsening_mesh_quality(
+        physical_mesh::TriMesh, normalized_mesh::TriMesh;
+        allow_boundary::Bool, require_closed::Bool,
+        area_tol_rel::Float64)
+    report = try
+        assert_mesh_quality(
+            normalized_mesh;
+            allow_boundary=allow_boundary,
+            require_closed=require_closed,
+            area_tol_rel=area_tol_rel,
+        )
+    catch err
+        # A globally scaled copy can still push a very small secondary feature
+        # through a representability boundary. Settle only that cold failure
+        # against the stored endpoints.
+        err isa ErrorException &&
+        startswith(sprint(showerror, err), "Mesh quality precheck failed:") ||
+            rethrow()
+        return assert_mesh_quality(
+            physical_mesh;
+            allow_boundary=allow_boundary,
+            require_closed=require_closed,
+            area_tol_rel=area_tol_rel,
+        )
+    end
+    physical_scale_required = _coarsening_physical_rounding_can_change(
+        physical_mesh, normalized_mesh, report.area_tol_abs, area_tol_rel)
+    if normalized_mesh !== physical_mesh &&
+       _coarsening_area_near_tolerance(
+           normalized_mesh, report.area_tol_abs, physical_scale_required)
+        return assert_mesh_quality(
+            physical_mesh;
+            allow_boundary=allow_boundary,
+            require_closed=require_closed,
+            area_tol_rel=area_tol_rel,
+        )
+    end
+    return report
+end
+
+function _coarsening_physical_rounding_can_change(
+        physical_mesh::TriMesh, normalized_mesh::TriMesh,
+        normalized_tolerance::Float64, area_tol_rel::Float64)
+    normalized_mesh.xyz == physical_mesh.xyz && return false
+    shift = nothing
+    @inbounds for index in eachindex(physical_mesh.xyz)
+        physical = physical_mesh.xyz[index]
+        normalized = normalized_mesh.xyz[index]
+        if !iszero(physical)
+            physical_fraction, physical_exponent = frexp(physical)
+            normalized_fraction, normalized_exponent = frexp(normalized)
+            physical_fraction == normalized_fraction || return true
+            shift = normalized_exponent - physical_exponent
+            break
+        end
+    end
+    shift === nothing && return false
+
+    physical_scale = _coarsening_referenced_bbox_scale(physical_mesh)
+    physical_scale === nothing && return true
+    physical_tolerance = _area_tolerance(physical_scale, area_tol_rel)
+    physical_tolerance == 0.0 && return false
+    physical_tolerance <= floatmin(Float64) && return true
+
+    # If both the rounded area and rounded tolerance stay normal after the
+    # inverse scale, their ordering is exactly invariant under the power of
+    # two. Only a representability boundary requires the physical cold oracle.
+    tolerance_fraction, tolerance_exponent = frexp(normalized_tolerance)
+    physical_tolerance_exponent = tolerance_exponent - 2shift
+    if normalized_tolerance > 0.0 &&
+       (physical_tolerance_exponent <= -1022 ||
+        physical_tolerance_exponent >= 1024)
+        return true
+    end
+    @inbounds for triangle in 1:ntriangles(normalized_mesh)
+        area = triangle_area(normalized_mesh, triangle)
+        area_fraction, area_exponent = frexp(area)
+        physical_area_exponent = area_exponent - 2shift
+        if area > 0.0 &&
+           (physical_area_exponent <= -1022 ||
+            physical_area_exponent >= 1024)
+            return true
+        end
+    end
+    return false
+end
+
+function _coarsening_referenced_bbox_scale(mesh::TriMesh)
+    xmin = Inf
+    ymin = Inf
+    zmin = Inf
+    xmax = -Inf
+    ymax = -Inf
+    zmax = -Inf
+    @inbounds for triangle in 1:ntriangles(mesh)
+        for row in 1:3
+            vertex = mesh.tri[row, triangle]
+            x = mesh.xyz[1, vertex]
+            y = mesh.xyz[2, vertex]
+            z = mesh.xyz[3, vertex]
+            xmin = min(xmin, x)
+            ymin = min(ymin, y)
+            zmin = min(zmin, z)
+            xmax = max(xmax, x)
+            ymax = max(ymax, y)
+            zmax = max(zmax, z)
+        end
+    end
+    dx = xmax - xmin
+    dy = ymax - ymin
+    dz = zmax - zmin
+    isfinite(dx) && isfinite(dy) && isfinite(dz) || return nothing
+    # Match the public mesh-quality oracle bit for bit: its independently
+    # rounded tolerance is part of the API contract at subnormal boundaries.
+    scale = norm(Vec3(dx, dy, dz))
+    isfinite(scale) || return nothing
+    return scale
 end
 
 function _restore_coarsened_mesh(mesh::TriMesh, repair)
@@ -2902,6 +3092,23 @@ end
         isfinite(area) ||
             throw(OverflowError("triangle area is outside the representable Float64 range"))
         return area
+    end
+end
+
+@noinline function _triangle_area_rounds_positive_big(
+        v1::Vec3, v2::Vec3, v3::Vec3)
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        e1x = BigFloat(v2[1]) - BigFloat(v1[1])
+        e1y = BigFloat(v2[2]) - BigFloat(v1[2])
+        e1z = BigFloat(v2[3]) - BigFloat(v1[3])
+        e2x = BigFloat(v3[1]) - BigFloat(v1[1])
+        e2y = BigFloat(v3[2]) - BigFloat(v1[2])
+        e2z = BigFloat(v3[3]) - BigFloat(v1[3])
+        cx = e1y * e2z - e1z * e2y
+        cy = e1z * e2x - e1x * e2z
+        cz = e1x * e2y - e1y * e2x
+        area = hypot(hypot(cx, cy), cz) / 2
+        return Float64(area) > 0.0
     end
 end
 

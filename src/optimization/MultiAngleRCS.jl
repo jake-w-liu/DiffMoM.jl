@@ -52,24 +52,51 @@ function _validate_multiangle_q(Q::AbstractMatrix{ComplexF64},
     return nothing
 end
 
+@inline function _multiangle_direction_and_magnitude(value::Vec3,
+                                                       label::AbstractString)
+    all(isfinite, value) ||
+        throw(ArgumentError("$label components must be finite"))
+    scale = maximum(abs, value)
+    scale > 0.0 || throw(ArgumentError("$label must be nonzero"))
+    scaled = value / scale
+    scaled_norm = norm(scaled)
+    isfinite(scaled_norm) && scaled_norm > 0.0 ||
+        throw(ArgumentError("$label must have a finite, nonzero norm"))
+    scale_fraction, scale_exponent = frexp(scale)
+    norm_fraction, norm_exponent = frexp(scale_fraction * scaled_norm)
+    return (
+        direction=scaled / scaled_norm,
+        fraction=norm_fraction,
+        exponent=Base.checked_add(scale_exponent, norm_exponent),
+    )
+end
+
+@inline function _multiangle_magnitudes_match(first, second)
+    exponent_delta = first.exponent - second.exponent
+    abs(exponent_delta) <= 1 || return false
+    first_fraction = ldexp(first.fraction, exponent_delta)
+    return isapprox(first_fraction, second.fraction; rtol=1e-10, atol=0.0)
+end
+
 function _validate_angle_config(config::AngleConfig, index::Int, N::Int)
-    all(isfinite, config.k_vec) ||
-        throw(ArgumentError(
-            "angle configuration $index k_vec components must be finite"))
-    k_norm = norm(config.k_vec)
-    isfinite(k_norm) && k_norm > 0.0 ||
-        throw(ArgumentError(
-            "angle configuration $index k_vec must have a finite, nonzero norm"))
+    k_geometry = _multiangle_direction_and_magnitude(
+        config.k_vec, "angle configuration $index k_vec")
     all(isfinite, config.pol) ||
         throw(ArgumentError(
             "angle configuration $index polarization components must be finite"))
-    pol_norm = norm(config.pol)
+    pol_scale = maximum(abs, config.pol)
+    pol_scale > 0.0 ||
+        throw(ArgumentError(
+            "angle configuration $index polarization must be nonzero"))
+    pol_scaled = config.pol / pol_scale
+    pol_scaled_norm = norm(pol_scaled)
+    pol_norm = pol_scale * pol_scaled_norm
     isfinite(pol_norm) &&
     isapprox(pol_norm, 1.0; rtol=1e-10, atol=1e-12) ||
         throw(ArgumentError(
             "angle configuration $index polarization must be a unit vector"))
     transverse_error =
-        abs(dot(config.k_vec / k_norm, config.pol / pol_norm))
+        abs(dot(k_geometry.direction, pol_scaled / pol_scaled_norm))
     transverse_error <= 1e-10 ||
         throw(ArgumentError(
             "angle configuration $index polarization must be transverse to k_vec"))
@@ -86,7 +113,7 @@ function _validate_angle_config(config::AngleConfig, index::Int, N::Int)
     isfinite(config.weight) ||
         throw(ArgumentError(
             "angle configuration $index weight must be finite, got $(config.weight)"))
-    return k_norm
+    return k_geometry
 end
 
 function _validate_multiangle_problem(
@@ -110,9 +137,9 @@ function _validate_multiangle_problem(
     first_k = _validate_angle_config(configs[1], 1, N)
     @inbounds for i in 2:length(configs)
         k_norm = _validate_angle_config(configs[i], i, N)
-        isapprox(k_norm, first_k; rtol=1e-10, atol=0.0) ||
+        _multiangle_magnitudes_match(k_norm, first_k) ||
             throw(ArgumentError(
-                "angle configuration $i has |k_vec|=$k_norm, expected $first_k"))
+                "angle configuration $i has a different |k_vec| from angle configuration 1"))
     end
     return N
 end
@@ -122,19 +149,18 @@ function _multiangle_q_product_and_objective(
     current::Vector{ComplexF64},
     label::AbstractString,
 )
-    product = if Q isa Matrix{ComplexF64}
-        _finite_matrix_vector_product(Q, current, label)
-    else
-        converted = Vector{ComplexF64}(Q * current)
-        _assert_finite_linear_vector(converted, label)
-    end
+    product = Q isa Union{Matrix{ComplexF64},
+                         SparseArrays.AbstractSparseMatrixCSC{ComplexF64}} ?
+        _finite_matrix_vector_product(Q, current, label) :
+        _assert_finite_linear_vector(
+            Vector{ComplexF64}(Q * current), label)
 
-    objective = real(dot(current, product))
-    if !isfinite(objective)
-        Q isa Matrix{ComplexF64} ||
-            error("$label produced a non-finite objective")
-        objective = compute_objective(current, Q)
-    end
+    # The product routines above already certify the matrix application.
+    # Reduce the resulting vector directly: inspecting an arbitrary matrix to
+    # decide whether the scalar reduction is exceptional turns matrix-free Q
+    # operators into an O(N²) operation (and may make each getindex expensive).
+    objective = _finite_scaled_dot_component(
+        current, product, Val(:real), 1.0, label)
     return product, objective
 end
 
@@ -153,6 +179,63 @@ end
             throw(OverflowError(
                 "linear multi-angle objective is outside the representable Float64 range"))
         return converted
+    end
+end
+
+@noinline function _multiangle_smoothmax_objective_bigfloat(
+    J_angles::Vector{Float64},
+    weights::Vector{Float64},
+    reference_objectives::Vector{Float64},
+    smooth_beta::Float64,
+    tiny::Float64,
+)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        beta_big = BigFloat(smooth_beta)
+        tiny_big = BigFloat(tiny)
+        count = length(J_angles)
+        z_values = Vector{BigFloat}(undef, count)
+        shifts = Vector{BigFloat}(undef, count)
+        zmax = BigFloat(-Inf)
+        @inbounds for index in eachindex(z_values)
+            objective_value = max(BigFloat(J_angles[index]), tiny_big)
+            z_value = log(objective_value) -
+                      log(BigFloat(reference_objectives[index]))
+            z_values[index] = z_value
+            zmax = max(zmax, z_value)
+        end
+        shiftmax = BigFloat(-Inf)
+        @inbounds for index in eachindex(shifts)
+            shift = beta_big * (z_values[index] - zmax) +
+                    log(BigFloat(weights[index]))
+            shifts[index] = shift
+            shiftmax = max(shiftmax, shift)
+        end
+        denominator = zero(BigFloat)
+        @inbounds for shift in shifts
+            denominator += exp(shift - shiftmax)
+        end
+        value = Float64(
+            zmax + (shiftmax + log(denominator)) / beta_big)
+        isfinite(value) ||
+            throw(OverflowError(
+                "smoothmax_log multi-angle objective is outside the " *
+                "representable Float64 range"))
+        scales = Vector{Float64}(undef, count)
+        @inbounds for index in eachindex(scales)
+            if J_angles[index] < tiny
+                scales[index] = 0.0
+            else
+                scale = exp(shifts[index] - shiftmax) /
+                        (denominator * BigFloat(J_angles[index]))
+                scales[index] = Float64(scale)
+                isfinite(scales[index]) ||
+                    throw(OverflowError(
+                        "smoothmax_log derivative scale $index is outside " *
+                        "the representable Float64 range"))
+            end
+        end
+        return value, scales
     end
 end
 
@@ -244,7 +327,12 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
     if objective == :linear
         copyto!(scales, weights)
         value = dot(weights, J_angles)
-        isfinite(value) ||
+        needs_fallback = !isfinite(value) ||
+            _ieee_bilinear_values_require_fallback(
+                weights, Float64) ||
+            _ieee_bilinear_values_require_fallback(
+                J_angles, Float64)
+        needs_fallback &&
             (value = _multiangle_linear_objective_bigfloat(
                 J_angles, weights))
         return value, scales
@@ -257,9 +345,19 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
             Ji = max(J_angles[i], tiny)
             log_ratio = log(Ji) - log(reference_objectives[i])
             value += wi * log_ratio
-            scales[i] = wi / Ji
+            scales[i] = J_angles[i] < tiny ? 0.0 : wi / Ji
         end
-        isfinite(value) ||
+        needs_fallback = !isfinite(value) ||
+            _ieee_bilinear_values_require_fallback(weights, Float64)
+        needs_fallback || @inbounds for i in 1:M
+            log_ratio = log(max(J_angles[i], tiny)) -
+                        log(reference_objectives[i])
+            if _ieee_dense_extreme_factor(log_ratio, Float64)
+                needs_fallback = true
+                break
+            end
+        end
+        needs_fallback &&
             (value = _multiangle_sum_log_objective_bigfloat(
                 J_angles, weights, reference_objectives, tiny))
         all(isfinite, scales) ||
@@ -299,13 +397,24 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
             denom += exp(shift - shiftmax)
         end
 
-        value = zmax + (shiftmax + log(denom)) / smooth_beta
+        correction = shiftmax + log(denom)
+        value = zmax + correction / smooth_beta
         @inbounds for i in 1:M
             Ji = max(J_angles[i], tiny)
             zi = log(Ji) - log(reference_objectives[i])
             shift = smooth_beta * (zi - zmax) + log(weights[i])
             scales[i] = exp(shift - shiftmax) / (denom * Ji)
         end
+        needs_fallback =
+            _ieee_dense_extreme_factor(smooth_beta, Float64) ||
+            any(value -> _ieee_dense_extreme_factor(value, Float64), weights) ||
+            any(value -> _ieee_dense_extreme_factor(value, Float64), J_angles) ||
+            any(value -> _ieee_dense_extreme_factor(value, Float64),
+                reference_objectives) ||
+            ((iszero(correction) || abs(correction) < floatmin(Float64)) &&
+             (!iszero(shiftmax) || denom != 1.0))
+        needs_fallback && return _multiangle_smoothmax_objective_bigfloat(
+            J_angles, weights, reference_objectives, smooth_beta, tiny)
         (isfinite(value) && all(isfinite, scales)) ||
             error("smoothmax_log objective or derivative scales overflowed")
         return value, scales
@@ -734,9 +843,16 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
 
         # ── 5. Gradient: g[p] = Σ_a scalar_a · ∂J_a/∂θ_p ───────
         g = zeros(P)
-        gradient_finite = true
+        gradient_finite =
+            !_ieee_bilinear_values_require_fallback(
+                objective_scales, Float64)
         for a in 1:M
+            gradient_finite || break
             g_a = gradient_impedance(Mp, I_all[a], lambda_all[a]; reactive=reactive)
+            if _ieee_bilinear_values_require_fallback(g_a, Float64)
+                gradient_finite = false
+                break
+            end
             axpy!(objective_scales[a], g_a, g)
             if !_linear_array_is_finite(g)
                 gradient_finite = false

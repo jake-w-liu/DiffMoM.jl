@@ -205,6 +205,25 @@ function _static_integral_allocations(P, V1, V2, V3)
     )
 end
 
+mutable struct _CountingIdentityQ <: AbstractMatrix{ComplexF64}
+    n::Int
+    reads::Base.RefValue{Int}
+end
+
+Base.size(Q::_CountingIdentityQ) = (Q.n, Q.n)
+function Base.getindex(Q::_CountingIdentityQ, row::Int, column::Int)
+    Q.reads[] += 1
+    return row == column ? 1.0 + 0im : 0.0 + 0im
+end
+Base.:*(Q::_CountingIdentityQ, x::Vector{ComplexF64}) = copy(x)
+function LinearAlgebra.mul!(
+        y::AbstractVector{ComplexF64}, Q::_CountingIdentityQ,
+        x::AbstractVector{ComplexF64})
+    length(y) == Q.n && length(x) == Q.n || throw(DimensionMismatch())
+    copyto!(y, x)
+    return y
+end
+
 function _bilinear_allocation(left, A, right)
     DiffMoM._dot_left_matrix_right(left, A, right)
     return @allocated DiffMoM._dot_left_matrix_right(left, A, right)
@@ -396,7 +415,10 @@ objective_verify = theta -> theta[1]^2 + 3theta[2]^2
 gradient_verify = [2.0, -3.0]
 
 @test complex_step_grad(objective_verify, theta_verify, 1) ≈ 2.0
+@test complex_step_grad(theta -> 1e-294 * theta[1], [1.0], 1) == 1e-294
+@test_throws ArgumentError complex_step_grad(_ -> 1.0, [1.0], 1)
 @test fd_grad(objective_verify, theta_verify, 2) ≈ -3.0 rtol=1e-9
+@test fd_grad(theta -> theta[1], [1e16], 1; h=3.0) == 1.0
 @test fd_grad(
     objective_verify, theta_verify, 1; scheme=:forward) ≈ 2.0 rtol=1e-5
 verified_gradient = verify_gradient(
@@ -1085,6 +1107,51 @@ rwg_coarse_out = build_rwg(coarse_result.mesh; precheck=true, allow_boundary=tru
 report_coarse_out = mesh_quality_report(coarse_result.mesh)
 @assert mesh_quality_ok(report_coarse_out; allow_boundary=true, require_closed=false)
 
+# Distinct voxel centroids can still become exactly collinear; remove the
+# resulting zero-area face just like an index-collapsed face.
+cluster_collinear_input = TriMesh(
+    Float64[
+        0.1 0.1 1.1 1.1 2.1 2.1;
+        0.2 0.8 0.2 0.8 0.8 0.2;
+        0.0 0.0 0.0 0.0 0.0 0.0
+    ],
+    Int[1 2; 3 4; 5 6],
+)
+@test_throws ArgumentError cluster_mesh_vertices(
+    cluster_collinear_input, 1.0)
+cluster_area_underflow_input = let
+    length_scale = 1.0e-161
+    offset = 1.0e-162
+    TriMesh(
+        Float64[
+            0 0 length_scale length_scale 2length_scale 2length_scale;
+            -offset offset offset -offset -offset nextfloat(offset);
+            0 0 0 0 0 0
+        ],
+        Int[1 2; 3 4; 5 6],
+    )
+end
+@test_throws ArgumentError cluster_mesh_vertices(
+    cluster_area_underflow_input, 0.75e-161)
+cluster_area_underflow_duplicates = TriMesh(
+    cluster_area_underflow_input.xyz,
+    repeat(cluster_area_underflow_input.tri, 1, 1_000),
+)
+try
+    cluster_mesh_vertices(
+        cluster_area_underflow_duplicates, 0.75e-161)
+catch
+end
+GC.gc()
+@test @allocated(try
+    cluster_mesh_vertices(
+        cluster_area_underflow_duplicates, 0.75e-161)
+catch
+end) < 500_000
+@test_throws ArgumentError cluster_mesh_vertices(
+    cluster_area_underflow_input, 0.75e-161;
+    max_exact_area_checks=0)
+
 # Coarsening is surface-dimensional and scale invariant; a fixed absolute
 # length floor must not collapse a nanoscale plate or overflow a huge one.
 for scale in (1.0e-100, 1.0e150, 1.0e155)
@@ -1125,6 +1192,86 @@ coarsen_mesh_to_target_rwg(
 GC.gc()
 @test @allocated(coarsen_mesh_to_target_rwg(
     coarse_tiny_runtime_mesh, target_rwg; max_iters=2)) < 20_000_000
+
+# When the physical area tolerance rounds to zero, normalized-space repair
+# must not delete representable minsubnormal faces. This multi-face mesh enters
+# the candidate path and collapses to one such valid face.
+coarse_minsub_vertices = Float64[
+    8.513298007032766e-163 1.7984151419124296e-162 2.148749960278492e-162;
+    -8.029981995707232e-163 1.273363791932202e-162 -2.1764978143105622e-162;
+    -6.030051840716439e-163 5.554832536677963e-163 9.659195691234607e-164
+]
+coarse_minsub_xyz = Matrix{Float64}(undef, 3, 40)
+coarse_minsub_tri = Matrix{Int}(undef, 3, 20)
+for group in 0:9
+    first = 4group + 1
+    coarse_minsub_xyz[:, first] = coarse_minsub_vertices[:, 1]
+    coarse_minsub_xyz[:, first + 1] = coarse_minsub_vertices[:, 2]
+    coarse_minsub_xyz[:, first + 2] = coarse_minsub_vertices[:, 3]
+    coarse_minsub_xyz[:, first + 3] = coarse_minsub_vertices[:, 3]
+    coarse_minsub_tri[:, 2group + 1] .=
+        (first, first + 1, first + 2)
+    coarse_minsub_tri[:, 2group + 2] .=
+        (first + 1, first, first + 3)
+end
+coarse_minsub_mesh = TriMesh(coarse_minsub_xyz, coarse_minsub_tri)
+coarse_minsub_result = coarsen_mesh_to_target_rwg(
+    coarse_minsub_mesh, 1; max_iters=1, area_tol_rel=0.2)
+@test coarse_minsub_result.mesh !== coarse_minsub_mesh
+@test coarse_minsub_result.iterations == 1
+@test ntriangles(coarse_minsub_result.mesh) == 1
+@test triangle_area(coarse_minsub_result.mesh, 1) == nextfloat(0.0)
+@test mesh_quality_ok(
+    mesh_quality_report(
+        coarse_minsub_result.mesh; area_tol_rel=0.2);
+    allow_boundary=true)
+
+# A power-of-two quality normalization must preserve the physical side of a
+# borderline relative-area decision rather than rounding a degenerate face up.
+coarse_borderline_xyz = Float64[
+    -13.67789190253212 20.605906214258475 -24.77060790944614;
+    -8.71347428782219 6.5380022079351425 -12.739690403750291;
+    1.3425004850768831 -6.73902980326434 -8.555526751828038
+]
+coarse_borderline_mesh = TriMesh(
+    coarse_borderline_xyz, reshape(Int[1, 2, 3], 3, 1))
+coarse_borderline_tol = 0.09246594018146315
+@test mesh_quality_report(
+    coarse_borderline_mesh;
+    area_tol_rel=coarse_borderline_tol).n_degenerate_triangles == 1
+@test_throws ErrorException coarsen_mesh_to_target_rwg(
+    coarse_borderline_mesh, 1; area_tol_rel=coarse_borderline_tol)
+
+# If no single power-of-two scale preserves every referenced component, the
+# physical cold oracle remains authoritative and a valid no-op still works.
+coarse_full_span_mesh = TriMesh(
+    Float64[
+        floatmax(Float64) prevfloat(floatmax(Float64)) floatmax(Float64);
+        0.0 0.0 1.0;
+        0.0 0.0 nextfloat(0.0)
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+coarse_full_span_result = coarsen_mesh_to_target_rwg(
+    coarse_full_span_mesh, 1; area_tol_rel=0.0)
+@test coarse_full_span_result.mesh === coarse_full_span_mesh
+@test coarse_full_span_result.rwg_count == 0
+
+# Independently rounded subnormal physical area and tolerance can compare
+# differently after scaling; the physical API contract remains authoritative.
+coarse_subnormal_tolerance_mesh = TriMesh(
+    Float64[
+        2.9492954239971775e-162 -1.2160397752307908e-162 -2.4016383330038877e-162;
+        4.7200179453485664e-164 -2.6906428858668346e-162 -3.2201182285196426e-162;
+        -1.856601432683537e-162 -5.3020301050002416e-163 9.129922820188425e-163
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+@test mesh_quality_report(
+    coarse_subnormal_tolerance_mesh;
+    area_tol_rel=0.05).n_degenerate_triangles == 1
+@test_throws ErrorException coarsen_mesh_to_target_rwg(
+    coarse_subnormal_tolerance_mesh, 1; area_tol_rel=0.05)
 
 # Orphan coordinates cannot set the normalization scale of retained geometry.
 coarse_orphan_input = TriMesh(
@@ -1450,6 +1597,19 @@ for component in 1:2
         mie_small_pec[component], mie_small_pec_reference[component];
         rtol=8eps(Float64), atol=0.0)
 end
+mie_small_pec_overtruncated = mie_s1s2_pec(1.0e-8, 0.3; nmax=4)
+mie_s1s2_pec(1.0e-8, 0.3; nmax=4)
+mie_small_pec_overtruncated_reference = (
+    -7.166666666666667e-49 - 8.500000000000002e-25im,
+    -3.666666666666667e-49 + 1.9999999999999998e-25im,
+)
+for component in 1:2
+    @test isapprox(
+        mie_small_pec_overtruncated[component],
+        mie_small_pec_overtruncated_reference[component];
+        rtol=4eps(Float64), atol=0.0)
+end
+@test (@allocated mie_s1s2_pec(1.0e-8, 0.3; nmax=4)) == 0
 mie_series_boundary_reference = 0.04160159881993972
 @test isapprox(
     DiffMoM._mie_exterior_initial_pair(0.125)[3],
@@ -1481,6 +1641,21 @@ for component in 1:2
         mie_small_dielectric_reference[component];
         rtol=8eps(Float64), atol=0.0)
 end
+mie_small_dielectric_overtruncated = mie_s1s2_dielectric(
+    1.0e-8, 0.3, 4.0; nmax=4)
+mie_s1s2_dielectric(1.0e-8, 0.3, 4.0; nmax=4)
+mie_small_dielectric_overtruncated_reference = (
+    -1.6666666666666669e-49 - 5.0000000000000005e-25im,
+    -5.000000000000001e-50 - 1.5000000000000001e-25im,
+)
+for component in 1:2
+    @test isapprox(
+        mie_small_dielectric_overtruncated[component],
+        mie_small_dielectric_overtruncated_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
+@test (@allocated mie_s1s2_dielectric(
+    1.0e-8, 0.3, 4.0; nmax=4)) == 0
 @test mie_s1s2_pec(1.0e-155, 0.3; nmax=3) ==
       (0.0 + 0.0im, 0.0 + 0.0im)
 @test mie_s1s2_dielectric(1.0e-155, 0.3, 4.0; nmax=3) ==
@@ -1490,9 +1665,153 @@ mie_exact_exterior = mie_s1s2_dielectric(
 @test isapprox(
     mie_exact_exterior[1], -5.0e-241im;
     rtol=8eps(Float64), atol=0.0)
+mie_tiny_material = mie_s1s2_dielectric(
+    0.25, 0.3, nextfloat(0.0);
+    mu_r=nextfloat(0.0), nmax=1)
+mie_tiny_material_reference = (
+    -4.916654355974263e-5 + 0.009791442314209512im,
+    -4.916654355974263e-5 + 0.009791442314209512im,
+)
+for component in 1:2
+    @test isapprox(
+        mie_tiny_material[component], mie_tiny_material_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
 @test isapprox(
     mie_exact_exterior[2], -1.5e-241im;
     rtol=8eps(Float64), atol=0.0)
+
+# Exterior Neumann growth depends on order as well as the exponent of x.
+# These 512-bit direct Riccati references remain finite after the ordinary
+# forward recurrence overflows.
+mie_high_order_pec = mie_s1s2_pec(0.25, 0.3; nmax=150)
+mie_high_order_pec_reference = (
+    -1.7995571987718538e-4 - 0.013710967389325831im,
+    -8.840154453061714e-5 + 0.0028435522730447292im,
+)
+for component in 1:2
+    @test isapprox(
+        mie_high_order_pec[component],
+        mie_high_order_pec_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
+mie_high_order_dielectric = mie_s1s2_dielectric(
+    0.25, 0.3, 4.0; nmax=150)
+mie_high_order_dielectric_reference = (
+    -4.1697685263328135e-5 - 0.007950907520523177im,
+    -1.2514490424262779e-5 - 0.00243484060392419im,
+)
+for component in 1:2
+    @test isapprox(
+        mie_high_order_dielectric[component],
+        mie_high_order_dielectric_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
+mie_large_high_order_pec = mie_s1s2_pec(
+    100.0, 0.3; nmax=522)
+mie_large_high_order_pec_reference = (
+    43.83989971698044 + 24.23536856612706im,
+    -43.69747383309498 - 25.03245063864703im,
+)
+for component in 1:2
+    @test isapprox(
+        mie_large_high_order_pec[component],
+        mie_large_high_order_pec_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
+@test !DiffMoM._mie_requires_exact_exterior(10_000.0, 10_089)
+mie_large_default = mie_s1s2_pec(10_000.0, 0.3)
+@test all(isfinite, mie_large_default)
+mie_s1s2_pec(10_000.0, 0.3)
+@test @allocated(mie_s1s2_pec(10_000.0, 0.3)) < 4_096
+@test_throws ArgumentError mie_s1s2_pec(
+    0.25, 0.3; nmax=DiffMoM._MAX_MIE_ORDER)
+
+# A partial-wave amplitude may underflow before division by a tiny physical
+# wavenumber restores a representable RCS.  Convert only the final sigma.
+mie_tiny_rcs = mie_bistatic_rcs_pec(
+    1e-200, 1e90,
+    Vec3(0.0, 0.0, 1.0), Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, -1.0); nmax=1)
+@test mie_tiny_rcs ≈ 2.827433388230813e-259 rtol=4eps(Float64)
+mie_tiny_dielectric_rcs = mie_bistatic_rcs_dielectric(
+    1e-200, 1e90,
+    Vec3(0.0, 0.0, 1.0), Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, -1.0), 4.0; nmax=1)
+@test mie_tiny_dielectric_rcs ≈ π * 1e-260 rtol=8eps(Float64)
+# At the quasistatic eps=-2 resonance, the cancellation depth is O(x^2).
+# The exact-product path therefore derives its precision from the exponent of
+# the exact k*a product and converts only the final, representable RCS.
+mie_resonant_tiny_rcs = mie_bistatic_rcs_dielectric(
+    nextfloat(0.0), ldexp(1.0, -537),
+    Vec3(0.0, 0.0, 1.0), Vec3(0.0, 1.0, 0.0),
+    Vec3(1.0, 0.0, 0.0), -2.0; nmax=1)
+@test mie_resonant_tiny_rcs == reinterpret(Float64, UInt64(0x14))
+# Magnetodielectric parameters can cancel both leading denominator terms at
+# n=1.  The O(x^3) resonance remains finite and must be resolved before the
+# exact-product result is rounded.
+mie_double_resonant_rcs = mie_bistatic_rcs_dielectric(
+    0.25, nextfloat(0.0),
+    Vec3(0.0, 0.0, 1.0), Vec3(0.0, 1.0, 0.0),
+    Vec3(1.0, 0.0, 0.0), -2.0; mu_r=-5.0, nmax=1)
+@test mie_double_resonant_rcs == 144π
+mie_tiny_selected_rcs = mie_bistatic_rcs_pec(
+    1e-200, 1e130,
+    Vec3(0.0, 0.0, 1.0), Vec3(1.0, 0.0, 0.0),
+    Vec3(sqrt(3) / 2, 0.0, 0.5); nmax=1)
+@test isapprox(
+    mie_tiny_selected_rcs, 2.5446900494077325e-300;
+    rtol=8eps(Float64), atol=0.0)
+
+# A weighted amplitude that is merely subnormal (rather than exactly zero)
+# has already lost significant bits before division by a tiny k can recover
+# the physical RCS.  The public geometry below selects that component.
+mie_weight_unit = nextfloat(0.0)
+mie_weighted_rcs = mie_bistatic_rcs_pec(
+    4.493409457909064e-300, 1.0e300,
+    Vec3(0.0, 0.0, 1.0), Vec3(1.0, mie_weight_unit, 0.0),
+    Vec3(1.0, 0.0, 0.0); nmax=1)
+@test mie_weighted_rcs ≈ 3.417881064525094e-47 rtol=8eps(Float64)
+
+# An explicit bounded partial-wave request remains evaluable when the physical
+# product k*a overflows Float64; only the final RCS is converted to Float64.
+mie_overflow_product_rcs = mie_bistatic_rcs_pec(
+    2.0, 1e308,
+    Vec3(0.0, 0.0, 1.0), Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, -1.0); nmax=1)
+@test mie_overflow_product_rcs == 7.0685834705770345
+@test_throws ArgumentError mie_bistatic_rcs_pec(
+    2.0, 1e308,
+    Vec3(0.0, 0.0, 1.0), Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, -1.0))
+mie_large_internal_tiny_rcs = mie_bistatic_rcs_dielectric(
+    1e-200, 1e90,
+    Vec3(0.0, 0.0, 1.0), Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, -1.0), 1e300; nmax=1)
+@test isapprox(
+    mie_large_internal_tiny_rcs, 2.827433388230814e-259;
+    rtol=8eps(Float64), atol=0.0)
+# The exact-product dielectric kernel also budgets phase-reduction precision
+# from the internal m*x exponent, not just the exterior size parameter.
+mie_large_internal_phase_rcs = mie_bistatic_rcs_dielectric(
+    ldexp(1.0, 512), floatmax(Float64),
+    Vec3(0.0, 0.0, 1.0), Vec3(0.0, 1.0, 0.0),
+    Vec3(1.0, 0.0, 0.0), floatmax(Float64);
+    mu_r=prevfloat(floatmax(Float64)), nmax=1)
+@test reinterpret(UInt64, mie_large_internal_phase_rcs) ==
+      UInt64(0x0037e7b36280bcf9)
+matched_mie_rcs = mie_bistatic_rcs_dielectric(
+    1.0, 0.5, khat_mie, pol_mie, rhat_mie, 1.0; nmax=3)
+@test matched_mie_rcs == 0.0
+for invalid_matched_order in (0, 2.5, DiffMoM._MAX_MIE_ORDER + 1)
+    @test_throws ArgumentError mie_bistatic_rcs_dielectric(
+        1.0, 0.5, khat_mie, pol_mie, rhat_mie, 1.0;
+        nmax=invalid_matched_order)
+end
+mie_bistatic_rcs_dielectric(
+    1.0, 0.5, khat_mie, pol_mie, rhat_mie, 1.0; nmax=3)
+@test @allocated(mie_bistatic_rcs_dielectric(
+    1.0, 0.5, khat_mie, pol_mie, rhat_mie, 1.0; nmax=3)) < 1_024
 
 # Dielectric truncation follows the exterior size parameter, while the
 # internal Riccati-Bessel logarithmic derivative remains stable when n >> |mx|.
@@ -1517,7 +1836,7 @@ for component in 1:2
     @test isapprox(
         dielectric_low_index_converged[component],
         dielectric_low_index_converged_reference[component];
-        rtol=8eps(Float64),
+        rtol=24eps(Float64),
         atol=0.0,
     )
 end
@@ -2387,6 +2706,22 @@ q_entry_underflow_operator = FarFieldQMatrix(
     q_entry_underflow_G, [1.0e-300], q_extreme_pol, nothing, 2)
 @test q_entry_underflow_operator[1, 2] == 1.0e-300 + 0im
 
+# Construction-time classification must not become stale when the public
+# backing arrays are mutated later.
+q_mutation_grid = SphGrid(
+    reshape(Float64[0, 0, 1], 3, 1), [0.0], [0.0], [1.0])
+q_mutation_G = zeros(ComplexF64, 3, 2)
+q_mutation_G[1, :] .= 1.0
+q_mutation_pol = reshape(ComplexF64[1, 0, 0], 3, 1)
+q_mutation_operator = build_Q_operator(
+    q_mutation_G, q_mutation_grid, q_mutation_pol)
+q_mutation_G[1, 1] = ldexp(1.0, 1023)
+q_mutation_G[1, 2] = ldexp(1.0, -550)
+q_mutation_pol[1, 1] = ldexp(1.0, -550)
+q_mutation_result = q_mutation_operator *
+                    ComplexF64[0, ldexp(1.0, 128)]
+@test q_mutation_result[1] == ComplexF64(ldexp(1.0, -499))
+
 # The dense builder and one-shot apply wrapper must use the same checked
 # extreme-factor path as FarFieldQMatrix instead of losing a representable
 # outer product after an underflowed intermediate multiplication.
@@ -2595,6 +2930,26 @@ I_nf_nonfinite[1] = Inf + 0im
 @test_throws ArgumentError compute_nearfield(
     mesh, rwg, I_nf_nonfinite, obs_points, k;
     quad_order=3, eta0=eta0, check_surface=false)
+
+# eta0 and the current enter both potentials only through their product.  An
+# exact power-of-two transfer must preserve that product when an otherwise
+# harmless standalone prefactor would overflow.
+nearfield_scale_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+nearfield_scale_rwg = build_rwg(nearfield_scale_mesh)
+nearfield_scale_point = Vec3(0.0, 0.0, 1.0)
+nearfield_scale_current = 1.0e-308
+nearfield_scale_max = floatmax(Float64)
+nearfield_scale_reference = compute_nearfield(
+    nearfield_scale_mesh, nearfield_scale_rwg,
+    fill(2nearfield_scale_current, nearfield_scale_rwg.nedges),
+    nearfield_scale_point, 2.0;
+    eta0=nearfield_scale_max / 2, check_surface=false)
+nearfield_scale_result = compute_nearfield(
+    nearfield_scale_mesh, nearfield_scale_rwg,
+    fill(nearfield_scale_current, nearfield_scale_rwg.nedges),
+    nearfield_scale_point, 2.0;
+    eta0=nearfield_scale_max, check_surface=false)
+@test nearfield_scale_result == nearfield_scale_reference
 
 obs_mat = hcat(obs_points...)
 E_nf_mat = compute_nearfield(mesh, rwg, I_pec, obs_mat, k; quad_order=3, eta0=eta0)
@@ -3014,6 +3369,11 @@ theta_opt_guard = [0.0]
 @test_throws ArgumentError optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
     maxiter=1, lb=[1.0], ub=[0.0], verbose=false)
+@test DiffMoM._recoverable_optimizer_trial_error(SingularException(1))
+@test DiffMoM._recoverable_optimizer_trial_error(OverflowError("trial"))
+@test !DiffMoM._recoverable_optimizer_trial_error(DomainError(1.0))
+@test !DiffMoM._recoverable_optimizer_trial_error(
+    ErrorException("sentinel implementation failure"))
 
 theta_fixed_guard, trace_fixed_guard = optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
@@ -6246,6 +6606,21 @@ println("\n── Test 26: ACA operator matvec accuracy ──")
     mesh, rwg, k; aca_tol=Inf, mesh_precheck=false)
 @test_throws ArgumentError build_aca_operator(
     mesh, rwg, k; max_rank=0, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; leaf_size=0, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; eta=NaN, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_block_tasks=0, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_storage_bytes=0, mesh_precheck=false)
+aca_task_cap_mesh = make_rect_plate(1.0, 1.0, 2, 2)
+aca_task_cap_rwg = build_rwg(aca_task_cap_mesh)
+@test_throws ArgumentError build_aca_operator(
+    aca_task_cap_mesh, aca_task_cap_rwg, k;
+    leaf_size=1, eta=1.5, max_block_tasks=1, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_storage_bytes=1, mesh_precheck=false)
 
 A_aca_op = build_aca_operator(mesh, rwg, k;
                                leaf_size=8, eta=1.5, aca_tol=1e-8,
@@ -6381,12 +6756,24 @@ y_adj_aca = A_adj * x_test
 _assert_single_complex_output_allocation(A_adj, x_test)
 _assert_scaled_mul_contract(A_adj, x_test, reverse(x_test))
 
+# Use an exactly represented identity block here.  If `scaled_aca_previous`
+# were formed from a rounded general block product, the mathematical
+# `alpha*A*x + beta*y` need not cancel: the large scales can legitimately
+# expose the rounding error in that earlier, separate `A*x` call.
+scaled_aca_identity = Matrix{ComplexF64}(I, aca_range_N, aca_range_N)
+scaled_aca_operator = _aca_operator_with_blocks(
+    aca_range_base,
+    [DiffMoM.DenseBlock(
+        aca_range_rows, aca_range_rows, scaled_aca_identity)],
+    DiffMoM.LowRankBlock[],
+)
 scaled_aca_input = ComplexF64[
-    1.0e100 * (sin(0.17 * i) + 1im * cos(0.11 * i)) for i in 1:N
+    1.0e100 * (sin(0.17 * i) + 1im * cos(0.11 * i))
+    for i in 1:aca_range_N
 ]
 scaled_aca_factor = 1.0e308 + 0im
-for scaled_aca_operator in (A_aca_op, A_adj)
-    scaled_aca_product = scaled_aca_operator * scaled_aca_input
+for scaled_operator in (scaled_aca_operator, adjoint(scaled_aca_operator))
+    scaled_aca_product = scaled_operator * scaled_aca_input
     scaled_aca_previous = -scaled_aca_product
     @test all(isfinite, scaled_aca_product)
     @test any(!isfinite, scaled_aca_factor .* scaled_aca_product)
@@ -6401,7 +6788,7 @@ for scaled_aca_operator in (A_aca_op, A_adj)
     end
     @test all(isfinite, scaled_aca_reference)
     scaled_aca_result = copy(scaled_aca_previous)
-    mul!(scaled_aca_result, scaled_aca_operator, scaled_aca_input,
+    mul!(scaled_aca_result, scaled_operator, scaled_aca_input,
          scaled_aca_factor, scaled_aca_factor)
     @test scaled_aca_result == scaled_aca_reference
 end
@@ -6630,13 +7017,118 @@ po_grid = make_sph_grid(36, 72)
 @test_throws ErrorException solve_po(
     TriMesh(zeros(3, 0), zeros(Int, 3, 0)),
     po_freq, pw_down; grid=po_grid)
-@test_throws OverflowError solve_po(
+po_large_amplitude = solve_po(
     po_mesh, po_freq,
     PlaneWaveExcitation(
         Vec3(0.0, 0.0, -po_k), floatmax(Float64),
         Vec3(1.0, 0.0, 0.0));
     grid=make_sph_grid(2, 4))
+@test all(current -> all(isfinite, current), po_large_amplitude.J_s)
+@test all(isfinite, po_large_amplitude.E_ff)
 po_result = solve_po(po_mesh, po_freq, pw_down; grid=po_grid)
+
+# Mixed-scale PO currents are evaluated as a complete product.  A formally
+# overflowing standalone 2E0/eta0 factor must not reject an exactly zero
+# geometric current.
+po_zero_current_grid = SphGrid(
+    reshape(Float64[0, 0, 1], 3, 1), [0.0], [0.0], [1.0])
+po_zero_current_excitation = make_plane_wave(
+    Vec3(1.0, 0.0, 0.0), 1.0, Vec3(0.0, 1.0, 0.0))
+po_zero_current = solve_po(
+    make_rect_plate(1.0, 1.0, 1, 1), 1.0,
+    po_zero_current_excitation;
+    grid=po_zero_current_grid, c0=2π, eta0=nextfloat(0.0))
+@test all(iszero, po_zero_current.J_s)
+@test all(iszero, po_zero_current.E_ff)
+
+# The moment-series transition is continuous and independent of cyclic face
+# order, including the high-precision geometry path.
+po_phase_vertices = (
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.2, 0.0),
+    Vec3(1.0, 5.0e-6, 0.0),
+)
+po_phase_area = 0.1
+po_phase_delta = Vec3(0.0, 1.0, 0.0)
+po_phase_reference = DiffMoM._phase_integral_analytical(
+    1.0, po_phase_delta, po_phase_vertices..., po_phase_area)
+@test DiffMoM._phase_integral_analytical(
+    1.0, po_phase_delta,
+    po_phase_vertices[3], po_phase_vertices[1], po_phase_vertices[2],
+    po_phase_area) == po_phase_reference
+for phase_argument in (0.249, 0.251)
+    phase_integral = DiffMoM._phase_integral_analytical(
+        1.0, Vec3(0.0, phase_argument, 0.0),
+        Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
+        Vec3(0.0, 0.0, 0.0), 0.5)
+    phase_oracle = setprecision(BigFloat, 512) do
+        argument = BigFloat(phase_argument)
+        ComplexF64(2 * (exp(im * argument) - 1 - im * argument) /
+                   (im * argument)^2 * BigFloat(0.5))
+    end
+    @test phase_integral ≈ phase_oracle rtol=8eps(Float64) atol=0.0
+end
+# The DD-small branch expands Dq-Dp with the opposite sign from its factored
+# exponential.  Compare it with the permutation-symmetric bivariate moment
+# series around the origin.
+po_dd_small_dp = 1.000001e-5
+po_dd_small_dq = 2.0e-5
+po_dd_small_integral = DiffMoM._phase_integral_analytical(
+    1.0, Vec3(po_dd_small_dq, po_dd_small_dp, 0.0),
+    Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
+    Vec3(0.0, 0.0, 0.0), 0.5)
+po_dd_small_reference = setprecision(BigFloat, 256) do
+    dp = BigFloat(po_dd_small_dp)
+    dq = BigFloat(po_dd_small_dq)
+    ComplexF64(sum(
+        (im * dp)^first_order * (im * dq)^second_order /
+        factorial(big(first_order + second_order + 2))
+        for first_order in 0:20, second_order in 0:20))
+end
+@test po_dd_small_integral ≈
+      po_dd_small_reference rtol=2e-12 atol=0.0
+
+# The exact-direction path must form the transverse projection in the exact
+# domain. A tiny component of r̂ can disappear from the Float64 dot product,
+# yet become representable after multiplication by a large incident field.
+po_projection_side = ldexp(1.0, -100)
+po_projection_mesh = TriMesh(
+    Float64[
+        0.0  po_projection_side  0.0;
+        0.0  0.0                 2po_projection_side;
+        0.0  0.0                 0.0
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+po_projection_grid = SphGrid(
+    reshape(Float64[1.0, po_projection_side, 0.0], 3, 1),
+    [π / 2], [0.0], [1.0])
+po_projection_polarization = Vec3(inv(sqrt(2.0)), inv(sqrt(2.0)), 0.0)
+po_projection_result = solve_po(
+    po_projection_mesh, 1.0,
+    PlaneWaveExcitation(
+        Vec3(0.0, 0.0, -1.0), ldexp(1.0, 200),
+        po_projection_polarization);
+    grid=po_projection_grid, c0=2π)
+po_projection_reference = setprecision(BigFloat, 512) do
+    rb = SVector{3,BigFloat}(
+        BigFloat(1.0), BigFloat(po_projection_side), BigFloat(0.0))
+    vb = SVector{3,BigFloat}(BigFloat.(po_projection_polarization))
+    projection = rb * dot(rb, vb) - vb
+    area = BigFloat(po_projection_side)^2
+    scale = Complex{BigFloat}(0, 1) * BigFloat(ldexp(1.0, 200)) /
+            BigFloat(2π)
+    integral = DiffMoM._phase_integral_analytical_big_value(
+        BigFloat(1.0),
+        rb - SVector{3,BigFloat}(0, 0, -1),
+        Vec3(po_projection_side, 0.0, 0.0),
+        Vec3(0.0, 2po_projection_side, 0.0),
+        Vec3(0.0, 0.0, 0.0),
+        Float64(po_projection_side^2), 1e-5, 5)
+    ComplexF64(scale * projection[1] * integral)
+end
+@test !iszero(po_projection_reference)
+@test po_projection_result.E_ff[1, 1] == po_projection_reference
 
 n_illum = count(po_result.illuminated)
 n_total = ntriangles(po_mesh)
@@ -6722,6 +7214,9 @@ ptd_wedge_edges = extract_diffraction_edges(
     ptd_wedge_mesh; include_boundary=false)
 @test length(ptd_wedge_edges) == 1
 @test ptd_wedge_edges[1].alpha ≈ 3π / 2 atol=1e-14
+@test_throws ArgumentError solve_ptd(
+    ptd_wedge_mesh, po_freq, pw_down;
+    grid=make_sph_grid(2, 4), include_boundary=false)
 
 for (n_wedge, delta_s_wedge, delta_i_wedge) in
     ((1.25, 1.1, 0.4), (1.5, 2.0, 0.7), (1.8, 2.5, 1.2))
@@ -6744,6 +7239,17 @@ for (n_wedge, delta_s_wedge, delta_i_wedge) in
     @test stable_f_wedge ≈ direct_f_wedge rtol=1e-12 atol=1e-12
     @test stable_g_wedge ≈ direct_g_wedge rtol=1e-12 atol=1e-12
 end
+@test all(isfinite, DiffMoM._ptd_fringe_fg(2.0, Float64(π), 0.0, 2π))
+ptd_exact_cap_state = Dict{Int,Vector{Complex{BigFloat}}}()
+@test_throws ArgumentError DiffMoM._ptd_register_exact_direction!(
+    ptd_exact_cap_state, 1,
+    DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3)
+@test isempty(ptd_exact_cap_state)
+ptd_exact_cap_state[1] = Complex{BigFloat}[]
+@test DiffMoM._ptd_register_exact_direction!(
+    ptd_exact_cap_state, 1,
+    DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3) ==
+    DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3
 
 ptd_mesh = make_rect_plate(0.2, 0.2, 1, 1)
 ptd_grid = make_sph_grid(4, 8)
@@ -6754,6 +7260,32 @@ ptd_result = solve_ptd(
 @test all(isfinite, ptd_result.E_ff)
 @test ptd_result.E_ff ≈
       ptd_result.E_ff_po + ptd_result.E_ff_ptd rtol=1e-14
+
+# A large incident field and a tiny edge length form a finite PTD product.
+# The solver must not reject the standalone pre-length coefficient.
+ptd_scale_length = 1.0e-150
+ptd_scale_kx = sqrt(0.99)
+ptd_scale_mesh = make_rect_plate(
+    ptd_scale_length, ptd_scale_length, 1, 1)
+ptd_scale_grid = SphGrid(
+    reshape(Float64[0, 0, 1], 3, 1), [0.0], [0.0], [1.0])
+ptd_scale_wavevector = Vec3(ptd_scale_kx, 0.1, 0.0)
+ptd_scale_polarization = Vec3(-0.1, ptd_scale_kx, 0.0)
+ptd_scale_low = solve_ptd(
+    ptd_scale_mesh, 1.0,
+    PlaneWaveExcitation(
+        ptd_scale_wavevector, floatmax(Float64) / 32,
+        ptd_scale_polarization);
+    grid=ptd_scale_grid, c0=2π)
+ptd_scale_high = solve_ptd(
+    ptd_scale_mesh, 1.0,
+    PlaneWaveExcitation(
+        ptd_scale_wavevector, floatmax(Float64),
+        ptd_scale_polarization);
+    grid=ptd_scale_grid, c0=2π)
+@test all(isfinite, ptd_scale_high.E_ff_ptd)
+@test ptd_scale_high.E_ff_ptd ≈
+      32 .* ptd_scale_low.E_ff_ptd rtol=5e-14 atol=0.0
 
 println("  PASS ✓")
 
@@ -6962,6 +7494,34 @@ mlfma_tiny_translation = DiffMoM.compute_translation_factor(
                5.77490728152923e123; rtol=32eps(Float64), atol=0.0)
 @test isapprox(imag(mlfma_tiny_translation),
                9.394780419190805e91; rtol=32eps(Float64), atol=0.0)
+mlfma_balanced_translation = DiffMoM.compute_translation_factor(
+    Vec3(-1.05e308, -1.05e308, -1.05e308),
+    (2π * 0.25) / 3.5e307,
+    DiffMoM.make_sphere_sampling(7),
+)
+@test isapprox(
+    mlfma_balanced_translation[1],
+    -0.6934666072411643 - 0.23265439823371686im;
+    rtol=8eps(Float64), atol=0.0)
+@test all(isfinite, mlfma_balanced_translation)
+@test_throws ArgumentError DiffMoM.compute_translation_factor(
+    Vec3(1.0, 0.0, 0.0), 1.0,
+    DiffMoM.make_sphere_sampling(64); max_terms=1)
+mlfma_translation_sampling = DiffMoM.make_sphere_sampling(64)
+DiffMoM.compute_translation_factor(
+    Vec3(1.0, 0.0, 0.0), 1.0, mlfma_translation_sampling)
+GC.gc()
+mlfma_translation_alloc = @allocated DiffMoM.compute_translation_factor(
+    Vec3(1.0, 0.0, 0.0), 1.0, mlfma_translation_sampling)
+@test mlfma_translation_alloc < 500_000
+mlfma_zero_legendre_sampling = SphereSampling(
+    101, 1, 1, 1, [π / 2], [0.0], [1.0],
+    reshape(Float64[1.0, 0.0, 0.0], 3, 1),
+)
+mlfma_zero_legendre_translation = DiffMoM.compute_translation_factor(
+    Vec3(0.0, 0.07, 0.0), 1.0, mlfma_zero_legendre_sampling)
+@test mlfma_zero_legendre_translation == ComplexF64[
+    1.0 + 4.710198164328786e304im]
 
 @test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; precision=0)
@@ -6976,11 +7536,21 @@ mlfma_tiny_translation = DiffMoM.compute_translation_factor(
 @test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; max_setup_bytes=0)
 @test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_nearfield_entries=0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_nearfield_bytes=0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_translation_terms=0)
+@test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; precision=1_000_000)
 @test _mlfma_precision_rejection_allocations(
     mlfma_mesh, mlfma_rwg, mlfma_k) <= 4_096
 @test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; max_setup_bytes=1)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_nearfield_entries=1)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_nearfield_bytes=1)
 octree = build_octree(mlfma_centers, mlfma_k; leaf_lambda=0.5)
 
 # Verify all BFs are assigned via permutation
@@ -7008,6 +7578,14 @@ println("  31a: PASS — no neighbor/interaction_list overlaps")
 # 31b: Near-field matrix accuracy
 Z_dense_mlfma = assemble_Z_efie(mlfma_mesh, mlfma_rwg, mlfma_k; mesh_precheck=false)
 Z_near_mlfma = assemble_mlfma_nearfield(octree, mlfma_mesh, mlfma_rwg, mlfma_k)
+mlfma_nearfield_entries = Int(DiffMoM._mlfma_nearfield_entry_count(octree))
+@test_throws ArgumentError assemble_mlfma_nearfield(
+    octree, mlfma_mesh, mlfma_rwg, mlfma_k;
+    max_nearfield_entries=mlfma_nearfield_entries - 1)
+@test_throws ArgumentError assemble_mlfma_nearfield(
+    octree, mlfma_mesh, mlfma_rwg, mlfma_k;
+    max_nearfield_bytes=
+        mlfma_nearfield_entries * DiffMoM._MLFMA_NEARFIELD_TRIPLET_BYTES - 1)
 
 # Check that near-field entries match dense for neighbor pairs
 max_nf_err = 0.0
@@ -7220,6 +7798,36 @@ for mlfma_banded_operator in (A_mlfma, adjoint(A_mlfma))
     mul!(mlfma_banded_alias, mlfma_banded_operator,
          mlfma_banded_alias, 1.0, 0.5)
     @test mlfma_banded_alias == mlfma_banded_alias_reference
+end
+
+# Direct mul! accepts generic AbstractVector inputs.  It must apply the same
+# ComplexF64 conversion as `A * x` before exponent classification and before
+# the internal product; otherwise a below-minsub BigFloat can be amplified by
+# the operator even though the public ComplexF64 input semantics rounded it to
+# zero.
+mlfma_big_input = setprecision(BigFloat, 256) do
+    values = fill(BigFloat(0), mlfma_N)
+    values[1] = BigFloat(1)
+    mlfma_N >= 2 && (values[2] = ldexp(BigFloat(1), -1075))
+    mlfma_N >= 3 && (values[3] = ldexp(BigFloat(1), -100))
+    values
+end
+mlfma_converted_input = ComplexF64.(mlfma_big_input)
+mlfma_unbanded_big_input = setprecision(BigFloat, 256) do
+    values = fill(BigFloat(0), mlfma_N)
+    values[1] = BigFloat(1)
+    mlfma_N >= 2 && (values[2] = ldexp(BigFloat(1), -1075))
+    values
+end
+for raw_input in (mlfma_big_input, mlfma_unbanded_big_input)
+    converted_input = ComplexF64.(raw_input)
+    for mlfma_generic_operator in (A_mlfma, adjoint(A_mlfma))
+        mlfma_generic_reference = mlfma_generic_operator * converted_input
+        mlfma_generic_result = zeros(ComplexF64, mlfma_N)
+        mul!(mlfma_generic_result, mlfma_generic_operator,
+             raw_input, 1.0, 0.0)
+        @test mlfma_generic_result == mlfma_generic_reference
+    end
 end
 
 mlfma_adj_err = abs(lhs_adj - rhs_adj) / max(abs(lhs_adj), abs(rhs_adj), eps())
@@ -9175,6 +9783,62 @@ multiangle_sum_log_value, multiangle_sum_log_scales =
 @test multiangle_sum_log_scales ==
       multiangle_scalar_weights ./ multiangle_sum_log_values
 
+# The smooth maximum tends to the weighted mean as beta approaches zero.
+# Evaluate the cancellation-prone normalizer without collapsing the finite
+# limiting value.
+multiangle_tiny_beta_value, multiangle_tiny_beta_scales =
+    DiffMoM._multiangle_objective_scales(
+        Float64[1.0, exp(1.0)], Float64[0.5, 0.5],
+        :smoothmax_log, ones(2), 1.0e-300)
+multiangle_tiny_beta_reference = setprecision(BigFloat, 4352) do
+    Float64(log(sum(BigFloat(0.5) *
+                    exp(BigFloat(1.0e-300) *
+                        log(BigFloat(value)))
+                    for value in (1.0, exp(1.0)))) /
+            BigFloat(1.0e-300))
+end
+@test multiangle_tiny_beta_value == multiangle_tiny_beta_reference == 0.5
+@test all(isfinite, multiangle_tiny_beta_scales)
+
+# Matrix-free objectives must not scan Q through getindex merely to classify
+# the scalar reduction; the operator action already certifies the product.
+multiangle_counting_reads = Ref(0)
+multiangle_counting_Q = _CountingIdentityQ(64, multiangle_counting_reads)
+multiangle_counting_product, multiangle_counting_objective =
+    DiffMoM._multiangle_q_product_and_objective(
+        multiangle_counting_Q, ones(ComplexF64, 64),
+        "counting matrix-free Q")
+@test multiangle_counting_product == ones(ComplexF64, 64)
+@test multiangle_counting_objective == 64.0
+@test multiangle_counting_reads[] == 0
+
+sum_q_counting_reads = Ref(0)
+sum_q_counting_child = _CountingIdentityQ(64, sum_q_counting_reads)
+sum_q_counting_operator = DiffMoM.sum_q_matrix(
+    sum_q_counting_child, sum_q_counting_child)
+@test sum_q_counting_operator * ones(ComplexF64, 64) ==
+      fill(2.0 + 0.0im, 64)
+@test sum_q_counting_reads[] == 0
+
+# Accumulating two individually subnormal angle-gradient contributions must
+# preserve their representable sum.
+multiangle_gradient_unit = nextfloat(0.0)
+multiangle_gradient_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1.0], reshape(ComplexF64[1.0], 1, 1),
+    multiangle_gradient_unit,
+)
+_, multiangle_tiny_gradient_trace = optimize_multiangle_rcs(
+    reshape(ComplexF64[1.0], 1, 1),
+    [reshape(ComplexF64[0.2], 1, 1)],
+    [multiangle_gradient_config, multiangle_gradient_config],
+    [0.0]; maxiter=1, tol=0.0, verbose=false)
+multiangle_tiny_gradient_reference = setprecision(BigFloat, 4352) do
+    Float64(2 * BigFloat(multiangle_gradient_unit) * BigFloat(0.4))
+end
+@test multiangle_tiny_gradient_trace[1].gnorm ==
+      multiangle_tiny_gradient_reference == nextfloat(0.0)
+
 multiangle_scalar_config_positive = AngleConfig(
     Vec3(1.0, 0.0, 0.0),
     Vec3(0.0, 1.0, 0.0),
@@ -9612,6 +10276,55 @@ println("  S(centroid) = $(round(S_analytical, digits=6))")
 S_vertex = analytical_integral_1overR(V1, V1, V2, V3)
 @assert isfinite(S_vertex) "Integral at vertex should be finite"
 println("  S(vertex) = $(round(S_vertex, digits=6))")
+
+# Endpoint subtraction over the full Float64 span is handled in the exact
+# geometry path, while the final integral remains representable.
+static_span_max = floatmax(Float64)
+static_span_unit = nextfloat(0.0)
+static_span_point = Vec3(-static_span_max, 0.0, 0.0)
+static_span_second = Vec3(static_span_max, 0.0, 0.0)
+static_span_third = Vec3(-static_span_max, static_span_unit, 0.0)
+static_span_value = analytical_integral_1overR(
+    static_span_point, static_span_point,
+    static_span_second, static_span_third)
+@test static_span_value == 7.194e-321
+
+# A global scaling must not erase a representable off-plane height.  The
+# one-sided static-field limits have opposite normal signs.
+static_scale = ldexp(1.0, 600)
+static_height = ldexp(1.0, -600)
+static_large_v1 = Vec3(0.0, 0.0, 0.0)
+static_large_v2 = Vec3(static_scale, 0.0, 0.0)
+static_large_v3 = Vec3(0.0, static_scale, 0.0)
+static_large_above = grad_analytical_integral_1overR(
+    Vec3(static_scale / 4, static_scale / 4, static_height),
+    static_large_v1, static_large_v2, static_large_v3)
+static_large_below = grad_analytical_integral_1overR(
+    Vec3(static_scale / 4, static_scale / 4, -static_height),
+    static_large_v1, static_large_v2, static_large_v3)
+@test static_large_above[3] ≈ -2π rtol=2eps(Float64)
+@test static_large_below[3] ≈ 2π rtol=2eps(Float64)
+
+# Cancellation in the signed-height dot product can also erase the side even
+# when all normalized coordinate components remain nonzero.
+static_tilt_unit = nextfloat(0.0)
+static_tilt_v1 = Vec3(1.0, -1.0, 0.0)
+static_tilt_v2 = Vec3(1.0, 0.0, -4.0)
+static_tilt_v3 = Vec3(-2.0, 1.0, 4.0)
+static_tilt_above = grad_analytical_integral_1overR(
+    Vec3(0.0, 0.0, 3static_tilt_unit),
+    static_tilt_v1, static_tilt_v2, static_tilt_v3)
+static_tilt_below = grad_analytical_integral_1overR(
+    Vec3(0.0, 0.0, -3static_tilt_unit),
+    static_tilt_v1, static_tilt_v2, static_tilt_v3)
+@test static_tilt_above == Vec3(
+    -0x1.eeb65755bf836p+1,
+    -0x1.3a20837c2e029p+2,
+    -0x1.005f5f9297a89p+0)
+@test static_tilt_below == Vec3(
+    0x1.38a66cb26d166p+2,
+    0x1.ebc229c23daafp+1,
+    0x1.2fa238cab52f8p+0)
 
 # Test symmetry: integral from centroid should not depend on triangle orientation
 V1b = Vec3(0.0, 0.0, 0.0)

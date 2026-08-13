@@ -22,6 +22,8 @@ const _ACA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
 const _ACA_PRODUCT_FALLBACK_PRECISION = 8704
 const _ACA_BIGFLOAT_OUTPUT_CHUNK = 512
 const _ACA_SAFE_FACTOR_EXPONENT = 128
+const _DEFAULT_MAX_ACA_BLOCK_TASKS = 2_000_000
+const _DEFAULT_MAX_ACA_STORAGE_BYTES = 2_000_000_000
 
 @noinline function _aca_scaled_output_bigfloat(
         value::ComplexF64,
@@ -54,6 +56,14 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
+    needs_fallback =
+        _aca_extreme_factor(value) ||
+        _aca_extreme_factor(alpha_scale) ||
+        (!overwrite &&
+         (_aca_extreme_factor(previous) ||
+          _aca_extreme_factor(beta_scale)))
+    needs_fallback && return _aca_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, overwrite, row)
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
@@ -101,8 +111,8 @@ struct LowRankBlock
     V::Matrix{ComplexF64}
 end
 
-@inline function _aca_extreme_component(component::Float64)
-    scale = abs(component)
+@inline function _aca_extreme_component(component::Real)
+    scale = abs(Float64(component))
     isfinite(scale) || return true
     iszero(scale) && return false
     value_exponent = exponent(scale)
@@ -110,7 +120,7 @@ end
            value_exponent > _ACA_SAFE_FACTOR_EXPONENT
 end
 
-@inline function _aca_extreme_factor(value::ComplexF64)
+@inline function _aca_extreme_factor(value::Number)
     return _aca_extreme_component(real(value)) ||
            _aca_extreme_component(imag(value))
 end
@@ -317,10 +327,12 @@ function aca_lowrank(cache::EFIEApplyCache,
         u_k = col_vec / pivot_val
         v_k = conj.(row_vec)  # store conjugate so block = U * V'
 
-        # Robustness: a non-finite pivot/update (e.g. NaN/Inf from a degenerate
-        # entry or near-zero pivot) would corrupt the low-rank factors. Stop and
-        # return the rank accumulated so far rather than propagating NaN/Inf.
-        (all(isfinite, u_k) && all(isfinite, v_k)) || break
+        # A partial factorization is not a valid approximation after a
+        # non-finite pivot/update.  Signal the block builder so it can fall back
+        # to a complete dense block instead of silently returning stale rank.
+        (all(isfinite, u_k) && all(isfinite, v_k)) ||
+            throw(OverflowError(
+                "ACA low-rank update became non-finite"))
 
         push!(U_cols, u_k)
         push!(V_cols, v_k)
@@ -481,7 +493,12 @@ struct BlockTask
 end
 
 function _enum_block_tasks!(tasks::Vector{BlockTask}, tree::ClusterTree,
-                             row_node::Int, col_node::Int; eta::Float64)
+                             row_node::Int, col_node::Int;
+                             eta::Float64,
+                             max_block_tasks::Int=typemax(Int))
+    length(tasks) < max_block_tasks ||
+        throw(ArgumentError(
+            "ACA block enumeration exceeds max_block_tasks=$max_block_tasks"))
     # If admissible → low-rank task
     if is_admissible(tree, row_node, col_node; eta=eta)
         push!(tasks, BlockTask(row_node, col_node, :lowrank))
@@ -498,17 +515,57 @@ function _enum_block_tasks!(tasks::Vector{BlockTask}, tree::ClusterTree,
     rn = tree.nodes[row_node]
     cn = tree.nodes[col_node]
     if is_leaf(tree, row_node)
-        _enum_block_tasks!(tasks, tree, row_node, cn.left; eta=eta)
-        _enum_block_tasks!(tasks, tree, row_node, cn.right; eta=eta)
+        _enum_block_tasks!(tasks, tree, row_node, cn.left;
+                           eta=eta, max_block_tasks=max_block_tasks)
+        _enum_block_tasks!(tasks, tree, row_node, cn.right;
+                           eta=eta, max_block_tasks=max_block_tasks)
     elseif is_leaf(tree, col_node)
-        _enum_block_tasks!(tasks, tree, rn.left, col_node; eta=eta)
-        _enum_block_tasks!(tasks, tree, rn.right, col_node; eta=eta)
+        _enum_block_tasks!(tasks, tree, rn.left, col_node;
+                           eta=eta, max_block_tasks=max_block_tasks)
+        _enum_block_tasks!(tasks, tree, rn.right, col_node;
+                           eta=eta, max_block_tasks=max_block_tasks)
     else
-        _enum_block_tasks!(tasks, tree, rn.left, cn.left; eta=eta)
-        _enum_block_tasks!(tasks, tree, rn.left, cn.right; eta=eta)
-        _enum_block_tasks!(tasks, tree, rn.right, cn.left; eta=eta)
-        _enum_block_tasks!(tasks, tree, rn.right, cn.right; eta=eta)
+        _enum_block_tasks!(tasks, tree, rn.left, cn.left;
+                           eta=eta, max_block_tasks=max_block_tasks)
+        _enum_block_tasks!(tasks, tree, rn.left, cn.right;
+                           eta=eta, max_block_tasks=max_block_tasks)
+        _enum_block_tasks!(tasks, tree, rn.right, cn.left;
+                           eta=eta, max_block_tasks=max_block_tasks)
+        _enum_block_tasks!(tasks, tree, rn.right, cn.right;
+                           eta=eta, max_block_tasks=max_block_tasks)
     end
+end
+
+function _validate_aca_task_storage(
+    tasks::Vector{BlockTask},
+    tree::ClusterTree,
+    max_rank::Int,
+    max_storage_bytes::Int,
+)
+    bytes = try
+        entries = 0
+        @inbounds for task in tasks
+            rows = length(tree.nodes[task.row_node].indices)
+            columns = length(tree.nodes[task.col_node].indices)
+            block_entries = if task.kind === :dense
+                Base.Checked.checked_mul(rows, columns)
+            else
+                rank = min(max_rank, rows, columns)
+                Base.Checked.checked_mul(
+                    rank, Base.Checked.checked_add(rows, columns))
+            end
+            entries = Base.Checked.checked_add(entries, block_entries)
+        end
+        Base.Checked.checked_mul(entries, sizeof(ComplexF64))
+    catch error
+        error isa OverflowError || rethrow()
+        throw(ArgumentError("ACA block storage estimate overflows Int"))
+    end
+    bytes <= max_storage_bytes ||
+        throw(ArgumentError(
+            "ACA block storage requires at most $bytes raw bytes, exceeding " *
+            "max_storage_bytes=$max_storage_bytes"))
+    return bytes
 end
 
 """
@@ -532,6 +589,9 @@ Dense blocks use triangle-pair batched Green's function evaluation for
 - `max_rank=50`: maximum rank for low-rank blocks
 - `quad_order=3`: quadrature order for EFIE entries
 - `eta0=376.730313668`: free-space impedance
+- `max_block_tasks=2_000_000`: block-enumeration limit
+- `max_storage_bytes=2_000_000_000`: raw persistent block-payload limit,
+  including any dense replacement of a failed low-rank block
 """
 function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                             leaf_size::Int=64,
@@ -543,8 +603,22 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                             mesh_precheck::Bool=true,
                             allow_boundary::Bool=true,
                             require_closed::Bool=false,
-                            area_tol_rel::Float64=1e-12)
+                            area_tol_rel::Float64=1e-12,
+                            max_block_tasks::Int=_DEFAULT_MAX_ACA_BLOCK_TASKS,
+                            max_storage_bytes::Int=_DEFAULT_MAX_ACA_STORAGE_BYTES)
     _validate_aca_options(aca_tol, max_rank)
+    leaf_size >= 1 ||
+        throw(ArgumentError(
+            "ACA leaf_size must be at least 1, got $leaf_size"))
+    isfinite(eta) && eta > 0.0 ||
+        throw(ArgumentError(
+            "ACA eta must be finite and positive, got $eta"))
+    max_block_tasks >= 1 ||
+        throw(ArgumentError(
+            "max_block_tasks must be positive, got $max_block_tasks"))
+    max_storage_bytes >= 1 ||
+        throw(ArgumentError(
+            "max_storage_bytes must be positive, got $max_storage_bytes"))
     if mesh_precheck
         assert_mesh_quality(mesh;
             allow_boundary=allow_boundary,
@@ -561,7 +635,11 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
 
     # Phase 1: enumerate all block tasks (serial, fast)
     tasks = BlockTask[]
-    _enum_block_tasks!(tasks, tree, 1, 1; eta=eta)
+    _enum_block_tasks!(tasks, tree, 1, 1;
+                       eta=eta, max_block_tasks=max_block_tasks)
+    claimed_storage = Ref(_validate_aca_task_storage(
+        tasks, tree, max_rank, max_storage_bytes))
+    storage_lock = ReentrantLock()
 
     # Phase 2: process blocks in parallel
     results = Vector{Union{DenseBlock, LowRankBlock}}(undef, length(tasks))
@@ -577,9 +655,65 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
             _fill_dense_block_batched!(data, cache, row_indices, col_indices)
             results[i] = DenseBlock(rn.indices, cn.indices, data)
         else
-            U, V = aca_lowrank(cache, row_indices, col_indices;
-                               tol=aca_tol, max_rank=max_rank)
-            results[i] = LowRankBlock(rn.indices, cn.indices, U, V)
+            try
+                U, V = aca_lowrank(cache, row_indices, col_indices;
+                                   tol=aca_tol, max_rank=max_rank)
+                results[i] = LowRankBlock(rn.indices, cn.indices, U, V)
+            catch error
+                if error isa OverflowError &&
+                   occursin("ACA low-rank update became non-finite",
+                            sprint(showerror, error))
+                    dense_entries = try
+                        Base.Checked.checked_mul(
+                            length(row_indices), length(col_indices))
+                    catch overflow
+                        overflow isa OverflowError || rethrow()
+                        throw(ArgumentError(
+                            "ACA dense fallback storage estimate overflows Int"))
+                    end
+                    planned_entries = try
+                        planned_rank = min(
+                            max_rank,
+                            length(row_indices),
+                            length(col_indices),
+                        )
+                        Base.Checked.checked_mul(
+                            planned_rank,
+                            Base.Checked.checked_add(
+                                length(row_indices), length(col_indices)))
+                    catch overflow
+                        overflow isa OverflowError || rethrow()
+                        throw(ArgumentError(
+                            "ACA low-rank storage estimate overflows Int"))
+                    end
+                    extra_entries = max(0, dense_entries - planned_entries)
+                    extra_bytes = try
+                        Base.Checked.checked_mul(
+                            extra_entries, sizeof(ComplexF64))
+                    catch overflow
+                        overflow isa OverflowError || rethrow()
+                        throw(ArgumentError(
+                            "ACA dense fallback storage estimate overflows Int"))
+                    end
+                    lock(storage_lock)
+                    try
+                        extra_bytes <= max_storage_bytes - claimed_storage[] ||
+                            throw(ArgumentError(
+                                "ACA dense fallback would exceed " *
+                                "max_storage_bytes=$max_storage_bytes"))
+                        claimed_storage[] += extra_bytes
+                    finally
+                        unlock(storage_lock)
+                    end
+                    data = Matrix{ComplexF64}(
+                        undef, length(row_indices), length(col_indices))
+                    _fill_dense_block_batched!(
+                        data, cache, row_indices, col_indices)
+                    results[i] = DenseBlock(rn.indices, cn.indices, data)
+                else
+                    rethrow()
+                end
+            end
         end
     end
 
@@ -624,14 +758,12 @@ end
         for chunk_first in 1:_ACA_BIGFLOAT_OUTPUT_CHUNK:N
             chunk_last = min(N, chunk_first + _ACA_BIGFLOAT_OUTPUT_CHUNK - 1)
             chunk_length = chunk_last - chunk_first + 1
-            chunk_needs_fallback = false
-            @inbounds for output_index in chunk_first:chunk_last
-                if _aca_internal_product_requires_fallback(
-                        normal_product[output_index])
-                    chunk_needs_fallback = true
-                    break
-                end
-            end
+            # This routine is entered only after an extreme stored factor or
+            # input was detected.  Recompute every row in the chunk: a tiny
+            # inner product may have rounded to zero before multiplication by
+            # a large low-rank factor even when the final Float64 row is
+            # ordinary and finite.
+            chunk_needs_fallback = true
 
             if chunk_needs_fallback
                 @inbounds for offset in 1:chunk_length
@@ -734,25 +866,17 @@ end
             @inbounds for output_index in chunk_first:chunk_last
                 original_index = A.tree.perm[output_index]
                 normal_value = normal_product[output_index]
-                if _aca_internal_product_requires_fallback(normal_value)
-                    total = alpha_big *
-                            totals[output_index - chunk_first + 1]
-                    if include_previous
-                        total += beta_big *
-                                 Complex{BigFloat}(y[original_index])
-                    end
-                    converted = ComplexF64(total)
-                    isfinite(converted) ||
-                        throw(OverflowError(
-                            "ACA $(ADJOINT ? "adjoint " : "")product is " *
-                            "outside the representable ComplexF64 range at " *
-                            "row $original_index."))
-                    y[original_index] = converted
-                else
-                    y[original_index] = _aca_scaled_output(
-                        normal_value, y[original_index], alpha_scale,
-                        beta_scale, !include_previous, original_index)
+                total = alpha_big * totals[output_index - chunk_first + 1]
+                if include_previous
+                    total += beta_big * Complex{BigFloat}(y[original_index])
                 end
+                converted = ComplexF64(total)
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "ACA $(ADJOINT ? "adjoint " : "")product is " *
+                        "outside the representable ComplexF64 range at " *
+                        "row $original_index."))
+                y[original_index] = converted
             end
         end
         return y
@@ -813,8 +937,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
                  one(ComplexF64), one(ComplexF64))
         end
 
-        if needs_fallback &&
-           any(_aca_internal_product_requires_fallback, y_perm)
+        if needs_fallback
             return _aca_product_bigfloat!(
                 y, A, x_perm, y_perm,
                 alpha_scale, beta_scale, Val(false))
@@ -916,8 +1039,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
                  one(ComplexF64), one(ComplexF64))
         end
 
-        if needs_fallback &&
-           any(_aca_internal_product_requires_fallback, y_perm)
+        if needs_fallback
             return _aca_product_bigfloat!(
                 y, A.op, x_perm, y_perm,
                 alpha_scale, beta_scale, Val(true))
