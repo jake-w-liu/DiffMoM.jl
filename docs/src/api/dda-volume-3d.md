@@ -43,7 +43,7 @@ This page is organized into five sections:
 
 ## 1. Voxel Grid and Types
 
-### `VoxelGrid3D(x_range, y_range, z_range, nx, ny, nz)`
+### `VoxelGrid3D(x_range, y_range, z_range, nx, ny, nz; max_voxels=10_000_000, max_raw_bytes=536_870_912)`
 
 Create a uniform Cartesian voxel grid over
 `[x_range[1], x_range[2]] x [y_range[1], y_range[2]] x [z_range[1], z_range[2]]`.
@@ -61,6 +61,8 @@ parameter sweeps.
 | `nx` | `Int` | -- | Number of voxels along x (must be `>= 1`). |
 | `ny` | `Int` | -- | Number of voxels along y (must be `>= 1`). |
 | `nz` | `Int` | -- | Number of voxels along z (must be `>= 1`). |
+| `max_voxels` | `Integer` | `10_000_000` | Maximum accepted voxel count, checked before allocation. |
+| `max_raw_bytes` | `Integer` | `536_870_912` | Maximum raw payload for the center and volume vectors, checked before allocation. |
 
 **Returns:** `VoxelGrid3D` with the following fields:
 

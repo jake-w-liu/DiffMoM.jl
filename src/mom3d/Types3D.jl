@@ -7,6 +7,10 @@
 export VoxelGrid3D, DDAOperator3D, DDAAdjointOperator3D, DDAResult3D
 export EMDDAOperator3D, EMDDAResult3D, make_voxel_grid_3d
 
+const _DEFAULT_MAX_VOXELS_3D = 10_000_000
+const _DEFAULT_MAX_VOXEL_GRID_BYTES_3D = 536_870_912
+const _VOXEL_GRID_RAW_BYTES_3D = sizeof(Vec3) + sizeof(Float64)
+
 @inline function _checked_voxel_count_3d(nx::Int, ny::Int, nz::Int)
     try
         return Base.checked_mul(Base.checked_mul(nx, ny), nz)
@@ -169,7 +173,9 @@ struct EMDDAResult3D{TAlpha<:AbstractVector,TA<:AbstractMatrix{ComplexF64},TLU,T
 end
 
 """
-    VoxelGrid3D(x_range, y_range, z_range, nx, ny, nz)
+    VoxelGrid3D(x_range, y_range, z_range, nx, ny, nz;
+                max_voxels=10_000_000,
+                max_raw_bytes=536_870_912)
 
 Create a uniform Cartesian voxel grid over
 `[x_range[1], x_range[2]] x [y_range[1], y_range[2]] x [z_range[1], z_range[2]]`.
@@ -177,8 +183,29 @@ Create a uniform Cartesian voxel grid over
 function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
                      y_range::Tuple{<:Real,<:Real},
                      z_range::Tuple{<:Real,<:Real},
-                     nx::Int, ny::Int, nz::Int)
+                     nx::Int, ny::Int, nz::Int;
+                     max_voxels::Integer=_DEFAULT_MAX_VOXELS_3D,
+                     max_raw_bytes::Integer=
+                         _DEFAULT_MAX_VOXEL_GRID_BYTES_3D)
     nx >= 1 && ny >= 1 && nz >= 1 || error("VoxelGrid3D requires nx, ny, nz >= 1.")
+    voxel_limit = try
+        Int(max_voxels)
+    catch err
+        err isa Union{InexactError,OverflowError} || rethrow()
+        throw(ArgumentError("max_voxels is outside the Int range"))
+    end
+    byte_limit = try
+        Int(max_raw_bytes)
+    catch err
+        err isa Union{InexactError,OverflowError} || rethrow()
+        throw(ArgumentError("max_raw_bytes is outside the Int range"))
+    end
+    voxel_limit >= 1 ||
+        throw(ArgumentError(
+            "max_voxels must be positive, got $max_voxels."))
+    byte_limit >= 1 ||
+        throw(ArgumentError(
+            "max_raw_bytes must be positive, got $max_raw_bytes."))
     x1, x2 = Float64(x_range[1]), Float64(x_range[2])
     y1, y2 = Float64(y_range[1]), Float64(y_range[2])
     z1, z2 = Float64(z_range[1]), Float64(z_range[2])
@@ -189,6 +216,21 @@ function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
     z2 > z1 || error("z_range must be increasing.")
 
     nvoxels = _checked_voxel_count_3d(nx, ny, nz)
+    nvoxels <= voxel_limit ||
+        throw(ArgumentError(
+            "VoxelGrid3D requires $nvoxels voxels, exceeding " *
+            "max_voxels=$voxel_limit."))
+    raw_bytes = try
+        Base.checked_mul(nvoxels, _VOXEL_GRID_RAW_BYTES_3D)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "VoxelGrid3D raw storage estimate overflows Int."))
+    end
+    raw_bytes <= byte_limit ||
+        throw(ArgumentError(
+            "VoxelGrid3D requires $raw_bytes raw bytes for centers and " *
+            "volumes, exceeding max_raw_bytes=$byte_limit."))
     dx = (x2 - x1) / nx
     dy = (y2 - y1) / ny
     dz = (z2 - z1) / nz
@@ -223,8 +265,9 @@ function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
                        x1, y1, z1)
 end
 
-make_voxel_grid_3d(x_range, y_range, z_range, nx::Int, ny::Int, nz::Int) =
-    VoxelGrid3D(x_range, y_range, z_range, nx, ny, nz)
+make_voxel_grid_3d(
+        x_range, y_range, z_range, nx::Int, ny::Int, nz::Int; kwargs...) =
+    VoxelGrid3D(x_range, y_range, z_range, nx, ny, nz; kwargs...)
 
 """
     DDAOperator3D
