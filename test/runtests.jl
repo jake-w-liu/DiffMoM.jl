@@ -2969,6 +2969,24 @@ E_nf = compute_nearfield(mesh, rwg, I_pec, obs_points, k; quad_order=3, eta0=eta
 @assert size(E_nf) == (3, length(obs_points))
 @assert all(isfinite, real.(E_nf))
 @assert all(isfinite, imag.(E_nf))
+nearfield_work_bytes = DiffMoM._nearfield_work_bytes(
+    ntriangles(mesh), rwg.nedges, length(obs_points), 3)
+@test compute_nearfield(
+    mesh, rwg, I_pec, obs_points, k;
+    quad_order=3, eta0=eta0,
+    max_work_bytes=nearfield_work_bytes,
+    max_interaction_terms=3ntriangles(mesh) * length(obs_points)) == E_nf
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, obs_points, k;
+    quad_order=3, eta0=eta0,
+    max_work_bytes=nearfield_work_bytes - 1)
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, obs_points, k;
+    quad_order=3, eta0=eta0,
+    max_interaction_terms=3ntriangles(mesh) * length(obs_points) - 1)
+@test_throws ArgumentError compute_nearfield(
+    mesh, rwg, I_pec, obs_points, k;
+    quad_order=2, eta0=eta0)
 @test size(compute_nearfield(
     mesh, rwg, I_pec, Vec3[], k; quad_order=3, eta0=eta0)) == (3, 0)
 @test_throws ArgumentError compute_nearfield(

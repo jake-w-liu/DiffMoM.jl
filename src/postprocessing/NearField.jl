@@ -11,6 +11,65 @@
 
 export compute_nearfield, compute_total_field
 
+const _DEFAULT_MAX_NEARFIELD_WORK_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS = 200_000_000
+
+@inline function _nearfield_quadrature_count(quad_order::Int)
+    quad_order == 1 && return 1
+    quad_order == 3 && return 3
+    quad_order == 4 && return 4
+    quad_order == 7 && return 7
+    throw(ArgumentError(
+        "compute_nearfield: unsupported quadrature order $quad_order; " *
+        "use 1, 3, 4, or 7"))
+end
+
+function _nearfield_work_bytes(
+        triangle_count::Int,
+        basis_count::Int,
+        observation_count::Int,
+        quadrature_count::Int)
+    total = BigInt(0)
+    # Output field and the owned observation snapshot.
+    total += BigInt(3sizeof(ComplexF64) + sizeof(Vec3)) * observation_count
+    # Per-triangle quadrature points, current samples, affine current values,
+    # scalar samples, geometry caches, and the top-level vector references.
+    total += BigInt(
+        quadrature_count * (sizeof(Vec3) + sizeof(CVec3)) +
+        3sizeof(CVec3) + sizeof(Float64) + sizeof(ComplexF64) +
+        3sizeof(Vec3) + sizeof(Float64) + sizeof(Vector{Vec3}) +
+        sizeof(Vector{Int}),
+    ) * triangle_count
+    # Every RWG belongs to two triangle adjacency lists.  Include their stored
+    # integer payload; object headers and allocator bookkeeping are excluded.
+    total += BigInt(2sizeof(Int)) * basis_count
+    total <= typemax(Int) ||
+        throw(ArgumentError("near-field raw-workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _preflight_nearfield_work(
+        triangle_count::Int,
+        basis_count::Int,
+        observation_count::Int,
+        quadrature_count::Int,
+        max_work_bytes::Integer,
+        max_interaction_terms::Integer)
+    work_bytes = _nearfield_work_bytes(
+        triangle_count, basis_count, observation_count, quadrature_count)
+    _enforce_payload_limit(
+        work_bytes, max_work_bytes,
+        "near-field output and workspace", "max_work_bytes")
+    term_limit = _validated_resource_limit(
+        "max_interaction_terms", max_interaction_terms)
+    terms = BigInt(triangle_count) * observation_count * quadrature_count
+    terms <= term_limit ||
+        throw(ArgumentError(
+            "near-field evaluation requires $terms triangle-quadrature " *
+            "interaction terms, exceeding max_interaction_terms=$term_limit"))
+    return work_bytes, Int(terms)
+end
+
 @inline function _point_triangle_distance(p::Vec3, a::Vec3, b::Vec3, c::Vec3)
     ab_raw = b - a
     ac_raw = c - a
@@ -105,6 +164,16 @@ function _collect_observation_points(points::AbstractVector{<:Vec3})
     return collect(points)
 end
 
+function _preflight_observation_snapshot(
+        observation_count::Int, max_work_bytes::Integer)
+    snapshot_bytes = _checked_array_payload_bytes(
+        Vec3, observation_count; label="near-field observation snapshot")
+    _enforce_payload_limit(
+        snapshot_bytes, max_work_bytes,
+        "near-field observation snapshot", "max_work_bytes")
+    return nothing
+end
+
 function _collect_observation_points(points::AbstractMatrix{<:Real})
     size(points, 1) == 3 ||
         throw(DimensionMismatch("Observation-point matrix must have size (3, Nobs), got $(size(points))."))
@@ -114,6 +183,27 @@ function _collect_observation_points(points::AbstractMatrix{<:Real})
         obs[i] = Vec3(points[1, i], points[2, i], points[3, i])
     end
     return obs
+end
+
+
+function _prepare_nearfield_observations(
+        observation_points::AbstractVector{<:Vec3},
+        max_work_bytes::Integer)
+    _preflight_observation_snapshot(
+        length(observation_points), max_work_bytes)
+    return _collect_observation_points(observation_points)
+end
+
+function _prepare_nearfield_observations(
+        observation_points::AbstractMatrix{<:Real},
+        max_work_bytes::Integer)
+    size(observation_points, 1) == 3 ||
+        throw(DimensionMismatch(
+            "Observation-point matrix must have size (3, Nobs), got " *
+            "$(size(observation_points))."))
+    _preflight_observation_snapshot(
+        size(observation_points, 2), max_work_bytes)
+    return _collect_observation_points(observation_points)
 end
 
 function _precompute_nearfield_triangle_data(mesh::TriMesh, rwg::RWGData,
@@ -223,7 +313,11 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                                    quad_order::Int=3,
                                    eta0::Float64=376.730313668,
                                    check_surface::Bool=true,
-                                   surface_tol::Union{Nothing,Float64}=nothing)
+                                   surface_tol::Union{Nothing,Float64}=nothing,
+                                   max_work_bytes::Integer=
+                                       _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                                   max_interaction_terms::Integer=
+                                       _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
     length(I_coeffs) == rwg.nedges ||
         throw(DimensionMismatch("I_coeffs length $(length(I_coeffs)) != rwg.nedges=$(rwg.nedges)."))
     (isfinite(real(k)) && isfinite(imag(k)) && abs(k) > 0.0) ||
@@ -250,6 +344,10 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
             "compute_nearfield: surface_tol must be finite and nonnegative, got $tol."))
 
     Nobs = length(observation_points)
+    Nq = _nearfield_quadrature_count(quad_order)
+    _preflight_nearfield_work(
+        ntriangles(mesh), rwg.nedges, Nobs, Nq,
+        max_work_bytes, max_interaction_terms)
     Nobs == 0 && return zeros(ComplexF64, 3, 0)
 
     if check_surface
@@ -325,7 +423,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
     end
 
     xi, wq = tri_quad_rule(quad_order)
-    Nq = length(wq)
+    @assert length(wq) == Nq
     quad_pts, areas, J_samples, div_samples, J_verts =
         _precompute_nearfield_triangle_data(
             mesh, rwg, effective_currents, xi)
@@ -490,13 +588,19 @@ function _compute_total_field_matrix(mesh::TriMesh, rwg::RWGData,
                                      quad_order::Int=3,
                                      eta0::Float64=376.730313668,
                                      check_surface::Bool=true,
-                                     surface_tol::Union{Nothing,Float64}=nothing)
+                                     surface_tol::Union{Nothing,Float64}=nothing,
+                                     max_work_bytes::Integer=
+                                         _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                                     max_interaction_terms::Integer=
+                                         _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
     _validate_incident_electric_field_wavenumber(excitation, k)
     E_total = _compute_nearfield_matrix(mesh, rwg, I_coeffs, observation_points, k;
                                         quad_order=quad_order,
                                         eta0=eta0,
                                         check_surface=check_surface,
-                                        surface_tol=surface_tol)
+                                        surface_tol=surface_tol,
+                                        max_work_bytes=max_work_bytes,
+                                        max_interaction_terms=max_interaction_terms)
     @inbounds for i in eachindex(observation_points)
         E_inc = _check_finite_cvec3(
             _incident_electric_field(excitation, observation_points[i], k),
@@ -537,6 +641,10 @@ sign convention as the rest of the package:
 - `surface_tol=nothing`: optional minimum point-to-surface tolerance; defaults to
   `1e-10 * bbox_diagonal(mesh)` (rounded up to the least positive Float64
   when that product underflows)
+- `max_work_bytes=536_870_912`: maximum raw payload of the output and retained
+  construction workspaces, checked before geometry or field arrays are built
+- `max_interaction_terms=200_000_000`: maximum number of direct
+  triangle-quadrature interactions across all observation points
 
 # Returns
 - Single-point input: `CVec3`
@@ -556,12 +664,18 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                            quad_order::Int=3,
                            eta0::Float64=376.730313668,
                            check_surface::Bool=true,
-                           surface_tol::Union{Nothing,Float64}=nothing)
+                           surface_tol::Union{Nothing,Float64}=nothing,
+                           max_work_bytes::Integer=
+                               _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                           max_interaction_terms::Integer=
+                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
     E = _compute_nearfield_matrix(mesh, rwg, I_coeffs, [observation_point], k;
                                   quad_order=quad_order,
                                   eta0=eta0,
                                   check_surface=check_surface,
-                                  surface_tol=surface_tol)
+                                  surface_tol=surface_tol,
+                                  max_work_bytes=max_work_bytes,
+                                  max_interaction_terms=max_interaction_terms)
     return CVec3(E[:, 1])
 end
 
@@ -571,13 +685,20 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                            quad_order::Int=3,
                            eta0::Float64=376.730313668,
                            check_surface::Bool=true,
-                           surface_tol::Union{Nothing,Float64}=nothing)
-    obs = _collect_observation_points(observation_points)
+                           surface_tol::Union{Nothing,Float64}=nothing,
+                           max_work_bytes::Integer=
+                               _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                           max_interaction_terms::Integer=
+                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    obs = _prepare_nearfield_observations(
+        observation_points, max_work_bytes)
     return _compute_nearfield_matrix(mesh, rwg, I_coeffs, obs, k;
                                      quad_order=quad_order,
                                      eta0=eta0,
                                      check_surface=check_surface,
-                                     surface_tol=surface_tol)
+                                     surface_tol=surface_tol,
+                                     max_work_bytes=max_work_bytes,
+                                     max_interaction_terms=max_interaction_terms)
 end
 
 function compute_nearfield(mesh::TriMesh, rwg::RWGData,
@@ -586,13 +707,20 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                            quad_order::Int=3,
                            eta0::Float64=376.730313668,
                            check_surface::Bool=true,
-                           surface_tol::Union{Nothing,Float64}=nothing)
-    obs = _collect_observation_points(observation_points)
+                           surface_tol::Union{Nothing,Float64}=nothing,
+                           max_work_bytes::Integer=
+                               _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                           max_interaction_terms::Integer=
+                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    obs = _prepare_nearfield_observations(
+        observation_points, max_work_bytes)
     return _compute_nearfield_matrix(mesh, rwg, I_coeffs, obs, k;
                                      quad_order=quad_order,
                                      eta0=eta0,
                                      check_surface=check_surface,
-                                     surface_tol=surface_tol)
+                                     surface_tol=surface_tol,
+                                     max_work_bytes=max_work_bytes,
+                                     max_interaction_terms=max_interaction_terms)
 end
 
 """
@@ -619,6 +747,10 @@ representation and `exp(+iωt)` sign convention as `compute_nearfield`.
 - `eta0=376.730313668`: free-space impedance
 - `check_surface=true`: reject points on the surface
 - `surface_tol=nothing`: optional minimum point-to-surface tolerance
+- `max_work_bytes=536_870_912`: maximum raw payload of the scattered-field
+  output and retained construction workspaces
+- `max_interaction_terms=200_000_000`: maximum number of direct
+  triangle-quadrature interactions across all observation points
 
 # Returns
 - Single-point input: `CVec3`
@@ -646,12 +778,18 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                              quad_order::Int=3,
                              eta0::Float64=376.730313668,
                              check_surface::Bool=true,
-                             surface_tol::Union{Nothing,Float64}=nothing)
+                             surface_tol::Union{Nothing,Float64}=nothing,
+                             max_work_bytes::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                             max_interaction_terms::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
     E = _compute_total_field_matrix(mesh, rwg, I_coeffs, excitation, [observation_point], k;
                                     quad_order=quad_order,
                                     eta0=eta0,
                                     check_surface=check_surface,
-                                    surface_tol=surface_tol)
+                                    surface_tol=surface_tol,
+                                    max_work_bytes=max_work_bytes,
+                                    max_interaction_terms=max_interaction_terms)
     return CVec3(E[:, 1])
 end
 
@@ -662,13 +800,20 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                              quad_order::Int=3,
                              eta0::Float64=376.730313668,
                              check_surface::Bool=true,
-                             surface_tol::Union{Nothing,Float64}=nothing)
-    obs = _collect_observation_points(observation_points)
+                             surface_tol::Union{Nothing,Float64}=nothing,
+                             max_work_bytes::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                             max_interaction_terms::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    obs = _prepare_nearfield_observations(
+        observation_points, max_work_bytes)
     return _compute_total_field_matrix(mesh, rwg, I_coeffs, excitation, obs, k;
                                        quad_order=quad_order,
                                        eta0=eta0,
                                        check_surface=check_surface,
-                                       surface_tol=surface_tol)
+                                       surface_tol=surface_tol,
+                                       max_work_bytes=max_work_bytes,
+                                       max_interaction_terms=max_interaction_terms)
 end
 
 function compute_total_field(mesh::TriMesh, rwg::RWGData,
@@ -678,11 +823,18 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                              quad_order::Int=3,
                              eta0::Float64=376.730313668,
                              check_surface::Bool=true,
-                             surface_tol::Union{Nothing,Float64}=nothing)
-    obs = _collect_observation_points(observation_points)
+                             surface_tol::Union{Nothing,Float64}=nothing,
+                             max_work_bytes::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
+                             max_interaction_terms::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    obs = _prepare_nearfield_observations(
+        observation_points, max_work_bytes)
     return _compute_total_field_matrix(mesh, rwg, I_coeffs, excitation, obs, k;
                                        quad_order=quad_order,
                                        eta0=eta0,
                                        check_surface=check_surface,
-                                       surface_tol=surface_tol)
+                                       surface_tol=surface_tol,
+                                       max_work_bytes=max_work_bytes,
+                                       max_interaction_terms=max_interaction_terms)
 end

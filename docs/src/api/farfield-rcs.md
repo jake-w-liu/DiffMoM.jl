@@ -127,7 +127,7 @@ Summed with `compute_farfield` (the scattered contribution from the solved curre
 
 ## Near-Field Evaluation
 
-### `compute_nearfield(mesh, rwg, I_coeffs, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing)`
+### `compute_nearfield(mesh, rwg, I_coeffs, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing, max_work_bytes=536_870_912, max_interaction_terms=200_000_000)`
 
 Compute the scattered electric field at arbitrary observation points from the
 solved RWG current coefficients.
@@ -142,6 +142,11 @@ solved RWG current coefficients.
 
 - Single-point input: `CVec3`
 - Multi-point input: `Matrix{ComplexF64}` of size `(3, Nobs)`
+
+`max_work_bytes` bounds the raw payload of the output and retained
+construction workspaces. `max_interaction_terms` bounds the direct
+`Nobs * Ntriangles * Nquadrature` evaluation work. Both limits are checked
+before the geometry and field workspaces are built.
 
 **Formula:**
 
@@ -178,7 +183,7 @@ E_nf = compute_nearfield(mesh, rwg, I, obs, k)
 
 ---
 
-### `compute_total_field(mesh, rwg, I_coeffs, excitation, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing)`
+### `compute_total_field(mesh, rwg, I_coeffs, excitation, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing, max_work_bytes=536_870_912, max_interaction_terms=200_000_000)`
 
 Compute the total electric field at arbitrary observation points:
 
@@ -201,6 +206,9 @@ excitation model.
 
 - Single-point input: `CVec3`
 - Multi-point input: `Matrix{ComplexF64}` of size `(3, Nobs)`
+
+The near-field `max_work_bytes` and `max_interaction_terms` limits are applied
+to the scattered-field stage before incident fields are accumulated in place.
 
 **Supported excitation models:**
 
