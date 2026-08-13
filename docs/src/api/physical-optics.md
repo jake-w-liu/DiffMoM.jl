@@ -48,7 +48,7 @@ rcs_vals = bistatic_rcs(result.E_ff)
 
 ## Functions
 
-### `solve_po(mesh, freq_hz, excitation; grid, c0=299792458.0, eta0=376.730313668)`
+### `solve_po(mesh, freq_hz, excitation; grid, c0=299792458.0, eta0=376.730313668, max_work_bytes=536_870_912)`
 
 Compute the Physical Optics scattered far-field for a PEC body.
 
@@ -62,6 +62,7 @@ Compute the Physical Optics scattered far-field for a PEC body.
 | `grid` | `SphGrid` | `make_sph_grid(36, 72)` | Spherical observation grid. |
 | `c0` | `Float64` | `299792458.0` | Speed of light (m/s). |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance (ohms). |
+| `max_work_bytes` | `Integer` | `536_870_912` | Maximum raw payload of solver-owned outputs and construction workspaces, checked before allocation. |
 
 **Returns:** `POResult`.
 
@@ -206,7 +207,7 @@ face (boundary edges) are treated as half-planes (`α = 2π`).
 
 **Returns:** `Vector{DiffractionEdge}`.
 
-### `solve_ptd(mesh, freq_hz, excitation; grid, c0=299792458.0, eta0=376.730313668, min_dihedral_deg=5.0, include_boundary=true)`
+### `solve_ptd(mesh, freq_hz, excitation; grid, c0=299792458.0, eta0=376.730313668, min_dihedral_deg=5.0, include_boundary=true, max_work_bytes=536_870_912)`
 
 Compute the PO+PTD scattered far-field for a PEC body.
 
@@ -222,6 +223,7 @@ Compute the PO+PTD scattered far-field for a PEC body.
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance (ohms). |
 | `min_dihedral_deg` | `Float64` | `5.0` | Passed to `extract_diffraction_edges`. |
 | `include_boundary` | `Bool` | `true` | Passed to `extract_diffraction_edges`. |
+| `max_work_bytes` | `Integer` | `536_870_912` | Maximum combined raw payload of the PO and PTD outputs and construction workspaces, checked before field allocation. |
 
 **Returns:** `PTDResult`.
 

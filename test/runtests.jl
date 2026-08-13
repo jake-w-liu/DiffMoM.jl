@@ -7223,6 +7223,17 @@ po_large_amplitude = solve_po(
 @test all(current -> all(isfinite, current), po_large_amplitude.J_s)
 @test all(isfinite, po_large_amplitude.E_ff)
 po_result = solve_po(po_mesh, po_freq, pw_down; grid=po_grid)
+po_work_bytes = DiffMoM._po_work_bytes(
+    ntriangles(po_mesh), length(po_grid.w))
+po_capped = solve_po(
+    po_mesh, po_freq, pw_down;
+    grid=po_grid, max_work_bytes=po_work_bytes)
+@test po_capped.E_ff == po_result.E_ff
+@test_throws ArgumentError solve_po(
+    po_mesh, po_freq, pw_down;
+    grid=po_grid, max_work_bytes=po_work_bytes - 1)
+@test_throws ArgumentError solve_po(
+    po_mesh, po_freq, pw_down; grid=po_grid, max_work_bytes=0)
 
 # Mixed-scale PO currents are evaluated as a complete product.  A formally
 # overflowing standalone 2E0/eta0 factor must not reject an exactly zero
@@ -7452,6 +7463,20 @@ ptd_mesh = make_rect_plate(0.2, 0.2, 1, 1)
 ptd_grid = make_sph_grid(4, 8)
 ptd_result = solve_ptd(
     ptd_mesh, po_freq, pw_down; grid=ptd_grid)
+ptd_required_bytes = DiffMoM._po_work_bytes(
+    ntriangles(ptd_mesh), length(ptd_grid.w)) +
+    DiffMoM._ptd_additional_work_bytes(
+        length(ptd_result.edges), length(ptd_grid.w))
+ptd_capped = solve_ptd(
+    ptd_mesh, po_freq, pw_down;
+    grid=ptd_grid, max_work_bytes=ptd_required_bytes)
+@test ptd_capped.E_ff == ptd_result.E_ff
+@test_throws ArgumentError solve_ptd(
+    ptd_mesh, po_freq, pw_down;
+    grid=ptd_grid, max_work_bytes=ptd_required_bytes - 1)
+@test_throws ArgumentError solve_ptd(
+    ptd_mesh, po_freq, pw_down;
+    grid=ptd_grid, max_work_bytes=0)
 @test size(ptd_result.E_ff) == (3, length(ptd_grid.w))
 @test length(ptd_result.edges) == 4
 @test all(isfinite, ptd_result.E_ff)

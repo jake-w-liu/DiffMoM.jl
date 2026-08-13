@@ -64,6 +64,37 @@ end
 
 const _PTD_EXACT_PRECISION = 8704
 const _MAX_PTD_EXACT_DIRECTION_VALUES = 12_288
+const _DEFAULT_MAX_PTD_WORK_BYTES = 512 * 1024 * 1024
+
+function _ptd_additional_work_bytes(edge_count::Int, direction_count::Int)
+    total = BigInt(sizeof(DiffractionEdge)) * edge_count
+    # PTD-only and combined far fields plus cached observation directions.
+    total += BigInt(6 * sizeof(ComplexF64) + sizeof(Vec3)) * direction_count
+    total <= typemax(Int) ||
+        throw(ArgumentError("PTD raw-workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _preflight_ptd_work(
+        Nt::Int,
+        edge_count::Int,
+        direction_count::Int,
+        max_work_bytes::Integer)
+    limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    required = try
+        Base.Checked.checked_add(
+            _po_work_bytes(Nt, direction_count),
+            _ptd_additional_work_bytes(edge_count, direction_count))
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("PO+PTD raw-workspace estimate overflows Int"))
+    end
+    required <= limit ||
+        throw(ArgumentError(
+            "PO+PTD output and workspace requires $required raw bytes, " *
+            "exceeding max_work_bytes=$limit"))
+    return required, limit
+end
 
 @inline function _ptd_register_exact_direction!(
         exact_totals::Dict{Int,Vector{Complex{BigFloat}}},
@@ -450,13 +481,17 @@ end
 # ═══════════════════════════════════════════════════════════════════
 
 """
-    solve_ptd(mesh, freq_hz, excitation; grid, c0, eta0, min_dihedral_deg, include_boundary)
+    solve_ptd(mesh, freq_hz, excitation; grid, c0, eta0,
+              min_dihedral_deg, include_boundary,
+              max_work_bytes=536_870_912)
 
 Compute the PO+PTD scattered far-field for a PEC body.
 
 Calls `solve_po` for the PO contribution, then adds PTD fringe corrections
 from diffraction edges using the Sáez de Adana et al. formulation
 (eqs 4.131-4.146): fringe = exact_edge - PO_edge.
+`max_work_bytes` bounds the combined raw payload of the PO and PTD outputs and
+construction workspaces before either solver allocates its field arrays.
 
 # Returns
 `PTDResult` with combined PO+PTD far-field, individual components, and edge data.
@@ -466,7 +501,8 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
                    c0::Float64=299792458.0,
                    eta0::Float64=376.730313668,
                    min_dihedral_deg::Float64=5.0,
-                   include_boundary::Bool=true)
+                   include_boundary::Bool=true,
+                   max_work_bytes::Integer=_DEFAULT_MAX_PTD_WORK_BYTES)
     min_dihedral = _validated_min_dihedral(min_dihedral_deg)
 
     # Validate and reject unsupported interior wedges before the potentially
@@ -488,8 +524,14 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
             "solve_ptd currently supports boundary half-plane edges only; " *
             "interior-wedge PTD requires an invariant illuminated-side formulation"))
 
+    _, work_limit = _preflight_ptd_work(
+        ntriangles(mesh), length(edges), length(grid.w), max_work_bytes)
+
     # ── Phase 1: PO solution ──
-    po = solve_po(mesh, freq_hz, excitation; grid=grid, c0=c0, eta0=eta0)
+    po = solve_po(
+        mesh, freq_hz, excitation;
+        grid=grid, c0=c0, eta0=eta0,
+        max_work_bytes=work_limit)
 
     k = po.k
     NΩ = length(grid.w)

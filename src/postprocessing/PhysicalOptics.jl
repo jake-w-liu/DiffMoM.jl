@@ -11,6 +11,27 @@
 export POResult, solve_po
 
 const _PO_PHASE_FALLBACK_PRECISION = 4352
+const _DEFAULT_MAX_PO_WORK_BYTES = 512 * 1024 * 1024
+
+function _po_work_bytes(Nt::Int, direction_count::Int)
+    # Retained raw arrays owned by solve_po. `POResult` retains E_ff, J_s, and
+    # illuminated; the remaining arrays are construction workspaces.
+    total = BigInt(0)
+    total += BigInt(3 * sizeof(Vec3) + sizeof(Float64) + sizeof(Vec3) +
+                    sizeof(CVec3)) * Nt
+    total += BigInt(sizeof(Bool)) * Nt
+    total += BigInt(sizeof(Vec3) + 3 * sizeof(ComplexF64)) * direction_count
+    total <= typemax(Int) ||
+        throw(ArgumentError("PO raw-workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _preflight_po_work(
+        Nt::Int, direction_count::Int, max_work_bytes::Integer)
+    return _enforce_payload_limit(
+        _po_work_bytes(Nt, direction_count), max_work_bytes,
+        "PO output and workspace", "max_work_bytes")
+end
 
 @noinline function _po_surface_current_exact(
     amplitude::Float64,
@@ -452,6 +473,8 @@ Compute the Physical Optics scattered far-field for a PEC body.
 - `excitation::PlaneWaveExcitation`: incident plane wave
 - `grid::SphGrid`: spherical observation grid (default: 36×72)
 - `c0, eta0`: physical constants
+- `max_work_bytes=536_870_912`: positive raw-payload ceiling for retained
+  outputs and construction workspaces; checked before solver-owned arrays
 
 # Returns
 `POResult` with far-field `E_ff`, surface currents `J_s`, illumination mask, etc.
@@ -465,12 +488,14 @@ over each triangle (exact for the linear phase exp(jk δk·r')).
 function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
                   grid::SphGrid=make_sph_grid(36, 72),
                   c0::Float64=299792458.0,
-                  eta0::Float64=376.730313668)
+                  eta0::Float64=376.730313668,
+                  max_work_bytes::Integer=_DEFAULT_MAX_PO_WORK_BYTES)
     NΩ, frequency, k, k_hat =
         _validate_po_inputs(grid, freq_hz, excitation, c0, eta0)
     assert_mesh_quality(
         mesh; allow_boundary=true, require_closed=false)
     Nt = ntriangles(mesh)
+    _preflight_po_work(Nt, NΩ, max_work_bytes)
     k_vec = excitation.k_vec
     E0 = excitation.E0
     pol = excitation.pol
