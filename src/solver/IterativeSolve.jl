@@ -7,6 +7,34 @@ using Krylov
 
 export solve_gmres, solve_gmres_adjoint
 
+const _DEFAULT_MAX_GMRES_WORKSPACE_BYTES = 512 * 1024 * 1024
+
+function _gmres_workspace_bytes(problem_size::Int, memory::Int)
+    effective_memory = min(problem_size, memory)
+    # Krylov.GmresSolver stores x, w, `effective_memory` Arnoldi vectors,
+    # three length-memory scalar arrays, and packed upper-triangular R.
+    # Δx, p, and q are zero-length for the unpreconditioned constructor and
+    # are allocated lazily when the corresponding option requires them, so
+    # reserve three additional problem-size vectors conservatively.
+    total = BigInt(sizeof(ComplexF64)) * (
+        BigInt(effective_memory + 5) * problem_size +
+        2BigInt(effective_memory) +
+        (BigInt(effective_memory) * (effective_memory + 1)) ÷ 2
+    )
+    total += BigInt(sizeof(Float64)) * effective_memory
+    total <= typemax(Int) ||
+        throw(ArgumentError("GMRES workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _preflight_gmres_workspace(
+        problem_size::Int, memory::Int, max_workspace_bytes::Integer)
+    return _enforce_payload_limit(
+        _gmres_workspace_bytes(problem_size, memory),
+        max_workspace_bytes,
+        "GMRES Krylov workspace", "max_workspace_bytes")
+end
+
 @inline function _as_complex_rhs(rhs::AbstractVector{<:Number})
     if rhs isa Vector{ComplexF64}
         return rhs
@@ -272,7 +300,8 @@ end
 
 """
     solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8,
-                maxiter=200, memory=20, verbose=false,
+                maxiter=200, memory=20, max_workspace_bytes=536_870_912,
+                verbose=false,
                 check_gmres_convergence=true)
 
 Solve Z x = rhs using GMRES from Krylov.jl.
@@ -285,6 +314,8 @@ Returns `(x, stats)` where `stats` is the Krylov.jl convergence info.
 By default, an unconverged or non-finite result throws. Set
 `check_gmres_convergence=false` only when intentionally inspecting a partial
 iterate and its `stats`.
+`max_workspace_bytes` bounds the raw payload of the Krylov basis, solver
+vectors, and Hessenberg/rotation storage before Krylov allocates them.
 """
 function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
@@ -292,10 +323,13 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      tol::Float64=1e-8,
                      maxiter::Int=200,
                      memory::Int=20,
+                     max_workspace_bytes::Integer=
+                         _DEFAULT_MAX_GMRES_WORKSPACE_BYTES,
                      verbose::Bool=false,
                      check_gmres_convergence::Bool=true)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
     _validate_linear_system_inputs(Z, rhs, "forward GMRES")
+    _preflight_gmres_workspace(size(Z, 1), memory, max_workspace_bytes)
     rhs_c = _as_complex_rhs(rhs)
     scaled_Z, scaled_rhs, solution_shift =
         _gmres_scaled_problem(Z, rhs_c, "forward GMRES")
@@ -333,7 +367,8 @@ end
 
 """
     solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left,
-                        tol=1e-8, maxiter=200, memory=20, verbose=false,
+                        tol=1e-8, maxiter=200, memory=20,
+                        max_workspace_bytes=536_870_912, verbose=false,
                         check_gmres_convergence=true)
 
 Solve Z† x = rhs using GMRES, with the adjoint preconditioner Z_nf⁻ᴴ.
@@ -351,10 +386,13 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                               tol::Float64=1e-8,
                               maxiter::Int=200,
                               memory::Int=20,
+                              max_workspace_bytes::Integer=
+                                  _DEFAULT_MAX_GMRES_WORKSPACE_BYTES,
                               verbose::Bool=false,
                               check_gmres_convergence::Bool=true)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
     _validate_linear_system_inputs(Z, rhs, "adjoint GMRES")
+    _preflight_gmres_workspace(size(Z, 1), memory, max_workspace_bytes)
     rhs_c = _as_complex_rhs(rhs)
     scaled_Z, scaled_rhs, solution_shift =
         _gmres_scaled_problem(Z, rhs_c, "adjoint GMRES")

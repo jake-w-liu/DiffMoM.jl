@@ -400,7 +400,7 @@ General linear solve `Z * x = rhs` with the same solver dispatch as `solve_forwa
 
 These are the low-level GMRES interfaces using Krylov.jl. Most users should use `solve_forward(...; solver=:gmres)` instead, which wraps these.
 
-### `solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
+### `solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, max_workspace_bytes=536_870_912, verbose=false, check_gmres_convergence=true)`
 
 Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field preconditioning.
 
@@ -415,6 +415,7 @@ Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field precond
 | `tol` | `Float64` | `1e-8` | Relative convergence tolerance. |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart length (number of Krylov vectors stored). Larger values may improve convergence for difficult problems at the cost of O(N * memory) storage. |
+| `max_workspace_bytes` | `Integer` | `536_870_912` | Maximum raw payload of the Krylov vectors and Hessenberg/rotation workspace, checked before Krylov allocation. |
 | `verbose` | `Bool` | `false` | Print convergence info. |
 | `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged, inconsistent, or non-finite result. Set to `false` only to inspect a partial iterate and its stats. |
 
@@ -426,7 +427,7 @@ thresholds from misclassifying a globally tiny, well-conditioned system.
 
 ---
 
-### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
+### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, max_workspace_bytes=536_870_912, verbose=false, check_gmres_convergence=true)`
 
 Solve the adjoint system `Z' * x = rhs` using GMRES with the adjoint preconditioner `Z_nf^{-H}` (inverse conjugate transpose of the near-field matrix). Used internally by `solve_adjoint` for sensitivity analysis.
 

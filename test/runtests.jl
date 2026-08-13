@@ -4920,8 +4920,15 @@ Z_gm = Matrix{ComplexF64}(Z_full)
 I_gm_direct = Z_gm \ v
 
 # GMRES forward solve (no preconditioner)
+gmres_workspace_bytes = DiffMoM._gmres_workspace_bytes(
+    size(Z_gm, 1), 20)
 I_gmres_nop, stats_nop = solve_gmres(Z_gm, Vector{ComplexF64}(v);
-                                       tol=1e-10, maxiter=500)
+                                       tol=1e-10, maxiter=500,
+                                       max_workspace_bytes=gmres_workspace_bytes)
+@test_throws ArgumentError solve_gmres(
+    Z_gm, Vector{ComplexF64}(v);
+    tol=1e-10, maxiter=500,
+    max_workspace_bytes=gmres_workspace_bytes - 1)
 rel_gmres_nop = norm(I_gmres_nop - I_gm_direct) / max(norm(I_gm_direct), 1e-30)
 println("  GMRES (no precond) rel error: $rel_gmres_nop  iters: $(stats_nop.niter)")
 @assert rel_gmres_nop < 1e-6 "GMRES without preconditioner inaccurate: $rel_gmres_nop"
@@ -4930,7 +4937,13 @@ println("  GMRES (no precond) rel error: $rel_gmres_nop  iters: $(stats_nop.nite
 rhs_adj_gm = Vector{ComplexF64}(Q * I_gm_direct)
 lam_gm_direct = Z_gm' \ rhs_adj_gm
 lam_gmres_nop, stats_adj_nop = solve_gmres_adjoint(Z_gm, rhs_adj_gm;
-                                                      tol=1e-10, maxiter=500)
+                                                      tol=1e-10, maxiter=500,
+                                                      max_workspace_bytes=
+                                                          gmres_workspace_bytes)
+@test_throws ArgumentError solve_gmres_adjoint(
+    Z_gm, rhs_adj_gm;
+    tol=1e-10, maxiter=500,
+    max_workspace_bytes=gmres_workspace_bytes - 1)
 rel_adj_nop = norm(lam_gmres_nop - lam_gm_direct) / max(norm(lam_gm_direct), 1e-30)
 println("  GMRES adjoint (no precond) rel error: $rel_adj_nop  iters: $(stats_adj_nop.niter)")
 @assert rel_adj_nop < 1e-6
