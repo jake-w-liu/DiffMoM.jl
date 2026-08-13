@@ -8086,7 +8086,52 @@ println("  31f: Loaded MLFMA preconditioner — $(stats_mlfma_loaded.niter) iter
 println("  31f: PASS")
 
 # 31g: block-Jacobi preconditioner action and allocation
+block_storage_bytes = DiffMoM._block_diag_storage_bytes(A_mlfma)
 P_mlfma_block = build_block_diag_preconditioner(A_mlfma)
+P_mlfma_block_capped = build_block_diag_preconditioner(
+    A_mlfma; max_storage_bytes=block_storage_bytes)
+@test length(P_mlfma_block_capped.lu_blocks) ==
+      length(P_mlfma_block.lu_blocks)
+@test_throws ArgumentError build_block_diag_preconditioner(
+    A_mlfma; max_storage_bytes=block_storage_bytes - 1)
+@test_throws ArgumentError build_block_diag_preconditioner(
+    A_mlfma; max_storage_bytes=0)
+
+# Assemble loaded leaf blocks without materializing one dense patch submatrix
+# per patch. The exceptional path retains an exact Float-input cancellation
+# that rounds to a normal ComplexF64 entry.
+block_loaded = build_block_diag_preconditioner(
+    A_mlfma, Mp_mlfma_loaded, theta_mlfma_loaded;
+    max_storage_bytes=block_storage_bytes)
+@test length(block_loaded.lu_blocks) == length(P_mlfma_block.lu_blocks)
+@test_throws ArgumentError build_block_diag_preconditioner(
+    A_mlfma, Mp_mlfma_loaded, theta_mlfma_loaded;
+    max_storage_bytes=block_storage_bytes - 1)
+
+m_block_exact = Int64(2)^52 + 2
+a_block_exact = ldexp(Float64(m_block_exact), -52)
+b_block_exact = -ldexp(Float64(m_block_exact - 1), -52)
+v_block_exact = ldexp(Float64(m_block_exact), -970)
+p_block_exact = ldexp(Float64(m_block_exact + 1), -970)
+exact_block = ComplexF64[0 0; 0 1]
+exact_mass_a = ComplexF64[v_block_exact 0; 0 0]
+exact_mass_b = ComplexF64[p_block_exact 0; 0 0]
+DiffMoM._load_block_diag_matrix!(
+    exact_block, [exact_mass_a, exact_mass_b],
+    [a_block_exact, b_block_exact], false, [1, 2],
+    Ref(0), 100_000)
+exact_block_reference = setprecision(BigFloat, 4352) do
+    ComplexF64(-BigFloat(a_block_exact) * BigFloat(v_block_exact) -
+               BigFloat(b_block_exact) * BigFloat(p_block_exact))
+end
+@test exact_block[1, 1] == exact_block_reference
+@test exact_block[1, 1] != 0
+@test_throws ArgumentError DiffMoM._load_block_diag_matrix!(
+    copy(ComplexF64[0 0; 0 1]),
+    [exact_mass_a, exact_mass_b],
+    [a_block_exact, b_block_exact], false, [1, 2],
+    Ref(0), 1)
+
 block_result = _assert_zero_allocation_mul!(
     NearFieldOperator(P_mlfma_block), x_test)
 block_adjoint_result = _assert_zero_allocation_mul!(

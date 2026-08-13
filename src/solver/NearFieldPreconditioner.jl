@@ -31,6 +31,8 @@ export NearFieldPreconditionerData,
 const _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES = 256 * 1024 * 1024
 const _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES = 250_000
+const _DEFAULT_MAX_BLOCK_DIAG_STORAGE_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_BLOCK_DIAG_EXACT_WORK = 20_000_000
 const _NEARFIELD_TRIPLET_ENTRY_BYTES =
     2 * sizeof(Int) + sizeof(ComplexF64)
 
@@ -1231,17 +1233,307 @@ function LinearAlgebra.mul!(y::AbstractVector, op::NearFieldAdjointOperator, x::
     return y
 end
 
+function _block_diag_storage_bytes(A_mlfma)
+    octree = A_mlfma.octree
+    N = size(A_mlfma, 1)
+    size(A_mlfma, 2) == N ||
+        throw(DimensionMismatch(
+            "MLFMA operator must be square, got size $(size(A_mlfma))"))
+    length(octree.perm) == N ||
+        throw(DimensionMismatch(
+            "octree permutation length $(length(octree.perm)) != operator size $N"))
+    N >= 1 ||
+        throw(ArgumentError(
+            "block-diagonal preconditioner requires a nonempty operator"))
+
+    dense_entries = 0
+    indexed_entries = 0
+    max_block_size = 0
+    try
+        for box in octree.levels[end].boxes
+            block_size = length(box.bf_range)
+            dense_entries = Base.Checked.checked_add(
+                dense_entries,
+                Base.Checked.checked_mul(block_size, block_size))
+            indexed_entries = Base.Checked.checked_add(
+                indexed_entries, block_size)
+            max_block_size = max(max_block_size, block_size)
+        end
+        indexed_entries == N ||
+            throw(DimensionMismatch(
+                "MLFMA leaf boxes cover $indexed_entries basis functions, expected $N"))
+
+        factor_bytes = Base.Checked.checked_mul(
+            dense_entries, sizeof(ComplexF64))
+        # Each leaf retains its original-index vector and the LU pivot vector.
+        index_bytes = Base.Checked.checked_mul(
+            Base.Checked.checked_mul(2, indexed_entries), sizeof(Int))
+        work_bytes = Base.Checked.checked_mul(
+            max_block_size, sizeof(ComplexF64))
+        return Base.Checked.checked_add(
+            Base.Checked.checked_add(factor_bytes, index_bytes), work_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "block-diagonal preconditioner storage estimate overflows Int"))
+    end
+end
+
+function _preflight_block_diag_storage(
+        A_mlfma,
+        max_storage_bytes::Integer)
+    storage_bytes = _block_diag_storage_bytes(A_mlfma)
+    return _enforce_payload_limit(
+        storage_bytes, max_storage_bytes,
+        "block-diagonal preconditioner", "max_storage_bytes")
+end
+
+function _block_diag_leaf_indices(octree, box, N::Int)
+    indices = Vector{Int}(undef, length(box.bf_range))
+    @inbounds for (offset, tree_index) in enumerate(box.bf_range)
+        original_index = octree.perm[tree_index]
+        1 <= original_index <= N ||
+            throw(ArgumentError(
+                "octree permutation entry $tree_index=$original_index is outside 1:$N"))
+        indices[offset] = original_index
+    end
+    return indices
+end
+
+function _block_diag_base_matrix(A_mlfma, indices::Vector{Int})
+    block_size = length(indices)
+    block = Matrix{ComplexF64}(undef, block_size, block_size)
+    @inbounds for column in 1:block_size, row in 1:block_size
+        value = ComplexF64(
+            A_mlfma.Z_near[indices[row], indices[column]])
+        isfinite(value) ||
+            throw(ArgumentError(
+                "MLFMA near-field block contains a non-finite entry at " *
+                "($(indices[row]), $(indices[column]))"))
+        block[row, column] = value
+    end
+    return block
+end
+
+function _validate_block_diag_mass_entries(
+        matrix::AbstractMatrix,
+        indices::Vector{Int},
+        patch::Int)
+    @inbounds for original_column in indices, original_row in indices
+        isfinite(matrix[original_row, original_column]) ||
+            throw(ArgumentError(
+                "Mp[$patch] contains a non-finite entry at " *
+                "($original_row, $original_column)"))
+    end
+    return nothing
+end
+
+function _validate_block_diag_mass_entries(
+        matrix::Union{StridedMatrix,SparseMatrixCSC,LocalMassMatrix},
+        ::Vector{Int},
+        patch::Int)
+    _validate_known_matrix_entries(matrix, "Mp[$patch]")
+    return nothing
+end
+
+
+function _validate_block_diag_mass_entries(
+        matrix::LocalMassMatrix,
+        ::Vector{Int},
+        patch::Int)
+    _validate_known_matrix_entries(matrix, "Mp[$patch]")
+    return nothing
+end
+
+@inline function _block_diag_number_requires_exact(value::Number)
+    converted = ComplexF64(value)
+    isfinite(converted) || return true
+    for (original_component, converted_component) in (
+            (real(value), real(converted)),
+            (imag(value), imag(converted)))
+        if !iszero(original_component) &&
+           (iszero(converted_component) ||
+            abs(converted_component) < floatmin(Float64))
+            return true
+        end
+    end
+    return _ieee_dense_extreme_factor(value, Float64)
+end
+
+@inline _block_diag_impedance_coefficient(
+    theta::AbstractVector,
+    patch::Int,
+    reactive::Bool,
+) = reactive ? im * theta[patch] : theta[patch]
+
+@inline function _block_diag_entry_requires_exact(
+        base::ComplexF64,
+        matrices::Vector{<:AbstractMatrix},
+        theta::AbstractVector,
+        reactive::Bool,
+        original_row::Int,
+        original_column::Int)
+    _block_diag_number_requires_exact(base) && return true
+    @inbounds for patch in eachindex(theta)
+        coefficient = _block_diag_impedance_coefficient(
+            theta, patch, reactive)
+        iszero(coefficient) && continue
+        value = matrices[patch][original_row, original_column]
+        isfinite(value) ||
+            throw(ArgumentError(
+                "Mp[$patch] contains a non-finite entry at " *
+                "($original_row, $original_column)"))
+        if _block_diag_number_requires_exact(coefficient) ||
+           _block_diag_number_requires_exact(value)
+            return true
+        end
+    end
+    return false
+end
+
+@noinline function _block_diag_loaded_entry_bigfloat(
+        base::ComplexF64,
+        matrices::Vector{<:AbstractMatrix},
+        theta::AbstractVector,
+        reactive::Bool,
+        original_row::Int,
+        original_column::Int)
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(base)
+        @inbounds for patch in eachindex(theta)
+            coefficient = _block_diag_impedance_coefficient(
+                theta, patch, reactive)
+            iszero(coefficient) && continue
+            total -= Complex{BigFloat}(coefficient) *
+                     Complex{BigFloat}(
+                         matrices[patch][original_row, original_column])
+        end
+        value = ComplexF64(total)
+        isfinite(value) ||
+            throw(OverflowError(
+                "loaded block-diagonal entry ($original_row, " *
+                "$original_column) is outside the ComplexF64 range"))
+        return value
+    end
+end
+
+@inline function _block_diag_loaded_entry_float(
+        base::ComplexF64,
+        matrices::Vector{<:AbstractMatrix},
+        theta::AbstractVector,
+        reactive::Bool,
+        original_row::Int,
+        original_column::Int)
+    value = base
+    real_magnitude = abs(real(base))
+    imag_magnitude = abs(imag(base))
+    @inbounds for patch in eachindex(theta)
+        raw_coefficient = _block_diag_impedance_coefficient(
+            theta, patch, reactive)
+        iszero(raw_coefficient) && continue
+        coefficient = ComplexF64(raw_coefficient)
+        matrix_value = ComplexF64(
+            matrices[patch][original_row, original_column])
+        cr = real(coefficient); ci = imag(coefficient)
+        vr = real(matrix_value); vi = imag(matrix_value)
+        real_magnitude += abs(cr * vr) + abs(ci * vi)
+        imag_magnitude += abs(cr * vi) + abs(ci * vr)
+        value -= coefficient * matrix_value
+    end
+
+    # A rounded product can cancel the accumulator even when the exact stored-
+    # input result is representable. Bound ordinary-path roundoff from the
+    # primitive real products and additions; ambiguous components are redone
+    # with exact Float-input BigFloat arithmetic.
+    operation_factor = min(
+        1.0,
+        16 * eps(Float64) * (4 * Float64(length(theta)) + 1),
+    )
+    ambiguous =
+        (!iszero(real_magnitude) &&
+         abs(real(value)) <= operation_factor * real_magnitude) ||
+        (!iszero(imag_magnitude) &&
+         abs(imag(value)) <= operation_factor * imag_magnitude)
+    return value, ambiguous
+end
+
+@inline function _register_block_diag_exact_work!(
+        used_work::Base.RefValue{Int},
+        term_count::Int,
+        work_limit::Int)
+    try
+        entry_work = Base.Checked.checked_mul(
+            term_count, _LOCAL_MASS_FALLBACK_PRECISION)
+        next_work = Base.Checked.checked_add(used_work[], entry_work)
+        next_work <= work_limit ||
+            throw(ArgumentError(
+                "loaded block-diagonal exact accumulation exceeds " *
+                "max_exact_work=$work_limit"))
+        used_work[] = next_work
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "loaded block-diagonal exact-work estimate overflows Int"))
+    end
+    return nothing
+end
+
+function _load_block_diag_matrix!(
+        block::Matrix{ComplexF64},
+        matrices::Vector{<:AbstractMatrix},
+        theta::AbstractVector,
+        reactive::Bool,
+        indices::Vector{Int},
+        exact_work::Base.RefValue{Int},
+        exact_work_limit::Int)
+    @inbounds for column in eachindex(indices), row in eachindex(indices)
+        original_row = indices[row]
+        original_column = indices[column]
+        base = block[row, column]
+        needs_exact = _block_diag_entry_requires_exact(
+            base, matrices, theta, reactive,
+            original_row, original_column)
+        if !needs_exact
+            value, needs_exact = _block_diag_loaded_entry_float(
+                base, matrices, theta, reactive,
+                original_row, original_column)
+            if !needs_exact
+                isfinite(value) ||
+                    throw(OverflowError(
+                        "loaded block-diagonal entry ($original_row, " *
+                        "$original_column) is outside the ComplexF64 range"))
+                block[row, column] = value
+                continue
+            end
+        end
+        if needs_exact
+            _register_block_diag_exact_work!(
+                exact_work, length(theta) + 1, exact_work_limit)
+            block[row, column] = _block_diag_loaded_entry_bigfloat(
+                base, matrices, theta, reactive,
+                original_row, original_column)
+        end
+    end
+    return block
+end
+
 """
-    build_block_diag_preconditioner(A_mlfma)
+    build_block_diag_preconditioner(A_mlfma;
+                                    max_storage_bytes=536_870_912)
 
 Build a block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes.
 Each leaf box's diagonal block in Z_near is LU-factorized independently.
 
 Much faster than ILU for large N: O(n_boxes × n_bf³) where n_bf is the
 average BFs per box (typically 100-500), versus O(nnz × fill) for ILU.
-Memory: n_boxes × n_bf² × 16 bytes (typically < 100 MB).
+`max_storage_bytes` bounds the raw payload of dense LU factors, leaf and pivot
+indices, and the reusable largest-block work vector. The complete bound is
+checked before the first block is allocated or factorized.
 """
-function build_block_diag_preconditioner(A_mlfma)
+function build_block_diag_preconditioner(
+        A_mlfma;
+        max_storage_bytes::Integer=_DEFAULT_MAX_BLOCK_DIAG_STORAGE_BYTES)
+    _preflight_block_diag_storage(A_mlfma, max_storage_bytes)
     octree = A_mlfma.octree
     leaf_level = octree.levels[end]
     N = size(A_mlfma, 1)
@@ -1251,11 +1543,13 @@ function build_block_diag_preconditioner(A_mlfma)
     total_nnz = 0
     for box in leaf_level.boxes
         # Map from MLFMA ordering to original BF indices (Z_near is in original ordering)
-        orig_idx = [octree.perm[i] for i in box.bf_range]
-        block = Matrix(A_mlfma.Z_near[orig_idx, orig_idx])
-        push!(lu_blocks, lu(block))
+        orig_idx = _block_diag_leaf_indices(octree, box, N)
+        block = _block_diag_base_matrix(A_mlfma, orig_idx)
+        push!(lu_blocks, lu!(block))
         push!(box_bf_indices, orig_idx)
-        total_nnz += length(orig_idx)^2
+        total_nnz = Base.Checked.checked_add(
+            total_nnz,
+            Base.Checked.checked_mul(length(orig_idx), length(orig_idx)))
     end
 
     nnz_ratio = total_nnz / N^2
@@ -1270,8 +1564,15 @@ end
 function build_block_diag_preconditioner(A_mlfma,
                                          Mp::Vector{<:AbstractMatrix},
                                          theta::AbstractVector;
-                                         reactive::Bool=false)
+                                         reactive::Bool=false,
+                                         max_storage_bytes::Integer=
+                                             _DEFAULT_MAX_BLOCK_DIAG_STORAGE_BYTES,
+                                         max_exact_work::Integer=
+                                             _DEFAULT_MAX_BLOCK_DIAG_EXACT_WORK)
     _validate_impedance_inputs(Mp, theta, size(A_mlfma))
+    _preflight_block_diag_storage(A_mlfma, max_storage_bytes)
+    exact_work_limit = _validated_resource_limit(
+        "max_exact_work", max_exact_work)
     octree = A_mlfma.octree
     leaf_level = octree.levels[end]
     N = size(A_mlfma, 1)
@@ -1279,17 +1580,22 @@ function build_block_diag_preconditioner(A_mlfma,
     lu_blocks = LinearAlgebra.LU{ComplexF64, Matrix{ComplexF64}, Vector{Int64}}[]
     box_bf_indices = Vector{Int}[]
     total_nnz = 0
+    for patch in eachindex(theta), box in leaf_level.boxes
+        indices = _block_diag_leaf_indices(octree, box, N)
+        _validate_block_diag_mass_entries(Mp[patch], indices, patch)
+    end
+    exact_work = Ref(0)
     for box in leaf_level.boxes
-        orig_idx = [octree.perm[i] for i in box.bf_range]
-        block = Matrix{ComplexF64}(A_mlfma.Z_near[orig_idx, orig_idx])
-        for p in eachindex(theta)
-            iszero(theta[p]) && continue
-            coeff = reactive ? (1im * theta[p]) : ComplexF64(theta[p])
-            block .-= coeff .* Matrix{ComplexF64}(Mp[p][orig_idx, orig_idx])
-        end
-        push!(lu_blocks, lu(block))
+        orig_idx = _block_diag_leaf_indices(octree, box, N)
+        block = _block_diag_base_matrix(A_mlfma, orig_idx)
+        _load_block_diag_matrix!(
+            block, Mp, theta, reactive, orig_idx,
+            exact_work, exact_work_limit)
+        push!(lu_blocks, lu!(block))
         push!(box_bf_indices, orig_idx)
-        total_nnz += length(orig_idx)^2
+        total_nnz = Base.Checked.checked_add(
+            total_nnz,
+            Base.Checked.checked_mul(length(orig_idx), length(orig_idx)))
     end
 
     nnz_ratio = total_nnz / N^2

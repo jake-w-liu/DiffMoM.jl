@@ -224,7 +224,7 @@ See [assembly-solve.md](assembly-solve.md) for the full preconditioner API. The 
 | Builder | Type | When to use |
 |---------|------|-------------|
 | `build_mlfma_preconditioner(A; ilu_tau=1e-2)` | `PermutedPrecondData` wrapping `ILUPreconditionerData` | **Recommended.** Reorders Z_near for block-banded ILU. |
-| `build_block_diag_preconditioner(A)` | `BlockDiagPrecondData` | Fast fallback when ILU is too slow. |
+| `build_block_diag_preconditioner(A; max_storage_bytes=536_870_912)` | `BlockDiagPrecondData` | Fast fallback when ILU is too slow; dense leaf-factor storage is preflighted. |
 | `build_nearfield_preconditioner(A.Z_near; factorization=:ilu)` | `ILUPreconditionerData` | Direct ILU on Z_near without reordering. |
 
 ---

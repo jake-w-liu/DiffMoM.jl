@@ -609,7 +609,7 @@ Compute the center point of each RWG basis function, defined as the average of t
 
 ---
 
-### `build_block_diag_preconditioner(A_mlfma)`
+### `build_block_diag_preconditioner(A_mlfma; max_storage_bytes=536_870_912)`
 
 Build a block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes. Each leaf box's diagonal block in `Z_near` is LU-factorized independently. Much faster than ILU for large N.
 
@@ -618,10 +618,18 @@ Build a block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes. Each
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `A_mlfma` | `MLFMAOperator` | The MLFMA operator (must have an octree and Z_near). |
+| `max_storage_bytes` | `Integer` | Maximum raw payload of dense LU factors, leaf/pivot indices, and the reusable work vector. The complete estimate is checked before block allocation. |
 
 **Returns:** `BlockDiagPrecondData`. See [types.md](types.md) for field details.
 
-**Complexity:** `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Memory: `n_boxes * n_bf^2 * 16` bytes for the factorizations plus one reusable largest-block work vector (typically < 100 MB total).
+**Complexity:** `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Memory is bounded by `max_storage_bytes`.
+
+The loaded overload
+`build_block_diag_preconditioner(A_mlfma, Mp, theta; reactive=false,
+max_storage_bytes=536_870_912, max_exact_work=20_000_000)` assembles each leaf
+directly into its factor storage. It does not materialize one dense temporary
+per patch, and it uses bounded high-precision accumulation for range-sensitive
+entries.
 
 **Example:**
 

@@ -406,10 +406,11 @@ end
 **Constructor:**
 
 ```julia
-P_bd = build_block_diag_preconditioner(A_mlfma)
+P_bd = build_block_diag_preconditioner(
+    A_mlfma; max_storage_bytes=536_870_912)
 ```
 
-**When to use:** When full ILU factorization of `Z_near` is too slow or memory-intensive. Block-diagonal builds in `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Weaker than ILU but much faster to construct.
+**When to use:** When full ILU factorization of `Z_near` is too slow or memory-intensive. Block-diagonal builds in `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Weaker than ILU but much faster to construct. `max_storage_bytes` is checked before the first dense block is allocated.
 
 ---
 
