@@ -6601,6 +6601,9 @@ for invalid_aca_rank in (0, -1)
     @test_throws ArgumentError aca_lowrank(
         cache_aca, [1], [1]; tol=1e-6, max_rank=invalid_aca_rank)
 end
+@test_throws ArgumentError aca_lowrank(
+    cache_aca, [1], [1]; tol=1e-6, max_rank=1,
+    max_output_bytes=2 * sizeof(ComplexF64) - 1)
 
 # A relative ACA tolerance must be invariant under a common physical scale.
 # This 3-RWG plate produces four admissible 1×1 far blocks; the former
@@ -6758,6 +6761,10 @@ println("\n── Test 26: ACA operator matvec accuracy ──")
     mesh, rwg, k; max_block_tasks=0, mesh_precheck=false)
 @test_throws ArgumentError build_aca_operator(
     mesh, rwg, k; max_storage_bytes=0, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_green_cache_bytes=0, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_green_cache_entries=-1, mesh_precheck=false)
 aca_task_cap_mesh = make_rect_plate(1.0, 1.0, 2, 2)
 aca_task_cap_rwg = build_rwg(aca_task_cap_mesh)
 @test_throws ArgumentError build_aca_operator(
@@ -6771,6 +6778,26 @@ A_aca_op = build_aca_operator(mesh, rwg, k;
                                max_rank=50, quad_order=3, mesh_precheck=false)
 @assert size(A_aca_op) == (N, N)
 @assert A_aca_op.workspace.work_lock isa ReentrantLock
+
+# One Green-matrix slot disables retention and reuses a bounded scratch matrix
+# without changing the assembled operator. A smaller slot fails before the
+# first regular-pair matrix allocation.
+aca_green_bytes = sizeof(ComplexF64) * cache_aca.Nq^2
+A_aca_scratch = build_aca_operator(
+    mesh, rwg, k;
+    leaf_size=8, eta=1.5, aca_tol=1e-8,
+    max_rank=50, quad_order=3, mesh_precheck=false,
+    max_green_cache_bytes=aca_green_bytes,
+    max_green_cache_entries=1)
+@test isapprox(
+    A_aca_scratch * ones(ComplexF64, N),
+    A_aca_op * ones(ComplexF64, N);
+    rtol=1e-12, atol=1e-12)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k;
+    leaf_size=8, eta=1.5, aca_tol=1e-8,
+    max_rank=50, quad_order=3, mesh_precheck=false,
+    max_green_cache_bytes=max(1, aca_green_bytes - 1))
 
 # Block BLAS must not lose a finite cancellation before the result is
 # unpermuted. The matrices below encode exact 2M - 2M cancellations, where

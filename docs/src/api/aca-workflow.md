@@ -151,6 +151,7 @@ The algorithm iteratively selects rows and columns to build a rank-k factorizati
 | `col_indices` | `Vector{Int}` | -- | Original (unpermuted) column basis function indices. |
 | `tol` | `Float64` | `1e-6` | Convergence tolerance. ACA stops when the Frobenius norm of the latest rank-1 update falls below `tol * ||accumulated approximation||_F`. |
 | `max_rank` | `Int` | `50` | Maximum rank. ACA stops after `max_rank` iterations even if tolerance is not met. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the two returned low-rank factor matrices, checked before iteration work begins. |
 
 **Returns:** Tuple `(U, V)` where:
 - `U::Matrix{ComplexF64}` of size `(m, k)` -- left factor.
@@ -234,10 +235,17 @@ Dense near-field blocks use triangle-pair batched Green's function evaluation fo
 | `mesh_precheck` | `Bool` | `true` | Run mesh quality checks. |
 | `max_block_tasks` | `Int` | `2_000_000` | Maximum number of enumerated H-matrix blocks. |
 | `max_storage_bytes` | `Int` | `2_000_000_000` | Cap on raw persistent dense/low-rank block payload, including dense fallback replacements. |
+| `max_green_cache_bytes` | `Integer` | `268_435_456` | Per-worker raw-payload cap for cached and scratch quadrature Green matrices. Once the cache is full, one matrix is reused. |
+| `max_green_cache_entries` | `Int` | `250_000` | Per-worker cap on retained triangle-pair matrices; `0` disables retention while preserving one bounded scratch matrix. |
 
 Resource caps are checked before parallel block storage is allocated. If a
 low-rank update becomes non-finite, that block is rebuilt densely instead of
 retaining a partial ACA factorization.
+`max_green_cache_bytes` must accommodate one quadrature Green matrix; this
+minimum is checked before mesh auditing and EFIE-cache construction.
+Because block construction is threaded, `max_green_cache_bytes` is a
+per-worker ceiling; aggregate Green-workspace payload is therefore bounded by
+the number of active Julia threads times this value.
 
 **Returns:** `ACAOperator`
 

@@ -24,6 +24,8 @@ const _ACA_BIGFLOAT_OUTPUT_CHUNK = 512
 const _ACA_SAFE_FACTOR_EXPONENT = 128
 const _DEFAULT_MAX_ACA_BLOCK_TASKS = 2_000_000
 const _DEFAULT_MAX_ACA_STORAGE_BYTES = 2_000_000_000
+const _DEFAULT_MAX_ACA_GREEN_WORKSPACE_BYTES = 256 * 1024 * 1024
+const _DEFAULT_MAX_ACA_GREEN_CACHE_ENTRIES = 250_000
 
 @noinline function _aca_scaled_output_bigfloat(
         value::ComplexF64,
@@ -249,12 +251,29 @@ function aca_lowrank(cache::EFIEApplyCache,
                      row_indices::AbstractVector{Int},
                      col_indices::AbstractVector{Int};
                      tol::Float64=1e-6,
-                     max_rank::Int=50)
+                     max_rank::Int=50,
+                     max_output_bytes::Integer=
+                         _DEFAULT_MAX_ACA_STORAGE_BYTES)
     _validate_aca_options(tol, max_rank)
     m = length(row_indices)
     n = length(col_indices)
     full_rank = min(m, n)
     max_rank = min(max_rank, full_rank)
+    planned_entries = try
+        Base.Checked.checked_mul(max_rank, Base.Checked.checked_add(m, n))
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("ACA low-rank output estimate overflows Int"))
+    end
+    planned_bytes = try
+        Base.Checked.checked_mul(planned_entries, sizeof(ComplexF64))
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("ACA low-rank output payload estimate overflows Int"))
+    end
+    _enforce_payload_limit(
+        planned_bytes, max_output_bytes,
+        "ACA low-rank factors", "max_output_bytes")
 
     U_cols = Vector{Vector{ComplexF64}}()
     V_cols = Vector{Vector{ComplexF64}}()
@@ -398,8 +417,13 @@ end
 # Precomputes Green's function for unique triangle pairs in a block,
 # avoiding redundant evaluations when multiple RWG functions share triangles.
 
-function _fill_dense_block_batched!(data::Matrix{ComplexF64}, cache::EFIEApplyCache,
-                                     row_indices::Vector{Int}, col_indices::Vector{Int})
+function _fill_dense_block_batched!(
+        data::Matrix{ComplexF64}, cache::EFIEApplyCache,
+        row_indices::Vector{Int}, col_indices::Vector{Int};
+        max_green_cache_bytes::Integer=
+            _DEFAULT_MAX_ACA_GREEN_WORKSPACE_BYTES,
+        max_green_cache_entries::Int=
+            _DEFAULT_MAX_ACA_GREEN_CACHE_ENTRIES)
     mr, nc = length(row_indices), length(col_indices)
     Nq = cache.Nq
 
@@ -415,17 +439,55 @@ function _fill_dense_block_batched!(data::Matrix{ComplexF64}, cache::EFIEApplyCa
         push!(col_tris, cache.tri_ids[2, n_idx])
     end
 
-    # 2. Precompute Green's function for all (row_tri, col_tri) pairs
-    #    Skip self-cell pairs (tm == tn) — handled by singularity extraction
+    max_green_cache_entries >= 0 ||
+        throw(ArgumentError(
+            "max_green_cache_entries must be nonnegative, got " *
+            "$max_green_cache_entries"))
+    green_limit = _validated_resource_limit(
+        "max_green_cache_bytes", max_green_cache_bytes)
+    green_matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, Nq, Nq; label="ACA Green matrix")
+    matrix_slots = div(green_limit, green_matrix_bytes)
+    max_cached_greens = min(
+        max_green_cache_entries, max(0, matrix_slots - 1))
+
+    # 2. Cache as many regular triangle-pair Green matrices as the workspace
+    # budget permits. Once full, one matrix is reused as scratch.
     green_cache = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
-    for tm in row_tris, tn in col_tris
-        tm == tn && continue
-        G_mat = Matrix{ComplexF64}(undef, Nq, Nq)
+    green_scratch = Ref{Union{Nothing,Matrix{ComplexF64}}}(nothing)
+
+    @inline function _fill_greens!(G_mat::Matrix{ComplexF64},
+                                    tm::Int, tn::Int)
         @inbounds for qm in 1:Nq, qn in 1:Nq
             G_mat[qm, qn] = _greens_unchecked(
                 cache.quad_pts[tm][qm], cache.quad_pts[tn][qn], cache.k)
         end
-        green_cache[(tm, tn)] = G_mat
+        return G_mat
+    end
+
+    @inline function _get_greens(tm::Int, tn::Int)
+        cached = get(green_cache, (tm, tn), nothing)
+        cached !== nothing && return cached
+        matrix_slots >= 1 ||
+            throw(ArgumentError(
+                "one ACA Green matrix requires $green_matrix_bytes raw " *
+                "bytes, exceeding max_green_cache_bytes=$green_limit"))
+        if length(green_cache) < max_cached_greens
+            G_mat = _fill_greens!(
+                Matrix{ComplexF64}(undef, Nq, Nq), tm, tn)
+            green_cache[(tm, tn)] = G_mat
+            return G_mat
+        end
+        if green_scratch[] === nothing
+            green_scratch[] = Matrix{ComplexF64}(undef, Nq, Nq)
+        end
+        return _fill_greens!(something(green_scratch[]), tm, tn)
+    end
+
+    for tm in row_tris, tn in col_tris
+        (tm == tn || _is_adjacent(cache, tm, tn)) && continue
+        length(green_cache) >= max_cached_greens && break
+        _get_greens(tm, tn)
     end
 
     # 3. Fill block entries using cached Green's values
@@ -462,7 +524,7 @@ function _fill_dense_block_batched!(data::Matrix{ComplexF64}, cache::EFIEApplyCa
                             cache.wq, cache.k,
                             cache.wq_hi, cache.quad_pts_hi[tm], cache.quad_pts_hi[tn])
                     else
-                        G_mat = green_cache[(tm, tn)]
+                        G_mat = _get_greens(tm, tn)
                         for qm in 1:Nq
                             fm = fm_vals[qm]
                             for qn in 1:Nq
@@ -592,6 +654,9 @@ Dense blocks use triangle-pair batched Green's function evaluation for
 - `max_block_tasks=2_000_000`: block-enumeration limit
 - `max_storage_bytes=2_000_000_000`: raw persistent block-payload limit,
   including any dense replacement of a failed low-rank block
+- `max_green_cache_bytes=268_435_456`: per-worker cached/scratch Green-matrix
+  raw-payload limit
+- `max_green_cache_entries=250_000`: per-worker retained triangle-pair count
 """
 function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                             leaf_size::Int=64,
@@ -605,7 +670,11 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                             require_closed::Bool=false,
                             area_tol_rel::Float64=1e-12,
                             max_block_tasks::Int=_DEFAULT_MAX_ACA_BLOCK_TASKS,
-                            max_storage_bytes::Int=_DEFAULT_MAX_ACA_STORAGE_BYTES)
+                            max_storage_bytes::Int=_DEFAULT_MAX_ACA_STORAGE_BYTES,
+                            max_green_cache_bytes::Integer=
+                                _DEFAULT_MAX_ACA_GREEN_WORKSPACE_BYTES,
+                            max_green_cache_entries::Int=
+                                _DEFAULT_MAX_ACA_GREEN_CACHE_ENTRIES)
     _validate_aca_options(aca_tol, max_rank)
     leaf_size >= 1 ||
         throw(ArgumentError(
@@ -619,6 +688,24 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
     max_storage_bytes >= 1 ||
         throw(ArgumentError(
             "max_storage_bytes must be positive, got $max_storage_bytes"))
+    green_cache_limit = _validated_resource_limit(
+        "max_green_cache_bytes", max_green_cache_bytes)
+    max_green_cache_entries >= 0 ||
+        throw(ArgumentError(
+            "max_green_cache_entries must be nonnegative, got " *
+            "$max_green_cache_entries"))
+
+    # Validate the smallest possible Green workspace before mesh auditing,
+    # EFIE-cache construction, or threaded block allocation.  Worker-local
+    # checks remain in _fill_dense_block_batched! as defense in depth.
+    _, aca_quad_weights = tri_quad_rule(quad_order)
+    green_matrix_bytes = _checked_array_payload_bytes(
+        ComplexF64, length(aca_quad_weights), length(aca_quad_weights);
+        label="ACA Green matrix")
+    green_matrix_bytes <= green_cache_limit ||
+        throw(ArgumentError(
+            "one ACA Green matrix requires $green_matrix_bytes raw bytes, " *
+            "exceeding max_green_cache_bytes=$green_cache_limit"))
     if mesh_precheck
         assert_mesh_quality(mesh;
             allow_boundary=allow_boundary,
@@ -652,12 +739,16 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
 
         if task.kind == :dense
             data = Matrix{ComplexF64}(undef, length(row_indices), length(col_indices))
-            _fill_dense_block_batched!(data, cache, row_indices, col_indices)
+            _fill_dense_block_batched!(
+                data, cache, row_indices, col_indices;
+                max_green_cache_bytes=max_green_cache_bytes,
+                max_green_cache_entries=max_green_cache_entries)
             results[i] = DenseBlock(rn.indices, cn.indices, data)
         else
             try
                 U, V = aca_lowrank(cache, row_indices, col_indices;
-                                   tol=aca_tol, max_rank=max_rank)
+                                   tol=aca_tol, max_rank=max_rank,
+                                   max_output_bytes=max_storage_bytes)
                 results[i] = LowRankBlock(rn.indices, cn.indices, U, V)
             catch error
                 if error isa OverflowError &&
@@ -708,7 +799,9 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                     data = Matrix{ComplexF64}(
                         undef, length(row_indices), length(col_indices))
                     _fill_dense_block_batched!(
-                        data, cache, row_indices, col_indices)
+                        data, cache, row_indices, col_indices;
+                        max_green_cache_bytes=max_green_cache_bytes,
+                        max_green_cache_entries=max_green_cache_entries)
                     results[i] = DenseBlock(rn.indices, cn.indices, data)
                 else
                     rethrow()
