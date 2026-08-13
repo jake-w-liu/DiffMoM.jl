@@ -122,7 +122,7 @@ println("Support triangles: T+ = ", rwg.tplus[1], ", T- = ", rwg.tminus[1])
 
 ## `LocalMassMatrix` -- Compact Sparse Local Mass Block
 
-A compact sparse-matrix type for local RWG mass blocks. It stores only triplet entries `(rows[k], cols[k], vals[k])` of an `n x n` matrix and exposes the `AbstractMatrix` interface so existing code can treat it like any other matrix. Duplicate triplets are allowed and are summed when accessed (via `getindex`, `mul!`, and the dense-accumulation helpers). This avoids the `O(n)` column-pointer storage cost of one `SparseMatrixCSC` per triangle/patch.
+A compact sparse-matrix type for local RWG mass blocks. It stores only coordinate entries `(rows[k], cols[k], vals[k])` of an `n x n` matrix and exposes the `AbstractMatrix` interface so existing code can treat it like any other matrix. Constructor inputs may contain duplicate triplets; they are combined with cancellation-aware accumulation into one canonical entry. This avoids repeated duplicate reductions and the `O(n)` column-pointer storage cost of one `SparseMatrixCSC` per triangle/patch.
 
 ```julia
 struct LocalMassMatrix{T<:Number} <: AbstractMatrix{T}
@@ -130,6 +130,7 @@ struct LocalMassMatrix{T<:Number} <: AbstractMatrix{T}
     rows::Vector{Int}       # row index of each stored entry
     cols::Vector{Int}       # column index of each stored entry
     vals::Vector{T}         # value of each stored entry
+    col_order::Vector{Int}  # cached column-major order for adjoint products
 end
 ```
 
@@ -141,6 +142,7 @@ end
 | `rows` | `Vector{Int}` | Row index of each stored triplet; every index must be in `1:n`. |
 | `cols` | `Vector{Int}` | Column index of each stored triplet; every index must be in `1:n`. |
 | `vals` | `Vector{T}` | Value of each stored triplet. `rows`, `cols`, and `vals` must have equal length. |
+| `col_order` | `Vector{Int}` | Cached permutation of canonical entries by `(column,row)` for allocation-free adjoint products. |
 
 **Constructor:**
 
@@ -150,9 +152,11 @@ M = LocalMassMatrix(n, rows, cols, vals)        # element type T inferred from v
 
 The element type `T` is inferred from `vals`; the constructor checks that
 `n >= 0`, that `rows`, `cols`, and `vals` have equal lengths, and that every
-stored row and column index is in `1:n`.
+stored row and column index is in `1:n`. Duplicate coordinates are reduced
+once with bounded high-precision fallback when ordinary addition cannot certify
+the rounded result.
 
-**Supported operations:** `size`, `eltype`, `getindex`, scalar `*` (left/right) and unary `-`, `mul!` (forward and adjoint), conversion to dense via `Array`/`Matrix`, and conversion to `SparseArrays.sparse`. `getindex(M, i, j)` returns the sum of all triplets at `(i, j)`.
+**Supported operations:** `size`, `eltype`, `getindex`, scalar `*` (left/right) and unary `-`, `mul!` (forward and adjoint), conversion to dense via `Array`/`Matrix`, and conversion to `SparseArrays.sparse`.
 
 ---
 

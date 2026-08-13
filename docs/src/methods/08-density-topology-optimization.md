@@ -84,9 +84,10 @@ Implementation details:
 1. uses `tri_quad_rule(quad_order)` and mapped points `tri_quad_points(...)`,
 2. includes only basis functions with support on triangle `t`,
 3. multiplies quadrature sum by `2*A_t` (reference-to-physical Jacobian),
-4. stores each `M_t` as a `LocalMassMatrix` (coordinate/triplet sparse type with
-   fields `n, rows, cols, vals`); the element type is `Float64` for real RWG
-   coefficients and `ComplexF64` otherwise.
+4. stores each `M_t` as a `LocalMassMatrix` (canonical coordinate sparse type;
+   duplicate coordinates are combined once and a cached column ordering serves
+   adjoint products); the element type is `Float64` for real RWG coefficients
+   and `ComplexF64` otherwise.
 
 ---
 

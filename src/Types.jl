@@ -107,6 +107,7 @@ struct LocalMassMatrix{T<:Number} <: AbstractMatrix{T}
     rows::Vector{Int}
     cols::Vector{Int}
     vals::Vector{T}
+    col_order::Vector{Int}
     function LocalMassMatrix{T}(n::Int,
                                 rows::Vector{Int},
                                 cols::Vector{Int},
@@ -124,7 +125,10 @@ struct LocalMassMatrix{T<:Number} <: AbstractMatrix{T}
                 throw(ArgumentError(
                     "LocalMassMatrix value at triplet $k must be finite, got $(vals[k])"))
         end
-        return new{T}(n, rows, cols, vals)
+        canonical_rows, canonical_cols, canonical_vals, col_order =
+            _canonical_local_mass_triplets(rows, cols, vals)
+        return new{T}(
+            n, canonical_rows, canonical_cols, canonical_vals, col_order)
     end
 end
 
@@ -141,6 +145,10 @@ Base.eltype(::LocalMassMatrix{T}) where {T<:Number} = T
 # guard margin for the exceptional accumulation path.
 const _LOCAL_MASS_FALLBACK_PRECISION = 6656
 
+@inline _local_mass_real_type(::Type{Complex{T}}) where {T<:AbstractFloat} = T
+@inline _local_mass_real_type(::Type{T}) where {T<:AbstractFloat} = T
+@inline _local_mass_real_type(::Type) = Float64
+
 @inline function _local_mass_component_scale(value::Number)
     return max(
         abs(Float64(real(value))),
@@ -150,6 +158,82 @@ end
 
 @inline function _local_mass_finite(value::Number)
     return isfinite(real(value)) && isfinite(imag(value))
+end
+
+@inline function _local_mass_component_magnitudes(value::Number)
+    return abs(Float64(real(value))), abs(Float64(imag(value)))
+end
+
+function _local_mass_sum_group(
+        vals::Vector{T}, order::Vector{Int}, first::Int, last::Int) where {T}
+    first == last && return vals[order[first]]
+    total = zero(T)
+    real_magnitude = 0.0
+    imag_magnitude = 0.0
+    requires_exact = false
+    @inbounds for position in first:last
+        value = vals[order[position]]
+        total += value
+        real_scale, imag_scale = _local_mass_component_magnitudes(value)
+        real_magnitude += real_scale
+        imag_magnitude += imag_scale
+        requires_exact |= !_local_mass_finite(total) ||
+                          !isfinite(real_magnitude) ||
+                          !isfinite(imag_magnitude)
+    end
+
+    real_type = _local_mass_real_type(T)
+    if real_type <: Union{Float16,Float32,Float64}
+        factor = 4 * eps(real_type) * (last - first + 1)
+        requires_exact |=
+            (!iszero(real_magnitude) &&
+             abs(Float64(real(total))) <= factor * real_magnitude) ||
+            (!iszero(imag_magnitude) &&
+             abs(Float64(imag(total))) <= factor * imag_magnitude)
+    end
+    requires_exact || return total
+
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        exact = zero(Complex{BigFloat})
+        @inbounds for position in first:last
+            exact += Complex{BigFloat}(vals[order[position]])
+        end
+        return _local_mass_convert_bigfloat(
+            T, exact, "LocalMassMatrix duplicate entry", first)
+    end
+end
+
+function _canonical_local_mass_triplets(
+        rows::Vector{Int}, cols::Vector{Int}, vals::Vector{T}) where {T}
+    isempty(vals) && return rows, cols, vals, Int[]
+    order = sortperm(eachindex(vals); by=index -> (rows[index], cols[index]))
+    canonical_rows = Int[]
+    canonical_cols = Int[]
+    canonical_vals = T[]
+    sizehint!(canonical_rows, length(vals))
+    sizehint!(canonical_cols, length(vals))
+    sizehint!(canonical_vals, length(vals))
+
+    position = firstindex(order)
+    @inbounds while position <= lastindex(order)
+        first = position
+        index = order[position]
+        row = rows[index]
+        col = cols[index]
+        position += 1
+        while position <= lastindex(order)
+            candidate = order[position]
+            rows[candidate] == row && cols[candidate] == col || break
+            position += 1
+        end
+        push!(canonical_rows, row)
+        push!(canonical_cols, col)
+        push!(canonical_vals,
+              _local_mass_sum_group(vals, order, first, position - 1))
+    end
+    col_order = sortperm(eachindex(canonical_vals); by=index ->
+        (canonical_cols[index], canonical_rows[index]))
+    return canonical_rows, canonical_cols, canonical_vals, col_order
 end
 
 @inline function _local_mass_convert_bigfloat(
@@ -187,20 +271,10 @@ end
 
 function Base.getindex(M::LocalMassMatrix{T}, i::Int, j::Int) where {T<:Number}
     (1 <= i <= M.n && 1 <= j <= M.n) || throw(BoundsError(M, (i, j)))
-    acc = zero(T)
-    magnitude_sum = 0.0
     @inbounds for k in eachindex(M.vals)
-        if M.rows[k] == i && M.cols[k] == j
-            value = M.vals[k]
-            next_acc = acc + value
-            magnitude_sum += _local_mass_component_scale(value)
-            if !_local_mass_finite(next_acc) || !isfinite(magnitude_sum)
-                return _local_mass_entry_bigfloat(M, i, j)
-            end
-            acc = next_acc
-        end
+        M.rows[k] == i && M.cols[k] == j && return M.vals[k]
     end
-    return acc
+    return zero(T)
 end
 
 @noinline function _scale_local_mass_bigfloat(
@@ -256,14 +330,7 @@ Base.:-(M::LocalMassMatrix) = -one(eltype(M)) * M
 function Base.Array{T,2}(M::LocalMassMatrix) where {T}
     A = zeros(T, M.n, M.n)
     @inbounds for k in eachindex(M.vals)
-        A[M.rows[k], M.cols[k]] += T(M.vals[k])
-    end
-    @inbounds for k in eachindex(M.vals)
-        row = M.rows[k]
-        col = M.cols[k]
-        if !_local_mass_finite(A[row, col])
-            A[row, col] = T(M[row, col])
-        end
+        A[M.rows[k], M.cols[k]] = T(M.vals[k])
     end
     return A
 end
@@ -272,17 +339,7 @@ Base.Array(M::LocalMassMatrix{T}) where {T<:Number} = Array{T,2}(M)
 Base.Matrix(M::LocalMassMatrix{T}) where {T<:Number} = Array{T,2}(M)
 
 function SparseArrays.sparse(M::LocalMassMatrix)
-    result = sparse(M.rows, M.cols, M.vals, M.n, M.n)
-    values = nonzeros(result)
-    rows = rowvals(result)
-    @inbounds for col in axes(result, 2)
-        for ptr in nzrange(result, col)
-            if !_local_mass_finite(values[ptr])
-                values[ptr] = M[rows[ptr], col]
-            end
-        end
-    end
-    return result
+    return sparse(M.rows, M.cols, M.vals, M.n, M.n)
 end
 
 function _local_mass_mul_needs_bigfloat(
@@ -341,8 +398,7 @@ end
     return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
         alpha_big = Complex{BigFloat}(alpha)
         beta_big = Complex{BigFloat}(beta)
-        order = sortperm(eachindex(M.vals); by=k ->
-            adjoint_operator ? M.cols[k] : M.rows[k])
+        order = adjoint_operator ? M.col_order : eachindex(M.vals)
         position = firstindex(order)
         if iszero(beta) || beta == one(beta)
             iszero(beta) && fill!(y, zero(T))
@@ -485,19 +541,11 @@ end
         A::LocalMassMatrix) where {T}
     return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
         scale = Complex{BigFloat}(alpha)
-        order = sortperm(eachindex(A.vals); by=k -> (A.rows[k], A.cols[k]))
-        position = firstindex(order)
-        @inbounds while position <= lastindex(order)
-            k = order[position]
+        @inbounds for k in eachindex(A.vals)
             row = A.rows[k]
             col = A.cols[k]
-            total = Complex{BigFloat}(Y[row, col])
-            while position <= lastindex(order)
-                j = order[position]
-                A.rows[j] == row && A.cols[j] == col || break
-                total += scale * Complex{BigFloat}(A.vals[j])
-                position += 1
-            end
+            total = Complex{BigFloat}(Y[row, col]) +
+                    scale * Complex{BigFloat}(A.vals[k])
             Y[row, col] = _local_mass_convert_bigfloat(
                 T, total, "scaled LocalMassMatrix accumulation", (row, col))
         end

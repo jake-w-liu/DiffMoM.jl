@@ -2306,12 +2306,27 @@ mass_scale_cancelling_entries = LocalMassMatrix(
 mass_scaled_matrix = mass_scale * mass_scale_cancelling_entries
 @test mass_scaled_matrix[1, 1] == 0.0 + 0.0im
 
-mass_unrepresentable = LocalMassMatrix(
-    1, [1, 1], [1, 1], ComplexF64[floatmax(Float64), floatmax(Float64)])
-@test_throws OverflowError mass_unrepresentable[1, 1]
-@test_throws OverflowError Matrix(mass_unrepresentable)
-@test_throws OverflowError sparse(mass_unrepresentable)
-@test_throws OverflowError mass_unrepresentable * ComplexF64[1]
+# Canonicalization must retain a finite residue that sequential duplicate
+# addition loses. All public views and products share the canonical value.
+mass_duplicate_residue = ldexp(1.0, -53)
+mass_cancelling_residue = LocalMassMatrix(
+    1, [1, 1, 1], [1, 1, 1],
+    ComplexF64[1.0, mass_duplicate_residue, -1.0])
+@test length(mass_cancelling_residue.vals) == 1
+@test mass_cancelling_residue[1, 1] == mass_duplicate_residue
+@test Matrix(mass_cancelling_residue)[1, 1] == mass_duplicate_residue
+@test sparse(mass_cancelling_residue)[1, 1] == mass_duplicate_residue
+mass_residue_product = zeros(ComplexF64, 1)
+mul!(mass_residue_product, mass_cancelling_residue, ComplexF64[1])
+@test mass_residue_product[1] == mass_duplicate_residue
+mass_residue_accumulation = zeros(ComplexF64, 1, 1)
+DiffMoM._add_scaled_matrix!(
+    mass_residue_accumulation, 1.0, mass_cancelling_residue)
+@test mass_residue_accumulation[1, 1] == mass_duplicate_residue
+
+@test_throws OverflowError LocalMassMatrix(
+    1, [1, 1], [1, 1],
+    ComplexF64[floatmax(Float64), floatmax(Float64)])
 
 mass_allocation_x = ComplexF64[1 + 2im, 3 - 4im]
 mass_allocation_y = zeros(ComplexF64, 2)
