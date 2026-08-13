@@ -37,7 +37,7 @@ at a different frequency.
 
 ---
 
-### `assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3, eta0=376.730313668)`
+### `assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3, eta0=376.730313668, max_work_bytes=2_000_000_000)`
 
 Assemble the periodic EFIE impedance matrix for a coplanar metasurface a distance
 `height` (h) above an infinite PEC ground plane, via image theory. Internally it
@@ -57,6 +57,7 @@ evaluated with the full periodic Green's function at vertical separation `2*heig
 | `height` | `Real` | -- | Finite positive distance `h` above the PEC ground plane (meters). |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance (Ohm). |
+| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of the three simultaneously resident dense matrices, checked before assembly. |
 
 **Returns:** Dense `Matrix{ComplexF64}` `Z_grounded = Z_direct - Z_image` of size `N x N`.
 

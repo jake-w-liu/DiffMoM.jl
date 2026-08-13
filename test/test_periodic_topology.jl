@@ -897,6 +897,15 @@ println("\n── Test 41: PeriodicEFIE ──")
         Z_per = assemble_Z_efie_periodic(mesh_pe, rwg_pe, k_pe, lat_pe)
         @test size(Z_per) == (N_pe, N_pe)
         @test eltype(Z_per) == ComplexF64
+        periodic_work_bytes = 3 * sizeof(ComplexF64) * N_pe^2
+        @test_throws ArgumentError assemble_Z_efie_periodic(
+            mesh_pe, rwg_pe, k_pe, lat_pe;
+            max_work_bytes=periodic_work_bytes - 1,
+        )
+        @test assemble_Z_efie_periodic(
+            mesh_pe, rwg_pe, k_pe, lat_pe;
+            max_work_bytes=periodic_work_bytes,
+        ) ≈ Z_per
         @test_throws ArgumentError assemble_Z_efie_periodic(
             mesh_pe, rwg_pe, 1.01k_pe, lat_pe
         )
@@ -1923,6 +1932,12 @@ println("\n── Test 42: PeriodicMetrics ──")
         mesh_g = make_rect_plate(dcg, dcg, Nxg, Nxg)
         lat_g = PeriodicLattice(dcg, dcg, 0.0, 0.0, kg)
         rwg_g = build_rwg_periodic(mesh_g, lat_g; precheck=true, allow_boundary=true, require_closed=false)
+        grounded_work_bytes = 3 * sizeof(ComplexF64) * rwg_g.nedges^2
+        @test_throws ArgumentError assemble_Z_efie_grounded(
+            mesh_g, rwg_g, kg, lat_g;
+            height=lam_g / 8,
+            max_work_bytes=grounded_work_bytes - 1,
+        )
         pw_g = make_plane_wave(Vec3(0.0, 0.0, -kg), 1.0, Vec3(1.0, 0.0, 0.0))
         R00g(I, h) = begin
             modes, R = reflection_coefficients_grounded(mesh_g, rwg_g, I, kg, lat_g;

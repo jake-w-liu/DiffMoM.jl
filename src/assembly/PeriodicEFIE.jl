@@ -74,7 +74,9 @@ function _assert_boundary_touching_periodic_mesh_requires_bloch(mesh::TriMesh,
 end
 
 """
-    assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=3, eta0=376.730313668)
+    assemble_Z_efie_periodic(mesh, rwg, k, lattice;
+                             quad_order=3, eta0=376.730313668,
+                             max_work_bytes=2_000_000_000)
 
 Assemble the dense periodic EFIE matrix `Z_per ∈ C^{N×N}` for a unit cell
 with 2D periodicity defined by `lattice::PeriodicLattice`.
@@ -91,7 +93,16 @@ Both use the mixed-potential form:
 function assemble_Z_efie_periodic(mesh::TriMesh, rwg::RWGData, k,
                                   lattice::PeriodicLattice;
                                   quad_order::Int=3,
-                                  eta0::Float64=376.730313668)
+                                  eta0::Float64=376.730313668,
+                                  max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    work_bytes = _checked_array_payload_bytes(
+        ComplexF64, 3, rwg.nedges, rwg.nedges;
+        label="periodic EFIE dense work matrices")
+    work_limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    _enforce_payload_limit(
+        work_bytes, work_limit,
+        "periodic EFIE dense work matrices", "max_work_bytes")
+
     kw = _validated_lattice_wavenumber(k, lattice)
     _assert_coplanar_periodic_mesh(mesh)
     _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
@@ -99,7 +110,8 @@ function assemble_Z_efie_periodic(mesh::TriMesh, rwg::RWGData, k,
     # Step 1: Free-space EFIE (handles self-cell singularity)
     Z_free = assemble_Z_efie(mesh, rwg, kw;
                              quad_order=quad_order, eta0=eta0,
-                             mesh_precheck=false)
+                             mesh_precheck=false,
+                             max_output_bytes=work_limit)
 
     # Step 2: Periodic image correction (smooth, no singularity)
     Z_corr = _assemble_periodic_correction(mesh, rwg, kw, lattice;

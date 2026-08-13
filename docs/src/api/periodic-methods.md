@@ -89,7 +89,7 @@ Current implementation scope:
 
 ## Periodic EFIE Assembly
 
-### `assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=3, eta0=376.730313668)`
+### `assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=3, eta0=376.730313668, max_work_bytes=2_000_000_000)`
 
 Assemble periodic EFIE matrix:
 
@@ -113,6 +113,7 @@ where:
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup. |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
+| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of the free-space matrix, correction matrix, and returned sum, checked before assembly. |
 
 **Returns:** Dense periodic matrix `Matrix{ComplexF64}`.
 

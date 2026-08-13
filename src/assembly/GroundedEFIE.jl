@@ -149,7 +149,8 @@ function _assemble_periodic_image_block(mesh::TriMesh, rwg::RWGData, k,
 end
 
 """
-    assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3)
+    assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3,
+                             max_work_bytes=2_000_000_000)
 
 Periodic EFIE impedance matrix for a coplanar metasurface a distance `height` (h) above
 an infinite PEC ground plane, via image theory:
@@ -161,11 +162,23 @@ with the mirror currents at depth 2h (full periodic Green's function, no singula
 """
 function assemble_Z_efie_grounded(mesh::TriMesh, rwg::RWGData, k,
                                   lattice::PeriodicLattice; height::Real,
-                                  quad_order::Int=3, eta0::Float64=376.730313668)
+                                  quad_order::Int=3, eta0::Float64=376.730313668,
+                                  max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    work_bytes = _checked_array_payload_bytes(
+        ComplexF64, 3, rwg.nedges, rwg.nedges;
+        label="grounded EFIE dense work matrices")
+    work_limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    _enforce_payload_limit(
+        work_bytes, work_limit,
+        "grounded EFIE dense work matrices", "max_work_bytes")
+
     kw = _validated_lattice_wavenumber(k, lattice)
     h = _validated_ground_height(height)
     two_h = _positive_periodic_parameter("twice the ground-plane height", 2 * h)
-    Z_direct = assemble_Z_efie_periodic(mesh, rwg, kw, lattice; quad_order=quad_order, eta0=eta0)
+    Z_direct = assemble_Z_efie_periodic(
+        mesh, rwg, kw, lattice;
+        quad_order=quad_order, eta0=eta0,
+        max_work_bytes=work_limit)
     Z_image = _assemble_periodic_image_block(mesh, rwg, kw, lattice, two_h;
                                              quad_order=quad_order, eta0=eta0)
     return Z_direct - Z_image
