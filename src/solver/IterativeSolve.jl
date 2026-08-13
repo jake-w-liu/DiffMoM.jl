@@ -159,7 +159,9 @@ end
 function _gmres_scaled_problem(
         A::AbstractMatrix,
         rhs::Vector{ComplexF64},
-        label::AbstractString)
+        label::AbstractString,
+        max_workspace_bytes::Int,
+        krylov_workspace_bytes::Int)
     operator_values = _gmres_known_operator_values(A)
     operator_exponent = operator_values === nothing ?
                         typemin(Int) :
@@ -178,6 +180,25 @@ function _gmres_scaled_problem(
                      0 : operator_shift + rhs_exponent
     rhs_shift = rhs_exponent == typemin(Int) ?
                 operator_shift : -rhs_exponent
+
+    extra_bytes = BigInt(0)
+    if !iszero(operator_shift)
+        if A isa StridedMatrix
+            extra_bytes += BigInt(sizeof(ComplexF64)) * length(A)
+        elseif A isa SparseMatrixCSC
+            # Stored nonzeros are copied into a ComplexF64 sparse matrix; CSC
+            # column pointers and row indices are retained alongside them.
+            extra_bytes += BigInt(sizeof(ComplexF64) + sizeof(Int)) * nnz(A)
+            extra_bytes += BigInt(sizeof(Int)) * (size(A, 2) + 1)
+        end
+    end
+    !iszero(rhs_shift) &&
+        (extra_bytes += BigInt(sizeof(ComplexF64)) * length(rhs))
+    total_bytes = BigInt(krylov_workspace_bytes) + extra_bytes
+    total_bytes <= max_workspace_bytes ||
+        throw(ArgumentError(
+            "$label Krylov and scaling workspaces require $total_bytes raw " *
+            "bytes, exceeding max_workspace_bytes=$max_workspace_bytes"))
 
     scaled_A = if iszero(operator_shift)
         A
@@ -329,10 +350,15 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      check_gmres_convergence::Bool=true)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
     _validate_linear_system_inputs(Z, rhs, "forward GMRES")
-    _preflight_gmres_workspace(size(Z, 1), memory, max_workspace_bytes)
+    workspace_limit = _validated_resource_limit(
+        "max_workspace_bytes", max_workspace_bytes)
+    krylov_workspace_bytes = _preflight_gmres_workspace(
+        size(Z, 1), memory, workspace_limit)
     rhs_c = _as_complex_rhs(rhs)
     scaled_Z, scaled_rhs, solution_shift =
-        _gmres_scaled_problem(Z, rhs_c, "forward GMRES")
+        _gmres_scaled_problem(
+            Z, rhs_c, "forward GMRES",
+            workspace_limit, krylov_workspace_bytes)
 
     if preconditioner === nothing
         x, stats = Krylov.gmres(scaled_Z, scaled_rhs;
@@ -392,10 +418,15 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                               check_gmres_convergence::Bool=true)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
     _validate_linear_system_inputs(Z, rhs, "adjoint GMRES")
-    _preflight_gmres_workspace(size(Z, 1), memory, max_workspace_bytes)
+    workspace_limit = _validated_resource_limit(
+        "max_workspace_bytes", max_workspace_bytes)
+    krylov_workspace_bytes = _preflight_gmres_workspace(
+        size(Z, 1), memory, workspace_limit)
     rhs_c = _as_complex_rhs(rhs)
     scaled_Z, scaled_rhs, solution_shift =
-        _gmres_scaled_problem(Z, rhs_c, "adjoint GMRES")
+        _gmres_scaled_problem(
+            Z, rhs_c, "adjoint GMRES",
+            workspace_limit, krylov_workspace_bytes)
 
     if preconditioner === nothing
         x, stats = Krylov.gmres(adjoint(scaled_Z), scaled_rhs;

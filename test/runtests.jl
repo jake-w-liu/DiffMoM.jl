@@ -4976,6 +4976,19 @@ for tiny_gmres_scale in (1e-200, 1e-300, nextfloat(0.0))
 end
 
 tiny_gmres_matrix = reshape(ComplexF64[1e-200], 1, 1)
+tiny_gmres_krylov_bytes = DiffMoM._gmres_workspace_bytes(1, 3)
+tiny_gmres_scaling_bytes = 2sizeof(ComplexF64)
+@test_throws ArgumentError solve_gmres(
+    tiny_gmres_matrix, ComplexF64[1e-200];
+    tol=1e-8, maxiter=3,
+    max_workspace_bytes=
+        tiny_gmres_krylov_bytes + tiny_gmres_scaling_bytes - 1)
+@test solve_gmres(
+    tiny_gmres_matrix, ComplexF64[1e-200];
+    tol=1e-8, maxiter=3,
+    max_workspace_bytes=
+        tiny_gmres_krylov_bytes + tiny_gmres_scaling_bytes)[1] ==
+      ComplexF64[1.0]
 large_gmres_solution, large_gmres_stats = solve_gmres(
     tiny_gmres_matrix, ComplexF64[1.0];
     tol=1e-8, maxiter=3,
