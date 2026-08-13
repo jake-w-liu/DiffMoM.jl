@@ -642,7 +642,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   gmres_true_residual_factor::Float64=100.0,
                                   objective::Symbol=:linear,
                                   reference_objectives::Union{Nothing, Vector{Float64}}=nothing,
-                                  smooth_beta::Float64=8.0)
+                                  smooth_beta::Float64=8.0,
+                                  max_workspace_bytes::Integer=
+                                      _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     M = length(configs)    # number of angles
     P = length(theta0)     # number of design parameters
     M >= 1 ||
@@ -674,6 +676,16 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
     # fall back to GMRES for matrix-free operators (MLFMA, ACA)
     use_dense_lu = Z_base isa Matrix{ComplexF64}
     solver = use_dense_lu ? :direct : :gmres
+    workspace_limit = _validated_resource_limit(
+        "max_workspace_bytes", max_workspace_bytes)
+    if use_dense_lu
+        workspace_bytes = _checked_array_payload_bytes(
+            ComplexF64, size(Z_base)...;
+            label="multi-angle dense system workspace")
+        _enforce_payload_limit(
+            workspace_bytes, workspace_limit,
+            "multi-angle dense system workspace", "max_workspace_bytes")
+    end
     if !use_dense_lu
         _validate_gmres_options(
             gmres_tol, gmres_maxiter, gmres_memory, gmres_precond_side)

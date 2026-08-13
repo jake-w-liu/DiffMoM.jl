@@ -548,7 +548,9 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                         nf_preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                         gmres_tol::Float64=1e-8,
                         gmres_maxiter::Int=200,
-                        gmres_memory::Int=20)
+                        gmres_memory::Int=20,
+                        max_workspace_bytes::Integer=
+                            _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     _validate_optimizer_controls(
         maxiter=maxiter,
         tol=tol,
@@ -568,6 +570,12 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     _validate_optimizer_bounds(lb, ub, P)
     _validate_optimizer_auxiliary_matrices(
         size(Z_efie), regularization_alpha, regularization_R, preconditioner_M)
+    workspace_bytes = _checked_array_payload_bytes(
+        ComplexF64, N_sys, N_sys;
+        label="L-BFGS dense system workspace")
+    _enforce_payload_limit(
+        workspace_bytes, max_workspace_bytes,
+        "L-BFGS dense system workspace", "max_workspace_bytes")
 
     theta = copy(theta0)
     sense = maximize ? -1.0 : 1.0
@@ -880,7 +888,9 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                               nf_preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
                               gmres_tol::Float64=1e-8,
                               gmres_maxiter::Int=200,
-                              gmres_memory::Int=20)
+                              gmres_memory::Int=20,
+                              max_workspace_bytes::Integer=
+                                  _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     _validate_optimizer_controls(
         maxiter=maxiter,
         tol=tol,
@@ -905,6 +915,12 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     _validate_optimizer_bounds(lb, ub, P)
     _validate_optimizer_auxiliary_matrices(
         size(Z_efie), regularization_alpha, regularization_R, preconditioner_M)
+    workspace_bytes = _checked_array_payload_bytes(
+        ComplexF64, N_sys, N_sys;
+        label="directivity dense system workspace")
+    _enforce_payload_limit(
+        workspace_bytes, max_workspace_bytes,
+        "directivity dense system workspace", "max_workspace_bytes")
 
     theta = copy(theta0)
 

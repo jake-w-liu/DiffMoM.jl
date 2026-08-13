@@ -204,12 +204,15 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 | `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner (strongly recommended for convergence). |
 | `gmres_tol` | `Float64` | `1e-6` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `300` | Maximum GMRES iterations per solve. |
+| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the reusable dense system workspace when `Z_base` is a dense matrix. Matrix-free ACA/MLFMA paths do not allocate this workspace. |
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized impedance parameters.
 - `trace::Vector{NamedTuple}`: Records with fields `(iter, J, gnorm)`.
 
-**Note:** The optimizer always uses GMRES internally. The `ImpedanceLoadedOperator` is matrix-free and does not support direct (LU) solves. A near-field preconditioner is strongly recommended.
+**Note:** A dense `Matrix{ComplexF64}` base uses verified direct factorization;
+matrix-free ACA/MLFMA bases use GMRES through `ImpedanceLoadedOperator`. A
+near-field preconditioner is strongly recommended for the latter.
 
 ---
 

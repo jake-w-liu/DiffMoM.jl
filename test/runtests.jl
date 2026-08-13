@@ -3406,6 +3406,19 @@ Mp_opt_guard = Matrix{Float64}[[1.0;;]]
 v_opt_guard = ComplexF64[1.0]
 Q_opt_guard = ComplexF64[1.0;;]
 theta_opt_guard = [0.0]
+@test optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=0, verbose=false,
+    max_workspace_bytes=sizeof(ComplexF64))[1] == theta_opt_guard
+@test_throws ArgumentError optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=0, verbose=false,
+    max_workspace_bytes=sizeof(ComplexF64) - 1)
+@test_throws ArgumentError optimize_directivity(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, Q_opt_guard,
+    theta_opt_guard;
+    maxiter=0, verbose=false,
+    max_workspace_bytes=sizeof(ComplexF64) - 1)
 @test_throws ArgumentError optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
     maxiter=1, tol=Inf, verbose=false)
@@ -9633,6 +9646,21 @@ println("  35c: optimize_multiangle_rcs (5 iterations) ...")
 part_opt = assign_patches_grid(mesh; nx=3, ny=3, nz=1)
 Mp_opt = precompute_patch_mass(mesh, rwg, part_opt; quad_order=3)
 theta_init = fill(200.0, part_opt.P)
+
+@test optimize_multiangle_rcs(
+    Z_opt_guard, Mp_opt_guard,
+    [AngleConfig(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
+                 v_opt_guard, Q_opt_guard, 1.0)],
+    theta_opt_guard;
+    maxiter=0, verbose=false,
+    max_workspace_bytes=sizeof(ComplexF64))[1] == theta_opt_guard
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_opt_guard, Mp_opt_guard,
+    [AngleConfig(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
+                 v_opt_guard, Q_opt_guard, 1.0)],
+    theta_opt_guard;
+    maxiter=0, verbose=false,
+    max_workspace_bytes=sizeof(ComplexF64) - 1)
 
 theta_opt_35, trace_35 = optimize_multiangle_rcs(
     Z_efie, Mp_opt, configs_test, theta_init;
