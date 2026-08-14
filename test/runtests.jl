@@ -4755,6 +4755,44 @@ end
     1.0, source_phase_first, source_phase_second, 1.0,
     "source phase regression")) <= 20_000
 
+# A large but finite radial distance needs exact-Float geometry and phase
+# reduction.  The ordinary hypot/product path loses an observable fraction of
+# the magnetic-dipole field well before either endpoint is near Float64 range.
+dipole_radial_frequency = DiffMoM._C0 / (2π)
+dipole_radial = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(0.0 + 0im, 0.0 + 0im, 1.0 + 0im),
+    Vec3(0.0, 0.0, 1.0),
+    :magnetic,
+    dipole_radial_frequency,
+)
+dipole_radial_point = Vec3(1.0e12, 1.0e12, 0.0)
+dipole_radial_k = DiffMoM._frequency_to_wavenumber(
+    dipole_radial.frequency,
+    inv(sqrt(DiffMoM._MU0 * DiffMoM._EPS0)),
+    "dipole radial reference",
+)
+dipole_radial_reference = setprecision(BigFloat, 2048) do
+    displacement = SVector{3,BigFloat}(
+        BigFloat(dipole_radial_point[1]),
+        BigFloat(dipole_radial_point[2]),
+        BigFloat(dipole_radial_point[3]),
+    )
+    distance = sqrt(sum(abs2, displacement))
+    direction = displacement / distance
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(dipole_radial.moment))
+    wavenumber = BigFloat(dipole_radial_k)
+    phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
+    value = (BigFloat(DiffMoM._ETA0) / (4 * BigFloat(pi))) *
+            (wavenumber^2 / distance -
+             Complex{BigFloat}(0, 1) * wavenumber / distance^2) *
+            phase * cross(moment, direction)
+    CVec3(ComplexF64.(value))
+end
+@test DiffMoM.dipole_incident_field(
+    dipole_radial_point, dipole_radial) == dipole_radial_reference
+
 translated_scaling_dipole = make_dipole(
     Vec3(1.0e200, 0.0, 0.0),
     CVec3(0.0 + 0im, 1.0e-300 + 0im, 0.0 + 0im),

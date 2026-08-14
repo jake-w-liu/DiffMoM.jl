@@ -1443,6 +1443,63 @@ function dipole_incident_field(r::Vec3, dipole::DipoleExcitation)
     return _dipole_incident_field_unchecked(r, dipole)
 end
 
+@inline function _dipole_incident_field_requires_exact(
+    r::Vec3,
+    dipole::DipoleExcitation,
+    k::Float64,
+    distance::Float64,
+)
+    !isfinite(distance) && return true
+    @inbounds for component in 1:3
+        (_source_scaling_extreme_value(r[component]) ||
+         _source_scaling_extreme_value(dipole.position[component])) &&
+            return true
+    end
+    argument = k * distance
+    return !isfinite(argument) ||
+           (!iszero(argument) && exponent(abs(argument)) > 32)
+end
+
+@noinline function _dipole_incident_field_exact(
+    r::Vec3,
+    dipole::DipoleExcitation,
+    k::Float64,
+)
+    precision = _source_radial_phase_precision(k, r, dipole.position)
+    return setprecision(BigFloat, precision) do
+        displacement = SVector{3,BigFloat}(ntuple(
+            component -> BigFloat(r[component]) -
+                         BigFloat(dipole.position[component]),
+            3,
+        ))
+        distance = sqrt(sum(abs2, displacement))
+        iszero(distance) && return zero(CVec3)
+        direction = displacement / distance
+        moment = SVector{3,Complex{BigFloat}}(ntuple(
+            component -> Complex{BigFloat}(dipole.moment[component]), 3))
+        wavenumber = BigFloat(k)
+        phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
+        value = if dipole.type == :electric
+            transverse = cross(cross(direction, moment), direction) *
+                         wavenumber^2
+            near = (3 * direction * dot(direction, moment) - moment) *
+                   (inv(distance^2) +
+                    Complex{BigFloat}(0, 1) * wavenumber / distance)
+            (transverse + near) * phase /
+                (4 * BigFloat(pi) * BigFloat(_EPS0) * distance)
+        elseif dipole.type == :magnetic
+            (BigFloat(_ETA0) / (4 * BigFloat(pi))) *
+            (wavenumber^2 / distance -
+             Complex{BigFloat}(0, 1) * wavenumber / distance^2) *
+            phase * cross(moment, direction)
+        else
+            error(
+                "Dipole type must be :electric or :magnetic, got $(dipole.type).")
+        end
+        return _finite_source_vector(value, "dipole incident field")
+    end
+end
+
 @inline function _dipole_incident_field_unchecked(r::Vec3, dipole::DipoleExcitation)
     ϵ0 = 8.854187817e-12
     μ0 = 4π * 1e-7
@@ -1458,6 +1515,9 @@ end
         return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     end
 
+    _dipole_incident_field_requires_exact(r, dipole, k, R) &&
+        return _dipole_incident_field_exact(r, dipole, k)
+
     R_hat = R_vec / R
     p = dipole.moment
 
@@ -1465,19 +1525,17 @@ end
         term1 = cross(R_hat, p)
         term1 = cross(term1, R_hat) * k^2
         term2 = (3 * R_hat * dot(R_hat, p) - p) * (1 / R^2 + 1im * k / R)
-        return _check_finite_field(
-            (term1 + term2) * exp(-1im * k * R) / (4π * ϵ0 * R),
-            "dipole incident field",
-        )
+        value = (term1 + term2) * exp(-1im * k * R) / (4π * ϵ0 * R)
+        return all(isfinite, value) ? CVec3(value) :
+               _dipole_incident_field_exact(r, dipole, k)
     elseif dipole.type == :magnetic
         # E = (η0/4π) (k^2/R - i k/R^2) e^{-ikR} (m × R̂)
         # Derived from E = -i k η0 (∇G × m), G = e^{-ikR}/(4πR); radiating (1/R)
         # term has a REAL coefficient, matching the electric-dipole convention.
-        return _check_finite_field(
-            (η0 / (4π)) * (k^2 / R - 1im * k / R^2) *
-            exp(-1im * k * R) * cross(p, R_hat),
-            "dipole incident field",
-        )
+        value = (η0 / (4π)) * (k^2 / R - 1im * k / R^2) *
+                exp(-1im * k * R) * cross(p, R_hat)
+        return all(isfinite, value) ? CVec3(value) :
+               _dipole_incident_field_exact(r, dipole, k)
     else
         error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
     end
