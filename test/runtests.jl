@@ -4490,6 +4490,30 @@ pattern_scale_tiny = make_pattern_feed(
     Vec3(source_geometry_scale, 0.0, 0.0), pattern_scale_tiny) ==
     pattern_feed_field(Vec3(1.0, 0.0, 0.0), pattern_scale_reference)
 
+pattern_radial_minimum = make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    fill(ComplexF64(nextfloat(0.0)), 2, 2), pattern_scale_zero, 1.0)
+@test pattern_feed_field(
+    Vec3(nextfloat(0.0), 0.0, 0.0), pattern_radial_minimum) ==
+    CVec3(cos(π / 2) + 0im, 0.0 + 0im, -1.0 + 0im)
+
+pattern_radial_frequency = 1.0e200
+pattern_radial_distance = 1.0e200
+pattern_radial_huge = make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_scale_zero, pattern_radial_frequency)
+pattern_radial_field = pattern_feed_field(
+    Vec3(pattern_radial_distance, 0.0, 0.0), pattern_radial_huge)
+pattern_radial_k = DiffMoM._frequency_to_wavenumber(
+    pattern_radial_frequency, DiffMoM._C0, "pattern radial test")
+pattern_radial_reference_z = setprecision(BigFloat, 2304) do
+    phase = exp(Complex{BigFloat}(
+        0, -BigFloat(pattern_radial_k) * BigFloat(pattern_radial_distance)))
+    ComplexF64(-phase / BigFloat(pattern_radial_distance))
+end
+@test all(isfinite, pattern_radial_field)
+@test pattern_radial_field[3] == pattern_radial_reference_z
+
 monopole_scale_reference = make_monopole(
     Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0),
     0.1, 1.0 + 0im, source_geometry_frequency)

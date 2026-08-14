@@ -798,6 +798,121 @@ end
     return _bilinear(M, iθ, jθ, tθ, iϕ, jϕ, tϕ)
 end
 
+@inline function _pattern_interp_big(
+    pat::PatternFeedExcitation,
+    M::Matrix{ComplexF64},
+    θ::Float64,
+    ϕ::Float64,
+)
+    iθ, jθ, tθ_float = _bracket_nonperiodic(pat.theta, θ)
+    iϕ, jϕ, tϕ_float = _bracket_periodic_phi(pat.phi, ϕ)
+    tθ = BigFloat(tθ_float)
+    tϕ = BigFloat(tϕ_float)
+    if iθ == jθ && iϕ == jϕ
+        return Complex{BigFloat}(M[iθ, iϕ])
+    elseif iθ == jθ
+        return (1 - tϕ) * Complex{BigFloat}(M[iθ, iϕ]) +
+               tϕ * Complex{BigFloat}(M[iθ, jϕ])
+    elseif iϕ == jϕ
+        return (1 - tθ) * Complex{BigFloat}(M[iθ, iϕ]) +
+               tθ * Complex{BigFloat}(M[jθ, iϕ])
+    end
+    c00 = Complex{BigFloat}(M[iθ, iϕ])
+    c10 = Complex{BigFloat}(M[jθ, iϕ])
+    c01 = Complex{BigFloat}(M[iθ, jϕ])
+    c11 = Complex{BigFloat}(M[jθ, jϕ])
+    return (1 - tθ) * (1 - tϕ) * c00 +
+           tθ * (1 - tϕ) * c10 +
+           (1 - tθ) * tϕ * c01 +
+           tθ * tϕ * c11
+end
+
+@inline function _source_radial_phase_precision(
+    k::Float64,
+    observation::Vec3,
+    center::Vec3,
+)
+    maximum_coordinate_exponent = typemin(Int)
+    @inbounds for component in 1:3
+        for value in (observation[component], center[component])
+            iszero(value) && continue
+            maximum_coordinate_exponent = max(
+                maximum_coordinate_exponent, exponent(abs(value)))
+        end
+    end
+    maximum_coordinate_exponent == typemin(Int) &&
+        return _SOURCE_SCALING_FALLBACK_PRECISION
+    phase_exponent = exponent(abs(k)) + maximum_coordinate_exponent + 2
+    return max(
+        _SOURCE_SCALING_FALLBACK_PRECISION,
+        _SOURCE_PHASE_PRODUCT_GUARD_BITS + max(0, phase_exponent),
+    )
+end
+
+@noinline function _pattern_feed_field_exact(
+    r::Vec3,
+    pat::PatternFeedExcitation,
+    k::Float64,
+)
+    precision = _source_radial_phase_precision(k, r, pat.phase_center)
+    return setprecision(BigFloat, precision) do
+        displacement = SVector{3,BigFloat}(ntuple(
+            component ->
+                BigFloat(r[component]) - BigFloat(pat.phase_center[component]),
+            3,
+        ))
+        distance = sqrt(sum(abs2, displacement))
+        iszero(distance) &&
+            return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+
+        direction = Vec3(ntuple(
+            component -> Float64(displacement[component] / distance), 3))
+        all(isfinite, direction) ||
+            throw(OverflowError(
+                "pattern-feed observation direction is outside the Float64 range"))
+        θ = acos(clamp(direction[3], -1.0, 1.0))
+        ϕ = atan(direction[2], direction[1])
+        ϕ < 0.0 && (ϕ += 2π)
+        _, eθ, eϕ = _spherical_basis(θ, ϕ)
+
+        Fθ = _pattern_interp_big(pat, pat.Ftheta, θ, ϕ)
+        Fϕ = _pattern_interp_big(pat, pat.Fphi, θ, ϕ)
+        if pat.convention == :exp_minus_iwt
+            Fθ = conj(Fθ)
+            Fϕ = conj(Fϕ)
+        end
+
+        phase = exp(Complex{BigFloat}(0, -BigFloat(k) * distance))
+        value = SVector{3,Complex{BigFloat}}(ntuple(
+            component ->
+                (Fθ * BigFloat(eθ[component]) +
+                 Fϕ * BigFloat(eϕ[component])) *
+                phase / distance,
+            3,
+        ))
+        return _finite_source_vector(value, "pattern-feed incident field")
+    end
+end
+
+@inline function _pattern_feed_field_requires_exact(
+    r::Vec3,
+    pat::PatternFeedExcitation,
+    k::Float64,
+    distance::Float64,
+)
+    (!isfinite(distance) ||
+     _source_scaling_extreme_value(k) ||
+     _source_scaling_extreme_value(distance)) && return true
+    @inbounds for component in 1:3
+        (_source_scaling_extreme_value(r[component]) ||
+         _source_scaling_extreme_value(pat.phase_center[component])) && return true
+    end
+    argument = k * distance
+    (!isfinite(argument) ||
+     (!iszero(argument) && exponent(abs(argument)) > 32)) && return true
+    return false
+end
+
 """
     pattern_feed_field(r, pat)
 
@@ -817,6 +932,11 @@ end
         return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     end
 
+    k = _frequency_to_wavenumber(
+        pat.frequency, _C0, "PatternFeedExcitation")
+    _pattern_feed_field_requires_exact(r, pat, k, R) &&
+        return _pattern_feed_field_exact(r, pat, k)
+
     θ = acos(clamp(Rvec[3] / R, -1.0, 1.0))
     ϕ = atan(Rvec[2], Rvec[1])
     if ϕ < 0
@@ -832,13 +952,9 @@ end
         Fϕ = conj(Fϕ)
     end
 
-    k = _frequency_to_wavenumber(
-        pat.frequency, _C0, "PatternFeedExcitation")
-    phase = exp(-1im * k * R) / R
-    return _check_finite_field(
-        phase * (Fθ * eθ + Fϕ * eϕ),
-        "pattern-feed incident field",
-    )
+    field = (Fθ * eθ + Fϕ * eϕ) / R * exp(-1im * k * R)
+    all(isfinite, field) || return _pattern_feed_field_exact(r, pat, k)
+    return CVec3(field)
 end
 
 """
