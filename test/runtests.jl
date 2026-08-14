@@ -4332,6 +4332,23 @@ end
     1.0 + 0im,
     Inf,
 )
+monopole_axis_reference = make_monopole(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(1.0, 1.0, 0.0),
+    0.1,
+    1.0 + 0im,
+    1.0,
+)
+for axis_scale in (nextfloat(0.0), floatmax(Float64))
+    scaled_axis_monopole = make_monopole(
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(axis_scale, axis_scale, 0.0),
+        0.1,
+        1.0 + 0im,
+        1.0,
+    )
+    @test scaled_axis_monopole.axis == monopole_axis_reference.axis
+end
 pattern_guard_theta = [0.0, π]
 pattern_guard_phi = [0.0, π]
 pattern_guard_F = ones(ComplexF64, 2, 2)

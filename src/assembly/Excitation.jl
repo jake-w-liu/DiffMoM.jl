@@ -151,13 +151,17 @@ struct MonopoleExcitation <: AbstractExcitation
                                 include_image::Bool = true)
         position = Vec3(pos)
         axv = Vec3(axis)
-        n = norm(axv)
         height_f = Float64(height)
         amplitude_c = ComplexF64(amplitude)
         frequency_f = Float64(frequency)
         all(isfinite, position) ||
             throw(ArgumentError("MonopoleExcitation: position must be finite"))
-        (all(isfinite, axv) && isfinite(n) && n > 1e-12) ||
+        axis_scale = maximum(abs, axv)
+        (all(isfinite, axv) && axis_scale > 0.0) ||
+            throw(ArgumentError("MonopoleExcitation: axis must be finite and nonzero"))
+        axis_scaled = axv / axis_scale
+        axis_scaled_norm = norm(axis_scaled)
+        (isfinite(axis_scaled_norm) && axis_scaled_norm > 0.0) ||
             throw(ArgumentError("MonopoleExcitation: axis must be finite and nonzero"))
         (isfinite(height_f) && height_f > 0.0) ||
             throw(ArgumentError(
@@ -168,7 +172,9 @@ struct MonopoleExcitation <: AbstractExcitation
         (isfinite(frequency_f) && frequency_f > 0.0) ||
             throw(ArgumentError(
                 "MonopoleExcitation: frequency must be finite and positive, got $frequency"))
-        return new(position, axv / n, height_f, amplitude_c, frequency_f, include_image)
+        return new(
+            position, axis_scaled / axis_scaled_norm, height_f,
+            amplitude_c, frequency_f, include_image)
     end
 end
 
