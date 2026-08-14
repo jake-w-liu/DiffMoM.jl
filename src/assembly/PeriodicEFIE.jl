@@ -129,7 +129,8 @@ function _build_periodic_ewald_terms(
         iszero(m) && iszero(n) && continue
         sx = m * lattice.dx
         sy = n * lattice.dy
-        phase = exp(-im * (lattice.kx_bloch * sx + lattice.ky_bloch * sy))
+        phase = _periodic_transverse_phase(
+            lattice.kx_bloch, lattice.ky_bloch, sx, sy)
         spatial_terms[spatial_idx] =
             _PeriodicSpatialEwaldTerm(sx, sy, phase)
         spatial_idx += 1
@@ -181,8 +182,8 @@ function _greens_periodic_correction_cached(
 
     Edz = lattice.E * drho_z
     @inbounds for term in spectral_terms
-        phase = exp(-im * (
-            term.kappa_x * drho_x + term.kappa_y * drho_y))
+        phase = _periodic_transverse_phase(
+            term.kappa_x, term.kappa_y, drho_x, drho_y)
         spectral_value = (
             exp(-im * term.kz * drho_z) * erfc(term.zk - Edz) +
             exp(im * term.kz * drho_z) * erfc(term.zk + Edz)) /

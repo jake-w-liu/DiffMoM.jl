@@ -400,6 +400,62 @@ end
 
 const _PERIODIC_LONGITUDINAL_FALLBACK_PRECISION = 256
 const _PERIODIC_AREA_FALLBACK_PRECISION = 256
+const _PERIODIC_PHASE_FALLBACK_PRECISION = 2304
+
+@noinline function _periodic_transverse_phase_exact(
+        kx::Float64,
+        ky::Float64,
+        x::Float64,
+        y::Float64)
+    return setprecision(BigFloat, _PERIODIC_PHASE_FALLBACK_PRECISION) do
+        argument = BigFloat(kx) * BigFloat(x) +
+                   BigFloat(ky) * BigFloat(y)
+        ComplexF64(exp(Complex{BigFloat}(0, -argument)))
+    end
+end
+
+@inline function _periodic_phase_term_requires_exact(
+        first::Float64,
+        second::Float64,
+        product::Float64)
+    (iszero(first) || iszero(second)) && return false
+    return !isfinite(product) || iszero(product) ||
+           abs(product) < floatmin(Float64)
+end
+
+@inline function _periodic_transverse_phase(
+        kx::Float64,
+        ky::Float64,
+        x::Float64,
+        y::Float64)
+    x_product = kx * x
+    y_product = ky * y
+    if _periodic_phase_term_requires_exact(kx, x, x_product) ||
+       _periodic_phase_term_requires_exact(ky, y, y_product)
+        return _periodic_transverse_phase_exact(kx, ky, x, y)
+    end
+
+    x_error = fma(kx, x, -x_product)
+    y_error = fma(ky, y, -y_product)
+    if !(isfinite(x_error) && isfinite(y_error))
+        return _periodic_transverse_phase_exact(kx, ky, x, y)
+    end
+    reduced_x = rem2pi(
+        rem2pi(x_product, RoundNearest) +
+        rem2pi(x_error, RoundNearest),
+        RoundNearest,
+    )
+    reduced_y = rem2pi(
+        rem2pi(y_product, RoundNearest) +
+        rem2pi(y_error, RoundNearest),
+        RoundNearest,
+    )
+    reduced = rem2pi(reduced_x + reduced_y, RoundNearest)
+    phase = cis(-reduced)
+    return isfinite(real(phase)) && isfinite(imag(phase)) ?
+           ComplexF64(phase) :
+           _periodic_transverse_phase_exact(kx, ky, x, y)
+end
 
 @noinline function _periodic_scale_by_cell_area_exact(
         value::ComplexF64,
@@ -622,7 +678,7 @@ function greens_periodic_correction(r::SVector{3,<:Real},
                 hypot(drho_x - sx, drho_y - sy), drho_z)
 
             # Bloch phase: exp(-i k_∥ · R_mn)
-            phase = exp(-im * (kx * sx + ky * sy))
+            phase = _periodic_transverse_phase(kx, ky, sx, sy)
 
             # Ewald-damped spatial kernel (real-valued)
             K_sp = _ewald_spatial_kernel(R_mn, kw, E)
@@ -649,7 +705,8 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             abs(kz) < 1e-6 * kw && continue
 
             # Phase from observation-source offset
-            phase_spec = exp(-im * (kappa_x * drho_x + kappa_y * drho_y))
+            phase_spec = _periodic_transverse_phase(
+                kappa_x, kappa_y, drho_x, drho_y)
 
             # Ewald-damped spectral kernel with vertical separation Δz = drho_z.
             # Reduces to erfc(ikz/(2E))/(2ikz) at Δz = 0 and to the physical

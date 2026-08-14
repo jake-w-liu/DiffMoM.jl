@@ -200,6 +200,60 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         @test isapprox(dG_12, dG_21, rtol=1e-12)
     end
 
+    @testset "B2: Exact high-argument Bloch phase" begin
+        # A rounded finite kx*dx phase changes this bounded Ewald correction
+        # by more than ten percent. The API is defined by its stored Float64
+        # lattice values, so reduce their exact products before exponentiation.
+        phase_lattice = PeriodicLattice(
+            1.0e20, 1.0e20, 1.1, 0.7, 1.0e-20, 1.0e-20, 1, 0)
+        phase_point = Vec3(0.0, 0.0, 0.0)
+        phase_value = greens_periodic_correction(
+            phase_point, phase_point, phase_lattice.k, phase_lattice)
+
+        spatial_reference = setprecision(BigFloat, 2304) do
+            total = zero(Complex{BigFloat})
+            for m in -1:1, n in -1:1
+                iszero(m) && iszero(n) && continue
+                sx = m * phase_lattice.dx
+                sy = n * phase_lattice.dy
+                radius = hypot(sx, sy)
+                argument = BigFloat(phase_lattice.kx_bloch) * BigFloat(sx) +
+                           BigFloat(phase_lattice.ky_bloch) * BigFloat(sy)
+                kernel = DiffMoM._ewald_spatial_kernel(
+                    radius, phase_lattice.k, phase_lattice.E)
+                total += exp(Complex{BigFloat}(0, -argument)) *
+                         BigFloat(kernel)
+            end
+            ComplexF64(total)
+        end
+        self_reference = DiffMoM._ewald_self_correction(
+            0.0, phase_lattice.k, phase_lattice.E)
+        kz = DiffMoM._spectral_kz(
+            phase_lattice.k,
+            phase_lattice.kx_bloch,
+            phase_lattice.ky_bloch,
+        )
+        zk = im * kz / (2phase_lattice.E)
+        spectral_kernel = (DiffMoM.erfc(zk) + DiffMoM.erfc(zk)) /
+                          (4im * kz)
+        spectral_reference = DiffMoM._periodic_scale_by_cell_area(
+            spectral_kernel, phase_lattice.dx, phase_lattice.dy)
+        phase_reference = self_reference + spatial_reference +
+                          spectral_reference
+        @test phase_value ≈ phase_reference rtol=8eps(Float64) atol=0.0
+
+        spatial_terms, spectral_terms = DiffMoM._build_periodic_ewald_terms(
+            phase_lattice, 1)
+        @test DiffMoM._greens_periodic_correction_cached(
+            phase_point,
+            phase_point,
+            phase_lattice.k,
+            phase_lattice,
+            spatial_terms,
+            spectral_terms,
+        ) == phase_value
+    end
+
     # ── C: Exponential convergence with truncation order ──
     @testset "C: Exponential Ewald convergence" begin
         r  = SVector(0.0, 0.0, 0.0)
