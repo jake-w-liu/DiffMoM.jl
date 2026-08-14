@@ -256,6 +256,10 @@ end
         mesh, rwg, k0;
         quad_order=1,
         max_output_bytes=dense_block_bytes - 1)
+    @test_throws ArgumentError assemble_magnetic_field_operator_3d(
+        mesh, rwg, NaN; quad_order=1)
+    @test_throws ArgumentError matrixfree_magnetic_field_operator_3d(
+        mesh, rwg, "invalid"; quad_order=1)
     @test assemble_magnetic_field_operator_3d(
         mesh, rwg, k0;
         quad_order=1,
@@ -379,6 +383,73 @@ end
                                                     formulation=:pmchwt,
                                                     quad_order=1,
                                                     singular_quad_order=3)
+    @test A_pm_mf.Ze_ext.cache.quad_pts === A_pm_mf.Ze_int.cache.quad_pts
+    @test A_pm_mf.Ze_ext.cache.quad_pts === A_pm_mf.Zh_ext.cache.quad_pts
+    @test A_pm_mf.Ze_ext.cache.quad_pts === A_pm_mf.Zh_int.cache.quad_pts
+    @test A_pm_mf.Ze_ext.cache.rwg_vals === A_pm_mf.Zh_int.cache.rwg_vals
+    @test A_pm_mf.Ze_ext.cache.adjacent.offsets ===
+          A_pm_mf.Zh_int.cache.adjacent.offsets
+    @test A_pm_mf.K_ext.pts === A_pm_mf.K_int.pts
+    @test A_pm_mf.K_ext.near_pairs.offsets ===
+          A_pm_mf.K_int.near_pairs.offsets
+
+    workspace_payload = DiffMoM._checked_array_payload_bytes(
+        ComplexF64, 7, N; label="test matrix-free SIE workspace")
+    workspace_bound = DiffMoM._estimated_surface_payload_bytes_3d(
+        workspace_payload, "test matrix-free SIE workspace")
+    edge_incidence = Dict{Tuple{Int,Int},Int}()
+    for triangle in axes(mesh.tri, 2)
+        v1, v2, v3 = mesh.tri[:, triangle]
+        for (first_vertex, second_vertex) in ((v1, v2), (v2, v3), (v3, v1))
+            edge = minmax(first_vertex, second_vertex)
+            edge_incidence[edge] = get(edge_incidence, edge, 0) + 1
+        end
+    end
+    adjacency_pair_records = sum(
+        degree * (degree - 1) ÷ 2 for degree in values(edge_incidence))
+    efie_cache = A_pm_mf.Ze_ext.cache
+    efie_fixed_bytes = DiffMoM._efie_cache_fixed_payload_bytes(
+        N,
+        ntriangles(mesh),
+        efie_cache.Nq,
+        length(efie_cache.wq_hi),
+        eltype(efie_cache.div_vals),
+        eltype(fieldtype(eltype(efie_cache.rwg_vals), 1)))
+    efie_geometry_bound = DiffMoM._efie_cache_retained_bytes(
+        efie_fixed_bytes,
+        ntriangles(mesh),
+        DiffMoM._adjacent_pair_count(efie_cache.adjacent))
+    efie_work_bound = DiffMoM._efie_cache_work_bytes(
+        efie_fixed_bytes, ntriangles(mesh), adjacency_pair_records)
+    sie_surface_fixed_bytes = DiffMoM._surface_cache_fixed_payload_bytes_3d(
+        ntriangles(mesh),
+        length(A_pm_mf.K_ext.wq),
+        length(A_pm_mf.K_ext.wq_hi))
+    sie_surface_work_bound = DiffMoM._surface_cache_work_bytes_3d(
+        sie_surface_fixed_bytes, ntriangles(mesh), near_pair_records)
+    magnetic_geometry_bound = DiffMoM._surface_cache_retained_bytes_3d(
+        sie_surface_fixed_bytes,
+        ntriangles(mesh),
+        DiffMoM._adjacent_pair_count(A_pm_mf.K_ext.near_pairs))
+    aggregate_cache_bound = max(
+        workspace_bound + efie_work_bound,
+        workspace_bound + efie_geometry_bound + sie_surface_work_bound,
+        workspace_bound + efie_geometry_bound + magnetic_geometry_bound)
+    @test_throws ArgumentError matrixfree_dielectric_sie_operator_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        quad_order=1,
+        singular_quad_order=3,
+        max_cache_bytes=aggregate_cache_bound - 1)
+    exact_cache_A = matrixfree_dielectric_sie_operator_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        quad_order=1,
+        singular_quad_order=3,
+        max_cache_bytes=aggregate_cache_bound)
+    @test exact_cache_A[1, 1] == A_pm_mf[1, 1]
     @test_throws ArgumentError matrixfree_dielectric_sie_operator_3d(
         mesh, rwg, k0, eps_in;
         mur_in=mu_in,

@@ -137,6 +137,23 @@ function _finite_complex_surface_3d(x, label::AbstractString)
     return z
 end
 
+function _validated_surface_wavenumber_3d(k)
+    k isa Number ||
+        throw(ArgumentError(
+            "magnetic-field wavenumber must be numeric, got $(typeof(k))"))
+    kc = try
+        ComplexF64(k)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError(
+            "magnetic-field wavenumber is outside the ComplexF64 range"))
+    end
+    isfinite(real(kc)) && isfinite(imag(kc)) ||
+        throw(ArgumentError(
+            "magnetic-field wavenumber must be finite, got $kc"))
+    return kc
+end
+
 const _SURFACE_MEDIUM_FALLBACK_PRECISION = 256
 
 function _dielectric_medium_bigfloat_3d(k0::Float64, eta0::Float64,
@@ -224,6 +241,26 @@ function _surface_cache_work_bytes_3d(
     estimated = cld(5 * max(adjacency_peak, retained_peak), 4)
     estimated <= typemax(Int) ||
         throw(ArgumentError("surface-cache storage estimate overflows Int"))
+    return Int(estimated)
+end
+
+function _surface_cache_retained_bytes_3d(
+        fixed_payload_bytes::Int,
+        triangle_count::Int,
+        near_pairs::Int)
+    fixed_payload_bytes >= 0 ||
+        throw(ArgumentError("fixed surface-cache payload must be nonnegative"))
+    triangle_count >= 0 ||
+        throw(ArgumentError("triangle count must be nonnegative"))
+    near_pairs >= 0 ||
+        throw(ArgumentError("near-pair count must be nonnegative"))
+    raw_bytes = BigInt(fixed_payload_bytes) +
+                (BigInt(triangle_count) + 1) * sizeof(Int) +
+                BigInt(2) * near_pairs * sizeof(Int)
+    estimated = cld(5 * raw_bytes, 4)
+    estimated <= typemax(Int) ||
+        throw(ArgumentError(
+            "retained magnetic-field cache estimate overflows Int"))
     return Int(estimated)
 end
 
@@ -487,6 +524,7 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                                  _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                              max_near_pairs::Integer=
                                                  _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
+    kc = _validated_surface_wavenumber_3d(k)
     output_bytes = _checked_array_payload_bytes(
         ComplexF64, rwg.nedges, rwg.nedges;
         label="magnetic-field operator matrix")
@@ -511,11 +549,11 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                 for tn in (rwg.tplus[n], rwg.tminus[n])
                     if tm == tn || near_pairs[tm, tn]
                         acc += _mfie_triangle_pair_entry_3d(
-                            rwg, m, n, tm, tn, k, wq_hi, pts_hi, areas_hi,
+                            rwg, m, n, tm, tn, kc, wq_hi, pts_hi, areas_hi,
                         )
                     else
                         acc += _mfie_triangle_pair_entry_3d(
-                            rwg, m, n, tm, tn, k, wq, pts, areas,
+                            rwg, m, n, tm, tn, kc, wq, pts, areas,
                         )
                     end
                 end
@@ -535,6 +573,7 @@ function matrixfree_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                                    _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                                max_near_pairs::Integer=
                                                    _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
+    kc = _validated_surface_wavenumber_3d(k)
     _assert_closed_surface_sie_3d(mesh, rwg;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
@@ -543,10 +582,47 @@ function matrixfree_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
             mesh, quad_order, singular_quad_order;
             max_cache_bytes=max_cache_bytes,
             max_near_pairs=max_near_pairs)
-    return MatrixFreeMagneticFieldOperator3D(mesh, rwg, ComplexF64(k),
+    return MatrixFreeMagneticFieldOperator3D(mesh, rwg, kc,
                                              wq, pts, areas,
                                              wq_hi, pts_hi, areas_hi,
                                              near_pairs)
+end
+
+function _matrixfree_magnetic_field_operator_with_wavenumber_3d(
+        base::MatrixFreeMagneticFieldOperator3D,
+        k)
+    kc = _validated_surface_wavenumber_3d(k)
+    return MatrixFreeMagneticFieldOperator3D(
+        base.mesh,
+        base.rwg,
+        kc,
+        base.wq,
+        base.pts,
+        base.areas,
+        base.wq_hi,
+        base.pts_hi,
+        base.areas_hi,
+        base.near_pairs,
+    )
+end
+
+function _matrixfree_efie_operator_with_prefactors_3d(
+        base::MatrixFreeEFIEOperator,
+        k,
+        eta0)
+    cache = _efie_cache_with_prefactors(base.cache, k, eta0)
+    return MatrixFreeEFIEOperator{ComplexF64,typeof(cache)}(cache)
+end
+
+function _estimated_surface_payload_bytes_3d(
+        payload_bytes::Int,
+        label::AbstractString)
+    payload_bytes >= 0 ||
+        throw(ArgumentError("$label payload must be nonnegative"))
+    estimated = cld(5 * BigInt(payload_bytes), 4)
+    estimated <= typemax(Int) ||
+        throw(ArgumentError("$label payload estimate overflows Int"))
+    return Int(estimated)
 end
 
 Base.size(A::MatrixFreeMagneticFieldOperator3D) = (A.rwg.nedges, A.rwg.nedges)
@@ -898,48 +974,92 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
     c_ze_ext, c_ze_int, c_zh_ext, c_zh_int =
         _surface_sie_coefficients_3d(formulation, exterior, interior)
 
+    N = rwg.nedges
+    cache_limit = _validated_resource_limit(
+        "max_cache_bytes", max_cache_bytes)
+    workspace_payload = _checked_array_payload_bytes(
+        ComplexF64, 7, N;
+        label="matrix-free dielectric SIE work vectors")
+    workspace_bytes = _estimated_surface_payload_bytes_3d(
+        workspace_payload, "matrix-free dielectric SIE work vectors")
+    workspace_bytes < cache_limit ||
+        throw(ArgumentError(
+            "matrix-free dielectric SIE work vectors require an estimated " *
+            "$workspace_bytes bytes, exceeding max_cache_bytes=$cache_limit"))
+
+    # All four EFIE blocks have identical geometric quadrature/RWG data. Build
+    # that data once, then replace only the validated medium prefactors.
     Ze_ext = matrixfree_efie_operator(mesh, rwg, exterior.k;
                                       quad_order=quad_order,
                                       eta0=exterior.eta,
                                       mesh_precheck=false,
-                                      max_cache_bytes=max_cache_bytes,
+                                      max_cache_bytes=
+                                          cache_limit - workspace_bytes,
                                       max_adjacency_pairs=max_adjacency_pairs)
-    Ze_int = matrixfree_efie_operator(mesh, rwg, interior.k;
-                                      quad_order=quad_order,
-                                      eta0=interior.eta,
-                                      mesh_precheck=false,
-                                      max_cache_bytes=max_cache_bytes,
-                                      max_adjacency_pairs=max_adjacency_pairs)
-    Zh_ext = matrixfree_efie_operator(mesh, rwg, exterior.k;
-                                      quad_order=quad_order,
-                                      eta0=1 / exterior.eta,
-                                      mesh_precheck=false,
-                                      max_cache_bytes=max_cache_bytes,
-                                      max_adjacency_pairs=max_adjacency_pairs)
-    Zh_int = matrixfree_efie_operator(mesh, rwg, interior.k;
-                                      quad_order=quad_order,
-                                      eta0=1 / interior.eta,
-                                      mesh_precheck=false,
-                                      max_cache_bytes=max_cache_bytes,
-                                      max_adjacency_pairs=max_adjacency_pairs)
+    Ze_int = _matrixfree_efie_operator_with_prefactors_3d(
+        Ze_ext, interior.k, interior.eta)
+    Zh_ext = _matrixfree_efie_operator_with_prefactors_3d(
+        Ze_ext, exterior.k, 1 / exterior.eta)
+    Zh_int = _matrixfree_efie_operator_with_prefactors_3d(
+        Ze_ext, interior.k, 1 / interior.eta)
+
+    efie_cache = Ze_ext.cache
+    efie_vector_type = eltype(fieldtype(eltype(efie_cache.rwg_vals), 1))
+    efie_fixed_payload = _efie_cache_fixed_payload_bytes(
+        N,
+        ntriangles(mesh),
+        efie_cache.Nq,
+        length(efie_cache.wq_hi),
+        eltype(efie_cache.div_vals),
+        efie_vector_type)
+    efie_cache_bytes = _efie_cache_retained_bytes(
+        efie_fixed_payload,
+        ntriangles(mesh),
+        _adjacent_pair_count(efie_cache.adjacent))
+    reserved_bytes = try
+        Base.Checked.checked_add(workspace_bytes, efie_cache_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "matrix-free dielectric SIE cache estimate overflows Int"))
+    end
+    reserved_bytes < cache_limit ||
+        throw(ArgumentError(
+            "matrix-free dielectric SIE EFIE cache and work vectors require " *
+            "an estimated $reserved_bytes bytes, exceeding " *
+            "max_cache_bytes=$cache_limit"))
+
+    # The two K blocks likewise differ only in wavenumber. Charge the retained
+    # EFIE cache and reusable work vectors before building their shared geometry.
     K_ext = matrixfree_magnetic_field_operator_3d(
         mesh, rwg, exterior.k;
         quad_order=quad_order,
         singular_quad_order=singular_quad_order,
         mesh_precheck=false,
-        max_cache_bytes=max_cache_bytes,
+        max_cache_bytes=cache_limit - reserved_bytes,
         max_near_pairs=max_near_pairs,
     )
-    K_int = matrixfree_magnetic_field_operator_3d(
-        mesh, rwg, interior.k;
-        quad_order=quad_order,
-        singular_quad_order=singular_quad_order,
-        mesh_precheck=false,
-        max_cache_bytes=max_cache_bytes,
-        max_near_pairs=max_near_pairs,
-    )
+    magnetic_fixed_payload = _surface_cache_fixed_payload_bytes_3d(
+        ntriangles(mesh), length(K_ext.wq), length(K_ext.wq_hi))
+    magnetic_cache_bytes = _surface_cache_retained_bytes_3d(
+        magnetic_fixed_payload,
+        ntriangles(mesh),
+        _adjacent_pair_count(K_ext.near_pairs))
+    total_cache_bytes = try
+        Base.Checked.checked_add(reserved_bytes, magnetic_cache_bytes)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError(
+            "matrix-free dielectric SIE cache estimate overflows Int"))
+    end
+    total_cache_bytes <= cache_limit ||
+        throw(ArgumentError(
+            "matrix-free dielectric SIE caches and work vectors require an " *
+            "estimated $total_cache_bytes bytes, exceeding " *
+            "max_cache_bytes=$cache_limit"))
+    K_int = _matrixfree_magnetic_field_operator_with_wavenumber_3d(
+        K_ext, interior.k)
 
-    N = rwg.nedges
     # Off-diagonal second-kind identity (nhat x Gram) residue coefficients.
     # E-row K block enters with sign -, H-row with sign +.
     c_g_e = -(c_ze_ext - c_ze_int) * 0.5

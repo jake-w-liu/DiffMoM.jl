@@ -118,6 +118,25 @@ function _efie_cache_work_bytes(
     return Int(estimated)
 end
 
+function _efie_cache_retained_bytes(
+        fixed_payload_bytes::Int,
+        triangle_count::Int,
+        adjacent_pairs::Int)
+    fixed_payload_bytes >= 0 ||
+        throw(ArgumentError("fixed EFIE cache payload must be nonnegative"))
+    triangle_count >= 0 ||
+        throw(ArgumentError("triangle count must be nonnegative"))
+    adjacent_pairs >= 0 ||
+        throw(ArgumentError("adjacent-pair count must be nonnegative"))
+    raw_bytes = BigInt(fixed_payload_bytes) +
+                (BigInt(triangle_count) + 1) * sizeof(Int) +
+                BigInt(2) * adjacent_pairs * sizeof(Int)
+    estimated = cld(5 * raw_bytes, 4)
+    estimated <= typemax(Int) ||
+        throw(ArgumentError("retained EFIE cache estimate overflows Int"))
+    return Int(estimated)
+end
+
 function _build_triangle_adjacency(
         mesh::TriMesh;
         fixed_payload_bytes::Int=0,
@@ -363,6 +382,31 @@ function _build_efie_cache(
     return EFIEApplyCache(mesh, rwg, kw, inv_k2, omega_mu0, wq, Nq, quad_pts, areas,
                           tri_ids, div_vals, rwg_vals,
                           adjacent, wq_hi, quad_pts_hi, rwg_vals_hi)
+end
+
+function _efie_cache_with_prefactors(
+        cache::EFIEApplyCache,
+        k,
+        eta0)
+    kw, inv_k2, omega_mu0 = _validated_efie_prefactors(k, eta0)
+    return EFIEApplyCache(
+        cache.mesh,
+        cache.rwg,
+        kw,
+        inv_k2,
+        omega_mu0,
+        cache.wq,
+        cache.Nq,
+        cache.quad_pts,
+        cache.areas,
+        cache.tri_ids,
+        cache.div_vals,
+        cache.rwg_vals,
+        cache.adjacent,
+        cache.wq_hi,
+        cache.quad_pts_hi,
+        cache.rwg_vals_hi,
+    )
 end
 
 @inline function _is_adjacent(cache::EFIEApplyCache, t1::Int, t2::Int)

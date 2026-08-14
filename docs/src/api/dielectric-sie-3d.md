@@ -276,7 +276,7 @@ A_mu = assemble_muller_3d(mesh, rwg, k0, 2.5 + 0im; mur_in=1.6 + 0im)
 
 ### `matrixfree_dielectric_sie_operator_3d(mesh, rwg, k0, epsr_in=1.0 + 0im; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, max_gram_storage_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_near_pairs=20_000_000)`
 
-Build a matrix-free `2N x 2N` dielectric SIE operator without forming any dense block. The returned `MatrixFreeDielectricSIE3D` wraps matrix-free EFIE operators (`Ze`/`Zh` for exterior/interior) and matrix-free magnetic-field operators (`K`), applies the formulation-specific row weights, and (for Müller) precomputes a compact local `nhat x` Gram matrix. `max_gram_storage_bytes` bounds its triplet payload; the cache and pair limits bound the regional operator caches before allocation. Other parameters match `assemble_dielectric_sie_3d`.
+Build a matrix-free `2N x 2N` dielectric SIE operator without forming any dense block. The returned `MatrixFreeDielectricSIE3D` wraps matrix-free EFIE operators (`Ze`/`Zh` for exterior/interior) and matrix-free magnetic-field operators (`K`), applies the formulation-specific row weights, and (for Müller) precomputes a compact local `nhat x` Gram matrix. The four EFIE blocks share one geometry cache, and the two magnetic-field blocks share another. `max_cache_bytes` is an aggregate estimated ceiling for those two retained geometry caches plus the seven reusable work vectors. `max_gram_storage_bytes` independently bounds the optional Müller Gram triplets. Other parameters match `assemble_dielectric_sie_3d`.
 
 **Returns:** `MatrixFreeDielectricSIE3D`.
 
@@ -380,7 +380,7 @@ With `solver=:direct` the dense `2N x 2N` matrix is assembled and LU-factorized.
 | `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES result instead of returning partial surface currents. |
 | `max_work_bytes` | `Integer` | `2_000_000_000` | Dense work-payload ceiling for `solver=:direct`; ignored by `:gmres`. |
 | `max_gram_storage_bytes` | `Integer` | `2_000_000_000` | Compact Müller Gram triplet-payload ceiling for `solver=:gmres`; PMCHWT does not construct it. |
-| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated per-cache peak ceiling for EFIE and magnetic-field quadrature caches. |
+| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated per-transient-cache ceiling for `:direct`; aggregate shared-cache and work-vector ceiling for `:gmres`. |
 | `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived EFIE triangle-pair records. |
 | `max_near_pairs` | `Integer` | `20_000_000` | Maximum vertex-derived magnetic-field triangle-pair records. |
 
