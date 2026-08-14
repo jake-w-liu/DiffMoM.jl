@@ -2373,6 +2373,30 @@ println("\n── Test 42: PeriodicMetrics ──")
             @test R_extreme[unit_idx] ≈ R_unit[unit_idx] atol=1e-14
             @test all(isfinite, R_extreme[unit_idx])
         end
+
+        # The round-trip phase remains finite when 2*kz*h overflows even
+        # though its unit-magnitude exponential is exactly representable.
+        grounded_extreme_height = floatmax(Float64)
+        grounded_extreme_phase = setprecision(BigFloat, 2304) do
+            ComplexF64(cis(-2BigFloat(kg) *
+                              BigFloat(grounded_extreme_height)))
+        end
+        @test DiffMoM._grounded_round_trip_phase(
+            kg, grounded_extreme_height) == grounded_extreme_phase
+        grounded_incident = assemble_excitation(
+            mesh_g, rwg_g, pw_g; quad_order=1)
+        grounded_extreme_incident = assemble_excitation_grounded(
+            mesh_g, rwg_g, pw_g, kg, lat_g;
+            height=grounded_extreme_height, quad_order=1)
+        @test grounded_extreme_incident ==
+              (1 - grounded_extreme_phase) .* grounded_incident
+        grounded_extreme_modes, grounded_extreme_reflection =
+            reflection_coefficients_grounded(
+                mesh_g, rwg_g, I_zero, kg, lat_g;
+                height=grounded_extreme_height,
+                N_orders=0, quad_order=1)
+        @test only(grounded_extreme_modes).m == 0
+        @test only(grounded_extreme_reflection) == -grounded_extreme_phase
         @test_throws ArgumentError assemble_Z_efie_grounded(
             mesh_g, rwg_g, 1.01kg, lat_g; height=lam_g / 8
         )

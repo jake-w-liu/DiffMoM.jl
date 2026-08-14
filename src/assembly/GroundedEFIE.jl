@@ -274,6 +274,37 @@ end
     return magnitude
 end
 
+@noinline function _grounded_round_trip_phase_exact(
+    vertical_wavenumber::Float64,
+    height::Float64,
+)
+    return setprecision(BigFloat, _PERIODIC_RWG_PHASE_FALLBACK_PRECISION) do
+        ComplexF64(cis(
+            -2BigFloat(vertical_wavenumber) * BigFloat(height)))
+    end
+end
+
+@inline function _grounded_round_trip_phase(
+    vertical_wavenumber::Float64,
+    height::Float64,
+)
+    product_hi = vertical_wavenumber * height
+    if isfinite(product_hi)
+        product_lo = fma(vertical_wavenumber, height, -product_hi)
+        if isfinite(product_lo)
+            reduced = rem2pi(
+                2rem2pi(product_hi, RoundNearest) +
+                2rem2pi(product_lo, RoundNearest),
+                RoundNearest,
+            )
+            phase = cis(-reduced)
+            isfinite(real(phase)) && isfinite(imag(phase)) &&
+                return ComplexF64(phase)
+        end
+    end
+    return _grounded_round_trip_phase_exact(vertical_wavenumber, height)
+end
+
 """
     assemble_excitation_grounded(mesh, rwg, pw, k, lattice; height, quad_order=3)
 
@@ -287,7 +318,7 @@ function assemble_excitation_grounded(mesh::TriMesh, rwg::RWGData, pw, k,
     kw = _validated_lattice_wavenumber(k, lattice)
     h = _validated_ground_height(height)
     v_inc = assemble_excitation(mesh, rwg, pw; quad_order=quad_order)
-    factor = 1 - exp(-2im * _kz_inc(kw, lattice) * h)
+    factor = 1 - _grounded_round_trip_phase(_kz_inc(kw, lattice), h)
     return factor .* v_inc
 end
 
@@ -315,9 +346,10 @@ function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
         # exp(-2im·kz·h) = exp(2βh) overflows and 0·Inf = NaN (R_cur is 0 there).
         # The image phase delay is governed by the real vertical wavenumber; this
         # matches reflection_coefficient_vectors_grounded.
-        R_g[i] = R_cur[i] * (1 - exp(-2im * real(m.kz) * h))
+        R_g[i] = R_cur[i] *
+                 (1 - _grounded_round_trip_phase(real(m.kz), h))
         if m.m == 0 && m.n == 0
-            R_g[i] -= exp(-2im * kzi * h)
+            R_g[i] -= _grounded_round_trip_phase(kzi, h)
         end
     end
     return modes, R_g
@@ -342,11 +374,13 @@ function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I,
     kzi = _kz_inc(kw, lattice)
     R_g = copy(R_cur)
     for (i, m) in enumerate(modes)
-        R_g[i] = R_cur[i] * (1 - exp(-2im * real(m.kz) * h))
+        R_g[i] = R_cur[i] *
+                 (1 - _grounded_round_trip_phase(real(m.kz), h))
         if m.m == 0 && m.n == 0
             pol_mode = _mode_transverse_projection(pol, m, kw)
             if !isnothing(pol_mode)
-                R_g[i] -= exp(-2im * kzi * h) .* ComplexF64.(pol_mode)
+                R_g[i] -= _grounded_round_trip_phase(kzi, h) .*
+                          ComplexF64.(pol_mode)
             end
         end
     end
