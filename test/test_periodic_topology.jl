@@ -2202,6 +2202,30 @@ println("\n── Test 42: PeriodicMetrics ──")
             N_orders=0,
             max_exact_fourier_terms=extreme_periodic_terms - 1)
 
+        # Finite phase terms can lose an observable angle through dot-product
+        # cancellation long before either primitive is exponent-extreme.
+        phase_angle = 0.2
+        phase_mode = FloquetMode(
+            0, 0, cos(phase_angle), sin(phase_angle),
+            1.0 + 0im, true, 0.0, 0.0)
+        phase_point = Vec3(
+            1.0e12,
+            -Float64((phase_mode.kx / phase_mode.ky) * 1.0e12),
+            0.0,
+        )
+        phase_reference = setprecision(BigFloat, 4352) do
+            argument = BigFloat(phase_mode.kx) * BigFloat(phase_point[1]) +
+                       BigFloat(phase_mode.ky) * BigFloat(phase_point[2])
+            ComplexF64(exp(Complex{BigFloat}(0, argument)))
+        end
+        @test DiffMoM._periodic_phase_requires_fallback(
+            phase_mode, phase_point)
+        @test DiffMoM._periodic_phase(phase_mode, phase_point) ==
+              phase_reference
+        @test DiffMoM._periodic_fourier_requires_fallback(
+            ComplexF64[1.0], 1.0, [1.0], [phase_mode],
+            [[phase_point]], [1.0])
+
         @test_throws DimensionMismatch reflection_coefficients(
             mesh_i, rwg_i, I_zero[1:end-1], k_pm, lat_pm)
         @test_throws DimensionMismatch reflection_coefficients(

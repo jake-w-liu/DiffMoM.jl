@@ -527,10 +527,11 @@ end
     mode::FloquetMode,
     point,
 )
-    return _ieee_dense_extreme_factor(mode.kx, Float64) ||
-           _ieee_dense_extreme_factor(mode.ky, Float64) ||
-           _ieee_dense_extreme_factor(point[1], Float64) ||
-           _ieee_dense_extreme_factor(point[2], Float64)
+    return _source_phase_requires_fallback(
+        1.0,
+        Vec3(mode.kx, mode.ky, 0.0),
+        Vec3(point[1], point[2], 0.0),
+    )
 end
 
 
@@ -538,16 +539,13 @@ end
     mode::FloquetMode,
     point,
 )
-    return setprecision(BigFloat, _FLOQUET_MODE_FALLBACK_PRECISION) do
-        argument = BigFloat(mode.kx) * BigFloat(point[1]) +
-                   BigFloat(mode.ky) * BigFloat(point[2])
-        value = ComplexF64(exp(Complex{BigFloat}(0, argument)))
-        isfinite(value) ||
-            throw(OverflowError(
-                "Floquet phase is not representable for order " *
-                "($(mode.m), $(mode.n))"))
-        return value
-    end
+    return _source_phase_exact(
+        1.0,
+        Vec3(mode.kx, mode.ky, 0.0),
+        Vec3(point[1], point[2], 0.0),
+        1.0,
+        "Floquet phase for order ($(mode.m), $(mode.n))",
+    )
 end
 
 
@@ -572,17 +570,47 @@ function _periodic_fourier_requires_fallback(
     _ieee_dense_extreme_factor(A_cell, Float64) && return true
     _ieee_bilinear_values_require_fallback(areas, Float64) && return true
     _ieee_bilinear_values_require_fallback(weights, Float64) && return true
+    maximum_mode_x_exponent = typemin(Int)
+    maximum_mode_y_exponent = typemin(Int)
     @inbounds for mode in modes
         mode.propagating || continue
         (_ieee_dense_extreme_factor(mode.kx, Float64) ||
          _ieee_dense_extreme_factor(mode.ky, Float64)) && return true
+        !iszero(mode.kx) &&
+            (maximum_mode_x_exponent = max(
+                maximum_mode_x_exponent, exponent(abs(mode.kx))))
+        !iszero(mode.ky) &&
+            (maximum_mode_y_exponent = max(
+                maximum_mode_y_exponent, exponent(abs(mode.ky))))
     end
+    maximum_point_x_exponent = typemin(Int)
+    maximum_point_y_exponent = typemin(Int)
     @inbounds for triangle_points in quad_pts
         for point in triangle_points
             _ieee_bilinear_values_require_fallback(point, Float64) &&
                 return true
+            !iszero(point[1]) &&
+                (maximum_point_x_exponent = max(
+                    maximum_point_x_exponent,
+                    exponent(abs(point[1]))))
+            !iszero(point[2]) &&
+                (maximum_point_y_exponent = max(
+                    maximum_point_y_exponent,
+                    exponent(abs(point[2]))))
         end
     end
+    # A finite phase term can still carry more absolute rounding error than
+    # the unit-circle reduction can tolerate.  Use maxima by axis to classify
+    # the whole Fourier job in O(number of modes + quadrature points), rather
+    # than adding a second O(modes * points) preflight.
+    maximum_mode_x_exponent != typemin(Int) &&
+        maximum_point_x_exponent != typemin(Int) &&
+        maximum_mode_x_exponent + maximum_point_x_exponent + 2 >
+            _SOURCE_PHASE_FAST_TERM_EXPONENT && return true
+    maximum_mode_y_exponent != typemin(Int) &&
+        maximum_point_y_exponent != typemin(Int) &&
+        maximum_mode_y_exponent + maximum_point_y_exponent + 2 >
+            _SOURCE_PHASE_FAST_TERM_EXPONENT && return true
     return false
 end
 
