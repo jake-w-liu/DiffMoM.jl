@@ -944,6 +944,114 @@ println("\n── Test 41: PeriodicEFIE ──")
         @test_throws ArgumentError assemble_Z_efie_periodic(
             mesh_pe, rwg_pe, 1.01k_pe, lat_pe
         )
+        @test_throws ArgumentError assemble_Z_efie_periodic(
+            mesh_pe, rwg_pe, k_pe, lat_pe; max_cache_bytes=0)
+        @test_throws ArgumentError assemble_Z_efie_periodic(
+            mesh_pe, rwg_pe, k_pe, lat_pe; max_adjacency_pairs=-1)
+        @test_throws ArgumentError assemble_Z_efie_periodic(
+            mesh_pe, rwg_pe, k_pe, lat_pe; max_green_terms=0)
+
+        _, periodic_weights = tri_quad_rule(3)
+        incidence = DiffMoM._build_periodic_triangle_incidence(
+            rwg_pe, ntriangles(mesh_pe))
+        Tcoef = promote_type(
+            eltype(rwg_pe.coeff_plus), eltype(rwg_pe.coeff_minus))
+        TVec = SVector{3,Tcoef}
+        spatial_term_count = DiffMoM._periodic_term_count(
+            lat_pe.N_spatial) - 1
+        spectral_term_count = DiffMoM._periodic_term_count(
+            lat_pe.N_spectral)
+        periodic_cache_bytes = DiffMoM._periodic_efie_cache_bytes(
+            rwg_pe.nedges, ntriangles(mesh_pe), length(periodic_weights),
+            max(1, min(Threads.nthreads(), ntriangles(mesh_pe))),
+            incidence.max_incident, Tcoef, TVec;
+            point_cache_count=1,
+            spatial_term_count=spatial_term_count,
+            spectral_term_count=spectral_term_count)
+        periodic_green_terms = DiffMoM._periodic_efie_green_terms(
+            incidence.active_triangles, length(periodic_weights), lat_pe,
+            DiffMoM._periodic_correction_is_symmetric(rwg_pe, lat_pe))
+        @test_throws ArgumentError DiffMoM._assemble_periodic_correction(
+            mesh_pe, rwg_pe, k_pe, lat_pe;
+            max_cache_bytes=periodic_cache_bytes - 1)
+        @test_throws ArgumentError DiffMoM._assemble_periodic_correction(
+            mesh_pe, rwg_pe, k_pe, lat_pe;
+            max_cache_bytes=periodic_cache_bytes,
+            max_green_terms=periodic_green_terms - 1)
+        Z_corr_limited = DiffMoM._assemble_periodic_correction(
+            mesh_pe, rwg_pe, k_pe, lat_pe;
+            max_cache_bytes=periodic_cache_bytes,
+            max_green_terms=periodic_green_terms)
+        @test all(isfinite, Z_corr_limited)
+
+        # Lattice-dependent Ewald data are cached once. At a Wood-mode lattice,
+        # this avoids thousands of repeated BigFloat longitudinal-wavevector
+        # fallbacks inside the triangle-pair loop.
+        DiffMoM._assemble_periodic_correction(
+            mesh_pe, rwg_pe, k_pe, lat_pe;
+            max_cache_bytes=periodic_cache_bytes,
+            max_green_terms=periodic_green_terms)
+        periodic_alloc = @allocated DiffMoM._assemble_periodic_correction(
+            mesh_pe, rwg_pe, k_pe, lat_pe;
+            max_cache_bytes=periodic_cache_bytes,
+            max_green_terms=periodic_green_terms)
+        @test periodic_alloc <= 1_000_000
+
+        spatial_terms, spectral_terms =
+            DiffMoM._build_periodic_ewald_terms(lat_pe, 1)
+        rp_cache = Vec3(0.11dx_pe, -0.07dy_pe, 0.0)
+        r_cache = Vec3(-0.13dx_pe, 0.09dy_pe, 0.0)
+        @test DiffMoM._greens_periodic_correction_cached(
+            r_cache, rp_cache, k_pe, lat_pe,
+            spatial_terms, spectral_terms) ==
+            greens_periodic_correction(r_cache, rp_cache, k_pe, lat_pe)
+    end
+
+    @testset "A: Auxiliary cache rejects before mesh-sized allocation" begin
+        empty_triangle_count = 1_000
+        empty_xyz = Matrix{Float64}(undef, 3, 3empty_triangle_count)
+        empty_tri = Matrix{Int}(undef, 3, empty_triangle_count)
+        for t in 1:empty_triangle_count
+            first_vertex = 3t - 2
+            empty_xyz[:, first_vertex] .= (0.0, 0.0, 0.0)
+            empty_xyz[:, first_vertex + 1] .= (0.01, 0.0, 0.0)
+            empty_xyz[:, first_vertex + 2] .= (0.0, 0.01, 0.0)
+            empty_tri[:, t] .=
+                (first_vertex, first_vertex + 1, first_vertex + 2)
+        end
+        empty_mesh = TriMesh(empty_xyz, empty_tri)
+        empty_rwg = build_rwg(empty_mesh; precheck=false)
+        empty_lattice = PeriodicLattice(
+            1.0, 1.0, 0.0, 0.0, k_pe;
+            N_spatial=1, N_spectral=1)
+        @test empty_rwg.nedges == 0
+
+        empty_incidence = DiffMoM._build_periodic_triangle_incidence(
+            empty_rwg, empty_triangle_count)
+        empty_cache_bytes = DiffMoM._periodic_efie_cache_bytes(
+            0, empty_triangle_count, 1,
+            max(1, min(Threads.nthreads(), empty_triangle_count)),
+            empty_incidence.max_incident, Float64, Vec3;
+            point_cache_count=1)
+        @test size(DiffMoM._assemble_periodic_correction(
+            empty_mesh, empty_rwg, k_pe, empty_lattice;
+            quad_order=1,
+            max_cache_bytes=empty_cache_bytes,
+            max_green_terms=1)) == (0, 0)
+
+        try
+            assemble_Z_efie_periodic(
+                empty_mesh, empty_rwg, k_pe, empty_lattice;
+                quad_order=1, max_cache_bytes=1)
+        catch
+        end
+        rejected_alloc = @allocated try
+            assemble_Z_efie_periodic(
+                empty_mesh, empty_rwg, k_pe, empty_lattice;
+                quad_order=1, max_cache_bytes=1)
+        catch
+        end
+        @test rejected_alloc <= 10_000
     end
 
     # ── A: Bloch-paired RWG required for boundary-touching periodic meshes ──
@@ -2024,6 +2132,28 @@ println("\n── Test 42: PeriodicMetrics ──")
             height=lam_g / 8,
             max_work_bytes=grounded_work_bytes - 1,
         )
+        _, grounded_weights = tri_quad_rule(3)
+        grounded_incidence = DiffMoM._build_periodic_triangle_incidence(
+            rwg_g, ntriangles(mesh_g))
+        grounded_symmetric = DiffMoM._periodic_correction_is_symmetric(
+            rwg_g, lat_g)
+        grounded_direct_terms = DiffMoM._periodic_efie_green_terms(
+            grounded_incidence.active_triangles, length(grounded_weights),
+            lat_g, grounded_symmetric)
+        grounded_image_terms = DiffMoM._periodic_efie_green_terms(
+            grounded_incidence.active_triangles, length(grounded_weights),
+            lat_g, grounded_symmetric; image_block=true)
+        grounded_green_terms =
+            grounded_direct_terms + grounded_image_terms
+        @test_throws ArgumentError assemble_Z_efie_grounded(
+            mesh_g, rwg_g, kg, lat_g;
+            height=lam_g / 8,
+            max_green_terms=grounded_green_terms - 1)
+        Zg_green_limited = assemble_Z_efie_grounded(
+            mesh_g, rwg_g, kg, lat_g;
+            height=lam_g / 8,
+            max_green_terms=grounded_green_terms)
+        @test all(isfinite, Zg_green_limited)
         pw_g = make_plane_wave(Vec3(0.0, 0.0, -kg), 1.0, Vec3(1.0, 0.0, 0.0))
         R00g(I, h) = begin
             modes, R = reflection_coefficients_grounded(mesh_g, rwg_g, I, kg, lat_g;
@@ -2033,7 +2163,9 @@ println("\n── Test 42: PeriodicMetrics ──")
 
         # (1) A full PEC sheet reflects fully (R00 = -1) at any height.
         for h in (lam_g / 8, lam_g / 4)
-            Zg = assemble_Z_efie_grounded(mesh_g, rwg_g, kg, lat_g; height=h)
+            Zg = h == lam_g / 8 ? Zg_green_limited :
+                 assemble_Z_efie_grounded(
+                     mesh_g, rwg_g, kg, lat_g; height=h)
             vg = Vector{ComplexF64}(assemble_excitation_grounded(mesh_g, rwg_g, pw_g, kg, lat_g; height=h))
             @test abs(R00g(Zg \ vg, h)) ≈ 1.0 atol = 2e-3
         end

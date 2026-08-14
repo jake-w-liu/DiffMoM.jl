@@ -141,6 +141,14 @@ rather than one `N × N` accumulator per worker. At normal incidence with real
 RWG coefficients, reciprocity also permits a half triangle-pair sweep; oblique
 Bloch phase or complex coefficients select the full sweep.
 
+The assembler also computes the lattice-only spatial shifts, Bloch phases, and
+spectral longitudinal wavenumbers once. Workers share those immutable tables,
+so a Wood-anomaly longitudinal-wavenumber fallback is not repeated for every
+quadrature-point pair. `max_work_bytes` bounds dense matrices;
+`max_cache_bytes` bounds auxiliary geometry, adjacency, Ewald tables, locks,
+and task scratch; `max_adjacency_pairs` bounds free-space adjacency records;
+and `max_green_terms` bounds the complete Ewald-series traversal.
+
 ---
 
 ## 4. Floquet Mode Enumeration

@@ -145,16 +145,8 @@ function _build_triangle_adjacency(
     Nt = ntriangles(mesh)
     cache_limit = _validated_resource_limit(
         "max_cache_bytes", max_cache_bytes)
-    pair_limit = try
-        Int(max_adjacency_pairs)
-    catch err
-        err isa InexactError || rethrow()
-        throw(ArgumentError("max_adjacency_pairs is outside the Int range"))
-    end
-    pair_limit >= 0 ||
-        throw(ArgumentError(
-            "max_adjacency_pairs must be nonnegative, got " *
-            "$max_adjacency_pairs"))
+    pair_limit = _validated_nonnegative_resource_limit(
+        "max_adjacency_pairs", max_adjacency_pairs)
     minimum_bytes = _efie_cache_work_bytes(
         fixed_payload_bytes, Nt, 0)
     minimum_bytes <= cache_limit ||

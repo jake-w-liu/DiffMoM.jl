@@ -765,15 +765,15 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                                                max_exact_fourier_terms::Integer=
                                                    _DEFAULT_MAX_PERIODIC_EXACT_FOURIER_TERMS)
     kw = _validated_lattice_wavenumber(k, lattice)
-    _validate_periodic_current_coefficients(rwg, I_coeffs)
-    _assert_coplanar_periodic_metrics_mesh(mesh)
-    _assert_boundary_touching_periodic_mesh_requires_bloch(mesh, lattice, rwg)
-
     mode_count, work_limit = _preflight_periodic_reflection_base(
         N_orders, max_work_bytes)
     _validated_resource_limit("max_fourier_terms", max_fourier_terms)
     _validated_resource_limit(
         "max_exact_fourier_terms", max_exact_fourier_terms)
+    _validate_periodic_current_coefficients(rwg, I_coeffs)
+    _assert_coplanar_periodic_metrics_mesh(mesh)
+    _assert_boundary_touching_periodic_mesh_requires_bloch(
+        mesh, lattice, rwg; max_cache_bytes=work_limit)
 
     modes = floquet_modes(kw, lattice; N_orders=N_orders)
     A_cell = lattice.dx * lattice.dy

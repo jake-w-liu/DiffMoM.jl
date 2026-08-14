@@ -95,7 +95,13 @@ Discretizing with the same RWG basis as the free-standing problem, the grounded 
 `assemble_Z_efie_grounded` simply forms both and subtracts:
 
 ```julia
-function assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3, eta0=376.730313668)
+function assemble_Z_efie_grounded(mesh, rwg, k, lattice;
+                                  height, quad_order=3,
+                                  eta0=376.730313668,
+                                  max_work_bytes=2_000_000_000,
+                                  max_cache_bytes=2_000_000_000,
+                                  max_adjacency_pairs=20_000_000,
+                                  max_green_terms=500_000_000)
     height > 0 || throw(ArgumentError("ground-plane height must be positive (got $height)"))
     Z_direct = assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order, eta0)
     Z_image  = _assemble_periodic_image_block(mesh, rwg, k, lattice, 2 * Float64(height); quad_order, eta0)
@@ -120,6 +126,12 @@ In the implementation $\omega\mu_0 = k\,\eta_0$ (with default $\eta_0 = 376.7303
 
 !!! note "Bounded assembly scratch"
     The image block streams one `Nq × Nq` Green-function slab at a time into the required dense result. Each worker retains only `dmax × N` row scratch, where `dmax` is the maximum number of RWGs incident on one triangle. It does not retain an `Nq × Nq × Nt × Nt` Green-function cache.
+
+    `max_work_bytes` bounds the three simultaneously resident dense matrices.
+    `max_cache_bytes` independently bounds each sequential auxiliary cache,
+    including the read-only Ewald lattice-term tables shared by worker tasks.
+    `max_green_terms` charges the aggregate direct-plus-image Ewald series work,
+    and `max_adjacency_pairs` bounds free-space triangle adjacency construction.
 
 ---
 

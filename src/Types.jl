@@ -25,6 +25,19 @@ function _validated_resource_limit(
     return limit
 end
 
+function _validated_nonnegative_resource_limit(
+        name::AbstractString, value::Integer)
+    limit = try
+        Int(value)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError("$name is outside the Int range"))
+    end
+    limit >= 0 ||
+        throw(ArgumentError("$name must be nonnegative, got $value"))
+    return limit
+end
+
 function _checked_array_payload_bytes(
         ::Type{T}, dimensions::Integer...;
         label::AbstractString="array") where {T}
