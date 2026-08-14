@@ -32,6 +32,8 @@ Create an interactive 3D wireframe plot of a single mesh.
 | `guidefontsize` | `Int` | `12` | Font size for axis labels ("x (m)", "y (m)", "z (m)"). |
 | `tickfontsize` | `Int` | `10` | Font size for axis tick numbers. |
 | `titlefontsize` | `Int` | `12` | Font size for the plot title. |
+| `max_edge_records` | `Integer` | `30_000_000` | Maximum triangle-edge records scanned before plotting. |
+| `max_output_bytes` | `Integer` | `536_870_912` | Maximum raw payload of the wireframe coordinate vectors. |
 | `kwargs...` | -- | -- | Additional keyword arguments forwarded to `relayout!` for fine-grained Plotly layout control. |
 
 **Returns:** PlotlySupply plot object. Display it in a Jupyter notebook or Pluto cell by returning it; save it with `savefig(p, "path.png")`.
@@ -70,6 +72,8 @@ Create side-by-side 3D wireframe plots with shared axis limits and equal aspect 
 | `guidefontsize` | `Int` | `10` | Axis label font size (smaller default to fit two panels). |
 | `tickfontsize` | `Int` | `8` | Tick font size. |
 | `titlefontsize` | `Int` | `10` | Subplot title font size. |
+| `max_edge_records` | `Integer` | `30_000_000` | Per-mesh maximum triangle-edge records scanned before plotting. |
+| `max_output_bytes` | `Integer` | `536_870_912` | Combined maximum raw payload of both wireframe coordinate sets. |
 | `kwargs...` | -- | -- | Forwarded to `relayout!`. |
 
 **Returns:** PlotlySupply plot object with two side-by-side 3D subplots.

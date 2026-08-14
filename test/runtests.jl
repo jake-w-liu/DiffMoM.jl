@@ -989,8 +989,13 @@ segments_limited = mesh_wireframe_segments(
 
 p_mesh = plot_mesh_wireframe(mesh_edges_test; title="Mesh preview test", linewidth=0.5)
 @assert p_mesh !== nothing
+@test_throws ArgumentError plot_mesh_wireframe(
+    mesh_edges_test; max_output_bytes=wireframe_output_bytes - 1)
 p_cmp = plot_mesh_comparison(mesh_edges_test, mesh_edges_test; title_a="A", title_b="B", size=(600, 300))
 @assert p_cmp !== nothing
+@test_throws ArgumentError plot_mesh_comparison(
+    mesh_edges_test, mesh_edges_test;
+    max_output_bytes=2wireframe_output_bytes - 1)
 
 xyz_nm = [
     0.0  1.0  0.0  0.0  0.0  2.0  2.0;

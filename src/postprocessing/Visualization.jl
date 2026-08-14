@@ -93,8 +93,15 @@ function plot_mesh_wireframe(mesh::TriMesh;
                              guidefontsize::Int=12,
                              tickfontsize::Int=10,
                              titlefontsize::Int=12,
+                             max_edge_records::Integer=
+                                 _DEFAULT_MAX_MESH_EDGE_RECORDS,
+                             max_output_bytes::Integer=
+                                 _DEFAULT_MAX_MESH_EDGE_OUTPUT_BYTES,
                              kwargs...)
-    seg = mesh_wireframe_segments(mesh)
+    seg = mesh_wireframe_segments(
+        mesh;
+        max_edge_records=max_edge_records,
+        max_output_bytes=max_output_bytes)
     specs = reshape([Spec(kind = "scene")], 1, 1)
     titles = reshape([title], 1, 1)
     sf = subplots(1, 1; sync = false, width = size[1], height = size[2], specs = specs, subplot_titles = titles, per_subplot_legends = false)
@@ -147,10 +154,35 @@ function plot_mesh_comparison(mesh_a::TriMesh, mesh_b::TriMesh;
                               guidefontsize::Int=10,
                               tickfontsize::Int=8,
                               titlefontsize::Int=10,
+                              max_edge_records::Integer=
+                                  _DEFAULT_MAX_MESH_EDGE_RECORDS,
+                              max_output_bytes::Integer=
+                                  _DEFAULT_MAX_MESH_EDGE_OUTPUT_BYTES,
                               kwargs...)
     xlims, ylims, zlims = _realistic_axis_limits([mesh_a, mesh_b]; pad_frac=pad_frac)
-    seg_a = mesh_wireframe_segments(mesh_a)
-    seg_b = mesh_wireframe_segments(mesh_b)
+    segment_limit = _validated_resource_limit(
+        "max_output_bytes", max_output_bytes)
+    records_a = Base.Checked.checked_mul(3, ntriangles(mesh_a))
+    records_b = Base.Checked.checked_mul(3, ntriangles(mesh_b))
+    records_a <= max_edge_records && records_b <= max_edge_records ||
+        throw(ArgumentError(
+            "each comparison mesh must fit max_edge_records=$max_edge_records"))
+    seg_a = mesh_wireframe_segments(
+        mesh_a;
+        max_edge_records=max_edge_records,
+        max_output_bytes=segment_limit)
+    first_bytes = _checked_array_payload_bytes(
+        Float64, length(seg_a.x), 3;
+        label="first mesh wireframe coordinates")
+    remaining_bytes = segment_limit - first_bytes
+    remaining_bytes > 0 ||
+        throw(ArgumentError(
+            "mesh comparison wireframes require more than " *
+            "max_output_bytes=$segment_limit raw bytes"))
+    seg_b = mesh_wireframe_segments(
+        mesh_b;
+        max_edge_records=max_edge_records,
+        max_output_bytes=remaining_bytes)
 
     specs = reshape([Spec(kind = "scene"), Spec(kind = "scene")], 1, 2)
     titles = reshape([title_a, title_b], 1, 2)
