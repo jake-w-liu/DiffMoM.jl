@@ -619,6 +619,39 @@ polarizability model.
     return R, Rhat, phase, cis(-phase) / (4π)
 end
 
+@inline function _electric_dipole_geometry_requires_exact_3d(
+    r::Vec3,
+    rp::Vec3,
+    k::Float64,
+)
+    all(isfinite, r) && all(isfinite, rp) ||
+        throw(ArgumentError(
+            "electric dipole observation and source points must be finite."))
+    displacement = r - rp
+    distance = hypot(displacement[1], displacement[2], displacement[3])
+    iszero(distance) &&
+        error("electric_dipole_dyadic_3d requires distinct finite points.")
+    !isfinite(distance) && return true
+
+    # A finite Float64 phase can still be unrelated to the phase of the exact
+    # supplied coordinates once its ulp is appreciable.  Extreme coordinates
+    # also require exact subtraction before the distance is formed.
+    @inbounds for component in 1:3
+        (_source_scaling_extreme_value(r[component]) ||
+         _source_scaling_extreme_value(rp[component])) && return true
+    end
+    _source_scaling_extreme_value(k) && return true
+    phase = k * distance
+    return !isfinite(phase) ||
+           (!iszero(phase) && exponent(abs(phase)) > 32)
+end
+
+@inline _electric_dipole_exact_precision_3d(
+    r::Vec3,
+    rp::Vec3,
+    k::Float64,
+) = _source_radial_phase_precision(k, r, rp)
+
 @inline function _scale_dipole_component_3d(value::Float64,
                                              amplitude::Float64,
                                              k::Float64, k_power::Int,
@@ -776,7 +809,8 @@ end
 
 function _electric_dipole_apply_bigfloat_3d(r::Vec3, rp::Vec3, k::Float64,
                                              q::CVec3)
-    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+    precision = _electric_dipole_exact_precision_3d(r, rp, k)
+    return setprecision(BigFloat, precision) do
         qb = SVector{3,Complex{BigFloat}}(
             Complex{BigFloat}(q[1]),
             Complex{BigFloat}(q[2]),
@@ -801,7 +835,8 @@ function _electric_dipole_alpha_apply_bigfloat_3d(
         k::Float64,
         alpha,
         field::CVec3)
-    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+    precision = _electric_dipole_exact_precision_3d(r, rp, k)
+    return setprecision(BigFloat, precision) do
         q = _alpha_apply_bigfloat_vector_3d(alpha, field)
         value = _electric_dipole_value_bigfloat_3d(r, rp, k, q)
         converted = CVec3(
@@ -837,7 +872,8 @@ function _electric_dipole_alpha_adjoint_apply_bigfloat_3d(
         k::Float64,
         alpha::_CMat3DDA,
         value::CVec3)
-    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+    precision = _electric_dipole_exact_precision_3d(r, rp, k)
+    return setprecision(BigFloat, precision) do
         conjugated_value = SVector{3,Complex{BigFloat}}(ntuple(
             index -> conj(Complex{BigFloat}(value[index])), 3))
         green_conjugated = _electric_dipole_value_bigfloat_3d(
@@ -907,6 +943,19 @@ end
     k::Float64,
     alpha,
 )
+    if _electric_dipole_geometry_requires_exact_3d(r, rp, k)
+        column1 = _electric_dipole_apply_bigfloat_3d(
+            r, rp, k, _alpha_basis_vector_3d(alpha, 1))
+        column2 = _electric_dipole_apply_bigfloat_3d(
+            r, rp, k, _alpha_basis_vector_3d(alpha, 2))
+        column3 = _electric_dipole_apply_bigfloat_3d(
+            r, rp, k, _alpha_basis_vector_3d(alpha, 3))
+        return _CMat3DDA((
+            column1[1], column1[2], column1[3],
+            column2[1], column2[2], column2[3],
+            column3[1], column3[2], column3[3],
+        ))
+    end
     R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
     column1 = _electric_dipole_apply_with_geometry_3d(
         r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, Rhat, expfac)
@@ -942,6 +991,9 @@ end
     alpha::_CMat3DDA,
     value::CVec3,
 )
+    _electric_dipole_geometry_requires_exact_3d(r, rp, k) &&
+        return _electric_dipole_alpha_adjoint_apply_bigfloat_3d(
+            r, rp, k, alpha, value)
     try
         R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
         column1 = _electric_dipole_apply_with_geometry_3d(
@@ -969,6 +1021,8 @@ function electric_dipole_dyadic_3d(r::Vec3, rp::Vec3, k0::Real)
 end
 
 @inline function _electric_dipole_apply_3d(r::Vec3, rp::Vec3, k::Float64, q::CVec3)
+    _electric_dipole_geometry_requires_exact_3d(r, rp, k) &&
+        return _electric_dipole_apply_bigfloat_3d(r, rp, k, q)
     R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
     return _electric_dipole_apply_with_geometry_3d(
         r, rp, k, q, R, Rhat, expfac)

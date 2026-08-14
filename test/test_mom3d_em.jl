@@ -93,6 +93,28 @@ end
         @test all(iszero, farfield_em_dda_3d(res, extreme_direction))
     end
 
+    @testset "Large radial phase reduction" begin
+        observation = Vec3(1.0e100, 0.0, 0.0)
+        source = Vec3(0.0, 0.0, 0.0)
+        k = 1.1
+        electric_dipole = CVec3(0.0, 1.0, 0.0)
+        magnetic_dipole = CVec3(0.0, 0.0, 1.0)
+        electric, magnetic = DiffMoM._em_interaction_apply_3d(
+            observation, source, k, electric_dipole, magnetic_dipole)
+        reference_electric, reference_magnetic =
+            setprecision(BigFloat, 2304) do
+                q = SVector{3,Complex{BigFloat}}(
+                    0.0 + 0im, 1.0 + 0im, 0.0 + 0im)
+                m = SVector{3,Complex{BigFloat}}(
+                    0.0 + 0im, 0.0 + 0im, 1.0 + 0im)
+                E, H = DiffMoM._em_interaction_value_bigfloat_3d(
+                    observation, source, k, q, m)
+                CVec3(ComplexF64.(E)), CVec3(ComplexF64.(H))
+            end
+        @test electric == reference_electric
+        @test magnetic == reference_magnetic
+    end
+
     @testset "Polarizability application exponent safety" begin
         large_spacing = 4.0e102
         large_grid = VoxelGrid3D(

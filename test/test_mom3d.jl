@@ -236,6 +236,37 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test all(iszero, res.alpha)
     end
 
+    @testset "Large radial phase reduction" begin
+        observation = Vec3(1.0e100, 0.0, 0.0)
+        source = Vec3(0.0, 0.0, 0.0)
+        k = 1.1
+        dyadic = electric_dipole_dyadic_3d(observation, source, k)
+        axial, transverse = setprecision(BigFloat, 2304) do
+            distance = BigFloat(observation[1])
+            wavenumber = BigFloat(k)
+            phase = exp(Complex{BigFloat}(0, -wavenumber * distance)) /
+                    (4 * BigFloat(pi))
+            (
+                ComplexF64(phase * 2 *
+                    (inv(distance^3) +
+                     Complex{BigFloat}(0, 1) * wavenumber / distance^2)),
+                ComplexF64(phase *
+                    (wavenumber^2 / distance - inv(distance^3) -
+                     Complex{BigFloat}(0, 1) * wavenumber / distance^2)),
+            )
+        end
+        @test dyadic == @SMatrix ComplexF64[
+            axial 0 0;
+            0 transverse 0;
+            0 0 transverse
+        ]
+
+        ordinary_observation = Vec3(1.0, 0.0, 0.0)
+        electric_dipole_dyadic_3d(ordinary_observation, source, k)
+        @test @allocated(electric_dipole_dyadic_3d(
+            ordinary_observation, source, k)) == 0
+    end
+
     @testset "Reciprocal dyadic block symmetry" begin
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
         matrix_bytes = sizeof(ComplexF64) * (3grid.nvoxels)^2

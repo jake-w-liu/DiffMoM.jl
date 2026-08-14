@@ -374,11 +374,35 @@ end
 
 @inline function _em_interaction_apply_3d(ri::Vec3, rj::Vec3, k::Float64,
                                           q::CVec3, m::CVec3)
+    _electric_dipole_geometry_requires_exact_3d(ri, rj, k) &&
+        return _em_interaction_apply_bigfloat_3d(ri, rj, k, q, m)
     E = _electric_dipole_apply_3d(ri, rj, k, q) +
         magnetic_dipole_electric_field_3d(ri, rj, k, m)
     H = electric_dipole_magnetic_field_3d(ri, rj, k, q) +
         _electric_dipole_apply_3d(ri, rj, k, m)
     return E, H
+end
+
+function _em_interaction_apply_bigfloat_3d(
+        ri::Vec3,
+        rj::Vec3,
+        k::Float64,
+        q::CVec3,
+        m::CVec3)
+    precision = _electric_dipole_exact_precision_3d(ri, rj, k)
+    return setprecision(BigFloat, precision) do
+        qb = SVector{3,Complex{BigFloat}}(ntuple(
+            component -> Complex{BigFloat}(q[component]), 3))
+        mb = SVector{3,Complex{BigFloat}}(ntuple(
+            component -> Complex{BigFloat}(m[component]), 3))
+        E, H = _em_interaction_value_bigfloat_3d(ri, rj, k, qb, mb)
+        converted_E = CVec3(ntuple(component -> ComplexF64(E[component]), 3))
+        converted_H = CVec3(ntuple(component -> ComplexF64(H[component]), 3))
+        all(isfinite, converted_E) && all(isfinite, converted_H) ||
+            throw(OverflowError(
+                "EM DDA interaction field is outside the representable ComplexF64 range."))
+        return converted_E, converted_H
+    end
 end
 
 function _em_interaction_value_bigfloat_3d(
@@ -416,7 +440,8 @@ function _em_alpha_interaction_apply_bigfloat_3d(
         k::Float64,
         alpha::_CMat6DDA,
         field::_CVec6DDA)
-    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+    precision = _electric_dipole_exact_precision_3d(ri, rj, k)
+    return setprecision(BigFloat, precision) do
         dipoles = _alpha_apply_bigfloat_vector_3d(alpha, field)
         q = SVector{3,Complex{BigFloat}}(
             dipoles[1], dipoles[2], dipoles[3])
@@ -520,10 +545,8 @@ function Base.getindex(A::EMDDAOperator3D, row::Int, col::Int)
     alphaj = A.alpha[j]
     iszero(alphaj) && return 0.0 + 0im
     basis = _CVec6DDA(ntuple(c -> c == b ? 1.0 + 0im : 0.0 + 0im, 6))
-    q6 = alphaj * basis
-    q, m = _split_em_field(q6)
-    E, H = _em_interaction_apply_3d(A.grid.centers[i], A.grid.centers[j],
-                                    A.k0, q, m)
+    E, H = _em_alpha_interaction_apply_3d(
+        A.grid.centers[i], A.grid.centers[j], A.k0, alphaj, basis)
     return -(a <= 3 ? E[a] : H[a - 3])
 end
 
