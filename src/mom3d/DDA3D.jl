@@ -675,6 +675,12 @@ end
         left::ComplexF64,
         right::ComplexF64)
     (iszero(left) || iszero(right)) && return false
+    # Inspect primitive components before forming the complex product.  A
+    # normal real component can otherwise hide an imaginary product that has
+    # rounded to zero; a later Green-function or far-field scale can make that
+    # lost component representable again.
+    (_ieee_dense_extreme_factor(left, Float64) ||
+     _ieee_dense_extreme_factor(right, Float64)) && return true
     product = left * right
     isfinite(product) || return true
     scale = _complex_component_scale_3d(product)

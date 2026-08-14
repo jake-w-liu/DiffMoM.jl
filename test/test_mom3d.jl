@@ -510,6 +510,39 @@ println("\n── Test 46: 3D vector material DDA solver ──")
                 imag(precision_reference[index]);
                 rtol=16eps(Float64), atol=0.0)
             for index in 1:3)
+
+        # A normal real product must not hide an underflowed imaginary
+        # primitive.  The two ordinary real far-field terms cancel exactly,
+        # while k^2 makes the lost half-minsubnormal product representable.
+        masked_grid = VoxelGrid3D(
+            (-0.5, 0.5), (-1.0, 1.0), (-0.5, 0.5), 1, 2, 1)
+        masked_unit = nextfloat(0.0)
+        masked_fields = CVec3[
+            CVec3(0im, complex(1.0, masked_unit), 0im),
+            CVec3(0im, -1.0 + 0im, 0im),
+        ]
+        masked_alpha = fill(0.5 + 0im, masked_grid.nvoxels)
+        masked_k = ldexp(1.0, 120)
+        masked_result = DDAResult3D(
+            masked_fields,
+            fill(zero(CVec3), masked_grid.nvoxels),
+            fill(2.0 + 0im, masked_grid.nvoxels),
+            masked_alpha,
+            zeros(ComplexF64, 3masked_grid.nvoxels,
+                  3masked_grid.nvoxels),
+            nothing,
+            :direct,
+            nothing,
+            masked_grid,
+            masked_k,
+            false,
+        )
+        masked_direction = Vec3(1.0, 0.0, 0.0)
+        masked_reference = DiffMoM._farfield_sum_bigfloat_dda_3d(
+            masked_result, masked_direction)
+        @test !iszero(imag(masked_reference[2]))
+        @test farfield_dda_3d(masked_result, masked_direction) ==
+              masked_reference
     end
 
     @testset "Scattered-field accumulation exponent range" begin
