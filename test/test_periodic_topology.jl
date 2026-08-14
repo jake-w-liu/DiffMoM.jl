@@ -136,6 +136,18 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
             0.0, large_ratio_k, minimum_positive)
         @test @allocated(DiffMoM._ewald_self_correction(
             0.0, large_ratio_k, minimum_positive)) < 100_000
+
+        # Near-origin selection is based on kR and ER, not an absolute length.
+        # At this small physical separation the field is not in its R→0
+        # regime because both dimensionless products are O(10).
+        rapid_k = 1.0e16
+        rapid_E = 2.0e16
+        rapid_R = 1.0e-15
+        rapid_reference = ComplexF64(
+             0x1.e5d308d66b814p+45,
+            -0x1.3afd4e8e040dcp+45)
+        @test DiffMoM._ewald_self_correction(
+            rapid_R, rapid_k, rapid_E) ≈ rapid_reference rtol=2e-15
     end
 
     # ── A: kz branch cut correctness ──
@@ -269,6 +281,36 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
             subnormal_value, subnormal_dx, subnormal_dy)
         @test @allocated(DiffMoM._periodic_scale_by_cell_area(
             subnormal_value, subnormal_dx, subnormal_dy)) == 0
+
+        # Complete physical products stay representable even when the damped
+        # kernel's phase product or the naive 4πR denominator overflows.
+        @test DiffMoM._ewald_spatial_kernel(
+            1.0e200, 1.0e200, 1.0e200) == 0.0
+        damping_E = floatmax(Float64)
+        damping_R = 30 / damping_E
+        damping_reference = setprecision(BigFloat, 512) do
+            R_big = BigFloat(damping_R)
+            E_big = BigFloat(damping_E)
+            Float64(DiffMoM.erfc(E_big * R_big) /
+                    (4big(π) * R_big))
+        end
+        @test DiffMoM._ewald_spatial_kernel(
+            damping_R, nextfloat(0.0), damping_E) ≈
+              damping_reference rtol=1e-12
+        DiffMoM._ewald_spatial_kernel(
+            damping_R, nextfloat(0.0), damping_E)
+        @test @allocated(DiffMoM._ewald_spatial_kernel(
+            damping_R, nextfloat(0.0), damping_E)) == 0
+        maximum_radius = floatmax(Float64)
+        overflow_phase_k = 2.0
+        radial_reference = setprecision(BigFloat, 2304) do
+            ComplexF64(
+                -exp(-im * BigFloat(overflow_phase_k) *
+                     BigFloat(maximum_radius)) /
+                BigFloat(maximum_radius) / (4big(π)))
+        end
+        @test DiffMoM._ewald_self_correction(
+            maximum_radius, overflow_phase_k, 1.0) == radial_reference
     end
 
     # ── E: Call-site wavenumber must agree with the lattice ──

@@ -220,8 +220,49 @@ Ewald-damped spatial kernel for the Helmholtz Green's function:
 This is real-valued and decays as exp(-E²R²) for large R.
 """
 function _ewald_spatial_kernel(R::Float64, k::Float64, E::Float64)
-    z = E * R - im * k / (2E)
-    return real(exp(-im * k * R) * erfc(z)) / (4π * R)
+    spatial_argument = E * R
+    phase_ratio = (k / E) / 2
+    if isinf(spatial_argument) && isfinite(phase_ratio)
+        return 0.0
+    end
+    (isfinite(spatial_argument) && isfinite(phase_ratio)) ||
+        throw(OverflowError(
+            "periodic Green spatial kernel arguments are outside the " *
+            "supported Float64 range"))
+
+    # With s=ER and q=k/(2E), the oscillatory factor cancels exactly:
+    #   exp(-ikR) erfc(s-iq) = exp(q²-s²) erfcx(s-iq).
+    # This form also lets the final division by R rescue an erfc value that
+    # would underflow if it were rounded before the complete kernel is formed.
+    scaled_erfc_real = real(erfcx(spatial_argument - im * phase_ratio))
+    isfinite(scaled_erfc_real) ||
+        throw(OverflowError(
+            "periodic Green spatial kernel is outside the representable " *
+            "Float64 range"))
+    iszero(scaled_erfc_real) && return 0.0
+    exponent = phase_ratio * phase_ratio -
+               spatial_argument * spatial_argument
+    if exponent == -Inf
+        return 0.0
+    end
+    isfinite(exponent) ||
+        throw(OverflowError(
+            "periodic Green spatial kernel is outside the representable " *
+            "Float64 range"))
+
+    numerator = exp(exponent) * scaled_erfc_real
+    result = (numerator / R) / (4π)
+    if isfinite(result) && abs(result) >= floatmin(Float64)
+        return result
+    end
+    log_magnitude = exponent + log(abs(scaled_erfc_real)) -
+                    log(R) - log(4π)
+    result = copysign(exp(log_magnitude), scaled_erfc_real)
+    isfinite(result) ||
+        throw(OverflowError(
+            "periodic Green spatial kernel is outside the representable " *
+            "Float64 range"))
+    return result
 end
 
 # ─────────────────────────────────────────────────────────────────
@@ -304,7 +345,12 @@ free-space Green's function at the same point. It is smooth
 everywhere, with an analytical limit at R → 0 via L'Hôpital.
 """
 function _ewald_self_correction(R::Float64, k::Float64, E::Float64)
-    if R < 1e-14
+    k_radius = k * R
+    E_radius = E * R
+    near_origin = iszero(R) ||
+                  (isfinite(k_radius) && isfinite(E_radius) &&
+                   max(abs(k_radius), abs(E_radius)) <= 1.0e-6)
+    if near_origin
         # R → 0 limit (L'Hôpital on the 0/0 form):
         #   C_self = [2ik erfc(ik/(2E)) - (4E/√π) exp(k²/(4E²))] / (8π)
         #
@@ -344,7 +390,7 @@ function _ewald_self_correction(R::Float64, k::Float64, E::Float64)
 
     # For R > 0: compute K_sp(R) - G_0(R) directly
     K_sp = _ewald_spatial_kernel(R, k, E)
-    G_0 = exp(-im * k * R) / (4π * R)
+    G_0 = (_periodic_rwg_bloch_phase(k, R) / R) / (4π)
     return K_sp - G_0
 end
 
