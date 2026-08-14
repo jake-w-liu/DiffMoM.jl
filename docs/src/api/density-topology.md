@@ -47,7 +47,7 @@ three-argument construction likewise requires finite, nonzero `Z_max`.
 
 ## Density-Interpolated Penalty Assembly
 
-### `precompute_triangle_mass(mesh, rwg; quad_order=3)`
+### `precompute_triangle_mass(mesh, rwg; quad_order=3, max_work_bytes=536_870_912, max_terms=200_000_000)`
 
 Precompute per-triangle mass matrices:
 
@@ -62,6 +62,8 @@ M_t[m,n] = integral_t f_m . f_n dS
 | `mesh` | `TriMesh` | -- | Geometry mesh. |
 | `rwg` | `RWGData` | -- | RWG basis data. |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
+| `max_work_bytes` | `Integer` | `536_870_912` | Raw-payload ceiling for quadrature/support workspaces, triplet builders, compact results, and constructor transients. |
+| `max_terms` | `Integer` | `200_000_000` | Ceiling for local basis-pair/quadrature evaluations. |
 
 **Returns:** `Vector{LocalMassMatrix{T}}` of length `Nt`, one compact local matrix per
 triangle. The element type `T` is `Float64` for real RWG coefficients and `ComplexF64`

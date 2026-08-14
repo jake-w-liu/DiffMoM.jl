@@ -5,6 +5,126 @@
 
 export assemble_Z_impedance, precompute_patch_mass, assemble_dZ_dtheta
 
+const _DEFAULT_MAX_MASS_PRECOMPUTE_WORK_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_MASS_PRECOMPUTE_TERMS = 200_000_000
+
+function _mass_precompute_base_bytes(
+        N::Int, Nt::Int, Nq::Int, collection_count::Int,
+        patch_mode::Bool)
+    total = BigInt(0)
+    # Degree counts, quadrature cache, areas, triangle-to-basis storage, and
+    # the quadrature rule itself. Outer Vector slots are charged as pointers.
+    total += BigInt(sizeof(Int)) * Nt
+    total += BigInt(sizeof(Ptr{Cvoid}) + sizeof(Float64)) * Nt
+    total += BigInt(sizeof(Vec3)) * Nt * Nq
+    total += BigInt(sizeof(Ptr{Cvoid})) * Nt
+    total += BigInt(2 * sizeof(Int)) * N
+    total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    # Triangle mode retains one result slot per triangle. Patch mode retains
+    # three builder-vector slots, one result slot, and an entry count per patch.
+    total += BigInt(sizeof(Ptr{Cvoid})) * collection_count *
+             (patch_mode ? 4 : 1)
+    patch_mode && (total += BigInt(sizeof(Int)) * collection_count)
+    total <= typemax(Int) ||
+        throw(ArgumentError("local mass-matrix base-work estimate overflows Int"))
+    return Int(total)
+end
+
+function _mass_precompute_profile(
+        rwg::RWGData, Nt::Int, Nq::Int, ::Type{Tmass},
+        tri_patch::Union{Nothing,Vector{Int}}, collection_count::Int,
+        max_work_bytes::Integer=typemax(Int),
+        max_terms::Integer=typemax(Int)) where {Tmass}
+    patch_mode = tri_patch !== nothing
+    base_bytes = _mass_precompute_base_bytes(
+        rwg.nedges, Nt, Nq, collection_count, patch_mode)
+    work_limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    base_bytes <= work_limit ||
+        throw(ArgumentError(
+            "local mass-matrix base workspace requires $base_bytes raw bytes, " *
+            "exceeding max_work_bytes=$work_limit"))
+    term_limit = _validated_resource_limit("max_terms", max_terms)
+    degrees = zeros(Int, Nt)
+    @inbounds for n in 1:rwg.nedges
+        tp = rwg.tplus[n]
+        tm = rwg.tminus[n]
+        1 <= tp <= Nt ||
+            throw(ArgumentError("rwg.tplus[$n]=$tp is outside 1:$Nt"))
+        1 <= tm <= Nt ||
+            throw(ArgumentError("rwg.tminus[$n]=$tm is outside 1:$Nt"))
+        degrees[tp] = try
+            Base.Checked.checked_add(degrees[tp], 1)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError("triangle $tp support degree overflows Int"))
+        end
+        degrees[tm] = try
+            Base.Checked.checked_add(degrees[tm], 1)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError("triangle $tm support degree overflows Int"))
+        end
+    end
+
+    patch_entries = patch_mode ? zeros(Int, collection_count) : Int[]
+    entry_count = 0
+    bytes_per_entry = 6 * sizeof(Int) + 2 * sizeof(Tmass)
+    entry_capacity = (work_limit - base_bytes) ÷ bytes_per_entry
+    term_capacity = term_limit ÷ Nq
+    @inbounds for t in 1:Nt
+        entries_t = try
+            Base.Checked.checked_mul(degrees[t], degrees[t])
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError(
+                "triangle $t local mass-entry count overflows Int"))
+        end
+        entry_count = try
+            Base.Checked.checked_add(entry_count, entries_t)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError("local mass-entry count overflows Int"))
+        end
+        entry_count <= entry_capacity ||
+            throw(ArgumentError(
+                "local mass-matrix output and workspace require more than " *
+                "max_work_bytes=$work_limit raw bytes"))
+        entry_count <= term_capacity ||
+            throw(ArgumentError(
+                "local mass-matrix assembly requires more than " *
+                "max_terms=$term_limit terms"))
+        if patch_mode
+            p = tri_patch[t]
+            patch_entries[p] = try
+                Base.Checked.checked_add(patch_entries[p], entries_t)
+            catch err
+                err isa OverflowError || rethrow()
+                throw(ArgumentError(
+                    "patch $p local mass-entry count overflows Int"))
+            end
+        end
+    end
+
+    term_count = try
+        Base.Checked.checked_mul(entry_count, Nq)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("local mass-quadrature term count overflows Int"))
+    end
+    # The compact constructor temporarily retains input triplets, a sort order,
+    # canonical triplets, and a column order. Charging the worst case prevents
+    # constructor transients from escaping the workspace ceiling.
+    work_bytes = Base.Checked.checked_add(
+        base_bytes, Base.Checked.checked_mul(bytes_per_entry, entry_count))
+    return (
+        degrees=degrees,
+        patch_entries=patch_entries,
+        entry_count=entry_count,
+        term_count=term_count,
+        work_bytes=work_bytes,
+    )
+end
+
 @inline function _validate_impedance_coefficients(theta::AbstractVector)
     @inbounds for p in eachindex(theta)
         isfinite(theta[p]) ||
@@ -53,14 +173,25 @@ function _validate_impedance_inputs(
 end
 
 """
-    precompute_patch_mass(mesh, rwg, partition; quad_order=3)
+    precompute_patch_mass(mesh, rwg, partition;
+                          quad_order=3,
+                          max_work_bytes=536_870_912,
+                          max_terms=200_000_000)
 
 Precompute the patch mass matrices M_p[m,n] = ∫_{Γ_p} f_m · f_n dS
 for each patch p = 1:P.
 Returns a vector of compact local matrices.
+
+`max_work_bytes` bounds the raw payload of the quadrature cache, support map,
+triplet builders, compact results, and constructor transients. `max_terms`
+bounds local basis-pair/quadrature evaluations. Both limits are checked before
+the quadrature cache and triplet builders are allocated.
 """
-function precompute_patch_mass(mesh::TriMesh, rwg::RWGData,
-                               partition::PatchPartition; quad_order::Int=3)
+function precompute_patch_mass(
+        mesh::TriMesh, rwg::RWGData, partition::PatchPartition;
+        quad_order::Int=3,
+        max_work_bytes::Integer=_DEFAULT_MAX_MASS_PRECOMPUTE_WORK_BYTES,
+        max_terms::Integer=_DEFAULT_MAX_MASS_PRECOMPUTE_TERMS)
     N = rwg.nedges
     Nt = ntriangles(mesh)
     P = partition.P
@@ -82,6 +213,9 @@ function precompute_patch_mass(mesh::TriMesh, rwg::RWGData,
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
+    profile = _mass_precompute_profile(
+        rwg, Nt, Nq, Tmass, partition.tri_patch, P,
+        max_work_bytes, max_terms)
 
     # Precompute quad points
     quad_pts = [tri_quad_points(mesh, t, xi) for t in 1:Nt]
@@ -89,6 +223,9 @@ function precompute_patch_mass(mesh::TriMesh, rwg::RWGData,
 
     # For each triangle, find which basis functions have support there
     tri_to_basis = [Int[] for _ in 1:Nt]
+    @inbounds for t in 1:Nt
+        sizehint!(tri_to_basis[t], profile.degrees[t])
+    end
     for n in 1:N
         push!(tri_to_basis[rwg.tplus[n]], n)
         push!(tri_to_basis[rwg.tminus[n]], n)
@@ -97,6 +234,11 @@ function precompute_patch_mass(mesh::TriMesh, rwg::RWGData,
     rows_p = [Int[] for _ in 1:P]
     cols_p = [Int[] for _ in 1:P]
     vals_p = [Tmass[] for _ in 1:P]
+    @inbounds for p in 1:P
+        sizehint!(rows_p[p], profile.patch_entries[p])
+        sizehint!(cols_p[p], profile.patch_entries[p])
+        sizehint!(vals_p[p], profile.patch_entries[p])
+    end
 
     for t in 1:Nt
         p = partition.tri_patch[t]

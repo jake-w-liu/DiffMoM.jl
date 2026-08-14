@@ -2107,6 +2107,25 @@ mutated_partition.tri_patch[1] = 0
 
 Mp = precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 @assert length(Mp) == Nt
+mass_patch_nq = length(tri_quad_rule(3)[2])
+mass_patch_profile = DiffMoM._mass_precompute_profile(
+    rwg, Nt, mass_patch_nq, Float64, partition.tri_patch, partition.P)
+@test_throws ArgumentError precompute_patch_mass(
+    mesh, rwg, partition;
+    quad_order=3,
+    max_work_bytes=mass_patch_profile.work_bytes - 1,
+    max_terms=mass_patch_profile.term_count)
+@test_throws ArgumentError precompute_patch_mass(
+    mesh, rwg, partition;
+    quad_order=3,
+    max_work_bytes=mass_patch_profile.work_bytes,
+    max_terms=mass_patch_profile.term_count - 1)
+Mp_at_resource_boundary = precompute_patch_mass(
+    mesh, rwg, partition;
+    quad_order=3,
+    max_work_bytes=mass_patch_profile.work_bytes,
+    max_terms=mass_patch_profile.term_count)
+@test Matrix.(Mp_at_resource_boundary) == Matrix.(Mp)
 dZ_first = assemble_dZ_dtheta(Mp, 1)
 @test Matrix(dZ_first) == -Matrix(Mp[1])
 @test_throws ArgumentError assemble_dZ_dtheta(Mp, 0)

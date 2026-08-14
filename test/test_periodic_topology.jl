@@ -307,6 +307,22 @@ println("\n── Test 38: DensityInterpolation ──")
     Nt_di = ntriangles(mesh_di)
     N_di = rwg_di.nedges
     Mt = precompute_triangle_mass(mesh_di, rwg_di)
+    mass_triangle_nq = length(tri_quad_rule(3)[2])
+    mass_triangle_profile = DiffMoM._mass_precompute_profile(
+        rwg_di, Nt_di, mass_triangle_nq, Float64, nothing, Nt_di)
+    @test_throws ArgumentError precompute_triangle_mass(
+        mesh_di, rwg_di;
+        max_work_bytes=mass_triangle_profile.work_bytes - 1,
+        max_terms=mass_triangle_profile.term_count)
+    @test_throws ArgumentError precompute_triangle_mass(
+        mesh_di, rwg_di;
+        max_work_bytes=mass_triangle_profile.work_bytes,
+        max_terms=mass_triangle_profile.term_count - 1)
+    Mt_at_resource_boundary = precompute_triangle_mass(
+        mesh_di, rwg_di;
+        max_work_bytes=mass_triangle_profile.work_bytes,
+        max_terms=mass_triangle_profile.term_count)
+    @test Matrix.(Mt_at_resource_boundary) == Matrix.(Mt)
     eta0 = 376.730313668
     config = DensityConfig(; p=3.0, Z_max_factor=1000.0, vf_target=0.5)
 

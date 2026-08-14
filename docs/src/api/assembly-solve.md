@@ -250,7 +250,7 @@ println("Solved with $(stats.niter) GMRES iterations, no dense matrix")
 
 These functions add surface impedance loading to the EFIE matrix. In optimization, the impedance parameters `theta` are the design variables.
 
-### `precompute_patch_mass(mesh, rwg, partition; quad_order=3)`
+### `precompute_patch_mass(mesh, rwg, partition; quad_order=3, max_work_bytes=536_870_912, max_terms=200_000_000)`
 
 Precompute patch mass matrices `Mp[p]` where:
 
@@ -268,6 +268,8 @@ This is the overlap integral of two RWG basis functions restricted to patch `p`.
 | `rwg` | `RWGData` | RWG basis data. |
 | `partition` | `PatchPartition` | Mapping of triangles to patches. |
 | `quad_order` | `Int` | Quadrature order (default 3). |
+| `max_work_bytes` | `Integer` | Raw-payload ceiling for quadrature/support workspaces, triplet builders, compact results, and constructor transients (default 512 MiB). |
+| `max_terms` | `Integer` | Ceiling for local basis-pair/quadrature evaluations (default 200,000,000). |
 
 **Returns:** `Vector{LocalMassMatrix{T}}` of length `P` (one compact mass matrix per patch). `T` is `Float64` for real RWG coefficients, or `ComplexF64` for complex (Bloch) coefficients.
 

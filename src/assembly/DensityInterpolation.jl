@@ -84,15 +84,27 @@ function _validate_density_mass_inputs(
 end
 
 """
-    precompute_triangle_mass(mesh, rwg; quad_order=3)
+    precompute_triangle_mass(mesh, rwg;
+                             quad_order=3,
+                             max_work_bytes=536_870_912,
+                             max_terms=200_000_000)
 
 Precompute per-triangle mass matrices M_t[m,n] = ∫_t f_m · f_n dS
 for all triangles t = 1:Nt.
 
 Returns a vector of compact local matrices, one per triangle.
 Only basis functions with support on triangle t have nonzero entries in M_t.
+
+`max_work_bytes` bounds the raw payload of the quadrature cache, support map,
+triplet builders, compact results, and constructor transients. `max_terms`
+bounds local basis-pair/quadrature evaluations. Both limits are checked before
+the quadrature cache and triplet builders are allocated.
 """
-function precompute_triangle_mass(mesh::TriMesh, rwg::RWGData; quad_order::Int=3)
+function precompute_triangle_mass(
+        mesh::TriMesh, rwg::RWGData;
+        quad_order::Int=3,
+        max_work_bytes::Integer=_DEFAULT_MAX_MASS_PRECOMPUTE_WORK_BYTES,
+        max_terms::Integer=_DEFAULT_MAX_MASS_PRECOMPUTE_TERMS)
     N = rwg.nedges
     Nt = ntriangles(mesh)
     Tcoef = promote_type(eltype(rwg.coeff_plus), eltype(rwg.coeff_minus))
@@ -100,6 +112,9 @@ function precompute_triangle_mass(mesh::TriMesh, rwg::RWGData; quad_order::Int=3
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
+    profile = _mass_precompute_profile(
+        rwg, Nt, Nq, Tmass, nothing, Nt,
+        max_work_bytes, max_terms)
 
     # Precompute quad points and areas
     quad_pts = [tri_quad_points(mesh, t, xi) for t in 1:Nt]
@@ -107,6 +122,9 @@ function precompute_triangle_mass(mesh::TriMesh, rwg::RWGData; quad_order::Int=3
 
     # Map triangle → basis functions with support
     tri_to_basis = [Int[] for _ in 1:Nt]
+    @inbounds for t in 1:Nt
+        sizehint!(tri_to_basis[t], profile.degrees[t])
+    end
     for n in 1:N
         push!(tri_to_basis[rwg.tplus[n]], n)
         push!(tri_to_basis[rwg.tminus[n]], n)
