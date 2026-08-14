@@ -4444,6 +4444,53 @@ monopole_guard = make_monopole(
 @test_throws ArgumentError monopole_incident_field(
     Vec3(NaN, 0.0, 0.0), monopole_guard)
 
+# Source fields are scale-covariant below a picometre; only the exact source
+# point is singular.  An absolute distance cutoff used to erase these finite
+# fields.
+source_geometry_scale = ldexp(1.0, -44)
+source_geometry_frequency = 1.0e6
+source_geometry_scaled_frequency =
+    ldexp(source_geometry_frequency, 44)
+
+dipole_scale_moment = 1.0e-12
+dipole_scale_reference = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(dipole_scale_moment + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0), :electric, source_geometry_frequency)
+dipole_scale_tiny = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(ComplexF64(ldexp(dipole_scale_moment, -132)), 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0), :electric,
+    source_geometry_scaled_frequency)
+@test DiffMoM.dipole_incident_field(
+    Vec3(0.0, 0.0, source_geometry_scale), dipole_scale_tiny) ==
+    DiffMoM.dipole_incident_field(
+        Vec3(0.0, 0.0, 1.0), dipole_scale_reference)
+
+pattern_scale_zero = zeros(ComplexF64, 2, 2)
+pattern_scale_reference = make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_scale_zero, source_geometry_frequency)
+pattern_scale_tiny = make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    source_geometry_scale .* pattern_guard_F, pattern_scale_zero,
+    source_geometry_scaled_frequency)
+@test pattern_feed_field(
+    Vec3(source_geometry_scale, 0.0, 0.0), pattern_scale_tiny) ==
+    pattern_feed_field(Vec3(1.0, 0.0, 0.0), pattern_scale_reference)
+
+monopole_scale_reference = make_monopole(
+    Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0),
+    0.1, 1.0 + 0im, source_geometry_frequency)
+monopole_scale_tiny = make_monopole(
+    Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0),
+    0.1 * source_geometry_scale, ComplexF64(source_geometry_scale),
+    source_geometry_scaled_frequency)
+@test monopole_incident_field(
+    source_geometry_scale * Vec3(0.2, 0.0, 0.3), monopole_scale_tiny) ==
+    monopole_incident_field(
+        Vec3(0.2, 0.0, 0.3), monopole_scale_reference)
+
 # The Simpson workload is bounded before Float64-to-Int conversion. The helper
 # accepts the exact configured boundary without allocating and both public
 # field paths reject an electrically impossible workload with a domain error.

@@ -812,8 +812,8 @@ end
 
 @inline function _pattern_feed_field_unchecked(r::Vec3, pat::PatternFeedExcitation)
     Rvec = r - pat.phase_center
-    R = norm(Rvec)
-    if R < 1e-12
+    R = hypot(hypot(Rvec[1], Rvec[2]), Rvec[3])
+    if iszero(R)
         return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     end
 
@@ -1254,8 +1254,8 @@ end
         dipole.frequency, c0, "DipoleExcitation")
 
     R_vec = r - dipole.position
-    R = norm(R_vec)
-    if R < 1e-12
+    R = hypot(hypot(R_vec[1], R_vec[2]), R_vec[3])
+    if iszero(R)
         return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     end
 
@@ -1307,8 +1307,8 @@ end
                                             I::ComplexF64, k::Float64)
     η0 = 376.730313668
     R_vec = r - r_p
-    R = norm(R_vec)
-    R < 1e-12 && return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+    R = hypot(hypot(R_vec[1], R_vec[2]), R_vec[3])
+    iszero(R) && return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     R_hat = R_vec / R
     cosθ = clamp(dot(R_hat, axis), -1.0, 1.0)
     sin2θ = max(0.0, 1.0 - cosθ^2)
