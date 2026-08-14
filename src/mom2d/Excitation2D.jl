@@ -4,15 +4,37 @@
 
 export planewave_2d, linesource_2d
 
-const _PLANEWAVE_PHASE_FALLBACK_PRECISION_2D = 256
+const _DEFAULT_MAX_PLANEWAVE_EXACT_PHASE_WORK_2D = 2_000_000
+
+@inline function _planewave_phase_requires_exact_2d(
+        k0::Float64, khat::Vec2, center::Vec2)
+    return _source_phase_requires_fallback(
+        k0,
+        Vec3(khat[1], khat[2], 0.0),
+        Vec3(center[1], center[2], 0.0),
+    )
+end
+
+@inline function _planewave_phase_precision_2d(
+        k0::Float64, khat::Vec2, center::Vec2)
+    return _source_phase_precision(
+        k0,
+        Vec3(khat[1], khat[2], 0.0),
+        Vec3(center[1], center[2], 0.0),
+    )
+end
 
 @noinline function _planewave_phase_big_2d(
-        k0::Float64, khat::Vec2, center::Vec2, cell::Int)
-    return setprecision(BigFloat, _PLANEWAVE_PHASE_FALLBACK_PRECISION_2D) do
+        k0::Float64, phi_inc::Float64, center::Vec2, E0::Float64,
+        precision::Int, cell::Int)
+    return setprecision(BigFloat, precision) do
+        sin_phi, cos_phi = sincos(BigFloat(phi_inc))
         phase = BigFloat(k0) *
-                (BigFloat(khat[1]) * BigFloat(center[1]) +
-                 BigFloat(khat[2]) * BigFloat(center[2]))
-        value = ComplexF64(exp(Complex{BigFloat}(zero(BigFloat), -phase)))
+                (cos_phi * BigFloat(center[1]) +
+                 sin_phi * BigFloat(center[2]))
+        value = ComplexF64(
+            BigFloat(E0) *
+            exp(Complex{BigFloat}(zero(BigFloat), -phase)))
         isfinite(value) ||
             error("planewave_2d produced a non-finite phase at cell $cell.")
         return value
@@ -20,13 +42,21 @@ const _PLANEWAVE_PHASE_FALLBACK_PRECISION_2D = 256
 end
 
 """
-    planewave_2d(mesh, k0, phi_inc; E0=1.0)
+    planewave_2d(mesh, k0, phi_inc;
+                 E0=1.0, max_exact_phase_work=2_000_000)
 
 Generate incident plane wave at cell centers.
 Propagation direction: k̂ = (cos(phi_inc), sin(phi_inc)).
 E_z^inc(r) = E₀ exp(-ik₀ k̂·r)
 """
-function planewave_2d(mesh::Mesh2D, k0::Float64, phi_inc::Float64; E0::Float64=1.0)
+function planewave_2d(
+    mesh::Mesh2D,
+    k0::Float64,
+    phi_inc::Float64;
+    E0::Float64=1.0,
+    max_exact_phase_work::Integer=
+        _DEFAULT_MAX_PLANEWAVE_EXACT_PHASE_WORK_2D,
+)
     _validate_mesh_2d(mesh)
     _validate_positive_finite_2d(k0, "planewave_2d wavenumber")
     isfinite(phi_inc) ||
@@ -34,16 +64,45 @@ function planewave_2d(mesh::Mesh2D, k0::Float64, phi_inc::Float64; E0::Float64=1
             "planewave_2d incidence angle must be finite, got $phi_inc."))
     isfinite(E0) ||
         throw(ArgumentError("planewave_2d amplitude must be finite, got $E0."))
+    exact_work_limit = try
+        Int(max_exact_phase_work)
+    catch error
+        error isa Union{InexactError,OverflowError} || rethrow()
+        throw(ArgumentError(
+            "max_exact_phase_work is outside the Int range"))
+    end
+    exact_work_limit >= 0 ||
+        throw(ArgumentError(
+            "max_exact_phase_work must be nonnegative, got " *
+            "$max_exact_phase_work"))
     sin_phi, cos_phi = sincos(phi_inc)
     khat = Vec2(cos_phi, sin_phi)
+
+    # Classify and charge every cold phase before allocating the output.  An
+    # accepted large mesh therefore cannot turn a finite-coordinate recovery
+    # case into unbounded arbitrary-precision work.
+    exact_phase_work = 0
+    @inbounds for center in mesh.centers
+        _planewave_phase_requires_exact_2d(k0, khat, center) || continue
+        precision = _planewave_phase_precision_2d(k0, khat, center)
+        precision <= exact_work_limit - exact_phase_work ||
+            throw(ArgumentError(
+                "planewave_2d exact phase work exceeds " *
+                "max_exact_phase_work=$exact_work_limit"))
+        exact_phase_work += precision
+    end
+
     E_inc = Vector{ComplexF64}(undef, mesh.ncells)
     @inbounds for m in 1:mesh.ncells
-        phase = k0 * dot(khat, mesh.centers[m])
-        phase_factor = isfinite(phase) ?
-                       exp(-im * phase) :
-                       _planewave_phase_big_2d(
-                           k0, khat, mesh.centers[m], m)
-        E_inc[m] = E0 * phase_factor
+        center = mesh.centers[m]
+        if _planewave_phase_requires_exact_2d(k0, khat, center)
+            E_inc[m] = _planewave_phase_big_2d(
+                k0, phi_inc, center, E0,
+                _planewave_phase_precision_2d(k0, khat, center), m)
+        else
+            phase = k0 * dot(khat, center)
+            E_inc[m] = E0 * exp(-im * phase)
+        end
     end
     all(isfinite, E_inc) ||
         error("planewave_2d produced non-finite incident-field values.")

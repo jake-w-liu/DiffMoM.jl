@@ -316,7 +316,7 @@ vr = solve_vie_2d(mesh, k0, chi, E_inc)
 
 ## Excitation
 
-### `planewave_2d(mesh, k0, phi_inc; E0=1.0)`
+### `planewave_2d(mesh, k0, phi_inc; E0=1.0, max_exact_phase_work=2_000_000)`
 
 Generate an incident TM plane wave sampled at cell centers. The propagation
 direction is `k_hat = (cos(phi_inc), sin(phi_inc))` and
@@ -333,6 +333,12 @@ E_z_inc(r) = E0 exp(-i k0 k_hat . r)
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
 | `phi_inc` | `Float64` | -- | Incidence angle (rad); `0` is propagation along +x. |
 | `E0` | `Float64` | `1.0` | Plane-wave amplitude. |
+| `max_exact_phase_work` | `Integer` | `2_000_000` | Maximum aggregate precision-bit work for cell phases that cannot be resolved safely in ordinary `Float64` arithmetic. |
+
+Finite phase products and cancellations that do not retain sufficient angular
+accuracy in `Float64` are evaluated from the exact supplied `k0`, `phi_inc`,
+and cell-center values at dynamically selected precision. The aggregate work
+limit is enforced before the output vector is allocated.
 
 **Returns:** `Vector{ComplexF64}` of incident-field values at cell centers (length `ncells`).
 

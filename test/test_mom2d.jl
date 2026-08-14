@@ -497,6 +497,37 @@ end
         end
         @test extreme_incident == [extreme_reference]
 
+        # A finite dot product can lose an observable phase through
+        # cancellation, and the public incidence angle must be evaluated at
+        # sufficient precision rather than by promoting rounded Float64 trig.
+        cancellation_angle = 0.2
+        cancellation_x = 1.0e12
+        cancellation_y = -Float64(
+            (cos(cancellation_angle) / sin(cancellation_angle)) *
+            cancellation_x)
+        cancellation_mesh = Mesh2D(
+            (cancellation_x - 0.5, cancellation_x + 0.5),
+            (cancellation_y - 0.5, cancellation_y + 0.5),
+            1, 1)
+        cancellation_reference = setprecision(BigFloat, 2048) do
+            sin_angle, cos_angle = sincos(BigFloat(cancellation_angle))
+            center = cancellation_mesh.centers[1]
+            phase = cos_angle * BigFloat(center[1]) +
+                    sin_angle * BigFloat(center[2])
+            ComplexF64(exp(Complex{BigFloat}(0, -phase)))
+        end
+        cancellation_precision =
+            DiffMoM._planewave_phase_precision_2d(
+                1.0,
+                Vec2(cos(cancellation_angle), sin(cancellation_angle)),
+                cancellation_mesh.centers[1])
+        @test planewave_2d(
+            cancellation_mesh, 1.0, cancellation_angle) ==
+              [cancellation_reference]
+        @test_throws ArgumentError planewave_2d(
+            cancellation_mesh, 1.0, cancellation_angle;
+            max_exact_phase_work=cancellation_precision - 1)
+
         # Phase consistency: E(r) = exp(-ik₀ k̂·r)
         E_inc = planewave_2d(mesh, k0, 0.0)
         for i in 1:mesh.ncells
