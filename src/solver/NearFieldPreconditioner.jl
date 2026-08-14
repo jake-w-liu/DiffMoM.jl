@@ -250,7 +250,7 @@ function rwg_centers(mesh::TriMesh, rwg::RWGData)
     for n in 1:N
         c_plus  = triangle_center(mesh, rwg.tplus[n])
         c_minus = triangle_center(mesh, rwg.tminus[n])
-        centers[n] = 0.5 * (c_plus + c_minus)
+        centers[n] = _safe_edge_midpoint(c_plus, c_minus)
     end
     return centers
 end

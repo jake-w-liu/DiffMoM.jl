@@ -6336,6 +6336,21 @@ centers = rwg_centers(mesh, rwg)
 @assert length(centers) == N
 @assert all(c -> length(c) == 3, centers)
 
+# Averaging same-sign, upper-range triangle centroids must not overflow.
+rwg_center_translation = 1.0e308
+rwg_center_mesh = TriMesh(
+    Float64[
+        rwg_center_translation rwg_center_translation rwg_center_translation rwg_center_translation
+        0 1 0 1
+        0 0 1 1
+    ],
+    Int[1 2; 2 4; 3 3],
+)
+rwg_center_data = build_rwg(rwg_center_mesh)
+rwg_center_extreme = rwg_centers(rwg_center_mesh, rwg_center_data)
+@test all(center -> all(isfinite, center), rwg_center_extreme)
+@test all(center -> center[1] == rwg_center_translation, rwg_center_extreme)
+
 # Build near-field preconditioner at 1.0λ cutoff
 P_nf = build_nearfield_preconditioner(Z_efie, mesh, rwg, lambda0)
 @assert P_nf.cutoff == lambda0

@@ -75,7 +75,12 @@ function _append_rwg_entry!(mesh::TriMesh,
 
     r1 = _mesh_vertex(mesh, edge_key[1])
     r2 = _mesh_vertex(mesh, edge_key[2])
-    push!(len_vec, norm(r2 - r1))
+    edge_length = _coarsening_candidate_edge_length(r1, r2)
+    edge_length > 0.0 ||
+        throw(DomainError(
+            edge_key,
+            "RWG edge has zero or unrepresentable length"))
+    push!(len_vec, edge_length)
     push!(area_p_vec, triangle_area(mesh, tplus))
     push!(area_m_vec, triangle_area(mesh, tminus))
 
