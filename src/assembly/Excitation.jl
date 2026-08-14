@@ -1392,21 +1392,31 @@ function _monopole_incident_field_unchecked(r::Vec3, mono::MonopoleExcitation)
 end
 
 @inline function _supported_incident_wavenumber_abs(k)
-    tol_im = max(1e-10 * max(abs(real(k)), 1.0), 1e-12)
-    abs(imag(k)) <= tol_im ||
+    real_magnitude = abs(real(k))
+    imaginary_magnitude = abs(imag(k))
+    (isfinite(real_magnitude) && isfinite(imaginary_magnitude) &&
+     real_magnitude > 0.0) ||
+        error(
+            "compute_total_field: analytic incident-field models require a finite, " *
+            "nonzero real free-space wavenumber; got k=$k.")
+    relative_imaginary = imaginary_magnitude / real_magnitude
+    relative_imaginary <= 1e-10 ||
         error("compute_total_field: analytic incident-field models require a real free-space wavenumber; got k=$k.")
-    return abs(real(k))
-end
-
-@inline function _incident_wavenumber_match_tol(k)
-    return max(1e-8 * max(abs(real(k)), 1.0), 1e-12)
+    return real_magnitude
 end
 
 @inline function _check_incident_wavenumber_match(k_model::Real, k, label::AbstractString)
     k_abs = _supported_incident_wavenumber_abs(k)
-    tol = _incident_wavenumber_match_tol(k)
-    abs(k_model - k_abs) <= tol ||
-        error("compute_total_field: $label expects |k|=$k_model, got $(abs(real(k))) (tol=$tol).")
+    (isfinite(k_model) && k_model > 0.0) ||
+        error(
+            "compute_total_field: $label has an invalid model wavenumber $k_model.")
+    larger = max(k_model, k_abs)
+    smaller = min(k_model, k_abs)
+    relative_error = (larger - smaller) / larger
+    relative_error <= 1e-8 ||
+        error(
+            "compute_total_field: $label expects |k|=$k_model, got $k_abs " *
+            "(relative error=$relative_error, tolerance=1.0e-8).")
     return nothing
 end
 

@@ -3395,6 +3395,17 @@ catch err
 end
 @assert pat_k_err
 
+# Wavenumber consistency is relative at every scale.  Fixed absolute floors
+# used to accept order-one relative mismatches and dominant attenuation for
+# electrically tiny models.
+@test_throws ErrorException DiffMoM._check_incident_wavenumber_match(
+    2.0e-100, 1.0e-100, "tiny-wavenumber probe")
+@test_throws ErrorException DiffMoM._check_incident_wavenumber_match(
+    1.0e-100, ComplexF64(1.0e-100, 1.0e-20),
+    "complex-wavenumber probe")
+@test DiffMoM._check_incident_wavenumber_match(
+    nextfloat(0.0), nextfloat(0.0), "subnormal-wavenumber probe") === nothing
+
 surface_total_err = try
     compute_total_field(mesh, rwg, I_zero, pw_total, triangle_center(mesh, 1), k; quad_order=3, eta0=eta0)
     false
