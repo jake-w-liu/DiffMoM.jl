@@ -171,17 +171,15 @@ function _greens_periodic_correction_cached(
         throw(ArgumentError(
             "r-rp is outside the supported Float64 coordinate range"))
 
-    R_self = sqrt(drho_x^2 + drho_y^2 + drho_z^2)
+    R_self = hypot(hypot(drho_x, drho_y), drho_z)
     value = ComplexF64(_ewald_self_correction(R_self, k, lattice.E))
     @inbounds for term in spatial_terms
-        R = sqrt(
-            (drho_x - term.sx)^2 +
-            (drho_y - term.sy)^2 + drho_z^2)
+        R = hypot(
+            hypot(drho_x - term.sx, drho_y - term.sy), drho_z)
         value += term.phase * _ewald_spatial_kernel(R, k, lattice.E)
     end
 
     Edz = lattice.E * drho_z
-    cell_area = lattice.dx * lattice.dy
     @inbounds for term in spectral_terms
         phase = exp(-im * (
             term.kappa_x * drho_x + term.kappa_y * drho_y))
@@ -189,8 +187,13 @@ function _greens_periodic_correction_cached(
             exp(-im * term.kz * drho_z) * erfc(term.zk - Edz) +
             exp(im * term.kz * drho_z) * erfc(term.zk + Edz)) /
             (4im * term.kz)
-        value += phase * spectral_value / cell_area
+        value += _periodic_scale_by_cell_area(
+            phase * spectral_value, lattice.dx, lattice.dy)
     end
+    isfinite(value) ||
+        throw(OverflowError(
+            "periodic Green correction is outside the representable " *
+            "ComplexF64 range"))
     return value
 end
 

@@ -100,6 +100,42 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         # At R=1e-10: ~7 digits lost from cancellation → ~8 digits remaining
         CR2 = DiffMoM._ewald_self_correction(1e-10, k, E_opt)
         @test abs(CR2 - C0) / abs(C0) < 1e-3
+
+        # The analytical self limit remains finite when the unfactored
+        # intermediates k², 2k, and 4E overflow.  These reference values were
+        # evaluated from the exact Float64 inputs at 200 decimal digits.
+        large_k = 1.0e308
+        large_E = large_k / 2
+        large_reference = ComplexF64(
+            0x1.52d72d91d8cecp+1016,
+            0x1.6aa172e512d49p+1019)
+        large_self = DiffMoM._ewald_self_correction(0.0, large_k, large_E)
+        @test isfinite(large_self)
+        @test large_self ≈ large_reference rtol=2e-15
+
+        # The cold scaling path covers both a ratio that underflows and an
+        # exponential factor that overflows even though the completed limits
+        # are finite. References use the same 200-digit exact-input oracle.
+        maximum_finite = floatmax(Float64)
+        tiny_k = 1.0e-300
+        tiny_ratio_reference = ComplexF64(
+            -0x1.6fcb5f827b97ep+1020,
+             0x1.b49266db89b9ep-1001)
+        @test DiffMoM._ewald_self_correction(
+            0.0, tiny_k, maximum_finite) == tiny_ratio_reference
+
+        minimum_positive = nextfloat(0.0)
+        large_ratio_k = 60minimum_positive
+        exponential_reference = ComplexF64(
+            0x1.197c7a56ca286p+210,
+            0x0.0000000000005p-1022)
+        @test DiffMoM._ewald_self_correction(
+            0.0, large_ratio_k, minimum_positive) ==
+              exponential_reference
+        DiffMoM._ewald_self_correction(
+            0.0, large_ratio_k, minimum_positive)
+        @test @allocated(DiffMoM._ewald_self_correction(
+            0.0, large_ratio_k, minimum_positive)) < 100_000
     end
 
     # ── A: kz branch cut correctness ──
@@ -183,6 +219,56 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         # Self-point (R=0): exercises analytical limit in self-correction
         dG_self = greens_periodic_correction(r, r, k, lat)
         @test !isnan(abs(dG_self)) && !isinf(abs(dG_self))
+    end
+
+    @testset "D: Wide finite distance and cell area" begin
+        wide_k = 1.0e-200
+        wide_E = 1.0e-200
+        wide_period = 1.0e201
+        wide_lattice = PeriodicLattice(
+            wide_period, wide_period, 0.0, 0.0,
+            wide_k, wide_E, 0, 0)
+        wide_r = Vec3(1.0e200, 0.0, 0.0)
+        wide_rp = Vec3(0.0, 0.0, 0.0)
+
+        # Both the naive squared norm and dx*dy overflow, although the Ewald
+        # self term and the cell-area-scaled spectral term are representable.
+        wide_self = DiffMoM._ewald_self_correction(
+            hypot(hypot(wide_r[1], wide_r[2]), wide_r[3]),
+            wide_k, wide_E)
+        wide_kz = ComplexF64(wide_k, 0.0)
+        wide_zk = im * wide_kz / (2wide_E)
+        wide_spectral =
+            (DiffMoM.erfc(wide_zk) + DiffMoM.erfc(wide_zk)) /
+            (4im * wide_kz)
+        wide_scaled = setprecision(BigFloat, 256) do
+            ComplexF64(
+                Complex{BigFloat}(wide_spectral) /
+                (BigFloat(wide_period) * BigFloat(wide_period)))
+        end
+        wide_reference = wide_self + wide_scaled
+        @test isfinite(wide_reference)
+        @test greens_periodic_correction(
+            wide_r, wide_rp, wide_k, wide_lattice) == wide_reference
+
+        # A rounded subnormal cell area is not an accurate divisor. Keep the
+        # factors separate so the finite quotient retains the exact scale.
+        subnormal_dx = ldexp(1.0, -600)
+        subnormal_dy = ldexp(1.5, -474)
+        subnormal_value = ComplexF64(ldexp(1.0, -500), 0.0)
+        @test 0.0 < subnormal_dx * subnormal_dy < floatmin(Float64)
+        subnormal_reference = setprecision(BigFloat, 256) do
+            ComplexF64(
+                Complex{BigFloat}(subnormal_value) /
+                (BigFloat(subnormal_dx) * BigFloat(subnormal_dy)))
+        end
+        @test DiffMoM._periodic_scale_by_cell_area(
+            subnormal_value, subnormal_dx, subnormal_dy) ==
+              subnormal_reference
+        DiffMoM._periodic_scale_by_cell_area(
+            subnormal_value, subnormal_dx, subnormal_dy)
+        @test @allocated(DiffMoM._periodic_scale_by_cell_area(
+            subnormal_value, subnormal_dx, subnormal_dy)) == 0
     end
 
     # ── E: Call-site wavenumber must agree with the lattice ──

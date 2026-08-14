@@ -25,7 +25,8 @@ export reflection_coefficients_grounded, reflection_coefficient_vectors_grounded
 # extraction; valid only for non-coincident points, which holds for the image block).
 @inline function _gper_full(r::SVector{3}, rp::SVector{3}, k, lattice::PeriodicLattice)
     kw = _validated_lattice_wavenumber(k, lattice)
-    R = norm(r - rp)
+    displacement = r - rp
+    R = hypot(hypot(displacement[1], displacement[2]), displacement[3])
     g0 = exp(-im * kw * R) / (4π * R)
     return g0 + greens_periodic_correction(r, rp, kw, lattice)
 end
@@ -37,7 +38,8 @@ end
         lattice::PeriodicLattice,
         spatial_terms::Vector{_PeriodicSpatialEwaldTerm},
         spectral_terms::Vector{_PeriodicSpectralEwaldTerm})
-    R = norm(r - rp)
+    displacement = r - rp
+    R = hypot(hypot(displacement[1], displacement[2]), displacement[3])
     g0 = exp(-im * k * R) / (4π * R)
     return g0 + _greens_periodic_correction_cached(
         r, rp, k, lattice, spatial_terms, spectral_terms)

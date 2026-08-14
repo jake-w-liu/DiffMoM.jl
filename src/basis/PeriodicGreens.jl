@@ -228,6 +228,72 @@ end
 # Self-correction: K_sp(R) - G_0(R) for the (0,0) lattice site
 # ─────────────────────────────────────────────────────────────────
 
+const _EWALD_SELF_FALLBACK_PRECISION = 256
+const _EWALD_SELF_SERIES_TERMS = 1024
+
+function _ewald_self_dimensionless_real_big(q::BigFloat)
+    q_squared = q * q
+    tolerance_scale = 16eps(BigFloat)
+    dawson = q
+    term = q
+    if abs(q) <= 8
+        for order in 1:_EWALD_SELF_SERIES_TERMS
+            term *= (-2q_squared) / (2order + 1)
+            dawson_next = dawson + term
+            dawson = dawson_next
+            if abs(term) <= tolerance_scale * max(abs(dawson), one(BigFloat))
+                return (4 / sqrt(big(π))) * (2q * dawson - 1)
+            end
+        end
+        throw(ErrorException(
+            "periodic Green self-correction Dawson series did not converge"))
+    end
+
+    # For large q, evaluate 2q*Dawson(q)-1 directly from its asymptotic
+    # series. This avoids subtracting two nearly equal Float64 values.
+    inverse_two_q_squared = inv(2q_squared)
+    term = inverse_two_q_squared
+    series_sum = term
+    previous_magnitude = abs(term)
+    for order in 2:_EWALD_SELF_SERIES_TERMS
+        next_term = term * (2order - 1) * inverse_two_q_squared
+        next_magnitude = abs(next_term)
+        if next_magnitude >= previous_magnitude
+            return (4 / sqrt(big(π))) * series_sum
+        end
+        series_sum += next_term
+        if next_magnitude <= tolerance_scale * abs(series_sum)
+            return (4 / sqrt(big(π))) * series_sum
+        end
+        term = next_term
+        previous_magnitude = next_magnitude
+    end
+    throw(ErrorException(
+        "periodic Green self-correction asymptotic series did not converge"))
+end
+
+@noinline function _ewald_self_correction_exact_scale(
+        k::Float64,
+        E::Float64)
+    return setprecision(BigFloat, _EWALD_SELF_FALLBACK_PRECISION) do
+        k_big = BigFloat(k)
+        E_big = BigFloat(E)
+        ratio_big = k_big / E_big
+        half_ratio_big = ratio_big / 2
+        dimensionless_real =
+            _ewald_self_dimensionless_real_big(half_ratio_big)
+        real_big = E_big * exp(half_ratio_big * half_ratio_big) *
+                   dimensionless_real / (8big(π))
+        imag_big = k_big / (4big(π))
+        result = ComplexF64(Float64(real_big), Float64(imag_big))
+        isfinite(result) ||
+            throw(OverflowError(
+                "periodic Green self correction is outside the " *
+                "representable ComplexF64 range"))
+        return result
+    end
+end
+
 """
     _ewald_self_correction(R, k, E)
 
@@ -245,10 +311,35 @@ function _ewald_self_correction(R::Float64, k::Float64, E::Float64)
         # Numerically stable form using erfcx to avoid overflow:
         #   erfc(z) = exp(-z²) erfcx(z), with z = ik/(2E), z² = -k²/(4E²)
         #   C_self = exp(k²/(4E²)) [2ik erfcx(ik/(2E)) - 4E/√π] / (8π)
-        exp_arg = k^2 / (4E^2)
-        z0 = im * k / (2E)
-        bracket = 2im * k * erfcx(z0) - 4E / √π
-        return exp(exp_arg) * bracket / (8π)
+        if iszero(k)
+            return ComplexF64(-(E / (2π)) / √π, 0.0)
+        end
+        ratio = k / E
+        half_ratio = ratio / 2
+        exp_arg = half_ratio * half_ratio
+        z0 = im * half_ratio
+        # Factor k before forming the bracket and divide by 8π first. This
+        # avoids k², E², 2k, and 4E intermediate overflow while preserving
+        # the analytical R→0 limit.
+        inverse_ratio = E / k
+        scale = k / (8π)
+        if isfinite(ratio) && abs(ratio) >= floatmin(Float64) &&
+           isfinite(inverse_ratio) &&
+           abs(inverse_ratio) >= floatmin(Float64) &&
+           isfinite(scale) && abs(scale) >= floatmin(Float64) &&
+           isfinite(exp_arg)
+            dimensionless = 2im * erfcx(z0) -
+                            (4 * inverse_ratio) / √π
+            result = scale * exp(exp_arg) * dimensionless
+            if isfinite(result) &&
+               (iszero(real(result)) ||
+                abs(real(result)) >= floatmin(Float64)) &&
+               (iszero(imag(result)) ||
+                abs(imag(result)) >= floatmin(Float64))
+                return result
+            end
+        end
+        return _ewald_self_correction_exact_scale(k, E)
     end
 
     # For R > 0: compute K_sp(R) - G_0(R) directly
@@ -262,6 +353,81 @@ end
 # ─────────────────────────────────────────────────────────────────
 
 const _PERIODIC_LONGITUDINAL_FALLBACK_PRECISION = 256
+const _PERIODIC_AREA_FALLBACK_PRECISION = 256
+
+@noinline function _periodic_scale_by_cell_area_exact(
+        value::ComplexF64,
+        dx::Float64,
+        dy::Float64)
+    return setprecision(BigFloat, _PERIODIC_AREA_FALLBACK_PRECISION) do
+        scaled_big = Complex{BigFloat}(value) /
+                     (BigFloat(dx) * BigFloat(dy))
+        scaled = ComplexF64(scaled_big)
+        isfinite(scaled) ||
+            throw(OverflowError(
+                "periodic Green spectral contribution is outside the " *
+                "representable ComplexF64 range"))
+        return scaled
+    end
+end
+
+@inline function _periodic_scale_by_cell_area_component(
+        value::Float64,
+        denominator_mantissa::Float64,
+        denominator_exponent::Int)
+    iszero(value) && return value, true
+    scaled = if denominator_exponent >= 0
+        ldexp(value, -denominator_exponent) / denominator_mantissa
+    else
+        ldexp(value / denominator_mantissa, -denominator_exponent)
+    end
+    certified = isfinite(scaled) &&
+                !iszero(scaled) &&
+                abs(scaled) >= floatmin(Float64)
+    return scaled, certified
+end
+
+@inline function _periodic_scale_by_cell_area_wide(
+        value::ComplexF64,
+        dx::Float64,
+        dy::Float64)
+    dx_mantissa, dx_exponent = frexp(dx)
+    dy_mantissa, dy_exponent = frexp(dy)
+    denominator_mantissa = dx_mantissa * dy_mantissa
+    denominator_exponent = dx_exponent + dy_exponent
+    if denominator_mantissa < 0.5
+        denominator_mantissa *= 2
+        denominator_exponent -= 1
+    end
+    real_scaled, real_certified =
+        _periodic_scale_by_cell_area_component(
+            real(value), denominator_mantissa, denominator_exponent)
+    imag_scaled, imag_certified =
+        _periodic_scale_by_cell_area_component(
+            imag(value), denominator_mantissa, denominator_exponent)
+    if (iszero(real(value)) || real_certified) &&
+       (iszero(imag(value)) || imag_certified)
+        return ComplexF64(real_scaled, imag_scaled)
+    end
+    return _periodic_scale_by_cell_area_exact(value, dx, dy)
+end
+
+@inline function _periodic_scale_by_cell_area(
+        value::ComplexF64,
+        dx::Float64,
+        dy::Float64)
+    iszero(value) && return value
+    area = dx * dy
+    if isfinite(area) && area >= floatmin(Float64)
+        scaled = value / area
+        if isfinite(scaled) &&
+           !((iszero(real(scaled)) && !iszero(real(value))) ||
+             (iszero(imag(scaled)) && !iszero(imag(value))))
+            return scaled
+        end
+    end
+    return _periodic_scale_by_cell_area_wide(value, dx, dy)
+end
 
 @noinline function _periodic_longitudinal_magnitude_exact(
     k::Float64,
@@ -371,7 +537,6 @@ function greens_periodic_correction(r::SVector{3,<:Real},
     E  = lattice.E
     Ns = lattice.N_spatial
     Nf = lattice.N_spectral
-    A  = dx * dy  # unit cell area
 
     CT = ComplexF64
     val = zero(CT)
@@ -396,7 +561,7 @@ function greens_periodic_correction(r::SVector{3,<:Real},
     # carries the Δz-dependent Ewald kernel. drho_z = 0 recovers the coplanar form.
 
     # ── 1. Self-correction: (m=0, n=0) term ──
-    R_self = sqrt(drho_x^2 + drho_y^2 + drho_z^2)
+    R_self = hypot(hypot(drho_x, drho_y), drho_z)
     val += _ewald_self_correction(R_self, kw, E)
 
     # ── 2. Spatial images: (m,n) ≠ (0,0) with Ewald damping ──
@@ -407,7 +572,8 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             # Image displacement
             sx = m * dx
             sy = n * dy
-            R_mn = sqrt((drho_x - sx)^2 + (drho_y - sy)^2 + drho_z^2)
+            R_mn = hypot(
+                hypot(drho_x - sx, drho_y - sy), drho_z)
 
             # Bloch phase: exp(-i k_∥ · R_mn)
             phase = exp(-im * (kx * sx + ky * sy))
@@ -449,9 +615,14 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             spec_val = (exp(-im * kz * drho_z) * erfc(zk - Edz) +
                         exp( im * kz * drho_z) * erfc(zk + Edz)) / (4im * kz)
 
-            val += phase_spec * spec_val / A
+            val += _periodic_scale_by_cell_area(
+                phase_spec * spec_val, dx, dy)
         end
     end
 
+    isfinite(val) ||
+        throw(OverflowError(
+            "periodic Green correction is outside the representable " *
+            "ComplexF64 range"))
     return val
 end
