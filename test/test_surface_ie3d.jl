@@ -261,6 +261,31 @@ end
         quad_order=1,
         max_output_bytes=dense_block_bytes) == K
     K_mf = matrixfree_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
+    vertex_incidence = zeros(Int, nvertices(mesh))
+    for vertex in mesh.tri
+        vertex_incidence[vertex] += 1
+    end
+    near_pair_records = sum(
+        degree * (degree - 1) ÷ 2 for degree in vertex_incidence)
+    surface_fixed_bytes = DiffMoM._surface_cache_fixed_payload_bytes_3d(
+        ntriangles(mesh), length(K_mf.wq), length(K_mf.wq_hi))
+    surface_cache_bound = DiffMoM._surface_cache_work_bytes_3d(
+        surface_fixed_bytes, ntriangles(mesh), near_pair_records)
+    @test_throws ArgumentError matrixfree_magnetic_field_operator_3d(
+        mesh, rwg, k0;
+        quad_order=1,
+        max_cache_bytes=surface_cache_bound - 1)
+    exact_bound_K_mf = matrixfree_magnetic_field_operator_3d(
+        mesh, rwg, k0;
+        quad_order=1,
+        max_cache_bytes=surface_cache_bound)
+    @test exact_bound_K_mf.near_pairs.offsets == K_mf.near_pairs.offsets
+    @test exact_bound_K_mf.near_pairs.neighbors == K_mf.near_pairs.neighbors
+    @test_throws ArgumentError assemble_magnetic_field_operator_3d(
+        mesh, rwg, k0; quad_order=1, max_cache_bytes=1)
+    @test_throws ArgumentError matrixfree_magnetic_field_operator_3d(
+        mesh, rwg, k0; quad_order=1,
+        max_near_pairs=near_pair_records - 1)
     @test size(K) == (N, N)
     @test size(K_mf) == (N, N)
     @test size(K_mf, 3) == 1
@@ -321,6 +346,17 @@ end
     @test Matrix(near_small) == _near_pair_reference(mesh_small)
     @test Base.summarysize(near_large) < 25 * Base.summarysize(near_small)
 
+    # A malformed high-valence vertex creates quadratic candidate records.
+    # Reject it after the bounded counting pass, before allocating the pairs.
+    shared_vertex_triangles = Matrix{Int}(undef, 3, 20)
+    for triangle in axes(shared_vertex_triangles, 2)
+        shared_vertex_triangles[:, triangle] .=
+            (1, 2triangle, 2triangle + 1)
+    end
+    shared_vertex_mesh = TriMesh(zeros(3, 41), shared_vertex_triangles)
+    @test_throws ArgumentError DiffMoM._triangle_near_pairs_3d(
+        shared_vertex_mesh; max_near_pairs=10)
+
     A_pm = assemble_pmchwt_3d(mesh, rwg, k0, eps_in;
                               mur_in=mu_in,
                               quad_order=1,
@@ -343,6 +379,19 @@ end
                                                     formulation=:pmchwt,
                                                     quad_order=1,
                                                     singular_quad_order=3)
+    @test_throws ArgumentError matrixfree_dielectric_sie_operator_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        formulation=:pmchwt,
+        quad_order=1,
+        singular_quad_order=3,
+        max_cache_bytes=1)
+    @test_throws ArgumentError assemble_pmchwt_3d(
+        mesh, rwg, k0, eps_in;
+        mur_in=mu_in,
+        quad_order=1,
+        singular_quad_order=3,
+        max_near_pairs=near_pair_records - 1)
     # :muller assembles a different (second-kind) system than PMCHWT (it carries the
     # nhat x Gram identity term); the PMCHWT-vs-Muller currents agreement is checked in
     # its own testset below.

@@ -52,6 +52,9 @@ end
 # EFIE primitive. The ordinary path remains allocation-free; only an exponent-
 # range overflow or an overflowing sum of term magnitudes enters this path.
 const _MFIE_MATVEC_FALLBACK_PRECISION_3D = 4352
+const _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D = 2_000_000_000
+const _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D = 20_000_000
+const _SURFACE_EMPTY_VECTOR_BYTES_3D = Base.summarysize(Vec3[])
 
 mutable struct MatrixFreeDielectricSIE3D{
         TZe<:MatrixFreeEFIEOperator,
@@ -197,8 +200,57 @@ end
 # under-integrated by the coarse far rule; promoting vertex-touching pairs to
 # the high-order rule measurably reduces the K-operator quadrature error toward
 # a fine-quadrature reference (verified ~0.99%->0.27% on an icosphere).
-function _triangle_near_pairs_3d(mesh::TriMesh)
+function _surface_cache_work_bytes_3d(
+        fixed_payload_bytes::Int,
+        triangle_count::Int,
+        pair_records::Int)
+    fixed_payload_bytes >= 0 ||
+        throw(ArgumentError("fixed surface-cache payload must be nonnegative"))
+    triangle_count >= 0 ||
+        throw(ArgumentError("triangle count must be nonnegative"))
+    pair_records >= 0 ||
+        throw(ArgumentError("near-pair record count must be nonnegative"))
+
+    vertex_record_bytes = BigInt(3) * triangle_count *
+                          sizeof(NTuple{2,Int})
+    pair_bytes = BigInt(pair_records) * sizeof(NTuple{2,Int})
+    degree_bytes = BigInt(triangle_count) * sizeof(Int)
+    offset_bytes = (BigInt(triangle_count) + 1) * sizeof(Int)
+    neighbor_bytes = BigInt(2) * pair_records * sizeof(Int)
+    adjacency_peak = vertex_record_bytes + pair_bytes + degree_bytes +
+                     offset_bytes + neighbor_bytes
+    retained_peak = BigInt(fixed_payload_bytes) + offset_bytes +
+                    neighbor_bytes
+    estimated = cld(5 * max(adjacency_peak, retained_peak), 4)
+    estimated <= typemax(Int) ||
+        throw(ArgumentError("surface-cache storage estimate overflows Int"))
+    return Int(estimated)
+end
+
+function _triangle_near_pairs_3d(
+        mesh::TriMesh;
+        fixed_payload_bytes::Int=0,
+        max_cache_bytes::Integer=_DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+        max_near_pairs::Integer=_DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     Nt = ntriangles(mesh)
+    cache_limit = _validated_resource_limit(
+        "max_cache_bytes", max_cache_bytes)
+    pair_limit = try
+        Int(max_near_pairs)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError("max_near_pairs is outside the Int range"))
+    end
+    pair_limit >= 0 ||
+        throw(ArgumentError(
+            "max_near_pairs must be nonnegative, got $max_near_pairs"))
+    minimum_bytes = _surface_cache_work_bytes_3d(
+        fixed_payload_bytes, Nt, 0)
+    minimum_bytes <= cache_limit ||
+        throw(ArgumentError(
+            "magnetic-field cache requires at least $minimum_bytes " *
+            "estimated bytes, exceeding max_cache_bytes=$cache_limit"))
+
     nrecords = Base.checked_mul(3, Nt)
     vertex_records = Vector{NTuple{2,Int}}(undef, nrecords)
     record_idx = 1
@@ -221,10 +273,25 @@ function _triangle_near_pairs_3d(mesh::TriMesh)
             next_vertex += 1
         end
         degree = next_vertex - first_record
-        pair_capacity = Base.checked_add(
-            pair_capacity, Base.checked_mul(degree, degree - 1) ÷ 2)
+        first_factor, second_factor = iseven(degree) ?
+            (degree ÷ 2, degree - 1) :
+            (degree, (degree - 1) ÷ 2)
+        remaining_pairs = pair_limit - pair_capacity
+        if !iszero(first_factor) &&
+           second_factor > remaining_pairs ÷ first_factor
+            throw(ArgumentError(
+                "triangle near-pair construction exceeds " *
+                "max_near_pairs=$pair_limit"))
+        end
+        pair_capacity += first_factor * second_factor
         first_record = next_vertex
     end
+    work_bytes = _surface_cache_work_bytes_3d(
+        fixed_payload_bytes, Nt, pair_capacity)
+    work_bytes <= cache_limit ||
+        throw(ArgumentError(
+            "magnetic-field cache requires at most $work_bytes estimated " *
+            "bytes, exceeding max_cache_bytes=$cache_limit"))
 
     pairs = NTuple{2,Int}[]
     sizehint!(pairs, pair_capacity)
@@ -249,8 +316,7 @@ function _triangle_near_pairs_3d(mesh::TriMesh)
     return _triangle_adjacency_from_pairs!(pairs, Nt)
 end
 
-function _surface_quad_cache_3d(mesh::TriMesh, order::Int)
-    xi, wq = tri_quad_rule(order)
+function _surface_quad_cache_3d(mesh::TriMesh, xi, wq::Vector{Float64})
     Nt = ntriangles(mesh)
     pts = Vector{Vector{Vec3}}(undef, Nt)
     areas = Vector{Float64}(undef, Nt)
@@ -259,6 +325,43 @@ function _surface_quad_cache_3d(mesh::TriMesh, order::Int)
         areas[t] = triangle_area(mesh, t)
     end
     return wq, pts, areas
+end
+
+function _surface_cache_fixed_payload_bytes_3d(
+        triangle_count::Int,
+        quadrature_count::Int,
+        singular_quadrature_count::Int)
+    triangle_payload = BigInt(triangle_count) * (
+        2 * sizeof(Vector{Vec3}) + 2 * _SURFACE_EMPTY_VECTOR_BYTES_3D +
+        (quadrature_count + singular_quadrature_count) * sizeof(Vec3) +
+        2 * sizeof(Float64))
+    weight_payload = BigInt(
+        quadrature_count + singular_quadrature_count) * sizeof(Float64)
+    total = triangle_payload + weight_payload
+    total <= typemax(Int) ||
+        throw(ArgumentError(
+            "magnetic-field cache fixed-payload estimate overflows Int"))
+    return Int(total)
+end
+
+function _build_surface_operator_cache_3d(
+        mesh::TriMesh,
+        quad_order::Int,
+        singular_quad_order::Int;
+        max_cache_bytes::Integer=_DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+        max_near_pairs::Integer=_DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
+    xi, wq = tri_quad_rule(quad_order)
+    xi_hi, wq_hi = tri_quad_rule(singular_quad_order)
+    fixed_payload_bytes = _surface_cache_fixed_payload_bytes_3d(
+        ntriangles(mesh), length(wq), length(wq_hi))
+    near_pairs = _triangle_near_pairs_3d(
+        mesh;
+        fixed_payload_bytes=fixed_payload_bytes,
+        max_cache_bytes=max_cache_bytes,
+        max_near_pairs=max_near_pairs)
+    _, pts, areas = _surface_quad_cache_3d(mesh, xi, wq)
+    _, pts_hi, areas_hi = _surface_quad_cache_3d(mesh, xi_hi, wq_hi)
+    return wq, pts, areas, wq_hi, pts_hi, areas_hi, near_pairs
 end
 
 """
@@ -366,7 +469,9 @@ end
 
 """
     assemble_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3,
-                                        max_output_bytes=2_000_000_000)
+                                        max_output_bytes=2_000_000_000,
+                                        max_cache_bytes=2_000_000_000,
+                                        max_near_pairs=20_000_000)
 
 Assemble the dense magnetic-field principal-value operator
 `K[m,n] = <f_m, PV ∫ grad(G) x f_n dS'>`. This is the off-diagonal surface
@@ -377,7 +482,11 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                              singular_quad_order::Int=7,
                                              mesh_precheck::Bool=true,
                                              area_tol_rel::Float64=1e-12,
-                                             max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                             max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                             max_cache_bytes::Integer=
+                                                 _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                             max_near_pairs::Integer=
+                                                 _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     output_bytes = _checked_array_payload_bytes(
         ComplexF64, rwg.nedges, rwg.nedges;
         label="magnetic-field operator matrix")
@@ -388,10 +497,12 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
     N = rwg.nedges
+    wq, pts, areas, wq_hi, pts_hi, areas_hi, near_pairs =
+        _build_surface_operator_cache_3d(
+            mesh, quad_order, singular_quad_order;
+            max_cache_bytes=max_cache_bytes,
+            max_near_pairs=max_near_pairs)
     K = zeros(ComplexF64, N, N)
-    wq, pts, areas = _surface_quad_cache_3d(mesh, quad_order)
-    wq_hi, pts_hi, areas_hi = _surface_quad_cache_3d(mesh, singular_quad_order)
-    near_pairs = _triangle_near_pairs_3d(mesh)
 
     Threads.@threads for m in 1:N
         @inbounds for n in 1:N
@@ -419,13 +530,19 @@ function matrixfree_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                                quad_order::Int=3,
                                                singular_quad_order::Int=7,
                                                mesh_precheck::Bool=true,
-                                               area_tol_rel::Float64=1e-12)
+                                               area_tol_rel::Float64=1e-12,
+                                               max_cache_bytes::Integer=
+                                                   _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                               max_near_pairs::Integer=
+                                                   _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     _assert_closed_surface_sie_3d(mesh, rwg;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
-    wq, pts, areas = _surface_quad_cache_3d(mesh, quad_order)
-    wq_hi, pts_hi, areas_hi = _surface_quad_cache_3d(mesh, singular_quad_order)
-    near_pairs = _triangle_near_pairs_3d(mesh)
+    wq, pts, areas, wq_hi, pts_hi, areas_hi, near_pairs =
+        _build_surface_operator_cache_3d(
+            mesh, quad_order, singular_quad_order;
+            max_cache_bytes=max_cache_bytes,
+            max_near_pairs=max_near_pairs)
     return MatrixFreeMagneticFieldOperator3D(mesh, rwg, ComplexF64(k),
                                              wq, pts, areas,
                                              wq_hi, pts_hi, areas_hi,
@@ -618,7 +735,13 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                 eta0::Real=_ETA0_DDA,
                                 mesh_precheck::Bool=true,
                                 area_tol_rel::Float64=1e-12,
-                                max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                max_cache_bytes::Integer=
+                                    _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                max_adjacency_pairs::Integer=
+                                    _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
+                                max_near_pairs::Integer=
+                                    _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     formulation in (:pmchwt, :muller) ||
         error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
     work_limit = _validated_surface_sie_dense_work_3d(
@@ -635,28 +758,38 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                              quad_order=quad_order,
                              eta0=exterior.eta,
                              mesh_precheck=false,
-                             max_output_bytes=work_limit)
+                             max_output_bytes=work_limit,
+                             max_cache_bytes=max_cache_bytes,
+                             max_adjacency_pairs=max_adjacency_pairs)
     Ze_int = assemble_Z_efie(mesh, rwg, interior.k;
                              quad_order=quad_order,
                              eta0=interior.eta,
                              mesh_precheck=false,
-                             max_output_bytes=work_limit)
+                             max_output_bytes=work_limit,
+                             max_cache_bytes=max_cache_bytes,
+                             max_adjacency_pairs=max_adjacency_pairs)
     Zh_ext = assemble_Z_efie(mesh, rwg, exterior.k;
                              quad_order=quad_order,
                              eta0=1 / exterior.eta,
                              mesh_precheck=false,
-                             max_output_bytes=work_limit)
+                             max_output_bytes=work_limit,
+                             max_cache_bytes=max_cache_bytes,
+                             max_adjacency_pairs=max_adjacency_pairs)
     Zh_int = assemble_Z_efie(mesh, rwg, interior.k;
                              quad_order=quad_order,
                              eta0=1 / interior.eta,
                              mesh_precheck=false,
-                             max_output_bytes=work_limit)
+                             max_output_bytes=work_limit,
+                             max_cache_bytes=max_cache_bytes,
+                             max_adjacency_pairs=max_adjacency_pairs)
     K_ext = assemble_magnetic_field_operator_3d(
         mesh, rwg, exterior.k;
         quad_order=quad_order,
         singular_quad_order=singular_quad_order,
         mesh_precheck=false,
         max_output_bytes=work_limit,
+        max_cache_bytes=max_cache_bytes,
+        max_near_pairs=max_near_pairs,
     )
     K_int = assemble_magnetic_field_operator_3d(
         mesh, rwg, interior.k;
@@ -664,6 +797,8 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         singular_quad_order=singular_quad_order,
         mesh_precheck=false,
         max_output_bytes=work_limit,
+        max_cache_bytes=max_cache_bytes,
+        max_near_pairs=max_near_pairs,
     )
 
     # Row weights (PMCHWT => all 1; Muller => mu/eps weights). The SAME weights
@@ -746,7 +881,13 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
                                                eta0::Real=_ETA0_DDA,
                                                mesh_precheck::Bool=true,
                                                area_tol_rel::Float64=1e-12,
-                                               max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                               max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                               max_cache_bytes::Integer=
+                                                   _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                               max_adjacency_pairs::Integer=
+                                                   _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
+                                               max_near_pairs::Integer=
+                                                   _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     formulation in (:pmchwt, :muller) ||
         error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
     _assert_closed_surface_sie_3d(mesh, rwg;
@@ -760,30 +901,42 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
     Ze_ext = matrixfree_efie_operator(mesh, rwg, exterior.k;
                                       quad_order=quad_order,
                                       eta0=exterior.eta,
-                                      mesh_precheck=false)
+                                      mesh_precheck=false,
+                                      max_cache_bytes=max_cache_bytes,
+                                      max_adjacency_pairs=max_adjacency_pairs)
     Ze_int = matrixfree_efie_operator(mesh, rwg, interior.k;
                                       quad_order=quad_order,
                                       eta0=interior.eta,
-                                      mesh_precheck=false)
+                                      mesh_precheck=false,
+                                      max_cache_bytes=max_cache_bytes,
+                                      max_adjacency_pairs=max_adjacency_pairs)
     Zh_ext = matrixfree_efie_operator(mesh, rwg, exterior.k;
                                       quad_order=quad_order,
                                       eta0=1 / exterior.eta,
-                                      mesh_precheck=false)
+                                      mesh_precheck=false,
+                                      max_cache_bytes=max_cache_bytes,
+                                      max_adjacency_pairs=max_adjacency_pairs)
     Zh_int = matrixfree_efie_operator(mesh, rwg, interior.k;
                                       quad_order=quad_order,
                                       eta0=1 / interior.eta,
-                                      mesh_precheck=false)
+                                      mesh_precheck=false,
+                                      max_cache_bytes=max_cache_bytes,
+                                      max_adjacency_pairs=max_adjacency_pairs)
     K_ext = matrixfree_magnetic_field_operator_3d(
         mesh, rwg, exterior.k;
         quad_order=quad_order,
         singular_quad_order=singular_quad_order,
         mesh_precheck=false,
+        max_cache_bytes=max_cache_bytes,
+        max_near_pairs=max_near_pairs,
     )
     K_int = matrixfree_magnetic_field_operator_3d(
         mesh, rwg, interior.k;
         quad_order=quad_order,
         singular_quad_order=singular_quad_order,
         mesh_precheck=false,
+        max_cache_bytes=max_cache_bytes,
+        max_near_pairs=max_near_pairs,
     )
 
     N = rwg.nedges
@@ -1069,7 +1222,13 @@ function assemble_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                     eta0::Real=_ETA0_DDA,
                                     mesh_precheck::Bool=true,
                                     area_tol_rel::Float64=1e-12,
-                                    max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                    max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                    max_cache_bytes::Integer=
+                                        _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                    max_adjacency_pairs::Integer=
+                                        _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
+                                    max_near_pairs::Integer=
+                                        _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     A, _, _ = _surface_sie_blocks_3d(
         mesh, rwg, k0, epsr_in, mur_in, epsr_ext, mur_ext;
         formulation=formulation,
@@ -1079,6 +1238,9 @@ function assemble_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         mesh_precheck=mesh_precheck,
         area_tol_rel=area_tol_rel,
         max_work_bytes=max_work_bytes,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs,
+        max_near_pairs=max_near_pairs,
     )
     return A
 end
@@ -1123,7 +1285,13 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  verbose::Bool=false,
                                  check_gmres_convergence::Bool=true,
                                  max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
-                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                 max_cache_bytes::Integer=
+                                     _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                 max_adjacency_pairs::Integer=
+                                     _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
+                                 max_near_pairs::Integer=
+                                     _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     solver in (:direct, :gmres) ||
         error("Unsupported dielectric SIE solver: $solver (expected :direct or :gmres).")
     if solver == :direct
@@ -1143,6 +1311,9 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             mesh_precheck=mesh_precheck,
             area_tol_rel=area_tol_rel,
             max_work_bytes=max_work_bytes,
+            max_cache_bytes=max_cache_bytes,
+            max_adjacency_pairs=max_adjacency_pairs,
+            max_near_pairs=max_near_pairs,
         )
         fac = _factor_dense_linear_system(
             A, ComplexF64, "direct dielectric SIE factorization")
@@ -1165,6 +1336,9 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             mesh_precheck=mesh_precheck,
             area_tol_rel=area_tol_rel,
             max_gram_storage_bytes=max_gram_storage_bytes,
+            max_cache_bytes=max_cache_bytes,
+            max_adjacency_pairs=max_adjacency_pairs,
+            max_near_pairs=max_near_pairs,
         )
         x, stats = solve_gmres(
             A, rhsv;
@@ -1199,7 +1373,13 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  verbose::Bool=false,
                                  check_gmres_convergence::Bool=true,
                                  max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
-                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                 max_cache_bytes::Integer=
+                                     _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                 max_adjacency_pairs::Integer=
+                                     _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
+                                 max_near_pairs::Integer=
+                                     _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     solver in (:direct, :gmres) ||
         error("Unsupported dielectric SIE solver: $solver (expected :direct or :gmres).")
     if solver == :direct
@@ -1234,5 +1414,8 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         check_gmres_convergence=check_gmres_convergence,
         max_work_bytes=max_work_bytes,
         max_gram_storage_bytes=max_gram_storage_bytes,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs,
+        max_near_pairs=max_near_pairs,
     )
 end

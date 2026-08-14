@@ -70,7 +70,7 @@ int = dielectric_medium_3d(k0, 2.5 + 0im)      # dielectric, eps_r = 2.5
 
 ## Magnetic-Field (K) Operator
 
-### `assemble_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3, singular_quad_order=7, mesh_precheck=true, area_tol_rel=1e-12, max_output_bytes=2_000_000_000)`
+### `assemble_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3, singular_quad_order=7, mesh_precheck=true, area_tol_rel=1e-12, max_output_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_near_pairs=20_000_000)`
 
 Assemble the dense magnetic-field principal-value operator
 
@@ -92,6 +92,8 @@ where `G` is the homogeneous-medium Green function at wavenumber `k`. This is th
 | `mesh_precheck` | `Bool` | `true` | If `true`, assert mesh quality with `allow_boundary=false, require_closed=true`. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate-triangle detection in the precheck. |
 | `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the dense `N x N` result, checked before mesh and quadrature work. |
+| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated peak ceiling for quadrature and near-pair cache construction. |
+| `max_near_pairs` | `Integer` | `20_000_000` | Maximum vertex-derived triangle-pair records before deduplication. |
 
 **Returns:** `Matrix{ComplexF64}` `K` of size `N x N`, where `N = rwg.nedges`.
 
@@ -104,7 +106,7 @@ K = assemble_magnetic_field_operator_3d(mesh, rwg, k0)
 
 ---
 
-### `matrixfree_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3, singular_quad_order=7, mesh_precheck=true, area_tol_rel=1e-12)`
+### `matrixfree_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3, singular_quad_order=7, mesh_precheck=true, area_tol_rel=1e-12, max_cache_bytes=2_000_000_000, max_near_pairs=20_000_000)`
 
 Build a matrix-free version of the magnetic-field `K` operator. Parameters are identical to `assemble_magnetic_field_operator_3d`; no dense `N x N` matrix is allocated. Instead, the returned `MatrixFreeMagneticFieldOperator3D` caches the per-triangle quadrature points/weights and the near-pair mask, and computes entries on demand.
 
@@ -194,7 +196,7 @@ rhs_mu = assemble_dielectric_sie_rhs_3d(mesh, rwg, pw, ext;
 
 ## Dense System Assembly
 
-### `assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in=1.0 + 0im; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, max_work_bytes=2_000_000_000)`
+### `assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in=1.0 + 0im; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, max_work_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_near_pairs=20_000_000)`
 
 Assemble the dense `2N x 2N` dielectric SIE matrix for an isotropic homogeneous body. Unknowns are stacked RWG coefficients `[J; M]` (electric current `J`, then magnetic current `M`). The block structure is
 
@@ -223,6 +225,9 @@ where `A11`/`A22` are the (row-weighted) EFIE `T` blocks for the electric/magnet
 | `mesh_precheck` | `Bool` | `true` | Assert closed-surface mesh quality before assembly. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative degenerate-triangle tolerance. |
 | `max_work_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the six regional blocks plus the four-block returned matrix, checked before assembly. |
+| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated per-cache peak ceiling for regional EFIE and magnetic-field quadrature caches. |
+| `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived EFIE triangle-pair records. |
+| `max_near_pairs` | `Integer` | `20_000_000` | Maximum vertex-derived magnetic-field triangle-pair records. |
 
 **Returns:** `Matrix{ComplexF64}` `A` of size `(2N, 2N)`.
 
@@ -269,9 +274,9 @@ A_mu = assemble_muller_3d(mesh, rwg, k0, 2.5 + 0im; mur_in=1.6 + 0im)
 
 ## Matrix-Free System Operator
 
-### `matrixfree_dielectric_sie_operator_3d(mesh, rwg, k0, epsr_in=1.0 + 0im; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, max_gram_storage_bytes=2_000_000_000)`
+### `matrixfree_dielectric_sie_operator_3d(mesh, rwg, k0, epsr_in=1.0 + 0im; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, max_gram_storage_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_near_pairs=20_000_000)`
 
-Build a matrix-free `2N x 2N` dielectric SIE operator without forming any dense block. The returned `MatrixFreeDielectricSIE3D` wraps matrix-free EFIE operators (`Ze`/`Zh` for exterior/interior) and matrix-free magnetic-field operators (`K`), applies the formulation-specific row weights, and (for Müller) precomputes a compact local `nhat x` Gram matrix. `max_gram_storage_bytes` bounds its triplet payload before allocation. Other parameters match `assemble_dielectric_sie_3d`.
+Build a matrix-free `2N x 2N` dielectric SIE operator without forming any dense block. The returned `MatrixFreeDielectricSIE3D` wraps matrix-free EFIE operators (`Ze`/`Zh` for exterior/interior) and matrix-free magnetic-field operators (`K`), applies the formulation-specific row weights, and (for Müller) precomputes a compact local `nhat x` Gram matrix. `max_gram_storage_bytes` bounds its triplet payload; the cache and pair limits bound the regional operator caches before allocation. Other parameters match `assemble_dielectric_sie_3d`.
 
 **Returns:** `MatrixFreeDielectricSIE3D`.
 
@@ -343,7 +348,7 @@ Construct with `matrixfree_dielectric_sie_operator_3d`. For PMCHWT the weights a
 
 ## Solve
 
-### `solve_dielectric_sie_3d(mesh, rwg, k0, epsr_in, rhs; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, solver=:direct, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true, max_work_bytes=2_000_000_000, max_gram_storage_bytes=2_000_000_000)`
+### `solve_dielectric_sie_3d(mesh, rwg, k0, epsr_in, rhs; mur_in=1.0 + 0im, epsr_ext=1.0 + 0im, mur_ext=1.0 + 0im, formulation=:pmchwt, solver=:direct, quad_order=3, singular_quad_order=7, eta0=376.730313668, mesh_precheck=true, area_tol_rel=1e-12, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true, max_work_bytes=2_000_000_000, max_gram_storage_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_near_pairs=20_000_000)`
 
 Solve a closed-surface PMCHWT/Müller dielectric SIE system and return the split surface currents plus solver metadata. The `rhs` argument may be either a length-`2N` vector or a `PlaneWaveExcitation`; in the latter case the RHS is assembled internally via `assemble_dielectric_sie_rhs_3d` for the given formulation (with the exterior/interior media built from the supplied parameters).
 
@@ -375,6 +380,9 @@ With `solver=:direct` the dense `2N x 2N` matrix is assembled and LU-factorized.
 | `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES result instead of returning partial surface currents. |
 | `max_work_bytes` | `Integer` | `2_000_000_000` | Dense work-payload ceiling for `solver=:direct`; ignored by `:gmres`. |
 | `max_gram_storage_bytes` | `Integer` | `2_000_000_000` | Compact Müller Gram triplet-payload ceiling for `solver=:gmres`; PMCHWT does not construct it. |
+| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated per-cache peak ceiling for EFIE and magnetic-field quadrature caches. |
+| `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived EFIE triangle-pair records. |
+| `max_near_pairs` | `Integer` | `20_000_000` | Maximum vertex-derived magnetic-field triangle-pair records. |
 
 **Returns:** `DielectricSIEResult3D` with the solved currents `J`, `M` and solver metadata.
 
