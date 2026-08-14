@@ -2570,6 +2570,50 @@ radiation_scale_exact = radiation_vectors(
 @test all(isfinite, radiation_scale_exact)
 @test radiation_scale_exact ≈ 2 .* radiation_scale_reference rtol=1e-15 atol=0
 
+# Large finite phase products require exact reduction even when each primitive
+# factor is well inside the ordinary exponent band.  A translated plate with
+# nearly cancelling directional products used to select an unrelated phase.
+radiation_phase_base = make_rect_plate(1.0, 1.0, 1, 1)
+radiation_phase_angle = 0.2
+radiation_phase_direction = Vec3(
+    cos(radiation_phase_angle), sin(radiation_phase_angle), 0.0)
+radiation_phase_x = 1.0e12
+radiation_phase_y = -Float64(
+    (radiation_phase_direction[1] / radiation_phase_direction[2]) *
+    radiation_phase_x)
+radiation_phase_xyz = copy(radiation_phase_base.xyz)
+radiation_phase_xyz[1, :] .+= radiation_phase_x
+radiation_phase_xyz[2, :] .+= radiation_phase_y
+radiation_phase_mesh = TriMesh(
+    radiation_phase_xyz, copy(radiation_phase_base.tri))
+radiation_phase_rwg = build_rwg(radiation_phase_mesh)
+radiation_phase_grid = SphGrid(
+    reshape(collect(radiation_phase_direction), 3, 1),
+    [acos(radiation_phase_direction[3])],
+    [atan(radiation_phase_direction[2], radiation_phase_direction[1])],
+    [1.0])
+radiation_phase_xi, radiation_phase_weights = tri_quad_rule(3)
+radiation_phase_areas = [
+    triangle_area(radiation_phase_mesh, triangle)
+    for triangle in 1:ntriangles(radiation_phase_mesh)
+]
+radiation_phase_terms = DiffMoM._radiation_vectors_term_count(
+    radiation_phase_rwg.nedges, length(radiation_phase_weights), 1)
+radiation_phase_work =
+    radiation_phase_terms * DiffMoM._RADIATION_EXACT_PRECISION
+radiation_phase_result = radiation_vectors(
+    radiation_phase_mesh, radiation_phase_rwg,
+    radiation_phase_grid, 1.0;
+    quad_order=3, eta0=1.0,
+    max_exact_work=radiation_phase_work)
+radiation_phase_reference = zeros(
+    ComplexF64, 3, radiation_phase_rwg.nedges)
+DiffMoM._radiation_vector_column_exact!(
+    radiation_phase_reference, 1, radiation_phase_rwg,
+    [radiation_phase_direction], radiation_phase_xi,
+    radiation_phase_areas, radiation_phase_weights, 1.0, 1.0)
+@test radiation_phase_result == radiation_phase_reference
+
 # Phase factors are single-use values. Keep transient storage bounded rather
 # than allocating one NΩ × Nq phase matrix for every RWG basis function.
 mesh_radiation_alloc = make_rect_plate(1.0, 1.0, 12, 12)

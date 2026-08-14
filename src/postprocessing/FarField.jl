@@ -47,8 +47,12 @@ end
         k::Number, eta0::Number)
     (_ieee_dense_extreme_factor(k, Float64) ||
      _ieee_dense_extreme_factor(eta0, Float64)) && return true
-    @inbounds for value in mesh.xyz
+    maximum_coordinates = MVector{3,Float64}(0.0, 0.0, 0.0)
+    @inbounds for vertex in axes(mesh.xyz, 2), component in 1:3
+        value = mesh.xyz[component, vertex]
         _ieee_dense_extreme_factor(value, Float64) && return true
+        maximum_coordinates[component] = max(
+            maximum_coordinates[component], abs(value))
     end
     @inbounds for values in (
             rwg.len, rwg.area_plus, rwg.area_minus,
@@ -59,6 +63,19 @@ end
     end
     @inbounds for component in grid.rhat
         _ieee_dense_extreme_factor(component, Float64) && return true
+    end
+    coordinate_bound = Vec3(maximum_coordinates)
+    real_k = Float64(real(k))
+    imag_k = Float64(imag(k))
+    @inbounds for direction in axes(grid.rhat, 2)
+        rhat = Vec3(
+            grid.rhat[1, direction],
+            grid.rhat[2, direction],
+            grid.rhat[3, direction])
+        _source_phase_requires_fallback(
+            real_k, rhat, coordinate_bound) && return true
+        _source_phase_requires_fallback(
+            imag_k, rhat, coordinate_bound) && return true
     end
     return false
 end
