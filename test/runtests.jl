@@ -7825,6 +7825,10 @@ balanced_octree = build_octree(
     2π / 5e306;
     leaf_lambda=1.0,
 )
+@test_throws ArgumentError build_octree(
+    mlfma_centers, mlfma_k; max_boxes=0)
+@test_throws ArgumentError build_octree(
+    mlfma_centers, mlfma_k; max_storage_bytes=0)
 
 octree_fused_center = DiffMoM._validated_octree_box_center(
     Vec3(-floatmax(Float64), 0.0, 0.0),
@@ -7971,6 +7975,26 @@ mlfma_zero_legendre_translation = DiffMoM.compute_translation_factor(
 @test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; max_nearfield_bytes=1)
 octree = build_octree(mlfma_centers, mlfma_k; leaf_lambda=0.5)
+octree_box_bound, octree_storage_bound =
+    DiffMoM._octree_resource_bounds(mlfma_N, octree.nLevels)
+@test_throws ArgumentError build_octree(
+    mlfma_centers, mlfma_k;
+    leaf_lambda=0.5,
+    max_boxes=octree_box_bound - 1,
+    max_storage_bytes=octree_storage_bound)
+@test_throws ArgumentError build_octree(
+    mlfma_centers, mlfma_k;
+    leaf_lambda=0.5,
+    max_boxes=octree_box_bound,
+    max_storage_bytes=octree_storage_bound - 1)
+octree_at_limits = build_octree(
+    mlfma_centers, mlfma_k;
+    leaf_lambda=0.5,
+    max_boxes=octree_box_bound,
+    max_storage_bytes=octree_storage_bound)
+@test octree_at_limits.perm == octree.perm
+@test DiffMoM._estimated_octree_storage_bytes(octree) <=
+      octree_storage_bound
 
 # Verify all BFs are assigned via permutation
 @assert length(octree.perm) == mlfma_N

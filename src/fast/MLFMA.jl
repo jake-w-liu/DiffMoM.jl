@@ -197,6 +197,8 @@ function _estimated_mlfma_setup_bytes(
     ntheta = Vector{Int}(undef, nlevels)
     nphi = Vector{Int}(undef, nlevels)
     npts = Vector{Int}(undef, nlevels)
+    octree_bytes = _estimated_octree_storage_bytes(octree) +
+                   BigInt(N) * sizeof(Vec3)
     total = BigInt(0)
 
     for index in eachindex(orders)
@@ -248,7 +250,7 @@ function _estimated_mlfma_setup_bytes(
 
     # Account for Julia array/dictionary headers, alignment, and bounded setup
     # temporaries not represented by the raw payload formulas above.
-    return cld(5 * total, 4)
+    return octree_bytes + cld(5 * total, 4)
 end
 
 function _validate_mlfma_setup_resources(
@@ -265,7 +267,7 @@ function _validate_mlfma_setup_resources(
         estimated_gib = round(Float64(estimated_bytes) / 2.0^30; digits=3)
         limit_gib = round(max_setup_bytes / 2.0^30; digits=3)
         throw(ArgumentError(
-            "build_mlfma_operator: estimated MLFMA sampling, translation, " *
+            "build_mlfma_operator: estimated octree, sampling, translation, " *
             "filter, pattern, and workspace storage is $estimated_gib GiB, " *
             "exceeding max_setup_bytes=$max_setup_bytes ($limit_gib GiB). " *
             "Increase the limit explicitly only after budgeting memory."))
@@ -1769,7 +1771,7 @@ Build an MLFMA operator for the EFIE system.
 - `precision=3`: translation truncation precision parameter
 - `eta0=376.730313668`: free-space impedance
 - `max_sampling_points=2_100_000`: per-level spherical-grid resource limit
-- `max_setup_bytes=2_000_000_000`: estimated MLFMA setup-storage limit
+- `max_setup_bytes=2_000_000_000`: estimated octree and MLFMA setup-storage limit
 - `max_nearfield_entries=50_000_000`: exact near-field triplet-count limit
 - `max_nearfield_bytes=2_000_000_000`: raw near-field triplet-payload limit
 - `max_translation_terms=50_000_000`: per-offset Legendre work limit
@@ -1833,12 +1835,22 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
         leaf_order, max_sampling_points)
 
     N = rwg.nedges
+    center_bytes = _checked_array_payload_bytes(
+        Vec3, N; label="MLFMA basis-function centers")
+    center_bytes <= max_setup_bytes ||
+        throw(ArgumentError(
+            "build_mlfma_operator: basis-function centers require " *
+            "$center_bytes raw bytes, exceeding " *
+            "max_setup_bytes=$max_setup_bytes"))
     centers = rwg_centers(mesh, rwg)
 
     # 1. Build octree
     verbose && print("  MLFMA: Building octree... ")
     t0 = time()
-    octree = build_octree(centers, k; leaf_lambda=leaf_lambda)
+    octree = build_octree(
+        centers, k;
+        leaf_lambda=leaf_lambda,
+        max_storage_bytes=max_setup_bytes)
     verbose && println("$(round(time()-t0, digits=2))s, $(octree.nLevels) levels, " *
                        "$(length(octree.levels[octree.nLevels].boxes)) leaf boxes")
 

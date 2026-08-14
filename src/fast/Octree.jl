@@ -38,6 +38,54 @@ end
 # Leave one Float64 significand bit for the half-cell offset used in box centers.
 const _MAX_OCTREE_DEPTH = min(8 * sizeof(Int) - 2, precision(Float64) - 1)
 const _OCTREE_GEOMETRY_FALLBACK_PRECISION = 256
+const _DEFAULT_MAX_OCTREE_BOXES = 30_000_000
+const _DEFAULT_MAX_OCTREE_STORAGE_BYTES = 2_000_000_000
+const _MAX_OCTREE_NEIGHBORS = 27
+const _MAX_OCTREE_INTERACTIONS = 189
+const _OCTREE_EMPTY_INT_VECTOR_BYTES = Base.summarysize(Int[])
+
+function _octree_resource_bounds(N::Int, nLevels::Int)
+    N >= 1 ||
+        throw(ArgumentError("octree resource estimate requires N >= 1"))
+    nLevels >= 1 ||
+        throw(ArgumentError(
+            "octree resource estimate requires nLevels >= 1"))
+
+    box_bound = BigInt(0)
+    grid_box_bound = 1
+    for _ in 1:nLevels
+        box_bound += min(N, grid_box_bound)
+        if grid_box_bound < N
+            grid_box_bound = grid_box_bound >= cld(N, 8) ?
+                             N : 8 * grid_box_bound
+        end
+    end
+    box_bound <= typemax(Int) ||
+        throw(ArgumentError("octree box-count estimate overflows Int"))
+
+    # Include retained box/list/dictionary payload and the peak permutation,
+    # leaf-index, sorted-index, and sort arrays. Dict/vector headers and
+    # alignment receive a 25% allowance below.
+    per_box_bytes = BigInt(sizeof(OctreeBox)) +
+                    BigInt(2) *
+                    (sizeof(NTuple{3,Int}) + sizeof(Int)) +
+                    BigInt(3) * _OCTREE_EMPTY_INT_VECTOR_BYTES +
+                    BigInt(1 + _MAX_OCTREE_NEIGHBORS +
+                           _MAX_OCTREE_INTERACTIONS) * sizeof(Int)
+    index_bytes = BigInt(N) *
+                  (BigInt(2) * sizeof(NTuple{3,Int}) +
+                   BigInt(3) * sizeof(Int))
+    raw_bytes = box_bound * per_box_bytes + index_bytes +
+                BigInt(nLevels) * sizeof(OctreeLevel)
+    storage_bound = cld(5 * raw_bytes, 4)
+    storage_bound <= typemax(Int) ||
+        throw(ArgumentError("octree storage estimate overflows Int"))
+    return Int(box_bound), Int(storage_bound)
+end
+
+function _estimated_octree_storage_bytes(octree::Octree)
+    return BigInt(Base.summarysize(octree))
+end
 
 @inline function _octree_scale_requires_exact(value::Float64)
     iszero(value) && return false
@@ -91,7 +139,10 @@ end
 end
 
 """
-    build_octree(centers, k; leaf_lambda=0.25)
+    build_octree(centers, k;
+                 leaf_lambda=0.25,
+                 max_boxes=30_000_000,
+                 max_storage_bytes=2_000_000_000)
 
 Build an octree over RWG basis function centers for MLFMA.
 
@@ -100,10 +151,18 @@ Build an octree over RWG basis function centers for MLFMA.
 
 Returns an `Octree` with BFs permuted for spatial locality.
 """
-function build_octree(centers::Vector{Vec3}, k::Float64; leaf_lambda::Float64=0.25)
+function build_octree(
+        centers::Vector{Vec3},
+        k::Float64;
+        leaf_lambda::Float64=0.25,
+        max_boxes::Integer=_DEFAULT_MAX_OCTREE_BOXES,
+        max_storage_bytes::Integer=_DEFAULT_MAX_OCTREE_STORAGE_BYTES)
     N = length(centers)
     N > 0 || throw(ArgumentError("build_octree: centers must not be empty"))
     leaf_edge = _validated_octree_leaf_edge(k, leaf_lambda)
+    box_limit = _validated_resource_limit("max_boxes", max_boxes)
+    storage_limit = _validated_resource_limit(
+        "max_storage_bytes", max_storage_bytes)
     @inbounds for i in eachindex(centers)
         all(isfinite, centers[i]) ||
             throw(ArgumentError(
@@ -149,6 +208,15 @@ function build_octree(centers::Vector{Vec3}, k::Float64; leaf_lambda::Float64=0.
             "build_octree: root-box edge is not representable"))
     nLevels = depth + 1
     grid_side = 1 << depth
+    box_bound, storage_bound = _octree_resource_bounds(N, nLevels)
+    box_bound <= box_limit ||
+        throw(ArgumentError(
+            "build_octree: conservative box-count bound $box_bound exceeds " *
+            "max_boxes=$box_limit"))
+    storage_bound <= storage_limit ||
+        throw(ArgumentError(
+            "build_octree: conservative storage bound $storage_bound bytes " *
+            "exceeds max_storage_bytes=$storage_limit"))
 
     # Re-center origin so the root box is centered on the geometry
     geo_center = cmin + span / 2

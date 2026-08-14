@@ -127,7 +127,7 @@ Build an MLFMA operator for the EFIE system. This is the main entry point for co
 | `precision` | `Int` | `3` | Translation truncation precision parameter (digits of accuracy). |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
 | `max_sampling_points` | `Int` | `2_100_000` | Maximum spherical-grid points at any level. |
-| `max_setup_bytes` | `Int` | `2_000_000_000` | Maximum estimated bytes for MLFMA-specific sampling, translation, filter, pattern, and workspace storage. |
+| `max_setup_bytes` | `Int` | `2_000_000_000` | Maximum estimated bytes for the octree plus MLFMA sampling, translation, filter, pattern, and workspace storage. |
 | `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact count of leaf-neighbor matrix triplets. |
 | `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw payload of the three near-field triplet arrays. |
 | `max_translation_terms` | `Int` | `50_000_000` | Maximum Legendre recurrence terms for one unique translation offset. |

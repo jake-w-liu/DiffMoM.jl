@@ -98,7 +98,7 @@ end
 
 ## Functions
 
-### `build_octree(centers, k; leaf_lambda=0.25)`
+### `build_octree(centers, k; leaf_lambda=0.25, max_boxes=30_000_000, max_storage_bytes=2_000_000_000)`
 
 Build an octree over RWG basis function centers for MLFMA.
 
@@ -109,6 +109,8 @@ Build an octree over RWG basis function centers for MLFMA.
 | `centers` | `Vector{Vec3}` | -- | BF center positions (from `rwg_centers`). |
 | `k` | `Float64` | -- | Wavenumber (rad/m). |
 | `leaf_lambda` | `Float64` | `0.25` | Leaf box edge length in wavelengths. |
+| `max_boxes` | `Integer` | `30_000_000` | Maximum conservative count of nonempty boxes across all levels. |
+| `max_storage_bytes` | `Integer` | `2_000_000_000` | Maximum conservative octree payload and construction-workspace estimate. |
 
 **Returns:** `Octree` with BFs permuted for spatial locality.
 
