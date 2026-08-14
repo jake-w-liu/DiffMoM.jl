@@ -997,6 +997,25 @@ p_cmp = plot_mesh_comparison(mesh_edges_test, mesh_edges_test; title_a="A", titl
     mesh_edges_test, mesh_edges_test;
     max_output_bytes=2wireframe_output_bytes - 1)
 
+axis_limit_translation = 1.0e308
+axis_limit_mesh = TriMesh(
+    Float64[
+        axis_limit_translation axis_limit_translation axis_limit_translation
+        0 1 0
+        0 0 1
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+axis_limit_ranges = DiffMoM._realistic_axis_limits([axis_limit_mesh])
+@test all(limits -> all(isfinite, limits), axis_limit_ranges)
+@test all(limits -> limits[1] < limits[2], axis_limit_ranges)
+@test axis_limit_ranges[1][1] <= axis_limit_translation <=
+      axis_limit_ranges[1][2]
+@test_throws ArgumentError DiffMoM._realistic_axis_limits(
+    [axis_limit_mesh]; pad_frac=-0.01)
+@test_throws ArgumentError DiffMoM._realistic_axis_limits(
+    [axis_limit_mesh]; pad_frac=Inf)
+
 xyz_nm = [
     0.0  1.0  0.0  0.0  0.0  2.0  2.0;
     0.0  0.0  1.0 -1.0  0.0  0.0  1.0;

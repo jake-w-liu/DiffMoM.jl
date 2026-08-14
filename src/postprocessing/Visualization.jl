@@ -4,24 +4,96 @@ export plot_mesh_wireframe, plot_mesh_comparison, save_mesh_preview
 
 using PlotlySupply
 
+@noinline function _visualization_axis_span_big(
+        lower::Float64,
+        upper::Float64)
+    return setprecision(BigFloat, 2304) do
+        span = Float64(BigFloat(upper) - BigFloat(lower))
+        isfinite(span) && span >= 0.0 ||
+            throw(OverflowError(
+                "mesh coordinate span is outside the representable Float64 range"))
+        return span
+    end
+end
+
+@inline function _visualization_axis_span(
+        lower::Float64,
+        upper::Float64)
+    span = upper - lower
+    return isfinite(span) ? span :
+           _visualization_axis_span_big(lower, upper)
+end
+
+@noinline function _visualization_axis_endpoint_big(
+        center::Float64,
+        half::Float64,
+        upper::Bool)
+    return setprecision(BigFloat, 2304) do
+        endpoint = BigFloat(center) + (upper ? BigFloat(half) : -BigFloat(half))
+        endpoint >= BigFloat(floatmax(Float64)) && return floatmax(Float64)
+        endpoint <= -BigFloat(floatmax(Float64)) && return -floatmax(Float64)
+        return Float64(endpoint)
+    end
+end
+
+function _visualization_axis_limits(
+        lower::Float64,
+        upper::Float64,
+        center::Float64,
+        half::Float64)
+    lo = center - half
+    hi = center + half
+    isfinite(lo) ||
+        (lo = _visualization_axis_endpoint_big(center, half, false))
+    isfinite(hi) ||
+        (hi = _visualization_axis_endpoint_big(center, half, true))
+    lo = min(lo, lower)
+    hi = max(hi, upper)
+
+    if !(lo < hi)
+        lo = isfinite(prevfloat(center)) ? prevfloat(center) : center
+        hi = isfinite(nextfloat(center)) ? nextfloat(center) : center
+    end
+    isfinite(lo) && isfinite(hi) && lo < hi ||
+        throw(OverflowError(
+            "mesh axis limits cannot be represented as distinct finite Float64 values"))
+    return (lo, hi)
+end
+
 function _realistic_axis_limits(meshes::Vector{TriMesh}; pad_frac::Float64=0.04)
+    isempty(meshes) &&
+        throw(ArgumentError("at least one mesh is required to compute axis limits"))
+    isfinite(pad_frac) && pad_frac >= 0.0 ||
+        throw(ArgumentError(
+            "pad_frac must be finite and nonnegative, got $pad_frac"))
     mins = [Inf, Inf, Inf]
     maxs = [-Inf, -Inf, -Inf]
     for mesh in meshes
+        nvertices(mesh) > 0 ||
+            throw(ArgumentError("cannot compute axis limits for an empty mesh"))
+        all(isfinite, mesh.xyz) ||
+            throw(ArgumentError(
+                "cannot compute axis limits for non-finite mesh coordinates"))
         for i in 1:3
             mins[i] = min(mins[i], minimum(@view mesh.xyz[i, :]))
             maxs[i] = max(maxs[i], maximum(@view mesh.xyz[i, :]))
         end
     end
 
-    spans = maxs .- mins
+    spans = [_visualization_axis_span(mins[i], maxs[i]) for i in 1:3]
     max_span = max(maximum(spans), 1e-9)
-    centers = (mins .+ maxs) ./ 2
+    centers = [_safe_midpoint_component(mins[i], maxs[i]) for i in 1:3]
     half = 0.5 * max_span * (1 + pad_frac)
+    isfinite(half) && half > 0.0 ||
+        throw(OverflowError(
+            "padded mesh axis span is outside the representable Float64 range"))
 
-    xlims = (centers[1] - half, centers[1] + half)
-    ylims = (centers[2] - half, centers[2] + half)
-    zlims = (centers[3] - half, centers[3] + half)
+    xlims = _visualization_axis_limits(
+        mins[1], maxs[1], centers[1], half)
+    ylims = _visualization_axis_limits(
+        mins[2], maxs[2], centers[2], half)
+    zlims = _visualization_axis_limits(
+        mins[3], maxs[3], centers[3], half)
     return xlims, ylims, zlims
 end
 

@@ -67,7 +67,7 @@ Create side-by-side 3D wireframe plots with shared axis limits and equal aspect 
 | `color_b` | Symbol or String | `:darkorange` | Line color for mesh B. |
 | `camera` | `Tuple{Real,Real}` | `(30, 30)` | Camera angles applied to both panels (same viewpoint for fair comparison). |
 | `size` | `Tuple{Int,Int}` | `(1200, 520)` | Total figure size `(width, height)` in pixels. The two panels split the width evenly. |
-| `pad_frac` | `Float64` | `0.04` | Fractional padding around the combined bounding box of both meshes. `0.04` = 4% padding on each side. |
+| `pad_frac` | `Float64` | `0.04` | Finite, nonnegative fractional padding around the combined bounding box of both meshes. `0.04` = 4% padding on each side. |
 | `linewidth` | `Real` | `0.7` | Line width for both wireframes. |
 | `guidefontsize` | `Int` | `10` | Axis label font size (smaller default to fit two panels). |
 | `tickfontsize` | `Int` | `8` | Tick font size. |
