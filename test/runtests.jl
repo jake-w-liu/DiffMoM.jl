@@ -7270,6 +7270,27 @@ workflow_dense_bytes = sizeof(ComplexF64) * N^2
     mesh, freq, fill(ComplexF64(NaN, 0.0), N);
     verbose=false,
     check_resolution=false)
+
+# A finite frequency/wave-speed ratio must remain usable when the naive
+# intermediate 2π*frequency would overflow.
+workflow_range_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+workflow_range_rwg = build_rwg(workflow_range_mesh)
+workflow_range_rhs = ones(ComplexF64, workflow_range_rwg.nedges)
+workflow_range_reference = solve_scattering(
+    workflow_range_mesh, 1.0, workflow_range_rhs;
+    c0=1.0,
+    method=:dense_direct,
+    verbose=false,
+    check_resolution=false)
+workflow_range_result = solve_scattering(
+    workflow_range_mesh, floatmax(Float64), workflow_range_rhs;
+    c0=floatmax(Float64),
+    method=:dense_direct,
+    verbose=false,
+    check_resolution=false)
+@test workflow_range_result.I_coeffs == workflow_range_reference.I_coeffs
+@test workflow_range_result.method == :dense_direct
+
 for invalid_thresholds in (
     (dense_direct_limit=-1, dense_gmres_limit=100, mlfma_threshold=200),
     (dense_direct_limit=100, dense_gmres_limit=99, mlfma_threshold=200),

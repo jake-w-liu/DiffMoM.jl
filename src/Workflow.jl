@@ -112,7 +112,8 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
 
     warnings = String[]
     lambda = propagation_speed / frequency
-    k = 2π * frequency / propagation_speed
+    k = _frequency_to_wavenumber(
+        frequency, propagation_speed, "solve_scattering")
     excitation isa PlaneWaveExcitation &&
         _validate_plane_wave_wavenumber(
             excitation, k, "solve_scattering")
