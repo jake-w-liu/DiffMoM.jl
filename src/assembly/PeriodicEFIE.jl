@@ -180,14 +180,11 @@ function _greens_periodic_correction_cached(
         value += term.phase * _ewald_spatial_kernel(R, k, lattice.E)
     end
 
-    Edz = lattice.E * drho_z
     @inbounds for term in spectral_terms
         phase = _periodic_transverse_phase(
             term.kappa_x, term.kappa_y, drho_x, drho_y)
-        spectral_value = (
-            exp(-im * term.kz * drho_z) * erfc(term.zk - Edz) +
-            exp(im * term.kz * drho_z) * erfc(term.zk + Edz)) /
-            (4im * term.kz)
+        spectral_value = _periodic_spectral_vertical_kernel(
+            term.kz, term.zk, lattice.E, drho_z)
         value += _periodic_scale_by_cell_area(
             phase * spectral_value, lattice.dx, lattice.dy)
     end

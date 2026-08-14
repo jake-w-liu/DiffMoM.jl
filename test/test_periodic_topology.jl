@@ -254,6 +254,44 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         ) == phase_value
     end
 
+    @testset "B3: Stable vertical Floquet phase" begin
+        propagating_lattice = PeriodicLattice(
+            1.0, 1.0, 0.0, 0.0, 1.1, 1.0, 0, 0)
+        source = Vec3(0.0, 0.0, 0.0)
+        observation = Vec3(0.0, 0.0, 1.0e20)
+        propagating_value = greens_periodic_correction(
+            observation, source, propagating_lattice.k,
+            propagating_lattice)
+        propagating_reference = setprecision(BigFloat, 2304) do
+            phase = exp(Complex{BigFloat}(
+                0, -BigFloat(propagating_lattice.k) *
+                   BigFloat(observation[3])))
+            self = Complex{BigFloat}(DiffMoM._ewald_self_correction(
+                observation[3], propagating_lattice.k,
+                propagating_lattice.E))
+            ComplexF64(self + phase /
+                (2 * Complex{BigFloat}(0, 1) *
+                 BigFloat(propagating_lattice.k)))
+        end
+        @test isapprox(
+            propagating_value, propagating_reference;
+            rtol=8eps(Float64), atol=0.0)
+
+        # An evanescent mode at extreme separation decays to zero. Forming its
+        # growing exponential separately used to produce Inf*0 and reject this
+        # finite correction.
+        evanescent_lattice = PeriodicLattice(
+            1.0, 1.0, 2.0, 0.0, 1.0, 1.0, 0, 0)
+        extreme_observation = Vec3(0.0, 0.0, 1.0e308)
+        evanescent_value = greens_periodic_correction(
+            extreme_observation, source, evanescent_lattice.k,
+            evanescent_lattice)
+        @test evanescent_value == DiffMoM._ewald_self_correction(
+            extreme_observation[3], evanescent_lattice.k,
+            evanescent_lattice.E)
+        @test isfinite(evanescent_value)
+    end
+
     # ── C: Exponential convergence with truncation order ──
     @testset "C: Exponential Ewald convergence" begin
         r  = SVector(0.0, 0.0, 0.0)

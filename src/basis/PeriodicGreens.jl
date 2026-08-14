@@ -457,6 +457,50 @@ end
            _periodic_transverse_phase_exact(kx, ky, x, y)
 end
 
+@inline function _periodic_spectral_vertical_kernel(
+        kz::ComplexF64,
+        zk::ComplexF64,
+        E::Float64,
+        separation::Float64)
+    if iszero(imag(kz))
+        magnitude = real(kz)
+        negative_phase = _periodic_rwg_bloch_phase(magnitude, separation)
+        positive_phase = conj(negative_phase)
+        scaled_separation = E * separation
+        if isinf(scaled_separation)
+            selected = scaled_separation > 0 ? negative_phase : positive_phase
+            return selected / (2im * kz)
+        end
+        isfinite(scaled_separation) ||
+            throw(OverflowError(
+                "periodic Green vertical separation is outside the supported range"))
+        return (
+            negative_phase * erfc(zk - scaled_separation) +
+            positive_phase * erfc(zk + scaled_separation)
+        ) / (4im * kz)
+    end
+
+    # For kz=-iγ, evaluating exp(+γ|z|)*erfc(q+E|z|)
+    # separately creates Inf*0.  Combine that term with erfcx instead:
+    # exp(+2qs)erfc(q+s) = exp(-q²-s²)erfcx(q+s).
+    gamma = -imag(kz)
+    gamma > 0 ||
+        throw(ArgumentError(
+            "periodic Green evanescent longitudinal wavenumber has the wrong branch"))
+    q = real(zk)
+    abs_separation = abs(separation)
+    s = E * abs_separation
+    decay = gamma * abs_separation
+    first_term = exp(-decay) * erfc(q - s)
+    second_exponent = -(q * q) - s * s
+    second_term = exp(second_exponent) * erfcx(q + s)
+    value = ((first_term + second_term) / gamma) / 4
+    isfinite(value) ||
+        throw(OverflowError(
+            "periodic Green evanescent spectral kernel is outside the representable range"))
+    return ComplexF64(value)
+end
+
 @noinline function _periodic_scale_by_cell_area_exact(
         value::ComplexF64,
         dx::Float64,
@@ -714,9 +758,8 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             #   spec(Δz) = [ e^{-ikz Δz} erfc(ikz/2E - E Δz)
             #              + e^{+ikz Δz} erfc(ikz/2E + E Δz) ] / (4 i kz)
             zk = im * kz / (2E)
-            Edz = E * drho_z
-            spec_val = (exp(-im * kz * drho_z) * erfc(zk - Edz) +
-                        exp( im * kz * drho_z) * erfc(zk + Edz)) / (4im * kz)
+            spec_val = _periodic_spectral_vertical_kernel(
+                kz, zk, E, drho_z)
 
             val += _periodic_scale_by_cell_area(
                 phase_spec * spec_val, dx, dy)
