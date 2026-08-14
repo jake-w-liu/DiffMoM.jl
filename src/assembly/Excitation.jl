@@ -16,6 +16,33 @@ using LinearAlgebra
 using SparseArrays
 using StaticArrays
 
+const _DEFAULT_MAX_EXCITATION_WORK_BYTES = 512 * 1024 * 1024
+const _DEFAULT_MAX_EXCITATION_TERMS = 200_000_000
+
+function _multiple_excitation_work_bytes(
+        N::Int, M::Int, Nt::Int, Nq::Int, output_bytes::Int)
+    total = BigInt(output_bytes)
+    # Shared quadrature points/areas and one temporary child RHS coexist with
+    # the returned matrix.  Outer vector references and rule arrays are charged.
+    total += BigInt(sizeof(Ptr{Cvoid}) + sizeof(Float64)) * Nt
+    total += BigInt(sizeof(Vec3)) * Nt * Nq
+    total += BigInt(sizeof(ComplexF64)) * N
+    total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    total <= typemax(Int) ||
+        throw(ArgumentError(
+            "multiple-excitation raw-workspace estimate overflows Int"))
+    return Int(total)
+end
+
+function _multiple_excitation_term_count(
+        N::Int, M::Int, Nq::Int)
+    count = BigInt(2) * N * M * Nq
+    count <= typemax(Int) ||
+        throw(ArgumentError(
+            "multiple-excitation term estimate overflows Int"))
+    return Int(count)
+end
+
 # Abstract type for all excitations
 abstract type AbstractExcitation end
 
@@ -1577,14 +1604,20 @@ end
 """
     assemble_multiple_excitations(mesh, rwg, excitations;
                                   quad_order=3,
-                                  max_output_bytes=2_000_000_000)
+                                  max_output_bytes=2_000_000_000,
+                                  max_work_bytes=536_870_912,
+                                  max_terms=200_000_000)
 
 Assemble RHS matrix V where each column corresponds to an excitation.
 """
 function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
                                        excitations::Vector{<:AbstractExcitation};
                                        quad_order::Int=3,
-                                       max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                       max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                       max_work_bytes::Integer=
+                                           _DEFAULT_MAX_EXCITATION_WORK_BYTES,
+                                       max_terms::Integer=
+                                           _DEFAULT_MAX_EXCITATION_TERMS)
     N = rwg.nedges
     M = length(excitations)
     output_bytes = _checked_array_payload_bytes(
@@ -1593,6 +1626,22 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
     _enforce_payload_limit(
         output_bytes, max_output_bytes,
         "multiple-excitation RHS matrix", "max_output_bytes")
+    # Validate quadrature and all resource requests before allocating the
+    # shared cache or output.  This conservative bound charges every child as
+    # a surface-quadrature excitation; cache-free children only use less work.
+    _, quadrature_weights = tri_quad_rule(quad_order)
+    Nq = length(quadrature_weights)
+    work_bytes = _multiple_excitation_work_bytes(
+        N, M, ntriangles(mesh), Nq, output_bytes)
+    _enforce_payload_limit(
+        work_bytes, max_work_bytes,
+        "multiple-excitation output and workspace", "max_work_bytes")
+    term_count = _multiple_excitation_term_count(N, M, Nq)
+    term_limit = _validated_resource_limit("max_terms", max_terms)
+    term_count <= term_limit ||
+        throw(ArgumentError(
+            "multiple-excitation assembly requires $term_count terms, " *
+            "exceeding max_terms=$term_limit"))
     V = zeros(ComplexF64, N, M)
     # Build the mesh quadrature once and share it across all excitations.
     quad_cache = ExcitationQuadCache(mesh)

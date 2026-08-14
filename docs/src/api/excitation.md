@@ -338,7 +338,7 @@ The integral is over the support of basis `m`, and `E_inc_t` is the tangential c
 
 ---
 
-### `assemble_multiple_excitations(mesh, rwg, excitations; quad_order=3, max_output_bytes=2_000_000_000)`
+### `assemble_multiple_excitations(mesh, rwg, excitations; quad_order=3, max_output_bytes=2_000_000_000, max_work_bytes=536_870_912, max_terms=200_000_000)`
 
 Assemble RHS vectors for multiple excitations at once (multiple right-hand sides).
 
@@ -347,6 +347,8 @@ Assemble RHS vectors for multiple excitations at once (multiple right-hand sides
 - `excitations::Vector{<:AbstractExcitation}`: List of excitations.
 - `quad_order::Int=3`: Quadrature order.
 - `max_output_bytes::Integer=2_000_000_000`: Raw-payload ceiling for the dense `N x M` result, checked before quadrature-cache or output allocation.
+- `max_work_bytes::Integer=536_870_912`: Combined raw-payload ceiling for the output, shared quadrature cache, and one child RHS.
+- `max_terms::Integer=200_000_000`: Conservative ceiling for direct basis/support/quadrature work across all excitations.
 
 **Returns:** `Matrix{ComplexF64}` of size `N x M` where each column is the RHS for one excitation.
 
