@@ -10,6 +10,76 @@ const _SELF_CELL_SERIES_CUTOFF_2D = 0.5
 const _GREENS_SERIES_CUTOFF_2D = 0.5
 const _EULER_GAMMA_2D = Float64(Base.MathConstants.eulergamma)
 const _SELF_CELL_FALLBACK_PRECISION_2D = 256
+const _GREENS_EXACT_PHASE_THRESHOLD_2D = 128.0
+
+@inline function _greens_phase_precision_2d(
+        k::Float64, r::Vec2, rp::Vec2)
+    return _source_radial_phase_precision(
+        k,
+        Vec3(r[1], r[2], 0.0),
+        Vec3(rp[1], rp[2], 0.0),
+    )
+end
+
+@noinline function _greens_2d_exact(r::Vec2, rp::Vec2, k::Float64)
+    precision = _greens_phase_precision_2d(k, r, rp)
+    return setprecision(BigFloat, precision) do
+        dx = BigFloat(r[1]) - BigFloat(rp[1])
+        dy = BigFloat(r[2]) - BigFloat(rp[2])
+        distance = hypot(dx, dy)
+        iszero(distance) && return zero(ComplexF64)
+        argument = BigFloat(k) * distance
+
+        value = if argument <= BigFloat(_GREENS_SERIES_CUTOFF_2D)
+            argument2_over_4 = (argument / 2)^2
+            term = one(BigFloat)
+            j0_series = one(BigFloat)
+            harmonic = zero(BigFloat)
+            y0_correction = zero(BigFloat)
+            for order in 1:128
+                harmonic += inv(BigFloat(order))
+                term *= -argument2_over_4 / BigFloat(order)^2
+                j0_series += term
+                y0_correction -= harmonic * term
+                abs(term) <= eps(BigFloat) * abs(j0_series) && break
+            end
+            logarithmic_factor = log(argument) - log(BigFloat(2)) +
+                                 BigFloat(Base.MathConstants.eulergamma)
+            Complex{BigFloat}(
+                -(logarithmic_factor * j0_series + y0_correction) /
+                 (2 * BigFloat(pi)),
+                -j0_series / 4,
+            )
+        elseif argument <= BigFloat(_GREENS_EXACT_PHASE_THRESHOLD_2D)
+            converted_argument = Float64(argument)
+            Complex{BigFloat}(
+                (-im / 4) * besselh(0, 2, converted_argument))
+        else
+            # H_0^(2)(z) asymptotic expansion.  At z>128 the omitted term
+            # after convergence is far below a Float64 ulp, while the phase is
+            # reduced from the exact supplied coordinates and wavenumber.
+            term = one(Complex{BigFloat})
+            series = term
+            for order in 1:24
+                odd = BigFloat(2order - 1)
+                term *= Complex{BigFloat}(0, -1) * (-odd^2) /
+                        (BigFloat(order) * 8 * argument)
+                series += term
+                abs(term) <= eps(Float64) * abs(series) && break
+            end
+            phase = exp(Complex{BigFloat}(
+                0, -(argument - BigFloat(pi) / 4)))
+            (-Complex{BigFloat}(0, 1) / 4) *
+            sqrt(2 / (BigFloat(pi) * argument)) * phase * series
+        end
+
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "greens_2d value is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
 
 function _small_greens_2d(k::Float64, distance::Float64, phase::Float64)
     phase2_over_4 = (phase / 2)^2
@@ -104,6 +174,39 @@ end
     end
 end
 
+@noinline function _self_cell_integral_large_exact_2d(
+        k::Float64, a_eq::Float64)
+    precision = _greens_phase_precision_2d(
+        k, Vec2(a_eq, 0.0), Vec2(0.0, 0.0))
+    return setprecision(BigFloat, precision) do
+        k_big = BigFloat(k)
+        argument = k_big * BigFloat(a_eq)
+        term = one(Complex{BigFloat})
+        series = term
+        order_parameter = BigFloat(4)
+        for order in 1:24
+            odd = BigFloat(2order - 1)
+            term *= Complex{BigFloat}(0, -1) *
+                    (order_parameter - odd^2) /
+                    (BigFloat(order) * 8 * argument)
+            series += term
+            abs(term) <= eps(Float64) * abs(series) && break
+        end
+        hankel = sqrt(2 / (BigFloat(pi) * argument)) *
+                 exp(Complex{BigFloat}(
+                     0, -(argument - 3BigFloat(pi) / 4))) * series
+        value = (-Complex{BigFloat}(0, 1) * BigFloat(pi) /
+                 (2 * k_big^2)) *
+                (argument * hankel -
+                 2Complex{BigFloat}(0, 1) / BigFloat(pi))
+        converted = ComplexF64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "self-cell integral is outside the representable ComplexF64 range."))
+        return converted
+    end
+end
+
 """
     greens_2d(r, rp, k)
 
@@ -122,16 +225,13 @@ end
 @inline function _greens_2d_unchecked(r::Vec2, rp::Vec2, k::Float64)
     R_vec = r - rp
     R = hypot(R_vec[1], R_vec[2])
-    isfinite(R) ||
-        throw(ArgumentError(
-            "greens_2d point separation must be finite, got $R."))
+    isfinite(R) || return _greens_2d_exact(r, rp, k)
     if iszero(R)
         return zero(ComplexF64)
     end
     kR = k * R
-    isfinite(kR) ||
-        throw(ArgumentError(
-            "greens_2d phase argument k*R must be finite, got $kR."))
+    (!isfinite(kR) || kR > _GREENS_EXACT_PHASE_THRESHOLD_2D) &&
+        return _greens_2d_exact(r, rp, k)
     if kR <= _GREENS_SERIES_CUTOFF_2D
         return _small_greens_2d(k, R, kR)
     end
@@ -154,9 +254,8 @@ function self_cell_integral_2d(k::Float64, a_eq::Float64)
     _validate_positive_finite_2d(k, "self-cell wavenumber")
     _validate_positive_finite_2d(a_eq, "self-cell equivalent radius")
     ka = k * a_eq
-    isfinite(ka) ||
-        throw(ArgumentError(
-            "self-cell size parameter k*a_eq must be finite, got $ka."))
+    (!isfinite(ka) || ka > _GREENS_EXACT_PHASE_THRESHOLD_2D) &&
+        return _self_cell_integral_large_exact_2d(k, a_eq)
     if ka <= _SELF_CELL_SERIES_CUTOFF_2D
         return _small_self_cell_integral_2d(k, a_eq, ka)
     end

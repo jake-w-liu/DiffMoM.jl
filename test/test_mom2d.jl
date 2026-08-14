@@ -126,6 +126,44 @@ end
               subnormal_expected rtol=2e-15
         @test @allocated(greens_2d(r1, underflow_point, underflow_k)) == 0
 
+        # Preserve the exact Float64 wavenumber-distance product through the
+        # oscillatory Hankel phase.  Rounding kR first selects an unrelated
+        # phase even though the final Green value is finite.
+        large_green_k = 1.1
+        large_green_distance = 1.0e20
+        large_green_reference = setprecision(BigFloat, 2304) do
+            argument = BigFloat(large_green_k) *
+                       BigFloat(large_green_distance)
+            term = one(Complex{BigFloat})
+            series = term
+            for order in 1:24
+                odd = BigFloat(2order - 1)
+                term *= Complex{BigFloat}(0, -1) * (-odd^2) /
+                        (BigFloat(order) * 8 * argument)
+                series += term
+            end
+            phase = exp(Complex{BigFloat}(
+                0, -(argument - BigFloat(pi) / 4)))
+            ComplexF64(
+                (-Complex{BigFloat}(0, 1) / 4) *
+                sqrt(2 / (BigFloat(pi) * argument)) * phase * series)
+        end
+        @test greens_2d(
+            Vec2(large_green_distance, 0.0), r1, large_green_k) ==
+              large_green_reference
+
+        overflow_green_reference = setprecision(BigFloat, 2304) do
+            argument = BigFloat(1.0e200)^2
+            phase = exp(Complex{BigFloat}(
+                0, -(argument - BigFloat(pi) / 4)))
+            ComplexF64(
+                (-Complex{BigFloat}(0, 1) / 4) *
+                sqrt(2 / (BigFloat(pi) * argument)) * phase)
+        end
+        @test greens_2d(
+            Vec2(1.0e200, 0.0), r1, 1.0e200) ==
+              overflow_green_reference
+
         # Decay with distance
         G_near = abs(greens_2d(r1, Vec2(0.5, 0.0), k))
         G_far = abs(greens_2d(r1, Vec2(5.0, 0.0), k))
@@ -182,6 +220,35 @@ end
                  2 * imaginary_unit / BigFloat(π)))
         end
         @test self_cell_integral_2d(extreme_k, extreme_a) == extreme_expected
+
+        function large_self_reference(k_value, a_value)
+            return setprecision(BigFloat, 2304) do
+                k_big = BigFloat(k_value)
+                argument = k_big * BigFloat(a_value)
+                term = one(Complex{BigFloat})
+                series = term
+                for order in 1:24
+                    odd = BigFloat(2order - 1)
+                    term *= Complex{BigFloat}(0, -1) *
+                            (BigFloat(4) - odd^2) /
+                            (BigFloat(order) * 8 * argument)
+                    series += term
+                end
+                hankel = sqrt(2 / (BigFloat(pi) * argument)) *
+                         exp(Complex{BigFloat}(
+                             0, -(argument - 3BigFloat(pi) / 4))) *
+                         series
+                ComplexF64(
+                    (-Complex{BigFloat}(0, 1) * BigFloat(pi) /
+                     (2 * k_big^2)) *
+                    (argument * hankel -
+                     2Complex{BigFloat}(0, 1) / BigFloat(pi)))
+            end
+        end
+        @test self_cell_integral_2d(1.1, 1.0e20) ==
+              large_self_reference(1.1, 1.0e20)
+        @test self_cell_integral_2d(1.0e200, 1.0e200) ==
+              large_self_reference(1.0e200, 1.0e200)
 
         # Positive equivalent radius required
         @test_throws ArgumentError self_cell_integral_2d(k, 0.0)
