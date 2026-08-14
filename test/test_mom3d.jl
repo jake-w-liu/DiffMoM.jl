@@ -150,6 +150,61 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test phase_H_em == [CVec3(
             0.0 + 0im, 0.0 + 0im,
             phase_reference / 376.730313668)]
+
+        # A finite Float64 dot product can still discard low product bits that
+        # determine the oscillatory phase.  The public DDA and EM-DDA plane
+        # waves must use the exact supplied binary inputs in that regime.
+        phase_cancel_angle = 0.2
+        phase_cancel_kvec = Vec3(
+            cos(phase_cancel_angle), sin(phase_cancel_angle), 0.0)
+        phase_cancel_x = 1.0e100
+        phase_cancel_y = -Float64(
+            (phase_cancel_kvec[1] / phase_cancel_kvec[2]) *
+            phase_cancel_x)
+        phase_cancel_center = Vec3(
+            phase_cancel_x, phase_cancel_y, 0.0)
+        phase_cancel_grid = VoxelGrid3D(
+            [phase_cancel_center], [1.0], 1, 1, 1, 1,
+            1.0, 1.0, 1.0,
+            phase_cancel_x, phase_cancel_y, -0.5)
+        phase_cancel_reference = setprecision(BigFloat, 4352) do
+            argument = sum(
+                BigFloat(phase_cancel_kvec[index]) *
+                BigFloat(phase_cancel_center[index]) for index in 1:3)
+            ComplexF64(exp(Complex{BigFloat}(0, -argument)))
+        end
+        phase_cancel_pol = Vec3(0.0, 0.0, 1.0)
+        phase_cancel_E = planewave_dda_3d(
+            phase_cancel_grid, phase_cancel_kvec, 1.0, phase_cancel_pol)
+        @test phase_cancel_E == [CVec3(
+            0.0 + 0im, 0.0 + 0im, phase_cancel_reference)]
+        phase_cancel_E_em, _ = planewave_em_dda_3d(
+            phase_cancel_grid, phase_cancel_kvec, 1.0, phase_cancel_pol)
+        @test phase_cancel_E_em == phase_cancel_E
+
+        # The same phase product appears in DDA far-field translation.  Use a
+        # one-voxel stored result with a z-directed dipole so the projection is
+        # exact and independently check the full public result.
+        phase_cancel_result = DDAResult3D(
+            CVec3[CVec3(0.0 + 0im, 0.0 + 0im, 1.0 + 0im)],
+            CVec3[zero(CVec3)],
+            ComplexF64[2.0], ComplexF64[1.0],
+            Matrix{ComplexF64}(I, 3, 3), nothing, :direct, nothing,
+            phase_cancel_grid, 1.0, false)
+        phase_cancel_rhat = DiffMoM._normalized_real_direction_dda_3d(
+            phase_cancel_kvec, "phase-cancellation reference direction")
+        phase_cancel_farfield_reference = setprecision(BigFloat, 4352) do
+            argument = sum(
+                BigFloat(phase_cancel_rhat[index]) *
+                BigFloat(phase_cancel_center[index]) for index in 1:3)
+            value = ComplexF64(
+                exp(Complex{BigFloat}(0, argument)) /
+                (4 * BigFloat(pi)))
+            CVec3(0.0 + 0im, 0.0 + 0im, value)
+        end
+        @test farfield_dda_3d(
+            phase_cancel_result, phase_cancel_kvec) ==
+              phase_cancel_farfield_reference
         @test_throws OverflowError planewave_dda_3d(
             centered_grid, Vec3(0.0, 0.0, 1.0), 1.0e200,
             CVec3(1.0e200 + 0im, 0.0 + 0im, 0.0 + 0im))

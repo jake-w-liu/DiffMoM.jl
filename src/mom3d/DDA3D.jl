@@ -1303,17 +1303,9 @@ Evaluate a transverse plane wave at voxel centers:
 """
 @noinline function _planewave_phase_bigfloat_dda_3d(
         k_vec::Vec3, center::Vec3, voxel::Int)
-    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
-        phase_argument = sum(
-            BigFloat(k_vec[index]) * BigFloat(center[index])
-            for index in 1:3)
-        value = ComplexF64(
-            exp(Complex{BigFloat}(zero(BigFloat), -phase_argument)))
-        isfinite(value) ||
-            throw(OverflowError(
-                "DDA plane-wave phase is non-finite at voxel $voxel."))
-        return value
-    end
+    return _source_phase_exact(
+        1.0, k_vec, center, -1.0,
+        "DDA plane-wave phase at voxel $voxel")
 end
 
 function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
@@ -1333,11 +1325,9 @@ function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
             "pol * E0 produced a non-finite DDA plane-wave amplitude."))
     Einc = Vector{CVec3}(undef, grid.nvoxels)
     for j in 1:grid.nvoxels
-        phase_argument = dot(k_vec, grid.centers[j])
-        phase = isfinite(phase_argument) ?
-                exp(-1im * phase_argument) :
-                _planewave_phase_bigfloat_dda_3d(
-                    k_vec, grid.centers[j], j)
+        phase = _source_phase(
+            1.0, k_vec, grid.centers[j], -1.0,
+            "DDA plane-wave phase")
         field = field_amplitude * phase
         all(isfinite, field) ||
             throw(OverflowError(
@@ -1522,20 +1512,29 @@ end
     q = _alpha_apply(alpha, field)
     if all(isfinite, q) &&
        !_alpha_field_product_loses_range_3d(alpha, field)
-        phase_argument = k * dot(direction, center)
-        if isfinite(phase_argument)
-            contribution = exp(1im * phase_argument) * (projection * q)
-            prefactor, scale_fraction, scale_exponent =
-                _farfield_prefactor_dda_3d(k)
-            value = iszero(scale_fraction) ?
-                    prefactor * contribution :
-                    _scale_farfield_vector_dda_3d(
-                        contribution, scale_fraction, scale_exponent)
-            all(isfinite, value) && return value
-        end
+        phase = _source_phase(
+            k, direction, center, 1.0, "DDA far-field phase")
+        contribution = phase * (projection * q)
+        prefactor, scale_fraction, scale_exponent =
+            _farfield_prefactor_dda_3d(k)
+        value = iszero(scale_fraction) ?
+                prefactor * contribution :
+                _scale_farfield_vector_dda_3d(
+                    contribution, scale_fraction, scale_exponent)
+        all(isfinite, value) && return value
     end
     return _farfield_alpha_contribution_bigfloat_dda_3d(
         alpha, field, k, direction, center)
+end
+
+@inline function _dda_farfield_phase_requires_exact(
+        res::DDAResult3D,
+        direction::Vec3)
+    @inbounds for center in res.grid.centers
+        _source_phase_requires_fallback(
+            res.k0, direction, center) && return true
+    end
+    return false
 end
 
 @noinline function _farfield_sum_bigfloat_dda_3d(
@@ -1578,6 +1577,8 @@ function _farfield_sum_dda_3d(
         res::DDAResult3D,
         direction::Vec3,
         projection)
+    _dda_farfield_phase_requires_exact(res, direction) &&
+        return _farfield_sum_bigfloat_dda_3d(res, direction)
     total = zero(CVec3)
     try
         @inbounds for j in 1:res.grid.nvoxels

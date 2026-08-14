@@ -1110,27 +1110,25 @@ end
     if all(isfinite, dipoles) &&
        !_alpha_field_product_loses_range_3d(alpha, field)
         q, m = _split_em_field(dipoles)
-        phase_argument = k * dot(direction, center)
-        if isfinite(phase_argument)
-            phase = exp(1im * phase_argument)
-            E_contribution = phase * (
-                projection * q - eta * cross(direction, m))
-            H_contribution = phase * (
-                (1 / eta) * cross(direction, q) + projection * m)
-            prefactor, scale_fraction, scale_exponent =
-                _farfield_prefactor_dda_3d(k)
-            if iszero(scale_fraction)
-                E_value = prefactor * E_contribution
-                H_value = prefactor * H_contribution
-            else
-                E_value = _scale_farfield_vector_dda_3d(
-                    E_contribution, scale_fraction, scale_exponent)
-                H_value = _scale_farfield_vector_dda_3d(
-                    H_contribution, scale_fraction, scale_exponent)
-            end
-            all(isfinite, E_value) && all(isfinite, H_value) &&
-                return E_value, H_value
+        phase = _source_phase(
+            k, direction, center, 1.0, "EM DDA far-field phase")
+        E_contribution = phase * (
+            projection * q - eta * cross(direction, m))
+        H_contribution = phase * (
+            (1 / eta) * cross(direction, q) + projection * m)
+        prefactor, scale_fraction, scale_exponent =
+            _farfield_prefactor_dda_3d(k)
+        if iszero(scale_fraction)
+            E_value = prefactor * E_contribution
+            H_value = prefactor * H_contribution
+        else
+            E_value = _scale_farfield_vector_dda_3d(
+                E_contribution, scale_fraction, scale_exponent)
+            H_value = _scale_farfield_vector_dda_3d(
+                H_contribution, scale_fraction, scale_exponent)
         end
+        all(isfinite, E_value) && all(isfinite, H_value) &&
+            return E_value, H_value
     end
     return _em_farfield_alpha_contribution_bigfloat_3d(
         alpha, field, k, direction, center, eta)
@@ -1196,6 +1194,11 @@ function _em_farfield_sum_3d(
         direction::Vec3,
         eta::Float64,
         projection)
+    @inbounds for center in res.grid.centers
+        if _source_phase_requires_fallback(res.k0, direction, center)
+            return _em_farfield_sum_bigfloat_3d(res, direction, eta)
+        end
+    end
     total_E = zero(CVec3)
     total_H = zero(CVec3)
     try

@@ -306,6 +306,12 @@ const _MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH = 50.0
 const _SOURCE_SCALING_FALLBACK_PRECISION = 512
 const _SOURCE_SCALING_SAFE_EXPONENT = 128
 const _SOURCE_PHASE_PRODUCT_GUARD_BITS = 256
+# Above this binary exponent, a single rounded Float64 dot-product term can
+# carry more than roughly 2^-12 radians of absolute phase uncertainty.  Route
+# such finite arguments through the exact-Float-input reducer as well as the
+# outright overflow/underflow cases; otherwise a large but finite product can
+# select an unrelated point on the unit circle.
+const _SOURCE_PHASE_FAST_TERM_EXPONENT = 40
 
 @inline function _frequency_to_wavenumber(
     frequency::Float64,
@@ -341,9 +347,21 @@ end
     second_vector::Vec3,
 )
     _source_scaling_extreme_value(scale) && return true
+    iszero(scale) && return false
+    scale_exponent = exponent(abs(scale))
     @inbounds for component in 1:3
-        (_source_scaling_extreme_value(first_vector[component]) ||
-         _source_scaling_extreme_value(second_vector[component])) && return true
+        first_value = first_vector[component]
+        second_value = second_vector[component]
+        (_source_scaling_extreme_value(first_value) ||
+         _source_scaling_extreme_value(second_value)) && return true
+        if !iszero(first_value) && !iszero(second_value)
+            # The extra two bits conservatively cover both significand
+            # products and the three-term dot reduction.
+            term_exponent = scale_exponent +
+                            exponent(abs(first_value)) +
+                            exponent(abs(second_value)) + 2
+            term_exponent > _SOURCE_PHASE_FAST_TERM_EXPONENT && return true
+        end
     end
     return false
 end
