@@ -2446,6 +2446,38 @@ radiation_term_limit = DiffMoM._radiation_vectors_term_count(
     max_work_bytes=radiation_work_limit,
     max_terms=radiation_term_limit) == G_mat
 
+# A standalone k*eta0 product may overflow even though the completed
+# geometry-weighted radiation vector is finite. The exact path retains the
+# scale through the final per-direction sum and is linear in eta0.
+radiation_tiny_mesh = make_rect_plate(1.0e-154, 1.0e-154, 1, 1)
+radiation_tiny_rwg = build_rwg(radiation_tiny_mesh)
+radiation_axis_grid = SphGrid(
+    reshape(Float64[0.0, 0.0, 1.0], 3, 1), [0.0], [0.0], [1.0])
+radiation_exact_terms = DiffMoM._radiation_vectors_term_count(
+    radiation_tiny_rwg.nedges, 1, 1)
+radiation_exact_work =
+    radiation_exact_terms * DiffMoM._RADIATION_EXACT_PRECISION
+radiation_scale_reference = radiation_vectors(
+    radiation_tiny_mesh, radiation_tiny_rwg, radiation_axis_grid,
+    floatmax(Float64);
+    quad_order=1,
+    eta0=1.0,
+    max_exact_work=radiation_exact_work)
+@test_throws ArgumentError radiation_vectors(
+    radiation_tiny_mesh, radiation_tiny_rwg, radiation_axis_grid,
+    floatmax(Float64);
+    quad_order=1,
+    eta0=2.0,
+    max_exact_work=radiation_exact_work - 1)
+radiation_scale_exact = radiation_vectors(
+    radiation_tiny_mesh, radiation_tiny_rwg, radiation_axis_grid,
+    floatmax(Float64);
+    quad_order=1,
+    eta0=2.0,
+    max_exact_work=radiation_exact_work)
+@test all(isfinite, radiation_scale_exact)
+@test radiation_scale_exact ≈ 2 .* radiation_scale_reference rtol=1e-15 atol=0
+
 # Phase factors are single-use values. Keep transient storage bounded rather
 # than allocating one NΩ × Nq phase matrix for every RWG basis function.
 mesh_radiation_alloc = make_rect_plate(1.0, 1.0, 12, 12)

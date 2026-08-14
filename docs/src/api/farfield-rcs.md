@@ -41,7 +41,7 @@ Both sample counts must be positive.
 
 ## Radiation Operators
 
-### `radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668, max_output_bytes=2_000_000_000, max_work_bytes=536_870_912, max_terms=200_000_000)`
+### `radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668, max_output_bytes=2_000_000_000, max_work_bytes=536_870_912, max_terms=200_000_000, max_exact_work=2_000_000)`
 
 Compute the per-basis radiation vectors `g_n(r_hat_q)` for all N basis functions at all N_omega grid directions. This is the far-field "transfer matrix": it maps surface current coefficients to far-field amplitudes.
 
@@ -58,6 +58,7 @@ Compute the per-basis radiation vectors `g_n(r_hat_q)` for all N basis functions
 | `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned dense radiation-vector matrix, checked before quadrature caches or output allocation. |
 | `max_work_bytes` | `Integer` | `536_870_912` | Maximum combined raw payload of the output, quadrature cache, and direction workspace. |
 | `max_terms` | `Integer` | `200_000_000` | Maximum basis/support/quadrature/direction terms evaluated by the direct assembly. |
+| `max_exact_work` | `Integer` | `2_000_000` | Maximum precision-weighted term count when exceptional scale or geometry requires BigFloat accumulation. |
 
 **Returns:** `Matrix{ComplexF64}` `G_mat` of size `(3*N_omega, N)`.
 

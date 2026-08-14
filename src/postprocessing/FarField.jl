@@ -10,6 +10,8 @@ const _DEFAULT_MAX_SPH_GRID_RAW_BYTES = 134_400_000
 const _SPH_GRID_RAW_BYTES_PER_POINT = 6sizeof(Float64)
 const _DEFAULT_MAX_RADIATION_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_RADIATION_TERMS = 200_000_000
+const _DEFAULT_MAX_RADIATION_EXACT_WORK = 2_000_000
+const _RADIATION_EXACT_PRECISION = 4352
 
 function _radiation_vectors_work_bytes(
         Nt::Int, Nq::Int, NΩ::Int, output_bytes::Int)
@@ -31,6 +33,93 @@ function _radiation_vectors_term_count(N::Int, Nq::Int, NΩ::Int)
     terms <= typemax(Int) ||
         throw(ArgumentError("radiation-vector term estimate overflows Int"))
     return Int(terms)
+end
+
+@inline function _radiation_scale_requires_exact(k::Number, eta0::Number)
+    product = k * eta0
+    return !isfinite(product) ||
+           (!iszero(k) && !iszero(eta0) &&
+            (iszero(product) || abs(product) < floatmin(Float64)))
+end
+
+@inline function _radiation_geometry_requires_exact(
+        mesh::TriMesh, rwg::RWGData, grid::SphGrid,
+        k::Number, eta0::Number)
+    (_ieee_dense_extreme_factor(k, Float64) ||
+     _ieee_dense_extreme_factor(eta0, Float64)) && return true
+    @inbounds for value in mesh.xyz
+        _ieee_dense_extreme_factor(value, Float64) && return true
+    end
+    @inbounds for values in (
+            rwg.len, rwg.area_plus, rwg.area_minus,
+            rwg.coeff_plus, rwg.coeff_minus)
+        for value in values
+            _ieee_dense_extreme_factor(value, Float64) && return true
+        end
+    end
+    @inbounds for component in grid.rhat
+        _ieee_dense_extreme_factor(component, Float64) && return true
+    end
+    return false
+end
+
+@noinline function _radiation_vector_column_exact!(
+        G_mat::Matrix{ComplexF64}, n::Int,
+        rwg::RWGData, rhat_vec::Vector{Vec3},
+        xi::Vector{<:SVector{2}}, areas::Vector{Float64},
+        wq::Vector{Float64}, k::Number, eta0::Number)
+    setprecision(BigFloat, _RADIATION_EXACT_PRECISION) do
+        k_big = Complex{BigFloat}(k)
+        eta_big = Complex{BigFloat}(eta0)
+        prefactor_big = im * k_big * eta_big / (4 * BigFloat(pi))
+        @inbounds for q_dir in eachindex(rhat_vec)
+            rh_big = SVector{3,BigFloat}(BigFloat.(rhat_vec[q_dir]))
+            total = zeros(Complex{BigFloat}, 3)
+            for t in (rwg.tplus[n], rwg.tminus[n])
+                weight_scale = 2 * BigFloat(areas[t])
+                is_plus = t == rwg.tplus[n]
+                coefficient_big = Complex{BigFloat}(
+                    is_plus ? rwg.coeff_plus[n] : rwg.coeff_minus[n])
+                edge_scale_big = coefficient_big * BigFloat(rwg.len[n]) /
+                                 (2 * BigFloat(areas[t]))
+                opposite_vertex = is_plus ?
+                    rwg.vplus_opp[n] : rwg.vminus_opp[n]
+                opposite_big = SVector{3,BigFloat}(
+                    BigFloat.(Tuple(_mesh_vertex(rwg.mesh, opposite_vertex))))
+                vertex1_big = SVector{3,BigFloat}(BigFloat.(Tuple(
+                    _mesh_vertex(rwg.mesh, rwg.mesh.tri[1, t]))))
+                vertex2_big = SVector{3,BigFloat}(BigFloat.(Tuple(
+                    _mesh_vertex(rwg.mesh, rwg.mesh.tri[2, t]))))
+                vertex3_big = SVector{3,BigFloat}(BigFloat.(Tuple(
+                    _mesh_vertex(rwg.mesh, rwg.mesh.tri[3, t]))))
+                for q_surf in eachindex(wq)
+                    xi1 = BigFloat(xi[q_surf][1])
+                    xi2 = BigFloat(xi[q_surf][2])
+                    rp_big = vertex1_big * (1 - xi1 - xi2) +
+                             vertex2_big * xi1 + vertex3_big * xi2
+                    delta_big = is_plus ?
+                        rp_big - opposite_big : opposite_big - rp_big
+                    fn_big = edge_scale_big * delta_big
+                    phase = exp(im * k_big * dot(rh_big, rp_big))
+                    contribution = fn_big *
+                        (BigFloat(wq[q_surf]) * weight_scale * phase)
+                    projected =
+                        rh_big * dot(rh_big, contribution) - contribution
+                    total .+= prefactor_big .* projected
+                end
+            end
+            idx = 3 * (q_dir - 1)
+            for component in 1:3
+                converted = ComplexF64(total[component])
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "radiation-vector result is outside the ComplexF64 " *
+                        "range at direction $q_dir, basis $n, component $component"))
+                G_mat[idx + component, n] = converted
+            end
+        end
+    end
+    return nothing
 end
 
 """
@@ -236,7 +325,8 @@ end
                       eta0=376.730313668,
                       max_output_bytes=2_000_000_000,
                       max_work_bytes=536_870_912,
-                      max_terms=200_000_000)
+                      max_terms=200_000_000,
+                      max_exact_work=2_000_000)
 
 Compute the per-basis radiation vectors g_n(r̂_q) for all basis functions
 and all grid directions.
@@ -244,6 +334,8 @@ and all grid directions.
 `max_output_bytes` bounds the returned matrix. `max_work_bytes` bounds that
 matrix together with retained quadrature and direction workspaces, while
 `max_terms` bounds the basis/support/quadrature/direction loop count.
+When exceptional scale or geometry requires exact accumulation,
+`max_exact_work` bounds quadrature terms times BigFloat precision.
 
 Returns G_mat of size (3*NΩ, N) such that
   G_mat[(3*(q-1)+1):(3*q), n] = g_n(r̂_q) ∈ C³
@@ -254,7 +346,8 @@ function radiation_vectors(
         eta0=376.730313668,
         max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
         max_work_bytes::Integer=_DEFAULT_MAX_RADIATION_WORK_BYTES,
-        max_terms::Integer=_DEFAULT_MAX_RADIATION_TERMS)
+        max_terms::Integer=_DEFAULT_MAX_RADIATION_TERMS,
+        max_exact_work::Integer=_DEFAULT_MAX_RADIATION_EXACT_WORK)
     N = rwg.nedges
     NΩ = _validate_sph_grid(grid)
     _validated_farfield_scalar(k, "radiation_vectors wavenumber")
@@ -285,15 +378,26 @@ function radiation_vectors(
         throw(ArgumentError(
             "radiation-vector assembly requires $term_count terms, " *
             "exceeding max_terms=$term_limit"))
-    prefactor = 1im * k * eta0 / (4π)
+    exact_scale = _radiation_scale_requires_exact(k, eta0)
+    exact_geometry = exact_scale ||
+        _radiation_geometry_requires_exact(mesh, rwg, grid, k, eta0)
+    exact_limit = _validated_resource_limit("max_exact_work", max_exact_work)
+    if exact_geometry
+        exact_work = BigInt(term_count) * _RADIATION_EXACT_PRECISION
+        exact_work <= exact_limit ||
+            throw(ArgumentError(
+                "exact radiation-vector assembly requires $exact_work " *
+                "precision-weighted terms, exceeding " *
+                "max_exact_work=$exact_limit"))
+    end
+    prefactor = exact_geometry ? 0.0im : 1im * k * eta0 / (4π)
 
-    # Precompute quad points and areas per triangle
-    quad_pts = Vector{Vector{Vec3}}(undef, Nt)
     areas = Vector{Float64}(undef, Nt)
     @inbounds for t in 1:Nt
-        quad_pts[t] = tri_quad_points(mesh, t, xi)
         areas[t] = triangle_area(mesh, t)
     end
+    quad_pts = exact_geometry ? Vector{Vector{Vec3}}() :
+        [tri_quad_points(mesh, t, xi) for t in 1:Nt]
 
     # Precompute rhat Vec3
     rhat_vec = Vector{Vec3}(undef, NΩ)
@@ -308,27 +412,33 @@ function radiation_vectors(
     # are no data races.
     G_mat = zeros(ComplexF64, output_rows, N)
 
-    Threads.@threads for n in 1:N
-        @inbounds for t in (rwg.tplus[n], rwg.tminus[n])
-            A = areas[t]
-            pts = quad_pts[t]
+    if exact_geometry
+        for n in 1:N
+            _radiation_vector_column_exact!(
+                G_mat, n, rwg, rhat_vec, xi, areas, wq, k, eta0)
+        end
+    else
+        Threads.@threads for n in 1:N
+            @inbounds for t in (rwg.tplus[n], rwg.tminus[n])
+                A = areas[t]
+                pts = quad_pts[t]
 
-            for q_surf in 1:Nq
-                rp = pts[q_surf]
-                fn = eval_rwg(rwg, n, rp, t)
-                wt = wq[q_surf] * 2 * A
+                for q_surf in 1:Nq
+                    rp = pts[q_surf]
+                    fn = eval_rwg(rwg, n, rp, t)
+                    wt = wq[q_surf] * 2 * A
 
-                for q_dir in 1:NΩ
-                    rh = rhat_vec[q_dir]
-                    phase = exp(1im * k * dot(rh, rp))
-
-                    contrib = fn * (wt * phase)
-                    rh_cross_N_cross = rh * dot(rh, contrib) - contrib
-
-                    idx = 3 * (q_dir - 1)
-                    G_mat[idx+1, n] += prefactor * rh_cross_N_cross[1]
-                    G_mat[idx+2, n] += prefactor * rh_cross_N_cross[2]
-                    G_mat[idx+3, n] += prefactor * rh_cross_N_cross[3]
+                    for q_dir in 1:NΩ
+                        rh = rhat_vec[q_dir]
+                        phase = exp(1im * k * dot(rh, rp))
+                        contrib = fn * (wt * phase)
+                        rh_cross_N_cross =
+                            rh * dot(rh, contrib) - contrib
+                        idx = 3 * (q_dir - 1)
+                        G_mat[idx+1, n] += prefactor * rh_cross_N_cross[1]
+                        G_mat[idx+2, n] += prefactor * rh_cross_N_cross[2]
+                        G_mat[idx+3, n] += prefactor * rh_cross_N_cross[3]
+                    end
                 end
             end
         end
