@@ -154,7 +154,7 @@ This is a low-level internal helper; most users should call `assemble_Z_efie` wh
 
 ## EFIE Assembly
 
-### `assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, max_output_bytes=2_000_000_000)`
+### `assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, max_output_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000)`
 
 Build the dense N x N EFIE impedance matrix. This is the core MoM system matrix: for a PEC scatterer with no impedance loading, the MoM equation is `Z_efie * I = v`.
 
@@ -174,6 +174,8 @@ Assembly is O(N^2) in both time and memory. Each entry `Z[m,n]` involves a doubl
 | `require_closed` | `Bool` | `false` | Require closed surface during precheck. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection. |
 | `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the returned dense matrix, enforced before mesh/cache work. Use a matrix-free operator when exceeded. |
+| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated peak ceiling for EFIE quadrature, RWG-value, and adjacency storage/workspace. |
+| `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived triangle-pair records before deduplication. |
 
 **Returns:** `Matrix{ComplexF64}` of size `N x N` where `N = rwg.nedges`.
 
@@ -193,7 +195,9 @@ The cache stores triangle edge-adjacency in compact-row form (`offsets` plus
 contiguous `neighbors`), so self/adjacent singular-integration metadata remains
 linear in mesh size rather than allocating an `N_t × N_t` pair matrix.
 
-**Parameters:** Same physical and validation parameters as `assemble_Z_efie` (mesh, rwg, k, quad_order, eta0, mesh_precheck, allow_boundary, require_closed, area_tol_rel). The dense-only `max_output_bytes` keyword does not apply.
+**Parameters:** Same physical, validation, `max_cache_bytes`, and
+`max_adjacency_pairs` parameters as `assemble_Z_efie`. The dense-only
+`max_output_bytes` keyword does not apply.
 
 **Returns:** `MatrixFreeEFIEOperator{ComplexF64}` -- an `AbstractMatrix{ComplexF64}` of size `(N, N)`.
 
@@ -508,7 +512,7 @@ Build the preconditioner directly from a matrix-free EFIE operator without alloc
 ### Overload 4: From geometry/physics inputs directly
 
 ```julia
-build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, factorization=:lu, ilu_tau=1e-3, max_triplet_bytes=536_870_912, max_green_cache_bytes=268_435_456, max_green_cache_entries=250_000)
+build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, factorization=:lu, ilu_tau=1e-3, max_triplet_bytes=536_870_912, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_green_cache_bytes=268_435_456, max_green_cache_entries=250_000)
 ```
 
 Build the preconditioner directly from mesh, basis, and wavenumber — without requiring a pre-assembled matrix or explicit operator. Internally creates a `MatrixFreeEFIEOperator` and delegates to Overload 3 (spatial neighbor search, batched Green's evaluation).
@@ -530,6 +534,8 @@ Build the preconditioner directly from mesh, basis, and wavenumber — without r
 | `factorization` | `Symbol` | `:lu` | Factorization type (`:lu`, `:ilu`, or `:diag`). |
 | `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU (only used when `factorization=:ilu`). |
 | `max_triplet_bytes` | `Integer` | `536_870_912` | Maximum raw temporary triplet payload. |
+| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated EFIE cache/workspace ceiling. |
+| `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum triangle-adjacency pair records. |
 | `max_green_cache_bytes` | `Integer` | `268_435_456` | Maximum cached/scratch Green-matrix raw payload. |
 | `max_green_cache_entries` | `Integer` | `250_000` | Maximum number of retained triangle-pair Green matrices. |
 

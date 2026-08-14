@@ -11,6 +11,10 @@ export MatrixFreeEFIEOperator, MatrixFreeEFIEAdjointOperator
 export matrixfree_efie_operator, matrixfree_efie_adjoint_operator
 export efie_entry
 
+const _DEFAULT_MAX_EFIE_CACHE_BYTES = 2_000_000_000
+const _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS = 20_000_000
+const _EFIE_EMPTY_VECTOR_BYTES = Base.summarysize(Vec3[])
+
 """
 Compact row storage for a symmetric adjacency relation between mesh triangles.
 
@@ -87,8 +91,58 @@ The temporary edge records and triangle pairs are sorted in place. This avoids
 one heap-allocated vector per mesh edge and leaves only the two compact vectors
 resident in `EFIEApplyCache`.
 """
-function _build_triangle_adjacency(mesh::TriMesh)
+function _efie_cache_work_bytes(
+        fixed_payload_bytes::Int,
+        triangle_count::Int,
+        pair_records::Int)
+    fixed_payload_bytes >= 0 ||
+        throw(ArgumentError("fixed EFIE cache payload must be nonnegative"))
+    triangle_count >= 0 ||
+        throw(ArgumentError("triangle count must be nonnegative"))
+    pair_records >= 0 ||
+        throw(ArgumentError("adjacency-pair count must be nonnegative"))
+
+    edge_record_bytes = BigInt(3) * triangle_count *
+                        sizeof(NTuple{3,Int})
+    pair_bytes = BigInt(pair_records) * sizeof(NTuple{2,Int})
+    degree_bytes = BigInt(triangle_count) * sizeof(Int)
+    offset_bytes = (BigInt(triangle_count) + 1) * sizeof(Int)
+    neighbor_bytes = BigInt(2) * pair_records * sizeof(Int)
+    adjacency_peak = edge_record_bytes + pair_bytes + degree_bytes +
+                     offset_bytes + neighbor_bytes
+    retained_peak = BigInt(fixed_payload_bytes) + offset_bytes +
+                    neighbor_bytes
+    estimated = cld(5 * max(adjacency_peak, retained_peak), 4)
+    estimated <= typemax(Int) ||
+        throw(ArgumentError("EFIE cache storage estimate overflows Int"))
+    return Int(estimated)
+end
+
+function _build_triangle_adjacency(
+        mesh::TriMesh;
+        fixed_payload_bytes::Int=0,
+        max_cache_bytes::Integer=_DEFAULT_MAX_EFIE_CACHE_BYTES,
+        max_adjacency_pairs::Integer=_DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     Nt = ntriangles(mesh)
+    cache_limit = _validated_resource_limit(
+        "max_cache_bytes", max_cache_bytes)
+    pair_limit = try
+        Int(max_adjacency_pairs)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError("max_adjacency_pairs is outside the Int range"))
+    end
+    pair_limit >= 0 ||
+        throw(ArgumentError(
+            "max_adjacency_pairs must be nonnegative, got " *
+            "$max_adjacency_pairs"))
+    minimum_bytes = _efie_cache_work_bytes(
+        fixed_payload_bytes, Nt, 0)
+    minimum_bytes <= cache_limit ||
+        throw(ArgumentError(
+            "EFIE cache requires at least $minimum_bytes estimated bytes, " *
+            "exceeding max_cache_bytes=$cache_limit"))
+
     nrecords = Base.checked_mul(3, Nt)
     edge_records = Vector{NTuple{3,Int}}(undef, nrecords)
 
@@ -105,8 +159,39 @@ function _build_triangle_adjacency(mesh::TriMesh)
     end
     sort!(edge_records)
 
+    pair_records = 0
+    first_record = 1
+    while first_record <= nrecords
+        next_edge = first_record + 1
+        @inbounds while next_edge <= nrecords &&
+                        edge_records[next_edge][1] == edge_records[first_record][1] &&
+                        edge_records[next_edge][2] == edge_records[first_record][2]
+            next_edge += 1
+        end
+
+        group_count = next_edge - first_record
+        first_factor, second_factor = iseven(group_count) ?
+            (group_count ÷ 2, group_count - 1) :
+            (group_count, (group_count - 1) ÷ 2)
+        remaining_pairs = pair_limit - pair_records
+        if !iszero(first_factor) &&
+           second_factor > remaining_pairs ÷ first_factor
+            throw(ArgumentError(
+                "triangle adjacency exceeds " *
+                "max_adjacency_pairs=$pair_limit"))
+        end
+        pair_records += first_factor * second_factor
+        first_record = next_edge
+    end
+    work_bytes = _efie_cache_work_bytes(
+        fixed_payload_bytes, Nt, pair_records)
+    work_bytes <= cache_limit ||
+        throw(ArgumentError(
+            "EFIE cache requires at most $work_bytes estimated bytes, " *
+            "exceeding max_cache_bytes=$cache_limit"))
+
     pairs = NTuple{2,Int}[]
-    sizehint!(pairs, nrecords ÷ 2)
+    sizehint!(pairs, pair_records)
     first_record = 1
     while first_record <= nrecords
         next_edge = first_record + 1
@@ -132,6 +217,31 @@ function _build_triangle_adjacency(mesh::TriMesh)
     # A malformed/duplicate face can make a triangle pair share more than one
     # recorded edge. The common converter sorts and compacts those duplicates.
     return _triangle_adjacency_from_pairs!(pairs, Nt)
+end
+
+function _efie_cache_fixed_payload_bytes(
+        N::Int,
+        Nt::Int,
+        Nq::Int,
+        Nq_hi::Int,
+        ::Type{Tcoef},
+        ::Type{TVec}) where {Tcoef,TVec}
+    triangle_payload = BigInt(Nt) * (
+        sizeof(Vector{Vec3}) + _EFIE_EMPTY_VECTOR_BYTES + Nq * sizeof(Vec3) +
+        sizeof(Float64) +
+        sizeof(Vector{Vec3}) + _EFIE_EMPTY_VECTOR_BYTES +
+        Nq_hi * sizeof(Vec3))
+    basis_payload = BigInt(N) * (
+        2 * sizeof(Int) + 2 * sizeof(Tcoef) +
+        sizeof(NTuple{2,Vector{TVec}}) +
+        2 * _EFIE_EMPTY_VECTOR_BYTES + 2 * Nq * sizeof(TVec) +
+        sizeof(NTuple{2,Vector{TVec}}) +
+        2 * _EFIE_EMPTY_VECTOR_BYTES + 2 * Nq_hi * sizeof(TVec))
+    quadrature_payload = BigInt(Nq + Nq_hi) * sizeof(Float64)
+    total = triangle_payload + basis_payload + quadrature_payload
+    total <= typemax(Int) ||
+        throw(ArgumentError("EFIE cache fixed-payload estimate overflows Int"))
+    return Int(total)
 end
 
 @inline _adjacent_pair_count(adjacency::TriangleAdjacency) =
@@ -188,8 +298,14 @@ end
     return kw, inv_k2, omega_mu0
 end
 
-function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
-                           quad_order::Int=3, eta0=376.730313668)
+function _build_efie_cache(
+        mesh::TriMesh,
+        rwg::RWGData,
+        k;
+        quad_order::Int=3,
+        eta0=376.730313668,
+        max_cache_bytes::Integer=_DEFAULT_MAX_EFIE_CACHE_BYTES,
+        max_adjacency_pairs::Integer=_DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     kw, inv_k2, omega_mu0 = _validated_efie_prefactors(k, eta0)
     N = rwg.nedges
     Nt = ntriangles(mesh)
@@ -198,6 +314,15 @@ function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
+    xi_hi, wq_hi = tri_quad_rule(7)
+    Nq_hi = length(wq_hi)
+    fixed_payload_bytes = _efie_cache_fixed_payload_bytes(
+        N, Nt, Nq, Nq_hi, Tcoef, TVec)
+    adjacent = _build_triangle_adjacency(
+        mesh;
+        fixed_payload_bytes=fixed_payload_bytes,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs)
 
     # Precompute quadrature points and areas for all triangles
     quad_pts = Vector{Vector{Vec3}}(undef, Nt)
@@ -208,8 +333,6 @@ function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
     end
 
     # High-order quadrature for inner integration of self/adjacent cells
-    xi_hi, wq_hi = tri_quad_rule(7)
-    Nq_hi = length(wq_hi)
     quad_pts_hi = Vector{Vector{Vec3}}(undef, Nt)
     for t in 1:Nt
         quad_pts_hi[t] = tri_quad_points(mesh, t, xi_hi)
@@ -236,8 +359,6 @@ function _build_efie_cache(mesh::TriMesh, rwg::RWGData, k;
         vals_m_hi = [eval_rwg(rwg, n, quad_pts_hi[tm][q], tm) for q in 1:Nq_hi]
         rwg_vals_hi[n] = (vals_p_hi, vals_m_hi)
     end
-
-    adjacent = _build_triangle_adjacency(mesh)
 
     return EFIEApplyCache(mesh, rwg, kw, inv_k2, omega_mu0, wq, Nq, quad_pts, areas,
                           tri_ids, div_vals, rwg_vals,
@@ -501,7 +622,9 @@ end
                     mesh_precheck=true,
                     allow_boundary=true,
                     require_closed=false,
-                    max_output_bytes=2_000_000_000)
+                    max_output_bytes=2_000_000_000,
+                    max_cache_bytes=2_000_000_000,
+                    max_adjacency_pairs=20_000_000)
 
 Assemble the dense EFIE matrix `Z_efie ∈ C^{N×N}`.
 `k` is the wavenumber (can be complex for complex-step).
@@ -513,7 +636,11 @@ function assemble_Z_efie(mesh::TriMesh, rwg::RWGData, k;
                          require_closed::Bool=false,
                          area_tol_rel::Float64=1e-12,
                          max_output_bytes::Integer=
-                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                         max_cache_bytes::Integer=
+                             _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                         max_adjacency_pairs::Integer=
+                             _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     N = rwg.nedges
     matrix_bytes = _checked_array_payload_bytes(
         ComplexF64, N, N; label="dense EFIE matrix")
@@ -528,7 +655,12 @@ function assemble_Z_efie(mesh::TriMesh, rwg::RWGData, k;
         )
     end
 
-    cache = _build_efie_cache(mesh, rwg, k; quad_order=quad_order, eta0=eta0)
+    cache = _build_efie_cache(
+        mesh, rwg, k;
+        quad_order=quad_order,
+        eta0=eta0,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs)
     CT = ComplexF64
     Z = zeros(CT, N, N)
 
@@ -718,7 +850,11 @@ function matrixfree_efie_operator(mesh::TriMesh, rwg::RWGData, k;
                                   mesh_precheck::Bool=true,
                                   allow_boundary::Bool=true,
                                   require_closed::Bool=false,
-                                  area_tol_rel::Float64=1e-12)
+                                  area_tol_rel::Float64=1e-12,
+                                  max_cache_bytes::Integer=
+                                      _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                                  max_adjacency_pairs::Integer=
+                                      _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     if mesh_precheck
         assert_mesh_quality(mesh;
             allow_boundary=allow_boundary,
@@ -726,7 +862,12 @@ function matrixfree_efie_operator(mesh::TriMesh, rwg::RWGData, k;
             area_tol_rel=area_tol_rel,
         )
     end
-    cache = _build_efie_cache(mesh, rwg, k; quad_order=quad_order, eta0=eta0)
+    cache = _build_efie_cache(
+        mesh, rwg, k;
+        quad_order=quad_order,
+        eta0=eta0,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs)
     return MatrixFreeEFIEOperator{ComplexF64,typeof(cache)}(cache)
 end
 

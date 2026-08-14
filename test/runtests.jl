@@ -6974,6 +6974,10 @@ println("\n── Test 26: ACA operator matvec accuracy ──")
 @test_throws ArgumentError build_aca_operator(
     mesh, rwg, k; max_storage_bytes=0, mesh_precheck=false)
 @test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_cache_bytes=1, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
+    mesh, rwg, k; max_adjacency_pairs=0, mesh_precheck=false)
+@test_throws ArgumentError build_aca_operator(
     mesh, rwg, k; max_green_cache_bytes=0, mesh_precheck=false)
 @test_throws ArgumentError build_aca_operator(
     mesh, rwg, k; max_green_cache_entries=-1, mesh_precheck=false)
@@ -7962,6 +7966,8 @@ mlfma_zero_legendre_translation = DiffMoM.compute_translation_factor(
     mlfma_mesh, mlfma_rwg, mlfma_k; max_nearfield_entries=0)
 @test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; max_nearfield_bytes=0)
+@test_throws ArgumentError build_mlfma_operator(
+    mlfma_mesh, mlfma_rwg, mlfma_k; max_adjacency_pairs=-1)
 @test_throws ArgumentError build_mlfma_operator(
     mlfma_mesh, mlfma_rwg, mlfma_k; max_translation_terms=0)
 @test_throws ArgumentError build_mlfma_operator(
@@ -10914,6 +10920,38 @@ n_adj_pairs = DiffMoM._adjacent_pair_count(cache_adj.adjacent)
 @assert n_adj_pairs == 40 "4×4 split-quad grid should have 40 edge-adjacent pairs"
 @assert length(cache_adj.adjacent.offsets) == ntriangles(mesh_adj) + 1
 @assert length(cache_adj.adjacent.neighbors) == 2n_adj_pairs
+cache_adj_coef = promote_type(
+    eltype(rwg_adj.coeff_plus), eltype(rwg_adj.coeff_minus))
+cache_adj_vec = SVector{3,cache_adj_coef}
+cache_adj_fixed_bytes = DiffMoM._efie_cache_fixed_payload_bytes(
+    rwg_adj.nedges,
+    ntriangles(mesh_adj),
+    cache_adj.Nq,
+    length(cache_adj.wq_hi),
+    cache_adj_coef,
+    cache_adj_vec)
+cache_adj_bound = DiffMoM._efie_cache_work_bytes(
+    cache_adj_fixed_bytes, ntriangles(mesh_adj), n_adj_pairs)
+@test_throws ArgumentError DiffMoM._build_efie_cache(
+    mesh_adj, rwg_adj, k_adj;
+    quad_order=4,
+    max_cache_bytes=cache_adj_bound - 1)
+@test DiffMoM._build_efie_cache(
+    mesh_adj, rwg_adj, k_adj;
+    quad_order=4,
+    max_cache_bytes=cache_adj_bound).tri_ids == cache_adj.tri_ids
+@test_throws ArgumentError assemble_Z_efie(
+    mesh_adj, rwg_adj, k_adj; max_cache_bytes=1)
+@test_throws ArgumentError matrixfree_efie_operator(
+    mesh_adj, rwg_adj, k_adj; max_cache_bytes=1)
+
+shared_edge_triangles = Matrix{Int}(undef, 3, 20)
+for triangle in axes(shared_edge_triangles, 2)
+    shared_edge_triangles[:, triangle] .= (1, 2, triangle + 2)
+end
+shared_edge_mesh = TriMesh(zeros(3, 22), shared_edge_triangles)
+@test_throws ArgumentError DiffMoM._build_triangle_adjacency(
+    shared_edge_mesh; max_adjacency_pairs=10)
 # For a 4×4 grid of quads (32 triangles), there are many internal edges
 # Each internal edge connects 2 triangles → pair stored in both compact rows.
 println("  Adjacent pairs: $n_adj_pairs")

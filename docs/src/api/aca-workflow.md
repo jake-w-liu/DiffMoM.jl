@@ -237,6 +237,8 @@ Dense near-field blocks use triangle-pair batched Green's function evaluation fo
 | `mesh_precheck` | `Bool` | `true` | Run mesh quality checks. |
 | `max_block_tasks` | `Int` | `2_000_000` | Maximum number of enumerated H-matrix blocks. |
 | `max_storage_bytes` | `Int` | `2_000_000_000` | Cap on raw persistent dense/low-rank block payload, including dense fallback replacements. |
+| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated peak ceiling for the shared EFIE quadrature/RWG/adjacency cache. |
+| `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived triangle-pair records before deduplication. |
 | `max_green_cache_bytes` | `Integer` | `268_435_456` | Per-worker raw-payload cap for cached and scratch quadrature Green matrices. Once the cache is full, one matrix is reused. |
 | `max_green_cache_entries` | `Int` | `250_000` | Per-worker cap on retained triangle-pair matrices; `0` disables retention while preserving one bounded scratch matrix. |
 

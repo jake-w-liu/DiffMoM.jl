@@ -888,6 +888,10 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
                                          ilu_tau::Float64=1e-3,
                                          max_triplet_bytes::Integer=
                                              _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
+                                         max_cache_bytes::Integer=
+                                             _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                                         max_adjacency_pairs::Integer=
+                                             _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                          max_green_cache_bytes::Integer=
                                              _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES,
                                          max_green_cache_entries::Integer=
@@ -901,6 +905,8 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
         allow_boundary=allow_boundary,
         require_closed=require_closed,
         area_tol_rel=area_tol_rel,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs,
     )
     return build_nearfield_preconditioner(A, cutoff;
         factorization=factorization,

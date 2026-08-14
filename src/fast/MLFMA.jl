@@ -980,12 +980,21 @@ function assemble_mlfma_nearfield(octree::Octree, mesh::TriMesh, rwg::RWGData, k
                                    max_nearfield_entries::Int=
                                        _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES,
                                    max_nearfield_bytes::Int=
-                                       _DEFAULT_MAX_MLFMA_SETUP_BYTES)
+                                       _DEFAULT_MAX_MLFMA_SETUP_BYTES,
+                                   max_cache_bytes::Integer=
+                                       _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                                   max_adjacency_pairs::Integer=
+                                       _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     N = rwg.nedges
     entry_count = _validate_mlfma_nearfield_resources(
         octree, max_nearfield_entries, max_nearfield_bytes,
         "assemble_mlfma_nearfield")
-    cache = _build_efie_cache(mesh, rwg, k; quad_order=quad_order, eta0=eta0)
+    cache = _build_efie_cache(
+        mesh, rwg, k;
+        quad_order=quad_order,
+        eta0=eta0,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs)
     leaf_level = octree.levels[octree.nLevels]
 
     rows = Int[]
@@ -1774,6 +1783,7 @@ Build an MLFMA operator for the EFIE system.
 - `max_setup_bytes=2_000_000_000`: estimated octree and MLFMA setup-storage limit
 - `max_nearfield_entries=50_000_000`: exact near-field triplet-count limit
 - `max_nearfield_bytes=2_000_000_000`: raw near-field triplet-payload limit
+- `max_adjacency_pairs=20_000_000`: triangle-adjacency pair-record limit
 - `max_translation_terms=50_000_000`: per-offset Legendre work limit
 - `max_matvec_scratch_bytes=536_870_912`: exponent-band scratch limit
 - `max_exact_combine_work=2_000_000`: exact band-combination work limit
@@ -1792,6 +1802,8 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
                                    _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES,
                                max_nearfield_bytes::Int=
                                    _DEFAULT_MAX_MLFMA_SETUP_BYTES,
+                               max_adjacency_pairs::Int=
+                                   _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                max_translation_terms::Int=
                                    _DEFAULT_MAX_MLFMA_TRANSLATION_TERMS,
                                max_matvec_scratch_bytes::Int=
@@ -1818,6 +1830,9 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     max_nearfield_bytes >= 1 ||
         throw(ArgumentError(
             "build_mlfma_operator: max_nearfield_bytes must be positive, got $max_nearfield_bytes"))
+    max_adjacency_pairs >= 0 ||
+        throw(ArgumentError(
+            "build_mlfma_operator: max_adjacency_pairs must be nonnegative, got $max_adjacency_pairs"))
     max_translation_terms >= 1 ||
         throw(ArgumentError(
             "build_mlfma_operator: max_translation_terms must be positive, got $max_translation_terms"))
@@ -1882,7 +1897,9 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
     Z_near = assemble_mlfma_nearfield(octree, mesh, rwg, k;
                                        quad_order=quad_order, eta0=eta0,
                                        max_nearfield_entries=max_nearfield_entries,
-                                       max_nearfield_bytes=max_nearfield_bytes)
+                                       max_nearfield_bytes=max_nearfield_bytes,
+                                       max_cache_bytes=max_setup_bytes,
+                                       max_adjacency_pairs=max_adjacency_pairs)
     nnz_ratio = nnz(Z_near) / N^2
     verbose && println("$(round(time()-t0, digits=2))s, nnz=$(round(nnz_ratio*100, digits=1))%")
 

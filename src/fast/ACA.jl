@@ -654,6 +654,8 @@ Dense blocks use triangle-pair batched Green's function evaluation for
 - `max_block_tasks=2_000_000`: block-enumeration limit
 - `max_storage_bytes=2_000_000_000`: raw persistent block-payload limit,
   including any dense replacement of a failed low-rank block
+- `max_cache_bytes=2_000_000_000`: EFIE quadrature/cache workspace limit
+- `max_adjacency_pairs=20_000_000`: triangle-adjacency pair-record limit
 - `max_green_cache_bytes=268_435_456`: per-worker cached/scratch Green-matrix
   raw-payload limit
 - `max_green_cache_entries=250_000`: per-worker retained triangle-pair count
@@ -671,6 +673,10 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                             area_tol_rel::Float64=1e-12,
                             max_block_tasks::Int=_DEFAULT_MAX_ACA_BLOCK_TASKS,
                             max_storage_bytes::Int=_DEFAULT_MAX_ACA_STORAGE_BYTES,
+                            max_cache_bytes::Integer=
+                                _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                            max_adjacency_pairs::Integer=
+                                _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                             max_green_cache_bytes::Integer=
                                 _DEFAULT_MAX_ACA_GREEN_WORKSPACE_BYTES,
                             max_green_cache_entries::Int=
@@ -715,7 +721,12 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
     end
 
     N = rwg.nedges
-    cache = _build_efie_cache(mesh, rwg, k; quad_order=quad_order, eta0=eta0)
+    cache = _build_efie_cache(
+        mesh, rwg, k;
+        quad_order=quad_order,
+        eta0=eta0,
+        max_cache_bytes=max_cache_bytes,
+        max_adjacency_pairs=max_adjacency_pairs)
 
     centers = rwg_centers(mesh, rwg)
     tree = build_cluster_tree(centers; leaf_size=leaf_size)
