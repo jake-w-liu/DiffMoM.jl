@@ -53,6 +53,65 @@ function tri_quad_rule(order::Int)
     return xi, w
 end
 
+@noinline function _triangle_affine_component_big(
+    first::Float64,
+    second::Float64,
+    third::Float64,
+    xi_first::Float64,
+    xi_second::Float64,
+)
+    return setprecision(BigFloat, _TRIANGLE_GEOMETRY_FALLBACK_PRECISION) do
+        first_weight = 1 - BigFloat(xi_first) - BigFloat(xi_second)
+        value = first_weight * BigFloat(first) +
+                BigFloat(xi_first) * BigFloat(second) +
+                BigFloat(xi_second) * BigFloat(third)
+        converted = Float64(value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "triangle quadrature point is outside the Float64 range"))
+        return converted
+    end
+end
+
+@inline function _triangle_affine_component(
+    first::Float64,
+    second::Float64,
+    third::Float64,
+    xi_first::Float64,
+    xi_second::Float64,
+)
+    first_weight = 1.0 - xi_first - xi_second
+    product_first = first_weight * first
+    product_second = xi_first * second
+    product_third = xi_second * third
+    products = (product_first, product_second, product_third)
+    all(isfinite, products) ||
+        return _triangle_affine_component_big(
+            first, second, third, xi_first, xi_second)
+    ((iszero(product_first) && !iszero(first_weight) && !iszero(first)) ||
+     (iszero(product_second) && !iszero(xi_first) && !iszero(second)) ||
+     (iszero(product_third) && !iszero(xi_second) && !iszero(third))) &&
+        return _triangle_affine_component_big(
+            first, second, third, xi_first, xi_second)
+
+    absolute_sum = abs(product_first) +
+                   abs(product_second) + abs(product_third)
+    isfinite(absolute_sum) ||
+        return _triangle_affine_component_big(
+            first, second, third, xi_first, xi_second)
+    value = muladd(
+        first_weight, first,
+        muladd(xi_first, second, product_third))
+    if !isfinite(value) ||
+       (!iszero(absolute_sum) &&
+        abs(value) <= 64 * eps(Float64) * absolute_sum) ||
+       (!iszero(value) && abs(value) < floatmin(Float64))
+        return _triangle_affine_component_big(
+            first, second, third, xi_first, xi_second)
+    end
+    return value
+end
+
 """
     tri_quad_points(mesh, t, xi)
 
@@ -64,5 +123,7 @@ function tri_quad_points(mesh::TriMesh, t::Int, xi::Vector{<:SVector{2}})
     v2 = _mesh_vertex(mesh, mesh.tri[2, t])
     v3 = _mesh_vertex(mesh, mesh.tri[3, t])
 
-    return [v1 * (1 - ξ[1] - ξ[2]) + v2 * ξ[1] + v3 * ξ[2] for ξ in xi]
+    return [Vec3(ntuple(component -> _triangle_affine_component(
+        v1[component], v2[component], v3[component], ξ[1], ξ[2]), 3))
+            for ξ in xi]
 end

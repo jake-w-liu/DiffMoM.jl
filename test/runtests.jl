@@ -644,6 +644,30 @@ duplicate_face_report = mesh_quality_report(duplicate_face_mesh)
 @test_throws ErrorException build_rwg(
     duplicate_face_mesh; allow_boundary=false, require_closed=true)
 
+# Reference-to-physical quadrature mapping must preserve a finite residual
+# after large, opposing barycentric contributions cancel.
+quad_cancel_first = 1.6348747758132425e226
+quad_cancel_third = 1.4481861665399708e200
+quad_cancel_mesh = TriMesh(
+    Float64[
+        quad_cancel_first -quad_cancel_first quad_cancel_third
+        0.0 1.0 0.0
+        0.0 0.0 1.0
+    ],
+    reshape(Int[1, 2, 3], 3, 1),
+)
+quad_cancel_xi = SVector(1 / 3, 1 / 3)
+quad_cancel_reference = setprecision(BigFloat, 4352) do
+    first_weight = 1 - BigFloat(quad_cancel_xi[1]) -
+                   BigFloat(quad_cancel_xi[2])
+    Float64(
+        first_weight * BigFloat(quad_cancel_first) +
+        BigFloat(quad_cancel_xi[1]) * BigFloat(-quad_cancel_first) +
+        BigFloat(quad_cancel_xi[2]) * BigFloat(quad_cancel_third))
+end
+@test only(tri_quad_points(
+    quad_cancel_mesh, 1, [quad_cancel_xi]))[1] == quad_cancel_reference
+
 # ─────────────────────────────────────────────────
 # Test 1b: OBJ mesh import
 # ─────────────────────────────────────────────────
