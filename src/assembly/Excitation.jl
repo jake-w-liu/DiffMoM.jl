@@ -303,6 +303,8 @@ const _ETA0 = sqrt(_MU0 / _EPS0)
 # monopolize a solve with an effectively unbounded loop.
 const _MAX_MONOPOLE_SIMPSON_INTERVALS = 100_000
 const _MONOPOLE_SIMPSON_HALF_INTERVALS_PER_WAVELENGTH = 50.0
+const _MAX_MONOPOLE_EXACT_WORK = 2_000_000
+const _MONOPOLE_EXACT_BASE_PRECISION = 2304
 const _SOURCE_SCALING_FALLBACK_PRECISION = 512
 const _SOURCE_SCALING_SAFE_EXPONENT = 128
 const _SOURCE_PHASE_PRODUCT_GUARD_BITS = 256
@@ -1585,36 +1587,191 @@ end
 end
 
 """
-    monopole_incident_field(r, mono)
+    monopole_incident_field(r, mono; max_exact_work=2_000_000)
 
 Incident electric field at `r` from a `MonopoleExcitation`, computed by
 rigorous Simpson integration of the sinusoidal current on the equivalent
 dipole-plus-image distribution. Uses the exp(+iωt) convention. Returns zero
 below the ground plane (axial projection of `r − position` is negative).
 """
-function monopole_incident_field(r::Vec3, mono::MonopoleExcitation)
+function monopole_incident_field(
+        r::Vec3,
+        mono::MonopoleExcitation;
+        max_exact_work::Integer=_MAX_MONOPOLE_EXACT_WORK)
     _validate_finite_vec3(r, "monopole observation point")
     _validate_excitation_model(mono)
-    return _monopole_incident_field_unchecked(r, mono)
+    max_exact_work >= 0 ||
+        throw(ArgumentError(
+            "max_exact_work must be nonnegative, got $max_exact_work"))
+    max_exact_work <= typemax(Int) ||
+        throw(ArgumentError("max_exact_work exceeds the supported Int range"))
+    return _monopole_incident_field_unchecked(
+        r, mono, Int(max_exact_work))
 end
 
-function _monopole_incident_field_unchecked(r::Vec3, mono::MonopoleExcitation)
+@inline function _monopole_incident_field_requires_exact(
+        r::Vec3,
+        mono::MonopoleExcitation,
+        k::Float64)
+    displacement = r - mono.position
+    distance = hypot(
+        displacement[1], displacement[2], displacement[3])
+    !isfinite(distance) && return true
+    @inbounds for component in 1:3
+        (_source_scaling_extreme_value(r[component]) ||
+         _source_scaling_extreme_value(mono.position[component])) &&
+            return true
+    end
+    (_source_scaling_extreme_value(k) ||
+     _source_scaling_extreme_value(mono.height) ||
+     _source_scaling_extreme_value(mono.amplitude)) && return true
+    maximum_distance = distance + mono.height
+    phase_bound = k * maximum_distance
+    return !isfinite(maximum_distance) || !isfinite(phase_bound) ||
+           (!iszero(phase_bound) && exponent(abs(phase_bound)) > 32)
+end
+
+@noinline function _monopole_below_ground_exact(
+        r::Vec3,
+        mono::MonopoleExcitation,
+        k::Float64)
+    precision = _monopole_exact_precision(r, mono, k)
+    return setprecision(BigFloat, precision) do
+        displacement = SVector{3,BigFloat}(ntuple(
+            component -> BigFloat(r[component]) -
+                         BigFloat(mono.position[component]), 3))
+        axis = SVector{3,BigFloat}(BigFloat.(Tuple(mono.axis)))
+        distance = sqrt(sum(abs2, displacement))
+        projection = dot(displacement, axis)
+        reference_length = max(
+            BigFloat(mono.height), distance, one(BigFloat))
+        return projection < -BigFloat(1.0e-12) * reference_length
+    end
+end
+
+@inline function _monopole_exact_precision(
+        r::Vec3,
+        mono::MonopoleExcitation,
+        k::Float64)
+    radial_precision = _source_radial_phase_precision(
+        k, r, mono.position)
+    height_exponent = iszero(mono.height) ? 0 : exponent(mono.height)
+    height_phase_exponent = exponent(abs(k)) + height_exponent + 2
+    return max(
+        _MONOPOLE_EXACT_BASE_PRECISION,
+        radial_precision,
+        _SOURCE_PHASE_PRODUCT_GUARD_BITS +
+            max(0, height_phase_exponent),
+    )
+end
+
+@inline function _monopole_exact_work_preflight(
+        intervals::Int,
+        precision::Int,
+        max_exact_work::Int)
+    terms = Base.checked_add(intervals, 1)
+    (iszero(precision) || terms <= div(max_exact_work, precision)) ||
+        throw(ArgumentError(
+            "monopole incident-field exact evaluation requires more than " *
+            "max_exact_work=$max_exact_work precision-weighted terms"))
+    return nothing
+end
+
+@noinline function _monopole_incident_field_exact(
+        r::Vec3,
+        mono::MonopoleExcitation,
+        k::Float64,
+        intervals::Int,
+        max_exact_work::Int)
+    precision = _monopole_exact_precision(r, mono, k)
+    _monopole_exact_work_preflight(
+        intervals, precision, max_exact_work)
+    return setprecision(BigFloat, precision) do
+        observation = SVector{3,BigFloat}(BigFloat.(Tuple(r)))
+        position = SVector{3,BigFloat}(BigFloat.(Tuple(mono.position)))
+        axis = SVector{3,BigFloat}(BigFloat.(Tuple(mono.axis)))
+        height = BigFloat(mono.height)
+        wavenumber = BigFloat(k)
+
+        eta = BigFloat(_ETA0)
+        current_scale = Complex{BigFloat}(0, -1) * 2 * BigFloat(pi) *
+                        Complex{BigFloat}(mono.amplitude) / eta
+        span = mono.include_image ? BigFloat(2) : one(BigFloat)
+        step = span * height / intervals
+        total = zero(SVector{3,Complex{BigFloat}})
+        @inbounds for index in 0:intervals
+            unit_position = mono.include_image ?
+                -one(BigFloat) + 2 * BigFloat(index) / intervals :
+                BigFloat(index) / intervals
+            axial_position = height * unit_position
+            source = position + axial_position * axis
+            current = current_scale * sin(
+                wavenumber * (height - abs(axial_position)))
+            displacement = observation - source
+            distance = sqrt(sum(abs2, displacement))
+            if !iszero(distance) && !iszero(current)
+                direction = displacement / distance
+                cosine = clamp(dot(direction, axis), -one(BigFloat), one(BigFloat))
+                sine_squared = max(zero(BigFloat), 1 - cosine * cosine)
+                sine = sqrt(sine_squared)
+                phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
+                kR = wavenumber * distance
+                radial = eta * current / (2 * BigFloat(pi)) * cosine *
+                         phase / distance^2 *
+                         (1 + inv(Complex{BigFloat}(0, 1) * kR))
+                contribution = radial * direction
+                if sine > BigFloat(1.0e-12)
+                    theta_direction = (cosine * direction - axis) / sine
+                    transverse = Complex{BigFloat}(0, 1) * eta *
+                        wavenumber * current / (4 * BigFloat(pi)) * sine *
+                        phase / distance *
+                        (1 + inv(Complex{BigFloat}(0, 1) * kR) -
+                         inv(kR^2))
+                    contribution += transverse * theta_direction
+                end
+                weight = (iszero(index) || index == intervals) ?
+                         1 : (isodd(index) ? 4 : 2)
+                total += weight * contribution
+            end
+        end
+        value = (step / 3) * total
+        return _finite_source_vector(value, "monopole incident field")
+    end
+end
+
+function _monopole_incident_field_unchecked(
+        r::Vec3,
+        mono::MonopoleExcitation,
+        max_exact_work::Int=_MAX_MONOPOLE_EXACT_WORK)
     k = _frequency_to_wavenumber(
         mono.frequency, _C0, "MonopoleExcitation")
     I_0 = -1im * 2π * mono.amplitude / _ETA0
     h = mono.height
+    requires_exact = _monopole_incident_field_requires_exact(r, mono, k)
 
     if mono.include_image
-        # dipole+image model: lower half-space is a true void
-        d = r - mono.position
-        proj = dot(d, mono.axis)
-        ref_len = max(h, norm(d), 1.0)
-        if proj < -1e-12 * ref_len
-            return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+        if requires_exact
+            _monopole_below_ground_exact(r, mono, k) && return zero(CVec3)
+        else
+            d = r - mono.position
+            proj = dot(d, mono.axis)
+            ref_len = max(
+                h, hypot(d[1], d[2], d[3]), 1.0)
+            proj < -1e-12 * ref_len && return zero(CVec3)
         end
+    end
+
+    span_factor = mono.include_image ? 2.0 : 1.0
+    minimum_intervals = mono.include_image ? 128 : 64
+    N = _monopole_simpson_interval_count(
+        h, k, span_factor, minimum_intervals,
+        "monopole incident field")
+    requires_exact &&
+        return _monopole_incident_field_exact(
+            r, mono, k, N, max_exact_work)
+
+    if mono.include_image
         # Simpson on z' ∈ [-h, h]
-        N = _monopole_simpson_interval_count(
-            h, k, 2.0, 128, "monopole incident field")
         dz = (2.0 / N) * h
         E_sum = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         @inbounds for i in 0:N
@@ -1630,8 +1787,6 @@ function _monopole_incident_field_unchecked(r::Vec3, mono::MonopoleExcitation)
         )
     else
         # physical half-wire only (no image): radiates into all 4π
-        N = _monopole_simpson_interval_count(
-            h, k, 1.0, 64, "monopole incident field")
         dz = h / N
         E_sum = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
         @inbounds for i in 0:N

@@ -4666,6 +4666,34 @@ monopole_scale_tiny = make_monopole(
     monopole_incident_field(
         Vec3(0.2, 0.0, 0.3), monopole_scale_reference)
 
+# A finite kR near 1e20 has insufficient Float64 phase resolution even though
+# the final integrated field is representable. The exact path retains the
+# stored Float64 source geometry through the complete Simpson accumulation.
+monopole_radial_k = 1.1
+monopole_radial_frequency =
+    monopole_radial_k * DiffMoM._C0 / (2π)
+monopole_radial = make_monopole(
+    Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0),
+    0.1, 1.0 + 0im, monopole_radial_frequency;
+    include_image=false)
+monopole_radial_point = Vec3(1.0e20, 0.0, 0.0)
+monopole_radial_intervals = 64
+monopole_radial_reference = DiffMoM._monopole_incident_field_exact(
+    monopole_radial_point,
+    monopole_radial,
+    monopole_radial_k,
+    monopole_radial_intervals,
+    DiffMoM._MAX_MONOPOLE_EXACT_WORK,
+)
+@test monopole_incident_field(
+    monopole_radial_point, monopole_radial) == monopole_radial_reference
+@test isapprox(
+    monopole_radial_reference[3],
+    ComplexF64(-1.6659000403245365e-23, 2.5213022494156855e-23);
+    rtol=2e-14, atol=0.0)
+@test_throws ArgumentError monopole_incident_field(
+    monopole_radial_point, monopole_radial; max_exact_work=1_000)
+
 # The Simpson workload is bounded before Float64-to-Int conversion. The helper
 # accepts the exact configured boundary without allocating and both public
 # field paths reject an electrically impossible workload with a domain error.
