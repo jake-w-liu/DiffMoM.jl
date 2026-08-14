@@ -2384,6 +2384,55 @@ mass_scale_cancelling_entries = LocalMassMatrix(
 mass_scaled_matrix = mass_scale * mass_scale_cancelling_entries
 @test mass_scaled_matrix[1, 1] == 0.0 + 0.0im
 
+# Range loss in a finite matrix-vector product must be detected before
+# separately rounded subnormal terms are accumulated.  Exercise both storage
+# orientations because the adjoint uses its column-sorted traversal.
+mass_underflow_unit = nextfloat(0.0)
+mass_underflow_input = fill(ComplexF64(0.6), 2)
+mass_underflow_reference = setprecision(BigFloat, 6656) do
+    ComplexF64(2 * BigFloat(mass_underflow_unit) * BigFloat(0.6))
+end
+@test mass_underflow_reference == ComplexF64(mass_underflow_unit)
+mass_underflow_forward = LocalMassMatrix(
+    2, [1, 1], [1, 2], fill(ComplexF64(mass_underflow_unit), 2))
+mass_underflow_adjoint = LocalMassMatrix(
+    2, [1, 2], [1, 1], fill(ComplexF64(mass_underflow_unit), 2))
+for mass_op in (mass_underflow_forward, adjoint(mass_underflow_adjoint))
+    mass_underflow_result = zeros(ComplexF64, 2)
+    mul!(mass_underflow_result, mass_op, mass_underflow_input)
+    @test mass_underflow_result ==
+          ComplexF64[mass_underflow_reference, 0]
+end
+
+# A normal component must not hide a rounded-away subnormal component of a
+# complex product.  All LocalMassMatrix scaling entry points use the same
+# exact stored-factor semantics on this exceptional path.
+mass_complex_underflow = LocalMassMatrix(
+    1, [1], [1], ComplexF64[complex(
+        mass_underflow_unit, -mass_underflow_unit)])
+mass_complex_scale = 0.4 + 0.4im
+mass_complex_reference = setprecision(BigFloat, 6656) do
+    ComplexF64(
+        Complex{BigFloat}(mass_complex_scale) *
+        Complex{BigFloat}(mass_complex_underflow.vals[1]))
+end
+@test mass_complex_reference == ComplexF64(mass_underflow_unit)
+@test (mass_complex_scale * mass_complex_underflow)[1, 1] ==
+      mass_complex_reference
+mass_complex_product = zeros(ComplexF64, 1)
+mul!(mass_complex_product, mass_complex_underflow, ComplexF64[1],
+     mass_complex_scale, 0.0 + 0im)
+@test mass_complex_product == ComplexF64[mass_complex_reference]
+mass_complex_scaled_output = copy(mass_complex_underflow.vals)
+mul!(mass_complex_scaled_output, mass_complex_underflow,
+     fill(ComplexF64(NaN, NaN), 1), 0.0 + 0im, mass_complex_scale)
+@test mass_complex_scaled_output == ComplexF64[mass_complex_reference]
+mass_complex_accumulation = zeros(ComplexF64, 1, 1)
+DiffMoM._add_scaled_matrix!(
+    mass_complex_accumulation, mass_complex_scale,
+    mass_complex_underflow)
+@test mass_complex_accumulation[1, 1] == mass_complex_reference
+
 # Canonicalization must retain a finite residue that sequential duplicate
 # addition loses. All public views and products share the canonical value.
 mass_duplicate_residue = ldexp(1.0, -53)

@@ -177,6 +177,38 @@ end
     return abs(Float64(real(value))), abs(Float64(imag(value)))
 end
 
+@inline _local_mass_ieee_real_type(::Type{Float64}) = Float64
+@inline _local_mass_ieee_real_type(::Type{ComplexF64}) = Float64
+@inline _local_mass_ieee_real_type(::Type{Float32}) = Float32
+@inline _local_mass_ieee_real_type(::Type{ComplexF32}) = Float32
+@inline _local_mass_ieee_real_type(::Type) = nothing
+
+# Within these component-exponent bands, every staged two- or three-factor
+# product in a LocalMassMatrix operation remains safely inside the IEEE range,
+# including the fewer than 64 reduction bits available to an Int-indexed
+# container.  Exceptional factors use the exact BigFloat accumulator so that
+# a rounded-away component can still contribute to a representable result.
+@inline _local_mass_safe_factor_exponent(::Type{Float64}) = 128
+@inline _local_mass_safe_factor_exponent(::Type{Float32}) = 16
+
+@inline function _local_mass_extreme_component(
+        component::Real,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    magnitude = abs(R(component))
+    isfinite(magnitude) || return true
+    iszero(magnitude) && return false
+    bound = _local_mass_safe_factor_exponent(R)
+    component_exponent = exponent(magnitude)
+    return component_exponent < -bound || component_exponent > bound
+end
+
+@inline function _local_mass_extreme_factor(
+        value::Number,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    return _local_mass_extreme_component(real(value), R) ||
+           _local_mass_extreme_component(imag(value), R)
+end
+
 function _local_mass_sum_group(
         vals::Vector{T}, order::Vector{Int}, first::Int, last::Int) where {T}
     first == last && return vals[order[first]]
@@ -325,10 +357,17 @@ end
 function Base.:*(a::Number, M::LocalMassMatrix)
     result_type = Base.promote_op(*, typeof(a), eltype(M))
     if _local_mass_finite(a)
+        real_type = _local_mass_ieee_real_type(result_type)
+        scale_is_extreme = real_type !== nothing &&
+                           _local_mass_extreme_factor(a, real_type)
         @inbounds for value in M.vals
             scaled = a * value
             if !_local_mass_finite(scaled) ||
-               (!iszero(a) && !iszero(value) && iszero(scaled))
+               (!iszero(a) && !iszero(value) &&
+                (iszero(scaled) ||
+                 (real_type !== nothing &&
+                  (scale_is_extreme ||
+                   _local_mass_extreme_factor(value, real_type)))))
                 return _scale_local_mass_bigfloat(a, M, result_type)
             end
         end
@@ -363,11 +402,21 @@ function _local_mass_mul_needs_bigfloat(
         beta::Number,
         adjoint_operator::Bool)
     _local_mass_finite(alpha) && _local_mass_finite(beta) || return false
+    real_type = _local_mass_ieee_real_type(eltype(y))
+    alpha_is_extreme = real_type !== nothing &&
+                       _local_mass_extreme_factor(alpha, real_type)
+    beta_is_extreme = real_type !== nothing &&
+                      _local_mass_extreme_factor(beta, real_type)
     magnitude_sum = 0.0
     scan_all_previous = !iszero(beta) && beta != one(beta)
     if scan_all_previous
         @inbounds for previous in y
             _local_mass_finite(previous) || return false
+            if !iszero(previous) && real_type !== nothing &&
+               (beta_is_extreme ||
+                _local_mass_extreme_factor(previous, real_type))
+                return true
+            end
             term = beta * previous
             if !_local_mass_finite(term) ||
                (!iszero(previous) && iszero(term))
@@ -382,6 +431,10 @@ function _local_mass_mul_needs_bigfloat(
         if beta == one(beta)
             previous = y[target_index]
             _local_mass_finite(previous) || return false
+            if !iszero(previous) && real_type !== nothing &&
+               _local_mass_extreme_factor(previous, real_type)
+                return true
+            end
             magnitude_sum += _local_mass_component_scale(previous)
             isfinite(magnitude_sum) || return true
         end
@@ -389,6 +442,13 @@ function _local_mass_mul_needs_bigfloat(
         matrix_value = adjoint_operator ? conj(M.vals[k]) : M.vals[k]
         source_value = x[source_index]
         _local_mass_finite(source_value) || return false
+        if !iszero(matrix_value) && !iszero(source_value) &&
+           real_type !== nothing &&
+           (alpha_is_extreme ||
+            _local_mass_extreme_factor(matrix_value, real_type) ||
+            _local_mass_extreme_factor(source_value, real_type))
+            return true
+        end
         term = alpha * matrix_value * source_value
         if !_local_mass_finite(term) ||
            (!iszero(alpha) && !iszero(matrix_value) &&
@@ -399,6 +459,41 @@ function _local_mass_mul_needs_bigfloat(
         isfinite(magnitude_sum) || return true
     end
     return false
+end
+
+function _local_mass_scale_needs_bigfloat(
+        y::AbstractVector,
+        beta::Number)
+    _local_mass_finite(beta) || return false
+    real_type = _local_mass_ieee_real_type(eltype(y))
+    beta_is_extreme = real_type !== nothing &&
+                      _local_mass_extreme_factor(beta, real_type)
+    @inbounds for previous in y
+        _local_mass_finite(previous) || return false
+        iszero(previous) && continue
+        if real_type !== nothing &&
+           (beta_is_extreme ||
+            _local_mass_extreme_factor(previous, real_type))
+            return true
+        end
+        term = beta * previous
+        (!_local_mass_finite(term) || iszero(term)) && return true
+    end
+    return false
+end
+
+@noinline function _local_mass_scale_bigfloat!(
+        y::AbstractVector{T},
+        beta::Number) where {T}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        scale = Complex{BigFloat}(beta)
+        @inbounds for index in eachindex(y)
+            total = scale * Complex{BigFloat}(y[index])
+            y[index] = _local_mass_convert_bigfloat(
+                T, total, "LocalMassMatrix output scaling", index)
+        end
+        return y
+    end
 end
 
 @noinline function _local_mass_mul_bigfloat!(
@@ -463,6 +558,9 @@ function LinearAlgebra.mul!(y::AbstractVector, M::LocalMassMatrix, x::AbstractVe
         if iszero(beta)
             fill!(y, zero(eltype(y)))
         elseif beta != one(beta)
+            if _local_mass_scale_needs_bigfloat(y, beta)
+                return _local_mass_scale_bigfloat!(y, beta)
+            end
             y .*= beta
         end
         return y
@@ -498,6 +596,9 @@ function LinearAlgebra.mul!(y::AbstractVector,
         if iszero(beta)
             fill!(y, zero(eltype(y)))
         elseif beta != one(beta)
+            if _local_mass_scale_needs_bigfloat(y, beta)
+                return _local_mass_scale_bigfloat!(y, beta)
+            end
             y .*= beta
         end
         return y
@@ -532,10 +633,20 @@ function _local_mass_add_needs_bigfloat(
         alpha::Number,
         A::LocalMassMatrix)
     _local_mass_finite(alpha) || return false
+    real_type = _local_mass_ieee_real_type(eltype(Y))
+    alpha_is_extreme = real_type !== nothing &&
+                       _local_mass_extreme_factor(alpha, real_type)
     magnitude_sum = 0.0
     @inbounds for k in eachindex(A.vals)
         current = Y[A.rows[k], A.cols[k]]
         _local_mass_finite(current) || return false
+        if !iszero(A.vals[k]) && real_type !== nothing &&
+           (alpha_is_extreme ||
+            _local_mass_extreme_factor(A.vals[k], real_type) ||
+            (!iszero(current) &&
+             _local_mass_extreme_factor(current, real_type)))
+            return true
+        end
         term = alpha * A.vals[k]
         if !_local_mass_finite(term) ||
            (!iszero(alpha) && !iszero(A.vals[k]) && iszero(term))
