@@ -182,6 +182,25 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             phase_cancel_grid, phase_cancel_kvec, 1.0, phase_cancel_pol)
         @test phase_cancel_E_em == phase_cancel_E
 
+        # Keep an extreme complex polarization/amplitude product exact through
+        # the final field conversion instead of losing both primitive terms.
+        amplitude_underflow_unit = nextfloat(0.0)
+        amplitude_underflow_pol = CVec3(
+            complex(amplitude_underflow_unit, -amplitude_underflow_unit),
+            0.0 + 0im, 0.0 + 0im)
+        amplitude_underflow_scale = 0.4 + 0.4im
+        amplitude_underflow_reference = setprecision(BigFloat, 4352) do
+            CVec3(
+                ComplexF64(
+                    Complex{BigFloat}(amplitude_underflow_scale) *
+                    Complex{BigFloat}(amplitude_underflow_pol[1])),
+                0.0 + 0im, 0.0 + 0im)
+        end
+        @test planewave_dda_3d(
+            centered_grid, Vec3(0.0, 0.0, 1.0),
+            amplitude_underflow_scale, amplitude_underflow_pol,
+        ) == [amplitude_underflow_reference]
+
         # The same phase product appears in DDA far-field translation.  Use a
         # one-voxel stored result with a z-directed dipole so the projection is
         # exact and independently check the full public result.

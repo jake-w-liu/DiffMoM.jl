@@ -4526,6 +4526,29 @@ end
     field_guard_pol,
 ) == CVec3(0.0 + 0im, field_guard_extreme_phase, 0.0 + 0im)
 
+# Retain an extreme complex amplitude through the phase rotation.  Rounding
+# the amplitude and phase products separately doubles this min-subnormal
+# result even though the exact final field is representable.
+field_guard_unit = nextfloat(0.0)
+field_guard_subnormal_amplitude = complex(
+    field_guard_unit, field_guard_unit)
+field_guard_subnormal_point = Vec3(Float64(π) / 4, 0.0, 0.0)
+field_guard_subnormal_reference = setprecision(BigFloat, 4352) do
+    phase = exp(Complex{BigFloat}(
+        0, -BigFloat(field_guard_subnormal_point[1])))
+    CVec3(
+        0.0 + 0im,
+        ComplexF64(
+            Complex{BigFloat}(field_guard_subnormal_amplitude) * phase),
+        0.0 + 0im)
+end
+@test plane_wave_field(
+    field_guard_subnormal_point,
+    Vec3(1.0, 0.0, 0.0),
+    field_guard_subnormal_amplitude,
+    field_guard_pol,
+) == field_guard_subnormal_reference
+
 pattern_guard = make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F, pattern_guard_F, freq_exc)

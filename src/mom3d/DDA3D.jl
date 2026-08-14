@@ -1319,19 +1319,31 @@ function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
     amp = ComplexF64(E0)
     isfinite(amp) ||
         throw(ArgumentError("E0 must be finite, got $E0."))
-    field_amplitude = polv * amp
-    all(isfinite, field_amplitude) ||
-        throw(OverflowError(
-            "pol * E0 produced a non-finite DDA plane-wave amplitude."))
+    amplitude_requires_exact =
+        _source_scaled_vector_requires_fallback(amp, polv)
+    field_amplitude = amplitude_requires_exact ? zero(CVec3) : polv * amp
+    if !amplitude_requires_exact && !all(isfinite, field_amplitude)
+        amplitude_requires_exact = true
+    end
     Einc = Vector{CVec3}(undef, grid.nvoxels)
     for j in 1:grid.nvoxels
-        phase = _source_phase(
-            1.0, k_vec, grid.centers[j], -1.0,
-            "DDA plane-wave phase")
-        field = field_amplitude * phase
-        all(isfinite, field) ||
-            throw(OverflowError(
-                "DDA plane-wave field is non-finite at voxel $j."))
+        center = grid.centers[j]
+        needs_exact = amplitude_requires_exact ||
+                      _source_phase_requires_fallback(1.0, k_vec, center)
+        field = if needs_exact
+            _source_scaled_phase_vector_exact(
+                amp, polv, 1.0, k_vec, center, -1.0,
+                "DDA plane-wave field")
+        else
+            phase = _source_phase(
+                1.0, k_vec, center, -1.0,
+                "DDA plane-wave phase")
+            ordinary = field_amplitude * phase
+            all(isfinite, ordinary) ? ordinary :
+                _source_scaled_phase_vector_exact(
+                    amp, polv, 1.0, k_vec, center, -1.0,
+                    "DDA plane-wave field")
+        end
         Einc[j] = field
     end
     return Einc

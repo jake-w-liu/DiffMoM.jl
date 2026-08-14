@@ -366,12 +366,10 @@ end
     return false
 end
 
-@noinline function _source_phase_exact(
+@inline function _source_phase_precision(
     scale::Float64,
     first_vector::Vec3,
     second_vector::Vec3,
-    phase_sign::Float64,
-    label::AbstractString,
 )
     # Each term is the product of three binary Float64 values and therefore has
     # at most 159 significant bits. Include the full exponent span between
@@ -392,13 +390,24 @@ end
             maximum_term_exponent = max(maximum_term_exponent, term_exponent)
         end
     end
-    precision = minimum_term_exponent == typemax(Int) ?
+    return minimum_term_exponent == typemax(Int) ?
         _SOURCE_SCALING_FALLBACK_PRECISION :
         max(
             _SOURCE_SCALING_FALLBACK_PRECISION,
             maximum_term_exponent - minimum_term_exponent +
             _SOURCE_PHASE_PRODUCT_GUARD_BITS,
         )
+end
+
+@noinline function _source_phase_exact(
+    scale::Float64,
+    first_vector::Vec3,
+    second_vector::Vec3,
+    phase_sign::Float64,
+    label::AbstractString,
+)
+    precision = _source_phase_precision(
+        scale, first_vector, second_vector)
 
     return setprecision(BigFloat, precision) do
         argument = BigFloat(scale) * sum(
@@ -408,6 +417,55 @@ end
             zero(BigFloat), BigFloat(phase_sign) * argument)))
         isfinite(value) ||
             throw(OverflowError("$label phase is not representable"))
+        return value
+    end
+end
+
+@inline function _source_scaled_vector_requires_fallback(
+    amplitude::Number,
+    vector::SVector{3,<:Number},
+)
+    _source_scaling_extreme_value(amplitude) && return true
+    @inbounds for component in vector
+        _source_scaling_extreme_value(component) && return true
+    end
+    return false
+end
+
+@inline function _source_scaled_phase_vector_requires_fallback(
+    amplitude::Number,
+    vector::SVector{3,<:Number},
+    phase_scale::Float64,
+    first_vector::Vec3,
+    second_vector::Vec3,
+)
+    _source_scaled_vector_requires_fallback(amplitude, vector) && return true
+    return _source_phase_requires_fallback(
+        phase_scale, first_vector, second_vector)
+end
+
+@noinline function _source_scaled_phase_vector_exact(
+    amplitude::Number,
+    vector::SVector{3,<:Number},
+    phase_scale::Float64,
+    first_vector::Vec3,
+    second_vector::Vec3,
+    phase_sign::Float64,
+    label::AbstractString,
+)
+    precision = _source_phase_precision(
+        phase_scale, first_vector, second_vector)
+    return setprecision(BigFloat, precision) do
+        argument = BigFloat(phase_scale) * sum(
+            BigFloat(first_vector[component]) *
+            BigFloat(second_vector[component]) for component in 1:3)
+        phase = exp(Complex{BigFloat}(
+            zero(BigFloat), BigFloat(phase_sign) * argument))
+        amplitude_big = Complex{BigFloat}(amplitude)
+        value = CVec3(ntuple(component -> ComplexF64(
+            amplitude_big * Complex{BigFloat}(vector[component]) * phase), 3))
+        all(isfinite, value) ||
+            throw(OverflowError("$label is outside the ComplexF64 range"))
         return value
     end
 end
@@ -1039,12 +1097,19 @@ function plane_wave_field(r::Vec3, k_vec::Vec3, E0, pol::Vec3)
 end
 
 @inline function _plane_wave_field_unchecked(r::Vec3, k_vec::Vec3, E0, pol::Vec3)
+    if _source_scaled_phase_vector_requires_fallback(
+            E0, pol, 1.0, k_vec, r)
+        return _source_scaled_phase_vector_exact(
+            E0, pol, 1.0, k_vec, r, -1.0,
+            "plane-wave incident field")
+    end
     phase = _source_phase(
         1.0, k_vec, r, -1.0, "plane-wave incident field")
-    return _check_finite_field(
-        pol * E0 * phase,
-        "plane-wave incident field",
-    )
+    value = pol * E0 * phase
+    all(isfinite, value) && return value
+    return _source_scaled_phase_vector_exact(
+        E0, pol, 1.0, k_vec, r, -1.0,
+        "plane-wave incident field")
 end
 
 function _validate_plane_wave_parameters(k_vec::Vec3, E0, pol::Vec3)
