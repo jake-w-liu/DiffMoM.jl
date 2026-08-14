@@ -971,10 +971,21 @@ cluster_alloc_bytes = @allocated cluster_mesh_vertices(
 mesh_edges_test = make_rect_plate(1.0, 1.0, 1, 1) # two triangles
 edges_test = mesh_unique_edges(mesh_edges_test)
 @assert length(edges_test) == 5
+@test_throws ArgumentError mesh_unique_edges(
+    mesh_edges_test; max_edge_records=5)
 segments_test = mesh_wireframe_segments(mesh_edges_test)
 @assert segments_test.n_edges == 5
 @assert length(segments_test.x) == 15
 @assert count(isnan, segments_test.x) == 5
+wireframe_output_bytes = 3 * length(segments_test.x) * sizeof(Float64)
+@test_throws ArgumentError mesh_wireframe_segments(
+    mesh_edges_test; max_output_bytes=wireframe_output_bytes - 1)
+segments_limited = mesh_wireframe_segments(
+    mesh_edges_test; max_output_bytes=wireframe_output_bytes)
+@test isequal(segments_limited.x, segments_test.x)
+@test isequal(segments_limited.y, segments_test.y)
+@test isequal(segments_limited.z, segments_test.z)
+@test segments_limited.n_edges == segments_test.n_edges
 
 p_mesh = plot_mesh_wireframe(mesh_edges_test; title="Mesh preview test", linewidth=0.5)
 @assert p_mesh !== nothing

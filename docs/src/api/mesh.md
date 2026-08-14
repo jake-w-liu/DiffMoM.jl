@@ -232,21 +232,27 @@ Compute the outward unit normal of triangle `t`, defined by the right-hand rule 
 
 ---
 
-### `mesh_unique_edges(mesh)`
+### `mesh_unique_edges(mesh; max_edge_records=30_000_000)`
 
 Return all unique undirected edges of the mesh as vertex-index pairs `(i, j)` with `i < j`. This includes both interior edges (shared by two triangles) and boundary edges (belonging to one triangle).
 
 **Parameters:** `mesh::TriMesh`
 
+`max_edge_records` bounds the `3*ntriangles(mesh)` triangle-edge records
+examined before the unique-edge set is allocated.
+
 **Returns:** `Vector{Tuple{Int,Int}}`.
 
 ---
 
-### `mesh_wireframe_segments(mesh)`
+### `mesh_wireframe_segments(mesh; max_edge_records=30_000_000, max_output_bytes=536_870_912)`
 
 Build line-segment arrays for lightweight 3D wireframe visualization. Each edge contributes `(p1, p2, NaN)` to coordinate vectors, which is the format expected by `Plots.path3d`.
 
 **Parameters:** `mesh::TriMesh`
+
+`max_edge_records` bounds triangle-edge traversal, while `max_output_bytes`
+bounds the raw payload of the three returned coordinate vectors.
 
 **Returns:** named tuple `(x, y, z, n_edges)`.
 

@@ -15,6 +15,8 @@ const _DEFAULT_MESH_MAX_RAW_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MESH_MAX_INPUT_BYTES = 1024 * 1024 * 1024
 const _DEFAULT_MESH_MAX_LINE_BYTES = 1024 * 1024
 const _MESH_INPUT_SCAN_BUFFER_BYTES = 64 * 1024
+const _DEFAULT_MAX_MESH_EDGE_RECORDS = 30_000_000
+const _DEFAULT_MAX_MESH_EDGE_OUTPUT_BYTES = 512 * 1024 * 1024
 
 @inline function _validated_mesh_resource_limit(
         name::AbstractString, value::Integer)
@@ -3266,12 +3268,26 @@ function triangle_normal(mesh::TriMesh, t::Int)
 end
 
 """
-    mesh_unique_edges(mesh)
+    mesh_unique_edges(mesh; max_edge_records=30_000_000)
 
 Return the unique undirected edges of a triangle mesh as a vector of
 `(i, j)` vertex-index pairs with `i < j`.
 """
-function mesh_unique_edges(mesh::TriMesh)
+function mesh_unique_edges(
+        mesh::TriMesh;
+        max_edge_records::Integer=_DEFAULT_MAX_MESH_EDGE_RECORDS)
+    record_limit = _validated_resource_limit(
+        "max_edge_records", max_edge_records)
+    record_count = try
+        Base.Checked.checked_mul(3, ntriangles(mesh))
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("mesh edge-record count overflows Int"))
+    end
+    record_count <= record_limit ||
+        throw(ArgumentError(
+            "mesh edge extraction requires $record_count triangle-edge " *
+            "records, exceeding max_edge_records=$record_limit"))
     edges = Set{Tuple{Int,Int}}()
     for t in 1:ntriangles(mesh)
         i1 = mesh.tri[1, t]
@@ -3286,18 +3302,34 @@ function mesh_unique_edges(mesh::TriMesh)
 end
 
 """
-    mesh_wireframe_segments(mesh)
+    mesh_wireframe_segments(mesh;
+        max_edge_records=30_000_000,
+        max_output_bytes=536_870_912)
 
 Build line-segment arrays for lightweight 3D wireframe visualization.
 Returns a named tuple `(x, y, z, n_edges)` where each edge contributes
 `(p1, p2, NaN)` to each coordinate vector, suitable for `Plots.path3d`.
 """
-function mesh_wireframe_segments(mesh::TriMesh)
-    edges = mesh_unique_edges(mesh)
+function mesh_wireframe_segments(
+        mesh::TriMesh;
+        max_edge_records::Integer=_DEFAULT_MAX_MESH_EDGE_RECORDS,
+        max_output_bytes::Integer=_DEFAULT_MAX_MESH_EDGE_OUTPUT_BYTES)
+    edges = mesh_unique_edges(mesh; max_edge_records=max_edge_records)
     n_edges = length(edges)
-    x = Vector{Float64}(undef, 3 * n_edges)
-    y = Vector{Float64}(undef, 3 * n_edges)
-    z = Vector{Float64}(undef, 3 * n_edges)
+    coordinate_count = try
+        Base.Checked.checked_mul(3, n_edges)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("mesh wireframe coordinate count overflows Int"))
+    end
+    output_bytes = _checked_array_payload_bytes(
+        Float64, coordinate_count, 3; label="mesh wireframe coordinates")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "mesh wireframe coordinates", "max_output_bytes")
+    x = Vector{Float64}(undef, coordinate_count)
+    y = Vector{Float64}(undef, coordinate_count)
+    z = Vector{Float64}(undef, coordinate_count)
 
     k = 1
     for (i, j) in edges
