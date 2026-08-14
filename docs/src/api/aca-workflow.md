@@ -63,7 +63,7 @@ end
 
 ---
 
-### `build_cluster_tree(centers; leaf_size=64)`
+### `build_cluster_tree(centers; leaf_size=64, max_nodes=30_000_000, max_storage_bytes=2_000_000_000)`
 
 Build a binary cluster tree by recursive bisection along the longest bounding-box axis.
 
@@ -73,6 +73,8 @@ Build a binary cluster tree by recursive bisection along the longest bounding-bo
 |-----------|------|---------|-------------|
 | `centers` | `Vector{Vec3}` | -- | RWG basis function center positions (from `rwg_centers`). |
 | `leaf_size` | `Int` | `64` | Maximum number of basis functions per leaf node. Smaller values create deeper trees with finer blocking; larger values create fewer, bigger leaf blocks. |
+| `max_nodes` | `Integer` | `30_000_000` | Maximum conservative binary-tree node count, checked before tree allocation. |
+| `max_storage_bytes` | `Integer` | `2_000_000_000` | Maximum conservative raw payload for nodes, permutations, and sort scratch. |
 
 **Returns:** `ClusterTree`
 

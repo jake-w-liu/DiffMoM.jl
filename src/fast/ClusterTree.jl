@@ -7,6 +7,34 @@ export ClusterNode, ClusterTree
 export build_cluster_tree, cluster_diameter, cluster_distance, is_admissible
 export is_leaf, leaf_nodes
 
+const _DEFAULT_MAX_CLUSTER_TREE_NODES = 30_000_000
+const _DEFAULT_MAX_CLUSTER_TREE_STORAGE_BYTES = 2_000_000_000
+
+function _cluster_tree_resource_bounds(N::Int, leaf_size::Int)
+    target_leaves = cld(N, leaf_size)
+    leaf_count = 1
+    while leaf_count < target_leaves
+        leaf_count = try
+            Base.Checked.checked_mul(leaf_count, 2)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError("cluster-tree leaf-count estimate overflows Int"))
+        end
+    end
+    node_count = try
+        Base.Checked.checked_sub(
+            Base.Checked.checked_mul(2, leaf_count), 1)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("cluster-tree node-count estimate overflows Int"))
+    end
+    storage = BigInt(node_count) * sizeof(ClusterNode) +
+              BigInt(3) * N * sizeof(Int)
+    storage <= typemax(Int) ||
+        throw(ArgumentError("cluster-tree storage estimate overflows Int"))
+    return node_count, Int(storage)
+end
+
 """
     ClusterNode
 
@@ -42,19 +70,35 @@ struct ClusterTree
 end
 
 """
-    build_cluster_tree(centers; leaf_size=64)
+    build_cluster_tree(centers;
+                       leaf_size=64,
+                       max_nodes=30_000_000,
+                       max_storage_bytes=2_000_000_000)
 
 Build a binary cluster tree by recursive bisection along the longest
 bounding-box axis. `centers` is a `Vector{Vec3}` of point locations
 (typically from `rwg_centers`).
 """
-function build_cluster_tree(centers::Vector{Vec3}; leaf_size::Int=64)
+function build_cluster_tree(
+        centers::Vector{Vec3};
+        leaf_size::Int=64,
+        max_nodes::Integer=_DEFAULT_MAX_CLUSTER_TREE_NODES,
+        max_storage_bytes::Integer=_DEFAULT_MAX_CLUSTER_TREE_STORAGE_BYTES)
     N = length(centers)
     N > 0 ||
         throw(ArgumentError("build_cluster_tree: centers must not be empty"))
     leaf_size >= 1 ||
         throw(ArgumentError(
             "build_cluster_tree: leaf_size must be at least 1, got $leaf_size"))
+    node_limit = _validated_resource_limit("max_nodes", max_nodes)
+    node_bound, storage_bound = _cluster_tree_resource_bounds(N, leaf_size)
+    node_bound <= node_limit ||
+        throw(ArgumentError(
+            "cluster tree requires at most $node_bound nodes, exceeding " *
+            "max_nodes=$node_limit"))
+    _enforce_payload_limit(
+        storage_bound, max_storage_bytes,
+        "cluster-tree arrays", "max_storage_bytes")
     @inbounds for i in eachindex(centers)
         all(isfinite, centers[i]) ||
             throw(ArgumentError(
@@ -63,6 +107,7 @@ function build_cluster_tree(centers::Vector{Vec3}; leaf_size::Int=64)
 
     perm = collect(1:N)
     nodes = ClusterNode[]
+    sizehint!(nodes, node_bound)
 
     function _build!(lo::Int, hi::Int, level::Int)
         # Compute bounding box

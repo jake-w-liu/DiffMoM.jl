@@ -6719,6 +6719,23 @@ centers_ct = rwg_centers(mesh, rwg)
 @assert length(centers_ct) == N
 
 tree_ct = build_cluster_tree(centers_ct; leaf_size=8)
+cluster_node_bound, cluster_storage_bound =
+    DiffMoM._cluster_tree_resource_bounds(length(centers_ct), 8)
+@test_throws ArgumentError build_cluster_tree(
+    centers_ct; leaf_size=8, max_nodes=cluster_node_bound - 1)
+@test_throws ArgumentError build_cluster_tree(
+    centers_ct; leaf_size=8,
+    max_nodes=cluster_node_bound,
+    max_storage_bytes=cluster_storage_bound - 1)
+@test build_cluster_tree(
+    centers_ct; leaf_size=8,
+    max_nodes=cluster_node_bound,
+    max_storage_bytes=cluster_storage_bound).perm == tree_ct.perm
+cluster_nodes_actual = length(tree_ct.nodes)
+@test build_cluster_tree(
+    centers_ct; leaf_size=8,
+    max_nodes=cluster_nodes_actual,
+    max_storage_bytes=cluster_storage_bound).perm == tree_ct.perm
 @assert length(tree_ct.perm) == N
 @assert length(tree_ct.iperm) == N
 @test_throws ArgumentError build_cluster_tree(Vec3[])
