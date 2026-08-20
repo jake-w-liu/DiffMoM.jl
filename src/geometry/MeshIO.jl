@@ -1457,7 +1457,8 @@ calling the Gmsh CLI. Gmsh must be installed and accessible from PATH
 (or provide the full path via `gmsh_exe`).
 
 If `mesh_size > 0`, it is passed as `-clmax` to control the maximum
-element size. Otherwise Gmsh uses its default sizing.
+element size. A zero value selects Gmsh's default sizing; negative and
+non-finite values are rejected before filesystem or process work.
 
 Returns the imported `TriMesh`.
 
@@ -1470,6 +1471,9 @@ function convert_cad_to_mesh(cad_path::AbstractString, output_path::AbstractStri
                               mesh_size::Float64=0.0,
                               gmsh_exe::AbstractString="gmsh",
                               reader_kwargs::NamedTuple=NamedTuple())
+    (isfinite(mesh_size) && mesh_size >= 0.0) ||
+        throw(ArgumentError(
+            "mesh_size must be finite and nonnegative, got $mesh_size."))
     isfile(cad_path) || error("CAD file not found: $cad_path")
 
     cad_ext = lowercase(splitext(cad_path)[2])

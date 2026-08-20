@@ -10639,15 +10639,36 @@ println("  32h: PASS")
 # 32i: convert_cad_to_mesh (skip if gmsh not available)
 println("  32i: convert_cad_to_mesh (gmsh check) ...")
 gmsh_available = Sys.which("gmsh") !== nothing
-if !gmsh_available
-    # Verify helpful error message
-    thrown_gmsh = try
-        convert_cad_to_mesh("dummy.step", "dummy.msh")
-        false
-    catch e
-        occursin("not found", string(e)) || occursin("Gmsh", string(e))
+mktempdir() do cad_test_dir
+    cad_test_path = joinpath(cad_test_dir, "probe.step")
+    write(cad_test_path, "")
+    cad_test_output = joinpath(cad_test_dir, "probe.msh")
+    missing_gmsh = joinpath(cad_test_dir, "missing-gmsh")
+    for invalid_mesh_size in (-1.0, NaN, Inf)
+        mesh_size_error = try
+            convert_cad_to_mesh(
+                cad_test_path, cad_test_output;
+                mesh_size=invalid_mesh_size, gmsh_exe=missing_gmsh)
+            nothing
+        catch err
+            err
+        end
+        @test mesh_size_error isa ArgumentError
+        @test occursin("mesh_size", sprint(showerror, mesh_size_error))
     end
-    @assert thrown_gmsh "convert_cad_to_mesh should mention gmsh in error"
+
+    if !gmsh_available
+        # Verify the availability diagnostic after all local arguments pass.
+        thrown_gmsh = try
+            convert_cad_to_mesh(cad_test_path, cad_test_output)
+            false
+        catch e
+            occursin("Gmsh", sprint(showerror, e))
+        end
+        @assert thrown_gmsh "convert_cad_to_mesh should mention gmsh in error"
+    end
+end
+if !gmsh_available
     println("  32i: SKIP (gmsh not installed) — error message verified")
 else
     println("  32i: SKIP (gmsh available but no test CAD file) — presence verified")

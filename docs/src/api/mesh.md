@@ -768,7 +768,7 @@ Convert a CAD file (STEP, IGES, BREP) to a triangle surface mesh by calling the 
 |-----------|------|---------|-------------|
 | `cad_path` | `AbstractString` | -- | Input CAD file (.step, .stp, .iges, .igs, .brep). |
 | `output_path` | `AbstractString` | -- | Output mesh file (.msh, .stl, or .obj). |
-| `mesh_size` | `Float64` | `0.0` | Maximum element size (`-clmax`). `0.0` = Gmsh default. |
+| `mesh_size` | `Float64` | `0.0` | Finite, nonnegative maximum element size (`-clmax`). `0.0` selects Gmsh's default; invalid values fail before filesystem or process work. |
 | `gmsh_exe` | `AbstractString` | `"gmsh"` | Path to the Gmsh executable. |
 | `reader_kwargs` | `NamedTuple` | `NamedTuple()` | Resource limits forwarded to the selected mesh reader after Gmsh finishes. |
 
