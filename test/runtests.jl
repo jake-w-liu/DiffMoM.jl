@@ -2729,6 +2729,41 @@ DiffMoM._radiation_vector_column_exact!(
     radiation_phase_areas, radiation_phase_weights, 1.0, 1.0)
 @test radiation_phase_result == radiation_phase_reference
 
+# The radiation operator is exactly transverse.  Preserve that null when an
+# RWG quadrature contribution is parallel to a stored direction whose rounded
+# components do not sum to a unit norm, on both numeric paths.
+radiation_parallel_mesh = TriMesh(
+    Float64[
+        -0.5   0.5  -0.5   0.5;
+        -0.5  -0.5   0.5   0.5;
+         0.0   0.0   0.0   0.0
+    ],
+    Int[2 3; 4 1; 1 4],
+)
+radiation_parallel_rwg = build_rwg(radiation_parallel_mesh)
+radiation_parallel_triangle = radiation_parallel_rwg.tplus[1]
+radiation_parallel_xi, _ = tri_quad_rule(1)
+radiation_parallel_value = eval_rwg(
+    radiation_parallel_rwg, 1,
+    tri_quad_points(
+        radiation_parallel_mesh, radiation_parallel_triangle,
+        radiation_parallel_xi)[1],
+    radiation_parallel_triangle)
+radiation_parallel_direction =
+    radiation_parallel_value / norm(radiation_parallel_value)
+radiation_parallel_grid = SphGrid(
+    reshape(collect(radiation_parallel_direction), 3, 1),
+    [π / 2],
+    [atan(radiation_parallel_direction[2], radiation_parallel_direction[1])],
+    [1.0])
+for radiation_parallel_impedance in (ldexp(1.0, 120), ldexp(1.0, 200))
+    radiation_parallel_result = radiation_vectors(
+        radiation_parallel_mesh, radiation_parallel_rwg,
+        radiation_parallel_grid, 1.0;
+        quad_order=1, eta0=radiation_parallel_impedance)
+    @test all(iszero, radiation_parallel_result)
+end
+
 # Phase factors are single-use values. Keep transient storage bounded rather
 # than allocating one NΩ × Nq phase matrix for every RWG basis function.
 mesh_radiation_alloc = make_rect_plate(1.0, 1.0, 12, 12)

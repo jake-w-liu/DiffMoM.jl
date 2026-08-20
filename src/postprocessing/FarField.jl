@@ -121,7 +121,8 @@ end
                     contribution = fn_big *
                         (BigFloat(wq[q_surf]) * weight_scale * phase)
                     projected =
-                        rh_big * dot(rh_big, contribution) - contribution
+                        cross(rh_big, cross(rh_big, contribution)) /
+                        sum(abs2, rh_big)
                     total .+= prefactor_big .* projected
                 end
             end
@@ -449,8 +450,9 @@ function radiation_vectors(
                         rh = rhat_vec[q_dir]
                         phase = exp(1im * k * dot(rh, rp))
                         contrib = fn * (wt * phase)
-                        rh_cross_N_cross =
-                            rh * dot(rh, contrib) - contrib
+                        rh_cross_N_cross = _dipole_cross(
+                            rh, _dipole_cross(rh, CVec3(contrib))) /
+                            sum(abs2, rh)
                         idx = 3 * (q_dir - 1)
                         G_mat[idx+1, n] += prefactor * rh_cross_N_cross[1]
                         G_mat[idx+2, n] += prefactor * rh_cross_N_cross[2]
