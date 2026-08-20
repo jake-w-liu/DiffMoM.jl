@@ -1896,22 +1896,23 @@ end
     R_vec = r - r_p
     R = hypot(hypot(R_vec[1], R_vec[2]), R_vec[3])
     iszero(R) && return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    R_hat = R_vec / R
-    cosθ = clamp(dot(R_hat, axis), -1.0, 1.0)
-    sin2θ = max(0.0, 1.0 - cosθ^2)
-    sinθ = sqrt(sin2θ)
+    projection_direction = _source_power_of_two_scaled_direction(R_vec)
+    direction_norm_squared = sum(abs2, projection_direction)
+    direction_norm = sqrt(direction_norm_squared)
+    R_hat = projection_direction / direction_norm
+    cosθ = clamp(
+        dot(projection_direction, axis) / direction_norm, -1.0, 1.0)
+    theta_numerator = _dipole_cross(
+        projection_direction,
+        _dipole_cross(projection_direction, axis)) /
+        direction_norm_squared
     expfac = exp(-1im * k * R)
     kR = k * R
 
     E_r = η0 * I / (2π) * cosθ * expfac / R^2 * (1.0 + 1.0 / (1im * kR))
-    if sinθ > 1e-12
-        θ_hat = (cosθ * R_hat - axis) / sinθ
-        E_θ = 1im * η0 * k * I / (4π) * sinθ * expfac / R *
-              (1.0 + 1.0 / (1im * kR) - 1.0 / kR^2)
-        return E_r * R_hat + E_θ * θ_hat
-    else
-        return E_r * R_hat
-    end
+    transverse_scale = 1im * η0 * k * I / (4π) * expfac / R *
+                       (1.0 + 1.0 / (1im * kR) - 1.0 / kR^2)
+    return E_r * R_hat + transverse_scale * theta_numerator
 end
 
 """
@@ -2040,23 +2041,20 @@ end
             if !iszero(distance) && !iszero(current)
                 direction = displacement / distance
                 cosine = clamp(dot(direction, axis), -one(BigFloat), one(BigFloat))
-                sine_squared = max(zero(BigFloat), 1 - cosine * cosine)
-                sine = sqrt(sine_squared)
                 phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
                 kR = wavenumber * distance
                 radial = eta * current / (2 * BigFloat(pi)) * cosine *
                          phase / distance^2 *
                          (1 + inv(Complex{BigFloat}(0, 1) * kR))
                 contribution = radial * direction
-                if sine > BigFloat(1.0e-12)
-                    theta_direction = (cosine * direction - axis) / sine
-                    transverse = Complex{BigFloat}(0, 1) * eta *
-                        wavenumber * current / (4 * BigFloat(pi)) * sine *
-                        phase / distance *
-                        (1 + inv(Complex{BigFloat}(0, 1) * kR) -
-                         inv(kR^2))
-                    contribution += transverse * theta_direction
-                end
+                theta_numerator = cross(
+                    displacement, cross(displacement, axis)) / distance^2
+                transverse_scale = Complex{BigFloat}(0, 1) * eta *
+                    wavenumber * current / (4 * BigFloat(pi)) *
+                    phase / distance *
+                    (1 + inv(Complex{BigFloat}(0, 1) * kR) -
+                     inv(kR^2))
+                contribution += transverse_scale * theta_numerator
                 weight = (iszero(index) || index == intervals) ?
                          1 : (isodd(index) ? 4 : 2)
                 total += weight * contribution

@@ -5375,6 +5375,30 @@ end
 @test dipole_cross_result ≈
       dipole_cross_reference rtol=4eps(Float64) atol=0.0
 
+# The Hertzian transverse factor and basis contain reciprocal sin(theta)
+# factors.  Cancel them algebraically so a small but radiatively amplified
+# near-axis field is not discarded by an angular cutoff.
+monopole_near_axis_k = ldexp(1.0, 28)
+monopole_near_axis_frequency =
+    monopole_near_axis_k * DiffMoM._C0 / (2π)
+monopole_near_axis_source = make_monopole(
+    Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0),
+    1.0e-9, 1.0 + 0im, monopole_near_axis_frequency;
+    include_image=true)
+monopole_near_axis_point = Vec3(5.0e-13, 0.0, 5.0)
+monopole_near_axis_result = monopole_incident_field(
+    monopole_near_axis_point, monopole_near_axis_source)
+monopole_near_axis_intervals = DiffMoM._monopole_simpson_interval_count(
+    monopole_near_axis_source.height, monopole_near_axis_k,
+    2.0, 128, "near-axis monopole regression")
+monopole_near_axis_reference = DiffMoM._monopole_incident_field_exact(
+    monopole_near_axis_point, monopole_near_axis_source,
+    monopole_near_axis_k, monopole_near_axis_intervals, 2_000_000)
+@test abs(monopole_near_axis_reference[1]) >
+      1.0e-5 * abs(monopole_near_axis_reference[3])
+@test monopole_near_axis_result ≈
+      monopole_near_axis_reference rtol=1.0e-9 atol=0.0
+
 m_mag = CVec3(0.0 + 0im, 0.0 + 0im, 1e-4 + 0im) # A·m²
 dip_mag = make_dipole(Vec3(0.0, 0.0, 0.0), m_mag, Vec3(0.0, 0.0, 1.0), :magnetic, freq_exc)
 Rfar = 5.0
