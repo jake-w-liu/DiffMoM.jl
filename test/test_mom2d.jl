@@ -36,6 +36,12 @@ end
         @test mesh.centers[1] ≈ Vec2(-0.75, -0.25)
         @test mesh.centers[8] ≈ Vec2(0.75, 0.25)
 
+        widest = floatmax(Float64)
+        wide_mesh = Mesh2D((-widest, widest), (0.0, 1.0), 2, 1)
+        @test wide_mesh.dx == widest
+        @test wide_mesh.centers ==
+              [Vec2(-widest / 2, 0.5), Vec2(widest / 2, 0.5)]
+
         # Equivalent radius: πa² = cell_area
         @test equivalent_radius(mesh)^2 * π ≈ mesh.cell_area atol=1e-14
 

@@ -11,6 +11,32 @@ const CVec3 = SVector{3,ComplexF64}
 # it bounds the arrays owned by that operation, not Julia object headers or
 # allocator bookkeeping.
 const _DEFAULT_MAX_DENSE_PAYLOAD_BYTES = 2_000_000_000
+const _INTERVAL_SPACING_FALLBACK_PRECISION = 2304
+
+@noinline function _interval_spacing_bigfloat(
+        lower::Float64, upper::Float64, count::Int,
+        label::AbstractString)
+    return setprecision(BigFloat, _INTERVAL_SPACING_FALLBACK_PRECISION) do
+        spacing = Float64(
+            (BigFloat(upper) - BigFloat(lower)) / BigFloat(count))
+        isfinite(spacing) && spacing > 0.0 ||
+            throw(ArgumentError(
+                "$label spacing is outside the positive finite Float64 range"))
+        return spacing
+    end
+end
+
+@inline function _interval_spacing(
+        lower::Float64, upper::Float64, count::Int,
+        label::AbstractString)
+    span = upper - lower
+    spacing = span / count
+    if isfinite(spacing) && spacing > floatmin(Float64) &&
+       abs(span) < 0.5 * floatmax(Float64)
+        return spacing
+    end
+    return _interval_spacing_bigfloat(lower, upper, count, label)
+end
 
 function _validated_resource_limit(
         name::AbstractString, value::Integer)

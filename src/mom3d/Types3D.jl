@@ -10,6 +10,38 @@ export EMDDAOperator3D, EMDDAResult3D, make_voxel_grid_3d
 const _DEFAULT_MAX_VOXELS_3D = 10_000_000
 const _DEFAULT_MAX_VOXEL_GRID_BYTES_3D = 536_870_912
 const _VOXEL_GRID_RAW_BYTES_3D = sizeof(Vec3) + sizeof(Float64)
+const _VOXEL_VOLUME_SAFE_FACTOR_EXPONENT_3D = 128
+
+@inline function _voxel_volume_factor_is_extreme_3d(value::Float64)
+    value_exponent = exponent(value)
+    return value_exponent < -_VOXEL_VOLUME_SAFE_FACTOR_EXPONENT_3D ||
+           value_exponent > _VOXEL_VOLUME_SAFE_FACTOR_EXPONENT_3D
+end
+
+@noinline function _voxel_volume_bigfloat_3d(
+        dx::Float64, dy::Float64, dz::Float64)
+    return setprecision(BigFloat, 256) do
+        volume = Float64(BigFloat(dx) * BigFloat(dy) * BigFloat(dz))
+        isfinite(volume) && volume > 0.0 ||
+            throw(ArgumentError(
+                "VoxelGrid3D voxel volume is outside the positive finite Float64 range."))
+        return volume
+    end
+end
+
+@inline function _voxel_volume_3d(
+        dx::Float64, dy::Float64, dz::Float64)
+    if _voxel_volume_factor_is_extreme_3d(dx) ||
+       _voxel_volume_factor_is_extreme_3d(dy) ||
+       _voxel_volume_factor_is_extreme_3d(dz)
+        return _voxel_volume_bigfloat_3d(dx, dy, dz)
+    end
+    volume = dx * dy * dz
+    isfinite(volume) && volume > 0.0 ||
+        throw(ArgumentError(
+            "VoxelGrid3D voxel volume must be finite and positive, got $volume."))
+    return volume
+end
 
 @inline function _checked_voxel_count_3d(nx::Int, ny::Int, nz::Int)
     try
@@ -98,10 +130,7 @@ struct VoxelGrid3D
         _validate_voxel_axis_3d(y0, dy, ny, "y")
         _validate_voxel_axis_3d(z0, dz, nz, "z")
 
-        expected_volume = dx * dy * dz
-        isfinite(expected_volume) && expected_volume > 0.0 ||
-            throw(ArgumentError(
-                "VoxelGrid3D spacing product must be finite and positive."))
+        expected_volume = _voxel_volume_3d(dx, dy, dz)
         @inbounds for j in eachindex(centers, volumes)
             all(isfinite, centers[j]) ||
                 throw(ArgumentError(
@@ -231,19 +260,16 @@ function VoxelGrid3D(x_range::Tuple{<:Real,<:Real},
         throw(ArgumentError(
             "VoxelGrid3D requires $raw_bytes raw bytes for centers and " *
             "volumes, exceeding max_raw_bytes=$byte_limit."))
-    dx = (x2 - x1) / nx
-    dy = (y2 - y1) / ny
-    dz = (z2 - z1) / nz
+    dx = _interval_spacing(x1, x2, nx, "VoxelGrid3D x-axis")
+    dy = _interval_spacing(y1, y2, ny, "VoxelGrid3D y-axis")
+    dz = _interval_spacing(z1, z2, nz, "VoxelGrid3D z-axis")
     all(isfinite, (dx, dy, dz)) && dx > 0 && dy > 0 && dz > 0 ||
         throw(ArgumentError(
             "VoxelGrid3D spacings must be finite and positive."))
     _validate_voxel_axis_3d(x1, dx, nx, "x")
     _validate_voxel_axis_3d(y1, dy, ny, "y")
     _validate_voxel_axis_3d(z1, dz, nz, "z")
-    volume = dx * dy * dz
-    isfinite(volume) && volume > 0 ||
-        throw(ArgumentError(
-            "VoxelGrid3D voxel volume must be finite and positive, got $volume."))
+    volume = _voxel_volume_3d(dx, dy, dz)
 
     centers = Vector{Vec3}(undef, nvoxels)
     volumes = fill(volume, nvoxels)

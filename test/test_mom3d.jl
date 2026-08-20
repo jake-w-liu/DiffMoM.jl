@@ -50,6 +50,22 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             2, 2, 2;
             max_voxels=8,
             max_raw_bytes=8 * (sizeof(Vec3) + sizeof(Float64))).nvoxels == 8
+        widest = floatmax(Float64)
+        wide_grid = VoxelGrid3D(
+            (-widest, widest), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
+        @test wide_grid.dx == widest
+        @test wide_grid.centers == [
+            Vec3(-widest / 2, 0.5, 0.5),
+            Vec3(widest / 2, 0.5, 0.5),
+        ]
+        overflow_order_grid = VoxelGrid3D(
+            (0.0, 1.0e200), (0.0, 1.0e200), (0.0, 1.0e-100),
+            1, 1, 1)
+        @test overflow_order_grid.volumes == [9.999999999999999e299]
+        underflow_order_grid = VoxelGrid3D(
+            (0.0, 1.0e-200), (0.0, 1.0e-200), (0.0, 1.0e100),
+            1, 1, 1)
+        @test underflow_order_grid.volumes == [1.0e-300]
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
         @test_throws ArgumentError clausius_mossotti_polarizability(
             2.5, grid.volumes[1];

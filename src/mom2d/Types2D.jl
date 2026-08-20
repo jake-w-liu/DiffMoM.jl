@@ -132,8 +132,8 @@ function Mesh2D(x_range::Tuple{Float64,Float64}, y_range::Tuple{Float64,Float64}
         throw(ArgumentError(
             "Mesh2D requires $raw_bytes raw center bytes, exceeding " *
             "max_raw_bytes=$byte_limit."))
-    dx = (x_range[2] - x_range[1]) / nx
-    dy = (y_range[2] - y_range[1]) / ny
+    dx = _interval_spacing(x_range[1], x_range[2], nx, "Mesh2D x-axis")
+    dy = _interval_spacing(y_range[1], y_range[2], ny, "Mesh2D y-axis")
     _validate_positive_finite_2d(dx, "Mesh2D dx")
     _validate_positive_finite_2d(dy, "Mesh2D dy")
     _validate_mesh_axis_2d(x_range[1], dx, nx, "x")
