@@ -328,8 +328,8 @@ end
                 areas[triangle], 1e-5, 5)
             surface_direction = SVector{3,BigFloat}(
                 BigFloat.(directions[triangle]))
-            projection = r_big * dot(r_big, surface_direction) -
-                         surface_direction
+            projection = cross(r_big, cross(r_big, surface_direction)) /
+                         sum(abs2, r_big)
             for component in 1:3
                 totals[component] += scale *
                     projection[component] * integral
@@ -594,9 +594,12 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
         for t in 1:Nt
             !illuminated[t] && continue
 
-            # r̂ × (r̂ × V_t) = (r̂·V_t)r̂ - V_t
+            # Form the transverse projection as a double cross product.  The
+            # algebraically equivalent dot/subtract form loses a parallel
+            # null whenever the stored unit direction has a rounded norm.
             Vt = V_t[t]
-            proj = r_hat * dot(r_hat, Vt) - Vt
+            proj = _dipole_cross(r_hat, _dipole_cross(r_hat, Vt)) /
+                   sum(abs2, r_hat)
             # Analytical phase integral over triangle
             I_t = _phase_integral_analytical(k, delta_k,
                       tri_v1[t], tri_v2[t], tri_v3[t], tri_area[t])

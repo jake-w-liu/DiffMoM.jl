@@ -8275,6 +8275,26 @@ end
 @test !iszero(po_projection_reference)
 @test po_projection_result.E_ff[1, 1] == po_projection_reference
 
+# A stored unit direction generally has a norm a few ulps from one.  The PO
+# transverse projection must still preserve the exact null when the surface
+# direction is parallel to that observation direction, on both accumulation
+# paths.
+po_parallel_component = inv(sqrt(2.0))
+po_parallel_direction =
+    Vec3(po_parallel_component, po_parallel_component, 0.0)
+po_parallel_grid = SphGrid(
+    reshape(collect(po_parallel_direction), 3, 1),
+    [π / 2], [π / 4], [1.0])
+for po_parallel_amplitude in (ldexp(1.0, 120), ldexp(1.0, 200))
+    po_parallel_result = solve_po(
+        make_rect_plate(1.0, 1.0, 1, 1), po_freq,
+        PlaneWaveExcitation(
+            Vec3(0.0, 0.0, -po_k), po_parallel_amplitude,
+            po_parallel_direction);
+        grid=po_parallel_grid)
+    @test all(iszero, po_parallel_result.E_ff)
+end
+
 n_illum = count(po_result.illuminated)
 n_total = ntriangles(po_mesh)
 # For a plate at z=0 with normals pointing in +z, wave from +z traveling -z

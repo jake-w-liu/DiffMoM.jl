@@ -709,6 +709,14 @@ end
     )
 end
 
+@inline function _dipole_cross(a::Vec3, b::Vec3)
+    return Vec3(
+        _dipole_difference_of_products(a[2], b[3], a[3], b[2]),
+        _dipole_difference_of_products(a[3], b[1], a[1], b[3]),
+        _dipole_difference_of_products(a[1], b[2], a[2], b[1]),
+    )
+end
+
 @inline _dipole_cross(a::Vec3, b::CVec3) = -_dipole_cross(b, a)
 
 @inline function _dipole_angular_precision(
