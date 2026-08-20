@@ -940,11 +940,15 @@ function _validate_mie2d_observations(k0::Float64, a::Float64,
 end
 
 """
-    mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false)
+    mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing,
+                           pec=false, max_field_terms=50_000_000,
+                           max_output_bytes=2_000_000_000)
 
 Compute exact scattered field at observation points for a circular cylinder.
 Observation points must lie on or outside the cylinder (`ρ ≥ a`); the
 exterior-series surface limit is supported.
+`max_output_bytes` caps the raw payload of the returned vector before field
+work is performed.
 
 E_z^scat(ρ,φ) = E₀ Σ_n (-i)ⁿ cₙ Hₙ⁽²⁾(k₀ρ) eⁱⁿᶠ
 
@@ -957,7 +961,9 @@ function mie_scattered_field_2d(k0::Float64, a::Float64, eps_r::Float64,
                                  phi_inc::Float64=0.0, nmax=nothing,
                                  pec::Bool=false,
                                  max_field_terms::Int=
-                                     _DEFAULT_MAX_MIE2D_FIELD_TERMS)
+                                     _DEFAULT_MAX_MIE2D_FIELD_TERMS,
+                                 max_output_bytes::Integer=
+                                     _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     k0 = _validated_mie2d_positive(k0, "k0")
     a = _validated_mie2d_positive(a, "a")
     if !pec
@@ -968,6 +974,12 @@ function mie_scattered_field_2d(k0::Float64, a::Float64, eps_r::Float64,
     max_field_terms >= 1 ||
         throw(ArgumentError(
             "max_field_terms must be positive, got $max_field_terms"))
+    M = length(r_obs)
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, M; label="2D Mie scattered-field output")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "2D Mie scattered-field output", "max_output_bytes")
     _validate_mie2d_observations(k0, a, r_obs, phi_inc)
     requested_order, _ = _validated_mie2d_order(k0 * a, nmax)
     matched_medium && return zeros(ComplexF64, length(r_obs))
@@ -1045,7 +1057,6 @@ function mie_scattered_field_2d(k0::Float64, a::Float64, eps_r::Float64,
     end
     c, N = mie_coefficients_2d(k0, a, eps_r; nmax=nmax, pec=pec)
 
-    M = length(r_obs)
     E_scat = zeros(ComplexF64, M)
     sequence_workspace = N > _MIE2D_SEQUENCE_ORDER_THRESHOLD ? (
         Vector{Float64}(undef, N + 2),
@@ -1260,23 +1271,33 @@ end
 end
 
 """
-    mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false)
+    mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing,
+                       pec=false, max_field_terms=50_000_000,
+                       max_output_bytes=2_000_000_000)
 
 Compute exact total field (incident + scattered) at observation points on or
-outside the cylinder (ρ ≥ a).
+outside the cylinder (ρ ≥ a). `max_output_bytes` caps the raw payload of
+the returned vector before incident- or scattered-field work is performed.
 """
 function mie_total_field_2d(k0::Float64, a::Float64, eps_r::Float64,
                              r_obs::AbstractVector{Vec2};
                              phi_inc::Float64=0.0, nmax=nothing,
                              pec::Bool=false,
                              max_field_terms::Int=
-                                 _DEFAULT_MAX_MIE2D_FIELD_TERMS)
+                                 _DEFAULT_MAX_MIE2D_FIELD_TERMS,
+                             max_output_bytes::Integer=
+                                 _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     k0 = _validated_mie2d_positive(k0, "k0")
     a = _validated_mie2d_positive(a, "a")
     if !pec
         isfinite(eps_r) ||
             throw(ArgumentError("eps_r must be finite, got $eps_r"))
     end
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, length(r_obs); label="2D Mie total-field output")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "2D Mie total-field output", "max_output_bytes")
     _validate_mie2d_observations(k0, a, r_obs, phi_inc)
     khat = Vec2(cos(phi_inc), sin(phi_inc))
     exact_incident_work = 0
@@ -1295,7 +1316,8 @@ function mie_total_field_2d(k0::Float64, a::Float64, eps_r::Float64,
 
     E_total = mie_scattered_field_2d(k0, a, eps_r, r_obs;
                                      phi_inc=phi_inc, nmax=nmax, pec=pec,
-                                     max_field_terms=max_field_terms)
+                                     max_field_terms=max_field_terms,
+                                     max_output_bytes=max_output_bytes)
     for m in eachindex(r_obs)
         incident = if _mie2d_incident_phase_requires_exact(
                 k0, phi_inc, khat, r_obs[m])

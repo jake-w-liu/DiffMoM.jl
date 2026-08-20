@@ -411,7 +411,7 @@ G_obs = green_obs_matrix(r_obs, mesh, 2pi)
 
 ---
 
-### `scattered_field_2d(vie_result, r_obs)`
+### `scattered_field_2d(vie_result, r_obs; max_output_bytes=2_000_000_000)`
 
 Compute the scattered field at observation points from a solved VIE result:
 
@@ -428,6 +428,7 @@ where `A_n = cell_area`, `E_n = vr.E_total`, and the Green's values come from
 |-----------|------|---------|-------------|
 | `vie_result` | `VIEResult2D` | -- | Solved result from `solve_vie_2d`. |
 | `r_obs` | `AbstractVector{Vec2}` | -- | Observation points (m), length M (outside the domain). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned vector, checked before observation-point work. |
 
 **Returns:** `Vector{ComplexF64}` of scattered-field values, length M.
 
@@ -516,7 +517,7 @@ c0 = c[N + 1]   # n = 0 coefficient
 
 ---
 
-### `mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000)`
+### `mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000, max_output_bytes=2_000_000_000)`
 
 Compute the exact scattered field at observation points for a circular cylinder:
 
@@ -538,6 +539,7 @@ evaluated with unit incident amplitude.
 | `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie order (auto if `nothing`). |
 | `pec` | `Bool` | `false` | If `true`, treat as a PEC cylinder. |
 | `max_field_terms` | `Int` | `50_000_000` | Maximum aggregate ordinary partial-wave terms across all observation points. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned vector, checked before field work. |
 
 **Returns:** `Vector{ComplexF64}` of scattered-field values, length M.
 
@@ -557,7 +559,7 @@ E_scat_mie = mie_scattered_field_2d(2pi, a, 4.0, r_obs; phi_inc=0.0)
 
 ---
 
-### `mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000)`
+### `mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000, max_output_bytes=2_000_000_000)`
 
 Compute the exact total field (incident plus scattered) at observation points
 on or outside the cylinder (`rho >= a`). The incident term is the plane wave
@@ -565,8 +567,8 @@ on or outside the cylinder (`rho >= a`). The incident term is the plane wave
 scattered term is `mie_scattered_field_2d`.
 
 **Parameters:** Same as `mie_scattered_field_2d` (`k0`, `a`, `eps_r`, `r_obs`;
-keywords `phi_inc=0.0`, `nmax=nothing`, `pec=false`, and
-`max_field_terms=50_000_000`).
+keywords `phi_inc=0.0`, `nmax=nothing`, `pec=false`,
+`max_field_terms=50_000_000`, and `max_output_bytes=2_000_000_000`).
 
 **Returns:** `Vector{ComplexF64}` of total-field values, length M.
 

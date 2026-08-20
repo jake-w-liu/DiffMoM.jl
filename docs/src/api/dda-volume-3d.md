@@ -429,7 +429,7 @@ for each voxel of a `DDAResult3D`.
 
 ---
 
-### `scattered_field_dda_3d(result, r_obs)`
+### `scattered_field_dda_3d(result, r_obs; max_output_bytes=2_000_000_000)`
 
 Compute the scattered electric field at observation points by summing the
 radiated field of all induced dipoles. Observation points must not coincide with
@@ -441,12 +441,13 @@ voxel centers.
 |-----------|------|---------|-------------|
 | `result` | `DDAResult3D` | -- | A solved electric DDA result. |
 | `r_obs` | `AbstractVector{Vec3}` | -- | Observation points (m). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned vector, checked before result or observation validation. |
 
 **Returns:** `Vector{CVec3}` of length `length(r_obs)`.
 
 ---
 
-### `farfield_dda_3d(result, rhat)`
+### `farfield_dda_3d(result, rhat; max_output_bytes=2_000_000_000)`
 
 Return the far-field amplitude `F(rhat)` such that
 
@@ -463,6 +464,7 @@ passed to obtain a `Vector{CVec3}` of amplitudes.
 |-----------|------|---------|-------------|
 | `result` | `DDAResult3D` | -- | A solved electric DDA result. |
 | `rhat` | `Vec3` or `AbstractVector{Vec3}` | -- | Observation direction(s); each is normalized internally. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload for the vector overload; the scalar overload does not accept this keyword. |
 
 **Returns:** `CVec3` (single direction) or `Vector{CVec3}` (multiple directions).
 
@@ -701,7 +703,7 @@ electric and magnetic halves.
 
 ---
 
-### `scattered_fields_em_dda_3d(result, r_obs)`
+### `scattered_fields_em_dda_3d(result, r_obs; max_output_bytes=2_000_000_000)`
 
 Compute the scattered electric and magnetic fields at observation points by
 summing the induced electric and magnetic dipoles. Observation points must not
@@ -713,12 +715,13 @@ coincide with voxel centers. Interactions use the impedance stored in `result`.
 |-----------|------|---------|-------------|
 | `result` | `EMDDAResult3D` | -- | A solved coupled EM DDA result. |
 | `r_obs` | `AbstractVector{Vec3}` | -- | Observation points (m). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of both returned vectors, checked before result or observation validation. |
 
 **Returns:** Tuple `(E_scat, H_scat)`, each a `Vector{CVec3}` of length `length(r_obs)`.
 
 ---
 
-### `farfield_em_dda_3d(result, rhat; eta0=result.eta0)`
+### `farfield_em_dda_3d(result, rhat; eta0=result.eta0, max_output_bytes=2_000_000_000)`
 
 Return `(F_E, F_H)` such that `E_scat ~= exp(-i k r) F_E / r` and
 `H_scat ~= exp(-i k r) F_H / r` in observation direction `rhat`. A
@@ -731,6 +734,7 @@ Return `(F_E, F_H)` such that `E_scat ~= exp(-i k r) F_E / r` and
 | `result` | `EMDDAResult3D` | -- | A solved coupled EM DDA result. |
 | `rhat` | `Vec3` or `AbstractVector{Vec3}` | -- | Observation direction(s). |
 | `eta0` | `Real` | `result.eta0` | Background wave impedance (Ohm). |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload for the vector overload; the scalar overload does not accept this keyword. |
 
 **Returns:** Tuple `(F_E, F_H)` of `CVec3` (single direction) or
 `Vector{CVec3}` (multiple directions). In the deep far zone these satisfy the

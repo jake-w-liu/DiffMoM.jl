@@ -159,19 +159,28 @@ function _scattered_field_sum_2d(
 end
 
 """
-    scattered_field_2d(vie_result, r_obs)
+    scattered_field_2d(vie_result, r_obs; max_output_bytes=2_000_000_000)
 
 Compute scattered field at observation points using solved VIE result.
 E_scat(r_obs) = k₀² Σ_n χ_n E_n G₂D(r_obs, r_n) A_n
+
+`max_output_bytes` caps the raw payload of the returned vector before any
+observation-point work is performed.
 """
-function scattered_field_2d(vr::VIEResult2D, r_obs::AbstractVector{Vec2})
+function scattered_field_2d(
+        vr::VIEResult2D, r_obs::AbstractVector{Vec2};
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    M = length(r_obs)
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, M; label="scattered_field_2d output")
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes,
+        "scattered_field_2d output", "max_output_bytes")
     _validate_vie_result_2d(vr)
     _validate_observation_points_2d(
         r_obs, vr.mesh, "scattered_field_2d")
     k0sq = vr.k0^2
     stored_square_usable = isfinite(k0sq) && k0sq >= floatmin(Float64)
-    M = length(r_obs)
-
     E_scat = zeros(ComplexF64, M)
     @inbounds for m in 1:M
         E_scat[m] = _scattered_field_sum_2d(

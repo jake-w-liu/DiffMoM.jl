@@ -908,6 +908,21 @@ end
         @test_throws ArgumentError mie_scattered_field_2d(
             1.0, 1.0, 1.0, [Vec2(2.0, 0.0)];
             nmax=1, pec=true, max_field_terms=2)
+        mie_output_bytes = sizeof(ComplexF64) * length(observations)
+        @test_throws ArgumentError mie_scattered_field_2d(
+            k0, a, eps_r, observations;
+            nmax=3, max_output_bytes=mie_output_bytes - 1)
+        @test mie_scattered_field_2d(
+            k0, a, eps_r, observations;
+            nmax=3, max_output_bytes=mie_output_bytes) ==
+              mie_scattered_field_2d(k0, a, eps_r, observations; nmax=3)
+        @test_throws ArgumentError mie_total_field_2d(
+            k0, a, eps_r, observations;
+            nmax=3, max_output_bytes=mie_output_bytes - 1)
+        @test mie_total_field_2d(
+            k0, a, eps_r, observations;
+            nmax=3, max_output_bytes=mie_output_bytes) ==
+              mie_total_field_2d(k0, a, eps_r, observations; nmax=3)
 
         mie_coefficients_2d(k0, a, eps_r; nmax=10)
         mie_scattered_field_2d(k0, a, eps_r, observations; nmax=10)
@@ -1002,6 +1017,11 @@ end
             r_obs, mesh, k0;
             max_output_bytes=observation_matrix_bytes) ==
               green_obs_matrix(r_obs, mesh, k0)
+        scattered_output_bytes = sizeof(ComplexF64) * length(r_obs)
+        @test_throws ArgumentError scattered_field_2d(
+            vr, r_obs; max_output_bytes=scattered_output_bytes - 1)
+        @test scattered_field_2d(
+            vr, r_obs; max_output_bytes=scattered_output_bytes) == E_scat_ref
         @test_throws ArgumentError jacobian_scattered_field_2d(
             vr, r_obs;
             max_work_bytes=3observation_matrix_bytes - 1)

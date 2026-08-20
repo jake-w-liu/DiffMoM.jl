@@ -1613,6 +1613,16 @@ function _validate_dda_result_3d(
     return N
 end
 
+function _preflight_dda_field_output_3d(
+        count::Int, output_count::Int,
+        max_output_bytes::Integer, label::AbstractString)
+    output_bytes = _checked_array_payload_bytes(
+        CVec3, output_count, count; label=label)
+    _enforce_payload_limit(
+        output_bytes, max_output_bytes, label, "max_output_bytes")
+    return nothing
+end
+
 """
     induced_dipoles_dda_3d(result)
 
@@ -1630,11 +1640,13 @@ function induced_dipoles_dda_3d(res::DDAResult3D)
 end
 
 """
-    scattered_field_dda_3d(result, r_obs)
+    scattered_field_dda_3d(
+        result, r_obs; max_output_bytes=2_000_000_000)
 
 Compute scattered electric field at observation points by summing the radiated
 field of all induced dipoles. Observation points must not coincide with voxel
-centers.
+centers. `max_output_bytes` caps the raw payload of the returned vector before
+result or observation validation.
 """
 @noinline function _scattered_field_sum_bigfloat_dda_3d(
         res::DDAResult3D,
@@ -1695,7 +1707,12 @@ end
     return nothing
 end
 
-function scattered_field_dda_3d(res::DDAResult3D, r_obs::AbstractVector{Vec3})
+function scattered_field_dda_3d(
+        res::DDAResult3D, r_obs::AbstractVector{Vec3};
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _preflight_dda_field_output_3d(
+        length(r_obs), 1, max_output_bytes,
+        "DDA scattered-field output")
     _validate_dda_result_3d(res)
     _validate_dda_observation_points_3d(
         r_obs, "scattered_field_dda_3d")
@@ -1884,13 +1901,14 @@ function _farfield_sum_dda_3d(
 end
 
 """
-    farfield_dda_3d(result, rhat)
+    farfield_dda_3d(result, rhat; max_output_bytes=2_000_000_000)
 
 Return the far-field amplitude `F(rhat)` such that
 
     E_scat(r) ~= exp(-i k r) / r * F(rhat)
 
-for unit observation direction `rhat`.
+for unit observation direction `rhat`. The output-size keyword applies only to
+the vector-of-directions overload.
 """
 function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     _validate_dda_result_3d(res)
@@ -1898,7 +1916,12 @@ function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     return _farfield_sum_dda_3d(res, rhat, n)
 end
 
-function farfield_dda_3d(res::DDAResult3D, rhat::AbstractVector{Vec3})
+function farfield_dda_3d(
+        res::DDAResult3D, rhat::AbstractVector{Vec3};
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _preflight_dda_field_output_3d(
+        length(rhat), 1, max_output_bytes,
+        "DDA far-field output")
     _validate_dda_result_3d(res)
     output = Vector{CVec3}(undef, length(rhat))
     @inbounds for index in eachindex(rhat)

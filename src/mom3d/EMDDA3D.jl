@@ -1110,10 +1110,13 @@ function induced_dipoles_em_dda_3d(res::EMDDAResult3D)
 end
 
 """
-    scattered_fields_em_dda_3d(result, r_obs)
+    scattered_fields_em_dda_3d(
+        result, r_obs; max_output_bytes=2_000_000_000)
 
 Compute scattered electric and magnetic fields at observation points by
 summing induced electric and magnetic dipoles. Returns `(E_scat, H_scat)`.
+`max_output_bytes` caps the combined raw payload of both returned vectors
+before result or observation validation.
 """
 @noinline function _scattered_fields_sum_bigfloat_em_dda_3d(
         res::EMDDAResult3D,
@@ -1185,7 +1188,12 @@ function _scattered_fields_sum_em_dda_3d(
     return total_E, total_H
 end
 
-function scattered_fields_em_dda_3d(res::EMDDAResult3D, r_obs::AbstractVector{Vec3})
+function scattered_fields_em_dda_3d(
+        res::EMDDAResult3D, r_obs::AbstractVector{Vec3};
+        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _preflight_dda_field_output_3d(
+        length(r_obs), 2, max_output_bytes,
+        "EM DDA scattered-field outputs")
     _validate_em_dda_result_3d(res)
     _validate_dda_observation_points_3d(
         r_obs, "scattered_fields_em_dda_3d")
@@ -1417,10 +1425,14 @@ function _em_farfield_sum_3d(
 end
 
 """
-    farfield_em_dda_3d(result, rhat)
+    farfield_em_dda_3d(
+        result, rhat; eta0=result.eta0,
+        max_output_bytes=2_000_000_000)
 
 Return `(F_E, F_H)` such that `E_scat ~= exp(-ikr) F_E / r` and
-`H_scat ~= exp(-ikr) F_H / r` in observation direction `rhat`.
+`H_scat ~= exp(-ikr) F_H / r` in observation direction `rhat`. The output-size
+keyword applies only to the vector-of-directions overload and caps the combined
+raw payload of both returned vectors.
 """
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
                             eta0::Real=res.eta0)
@@ -1431,7 +1443,12 @@ function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
 end
 
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::AbstractVector{Vec3};
-                            eta0::Real=res.eta0)
+                            eta0::Real=res.eta0,
+                            max_output_bytes::Integer=
+                                _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _preflight_dda_field_output_3d(
+        length(rhat), 2, max_output_bytes,
+        "EM DDA far-field outputs")
     _validate_em_dda_result_3d(res)
     eta = _finite_positive_real_3d(eta0, "eta0")
     FE = Vector{CVec3}(undef, length(rhat))

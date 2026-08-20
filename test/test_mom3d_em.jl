@@ -423,6 +423,20 @@ end
         @test projection_H ≈ projection_H_reference rtol=4eps(Float64)
         observations = [Vec3(1.0, 0.0, 0.0)]
         scattered_fields_em_dda_3d(res, observations)
+        field_output_bytes = 2sizeof(CVec3) * length(observations)
+        @test_throws ArgumentError scattered_fields_em_dda_3d(
+            res, observations; max_output_bytes=field_output_bytes - 1)
+        @test scattered_fields_em_dda_3d(
+            res, observations; max_output_bytes=field_output_bytes) ==
+              scattered_fields_em_dda_3d(res, observations)
+        directions = [projection_direction]
+        @test_throws ArgumentError farfield_em_dda_3d(
+            projection_result, directions;
+            max_output_bytes=2sizeof(CVec3) - 1)
+        @test farfield_em_dda_3d(
+            projection_result, directions;
+            max_output_bytes=2sizeof(CVec3)) ==
+              ([projection_E_reference], [projection_H_reference])
         _allocate_em_field_outputs_3d(length(observations))
         output_allocation = @allocated _allocate_em_field_outputs_3d(
             length(observations))

@@ -840,6 +840,18 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test @allocated(farfield_dda_3d(res, n)) <= 128
         observations = [Vec3(1.0, 0.0, 0.0)]
         scattered_field_dda_3d(res, observations)
+        field_output_bytes = sizeof(CVec3) * length(observations)
+        @test_throws ArgumentError scattered_field_dda_3d(
+            res, observations; max_output_bytes=field_output_bytes - 1)
+        @test scattered_field_dda_3d(
+            res, observations; max_output_bytes=field_output_bytes) ==
+              scattered_field_dda_3d(res, observations)
+        directions = [n]
+        @test_throws ArgumentError farfield_dda_3d(
+            res, directions; max_output_bytes=sizeof(CVec3) - 1)
+        @test farfield_dda_3d(
+            res, directions; max_output_bytes=sizeof(CVec3)) ==
+              [farfield_dda_3d(res, n)]
         output_allocation =
             @allocated Vector{CVec3}(undef, length(observations))
         scattered_allocation =
