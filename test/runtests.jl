@@ -7741,6 +7741,23 @@ po_grid = make_sph_grid(36, 72)
 @test_throws ErrorException solve_po(
     TriMesh(zeros(3, 0), zeros(Int, 3, 0)),
     po_freq, pw_down; grid=po_grid)
+po_tiny_direction_component = nextfloat(0.0)
+po_tiny_direction_grid = SphGrid(
+    reshape(Float64[0, 0, 1], 3, 1), [0.0], [0.0], [1.0])
+po_tiny_direction_excitation = PlaneWaveExcitation(
+    Vec3(po_tiny_direction_component, po_tiny_direction_component, 0.0),
+    1.0 + 0im,
+    Vec3(0.0, 0.0, 1.0),
+)
+_, _, _, po_tiny_direction = DiffMoM._validate_po_inputs(
+    po_tiny_direction_grid,
+    po_tiny_direction_component,
+    po_tiny_direction_excitation,
+    2π,
+    376.730313668,
+)
+@test po_tiny_direction ≈
+      Vec3(inv(sqrt(2.0)), inv(sqrt(2.0)), 0.0) rtol=2eps(Float64)
 po_large_amplitude = solve_po(
     po_mesh, po_freq,
     PlaneWaveExcitation(

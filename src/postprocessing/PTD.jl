@@ -508,7 +508,8 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
     # Validate and reject unsupported interior wedges before the potentially
     # expensive PO integration.  `solve_po` repeats these inexpensive guards
     # for its own public contract once the geometry is known to be supported.
-    _validate_po_inputs(grid, freq_hz, excitation, c0, eta0)
+    _, _, _, validated_k_hat =
+        _validate_po_inputs(grid, freq_hz, excitation, c0, eta0)
     assert_mesh_quality(mesh; allow_boundary=true, require_closed=false)
     edges = _extract_diffraction_edges_validated(
         mesh, min_dihedral, include_boundary)
@@ -537,7 +538,7 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
     NΩ = length(grid.w)
 
     k_vec = excitation.k_vec
-    k_hat = Vec3(k_vec / norm(k_vec))   # propagation direction
+    k_hat = validated_k_hat
     E0    = excitation.E0
     pol   = Vec3(excitation.pol)
 

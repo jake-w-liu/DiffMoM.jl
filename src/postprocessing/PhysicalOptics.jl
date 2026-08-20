@@ -188,7 +188,9 @@ function _validate_po_inputs(grid::SphGrid, freq_hz::Real,
     isfinite(eta0) && eta0 > 0 ||
         throw(ArgumentError(
             "eta0 must be finite and positive, got $eta0"))
-    k_norm = _validate_plane_wave_excitation(excitation)
+    plane_wave_geometry =
+        _validate_plane_wave_excitation_geometry(excitation)
+    k_norm = plane_wave_geometry.magnitude
 
     frequency = Float64(freq_hz)
     isfinite(frequency) && frequency > 0 ||
@@ -200,8 +202,7 @@ function _validate_po_inputs(grid::SphGrid, freq_hz::Real,
         throw(ArgumentError(
             "plane-wave |k_vec|=$k_norm does not match 2π*freq_hz/c0=$k"))
 
-    k_hat = excitation.k_vec / k_norm
-    return NΩ, frequency, k, Vec3(k_hat)
+    return NΩ, frequency, k, plane_wave_geometry.direction
 end
 
 # ─── Analytical phase integral helpers (POFacets G.m / fact.m) ───

@@ -712,13 +712,13 @@ end
 function _assemble_plane_wave_h_rhs_3d(mesh::TriMesh, rwg::RWGData,
                                        pw::PlaneWaveExcitation, eta::Complex;
                                        quad_order::Int=3)
-    k_norm = _validate_plane_wave_excitation(pw)
+    plane_wave_geometry = _validate_plane_wave_excitation_geometry(pw)
     isfinite(real(eta)) && isfinite(imag(eta)) && !iszero(eta) ||
         throw(ArgumentError(
             "exterior wave impedance must be finite and nonzero, got $eta."))
     N = rwg.nedges
     wq, quad_pts, areas = _excitation_quadrature_cache(mesh, quad_order)
-    khat = pw.k_vec / k_norm
+    khat = plane_wave_geometry.direction
     rhs = zeros(ComplexF64, N)
     for n in 1:N
         for t in (rwg.tplus[n], rwg.tminus[n])

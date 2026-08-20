@@ -1114,7 +1114,8 @@ end
         "plane-wave incident field")
 end
 
-function _validate_plane_wave_parameters(k_vec::Vec3, E0, pol::Vec3)
+function _validate_plane_wave_parameters_and_geometry(
+        k_vec::Vec3, E0, pol::Vec3)
     all(isfinite, k_vec) ||
         throw(ArgumentError("plane-wave k_vec components must be finite."))
     k_scale = maximum(abs, k_vec)
@@ -1158,11 +1159,24 @@ function _validate_plane_wave_parameters(k_vec::Vec3, E0, pol::Vec3)
     transverse_error <= 1e-10 ||
         throw(ArgumentError(
             "plane-wave polarization must be transverse to k_vec; normalized dot=$transverse_error."))
-    return k_norm
+    return (
+        magnitude=k_norm,
+        direction=Vec3(k_scaled / k_scaled_norm),
+    )
+end
+
+function _validate_plane_wave_parameters(k_vec::Vec3, E0, pol::Vec3)
+    return _validate_plane_wave_parameters_and_geometry(
+        k_vec, E0, pol).magnitude
+end
+
+function _validate_plane_wave_excitation_geometry(pw::PlaneWaveExcitation)
+    return _validate_plane_wave_parameters_and_geometry(
+        pw.k_vec, pw.E0, pw.pol)
 end
 
 function _validate_plane_wave_excitation(pw::PlaneWaveExcitation)
-    return _validate_plane_wave_parameters(pw.k_vec, pw.E0, pw.pol)
+    return _validate_plane_wave_excitation_geometry(pw).magnitude
 end
 
 @inline function _validate_finite_vec3(value, label::AbstractString)

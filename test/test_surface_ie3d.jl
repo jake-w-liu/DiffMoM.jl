@@ -704,6 +704,39 @@ end
         DielectricMedium3D(1.0 + 0im, 1.0 + 0im, k0 + 0im, 0.0 + 0im);
         quad_order=1)
 
+    tiny_direction_component = nextfloat(0.0)
+    tiny_direction_wave = PlaneWaveExcitation(
+        Vec3(tiny_direction_component, tiny_direction_component, 0.0),
+        1.0,
+        Vec3(0.0, 0.0, 1.0),
+    )
+    tiny_direction_medium = DielectricMedium3D(
+        1.0 + 0im,
+        1.0 + 0im,
+        ComplexF64(tiny_direction_component),
+        1.0 + 0im,
+    )
+    tiny_direction_rhs = assemble_dielectric_sie_rhs_3d(
+        mesh, rwg, tiny_direction_wave, tiny_direction_medium;
+        quad_order=1)
+    tiny_direction = Vec3(
+        inv(sqrt(2.0)), inv(sqrt(2.0)), 0.0)
+    tiny_magnetic_polarization = cross(
+        tiny_direction, tiny_direction_wave.pol)
+    tiny_magnetic_rhs = assemble_excitation(
+        mesh,
+        rwg,
+        PlaneWaveExcitation(
+            tiny_direction_wave.k_vec,
+            tiny_direction_wave.E0,
+            tiny_magnetic_polarization,
+        );
+        quad_order=1,
+    )
+    @test norm(tiny_magnetic_rhs) > 0.0
+    @test tiny_direction_rhs[(N + 1):(2N)] ≈
+          tiny_magnetic_rhs rtol=2eps(Float64) atol=0.0
+
     res_pw = solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, pw;
                                      mur_in=mu_in,
                                      formulation=:pmchwt,
