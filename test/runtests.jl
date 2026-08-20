@@ -3581,6 +3581,41 @@ catch
 end
 @assert surface_err
 
+# A rounded point-to-surface distance can equal the requested tolerance on
+# either side. The exact stored geometry must accept the just-outside point
+# and continue to reject the just-inside point.
+nearfield_surface_mesh = TriMesh(
+    Float64[0 2 0 2; 0 0 2 2; 0 0 0 0],
+    Int[1 2; 2 4; 3 3],
+)
+nearfield_surface_rwg = build_rwg(nearfield_surface_mesh)
+nearfield_surface_x = prevfloat(1.0)
+nearfield_surface_y = ldexp(1.0, -26)
+nearfield_surface_outside =
+    Vec3(-nearfield_surface_x, -nearfield_surface_y, 0.0)
+nearfield_surface_inside = Vec3(
+    -nearfield_surface_x, -prevfloat(nearfield_surface_y), 0.0)
+@test DiffMoM._surface_distance(
+    nearfield_surface_mesh, nearfield_surface_outside) == 1.0
+@test DiffMoM._surface_distance(
+    nearfield_surface_mesh, nearfield_surface_inside) == 1.0
+@test compute_nearfield(
+    nearfield_surface_mesh,
+    nearfield_surface_rwg,
+    zeros(ComplexF64, nearfield_surface_rwg.nedges),
+    nearfield_surface_outside,
+    1.0;
+    surface_tol=1.0,
+) == zero(CVec3)
+@test_throws ErrorException compute_nearfield(
+    nearfield_surface_mesh,
+    nearfield_surface_rwg,
+    zeros(ComplexF64, nearfield_surface_rwg.nedges),
+    nearfield_surface_inside,
+    1.0;
+    surface_tol=1.0,
+)
+
 grid_nf = make_sph_grid(10, 20)
 q_nf = 37
 G_nf_far = radiation_vectors(mesh, rwg, grid_nf, k; quad_order=7, eta0=eta0)

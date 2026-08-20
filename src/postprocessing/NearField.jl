@@ -147,6 +147,115 @@ function _surface_distance(mesh::TriMesh, p::Vec3)
     return dmin
 end
 
+@inline _nearfield_exact_subtract(first, second) =
+    ntuple(component -> first[component] - second[component], 3)
+
+@inline _nearfield_exact_dot(first, second) =
+    first[1] * second[1] + first[2] * second[2] +
+    first[3] * second[3]
+
+@inline _nearfield_exact_cross(first, second) = (
+    first[2] * second[3] - first[3] * second[2],
+    first[3] * second[1] - first[1] * second[3],
+    first[1] * second[2] - first[2] * second[1],
+)
+
+@inline function _nearfield_point_segment_within_exact(
+        point, first, second, tolerance_squared)
+    edge = _nearfield_exact_subtract(second, first)
+    offset = _nearfield_exact_subtract(point, first)
+    edge_squared = _nearfield_exact_dot(edge, edge)
+    iszero(edge_squared) &&
+        return _nearfield_exact_dot(offset, offset) <= tolerance_squared
+
+    projection = _nearfield_exact_dot(offset, edge)
+    projection <= 0 &&
+        return _nearfield_exact_dot(offset, offset) <= tolerance_squared
+    if projection >= edge_squared
+        endpoint_offset = _nearfield_exact_subtract(point, second)
+        return _nearfield_exact_dot(endpoint_offset, endpoint_offset) <=
+               tolerance_squared
+    end
+
+    # Compare the squared point-to-line distance without dividing by the
+    # rational segment parameter.
+    residual_numerator = ntuple(component ->
+        offset[component] * edge_squared -
+        edge[component] * projection, 3)
+    return _nearfield_exact_dot(
+               residual_numerator, residual_numerator) <=
+           tolerance_squared * edge_squared * edge_squared
+end
+
+function _nearfield_point_triangle_within_exact(
+        point, first, second, third, tolerance_squared)
+    edge_ab = _nearfield_exact_subtract(second, first)
+    edge_ac = _nearfield_exact_subtract(third, first)
+    point_offset = _nearfield_exact_subtract(point, first)
+    normal = _nearfield_exact_cross(edge_ab, edge_ac)
+    normal_squared = _nearfield_exact_dot(normal, normal)
+
+    # When the orthogonal plane projection lies inside a nondegenerate
+    # triangle, its plane distance is the global minimum. All remaining
+    # closest points lie on one of the three closed edges.
+    if normal_squared > 0
+        d00 = _nearfield_exact_dot(edge_ab, edge_ab)
+        d01 = _nearfield_exact_dot(edge_ab, edge_ac)
+        d11 = _nearfield_exact_dot(edge_ac, edge_ac)
+        d20 = _nearfield_exact_dot(point_offset, edge_ab)
+        d21 = _nearfield_exact_dot(point_offset, edge_ac)
+        denominator = d00 * d11 - d01 * d01
+        coordinate_b = d11 * d20 - d01 * d21
+        coordinate_c = d00 * d21 - d01 * d20
+        if coordinate_b >= 0 && coordinate_c >= 0 &&
+           coordinate_b + coordinate_c <= denominator
+            plane_numerator = _nearfield_exact_dot(point_offset, normal)
+            plane_numerator * plane_numerator <=
+                tolerance_squared * normal_squared && return true
+        end
+    end
+
+    return _nearfield_point_segment_within_exact(
+               point, first, second, tolerance_squared) ||
+           _nearfield_point_segment_within_exact(
+               point, second, third, tolerance_squared) ||
+           _nearfield_point_segment_within_exact(
+               point, third, first, tolerance_squared)
+end
+
+@noinline function _surface_within_tolerance_exact(
+        mesh::TriMesh, point::Vec3, tolerance::Float64)
+    point_exact = ntuple(
+        component -> Rational{BigInt}(point[component]), 3)
+    tolerance_exact = Rational{BigInt}(tolerance)
+    tolerance_squared = tolerance_exact * tolerance_exact
+    @inbounds for triangle in 1:ntriangles(mesh)
+        first = ntuple(component -> Rational{BigInt}(
+            mesh.xyz[component, mesh.tri[1, triangle]]), 3)
+        second = ntuple(component -> Rational{BigInt}(
+            mesh.xyz[component, mesh.tri[2, triangle]]), 3)
+        third = ntuple(component -> Rational{BigInt}(
+            mesh.xyz[component, mesh.tri[3, triangle]]), 3)
+        _nearfield_point_triangle_within_exact(
+            point_exact, first, second, third, tolerance_squared) &&
+            return true
+    end
+    return false
+end
+
+@inline function _surface_within_tolerance(
+        mesh::TriMesh, point::Vec3, tolerance::Float64)
+    distance = _surface_distance(mesh, point)
+    isfinite(distance) || return false, distance
+    scale = max(distance, tolerance)
+    uncertainty = 64 * eps(scale)
+    separation = abs(distance - tolerance)
+    if isfinite(uncertainty) && separation > uncertainty
+        return distance <= tolerance, distance
+    end
+    return _surface_within_tolerance_exact(mesh, point, tolerance), distance
+end
+
 @inline function _default_nearfield_surface_tol(mesh::TriMesh)
     diagonal = _bbox_diagonal(mesh)
     tolerance = 1e-10 * diagonal
@@ -581,8 +690,8 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
     if check_surface
         for (i, p) in enumerate(observation_points)
-            d = _surface_distance(mesh, p)
-            if d <= tol
+            within_tolerance, d = _surface_within_tolerance(mesh, p, tol)
+            if within_tolerance
                 error(
                     "compute_nearfield does not support observation points on the surface " *
                     "or within surface_tol=$tol of it. Point $i has minimum distance $d."
