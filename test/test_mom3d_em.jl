@@ -125,10 +125,15 @@ end
         observation = Vec3(1.0e100, 0.0, 0.0)
         source = Vec3(0.0, 0.0, 0.0)
         k = 1.1
+        custom_eta = 1.0
         electric_dipole = CVec3(0.0, 1.0, 0.0)
         magnetic_dipole = CVec3(0.0, 0.0, 1.0)
         electric, magnetic = DiffMoM._em_interaction_apply_3d(
             observation, source, k, electric_dipole, magnetic_dipole)
+        custom_electric, custom_magnetic =
+            DiffMoM._em_interaction_apply_3d(
+                observation, source, k, electric_dipole, magnetic_dipole,
+                custom_eta)
         reference_electric, reference_magnetic =
             setprecision(BigFloat, 2304) do
                 q = SVector{3,Complex{BigFloat}}(
@@ -141,6 +146,20 @@ end
             end
         @test electric == reference_electric
         @test magnetic == reference_magnetic
+        reference_custom_electric, reference_custom_magnetic =
+            setprecision(BigFloat, 2304) do
+                q = SVector{3,Complex{BigFloat}}(
+                    0.0 + 0im, 1.0 + 0im, 0.0 + 0im)
+                m = SVector{3,Complex{BigFloat}}(
+                    0.0 + 0im, 0.0 + 0im, 1.0 + 0im)
+                E, H = DiffMoM._em_interaction_value_bigfloat_3d(
+                    observation, source, k, q, m, custom_eta)
+                CVec3(ComplexF64.(E)), CVec3(ComplexF64.(H))
+            end
+        @test custom_electric == reference_custom_electric
+        @test custom_magnetic == reference_custom_magnetic
+        @test custom_electric != electric
+        @test custom_magnetic != magnetic
     end
 
     @testset "Polarizability application exponent safety" begin
@@ -723,6 +742,90 @@ end
             allocation_grid, k0, material_vector)
         @test all(==(alpha_vector[1]), alpha_vector)
         @test allocated <= Base.summarysize(alpha_vector) + 4096
+    end
+
+    @testset "Custom background impedance propagation" begin
+        grid = VoxelGrid3D(
+            (-0.5, 0.5), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
+        C6 = Matrix{ComplexF64}(I, 6, 6)
+        C6[1:3, 1:3] .*= 2
+        C6[4:6, 4:6] .*= 3
+        material = BianisotropicMaterial3D(C6)
+        custom_eta = 1.0
+        default_eta = 376.730313668
+
+        direct_default = em_dda_operator_3d(grid, 2.0, material)
+        direct = em_dda_operator_3d(
+            grid, 2.0, material; eta0=custom_eta)
+        fft = fft_em_dda_operator_3d(
+            grid, 2.0, material; eta0=custom_eta)
+        @test direct.eta0 == custom_eta
+        @test fft.eta0 == custom_eta
+        @test fft.kernel.eta0 == custom_eta
+        @test direct.alpha == direct_default.alpha
+
+        magnetic_basis = DiffMoM._CVec6DDA(ntuple(
+            component -> component == 5 ? 1.0 + 0im : 0.0 + 0im, 6))
+        magnetic_dipoles = direct.alpha[2] * magnetic_basis
+        magnetic_moment = CVec3(
+            magnetic_dipoles[4], magnetic_dipoles[5], magnetic_dipoles[6])
+        electric_row = DiffMoM._em_index(1, 3)
+        magnetic_col = DiffMoM._em_index(2, 5)
+        expected_electric = -DiffMoM.magnetic_dipole_electric_field_3d(
+            grid.centers[1], grid.centers[2], 2.0, magnetic_moment;
+            eta0=custom_eta)[3]
+        @test direct[electric_row, magnetic_col] == expected_electric
+        @test fft[electric_row, magnetic_col] == expected_electric
+        @test direct_default[electric_row, magnetic_col] / expected_electric ≈
+              default_eta rtol=2eps(Float64)
+
+        electric_basis = DiffMoM._CVec6DDA(ntuple(
+            component -> component == 2 ? 1.0 + 0im : 0.0 + 0im, 6))
+        electric_dipoles = direct.alpha[2] * electric_basis
+        electric_moment = CVec3(
+            electric_dipoles[1], electric_dipoles[2], electric_dipoles[3])
+        magnetic_row = DiffMoM._em_index(1, 6)
+        electric_col = DiffMoM._em_index(2, 2)
+        expected_magnetic = -DiffMoM.electric_dipole_magnetic_field_3d(
+            grid.centers[1], grid.centers[2], 2.0, electric_moment;
+            eta0=custom_eta)[3]
+        @test direct[magnetic_row, electric_col] == expected_magnetic
+        @test fft[magnetic_row, electric_col] == expected_magnetic
+        @test direct_default[magnetic_row, electric_col] / expected_magnetic ≈
+              inv(default_eta) rtol=2eps(Float64)
+
+        x = ComplexF64[
+            cos(component / 7) + 1im * sin(component / 11)
+            for component in 1:size(direct, 2)
+        ]
+        @test fft * x ≈ direct * x rtol=16eps(Float64)
+
+        E_inc = [CVec3(1.0 + 0.1im, 0.2 + 0im, 0.0 + 0im),
+                 CVec3(0.3 + 0im, -0.1 + 0.2im, 0.4 + 0im)]
+        H_inc = [CVec3(0.0 + 0im, 0.4 - 0.1im, 0.2 + 0im),
+                 CVec3(0.1 + 0im, 0.0 + 0im, -0.3 + 0.1im)]
+        result = solve_em_dda_3d(
+            grid, 2.0, material, E_inc, H_inc; eta0=custom_eta)
+        @test result.eta0 == custom_eta
+        observation = Vec3(0.0, 0.7, 0.4)
+        dipoles_q, dipoles_m = induced_dipoles_em_dda_3d(result)
+        expected_scattered_E = zero(CVec3)
+        expected_scattered_H = zero(CVec3)
+        for voxel in 1:grid.nvoxels
+            contribution_E, contribution_H =
+                DiffMoM._em_interaction_apply_3d(
+                    observation, grid.centers[voxel], result.k0,
+                    dipoles_q[voxel], dipoles_m[voxel], custom_eta)
+            expected_scattered_E += contribution_E
+            expected_scattered_H += contribution_H
+        end
+        scattered_E, scattered_H =
+            scattered_fields_em_dda_3d(result, [observation])
+        @test scattered_E[1] ≈ expected_scattered_E rtol=8eps(Float64)
+        @test scattered_H[1] ≈ expected_scattered_H rtol=8eps(Float64)
+        direction = Vec3(0.2, 0.3, 0.4)
+        @test farfield_em_dda_3d(result, direction) ==
+              farfield_em_dda_3d(result, direction; eta0=custom_eta)
     end
 
     @testset "Matrix-free operator equivalence and storage" begin

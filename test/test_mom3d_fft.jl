@@ -37,6 +37,8 @@ end
     @test_throws ArgumentError fft_dda_kernel_3d(single, Inf)
     @test_throws ArgumentError fft_dda_operator_3d(single, Inf, 3.0)
     @test_throws ArgumentError fft_em_dda_kernel_3d(single, Inf)
+    @test_throws ArgumentError fft_em_dda_kernel_3d(
+        single, k0; eta0=Inf)
     @test_throws ArgumentError fft_em_dda_operator_3d(
         single, Inf, 3.0, 1.2)
     A_single = fft_dda_operator_3d(single, k0, 3.0 + 0.1im)

@@ -13,7 +13,6 @@ export em_dda_operator_3d, assemble_em_dda_3d, solve_em_dda_3d
 export planewave_em_dda_3d, induced_dipoles_em_dda_3d
 export scattered_fields_em_dda_3d, farfield_em_dda_3d
 
-const _ETA0_DDA = 376.730313668
 const _CVec6DDA = SVector{6,ComplexF64}
 const _CMat6DDA = SMatrix{6,6,ComplexF64,36}
 
@@ -385,12 +384,16 @@ end
     (-1im * eta0 * k) * _grad_g_cross_3d(r, rp, k, m)
 
 @inline function _em_interaction_apply_3d(ri::Vec3, rj::Vec3, k::Float64,
-                                          q::CVec3, m::CVec3)
+                                          q::CVec3, m::CVec3,
+                                          eta0::Float64=_ETA0_DDA)
     _electric_dipole_geometry_requires_exact_3d(ri, rj, k) &&
-        return _em_interaction_apply_bigfloat_3d(ri, rj, k, q, m)
+        return _em_interaction_apply_bigfloat_3d(
+            ri, rj, k, q, m, eta0)
     E = _electric_dipole_apply_3d(ri, rj, k, q) +
-        magnetic_dipole_electric_field_3d(ri, rj, k, m)
-    H = electric_dipole_magnetic_field_3d(ri, rj, k, q) +
+        magnetic_dipole_electric_field_3d(
+            ri, rj, k, m; eta0=eta0)
+    H = electric_dipole_magnetic_field_3d(
+            ri, rj, k, q; eta0=eta0) +
         _electric_dipole_apply_3d(ri, rj, k, m)
     return E, H
 end
@@ -400,14 +403,16 @@ function _em_interaction_apply_bigfloat_3d(
         rj::Vec3,
         k::Float64,
         q::CVec3,
-        m::CVec3)
+        m::CVec3,
+        eta0::Float64=_ETA0_DDA)
     precision = _electric_dipole_exact_precision_3d(ri, rj, k)
     return setprecision(BigFloat, precision) do
         qb = SVector{3,Complex{BigFloat}}(ntuple(
             component -> Complex{BigFloat}(q[component]), 3))
         mb = SVector{3,Complex{BigFloat}}(ntuple(
             component -> Complex{BigFloat}(m[component]), 3))
-        E, H = _em_interaction_value_bigfloat_3d(ri, rj, k, qb, mb)
+        E, H = _em_interaction_value_bigfloat_3d(
+            ri, rj, k, qb, mb, eta0)
         converted_E = CVec3(ntuple(component -> ComplexF64(E[component]), 3))
         converted_H = CVec3(ntuple(component -> ComplexF64(H[component]), 3))
         all(isfinite, converted_E) && all(isfinite, converted_H) ||
@@ -422,7 +427,8 @@ function _em_interaction_value_bigfloat_3d(
         rj::Vec3,
         k::Float64,
         q::SVector{3,Complex{BigFloat}},
-        m::SVector{3,Complex{BigFloat}})
+        m::SVector{3,Complex{BigFloat}},
+        eta0::Float64=_ETA0_DDA)
     R_vec = SVector{3,BigFloat}(
         BigFloat(ri[1]) - BigFloat(rj[1]),
         BigFloat(ri[2]) - BigFloat(rj[2]),
@@ -437,7 +443,7 @@ function _em_interaction_value_bigfloat_3d(
         (Complex{BigFloat}(0, -kb) - inv(R)) * scalar_green
     gradient_cross_q = radial_derivative * cross(R_vec, q) / R
     gradient_cross_m = radial_derivative * cross(R_vec, m) / R
-    eta = BigFloat(_ETA0_DDA)
+    eta = BigFloat(eta0)
     electric_q = _electric_dipole_value_bigfloat_3d(ri, rj, k, q)
     electric_m = _electric_dipole_value_bigfloat_3d(ri, rj, k, m)
     E = electric_q + Complex{BigFloat}(0, -eta * kb) * gradient_cross_m
@@ -450,7 +456,8 @@ function _em_alpha_interaction_apply_bigfloat_3d(
         rj::Vec3,
         k::Float64,
         alpha::_CMat6DDA,
-        field::_CVec6DDA)
+        field::_CVec6DDA,
+        eta0::Float64=_ETA0_DDA)
     precision = _electric_dipole_exact_precision_3d(ri, rj, k)
     return setprecision(BigFloat, precision) do
         dipoles = _alpha_apply_bigfloat_vector_3d(alpha, field)
@@ -458,7 +465,8 @@ function _em_alpha_interaction_apply_bigfloat_3d(
             dipoles[1], dipoles[2], dipoles[3])
         m = SVector{3,Complex{BigFloat}}(
             dipoles[4], dipoles[5], dipoles[6])
-        E, H = _em_interaction_value_bigfloat_3d(ri, rj, k, q, m)
+        E, H = _em_interaction_value_bigfloat_3d(
+            ri, rj, k, q, m, eta0)
         converted_E = CVec3(
             ComplexF64(E[1]), ComplexF64(E[2]), ComplexF64(E[3]))
         converted_H = CVec3(
@@ -475,20 +483,22 @@ end
         rj::Vec3,
         k::Float64,
         alpha::_CMat6DDA,
-        field::_CVec6DDA)
+        field::_CVec6DDA,
+        eta0::Float64=_ETA0_DDA)
     dipoles = alpha * field
     if all(isfinite, dipoles) &&
        !_alpha_field_product_loses_range_3d(alpha, field)
         q, m = _split_em_field(dipoles)
         try
-            E, H = _em_interaction_apply_3d(ri, rj, k, q, m)
+            E, H = _em_interaction_apply_3d(
+                ri, rj, k, q, m, eta0)
             all(isfinite, E) && all(isfinite, H) && return E, H
         catch err
             err isa OverflowError || rethrow()
         end
     end
     return _em_alpha_interaction_apply_bigfloat_3d(
-        ri, rj, k, alpha, field)
+        ri, rj, k, alpha, field, eta0)
 end
 
 """
@@ -504,7 +514,8 @@ function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
         grid, k, eps_r, mu_r;
         radiative_correction=radiative_correction,
     )
-    return EMDDAOperator3D(grid, k, alpha, radiative_correction)
+    return EMDDAOperator3D(
+        grid, k, alpha, radiative_correction, _ETA0_DDA)
 end
 
 """
@@ -521,7 +532,8 @@ function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real, alpha6;
         grid, k, alpha6;
         radiative_correction=radiative_correction,
     )
-    return EMDDAOperator3D(grid, k, alpha, radiative_correction)
+    return EMDDAOperator3D(
+        grid, k, alpha, radiative_correction, _ETA0_DDA)
 end
 
 function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
@@ -530,12 +542,14 @@ function em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
                             radiative_correction::Bool=false,
                             eta0::Real=_ETA0_DDA)
     k = _finite_positive_k0_3d(k0)
+    eta = _finite_positive_real_3d(eta0, "eta0")
     alpha = em_dda_polarizabilities(
         grid, k, material;
         radiative_correction=radiative_correction,
-        eta0=eta0,
+        eta0=eta,
     )
-    return EMDDAOperator3D(grid, k, alpha, radiative_correction)
+    return EMDDAOperator3D(
+        grid, k, alpha, radiative_correction, eta)
 end
 
 Base.size(A::EMDDAOperator3D) = (6 * A.grid.nvoxels, 6 * A.grid.nvoxels)
@@ -557,7 +571,8 @@ function Base.getindex(A::EMDDAOperator3D, row::Int, col::Int)
     iszero(alphaj) && return 0.0 + 0im
     basis = _CVec6DDA(ntuple(c -> c == b ? 1.0 + 0im : 0.0 + 0im, 6))
     E, H = _em_alpha_interaction_apply_3d(
-        A.grid.centers[i], A.grid.centers[j], A.k0, alphaj, basis)
+        A.grid.centers[i], A.grid.centers[j], A.k0, alphaj, basis,
+        A.eta0)
     return -(a <= 3 ? E[a] : H[a - 3])
 end
 
@@ -587,6 +602,7 @@ end
                 A.k0,
                 q,
                 m,
+                A.eta0,
             )
             total -= SVector{6,Complex{BigFloat}}(
                 E[1], E[2], E[3], H[1], H[2], H[3])
@@ -638,7 +654,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 iszero(alphaj) && continue
                 Es, Hs = _em_alpha_interaction_apply_3d(
                     ri, A.grid.centers[j], A.k0, alphaj,
-                    _read_em_field6(xread, j))
+                    _read_em_field6(xread, j), A.eta0)
                 next_Ei = Ei - Es
                 next_Hi = Hi - Hs
                 if !all(isfinite, next_Ei) || !all(isfinite, next_Hi)
@@ -686,7 +702,8 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     cols = ntuple(b -> begin
         basis = _CVec6DDA(ntuple(c -> c == b ? 1.0 + 0im : 0.0 + 0im, 6))
         q, m = _split_em_field(alphaj * basis)
-        E, H = _em_interaction_apply_3d(ri, rj, k, q, m)
+        E, H = _em_interaction_apply_3d(
+            ri, rj, k, q, m, A.eta0)
         -_join_em_field(E, H)
     end, 6)
     return _CMat6DDA(ntuple(idx -> begin
@@ -840,7 +857,8 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
         E_rhs, H_rhs = _unflatten_em_fields_3d(rhs, grid.nvoxels)
         return EMDDAResult3D(E_total, H_total, E_rhs, H_rhs,
                              Aop.alpha, A, fac, :direct, nothing,
-                             grid, Float64(k0), Aop.radiative_correction)
+                             grid, Float64(k0), Aop.radiative_correction,
+                             Aop.eta0)
     elseif solver == :gmres
         total_flat, stats = solve_gmres(
             Aop, rhs;
@@ -854,7 +872,8 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
         E_rhs, H_rhs = _unflatten_em_fields_3d(rhs, grid.nvoxels)
         return EMDDAResult3D(E_total, H_total, E_rhs, H_rhs,
                              Aop.alpha, Aop, nothing, reported_solver, stats,
-                             grid, Float64(k0), Aop.radiative_correction)
+                             grid, Float64(k0), Aop.radiative_correction,
+                             Aop.eta0)
     else
         error("Unsupported EM DDA solver: $solver (expected :direct or :gmres).")
     end
@@ -1026,7 +1045,8 @@ summing induced electric and magnetic dipoles. Returns `(E_scat, H_scat)`.
                 dipoles[4], dipoles[5], dipoles[6])
             contribution_E, contribution_H =
                 _em_interaction_value_bigfloat_3d(
-                    observation, res.grid.centers[j], res.k0, q, m)
+                    observation, res.grid.centers[j], res.k0, q, m,
+                    res.eta0)
             total_E += contribution_E
             total_H += contribution_H
         end
@@ -1059,7 +1079,8 @@ function _scattered_fields_sum_em_dda_3d(
                 _em_alpha_interaction_apply_3d(
                     observation, res.grid.centers[j], res.k0,
                     res.alpha[j],
-                    _join_em_field(res.E_total[j], res.H_total[j]))
+                    _join_em_field(res.E_total[j], res.H_total[j]),
+                    res.eta0)
             next_E = total_E + contribution_E
             next_H = total_H + contribution_H
             all(isfinite, next_E) && all(isfinite, next_H) ||
@@ -1311,14 +1332,14 @@ Return `(F_E, F_H)` such that `E_scat ~= exp(-ikr) F_E / r` and
 `H_scat ~= exp(-ikr) F_H / r` in observation direction `rhat`.
 """
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
-                            eta0::Real=_ETA0_DDA)
+                            eta0::Real=res.eta0)
     eta = _finite_positive_real_3d(eta0, "eta0")
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     return _em_farfield_sum_3d(res, rhat, n, eta)
 end
 
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::AbstractVector{Vec3};
-                            eta0::Real=_ETA0_DDA)
+                            eta0::Real=res.eta0)
     FE = Vector{CVec3}(undef, length(rhat))
     FH = Vector{CVec3}(undef, length(rhat))
     for j in eachindex(rhat)

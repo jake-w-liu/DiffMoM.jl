@@ -182,6 +182,7 @@ in the order `(Ex, Ey, Ez, Hx, Hy, Hz)`. Behaves as an
 | `k0` | `Float64` | Background wavenumber (rad/m). |
 | `alpha` | `AbstractVector` | Per-voxel `6x6` polarizability mapping `[E; H]` to `[q; m]`. |
 | `radiative_correction` | `Bool` | Whether the radiation-reaction correction was applied. |
+| `eta0` | `Float64` | Background wave impedance used by electric-magnetic cross interactions (Ohm). |
 
 ---
 
@@ -206,6 +207,7 @@ Result from a coupled electric-magnetic DDA solve, returned by
 | `grid` | `VoxelGrid3D` | The voxel grid. |
 | `k0` | `Float64` | Background wavenumber (rad/m). |
 | `radiative_correction` | `Bool` | Whether the radiation-reaction correction was applied. |
+| `eta0` | `Float64` | Background wave impedance used by the solve and its field post-processing (Ohm). |
 
 ---
 
@@ -583,6 +585,9 @@ Construct a matrix-free `EMDDAOperator3D`. Several methods are available:
 - `em_dda_operator_3d(grid, k0, material; radiative_correction=false, eta0=376.730313668)`:
   from a `BianisotropicMaterial3D` (or vector of them).
 
+For the bianisotropic-material method, `eta0` is applied consistently to the
+constitutive normalization and to every direct electric-magnetic interaction.
+
 **Parameters (magnetodielectric method):**
 
 | Parameter | Type | Default | Description |
@@ -647,6 +652,8 @@ Solve the coupled electric-magnetic volume DDA for magnetodielectric voxels.
 Additional methods accept explicit per-voxel `6x6` polarizabilities
 (`solve_em_dda_3d(grid, k0, alpha6, E_inc, H_inc; ...)`) or a
 `BianisotropicMaterial3D` (with an extra `eta0` keyword).
+The selected impedance is stored in the returned result and reused by
+scattered-field and far-field post-processing.
 
 **Parameters:**
 
@@ -698,7 +705,7 @@ electric and magnetic halves.
 
 Compute the scattered electric and magnetic fields at observation points by
 summing the induced electric and magnetic dipoles. Observation points must not
-coincide with voxel centers.
+coincide with voxel centers. Interactions use the impedance stored in `result`.
 
 **Parameters:**
 
@@ -711,7 +718,7 @@ coincide with voxel centers.
 
 ---
 
-### `farfield_em_dda_3d(result, rhat; eta0=376.730313668)`
+### `farfield_em_dda_3d(result, rhat; eta0=result.eta0)`
 
 Return `(F_E, F_H)` such that `E_scat ~= exp(-i k r) F_E / r` and
 `H_scat ~= exp(-i k r) F_H / r` in observation direction `rhat`. A
@@ -723,7 +730,7 @@ Return `(F_E, F_H)` such that `E_scat ~= exp(-i k r) F_E / r` and
 |-----------|------|---------|-------------|
 | `result` | `EMDDAResult3D` | -- | A solved coupled EM DDA result. |
 | `rhat` | `Vec3` or `AbstractVector{Vec3}` | -- | Observation direction(s). |
-| `eta0` | `Real` | `376.730313668` | Free-space impedance (Ohm). |
+| `eta0` | `Real` | `result.eta0` | Background wave impedance (Ohm). |
 
 **Returns:** Tuple `(F_E, F_H)` of `CVec3` (single direction) or
 `Vector{CVec3}` (multiple directions). In the deep far zone these satisfy the
@@ -837,11 +844,13 @@ interaction. The stored kernel maps induced `[q; m]` dipoles to scattered
 | Field | Type | Description |
 |-------|------|-------------|
 | `pad_dims` | `NTuple{3,Int}` | Padded FFT dimensions `(2nx-1, 2ny-1, 2nz-1)`. |
+| `interaction_scale` | `Float64` | Scale applied while forming the stored interaction kernel. |
 | `kernel_hat` | `Array{ComplexF64,5}` | FFT of the `6x6` spatial kernel, indexed `[ix, iy, iz, a, b]`. |
+| `eta0` | `Float64` | Background wave impedance embedded in the electric-magnetic cross blocks (Ohm). |
 
 ---
 
-### `fft_em_dda_kernel_3d(grid, k0; max_storage_bytes=2_000_000_000)`
+### `fft_em_dda_kernel_3d(grid, k0; eta0=376.730313668, max_storage_bytes=2_000_000_000)`
 
 Build the `FFTEMDDAKernel3D` for the coupled EM DDA operator by sweeping
 Cartesian grid offsets, evaluating the `6x6` electromagnetic interaction at each
@@ -853,6 +862,7 @@ offset, and storing the FFT of each component array.
 |-----------|------|---------|-------------|
 | `grid` | `VoxelGrid3D` | -- | The voxel grid. |
 | `k0` | `Real` | -- | Wavenumber (rad/m), must be positive. |
+| `eta0` | `Real` | `376.730313668` | Background wave impedance used by the cross-interaction blocks (Ohm). |
 
 **Returns:** `FFTEMDDAKernel3D`.
 
@@ -878,6 +888,7 @@ FFT-accelerated coupled electric-magnetic DDA operator. It applies
 | `kernel` | `FFTEMDDAKernel3D` | The precomputed Fourier kernel. |
 | `qhat`, `conv` | `Array{ComplexF64}` | Preallocated FFT workspaces reused across matvecs. |
 | `work_lock` | `ReentrantLock` | Serializes access to the reusable workspaces for thread-safe shared use. |
+| `eta0` | `Float64` | Background wave impedance used by electric-magnetic cross interactions (Ohm). |
 
 ---
 
@@ -887,6 +898,8 @@ Construct an `FFTEMDDAOperator3D`. Additional methods accept explicit per-voxel
 `6x6` polarizabilities (`fft_em_dda_operator_3d(grid, k0, alpha6; ...)`) or a
 `BianisotropicMaterial3D` (with an extra `eta0` keyword). This operator backs the
 `:fft_gmres` solver mode of `solve_em_dda_3d`.
+For the bianisotropic-material method, the same `eta0` is embedded in the FFT
+kernel, stored in the operator, and used by any direct range-safety fallback.
 
 **Parameters (magnetodielectric method):**
 

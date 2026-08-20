@@ -11,6 +11,7 @@ const _DEFAULT_MAX_VOXELS_3D = 10_000_000
 const _DEFAULT_MAX_VOXEL_GRID_BYTES_3D = 536_870_912
 const _VOXEL_GRID_RAW_BYTES_3D = sizeof(Vec3) + sizeof(Float64)
 const _VOXEL_VOLUME_SAFE_FACTOR_EXPONENT_3D = 128
+const _ETA0_DDA = 376.730313668
 
 @inline function _voxel_volume_factor_is_extreme_3d(value::Float64)
     value_exponent = exponent(value)
@@ -179,7 +180,31 @@ struct EMDDAOperator3D{TAlpha<:AbstractVector} <: AbstractMatrix{ComplexF64}
     k0::Float64
     alpha::TAlpha
     radiative_correction::Bool
+    eta0::Float64
 end
+
+EMDDAOperator3D(grid::VoxelGrid3D, k0::Real,
+                alpha::TAlpha, radiative_correction::Bool) where
+               {TAlpha<:AbstractVector} =
+    EMDDAOperator3D{TAlpha}(
+        grid, Float64(k0), alpha, radiative_correction, _ETA0_DDA)
+
+function EMDDAOperator3D(grid::VoxelGrid3D, k0::Real,
+                alpha::TAlpha, radiative_correction::Bool,
+                eta0::Real) where {TAlpha<:AbstractVector}
+    eta = Float64(eta0)
+    isfinite(eta) && eta > 0 ||
+        throw(ArgumentError(
+            "eta0 must be finite and positive, got $eta0."))
+    return EMDDAOperator3D{TAlpha}(
+        grid, Float64(k0), alpha, radiative_correction, eta)
+end
+
+EMDDAOperator3D{TAlpha}(
+        grid::VoxelGrid3D, k0::Real, alpha::TAlpha,
+        radiative_correction::Bool) where {TAlpha<:AbstractVector} =
+    EMDDAOperator3D{TAlpha}(
+        grid, Float64(k0), alpha, radiative_correction, _ETA0_DDA)
 
 """
     EMDDAResult3D
@@ -199,7 +224,18 @@ struct EMDDAResult3D{TAlpha<:AbstractVector,TA<:AbstractMatrix{ComplexF64},TLU,T
     grid::VoxelGrid3D
     k0::Float64
     radiative_correction::Bool
+    eta0::Float64
 end
+
+EMDDAResult3D(E_total::Vector{CVec3}, H_total::Vector{CVec3},
+              E_inc::Vector{CVec3}, H_inc::Vector{CVec3},
+              alpha::TAlpha, A::TA, A_LU::TLU, solver::Symbol,
+              stats::TStats, grid::VoxelGrid3D, k0::Real,
+              radiative_correction::Bool) where
+             {TAlpha<:AbstractVector,TA<:AbstractMatrix{ComplexF64},TLU,TStats} =
+    EMDDAResult3D(
+        E_total, H_total, E_inc, H_inc, alpha, A, A_LU, solver,
+        stats, grid, Float64(k0), radiative_correction, _ETA0_DDA)
 
 """
     VoxelGrid3D(x_range, y_range, z_range, nx, ny, nz;

@@ -71,7 +71,13 @@ struct FFTEMDDAKernel3D
     pad_dims::NTuple{3,Int}
     interaction_scale::Float64
     kernel_hat::Array{ComplexF64,5}
+    eta0::Float64
 end
+
+FFTEMDDAKernel3D(pad_dims::NTuple{3,Int}, interaction_scale::Real,
+                 kernel_hat::Array{ComplexF64,5}) =
+    FFTEMDDAKernel3D(
+        pad_dims, Float64(interaction_scale), kernel_hat, _ETA0_DDA)
 
 """
     FFTEMDDAOperator3D
@@ -91,15 +97,46 @@ struct FFTEMDDAOperator3D{TAlpha<:AbstractVector} <: AbstractMatrix{ComplexF64}
     qhat::Array{ComplexF64,4}
     conv::Array{ComplexF64,3}
     work_lock::ReentrantLock
+    eta0::Float64
 end
 
-FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Float64,
+FFTEMDDAOperator3D(grid::VoxelGrid3D, k0::Real,
                    alpha::TAlpha, radiative_correction::Bool,
                    kernel::FFTEMDDAKernel3D, qhat::Array{ComplexF64,4},
                    conv::Array{ComplexF64,3}) where
                   {TAlpha<:AbstractVector} =
-    FFTEMDDAOperator3D{TAlpha}(grid, k0, alpha, radiative_correction,
-                              kernel, qhat, conv, ReentrantLock())
+    FFTEMDDAOperator3D{TAlpha}(
+        grid, Float64(k0), alpha, radiative_correction,
+        kernel, qhat, conv, ReentrantLock(), kernel.eta0)
+
+function FFTEMDDAOperator3D(
+        grid::VoxelGrid3D, k0::Real,
+        alpha::TAlpha, radiative_correction::Bool,
+        kernel::FFTEMDDAKernel3D, qhat::Array{ComplexF64,4},
+        conv::Array{ComplexF64,3}, eta0::Real) where
+        {TAlpha<:AbstractVector}
+    eta = Float64(eta0)
+    isfinite(eta) && eta > 0 ||
+        throw(ArgumentError(
+            "eta0 must be finite and positive, got $eta0."))
+    eta == kernel.eta0 ||
+        throw(ArgumentError(
+            "FFT EM-DDA operator eta0 ($eta) must match " *
+            "the kernel eta0 ($(kernel.eta0))."))
+    return FFTEMDDAOperator3D{TAlpha}(
+        grid, Float64(k0), alpha, radiative_correction,
+        kernel, qhat, conv, ReentrantLock(), eta)
+end
+
+FFTEMDDAOperator3D{TAlpha}(
+        grid::VoxelGrid3D, k0::Real,
+        alpha::TAlpha, radiative_correction::Bool,
+        kernel::FFTEMDDAKernel3D, qhat::Array{ComplexF64,4},
+        conv::Array{ComplexF64,3}, work_lock::ReentrantLock) where
+        {TAlpha<:AbstractVector} =
+    FFTEMDDAOperator3D{TAlpha}(
+        grid, Float64(k0), alpha, radiative_correction,
+        kernel, qhat, conv, work_lock, kernel.eta0)
 
 @inline _fft_dda_mod_index(offset::Int, nfft::Int) = mod(offset, nfft) + 1
 
@@ -325,6 +362,7 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     k::Float64,
     b::Int,
     interaction_scale::Float64,
+    eta0::Float64,
 )
     origin = Vec3(0.0, 0.0, 0.0)
     scale = ComplexF64(interaction_scale)
@@ -332,13 +370,15 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     m = b > 3 ? CVec3(ntuple(a -> a == b - 3 ? scale : 0.0 + 0im, 3)) :
         CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    return _em_interaction_apply_3d(r, origin, k, q, m)
+    return _em_interaction_apply_3d(r, origin, k, q, m, eta0)
 end
 
 function fft_em_dda_kernel_3d(
         grid::VoxelGrid3D, k0::Real;
+        eta0::Real=_ETA0_DDA,
         max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     k = _finite_positive_k0_3d(k0)
+    eta = _finite_positive_real_3d(eta0, "eta0")
     interaction_scale = grid.volumes[1]
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
@@ -365,7 +405,7 @@ function fft_em_dda_kernel_3d(
                     ix = _fft_dda_mod_index(ox, px)
                     x = ox * grid.dx
                     E, H = _em_interaction_field_fft_3d(
-                        Vec3(x, y, z), k, b, interaction_scale)
+                        Vec3(x, y, z), k, b, interaction_scale, eta)
                     for a in 1:3
                         block[ix, iy, iz, a] = E[a]
                         block[ix, iy, iz, a + 3] = H[a]
@@ -379,7 +419,8 @@ function fft_em_dda_kernel_3d(
         end
     end
 
-    return FFTEMDDAKernel3D((px, py, pz), interaction_scale, kernel_hat)
+    return FFTEMDDAKernel3D(
+        (px, py, pz), interaction_scale, kernel_hat, eta)
 end
 
 """
@@ -435,17 +476,19 @@ function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
     _validated_fft_dda_storage_3d(
         grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     k = _finite_positive_k0_3d(k0)
+    eta = _finite_positive_real_3d(eta0, "eta0")
     alpha = em_dda_polarizabilities(
         grid, k, material;
         radiative_correction=radiative_correction,
-        eta0=eta0,
+        eta0=eta,
     )
     kernel = fft_em_dda_kernel_3d(
-        grid, k; max_storage_bytes=max_storage_bytes)
+        grid, k; eta0=eta, max_storage_bytes=max_storage_bytes)
     px, py, pz = kernel.pad_dims
     qhat = zeros(ComplexF64, px, py, pz, 6)
     conv = zeros(ComplexF64, px, py, pz)
-    return FFTEMDDAOperator3D(grid, k, alpha, radiative_correction, kernel, qhat, conv)
+    return FFTEMDDAOperator3D(
+        grid, k, alpha, radiative_correction, kernel, qhat, conv, eta)
 end
 
 Base.size(A::FFTEMDDAOperator3D) = (6 * A.grid.nvoxels, 6 * A.grid.nvoxels)
@@ -467,7 +510,7 @@ function Base.getindex(A::FFTEMDDAOperator3D, row::Int, col::Int)
     basis = _CVec6DDA(ntuple(c -> c == b ? 1.0 + 0im : 0.0 + 0im, 6))
     q, m = _split_em_field(alphaj * basis)
     E, H = _em_interaction_apply_3d(A.grid.centers[i], A.grid.centers[j],
-                                    A.k0, q, m)
+                                    A.k0, q, m, A.eta0)
     return -(a <= 3 ? E[a] : H[a - 3])
 end
 
@@ -556,7 +599,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
 
     if needs_direct_fallback
         direct = EMDDAOperator3D(
-            A.grid, A.k0, A.alpha, A.radiative_correction)
+            A.grid, A.k0, A.alpha, A.radiative_correction, A.eta0)
         return LinearAlgebra.mul!(
             y, direct, xread, alpha_scale, beta_scale)
     end
