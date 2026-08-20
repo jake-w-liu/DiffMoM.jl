@@ -443,6 +443,9 @@ Smooth Heaviside projection:
 - β must be finite and positive; η must be finite and lie in [0, 1]
 """
 function heaviside_project(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
+    all(isfinite, rho_tilde) ||
+        throw(ArgumentError(
+            "rho_tilde entries must all be finite"))
     if beta isa BigFloat || eta isa BigFloat || eltype(rho_tilde) <: BigFloat
         isfinite(beta) && beta > 0 ||
             throw(ArgumentError(
@@ -476,9 +479,6 @@ function heaviside_project(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
     previous_value = -Inf
     @inbounds for (output_index, index) in enumerate(eachindex(rho_tilde))
         rt = Float64(rho_tilde[index])
-        isfinite(rt) ||
-            throw(ArgumentError(
-                "rho_tilde entries must be finite, got $rt at index $index"))
         if iszero(rt)
             result[output_index] = copysign(0.0, rt)
             continue
@@ -523,6 +523,9 @@ Derivative of the Heaviside projection:
 Returns a vector of per-element derivatives.
 """
 function heaviside_derivative(rho_tilde::AbstractVector, beta::Real, eta::Real=0.5)
+    all(isfinite, rho_tilde) ||
+        throw(ArgumentError(
+            "rho_tilde entries must all be finite"))
     if beta isa BigFloat || eta isa BigFloat || eltype(rho_tilde) <: BigFloat
         isfinite(beta) && beta > 0 ||
             throw(ArgumentError(
@@ -557,9 +560,6 @@ function heaviside_derivative(rho_tilde::AbstractVector, beta::Real, eta::Real=0
                  _projection_logsinh_positive(beta_float)
     @inbounds for (output_index, index) in enumerate(eachindex(rho_tilde))
         rt = Float64(rho_tilde[index])
-        isfinite(rt) ||
-            throw(ArgumentError(
-                "rho_tilde entries must be finite, got $rt at index $index"))
         argument = beta_float * (rt - eta_float)
         isfinite(argument) ||
             return _projection_convert_result(

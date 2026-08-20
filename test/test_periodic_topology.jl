@@ -800,6 +800,12 @@ println("\n── Test 39: DensityFiltering ──")
         @test_throws ArgumentError heaviside_project([0.5], Inf)
         @test_throws ArgumentError heaviside_project([0.5], 1.0, -0.1)
         @test_throws ArgumentError heaviside_derivative([0.5], 1.0, 1.1)
+        @test_throws ArgumentError heaviside_project([1e300, NaN], 2.0)
+        @test_throws ArgumentError heaviside_derivative([1e300, NaN], 2.0)
+        @test_throws ArgumentError heaviside_project(
+            BigFloat[Inf], BigFloat(2))
+        @test_throws ArgumentError heaviside_derivative(
+            BigFloat[NaN], BigFloat(2))
         for beta in [1.0, 4.0, 16.0, 64.0]
             # H(0) = [tanh(βη) + tanh(-βη)] / denom = 0 (odd function cancels)
             @test heaviside_project([0.0], beta)[1] ≈ 0.0 atol=1e-14
