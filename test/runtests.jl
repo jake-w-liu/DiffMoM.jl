@@ -7160,6 +7160,51 @@ end
 @test all(>(0), aca_scale_ranks[2])
 @test maximum(aca_scale_errors) <= 1e-12
 
+# The relative stopping rule must also remain scale-invariant when squaring a
+# representable factor norm would underflow or overflow. Exercise a block that
+# genuinely converges before its rank limit; 1×1 blocks cannot expose this.
+aca_convergence_mesh = make_rect_plate(2.0, 1.0, 6, 3)
+aca_convergence_rwg = build_rwg(aca_convergence_mesh)
+aca_convergence_operator = build_aca_operator(
+    aca_convergence_mesh,
+    aca_convergence_rwg,
+    2π;
+    leaf_size=4,
+    eta=1.0,
+    aca_tol=0.1,
+    max_rank=6,
+    quad_order=1,
+    eta0=1.0,
+)
+aca_converged_block_index = findfirst(
+    block -> size(block.U, 2) <
+             min(size(block.U, 1), size(block.V, 1), 6),
+    aca_convergence_operator.lowrank_blocks,
+)
+@test aca_converged_block_index !== nothing
+aca_converged_block =
+    aca_convergence_operator.lowrank_blocks[aca_converged_block_index]
+aca_convergence_rows =
+    aca_convergence_operator.tree.perm[aca_converged_block.row_range]
+aca_convergence_cols =
+    aca_convergence_operator.tree.perm[aca_converged_block.col_range]
+aca_convergence_reference =
+    aca_converged_block.U * aca_converged_block.V'
+for aca_extreme_scale in (1e-200, 1e200)
+    aca_scaled_cache = DiffMoM._efie_cache_with_prefactors(
+        aca_convergence_operator.cache, 2π, aca_extreme_scale)
+    aca_scaled_U, aca_scaled_V = aca_lowrank(
+        aca_scaled_cache,
+        aca_convergence_rows,
+        aca_convergence_cols;
+        tol=0.1,
+        max_rank=6,
+    )
+    @test size(aca_scaled_U, 2) == size(aca_converged_block.U, 2)
+    @test (aca_scaled_U * aca_scaled_V') / aca_extreme_scale ≈
+          aca_convergence_reference rtol=5e-13 atol=0.0
+end
+
 # Find two well-separated leaf clusters for testing
 tree_aca = build_cluster_tree(centers_ct; leaf_size=8)
 leaves_aca = leaf_nodes(tree_aca)

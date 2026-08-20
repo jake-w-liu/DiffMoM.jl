@@ -228,6 +228,106 @@ LinearAlgebra.adjoint(A::ACAOperator) = ACAAdjointOperator{typeof(A)}(A)
 
 # ─── ACA low-rank approximation ──────────────────────────────────
 
+struct _ACAScaledMagnitude
+    fraction::Float64
+    exponent::Int
+end
+
+struct _ACAVectorNorm
+    component_scale::Float64
+    scaled_norm::Float64
+    magnitude::_ACAScaledMagnitude
+end
+
+function _aca_vector_norm_geometry(values::Vector{ComplexF64})
+    component_scale = 0.0
+    @inbounds for value in values
+        component_scale = max(
+            component_scale,
+            abs(real(value)),
+            abs(imag(value)),
+        )
+    end
+    component_scale > 0.0 ||
+        throw(OverflowError("ACA low-rank update has zero norm"))
+
+    scaled_norm_sq = 0.0
+    @inbounds for value in values
+        real_scaled = real(value) / component_scale
+        imag_scaled = imag(value) / component_scale
+        scaled_norm_sq = muladd(
+            real_scaled, real_scaled, scaled_norm_sq)
+        scaled_norm_sq = muladd(
+            imag_scaled, imag_scaled, scaled_norm_sq)
+    end
+    scaled_norm = sqrt(scaled_norm_sq)
+
+    scale_fraction, scale_exponent = frexp(component_scale)
+    norm_fraction, norm_exponent = frexp(
+        scale_fraction * scaled_norm)
+    magnitude_exponent = Base.Checked.checked_add(
+        scale_exponent, norm_exponent)
+    return _ACAVectorNorm(
+        component_scale,
+        scaled_norm,
+        _ACAScaledMagnitude(norm_fraction, magnitude_exponent),
+    )
+end
+
+@inline function _aca_multiply_magnitudes(
+        left::_ACAScaledMagnitude,
+        right::_ACAScaledMagnitude)
+    product_fraction, product_exponent = frexp(
+        left.fraction * right.fraction)
+    exponent_sum = Base.Checked.checked_add(
+        left.exponent, right.exponent)
+    return _ACAScaledMagnitude(
+        product_fraction,
+        Base.Checked.checked_add(exponent_sum, product_exponent),
+    )
+end
+
+@inline function _aca_magnitude_isless(
+        left::_ACAScaledMagnitude,
+        right::_ACAScaledMagnitude)
+    left.exponent == right.exponent &&
+        return left.fraction < right.fraction
+    return left.exponent < right.exponent
+end
+
+@inline function _aca_magnitude_ratio(
+        numerator::_ACAScaledMagnitude,
+        denominator::_ACAScaledMagnitude)
+    exponent_delta = numerator.exponent - denominator.exponent
+    return ldexp(
+        numerator.fraction / denominator.fraction,
+        exponent_delta,
+    )
+end
+
+function _aca_normalized_dot(
+        left::Vector{ComplexF64},
+        right::Vector{ComplexF64},
+        left_norm::_ACAVectorNorm,
+        right_norm::_ACAVectorNorm)
+    length(left) == length(right) ||
+        throw(DimensionMismatch("ACA factor columns must have equal lengths"))
+    real_sum = 0.0
+    imag_sum = 0.0
+    @inbounds for index in eachindex(left, right)
+        left_real = real(left[index]) / left_norm.component_scale
+        left_imag = imag(left[index]) / left_norm.component_scale
+        right_real = real(right[index]) / right_norm.component_scale
+        right_imag = imag(right[index]) / right_norm.component_scale
+        real_sum = muladd(left_real, right_real, real_sum)
+        real_sum = muladd(left_imag, right_imag, real_sum)
+        imag_sum = muladd(left_real, right_imag, imag_sum)
+        imag_sum = muladd(-left_imag, right_real, imag_sum)
+    end
+    norm_product = left_norm.scaled_norm * right_norm.scaled_norm
+    return ComplexF64(real_sum / norm_product, imag_sum / norm_product)
+end
+
 @inline function _validate_aca_options(tol::Float64, max_rank::Int)
     (isfinite(tol) && tol > 0.0) ||
         throw(ArgumentError(
@@ -277,10 +377,20 @@ function aca_lowrank(cache::EFIEApplyCache,
 
     U_cols = Vector{Vector{ComplexF64}}()
     V_cols = Vector{Vector{ComplexF64}}()
+    U_norms = _ACAVectorNorm[]
+    V_norms = _ACAVectorNorm[]
+    term_norms = _ACAScaledMagnitude[]
+    sizehint!(U_cols, max_rank)
+    sizehint!(V_cols, max_rank)
+    sizehint!(U_norms, max_rank)
+    sizehint!(V_norms, max_rank)
+    sizehint!(term_norms, max_rank)
 
     used_rows = falses(m)
     used_cols = falses(n)
-    frob_sq = 0.0  # running Frobenius norm squared of approximation
+    frob_scale = _ACAScaledMagnitude(0.0, 0)
+    frob_sq_scaled = 0.0
+    have_frob_scale = false
 
     # Start with the first row
     pivot_row = 1
@@ -353,24 +463,51 @@ function aca_lowrank(cache::EFIEApplyCache,
             throw(OverflowError(
                 "ACA low-rank update became non-finite"))
 
+        u_norm = _aca_vector_norm_geometry(u_k)
+        v_norm = _aca_vector_norm_geometry(v_k)
+        term_norm = _aca_multiply_magnitudes(
+            u_norm.magnitude, v_norm.magnitude)
         push!(U_cols, u_k)
         push!(V_cols, v_k)
+        push!(U_norms, u_norm)
+        push!(V_norms, v_norm)
+        push!(term_norms, term_norm)
         used_rows[pivot_row] = true
         used_cols[pivot_col] = true
 
-        # Update Frobenius norm estimate
-        # ||A_k||_F^2 = ||A_{k-1}||_F^2 + 2 Re{Σ_{j<k} (u_j'u_k)(v_k'v_j)} + ||u_k||^2 ||v_k||^2
-        norm_u = norm(u_k)
-        norm_v = norm(v_k)
-        cross_term = 0.0
-        for prev in 1:(length(U_cols)-1)
-            cross_term += 2.0 * real(dot(U_cols[prev], u_k) * conj(dot(V_cols[prev], v_k)))
+        # Update the Frobenius estimate in units of the largest rank-one
+        # term. Keeping every magnitude as a fraction/exponent pair makes the
+        # relative stopping rule invariant to a common matrix scale, including
+        # scales whose squared norms underflow or overflow Float64.
+        if !have_frob_scale
+            frob_scale = term_norm
+            have_frob_scale = true
+        elseif _aca_magnitude_isless(frob_scale, term_norm)
+            old_scale_ratio = _aca_magnitude_ratio(
+                frob_scale, term_norm)
+            frob_sq_scaled *= old_scale_ratio^2
+            frob_scale = term_norm
         end
-        frob_sq += norm_u^2 * norm_v^2 + cross_term
-        frob_sq = max(frob_sq, 0.0)  # guard against roundoff below zero
+
+        term_ratio = _aca_magnitude_ratio(term_norm, frob_scale)
+        cross_term_scaled = 0.0
+        for prev in 1:(length(U_cols)-1)
+            previous_ratio = _aca_magnitude_ratio(
+                term_norms[prev], frob_scale)
+            u_correlation = _aca_normalized_dot(
+                U_cols[prev], u_k, U_norms[prev], u_norm)
+            v_correlation = _aca_normalized_dot(
+                V_cols[prev], v_k, V_norms[prev], v_norm)
+            cross_term_scaled +=
+                2.0 * previous_ratio * term_ratio *
+                real(u_correlation * conj(v_correlation))
+        end
+        frob_sq_scaled += term_ratio^2 + cross_term_scaled
+        frob_sq_scaled = max(
+            frob_sq_scaled, 0.0)  # guard against roundoff below zero
 
         # Convergence check
-        if norm_u * norm_v < tol * sqrt(frob_sq)
+        if term_ratio < tol * sqrt(frob_sq_scaled)
             converged = true
             break
         end
