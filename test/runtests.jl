@@ -5016,6 +5016,35 @@ multi_incident_point = Vec3(0.0, 0.0, 1.0)
     DiffMoM._incident_electric_field(
         multi_farfield_children[1], multi_incident_point, k_exc)
 
+large_phi_origin = 1.0e16
+large_phi_grid = [
+    large_phi_origin,
+    nextfloat(large_phi_origin),
+    nextfloat(nextfloat(large_phi_origin)),
+]
+large_phi_Ftheta = zeros(ComplexF64, 2, 3)
+large_phi_Ftheta[:, 1] .= 1.0 + 0im
+large_phi_pattern = make_pattern_feed(
+    [0.0, π],
+    large_phi_grid,
+    large_phi_Ftheta,
+    zeros(ComplexF64, 2, 3),
+    freq_exc,
+)
+large_phi_fraction = setprecision(BigFloat, 512) do
+    origin = BigFloat(large_phi_origin)
+    period = 2 * BigFloat(pi)
+    wrapped = mod(-origin, period) + origin
+    Float64(
+        (wrapped - BigFloat(large_phi_grid[end])) /
+        (origin + period - BigFloat(large_phi_grid[end])))
+end
+@test DiffMoM._bracket_periodic_phi(large_phi_grid, 0.0) ==
+      (3, 1, large_phi_fraction)
+@test incident_farfield(
+    large_phi_pattern, Vec3(0.0, 0.0, 1.0), k_exc) ==
+    CVec3(ComplexF64(large_phi_fraction), 0.0 + 0im, 0.0 + 0im)
+
 multi_rhs_value = ComplexF64(1.0e308)
 multi_rhs_children = [
     make_delta_gap(1, value, 1.0) for value in

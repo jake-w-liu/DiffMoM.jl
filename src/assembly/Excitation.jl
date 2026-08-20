@@ -847,7 +847,58 @@ end
     return i, i + 1, t
 end
 
+const _PATTERN_PHI_FAST_EXPONENT = 32
+
+@inline function _pattern_phi_component_requires_exact(value::Float64)
+    iszero(value) && return false
+    return exponent(abs(value)) > _PATTERN_PHI_FAST_EXPONENT
+end
+
+@inline function _pattern_phi_requires_exact(
+        phi::Vector{Float64}, ϕ::Float64)
+    return _pattern_phi_component_requires_exact(phi[1]) ||
+           _pattern_phi_component_requires_exact(phi[end]) ||
+           _pattern_phi_component_requires_exact(ϕ)
+end
+
+@noinline function _bracket_periodic_phi_exact(
+        phi::Vector{Float64}, ϕ::Float64)
+    maximum_exponent = 0
+    for value in (phi[1], phi[end], ϕ)
+        iszero(value) && continue
+        maximum_exponent = max(maximum_exponent, exponent(abs(value)))
+    end
+    precision = max(
+        _SOURCE_SCALING_FALLBACK_PRECISION,
+        maximum_exponent + _SOURCE_PHASE_PRODUCT_GUARD_BITS,
+    )
+
+    return setprecision(BigFloat, precision) do
+        n = length(phi)
+        origin = BigFloat(phi[1])
+        period = 2 * BigFloat(pi)
+        wrapped = mod(BigFloat(ϕ) - origin, period) + origin
+        final_sample = BigFloat(phi[end])
+
+        if wrapped <= final_sample
+            index = searchsortedlast(phi, wrapped)
+            if index < n
+                lower = BigFloat(phi[index])
+                upper = BigFloat(phi[index + 1])
+                fraction = Float64((wrapped - lower) / (upper - lower))
+                return index, index + 1, clamp(fraction, 0.0, 1.0)
+            end
+        end
+
+        denominator = origin + period - final_sample
+        fraction = Float64((wrapped - final_sample) / denominator)
+        return n, 1, clamp(fraction, 0.0, 1.0)
+    end
+end
+
 @inline function _bracket_periodic_phi(phi::Vector{Float64}, ϕ::Float64)
+    _pattern_phi_requires_exact(phi, ϕ) &&
+        return _bracket_periodic_phi_exact(phi, ϕ)
     n = length(phi)
     ϕ0 = phi[1]
     ϕw = mod(ϕ - ϕ0, 2π) + ϕ0
