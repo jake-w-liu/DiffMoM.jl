@@ -92,6 +92,10 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
                               memory::Int=20,
                               verbose::Bool=false,
                               check_gmres_convergence::Bool=true)
+    solver in (:direct, :gmres) ||
+        throw(ArgumentError(
+            "Unsupported DDA adjoint solver: $solver " *
+            "(expected :direct or :gmres)."))
     rhs = _coerce_adjoint_rhs_3d(grad_E_flat, res.grid.nvoxels, "grad_E_flat")
 
     if solver == :direct
@@ -123,8 +127,6 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
             check_gmres_convergence=check_gmres_convergence,
         )
         return Vector{ComplexF64}(lambda)
-    else
-        error("Unsupported DDA adjoint solver: $solver (expected :direct or :gmres).")
     end
 end
 

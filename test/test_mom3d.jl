@@ -67,6 +67,8 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             1, 1, 1)
         @test underflow_order_grid.volumes == [1.0e-300]
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
+        @test_throws ArgumentError solve_dda_3d(
+            grid, k0, 2.5, CVec3[]; solver=:unsupported)
         @test_throws ArgumentError clausius_mossotti_polarizability(
             2.5, grid.volumes[1];
             k0=Inf,

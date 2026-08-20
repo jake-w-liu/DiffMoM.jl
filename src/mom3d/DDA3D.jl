@@ -1500,6 +1500,9 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
                       memory::Int=20,
                       verbose::Bool=false,
                       check_gmres_convergence::Bool=true)
+    solver in (:direct, :gmres) ||
+        throw(ArgumentError(
+            "Unsupported DDA solver: $solver (expected :direct or :gmres)."))
     solver == :direct && _validated_dense_dda_system_size(
         grid, max_matrix_bytes)
     rhs = _flatten_fields_3d(E_inc, grid.nvoxels, "E_inc")
@@ -1535,8 +1538,6 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),
                            A.eps_r, A.alpha, A, nothing, :gmres, stats,
                            grid, Float64(k0), radiative_correction)
-    else
-        error("Unsupported DDA solver: $solver (expected :direct or :gmres).")
     end
 end
 

@@ -31,6 +31,8 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
     res = solve_dda_3d(grid, k0, epsr, E_inc)
     E = reduce(vcat, res.E_total)
     @test_throws ArgumentError solve_dda_adjoint_3d(
+        res, ComplexF64[]; solver=:unsupported)
+    @test_throws ArgumentError solve_dda_adjoint_3d(
         res, fill(ComplexF64(NaN, 0.0), length(E)))
     lambda = solve_dda_adjoint_3d(res, weights .* E)
     grad = gradient_epsr_dda_3d(res, lambda)

@@ -845,6 +845,10 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
                                      memory::Int=20,
                                      verbose::Bool=false,
                                      check_gmres_convergence::Bool=true)
+    solver in (:direct, :gmres) ||
+        throw(ArgumentError(
+            "Unsupported EM DDA solver: $solver " *
+            "(expected :direct or :gmres)."))
     rhs = _flatten_em_fields_3d(E_inc, H_inc, grid.nvoxels, "E_inc", "H_inc")
 
     if solver == :direct
@@ -874,9 +878,15 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
                              Aop.alpha, Aop, nothing, reported_solver, stats,
                              grid, Float64(k0), Aop.radiative_correction,
                              Aop.eta0)
-    else
-        error("Unsupported EM DDA solver: $solver (expected :direct or :gmres).")
     end
+end
+
+@inline function _validated_em_dda_public_solver(solver::Symbol)
+    solver in (:direct, :gmres, :fft_gmres) ||
+        throw(ArgumentError(
+            "Unsupported EM DDA solver: $solver " *
+            "(expected :direct, :gmres, or :fft_gmres)."))
+    return solver
 end
 
 """
@@ -895,6 +905,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
                          memory::Int=20,
                          verbose::Bool=false,
                          check_gmres_convergence::Bool=true)
+    _validated_em_dda_public_solver(solver)
     solve_mode = solver == :fft_gmres ? :gmres : solver
     solve_mode == :direct && _validated_dense_em_dda_system_size(
         grid, max_matrix_bytes)
@@ -937,6 +948,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6,
                          memory::Int=20,
                          verbose::Bool=false,
                          check_gmres_convergence::Bool=true)
+    _validated_em_dda_public_solver(solver)
     solve_mode = solver == :fft_gmres ? :gmres : solver
     solve_mode == :direct && _validated_dense_em_dda_system_size(
         grid, max_matrix_bytes)
@@ -976,6 +988,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
                          verbose::Bool=false,
                          check_gmres_convergence::Bool=true,
                          eta0::Real=_ETA0_DDA)
+    _validated_em_dda_public_solver(solver)
     solve_mode = solver == :fft_gmres ? :gmres : solver
     solve_mode == :direct && _validated_dense_em_dda_system_size(
         grid, max_matrix_bytes)

@@ -21,6 +21,9 @@ end
 
     @testset "Free-space magnetodielectric limit" begin
         grid = VoxelGrid3D((-0.1, 0.1), (-0.05, 0.05), (-0.05, 0.05), 2, 1, 1)
+        @test_throws ArgumentError solve_em_dda_3d(
+            grid, k0, 2.5, 1.2, CVec3[], CVec3[];
+            solver=:unsupported)
         @test_throws ArgumentError em_dda_operator_3d(
             grid, Inf, 2.5, 1.2)
         @test_throws ArgumentError em_dda_operator_3d(
