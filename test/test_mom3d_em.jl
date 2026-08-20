@@ -118,6 +118,8 @@ end
         Es, Hs = scattered_fields_em_dda_3d(res, [Vec3(1.0, 0.0, 0.0)])
         @test norm(Es[1]) < 1e-13
         @test norm(Hs[1]) < 1e-13
+        @test_throws ArgumentError scattered_fields_em_dda_3d(
+            res, [Vec3(NaN, 0.0, 0.0)])
         @test all(iszero, farfield_em_dda_3d(res, extreme_direction))
     end
 

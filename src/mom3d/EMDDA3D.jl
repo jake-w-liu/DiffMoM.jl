@@ -1098,6 +1098,8 @@ function _scattered_fields_sum_em_dda_3d(
 end
 
 function scattered_fields_em_dda_3d(res::EMDDAResult3D, r_obs::AbstractVector{Vec3})
+    _validate_dda_observation_points_3d(
+        r_obs, "scattered_fields_em_dda_3d")
     Eout = Vector{CVec3}(undef, length(r_obs))
     Hout = Vector{CVec3}(undef, length(r_obs))
     @inbounds for p in eachindex(r_obs)

@@ -1610,7 +1610,20 @@ function _scattered_field_sum_dda_3d(
     return total
 end
 
+@inline function _validate_dda_observation_points_3d(
+        observations::AbstractVector{Vec3}, label::AbstractString)
+    @inbounds for index in eachindex(observations)
+        point = observations[index]
+        all(isfinite, point) ||
+            throw(ArgumentError(
+                "$label observation point $index must be finite, got $point."))
+    end
+    return nothing
+end
+
 function scattered_field_dda_3d(res::DDAResult3D, r_obs::AbstractVector{Vec3})
+    _validate_dda_observation_points_3d(
+        r_obs, "scattered_field_dda_3d")
     out = Vector{CVec3}(undef, length(r_obs))
     @inbounds for m in eachindex(r_obs)
         out[m] = _scattered_field_sum_dda_3d(res, r_obs[m])

@@ -314,6 +314,8 @@ println("\n── Test 46: 3D vector material DDA solver ──")
 
         @test norm(reduce(vcat, res.E_total) - reduce(vcat, E_inc)) < 1e-13
         @test norm(scattered_field_dda_3d(res, [Vec3(1.0, 0.0, 0.0)])[1]) < 1e-13
+        @test_throws ArgumentError scattered_field_dda_3d(
+            res, [Vec3(NaN, 0.0, 0.0)])
         @test iszero(farfield_dda_3d(res, extreme_direction))
         @test all(iszero, res.alpha)
     end
