@@ -2079,6 +2079,26 @@ end
 @test_throws ArgumentError matrixfree_efie_operator(
     mesh, rwg, k; quad_order=1, eta0=Inf, mesh_precheck=false)
 
+# Complex multiplication can overflow a rounded intermediate even when both
+# exact product components fit in Float64. Preserve that representable
+# prefactor instead of rejecting valid finite inputs.
+efie_prefactor_scale = sqrt(floatmax(Float64))
+efie_prefactor_k = complex(
+    -efie_prefactor_scale, -0.5 * efie_prefactor_scale)
+efie_prefactor_eta = complex(
+    -1.2 * efie_prefactor_scale, -0.4 * efie_prefactor_scale)
+efie_prefactor_reference = setprecision(BigFloat, 4352) do
+    ComplexF64(
+        Complex{BigFloat}(efie_prefactor_k) *
+        Complex{BigFloat}(efie_prefactor_eta))
+end
+_, _, efie_prefactor = DiffMoM._validated_efie_prefactors(
+    efie_prefactor_k, efie_prefactor_eta)
+@test isfinite(efie_prefactor)
+@test efie_prefactor == efie_prefactor_reference
+@test_throws OverflowError DiffMoM._validated_efie_prefactors(
+    2.0, floatmax(Float64))
+
 # Finite, individually representable physical inputs can still produce an
 # entry outside ComplexF64. The low-level/public entry contract must fail
 # closed instead of returning an Inf that later contaminates an operator.

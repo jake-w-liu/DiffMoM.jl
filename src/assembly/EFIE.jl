@@ -278,6 +278,22 @@ struct EFIEApplyCache{TK, Tω, TD, TV}
     rwg_vals_hi::Vector{NTuple{2,Vector{TV}}}  # RWG values at high-order quad pts
 end
 
+# Two finite ComplexF64 factors expand to four exact Float64 products. Their
+# component sums need fewer than 4196 bits across the full IEEE exponent range;
+# the remainder is a guard margin for conversion back to the original type.
+const _EFIE_PRODUCT_FALLBACK_PRECISION = 4352
+
+@noinline function _efie_product_bigfloat(
+        first::Number, second::Number, ::Type{T}) where {T<:Number}
+    return setprecision(BigFloat, _EFIE_PRODUCT_FALLBACK_PRECISION) do
+        if T <: Real
+            return convert(T, BigFloat(first) * BigFloat(second))
+        end
+        return convert(
+            T, Complex{BigFloat}(first) * Complex{BigFloat}(second))
+    end
+end
+
 @inline function _validated_efie_prefactors(k, eta0)
     k isa Number ||
         throw(ArgumentError(
@@ -303,6 +319,10 @@ end
         throw(OverflowError(
             "EFIE inverse wavenumber squared is not representable for k=$k"))
     omega_mu0 = kw * eta
+    if !isfinite(omega_mu0) || iszero(omega_mu0)
+        omega_mu0 = _efie_product_bigfloat(
+            kw, eta, typeof(omega_mu0))
+    end
     isfinite(omega_mu0) && !iszero(omega_mu0) ||
         throw(OverflowError(
             "EFIE k*eta0 prefactor is not representable for k=$k and eta0=$eta0"))
