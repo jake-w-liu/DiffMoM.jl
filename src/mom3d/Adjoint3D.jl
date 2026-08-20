@@ -31,6 +31,21 @@ function _dalpha_depsr_clausius_mossotti(eps_r::ComplexF64, volume::Real)
     end
 end
 
+function _validate_scalar_epsr_gradient_result_3d(
+        res::DDAResult3D, nvoxels::Int)
+    @inbounds for voxel in 1:nvoxels
+        res.eps_r[voxel] isa Number ||
+            throw(ArgumentError(
+                "gradient_epsr_dda_3d supports only scalar-permittivity " *
+                "DDA results; eps_r[$voxel] is a material tensor."))
+        res.alpha[voxel] isa Number ||
+            throw(ArgumentError(
+                "gradient_epsr_dda_3d supports only scalar-polarizability " *
+                "DDA results; alpha[$voxel] is a tensor."))
+    end
+    return nothing
+end
+
 @noinline function _dda_material_gradient_bigfloat(
     res::DDAResult3D,
     lambda_flat::Vector{ComplexF64},
@@ -149,18 +164,18 @@ parameter per voxel. This uses
 and the DDA system convention `A_ij = delta_ij - G_ij * alpha_j`.
 """
 function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
-    _validate_dda_result_3d(res)
+    N = _validate_dda_result_3d(res)
+    _validate_scalar_epsr_gradient_result_3d(res, N)
     res.radiative_correction &&
         error("gradient_epsr_dda_3d currently supports uncorrected Clausius-Mossotti alpha only.")
 
-    N = res.grid.nvoxels
     lambda_flat = _coerce_adjoint_rhs_3d(lambda, N, "lambda")
     grad = zeros(Float64, N)
 
     for j in 1:N
         Ej = res.E_total[j]
         dalpha = _dalpha_depsr_clausius_mossotti(
-            res.eps_r[j], res.grid.volumes[j])
+            ComplexF64(res.eps_r[j]), res.grid.volumes[j])
         acc = 0.0 + 0im
         rj = res.grid.centers[j]
         for i in 1:N

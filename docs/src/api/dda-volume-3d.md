@@ -972,8 +972,9 @@ d alpha / d eps_r = 9V / (eps_r + 2)^2
 ```
 
 and the DDA system convention `A_ij = delta_ij - G_ij * alpha_j`. This currently
-supports only the uncorrected Clausius-Mossotti polarizability; it raises an
-error if `result.radiative_correction` is `true`.
+supports only scalar-permittivity results with the uncorrected
+Clausius-Mossotti polarizability; it rejects tensor-material results and raises
+an error if `result.radiative_correction` is `true`.
 
 **Parameters:**
 

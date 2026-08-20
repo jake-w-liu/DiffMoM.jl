@@ -42,6 +42,22 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
         malformed_result, weights .* E)
     @test_throws ArgumentError solve_dda_adjoint_3d(
         res, fill(ComplexF64(NaN, 0.0), length(E)))
+    tensor_grid = VoxelGrid3D(
+        (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+    tensor_epsr = [2.0 .* Matrix{ComplexF64}(I, 3, 3)]
+    tensor_incident = [CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)]
+    tensor_result = solve_dda_3d(
+        tensor_grid, 1.0, tensor_epsr, tensor_incident;
+        radiative_correction=false)
+    tensor_gradient_error = try
+        gradient_epsr_dda_3d(tensor_result, ones(ComplexF64, 3))
+        nothing
+    catch err
+        err
+    end
+    @test tensor_gradient_error isa ArgumentError
+    @test occursin(
+        "scalar-permittivity", sprint(showerror, tensor_gradient_error))
     lambda = solve_dda_adjoint_3d(res, weights .* E)
     grad = gradient_epsr_dda_3d(res, lambda)
 
