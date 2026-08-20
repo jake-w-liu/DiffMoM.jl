@@ -328,7 +328,12 @@ function assemble_excitation_grounded(mesh::TriMesh, rwg::RWGData, pw, k,
     h = _validated_ground_height(height)
     v_inc = assemble_excitation(mesh, rwg, pw; quad_order=quad_order)
     factor = 1 - _grounded_round_trip_phase(_kz_inc(kw, lattice), h)
-    return factor .* v_inc
+    v_grounded = factor .* v_inc
+    all(isfinite, v_grounded) ||
+        throw(OverflowError(
+            "grounded excitation contains entries outside the " *
+            "representable ComplexF64 range"))
+    return v_grounded
 end
 
 """

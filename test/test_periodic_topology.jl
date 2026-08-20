@@ -2414,6 +2414,41 @@ println("\n── Test 42: PeriodicMetrics ──")
         mesh_g = make_rect_plate(dcg, dcg, Nxg, Nxg)
         lat_g = PeriodicLattice(dcg, dcg, 0.0, 0.0, kg)
         rwg_g = build_rwg_periodic(mesh_g, lat_g; precheck=true, allow_boundary=true, require_closed=false)
+        excitation_range_cell = 10.0
+        excitation_range_k = 2π / excitation_range_cell
+        excitation_range_mesh = make_rect_plate(
+            excitation_range_cell, excitation_range_cell, 1, 1)
+        excitation_range_lattice = PeriodicLattice(
+            excitation_range_cell, excitation_range_cell,
+            0.0, 0.0, excitation_range_k;
+            N_spatial=1, N_spectral=1)
+        excitation_range_rwg = build_rwg_periodic(
+            excitation_range_mesh, excitation_range_lattice;
+            precheck=false)
+        unit_range_wave = PlaneWaveExcitation(
+            Vec3(0.0, 0.0, -excitation_range_k),
+            1.0,
+            Vec3(1.0, 0.0, 0.0),
+        )
+        unit_range_rhs = assemble_excitation(
+            excitation_range_mesh, excitation_range_rwg, unit_range_wave;
+            quad_order=1)
+        range_amplitude = 0.75 * floatmax(Float64) /
+                          maximum(abs, unit_range_rhs)
+        overflowing_range_wave = PlaneWaveExcitation(
+            unit_range_wave.k_vec,
+            range_amplitude,
+            unit_range_wave.pol,
+        )
+        @test_throws OverflowError assemble_excitation_grounded(
+            excitation_range_mesh,
+            excitation_range_rwg,
+            overflowing_range_wave,
+            excitation_range_k,
+            excitation_range_lattice;
+            height=excitation_range_cell / 4,
+            quad_order=1,
+        )
         grounded_work_bytes = 3 * sizeof(ComplexF64) * rwg_g.nedges^2
         @test_throws ArgumentError assemble_Z_efie_grounded(
             mesh_g, rwg_g, kg, lat_g;
