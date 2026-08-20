@@ -1554,6 +1554,20 @@ green_phase_reference = _green_kernel_bigfloat_reference(
 @test grad_greens(r1, green_phase_point, 1e308) ==
       green_phase_reference[3]
 
+# A finite but large radial phase also needs exact-input reduction before it
+# reaches outright Float64 overflow. Rounding kR first changes the unit-circle
+# phase by macroscopic amounts for these exactly supplied Float64 operands.
+green_finite_phase_point = Vec3(1.0e20, 0.0, 0.0)
+green_finite_phase_k = 1.1
+green_finite_phase_reference = _green_kernel_bigfloat_reference(
+    green_finite_phase_point, r1, green_finite_phase_k)
+@test greens(green_finite_phase_point, r1, green_finite_phase_k) ==
+      green_finite_phase_reference[1]
+@test greens_smooth(green_finite_phase_point, r1, green_finite_phase_k) ==
+      green_finite_phase_reference[2]
+@test grad_greens(green_finite_phase_point, r1, green_finite_phase_k) ==
+      green_finite_phase_reference[3]
+
 green_max_point = Vec3(
     floatmax(Float64), floatmax(Float64), floatmax(Float64))
 green_min_point = -green_max_point
@@ -1622,6 +1636,37 @@ end
 @test grad_greens(
     green_float32_point, green_float32_origin, green_float32_k) ≈
     green_float32_reference[3] rtol=4eps(Float64)
+
+# The promoted Float32 backend must retain range-safe final scaling as well as
+# range-safe geometry. Here exp(imag(k)R) overflows by itself, while division
+# by the large distance leaves every returned kernel representable.
+green_float32_growth_k = ComplexF32(0.0f0, 2.5f-36)
+green_float32_growth_reference = _green_kernel_bigfloat_reference(
+    Vec3(green_float32_point), Vec3(green_float32_origin),
+    ComplexF64(green_float32_growth_k))
+@test greens(
+    green_float32_point, green_float32_origin,
+    green_float32_growth_k) == green_float32_growth_reference[1]
+@test greens_smooth(
+    green_float32_point, green_float32_origin,
+    green_float32_growth_k) == green_float32_growth_reference[2]
+@test grad_greens(
+    green_float32_point, green_float32_origin,
+    green_float32_growth_k) == green_float32_growth_reference[3]
+
+# Non-floating generic coordinates cannot be rounded through Float64 before
+# subtraction: these two valid Int128 points differ by one even though both
+# convert to the same Float64 value.
+green_int128_source = SVector{3,Int128}(Int128(2)^100, 0, 0)
+green_int128_point = green_int128_source + SVector{3,Int128}(1, 0, 0)
+green_unit_reference = _green_kernel_bigfloat_reference(
+    Vec3(1.0, 0.0, 0.0), r1, 1.0)
+@test greens(green_int128_point, green_int128_source, 1.0) ==
+      green_unit_reference[1]
+@test greens_smooth(green_int128_point, green_int128_source, 1.0) ==
+      green_unit_reference[2]
+@test grad_greens(green_int128_point, green_int128_source, 1.0) ==
+      green_unit_reference[3]
 
 # These are true Float64 output-range boundaries, not intermediate failures.
 @test_throws OverflowError greens(r1, Vec3(1e-310, 0.0, 0.0), 0.0)

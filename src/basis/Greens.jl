@@ -6,9 +6,11 @@ export greens, greens_smooth, grad_greens
 
 const _GREEN_FALLBACK_PRECISION = 2304
 const _GREEN_NORMAL_EXPONENT_LIMIT = 128
+const _GREEN_PHASE_FAST_EXPONENT_LIMIT = 40
 const _GREEN_EXPREL_TERMS = 18
 const _INV_FOUR_PI = inv(4.0 * Float64(π))
 const _GreenFloatWavenumber = Union{Float64,ComplexF64}
+const _GreenMachineFloat = Union{Float16,Float32,Float64}
 
 @inline function _validate_green_arguments(r::SVector{3},
                                            rp::SVector{3},
@@ -28,13 +30,18 @@ const _GreenFloatWavenumber = Union{Float64,ComplexF64}
     return nothing
 end
 
-@inline function _green_promoted_geometry(
+@inline function _green_promoted_real_type(
         r::SVector{3}, rp::SVector{3}, k)
     eltype(r) <: Real && eltype(rp) <: Real ||
         throw(ArgumentError(
             "Green-function points must have real coordinates"))
-    real_type = promote_type(
+    return promote_type(
         Float64, eltype(r), eltype(rp), typeof(real(k)))
+end
+
+@inline function _green_promoted_geometry(
+        r::SVector{3}, rp::SVector{3}, k)
+    real_type = _green_promoted_real_type(r, rp, k)
     dx = real_type(r[1]) - real_type(rp[1])
     dy = real_type(r[2]) - real_type(rp[2])
     dz = real_type(r[3]) - real_type(rp[3])
@@ -43,20 +50,39 @@ end
     return dx, dy, dz, distance, wavenumber
 end
 
+@inline function _green_has_exact_float64_conversions(
+        r::SVector{3}, rp::SVector{3}, k)
+    return eltype(r) <: _GreenMachineFloat &&
+           eltype(rp) <: _GreenMachineFloat &&
+           typeof(real(k)) <: _GreenMachineFloat
+end
+
 @inline function _greens_unchecked(r::SVector{3}, rp::SVector{3}, k)
+    real_type = _green_promoted_real_type(r, rp, k)
+    if real_type === Float64
+        _green_has_exact_float64_conversions(r, rp, k) &&
+            return _greens_unchecked(
+                Vec3(r), Vec3(rp), ComplexF64(k))
+        return _greens_exact(r, rp, k)
+    end
     _, _, _, distance, wavenumber =
         _green_promoted_geometry(r, rp, k)
     iszero(distance) && return zero(wavenumber)
-    real_type = typeof(distance)
     phase_rate = -Complex{real_type}(0, 1) * wavenumber
     return exp(phase_rate * distance) /
            (4 * real_type(π) * distance)
 end
 
 @inline function _greens_smooth_unchecked(r::SVector{3}, rp::SVector{3}, k)
+    real_type = _green_promoted_real_type(r, rp, k)
+    if real_type === Float64
+        _green_has_exact_float64_conversions(r, rp, k) &&
+            return _greens_smooth_unchecked(
+                Vec3(r), Vec3(rp), ComplexF64(k))
+        return _greens_smooth_exact(r, rp, k)
+    end
     _, _, _, distance, wavenumber =
         _green_promoted_geometry(r, rp, k)
-    real_type = typeof(distance)
     phase_rate = -Complex{real_type}(0, 1) * wavenumber
     iszero(distance) &&
         return phase_rate / (4 * real_type(π))
@@ -65,13 +91,19 @@ end
 end
 
 @inline function _grad_greens_unchecked(r::SVector{3}, rp::SVector{3}, k)
+    real_type = _green_promoted_real_type(r, rp, k)
+    if real_type === Float64
+        _green_has_exact_float64_conversions(r, rp, k) &&
+            return _grad_greens_unchecked(
+                Vec3(r), Vec3(rp), ComplexF64(k))
+        return _grad_greens_exact(r, rp, k)
+    end
     dx, dy, dz, distance, wavenumber =
         _green_promoted_geometry(r, rp, k)
     if iszero(distance)
         value = zero(wavenumber)
         return SVector{3}(value, value, value)
     end
-    real_type = typeof(distance)
     phase_rate = -Complex{real_type}(0, 1) * wavenumber
     G = exp(phase_rate * distance) /
         (4 * real_type(π) * distance)
@@ -92,6 +124,13 @@ end
     value_exponent = exponent(value)
     return value_exponent < -_GREEN_NORMAL_EXPONENT_LIMIT ||
            value_exponent > _GREEN_NORMAL_EXPONENT_LIMIT
+end
+
+@inline function _green_float_phase_requires_fallback(
+        component::Float64, distance::Float64)
+    (iszero(component) || iszero(distance)) && return false
+    return exponent(abs(component)) + exponent(distance) + 1 >
+           _GREEN_PHASE_FAST_EXPONENT_LIMIT
 end
 
 @inline function _green_float_requires_fallback(
@@ -116,6 +155,8 @@ end
            _green_float_component_requires_fallback(distance) ||
            _green_float_component_requires_fallback(Float64(real(k))) ||
            _green_float_component_requires_fallback(Float64(imag(k))) ||
+           _green_float_phase_requires_fallback(Float64(real(k)), distance) ||
+           _green_float_phase_requires_fallback(Float64(imag(k)), distance) ||
            _green_float_component_requires_fallback(real(phase_argument)) ||
            _green_float_component_requires_fallback(imag(phase_argument)) ||
            abs(real(phase_argument)) > 128.0
@@ -157,7 +198,7 @@ end
 end
 
 @noinline function _greens_exact(
-    r::Vec3, rp::Vec3, k::_GreenFloatWavenumber)
+    r::SVector{3,<:Real}, rp::SVector{3,<:Real}, k::Number)
     return setprecision(BigFloat, _GREEN_FALLBACK_PRECISION) do
         dx = BigFloat(r[1]) - BigFloat(rp[1])
         dy = BigFloat(r[2]) - BigFloat(rp[2])
@@ -173,7 +214,7 @@ end
 end
 
 @noinline function _greens_smooth_exact(
-    r::Vec3, rp::Vec3, k::_GreenFloatWavenumber)
+    r::SVector{3,<:Real}, rp::SVector{3,<:Real}, k::Number)
     return setprecision(BigFloat, _GREEN_FALLBACK_PRECISION) do
         dx = BigFloat(r[1]) - BigFloat(rp[1])
         dy = BigFloat(r[2]) - BigFloat(rp[2])
@@ -190,7 +231,7 @@ end
 end
 
 @noinline function _grad_greens_exact(
-    r::Vec3, rp::Vec3, k::_GreenFloatWavenumber)
+    r::SVector{3,<:Real}, rp::SVector{3,<:Real}, k::Number)
     return setprecision(BigFloat, _GREEN_FALLBACK_PRECISION) do
         dx = BigFloat(r[1]) - BigFloat(rp[1])
         dy = BigFloat(r[2]) - BigFloat(rp[2])
