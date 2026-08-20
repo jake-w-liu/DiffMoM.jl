@@ -658,6 +658,34 @@ println("\n── Test 38: DensityInterpolation ──")
         end
     end
 
+    @testset "Range-safe density matrices" begin
+        extreme_mass = [fill(ComplexF64(floatmax(Float64)), 1, 1)]
+        extreme_config = DensityConfig(1.0, 2.0, 0.5)
+        @test_throws OverflowError assemble_Z_penalty(
+            extreme_mass, [0.0], extreme_config)
+        @test_throws OverflowError assemble_dZ_drhobar(
+            extreme_mass, [0.0], extreme_config, 1)
+
+        nonfinite_mass = [fill(ComplexF64(Inf), 1, 1)]
+        @test_throws ArgumentError assemble_Z_penalty(
+            nonfinite_mass, [1.0], extreme_config)
+        @test_throws ArgumentError assemble_dZ_drhobar(
+            nonfinite_mass, [1.0], extreme_config, 1)
+
+        underflow_config = DensityConfig(
+            500.0, floatmax(Float64), 0.5)
+        recovered_derivative = assemble_dZ_drhobar(
+            [ones(ComplexF64, 1, 1)], [0.1], underflow_config, 1)
+        derivative_reference = setprecision(BigFloat, 4352) do
+            ComplexF64(
+                -BigFloat(underflow_config.p) *
+                BigFloat(0.1)^(BigFloat(underflow_config.p) - 1) *
+                Complex{BigFloat}(underflow_config.Z_max))
+        end
+        @test !iszero(derivative_reference)
+        @test recovered_derivative[1, 1] == derivative_reference
+    end
+
     # ── E: Dimension mismatch assertion ──
     @testset "E: Dimension mismatch" begin
         @test_throws DimensionMismatch assemble_Z_penalty(

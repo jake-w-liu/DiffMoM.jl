@@ -75,12 +75,66 @@ function _validate_density_values(values::AbstractVector{<:Real},
     return nothing
 end
 
+@inline function _density_matrix_entries_are_finite(
+        matrix::AbstractMatrix)
+    values = if matrix isa StridedMatrix
+        matrix
+    elseif matrix isa SparseMatrixCSC
+        nonzeros(matrix)
+    elseif matrix isa LocalMassMatrix
+        matrix.vals
+    else
+        matrix
+    end
+    return all(isfinite, values)
+end
+
 function _validate_density_mass_inputs(
     Mt::AbstractVector{<:AbstractMatrix},
     rho_bar::AbstractVector{<:Real},
 )
     _validate_density_values(rho_bar, length(Mt), "rho_bar")
-    return _validate_mass_matrix_sizes(Mt)
+    matrix_size = _validate_mass_matrix_sizes(Mt)
+    @inbounds for t in eachindex(Mt)
+        _density_matrix_entries_are_finite(Mt[t]) ||
+            throw(ArgumentError(
+                "Mt[$t] must contain only finite values"))
+    end
+    return matrix_size
+end
+
+# The exceptional path must retain a density power that underflows in
+# Float64 before multiplication by a large, but finite, impedance. The guard
+# precision also makes conversion of the final ComplexF64 coefficient stable.
+const _DENSITY_INTERPOLATION_FALLBACK_PRECISION = 4352
+
+@noinline function _density_derivative_coefficient_bigfloat(
+        rho::Real, config::DensityConfig)
+    return setprecision(
+            BigFloat, _DENSITY_INTERPOLATION_FALLBACK_PRECISION) do
+        p = BigFloat(config.p)
+        density_power = isone(config.p) ?
+                        one(BigFloat) : BigFloat(rho)^(p - 1)
+        coefficient = ComplexF64(
+            -p * density_power * Complex{BigFloat}(config.Z_max))
+        isfinite(coefficient) ||
+            throw(OverflowError(
+                "density derivative coefficient is outside the " *
+                "representable ComplexF64 range"))
+        return coefficient
+    end
+end
+
+@inline function _density_derivative_coefficient(
+        rho::Real, config::DensityConfig)
+    density_power = isone(config.p) ? one(Float64) :
+                    rho^(config.p - 1)
+    coefficient = -config.p * density_power * config.Z_max
+    if !isfinite(coefficient) ||
+       (!iszero(rho) && iszero(coefficient))
+        return _density_derivative_coefficient_bigfloat(rho, config)
+    end
+    return coefficient
 end
 
 """
@@ -200,9 +254,17 @@ function assemble_Z_penalty(Mt::Vector{<:AbstractMatrix},
     Z_pen = zeros(CT, N, N)
     for t in 1:Nt
         penalty = (1 - rho_bar[t]^config.p) * config.Z_max
+        isfinite(penalty) ||
+            throw(OverflowError(
+                "density penalty coefficient for triangle $t is outside " *
+                "the representable ComplexF64 range"))
         _add_scaled_matrix!(Z_pen, penalty, Mt[t])
     end
 
+    all(isfinite, Z_pen) ||
+        throw(OverflowError(
+            "density penalty matrix contains entries outside the " *
+            "representable ComplexF64 range"))
     return Z_pen
 end
 
@@ -220,6 +282,11 @@ function assemble_dZ_drhobar(Mt::Vector{<:AbstractMatrix},
                              config::DensityConfig, t::Int)
     1 <= t <= length(Mt) || throw(BoundsError(Mt, t))
     _validate_density_mass_inputs(Mt, rho_bar)
-    coeff = -config.p * rho_bar[t]^(config.p - 1) * config.Z_max
-    return coeff * Mt[t]
+    coefficient = _density_derivative_coefficient(rho_bar[t], config)
+    derivative = coefficient * Mt[t]
+    _density_matrix_entries_are_finite(derivative) ||
+        throw(OverflowError(
+            "density derivative for triangle $t contains entries outside " *
+            "the representable range"))
+    return derivative
 end
