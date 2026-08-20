@@ -4990,6 +4990,27 @@ for (monopole_k, monopole_height, monopole_amplitude) in (
         scaled_monopole_reference / 2
 end
 
+multi_farfield_theta = [0.0, π]
+multi_farfield_phi = [0.0, π]
+multi_farfield_maximum = floatmax(Float64)
+multi_farfield_children = [
+    make_pattern_feed(
+        multi_farfield_theta,
+        multi_farfield_phi,
+        fill(ComplexF64(value), 2, 2),
+        zeros(ComplexF64, 2, 2),
+        freq_exc,
+    ) for value in (
+        multi_farfield_maximum,
+        multi_farfield_maximum,
+        -multi_farfield_maximum,
+    )
+]
+multi_farfield = make_multi_excitation(multi_farfield_children)
+@test incident_farfield(
+    multi_farfield, Vec3(0.0, 0.0, 1.0), k_exc) ==
+    CVec3(ComplexF64(multi_farfield_maximum), 0.0 + 0im, 0.0 + 0im)
+
 incident_farfield(dipole_guard, Vec3(0.0, 0.0, 1.0), k_exc)
 DiffMoM._loop_equivalent_moment(loop_guard)
 let dipole = dipole_guard,

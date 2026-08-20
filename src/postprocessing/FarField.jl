@@ -669,6 +669,29 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
         CVec3(E_far) * phase, "PatternFeedExcitation far field")
 end
 
+const _MULTI_FARFIELD_EXACT_PRECISION = 4672
+
+@noinline function _multi_incident_farfield_exact(
+        multi::MultiExcitation, r_hat::Vec3, k::Real)
+    return setprecision(BigFloat, _MULTI_FARFIELD_EXACT_PRECISION) do
+        total = Complex{BigFloat}[
+            zero(Complex{BigFloat}),
+            zero(Complex{BigFloat}),
+            zero(Complex{BigFloat}),
+        ]
+        @inbounds for index in eachindex(multi.excitations, multi.weights)
+            child = incident_farfield(
+                multi.excitations[index], r_hat, k)
+            weight = Complex{BigFloat}(multi.weights[index])
+            for component in 1:3
+                total[component] +=
+                    weight * Complex{BigFloat}(child[component])
+            end
+        end
+        return _finite_source_vector(total, "MultiExcitation far field")
+    end
+end
+
 function incident_farfield(multi::MultiExcitation, r_hat::Vec3, k::Real)
     _validated_incident_farfield_args(r_hat, k)
     length(multi.excitations) == length(multi.weights) ||
@@ -680,7 +703,13 @@ function incident_farfield(multi::MultiExcitation, r_hat::Vec3, k::Real)
         isfinite(w) ||
             throw(ArgumentError(
                 "MultiExcitation weight $i must be finite, got $w."))
-        E = E + w * incident_farfield(exc, r_hat, k)
+        child = incident_farfield(exc, r_hat, k)
+        _source_scaled_vector_requires_fallback(w, child) &&
+            return _multi_incident_farfield_exact(multi, r_hat, k)
+        updated = E + w * child
+        all(isfinite, updated) ||
+            return _multi_incident_farfield_exact(multi, r_hat, k)
+        E = updated
     end
-    return _check_finite_cvec3(E, "MultiExcitation far field")
+    return E
 end
