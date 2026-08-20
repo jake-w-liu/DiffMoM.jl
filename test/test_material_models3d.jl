@@ -83,6 +83,49 @@ using .DiffMoM
                                resonance_freq_hz=2.0e14, gamma_hz=1.0e13)) <= 0
     @test imag(debye_epsr_3d(1.0e9; eps_static=4.0, eps_inf=2.0, tau_s=1.0e-10)) <= 0
 
+    adjacent_frequency = prevfloat(1.0)
+    adjacent_drude_reference = setprecision(BigFloat, 512) do
+        ComplexF64(
+            1 - BigFloat(1)^2 / BigFloat(adjacent_frequency)^2)
+    end
+    @test drude_epsr_3d(
+        adjacent_frequency;
+        eps_inf=1.0,
+        plasma_freq_hz=1.0,
+        gamma_hz=0.0,
+        passive=false,
+    ) == adjacent_drude_reference
+
+    adjacent_lorentz_reference = setprecision(BigFloat, 512) do
+        frequency = BigFloat(adjacent_frequency)
+        resonance = BigFloat(1.0)
+        ComplexF64(
+            1 + resonance^2 / (resonance^2 - frequency^2))
+    end
+    @test lorentz_epsr_3d(
+        adjacent_frequency;
+        eps_inf=1.0,
+        strength=1.0,
+        resonance_freq_hz=1.0,
+        gamma_hz=0.0,
+    ) == adjacent_lorentz_reference
+
+    mixed_debye_reference = setprecision(BigFloat, 2304) do
+        frequency_tau = 2 * BigFloat(π) * BigFloat(1.0e-290) *
+                        BigFloat(1.0e-179)
+        ComplexF64(
+            BigFloat(1.0e205) +
+            (BigFloat(1.0e44) - BigFloat(1.0e205)) /
+            Complex{BigFloat}(1, frequency_tau))
+    end
+    @test debye_epsr_3d(
+        1.0e-290;
+        eps_static=1.0e44,
+        eps_inf=1.0e205,
+        tau_s=1.0e-179,
+        passive=false,
+    ) == mixed_debye_reference
+
     @test drude_epsr_3d(
         1.0e200;
         eps_inf=1.0,

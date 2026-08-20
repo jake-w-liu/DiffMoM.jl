@@ -491,7 +491,7 @@ material_bianisotropic_matrix_3d(model::BianisotropicMaterial3D, freq_hz_or_k0) 
     model.C6
 end
 
-const _DISPERSION_FALLBACK_PRECISION_3D = 512
+const _DISPERSION_FALLBACK_PRECISION_3D = 2304
 const _DISPERSION_SAFE_EXPONENT_3D = 128
 
 @inline function _dispersion_extreme_component_3d(value::Real)
@@ -523,6 +523,22 @@ end
         throw(OverflowError(
             "$label is outside the ComplexF64 range"))
     return converted
+end
+
+@inline function _dispersion_sum_requires_fallback_3d(
+    result::ComplexF64,
+    first::ComplexF64,
+    second::ComplexF64,
+)
+    isfinite(result) && isfinite(first) && isfinite(second) || return true
+    @inbounds for component in (real, imag)
+        first_component = component(first)
+        second_component = component(second)
+        scale = max(abs(first_component), abs(second_component))
+        iszero(scale) && continue
+        abs(component(result)) <= 64 * eps(Float64) * scale && return true
+    end
+    return false
 end
 
 @noinline function _drude_epsr_bigfloat_3d(
@@ -576,7 +592,7 @@ end
     tau::Float64,
 )
     return setprecision(BigFloat, _DISPERSION_FALLBACK_PRECISION_3D) do
-        frequency_tau = BigFloat(2π) * BigFloat(f) * BigFloat(tau)
+        frequency_tau = 2 * BigFloat(π) * BigFloat(f) * BigFloat(tau)
         denominator = Complex{BigFloat}(1, frequency_tau)
         value = Complex{BigFloat}(eps_inf) +
                 (Complex{BigFloat}(eps_static) -
@@ -606,14 +622,15 @@ function drude_epsr_3d(freq_hz; eps_inf=1.0, plasma_freq_hz, gamma_hz,
         return epsr
     end
 
-    gamma = 2pi * gamma_frequency
-    omega = 2pi * f
-    omega_p = 2pi * fp
-    denom = omega^2 - 1im * gamma * omega
+    # The common (2π)^2 factor cancels. Working directly in hertz avoids
+    # injecting two independently rounded angular-frequency products.
+    denom = f^2 - 1im * gamma_frequency * f
     iszero(denom) && error("Drude denominator is singular.")
-    value = epsc - omega_p^2 / denom
-    epsr = isfinite(value) ? ComplexF64(value) :
-           _drude_epsr_bigfloat_3d(f, epsc, fp, gamma_frequency)
+    susceptibility = ComplexF64(fp^2 / denom)
+    value = ComplexF64(epsc - susceptibility)
+    epsr = _dispersion_sum_requires_fallback_3d(
+        value, epsc, -susceptibility) ?
+        _drude_epsr_bigfloat_3d(f, epsc, fp, gamma_frequency) : value
     passive && _validate_passive_scalar_3d(epsr, "eps_r")
     return epsr
 end
@@ -640,15 +657,19 @@ function lorentz_epsr_3d(freq_hz; eps_inf=1.0, strength, resonance_freq_hz,
         return epsr
     end
 
-    gamma = 2pi * gamma_frequency
-    omega = 2pi * f
-    omega0 = 2pi * f0
-    denom = omega0^2 - omega^2 + 1im * gamma * omega
+    resonance_squared = f0^2
+    # Factor the nearly resonant difference before adding damping. Squaring
+    # two adjacent frequencies independently can lose most of their exact
+    # Float64-input separation even though the resulting response is finite.
+    frequency_difference = (f0 - f) * (f0 + f)
+    denom = frequency_difference + 1im * gamma_frequency * f
     iszero(denom) && error("Lorentz denominator is singular.")
-    value = epsc + fc * omega0^2 / denom
-    epsr = isfinite(value) ? ComplexF64(value) :
-           _lorentz_epsr_bigfloat_3d(
-               f, epsc, fc, f0, gamma_frequency)
+    resonant_term = ComplexF64(fc * resonance_squared / denom)
+    value = ComplexF64(epsc + resonant_term)
+    epsr = _dispersion_sum_requires_fallback_3d(
+        value, epsc, resonant_term) ?
+        _lorentz_epsr_bigfloat_3d(
+            f, epsc, fc, f0, gamma_frequency) : value
     passive && _validate_passive_scalar_3d(epsr, "eps_r")
     return epsr
 end
@@ -672,9 +693,12 @@ function debye_epsr_3d(freq_hz; eps_static, eps_inf=1.0, tau_s,
     end
 
     omega = 2pi * f
-    value = epsi + (epss - epsi) / (1 + 1im * omega * tau)
-    epsr = isfinite(value) ? ComplexF64(value) :
-           _debye_epsr_bigfloat_3d(f, epss, epsi, tau)
+    relaxation_term = ComplexF64(
+        (epss - epsi) / (1 + 1im * omega * tau))
+    value = ComplexF64(epsi + relaxation_term)
+    epsr = _dispersion_sum_requires_fallback_3d(
+        value, epsi, relaxation_term) ?
+        _debye_epsr_bigfloat_3d(f, epss, epsi, tau) : value
     passive && _validate_passive_scalar_3d(epsr, "eps_r")
     return epsr
 end
