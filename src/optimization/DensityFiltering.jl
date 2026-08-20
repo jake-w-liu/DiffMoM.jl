@@ -20,6 +20,40 @@ export filter_and_project, gradient_chain_rule
 const _DEFAULT_MAX_FILTER_TRIPLET_BYTES = 512 * 1024 * 1024
 const _FILTER_TRIPLET_ENTRY_BYTES =
     2 * sizeof(Int) + sizeof(Float64)
+const _FILTER_DISTANCE_FALLBACK_PRECISION = 4352
+
+@noinline function _filter_conic_weight_bigfloat(
+        first::Vec3,
+        second::Vec3,
+        radius::Float64)
+    return setprecision(BigFloat, _FILTER_DISTANCE_FALLBACK_PRECISION) do
+        dx = BigFloat(first[1]) - BigFloat(second[1])
+        dy = BigFloat(first[2]) - BigFloat(second[2])
+        dz = BigFloat(first[3]) - BigFloat(second[3])
+        distance = sqrt(dx * dx + dy * dy + dz * dz)
+        weight = BigFloat(radius) - distance
+        weight > 0 || return 0.0
+        return Float64(weight)
+    end
+end
+
+@inline function _filter_conic_weight(
+        first::Vec3,
+        second::Vec3,
+        radius::Float64)
+    dx = first[1] - second[1]
+    dy = first[2] - second[2]
+    dz = first[3] - second[3]
+    distance = hypot(hypot(dx, dy), dz)
+
+    # A correctly rounded distance can equal the Float64 radius even when the
+    # exact distance between the stored centroids lies just inside it. Settle
+    # that boundary before deciding the sparse filter topology and recover the
+    # representable residual weight when one exists.
+    distance == radius &&
+        return _filter_conic_weight_bigfloat(first, second, radius)
+    return max(0.0, radius - distance)
+end
 
 @inline function _filter_cell_indices_fit_int(
     centroids::Vector{Vec3},
@@ -58,8 +92,7 @@ function _filter_triplet_count(
             neigh === nothing && continue
             for s in neigh
                 s < t && continue
-                d = norm(ct - centroids[s])
-                w = max(0.0, r_min - d)
+                w = _filter_conic_weight(ct, centroids[s], r_min)
                 w > 0 || continue
                 required = s == t ? 1 : 2
                 required <= entry_limit - entry_count ||
@@ -96,8 +129,7 @@ function _filter_triplets_from_cells(
             neigh === nothing && continue
             for s in neigh
                 s < t && continue
-                d = norm(ct - centroids[s])
-                w = max(0.0, r_min - d)
+                w = _filter_conic_weight(ct, centroids[s], r_min)
                 w > 0 || continue
                 cursor += 1
                 rows[cursor] = t

@@ -776,6 +776,35 @@ println("\n── Test 39: DensityFiltering ──")
             @test (@allocated build_filter_weights(mesh, radius)) <= 100_000
         end
 
+        # A rounded Euclidean distance can land exactly on the radius even
+        # though the exact distance between the stored centroids is inside it.
+        # The positive conic edge must not disappear from the sparse topology.
+        boundary_x = prevfloat(1.0)
+        boundary_y = prevfloat(ldexp(1.0, -26))
+        boundary_vertices = Vec3[
+            Vec3(-0.01, 0.0, 0.0),
+            Vec3(0.01, -0.01, 0.0),
+            Vec3(0.0, 0.01, 0.0),
+            Vec3(prevfloat(boundary_x), boundary_y, 0.0),
+            Vec3(nextfloat(boundary_x), prevfloat(boundary_y), 0.0),
+            Vec3(boundary_x, nextfloat(boundary_y), 0.0),
+        ]
+        boundary_mesh = TriMesh(
+            reduce(hcat, boundary_vertices), reshape(1:6, 3, 2))
+        @test triangle_center(boundary_mesh, 2) ==
+              Vec3(boundary_x, boundary_y, 0.0)
+        boundary_weight = setprecision(BigFloat, 256) do
+            Float64(1 - sqrt(BigFloat(boundary_x)^2 +
+                             BigFloat(boundary_y)^2))
+        end
+        @test boundary_weight > 0.0
+        W_boundary, sums_boundary =
+            build_filter_weights(boundary_mesh, 1.0)
+        @test nnz(W_boundary) == 4
+        @test W_boundary[1, 2] == boundary_weight
+        @test W_boundary[2, 1] == boundary_weight
+        @test sums_boundary == vec(sum(W_boundary, dims=2))
+
         @test size(W) == (Nt_df, Nt_df)
         # All weights non-negative (conic: max(0, r_min - d))
         @test all(nonzeros(W) .≥ 0)
