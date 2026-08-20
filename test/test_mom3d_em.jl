@@ -58,6 +58,18 @@ end
                 1.0)
         @test near_resonance_coupled == near_resonance_scalar *
                                            Matrix{ComplexF64}(I, 6, 6)
+        mixed_scale_C6 = Matrix(Diagonal(ComplexF64[
+            1.0e308, -2.0 + 1.0e-13, 1.0, 1.0, 1.0, 1.0]))
+        mixed_scale_coupled =
+            bianisotropic_clausius_mossotti_polarizability(
+                mixed_scale_C6, 1.0e-308)
+        mixed_scale_coupled_reference = setprecision(BigFloat, 512) do
+            C_big = Complex{BigFloat}.(mixed_scale_C6)
+            identity_big = Matrix{Complex{BigFloat}}(I, 6, 6)
+            ComplexF64.(3 * BigFloat(1.0e-308) *
+                ((C_big - identity_big) / (C_big + 2 * identity_big)))
+        end
+        @test mixed_scale_coupled == mixed_scale_coupled_reference
         @test_throws ErrorException bianisotropic_clausius_mossotti_polarizability(
             Matrix{Float64}(-2I, 6, 6), 1.0)
         @test_throws ArgumentError planewave_em_dda_3d(

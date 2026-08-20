@@ -91,6 +91,20 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             1.0)
         @test near_resonance_tensor == near_resonance_scalar *
                                           Matrix{ComplexF64}(I, 3, 3)
+        mixed_scale_eps = Matrix(Diagonal(ComplexF64[
+            1.0e308, -2.0 + 1.0e-13, 1.0]))
+        mixed_scale_alpha = clausius_mossotti_polarizability(
+            mixed_scale_eps, 1.0e-308)
+        mixed_scale_reference = setprecision(BigFloat, 512) do
+            eps_big = Complex{BigFloat}.(mixed_scale_eps)
+            identity_big = Matrix{Complex{BigFloat}}(I, 3, 3)
+            ComplexF64.(3 * BigFloat(1.0e-308) *
+                ((eps_big - identity_big) / (eps_big + 2 * identity_big)))
+        end
+        @test mixed_scale_alpha == mixed_scale_reference
+        mixed_scale_eps[2, 2] = -2.0 + eps(Float64)
+        @test_throws ErrorException clausius_mossotti_polarizability(
+            mixed_scale_eps, 1.0e-308)
         @test_throws ErrorException clausius_mossotti_polarizability(
             Matrix{Float64}(-2I, 3, 3), 1.0)
         @test_throws ArgumentError electric_dipole_dyadic_3d(

@@ -245,22 +245,31 @@ returned polarizability acts on the solver fields `[E; H]` and returns
     inverse_denom = _validated_clausius_mossotti_inverse_3d(
         denom, "Bianisotropic Clausius-Mossotti denominator C6 + 2I")
     I6 = SMatrix{6,6,ComplexF64,36}(I)
-    alpha_norm = V * (3 * ((C - I6) * inverse_denom))
-    if all(isfinite, alpha_norm)
-        if radiative_correction
-            alpha_norm = alpha_norm / (I6 + 1im * k^3 * alpha_norm / (6π))
+    if inverse_denom !== nothing
+        alpha_norm = V * (3 * ((C - I6) * inverse_denom))
+        if all(isfinite, alpha_norm)
+            if radiative_correction
+                alpha_norm = alpha_norm /
+                    (I6 + 1im * k^3 * alpha_norm / (6π))
+            end
+            # Check scalar entries before materializing the 576-byte transformed
+            # SMatrix, so heterogeneous voxel builds do not box a temporary matrix.
+            all(isfinite, alpha_norm) &&
+                _transformed_alpha6_isfinite_3d(alpha_norm, eta) &&
+                return _transform_normalized_alpha6_3d(alpha_norm, eta)
         end
-        # Check scalar entries before materializing the 576-byte transformed
-        # SMatrix, so heterogeneous voxel builds do not box a temporary matrix.
-        all(isfinite, alpha_norm) &&
-            _transformed_alpha6_isfinite_3d(alpha_norm, eta) &&
-            return _transform_normalized_alpha6_3d(alpha_norm, eta)
     end
 
     converted = setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
         Cb = Matrix{Complex{BigFloat}}(C)
         identity_b = Matrix{Complex{BigFloat}}(I, 6, 6)
-        alpha = 3 * BigFloat(V) * ((Cb - identity_b) / (Cb + 2 * identity_b))
+        denominator = Cb + 2 * identity_b
+        inverse_denominator =
+            _validated_clausius_mossotti_inverse_bigfloat_3d(
+                denominator,
+                "Bianisotropic Clausius-Mossotti denominator C6 + 2I")
+        alpha = 3 * BigFloat(V) *
+                ((Cb - identity_b) * inverse_denominator)
         if radiative_correction
             denominator = identity_b +
                           Complex{BigFloat}(0, 1) * BigFloat(k)^3 * alpha /

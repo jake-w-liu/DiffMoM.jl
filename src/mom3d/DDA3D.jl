@@ -420,6 +420,26 @@ function _clausius_mossotti_bigfloat(
     end
 end
 
+function _validated_clausius_mossotti_inverse_bigfloat_3d(
+        denominator::AbstractMatrix{Complex{BigFloat}},
+        label::AbstractString)
+    n = size(denominator, 1)
+    scale = maximum(component -> max(
+        abs(real(component)), abs(imag(component))), denominator)
+    tolerance = BigFloat(100 * eps(Float64))
+    scale > tolerance || error("$label is singular or too close to singular.")
+    normalized = denominator / scale
+    factorization = lu(normalized; check=false)
+    issuccess(factorization) ||
+        error("$label is singular or too close to singular.")
+    inverse_normalized = inv(factorization)
+    inverse_norm = maximum(row ->
+        sum(column -> abs(inverse_normalized[row, column]), 1:n), 1:n)
+    scale / inverse_norm > tolerance ||
+        error("$label is singular or too close to singular.")
+    return inverse_normalized / scale
+end
+
 @inline function _validated_clausius_mossotti_inverse_3d(
     denominator::SMatrix{N,N,ComplexF64,L},
     label::AbstractString,
@@ -433,8 +453,9 @@ end
 
     normalized = denominator / scale
     factorization = lu(normalized; check=false)
-    issuccess(factorization) || error("$label is singular or too close to singular.")
+    issuccess(factorization) || return nothing
     inverse_normalized = inv(factorization)
+    all(isfinite, inverse_normalized) || return nothing
 
     inverse_norm = 0.0
     @inbounds for row in 1:N
@@ -446,7 +467,9 @@ end
     end
     scale / inverse_norm > tolerance ||
         error("$label is singular or too close to singular.")
-    return inverse_normalized / scale
+    inverse_denominator = inverse_normalized / scale
+    all(isfinite, inverse_denominator) || return nothing
+    return inverse_denominator
 end
 
 function _clausius_mossotti_bigfloat(
@@ -460,8 +483,12 @@ function _clausius_mossotti_bigfloat(
         n = size(epsm, 1)
         epsb = Complex{BigFloat}.(epsm)
         identity_b = Matrix{Complex{BigFloat}}(I, n, n)
+        denominator = epsb + 2 * identity_b
+        inverse_denominator =
+            _validated_clausius_mossotti_inverse_bigfloat_3d(
+                denominator, "$label denominator")
         alpha = 3 * BigFloat(V) *
-                ((epsb - identity_b) / (epsb + 2 * identity_b))
+                ((epsb - identity_b) * inverse_denominator)
         if radiative_correction
             denominator = identity_b +
                           Complex{BigFloat}(0, 1) * BigFloat(k)^3 * alpha /
@@ -524,6 +551,10 @@ function clausius_mossotti_polarizability(eps_r::AbstractMatrix, volume::Real;
     denom = epsm + 2 * _CI3_DDA
     inverse_denom = _validated_clausius_mossotti_inverse_3d(
         denom, "Tensor Clausius-Mossotti denominator eps_r + 2I")
+    inverse_denom === nothing &&
+        return _CMat3DDA(Tuple(_clausius_mossotti_bigfloat(
+            epsm, V, k, radiative_correction,
+            "Tensor Clausius-Mossotti polarizability")))
     alpha0 = V * (3 * ((epsm - _CI3_DDA) * inverse_denom))
     if all(isfinite, alpha0)
         if !radiative_correction
