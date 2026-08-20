@@ -863,10 +863,10 @@ function _electric_dipole_value_bigfloat_3d(
     R = sqrt(sum(abs2, R_vec))
     R > 0 || error(
         "electric_dipole_dyadic_3d requires distinct finite points.")
-    Rhat = R_vec / R
-    rq = sum(Rhat[index] * q[index] for index in 1:3)
-    transverse_vector = q - rq * Rhat
-    near_vector = 3 * rq * Rhat - q
+    direction_norm_squared = sum(abs2, R_vec)
+    transverse_vector = cross(cross(R_vec, q), R_vec) /
+                        direction_norm_squared
+    near_vector = 2q - 3transverse_vector
     kb = BigFloat(k)
     expfac = exp(Complex{BigFloat}(0, -kb * R)) /
              (4 * BigFloat(pi))
@@ -968,7 +968,6 @@ end
     k::Float64,
     q::CVec3,
     R::Float64,
-    Rhat::Vec3,
     expfac::ComplexF64,
 )
     q_scale = max(abs(q[1]), abs(q[2]), abs(q[3]))
@@ -984,16 +983,24 @@ end
     iszero(q_scale) && return CVec3(
         0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
 
-    rq_direct = dot(Rhat, q)
+    displacement = r - rp
+    projection_direction = _source_power_of_two_scaled_direction(
+        displacement)
+    projection_norm_squared = sum(abs2, projection_direction)
+    transverse_direct = _dipole_cross(
+        _dipole_cross(projection_direction, q),
+        projection_direction) / projection_norm_squared
+    near_direct = 2q - 3transverse_direct
     ordinary_value = expfac * (
-        (k^2 / R) * (q - rq_direct * Rhat) +
-        (1 / R^3 + 1im * k / R^2) * (3 * rq_direct * Rhat - q))
+        (k^2 / R) * transverse_direct +
+        (1 / R^3 + 1im * k / R^2) * near_direct)
     all(isfinite, ordinary_value) && return ordinary_value
 
     q_normalized = q / q_scale
-    rq = dot(Rhat, q_normalized)
-    transverse_vector = q_normalized - rq * Rhat
-    near_vector = 3 * rq * Rhat - q_normalized
+    transverse_vector = _dipole_cross(
+        _dipole_cross(projection_direction, q_normalized),
+        projection_direction) / projection_norm_squared
+    near_vector = 2q_normalized - 3transverse_vector
     transverse = _scale_dipole_vector_3d(
         transverse_vector, q_scale, k, 2, R, 1)
     near_real = _scale_dipole_vector_3d(
@@ -1024,13 +1031,13 @@ end
             column3[1], column3[2], column3[3],
         ))
     end
-    R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
+    R, _, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
     column1 = _electric_dipole_apply_with_geometry_3d(
-        r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, Rhat, expfac)
+        r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, expfac)
     column2 = _electric_dipole_apply_with_geometry_3d(
-        r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, Rhat, expfac)
+        r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, expfac)
     column3 = _electric_dipole_apply_with_geometry_3d(
-        r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, Rhat, expfac)
+        r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, expfac)
     return _CMat3DDA((
         column1[1], column1[2], column1[3],
         column2[1], column2[2], column2[3],
@@ -1063,13 +1070,13 @@ end
         return _electric_dipole_alpha_adjoint_apply_bigfloat_3d(
             r, rp, k, alpha, value)
     try
-        R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
+        R, _, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
         column1 = _electric_dipole_apply_with_geometry_3d(
-            r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, Rhat, expfac)
+            r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, expfac)
         column2 = _electric_dipole_apply_with_geometry_3d(
-            r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, Rhat, expfac)
+            r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, expfac)
         column3 = _electric_dipole_apply_with_geometry_3d(
-            r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, Rhat, expfac)
+            r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, expfac)
         result = CVec3(
             dot(column1, value),
             dot(column2, value),
@@ -1091,9 +1098,9 @@ end
 @inline function _electric_dipole_apply_3d(r::Vec3, rp::Vec3, k::Float64, q::CVec3)
     _electric_dipole_geometry_requires_exact_3d(r, rp, k) &&
         return _electric_dipole_apply_bigfloat_3d(r, rp, k, q)
-    R, Rhat, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
+    R, _, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
     return _electric_dipole_apply_with_geometry_3d(
-        r, rp, k, q, R, Rhat, expfac)
+        r, rp, k, q, R, expfac)
 end
 
 Base.size(A::DDAOperator3D) = (3 * A.grid.nvoxels, 3 * A.grid.nvoxels)

@@ -972,6 +972,47 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test norm(y_tensor - A_tensor_dense * x) / norm(A_tensor_dense * x) < 1e-13
     end
 
+    @testset "Matrix-free near-longitudinal interaction" begin
+        # The exact 3-4-5 displacement keeps the radial phase independent of
+        # normalization roundoff.  The remaining small transverse moment used
+        # to lose about eight decimal digits in q-r̂(r̂⋅q).
+        grid = VoxelGrid3D(
+            (0.0, 6.0), (0.0, 8.0), (-0.5, 0.5), 2, 2, 1)
+        k = exp2(28.0)
+        alpha = ComplexF64[1.0, 0.0, 0.0, 0.0]
+        operator = DDAOperator3D(
+            grid, k, fill(1.0 + 0im, grid.nvoxels), alpha, false)
+        radial = Vec3(0.6, 0.8, 0.0)
+        transverse = Vec3(0.8, -0.6, 0.0)
+        moment = CVec3(complex.(radial + 1.0e-8 * transverse))
+        source = zeros(ComplexF64, 3grid.nvoxels)
+        source[1:3] .= moment
+        result = zeros(ComplexF64, length(source))
+        mul!(result, operator, source)
+        observed = CVec3(result[10], result[11], result[12])
+        reference = setprecision(BigFloat, 2048) do
+            displacement = SVector{3,BigFloat}(
+                BigFloat.(grid.centers[4] - grid.centers[1]))
+            distance = sqrt(sum(abs2, displacement))
+            direction = displacement / distance
+            moment_big = SVector{3,Complex{BigFloat}}(
+                Complex{BigFloat}.(moment))
+            transverse_big = cross(
+                cross(direction, moment_big), direction)
+            near_big = 2moment_big - 3transverse_big
+            phase = exp(Complex{BigFloat}(
+                0, -BigFloat(k) * distance)) / (4 * BigFloat(pi))
+            -CVec3(ComplexF64.(phase * (
+                (BigFloat(k)^2 / distance) * transverse_big +
+                (inv(distance^3) +
+                 Complex{BigFloat}(0, 1) * BigFloat(k) / distance^2) *
+                near_big)))
+        end
+        @test observed ≈ reference rtol=4eps(Float64)
+        mul!(result, operator, source)
+        @test (@allocated mul!(result, operator, source)) < 1024
+    end
+
     @testset "Matrix-free scaled-output exponent range" begin
         scale_grid = VoxelGrid3D(
             (0.0, 0.2), (0.0, 0.1), (0.0, 0.1), 2, 1, 1)
