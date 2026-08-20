@@ -8505,6 +8505,22 @@ result_vec = solve_scattering(mesh, freq, v;
 @assert result_vec.method == :dense_direct
 @assert norm(result_vec.I_coeffs - I_pec) / norm(I_pec) < 1e-10
 
+# Reject a wrong-sized lazy RHS before attempting to materialize it. This
+# keeps an untrusted vector length from driving an irrelevant allocation.
+struct WorkflowPoisonVector <: AbstractVector{ComplexF64}
+    length::Int
+end
+Base.size(vector::WorkflowPoisonVector) = (vector.length,)
+Base.getindex(::WorkflowPoisonVector, ::Int) =
+    error("wrong-sized workflow vector was materialized")
+@test_throws DimensionMismatch solve_scattering(
+    mesh,
+    freq,
+    WorkflowPoisonVector(N + 1);
+    verbose=false,
+    check_resolution=false,
+)
+
 # Test mesh resolution warning
 warning_freq = 1e6
 warning_k = 2π * warning_freq / c0

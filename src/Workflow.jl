@@ -177,11 +177,17 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     # ── Step 4: Excitation vector ──
     local v::Vector{ComplexF64}
     if excitation isa AbstractVector
+        length(excitation) == N ||
+            throw(DimensionMismatch(
+                "solve_scattering: excitation length " *
+                "$(length(excitation)) != N=$N"))
         v = Vector{ComplexF64}(excitation)
     else
         v = assemble_excitation(mesh, rwg, excitation; quad_order=quad_order)
     end
-    length(v) == N || error("solve_scattering: excitation length $(length(v)) != N=$N")
+    length(v) == N ||
+        throw(DimensionMismatch(
+            "solve_scattering: excitation length $(length(v)) != N=$N"))
     all(isfinite, v) ||
         throw(ArgumentError(
             "solve_scattering: excitation vector must contain only finite values"))
