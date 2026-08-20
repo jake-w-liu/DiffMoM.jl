@@ -204,6 +204,33 @@ function cluster_distance(tree::ClusterTree, i::Int, j::Int)
     return distance
 end
 
+@noinline function _cluster_admissibility_exact(
+        tree::ClusterTree, i::Int, j::Int, eta::Float64)
+    ni = tree.nodes[i]
+    nj = tree.nodes[j]
+    zero_exact = Rational{BigInt}(0)
+
+    gaps = ntuple(component -> max(
+        Rational{BigInt}(ni.bbox_min[component]) -
+            Rational{BigInt}(nj.bbox_max[component]),
+        Rational{BigInt}(nj.bbox_min[component]) -
+            Rational{BigInt}(ni.bbox_max[component]),
+        zero_exact,
+    ), 3)
+    spans_i = ntuple(component ->
+        Rational{BigInt}(ni.bbox_max[component]) -
+        Rational{BigInt}(ni.bbox_min[component]), 3)
+    spans_j = ntuple(component ->
+        Rational{BigInt}(nj.bbox_max[component]) -
+        Rational{BigInt}(nj.bbox_min[component]), 3)
+    diameter = min(max(spans_i...), max(spans_j...))
+    eta_exact = Rational{BigInt}(eta)
+    squared_distance =
+        gaps[1] * gaps[1] + gaps[2] * gaps[2] + gaps[3] * gaps[3]
+    return diameter * diameter <=
+           eta_exact * eta_exact * squared_distance
+end
+
 """
     is_admissible(tree, i, j; eta=1.5)
 
@@ -219,7 +246,20 @@ function is_admissible(tree::ClusterTree, i::Int, j::Int; eta::Float64=1.5)
     d = cluster_distance(tree, i, j)
     d <= 0.0 && return false  # overlapping or touching
     diam_min = min(cluster_diameter(tree, i), cluster_diameter(tree, j))
-    return diam_min <= eta * d
+    scaled_distance = eta * d
+    isinf(scaled_distance) && return true
+    iszero(scaled_distance) && return iszero(diam_min)
+
+    # Bounding-box subtraction, the Euclidean norm, and eta scaling each
+    # round independently. Only the narrow comparison boundary needs an exact
+    # rational squared-distance decision; ordinary block traversal remains on
+    # the allocation-free Float64 path.
+    comparison_scale = max(diam_min, scaled_distance)
+    uncertainty = 64 * eps(comparison_scale)
+    separation = abs(diam_min - scaled_distance)
+    isfinite(uncertainty) && separation > uncertainty &&
+        return diam_min <= scaled_distance
+    return _cluster_admissibility_exact(tree, i, j, eta)
 end
 
 """

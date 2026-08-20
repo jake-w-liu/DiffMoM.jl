@@ -7814,6 +7814,27 @@ end
 @test_throws ArgumentError is_admissible(
     tree_ct, 1, 1; eta=0.0)
 
+# Rounded box separation can equal the admissibility boundary on both sides.
+# Resolve the exact stored bounding boxes so a just-too-close block stays dense.
+cluster_boundary_x = prevfloat(1.0)
+cluster_boundary_y = ldexp(1.0, -26)
+function boundary_cluster_tree(y)
+    nodes = ClusterNode[
+        ClusterNode(1:1, Vec3(0.0, 0.0, 0.0),
+                    Vec3(0.0, 0.0, 1.0), 0, 0, 0),
+        ClusterNode(2:2, Vec3(cluster_boundary_x, y, 0.0),
+                    Vec3(cluster_boundary_x, y, 1.0), 0, 0, 0),
+    ]
+    return ClusterTree(nodes, [1, 2], [1, 2], 1)
+end
+cluster_rounded_inside =
+    boundary_cluster_tree(prevfloat(cluster_boundary_y))
+cluster_rounded_outside = boundary_cluster_tree(cluster_boundary_y)
+@test cluster_distance(cluster_rounded_inside, 1, 2) == 1.0
+@test cluster_distance(cluster_rounded_outside, 1, 2) == 1.0
+@test !is_admissible(cluster_rounded_inside, 1, 2; eta=1.0)
+@test is_admissible(cluster_rounded_outside, 1, 2; eta=1.0)
+
 println("  Tree: $(length(tree_ct.nodes)) nodes, $(length(leaves_ct)) leaves")
 println("  PASS ✓")
 
