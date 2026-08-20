@@ -12,6 +12,114 @@ export material_bianisotropic_matrix_3d
 export drude_epsr_3d, lorentz_epsr_3d, debye_epsr_3d
 
 const _PASSIVITY_TOL_3D = 100 * eps(Float64)
+const _PASSIVITY_SAFE_EXPONENT_3D = 128
+
+@inline function _passivity_extreme_component_3d(value::Float64)
+    magnitude = abs(value)
+    iszero(magnitude) && return false
+    value_exponent = exponent(magnitude)
+    return value_exponent < -_PASSIVITY_SAFE_EXPONENT_3D ||
+           value_exponent > _PASSIVITY_SAFE_EXPONENT_3D
+end
+
+function _passivity_requires_exact_3d(M)
+    @inbounds for value in M
+        if _passivity_extreme_component_3d(real(value)) ||
+           _passivity_extreme_component_3d(imag(value))
+            return true
+        end
+    end
+    return false
+end
+
+function _passivity_shifted_is_psd_exact_3d!(
+        matrix::Matrix{Complex{Rational{BigInt}}})
+    dimension = size(matrix, 1)
+    @inbounds for pivot_index in 1:dimension
+        pivot_position = 0
+        for candidate in pivot_index:dimension
+            diagonal = matrix[candidate, candidate]
+            iszero(imag(diagonal)) ||
+                error("internal exact passivity matrix is not Hermitian")
+            real(diagonal) < 0 && return false
+            if real(diagonal) > 0 && iszero(pivot_position)
+                pivot_position = candidate
+            end
+        end
+
+        if iszero(pivot_position)
+            # In a positive-semidefinite Hermitian matrix, a zero diagonal
+            # forces its entire row and column to be zero.  All remaining
+            # diagonals are zero here, so the trailing block must vanish.
+            for column in pivot_index:dimension
+                for row in pivot_index:dimension
+                    iszero(matrix[row, column]) || return false
+                end
+            end
+            return true
+        end
+
+        if pivot_position != pivot_index
+            for column in 1:dimension
+                matrix[pivot_index, column], matrix[pivot_position, column] =
+                    matrix[pivot_position, column], matrix[pivot_index, column]
+            end
+            for row in 1:dimension
+                matrix[row, pivot_index], matrix[row, pivot_position] =
+                    matrix[row, pivot_position], matrix[row, pivot_index]
+            end
+        end
+
+        pivot = real(matrix[pivot_index, pivot_index])
+        for column in (pivot_index + 1):dimension
+            for row in column:dimension
+                updated = matrix[row, column] -
+                          matrix[row, pivot_index] *
+                          conj(matrix[column, pivot_index]) / pivot
+                matrix[row, column] = updated
+                matrix[column, row] = conj(updated)
+            end
+        end
+    end
+    return true
+end
+
+@noinline function _validate_passive_tensor_exact_3d(
+        M, label::AbstractString)
+    rational_type = Rational{BigInt}
+    complex_type = Complex{rational_type}
+    dimension = size(M, 1)
+    shifted_loss = Matrix{complex_type}(undef, dimension, dimension)
+    tolerance = rational_type(_PASSIVITY_TOL_3D)
+
+    # Passivity with the documented tolerance is equivalent to positive
+    # semidefiniteness of tolerance*I - (M-M')/(2i).  Float64 entries are
+    # dyadic rationals, so the small (at most 6x6) exceptional problem can be
+    # checked exactly without overflowing intermediate sums or eigenvalues.
+    @inbounds for column in 1:dimension
+        for row in 1:column
+            forward = M[row, column]
+            reverse = M[column, row]
+            loss_real =
+                (rational_type(imag(forward)) +
+                 rational_type(imag(reverse))) / 2
+            loss_imag =
+                (rational_type(real(reverse)) -
+                 rational_type(real(forward))) / 2
+            shifted = complex_type(
+                (row == column ? tolerance : zero(tolerance)) - loss_real,
+                -loss_imag,
+            )
+            shifted_loss[row, column] = shifted
+            shifted_loss[column, row] = conj(shifted)
+        end
+    end
+
+    _passivity_shifted_is_psd_exact_3d!(shifted_loss) ||
+        error("$label violates exp(+i omega t) passivity: " *
+              "anti-Hermitian loss matrix must be negative semidefinite.")
+    return M
+end
 
 function _finite_complex_3d(z, label::AbstractString)
     zc = ComplexF64(z)
@@ -51,6 +159,8 @@ function _validate_passive_diagonal_3d(v::SVector{3,ComplexF64}, label::Abstract
 end
 
 function _validate_passive_tensor_3d(M::SMatrix{3,3,ComplexF64,9}, label::AbstractString)
+    _passivity_requires_exact_3d(M) &&
+        return _validate_passive_tensor_exact_3d(M, label)
     loss = (M - adjoint(M)) / (2im)
     vals = eigvals(Hermitian(Matrix(loss)))
     maximum(vals) <= _PASSIVITY_TOL_3D ||
@@ -87,6 +197,8 @@ function _as_material_cmat6_3d(C, label::AbstractString)
 end
 
 function _validate_passive_tensor6_3d(C::SMatrix{6,6,ComplexF64,36}, label::AbstractString)
+    _passivity_requires_exact_3d(C) &&
+        return _validate_passive_tensor_exact_3d(C, label)
     loss = (C - adjoint(C)) / (2im)
     vals = eigvals(Hermitian(Matrix(loss)))
     maximum(vals) <= _PASSIVITY_TOL_3D ||

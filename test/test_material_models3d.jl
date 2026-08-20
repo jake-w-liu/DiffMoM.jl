@@ -46,6 +46,33 @@ using .DiffMoM
     bianiso = BianisotropicMaterial3D(C6)
     @test material_bianisotropic_matrix_3d(bianiso, 2.0) == bianiso.C6
 
+    extreme_passive_3 = Matrix(Diagonal(fill(1.0 - 1.0e308im, 3)))
+    @test TensorAnisotropicMaterial3D(extreme_passive_3).eps_r ==
+          extreme_passive_3
+    @test TensorPermeability3D(extreme_passive_3).mu_r ==
+          extreme_passive_3
+    extreme_passive_6 = Matrix(Diagonal(fill(1.0 - 1.0e308im, 6)))
+    @test BianisotropicMaterial3D(extreme_passive_6).C6 ==
+          extreme_passive_6
+    extreme_rank_one_loss = fill(-1.0e307, 6, 6)
+    extreme_rank_one_material = Matrix{ComplexF64}(I, 6, 6) +
+                                1im .* extreme_rank_one_loss
+    @test BianisotropicMaterial3D(extreme_rank_one_material).C6 ==
+          extreme_rank_one_material
+    extreme_mixed_loss = copy(extreme_passive_3)
+    extreme_mixed_loss[2, 2] = 1.0 + 1.0e-10im
+    @test_throws ErrorException TensorAnisotropicMaterial3D(
+        extreme_mixed_loss)
+    passivity_boundary = 100 * eps(Float64)
+    extreme_boundary_loss = copy(extreme_passive_3)
+    extreme_boundary_loss[2, 2] = 1.0 + passivity_boundary * im
+    @test TensorAnisotropicMaterial3D(extreme_boundary_loss).eps_r ==
+          extreme_boundary_loss
+    extreme_boundary_loss[2, 2] =
+        1.0 + nextfloat(passivity_boundary) * im
+    @test_throws ErrorException TensorAnisotropicMaterial3D(
+        extreme_boundary_loss)
+
     @test imag(drude_epsr_3d(2.0e14; eps_inf=1.0, plasma_freq_hz=1.0e15, gamma_hz=1.0e13)) <= 0
     @test imag(lorentz_epsr_3d(1.0e14; eps_inf=1.0, strength=0.5,
                                resonance_freq_hz=2.0e14, gamma_hz=1.0e13)) <= 0
