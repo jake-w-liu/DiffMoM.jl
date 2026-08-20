@@ -4864,6 +4864,58 @@ pattern_guard_storage_bytes =
 @test_throws ArgumentError make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F, pattern_guard_F, Inf)
+@test_throws ArgumentError make_pattern_feed(
+    pattern_guard_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_guard_F, big"1e10000")
+
+# Invalid scalar metadata and malformed dipole models must be rejected before
+# scanning/copying large angle grids or allocating analytical coefficient
+# matrices.
+pattern_guard_large_theta = range(0.0, stop=π, length=200_000)
+pattern_guard_invalid_frequency = () -> make_pattern_feed(
+    pattern_guard_large_theta, pattern_guard_phi,
+    pattern_guard_F, pattern_guard_F, Inf)
+try
+    pattern_guard_invalid_frequency()
+catch
+end
+@test (@allocated try
+    pattern_guard_invalid_frequency()
+catch
+end) < 4_096
+pattern_guard_object = (
+    x=pattern_guard_large_theta,
+    y=pattern_guard_phi,
+    U=pattern_guard_F,
+)
+pattern_guard_invalid_object_frequency = () -> make_pattern_feed(
+    pattern_guard_object, pattern_guard_object, Inf)
+try
+    pattern_guard_invalid_object_frequency()
+catch
+end
+@test (@allocated try
+    pattern_guard_invalid_object_frequency()
+catch
+end) < 4_096
+pattern_guard_invalid_dipole = DipoleExcitation(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(NaN + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0), :electric, freq_exc)
+pattern_guard_analytic_phi =
+    range(0.0, stop=2π - 2π / 500, length=500)
+pattern_guard_invalid_analytic = () ->
+    make_analytic_dipole_pattern_feed(
+        pattern_guard_invalid_dipole,
+        range(0.0, stop=π, length=500), pattern_guard_analytic_phi)
+try
+    pattern_guard_invalid_analytic()
+catch
+end
+@test (@allocated try
+    pattern_guard_invalid_analytic()
+catch
+end) < 4_096
 pattern_guard_F_bad = copy(pattern_guard_F)
 pattern_guard_F_bad[1, 1] = Inf + 0im
 @test_throws ArgumentError make_pattern_feed(

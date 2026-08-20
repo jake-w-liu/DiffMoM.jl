@@ -972,6 +972,22 @@ function _validate_pattern_feed_storage(
         "max_storage_bytes")
 end
 
+@inline function _validated_pattern_feed_metadata(
+        frequency::Real, phase_center::Vec3, convention::Symbol)
+    frequency_f = Float64(frequency)
+    (isfinite(frequency_f) && frequency_f > 0.0) ||
+        throw(ArgumentError(
+            "Pattern feed frequency must be finite and positive after " *
+            "Float64 conversion, got $frequency."))
+    all(isfinite, phase_center) ||
+        throw(ArgumentError("Pattern feed phase_center must be finite."))
+    convention in (:exp_plus_iwt, :exp_minus_iwt) ||
+        throw(ArgumentError(
+            "Unsupported pattern convention: $convention " *
+            "(expected :exp_plus_iwt or :exp_minus_iwt)."))
+    return frequency_f
+end
+
 """
     make_pattern_feed(theta, phi, Ftheta, Fphi, frequency;
                       phase_center=Vec3(0,0,0),
@@ -991,6 +1007,8 @@ function make_pattern_feed(theta::AbstractVector{<:Real},
                            convention::Symbol=:exp_plus_iwt,
                            max_storage_bytes::Integer=
                                _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    frequency_f = _validated_pattern_feed_metadata(
+        frequency, phase_center, convention)
     nθ = length(theta)
     nϕ = length(phi)
     _validate_pattern_feed_storage(nθ, nϕ, max_storage_bytes)
@@ -1003,13 +1021,6 @@ function make_pattern_feed(theta::AbstractVector{<:Real},
     end
 
     _validate_pattern_grid(θ, ϕ)
-    (isfinite(frequency) && frequency > 0) ||
-        throw(ArgumentError(
-            "Pattern feed frequency must be finite and positive, got $frequency."))
-    all(isfinite, phase_center) ||
-        throw(ArgumentError("Pattern feed phase_center must be finite."))
-    convention in (:exp_plus_iwt, :exp_minus_iwt) ||
-        error("Unsupported pattern convention: $convention (expected :exp_plus_iwt or :exp_minus_iwt).")
 
     Fθ = _coerce_pattern_matrix(Ftheta, length(θ), length(ϕ), "Ftheta")
     Fϕ = _coerce_pattern_matrix(Fphi, length(θ), length(ϕ), "Fphi")
@@ -1019,7 +1030,7 @@ function make_pattern_feed(theta::AbstractVector{<:Real},
         throw(ArgumentError("Fphi contains non-finite coefficients."))
 
     excitation = PatternFeedExcitation(
-        θ, ϕ, Fθ, Fϕ, Float64(frequency), phase_center, convention)
+        θ, ϕ, Fθ, Fϕ, frequency_f, phase_center, convention)
     _validate_excitation_model(excitation)
     return excitation
 end
@@ -1037,6 +1048,8 @@ function make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency::Real;
                            convention::Symbol=:exp_plus_iwt,
                            max_storage_bytes::Integer=
                                _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    frequency_f = _validated_pattern_feed_metadata(
+        frequency, phase_center, convention)
     θ = getproperty(Etheta_pattern, :x)
     ϕ = getproperty(Etheta_pattern, :y)
     θ2 = getproperty(Ephi_pattern, :x)
@@ -1057,7 +1070,7 @@ function make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency::Real;
     end
     Fθ = getproperty(Etheta_pattern, :U)
     Fϕ = getproperty(Ephi_pattern, :U)
-    return make_pattern_feed(θ, ϕ, Fθ, Fϕ, frequency;
+    return make_pattern_feed(θ, ϕ, Fθ, Fϕ, frequency_f;
                              phase_center=phase_center,
                              angles_in_degrees=angles_in_degrees,
                              convention=convention,
@@ -1355,7 +1368,11 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
                                            convention::Symbol=:exp_plus_iwt,
                                            max_storage_bytes::Integer=
                                                _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
-    dipole.frequency > 0 || error("Dipole frequency must be positive.")
+    _validate_excitation_model(dipole)
+    frequency = _validated_pattern_feed_metadata(
+        dipole.frequency, phase_center, convention)
+    k = _frequency_to_wavenumber(
+        frequency, _C0, "DipoleExcitation")
     _validate_pattern_feed_storage(
         length(theta), length(phi), max_storage_bytes,
         "analytical pattern-feed")
@@ -1366,16 +1383,10 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
         ϕ .*= π / 180
     end
     _validate_pattern_grid(θ, ϕ)
-    dipole.type in (:electric, :magnetic) ||
-        error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
-
     nθ = length(θ)
     nϕ = length(ϕ)
     Fθ = zeros(ComplexF64, nθ, nϕ)
     Fϕ = zeros(ComplexF64, nθ, nϕ)
-
-    k = _frequency_to_wavenumber(
-        dipole.frequency, _C0, "DipoleExcitation")
 
     for i in 1:nθ
         for j in 1:nϕ
@@ -1387,7 +1398,7 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
     end
 
     excitation = PatternFeedExcitation(
-        θ, ϕ, Fθ, Fϕ, dipole.frequency, phase_center, convention)
+        θ, ϕ, Fθ, Fϕ, frequency, phase_center, convention)
     _validate_excitation_model(excitation)
     return excitation
 end
