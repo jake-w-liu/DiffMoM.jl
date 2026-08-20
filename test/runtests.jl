@@ -4948,6 +4948,48 @@ end
 @test all(isfinite, DiffMoM.loop_incident_field(
     Vec3(1.0, 0.0, 0.0), source_scaling_loop))
 
+# Keep the analytically finite monopole pattern when the legacy current-first
+# product overflows, and when its dimensional Simpson integral underflows.
+for (monopole_k, monopole_height, monopole_amplitude) in (
+    (1.0e-108, 1.0, 1.0e308),
+    (1.0, 1.0e-200, 1.0e100),
+)
+    monopole_frequency =
+        (monopole_k / (2π)) * DiffMoM._C0
+    scaled_monopole = make_monopole(
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(0.0, 0.0, 1.0),
+        monopole_height,
+        ComplexF64(monopole_amplitude),
+        monopole_frequency,
+    )
+    scaled_monopole_far = incident_farfield(
+        scaled_monopole, Vec3(1.0, 0.0, 0.0), monopole_k)
+    scaled_monopole_reference = setprecision(BigFloat, 2304) do
+        electrical_height =
+            BigFloat(monopole_k) * BigFloat(monopole_height)
+        pattern = 2 * sin(electrical_height / 2)^2
+        CVec3(
+            0.0 + 0im,
+            0.0 + 0im,
+            -ComplexF64(BigFloat(monopole_amplitude) * pattern),
+        )
+    end
+    @test scaled_monopole_far == scaled_monopole_reference
+
+    scaled_half_monopole = make_monopole(
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(0.0, 0.0, 1.0),
+        monopole_height,
+        ComplexF64(monopole_amplitude),
+        monopole_frequency;
+        include_image=false,
+    )
+    @test incident_farfield(
+        scaled_half_monopole, Vec3(1.0, 0.0, 0.0), monopole_k) ==
+        scaled_monopole_reference / 2
+end
+
 incident_farfield(dipole_guard, Vec3(0.0, 0.0, 1.0), k_exc)
 DiffMoM._loop_equivalent_moment(loop_guard)
 let dipole = dipole_guard,

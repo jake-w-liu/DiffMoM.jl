@@ -519,6 +519,53 @@ function incident_farfield(excitation::AbstractExcitation, ::Vec3, ::Real)
     error("incident_farfield is not defined for excitation type $(typeof(excitation)).")
 end
 
+@inline function _monopole_farfield_requires_exact(
+        mono::MonopoleExcitation, k::Float64)
+    return _source_scaling_extreme_value(mono.amplitude) ||
+           _source_scaling_extreme_value(mono.height) ||
+           _source_scaling_extreme_value(k)
+end
+
+@noinline function _monopole_farfield_amplitude_exact(
+        mono::MonopoleExcitation, k::Float64,
+        cosine::Float64, sine::Float64)
+    return setprecision(BigFloat, _MONOPOLE_EXACT_BASE_PRECISION) do
+        electrical_height = BigFloat(k) * BigFloat(mono.height)
+        cosine_big = BigFloat(cosine)
+        sine_big = BigFloat(sine)
+        imaginary_unit = Complex{BigFloat}(0, 1)
+
+        pattern = if mono.include_image
+            # cos(x*cos(theta)) - cos(x), written as a product so the
+            # electrically-small limit is retained before the source
+            # amplitude is applied.
+            2 * sin(electrical_height * (1 + cosine_big) / 2) *
+            sin(electrical_height * (1 - cosine_big) / 2) / sine_big
+        else
+            first_delta = 1 - cosine_big
+            second_delta = 1 + cosine_big
+            first_term = iszero(first_delta) ?
+                -imaginary_unit * electrical_height :
+                -expm1(imaginary_unit * electrical_height * first_delta) /
+                 first_delta
+            second_term = iszero(second_delta) ?
+                imaginary_unit * electrical_height :
+                -expm1(-imaginary_unit * electrical_height * second_delta) /
+                 second_delta
+            (sine_big / 4) *
+            exp(imaginary_unit * electrical_height * cosine_big) *
+            (first_term + second_term)
+        end
+
+        value = ComplexF64(Complex{BigFloat}(mono.amplitude) * pattern)
+        isfinite(value) ||
+            throw(OverflowError(
+                "MonopoleExcitation far-field amplitude is outside the " *
+                "representable ComplexF64 range"))
+        return value
+    end
+end
+
 function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
     # Closed-form far-field `E_θ^∞(r̂) = iηk sinθ/(4π) · θ̂ · J`
     # with J the wire-current phase integral, computed by Simpson over
@@ -540,25 +587,27 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
     sinθ > 1e-12 || return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     θ_hat = (cosθ * rh - Vec3(ax)) / sinθ
 
-    I_0 = -1im * 2π * mono.amplitude / η0
     h = mono.height
     span_factor = mono.include_image ? 2.0 : 1.0
     N = _monopole_simpson_interval_count(
         h, kf, span_factor, 64, "MonopoleExcitation far field")
-    dz = (span_factor / N) * h
-
-    integ = 0.0 + 0im
-    @inbounds for i in 0:N
-        unit_position = mono.include_image ?
-                        (-1.0 + 2.0 * (i / N)) : (i / N)
-        z = h * unit_position
-        I_z = I_0 * sin(kf * (h - abs(z)))  # abs(z) reduces to z for z ≥ 0
-        w = (i == 0 || i == N) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
-        integ += w * I_z * exp(1im * kf * z * cosθ)
+    Eθ_far = if _monopole_farfield_requires_exact(mono, kf)
+        _monopole_farfield_amplitude_exact(mono, kf, cosθ, sinθ)
+    else
+        I_0 = -1im * 2π * mono.amplitude / η0
+        dz = (span_factor / N) * h
+        integ = 0.0 + 0im
+        @inbounds for i in 0:N
+            unit_position = mono.include_image ?
+                            (-1.0 + 2.0 * (i / N)) : (i / N)
+            z = h * unit_position
+            I_z = I_0 * sin(kf * (h - abs(z)))  # abs(z) reduces to z for z ≥ 0
+            w = (i == 0 || i == N) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
+            integ += w * I_z * exp(1im * kf * z * cosθ)
+        end
+        integ *= dz / 3.0
+        1im * η0 * kf * sinθ / (4π) * integ
     end
-    integ *= dz / 3.0
-
-    Eθ_far = 1im * η0 * kf * sinθ / (4π) * integ
     phase = _source_phase(
         kf, rh, mono.position, 1.0, "MonopoleExcitation far field")
     return _check_finite_cvec3(
