@@ -366,6 +366,10 @@ function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
             R_g[i] -= _grounded_round_trip_phase(kzi, h)
         end
     end
+    all(isfinite, R_g) ||
+        throw(OverflowError(
+            "grounded reflection coefficients contain values outside the " *
+            "representable ComplexF64 range"))
     return modes, R_g
 end
 
@@ -398,5 +402,9 @@ function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I,
             end
         end
     end
+    all(vector -> all(isfinite, vector), R_g) ||
+        throw(OverflowError(
+            "grounded reflection vectors contain values outside the " *
+            "representable ComplexF64 range"))
     return modes, R_g
 end

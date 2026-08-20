@@ -2449,6 +2449,50 @@ println("\n── Test 42: PeriodicMetrics ──")
             height=excitation_range_cell / 4,
             quad_order=1,
         )
+        unit_range_current = ones(
+            ComplexF64, excitation_range_rwg.nedges)
+        _, unit_range_reflection = reflection_coefficients(
+            excitation_range_mesh,
+            excitation_range_rwg,
+            unit_range_current,
+            excitation_range_k,
+            excitation_range_lattice;
+            quad_order=1,
+            N_orders=0,
+        )
+        reflection_scale = 0.75 * floatmax(Float64) /
+                           maximum(abs, unit_range_reflection)
+        overflowing_range_current = reflection_scale .* unit_range_current
+        _, finite_range_reflection = reflection_coefficients(
+            excitation_range_mesh,
+            excitation_range_rwg,
+            overflowing_range_current,
+            excitation_range_k,
+            excitation_range_lattice;
+            quad_order=1,
+            N_orders=0,
+        )
+        @test all(isfinite, finite_range_reflection)
+        @test_throws OverflowError reflection_coefficients_grounded(
+            excitation_range_mesh,
+            excitation_range_rwg,
+            overflowing_range_current,
+            excitation_range_k,
+            excitation_range_lattice;
+            height=excitation_range_cell / 4,
+            quad_order=1,
+            N_orders=0,
+        )
+        @test_throws OverflowError reflection_coefficient_vectors_grounded(
+            excitation_range_mesh,
+            excitation_range_rwg,
+            overflowing_range_current,
+            excitation_range_k,
+            excitation_range_lattice;
+            height=excitation_range_cell / 4,
+            quad_order=1,
+            N_orders=0,
+        )
         grounded_work_bytes = 3 * sizeof(ComplexF64) * rwg_g.nedges^2
         @test_throws ArgumentError assemble_Z_efie_grounded(
             mesh_g, rwg_g, kg, lat_g;
