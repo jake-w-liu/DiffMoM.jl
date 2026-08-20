@@ -28,34 +28,55 @@ const _GreenFloatWavenumber = Union{Float64,ComplexF64}
     return nothing
 end
 
+@inline function _green_promoted_geometry(
+        r::SVector{3}, rp::SVector{3}, k)
+    eltype(r) <: Real && eltype(rp) <: Real ||
+        throw(ArgumentError(
+            "Green-function points must have real coordinates"))
+    real_type = promote_type(
+        Float64, eltype(r), eltype(rp), typeof(real(k)))
+    dx = real_type(r[1]) - real_type(rp[1])
+    dy = real_type(r[2]) - real_type(rp[2])
+    dz = real_type(r[3]) - real_type(rp[3])
+    distance = hypot(hypot(dx, dy), dz)
+    wavenumber = Complex{real_type}(k)
+    return dx, dy, dz, distance, wavenumber
+end
+
 @inline function _greens_unchecked(r::SVector{3}, rp::SVector{3}, k)
-    R_vec = r - rp
-    R = sqrt(dot(R_vec, R_vec))
-    if iszero(R)
-        return zero(complex(typeof(real(k))))
-    end
-    return exp(-im * k * R) / (4π * R)
+    _, _, _, distance, wavenumber =
+        _green_promoted_geometry(r, rp, k)
+    iszero(distance) && return zero(wavenumber)
+    real_type = typeof(distance)
+    phase_rate = -Complex{real_type}(0, 1) * wavenumber
+    return exp(phase_rate * distance) /
+           (4 * real_type(π) * distance)
 end
 
 @inline function _greens_smooth_unchecked(r::SVector{3}, rp::SVector{3}, k)
-    R_vec = r - rp
-    R = sqrt(dot(R_vec, R_vec))
-    if iszero(R)
-        return -im * k / (4π)
-    end
-    return expm1(-im * k * R) / (4π * R)
+    _, _, _, distance, wavenumber =
+        _green_promoted_geometry(r, rp, k)
+    real_type = typeof(distance)
+    phase_rate = -Complex{real_type}(0, 1) * wavenumber
+    iszero(distance) &&
+        return phase_rate / (4 * real_type(π))
+    return expm1(phase_rate * distance) /
+           (4 * real_type(π) * distance)
 end
 
 @inline function _grad_greens_unchecked(r::SVector{3}, rp::SVector{3}, k)
-    R_vec = r - rp
-    R = sqrt(dot(R_vec, R_vec))
-    if iszero(R)
-        value = zero(complex(typeof(real(k))))
+    dx, dy, dz, distance, wavenumber =
+        _green_promoted_geometry(r, rp, k)
+    if iszero(distance)
+        value = zero(wavenumber)
         return SVector{3}(value, value, value)
     end
-    G = exp(-im * k * R) / (4π * R)
-    dGdR = (-im * k - 1 / R) * G
-    return dGdR * (R_vec / R)
+    real_type = typeof(distance)
+    phase_rate = -Complex{real_type}(0, 1) * wavenumber
+    G = exp(phase_rate * distance) /
+        (4 * real_type(π) * distance)
+    dGdR = (phase_rate - inv(distance)) * G
+    return dGdR * SVector(dx, dy, dz) / distance
 end
 
 @inline function _green_float_geometry(r::Vec3, rp::Vec3)

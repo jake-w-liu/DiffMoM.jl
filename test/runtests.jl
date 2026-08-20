@@ -1594,6 +1594,35 @@ green_phase_one_reference = _green_kernel_bigfloat_reference(
 @test grad_greens(r1, r1, 2.3 + 0.4im) ==
       CVec3(0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im)
 
+# Generic SVector inputs promote narrow coordinate arithmetic before forming
+# distances; otherwise finite Float32 separations can overflow their dot sum.
+green_float32_point = SVector{3,Float32}(3.0f38, 0.0f0, 0.0f0)
+green_float32_origin = zero(green_float32_point)
+green_float32_k = 1.0f-38
+green_float32_reference = setprecision(BigFloat, 256) do
+    distance = BigFloat(green_float32_point[1])
+    phase_rate = -Complex{BigFloat}(0, 1) * BigFloat(green_float32_k)
+    green = exp(phase_rate * distance) /
+            (4 * BigFloat(pi) * distance)
+    smooth = expm1(phase_rate * distance) /
+             (4 * BigFloat(pi) * distance)
+    derivative = (phase_rate - inv(distance)) * green
+    (
+        ComplexF64(green),
+        ComplexF64(smooth),
+        CVec3(ComplexF64(derivative), 0.0 + 0im, 0.0 + 0im),
+    )
+end
+@test greens(
+    green_float32_point, green_float32_origin, green_float32_k) ≈
+    green_float32_reference[1] rtol=4eps(Float64)
+@test greens_smooth(
+    green_float32_point, green_float32_origin, green_float32_k) ≈
+    green_float32_reference[2] rtol=4eps(Float64)
+@test grad_greens(
+    green_float32_point, green_float32_origin, green_float32_k) ≈
+    green_float32_reference[3] rtol=4eps(Float64)
+
 # These are true Float64 output-range boundaries, not intermediate failures.
 @test_throws OverflowError greens(r1, Vec3(1e-310, 0.0, 0.0), 0.0)
 @test isfinite(greens(r1, Vec3(1e-309, 0.0, 0.0), 0.0))
