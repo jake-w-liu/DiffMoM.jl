@@ -4875,6 +4875,73 @@ end
     source_scaling_k,
 )) <= 20_000
 
+# Preserve the transverse projection when the dipole moment is almost
+# parallel to an ordinary observation direction.  Rounded dot/subtract
+# evaluation used to return components with the wrong sign and four times the
+# correct magnitude.
+dipole_projection_direction = Vec3(1.0, 1.0, 0.0)
+dipole_projection_moment =
+    CVec3(1.0 + 0im, prevfloat(1.0) + 0im, 0.0 + 0im)
+dipole_projection = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    dipole_projection_moment,
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    freq_exc,
+)
+dipole_projection_far = incident_farfield(
+    dipole_projection, dipole_projection_direction, k_exc)
+dipole_projection_reference = setprecision(BigFloat, 512) do
+    direction = SVector{3,BigFloat}(
+        BigFloat.(dipole_projection_direction))
+    direction /= sqrt(sum(abs2, direction))
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(dipole_projection_moment))
+    projection = cross(cross(direction, moment), direction)
+    scale = BigFloat(k_exc)^2 /
+            (4 * BigFloat(pi) * BigFloat(DiffMoM._EPS0))
+    CVec3(ComplexF64.(scale * projection))
+end
+@test dipole_projection_far ≈ dipole_projection_reference rtol=4eps(Float64)
+@test (@allocated incident_farfield(
+    dipole_projection, dipole_projection_direction, k_exc)) == 0
+
+# A tiny off-axis direction component can produce a projection that underflows
+# before multiplication by k² even though the final field is representable.
+tiny_projection_component = exp2(-400.0)
+tiny_projection_k = exp2(100.0)
+tiny_projection_frequency =
+    tiny_projection_k * DiffMoM._C0 / (2π)
+tiny_projection_direction =
+    Vec3(1.0, tiny_projection_component, 0.0)
+tiny_projection_dipole = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    tiny_projection_frequency,
+)
+tiny_projection_far = incident_farfield(
+    tiny_projection_dipole, tiny_projection_direction, tiny_projection_k)
+tiny_projection_reference = setprecision(BigFloat, 2048) do
+    direction = SVector{3,BigFloat}(
+        BigFloat.(tiny_projection_direction))
+    direction /= sqrt(sum(abs2, direction))
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(tiny_projection_dipole.moment))
+    projection = cross(cross(direction, moment), direction)
+    scale = BigFloat(tiny_projection_k)^2 /
+            (4 * BigFloat(pi) * BigFloat(DiffMoM._EPS0))
+    CVec3(ComplexF64.(scale * projection))
+end
+@test tiny_projection_far == tiny_projection_reference
+@test all(isfinite, tiny_projection_far)
+@test (@allocated incident_farfield(
+    tiny_projection_dipole,
+    tiny_projection_direction,
+    tiny_projection_k,
+)) <= 25_000
+
 # Form phase arguments without overflowing Float64 and retain small terms when
 # their exponent is far below another term in the same dot product.
 source_phase_first = Vec3(1.0e200, 1.0, 0.0)

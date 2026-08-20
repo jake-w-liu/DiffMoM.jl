@@ -621,7 +621,10 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     #   Magnetic: E∞(r̂) = +η₀·k²/(4π) · (m × r̂)   (real coeff, dual to electric)
     rh, kf = _validated_incident_farfield_args(r_hat, k)
     _validate_incident_farfield_source(dipole, kf)
-    E_far = _dipole_farfield_unphased(dipole, rh, kf)
+    # Preserve the supplied component ratios for the angular projection.
+    # Explicitly rounding all three normalized components can dominate a
+    # physically small field when the moment is almost parallel to r_hat.
+    E_far = _dipole_farfield_unphased(dipole, r_hat, kf)
     phase = _source_phase(
         kf, rh, dipole.position, 1.0, "DipoleExcitation far field")
     return _check_finite_cvec3(

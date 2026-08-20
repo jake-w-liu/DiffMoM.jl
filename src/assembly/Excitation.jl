@@ -527,6 +527,91 @@ end
     return false
 end
 
+@inline function _dipole_scaling_requires_fallback(
+    k::Float64,
+    moment::CVec3,
+    direction::Vec3,
+)
+    _dipole_scaling_requires_fallback(k, moment) && return true
+    @inbounds for component in direction
+        _source_scaling_extreme_value(component) && return true
+    end
+    return false
+end
+
+# Kahan's difference-of-products formula retains the product roundoff before
+# the subtraction.  This matters when a dipole is almost parallel to the
+# observation direction: the small transverse field can otherwise have the
+# wrong sign or magnitude even though every intermediate value is finite.
+@inline function _dipole_difference_of_products(
+    a::Float64,
+    b::Float64,
+    c::Float64,
+    d::Float64,
+)
+    cd = c * d
+    return fma(a, b, -cd) + fma(-c, d, cd)
+end
+
+@inline function _dipole_difference_of_products(
+    a::ComplexF64,
+    b::Float64,
+    c::ComplexF64,
+    d::Float64,
+)
+    return ComplexF64(
+        _dipole_difference_of_products(real(a), b, real(c), d),
+        _dipole_difference_of_products(imag(a), b, imag(c), d),
+    )
+end
+
+@inline function _dipole_cross(a::CVec3, b::Vec3)
+    return CVec3(
+        _dipole_difference_of_products(a[2], b[3], a[3], b[2]),
+        _dipole_difference_of_products(a[3], b[1], a[1], b[3]),
+        _dipole_difference_of_products(a[1], b[2], a[2], b[1]),
+    )
+end
+
+@inline _dipole_cross(a::Vec3, b::CVec3) = -_dipole_cross(b, a)
+
+@inline function _dipole_angular_precision(
+    moment::CVec3,
+    direction::Vec3,
+)
+    direction_minimum = typemax(Int)
+    direction_maximum = typemin(Int)
+    @inbounds for value in direction
+        iszero(value) && continue
+        value_exponent = exponent(abs(value))
+        direction_minimum = min(direction_minimum, value_exponent)
+        direction_maximum = max(direction_maximum, value_exponent)
+    end
+
+    moment_minimum = typemax(Int)
+    moment_maximum = typemin(Int)
+    @inbounds for value in moment
+        for part in (real(value), imag(value))
+            iszero(part) && continue
+            value_exponent = exponent(abs(part))
+            moment_minimum = min(moment_minimum, value_exponent)
+            moment_maximum = max(moment_maximum, value_exponent)
+        end
+    end
+
+    moment_minimum == typemax(Int) &&
+        return _SOURCE_SCALING_FALLBACK_PRECISION
+
+    # An electric projection contains products of two direction components
+    # and one moment component.  Cover the complete exponent span of those
+    # Float64 products, their three significands, and both cross reductions.
+    required_precision =
+        2 * (direction_maximum - direction_minimum) +
+        (moment_maximum - moment_minimum) +
+        3 * precision(Float64) + 64
+    return max(_SOURCE_SCALING_FALLBACK_PRECISION, required_precision)
+end
+
 @inline function _loop_scaling_requires_fallback(loop::LoopExcitation)
     _source_scaling_extreme_value(loop.radius) && return true
     _source_scaling_extreme_value(loop.current) && return true
@@ -548,19 +633,23 @@ end
     rhat::Vec3,
     k::Float64,
 )
-    return setprecision(BigFloat, _SOURCE_SCALING_FALLBACK_PRECISION) do
+    precision = _dipole_angular_precision(dipole.moment, rhat)
+    return setprecision(BigFloat, precision) do
         direction = SVector{3,BigFloat}(
             ntuple(index -> BigFloat(rhat[index]), 3))
+        direction_norm_squared = sum(abs2, direction)
         moment = SVector{3,Complex{BigFloat}}(
             ntuple(index -> Complex{BigFloat}(dipole.moment[index]), 3))
         wavenumber = BigFloat(k)
         value = if dipole.type == :electric
-            projection = moment - direction * dot(direction, moment)
+            projection = cross(cross(direction, moment), direction) /
+                         direction_norm_squared
             (wavenumber * wavenumber /
              (4 * BigFloat(pi) * BigFloat(_EPS0))) * projection
         elseif dipole.type == :magnetic
             (BigFloat(_ETA0) * wavenumber * wavenumber /
-             (4 * BigFloat(pi))) * cross(moment, direction)
+             (4 * BigFloat(pi))) *
+            (cross(moment, direction) / sqrt(direction_norm_squared))
         else
             error(
                 "Dipole type must be :electric or :magnetic, got $(dipole.type).")
@@ -574,15 +663,19 @@ end
     rhat::Vec3,
     k::Float64,
 )
-    _dipole_scaling_requires_fallback(k, dipole.moment) &&
+    _dipole_scaling_requires_fallback(k, dipole.moment, rhat) &&
         return _dipole_farfield_unphased_exact(dipole, rhat, k)
 
+    direction_norm_squared = sum(abs2, rhat)
     value = if dipole.type == :electric
-        projection = dipole.moment -
-                     rhat * dot(rhat, dipole.moment)
+        projection = _dipole_cross(
+            _dipole_cross(rhat, dipole.moment), rhat) /
+                     direction_norm_squared
         (k^2 / (4π * _EPS0)) * projection
     elseif dipole.type == :magnetic
-        (_ETA0 * k^2 / (4π)) * cross(dipole.moment, rhat)
+        (_ETA0 * k^2 / (4π)) *
+        (_dipole_cross(dipole.moment, rhat) /
+         sqrt(direction_norm_squared))
     else
         error(
             "Dipole type must be :electric or :magnetic, got $(dipole.type).")
