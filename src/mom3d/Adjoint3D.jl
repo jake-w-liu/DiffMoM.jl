@@ -97,6 +97,12 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
             "Unsupported DDA adjoint solver: $solver " *
             "(expected :direct or :gmres)."))
     _validate_dda_result_3d(res; require_system=true)
+    if solver == :direct && res.A_LU === nothing && !(res.A isa Matrix)
+        throw(ArgumentError(
+            "Direct DDA adjoint solving requires a stored dense forward " *
+            "matrix or factorization; use solver=:gmres for a matrix-free " *
+            "forward result."))
+    end
     rhs = _coerce_adjoint_rhs_3d(grad_E_flat, res.grid.nvoxels, "grad_E_flat")
 
     if solver == :direct

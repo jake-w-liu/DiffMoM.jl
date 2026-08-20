@@ -86,6 +86,13 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
     lambda_gmres = solve_dda_adjoint_3d(res, weights .* E;
                                         solver=:gmres, tol=1e-12, maxiter=50)
     @test norm(lambda_gmres - lambda) / norm(lambda) < 1e-6
+    matrixfree_result = solve_dda_3d(
+        grid, k0, epsr, E_inc;
+        solver=:gmres, tol=1e-12, maxiter=50)
+    @test matrixfree_result.A_LU === nothing
+    @test !(matrixfree_result.A isa Matrix)
+    @test_throws ArgumentError solve_dda_adjoint_3d(
+        matrixfree_result, weights .* reduce(vcat, matrixfree_result.E_total))
 
     @test_throws ErrorException solve_dda_adjoint_3d(
         res, weights .* E;

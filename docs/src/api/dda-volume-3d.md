@@ -937,7 +937,8 @@ Solve the 3D DDA adjoint system `A' * lambda = grad_E_flat` for an existing
 `grad_E_flat = Q * E`; `gradient_epsr_dda_3d` applies the corresponding factor
 of two for real design parameters. The `:direct` mode reuses the stored
 verified dense factorization from the forward solve (O(N^2) per call) when
-available.
+available. It does not materialize a matrix-free forward operator: use
+`solver=:gmres` for a result produced by a matrix-free forward solve.
 
 **Parameters:**
 
