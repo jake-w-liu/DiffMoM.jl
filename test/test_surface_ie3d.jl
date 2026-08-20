@@ -746,6 +746,18 @@ end
         mesh, rwg, pw,
         DielectricMedium3D(1.0 + 0im, 1.0 + 0im, k0 + 0im, 0.0 + 0im);
         quad_order=1)
+    @test_throws OverflowError assemble_dielectric_sie_rhs_3d(
+        mesh,
+        rwg,
+        pw,
+        DielectricMedium3D(
+            1.0 + 0im,
+            1.0 + 0im,
+            k0 + 0im,
+            ComplexF64(nextfloat(0.0)),
+        );
+        quad_order=1,
+    )
 
     tiny_direction_component = nextfloat(0.0)
     tiny_direction_wave = PlaneWaveExcitation(

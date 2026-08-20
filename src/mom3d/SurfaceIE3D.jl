@@ -743,6 +743,10 @@ function _assemble_plane_wave_h_rhs_3d(mesh::TriMesh, rwg::RWGData,
             end
         end
     end
+    all(isfinite, rhs) ||
+        throw(OverflowError(
+            "magnetic plane-wave RHS contains entries outside the " *
+            "representable ComplexF64 range"))
     return rhs
 end
 
@@ -788,12 +792,18 @@ function assemble_dielectric_sie_rhs_3d(mesh::TriMesh, rwg::RWGData,
     vE = assemble_excitation(mesh, rwg, excitation; quad_order=quad_order)
     vH = _assemble_plane_wave_h_rhs_3d(mesh, rwg, excitation, exterior.eta;
                                        quad_order=quad_order)
-    if formulation == :muller
+    rhs = if formulation == :muller
         c_ze_ext, _, c_zh_ext, _ =
             _surface_sie_coefficients_3d(:muller, exterior, interior)
-        return vcat(c_ze_ext .* vE, c_zh_ext .* vH)
+        vcat(c_ze_ext .* vE, c_zh_ext .* vH)
+    else
+        vcat(vE, vH)
     end
-    return vcat(vE, vH)
+    all(isfinite, rhs) ||
+        throw(OverflowError(
+            "dielectric SIE RHS contains entries outside the " *
+            "representable ComplexF64 range"))
+    return rhs
 end
 
 function _validated_surface_sie_dense_work_3d(
