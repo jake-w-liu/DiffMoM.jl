@@ -7403,6 +7403,29 @@ extreme_I, extreme_J, _ = DiffMoM._nearfield_triplets_bruteforce(
     extreme_centers, 1.0e190, (m, n) -> 1.0 + 0im)
 @test collect(zip(extreme_I, extreme_J)) == [(1, 1), (2, 2)]
 
+# A rounded distance exactly equal to the cutoff is ambiguous: settle the
+# inclusion from the exact stored centers so a just-outside pair is excluded
+# while its just-inside counterpart remains included.
+nearfield_boundary_x = prevfloat(1.0)
+nearfield_boundary_y = ldexp(1.0, -26)
+nearfield_rounded_outside = Vec3[
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(nearfield_boundary_x, nearfield_boundary_y, 0.0),
+]
+nearfield_rounded_inside = Vec3[
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(nearfield_boundary_x, prevfloat(nearfield_boundary_y), 0.0),
+]
+@test hypot(nearfield_rounded_outside[2]...) == 1.0
+@test hypot(nearfield_rounded_inside[2]...) == 1.0
+outside_I, outside_J, _ = DiffMoM._nearfield_triplets_bruteforce(
+    nearfield_rounded_outside, 1.0, (m, n) -> ComplexF64(m, n))
+inside_I, inside_J, _ = DiffMoM._nearfield_triplets_bruteforce(
+    nearfield_rounded_inside, 1.0, (m, n) -> ComplexF64(m, n))
+@test collect(zip(outside_I, outside_J)) == [(1, 1), (2, 2)]
+@test collect(zip(inside_I, inside_J)) ==
+      [(1, 1), (1, 2), (2, 1), (2, 2)]
+
 # Triplet payload limits are enforced before all-pairs preallocation, and the
 # exact raw boundary (two Int indices plus one ComplexF64 per entry) is usable.
 nearfield_pair_bytes = 2 * sizeof(Int) + sizeof(ComplexF64)

@@ -302,8 +302,22 @@ end
     )
 end
 
+@noinline function _within_nearfield_cutoff_exact(
+        a::Vec3, b::Vec3, cutoff::Float64)
+    dx = Rational{BigInt}(a[1]) - Rational{BigInt}(b[1])
+    dy = Rational{BigInt}(a[2]) - Rational{BigInt}(b[2])
+    dz = Rational{BigInt}(a[3]) - Rational{BigInt}(b[3])
+    cutoff_exact = Rational{BigInt}(cutoff)
+    return dx * dx + dy * dy + dz * dz <=
+           cutoff_exact * cutoff_exact
+end
+
 @inline function _within_nearfield_cutoff(a::Vec3, b::Vec3, cutoff::Float64)
-    return hypot(a[1] - b[1], a[2] - b[2], a[3] - b[3]) <= cutoff
+    isfinite(cutoff) || return true
+    distance = hypot(a[1] - b[1], a[2] - b[2], a[3] - b[3])
+    distance == cutoff &&
+        return _within_nearfield_cutoff_exact(a, b, cutoff)
+    return distance <= cutoff
 end
 
 @inline function _foreach_nearfield_pair_bruteforce(
