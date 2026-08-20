@@ -307,6 +307,119 @@ end
     return lam1 * J_verts[1, t] + lam2 * J_verts[2, t] + lam3 * J_verts[3, t]
 end
 
+@noinline function _nearfield_weighted_green_exact(
+    observation::Vec3,
+    source::Vec3,
+    k,
+    area::Float64,
+    quadrature_weight::Float64,
+)
+    return setprecision(BigFloat, _GREEN_FALLBACK_PRECISION) do
+        dx = BigFloat(observation[1]) - BigFloat(source[1])
+        dy = BigFloat(observation[2]) - BigFloat(source[2])
+        dz = BigFloat(observation[3]) - BigFloat(source[3])
+        distance = sqrt(dx * dx + dy * dy + dz * dz)
+        iszero(distance) && return 0.0 + 0.0im
+        phase_rate = Complex{BigFloat}(
+            BigFloat(imag(k)), -BigFloat(real(k)))
+        surface_weight =
+            2 * BigFloat(area) * BigFloat(quadrature_weight)
+        value = ComplexF64(
+            surface_weight * exp(phase_rate * distance) /
+            (4 * BigFloat(π) * distance))
+        isfinite(value) ||
+            throw(OverflowError(
+                "weighted near-field Green function is outside the " *
+                "ComplexF64 range"))
+        return value
+    end
+end
+
+@inline function _nearfield_weighted_green(
+    observation::Vec3,
+    source::Vec3,
+    k,
+    area::Float64,
+    quadrature_weight::Float64,
+)
+    surface_weight = quadrature_weight * (2 * area)
+    green = _greens_unchecked(observation, source, k)
+    value = surface_weight * green
+    if isfinite(value) &&
+       !(iszero(value) && !iszero(area) &&
+         !iszero(quadrature_weight) && !iszero(green))
+        return value
+    end
+    return _nearfield_weighted_green_exact(
+        observation, source, k, area, quadrature_weight)
+end
+
+@noinline function _nearfield_weighted_grad_green_exact(
+    observation::Vec3,
+    source::Vec3,
+    k,
+    area::Float64,
+    quadrature_weight::Float64,
+)
+    return setprecision(BigFloat, _GREEN_FALLBACK_PRECISION) do
+        dx = BigFloat(observation[1]) - BigFloat(source[1])
+        dy = BigFloat(observation[2]) - BigFloat(source[2])
+        dz = BigFloat(observation[3]) - BigFloat(source[3])
+        distance = sqrt(dx * dx + dy * dy + dz * dz)
+        if iszero(distance)
+            return CVec3(0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im)
+        end
+        phase_rate = Complex{BigFloat}(
+            BigFloat(imag(k)), -BigFloat(real(k)))
+        phase_argument = phase_rate * distance
+        surface_weight =
+            2 * BigFloat(area) * BigFloat(quadrature_weight)
+        radial_factor = surface_weight * exp(phase_argument) *
+                        (phase_argument - one(phase_argument)) /
+                        (4 * BigFloat(π) * distance * distance)
+        zero_value = zero(phase_argument)
+        value = CVec3(
+            ComplexF64(iszero(dx) ? zero_value :
+                       radial_factor * (dx / distance)),
+            ComplexF64(iszero(dy) ? zero_value :
+                       radial_factor * (dy / distance)),
+            ComplexF64(iszero(dz) ? zero_value :
+                       radial_factor * (dz / distance)),
+        )
+        all(isfinite, value) ||
+            throw(OverflowError(
+                "weighted near-field Green-function gradient is outside " *
+                "the ComplexF64 range"))
+        return value
+    end
+end
+
+@inline function _nearfield_weighted_grad_green(
+    observation::Vec3,
+    source::Vec3,
+    k,
+    area::Float64,
+    quadrature_weight::Float64,
+)
+    surface_weight = quadrature_weight * (2 * area)
+    gradient = _grad_greens_unchecked(observation, source, k)
+    value = surface_weight * gradient
+    input_weight_is_nonzero =
+        !iszero(area) && !iszero(quadrature_weight)
+    preserved_components =
+        (!iszero(value[1]) || !input_weight_is_nonzero ||
+         iszero(gradient[1])) &&
+        (!iszero(value[2]) || !input_weight_is_nonzero ||
+         iszero(gradient[2])) &&
+        (!iszero(value[3]) || !input_weight_is_nonzero ||
+         iszero(gradient[3]))
+    if all(isfinite, value) && preserved_components
+        return value
+    end
+    return _nearfield_weighted_grad_green_exact(
+        observation, source, k, area, quadrature_weight)
+end
+
 function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                                    I_coeffs::AbstractVector{<:Number},
                                    observation_points::Vector{Vec3}, k;
@@ -548,19 +661,20 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                 # ── Standard quadrature (far from surface) ──
                 for q in 1:Nq
                     rq = quad_pts[t][q]
-                    wt = wq[q] * (2 * At)
-                    G = _greens_unchecked(robs, rq, k)
+                    weighted_green = _nearfield_weighted_green(
+                        robs, rq, k, At, wq[q])
                     Jq = J_samples[q, t]
 
-                    Ex += pref_vec * Jq[1] * (wt * G)
-                    Ey += pref_vec * Jq[2] * (wt * G)
-                    Ez += pref_vec * Jq[3] * (wt * G)
+                    Ex += pref_vec * Jq[1] * weighted_green
+                    Ey += pref_vec * Jq[2] * weighted_green
+                    Ez += pref_vec * Jq[3] * weighted_green
 
                     if abs(divt) > 0.0
-                        gradG = _grad_greens_unchecked(robs, rq, k)
-                        Ex += pref_scl * divt * (wt * gradG[1])
-                        Ey += pref_scl * divt * (wt * gradG[2])
-                        Ez += pref_scl * divt * (wt * gradG[3])
+                        weighted_gradient = _nearfield_weighted_grad_green(
+                            robs, rq, k, At, wq[q])
+                        Ex += pref_scl * divt * weighted_gradient[1]
+                        Ey += pref_scl * divt * weighted_gradient[2]
+                        Ez += pref_scl * divt * weighted_gradient[3]
                     end
                 end
             end
