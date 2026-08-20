@@ -533,21 +533,24 @@ end
            _source_scaling_extreme_value(k)
 end
 
-@noinline function _monopole_farfield_amplitude_exact(
+@noinline function _monopole_farfield_angular_factor_exact(
         mono::MonopoleExcitation, k::Float64,
-        cosine::Float64, sine::Float64)
+        cosine::Float64)
     return setprecision(BigFloat, _MONOPOLE_EXACT_BASE_PRECISION) do
         electrical_height = BigFloat(k) * BigFloat(mono.height)
         cosine_big = BigFloat(cosine)
-        sine_big = BigFloat(sine)
         imaginary_unit = Complex{BigFloat}(0, 1)
 
-        pattern = if mono.include_image
-            # cos(x*cos(theta)) - cos(x), written as a product so the
-            # electrically-small limit is retained before the source
-            # amplitude is applied.
-            2 * sin(electrical_height * (1 + cosine_big) / 2) *
-            sin(electrical_height * (1 - cosine_big) / 2) / sine_big
+        angular_factor = if mono.include_image
+            # Divide the image-theory pattern by sin(theta) analytically.
+            # sinc products retain both axial limits without a 0/0 division.
+            first_argument = electrical_height * (1 + cosine_big) / 2
+            second_argument = electrical_height * (1 - cosine_big) / 2
+            first_sinc = iszero(first_argument) ? one(BigFloat) :
+                         sin(first_argument) / first_argument
+            second_sinc = iszero(second_argument) ? one(BigFloat) :
+                          sin(second_argument) / second_argument
+            electrical_height^2 * first_sinc * second_sinc / 2
         else
             first_delta = 1 - cosine_big
             second_delta = 1 + cosine_big
@@ -559,12 +562,12 @@ end
                 imaginary_unit * electrical_height :
                 -expm1(-imaginary_unit * electrical_height * second_delta) /
                  second_delta
-            (sine_big / 4) *
             exp(imaginary_unit * electrical_height * cosine_big) *
-            (first_term + second_term)
+            (first_term + second_term) / 4
         end
 
-        value = ComplexF64(Complex{BigFloat}(mono.amplitude) * pattern)
+        value = ComplexF64(
+            Complex{BigFloat}(mono.amplitude) * angular_factor)
         isfinite(value) ||
             throw(OverflowError(
                 "MonopoleExcitation far-field amplitude is outside the " *
@@ -584,22 +587,30 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
     η0 = 376.730313668
     rh, kf = _validated_incident_farfield_args(r_hat, k)
     _validate_incident_farfield_source(mono, kf)
-    ax = mono.axis
-    cosθ = clamp(dot(rh, ax), -1.0, 1.0)
+    ax = Vec3(mono.axis)
+    supplied_direction = _source_power_of_two_scaled_direction(r_hat)
+    supplied_direction_norm_squared = sum(abs2, supplied_direction)
+    axis_direction = _source_power_of_two_scaled_direction(ax)
+    axis_direction_norm = sqrt(sum(abs2, axis_direction))
+    cosθ = clamp(
+        dot(supplied_direction, axis_direction) /
+        (sqrt(supplied_direction_norm_squared) * axis_direction_norm),
+        -1.0, 1.0)
 
     mono.include_image && cosθ < 0 &&
         return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
 
-    sinθ = sqrt(max(0.0, 1.0 - cosθ^2))
-    sinθ > 1e-12 || return CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
-    θ_hat = (cosθ * rh - Vec3(ax)) / sinθ
+    theta_numerator = _dipole_cross(
+        supplied_direction,
+        _dipole_cross(supplied_direction, axis_direction)) /
+        (supplied_direction_norm_squared * axis_direction_norm)
 
     h = mono.height
     span_factor = mono.include_image ? 2.0 : 1.0
     N = _monopole_simpson_interval_count(
         h, kf, span_factor, 64, "MonopoleExcitation far field")
-    Eθ_far = if _monopole_farfield_requires_exact(mono, kf)
-        _monopole_farfield_amplitude_exact(mono, kf, cosθ, sinθ)
+    angular_factor = if _monopole_farfield_requires_exact(mono, kf)
+        _monopole_farfield_angular_factor_exact(mono, kf, cosθ)
     else
         I_0 = -1im * 2π * mono.amplitude / η0
         dz = (span_factor / N) * h
@@ -613,13 +624,14 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
             integ += w * I_z * exp(1im * kf * z * cosθ)
         end
         integ *= dz / 3.0
-        1im * η0 * kf * sinθ / (4π) * integ
+        1im * η0 * kf / (4π) * integ
     end
     phase = _source_directional_phase(
         kf, r_hat, rh, mono.position, 1.0,
         "MonopoleExcitation far field")
     return _check_finite_cvec3(
-        CVec3(Eθ_far * θ_hat) * phase, "MonopoleExcitation far field")
+        CVec3(angular_factor * theta_numerator) * phase,
+        "MonopoleExcitation far field")
 end
 
 function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)

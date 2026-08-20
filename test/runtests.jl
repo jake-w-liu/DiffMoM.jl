@@ -5268,6 +5268,45 @@ for (monopole_k, monopole_height, monopole_amplitude) in (
         scaled_monopole_reference / 2
 end
 
+# A near-axis monopole pattern is small but not zero.  Cancel the pattern and
+# polarization sin(theta) factors analytically so both ordinary and extreme
+# amplitudes retain this representable field.
+monopole_far_axis_k = 1.0
+monopole_far_axis_height = 0.1
+monopole_far_axis_frequency =
+    monopole_far_axis_k * DiffMoM._C0 / (2π)
+monopole_far_axis_direction = Vec3(1.0e-13, 0.0, 1.0)
+for monopole_far_axis_amplitude in (1.0, ldexp(1.0, 200))
+    monopole_far_axis_source = make_monopole(
+        Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0),
+        monopole_far_axis_height, monopole_far_axis_amplitude,
+        monopole_far_axis_frequency)
+    monopole_far_axis_result = incident_farfield(
+        monopole_far_axis_source, monopole_far_axis_direction,
+        monopole_far_axis_k)
+    monopole_far_axis_reference = setprecision(BigFloat, 512) do
+        direction = SVector{3,BigFloat}(
+            BigFloat.(monopole_far_axis_direction))
+        direction /= sqrt(sum(abs2, direction))
+        axis = SVector{3,BigFloat}(0, 0, 1)
+        cosine = dot(direction, axis)
+        electrical_height = BigFloat(monopole_far_axis_k) *
+                            BigFloat(monopole_far_axis_height)
+        first_argument = electrical_height * (1 + cosine) / 2
+        second_argument = electrical_height * (1 - cosine) / 2
+        first_sinc = sin(first_argument) / first_argument
+        second_sinc = iszero(second_argument) ? one(BigFloat) :
+                      sin(second_argument) / second_argument
+        angular_factor = BigFloat(monopole_far_axis_amplitude) *
+                         electrical_height^2 *
+                         first_sinc * second_sinc / 2
+        CVec3(angular_factor * (cosine * direction - axis))
+    end
+    @test !all(iszero, monopole_far_axis_result)
+    @test monopole_far_axis_result ≈
+          monopole_far_axis_reference rtol=8eps(Float64) atol=0.0
+end
+
 multi_farfield_theta = [0.0, π]
 multi_farfield_phi = [0.0, π]
 multi_farfield_maximum = floatmax(Float64)
