@@ -829,6 +829,11 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
     solver in (:direct, :gmres) ||
         throw(ArgumentError(
             "Unknown solver: $solver (expected :direct or :gmres)"))
+    if solver == :direct
+        Z isa Matrix ||
+            throw(ArgumentError(
+                "Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
+    end
     N = _validate_linear_system_inputs(Z, I, "adjoint solve")
     size(Q) == (N, N) ||
         throw(DimensionMismatch(
@@ -836,9 +841,6 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
     _validate_known_matrix_entries(Q, "adjoint objective matrix")
     rhs = _finite_matrix_vector_product(Q, I, "adjoint RHS")
     if solver == :direct
-        Z isa Matrix ||
-            throw(ArgumentError(
-                "Direct adjoint solver requires a dense Matrix; use solver=:gmres for operator-based systems."))
         adjoint_Z = adjoint(Z)
         return _solve_dense_linear_system(
             adjoint_Z, rhs, "direct adjoint solution")

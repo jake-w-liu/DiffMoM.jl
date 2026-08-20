@@ -6779,6 +6779,22 @@ rel_sa_direct = norm(lam_sa_direct - lam_gm_direct) / max(norm(lam_gm_direct), 1
     ComplexF64[NaN 0.0; 0.0 1.0],
     ComplexF64[1.0, 1.0],
 )
+adjoint_operator_size = 512
+adjoint_operator_probe = Diagonal(
+    ones(ComplexF64, adjoint_operator_size))
+adjoint_operator_Q = Matrix{ComplexF64}(
+    I, adjoint_operator_size, adjoint_operator_size)
+adjoint_operator_I = ones(ComplexF64, adjoint_operator_size)
+unsupported_direct_adjoint = () -> solve_adjoint(
+    adjoint_operator_probe, adjoint_operator_Q, adjoint_operator_I)
+try
+    unsupported_direct_adjoint()
+catch
+end
+@test (@allocated try
+    unsupported_direct_adjoint()
+catch
+end) < 4_096
 @test_throws ArgumentError solve_adjoint_rhs(
     ComplexF64[1.0 0.0; 0.0 1.0],
     ComplexF64[NaN, 1.0],
