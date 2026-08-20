@@ -276,6 +276,13 @@ function _validate_filter_inputs(W::AbstractSparseMatrix,
     all(value -> isfinite(value) && value > 0, w_sum) ||
         throw(ArgumentError(
             "w_sum entries must all be finite and positive"))
+    all(isfinite, input) ||
+        throw(ArgumentError(
+            "filter input entries must all be finite"))
+    matrix_values = W isa SparseMatrixCSC ? nonzeros(W) : W
+    all(isfinite, matrix_values) ||
+        throw(ArgumentError(
+            "filter weights must all be finite"))
     return nothing
 end
 
@@ -285,6 +292,9 @@ function apply_filter(W::AbstractSparseMatrix,
     _validate_filter_inputs(W, w_sum, rho, false)
     result = W * rho
     result ./= w_sum
+    all(isfinite, result) ||
+        throw(OverflowError(
+            "density filter output is outside the representable range"))
     return result
 end
 
@@ -302,7 +312,12 @@ function apply_filter_transpose(W::AbstractSparseMatrix,
                                 w_sum::AbstractVector{<:Real},
                                 g_rho_tilde::AbstractVector)
     _validate_filter_inputs(W, w_sum, g_rho_tilde, true)
-    return W' * (g_rho_tilde ./ w_sum)
+    result = W' * (g_rho_tilde ./ w_sum)
+    all(isfinite, result) ||
+        throw(OverflowError(
+            "transpose density filter output is outside the " *
+            "representable range"))
+    return result
 end
 
 function apply_filter_transpose(W::SparseMatrixCSC,
@@ -324,6 +339,10 @@ function apply_filter_transpose(W::SparseMatrixCSC,
         end
         result[col] = value
     end
+    all(isfinite, result) ||
+        throw(OverflowError(
+            "transpose density filter output is outside the " *
+            "representable range"))
     return result
 end
 

@@ -774,6 +774,19 @@ println("\n── Test 39: DensityFiltering ──")
             W, vcat(w_sum, 1.0), zeros(Nt_df))
         @test_throws ArgumentError apply_filter(
             W, zeros(Nt_df), zeros(Nt_df))
+        @test_throws ArgumentError apply_filter(
+            W, w_sum, fill(Inf, Nt_df))
+        nonfinite_filter = sparse([1], [1], [Inf], 1, 1)
+        @test_throws ArgumentError apply_filter(
+            nonfinite_filter, [1.0], [1.0])
+        @test_throws ArgumentError apply_filter_transpose(
+            nonfinite_filter, [1.0], [1.0])
+        overflowing_filter = sparse(
+            [1], [1], [floatmax(Float64)], 1, 1)
+        @test_throws OverflowError apply_filter(
+            overflowing_filter, [1.0], [2.0])
+        @test_throws OverflowError apply_filter_transpose(
+            overflowing_filter, [1.0], [2.0])
         filter_probe = rand(MersenneTwister(3901), Nt_df)
         @test _filter_allocation(W, w_sum, filter_probe) <=
               _float_vector_output_allocation(Nt_df) + 128
