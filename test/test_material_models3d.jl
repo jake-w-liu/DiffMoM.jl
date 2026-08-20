@@ -59,6 +59,11 @@ using .DiffMoM
                                 1im .* extreme_rank_one_loss
     @test BianisotropicMaterial3D(extreme_rank_one_material).C6 ==
           extreme_rank_one_material
+    moderate_rank_one_loss = fill(-1.0e10, 3, 3)
+    moderate_rank_one_material = Matrix{ComplexF64}(I, 3, 3) +
+                                 1im .* moderate_rank_one_loss
+    @test TensorAnisotropicMaterial3D(moderate_rank_one_material).eps_r ==
+          moderate_rank_one_material
     extreme_mixed_loss = copy(extreme_passive_3)
     extreme_mixed_loss[2, 2] = 1.0 + 1.0e-10im
     @test_throws ErrorException TensorAnisotropicMaterial3D(

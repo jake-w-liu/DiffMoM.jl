@@ -158,14 +158,33 @@ function _validate_passive_diagonal_3d(v::SVector{3,ComplexF64}, label::Abstract
     return v
 end
 
-function _validate_passive_tensor_3d(M::SMatrix{3,3,ComplexF64,9}, label::AbstractString)
+function _validate_passive_tensor_ieee_3d(M, label::AbstractString)
+    dimension = size(M, 1)
+    loss_matrix = Matrix((M - adjoint(M)) / (2im))
+    maximum_row_sum = 0.0
+    @inbounds for row in 1:dimension
+        row_sum = 0.0
+        for column in 1:dimension
+            row_sum += abs(loss_matrix[row, column])
+        end
+        maximum_row_sum = max(maximum_row_sum, row_sum)
+    end
+    eigenvalue = maximum(eigvals(Hermitian(loss_matrix)))
+    uncertainty = 64 * dimension * eps(Float64) * maximum_row_sum
+    if eigenvalue < _PASSIVITY_TOL_3D - uncertainty
+        return M
+    elseif eigenvalue > _PASSIVITY_TOL_3D + uncertainty
+        error("$label violates exp(+i omega t) passivity: " *
+              "anti-Hermitian loss matrix must be negative semidefinite.")
+    end
+    return _validate_passive_tensor_exact_3d(M, label)
+end
+
+function _validate_passive_tensor_3d(
+        M::SMatrix{3,3,ComplexF64,9}, label::AbstractString)
     _passivity_requires_exact_3d(M) &&
         return _validate_passive_tensor_exact_3d(M, label)
-    loss = (M - adjoint(M)) / (2im)
-    vals = eigvals(Hermitian(Matrix(loss)))
-    maximum(vals) <= _PASSIVITY_TOL_3D ||
-        error("$label violates exp(+i omega t) passivity: anti-Hermitian loss matrix must be negative semidefinite.")
-    return M
+    return _validate_passive_tensor_ieee_3d(M, label)
 end
 
 function _as_eps_vector_3d(eps_r, label::AbstractString)
@@ -199,11 +218,7 @@ end
 function _validate_passive_tensor6_3d(C::SMatrix{6,6,ComplexF64,36}, label::AbstractString)
     _passivity_requires_exact_3d(C) &&
         return _validate_passive_tensor_exact_3d(C, label)
-    loss = (C - adjoint(C)) / (2im)
-    vals = eigvals(Hermitian(Matrix(loss)))
-    maximum(vals) <= _PASSIVITY_TOL_3D ||
-        error("$label violates exp(+i omega t) passivity: anti-Hermitian loss matrix must be negative semidefinite.")
-    return C
+    return _validate_passive_tensor_ieee_3d(C, label)
 end
 
 """
