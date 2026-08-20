@@ -3483,6 +3483,29 @@ nearfield_far_scale_result = compute_nearfield(
     nearfield_far_scale_result, nearfield_far_scale_reference;
     rtol=2eps(Float64), atol=0.0))
 
+# At the opposite end of Float64, a valid triangle can have finite area while
+# `2area` overflows.  Its characteristic length and weighted kernels remain
+# finite and must preserve the same scaling identity in both integration
+# branches.
+nearfield_large_length = ldexp(1.0, 512)
+nearfield_large_mesh = make_rect_plate(
+    nearfield_large_length, nearfield_large_length, 1, 1)
+nearfield_large_rwg = build_rwg(nearfield_large_mesh)
+for nearfield_large_point in (nearfield_unit_point, nearfield_far_scale_point)
+    nearfield_large_reference = compute_nearfield(
+        nearfield_unit_mesh, nearfield_unit_rwg, ComplexF64[1],
+        nearfield_large_point, 1.0;
+        quad_order=3, eta0=1.0, check_surface=false, surface_tol=0.0)
+    nearfield_large_result = compute_nearfield(
+        nearfield_large_mesh, nearfield_large_rwg, ComplexF64[1],
+        nearfield_large_length * nearfield_large_point,
+        inv(nearfield_large_length);
+        quad_order=3, eta0=1.0, check_surface=false, surface_tol=0.0)
+    @test isapprox(
+        nearfield_large_result, nearfield_large_reference;
+        rtol=1e-12, atol=1e-14)
+end
+
 obs_mat = hcat(obs_points...)
 E_nf_mat = compute_nearfield(mesh, rwg, I_pec, obs_mat, k; quad_order=3, eta0=eta0)
 @assert norm(E_nf - E_nf_mat) < 1e-12 * max(norm(E_nf), 1.0)
