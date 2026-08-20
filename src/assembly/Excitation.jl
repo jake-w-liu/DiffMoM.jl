@@ -21,6 +21,7 @@ const _DEFAULT_MAX_EXCITATION_TERMS = 200_000_000
 const _DEFAULT_MAX_MULTI_EXACT_BYTES = 512 * 1024 * 1024
 const _MULTI_EXACT_BYTES_PER_ENTRY = 1536
 const _MULTI_EXACT_BASE_BYTES = 4096
+const _EXCITATION_SURFACE_FALLBACK_PRECISION = 4352
 
 function _multi_exact_accumulator_bytes(N::Int)
     bytes = BigInt(_MULTI_EXACT_BASE_BYTES) +
@@ -2466,6 +2467,69 @@ end
 # Specialized assembly functions
 # ------------------------------------------------------------------
 
+@noinline function _excitation_surface_term_exact(
+    basis_value::SVector{3,<:Number},
+    incident_field::SVector{3,<:Number},
+    area::Float64,
+    quadrature_weight::Float64,
+)
+    return setprecision(
+            BigFloat, _EXCITATION_SURFACE_FALLBACK_PRECISION) do
+        inner_product = zero(Complex{BigFloat})
+        @inbounds for component in 1:3
+            inner_product += conj(Complex{BigFloat}(
+                                 basis_value[component])) *
+                             Complex{BigFloat}(
+                                 incident_field[component])
+        end
+        converted = ComplexF64(
+            -2 * BigFloat(quadrature_weight) * BigFloat(area) *
+            inner_product)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "excitation surface integral term is outside the " *
+                "ComplexF64 range"))
+        return converted
+    end
+end
+
+@inline function _excitation_surface_term(
+    basis_value::SVector{3,<:Number},
+    incident_field::SVector{3,<:Number},
+    area::Float64,
+    quadrature_weight::Float64,
+)
+    first = conj(basis_value[1]) * incident_field[1]
+    second = conj(basis_value[2]) * incident_field[2]
+    third = conj(basis_value[3]) * incident_field[3]
+    products_preserve_range =
+        isfinite(first) && isfinite(second) && isfinite(third) &&
+        (!iszero(first) || iszero(basis_value[1]) ||
+         iszero(incident_field[1])) &&
+        (!iszero(second) || iszero(basis_value[2]) ||
+         iszero(incident_field[2])) &&
+        (!iszero(third) || iszero(basis_value[3]) ||
+         iszero(incident_field[3]))
+    products_preserve_range ||
+        return _excitation_surface_term_exact(
+            basis_value, incident_field, area, quadrature_weight)
+
+    inner_product = first + second + third
+    isfinite(inner_product) ||
+        return _excitation_surface_term_exact(
+            basis_value, incident_field, area, quadrature_weight)
+    area_product = area * inner_product
+    weighted = -(2 * quadrature_weight) * area_product
+    if isfinite(weighted) &&
+       (!iszero(area_product) || iszero(area) || iszero(inner_product)) &&
+       (!iszero(weighted) || iszero(quadrature_weight) ||
+        iszero(area_product))
+        return ComplexF64(weighted)
+    end
+    return _excitation_surface_term_exact(
+        basis_value, incident_field, area, quadrature_weight)
+end
+
 function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
                              pw::PlaneWaveExcitation;
                              quad_order::Int=3,
@@ -2490,7 +2554,7 @@ function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
                 fn = eval_rwg(rwg, n, rq, t)
                 Einc = _plane_wave_field_unchecked(
                     rq, pw.k_vec, pw.E0, pw.pol)
-                v[n] += -wq[q] * dot(fn, Einc) * (2 * A)
+                v[n] += _excitation_surface_term(fn, Einc, A, wq[q])
             end
         end
     end
@@ -2547,7 +2611,7 @@ function assemble_dipole(mesh::TriMesh, rwg::RWGData,
 
                 Einc = _dipole_incident_field_unchecked(rq, dipole)
 
-                v[n] += -wq[q] * dot(fn, Einc) * (2 * A)
+                v[n] += _excitation_surface_term(fn, Einc, A, wq[q])
             end
         end
     end
@@ -2574,7 +2638,7 @@ function assemble_loop(mesh::TriMesh, rwg::RWGData,
                 rq = pts[q]
                 fn = eval_rwg(rwg, n, rq, t)
                 Einc = _loop_incident_field_unchecked(rq, loop)
-                v[n] += -wq[q] * dot(fn, Einc) * (2 * A)
+                v[n] += _excitation_surface_term(fn, Einc, A, wq[q])
             end
         end
     end
@@ -2600,7 +2664,7 @@ function assemble_monopole(mesh::TriMesh, rwg::RWGData,
                 rq = pts[q]
                 fn = eval_rwg(rwg, n, rq, t)
                 Einc = _monopole_incident_field_unchecked(rq, mono)
-                v[n] += -wq[q] * dot(fn, Einc) * (2 * A)
+                v[n] += _excitation_surface_term(fn, Einc, A, wq[q])
             end
         end
     end
@@ -2636,7 +2700,7 @@ function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
                 end
                 Einc = _check_finite_cvec3(
                     Einc, "ImportedExcitation mapped electric field")
-                v[n] += -wq[q] * dot(fn, Einc) * (2 * A)
+                v[n] += _excitation_surface_term(fn, Einc, A, wq[q])
             end
         end
     end
@@ -2665,7 +2729,7 @@ function assemble_pattern_feed(mesh::TriMesh, rwg::RWGData,
                 rq = pts[q]
                 fn = eval_rwg(rwg, n, rq, t)
                 Einc = _pattern_feed_field_unchecked(rq, pat)
-                v[n] += -wq[q] * dot(fn, Einc) * (2 * A)
+                v[n] += _excitation_surface_term(fn, Einc, A, wq[q])
             end
         end
     end

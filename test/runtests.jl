@@ -4473,6 +4473,32 @@ v_new_exc = assemble_excitation(mesh_exc, rwg_exc, make_plane_wave(k_vec_exc, 1.
 rel_rhs_exc = norm(v_new_exc - v_old_exc) / max(norm(v_old_exc), 1e-30)
 println("  Plane-wave path-consistency RHS rel. diff: $rel_rhs_exc")
 @assert rel_rhs_exc < 1e-13
+
+# Surface integration must combine a finite extreme triangle area with a tiny
+# incident amplitude before either factor overflows or underflows.  Scaling
+# coordinates by L, the wave vector by 1/L, and E0 by 1/L² leaves this RHS
+# exactly invariant.
+excitation_surface_scale = ldexp(1.0, 512)
+excitation_surface_unit_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+excitation_surface_unit_rwg = build_rwg(excitation_surface_unit_mesh)
+excitation_surface_large_mesh = make_rect_plate(
+    excitation_surface_scale, excitation_surface_scale, 1, 1)
+excitation_surface_large_rwg = build_rwg(excitation_surface_large_mesh)
+excitation_surface_reference = assemble_excitation(
+    excitation_surface_unit_mesh, excitation_surface_unit_rwg,
+    make_plane_wave(Vec3(0.0, 0.0, -1.0), 1.0, pol_exc);
+    quad_order=3)
+excitation_surface_result = assemble_excitation(
+    excitation_surface_large_mesh, excitation_surface_large_rwg,
+    make_plane_wave(
+        Vec3(0.0, 0.0, -inv(excitation_surface_scale)),
+        inv(excitation_surface_scale)^2,
+        pol_exc,
+    );
+    quad_order=3)
+@test isapprox(
+    excitation_surface_result, excitation_surface_reference;
+    rtol=2eps(Float64), atol=0.0)
 wrong_mesh_cache = DiffMoM.ExcitationQuadCache(
     make_rect_plate(0.08, 0.04, 3, 3))
 @test_throws ArgumentError assemble_excitation(
