@@ -1491,6 +1491,8 @@ println("\n── Test 41: PeriodicEFIE ──")
               coplanar_tolerance
         @test_throws ArgumentError DiffMoM._assert_coplanar_periodic_mesh(
             rounded_nonplanar_mesh; atol=coplanar_tolerance)
+        @test_throws ArgumentError DiffMoM._assert_coplanar_periodic_metrics_mesh(
+            rounded_nonplanar_mesh; atol=coplanar_tolerance)
 
         # One relative tolerance can underflow to exact matching while the
         # other remains positive; zero-width hash dimensions stay valid.
