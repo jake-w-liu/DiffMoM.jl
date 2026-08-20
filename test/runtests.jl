@@ -2764,6 +2764,53 @@ for radiation_parallel_impedance in (ldexp(1.0, 120), ldexp(1.0, 200))
     @test all(iszero, radiation_parallel_result)
 end
 
+# Translating a source multiplies its radiation vector by the phase of the
+# normalized observation direction.  Preserve that normalization in the
+# exact-geometry path when a tiny direction-norm rounding error is amplified
+# by a large translation.
+radiation_translation_xyz = Float64[
+     0.0   0.0   0.0   0.0;
+    -0.5   0.5  -0.5   0.5;
+    -0.5  -0.5   0.5   0.5
+]
+radiation_translation_triangles = Int[1 1; 2 4; 4 3]
+radiation_translation_base = TriMesh(
+    radiation_translation_xyz, radiation_translation_triangles)
+radiation_translation_shift = 1.0e16
+radiation_translation_shifted_xyz = copy(radiation_translation_xyz)
+radiation_translation_shifted_xyz[1, :] .+= radiation_translation_shift
+radiation_translation_shifted = TriMesh(
+    radiation_translation_shifted_xyz, copy(radiation_translation_triangles))
+radiation_translation_component = inv(sqrt(2.0))
+radiation_translation_direction = Vec3(
+    radiation_translation_component, radiation_translation_component, 0.0)
+radiation_translation_grid = SphGrid(
+    reshape(collect(radiation_translation_direction), 3, 1),
+    [π / 2], [π / 4], [1.0])
+radiation_translation_impedance = ldexp(1.0, 200)
+radiation_translation_base_result = radiation_vectors(
+    radiation_translation_base, build_rwg(radiation_translation_base),
+    radiation_translation_grid, 1.0;
+    quad_order=3, eta0=radiation_translation_impedance)
+radiation_translation_shifted_result = radiation_vectors(
+    radiation_translation_shifted, build_rwg(radiation_translation_shifted),
+    radiation_translation_grid, 1.0;
+    quad_order=3, eta0=radiation_translation_impedance)
+radiation_translation_index =
+    argmax(abs.(radiation_translation_base_result[:, 1]))
+radiation_translation_ratio =
+    radiation_translation_shifted_result[radiation_translation_index, 1] /
+    radiation_translation_base_result[radiation_translation_index, 1]
+radiation_translation_phase = setprecision(BigFloat, 4608) do
+    direction = SVector{3,BigFloat}(
+        BigFloat.(radiation_translation_direction))
+    ComplexF64(exp(Complex{BigFloat}(
+        0, BigFloat(radiation_translation_shift) * direction[1] /
+           sqrt(sum(abs2, direction)))))
+end
+@test radiation_translation_ratio ≈
+      radiation_translation_phase rtol=4eps(Float64) atol=0.0
+
 # Phase factors are single-use values. Keep transient storage bounded rather
 # than allocating one NΩ × Nq phase matrix for every RWG basis function.
 mesh_radiation_alloc = make_rect_plate(1.0, 1.0, 12, 12)

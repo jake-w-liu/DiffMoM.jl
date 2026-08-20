@@ -91,6 +91,8 @@ end
         prefactor_big = im * k_big * eta_big / (4 * BigFloat(pi))
         @inbounds for q_dir in eachindex(rhat_vec)
             rh_big = SVector{3,BigFloat}(BigFloat.(rhat_vec[q_dir]))
+            rh_norm_squared = sum(abs2, rh_big)
+            rh_unit_big = rh_big / sqrt(rh_norm_squared)
             total = zeros(Complex{BigFloat}, 3)
             for t in (rwg.tplus[n], rwg.tminus[n])
                 weight_scale = 2 * BigFloat(areas[t])
@@ -117,12 +119,12 @@ end
                     delta_big = is_plus ?
                         rp_big - opposite_big : opposite_big - rp_big
                     fn_big = edge_scale_big * delta_big
-                    phase = exp(im * k_big * dot(rh_big, rp_big))
+                    phase = exp(im * k_big * dot(rh_unit_big, rp_big))
                     contribution = fn_big *
                         (BigFloat(wq[q_surf]) * weight_scale * phase)
                     projected =
                         cross(rh_big, cross(rh_big, contribution)) /
-                        sum(abs2, rh_big)
+                        rh_norm_squared
                     total .+= prefactor_big .* projected
                 end
             end
@@ -420,7 +422,10 @@ function radiation_vectors(
     # Precompute rhat Vec3
     rhat_vec = Vector{Vec3}(undef, NΩ)
     @inbounds for q in 1:NΩ
-        rhat_vec[q] = Vec3(grid.rhat[1, q], grid.rhat[2, q], grid.rhat[3, q])
+        supplied_direction = Vec3(
+            grid.rhat[1, q], grid.rhat[2, q], grid.rhat[3, q])
+        rhat_vec[q] = exact_geometry ? supplied_direction :
+            _validated_farfield_direction(supplied_direction)
     end
 
     # Assemble G_mat with parallelization over basis functions. Each phase value
