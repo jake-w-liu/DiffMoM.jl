@@ -516,6 +516,126 @@ end
     return exp((phase_sign * 1im) * argument)
 end
 
+@inline function _source_directional_phase_precision(
+    scale::Float64,
+    direction::Vec3,
+    center::Vec3,
+)
+    maximum_direction_exponent = typemin(Int)
+    @inbounds for value in direction
+        iszero(value) && continue
+        maximum_direction_exponent = max(
+            maximum_direction_exponent, exponent(abs(value)))
+    end
+
+    minimum_term_exponent = typemax(Int)
+    maximum_term_exponent = typemin(Int)
+    scale_exponent = exponent(abs(scale))
+    @inbounds for component in 1:3
+        direction_value = direction[component]
+        center_value = center[component]
+        (iszero(direction_value) || iszero(center_value)) && continue
+        # Subtract the common direction scale because normalization removes it.
+        term_exponent = scale_exponent +
+                        exponent(abs(direction_value)) +
+                        exponent(abs(center_value)) -
+                        maximum_direction_exponent + 2
+        minimum_term_exponent = min(minimum_term_exponent, term_exponent)
+        maximum_term_exponent = max(maximum_term_exponent, term_exponent)
+    end
+
+    minimum_term_exponent == typemax(Int) &&
+        return _SOURCE_SCALING_FALLBACK_PRECISION
+
+    # Unlike a phase formed only from Float64 products, normalization contains
+    # a square root.  Its relative error must remain below one radian divided
+    # by the largest phase argument, in addition to retaining widely separated
+    # terms in the dot product.
+    return max(
+        _SOURCE_SCALING_FALLBACK_PRECISION,
+        maximum_term_exponent - minimum_term_exponent +
+        _SOURCE_PHASE_PRODUCT_GUARD_BITS,
+        max(0, maximum_term_exponent) +
+        _SOURCE_PHASE_PRODUCT_GUARD_BITS,
+    )
+end
+
+@inline function _source_direction_span_requires_fallback(
+    direction::Vec3,
+)
+    minimum_exponent = typemax(Int)
+    maximum_exponent = typemin(Int)
+    @inbounds for value in direction
+        iszero(value) && continue
+        value_exponent = exponent(abs(value))
+        minimum_exponent = min(minimum_exponent, value_exponent)
+        maximum_exponent = max(maximum_exponent, value_exponent)
+    end
+    return maximum_exponent - minimum_exponent >
+           _SOURCE_SCALING_SAFE_EXPONENT
+end
+
+@noinline function _source_directional_phase_exact(
+    scale::Float64,
+    direction::Vec3,
+    center::Vec3,
+    phase_sign::Float64,
+    label::AbstractString,
+)
+    precision = _source_directional_phase_precision(
+        scale, direction, center)
+    return setprecision(BigFloat, precision) do
+        direction_big = SVector{3,BigFloat}(
+            ntuple(component -> BigFloat(direction[component]), 3))
+        direction_norm = sqrt(sum(abs2, direction_big))
+        numerator = sum(
+            direction_big[component] * BigFloat(center[component])
+            for component in 1:3)
+        argument = BigFloat(scale) * numerator / direction_norm
+        value = ComplexF64(exp(Complex{BigFloat}(
+            zero(BigFloat), BigFloat(phase_sign) * argument)))
+        isfinite(value) ||
+            throw(OverflowError("$label phase is not representable"))
+        return value
+    end
+end
+
+@inline function _source_directional_phase(
+    scale::Float64,
+    direction::Vec3,
+    normalized_direction::Vec3,
+    center::Vec3,
+    phase_sign::Float64,
+    label::AbstractString,
+)
+    iszero(scale) && return 1.0 + 0.0im
+    nonzero_direction_components = 0
+    has_nonzero_term = false
+    @inbounds for component in 1:3
+        !iszero(direction[component]) &&
+            (nonzero_direction_components += 1)
+        if !iszero(direction[component]) && !iszero(center[component])
+            has_nonzero_term = true
+        end
+    end
+    has_nonzero_term || return 1.0 + 0.0im
+
+    # A single nonzero direction component normalizes exactly to ±1, so the
+    # ordinary exact-Float phase reducer already has all supplied information.
+    nonzero_direction_components == 1 &&
+        return _source_phase(
+            scale, normalized_direction, center, phase_sign, label)
+
+    if _source_direction_span_requires_fallback(direction) ||
+       _source_phase_requires_fallback(
+           scale, normalized_direction, center)
+        return _source_directional_phase_exact(
+            scale, direction, center, phase_sign, label)
+    end
+    return _source_phase(
+        scale, normalized_direction, center, phase_sign, label)
+end
+
 @inline function _dipole_scaling_requires_fallback(
     k::Float64,
     moment::CVec3,

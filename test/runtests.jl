@@ -4942,6 +4942,61 @@ end
     tiny_projection_k,
 )) <= 25_000
 
+# Normalize a non-axial observation direction before forming a large source
+# translation phase.  Rounding each normalized component first changes this
+# finite phase by more than half a radian.
+directional_phase_direction = Vec3(1.0, 1.0, 0.0)
+directional_phase_position = Vec3(1.0e16, 0.0, 0.0)
+directional_phase_k = 1.0
+directional_phase_frequency =
+    directional_phase_k * DiffMoM._C0 / (2π)
+directional_phase_dipole = make_dipole(
+    directional_phase_position,
+    CVec3(0.0 + 0im, 0.0 + 0im, 1.0 + 0im),
+    Vec3(0.0, 0.0, 1.0),
+    :electric,
+    directional_phase_frequency,
+)
+directional_phase_far = incident_farfield(
+    directional_phase_dipole,
+    directional_phase_direction,
+    directional_phase_k,
+)
+directional_phase_reference, directional_phase_field_reference =
+        setprecision(BigFloat, 2048) do
+    direction = SVector{3,BigFloat}(
+        BigFloat.(directional_phase_direction))
+    direction /= sqrt(sum(abs2, direction))
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(directional_phase_dipole.moment))
+    projection = cross(cross(direction, moment), direction)
+    phase_argument = BigFloat(directional_phase_k) * sum(
+        direction[component] *
+        BigFloat(directional_phase_position[component])
+        for component in 1:3)
+    scale = BigFloat(directional_phase_k)^2 /
+            (4 * BigFloat(pi) * BigFloat(DiffMoM._EPS0))
+    phase = exp(Complex{BigFloat}(0, phase_argument))
+    ComplexF64(phase), CVec3(ComplexF64.(scale * projection * phase))
+end
+directional_phase_normalized = DiffMoM._validated_farfield_direction(
+    directional_phase_direction)
+@test DiffMoM._source_directional_phase(
+    directional_phase_k,
+    directional_phase_direction,
+    directional_phase_normalized,
+    directional_phase_position,
+    1.0,
+    "directional phase regression",
+) == directional_phase_reference
+@test directional_phase_far ≈
+      directional_phase_field_reference rtol=2eps(Float64)
+@test (@allocated incident_farfield(
+    directional_phase_dipole,
+    directional_phase_direction,
+    directional_phase_k,
+)) <= 20_000
+
 # Form phase arguments without overflowing Float64 and retain small terms when
 # their exponent is far below another term in the same dot product.
 source_phase_first = Vec3(1.0e200, 1.0, 0.0)

@@ -608,8 +608,9 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
         integ *= dz / 3.0
         1im * η0 * kf * sinθ / (4π) * integ
     end
-    phase = _source_phase(
-        kf, rh, mono.position, 1.0, "MonopoleExcitation far field")
+    phase = _source_directional_phase(
+        kf, r_hat, rh, mono.position, 1.0,
+        "MonopoleExcitation far field")
     return _check_finite_cvec3(
         CVec3(Eθ_far * θ_hat) * phase, "MonopoleExcitation far field")
 end
@@ -625,8 +626,9 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     # Explicitly rounding all three normalized components can dominate a
     # physically small field when the moment is almost parallel to r_hat.
     E_far = _dipole_farfield_unphased(dipole, r_hat, kf)
-    phase = _source_phase(
-        kf, rh, dipole.position, 1.0, "DipoleExcitation far field")
+    phase = _source_directional_phase(
+        kf, r_hat, rh, dipole.position, 1.0,
+        "DipoleExcitation far field")
     return _check_finite_cvec3(
         CVec3(E_far) * phase, "DipoleExcitation far field")
 end
@@ -665,8 +667,8 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
     end
 
     E_far = Fθ * eθ + Fϕ * eϕ
-    phase = _source_phase(
-        kf, rh, pat.phase_center, 1.0,
+    phase = _source_directional_phase(
+        kf, r_hat, rh, pat.phase_center, 1.0,
         "PatternFeedExcitation far field")
     return _check_finite_cvec3(
         CVec3(E_far) * phase, "PatternFeedExcitation far field")
