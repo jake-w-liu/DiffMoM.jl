@@ -5010,6 +5010,11 @@ multi_farfield = make_multi_excitation(multi_farfield_children)
 @test incident_farfield(
     multi_farfield, Vec3(0.0, 0.0, 1.0), k_exc) ==
     CVec3(ComplexF64(multi_farfield_maximum), 0.0 + 0im, 0.0 + 0im)
+multi_incident_point = Vec3(0.0, 0.0, 1.0)
+@test DiffMoM._incident_electric_field(
+    multi_farfield, multi_incident_point, k_exc) ==
+    DiffMoM._incident_electric_field(
+        multi_farfield_children[1], multi_incident_point, k_exc)
 
 incident_farfield(dipole_guard, Vec3(0.0, 0.0, 1.0), k_exc)
 DiffMoM._loop_equivalent_moment(loop_guard)

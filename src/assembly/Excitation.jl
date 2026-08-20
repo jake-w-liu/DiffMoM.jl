@@ -308,6 +308,7 @@ const _MONOPOLE_EXACT_BASE_PRECISION = 2304
 const _SOURCE_SCALING_FALLBACK_PRECISION = 512
 const _SOURCE_SCALING_SAFE_EXPONENT = 128
 const _SOURCE_PHASE_PRODUCT_GUARD_BITS = 256
+const _MULTI_SOURCE_EXACT_PRECISION = 4672
 # Above this binary exponent, a single rounded Float64 dot-product term can
 # carry more than roughly 2^-12 radians of absolute phase uncertainty.  Route
 # such finite arguments through the exact-Float-input reducer as well as the
@@ -1972,19 +1973,56 @@ function _incident_electric_field(excitation::DeltaGapExcitation, r::Vec3, k)
     )
 end
 
+@noinline function _multi_incident_electric_field_exact(
+        excitation::MultiExcitation, r::Vec3, k)
+    return setprecision(BigFloat, _MULTI_SOURCE_EXACT_PRECISION) do
+        total = Complex{BigFloat}[
+            zero(Complex{BigFloat}),
+            zero(Complex{BigFloat}),
+            zero(Complex{BigFloat}),
+        ]
+        @inbounds for index in eachindex(
+                excitation.excitations, excitation.weights)
+            child = try
+                _incident_electric_field(
+                    excitation.excitations[index], r, k)
+            catch err
+                error(
+                    "compute_total_field: MultiExcitation child $index of " *
+                    "type $(typeof(excitation.excitations[index])) failed " *
+                    "incident-field evaluation: $(sprint(showerror, err))"
+                )
+            end
+            weight = Complex{BigFloat}(excitation.weights[index])
+            for component in 1:3
+                total[component] +=
+                    weight * Complex{BigFloat}(child[component])
+            end
+        end
+        return _finite_source_vector(
+            total, "compute_total_field MultiExcitation incident field")
+    end
+end
+
 function _incident_electric_field(excitation::MultiExcitation, r::Vec3, k)
     length(excitation.excitations) == length(excitation.weights) ||
         error("compute_total_field: MultiExcitation has mismatched excitation/weight lengths.")
     E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     for (i, (exc, w)) in enumerate(zip(excitation.excitations, excitation.weights))
-        try
-            E += w * _incident_electric_field(exc, r, k)
+        child = try
+            _incident_electric_field(exc, r, k)
         catch err
             error(
                 "compute_total_field: MultiExcitation child $i of type $(typeof(exc)) " *
                 "failed incident-field evaluation: $(sprint(showerror, err))"
             )
         end
+        _source_scaled_vector_requires_fallback(w, child) &&
+            return _multi_incident_electric_field_exact(excitation, r, k)
+        updated = E + w * child
+        all(isfinite, updated) ||
+            return _multi_incident_electric_field_exact(excitation, r, k)
+        E = updated
     end
     return E
 end

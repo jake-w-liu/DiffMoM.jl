@@ -669,11 +669,9 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
         CVec3(E_far) * phase, "PatternFeedExcitation far field")
 end
 
-const _MULTI_FARFIELD_EXACT_PRECISION = 4672
-
 @noinline function _multi_incident_farfield_exact(
         multi::MultiExcitation, r_hat::Vec3, k::Real)
-    return setprecision(BigFloat, _MULTI_FARFIELD_EXACT_PRECISION) do
+    return setprecision(BigFloat, _MULTI_SOURCE_EXACT_PRECISION) do
         total = Complex{BigFloat}[
             zero(Complex{BigFloat}),
             zero(Complex{BigFloat}),
