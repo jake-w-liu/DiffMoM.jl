@@ -357,7 +357,16 @@ function _mesh_has_unitcell_boundary_edges(mesh::TriMesh, lattice::PeriodicLatti
                                            atol_rel::Float64=1e-9,
                                            max_cache_bytes::Integer=
                                                _DEFAULT_MAX_PERIODIC_EFIE_CACHE_BYTES)
-    tol = max(atol_abs, atol_rel * max(lattice.dx, lattice.dy))
+    isfinite(atol_abs) && atol_abs >= 0.0 ||
+        throw(ArgumentError(
+            "atol_abs must be finite and nonnegative, got $atol_abs"))
+    isfinite(atol_rel) && 0.0 <= atol_rel < 0.5 ||
+        throw(ArgumentError(
+            "atol_rel must be finite and in [0, 0.5), got $atol_rel"))
+    absolute_tolerance = min(lattice.dx, lattice.dy) > 2atol_abs ?
+        atol_abs : 0.0
+    tol_x = max(absolute_tolerance, atol_rel * lattice.dx)
+    tol_y = max(absolute_tolerance, atol_rel * lattice.dy)
     xmin = -0.5 * lattice.dx
     xmax =  0.5 * lattice.dx
     ymin = -0.5 * lattice.dy
@@ -402,10 +411,18 @@ function _mesh_has_unitcell_boundary_edges(mesh::TriMesh, lattice::PeriodicLatti
         xa = mesh.xyz[1, va]; xb = mesh.xyz[1, vb]
         ya = mesh.xyz[2, va]; yb = mesh.xyz[2, vb]
 
-        on_xmin = abs(xa - xmin) <= tol && abs(xb - xmin) <= tol
-        on_xmax = abs(xa - xmax) <= tol && abs(xb - xmax) <= tol
-        on_ymin = abs(ya - ymin) <= tol && abs(yb - ymin) <= tol
-        on_ymax = abs(ya - ymax) <= tol && abs(yb - ymax) <= tol
+        on_xmin =
+            _periodic_boundary_coordinate_within(xa, xmin, tol_x) &&
+            _periodic_boundary_coordinate_within(xb, xmin, tol_x)
+        on_xmax =
+            _periodic_boundary_coordinate_within(xa, xmax, tol_x) &&
+            _periodic_boundary_coordinate_within(xb, xmax, tol_x)
+        on_ymin =
+            _periodic_boundary_coordinate_within(ya, ymin, tol_y) &&
+            _periodic_boundary_coordinate_within(yb, ymin, tol_y)
+        on_ymax =
+            _periodic_boundary_coordinate_within(ya, ymax, tol_y) &&
+            _periodic_boundary_coordinate_within(yb, ymax, tol_y)
 
         if on_xmin || on_xmax || on_ymin || on_ymax
             return true

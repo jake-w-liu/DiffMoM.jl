@@ -1457,6 +1457,23 @@ println("\n── Test 41: PeriodicEFIE ──")
             @test rwg_safe.nedges == 3
             @test rwg_safe.has_periodic_bloch
         end
+        # The assembly-side guard must use the same scale-aware tolerances.
+        # A conductor strictly inside a sub-picometer cell needs no Bloch edge
+        # pairing and must not be mistaken for a boundary-touching mesh.
+        tiny_guard_period = 1e-15
+        tiny_guard_mesh = make_rect_plate(
+            0.2tiny_guard_period, 0.2tiny_guard_period, 1, 1)
+        tiny_guard_lattice = PeriodicLattice(
+            tiny_guard_period, tiny_guard_period, 0.0, 0.0, 1.0)
+        tiny_guard_rwg = build_rwg(tiny_guard_mesh; precheck=false)
+        @test !tiny_guard_rwg.has_periodic_bloch
+        @test !DiffMoM._mesh_has_unitcell_boundary_edges(
+            tiny_guard_mesh, tiny_guard_lattice)
+        tiny_guard_matrix = assemble_Z_efie_periodic(
+            tiny_guard_mesh, tiny_guard_rwg, 1.0, tiny_guard_lattice;
+            quad_order=1)
+        @test all(isfinite, tiny_guard_matrix)
+
         # One relative tolerance can underflow to exact matching while the
         # other remains positive; zero-width hash dimensions stay valid.
         mixed_dx = 1e-323
