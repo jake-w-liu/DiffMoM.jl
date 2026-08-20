@@ -5316,6 +5316,65 @@ monopole_incident_field(field_guard_r, monopole_guard)
 @test (@allocated monopole_incident_field(
     field_guard_r, monopole_guard)) == 0
 
+# Near-longitudinal electric dipoles retain a small radiating component.  Form
+# its double cross without losing the product roundoff at high electrical
+# distance, while the ordinary path remains allocation-free.
+dipole_projection_r = Vec3(3.0, 4.0, 0.0)
+dipole_projection_direction = dipole_projection_r / 5.0
+dipole_projection_transverse = Vec3(
+    -dipole_projection_direction[2], dipole_projection_direction[1], 0.0)
+dipole_projection_moment = CVec3(complex.(
+    dipole_projection_direction +
+    1.0e-8 * dipole_projection_transverse))
+dipole_projection_c0 = inv(sqrt(DiffMoM._EPS0 * DiffMoM._MU0))
+dipole_projection_frequency =
+    ldexp(1.0, 28) * dipole_projection_c0 / (2π)
+dipole_projection_source = make_dipole(
+    Vec3(0.0, 0.0, 0.0), dipole_projection_moment,
+    dipole_projection_direction, :electric, dipole_projection_frequency)
+dipole_projection_result = DiffMoM.dipole_incident_field(
+    dipole_projection_r, dipole_projection_source)
+dipole_projection_k = DiffMoM._frequency_to_wavenumber(
+    dipole_projection_frequency, dipole_projection_c0,
+    "dipole projection regression")
+dipole_projection_reference = setprecision(BigFloat, 512) do
+    displacement = SVector{3,BigFloat}(BigFloat.(dipole_projection_r))
+    distance = sqrt(sum(abs2, displacement))
+    direction = displacement / distance
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(dipole_projection_moment))
+    wavenumber = BigFloat(dipole_projection_k)
+    phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
+    transverse = cross(cross(direction, moment), direction) * wavenumber^2
+    near = (3 * direction * dot(direction, moment) - moment) *
+           (inv(distance^2) +
+            Complex{BigFloat}(0, 1) * wavenumber / distance)
+    CVec3((transverse + near) * phase /
+          (4 * BigFloat(π) * BigFloat(DiffMoM._EPS0) * distance))
+end
+@test dipole_projection_result ≈
+      dipole_projection_reference rtol=4eps(Float64) atol=0.0
+dipole_cross_source = make_dipole(
+    Vec3(0.0, 0.0, 0.0), dipole_projection_moment,
+    dipole_projection_direction, :magnetic, dipole_projection_frequency)
+dipole_cross_result = DiffMoM.dipole_incident_field(
+    dipole_projection_r, dipole_cross_source)
+dipole_cross_reference = setprecision(BigFloat, 512) do
+    displacement = SVector{3,BigFloat}(BigFloat.(dipole_projection_r))
+    distance = sqrt(sum(abs2, displacement))
+    direction = displacement / distance
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(dipole_projection_moment))
+    wavenumber = BigFloat(dipole_projection_k)
+    phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
+    CVec3((BigFloat(DiffMoM._ETA0) / (4 * BigFloat(π))) *
+          (wavenumber^2 / distance -
+           Complex{BigFloat}(0, 1) * wavenumber / distance^2) *
+          phase * cross(moment, direction))
+end
+@test dipole_cross_result ≈
+      dipole_cross_reference rtol=4eps(Float64) atol=0.0
+
 m_mag = CVec3(0.0 + 0im, 0.0 + 0im, 1e-4 + 0im) # A·m²
 dip_mag = make_dipole(Vec3(0.0, 0.0, 0.0), m_mag, Vec3(0.0, 0.0, 1.0), :magnetic, freq_exc)
 Rfar = 5.0

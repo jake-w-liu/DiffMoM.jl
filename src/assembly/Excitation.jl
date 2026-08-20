@@ -1839,13 +1839,20 @@ end
     _dipole_incident_field_requires_exact(r, dipole, k, R) &&
         return _dipole_incident_field_exact(r, dipole, k)
 
-    R_hat = R_vec / R
     p = dipole.moment
+    projection_direction = _source_power_of_two_scaled_direction(R_vec)
+    direction_norm_squared = sum(abs2, projection_direction)
 
     if dipole.type == :electric
-        term1 = cross(R_hat, p)
-        term1 = cross(term1, R_hat) * k^2
-        term2 = (3 * R_hat * dot(R_hat, p) - p) * (1 / R^2 + 1im * k / R)
+        term1 = _dipole_cross(
+            _dipole_cross(projection_direction, p),
+            projection_direction) /
+            direction_norm_squared * k^2
+        radial_projection = projection_direction *
+                            dot(projection_direction, p) /
+                            direction_norm_squared
+        term2 = (3 * radial_projection - p) *
+                (1 / R^2 + 1im * k / R)
         value = (term1 + term2) * exp(-1im * k * R) / (4π * ϵ0 * R)
         return all(isfinite, value) ? CVec3(value) :
                _dipole_incident_field_exact(r, dipole, k)
@@ -1854,7 +1861,9 @@ end
         # Derived from E = -i k η0 (∇G × m), G = e^{-ikR}/(4πR); radiating (1/R)
         # term has a REAL coefficient, matching the electric-dipole convention.
         value = (η0 / (4π)) * (k^2 / R - 1im * k / R^2) *
-                exp(-1im * k * R) * cross(p, R_hat)
+                exp(-1im * k * R) *
+                (_dipole_cross(p, projection_direction) /
+                 sqrt(direction_norm_squared))
         return all(isfinite, value) ? CVec3(value) :
                _dipole_incident_field_exact(r, dipole, k)
     else
