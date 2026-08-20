@@ -203,6 +203,64 @@ end
     eps_in = 2.2 - 0.03im
     mu_in = 1.3 - 0.02im
 
+    @testset "Extreme surface weights" begin
+        length_scale = 2.0^512
+        large_mesh = TriMesh(
+            Float64[
+                0 length_scale 0 length_scale
+                0 0 length_scale length_scale
+                0 0 0 0
+            ],
+            Int[
+                1 2
+                2 4
+                3 3
+            ],
+        )
+        unit_mesh = TriMesh(
+            Float64[
+                0 1 0 1
+                0 0 1 1
+                0 0 0 0
+            ],
+            Int[
+                1 2
+                2 4
+                3 3
+            ],
+        )
+        large_rwg = build_rwg(large_mesh)
+        unit_rwg = build_rwg(unit_mesh)
+        large_area = triangle_area(large_mesh, 1)
+        unit_area = triangle_area(unit_mesh, 1)
+        @test isfinite(large_area)
+        @test !isfinite(2 * large_area)
+
+        large_gram = DiffMoM._ncross_gram_3d(
+            large_mesh, large_rwg; quad_order=3)
+        @test large_gram[1, 1] == 0.0 + 0.0im
+
+        large_wave = PlaneWaveExcitation(
+            Vec3(0.0, 0.0, inv(length_scale)),
+            inv(large_area) + 0im,
+            Vec3(1.0, 0.0, 0.0),
+        )
+        unit_wave = PlaneWaveExcitation(
+            Vec3(0.0, 0.0, 1.0),
+            inv(unit_area) + 0im,
+            Vec3(1.0, 0.0, 0.0),
+        )
+        large_magnetic_rhs = DiffMoM._assemble_plane_wave_h_rhs_3d(
+            large_mesh, large_rwg, large_wave, 1.0 + 0im;
+            quad_order=3)
+        unit_magnetic_rhs = DiffMoM._assemble_plane_wave_h_rhs_3d(
+            unit_mesh, unit_rwg, unit_wave, 1.0 + 0im;
+            quad_order=3)
+        @test all(isfinite, large_magnetic_rhs)
+        @test large_magnetic_rhs ≈
+              unit_magnetic_rhs rtol=4eps(Float64)
+    end
+
     @test_throws ErrorException dielectric_medium_3d(Inf)
     @test_throws ErrorException dielectric_medium_3d(k0; eta0=Inf)
     large_balanced = dielectric_medium_3d(

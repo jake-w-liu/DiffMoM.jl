@@ -469,11 +469,24 @@ function _ncross_gram_3d(mesh::TriMesh, rwg::RWGData;
         basis_on_t = tri_to_basis[t]
         for m in basis_on_t, n in basis_on_t
             acc = 0.0 + 0.0im
-            for q in eachindex(wq)
-                r = ptst[q]
-                fm = eval_rwg(rwg, m, r, t)
-                fn = eval_rwg(rwg, n, r, t)
-                acc += wq[q] * dot(fm, cross(nh, fn)) * (2 * A)
+            if m != n
+                twice_area = 2 * A
+                if isfinite(twice_area)
+                    for q in eachindex(wq)
+                        r = ptst[q]
+                        fm = eval_rwg(rwg, m, r, t)
+                        fn = eval_rwg(rwg, n, r, t)
+                        acc += wq[q] * dot(fm, cross(nh, fn)) * twice_area
+                    end
+                else
+                    for q in eachindex(wq)
+                        r = ptst[q]
+                        fm = eval_rwg(rwg, m, r, t)
+                        fn = eval_rwg(rwg, n, r, t)
+                        acc += wq[q] * dot(fm, cross(nh, fn))
+                    end
+                    acc = _local_surface_mass_scale(acc, A, t, m, n)
+                end
             end
             rows[entry] = m
             cols[entry] = n
@@ -739,7 +752,7 @@ function _assemble_plane_wave_h_rhs_3d(mesh::TriMesh, rwg::RWGData,
                 Einc = _plane_wave_field_unchecked(
                     rq, pw.k_vec, pw.E0, pw.pol)
                 Hinc = cross(khat, Einc) / eta
-                rhs[n] += -wq[q] * dot(fn, Hinc) * (2 * A)
+                rhs[n] += _excitation_surface_term(fn, Hinc, A, wq[q])
             end
         end
     end
