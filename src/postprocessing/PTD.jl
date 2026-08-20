@@ -114,13 +114,10 @@ end
     polarization::Vec3,
     incident_direction::Vec3,
     tangent::Vec3,
-    phase::ComplexF64,
 )
     return setprecision(BigFloat, _PTD_EXACT_PRECISION) do
-        phase_big = Complex{BigFloat}(phase)
         incident = ntuple(component ->
-            BigFloat(amplitude) * BigFloat(polarization[component]) *
-            phase_big, 3)
+            BigFloat(amplitude) * BigFloat(polarization[component]), 3)
         tangent_electric = sum(
             BigFloat(tangent[component]) * incident[component]
             for component in 1:3)
@@ -580,12 +577,11 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
         delta_i = _ptd_edge_azimuth(k_hat, edge)
         isnothing(delta_i) && continue
 
-        # ── Incident field at edge midpoint ──
-        incident_phase = _source_phase(
-            k, k_hat, Q₀, -1.0, "PTD incident edge field")
+        # The edge-line phase below already contains the incident propagation
+        # term.  Keep these coefficients as the unphased incident amplitudes
+        # so translating the edge does not apply that phase twice.
         incident_requires_exact =
-            _ieee_dense_extreme_factor(E0, Float64) ||
-            _ieee_dense_extreme_factor(incident_phase, Float64)
+            _ieee_dense_extreme_factor(E0, Float64)
         @inbounds for component in 1:3
             incident_requires_exact |=
                 _ieee_dense_extreme_factor(pol[component], Float64) ||
@@ -594,17 +590,21 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
         end
         tE, tH = if incident_requires_exact
             _ptd_incident_components_exact(
-                E0, pol, k_hat, ê, incident_phase)
+                E0, pol, k_hat, ê)
         else
-            E_inc_Q0 = pol * E0 * incident_phase
-            all(isfinite, E_inc_Q0) ||
+            incident_amplitude = pol * E0
+            all(isfinite, incident_amplitude) ||
                 throw(OverflowError(
                     "PTD incident edge field overflowed"))
-            dot(ê, E_inc_Q0), dot(ê, cross(k_hat, E_inc_Q0))
+            dot(ê, incident_amplitude),
+            dot(ê, cross(k_hat, incident_amplitude))
         end
+        incident_center_phase = _source_directional_phase(
+            k, k_vec, k_hat, Q₀, -1.0, "PTD incident edge phase")
 
         for q in 1:NΩ
-            r_hat = rhat_vec[q]
+            supplied_r_hat = rhat_vec[q]
+            r_hat = _validated_farfield_direction(supplied_r_hat)
 
             # ── Scattered cone angle and azimuth ──
             sin_beta_s = norm(cross(ê, r_hat))
@@ -639,8 +639,10 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
                     converted
                 end
             end
-            phase = _source_phase(
-                k, delta_k, Q₀, 1.0, "PTD scattered edge field")
+            outgoing_center_phase = _source_directional_phase(
+                k, supplied_r_hat, r_hat, Q₀, 1.0,
+                "PTD scattered edge phase")
+            phase = outgoing_center_phase * incident_center_phase
 
             # Treat the complete edge contribution as one product.  Forming
             # the field coefficient before multiplying by a tiny edge length

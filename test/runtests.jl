@@ -8648,6 +8648,27 @@ ptd_capped = solve_ptd(
 @test ptd_result.E_ff ≈
       ptd_result.E_ff_po + ptd_result.E_ff_ptd rtol=1e-14
 
+# A rigid translation applies one incident and one outgoing phase to the PTD
+# edge field.  It must not apply the incident phase a second time, and both
+# supplied directions must be normalized before exact phase reduction.
+ptd_translation_excitation = PlaneWaveExcitation(
+    Vec3(-1.0, 0.0, 0.0), 1.0, Vec3(0.0, 0.0, 1.0))
+ptd_translation_base_result = solve_ptd(
+    po_translation_base, 1.0, ptd_translation_excitation;
+    grid=po_translation_grid, c0=2π)
+ptd_translation_shifted_result = solve_ptd(
+    po_translation_shifted, 1.0, ptd_translation_excitation;
+    grid=po_translation_grid, c0=2π)
+ptd_translation_index =
+    argmax(abs.(ptd_translation_base_result.E_ff_ptd[:, 1]))
+@test !iszero(
+    ptd_translation_base_result.E_ff_ptd[ptd_translation_index, 1])
+ptd_translation_ratio =
+    ptd_translation_shifted_result.E_ff_ptd[ptd_translation_index, 1] /
+    ptd_translation_base_result.E_ff_ptd[ptd_translation_index, 1]
+@test ptd_translation_ratio ≈
+      po_translation_phase rtol=16eps(Float64) atol=0.0
+
 # A large incident field and a tiny edge length form a finite PTD product.
 # The solver must not reject the standalone pre-length coefficient.
 ptd_scale_length = 1.0e-150
