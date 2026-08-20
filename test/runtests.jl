@@ -5016,6 +5016,20 @@ multi_incident_point = Vec3(0.0, 0.0, 1.0)
     DiffMoM._incident_electric_field(
         multi_farfield_children[1], multi_incident_point, k_exc)
 
+multi_rhs_value = ComplexF64(1.0e308)
+multi_rhs_children = [
+    make_delta_gap(1, value, 1.0) for value in
+    (multi_rhs_value, multi_rhs_value, -multi_rhs_value)
+]
+multi_rhs = make_multi_excitation(multi_rhs_children)
+multi_rhs_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+multi_rhs_rwg = build_rwg(multi_rhs_mesh)
+@test multi_rhs_rwg.nedges == 1
+@test assemble_excitation(
+    multi_rhs_mesh, multi_rhs_rwg, multi_rhs) == [multi_rhs_value]
+@test_throws ArgumentError assemble_excitation(
+    multi_rhs_mesh, multi_rhs_rwg, multi_rhs; max_exact_bytes=1)
+
 incident_farfield(dipole_guard, Vec3(0.0, 0.0, 1.0), k_exc)
 DiffMoM._loop_equivalent_moment(loop_guard)
 let dipole = dipole_guard,

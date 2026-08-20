@@ -18,6 +18,18 @@ using StaticArrays
 
 const _DEFAULT_MAX_EXCITATION_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_EXCITATION_TERMS = 200_000_000
+const _DEFAULT_MAX_MULTI_EXACT_BYTES = 512 * 1024 * 1024
+const _MULTI_EXACT_BYTES_PER_ENTRY = 1536
+const _MULTI_EXACT_BASE_BYTES = 4096
+
+function _multi_exact_accumulator_bytes(N::Int)
+    bytes = BigInt(_MULTI_EXACT_BASE_BYTES) +
+            BigInt(_MULTI_EXACT_BYTES_PER_ENTRY) * N
+    bytes <= typemax(Int) ||
+        throw(ArgumentError(
+            "MultiExcitation exact-accumulator estimate overflows Int"))
+    return Int(bytes)
+end
 
 function _multiple_excitation_work_bytes(
         N::Int, M::Int, Nt::Int, Nq::Int, output_bytes::Int)
@@ -308,6 +320,10 @@ const _MONOPOLE_EXACT_BASE_PRECISION = 2304
 const _SOURCE_SCALING_FALLBACK_PRECISION = 512
 const _SOURCE_SCALING_SAFE_EXPONENT = 128
 const _SOURCE_PHASE_PRODUCT_GUARD_BITS = 256
+# Two complex Float64 factors span fewer than 4195 binary exponents.  This
+# precision also covers their significands and fewer than 2^63 weighted child
+# terms, so the exceptional source reductions retain every representable
+# residual after arbitrarily ordered cancellation.
 const _MULTI_SOURCE_EXACT_PRECISION = 4672
 # Above this binary exponent, a single rounded Float64 dot-product term can
 # carry more than roughly 2^-12 radians of absolute phase uncertainty.  Route
@@ -2041,15 +2057,24 @@ function assemble_v_plane_wave(mesh::TriMesh, rwg::RWGData,
 end
 
 """
-    assemble_excitation(mesh, rwg, excitation; quad_order=3)
+    assemble_excitation(mesh, rwg, excitation;
+                        quad_order=3,
+                        max_exact_bytes=536_870_912)
 
 Assemble RHS vector v for given excitation.
+
+`max_exact_bytes` bounds the retained high-precision accumulator used only
+when a `MultiExcitation` needs overflow, underflow, or cancellation recovery.
 """
 function assemble_excitation(mesh::TriMesh, rwg::RWGData,
                              excitation::AbstractExcitation;
                              quad_order::Int=3,
-                             quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
+                             quad_cache::Union{Nothing,ExcitationQuadCache}=nothing,
+                             max_exact_bytes::Integer=
+                                 _DEFAULT_MAX_MULTI_EXACT_BYTES)
     _validate_excitation_model(excitation)
+    exact_byte_limit =
+        _validated_resource_limit("max_exact_bytes", max_exact_bytes)
     # Dispatch to specialized implementations. `quad_cache`, when provided,
     # lets the mesh quadrature be shared across many excitations (see
     # `assemble_multi`/`assemble_multiple_excitations`); the cache-free
@@ -2071,7 +2096,11 @@ function assemble_excitation(mesh::TriMesh, rwg::RWGData,
     elseif excitation isa PatternFeedExcitation
         assemble_pattern_feed(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
     elseif excitation isa MultiExcitation
-        assemble_multi(mesh, rwg, excitation; quad_order=quad_order, quad_cache=quad_cache)
+        assemble_multi(
+            mesh, rwg, excitation;
+            quad_order=quad_order,
+            quad_cache=quad_cache,
+            max_exact_bytes=exact_byte_limit)
     else
         error("Unsupported excitation type: $(typeof(excitation))")
     end
@@ -2113,9 +2142,13 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
     Nq = length(quadrature_weights)
     work_bytes = _multiple_excitation_work_bytes(
         N, M, ntriangles(mesh), Nq, output_bytes)
-    _enforce_payload_limit(
-        work_bytes, max_work_bytes,
-        "multiple-excitation output and workspace", "max_work_bytes")
+    work_limit = _validated_resource_limit(
+        "max_work_bytes", max_work_bytes)
+    work_bytes <= work_limit ||
+        throw(ArgumentError(
+            "multiple-excitation output and workspace requires " *
+            "$work_bytes raw bytes, exceeding max_work_bytes=$work_limit"))
+    available_exact_bytes = max(1, work_limit - work_bytes)
     term_count = _multiple_excitation_term_count(N, M, Nq)
     term_limit = _validated_resource_limit("max_terms", max_terms)
     term_count <= term_limit ||
@@ -2127,7 +2160,9 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
     quad_cache = ExcitationQuadCache(mesh)
     for m in 1:M
         V[:, m] .= assemble_excitation(mesh, rwg, excitations[m];
-                                       quad_order=quad_order, quad_cache=quad_cache)
+                                       quad_order=quad_order,
+                                       quad_cache=quad_cache,
+                                       max_exact_bytes=available_exact_bytes)
     end
     return V
 end
@@ -2343,19 +2378,85 @@ function assemble_pattern_feed(mesh::TriMesh, rwg::RWGData,
     return v
 end
 
+@inline function _multi_assembly_child_requires_exact(
+        weight::ComplexF64, child::AbstractVector{ComplexF64})
+    iszero(weight) && return false
+    weight_is_extreme = _source_scaling_extreme_value(weight)
+    @inbounds for value in child
+        iszero(value) && continue
+        (weight_is_extreme || _source_scaling_extreme_value(value)) &&
+            return true
+        product = weight * value
+        (!isfinite(product) || iszero(product)) && return true
+    end
+    return false
+end
+
+@noinline function _assemble_multi_exact!(
+        output::Vector{ComplexF64}, mesh::TriMesh, rwg::RWGData,
+        multi::MultiExcitation, quad_order::Int,
+        cache::ExcitationQuadCache, max_exact_bytes::Int)
+    required_bytes = _multi_exact_accumulator_bytes(length(output))
+    _enforce_payload_limit(
+        required_bytes, max_exact_bytes,
+        "MultiExcitation exact accumulator", "max_exact_bytes")
+    nested_exact_bytes = max(1, max_exact_bytes - required_bytes)
+
+    return setprecision(BigFloat, _MULTI_SOURCE_EXACT_PRECISION) do
+        total = [zero(Complex{BigFloat}) for _ in eachindex(output)]
+        @inbounds for index in eachindex(
+                multi.excitations, multi.weights)
+            child = assemble_excitation(
+                mesh, rwg, multi.excitations[index];
+                quad_order=quad_order,
+                quad_cache=cache,
+                max_exact_bytes=nested_exact_bytes)
+            weight = Complex{BigFloat}(multi.weights[index])
+            for entry in eachindex(total, child)
+                total[entry] +=
+                    weight * Complex{BigFloat}(child[entry])
+            end
+        end
+        @inbounds for entry in eachindex(output, total)
+            converted = ComplexF64(total[entry])
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "MultiExcitation RHS entry $entry is outside the " *
+                    "representable ComplexF64 range"))
+            output[entry] = converted
+        end
+        return output
+    end
+end
+
 function assemble_multi(mesh::TriMesh, rwg::RWGData,
                         multi::MultiExcitation;
                         quad_order::Int=3,
-                        quad_cache::Union{Nothing,ExcitationQuadCache}=nothing)
+                        quad_cache::Union{Nothing,ExcitationQuadCache}=nothing,
+                        max_exact_bytes::Integer=
+                            _DEFAULT_MAX_MULTI_EXACT_BYTES)
     length(multi.excitations) == length(multi.weights) ||
         error("MultiExcitation has mismatched lengths: $(length(multi.excitations)) excitations vs $(length(multi.weights)) weights.")
     # Build (or reuse) the mesh quadrature once and share it across all children.
     cache = quad_cache === nothing ? ExcitationQuadCache(mesh) : quad_cache
+    exact_byte_limit =
+        _validated_resource_limit("max_exact_bytes", max_exact_bytes)
     v = zeros(ComplexF64, rwg.nedges)
     for (exc, w) in zip(multi.excitations, multi.weights)
         child = assemble_excitation(
-            mesh, rwg, exc; quad_order=quad_order, quad_cache=cache)
+            mesh, rwg, exc;
+            quad_order=quad_order,
+            quad_cache=cache,
+            max_exact_bytes=exact_byte_limit)
+        _multi_assembly_child_requires_exact(w, child) &&
+            return _assemble_multi_exact!(
+                v, mesh, rwg, multi, quad_order, cache,
+                exact_byte_limit)
         axpy!(w, child, v)
+        all(isfinite, v) ||
+            return _assemble_multi_exact!(
+                v, mesh, rwg, multi, quad_order, cache,
+                exact_byte_limit)
     end
     return v
 end
