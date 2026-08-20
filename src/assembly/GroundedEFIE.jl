@@ -156,6 +156,10 @@ function _assemble_periodic_image_block(mesh::TriMesh, rwg::RWGData, k,
 
     symmetric && _complete_periodic_triangle_symmetry!(Z_img)
     Z_img .*= -1im * omega_mu0
+    all(isfinite, Z_img) ||
+        throw(OverflowError(
+            "periodic EFIE image block contains entries outside the " *
+            "representable ComplexF64 range"))
     return Z_img
 end
 
@@ -259,7 +263,12 @@ function assemble_Z_efie_grounded(mesh::TriMesh, rwg::RWGData, k,
                                              quad_order=quad_order, eta0=eta0,
                                              max_cache_bytes=cache_limit,
                                              max_green_terms=green_limit)
-    return Z_direct - Z_image
+    Z_grounded = Z_direct - Z_image
+    all(isfinite, Z_grounded) ||
+        throw(OverflowError(
+            "grounded EFIE matrix contains entries outside the " *
+            "representable ComplexF64 range"))
+    return Z_grounded
 end
 
 # Incident vertical wavenumber of the specular order (= k cosθ_inc).

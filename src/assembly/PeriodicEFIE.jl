@@ -505,7 +505,12 @@ function assemble_Z_efie_periodic(mesh::TriMesh, rwg::RWGData, k,
                                             max_cache_bytes=cache_limit,
                                             max_green_terms=green_limit)
 
-    return Z_free + Z_corr
+    Z_periodic = Z_free + Z_corr
+    all(isfinite, Z_periodic) ||
+        throw(OverflowError(
+            "periodic EFIE matrix contains entries outside the " *
+            "representable ComplexF64 range"))
+    return Z_periodic
 end
 
 """
@@ -703,6 +708,11 @@ function _assemble_periodic_correction(mesh::TriMesh, rwg::RWGData, k,
 
     symmetric && _complete_periodic_triangle_symmetry!(Z_corr)
     Z_corr .*= -1im * omega_mu0
+
+    all(isfinite, Z_corr) ||
+        throw(OverflowError(
+            "periodic EFIE correction contains entries outside the " *
+            "representable ComplexF64 range"))
 
     return Z_corr
 end

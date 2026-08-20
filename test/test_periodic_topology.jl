@@ -1199,6 +1199,22 @@ println("\n── Test 41: PeriodicEFIE ──")
         @test_throws ArgumentError assemble_Z_efie_periodic(
             mesh_pe, rwg_pe, k_pe, lat_pe; max_green_terms=0)
 
+        range_cell = 1.0
+        range_k = (1 - 1e-12) * 2π / range_cell
+        range_mesh = make_rect_plate(range_cell, range_cell, 1, 1)
+        range_lattice = PeriodicLattice(
+            range_cell, range_cell, 0.0, 0.0, range_k;
+            N_spatial=1, N_spectral=1)
+        range_rwg = build_rwg_periodic(
+            range_mesh, range_lattice; precheck=false)
+        range_eta = 0.5 * floatmax(Float64) / range_k
+        @test_throws OverflowError assemble_Z_efie_periodic(
+            range_mesh, range_rwg, range_k, range_lattice;
+            quad_order=1, eta0=range_eta)
+        @test_throws OverflowError DiffMoM._assemble_periodic_image_block(
+            range_mesh, range_rwg, range_k, range_lattice, 0.2;
+            quad_order=1, eta0=range_eta)
+
         _, periodic_weights = tri_quad_rule(3)
         incidence = DiffMoM._build_periodic_triangle_incidence(
             rwg_pe, ntriangles(mesh_pe))
