@@ -1016,6 +1016,80 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
     )
 end
 
+function _validate_em_dda_result_3d(
+        res::EMDDAResult3D; require_system::Bool=false)
+    N = res.grid.nvoxels
+    length(res.grid.centers) == N ||
+        throw(DimensionMismatch(
+            "EMDDAResult3D grid has $(length(res.grid.centers)) centers, " *
+            "expected $N."))
+    length(res.grid.volumes) == N ||
+        throw(DimensionMismatch(
+            "EMDDAResult3D grid has $(length(res.grid.volumes)) volumes, " *
+            "expected $N."))
+    length(res.E_total) == N ||
+        throw(DimensionMismatch(
+            "EMDDAResult3D E_total length $(length(res.E_total)) != $N."))
+    length(res.H_total) == N ||
+        throw(DimensionMismatch(
+            "EMDDAResult3D H_total length $(length(res.H_total)) != $N."))
+    length(res.E_inc) == N ||
+        throw(DimensionMismatch(
+            "EMDDAResult3D E_inc length $(length(res.E_inc)) != $N."))
+    length(res.H_inc) == N ||
+        throw(DimensionMismatch(
+            "EMDDAResult3D H_inc length $(length(res.H_inc)) != $N."))
+    length(res.alpha) == N ||
+        throw(DimensionMismatch(
+            "EMDDAResult3D alpha length $(length(res.alpha)) != $N."))
+    _finite_positive_k0_3d(res.k0)
+    _finite_positive_real_3d(res.eta0, "EMDDAResult3D eta0")
+
+    @inbounds for j in 1:N
+        center = res.grid.centers[j]
+        all(isfinite, center) ||
+            throw(ArgumentError(
+                "EMDDAResult3D grid center $j must be finite, got $center."))
+        volume = res.grid.volumes[j]
+        isfinite(volume) && volume > 0.0 ||
+            throw(ArgumentError(
+                "EMDDAResult3D grid volume $j must be finite and positive, " *
+                "got $volume."))
+        all(isfinite, res.E_total[j]) ||
+            throw(ArgumentError(
+                "EMDDAResult3D E_total[$j] must be finite."))
+        all(isfinite, res.H_total[j]) ||
+            throw(ArgumentError(
+                "EMDDAResult3D H_total[$j] must be finite."))
+        all(isfinite, res.E_inc[j]) ||
+            throw(ArgumentError(
+                "EMDDAResult3D E_inc[$j] must be finite."))
+        all(isfinite, res.H_inc[j]) ||
+            throw(ArgumentError(
+                "EMDDAResult3D H_inc[$j] must be finite."))
+        alpha = res.alpha[j]
+        alpha isa _CMat6DDA && all(isfinite, alpha) ||
+            throw(ArgumentError(
+                "EMDDAResult3D alpha[$j] must be a finite 6x6 " *
+                "polarizability tensor."))
+    end
+
+    if require_system
+        system_size = try
+            Base.checked_mul(6, N)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError(
+                "EMDDAResult3D system dimension overflows Int."))
+        end
+        size(res.A) == (system_size, system_size) ||
+            throw(DimensionMismatch(
+                "EMDDAResult3D A has size $(size(res.A)), expected " *
+                "($system_size, $system_size)."))
+    end
+    return N
+end
+
 """
     induced_dipoles_em_dda_3d(result)
 
@@ -1023,9 +1097,10 @@ Return `(q, m)`, the normalized induced electric dipoles and magnetic dipoles
 from a coupled EM DDA result.
 """
 function induced_dipoles_em_dda_3d(res::EMDDAResult3D)
-    q = Vector{CVec3}(undef, res.grid.nvoxels)
-    m = Vector{CVec3}(undef, res.grid.nvoxels)
-    for j in 1:res.grid.nvoxels
+    N = _validate_em_dda_result_3d(res)
+    q = Vector{CVec3}(undef, N)
+    m = Vector{CVec3}(undef, N)
+    for j in 1:N
         dipoles = _scaled_alpha_apply_3d(
             res.alpha[j], _join_em_field(res.E_total[j], res.H_total[j]),
             1.0, "EM DDA induced dipole", j)
@@ -1111,6 +1186,7 @@ function _scattered_fields_sum_em_dda_3d(
 end
 
 function scattered_fields_em_dda_3d(res::EMDDAResult3D, r_obs::AbstractVector{Vec3})
+    _validate_em_dda_result_3d(res)
     _validate_dda_observation_points_3d(
         r_obs, "scattered_fields_em_dda_3d")
     Eout = Vector{CVec3}(undef, length(r_obs))
@@ -1348,6 +1424,7 @@ Return `(F_E, F_H)` such that `E_scat ~= exp(-ikr) F_E / r` and
 """
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
                             eta0::Real=res.eta0)
+    _validate_em_dda_result_3d(res)
     eta = _finite_positive_real_3d(eta0, "eta0")
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     return _em_farfield_sum_3d(res, rhat, n, eta)
@@ -1355,10 +1432,15 @@ end
 
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::AbstractVector{Vec3};
                             eta0::Real=res.eta0)
+    _validate_em_dda_result_3d(res)
+    eta = _finite_positive_real_3d(eta0, "eta0")
     FE = Vector{CVec3}(undef, length(rhat))
     FH = Vector{CVec3}(undef, length(rhat))
-    for j in eachindex(rhat)
-        FE[j], FH[j] = farfield_em_dda_3d(res, rhat[j]; eta0=eta0)
+    @inbounds for j in eachindex(rhat)
+        direction = rhat[j]
+        normalized = _normalized_real_direction_dda_3d(direction, "rhat")
+        FE[j], FH[j] = _em_farfield_sum_3d(
+            res, direction, normalized, eta)
     end
     return FE, FH
 end

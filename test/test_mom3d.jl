@@ -320,6 +320,16 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             res, [Vec3(NaN, 0.0, 0.0)])
         @test iszero(farfield_dda_3d(res, extreme_direction))
         @test all(iszero, res.alpha)
+        malformed_result = DDAResult3D(
+            CVec3[], res.E_inc, res.eps_r, res.alpha,
+            res.A, res.A_LU, res.solver, res.stats,
+            res.grid, res.k0, res.radiative_correction)
+        @test_throws DimensionMismatch induced_dipoles_dda_3d(
+            malformed_result)
+        @test_throws DimensionMismatch scattered_field_dda_3d(
+            malformed_result, [Vec3(1.0, 0.0, 0.0)])
+        @test_throws DimensionMismatch farfield_dda_3d(
+            malformed_result, Vec3(1.0, 0.0, 0.0))
     end
 
     @testset "Large radial phase reduction" begin

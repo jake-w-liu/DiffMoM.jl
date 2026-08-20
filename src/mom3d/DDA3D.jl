@@ -1541,14 +1541,87 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
     end
 end
 
+@inline _finite_dda_result_material_3d(value::Number) = isfinite(value)
+@inline _finite_dda_result_material_3d(value::_CMat3DDA) =
+    all(isfinite, value)
+@inline _finite_dda_result_material_3d(::Any) = false
+
+function _validate_dda_result_3d(
+        res::DDAResult3D; require_system::Bool=false)
+    N = res.grid.nvoxels
+    length(res.grid.centers) == N ||
+        throw(DimensionMismatch(
+            "DDAResult3D grid has $(length(res.grid.centers)) centers, " *
+            "expected $N."))
+    length(res.grid.volumes) == N ||
+        throw(DimensionMismatch(
+            "DDAResult3D grid has $(length(res.grid.volumes)) volumes, " *
+            "expected $N."))
+    length(res.E_total) == N ||
+        throw(DimensionMismatch(
+            "DDAResult3D E_total length $(length(res.E_total)) != $N."))
+    length(res.E_inc) == N ||
+        throw(DimensionMismatch(
+            "DDAResult3D E_inc length $(length(res.E_inc)) != $N."))
+    length(res.eps_r) == N ||
+        throw(DimensionMismatch(
+            "DDAResult3D eps_r length $(length(res.eps_r)) != $N."))
+    length(res.alpha) == N ||
+        throw(DimensionMismatch(
+            "DDAResult3D alpha length $(length(res.alpha)) != $N."))
+    _finite_positive_k0_3d(res.k0)
+
+    @inbounds for j in 1:N
+        center = res.grid.centers[j]
+        all(isfinite, center) ||
+            throw(ArgumentError(
+                "DDAResult3D grid center $j must be finite, got $center."))
+        volume = res.grid.volumes[j]
+        isfinite(volume) && volume > 0.0 ||
+            throw(ArgumentError(
+                "DDAResult3D grid volume $j must be finite and positive, " *
+                "got $volume."))
+        all(isfinite, res.E_total[j]) ||
+            throw(ArgumentError(
+                "DDAResult3D E_total[$j] must be finite."))
+        all(isfinite, res.E_inc[j]) ||
+            throw(ArgumentError(
+                "DDAResult3D E_inc[$j] must be finite."))
+        _finite_dda_result_material_3d(res.eps_r[j]) ||
+            throw(ArgumentError(
+                "DDAResult3D eps_r[$j] must be a finite scalar or 3x3 " *
+                "material tensor."))
+        _finite_dda_result_material_3d(res.alpha[j]) ||
+            throw(ArgumentError(
+                "DDAResult3D alpha[$j] must be a finite scalar or 3x3 " *
+                "polarizability tensor."))
+    end
+
+    if require_system
+        system_size = try
+            Base.checked_mul(3, N)
+        catch err
+            err isa OverflowError || rethrow()
+            throw(ArgumentError(
+                "DDAResult3D system dimension overflows Int."))
+        end
+        size(res.A) == (system_size, system_size) ||
+            throw(DimensionMismatch(
+                "DDAResult3D A has size $(size(res.A)), expected " *
+                "($system_size, $system_size)."))
+    end
+    return N
+end
+
 """
     induced_dipoles_dda_3d(result)
 
 Return normalized induced electric dipoles `q_j = p_j / eps0 = alpha_j E_j`.
 """
 function induced_dipoles_dda_3d(res::DDAResult3D)
-    q = Vector{CVec3}(undef, res.grid.nvoxels)
-    for j in 1:res.grid.nvoxels
+    N = _validate_dda_result_3d(res)
+    q = Vector{CVec3}(undef, N)
+    for j in 1:N
         q[j] = _scaled_alpha_apply_3d(
             res.alpha[j], res.E_total[j], 1.0,
             "DDA induced dipole", j)
@@ -1623,6 +1696,7 @@ end
 end
 
 function scattered_field_dda_3d(res::DDAResult3D, r_obs::AbstractVector{Vec3})
+    _validate_dda_result_3d(res)
     _validate_dda_observation_points_3d(
         r_obs, "scattered_field_dda_3d")
     out = Vector{CVec3}(undef, length(r_obs))
@@ -1819,10 +1893,19 @@ Return the far-field amplitude `F(rhat)` such that
 for unit observation direction `rhat`.
 """
 function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
+    _validate_dda_result_3d(res)
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     return _farfield_sum_dda_3d(res, rhat, n)
 end
 
 function farfield_dda_3d(res::DDAResult3D, rhat::AbstractVector{Vec3})
-    return [farfield_dda_3d(res, dir) for dir in rhat]
+    _validate_dda_result_3d(res)
+    output = Vector{CVec3}(undef, length(rhat))
+    @inbounds for index in eachindex(rhat)
+        direction = rhat[index]
+        normalized = _normalized_real_direction_dda_3d(direction, "rhat")
+        output[index] = _farfield_sum_dda_3d(
+            res, direction, normalized)
+    end
+    return output
 end

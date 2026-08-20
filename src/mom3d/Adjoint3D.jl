@@ -96,6 +96,7 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
         throw(ArgumentError(
             "Unsupported DDA adjoint solver: $solver " *
             "(expected :direct or :gmres)."))
+    _validate_dda_result_3d(res; require_system=true)
     rhs = _coerce_adjoint_rhs_3d(grad_E_flat, res.grid.nvoxels, "grad_E_flat")
 
     if solver == :direct
@@ -142,6 +143,7 @@ parameter per voxel. This uses
 and the DDA system convention `A_ij = delta_ij - G_ij * alpha_j`.
 """
 function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
+    _validate_dda_result_3d(res)
     res.radiative_correction &&
         error("gradient_epsr_dda_3d currently supports uncorrected Clausius-Mossotti alpha only.")
 

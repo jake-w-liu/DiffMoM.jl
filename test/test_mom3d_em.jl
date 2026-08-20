@@ -124,6 +124,16 @@ end
         @test_throws ArgumentError scattered_fields_em_dda_3d(
             res, [Vec3(NaN, 0.0, 0.0)])
         @test all(iszero, farfield_em_dda_3d(res, extreme_direction))
+        malformed_result = EMDDAResult3D(
+            CVec3[], res.H_total, res.E_inc, res.H_inc, res.alpha,
+            res.A, res.A_LU, res.solver, res.stats,
+            res.grid, res.k0, res.radiative_correction, res.eta0)
+        @test_throws DimensionMismatch induced_dipoles_em_dda_3d(
+            malformed_result)
+        @test_throws DimensionMismatch scattered_fields_em_dda_3d(
+            malformed_result, [Vec3(1.0, 0.0, 0.0)])
+        @test_throws DimensionMismatch farfield_em_dda_3d(
+            malformed_result, Vec3(1.0, 0.0, 0.0))
     end
 
     @testset "Large radial phase reduction" begin

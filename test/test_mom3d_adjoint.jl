@@ -32,6 +32,14 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
     E = reduce(vcat, res.E_total)
     @test_throws ArgumentError solve_dda_adjoint_3d(
         res, ComplexF64[]; solver=:unsupported)
+    malformed_result = DDAResult3D(
+        CVec3[], res.E_inc, res.eps_r, res.alpha,
+        res.A, res.A_LU, res.solver, res.stats,
+        res.grid, res.k0, res.radiative_correction)
+    @test_throws DimensionMismatch solve_dda_adjoint_3d(
+        malformed_result, weights .* E)
+    @test_throws DimensionMismatch gradient_epsr_dda_3d(
+        malformed_result, weights .* E)
     @test_throws ArgumentError solve_dda_adjoint_3d(
         res, fill(ComplexF64(NaN, 0.0), length(E)))
     lambda = solve_dda_adjoint_3d(res, weights .* E)
