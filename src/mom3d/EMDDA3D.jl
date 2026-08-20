@@ -1090,27 +1090,39 @@ function _em_farfield_alpha_contribution_bigfloat_3d(
         alpha::_CMat6DDA,
         field::_CVec6DDA,
         k::Float64,
-        direction::Vec3,
+        supplied_direction::Vec3,
         center::Vec3,
         eta::Float64)
-    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+    precision = max(
+        _MULTI_SOURCE_EXACT_PRECISION,
+        _source_directional_phase_precision(
+            k, supplied_direction, center),
+    )
+    return setprecision(BigFloat, precision) do
         dipoles = _alpha_apply_bigfloat_vector_3d(alpha, field)
         q = SVector{3,Complex{BigFloat}}(
             dipoles[1], dipoles[2], dipoles[3])
         m = SVector{3,Complex{BigFloat}}(
             dipoles[4], dipoles[5], dipoles[6])
-        n = SVector{3,BigFloat}(
-            BigFloat(direction[1]),
-            BigFloat(direction[2]),
-            BigFloat(direction[3]),
+        direction = SVector{3,BigFloat}(
+            BigFloat(supplied_direction[1]),
+            BigFloat(supplied_direction[2]),
+            BigFloat(supplied_direction[3]),
         )
-        projected_q = q - n * sum(n[index] * q[index] for index in 1:3)
-        projected_m = m - n * sum(n[index] * m[index] for index in 1:3)
+        direction_norm_squared = sum(abs2, direction)
+        direction_norm = sqrt(direction_norm_squared)
+        projected_q = cross(cross(direction, q), direction) /
+                      direction_norm_squared
+        projected_m = cross(cross(direction, m), direction) /
+                      direction_norm_squared
+        normalized_cross_m = cross(direction, m) / direction_norm
+        normalized_cross_q = cross(direction, q) / direction_norm
         eta_big = BigFloat(eta)
-        E_term = projected_q - eta_big * cross(n, m)
-        H_term = cross(n, q) / eta_big + projected_m
+        E_term = projected_q - eta_big * normalized_cross_m
+        H_term = normalized_cross_q / eta_big + projected_m
         phase_argument = BigFloat(k) * sum(
-            n[index] * BigFloat(center[index]) for index in 1:3)
+            direction[index] * BigFloat(center[index])
+            for index in 1:3) / direction_norm
         phase = exp(Complex{BigFloat}(0, phase_argument))
         prefactor = BigFloat(k)^2 / (4 * BigFloat(pi))
         E_value = phase * prefactor * E_term
@@ -1136,20 +1148,34 @@ end
         alpha::_CMat6DDA,
         field::_CVec6DDA,
         k::Float64,
-        direction::Vec3,
+        supplied_direction::Vec3,
+        normalized_direction::Vec3,
+        projection_direction::Vec3,
         center::Vec3,
         eta::Float64,
-        projection)
+        projection_norm_squared::Float64,
+        projection_norm::Float64)
     dipoles = alpha * field
     if all(isfinite, dipoles) &&
        !_alpha_field_product_loses_range_3d(alpha, field)
         q, m = _split_em_field(dipoles)
         phase = _source_phase(
-            k, direction, center, 1.0, "EM DDA far-field phase")
+            k, normalized_direction, center, 1.0,
+            "EM DDA far-field phase")
+        projected_q = _dipole_cross(
+            _dipole_cross(projection_direction, q),
+            projection_direction) / projection_norm_squared
+        projected_m = _dipole_cross(
+            _dipole_cross(projection_direction, m),
+            projection_direction) / projection_norm_squared
+        normalized_cross_m = _dipole_cross(
+            projection_direction, m) / projection_norm
+        normalized_cross_q = _dipole_cross(
+            projection_direction, q) / projection_norm
         E_contribution = phase * (
-            projection * q - eta * cross(direction, m))
+            projected_q - eta * normalized_cross_m)
         H_contribution = phase * (
-            (1 / eta) * cross(direction, q) + projection * m)
+            normalized_cross_q / eta + projected_m)
         prefactor, scale_fraction, scale_exponent =
             _farfield_prefactor_dda_3d(k)
         if iszero(scale_fraction)
@@ -1165,7 +1191,7 @@ end
             return E_value, H_value
     end
     return _em_farfield_alpha_contribution_bigfloat_3d(
-        alpha, field, k, direction, center, eta)
+        alpha, field, k, supplied_direction, center, eta)
 end
 
 @noinline function _em_farfield_sum_bigfloat_3d(
@@ -1181,7 +1207,8 @@ end
             BigFloat(supplied_direction[2]),
             BigFloat(supplied_direction[3]),
         )
-        n = direction / sqrt(sum(abs2, direction))
+        direction_norm_squared = sum(abs2, direction)
+        direction_norm = sqrt(direction_norm_squared)
         eta_big = BigFloat(eta)
         prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
         total_E = zero(SVector{3,Complex{BigFloat}})
@@ -1195,19 +1222,22 @@ end
                 dipoles[1], dipoles[2], dipoles[3])
             m = SVector{3,Complex{BigFloat}}(
                 dipoles[4], dipoles[5], dipoles[6])
-            projected_q = q - n * sum(
-                n[index] * q[index] for index in 1:3)
-            projected_m = m - n * sum(
-                n[index] * m[index] for index in 1:3)
+            projected_q = cross(cross(direction, q), direction) /
+                          direction_norm_squared
+            projected_m = cross(cross(direction, m), direction) /
+                          direction_norm_squared
             phase_argument = BigFloat(res.k0) * sum(
-                n[index] * BigFloat(res.grid.centers[j][index])
-                for index in 1:3)
+                direction[index] *
+                BigFloat(res.grid.centers[j][index])
+                for index in 1:3) / direction_norm
             phase_prefactor =
                 exp(Complex{BigFloat}(0, phase_argument)) * prefactor
             total_E += phase_prefactor *
-                       (projected_q - eta_big * cross(n, m))
+                       (projected_q - eta_big *
+                        cross(direction, m) / direction_norm)
             total_H += phase_prefactor *
-                       (cross(n, q) / eta_big + projected_m)
+                       (cross(direction, q) /
+                        (direction_norm * eta_big) + projected_m)
         end
         converted_E = CVec3(
             ComplexF64(total_E[1]),
@@ -1230,8 +1260,7 @@ function _em_farfield_sum_3d(
         res::EMDDAResult3D,
         supplied_direction::Vec3,
         normalized_direction::Vec3,
-        eta::Float64,
-        projection)
+        eta::Float64)
     _source_direction_span_requires_fallback(supplied_direction) &&
         return _em_farfield_sum_bigfloat_3d(
             res, supplied_direction, eta)
@@ -1242,6 +1271,10 @@ function _em_farfield_sum_3d(
                 res, supplied_direction, eta)
         end
     end
+    projection_direction = _source_power_of_two_scaled_direction(
+        supplied_direction)
+    projection_norm_squared = sum(abs2, projection_direction)
+    projection_norm = sqrt(projection_norm_squared)
     total_E = zero(CVec3)
     total_H = zero(CVec3)
     try
@@ -1251,9 +1284,10 @@ function _em_farfield_sum_3d(
                 _em_farfield_alpha_contribution_3d(
                     res.alpha[j],
                     _join_em_field(res.E_total[j], res.H_total[j]),
-                    res.k0, normalized_direction,
+                    res.k0, supplied_direction,
+                    normalized_direction, projection_direction,
                     res.grid.centers[j], eta,
-                    projection)
+                    projection_norm_squared, projection_norm)
             next_E = total_E + contribution_E
             next_H = total_H + contribution_H
             all(isfinite, next_E) && all(isfinite, next_H) ||
@@ -1280,8 +1314,7 @@ function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
                             eta0::Real=_ETA0_DDA)
     eta = _finite_positive_real_3d(eta0, "eta0")
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
-    proj = _I3_DDA - n * transpose(n)
-    return _em_farfield_sum_3d(res, rhat, n, eta, proj)
+    return _em_farfield_sum_3d(res, rhat, n, eta)
 end
 
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::AbstractVector{Vec3};

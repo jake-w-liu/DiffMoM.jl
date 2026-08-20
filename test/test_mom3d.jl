@@ -277,6 +277,35 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test farfield_dda_3d(
             phase_cancel_result, phase_cancel_kvec) ==
               phase_cancel_farfield_reference
+
+        # A nearly longitudinal induced dipole leaves a small, finite
+        # transverse field.  Forming I-nnᵀ from rounded normalized components
+        # gave the wrong sign and a five-times-too-large vector norm.
+        projection_moment =
+            CVec3(1.0 + 0im, prevfloat(1.0) + 0im, 0.0 + 0im)
+        projection_result = DDAResult3D(
+            CVec3[projection_moment],
+            CVec3[zero(CVec3)],
+            ComplexF64[2.0], ComplexF64[1.0],
+            Matrix{ComplexF64}(I, 3, 3), nothing, :direct, nothing,
+            centered_grid, 1.0, false)
+        projection_direction = Vec3(1.0, 1.0, 0.0)
+        projection_reference = setprecision(BigFloat, 512) do
+            direction = SVector{3,BigFloat}(
+                BigFloat.(projection_direction))
+            direction /= sqrt(sum(abs2, direction))
+            moment = SVector{3,Complex{BigFloat}}(
+                Complex{BigFloat}.(projection_moment))
+            CVec3(ComplexF64.(
+                cross(cross(direction, moment), direction) /
+                (4 * BigFloat(pi))))
+        end
+        @test farfield_dda_3d(
+            projection_result, projection_direction) ≈
+              projection_reference rtol=4eps(Float64)
+        farfield_dda_3d(projection_result, projection_direction)
+        @test @allocated(farfield_dda_3d(
+            projection_result, projection_direction)) <= 128
         @test_throws OverflowError planewave_dda_3d(
             centered_grid, Vec3(0.0, 0.0, 1.0), 1.0e200,
             CVec3(1.0e200 + 0im, 0.0 + 0im, 0.0 + 0im))

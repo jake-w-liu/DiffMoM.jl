@@ -354,6 +354,39 @@ end
         farfield_em_dda_3d(res, Vec3(0.0, 1.0, 0.0))
         @test @allocated(
             farfield_em_dda_3d(res, Vec3(0.0, 1.0, 0.0))) <= 128
+
+        projection_direction = Vec3(1.0, 1.0, 0.0)
+        projection_moment =
+            CVec3(1.0 + 0im, prevfloat(1.0) + 0im, 0.0 + 0im)
+        identity_alpha = Matrix{ComplexF64}(I, 6, 6)
+        projection_operator = em_dda_operator_3d(
+            grid, 1.0, identity_alpha)
+        projection_result = EMDDAResult3D(
+            CVec3[projection_moment], CVec3[zero(CVec3)],
+            CVec3[zero(CVec3)], CVec3[zero(CVec3)],
+            projection_operator.alpha, projection_operator,
+            nothing, :direct, nothing, grid, 1.0, false)
+        projection_E_reference, projection_H_reference =
+                setprecision(BigFloat, 512) do
+            direction = SVector{3,BigFloat}(
+                BigFloat.(projection_direction))
+            direction /= sqrt(sum(abs2, direction))
+            moment = SVector{3,Complex{BigFloat}}(
+                Complex{BigFloat}.(projection_moment))
+            prefactor = inv(4 * BigFloat(pi))
+            (
+                CVec3(ComplexF64.(
+                    prefactor *
+                    cross(cross(direction, moment), direction))),
+                CVec3(ComplexF64.(
+                    prefactor * cross(direction, moment) /
+                    BigFloat(376.730313668))),
+            )
+        end
+        projection_E, projection_H = farfield_em_dda_3d(
+            projection_result, projection_direction)
+        @test projection_E ≈ projection_E_reference rtol=4eps(Float64)
+        @test projection_H ≈ projection_H_reference rtol=4eps(Float64)
         observations = [Vec3(1.0, 0.0, 0.0)]
         scattered_fields_em_dda_3d(res, observations)
         _allocate_em_field_outputs_3d(length(observations))

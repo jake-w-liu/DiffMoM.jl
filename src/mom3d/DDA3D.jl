@@ -1615,18 +1615,26 @@ function _farfield_alpha_contribution_bigfloat_dda_3d(
         alpha,
         field::CVec3,
         k::Float64,
-        direction::Vec3,
+        supplied_direction::Vec3,
         center::Vec3)
-    return setprecision(BigFloat, _POLARIZABILITY_FALLBACK_PRECISION) do
+    precision = max(
+        _MULTI_SOURCE_EXACT_PRECISION,
+        _source_directional_phase_precision(
+            k, supplied_direction, center),
+    )
+    return setprecision(BigFloat, precision) do
         q = _alpha_apply_bigfloat_vector_3d(alpha, field)
-        n = SVector{3,BigFloat}(
-            BigFloat(direction[1]),
-            BigFloat(direction[2]),
-            BigFloat(direction[3]),
+        direction = SVector{3,BigFloat}(
+            BigFloat(supplied_direction[1]),
+            BigFloat(supplied_direction[2]),
+            BigFloat(supplied_direction[3]),
         )
-        projected = q - n * sum(n[index] * q[index] for index in 1:3)
+        direction_norm_squared = sum(abs2, direction)
+        projected = cross(cross(direction, q), direction) /
+                    direction_norm_squared
         phase_argument = BigFloat(k) * sum(
-            n[index] * BigFloat(center[index]) for index in 1:3)
+            direction[index] * BigFloat(center[index])
+            for index in 1:3) / sqrt(direction_norm_squared)
         phase = exp(Complex{BigFloat}(0, phase_argument))
         prefactor = BigFloat(k)^2 / (4 * BigFloat(pi))
         value = phase * prefactor * projected
@@ -1646,15 +1654,21 @@ end
         alpha,
         field::CVec3,
         k::Float64,
-        direction::Vec3,
+        supplied_direction::Vec3,
+        normalized_direction::Vec3,
+        projection_direction::Vec3,
         center::Vec3,
-        projection)
+        projection_norm_squared::Float64)
     q = _alpha_apply(alpha, field)
     if all(isfinite, q) &&
        !_alpha_field_product_loses_range_3d(alpha, field)
         phase = _source_phase(
-            k, direction, center, 1.0, "DDA far-field phase")
-        contribution = phase * (projection * q)
+            k, normalized_direction, center, 1.0,
+            "DDA far-field phase")
+        projected = _dipole_cross(
+            _dipole_cross(projection_direction, q),
+            projection_direction) / projection_norm_squared
+        contribution = phase * projected
         prefactor, scale_fraction, scale_exponent =
             _farfield_prefactor_dda_3d(k)
         value = iszero(scale_fraction) ?
@@ -1664,7 +1678,7 @@ end
         all(isfinite, value) && return value
     end
     return _farfield_alpha_contribution_bigfloat_dda_3d(
-        alpha, field, k, direction, center)
+        alpha, field, k, supplied_direction, center)
 end
 
 @inline function _dda_farfield_phase_requires_exact(
@@ -1711,18 +1725,20 @@ end
             BigFloat(supplied_direction[2]),
             BigFloat(supplied_direction[3]),
         )
-        n = direction / sqrt(sum(abs2, direction))
+        direction_norm_squared = sum(abs2, direction)
+        direction_norm = sqrt(direction_norm_squared)
         prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
         total = zero(SVector{3,Complex{BigFloat}})
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
             q = _alpha_apply_bigfloat_vector_3d(
                 res.alpha[j], res.E_total[j])
-            projected = q - n * sum(
-                n[index] * q[index] for index in 1:3)
+            projected = cross(cross(direction, q), direction) /
+                        direction_norm_squared
             phase_argument = BigFloat(res.k0) * sum(
-                n[index] * BigFloat(res.grid.centers[j][index])
-                for index in 1:3)
+                direction[index] *
+                BigFloat(res.grid.centers[j][index])
+                for index in 1:3) / direction_norm
             total += exp(Complex{BigFloat}(0, phase_argument)) *
                      prefactor * projected
         end
@@ -1741,19 +1757,23 @@ end
 function _farfield_sum_dda_3d(
         res::DDAResult3D,
         supplied_direction::Vec3,
-        normalized_direction::Vec3,
-        projection)
+        normalized_direction::Vec3)
     _dda_farfield_phase_requires_exact(
         res, supplied_direction, normalized_direction) &&
         return _farfield_sum_bigfloat_dda_3d(
             res, supplied_direction)
+    projection_direction = _source_power_of_two_scaled_direction(
+        supplied_direction)
+    projection_norm_squared = sum(abs2, projection_direction)
     total = zero(CVec3)
     try
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
             contribution = _farfield_alpha_contribution_dda_3d(
                 res.alpha[j], res.E_total[j], res.k0,
-                normalized_direction, res.grid.centers[j], projection)
+                supplied_direction, normalized_direction,
+                projection_direction, res.grid.centers[j],
+                projection_norm_squared)
             next_total = total + contribution
             all(isfinite, next_total) ||
                 return _farfield_sum_bigfloat_dda_3d(
@@ -1779,8 +1799,7 @@ for unit observation direction `rhat`.
 """
 function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
-    proj = _I3_DDA - n * transpose(n)
-    return _farfield_sum_dda_3d(res, rhat, n, proj)
+    return _farfield_sum_dda_3d(res, rhat, n)
 end
 
 function farfield_dda_3d(res::DDAResult3D, rhat::AbstractVector{Vec3})

@@ -575,6 +575,22 @@ end
            _SOURCE_SCALING_SAFE_EXPONENT
 end
 
+@inline function _source_power_of_two_scaled_direction(
+    direction::Vec3,
+)
+    maximum_exponent = typemin(Int)
+    @inbounds for value in direction
+        iszero(value) && continue
+        maximum_exponent = max(maximum_exponent, exponent(abs(value)))
+    end
+    scale_exponent = -maximum_exponent
+    return Vec3(
+        ldexp(direction[1], scale_exponent),
+        ldexp(direction[2], scale_exponent),
+        ldexp(direction[3], scale_exponent),
+    )
+end
+
 @noinline function _source_directional_phase_exact(
     scale::Float64,
     direction::Vec3,
