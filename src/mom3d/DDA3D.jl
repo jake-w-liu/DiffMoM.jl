@@ -318,6 +318,36 @@ end
 # significands for the small (at most 6x6) solves, while keeping this rare
 # exponent-range recovery path bounded in time and memory.
 const _POLARIZABILITY_FALLBACK_PRECISION = 256
+const _POLARIZABILITY_SAFE_FACTOR_EXPONENT = 128
+
+@inline function _polarizability_extreme_component_3d(value::Real)
+    magnitude = abs(Float64(value))
+    iszero(magnitude) && return false
+    component_exponent = exponent(magnitude)
+    return component_exponent < -_POLARIZABILITY_SAFE_FACTOR_EXPONENT ||
+           component_exponent > _POLARIZABILITY_SAFE_FACTOR_EXPONENT
+end
+
+@inline function _radiative_correction_requires_bigfloat_3d(
+        k::Float64, alpha::Number)
+    iszero(k) && return false
+    return _polarizability_extreme_component_3d(k) ||
+           _polarizability_extreme_component_3d(real(alpha)) ||
+           _polarizability_extreme_component_3d(imag(alpha))
+end
+
+@inline function _radiative_correction_requires_bigfloat_3d(
+        k::Float64, alpha::AbstractArray)
+    iszero(k) && return false
+    _polarizability_extreme_component_3d(k) && return true
+    @inbounds for value in alpha
+        if _polarizability_extreme_component_3d(real(value)) ||
+           _polarizability_extreme_component_3d(imag(value))
+            return true
+        end
+    end
+    return false
+end
 
 @noinline function _scaled_alpha_apply_bigfloat_3d(
         alpha::Number,
@@ -534,6 +564,9 @@ function clausius_mossotti_polarizability(eps_r::Number, volume::Real;
         if !radiative_correction
             return alpha0
         end
+        _radiative_correction_requires_bigfloat_3d(k, alpha0) &&
+            return _clausius_mossotti_bigfloat(
+                epsc, V, k, radiative_correction)
         corrected = alpha0 / (1 + 1im * k^3 * alpha0 / (6π))
         isfinite(corrected) && return corrected
     end
@@ -560,6 +593,10 @@ function clausius_mossotti_polarizability(eps_r::AbstractMatrix, volume::Real;
         if !radiative_correction
             return alpha0
         end
+        _radiative_correction_requires_bigfloat_3d(k, alpha0) &&
+            return _CMat3DDA(Tuple(_clausius_mossotti_bigfloat(
+                epsm, V, k, radiative_correction,
+                "Tensor Clausius-Mossotti polarizability")))
         corrected = alpha0 / (_CI3_DDA + 1im * k^3 * alpha0 / (6π))
         all(isfinite, corrected) && return corrected
     end

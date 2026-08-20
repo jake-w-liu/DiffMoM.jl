@@ -248,13 +248,15 @@ returned polarizability acts on the solver fields `[E; H]` and returns
     if inverse_denom !== nothing
         alpha_norm = V * (3 * ((C - I6) * inverse_denom))
         if all(isfinite, alpha_norm)
-            if radiative_correction
+            use_bigfloat_correction = radiative_correction &&
+                _radiative_correction_requires_bigfloat_3d(k, alpha_norm)
+            if radiative_correction && !use_bigfloat_correction
                 alpha_norm = alpha_norm /
                     (I6 + 1im * k^3 * alpha_norm / (6π))
             end
             # Check scalar entries before materializing the 576-byte transformed
             # SMatrix, so heterogeneous voxel builds do not box a temporary matrix.
-            all(isfinite, alpha_norm) &&
+            !use_bigfloat_correction && all(isfinite, alpha_norm) &&
                 _transformed_alpha6_isfinite_3d(alpha_norm, eta) &&
                 return _transform_normalized_alpha6_3d(alpha_norm, eta)
         end

@@ -80,6 +80,26 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test all(isfinite, corrected_tensor_alpha)
         @test corrected_tensor_alpha == corrected_alpha *
                                            Matrix{ComplexF64}(I, 3, 3)
+        tiny_radiative_k = 1.0e-108
+        tiny_k_corrected_alpha = clausius_mossotti_polarizability(
+            2.0, 1.0e308;
+            k0=tiny_radiative_k,
+            radiative_correction=true)
+        tiny_k_reference = setprecision(BigFloat, 512) do
+            alpha_big = 3 * BigFloat(1.0e308) *
+                        (BigFloat(2) - 1) / (BigFloat(2) + 2)
+            ComplexF64(alpha_big /
+                (1 + Complex{BigFloat}(0, 1) *
+                 BigFloat(tiny_radiative_k)^3 * alpha_big /
+                 (6 * BigFloat(pi))))
+        end
+        @test tiny_k_corrected_alpha == tiny_k_reference
+        tiny_k_corrected_tensor = clausius_mossotti_polarizability(
+            Matrix{Float64}(2I, 3, 3), 1.0e308;
+            k0=tiny_radiative_k,
+            radiative_correction=true)
+        @test tiny_k_corrected_tensor == tiny_k_reference *
+                                          Matrix{ComplexF64}(I, 3, 3)
         @test_throws OverflowError clausius_mossotti_polarizability(
             Matrix{Float64}(10I, 3, 3), 1.0e308)
         near_resonance_delta = 1.0e-10

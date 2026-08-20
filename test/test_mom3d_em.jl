@@ -46,6 +46,22 @@ end
         @test corrected_bianisotropic_alpha ==
               ComplexF64(0.0, -8.726646259971649e-308) *
               Matrix{ComplexF64}(I, 6, 6)
+        tiny_radiative_k = 1.0e-108
+        tiny_k_bianisotropic_alpha =
+            bianisotropic_clausius_mossotti_polarizability(
+                Matrix{Float64}(2I, 6, 6), 1.0e308;
+                k0=tiny_radiative_k,
+                radiative_correction=true)
+        tiny_k_reference = setprecision(BigFloat, 512) do
+            alpha_big = 3 * BigFloat(1.0e308) *
+                        (BigFloat(2) - 1) / (BigFloat(2) + 2)
+            ComplexF64(alpha_big /
+                (1 + Complex{BigFloat}(0, 1) *
+                 BigFloat(tiny_radiative_k)^3 * alpha_big /
+                 (6 * BigFloat(pi))))
+        end
+        @test tiny_k_bianisotropic_alpha == tiny_k_reference *
+                                               Matrix{ComplexF64}(I, 6, 6)
         @test_throws OverflowError bianisotropic_clausius_mossotti_polarizability(
             Matrix{Float64}(10I, 6, 6), 1.0e308)
         near_resonance_delta = 1.0e-10
