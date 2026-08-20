@@ -1474,6 +1474,24 @@ println("\n── Test 41: PeriodicEFIE ──")
             quad_order=1)
         @test all(isfinite, tiny_guard_matrix)
 
+        # Coplanarity is also a geometric boundary decision. A subtraction
+        # rounded back to the tolerance must not hide an exact excess.
+        coplanar_tolerance = 1e-12
+        coplanar_delta = eps(coplanar_tolerance) / 4
+        rounded_nonplanar_mesh = TriMesh(
+            Float64[
+                0 1 0
+                0 0 1
+                -coplanar_delta coplanar_tolerance coplanar_tolerance
+            ],
+            reshape(1:3, 3, 1),
+        )
+        @test abs(maximum(rounded_nonplanar_mesh.xyz[3, :]) -
+                  minimum(rounded_nonplanar_mesh.xyz[3, :])) ==
+              coplanar_tolerance
+        @test_throws ArgumentError DiffMoM._assert_coplanar_periodic_mesh(
+            rounded_nonplanar_mesh; atol=coplanar_tolerance)
+
         # One relative tolerance can underflow to exact matching while the
         # other remains positive; zero-width hash dimensions stay valid.
         mixed_dx = 1e-323

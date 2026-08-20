@@ -341,13 +341,18 @@ function _build_periodic_efie_geometry_cache(
 end
 
 function _assert_coplanar_periodic_mesh(mesh::TriMesh; atol::Float64=1e-12)
+    isfinite(atol) && atol >= 0.0 ||
+        throw(ArgumentError(
+            "PeriodicEFIE coplanarity tolerance must be finite and " *
+            "nonnegative, got $atol"))
     zvals = @view mesh.xyz[3, :]
     zmin = minimum(zvals)
     zmax = maximum(zvals)
-    if abs(zmax - zmin) > atol
+    spread = abs(zmax - zmin)
+    if !_periodic_coordinate_within(zmax, zmin, atol)
         throw(ArgumentError(
             "PeriodicEFIE currently supports coplanar unit-cell meshes only " *
-            "(max z spread <= $(atol)). Got z spread=$(abs(zmax - zmin))."
+            "(max z spread <= $(atol)). Got z spread=$spread."
         ))
     end
 end
