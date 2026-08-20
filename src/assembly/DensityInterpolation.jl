@@ -202,14 +202,8 @@ function precompute_triangle_mass(
             for bj in eachindex(basis_on_t)
                 n = basis_on_t[bj]
 
-                val = zero(Tmass)
-                for q in 1:Nq
-                    rq = quad_pts[t][q]
-                    fm = eval_rwg(rwg, m, rq, t)
-                    fn = eval_rwg(rwg, n, rq, t)
-                    val += wq[q] * dot(fm, fn)
-                end
-                val *= 2 * A  # reference-to-physical Jacobian
+                val = _local_surface_mass_entry(
+                    Tmass, rwg, m, n, t, quad_pts[t], wq, A)
 
                 if val != zero(Tmass)
                     push!(rows, m)

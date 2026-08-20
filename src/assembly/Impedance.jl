@@ -8,6 +8,120 @@ export assemble_Z_impedance, precompute_patch_mass, assemble_dZ_dtheta
 const _DEFAULT_MAX_MASS_PRECOMPUTE_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_MASS_PRECOMPUTE_TERMS = 200_000_000
 
+@noinline function _local_surface_mass_entry_exact(
+        ::Type{T}, rwg::RWGData, m::Int, n::Int, triangle::Int,
+        points::AbstractVector{Vec3}, weights::AbstractVector{Float64},
+        area::Float64) where {T<:Number}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        total = zero(Complex{BigFloat})
+        @inbounds for quadrature_index in eachindex(weights)
+            point = points[quadrature_index]
+            first_basis = eval_rwg(rwg, m, point, triangle)
+            second_basis = eval_rwg(rwg, n, point, triangle)
+            inner_product = zero(Complex{BigFloat})
+            for component in 1:3
+                inner_product +=
+                    conj(Complex{BigFloat}(first_basis[component])) *
+                    Complex{BigFloat}(second_basis[component])
+            end
+            total += BigFloat(weights[quadrature_index]) * inner_product
+        end
+        return _local_mass_convert_bigfloat(
+            T, total * (2 * BigFloat(area)),
+            "local surface mass entry", (triangle, m, n))
+    end
+end
+
+@noinline function _local_surface_mass_scale_exact(
+        value::T, area::Float64, triangle::Int, m::Int, n::Int) where
+        {T<:Number}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        return _local_mass_convert_bigfloat(
+            T, Complex{BigFloat}(value) * (2 * BigFloat(area)),
+            "local surface mass entry", (triangle, m, n))
+    end
+end
+
+@inline function _local_surface_mass_scale_component(
+        component::Float64, normalized_factor::Float64,
+        area_exponent::Int)
+    return ldexp(component, area_exponent) * normalized_factor
+end
+
+@inline function _local_surface_mass_scale(
+        value::T, area::Float64, triangle::Int, m::Int, n::Int) where
+        {T<:Number}
+    iszero(value) && return zero(T)
+    twice_area = 2 * area
+    ordinary = value * twice_area
+    if isfinite(twice_area) && _local_mass_finite(ordinary)
+        real_ordinary = real(ordinary)
+        imag_ordinary = imag(ordinary)
+        real_safe = iszero(real(value)) ||
+                    (!iszero(real_ordinary) &&
+                     abs(real_ordinary) >= floatmin(Float64))
+        imag_safe = iszero(imag(value)) ||
+                    (!iszero(imag_ordinary) &&
+                     abs(imag_ordinary) >= floatmin(Float64))
+        real_safe && imag_safe && return ordinary
+    end
+    fraction, area_exponent = frexp(area)
+    normalized_factor = 2 * fraction
+    scaled = if T <: Real
+        convert(T, _local_surface_mass_scale_component(
+            value, normalized_factor, area_exponent))
+    else
+        convert(T, Complex(
+            _local_surface_mass_scale_component(
+                real(value), normalized_factor, area_exponent),
+            _local_surface_mass_scale_component(
+                imag(value), normalized_factor, area_exponent)))
+    end
+    if _local_mass_finite(scaled)
+        real_lost = !iszero(real(value)) &&
+                    (iszero(real(scaled)) ||
+                     abs(real(scaled)) < floatmin(Float64))
+        imag_lost = !iszero(imag(value)) &&
+                    (iszero(imag(scaled)) ||
+                     abs(imag(scaled)) < floatmin(Float64))
+        !(real_lost || imag_lost) && return scaled
+    end
+    return _local_surface_mass_scale_exact(
+        value, area, triangle, m, n)
+end
+
+@inline function _local_surface_mass_entry(
+        ::Type{T}, rwg::RWGData, m::Int, n::Int, triangle::Int,
+        points::AbstractVector{Vec3}, weights::AbstractVector{Float64},
+        area::Float64) where {T<:Number}
+    value = zero(T)
+    @inbounds for quadrature_index in eachindex(weights)
+        point = points[quadrature_index]
+        first_basis = eval_rwg(rwg, m, point, triangle)
+        second_basis = eval_rwg(rwg, n, point, triangle)
+        needs_exact = false
+        for component in 1:3
+            needs_exact |= _local_mass_extreme_factor(
+                first_basis[component], Float64)
+            needs_exact |= _local_mass_extreme_factor(
+                second_basis[component], Float64)
+        end
+        if needs_exact
+            return _local_surface_mass_entry_exact(
+                T, rwg, m, n, triangle, points, weights, area)
+        end
+        term = weights[quadrature_index] * dot(first_basis, second_basis)
+        updated = value + term
+        if !_local_mass_finite(term) || !_local_mass_finite(updated) ||
+           _local_mass_extreme_factor(term, Float64)
+            return _local_surface_mass_entry_exact(
+                T, rwg, m, n, triangle, points, weights, area)
+        end
+        value = updated
+    end
+    return _local_surface_mass_scale(value, area, triangle, m, n)
+end
+
 function _mass_precompute_base_bytes(
         N::Int, Nt::Int, Nq::Int, collection_count::Int,
         patch_mode::Bool)
@@ -250,15 +364,9 @@ function precompute_patch_mass(
             for bj in eachindex(basis_on_t)
                 n = basis_on_t[bj]
 
-                # Compute ∫_t f_m · f_n dS
-                val = zero(Tmass)
-                for q in 1:Nq
-                    rq = quad_pts[t][q]
-                    fm = eval_rwg(rwg, m, rq, t)
-                    fn = eval_rwg(rwg, n, rq, t)
-                    val += wq[q] * dot(fm, fn)
-                end
-                val *= 2 * A  # reference-to-physical scaling
+                # Compute ∫_t f_m · f_n dS without forming an overflowing 2A.
+                val = _local_surface_mass_entry(
+                    Tmass, rwg, m, n, t, quad_pts[t], wq, A)
 
                 if val != zero(Tmass)
                     push!(rows_p[p], m)

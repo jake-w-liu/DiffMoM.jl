@@ -2284,6 +2284,57 @@ Mp_at_resource_boundary = precompute_patch_mass(
     max_work_bytes=mass_patch_profile.work_bytes,
     max_terms=mass_patch_profile.term_count)
 @test Matrix.(Mp_at_resource_boundary) == Matrix.(Mp)
+
+large_mass_length = 2.0^512
+large_mass_mesh = TriMesh(
+    Float64[
+        0 large_mass_length 0 large_mass_length
+        0 0 large_mass_length large_mass_length
+        0 0 0 0
+    ],
+    Int[
+        1 2
+        2 4
+        3 3
+    ],
+)
+large_mass_rwg = build_rwg(large_mass_mesh)
+@test large_mass_rwg.nedges == 1
+@test all(isfinite, triangle_area.(Ref(large_mass_mesh), 1:2))
+@test !isfinite(2 * triangle_area(large_mass_mesh, 1))
+large_triangle_mass = precompute_triangle_mass(
+    large_mass_mesh, large_mass_rwg)
+large_mass_reference = map(1:2) do triangle
+    setprecision(BigFloat, DiffMoM._LOCAL_MASS_FALLBACK_PRECISION) do
+        xi, weights = tri_quad_rule(3)
+        points = tri_quad_points(large_mass_mesh, triangle, xi)
+        total = zero(BigFloat)
+        for quadrature_index in eachindex(weights)
+            basis = eval_rwg(
+                large_mass_rwg, 1, points[quadrature_index], triangle)
+            total += BigFloat(weights[quadrature_index]) *
+                     sum(abs2, BigFloat.(basis))
+        end
+        Float64(total * 2 * BigFloat(triangle_area(
+            large_mass_mesh, triangle)))
+    end
+end
+@test [large_triangle_mass[t][1, 1] for t in 1:2] ≈
+      large_mass_reference rtol=2eps(Float64)
+large_patch_mass = precompute_patch_mass(
+    large_mass_mesh, large_mass_rwg, PatchPartition([1, 1], 1))
+large_patch_reference = setprecision(
+        BigFloat, DiffMoM._LOCAL_MASS_FALLBACK_PRECISION) do
+    Float64(sum(BigFloat, large_mass_reference))
+end
+large_patch_assembled_reference = setprecision(
+        BigFloat, DiffMoM._LOCAL_MASS_FALLBACK_PRECISION) do
+    Float64(sum(BigFloat,
+        [large_triangle_mass[t][1, 1] for t in 1:2]))
+end
+@test large_patch_mass[1][1, 1] == large_patch_assembled_reference
+@test large_patch_mass[1][1, 1] ≈
+      large_patch_reference rtol=2eps(Float64)
 dZ_first = assemble_dZ_dtheta(Mp, 1)
 @test Matrix(dZ_first) == -Matrix(Mp[1])
 @test_throws ArgumentError assemble_dZ_dtheta(Mp, 0)
