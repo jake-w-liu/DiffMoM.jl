@@ -917,6 +917,10 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         _add_scaled_matrix!(
             A21, (c_zh_ext - c_zh_int) * 0.5, Gram)
     end
+    all(isfinite, A) ||
+        throw(OverflowError(
+            "dielectric SIE matrix contains entries outside the " *
+            "representable ComplexF64 range"))
     return A, exterior, interior
 end
 

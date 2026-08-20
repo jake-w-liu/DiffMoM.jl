@@ -313,6 +313,32 @@ end
     @test_throws BoundsError size(K_mf, 0)
     @test all(isfinite, real.(K))
     @test all(isfinite, imag.(K))
+    surface_range_k = 0.1
+    unit_surface_range_Z = assemble_Z_efie(
+        mesh, rwg, surface_range_k;
+        quad_order=1, eta0=1.0, mesh_precheck=false)
+    unit_surface_range_scale = maximum(
+        max(abs(real(value)), abs(imag(value)))
+        for value in unit_surface_range_Z)
+    surface_range_eta = 0.75 * floatmax(Float64) /
+                        unit_surface_range_scale
+    finite_surface_range_Z = assemble_Z_efie(
+        mesh, rwg, surface_range_k;
+        quad_order=1,
+        eta0=surface_range_eta,
+        mesh_precheck=false,
+    )
+    @test all(isfinite, finite_surface_range_Z)
+    @test_throws OverflowError assemble_dielectric_sie_3d(
+        mesh,
+        rwg,
+        surface_range_k,
+        1.0 + 0im;
+        eta0=surface_range_eta,
+        quad_order=1,
+        singular_quad_order=1,
+        mesh_precheck=false,
+    )
     xk = ComplexF64[sin(0.2 * i) + 1im * cos(0.17 * i) for i in 1:N]
     yk = zeros(ComplexF64, N)
     mul!(yk, K_mf, xk)
