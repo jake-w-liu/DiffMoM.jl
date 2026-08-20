@@ -509,23 +509,21 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
                     # Vector singular remainder: [J(rq) − J(r'_*)]/(4πR)
                     Rv = robs - rq
-                    R = sqrt(dot(Rv, Rv))
+                    R = hypot(hypot(Rv[1], Rv[2]), Rv[3])
                     if !iszero(R)
                         dJ = Jq - J_star
-                        crem = (wt * inv4pi) / R
+                        crem = ((2 * At) / R) * (wq[q] * inv4pi)
                         Ex += pref_vec * dJ[1] * crem
                         Ey += pref_vec * dJ[2] * crem
                         Ez += pref_vec * dJ[3] * crem
                     end
 
                     if abs(divt) > 0.0
-                        # Scalar smooth part: ∇G_smooth = ∇G − ∇(1/4πR)
-                        gradG = _grad_greens_unchecked(robs, rq, k)
-                        if !iszero(R)
-                            direction = Rv / R
-                            inv4piR2 = (inv4pi / R) / R
-                            gradG = gradG + direction * inv4piR2
-                        end
+                        # Evaluate ∇G_smooth directly.  Subtracting its two
+                        # O(1/R²) constituents can overflow independently or
+                        # cancel all significant bits even though their smooth
+                        # remainder is finite.
+                        gradG = _grad_greens_smooth_unchecked(robs, rq, k)
                         Ex += pref_scl * divt * (wt * gradG[1])
                         Ey += pref_scl * divt * (wt * gradG[2])
                         Ez += pref_scl * divt * (wt * gradG[3])

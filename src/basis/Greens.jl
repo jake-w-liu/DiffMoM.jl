@@ -90,6 +90,30 @@ end
            (4 * real_type(π) * distance)
 end
 
+@inline function _grad_greens_smooth_unchecked(
+        r::SVector{3}, rp::SVector{3}, k)
+    real_type = _green_promoted_real_type(r, rp, k)
+    if real_type === Float64
+        _green_has_exact_float64_conversions(r, rp, k) &&
+            return _grad_greens_smooth_unchecked(
+                Vec3(r), Vec3(rp), ComplexF64(k))
+        return _grad_greens_smooth_exact(r, rp, k)
+    end
+    dx, dy, dz, distance, wavenumber =
+        _green_promoted_geometry(r, rp, k)
+    if iszero(distance)
+        value = zero(wavenumber)
+        return SVector{3}(value, value, value)
+    end
+    phase_rate = Complex{real_type}(
+        imag(wavenumber), -real(wavenumber))
+    phase_argument = phase_rate * distance
+    radial_derivative = phase_rate * phase_rate /
+                        (4 * real_type(π)) *
+                        _green_smooth_radial_ratio(phase_argument)
+    return radial_derivative * SVector(dx, dy, dz) / distance
+end
+
 @inline function _grad_greens_unchecked(r::SVector{3}, rp::SVector{3}, k)
     real_type = _green_promoted_real_type(r, rp, k)
     if real_type === Float64
@@ -197,6 +221,37 @@ end
     return total
 end
 
+# Stable quotient for the radial derivative of the smooth Green kernel:
+#
+#   [exp(z)(z - 1) + 1] / z²
+#
+# Its removable value at z = 0 is 1/2.  Forming the numerator by subtraction
+# loses every useful bit for small z (and can erase it completely before a
+# singularity-subtracted near-field integral applies its quadrature weight).
+@inline function _green_smooth_radial_ratio(
+    phase_argument::Complex{T},
+) where {T<:AbstractFloat}
+    if abs(phase_argument) > 1.0
+        return (exp(phase_argument) *
+                (phase_argument - one(phase_argument)) +
+                one(phase_argument)) /
+               (phase_argument * phase_argument)
+    end
+
+    term = one(phase_argument) / 2
+    total = term
+    correction = zero(phase_argument)
+    @inbounds for order in 0:_GREEN_EXPREL_TERMS-1
+        term *= phase_argument * (order + 2) /
+                ((order + 3) * (order + 1))
+        corrected_term = term - correction
+        updated_total = total + corrected_term
+        correction = (updated_total - total) - corrected_term
+        total = updated_total
+    end
+    return total
+end
+
 @noinline function _greens_exact(
     r::SVector{3,<:Real}, rp::SVector{3,<:Real}, k::Number)
     return setprecision(BigFloat, _GREEN_FALLBACK_PRECISION) do
@@ -255,6 +310,39 @@ end
         gz = iszero(dz) ? zero_value :
              ((radial_factor * (dz / distance)) / distance) / distance
         return CVec3(ComplexF64(gx), ComplexF64(gy), ComplexF64(gz))
+    end
+end
+
+@noinline function _grad_greens_smooth_exact(
+    r::SVector{3,<:Real}, rp::SVector{3,<:Real}, k::Number)
+    return setprecision(BigFloat, _GREEN_FALLBACK_PRECISION) do
+        dx = BigFloat(r[1]) - BigFloat(rp[1])
+        dy = BigFloat(r[2]) - BigFloat(rp[2])
+        dz = BigFloat(r[3]) - BigFloat(rp[3])
+        distance = sqrt(dx * dx + dy * dy + dz * dz)
+        if iszero(distance)
+            return CVec3(0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im)
+        end
+
+        q = Complex{BigFloat}(BigFloat(imag(k)), -BigFloat(real(k)))
+        phase_argument = q * distance
+        inv_four_pi = inv(4 * BigFloat(π))
+        radial_derivative = q * q * inv_four_pi *
+                            _green_smooth_radial_ratio(phase_argument)
+        zero_value = zero(phase_argument)
+        value = CVec3(
+            ComplexF64(iszero(dx) ? zero_value :
+                       radial_derivative * (dx / distance)),
+            ComplexF64(iszero(dy) ? zero_value :
+                       radial_derivative * (dy / distance)),
+            ComplexF64(iszero(dz) ? zero_value :
+                       radial_derivative * (dz / distance)),
+        )
+        all(isfinite, value) ||
+            throw(OverflowError(
+                "smooth Green-function gradient is outside the " *
+                "ComplexF64 range"))
+        return value
     end
 end
 
@@ -337,6 +425,31 @@ end
     )
     all(isfinite, value) && return value
     return _grad_greens_exact(r, rp, k)
+end
+
+@inline function _grad_greens_smooth_unchecked(
+    r::Vec3, rp::Vec3, k::_GreenFloatWavenumber)
+    dx, dy, dz, distance = _green_float_geometry(r, rp)
+    if iszero(distance)
+        return CVec3(0.0 + 0.0im, 0.0 + 0.0im, 0.0 + 0.0im)
+    end
+
+    q = ComplexF64(imag(k), -real(k))
+    phase_argument = q * distance
+    if _green_float_requires_fallback(
+        r, rp, dx, dy, dz, distance, k, phase_argument)
+        return _grad_greens_smooth_exact(r, rp, k)
+    end
+
+    radial_derivative = (q * q) * _INV_FOUR_PI *
+                        _green_smooth_radial_ratio(phase_argument)
+    value = radial_derivative * CVec3(
+        dx / distance,
+        dy / distance,
+        dz / distance,
+    )
+    all(isfinite, value) && return value
+    return _grad_greens_smooth_exact(r, rp, k)
 end
 
 """

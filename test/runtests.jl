@@ -3444,6 +3444,29 @@ nearfield_scale_result = compute_nearfield(
     eta0=nearfield_scale_max, check_surface=false)
 @test nearfield_scale_result == nearfield_scale_reference
 
+# Uniformly scaling every coordinate by L while changing k to k/L leaves the
+# vector-potential contribution unchanged and multiplies the scalar-potential
+# prefactor by the compensating 1/L.  A power-of-two L makes that identity
+# exact in the stored meshes.  The historical near branch formed the two
+# O(1/R²) pieces of ∇G_smooth separately; both overflowed on this valid mesh
+# even though the final field is finite.
+nearfield_tiny_length = ldexp(1.0, -530)
+nearfield_unit_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+nearfield_unit_rwg = build_rwg(nearfield_unit_mesh)
+nearfield_unit_point = Vec3(0.0, 0.0, 1 / 64)
+nearfield_tiny_mesh = make_rect_plate(
+    nearfield_tiny_length, nearfield_tiny_length, 1, 1)
+nearfield_tiny_rwg = build_rwg(nearfield_tiny_mesh)
+nearfield_tiny_reference = compute_nearfield(
+    nearfield_unit_mesh, nearfield_unit_rwg, ComplexF64[1],
+    nearfield_unit_point, nearfield_tiny_length;
+    quad_order=3, eta0=1.0, check_surface=false, surface_tol=0.0)
+nearfield_tiny_result = compute_nearfield(
+    nearfield_tiny_mesh, nearfield_tiny_rwg, ComplexF64[1],
+    nearfield_tiny_length * nearfield_unit_point, 1.0;
+    quad_order=3, eta0=1.0, check_surface=false, surface_tol=0.0)
+@test nearfield_tiny_result == nearfield_tiny_reference
+
 obs_mat = hcat(obs_points...)
 E_nf_mat = compute_nearfield(mesh, rwg, I_pec, obs_mat, k; quad_order=3, eta0=eta0)
 @assert norm(E_nf - E_nf_mat) < 1e-12 * max(norm(E_nf), 1.0)
