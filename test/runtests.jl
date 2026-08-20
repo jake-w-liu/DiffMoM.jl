@@ -8460,6 +8460,49 @@ for po_parallel_amplitude in (ldexp(1.0, 120), ldexp(1.0, 200))
     @test all(iszero, po_parallel_result.E_ff)
 end
 
+# The exact PO phase uses normalized supplied incident and observation
+# directions.  A large rigid translation must therefore produce the physical
+# normalized translation phase, not one amplified from their rounded norms.
+po_translation_xyz = Float64[
+     0.0   0.0   0.0   0.0;
+    -0.5   0.5  -0.5   0.5;
+    -0.5  -0.5   0.5   0.5
+]
+po_translation_triangles = Int[1 1; 2 4; 4 3]
+po_translation_base = TriMesh(
+    po_translation_xyz, po_translation_triangles)
+po_translation_shift = 1.0e16
+po_translation_shifted_xyz = copy(po_translation_xyz)
+po_translation_shifted_xyz[1, :] .+= po_translation_shift
+po_translation_shifted = TriMesh(
+    po_translation_shifted_xyz, copy(po_translation_triangles))
+po_translation_direction = Vec3(
+    po_parallel_component, po_parallel_component, 0.0)
+po_translation_grid = SphGrid(
+    reshape(collect(po_translation_direction), 3, 1),
+    [π / 2], [π / 4], [1.0])
+po_translation_excitation = PlaneWaveExcitation(
+    Vec3(-1.0, 0.0, 0.0), ldexp(1.0, 200), Vec3(0.0, 0.0, 1.0))
+po_translation_base_result = solve_po(
+    po_translation_base, 1.0, po_translation_excitation;
+    grid=po_translation_grid, c0=2π)
+po_translation_shifted_result = solve_po(
+    po_translation_shifted, 1.0, po_translation_excitation;
+    grid=po_translation_grid, c0=2π)
+po_translation_index = argmax(abs.(po_translation_base_result.E_ff[:, 1]))
+po_translation_ratio =
+    po_translation_shifted_result.E_ff[po_translation_index, 1] /
+    po_translation_base_result.E_ff[po_translation_index, 1]
+po_translation_phase = setprecision(BigFloat, 4608) do
+    direction = SVector{3,BigFloat}(BigFloat.(po_translation_direction))
+    normalized_direction = direction / sqrt(sum(abs2, direction))
+    ComplexF64(exp(Complex{BigFloat}(
+        0, BigFloat(po_translation_shift) *
+           (normalized_direction[1] + 1))))
+end
+@test po_translation_ratio ≈
+      po_translation_phase rtol=4eps(Float64) atol=0.0
+
 n_illum = count(po_result.illuminated)
 n_total = ntriangles(po_mesh)
 # For a plate at z=0 with normals pointing in +z, wave from +z traveling -z

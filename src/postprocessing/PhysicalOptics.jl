@@ -299,7 +299,7 @@ end
         k::Float64,
         amplitude::Float64,
         r_hat::Vec3,
-        k_hat::Vec3,
+        incident_wavevector::Vec3,
         directions::Vector{Vec3},
         vertex1::Vector{Vec3},
         vertex2::Vector{Vec3},
@@ -311,8 +311,12 @@ end
         totals = zeros(Complex{BigFloat}, 3)
         k_big = BigFloat(k)
         r_big = SVector{3,BigFloat}(BigFloat.(r_hat))
-        incident_big = SVector{3,BigFloat}(BigFloat.(k_hat))
-        delta_big = r_big - incident_big
+        r_norm_squared = sum(abs2, r_big)
+        r_unit_big = r_big / sqrt(r_norm_squared)
+        incident_big = SVector{3,BigFloat}(
+            BigFloat.(incident_wavevector))
+        incident_unit_big = incident_big / sqrt(sum(abs2, incident_big))
+        delta_big = r_unit_big - incident_unit_big
         scale = Complex{BigFloat}(0, 1) * k_big *
                 BigFloat(amplitude) / BigFloat(2π)
         @inbounds for triangle in eachindex(illuminated)
@@ -329,7 +333,7 @@ end
             surface_direction = SVector{3,BigFloat}(
                 BigFloat.(directions[triangle]))
             projection = cross(r_big, cross(r_big, surface_direction)) /
-                         sum(abs2, r_big)
+                         r_norm_squared
             for component in 1:3
                 totals[component] += scale *
                     projection[component] * integral
@@ -563,7 +567,8 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
     E_ff = zeros(ComplexF64, 3, NΩ)
 
     for q in 1:NΩ
-        r_hat = rhat_vec[q]
+        supplied_r_hat = rhat_vec[q]
+        r_hat = _validated_farfield_direction(supplied_r_hat)
         # Phase: exp(jk(r̂ - k̂_prop)·r')
         delta_k = r_hat - k_hat
 
@@ -581,7 +586,7 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
         end
         if direction_requires_exact
             E_q = _po_farfield_direction_geometry_exact(
-                k, E0, r_hat, k_hat, V_t,
+                k, E0, supplied_r_hat, k_vec, V_t,
                 tri_v1, tri_v2, tri_v3, tri_area, illuminated, q)
             E_ff[1, q] = E_q[1]
             E_ff[2, q] = E_q[2]
