@@ -251,20 +251,23 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             amplitude_underflow_scale, amplitude_underflow_pol,
         ) == [amplitude_underflow_reference]
 
-        # The same phase product appears in DDA far-field translation.  Use a
-        # one-voxel stored result with a z-directed dipole so the projection is
-        # exact and independently check the full public result.
+        # The same phase product appears in DDA far-field translation.  The
+        # supplied direction must also be normalized before it is multiplied
+        # by the very large center; rounding its normalized components first
+        # selects an unrelated phase.  A z-directed dipole keeps the angular
+        # projection exact while the full public result is checked.
         phase_cancel_result = DDAResult3D(
             CVec3[CVec3(0.0 + 0im, 0.0 + 0im, 1.0 + 0im)],
             CVec3[zero(CVec3)],
             ComplexF64[2.0], ComplexF64[1.0],
             Matrix{ComplexF64}(I, 3, 3), nothing, :direct, nothing,
             phase_cancel_grid, 1.0, false)
-        phase_cancel_rhat = DiffMoM._normalized_real_direction_dda_3d(
-            phase_cancel_kvec, "phase-cancellation reference direction")
         phase_cancel_farfield_reference = setprecision(BigFloat, 4352) do
+            direction = SVector{3,BigFloat}(
+                BigFloat.(phase_cancel_kvec))
+            direction /= sqrt(sum(abs2, direction))
             argument = sum(
-                BigFloat(phase_cancel_rhat[index]) *
+                direction[index] *
                 BigFloat(phase_cancel_center[index]) for index in 1:3)
             value = ComplexF64(
                 exp(Complex{BigFloat}(0, argument)) /

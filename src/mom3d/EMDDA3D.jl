@@ -1170,15 +1170,18 @@ end
 
 @noinline function _em_farfield_sum_bigfloat_3d(
         res::EMDDAResult3D,
-        direction::Vec3,
+        supplied_direction::Vec3,
         eta::Float64)
-    return setprecision(
-            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
-        n = SVector{3,BigFloat}(
-            BigFloat(direction[1]),
-            BigFloat(direction[2]),
-            BigFloat(direction[3]),
+    precision = _directional_farfield_precision_3d(
+        res.k0, res.grid.centers, supplied_direction,
+        _DDA_ACCUMULATION_FALLBACK_PRECISION)
+    return setprecision(BigFloat, precision) do
+        direction = SVector{3,BigFloat}(
+            BigFloat(supplied_direction[1]),
+            BigFloat(supplied_direction[2]),
+            BigFloat(supplied_direction[3]),
         )
+        n = direction / sqrt(sum(abs2, direction))
         eta_big = BigFloat(eta)
         prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
         total_E = zero(SVector{3,Complex{BigFloat}})
@@ -1225,12 +1228,18 @@ end
 
 function _em_farfield_sum_3d(
         res::EMDDAResult3D,
-        direction::Vec3,
+        supplied_direction::Vec3,
+        normalized_direction::Vec3,
         eta::Float64,
         projection)
+    _source_direction_span_requires_fallback(supplied_direction) &&
+        return _em_farfield_sum_bigfloat_3d(
+            res, supplied_direction, eta)
     @inbounds for center in res.grid.centers
-        if _source_phase_requires_fallback(res.k0, direction, center)
-            return _em_farfield_sum_bigfloat_3d(res, direction, eta)
+        if _source_phase_requires_fallback(
+                res.k0, normalized_direction, center)
+            return _em_farfield_sum_bigfloat_3d(
+                res, supplied_direction, eta)
         end
     end
     total_E = zero(CVec3)
@@ -1242,19 +1251,21 @@ function _em_farfield_sum_3d(
                 _em_farfield_alpha_contribution_3d(
                     res.alpha[j],
                     _join_em_field(res.E_total[j], res.H_total[j]),
-                    res.k0, direction, res.grid.centers[j], eta,
+                    res.k0, normalized_direction,
+                    res.grid.centers[j], eta,
                     projection)
             next_E = total_E + contribution_E
             next_H = total_H + contribution_H
             all(isfinite, next_E) && all(isfinite, next_H) ||
                 return _em_farfield_sum_bigfloat_3d(
-                    res, direction, eta)
+                    res, supplied_direction, eta)
             total_E = next_E
             total_H = next_H
         end
     catch err
         err isa OverflowError || rethrow()
-        return _em_farfield_sum_bigfloat_3d(res, direction, eta)
+        return _em_farfield_sum_bigfloat_3d(
+            res, supplied_direction, eta)
     end
     return total_E, total_H
 end
@@ -1270,7 +1281,7 @@ function farfield_em_dda_3d(res::EMDDAResult3D, rhat::Vec3;
     eta = _finite_positive_real_3d(eta0, "eta0")
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
-    return _em_farfield_sum_3d(res, n, eta, proj)
+    return _em_farfield_sum_3d(res, rhat, n, eta, proj)
 end
 
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::AbstractVector{Vec3};

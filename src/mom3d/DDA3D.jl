@@ -1669,24 +1669,49 @@ end
 
 @inline function _dda_farfield_phase_requires_exact(
         res::DDAResult3D,
-        direction::Vec3)
+        supplied_direction::Vec3,
+        normalized_direction::Vec3)
+    _source_direction_span_requires_fallback(supplied_direction) &&
+        return true
     @inbounds for center in res.grid.centers
         _source_phase_requires_fallback(
-            res.k0, direction, center) && return true
+            res.k0, normalized_direction, center) && return true
     end
     return false
 end
 
+@inline function _directional_farfield_precision_3d(
+        k::Float64,
+        centers::Vector{Vec3},
+        supplied_direction::Vec3,
+        base_precision::Int)
+    precision = _source_direction_span_requires_fallback(
+        supplied_direction) ?
+        max(base_precision, _MULTI_SOURCE_EXACT_PRECISION) :
+        base_precision
+    @inbounds for center in centers
+        precision = max(
+            precision,
+            _source_directional_phase_precision(
+                k, supplied_direction, center),
+        )
+    end
+    return precision
+end
+
 @noinline function _farfield_sum_bigfloat_dda_3d(
         res::DDAResult3D,
-        direction::Vec3)
-    return setprecision(
-            BigFloat, _DDA_ACCUMULATION_FALLBACK_PRECISION) do
-        n = SVector{3,BigFloat}(
-            BigFloat(direction[1]),
-            BigFloat(direction[2]),
-            BigFloat(direction[3]),
+        supplied_direction::Vec3)
+    precision = _directional_farfield_precision_3d(
+        res.k0, res.grid.centers, supplied_direction,
+        _DDA_ACCUMULATION_FALLBACK_PRECISION)
+    return setprecision(BigFloat, precision) do
+        direction = SVector{3,BigFloat}(
+            BigFloat(supplied_direction[1]),
+            BigFloat(supplied_direction[2]),
+            BigFloat(supplied_direction[3]),
         )
+        n = direction / sqrt(sum(abs2, direction))
         prefactor = BigFloat(res.k0)^2 / (4 * BigFloat(pi))
         total = zero(SVector{3,Complex{BigFloat}})
         @inbounds for j in 1:res.grid.nvoxels
@@ -1715,25 +1740,30 @@ end
 
 function _farfield_sum_dda_3d(
         res::DDAResult3D,
-        direction::Vec3,
+        supplied_direction::Vec3,
+        normalized_direction::Vec3,
         projection)
-    _dda_farfield_phase_requires_exact(res, direction) &&
-        return _farfield_sum_bigfloat_dda_3d(res, direction)
+    _dda_farfield_phase_requires_exact(
+        res, supplied_direction, normalized_direction) &&
+        return _farfield_sum_bigfloat_dda_3d(
+            res, supplied_direction)
     total = zero(CVec3)
     try
         @inbounds for j in 1:res.grid.nvoxels
             iszero(res.alpha[j]) && continue
             contribution = _farfield_alpha_contribution_dda_3d(
                 res.alpha[j], res.E_total[j], res.k0,
-                direction, res.grid.centers[j], projection)
+                normalized_direction, res.grid.centers[j], projection)
             next_total = total + contribution
             all(isfinite, next_total) ||
-                return _farfield_sum_bigfloat_dda_3d(res, direction)
+                return _farfield_sum_bigfloat_dda_3d(
+                    res, supplied_direction)
             total = next_total
         end
     catch err
         err isa OverflowError || rethrow()
-        return _farfield_sum_bigfloat_dda_3d(res, direction)
+        return _farfield_sum_bigfloat_dda_3d(
+            res, supplied_direction)
     end
     return total
 end
@@ -1750,7 +1780,7 @@ for unit observation direction `rhat`.
 function farfield_dda_3d(res::DDAResult3D, rhat::Vec3)
     n = _normalized_real_direction_dda_3d(rhat, "rhat")
     proj = _I3_DDA - n * transpose(n)
-    return _farfield_sum_dda_3d(res, n, proj)
+    return _farfield_sum_dda_3d(res, rhat, n, proj)
 end
 
 function farfield_dda_3d(res::DDAResult3D, rhat::AbstractVector{Vec3})
