@@ -652,6 +652,15 @@ function _spectral_kz(k::Float64, kappa_x::Float64, kappa_y::Float64)
            ComplexF64(0.0, -magnitude)
 end
 
+# Compare the longitudinal wavenumber to the free-space wavenumber as a ratio.
+# Forming `1e-6 * k` loses the Wood-anomaly threshold when `k` is subnormal;
+# division preserves the intended relative test throughout the Float64 range.
+@inline function _periodic_is_wood_anomaly(kz::ComplexF64, k::Float64)
+    longitudinal_magnitude = max(abs(real(kz)), abs(imag(kz)))
+    iszero(longitudinal_magnitude) && return true
+    return longitudinal_magnitude / k < 1.0e-6
+end
+
 # ─────────────────────────────────────────────────────────────────
 # Main function: periodic correction via Ewald
 # ─────────────────────────────────────────────────────────────────
@@ -746,7 +755,7 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             # Pythagorean triples) can have |kz| ≈ 3e-6 from floating-point
             # error in κ² - k², far above an absolute 1e-12 threshold.
             # Nearest non-Wood mode has |kz| ≥ k/d_λ, giving >1e4 safety margin.
-            abs(kz) < 1e-6 * kw && continue
+            _periodic_is_wood_anomaly(kz, kw) && continue
 
             # Phase from observation-source offset
             phase_spec = _periodic_transverse_phase(

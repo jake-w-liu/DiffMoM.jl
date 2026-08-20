@@ -157,6 +157,33 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         @test real(kz_prop) ≈ k rtol=1e-14
         @test abs(imag(kz_prop)) < 1e-14
 
+        # A relative threshold formed as `1e-6*k` underflows at the bottom of
+        # the Float64 range.  Exact grazing incidence must still omit the
+        # singular Wood mode in both the public and cached Ewald paths.
+        minimum_positive = nextfloat(0.0)
+        tiny_wood_lattice = PeriodicLattice(
+            1.0, 1.0, minimum_positive, 0.0,
+            minimum_positive, 1.0, 0, 0)
+        tiny_wood_kz = DiffMoM._spectral_kz(
+            minimum_positive, minimum_positive, 0.0)
+        @test iszero(tiny_wood_kz)
+        @test DiffMoM._periodic_is_wood_anomaly(
+            tiny_wood_kz, minimum_positive)
+        tiny_wood_spatial, tiny_wood_spectral =
+            DiffMoM._build_periodic_ewald_terms(tiny_wood_lattice, 1)
+        @test isempty(tiny_wood_spatial)
+        @test isempty(tiny_wood_spectral)
+        tiny_wood_r = Vec3(0.125, -0.25, 0.0)
+        tiny_wood_rp = Vec3(0.0, 0.0, 0.0)
+        tiny_wood_value = greens_periodic_correction(
+            tiny_wood_r, tiny_wood_rp,
+            minimum_positive, tiny_wood_lattice)
+        @test isfinite(tiny_wood_value)
+        @test DiffMoM._greens_periodic_correction_cached(
+            tiny_wood_r, tiny_wood_rp,
+            minimum_positive, tiny_wood_lattice,
+            tiny_wood_spatial, tiny_wood_spectral) == tiny_wood_value
+
         # Evanescent: kt = 2k → kz² = k²-4k² = -3k²
         # kz = sqrt(-3k²) = ik√3 → negate to get Im(kz) ≤ 0 → kz = -ik√3
         kz_evan = DiffMoM._spectral_kz(k, 2k, 0.0)
