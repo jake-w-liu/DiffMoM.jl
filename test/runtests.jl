@@ -2079,6 +2079,27 @@ end
 @test_throws ArgumentError matrixfree_efie_operator(
     mesh, rwg, k; quad_order=1, eta0=Inf, mesh_precheck=false)
 
+# Finite, individually representable physical inputs can still produce an
+# entry outside ComplexF64. The low-level/public entry contract must fail
+# closed instead of returning an Inf that later contaminates an operator.
+efie_overflow_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+efie_overflow_rwg = build_rwg(efie_overflow_mesh)
+efie_overflow_operator = matrixfree_efie_operator(
+    efie_overflow_mesh,
+    efie_overflow_rwg,
+    1e-3;
+    quad_order=1,
+    eta0=floatmax(Float64),
+    mesh_precheck=false,
+)
+@test_throws OverflowError efie_entry(efie_overflow_operator, 1, 1)
+@test_throws OverflowError DiffMoM._fill_dense_block_batched!(
+    zeros(ComplexF64, 1, 1),
+    efie_overflow_operator.cache,
+    [1],
+    [1],
+)
+
 Z_efie_complex_k = assemble_Z_efie(
     mesh, rwg, complex(k, 1.0e-20); quad_order=1, eta0=eta0,
     mesh_precheck=false)

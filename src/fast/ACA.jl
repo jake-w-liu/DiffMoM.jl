@@ -675,7 +675,8 @@ function _fill_dense_block_batched!(
                     end
                 end
             end
-            data[ii, jj] = -1im * cache.omega_mu0 * val
+            data[ii, jj] = _finalize_efie_entry(
+                cache, val, m_idx, n_idx)
         end
     end
 end

@@ -405,6 +405,16 @@ end
     return _has_triangle_neighbor(cache.adjacent, t1, t2)
 end
 
+@inline function _finalize_efie_entry(
+        cache::EFIEApplyCache, value, m::Int, n::Int)
+    entry = -1im * cache.omega_mu0 * value
+    isfinite(entry) ||
+        throw(OverflowError(
+            "EFIE entry ($m, $n) is outside the representable " *
+            "ComplexF64 range."))
+    return entry
+end
+
 @inline function _efie_entry(cache::EFIEApplyCache, m::Int, n::Int)
     # For non-Bloch RWG, normalize to canonical order (m ≤ n) so that
     # _efie_entry(c, i, j) == _efie_entry(c, j, i) bitwise.
@@ -477,7 +487,7 @@ end
         end
     end
 
-    return -1im * cache.omega_mu0 * val
+    return _finalize_efie_entry(cache, val, m, n)
 end
 
 @inline function _rwg_vals(cache::EFIEApplyCache, n::Int, it::Int)
