@@ -369,10 +369,11 @@ end
     R_vec = r - rp
     R = norm(R_vec)
     R > 0 || error("cross Green interaction is singular for coincident points.")
-    Rhat = R_vec / R
+    direction = _source_power_of_two_scaled_direction(R_vec)
+    direction_norm = sqrt(sum(abs2, direction))
     G = exp(-1im * k * R) / (4π * R)
     dGdR = (-1im * k - 1 / R) * G
-    return dGdR * cross(Rhat, q)
+    return dGdR * (_dipole_cross(direction, q) / direction_norm)
 end
 
 @inline electric_dipole_magnetic_field_3d(r::Vec3, rp::Vec3, k::Float64, q::CVec3;
@@ -429,14 +430,13 @@ function _em_interaction_value_bigfloat_3d(
     )
     R = sqrt(sum(abs2, R_vec))
     R > 0 || error("cross Green interaction is singular for coincident points.")
-    Rhat = R_vec / R
     kb = BigFloat(k)
     scalar_green = exp(Complex{BigFloat}(0, -kb * R)) /
                    (4 * BigFloat(pi) * R)
     radial_derivative =
         (Complex{BigFloat}(0, -kb) - inv(R)) * scalar_green
-    gradient_cross_q = radial_derivative * cross(Rhat, q)
-    gradient_cross_m = radial_derivative * cross(Rhat, m)
+    gradient_cross_q = radial_derivative * cross(R_vec, q) / R
+    gradient_cross_m = radial_derivative * cross(R_vec, m) / R
     eta = BigFloat(_ETA0_DDA)
     electric_q = _electric_dipole_value_bigfloat_3d(ri, rj, k, q)
     electric_m = _electric_dipole_value_bigfloat_3d(ri, rj, k, m)

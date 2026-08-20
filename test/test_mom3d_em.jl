@@ -787,6 +787,48 @@ end
         @test overlap_y ≈ overlap_expected rtol=1e-13
     end
 
+    @testset "Matrix-free near-longitudinal cross interaction" begin
+        grid = VoxelGrid3D(
+            (0.0, 6.0), (0.0, 8.0), (0.0, 10.0), 2, 2, 2)
+        identity_alpha = SMatrix{6,6,ComplexF64,36}(
+            Matrix{ComplexF64}(I, 6, 6))
+        zero_alpha = zero(identity_alpha)
+        alpha = [voxel == 1 ? identity_alpha : zero_alpha
+                 for voxel in 1:grid.nvoxels]
+        operator = EMDDAOperator3D(grid, 1.0, alpha, false)
+
+        displacement = Vec3(3.0, 4.0, 5.0)
+        radial = DiffMoM._normalized_real_direction_dda_3d(
+            displacement, "cross-interaction regression")
+        moment = CVec3(complex.(radial))
+        moment = setindex(
+            moment, nextfloat(real(moment[1])) + 0im, 1)
+        source = zeros(ComplexF64, 6grid.nvoxels)
+        source[1:3] .= moment
+        result = zeros(ComplexF64, length(source))
+        mul!(result, operator, source)
+        observed = CVec3(result[46], result[47], result[48])
+
+        reference = setprecision(BigFloat, 1024) do
+            direction = SVector{3,BigFloat}(
+                BigFloat.(grid.centers[8] - grid.centers[1]))
+            distance = sqrt(sum(abs2, direction))
+            moment_big = SVector{3,Complex{BigFloat}}(
+                Complex{BigFloat}.(moment))
+            scalar_green = exp(Complex{BigFloat}(0, -distance)) /
+                           (4 * BigFloat(pi) * distance)
+            gradient_cross =
+                (-Complex{BigFloat}(0, 1) - inv(distance)) *
+                scalar_green * cross(direction, moment_big) / distance
+            -CVec3(ComplexF64.(
+                Complex{BigFloat}(0, 1) /
+                BigFloat(376.730313668) * gradient_cross))
+        end
+        @test observed ≈ reference rtol=4eps(Float64)
+        mul!(result, operator, source)
+        @test (@allocated mul!(result, operator, source)) < 4096
+    end
+
     @testset "Matrix-free scaled-output exponent range" begin
         scale_grid = VoxelGrid3D(
             (0.0, 0.2), (0.0, 0.1), (0.0, 0.1), 2, 1, 1)
