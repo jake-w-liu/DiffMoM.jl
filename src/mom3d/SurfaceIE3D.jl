@@ -504,6 +504,15 @@ end
     return val
 end
 
+@inline function _finalize_mfie_entry_3d(value, m::Int, n::Int)
+    entry = ComplexF64(value)
+    isfinite(entry) ||
+        throw(OverflowError(
+            "magnetic-field operator entry ($m, $n) is outside the " *
+            "representable ComplexF64 range"))
+    return entry
+end
+
 """
     assemble_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3,
                                         max_output_bytes=2_000_000_000,
@@ -558,7 +567,7 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                     end
                 end
             end
-            K[m, n] = acc
+            K[m, n] = _finalize_mfie_entry_3d(acc, m, n)
         end
     end
     return K
@@ -646,7 +655,7 @@ Base.eltype(::MatrixFreeMagneticFieldOperator3D) = ComplexF64
             end
         end
     end
-    return acc
+    return _finalize_mfie_entry_3d(acc, m, n)
 end
 
 Base.getindex(A::MatrixFreeMagneticFieldOperator3D, i::Int, j::Int) =

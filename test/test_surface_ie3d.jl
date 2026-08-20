@@ -265,6 +265,23 @@ end
         quad_order=1,
         max_output_bytes=dense_block_bytes) == K
     K_mf = matrixfree_magnetic_field_operator_3d(mesh, rwg, k0; quad_order=1)
+    growing_K_mf = matrixfree_magnetic_field_operator_3d(
+        mesh, rwg, 1.0 + 1000.0im;
+        quad_order=1, singular_quad_order=1)
+    @test_throws OverflowError growing_K_mf[1, 1]
+    growing_dense_error = try
+        assemble_magnetic_field_operator_3d(
+            mesh, rwg, 1.0 + 1000.0im;
+            quad_order=1, singular_quad_order=1)
+        nothing
+    catch err
+        err
+    end
+    @test growing_dense_error isa CompositeException
+    @test occursin(
+        "magnetic-field operator entry",
+        sprint(showerror, growing_dense_error),
+    )
     vertex_incidence = zeros(Int, nvertices(mesh))
     for vertex in mesh.tri
         vertex_incidence[vertex] += 1
