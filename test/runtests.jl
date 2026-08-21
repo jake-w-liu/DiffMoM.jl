@@ -5857,6 +5857,45 @@ end
     Vec3(1.0, 0.0, 0.0),
 ) == field_guard_cancellation_reference
 
+dipole_field_phase_c0 = inv(sqrt(DiffMoM._EPS0 * DiffMoM._MU0))
+dipole_field_phase_frequency = dipole_field_phase_c0 / (2π)
+dipole_field_phase_k = DiffMoM._frequency_to_wavenumber(
+    dipole_field_phase_frequency,
+    dipole_field_phase_c0,
+    "dipole incident-field phase-cancellation regression",
+)
+dipole_field_phase_point = Vec3(0.0, 0.0, 0.2)
+dipole_field_phase_moment = CVec3(
+    0.0 + 0im,
+    ComplexF64(1.0e16, 2.604446038868589e13),
+    0.0 + 0im,
+)
+dipole_field_phase_source = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    dipole_field_phase_moment,
+    Vec3(0.0, 1.0, 0.0),
+    :magnetic,
+    dipole_field_phase_frequency,
+)
+dipole_field_phase_reference = setprecision(BigFloat, 1024) do
+    displacement = SVector{3,BigFloat}(
+        BigFloat.(dipole_field_phase_point))
+    distance = sqrt(sum(abs2, displacement))
+    direction = displacement / distance
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(dipole_field_phase_moment))
+    wavenumber = BigFloat(dipole_field_phase_k)
+    phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
+    CVec3((BigFloat(DiffMoM._ETA0) / (4 * BigFloat(π))) *
+          (wavenumber^2 / distance -
+           Complex{BigFloat}(0, 1) * wavenumber / distance^2) *
+          phase * cross(moment, direction))
+end
+@test DiffMoM.dipole_incident_field(
+    dipole_field_phase_point,
+    dipole_field_phase_source,
+) == dipole_field_phase_reference
+
 pattern_phase_cancellation_scale = 1.0e16
 pattern_phase_cancellation_value = ComplexF64(
     pattern_phase_cancellation_scale,

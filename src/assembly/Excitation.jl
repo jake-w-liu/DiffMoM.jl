@@ -2037,12 +2037,56 @@ end
            (!iszero(argument) && exponent(abs(argument)) > 32)
 end
 
+@inline function _dipole_incident_exact_precision(
+    r::Vec3,
+    dipole::DipoleExcitation,
+    k::Float64,
+)
+    coordinate_minimum = typemax(Int)
+    coordinate_maximum = typemin(Int)
+    @inbounds for index in 1:3
+        for component in (r[index], dipole.position[index])
+            iszero(component) && continue
+            component_exponent = exponent(abs(component))
+            coordinate_minimum = min(
+                coordinate_minimum, component_exponent)
+            coordinate_maximum = max(
+                coordinate_maximum, component_exponent)
+        end
+    end
+    coordinate_span = coordinate_minimum == typemax(Int) ? 0 :
+                      coordinate_maximum - coordinate_minimum
+    # Subtracting two Float64 coordinates can introduce up to one complete
+    # significand of additional exponent span in the displacement.
+    direction_span_bound = coordinate_span + precision(Float64)
+
+    moment_minimum = typemax(Int)
+    moment_maximum = typemin(Int)
+    @inbounds for value in dipole.moment
+        for component in (real(value), imag(value))
+            iszero(component) && continue
+            component_exponent = exponent(abs(component))
+            moment_minimum = min(moment_minimum, component_exponent)
+            moment_maximum = max(moment_maximum, component_exponent)
+        end
+    end
+    moment_span = moment_minimum == typemax(Int) ? 0 :
+                  moment_maximum - moment_minimum
+    angular_precision =
+        2 * direction_span_bound + moment_span +
+        3 * precision(Float64) + _SOURCE_PHASE_PRODUCT_GUARD_BITS
+    return max(
+        _source_radial_phase_precision(k, r, dipole.position),
+        angular_precision,
+    )
+end
+
 @noinline function _dipole_incident_field_exact(
     r::Vec3,
     dipole::DipoleExcitation,
     k::Float64,
 )
-    precision = _source_radial_phase_precision(k, r, dipole.position)
+    precision = _dipole_incident_exact_precision(r, dipole, k)
     return setprecision(BigFloat, precision) do
         displacement = SVector{3,BigFloat}(ntuple(
             component -> BigFloat(r[component]) -
@@ -2116,12 +2160,25 @@ end
         # E = (η0/4π) (k^2/R - i k/R^2) e^{-ikR} (m × R̂)
         # Derived from E = -i k η0 (∇G × m), G = e^{-ikR}/(4πR); radiating (1/R)
         # term has a REAL coefficient, matching the electric-dipole convention.
-        value = (η0 / (4π)) * (k^2 / R - 1im * k / R^2) *
-                exp(-1im * k * R) *
-                (_dipole_cross(p, projection_direction) /
-                 sqrt(direction_norm_squared))
-        return all(isfinite, value) ? CVec3(value) :
-               _dipole_incident_field_exact(r, dipole, k)
+        radial_factor = (η0 / (4π)) *
+                        (k^2 / R - 1im * k / R^2)
+        phase = exp(-1im * k * R)
+        phased_factor = radial_factor * phase
+        (isfinite(phased_factor) &&
+         !_source_product_requires_exact(
+            radial_factor, phase, phased_factor)) ||
+            return _dipole_incident_field_exact(r, dipole, k)
+        angular_field = _dipole_cross(p, projection_direction) /
+                        sqrt(direction_norm_squared)
+        value = phased_factor * angular_field
+        all(isfinite, value) ||
+            return _dipole_incident_field_exact(r, dipole, k)
+        @inbounds for component in 1:3
+            _source_product_requires_exact(
+                phased_factor, angular_field[component], value[component]) &&
+                return _dipole_incident_field_exact(r, dipole, k)
+        end
+        return CVec3(value)
     else
         error("Dipole type must be :electric or :magnetic, got $(dipole.type).")
     end
