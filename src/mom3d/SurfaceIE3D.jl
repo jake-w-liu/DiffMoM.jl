@@ -763,6 +763,14 @@ function _assemble_plane_wave_h_rhs_3d(mesh::TriMesh, rwg::RWGData,
     return rhs
 end
 
+@inline function _validated_surface_sie_formulation_3d(
+        formulation::Symbol)
+    formulation in (:pmchwt, :muller) ||
+        throw(ArgumentError(
+            "formulation must be :pmchwt or :muller, got $formulation."))
+    return formulation
+end
+
 """
     assemble_dielectric_sie_rhs_3d(mesh, rwg, excitation, exterior; quad_order=3,
                                    formulation=:pmchwt, interior=nothing)
@@ -782,9 +790,7 @@ function assemble_dielectric_sie_rhs_3d(mesh::TriMesh, rwg::RWGData,
                                         quad_order::Int=3,
                                         formulation::Symbol=:pmchwt,
                                         interior::Union{Nothing,DielectricMedium3D}=nothing)
-    formulation in (:pmchwt, :muller) ||
-        throw(ArgumentError(
-            "formulation must be :pmchwt or :muller, got $formulation."))
+    _validated_surface_sie_formulation_3d(formulation)
     formulation == :muller && interior === nothing &&
         throw(ArgumentError(
             "Muller RHS scaling requires the interior medium."))
@@ -850,8 +856,7 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                     _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                 max_near_pairs::Integer=
                                     _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
-    formulation in (:pmchwt, :muller) ||
-        error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
+    _validated_surface_sie_formulation_3d(formulation)
     work_limit = _validated_surface_sie_dense_work_3d(
         rwg.nedges, 10, max_work_bytes,
         "dense dielectric SIE assembly")
@@ -978,7 +983,8 @@ function _surface_sie_coefficients_3d(formulation::Symbol,
             "Muller formulation is singular for eps_ext + eps_in = 0.")
         return c_mu_int, c_mu_ext, c_eps_int, c_eps_ext
     else
-        error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
+        _validated_surface_sie_formulation_3d(formulation)
+        error("unreachable dielectric SIE formulation branch")
     end
 end
 
@@ -1000,8 +1006,7 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
                                                    _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                                max_near_pairs::Integer=
                                                    _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
-    formulation in (:pmchwt, :muller) ||
-        error("Unsupported dielectric SIE formulation: $formulation (expected :pmchwt or :muller).")
+    _validated_surface_sie_formulation_3d(formulation)
     _assert_closed_surface_sie_3d(mesh, rwg;
                                   mesh_precheck=mesh_precheck,
                                   area_tol_rel=area_tol_rel)
@@ -1450,6 +1455,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                      _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     solver in (:direct, :gmres) ||
         error("Unsupported dielectric SIE solver: $solver (expected :direct or :gmres).")
+    _validated_surface_sie_formulation_3d(formulation)
     if solver == :direct
         _validated_surface_sie_dense_work_3d(
             rwg.nedges, 10, max_work_bytes,
@@ -1538,6 +1544,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                      _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     solver in (:direct, :gmres) ||
         error("Unsupported dielectric SIE solver: $solver (expected :direct or :gmres).")
+    _validated_surface_sie_formulation_3d(formulation)
     if solver == :direct
         _validated_surface_sie_dense_work_3d(
             rwg.nedges, 10, max_work_bytes,

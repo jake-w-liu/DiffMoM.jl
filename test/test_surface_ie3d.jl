@@ -684,6 +684,37 @@ end
     @test scaled_result == scaled_reference
 
     rhs0 = zeros(ComplexF64, 2N)
+    allocation_edges = 32_768
+    allocation_rwg = RWGData(
+        rwg.mesh,
+        allocation_edges,
+        rwg.tplus,
+        rwg.tminus,
+        rwg.evert,
+        rwg.vplus_opp,
+        rwg.vminus_opp,
+        rwg.len,
+        rwg.area_plus,
+        rwg.area_minus,
+        rwg.coeff_plus,
+        rwg.coeff_minus,
+        rwg.has_periodic_bloch,
+    )
+    allocation_rhs = zeros(ComplexF64, 2allocation_edges)
+    function invalid_formulation_trial()
+        try
+            solve_dielectric_sie_3d(
+                mesh, allocation_rwg, k0, eps_in, allocation_rhs;
+                solver=:gmres,
+                formulation=:invalid,
+            )
+        catch err
+            return err
+        end
+        return nothing
+    end
+    @test invalid_formulation_trial() isa ArgumentError
+    @test (@allocated invalid_formulation_trial()) < 16_384
     @test_throws ArgumentError solve_dielectric_sie_3d(
         mesh, rwg, k0, eps_in, rhs0;
         mur_in=mu_in,
@@ -872,8 +903,8 @@ end
     plate = make_rect_plate(1.0, 1.0, 1, 1)
     plate_rwg = build_rwg(plate)
     @test_throws ErrorException assemble_pmchwt_3d(plate, plate_rwg, k0, eps_in)
-    @test_throws ErrorException assemble_dielectric_sie_3d(mesh, rwg, k0, eps_in;
-                                                           formulation=:cfie)
+    @test_throws ArgumentError assemble_dielectric_sie_3d(
+        mesh, rwg, k0, eps_in; formulation=:cfie)
 end
 
 @testset "PMCHWT vs Muller currents agree (dielectric sphere)" begin
