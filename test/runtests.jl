@@ -448,6 +448,13 @@ verified_gradient = verify_gradient(
     objective_verify, gradient_verify, theta_verify; indices=(2, 1))
 @test getproperty.(verified_gradient, :p) == [2, 1]
 @test maximum(getproperty.(verified_gradient, :rel_err_fd)) < 1e-9
+tiny_verified_gradient = only(verify_gradient(
+    theta -> 1e-300 * theta[1], [2e-300], [1.0];
+    eps_cs=1e-30, h_fd=1e-6))
+@test tiny_verified_gradient.rel_err_cs ≈ 1.0 rtol=4eps(Float64)
+@test tiny_verified_gradient.rel_err_fd ≈ 0.5 rtol=1e-10
+@test DiffMoM._relative_gradient_error_to_reference(1.0, 0.0) == Inf
+@test DiffMoM._symmetric_relative_gradient_error(0.0, 0.0) == 0.0
 
 @test_throws ArgumentError complex_step_grad(
     objective_verify, theta_verify, 1; eps=0.0)

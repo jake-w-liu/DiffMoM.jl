@@ -189,6 +189,21 @@ function _validated_gradient_indices(indices, P::Int)
     return checked
 end
 
+@inline function _relative_gradient_error_to_reference(
+        candidate::Float64, reference::Float64)
+    iszero(reference) && return iszero(candidate) ? 0.0 : Inf
+    scale = max(abs(candidate), abs(reference))
+    return abs(candidate / scale - reference / scale) /
+           abs(reference / scale)
+end
+
+@inline function _symmetric_relative_gradient_error(
+        first::Float64, second::Float64)
+    scale = max(abs(first), abs(second))
+    iszero(scale) && return 0.0
+    return abs(first / scale - second / scale)
+end
+
 """
     verify_gradient(f_objective, adjoint_grad, theta;
                     indices=nothing, eps_cs=1e-30, h_fd=1e-6)
@@ -242,9 +257,8 @@ function verify_gradient(f_objective::Function,
 
         # Complex-step can be invalid for non-holomorphic objectives, so its
         # value is not used to normalize the independent adjoint-vs-FD check.
-        rel_cs = abs(g_adj - g_cs) / max(abs(g_cs), 1e-30)
-        fd_scale = max(abs(g_fd), abs(g_adj), 1e-30)
-        rel_fd = abs(g_adj / fd_scale - g_fd / fd_scale)
+        rel_cs = _relative_gradient_error_to_reference(g_adj, g_cs)
+        rel_fd = _symmetric_relative_gradient_error(g_adj, g_fd)
 
         results[result_index] = (
             p=p,
