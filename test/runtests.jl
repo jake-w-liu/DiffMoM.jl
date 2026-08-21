@@ -5921,6 +5921,52 @@ end
     pattern_phase_cancellation_k,
 ) == pattern_farfield_phase_reference
 
+pattern_angular_cancellation_direction = Vec3(1.0, 1.0, 1.0)
+pattern_angular_cancellation_unit_direction, _ =
+    DiffMoM._validated_incident_farfield_args(
+        pattern_angular_cancellation_direction,
+        pattern_phase_cancellation_k,
+    )
+pattern_angular_cancellation_theta = acos(
+    pattern_angular_cancellation_unit_direction[3])
+pattern_angular_cancellation_phi = atan(
+    pattern_angular_cancellation_unit_direction[2],
+    pattern_angular_cancellation_unit_direction[1],
+)
+_, pattern_angular_cancellation_etheta,
+pattern_angular_cancellation_ephi = DiffMoM._spherical_basis(
+    pattern_angular_cancellation_theta,
+    pattern_angular_cancellation_phi,
+)
+pattern_angular_cancellation_Ftheta = ComplexF64(1.0e16)
+pattern_angular_cancellation_Fphi = ComplexF64(
+    -real(pattern_angular_cancellation_Ftheta) *
+    pattern_angular_cancellation_etheta[1] /
+    pattern_angular_cancellation_ephi[1],
+)
+pattern_angular_cancellation_feed = make_pattern_feed(
+    [0.0, π],
+    [0.0, π],
+    fill(pattern_angular_cancellation_Ftheta, 2, 2),
+    fill(pattern_angular_cancellation_Fphi, 2, 2),
+    pattern_phase_cancellation_frequency,
+)
+pattern_angular_cancellation_reference = setprecision(BigFloat, 512) do
+    CVec3(ntuple(
+        index -> ComplexF64(
+            Complex{BigFloat}(pattern_angular_cancellation_Ftheta) *
+            BigFloat(pattern_angular_cancellation_etheta[index]) +
+            Complex{BigFloat}(pattern_angular_cancellation_Fphi) *
+            BigFloat(pattern_angular_cancellation_ephi[index])),
+        3,
+    ))
+end
+@test incident_farfield(
+    pattern_angular_cancellation_feed,
+    pattern_angular_cancellation_direction,
+    pattern_phase_cancellation_k,
+) == pattern_angular_cancellation_reference
+
 dipole_farfield_phase_position = Vec3(0.0, 0.0, π / 4)
 dipole_farfield_phase_direction = Vec3(0.0, 0.0, 1.0)
 dipole_farfield_phase_sources = (

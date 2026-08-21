@@ -849,6 +849,40 @@ function incident_farfield(loop::LoopExcitation, r_hat::Vec3, k::Real)
     return incident_farfield(dip, r_hat, kf)
 end
 
+@noinline function _pattern_farfield_transform_exact(
+    Ftheta::ComplexF64,
+    Fphi::ComplexF64,
+    etheta::Vec3,
+    ephi::Vec3,
+    phase_center::Vec3,
+    r_hat::Vec3,
+    k::Float64,
+)
+    precision = max(
+        _MULTI_SOURCE_EXACT_PRECISION,
+        _source_directional_phase_precision(k, r_hat, phase_center),
+    )
+    return setprecision(BigFloat, precision) do
+        direction = SVector{3,BigFloat}(
+            ntuple(index -> BigFloat(r_hat[index]), 3))
+        direction_norm = sqrt(sum(abs2, direction))
+        phase_argument = BigFloat(k) * sum(
+            direction[index] * BigFloat(phase_center[index])
+            for index in 1:3) / direction_norm
+        phase = exp(Complex{BigFloat}(0, phase_argument))
+        theta_coefficient = Complex{BigFloat}(Ftheta)
+        phi_coefficient = Complex{BigFloat}(Fphi)
+        value = SVector{3,Complex{BigFloat}}(ntuple(
+            index ->
+                (theta_coefficient * BigFloat(etheta[index]) +
+                 phi_coefficient * BigFloat(ephi[index])) * phase,
+            3,
+        ))
+        return _finite_source_vector(
+            value, "PatternFeedExcitation far field")
+    end
+end
+
 function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
     # `PatternFeedExcitation` is already a tabulated far-field:
     # E_inc(r·r̂) ~ (Fθ(θ,ϕ)·θ̂ + Fϕ(θ,ϕ)·ϕ̂) · exp(-ikR)/R
@@ -871,19 +905,26 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
         Fϕ = conj(Fϕ)
     end
 
-    E_far = CVec3(Fθ * eθ + Fϕ * eϕ)
+    theta_field = Fθ * eθ
+    phi_field = Fϕ * eϕ
+    E_far = CVec3(theta_field + phi_field)
+    _source_vector_sum_requires_exact(theta_field, phi_field, E_far) &&
+        return _pattern_farfield_transform_exact(
+            Fθ, Fϕ, eθ, eϕ, pat.phase_center, r_hat, kf)
     phase = _source_directional_phase(
         kf, r_hat, rh, pat.phase_center, 1.0,
         "PatternFeedExcitation far field")
     value = E_far * phase
+    all(isfinite, value) ||
+        return _pattern_farfield_transform_exact(
+            Fθ, Fϕ, eθ, eϕ, pat.phase_center, r_hat, kf)
     @inbounds for component in 1:3
         _source_product_requires_exact(
             E_far[component], phase, value[component]) &&
-            return _source_directional_phase_vector_exact(
-                E_far, kf, r_hat, pat.phase_center, 1.0,
-                "PatternFeedExcitation far field")
+            return _pattern_farfield_transform_exact(
+                Fθ, Fϕ, eθ, eϕ, pat.phase_center, r_hat, kf)
     end
-    return _check_finite_cvec3(value, "PatternFeedExcitation far field")
+    return value
 end
 
 @noinline function _multi_incident_farfield_exact(
