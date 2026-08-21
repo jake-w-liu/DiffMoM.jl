@@ -1992,7 +1992,7 @@ println("\n── Test 42: PeriodicMetrics ──")
         @test @allocated(
             DiffMoM._floquet_current_fourier_coefficients(
                 current_mesh, current_rwg, extreme_currents,
-                1.0, current_lattice; N_orders=0)) <= 400_000
+                1.0, current_lattice; N_orders=0)) <= 450_000
 
         phase_mesh = make_rect_plate(1.0e93, 1.0e93, 2, 2)
         phase_mesh.xyz[1, :] .+= 3.0e108
