@@ -11612,6 +11612,27 @@ multiangle_config_allocation = @allocated build_multiangle_configs(
     multiangle_allocation_angles;
     grid=multiangle_allocation_grid, matrix_free_Q=true)
 @test multiangle_config_allocation < 750_000
+
+# Stagnation is relative to the objective scale.  The former absolute 1e-30
+# denominator floor stopped this problem at iteration 11 despite a 68% drop in
+# a finite subnormal-scale objective.
+@test !DiffMoM._multiangle_objective_stagnated(2e-300, 1e-300)
+@test DiffMoM._multiangle_objective_stagnated(
+    nextfloat(1e-300), 1e-300)
+multiangle_stagnation_Z = ComplexF64[1;;]
+multiangle_stagnation_Mp = Matrix{ComplexF64}[ComplexF64[1;;]]
+multiangle_stagnation_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1e-150], ComplexF64[1;;], 1.0)
+_, multiangle_stagnation_trace = optimize_multiangle_rcs(
+    multiangle_stagnation_Z, multiangle_stagnation_Mp,
+    [multiangle_stagnation_config], [0.0];
+    maxiter=20, tol=0.0, alpha0=1e299, m_lbfgs=0,
+    verbose=false, fallback_to_steepest=false,
+    lbfgs_line_search_maxiter=40)
+@test length(multiangle_stagnation_trace) == 20
+@test last(multiangle_stagnation_trace).J <
+      0.5first(multiangle_stagnation_trace).J
 println("  35b: PASS")
 
 # 35c: optimize_multiangle_rcs smoke test

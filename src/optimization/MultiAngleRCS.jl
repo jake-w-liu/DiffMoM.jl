@@ -423,6 +423,19 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
     end
 end
 
+@inline function _multiangle_objective_stagnated(
+        current::Float64, previous::Float64)
+    # Compare in a shared scale.  An absolute denominator floor makes every
+    # representable objective below that floor appear unchanged, even after a
+    # large relative improvement.
+    iszero(previous) && return iszero(current)
+    scale = max(abs(current), abs(previous))
+    scaled_current = current / scale
+    scaled_previous = previous / scale
+    return abs(scaled_current - scaled_previous) <
+           1e-3 * abs(scaled_previous)
+end
+
 function _default_transverse_pol(khat::Vec3)
     ref = abs(khat[1]) < 0.9 ? Vec3(1.0, 0.0, 0.0) : Vec3(0.0, 1.0, 0.0)
     p = ref - dot(ref, khat) * khat
@@ -921,7 +934,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         # Stagnation detection: stop if J hasn't improved by >0.1% in 10 iterations
         if length(trace) >= 11
             J_10_ago = trace[end-10].J
-            if abs(J_val - J_10_ago) / max(abs(J_10_ago), 1e-30) < 1e-3
+            if _multiangle_objective_stagnated(J_val, J_10_ago)
                 verbose && println("Stagnated at iteration $iter (J unchanged for 10 iters)")
                 break
             end
