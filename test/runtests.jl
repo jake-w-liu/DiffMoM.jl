@@ -2703,6 +2703,61 @@ DiffMoM._add_scaled_matrix!(
     mass_complex_underflow)
 @test mass_complex_accumulation[1, 1] == mass_complex_reference
 
+# A normal-range complex multiplication can lose a finite component through
+# cancellation inside the product itself.  Preserve the exact stored-factor
+# result in scalar matrix scaling, beta-only mul!, and matrix accumulation.
+mass_finite_product_scale = 1.0e8 + 1.0e8im
+mass_finite_product_value =
+    1.0e8 + prevfloat(1.0e8)im
+mass_finite_product_reference = setprecision(BigFloat, 6656) do
+    ComplexF64(
+        Complex{BigFloat}(mass_finite_product_scale) *
+        Complex{BigFloat}(mass_finite_product_value))
+end
+@test mass_finite_product_scale * mass_finite_product_value !=
+      mass_finite_product_reference
+mass_finite_product_operator = LocalMassMatrix(
+    1, [1], [1], ComplexF64[mass_finite_product_value])
+@test (mass_finite_product_scale *
+       mass_finite_product_operator)[1, 1] ==
+      mass_finite_product_reference
+for mass_op in (
+    mass_finite_product_operator,
+    adjoint(mass_finite_product_operator),
+)
+    mass_finite_product_output =
+        ComplexF64[mass_finite_product_value]
+    mul!(mass_finite_product_output, mass_op,
+         ComplexF64[NaN], 0.0 + 0im,
+         mass_finite_product_scale)
+    @test mass_finite_product_output ==
+          ComplexF64[mass_finite_product_reference]
+end
+mass_finite_product_accumulation = zeros(ComplexF64, 1, 1)
+DiffMoM._add_scaled_matrix!(
+    mass_finite_product_accumulation,
+    mass_finite_product_scale,
+    mass_finite_product_operator)
+@test mass_finite_product_accumulation[1, 1] ==
+      mass_finite_product_reference
+mass_finite_generic_accumulation = zeros(ComplexF64, 1, 1)
+DiffMoM._add_scaled_matrix!(
+    mass_finite_generic_accumulation,
+    mass_finite_product_scale,
+    reshape(ComplexF64[mass_finite_product_value], 1, 1))
+@test mass_finite_generic_accumulation[1, 1] ==
+      mass_finite_product_reference
+mass_finite_dense_accumulation = zeros(ComplexF64, 1, 1)
+DiffMoM._accumulate_scaled_matrices!(
+    mass_finite_dense_accumulation,
+    nothing,
+    [reshape(ComplexF64[mass_finite_product_value], 1, 1)],
+    _ -> mass_finite_product_scale,
+    "finite scaled matrix-product regression",
+)
+@test mass_finite_dense_accumulation[1, 1] ==
+      mass_finite_product_reference
+
 # Canonicalization must retain a finite residue that sequential duplicate
 # addition loses. All public views and products share the canonical value.
 mass_duplicate_residue = ldexp(1.0, -53)

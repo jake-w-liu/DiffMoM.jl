@@ -466,12 +466,24 @@ function Base.:*(a::Number, M::LocalMassMatrix)
                            _local_mass_extreme_factor(a, real_type)
         @inbounds for value in M.vals
             scaled = a * value
-            if !_local_mass_finite(scaled) ||
-               (!iszero(a) && !iszero(value) &&
-                (iszero(scaled) ||
-                 (real_type !== nothing &&
-                  (scale_is_extreme ||
-                   _local_mass_extreme_factor(value, real_type)))))
+            needs_exact =
+                !_local_mass_finite(scaled) ||
+                (!iszero(a) && !iszero(value) &&
+                 (iszero(scaled) ||
+                  (real_type !== nothing &&
+                   (scale_is_extreme ||
+                    _local_mass_extreme_factor(value, real_type)))))
+            if !needs_exact && real_type !== nothing
+                real_magnitude, imag_magnitude =
+                    _local_mass_product_component_bounds(a, value)
+                needs_exact =
+                    !isfinite(real_magnitude) ||
+                    !isfinite(imag_magnitude) ||
+                    _local_mass_reduction_requires_exact(
+                        scaled, real_magnitude, imag_magnitude,
+                        2, real_type)
+            end
+            if needs_exact
                 return _scale_local_mass_bigfloat(a, M, result_type)
             end
         end
@@ -664,6 +676,18 @@ function _local_mass_scale_needs_bigfloat(
         end
         term = beta * previous
         (!_local_mass_finite(term) || iszero(term)) && return true
+        if real_type !== nothing
+            converted = convert(eltype(y), term)
+            (!_local_mass_finite(converted) || iszero(converted)) &&
+                return true
+            real_magnitude, imag_magnitude =
+                _local_mass_product_component_bounds(beta, previous)
+            (!isfinite(real_magnitude) ||
+             !isfinite(imag_magnitude) ||
+             _local_mass_reduction_requires_exact(
+                 converted, real_magnitude, imag_magnitude,
+                 2, real_type)) && return true
+        end
     end
     return false
 end
@@ -809,7 +833,74 @@ end
 LinearAlgebra.mul!(y::AbstractVector, A::Adjoint{<:Any,<:LocalMassMatrix}, x::AbstractVector) =
     mul!(y, A, x, one(eltype(parent(A))), zero(eltype(y)))
 
-function _add_scaled_matrix!(Y::AbstractMatrix, alpha::Number, A::AbstractMatrix)
+function _generic_matrix_add_needs_bigfloat(
+        Y::AbstractMatrix,
+        alpha::Number,
+        A::AbstractMatrix)
+    _local_mass_finite(alpha) || return false
+    real_type = _local_mass_ieee_real_type(eltype(Y))
+    real_type === nothing && return false
+    alpha_is_extreme = _local_mass_extreme_factor(alpha, real_type)
+    @inbounds for index in eachindex(Y, A)
+        current = Y[index]
+        value = A[index]
+        (_local_mass_finite(current) &&
+         _local_mass_finite(value)) || return false
+        if !iszero(value) &&
+           (alpha_is_extreme ||
+            _local_mass_extreme_factor(value, real_type) ||
+            (!iszero(current) &&
+             _local_mass_extreme_factor(current, real_type)))
+            return true
+        end
+        term = alpha * value
+        if !_local_mass_finite(term) ||
+           (!iszero(alpha) && !iszero(value) && iszero(term))
+            return true
+        end
+        combined = convert(eltype(Y), current + term)
+        term_real, term_imag =
+            _local_mass_product_component_bounds(alpha, value)
+        real_magnitude =
+            abs(Float64(real(current))) + term_real
+        imag_magnitude =
+            abs(Float64(imag(current))) + term_imag
+        if !_local_mass_finite(combined) ||
+           !isfinite(real_magnitude) ||
+           !isfinite(imag_magnitude) ||
+           _local_mass_reduction_requires_exact(
+               combined, real_magnitude, imag_magnitude,
+               3, real_type)
+            return true
+        end
+    end
+    return false
+end
+
+@noinline function _add_scaled_generic_matrix_bigfloat!(
+        Y::AbstractMatrix{T},
+        alpha::Number,
+        A::AbstractMatrix) where {T}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        scale = Complex{BigFloat}(alpha)
+        @inbounds for index in eachindex(Y, A)
+            total = Complex{BigFloat}(Y[index]) +
+                    scale * Complex{BigFloat}(A[index])
+            Y[index] = _local_mass_convert_bigfloat(
+                T, total, "scaled matrix accumulation", index)
+        end
+        return Y
+    end
+end
+
+function _add_scaled_matrix!(
+        Y::AbstractMatrix,
+        alpha::Number,
+        A::AbstractMatrix)
+    if axes(Y) == axes(A) &&
+       _generic_matrix_add_needs_bigfloat(Y, alpha, A)
+        return _add_scaled_generic_matrix_bigfloat!(Y, alpha, A)
+    end
     Y .+= alpha .* A
     return Y
 end
@@ -822,7 +913,6 @@ function _local_mass_add_needs_bigfloat(
     real_type = _local_mass_ieee_real_type(eltype(Y))
     alpha_is_extreme = real_type !== nothing &&
                        _local_mass_extreme_factor(alpha, real_type)
-    magnitude_sum = 0.0
     @inbounds for k in eachindex(A.vals)
         current = Y[A.rows[k], A.cols[k]]
         _local_mass_finite(current) || return false
@@ -838,9 +928,21 @@ function _local_mass_add_needs_bigfloat(
            (!iszero(alpha) && !iszero(A.vals[k]) && iszero(term))
             return true
         end
-        magnitude_sum += _local_mass_component_scale(current)
-        magnitude_sum += _local_mass_component_scale(term)
-        isfinite(magnitude_sum) || return true
+        combined = convert(eltype(Y), current + term)
+        _local_mass_finite(combined) || return true
+        if real_type !== nothing
+            term_real, term_imag =
+                _local_mass_product_component_bounds(alpha, A.vals[k])
+            real_magnitude =
+                abs(Float64(real(current))) + term_real
+            imag_magnitude =
+                abs(Float64(imag(current))) + term_imag
+            (!isfinite(real_magnitude) ||
+             !isfinite(imag_magnitude) ||
+             _local_mass_reduction_requires_exact(
+                 combined, real_magnitude, imag_magnitude,
+                 3, real_type)) && return true
+        end
     end
     return false
 end
@@ -917,15 +1019,19 @@ end
            (!iszero(alpha) && !iszero(value) && iszero(term))
             return false
         end
-        combined = current + term
+        combined = convert(eltype(Y), current + term)
+        term_real, term_imag =
+            _local_mass_product_component_bounds(alpha, value)
         real_magnitude =
-            abs(Float64(real(current))) + abs(Float64(real(term)))
+            abs(Float64(real(current))) + term_real
         imag_magnitude =
-            abs(Float64(imag(current))) + abs(Float64(imag(term)))
+            abs(Float64(imag(current))) + term_imag
         if !_local_mass_finite(combined) ||
            !isfinite(real_magnitude) ||
            !isfinite(imag_magnitude) ||
-           _scaled_sum_requires_exact(current, term, combined)
+           _local_mass_reduction_requires_exact(
+               combined, real_magnitude, imag_magnitude,
+               3, real_type)
             return false
         end
         Y[index] = combined
