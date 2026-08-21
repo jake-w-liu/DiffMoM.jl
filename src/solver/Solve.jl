@@ -124,6 +124,272 @@ function _ieee_dense_product_requires_fallback(
     return false
 end
 
+function _ieee_dense_product_requires_fallback(
+        matrix::SparseArrays.AbstractSparseMatrixCSC,
+        vector::AbstractVector,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    @inbounds for value in nonzeros(matrix)
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    @inbounds for value in vector
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    return false
+end
+
+function _ieee_dense_product_requires_fallback(
+        matrix::LocalMassMatrix,
+        vector::AbstractVector,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    @inbounds for value in matrix.vals
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    @inbounds for value in vector
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    return false
+end
+
+@inline function _ieee_product_error_factor(
+        ::Type{R},
+        terms_per_column::Int,
+        column_count::Int,
+) where {R<:Union{Float32,Float64}}
+    column_count <= 0 && return zero(R)
+    # This covers product rounding, the reduction, and implementation-level
+    # regrouping/FMA differences.  Once the bound reaches one, the ordinary
+    # reduction cannot certify any nonzero contributing row.
+    return min(
+        one(R), R(8 * terms_per_column) * eps(R) * R(column_count))
+end
+
+@inline function _ieee_product_component_is_suspicious(
+        value::Real,
+        magnitude::R,
+        error_factor::R,
+) where {R<:Union{Float32,Float64}}
+    isfinite(value) || return true
+    isfinite(magnitude) || return true
+    iszero(magnitude) && return false
+    return error_factor == one(R) ||
+           abs(R(value)) <= error_factor * magnitude
+end
+
+@inline function _ieee_add_product_with_exactness(
+        total::R,
+        first::R,
+        second::R,
+        sign::R,
+) where {R<:Union{Float32,Float64}}
+    product = first * second
+    product_is_exact = iszero(fma(first, second, -product))
+    term = sign * product
+    next_total = total + term
+    # Knuth's TwoSum residual is exact when the finite addition does not
+    # overflow.  The safe exponent band above guarantees that precondition.
+    virtual_term = next_total - total
+    virtual_total = next_total - virtual_term
+    addition_error = (total - virtual_total) + (term - virtual_term)
+    return next_total, product_is_exact && iszero(addition_error)
+end
+
+function _ieee_dense_row_exact_reduction(
+        matrix::AbstractMatrix,
+        vector::AbstractVector,
+        row,
+        ::Type{R},
+        complex_result::Bool,
+) where {R<:Union{Float32,Float64}}
+    sequential_real = zero(R)
+    sequential_imag = zero(R)
+    real_operations_were_exact = true
+    imag_operations_were_exact = true
+    @inbounds for column in axes(matrix, 2)
+        matrix_value = matrix[row, column]
+        vector_value = vector[column]
+        matrix_real = R(real(matrix_value))
+        vector_real = R(real(vector_value))
+        if complex_result
+            matrix_imag = R(imag(matrix_value))
+            vector_imag = R(imag(vector_value))
+            sequential_real, first_real_exact =
+                _ieee_add_product_with_exactness(
+                    sequential_real, matrix_real, vector_real, one(R))
+            sequential_real, second_real_exact =
+                _ieee_add_product_with_exactness(
+                    sequential_real, matrix_imag, vector_imag, -one(R))
+            sequential_imag, first_imag_exact =
+                _ieee_add_product_with_exactness(
+                    sequential_imag, matrix_real, vector_imag, one(R))
+            sequential_imag, second_imag_exact =
+                _ieee_add_product_with_exactness(
+                    sequential_imag, matrix_imag, vector_real, one(R))
+            real_operations_were_exact &=
+                first_real_exact && second_real_exact
+            imag_operations_were_exact &=
+                first_imag_exact && second_imag_exact
+        else
+            sequential_real, operation_was_exact =
+                _ieee_add_product_with_exactness(
+                    sequential_real, matrix_real, vector_real, one(R))
+            real_operations_were_exact &= operation_was_exact
+        end
+    end
+    return sequential_real, sequential_imag,
+           real_operations_were_exact, imag_operations_were_exact
+end
+
+function _ieee_product_result_requires_fallback(
+        matrix::AbstractMatrix,
+        vector::AbstractVector,
+        result::AbstractVector,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    @inbounds for value in vector
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    complex_result = eltype(result) <: Complex
+    terms_per_column = complex_result ? 2 : 1
+    error_factor = _ieee_product_error_factor(
+        R, terms_per_column, size(matrix, 2))
+    @inbounds for row in axes(matrix, 1)
+        real_magnitude = zero(R)
+        imag_magnitude = zero(R)
+        for column in axes(matrix, 2)
+            matrix_value = matrix[row, column]
+            _ieee_dense_extreme_factor(matrix_value, R) && return true
+            vector_value = vector[column]
+            matrix_real = R(real(matrix_value))
+            vector_real = R(real(vector_value))
+            if complex_result
+                matrix_imag = R(imag(matrix_value))
+                vector_imag = R(imag(vector_value))
+                real_magnitude += abs(matrix_real * vector_real) +
+                                  abs(matrix_imag * vector_imag)
+                imag_magnitude += abs(matrix_real * vector_imag) +
+                                  abs(matrix_imag * vector_real)
+            else
+                real_magnitude += abs(matrix_real * vector_real)
+            end
+        end
+        result_value = result[row]
+        real_is_suspicious = _ieee_product_component_is_suspicious(
+            real(result_value), real_magnitude, error_factor)
+        imag_is_suspicious = complex_result &&
+            _ieee_product_component_is_suspicious(
+                imag(result_value), imag_magnitude, error_factor)
+        if real_is_suspicious || imag_is_suspicious
+            sequential_real, sequential_imag,
+            real_operations_were_exact, imag_operations_were_exact =
+                _ieee_dense_row_exact_reduction(
+                    matrix, vector, row, R, complex_result)
+            # Exact products plus exact TwoSum-certified additions prove the
+            # sequential value is the mathematical reduction.  This keeps
+            # exact structural cancellation on the allocation-free path.
+            real_is_suspicious &&
+                !(real_operations_were_exact &&
+                  R(real(result_value)) == sequential_real) && return true
+            imag_is_suspicious &&
+                !(imag_operations_were_exact &&
+                  R(imag(result_value)) == sequential_imag) && return true
+        end
+    end
+    return false
+end
+
+function _ieee_product_result_requires_fallback(
+        matrix::SparseArrays.AbstractSparseMatrixCSC,
+        vector::AbstractVector,
+        result::AbstractVector,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    @inbounds for value in vector
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    complex_result = eltype(result) <: Complex
+    real_magnitudes = zeros(R, length(result))
+    imag_magnitudes = complex_result ? zeros(R, length(result)) : real_magnitudes
+    rows = rowvals(matrix)
+    values = nonzeros(matrix)
+    @inbounds for column in axes(matrix, 2)
+        vector_value = vector[column]
+        vector_real = R(real(vector_value))
+        vector_imag = complex_result ? R(imag(vector_value)) : zero(R)
+        for position in nzrange(matrix, column)
+            matrix_value = values[position]
+            _ieee_dense_extreme_factor(matrix_value, R) && return true
+            row = rows[position]
+            matrix_real = R(real(matrix_value))
+            if complex_result
+                matrix_imag = R(imag(matrix_value))
+                real_magnitudes[row] += abs(matrix_real * vector_real) +
+                                        abs(matrix_imag * vector_imag)
+                imag_magnitudes[row] += abs(matrix_real * vector_imag) +
+                                        abs(matrix_imag * vector_real)
+            else
+                real_magnitudes[row] += abs(matrix_real * vector_real)
+            end
+        end
+    end
+    terms_per_column = complex_result ? 2 : 1
+    error_factor = _ieee_product_error_factor(
+        R, terms_per_column, size(matrix, 2))
+    @inbounds for row in eachindex(result)
+        result_value = result[row]
+        _ieee_product_component_is_suspicious(
+            real(result_value), real_magnitudes[row], error_factor) &&
+            return true
+        complex_result &&
+            _ieee_product_component_is_suspicious(
+                imag(result_value), imag_magnitudes[row], error_factor) &&
+            return true
+    end
+    return false
+end
+
+function _ieee_product_result_requires_fallback(
+        matrix::LocalMassMatrix,
+        vector::AbstractVector,
+        result::AbstractVector,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    @inbounds for value in vector
+        _ieee_dense_extreme_factor(value, R) && return true
+    end
+    complex_result = eltype(result) <: Complex
+    real_magnitudes = zeros(R, length(result))
+    imag_magnitudes = complex_result ? zeros(R, length(result)) : real_magnitudes
+    @inbounds for position in eachindex(matrix.vals)
+        matrix_value = matrix.vals[position]
+        _ieee_dense_extreme_factor(matrix_value, R) && return true
+        vector_value = vector[matrix.cols[position]]
+        row = matrix.rows[position]
+        matrix_real = R(real(matrix_value))
+        vector_real = R(real(vector_value))
+        if complex_result
+            matrix_imag = R(imag(matrix_value))
+            vector_imag = R(imag(vector_value))
+            real_magnitudes[row] += abs(matrix_real * vector_real) +
+                                    abs(matrix_imag * vector_imag)
+            imag_magnitudes[row] += abs(matrix_real * vector_imag) +
+                                    abs(matrix_imag * vector_real)
+        else
+            real_magnitudes[row] += abs(matrix_real * vector_real)
+        end
+    end
+    terms_per_column = complex_result ? 2 : 1
+    error_factor = _ieee_product_error_factor(
+        R, terms_per_column, size(matrix, 2))
+    @inbounds for row in eachindex(result)
+        result_value = result[row]
+        _ieee_product_component_is_suspicious(
+            real(result_value), real_magnitudes[row], error_factor) &&
+            return true
+        complex_result &&
+            _ieee_product_component_is_suspicious(
+                imag(result_value), imag_magnitudes[row], error_factor) &&
+            return true
+    end
+    return false
+end
+
 @noinline function _matrix_vector_product_bigfloat!(
     result::AbstractVector{T},
     matrix::AbstractMatrix{<:Number},
@@ -173,6 +439,73 @@ end
     end
 end
 
+@noinline function _matrix_vector_product_bigfloat!(
+    result::AbstractVector{T},
+    matrix::SparseArrays.AbstractSparseMatrixCSC{<:Number},
+    vector::AbstractVector{<:Number},
+    label::AbstractString,
+) where {T<:Number}
+    # CSC storage is column-oriented.  The exceptional path transposes once
+    # so each exact row reduction remains O(nnz) overall without retaining a
+    # BigFloat accumulator for every output row.
+    row_matrix = copy(transpose(matrix))
+    columns = rowvals(row_matrix)
+    values = nonzeros(row_matrix)
+    return setprecision(
+            BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        if T <: Real
+            @inbounds for row in axes(matrix, 1)
+                total = zero(BigFloat)
+                for position in nzrange(row_matrix, row)
+                    column = columns[position]
+                    total += BigFloat(values[position]) *
+                             BigFloat(vector[column])
+                end
+                converted = convert(T, total)
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "$label is outside the representable $T range at index $row"))
+                result[row] = converted
+            end
+        else
+            @inbounds for row in axes(matrix, 1)
+                total_real = zero(BigFloat)
+                total_imag = zero(BigFloat)
+                for position in nzrange(row_matrix, row)
+                    column = columns[position]
+                    matrix_value = values[position]
+                    vector_value = vector[column]
+                    matrix_real = BigFloat(real(matrix_value))
+                    matrix_imag = BigFloat(imag(matrix_value))
+                    vector_real = BigFloat(real(vector_value))
+                    vector_imag = BigFloat(imag(vector_value))
+                    total_real += matrix_real * vector_real -
+                                  matrix_imag * vector_imag
+                    total_imag += matrix_real * vector_imag +
+                                  matrix_imag * vector_real
+                end
+                converted = convert(
+                    T, Complex{BigFloat}(total_real, total_imag))
+                isfinite(converted) ||
+                    throw(OverflowError(
+                        "$label is outside the representable $T range at index $row"))
+                result[row] = converted
+            end
+        end
+        return result
+    end
+end
+
+@noinline function _matrix_vector_product_bigfloat!(
+    result::AbstractVector{T},
+    matrix::LocalMassMatrix,
+    vector::AbstractVector{<:Number},
+    ::AbstractString,
+) where {T<:Number}
+    return _local_mass_mul_bigfloat!(
+        result, matrix, vector, one(T), zero(T), false)
+end
+
 function _finite_matrix_vector_product(
     matrix::AbstractMatrix{<:Number},
     vector::AbstractVector{<:Number},
@@ -183,8 +516,8 @@ function _finite_matrix_vector_product(
     if scalar_type <:
        Union{Float32,Float64,ComplexF32,ComplexF64}
         real_type = typeof(real(zero(scalar_type)))
-        if _ieee_dense_product_requires_fallback(
-                matrix, vector, real_type)
+        if _ieee_product_result_requires_fallback(
+                matrix, vector, result, real_type)
             return _matrix_vector_product_bigfloat!(
                 result, matrix, vector, label)
         end
@@ -207,16 +540,16 @@ function _finite_matrix_vector_product_status!(
     vector::AbstractVector{<:Number},
     label::AbstractString,
 ) where {T<:Number}
+    mul!(result, matrix, vector)
     if T <: Union{Float32,Float64,ComplexF32,ComplexF64}
         real_type = typeof(real(zero(T)))
-        if _ieee_dense_product_requires_fallback(
-                matrix, vector, real_type)
+        if _ieee_product_result_requires_fallback(
+                matrix, vector, result, real_type)
             _matrix_vector_product_bigfloat!(
                 result, matrix, vector, label)
             return true
         end
     end
-    mul!(result, matrix, vector)
     @inbounds for index in eachindex(result)
         if !isfinite(result[index])
             T <: Union{Float32,Float64,ComplexF32,ComplexF64} ||

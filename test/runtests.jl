@@ -7176,6 +7176,64 @@ end
     dense_mixed_component_input32,
     "mixed-component Float32 underflow regression",
 ) == dense_mixed_component_reference32
+
+# Finite BLAS/sparse reductions can lose a small term when large terms cancel.
+# The checked product must certify the ordinary result and restart the rare
+# ill-conditioned row exactly for every supported storage path.
+dense_cancellation_matrix = reshape(
+    Float64[1e16, 1.0, -1e16], 1, 3)
+dense_cancellation_input = ones(Float64, 3)
+dense_cancellation_reference = Float64[1.0]
+@test dense_cancellation_matrix * dense_cancellation_input !=
+      dense_cancellation_reference
+for dense_cancellation_storage in (
+    dense_cancellation_matrix,
+    sparse(dense_cancellation_matrix),
+)
+    @test DiffMoM._finite_matrix_vector_product(
+        dense_cancellation_storage,
+        dense_cancellation_input,
+        "finite matrix-product cancellation regression",
+    ) == dense_cancellation_reference
+    dense_cancellation_workspace = zeros(Float64, 1)
+    @test DiffMoM._finite_matrix_vector_product_status!(
+        dense_cancellation_workspace,
+        dense_cancellation_storage,
+        dense_cancellation_input,
+        "in-place finite matrix-product cancellation regression",
+    )
+    @test dense_cancellation_workspace == dense_cancellation_reference
+end
+dense_cancellation_local = LocalMassMatrix(
+    3,
+    [1, 1, 1],
+    [1, 2, 3],
+    Float64[1e16, 1.0, -1e16],
+)
+@test DiffMoM._finite_matrix_vector_product(
+    dense_cancellation_local,
+    dense_cancellation_input,
+    "LocalMassMatrix product cancellation regression",
+) == Float64[1.0, 0.0, 0.0]
+
+dense_cancellation_matrix32 = reshape(
+    Float32[1f8, 1.0f0, -1f8], 1, 3)
+@test DiffMoM._finite_matrix_vector_product(
+    dense_cancellation_matrix32,
+    ones(Float32, 3),
+    "Float32 product cancellation regression",
+) == Float32[1.0f0]
+
+dense_cancellation_complex = reshape(
+    ComplexF64[1e16 + 1e16im, 1.0 + 2.0im, -1e16 - 1e16im],
+    1,
+    3,
+)
+@test DiffMoM._finite_matrix_vector_product(
+    dense_cancellation_complex,
+    ones(ComplexF64, 3),
+    "complex product cancellation regression",
+) == ComplexF64[1.0 + 2.0im]
 @test_throws OverflowError solve_adjoint(
     Matrix{ComplexF64}(I, 1, 1),
     reshape(ComplexF64[2.0], 1, 1),
