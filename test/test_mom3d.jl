@@ -363,6 +363,44 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             ordinary_observation, source, k)) == 0
     end
 
+    @testset "Finite transverse-projection cancellation" begin
+        observation = Vec3(1.0, 1.0, 0.5)
+        source = Vec3(0.0, 0.0, 0.0)
+        k = 1.0
+        dyadic = electric_dipole_dyadic_3d(observation, source, k)
+        row = 2
+        dipole = CVec3(
+            1.0e16 / dyadic[row, 1],
+            3.0 / dyadic[row, 2],
+            -1.0e16 / dyadic[row, 3],
+        )
+        reference = setprecision(BigFloat, 2304) do
+            dipole_big = SVector{3,Complex{BigFloat}}(
+                Complex{BigFloat}.(dipole))
+            CVec3(ComplexF64.(
+                DiffMoM._electric_dipole_value_bigfloat_3d(
+                    observation, source, k, dipole_big)))
+        end
+
+        R, _, _, phase = DiffMoM._electric_dipole_geometry_3d(
+            observation, source, k)
+        direction = DiffMoM._source_power_of_two_scaled_direction(
+            observation - source)
+        direction_norm_squared = sum(abs2, direction)
+        transverse = DiffMoM._dipole_cross(
+            DiffMoM._dipole_cross(direction, dipole), direction) /
+            direction_norm_squared
+        near = 2dipole - 3transverse
+        unchecked = phase * (
+            (k^2 / R) * transverse +
+            (1 / R^3 + 1im * k / R^2) * near)
+        @test abs(unchecked[row] - reference[row]) > 1.0e-3
+
+        checked = DiffMoM._electric_dipole_apply_3d(
+            observation, source, k, dipole)
+        @test checked == reference
+    end
+
     @testset "Reciprocal dyadic block symmetry" begin
         grid = VoxelGrid3D((-0.1, 0.1), (-0.1, 0.1), (-0.1, 0.1), 2, 1, 1)
         matrix_bytes = sizeof(ComplexF64) * (3grid.nvoxels)^2

@@ -1052,38 +1052,371 @@ function _electric_dipole_alpha_adjoint_apply_bigfloat_3d(
     end
 end
 
-@inline function _electric_dipole_apply_with_geometry_3d(
-    r::Vec3,
-    rp::Vec3,
-    k::Float64,
-    q::CVec3,
-    R::Float64,
-    expfac::ComplexF64,
-)
-    q_scale = max(abs(q[1]), abs(q[2]), abs(q[3]))
-    if !isfinite(q_scale)
-        all(isfinite, q) ||
-            throw(ArgumentError("electric dipole moment must be finite."))
-        q_scale = max(
-            _complex_component_scale_3d(q[1]),
-            _complex_component_scale_3d(q[2]),
-            _complex_component_scale_3d(q[3]),
-        )
-    end
-    iszero(q_scale) && return CVec3(
-        0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+# The four triple products in one transverse component can lose a small but
+# representable residual across the two nested cross products. A twofold
+# Float64 expansion recovers that residual without allocating on the guarded
+# finite-exponent path; still smaller residuals use the BigFloat fallback.
+@inline function _electric_dipole_double_add_3d(
+        first::NTuple{2,Float64},
+        second::NTuple{2,Float64})
+    leading, leading_error = _two_sum(first[1], second[1])
+    trailing = first[2] + second[2]
+    return _two_sum(leading, leading_error + trailing)
+end
 
+@inline function _electric_dipole_two_product_3d(
+        first::Float64,
+        second::Float64)
+    leading = first * second
+    return leading, fma(first, second, -leading)
+end
+
+@inline function _electric_dipole_triple_product_3d(
+        first::Float64,
+        second::Float64,
+        third::Float64)
+    product, product_error =
+        _electric_dipole_two_product_3d(first, second)
+    leading = product * third
+    trailing = fma(product, third, -leading) + product_error * third
+    return _two_sum(leading, trailing)
+end
+
+@inline function _electric_dipole_transverse_expansion_3d(
+        direction::Vec3,
+        q::CVec3,
+        component::Int,
+        part)
+    second = component == 1 ? 2 : component == 2 ? 3 : 1
+    third = component == 1 ? 3 : component == 2 ? 1 : 2
+    accumulator = (0.0, 0.0)
+    accumulator = _electric_dipole_double_add_3d(
+        accumulator,
+        _electric_dipole_triple_product_3d(
+            direction[second], direction[second], part(q[component])))
+    accumulator = _electric_dipole_double_add_3d(
+        accumulator,
+        _electric_dipole_triple_product_3d(
+            direction[third], direction[third], part(q[component])))
+    accumulator = _electric_dipole_double_add_3d(
+        accumulator,
+        _electric_dipole_triple_product_3d(
+            -direction[component], direction[second], part(q[second])))
+    return _electric_dipole_double_add_3d(
+        accumulator,
+        _electric_dipole_triple_product_3d(
+            -direction[component], direction[third], part(q[third])))
+end
+
+@inline function _electric_dipole_double_divide_3d(
+        numerator::NTuple{2,Float64},
+        denominator::NTuple{2,Float64})
+    leading = numerator[1] / denominator[1]
+    product = _electric_dipole_two_product_3d(
+        denominator[1], leading)
+    product = _electric_dipole_double_add_3d(
+        product, (denominator[2] * leading, 0.0))
+    remainder = _electric_dipole_double_add_3d(
+        numerator, (-product[1], -product[2]))
+    correction = (remainder[1] + remainder[2]) / denominator[1]
+    return leading + correction
+end
+
+@inline function _electric_dipole_compensated_transverse_component_3d(
+        direction::Vec3,
+        q::CVec3,
+        inner_cross::CVec3,
+        denominator::NTuple{2,Float64},
+        component::Int)
+    double_error_factor = 1024eps(Float64)^2
+    real_expansion = _electric_dipole_transverse_expansion_3d(
+        direction, q, component, real)
+    imag_expansion = _electric_dipole_transverse_expansion_3d(
+        direction, q, component, imag)
+    real_numerator = real_expansion[1] + real_expansion[2]
+    imag_numerator = imag_expansion[1] + imag_expansion[2]
+    real_magnitude, imag_magnitude =
+        _electric_dipole_transverse_magnitudes_3d(
+            direction, q, component)
+    # This generous second-order bound certifies the fixed-size expansion; it
+    # is not the requested accuracy of the returned field.
+    second = component == 1 ? 2 : component == 2 ? 3 : 1
+    third = component == 1 ? 3 : component == 2 ? 1 : 2
+    real_structural_zero =
+        (iszero(real(inner_cross[second])) ||
+         iszero(direction[third])) &&
+        (iszero(real(inner_cross[third])) ||
+         iszero(direction[second]))
+    imag_structural_zero =
+        (iszero(imag(inner_cross[second])) ||
+         iszero(direction[third])) &&
+        (iszero(imag(inner_cross[third])) ||
+         iszero(direction[second]))
+    real_resolved = real_structural_zero ||
+        !_ieee_product_component_is_suspicious(
+            real_numerator, real_magnitude, double_error_factor)
+    imag_resolved = imag_structural_zero ||
+        !_ieee_product_component_is_suspicious(
+            imag_numerator, imag_magnitude, double_error_factor)
+    value = ComplexF64(
+            _electric_dipole_double_divide_3d(
+                real_expansion, denominator),
+            _electric_dipole_double_divide_3d(
+                imag_expansion, denominator),
+    )
+    return value, real_resolved && imag_resolved
+end
+
+@inline function _electric_dipole_compensated_transverse_3d(
+        direction::Vec3,
+        q::CVec3)
+    denominator = (0.0, 0.0)
+    @inbounds for component in 1:3
+        denominator = _electric_dipole_double_add_3d(
+            denominator,
+            _electric_dipole_two_product_3d(
+                direction[component], direction[component]))
+    end
+    inner_cross = _dipole_cross(direction, q)
+    first, first_resolved =
+        _electric_dipole_compensated_transverse_component_3d(
+            direction, q, inner_cross, denominator, 1)
+    second, second_resolved =
+        _electric_dipole_compensated_transverse_component_3d(
+            direction, q, inner_cross, denominator, 2)
+    third, third_resolved =
+        _electric_dipole_compensated_transverse_component_3d(
+            direction, q, inner_cross, denominator, 3)
+    return CVec3(first, second, third),
+           first_resolved && second_resolved && third_resolved
+end
+
+@inline function _electric_dipole_transverse_magnitudes_3d(
+        direction::Vec3,
+        q::CVec3,
+        component::Int)
+    second = component == 1 ? 2 : component == 2 ? 3 : 1
+    third = component == 1 ? 3 : component == 2 ? 1 : 2
+    diagonal = direction[second]^2 + direction[third]^2
+    second_coefficient = direction[component] * direction[second]
+    third_coefficient = direction[component] * direction[third]
+    real_magnitude =
+        abs(diagonal * real(q[component])) +
+        abs(second_coefficient * real(q[second])) +
+        abs(third_coefficient * real(q[third]))
+    imag_magnitude =
+        abs(diagonal * imag(q[component])) +
+        abs(second_coefficient * imag(q[second])) +
+        abs(third_coefficient * imag(q[third]))
+    return real_magnitude, imag_magnitude
+end
+
+@inline function _electric_dipole_two_term_requires_exact_3d(
+        value::ComplexF64,
+        first::ComplexF64,
+        second::ComplexF64)
+    real_magnitude = abs(real(first)) + abs(real(second))
+    imag_magnitude = abs(imag(first)) + abs(imag(second))
+    error_factor = _ieee_product_error_factor(Float64, 2, 2)
+    return _ieee_product_component_is_suspicious(
+               real(value), real_magnitude, error_factor) ||
+           _ieee_product_component_is_suspicious(
+               imag(value), imag_magnitude, error_factor)
+end
+
+@inline function _electric_dipole_product_magnitudes_3d(
+        left::ComplexF64,
+        right::ComplexF64)
+    real_magnitude =
+        abs(real(left) * real(right)) +
+        abs(imag(left) * imag(right))
+    imag_magnitude =
+        abs(real(left) * imag(right)) +
+        abs(imag(left) * real(right))
+    return real_magnitude, imag_magnitude
+end
+
+@inline function _electric_dipole_product_requires_exact_3d(
+        value::ComplexF64,
+        left::ComplexF64,
+        right::ComplexF64)
+    _floating_product_loses_range_3d(left, right) && return true
+    real_magnitude, imag_magnitude =
+        _electric_dipole_product_magnitudes_3d(left, right)
+    error_factor = _ieee_product_error_factor(Float64, 2, 1)
+    return _ieee_product_component_is_suspicious(
+               real(value), real_magnitude, error_factor) ||
+           _ieee_product_component_is_suspicious(
+               imag(value), imag_magnitude, error_factor)
+end
+
+@inline function _electric_dipole_field_sum_requires_exact_3d(
+        value::ComplexF64,
+        transverse_coefficient::ComplexF64,
+        transverse::ComplexF64,
+        near_coefficient::ComplexF64,
+        near::ComplexF64)
+    transverse_real, transverse_imag =
+        _electric_dipole_product_magnitudes_3d(
+            transverse_coefficient, transverse)
+    near_real, near_imag = _electric_dipole_product_magnitudes_3d(
+        near_coefficient, near)
+    error_factor = _ieee_product_error_factor(Float64, 2, 2)
+    return _ieee_product_component_is_suspicious(
+               real(value), transverse_real + near_real, error_factor) ||
+           _ieee_product_component_is_suspicious(
+               imag(value), transverse_imag + near_imag, error_factor)
+end
+
+@inline function _electric_dipole_cross_component_structural_zero_3d(
+        direction::Vec3,
+        inner_cross::CVec3,
+        component::Int,
+        part)
+    second = component == 1 ? 2 : component == 2 ? 3 : 1
+    third = component == 1 ? 3 : component == 2 ? 1 : 2
+    return (iszero(part(inner_cross[second])) ||
+            iszero(direction[third])) &&
+           (iszero(part(inner_cross[third])) ||
+            iszero(direction[second]))
+end
+
+@inline function _electric_dipole_component_imbalance_3d(
+        value::ComplexF64)
+    real_magnitude = abs(real(value))
+    imag_magnitude = abs(imag(value))
+    scale = max(real_magnitude, imag_magnitude)
+    iszero(scale) && return false
+    return min(real_magnitude, imag_magnitude) <= 64eps(Float64) * scale
+end
+
+@inline function _electric_dipole_field_sum_may_cancel_3d(
+        value::ComplexF64,
+        first::ComplexF64,
+        second::ComplexF64)
+    magnitude = abs(first) + abs(second)
+    (!isfinite(magnitude) ||
+     (!iszero(magnitude) &&
+      abs(value) <= 64eps(Float64) * magnitude)) && return true
+    return _electric_dipole_component_imbalance_3d(value)
+end
+
+@inline function _electric_dipole_moment_requires_certificate_3d(
+        first_magnitude::Float64,
+        second_magnitude::Float64,
+        third_magnitude::Float64)
+    largest = max(first_magnitude, second_magnitude, third_magnitude)
+    smallest = Inf
+    for magnitude in
+            (first_magnitude, second_magnitude, third_magnitude)
+        iszero(magnitude) && continue
+        smallest = min(smallest, magnitude)
+    end
+    iszero(largest) && return false
+    # Leave a guard below the 53-bit significand before the nested projection
+    # is admitted to the compensated path.
+    return largest > ldexp(1.0, 128) ||
+           smallest < ldexp(1.0, -128) ||
+           smallest <= ldexp(largest, -40)
+end
+
+@noinline function _electric_dipole_apply_exceptional_3d(
+        r::Vec3,
+        rp::Vec3,
+        k::Float64,
+        q::CVec3,
+        R::Float64,
+        expfac::ComplexF64,
+        q_scale::Float64,
+        moment_requires_certificate::Bool)
     displacement = r - rp
     projection_direction = _source_power_of_two_scaled_direction(
         displacement)
     projection_norm_squared = sum(abs2, projection_direction)
-    transverse_direct = _dipole_cross(
-        _dipole_cross(projection_direction, q),
-        projection_direction) / projection_norm_squared
+    inner_cross = _dipole_cross(projection_direction, q)
+    transverse_numerator = _dipole_cross(
+        inner_cross, projection_direction)
+    transverse_direct = transverse_numerator / projection_norm_squared
     near_direct = 2q - 3transverse_direct
-    ordinary_value = expfac * (
-        (k^2 / R) * transverse_direct +
-        (1 / R^3 + 1im * k / R^2) * near_direct)
+    transverse_coefficient = ComplexF64(k^2 / R)
+    near_coefficient = ComplexF64(1 / R^3 + 1im * k / R^2)
+    transverse_term = transverse_coefficient * transverse_direct
+    near_term = near_coefficient * near_direct
+    unphased_value = transverse_term + near_term
+    ordinary_value = expfac * unphased_value
+
+    if moment_requires_certificate
+        @inbounds for component in q
+            _source_scaling_extreme_value(component) &&
+                return _electric_dipole_apply_bigfloat_3d(r, rp, k, q)
+        end
+
+        needs_compensated_transverse = false
+        transverse_error_factor =
+            _ieee_product_error_factor(Float64, 4, 3)
+        q_real_scale = max(
+            abs(real(q[1])), abs(real(q[2])), abs(real(q[3])))
+        q_imag_scale = max(
+            abs(imag(q[1])), abs(imag(q[2])), abs(imag(q[3])))
+        @inbounds for component in 1:3
+            real_structural_zero =
+                _electric_dipole_cross_component_structural_zero_3d(
+                    projection_direction, inner_cross, component, real)
+            imag_structural_zero =
+                _electric_dipole_cross_component_structural_zero_3d(
+                    projection_direction, inner_cross, component, imag)
+            needs_compensated_transverse |=
+                !real_structural_zero && !iszero(q_real_scale) &&
+                abs(real(transverse_numerator[component])) <=
+                    3transverse_error_factor * q_real_scale
+            needs_compensated_transverse |=
+                !imag_structural_zero && !iszero(q_imag_scale) &&
+                abs(imag(transverse_numerator[component])) <=
+                    3transverse_error_factor * q_imag_scale
+        end
+        if needs_compensated_transverse
+            transverse_direct, resolved =
+                _electric_dipole_compensated_transverse_3d(
+                    projection_direction, q)
+            resolved ||
+                return _electric_dipole_apply_bigfloat_3d(r, rp, k, q)
+            near_direct = 2q - 3transverse_direct
+            transverse_term = transverse_coefficient * transverse_direct
+            near_term = near_coefficient * near_direct
+            unphased_value = transverse_term + near_term
+            ordinary_value = expfac * unphased_value
+        end
+    end
+
+    needs_exact = false
+    @inbounds for component in 1:3
+        near_first = 2q[component]
+        near_second = -3transverse_direct[component]
+        needs_exact |= _electric_dipole_two_term_requires_exact_3d(
+            near_direct[component], near_first, near_second)
+        if _electric_dipole_component_imbalance_3d(
+                near_term[component])
+            needs_exact |= _electric_dipole_product_requires_exact_3d(
+                near_term[component], near_coefficient,
+                near_direct[component])
+        end
+        if _electric_dipole_field_sum_may_cancel_3d(
+                unphased_value[component], transverse_term[component],
+                near_term[component])
+            needs_exact |= _electric_dipole_field_sum_requires_exact_3d(
+                unphased_value[component],
+                transverse_coefficient, transverse_direct[component],
+                near_coefficient, near_direct[component])
+        end
+        if _electric_dipole_component_imbalance_3d(
+                ordinary_value[component])
+            needs_exact |= _electric_dipole_product_requires_exact_3d(
+                ordinary_value[component], expfac,
+                unphased_value[component])
+        end
+    end
+    needs_exact &&
+        return _electric_dipole_apply_bigfloat_3d(r, rp, k, q)
     all(isfinite, ordinary_value) && return ordinary_value
 
     q_normalized = q / q_scale
@@ -1100,6 +1433,54 @@ end
     value = expfac * (transverse + near_real + 1im * near_imag)
     all(isfinite, value) && return value
     return _electric_dipole_apply_bigfloat_3d(r, rp, k, q)
+end
+
+@inline function _electric_dipole_apply_with_geometry_3d(
+    r::Vec3,
+    rp::Vec3,
+    k::Float64,
+    q::CVec3,
+    R::Float64,
+    expfac::ComplexF64,
+)
+    first_magnitude = abs(q[1])
+    second_magnitude = abs(q[2])
+    third_magnitude = abs(q[3])
+    q_scale = max(first_magnitude, second_magnitude, third_magnitude)
+    if !isfinite(q_scale)
+        all(isfinite, q) ||
+            throw(ArgumentError("electric dipole moment must be finite."))
+        q_scale = max(
+            _complex_component_scale_3d(q[1]),
+            _complex_component_scale_3d(q[2]),
+            _complex_component_scale_3d(q[3]),
+        )
+    end
+    iszero(q_scale) && return CVec3(
+        0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+
+    displacement = r - rp
+    projection_direction = _source_power_of_two_scaled_direction(
+        displacement)
+    projection_norm_squared = sum(abs2, projection_direction)
+    inner_cross = _dipole_cross(projection_direction, q)
+    transverse_numerator = _dipole_cross(
+        inner_cross, projection_direction)
+    transverse_direct = transverse_numerator / projection_norm_squared
+    near_direct = 2q - 3transverse_direct
+    ordinary_value = expfac * (
+        (k^2 / R) * transverse_direct +
+        (1 / R^3 + 1im * k / R^2) * near_direct)
+
+    moment_requires_certificate =
+        _electric_dipole_moment_requires_certificate_3d(
+            first_magnitude, second_magnitude, third_magnitude)
+    if all(isfinite, ordinary_value) && !moment_requires_certificate
+        return ordinary_value
+    end
+    return _electric_dipole_apply_exceptional_3d(
+        r, rp, k, q, R, expfac, q_scale,
+        moment_requires_certificate)
 end
 
 @inline function _electric_dipole_alpha_block_3d(
