@@ -1220,6 +1220,48 @@ function make_mass_regularizer(
     return R
 end
 
+@noinline function _mass_diagonal_mean_bigfloat(R::Matrix{ComplexF64})
+    return setprecision(BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+        total = zero(BigFloat)
+        @inbounds for index in axes(R, 1)
+            total += BigFloat(real(R[index, index]))
+        end
+        converted = Float64(total / BigFloat(size(R, 1)))
+        isfinite(converted) ||
+            throw(OverflowError(
+                "mass preconditioner diagonal mean is outside the Float64 range"))
+        return converted
+    end
+end
+
+function _mass_diagonal_mean(R::Matrix{ComplexF64})
+    diagonal_scale = 0.0
+    @inbounds for index in axes(R, 1)
+        diagonal_scale = max(diagonal_scale, abs(real(R[index, index])))
+    end
+    iszero(diagonal_scale) && return 0.0
+
+    scaled_sum = 0.0
+    compensation = 0.0
+    absolute_sum = 0.0
+    @inbounds for index in axes(R, 1)
+        value = real(R[index, index]) / diagonal_scale
+        corrected = value - compensation
+        updated = scaled_sum + corrected
+        compensation = (updated - scaled_sum) - corrected
+        scaled_sum = updated
+        absolute_sum += abs(value)
+    end
+    if !isfinite(scaled_sum) || !isfinite(absolute_sum) ||
+       abs(scaled_sum) <=
+           _SCALED_SUM_CANCELLATION_FACTOR * absolute_sum
+        return _mass_diagonal_mean_bigfloat(R)
+    end
+    mean = diagonal_scale * (scaled_sum / size(R, 1))
+    isfinite(mean) || return _mass_diagonal_mean_bigfloat(R)
+    return mean
+end
+
 """
     make_left_preconditioner(Mp; eps_rel=1e-8,
                              max_output_bytes=2_000_000_000)
@@ -1238,7 +1280,10 @@ function make_left_preconditioner(Mp::Vector{<:AbstractMatrix};
             "eps_rel must be finite and positive, got $eps_rel"))
     R = make_mass_regularizer(Mp; max_output_bytes=max_output_bytes)
     N = size(R, 1)
-    scale = max(real(tr(R)) / N, 1.0)
+    N >= 1 ||
+        throw(ArgumentError(
+            "mass preconditioner requires a positive matrix dimension"))
+    scale = max(_mass_diagonal_mean(R), 1.0)
     isfinite(scale) ||
         error("mass preconditioner scale is non-finite")
     ϵ = eps_rel * scale

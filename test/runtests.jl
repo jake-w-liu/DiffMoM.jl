@@ -4386,6 +4386,7 @@ make_left_preconditioner(Mp; eps_rel=1e-6)
 @test ishermitian(R_mass)
 @test_throws ArgumentError make_left_preconditioner(Mp; eps_rel=0.0)
 @test_throws ArgumentError make_left_preconditioner(Mp; eps_rel=Inf)
+@test_throws ArgumentError make_left_preconditioner([zeros(0, 0)])
 @test_throws ArgumentError make_mass_regularizer(
     [ComplexF64[NaN 0.0; 0.0 1.0]])
 
@@ -4411,6 +4412,26 @@ mass_regularizer_tiny = make_mass_regularizer([
 ])
 @test mass_regularizer_tiny[1, 2] == mass_regularizer_tiny_entry
 @test mass_regularizer_tiny[2, 1] == conj(mass_regularizer_tiny_entry)
+
+# The trace can overflow even when its mean and the resulting diagonal shift
+# are finite.  Compute the preconditioner scale without forming that trace.
+mass_preconditioner_large_diagonal = 0.75 * floatmax(Float64)
+mass_preconditioner_large_matrix = ComplexF64[
+    mass_preconditioner_large_diagonal 0;
+    0 mass_preconditioner_large_diagonal
+]
+mass_preconditioner_large = make_left_preconditioner(
+    [mass_preconditioner_large_matrix]; eps_rel=1e-8)
+mass_preconditioner_large_expected = setprecision(BigFloat, 4352) do
+    ComplexF64(
+        BigFloat(mass_preconditioner_large_diagonal) *
+        (1 + BigFloat(1e-8)))
+end
+@test mass_preconditioner_large[1, 1] ==
+      mass_preconditioner_large_expected
+@test mass_preconditioner_large[2, 2] ==
+      mass_preconditioner_large_expected
+@test all(isfinite, mass_preconditioner_large)
 
 @test_throws ArgumentError select_preconditioner(
     Matrix{ComplexF64}[]; mode=:off)
