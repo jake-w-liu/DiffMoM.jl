@@ -1040,6 +1040,44 @@ println("\n── Test 46: 3D vector material DDA solver ──")
     end
 
     @testset "Matrix-free scaled-output exponent range" begin
+        identity_grid = VoxelGrid3D(
+            (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+        identity_operator = dda_operator_3d(
+            identity_grid, k0, 1.0 + 0im)
+        cancellation_scale = 1.0e300 + 0im
+        cancellation_input = ComplexF64[1.0, 0.0, 0.0]
+        cancellation_previous = ComplexF64[-prevfloat(1.0), 0.0, 0.0]
+        cancellation_reference = setprecision(BigFloat, 4352) do
+            ComplexF64(
+                Complex{BigFloat}(cancellation_scale) +
+                Complex{BigFloat}(cancellation_scale) *
+                Complex{BigFloat}(cancellation_previous[1]))
+        end
+        @test cancellation_scale +
+              cancellation_scale * cancellation_previous[1] !=
+              cancellation_reference
+        for operator in (identity_operator, adjoint(identity_operator))
+            cancellation_result = copy(cancellation_previous)
+            mul!(
+                cancellation_result,
+                operator,
+                cancellation_input,
+                cancellation_scale,
+                cancellation_scale,
+            )
+            @test cancellation_result == ComplexF64[
+                cancellation_reference, 0.0, 0.0]
+        end
+
+        unrepresentable_scale = fill(10.0 + 0im, 3)
+        @test_throws OverflowError mul!(
+            unrepresentable_scale,
+            identity_operator,
+            cancellation_input,
+            0.0 + 0im,
+            1.0e308 + 0im,
+        )
+
         scale_grid = VoxelGrid3D(
             (0.0, 0.2), (0.0, 0.1), (0.0, 0.1), 2, 1, 1)
         scale_operator = dda_operator_3d(

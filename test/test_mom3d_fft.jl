@@ -64,6 +64,39 @@ end
     @test y_single ≈ x_single
     @test A_single.kernel.interaction_scale == single.volumes[1]
 
+    cancellation_scale = 1.0e300 + 0im
+    cancellation_reference = setprecision(BigFloat, 4352) do
+        ComplexF64(
+            Complex{BigFloat}(cancellation_scale) +
+            Complex{BigFloat}(cancellation_scale) *
+            Complex{BigFloat}(-prevfloat(1.0)))
+    end
+    fft_identity = fft_dda_operator_3d(single, k0, 1.0 + 0im)
+    fft_cancellation = ComplexF64[-prevfloat(1.0), 0.0, 0.0]
+    mul!(
+        fft_cancellation,
+        fft_identity,
+        ComplexF64[1.0, 0.0, 0.0],
+        cancellation_scale,
+        cancellation_scale,
+    )
+    @test fft_cancellation == ComplexF64[
+        cancellation_reference, 0.0, 0.0]
+
+    fft_em_identity = fft_em_dda_operator_3d(
+        single, k0, 1.0 + 0im, 1.0 + 0im)
+    fft_em_cancellation = ComplexF64[
+        -prevfloat(1.0), 0.0, 0.0, 0.0, 0.0, 0.0]
+    mul!(
+        fft_em_cancellation,
+        fft_em_identity,
+        ComplexF64[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        cancellation_scale,
+        cancellation_scale,
+    )
+    @test fft_em_cancellation == ComplexF64[
+        cancellation_reference, 0.0, 0.0, 0.0, 0.0, 0.0]
+
     tiny_spacing = 1.0e-103
     tiny_grid = VoxelGrid3D(
         (0.0, 2tiny_spacing),

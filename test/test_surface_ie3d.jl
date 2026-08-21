@@ -666,6 +666,26 @@ end
     @test product_allocation <= output_allocation + 128
     @test norm(y_mf - A_pm * x) / norm(A_pm * x) < 1e-13
 
+    finite_cancellation_scale = 1.0e300 + 0im
+    finite_cancellation_previous = ComplexF64(-prevfloat(1.0))
+    finite_cancellation_reference = setprecision(BigFloat, 4352) do
+        ComplexF64(
+            Complex{BigFloat}(finite_cancellation_scale) +
+            Complex{BigFloat}(finite_cancellation_scale) *
+            Complex{BigFloat}(finite_cancellation_previous))
+    end
+    @test finite_cancellation_scale +
+          finite_cancellation_scale * finite_cancellation_previous !=
+          finite_cancellation_reference
+    @test DiffMoM._surface_sie_scaled_output_3d(
+        1.0 + 0im,
+        finite_cancellation_previous,
+        finite_cancellation_scale,
+        finite_cancellation_scale,
+        false,
+        1,
+    ) == finite_cancellation_reference
+
     # The two scaled terms are individually outside Float64 range but cancel
     # exactly. The five-argument mul! contract must combine them before the
     # final ComplexF64 conversion instead of producing Inf - Inf = NaN.

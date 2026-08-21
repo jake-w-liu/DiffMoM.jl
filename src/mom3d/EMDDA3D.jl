@@ -626,12 +626,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(y) == size(A, 1) || throw(DimensionMismatch("y length must be $(size(A, 1))."))
 
     if iszero(alpha_scale)
-        if iszero(beta_scale)
-            fill!(y, zero(ComplexF64))
-        elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
-        end
-        return y
+        return _dda_scale_output_only_3d!(y, beta_scale)
     end
 
     xread = Base.mightalias(y, x) ? copy(x) : x

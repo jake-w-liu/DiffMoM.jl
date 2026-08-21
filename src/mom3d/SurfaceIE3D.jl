@@ -1272,6 +1272,11 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
+    _dda_scaled_output_requires_exact_3d(
+        value, previous, alpha_scale, beta_scale, overwrite) &&
+        return _surface_sie_scaled_output_bigfloat_3d(
+            value, previous, alpha_scale, beta_scale, overwrite, row)
+
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
@@ -1286,11 +1291,26 @@ end
         max(abs(real(alpha_term)), abs(imag(alpha_term))) +
         max(abs(real(beta_term)), abs(imag(beta_term)))
     converted = ComplexF64(combined)
-    if isfinite(converted) && isfinite(magnitude_sum)
+    if isfinite(converted) && isfinite(magnitude_sum) &&
+       !_dda_scaled_sum_cancels_3d(alpha_term, beta_term, combined)
         return converted
     end
     return _surface_sie_scaled_output_bigfloat_3d(
         value, previous, alpha_scale, beta_scale, false, row)
+end
+
+@inline function _surface_sie_scale_output_only_3d!(
+        output::AbstractVector{ComplexF64}, beta_scale::Number)
+    if iszero(beta_scale)
+        fill!(output, zero(ComplexF64))
+    elseif beta_scale != one(beta_scale)
+        @inbounds for row in eachindex(output)
+            output[row] = _surface_sie_scaled_output_3d(
+                zero(ComplexF64), output[row],
+                zero(ComplexF64), beta_scale, false, row)
+        end
+    end
+    return output
 end
 
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
@@ -1304,12 +1324,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(y) == N2 || throw(DimensionMismatch("y length must be $N2."))
 
     if iszero(alpha_scale)
-        if iszero(beta_scale)
-            fill!(y, zero(ComplexF64))
-        elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
-        end
-        return y
+        return _surface_sie_scale_output_only_3d!(y, beta_scale)
     end
 
     overwrite = iszero(beta_scale)

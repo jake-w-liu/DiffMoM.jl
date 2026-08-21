@@ -962,6 +962,31 @@ end
     end
 
     @testset "Matrix-free scaled-output exponent range" begin
+        identity_grid = VoxelGrid3D(
+            (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+        identity_operator = em_dda_operator_3d(
+            identity_grid, k0, 1.0 + 0im, 1.0 + 0im)
+        cancellation_scale = 1.0e300 + 0im
+        cancellation_input = ComplexF64[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        cancellation_previous = ComplexF64[
+            -prevfloat(1.0), 0.0, 0.0, 0.0, 0.0, 0.0]
+        cancellation_reference = setprecision(BigFloat, 4352) do
+            ComplexF64(
+                Complex{BigFloat}(cancellation_scale) +
+                Complex{BigFloat}(cancellation_scale) *
+                Complex{BigFloat}(cancellation_previous[1]))
+        end
+        cancellation_result = copy(cancellation_previous)
+        mul!(
+            cancellation_result,
+            identity_operator,
+            cancellation_input,
+            cancellation_scale,
+            cancellation_scale,
+        )
+        @test cancellation_result == ComplexF64[
+            cancellation_reference, 0.0, 0.0, 0.0, 0.0, 0.0]
+
         scale_grid = VoxelGrid3D(
             (0.0, 0.2), (0.0, 0.1), (0.0, 0.1), 2, 1, 1)
         operator = em_dda_operator_3d(

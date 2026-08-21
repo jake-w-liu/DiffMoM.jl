@@ -30,6 +30,8 @@ const _DDA_ACCUMULATION_FALLBACK_PRECISION = 2304
 # most 4198 significant bits after cancellation. Keep a guard margin while
 # confining the allocation-heavy path to exceptional exponent ranges.
 const _DDA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
+const _DDA_SCALED_OUTPUT_SAFE_EXPONENT = 128
+const _DDA_SCALED_OUTPUT_CANCELLATION_FACTOR = 8eps(Float64)
 
 @inline _dda_index(voxel::Int, comp::Int) = 3 * (voxel - 1) + comp
 
@@ -60,6 +62,53 @@ const _DDA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
     end
 end
 
+@inline function _dda_scaled_factor_is_extreme_3d(value::Number)
+    @inbounds for component in (real(value), imag(value))
+        iszero(component) && continue
+        converted = Float64(component)
+        isfinite(converted) && !iszero(converted) || return true
+        component_exponent = exponent(abs(converted))
+        if component_exponent < -_DDA_SCALED_OUTPUT_SAFE_EXPONENT ||
+           component_exponent > _DDA_SCALED_OUTPUT_SAFE_EXPONENT
+            return true
+        end
+    end
+    return false
+end
+
+@inline function _dda_scaled_component_cancels_3d(
+        first::Number, second::Number, combined::Number)
+    magnitude = abs(Float64(first)) + abs(Float64(second))
+    isfinite(magnitude) || return true
+    iszero(magnitude) && return false
+    return abs(Float64(combined)) <=
+           _DDA_SCALED_OUTPUT_CANCELLATION_FACTOR * magnitude
+end
+
+@inline function _dda_scaled_sum_cancels_3d(
+        first::Number, second::Number, combined::Number)
+    return _dda_scaled_component_cancels_3d(
+               real(first), real(second), real(combined)) ||
+           _dda_scaled_component_cancels_3d(
+               imag(first), imag(second), imag(combined))
+end
+
+@inline function _dda_scaled_output_requires_exact_3d(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool)
+    alpha_extreme = !iszero(alpha_scale) && !iszero(value) &&
+                    (_dda_scaled_factor_is_extreme_3d(alpha_scale) ||
+                     _dda_scaled_factor_is_extreme_3d(value))
+    alpha_extreme && return true
+    overwrite && return false
+    return !iszero(beta_scale) && !iszero(previous) &&
+           (_dda_scaled_factor_is_extreme_3d(beta_scale) ||
+            _dda_scaled_factor_is_extreme_3d(previous))
+end
+
 @inline function _dda_scaled_output_3d(
         value::ComplexF64,
         previous::ComplexF64,
@@ -67,6 +116,11 @@ end
         beta_scale::Number,
         overwrite::Bool,
         row::Int)
+    _dda_scaled_output_requires_exact_3d(
+        value, previous, alpha_scale, beta_scale, overwrite) &&
+        return _dda_scaled_output_bigfloat_3d(
+            value, previous, alpha_scale, beta_scale, overwrite, row)
+
     alpha_term = alpha_scale * value
     if overwrite
         converted = ComplexF64(alpha_term)
@@ -81,11 +135,26 @@ end
         max(abs(real(alpha_term)), abs(imag(alpha_term))) +
         max(abs(real(beta_term)), abs(imag(beta_term)))
     converted = ComplexF64(combined)
-    if isfinite(converted) && isfinite(magnitude_sum)
+    if isfinite(converted) && isfinite(magnitude_sum) &&
+       !_dda_scaled_sum_cancels_3d(alpha_term, beta_term, combined)
         return converted
     end
     return _dda_scaled_output_bigfloat_3d(
         value, previous, alpha_scale, beta_scale, false, row)
+end
+
+@inline function _dda_scale_output_only_3d!(
+        output::AbstractVector{ComplexF64}, beta_scale::Number)
+    if iszero(beta_scale)
+        fill!(output, zero(ComplexF64))
+    elseif beta_scale != one(beta_scale)
+        @inbounds for row in eachindex(output)
+            output[row] = _dda_scaled_output_3d(
+                zero(ComplexF64), output[row],
+                zero(ComplexF64), beta_scale, false, row)
+        end
+    end
+    return output
 end
 
 @inline function _finite_nonnegative_k0_3d(k0::Real)
@@ -1215,12 +1284,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(y) == size(A, 1) || throw(DimensionMismatch("y length must be $(size(A, 1))."))
 
     if iszero(alpha_scale)
-        if iszero(beta_scale)
-            fill!(y, zero(ComplexF64))
-        elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
-        end
-        return y
+        return _dda_scale_output_only_3d!(y, beta_scale)
     end
 
     xread = Base.mightalias(y, x) ? copy(x) : x
@@ -1288,12 +1352,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     length(y) == size(Aadj, 1) || throw(DimensionMismatch("y length must be $(size(Aadj, 1))."))
 
     if iszero(alpha_scale)
-        if iszero(beta_scale)
-            fill!(y, zero(ComplexF64))
-        elseif beta_scale != one(beta_scale)
-            y .*= beta_scale
-        end
-        return y
+        return _dda_scale_output_only_3d!(y, beta_scale)
     end
 
     xread = Base.mightalias(y, x) ? copy(x) : x
