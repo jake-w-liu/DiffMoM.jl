@@ -657,6 +657,17 @@ end
         E_total = mie_total_field_2d(k0, a, 1.0, r_surf; pec=true)
         @test maximum(abs.(E_total)) < 1e-6
 
+        # At sufficient order, adding the incident field to the separately
+        # rounded scattered series loses the finite truncation residual. The
+        # total-field retry keeps the cancellation inside one exact reduction.
+        cancelled_surface_total = mie_total_field_2d(
+            5.0, 1.0, 1.0, [Vec2(1.0, 0.0)];
+            nmax=40, pec=true)
+        @test isapprox(
+            cancelled_surface_total[1],
+            -6.34105080521628e-35 - 1.0614288677036698e-33im;
+            rtol=8eps(Float64), atol=0.0)
+
         # Coefficients that individually underflow may still multiply the
         # surface Hankel field to a representable term.  The coupled fallback
         # preserves the exact PEC boundary cancellation.

@@ -1199,23 +1199,49 @@ end
     return max(512, requested)
 end
 
-@noinline function _mie_scattered_point_big_2d(
-        k0::Float64, a::Float64, eps_r::Float64, point::Vec2,
-        phi_inc::Float64, N::Int, pec::Bool, index;
-        coefficients::Union{Nothing,Vector{ComplexF64}}=nothing)
-    requested_precision = max(
+@inline function _mie2d_exceptional_point_precision(
+        k0::Float64, a::Float64, N::Int)
+    requested = max(
         2304,
         256 + 4N + 2max(0, -exponent(k0)) +
         2max(0, -exponent(a)))
-    requested_precision <= _MAX_MIE2D_FALLBACK_PRECISION ||
+    requested <= _MAX_MIE2D_FALLBACK_PRECISION ||
         throw(ArgumentError(
-            "2D Mie exceptional observation requires $requested_precision " *
+            "2D Mie exceptional observation requires $requested " *
             "exact bits, exceeding the limit " *
             "$_MAX_MIE2D_FALLBACK_PRECISION"))
+    return requested
+end
+
+@inline function _mie2d_exceptional_point_work_units(
+        N::Int, eps_r::Float64, pec::Bool,
+        coefficients::Union{Nothing,Vector{ComplexF64}})
     recomputes_dielectric_coefficients =
         coefficients === nothing && !pec && eps_r != 0.0
-    work_units = recomputes_dielectric_coefficients ?
+    return recomputes_dielectric_coefficients ?
         1 + 3 * N * (N + 1) ÷ 2 : N + 1
+end
+
+@inline function _mie2d_total_reduction_requires_exact(
+        total::ComplexF64,
+        scattered::ComplexF64,
+        incident::ComplexF64)
+    isfinite(total) && isfinite(scattered) && isfinite(incident) ||
+        return true
+    magnitude = abs(scattered) + abs(incident)
+    isfinite(magnitude) || return true
+    iszero(magnitude) && return false
+    return abs(total) <= _MIE2D_CANCELLATION_THRESHOLD * magnitude
+end
+
+@noinline function _mie_scattered_point_big_2d(
+        k0::Float64, a::Float64, eps_r::Float64, point::Vec2,
+        phi_inc::Float64, N::Int, pec::Bool, index;
+        coefficients::Union{Nothing,Vector{ComplexF64}}=nothing,
+        include_incident::Bool=false)
+    requested_precision = _mie2d_exceptional_point_precision(k0, a, N)
+    work_units = _mie2d_exceptional_point_work_units(
+        N, eps_r, pec, coefficients)
     work_units <= _MAX_MIE2D_EXACT_WORK ÷ requested_precision ||
         throw(ArgumentError(
             "2D Mie exceptional observation exceeds the exact-work " *
@@ -1262,9 +1288,18 @@ end
                    coefficient * radial_hankel * angular
             total += term
         end
+        if include_incident
+            incident_phase = BigFloat(k0) *
+                (cos(incident_angle) * BigFloat(point[1]) +
+                 sin(incident_angle) * BigFloat(point[2]))
+            total += exp(Complex{BigFloat}(
+                zero(BigFloat), -incident_phase))
+        end
         converted = ComplexF64(total)
         isfinite(converted) ||
-            error("2D Mie scattered field at observation $index is non-finite")
+            error(
+                "2D Mie $(include_incident ? "total" : "scattered") " *
+                "field at observation $index is non-finite")
         return converted
     end
 end
@@ -1321,6 +1356,7 @@ function mie_total_field_2d(k0::Float64, a::Float64, eps_r::Float64,
         output_bytes, max_output_bytes,
         "2D Mie total-field output", "max_output_bytes")
     _validate_mie2d_observations(k0, a, r_obs, phi_inc)
+    requested_order, _ = _validated_mie2d_order(k0 * a, nmax)
     khat = Vec2(cos(phi_inc), sin(phi_inc))
     exact_incident_work = 0
     for point in r_obs
@@ -1340,6 +1376,13 @@ function mie_total_field_2d(k0::Float64, a::Float64, eps_r::Float64,
                                      phi_inc=phi_inc, nmax=nmax, pec=pec,
                                      max_field_terms=max_field_terms,
                                      max_output_bytes=max_output_bytes)
+    exact_total_work = exact_incident_work
+    fallback_coefficients::Union{Nothing,Vector{ComplexF64}} = nothing
+    internal_magnitude = pec || eps_r == 0.0 ? 0.0 :
+        sqrt(abs(eps_r)) * (k0 * a)
+    exact_coefficient_kernel_supported =
+        pec || eps_r == 0.0 ||
+        internal_magnitude <= _MIE2D_INTERNAL_SERIES_LIMIT
     for m in eachindex(r_obs)
         incident = if _mie2d_incident_phase_requires_exact(
                 k0, phi_inc, khat, r_obs[m])
@@ -1347,8 +1390,39 @@ function mie_total_field_2d(k0::Float64, a::Float64, eps_r::Float64,
         else
             exp(-im * (k0 * dot(khat, r_obs[m])))
         end
-        E_total[m] += incident
-        isfinite(E_total[m]) ||
+        scattered = E_total[m]
+        combined = scattered + incident
+        if _mie2d_total_reduction_requires_exact(
+                combined, scattered, incident)
+            coefficients = if exact_coefficient_kernel_supported
+                nothing
+            else
+                if fallback_coefficients === nothing
+                    fallback_coefficients, coefficient_order =
+                        mie_coefficients_2d(
+                            k0, a, eps_r; nmax=nmax, pec=pec)
+                    coefficient_order == requested_order ||
+                        error("2D Mie coefficient order changed during exact retry")
+                end
+                fallback_coefficients
+            end
+            precision = _mie2d_exceptional_point_precision(
+                k0, a, requested_order)
+            work_units = _mie2d_exceptional_point_work_units(
+                requested_order, eps_r, pec, coefficients)
+            point_work = Base.checked_mul(work_units, precision)
+            point_work <= _MAX_MIE2D_EXACT_WORK - exact_total_work ||
+                throw(ArgumentError(
+                    "2D Mie cancelled total fields exceed the exact-work " *
+                    "limit $_MAX_MIE2D_EXACT_WORK"))
+            exact_total_work += point_work
+            combined = _mie_scattered_point_big_2d(
+                k0, a, eps_r, r_obs[m], phi_inc,
+                requested_order, pec, m;
+                coefficients=coefficients, include_incident=true)
+        end
+        E_total[m] = combined
+        isfinite(combined) ||
             error("2D Mie total field at observation $m is non-finite")
     end
     return E_total
