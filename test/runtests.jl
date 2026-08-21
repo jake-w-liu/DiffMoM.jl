@@ -11963,6 +11963,38 @@ multiangle_sum_log_value, multiangle_sum_log_scales =
 @test multiangle_sum_log_scales ==
       multiangle_scalar_weights ./ multiangle_sum_log_values
 
+# Positive subnormal objectives remain distinct instead of being clipped to
+# an absolute 1e-300 floor. Their derivative ratios are evaluated before
+# conversion back to Float64.
+multiangle_subnormal_sum_value, multiangle_subnormal_sum_scales =
+    DiffMoM._multiangle_objective_scales(
+        Float64[1e-310], Float64[1e-310], :sum_log,
+        ones(1), beta_probe)
+multiangle_subnormal_sum_reference = setprecision(BigFloat, 4352) do
+    Float64(BigFloat(1e-310) * log(BigFloat(1e-310)))
+end
+@test multiangle_subnormal_sum_value ==
+      multiangle_subnormal_sum_reference
+@test multiangle_subnormal_sum_scales == [1.0]
+multiangle_subnormal_smooth_value, multiangle_subnormal_smooth_scales =
+    DiffMoM._multiangle_objective_scales(
+        Float64[1e-307], ones(1), :smoothmax_log,
+        ones(1), beta_probe)
+multiangle_subnormal_smooth_reference = setprecision(BigFloat, 4352) do
+    Float64(log(BigFloat(1e-307)))
+end
+@test multiangle_subnormal_smooth_value ==
+      multiangle_subnormal_smooth_reference
+@test multiangle_subnormal_smooth_scales ≈ [1e307] rtol=2eps(Float64)
+@test_throws OverflowError DiffMoM._multiangle_objective_scales(
+    Float64[1e-310], ones(1), :smoothmax_log,
+    ones(1), beta_probe)
+_, multiangle_negative_smooth_scales =
+    DiffMoM._multiangle_objective_scales(
+        Float64[-1.0], ones(1), :smoothmax_log,
+        ones(1), beta_probe)
+@test multiangle_negative_smooth_scales == [0.0]
+
 # The smooth maximum tends to the weighted mean as beta approaches zero.
 # Evaluate the cancellation-prone normalizer without collapsing the finite
 # limiting value.

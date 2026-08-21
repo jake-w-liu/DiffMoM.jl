@@ -297,6 +297,12 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 
 **Objective (default `:linear`):** `J(theta) = sum_a w_a * Re(I_a' Q_a I_a)` where `I_a = Z(theta)^{-1} v_a`. The `:sum_log` and `:smoothmax_log` objectives reweight the per-angle terms `J_a`.
 
+The logarithmic objectives preserve every positive representable `Float64`
+per-angle objective, including subnormal values. A zero or negative value from
+quadratic-form roundoff is floored only to the least positive `Float64` and has
+zero local derivative. An overflowing logarithmic derivative scale is rejected
+instead of being silently flattened.
+
 **Gradient (default `:linear`):** `g[p] = sum_a w_a * gradient_impedance(Mp, I_a, lambda_a)` where `Z(theta)' lambda_a = Q_a I_a`. For normalized objectives the per-angle weights `w_a` are replaced by the objective's effective scalarization weights.
 
 See the [Multi-Angle RCS chapter](../differentiable-design/05-multiangle-rcs.md) for a detailed walkthrough and examples.

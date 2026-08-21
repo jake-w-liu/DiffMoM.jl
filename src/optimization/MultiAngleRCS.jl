@@ -223,7 +223,7 @@ end
                 "representable Float64 range"))
         scales = Vector{Float64}(undef, count)
         @inbounds for index in eachindex(scales)
-            if J_angles[index] < tiny
+            if J_angles[index] <= 0.0
                 scales[index] = 0.0
             else
                 scale = exp(shifts[index] - shiftmax) /
@@ -248,18 +248,31 @@ end
     return setprecision(
             BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
         total = zero(BigFloat)
+        scales = Vector{Float64}(undef, length(J_angles))
         @inbounds for index in eachindex(
             J_angles, weights, reference_objectives)
             objective_value = BigFloat(max(J_angles[index], tiny))
             reference_value = BigFloat(reference_objectives[index])
             total += BigFloat(weights[index]) *
                      (log(objective_value) - log(reference_value))
+            if J_angles[index] <= 0.0
+                scales[index] = 0.0
+            else
+                exact_scale = BigFloat(weights[index]) /
+                              BigFloat(J_angles[index])
+                scales[index] = Float64(exact_scale)
+                (isfinite(scales[index]) &&
+                 (!iszero(scales[index]) || iszero(exact_scale))) ||
+                    throw(OverflowError(
+                        "sum_log derivative scale $index is outside " *
+                        "the representable Float64 range"))
+            end
         end
         converted = Float64(total)
         isfinite(converted) ||
             throw(OverflowError(
                 "sum_log multi-angle objective is outside the representable Float64 range"))
-        return converted
+        return converted, scales
     end
 end
 
@@ -319,9 +332,11 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
                 "reference objective $i must be finite and positive, got $(reference_objectives[i])")
     end
 
-    # A positive floor keeps log objectives and their derivatives defined when
-    # numerical roundoff produces a zero or slightly negative quadratic form.
-    tiny = 1e-300
+    # A positive floor keeps log objectives defined when numerical roundoff
+    # produces a zero or slightly negative quadratic form. Use the least
+    # positive Float64 so every positive representable objective keeps its own
+    # logarithm and derivative.
+    tiny = nextfloat(0.0)
     scales = Vector{Float64}(undef, M)
 
     if objective == :linear
@@ -345,10 +360,14 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
             Ji = max(J_angles[i], tiny)
             log_ratio = log(Ji) - log(reference_objectives[i])
             value += wi * log_ratio
-            scales[i] = J_angles[i] < tiny ? 0.0 : wi / Ji
+            scales[i] = J_angles[i] <= 0.0 ? 0.0 : wi / Ji
         end
         needs_fallback = !isfinite(value) ||
-            _ieee_bilinear_values_require_fallback(weights, Float64)
+            _ieee_bilinear_values_require_fallback(weights, Float64) ||
+            _ieee_bilinear_values_require_fallback(J_angles, Float64) ||
+            _ieee_bilinear_values_require_fallback(
+                reference_objectives, Float64) ||
+            any(!isfinite, scales)
         needs_fallback || @inbounds for i in 1:M
             log_ratio = log(max(J_angles[i], tiny)) -
                         log(reference_objectives[i])
@@ -358,7 +377,7 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
             end
         end
         needs_fallback &&
-            (value = _multiangle_sum_log_objective_bigfloat(
+            ((value, scales) = _multiangle_sum_log_objective_bigfloat(
                 J_angles, weights, reference_objectives, tiny))
         all(isfinite, scales) ||
             error("sum_log derivative scales overflowed")
@@ -403,7 +422,8 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
             Ji = max(J_angles[i], tiny)
             zi = log(Ji) - log(reference_objectives[i])
             shift = smooth_beta * (zi - zmax) + log(weights[i])
-            scales[i] = exp(shift - shiftmax) / (denom * Ji)
+            scales[i] = J_angles[i] <= 0.0 ? 0.0 :
+                exp(shift - shiftmax) / (denom * Ji)
         end
         needs_fallback =
             _ieee_dense_extreme_factor(smooth_beta, Float64) ||
