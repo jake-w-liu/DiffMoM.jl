@@ -730,6 +730,116 @@ end
 
 # ─── Lagrange interpolation ─────────────────────────────────────
 
+const _LAGRANGE_WEIGHT_FALLBACK_PRECISION = 4352
+
+function _validate_lagrange_grid(
+        target_pts::Vector{Float64},
+        source_pts::Vector{Float64},
+        order::Int,
+        cyclic::Bool,
+        period::Float64,
+        polar_theta::Bool)
+    isempty(source_pts) &&
+        throw(ArgumentError(
+            "Lagrange interpolation requires at least one source point"))
+    order >= 1 ||
+        throw(ArgumentError(
+            "Lagrange interpolation order must be positive, got $order"))
+    all(isfinite, target_pts) ||
+        throw(ArgumentError(
+            "Lagrange interpolation target points must be finite"))
+    all(isfinite, source_pts) ||
+        throw(ArgumentError(
+            "Lagrange interpolation source points must be finite"))
+    @inbounds for index in 2:length(source_pts)
+        source_pts[index] > source_pts[index - 1] ||
+            throw(ArgumentError(
+                "Lagrange interpolation source points must be strictly increasing"))
+    end
+    cyclic && polar_theta &&
+        throw(ArgumentError(
+            "cyclic and polar-theta interpolation modes are mutually exclusive"))
+    if cyclic
+        isfinite(period) && period > 0.0 ||
+            throw(ArgumentError(
+                "cyclic interpolation period must be finite and positive, got $period"))
+        span_is_valid = setprecision(BigFloat, 256) do
+            BigFloat(last(source_pts)) - BigFloat(first(source_pts)) <
+                BigFloat(period)
+        end
+        span_is_valid ||
+            throw(ArgumentError(
+                "cyclic source points must span less than one period"))
+    end
+    return min(order, length(source_pts))
+end
+
+@noinline function _lagrange_weight_bigfloat(
+        target::Float64,
+        points::Vector{Float64},
+        point_index::Int)
+    return setprecision(BigFloat, _LAGRANGE_WEIGHT_FALLBACK_PRECISION) do
+        target_big = BigFloat(target)
+        selected_big = BigFloat(points[point_index])
+        weight = one(BigFloat)
+        @inbounds for other_index in eachindex(points)
+            other_index == point_index && continue
+            other_big = BigFloat(points[other_index])
+            denominator = selected_big - other_big
+            iszero(denominator) &&
+                throw(ArgumentError(
+                    "Lagrange interpolation stencil contains duplicate points"))
+            weight *= (target_big - other_big) / denominator
+        end
+        converted = Float64(weight)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "Lagrange interpolation weight is outside the finite Float64 range"))
+        (!iszero(weight) && iszero(converted)) &&
+            throw(OverflowError(
+                "Lagrange interpolation weight is below the representable Float64 range"))
+        return converted
+    end
+end
+
+@inline function _lagrange_weight(
+        target::Float64,
+        points::Vector{Float64},
+        point_index::Int)
+    selected = points[point_index]
+    needs_exact = _local_mass_extreme_factor(target, Float64) ||
+                  _local_mass_extreme_factor(selected, Float64)
+    @inbounds for other_index in eachindex(points)
+        other_index == point_index && continue
+        needs_exact |=
+            _local_mass_extreme_factor(points[other_index], Float64)
+        needs_exact && break
+    end
+    needs_exact &&
+        return _lagrange_weight_bigfloat(target, points, point_index)
+
+    weight = 1.0
+    @inbounds for other_index in eachindex(points)
+        other_index == point_index && continue
+        other = points[other_index]
+        denominator = selected - other
+        iszero(denominator) &&
+            throw(ArgumentError(
+                "Lagrange interpolation stencil contains duplicate points"))
+        numerator = target - other
+        ratio = numerator / denominator
+        next_weight = weight * ratio
+        if !isfinite(ratio) || !isfinite(next_weight) ||
+           (!iszero(numerator) && iszero(ratio)) ||
+           (!iszero(weight) && !iszero(ratio) && iszero(next_weight))
+            return _lagrange_weight_bigfloat(
+                target, points, point_index)
+        end
+        weight = next_weight
+    end
+    return weight
+end
+
 """
     build_lagrange_interp_1d(target_pts, source_pts; order=6, cyclic=false, period=0.0, polar_theta=false)
 
@@ -746,7 +856,8 @@ function build_lagrange_interp_1d(target_pts::Vector{Float64}, source_pts::Vecto
                                    polar_theta::Bool=false)
     nt = length(target_pts)
     ns = length(source_pts)
-    order = min(order, ns)
+    order = _validate_lagrange_grid(
+        target_pts, source_pts, order, cyclic, period, polar_theta)
 
     rows = Int[]
     cols = Int[]
@@ -755,11 +866,14 @@ function build_lagrange_interp_1d(target_pts::Vector{Float64}, source_pts::Vecto
     for i in 1:nt
         t = target_pts[i]
 
-        if cyclic && period > 0
+        if cyclic
             # Find nearest source points considering periodicity
             best_start = _find_nearest_start_cyclic(t, source_pts, order, period)
             indices = _cyclic_indices(best_start, order, ns)
-            pts = [_cyclic_dist(t, source_pts[idx], period) + t for idx in indices]
+            # Weights are translation invariant. Signed offsets around zero
+            # stay distinct even when the absolute target coordinate is huge.
+            pts = [_cyclic_dist(t, source_pts[idx], period) for idx in indices]
+            weight_target = 0.0
             signs = ones(Float64, length(indices))
         elseif polar_theta
             # θ-direction with polar reflection at north (θ=0) and south (θ=π) poles
@@ -774,30 +888,21 @@ function build_lagrange_interp_1d(target_pts::Vector{Float64}, source_pts::Vecto
                 push!(pts, pt)
                 push!(signs, sgn)
             end
+            weight_target = t
         else
             # Find nearest source points (standard clamped)
             best_start = _find_nearest_start(t, source_pts, order)
             indices = collect(best_start:min(best_start + order - 1, ns))
             pts = source_pts[indices]
+            weight_target = t
             signs = ones(Float64, length(indices))
         end
 
         # Lagrange weights
         for (ji, j) in enumerate(indices)
-            w = 1.0
-            xj = pts[ji]
-            for (ki, _) in enumerate(indices)
-                ki == ji && continue
-                xk = pts[ki]
-                denom = xj - xk
-                if abs(denom) < 1e-15
-                    w = 0.0
-                    break
-                end
-                w *= (t - xk) / denom
-            end
+            w = _lagrange_weight(weight_target, pts, ji)
             w *= signs[ji]  # apply sign flip for polar reflection
-            if abs(w) > 1e-15
+            if !iszero(w)
                 push!(rows, i)
                 push!(cols, j)
                 push!(vals, w)
@@ -866,13 +971,16 @@ end
 
 function _cyclic_dist(a::Float64, b::Float64, period::Float64)
     d = a - b
-    while d > period / 2
-        d -= period
+    if isfinite(d) &&
+       !_local_mass_extreme_factor(a, Float64) &&
+       !_local_mass_extreme_factor(b, Float64) &&
+       !_local_mass_extreme_factor(period, Float64)
+        return rem(d, period, RoundNearest)
     end
-    while d < -period / 2
-        d += period
+    return setprecision(BigFloat, _LAGRANGE_WEIGHT_FALLBACK_PRECISION) do
+        Float64(rem(
+            BigFloat(a) - BigFloat(b), BigFloat(period), RoundNearest))
     end
-    return d
 end
 
 """

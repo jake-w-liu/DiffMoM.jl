@@ -9497,6 +9497,35 @@ end
 @test_throws OverflowError DiffMoM.make_sphere_sampling(typemax(Int))
 @test _sphere_sampling_rejection_allocations(1_000_000) <= 4_096
 
+# Interpolation is invariant to coordinate scale and must retain every
+# representable coefficient.  An absolute point/weight cutoff previously
+# collapsed this valid two-point stencil to an all-zero row.
+mlfma_tiny_interp = DiffMoM.build_lagrange_interp_1d(
+    [5e-17], [0.0, 1e-16]; order=2)
+@test Matrix(mlfma_tiny_interp) == [0.5 0.5]
+@test (mlfma_tiny_interp * [1.0, 3.0])[1] == 2.0
+mlfma_small_weight_interp = DiffMoM.build_lagrange_interp_1d(
+    [1e-16], [0.0, 1.0]; order=2)
+@test mlfma_small_weight_interp[1, 2] == 1e-16
+@test (mlfma_small_weight_interp * [0.0, 1e300])[1] == 1e284
+
+# Periodic reduction must take bounded time for huge finite coordinates.
+mlfma_huge_periodic_interp = DiffMoM.build_lagrange_interp_1d(
+    [floatmax(Float64)], [0.0, 1.0];
+    order=2, cyclic=true, period=2.0)
+@test Matrix(mlfma_huge_periodic_interp) == [1.0 0.0]
+@test_throws ArgumentError DiffMoM.build_lagrange_interp_1d(
+    [0.0], Float64[])
+@test_throws ArgumentError DiffMoM.build_lagrange_interp_1d(
+    [0.0], [0.0, 1.0]; order=0)
+@test_throws ArgumentError DiffMoM.build_lagrange_interp_1d(
+    [0.0], [1.0, 0.0])
+@test_throws ArgumentError DiffMoM.build_lagrange_interp_1d(
+    [0.0], [0.0, 1.0]; cyclic=true, period=0.0)
+@test_throws ArgumentError DiffMoM.build_lagrange_interp_1d(
+    [0.0], [0.0, 1.0];
+    cyclic=true, period=2.0, polar_theta=true)
+
 for invalid_hankel_input in ((-1, 1.0), (3, 0.0), (3, Inf), (3, NaN))
     @test_throws ArgumentError DiffMoM.spherical_hankel2_all(
         invalid_hankel_input...)
