@@ -110,6 +110,29 @@ function _mlfma_precision_rejection_allocations(mesh, rwg, k)
     end
 end
 
+function _multiple_excitation_rejection_allocations(mesh, rwg, excitations)
+    try
+        assemble_multiple_excitations(
+            mesh, rwg, excitations;
+            quad_order=1,
+            max_output_bytes=100_000_000,
+            max_work_bytes=100_000_000,
+            max_terms=100_000_000)
+    catch error
+        error isa ArgumentError || rethrow()
+    end
+    return @allocated try
+        assemble_multiple_excitations(
+            mesh, rwg, excitations;
+            quad_order=1,
+            max_output_bytes=100_000_000,
+            max_work_bytes=100_000_000,
+            max_terms=100_000_000)
+    catch error
+        error isa ArgumentError || rethrow()
+    end
+end
+
 function _aca_dense_approximation(operator::ACAOperator)
     approximation_tree = zeros(ComplexF64, operator.N, operator.N)
     for block in operator.dense_blocks
@@ -4710,6 +4733,19 @@ end
     typeof(gap_a)[], ComplexF64[])
 @test_throws ArgumentError make_multi_excitation(
     [gap_a], ComplexF64[Inf + 0im])
+
+# Reject malformed public excitation structs before allocating the dense batch
+# result.  Only `nedges` is intentionally enlarged: child validation must run
+# before any RWG array is inspected or an N-by-M output is allocated.
+invalid_batch_multi = MultiExcitation(
+    DiffMoM.AbstractExcitation[], ComplexF64[])
+large_invalid_batch_rwg = typeof(rwg_exc)(
+    rwg_exc.mesh, 100_000, rwg_exc.tplus, rwg_exc.tminus, rwg_exc.evert,
+    rwg_exc.vplus_opp, rwg_exc.vminus_opp, rwg_exc.len,
+    rwg_exc.area_plus, rwg_exc.area_minus, rwg_exc.coeff_plus,
+    rwg_exc.coeff_minus, rwg_exc.has_periodic_bloch)
+@test _multiple_excitation_rejection_allocations(
+    mesh_exc, large_invalid_batch_rwg, [invalid_batch_multi]) <= 100_000
 
 V_exc = assemble_multiple_excitations(mesh_exc, rwg_exc, [gap_a, make_plane_wave(k_vec_exc, 1.0, pol_exc)]; quad_order=3)
 @assert size(V_exc) == (rwg_exc.nedges, 2)

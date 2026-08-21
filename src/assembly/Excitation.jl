@@ -2434,6 +2434,12 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
                                            _DEFAULT_MAX_EXCITATION_WORK_BYTES,
                                        max_terms::Integer=
                                            _DEFAULT_MAX_EXCITATION_TERMS)
+    # Public excitation structs can be constructed directly, so validate every
+    # column before sizing or allocating the potentially large dense result.
+    # `assemble_excitation` validates again to keep its standalone contract.
+    for excitation in excitations
+        _validate_excitation_model(excitation)
+    end
     N = rwg.nedges
     M = length(excitations)
     output_bytes = _checked_array_payload_bytes(
