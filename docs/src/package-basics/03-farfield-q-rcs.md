@@ -737,8 +737,9 @@ when you want the observable electric field in space:
 Current limitations:
 
 - Observation points must be off the surface.
-- Near-singular quadrature is not implemented yet, so very near-surface probes
-  may require higher `quad_order`.
+- Off-surface points close to a source triangle automatically use
+  singularity-subtracted quadrature for the vector `1/R` and scalar-gradient
+  `1/R^2` terms; `quad_order` controls the remaining smooth integrals.
 - `compute_total_field` supports only source models with a well-defined
   pointwise `E_inc(r)`.
 
