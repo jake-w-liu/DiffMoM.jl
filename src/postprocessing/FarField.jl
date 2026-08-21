@@ -838,15 +838,101 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     return value
 end
 
+@inline function _loop_farfield_precision(
+    loop::LoopExcitation,
+    r_hat::Vec3,
+    k::Float64,
+)
+    direction_minimum = typemax(Int)
+    direction_maximum = typemin(Int)
+    @inbounds for component in r_hat
+        iszero(component) && continue
+        component_exponent = exponent(abs(component))
+        direction_minimum = min(direction_minimum, component_exponent)
+        direction_maximum = max(direction_maximum, component_exponent)
+    end
+
+    normal_minimum = typemax(Int)
+    normal_maximum = typemin(Int)
+    @inbounds for component in loop.normal
+        iszero(component) && continue
+        component_exponent = exponent(abs(component))
+        normal_minimum = min(normal_minimum, component_exponent)
+        normal_maximum = max(normal_maximum, component_exponent)
+    end
+
+    current_minimum = typemax(Int)
+    current_maximum = typemin(Int)
+    for component in (real(loop.current), imag(loop.current))
+        iszero(component) && continue
+        component_exponent = exponent(abs(component))
+        current_minimum = min(current_minimum, component_exponent)
+        current_maximum = max(current_maximum, component_exponent)
+    end
+    current_span = current_minimum == typemax(Int) ? 0 :
+                   current_maximum - current_minimum
+
+    angular_precision =
+        (direction_maximum - direction_minimum) +
+        (normal_maximum - normal_minimum) +
+        current_span + 6 * precision(Float64) +
+        _SOURCE_PHASE_PRODUCT_GUARD_BITS
+    return max(
+        _SOURCE_SCALING_FALLBACK_PRECISION,
+        angular_precision,
+        _source_directional_phase_precision(k, r_hat, loop.center),
+    )
+end
+
+@noinline function _loop_farfield_exact(
+    loop::LoopExcitation,
+    r_hat::Vec3,
+    k::Float64,
+)
+    precision = _loop_farfield_precision(loop, r_hat, k)
+    return setprecision(BigFloat, precision) do
+        direction = SVector{3,BigFloat}(
+            ntuple(index -> BigFloat(r_hat[index]), 3))
+        direction_norm = sqrt(sum(abs2, direction))
+        normal = SVector{3,BigFloat}(
+            ntuple(index -> BigFloat(loop.normal[index]), 3))
+        radius = BigFloat(loop.radius)
+        moment = Complex{BigFloat}(loop.current) * BigFloat(pi) *
+                 radius * radius * normal
+        wavenumber = BigFloat(k)
+        unphased = (BigFloat(_ETA0) * wavenumber * wavenumber /
+                    (4 * BigFloat(pi))) *
+                   (cross(moment, direction) / direction_norm)
+        phase_argument = wavenumber * sum(
+            direction[index] * BigFloat(loop.center[index])
+            for index in 1:3) / direction_norm
+        phase = exp(Complex{BigFloat}(0, phase_argument))
+        return _finite_source_vector(
+            unphased * phase, "LoopExcitation far field")
+    end
+end
+
 function incident_farfield(loop::LoopExcitation, r_hat::Vec3, k::Real)
     # A small circular current loop with current I and radius a radiates
     # in the far field as an equivalent magnetic dipole with moment
     # m = I·π·a²·n̂ placed at the loop centre.
-    _, kf = _validated_incident_farfield_args(r_hat, k)
+    rh, kf = _validated_incident_farfield_args(r_hat, k)
     _validate_incident_farfield_source(loop, kf)
     m = _loop_equivalent_moment(loop)
     dip = DipoleExcitation(loop.center, m, loop.normal, :magnetic, loop.frequency)
-    return incident_farfield(dip, r_hat, kf)
+    E_far = _dipole_farfield_unphased(dip, r_hat, kf)
+    phase = _source_directional_phase(
+        kf, r_hat, rh, loop.center, 1.0,
+        "LoopExcitation far field")
+    value = CVec3(E_far) * phase
+    all(isfinite, value) ||
+        return _loop_farfield_exact(loop, r_hat, kf)
+    @inbounds for component in 1:3
+        _source_product_requires_exact(
+            E_far[component], phase, value[component]) &&
+            return _loop_farfield_exact(loop, r_hat, kf)
+    end
+    return value
 end
 
 @noinline function _pattern_farfield_transform_exact(

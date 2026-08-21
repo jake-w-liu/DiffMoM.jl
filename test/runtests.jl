@@ -6023,6 +6023,41 @@ for source_index in eachindex(dipole_farfield_phase_sources)
     ) == dipole_farfield_phase_references[source_index]
 end
 
+loop_farfield_phase_source = make_loop(
+    dipole_farfield_phase_position,
+    Vec3(0.0, 1.0, 0.0),
+    1.0,
+    pattern_phase_cancellation_value,
+    pattern_phase_cancellation_frequency,
+)
+loop_farfield_phase_reference = setprecision(BigFloat, 1024) do
+    direction = SVector{3,BigFloat}(
+        BigFloat.(dipole_farfield_phase_direction))
+    direction_norm = sqrt(sum(abs2, direction))
+    normal = SVector{3,BigFloat}(
+        BigFloat.(loop_farfield_phase_source.normal))
+    radius = BigFloat(loop_farfield_phase_source.radius)
+    moment = Complex{BigFloat}(loop_farfield_phase_source.current) *
+             BigFloat(π) * radius^2 * normal
+    unphased = (BigFloat(DiffMoM._ETA0) *
+                BigFloat(pattern_phase_cancellation_k)^2 /
+                (4 * BigFloat(π))) *
+               (cross(moment, direction) / direction_norm)
+    phase = exp(Complex{BigFloat}(
+        0,
+        BigFloat(pattern_phase_cancellation_k) * sum(
+            direction[index] *
+            BigFloat(dipole_farfield_phase_position[index])
+            for index in 1:3) / direction_norm,
+    ))
+    CVec3(unphased * phase)
+end
+@test incident_farfield(
+    loop_farfield_phase_source,
+    dipole_farfield_phase_direction,
+    pattern_phase_cancellation_k,
+) == loop_farfield_phase_reference
+
 monopole_farfield_phase_direction = Vec3(1.0, 0.0, 0.0)
 monopole_farfield_phase_position = Vec3(π / 4, 0.0, 0.0)
 monopole_farfield_phase_sources = ntuple(2) do source_index
