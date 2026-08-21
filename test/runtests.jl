@@ -10082,6 +10082,33 @@ ptd_reduction_exact = solve_ptd(
 @test ptd_reduction_result.E_ff_ptd[:, 1] ≈
       ptd_reduction_exact.E_ff_ptd[:, 1] ./ ptd_reduction_scale rtol=16eps(Float64) atol=0.0
 
+# Independently rounded PO and PTD components can cancel below either
+# component's rounding error.  The combined result must retry the coupled
+# physical expression, including cancellation in only one Cartesian component.
+ptd_combined_side = 25.284162458342696
+ptd_combined_mesh = make_rect_plate(
+    ptd_combined_side, ptd_combined_side, 1, 1)
+ptd_combined_direction = Vec3(
+    -0.039119182052886156,
+    0.908025655353145,
+    -0.41708404286906586)
+ptd_combined_grid = SphGrid(
+    reshape(collect(ptd_combined_direction), 3, 1),
+    [2.0010309362006966], [1.6138512853282527], [1.0])
+ptd_combined_excitation = PlaneWaveExcitation(
+    Vec3(0.1802592378547117, 0.0, -0.983619137251832),
+    1.0,
+    Vec3(0.0, -1.0, 0.0))
+ptd_combined_result = solve_ptd(
+    ptd_combined_mesh, 1.0, ptd_combined_excitation;
+    grid=ptd_combined_grid, c0=2π, min_dihedral_deg=0.0)
+ptd_combined_naive =
+    ptd_combined_result.E_ff_po + ptd_combined_result.E_ff_ptd
+ptd_combined_reference =
+    -3.0182829824153657e-16 + 2.2572391978981943e-16im
+@test ptd_combined_naive[2, 1] != ptd_combined_reference
+@test ptd_combined_result.E_ff[2, 1] == ptd_combined_reference
+
 println("  PASS ✓")
 
 # ─────────────────────────────────────────────────

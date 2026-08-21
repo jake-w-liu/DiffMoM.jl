@@ -350,6 +350,56 @@ end
     end
 end
 
+# Direct high-precision PO evaluation used when a downstream coherent field
+# combination cancels.  Reconstructing one direction from the mesh keeps the
+# ordinary `POResult` compact and avoids retaining the construction geometry
+# solely for an exceptional retry.
+function _po_farfield_direction_mesh_big(
+        mesh::TriMesh,
+        k::Float64,
+        amplitude::Float64,
+        supplied_r_hat::Vec3,
+        incident_wavevector::Vec3,
+        incident_direction::Vec3,
+        polarization::Vec3)
+    totals = zeros(Complex{BigFloat}, 3)
+    k_big = BigFloat(k)
+    r_big = SVector{3,BigFloat}(BigFloat.(supplied_r_hat))
+    r_norm_squared = sum(abs2, r_big)
+    r_unit_big = r_big / sqrt(r_norm_squared)
+    incident_big = SVector{3,BigFloat}(BigFloat.(incident_wavevector))
+    incident_unit_big = incident_big / sqrt(sum(abs2, incident_big))
+    delta_big = r_unit_big - incident_unit_big
+    scale = Complex{BigFloat}(0, 1) * k_big * BigFloat(amplitude) /
+            BigFloat(2π)
+    magnetic_direction = cross(incident_direction, polarization)
+
+    @inbounds for triangle in 1:ntriangles(mesh)
+        normal = triangle_normal(mesh, triangle)
+        dot(incident_direction, normal) <= 0.0 || continue
+        surface_direction = cross(normal, magnetic_direction)
+        first = _mesh_vertex(mesh, mesh.tri[1, triangle])
+        second = _mesh_vertex(mesh, mesh.tri[2, triangle])
+        third = _mesh_vertex(mesh, mesh.tri[3, triangle])
+        vertices = sort((first, second, third); by=Tuple)
+        canonical_first, canonical_second, canonical_third =
+            vertices[2], vertices[3], vertices[1]
+        area = triangle_area(mesh, triangle)
+        integral = _phase_integral_analytical_big_value(
+            k_big, delta_big,
+            canonical_first, canonical_second, canonical_third,
+            area, 1e-5, 5)
+        surface_big = SVector{3,BigFloat}(BigFloat.(surface_direction))
+        projection = cross(r_big, cross(r_big, surface_big)) /
+                     r_norm_squared
+        for component in 1:3
+            totals[component] +=
+                scale * projection[component] * integral
+        end
+    end
+    return totals
+end
+
 @inline function _po_phase_geometry_requires_exact(
         k::Float64,
         delta_k::Vec3,

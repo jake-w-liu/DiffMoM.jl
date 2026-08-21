@@ -65,6 +65,7 @@ end
 const _PTD_EXACT_PRECISION = 8704
 const _MAX_PTD_EXACT_DIRECTION_VALUES = 12_288
 const _DEFAULT_MAX_PTD_WORK_BYTES = 512 * 1024 * 1024
+const _PTD_COMBINED_CANCELLATION_THRESHOLD = sqrt(eps(Float64))
 
 function _ptd_additional_work_bytes(edge_count::Int, direction_count::Int)
     total = BigInt(sizeof(DiffractionEdge)) * edge_count
@@ -562,6 +563,65 @@ Returns `(β̂, φ̂)` or `nothing` if the ray is nearly parallel to the edge.
     return (β̂v / nβ, φ̂)
 end
 
+function _ptd_direction_big(
+    edges::Vector{DiffractionEdge},
+    supplied_r_hat::Vec3,
+    k::Float64,
+    k_vec::Vec3,
+    k_hat::Vec3,
+    amplitude::Float64,
+    polarization::Vec3,
+    prefactor::Float64,
+)
+    totals = zeros(Complex{BigFloat}, 3)
+    r_hat = _validated_farfield_direction(supplied_r_hat)
+
+    for edge in edges
+        tangent = edge.tangent
+        length = edge.length
+        center = edge.center
+        gamma = edge.alpha
+
+        sin_beta = norm(cross(tangent, k_hat))
+        sin_beta > 1e-4 || continue
+        sin2_beta = sin_beta^2
+        delta_i = _ptd_edge_azimuth(k_hat, edge)
+        isnothing(delta_i) && continue
+
+        tangent_electric, tangent_magnetic, _ =
+            _ptd_incident_components(
+                amplitude, polarization, k_hat, tangent)
+        incident_center_phase = _source_directional_phase(
+            k, k_vec, k_hat, center, -1.0,
+            "PTD incident edge phase")
+
+        sin_beta_s = norm(cross(tangent, r_hat))
+        sin_beta_s > 1e-4 || continue
+        delta_s = _ptd_edge_azimuth(r_hat, edge)
+        isnothing(delta_s) && continue
+
+        n = gamma / π
+        f_ptd, g_ptd =
+            _ptd_fringe_fg(n, delta_s, delta_i, gamma)
+        basis = _ptd_beta_phi_basis(r_hat, tangent)
+        isnothing(basis) && continue
+        beta_hat, phi_hat = basis
+
+        q_edge = dot(r_hat - k_hat, tangent)
+        sinc_value = _ptd_edge_sinc_value(k, q_edge, length)
+        outgoing_center_phase = _source_directional_phase(
+            k, supplied_r_hat, r_hat, center, 1.0,
+            "PTD scattered edge phase")
+        phase = outgoing_center_phase * incident_center_phase
+
+        _ptd_accumulate_exact_contribution!(
+            totals, prefactor, sin2_beta, f_ptd, g_ptd,
+            tangent_electric, tangent_magnetic,
+            beta_hat, phi_hat, length, sinc_value, phase)
+    end
+    return totals
+end
+
 @noinline function _ptd_direction_exact(
     edges::Vector{DiffractionEdge},
     supplied_r_hat::Vec3,
@@ -574,53 +634,9 @@ end
     direction::Int,
 )
     return setprecision(BigFloat, _PTD_EXACT_PRECISION) do
-        totals = zeros(Complex{BigFloat}, 3)
-        r_hat = _validated_farfield_direction(supplied_r_hat)
-
-        for edge in edges
-            tangent = edge.tangent
-            length = edge.length
-            center = edge.center
-            gamma = edge.alpha
-
-            sin_beta = norm(cross(tangent, k_hat))
-            sin_beta > 1e-4 || continue
-            sin2_beta = sin_beta^2
-            delta_i = _ptd_edge_azimuth(k_hat, edge)
-            isnothing(delta_i) && continue
-
-            tangent_electric, tangent_magnetic, _ =
-                _ptd_incident_components(
-                    amplitude, polarization, k_hat, tangent)
-            incident_center_phase = _source_directional_phase(
-                k, k_vec, k_hat, center, -1.0,
-                "PTD incident edge phase")
-
-            sin_beta_s = norm(cross(tangent, r_hat))
-            sin_beta_s > 1e-4 || continue
-            delta_s = _ptd_edge_azimuth(r_hat, edge)
-            isnothing(delta_s) && continue
-
-            n = gamma / π
-            f_ptd, g_ptd =
-                _ptd_fringe_fg(n, delta_s, delta_i, gamma)
-            basis = _ptd_beta_phi_basis(r_hat, tangent)
-            isnothing(basis) && continue
-            beta_hat, phi_hat = basis
-
-            q_edge = dot(r_hat - k_hat, tangent)
-            sinc_value = _ptd_edge_sinc_value(k, q_edge, length)
-            outgoing_center_phase = _source_directional_phase(
-                k, supplied_r_hat, r_hat, center, 1.0,
-                "PTD scattered edge phase")
-            phase = outgoing_center_phase * incident_center_phase
-
-            _ptd_accumulate_exact_contribution!(
-                totals, prefactor, sin2_beta, f_ptd, g_ptd,
-                tangent_electric, tangent_magnetic,
-                beta_hat, phi_hat, length, sinc_value, phase)
-        end
-
+        totals = _ptd_direction_big(
+            edges, supplied_r_hat, k, k_vec, k_hat,
+            amplitude, polarization, prefactor)
         converted = ntuple(3) do component
             value = ComplexF64(totals[component])
             isfinite(value) ||
@@ -630,6 +646,57 @@ end
             value
         end
         return CVec3(converted)
+    end
+end
+
+@inline function _ptd_combined_requires_exact(
+        combined::CVec3, po_value::CVec3, ptd_value::CVec3)
+    @inbounds for component in 1:3
+        total_component = combined[component]
+        po_component = po_value[component]
+        ptd_component = ptd_value[component]
+        if !(isfinite(total_component) && isfinite(po_component) &&
+             isfinite(ptd_component))
+            return true
+        end
+        magnitude = abs(po_component) + abs(ptd_component)
+        isfinite(magnitude) || return true
+        if !iszero(magnitude) &&
+           abs(total_component) <=
+               _PTD_COMBINED_CANCELLATION_THRESHOLD * magnitude
+            return true
+        end
+    end
+    return false
+end
+
+@noinline function _ptd_combined_direction_exact(
+        mesh::TriMesh,
+        edges::Vector{DiffractionEdge},
+        supplied_r_hat::Vec3,
+        k::Float64,
+        k_vec::Vec3,
+        k_hat::Vec3,
+        amplitude::Float64,
+        polarization::Vec3,
+        prefactor::Float64,
+        direction::Int)
+    return setprecision(BigFloat, _PTD_EXACT_PRECISION) do
+        po_totals = _po_farfield_direction_mesh_big(
+            mesh, k, amplitude, supplied_r_hat,
+            k_vec, k_hat, polarization)
+        ptd_totals = _ptd_direction_big(
+            edges, supplied_r_hat, k, k_vec, k_hat,
+            amplitude, polarization, prefactor)
+        return CVec3(ntuple(component -> begin
+            converted = ComplexF64(
+                po_totals[component] + ptd_totals[component])
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "combined PO+PTD far field is outside the " *
+                    "ComplexF64 range at direction $direction"))
+            converted
+        end, 3))
     end
 end
 
@@ -868,7 +935,40 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
         throw(OverflowError("PTD far field contains non-finite values"))
 
     # ── Phase 4: Combine PO + PTD ──
-    E_ff_combined = po.E_ff + E_ff_ptd
+    # Recompute the complete physical expression when independently rounded
+    # PO and edge fields nearly cancel.  Adding their stored Float64 values
+    # cannot recover a residual below either component's rounding error.
+    fill!(exact_directions, false)
+    exact_direction_count = 0
+    E_ff_combined = Matrix{ComplexF64}(undef, 3, NΩ)
+    @inbounds for direction in 1:NΩ
+        po_value = CVec3(
+            po.E_ff[1, direction],
+            po.E_ff[2, direction],
+            po.E_ff[3, direction])
+        ptd_value = CVec3(
+            E_ff_ptd[1, direction],
+            E_ff_ptd[2, direction],
+            E_ff_ptd[3, direction])
+        combined = po_value + ptd_value
+        E_ff_combined[1, direction] = combined[1]
+        E_ff_combined[2, direction] = combined[2]
+        E_ff_combined[3, direction] = combined[3]
+        if _ptd_combined_requires_exact(combined, po_value, ptd_value)
+            exact_direction_count = _ptd_register_exact_direction!(
+                exact_directions, direction, exact_direction_count)
+        end
+    end
+
+    @inbounds for direction in 1:NΩ
+        exact_directions[direction] || continue
+        exact_value = _ptd_combined_direction_exact(
+            mesh, edges, rhat_vec[direction], k, k_vec, k_hat,
+            E0, pol, prefactor, direction)
+        E_ff_combined[1, direction] = exact_value[1]
+        E_ff_combined[2, direction] = exact_value[2]
+        E_ff_combined[3, direction] = exact_value[3]
+    end
     all(isfinite, E_ff_combined) ||
         throw(OverflowError("combined PO+PTD far field is non-finite"))
 
