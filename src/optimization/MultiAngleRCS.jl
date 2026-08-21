@@ -69,7 +69,10 @@ function _multiangle_config_work_bytes(
                   excitation_cache_peak + config_vector_bytes
     loop_peak = if matrix_free_Q
         weight_bytes = bytes(Float64, direction_count)
-        primitive_operator_bytes = weight_bytes + mask_bytes + vector_bytes
+        # Each primitive FarFieldQMatrix owns one complex product workspace
+        # and one complex componentwise error-bound workspace.
+        primitive_operator_bytes =
+            weight_bytes + mask_bytes + 2vector_bytes
         sum_operator_bytes = rcs_component == :total ?
             2vector_bytes : BigInt(0)
         per_config_bytes = vector_bytes +
@@ -118,6 +121,9 @@ function _validate_multiangle_q(Q::AbstractMatrix{ComplexF64},
         Q.mask === nothing || length(Q.mask) == length(Q.weights) ||
             throw(DimensionMismatch(
                 "$label FarFieldQMatrix mask storage is inconsistent"))
+        (length(Q.work) == Q.N && length(Q.error_bounds) == Q.N) ||
+            throw(DimensionMismatch(
+                "$label FarFieldQMatrix workspace is inconsistent"))
         all(isfinite, Q.G_mat) ||
             throw(ArgumentError("$label radiation vectors must be finite"))
         all(isfinite, Q.weights) ||

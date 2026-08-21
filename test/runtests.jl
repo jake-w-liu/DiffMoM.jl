@@ -3095,6 +3095,7 @@ q_work_limit = sizeof(ComplexF64) * (NΩ * N + N * N)
     mask=mask,
     max_work_bytes=q_work_limit) == Q
 @test length(Q_operator.work) == N
+@test length(Q_operator.error_bounds) == N
 @test Q_operator.work_lock isa ReentrantLock
 oversized_mask = vcat(mask, true)
 nonfinite_G = copy(G_mat)
@@ -3313,6 +3314,81 @@ q_outer_input = ComplexF64[0, 1]
 q_outer_reference = ComplexF64[q_extreme_reference_value, 3]
 @test q_outer_operator * q_outer_input == q_outer_reference
 @test q_outer_operator[1, 2] == q_extreme_reference_value
+
+# Ordinary exponents can still lose a finite term when the checked Q
+# projections and quadrature reductions span most of the binary64
+# significand. Exercise the indexed, matrix-free, dense, and one-shot paths.
+q_finite_cancellation_G = zeros(ComplexF64, 9, 2)
+q_finite_cancellation_pol = zeros(ComplexF64, 3, 3)
+q_finite_cancellation_pol[1, :] .= 1.0 + 0im
+for (quadrature, target) in enumerate((1.0e16, 3.0, -1.0e16))
+    offset = 3 * (quadrature - 1)
+    q_finite_cancellation_G[offset + 1, 1] = 1.0 + 0im
+    q_finite_cancellation_G[offset + 1, 2] = target + 0im
+end
+q_finite_cancellation_grid = SphGrid(
+    repeat(reshape(Float64[0, 0, 1], 3, 1), 1, 3),
+    zeros(3), zeros(3), ones(3))
+q_finite_cancellation_operator = build_Q_operator(
+    q_finite_cancellation_G,
+    q_finite_cancellation_grid,
+    q_finite_cancellation_pol,
+)
+q_finite_cancellation_input = ComplexF64[0, 1]
+q_finite_cancellation_reference = ComplexF64[
+    3 3;
+    3 2.0e32
+]
+@test 1.0e16 + 3.0 - 1.0e16 != 3.0
+@test !q_finite_cancellation_operator.extreme_operator_factor
+@test q_finite_cancellation_operator[1, 2] == 3.0 + 0im
+@test q_finite_cancellation_operator * q_finite_cancellation_input ==
+      q_finite_cancellation_reference[:, 2]
+@test build_Q(
+    q_finite_cancellation_G,
+    q_finite_cancellation_grid,
+    q_finite_cancellation_pol,
+) == q_finite_cancellation_reference
+@test apply_Q(
+    q_finite_cancellation_G,
+    q_finite_cancellation_grid,
+    q_finite_cancellation_pol,
+    q_finite_cancellation_input,
+) == q_finite_cancellation_reference[:, 2]
+
+q_finite_input_G = zeros(ComplexF64, 3, 3)
+q_finite_input_G[1, :] .= 1.0 + 0im
+q_finite_input_operator = FarFieldQMatrix(
+    q_finite_input_G, [1.0], q_extreme_pol, nothing, 3)
+q_finite_input = ComplexF64[1.0e16, 3.0, -1.0e16]
+@test !q_finite_input_operator.extreme_operator_factor
+@test q_finite_input_operator * q_finite_input ==
+      fill(3.0 + 0im, 3)
+
+q_finite_projection_G = reshape(
+    ComplexF64[1.0e16, 3.0, -1.0e16], 3, 1)
+q_finite_projection_pol = fill(1.0 + 0im, 3, 1)
+q_finite_projection_grid = SphGrid(
+    reshape(Float64[0, 0, 1], 3, 1), [0.0], [0.0], [1.0])
+q_finite_projection_operator = build_Q_operator(
+    q_finite_projection_G,
+    q_finite_projection_grid,
+    q_finite_projection_pol,
+)
+@test q_finite_projection_operator[1, 1] == 9.0 + 0im
+@test q_finite_projection_operator * ComplexF64[1] ==
+      ComplexF64[9]
+@test build_Q(
+    q_finite_projection_G,
+    q_finite_projection_grid,
+    q_finite_projection_pol,
+) == reshape(ComplexF64[9], 1, 1)
+@test apply_Q(
+    q_finite_projection_G,
+    q_finite_projection_grid,
+    q_finite_projection_pol,
+    ComplexF64[1],
+) == ComplexF64[9]
 
 q_inner_underflow_G = zeros(ComplexF64, 3, 2)
 q_inner_underflow_G[1, :] .= ComplexF64[1.0e150, 1.0e-300]
@@ -11967,6 +12043,21 @@ configs_mfree = build_multiangle_configs(mesh, rwg, k, angles_2;
                                           grid=grid_opt, backscatter_cone=15.0,
                                           matrix_free_Q=true)
 @assert configs_mfree[1].Q isa FarFieldQMatrix "matrix_free_Q should use FarFieldQMatrix"
+multiangle_q_source = configs_mfree[1].Q
+multiangle_q_bad_work = FarFieldQMatrix(
+    multiangle_q_source.G_mat, multiangle_q_source.weights,
+    multiangle_q_source.pol, multiangle_q_source.mask,
+    multiangle_q_source.N)
+pop!(multiangle_q_bad_work.work)
+@test_throws DimensionMismatch DiffMoM._validate_multiangle_q(
+    multiangle_q_bad_work, "test")
+multiangle_q_bad_bounds = FarFieldQMatrix(
+    multiangle_q_source.G_mat, multiangle_q_source.weights,
+    multiangle_q_source.pol, multiangle_q_source.mask,
+    multiangle_q_source.N)
+pop!(multiangle_q_bad_bounds.error_bounds)
+@test_throws DimensionMismatch DiffMoM._validate_multiangle_q(
+    multiangle_q_bad_bounds, "test")
 x_q = randn(MersenneTwister(355), ComplexF64, N)
 Qx_dense = configs_test[1].Q * x_q
 Qx_mfree = configs_mfree[1].Q * x_q

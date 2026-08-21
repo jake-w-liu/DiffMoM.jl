@@ -42,6 +42,7 @@ struct FarFieldQMatrix <: AbstractMatrix{ComplexF64}
     mask::Union{Nothing,BitVector}
     N::Int
     work::Vector{ComplexF64}
+    error_bounds::Vector{ComplexF64}
     work_lock::ReentrantLock
     extreme_operator_factor::Bool
 end
@@ -53,7 +54,7 @@ FarFieldQMatrix(G_mat::Matrix{ComplexF64},
                 N::Int) =
     FarFieldQMatrix(
         G_mat, weights, pol, mask, N,
-        zeros(ComplexF64, N), ReentrantLock(),
+        zeros(ComplexF64, N), zeros(ComplexF64, N), ReentrantLock(),
         _farfield_q_has_extreme_operator_factor(
             G_mat, weights, pol))
 
@@ -65,7 +66,8 @@ FarFieldQMatrix(G_mat::Matrix{ComplexF64},
                 work::Vector{ComplexF64},
                 work_lock::ReentrantLock) =
     FarFieldQMatrix(
-        G_mat, weights, pol, mask, N, work, work_lock,
+        G_mat, weights, pol, mask, N, work,
+        zeros(ComplexF64, N), work_lock,
         _farfield_q_has_extreme_operator_factor(
             G_mat, weights, pol))
 
@@ -75,11 +77,6 @@ FarFieldQMatrix(G_mat::Matrix{ComplexF64},
 # precision in the exceptional path.
 const _FARFIELD_Q_FALLBACK_PRECISION = 12800
 const _FARFIELD_Q_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
-
-@inline function _farfield_q_has_subnormal_component(value::ComplexF64)
-    scale = max(abs(real(value)), abs(imag(value)))
-    return !iszero(scale) && scale < floatmin(Float64)
-end
 
 @inline function _farfield_q_product_underflowed(
         left::Number,
@@ -91,19 +88,64 @@ end
            (!iszero(left) && !iszero(right))
 end
 
-@inline function _farfield_q_projection_underflowed(
+@inline function _farfield_q_product_requires_exact(
+        left::Number,
+        right::Number,
+        product::ComplexF64)
+    _farfield_q_product_underflowed(left, right, product) && return true
+    left_value = ComplexF64(left)
+    right_value = ComplexF64(right)
+    real_magnitude =
+        abs(real(left_value) * real(right_value)) +
+        abs(imag(left_value) * imag(right_value))
+    imag_magnitude =
+        abs(real(left_value) * imag(right_value)) +
+        abs(imag(left_value) * real(right_value))
+    return _matrixfree_complex_reduction_requires_exact(
+        product, real_magnitude, imag_magnitude, 2)
+end
+
+@inline function _farfield_q_projection_checked(
         polarization::SVector{3,ComplexF64},
-        radiation::SVector{3,ComplexF64},
-        projection::ComplexF64)
-    _farfield_q_has_subnormal_component(projection) && return true
-    iszero(projection) || return false
+        radiation::SVector{3,ComplexF64})
+    total = zero(ComplexF64)
     @inbounds for component in 1:3
         left = conj(polarization[component])
         right = radiation[component]
         term = left * right
-        _farfield_q_product_underflowed(left, right, term) && return true
+        _farfield_q_product_requires_exact(left, right, term) &&
+            return total, true
+        next_total = total + term
+        (!isfinite(next_total) ||
+         _scaled_sum_requires_exact(total, term, next_total)) &&
+            return next_total, true
+        total = next_total
     end
-    return false
+    return total, false
+end
+
+@inline function _farfield_q_projection_with_bounds(
+        polarization::SVector{3,ComplexF64},
+        radiation::SVector{3,ComplexF64})
+    projection = zero(ComplexF64)
+    real_bound = 0.0
+    imag_bound = 0.0
+    @inbounds for component in 1:3
+        polarization_value = polarization[component]
+        radiation_value = radiation[component]
+        polarization_real = real(polarization_value)
+        polarization_imag = imag(polarization_value)
+        radiation_real = real(radiation_value)
+        radiation_imag = imag(radiation_value)
+        projection += conj(polarization_value) * radiation_value
+        real_bound +=
+            abs(polarization_real * radiation_real) +
+            abs(polarization_imag * radiation_imag)
+        imag_bound +=
+            abs(polarization_real * radiation_imag) +
+            abs(polarization_imag * radiation_real)
+    end
+    return projection, real_bound, imag_bound
 end
 
 @inline function _farfield_q_projection_bigfloat(
@@ -181,56 +223,6 @@ end
     end
 end
 
-@inline function _farfield_q_requires_checked_products(
-        Q::FarFieldQMatrix,
-        input::AbstractVector{ComplexF64})
-    # The public matrix stores mutable arrays.  Recompute the classification so
-    # caller mutation cannot invalidate the construction-time cache and route
-    # an extreme product through the unchecked kernel.
-    (Q.extreme_operator_factor ||
-     _farfield_q_has_extreme_operator_factor(
-         Q.G_mat, Q.weights, Q.pol)) && return true
-    return any(_farfield_q_extreme_factor, input)
-end
-
-function _farfield_q_product_unchecked!(
-        result::Vector{ComplexF64},
-        Q::FarFieldQMatrix,
-        input::AbstractVector{ComplexF64})
-    fill!(result, zero(ComplexF64))
-    quadrature_count = length(Q.weights)
-    @inbounds for q in 1:quadrature_count
-        Q.mask !== nothing && !Q.mask[q] && continue
-        offset = 3 * (q - 1)
-        polarization = SVector{3,ComplexF64}(
-            Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
-        projected_input = zero(ComplexF64)
-        for n in 1:Q.N
-            radiation = SVector{3,ComplexF64}(
-                Q.G_mat[offset + 1, n],
-                Q.G_mat[offset + 2, n],
-                Q.G_mat[offset + 3, n])
-            projected_input += dot(polarization, radiation) * input[n]
-        end
-        isfinite(projected_input) ||
-            return _farfield_q_product_bigfloat!(result, Q, input)
-
-        weight = Q.weights[q]
-        for m in 1:Q.N
-            radiation = SVector{3,ComplexF64}(
-                Q.G_mat[offset + 1, m],
-                Q.G_mat[offset + 2, m],
-                Q.G_mat[offset + 3, m])
-            result[m] +=
-                weight * conj(dot(polarization, radiation)) *
-                projected_input
-        end
-    end
-    all(isfinite, result) ||
-        return _farfield_q_product_bigfloat!(result, Q, input)
-    return result
-end
-
 function _farfield_q_product_checked!(
         result::Vector{ComplexF64},
         Q::FarFieldQMatrix,
@@ -248,17 +240,21 @@ function _farfield_q_product_checked!(
                 Q.G_mat[offset + 1, n],
                 Q.G_mat[offset + 2, n],
                 Q.G_mat[offset + 3, n])
-            projection = dot(polarization, radiation)
-            _farfield_q_projection_underflowed(
-                polarization, radiation, projection) &&
+            projection, projection_requires_exact =
+                _farfield_q_projection_checked(
+                    polarization, radiation)
+            projection_requires_exact &&
                 return _farfield_q_product_bigfloat!(result, Q, input)
             term = projection * input[n]
-            _farfield_q_product_underflowed(
+            _farfield_q_product_requires_exact(
                 projection, input[n], term) &&
                 return _farfield_q_product_bigfloat!(result, Q, input)
-            projected_input += term
-            _farfield_q_has_subnormal_component(projected_input) &&
+            next_projected_input = projected_input + term
+            (!isfinite(next_projected_input) ||
+             _scaled_sum_requires_exact(
+                 projected_input, term, next_projected_input)) &&
                 return _farfield_q_product_bigfloat!(result, Q, input)
+            projected_input = next_projected_input
         end
         isfinite(projected_input) ||
             return _farfield_q_product_bigfloat!(result, Q, input)
@@ -269,21 +265,25 @@ function _farfield_q_product_checked!(
                 Q.G_mat[offset + 1, m],
                 Q.G_mat[offset + 2, m],
                 Q.G_mat[offset + 3, m])
-            projection = dot(polarization, radiation)
-            _farfield_q_projection_underflowed(
-                polarization, radiation, projection) &&
+            projection, projection_requires_exact =
+                _farfield_q_projection_checked(
+                    polarization, radiation)
+            projection_requires_exact &&
                 return _farfield_q_product_bigfloat!(result, Q, input)
             weighted_projection = weight * conj(projection)
-            _farfield_q_product_underflowed(
+            _farfield_q_product_requires_exact(
                 weight, conj(projection), weighted_projection) &&
                 return _farfield_q_product_bigfloat!(result, Q, input)
             contribution = weighted_projection * projected_input
-            _farfield_q_product_underflowed(
+            _farfield_q_product_requires_exact(
                 weighted_projection, projected_input, contribution) &&
                 return _farfield_q_product_bigfloat!(result, Q, input)
-            result[m] += contribution
-            _farfield_q_has_subnormal_component(result[m]) &&
+            next_result = result[m] + contribution
+            (!isfinite(next_result) ||
+             _scaled_sum_requires_exact(
+                 result[m], contribution, next_result)) &&
                 return _farfield_q_product_bigfloat!(result, Q, input)
+            result[m] = next_result
         end
     end
     all(isfinite, result) ||
@@ -291,14 +291,123 @@ function _farfield_q_product_checked!(
     return result
 end
 
+@inline function _farfield_q_vector3_has_extreme_factor(
+        values::SVector{3,ComplexF64})
+    return _farfield_q_extreme_factor(values[1]) ||
+           _farfield_q_extreme_factor(values[2]) ||
+           _farfield_q_extreme_factor(values[3])
+end
+
+@inline function _farfield_q_certificate_term_count(
+        column_count::Int,
+        quadrature_count::Int)
+    # This deliberately overestimates the longest rounding chain through the
+    # two projections and the input/quadrature reductions.  The downstream
+    # helper contributes a further 16eps factor.
+    limit = (typemax(Int) - 256) ÷ 16
+    if column_count > limit ||
+       quadrature_count > limit - column_count
+        return typemax(Int)
+    end
+    return 16 * (column_count + quadrature_count) + 256
+end
+
+function _farfield_q_product_certified!(
+        result::Vector{ComplexF64},
+        Q::FarFieldQMatrix,
+        input::AbstractVector{ComplexF64})
+    # Accumulate componentwise absolute bounds alongside the ordinary
+    # factorized product.  If the rounded output is not safely separated from
+    # its forward-error envelope, recompute through the exact BigFloat-aware
+    # kernel.  This keeps the common path allocation-free without paying the
+    # per-operation cancellation checks at every inner-loop instruction.
+    if Q.extreme_operator_factor ||
+       any(_farfield_q_extreme_factor, input)
+        return _farfield_q_product_checked!(result, Q, input)
+    end
+
+    fill!(result, zero(ComplexF64))
+    fill!(Q.error_bounds, zero(ComplexF64))
+    quadrature_count = length(Q.weights)
+    @inbounds for q in 1:quadrature_count
+        Q.mask !== nothing && !Q.mask[q] && continue
+        weight = Q.weights[q]
+        _farfield_q_extreme_factor(weight) &&
+            return _farfield_q_product_checked!(result, Q, input)
+        offset = 3 * (q - 1)
+        polarization = SVector{3,ComplexF64}(
+            Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
+        _farfield_q_vector3_has_extreme_factor(polarization) &&
+            return _farfield_q_product_checked!(result, Q, input)
+
+        projected_input = zero(ComplexF64)
+        projected_real_bound = 0.0
+        projected_imag_bound = 0.0
+        for n in 1:Q.N
+            radiation = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, n],
+                Q.G_mat[offset + 2, n],
+                Q.G_mat[offset + 3, n])
+            _farfield_q_vector3_has_extreme_factor(radiation) &&
+                return _farfield_q_product_checked!(result, Q, input)
+            projection, projection_real_bound, projection_imag_bound =
+                _farfield_q_projection_with_bounds(
+                    polarization, radiation)
+            input_value = input[n]
+            projected_input += projection * input_value
+            input_real = abs(real(input_value))
+            input_imag = abs(imag(input_value))
+            projected_real_bound +=
+                projection_real_bound * input_real +
+                projection_imag_bound * input_imag
+            projected_imag_bound +=
+                projection_real_bound * input_imag +
+                projection_imag_bound * input_real
+        end
+
+        absolute_weight = abs(weight)
+        for m in 1:Q.N
+            radiation = SVector{3,ComplexF64}(
+                Q.G_mat[offset + 1, m],
+                Q.G_mat[offset + 2, m],
+                Q.G_mat[offset + 3, m])
+            projection, projection_real_bound, projection_imag_bound =
+                _farfield_q_projection_with_bounds(
+                    polarization, radiation)
+            result[m] +=
+                weight * conj(projection) * projected_input
+
+            previous_bound = Q.error_bounds[m]
+            real_bound = real(previous_bound) + absolute_weight *
+                (projection_real_bound * projected_real_bound +
+                 projection_imag_bound * projected_imag_bound)
+            imag_bound = imag(previous_bound) + absolute_weight *
+                (projection_real_bound * projected_imag_bound +
+                 projection_imag_bound * projected_real_bound)
+            Q.error_bounds[m] = ComplexF64(real_bound, imag_bound)
+        end
+    end
+
+    term_count = _farfield_q_certificate_term_count(
+        Q.N, quadrature_count)
+    @inbounds for row in eachindex(result)
+        value = result[row]
+        bounds = Q.error_bounds[row]
+        if !isfinite(value) ||
+           !isfinite(bounds) ||
+           _matrixfree_complex_reduction_requires_exact(
+               value, real(bounds), imag(bounds), term_count)
+            return _farfield_q_product_checked!(result, Q, input)
+        end
+    end
+    return result
+end
+
 function _farfield_q_product!(
         result::Vector{ComplexF64},
         Q::FarFieldQMatrix,
         input::AbstractVector{ComplexF64})
-    if _farfield_q_requires_checked_products(Q, input)
-        return _farfield_q_product_checked!(result, Q, input)
-    end
-    return _farfield_q_product_unchecked!(result, Q, input)
+    return _farfield_q_product_certified!(result, Q, input)
 end
 
 @noinline function _farfield_q_scaled_output_bigfloat(
@@ -682,17 +791,29 @@ end
 Base.size(Q::FarFieldQMatrix) = (Q.N, Q.N)
 Base.eltype(::FarFieldQMatrix) = ComplexF64
 
-@noinline function _farfield_q_entry_bigfloat(
-        Q::FarFieldQMatrix,
+@noinline function _farfield_q_entry_bigfloat_arrays(
+        G_mat::Matrix{ComplexF64},
+        weights::Vector{Float64},
+        pol::Matrix{ComplexF64},
+        mask,
         m::Int,
         n::Int)
     return setprecision(BigFloat, _FARFIELD_Q_FALLBACK_PRECISION) do
         total = zero(Complex{BigFloat})
-        @inbounds for q in eachindex(Q.weights)
-            Q.mask !== nothing && !Q.mask[q] && continue
-            total += BigFloat(Q.weights[q]) *
-                conj(_farfield_q_projection_bigfloat(Q, q, m)) *
-                _farfield_q_projection_bigfloat(Q, q, n)
+        @inbounds for q in eachindex(weights)
+            mask !== nothing && !mask[q] && continue
+            offset = 3 * (q - 1)
+            projection_m = zero(Complex{BigFloat})
+            projection_n = zero(Complex{BigFloat})
+            for component in 1:3
+                polarization = conj(Complex{BigFloat}(pol[component, q]))
+                projection_m += polarization *
+                    Complex{BigFloat}(G_mat[offset + component, m])
+                projection_n += polarization *
+                    Complex{BigFloat}(G_mat[offset + component, n])
+            end
+            total += BigFloat(weights[q]) *
+                conj(projection_m) * projection_n
         end
         converted = ComplexF64(total)
         isfinite(converted) ||
@@ -701,6 +822,14 @@ Base.eltype(::FarFieldQMatrix) = ComplexF64
                 "ComplexF64 range at index ($m, $n)."))
         return converted
     end
+end
+
+@noinline function _farfield_q_entry_bigfloat(
+        Q::FarFieldQMatrix,
+        m::Int,
+        n::Int)
+    return _farfield_q_entry_bigfloat_arrays(
+        Q.G_mat, Q.weights, Q.pol, Q.mask, m, n)
 end
 
 function _validate_q_inputs(G_mat::Matrix{ComplexF64}, grid::SphGrid,
@@ -730,31 +859,6 @@ function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
     1 <= m <= Q.N || throw(BoundsError(Q, (m, n)))
     1 <= n <= Q.N || throw(BoundsError(Q, (m, n)))
     NΩ = length(Q.weights)
-    if !(Q.extreme_operator_factor ||
-         _farfield_q_has_extreme_operator_factor(
-             Q.G_mat, Q.weights, Q.pol))
-        val = zero(ComplexF64)
-        @inbounds for q in 1:NΩ
-            Q.mask !== nothing && !Q.mask[q] && continue
-            offset = 3 * (q - 1)
-            polarization = SVector{3,ComplexF64}(
-                Q.pol[1, q], Q.pol[2, q], Q.pol[3, q])
-            radiation_m = SVector{3,ComplexF64}(
-                Q.G_mat[offset + 1, m],
-                Q.G_mat[offset + 2, m],
-                Q.G_mat[offset + 3, m])
-            radiation_n = SVector{3,ComplexF64}(
-                Q.G_mat[offset + 1, n],
-                Q.G_mat[offset + 2, n],
-                Q.G_mat[offset + 3, n])
-            val += Q.weights[q] *
-                   conj(dot(polarization, radiation_m)) *
-                   dot(polarization, radiation_n)
-        end
-        return isfinite(val) ? val :
-               _farfield_q_entry_bigfloat(Q, m, n)
-    end
-
     val = zero(ComplexF64)
     @inbounds for q in 1:NΩ
         if Q.mask !== nothing && !Q.mask[q]
@@ -771,24 +875,44 @@ function Base.getindex(Q::FarFieldQMatrix, m::Int, n::Int)
             Q.G_mat[offset + 1, n],
             Q.G_mat[offset + 2, n],
             Q.G_mat[offset + 3, n])
-        projection_m = dot(polarization, radiation_m)
-        projection_n = dot(polarization, radiation_n)
-        (_farfield_q_projection_underflowed(
-             polarization, radiation_m, projection_m) ||
-         _farfield_q_projection_underflowed(
-             polarization, radiation_n, projection_n)) &&
+        projection_m, projection_m_requires_exact =
+            _farfield_q_projection_checked(
+                polarization, radiation_m)
+        projection_m_requires_exact &&
             return _farfield_q_entry_bigfloat(Q, m, n)
-        weighted_projection = Q.weights[q] * conj(projection_m)
-        _farfield_q_product_underflowed(
-            Q.weights[q], conj(projection_m), weighted_projection) &&
+        contribution = if m == n
+            projection_squared = abs2(projection_m)
+            ((!iszero(projection_m) && iszero(projection_squared)) ||
+             (!iszero(projection_squared) &&
+              projection_squared < floatmin(Float64))) &&
+                return _farfield_q_entry_bigfloat(Q, m, n)
+            weighted_squared = Q.weights[q] * projection_squared
+            (!isfinite(weighted_squared) ||
+             (!iszero(Q.weights[q]) && !iszero(projection_squared) &&
+              iszero(weighted_squared))) &&
+                return _farfield_q_entry_bigfloat(Q, m, n)
+            ComplexF64(weighted_squared)
+        else
+            projection_n, projection_n_requires_exact =
+                _farfield_q_projection_checked(
+                    polarization, radiation_n)
+            projection_n_requires_exact &&
+                return _farfield_q_entry_bigfloat(Q, m, n)
+            weighted_projection = Q.weights[q] * conj(projection_m)
+            _farfield_q_product_requires_exact(
+                Q.weights[q], conj(projection_m), weighted_projection) &&
+                return _farfield_q_entry_bigfloat(Q, m, n)
+            product = weighted_projection * projection_n
+            _farfield_q_product_requires_exact(
+                weighted_projection, projection_n, product) &&
+                return _farfield_q_entry_bigfloat(Q, m, n)
+            product
+        end
+        next_val = val + contribution
+        (!isfinite(next_val) ||
+         _scaled_sum_requires_exact(val, contribution, next_val)) &&
             return _farfield_q_entry_bigfloat(Q, m, n)
-        contribution = weighted_projection * projection_n
-        _farfield_q_product_underflowed(
-            weighted_projection, projection_n, contribution) &&
-            return _farfield_q_entry_bigfloat(Q, m, n)
-        val += contribution
-        _farfield_q_has_subnormal_component(val) &&
-            return _farfield_q_entry_bigfloat(Q, m, n)
+        val = next_val
     end
     return isfinite(val) ? val : _farfield_q_entry_bigfloat(Q, m, n)
 end
@@ -835,6 +959,24 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
     return result
 end
 
+@noinline function _build_q_checked_into!(
+        result::Matrix{ComplexF64},
+        G_mat::Matrix{ComplexF64},
+        weights::Vector{Float64},
+        pol::Matrix{ComplexF64},
+        mask,
+        N::Int)
+    @inbounds for column in 1:N
+        for row in 1:column
+            value = _farfield_q_entry_bigfloat_arrays(
+                G_mat, weights, pol, mask, row, column)
+            result[row, column] = value
+            result[column, row] = conj(value)
+        end
+    end
+    return result
+end
+
 @noinline function _build_q_checked(
         G_mat::Matrix{ComplexF64},
         weights::Vector{Float64},
@@ -844,7 +986,7 @@ end
     mask_copy = mask === nothing ? nothing : BitVector(mask)
     operator = FarFieldQMatrix(
         G_mat, weights, pol, mask_copy, N,
-        ComplexF64[], ReentrantLock(), true)
+        ComplexF64[], ComplexF64[], ReentrantLock(), true)
     result = zeros(ComplexF64, N, N)
     @inbounds for column in 1:N
         for row in 1:column
@@ -909,6 +1051,7 @@ function build_Q(
     # Compute scalar projections: y_q_n = p†(r̂_q) · g_n(r̂_q)
     # y is (NΩ, N)
     y = zeros(ComplexF64, NΩ, N)
+    projection_requires_exact = false
     for q in 1:NΩ
         if mask !== nothing && !mask[q]
             continue
@@ -917,12 +1060,21 @@ function build_Q(
         idx = 3 * (q - 1)
         for n in 1:N
             gn = SVector{3,ComplexF64}(G_mat[idx+1, n], G_mat[idx+2, n], G_mat[idx+3, n])
-            y[q, n] = dot(p, gn)
+            projection, requires_exact =
+                _farfield_q_projection_checked(p, gn)
+            if requires_exact
+                projection_requires_exact = true
+                break
+            end
+            y[q, n] = projection
         end
+        projection_requires_exact && break
     end
 
     # Q_mn = Σ_q w_q conj(y_qm) y_qn
     Q = zeros(ComplexF64, N, N)
+    projection_requires_exact && return _build_q_checked_into!(
+        Q, G_mat, grid.w, pol, mask, N)
     for q in 1:NΩ
         if mask !== nothing && !mask[q]
             continue
@@ -930,8 +1082,46 @@ function build_Q(
         wq = grid.w[q]
         for m in 1:N
             ym = conj(y[q, m])
+            weighted_projection = wq * ym
+            if _farfield_q_product_requires_exact(
+                    wq, ym, weighted_projection)
+                return _build_q_checked_into!(
+                    Q, G_mat, grid.w, pol, mask, N)
+            end
             for n in 1:N
-                Q[m, n] += wq * ym * y[q, n]
+                contribution = if m == n
+                    projection_squared = abs2(y[q, m])
+                    if (!iszero(y[q, m]) && iszero(projection_squared)) ||
+                       (!iszero(projection_squared) &&
+                        projection_squared < floatmin(Float64))
+                        return _build_q_checked_into!(
+                            Q, G_mat, grid.w, pol, mask, N)
+                    end
+                    weighted_squared = wq * projection_squared
+                    if !isfinite(weighted_squared) ||
+                       (!iszero(wq) && !iszero(projection_squared) &&
+                        iszero(weighted_squared))
+                        return _build_q_checked_into!(
+                            Q, G_mat, grid.w, pol, mask, N)
+                    end
+                    ComplexF64(weighted_squared)
+                else
+                    product = weighted_projection * y[q, n]
+                    if _farfield_q_product_requires_exact(
+                            weighted_projection, y[q, n], product)
+                        return _build_q_checked_into!(
+                            Q, G_mat, grid.w, pol, mask, N)
+                    end
+                    product
+                end
+                next_value = Q[m, n] + contribution
+                if !isfinite(next_value) ||
+                   _scaled_sum_requires_exact(
+                       Q[m, n], contribution, next_value)
+                    return _build_q_checked_into!(
+                        Q, G_mat, grid.w, pol, mask, N)
+                end
+                Q[m, n] = next_value
             end
         end
     end
@@ -950,6 +1140,21 @@ function build_Q_operator(G_mat::Matrix{ComplexF64}, grid::SphGrid,
     _, N = _validate_q_inputs(G_mat, grid, pol, mask)
     mask_copy = mask === nothing ? nothing : BitVector(mask)
     return FarFieldQMatrix(G_mat, copy(grid.w), pol, mask_copy, N)
+end
+
+@noinline function _farfield_q_apply_bigfloat!(
+        result::Vector{ComplexF64},
+        G_mat::Matrix{ComplexF64},
+        weights::Vector{Float64},
+        pol::Matrix{ComplexF64},
+        mask,
+        N::Int,
+        input::Vector{ComplexF64})
+    mask_copy = mask === nothing ? nothing : BitVector(mask)
+    operator = FarFieldQMatrix(
+        G_mat, weights, pol, mask_copy, N,
+        result, ComplexF64[], ReentrantLock(), true)
+    return _farfield_q_product_bigfloat!(result, operator, input)
 end
 
 """
@@ -978,10 +1183,12 @@ function apply_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
         mask_copy = mask === nothing ? nothing : BitVector(mask)
         operator = FarFieldQMatrix(
             G_mat, grid.w, pol, mask_copy, N,
-            result, ReentrantLock(), extreme_operator_factor)
+            result, ComplexF64[], ReentrantLock(),
+            extreme_operator_factor)
         return _farfield_q_product!(
             result, operator, I_coeffs)
     end
+    fallback_required = false
     for q in 1:NΩ
         if mask !== nothing && !mask[q]
             continue
@@ -995,16 +1202,64 @@ function apply_Q(G_mat::Matrix{ComplexF64}, grid::SphGrid,
         for n in 1:N
             idx = 3 * (q - 1)
             gn = SVector{3,ComplexF64}(G_mat[idx+1, n], G_mat[idx+2, n], G_mat[idx+3, n])
-            yq += dot(p, gn) * I_coeffs[n]
+            projection, projection_requires_exact =
+                _farfield_q_projection_checked(p, gn)
+            if projection_requires_exact
+                fallback_required = true
+                break
+            end
+            term = projection * I_coeffs[n]
+            if _farfield_q_product_requires_exact(
+                    projection, I_coeffs[n], term)
+                fallback_required = true
+                break
+            end
+            next_yq = yq + term
+            if !isfinite(next_yq) ||
+               _scaled_sum_requires_exact(yq, term, next_yq)
+                fallback_required = true
+                break
+            end
+            yq = next_yq
         end
+        fallback_required && break
 
         # Accumulate: (Q*I)_m += w_q conj(p†·g_m) y_q
         for m in 1:N
             idx = 3 * (q - 1)
             gm = SVector{3,ComplexF64}(G_mat[idx+1, m], G_mat[idx+2, m], G_mat[idx+3, m])
-            result[m] += wq * conj(dot(p, gm)) * yq
+            projection, projection_requires_exact =
+                _farfield_q_projection_checked(p, gm)
+            if projection_requires_exact
+                fallback_required = true
+                break
+            end
+            weighted_projection = wq * conj(projection)
+            if _farfield_q_product_requires_exact(
+                    wq, conj(projection), weighted_projection)
+                fallback_required = true
+                break
+            end
+            contribution = weighted_projection * yq
+            if _farfield_q_product_requires_exact(
+                    weighted_projection, yq, contribution)
+                fallback_required = true
+                break
+            end
+            next_result = result[m] + contribution
+            if !isfinite(next_result) ||
+               _scaled_sum_requires_exact(
+                   result[m], contribution, next_result)
+                fallback_required = true
+                break
+            end
+            result[m] = next_result
         end
+        fallback_required && break
     end
+
+    fallback_required && return _farfield_q_apply_bigfloat!(
+        result, G_mat, grid.w, pol, mask, N, I_coeffs)
 
     return result
 end
