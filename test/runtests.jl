@@ -9765,6 +9765,41 @@ ptd_exact_cap_state[1] = Complex{BigFloat}[]
     DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3) ==
     DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3
 
+ptd_cancellation_tangent = Vec3(
+    0.7831050509661788,
+    0.43233094754335505,
+    0.447030682333465)
+ptd_cancellation_polarization = Vec3(
+    -0.5516272612069405,
+    0.15099132442827376,
+    0.8203102977780578)
+ptd_cancellation_direction = Vec3(
+    -0.28714777353235466,
+    0.8889834485206463,
+    -0.35672760534019654)
+ptd_cancellation_amplitude = 1.0e16
+ptd_ordinary_incident =
+    ptd_cancellation_polarization * ptd_cancellation_amplitude
+ptd_ordinary_tangent_electric = dot(
+    ptd_cancellation_tangent, ptd_ordinary_incident)
+ptd_exact_tangent_electric, ptd_exact_tangent_magnetic =
+    DiffMoM._ptd_incident_components_exact(
+        ptd_cancellation_amplitude,
+        ptd_cancellation_polarization,
+        ptd_cancellation_direction,
+        ptd_cancellation_tangent)
+@test ptd_ordinary_tangent_electric !=
+      Float64(ptd_exact_tangent_electric)
+ptd_checked_tangent_electric, ptd_checked_tangent_magnetic,
+ptd_incident_used_exact = DiffMoM._ptd_incident_components(
+    ptd_cancellation_amplitude,
+    ptd_cancellation_polarization,
+    ptd_cancellation_direction,
+    ptd_cancellation_tangent)
+@test ptd_incident_used_exact
+@test ptd_checked_tangent_electric == ptd_exact_tangent_electric
+@test ptd_checked_tangent_magnetic == ptd_exact_tangent_magnetic
+
 ptd_mesh = make_rect_plate(0.2, 0.2, 1, 1)
 ptd_grid = make_sph_grid(4, 8)
 ptd_result = solve_ptd(

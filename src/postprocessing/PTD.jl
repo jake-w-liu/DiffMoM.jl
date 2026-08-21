@@ -136,6 +136,78 @@ end
     end
 end
 
+@inline function _ptd_incident_components_require_exact(
+    amplitude::Float64,
+    polarization::Vec3,
+    incident_direction::Vec3,
+    tangent::Vec3,
+    tangent_electric::Float64,
+    tangent_magnetic::Float64,
+)
+    amplitude_magnitude = abs(amplitude)
+    electric_magnitude = 0.0
+    @inbounds for component in 1:3
+        electric_magnitude += amplitude_magnitude *
+                              abs(tangent[component] *
+                                  polarization[component])
+    end
+
+    magnetic_magnitude = amplitude_magnitude * (
+        abs(tangent[1] * incident_direction[2] * polarization[3]) +
+        abs(tangent[1] * incident_direction[3] * polarization[2]) +
+        abs(tangent[2] * incident_direction[3] * polarization[1]) +
+        abs(tangent[2] * incident_direction[1] * polarization[3]) +
+        abs(tangent[3] * incident_direction[1] * polarization[2]) +
+        abs(tangent[3] * incident_direction[2] * polarization[1]))
+    electric_error = _ieee_product_error_factor(Float64, 3, 3)
+    magnetic_error = _ieee_product_error_factor(Float64, 4, 6)
+    return _ieee_product_component_is_suspicious(
+               tangent_electric, electric_magnitude, electric_error) ||
+           _ieee_product_component_is_suspicious(
+               tangent_magnetic, magnetic_magnitude, magnetic_error)
+end
+
+@inline function _ptd_incident_components(
+    amplitude::Float64,
+    polarization::Vec3,
+    incident_direction::Vec3,
+    tangent::Vec3,
+)
+    needs_exact = _ieee_dense_extreme_factor(amplitude, Float64)
+    @inbounds for component in 1:3
+        needs_exact |=
+            _ieee_dense_extreme_factor(polarization[component], Float64) ||
+            _ieee_dense_extreme_factor(
+                incident_direction[component], Float64) ||
+            _ieee_dense_extreme_factor(tangent[component], Float64)
+    end
+    needs_exact && return (
+        _ptd_incident_components_exact(
+            amplitude, polarization, incident_direction, tangent)...,
+        true,
+    )
+
+    incident_amplitude = polarization * amplitude
+    all(isfinite, incident_amplitude) || return (
+        _ptd_incident_components_exact(
+            amplitude, polarization, incident_direction, tangent)...,
+        true,
+    )
+    tangent_electric = dot(tangent, incident_amplitude)
+    tangent_magnetic = dot(
+        tangent, cross(incident_direction, incident_amplitude))
+    if _ptd_incident_components_require_exact(
+            amplitude, polarization, incident_direction, tangent,
+            tangent_electric, tangent_magnetic)
+        return (
+            _ptd_incident_components_exact(
+                amplitude, polarization, incident_direction, tangent)...,
+            true,
+        )
+    end
+    return tangent_electric, tangent_magnetic, false
+end
+
 @noinline function _ptd_accumulate_direction_exact!(
     exact_totals::Dict{Int,Vector{Complex{BigFloat}}},
     field::Matrix{ComplexF64},
@@ -580,25 +652,8 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
         # The edge-line phase below already contains the incident propagation
         # term.  Keep these coefficients as the unphased incident amplitudes
         # so translating the edge does not apply that phase twice.
-        incident_requires_exact =
-            _ieee_dense_extreme_factor(E0, Float64)
-        @inbounds for component in 1:3
-            incident_requires_exact |=
-                _ieee_dense_extreme_factor(pol[component], Float64) ||
-                _ieee_dense_extreme_factor(k_hat[component], Float64) ||
-                _ieee_dense_extreme_factor(ê[component], Float64)
-        end
-        tE, tH = if incident_requires_exact
-            _ptd_incident_components_exact(
-                E0, pol, k_hat, ê)
-        else
-            incident_amplitude = pol * E0
-            all(isfinite, incident_amplitude) ||
-                throw(OverflowError(
-                    "PTD incident edge field overflowed"))
-            dot(ê, incident_amplitude),
-            dot(ê, cross(k_hat, incident_amplitude))
-        end
+        tE, tH, incident_requires_exact =
+            _ptd_incident_components(E0, pol, k_hat, ê)
         incident_center_phase = _source_directional_phase(
             k, k_vec, k_hat, Q₀, -1.0, "PTD incident edge phase")
 
