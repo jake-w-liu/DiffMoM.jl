@@ -167,8 +167,10 @@ const _OPTIMIZER_MIN_CURVATURE_COSINE = sqrt(eps(Float64))
         absolute_sum += abs(term)
         isfinite(absolute_sum) || return true
     end
+    error_factor = _ieee_product_error_factor(
+        Float64, 1, length(left))
     return !iszero(absolute_sum) &&
-           abs(value) <= 8eps(Float64) * absolute_sum
+           abs(value) <= error_factor * absolute_sum
 end
 
 @inline function _optimizer_dot_bigfloat(

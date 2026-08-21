@@ -4227,6 +4227,28 @@ end
 @test DiffMoM._optimizer_dot_ratio(
     [1.0e300], [3.0e100],
     [1.0e300], [2.0e100]) == 1.5
+# A reduction's rounding bound grows with its length.  BLAS may lose unit
+# terms between these large endpoints, while the exact coefficient remains 64.
+optimizer_cancellation_count = 64
+optimizer_cancellation_left = ones(Float64, optimizer_cancellation_count + 2)
+optimizer_cancellation_right = vcat(
+    1e16,
+    ones(Float64, optimizer_cancellation_count),
+    -1e16,
+)
+optimizer_cancellation_fast = dot(
+    optimizer_cancellation_left, optimizer_cancellation_right)
+@test DiffMoM._optimizer_dot_requires_exact(
+    optimizer_cancellation_left,
+    optimizer_cancellation_right,
+    optimizer_cancellation_fast,
+)
+@test DiffMoM._optimizer_dot_ratio(
+    optimizer_cancellation_left,
+    optimizer_cancellation_right,
+    [1.0],
+    [1.0],
+) == optimizer_cancellation_count
 @test DiffMoM._optimizer_dot_ratio(
     [1.0e-300], [1.0e-100],
     [1.0], [1.0]) === nothing
