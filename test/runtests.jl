@@ -9831,13 +9831,14 @@ end
 mlfma_coarse_sampling = DiffMoM.make_sphere_sampling(mlfma_hankel_coarse_L)
 mlfma_coarse_translation = DiffMoM.compute_translation_factor(
     Vec3(24π, 24π, 24π), 1.0, mlfma_coarse_sampling)[1]
-# This oscillatory sum has a condition number of about 90 at the probe point,
-# so platform-level sincos differences are amplified.  The ceiling remains
-# relative to the stored high-precision reference.
+# The real and imaginary component sums have condition numbers of about 58
+# and 1,709 at this probe point, so platform-level trigonometric differences
+# are amplified very differently.  Both ceilings remain relative to the
+# stored high-precision reference.
 @test isapprox(real(mlfma_coarse_translation),
                -0.0272850707742405; rtol=4e-12, atol=0.0)
 @test isapprox(imag(mlfma_coarse_translation),
-               0.0009201247803121605; rtol=4e-12, atol=0.0)
+               0.0009201247803121605; rtol=3e-11, atol=0.0)
 
 mlfma_tiny_sampling = DiffMoM.make_sphere_sampling(3)
 mlfma_tiny_translation = DiffMoM.compute_translation_factor(
