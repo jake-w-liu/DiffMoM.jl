@@ -2206,21 +2206,27 @@ const _MLFMA_EXACT_LINEARITY_PRECISION = 4352
 # (which cannot distinguish underflow from a genuine nullspace result).
 const _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT = 128
 
-@inline function _mlfma_near_far_combine_requires_exact(
+@inline function _mlfma_output_requires_exact(
         near_value::ComplexF64,
         far_value::ComplexF64,
+        far_reduction_magnitude::Float64,
         combined::ComplexF64,
         A)
     isfinite(near_value) && isfinite(far_value) && isfinite(combined) ||
         return false
-    magnitude = abs(near_value) + abs(far_value)
+    isnan(far_reduction_magnitude) && return false
+    magnitude = abs(near_value) + far_reduction_magnitude
+    # Internal overflow recovery is scale-invariant, so an unrepresentable
+    # magnitude bound cannot safely classify cancellation at this scale.
     isfinite(magnitude) || return false
     iszero(magnitude) && return false
-    # The far pass contains several reductions (aggregation, filtering,
-    # translation, and leaf projection).  Bound their accumulated Float64
-    # error by the larger of the operator dimension and leaf sample count,
-    # with a conservative per-stage guard.  The square-root-epsilon cap keeps
-    # the exceptional path reserved for outputs that have lost useful digits.
+    # Include the absolute component terms in the final far-field projection,
+    # not merely abs(far_value).  Otherwise cancellation wholly inside the far
+    # reduction is invisible when the sparse near-field contribution is zero.
+    # Bound the accumulated Float64 error by the larger of the operator
+    # dimension and leaf sample count, with a conservative per-stage guard.
+    # The square-root-epsilon cap keeps the exceptional path reserved for
+    # outputs that have lost useful digits.
     operator = A isa MLFMAAdjointOperator ? A.op : A
     reduction_extent = max(
         operator.N, operator.samplings[end].npts, 1)
@@ -2959,10 +2965,27 @@ function _mlfma_forward_product_raw!(
             near_value = product[n]
             far_value = A.prefactor * val
             combined = near_value + far_value
-            if exact_rows !== nothing &&
-               _mlfma_near_far_combine_requires_exact(
-                   near_value, far_value, combined, A)
-                exact_rows[n] = true
+            if exact_rows !== nothing
+                far_reduction_magnitude = 0.0
+                @inbounds for q in 1:leaf_samp.npts
+                    dot4_magnitude = 0.0
+                    for c in 1:4
+                        pattern = A.bf_patterns[c, q, n]
+                        incoming_value = inc[c, q]
+                        dot4_magnitude +=
+                            (abs(real(pattern)) + abs(imag(pattern))) *
+                            (abs(real(incoming_value)) +
+                             abs(imag(incoming_value)))
+                    end
+                    far_reduction_magnitude +=
+                        abs(leaf_samp.weights[q]) * dot4_magnitude
+                end
+                far_reduction_magnitude *= abs(A.prefactor)
+                if _mlfma_output_requires_exact(
+                        near_value, far_value, far_reduction_magnitude,
+                        combined, A)
+                    exact_rows[n] = true
+                end
             end
             product[n] = combined
         end
@@ -3248,10 +3271,24 @@ function _mlfma_adjoint_product_raw!(
             near_value = product[n]
             far_value = conj(A.op.prefactor) * val
             combined = near_value + far_value
-            if exact_rows !== nothing &&
-               _mlfma_near_far_combine_requires_exact(
-                   near_value, far_value, combined, A)
-                exact_rows[n] = true
+            if exact_rows !== nothing
+                far_reduction_magnitude = 0.0
+                @inbounds for q in 1:leaf_samp.npts
+                    for c in 1:4
+                        pattern = A.op.bf_patterns[c, q, n]
+                        aggregate_value = a_adj[c, q]
+                        far_reduction_magnitude +=
+                            (abs(real(pattern)) + abs(imag(pattern))) *
+                            (abs(real(aggregate_value)) +
+                             abs(imag(aggregate_value)))
+                    end
+                end
+                far_reduction_magnitude *= abs(A.op.prefactor)
+                if _mlfma_output_requires_exact(
+                        near_value, far_value, far_reduction_magnitude,
+                        combined, A)
+                    exact_rows[n] = true
+                end
             end
             product[n] = combined
         end

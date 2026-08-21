@@ -10542,6 +10542,36 @@ mlfma_linearity_result = A_mlfma * mlfma_linearity_input
 @test mlfma_linearity_result[mlfma_linearity_row] ==
       mlfma_linearity_reference
 
+# Cancellation can also occur wholly inside the far-field projection, where
+# both sparse near-field entries are zero.  This must still preserve the
+# AbstractMatrix contract rather than returning the rounded reduction residue.
+mlfma_far_linearity_row = 82
+mlfma_far_linearity_first_column = 6
+mlfma_far_linearity_second_column = 36
+@test iszero(A_mlfma.Z_near[
+    mlfma_far_linearity_row, mlfma_far_linearity_first_column])
+@test iszero(A_mlfma.Z_near[
+    mlfma_far_linearity_row, mlfma_far_linearity_second_column])
+mlfma_far_linearity_first = A_mlfma[
+    mlfma_far_linearity_row, mlfma_far_linearity_first_column]
+mlfma_far_linearity_second = A_mlfma[
+    mlfma_far_linearity_row, mlfma_far_linearity_second_column]
+mlfma_far_linearity_scale =
+    -mlfma_far_linearity_first / mlfma_far_linearity_second
+mlfma_far_linearity_input = zeros(ComplexF64, mlfma_N)
+mlfma_far_linearity_input[mlfma_far_linearity_first_column] = 1.0
+mlfma_far_linearity_input[mlfma_far_linearity_second_column] =
+    mlfma_far_linearity_scale
+mlfma_far_linearity_reference = setprecision(BigFloat, 512) do
+    ComplexF64(
+        Complex{BigFloat}(mlfma_far_linearity_first) +
+        Complex{BigFloat}(mlfma_far_linearity_scale) *
+        Complex{BigFloat}(mlfma_far_linearity_second))
+end
+mlfma_far_linearity_result = A_mlfma * mlfma_far_linearity_input
+@test mlfma_far_linearity_result[mlfma_far_linearity_row] ==
+      mlfma_far_linearity_reference
+
 mlfma_adjoint_linearity_row = 9
 mlfma_adjoint_linearity_first_column = 41
 mlfma_adjoint_linearity_second_column = 34
@@ -10571,6 +10601,42 @@ mlfma_adjoint_linearity_result =
 @test mlfma_adjoint_linearity_result[
           mlfma_adjoint_linearity_row] ==
       mlfma_adjoint_linearity_reference
+
+mlfma_adjoint_far_linearity_row = 31
+mlfma_adjoint_far_linearity_first_column = 11
+mlfma_adjoint_far_linearity_second_column = 38
+@test iszero(A_mlfma.Z_near[
+    mlfma_adjoint_far_linearity_first_column,
+    mlfma_adjoint_far_linearity_row])
+@test iszero(A_mlfma.Z_near[
+    mlfma_adjoint_far_linearity_second_column,
+    mlfma_adjoint_far_linearity_row])
+mlfma_adjoint_far_linearity_first = mlfma_adjoint_operator[
+    mlfma_adjoint_far_linearity_row,
+    mlfma_adjoint_far_linearity_first_column]
+mlfma_adjoint_far_linearity_second = mlfma_adjoint_operator[
+    mlfma_adjoint_far_linearity_row,
+    mlfma_adjoint_far_linearity_second_column]
+mlfma_adjoint_far_linearity_scale =
+    -mlfma_adjoint_far_linearity_first /
+    mlfma_adjoint_far_linearity_second
+mlfma_adjoint_far_linearity_input = zeros(ComplexF64, mlfma_N)
+mlfma_adjoint_far_linearity_input[
+    mlfma_adjoint_far_linearity_first_column] = 1.0
+mlfma_adjoint_far_linearity_input[
+    mlfma_adjoint_far_linearity_second_column] =
+    mlfma_adjoint_far_linearity_scale
+mlfma_adjoint_far_linearity_reference = setprecision(BigFloat, 512) do
+    ComplexF64(
+        Complex{BigFloat}(mlfma_adjoint_far_linearity_first) +
+        Complex{BigFloat}(mlfma_adjoint_far_linearity_scale) *
+        Complex{BigFloat}(mlfma_adjoint_far_linearity_second))
+end
+mlfma_adjoint_far_linearity_result =
+    mlfma_adjoint_operator * mlfma_adjoint_far_linearity_input
+@test mlfma_adjoint_far_linearity_result[
+          mlfma_adjoint_far_linearity_row] ==
+      mlfma_adjoint_far_linearity_reference
 
 mlfma_linearity_work = DiffMoM._mlfma_exact_linearity_work(
     mlfma_N, 2, 1)
