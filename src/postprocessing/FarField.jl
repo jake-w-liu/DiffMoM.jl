@@ -22,6 +22,8 @@ function _radiation_vectors_work_bytes(
     total += BigInt(sizeof(Vec3)) * Nt * Nq
     total += BigInt(sizeof(Vec3)) * NΩ
     total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    # One byte records whether each direction/basis entry needs exact retry.
+    total += BigInt(output_bytes) ÷ (3 * sizeof(ComplexF64))
     total <= typemax(Int) ||
         throw(ArgumentError(
             "radiation-vector raw-workspace estimate overflows Int"))
@@ -40,6 +42,38 @@ end
     return !isfinite(product) ||
            (!iszero(k) && !iszero(eta0) &&
             (iszero(product) || abs(product) < floatmin(Float64)))
+end
+
+@inline function _farfield_vector_reduction_requires_exact(
+    value::CVec3,
+    real_magnitudes::MVector{3,Float64},
+    imag_magnitudes::MVector{3,Float64},
+    term_count::Int,
+)
+    scale = max(maximum(real_magnitudes), maximum(imag_magnitudes))
+    isfinite(scale) || return true
+    iszero(scale) && return false
+
+    value_norm_squared = 0.0
+    bound_norm_squared = 0.0
+    @inbounds for component in 1:3
+        value_real = real(value[component]) / scale
+        value_imag = imag(value[component]) / scale
+        bound_real = real_magnitudes[component] / scale
+        bound_imag = imag_magnitudes[component] / scale
+        value_norm_squared = muladd(
+            value_real, value_real, value_norm_squared)
+        value_norm_squared = muladd(
+            value_imag, value_imag, value_norm_squared)
+        bound_norm_squared = muladd(
+            bound_real, bound_real, bound_norm_squared)
+        bound_norm_squared = muladd(
+            bound_imag, bound_imag, bound_norm_squared)
+    end
+    error_factor = min(
+        1.0, 16eps(Float64) * Float64(max(term_count, 1)))
+    return sqrt(value_norm_squared) <=
+           error_factor * sqrt(bound_norm_squared)
 end
 
 @inline function _radiation_geometry_requires_exact(
@@ -80,6 +114,74 @@ end
     return false
 end
 
+function _radiation_vector_entry_big(
+        n::Int, q_dir::Int, rhat::Vec3,
+        rwg::RWGData, xi::Vector{<:SVector{2}},
+        areas::Vector{Float64}, wq::Vector{Float64},
+        k_big::Complex{BigFloat},
+        prefactor_big::Complex{BigFloat})
+    rh_big = SVector{3,BigFloat}(BigFloat.(rhat))
+    rh_norm_squared = sum(abs2, rh_big)
+    rh_unit_big = rh_big / sqrt(rh_norm_squared)
+    total = zeros(Complex{BigFloat}, 3)
+    @inbounds for t in (rwg.tplus[n], rwg.tminus[n])
+        weight_scale = 2 * BigFloat(areas[t])
+        is_plus = t == rwg.tplus[n]
+        coefficient_big = Complex{BigFloat}(
+            is_plus ? rwg.coeff_plus[n] : rwg.coeff_minus[n])
+        edge_scale_big = coefficient_big * BigFloat(rwg.len[n]) /
+                         (2 * BigFloat(areas[t]))
+        opposite_vertex = is_plus ?
+            rwg.vplus_opp[n] : rwg.vminus_opp[n]
+        opposite_big = SVector{3,BigFloat}(
+            BigFloat.(Tuple(_mesh_vertex(rwg.mesh, opposite_vertex))))
+        vertex1_big = SVector{3,BigFloat}(BigFloat.(Tuple(
+            _mesh_vertex(rwg.mesh, rwg.mesh.tri[1, t]))))
+        vertex2_big = SVector{3,BigFloat}(BigFloat.(Tuple(
+            _mesh_vertex(rwg.mesh, rwg.mesh.tri[2, t]))))
+        vertex3_big = SVector{3,BigFloat}(BigFloat.(Tuple(
+            _mesh_vertex(rwg.mesh, rwg.mesh.tri[3, t]))))
+        for q_surf in eachindex(wq)
+            xi1 = BigFloat(xi[q_surf][1])
+            xi2 = BigFloat(xi[q_surf][2])
+            rp_big = vertex1_big * (1 - xi1 - xi2) +
+                     vertex2_big * xi1 + vertex3_big * xi2
+            delta_big = is_plus ?
+                rp_big - opposite_big : opposite_big - rp_big
+            fn_big = edge_scale_big * delta_big
+            phase = exp(im * k_big * dot(rh_unit_big, rp_big))
+            contribution = fn_big *
+                (BigFloat(wq[q_surf]) * weight_scale * phase)
+            projected = cross(rh_big, cross(rh_big, contribution)) /
+                        rh_norm_squared
+            total .+= prefactor_big .* projected
+        end
+    end
+    return CVec3(ntuple(component -> begin
+        converted = ComplexF64(total[component])
+        isfinite(converted) ||
+            throw(OverflowError(
+                "radiation-vector result is outside the ComplexF64 " *
+                "range at direction $q_dir, basis $n, component $component"))
+        converted
+    end, 3))
+end
+
+@noinline function _radiation_vector_entry_exact(
+        n::Int, q_dir::Int, rhat::Vec3,
+        rwg::RWGData, xi::Vector{<:SVector{2}},
+        areas::Vector{Float64}, wq::Vector{Float64},
+        k::Number, eta0::Number)
+    return setprecision(BigFloat, _RADIATION_EXACT_PRECISION) do
+        k_big = Complex{BigFloat}(k)
+        prefactor_big = im * k_big * Complex{BigFloat}(eta0) /
+                        (4 * BigFloat(pi))
+        _radiation_vector_entry_big(
+            n, q_dir, rhat, rwg, xi, areas, wq,
+            k_big, prefactor_big)
+    end
+end
+
 @noinline function _radiation_vector_column_exact!(
         G_mat::Matrix{ComplexF64}, n::Int,
         rwg::RWGData, rhat_vec::Vector{Vec3},
@@ -87,56 +189,16 @@ end
         wq::Vector{Float64}, k::Number, eta0::Number)
     setprecision(BigFloat, _RADIATION_EXACT_PRECISION) do
         k_big = Complex{BigFloat}(k)
-        eta_big = Complex{BigFloat}(eta0)
-        prefactor_big = im * k_big * eta_big / (4 * BigFloat(pi))
+        prefactor_big = im * k_big * Complex{BigFloat}(eta0) /
+                        (4 * BigFloat(pi))
         @inbounds for q_dir in eachindex(rhat_vec)
-            rh_big = SVector{3,BigFloat}(BigFloat.(rhat_vec[q_dir]))
-            rh_norm_squared = sum(abs2, rh_big)
-            rh_unit_big = rh_big / sqrt(rh_norm_squared)
-            total = zeros(Complex{BigFloat}, 3)
-            for t in (rwg.tplus[n], rwg.tminus[n])
-                weight_scale = 2 * BigFloat(areas[t])
-                is_plus = t == rwg.tplus[n]
-                coefficient_big = Complex{BigFloat}(
-                    is_plus ? rwg.coeff_plus[n] : rwg.coeff_minus[n])
-                edge_scale_big = coefficient_big * BigFloat(rwg.len[n]) /
-                                 (2 * BigFloat(areas[t]))
-                opposite_vertex = is_plus ?
-                    rwg.vplus_opp[n] : rwg.vminus_opp[n]
-                opposite_big = SVector{3,BigFloat}(
-                    BigFloat.(Tuple(_mesh_vertex(rwg.mesh, opposite_vertex))))
-                vertex1_big = SVector{3,BigFloat}(BigFloat.(Tuple(
-                    _mesh_vertex(rwg.mesh, rwg.mesh.tri[1, t]))))
-                vertex2_big = SVector{3,BigFloat}(BigFloat.(Tuple(
-                    _mesh_vertex(rwg.mesh, rwg.mesh.tri[2, t]))))
-                vertex3_big = SVector{3,BigFloat}(BigFloat.(Tuple(
-                    _mesh_vertex(rwg.mesh, rwg.mesh.tri[3, t]))))
-                for q_surf in eachindex(wq)
-                    xi1 = BigFloat(xi[q_surf][1])
-                    xi2 = BigFloat(xi[q_surf][2])
-                    rp_big = vertex1_big * (1 - xi1 - xi2) +
-                             vertex2_big * xi1 + vertex3_big * xi2
-                    delta_big = is_plus ?
-                        rp_big - opposite_big : opposite_big - rp_big
-                    fn_big = edge_scale_big * delta_big
-                    phase = exp(im * k_big * dot(rh_unit_big, rp_big))
-                    contribution = fn_big *
-                        (BigFloat(wq[q_surf]) * weight_scale * phase)
-                    projected =
-                        cross(rh_big, cross(rh_big, contribution)) /
-                        rh_norm_squared
-                    total .+= prefactor_big .* projected
-                end
-            end
+            value = _radiation_vector_entry_big(
+                n, q_dir, rhat_vec[q_dir], rwg, xi, areas, wq,
+                k_big, prefactor_big)
             idx = 3 * (q_dir - 1)
-            for component in 1:3
-                converted = ComplexF64(total[component])
-                isfinite(converted) ||
-                    throw(OverflowError(
-                        "radiation-vector result is outside the ComplexF64 " *
-                        "range at direction $q_dir, basis $n, component $component"))
-                G_mat[idx + component, n] = converted
-            end
+            G_mat[idx + 1, n] = value[1]
+            G_mat[idx + 2, n] = value[2]
+            G_mat[idx + 3, n] = value[3]
         end
     end
     return nothing
@@ -354,8 +416,8 @@ and all grid directions.
 `max_output_bytes` bounds the returned matrix. `max_work_bytes` bounds that
 matrix together with retained quadrature and direction workspaces, while
 `max_terms` bounds the basis/support/quadrature/direction loop count.
-When exceptional scale or geometry requires exact accumulation,
-`max_exact_work` bounds quadrature terms times BigFloat precision.
+When exceptional scale, geometry, or finite cancellation requires exact
+accumulation, `max_exact_work` bounds quadrature terms times BigFloat precision.
 
 Returns G_mat of size (3*NΩ, N) such that
   G_mat[(3*(q-1)+1):(3*q), n] = g_n(r̂_q) ∈ C³
@@ -442,29 +504,70 @@ function radiation_vectors(
                 G_mat, n, rwg, rhat_vec, xi, areas, wq, k, eta0)
         end
     else
+        exact_entries = zeros(UInt8, NΩ, N)
+        entry_term_count = Base.checked_mul(2, Nq)
         Threads.@threads for n in 1:N
-            @inbounds for t in (rwg.tplus[n], rwg.tminus[n])
-                A = areas[t]
-                pts = quad_pts[t]
-
-                for q_surf in 1:Nq
-                    rp = pts[q_surf]
-                    fn = eval_rwg(rwg, n, rp, t)
-                    wt = wq[q_surf] * 2 * A
-
-                    for q_dir in 1:NΩ
-                        rh = rhat_vec[q_dir]
+            @inbounds for q_dir in 1:NΩ
+                rh = rhat_vec[q_dir]
+                rh_norm_squared = sum(abs2, rh)
+                total = CVec3(0.0, 0.0, 0.0)
+                real_magnitudes = zeros(MVector{3,Float64})
+                imag_magnitudes = zeros(MVector{3,Float64})
+                for t in (rwg.tplus[n], rwg.tminus[n])
+                    A = areas[t]
+                    pts = quad_pts[t]
+                    for q_surf in 1:Nq
+                        rp = pts[q_surf]
+                        fn = eval_rwg(rwg, n, rp, t)
+                        wt = wq[q_surf] * 2 * A
                         phase = exp(1im * k * dot(rh, rp))
                         contrib = fn * (wt * phase)
                         rh_cross_N_cross = _dipole_cross(
                             rh, _dipole_cross(rh, CVec3(contrib))) /
-                            sum(abs2, rh)
-                        idx = 3 * (q_dir - 1)
-                        G_mat[idx+1, n] += prefactor * rh_cross_N_cross[1]
-                        G_mat[idx+2, n] += prefactor * rh_cross_N_cross[2]
-                        G_mat[idx+3, n] += prefactor * rh_cross_N_cross[3]
+                            rh_norm_squared
+                        contribution = CVec3(
+                            prefactor * rh_cross_N_cross)
+                        total += contribution
+                        for component in 1:3
+                            real_magnitudes[component] +=
+                                abs(real(contribution[component]))
+                            imag_magnitudes[component] +=
+                                abs(imag(contribution[component]))
+                        end
                     end
                 end
+                idx = 3 * (q_dir - 1)
+                G_mat[idx + 1, n] = total[1]
+                G_mat[idx + 2, n] = total[2]
+                G_mat[idx + 3, n] = total[3]
+                if !all(isfinite, total) ||
+                   _farfield_vector_reduction_requires_exact(
+                       total, real_magnitudes, imag_magnitudes,
+                       entry_term_count)
+                    exact_entries[q_dir, n] = 1
+                end
+            end
+        end
+
+        exact_entry_count = count(!iszero, exact_entries)
+        if exact_entry_count > 0
+            exact_entry_work = BigInt(entry_term_count) *
+                               _RADIATION_EXACT_PRECISION
+            dynamic_exact_work = BigInt(exact_entry_count) * exact_entry_work
+            dynamic_exact_work <= exact_limit ||
+                throw(ArgumentError(
+                    "exact radiation-vector retries require " *
+                    "$dynamic_exact_work precision-weighted terms, " *
+                    "exceeding max_exact_work=$exact_limit"))
+            @inbounds for n in 1:N, q_dir in 1:NΩ
+                iszero(exact_entries[q_dir, n]) && continue
+                value = _radiation_vector_entry_exact(
+                    n, q_dir, rhat_vec[q_dir], rwg, xi, areas, wq,
+                    k, eta0)
+                idx = 3 * (q_dir - 1)
+                G_mat[idx + 1, n] = value[1]
+                G_mat[idx + 2, n] = value[2]
+                G_mat[idx + 3, n] = value[3]
             end
         end
     end

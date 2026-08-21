@@ -161,38 +161,6 @@ end
     return value
 end
 
-@inline function _po_farfield_accumulation_requires_exact(
-    value::CVec3,
-    real_magnitudes::MVector{3,Float64},
-    imag_magnitudes::MVector{3,Float64},
-    term_count::Int,
-)
-    scale = max(maximum(real_magnitudes), maximum(imag_magnitudes))
-    isfinite(scale) || return true
-    iszero(scale) && return false
-
-    value_norm_squared = 0.0
-    bound_norm_squared = 0.0
-    @inbounds for component in 1:3
-        value_real = real(value[component]) / scale
-        value_imag = imag(value[component]) / scale
-        bound_real = real_magnitudes[component] / scale
-        bound_imag = imag_magnitudes[component] / scale
-        value_norm_squared = muladd(
-            value_real, value_real, value_norm_squared)
-        value_norm_squared = muladd(
-            value_imag, value_imag, value_norm_squared)
-        bound_norm_squared = muladd(
-            bound_real, bound_real, bound_norm_squared)
-        bound_norm_squared = muladd(
-            bound_imag, bound_imag, bound_norm_squared)
-    end
-    error_factor = min(
-        1.0, 16eps(Float64) * Float64(max(term_count, 1)))
-    return sqrt(value_norm_squared) <=
-           error_factor * sqrt(bound_norm_squared)
-end
-
 """
     POResult
 
@@ -666,7 +634,7 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
 
         if !accumulation_requires_exact
             accumulation_requires_exact =
-                _po_farfield_accumulation_requires_exact(
+                _farfield_vector_reduction_requires_exact(
                     E_q, real_magnitudes, imag_magnitudes, Nt)
         end
         if accumulation_requires_exact

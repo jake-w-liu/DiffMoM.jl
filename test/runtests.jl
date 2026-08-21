@@ -2985,6 +2985,45 @@ DiffMoM._radiation_vector_column_exact!(
     radiation_phase_areas, radiation_phase_weights, 1.0, 1.0)
 @test radiation_phase_result == radiation_phase_reference
 
+# The two RWG supports can leave a finite radiation null below the rounding
+# error of their ordinary quadrature contributions without extreme operands.
+radiation_cancellation_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+radiation_cancellation_rwg = build_rwg(radiation_cancellation_mesh)
+radiation_cancellation_direction = Vec3(
+    -0.7071067811865475, 0.7071067811865476, 0.0)
+radiation_cancellation_grid = SphGrid(
+    reshape(collect(radiation_cancellation_direction), 3, 1),
+    [π / 2], [3π / 4], [1.0])
+radiation_cancellation_terms = DiffMoM._radiation_vectors_term_count(
+    radiation_cancellation_rwg.nedges,
+    length(tri_quad_rule(3)[2]), 1)
+radiation_cancellation_exact_work =
+    radiation_cancellation_terms * DiffMoM._RADIATION_EXACT_PRECISION
+radiation_cancellation_result = radiation_vectors(
+    radiation_cancellation_mesh,
+    radiation_cancellation_rwg,
+    radiation_cancellation_grid,
+    1.0e-4;
+    eta0=1.0,
+    max_exact_work=radiation_cancellation_exact_work,
+)
+# Correctly rounded 4352-bit direct RWG quadrature.
+radiation_cancellation_reference = CVec3(
+    7.36239509410568e-27 + 2.9449580370628244e-22im,
+    7.362395094105678e-27 + 2.944958037062824e-22im,
+    0.0 + 0.0im,
+)
+@test CVec3(radiation_cancellation_result[:, 1]) ==
+      radiation_cancellation_reference
+@test_throws ArgumentError radiation_vectors(
+    radiation_cancellation_mesh,
+    radiation_cancellation_rwg,
+    radiation_cancellation_grid,
+    1.0e-4;
+    eta0=1.0,
+    max_exact_work=radiation_cancellation_exact_work - 1,
+)
+
 # The radiation operator is exactly transverse.  Preserve that null when an
 # RWG quadrature contribution is parallel to a stored direction whose rounded
 # components do not sum to a unit norm, on both numeric paths.
