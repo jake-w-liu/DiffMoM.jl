@@ -430,12 +430,18 @@ function _default_transverse_pol(khat::Vec3)
 end
 
 function _transverse_unit_pol(khat::Vec3, pol::Vec3)
-    all(isfinite, pol) || error("Incident polarization must be finite.")
-    p = pol - dot(pol, khat) * khat
-    pn = norm(p)
-    pn > 1e-12 ||
+    pol_direction = _multiangle_direction_and_magnitude(
+        pol, "incident polarization").direction
+    p = pol_direction - dot(pol_direction, khat) * khat
+    p_scale = maximum(abs, p)
+    p_scale > 0.0 ||
         error("Incident polarization must have a nonzero transverse component.")
-    return p / pn
+    p_scaled = p / p_scale
+    scaled_norm = norm(p_scaled)
+    transverse_norm = p_scale * scaled_norm
+    (isfinite(transverse_norm) && transverse_norm > 1e-12) ||
+        error("Incident polarization must have a nonzero transverse component.")
+    return p_scaled / scaled_norm
 end
 
 """

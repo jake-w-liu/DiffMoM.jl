@@ -11517,6 +11517,16 @@ configs_proj = build_multiangle_configs(
 khat_proj = Vec3(sin(π/4), 0.0, cos(π/4))
 @assert abs(dot(khat_proj, configs_proj[1].pol)) < 1e-12 "Multi-angle polarization must be transverse"
 @assert abs(norm(configs_proj[1].pol) - 1.0) < 1e-12 "Multi-angle polarization must be unit length"
+@test DiffMoM._transverse_unit_pol(
+    Vec3(0.0, 0.0, 1.0),
+    Vec3(nextfloat(0.0), 0.0, 0.0)) == Vec3(1.0, 0.0, 0.0)
+multiangle_diagonal_direction =
+    Vec3(inv(sqrt(2.0)), inv(sqrt(2.0)), 0.0)
+multiangle_large_pol = Vec3(
+    floatmax(Float64), floatmax(Float64), floatmax(Float64))
+@test DiffMoM._transverse_unit_pol(
+    multiangle_diagonal_direction, multiangle_large_pol) ≈
+      Vec3(0.0, 0.0, 1.0) atol=2eps(Float64)
 configs_default_pol = build_multiangle_configs(
     mesh, rwg, k,
     [(theta_inc=π/4, phi_inc=0.2, weight=1.0)];
