@@ -4124,6 +4124,103 @@ end
 E_tf_zero_pw = compute_total_field(mesh, rwg, I_zero, pw_total, obs_points, k; quad_order=3, eta0=eta0)
 @assert norm(E_tf_zero_pw - E_pw_ref) < 1e-12 * max(norm(E_pw_ref), 1.0)
 
+# A total-field component can be much smaller than both its incident and
+# scattered constituents.  Form the one-point quadrature reference directly
+# in BigFloat so this regression does not inherit either rounded constituent.
+let
+    cancellation_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+    cancellation_rwg = build_rwg(cancellation_mesh)
+    cancellation_point = Vec3(0.0, 0.0, 2.0)
+    cancellation_current =
+        ComplexF64(0.5184378362361992, 0.8551153196842673)
+    cancellation_amplitude = -0.016808566106447122
+    cancellation_excitation = make_plane_wave(
+        Vec3(0.0, 1.0, 0.0), cancellation_amplitude,
+        Vec3(1.0, 0.0, 0.0))
+
+    cancellation_reference = setprecision(BigFloat, 512) do
+        CB = Complex{BigFloat}
+        point = SVector{3,BigFloat}(
+            BigFloat.(Tuple(cancellation_point)))
+        current = CB(cancellation_current)
+        total = zeros(CB, 3)
+        xi, weights = DiffMoM.tri_quad_rule(1)
+        for triangle in 1:ntriangles(cancellation_mesh)
+            first = SVector{3,BigFloat}(BigFloat.(Tuple(
+                DiffMoM._mesh_vertex(
+                    cancellation_mesh,
+                    cancellation_mesh.tri[1, triangle]))))
+            second = SVector{3,BigFloat}(BigFloat.(Tuple(
+                DiffMoM._mesh_vertex(
+                    cancellation_mesh,
+                    cancellation_mesh.tri[2, triangle]))))
+            third = SVector{3,BigFloat}(BigFloat.(Tuple(
+                DiffMoM._mesh_vertex(
+                    cancellation_mesh,
+                    cancellation_mesh.tri[3, triangle]))))
+            xi_first = BigFloat(xi[1][1])
+            xi_second = BigFloat(xi[1][2])
+            source = first * (1 - xi_first - xi_second) +
+                     second * xi_first + third * xi_second
+            is_plus = triangle == cancellation_rwg.tplus[1]
+            opposite_index = is_plus ?
+                cancellation_rwg.vplus_opp[1] :
+                cancellation_rwg.vminus_opp[1]
+            opposite = SVector{3,BigFloat}(BigFloat.(Tuple(
+                DiffMoM._mesh_vertex(
+                    cancellation_mesh, opposite_index))))
+            area = BigFloat(triangle_area(
+                cancellation_mesh, triangle))
+            coefficient = CB(is_plus ?
+                cancellation_rwg.coeff_plus[1] :
+                cancellation_rwg.coeff_minus[1])
+            edge_length = BigFloat(cancellation_rwg.len[1])
+            delta = is_plus ? source - opposite : opposite - source
+            basis_value = coefficient * edge_length / (2area) * delta
+            divergence = coefficient * edge_length / area
+            is_plus || (divergence = -divergence)
+            surface_weight = 2area * BigFloat(weights[1])
+            green = DiffMoM.greens(point, source, BigFloat(1))
+            gradient = DiffMoM.grad_greens(point, source, BigFloat(1))
+            for component in 1:3
+                total[component] +=
+                    -CB(0, 1) * current * basis_value[component] *
+                    surface_weight * green -
+                    CB(0, 1) * current * divergence *
+                    surface_weight * gradient[component]
+            end
+        end
+        total[1] += BigFloat(cancellation_amplitude)
+        CVec3(ComplexF64.(total))
+    end
+
+    rounded_scattered = compute_nearfield(
+        cancellation_mesh, cancellation_rwg,
+        ComplexF64[cancellation_current], cancellation_point, 1.0;
+        eta0=1.0, quad_order=1, check_surface=false)
+    rounded_incident = plane_wave_field(
+        cancellation_point, cancellation_excitation.k_vec,
+        cancellation_excitation.E0, cancellation_excitation.pol)
+    rounded_combination = rounded_scattered + rounded_incident
+    @test abs(rounded_combination[1] - cancellation_reference[1]) >
+          10abs(cancellation_reference[1])
+
+    exact_work = DiffMoM._nearfield_exact_point_work(1, 1)
+    corrected = compute_total_field(
+        cancellation_mesh, cancellation_rwg,
+        ComplexF64[cancellation_current], cancellation_excitation,
+        cancellation_point, 1.0;
+        eta0=1.0, quad_order=1, check_surface=false,
+        max_exact_work=exact_work)
+    @test corrected == cancellation_reference
+    @test_throws ArgumentError compute_total_field(
+        cancellation_mesh, cancellation_rwg,
+        ComplexF64[cancellation_current], cancellation_excitation,
+        cancellation_point, 1.0;
+        eta0=1.0, quad_order=1, check_surface=false,
+        max_exact_work=exact_work - 1)
+end
+
 dip_total = make_dipole(Vec3(0.03, -0.02, 0.12),
                         CVec3(0.0 + 0im, 0.0 + 0im, 1.5e-9 + 0.4e-9im),
                         Vec3(0.0, 0.0, 1.0),

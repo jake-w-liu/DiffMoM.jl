@@ -186,7 +186,7 @@ E_nf = compute_nearfield(mesh, rwg, I, obs, k)
 
 ---
 
-### `compute_total_field(mesh, rwg, I_coeffs, excitation, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing, max_work_bytes=536_870_912, max_interaction_terms=200_000_000)`
+### `compute_total_field(mesh, rwg, I_coeffs, excitation, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing, max_work_bytes=536_870_912, max_interaction_terms=200_000_000, max_exact_work=20_000_000)`
 
 Compute the total electric field at arbitrary observation points:
 
@@ -211,7 +211,9 @@ excitation model.
 - Multi-point input: `Matrix{ComplexF64}` of size `(3, Nobs)`
 
 The near-field `max_work_bytes` and `max_interaction_terms` limits are applied
-to the scattered-field stage before incident fields are accumulated in place.
+to the scattered-field stage. `max_exact_work` bounds precision-weighted work
+when a nearly cancelled incident/scattered component must be accumulated as a
+single high-precision expression.
 
 **Supported excitation models:**
 

@@ -13,6 +13,9 @@ export compute_nearfield, compute_total_field
 
 const _DEFAULT_MAX_NEARFIELD_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS = 200_000_000
+const _DEFAULT_MAX_NEARFIELD_EXACT_WORK = 20_000_000
+const _NEARFIELD_EXACT_PRECISION = 8704
+const _NEARFIELD_TOTAL_CANCELLATION_THRESHOLD = sqrt(eps(Float64))
 
 @inline function _nearfield_quadrature_count(quad_order::Int)
     quad_order == 1 && return 1
@@ -68,6 +71,36 @@ function _preflight_nearfield_work(
             "near-field evaluation requires $terms triangle-quadrature " *
             "interaction terms, exceeding max_interaction_terms=$term_limit"))
     return work_bytes, Int(terms)
+end
+
+@inline function _nearfield_exact_point_work(
+        nonzero_current_count::Int, quadrature_count::Int)
+    # Each current has two triangle sides.  Charge every surface quadrature
+    # value plus the two analytical terms used by the near-surface branch,
+    # even when the observation takes the cheaper far-field branch.
+    units = BigInt(2) * nonzero_current_count * (quadrature_count + 2)
+    return units * _NEARFIELD_EXACT_PRECISION
+end
+
+@inline function _nearfield_total_reduction_requires_exact(
+        total::CVec3, scattered::CVec3, incident::CVec3)
+    @inbounds for component in 1:3
+        combined = total[component]
+        scattered_component = scattered[component]
+        incident_component = incident[component]
+        if !(isfinite(combined) && isfinite(scattered_component) &&
+             isfinite(incident_component))
+            return true
+        end
+        magnitude = abs(scattered_component) + abs(incident_component)
+        isfinite(magnitude) || return true
+        if !iszero(magnitude) &&
+           abs(combined) <=
+               _NEARFIELD_TOTAL_CANCELLATION_THRESHOLD * magnitude
+            return true
+        end
+    end
+    return false
 end
 
 @inline function _point_triangle_distance(p::Vec3, a::Vec3, b::Vec3, c::Vec3)
@@ -922,6 +955,261 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
     return E
 end
 
+@inline function _nearfield_incident_big(
+        ::AbstractExcitation, ::Vec3, cached::CVec3)
+    return SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}(cached[1]),
+        Complex{BigFloat}(cached[2]),
+        Complex{BigFloat}(cached[3]),
+    )
+end
+
+@inline function _nearfield_incident_big(
+        excitation::PlaneWaveExcitation, observation::Vec3, ::CVec3)
+    phase_argument = zero(BigFloat)
+    @inbounds for component in 1:3
+        phase_argument += BigFloat(excitation.k_vec[component]) *
+                          BigFloat(observation[component])
+    end
+    phase = exp(Complex{BigFloat}(zero(BigFloat), -phase_argument))
+    amplitude = BigFloat(excitation.E0)
+    return SVector{3,Complex{BigFloat}}(ntuple(component ->
+        amplitude * BigFloat(excitation.pol[component]) * phase, 3))
+end
+
+@inline function _nearfield_big_vertex(mesh::TriMesh, vertex::Int)
+    value = _mesh_vertex(mesh, vertex)
+    return SVector{3,BigFloat}(
+        BigFloat(value[1]), BigFloat(value[2]), BigFloat(value[3]))
+end
+
+@inline function _nearfield_big_quadrature_point(
+        first::SVector{3,BigFloat},
+        second::SVector{3,BigFloat},
+        third::SVector{3,BigFloat},
+        reference::SVector{2,Float64})
+    xi_first = BigFloat(reference[1])
+    xi_second = BigFloat(reference[2])
+    return first * (1 - xi_first - xi_second) +
+           second * xi_first + third * xi_second
+end
+
+@inline function _nearfield_big_green_values(
+        observation::SVector{3,BigFloat},
+        source::SVector{3,BigFloat},
+        phase_rate::Complex{BigFloat})
+    offset = observation - source
+    distance = norm(offset)
+    if iszero(distance)
+        zero_complex = zero(phase_rate)
+        smooth_green = phase_rate / (4 * BigFloat(pi))
+        return zero_complex, smooth_green,
+               SVector{3,Complex{BigFloat}}(
+                   zero_complex, zero_complex, zero_complex),
+               SVector{3,Complex{BigFloat}}(
+                   zero_complex, zero_complex, zero_complex),
+               offset, distance
+    end
+
+    inv_four_pi = inv(4 * BigFloat(pi))
+    phase_argument = phase_rate * distance
+    inverse_distance = inv(distance)
+    green = exp(phase_argument) * inv_four_pi * inverse_distance
+    smooth_green = expm1(phase_argument) * inv_four_pi * inverse_distance
+    direction = offset * inverse_distance
+    gradient =
+        ((phase_rate - inverse_distance) * green) * direction
+    smooth_radial =
+        (exp(phase_argument) * (phase_argument - 1) + 1) *
+        inv_four_pi * inverse_distance * inverse_distance
+    smooth_gradient = smooth_radial * direction
+    return green, smooth_green, gradient, smooth_gradient,
+           offset, distance
+end
+
+@noinline function _compute_total_field_point_exact(
+        mesh::TriMesh,
+        rwg::RWGData,
+        I_coeffs::AbstractVector{<:Number},
+        excitation::AbstractExcitation,
+        observation::Vec3,
+        cached_incident::CVec3,
+        k,
+        eta0::Float64,
+        quad_order::Int,
+        observation_index::Int)
+    return setprecision(BigFloat, _NEARFIELD_EXACT_PRECISION) do
+        complex_big = Complex{BigFloat}
+        observation_big = SVector{3,BigFloat}(
+            BigFloat(observation[1]),
+            BigFloat(observation[2]),
+            BigFloat(observation[3]))
+        k_big = complex_big(k)
+        eta_big = BigFloat(eta0)
+        phase_rate = -complex_big(0, 1) * k_big
+        vector_prefactor = phase_rate * eta_big
+        scalar_prefactor = -complex_big(0, 1) * eta_big / k_big
+        inverse_four_pi = inv(4 * BigFloat(pi))
+        xi, quadrature_weights = tri_quad_rule(quad_order)
+        quadrature_count = length(quadrature_weights)
+        total = zeros(complex_big, 3)
+
+        @inbounds for basis in 1:rwg.nedges
+            current = complex_big(ComplexF64(I_coeffs[basis]))
+            iszero(current) && continue
+
+            for is_plus in (true, false)
+                triangle = is_plus ?
+                    rwg.tplus[basis] : rwg.tminus[basis]
+                first = _nearfield_big_vertex(
+                    mesh, mesh.tri[1, triangle])
+                second = _nearfield_big_vertex(
+                    mesh, mesh.tri[2, triangle])
+                third = _nearfield_big_vertex(
+                    mesh, mesh.tri[3, triangle])
+                opposite_vertex = is_plus ?
+                    rwg.vplus_opp[basis] : rwg.vminus_opp[basis]
+                opposite = _nearfield_big_vertex(mesh, opposite_vertex)
+                coefficient = complex_big(is_plus ?
+                    rwg.coeff_plus[basis] : rwg.coeff_minus[basis])
+                area_float = triangle_area(mesh, triangle)
+                area = BigFloat(area_float)
+                edge_length = BigFloat(rwg.len[basis])
+                basis_scale = coefficient * edge_length / (2 * area)
+                divergence = current * coefficient * edge_length / area
+                is_plus || (divergence = -divergence)
+
+                distance_float = _point_triangle_distance(
+                    observation,
+                    _mesh_vertex(mesh, mesh.tri[1, triangle]),
+                    _mesh_vertex(mesh, mesh.tri[2, triangle]),
+                    _mesh_vertex(mesh, mesh.tri[3, triangle]))
+                characteristic_length = sqrt(area_float) * sqrt(2.0)
+                near_surface =
+                    distance_float < characteristic_length / quadrature_count
+
+                if near_surface
+                    static_integral =
+                        _analytical_integral_1overR_unchecked(
+                            observation_big, first, second, third)
+                    normal = cross(second - first, third - first)
+                    normal /= norm(normal)
+                    projection_height =
+                        dot(observation_big - first, normal)
+                    projected_observation =
+                        observation_big - projection_height * normal
+                    star_delta = is_plus ?
+                        projected_observation - opposite :
+                        opposite - projected_observation
+                    current_at_projection =
+                        current * basis_scale * star_delta
+
+                    for quadrature in eachindex(quadrature_weights)
+                        source = _nearfield_big_quadrature_point(
+                            first, second, third, xi[quadrature])
+                        _, smooth_green, _, smooth_gradient,
+                            offset, distance = _nearfield_big_green_values(
+                                observation_big, source, phase_rate)
+                        source_delta = is_plus ?
+                            source - opposite : opposite - source
+                        current_at_source =
+                            current * basis_scale * source_delta
+                        surface_weight =
+                            2 * area * BigFloat(
+                                quadrature_weights[quadrature])
+
+                        for component in 1:3
+                            total[component] +=
+                                vector_prefactor *
+                                current_at_source[component] *
+                                (surface_weight * smooth_green)
+                        end
+
+                        if !iszero(distance)
+                            remainder_weight = surface_weight *
+                                inverse_four_pi / distance
+                            current_difference =
+                                current_at_source - current_at_projection
+                            for component in 1:3
+                                total[component] +=
+                                    vector_prefactor *
+                                    current_difference[component] *
+                                    remainder_weight
+                            end
+                        end
+
+                        if !iszero(divergence)
+                            for component in 1:3
+                                total[component] +=
+                                    scalar_prefactor * divergence *
+                                    (surface_weight *
+                                     smooth_gradient[component])
+                            end
+                        end
+                    end
+
+                    singular_weight = inverse_four_pi * static_integral
+                    for component in 1:3
+                        total[component] +=
+                            vector_prefactor *
+                            current_at_projection[component] *
+                            singular_weight
+                    end
+                    if !iszero(divergence)
+                        static_gradient =
+                            _grad_analytical_integral_1overR_unchecked(
+                                observation_big, first, second, third)
+                        scalar_scale = scalar_prefactor * divergence *
+                                       inverse_four_pi
+                        for component in 1:3
+                            total[component] +=
+                                scalar_scale * static_gradient[component]
+                        end
+                    end
+                else
+                    for quadrature in eachindex(quadrature_weights)
+                        source = _nearfield_big_quadrature_point(
+                            first, second, third, xi[quadrature])
+                        green, _, gradient, _, _, _ =
+                            _nearfield_big_green_values(
+                                observation_big, source, phase_rate)
+                        source_delta = is_plus ?
+                            source - opposite : opposite - source
+                        current_at_source =
+                            current * basis_scale * source_delta
+                        surface_weight =
+                            2 * area * BigFloat(
+                                quadrature_weights[quadrature])
+                        for component in 1:3
+                            total[component] +=
+                                vector_prefactor *
+                                current_at_source[component] *
+                                (surface_weight * green)
+                            if !iszero(divergence)
+                                total[component] +=
+                                    scalar_prefactor * divergence *
+                                    (surface_weight * gradient[component])
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        incident = _nearfield_incident_big(
+            excitation, observation, cached_incident)
+        return CVec3(ntuple(component -> begin
+            converted = ComplexF64(total[component] + incident[component])
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "compute_total_field result is outside the " *
+                    "ComplexF64 range at observation $observation_index, " *
+                    "component $component"))
+            converted
+        end, 3))
+    end
+end
+
 function _compute_total_field_matrix(mesh::TriMesh, rwg::RWGData,
                                      I_coeffs::AbstractVector{<:Number},
                                      excitation::AbstractExcitation,
@@ -933,8 +1221,12 @@ function _compute_total_field_matrix(mesh::TriMesh, rwg::RWGData,
                                      max_work_bytes::Integer=
                                          _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                                      max_interaction_terms::Integer=
-                                         _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                                         _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                                     max_exact_work::Integer=
+                                         _DEFAULT_MAX_NEARFIELD_EXACT_WORK)
     _validate_incident_electric_field_wavenumber(excitation, k)
+    exact_limit = _validated_resource_limit(
+        "max_exact_work", max_exact_work)
     E_total = _compute_nearfield_matrix(mesh, rwg, I_coeffs, observation_points, k;
                                         quad_order=quad_order,
                                         eta0=eta0,
@@ -942,14 +1234,40 @@ function _compute_total_field_matrix(mesh::TriMesh, rwg::RWGData,
                                         surface_tol=surface_tol,
                                         max_work_bytes=max_work_bytes,
                                         max_interaction_terms=max_interaction_terms)
+    nonzero_current_count = count(current ->
+        !iszero(ComplexF64(current)), I_coeffs)
+    quadrature_count = _nearfield_quadrature_count(quad_order)
+    point_exact_work = _nearfield_exact_point_work(
+        nonzero_current_count, quadrature_count)
+    exact_work = BigInt(0)
     @inbounds for i in eachindex(observation_points)
         E_inc = _check_finite_cvec3(
             _incident_electric_field(excitation, observation_points[i], k),
             "incident electric field",
         )
-        E_total[1, i] += E_inc[1]
-        E_total[2, i] += E_inc[2]
-        E_total[3, i] += E_inc[3]
+        scattered = CVec3(
+            E_total[1, i], E_total[2, i], E_total[3, i])
+        combined = CVec3(
+            scattered[1] + E_inc[1],
+            scattered[2] + E_inc[2],
+            scattered[3] + E_inc[3])
+        if _nearfield_total_reduction_requires_exact(
+                combined, scattered, E_inc)
+            next_exact_work = exact_work + point_exact_work
+            next_exact_work <= exact_limit ||
+                throw(ArgumentError(
+                    "compute_total_field exact retries require " *
+                    "$next_exact_work precision-weighted terms, " *
+                    "exceeding max_exact_work=$exact_limit"))
+            exact_work = next_exact_work
+            combined = _compute_total_field_point_exact(
+                mesh, rwg, I_coeffs, excitation,
+                observation_points[i], E_inc, k, eta0,
+                quad_order, i)
+        end
+        E_total[1, i] = combined[1]
+        E_total[2, i] = combined[2]
+        E_total[3, i] = combined[3]
     end
     all(isfinite, E_total) ||
         error("compute_total_field produced non-finite field values.")
@@ -1094,6 +1412,8 @@ representation and `exp(+iωt)` sign convention as `compute_nearfield`.
   output and retained construction workspaces
 - `max_interaction_terms=200_000_000`: maximum number of direct
   triangle-quadrature interactions across all observation points
+- `max_exact_work=20_000_000`: maximum precision-weighted basis-side terms
+  used by exceptional coupled incident/scattered cancellation retries
 
 # Returns
 - Single-point input: `CVec3`
@@ -1125,14 +1445,17 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                              max_work_bytes::Integer=
                                  _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                              max_interaction_terms::Integer=
-                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                             max_exact_work::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_EXACT_WORK)
     E = _compute_total_field_matrix(mesh, rwg, I_coeffs, excitation, [observation_point], k;
                                     quad_order=quad_order,
                                     eta0=eta0,
                                     check_surface=check_surface,
                                     surface_tol=surface_tol,
                                     max_work_bytes=max_work_bytes,
-                                    max_interaction_terms=max_interaction_terms)
+                                    max_interaction_terms=max_interaction_terms,
+                                    max_exact_work=max_exact_work)
     return CVec3(E[:, 1])
 end
 
@@ -1147,7 +1470,9 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                              max_work_bytes::Integer=
                                  _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                              max_interaction_terms::Integer=
-                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                             max_exact_work::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_EXACT_WORK)
     _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
@@ -1157,7 +1482,8 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                                        check_surface=check_surface,
                                        surface_tol=surface_tol,
                                        max_work_bytes=max_work_bytes,
-                                       max_interaction_terms=max_interaction_terms)
+                                       max_interaction_terms=max_interaction_terms,
+                                       max_exact_work=max_exact_work)
 end
 
 function compute_total_field(mesh::TriMesh, rwg::RWGData,
@@ -1171,7 +1497,9 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                              max_work_bytes::Integer=
                                  _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                              max_interaction_terms::Integer=
-                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                                 _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                             max_exact_work::Integer=
+                                 _DEFAULT_MAX_NEARFIELD_EXACT_WORK)
     _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
@@ -1181,5 +1509,6 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                                        check_surface=check_surface,
                                        surface_tol=surface_tol,
                                        max_work_bytes=max_work_bytes,
-                                       max_interaction_terms=max_interaction_terms)
+                                       max_interaction_terms=max_interaction_terms,
+                                       max_exact_work=max_exact_work)
 end
