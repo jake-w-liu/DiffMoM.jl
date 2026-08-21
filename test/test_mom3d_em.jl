@@ -295,6 +295,43 @@ end
         huge_H = fill(zero(CVec3), solve_grid.nvoxels)
         @test_throws OverflowError solve_em_dda_3d(
             solve_grid, 1.0, near_singular_alpha, huge_E, huge_H)
+
+        finite_cancel_alpha = zeros(ComplexF64, 6, 6)
+        finite_cancel_alpha[1, 1:3] .= 1.0
+        finite_cancel_alpha_static =
+            DiffMoM._CMat6DDA(finite_cancel_alpha)
+        finite_cancel_field = DiffMoM._CVec6DDA(
+            1.0e16, 3.0, -1.0e16, 0.0, 0.0, 0.0)
+        rounded_dipoles = finite_cancel_alpha_static * finite_cancel_field
+        @test rounded_dipoles == DiffMoM._CVec6DDA(
+            4.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        @test DiffMoM._alpha_field_product_requires_exact_3d(
+            finite_cancel_alpha_static, finite_cancel_field,
+            rounded_dipoles)
+
+        finite_observation = Vec3(1.25, -0.5, 0.75)
+        finite_source = Vec3(0.0, 0.0, 0.0)
+        finite_k = 1.2
+        interaction_reference =
+            DiffMoM._em_alpha_interaction_apply_bigfloat_3d(
+                finite_observation, finite_source, finite_k,
+                finite_cancel_alpha_static, finite_cancel_field)
+        @test DiffMoM._em_alpha_interaction_apply_3d(
+                  finite_observation, finite_source, finite_k,
+                  finite_cancel_alpha_static, finite_cancel_field) ==
+              interaction_reference
+
+        finite_direction = Vec3(0.0, 0.0, 1.0)
+        finite_center = Vec3(0.25, -0.75, 0.5)
+        farfield_reference =
+            DiffMoM._em_farfield_alpha_contribution_bigfloat_3d(
+                finite_cancel_alpha_static, finite_cancel_field, finite_k,
+                finite_direction, finite_center, 376.730313668)
+        @test DiffMoM._em_farfield_alpha_contribution_3d(
+                  finite_cancel_alpha_static, finite_cancel_field, finite_k,
+                  finite_direction, finite_direction, finite_direction,
+                  finite_center, 376.730313668, 1.0, 1.0) ==
+              farfield_reference
     end
 
     @testset "Direct solve right-hand-side exponent range" begin

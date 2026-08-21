@@ -524,6 +524,62 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test farfield ≈ farfield_reference rtol=16eps(Float64)
     end
 
+    @testset "Finite polarizability product cancellation" begin
+        observation = Vec3(1.25, -0.5, 0.75)
+        source = Vec3(0.0, 0.0, 0.0)
+        k = 1.2
+        alpha = @SMatrix ComplexF64[
+            1 1 1
+            0 0 0
+            0 0 0
+        ]
+        field = CVec3(1.0e16, 3.0, -1.0e16)
+        rounded_dipole = alpha * field
+        @test rounded_dipole == CVec3(4.0, 0.0, 0.0)
+        @test DiffMoM._alpha_field_product_requires_exact_3d(
+            alpha, field, rounded_dipole)
+
+        interaction_reference =
+            DiffMoM._electric_dipole_alpha_apply_bigfloat_3d(
+                observation, source, k, alpha, field)
+        @test DiffMoM._electric_dipole_apply_3d(
+                  observation, source, k, rounded_dipole) !=
+              interaction_reference
+        @test DiffMoM._electric_dipole_alpha_apply_3d(
+                  observation, source, k, alpha, field) ==
+              interaction_reference
+
+        direction = Vec3(0.0, 0.0, 1.0)
+        center = Vec3(0.25, -0.75, 0.5)
+        farfield_reference =
+            DiffMoM._farfield_alpha_contribution_bigfloat_dda_3d(
+                alpha, field, k, direction, center)
+        @test DiffMoM._farfield_alpha_contribution_dda_3d(
+                  alpha, field, k, direction, direction, direction,
+                  center, 1.0) == farfield_reference
+
+        scalar_alpha = 1.0e8 + 1.0e8im
+        scalar_value = 1.0e8 + prevfloat(1.0e8)im
+        scalar_field = CVec3(scalar_value, 0.0, 0.0)
+        rounded_scalar_dipole = scalar_alpha * scalar_field
+        exact_scalar_dipole = setprecision(BigFloat, 256) do
+            CVec3(
+                ComplexF64(
+                    Complex{BigFloat}(scalar_alpha) *
+                    Complex{BigFloat}(scalar_value)),
+                0.0,
+                0.0,
+            )
+        end
+        @test rounded_scalar_dipole != exact_scalar_dipole
+        @test DiffMoM._alpha_field_product_requires_exact_3d(
+            scalar_alpha, scalar_field, rounded_scalar_dipole)
+        @test DiffMoM._electric_dipole_alpha_apply_3d(
+                  observation, source, k, scalar_alpha, scalar_field) ==
+              DiffMoM._electric_dipole_alpha_apply_bigfloat_3d(
+                  observation, source, k, scalar_alpha, scalar_field)
+    end
+
     @testset "Induced dipole exponent range" begin
         spacing = 4.0e102
         grid = VoxelGrid3D(

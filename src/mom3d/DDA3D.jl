@@ -862,9 +862,10 @@ end
 @inline _complex_component_scale_3d(value::ComplexF64) =
     max(abs(real(value)), abs(imag(value)))
 
-@inline function _floating_product_loses_range_3d(
+@inline function _floating_product_requires_exact_3d(
         left::ComplexF64,
-        right::ComplexF64)
+        right::ComplexF64,
+        product::ComplexF64=left * right)
     (iszero(left) || iszero(right)) && return false
     # Inspect primitive components before forming the complex product.  A
     # normal real component can otherwise hide an imaginary product that has
@@ -872,28 +873,51 @@ end
     # lost component representable again.
     (_ieee_dense_extreme_factor(left, Float64) ||
      _ieee_dense_extreme_factor(right, Float64)) && return true
-    product = left * right
     isfinite(product) || return true
     scale = _complex_component_scale_3d(product)
-    return iszero(scale) || scale < floatmin(Float64)
+    (iszero(scale) || scale < floatmin(Float64)) && return true
+    real_magnitude, imag_magnitude =
+        _electric_dipole_product_magnitudes_3d(left, right)
+    return _matrixfree_complex_reduction_requires_exact(
+        product, real_magnitude, imag_magnitude, 2)
 end
 
-@inline function _alpha_field_product_loses_range_3d(
+@inline function _alpha_field_product_requires_exact_3d(
         alpha::Number,
-        field::SVector{N,ComplexF64}) where {N}
+        field::SVector{N,ComplexF64},
+        result::SVector{N,ComplexF64}=ComplexF64(alpha) * field) where {N}
     coefficient = ComplexF64(alpha)
-    @inbounds for component in field
-        _floating_product_loses_range_3d(coefficient, component) && return true
+    @inbounds for component in 1:N
+        _floating_product_requires_exact_3d(
+            coefficient, field[component], result[component]) && return true
     end
     return false
 end
 
-@inline function _alpha_field_product_loses_range_3d(
+@inline function _alpha_field_product_requires_exact_3d(
         alpha::SMatrix{N,N,ComplexF64,L},
-        field::SVector{N,ComplexF64}) where {N,L}
-    @inbounds for column in 1:N, row in 1:N
-        _floating_product_loses_range_3d(
-            alpha[row, column], field[column]) && return true
+        field::SVector{N,ComplexF64},
+        result::SVector{N,ComplexF64}=alpha * field) where {N,L}
+    @inbounds for row in 1:N
+        real_magnitude = 0.0
+        imag_magnitude = 0.0
+        for column in 1:N
+            coefficient = alpha[row, column]
+            field_value = field[column]
+            term = coefficient * field_value
+            _floating_product_requires_exact_3d(
+                coefficient, field_value, term) && return true
+            product_real, product_imag =
+                _electric_dipole_product_magnitudes_3d(
+                    coefficient, field_value)
+            real_magnitude += product_real
+            imag_magnitude += product_imag
+        end
+        (!isfinite(result[row]) ||
+         !isfinite(real_magnitude) ||
+         !isfinite(imag_magnitude) ||
+         _matrixfree_complex_reduction_requires_exact(
+             result[row], real_magnitude, imag_magnitude, 2N)) && return true
     end
     return false
 end
@@ -1017,7 +1041,7 @@ end
         field::CVec3)
     q = _alpha_apply(alpha, field)
     if all(isfinite, q) &&
-       !_alpha_field_product_loses_range_3d(alpha, field)
+       !_alpha_field_product_requires_exact_3d(alpha, field, q)
         return _electric_dipole_apply_3d(r, rp, k, q)
     end
     return _electric_dipole_alpha_apply_bigfloat_3d(
@@ -1240,7 +1264,7 @@ end
         value::ComplexF64,
         left::ComplexF64,
         right::ComplexF64)
-    _floating_product_loses_range_3d(left, right) && return true
+    _floating_product_requires_exact_3d(left, right, value) && return true
     real_magnitude, imag_magnitude =
         _electric_dipole_product_magnitudes_3d(left, right)
     error_factor = _ieee_product_error_factor(Float64, 2, 1)
@@ -2255,7 +2279,7 @@ end
         projection_norm_squared::Float64)
     q = _alpha_apply(alpha, field)
     if all(isfinite, q) &&
-       !_alpha_field_product_loses_range_3d(alpha, field)
+       !_alpha_field_product_requires_exact_3d(alpha, field, q)
         phase = _source_phase(
             k, normalized_direction, center, 1.0,
             "DDA far-field phase")

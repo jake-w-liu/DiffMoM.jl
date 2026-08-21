@@ -487,7 +487,7 @@ end
         eta0::Float64=_ETA0_DDA)
     dipoles = alpha * field
     if all(isfinite, dipoles) &&
-       !_alpha_field_product_loses_range_3d(alpha, field)
+       !_alpha_field_product_requires_exact_3d(alpha, field, dipoles)
         q, m = _split_em_field(dipoles)
         try
             E, H = _em_interaction_apply_3d(
@@ -1287,7 +1287,7 @@ end
         projection_norm::Float64)
     dipoles = alpha * field
     if all(isfinite, dipoles) &&
-       !_alpha_field_product_loses_range_3d(alpha, field)
+       !_alpha_field_product_requires_exact_3d(alpha, field, dipoles)
         q, m = _split_em_field(dipoles)
         phase = _source_phase(
             k, normalized_direction, center, 1.0,
