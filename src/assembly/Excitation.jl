@@ -23,6 +23,7 @@ const _MULTI_EXACT_BYTES_PER_ENTRY = 1536
 const _MULTI_EXACT_BASE_BYTES = 4096
 const _EXCITATION_SURFACE_FALLBACK_PRECISION = 4352
 const _TRI_QUAD_ORDERS = (1, 3, 4, 7)
+const _MAX_MULTI_EXCITATION_DEPTH = 64
 
 function _multi_exact_accumulator_bytes(N::Int)
     bytes = BigInt(_MULTI_EXACT_BASE_BYTES) +
@@ -1655,25 +1656,54 @@ function _validate_excitation_model(excitation::PatternFeedExcitation)
     return nothing
 end
 
-function _validate_excitation_model(excitation::MultiExcitation)
+function _validate_multi_excitation(
+        excitation::MultiExcitation,
+        active_children::IdDict{Vector{AbstractExcitation},Nothing},
+        depth::Int)
+    depth <= _MAX_MULTI_EXCITATION_DEPTH ||
+        throw(ArgumentError(
+            "MultiExcitation nesting exceeds the supported depth " *
+            "$_MAX_MULTI_EXCITATION_DEPTH."))
     length(excitation.excitations) == length(excitation.weights) ||
         throw(DimensionMismatch(
             "MultiExcitation has $(length(excitation.excitations)) excitations " *
             "but $(length(excitation.weights)) weights."))
     isempty(excitation.excitations) &&
         throw(ArgumentError("MultiExcitation requires at least one child excitation."))
-    @inbounds for i in eachindex(excitation.excitations)
-        isfinite(excitation.weights[i]) ||
-            throw(ArgumentError(
-                "MultiExcitation weight $i must be finite, got $(excitation.weights[i])."))
-        try
-            _validate_excitation_model(excitation.excitations[i])
-        catch err
-            throw(ArgumentError(
-                "MultiExcitation child $i failed validation: $(sprint(showerror, err))"))
+    children = excitation.excitations
+    haskey(active_children, children) &&
+        throw(ArgumentError("MultiExcitation graph contains a cycle."))
+    active_children[children] = nothing
+    try
+        @inbounds for i in eachindex(children)
+            isfinite(excitation.weights[i]) ||
+                throw(ArgumentError(
+                    "MultiExcitation weight $i must be finite, got $(excitation.weights[i])."))
+            try
+                child = children[i]
+                if child isa MultiExcitation
+                    _validate_multi_excitation(
+                        child, active_children, depth + 1)
+                else
+                    _validate_excitation_model(child)
+                end
+            catch err
+                throw(ArgumentError(
+                    "MultiExcitation child $i failed validation: " *
+                    "$(sprint(showerror, err))"))
+            end
         end
+    finally
+        delete!(active_children, children)
     end
     return nothing
+end
+
+function _validate_excitation_model(excitation::MultiExcitation)
+    return _validate_multi_excitation(
+        excitation,
+        IdDict{Vector{AbstractExcitation},Nothing}(),
+        1)
 end
 
 function _validate_plane_wave_wavenumber(pw::PlaneWaveExcitation,

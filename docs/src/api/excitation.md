@@ -339,6 +339,9 @@ The integral is over the support of basis `m`, and `E_inc_t` is the tangential c
 - `PatternFeedExcitation`: Bilinear interpolation of spherical pattern data
 - `MultiExcitation`: Weighted combination of component excitations
 
+`MultiExcitation` graphs must be acyclic and may contain at most 64 nested
+levels. Reuse of the same child in separate branches is supported.
+
 ---
 
 ### `assemble_multiple_excitations(mesh, rwg, excitations; quad_order=3, max_output_bytes=2_000_000_000, max_work_bytes=536_870_912, max_terms=200_000_000)`

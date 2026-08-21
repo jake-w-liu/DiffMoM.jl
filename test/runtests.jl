@@ -4734,6 +4734,26 @@ end
 @test_throws ArgumentError make_multi_excitation(
     [gap_a], ComplexF64[Inf + 0im])
 
+cyclic_multi_children = DiffMoM.AbstractExcitation[]
+cyclic_multi = MultiExcitation(
+    cyclic_multi_children, ComplexF64[1.0 + 0im])
+push!(cyclic_multi_children, cyclic_multi)
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc, cyclic_multi)
+@test_throws ArgumentError assemble_multiple_excitations(
+    mesh_exc, rwg_exc, [cyclic_multi])
+
+too_deep_multi = let nested::DiffMoM.AbstractExcitation = gap_a
+    for _ in 1:(DiffMoM._MAX_MULTI_EXCITATION_DEPTH + 1)
+        nested = MultiExcitation(
+            DiffMoM.AbstractExcitation[nested],
+            ComplexF64[1.0 + 0im])
+    end
+    nested
+end
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc, too_deep_multi)
+
 # Reject malformed public excitation structs before allocating the dense batch
 # result.  Only `nedges` is intentionally enlarged: child validation must run
 # before any RWG array is inspected or an N-by-M output is allocated.
