@@ -308,6 +308,23 @@ end
         @test DiffMoM._alpha_field_product_requires_exact_3d(
             finite_cancel_alpha_static, finite_cancel_field,
             rounded_dipoles)
+        @test DiffMoM._scaled_alpha_apply_3d(
+                  finite_cancel_alpha_static, finite_cancel_field, 2.0,
+                  "finite EM DDA cancellation", 1) ==
+              DiffMoM._CVec6DDA(
+                  1.5, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+        finite_grid = VoxelGrid3D(
+            (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+        finite_E = [CVec3(1.0e16, 3.0, -1.0e16)]
+        finite_H = [zero(CVec3)]
+        finite_result = EMDDAResult3D(
+            finite_E, finite_H, finite_E, finite_H,
+            [finite_cancel_alpha_static], Matrix{ComplexF64}(I, 6, 6),
+            nothing, :gmres, nothing, finite_grid, 1.2, false)
+        finite_q, finite_m = induced_dipoles_em_dda_3d(finite_result)
+        @test finite_q == [CVec3(3.0, 0.0, 0.0)]
+        @test finite_m == [zero(CVec3)]
 
         finite_observation = Vec3(1.25, -0.5, 0.75)
         finite_source = Vec3(0.0, 0.0, 0.0)

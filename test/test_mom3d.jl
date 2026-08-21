@@ -538,6 +538,18 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test rounded_dipole == CVec3(4.0, 0.0, 0.0)
         @test DiffMoM._alpha_field_product_requires_exact_3d(
             alpha, field, rounded_dipole)
+        @test DiffMoM._scaled_alpha_apply_3d(
+                  alpha, field, 2.0, "finite DDA cancellation", 1) ==
+              CVec3(1.5, 0.0, 0.0)
+
+        single_grid = VoxelGrid3D(
+            (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
+        cancellation_result = DDAResult3D(
+            [field], [field], [1.0 + 0im], [alpha],
+            Matrix{ComplexF64}(I, 3, 3), nothing, :gmres, nothing,
+            single_grid, k, false)
+        @test induced_dipoles_dda_3d(cancellation_result) ==
+              [CVec3(3.0, 0.0, 0.0)]
 
         interaction_reference =
             DiffMoM._electric_dipole_alpha_apply_bigfloat_3d(

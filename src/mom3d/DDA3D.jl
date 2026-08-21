@@ -491,7 +491,11 @@ end
     scaled_alpha = alpha_value / divisor
     scale_lost = !iszero(alpha_value) && iszero(scaled_alpha)
     value = scaled_alpha * field
-    !scale_lost && all(isfinite, value) && return value
+    if !scale_lost && all(isfinite, value) &&
+       !_alpha_field_product_requires_exact_3d(
+           scaled_alpha, field, value)
+        return value
+    end
     return _scaled_alpha_apply_bigfloat_3d(
         alpha_value, field, divisor, label, voxel)
 end
@@ -511,7 +515,11 @@ end
         end
     end
     value = scaled_alpha * field
-    !scale_lost && all(isfinite, value) && return value
+    if !scale_lost && all(isfinite, value) &&
+       !_alpha_field_product_requires_exact_3d(
+           scaled_alpha, field, value)
+        return value
+    end
     return _scaled_alpha_apply_bigfloat_3d(
         alpha, field, divisor, label, voxel)
 end
