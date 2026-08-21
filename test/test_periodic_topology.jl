@@ -2018,6 +2018,54 @@ println("\n── Test 42: PeriodicMetrics ──")
                              phase_modes[1].ky * phase_points[1][2]
         @test !isfinite(raw_phase_argument)
         @test all(isfinite, phase_coefficients[1])
+
+        cancellation_mesh = make_rect_plate(0.2, 0.2, 2, 2)
+        cancellation_rwg = build_rwg(cancellation_mesh)
+        cancellation_lattice = PeriodicLattice(
+            1.0, 1.0, 0.0, 0.0, 2π)
+        cancellation_currents = ComplexF64[
+            3.3333333333333335e15 - 0.574859618608291im,
+            -3.333333333333334e15 + 0.4952528582638097im,
+            7.09246526965761e15 - 0.4934342258793853im,
+            -2.9075347303423905e15 - 0.08016977075392688im,
+            -1.027968762180252e15 + 0.37627715840682663im,
+            -2.9075347303423905e15 + 0.8710733417957057im,
+            -2.9075347303423895e15 - 0.2921997205621716im,
+            1.0279687621802516e15 - 0.4919982633290702im,
+        ]
+        cancellation_modes, cancellation_coefficients =
+            DiffMoM._floquet_current_fourier_coefficients(
+                cancellation_mesh,
+                cancellation_rwg,
+                cancellation_currents,
+                2π,
+                cancellation_lattice;
+                N_orders=0,
+            )
+        # Ground truth is the correctly rounded result of a 4352-bit direct
+        # quadrature over the stored Float64 mesh, basis, and current values.
+        cancellation_reference = CVec3(
+            -0.008683327175737436 - 0.0006650854830341138im,
+            -6.667282426256387e-5 - 0.0012881931696331354im,
+            0.0 + 0.0im,
+        )
+        @test only(cancellation_coefficients) == cancellation_reference
+
+        cancellation_exact_terms = DiffMoM._periodic_fourier_term_count(
+            ntriangles(cancellation_mesh), cancellation_rwg.nedges,
+            length(tri_quad_rule(3)[2]),
+            count(mode -> mode.propagating, cancellation_modes);
+            exact=true,
+        )
+        @test_throws ArgumentError DiffMoM._floquet_current_fourier_coefficients(
+            cancellation_mesh,
+            cancellation_rwg,
+            cancellation_currents,
+            2π,
+            cancellation_lattice;
+            N_orders=0,
+            max_exact_fourier_terms=cancellation_exact_terms - 1,
+        )
     end
 
     # ── A: Only specular mode propagates for λ/2 cell at normal incidence ──

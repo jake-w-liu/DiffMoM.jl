@@ -551,6 +551,14 @@ end
 const _FLOQUET_MODE_FALLBACK_PRECISION = 256
 const _FLOQUET_CURRENT_FALLBACK_PRECISION =
     _IEEE_BILINEAR_FALLBACK_PRECISION
+# A primitive Fourier term has five Float64 factors.  Their mantissa product
+# needs at most 265 bits and their exponent sum spans -5370:4855.  Another
+# 63 bits covers any Int-indexable reduction; 10_624 is the next whole-word
+# boundary and leaves enough guard precision for the final Float64 division.
+const _PERIODIC_CURRENT_PRODUCT_BASE_EXPONENT = -5 * 1074
+const _PERIODIC_CURRENT_PRODUCT_ACCUMULATOR_BITS = 10_624
+const _PERIODIC_CURRENT_PRODUCT_WORD_COUNT =
+    cld(_PERIODIC_CURRENT_PRODUCT_ACCUMULATOR_BITS, 64) + 1
 const _DEFAULT_MAX_PERIODIC_REFLECTION_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_PERIODIC_FOURIER_TERMS = 200_000_000
 const _DEFAULT_MAX_PERIODIC_EXACT_FOURIER_TERMS = 2_000_000
@@ -585,13 +593,15 @@ function _periodic_reflection_work_bytes(
     # of the three outer vectors is included alongside their element payloads.
     total += BigInt(3 * sizeof(Ptr{Cvoid}) +
                     2 * sizeof(Float64)) * Nt
-    total += BigInt(sizeof(Vec3) + sizeof(SVector{3,ComplexF64})) * Nt * Nq
-    # Triangle-to-basis indices, exact-path basis integrals, and the tiny
-    # quadrature-rule arrays.  Area ratios are included in the 2*Float64 term
-    # above, even though they exist only on an exceptional path.
+    total += BigInt(sizeof(Vec3) + sizeof(SVector{3,ComplexF64}) +
+                    2 * sizeof(SVector{3,Float64})) * Nt * Nq
+    # Triangle-to-basis indices, current/error-bound workspaces, and the tiny
+    # quadrature-rule arrays.
     total += BigInt(2 * sizeof(Int) +
                     sizeof(SVector{3,ComplexF64})) * N
     total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    total += BigInt(6 * _PERIODIC_CURRENT_PRODUCT_WORD_COUNT *
+                    sizeof(Int128))
     total <= typemax(Int) ||
         throw(ArgumentError(
             "periodic reflection raw-workspace estimate overflows Int"))
@@ -715,52 +725,180 @@ function _periodic_fourier_requires_fallback(
 end
 
 
-@inline function _periodic_accumulate_complex_product!(
-    real_accumulator::_IEEEBilinearAccumulator{Float64},
-    imag_accumulator::_IEEEBilinearAccumulator{Float64},
-    first::Number,
-    second::Number,
+mutable struct _PeriodicCurrentProductAccumulator
+    words::Vector{Int128}
+    pending_terms::Int
+end
+
+function _PeriodicCurrentProductAccumulator()
+    return _PeriodicCurrentProductAccumulator(
+        zeros(Int128, _PERIODIC_CURRENT_PRODUCT_WORD_COUNT), 0)
+end
+
+function _periodic_current_product_normalize!(
+    accumulator::_PeriodicCurrentProductAccumulator,
 )
-    first_real = Float64(real(first))
-    first_imag = Float64(imag(first))
-    second_real = Float64(real(second))
-    second_imag = Float64(imag(second))
-    unity = 1.0
-    _ieee_bilinear_add_triple!(
-        real_accumulator, first_real, second_real, unity, 1)
-    _ieee_bilinear_add_triple!(
-        real_accumulator, first_imag, second_imag, unity, -1)
-    _ieee_bilinear_add_triple!(
-        imag_accumulator, first_real, second_imag, unity, 1)
-    _ieee_bilinear_add_triple!(
-        imag_accumulator, first_imag, second_real, unity, 1)
+    words = accumulator.words
+    word_base = Int128(1) << 64
+    @inbounds for index in firstindex(words):(lastindex(words) - 1)
+        carry = fld(words[index], word_base)
+        words[index] -= carry * word_base
+        words[index + 1] += carry
+    end
+    accumulator.pending_terms = 0
+    return accumulator
+end
+
+@inline function _periodic_current_product_add!(
+    accumulator::_PeriodicCurrentProductAccumulator,
+    first::Float64,
+    second::Float64,
+    third::Float64,
+    fourth::Float64,
+    fifth::Float64,
+    coefficient_sign::Int,
+)
+    (iszero(first) || iszero(second) || iszero(third) ||
+     iszero(fourth) || iszero(fifth)) && return nothing
+
+    first_mantissa, first_exponent =
+        _ieee_signed_mantissa_exponent(first)
+    second_mantissa, second_exponent =
+        _ieee_signed_mantissa_exponent(second)
+    third_mantissa, third_exponent =
+        _ieee_signed_mantissa_exponent(third)
+    fourth_mantissa, fourth_exponent =
+        _ieee_signed_mantissa_exponent(fourth)
+    fifth_mantissa, fifth_exponent =
+        _ieee_signed_mantissa_exponent(fifth)
+
+    negative = (first_mantissa < 0) ⊻ (second_mantissa < 0) ⊻
+               (third_mantissa < 0) ⊻ (fourth_mantissa < 0) ⊻
+               (fifth_mantissa < 0) ⊻ (coefficient_sign < 0)
+    mantissas = (
+        UInt64(abs(first_mantissa)),
+        UInt64(abs(second_mantissa)),
+        UInt64(abs(third_mantissa)),
+        UInt64(abs(fourth_mantissa)),
+        UInt64(abs(fifth_mantissa)),
+    )
+    limbs = MVector{5,UInt64}(1, 0, 0, 0, 0)
+    limb_count = 1
+    @inbounds for mantissa in mantissas
+        carry = zero(UInt128)
+        for index in 1:limb_count
+            product = UInt128(limbs[index]) * UInt128(mantissa) + carry
+            limbs[index] = UInt64(product & UInt128(typemax(UInt64)))
+            carry = product >> 64
+        end
+        if !iszero(carry)
+            limb_count += 1
+            limb_count <= length(limbs) ||
+                error("periodic exact-product limb invariant violated")
+            limbs[limb_count] = UInt64(carry)
+        end
+    end
+
+    bit_position = first_exponent + second_exponent + third_exponent +
+                   fourth_exponent + fifth_exponent -
+                   _PERIODIC_CURRENT_PRODUCT_BASE_EXPONENT
+    bit_position >= 0 ||
+        error("periodic exact-product exponent invariant violated")
+    @inbounds for index in 1:limb_count
+        _ieee_bilinear_add_limb!(
+            accumulator.words, limbs[index],
+            bit_position + 64 * (index - 1), negative)
+    end
+    accumulator.pending_terms += 1
+    accumulator.pending_terms == (1 << 30) &&
+        _periodic_current_product_normalize!(accumulator)
     return nothing
 end
 
+@inline function _periodic_current_complex_product_add!(
+    real_accumulator::_PeriodicCurrentProductAccumulator,
+    imag_accumulator::_PeriodicCurrentProductAccumulator,
+    coefficient::ComplexF64,
+    basis_value::Number,
+    phase::ComplexF64,
+    weight::Float64,
+    area::Float64,
+)
+    coefficient_real = real(coefficient)
+    coefficient_imag = imag(coefficient)
+    basis_real = Float64(real(basis_value))
+    basis_imag = Float64(imag(basis_value))
+    phase_real = real(phase)
+    phase_imag = imag(phase)
 
-function _periodic_finish_current_coefficient(
-    I_coeffs,
-    basis_integrals,
-    area_scale::Float64,
+    _periodic_current_product_add!(
+        real_accumulator, coefficient_real, basis_real, phase_real,
+        weight, area, 1)
+    _periodic_current_product_add!(
+        real_accumulator, coefficient_imag, basis_imag, phase_real,
+        weight, area, -1)
+    _periodic_current_product_add!(
+        real_accumulator, coefficient_real, basis_imag, phase_imag,
+        weight, area, -1)
+    _periodic_current_product_add!(
+        real_accumulator, coefficient_imag, basis_real, phase_imag,
+        weight, area, -1)
+
+    _periodic_current_product_add!(
+        imag_accumulator, coefficient_real, basis_real, phase_imag,
+        weight, area, 1)
+    _periodic_current_product_add!(
+        imag_accumulator, coefficient_imag, basis_imag, phase_imag,
+        weight, area, -1)
+    _periodic_current_product_add!(
+        imag_accumulator, coefficient_real, basis_imag, phase_real,
+        weight, area, 1)
+    _periodic_current_product_add!(
+        imag_accumulator, coefficient_imag, basis_real, phase_real,
+        weight, area, 1)
+    return nothing
+end
+
+function _periodic_current_product_finish(
+    accumulator::_PeriodicCurrentProductAccumulator,
     A_cell::Float64,
     mode::FloquetMode,
     component::Int,
+    part::AbstractString,
 )
-    real_accumulator = _IEEEBilinearAccumulator(Float64)
-    imag_accumulator = _IEEEBilinearAccumulator(Float64)
-    @inbounds for basis_index in eachindex(I_coeffs, basis_integrals)
-        _periodic_accumulate_complex_product!(
-            real_accumulator, imag_accumulator,
-            I_coeffs[basis_index],
-            basis_integrals[basis_index][component])
+    _periodic_current_product_normalize!(accumulator)
+    words = accumulator.words
+    integer_total = BigInt(words[end])
+    @inbounds for index in (lastindex(words) - 1):-1:firstindex(words)
+        integer_total = (integer_total << 64) + UInt64(words[index])
     end
-    label = "Floquet current coefficient component $component for order " *
-            "($(mode.m), $(mode.n))"
-    real_value = _ieee_bilinear_finish(
-        real_accumulator, label, area_scale, A_cell)
-    imag_value = _ieee_bilinear_finish(
-        imag_accumulator, label, area_scale, A_cell)
-    return ComplexF64(real_value, imag_value)
+    return setprecision(
+        BigFloat, _PERIODIC_CURRENT_PRODUCT_ACCUMULATOR_BITS) do
+        # The surface Jacobian contributes the exact factor two.
+        exact_value = ldexp(
+            BigFloat(integer_total),
+            _PERIODIC_CURRENT_PRODUCT_BASE_EXPONENT + 1,
+        ) / BigFloat(A_cell)
+        converted = Float64(exact_value)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "Floquet current coefficient $part component $component " *
+                "is outside the Float64 range for order " *
+                "($(mode.m), $(mode.n))"))
+        return converted
+    end
+end
+
+function _periodic_fourier_phase_requires_bigfloat(modes, quad_pts)
+    @inbounds for mode in modes
+        mode.propagating || continue
+        for triangle_points in quad_pts
+            for point in triangle_points
+                _periodic_phase_requires_fallback(mode, point) && return true
+            end
+        end
+    end
+    return false
 end
 
 
@@ -818,7 +956,7 @@ end
 end
 
 
-function _floquet_current_fourier_coefficients_exact(
+@noinline function _floquet_current_fourier_coefficients_exact(
     rwg::RWGData,
     I_coeffs,
     modes,
@@ -828,16 +966,8 @@ function _floquet_current_fourier_coefficients_exact(
     tri_to_basis,
     weights,
 )
-    _ieee_bilinear_supported_eltype(eltype(I_coeffs), Float64) ||
-        return _floquet_current_fourier_coefficients_bigfloat(
-            rwg, I_coeffs, modes, A_cell, quad_pts,
-            areas, tri_to_basis, weights)
-
-    maximum_area = maximum(areas)
-    area_scale = ldexp(1.0, exponent(maximum_area))
-    area_ratios = areas ./ area_scale
-    if any(index -> !iszero(areas[index]) && iszero(area_ratios[index]),
-           eachindex(areas))
+    if !_ieee_bilinear_supported_eltype(eltype(I_coeffs), Float64) ||
+       _periodic_fourier_phase_requires_bigfloat(modes, quad_pts)
         return _floquet_current_fourier_coefficients_bigfloat(
             rwg, I_coeffs, modes, A_cell, quad_pts,
             areas, tri_to_basis, weights)
@@ -845,41 +975,47 @@ function _floquet_current_fourier_coefficients_exact(
 
     zero_vec = SVector{3,ComplexF64}(0.0, 0.0, 0.0)
     coefficients = fill(zero_vec, length(modes))
-    basis_integrals = fill(zero_vec, rwg.nedges)
     @inbounds for (mode_index, mode) in enumerate(modes)
         mode.propagating || continue
-        fill!(basis_integrals, zero_vec)
+        real_accumulators = ntuple(
+            _ -> _PeriodicCurrentProductAccumulator(), 3)
+        imag_accumulators = ntuple(
+            _ -> _PeriodicCurrentProductAccumulator(), 3)
         for triangle in eachindex(quad_pts, areas, tri_to_basis)
-            area_weight = 2 * area_ratios[triangle]
+            area = areas[triangle]
             for quadrature_index in eachindex(weights)
                 point = quad_pts[triangle][quadrature_index]
                 phase = _periodic_phase(mode, point)
-                weight = weights[quadrature_index] * area_weight
+                weight = weights[quadrature_index]
                 for basis_index in tri_to_basis[triangle]
+                    coefficient = ComplexF64(I_coeffs[basis_index])
                     basis_value = eval_rwg(
                         rwg, basis_index, point, triangle)
-                    contribution = basis_value * phase * weight
-                    all(isfinite, contribution) ||
-                        return _floquet_current_fourier_coefficients_bigfloat(
-                            rwg, I_coeffs, modes, A_cell, quad_pts,
-                            areas, tri_to_basis, weights)
-                    basis_integrals[basis_index] += contribution
-                    all(isfinite, basis_integrals[basis_index]) ||
-                        return _floquet_current_fourier_coefficients_bigfloat(
-                            rwg, I_coeffs, modes, A_cell, quad_pts,
-                            areas, tri_to_basis, weights)
+                    for component in 1:3
+                        _periodic_current_complex_product_add!(
+                            real_accumulators[component],
+                            imag_accumulators[component],
+                            coefficient, basis_value[component], phase,
+                            weight, area)
+                    end
                 end
             end
         end
         coefficients[mode_index] = SVector{3,ComplexF64}(ntuple(
-            component -> _periodic_finish_current_coefficient(
-                I_coeffs, basis_integrals,
-                area_scale, A_cell, mode, component),
+            component -> ComplexF64(
+                _periodic_current_product_finish(
+                    real_accumulators[component], A_cell, mode,
+                    component, "real"),
+                _periodic_current_product_finish(
+                    imag_accumulators[component], A_cell, mode,
+                    component, "imaginary"),
+            ),
             3,
         ))
     end
     return coefficients
 end
+
 
 function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                                                I_coeffs::Vector{<:Number},
@@ -951,36 +1087,103 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
     # The surface current J(r_q) at each quadrature point is independent of the
     # Floquet mode, so precompute it once instead of recomputing inside every mode.
     J_at = [Vector{SVector{3,ComplexF64}}(undef, Nq) for _ in 1:Nt]
+    J_real_bounds = [Vector{SVector{3,Float64}}(undef, Nq) for _ in 1:Nt]
+    J_imag_bounds = [Vector{SVector{3,Float64}}(undef, Nq) for _ in 1:Nt]
     for t in 1:Nt
         for q in 1:Nq
             rq = quad_pts[t][q]
             J_rq = zero_vec
+            real_bounds = zeros(MVector{3,Float64})
+            imag_bounds = zeros(MVector{3,Float64})
             for n_idx in tri_to_basis[t]
-                J_rq += I_coeffs[n_idx] * eval_rwg(rwg, n_idx, rq, t)
+                coefficient = ComplexF64(I_coeffs[n_idx])
+                basis_value = eval_rwg(rwg, n_idx, rq, t)
+                J_rq += coefficient * basis_value
+                @inbounds for component in 1:3
+                    coefficient_real = real(coefficient)
+                    coefficient_imag = imag(coefficient)
+                    basis_real = real(basis_value[component])
+                    basis_imag = imag(basis_value[component])
+                    real_bounds[component] +=
+                        abs(coefficient_real * basis_real) +
+                        abs(coefficient_imag * basis_imag)
+                    imag_bounds[component] +=
+                        abs(coefficient_real * basis_imag) +
+                        abs(coefficient_imag * basis_real)
+                end
             end
             all(isfinite, J_rq) ||
                 throw(OverflowError(
                     "surface-current evaluation became non-finite on triangle $t, quadrature point $q"
                 ))
             J_at[t][q] = J_rq
+            J_real_bounds[t][q] = SVector{3,Float64}(real_bounds)
+            J_imag_bounds[t][q] = SVector{3,Float64}(imag_bounds)
         end
+    end
+
+    # Each RWG has two triangle supports; expanding the complex current,
+    # periodic basis, and phase needs at most eight scalar terms per support.
+    reduction_term_count = try
+        Base.checked_mul(16, Base.checked_mul(N, Nq))
+    catch err
+        err isa OverflowError || rethrow()
+        typemax(Int)
     end
 
     for (mi, mode) in enumerate(modes)
         mode.propagating || continue
 
         integral = zero_vec
+        integral_real_bounds = zeros(MVector{3,Float64})
+        integral_imag_bounds = zeros(MVector{3,Float64})
         for t in 1:Nt
             At = areas[t]
             for q in 1:Nq
                 rq = quad_pts[t][q]
                 phase = _periodic_phase(mode, rq)
-                integral += J_at[t][q] * phase * wq[q] * (2 * At)
+                surface_weight = wq[q] * (2 * At)
+                integral += J_at[t][q] * phase * surface_weight
+                phase_real = abs(real(phase))
+                phase_imag = abs(imag(phase))
+                weight_magnitude = abs(surface_weight)
+                current_real_bounds = J_real_bounds[t][q]
+                current_imag_bounds = J_imag_bounds[t][q]
+                @inbounds for component in 1:3
+                    integral_real_bounds[component] += weight_magnitude * (
+                        phase_real * current_real_bounds[component] +
+                        phase_imag * current_imag_bounds[component])
+                    integral_imag_bounds[component] += weight_magnitude * (
+                        phase_imag * current_real_bounds[component] +
+                        phase_real * current_imag_bounds[component])
+                end
                 all(isfinite, integral) ||
                     throw(OverflowError(
                         "Floquet current integral became non-finite for order ($(mode.m), $(mode.n))"
                     ))
             end
+        end
+
+        coefficient_requires_exact = false
+        @inbounds for component in 1:3
+            coefficient_requires_exact |=
+                !isfinite(integral_real_bounds[component]) ||
+                !isfinite(integral_imag_bounds[component]) ||
+                _matrixfree_complex_reduction_requires_exact(
+                    integral[component],
+                    integral_real_bounds[component],
+                    integral_imag_bounds[component],
+                    reduction_term_count)
+        end
+        if coefficient_requires_exact
+            exact_terms = _periodic_fourier_term_count(
+                Nt, N, Nq, propagating_count; exact=true)
+            _enforce_periodic_fourier_term_limit(
+                exact_terms, max_exact_fourier_terms,
+                "max_exact_fourier_terms")
+            return modes, _floquet_current_fourier_coefficients_exact(
+                rwg, I_coeffs, modes, A_cell, quad_pts,
+                areas, tri_to_basis, wq)
         end
 
         J_tildes[mi] = integral / A_cell
