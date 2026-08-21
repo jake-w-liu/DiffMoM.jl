@@ -161,12 +161,11 @@ end
         row = 1
         input = zeros(ComplexF64, size(direct, 2))
         input[row] = 1.0e16
-        for (source, target) in ((2, 3.0), (3, -1.0e16))
-            columns = (channels * (source - 1) + 1):(channels * source)
-            entries = ComplexF64[direct[row, column] for column in columns]
-            selected = first(columns) + argmax(abs.(entries)) - 1
-            input[selected] = target / direct[row, selected]
-        end
+        source = 2
+        columns = (channels * (source - 1) + 1):(channels * source)
+        entries = ComplexF64[direct[row, column] for column in columns]
+        selected = first(columns) + argmax(abs.(entries)) - 1
+        input[selected] = -prevfloat(1.0e16) / direct[row, selected]
 
         direct_result = direct * input
         fft_result = fft * input
@@ -182,6 +181,59 @@ end
         fft_scaled = copy(initial)
         mul!(direct_scaled, direct, input, 0.3 - 0.2im, -0.4 + 0.1im)
         mul!(fft_scaled, fft, input, 0.3 - 0.2im, -0.4 + 0.1im)
+        @test fft_scaled == direct_scaled
+    end
+
+    internal_cancellation_grid = VoxelGrid3D(
+        (0.0, 5.0), (0.0, 1.0), (0.0, 1.0), 5, 1, 1)
+    internal_cancellation_pairs = (
+        (
+            dda_operator_3d(
+                internal_cancellation_grid, 1.0, 2.5 + 0.1im),
+            fft_dda_operator_3d(
+                internal_cancellation_grid, 1.0, 2.5 + 0.1im),
+            3,
+        ),
+        (
+            em_dda_operator_3d(
+                internal_cancellation_grid, 1.0,
+                2.5 + 0.1im, 1.3 + 0.02im),
+            fft_em_dda_operator_3d(
+                internal_cancellation_grid, 1.0,
+                2.5 + 0.1im, 1.3 + 0.02im),
+            6,
+        ),
+    )
+    for (direct, fft, channels) in internal_cancellation_pairs
+        row = 1
+        input = zeros(ComplexF64, size(direct, 2))
+        for (source, target) in
+                ((2, 1.0e16), (3, 3.0), (4, -1.0e16))
+            columns = (channels * (source - 1) + 1):(channels * source)
+            entries = ComplexF64[direct[row, column] for column in columns]
+            selected = first(columns) + argmax(abs.(entries)) - 1
+            input[selected] = target / direct[row, selected]
+        end
+
+        direct_result = direct * input
+        fft_result = fft * input
+        dipole_components = Float64[
+            abs(part)
+            for value in fft.qhat
+            for part in (real(value), imag(value))
+            if !iszero(part)
+        ]
+        @test DiffMoM._fft_dipole_dynamic_range_requires_direct_3d(
+            maximum(dipole_components), minimum(dipole_components),
+            channels, length(fft.conv))
+        @test fft_result == direct_result
+
+        initial = ComplexF64[
+            -0.03index + 0.01im * index for index in eachindex(input)]
+        direct_scaled = copy(initial)
+        fft_scaled = copy(initial)
+        mul!(direct_scaled, direct, input, -0.2 + 0.1im, 0.4 - 0.3im)
+        mul!(fft_scaled, fft, input, -0.2 + 0.1im, 0.4 - 0.3im)
         @test fft_scaled == direct_scaled
     end
 

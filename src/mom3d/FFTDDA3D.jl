@@ -179,6 +179,25 @@ end
     return kernel_scale <= component_limit / transformed_dipole_scale
 end
 
+@inline function _fft_dipole_dynamic_range_requires_direct_3d(
+        largest_component::Float64,
+        smallest_component::Float64,
+        channels::Int,
+        transform_size::Int)
+    iszero(largest_component) && return false
+    isfinite(largest_component) && isfinite(smallest_component) ||
+        return true
+    # Each spatial convolution component is a reduction over every padded
+    # source and channel. If a nonzero dipole component is below this binary64
+    # reduction bound, FFT roundoff can erase the term before it cancels a
+    # larger contribution. The direct operator has the exact fallback needed
+    # to resolve that exceptional dynamic range.
+    reduction_terms = Base.Checked.checked_mul(channels, transform_size)
+    error_factor = _ieee_product_error_factor(
+        Float64, 2, reduction_terms)
+    return smallest_component <= error_factor * largest_component
+end
+
 function fft_dda_kernel_3d(
         grid::VoxelGrid3D, k0::Real;
         max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
@@ -282,6 +301,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         qhat = A.qhat
         conv = A.conv
         fill!(qhat, 0.0 + 0.0im)
+        largest_dipole_component = 0.0
+        smallest_dipole_component = Inf
 
         idx = 0
         try
@@ -291,12 +312,31 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                     A.alpha[idx], _read_field_component(xread, idx),
                     A.kernel.interaction_scale, "scaled FFT DDA dipole", idx)
                 for b in 1:3
-                    qhat[ix, iy, iz, b] = qvec[b]
+                    value = qvec[b]
+                    qhat[ix, iy, iz, b] = value
+                    for part in (real(value), imag(value))
+                        magnitude = abs(part)
+                        iszero(magnitude) && continue
+                        largest_dipole_component = max(
+                            largest_dipole_component, magnitude)
+                        smallest_dipole_component = min(
+                            smallest_dipole_component, magnitude)
+                    end
                 end
             end
         catch err
             err isa OverflowError || rethrow()
             needs_direct_fallback = true
+        end
+
+        if !needs_direct_fallback
+            needs_direct_fallback =
+                _fft_dipole_dynamic_range_requires_direct_3d(
+                    largest_dipole_component,
+                    smallest_dipole_component,
+                    3,
+                    length(conv),
+                )
         end
 
         if !needs_direct_fallback
@@ -569,6 +609,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         qhat = A.qhat
         conv = A.conv
         fill!(qhat, 0.0 + 0.0im)
+        largest_dipole_component = 0.0
+        smallest_dipole_component = Inf
 
         idx = 0
         try
@@ -579,12 +621,31 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                     A.kernel.interaction_scale,
                     "scaled FFT EM-DDA dipole", idx)
                 for b in 1:6
-                    qhat[ix, iy, iz, b] = q6[b]
+                    value = q6[b]
+                    qhat[ix, iy, iz, b] = value
+                    for part in (real(value), imag(value))
+                        magnitude = abs(part)
+                        iszero(magnitude) && continue
+                        largest_dipole_component = max(
+                            largest_dipole_component, magnitude)
+                        smallest_dipole_component = min(
+                            smallest_dipole_component, magnitude)
+                    end
                 end
             end
         catch err
             err isa OverflowError || rethrow()
             needs_direct_fallback = true
+        end
+
+        if !needs_direct_fallback
+            needs_direct_fallback =
+                _fft_dipole_dynamic_range_requires_direct_3d(
+                    largest_dipole_component,
+                    smallest_dipole_component,
+                    6,
+                    length(conv),
+                )
         end
 
         if !needs_direct_fallback
