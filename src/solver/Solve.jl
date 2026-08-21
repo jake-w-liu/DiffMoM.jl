@@ -1206,7 +1206,12 @@ function make_mass_regularizer(
     @inbounds for j in 1:N
         R[j, j] = complex(real(R[j, j]), 0.0)
         for i in 1:(j - 1)
-            value = 0.5 * (R[i, j] + conj(R[j, i]))
+            upper = R[i, j]
+            lower = R[j, i]
+            value = complex(
+                _safe_midpoint_component(real(upper), real(lower)),
+                _safe_midpoint_component(imag(upper), -imag(lower)),
+            )
             R[i, j] = value
             R[j, i] = conj(value)
         end

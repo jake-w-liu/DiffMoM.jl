@@ -4343,6 +4343,29 @@ make_left_preconditioner(Mp; eps_rel=1e-6)
 @test_throws ArgumentError make_mass_regularizer(
     [ComplexF64[NaN 0.0; 0.0 1.0]])
 
+# Hermitian averaging must not overflow when its finite result is
+# representable, nor erase the least positive subnormal value.
+mass_regularizer_max = floatmax(Float64)
+mass_regularizer_extreme_entry =
+    complex(mass_regularizer_max, mass_regularizer_max)
+mass_regularizer_extreme = make_mass_regularizer([
+    ComplexF64[0 mass_regularizer_extreme_entry;
+               conj(mass_regularizer_extreme_entry) 0]
+])
+@test mass_regularizer_extreme[1, 2] == mass_regularizer_extreme_entry
+@test mass_regularizer_extreme[2, 1] ==
+      conj(mass_regularizer_extreme_entry)
+@test ishermitian(mass_regularizer_extreme)
+mass_regularizer_minsub = nextfloat(0.0)
+mass_regularizer_tiny_entry =
+    complex(mass_regularizer_minsub, mass_regularizer_minsub)
+mass_regularizer_tiny = make_mass_regularizer([
+    ComplexF64[0 mass_regularizer_tiny_entry;
+               conj(mass_regularizer_tiny_entry) 0]
+])
+@test mass_regularizer_tiny[1, 2] == mass_regularizer_tiny_entry
+@test mass_regularizer_tiny[2, 1] == conj(mass_regularizer_tiny_entry)
+
 @test_throws ArgumentError select_preconditioner(
     Matrix{ComplexF64}[]; mode=:off)
 @test_throws ArgumentError select_preconditioner(
