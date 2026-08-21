@@ -23,6 +23,22 @@ export gradient_density, gradient_density_full
 # the non-integer density power.
 const _IEEE_DENSITY_GRADIENT_FALLBACK_PRECISION = 11008
 
+@inline function _density_weighted_bilinear_requires_fallback(
+    impedance::Number,
+    bilinear::Number,
+    weighted_value::Real,
+)
+    impedance_real = Float64(real(impedance))
+    impedance_imag = Float64(imag(impedance))
+    bilinear_real = Float64(real(bilinear))
+    bilinear_imag = Float64(imag(bilinear))
+    magnitude = abs(impedance_real * bilinear_real) +
+                abs(impedance_imag * bilinear_imag)
+    error_factor = _ieee_product_error_factor(Float64, 2, 1)
+    return _ieee_product_component_is_suspicious(
+        weighted_value, magnitude, error_factor)
+end
+
 @noinline function _density_gradient_bigfloat(
     matrix::AbstractMatrix,
     I::Vector{<:Number},
@@ -91,19 +107,26 @@ function gradient_density(Mt::Vector{<:AbstractMatrix},
         # g[t] = -2 Re{ λ† (∂Z/∂ρ̄_t) I }
         #      = 2p ρ̄_t^(p-1) Re{ Z_max λ† M_t I }
         density_power = rho_bar[t]^(config.p - 1)
+        lMI = _dot_left_matrix_right(lambda, Mt[t], I)
+        weighted_bilinear = real(config.Z_max * lMI)
         needs_fallback =
-            _ieee_bilinear_requires_fallback(
-                lambda, Mt[t], I, Float64) ||
             _ieee_dense_extreme_factor(config.Z_max, Float64) ||
             _ieee_dense_extreme_factor(config.p, Float64) ||
-            _ieee_dense_extreme_factor(density_power, Float64)
+            _ieee_dense_extreme_factor(density_power, Float64) ||
+            (!iszero(real(config.Z_max)) &&
+             _ieee_bilinear_component_requires_fallback(
+                 lambda, Mt[t], I, Val(:real), real(lMI), Float64)) ||
+            (!iszero(imag(config.Z_max)) &&
+             _ieee_bilinear_component_requires_fallback(
+                 lambda, Mt[t], I, Val(:imag), imag(lMI), Float64)) ||
+            _density_weighted_bilinear_requires_fallback(
+                config.Z_max, lMI, weighted_bilinear)
         if needs_fallback
             g[t] = _density_gradient_bigfloat(
                 Mt[t], I, lambda, rho_bar[t], config)
             continue
         end
-        lMI = _dot_left_matrix_right(lambda, Mt[t], I)
-        value = 2 * config.p * density_power * real(config.Z_max * lMI)
+        value = 2 * config.p * density_power * weighted_bilinear
         g[t] = isfinite(value) ? value : _density_gradient_bigfloat(
             Mt[t], I, lambda, rho_bar[t], config)
     end

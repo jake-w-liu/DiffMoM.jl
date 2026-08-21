@@ -1112,6 +1112,55 @@ println("\n── Test 40: DensityAdjoint ──")
             [1.0],
             density_extreme_reactive_config,
         ) == [6.0]
+
+        density_cancellation_values = ComplexF64[1e16, 1.0, -1e16]
+        density_cancellation_matrix = Matrix(Diagonal(
+            density_cancellation_values))
+        density_cancellation_local = LocalMassMatrix(
+            3,
+            [1, 2, 3],
+            [1, 2, 3],
+            density_cancellation_values,
+        )
+        density_cancellation_vector = ones(ComplexF64, 3)
+        for density_matrix in (
+            density_cancellation_matrix,
+            sparse(density_cancellation_matrix),
+            density_cancellation_local,
+        )
+            @test gradient_density(
+                [density_matrix],
+                density_cancellation_vector,
+                density_cancellation_vector,
+                [1.0],
+                density_extreme_config,
+            ) == [2.0]
+        end
+
+        # Each rounded complex product is zero here, although the exact real
+        # component retained by the stored Float64 operands is representable.
+        density_weighted_impedance = ComplexF64(
+            1e16, nextfloat(1e16))
+        density_weighted_matrix = reshape(
+            ComplexF64[ComplexF64(nextfloat(1.0), 1.0)], 1, 1)
+        density_weighted_config = DensityConfig(
+            1.0, density_weighted_impedance, 0.5)
+        @test 2 * real(
+            density_weighted_impedance * density_weighted_matrix[1]) == 0.0
+        density_weighted_reference = setprecision(BigFloat, 11008) do
+            Float64(2 * (
+                BigFloat(real(density_weighted_impedance)) *
+                BigFloat(real(density_weighted_matrix[1])) -
+                BigFloat(imag(density_weighted_impedance)) *
+                BigFloat(imag(density_weighted_matrix[1]))))
+        end
+        @test gradient_density(
+            [density_weighted_matrix],
+            ComplexF64[1.0],
+            ComplexF64[1.0],
+            [1.0],
+            density_weighted_config,
+        ) == [density_weighted_reference]
         @test_throws ArgumentError gradient_density(
             [reshape(ComplexF64[1.0], 1, 1)],
             ComplexF64[NaN], ComplexF64[1.0], [1.0],

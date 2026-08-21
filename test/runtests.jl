@@ -7326,6 +7326,90 @@ end
     real.(objective_extreme_Q),
 ) == 3.0
 
+# Finite dot and bilinear reductions can silently discard a small term between
+# large canceling terms.  Cover every storage form and both objective paths.
+objective_cancellation_values = Float64[1e16, 1.0, -1e16]
+objective_cancellation_I = ones(Float64, 3)
+objective_cancellation_Q = Matrix(Diagonal(objective_cancellation_values))
+objective_cancellation_local = LocalMassMatrix(
+    3,
+    [1, 2, 3],
+    [1, 2, 3],
+    objective_cancellation_values,
+)
+@test real(dot(
+    objective_cancellation_I,
+    objective_cancellation_Q,
+    objective_cancellation_I,
+)) == 0.0
+@test compute_objective(
+    objective_cancellation_I, objective_cancellation_Q) == 1.0
+for objective_cancellation_storage in (
+    objective_cancellation_Q,
+    sparse(objective_cancellation_Q),
+    objective_cancellation_local,
+)
+    @test DiffMoM._finite_bilinear_component(
+        objective_cancellation_I,
+        objective_cancellation_storage,
+        objective_cancellation_I,
+        Val(:real),
+        "finite bilinear cancellation regression",
+    ) == 1.0
+    @test DiffMoM._finite_scaled_bilinear_component(
+        objective_cancellation_I,
+        objective_cancellation_storage,
+        objective_cancellation_I,
+        Val(:real),
+        3.0,
+        "finite scaled bilinear cancellation regression",
+    ) == 3.0
+end
+@test DiffMoM._finite_scaled_dot_component(
+    objective_cancellation_I,
+    objective_cancellation_values,
+    Val(:real),
+    2.0,
+    "finite scaled dot cancellation regression",
+) == 2.0
+@test gradient_impedance(
+    [objective_cancellation_Q],
+    objective_cancellation_I,
+    objective_cancellation_I,
+) == [2.0]
+@test gradient_impedance(
+    [im .* objective_cancellation_Q],
+    objective_cancellation_I,
+    objective_cancellation_I;
+    reactive=true,
+) == [-2.0]
+
+objective_cancellation_product = similar(objective_cancellation_I)
+@test !DiffMoM._finite_matrix_vector_product_status!(
+    objective_cancellation_product,
+    objective_cancellation_Q,
+    objective_cancellation_I,
+    "quadratic cancellation product regression",
+)
+@test real(dot(
+    objective_cancellation_I, objective_cancellation_product)) == 0.0
+@test DiffMoM._quadratic_objective_from_product(
+    objective_cancellation_I,
+    objective_cancellation_Q,
+    objective_cancellation_product,
+) == 1.0
+@test DiffMoM._quadratic_objective_from_product(
+    objective_cancellation_I,
+    objective_cancellation_Q,
+    objective_cancellation_product,
+    false,
+) == 1.0
+
+objective_cancellation_Q32 = Matrix(Diagonal(
+    Float32[1f8, 1.0f0, -1f8]))
+@test compute_objective(
+    ones(Float32, 3), objective_cancellation_Q32) == 1.0f0
+
 # A Hermitian quadratic form can contain representable three-factor terms
 # even when either staged matrix-vector orientation rounds one term to zero.
 objective_underflow_unit = nextfloat(0.0)

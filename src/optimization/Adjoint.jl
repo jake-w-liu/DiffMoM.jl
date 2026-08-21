@@ -133,6 +133,127 @@ function _ieee_bilinear_requires_fallback(
     return _ieee_bilinear_matrix_requires_fallback(matrix, R)
 end
 
+@inline function _ieee_bilinear_entry_magnitude(
+    left_value::Number,
+    matrix_value::Number,
+    right_value::Number,
+    ::Val{:real},
+    ::Type{R},
+) where {R<:Union{Float32,Float64}}
+    left_real = R(real(left_value))
+    left_imag = R(imag(left_value))
+    matrix_real = R(real(matrix_value))
+    matrix_imag = R(imag(matrix_value))
+    right_real = R(real(right_value))
+    right_imag = R(imag(right_value))
+    return abs((left_real * matrix_real) * right_real) +
+           abs((left_real * matrix_imag) * right_imag) +
+           abs((left_imag * matrix_real) * right_imag) +
+           abs((left_imag * matrix_imag) * right_real)
+end
+
+@inline function _ieee_bilinear_entry_magnitude(
+    left_value::Number,
+    matrix_value::Number,
+    right_value::Number,
+    ::Val{:imag},
+    ::Type{R},
+) where {R<:Union{Float32,Float64}}
+    left_real = R(real(left_value))
+    left_imag = R(imag(left_value))
+    matrix_real = R(real(matrix_value))
+    matrix_imag = R(imag(matrix_value))
+    right_real = R(real(right_value))
+    right_imag = R(imag(right_value))
+    return abs((left_real * matrix_real) * right_imag) +
+           abs((left_real * matrix_imag) * right_real) +
+           abs((left_imag * matrix_real) * right_real) +
+           abs((left_imag * matrix_imag) * right_imag)
+end
+
+function _ieee_bilinear_component_magnitude(
+    left::AbstractVector,
+    matrix::AbstractMatrix,
+    right::AbstractVector,
+    component,
+    ::Type{R},
+) where {R<:Union{Float32,Float64}}
+    magnitude = zero(R)
+    @inbounds for row in axes(matrix, 1)
+        left_value = left[row]
+        for column in axes(matrix, 2)
+            matrix_value = matrix[row, column]
+            _ieee_dense_extreme_factor(matrix_value, R) &&
+                return magnitude, true, length(matrix)
+            magnitude += _ieee_bilinear_entry_magnitude(
+                left_value, matrix_value, right[column], component, R)
+        end
+    end
+    return magnitude, !isfinite(magnitude), length(matrix)
+end
+
+function _ieee_bilinear_component_magnitude(
+    left::AbstractVector,
+    matrix::SparseArrays.AbstractSparseMatrixCSC,
+    right::AbstractVector,
+    component,
+    ::Type{R},
+) where {R<:Union{Float32,Float64}}
+    magnitude = zero(R)
+    rows = rowvals(matrix)
+    values = nonzeros(matrix)
+    @inbounds for column in axes(matrix, 2)
+        right_value = right[column]
+        for position in nzrange(matrix, column)
+            matrix_value = values[position]
+            _ieee_dense_extreme_factor(matrix_value, R) &&
+                return magnitude, true, length(values)
+            magnitude += _ieee_bilinear_entry_magnitude(
+                left[rows[position]], matrix_value,
+                right_value, component, R)
+        end
+    end
+    return magnitude, !isfinite(magnitude), length(values)
+end
+
+function _ieee_bilinear_component_magnitude(
+    left::AbstractVector,
+    matrix::LocalMassMatrix,
+    right::AbstractVector,
+    component,
+    ::Type{R},
+) where {R<:Union{Float32,Float64}}
+    magnitude = zero(R)
+    @inbounds for position in eachindex(matrix.vals)
+        matrix_value = matrix.vals[position]
+        _ieee_dense_extreme_factor(matrix_value, R) &&
+            return magnitude, true, length(matrix.vals)
+        magnitude += _ieee_bilinear_entry_magnitude(
+            left[matrix.rows[position]], matrix_value,
+            right[matrix.cols[position]], component, R)
+    end
+    return magnitude, !isfinite(magnitude), length(matrix.vals)
+end
+
+function _ieee_bilinear_component_requires_fallback(
+    left::AbstractVector,
+    matrix::AbstractMatrix,
+    right::AbstractVector,
+    component,
+    value::Real,
+    ::Type{R},
+) where {R<:Union{Float32,Float64}}
+    _ieee_bilinear_values_require_fallback(left, R) && return true
+    _ieee_bilinear_values_require_fallback(right, R) && return true
+    magnitude, matrix_is_exceptional, entry_count =
+        _ieee_bilinear_component_magnitude(
+            left, matrix, right, component, R)
+    matrix_is_exceptional && return true
+    error_factor = _ieee_product_error_factor(R, 4, entry_count)
+    return _ieee_product_component_is_suspicious(
+        value, magnitude, error_factor)
+end
+
 @inline _ieee_bilinear_accumulator_precision(::Type{Float64}) =
     _IEEE_BILINEAR_FALLBACK_PRECISION
 @inline _ieee_bilinear_accumulator_precision(::Type{Float32}) = 960
@@ -483,6 +604,36 @@ end
     end
 end
 
+function _ieee_dot_component_requires_fallback(
+    left::AbstractVector,
+    right::AbstractVector,
+    component,
+    value::Real,
+    ::Type{R},
+) where {R<:Union{Float32,Float64}}
+    magnitude = zero(R)
+    @inbounds for index in eachindex(left, right)
+        left_value = left[index]
+        right_value = right[index]
+        (_ieee_dense_extreme_factor(left_value, R) ||
+         _ieee_dense_extreme_factor(right_value, R)) && return true
+        left_real = R(real(left_value))
+        left_imag = R(imag(left_value))
+        right_real = R(real(right_value))
+        right_imag = R(imag(right_value))
+        if component isa Val{:real}
+            magnitude += abs(left_real * right_real) +
+                         abs(left_imag * right_imag)
+        else
+            magnitude += abs(left_real * right_imag) +
+                         abs(left_imag * right_real)
+        end
+    end
+    error_factor = _ieee_product_error_factor(R, 2, length(left))
+    return _ieee_product_component_is_suspicious(
+        value, magnitude, error_factor)
+end
+
 function _finite_scaled_dot_component(
     left::AbstractVector,
     right::AbstractVector,
@@ -496,8 +647,8 @@ function _finite_scaled_dot_component(
     if value_type <: Union{Float32,Float64}
         needs_fallback = !isfinite(value) ||
             _ieee_dense_extreme_factor(multiplier, value_type) ||
-            _ieee_bilinear_values_require_fallback(left, value_type) ||
-            _ieee_bilinear_values_require_fallback(right, value_type)
+            _ieee_dot_component_requires_fallback(
+                left, right, component, raw_value, value_type)
         if needs_fallback
             typed_multiplier = value_type(multiplier)
             if _ieee_bilinear_supported_eltype(eltype(left), value_type) &&
@@ -716,8 +867,8 @@ function _finite_scaled_bilinear_component(
     if value_type <: Union{Float32,Float64}
         needs_fallback = !isfinite(value) ||
             _ieee_dense_extreme_factor(multiplier, value_type) ||
-            _ieee_bilinear_requires_fallback(
-                left, matrix, right, value_type)
+            _ieee_bilinear_component_requires_fallback(
+                left, matrix, right, component, raw_value, value_type)
         if needs_fallback
             typed_multiplier = value_type(multiplier)
             if _ieee_bilinear_superaccumulator_supported(
@@ -747,8 +898,8 @@ function _finite_bilinear_component(
         _dot_left_matrix_right(left, matrix, right), component)
     value_type = typeof(value)
     if value_type <: Union{Float32,Float64}
-        if !isfinite(value) || _ieee_bilinear_requires_fallback(
-                left, matrix, right, value_type)
+        if _ieee_bilinear_component_requires_fallback(
+                left, matrix, right, component, value, value_type)
             return _bilinear_component_bigfloat(
                 left, matrix, right, component, value_type, label)
         end
@@ -768,8 +919,8 @@ function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
     value = real(_dot_left_matrix_right(I, Q, I))
     value_type = typeof(value)
     if value_type <: Union{Float32,Float64}
-        if !isfinite(value) || _ieee_bilinear_requires_fallback(
-                I, Q, I, value_type)
+        if _ieee_bilinear_component_requires_fallback(
+                I, Q, I, Val(:real), value, value_type)
             return _quadratic_objective_bigfloat(I, Q, value_type)
         end
         return value
@@ -788,7 +939,9 @@ end
     value_type = typeof(value)
     if isfinite(value) &&
        (!(value_type <: Union{Float32,Float64}) ||
-        !_ieee_bilinear_requires_fallback(I, Q, I, value_type))
+        (!_ieee_bilinear_requires_fallback(I, Q, I, value_type) &&
+         !_ieee_dot_component_requires_fallback(
+             I, QI, Val(:real), value, value_type)))
         return value
     end
     return compute_objective(I, Q)
@@ -801,7 +954,13 @@ end
     product_used_fallback::Bool,
 )
     value = real(dot(I, QI))
-    !product_used_fallback && isfinite(value) && return value
+    value_type = typeof(value)
+    if !product_used_fallback && isfinite(value) &&
+       (!(value_type <: Union{Float32,Float64}) ||
+        !_ieee_dot_component_requires_fallback(
+            I, QI, Val(:real), value, value_type))
+        return value
+    end
     return compute_objective(I, Q)
 end
 
