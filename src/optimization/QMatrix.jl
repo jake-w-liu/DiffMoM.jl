@@ -882,8 +882,17 @@ function build_Q(
         ComplexF64, N, N; label="build_Q output matrix")
     checked_products = _farfield_q_has_extreme_operator_factor(
         G_mat, grid.w, pol)
+    # The checked path snapshots an optional mask in a BitVector-backed
+    # FarFieldQMatrix while it fills the dense result.  Charge the chunk array
+    # as simultaneous workspace; otherwise a limit equal to the output alone
+    # silently permits extra operation-owned storage.
+    mask_copy_bytes = checked_products && mask !== nothing ?
+        _checked_array_payload_bytes(
+            UInt64, cld(NΩ, 8sizeof(UInt64));
+            label="build_Q checked mask workspace") : 0
     work_bytes = try
-        checked_products ? matrix_bytes :
+        checked_products ?
+            Base.Checked.checked_add(matrix_bytes, mask_copy_bytes) :
             Base.Checked.checked_add(projection_bytes, matrix_bytes)
     catch err
         err isa OverflowError || rethrow()

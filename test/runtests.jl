@@ -3386,6 +3386,30 @@ q_wrapper_dense = build_Q(
     q_wrapper_G, q_wrapper_grid, q_extreme_pol,
     ComplexF64[NaN, 0])
 
+# The checked dense builder copies a mask into its temporary operator.  Its
+# work ceiling must include the BitVector chunks as well as the output matrix.
+q_checked_mask_count = 65
+q_checked_mask_grid = SphGrid(
+    repeat(reshape(Float64[0, 0, 1], 3, 1), 1, q_checked_mask_count),
+    zeros(q_checked_mask_count), zeros(q_checked_mask_count),
+    zeros(q_checked_mask_count))
+q_checked_mask_G = zeros(ComplexF64, 3q_checked_mask_count, 1)
+q_checked_mask_G[1] = 1.0e300
+q_checked_mask_pol = zeros(ComplexF64, 3, q_checked_mask_count)
+q_checked_mask = trues(q_checked_mask_count)
+q_checked_output_bytes = sizeof(ComplexF64)
+q_checked_mask_bytes =
+    cld(q_checked_mask_count, 8sizeof(UInt64)) * sizeof(UInt64)
+@test_throws ArgumentError build_Q(
+    q_checked_mask_G, q_checked_mask_grid, q_checked_mask_pol;
+    mask=q_checked_mask,
+    max_work_bytes=q_checked_output_bytes + q_checked_mask_bytes - 1)
+@test build_Q(
+    q_checked_mask_G, q_checked_mask_grid, q_checked_mask_pol;
+    mask=q_checked_mask,
+    max_work_bytes=q_checked_output_bytes + q_checked_mask_bytes) ==
+      zeros(ComplexF64, 1, 1)
+
 q_scale_operator = FarFieldQMatrix(
     reshape(ComplexF64[1, 0, 0], 3, 1),
     [1.0], q_extreme_pol, nothing, 1)
