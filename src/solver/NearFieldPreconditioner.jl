@@ -667,6 +667,7 @@ function _build_nearfield_preconditioner_from_entries(mesh::TriMesh, rwg::RWGDat
                                                        ilu_tau::Float64=1e-3,
                                                        max_triplet_bytes::Integer=
                                                            _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+    _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)

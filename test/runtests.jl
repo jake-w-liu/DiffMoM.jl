@@ -504,6 +504,10 @@ mismatched_rwg_grid = make_sph_grid(2, 4)
 @test_throws ArgumentError DiffMoM._validate_mesh_rwg_pair(
     mismatched_rwg_mesh, rwg)
 @test_throws ArgumentError rwg_centers(mismatched_rwg_mesh, rwg)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    Matrix{ComplexF64}(I, rwg.nedges, rwg.nedges),
+    mismatched_rwg_mesh, rwg, 1.0;
+    factorization=:diag)
 @test_throws ArgumentError assemble_excitation(
     mismatched_rwg_mesh, rwg, mismatched_rwg_excitation)
 @test_throws ArgumentError assemble_multiple_excitations(
