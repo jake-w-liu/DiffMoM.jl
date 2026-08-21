@@ -9823,12 +9823,13 @@ for (n_wedge, delta_s_wedge, delta_i_wedge) in
     @test stable_g_wedge ≈ direct_g_wedge rtol=1e-12 atol=1e-12
 end
 @test all(isfinite, DiffMoM._ptd_fringe_fg(2.0, Float64(π), 0.0, 2π))
-ptd_exact_cap_state = Dict{Int,Vector{Complex{BigFloat}}}()
+ptd_exact_cap_state = falses(
+    DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3 + 1)
 @test_throws ArgumentError DiffMoM._ptd_register_exact_direction!(
     ptd_exact_cap_state, 1,
     DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3)
-@test isempty(ptd_exact_cap_state)
-ptd_exact_cap_state[1] = Complex{BigFloat}[]
+@test !ptd_exact_cap_state[1]
+ptd_exact_cap_state[1] = true
 @test DiffMoM._ptd_register_exact_direction!(
     ptd_exact_cap_state, 1,
     DiffMoM._MAX_PTD_EXACT_DIRECTION_VALUES ÷ 3) ==
@@ -9939,6 +9940,34 @@ ptd_scale_high = solve_ptd(
 @test all(isfinite, ptd_scale_high.E_ff_ptd)
 @test ptd_scale_high.E_ff_ptd ≈
       32 .* ptd_scale_low.E_ff_ptd rtol=5e-14 atol=0.0
+
+# Finite edge contributions can nearly cancel even when every intermediate
+# value is ordinary-sized. Compare the ordinary-amplitude solve with an
+# independently triggered exact-product solve; both must retain the same
+# finite residual instead of a summation-order artifact.
+ptd_reduction_xyz = [
+    0.0  0.1  0.0  0.5  0.6  0.5;
+    0.0  0.0  0.1  0.0  0.0  0.1;
+    0.0  0.0  0.0  0.0  0.0  0.0
+]
+ptd_reduction_mesh = TriMesh(
+    ptd_reduction_xyz, reshape(Int[1, 2, 3, 4, 5, 6], 3, 2))
+ptd_reduction_grid = SphGrid(
+    reshape(Float64[1, 0, 0], 3, 1), [π / 2], [0.0], [1.0])
+ptd_reduction_excitation = PlaneWaveExcitation(
+    Vec3(0.0, 0.0, -2π), 1.0, Vec3(0.0, 1.0, 0.0))
+ptd_reduction_result = solve_ptd(
+    ptd_reduction_mesh, 299792458.0, ptd_reduction_excitation;
+    grid=ptd_reduction_grid, c0=299792458.0, min_dihedral_deg=0.0)
+ptd_reduction_scale = ldexp(1.0, 200)
+ptd_reduction_exact = solve_ptd(
+    ptd_reduction_mesh, 299792458.0,
+    PlaneWaveExcitation(
+        ptd_reduction_excitation.k_vec, ptd_reduction_scale,
+        ptd_reduction_excitation.pol);
+    grid=ptd_reduction_grid, c0=299792458.0, min_dihedral_deg=0.0)
+@test ptd_reduction_result.E_ff_ptd[:, 1] ≈
+      ptd_reduction_exact.E_ff_ptd[:, 1] ./ ptd_reduction_scale rtol=16eps(Float64) atol=0.0
 
 println("  PASS ✓")
 
