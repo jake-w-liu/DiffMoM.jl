@@ -5977,6 +5977,79 @@ for source_index in eachindex(dipole_farfield_phase_sources)
     ) == dipole_farfield_phase_references[source_index]
 end
 
+monopole_farfield_phase_direction = Vec3(1.0, 0.0, 0.0)
+monopole_farfield_phase_position = Vec3(π / 4, 0.0, 0.0)
+monopole_farfield_phase_sources = ntuple(2) do source_index
+    make_monopole(
+        monopole_farfield_phase_position,
+        Vec3(0.0, 0.0, 1.0),
+        0.01,
+        pattern_phase_cancellation_value,
+        pattern_phase_cancellation_frequency;
+        include_image=source_index == 1,
+    )
+end
+monopole_farfield_phase_references = setprecision(BigFloat, 4096) do
+    direction = SVector{3,BigFloat}(
+        BigFloat.(monopole_farfield_phase_direction))
+    direction_norm_squared = sum(abs2, direction)
+    direction_norm = sqrt(direction_norm_squared)
+    axis = SVector{3,BigFloat}(0.0, 0.0, 1.0)
+    axis_norm = sqrt(sum(abs2, axis))
+    cosine = dot(direction, axis) / (direction_norm * axis_norm)
+    theta_numerator = cross(direction, cross(direction, axis)) /
+                      (direction_norm_squared * axis_norm)
+    phase = exp(Complex{BigFloat}(
+        0,
+        BigFloat(pattern_phase_cancellation_k) * sum(
+            direction[index] *
+            BigFloat(monopole_farfield_phase_position[index])
+            for index in 1:3) / direction_norm,
+    ))
+    ntuple(2) do source_index
+        source = monopole_farfield_phase_sources[source_index]
+        electrical_height = BigFloat(pattern_phase_cancellation_k) *
+                            BigFloat(source.height)
+        imaginary_unit = Complex{BigFloat}(0, 1)
+        angular_pattern = if source.include_image
+            first_argument = electrical_height * (1 + cosine) / 2
+            second_argument = electrical_height * (1 - cosine) / 2
+            first_sinc = iszero(first_argument) ? one(BigFloat) :
+                         sin(first_argument) / first_argument
+            second_sinc = iszero(second_argument) ? one(BigFloat) :
+                          sin(second_argument) / second_argument
+            electrical_height^2 * first_sinc * second_sinc / 2
+        else
+            first_delta = 1 - cosine
+            second_delta = 1 + cosine
+            first_term = iszero(first_delta) ?
+                -imaginary_unit * electrical_height :
+                -expm1(imaginary_unit * electrical_height * first_delta) /
+                 first_delta
+            second_term = iszero(second_delta) ?
+                imaginary_unit * electrical_height :
+                -expm1(-imaginary_unit * electrical_height * second_delta) /
+                 second_delta
+            exp(imaginary_unit * electrical_height * cosine) *
+            (first_term + second_term) / 4
+        end
+        angular_factor = Complex{BigFloat}(source.amplitude) *
+                         angular_pattern
+        CVec3(ntuple(
+            index -> ComplexF64(
+                angular_factor * theta_numerator[index] * phase),
+            3,
+        ))
+    end
+end
+for source_index in eachindex(monopole_farfield_phase_sources)
+    @test incident_farfield(
+        monopole_farfield_phase_sources[source_index],
+        monopole_farfield_phase_direction,
+        pattern_phase_cancellation_k,
+    ) == monopole_farfield_phase_references[source_index]
+end
+
 pattern_guard = make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F, pattern_guard_F, freq_exc)

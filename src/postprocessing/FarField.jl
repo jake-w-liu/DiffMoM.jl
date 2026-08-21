@@ -637,46 +637,94 @@ end
            _source_scaling_extreme_value(k)
 end
 
+@inline function _monopole_farfield_angular_factor_big(
+    mono::MonopoleExcitation,
+    k::BigFloat,
+    cosine::BigFloat,
+)
+    electrical_height = k * BigFloat(mono.height)
+    imaginary_unit = Complex{BigFloat}(0, 1)
+
+    angular_factor = if mono.include_image
+        # Divide the image-theory pattern by sin(theta) analytically.
+        # sinc products retain both axial limits without a 0/0 division.
+        first_argument = electrical_height * (1 + cosine) / 2
+        second_argument = electrical_height * (1 - cosine) / 2
+        first_sinc = iszero(first_argument) ? one(BigFloat) :
+                     sin(first_argument) / first_argument
+        second_sinc = iszero(second_argument) ? one(BigFloat) :
+                      sin(second_argument) / second_argument
+        electrical_height^2 * first_sinc * second_sinc / 2
+    else
+        first_delta = 1 - cosine
+        second_delta = 1 + cosine
+        first_term = iszero(first_delta) ?
+            -imaginary_unit * electrical_height :
+            -expm1(imaginary_unit * electrical_height * first_delta) /
+             first_delta
+        second_term = iszero(second_delta) ?
+            imaginary_unit * electrical_height :
+            -expm1(-imaginary_unit * electrical_height * second_delta) /
+             second_delta
+        exp(imaginary_unit * electrical_height * cosine) *
+        (first_term + second_term) / 4
+    end
+
+    return Complex{BigFloat}(mono.amplitude) * angular_factor
+end
+
 @noinline function _monopole_farfield_angular_factor_exact(
         mono::MonopoleExcitation, k::Float64,
         cosine::Float64)
     return setprecision(BigFloat, _MONOPOLE_EXACT_BASE_PRECISION) do
-        electrical_height = BigFloat(k) * BigFloat(mono.height)
-        cosine_big = BigFloat(cosine)
-        imaginary_unit = Complex{BigFloat}(0, 1)
-
-        angular_factor = if mono.include_image
-            # Divide the image-theory pattern by sin(theta) analytically.
-            # sinc products retain both axial limits without a 0/0 division.
-            first_argument = electrical_height * (1 + cosine_big) / 2
-            second_argument = electrical_height * (1 - cosine_big) / 2
-            first_sinc = iszero(first_argument) ? one(BigFloat) :
-                         sin(first_argument) / first_argument
-            second_sinc = iszero(second_argument) ? one(BigFloat) :
-                          sin(second_argument) / second_argument
-            electrical_height^2 * first_sinc * second_sinc / 2
-        else
-            first_delta = 1 - cosine_big
-            second_delta = 1 + cosine_big
-            first_term = iszero(first_delta) ?
-                -imaginary_unit * electrical_height :
-                -expm1(imaginary_unit * electrical_height * first_delta) /
-                 first_delta
-            second_term = iszero(second_delta) ?
-                imaginary_unit * electrical_height :
-                -expm1(-imaginary_unit * electrical_height * second_delta) /
-                 second_delta
-            exp(imaginary_unit * electrical_height * cosine_big) *
-            (first_term + second_term) / 4
-        end
-
-        value = ComplexF64(
-            Complex{BigFloat}(mono.amplitude) * angular_factor)
+        value = ComplexF64(_monopole_farfield_angular_factor_big(
+            mono, BigFloat(k), BigFloat(cosine)))
         isfinite(value) ||
             throw(OverflowError(
                 "MonopoleExcitation far-field amplitude is outside the " *
                 "representable ComplexF64 range"))
         return value
+    end
+end
+
+@noinline function _monopole_farfield_exact(
+    mono::MonopoleExcitation,
+    r_hat::Vec3,
+    k::Float64,
+)
+    axis_moment = CVec3(ntuple(
+        index -> ComplexF64(mono.axis[index]), 3))
+    precision = max(
+        _MONOPOLE_EXACT_BASE_PRECISION,
+        _dipole_angular_precision(axis_moment, r_hat),
+        _source_directional_phase_precision(k, r_hat, mono.position),
+    )
+    return setprecision(BigFloat, precision) do
+        direction = SVector{3,BigFloat}(
+            ntuple(index -> BigFloat(r_hat[index]), 3))
+        direction_norm_squared = sum(abs2, direction)
+        direction_norm = sqrt(direction_norm_squared)
+        axis = SVector{3,BigFloat}(
+            ntuple(index -> BigFloat(mono.axis[index]), 3))
+        axis_norm = sqrt(sum(abs2, axis))
+        cosine = clamp(
+            dot(direction, axis) / (direction_norm * axis_norm),
+            -one(BigFloat),
+            one(BigFloat),
+        )
+        angular_factor = _monopole_farfield_angular_factor_big(
+            mono, BigFloat(k), cosine)
+        theta_numerator = cross(direction, cross(direction, axis)) /
+                          (direction_norm_squared * axis_norm)
+        phase_argument = BigFloat(k) * sum(
+            direction[index] * BigFloat(mono.position[index])
+            for index in 1:3) / direction_norm
+        phase = exp(Complex{BigFloat}(0, phase_argument))
+        value = SVector{3,Complex{BigFloat}}(ntuple(
+            index -> angular_factor * theta_numerator[index] * phase,
+            3,
+        ))
+        return _finite_source_vector(value, "MonopoleExcitation far field")
     end
 end
 
@@ -753,9 +801,16 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
     phase = _source_directional_phase(
         kf, r_hat, rh, mono.position, 1.0,
         "MonopoleExcitation far field")
-    return _check_finite_cvec3(
-        CVec3(angular_factor * theta_numerator) * phase,
-        "MonopoleExcitation far field")
+    rotated_angular_factor = angular_factor * phase
+    (isfinite(rotated_angular_factor) &&
+     !_source_product_requires_exact(
+        angular_factor, phase, rotated_angular_factor)) ||
+        return _monopole_farfield_exact(mono, r_hat, kf)
+    unphased = CVec3(angular_factor * theta_numerator)
+    value = unphased * phase
+    all(isfinite, value) ||
+        return _monopole_farfield_exact(mono, r_hat, kf)
+    return value
 end
 
 function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
