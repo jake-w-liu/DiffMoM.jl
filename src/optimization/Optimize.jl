@@ -674,8 +674,10 @@ end
                 break
             end
         end
+        error_factor = _ieee_product_error_factor(
+            Float64, 1, length(gradient))
         needs_fallback |= !iszero(absolute_sum) &&
-            abs(derivative) <= 8eps(Float64) * absolute_sum
+            abs(derivative) <= error_factor * absolute_sum
     end
     if needs_fallback
         return setprecision(

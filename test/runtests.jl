@@ -4274,6 +4274,19 @@ optimizer_cancelled_reference = setprecision(BigFloat, 256) do
 end
 @test optimizer_cancelled_derivative ==
       Float64(optimizer_cancelled_reference) < 0.0
+# The forward-error bound must include the reduction length.  Rounding each
+# small term upward changes 192 to 256 without making the fixed-width test fire.
+optimizer_long_derivative_count = 64
+optimizer_long_derivative = DiffMoM._projected_directional_derivative(
+    ones(Float64, optimizer_long_derivative_count + 2),
+    vcat(
+        1e16,
+        fill(3.0, optimizer_long_derivative_count),
+        -1e16,
+    ),
+    zeros(Float64, optimizer_long_derivative_count + 2),
+)
+@test optimizer_long_derivative == 3optimizer_long_derivative_count
 optimizer_min_subnormal = nextfloat(0.0)
 optimizer_tiny_derivative = DiffMoM._projected_directional_derivative(
     [optimizer_min_subnormal], [-optimizer_min_subnormal], [0.0])
