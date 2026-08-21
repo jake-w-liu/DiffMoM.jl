@@ -5825,6 +5825,38 @@ end
     field_guard_pol,
 ) == field_guard_subnormal_reference
 
+# A finite phase rotation can cancel one complex field component while the
+# orthogonal component remains large.  Preserve the small component from the
+# exact Float64 inputs.
+field_guard_cancellation_scale = 1.0e16
+field_guard_cancellation_amplitude = ComplexF64(
+    field_guard_cancellation_scale,
+    nextfloat(field_guard_cancellation_scale),
+)
+field_guard_cancellation_point = Vec3(0.0, -π / 4, 0.0)
+field_guard_cancellation_wavevector = Vec3(0.0, 1.0, 0.0)
+field_guard_cancellation_reference = setprecision(BigFloat, 512) do
+    phase = exp(Complex{BigFloat}(
+        0,
+        -sum(
+            BigFloat(field_guard_cancellation_wavevector[component]) *
+            BigFloat(field_guard_cancellation_point[component])
+            for component in 1:3),
+    ))
+    CVec3(
+        ComplexF64(
+            Complex{BigFloat}(field_guard_cancellation_amplitude) * phase),
+        0.0 + 0im,
+        0.0 + 0im,
+    )
+end
+@test plane_wave_field(
+    field_guard_cancellation_point,
+    field_guard_cancellation_wavevector,
+    field_guard_cancellation_amplitude,
+    Vec3(1.0, 0.0, 0.0),
+) == field_guard_cancellation_reference
+
 pattern_guard = make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F, pattern_guard_F, freq_exc)

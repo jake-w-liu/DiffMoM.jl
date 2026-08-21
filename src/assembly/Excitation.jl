@@ -1477,8 +1477,18 @@ end
     end
     phase = _source_phase(
         1.0, k_vec, r, -1.0, "plane-wave incident field")
-    value = pol * E0 * phase
-    all(isfinite, value) && return value
+    scaled_field = pol * E0
+    value = scaled_field * phase
+    if all(isfinite, value)
+        @inbounds for component in 1:3
+            _source_product_requires_exact(
+                scaled_field[component], phase, value[component]) &&
+                return _source_scaled_phase_vector_exact(
+                    E0, pol, 1.0, k_vec, r, -1.0,
+                    "plane-wave incident field")
+        end
+        return value
+    end
     return _source_scaled_phase_vector_exact(
         E0, pol, 1.0, k_vec, r, -1.0,
         "plane-wave incident field")
