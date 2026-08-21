@@ -13,6 +13,12 @@ const _MIE_EXTERIOR_SERIES_THRESHOLD = 1.0
 const _MIE_EXACT_SERIES_PRECISION = 2304
 const _MAX_MIE_EXACT_PRECISION = 16_384
 const _MAX_MIE_EXACT_WORK = 2_000_000
+# Retain at least half of the Float64 significand on the ordinary path.
+# Colder, more strongly cancelled cases use the bounded BigFloat kernel.
+const _MIE_CANCELLATION_THRESHOLD = sqrt(eps(Float64))
+# Covers two complex triple products, their subtraction, and coefficient
+# division when propagating an absolute forward-error bound.
+const _MIE_COEFFICIENT_ERROR_FACTOR = 64eps(Float64)
 
 @inline function _validate_mie_exact_work(
     nstop::Int,
@@ -317,8 +323,9 @@ end
             _mie_riccati_psi_pairs_big(xb, nstop)
         chi_previous = -cos(xb)
         chi_current = -cos(xb) / xb - sin(xb)
-        pi_previous2 = 0.0
-        pi_previous1 = 1.0
+        cosine_big = BigFloat(cosine)
+        pi_previous2 = zero(BigFloat)
+        pi_previous1 = one(BigFloat)
         first_sum = zero(Complex{BigFloat})
         second_sum = zero(Complex{BigFloat})
 
@@ -341,22 +348,23 @@ end
             coefficient_b = -psi / xi
 
             pi_order, pi_previous = if order == 1
-                (1.0, 0.0)
+                (one(BigFloat), zero(BigFloat))
             else
-                (((2order - 1) / (order - 1)) * cosine * pi_previous1 -
-                 (order / (order - 1)) * pi_previous2,
+                ((BigFloat(2order - 1) / BigFloat(order - 1)) *
+                     cosine_big * pi_previous1 -
+                 (BigFloat(order) / BigFloat(order - 1)) * pi_previous2,
                  pi_previous1)
             end
-            tau_order = order * cosine * pi_order -
-                        (order + 1) * pi_previous
+            tau_order = BigFloat(order) * cosine_big * pi_order -
+                        BigFloat(order + 1) * pi_previous
             angular_scale = BigFloat(2order + 1) /
                             BigFloat(order * (order + 1))
             first_sum += angular_scale *
-                         (coefficient_a * BigFloat(pi_order) +
-                          coefficient_b * BigFloat(tau_order))
+                         (coefficient_a * pi_order +
+                          coefficient_b * tau_order)
             second_sum += angular_scale *
-                          (coefficient_a * BigFloat(tau_order) +
-                           coefficient_b * BigFloat(pi_order))
+                          (coefficient_a * tau_order +
+                           coefficient_b * pi_order)
 
             if order >= 2
                 pi_previous2, pi_previous1 = pi_previous1, pi_order
@@ -390,17 +398,10 @@ end
         refractive_index = sqrt(epsilon * permeability)
         internal_argument = refractive_index * xb
         use_internal_series = abs(internal_argument) <= 1
-        internal_function_pairs = if use_internal_series
-            nothing
-        else
-            converted_internal = ComplexF64(internal_argument)
-            if isfinite(converted_internal) && !iszero(converted_internal)
-                _mie_internal_function_pairs(nstop, converted_internal)
-            else
-                _mie_internal_function_pairs_big(
-                    nstop, internal_argument)
-            end
-        end
+        # This path is also the correctness retry for cancelled constitutive
+        # contrasts, so do not seed it with already rounded internal pairs.
+        internal_function_pairs = use_internal_series ? nothing :
+            _mie_internal_function_pairs_big(nstop, internal_argument)
         exterior_leading = exterior_argument
         use_exterior_series = xb <= 1
         exterior_pairs = use_exterior_series ? nothing :
@@ -408,8 +409,9 @@ end
         internal_leading = internal_argument
         chi_previous = -cos(xb)
         chi_current = -cos(xb) / xb - sin(xb)
-        pi_previous2 = 0.0
-        pi_previous1 = 1.0
+        cosine_big = BigFloat(cosine)
+        pi_previous2 = zero(BigFloat)
+        pi_previous1 = one(BigFloat)
         first_sum = zero(Complex{BigFloat})
         second_sum = zero(Complex{BigFloat})
 
@@ -454,22 +456,23 @@ end
             coefficient_b = -numerator_b / denominator_b
 
             pi_order, pi_previous = if order == 1
-                (1.0, 0.0)
+                (one(BigFloat), zero(BigFloat))
             else
-                (((2order - 1) / (order - 1)) * cosine * pi_previous1 -
-                 (order / (order - 1)) * pi_previous2,
+                ((BigFloat(2order - 1) / BigFloat(order - 1)) *
+                     cosine_big * pi_previous1 -
+                 (BigFloat(order) / BigFloat(order - 1)) * pi_previous2,
                  pi_previous1)
             end
-            tau_order = order * cosine * pi_order -
-                        (order + 1) * pi_previous
+            tau_order = BigFloat(order) * cosine_big * pi_order -
+                        BigFloat(order + 1) * pi_previous
             angular_scale = BigFloat(2order + 1) /
                             BigFloat(order * (order + 1))
             first_sum += angular_scale *
-                         (coefficient_a * BigFloat(pi_order) +
-                          coefficient_b * BigFloat(tau_order))
+                         (coefficient_a * pi_order +
+                          coefficient_b * tau_order)
             second_sum += angular_scale *
-                          (coefficient_a * BigFloat(tau_order) +
-                           coefficient_b * BigFloat(pi_order))
+                          (coefficient_a * tau_order +
+                           coefficient_b * pi_order)
 
             if order >= 2
                 pi_previous2, pi_previous1 = pi_previous1, pi_order
@@ -787,6 +790,62 @@ end
         psi_zero, psi_one, "internal Mie scaled forward recurrence")
 end
 
+@inline function _mie_product_requires_exact(
+    first::ComplexF64,
+    second::ComplexF64,
+    third::ComplexF64,
+    intermediate::ComplexF64,
+    product::ComplexF64,
+)
+    isfinite(intermediate) && isfinite(product) || return true
+    (iszero(first) || iszero(second) || iszero(third)) && return false
+    intermediate_scale = abs(intermediate)
+    product_scale = abs(product)
+    return !isfinite(intermediate_scale) || !isfinite(product_scale) ||
+           iszero(intermediate_scale) || iszero(product_scale)
+end
+
+@inline function _mie_coefficient_error_bound(
+    numerator::ComplexF64,
+    denominator::ComplexF64,
+    numerator_magnitude::Float64,
+    denominator_magnitude::Float64,
+    coefficient::ComplexF64,
+)
+    isfinite(numerator) && isfinite(denominator) &&
+        isfinite(numerator_magnitude) &&
+        isfinite(denominator_magnitude) &&
+        isfinite(coefficient) || return Inf
+    numerator_error =
+        _MIE_COEFFICIENT_ERROR_FACTOR * numerator_magnitude
+    denominator_error =
+        _MIE_COEFFICIENT_ERROR_FACTOR * denominator_magnitude
+    denominator_margin = abs(denominator) - denominator_error
+    denominator_margin > 0.0 || return Inf
+    bound = (numerator_error + abs(coefficient) * denominator_error) /
+            denominator_margin + 8eps(Float64) * abs(coefficient)
+    return isfinite(bound) ? bound : Inf
+end
+
+@inline function _mie_series_requires_exact(
+    value::ComplexF64,
+    magnitude::Float64,
+)
+    isfinite(value) && isfinite(magnitude) || return true
+    iszero(magnitude) && return false
+    return abs(value) <= _MIE_CANCELLATION_THRESHOLD * magnitude
+end
+
+@inline function _mie_coefficient_error_requires_exact(
+    value::ComplexF64,
+    error_bound::Float64,
+)
+    isfinite(value) && isfinite(error_bound) || return true
+    iszero(error_bound) && return false
+    return iszero(value) ||
+           error_bound >= _MIE_CANCELLATION_THRESHOLD * abs(value)
+end
+
 @inline function _mie_dielectric_coefficients(
     scaled_m::ComplexF64,
     scaled_mu::ComplexF64,
@@ -797,15 +856,76 @@ end
     xi_n::ComplexF64,
     xi_p_n::ComplexF64,
 )
-    num_a = scaled_m * interior_function * psi_p_n -
-            scaled_mu * interior_derivative * psi_n
-    den_a = scaled_m * interior_function * xi_p_n -
-            scaled_mu * interior_derivative * xi_n
-    num_b = scaled_mu * interior_function * psi_p_n -
-            scaled_m * interior_derivative * psi_n
-    den_b = scaled_mu * interior_function * xi_p_n -
-            scaled_m * interior_derivative * xi_n
-    return -num_a / den_a, -num_b / den_b
+    psi = ComplexF64(psi_n)
+    psi_derivative = ComplexF64(psi_p_n)
+
+    m_function = scaled_m * interior_function
+    mu_function = scaled_mu * interior_function
+    m_derivative = scaled_m * interior_derivative
+    mu_derivative = scaled_mu * interior_derivative
+
+    num_a_first = m_function * psi_derivative
+    num_a_second = mu_derivative * psi
+    den_a_first = m_function * xi_p_n
+    den_a_second = mu_derivative * xi_n
+    num_b_first = mu_function * psi_derivative
+    num_b_second = m_derivative * psi
+    den_b_first = mu_function * xi_p_n
+    den_b_second = m_derivative * xi_n
+
+    products_require_exact =
+        _mie_product_requires_exact(
+            scaled_m, interior_function, psi_derivative,
+            m_function, num_a_first) ||
+        _mie_product_requires_exact(
+            scaled_mu, interior_derivative, psi,
+            mu_derivative, num_a_second) ||
+        _mie_product_requires_exact(
+            scaled_m, interior_function, xi_p_n,
+            m_function, den_a_first) ||
+        _mie_product_requires_exact(
+            scaled_mu, interior_derivative, xi_n,
+            mu_derivative, den_a_second) ||
+        _mie_product_requires_exact(
+            scaled_mu, interior_function, psi_derivative,
+            mu_function, num_b_first) ||
+        _mie_product_requires_exact(
+            scaled_m, interior_derivative, psi,
+            m_derivative, num_b_second) ||
+        _mie_product_requires_exact(
+            scaled_mu, interior_function, xi_p_n,
+            mu_function, den_b_first) ||
+        _mie_product_requires_exact(
+            scaled_m, interior_derivative, xi_n,
+            m_derivative, den_b_second)
+    products_require_exact &&
+        return 0.0 + 0.0im, 0.0 + 0.0im, Inf, Inf, true
+
+    num_a = num_a_first - num_a_second
+    den_a = den_a_first - den_a_second
+    num_b = num_b_first - num_b_second
+    den_b = den_b_first - den_b_second
+    all(isfinite, (num_a, den_a, num_b, den_b)) ||
+        return 0.0 + 0.0im, 0.0 + 0.0im, Inf, Inf, true
+
+    coefficient_a = -num_a / den_a
+    coefficient_b = -num_b / den_b
+    isfinite(coefficient_a) && isfinite(coefficient_b) ||
+        return 0.0 + 0.0im, 0.0 + 0.0im, Inf, Inf, true
+
+    num_a_magnitude = abs(num_a_first) + abs(num_a_second)
+    den_a_magnitude = abs(den_a_first) + abs(den_a_second)
+    num_b_magnitude = abs(num_b_first) + abs(num_b_second)
+    den_b_magnitude = abs(den_b_first) + abs(den_b_second)
+    coefficient_a_error = _mie_coefficient_error_bound(
+        num_a, den_a, num_a_magnitude, den_a_magnitude, coefficient_a)
+    coefficient_b_error = _mie_coefficient_error_bound(
+        num_b, den_b, num_b_magnitude, den_b_magnitude, coefficient_b)
+    coefficients_require_exact =
+        !isfinite(coefficient_a_error) || !isfinite(coefficient_b_error)
+    return coefficient_a, coefficient_b,
+           coefficient_a_error, coefficient_b_error,
+           coefficients_require_exact
 end
 
 @inline function _assert_finite_mie_amplitudes(S1::ComplexF64,
@@ -1115,6 +1235,8 @@ function mie_s1s2_pec(x::Float64, μ::Float64; nmax=nothing)
 
     S1 = 0.0 + 0.0im
     S2 = 0.0 + 0.0im
+    S1_magnitude = 0.0
+    S2_magnitude = 0.0
 
     for n in 1:nstop
         psi_nm1 = x * j_nm1
@@ -1137,8 +1259,12 @@ function mie_s1s2_pec(x::Float64, μ::Float64; nmax=nothing)
         τ_n = n * μ * π_n - (n + 1) * π_nm1
 
         c = (2n + 1) / (n * (n + 1))
-        S1 += c * (a_n * π_n + b_n * τ_n)
-        S2 += c * (a_n * τ_n + b_n * π_n)
+        S1_term = c * (a_n * π_n + b_n * τ_n)
+        S2_term = c * (a_n * τ_n + b_n * π_n)
+        S1 += S1_term
+        S2 += S2_term
+        S1_magnitude += abs(S1_term)
+        S2_magnitude += abs(S2_term)
 
         if n >= 2
             π_prev2, π_prev1 = π_prev1, π_n
@@ -1150,6 +1276,12 @@ function mie_s1s2_pec(x::Float64, μ::Float64; nmax=nothing)
                 recurrence * j_n - j_nm1
             y_nm1, y_n = y_n, recurrence * y_n - y_nm1
         end
+    end
+
+    if _mie_series_requires_exact(S1, S1_magnitude) ||
+       _mie_series_requires_exact(S2, S2_magnitude)
+        _validate_mie_exact_work(nstop)
+        return _mie_s1s2_pec_exact_exterior(x, μ, nstop)
     end
 
     return _assert_finite_mie_amplitudes(S1, S2, "PEC Mie series")
@@ -1217,6 +1349,10 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
     π_prev1 = 1.0
     S1 = 0.0 + 0.0im
     S2 = 0.0 + 0.0im
+    S1_magnitude = 0.0
+    S2_magnitude = 0.0
+    S1_coefficient_error = 0.0
+    S2_coefficient_error = 0.0
 
     for n in 1:nstop
         psi_nm1 = x * j_nm1
@@ -1244,16 +1380,22 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
         # The leading minus keeps the phase convention aligned with the PEC
         # h^(2) implementation above. RCS is invariant to the resulting global
         # scattered-field phase, but amplitude users expect one convention.
-        a_n, b_n = _mie_dielectric_coefficients(
-            scaled_m,
-            scaled_mu,
-            interior_function,
-            interior_derivative,
-            psi_n,
-            psi_p_n,
-            xi_n,
-            xi_p_n,
-        )
+        a_n, b_n, a_n_error, b_n_error, coefficients_require_exact =
+            _mie_dielectric_coefficients(
+                scaled_m,
+                scaled_mu,
+                interior_function,
+                interior_derivative,
+                psi_n,
+                psi_p_n,
+                xi_n,
+                xi_p_n,
+            )
+        if coefficients_require_exact
+            _validate_mie_exact_work(nstop)
+            return _mie_s1s2_dielectric_exact_exterior(
+                x, cosγ, epsc, muc, nstop)
+        end
 
         if n == 1
             π_n = 1.0
@@ -1266,8 +1408,16 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
 
         τ_n = n * cosγ * π_n - (n + 1) * π_nm1
         c = (2n + 1) / (n * (n + 1))
-        S1 += c * (a_n * π_n + b_n * τ_n)
-        S2 += c * (a_n * τ_n + b_n * π_n)
+        S1_term = c * (a_n * π_n + b_n * τ_n)
+        S2_term = c * (a_n * τ_n + b_n * π_n)
+        S1 += S1_term
+        S2 += S2_term
+        S1_magnitude += abs(S1_term)
+        S2_magnitude += abs(S2_term)
+        S1_coefficient_error += abs(c) *
+            (abs(π_n) * a_n_error + abs(τ_n) * b_n_error)
+        S2_coefficient_error += abs(c) *
+            (abs(τ_n) * a_n_error + abs(π_n) * b_n_error)
 
         if n >= 2
             π_prev2, π_prev1 = π_prev1, π_n
@@ -1289,6 +1439,17 @@ function mie_s1s2_dielectric(x::Float64, cosγ::Float64, eps_r;
                 )
             end
         end
+    end
+
+    if _mie_series_requires_exact(S1, S1_magnitude) ||
+       _mie_series_requires_exact(S2, S2_magnitude) ||
+       _mie_coefficient_error_requires_exact(
+           S1, S1_coefficient_error) ||
+       _mie_coefficient_error_requires_exact(
+           S2, S2_coefficient_error)
+        _validate_mie_exact_work(nstop)
+        return _mie_s1s2_dielectric_exact_exterior(
+            x, cosγ, epsc, muc, nstop)
     end
 
     return _assert_finite_mie_amplitudes(

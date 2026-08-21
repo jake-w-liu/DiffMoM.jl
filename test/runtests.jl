@@ -1837,6 +1837,22 @@ for component in 1:2
         mie_small_dielectric_reference[component];
         rtol=8eps(Float64), atol=0.0)
 end
+
+# A representably non-vacuum sphere must retain its correspondingly small
+# scattered field. Direct Float64 coefficient subtraction loses the one-ulp
+# constitutive contrast and can even make the two polarizations identical.
+mie_near_matched_reference = (
+    -3.63755562991961e-39 - 7.389651216974019e-20im,
+    -7.2751252440187975e-40 - 1.4779302433947635e-20im,
+)
+mie_near_matched = mie_s1s2_dielectric(
+    0.1, 0.2, nextfloat(1.0))
+for component in 1:2
+    @test isapprox(
+        mie_near_matched[component],
+        mie_near_matched_reference[component];
+        rtol=8eps(Float64), atol=0.0)
+end
 mie_small_dielectric_overtruncated = mie_s1s2_dielectric(
     1.0e-8, 0.3, 4.0; nmax=4)
 mie_s1s2_dielectric(1.0e-8, 0.3, 4.0; nmax=4)
