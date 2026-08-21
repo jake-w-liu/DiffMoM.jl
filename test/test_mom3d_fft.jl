@@ -137,6 +137,53 @@ end
     @test cancellation_direct * cancellation_x == cancellation_x
     @test cancellation_fft * cancellation_x == cancellation_x
 
+    indexed_grid = VoxelGrid3D(
+        (0.0, 2.0), (0.0, 2.0), (0.0, 1.0), 2, 2, 2)
+    indexed_target = 8
+    indexed_source = 1
+    indexed_dyadic = electric_dipole_dyadic_3d(
+        indexed_grid.centers[indexed_target],
+        indexed_grid.centers[indexed_source],
+        1.0,
+    )
+    indexed_dipole = CVec3(
+        1.0e16 / indexed_dyadic[2, 1],
+        3.0 / indexed_dyadic[2, 2],
+        -1.0e16 / indexed_dyadic[2, 3],
+    )
+    indexed_alpha_matrix = zeros(ComplexF64, 3, 3)
+    indexed_alpha_matrix[:, 1] .= indexed_dipole
+    indexed_alpha = fill(
+        zero(DiffMoM._CMat3DDA), indexed_grid.nvoxels)
+    indexed_alpha[indexed_source] =
+        DiffMoM._CMat3DDA(indexed_alpha_matrix)
+    indexed_eps = fill(
+        DiffMoM._CMat3DDA(Matrix{ComplexF64}(I, 3, 3)),
+        indexed_grid.nvoxels,
+    )
+    indexed_direct = DDAOperator3D(
+        indexed_grid, 1.0, indexed_eps, indexed_alpha, false)
+    indexed_kernel = fft_dda_kernel_3d(indexed_grid, 1.0)
+    indexed_fft = FFTDDAOperator3D(
+        indexed_grid,
+        1.0,
+        indexed_eps,
+        indexed_alpha,
+        false,
+        indexed_kernel,
+        zeros(ComplexF64, indexed_kernel.pad_dims..., 3),
+        zeros(ComplexF64, indexed_kernel.pad_dims...),
+    )
+    indexed_row = DiffMoM._dda_index(indexed_target, 2)
+    indexed_column = DiffMoM._dda_index(indexed_source, 1)
+    unchecked_indexed_value = -DiffMoM._alpha_block(
+        indexed_dyadic, indexed_alpha[indexed_source])[2, 1]
+    @test abs(
+        unchecked_indexed_value -
+        indexed_direct[indexed_row, indexed_column]) > 1.0e-3
+    @test indexed_fft[indexed_row, indexed_column] ==
+          indexed_direct[indexed_row, indexed_column]
+
     finite_cancellation_grid = VoxelGrid3D(
         (0.0, 4.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
     finite_cancellation_pairs = (

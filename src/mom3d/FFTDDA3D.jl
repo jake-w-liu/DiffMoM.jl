@@ -275,8 +275,9 @@ function Base.getindex(A::FFTDDAOperator3D, row::Int, col::Int)
         return a == b ? 1.0 + 0im : 0.0 + 0im
     end
     iszero(A.alpha[j]) && return 0.0 + 0im
-    G = electric_dipole_dyadic_3d(A.grid.centers[i], A.grid.centers[j], A.k0)
-    return -_alpha_block(G, A.alpha[j])[a, b]
+    block = _electric_dipole_alpha_block_3d(
+        A.grid.centers[i], A.grid.centers[j], A.k0, A.alpha[j])
+    return -block[a, b]
 end
 
 function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
