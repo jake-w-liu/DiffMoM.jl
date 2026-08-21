@@ -809,12 +809,19 @@ function incident_farfield(pat::PatternFeedExcitation, r_hat::Vec3, k::Real)
         Fϕ = conj(Fϕ)
     end
 
-    E_far = Fθ * eθ + Fϕ * eϕ
+    E_far = CVec3(Fθ * eθ + Fϕ * eϕ)
     phase = _source_directional_phase(
         kf, r_hat, rh, pat.phase_center, 1.0,
         "PatternFeedExcitation far field")
-    return _check_finite_cvec3(
-        CVec3(E_far) * phase, "PatternFeedExcitation far field")
+    value = E_far * phase
+    @inbounds for component in 1:3
+        _source_product_requires_exact(
+            E_far[component], phase, value[component]) &&
+            return _source_directional_phase_vector_exact(
+                E_far, kf, r_hat, pat.phase_center, 1.0,
+                "PatternFeedExcitation far field")
+    end
+    return _check_finite_cvec3(value, "PatternFeedExcitation far field")
 end
 
 @noinline function _multi_incident_farfield_exact(

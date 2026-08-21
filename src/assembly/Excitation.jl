@@ -670,6 +670,34 @@ end
     end
 end
 
+@noinline function _source_directional_phase_vector_exact(
+    vector::CVec3,
+    scale::Float64,
+    direction::Vec3,
+    center::Vec3,
+    phase_sign::Float64,
+    label::AbstractString,
+)
+    precision = _source_directional_phase_precision(
+        scale, direction, center)
+    return setprecision(BigFloat, precision) do
+        direction_big = SVector{3,BigFloat}(
+            ntuple(component -> BigFloat(direction[component]), 3))
+        direction_norm = sqrt(sum(abs2, direction_big))
+        numerator = sum(
+            direction_big[component] * BigFloat(center[component])
+            for component in 1:3)
+        argument = BigFloat(scale) * numerator / direction_norm
+        phase = exp(Complex{BigFloat}(
+            0, BigFloat(phase_sign) * argument))
+        value = SVector{3,Complex{BigFloat}}(ntuple(
+            component -> Complex{BigFloat}(vector[component]) * phase,
+            3,
+        ))
+        return _finite_source_vector(value, label)
+    end
+end
+
 @inline function _source_directional_phase(
     scale::Float64,
     direction::Vec3,
@@ -1402,8 +1430,21 @@ end
         Fϕ = conj(Fϕ)
     end
 
-    field = (Fθ * eθ + Fϕ * eϕ) / R * exp(-1im * k * R)
+    theta_field = Fθ * eθ
+    phi_field = Fϕ * eϕ
+    angular_field = theta_field + phi_field
+    _source_vector_sum_requires_exact(
+        theta_field, phi_field, angular_field) &&
+        return _pattern_feed_field_exact(r, pat, k)
+    unphased_field = angular_field / R
+    phase = exp(-1im * k * R)
+    field = unphased_field * phase
     all(isfinite, field) || return _pattern_feed_field_exact(r, pat, k)
+    @inbounds for component in 1:3
+        _source_product_requires_exact(
+            unphased_field[component], phase, field[component]) &&
+            return _pattern_feed_field_exact(r, pat, k)
+    end
     return CVec3(field)
 end
 

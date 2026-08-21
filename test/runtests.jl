@@ -5857,6 +5857,70 @@ end
     Vec3(1.0, 0.0, 0.0),
 ) == field_guard_cancellation_reference
 
+pattern_phase_cancellation_scale = 1.0e16
+pattern_phase_cancellation_value = ComplexF64(
+    pattern_phase_cancellation_scale,
+    nextfloat(pattern_phase_cancellation_scale),
+)
+pattern_phase_cancellation_frequency = DiffMoM._C0 / (2π)
+pattern_phase_cancellation_k = DiffMoM._frequency_to_wavenumber(
+    pattern_phase_cancellation_frequency,
+    DiffMoM._C0,
+    "pattern-feed phase-cancellation regression",
+)
+pattern_phase_cancellation_point = Vec3(0.0, 0.0, π / 4)
+pattern_phase_cancellation_feed = make_pattern_feed(
+    [0.0, π],
+    [0.0, π],
+    fill(pattern_phase_cancellation_value, 2, 2),
+    zeros(ComplexF64, 2, 2),
+    pattern_phase_cancellation_frequency,
+)
+pattern_phase_cancellation_reference = setprecision(BigFloat, 512) do
+    distance = BigFloat(pattern_phase_cancellation_point[3])
+    phase = exp(Complex{BigFloat}(
+        0, -BigFloat(pattern_phase_cancellation_k) * distance))
+    CVec3(
+        ComplexF64(
+            Complex{BigFloat}(pattern_phase_cancellation_value) *
+            phase / distance),
+        0.0 + 0im,
+        0.0 + 0im,
+    )
+end
+@test pattern_feed_field(
+    pattern_phase_cancellation_point,
+    pattern_phase_cancellation_feed,
+) == pattern_phase_cancellation_reference
+
+pattern_farfield_phase_center = Vec3(0.0, 0.0, π / 4)
+pattern_farfield_phase_feed = make_pattern_feed(
+    [0.0, π],
+    [0.0, π],
+    fill(pattern_phase_cancellation_value, 2, 2),
+    zeros(ComplexF64, 2, 2),
+    pattern_phase_cancellation_frequency;
+    phase_center=pattern_farfield_phase_center,
+)
+pattern_farfield_phase_reference = setprecision(BigFloat, 512) do
+    phase = exp(Complex{BigFloat}(
+        0,
+        BigFloat(pattern_phase_cancellation_k) *
+        BigFloat(pattern_farfield_phase_center[3]),
+    ))
+    CVec3(
+        ComplexF64(
+            Complex{BigFloat}(pattern_phase_cancellation_value) * phase),
+        0.0 + 0im,
+        0.0 + 0im,
+    )
+end
+@test incident_farfield(
+    pattern_farfield_phase_feed,
+    Vec3(0.0, 0.0, 1.0),
+    pattern_phase_cancellation_k,
+) == pattern_farfield_phase_reference
+
 pattern_guard = make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F, pattern_guard_F, freq_exc)
