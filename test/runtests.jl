@@ -6386,6 +6386,35 @@ for monopole_far_axis_amplitude in (1.0, ldexp(1.0, 200))
           monopole_far_axis_reference rtol=8eps(Float64) atol=0.0
 end
 
+# Simpson summation must not turn a representable broadside pattern null into
+# a roundoff-sized field.  The Float64 value of 2π leaves a small, nonzero
+# residual in the exact input-value problem.
+monopole_null_k = 2π
+monopole_null_height = 1.0
+monopole_null_frequency =
+    monopole_null_k * DiffMoM._C0 / (2π)
+monopole_null_reference = setprecision(BigFloat, 512) do
+    electrical_height =
+        BigFloat(monopole_null_k) * BigFloat(monopole_null_height)
+    pattern = 2 * sin(electrical_height / 2)^2
+    CVec3(0.0 + 0im, 0.0 + 0im, -ComplexF64(pattern))
+end
+for include_image in (true, false)
+    monopole_null_source = make_monopole(
+        Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0),
+        monopole_null_height, 1.0 + 0im,
+        monopole_null_frequency;
+        include_image=include_image,
+    )
+    expected_null = include_image ?
+        monopole_null_reference : monopole_null_reference / 2
+    @test incident_farfield(
+        monopole_null_source,
+        Vec3(1.0, 0.0, 0.0),
+        monopole_null_k,
+    ) == expected_null
+end
+
 multi_farfield_theta = [0.0, π]
 multi_farfield_phi = [0.0, π]
 multi_farfield_maximum = floatmax(Float64)

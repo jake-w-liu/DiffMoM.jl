@@ -719,16 +719,36 @@ function incident_farfield(mono::MonopoleExcitation, r_hat::Vec3, k::Real)
         I_0 = -1im * 2π * mono.amplitude / η0
         dz = (span_factor / N) * h
         integ = 0.0 + 0im
+        integration_magnitude = 0.0
+        integration_failed = false
         @inbounds for i in 0:N
             unit_position = mono.include_image ?
                             (-1.0 + 2.0 * (i / N)) : (i / N)
             z = h * unit_position
             I_z = I_0 * sin(kf * (h - abs(z)))  # abs(z) reduces to z for z ≥ 0
             w = (i == 0 || i == N) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
-            integ += w * I_z * exp(1im * kf * z * cosθ)
+            term = w * I_z * exp(1im * kf * z * cosθ)
+            if !isfinite(term)
+                integration_failed = true
+                break
+            end
+            integ += term
+            integration_magnitude +=
+                abs(real(term)) + abs(imag(term))
         end
-        integ *= dz / 3.0
-        1im * η0 * kf / (4π) * integ
+        integration_error_factor =
+            _ieee_product_error_factor(Float64, 4, N + 1)
+        if integration_failed ||
+           _ieee_product_component_is_suspicious(
+                max(abs(real(integ)), abs(imag(integ))),
+                integration_magnitude,
+                integration_error_factor)
+            _monopole_farfield_angular_factor_exact(
+                mono, kf, cosθ)
+        else
+            integ *= dz / 3.0
+            1im * η0 * kf / (4π) * integ
+        end
     end
     phase = _source_directional_phase(
         kf, r_hat, rh, mono.position, 1.0,
