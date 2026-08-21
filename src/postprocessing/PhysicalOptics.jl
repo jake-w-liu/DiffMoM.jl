@@ -161,6 +161,38 @@ end
     return value
 end
 
+@inline function _po_farfield_accumulation_requires_exact(
+    value::CVec3,
+    real_magnitudes::MVector{3,Float64},
+    imag_magnitudes::MVector{3,Float64},
+    term_count::Int,
+)
+    scale = max(maximum(real_magnitudes), maximum(imag_magnitudes))
+    isfinite(scale) || return true
+    iszero(scale) && return false
+
+    value_norm_squared = 0.0
+    bound_norm_squared = 0.0
+    @inbounds for component in 1:3
+        value_real = real(value[component]) / scale
+        value_imag = imag(value[component]) / scale
+        bound_real = real_magnitudes[component] / scale
+        bound_imag = imag_magnitudes[component] / scale
+        value_norm_squared = muladd(
+            value_real, value_real, value_norm_squared)
+        value_norm_squared = muladd(
+            value_imag, value_imag, value_norm_squared)
+        bound_norm_squared = muladd(
+            bound_real, bound_real, bound_norm_squared)
+        bound_norm_squared = muladd(
+            bound_imag, bound_imag, bound_norm_squared)
+    end
+    error_factor = min(
+        1.0, 16eps(Float64) * Float64(max(term_count, 1)))
+    return sqrt(value_norm_squared) <=
+           error_factor * sqrt(bound_norm_squared)
+end
+
 """
     POResult
 
@@ -595,6 +627,9 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
         end
 
         E_q = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+        real_magnitudes = zeros(MVector{3,Float64})
+        imag_magnitudes = zeros(MVector{3,Float64})
+        accumulation_requires_exact = false
 
         for t in 1:Nt
             !illuminated[t] && continue
@@ -608,15 +643,36 @@ function solve_po(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation;
             # Analytical phase integral over triangle
             I_t = _phase_integral_analytical(k, delta_k,
                       tri_v1[t], tri_v2[t], tri_v3[t], tri_area[t])
-            isfinite(I_t) ||
-                throw(OverflowError(
-                    "PO phase integral is non-finite for triangle $t, direction $q"))
+            if !isfinite(I_t)
+                accumulation_requires_exact = true
+                break
+            end
             contribution = _po_farfield_contribution(
                 prefactor, k, E0, proj, I_t, false, t, q)
             E_q += contribution
-            all(isfinite, E_q) ||
-                throw(OverflowError(
-                    "PO far-field accumulation overflowed at direction $q"))
+            @inbounds for component in 1:3
+                real_magnitudes[component] +=
+                    abs(real(contribution[component]))
+                imag_magnitudes[component] +=
+                    abs(imag(contribution[component]))
+            end
+            if !all(isfinite, E_q) ||
+               !all(isfinite, real_magnitudes) ||
+               !all(isfinite, imag_magnitudes)
+                accumulation_requires_exact = true
+                break
+            end
+        end
+
+        if !accumulation_requires_exact
+            accumulation_requires_exact =
+                _po_farfield_accumulation_requires_exact(
+                    E_q, real_magnitudes, imag_magnitudes, Nt)
+        end
+        if accumulation_requires_exact
+            E_q = _po_farfield_direction_geometry_exact(
+                k, E0, supplied_r_hat, k_vec, V_t,
+                tri_v1, tri_v2, tri_v3, tri_area, illuminated, q)
         end
 
         E_ff[1, q] = E_q[1]

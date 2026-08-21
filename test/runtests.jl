@@ -9581,6 +9581,36 @@ end
 @test !iszero(po_projection_reference)
 @test po_projection_result.E_ff[1, 1] == po_projection_reference
 
+# Finite triangle contributions can cancel below their accumulated rounding
+# error even when every individual phase and product is ordinary-range.
+po_cancellation_mesh = TriMesh(
+    Float64[
+        0.0  0.1  0.0  0.5  0.6  0.5;
+        0.0  0.0  0.1  0.0  0.0  0.1;
+        0.0  0.0  0.0  0.0  0.0  0.0
+    ],
+    reshape(Int[1, 2, 3, 4, 5, 6], 3, 2),
+)
+po_cancellation_grid = SphGrid(
+    reshape(Float64[1.0, 0.0, 0.0], 3, 1),
+    [π / 2], [0.0], [1.0])
+po_cancellation_result = solve_po(
+    po_cancellation_mesh,
+    po_c0,
+    PlaneWaveExcitation(
+        Vec3(0.0, 0.0, -2π), 1.0, Vec3(0.0, 1.0, 0.0));
+    grid=po_cancellation_grid,
+    c0=po_c0,
+)
+# Correctly rounded 4352-bit direct geometry integration.
+po_cancellation_reference = CVec3(
+    0.0 + 0.0im,
+    1.2223683843719156e-18 - 1.4637279654833965e-18im,
+    0.0 + 0.0im,
+)
+@test CVec3(po_cancellation_result.E_ff[:, 1]) ==
+      po_cancellation_reference
+
 # A stored unit direction generally has a norm a few ulps from one.  The PO
 # transverse projection must still preserve the exact null when the surface
 # direction is parallel to that observation direction, on both accumulation
