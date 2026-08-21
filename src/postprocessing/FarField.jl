@@ -849,11 +849,18 @@ function incident_farfield(multi::MultiExcitation, r_hat::Vec3, k::Real)
         isfinite(w) ||
             throw(ArgumentError(
                 "MultiExcitation weight $i must be finite, got $w."))
-        child = incident_farfield(exc, r_hat, k)
+        child = incident_farfield(exc, r_hat, k)::CVec3
         _source_scaled_vector_requires_fallback(w, child) &&
             return _multi_incident_farfield_exact(multi, r_hat, k)
-        updated = E + w * child
-        all(isfinite, updated) ||
+        contribution = w * child
+        @inbounds for component in 1:3
+            _source_product_requires_exact(
+                w, child[component], contribution[component]) &&
+                return _multi_incident_farfield_exact(multi, r_hat, k)
+        end
+        updated = E + contribution
+        (all(isfinite, updated) &&
+         !_source_vector_sum_requires_exact(E, contribution, updated)) ||
             return _multi_incident_farfield_exact(multi, r_hat, k)
         E = updated
     end

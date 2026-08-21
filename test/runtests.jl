@@ -6435,6 +6435,58 @@ multi_farfield = make_multi_excitation(multi_farfield_children)
 @test incident_farfield(
     multi_farfield, Vec3(0.0, 0.0, 1.0), k_exc) ==
     CVec3(ComplexF64(multi_farfield_maximum), 0.0 + 0im, 0.0 + 0im)
+multi_farfield_cancellation_values = (1.0e16, 1.0, -1.0e16)
+multi_farfield_cancellation = make_multi_excitation([
+    make_pattern_feed(
+        multi_farfield_theta,
+        multi_farfield_phi,
+        fill(ComplexF64(value), 2, 2),
+        zeros(ComplexF64, 2, 2),
+        freq_exc,
+    ) for value in multi_farfield_cancellation_values
+])
+@test incident_farfield(
+    multi_farfield_cancellation,
+    Vec3(0.0, 0.0, 1.0),
+    k_exc,
+) == CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+
+multi_product_scale = 1.0e8
+multi_product_child_value = ComplexF64(
+    multi_product_scale, nextfloat(multi_product_scale))
+multi_product_weight = ComplexF64(
+    multi_product_scale, multi_product_scale)
+multi_product_source = make_multi_excitation([
+    make_pattern_feed(
+        multi_farfield_theta,
+        multi_farfield_phi,
+        fill(multi_product_child_value, 2, 2),
+        zeros(ComplexF64, 2, 2),
+        freq_exc,
+    )
+], [multi_product_weight])
+multi_product_reference = setprecision(BigFloat, 256) do
+    ComplexF64(
+        Complex{BigFloat}(multi_product_weight) *
+        Complex{BigFloat}(multi_product_child_value))
+end
+@test incident_farfield(
+    multi_product_source,
+    Vec3(0.0, 0.0, 1.0),
+    k_exc,
+) == CVec3(multi_product_reference, 0.0 + 0im, 0.0 + 0im)
+
+multi_incident_cancellation = make_multi_excitation([
+    ImportedExcitation(
+        _ -> CVec3(ComplexF64(value), 0.0 + 0im, 0.0 + 0im);
+        kind=:electric_field,
+    ) for value in multi_farfield_cancellation_values
+])
+@test DiffMoM._incident_electric_field(
+    multi_incident_cancellation,
+    Vec3(1.0, 0.0, 0.0),
+    k_exc,
+) == CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)
 multi_incident_point = Vec3(0.0, 0.0, 1.0)
 @test DiffMoM._incident_electric_field(
     multi_farfield, multi_incident_point, k_exc) ==
@@ -6481,6 +6533,15 @@ multi_rhs_rwg = build_rwg(multi_rhs_mesh)
 @test multi_rhs_rwg.nedges == 1
 @test assemble_excitation(
     multi_rhs_mesh, multi_rhs_rwg, multi_rhs) == [multi_rhs_value]
+multi_rhs_cancellation = make_multi_excitation([
+    make_delta_gap(1, value, 1.0)
+    for value in multi_farfield_cancellation_values
+])
+@test assemble_excitation(
+    multi_rhs_mesh,
+    multi_rhs_rwg,
+    multi_rhs_cancellation,
+) == ComplexF64[1.0]
 @test_throws ArgumentError assemble_excitation(
     multi_rhs_mesh, multi_rhs_rwg, multi_rhs; max_exact_bytes=1)
 

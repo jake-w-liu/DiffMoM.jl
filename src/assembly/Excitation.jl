@@ -474,6 +474,37 @@ end
     return false
 end
 
+@inline function _source_product_requires_exact(
+    first::Number,
+    second::Number,
+    product::Number,
+)
+    first_value = ComplexF64(first)
+    second_value = ComplexF64(second)
+    product_value = ComplexF64(product)
+    real_magnitude =
+        abs(real(first_value) * real(second_value)) +
+        abs(imag(first_value) * imag(second_value))
+    imag_magnitude =
+        abs(real(first_value) * imag(second_value)) +
+        abs(imag(first_value) * real(second_value))
+    return _matrixfree_complex_reduction_requires_exact(
+        product_value, real_magnitude, imag_magnitude, 2)
+end
+
+@inline function _source_vector_sum_requires_exact(
+    first::SVector{3,<:Number},
+    second::SVector{3,<:Number},
+    combined::SVector{3,<:Number},
+)
+    @inbounds for component in 1:3
+        _scaled_sum_requires_exact(
+            first[component], second[component], combined[component]) &&
+            return true
+    end
+    return false
+end
+
 @inline function _source_scaled_phase_vector_requires_fallback(
     amplitude::Number,
     vector::SVector{3,<:Number},
@@ -2483,18 +2514,25 @@ function _incident_electric_field(excitation::MultiExcitation, r::Vec3, k)
         error("compute_total_field: MultiExcitation has mismatched excitation/weight lengths.")
     E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     for (i, (exc, w)) in enumerate(zip(excitation.excitations, excitation.weights))
-        child = try
+        child = (try
             _incident_electric_field(exc, r, k)
         catch err
             error(
                 "compute_total_field: MultiExcitation child $i of type $(typeof(exc)) " *
                 "failed incident-field evaluation: $(sprint(showerror, err))"
             )
-        end
+        end)::CVec3
         _source_scaled_vector_requires_fallback(w, child) &&
             return _multi_incident_electric_field_exact(excitation, r, k)
-        updated = E + w * child
-        all(isfinite, updated) ||
+        contribution = w * child
+        @inbounds for component in 1:3
+            _source_product_requires_exact(
+                w, child[component], contribution[component]) &&
+                return _multi_incident_electric_field_exact(excitation, r, k)
+        end
+        updated = E + contribution
+        (all(isfinite, updated) &&
+         !_source_vector_sum_requires_exact(E, contribution, updated)) ||
             return _multi_incident_electric_field_exact(excitation, r, k)
         E = updated
     end
@@ -2914,15 +2952,24 @@ function assemble_pattern_feed(mesh::TriMesh, rwg::RWGData,
 end
 
 @inline function _multi_assembly_child_requires_exact(
-        weight::ComplexF64, child::AbstractVector{ComplexF64})
+        weight::ComplexF64,
+        child::AbstractVector{ComplexF64},
+        output::AbstractVector{ComplexF64})
     iszero(weight) && return false
     weight_is_extreme = _source_scaling_extreme_value(weight)
-    @inbounds for value in child
+    @inbounds for index in eachindex(child, output)
+        value = child[index]
         iszero(value) && continue
         (weight_is_extreme || _source_scaling_extreme_value(value)) &&
             return true
         product = weight * value
-        (!isfinite(product) || iszero(product)) && return true
+        (!isfinite(product) || iszero(product) ||
+         _source_product_requires_exact(weight, value, product)) &&
+            return true
+        combined = output[index] + product
+        (!isfinite(combined) ||
+         _scaled_sum_requires_exact(output[index], product, combined)) &&
+            return true
     end
     return false
 end
@@ -2983,7 +3030,7 @@ function assemble_multi(mesh::TriMesh, rwg::RWGData,
             quad_order=quad_order,
             quad_cache=cache,
             max_exact_bytes=exact_byte_limit)
-        _multi_assembly_child_requires_exact(w, child) &&
+        _multi_assembly_child_requires_exact(w, child, v) &&
             return _assemble_multi_exact!(
                 v, mesh, rwg, multi, quad_order, cache,
                 exact_byte_limit)
