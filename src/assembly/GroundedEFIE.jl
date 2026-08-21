@@ -193,6 +193,7 @@ function assemble_Z_efie_grounded(mesh::TriMesh, rwg::RWGData, k,
                                       _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                   max_green_terms::Integer=
                                       _DEFAULT_MAX_PERIODIC_GREEN_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     work_bytes = _checked_array_payload_bytes(
         ComplexF64, 3, rwg.nedges, rwg.nedges;
         label="grounded EFIE dense work matrices")
@@ -324,6 +325,7 @@ wave referenced at the metasurface plane (z=0), the total tangential drive is sc
 """
 function assemble_excitation_grounded(mesh::TriMesh, rwg::RWGData, pw, k,
                                       lattice::PeriodicLattice; height::Real, quad_order::Int=3)
+    _validate_mesh_rwg_pair(mesh, rwg)
     kw = _validated_lattice_wavenumber(k, lattice)
     h = _validated_ground_height(height)
     v_inc = assemble_excitation(mesh, rwg, pw; quad_order=quad_order)
@@ -350,6 +352,7 @@ sheet at z=0 gives R_00 = -1 for any h.
 """
 function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
                                           lattice::PeriodicLattice; height::Real, kwargs...)
+    _validate_mesh_rwg_pair(mesh, rwg)
     kw = _validated_lattice_wavenumber(k, lattice)
     h = _validated_ground_height(height)
     modes, R_cur = reflection_coefficients(mesh, rwg, I, kw, lattice; kwargs...)
@@ -385,6 +388,7 @@ function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I,
                                                  lattice::PeriodicLattice; height::Real,
                                                  pol::SVector{3,Float64}=SVector(1.0, 0.0, 0.0),
                                                  kwargs...)
+    _validate_mesh_rwg_pair(mesh, rwg)
     kw = _validated_lattice_wavenumber(k, lattice)
     h = _validated_ground_height(height)
     _validate_periodic_polarization(pol)

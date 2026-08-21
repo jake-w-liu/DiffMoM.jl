@@ -918,6 +918,7 @@ Phase is relative to the leaf box center: exp(+jk k̂·(r' - r_c)).
 function compute_bf_radiation_patterns(mesh::TriMesh, rwg::RWGData, k::Float64,
                                         octree::Octree, sampling::SphereSampling;
                                         quad_order::Int=3)
+    _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     npts = sampling.npts
     patterns = zeros(ComplexF64, 4, npts, N)
@@ -985,6 +986,7 @@ function assemble_mlfma_nearfield(octree::Octree, mesh::TriMesh, rwg::RWGData, k
                                        _DEFAULT_MAX_EFIE_CACHE_BYTES,
                                    max_adjacency_pairs::Integer=
                                        _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     entry_count = _validate_mlfma_nearfield_resources(
         octree, max_nearfield_entries, max_nearfield_bytes,
@@ -1811,6 +1813,7 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
                                max_exact_combine_work::Int=
                                    _DEFAULT_MAX_MLFMA_EXACT_COMBINE_WORK,
                                verbose::Bool=false)
+    _validate_mesh_rwg_pair(mesh, rwg)
     leaf_edge = _validated_octree_leaf_edge(k, leaf_lambda)
     precision >= 1 ||
         throw(ArgumentError(

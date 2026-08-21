@@ -306,6 +306,7 @@ function precompute_patch_mass(
         quad_order::Int=3,
         max_work_bytes::Integer=_DEFAULT_MAX_MASS_PRECOMPUTE_WORK_BYTES,
         max_terms::Integer=_DEFAULT_MAX_MASS_PRECOMPUTE_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     Nt = ntriangles(mesh)
     P = partition.P

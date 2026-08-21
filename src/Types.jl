@@ -151,6 +151,13 @@ struct RWGData{T<:Number}
     has_periodic_bloch::Bool    # true when built with periodic Bloch constraints
 end
 
+@inline function _validate_mesh_rwg_pair(mesh::TriMesh, rwg::RWGData)
+    mesh === rwg.mesh ||
+        throw(ArgumentError(
+            "RWG data must be built from the supplied mesh object."))
+    return nothing
+end
+
 """
 Compact sparse matrix for local RWG mass blocks.
 

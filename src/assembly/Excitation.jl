@@ -2530,6 +2530,7 @@ function assemble_excitation(mesh::TriMesh, rwg::RWGData,
                              quad_cache::Union{Nothing,ExcitationQuadCache}=nothing,
                              max_exact_bytes::Integer=
                                  _DEFAULT_MAX_MULTI_EXACT_BYTES)
+    _validate_mesh_rwg_pair(mesh, rwg)
     _validate_excitation_model(excitation)
     exact_byte_limit =
         _validated_resource_limit("max_exact_bytes", max_exact_bytes)
@@ -2585,6 +2586,7 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
                                            _DEFAULT_MAX_EXCITATION_WORK_BYTES,
                                        max_terms::Integer=
                                            _DEFAULT_MAX_EXCITATION_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     # Public excitation structs can be constructed directly, so validate every
     # column before sizing or allocating the potentially large dense result.
     # `assemble_excitation` validates again to keep its standalone contract.

@@ -197,9 +197,9 @@ end
 function _assert_closed_surface_sie_3d(mesh::TriMesh, rwg::RWGData;
                                        mesh_precheck::Bool=true,
                                        area_tol_rel::Float64=1e-12)
+    _validate_mesh_rwg_pair(mesh, rwg)
     rwg.has_periodic_bloch &&
         error("Dielectric 3D SIE requires non-periodic closed-surface RWG basis functions.")
-    mesh === rwg.mesh || error("RWG data must be built from the same mesh object.")
     if mesh_precheck
         assert_mesh_quality(mesh;
             allow_boundary=false,

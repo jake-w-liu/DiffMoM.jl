@@ -337,6 +337,7 @@ function _build_efie_cache(
         eta0=376.730313668,
         max_cache_bytes::Integer=_DEFAULT_MAX_EFIE_CACHE_BYTES,
         max_adjacency_pairs::Integer=_DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     kw, inv_k2, omega_mu0 = _validated_efie_prefactors(k, eta0)
     N = rwg.nedges
     Nt = ntriangles(mesh)
@@ -707,6 +708,7 @@ function assemble_Z_efie(mesh::TriMesh, rwg::RWGData, k;
                              _DEFAULT_MAX_EFIE_CACHE_BYTES,
                          max_adjacency_pairs::Integer=
                              _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     matrix_bytes = _checked_array_payload_bytes(
         ComplexF64, N, N; label="dense EFIE matrix")
@@ -921,6 +923,7 @@ function matrixfree_efie_operator(mesh::TriMesh, rwg::RWGData, k;
                                       _DEFAULT_MAX_EFIE_CACHE_BYTES,
                                   max_adjacency_pairs::Integer=
                                       _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     if mesh_precheck
         assert_mesh_quality(mesh;
             allow_boundary=allow_boundary,

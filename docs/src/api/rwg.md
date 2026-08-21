@@ -26,6 +26,11 @@ Constructs `RWGData` from the interior edges of a triangle mesh. Each interior e
 
 **Returns:** `RWGData` containing edge-to-triangle connectivity and geometric factors. See [types.md](types.md) for detailed field descriptions.
 
+Pass that `RWGData` together with the same `TriMesh` object to assembly and
+post-processing routines. Mixing basis data with another mesh object is
+rejected, even when the meshes have the same dimensions, because RWG geometry
+is tied to the mesh from which it was built.
+
 **Relationship between mesh size and system size:**
 
 | Mesh | Vertices | Triangles | Interior edges (N) | System matrix |

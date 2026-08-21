@@ -493,6 +493,35 @@ rwg = build_rwg(mesh)
 println("  RWG basis functions: $(rwg.nedges)")
 @assert rwg.nedges > 0
 
+# RWG geometric factors are tied to the exact mesh object used to build them.
+# Mixing a same-topology but geometrically different mesh must fail closed.
+mismatched_rwg_mesh = make_rect_plate(2Lx, 2Ly, Nx, Ny)
+mismatched_rwg_k = 1.0
+mismatched_rwg_excitation = make_plane_wave(
+    Vec3(0.0, 0.0, -mismatched_rwg_k), 1.0,
+    Vec3(1.0, 0.0, 0.0))
+mismatched_rwg_grid = make_sph_grid(2, 4)
+@test_throws ArgumentError DiffMoM._validate_mesh_rwg_pair(
+    mismatched_rwg_mesh, rwg)
+@test_throws ArgumentError rwg_centers(mismatched_rwg_mesh, rwg)
+@test_throws ArgumentError assemble_excitation(
+    mismatched_rwg_mesh, rwg, mismatched_rwg_excitation)
+@test_throws ArgumentError assemble_multiple_excitations(
+    mismatched_rwg_mesh, rwg, [mismatched_rwg_excitation])
+@test_throws ArgumentError assemble_Z_efie(
+    mismatched_rwg_mesh, rwg, mismatched_rwg_k;
+    mesh_precheck=false)
+@test_throws ArgumentError matrixfree_efie_operator(
+    mismatched_rwg_mesh, rwg, mismatched_rwg_k;
+    mesh_precheck=false)
+@test_throws ArgumentError radiation_vectors(
+    mismatched_rwg_mesh, rwg, mismatched_rwg_grid, mismatched_rwg_k)
+@test_throws ArgumentError precompute_triangle_mass(
+    mismatched_rwg_mesh, rwg)
+@test_throws ArgumentError compute_nearfield(
+    mismatched_rwg_mesh, rwg, zeros(ComplexF64, rwg.nedges),
+    Vec3(0.0, 0.0, 1.0), mismatched_rwg_k)
+
 # Verify RWG edge lengths are positive and areas are positive
 @assert all(rwg.len .> 0)
 @assert all(rwg.area_plus .> 0)

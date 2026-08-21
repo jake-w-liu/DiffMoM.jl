@@ -245,6 +245,7 @@ of the centroids of its two supporting triangles.
 Returns a Vector{Vec3} of length N.
 """
 function rwg_centers(mesh::TriMesh, rwg::RWGData)
+    _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     centers = Vector{Vec3}(undef, N)
     for n in 1:N
@@ -910,6 +911,7 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
                                              _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES,
                                          max_green_cache_entries::Integer=
                                              _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES)
+    _validate_mesh_rwg_pair(mesh, rwg)
     _validate_nearfield_build_controls(
         cutoff, :spatial, factorization, ilu_tau)
     A = matrixfree_efie_operator(mesh, rwg, k;

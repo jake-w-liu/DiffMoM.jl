@@ -795,8 +795,9 @@ function _floquet_current_fourier_coefficients(mesh::TriMesh, rwg::RWGData,
                                                    _DEFAULT_MAX_PERIODIC_REFLECTION_WORK_BYTES,
                                                max_fourier_terms::Integer=
                                                    _DEFAULT_MAX_PERIODIC_FOURIER_TERMS,
-                                               max_exact_fourier_terms::Integer=
+                                                   max_exact_fourier_terms::Integer=
                                                    _DEFAULT_MAX_PERIODIC_EXACT_FOURIER_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     kw = _validated_lattice_wavenumber(k, lattice)
     mode_count, work_limit = _preflight_periodic_reflection_base(
         N_orders, max_work_bytes)
@@ -1366,6 +1367,7 @@ function specular_rcs_objective(mesh::TriMesh, rwg::RWGData,
                                 quad_order::Int=3,
                                 half_angle::Float64=π/18,
                                 polarization=:x)
+    _validate_mesh_rwg_pair(mesh, rwg)
     kw = _validated_lattice_wavenumber(k, lattice)
     # Specular (0,0) reflected order keeps the incident transverse wavevector and
     # flips only kz, so r̂ = (kx_bloch, ky_bloch, +kz_inc)/k: θ_r = θ_inc and

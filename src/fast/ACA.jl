@@ -820,6 +820,7 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                                 _DEFAULT_MAX_ACA_GREEN_WORKSPACE_BYTES,
                             max_green_cache_entries::Int=
                                 _DEFAULT_MAX_ACA_GREEN_CACHE_ENTRIES)
+    _validate_mesh_rwg_pair(mesh, rwg)
     _validate_aca_options(aca_tol, max_rank)
     leaf_size >= 1 ||
         throw(ArgumentError(

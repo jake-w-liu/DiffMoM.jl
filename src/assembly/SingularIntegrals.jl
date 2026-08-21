@@ -349,6 +349,7 @@ function self_cell_contribution(
     Am::Float64, wq, k,
     wq_hi, quad_pts_tm_hi::Vector{Vec3})
 
+    _validate_mesh_rwg_pair(mesh, rwg)
     Nq = length(wq)
     Nq_hi = length(wq_hi)
     CT = complex(typeof(real(k)))
@@ -471,6 +472,7 @@ function adjacent_cell_contribution(
     wq, k,
     wq_hi, quad_pts_tm_hi::Vector{Vec3}, quad_pts_tn_hi::Vector{Vec3})
 
+    _validate_mesh_rwg_pair(mesh, rwg)
     Nq = length(wq)
     Nq_hi = length(wq_hi)
     CT = complex(typeof(real(k)))

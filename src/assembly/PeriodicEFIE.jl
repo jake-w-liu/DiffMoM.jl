@@ -492,6 +492,7 @@ function assemble_Z_efie_periodic(mesh::TriMesh, rwg::RWGData, k,
                                       _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                   max_green_terms::Integer=
                                       _DEFAULT_MAX_PERIODIC_GREEN_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     work_bytes = _checked_array_payload_bytes(
         ComplexF64, 3, rwg.nedges, rwg.nedges;
         label="periodic EFIE dense work matrices")

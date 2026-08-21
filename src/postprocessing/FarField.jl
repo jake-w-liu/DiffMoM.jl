@@ -368,6 +368,7 @@ function radiation_vectors(
         max_work_bytes::Integer=_DEFAULT_MAX_RADIATION_WORK_BYTES,
         max_terms::Integer=_DEFAULT_MAX_RADIATION_TERMS,
         max_exact_work::Integer=_DEFAULT_MAX_RADIATION_EXACT_WORK)
+    _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     NΩ = _validate_sph_grid(grid)
     _validated_farfield_scalar(k, "radiation_vectors wavenumber")

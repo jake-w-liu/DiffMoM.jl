@@ -472,6 +472,7 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
                                    backscatter_cone::Float64=15.0,
                                    matrix_free_Q::Bool=false,
                                    rcs_component::Symbol=:copol)
+    _validate_mesh_rwg_pair(mesh, rwg)
     (isfinite(k) && k > 0.0) ||
         throw(ArgumentError(
             "multi-angle wavenumber must be finite and positive, got $k"))

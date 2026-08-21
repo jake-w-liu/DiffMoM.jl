@@ -656,6 +656,7 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                                        _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                                    max_interaction_terms::Integer=
                                        _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     length(I_coeffs) == rwg.nedges ||
         throw(DimensionMismatch("I_coeffs length $(length(I_coeffs)) != rwg.nedges=$(rwg.nedges)."))
     (isfinite(real(k)) && isfinite(imag(k)) && abs(k) > 0.0) ||
@@ -1030,6 +1031,7 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                                _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                            max_interaction_terms::Integer=
                                _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
     return _compute_nearfield_matrix(mesh, rwg, I_coeffs, obs, k;
@@ -1052,6 +1054,7 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                                _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                            max_interaction_terms::Integer=
                                _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
     return _compute_nearfield_matrix(mesh, rwg, I_coeffs, obs, k;
@@ -1145,6 +1148,7 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                                  _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                              max_interaction_terms::Integer=
                                  _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
     return _compute_total_field_matrix(mesh, rwg, I_coeffs, excitation, obs, k;
@@ -1168,6 +1172,7 @@ function compute_total_field(mesh::TriMesh, rwg::RWGData,
                                  _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                              max_interaction_terms::Integer=
                                  _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+    _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
     return _compute_total_field_matrix(mesh, rwg, I_coeffs, excitation, obs, k;
