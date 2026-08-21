@@ -288,6 +288,7 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 | `objective` | `Symbol` | `:linear` | Scalarization: `:linear` (Σ w_a J_a), `:sum_log` (Σ w_a log(J_a/J_ref,a)), or `:smoothmax_log` (smooth worst-angle normalized log). |
 | `reference_objectives` | `Vector{Float64}` or `nothing` | `nothing` | Positive per-angle reference values for normalized objectives (typically the PEC objective values). |
 | `smooth_beta` | `Float64` | `8.0` | Sharpness parameter for `:smoothmax_log`. |
+| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the reusable dense system workspace when `Z_base` is a dense matrix. Matrix-free ACA/MLFMA paths do not allocate this workspace. |
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized parameter vector.

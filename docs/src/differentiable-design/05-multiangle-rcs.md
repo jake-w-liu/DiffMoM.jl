@@ -108,7 +108,7 @@ struct AngleConfig
     k_vec::Vec3                     # Incidence wave vector (rad/m)
     pol::Vec3                       # Polarization (unit vector)
     v::Vector{ComplexF64}           # Pre-assembled excitation vector
-    Q::Matrix{ComplexF64}           # Backscatter Q matrix for this angle
+    Q::AbstractMatrix{ComplexF64}   # Dense or matrix-free Q operator
     weight::Float64                 # Weight in composite objective
 end
 ```
@@ -120,7 +120,7 @@ end
 | `k_vec` | `Vec3` | Wave vector $\mathbf{k} = k \hat{\mathbf{k}}$ where $\hat{\mathbf{k}}$ is the incidence direction. |
 | `pol` | `Vec3` | Polarization unit vector (perpendicular to `k_vec`). |
 | `v` | `Vector{ComplexF64}` | Excitation vector (pre-assembled by `assemble_excitation`). |
-| `Q` | `Matrix{ComplexF64}` | Backscatter Q-matrix targeting the direction $-\hat{\mathbf{k}}$ with the specified cone angle. |
+| `Q` | `AbstractMatrix{ComplexF64}` | Backscatter Q operator targeting the direction $-\hat{\mathbf{k}}$ with the specified cone angle. It is dense by default and matrix-free when `matrix_free_Q=true`. |
 | `weight` | `Float64` | Weight $w_a$ in the composite objective. |
 
 ### 2.3 Building Configurations with `build_multiangle_configs`
@@ -141,6 +141,9 @@ configs = build_multiangle_configs(mesh, rwg, k, angles;
 | `angles` | `Vector{<:NamedTuple}` | -- | Incidence angle specifications (see below). |
 | `grid` | `SphGrid` | -- | Spherical grid (keyword argument, shared across all angles). |
 | `backscatter_cone` | `Float64` | `15.0` | Half-angle of backscatter mask in degrees. |
+| `matrix_free_Q` | `Bool` | `false` | Store a `FarFieldQMatrix` instead of a dense `N x N` matrix for each angle. |
+| `rcs_component` | `Symbol` | `:copol` | Objective component: `:copol`, `:crosspol`, or `:total`. |
+| `max_work_bytes` | `Integer` | `2_000_000_000` | Ceiling for simultaneously live raw payload owned by the batch build, including shared radiation data, excitation quadrature, returned configurations, and dense-Q workspace. |
 
 **Angle specification format:**
 
@@ -150,8 +153,8 @@ Each element of `angles` is a named tuple with fields:
 |-------|------|-------------|
 | `theta_inc` | `Float64` | Polar angle of incidence (radians, from +z). |
 | `phi_inc` | `Float64` | Azimuthal angle of incidence (radians, from +x). |
-| `pol` | `Vec3` | Polarization unit vector. |
-| `weight` | `Float64` | Weight in objective (default 1.0 if omitted). |
+| `pol` | `Vec3` | Optional polarization direction. If omitted, a transverse unit polarization is selected automatically. |
+| `weight` | `Float64` | Optional objective weight (default `1.0`). |
 
 **Returns:** `Vector{AngleConfig}` of length `M`.
 
@@ -194,7 +197,7 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. |
-| `tol` | `Float64` | `1e-6` | Gradient-norm convergence tolerance. |
+| `tol` | `Float64` | `1e-10` | Gradient-norm convergence tolerance. |
 | `m_lbfgs` | `Int` | `10` | L-BFGS memory length. |
 | `alpha0` | `Float64` | `0.01` | Initial inverse-Hessian scaling. |
 | `verbose` | `Bool` | `true` | Print iteration progress. |
@@ -208,7 +211,7 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized impedance parameters.
-- `trace::Vector{NamedTuple}`: Records with fields `(iter, J, gnorm)`.
+- `trace::Vector{NamedTuple}`: Records with fields `(iter, J, gnorm, n_fwd, n_adj)`, including cumulative forward and adjoint solve counts.
 
 **Note:** A dense `Matrix{ComplexF64}` base uses verified direct factorization;
 matrix-free ACA/MLFMA bases use GMRES through `ImpedanceLoadedOperator`. A

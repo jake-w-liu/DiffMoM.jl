@@ -353,7 +353,7 @@ Build the Hermitian positive-semidefinite matrix `Q` for the quadratic far-field
 | `grid` | `SphGrid` | -- | Spherical grid with quadrature weights. |
 | `pol` | `Matrix{ComplexF64}` | -- | `(3, N_omega)` polarization vectors (from `pol_linear_x` or custom). |
 | `mask` | `BitVector` or `nothing` | `nothing` | Optional mask selecting target directions. If `nothing`, all directions contribute. |
-| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum raw dense payload: `Q` plus the projection workspace on the ordinary path, or `Q` alone on the checked exceptional path. Use `build_Q_operator` when this limit is exceeded. |
+| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum raw dense payload: `Q` plus the projection workspace on the ordinary path, or `Q` plus the copied mask chunks on the checked exceptional path. Use `build_Q_operator` when this limit is exceeded. |
 
 **Returns:** `Matrix{ComplexF64}` `Q` of size `N x N`, Hermitian PSD.
 
