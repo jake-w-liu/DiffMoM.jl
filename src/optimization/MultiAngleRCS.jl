@@ -1062,8 +1062,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         if iter > 1
             s_k = theta - theta_old
             y_k = g - g_old
-            sy = dot(s_k, y_k)
-            if isfinite(sy) && sy > 1e-30 && m_lbfgs > 0
+            if m_lbfgs > 0 &&
+               _optimizer_curvature_pair_acceptable(s_k, y_k)
                 push!(s_list, s_k)
                 push!(y_list, y_k)
                 if length(s_list) > m_lbfgs
@@ -1074,34 +1074,11 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         end
 
         # ── 7. Two-loop recursion ────────────────────────────────
-        q = copy(g)
-        m_cur = length(s_list)
-        alpha_vec = zeros(m_cur)
-
-        for i in m_cur:-1:1
-            rho_i = 1.0 / dot(y_list[i], s_list[i])
-            alpha_vec[i] = rho_i * dot(s_list[i], q)
-            q .-= alpha_vec[i] .* y_list[i]
-        end
-
-        gamma =
-            m_cur > 0 ?
-            dot(s_list[end], y_list[end]) /
-            dot(y_list[end], y_list[end]) :
-            alpha0
-        if !(isfinite(gamma) && gamma > 0.0)
-            gamma = alpha0
-            copyto!(q, g)
+        r, history_valid = _optimizer_lbfgs_inverse_product(
+            g, s_list, y_list, alpha0)
+        if !history_valid
             empty!(s_list)
             empty!(y_list)
-        end
-        r = q
-        rmul!(r, gamma)
-
-        for i in 1:m_cur
-            rho_i = 1.0 / dot(y_list[i], s_list[i])
-            beta = rho_i * dot(y_list[i], r)
-            r .+= (alpha_vec[i] - beta) .* s_list[i]
         end
 
         # ── 8. Projected line search ─────────────────────────────
@@ -1114,17 +1091,12 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         ls_success = false
 
         # Check if L-BFGS direction is descent; if not, use steepest descent
-        gd = dot(g, d)
-        if !isfinite(gd) || gd >= 0
+        if !_optimizer_dot_is_negative(g, d)
             copyto!(d, g)
             rmul!(d, -alpha0)
-            gd = -alpha0 * gnorm^2
             empty!(s_list)
             empty!(y_list)
         end
-        isfinite(gd) ||
-            error(
-                "multi-angle search directional derivative is non-finite at iteration $iter")
 
         theta_trial = similar(theta)
         J_trial_angles = Vector{Float64}(undef, M)

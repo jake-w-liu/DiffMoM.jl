@@ -4201,6 +4201,56 @@ theta_opt_guard = [0.0]
     theta_opt_guard;
     maxiter=0, verbose=false,
     max_workspace_bytes=sizeof(ComplexF64) - 1)
+
+# L-BFGS curvature is invariant to parameter and objective units.  The former
+# absolute `s⋅y > 1e-30` gate discarded the first two valid pairs below even
+# though their one-dimensional inverse-Hessian products are well conditioned.
+for optimizer_pair_scale in
+    (1.0e-300, 1.0e-100, 1.0, 1.0e100, 1.0e300)
+    optimizer_pair_step = Float64[optimizer_pair_scale]
+    optimizer_pair_change = Float64[2optimizer_pair_scale]
+    optimizer_pair_gradient = Float64[3optimizer_pair_scale]
+    @test DiffMoM._optimizer_curvature_pair_acceptable(
+        optimizer_pair_step, optimizer_pair_change)
+    optimizer_pair_product, optimizer_pair_valid =
+        DiffMoM._optimizer_lbfgs_inverse_product(
+            optimizer_pair_gradient,
+            [optimizer_pair_step], [optimizer_pair_change], 1.0)
+    @test optimizer_pair_valid
+    @test isapprox(
+        optimizer_pair_product[1], 1.5optimizer_pair_scale;
+        rtol=4eps(Float64), atol=0.0)
+end
+@test DiffMoM._optimizer_dot_ratio(
+    [1.0e-300], [3.0e-100],
+    [1.0e-300], [2.0e-100]) == 1.5
+@test DiffMoM._optimizer_dot_ratio(
+    [1.0e300], [3.0e100],
+    [1.0e300], [2.0e100]) == 1.5
+@test DiffMoM._optimizer_dot_ratio(
+    [1.0e-300], [1.0e-100],
+    [1.0], [1.0]) === nothing
+@test DiffMoM._optimizer_dot_is_negative(
+    [1.0e300], [-1.0e300])
+@test !DiffMoM._optimizer_curvature_pair_acceptable(
+    [1.0, 0.0], [1.0e-20, 1.0])
+@test !DiffMoM._optimizer_curvature_pair_acceptable(
+    [1.0], [-1.0])
+
+optimizer_pair_alloc_step = fill(1.0, 1_000)
+optimizer_pair_alloc_change = fill(2.0, 1_000)
+optimizer_pair_alloc_gradient = fill(3.0, 1_000)
+optimizer_pair_alloc_steps = [optimizer_pair_alloc_step]
+optimizer_pair_alloc_changes = [optimizer_pair_alloc_change]
+DiffMoM._optimizer_lbfgs_inverse_product(
+    optimizer_pair_alloc_gradient,
+    optimizer_pair_alloc_steps, optimizer_pair_alloc_changes, 1.0)
+GC.gc()
+@test @allocated(DiffMoM._optimizer_lbfgs_inverse_product(
+    optimizer_pair_alloc_gradient,
+    optimizer_pair_alloc_steps,
+    optimizer_pair_alloc_changes,
+    1.0)) < 20_000
 @test transform_patch_matrices(
     Mp_opt_guard;
     preconditioner_M=Z_opt_guard,

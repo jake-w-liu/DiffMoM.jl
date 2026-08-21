@@ -148,6 +148,184 @@ end
     return x
 end
 
+# Curvature is geometric: rescaling the parameter or gradient units must not
+# decide whether an L-BFGS pair is retained.  A small cosine floor rejects only
+# nearly orthogonal pairs whose inverse-Hessian update would be ill-conditioned.
+const _OPTIMIZER_MIN_CURVATURE_COSINE = sqrt(eps(Float64))
+
+@inline function _optimizer_dot_requires_exact(
+        left::AbstractVector{Float64},
+        right::AbstractVector{Float64},
+        value::Float64)
+    (!isfinite(value) ||
+     _ieee_bilinear_values_require_fallback(left, Float64) ||
+     _ieee_bilinear_values_require_fallback(right, Float64)) && return true
+    absolute_sum = 0.0
+    @inbounds for index in eachindex(left, right)
+        term = left[index] * right[index]
+        isfinite(term) || return true
+        absolute_sum += abs(term)
+        isfinite(absolute_sum) || return true
+    end
+    return !iszero(absolute_sum) &&
+           abs(value) <= 8eps(Float64) * absolute_sum
+end
+
+@inline function _optimizer_dot_bigfloat(
+        left::AbstractVector{Float64},
+        right::AbstractVector{Float64})
+    total = zero(BigFloat)
+    @inbounds for index in eachindex(left, right)
+        total += BigFloat(left[index]) * BigFloat(right[index])
+    end
+    return total
+end
+
+function _optimizer_curvature_pair_acceptable(
+        step::Vector{Float64}, gradient_change::Vector{Float64})
+    length(step) == length(gradient_change) ||
+        throw(DimensionMismatch(
+            "L-BFGS step and gradient-change lengths must match"))
+    all(isfinite, step) && all(isfinite, gradient_change) || return false
+    sy = dot(step, gradient_change)
+    ss = dot(step, step)
+    yy = dot(gradient_change, gradient_change)
+    needs_exact =
+        _optimizer_dot_requires_exact(step, gradient_change, sy) ||
+        _optimizer_dot_requires_exact(step, step, ss) ||
+        _optimizer_dot_requires_exact(
+            gradient_change, gradient_change, yy)
+    if !needs_exact
+        norm_product = sqrt(ss) * sqrt(yy)
+        if isfinite(norm_product)
+            return sy > _OPTIMIZER_MIN_CURVATURE_COSINE * norm_product
+        end
+    end
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        sy_big = _optimizer_dot_bigfloat(step, gradient_change)
+        ss_big = _optimizer_dot_bigfloat(step, step)
+        yy_big = _optimizer_dot_bigfloat(
+            gradient_change, gradient_change)
+        ss_big > 0 && yy_big > 0 || return false
+        return sy_big > BigFloat(_OPTIMIZER_MIN_CURVATURE_COSINE) *
+                        sqrt(ss_big) * sqrt(yy_big)
+    end
+end
+
+function _optimizer_dot_ratio(
+        numerator_left::AbstractVector{Float64},
+        numerator_right::AbstractVector{Float64},
+        denominator_left::AbstractVector{Float64},
+        denominator_right::AbstractVector{Float64})
+    length(numerator_left) == length(numerator_right) ||
+        throw(DimensionMismatch("L-BFGS numerator vector lengths must match"))
+    length(denominator_left) == length(denominator_right) ||
+        throw(DimensionMismatch("L-BFGS denominator vector lengths must match"))
+    (all(isfinite, numerator_left) && all(isfinite, numerator_right) &&
+     all(isfinite, denominator_left) && all(isfinite, denominator_right)) ||
+        return nothing
+
+    numerator = dot(numerator_left, numerator_right)
+    denominator = dot(denominator_left, denominator_right)
+    needs_exact = denominator <= 0.0 ||
+        _optimizer_dot_requires_exact(
+            numerator_left, numerator_right, numerator) ||
+        _optimizer_dot_requires_exact(
+            denominator_left, denominator_right, denominator)
+    if !needs_exact
+        ratio = numerator / denominator
+        isfinite(ratio) && return ratio
+    end
+
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        numerator_big = _optimizer_dot_bigfloat(
+            numerator_left, numerator_right)
+        denominator_big = _optimizer_dot_bigfloat(
+            denominator_left, denominator_right)
+        denominator_big > 0 || return nothing
+        ratio_big = numerator_big / denominator_big
+        ratio = Float64(ratio_big)
+        return isfinite(ratio) &&
+               (!iszero(ratio) || iszero(ratio_big)) ? ratio : nothing
+    end
+end
+
+function _optimizer_dot_is_negative(
+        left::AbstractVector{Float64},
+        right::AbstractVector{Float64})
+    length(left) == length(right) ||
+        throw(DimensionMismatch("L-BFGS direction vector lengths must match"))
+    all(isfinite, left) && all(isfinite, right) || return false
+    value = dot(left, right)
+    _optimizer_dot_requires_exact(left, right, value) || return value < 0.0
+    return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
+        _optimizer_dot_bigfloat(left, right) < 0
+    end
+end
+
+function _optimizer_scaled_gradient(
+        gradient::Vector{Float64}, scale::Float64)
+    result = copy(gradient)
+    rmul!(result, scale)
+    if !_linear_array_is_finite(result)
+        copyto!(result, gradient)
+    end
+    return result
+end
+
+function _optimizer_lbfgs_inverse_product(
+        gradient::Vector{Float64},
+        step_history::Vector{Vector{Float64}},
+        gradient_history::Vector{Vector{Float64}},
+        initial_scale::Float64)
+    length(step_history) == length(gradient_history) ||
+        throw(DimensionMismatch("L-BFGS history lengths must match"))
+    q = copy(gradient)
+    history_count = length(step_history)
+    alpha = zeros(Float64, history_count)
+
+    @inbounds for history_index in history_count:-1:1
+        coefficient = _optimizer_dot_ratio(
+            step_history[history_index], q,
+            gradient_history[history_index],
+            step_history[history_index])
+        coefficient === nothing &&
+            return _optimizer_scaled_gradient(
+                gradient, initial_scale), false
+        alpha[history_index] = coefficient
+        axpy!(-coefficient, gradient_history[history_index], q)
+        _linear_array_is_finite(q) ||
+            return _optimizer_scaled_gradient(
+                gradient, initial_scale), false
+    end
+
+    gamma = history_count == 0 ? initial_scale :
+        _optimizer_dot_ratio(
+            step_history[end], gradient_history[end],
+            gradient_history[end], gradient_history[end])
+    (gamma !== nothing && gamma > 0.0) ||
+        return _optimizer_scaled_gradient(gradient, initial_scale), false
+    rmul!(q, gamma)
+    _linear_array_is_finite(q) ||
+        return _optimizer_scaled_gradient(gradient, initial_scale), false
+
+    @inbounds for history_index in 1:history_count
+        beta = _optimizer_dot_ratio(
+            gradient_history[history_index], q,
+            gradient_history[history_index],
+            step_history[history_index])
+        beta === nothing &&
+            return _optimizer_scaled_gradient(
+                gradient, initial_scale), false
+        axpy!(alpha[history_index] - beta,
+              step_history[history_index], q)
+        _linear_array_is_finite(q) ||
+            return _optimizer_scaled_gradient(
+                gradient, initial_scale), false
+    end
+    return q, true
+end
+
 @inline function _directivity_ratio(f_value::Float64, denominator::Float64,
                                     label::AbstractString)
     isfinite(f_value) ||
@@ -714,8 +892,8 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         if iter > 1
             s_k = theta - theta_old
             y_k = g - g_old
-            sy = dot(s_k, y_k)
-            if isfinite(sy) && sy > 1e-30
+            if m_lbfgs > 0 &&
+               _optimizer_curvature_pair_acceptable(s_k, y_k)
                 push!(s_list, s_k)
                 push!(y_list, y_k)
                 if length(s_list) > m_lbfgs
@@ -725,35 +903,14 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
             end
         end
 
-        # Two-loop recursion
-        q = copy(g)
-        m_cur = length(s_list)
-        alpha_vec = zeros(m_cur)
-
-        for i in m_cur:-1:1
-            rho_i = 1.0 / dot(y_list[i], s_list[i])
-            alpha_vec[i] = rho_i * dot(s_list[i], q)
-            q .-= alpha_vec[i] .* y_list[i]
-        end
-
-        gamma = if m_cur > 0
-            dot(s_list[end], y_list[end]) / dot(y_list[end], y_list[end])
-        else
-            alpha0
-        end
-        if !(isfinite(gamma) && gamma > 0.0)
-            gamma = alpha0
-            copyto!(q, g)
+        # Scale-safe two-loop recursion. Ratios are evaluated directly so a
+        # representable quotient is not lost through an overflowing reciprocal
+        # or an underflowed/overflowed dot product.
+        r, history_valid = _optimizer_lbfgs_inverse_product(
+            g, s_list, y_list, alpha0)
+        if !history_valid
             empty!(s_list)
             empty!(y_list)
-        end
-        r = q
-        rmul!(r, gamma)
-
-        for i in 1:length(s_list)
-            rho_i = 1.0 / dot(y_list[i], s_list[i])
-            beta = rho_i * dot(y_list[i], r)
-            r .+= (alpha_vec[i] - beta) .* s_list[i]
         end
 
         # Line search: backtracking Armijo with projection
@@ -761,16 +918,12 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         rmul!(d, -1.0)
 
         # Check if L-BFGS direction is descent; if not, reset to steepest descent
-        gd = dot(g, d)
-        if !isfinite(gd) || gd >= 0.0
+        if !_optimizer_dot_is_negative(g, d)
             copyto!(d, g)
             rmul!(d, -1.0)
-            gd = -gnorm^2
             empty!(s_list)
             empty!(y_list)
         end
-        isfinite(gd) ||
-            error("search directional derivative is non-finite at iteration $iter: $gd")
 
         alpha = 1.0
         copyto!(theta_old, theta)
@@ -1068,8 +1221,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         if iter > 1
             s_k = theta - theta_old
             y_k = g_lbfgs - g_old
-            sy = dot(s_k, y_k)
-            if isfinite(sy) && sy > 1e-30
+            if m_lbfgs > 0 &&
+               _optimizer_curvature_pair_acceptable(s_k, y_k)
                 push!(s_list, s_k)
                 push!(y_list, y_k)
                 if length(s_list) > m_lbfgs
@@ -1079,33 +1232,11 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             end
         end
 
-        # Two-loop recursion
-        q = copy(g_lbfgs)
-        m_cur = length(s_list)
-        alpha_vec = zeros(m_cur)
-
-        for i in m_cur:-1:1
-            rho_i = 1.0 / dot(y_list[i], s_list[i])
-            alpha_vec[i] = rho_i * dot(s_list[i], q)
-            q .-= alpha_vec[i] .* y_list[i]
-        end
-
-        gamma = m_cur > 0 ?
-                dot(s_list[end], y_list[end]) / dot(y_list[end], y_list[end]) :
-                alpha0
-        if !(isfinite(gamma) && gamma > 0.0)
-            gamma = alpha0
-            copyto!(q, g_lbfgs)
+        r, history_valid = _optimizer_lbfgs_inverse_product(
+            g_lbfgs, s_list, y_list, alpha0)
+        if !history_valid
             empty!(s_list)
             empty!(y_list)
-        end
-        r = q
-        rmul!(r, gamma)
-
-        for i in 1:length(s_list)
-            rho_i = 1.0 / dot(y_list[i], s_list[i])
-            beta = rho_i * dot(y_list[i], r)
-            r .+= (alpha_vec[i] - beta) .* s_list[i]
         end
 
         d = r
@@ -1114,16 +1245,12 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
         # Guard: if the L-BFGS two-loop direction is not a descent direction
         # (dot(g, d) ≥ 0, which can happen with stale/indefinite curvature pairs),
         # reset to steepest descent and clear the memory — matches optimize_lbfgs.
-        gd = dot(g_lbfgs, d)
-        if !isfinite(gd) || gd >= 0.0
+        if !_optimizer_dot_is_negative(g_lbfgs, d)
             copyto!(d, g_lbfgs)
             rmul!(d, -1.0)
-            gd = -gnorm^2
             empty!(s_list)
             empty!(y_list)
         end
-        isfinite(gd) ||
-            error("search directional derivative is non-finite at iteration $iter: $gd")
 
         alpha_ls = 1.0
         copyto!(theta_old, theta)
