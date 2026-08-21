@@ -42,6 +42,22 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
         malformed_result, weights .* E)
     @test_throws ArgumentError solve_dda_adjoint_3d(
         res, fill(ComplexF64(NaN, 0.0), length(E)))
+    nonfinite_system = copy(res.A)
+    nonfinite_system[1, 1] = ComplexF64(NaN, 0.0)
+    nonfinite_system_result = DDAResult3D(
+        res.E_total, res.E_inc, res.eps_r, res.alpha,
+        nonfinite_system, res.A_LU, res.solver, res.stats,
+        res.grid, res.k0, res.radiative_correction)
+    nonfinite_system_error = try
+        solve_dda_adjoint_3d(nonfinite_system_result, weights .* E)
+        nothing
+    catch err
+        err
+    end
+    @test nonfinite_system_error isa ArgumentError
+    @test occursin(
+        "DDAResult3D A must contain only finite values",
+        sprint(showerror, nonfinite_system_error))
     tensor_grid = VoxelGrid3D(
         (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), 1, 1, 1)
     tensor_epsr = [2.0 .* Matrix{ComplexF64}(I, 3, 3)]

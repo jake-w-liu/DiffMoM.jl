@@ -1609,6 +1609,7 @@ function _validate_dda_result_3d(
             throw(DimensionMismatch(
                 "DDAResult3D A has size $(size(res.A)), expected " *
                 "($system_size, $system_size)."))
+        _validate_known_matrix_entries(res.A, "DDAResult3D A")
     end
     return N
 end
