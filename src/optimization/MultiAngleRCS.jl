@@ -520,10 +520,16 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
 
     eta0 = 376.730313668
     G_mat = radiation_vectors(mesh, rwg, grid, k; eta0=eta0)
-    pol_theta = pol_linear_x(grid)  # θ̂ polarization
-    pol_phi = pol_linear_y(grid)    # φ̂ polarization
+    # Only materialize polarizations retained by the selected objective.  A
+    # full polarization matrix can be large on production far-field grids.
+    pol_theta = rcs_component == :crosspol ? nothing : pol_linear_x(grid)
+    pol_phi = rcs_component == :copol ? nothing : pol_linear_y(grid)
 
     configs = AngleConfig[]
+    # Every angle uses the same mesh and quadrature order.  Retain one cache
+    # across the batch instead of rebuilding all mapped triangle points for
+    # each plane wave.
+    quad_cache = ExcitationQuadCache(mesh)
     for ang in angles
         θ_i = Float64(ang.theta_inc)
         φ_i = Float64(ang.phi_inc)
@@ -541,7 +547,9 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
             _default_transverse_pol(khat)
         pw_pol = _transverse_unit_pol(khat, pw_pol_raw)
         E0 = 1.0
-        v = assemble_excitation(mesh, rwg, PlaneWaveExcitation(k_vec, E0, pw_pol))
+        v = assemble_excitation(
+            mesh, rwg, PlaneWaveExcitation(k_vec, E0, pw_pol);
+            quad_cache=quad_cache)
 
         # Q matrix targeting backscatter direction
         mask = direction_mask(grid, bs_dir; half_angle=backscatter_cone * π / 180)
@@ -551,21 +559,33 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
         # which sums both tangential far-field components.
         Q = if rcs_component == :copol
             matrix_free_Q ?
-                build_Q_operator(G_mat, grid, pol_theta; mask=mask) :
-                build_Q(G_mat, grid, pol_theta; mask=mask)
+                build_Q_operator(
+                    G_mat, grid, pol_theta::Matrix{ComplexF64}; mask=mask) :
+                build_Q(
+                    G_mat, grid, pol_theta::Matrix{ComplexF64}; mask=mask)
         elseif rcs_component == :crosspol
             matrix_free_Q ?
-                build_Q_operator(G_mat, grid, pol_phi; mask=mask) :
-                build_Q(G_mat, grid, pol_phi; mask=mask)
+                build_Q_operator(
+                    G_mat, grid, pol_phi::Matrix{ComplexF64}; mask=mask) :
+                build_Q(
+                    G_mat, grid, pol_phi::Matrix{ComplexF64}; mask=mask)
         else
             if matrix_free_Q
                 sum_q_matrix(
-                    build_Q_operator(G_mat, grid, pol_theta; mask=mask),
-                    build_Q_operator(G_mat, grid, pol_phi; mask=mask),
+                    build_Q_operator(
+                        G_mat, grid,
+                        pol_theta::Matrix{ComplexF64}; mask=mask),
+                    build_Q_operator(
+                        G_mat, grid,
+                        pol_phi::Matrix{ComplexF64}; mask=mask),
                 )
             else
-                build_Q(G_mat, grid, pol_theta; mask=mask) +
-                build_Q(G_mat, grid, pol_phi; mask=mask)
+                build_Q(
+                    G_mat, grid,
+                    pol_theta::Matrix{ComplexF64}; mask=mask) +
+                build_Q(
+                    G_mat, grid,
+                    pol_phi::Matrix{ComplexF64}; mask=mask)
             end
         end
 

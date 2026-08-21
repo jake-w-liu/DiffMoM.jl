@@ -11529,6 +11529,11 @@ configs_total_mfree = build_multiangle_configs(mesh, rwg, k, angles_2;
                                                 matrix_free_Q=true,
                                                 rcs_component=:total)
 @assert configs_total_mfree[1].Q isa SumQMatrix "total matrix_free_Q should use SumQMatrix"
+configs_crosspol_mfree = build_multiangle_configs(
+    mesh, rwg, k, angles_2;
+    grid=grid_opt, backscatter_cone=15.0,
+    matrix_free_Q=true, rcs_component=:crosspol)
+@test configs_crosspol_mfree[1].Q isa FarFieldQMatrix
 Qx_total_dense = configs_total[1].Q * x_q
 Qx_total_mfree = configs_total_mfree[1].Q * x_q
 q_total_rel = norm(Qx_total_dense - Qx_total_mfree) / max(norm(Qx_total_dense), 1e-30)
@@ -11587,6 +11592,26 @@ khat_default = Vec3(sin(π/4) * cos(0.2), sin(π/4) * sin(0.2), cos(π/4))
     grid=grid_opt,
     backscatter_cone=181.0,
 )
+
+# Multi-angle plane waves share one mapped-triangle quadrature cache, and a
+# single-component objective retains only its selected polarization matrix.
+# The warm call excludes compilation from this allocation regression.
+multiangle_allocation_mesh = make_rect_plate(0.02, 0.02, 8, 8)
+multiangle_allocation_rwg = build_rwg(multiangle_allocation_mesh)
+multiangle_allocation_grid = make_sph_grid(4, 8)
+multiangle_allocation_angles = fill(
+    (theta_inc=0.0, phi_inc=0.0,
+     pol=Vec3(1.0, 0.0, 0.0), weight=1.0),
+    32)
+build_multiangle_configs(
+    multiangle_allocation_mesh, multiangle_allocation_rwg, 2π,
+    multiangle_allocation_angles;
+    grid=multiangle_allocation_grid, matrix_free_Q=true)
+multiangle_config_allocation = @allocated build_multiangle_configs(
+    multiangle_allocation_mesh, multiangle_allocation_rwg, 2π,
+    multiangle_allocation_angles;
+    grid=multiangle_allocation_grid, matrix_free_Q=true)
+@test multiangle_config_allocation < 750_000
 println("  35b: PASS")
 
 # 35c: optimize_multiangle_rcs smoke test
