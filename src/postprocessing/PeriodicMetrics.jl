@@ -409,6 +409,101 @@ end
     end
 end
 
+@inline function _periodic_projection_checked(direction,
+                                               current_coefficient)
+    polarization = SVector{3,ComplexF64}(
+        ComplexF64(direction[1]),
+        ComplexF64(direction[2]),
+        ComplexF64(direction[3]))
+    current = SVector{3,ComplexF64}(
+        ComplexF64(current_coefficient[1]),
+        ComplexF64(current_coefficient[2]),
+        ComplexF64(current_coefficient[3]))
+    return _farfield_q_projection_checked(polarization, current)
+end
+
+@inline function _periodic_scalar_reflection_checked(
+    polarization,
+    current_coefficient,
+    eta0::Float64,
+    k::Float64,
+    kz::Float64,
+    E0::Float64,
+    mode::FloquetMode,
+)
+    if _periodic_reflection_requires_fallback(
+            current_coefficient, eta0, k, kz, E0)
+        return _periodic_scalar_reflection_exact(
+            polarization, current_coefficient,
+            eta0, k, kz, E0, mode)
+    end
+    projection, projection_requires_exact =
+        _periodic_projection_checked(polarization, current_coefficient)
+    scale = -(eta0 * k) / (2 * kz * E0)
+    coefficient = scale * projection
+    if projection_requires_exact ||
+       !isfinite(coefficient) ||
+       _farfield_q_product_requires_exact(
+           scale, projection, coefficient)
+        return _periodic_scalar_reflection_exact(
+            polarization, current_coefficient,
+            eta0, k, kz, E0, mode)
+    end
+    return coefficient
+end
+
+@inline function _periodic_vector_reflection_checked(
+    khat,
+    current_coefficient,
+    eta0::Float64,
+    k::Float64,
+    kz::Float64,
+    E0::Float64,
+    mode::FloquetMode,
+)
+    if _periodic_reflection_requires_fallback(
+            current_coefficient, eta0, k, kz, E0)
+        return _periodic_vector_reflection_exact(
+            khat, current_coefficient, eta0, k, kz, E0, mode)
+    end
+    longitudinal, projection_requires_exact =
+        _periodic_projection_checked(khat, current_coefficient)
+    projection_requires_exact &&
+        return _periodic_vector_reflection_exact(
+            khat, current_coefficient, eta0, k, kz, E0, mode)
+
+    transverse_values = MVector{3,ComplexF64}(undef)
+    @inbounds for component in 1:3
+        removed = khat[component] * longitudinal
+        value = current_coefficient[component] - removed
+        product_requires_exact = _farfield_q_product_requires_exact(
+            khat[component], longitudinal, removed)
+        if product_requires_exact ||
+           (current_coefficient[component] != removed &&
+            _scaled_sum_requires_exact(
+                current_coefficient[component], -removed, value))
+            projection_requires_exact = true
+        end
+        transverse_values[component] = value
+    end
+    projection_requires_exact &&
+        return _periodic_vector_reflection_exact(
+            khat, current_coefficient, eta0, k, kz, E0, mode)
+
+    transverse = SVector{3,ComplexF64}(transverse_values)
+    scale = -(eta0 * k) / (2 * kz * E0)
+    coefficient = scale * transverse
+    @inbounds for component in 1:3
+        if !isfinite(coefficient[component]) ||
+           _farfield_q_product_requires_exact(
+               scale, transverse[component], coefficient[component])
+            return _periodic_vector_reflection_exact(
+                khat, current_coefficient, eta0, k, kz, E0, mode)
+        end
+    end
+    return coefficient
+end
+
 function _validate_floquet_modes(modes::Vector{FloquetMode}, k::Float64)
     _validate_floquet_mode_orders(modes)
     for (i, mode) in enumerate(modes)
@@ -1054,20 +1149,8 @@ function reflection_coefficients(mesh::TriMesh, rwg::RWGData,
         #   R_mn = -(η₀ k)/(2 κz_mn E₀) × (ê_mode · J̃_mn)
         # where ê_mode is transverse to this mode's propagation direction.
         kz_mn = real(mode.kz)
-        needs_fallback = _periodic_reflection_requires_fallback(
-            J_tildes[mi], eta0, kw, kz_mn, E0)
-        if needs_fallback
-            R_coeffs[mi] = _periodic_scalar_reflection_exact(
-                pol_mode, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
-        else
-            R_coeffs[mi] = -(eta0 * kw) / (2 * kz_mn * E0) *
-                           dot(pol_mode, J_tildes[mi])
-            if !isfinite(R_coeffs[mi])
-                R_coeffs[mi] = _periodic_scalar_reflection_exact(
-                    pol_mode, J_tildes[mi],
-                    eta0, kw, kz_mn, E0, mode)
-            end
-        end
+        R_coeffs[mi] = _periodic_scalar_reflection_checked(
+            pol_mode, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
     end
 
     return modes, R_coeffs
@@ -1123,21 +1206,8 @@ function reflection_coefficient_vectors(mesh::TriMesh, rwg::RWGData,
 
         kz_mn = real(mode.kz)
         khat = SVector(mode.kx / kw, mode.ky / kw, kz_mn / kw)
-        needs_fallback = _periodic_reflection_requires_fallback(
-            J_tildes[mi], eta0, kw, kz_mn, E0)
-        if needs_fallback
-            R_vecs[mi] = _periodic_vector_reflection_exact(
-                khat, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
-        else
-            J_transverse = J_tildes[mi] -
-                           khat * dot(khat, J_tildes[mi])
-            R_vecs[mi] = -(eta0 * kw) /
-                         (2 * kz_mn * E0) * J_transverse
-            if !all(isfinite, R_vecs[mi])
-                R_vecs[mi] = _periodic_vector_reflection_exact(
-                    khat, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
-            end
-        end
+        R_vecs[mi] = _periodic_vector_reflection_checked(
+            khat, J_tildes[mi], eta0, kw, kz_mn, E0, mode)
     end
 
     return modes, R_vecs

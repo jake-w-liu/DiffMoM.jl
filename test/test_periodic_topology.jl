@@ -2523,6 +2523,35 @@ println("\n── Test 42: PeriodicMetrics ──")
             ComplexF64[1.0], 1.0, [1.0], [phase_mode],
             [[phase_point]], [1.0])
 
+        cancellation_direction = Vec3(
+            0.7831050509661788,
+            0.43233094754335505,
+            0.447030682333465)
+        cancellation_current = CVec3(
+            -5.516272612069405e15,
+            1.5099132442827375e15,
+            8.203102977780578e15)
+        cancellation_mode = FloquetMode(
+            0, 0, 0.0, 0.0, 1.0 + 0.0im,
+            true, 0.0, 0.0)
+        ordinary_projection = dot(
+            cancellation_direction, cancellation_current)
+        exact_scalar_reflection =
+            DiffMoM._periodic_scalar_reflection_exact(
+                cancellation_direction, cancellation_current,
+                1.0, 1.0, 1.0, 1.0, cancellation_mode)
+        @test -0.5 * ordinary_projection != exact_scalar_reflection
+        @test DiffMoM._periodic_scalar_reflection_checked(
+                  cancellation_direction, cancellation_current,
+                  1.0, 1.0, 1.0, 1.0, cancellation_mode) ==
+              exact_scalar_reflection
+        @test DiffMoM._periodic_vector_reflection_checked(
+                  cancellation_direction, cancellation_current,
+                  1.0, 1.0, 1.0, 1.0, cancellation_mode) ==
+              DiffMoM._periodic_vector_reflection_exact(
+                  cancellation_direction, cancellation_current,
+                  1.0, 1.0, 1.0, 1.0, cancellation_mode)
+
         @test_throws DimensionMismatch reflection_coefficients(
             mesh_i, rwg_i, I_zero[1:end-1], k_pm, lat_pm)
         @test_throws DimensionMismatch reflection_coefficients(
