@@ -86,7 +86,7 @@ end
 | `N` | `Int` | Number of RWG unknowns. |
 | `workspace` | `MLFMAWorkspace` | *(internal)* Pre-allocated ordinary-path buffers reused by `mul!`; exceptional exponent-banded products use bounded temporary storage. `workspace.work_lock` serializes forward and adjoint access. |
 | `max_matvec_scratch_bytes` | `Int` | Maximum raw temporary payload allowed for one exceptional exponent-banded matvec. |
-| `max_exact_combine_work` | `Int` | Maximum row-by-band high-precision combination work allowed in one matvec. |
+| `max_exact_combine_work` | `Int` | Maximum high-precision exponent-band and cancelled-row linearity-recovery work allowed in one matvec. |
 
 **Supported operations:**
 
@@ -133,7 +133,7 @@ Build an MLFMA operator for the EFIE system. This is the main entry point for co
 | `max_adjacency_pairs` | `Int` | `20_000_000` | Maximum edge-derived triangle-pair records in the near-field EFIE cache. |
 | `max_translation_terms` | `Int` | `50_000_000` | Maximum Legendre recurrence terms for one unique translation offset. |
 | `max_matvec_scratch_bytes` | `Int` | `536_870_912` | Maximum raw temporary payload for an exceptional exponent-banded matvec. |
-| `max_exact_combine_work` | `Int` | `2_000_000` | Maximum row-by-band high-precision combination work in one matvec. |
+| `max_exact_combine_work` | `Int` | `2_000_000` | Maximum high-precision exponent-band and cancelled-row linearity-recovery work in one matvec. |
 | `verbose` | `Bool` | `false` | Print progress messages. |
 
 **Returns:** `MLFMAOperator`.

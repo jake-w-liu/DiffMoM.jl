@@ -10515,6 +10515,87 @@ mlfma_far_entry = A_mlfma[mlfma_far_row, mlfma_far_column]
 @test _matrix_entry_allocation(
           A_mlfma, mlfma_far_row, mlfma_far_column) <= 128
 
+# MLFMA is an AbstractMatrix, so a cancelled sparse combination must agree
+# with the high-precision sum of the same stored basis-response columns.  The
+# ordinary multilevel reductions previously leaked a roughly 1e-15 residual
+# into this row even though the correctly rounded matrix product is 1e-19.
+mlfma_linearity_row = 94
+mlfma_linearity_first_column = 61
+mlfma_linearity_second_column = 56
+mlfma_linearity_first = A_mlfma[
+    mlfma_linearity_row, mlfma_linearity_first_column]
+mlfma_linearity_second = A_mlfma[
+    mlfma_linearity_row, mlfma_linearity_second_column]
+mlfma_linearity_scale =
+    -mlfma_linearity_first / mlfma_linearity_second
+mlfma_linearity_input = zeros(ComplexF64, mlfma_N)
+mlfma_linearity_input[mlfma_linearity_first_column] = 1.0
+mlfma_linearity_input[mlfma_linearity_second_column] =
+    mlfma_linearity_scale
+mlfma_linearity_reference = setprecision(BigFloat, 512) do
+    ComplexF64(
+        Complex{BigFloat}(mlfma_linearity_first) +
+        Complex{BigFloat}(mlfma_linearity_scale) *
+        Complex{BigFloat}(mlfma_linearity_second))
+end
+mlfma_linearity_result = A_mlfma * mlfma_linearity_input
+@test mlfma_linearity_result[mlfma_linearity_row] ==
+      mlfma_linearity_reference
+
+mlfma_adjoint_linearity_row = 9
+mlfma_adjoint_linearity_first_column = 41
+mlfma_adjoint_linearity_second_column = 34
+mlfma_adjoint_operator = adjoint(A_mlfma)
+mlfma_adjoint_linearity_first = mlfma_adjoint_operator[
+    mlfma_adjoint_linearity_row,
+    mlfma_adjoint_linearity_first_column]
+mlfma_adjoint_linearity_second = mlfma_adjoint_operator[
+    mlfma_adjoint_linearity_row,
+    mlfma_adjoint_linearity_second_column]
+mlfma_adjoint_linearity_scale =
+    -mlfma_adjoint_linearity_first / mlfma_adjoint_linearity_second
+mlfma_adjoint_linearity_input = zeros(ComplexF64, mlfma_N)
+mlfma_adjoint_linearity_input[
+    mlfma_adjoint_linearity_first_column] = 1.0
+mlfma_adjoint_linearity_input[
+    mlfma_adjoint_linearity_second_column] =
+        mlfma_adjoint_linearity_scale
+mlfma_adjoint_linearity_reference = setprecision(BigFloat, 512) do
+    ComplexF64(
+        Complex{BigFloat}(mlfma_adjoint_linearity_first) +
+        Complex{BigFloat}(mlfma_adjoint_linearity_scale) *
+        Complex{BigFloat}(mlfma_adjoint_linearity_second))
+end
+mlfma_adjoint_linearity_result =
+    mlfma_adjoint_operator * mlfma_adjoint_linearity_input
+@test mlfma_adjoint_linearity_result[
+          mlfma_adjoint_linearity_row] ==
+      mlfma_adjoint_linearity_reference
+
+mlfma_linearity_work = DiffMoM._mlfma_exact_linearity_work(
+    mlfma_N, 2, 1)
+mlfma_limited_linearity = MLFMAOperator(
+    A_mlfma.octree,
+    A_mlfma.Z_near,
+    A_mlfma.k,
+    A_mlfma.eta0,
+    A_mlfma.prefactor,
+    A_mlfma.samplings,
+    A_mlfma.trans_factors,
+    A_mlfma.trans_plans,
+    A_mlfma.bf_patterns,
+    A_mlfma.interp_theta,
+    A_mlfma.interp_phi,
+    A_mlfma.agg_filters,
+    A_mlfma.disagg_filters,
+    A_mlfma.N,
+    A_mlfma.workspace,
+    A_mlfma.max_matvec_scratch_bytes,
+    Int(mlfma_linearity_work) - 1,
+)
+@test_throws ArgumentError mlfma_limited_linearity *
+    mlfma_linearity_input
+
 # 31d: MLFMA adjoint inner-product identity
 y_test = randn(ComplexF64, mlfma_N)
 lhs_adj = dot(y_test, A_mlfma * x_test)

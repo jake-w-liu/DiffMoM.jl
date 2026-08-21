@@ -228,6 +228,8 @@ function _estimated_mlfma_setup_bytes(
 
     # Four ComplexF64 radiation-pattern components per leaf sample and BF.
     total += BigInt(64) * npts[end] * N
+    # One bit per output row marks an exceptional near/far cancellation.
+    total += cld(BigInt(N), 8)
 
     for index in 1:nlevels-1
         parent_ntheta = ntheta[index]
@@ -1702,6 +1704,8 @@ mutable struct MLFMAWorkspace
     input_copy::Vector{ComplexF64}
     # Lazily sized unscaled-product buffer, also used by scalar indexing.
     entry_output::Vector{ComplexF64}
+    # Reused cancellation markers keep the ordinary matvec allocation-free.
+    exact_rows::BitVector
     # Forward and adjoint matvecs reuse every buffer above.
     work_lock::ReentrantLock
 end
@@ -1718,7 +1722,7 @@ MLFMAWorkspace(
 ) = MLFMAWorkspace(
     agg, incoming, agg_disagg_scratch, disagg_disagg_scratch,
     interp_result, shifted_buf, filter_result, input_copy,
-    ComplexF64[], ReentrantLock(),
+    ComplexF64[], falses(length(input_copy)), ReentrantLock(),
 )
 
 MLFMAWorkspace(
@@ -1734,7 +1738,7 @@ MLFMAWorkspace(
 ) = MLFMAWorkspace(
     agg, incoming, agg_disagg_scratch, disagg_disagg_scratch,
     interp_result, shifted_buf, filter_result, input_copy,
-    ComplexF64[], work_lock,
+    ComplexF64[], falses(length(input_copy)), work_lock,
 )
 
 function _build_mlfma_workspace(octree::Octree,
@@ -1896,7 +1900,8 @@ Build an MLFMA operator for the EFIE system.
 - `max_adjacency_pairs=20_000_000`: triangle-adjacency pair-record limit
 - `max_translation_terms=50_000_000`: per-offset Legendre work limit
 - `max_matvec_scratch_bytes=536_870_912`: exponent-band scratch limit
-- `max_exact_combine_work=2_000_000`: exact band-combination work limit
+- `max_exact_combine_work=2_000_000`: exact exponent-band and cancelled-row
+  linearity-recovery work limit
 - `verbose=false`: print progress
 """
 function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
@@ -2193,12 +2198,61 @@ const _MLFMA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
 const _MLFMA_INTERNAL_RESCALE_STEP = 128
 const _MLFMA_INTERNAL_MAX_RESCALE_ATTEMPTS = 18
 const _MLFMA_INPUT_BAND_WIDTH = 32
+const _MLFMA_EXACT_LINEARITY_PRECISION = 4352
 # Every nonzero input band is shifted to at least this exponent before the
 # internal product.  Since a band spans fewer than 32 binary exponents, even
 # its smallest component multiplied by the smallest positive Float64 remains
 # normal.  This prevents product underflow without inspecting a rounded output
 # (which cannot distinguish underflow from a genuine nullspace result).
 const _MLFMA_INTERNAL_PRODUCT_TARGET_EXPONENT = 128
+
+@inline function _mlfma_near_far_combine_requires_exact(
+        near_value::ComplexF64,
+        far_value::ComplexF64,
+        combined::ComplexF64,
+        A)
+    isfinite(near_value) && isfinite(far_value) && isfinite(combined) ||
+        return false
+    magnitude = abs(near_value) + abs(far_value)
+    isfinite(magnitude) || return false
+    iszero(magnitude) && return false
+    # The far pass contains several reductions (aggregation, filtering,
+    # translation, and leaf projection).  Bound their accumulated Float64
+    # error by the larger of the operator dimension and leaf sample count,
+    # with a conservative per-stage guard.  The square-root-epsilon cap keeps
+    # the exceptional path reserved for outputs that have lost useful digits.
+    operator = A isa MLFMAAdjointOperator ? A.op : A
+    reduction_extent = max(
+        operator.N, operator.samplings[end].npts, 1)
+    error_factor = min(
+        sqrt(eps(Float64)),
+        64eps(Float64) * Float64(reduction_extent))
+    return abs(combined) <= error_factor * magnitude
+end
+
+@inline function _mlfma_exact_linearity_work(
+        output_count::Int, nonzero_count::Int, exact_row_count::Int)
+    return BigInt(nonzero_count) *
+           (BigInt(output_count) + exact_row_count)
+end
+
+@inline function _mlfma_exact_linearity_work(
+        ::MLFMAOperator, output_count::Int,
+        nonzero_count::Int, exact_row_count::Int)
+    return _mlfma_exact_linearity_work(
+        output_count, nonzero_count, exact_row_count)
+end
+
+@inline function _mlfma_exact_linearity_work(
+        ::MLFMAAdjointOperator, output_count::Int,
+        nonzero_count::Int, exact_row_count::Int)
+    # A cancelled row of A' is one conjugated column of A.  One forward basis
+    # pass per requested row therefore recovers the public adjoint matrix
+    # exactly, independent of how the rounded reverse traversal associates its
+    # intermediate sums.
+    return BigInt(exact_row_count) *
+           (BigInt(output_count) + nonzero_count)
+end
 
 @inline function _mlfma_scaled_component_requires_fallback(
         scale::Number, value::ComplexF64)
@@ -2487,6 +2541,84 @@ end
 @inline _mlfma_exact_combine_limit(A::MLFMAAdjointOperator) =
     A.op.max_exact_combine_work
 
+@noinline function _mlfma_recompute_cancelled_rows!(
+        product::Vector{ComplexF64}, A, x::AbstractVector)
+    workspace = _mlfma_internal_workspace(A)
+    exact_row_count = count(workspace.exact_rows)
+    iszero(exact_row_count) && return product
+
+    nonzero_count = count(value ->
+        !iszero(ComplexF64(value)), x)
+    exact_work = _mlfma_exact_linearity_work(
+        A, length(product), nonzero_count, exact_row_count)
+    exact_limit = _mlfma_exact_combine_limit(A)
+    exact_work <= exact_limit ||
+        throw(ArgumentError(
+            "MLFMA cancelled-row retry requires $exact_work exact " *
+            "linearity units, exceeding " *
+            "max_exact_combine_work=$exact_limit"))
+
+    exact_rows = findall(workspace.exact_rows)
+    vector_bytes = BigInt(3) * sizeof(ComplexF64) * length(product)
+    index_bytes = BigInt(sizeof(Int)) * length(exact_rows)
+    exact_value_bytes = BigInt(2) *
+        cld(_MLFMA_EXACT_LINEARITY_PRECISION, 8) * length(exact_rows)
+    scratch_bytes = vector_bytes + index_bytes + exact_value_bytes
+    scratch_limit = _mlfma_matvec_scratch_limit(A)
+    scratch_bytes <= scratch_limit ||
+        throw(ArgumentError(
+            "MLFMA cancelled-row retry requires $scratch_bytes scratch " *
+            "bytes, exceeding max_matvec_scratch_bytes=$scratch_limit"))
+
+    ordinary = copy(product)
+    basis_input = zeros(ComplexF64, length(product))
+    basis_product = similar(product)
+    setprecision(BigFloat, _MLFMA_EXACT_LINEARITY_PRECISION) do
+        totals = zeros(Complex{BigFloat}, length(exact_rows))
+        if A isa MLFMAOperator
+            @inbounds for column in eachindex(x)
+                coefficient = ComplexF64(x[column])
+                iszero(coefficient) && continue
+                basis_input[column] = one(ComplexF64)
+                _mlfma_forward_product_raw!(
+                    basis_product, A, basis_input)
+                basis_input[column] = zero(ComplexF64)
+                coefficient_big = Complex{BigFloat}(coefficient)
+                for (row_index, row) in pairs(exact_rows)
+                    totals[row_index] += coefficient_big *
+                                         Complex{BigFloat}(
+                                             basis_product[row])
+                end
+            end
+        else
+            @inbounds for (row_index, row) in pairs(exact_rows)
+                basis_input[row] = one(ComplexF64)
+                _mlfma_forward_product_raw!(
+                    basis_product, A.op, basis_input)
+                basis_input[row] = zero(ComplexF64)
+                for column in eachindex(x)
+                    coefficient = ComplexF64(x[column])
+                    iszero(coefficient) && continue
+                    totals[row_index] +=
+                        Complex{BigFloat}(coefficient) *
+                        conj(Complex{BigFloat}(basis_product[column]))
+                end
+            end
+        end
+
+        copyto!(product, ordinary)
+        @inbounds for (row_index, row) in pairs(exact_rows)
+            converted = ComplexF64(totals[row_index])
+            isfinite(converted) ||
+                throw(OverflowError(
+                    "MLFMA exact linearity retry is outside the " *
+                    "ComplexF64 range at row $row"))
+            product[row] = converted
+        end
+    end
+    return product
+end
+
 @inline function _mlfma_internal_product!(
         product::Vector{ComplexF64},
         A::MLFMAOperator,
@@ -2672,10 +2804,11 @@ end
         alpha_scale, beta_scale, overwrite)
 end
 
-function _mlfma_forward_product!(
+function _mlfma_forward_product_raw!(
         product::Vector{ComplexF64},
         A::MLFMAOperator,
-        x::AbstractVector)
+        x::AbstractVector,
+        exact_rows::Union{Nothing,BitVector}=nothing)
     nL = A.octree.nLevels
     ws = A.workspace
     agg = ws.agg
@@ -2823,10 +2956,30 @@ function _mlfma_forward_product!(
                 dot4 -= conj(A.bf_patterns[4, q, n]) * inc[4, q]
                 val += leaf_samp.weights[q] * dot4
             end
-            product[n] += A.prefactor * val
+            near_value = product[n]
+            far_value = A.prefactor * val
+            combined = near_value + far_value
+            if exact_rows !== nothing &&
+               _mlfma_near_far_combine_requires_exact(
+                   near_value, far_value, combined, A)
+                exact_rows[n] = true
+            end
+            product[n] = combined
         end
     end
 
+    return product
+end
+
+function _mlfma_forward_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAOperator,
+        x::AbstractVector)
+    exact_rows = A.workspace.exact_rows
+    fill!(exact_rows, false)
+    _mlfma_forward_product_raw!(product, A, x, exact_rows)
+    any(exact_rows) &&
+        _mlfma_recompute_cancelled_rows!(product, A, x)
     return product
 end
 
@@ -2947,10 +3100,11 @@ end
 
 # ─── Adjoint matvec ─────────────────────────────────────────────
 
-function _mlfma_adjoint_product!(
+function _mlfma_adjoint_product_raw!(
         product::Vector{ComplexF64},
         A::MLFMAAdjointOperator,
-        x::AbstractVector)
+        x::AbstractVector,
+        exact_rows::Union{Nothing,BitVector}=nothing)
     nL = A.op.octree.nLevels
     ws = A.op.workspace
     agg = ws.agg
@@ -3091,10 +3245,30 @@ function _mlfma_adjoint_product!(
                     val += conj(A.op.bf_patterns[c, q, n]) * a_adj[c, q]
                 end
             end
-            product[n] += conj(A.op.prefactor) * val
+            near_value = product[n]
+            far_value = conj(A.op.prefactor) * val
+            combined = near_value + far_value
+            if exact_rows !== nothing &&
+               _mlfma_near_far_combine_requires_exact(
+                   near_value, far_value, combined, A)
+                exact_rows[n] = true
+            end
+            product[n] = combined
         end
     end
 
+    return product
+end
+
+function _mlfma_adjoint_product!(
+        product::Vector{ComplexF64},
+        A::MLFMAAdjointOperator,
+        x::AbstractVector)
+    exact_rows = A.op.workspace.exact_rows
+    fill!(exact_rows, false)
+    _mlfma_adjoint_product_raw!(product, A, x, exact_rows)
+    any(exact_rows) &&
+        _mlfma_recompute_cancelled_rows!(product, A, x)
     return product
 end
 
