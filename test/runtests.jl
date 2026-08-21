@@ -4237,6 +4237,30 @@ end
 @test !DiffMoM._optimizer_curvature_pair_acceptable(
     [1.0], [-1.0])
 
+# Projected Armijo derivatives preserve exact cancellation and underflow signs;
+# an overflowing trial derivative is rejected by backtracking instead of
+# aborting the optimizer.
+optimizer_derivative_eps = eps(Float64)
+optimizer_cancelled_derivative =
+    DiffMoM._projected_directional_derivative(
+        [1.0 + optimizer_derivative_eps, 1.0],
+        [1.0 - optimizer_derivative_eps, -1.0],
+        zeros(2))
+optimizer_cancelled_reference = setprecision(BigFloat, 256) do
+    (BigFloat(1.0 + optimizer_derivative_eps) *
+     BigFloat(1.0 - optimizer_derivative_eps)) - 1
+end
+@test optimizer_cancelled_derivative ==
+      Float64(optimizer_cancelled_reference) < 0.0
+optimizer_min_subnormal = nextfloat(0.0)
+optimizer_tiny_derivative = DiffMoM._projected_directional_derivative(
+    [optimizer_min_subnormal], [-optimizer_min_subnormal], [0.0])
+@test optimizer_tiny_derivative == -optimizer_min_subnormal
+@test isinf(DiffMoM._projected_directional_derivative(
+    [floatmax(Float64)], [1.0], [-1.0]))
+@test signbit(DiffMoM._projected_directional_derivative(
+    [floatmax(Float64)], [1.0], [-1.0])) == false
+
 optimizer_pair_alloc_step = fill(1.0, 1_000)
 optimizer_pair_alloc_change = fill(2.0, 1_000)
 optimizer_pair_alloc_gradient = fill(3.0, 1_000)

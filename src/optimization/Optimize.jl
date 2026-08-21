@@ -660,6 +660,21 @@ end
             break
         end
     end
+    derivative = 0.0
+    absolute_sum = 0.0
+    if !needs_fallback
+        @inbounds for p in eachindex(gradient, trial, current)
+            term = gradient[p] * (trial[p] - current[p])
+            derivative += term
+            absolute_sum += abs(term)
+            if !isfinite(derivative) || !isfinite(absolute_sum)
+                needs_fallback = true
+                break
+            end
+        end
+        needs_fallback |= !iszero(absolute_sum) &&
+            abs(derivative) <= 8eps(Float64) * absolute_sum
+    end
     if needs_fallback
         return setprecision(
                 BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
@@ -669,16 +684,17 @@ end
                     (BigFloat(trial[p]) - BigFloat(current[p]))
             end
             converted = Float64(derivative_big)
-            isfinite(converted) ||
-                throw(OverflowError(
-                    "projected directional derivative is outside the " *
-                    "representable Float64 range"))
-            converted
+            if iszero(converted) && !iszero(derivative_big)
+                # The line search first needs the exact sign. Preserve it when
+                # the magnitude lies below the Float64 range; returning ±0
+                # would incorrectly classify every such direction as flat.
+                return derivative_big < 0 ?
+                    -nextfloat(0.0) : nextfloat(0.0)
+            end
+            # Signed infinities make the caller shrink the trial step. Throwing
+            # here aborts the whole optimization before backtracking can act.
+            return converted
         end
-    end
-    derivative = 0.0
-    @inbounds @simd for p in eachindex(gradient, trial, current)
-        derivative += gradient[p] * (trial[p] - current[p])
     end
     return derivative
 end
