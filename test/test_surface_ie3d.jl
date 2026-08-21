@@ -626,6 +626,40 @@ end
     @test norm(A_pm - A_mu) / norm(A_pm) > 1e-4   # distinct formulation
     @test norm(Matrix(A_pm_mf) - A_pm) / norm(A_pm) < 1e-13
 
+    # Combining material blocks can lose a finite residual without overflow.
+    original_c_ze_ext = A_pm_mf.c_ze_ext
+    original_c_ze_int = A_pm_mf.c_ze_int
+    original_c_g_e = A_pm_mf.c_g_e
+    primitive_ext = A_pm_mf.Ze_ext[1, 1]
+    primitive_int = A_pm_mf.Ze_int[1, 1]
+    A_pm_mf.c_ze_ext = 1e16 / primitive_ext
+    A_pm_mf.c_ze_int = -1e16 / primitive_int
+    entry_cancellation_reference = setprecision(BigFloat, 4352) do
+        ComplexF64(
+            Complex{BigFloat}(A_pm_mf.c_ze_ext) *
+                Complex{BigFloat}(primitive_ext) +
+            Complex{BigFloat}(A_pm_mf.c_ze_int) *
+                Complex{BigFloat}(primitive_int))
+    end
+    @test A_pm_mf[1, 1] == entry_cancellation_reference
+
+    A_pm_mf.c_ze_ext = 1.0 + 0im
+    A_pm_mf.c_ze_int = 1.0 + 0im
+    A_pm_mf.c_g_e = 1.0 + 0im
+    fill!(A_pm_mf.tmp1, 0.0 + 0im)
+    fill!(A_pm_mf.tmp2, 0.0 + 0im)
+    fill!(A_pm_mf.tmp3, 0.0 + 0im)
+    fill!(A_pm_mf.tmp4, 0.0 + 0im)
+    fill!(A_pm_mf.tmp5, 0.0 + 0im)
+    A_pm_mf.tmp1[1] = 1e16
+    A_pm_mf.tmp2[1] = 3.0
+    A_pm_mf.tmp3[1] = 1e16
+    @test DiffMoM._surface_sie_block_sum_3d(A_pm_mf, 1, true) ==
+          3.0 + 0im
+    A_pm_mf.c_ze_ext = original_c_ze_ext
+    A_pm_mf.c_ze_int = original_c_ze_int
+    A_pm_mf.c_g_e = original_c_g_e
+
     # Every individual EFIE product is representable, but the ordinary row
     # order can overflow before later cancellation. Exercise both forward and
     # adjoint public matrix-free reductions against a high-precision oracle.

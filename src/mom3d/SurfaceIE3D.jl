@@ -1157,32 +1157,104 @@ Base.size(A::MatrixFreeDielectricSIE3D) = (2 * A.Ze_ext.cache.rwg.nedges,
 Base.eltype(::Type{<:MatrixFreeDielectricSIE3D}) = ComplexF64
 Base.eltype(::MatrixFreeDielectricSIE3D) = ComplexF64
 
+@noinline function _surface_sie_pair_sum_bigfloat_3d(
+        pairs::NTuple{L,Tuple{ComplexF64,ComplexF64}},
+        row::Int,
+        column::Int) where {L}
+    return setprecision(BigFloat, _MFIE_MATVEC_FALLBACK_PRECISION_3D) do
+        total = zero(Complex{BigFloat})
+        @inbounds for (factor, primitive) in pairs
+            total += Complex{BigFloat}(factor) *
+                     Complex{BigFloat}(primitive)
+        end
+        converted = ComplexF64(total)
+        if !isfinite(converted)
+            location = iszero(column) ?
+                "block output at row $row" : "entry ($row, $column)"
+            throw(OverflowError(
+                "matrix-free dielectric SIE $location is outside the " *
+                "representable ComplexF64 range"))
+        end
+        return converted
+    end
+end
+
+@inline function _surface_sie_pair_sum_3d(
+        pairs::NTuple{L,Tuple{ComplexF64,ComplexF64}},
+        row::Int,
+        column::Int) where {L}
+    value = zero(ComplexF64)
+    real_magnitude = 0.0
+    imag_magnitude = 0.0
+    @inbounds for (factor, primitive) in pairs
+        if !iszero(factor) && !iszero(primitive) &&
+           (_matrixfree_extreme_factor(factor) ||
+            _matrixfree_extreme_factor(primitive))
+            return _surface_sie_pair_sum_bigfloat_3d(
+                pairs, row, column)
+        end
+        term = factor * primitive
+        next_value = value + term
+        real_magnitude += abs(real(term))
+        imag_magnitude += abs(imag(term))
+        if !isfinite(next_value) || !isfinite(real_magnitude) ||
+           !isfinite(imag_magnitude)
+            return _surface_sie_pair_sum_bigfloat_3d(
+                pairs, row, column)
+        end
+        value = next_value
+    end
+    if _matrixfree_complex_reduction_requires_exact(
+            value, real_magnitude, imag_magnitude, L)
+        return _surface_sie_pair_sum_bigfloat_3d(pairs, row, column)
+    end
+    return value
+end
+
 function Base.getindex(A::MatrixFreeDielectricSIE3D, row::Int, col::Int)
     N = A.Ze_ext.cache.rwg.nedges
     1 <= row <= 2N || throw(BoundsError(A, (row, col)))
     1 <= col <= 2N || throw(BoundsError(A, (row, col)))
     if row <= N && col <= N
-        return A.c_ze_ext * A.Ze_ext[row, col] + A.c_ze_int * A.Ze_int[row, col]
+        return _surface_sie_pair_sum_3d((
+            (A.c_ze_ext, A.Ze_ext[row, col]),
+            (A.c_ze_int, A.Ze_int[row, col]),
+        ), row, col)
     elseif row <= N
         # E-row off-diagonal: -(c_ze_ext K_ext + c_ze_int K_int) + c_g_e * Gram
         c = col - N
-        val = -(A.c_ze_ext * A.K_ext[row, c] + A.c_ze_int * A.K_int[row, c])
-        if A.c_g_e != 0
-            val += A.c_g_e * A.Gram[row, c]
+        if iszero(A.c_g_e)
+            return _surface_sie_pair_sum_3d((
+                (-A.c_ze_ext, A.K_ext[row, c]),
+                (-A.c_ze_int, A.K_int[row, c]),
+            ), row, col)
         end
-        return val
+        return _surface_sie_pair_sum_3d((
+            (-A.c_ze_ext, A.K_ext[row, c]),
+            (-A.c_ze_int, A.K_int[row, c]),
+            (A.c_g_e, A.Gram[row, c]),
+        ), row, col)
     elseif col <= N
         # H-row off-diagonal: (c_zh_ext K_ext + c_zh_int K_int) + c_g_h * Gram
         r = row - N
-        val = A.c_zh_ext * A.K_ext[r, col] + A.c_zh_int * A.K_int[r, col]
-        if A.c_g_h != 0
-            val += A.c_g_h * A.Gram[r, col]
+        if iszero(A.c_g_h)
+            return _surface_sie_pair_sum_3d((
+                (A.c_zh_ext, A.K_ext[r, col]),
+                (A.c_zh_int, A.K_int[r, col]),
+            ), row, col)
         end
-        return val
+        return _surface_sie_pair_sum_3d((
+            (A.c_zh_ext, A.K_ext[r, col]),
+            (A.c_zh_int, A.K_int[r, col]),
+            (A.c_g_h, A.Gram[r, col]),
+        ), row, col)
     else
         r = row - N
         c = col - N
-        return A.c_zh_ext * A.Zh_ext[r, c] + A.c_zh_int * A.Zh_int[r, c]
+        return _surface_sie_pair_sum_3d((
+            (A.c_zh_ext, A.Zh_ext[r, c]),
+            (A.c_zh_int, A.Zh_int[r, c]),
+        ), row, col)
     end
 end
 
@@ -1200,37 +1272,31 @@ end
         A::MatrixFreeDielectricSIE3D,
         row::Int,
         electric_row::Bool)
-    return setprecision(BigFloat, _MFIE_MATVEC_FALLBACK_PRECISION_3D) do
-        total = if electric_row
-            Complex{BigFloat}(A.c_ze_ext) *
-                Complex{BigFloat}(A.tmp1[row]) +
-            Complex{BigFloat}(A.c_ze_int) *
-                Complex{BigFloat}(A.tmp2[row]) -
-            Complex{BigFloat}(A.c_ze_ext) *
-                Complex{BigFloat}(A.tmp3[row]) -
-            Complex{BigFloat}(A.c_ze_int) *
-                Complex{BigFloat}(A.tmp4[row]) +
-            Complex{BigFloat}(A.c_g_e) *
-                Complex{BigFloat}(A.tmp5[row])
-        else
-            Complex{BigFloat}(A.c_zh_ext) *
-                Complex{BigFloat}(A.tmp1[row]) +
-            Complex{BigFloat}(A.c_zh_int) *
-                Complex{BigFloat}(A.tmp2[row]) +
-            Complex{BigFloat}(A.c_zh_ext) *
-                Complex{BigFloat}(A.tmp3[row]) +
-            Complex{BigFloat}(A.c_zh_int) *
-                Complex{BigFloat}(A.tmp4[row]) +
-            Complex{BigFloat}(A.c_g_h) *
-                Complex{BigFloat}(A.tmp5[row])
-        end
-        converted = ComplexF64(total)
-        isfinite(converted) ||
-            throw(OverflowError(
-                "matrix-free dielectric SIE block output is outside the " *
-                "representable ComplexF64 range at row " *
-                "$(electric_row ? row : length(A.tmp1) + row)."))
-        return converted
+    pairs = _surface_sie_block_pairs_3d(A, row, electric_row)
+    output_row = electric_row ? row : length(A.tmp1) + row
+    return _surface_sie_pair_sum_bigfloat_3d(pairs, output_row, 0)
+end
+
+@inline function _surface_sie_block_pairs_3d(
+        A::MatrixFreeDielectricSIE3D,
+        row::Int,
+        electric_row::Bool)
+    return if electric_row
+        (
+            (A.c_ze_ext, A.tmp1[row]),
+            (A.c_ze_int, A.tmp2[row]),
+            (-A.c_ze_ext, A.tmp3[row]),
+            (-A.c_ze_int, A.tmp4[row]),
+            (A.c_g_e, A.tmp5[row]),
+        )
+    else
+        (
+            (A.c_zh_ext, A.tmp1[row]),
+            (A.c_zh_int, A.tmp2[row]),
+            (A.c_zh_ext, A.tmp3[row]),
+            (A.c_zh_int, A.tmp4[row]),
+            (A.c_g_h, A.tmp5[row]),
+        )
     end
 end
 
@@ -1238,36 +1304,9 @@ end
         A::MatrixFreeDielectricSIE3D,
         row::Int,
         electric_row::Bool)
-    terms = if electric_row
-        (
-            A.c_ze_ext * A.tmp1[row],
-            A.c_ze_int * A.tmp2[row],
-            -A.c_ze_ext * A.tmp3[row],
-            -A.c_ze_int * A.tmp4[row],
-            A.c_g_e * A.tmp5[row],
-        )
-    else
-        (
-            A.c_zh_ext * A.tmp1[row],
-            A.c_zh_int * A.tmp2[row],
-            A.c_zh_ext * A.tmp3[row],
-            A.c_zh_int * A.tmp4[row],
-            A.c_g_h * A.tmp5[row],
-        )
-    end
-
-    value = zero(ComplexF64)
-    magnitude_sum = 0.0
-    @inbounds for term in terms
-        next_value = value + term
-        magnitude_sum += max(abs(real(term)), abs(imag(term)))
-        if !isfinite(next_value) || !isfinite(magnitude_sum)
-            return _surface_sie_block_sum_bigfloat_3d(
-                A, row, electric_row)
-        end
-        value = next_value
-    end
-    return value
+    pairs = _surface_sie_block_pairs_3d(A, row, electric_row)
+    output_row = electric_row ? row : length(A.tmp1) + row
+    return _surface_sie_pair_sum_3d(pairs, output_row, 0)
 end
 
 @noinline function _surface_sie_scaled_output_bigfloat_3d(
