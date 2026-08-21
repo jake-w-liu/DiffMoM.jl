@@ -208,9 +208,15 @@ end
             amplitudes, flux_factor, label)
 
     intensity = 0.0
+    correction = 0.0
     @inbounds for amplitude in amplitudes
-        intensity += abs2(amplitude)
+        intensity, correction = _add_nonnegative_compensated(
+            intensity, correction, abs2(amplitude))
     end
+    intensity += correction
+    (isfinite(intensity) && intensity >= 0.0) ||
+        return _periodic_scaled_intensity_exact(
+            amplitudes, flux_factor, label)
     power_factor = intensity * flux_factor
     isfinite(power_factor) ||
         return _periodic_scaled_intensity_exact(
@@ -250,18 +256,25 @@ function _periodic_coefficient_power_sum(
     needs_fallback = _ieee_bilinear_values_require_fallback(
         coefficients, Float64)
     power_sum = 0.0
+    correction = 0.0
     @inbounds for (index, mode) in enumerate(modes)
         mode.propagating || continue
         flux_factor = _floquet_mode_flux_factor(mode, k, index)
         needs_fallback |= _ieee_dense_extreme_factor(
             flux_factor, Float64)
         needs_fallback && continue
-        power_sum += abs2(coefficients[index]) * flux_factor
-        isfinite(power_sum) ||
+        term = abs2(coefficients[index]) * flux_factor
+        power_sum, correction = _add_nonnegative_compensated(
+            power_sum, correction, term)
+        (isfinite(power_sum) && isfinite(correction)) ||
             return _periodic_coefficient_power_sum_exact(
                 modes, coefficients, k, label)
     end
     needs_fallback &&
+        return _periodic_coefficient_power_sum_exact(
+            modes, coefficients, k, label)
+    power_sum += correction
+    (isfinite(power_sum) && power_sum >= 0.0) ||
         return _periodic_coefficient_power_sum_exact(
             modes, coefficients, k, label)
     return power_sum

@@ -2304,6 +2304,15 @@ println("\n── Test 42: PeriodicMetrics ──")
             extreme_modes, extreme_mode_vectors, 1.0) ==
               [0.0, grazing_power_reference]
 
+        cancellation_vector =
+            SVector{3,ComplexF64}(1.0e8, 1.0, 1.0)
+        cancellation_vector_reference = setprecision(BigFloat, 256) do
+            Float64(BigFloat(1.0e8)^2 + 2)
+        end
+        @test only(reflected_power_fractions(
+            [incident_mode], [cancellation_vector], 1.0)) ==
+              cancellation_vector_reference
+
         zero_penalty = zeros(ComplexF64, 1, 1)
         dummy_current = ComplexF64[1.0]
         zero_reflection = ComplexF64[0.0]
@@ -2345,6 +2354,32 @@ println("\n── Test 42: PeriodicMetrics ──")
                 (2 * BigFloat(376.730313668)))
         end
         @test reflected_balance.P_refl == reflected_power_reference
+
+        cancellation_mode_count = 1001
+        cancellation_modes = [
+            FloquetMode(
+                index - 1, 0, 0.0, 0.0, 1.0 + 0.0im,
+                true, 0.0, 0.0)
+            for index in 1:cancellation_mode_count
+        ]
+        cancellation_reflection = ones(
+            ComplexF64, cancellation_mode_count)
+        cancellation_reflection[1] = 1.0e8
+        cancellation_mode_reference = setprecision(BigFloat, 256) do
+            Float64(
+                BigFloat(1.0e8)^2 + cancellation_mode_count - 1)
+        end
+        cancellation_balance = power_balance(
+            dummy_current,
+            zero_penalty,
+            1.0,
+            1.0,
+            cancellation_modes,
+            cancellation_reflection;
+            eta0=0.5,
+        )
+        @test cancellation_balance.P_refl ==
+              cancellation_mode_reference
 
         transmitted_balance = power_balance(
             dummy_current,
