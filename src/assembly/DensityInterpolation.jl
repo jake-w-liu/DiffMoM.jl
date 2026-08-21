@@ -247,14 +247,17 @@ function assemble_Z_penalty(Mt::Vector{<:AbstractMatrix},
         "density penalty matrix", "max_output_bytes")
 
     Z_pen = zeros(CT, N, N)
-    for t in 1:Nt
+    penalty_at = function(t)
         penalty = (1 - rho_bar[t]^config.p) * config.Z_max
         isfinite(penalty) ||
             throw(OverflowError(
                 "density penalty coefficient for triangle $t is outside " *
                 "the representable ComplexF64 range"))
-        _add_scaled_matrix!(Z_pen, penalty, Mt[t])
+        return penalty
     end
+    _accumulate_scaled_matrices!(
+        Z_pen, nothing, Mt, penalty_at,
+        "density penalty matrix")
 
     all(isfinite, Z_pen) ||
         throw(OverflowError(

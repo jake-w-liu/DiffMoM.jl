@@ -1106,11 +1106,10 @@ function assemble_full_Z!(Z::Matrix{<:Number},
         throw(DimensionMismatch(
             "output Z has size $(size(Z)), expected $(size(Z_efie))"))
     _validate_impedance_inputs(Mp, theta, size(Z_efie))
-    copyto!(Z, Z_efie)
-    for p in eachindex(theta)
-        coeff = reactive ? (1im * theta[p]) : theta[p]
-        _add_scaled_matrix!(Z, -coeff, Mp[p])
-    end
+    _accumulate_scaled_matrices!(
+        Z, Z_efie, Mp,
+        p -> -(reactive ? (1im * theta[p]) : theta[p]),
+        "full impedance-loaded system")
     all(isfinite, Z) ||
         error("full impedance-loaded system contains non-finite entries")
     return Z
@@ -1196,9 +1195,9 @@ function make_mass_regularizer(
         output_bytes, max_output_bytes,
         "mass regularizer matrix", "max_output_bytes")
     R = zeros(ComplexF64, N, N)
-    for p in eachindex(Mp)
-        _add_scaled_matrix!(R, one(ComplexF64), Mp[p])
-    end
+    _accumulate_scaled_matrices!(
+        R, nothing, Mp, _ -> one(ComplexF64),
+        "mass regularizer accumulation")
     all(isfinite, R) ||
         error("mass regularizer accumulation produced non-finite values")
 

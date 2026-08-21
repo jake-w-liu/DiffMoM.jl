@@ -2680,6 +2680,52 @@ DiffMoM._add_scaled_matrix!(
     mass_residue_accumulation, 1.0, mass_cancelling_residue)
 @test mass_residue_accumulation[1, 1] == mass_duplicate_residue
 
+# Dense matrix assembly must retain a representable final value when a scaled
+# product or an intermediate accumulation is outside the Float64 range.  The
+# compact LocalMassMatrix path uses a bounded k-way merge for the same case.
+matrix_sum_extreme_term = 0.6 * floatmax(Float64)
+matrix_sum_dense = [
+    reshape([matrix_sum_extreme_term], 1, 1),
+    reshape([matrix_sum_extreme_term], 1, 1),
+    reshape([-matrix_sum_extreme_term], 1, 1),
+]
+matrix_sum_local = [
+    LocalMassMatrix(1, [1], [1], ComplexF64[value])
+    for value in (
+        matrix_sum_extreme_term,
+        matrix_sum_extreme_term,
+        -matrix_sum_extreme_term,
+    )
+]
+matrix_sum_reference = setprecision(BigFloat, 6656) do
+    ComplexF64(
+        BigFloat(matrix_sum_extreme_term) +
+        BigFloat(matrix_sum_extreme_term) -
+        BigFloat(matrix_sum_extreme_term))
+end
+matrix_sum_coefficients = fill(-1.0, 3)
+@test assemble_Z_impedance(
+    matrix_sum_dense, matrix_sum_coefficients)[1, 1] ==
+      matrix_sum_reference
+@test assemble_Z_impedance(
+    matrix_sum_local, matrix_sum_coefficients)[1, 1] ==
+      matrix_sum_reference
+@test make_mass_regularizer(matrix_sum_dense)[1, 1] ==
+      matrix_sum_reference
+
+matrix_sum_base = floatmax(Float64)
+matrix_sum_factor = nextfloat(matrix_sum_base / 2)
+matrix_sum_base_reference = setprecision(BigFloat, 6656) do
+    ComplexF64(
+        BigFloat(matrix_sum_base) -
+        2 * BigFloat(matrix_sum_factor))
+end
+@test assemble_full_Z(
+    reshape(ComplexF64[matrix_sum_base], 1, 1),
+    [reshape([matrix_sum_factor], 1, 1)],
+    [2.0],
+)[1, 1] == matrix_sum_base_reference
+
 @test_throws OverflowError LocalMassMatrix(
     1, [1, 1], [1, 1],
     ComplexF64[floatmax(Float64), floatmax(Float64)])

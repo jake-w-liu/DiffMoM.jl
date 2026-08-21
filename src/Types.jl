@@ -740,6 +740,258 @@ function _add_scaled_matrix!(Y::AbstractMatrix, alpha::Number, A::LocalMassMatri
     return Y
 end
 
+@inline function _try_add_scaled_matrix!(
+        Y::AbstractMatrix,
+        alpha::Number,
+        A::LocalMassMatrix)
+    iszero(alpha) && return true
+    _local_mass_add_needs_bigfloat(Y, alpha, A) && return false
+    @inbounds for k in eachindex(A.vals)
+        Y[A.rows[k], A.cols[k]] += alpha * A.vals[k]
+    end
+    return true
+end
+
+@inline function _try_add_scaled_matrix!(
+        Y::AbstractMatrix,
+        alpha::Number,
+        A::AbstractMatrix)
+    iszero(alpha) && return true
+    real_type = _local_mass_ieee_real_type(eltype(Y))
+    real_type === nothing && return (_add_scaled_matrix!(Y, alpha, A); true)
+    alpha_finite = _local_mass_finite(alpha)
+    alpha_extreme = alpha_finite &&
+                    _local_mass_extreme_factor(alpha, real_type)
+    @inbounds for index in eachindex(Y, A)
+        current = Y[index]
+        value = A[index]
+        if !_local_mass_finite(current) ||
+           !_local_mass_finite(value) ||
+           !alpha_finite
+            Y[index] += alpha * value
+            continue
+        end
+        if (!iszero(value) &&
+            (alpha_extreme ||
+             _local_mass_extreme_factor(value, real_type) ||
+             (!iszero(current) &&
+              _local_mass_extreme_factor(current, real_type))))
+            return false
+        end
+        term = alpha * value
+        if !_local_mass_finite(term) ||
+           (!iszero(alpha) && !iszero(value) && iszero(term))
+            return false
+        end
+        combined = current + term
+        real_magnitude =
+            abs(Float64(real(current))) + abs(Float64(real(term)))
+        imag_magnitude =
+            abs(Float64(imag(current))) + abs(Float64(imag(term)))
+        if !_local_mass_finite(combined) ||
+           !isfinite(real_magnitude) ||
+           !isfinite(imag_magnitude) ||
+           _scaled_sum_requires_exact(current, term, combined)
+            return false
+        end
+        Y[index] = combined
+    end
+    return true
+end
+
+@inline function _reset_scaled_matrix_sum!(
+        output::AbstractMatrix,
+        base::Union{Nothing,AbstractMatrix})
+    if base === nothing
+        fill!(output, zero(eltype(output)))
+    else
+        copyto!(output, base)
+    end
+    return output
+end
+
+@inline function _local_mass_cursor_linear_index(
+        matrices::AbstractVector,
+        positions::Vector{Int},
+        matrix_index::Int,
+        row_count::Int)
+    matrix = matrices[matrix_index]::LocalMassMatrix
+    triplet = matrix.col_order[positions[matrix_index]]
+    return matrix.rows[triplet] +
+           (matrix.cols[triplet] - 1) * row_count
+end
+
+@inline function _local_mass_cursor_less(
+        matrices::AbstractVector,
+        positions::Vector{Int},
+        first::Int,
+        second::Int,
+        row_count::Int)
+    first_key = _local_mass_cursor_linear_index(
+        matrices, positions, first, row_count)
+    second_key = _local_mass_cursor_linear_index(
+        matrices, positions, second, row_count)
+    return first_key < second_key ||
+           (first_key == second_key && first < second)
+end
+
+function _local_mass_cursor_push!(
+        heap::Vector{Int},
+        matrix_index::Int,
+        matrices::AbstractVector,
+        positions::Vector{Int},
+        row_count::Int)
+    push!(heap, matrix_index)
+    child = length(heap)
+    @inbounds while child > 1
+        parent = child >>> 1
+        _local_mass_cursor_less(
+            matrices, positions, heap[child], heap[parent], row_count) || break
+        heap[child], heap[parent] = heap[parent], heap[child]
+        child = parent
+    end
+    return heap
+end
+
+function _local_mass_cursor_sift_root!(
+        heap::Vector{Int},
+        matrices::AbstractVector,
+        positions::Vector{Int},
+        row_count::Int)
+    parent = 1
+    @inbounds while true
+        left = parent << 1
+        left <= length(heap) || break
+        right = left + 1
+        child = if right <= length(heap) &&
+                   _local_mass_cursor_less(
+                       matrices, positions,
+                       heap[right], heap[left], row_count)
+            right
+        else
+            left
+        end
+        _local_mass_cursor_less(
+            matrices, positions,
+            heap[child], heap[parent], row_count) || break
+        heap[parent], heap[child] = heap[child], heap[parent]
+        parent = child
+    end
+    return heap
+end
+
+@inline function _advance_local_mass_cursor!(
+        heap::Vector{Int},
+        matrices::AbstractVector,
+        positions::Vector{Int},
+        row_count::Int)
+    matrix_index = heap[1]
+    positions[matrix_index] += 1
+    matrix = matrices[matrix_index]::LocalMassMatrix
+    if positions[matrix_index] > length(matrix.vals)
+        last_index = pop!(heap)
+        isempty(heap) && return matrix_index
+        heap[1] = last_index
+    end
+    _local_mass_cursor_sift_root!(
+        heap, matrices, positions, row_count)
+    return matrix_index
+end
+
+@noinline function _scaled_local_mass_sum_bigfloat!(
+        output::AbstractMatrix{T},
+        base::Union{Nothing,AbstractMatrix},
+        matrices::AbstractVector,
+        scale_at,
+        label::AbstractString) where {T}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        _reset_scaled_matrix_sum!(output, base)
+        positions = zeros(Int, length(matrices))
+        heap = Int[]
+        sizehint!(heap, length(matrices))
+        row_count = size(output, 1)
+        @inbounds for matrix_index in eachindex(matrices)
+            matrix = matrices[matrix_index]::LocalMassMatrix
+            isempty(matrix.vals) && continue
+            positions[matrix_index] = 1
+            _local_mass_cursor_push!(
+                heap, matrix_index, matrices, positions, row_count)
+        end
+
+        @inbounds while !isempty(heap)
+            linear_index = _local_mass_cursor_linear_index(
+                matrices, positions, heap[1], row_count)
+            total = base === nothing ? zero(Complex{BigFloat}) :
+                    Complex{BigFloat}(base[linear_index])
+            while !isempty(heap) &&
+                  _local_mass_cursor_linear_index(
+                      matrices, positions, heap[1], row_count) == linear_index
+                matrix_index = heap[1]
+                matrix = matrices[matrix_index]::LocalMassMatrix
+                triplet = matrix.col_order[positions[matrix_index]]
+                total += Complex{BigFloat}(scale_at(matrix_index)) *
+                         Complex{BigFloat}(matrix.vals[triplet])
+                _advance_local_mass_cursor!(
+                    heap, matrices, positions, row_count)
+            end
+            output[linear_index] = _local_mass_convert_bigfloat(
+                T, total, label, linear_index)
+        end
+        return output
+    end
+end
+
+@noinline function _scaled_generic_matrix_sum_bigfloat!(
+        output::AbstractMatrix{T},
+        base::Union{Nothing,AbstractMatrix},
+        matrices::AbstractVector,
+        scale_at,
+        label::AbstractString) where {T}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        @inbounds for index in eachindex(output)
+            total = base === nothing ? zero(Complex{BigFloat}) :
+                    Complex{BigFloat}(base[index])
+            for matrix_index in eachindex(matrices)
+                total += Complex{BigFloat}(scale_at(matrix_index)) *
+                         Complex{BigFloat}(matrices[matrix_index][index])
+            end
+            output[index] = _local_mass_convert_bigfloat(
+                T, total, label, index)
+        end
+        return output
+    end
+end
+
+function _scaled_matrix_sum_bigfloat!(
+        output::AbstractMatrix,
+        base::Union{Nothing,AbstractMatrix},
+        matrices::AbstractVector,
+        scale_at,
+        label::AbstractString)
+    if all(matrix -> matrix isa LocalMassMatrix, matrices)
+        return _scaled_local_mass_sum_bigfloat!(
+            output, base, matrices, scale_at, label)
+    end
+    return _scaled_generic_matrix_sum_bigfloat!(
+        output, base, matrices, scale_at, label)
+end
+
+function _accumulate_scaled_matrices!(
+        output::AbstractMatrix,
+        base::Union{Nothing,AbstractMatrix},
+        matrices::AbstractVector,
+        scale_at,
+        label::AbstractString)
+    _reset_scaled_matrix_sum!(output, base)
+    @inbounds for matrix_index in eachindex(matrices)
+        _try_add_scaled_matrix!(
+            output, scale_at(matrix_index), matrices[matrix_index]) ||
+            return _scaled_matrix_sum_bigfloat!(
+                output, base, matrices, scale_at, label)
+    end
+    return output
+end
+
 function _dot_left_matrix_right(left::AbstractVector, A::AbstractMatrix, right::AbstractVector)
     return dot(left, A * right)
 end

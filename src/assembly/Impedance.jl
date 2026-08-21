@@ -398,9 +398,9 @@ function assemble_Z_impedance(
         output_bytes, max_output_bytes,
         "impedance matrix", "max_output_bytes")
     Z_imp = zeros(CT, N, N)
-    for p in eachindex(theta)
-        _add_scaled_matrix!(Z_imp, -theta[p], Mp[p])
-    end
+    _accumulate_scaled_matrices!(
+        Z_imp, nothing, Mp, p -> -theta[p],
+        "impedance assembly")
     all(isfinite, Z_imp) ||
         error("impedance assembly produced non-finite matrix entries")
     return Z_imp
