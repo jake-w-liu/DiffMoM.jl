@@ -261,6 +261,58 @@ end
            _local_mass_extreme_component(imag(value), R)
 end
 
+@inline function _local_mass_product_component_bounds(
+        first::Number,
+        second::Number)
+    first_real = abs(Float64(real(first)))
+    first_imag = abs(Float64(imag(first)))
+    second_real = abs(Float64(real(second)))
+    second_imag = abs(Float64(imag(second)))
+    return (
+        first_real * second_real + first_imag * second_imag,
+        first_real * second_imag + first_imag * second_real,
+    )
+end
+
+@inline function _local_mass_product_component_bounds(
+        first::Number,
+        second::Number,
+        third::Number)
+    product_real, product_imag =
+        _local_mass_product_component_bounds(first, second)
+    third_real = abs(Float64(real(third)))
+    third_imag = abs(Float64(imag(third)))
+    return (
+        product_real * third_real + product_imag * third_imag,
+        product_real * third_imag + product_imag * third_real,
+    )
+end
+
+@inline function _local_mass_reduction_requires_exact(
+        value::Number,
+        real_magnitude::Float64,
+        imag_magnitude::Float64,
+        primitive_count::Int,
+        ::Type{R}) where {R<:Union{Float32,Float64}}
+    error_factor = min(
+        1.0,
+        16 * Float64(eps(R)) * Float64(max(primitive_count, 1)),
+    )
+    return (!iszero(real_magnitude) &&
+            abs(Float64(real(value))) <=
+            error_factor * real_magnitude) ||
+           (!iszero(imag_magnitude) &&
+            abs(Float64(imag(value))) <=
+            error_factor * imag_magnitude)
+end
+
+@inline function _local_mass_add_primitive_count(
+        count::Int,
+        increment::Int)
+    return count > typemax(Int) - increment ?
+           typemax(Int) : count + increment
+end
+
 function _local_mass_sum_group(
         vals::Vector{T}, order::Vector{Int}, first::Int, last::Int) where {T}
     first == last && return vals[order[first]]
@@ -446,6 +498,134 @@ function SparseArrays.sparse(M::LocalMassMatrix)
     return sparse(M.rows, M.cols, M.vals, M.n, M.n)
 end
 
+function _local_mass_mul_needs_bigfloat_ordered(
+        y::AbstractVector,
+        M::LocalMassMatrix,
+        x::AbstractVector,
+        alpha::Number,
+        beta::Number,
+        order,
+        ::Val{ADJOINT},
+        ::Type{R}) where {ADJOINT,R<:Union{Float32,Float64}}
+    alpha_is_extreme = _local_mass_extreme_factor(alpha, R)
+    beta_is_extreme = _local_mass_extreme_factor(beta, R)
+    output_type = eltype(y)
+    position = firstindex(order)
+    final_position = lastindex(order)
+
+    @inbounds for row in 1:M.n
+        previous = zero(output_type)
+        previous_is_extreme = false
+        if !iszero(beta)
+            previous = y[row]
+            _local_mass_finite(previous) || return false
+            previous_is_extreme =
+                !iszero(previous) &&
+                _local_mass_extreme_factor(previous, R)
+        end
+        total = zero(output_type)
+        real_magnitude = 0.0
+        imag_magnitude = 0.0
+        primitive_count = 0
+        if beta == one(beta)
+            total = previous
+            real_magnitude, imag_magnitude =
+                _local_mass_component_magnitudes(previous)
+            primitive_count = 1
+        elseif !iszero(beta)
+            (beta_is_extreme || previous_is_extreme) && return true
+            scaled_previous = beta * previous
+            if !_local_mass_finite(scaled_previous) ||
+               (!iszero(previous) && iszero(scaled_previous))
+                return true
+            end
+            total = convert(output_type, scaled_previous)
+            (!_local_mass_finite(total) ||
+             (!iszero(scaled_previous) && iszero(total))) && return true
+            real_magnitude, imag_magnitude =
+                _local_mass_product_component_bounds(beta, previous)
+            primitive_count = 2
+        end
+
+        has_contribution = false
+        while position <= final_position
+            k = order[position]
+            target_index = ADJOINT ? M.cols[k] : M.rows[k]
+            target_index == row || break
+            has_contribution = true
+            source_index = ADJOINT ? M.rows[k] : M.cols[k]
+            matrix_value = ADJOINT ? conj(M.vals[k]) : M.vals[k]
+            source_value = x[source_index]
+            _local_mass_finite(source_value) || return false
+            if !iszero(matrix_value) && !iszero(source_value) &&
+               (alpha_is_extreme ||
+                _local_mass_extreme_factor(matrix_value, R) ||
+                _local_mass_extreme_factor(source_value, R))
+                return true
+            end
+            contribution = alpha * matrix_value * source_value
+            if !_local_mass_finite(contribution) ||
+               (!iszero(alpha) && !iszero(matrix_value) &&
+                !iszero(source_value) && iszero(contribution))
+                return true
+            end
+            contribution_real, contribution_imag =
+                _local_mass_product_component_bounds(
+                    alpha, matrix_value, source_value)
+            real_magnitude += contribution_real
+            imag_magnitude += contribution_imag
+            primitive_count = _local_mass_add_primitive_count(
+                primitive_count, 4)
+            next_total = convert(output_type, total + contribution)
+            (!_local_mass_finite(next_total) ||
+             !isfinite(real_magnitude) ||
+             !isfinite(imag_magnitude)) && return true
+            total = next_total
+            position += 1
+        end
+
+        if has_contribution && beta == one(beta) && previous_is_extreme
+            return true
+        end
+        _local_mass_reduction_requires_exact(
+            total, real_magnitude, imag_magnitude,
+            primitive_count, R) && return true
+    end
+    return false
+end
+
+function _local_mass_mul_needs_bigfloat_non_ieee(
+        y::AbstractVector,
+        M::LocalMassMatrix,
+        x::AbstractVector,
+        alpha::Number,
+        beta::Number,
+        adjoint_operator::Bool)
+    if !iszero(beta) && beta != one(beta)
+        @inbounds for previous in y
+            _local_mass_finite(previous) || return false
+            scaled_previous = beta * previous
+            if !_local_mass_finite(scaled_previous) ||
+               (!iszero(previous) && iszero(scaled_previous))
+                return true
+            end
+        end
+    end
+    @inbounds for k in eachindex(M.vals)
+        source_index = adjoint_operator ? M.rows[k] : M.cols[k]
+        matrix_value = adjoint_operator ? conj(M.vals[k]) : M.vals[k]
+        source_value = x[source_index]
+        _local_mass_finite(source_value) || return false
+        contribution = alpha * matrix_value * source_value
+        if !_local_mass_finite(contribution) ||
+           (!iszero(alpha) && !iszero(matrix_value) &&
+            !iszero(source_value) && iszero(contribution))
+            return true
+        end
+    end
+    return false
+end
+
 function _local_mass_mul_needs_bigfloat(
         y::AbstractVector,
         M::LocalMassMatrix,
@@ -455,62 +635,16 @@ function _local_mass_mul_needs_bigfloat(
         adjoint_operator::Bool)
     _local_mass_finite(alpha) && _local_mass_finite(beta) || return false
     real_type = _local_mass_ieee_real_type(eltype(y))
-    alpha_is_extreme = real_type !== nothing &&
-                       _local_mass_extreme_factor(alpha, real_type)
-    beta_is_extreme = real_type !== nothing &&
-                      _local_mass_extreme_factor(beta, real_type)
-    magnitude_sum = 0.0
-    scan_all_previous = !iszero(beta) && beta != one(beta)
-    if scan_all_previous
-        @inbounds for previous in y
-            _local_mass_finite(previous) || return false
-            if !iszero(previous) && real_type !== nothing &&
-               (beta_is_extreme ||
-                _local_mass_extreme_factor(previous, real_type))
-                return true
-            end
-            term = beta * previous
-            if !_local_mass_finite(term) ||
-               (!iszero(previous) && iszero(term))
-                return true
-            end
-            magnitude_sum += _local_mass_component_scale(term)
-            isfinite(magnitude_sum) || return true
-        end
-    end
-    @inbounds for k in eachindex(M.vals)
-        target_index = adjoint_operator ? M.cols[k] : M.rows[k]
-        if beta == one(beta)
-            previous = y[target_index]
-            _local_mass_finite(previous) || return false
-            if !iszero(previous) && real_type !== nothing &&
-               _local_mass_extreme_factor(previous, real_type)
-                return true
-            end
-            magnitude_sum += _local_mass_component_scale(previous)
-            isfinite(magnitude_sum) || return true
-        end
-        source_index = adjoint_operator ? M.rows[k] : M.cols[k]
-        matrix_value = adjoint_operator ? conj(M.vals[k]) : M.vals[k]
-        source_value = x[source_index]
-        _local_mass_finite(source_value) || return false
-        if !iszero(matrix_value) && !iszero(source_value) &&
-           real_type !== nothing &&
-           (alpha_is_extreme ||
-            _local_mass_extreme_factor(matrix_value, real_type) ||
-            _local_mass_extreme_factor(source_value, real_type))
-            return true
-        end
-        term = alpha * matrix_value * source_value
-        if !_local_mass_finite(term) ||
-           (!iszero(alpha) && !iszero(matrix_value) &&
-            !iszero(source_value) && iszero(term))
-            return true
-        end
-        magnitude_sum += _local_mass_component_scale(term)
-        isfinite(magnitude_sum) || return true
-    end
-    return false
+    real_type === nothing &&
+        return _local_mass_mul_needs_bigfloat_non_ieee(
+            y, M, x, alpha, beta, adjoint_operator)
+    return adjoint_operator ?
+        _local_mass_mul_needs_bigfloat_ordered(
+            y, M, x, alpha, beta, M.col_order,
+            Val(true), real_type) :
+        _local_mass_mul_needs_bigfloat_ordered(
+            y, M, x, alpha, beta, eachindex(M.vals),
+            Val(false), real_type)
 end
 
 function _local_mass_scale_needs_bigfloat(

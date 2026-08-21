@@ -2534,6 +2534,10 @@ for mass_op in (mass_contract, adjoint(mass_contract))
     mul!(mass_result, mass_op, mass_nonfinite, 0.0 + 0im, 0.0 + 0im)
     @test mass_result == zeros(ComplexF64, 2)
 
+    fill!(mass_result, ComplexF64(NaN, NaN))
+    mul!(mass_result, mass_op, mass_initial, 1.0 + 0im, 0.0 + 0im)
+    @test mass_result == mass_op * mass_initial
+
     mass_overlap_storage = ComplexF64[1 + 0im, 4 + 0im, 9 + 0im]
     mass_overlap_x = view(mass_overlap_storage, 1:2)
     mass_overlap_y = view(mass_overlap_storage, 2:3)
@@ -2612,6 +2616,43 @@ mass_scale_cancelling_entries = LocalMassMatrix(
     1, [1, 1], [1, 1], ComplexF64[10, -10])
 mass_scaled_matrix = mass_scale * mass_scale_cancelling_entries
 @test mass_scaled_matrix[1, 1] == 0.0 + 0.0im
+
+# Ordinary finite row reductions can lose a small term even though every
+# individual LocalMassMatrix product remains normal.  Exercise both traversal
+# orders and the beta*y contribution used by five-argument mul!.
+mass_finite_cancellation_input = ComplexF64[1.0e16, 3.0, -1.0e16]
+mass_finite_cancellation_reference = ComplexF64[3, 0, 0]
+mass_finite_cancellation_forward = LocalMassMatrix(
+    3, [1, 1, 1], [1, 2, 3], ones(ComplexF64, 3))
+mass_finite_cancellation_adjoint = LocalMassMatrix(
+    3, [1, 2, 3], [1, 1, 1], ones(ComplexF64, 3))
+for mass_op in (
+    mass_finite_cancellation_forward,
+    adjoint(mass_finite_cancellation_adjoint),
+)
+    @test mass_op * mass_finite_cancellation_input ==
+          mass_finite_cancellation_reference
+end
+
+mass_finite_beta_input = ComplexF64[0, 3.0, -1.0e16]
+mass_finite_beta_forward = LocalMassMatrix(
+    3, [1, 1], [2, 3], ones(ComplexF64, 2))
+mass_finite_beta_adjoint = LocalMassMatrix(
+    3, [2, 3], [1, 1], ones(ComplexF64, 2))
+for mass_op in (
+    mass_finite_beta_forward,
+    adjoint(mass_finite_beta_adjoint),
+)
+    mass_finite_beta_result = ComplexF64[1.0e16, 0, 0]
+    mul!(mass_finite_beta_result, mass_op, mass_finite_beta_input,
+         1.0 + 0im, 1.0 + 0im)
+    @test mass_finite_beta_result == mass_finite_cancellation_reference
+end
+
+mass_finite_cancellation32 = LocalMassMatrix(
+    3, [1, 1, 1], [1, 2, 3], ones(Float32, 3))
+@test mass_finite_cancellation32 * Float32[1.0f8, 3.0f0, -1.0f8] ==
+      Float32[3, 0, 0]
 
 # Range loss in a finite matrix-vector product must be detected before
 # separately rounded subnormal terms are accumulated.  Exercise both storage
