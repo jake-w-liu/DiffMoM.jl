@@ -4781,6 +4781,98 @@ multiple_excitation_terms = DiffMoM._multiple_excitation_term_count(
     max_work_bytes=multiple_excitation_work_bytes,
     max_terms=multiple_excitation_terms) == V_exc
 
+# Imported excitations can raise the effective quadrature order.  Batch limits
+# must charge that order, and a mixed batch must charge both retained caches.
+batch_imported_order7 = ImportedExcitation(
+    _ -> CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im);
+    min_quad_order=7)
+batch_imported_output_bytes = sizeof(ComplexF64) * rwg_exc.nedges
+batch_imported_work_order1 = DiffMoM._multiple_excitation_work_bytes(
+    rwg_exc.nedges, 1, ntriangles(mesh_exc), 1,
+    batch_imported_output_bytes)
+batch_imported_work_order7 = DiffMoM._multiple_excitation_work_bytes(
+    rwg_exc.nedges, 1, ntriangles(mesh_exc), 7,
+    batch_imported_output_bytes)
+batch_imported_terms_order1 = DiffMoM._multiple_excitation_term_count(
+    rwg_exc.nedges, 1, 1)
+batch_imported_terms_order7 = DiffMoM._multiple_excitation_term_count(
+    rwg_exc.nedges, 1, 7)
+@test_throws ArgumentError assemble_multiple_excitations(
+    mesh_exc, rwg_exc, [batch_imported_order7];
+    quad_order=1,
+    max_output_bytes=batch_imported_output_bytes,
+    max_work_bytes=batch_imported_work_order1,
+    max_terms=batch_imported_terms_order7)
+@test_throws ArgumentError assemble_multiple_excitations(
+    mesh_exc, rwg_exc, [batch_imported_order7];
+    quad_order=1,
+    max_output_bytes=batch_imported_output_bytes,
+    max_work_bytes=batch_imported_work_order7,
+    max_terms=batch_imported_terms_order1)
+@test size(assemble_multiple_excitations(
+    mesh_exc, rwg_exc, [batch_imported_order7];
+    quad_order=1,
+    max_output_bytes=batch_imported_output_bytes,
+    max_work_bytes=batch_imported_work_order7,
+    max_terms=batch_imported_terms_order7)) == (rwg_exc.nedges, 1)
+
+batch_mixed_orders = [
+    make_plane_wave(k_vec_exc, 1.0, pol_exc), batch_imported_order7]
+batch_mixed_output_bytes =
+    sizeof(ComplexF64) * rwg_exc.nedges * length(batch_mixed_orders)
+batch_mixed_single_cache_bytes = DiffMoM._multiple_excitation_work_bytes(
+    rwg_exc.nedges, length(batch_mixed_orders), ntriangles(mesh_exc), 7,
+    batch_mixed_output_bytes)
+batch_mixed_work_bytes = DiffMoM._multiple_excitation_profile_work_bytes(
+    rwg_exc.nedges, ntriangles(mesh_exc), (1, 7), 1,
+    batch_mixed_output_bytes)
+batch_mixed_terms = DiffMoM._multiple_excitation_term_count(
+    rwg_exc.nedges, BigInt(1 + 7))
+@test batch_mixed_work_bytes > batch_mixed_single_cache_bytes
+@test_throws ArgumentError assemble_multiple_excitations(
+    mesh_exc, rwg_exc, batch_mixed_orders;
+    quad_order=1,
+    max_output_bytes=batch_mixed_output_bytes,
+    max_work_bytes=batch_mixed_single_cache_bytes,
+    max_terms=batch_mixed_terms)
+@test size(assemble_multiple_excitations(
+    mesh_exc, rwg_exc, batch_mixed_orders;
+    quad_order=1,
+    max_output_bytes=batch_mixed_output_bytes,
+    max_work_bytes=batch_mixed_work_bytes,
+    max_terms=batch_mixed_terms)) ==
+      (rwg_exc.nedges, length(batch_mixed_orders))
+
+# A late exceptional child completes the normal MultiExcitation pass and then
+# reassembles every child exactly.  `max_terms` must bound both passes.
+batch_multi_source_calls = Ref(0)
+batch_multi_normal = ImportedExcitation(
+    _ -> begin
+        batch_multi_source_calls[] += 1
+        CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+    end;
+    min_quad_order=1)
+batch_multi_tiny = ImportedExcitation(
+    _ -> begin
+        batch_multi_source_calls[] += 1
+        CVec3(1.0e-300 + 0im, 0.0 + 0im, 0.0 + 0im)
+    end;
+    min_quad_order=1)
+batch_late_exact_multi = make_multi_excitation(
+    [batch_multi_normal, batch_multi_tiny],
+    ComplexF64[1.0 + 0im, 1.0e300 + 0im])
+batch_late_exact_terms = DiffMoM._multiple_excitation_term_count(
+    rwg_exc.nedges, BigInt(4))
+@test_throws ArgumentError assemble_multiple_excitations(
+    mesh_exc, rwg_exc, [batch_late_exact_multi];
+    quad_order=1, max_terms=batch_late_exact_terms - 1)
+@test batch_multi_source_calls[] == 0
+@test size(assemble_multiple_excitations(
+    mesh_exc, rwg_exc, [batch_late_exact_multi];
+    quad_order=1, max_terms=batch_late_exact_terms)) ==
+      (rwg_exc.nedges, 1)
+@test batch_multi_source_calls[] == batch_late_exact_terms
+
 weights_exc = ComplexF64[0.3 - 0.1im, -0.2 + 0.7im]
 multi_exc = make_multi_excitation([gap_a, make_plane_wave(k_vec_exc, 1.0, pol_exc)], weights_exc)
 v_multi_exc = assemble_excitation(mesh_exc, rwg_exc, multi_exc; quad_order=3)

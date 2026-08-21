@@ -350,8 +350,8 @@ Assemble RHS vectors for multiple excitations at once (multiple right-hand sides
 - `excitations::Vector{<:AbstractExcitation}`: List of excitations.
 - `quad_order::Int=3`: Quadrature order.
 - `max_output_bytes::Integer=2_000_000_000`: Raw-payload ceiling for the dense `N x M` result, checked before quadrature-cache or output allocation.
-- `max_work_bytes::Integer=536_870_912`: Combined raw-payload ceiling for the output, shared quadrature cache, and one child RHS.
-- `max_terms::Integer=200_000_000`: Conservative ceiling for direct basis/support/quadrature work across all excitations.
+- `max_work_bytes::Integer=536_870_912`: Combined raw-payload ceiling for the output, every retained effective-order quadrature cache, and the maximum nested temporary-RHS stack.
+- `max_terms::Integer=200_000_000`: Conservative ceiling for direct basis/support/quadrature work across all excitations, including nested `MultiExcitation` fallback reassembly.
 
 **Returns:** `Matrix{ComplexF64}` of size `N x M` where each column is the RHS for one excitation.
 

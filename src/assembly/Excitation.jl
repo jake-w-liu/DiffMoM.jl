@@ -34,13 +34,22 @@ end
 
 function _multiple_excitation_work_bytes(
         N::Int, M::Int, Nt::Int, Nq::Int, output_bytes::Int)
+    return _multiple_excitation_profile_work_bytes(
+        N, Nt, (Nq,), 1, output_bytes)
+end
+
+function _multiple_excitation_profile_work_bytes(
+        N::Int, Nt::Int, quadrature_point_counts,
+        temporary_rhs_count::Int, output_bytes::Int)
     total = BigInt(output_bytes)
-    # Shared quadrature points/areas and one temporary child RHS coexist with
-    # the returned matrix.  Outer vector references and rule arrays are charged.
-    total += BigInt(sizeof(Ptr{Cvoid}) + sizeof(Float64)) * Nt
-    total += BigInt(sizeof(Vec3)) * Nt * Nq
-    total += BigInt(sizeof(ComplexF64)) * N
-    total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    # Each effective quadrature order is cached independently and retained for
+    # the batch. Outer vector references, areas, and rule arrays are charged.
+    for Nq in quadrature_point_counts
+        total += BigInt(sizeof(Ptr{Cvoid}) + sizeof(Float64)) * Nt
+        total += BigInt(sizeof(Vec3)) * Nt * Nq
+        total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
+    end
+    total += BigInt(sizeof(ComplexF64)) * N * temporary_rhs_count
     total <= typemax(Int) ||
         throw(ArgumentError(
             "multiple-excitation raw-workspace estimate overflows Int"))
@@ -50,6 +59,14 @@ end
 function _multiple_excitation_term_count(
         N::Int, M::Int, Nq::Int)
     count = BigInt(2) * N * M * Nq
+    count <= typemax(Int) ||
+        throw(ArgumentError(
+            "multiple-excitation term estimate overflows Int"))
+    return Int(count)
+end
+
+function _multiple_excitation_term_count(N::Int, quadrature_points::BigInt)
+    count = BigInt(2) * N * quadrature_points
     count <= typemax(Int) ||
         throw(ArgumentError(
             "multiple-excitation term estimate overflows Int"))
@@ -1711,6 +1728,97 @@ function _effective_quad_order(requested::Int, min_required::Int)
     return last(_TRI_QUAD_ORDERS)
 end
 
+function _excitation_quad_orders!(
+        orders::Set{Int}, excitation::AbstractExcitation,
+        requested_order::Int)
+    push!(orders, requested_order)
+    return orders
+end
+
+function _excitation_quad_orders!(
+        orders::Set{Int}, ::Union{PortExcitation,DeltaGapExcitation},
+        ::Int)
+    return orders
+end
+
+function _excitation_quad_orders!(
+        orders::Set{Int}, excitation::ImportedExcitation,
+        requested_order::Int)
+    push!(orders,
+          _effective_quad_order(requested_order, excitation.min_quad_order))
+    return orders
+end
+
+function _excitation_quad_orders!(
+        orders::Set{Int}, excitation::MultiExcitation,
+        requested_order::Int)
+    for child in excitation.excitations
+        _excitation_quad_orders!(orders, child, requested_order)
+    end
+    return orders
+end
+
+_excitation_rhs_vector_count(::AbstractExcitation) = 1
+
+function _excitation_rhs_vector_count(excitation::MultiExcitation)
+    maximum_child_count = 0
+    for child in excitation.excitations
+        maximum_child_count = max(
+            maximum_child_count, _excitation_rhs_vector_count(child))
+    end
+    # The MultiExcitation output and the child that triggered exact fallback
+    # can coexist with the child being reassembled. Charging two vectors per
+    # nesting level therefore bounds the retained Float64 RHS stack.
+    maximum_child_count <= typemax(Int) - 2 ||
+        throw(ArgumentError(
+            "multiple-excitation temporary RHS estimate overflows Int"))
+    return maximum_child_count + 2
+end
+
+function _excitation_term_points(
+        excitation::AbstractExcitation, requested_order::Int,
+        requested_points::Int)
+    return BigInt(requested_points)
+end
+
+function _excitation_term_points(
+        excitation::ImportedExcitation, requested_order::Int,
+        ::Int)
+    effective_order =
+        _effective_quad_order(requested_order, excitation.min_quad_order)
+    return BigInt(length(last(tri_quad_rule(effective_order))))
+end
+
+function _excitation_term_points(
+        excitation::MultiExcitation, requested_order::Int,
+        requested_points::Int)
+    child_points = sum(
+        (_excitation_term_points(child, requested_order, requested_points)
+         for child in excitation.excitations);
+        init=BigInt(0))
+    # A late exceptional child makes `assemble_multi` complete its normal pass
+    # and then reassemble every child into the exact accumulator.
+    return 2 * child_points
+end
+
+function _multiple_excitation_profile(
+        excitations::AbstractVector{<:AbstractExcitation},
+        requested_order::Int, requested_points::Int)
+    quadrature_orders = Set{Int}()
+    temporary_rhs_count = 0
+    term_points = BigInt(0)
+    for excitation in excitations
+        _excitation_quad_orders!(
+            quadrature_orders, excitation, requested_order)
+        temporary_rhs_count = max(
+            temporary_rhs_count,
+            _excitation_rhs_vector_count(excitation))
+        term_points += _excitation_term_points(
+            excitation, requested_order, requested_points)
+    end
+    return quadrature_orders, temporary_rhs_count, term_points
+end
+
 function _excitation_quadrature_cache(mesh::TriMesh, quad_order::Int)
     xi, wq = tri_quad_rule(quad_order)
     Nt = ntriangles(mesh)
@@ -2452,9 +2560,15 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
     # shared cache or output.  This conservative bound charges every child as
     # a surface-quadrature excitation; cache-free children only use less work.
     _, quadrature_weights = tri_quad_rule(quad_order)
-    Nq = length(quadrature_weights)
-    work_bytes = _multiple_excitation_work_bytes(
-        N, M, ntriangles(mesh), Nq, output_bytes)
+    requested_points = length(quadrature_weights)
+    quadrature_orders, temporary_rhs_count, term_points =
+        _multiple_excitation_profile(
+            excitations, quad_order, requested_points)
+    quadrature_point_counts = (
+        length(last(tri_quad_rule(order))) for order in quadrature_orders)
+    work_bytes = _multiple_excitation_profile_work_bytes(
+        N, ntriangles(mesh), quadrature_point_counts,
+        temporary_rhs_count, output_bytes)
     work_limit = _validated_resource_limit(
         "max_work_bytes", max_work_bytes)
     work_bytes <= work_limit ||
@@ -2462,7 +2576,7 @@ function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
             "multiple-excitation output and workspace requires " *
             "$work_bytes raw bytes, exceeding max_work_bytes=$work_limit"))
     available_exact_bytes = max(1, work_limit - work_bytes)
-    term_count = _multiple_excitation_term_count(N, M, Nq)
+    term_count = _multiple_excitation_term_count(N, term_points)
     term_limit = _validated_resource_limit("max_terms", max_terms)
     term_count <= term_limit ||
         throw(ArgumentError(
