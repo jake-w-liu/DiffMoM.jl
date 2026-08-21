@@ -3364,6 +3364,42 @@ end
     diagnostic_projected_underflow_pol,
 ) == diagnostic_projected_references.underflow
 
+# A finite polarization projection can retain a small term between large
+# cancelling components.  The direct three-component dot rounds this example
+# to zero in both Float64 and Float32, while the projected power is one.
+diagnostic_projected_cancellation_field = reshape(
+    ComplexF64[1.0e16, 1.0, -1.0e16], 3, 1)
+diagnostic_projected_cancellation_pol = reshape(
+    ComplexF64[1.0, 1.0, 1.0], 3, 1)
+diagnostic_projected_cancellation_field32 =
+    ComplexF32.(diagnostic_projected_cancellation_field)
+diagnostic_projected_cancellation_pol32 =
+    ComplexF32.(diagnostic_projected_cancellation_pol)
+diagnostic_projected_cancellation_grid = SphGrid(
+    diagnostic_rhat, [0.0], [0.0], [1.0])
+@test conj(diagnostic_projected_cancellation_pol[1, 1]) *
+      diagnostic_projected_cancellation_field[1, 1] +
+      conj(diagnostic_projected_cancellation_pol[2, 1]) *
+      diagnostic_projected_cancellation_field[2, 1] +
+      conj(diagnostic_projected_cancellation_pol[3, 1]) *
+      diagnostic_projected_cancellation_field[3, 1] == 0.0
+@test conj(diagnostic_projected_cancellation_pol32[1, 1]) *
+      diagnostic_projected_cancellation_field32[1, 1] +
+      conj(diagnostic_projected_cancellation_pol32[2, 1]) *
+      diagnostic_projected_cancellation_field32[2, 1] +
+      conj(diagnostic_projected_cancellation_pol32[3, 1]) *
+      diagnostic_projected_cancellation_field32[3, 1] == 0.0f0
+@test projected_power(
+    diagnostic_projected_cancellation_field,
+    diagnostic_projected_cancellation_grid,
+    diagnostic_projected_cancellation_pol,
+) == 1.0
+@test projected_power(
+    diagnostic_projected_cancellation_field32,
+    diagnostic_projected_cancellation_grid,
+    diagnostic_projected_cancellation_pol32,
+) == 1.0
+
 diagnostic_allocation_size = 96
 diagnostic_allocation_rhat = zeros(3, diagnostic_allocation_size)
 diagnostic_allocation_rhat[3, :] .= 1.0

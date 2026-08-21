@@ -307,23 +307,51 @@ function projected_power(E_ff::Matrix{<:Number}, grid::SphGrid,
                 "mask length $(length(mask)) != $NΩ"))
     end
 
-    needs_fallback = _ieee_bilinear_values_require_fallback(
-        E_ff, Float64) ||
+    needs_fallback =
+        !_ieee_bilinear_supported_eltype(eltype(E_ff), Float64) ||
+        !_ieee_bilinear_supported_eltype(eltype(pol), Float64) ||
+        _ieee_bilinear_values_require_fallback(E_ff, Float64) ||
         _ieee_bilinear_values_require_fallback(pol, Float64) ||
         _ieee_bilinear_values_require_fallback(grid.w, Float64)
     needs_fallback &&
         return _projected_power_exact(E_ff, grid, pol, mask)
 
     P = 0.0
+    projection_error_factor =
+        _ieee_product_error_factor(Float64, 2, 3)
     @inbounds for q in 1:NΩ
         if mask !== nothing && !mask[q]
             continue
         end
-        yq = conj(pol[1, q]) * E_ff[1, q] +
-             conj(pol[2, q]) * E_ff[2, q] +
-             conj(pol[3, q]) * E_ff[3, q]
-        isfinite(yq) ||
+        projection_real = 0.0
+        projection_imag = 0.0
+        real_magnitude = 0.0
+        imag_magnitude = 0.0
+        for component in 1:3
+            polarization = pol[component, q]
+            field = E_ff[component, q]
+            polarization_real = Float64(real(polarization))
+            polarization_imag = Float64(imag(polarization))
+            field_real = Float64(real(field))
+            field_imag = Float64(imag(field))
+            real_real = polarization_real * field_real
+            imag_imag = polarization_imag * field_imag
+            real_imag = polarization_real * field_imag
+            imag_real = polarization_imag * field_real
+            projection_real += real_real + imag_imag
+            projection_imag += real_imag - imag_real
+            real_magnitude += abs(real_real) + abs(imag_imag)
+            imag_magnitude += abs(real_imag) + abs(imag_real)
+        end
+        if _ieee_product_component_is_suspicious(
+                projection_real, real_magnitude,
+                projection_error_factor) ||
+           _ieee_product_component_is_suspicious(
+                projection_imag, imag_magnitude,
+                projection_error_factor)
             return _projected_power_exact(E_ff, grid, pol, mask)
+        end
+        yq = ComplexF64(projection_real, projection_imag)
         P += grid.w[q] * abs2(yq)
         isfinite(P) ||
             return _projected_power_exact(E_ff, grid, pol, mask)
