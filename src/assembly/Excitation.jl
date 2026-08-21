@@ -884,6 +884,45 @@ end
     end
 end
 
+@noinline function _dipole_farfield_exact(
+    dipole::DipoleExcitation,
+    rhat::Vec3,
+    k::Float64,
+)
+    precision = max(
+        _dipole_angular_precision(dipole.moment, rhat),
+        _source_directional_phase_precision(k, rhat, dipole.position),
+    )
+    return setprecision(BigFloat, precision) do
+        direction = SVector{3,BigFloat}(
+            ntuple(index -> BigFloat(rhat[index]), 3))
+        direction_norm_squared = sum(abs2, direction)
+        direction_norm = sqrt(direction_norm_squared)
+        moment = SVector{3,Complex{BigFloat}}(
+            ntuple(index -> Complex{BigFloat}(dipole.moment[index]), 3))
+        wavenumber = BigFloat(k)
+        unphased = if dipole.type == :electric
+            projection = cross(cross(direction, moment), direction) /
+                         direction_norm_squared
+            (wavenumber * wavenumber /
+             (4 * BigFloat(pi) * BigFloat(_EPS0))) * projection
+        elseif dipole.type == :magnetic
+            (BigFloat(_ETA0) * wavenumber * wavenumber /
+             (4 * BigFloat(pi))) *
+            (cross(moment, direction) / direction_norm)
+        else
+            error(
+                "Dipole type must be :electric or :magnetic, got $(dipole.type).")
+        end
+        phase_argument = wavenumber * sum(
+            direction[index] * BigFloat(dipole.position[index])
+            for index in 1:3) / direction_norm
+        phase = exp(Complex{BigFloat}(0, phase_argument))
+        return _finite_source_vector(
+            unphased * phase, "DipoleExcitation far field")
+    end
+end
+
 @inline function _dipole_farfield_unphased(
     dipole::DipoleExcitation,
     rhat::Vec3,

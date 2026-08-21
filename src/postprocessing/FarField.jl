@@ -772,8 +772,15 @@ function incident_farfield(dipole::DipoleExcitation, r_hat::Vec3, k::Real)
     phase = _source_directional_phase(
         kf, r_hat, rh, dipole.position, 1.0,
         "DipoleExcitation far field")
-    return _check_finite_cvec3(
-        CVec3(E_far) * phase, "DipoleExcitation far field")
+    value = CVec3(E_far) * phase
+    all(isfinite, value) ||
+        return _dipole_farfield_exact(dipole, r_hat, kf)
+    @inbounds for component in 1:3
+        _source_product_requires_exact(
+            E_far[component], phase, value[component]) &&
+            return _dipole_farfield_exact(dipole, r_hat, kf)
+    end
+    return value
 end
 
 function incident_farfield(loop::LoopExcitation, r_hat::Vec3, k::Real)

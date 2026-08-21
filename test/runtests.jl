@@ -5921,6 +5921,62 @@ end
     pattern_phase_cancellation_k,
 ) == pattern_farfield_phase_reference
 
+dipole_farfield_phase_position = Vec3(0.0, 0.0, π / 4)
+dipole_farfield_phase_direction = Vec3(0.0, 0.0, 1.0)
+dipole_farfield_phase_sources = (
+    make_dipole(
+        dipole_farfield_phase_position,
+        CVec3(pattern_phase_cancellation_value, 0.0 + 0im, 0.0 + 0im),
+        Vec3(1.0, 0.0, 0.0),
+        :electric,
+        pattern_phase_cancellation_frequency,
+    ),
+    make_dipole(
+        dipole_farfield_phase_position,
+        CVec3(0.0 + 0im, pattern_phase_cancellation_value, 0.0 + 0im),
+        Vec3(0.0, 1.0, 0.0),
+        :magnetic,
+        pattern_phase_cancellation_frequency,
+    ),
+)
+dipole_farfield_phase_references = setprecision(BigFloat, 512) do
+    direction = SVector{3,BigFloat}(
+        BigFloat.(dipole_farfield_phase_direction))
+    direction_norm_squared = sum(abs2, direction)
+    direction_norm = sqrt(direction_norm_squared)
+    phase = exp(Complex{BigFloat}(
+        0,
+        BigFloat(pattern_phase_cancellation_k) * sum(
+            direction[index] *
+            BigFloat(dipole_farfield_phase_position[index])
+            for index in 1:3) / direction_norm,
+    ))
+    ntuple(2) do source_index
+        source = dipole_farfield_phase_sources[source_index]
+        moment = SVector{3,Complex{BigFloat}}(
+            Complex{BigFloat}.(source.moment))
+        unphased = if source.type == :electric
+            projection = cross(cross(direction, moment), direction) /
+                         direction_norm_squared
+            (BigFloat(pattern_phase_cancellation_k)^2 /
+             (4 * BigFloat(π) * BigFloat(DiffMoM._EPS0))) * projection
+        else
+            (BigFloat(DiffMoM._ETA0) *
+             BigFloat(pattern_phase_cancellation_k)^2 /
+             (4 * BigFloat(π))) *
+            (cross(moment, direction) / direction_norm)
+        end
+        CVec3(unphased * phase)
+    end
+end
+for source_index in eachindex(dipole_farfield_phase_sources)
+    @test incident_farfield(
+        dipole_farfield_phase_sources[source_index],
+        dipole_farfield_phase_direction,
+        pattern_phase_cancellation_k,
+    ) == dipole_farfield_phase_references[source_index]
+end
+
 pattern_guard = make_pattern_feed(
     pattern_guard_theta, pattern_guard_phi,
     pattern_guard_F, pattern_guard_F, freq_exc)
