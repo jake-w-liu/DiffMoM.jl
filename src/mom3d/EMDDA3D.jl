@@ -697,8 +697,7 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     cols = ntuple(b -> begin
         basis = _CVec6DDA(ntuple(c -> c == b ? 1.0 + 0im : 0.0 + 0im, 6))
         # Share the checked alpha-field application with scalar `getindex`.
-        # Besides making dense and matrix-free materialization deterministic,
-        # this retains the exact fallback when a finite alpha-column product
+        # This retains the exact fallback when a finite alpha-column product
         # loses range before the interaction is evaluated.
         E, H = _em_alpha_interaction_apply_3d(
             ri, rj, k, alphaj, basis, A.eta0)
