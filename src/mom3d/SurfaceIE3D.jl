@@ -771,6 +771,26 @@ end
     return formulation
 end
 
+@inline function _validated_plane_wave_exterior_wavenumber_3d(
+        wavenumber::ComplexF64)
+    real_k = real(wavenumber)
+    imag_k = imag(wavenumber)
+    isfinite(real_k) && isfinite(imag_k) && real_k > 0.0 ||
+        throw(ArgumentError(
+            "PlaneWaveExcitation requires a finite exterior wavenumber " *
+            "with positive real part; got $wavenumber."))
+    if !iszero(imag_k)
+        magnitude_scale = max(abs(real_k), abs(imag_k))
+        relative_imaginary = abs(imag_k) / magnitude_scale
+        relative_real = abs(real_k) / magnitude_scale
+        relative_imaginary <= 1e-10 * relative_real ||
+            throw(ArgumentError(
+                "PlaneWaveExcitation uses a real k_vec and requires an " *
+                "effectively real exterior wavenumber; got $wavenumber."))
+    end
+    return real_k
+end
+
 """
     assemble_dielectric_sie_rhs_3d(mesh, rwg, excitation, exterior; quad_order=3,
                                    formulation=:pmchwt, interior=nothing)
@@ -794,19 +814,14 @@ function assemble_dielectric_sie_rhs_3d(mesh::TriMesh, rwg::RWGData,
     formulation == :muller && interior === nothing &&
         throw(ArgumentError(
             "Muller RHS scaling requires the interior medium."))
-    isfinite(real(exterior.k)) && isfinite(imag(exterior.k)) ||
-        throw(ArgumentError(
-            "exterior wavenumber must be finite, got $(exterior.k)."))
+    exterior_real_k =
+        _validated_plane_wave_exterior_wavenumber_3d(exterior.k)
     isfinite(real(exterior.eta)) && isfinite(imag(exterior.eta)) &&
         !iszero(exterior.eta) ||
         throw(ArgumentError(
             "exterior wave impedance must be finite and nonzero, got $(exterior.eta)."))
-    exterior_k_imag_tol = max(1e-10 * max(abs(real(exterior.k)), 1.0), 1e-12)
-    abs(imag(exterior.k)) <= exterior_k_imag_tol ||
-        throw(ArgumentError(
-            "PlaneWaveExcitation uses a real k_vec and requires a real exterior wavenumber; got $(exterior.k)."))
     _validate_plane_wave_wavenumber(
-        excitation, abs(real(exterior.k)), "dielectric SIE")
+        excitation, exterior_real_k, "dielectric SIE")
 
     vE = assemble_excitation(mesh, rwg, excitation; quad_order=quad_order)
     vH = _assemble_plane_wave_h_rhs_3d(mesh, rwg, excitation, exterior.eta;

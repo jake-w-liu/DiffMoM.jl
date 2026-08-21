@@ -853,6 +853,10 @@ end
         quad_order=1)
     @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
         mesh, rwg, pw,
+        DielectricMedium3D(1.0 + 0im, 1.0 + 0im, -k0 + 0im, 1.0 + 0im);
+        quad_order=1)
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh, rwg, pw,
         DielectricMedium3D(1.0 + 0im, 1.0 + 0im, k0 + 0im, 0.0 + 0im);
         quad_order=1)
     @test_throws OverflowError assemble_dielectric_sie_rhs_3d(
@@ -879,6 +883,22 @@ end
         1.0 + 0im,
         ComplexF64(tiny_direction_component),
         1.0 + 0im,
+    )
+    @test_throws ArgumentError assemble_dielectric_sie_rhs_3d(
+        mesh,
+        rwg,
+        PlaneWaveExcitation(
+            Vec3(tiny_direction_component, 0.0, 0.0),
+            1.0,
+            Vec3(0.0, 1.0, 0.0),
+        ),
+        DielectricMedium3D(
+            1.0 + 0im,
+            1.0 + 0im,
+            ComplexF64(tiny_direction_component, 1e-13),
+            1.0 + 0im,
+        );
+        quad_order=1,
     )
     tiny_direction_rhs = assemble_dielectric_sie_rhs_3d(
         mesh, rwg, tiny_direction_wave, tiny_direction_medium;

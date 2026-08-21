@@ -165,6 +165,11 @@ Construct with `matrixfree_magnetic_field_operator_3d`.
 
 Assemble the stacked right-hand side `[v_E; v_H]` for a plane-wave incident field in the **exterior** medium. The incident field lives only in the exterior region, so `v_E` tests the incident electric field and `v_H` tests the incident magnetic field `H_inc = (k_hat x E_inc) / eta_ext`.
 
+Because `PlaneWaveExcitation.k_vec` is real, the exterior wavenumber must have
+a positive real part and an imaginary part no larger than `1e-10` of that real
+part. Use a field model that supports spatial attenuation for a genuinely
+lossy exterior medium.
+
 For `formulation=:pmchwt` the RHS is `[v_E; v_H]`. For `formulation=:muller` the exterior equations are scaled by the exterior row weights, giving `[c_ze_ext * v_E; c_zh_ext * v_H]`; this requires the `interior` medium so the Müller weights can be computed.
 
 **Parameters:**
