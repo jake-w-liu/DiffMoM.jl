@@ -12,6 +12,9 @@
 
 export AngleConfig, build_multiangle_configs, optimize_multiangle_rcs
 
+const _DEFAULT_MAX_MULTIANGLE_CONFIG_WORK_BYTES =
+    _DEFAULT_MAX_DENSE_PAYLOAD_BYTES
+
 """
     AngleConfig
 
@@ -23,6 +26,84 @@ struct AngleConfig
     v::Vector{ComplexF64}           # Pre-assembled excitation vector
     Q::AbstractMatrix{ComplexF64}    # Backscatter Q operator for this angle
     weight::Float64                 # Weight in composite objective
+end
+
+function _multiangle_config_work_bytes(
+        mesh::TriMesh, rwg::RWGData, grid::SphGrid,
+        angle_count::Int, matrix_free_Q::Bool,
+        rcs_component::Symbol)
+    basis_count = rwg.nedges
+    direction_count = length(grid.w)
+    triangle_count = ntriangles(mesh)
+    _, quadrature_weights = tri_quad_rule(3)
+    quadrature_count = length(quadrature_weights)
+
+    bytes(::Type{T}, dimensions::Int...) where {T} =
+        BigInt(sizeof(T)) * prod(BigInt(dimension) for dimension in dimensions)
+
+    radiation_bytes = bytes(ComplexF64, 3, direction_count, basis_count)
+    # Match the simultaneous raw arrays charged by radiation_vectors.
+    radiation_peak = radiation_bytes +
+        BigInt(sizeof(Ptr{Cvoid}) + sizeof(Float64)) * triangle_count +
+        bytes(Vec3, triangle_count, quadrature_count) +
+        bytes(Vec3, direction_count) +
+        BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) *
+            quadrature_count
+
+    polarization_count = rcs_component == :total ? 2 : 1
+    polarization_bytes = bytes(ComplexF64, 3, direction_count)
+    # The shared excitation cache keeps weights, mapped points, and areas.
+    # Include the reference-coordinate rule that coexists while it is built.
+    excitation_cache_peak =
+        BigInt(sizeof(Ptr{Cvoid}) + sizeof(Float64)) * triangle_count +
+        bytes(Vec3, triangle_count, quadrature_count) +
+        BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) *
+            quadrature_count
+    config_vector_bytes = bytes(AngleConfig, angle_count)
+    vector_bytes = bytes(ComplexF64, basis_count)
+    mask_bytes = bytes(
+        UInt64, cld(direction_count, 8sizeof(UInt64)))
+
+    shared_peak = radiation_bytes +
+                  polarization_count * polarization_bytes +
+                  excitation_cache_peak + config_vector_bytes
+    loop_peak = if matrix_free_Q
+        weight_bytes = bytes(Float64, direction_count)
+        primitive_operator_bytes = weight_bytes + mask_bytes + vector_bytes
+        sum_operator_bytes = rcs_component == :total ?
+            2vector_bytes : BigInt(0)
+        per_config_bytes = vector_bytes +
+            polarization_count * primitive_operator_bytes +
+            sum_operator_bytes
+        # direction_mask is copied into each primitive operator; the original
+        # mask remains live until that angle has been installed in configs.
+        shared_peak + angle_count * per_config_bytes + mask_bytes
+    else
+        matrix_bytes = bytes(ComplexF64, basis_count, basis_count)
+        projection_bytes = bytes(
+            ComplexF64, direction_count, basis_count)
+        checked_mask_bytes = mask_bytes
+        if rcs_component == :total
+            # The two component matrices and their sum coexist during `+`.
+            # During construction of the second component, its projection (or
+            # checked mask) also coexists with the first component matrix.
+            current_peak = max(
+                2matrix_bytes + max(projection_bytes, checked_mask_bytes),
+                3matrix_bytes)
+            shared_peak + angle_count * vector_bytes +
+                (angle_count - 1) * matrix_bytes + mask_bytes +
+                current_peak
+        else
+            shared_peak + angle_count * (vector_bytes + matrix_bytes) +
+                mask_bytes + max(projection_bytes, checked_mask_bytes)
+        end
+    end
+
+    peak = max(radiation_peak, loop_peak)
+    peak <= typemax(Int) ||
+        throw(ArgumentError(
+            "multi-angle configuration raw-work estimate overflows Int"))
+    return Int(peak)
 end
 
 function _validate_multiangle_q(Q::AbstractMatrix{ComplexF64},
@@ -478,7 +559,10 @@ function _transverse_unit_pol(khat::Vec3, pol::Vec3)
 end
 
 """
-    build_multiangle_configs(mesh, rwg, k, angles; grid, backscatter_cone=15.0, matrix_free_Q=false, rcs_component=:copol)
+    build_multiangle_configs(mesh, rwg, k, angles;
+                             grid, backscatter_cone=15.0,
+                             matrix_free_Q=false, rcs_component=:copol,
+                             max_work_bytes=2_000_000_000)
 
 Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
 
@@ -495,6 +579,9 @@ Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
 - `matrix_free_Q`: if true, store a matrix-free far-field objective operator
 - `rcs_component`: `:copol` for θ-polarized RCS, `:crosspol` for φ-polarized
   RCS, or `:total` for the sum of both tangential components
+- `max_work_bytes`: positive ceiling for simultaneously live raw array payload
+  owned by this build, including shared radiation data, excitation quadrature,
+  returned configurations, and dense-Q construction workspace
 
 # Returns
 Vector of `AngleConfig`, one per incidence angle.
@@ -504,7 +591,9 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
                                    grid::SphGrid,
                                    backscatter_cone::Float64=15.0,
                                    matrix_free_Q::Bool=false,
-                                   rcs_component::Symbol=:copol)
+                                   rcs_component::Symbol=:copol,
+                                   max_work_bytes::Integer=
+                                       _DEFAULT_MAX_MULTIANGLE_CONFIG_WORK_BYTES)
     _validate_mesh_rwg_pair(mesh, rwg)
     (isfinite(k) && k > 0.0) ||
         throw(ArgumentError(
@@ -518,6 +607,9 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
     rcs_component in (:copol, :crosspol, :total) ||
         throw(ArgumentError(
             "rcs_component must be :copol, :crosspol, or :total"))
+    work_limit = _validated_resource_limit(
+        "max_work_bytes", max_work_bytes)
+    _validate_sph_grid(grid)
 
     for (i, ang) in enumerate(angles)
         hasproperty(ang, :theta_inc) ||
@@ -551,6 +643,12 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
         end
     end
 
+    required_work_bytes = _multiangle_config_work_bytes(
+        mesh, rwg, grid, length(angles), matrix_free_Q, rcs_component)
+    _enforce_payload_limit(
+        required_work_bytes, work_limit,
+        "multi-angle configuration output and workspace", "max_work_bytes")
+
     eta0 = 376.730313668
     G_mat = radiation_vectors(mesh, rwg, grid, k; eta0=eta0)
     # Only materialize polarizations retained by the selected objective.  A
@@ -558,12 +656,12 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
     pol_theta = rcs_component == :crosspol ? nothing : pol_linear_x(grid)
     pol_phi = rcs_component == :copol ? nothing : pol_linear_y(grid)
 
-    configs = AngleConfig[]
+    configs = Vector{AngleConfig}(undef, length(angles))
     # Every angle uses the same mesh and quadrature order.  Retain one cache
     # across the batch instead of rebuilding all mapped triangle points for
     # each plane wave.
     quad_cache = ExcitationQuadCache(mesh)
-    for ang in angles
+    for (angle_index, ang) in enumerate(angles)
         θ_i = Float64(ang.theta_inc)
         φ_i = Float64(ang.phi_inc)
 
@@ -624,7 +722,7 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
 
         w = hasproperty(ang, :weight) ? Float64(ang.weight) : 1.0
 
-        push!(configs, AngleConfig(k_vec, pw_pol, v, Q, w))
+        configs[angle_index] = AngleConfig(k_vec, pw_pol, v, Q, w)
     end
 
     return configs

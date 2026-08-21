@@ -11760,6 +11760,45 @@ khat_default = Vec3(sin(π/4) * cos(0.2), sin(π/4) * sin(0.2), cos(π/4))
     backscatter_cone=181.0,
 )
 
+# A batch build owns shared radiation/quadrature arrays plus all per-angle Q
+# data.  Enforce one aggregate live-payload ceiling instead of allowing every
+# nested dense or matrix-free Q construction to consume its full limit.
+multiangle_resource_mesh = make_rect_plate(0.02, 0.02, 1, 1)
+multiangle_resource_rwg = build_rwg(multiangle_resource_mesh)
+multiangle_resource_grid = make_sph_grid(2, 4)
+multiangle_resource_angles = [(
+    theta_inc=0.0, phi_inc=0.0,
+    pol=Vec3(1.0, 0.0, 0.0), weight=1.0)]
+for multiangle_resource_matrix_free in (false, true),
+    multiangle_resource_component in (:copol, :total)
+    multiangle_resource_bytes = DiffMoM._multiangle_config_work_bytes(
+        multiangle_resource_mesh, multiangle_resource_rwg,
+        multiangle_resource_grid, length(multiangle_resource_angles),
+        multiangle_resource_matrix_free, multiangle_resource_component)
+    @test_throws ArgumentError build_multiangle_configs(
+        multiangle_resource_mesh, multiangle_resource_rwg, 2π,
+        multiangle_resource_angles;
+        grid=multiangle_resource_grid,
+        matrix_free_Q=multiangle_resource_matrix_free,
+        rcs_component=multiangle_resource_component,
+        max_work_bytes=multiangle_resource_bytes - 1)
+    @test length(build_multiangle_configs(
+        multiangle_resource_mesh, multiangle_resource_rwg, 2π,
+        multiangle_resource_angles;
+        grid=multiangle_resource_grid,
+        matrix_free_Q=multiangle_resource_matrix_free,
+        rcs_component=multiangle_resource_component,
+        max_work_bytes=multiangle_resource_bytes)) == 1
+end
+for invalid_multiangle_work_limit in
+    (false, 0, -1, big(typemax(Int)) + 1)
+    @test_throws ArgumentError build_multiangle_configs(
+        multiangle_resource_mesh, multiangle_resource_rwg, 2π,
+        multiangle_resource_angles;
+        grid=multiangle_resource_grid,
+        max_work_bytes=invalid_multiangle_work_limit)
+end
+
 # Multi-angle plane waves share one mapped-triangle quadrature cache, and a
 # single-component objective retains only its selected polarization matrix.
 # The warm call excludes compilation from this allocation regression.
