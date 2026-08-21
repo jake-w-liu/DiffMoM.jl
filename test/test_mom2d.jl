@@ -682,6 +682,22 @@ end
         @test matched_order == 10
         @test all(iszero, matched_coefficients)
 
+        # A one-ulp dielectric contrast has a finite scattered field. Direct
+        # boundary-product subtraction can otherwise erase or reverse its
+        # lowest cylindrical harmonics.
+        near_matched_coefficients, near_matched_order =
+            mie_coefficients_2d(
+                1.0, 1.0, nextfloat(1.0); nmax=10)
+        @test near_matched_order == 10
+        @test isapprox(
+            near_matched_coefficients[near_matched_order + 1],
+            -1.846404748046048e-32 - 1.358824767233085e-16im;
+            rtol=8eps(Float64), atol=0.0)
+        @test isapprox(
+            near_matched_coefficients[near_matched_order + 2],
+            -3.399223789509904e-34 - 1.8436983998230036e-17im;
+            rtol=8eps(Float64), atol=0.0)
+
         tiny_size = 1e-160
         tiny_coefficients, tiny_order =
             mie_coefficients_2d(1.0, tiny_size, 4.0)

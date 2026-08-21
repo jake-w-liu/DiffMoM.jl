@@ -16,6 +16,7 @@ const _MAX_MIE2D_INTERNAL_PAIR_ORDER = 256
 const _MAX_MIE2D_SMALL_SERIES_ORDER = 256
 const _MIE2D_SEQUENCE_ORDER_THRESHOLD = 64
 const _DEFAULT_MAX_MIE2D_FIELD_TERMS = 50_000_000
+const _MIE2D_CANCELLATION_THRESHOLD = sqrt(eps(Float64))
 
 @inline function _mie2d_high_order_precision(x::Float64, N::Int)
     requested = 512 + 8N + 4max(0, -exponent(x))
@@ -502,17 +503,17 @@ end
     end
 end
 
-@noinline function _mie_coefficients_large_internal_2d(
+@noinline function _mie_coefficients_bigfloat_2d(
         k0a::Float64, eps_r::Float64, N::Int, coefficient_count::Int)
     eps_r != 0.0 ||
-        throw(ArgumentError("large-internal fallback requires nonzero eps_r"))
+        throw(ArgumentError("exact 2D Mie fallback requires nonzero eps_r"))
     precision = min(
         _MAX_MIE2D_FALLBACK_PRECISION,
         max(512, 256 + max(0, exponent(k0a)) +
                  max(0, cld(exponent(eps_r), 2))))
     N + 1 <= _MAX_MIE2D_EXACT_WORK ÷ precision ||
         throw(ArgumentError(
-            "large-internal 2D Mie order $N exceeds the precision-weighted " *
+            "exact 2D Mie order $N exceeds the precision-weighted " *
             "exact-work limit $_MAX_MIE2D_EXACT_WORK"))
     return setprecision(BigFloat, precision) do
         xb = BigFloat(k0a)
@@ -531,6 +532,8 @@ end
             besselj(0, internal_real) : zero(BigFloat)
         internal_current = positive_material ?
             besselj(1, internal_real) : zero(BigFloat)
+        internal_miller = positive_material && BigFloat(N) > internal_real ?
+            _mie2d_besselj_values_miller_big(internal_real, N) : nothing
         inverse_exterior = inv(xb)
         inverse_internal = inv(internal)
 
@@ -559,9 +562,15 @@ end
                                       exterior_y_current
             end
             internal_value, internal_derivative = if positive_material
-                value = order == 0 ? internal_previous : internal_current
+                value = internal_miller === nothing ?
+                    (order == 0 ? internal_previous : internal_current) :
+                    internal_miller[order + 1]
                 derivative = if order == 0
-                    -internal_current
+                    -(internal_miller === nothing ?
+                      internal_current : internal_miller[2])
+                elseif internal_miller !== nothing
+                    internal_miller[order] - BigFloat(order) *
+                        inverse_internal * internal_miller[order + 1]
                 else
                     internal_previous - BigFloat(order) * inverse_internal *
                                         internal_current
@@ -599,7 +608,8 @@ end
                     exterior_current - exterior_previous : zero(BigFloat)
                 exterior_y_next = BigFloat(2order) * inverse_exterior *
                                   exterior_y_current - exterior_y_previous
-                internal_next = positive_material ?
+                internal_next = positive_material &&
+                                internal_miller === nothing ?
                     BigFloat(2order) * real(inverse_internal) *
                     internal_current - internal_previous : zero(BigFloat)
                 if exterior_miller === nothing
@@ -608,8 +618,10 @@ end
                 end
                 exterior_y_previous, exterior_y_current =
                     exterior_y_current, exterior_y_next
-                internal_previous, internal_current =
-                    internal_current, internal_next
+                if internal_miller === nothing
+                    internal_previous, internal_current =
+                        internal_current, internal_next
+                end
             end
         end
         return coefficients, N
@@ -756,6 +768,16 @@ function mie_coefficients_2d(k0::Float64, a::Float64, eps_r::Float64;
         return zeros(ComplexF64, coefficient_count), N
     end
 
+    # A weak but representable constitutive contrast is the difference of
+    # nearly equal boundary products. Preserve it with the bounded exact
+    # kernel before Float64 coefficient formation can round it away.
+    if !pec &&
+       abs(eps_r - 1.0) <= _MIE2D_CANCELLATION_THRESHOLD *
+                           max(1.0, abs(eps_r))
+        return _mie_coefficients_bigfloat_2d(
+            k0a, eps_r, N, coefficient_count)
+    end
+
     if k0a <= _MIE2D_SMALL_ARGUMENT_CUTOFF &&
        _small_mie2d_fallback_supported(k0, a, eps_r, pec)
         N <= _MAX_MIE2D_SMALL_SERIES_ORDER ||
@@ -771,7 +793,7 @@ function mie_coefficients_2d(k0::Float64, a::Float64, eps_r::Float64;
         large_internal = root_magnitude >
                          _MIE2D_AMOS_INTERNAL_ARGUMENT_LIMIT / k0a
         if large_internal
-            return _mie_coefficients_large_internal_2d(
+            return _mie_coefficients_bigfloat_2d(
                 k0a, eps_r, N, coefficient_count)
         end
         internal_magnitude = root_magnitude * k0a
