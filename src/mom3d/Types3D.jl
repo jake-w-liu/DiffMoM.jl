@@ -54,8 +54,11 @@ end
     end
 end
 
+# The constructor later validates generated centers with exact equality.
+# `fma` guarantees the same single rounding in both call sites; `muladd` may
+# legally fuse in one optimized context but not another.
 @inline _voxel_axis_center_3d(origin::Float64, spacing::Float64, index::Int) =
-    muladd(Float64(index) - 0.5, spacing, origin)
+    fma(Float64(index) - 0.5, spacing, origin)
 
 function _validate_voxel_axis_3d(origin::Float64, spacing::Float64,
                                  count::Int, label::AbstractString)
