@@ -590,6 +590,21 @@ println("\n── Test 46: 3D vector material DDA solver ──")
                   observation, source, k, scalar_alpha, scalar_field) ==
               DiffMoM._electric_dipole_alpha_apply_bigfloat_3d(
                   observation, source, k, scalar_alpha, scalar_field)
+
+        adjoint_observation = Vec3(1.0, 0.0, 0.0)
+        adjoint_green = electric_dipole_dyadic_3d(
+            adjoint_observation, source, 1.0)
+        adjoint_alpha_values = zeros(ComplexF64, 3, 3)
+        adjoint_alpha_values[:, 1] .= inv.(diag(adjoint_green))
+        adjoint_alpha = DiffMoM._CMat3DDA(adjoint_alpha_values)
+        adjoint_value = CVec3(1.0e16, 3.0, -1.0e16)
+        adjoint_reference =
+            DiffMoM._electric_dipole_alpha_adjoint_apply_bigfloat_3d(
+                adjoint_observation, source, 1.0,
+                adjoint_alpha, adjoint_value)
+        @test DiffMoM._electric_dipole_alpha_adjoint_apply_3d(
+                  adjoint_observation, source, 1.0,
+                  adjoint_alpha, adjoint_value) == adjoint_reference
     end
 
     @testset "Induced dipole exponent range" begin

@@ -1569,23 +1569,23 @@ end
     alpha::_CMat3DDA,
     value::CVec3,
 )
-    _electric_dipole_geometry_requires_exact_3d(r, rp, k) &&
-        return _electric_dipole_alpha_adjoint_apply_bigfloat_3d(
-            r, rp, k, alpha, value)
     try
-        R, _, _, expfac = _electric_dipole_geometry_3d(r, rp, k)
-        column1 = _electric_dipole_apply_with_geometry_3d(
-            r, rp, k, _alpha_basis_vector_3d(alpha, 1), R, expfac)
-        column2 = _electric_dipole_apply_with_geometry_3d(
-            r, rp, k, _alpha_basis_vector_3d(alpha, 2), R, expfac)
-        column3 = _electric_dipole_apply_with_geometry_3d(
-            r, rp, k, _alpha_basis_vector_3d(alpha, 3), R, expfac)
-        result = CVec3(
-            dot(column1, value),
-            dot(column2, value),
-            dot(column3, value),
+        conjugated_value = CVec3(
+            conj(value[1]), conj(value[2]), conj(value[3]))
+        green_conjugated = _electric_dipole_apply_3d(
+            r, rp, k, conjugated_value)
+        green_adjoint = CVec3(
+            conj(green_conjugated[1]),
+            conj(green_conjugated[2]),
+            conj(green_conjugated[3]),
         )
-        all(isfinite, result) && return result
+        alpha_adjoint = _CMat3DDA(adjoint(alpha))
+        result = alpha_adjoint * green_adjoint
+        if all(isfinite, result) &&
+           !_alpha_field_product_requires_exact_3d(
+               alpha_adjoint, green_adjoint, result)
+            return result
+        end
     catch err
         err isa OverflowError || rethrow()
     end
