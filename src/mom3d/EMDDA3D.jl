@@ -696,9 +696,12 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     k = A.k0
     cols = ntuple(b -> begin
         basis = _CVec6DDA(ntuple(c -> c == b ? 1.0 + 0im : 0.0 + 0im, 6))
-        q, m = _split_em_field(alphaj * basis)
-        E, H = _em_interaction_apply_3d(
-            ri, rj, k, q, m, A.eta0)
+        # Share the checked alpha-field application with scalar `getindex`.
+        # Besides making dense and matrix-free materialization deterministic,
+        # this retains the exact fallback when a finite alpha-column product
+        # loses range before the interaction is evaluated.
+        E, H = _em_alpha_interaction_apply_3d(
+            ri, rj, k, alphaj, basis, A.eta0)
         -_join_em_field(E, H)
     end, 6)
     return _CMat6DDA(ntuple(idx -> begin
