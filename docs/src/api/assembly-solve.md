@@ -469,7 +469,7 @@ Build a preconditioner by extracting near-field entries from a pre-assembled den
 | `rwg` | `RWGData` | -- | RWG basis data. |
 | `cutoff` | `Float64` | -- | Distance cutoff in meters. Typical: `0.5 * lambda` to `2.0 * lambda`. |
 | `neighbor_search` | `Symbol` | `:spatial` | **`:spatial`** (default): O(N) spatial hashing for neighbor finding. **`:bruteforce`**: O(N^2) all-pairs reference mode. Use `:bruteforce` only for testing/validation. |
-| `factorization` | `Symbol` | `:lu` | **`:lu`** (default): Sparse LU factorization. Returns `NearFieldPreconditionerData`. **`:ilu`**: Incomplete LU with drop tolerance `ilu_tau`. Returns `ILUPreconditionerData`. **`:diag`**: Jacobi/diagonal preconditioner (only retains `Z[i,i]`). Returns `DiagonalPreconditionerData`. |
+| `factorization` | `Symbol` | `:lu` | **`:lu`** (default): Sparse LU factorization. Returns `NearFieldPreconditionerData`. **`:ilu`**: Incomplete LU with drop tolerance `ilu_tau`. Returns `ILUPreconditionerData`. **`:diag`**: Jacobi/diagonal preconditioner (only retains `Z[i,i]`). Entries smaller than `1e-10` times the largest diagonal magnitude are regularized at that relative floor; an all-zero diagonal is rejected. Returns `DiagonalPreconditionerData`. |
 | `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU factorization (only used when `factorization=:ilu`). |
 | `max_triplet_bytes` | `Integer` | `536_870_912` | Maximum raw payload of the three temporary sparse-triplet arrays. The limit is checked incrementally and before predictable all-pairs allocation. |
 

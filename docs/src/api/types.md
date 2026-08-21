@@ -319,7 +319,11 @@ Key properties:
 
 ### `DiagonalPreconditionerData` -- Jacobi/Diagonal Preconditioner
 
-Stores the inverse diagonal entries of the MoM matrix as a lightweight preconditioner. Each application is O(N) element-wise multiplication — no sparse solve needed.
+Stores the inverse diagonal entries of the MoM matrix as a lightweight
+preconditioner. Diagonal magnitudes below `1e-10` times the largest diagonal
+magnitude are regularized at that relative floor; an all-zero diagonal is
+rejected. Each application is O(N) element-wise multiplication — no sparse
+solve needed.
 
 ```julia
 struct DiagonalPreconditionerData <: AbstractPreconditionerData

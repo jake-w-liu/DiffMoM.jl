@@ -641,7 +641,14 @@ function _build_diagonal_preconditioner_data(getvalue, N::Int, cutoff::Float64)
         end
     end
 
-    floor_abs = 1e-10 * max(maxabs, 1.0)
+    maxabs > 0.0 ||
+        throw(ArgumentError(
+            "cannot build a diagonal preconditioner from an all-zero diagonal"))
+    # Regularize relative to the matrix's own diagonal scale.  An absolute
+    # unit floor destroys Jacobi scaling for globally small but otherwise
+    # well-conditioned systems.
+    floor_abs = 1e-10 * maxabs
+    iszero(floor_abs) && (floor_abs = nextfloat(0.0))
     @inbounds for i in 1:N
         if abs(diag_entries[i]) < floor_abs
             diag_entries[i] = floor_abs + 0im

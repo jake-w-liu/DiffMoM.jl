@@ -9888,6 +9888,23 @@ nonfinite_sparse_nf = spdiagm(0 => ones(ComplexF64, 2))
 nonfinite_sparse_nf[1, 1] = Inf + 0im
 @test_throws ArgumentError build_nearfield_preconditioner(
     nonfinite_sparse_nf; factorization=:diag)
+@test_throws ArgumentError build_nearfield_preconditioner(
+    spzeros(ComplexF64, 2, 2); factorization=:diag)
+
+# Jacobi regularization is relative to the supplied matrix scale.  The former
+# absolute unit floor replaced every entry here by 1e-10 and took two Krylov
+# dimensions instead of reducing the diagonal system to an identity in one.
+tiny_scaled_diagonal = ComplexF64[1e-100, 1e-107]
+tiny_scaled_nf = spdiagm(0 => tiny_scaled_diagonal)
+tiny_scaled_preconditioner = build_nearfield_preconditioner(
+    tiny_scaled_nf; factorization=:diag)
+@test tiny_scaled_preconditioner.dinv ≈ inv.(tiny_scaled_diagonal) rtol=2eps(Float64)
+tiny_scaled_solution, tiny_scaled_stats = solve_gmres(
+    tiny_scaled_nf, copy(tiny_scaled_diagonal);
+    preconditioner=tiny_scaled_preconditioner,
+    tol=1e-12, maxiter=10, memory=10)
+@test tiny_scaled_stats.niter == 1
+@test tiny_scaled_solution ≈ ones(ComplexF64, 2) rtol=4eps(Float64)
 I_mlfma, stats_mlfma = solve_gmres(A_mlfma, mlfma_v;
     preconditioner=P_mlfma, tol=1e-4, maxiter=200)
 
