@@ -166,9 +166,11 @@ package's `exp(+i\omega t)` convention and the EFIE assembly sign convention.
 **Important limitations:**
 
 - Observation points on the surface are rejected when `check_surface=true`.
-- Very near-surface points may require higher `quad_order`.
-- Dedicated near-singular quadrature is not implemented yet, so this routine is
-  intended for points separated from the surface by a nonzero distance.
+- Off-surface points close to a source triangle automatically use
+  singularity-subtracted quadrature: the vector `1/R` and scalar-gradient
+  `1/R^2` terms are removed analytically or semi-analytically, and
+  `quad_order` controls the remaining smooth integrals.
+- On-surface evaluation is not supported, even when `check_surface=false`.
 
 **Example:**
 
@@ -236,8 +238,9 @@ models, not rigorous observation-point incident electric fields.
 **Important limitations:**
 
 - Observation points on the surface are rejected when `check_surface=true`.
-- Very near-surface points may require higher `quad_order`.
-- Dedicated near-singular quadrature is not implemented yet.
+- Off-surface scattered-field samples close to a source triangle automatically
+  use the same singularity-subtracted quadrature as `compute_nearfield`.
+- On-surface evaluation is not supported, even when `check_surface=false`.
 - For analytic source models, the supplied `k` must match the excitation's own
   free-space wavenumber.
 
