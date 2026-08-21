@@ -3400,6 +3400,39 @@ diagnostic_projected_cancellation_grid = SphGrid(
     diagnostic_projected_cancellation_pol32,
 ) == 1.0
 
+# A leading large sample must not absorb collectively representable power from
+# later samples in either far-field power reduction.
+diagnostic_power_reduction_size = 1001
+diagnostic_power_reduction_rhat = zeros(
+    3, diagnostic_power_reduction_size)
+diagnostic_power_reduction_rhat[3, :] .= 1.0
+diagnostic_power_reduction_grid = SphGrid(
+    diagnostic_power_reduction_rhat,
+    zeros(diagnostic_power_reduction_size),
+    zeros(diagnostic_power_reduction_size),
+    ones(diagnostic_power_reduction_size),
+)
+diagnostic_power_reduction_field = zeros(
+    ComplexF64, 3, diagnostic_power_reduction_size)
+diagnostic_power_reduction_field[1, 1] = 1.0e8
+diagnostic_power_reduction_field[1, 2:end] .= 1.0
+diagnostic_power_reduction_pol = zeros(
+    ComplexF64, 3, diagnostic_power_reduction_size)
+diagnostic_power_reduction_pol[1, :] .= 1.0
+diagnostic_power_reduction_reference = setprecision(BigFloat, 256) do
+    Float64(BigFloat(1.0e8)^2 + diagnostic_power_reduction_size - 1)
+end
+@test projected_power(
+    diagnostic_power_reduction_field,
+    diagnostic_power_reduction_grid,
+    diagnostic_power_reduction_pol,
+) == diagnostic_power_reduction_reference
+@test radiated_power(
+    diagnostic_power_reduction_field,
+    diagnostic_power_reduction_grid;
+    eta0=0.5,
+) == diagnostic_power_reduction_reference
+
 diagnostic_allocation_size = 96
 diagnostic_allocation_rhat = zeros(3, diagnostic_allocation_size)
 diagnostic_allocation_rhat[3, :] .= 1.0

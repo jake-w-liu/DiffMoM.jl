@@ -95,6 +95,18 @@ end
     return intensity
 end
 
+@inline function _add_nonnegative_compensated(
+    total::Float64,
+    correction::Float64,
+    term::Float64,
+)
+    updated = total + term
+    roundoff = total >= term ?
+        (total - updated) + term :
+        (term - updated) + total
+    return updated, correction + roundoff
+end
+
 function _validated_rcs_amplitude(E0::Real)
     E0_float = try
         Float64(E0)
@@ -271,10 +283,17 @@ function radiated_power(E_ff::Matrix{<:Number}, grid::SphGrid;
         _ieee_dense_extreme_factor(eta0, Float64)
     needs_fallback && return _radiated_power_exact(E_ff, grid, eta0)
     P = 0.0
+    correction = 0.0
     @inbounds for q in 1:NΩ
-        P += grid.w[q] * _farfield_intensity(E_ff, q)
-        isfinite(P) || return _radiated_power_exact(E_ff, grid, eta0)
+        term = grid.w[q] * _farfield_intensity(E_ff, q)
+        P, correction =
+            _add_nonnegative_compensated(P, correction, term)
+        (isfinite(P) && isfinite(correction)) ||
+            return _radiated_power_exact(E_ff, grid, eta0)
     end
+    P += correction
+    (isfinite(P) && P >= 0.0) ||
+        return _radiated_power_exact(E_ff, grid, eta0)
     power = (P / eta0) / 2
     isfinite(power) || return _radiated_power_exact(E_ff, grid, eta0)
     return power
@@ -317,6 +336,7 @@ function projected_power(E_ff::Matrix{<:Number}, grid::SphGrid,
         return _projected_power_exact(E_ff, grid, pol, mask)
 
     P = 0.0
+    correction = 0.0
     projection_error_factor =
         _ieee_product_error_factor(Float64, 2, 3)
     @inbounds for q in 1:NΩ
@@ -352,10 +372,15 @@ function projected_power(E_ff::Matrix{<:Number}, grid::SphGrid,
             return _projected_power_exact(E_ff, grid, pol, mask)
         end
         yq = ComplexF64(projection_real, projection_imag)
-        P += grid.w[q] * abs2(yq)
-        isfinite(P) ||
+        term = grid.w[q] * abs2(yq)
+        P, correction =
+            _add_nonnegative_compensated(P, correction, term)
+        (isfinite(P) && isfinite(correction)) ||
             return _projected_power_exact(E_ff, grid, pol, mask)
     end
+    P += correction
+    (isfinite(P) && P >= 0.0) ||
+        return _projected_power_exact(E_ff, grid, pol, mask)
     return P
 end
 
