@@ -46,6 +46,73 @@ function _validate_scalar_epsr_gradient_result_3d(
     return nothing
 end
 
+@inline function _dda_material_gradient_cancellation_requires_exact(
+        total::Float64, magnitude_sum::Float64, product_count::Int)
+    iszero(magnitude_sum) && return false
+    isfinite(total) && isfinite(magnitude_sum) || return true
+    # Each primitive real product and each reduction contributes at most a
+    # small multiple of eps to the forward error.  If the surviving value is
+    # inside that bound, recompute from the stored Float64 factors exactly so
+    # a finite cancellation is not silently returned with the wrong scale.
+    error_factor = min(
+        1.0,
+        8eps(Float64) * max(product_count, 1),
+    )
+    return abs(total) <= error_factor * magnitude_sum
+end
+
+function _dda_material_gradient_fast(
+        res::DDAResult3D,
+        lambda_flat::Vector{ComplexF64},
+        voxel::Int,
+        dalpha::ComplexF64,
+)
+    total = 0.0
+    magnitude_sum = 0.0
+    product_count = 0
+    source_center = res.grid.centers[voxel]
+    source_field = res.E_total[voxel]
+    @inbounds for observation_voxel in 1:res.grid.nvoxels
+        observation_voxel == voxel && continue
+        lambda_value = _read_field_component(
+            lambda_flat, observation_voxel)
+        interaction = _electric_dipole_alpha_apply_3d(
+            res.grid.centers[observation_voxel],
+            source_center,
+            res.k0,
+            dalpha,
+            source_field,
+        )
+        for component in 1:3
+            lambda_component = lambda_value[component]
+            interaction_component = interaction[component]
+            if _ieee_dense_extreme_factor(lambda_component, Float64) ||
+               _ieee_dense_extreme_factor(interaction_component, Float64)
+                return total, true
+            end
+            first_product =
+                real(lambda_component) * real(interaction_component)
+            second_product =
+                imag(lambda_component) * imag(interaction_component)
+            component_total = first_product + second_product
+            if !isfinite(component_total) ||
+               _scaled_component_sum_requires_exact(
+                   first_product, second_product, component_total)
+                return total, true
+            end
+            total += component_total
+            magnitude_sum += abs(first_product) + abs(second_product)
+            product_count += 2
+            if !isfinite(total) || !isfinite(magnitude_sum)
+                return total, true
+            end
+        end
+    end
+    return total,
+           _dda_material_gradient_cancellation_requires_exact(
+               total, magnitude_sum, product_count)
+end
+
 @noinline function _dda_material_gradient_bigfloat(
     res::DDAResult3D,
     lambda_flat::Vector{ComplexF64},
@@ -176,17 +243,10 @@ function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
         Ej = res.E_total[j]
         dalpha = _dalpha_depsr_clausius_mossotti(
             ComplexF64(res.eps_r[j]), res.grid.volumes[j])
-        acc = 0.0 + 0im
-        rj = res.grid.centers[j]
-        for i in 1:N
-            i == j && continue
-            lambdai = _read_field_component(lambda_flat, i)
-            GEj = _electric_dipole_alpha_apply_3d(
-                res.grid.centers[i], rj, res.k0, dalpha, Ej)
-            acc += dot(lambdai, GEj)
-        end
-        value = 2 * real(acc)
-        if !isfinite(value)
+        total, needs_exact = _dda_material_gradient_fast(
+            res, lambda_flat, j, dalpha)
+        value = 2 * total
+        if needs_exact || !isfinite(value)
             value = _dda_material_gradient_bigfloat(
                 res, lambda_flat, j, dalpha)
         end

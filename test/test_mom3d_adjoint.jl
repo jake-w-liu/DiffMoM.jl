@@ -249,6 +249,58 @@ println("\n-- Test: 3D DDA material adjoint sensitivities --")
     @test cancellation_gradient[1] == cancellation_reference
     @test cancellation_gradient[2:end] == zeros(4)
 
+    # A finite ordinary accumulation can still lose the small remainder
+    # between much larger terms.  The gradient must use the exact stored
+    # Float64 products when that cancellation exceeds its rounding bound.
+    finite_cancellation_targets = (1.0e16, 1.0, -1.0e16, 0.0)
+    finite_cancellation_lambda = zeros(
+        ComplexF64, 3cancellation_grid.nvoxels)
+    finite_cancellation_terms = Float64[]
+    for (offset, observation_voxel) in
+        enumerate(2:cancellation_grid.nvoxels)
+        interaction = DiffMoM._electric_dipole_alpha_apply_3d(
+            cancellation_grid.centers[observation_voxel],
+            cancellation_grid.centers[1],
+            1.0,
+            cancellation_derivative,
+            cancellation_fields[1],
+        )
+        lambda_component = conj(
+            finite_cancellation_targets[offset] / interaction[1])
+        finite_cancellation_lambda[3(observation_voxel - 1) + 1] =
+            lambda_component
+        push!(finite_cancellation_terms,
+              real(dot(
+                  CVec3(lambda_component, 0im, 0im), interaction)))
+    end
+    finite_cancellation_reference = setprecision(BigFloat, 4096) do
+        total = zero(BigFloat)
+        for observation_voxel in 2:cancellation_grid.nvoxels
+            interaction = DiffMoM._electric_dipole_alpha_apply_3d(
+                cancellation_grid.centers[observation_voxel],
+                cancellation_grid.centers[1],
+                1.0,
+                cancellation_derivative,
+                cancellation_fields[1],
+            )
+            lambda_component =
+                finite_cancellation_lambda[3(observation_voxel - 1) + 1]
+            total +=
+                BigFloat(real(lambda_component)) *
+                BigFloat(real(interaction[1])) +
+                BigFloat(imag(lambda_component)) *
+                BigFloat(imag(interaction[1]))
+        end
+        Float64(2 * total)
+    end
+    @test 2sum(finite_cancellation_terms) !=
+          finite_cancellation_reference
+    finite_cancellation_gradient = gradient_epsr_dda_3d(
+        cancellation_result, finite_cancellation_lambda)
+    @test finite_cancellation_gradient[1] ==
+          finite_cancellation_reference
+    @test finite_cancellation_gradient[2:end] == zeros(4)
+
     solve_grid = VoxelGrid3D(
         (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
     probe = dda_operator_3d(solve_grid, 1.0, 2.0 + 0im)
