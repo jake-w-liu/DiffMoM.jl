@@ -49,8 +49,8 @@ struct MatrixFreeMagneticFieldOperator3D{
 end
 
 # Matches the exact ComplexF64 row-reduction bound used by the matrix-free
-# EFIE primitive. The ordinary path remains allocation-free; only an exponent-
-# range overflow or an overflowing sum of term magnitudes enters this path.
+# EFIE primitive. The ordinary path remains allocation-free; exponent-range
+# loss, overflow, and ill-conditioned finite reductions enter this cold path.
 const _MFIE_MATVEC_FALLBACK_PRECISION_3D = 4352
 const _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D = 2_000_000_000
 const _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D = 20_000_000
@@ -702,14 +702,25 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     xread = Base.mightalias(y, x) ? copy(x) : x
     @inbounds for m in 1:N
         acc = 0.0 + 0.0im
-        magnitude_sum = 0.0
+        real_magnitude = 0.0
+        imag_magnitude = 0.0
         needs_fallback = false
         try
             for n in 1:N
-                term = _mfie_entry_3d(A, m, n) * xread[n]
+                entry = _mfie_entry_3d(A, m, n)
+                input = xread[n]
+                if !iszero(entry) && !iszero(input) &&
+                   (_matrixfree_extreme_factor(entry) ||
+                    _matrixfree_extreme_factor(input))
+                    needs_fallback = true
+                    break
+                end
+                term = entry * input
                 next_acc = acc + term
-                magnitude_sum += max(abs(real(term)), abs(imag(term)))
-                if !isfinite(next_acc) || !isfinite(magnitude_sum)
+                real_magnitude += abs(Float64(real(term)))
+                imag_magnitude += abs(Float64(imag(term)))
+                if !isfinite(next_acc) || !isfinite(real_magnitude) ||
+                   !isfinite(imag_magnitude)
                     needs_fallback = true
                     break
                 end
@@ -719,6 +730,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             err isa OverflowError || rethrow()
             needs_fallback = true
         end
+        needs_fallback |= _matrixfree_complex_reduction_requires_exact(
+            acc, real_magnitude, imag_magnitude, N)
         y[m] = needs_fallback ?
                _matrixfree_mfie_row_bigfloat_3d(A, xread, m) : acc
     end

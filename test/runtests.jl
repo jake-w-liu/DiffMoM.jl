@@ -7920,6 +7920,32 @@ println("  matrix-free matvec rel error: $rel_matvec")
 @assert rel_matvec < 1e-10
 
 for efie_op in (A_mf, adjoint(A_mf))
+    # A finite row reduction can lose representable terms without overflowing.
+    # Compare against the exact product of the stored operator entries.
+    efie_cancellation_row = 1
+    efie_cancellation_columns = findall(
+        column -> !iszero(efie_op[efie_cancellation_row, column]),
+        axes(efie_op, 2),
+    )[1:3]
+    efie_cancellation_input = zeros(ComplexF64, N)
+    efie_cancellation_targets = ComplexF64[1e16, 3.0, -1e16]
+    for target_index in eachindex(efie_cancellation_columns)
+        column = efie_cancellation_columns[target_index]
+        efie_cancellation_input[column] =
+            efie_cancellation_targets[target_index] /
+            efie_op[efie_cancellation_row, column]
+    end
+    efie_cancellation_reference = setprecision(BigFloat, 4352) do
+        sum(
+            Complex{BigFloat}(
+                efie_op[efie_cancellation_row, column]) *
+            Complex{BigFloat}(efie_cancellation_input[column])
+            for column in axes(efie_op, 2)
+        )
+    end
+    @test (efie_op * efie_cancellation_input)[efie_cancellation_row] ==
+          ComplexF64(efie_cancellation_reference)
+
     efie_overlap_storage = vcat(x_probe, 0.0 + 0im)
     efie_overlap_x = view(efie_overlap_storage, 1:N)
     efie_overlap_y = view(efie_overlap_storage, 2:(N + 1))

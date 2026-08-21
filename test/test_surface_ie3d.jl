@@ -403,6 +403,30 @@ end
     @test (@allocated mul!(yk, K_mf, xk)) < 1024
     @test norm(yk - K * xk) / max(norm(K * xk), eps()) < 1e-13
 
+    surface_cancellation_row = 1
+    surface_cancellation_columns = findall(
+        column -> !iszero(K_mf[surface_cancellation_row, column]),
+        axes(K_mf, 2),
+    )[1:3]
+    surface_cancellation_input = zeros(ComplexF64, N)
+    surface_cancellation_targets = ComplexF64[1e16, 3.0, -1e16]
+    for target_index in eachindex(surface_cancellation_columns)
+        column = surface_cancellation_columns[target_index]
+        surface_cancellation_input[column] =
+            surface_cancellation_targets[target_index] /
+            K_mf[surface_cancellation_row, column]
+    end
+    surface_cancellation_reference = setprecision(BigFloat, 4352) do
+        sum(
+            Complex{BigFloat}(
+                K_mf[surface_cancellation_row, column]) *
+            Complex{BigFloat}(surface_cancellation_input[column])
+            for column in axes(K_mf, 2)
+        )
+    end
+    @test (K_mf * surface_cancellation_input)[surface_cancellation_row] ==
+          ComplexF64(surface_cancellation_reference)
+
     # At higher electrical size the MFIE row has several order-one terms.
     # These three are individually representable and the complete result is
     # representable, but their ordinary order overflows before cancellation.

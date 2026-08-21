@@ -774,6 +774,39 @@ end
 # ComplexF64 inputs while leaving the ordinary zero-allocation path unchanged.
 const _EFIE_MATVEC_FALLBACK_PRECISION = 4352
 
+# With every real component exponent in [-128, 128], one ComplexF64 product
+# and any Int-indexable row reduction remain inside the normal Float64 range.
+# More extreme factors need the exact accumulator even when the rounded term
+# itself is finite: individually lost products can later cancel to a
+# representable row result.
+@inline function _matrixfree_extreme_component(value::Real)
+    magnitude = abs(Float64(value))
+    isfinite(magnitude) || return true
+    iszero(magnitude) && return false
+    value_exponent = exponent(magnitude)
+    return value_exponent < -128 || value_exponent > 128
+end
+
+@inline function _matrixfree_extreme_factor(value::Number)
+    return _matrixfree_extreme_component(real(value)) ||
+           _matrixfree_extreme_component(imag(value))
+end
+
+@inline function _matrixfree_complex_reduction_requires_exact(
+        value::Number,
+        real_magnitude::Float64,
+        imag_magnitude::Float64,
+        term_count::Int)
+    error_factor = min(
+        1.0,
+        16eps(Float64) * Float64(max(term_count, 1)),
+    )
+    return (!iszero(real_magnitude) &&
+            abs(Float64(real(value))) <= error_factor * real_magnitude) ||
+           (!iszero(imag_magnitude) &&
+            abs(Float64(imag(value))) <= error_factor * imag_magnitude)
+end
+
 Base.size(A::MatrixFreeEFIEOperator) = (A.cache.rwg.nedges, A.cache.rwg.nedges)
 Base.eltype(::MatrixFreeEFIEOperator{T}) where {T} = T
 
@@ -839,14 +872,25 @@ function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEOperator{T}, 
     xread = Base.mightalias(y, x) ? copy(x) : x
     @inbounds for m in 1:N
         acc = zero(T)
-        magnitude_sum = 0.0
+        real_magnitude = 0.0
+        imag_magnitude = 0.0
         needs_fallback = false
         try
             for n in 1:N
-                term = efie_entry(A, m, n) * xread[n]
+                entry = efie_entry(A, m, n)
+                input = xread[n]
+                if !iszero(entry) && !iszero(input) &&
+                   (_matrixfree_extreme_factor(entry) ||
+                    _matrixfree_extreme_factor(input))
+                    needs_fallback = true
+                    break
+                end
+                term = entry * input
                 next_acc = acc + term
-                magnitude_sum += max(abs(real(term)), abs(imag(term)))
-                if !isfinite(next_acc) || !isfinite(magnitude_sum)
+                real_magnitude += abs(Float64(real(term)))
+                imag_magnitude += abs(Float64(imag(term)))
+                if !isfinite(next_acc) || !isfinite(real_magnitude) ||
+                   !isfinite(imag_magnitude)
                     needs_fallback = true
                     break
                 end
@@ -856,6 +900,8 @@ function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEOperator{T}, 
             err isa OverflowError || rethrow()
             needs_fallback = true
         end
+        needs_fallback |= _matrixfree_complex_reduction_requires_exact(
+            acc, real_magnitude, imag_magnitude, N)
         y[m] = needs_fallback ?
                _matrixfree_efie_row_bigfloat(A, xread, m) : acc
     end
@@ -876,14 +922,25 @@ function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEAdjointOperat
     xread = Base.mightalias(y, x) ? copy(x) : x
     @inbounds for n in 1:N
         acc = zero(T)
-        magnitude_sum = 0.0
+        real_magnitude = 0.0
+        imag_magnitude = 0.0
         needs_fallback = false
         try
             for m in 1:N
-                term = conj(efie_entry(A.op, m, n)) * xread[m]
+                entry = conj(efie_entry(A.op, m, n))
+                input = xread[m]
+                if !iszero(entry) && !iszero(input) &&
+                   (_matrixfree_extreme_factor(entry) ||
+                    _matrixfree_extreme_factor(input))
+                    needs_fallback = true
+                    break
+                end
+                term = entry * input
                 next_acc = acc + term
-                magnitude_sum += max(abs(real(term)), abs(imag(term)))
-                if !isfinite(next_acc) || !isfinite(magnitude_sum)
+                real_magnitude += abs(Float64(real(term)))
+                imag_magnitude += abs(Float64(imag(term)))
+                if !isfinite(next_acc) || !isfinite(real_magnitude) ||
+                   !isfinite(imag_magnitude)
                     needs_fallback = true
                     break
                 end
@@ -893,6 +950,8 @@ function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEAdjointOperat
             err isa OverflowError || rethrow()
             needs_fallback = true
         end
+        needs_fallback |= _matrixfree_complex_reduction_requires_exact(
+            acc, real_magnitude, imag_magnitude, N)
         y[n] = needs_fallback ?
                _matrixfree_efie_adjoint_row_bigfloat(A, xread, n) : acc
     end
