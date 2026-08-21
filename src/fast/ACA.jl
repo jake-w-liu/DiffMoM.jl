@@ -80,7 +80,8 @@ end
         max(abs(real(alpha_term)), abs(imag(alpha_term))) +
         max(abs(real(beta_term)), abs(imag(beta_term)))
     converted = ComplexF64(combined)
-    if isfinite(converted) && isfinite(magnitude_sum)
+    if isfinite(converted) && isfinite(magnitude_sum) &&
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
         return converted
     end
     return _aca_scaled_output_bigfloat(

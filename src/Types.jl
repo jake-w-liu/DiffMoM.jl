@@ -98,6 +98,25 @@ end
 @inline _complex_vector_input(x::AbstractVector{ComplexF64}) = x
 @inline _complex_vector_input(x::AbstractVector) = Vector{ComplexF64}(x)
 
+const _SCALED_SUM_CANCELLATION_FACTOR = 8eps(Float64)
+
+@inline function _scaled_component_sum_requires_exact(
+        first::Number, second::Number, combined::Number)
+    magnitude = abs(Float64(first)) + abs(Float64(second))
+    isfinite(magnitude) || return true
+    iszero(magnitude) && return false
+    return abs(Float64(combined)) <=
+           _SCALED_SUM_CANCELLATION_FACTOR * magnitude
+end
+
+@inline function _scaled_sum_requires_exact(
+        first::Number, second::Number, combined::Number)
+    return _scaled_component_sum_requires_exact(
+               real(first), real(second), real(combined)) ||
+           _scaled_component_sum_requires_exact(
+               imag(first), imag(second), imag(combined))
+end
+
 """
 Triangle mesh: vertices and triangle connectivity.
 """

@@ -1292,7 +1292,7 @@ end
         max(abs(real(beta_term)), abs(imag(beta_term)))
     converted = ComplexF64(combined)
     if isfinite(converted) && isfinite(magnitude_sum) &&
-       !_dda_scaled_sum_cancels_3d(alpha_term, beta_term, combined)
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
         return converted
     end
     return _surface_sie_scaled_output_bigfloat_3d(

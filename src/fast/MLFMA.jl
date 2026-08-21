@@ -2159,6 +2159,7 @@ end
        isfinite(imag_magnitude) &&
        !_mlfma_scaled_component_requires_fallback(alpha_scale, value) &&
        !_mlfma_scaled_component_requires_fallback(beta_scale, previous) &&
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined) &&
        !((iszero(real(converted)) && real_magnitude > 0.0) ||
          (iszero(imag(converted)) && imag_magnitude > 0.0) ||
          (0.0 < abs(real(converted)) < floatmin(Float64)) ||

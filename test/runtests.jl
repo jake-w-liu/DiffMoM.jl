@@ -3319,6 +3319,46 @@ mul!(q_sum_scale_alias, q_sum_scale_operator, q_sum_scale_alias,
      floatmax(Float64) / 2, -floatmax(Float64))
 @test q_sum_scale_alias == zeros(ComplexF64, 1)
 
+# Finite scaled terms can still lose most of a representable residual when
+# they nearly cancel. All matrix-free five-argument output combiners use the
+# exact fallback for this case.
+finite_scale_value = ComplexF64(1.0e30)
+finite_scale_previous = ComplexF64(-prevfloat(1.0e30))
+finite_scale_reference = setprecision(BigFloat, 4352) do
+    ComplexF64(
+        Complex{BigFloat}(finite_scale_value)^2 +
+        Complex{BigFloat}(finite_scale_value) *
+        Complex{BigFloat}(finite_scale_previous))
+end
+@test finite_scale_value^2 +
+      finite_scale_value * finite_scale_previous !=
+      finite_scale_reference
+for scaled_output in (
+        DiffMoM._aca_scaled_output,
+        DiffMoM._mlfma_scaled_output,
+        DiffMoM._farfield_q_scaled_output,
+        DiffMoM._sum_q_scaled_output,
+        DiffMoM._composite_scaled_output,
+    )
+    @test scaled_output(
+        finite_scale_value,
+        finite_scale_previous,
+        finite_scale_value,
+        finite_scale_value,
+        false,
+        1,
+    ) == finite_scale_reference
+end
+
+finite_sum_q_operator = DiffMoM.sum_q_matrix(
+    reshape(ComplexF64[1.0e30], 1, 1),
+    reshape(ComplexF64[-prevfloat(1.0e30)], 1, 1),
+)
+finite_sum_q_reference = setprecision(BigFloat, 4352) do
+    ComplexF64(BigFloat(1.0e30) - BigFloat(prevfloat(1.0e30)))
+end
+@test finite_sum_q_operator[1, 1] == finite_sum_q_reference
+
 # Each summand is a Hermitian PSD outer product. Applying the scale to each
 # summand separately overflows their cancelling first components, although the
 # exact scaled sum is finite.
@@ -11109,6 +11149,20 @@ mul!(composite_scale_alias, composite_scale_operator,
      composite_scale_alias,
      floatmax(Float64) / 2, -floatmax(Float64))
 @test composite_scale_alias == zeros(ComplexF64, 1)
+
+composite_finite_base = reshape(ComplexF64[1.0e30], 1, 1)
+composite_finite_mass = reshape(
+    ComplexF64[prevfloat(1.0e30)], 1, 1)
+composite_finite_operator = ImpedanceLoadedOperator(
+    composite_finite_base, [composite_finite_mass], [1.0], false)
+composite_finite_reference = setprecision(BigFloat, 8704) do
+    ComplexF64(BigFloat(1.0e30) - BigFloat(prevfloat(1.0e30)))
+end
+@test composite_finite_operator[1, 1] == composite_finite_reference
+@test composite_finite_operator * ComplexF64[1.0] ==
+      ComplexF64[composite_finite_reference]
+@test adjoint(composite_finite_operator) * ComplexF64[1.0] ==
+      ComplexF64[composite_finite_reference]
 
 composite_max_matrix = fill(
     ComplexF64(floatmax(Float64), 0.0), 1, 1)

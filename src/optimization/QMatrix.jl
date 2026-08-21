@@ -353,7 +353,8 @@ end
         max(abs(real(alpha_term)), abs(imag(alpha_term))) +
         max(abs(real(beta_term)), abs(imag(beta_term)))
     converted = ComplexF64(combined)
-    if isfinite(converted) && isfinite(magnitude_sum)
+    if isfinite(converted) && isfinite(magnitude_sum) &&
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
         return converted
     end
     return _farfield_q_scaled_output_bigfloat(
@@ -419,7 +420,8 @@ function Base.getindex(Q::SumQMatrix, row::Int, column::Int)
     imag_magnitude = abs(imag(value_a)) + abs(imag(value_b))
     if isfinite(combined) &&
        isfinite(real_magnitude) &&
-       isfinite(imag_magnitude)
+       isfinite(imag_magnitude) &&
+       !_scaled_sum_requires_exact(value_a, value_b, combined)
         return combined
     end
     return _sum_q_entry_bigfloat(
@@ -516,7 +518,8 @@ end
     converted = ComplexF64(combined)
     if isfinite(converted) &&
        isfinite(real_magnitude) &&
-       isfinite(imag_magnitude)
+       isfinite(imag_magnitude) &&
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
         return converted
     end
     return _sum_q_scaled_output_bigfloat(
@@ -575,6 +578,7 @@ end
 
 @inline function _sum_q_combination_requires_fallback(
         first::ComplexF64, second::ComplexF64, combined::ComplexF64)
+    _scaled_sum_requires_exact(first, second, combined) && return true
     @inbounds for component in 1:2
         first_part = component == 1 ? real(first) : imag(first)
         second_part = component == 1 ? real(second) : imag(second)

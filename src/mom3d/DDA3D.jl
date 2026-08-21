@@ -31,7 +31,6 @@ const _DDA_ACCUMULATION_FALLBACK_PRECISION = 2304
 # confining the allocation-heavy path to exceptional exponent ranges.
 const _DDA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
 const _DDA_SCALED_OUTPUT_SAFE_EXPONENT = 128
-const _DDA_SCALED_OUTPUT_CANCELLATION_FACTOR = 8eps(Float64)
 
 @inline _dda_index(voxel::Int, comp::Int) = 3 * (voxel - 1) + comp
 
@@ -74,23 +73,6 @@ end
         end
     end
     return false
-end
-
-@inline function _dda_scaled_component_cancels_3d(
-        first::Number, second::Number, combined::Number)
-    magnitude = abs(Float64(first)) + abs(Float64(second))
-    isfinite(magnitude) || return true
-    iszero(magnitude) && return false
-    return abs(Float64(combined)) <=
-           _DDA_SCALED_OUTPUT_CANCELLATION_FACTOR * magnitude
-end
-
-@inline function _dda_scaled_sum_cancels_3d(
-        first::Number, second::Number, combined::Number)
-    return _dda_scaled_component_cancels_3d(
-               real(first), real(second), real(combined)) ||
-           _dda_scaled_component_cancels_3d(
-               imag(first), imag(second), imag(combined))
 end
 
 @inline function _dda_scaled_output_requires_exact_3d(
@@ -136,7 +118,7 @@ end
         max(abs(real(beta_term)), abs(imag(beta_term)))
     converted = ComplexF64(combined)
     if isfinite(converted) && isfinite(magnitude_sum) &&
-       !_dda_scaled_sum_cancels_3d(alpha_term, beta_term, combined)
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
         return converted
     end
     return _dda_scaled_output_bigfloat_3d(

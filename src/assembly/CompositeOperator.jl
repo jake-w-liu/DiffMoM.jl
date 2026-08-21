@@ -175,7 +175,8 @@ function _composite_entry(
         imag_magnitude = abs(imag(total)) + abs(imag(contribution))
         if !isfinite(combined) ||
            !isfinite(real_magnitude) ||
-           !isfinite(imag_magnitude)
+           !isfinite(imag_magnitude) ||
+           _scaled_sum_requires_exact(total, contribution, combined)
             return _composite_entry_bigfloat(
                 A, row, column, adjoint_mode)
         end
@@ -236,7 +237,8 @@ end
     converted = ComplexF64(combined)
     if isfinite(converted) &&
        isfinite(real_magnitude) &&
-       isfinite(imag_magnitude)
+       isfinite(imag_magnitude) &&
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
         return converted
     end
     return _composite_scaled_output_bigfloat(
@@ -272,7 +274,9 @@ function _composite_unscaled_product!(
                     abs(imag(A.work_total[row])) + abs(imag(contribution))
                 if !isfinite(combined) ||
                    !isfinite(real_magnitude) ||
-                   !isfinite(imag_magnitude)
+                   !isfinite(imag_magnitude) ||
+                   _scaled_sum_requires_exact(
+                       A.work_total[row], contribution, combined)
                     return false
                 end
                 A.work_total[row] = combined
