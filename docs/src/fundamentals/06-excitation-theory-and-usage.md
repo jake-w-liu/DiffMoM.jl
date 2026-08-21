@@ -359,7 +359,7 @@ where $\eta_{\mathrm{equiv}}$ is a user‑supplied equivalent impedance (default
 
 The struct `ImportedExcitation` stores the function `source_func`, the kind `kind`, the equivalent impedance `eta_equiv`, and a `min_quad_order` parameter. The assembly function `assemble_imported_excitation`:
 
-1. Determines the effective quadrature order as `max(user_quad_order, min_quad_order)` and rounds up to the nearest supported rule (orders 1, 3, 4, or 7).
+1. Determines the effective quadrature order as `max(user_quad_order, min_quad_order)` and rounds up to the nearest supported rule (orders 1, 3, 4, or 7). Targets above 7 are rejected rather than silently downgraded.
 2. Evaluates `source_func` at each quadrature point.
 3. Converts the return value to a complex 3‑vector (`CVec3`) using the helper `_to_cvec3`, which accepts `CVec3`, `Vec3`, `SVector`, tuples, or length‑3 vectors, and checks for finiteness.
 4. Applies the $\eta_{\mathrm{equiv}}$ scaling if `kind = :surface_current_density`.

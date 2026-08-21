@@ -22,6 +22,7 @@ const _DEFAULT_MAX_MULTI_EXACT_BYTES = 512 * 1024 * 1024
 const _MULTI_EXACT_BYTES_PER_ENTRY = 1536
 const _MULTI_EXACT_BASE_BYTES = 4096
 const _EXCITATION_SURFACE_FALLBACK_PRECISION = 4352
+const _TRI_QUAD_ORDERS = (1, 3, 4, 7)
 
 function _multi_exact_accumulator_bytes(N::Int)
     bytes = BigInt(_MULTI_EXACT_BASE_BYTES) +
@@ -228,9 +229,12 @@ struct ImportedExcitation{F<:Function} <: AbstractExcitation
                                 kind::Symbol=:electric_field,
                                 eta_equiv::Number=376.730313668 + 0im,
                                 min_quad_order::Integer=3) where {F<:Function}
-        min_quad_order >= 1 || error("min_quad_order must be >= 1, got $min_quad_order.")
+        1 <= min_quad_order <= last(_TRI_QUAD_ORDERS) ||
+            throw(ArgumentError(
+                "min_quad_order must be between 1 and " *
+                "$(last(_TRI_QUAD_ORDERS)), got $min_quad_order."))
         kind in (:electric_field, :surface_current_density) ||
-            error("Unsupported ImportedExcitation kind: $kind")
+            throw(ArgumentError("Unsupported ImportedExcitation kind: $kind"))
         eta = ComplexF64(eta_equiv)
         isfinite(eta) ||
             throw(ArgumentError("eta_equiv must be finite, got $eta_equiv"))
@@ -1617,9 +1621,10 @@ function _validate_excitation_model(excitation::ImportedExcitation)
     isfinite(excitation.eta_equiv) ||
         throw(ArgumentError(
             "ImportedExcitation eta_equiv must be finite, got $(excitation.eta_equiv)."))
-    excitation.min_quad_order >= 1 ||
+    1 <= excitation.min_quad_order <= last(_TRI_QUAD_ORDERS) ||
         throw(ArgumentError(
-            "ImportedExcitation min_quad_order must be positive, got $(excitation.min_quad_order)."))
+            "ImportedExcitation min_quad_order must be between 1 and " *
+            "$(last(_TRI_QUAD_ORDERS)), got $(excitation.min_quad_order)."))
     excitation.kind in (:electric_field, :surface_current_density) ||
         throw(ArgumentError(
             "Unsupported ImportedExcitation kind: $(excitation.kind)."))
@@ -1684,8 +1689,6 @@ function _validate_plane_wave_wavenumber(pw::PlaneWaveExcitation,
     return k_norm
 end
 
-const _TRI_QUAD_ORDERS = (1, 3, 4, 7)
-
 @inline function _check_finite_cvec3(v::CVec3, label::AbstractString)
     for comp in v
         if !isfinite(real(comp)) || !isfinite(imag(comp))
@@ -1721,11 +1724,21 @@ end
 end
 
 function _effective_quad_order(requested::Int, min_required::Int)
+    requested >= 1 ||
+        throw(ArgumentError(
+            "requested quadrature order must be positive, got $requested"))
+    min_required >= 1 ||
+        throw(ArgumentError(
+            "minimum quadrature order must be positive, got $min_required"))
     target = max(requested, min_required)
+    target <= last(_TRI_QUAD_ORDERS) ||
+        throw(ArgumentError(
+            "quadrature order target $target exceeds the highest supported " *
+            "order $(last(_TRI_QUAD_ORDERS))"))
     for q in _TRI_QUAD_ORDERS
         q >= target && return q
     end
-    return last(_TRI_QUAD_ORDERS)
+    error("unreachable quadrature-order mapping")
 end
 
 function _excitation_quad_orders!(

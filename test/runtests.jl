@@ -4950,6 +4950,15 @@ catch
     true
 end
 @assert thrown_cur
+@test_throws ArgumentError make_imported_excitation(
+    E_field_test; min_quad_order=8)
+@test_throws ArgumentError make_imported_excitation(
+    E_field_test; kind=:unsupported)
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc, imp_E; quad_order=0)
+@test_throws ArgumentError assemble_excitation(
+    mesh_exc, rwg_exc, imp_E; quad_order=8)
+@test DiffMoM._effective_quad_order(2, 1) == 3
 
 thrown_cur_bad_dim = try
     cur_bad_dim = make_imported_excitation(r -> ComplexF64[1 + 0im, 2 + 0im];

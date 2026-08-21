@@ -153,7 +153,7 @@ A general imported or distributed source model. You provide a function `source(r
   - `:electric_field` -- `source(r)` is the incident electric field `E_inc(r)` directly.
   - `:surface_current_density` -- `source(r)` is an impressed surface current density `J_s(r)`, mapped via `E_inc(r) = eta_equiv * J_s(r)` (local equivalent-sheet approximation).
 - `eta_equiv::ComplexF64`: Equivalent sheet impedance, used only when `kind=:surface_current_density`.
-- `min_quad_order::Int`: Minimum quadrature order for assembly (mapped to supported orders 1, 3, 4, 7).
+- `min_quad_order::Int`: Minimum quadrature order for assembly. Values from 1 through 7 are rounded up to a supported order (1, 3, 4, or 7); larger values are rejected because no rule can satisfy them.
 
 **Constructors:**
 ```julia
