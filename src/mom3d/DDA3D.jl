@@ -32,6 +32,45 @@ const _DDA_ACCUMULATION_FALLBACK_PRECISION = 2304
 const _DDA_SCALED_OUTPUT_FALLBACK_PRECISION = 4352
 const _DDA_SCALED_OUTPUT_SAFE_EXPONENT = 128
 
+@inline function _dda_accumulation_magnitudes(
+        value::SVector{L,T}) where {L,T<:Number}
+    real_magnitude = SVector{L,Float64}(ntuple(
+        component -> abs(Float64(real(value[component]))), L))
+    imag_magnitude = SVector{L,Float64}(ntuple(
+        component -> abs(Float64(imag(value[component]))), L))
+    return real_magnitude, imag_magnitude
+end
+
+@inline function _dda_add_accumulation_magnitudes(
+        real_magnitude::SVector{L,Float64},
+        imag_magnitude::SVector{L,Float64},
+        value::SVector{L,T}) where {L,T<:Number}
+    next_real = SVector{L,Float64}(ntuple(
+        component -> real_magnitude[component] +
+                     abs(Float64(real(value[component]))), L))
+    next_imag = SVector{L,Float64}(ntuple(
+        component -> imag_magnitude[component] +
+                     abs(Float64(imag(value[component]))), L))
+    return next_real, next_imag
+end
+
+@inline function _dda_accumulation_requires_exact(
+        value::SVector{L,T},
+        real_magnitude::SVector{L,Float64},
+        imag_magnitude::SVector{L,Float64},
+        term_count::Int) where {L,T<:Number}
+    @inbounds for component in 1:L
+        (!isfinite(real_magnitude[component]) ||
+         !isfinite(imag_magnitude[component]) ||
+         _matrixfree_complex_reduction_requires_exact(
+             value[component],
+             real_magnitude[component],
+             imag_magnitude[component],
+             term_count)) && return true
+    end
+    return false
+end
+
 @inline _dda_index(voxel::Int, comp::Int) = 3 * (voxel - 1) + comp
 
 @inline _dda_voxel(linear_index::Int) = div(linear_index - 1, 3) + 1
@@ -1280,6 +1319,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     # allocations while removing per-access bounds checks.
     @inbounds for i in 1:N
         Ei = _read_field_component(xread, i)
+        real_magnitude, imag_magnitude =
+            _dda_accumulation_magnitudes(Ei)
         ri = A.grid.centers[i]
         needs_fallback = false
         try
@@ -1287,10 +1328,16 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 i == j && continue
                 alphaj = A.alpha[j]
                 iszero(alphaj) && continue
-                next_Ei = Ei - _electric_dipole_alpha_apply_3d(
+                contribution = _electric_dipole_alpha_apply_3d(
                     ri, A.grid.centers[j], A.k0, alphaj,
                     _read_field_component(xread, j))
-                if !all(isfinite, next_Ei)
+                next_Ei = Ei - contribution
+                real_magnitude, imag_magnitude =
+                    _dda_add_accumulation_magnitudes(
+                        real_magnitude, imag_magnitude, contribution)
+                if !all(isfinite, next_Ei) ||
+                   !all(isfinite, real_magnitude) ||
+                   !all(isfinite, imag_magnitude)
                     needs_fallback = true
                     break
                 end
@@ -1300,6 +1347,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             err isa OverflowError || rethrow()
             needs_fallback = true
         end
+        needs_fallback |= _dda_accumulation_requires_exact(
+            Ei, real_magnitude, imag_magnitude, N)
         if needs_fallback
             Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
         end
@@ -1348,14 +1397,20 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         if !iszero(alphai)
             ri = A.grid.centers[i]
             acc = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
+            real_magnitude, imag_magnitude =
+                _dda_accumulation_magnitudes(Ei)
             needs_fallback = false
             try
                 for j in 1:N
                     i == j && continue
                     xj = _read_field_component(xread, j)
-                    next_acc = acc +
-                               _electric_dipole_alpha_adjoint_apply_3d(
+                    contribution =
+                        _electric_dipole_alpha_adjoint_apply_3d(
                         ri, A.grid.centers[j], A.k0, alphai, xj)
+                    next_acc = acc + contribution
+                    real_magnitude, imag_magnitude =
+                        _dda_add_accumulation_magnitudes(
+                            real_magnitude, imag_magnitude, contribution)
                     if !all(isfinite, next_acc)
                         needs_fallback = true
                         break
@@ -1366,11 +1421,15 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 err isa OverflowError || rethrow()
                 needs_fallback = true
             end
+            combined = Ei - acc
+            needs_fallback |= !all(isfinite, combined) ||
+                _dda_accumulation_requires_exact(
+                    combined, real_magnitude, imag_magnitude, N)
             if needs_fallback
                 Ei = _dda_adjoint_operator_field_bigfloat_3d(
                     A, xread, i)
             else
-                Ei -= acc
+                Ei = combined
             end
         end
 

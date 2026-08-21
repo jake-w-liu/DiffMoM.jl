@@ -639,7 +639,10 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     # (1 <= i,j <= N, components 1..6, xread/y length 6N) keeps the loop at zero
     # allocations while removing per-access bounds checks.
     @inbounds for i in 1:N
-        Ei, Hi = _split_em_field(_read_em_field6(xread, i))
+        field = _read_em_field6(xread, i)
+        Ei, Hi = _split_em_field(field)
+        real_magnitude, imag_magnitude =
+            _dda_accumulation_magnitudes(field)
         ri = A.grid.centers[i]
         needs_fallback = false
         try
@@ -652,6 +655,10 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                     _read_em_field6(xread, j), A.eta0)
                 next_Ei = Ei - Es
                 next_Hi = Hi - Hs
+                contribution = _join_em_field(Es, Hs)
+                real_magnitude, imag_magnitude =
+                    _dda_add_accumulation_magnitudes(
+                        real_magnitude, imag_magnitude, contribution)
                 if !all(isfinite, next_Ei) || !all(isfinite, next_Hi)
                     needs_fallback = true
                     break
@@ -663,6 +670,12 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             err isa OverflowError || rethrow()
             needs_fallback = true
         end
+        needs_fallback |= _dda_accumulation_requires_exact(
+            _join_em_field(Ei, Hi),
+            real_magnitude,
+            imag_magnitude,
+            N,
+        )
         if needs_fallback
             Ei, Hi = _split_em_field(
                 _em_dda_operator_field_bigfloat_3d(A, xread, i))

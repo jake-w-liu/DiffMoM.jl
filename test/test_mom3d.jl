@@ -998,6 +998,43 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         @test norm(y_tensor - A_tensor_dense * x) / norm(A_tensor_dense * x) < 1e-13
     end
 
+    @testset "Matrix-free finite reduction cancellation" begin
+        cancellation_grid = VoxelGrid3D(
+            (0.0, 4.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
+        cancellation_operator = dda_operator_3d(
+            cancellation_grid, 1.0, 2.5 + 0.1im)
+        cancellation_row = 1
+
+        for tested_operator in
+            (cancellation_operator, adjoint(cancellation_operator))
+            cancellation_input = zeros(
+                ComplexF64, size(tested_operator, 2))
+            cancellation_input[cancellation_row] = 1e16
+            for (source, target) in ((2, 3.0), (3, -1e16))
+                columns = (3(source - 1) + 1):(3source)
+                entries = ComplexF64[
+                    tested_operator[cancellation_row, column]
+                    for column in columns
+                ]
+                selected_column = first(columns) + argmax(abs.(entries)) - 1
+                cancellation_input[selected_column] =
+                    target /
+                    tested_operator[cancellation_row, selected_column]
+            end
+            cancellation_result = tested_operator * cancellation_input
+            cancellation_reference = if tested_operator ===
+                                        cancellation_operator
+                DiffMoM._dda_operator_field_bigfloat_3d(
+                    cancellation_operator, cancellation_input, 1)[1]
+            else
+                DiffMoM._dda_adjoint_operator_field_bigfloat_3d(
+                    cancellation_operator, cancellation_input, 1)[1]
+            end
+            @test cancellation_result[cancellation_row] ==
+                  cancellation_reference
+        end
+    end
+
     @testset "Matrix-free near-longitudinal interaction" begin
         # The exact 3-4-5 displacement keeps the radial phase independent of
         # normalization roundoff.  The remaining small transverse moment used

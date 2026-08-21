@@ -920,6 +920,35 @@ end
         @test overlap_y ≈ overlap_expected rtol=1e-13
     end
 
+    @testset "Matrix-free finite reduction cancellation" begin
+        cancellation_grid = VoxelGrid3D(
+            (0.0, 4.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
+        cancellation_operator = em_dda_operator_3d(
+            cancellation_grid, 1.0,
+            2.5 + 0.1im, 1.4 + 0.02im)
+        cancellation_row = 1
+        cancellation_input = zeros(
+            ComplexF64, size(cancellation_operator, 2))
+        cancellation_input[cancellation_row] = 1e16
+        for (source, target) in ((2, 3.0), (3, -1e16))
+            columns = (6(source - 1) + 1):(6source)
+            entries = ComplexF64[
+                cancellation_operator[cancellation_row, column]
+                for column in columns
+            ]
+            selected_column = first(columns) + argmax(abs.(entries)) - 1
+            cancellation_input[selected_column] =
+                target /
+                cancellation_operator[cancellation_row, selected_column]
+        end
+        cancellation_result = cancellation_operator * cancellation_input
+        cancellation_reference =
+            DiffMoM._em_dda_operator_field_bigfloat_3d(
+                cancellation_operator, cancellation_input, 1)[1]
+        @test cancellation_result[cancellation_row] ==
+              cancellation_reference
+    end
+
     @testset "Matrix-free near-longitudinal cross interaction" begin
         grid = VoxelGrid3D(
             (0.0, 6.0), (0.0, 8.0), (0.0, 10.0), 2, 2, 2)
