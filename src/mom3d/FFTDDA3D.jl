@@ -314,6 +314,37 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
 
         if !needs_direct_fallback
+            # With a nonzero beta, preserve the original output until every
+            # FFT row has passed the final identity-minus-convolution
+            # cancellation check.  The exceptional direct fallback then sees
+            # the same y that the caller supplied.
+            if !overwrite
+                for a in 1:3
+                    fill!(conv, 0.0 + 0.0im)
+                    for b in 1:3
+                        conv .+=
+                            view(A.kernel.kernel_hat, :, :, :, a, b) .*
+                            view(qhat, :, :, :, b)
+                    end
+                    FFTW.ifft!(conv)
+                    idx = 0
+                    for iz in 1:nz, iy in 1:ny, ix in 1:nx
+                        idx += 1
+                        row = _dda_index(idx, a)
+                        convolution = conv[ix, iy, iz]
+                        value = xread[row] - convolution
+                        if _scaled_sum_requires_exact(
+                                xread[row], -convolution, value)
+                            needs_direct_fallback = true
+                            break
+                        end
+                    end
+                    needs_direct_fallback && break
+                end
+            end
+        end
+
+        if !needs_direct_fallback
             for a in 1:3
                 fill!(conv, 0.0 + 0.0im)
                 for b in 1:3
@@ -326,11 +357,18 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 for iz in 1:nz, iy in 1:ny, ix in 1:nx
                     idx += 1
                     row = _dda_index(idx, a)
-                    value = xread[row] - conv[ix, iy, iz]
+                    convolution = conv[ix, iy, iz]
+                    value = xread[row] - convolution
+                    if overwrite && _scaled_sum_requires_exact(
+                            xread[row], -convolution, value)
+                        needs_direct_fallback = true
+                        break
+                    end
                     y[row] = _dda_scaled_output_3d(
                         value, y[row], alpha_scale, beta_scale,
                         overwrite, row)
                 end
+                needs_direct_fallback && break
             end
         end
     finally
@@ -564,6 +602,33 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
         end
 
         if !needs_direct_fallback
+            if !overwrite
+                for a in 1:6
+                    fill!(conv, 0.0 + 0.0im)
+                    for b in 1:6
+                        conv .+=
+                            view(A.kernel.kernel_hat, :, :, :, a, b) .*
+                            view(qhat, :, :, :, b)
+                    end
+                    FFTW.ifft!(conv)
+                    idx = 0
+                    for iz in 1:nz, iy in 1:ny, ix in 1:nx
+                        idx += 1
+                        row = _em_index(idx, a)
+                        convolution = conv[ix, iy, iz]
+                        value = xread[row] - convolution
+                        if _scaled_sum_requires_exact(
+                                xread[row], -convolution, value)
+                            needs_direct_fallback = true
+                            break
+                        end
+                    end
+                    needs_direct_fallback && break
+                end
+            end
+        end
+
+        if !needs_direct_fallback
             for a in 1:6
                 fill!(conv, 0.0 + 0.0im)
                 for b in 1:6
@@ -576,11 +641,18 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                 for iz in 1:nz, iy in 1:ny, ix in 1:nx
                     idx += 1
                     row = _em_index(idx, a)
-                    value = xread[row] - conv[ix, iy, iz]
+                    convolution = conv[ix, iy, iz]
+                    value = xread[row] - convolution
+                    if overwrite && _scaled_sum_requires_exact(
+                            xread[row], -convolution, value)
+                        needs_direct_fallback = true
+                        break
+                    end
                     y[row] = _dda_scaled_output_3d(
                         value, y[row], alpha_scale, beta_scale,
                         overwrite, row)
                 end
+                needs_direct_fallback && break
             end
         end
     finally

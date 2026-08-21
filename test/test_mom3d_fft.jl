@@ -137,6 +137,54 @@ end
     @test cancellation_direct * cancellation_x == cancellation_x
     @test cancellation_fft * cancellation_x == cancellation_x
 
+    finite_cancellation_grid = VoxelGrid3D(
+        (0.0, 4.0), (0.0, 1.0), (0.0, 1.0), 4, 1, 1)
+    finite_cancellation_pairs = (
+        (
+            dda_operator_3d(
+                finite_cancellation_grid, 1.0, 2.5 + 0.1im),
+            fft_dda_operator_3d(
+                finite_cancellation_grid, 1.0, 2.5 + 0.1im),
+            3,
+        ),
+        (
+            em_dda_operator_3d(
+                finite_cancellation_grid, 1.0,
+                2.5 + 0.1im, 1.3 + 0.02im),
+            fft_em_dda_operator_3d(
+                finite_cancellation_grid, 1.0,
+                2.5 + 0.1im, 1.3 + 0.02im),
+            6,
+        ),
+    )
+    for (direct, fft, channels) in finite_cancellation_pairs
+        row = 1
+        input = zeros(ComplexF64, size(direct, 2))
+        input[row] = 1.0e16
+        for (source, target) in ((2, 3.0), (3, -1.0e16))
+            columns = (channels * (source - 1) + 1):(channels * source)
+            entries = ComplexF64[direct[row, column] for column in columns]
+            selected = first(columns) + argmax(abs.(entries)) - 1
+            input[selected] = target / direct[row, selected]
+        end
+
+        direct_result = direct * input
+        fft_result = fft * input
+        raw_fft_value = input[row] - fft.conv[1, 1, 1]
+        @test abs(raw_fft_value - direct_result[row]) > 1.0e-3
+        @test DiffMoM._scaled_sum_requires_exact(
+            input[row], -fft.conv[1, 1, 1], raw_fft_value)
+        @test fft_result == direct_result
+
+        initial = ComplexF64[
+            0.01index - 0.02im * index for index in eachindex(input)]
+        direct_scaled = copy(initial)
+        fft_scaled = copy(initial)
+        mul!(direct_scaled, direct, input, 0.3 - 0.2im, -0.4 + 0.1im)
+        mul!(fft_scaled, fft, input, 0.3 - 0.2im, -0.4 + 0.1im)
+        @test fft_scaled == direct_scaled
+    end
+
     range_grid = VoxelGrid3D(
         (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), 2, 1, 1)
     range_k = 1.0
