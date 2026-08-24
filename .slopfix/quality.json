@@ -1,0 +1,222 @@
+{
+  "schema_version": 1,
+  "kind": "slopfix-quality-config",
+  "profile": "julia",
+  "created_at": "2026-08-24T11:09:59+00:00",
+  "quality_model": "ISO/IEC 25010:2023",
+  "gates": [
+    {
+      "id": "julia-tests",
+      "category": "functional-suitability",
+      "title": "Julia project tests",
+      "required": true,
+      "kind": "command",
+      "command": [
+        "julia",
+        "--startup-file=no",
+        "-e",
+        "using Pkg, TOML; root = abspath(ARGS[1]); project = let candidates = [joinpath(root, \"Project.toml\"), joinpath(root, \"JuliaProject.toml\")]; existing = filter(isfile, candidates); isempty(existing) && error(\"no Julia project file\"); first(existing); end; name = get(TOML.parsefile(project), \"name\", nothing); name isa String || error(\"Julia package project has no string name\"); mktempdir() do env; Pkg.activate(env); Pkg.develop(Pkg.PackageSpec(path=root)); Pkg.test(Pkg.PackageSpec(name=name)); end",
+        "."
+      ],
+      "cwd": ".",
+      "timeout_seconds": 3600,
+      "capture": "digest",
+      "protect_paths": [
+        "JuliaManifest.toml",
+        "JuliaProject.toml",
+        "Manifest.toml",
+        "Project.toml"
+      ]
+    },
+    {
+      "id": "julia-aqua",
+      "category": "maintainability",
+      "title": "Aqua package checks are in the reachable Julia test graph",
+      "required": true,
+      "kind": "julia-reachable-contains",
+      "entrypoint": "test/runtests.jl",
+      "needles": [
+        "Aqua.test_all"
+      ],
+      "max_files": 500
+    },
+    {
+      "id": "julia-clean-resolution",
+      "category": "security",
+      "title": "Clean Julia package resolution and precompile",
+      "required": true,
+      "kind": "command",
+      "command": [
+        "julia",
+        "--startup-file=no",
+        "-e",
+        "using Pkg; root = abspath(ARGS[1]); mktempdir() do env; Pkg.activate(env); Pkg.develop(Pkg.PackageSpec(path=root)); Pkg.instantiate(); Pkg.precompile(); end",
+        "."
+      ],
+      "cwd": ".",
+      "timeout_seconds": 3600,
+      "capture": "digest",
+      "isolation": "temporary-julia-depot",
+      "protect_paths": [
+        "JuliaManifest.toml",
+        "JuliaProject.toml",
+        "Manifest.toml",
+        "Project.toml"
+      ]
+    },
+    {
+      "id": "julia-manifest-reproducibility",
+      "category": "compatibility",
+      "title": "Julia manifest and environment reproducibility",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "For applications, instantiate the committed Manifest.toml in a clean environment and prove it is unchanged. For libraries that intentionally do not commit a manifest, mark this not applicable and cite the supported compatibility/version-matrix policy."
+    },
+    {
+      "id": "julia-coverage-ratchet",
+      "category": "functional-suitability",
+      "title": "Julia coverage and test-strength ratchet",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Set a coverage threshold or changed-line ratchet and add property, differential, fuzz, or mutation checks where example-based tests can mirror an incorrect implementation."
+    },
+    {
+      "id": "julia-numerical-contracts",
+      "category": "functional-suitability",
+      "title": "Julia numerical and scientific contracts",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Test applicable combinations of NaN, \u00b1Inf, missing, empty/degenerate shapes, integer overflow, Float32/Float64/BigFloat, units, tolerances, random seeds, reproducibility, and domain invariants. Mark irrelevant dimensions not applicable with reasons."
+    },
+    {
+      "id": "julia-benchmarks",
+      "category": "performance-efficiency",
+      "title": "Julia benchmark and allocation baseline",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Use BenchmarkTools or PkgBenchmark on representative hot paths; pin time and memory tolerances and allocation ceilings. Include compilation or time-to-first-execution when it is user-visible."
+    },
+    {
+      "id": "julia-version-platform-matrix",
+      "category": "compatibility",
+      "title": "Supported Julia and platform matrix",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Test every supported Julia minor version and relevant OS/architecture. Include optional dependencies and package extensions where applicable."
+    },
+    {
+      "id": "julia-docs-doctests",
+      "category": "interaction-capability",
+      "title": "Julia documentation, doctests, and examples",
+      "required": true,
+      "kind": "command",
+      "command": [
+        "julia",
+        "--project=docs",
+        "--startup-file=no",
+        "docs/make.jl"
+      ],
+      "cwd": ".",
+      "timeout_seconds": 1800,
+      "capture": "digest",
+      "protect_paths": [
+        "docs/Project.toml",
+        "docs/Manifest.toml",
+        "docs/JuliaProject.toml",
+        "docs/JuliaManifest.toml"
+      ]
+    },
+    {
+      "id": "julia-tasks-resources",
+      "category": "reliability",
+      "title": "Julia tasks, concurrency, and resource lifecycle",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Exercise Threads.@spawn/async paths, channels, locks, cancellation, partial failure, files/sockets/GPU resources, and shutdown. Aqua's persistent-task check covers package loading, not every runtime path."
+    },
+    {
+      "id": "julia-secrets-security",
+      "category": "security",
+      "title": "Julia source, configuration, and secret security scan",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Configure a repository-appropriate secret scanner and security review. Julia currently has less SAST coverage than CodeQL-supported languages; record that boundary rather than claiming no vulnerabilities."
+    },
+    {
+      "id": "julia-sbom-advisories",
+      "category": "security",
+      "title": "Julia SBOM, licenses, and available advisories",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Generate an SBOM from the manifest when applicable, inspect package sources/licenses, and run an available Julia-aware advisory scanner. Record unavailable ecosystem coverage as UNVERIFIED."
+    },
+    {
+      "id": "julia-explicit-imports",
+      "category": "maintainability",
+      "title": "ExplicitImports and public-name checks",
+      "required": false,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Add ExplicitImports checks for implicit, stale, non-owning, or non-public imports and qualified accesses, allowing documented exceptions only."
+    },
+    {
+      "id": "julia-jet-entrypoints",
+      "category": "maintainability",
+      "title": "Pinned JET analysis on concrete entrypoints",
+      "required": false,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Pin a Julia-compatible JET release and analyze concrete public/hot entrypoints. Clear or document existing findings before ratcheting."
+    },
+    {
+      "id": "julia-public-api",
+      "category": "flexibility",
+      "title": "Julia public API, dispatch, and extension compatibility",
+      "required": true,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "Inventory exported/public names, method-extension contracts, schemas, preferences, weak dependencies, package extensions, deprecations, and serialization compatibility. Verify changes against downstream callers."
+    },
+    {
+      "id": "julia-safety-hazards",
+      "category": "safety",
+      "title": "Julia domain safety and hazard controls",
+      "required": false,
+      "kind": "review",
+      "disposition": "unverified",
+      "evidence": "",
+      "rationale": "",
+      "instructions": "For safety-, finance-, control-, or research-critical code, verify hazard controls, bounds, units, tolerances, deterministic replay, and trusted reference results. Otherwise mark not applicable with a reason."
+    }
+  ]
+}
