@@ -27,6 +27,8 @@ Census taken at commit `2c31d91064b07758eac5debdf9e710934e96bc17` on
 | SL-018 | F | Regression tests wrote scratch mesh files into the repository `data/` directory | `test/runtests.jl` | negative | R2 | INV-003, INV-048 | complete: scratch files use one test-owned temporary directory | `62f59e6` |
 | SL-019 | L | No repository ratchets guarded line growth, blocking smells, duplication, or the wider quality contract | `.github/workflows/ci.yml`, `AGENTS.md`, `CLAUDE.md`, `.slopfix/`, `scripts/` | negative | R2 | INV-041–046, INV-048 | complete: CI and local commands enforce the committed ceilings and quality contract | `62f59e6` |
 | SL-020 | B | ExplicitImports v1.15.0 reports 59 potential implicit imports; its output includes local-binding false positives such as `path` and `volume`, so the actionable set is not yet isolated | package namespace across `src/` | unknown | R2 | INV-045 | open: triage each symbol before any broad import rewrite; 11 qualified non-public accesses are separately reviewed and recorded in the report | |
+| SL-021 | J/K | Advanced examples used unchecked or mislabeled validation paths: four topology optimizers could apply an unevaluated line-search step, grounded postprocessing repeated one solve per basis vector, several studies overstated relaxed-density or discretized-reference results, and artifact failures hid the effective path | `examples/12_plate_rcs_stl_roundtrip.jl`, `14_periodic_to_validation.jl` through `23_circular_plate_ptd.jl`, `examples/grounded_rcs/`, aircraft/PO validators and their guides | negative | R3 | INV-033, INV-034, INV-040, INV-041, INV-048, INV-049 | complete for executable paths: projected accepted-step line searches, one-pass grounded linear maps, bounded defaults, finite/objective/power/gradient gates, honest result labels, and actionable artifact errors | `b318e51` |
+| SL-022 | G/H | Aqua's 10-second persistent-task default classified a clean bounds-checked package precompile as a task leak | `test/runtests.jl` | negative | R2 | INV-001, INV-048 | complete: a 300-second diagnostic returned `persistent=false` after 16.733 seconds; the test now retains Aqua's check with a 60-second window and passes in one- and four-thread suites | `b318e51` |
 
 ## Behavioural diff — SL-001 (pending full site resolution)
 
@@ -73,7 +75,7 @@ No deletion is recorded until the user explicitly approves this set.
 | Baseline code lines | 74,755 |
 | Raw census estimate (unverified) | 7,738 |
 | Promised net reduction | 150 |
-| Gross removed so far | 239 |
-| Gross added so far | 6,586 |
-| Net removed so far | -6,346 |
-| Remaining to target | 6,496 |
+| Gross removed so far | 856 |
+| Gross added so far | 8,105 |
+| Net removed so far | -7,248 |
+| Remaining to target | 7,398 |

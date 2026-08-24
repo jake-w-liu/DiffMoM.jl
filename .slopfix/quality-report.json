@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "slopfix-quality-report",
-  "generated_at": "2026-08-24T18:19:11+00:00",
+  "generated_at": "2026-08-24T22:37:55+00:00",
   "quality_model": "ISO/IEC 25010:2023",
   "profile": "julia",
   "root": "/Users/jake/EMPIRE/codes/DiffMoM.jl",
@@ -112,15 +112,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 456.315,
+      "duration_seconds": 1763.575,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 31147,
-        "sha256": "e2d14b3373dc56697cbe2e402da50166a1954bf6fc1dce1dc82f526dfea50bdf"
+        "bytes": 31163,
+        "sha256": "41afdcc654ec4d8d6af3e3e72fa3331268722d70c4e8c5f0479c772f8bdeab28"
       },
       "protected_paths_changed": []
     },
@@ -169,15 +169,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 461.001,
+      "duration_seconds": 1189.28,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 24021,
-        "sha256": "9b7717373b256a77e6563864b8dc9894352390d390c87ba072035bb55e94fe29"
+        "bytes": 24022,
+        "sha256": "20dd1e108b0cb3ecf302109a54744731cad1ad56dbb8e262e393ecb17cbd6203"
       },
       "protected_paths_changed": []
     },
@@ -258,7 +258,7 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 22.078,
+      "duration_seconds": 67.888,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,

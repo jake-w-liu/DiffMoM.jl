@@ -1,14 +1,14 @@
 # Slopfix report — DiffMoM.jl
 
-> Status: implementation audit complete at `62f59e6`; removal of the audited
+> Status: implementation audit complete at `b318e51`; removal of the audited
 > private dead-code set still requires the user's explicit approval. Amend the
 > final commit and measurements if that set is approved.
 
 | | |
 | --- | --- |
-| Period | `2026-08-24` → `2026-08-24` |
+| Period | `2026-08-24` → `2026-08-25` |
 | Baseline commit | `2c31d91064b07758eac5debdf9e710934e96bc17` |
-| Audited source commit | `62f59e6` |
+| Audited source commit | `b318e51` |
 | Counter | `slopfix-builtin/2+julia/1.12.7` |
 | Definition | non-blank, non-comment source lines |
 | Scope | frozen in `.slopfix/baseline.json` |
@@ -18,35 +18,35 @@
 | | Lines |
 | --- | ---: |
 | Baseline code | 74,755 |
-| Audited code | 81,101 |
-| Gross removed | 239 |
-| Gross added | 6,586 |
+| Audited code | 82,003 |
+| Gross removed | 856 |
+| Gross added | 8,105 |
 | Gross method | `slopfix-builtin/2-line-fingerprint-diff` |
-| **Net removed** | **-6,346** |
-| **Reduction** | **-8.49%** |
+| **Net removed** | **-7,248** |
+| **Reduction** | **-9.70%** |
 
 | | |
 | --- | ---: |
 | Promised reduction | 0.2% (150 lines) |
-| Delivered | -6,346 lines removed (a net addition of 6,346) |
+| Delivered | -7,248 lines removed (a net addition of 7,248) |
 | **Attainment** | **0% of the committed goal** |
 
 Reproduce the current number:
 
 ```bash
-git checkout 62f59e6
+git checkout b318e51
 python3 scripts/slopfix.py measure --strict
 ```
 
 The reduction target was not met. The original clone census included distinct
 scientific algorithms whose ordering, conjugation, precision, or external
 workflow contracts were not interchangeable. Correctness fixes,
-characterisation tests, public-documentation coverage, and the executable
-quality tooling added more source than the audit safely removed. Fifteen private
-helpers and one Python import passed the static dead-code audit, but the skill's
-unused-is-not-unwanted rule prohibits deleting them without explicit approval.
-No tests or documentation were removed, and no source was parked or compressed
-to manufacture a reduction.
+characterisation tests, public-documentation coverage, fail-closed example
+gates, and the executable quality tooling added more source than the audit
+safely removed. Fifteen private helpers and one Python import passed the static
+dead-code audit, but the skill's unused-is-not-unwanted rule prohibits deleting
+them without explicit approval. No tests or documentation were removed, and no
+source was parked or compressed to manufacture a reduction.
 
 ## Verification
 
@@ -63,11 +63,11 @@ Unverified items and the evidence needed to close them:
 | ID | Behaviour | Why not verified | What would close it |
 | --- | --- | --- | --- |
 | INV-031 | Every README installation and quick-start route | Local instantiate/load, package tests, and Examples 01 and 08 passed; the remote `Pkg.add(url=...)` route was not replayed against the unpushed audited commit | Push the audited commit and install its Git URL in a clean depot |
-| INV-033 | Complete example matrix | Examples 01, 04, 08, and 13 passed; the other examples include larger or artifact-dependent workflows and were parsed but not executed | Run every example in clean bounded environments and retain each asserted output |
-| INV-034 | Complete internal-validation matrix | Bounded Mie, beam-steering, convergence, and robustness validators passed; artifact-dependent paper/PO/grounded/scaling workflows were not all executed | Provision their declared artifacts and run the complete validation matrix |
+| INV-033 | Complete example matrix | Examples 01, 04, 08, 12–23 and the grounded gradient/small-assembly workflows passed their available gates; aircraft and full 24/36-mesh grounded workflows require absent geometry or serialized artifacts | Provision the named artifacts and run every remaining example in a clean bounded environment |
+| INV-034 | Complete internal-validation matrix | Bounded Mie, beam-steering, convergence, robustness, periodic, and grounded checks passed; external PO/MATLAB and artifact-dependent paper/scaling workflows were not all executable | Provision their declared artifacts and MATLAB/Octave, then run the remaining validation gates |
 | INV-035 | Bempp-cl and Meep comparisons | Their separate Python solver environments were not provisioned | Install the pinned external requirements and run each comparison gate |
 | INV-036 | Successful CAD conversion | Missing-path, unsupported-format, executable-presence, and mesh-I/O paths passed; the repository has no small CAD fixture | Add a licensed test CAD fixture, convert it with Gmsh, and import the result |
-| INV-044 | Current remote CI result | The platform matrix is configured, but commit `62f59e6` has not been observed in GitHub Actions | Push the commit and retain green Ubuntu, macOS, Windows, one-thread, four-thread, and docs jobs |
+| INV-044 | Current remote CI result | The platform matrix is configured, but commit `b318e51` has not been observed in GitHub Actions | Push the commit and retain green Ubuntu, macOS, Windows, one-thread, four-thread, and docs jobs |
 | INV-047 | Serialized-struct compatibility | There is no committed serialized fixture or schema/migration policy | Add versioned fixtures and round-trip/migration tests for supported public structs |
 
 Final-gate checks:
@@ -78,16 +78,16 @@ Final-gate checks:
 | Four-thread bounds-checked project suite | PASS; all 52 sections |
 | Isolated package test gate | PASS; exit 0 |
 | Documentation and doctests | PASS; export coverage and cross-references checked |
-| Julia parser sweep | PASS; 115 files |
+| Modified Julia parser/lowering sweep | PASS; all 24 changed Julia files |
 | Python bytecode compilation | PASS for `validation/` and `scripts/` |
 | Aqua | PASS through the installed-package test graph |
 | JET | PASS; zero reports on the selected concrete entrypoints |
 | Source coverage | 21,079 / 23,031 executable lines (91.52%) |
 | Blocking smells | 0 |
-| Duplication ratchet | 7,749 estimated removable lines, ceiling 7,900 |
-| Line ratchet | 81,101 code lines, ceiling 82,648 |
+| Duplication ratchet | 7,691 estimated removable lines, ceiling 7,900 |
+| Line ratchet | 82,003 code lines, ceiling 82,648 |
 | Secret scan | Gitleaks 8.30.1: 442-commit history and audited source files passed |
-| `slopfix measure --strict` | Exit 0; no integrity findings; one retained MATLAB scanner warning |
+| `slopfix measure --strict` | Exit 0; no warnings or integrity findings |
 
 The bounds-checked commands were:
 
@@ -119,6 +119,20 @@ Focused numerical evidence:
 - The beam-steering gradient maximum error was `2.766e-6` against its `1e-5`
   gate. The convergence study's mesh/reference maxima were `2.81e-6` and
   `3.89e-7` against `3e-6`; every declared gate passed.
+- Example 19's weakest-case reduction was `13.367 dB`; its weakest checkerboard
+  advantage was `9.513 dB`; direct and GMRES currents differed by
+  `7.603e-11` relative.
+- Example 20 reached `|R00| = 0.08655` (`-21.25 dB`), closed its power
+  diagnostic to `5.13%`, and exceeded the feasible checkerboard by `16.91 dB`.
+- The grounded postprocessor replaced 588 unit-current passes with one linear
+  map: the measured path changed from `0.925092 s` and `484,276,608` bytes to
+  `0.113160 s` and `17,609,680` bytes, with maximum coefficient difference
+  `2.22e-16`. Timing is machine-specific; the coefficient comparison is the
+  correctness gate.
+- Aqua's default 10-second persistent-task window failed under a fresh
+  bounds-checked compile. The same check completed with `persistent=false`
+  after `16.733 s`; a 60-second test window then passed in both one-thread
+  (`13.6 s`) and four-thread (`15.0 s`) suites.
 
 The test suite skipped the optional paper-consistency comparisons because their
 generated artifacts were absent. Test 32 verified the Gmsh executable and error
@@ -180,6 +194,8 @@ implementation dependencies, but remain a compatibility boundary.
 | 2026-08-24 | INV-031, 033, 034, 049 | Touched examples and validators use bounded setups, named finite gates, effective-value output, and nonzero failure exits | Prevent plausible-looking output from being reported as completed validation | User's examples, validation, README, and docs audit request |
 | 2026-08-24 | INV-003, 048 | Tests and STL round-trips use temporary paths instead of repository artifacts | Prevent validation from overwriting tracked fixtures or leaving test scratch files | User's stale-artifact and resource-lifecycle request |
 | 2026-08-24 | INV-007, 019, 031, 032, 049 | Errors, help, status output, README, and guides state the effective behaviour and next action; mutable defaults point to canonical source where practical | Full `ux-writing` pass requested by the user | User's explicit `$ux-writing` reminder |
+| 2026-08-25 | INV-033, 034, 040, 041, 048, 049 | Advanced periodic, topology-optimization, grounded, aircraft, and PO workflows use bounded defaults, projected-step line searches, objective cross-checks, named gates, effective paths, and explicit artifact recovery | Prevent unchecked or mislabeled example output and avoid repeated grounded postprocessing solves | User's deep-debug and full `$ux-writing` pass request |
+| 2026-08-25 | INV-001, 048 | Aqua's persistent-task gate uses a 60-second completion window while retaining the same subprocess-based task check | A measured 16.733-second clean bounds-checked compile exceeded Aqua's 10-second default without leaving a persistent task | User's request to verify and fix the full test graph |
 
 No confirmed bug was deliberately preserved.
 
@@ -195,6 +211,8 @@ No confirmed bug was deliberately preserved.
 | SL-017 | Reworked README/docs and user-facing diagnostics under the UX-writing contract | `62f59e6` | INV-031, 032, 049 |
 | SL-018 | Moved test scratch files to a test-owned temporary directory | `62f59e6` | INV-003, 048 |
 | SL-019 | Added line, duplication, smell, secret, and ISO/IEC 25010 quality ratchets | `62f59e6` | INV-041–046, 048 |
+| SL-021 | Hardened and executed the advanced periodic, optimization, grounded, and PO example gates; artifact-dependent scripts now fail with the effective path and recovery command | `b318e51` | INV-033, 034, 040, 041, 048, 049 |
+| SL-022 | Replaced Aqua's too-short default completion window with a measured 60-second window | `b318e51` | INV-001, 048 |
 
 No production module was wholesale rewritten.
 
@@ -215,20 +233,20 @@ No production module was wholesale rewritten.
 
 | Finding | Detail | Disposition |
 | --- | --- | --- |
-| MATLAB scanner warning | `validation/po/compare_po_aircraft.m:118` uses MATLAB's non-conjugating transpose `Ri.'`; the fallback scanner treats the apostrophe as a string delimiter | Retained and reported; Julia/parser-backed counts and the frozen baseline are unchanged |
+| MATLAB scanner warning | The fallback scanner previously misread MATLAB's non-conjugating transpose apostrophe as a string delimiter | Replaced the expression with the equivalent `transpose(Ri)` form; the current strict measurement reports no warning |
 | Generated-doc secret false positives | A worktree-wide scan matched `API:...` HTML anchor IDs in ignored `docs/build/` files | Confirmed generated anchors, not credentials; the 442-commit history and audited source files passed |
 | Parked/compressed/deleted verification code | None reported by `measure --strict` | No action required |
 
 ## Remaining known problems
 
 - The exact dead-code set is still present pending explicit approval.
-- Remote platform results, external Bempp/Meep comparisons, successful CAD
-  conversion, complete example/validation matrices, and serialization
-  compatibility remain unverified as itemized above.
+- Remote platform results, external Bempp/Meep/MATLAB comparisons, successful
+  CAD conversion, artifact-dependent example/validation paths, and
+  serialization compatibility remain unverified as itemized above.
 - ExplicitImports' 59 potential implicit imports need per-symbol triage.
 - The docs build passes but warns that two API pages exceed 100 KiB and the
   generated search index is about 1.4 MiB.
-- `test/runtests.jl` remains a 14,415-line sequential driver. Large source files
+- `test/runtests.jl` remains a 14,419-line sequential driver. Large source files
   include `src/geometry/Mesh.jl`, `src/fast/MLFMA.jl`, and
   `src/assembly/Excitation.jl`; splitting them without behavioural specs was
   deliberately deferred.
@@ -246,7 +264,7 @@ No production module was wholesale rewritten.
 | `.slopfix/quality.json` | Replays the reviewed ISO/IEC 25010 contract | Any failed or required-unverified gate |
 | `.github/workflows/ci.yml` | Runs the platform matrix, docs, ratchets, smells, and quality contract | Any configured job or gate failure |
 
-The line ceiling is 1,547 lines above the audited count. Raising either ceiling
+The line ceiling is 645 lines above the audited count. Raising either ceiling
 requires a deliberate reviewed commit. These checks expose re-accumulation; they
 do not prove that every future change is non-duplicative.
 
