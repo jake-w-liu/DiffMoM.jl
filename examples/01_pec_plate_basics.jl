@@ -16,6 +16,9 @@ include(joinpath(@__DIR__, "..", "src", "DiffMoM.jl"))
 using .DiffMoM
 using LinearAlgebra
 
+const MAX_RELATIVE_RESIDUAL = 1e-10
+const MAX_ENERGY_RATIO_ERROR = 0.02
+
 println("="^60)
 println("Example 01: PEC Plate Basics")
 println("="^60)
@@ -25,13 +28,12 @@ freq = 3e9                          # 3 GHz
 c0   = 299792458.0
 lambda0 = c0 / freq                 # ≈ 10 cm
 k    = 2π / lambda0
-eta0 = 376.730313668
 
 println("\nFrequency: $(freq/1e9) GHz,  λ = $(round(lambda0*100, digits=2)) cm")
 
 # ── 2. Create mesh and RWG basis ──────────────────
-Lx, Ly = 0.1, 0.1                  # 10 cm × 10 cm plate (1λ × 1λ)
-Nx, Ny = 5, 5                      # ~λ/5 elements
+Lx, Ly = 0.1, 0.1                  # 10 cm × 10 cm plate (about 1λ × 1λ)
+Nx, Ny = 15, 15                    # triangle edges no longer than λ/10
 mesh = make_rect_plate(Lx, Ly, Nx, Ny)
 rwg  = build_rwg(mesh)
 N    = rwg.nedges
@@ -42,12 +44,19 @@ println("RWG:   $N basis functions")
 # Check mesh resolution
 res = mesh_resolution_report(mesh, freq)
 println("Edge max/λ: $(round(res.edge_max_over_lambda, digits=3))  (target ≤ 0.1)")
+res.meets_target || error(
+    "PEC plate example: edge_max/λ=$(res.edge_max_over_lambda) exceeds " *
+    "the target $(inv(res.points_per_wavelength)); refine the mesh before " *
+    "using its scattering results")
 
 # ── 3. Assemble EFIE matrix ──────────────────────
 println("\nAssembling Z_efie ($N × $N)...")
 t_asm = @elapsed Z = assemble_Z_efie(mesh, rwg, k)
 println("  Done in $(round(t_asm, digits=3)) s")
-println("  Memory: $(round(estimate_dense_matrix_gib(N)*1024, digits=2)) MiB")
+println(
+    "  Dense matrix payload: " *
+    "$(round(estimate_dense_matrix_gib(N) * 1024, digits=2)) MiB",
+)
 
 # ── 4. Plane-wave excitation ──────────────────────
 k_vec = Vec3(0.0, 0.0, -k)         # propagating in -z
@@ -60,6 +69,10 @@ println("\nSolving...")
 I_pec = Z \ v
 residual = norm(Z * I_pec - v) / norm(v)
 println("  Relative residual: $residual")
+isfinite(residual) && residual <= MAX_RELATIVE_RESIDUAL || error(
+    "PEC plate example: relative residual $residual exceeds " *
+    "$MAX_RELATIVE_RESIDUAL; inspect the assembly and solve before " *
+    "postprocessing")
 
 # ── 6. Far-field and RCS ──────────────────────────
 grid = make_sph_grid(18, 36)        # 18 θ × 36 φ directions
@@ -85,6 +98,12 @@ println("\nEnergy conservation:")
 println("  P_in  = $(round(P_in, sigdigits=4)) W")
 println("  P_rad = $(round(P_rad, sigdigits=4)) W")
 println("  P_rad/P_in = $(round(ratio, digits=4))  (should be ≈ 1 for PEC)")
+energy_ratio_error = abs(ratio - 1.0)
+isfinite(energy_ratio_error) &&
+    energy_ratio_error <= MAX_ENERGY_RATIO_ERROR || error(
+        "PEC plate example: energy-ratio error $energy_ratio_error exceeds " *
+        "$MAX_ENERGY_RATIO_ERROR; refine the angular grid or mesh before " *
+        "using the RCS")
 
 # ── 8. Condition number ───────────────────────────
 diag = condition_diagnostics(Z)
@@ -92,4 +111,4 @@ println("\nMatrix conditioning:")
 println("  cond(Z) = $(round(diag.cond, sigdigits=4))")
 
 println("\n" * "="^60)
-println("Done.")
+println("PEC plate example complete: resolution, residual, and energy gates passed.")

@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Reference for mesh plotting helpers that produce interactive 3D wireframe views using [PlotlySupply.jl](https://github.com/plotly/PlotlySupply.jl). These are used for quick mesh inspection, comparing original vs. repaired/coarsened meshes, and generating publication-ready figures.
+Reference for mesh plotting helpers that produce interactive 3D wireframe views
+using [PlotlySupply.jl](https://github.com/plotly/PlotlySupply.jl). Use them to
+inspect a mesh, compare processing stages, or export a preview.
 
 ---
 
@@ -36,7 +38,9 @@ Create an interactive 3D wireframe plot of a single mesh.
 | `max_output_bytes` | `Integer` | `536_870_912` | Maximum raw payload of the wireframe coordinate vectors. |
 | `kwargs...` | -- | -- | Additional keyword arguments forwarded to `relayout!` for fine-grained Plotly layout control. |
 
-**Returns:** PlotlySupply plot object. Display it in a Jupyter notebook or Pluto cell by returning it; save it with `savefig(p, "path.png")`.
+**Returns:** A PlotlySupply plot object. Display it in a notebook by returning
+it. To call the backend's general export function directly, import it explicitly
+with `using PlotlySupply: savefig`.
 
 **How it works:** Internally calls `mesh_wireframe_segments(mesh)` (from `Mesh.jl`) to extract all triangle edges as disconnected line segments, then renders them as a single Plotly `scatter3d` trace with `mode="lines"`. The axes use equal aspect ratio (`aspectmode = "cube"`) so the geometry is not distorted.
 
@@ -110,9 +114,9 @@ Generate a side-by-side comparison plot and save it as both PNG and PDF. This is
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `plot` | PlotlySupply plot | The generated plot object (can be displayed or further customized). |
-| `png_path` | `String` | Full path to the saved PNG file. |
-| `pdf_path` | `String` | Full path to the saved PDF file. |
+| `plot` | PlotlySupply plot | The generated plot object. |
+| `png_path` | `String` | PNG path derived from `out_prefix`. |
+| `pdf_path` | `String` | PDF path derived from `out_prefix`. |
 
 **Directory creation:** Parent directories are created automatically if they do not exist (via `mkpath`).
 
@@ -146,7 +150,10 @@ The `camera` parameter is `(azimuth, elevation)` in degrees:
 ## Notes
 
 - **Backend:** Uses PlotlySupply.jl (a lightweight Plotly.js wrapper), not Plots.jl. Plots are interactive in Jupyter/Pluto — you can rotate, zoom, and pan with the mouse.
-- **Performance:** Wireframe rendering handles meshes with thousands of triangles without issue. For very large meshes (>50k triangles), the browser-rendered Plotly plot may become sluggish; consider coarsening first for visualization.
+- **Performance:** Browser rendering cost grows with the number of unique mesh
+  edges. Use the resource-limit keywords and coarsen a visualization copy when
+  interaction becomes slow; do not substitute that copy for the simulation mesh
+  without a convergence check.
 - **Aspect ratio:** All plots use `aspectmode = "cube"` to ensure equal scaling on all three axes. This prevents flat structures from appearing stretched.
 - **Transparent background:** The 3D scene background is transparent (`rgba(0,0,0,0)`), which works well when embedding in papers or presentations.
 

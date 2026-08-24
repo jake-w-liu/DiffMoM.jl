@@ -1,9 +1,9 @@
 # Behaviour inventory — DiffMoM.jl
 
-Derived from the codebase at commit
-`2c31d91064b07758eac5debdf9e710934e96bc17` on 2026-08-24. Human review is
-pending; until confirmed, this is a pre-reduction draft and no production
-consolidation may begin.
+Frozen from the codebase at commit
+`2c31d91064b07758eac5debdf9e710934e96bc17` on 2026-08-24, before production
+edits. Final evidence and every unverified boundary are recorded in
+`.slopfix/report.md` and `.slopfix/quality-report.json`.
 
 **This document is the contract.** Rows may be added when a missed behaviour is
 found, or removed only as an explicitly dated and approved product decision. It
@@ -25,7 +25,7 @@ user-visible tooling and compatibility, and `C3` for minor conveniences.
 
 | ID | Behaviour and boundaries | Implemented in | Verify | Crit | Baseline status |
 | --- | --- | --- | --- | --- | --- |
-| INV-001 | A Julia 1.12+ environment resolves, precompiles, and loads `DiffMoM` without a persistent task | `Project.toml`, `src/DiffMoM.jl` | `C` clean-resolution and Aqua gates | C1 | pending |
+| INV-001 | An environment allowed by the `julia` compatibility entry resolves, precompiles, and loads `DiffMoM` without a persistent task | `Project.toml`, `src/DiffMoM.jl` | `C` clean-resolution and Aqua gates | C1 | pending |
 | INV-002 | `TriMesh` and geometry factories construct finite, consistently indexed meshes; invalid/empty/resource-excess inputs fail explicitly | `src/Types.jl`, `src/geometry/Mesh.jl` | `T` Tests 1, 1c–1e, 43 | C1 | pending |
 | INV-003 | OBJ/STL/MSH reading and writing preserve supported geometry and reject malformed, oversized, or unsupported input | `src/geometry/Mesh.jl`, `src/geometry/MeshIO.jl` | `T` Tests 1b, 32 | C1 | pending |
 | INV-004 | Mesh repair, clustering, coarsening, refinement, edge extraction, quality, and resolution checks preserve valid topology and enforce work limits | `src/geometry/Mesh.jl` | `T` Tests 1c–1e, 32 | C1 | pending |
@@ -75,7 +75,7 @@ user-visible tooling and compatibility, and `C3` for minor conveniences.
 | INV-041 | Allocation efficiency | Existing hot-path `@allocated` ceilings and zero-allocation contracts remain at or below their test thresholds after warm-up | `T` allocation assertions in test suite | C1 | pending |
 | INV-042 | Memory/resource bounds | User-sized mesh, cache, adjacency, quadrature, matrix, FFT, MLFMA, DDA, and validation work is preflighted against explicit count/byte limits before large allocation | `T` resource-limit assertions | C1 | pending |
 | INV-043 | Concurrency/reliability | Shared FFT/operator/cache/preconditioner paths are race-free under four Julia threads; locks release through errors; BigFloat precision remains task-local | `T` four-thread suite and runtime contract | C1 | pending |
-| INV-044 | Platform compatibility | Supported Julia 1.12 runs on Ubuntu (1/4 threads), macOS, and Windows; docs build on Ubuntu | `C` GitHub Actions matrix | C2 | pending |
+| INV-044 | Platform compatibility | The Julia versions, operating systems, and thread counts configured in CI complete their test jobs; the documentation job completes on its configured platform | `C` GitHub Actions matrix | C2 | pending |
 | INV-045 | Public API/dispatch | Every exported name is defined; supported adjoint/index/mul! extensions have no ambiguities or piracy; documented aliases remain callable | `C` Aqua/export/API smoke gates | C1 | pending |
 | INV-046 | Dependency/security boundary | A clean isolated environment resolves declared dependencies and precompiles; no credentials are committed; dependency provenance/licenses/advisories are recorded to the available tool limit | `C` clean-resolution, secret, SBOM/advisory gates | C1 | pending |
 | INV-047 | Serialization compatibility | Public result/operator structs used with Julia `Serialization` retain field/ordering compatibility or publish an explicit migration/breaking policy | `R` no committed compatibility fixture | C2 | unverified |
@@ -121,8 +121,8 @@ errors for invalid paths; successful output file and mesh import otherwise.
 
 ### INV-044 — platform matrix
 
-Record the latest CI run for the audited commit. Required jobs: Ubuntu Julia 1.12
-with 1 and 4 threads, macOS with 1 thread, Windows with 1 thread, and docs.
+Record the latest CI run for the audited commit. The required jobs and effective
+runtime versions are owned by `.github/workflows/ci.yml`.
 
 ### INV-045/046/048 — package-quality gates
 
@@ -135,8 +135,8 @@ advisory scans, and the resource-lifetime audit. Any unavailable scanner remains
 | | Count |
 | --- | ---: |
 | Total behaviours | 46 |
-| Intended automated-test verification (`T`) | 33 |
-| Intended reproducible-command verification (`C`) | 11 |
+| Intended automated-test verification (`T`) | 32 |
+| Intended reproducible-command verification (`C`) | 12 |
 | Intended manual verification (`M`) | 0 |
 | Unverified/code-reading-only (`R`) | 2 |
 
@@ -157,5 +157,10 @@ Before any production consolidation:
 
 ## Approved behaviour changes
 
-None.
-
+| Date | Inventory | Change | Approval basis |
+| --- | --- | --- | --- |
+| 2026-08-24 | INV-013, INV-040–042 | Dense far-field Q construction uses BLAS for ordinary entries and local checked recomputation for cancellation-sensitive components; exceptional results retain the BigFloat reference behavior. | User requested a fresh correctness, memory, and optimization pass. |
+| 2026-08-24 | INV-019, INV-040 | Iterative `solve_scattering` paths verify the returned vector's true residual by default; callers retrieving a partial iterate must disable that gate explicitly. | User requested confirmed bugs to be fixed rather than preserved. |
+| 2026-08-24 | INV-031, INV-033, INV-034, INV-049 | Touched examples and validators use practical bounded setups, report effective values, apply named finite acceptance gates, and exit nonzero before reporting completion when a gate fails. | User requested examples, validation, README, and docs to be audited and completed. |
+| 2026-08-24 | INV-003, INV-048 | Regression mesh artifacts are written to a test-owned temporary directory; the Mie validator no longer overwrites its repository STL fixture. | User requested stale artifacts and resource behavior to be cleaned up. |
+| 2026-08-24 | INV-007, INV-019, INV-031, INV-032, INV-049 | Changed errors, status output, help, README, and guides identify effective behavior and recovery actions; mutable defaults point to source-owned docstrings or constants. | User explicitly required the `ux-writing` skill throughout and a full copy pass. |

@@ -210,7 +210,11 @@ The cutoff distance $d_{\mathrm{cut}}$ controls the trade-off between preconditi
 | $2.0\lambda$ | 15--40% | 8--15 | High |
 | $\infty$ (full matrix) | 100% | 1 | $O(N^3)$ LU |
 
-The sweet spot is typically $d_{\mathrm{cut}} \approx 1\lambda$, where the preconditioner captures the dominant local interactions while remaining genuinely sparse. The `solve_scattering` high-level API defaults to `nf_cutoff_lambda=1.0`.
+Choose $d_{\mathrm{cut}}$ by measuring factorization cost, fill, iteration count,
+and the true residual on the target problem. In `solve_scattering`,
+`nf_cutoff_lambda` controls this distance only for `method=:dense_gmres`; ACA
+and MLFMA reuse near-field structures stored by their operators. The
+[`solve_scattering` docstring](../api/exported-core.md) owns the exact default.
 
 ### 3.5 Why Iteration Growth Is Often Weak
 
@@ -672,13 +676,15 @@ For the simplest workflow, `solve_scattering` handles everything automatically:
 result = solve_scattering(mesh, freq,
     make_plane_wave(Vec3(0,0,-k), 1.0, Vec3(1,0,0));
     method = :auto,
-    nf_cutoff_lambda = 1.0,
     verbose = true)
 
 println("Method: ", result.method)
 println("GMRES iterations: ", result.gmres_iters)
 I_auto = result.I_coeffs
 ```
+
+Set `nf_cutoff_lambda` when forcing `method=:dense_gmres`. ACA uses its dense
+inadmissible blocks, and MLFMA uses its stored near-field matrix.
 
 ### 8.9 Comparing Factorization Types
 

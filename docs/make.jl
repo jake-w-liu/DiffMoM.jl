@@ -10,7 +10,7 @@ makedocs(
     sitename = "DiffMoM.jl",
     authors = "Jake W. Liu",
     modules = [DiffMoM],
-    checkdocs = :none,
+    checkdocs = :exports,
     remotes = nothing,
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", "false") == "true",
@@ -109,6 +109,19 @@ makedocs(
             "Verification" => "api/verification.md",
             "Visualization" => "api/visualization.md",
             "Physical Optics" => "api/physical-optics.md",
+            "Exported Docstrings" => [
+                "Index" => "api/exported-docstrings.md",
+                "Core" => "api/exported-core.md",
+                "Geometry and Basis" => "api/exported-geometry-basis.md",
+                "Assembly I" => "api/exported-assembly-1.md",
+                "Assembly II" => "api/exported-assembly-2.md",
+                "Fast Methods" => "api/exported-fast.md",
+                "Solvers" => "api/exported-solvers.md",
+                "Optimization" => "api/exported-optimization.md",
+                "Postprocessing" => "api/exported-postprocessing.md",
+                "2D Volume IE" => "api/exported-mom2d.md",
+                "3D Volume and Surface IE" => "api/exported-mom3d.md",
+            ],
         ],
         "Appendices" => [
             "Units and Conventions" => "appendices/units-conventions.md",

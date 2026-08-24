@@ -1,8 +1,6 @@
 # runtests.jl — Test suite for DiffMoM
 #
-# Run: julia --project=. test/runtests.jl
-
-push!(LOAD_PATH, joinpath(@__DIR__, "..", "src"))
+# Run: julia --project=. --startup-file=no -e 'using Pkg; Pkg.test()'
 
 using LinearAlgebra
 using SparseArrays
@@ -10,11 +8,12 @@ using StaticArrays
 using Statistics
 using Random
 using Test
+using Aqua
 using CSV
 using DataFrames
+using DiffMoM
 
-include(joinpath(@__DIR__, "..", "src", "DiffMoM.jl"))
-using .DiffMoM
+Aqua.test_all(DiffMoM; stale_deps=(ignore=[:CSV, :DataFrames, :JSON],))
 
 include("test_runtime_contract.jl")
 
@@ -369,6 +368,7 @@ end
 
 const DATADIR = joinpath(@__DIR__, "..", "data")
 mkpath(DATADIR)
+const TEST_TMPDIR = mktempdir()
 
 function write_icosphere_obj(path::AbstractString; radius::Float64=0.05, subdivisions::Int=2)
     ϕ = (1 + sqrt(5.0)) / 2
@@ -736,7 +736,7 @@ end
 # ─────────────────────────────────────────────────
 println("\n── Test 1b: OBJ mesh import ──")
 
-obj_path = joinpath(DATADIR, "tmp_quad.obj")
+obj_path = joinpath(TEST_TMPDIR, "tmp_quad.obj")
 open(obj_path, "w") do io
     println(io, "  v 0 0 0")
     println(io, "v\t1 0 0")
@@ -752,7 +752,7 @@ mesh_obj = read_obj_mesh(obj_path)
 @assert ntriangles(mesh_obj) == 2
 @assert mesh_obj.tri == [1 1; 2 3; 3 4]
 
-obj_invalid_path = joinpath(DATADIR, "tmp_invalid.obj")
+obj_invalid_path = joinpath(TEST_TMPDIR, "tmp_invalid.obj")
 open(obj_invalid_path, "w") do io
     println(io, "v NaN 0 0")
     println(io, "v 1 0 0")
@@ -936,7 +936,7 @@ mesh_repair_allocated = @allocated repair_mesh_for_simulation(
 @test mesh_clean_allocated < 1_100_000
 @test mesh_repair_allocated < 5_500_000
 
-repair_in_path = joinpath(DATADIR, "tmp_repair_in.obj")
+repair_in_path = joinpath(TEST_TMPDIR, "tmp_repair_in.obj")
 open(repair_in_path, "w") do io
     println(io, "v 0 0 0")
     println(io, "v 1 0 0")
@@ -945,7 +945,7 @@ open(repair_in_path, "w") do io
     println(io, "f 1 2 3")
     println(io, "f 1 4 3")
 end
-repair_out_path = joinpath(DATADIR, "tmp_repair_out.obj")
+repair_out_path = joinpath(TEST_TMPDIR, "tmp_repair_out.obj")
 repair_obj_result = repair_obj_mesh(repair_in_path, repair_out_path; allow_boundary=true)
 @assert isfile(repair_obj_result.output_path)
 mesh_repair_out = read_obj_mesh(repair_out_path)
@@ -3236,7 +3236,8 @@ pol_mat = pol_linear_x(grid)
 mask = cap_mask(grid; theta_max=30 * π / 180)
 Q = build_Q(G_mat, grid, pol_mat; mask=mask)
 Q_operator = build_Q_operator(G_mat, grid, pol_mat; mask=mask)
-q_work_limit = sizeof(ComplexF64) * (NΩ * N + N * N)
+q_work_limit = sizeof(ComplexF64) * (2NΩ * N + N * N) +
+               2sizeof(UInt64) * cld(N, 8sizeof(UInt64))
 @test_throws ArgumentError build_Q(
     G_mat, grid, pol_mat;
     mask=mask,
@@ -3575,6 +3576,58 @@ q_finite_cancellation_reference = ComplexF64[
     q_finite_cancellation_pol,
     q_finite_cancellation_input,
 ) == q_finite_cancellation_reference[:, 2]
+
+# One cancellation-sensitive entry must not restart every dense-Q entry in
+# BigFloat arithmetic. Keep the cold fallback local to the affected row/column.
+q_localized_fallback_n = 32
+q_localized_fallback_G = zeros(ComplexF64, 9, q_localized_fallback_n)
+q_localized_fallback_G[1, 1] = 1.0
+q_localized_fallback_G[4, 1] = 1.0
+q_localized_fallback_G[7, 1] = 1.0
+q_localized_fallback_G[1, 2] = 1.0e16
+q_localized_fallback_G[4, 2] = 3.0
+q_localized_fallback_G[7, 2] = -1.0e16
+for column in 3:q_localized_fallback_n, quadrature in 1:3
+    q_localized_fallback_G[3(quadrature - 1) + 1, column] =
+        ComplexF64(column + quadrature / 10, quadrature / 7)
+end
+build_Q(
+    q_localized_fallback_G,
+    q_finite_cancellation_grid,
+    q_finite_cancellation_pol,
+)
+GC.gc()
+q_localized_fallback_allocated = @allocated q_localized_fallback_Q = build_Q(
+    q_localized_fallback_G,
+    q_finite_cancellation_grid,
+    q_finite_cancellation_pol,
+)
+@test q_localized_fallback_Q[1, 2] == 3.0 + 0im
+@test q_localized_fallback_Q == adjoint(q_localized_fallback_Q)
+@test q_localized_fallback_allocated < 2_000_000
+
+# Complex multiplication can cancel only one component while the other keeps
+# the entry norm large. The dense BLAS path must check components separately.
+q_component_cancellation_G = zeros(ComplexF64, 3, 2)
+q_component_cancellation_G[1, 1] = ComplexF64(1.0e16, 1.0e16)
+q_component_cancellation_G[1, 2] =
+    ComplexF64(1.0, -1.0 + eps(Float64))
+q_component_cancellation_pol = reshape(ComplexF64[1, 0, 0], 3, 1)
+q_component_cancellation_grid = SphGrid(
+    reshape(Float64[0, 0, 1], 3, 1), [0.0], [0.0], [1.0])
+q_component_cancellation_reference = setprecision(BigFloat, 12800) do
+    projections = reshape(
+        Complex{BigFloat}.(q_component_cancellation_G[1, :]), 1, 2)
+    ComplexF64.(adjoint(projections) * projections)
+end
+@test conj(q_component_cancellation_G[1, 1]) *
+      q_component_cancellation_G[1, 2] !=
+      q_component_cancellation_reference[1, 2]
+@test build_Q(
+    q_component_cancellation_G,
+    q_component_cancellation_grid,
+    q_component_cancellation_pol,
+) == q_component_cancellation_reference
 
 q_finite_input_G = zeros(ComplexF64, 3, 3)
 q_finite_input_G[1, :] .= 1.0 + 0im
@@ -5177,7 +5230,7 @@ println("  PASS ✓")
 # ─────────────────────────────────────────────────
 println("\n── Test 13: Sphere Mie benchmark gate ──")
 
-obj_sphere = joinpath(DATADIR, "tmp_sphere_gate.obj")
+obj_sphere = joinpath(TEST_TMPDIR, "tmp_sphere_gate.obj")
 write_icosphere_obj(obj_sphere; radius=0.05, subdivisions=2)
 
 mesh_s = read_obj_mesh(obj_sphere)
@@ -9997,24 +10050,46 @@ println("  Auto (dense_direct) vs manual: rel_err=$rel_workflow_err")
 @assert rel_workflow_err < 1e-10 "Workflow dense_direct solution mismatch: $rel_workflow_err"
 
 # Force ACA GMRES method
-result_aca_forced = solve_scattering(mesh, freq, pw_exc;
-                                      method=:aca_gmres,
-                                      aca_tol=1e-8, aca_leaf_size=8,
-                                      nf_cutoff_lambda=1.0,
-                                      gmres_tol=1e-8, gmres_maxiter=300,
-                                      verbose=false, check_resolution=false)
+result_aca_forced, workflow_aca_output = mktemp() do _, stream
+    result = redirect_stdout(stream) do
+        solve_scattering(mesh, freq, pw_exc;
+                         method=:aca_gmres,
+                         aca_tol=1e-8, aca_leaf_size=8,
+                         nf_cutoff_lambda=1.0,
+                         gmres_tol=1e-8, gmres_maxiter=300,
+                         verbose=true, check_resolution=false)
+    end
+    flush(stream)
+    seekstart(stream)
+    return result, join(split(read(stream, String)), " ")
+end
 @assert result_aca_forced.method == :aca_gmres
+@test occursin("source=ACA inadmissible blocks", workflow_aca_output)
+@test !occursin("cutoff=", workflow_aca_output)
 rel_aca_workflow = norm(result_aca_forced.I_coeffs - I_pec) / norm(I_pec)
 println("  Forced ACA vs dense direct: rel_err=$rel_aca_workflow")
 @assert rel_aca_workflow < 1e-4 "Workflow ACA solution mismatch: $rel_aca_workflow"
 
 # Force dense GMRES method
-result_dgm = solve_scattering(mesh, freq, pw_exc;
-                               method=:dense_gmres,
-                               nf_cutoff_lambda=1.0,
-                               gmres_tol=1e-8, gmres_maxiter=300,
-                               verbose=false, check_resolution=false)
+result_dgm, workflow_dense_gmres_output = mktemp() do _, stream
+    result = redirect_stdout(stream) do
+        solve_scattering(mesh, freq, pw_exc;
+                         method=:dense_gmres,
+                         nf_cutoff_lambda=1.0,
+                         gmres_tol=1e-8, gmres_maxiter=300,
+                         verbose=true, check_resolution=false)
+    end
+    flush(stream)
+    seekstart(stream)
+    return result, join(split(read(stream, String)), " ")
+end
 @assert result_dgm.method == :dense_gmres
+workflow_expected_cutoff = round(c0 / freq, sigdigits=3)
+@test occursin(
+    "cutoff=$workflow_expected_cutoff m (nf_cutoff_lambda=1.0)",
+    workflow_dense_gmres_output,
+)
+@test !occursin("source=ACA inadmissible blocks", workflow_dense_gmres_output)
 rel_dgm = norm(result_dgm.I_coeffs - I_pec) / norm(I_pec)
 println("  Forced dense_gmres vs direct: rel_err=$rel_dgm")
 @assert rel_dgm < 1e-6 "Workflow dense GMRES solution mismatch: $rel_dgm"
@@ -10037,10 +10112,31 @@ result_dgm_partial = solve_scattering(
     gmres_tol=1e-14,
     gmres_maxiter=1,
     check_gmres_convergence=false,
+    check_true_residual=false,
     check_resolution=false,
     verbose=false,
 )
 @test result_dgm_partial.gmres_iters == 1
+@test_throws ErrorException solve_scattering(
+    mesh, freq, v;
+    method=:dense_gmres,
+    preconditioner=:none,
+    gmres_tol=1e-14,
+    gmres_maxiter=1,
+    check_gmres_convergence=false,
+    check_true_residual=true,
+    true_residual_factor=1.0,
+    check_resolution=false,
+    verbose=false,
+)
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, v;
+    method=:dense_gmres,
+    check_true_residual=true,
+    true_residual_factor=Inf,
+    check_resolution=false,
+    verbose=false,
+)
 @test_throws ArgumentError solve_scattering(
     mesh, freq, v;
     preconditioner=:invalid,
@@ -11561,7 +11657,7 @@ println("\n── Test 32: Mesh I/O formats and geometry coverage ──")
 
 # 32a: write_obj_mesh round-trip
 println("  32a: write_obj_mesh round-trip ...")
-obj_rt_path = joinpath(DATADIR, "tmp_roundtrip.obj")
+obj_rt_path = joinpath(TEST_TMPDIR, "tmp_roundtrip.obj")
 write_obj_mesh(obj_rt_path, mesh; header="Round-trip test")
 mesh_rt = read_obj_mesh(obj_rt_path)
 @assert nvertices(mesh_rt) == nvertices(mesh) "OBJ round-trip vertex count mismatch"
@@ -11574,7 +11670,7 @@ end
 report_rt = mesh_quality_report(mesh_rt)
 @assert mesh_quality_ok(report_rt; allow_boundary=true)
 
-obj_limit_path = joinpath(DATADIR, "tmp_obj_limits.obj")
+obj_limit_path = joinpath(TEST_TMPDIR, "tmp_obj_limits.obj")
 write(obj_limit_path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
 obj_limit_size = filesize(obj_limit_path)
 obj_limit_mesh = read_obj_mesh(
@@ -11596,7 +11692,7 @@ obj_limit_mesh = read_obj_mesh(
 
 # Line limits measure parsed content and therefore behave identically for LF
 # and CRLF files. The longest content line here is seven bytes (`v 0 0 0`).
-obj_crlf_limit_path = joinpath(DATADIR, "tmp_obj_crlf_limits.obj")
+obj_crlf_limit_path = joinpath(TEST_TMPDIR, "tmp_obj_crlf_limits.obj")
 write(obj_crlf_limit_path, "v 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 3\r\n")
 obj_crlf_limit_mesh = read_obj_mesh(
     obj_crlf_limit_path; max_line_bytes=7)
@@ -11607,7 +11703,7 @@ obj_crlf_limit_mesh = read_obj_mesh(
 
 # The CRLF pair may straddle the bounded reader's 64 KiB refill boundary.
 # That must not make the content limit platform- or alignment-dependent.
-obj_split_crlf_path = joinpath(DATADIR, "tmp_obj_split_crlf_limits.obj")
+obj_split_crlf_path = joinpath(TEST_TMPDIR, "tmp_obj_split_crlf_limits.obj")
 obj_split_comment = "#" * repeat("x", 65_534)
 obj_split_payload = obj_split_comment *
     "\r\nv 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 3\r\n"
@@ -11624,7 +11720,7 @@ obj_split_crlf_mesh = read_obj_mesh(
 
 # A header is metadata, not an escape hatch into the line-oriented OBJ grammar.
 # Reject both Unix and classic-Mac line breaks before replacing an existing file.
-obj_header_path = joinpath(DATADIR, "tmp_obj_header_validation.obj")
+obj_header_path = joinpath(TEST_TMPDIR, "tmp_obj_header_validation.obj")
 obj_header_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
 for unsafe_header in ("safe\nv 9 9 9", "safe\rf 1 2 3")
     write(obj_header_path, obj_header_sentinel)
@@ -11635,7 +11731,7 @@ end
 
 # Invalid meshes must be rejected before opening the destination.  These are
 # precisely the structural/value constraints imposed by read_obj_mesh.
-obj_validation_path = joinpath(DATADIR, "tmp_obj_mesh_validation.obj")
+obj_validation_path = joinpath(TEST_TMPDIR, "tmp_obj_mesh_validation.obj")
 obj_validation_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
 obj_empty_mesh = TriMesh(zeros(Float64, 3, 0), Matrix{Int}(undef, 3, 0))
 obj_nonfinite_mesh = TriMesh(
@@ -11657,7 +11753,7 @@ for bad_shape_mesh in (
     @test read(obj_validation_path) == obj_validation_sentinel
 end
 
-obj_alloc_path = joinpath(DATADIR, "tmp_alloc.obj")
+obj_alloc_path = joinpath(TEST_TMPDIR, "tmp_alloc.obj")
 obj_grid_n = 20
 open(obj_alloc_path, "w") do io
     for j in 0:obj_grid_n, i in 0:obj_grid_n
@@ -11968,7 +12064,7 @@ println("  32b: PASS")
 
 # 32c: STL binary round-trip
 println("  32c: STL binary round-trip ...")
-stl_bin_path = joinpath(DATADIR, "tmp_roundtrip_bin.stl")
+stl_bin_path = joinpath(TEST_TMPDIR, "tmp_roundtrip_bin.stl")
 mesh_plate = make_rect_plate(0.1, 0.1, 3, 3)
 write_stl_mesh(stl_bin_path, mesh_plate)
 mesh_stl_bin = read_stl_mesh(stl_bin_path)
@@ -12004,7 +12100,7 @@ end
 # Reject invalid or unrepresentable meshes before opening the destination, so
 # predictable validation failures cannot replace an existing file with a
 # partial STL.  Large finite Float64 coordinates remain valid for ASCII STL.
-stl_validation_path = joinpath(DATADIR, "tmp_stl_validation.stl")
+stl_validation_path = joinpath(TEST_TMPDIR, "tmp_stl_validation.stl")
 stl_validation_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
 mesh_empty_stl = TriMesh(zeros(Float64, 3, 0), Matrix{Int}(undef, 3, 0))
 for ascii_stl in (false, true)
@@ -12021,7 +12117,7 @@ write(stl_validation_path, stl_validation_sentinel)
 @test_throws ArgumentError write_stl_mesh(stl_validation_path, mesh_extreme_stl)
 @test read(stl_validation_path) == stl_validation_sentinel
 
-stl_extreme_ascii_path = joinpath(DATADIR, "tmp_stl_extreme_ascii.stl")
+stl_extreme_ascii_path = joinpath(TEST_TMPDIR, "tmp_stl_extreme_ascii.stl")
 write_stl_mesh(stl_extreme_ascii_path, mesh_extreme_stl; ascii=true)
 mesh_extreme_stl_rt = read_stl_mesh(stl_extreme_ascii_path)
 @test mesh_extreme_stl_rt.xyz == mesh_extreme_stl.xyz
@@ -12048,7 +12144,7 @@ write(stl_validation_path, stl_validation_sentinel)
 @test_throws ArgumentError write_stl_mesh(
     stl_validation_path, mesh_stl_quantization_collapse)
 @test read(stl_validation_path) == stl_validation_sentinel
-stl_quantization_ascii_path = joinpath(DATADIR, "tmp_stl_quantization_ascii.stl")
+stl_quantization_ascii_path = joinpath(TEST_TMPDIR, "tmp_stl_quantization_ascii.stl")
 write_stl_mesh(
     stl_quantization_ascii_path, mesh_stl_quantization_collapse; ascii=true)
 mesh_stl_quantization_ascii = read_stl_mesh(stl_quantization_ascii_path)
@@ -12081,7 +12177,7 @@ write(stl_validation_path, stl_validation_sentinel)
 @test_throws ArgumentError write_stl_mesh(
     stl_validation_path, mesh_stl_quantized_winding)
 @test read(stl_validation_path) == stl_validation_sentinel
-stl_winding_ascii_path = joinpath(DATADIR, "tmp_stl_winding_ascii.stl")
+stl_winding_ascii_path = joinpath(TEST_TMPDIR, "tmp_stl_winding_ascii.stl")
 write_stl_mesh(stl_winding_ascii_path, mesh_stl_quantized_winding; ascii=true)
 mesh_stl_winding_ascii = read_stl_mesh(stl_winding_ascii_path)
 @test triangle_normal(mesh_stl_winding_ascii, 1) ==
@@ -12120,7 +12216,7 @@ mesh_stl_quantized_normal = TriMesh(
     ],
     reshape(Int[1, 2, 3], 3, 1),
 )
-stl_quantized_normal_path = joinpath(DATADIR, "tmp_stl_quantized_normal.stl")
+stl_quantized_normal_path = joinpath(TEST_TMPDIR, "tmp_stl_quantized_normal.stl")
 write_stl_mesh(stl_quantized_normal_path, mesh_stl_quantized_normal)
 stl_quantized_normal_bytes = read(stl_quantized_normal_path)
 stored_stl_normal = (
@@ -12140,7 +12236,7 @@ println("  32c: PASS")
 
 # 32d: STL ASCII round-trip
 println("  32d: STL ASCII round-trip ...")
-stl_ascii_path = joinpath(DATADIR, "tmp_ascii.stl")
+stl_ascii_path = joinpath(TEST_TMPDIR, "tmp_ascii.stl")
 open(stl_ascii_path, "w") do io
     println(io, "solid test")
     println(io, "  facet normal 0 0 1")
@@ -12170,7 +12266,7 @@ mesh_stl_ascii = read_stl_mesh(stl_ascii_path)
 
 # Facet boundaries, rather than a global vertex count, define ASCII STL
 # triangles. Do not regroup six vertices from one facet into two triangles.
-stl_malformed_facets_path = joinpath(DATADIR, "tmp_stl_malformed_facets.stl")
+stl_malformed_facets_path = joinpath(TEST_TMPDIR, "tmp_stl_malformed_facets.stl")
 open(stl_malformed_facets_path, "w") do io
     println(io, "solid malformed")
     println(io, "facet normal 0 0 1")
@@ -12196,7 +12292,7 @@ println("  32e: STL vertex merging ...")
 xyz_tet = Float64[0 1 0.5 0.5; 0 0 sqrt(3)/2 sqrt(3)/6; 0 0 0 sqrt(2/3)]
 tri_tet = [1 1 1 2; 2 2 3 3; 3 4 4 4]
 mesh_tet = TriMesh(xyz_tet, tri_tet)
-stl_tet_path = joinpath(DATADIR, "tmp_tetra.stl")
+stl_tet_path = joinpath(TEST_TMPDIR, "tmp_tetra.stl")
 write_stl_mesh(stl_tet_path, mesh_tet)
 mesh_tet_rt = read_stl_mesh(stl_tet_path)
 @assert nvertices(mesh_tet_rt) == 4 "Tetrahedron STL: expected 4 unique vertices after merge, got $(nvertices(mesh_tet_rt))"
@@ -12261,7 +12357,7 @@ end
 
 # The binary reader streams fixed-size facet records; allocation must remain
 # well below the former whole-file/per-coordinate-slice implementation.
-stl_alloc_path = joinpath(DATADIR, "tmp_alloc_bin.stl")
+stl_alloc_path = joinpath(TEST_TMPDIR, "tmp_alloc_bin.stl")
 stl_alloc_mesh = make_rect_plate(1.0, 1.0, 40, 40)
 write_stl_mesh(stl_alloc_path, stl_alloc_mesh)
 read_stl_mesh(stl_alloc_path)  # warm compilation
@@ -12274,7 +12370,7 @@ println("  32e: PASS")
 
 # 32f: MSH v2 import
 println("  32f: MSH v2 import ...")
-msh_v2_path = joinpath(DATADIR, "tmp_v2.msh")
+msh_v2_path = joinpath(TEST_TMPDIR, "tmp_v2.msh")
 open(msh_v2_path, "w") do io
     println(io, "\$MeshFormat")
     println(io, "2.2 0 8")
@@ -12306,7 +12402,7 @@ report_msh_v2 = mesh_quality_report(mesh_msh_v2)
 @test_throws ArgumentError read_msh_mesh(msh_v2_path; max_line_bytes=3)
 
 # Untrusted declared counts must fail before count-sized hints or tag arrays.
-msh_v2_declared_path = joinpath(DATADIR, "tmp_v2_declared_resource.msh")
+msh_v2_declared_path = joinpath(TEST_TMPDIR, "tmp_v2_declared_resource.msh")
 write(msh_v2_declared_path,
       "\$MeshFormat\n2.2 0 8\n\$EndMeshFormat\n\$Nodes\n100000\n")
 try
@@ -12322,7 +12418,7 @@ end) < 100_000
     msh_v2_declared_path; max_vertices=100)
 
 # The MSH reader streams records and tokenizes without per-field heap objects.
-msh_alloc_path = joinpath(DATADIR, "tmp_alloc_v2.msh")
+msh_alloc_path = joinpath(TEST_TMPDIR, "tmp_alloc_v2.msh")
 msh_grid_n = 20
 open(msh_alloc_path, "w") do io
     nv_grid = (msh_grid_n + 1)^2
@@ -12356,7 +12452,7 @@ println("  32f: PASS")
 
 # 32g: MSH v4 import
 println("  32g: MSH v4 import ...")
-msh_v4_path = joinpath(DATADIR, "tmp_v4.msh")
+msh_v4_path = joinpath(TEST_TMPDIR, "tmp_v4.msh")
 open(msh_v4_path, "w") do io
     println(io, "\$MeshFormat")
     println(io, "4.1 0 8")
@@ -12383,7 +12479,7 @@ mesh_msh_v4 = read_msh_mesh(msh_v4_path)
 @assert abs(mesh_msh_v4.xyz[1, 2] - 1.0) < 1e-12
 @assert abs(mesh_msh_v4.xyz[2, 3] - 1.0) < 1e-12
 
-msh_v4_declared_path = joinpath(DATADIR, "tmp_v4_declared_resource.msh")
+msh_v4_declared_path = joinpath(TEST_TMPDIR, "tmp_v4_declared_resource.msh")
 write(msh_v4_declared_path,
       "\$MeshFormat\n4.1 0 8\n\$EndMeshFormat\n" *
       "\$Nodes\n1 100000 1 100000\n2 1 0 100000\n")
@@ -12399,19 +12495,19 @@ end) < 100_000
 @test_throws ArgumentError read_msh_mesh(
     msh_v4_declared_path; max_vertices=100)
 
-msh_binary_path = joinpath(DATADIR, "tmp_binary_header.msh")
+msh_binary_path = joinpath(TEST_TMPDIR, "tmp_binary_header.msh")
 open(msh_binary_path, "w") do io
     println(io, "\$MeshFormat\n4.1 1 8\n\$EndMeshFormat")
 end
 @test_throws ErrorException read_msh_mesh(msh_binary_path)
 
-msh_unsupported_path = joinpath(DATADIR, "tmp_unsupported_version.msh")
+msh_unsupported_path = joinpath(TEST_TMPDIR, "tmp_unsupported_version.msh")
 open(msh_unsupported_path, "w") do io
     println(io, "\$MeshFormat\n3.0 0 8\n\$EndMeshFormat")
 end
 @test_throws ErrorException read_msh_mesh(msh_unsupported_path)
 
-msh_missing_node_path = joinpath(DATADIR, "tmp_missing_node.msh")
+msh_missing_node_path = joinpath(TEST_TMPDIR, "tmp_missing_node.msh")
 open(msh_missing_node_path, "w") do io
     println(io, "\$MeshFormat\n2.2 0 8\n\$EndMeshFormat\n\$Nodes\n3")
     println(io, "1 0 0 0\n2 1 0 0\n3 0 1 0\n\$EndNodes")
@@ -12436,12 +12532,12 @@ mesh_dispatch_msh = read_mesh(msh_v2_path)
 @assert ntriangles(mesh_dispatch_msh) == 2 "read_mesh .msh dispatch failed"
 
 # write_mesh OBJ
-write_out_obj = joinpath(DATADIR, "tmp_write_dispatch.obj")
+write_out_obj = joinpath(TEST_TMPDIR, "tmp_write_dispatch.obj")
 write_mesh(write_out_obj, mesh)
 @assert isfile(write_out_obj)
 
 # write_mesh STL
-write_out_stl = joinpath(DATADIR, "tmp_write_dispatch.stl")
+write_out_stl = joinpath(TEST_TMPDIR, "tmp_write_dispatch.stl")
 write_mesh(write_out_stl, mesh)
 @assert isfile(write_out_stl)
 
@@ -12503,7 +12599,7 @@ end
 
 # 32j: Closed-surface mesh workflow
 println("  32j: Closed-surface mesh workflow ...")
-ico_path = joinpath(DATADIR, "tmp_icosphere.obj")
+ico_path = joinpath(TEST_TMPDIR, "tmp_icosphere.obj")
 write_icosphere_obj(ico_path; radius=0.05, subdivisions=2)
 mesh_ico = read_obj_mesh(ico_path)
 report_ico = mesh_quality_report(mesh_ico)
@@ -12544,13 +12640,13 @@ println("  32k: PASS")
 
 # 32l: STL ASCII write and read-back
 println("  32l: STL ASCII write round-trip ...")
-stl_ascii_rt_path = joinpath(DATADIR, "tmp_ascii_roundtrip.stl")
+stl_ascii_rt_path = joinpath(TEST_TMPDIR, "tmp_ascii_roundtrip.stl")
 mesh_small = make_rect_plate(0.05, 0.05, 2, 2)
 write_stl_mesh(stl_ascii_rt_path, mesh_small; ascii=true)
 mesh_ascii_rt = read_stl_mesh(stl_ascii_rt_path)
 @assert ntriangles(mesh_ascii_rt) == ntriangles(mesh_small) "STL ASCII round-trip triangle mismatch"
 @assert nvertices(mesh_ascii_rt) == nvertices(mesh_small) "STL ASCII round-trip vertex mismatch"
-stl_header_path = joinpath(DATADIR, "tmp_stl_header_validation.stl")
+stl_header_path = joinpath(TEST_TMPDIR, "tmp_stl_header_validation.stl")
 stl_header_sentinel = UInt8[0x44, 0x69, 0x66, 0x66, 0x4d, 0x6f, 0x4d]
 for unsafe_header in ("safe\nvertex 9 9 9", "safe\rfacet normal 0 0 1")
     write(stl_header_path, stl_header_sentinel)
@@ -13866,7 +13962,7 @@ println("\n── Test 36: MLFMA + optimizer integration ──")
 
 # Build a larger mesh for MLFMA (icosphere, ~1920 unknowns)
 println("  36a: Build icosphere + MLFMA operator ...")
-ico_opt_path = joinpath(DATADIR, "tmp_icosphere_opt.obj")
+ico_opt_path = joinpath(TEST_TMPDIR, "tmp_icosphere_opt.obj")
 write_icosphere_obj(ico_opt_path; radius=0.05, subdivisions=2)
 mesh_ico_opt = read_obj_mesh(ico_opt_path)
 rwg_ico = build_rwg(mesh_ico_opt)

@@ -1,8 +1,11 @@
-# API Reference Overview
+# API reference overview
 
 ## Purpose
 
-This page provides a complete function-level map of `DiffMoM.jl`, organized by workflow stage. Use it to locate the right function for your task, then follow the cross-references to detailed documentation.
+Use this task-level map to choose a subsystem, then follow its link for exact
+signatures and constraints. The
+[exported docstring index](exported-docstrings.md) renders the source-owned
+reference for every public binding.
 
 ---
 
@@ -12,7 +15,9 @@ This page provides a complete function-level map of `DiffMoM.jl`, organized by w
 using DiffMoM
 ```
 
-All symbols listed below are exported from the top-level module. No additional `using` or `import` statements are needed for normal usage.
+Public symbols listed below are exported from the top-level module. Entries
+explicitly labelled internal describe implementation details and are not part
+of the public API.
 
 ---
 
@@ -91,20 +96,28 @@ Apply an incident field, solve for currents, then compute scattered near-field,
 total electric field, or far-field observables.
 
 - **Excitation sources:** See [excitation.md](excitation.md) for the full excitation system.
-  - Types: `AbstractExcitation`, `PlaneWaveExcitation`, `PortExcitation`, `DeltaGapExcitation`, `DipoleExcitation`, `LoopExcitation`, `MonopoleExcitation`, `ImportedExcitation`, `PatternFeedExcitation`, `MultiExcitation`
+  - Types: `PlaneWaveExcitation`, `PortExcitation`, `DeltaGapExcitation`, `DipoleExcitation`, `LoopExcitation`, `MonopoleExcitation`, `ImportedExcitation`, `PatternFeedExcitation`, `MultiExcitation`
   - Constructors: `make_plane_wave`, `make_delta_gap`, `make_dipole`, `make_loop`, `make_monopole`, `make_imported_excitation`, `make_pattern_feed`, `make_analytic_dipole_pattern_feed`, `make_multi_excitation`
   - Assembly: `pattern_feed_field`, `assemble_v_plane_wave`, `assemble_excitation`, `assemble_multiple_excitations`
-  - Monopole helpers: `make_monopole(position, axis, height, amplitude, frequency=1e9; include_image=true)` builds a center-fed linear monopole (dipole+image equivalent by default, or a physical half-wire for a meshed ground plane); `monopole_incident_field(r, mono)` evaluates its incident field.
+  - Monopole helpers: `make_monopole` builds a center-fed linear monopole using either a wire-plus-image equivalent or a physical half-wire for an explicitly meshed ground plane; `monopole_incident_field` evaluates its incident field. [Excitation](excitation.md) owns the model guidance, and the [assembly docstrings](exported-assembly-1.md) own exact signatures and defaults.
   - Example scripts: `examples/07_pattern_feed.jl`
 
-- **Linear solves (direct):** `solve_forward`, `solve_system`
-  Solve the MoM system `Z I = v` using LU factorization (default) or GMRES.
+- **Linear solves:** `solve_forward`, `solve_system`
+  Solve the MoM system `Z I = v` using LU factorization or GMRES. The
+  [solver docstrings](exported-solvers.md) own the exact keyword defaults.
 
 - **Iterative solves (GMRES):** `solve_gmres`, `solve_gmres_adjoint`
   GMRES via Krylov.jl with optional near-field preconditioning. Use these for large problems where direct LU is too slow or memory-intensive.
 
 - **Near-field preconditioner:** `build_nearfield_preconditioner`, `build_block_diag_preconditioner`, `build_mlfma_preconditioner`, `rwg_centers`
-  Build sparse near-field preconditioners that dramatically reduce GMRES iteration counts. `build_nearfield_preconditioner` has multiple overloads (dense matrix, abstract matrix, matrix-free operator, geometry/physics, or pre-assembled sparse). Supports sparse LU (`:lu`), incomplete LU (`:ilu`), or Jacobi diagonal (`:diag`) factorization. `build_block_diag_preconditioner` and `build_mlfma_preconditioner` are specialized for MLFMA operators. See [assembly-solve.md](assembly-solve.md) for details and performance data.
+  Build sparse near-field preconditioners for GMRES. Measure setup cost, fill,
+  iteration count, and the true residual for the target problem.
+  `build_nearfield_preconditioner` has overloads for dense and abstract
+  matrices, matrix-free EFIE and ACA operators, geometry inputs, and
+  pre-assembled sparse matrices. It supports sparse LU (`:lu`), incomplete LU
+  (`:ilu`), and diagonal (`:diag`) factorization.
+  `build_block_diag_preconditioner` and `build_mlfma_preconditioner` are
+  specialized for MLFMA operators. See [assembly-solve.md](assembly-solve.md).
   - Types: `AbstractPreconditionerData`, `NearFieldPreconditionerData`, `ILUPreconditionerData`, `DiagonalPreconditionerData`, `BlockDiagPrecondData`, `PermutedPrecondData`, `NearFieldOperator`, `NearFieldAdjointOperator`
 
 - **Far-field computation:** `make_sph_grid`, `radiation_vectors`, `compute_farfield`, `incident_farfield`
@@ -210,7 +223,9 @@ Compute gradients via the adjoint method and run impedance optimization.
 Check gradient correctness and visualize meshes.
 
 - **Gradient verification:** `complex_step_grad`, `fd_grad`, `verify_gradient`
-  Compare adjoint gradients against complex-step and finite-difference references. Essential for validating new objective functions or modified adjoint code. See [verification.md](verification.md).
+  Compare adjoint gradients against complex-step and finite-difference
+  references. Complex-step applies only to objectives that satisfy its
+  holomorphic contract. See [verification.md](verification.md).
 
 - **Mesh visualization:** `plot_mesh_wireframe`, `plot_mesh_comparison`, `save_mesh_preview`
   Lightweight 3D wireframe plots for mesh inspection. See [visualization.md](visualization.md).
@@ -221,29 +236,29 @@ Check gradient correctness and visualize meshes.
 
 For a first read-through of the API documentation, follow this order:
 
-1. **[types.md](types.md)** — Core data structures (`TriMesh`, `RWGData`, `SphGrid`, `ScatteringResult`, preconditioner types, matrix-free operators, etc.)
-2. **[mesh.md](mesh.md)** and **[rwg.md](rwg.md)** — Geometry creation, mesh quality, resolution diagnostics, refinement, and RWG basis construction
-3. **[assembly-solve.md](assembly-solve.md)** — EFIE assembly (dense and matrix-free), impedance loading, direct/GMRES solvers, and near-field preconditioning
-4. **[aca-workflow.md](aca-workflow.md)** — ACA H-matrix compression, cluster trees, and the `solve_scattering` high-level workflow
-5. **[octree.md](octree.md)** and **[mlfma.md](mlfma.md)** — Octree spatial decomposition and MLFMA O(N log N) fast solver
-6. **[farfield-rcs.md](farfield-rcs.md)** — Near-field, total-field, far-field, Q-matrices, `direction_mask`, RCS, and analytical validation links
-7. **[periodic-methods.md](periodic-methods.md)** — `PeriodicLattice`, periodic EFIE assembly, Floquet metrics, and periodic power balance
-8. **[composite-operators.md](composite-operators.md)** — `ImpedanceLoadedOperator` for fast-operator optimization
-9. **[spatial-patches.md](spatial-patches.md)** — Automatic spatial patch assignment
-10. **[adjoint-optimize.md](adjoint-optimize.md)** — Adjoint gradients, L-BFGS optimization, and multi-angle RCS
-11. **[density-topology.md](density-topology.md)** — Density interpolation, filtering/projection, and density adjoint gradients
-12. **[verification.md](verification.md)** — Gradient correctness checks
-13. **[excitation.md](excitation.md)** — Extended excitation system (plane waves, ports, dipoles, monopoles, imported fields, pattern feeds)
-14. **[physical-optics.md](physical-optics.md)** — Physical Optics and PTD high-frequency approximate solvers
-15. **[vie-2d.md](vie-2d.md)** — 2D TM volume integral equation (VIE) for inhomogeneous dielectric domains
-16. **[dda-volume-3d.md](dda-volume-3d.md)** — 3D volume material solver (DDA / EM-DDA / FFT-DDA)
-17. **[material-models-3d.md](material-models-3d.md)** — 3D constitutive material models (static and dispersive)
-18. **[dielectric-sie-3d.md](dielectric-sie-3d.md)** — Dielectric surface integral equation (PMCHWT / Müller)
-19. **[grounded-efie.md](grounded-efie.md)** — Grounded (half-space) periodic EFIE via image theory
+1. **[types.md](types.md)**: Core data structures (`TriMesh`, `RWGData`, `SphGrid`, `ScatteringResult`, preconditioner types, matrix-free operators, etc.)
+2. **[mesh.md](mesh.md)** and **[rwg.md](rwg.md)**: Geometry creation, mesh quality, resolution diagnostics, refinement, and RWG basis construction
+3. **[assembly-solve.md](assembly-solve.md)**: EFIE assembly (dense and matrix-free), impedance loading, direct/GMRES solvers, and near-field preconditioning
+4. **[aca-workflow.md](aca-workflow.md)**: ACA H-matrix compression, cluster trees, and the `solve_scattering` high-level workflow
+5. **[octree.md](octree.md)** and **[mlfma.md](mlfma.md)**: Octree spatial decomposition and MLFMA O(N log N) fast solver
+6. **[farfield-rcs.md](farfield-rcs.md)**: Near-field, total-field, far-field, Q-matrices, `direction_mask`, RCS, and analytical validation links
+7. **[periodic-methods.md](periodic-methods.md)**: `PeriodicLattice`, periodic EFIE assembly, Floquet metrics, and periodic power balance
+8. **[composite-operators.md](composite-operators.md)**: `ImpedanceLoadedOperator` for fast-operator optimization
+9. **[spatial-patches.md](spatial-patches.md)**: Automatic spatial patch assignment
+10. **[adjoint-optimize.md](adjoint-optimize.md)**: Adjoint gradients, L-BFGS optimization, and multi-angle RCS
+11. **[density-topology.md](density-topology.md)**: Density interpolation, filtering/projection, and density adjoint gradients
+12. **[verification.md](verification.md)**: Gradient correctness checks
+13. **[excitation.md](excitation.md)**: Extended excitation system (plane waves, ports, dipoles, monopoles, imported fields, pattern feeds)
+14. **[physical-optics.md](physical-optics.md)**: Physical Optics and PTD high-frequency approximate solvers
+15. **[vie-2d.md](vie-2d.md)**: 2D TM volume integral equation (VIE) for inhomogeneous dielectric domains
+16. **[dda-volume-3d.md](dda-volume-3d.md)**: 3D volume material solver (DDA / EM-DDA / FFT-DDA)
+17. **[material-models-3d.md](material-models-3d.md)**: 3D constitutive material models (static and dispersive)
+18. **[dielectric-sie-3d.md](dielectric-sie-3d.md)**: Dielectric surface integral equation (PMCHWT / Müller)
+19. **[grounded-efie.md](grounded-efie.md)**: Grounded (half-space) periodic EFIE via image theory
 
 ---
 
-## Notes on Stability
+## API boundary
 
-- All exported function names and signatures listed here are stable for current tutorial and validation workflows.
-- Internal helper methods in `src/` may evolve; rely on the exported API for forward compatibility.
+Use exported names in calling code. Names prefixed with `_` and unexported base
+types such as `AbstractExcitation` are implementation details.

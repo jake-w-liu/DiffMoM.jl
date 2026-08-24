@@ -59,3 +59,31 @@ jobs:
       - uses: julia-actions/cache@v3
       - name: Build documentation
         run: julia --startup-file=no --project=docs docs/make.jl
+
+  quality:
+    name: Slopfix quality contract
+    needs: [test, docs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JULIA_NUM_THREADS: 1
+      JULIA_NUM_PRECOMPILE_TASKS: 1
+      OPENBLAS_NUM_THREADS: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.12'
+      - uses: julia-actions/cache@v3
+      - name: Check reduction ratchets and blocking smells
+        shell: bash
+        run: |
+          line_ceiling="$(tr -d '[:space:]' < .slopfix/line-ceiling.txt)"
+          python3 scripts/slopfix.py measure --strict --ceiling "$line_ceiling"
+          python3 scripts/slopfix.py smells --severity blocking --strict
+          python3 scripts/slopfix.py census --max-groups 400 --json > "$RUNNER_TEMP/slopfix-census.json"
+          python3 scripts/check_slopfix_census.py \
+            "$RUNNER_TEMP/slopfix-census.json" \
+            .slopfix/duplication-ceiling.txt
+      - name: Run reviewed ISO/IEC 25010 quality contract
+        run: python3 scripts/slopfix.py quality-check --run --strict

@@ -1,355 +1,254 @@
-# Tutorial: Adjoint Gradient Check
+# Tutorial 2: Check an impedance adjoint gradient
 
-## Purpose
+This tutorial compares `gradient_impedance` with central finite differences on
+a small plate. Run this check before using a new objective, parameterization,
+or conditioning path in optimization.
 
-Gradient accuracy is the foundation of reliable optimization. Before attempting any inverse design, you must verify that the adjoint gradient matches independent finite‑difference approximations. This tutorial walks through a complete gradient‑verification workflow for resistive and reactive impedance parameters, teaching you to:
+## Gradient used by the package
 
-- Compute adjoint gradients using the built‑in `Adjoint.jl` routines
-- Validate them against central finite differences and complex‑step derivatives
-- Interpret relative‑error magnitudes and diagnose common discrepancies
-- Understand the mathematical foundations of the adjoint method (paper Eq. 25)
+For
 
-**Why verification matters:** A single incorrect gradient component can stall an optimization or converge to a sub‑optimal design. Gradient verification is a mandatory prerequisite for any serious optimization work.
+```math
+J=\operatorname{Re}(I^\dagger QI),\qquad Z(\theta)I=v,
+```
 
----
+the adjoint solves
 
-## Learning Goals
+```math
+Z^\dagger\lambda=QI,
+```
 
-After this tutorial, you should be able to:
+and each component is
 
-1. **Understand the adjoint gradient formula** for impedance parameters (paper Eq. 25) and its finite‑difference approximation.
-2. **Compute adjoint gradients** for a small test problem using `solve_adjoint` and `gradient_impedance`.
-3. **Validate gradient components** with central finite differences (`verify_gradient`) and complex‑step derivatives.
-4. **Interpret relative‑error magnitudes** and distinguish acceptable numerical noise from implementation bugs.
-5. **Diagnose common gradient‑verification failures** (sign errors, preconditioning inconsistencies, step‑size sensitivity).
-6. **Apply verification to custom objectives** (far‑field directivity, power ratio, etc.).
+```math
+\frac{\partial J}{\partial\theta_p}
+=-2\operatorname{Re}\left\{
+\lambda^\dagger\frac{\partial Z}{\partial\theta_p}I
+\right\}.
+```
 
----
+The implemented impedance matrices are
 
-## Mathematical Background
+```math
+Z_{\mathrm{res}}=Z_{\mathrm{EFIE}}-\sum_p\theta_pM_p,
+\qquad
+Z_{\mathrm{react}}=Z_{\mathrm{EFIE}}-i\sum_p\theta_pM_p.
+```
 
-### Adjoint Gradient for Impedance Parameters
+Therefore, `gradient_impedance` returns
 
-The objective function $J(\theta) = \Re\{I^\dagger Q I\}$ depends on the surface‑impedance parameters $\theta_p$ through the MoM matrix
+```math
+g_p=2\operatorname{Re}(\lambda^\dagger M_pI)
+```
 
-\[
-Z(\theta) = Z_\text{EFIE} + Z_\text{imp}(\theta),\qquad
-Z_\text{imp}(\theta) = -\sum_{p=1}^P \theta_p M_p.
-\]
+for `reactive=false`, and
 
-For **resistive impedance** ($Z_s = \theta_p$), the derivative is $\partial Z/\partial\theta_p = -M_p$. Using the adjoint variable $\lambda$ that solves $Z^\dagger \lambda = Q I$, the gradient is (paper Eq. 25)
+```math
+g_p=-2\operatorname{Im}(\lambda^\dagger M_pI)
+```
 
-\[
-\frac{\partial J}{\partial\theta_p} = -2\,\Re\{\lambda^\dagger (\partial Z/\partial\theta_p) I\}
-      = +2\,\Re\{\lambda^\dagger M_p I\}.
-\]
+for `reactive=true`.
 
-For **reactive impedance** ($Z_s = i\theta_p$), $\partial Z/\partial\theta_p = -iM_p$ and
-
-\[
-\frac{\partial J}{\partial\theta_p} = -2\,\Re\{\lambda^\dagger (-iM_p) I\}
-      = -2\,\Im\{\lambda^\dagger M_p I\}.
-\]
-
-These closed‑form expressions are implemented in `gradient_impedance` (`src/optimization/Adjoint.jl:117`).
-
-### Finite‑Difference Verification
-
-Central finite differences approximate the gradient as
-
-\[
-g_p^{\text{FD}} = \frac{J(\theta + h e_p) - J(\theta - h e_p)}{2h},
-\]
-
-with step size $h \sim 10^{-5}–10^{-8}$. The relative error
-
-\[
-\varepsilon_p = \frac{|g_p^{\text{adj}} - g_p^{\text{FD}}|}{\max(|g_p^{\text{FD}}|, \epsilon_{\text{tiny}})}
-\]
-
-should be $\lesssim 10^{-6}$ for well‑conditioned problems. Larger errors indicate implementation mistakes (sign errors, incorrect `Mp` scaling, preconditioning inconsistency).
-
-### Complex‑Step Derivatives
-
-When the objective is holomorphic in $\theta$, the complex‑step method
-
-\[
-g_p^{\text{CS}} = \frac{\Im\{J(\theta + i\epsilon e_p)\}}{\epsilon},\qquad \epsilon \sim 10^{-30}
-\]
-
-provides machine‑precision gradients without subtractive cancellation. The function `verify_gradient` (`src/optimization/Verification.jl:53`) automatically compares adjoint, finite‑difference, and complex‑step results.
-
----
-
-## Step‑by‑Step Workflow
-
-### 1) Build a Small Test Problem
-
-Use a modest plate mesh so repeated solves are fast (≈1 s for the whole verification). The same workflow scales to larger problems once verified.
+## Build a bounded test case
 
 ```julia
 using DiffMoM
+using LinearAlgebra
 using Printf
 
-# 10 cm × 10 cm plate, 3×3 triangles (N=12 edges)
-mesh = make_rect_plate(0.1, 0.1, 3, 3)
-rwg  = build_rwg(mesh)
-N    = rwg.nedges
-Nt   = ntriangles(mesh)
-
-# EFIE matrix at 3 GHz
-freq = 3e9
-c0   = 299792458.0
-lambda0 = c0 / freq
-k    = 2π / lambda0
+frequency = 3.0e9
+c0 = 299792458.0
+k = 2π * frequency / c0
 eta0 = 376.730313668
-Z_efie = assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=eta0)
 
-# Impedance partition: one patch per triangle (P = Nt)
+mesh = make_rect_plate(0.1, 0.1, 3, 3)
+rwg = build_rwg(mesh)
+N = rwg.nedges
+Nt = ntriangles(mesh)
+
+Z_efie = assemble_Z_efie(
+    mesh, rwg, k; quad_order=3, eta0=eta0)
+
 partition = PatchPartition(collect(1:Nt), Nt)
 Mp = precompute_patch_mass(mesh, rwg, partition; quad_order=3)
 
-# Plane‑wave excitation (normal incidence, x‑polarized)
 k_vec = Vec3(0.0, 0.0, -k)
-E0    = 1.0
-pol_inc = Vec3(1.0, 0.0, 0.0)
-v = assemble_v_plane_wave(mesh, rwg, k_vec, E0, pol_inc; quad_order=3)
+v = assemble_v_plane_wave(
+    mesh,
+    rwg,
+    k_vec,
+    1.0,
+    Vec3(1.0, 0.0, 0.0);
+    quad_order=3,
+)
 
-# Simple objective: total radiated power (Q = identity)
 Q = Matrix{ComplexF64}(I, N, N)
-
-# Initial impedance parameters (small resistive values)
-theta0 = randn(Nt) .* 10.0   # ~10 Ω standard deviation
+theta0 = fill(10.0, Nt)
 ```
 
-### 2) Compute Adjoint Gradient
+The identity Q matrix makes the objective the squared coefficient norm. It is
+a numerical smoke objective, not a radiated-power definition.
 
-Assemble the full MoM matrix, solve the forward and adjoint systems, and evaluate the gradient.
+## Compute the adjoint gradient
+
+Choose one parameterization and use the same flag everywhere:
 
 ```julia
-# Reactive impedance (Z_s = iθ) – change to reactive=false for resistive
-reactive_flag = true
+reactive = true
 
-Z = assemble_full_Z(Z_efie, Mp, theta0; reactive=reactive_flag)
-I = solve_forward(Z, v)
-λ = solve_adjoint(Z, Q, I)
-g_adj = gradient_impedance(Mp, I, λ; reactive=reactive_flag)
+Z = assemble_full_Z(Z_efie, Mp, theta0; reactive=reactive)
+current = solve_forward(Z, v; solver=:direct)
+adjoint = solve_adjoint(Z, Q, current; solver=:direct)
+g_adjoint = gradient_impedance(
+    Mp, current, adjoint; reactive=reactive)
 
-println("Gradient vector length P = $(length(g_adj))")
-println("‖g‖₂ = $(norm(g_adj))")
-println("min/max g = $(extrema(g_adj))")
+forward_residual = norm(Z * current - v) / norm(v)
+adjoint_rhs = Q * current
+adjoint_residual =
+    norm(Z' * adjoint - adjoint_rhs) / norm(adjoint_rhs)
+
+println((forward_residual, adjoint_residual, gradient_norm=norm(g_adjoint)))
 ```
 
-### 3) Define the Objective Function for Verification
+Preserve both residuals with the gradient result. A gradient discrepancy cannot
+be interpreted cleanly when either solve misses its declared gate.
 
-The verification routine needs a function `f_obj(θ)` that returns $J(\theta)$. It must accept complex arguments for complex‑step derivatives.
+## Define the independent objective
 
 ```julia
-function f_obj(theta_vec::AbstractVector)
-    Z_local = assemble_full_Z(Z_efie, Mp, theta_vec; reactive=reactive_flag)
-    I_local = Z_local \ v
-    return real(dot(I_local, Q * I_local))
+function objective(theta::Vector{Float64})
+    local_Z = assemble_full_Z(
+        Z_efie, Mp, theta; reactive=reactive)
+    local_current = solve_forward(local_Z, v; solver=:direct)
+    return compute_objective(local_current, Q)
 end
-
-# Quick sanity check: value at theta0
-J0 = f_obj(theta0)
-println("J(θ₀) = $J0")
 ```
 
-### 4) Run Gradient Verification
+`compute_objective` evaluates the same real quadratic form as the adjoint
+derivation. It contains conjugation, so this end-to-end objective is not valid
+for `complex_step_grad`.
 
-Use `verify_gradient` to compare adjoint, finite‑difference, and complex‑step gradients for the first 10 parameters (checking all $P$ parameters is expensive but possible).
+## Compare several components
 
-```julia
-# `verify_gradient` is exported by DiffMoM; no extra import needed
+Use the symmetric error
 
-results = verify_gradient(f_obj, g_adj, theta0;
-                         indices=1:10,          # check only first 10 parameters
-                         h_fd=1e-5,             # finite‑difference step
-                         eps_cs=1e-30)          # complex‑step epsilon
-
-println("\nGradient verification (first 10 parameters):")
-println("p | adjoint        FD            CS            rel_err_fd   rel_err_cs")
-println("-"^78)
-for r in results
-    @printf("%2d | %12.6f  %12.6f  %12.6f  %10.2e  %10.2e\n",
-            r.p, r.adj, r.fd, r.cs, r.rel_err_fd, r.rel_err_cs)
-end
-
-# Summarise
-max_fd_err = maximum(r.rel_err_fd for r in results)
-max_cs_err = maximum(r.rel_err_cs for r in results)
-println("\nMaximum relative error vs FD: $max_fd_err")
-println("Maximum relative error vs CS: $max_cs_err")
+```math
+\epsilon_p=
+\frac{|g_p^{\mathrm{adj}}-g_p^{\mathrm{FD}}|}
+     {\max(|g_p^{\mathrm{adj}}|,|g_p^{\mathrm{FD}}|)},
 ```
 
-### 5) Full Verification (All Parameters)
-
-For production‑level confidence, verify all parameters. This requires $2P$ forward solves (expensive for large $P$), so restrict to small test problems.
+with zero error when both values are zero:
 
 ```julia
-# Full verification (optional – slow for P > 100)
-if Nt ≤ 50
-    results_all = verify_gradient(f_obj, g_adj, theta0; indices=nothing, h_fd=1e-5)
-    max_err_all = maximum(r.rel_err_fd for r in results_all)
-    println("Full verification (all $Nt parameters): max relative error = $max_err_all")
-    if max_err_all < 1e-6
-        println("✓ Gradient passes verification.")
-    else
-        println("⚠ Gradient verification failed – investigate!")
+function finite_difference_rows(f, gradient, theta, indices; h)
+    return map(indices) do p
+        g_fd = fd_grad(f, theta, p; h=h, scheme=:central)
+        scale = max(abs(gradient[p]), abs(g_fd))
+        error = iszero(scale) ? 0.0 :
+            abs(gradient[p] - g_fd) / scale
+        (; p, adjoint=gradient[p], finite_difference=g_fd, error)
     end
 end
+
+indices = 1:min(10, length(theta0))
+rows = finite_difference_rows(
+    objective, g_adjoint, theta0, indices; h=1e-5)
+
+for row in rows
+    @printf(
+        "%2d  adj=% .6e  fd=% .6e  error=%.3e\n",
+        row.p,
+        row.adjoint,
+        row.finite_difference,
+        row.error,
+    )
+end
 ```
 
----
-
-## Interpretation Guidelines
-
-### Expected Error Magnitudes
-
-| Condition | Relative Error (vs FD) | Meaning |
-|-----------|------------------------|---------|
-| Well‑conditioned, unpreconditioned | $10^{-8} – 10^{-12}$ | Machine‑precision agreement |
-| With left preconditioning | $10^{-6} – 10^{-8}$ | Slight inconsistency in `Mp` transformation |
-| Ill‑conditioned ($\kappa(Z) > 10^{10}$) | $10^{-4} – 10^{-6}$ | Finite‑difference truncation amplified |
-| **Sign error** | $\approx 2$ | Gradient formula has wrong sign |
-| **Scaling error** | Constant factor (e.g., 0.5, 2) | Missing factor in `gradient_impedance` |
-
-### Step‑Size Sensitivity
-
-Plot `max_rel_error` vs `h` to distinguish truncation error ($\propto h^2$) from round‑off error ($\propto h^{-1}$). The optimal $h$ balances the two; for double precision, $h \approx 10^{-5}$ is usually safe.
+Do not select an acceptance threshold from one step. Repeat the comparison over
+a range:
 
 ```julia
-hs = 10.0 .^ (-10:-2)   # 1e‑10 … 1e‑2
-errs = Float64[]
-for h in hs
-    rs = verify_gradient(f_obj, g_adj, theta0; indices=1:5, h_fd=h)
-    push!(errs, maximum(r.rel_err_fd for r in rs))
+for h in (1e-4, 1e-5, 1e-6, 1e-7)
+    rows = finite_difference_rows(
+        objective, g_adjoint, theta0, indices; h=h)
+    println((h=h, maximum_error=maximum(row.error for row in rows)))
 end
-
-# Plot with your favorite package (Plots, PyPlot, etc.)
-# plot(log10.(hs), log10.(errs), xlabel="log10(h)", ylabel="log10(max rel error)")
 ```
 
-The curve should have a V‑shape; a flat plateau indicates numerical noise dominates.
+For a smooth objective, central-difference truncation error is second order in
+an asymptotic interval. Very small steps expose rounding and solve error. Use
+the measured low-error interval and record every tested step.
 
-### Preconditioning Consistency
+## Resistive check
 
-If you use left preconditioning (`preconditioner_M`), the derivative blocks must be transformed as $M_p \to M^{-1} M_p$. The function `transform_patch_matrices` (`src/solver/Solve.jl:217`) performs this transformation, returning `(Mp_tilde, factor)`; pass the transformed blocks `Mp_tilde` to `gradient_impedance`. Verify that the same preconditioner is used in forward, adjoint, and gradient computations.
+Repeat the workflow after setting `reactive=false`. Rebuild `Z`, the current,
+the adjoint, the gradient, and the objective closure. Mixing the reactive flag
+between those stages changes the derivative being tested.
 
----
+## Conditioned systems
 
-## Troubleshooting
-
-### Error 1: Relative Errors ≈ 2 (Sign Error)
-
-If all relative errors are close to 2, the adjoint gradient has the wrong sign. Check:
-
-- **`reactive` flag**: `gradient_impedance(…; reactive=true)` for $Z_s = i\theta$, `false` for $Z_s = \theta$.
-- **Objective sign**: $J = \Re\{I^\dagger Q I\}$ uses `real(dot(I, Q*I))`, not `abs2`.
-- **Adjoint RHS**: `solve_adjoint(Z, Q, I)` solves $Z^\dagger \lambda = Q I$, not $(Q I)^*$.
-
-### Error 2: Constant Scaling Factor (e.g., 0.5)
-
-If errors show a consistent factor (e.g., 0.5, 2, 4), verify the gradient formula prefactor:
-
-- Resistive: $+2\Re\{\lambda^\dagger M_p I\}$ (factor 2)
-- Reactive: $-2\Im\{\lambda^\dagger M_p I\}$ (factor −2)
-
-The `gradient_impedance` implementation (`src/optimization/Adjoint.jl:117`) already includes these factors; a scaling discrepancy suggests `Mp` is incorrectly normalized.
-
-### Error 3: Large Errors Only for Ill‑Conditioned Parameters
-
-Parameters that affect nearly singular modes produce large finite‑difference truncation errors. Solutions:
-
-- Use complex‑step derivatives (`eps_cs=1e‑30`) which are immune to truncation.
-- Add a small regularisation (`regularization_alpha=1e‑8`) to improve conditioning.
-- Accept larger errors ($<10^{-4}$) for those parameters.
-
-### Error 4: Inconsistent Results with Preconditioning
-
-If verification passes without preconditioning but fails with `preconditioner_M`, ensure:
-
-1. **Same preconditioner in forward/adjoint solves**: `prepare_conditioned_system` returns `(Z_eff, rhs_eff, factor)`; reuse `factor` (via the `preconditioner_factor` keyword) for both solves.
-2. **Transformed derivative blocks**: Transform `Mp` with `transform_patch_matrices(Mp; preconditioner_factor=factor)` and pass the resulting `Mp_tilde` to `gradient_impedance`.
-3. **Consistent `reactive` flag**: Preconditioner transformation does not change the `reactive`/`resistive` distinction.
-
-### Error 5: Complex‑Step Fails (NaN/Infinite Errors)
-
-Complex‑step requires the objective to be holomorphic. If $J(\theta)$ involves `conj`, `real`, or `abs` applied to intermediate complex variables, complex‑step will fail. In that case, rely on finite‑difference verification only.
-
----
-
-## Code Mapping
-
-| Task | Function | Source File | Key Lines |
-|------|----------|-------------|-----------|
-| **Adjoint solve** | `solve_adjoint(Z, Q, I)` | `src/optimization/Adjoint.jl` | 29–61 |
-| **Gradient computation** | `gradient_impedance(Mp, I, lambda; reactive)` | `src/optimization/Adjoint.jl` | 117–136 |
-| **Finite‑difference derivative** | `fd_grad(f, theta, p; h, scheme)` | `src/optimization/Verification.jl` | 27–39 |
-| **Complex‑step derivative** | `complex_step_grad(f, theta, p; eps)` | `src/optimization/Verification.jl` | 15–20 |
-| **Gradient verification** | `verify_gradient(f_objective, adjoint_grad, theta; …)` | `src/optimization/Verification.jl` | 53–88 |
-| **Full system assembly** | `assemble_full_Z(Z_efie, Mp, theta; reactive)` | `src/solver/Solve.jl` | 89–96 |
-| **Forward solve** | `solve_forward(Z, v)` | `src/solver/Solve.jl` | 23–55 |
-| **Patch mass matrices** | `precompute_patch_mass(mesh, rwg, partition)` | `src/assembly/Impedance.jl` | 15–71 |
-
-**Example from the impedance‑optimization script** (`examples/02_impedance_optimization.jl:95‑109`):
+Mass-based conditioning changes the algebraic system to
+$M^{-1}ZI=M^{-1}v$. Transform the derivative blocks by the same left solve:
 
 ```julia
-# Verify gradient with finite differences
-function J_of_theta(θ)
-    Z_t = assemble_full_Z(Z_efie, Mp, θ)
-    I_t = Z_t \ Vector{ComplexF64}(v)
-    return real(dot(I_t, Q * I_t))
-end
-
-for p in 1:min(5, P)
-    g_fd = fd_grad(J_of_theta, theta0, p; h=1e-5)
-    rel  = abs(g_adj[p] - g_fd) / max(abs(g_fd), 1e-30)
-    println("p=$p: adj=$(g_adj[p])  fd=$g_fd  rel_err=$rel")
-end
+M = make_left_preconditioner(Mp; eps_rel=1e-8)
+Z_effective, v_effective, factor = prepare_conditioned_system(
+    Z, v; preconditioner_M=M)
+Mp_effective, _ = transform_patch_matrices(
+    Mp;
+    preconditioner_M=M,
+    preconditioner_factor=factor,
+)
 ```
 
----
+Use `Z_effective`, `v_effective`, and `Mp_effective` together in the forward,
+adjoint, and gradient calculations. The high-level optimizers perform this
+transformation for their mass-conditioning options.
 
-## Exercises
+A near-field preconditioner passed to GMRES is different. It changes the
+iterative solve, not the physical derivative blocks. Keep the original-system
+true-residual checks enabled and do not transform `Mp` solely because GMRES is
+preconditioned.
 
-### Basic (30 minutes)
+## Diagnose disagreement
 
-1. **Run the verification workflow** above for resistive impedance (`reactive=false`). Confirm that relative errors are $<10^{-6}$.
-2. **Change the objective** to $J = \Im\{I^\dagger Q I\}$ (imaginary part). Modify `f_obj` and verify the gradient.
-3. **Sweep step size** $h$ from $10^{-2}$ to $10^{-10}$ for the first parameter. Plot relative error vs $h$ and identify the optimal $h$.
+Collect evidence in this order:
 
-### Practical (60 minutes)
+1. Confirm the same `reactive` flag, Q matrix, excitation, and parameter vector.
+2. Record forward and adjoint true residuals.
+3. Run the finite-difference step sweep on a small direct-solve case.
+4. Check whether the discrepancy is a sign or constant scaling factor.
+5. Compare the unconditioned path before adding one conditioning mechanism.
+6. Recheck several parameters, including any near zero.
 
-1. **Add left preconditioning** with `make_left_preconditioner(Mp; eps_rel=1e-6)`. Use `prepare_conditioned_system` for forward/adjoint solves and `transform_patch_matrices` for gradient computation. Verify that gradients still match.
-2. **Test a far‑field objective** using `build_Q` from `src/optimization/QMatrix.jl`. Compute the gradient for maximising power in a $10^\circ$ cone and verify against finite differences.
-3. **Compare complex‑step and finite‑difference** errors for ill‑conditioned systems. Increase the frequency to 30 GHz (smaller mesh relative to wavelength) and observe how conditioning affects verification accuracy.
+Complex-step is not a fallback for this quadratic objective. It is available
+for a scalar function that is holomorphic in the perturbed parameter and real
+at real inputs; see the [verification API](../api/verification.md).
 
-### Advanced (90 minutes)
+## Repository check
 
-1. **Implement your own gradient routine** for the objective $J = |S_{11}|^2$ (reflection coefficient). Derive the adjoint formula, code it, and verify against finite differences.
-2. **Profile the verification cost** for $P$ parameters. Measure the time of $2P$ forward solves vs one adjoint solve. At what $P$ does the adjoint method break even?
-3. **Extend verification to shape parameters** (vertex displacements). Use the shape derivative formulas from the paper and compare with finite‑difference perturbations of `mesh.vertices`.
+`validation/paper/run_convergence_study.jl` runs the package's mesh-level and
+reference gradient checks and applies executable symmetric-error gates:
 
----
+```bash
+julia --project=. --startup-file=no validation/paper/run_convergence_study.jl
+```
 
-## Tutorial Checklist
+The regression suite includes resistive, reactive, conditioning, and
+verification-helper cases:
 
-Before moving to optimization, complete these verification steps:
+```bash
+julia --project=. --startup-file=no -e 'using Pkg; Pkg.test()'
+```
 
-- [ ] **Run the basic verification** with resistive and reactive impedance.
-- [ ] **Confirm relative errors** $<10^{-6}$ for all checked parameters.
-- [ ] **Test with your actual objective** (e.g., far‑field directivity, S‑parameters).
-- [ ] **Validate preconditioning consistency** if using left preconditioning.
-- [ ] **Document the verification** in your notebook or script, including max error and step‑size sensitivity plot.
+## Code map
 
----
-
-## Further Reading
-
-- **Paper Section 3.2** – Adjoint gradient derivation for impedance parameters (Eq. 25).
-- **`src/optimization/Adjoint.jl`** – Full implementation of `solve_adjoint` and `gradient_impedance`.
-- **`src/optimization/Verification.jl`** – Gradient verification utilities with complex‑step and finite‑difference.
-- **Tutorial 3: Beam‑Steering Design** – Applies verified gradients to a realistic inverse‑design problem.
-- **Martins et al., *ACM Trans. Math. Softw.*, 2019** – Comprehensive review of adjoint methods and verification techniques.
+| Task | Source |
+|:--|:--|
+| Adjoint solve and impedance gradient | `src/optimization/Adjoint.jl` |
+| Finite-difference and complex-step helpers | `src/optimization/Verification.jl` |
+| Impedance matrices | `src/assembly/Impedance.jl` |
+| Full system and mass conditioning | `src/solver/Solve.jl` |
+| Executable convergence gates | `validation/paper/run_convergence_study.jl` |

@@ -6,7 +6,9 @@ using CSV
 using DataFrames
 using DiffMoM
 
-const DATADIR = joinpath(@__DIR__, "..", "..", "data")
+const DATADIR = normpath(joinpath(@__DIR__, "..", "..", "data"))
+const CONVERGENCE_MAX_GRADIENT_ERROR = 3e-6
+const CONVERGENCE_MAX_ENERGY_RATIO_ERROR = 0.02
 mkpath(DATADIR)
 
 println("="^60)
@@ -42,6 +44,11 @@ results = DataFrame(
     J_pec = Float64[],
     max_grad_err = Float64[],
 )
+
+function symmetric_relative_error(a::Real, b::Real)
+    scale = max(abs(a), abs(b))
+    return iszero(scale) ? 0.0 : abs(a - b) / scale
+end
 
 println("\n── Running refinement sweep ──\n")
 
@@ -91,7 +98,7 @@ for Nx in mesh_sizes
     max_gerr = 0.0
     for p in 1:n_check
         g_fd = fd_grad(J_of_theta, theta_test, p; h=1e-5)
-        rel_err = abs(g_adj[p] - g_fd) / max(abs(g_adj[p]), 1e-30)
+        rel_err = symmetric_relative_error(g_adj[p], g_fd)
         max_gerr = max(max_gerr, rel_err)
     end
 
@@ -111,7 +118,7 @@ CSV.write(joinpath(DATADIR, "convergence_study.csv"), results)
 
 println("\n── Per-parameter gradient verification (Nx=3) ──\n")
 
-let
+max_gradient_reference = let
     Nx_gv, Ny_gv = 3, 3
     mesh_gv = make_rect_plate(Lx, Ly, Nx_gv, Ny_gv)
     rwg_gv = build_rwg(mesh_gv)
@@ -153,7 +160,7 @@ let
 
     for p in 1:min(10, Nt_gv)
         g_fd = fd_grad(J_of_theta_gv, theta_gv, p; h=1e-5)
-        rel_err = abs(g_adj_gv[p] - g_fd) / max(abs(g_adj_gv[p]), 1e-30)
+        rel_err = symmetric_relative_error(g_adj_gv[p], g_fd)
         push!(gv_results, (p, g_adj_gv[p], g_fd, rel_err))
         println(
             "  param $p: adjoint=$(round(g_adj_gv[p], sigdigits=6)), " *
@@ -162,8 +169,13 @@ let
     end
 
     CSV.write(joinpath(DATADIR, "gradient_verification.csv"), gv_results)
-    println("\nGradient verification data saved to: $(joinpath(DATADIR, "gradient_verification.csv"))")
-    println("Max rel error: $(round(maximum(gv_results.rel_error), sigdigits=3))")
+    println(
+        "\nGradient verification data saved to: " *
+        joinpath(DATADIR, "gradient_verification.csv"),
+    )
+    max_error = maximum(gv_results.rel_error)
+    println("Max rel error: $(round(max_error, sigdigits=3))")
+    max_error
 end
 
 println("\n── Summary ──")
@@ -181,6 +193,38 @@ if length(results.cond_Z) >= 3
             sum((log_h .- x_mean) .^ 2)
     println("  Condition number growth rate: κ ~ h^($(round(slope, sigdigits=2)))")
 end
+
+finite_columns = (
+    cond_Z=results.cond_Z,
+    energy_ratio=results.energy_ratio,
+    max_grad_err=results.max_grad_err,
+)
+nonfinite_columns = [
+    string(name) for (name, values) in pairs(finite_columns)
+    if !all(isfinite, values)
+]
+isempty(nonfinite_columns) || error(
+    "convergence study produced non-finite columns: " *
+    join(nonfinite_columns, ", ") *
+    ". Inspect the corresponding mesh rows before using the CSV files.")
+
+checks = [
+    ("maximum mesh-sweep gradient error <= $CONVERGENCE_MAX_GRADIENT_ERROR",
+     maximum(results.max_grad_err) <= CONVERGENCE_MAX_GRADIENT_ERROR),
+    ("maximum reference gradient error <= $CONVERGENCE_MAX_GRADIENT_ERROR",
+     max_gradient_reference <= CONVERGENCE_MAX_GRADIENT_ERROR),
+    ("maximum |P_rad/P_in - 1| <= $CONVERGENCE_MAX_ENERGY_RATIO_ERROR",
+     maximum(abs.(results.energy_ratio .- 1)) <=
+     CONVERGENCE_MAX_ENERGY_RATIO_ERROR),
+]
+println("\n── Verification ──")
+for (label, pass) in checks
+    println("[$(pass ? "PASS" : "FAIL")] $label")
+end
+failed = first.(filter(check -> !last(check), checks))
+isempty(failed) || error(
+    "convergence-study checks failed: " * join(failed, "; ") *
+    ". Review the printed summary and generated CSV rows.")
 
 println("\n" * "="^60)
 println("CONVERGENCE STUDY COMPLETE")

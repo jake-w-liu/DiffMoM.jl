@@ -19,20 +19,27 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
+Aqua = "0.8"
 CSV = "0.10"
 DataFrames = "1"
 FFTW = "1"
 IncompleteLU = "0.2.1"
 JSON = "1"
 Krylov = "0.9"
+LinearAlgebra = "1"
 PlotlySupply = "1.8.0"
+Random = "1"
+SparseArrays = "1"
 SpecialFunctions = "2"
 StaticArrays = "1"
+Statistics = "1"
+Test = "1"
 julia = "1.12"
 
 [extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Statistics", "Test"]
+test = ["Aqua", "Statistics", "Test"]

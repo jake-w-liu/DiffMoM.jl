@@ -1,401 +1,220 @@
-# Chapter 4: Sphere-vs-Mie Benchmark
+# PEC sphere versus Mie reference
 
-## Purpose
+This benchmark compares the complete PEC EFIE, solve, far-field, and RCS path
+with the package's analytical Mie-series implementation. It checks scaling,
+polarization, and propagation and observation directions on a closed sphere.
 
-Validate the complete far-field and RCS computation pipeline against an analytical reference: Mie theory for a perfect electric conductor (PEC) sphere. Unlike cross-solver validation (Bempp-cl), the sphere-Mie benchmark provides a **ground truth** with machine-precision accuracy, isolating implementation errors from solver-to-solver convention differences. This benchmark is essential for verifying radiation pattern correctness, RCS scaling, and angular dependence.
+It does not validate local fields. Use the
+[Rayleigh-sphere near and total field check](06-near-total-field-rayleigh-sphere.md)
+for `compute_nearfield` and `compute_total_field`.
 
-Related validation: this chapter is the exact benchmark for far-field and RCS
-quantities. For analytical validation of local observation-space fields
-(`compute_nearfield` and `compute_total_field`), use
-[validation/06-near-total-field-rayleigh-sphere.md](06-near-total-field-rayleigh-sphere.md).
+## Analytical quantity
 
----
-
-## Learning Goals
-
-After this chapter, you should be able to:
-
-1. Run the PEC sphere benchmark workflow and interpret error metrics.
-2. Distinguish discretization errors from implementation bugs through mesh refinement studies.
-3. Understand Mie theory implementation and its limitations for validation.
-4. Set acceptance thresholds for RCS accuracy in your applications.
-5. Extend the benchmark to custom sphere geometries and frequencies.
-
----
-
-## 1) Theoretical Foundation
-
-### 1.1 Mie Theory for PEC Spheres
-
-For a sphere of radius $a$ illuminated by a plane wave at wavenumber $k$, Mie theory provides an exact analytical solution for the scattered field. The bistatic radar cross section (RCS) is:
+`mie_s1s2_pec(x, mu)` evaluates the two PEC-sphere scattering amplitudes for
+$x=ka$ and $\mu=\cos\gamma$. The PEC coefficients are
 
 ```math
-\sigma(\gamma) = \frac{\lambda^2}{\pi} \left| \sum_{n=1}^\infty \frac{2n+1}{n(n+1)} \left( a_n \pi_n(\cos\gamma) + b_n \tau_n(\cos\gamma) \right) \right|^2
+a_n=-\frac{[xj_n(x)]'}{[xh_n^{(2)}(x)]'},
+\qquad
+b_n=-\frac{j_n(x)}{h_n^{(2)}(x)}.
 ```
 
-where $\gamma$ is the scattering angle, $\pi_n$ and $\tau_n$ are angular functions, and $a_n$, $b_n$ are Mie coefficients. For PEC spheres, the coefficients simplify to ratios of spherical Bessel functions.
+`mie_bistatic_rcs_pec(k, a, k_inc_hat, pol, rhat)` combines those amplitudes
+with the incident polarization and returns
 
-### 1.2 Implementation in `Mie.jl`
+```math
+\sigma(\hat{\mathbf r})=
+\frac{4\pi}{k^2}
+\left(|S_1c_\perp|^2+|S_2c_\parallel|^2\right).
+```
 
-The package provides two primary functions:
+With automatic truncation, the implemented order is
 
-- **`mie_s1s2_pec(x, μ)`**: Compute Mie scattering amplitudes $S_1$, $S_2$ at size parameter $x = ka$ and $\mu = \cos\gamma$
-- **`mie_bistatic_rcs_pec(k, a, k_inc_hat, pol_inc, rhat)`**: Compute bistatic RCS for specific geometry and polarization
+```math
+n_{\max}=\max\left(3,\left\lceil
+x+4x^{1/3}+2
+\right\rceil\right).
+```
 
-The implementation uses recurrence relations for spherical Bessel functions and Legendre functions, truncated at $n_{\text{max}} = \max(3, \lceil x + 4x^{1/3} + 2 \rceil)$ for machine precision.
+The implementation validates the sphere size, directions, polarization, order,
+and work limits and uses bounded high-precision fallbacks for exceptional
+floating-point cases.
 
-### 1.3 Validation Metrics
-
-The benchmark compares MoM-computed RCS $\sigma_{\text{MoM}}$ to Mie reference $\sigma_{\text{Mie}}$ on a $\phi = \text{constant}$ cut:
-
-1. **Mean Absolute Error (MAE)**: $\frac{1}{N} \sum_i |\Delta\text{dB}_i|$
-2. **Root Mean Square Error (RMSE)**: $\sqrt{\frac{1}{N} \sum_i (\Delta\text{dB}_i)^2}$
-3. **Maximum Absolute Error**: $\max_i |\Delta\text{dB}_i|$
-4. **Backscatter Error**: $\Delta\sigma_{\text{bs}}$ at $\gamma = 180^\circ$
-
-where $\Delta\text{dB}_i = 10\log_{10}(\sigma_{\text{MoM},i}) - 10\log_{10}(\sigma_{\text{Mie},i})$.
-
----
-
-## 2) Practical Benchmark Workflow
-
-### 2.1 Running the Benchmark
+## Run the fixed example
 
 ```bash
-julia --project=. examples/04_pec_sphere_mie.jl
+julia --project=. --startup-file=no examples/04_pec_sphere_mie.jl
 ```
 
-This example script currently runs with built-in parameters (icosphere geometry,
-radius, frequency). For custom sweeps, edit `a`, `freq`, and `subdivisions`
-inside `examples/04_pec_sphere_mie.jl`.
+The example creates an icosphere, solves the dense EFIE, evaluates a midpoint
+spherical grid, and compares the stored azimuth cut nearest zero with Mie values
+at the same directions. Its `subdiv`, `a`, `freq`, and `grid` assignments own
+the executable setup.
 
-### 2.2 Reported Outputs
+It exits nonzero unless the declared energy-ratio, cut-error, and backscatter
+gates pass. The `MIE_EXAMPLE_MAX_*` constants in
+`examples/04_pec_sphere_mie.jl` own the executable limits. The script builds
+its error messages from those values.
 
-The script prints benchmark metrics to stdout:
-- MAE, RMSE, max-absolute dB error on the selected $\phi$-cut
-- Backscatter mismatch in dB
-- Sample rows of $\gamma$, $\sigma_{\mathrm{MoM}}$, $\sigma_{\mathrm{Mie}}$, and $\Delta$
+The script prints measurements from the run and writes no artifacts. Preserve
+its output and exit status instead of copying a fixed transcript into a report.
 
-If you need CSV/figure artifacts, add a post-processing block that writes
-`γ`, `σ_mom_cut`, `σ_mie`, and `ΔdB`.
+## Run the detailed validator
 
-### 2.3 Example Output
-
-Typical results for a 0.05 m radius sphere at 3.0 GHz ($ka \approx 3.14$):
-
-```
-── MoM vs Mie summary (φ=0.0° cut) ──
-  MAE(dB):  0.856
-  RMSE(dB): 1.124
-  Max |Δ|(dB): 3.217
-  Backscatter Δ(dB): 0.543
+```bash
+julia --project=. --startup-file=no validation/mie/validate_mie_rcs.jl
 ```
 
-**Interpretation**: 
-- Mean error < 1 dB indicates good overall agreement
-- Maximum error ~3 dB occurs at deep nulls where small absolute errors magnify in dB scale
-- Backscatter error < 0.6 dB validates monostatic RCS computation
+This driver generates an icosphere, writes and rereads its STL representation,
+runs the MoM and Mie comparison, and applies gates to both stored E-plane and
+H-plane cuts. It writes:
 
----
+- `validation/mie/mie_rcs_phi0.csv`;
+- `validation/mie/mie_rcs_phi90.csv`;
+- `validation/mie/mie_rcs_summary.csv`; and
+- four PNG files under `validation/mie/figs/`.
 
-## 3) Interpreting Results and Setting Acceptance Criteria
+The tracked `validation/mie/sphere_ka2.1.stl` fixture can also be used for a
+manual run.
 
-### 3.1 Expected Error Sources
+## Manual comparison
 
-1. **Discretization error**: Finite mesh representation of curved surface
-2. **Basis function limitations**: RWG functions approximate surface currents
-3. **Numerical integration error**: Quadrature accuracy for curved elements
-4. **Far-field approximation**: Radiation vectors computed from discretized currents
-
-### 3.2 Mesh Refinement Study
-
-Error should decrease with mesh refinement:
+Use the same stored directions on both paths:
 
 ```julia
-# Run benchmark at multiple mesh densities
-meshes = ["sphere_coarse.obj", "sphere_medium.obj", "sphere_fine.obj"]
-errors = []
+using DiffMoM
+using LinearAlgebra
+using Statistics
 
-for mesh in meshes
-    # Run benchmark and extract MAE
-    mae = run_benchmark_and_get_mae(mesh)
-    push!(errors, mae)
-end
+frequency = 2.0e9
+c0 = 299792458.0
+k = 2π * frequency / c0
+radius = 0.05
 
-# Plot convergence: error ~ O(h^p)
+mesh = read_stl_mesh("validation/mie/sphere_ka2.1.stl")
+rwg = build_rwg(mesh; allow_boundary=false, require_closed=true)
+
+k_vec = Vec3(0.0, 0.0, -k)
+k_inc_hat = k_vec / norm(k_vec)
+polarization = Vec3(1.0, 0.0, 0.0)
+wave = make_plane_wave(k_vec, 1.0, polarization)
+
+Z = assemble_Z_efie(mesh, rwg, k; quad_order=3)
+v = assemble_excitation(mesh, rwg, wave; quad_order=3)
+current = solve_forward(Z, v; solver=:direct)
+
+grid = make_sph_grid(60, 36)
+G = radiation_vectors(mesh, rwg, grid, k; quad_order=3)
+E_ff = compute_farfield(G, current, length(grid.w))
+sigma_mom = bistatic_rcs(E_ff; E0=wave.E0)
+
+phi_cut = minimum(grid.phi)
+cut = findall(phi -> abs(phi - phi_cut) < 1e-12, grid.phi)
+sort!(cut; by=index -> grid.theta[index])
+
+sigma_mie = [
+    mie_bistatic_rcs_pec(
+        k,
+        radius,
+        k_inc_hat,
+        polarization,
+        Vec3(grid.rhat[:, index]),
+    )
+    for index in cut
+]
+
+floor_m2 = 1e-30
+mom_db = 10 .* log10.(max.(sigma_mom[cut], floor_m2))
+mie_db = 10 .* log10.(max.(sigma_mie, floor_m2))
+delta_db = mom_db .- mie_db
+
+metrics = (
+    mae_db=mean(abs.(delta_db)),
+    rmse_db=sqrt(mean(abs2, delta_db)),
+    maximum_db=maximum(abs.(delta_db)),
+)
+println(metrics)
 ```
 
-**Expected trend**: Errors decrease as element size $h \to 0$, with convergence rate $p \approx 1-2$ for RCS.
+`make_sph_grid` uses midpoint samples, so the first stored azimuth is not
+exactly zero. Label a cut with its recorded angle.
 
-### 3.3 Acceptance Thresholds
+## Backscatter direction
 
-Based on typical results:
-
-- **Excellent agreement**: MAE < 0.5 dB, Max |Δ| < 2.0 dB
-- **Good agreement**: MAE < 1.0 dB, Max |Δ| < 3.0 dB  
-- **Needs investigation**: MAE > 1.5 dB, Max |Δ| > 5.0 dB
-- **Likely bug**: MAE > 3.0 dB across multiple mesh densities
-
-**Note**: Deep nulls (← -20 dB) can show large dB errors from small absolute errors. Focus on main-lobe and sidelobe regions for validation.
-
-### 3.4 Distinguishing Bugs from Discretization Limits
-
-1. **Global offset** (all points shifted by ~X dB): Likely normalization or scaling bug
-2. **Angular shift** (pattern translated in γ): Geometry or coordinate system error
-3. **Localized spikes** at specific angles: Far-field integration or singularity handling issue
-4. **No convergence** with mesh refinement: Implementation bug, not discretization limit
-
----
-
-## 4) Advanced Benchmarking Techniques
-
-### 4.1 Frequency Sweep
-
-Validate across electrical sizes:
+`backscatter_rcs` accepts the incident propagation direction and selects the
+stored sample nearest its negative:
 
 ```julia
-freqs = [1e9, 2e9, 3e9, 5e9, 10e9]  # 1-10 GHz
-results = []
+back_mom = backscatter_rcs(
+    E_ff, grid, k_inc_hat; E0=wave.E0)
+back_mie = mie_bistatic_rcs_pec(
+    k, radius, k_inc_hat, polarization, -k_inc_hat)
 
-for f in freqs
-    ka = 2π * f / 299792458 * a
-    println("ka = $ka")
-    # Run benchmark at frequency f
-    mae, max_err = run_benchmark_at_frequency(f)
-    push!(results, (ka=ka, mae=mae, max_err=max_err))
-end
+back_error_db =
+    10log10(max(back_mom.sigma, floor_m2)) -
+    10log10(max(back_mie, floor_m2))
+
+println((
+    error_db=back_error_db,
+    angular_error_deg=back_mom.angular_error_deg,
+))
 ```
 
-**Expected**: Errors may increase near resonances (specific ka values) where fields are sensitive to discretization.
+For propagation along negative z, forward scattering is toward negative z and
+backscatter is toward positive z.
 
-### 4.2 Multiple Polarizations and Incidence Angles
+## Radius of an imported sphere
+
+For a mesh whose center is not already known, a vertex-radius summary is a
+diagnostic, not a proof that the surface is spherical:
 
 ```julia
-# Test different incidence directions
-inc_angles = [0, 30, 60, 90]  # degrees from broadside
-
-for θ_inc in inc_angles
-    k_inc = Vec3(sin(θ_inc*π/180), 0, -cos(θ_inc*π/180))
-    # Run benchmark with rotated incidence
-    errors = run_benchmark(k_inc=k_inc)
-end
+center = Vec3(vec(mean(mesh.xyz; dims=2)))
+radii = [
+    norm(Vec3(mesh.xyz[:, index]) - center)
+    for index in 1:nvertices(mesh)
+]
+radius_estimate = mean(radii)
+radius_standard_deviation = std(radii)
 ```
 
-**Purpose**: Verify far-field computation works correctly for oblique incidence.
+Record how the center and effective radius were chosen. Compare the result with
+the intended CAD definition before using it in the Mie reference.
 
-### 4.3 Convergence to Analytical Solution
+## Convergence study
 
-The ultimate test: error → 0 as mesh refines:
+For a changed electrical size or mesh:
 
-```julia
-# Sequence of progressively refined sphere meshes
-mesh_sizes = [0.1, 0.05, 0.025, 0.0125]  # target edge lengths
+1. record triangle count and a measured edge-size statistic;
+2. verify the closed-surface mesh policy;
+3. record the original-system true residual;
+4. refine the spherical grid with the current held fixed;
+5. refine the sphere mesh and reassemble;
+6. compare supported triangle quadrature orders; and
+7. inspect both linear-scale and dB errors near nulls.
 
-conv_rates = []
-for h in mesh_sizes
-    mesh = generate_sphere_mesh(a, h)
-    error = run_benchmark(mesh)
-    push!(conv_rates, (h=h, error=error))
-end
+Fit a convergence rate only if consecutive data show an asymptotic interval.
+The fixed example gates belong to its geometry and frequency; they are not a
+universal Mie-validation tolerance.
 
-# Fit log(error) ~ log(h) + constant
-# Slope gives convergence rate p
-```
+## Diagnose disagreement
 
----
+| Pattern | First checks |
+|:--|:--|
+| Nearly constant dB offset | Incident amplitude, RCS normalization, radius, and units |
+| Angular shift | Propagation direction, observation direction, and stored midpoint angles |
+| Large dB spikes near nulls | Linear-scale error and the declared dB floor |
+| E-plane and H-plane asymmetry | Mesh geometry, winding, polarization, and matched cuts |
+| No refinement trend | Mesh quality, resolution, quadrature, residual, and Mie inputs |
 
-## 5) Code Implementation Details
+A pattern suggests a controlled comparison; it does not establish the cause.
 
-### 5.1 Mie Theory Implementation (`src/postprocessing/Mie.jl`)
+## Code map
 
-Key algorithms:
-- **Spherical Bessel functions**: Recurrence relations for $j_n(x)$, $y_n(x)$
-- **Mie coefficients**: $a_n = -\psi_n'(x)/\xi_n'(x)$, $b_n = -\psi_n(x)/\xi_n(x)$
-- **Angular functions**: Recurrence for $\pi_n(\mu)$, $\tau_n(\mu)$
-- **Vector scattering**: Coordinate transformations for arbitrary incidence/observation
-
-### 5.2 Benchmark Script (`examples/04_pec_sphere_mie.jl`)
-
-Workflow:
-1. **Mesh generation/loading**: Fallback icosphere or custom OBJ
-2. **Radius estimation**: From vertex positions (handles imperfect spheres)
-3. **MoM solve**: Standard EFIE assembly and solution
-4. **Far-field computation**: Radiation vectors → bistatic RCS
-5. **Mie reference**: Analytical RCS at same angles
-6. **Error computation**: MAE, RMSE, max error, backscatter error
-7. **Output generation**: CSV files and plot
-
-### 5.3 Radius Estimation Heuristic
-
-Since OBJ spheres may not be perfect, the benchmark script estimates the radius
-from vertex positions. There is no built-in `estimate_sphere_radius` function;
-the estimation is done inline in the example script:
-
-```julia
-using Statistics: mean, std
-using LinearAlgebra: norm
-
-nv = size(mesh.xyz, 2)
-ctr = vec(mean(mesh.xyz, dims=2))
-radii = [norm(Vec3(mesh.xyz[:, i]) - Vec3(ctr)) for i in 1:nv]
-a_est = mean(radii)
-a_std = std(radii)
-```
-
-**Usage**: The estimated radius `a_est` is passed to the Mie reference computation. The standard deviation `a_std` indicates mesh quality; if `a_std > 0.01 * a_est`, the mesh is significantly non-spherical.
-
----
-
-## 6) Troubleshooting Common Issues
-
-### 6.1 Large Errors (> 5 dB)
-
-1. **Check radius estimation**:
-   ```julia
-   nv = size(mesh.xyz, 2)
-   ctr = vec(mean(mesh.xyz, dims=2))
-   radii = [norm(Vec3(mesh.xyz[:, i]) - Vec3(ctr)) for i in 1:nv]
-   a_est = mean(radii)
-   a_std = std(radii)
-   println("Estimated radius: $a_est ± $a_std m")
-   ```
-   If $a_{\text{std}} > 0.01a$, mesh is non-spherical -- use better mesh.
-
-2. **Verify frequency and units**:
-   - Ensure `freq` in Hz, not GHz
-   - Check `a` in meters (Mie uses SI units)
-   - Confirm $k = 2\pi f/c$ correct
-
-3. **Inspect far-field scaling**:
-   ```julia
-   # Compare absolute RCS values, not just dB
-   println("σ_mom at γ=0: $(σ_mom_cut[1]) m²")
-   println("σ_mie at γ=0: $(σ_mie[1]) m²")
-   ```
-
-### 6.2 Pattern Shift (Angular misalignment)
-
-1. **Check coordinate systems**:
-   - Mie uses $\gamma = \angle(\hat{k}_{\text{inc}}, \hat{r})$
-   - MoM uses global $(\theta, \phi)$ coordinates
-   - Transformation: $\gamma = \cos^{-1}(\hat{k}_{\text{inc}} \cdot \hat{r})$
-
-2. **Verify incidence direction**:
-   ```julia
-   println("k_inc_hat: $k_inc_hat")
-   println("Should be unit vector pointing toward sphere")
-   ```
-
-### 6.3 Poor Convergence with Mesh Refinement
-
-1. **Mesh quality issues**:
-   - Non-uniform triangles
-   - Skewed elements
-   - Incorrect normals (pointing inward)
-
-2. **EFIE implementation**:
-   - Singularity extraction parameters
-   - Quadrature order (default: 3)
-   - RWG normalization
-
-3. **Far-field computation**:
-   - Radiation vector assembly
-   - Spherical grid density
-
----
-
-## 7) Exercises
-
-### 7.1 Basic Level
-
-1. **Run benchmark with default settings**:
-   - Execute `julia --project=. examples/04_pec_sphere_mie.jl`
-   - Examine generated CSV files and plot
-   - Verify MAE < 1.5 dB for fallback mesh
-
-2. **Mesh density experiment**:
-   - Generate spheres with different subdivision levels (1, 2, 3)
-   - Run benchmark for each
-   - Plot error vs. triangle count
-
-### 7.2 Intermediate Level
-
-3. **Frequency sweep**:
-   - Modify benchmark to sweep ka from 1 to 10
-   - Identify resonant regions where errors peak
-   - Explain physical reason for increased sensitivity
-
-4. **Acceptance threshold justification**:
-   - Based on your results, propose CI thresholds:
-     ```yaml
-     sphere_benchmark:
-       mae_db_max: 1.0
-       max_abs_db_max: 3.0
-       backscatter_db_max: 1.0
-     ```
-   - Justify each value with data from your runs
-
-### 7.3 Advanced Level
-
-5. **Extended validation suite**:
-   - Implement benchmark for multiple incidence angles (0°, 30°, 60°)
-   - Add polarization variation (TE, TM)
-   - Create aggregated report with all results
-
-6. **Convergence rate analysis**:
-   - Generate sequence of 5+ progressively refined sphere meshes
-   - Fit error = C * h^p
-   - Compare p to theoretical expectations (1-2 for RCS)
-
----
-
-## 8) Code Mapping
-
-### 8.1 Primary Files
-
-- **Mie theory**: `src/postprocessing/Mie.jl`
-  - `mie_s1s2_pec`, `mie_bistatic_rcs_pec`
-  - Internal: `_sph_bessel_jy_arrays`, `_mie_nmax`
-
-- **Benchmark script**: `examples/04_pec_sphere_mie.jl`
-  - Complete workflow from mesh to error metrics
-  - Fallback icosphere generation
-  - Radius estimation and validation
-
-- **RCS diagnostics**: `src/postprocessing/Diagnostics.jl`
-  - `bistatic_rcs`, `backscatter_rcs`
-
-### 8.2 Supporting Scripts
-
-- **Sphere RCS example**: `examples/04_pec_sphere_mie.jl`
-- **Visualization utilities**: `src/postprocessing/Visualization.jl`
-
-### 8.3 Output Artifacts
-
-All outputs in `data/` directory:
-- `sphere_mie_benchmark_phi_cut.csv`: Detailed angular comparison
-- `sphere_mie_benchmark_summary.csv`: Aggregate error metrics
-- `sphere_mie_benchmark_phi_cut.png`: Visual comparison plot
-
----
-
-## 9) Chapter Checklist
-
-Before considering sphere validation complete, ensure you can:
-
-- [ ] Run benchmark and achieve MAE < 1.5 dB with default mesh
-- [ ] Explain sources of discrepancy between MoM and Mie results
-- [ ] Distinguish discretization errors from implementation bugs
-- [ ] Perform mesh refinement study and observe error convergence
-- [ ] Set appropriate acceptance thresholds for your application
-- [ ] Troubleshoot common issues (large errors, pattern shifts, poor convergence)
-
----
-
-## 10) Further Reading
-
-- **Mie theory derivation**: Bohren & Huffman, *Absorption and Scattering of Light by Small Particles* (1983)
-- **Numerical implementation**: Wiscombe, *Improved Mie scattering algorithms* (1980)
-- **RCS validation methodology**: Knott et al., *Radar Cross Section* (1993)
-- **Convergence analysis for MoM**: Peterson et al., *Computational Methods for Electromagnetics* (1998)
-- **Spherical wave functions**: Jackson, *Classical Electrodynamics* (1999), Chapter 16
+| Task | Source |
+|:--|:--|
+| PEC and dielectric Mie functions | `src/postprocessing/Mie.jl` |
+| Fixed PEC sphere example | `examples/04_pec_sphere_mie.jl` |
+| Detailed STL and cut validator | `validation/mie/validate_mie_rcs.jl` |
+| RCS and backscatter diagnostics | `src/postprocessing/Diagnostics.jl` |
+| Far-field construction | `src/postprocessing/FarField.jl` |

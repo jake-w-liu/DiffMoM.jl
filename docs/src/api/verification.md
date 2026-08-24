@@ -1,158 +1,158 @@
-# API: Verification
+# API: gradient verification
 
-## Purpose
+Use these functions to compare an analytical or adjoint gradient with a
+numerical derivative. The finite-difference path applies to real scalar
+objectives. The complex-step path has a narrower holomorphic contract.
 
-Reference for gradient verification tools. These functions compare the adjoint gradient against independent numerical references (complex-step and finite-difference) to confirm correctness. Gradient verification is essential whenever you modify the adjoint code, add a new objective function, or change the impedance parameterization.
-
----
-
-## Why Verify Gradients?
-
-The adjoint method gives exact gradients in theory, but implementation errors (sign mistakes, missing conjugates, wrong reactive/resistive mode) can produce gradients that are subtly wrong. A wrong gradient will cause the optimizer to converge to the wrong solution or diverge, often without any obvious error message.
-
-Two independent numerical references are available:
-
-| Method | Accuracy | Applicability | Cost |
-|--------|----------|---------------|------|
-| Complex-step | Machine precision (~1e-15) | Only for holomorphic parameter paths (no conjugation in objective) | 1 solve per parameter |
-| Central finite-difference | ~h^2 accuracy (~1e-8 for h=1e-6) | Always works, including objectives with conjugation (`I' Q I`) | 2 solves per parameter |
-
-For the standard MoM objective `J = Re(I' Q I)`, which involves conjugation, **central finite-difference is the primary reference**. Complex-step requires a holomorphic formulation and is mainly useful for verifying intermediate quantities.
-
----
-
-## Gradient Check Helpers
-
-### `complex_step_grad(f, theta, p; eps=1e-30)`
-
-Complex-step derivative of a scalar function `f(theta)` with respect to parameter `theta_p`.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `f` | `Function` | -- | Scalar-valued function `f(theta)` that must accept `ComplexF64` input. The function must be holomorphic in the perturbed parameter for the result to be valid. |
-| `theta` | `Vector{Float64}` | -- | Parameter vector at which to evaluate the derivative. |
-| `p` | `Int` | -- | Index of the parameter to differentiate (1-based). |
-| `eps` | `Float64` | `1e-30` | Initial complex-step perturbation magnitude. If the imaginary response underflows to zero, the implementation increases this by exact powers of two until a representable signal is obtained or reports the derivative as inconclusive. |
-
-**Returns:** `Float64` approximation of `df/d(theta_p)`.
-
-**Formula:** `df/d(theta_p) = Im[f(theta + i*eps*e_p)] / eps`
-
-**When to use:** Complex-step gives machine-precision derivatives, but only when `f` is holomorphic in the perturbed parameter. For `J = Re(I' Q I)`, the conjugation makes the objective non-holomorphic, so complex-step is not directly applicable to the full objective. Use `fd_grad` with central differences instead.
-
----
-
-### `fd_grad(f, theta, p; h=1e-6, scheme=:central)`
-
-Finite-difference derivative of `f(theta)` with respect to `theta_p`.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `f` | `Function` | -- | Scalar-valued function `f(theta)` (must return a real value). |
-| `theta` | `Vector{Float64}` | -- | Parameter vector. |
-| `p` | `Int` | -- | Parameter index to differentiate. |
-| `h` | `Float64` | `1e-6` | Step size. Central differences have error ~h^2, so `h=1e-6` gives ~1e-12 truncation error. Forward differences have error ~h, so accuracy is much lower. |
-| `scheme` | `Symbol` | `:central` | `:central` (recommended) or `:forward`. |
-
-**Returns:** `Float64` FD approximation of `df/d(theta_p)`.
-
-**Formulas:**
-- `:central`: `(f(theta + h*e_p) - f(theta - h*e_p)) / (2h)` -- O(h^2) accurate
-- `:forward`: `(f(theta + h*e_p) - f(theta)) / h` -- O(h) accurate
-
-**Choosing `h`:**
-- Too small: round-off error dominates (the numerator becomes the difference of nearly equal numbers).
-- Too large: truncation error dominates.
-- `h = 1e-6` is a good default for central differences.
-- `h = 1e-4` to `1e-5` for forward differences.
-
----
-
-### `verify_gradient(f_objective, adjoint_grad, theta; indices=nothing, eps_cs=1e-30, h_fd=1e-6)`
-
-Compare an adjoint gradient against both complex-step and finite-difference references. This is the main verification entry point.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `f_objective` | `Function` | -- | Objective function `theta -> J(theta)`. Must accept `ComplexF64` input for the complex-step check. |
-| `adjoint_grad` | `Vector{Float64}` | -- | Adjoint gradient vector `g` of length P. |
-| `theta` | `Vector{Float64}` | -- | Parameter vector at which the gradient was computed. |
-| `indices` | Collection or `nothing` | `nothing` | Which parameters to check. Default: all parameters. For large P, check a subset (e.g., `1:10`) to save time. |
-| `eps_cs` | `Float64` | `1e-30` | Complex-step perturbation magnitude. |
-| `h_fd` | `Float64` | `1e-6` | Finite-difference step size. |
-
-**Returns:** `Vector{NamedTuple}` with elements `(p, adj, cs, fd, rel_err_cs, rel_err_fd)`:
-- `p::Int`: Parameter index.
-- `adj::Float64`: Adjoint gradient value.
-- `cs::Float64`: Complex-step derivative.
-- `fd::Float64`: Finite-difference derivative.
-- `rel_err_cs::Float64`: `|adj - cs| / max(|cs|, 1e-30)`.
-- `rel_err_fd::Float64`: `|adj - fd| / max(|cs|, 1e-30)`.
-
-**Interpreting results:**
-
-| `rel_err_fd` | Interpretation |
-|-------------|----------------|
-| < 1e-4 | Gradient is correct. The residual error is from FD truncation. |
-| 1e-4 to 1e-2 | Suspicious. Check `h_fd` choice, or there may be a subtle bug. |
-| > 1e-2 | Gradient is likely wrong. Debug the adjoint code. |
-
----
-
-## Typical Pattern
+## `fd_grad`
 
 ```julia
-# 1. Define the objective function (must support ComplexF64 for complex-step)
-function f_obj(theta)
-    Z = assemble_full_Z(Z_efie, Mp, theta; reactive=true)
-    I = Z \ v
-    return real(dot(I, Q * I))
+fd_grad(f, theta, p; h=1e-6, scheme=:central)
+```
+
+`theta` must be a `Vector{Float64}`, `p` must index it, and `h` must be finite
+and positive. `f(theta)` must return a finite scalar number.
+
+Supported schemes are:
+
+- `:central`, which evaluates `f` at the nearest representable values for
+  `theta[p] + h` and `theta[p] - h`; and
+- `:forward`, which evaluates the positive perturbation and the baseline.
+
+The implementation rejects a step that does not change `theta[p]` in
+`Float64` arithmetic. Central differences have second-order truncation error
+for a sufficiently smooth function, but the useful step size also depends on
+rounding, objective scale, conditioning, and solve accuracy. Check a range of
+steps instead of treating the default as an accuracy guarantee.
+
+```julia
+function symmetric_error(first, second)
+    scale = max(abs(first), abs(second))
+    return iszero(scale) ? 0.0 : abs(first - second) / scale
 end
 
-# 2. Compute adjoint gradient at theta0
-Z0 = assemble_full_Z(Z_efie, Mp, theta0; reactive=true)
-I0 = Z0 \ v
-lambda0 = solve_adjoint(Z0, Q, I0)
-g_adj = gradient_impedance(Mp, I0, lambda0; reactive=true)
+steps = (1e-4, 1e-5, 1e-6, 1e-7)
+rows = [begin
+    derivative = fd_grad(objective, theta, p; h=step)
+    (; step, derivative,
+       error=symmetric_error(adjoint_gradient[p], derivative))
+end for step in steps]
+```
 
-# 3. Verify
-res = verify_gradient(f_obj, g_adj, theta0; indices=1:10, h_fd=1e-5)
-max_err = maximum(r.rel_err_fd for r in res)
-println("Max relative error vs FD: ", max_err)
+## `complex_step_grad`
 
-# 4. Inspect individual parameters
-for r in res
-    println("p=$(r.p): adj=$(r.adj), fd=$(r.fd), rel_err=$(r.rel_err_fd)")
+```julia
+complex_step_grad(f, theta, p; eps=1e-30)
+```
+
+This function evaluates
+
+```math
+\frac{\operatorname{Im} f(\theta+i\epsilon e_p)}{\epsilon}.
+```
+
+Its input contract is stricter than the finite-difference contract:
+
+1. `f` must accept a complex-valued parameter vector.
+2. `f` must be holomorphic in the perturbed parameter.
+3. `f` must be real at the supplied real parameter vector.
+4. Every evaluated value must be finite.
+
+If the requested perturbation produces an exactly zero imaginary response,
+the implementation increases the step by exact powers of two. It returns after
+two successive nonzero derivative estimates agree exactly, or throws when the
+response remains inconclusive.
+
+This self-contained example satisfies the contract:
+
+```julia
+theta = [2.0, -1.0]
+f = x -> x[1]^2 + 3x[2]
+
+@assert isapprox(complex_step_grad(f, theta, 1), 4.0; rtol=1e-12)
+@assert isapprox(complex_step_grad(f, theta, 2), 3.0; rtol=1e-12)
+```
+
+Do not apply complex-step directly to an objective such as
+`real(dot(I, Q * I))`. Its conjugation makes the end-to-end function
+nonholomorphic. Use `fd_grad` for that objective.
+
+## `verify_gradient`
+
+```julia
+verify_gradient(
+    f_objective,
+    adjoint_grad,
+    theta;
+    indices=nothing,
+    eps_cs=1e-30,
+    h_fd=1e-6,
+)
+```
+
+`adjoint_grad` and `theta` must be finite `Vector{Float64}` values of equal
+length. `indices=nothing` checks every component; otherwise, `indices` must be
+an iterable of valid integer indices.
+
+The function always runs both complex-step and central finite differences. Use
+it only when `f_objective` satisfies the complex-step contract. It returns one
+named tuple per checked index with fields:
+
+| Field | Meaning |
+|:--|:--|
+| `p` | Checked parameter index |
+| `adj` | Supplied gradient component |
+| `cs` | Complex-step derivative |
+| `fd` | Central finite-difference derivative |
+| `rel_err_cs` | Error relative to the complex-step reference |
+| `rel_err_fd` | Symmetric adjoint versus finite-difference error |
+
+```julia
+theta = [2.0, -1.0]
+gradient = [4.0, 3.0]
+f = x -> x[1]^2 + 3x[2]
+
+result = verify_gradient(f, gradient, theta)
+@assert maximum(row.rel_err_fd for row in result) < 1e-8
+@assert maximum(row.rel_err_cs for row in result) < 1e-12
+```
+
+For the standard quadratic MoM objective, run only the finite-difference
+comparison:
+
+```julia
+indices = 1:min(10, length(theta0))
+rows = map(indices) do p
+    derivative = fd_grad(objective, theta0, p; h=1e-5)
+    scale = max(abs(g_adjoint[p]), abs(derivative))
+    error = iszero(scale) ? 0.0 :
+        abs(g_adjoint[p] - derivative) / scale
+    (; p, adjoint=g_adjoint[p], finite_difference=derivative, error)
 end
 ```
 
----
+## Interpreting a comparison
 
-## Notes
+Declare the acceptance threshold for the specific validation case. Preserve
+the checked indices, step sizes, derivative values, forward and adjoint true
+residuals, and the relative-error definition. A stable low-error interval over
+several steps is stronger evidence than one selected step.
 
-- **Complex-step** is the gold standard for holomorphic functions but is not directly applicable to the standard MoM objective `J = Re(I' Q I)` due to conjugation. Use it for intermediate checks (e.g., verifying that `assemble_Z_efie` supports complex `k`).
-- **Central finite-difference** is the primary reference for the full adjoint gradient. The `1e-6` default step size gives ~1e-8 accuracy, which is more than sufficient to catch sign errors or missing terms.
-- For large P, check a random subset of parameters rather than all P (each FD check requires 2 extra solves).
+When the values disagree, first compare:
 
----
+- resistive versus reactive parameterization;
+- the sign and scaling of each derivative block;
+- the forward and adjoint equations and their true residuals;
+- the exact Q matrix, excitation, and parameter vector used by both paths; and
+- any algebraic conditioning applied to the system and derivative blocks.
 
-## Code Mapping
+## Source
 
-| File | Contents |
-|------|----------|
-| `src/optimization/Verification.jl` | `complex_step_grad`, `fd_grad`, `verify_gradient` |
-| `src/optimization/Adjoint.jl` | Adjoint gradient code being verified |
+| Area | File |
+|:--|:--|
+| Numerical derivative helpers | `src/optimization/Verification.jl` |
+| Adjoint solve and impedance gradient | `src/optimization/Adjoint.jl` |
+| System conditioning and derivative transforms | `src/solver/Solve.jl` |
 
----
-
-## Exercises
-
-- **Basic:** Compute `fd_grad` for one parameter and compare with the adjoint gradient value.
-- **Practical:** Run `verify_gradient` for 10 parameters with both `h_fd=1e-5` and `h_fd=1e-7`. Compare the relative errors to understand the effect of step size.
-- **Challenge:** Verify gradients for both resistive (`reactive=false`) and reactive (`reactive=true`) modes. Confirm that using the wrong `reactive` flag produces a large gradient error.
+See [Tutorial 2](../tutorials/02-adjoint-gradient-check.md) for an end-to-end
+impedance-gradient check.

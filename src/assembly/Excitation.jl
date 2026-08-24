@@ -2469,19 +2469,25 @@ end
     k_abs = _supported_incident_wavenumber_abs(k)
     (isfinite(k_model) && k_model > 0.0) ||
         error(
-            "compute_total_field: $label has an invalid model wavenumber $k_model.")
+            "compute_total_field: $label has model wavenumber $k_model; " *
+            "rebuild the excitation with a finite positive frequency.")
     larger = max(k_model, k_abs)
     smaller = min(k_model, k_abs)
     relative_error = (larger - smaller) / larger
     relative_error <= 1e-8 ||
         error(
             "compute_total_field: $label expects |k|=$k_model, got $k_abs " *
-            "(relative error=$relative_error, tolerance=1.0e-8).")
+            "(relative error=$relative_error, tolerance=1.0e-8). Pass the " *
+            "matching observation wavenumber or rebuild the excitation.")
     return nothing
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::AbstractExcitation, k)
-    error("compute_total_field: incident-field evaluation is not implemented for $(typeof(excitation)).")
+    error(
+        "compute_total_field: $(typeof(excitation)) does not support " *
+        "observation-point incident-field evaluation. Use `compute_nearfield` " *
+        "for the scattered field, or pass an excitation documented as " *
+        "total-field compatible.")
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::PlaneWaveExcitation, k)
@@ -2524,21 +2530,22 @@ function _validate_incident_electric_field_wavenumber(excitation::ImportedExcita
     end
     error(
         "compute_total_field: ImportedExcitation(kind=:surface_current_density) is RHS-only " *
-        "and does not define a rigorous observation-point incident electric field."
+        "and does not define a rigorous observation-point incident electric field. " *
+        "Use `compute_nearfield` for the scattered field, or import an electric field."
     )
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::PortExcitation, k)
     error(
         "compute_total_field: PortExcitation is an excitation-vector surrogate, not a " *
-        "pointwise incident-field model."
+        "pointwise incident-field model. Use `compute_nearfield` for the scattered field."
     )
 end
 
 function _validate_incident_electric_field_wavenumber(excitation::DeltaGapExcitation, k)
     error(
         "compute_total_field: DeltaGapExcitation is an excitation-vector surrogate, not a " *
-        "pointwise incident-field model."
+        "pointwise incident-field model. Use `compute_nearfield` for the scattered field."
     )
 end
 
@@ -2558,7 +2565,11 @@ function _validate_incident_electric_field_wavenumber(excitation::MultiExcitatio
 end
 
 function _incident_electric_field(excitation::AbstractExcitation, r::Vec3, k)
-    error("compute_total_field: incident-field evaluation is not implemented for $(typeof(excitation)).")
+    error(
+        "compute_total_field: $(typeof(excitation)) does not support " *
+        "observation-point incident-field evaluation. Use `compute_nearfield` " *
+        "for the scattered field, or pass an excitation documented as " *
+        "total-field compatible.")
 end
 
 function _incident_electric_field(excitation::PlaneWaveExcitation, r::Vec3, k)
@@ -2588,21 +2599,22 @@ function _incident_electric_field(excitation::ImportedExcitation, r::Vec3, k)
     end
     error(
         "compute_total_field: ImportedExcitation(kind=:surface_current_density) is RHS-only " *
-        "and does not define a rigorous observation-point incident electric field."
+        "and does not define a rigorous observation-point incident electric field. " *
+        "Use `compute_nearfield` for the scattered field, or import an electric field."
     )
 end
 
 function _incident_electric_field(excitation::PortExcitation, r::Vec3, k)
     error(
         "compute_total_field: PortExcitation is an excitation-vector surrogate, not a " *
-        "pointwise incident-field model."
+        "pointwise incident-field model. Use `compute_nearfield` for the scattered field."
     )
 end
 
 function _incident_electric_field(excitation::DeltaGapExcitation, r::Vec3, k)
     error(
         "compute_total_field: DeltaGapExcitation is an excitation-vector surrogate, not a " *
-        "pointwise incident-field model."
+        "pointwise incident-field model. Use `compute_nearfield` for the scattered field."
     )
 end
 

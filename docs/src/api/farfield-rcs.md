@@ -1,732 +1,208 @@
-# API: Fields and RCS
+# Fields, Q objectives, and RCS API
 
-## Purpose
+This page connects solved RWG coefficients to near fields, far fields,
+quadratic objectives, power diagnostics, and radar cross section. Exact
+signatures and defaults are rendered from the source under
+[Optimization docstrings](exported-optimization.md) and
+[Postprocessing docstrings](exported-postprocessing.md).
 
-Reference for scattered near-field evaluation, total electric field evaluation, far-field radiation pattern computation, objective matrix construction (Q-matrices), power diagnostics, and radar cross section (RCS) calculation. These functions transform MoM surface currents into observable quantities: local electric fields, radiation patterns, radiated power, directivity, and scattering cross sections.
+For the complete data flow and conventions, see
+[Far field, Q objectives, and RCS](../package-basics/03-farfield-q-rcs.md).
 
-For an analytical near-/total-field benchmark, see [validation/06-near-total-field-rayleigh-sphere.md](../validation/06-near-total-field-rayleigh-sphere.md).
+## Spherical sampling and radiation vectors
 
----
+```julia
+using DiffMoM
 
-## Spherical Sampling
-
-### `make_sph_grid(Ntheta, Nphi; max_points=2_100_000, max_raw_bytes=134_400_000)`
-
-Create a spherical sampling grid using a uniform midpoint rule in theta and phi, with quadrature weights `w = sin(theta) * d_theta * d_phi`.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `Ntheta` | `Int` | -- | Number of theta (polar angle) samples. More samples = finer angular resolution in the elevation plane. |
-| `Nphi` | `Int` | -- | Number of phi (azimuthal angle) samples. More samples = finer resolution in the azimuthal plane. |
-| `max_points` | `Int` | `2_100_000` | Maximum accepted angular point count, checked before allocation. |
-| `max_raw_bytes` | `Int` | `134_400_000` | Maximum raw payload for `rhat`, `theta`, `phi`, and `w`, checked before allocation. |
-
-**Returns:** `SphGrid` with fields `rhat`, `theta`, `phi`, `w` (see [types.md](types.md)).
-
-**Total directions:** `N_omega = Ntheta * Nphi`. The grid uses midpoint sampling: `theta = (it - 0.5) * d_theta`, `phi = (ip - 0.5) * d_phi`.
-
-Both sample counts must be positive.
-
-**Choosing resolution:**
-
-| Resolution | `Ntheta` | `Nphi` | Total | Use case |
-|-----------|----------|--------|-------|----------|
-| Coarse (5 deg / 10 deg) | 36 | 36 | 1,296 | Quick estimates, optimization inner loop |
-| Medium (2 deg / 5 deg) | 90 | 72 | 6,480 | Standard RCS and pattern computation |
-| Fine (1 deg / 5 deg) | 180 | 72 | 12,960 | Publication-quality patterns, Mie validation |
-
----
-
-## Radiation Operators
-
-### `radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=376.730313668, max_output_bytes=2_000_000_000, max_work_bytes=536_870_912, max_terms=200_000_000, max_exact_work=2_000_000)`
-
-Compute the per-basis radiation vectors `g_n(r_hat_q)` for all N basis functions at all N_omega grid directions. This is the far-field "transfer matrix": it maps surface current coefficients to far-field amplitudes.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `mesh` | `TriMesh` | -- | Triangle mesh. |
-| `rwg` | `RWGData` | -- | RWG basis data. |
-| `grid` | `SphGrid` | -- | Spherical sampling grid from `make_sph_grid`. |
-| `k` | Real or Complex | -- | Wavenumber (rad/m). |
-| `quad_order` | `Int` | `3` | Quadrature order on reference triangle. |
-| `eta0` | `Real` | `376.730313668` | Free-space impedance (Ohm). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned dense radiation-vector matrix, checked before quadrature caches or output allocation. |
-| `max_work_bytes` | `Integer` | `536_870_912` | Maximum combined raw payload of the output, quadrature cache, and direction workspace. |
-| `max_terms` | `Integer` | `200_000_000` | Maximum basis/support/quadrature/direction terms evaluated by the direct assembly. |
-| `max_exact_work` | `Integer` | `2_000_000` | Maximum precision-weighted term count when exceptional scale or geometry requires BigFloat accumulation. |
-
-**Returns:** `Matrix{ComplexF64}` `G_mat` of size `(3*N_omega, N)`.
-
-**Layout:** `G_mat[(3*(q-1)+1):(3*q), n]` is the 3D far-field vector `g_n(r_hat_q)` for basis `n` at direction `q`.
-
-**Formula:**
-
-```
-g_n(r_hat) = (i*k*eta0) / (4*pi) * r_hat x [r_hat x integral{ f_n(r') exp(ik r_hat . r') dS' }]
+grid = make_sph_grid(36, 72)
+G = radiation_vectors(
+    mesh,
+    rwg,
+    grid,
+    k;
+    quad_order=3,
+)
+E_ff = compute_farfield(G, current, length(grid.w))
 ```
 
-The double cross product extracts the transverse (radiating) component of the far field.
+For $N$ RWG coefficients and $N_\Omega$ directions:
 
-**Performance:** Computing `G_mat` is O(N * N_omega * Nq). For N = 500 and N_omega = 6480, this takes a few seconds.
+- `grid.rhat` has shape `(3, N_omega)`;
+- `G` has shape `(3 * N_omega, N)`; and
+- `E_ff` has shape `(3, N_omega)`.
 
----
+`make_sph_grid` stores midpoint samples rather than the polar and azimuthal
+endpoints. Label a cut with its stored angle. Its point-count and raw-payload
+limits are checked before allocation.
 
-### `compute_farfield(G_mat, I_coeffs, N_omega)`
-
-Compute the far-field pattern `E_inf(r_hat_q) = sum_n I_n * g_n(r_hat_q)` at all grid points.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `G_mat` | `Matrix{ComplexF64}` | Radiation-vector matrix from `radiation_vectors`. |
-| `I_coeffs` | `Vector{ComplexF64}` | MoM current coefficients from the forward solve. |
-| `N_omega` | `Int` | Number of grid directions (must match `size(G_mat, 1) / 3`). |
-
-**Returns:** `Matrix{ComplexF64}` of shape `(3, N_omega)` containing far-field electric-field phasors `E_inf(r_hat_q)`.
-
-`N_omega` must be positive, `G_mat` must have exactly `3*N_omega` rows, and the current-vector length must equal the number of columns in `G_mat`.
-
----
-
-### `incident_farfield(excitation, r_hat, k)`
-
-Asymptotic amplitude of the incident electric field radiated by `excitation` in direction `r_hat`, such that
-
-```
-E_inc(r * r_hat) ~ incident_farfield(excitation, r_hat, k) * exp(-ik r) / r   as r -> infinity
-```
-
-Summed with `compute_farfield` (the scattered contribution from the solved currents) this gives the **total** far-field pattern of a finite scatterer illuminated by a point-like source.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `excitation` | `AbstractExcitation` | Source model (see supported types below). |
-| `r_hat` | `Vec3` | Observation direction (normalized internally). |
-| `k` | `Real` | Wavenumber (rad/m). |
-
-**Returns:** `CVec3` (the complex far-field amplitude vector `E_inc^inf(r_hat)`).
-
-**Supported excitation models:**
-
-- `MonopoleExcitation`
-- `DipoleExcitation` (`type = :electric` or `:magnetic`)
-- `LoopExcitation` (treated as an equivalent magnetic dipole)
-- `PatternFeedExcitation` (tabulated far-field; requires positive frequency)
-- `MultiExcitation` composed of the supported models above (amplitudes summed with their weights)
-
-**Not supported:**
-
-- `PlaneWaveExcitation` -- a plane wave has no `1/r` decay, so its "far-field" contribution is a delta function in the incident direction, not a radiation pattern. Calling `incident_farfield` on any unsupported `AbstractExcitation` raises an error.
-
----
-
-## Near-Field Evaluation
-
-### `compute_nearfield(mesh, rwg, I_coeffs, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing, max_work_bytes=536_870_912, max_interaction_terms=200_000_000)`
-
-Compute the scattered electric field at arbitrary observation points from the
-solved RWG current coefficients.
-
-**Supported observation-point inputs:**
-
-- A single `Vec3` point
-- A `Vector{Vec3}` of points
-- A real matrix of size `(3, Nobs)`
-
-**Returns:**
-
-- Single-point input: `CVec3`
-- Multi-point input: `Matrix{ComplexF64}` of size `(3, Nobs)`
-
-`max_work_bytes` bounds the raw payload of the output and retained
-construction workspaces. `max_interaction_terms` bounds the direct
-`Nobs * Ntriangles * Nquadrature` evaluation work. Both limits are checked
-before the geometry and field workspaces are built.
-
-**Formula:**
+`radiation_vectors` returns the asymptotic amplitude used in
 
 ```math
-\mathbf E^{\mathrm{sca}}(\mathbf r)
-=
--i k \eta_0 \int_\Gamma \mathbf J(\mathbf r') G(\mathbf r,\mathbf r')\, dS'
--i \frac{\eta_0}{k} \int_\Gamma \big(\nabla'\cdot\mathbf J(\mathbf r')\big)\, \nabla G(\mathbf r,\mathbf r')\, dS'.
+\mathbf E^{\mathrm{sca}}(R\hat{\mathbf r})
+\sim \frac{e^{-ikR}}{R}\mathbf E_\infty(\hat{\mathbf r}).
 ```
 
-This is the mixed-potential scattered-field representation consistent with the
-package's `exp(+i\omega t)` convention and the EFIE assembly sign convention.
+The radiation matrix is dense. Its raw `ComplexF64` payload is
+$16(3N_\Omega)N$ bytes, before quadrature caches and workspace. The API exposes
+limits for output bytes, total work bytes, interaction terms, and exceptional
+high-precision work.
 
-**Important limitations:**
+## Incident-source far field
 
-- Observation points on the surface are rejected when `check_surface=true`.
-- Off-surface points close to a source triangle automatically use
-  singularity-subtracted quadrature: the vector `1/R` and scalar-gradient
-  `1/R^2` terms are removed analytically or semi-analytically, and
-  `quad_order` controls the remaining smooth integrals.
-- On-surface evaluation is not supported, even when `check_surface=false`.
+`incident_farfield(source, direction, k)` returns the asymptotic incident-field
+amplitude for finite radiating sources. Supported sources are monopoles,
+electric or magnetic dipoles, loops, pattern feeds, and weighted combinations
+of those models.
 
-**Example:**
+A plane wave has no decaying $1/R$ radiation amplitude, so this function
+rejects it. Ports, delta gaps, and imported local RHS models are also outside
+this API.
+
+## Near and total electric fields
+
+`compute_nearfield` evaluates the scattered electric field from the solved RWG
+coefficients. `compute_total_field` adds a pointwise incident field from the
+same excitation model used to assemble the right-hand side.
 
 ```julia
-mesh = make_rect_plate(0.1, 0.1, 6, 6)
-rwg = build_rwg(mesh)
-k = 2pi / 0.1
-Z = assemble_Z_efie(mesh, rwg, k)
-v = assemble_v_plane_wave(mesh, rwg, Vec3(0, 0, -k), 1.0, Vec3(1, 0, 0))
-I = Z \ v
+points = [
+    Vec3(0.0, 0.0, 0.15),
+    Vec3(0.02, 0.0, 0.18),
+]
 
-obs = [Vec3(0.0, 0.0, 0.2), Vec3(0.02, 0.01, 0.25)]
-E_nf = compute_nearfield(mesh, rwg, I, obs, k)
+E_sca = compute_nearfield(mesh, rwg, current, points, k)
+E_total = compute_total_field(
+    mesh,
+    rwg,
+    current,
+    excitation,
+    points,
+    k,
+)
 ```
 
----
+Accepted observation inputs are one `Vec3`, a vector of `Vec3` values, or a
+real matrix of shape `(3, Nobs)`. One point returns `CVec3`; multiple points
+return a `(3, Nobs)` `Matrix{ComplexF64}`.
 
-### `compute_total_field(mesh, rwg, I_coeffs, excitation, observation_points, k; quad_order=3, eta0=376.730313668, check_surface=true, surface_tol=nothing, max_work_bytes=536_870_912, max_interaction_terms=200_000_000, max_exact_work=20_000_000)`
+Pointwise total-field evaluation supports plane waves, dipoles, loops,
+monopoles, pattern feeds, electric-field imports, and weighted combinations in
+which every child supports the operation. It rejects ports, delta gaps, and
+surface-current-density imports because those models define a right-hand side,
+not an incident electric field at an arbitrary observation point.
 
-Compute the total electric field at arbitrary observation points:
+On-surface evaluation is unsupported. With surface checks active, observation
+points on the mesh are rejected. Nearby off-surface points use the package's
+singularity-subtracted quadrature. Work-byte, interaction-count, and
+exceptional-precision limits bound the direct evaluation.
+
+## Dense and matrix-free Q objectives
+
+For a polarization matrix `pol` and optional direction mask, the package uses
 
 ```math
-\mathbf E^{\mathrm{tot}}(\mathbf r) =
-\mathbf E^{\mathrm{inc}}(\mathbf r) + \mathbf E^{\mathrm{sca}}(\mathbf r).
+Q=G^\dagger W G,
+\qquad
+J=I^\dagger QI,
 ```
 
-The scattered term `E_sca` is the same mixed-potential EFIE field used by
-`compute_nearfield`, while `E_inc` is evaluated pointwise from the supplied
-excitation model.
-
-**Supported observation-point inputs:**
-
-- A single `Vec3` point
-- A `Vector{Vec3}` of points
-- A real matrix of size `(3, Nobs)`
-
-**Returns:**
-
-- Single-point input: `CVec3`
-- Multi-point input: `Matrix{ComplexF64}` of size `(3, Nobs)`
-
-The near-field `max_work_bytes` and `max_interaction_terms` limits are applied
-to the scattered-field stage. `max_exact_work` bounds precision-weighted work
-when a nearly cancelled incident/scattered component must be accumulated as a
-single high-precision expression.
-
-**Supported excitation models:**
-
-- `PlaneWaveExcitation`
-- `DipoleExcitation`
-- `LoopExcitation`
-- `PatternFeedExcitation`
-- `ImportedExcitation(kind=:electric_field)`
-- `MultiExcitation` composed only of the supported pointwise incident-field models above
-
-**Not supported in v1:**
-
-- `PortExcitation`
-- `DeltaGapExcitation`
-- `ImportedExcitation(kind=:surface_current_density)`
-
-These excluded source types currently define excitation-vector or local RHS
-models, not rigorous observation-point incident electric fields.
-
-**Important limitations:**
-
-- Observation points on the surface are rejected when `check_surface=true`.
-- Off-surface scattered-field samples close to a source triangle automatically
-  use the same singularity-subtracted quadrature as `compute_nearfield`.
-- On-surface evaluation is not supported, even when `check_surface=false`.
-- For analytic source models, the supplied `k` must match the excitation's own
-  free-space wavenumber.
-
-**Example:**
+where the projection onto `pol[:, q]` is included in the per-direction rows of
+the product.
 
 ```julia
-mesh = make_rect_plate(0.1, 0.1, 6, 6)
-rwg = build_rwg(mesh)
-k = 2pi / 0.1
-pw = make_plane_wave(Vec3(0, 0, -k), 1.0, Vec3(1, 0, 0))
-Z = assemble_Z_efie(mesh, rwg, k)
-v = assemble_excitation(mesh, rwg, pw)
-I = Z \ v
-
-obs = [Vec3(0.0, 0.0, 0.2), Vec3(0.02, 0.01, 0.25)]
-E_tot = compute_total_field(mesh, rwg, I, pw, obs, k)
-```
-
----
-
-## Q-Matrix Helpers
-
-The Q-matrix formulation converts far-field pattern objectives into quadratic forms `J = Re(I' Q I)`, which are differentiable via the adjoint method. This is the bridge between far-field pattern shaping and gradient-based optimization.
-
-### `pol_linear_x(grid)`
-
-Generate x-polarized far-field polarization vectors. At each direction `(theta, phi)`, the polarization vector is `theta_hat(theta, phi)`, which corresponds to x-polarized radiation for broadside (+z direction) observation.
-
-**Parameters:** `grid::SphGrid`
-
-**Returns:** `Matrix{ComplexF64}` of shape `(3, N_omega)`.
-
----
-
-### `pol_linear_y(grid)`
-
-Generate the orthogonal far-field polarization vectors. At each direction
-`(theta, phi)`, the polarization vector is `phi_hat(theta, phi)`, which
-corresponds to y-polarized broadside radiation and the TE/s-polarized basis for
-the common `phi = 0` incidence plane in periodic workflows.
-
-**Parameters:** `grid::SphGrid`
-
-**Returns:** `Matrix{ComplexF64}` of shape `(3, N_omega)`.
-
----
-
-### `cap_mask(grid; theta_max=pi/18)`
-
-Create a boolean mask selecting directions within a cone of half-angle `theta_max` around the z-axis (broadside). This defines the "target region" for directivity optimization.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `grid` | `SphGrid` | -- | Spherical grid. |
-| `theta_max` | `Real` | `pi/18` (~10 deg) | Maximum polar angle of the cone (radians). Larger values = wider target region = easier optimization but lower peak directivity. |
-
-**Returns:** `BitVector` of length `N_omega` with `true` for directions where `theta <= theta_max`.
-
-`theta_max` must be finite and lie in `[0, pi]`.
-
-**Typical values:**
-- `pi/36` (5 deg): Tight pencil beam.
-- `pi/18` (10 deg): Standard broadside target.
-- `pi/6` (30 deg): Wide beam.
-
----
-
-### `direction_mask(grid, direction; half_angle=pi/18)`
-
-Create a boolean mask selecting directions within a cone of `half_angle` (radians) around an arbitrary `direction` vector. This generalizes `cap_mask` (which is fixed to the +z axis) to any direction, enabling backscatter masks for arbitrary incidence angles in multi-angle RCS optimization.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `grid` | `SphGrid` | -- | Spherical grid. |
-| `direction` | `Vec3` | -- | Center direction of the cone (automatically normalized). |
-| `half_angle` | `Real` | `pi/18` (~10 deg) | Half-angle of the selection cone in radians. |
-
-**Returns:** `BitVector` of length `N_omega` with `true` for directions where `dot(rhat_q, direction/|direction|) >= cos(half_angle)`.
-
-`direction` must be finite and nonzero, and `half_angle` must be finite and lie in `[0, pi]`.
-
-**Relationship to `cap_mask`:**
-
-- `cap_mask(grid; theta_max=alpha)` selects directions near +z: equivalent to `direction_mask(grid, Vec3(0,0,1); half_angle=alpha)`.
-- `direction_mask` is needed for multi-angle RCS optimization where backscatter masks must be centered on `-k_hat` for each incidence direction.
-
-**Example:**
-
-```julia
-grid = make_sph_grid(90, 36)
-
-# Backscatter mask for incidence from (theta=30deg, phi=0)
-k_hat = Vec3(sin(pi/6), 0.0, cos(pi/6))
-mask = direction_mask(grid, -k_hat; half_angle=10*pi/180)
-
-# Use with build_Q for backscatter objective
-Q_back = build_Q(G_mat, grid, pol; mask=mask)
-```
-
----
-
-### `build_Q(G_mat, grid, pol; mask=nothing, max_work_bytes=2_000_000_000)`
-
-Build the Hermitian positive-semidefinite matrix `Q` for the quadratic far-field objective `J = Re(I' Q I)`.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `G_mat` | `Matrix{ComplexF64}` | -- | Radiation-vector matrix `(3*N_omega, N)`. |
-| `grid` | `SphGrid` | -- | Spherical grid with quadrature weights. |
-| `pol` | `Matrix{ComplexF64}` | -- | `(3, N_omega)` polarization vectors (from `pol_linear_x` or custom). |
-| `mask` | `BitVector` or `nothing` | `nothing` | Optional mask selecting target directions. If `nothing`, all directions contribute. |
-| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum raw dense payload: `Q` plus the projection workspace on the ordinary path, or `Q` plus the copied mask chunks on the checked exceptional path. Use `build_Q_operator` when this limit is exceeded. |
-
-**Returns:** `Matrix{ComplexF64}` `Q` of size `N x N`, Hermitian PSD.
-
-**Mathematical definition:**
-
-```
-Q[m,n] = sum_q w_q * conj(p_q' . g_m(r_hat_q)) * (p_q' . g_n(r_hat_q))
-```
-
-where `p_q` is the polarization vector, `w_q` is the quadrature weight, and the sum runs over selected directions.
-
-**Building Q for optimization:**
-
-```julia
-grid = make_sph_grid(90, 36)
-G_mat = radiation_vectors(mesh, rwg, grid, k)
 pol = pol_linear_x(grid)
+mask = direction_mask(
+    grid,
+    Vec3(sind(30.0), 0.0, cosd(30.0));
+    half_angle=deg2rad(5.0),
+)
 
-# Q_total: all directions (proportional to total radiated power)
-Q_total = build_Q(G_mat, grid, pol)
+Q = build_Q(G, grid, pol; mask=mask)
+value = real(dot(current, Q * current))
 
-# Q_target: only broadside cone (power in desired region)
-mask = cap_mask(grid; theta_max=pi/18)
-Q_target = build_Q(G_mat, grid, pol; mask=mask)
-
-# Directivity ratio: J = (I' Q_target I) / (I' Q_total I)
+Q_operator = build_Q_operator(G, grid, pol; mask=mask)
+QI = apply_Q(G, grid, pol, current; mask=mask)
 ```
 
----
+Use:
 
-### `apply_Q(G_mat, grid, pol, I_coeffs; mask=nothing)`
+- `build_Q` when callers need the dense Hermitian matrix;
+- `build_Q_operator` when repeated products should avoid dense Q storage; and
+- `apply_Q` for a single product.
 
-Apply `Q * I` without forming `Q` explicitly (matrix-free). Useful when N is large and storing the N x N `Q` matrix is expensive.
+All three retain the supplied radiation matrix and polarization data. The
+dense builder also allocates projected and weighted-projected work matrices and
+the final Q matrix; its work limit accounts for all three.
 
-**Parameters:** Same as `build_Q` plus `I_coeffs::Vector{ComplexF64}`.
+For ordinary finite inputs, dense construction uses a BLAS matrix product.
+Entries whose value is small relative to a Cauchy--Schwarz norm bound are
+recomputed with compensated summation. Exceptional non-finite or
+range-sensitive inputs use the bounded high-precision path. The lower triangle
+is copied as the exact conjugate of the upper triangle.
 
-**Returns:** `Vector{ComplexF64}` `Q * I` of length `N`.
+`FarFieldQMatrix` implements `AbstractMatrix{ComplexF64}`, indexed access,
+`mul!`, and a lock-protected reusable workspace.
+`SumQMatrix` represents the lazy sum of two same-size Q operators.
 
----
+`pol_linear_x` and `pol_linear_y` return the spherical $\hat\theta$ and
+$\hat\phi$ projections used by the package. `cap_mask` selects a cone about
+positive z; `direction_mask` accepts and normalizes any finite nonzero target
+direction.
 
-### `build_Q_operator(G_mat, grid, pol; mask=nothing)`
-
-Build a matrix-free far-field objective operator with the same action as `build_Q(G_mat, grid, pol; mask)`, but without forming the dense `N x N` matrix. Returns a [`FarFieldQMatrix`](#FarFieldQMatrix) that supports `mul!` (and `getindex`) so it can be used wherever a `Q` operator is expected.
-
-**Parameters:** Same as `build_Q`.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `G_mat` | `Matrix{ComplexF64}` | Radiation-vector matrix `(3*N_omega, N)`. |
-| `grid` | `SphGrid` | Spherical grid with quadrature weights. |
-| `pol` | `Matrix{ComplexF64}` | `(3, N_omega)` polarization vectors. |
-| `mask` | `BitVector` or `nothing` | Optional mask selecting target directions. Copied into the operator. |
-
-**Returns:** `FarFieldQMatrix` (see below).
-
-**Validation:** `build_Q`, `apply_Q`, and `build_Q_operator` require consistent spherical-grid arrays, `3*N_omega` rows in `G_mat`, a `3 x N_omega` polarization matrix, and exactly `N_omega` mask entries. `apply_Q` also requires one current coefficient per column of `G_mat`. Shape mismatches throw `DimensionMismatch`.
-
----
-
-### `FarFieldQMatrix`
-
-Matrix-free representation of the Hermitian far-field objective matrix `Q = G' W G`. It stores the radiation-vector matrix and applies `Q * x` without forming the dense `N x N` matrix. Construct one with `build_Q_operator`.
-
-`FarFieldQMatrix <: AbstractMatrix{ComplexF64}`.
-
-**Fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `G_mat` | `Matrix{ComplexF64}` | Radiation-vector matrix `(3*N_omega, N)`. |
-| `weights` | `Vector{Float64}` | Quadrature weights (copied from `grid.w`). |
-| `pol` | `Matrix{ComplexF64}` | `(3, N_omega)` polarization vectors. |
-| `mask` | `Union{Nothing,BitVector}` | Optional direction mask. |
-| `N` | `Int` | Operator dimension (`N x N`). |
-
-`size(Q)` is `(N, N)` and `eltype(Q)` is `ComplexF64`. The matrix-free product is exposed through `LinearAlgebra.mul!(result, Q, x)`; individual entries are also available via `Q[m, n]`.
-
-**Example (matrix-free objective):**
+## Power and conditioning diagnostics
 
 ```julia
-using LinearAlgebra
-
-grid = make_sph_grid(90, 36)
-G_mat = radiation_vectors(mesh, rwg, grid, k)
-pol = pol_linear_x(grid)
-
-Q = build_Q_operator(G_mat, grid, pol)   # FarFieldQMatrix
-
-QI = similar(I)
-mul!(QI, Q, I)         # Q * I without forming Q
-J = real(dot(I, QI))   # J = Re(I' Q I)
+P_rad = radiated_power(E_ff, grid)
+P_in = input_power(current, rhs)
+ratio = energy_ratio(current, rhs, E_ff, grid)
+projected = projected_power(E_ff, grid, pol; mask=mask)
+condition = condition_diagnostics(Z)
 ```
 
----
+`radiated_power` includes the $1/(2\eta_0)$ factor. `projected_power` is the
+weighted polarization projection used by Q objectives and omits that factor.
+Compare it with `real(dot(current, Q * current))`, not directly with radiated
+power in watts.
 
-### `SumQMatrix`
+For a lossless PEC benchmark, power ratio should approach one under mesh,
+triangle-quadrature, and spherical-grid refinement. A resistive surface can
+absorb power, so it needs a model-specific gate.
 
-Lazy sum of two `Q` operators, `Q = A + B`, evaluated matrix-free. Used to combine far-field objectives (for example, a target-region `Q` and a regularization or total-power `Q`) without materializing the sum.
+## Radar cross section
 
-`SumQMatrix{A,B} <: AbstractMatrix{ComplexF64}`, parameterized on the two summand matrix types (each `<: AbstractMatrix{ComplexF64}`).
-
-**Fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `A` | `AbstractMatrix{ComplexF64}` | First summand. |
-| `B` | `AbstractMatrix{ComplexF64}` | Second summand (must have the same size as `A`). |
-
-`size(Q)` equals `size(Q.A)`, `eltype(Q)` is `ComplexF64`, `Q[i, j] = A[i, j] + B[i, j]`, and `LinearAlgebra.mul!(result, Q, x)` computes `A*x + B*x`. The two summands must have matching sizes.
-
----
-
-## Diagnostics and RCS
-
-### `radiated_power(E_ff, grid; eta0=376.730313668)`
-
-Compute total radiated power by integrating the far-field pattern over the sphere:
-
-```
-P_rad = 1/(2*eta0) * integral{ |E_inf(r_hat)|^2 dOmega }
-      = 1/(2*eta0) * sum_q w_q * |E_inf(r_hat_q)|^2
-```
-
-**Parameters:**
-- `E_ff::Matrix{<:Number}`: Far-field matrix `(3, N_omega)` from `compute_farfield`.
-- `grid::SphGrid`: Spherical grid with weights.
-- `eta0::Float64=376.730313668`: Free-space impedance.
-
-**Returns:** `Float64` radiated power in watts.
-
-`E_ff` must have exactly shape `(3, N_omega)`, and `eta0` must be finite and positive.
-
----
-
-### `projected_power(E_ff, grid, pol; mask=nothing)`
-
-Compute polarization-projected angular power:
-
-```
-P = sum_q w_q * |p_q' . E_inf(r_hat_q)|^2
-```
-
-When `mask` is provided, only selected directions contribute. This is the discrete quantity represented by `Re(I' Q I)` when `Q` is constructed with the same `pol` and `mask`.
-
-**Parameters:**
-- `E_ff::Matrix{<:Number}`: Far-field matrix `(3, N_omega)`.
-- `grid::SphGrid`: Spherical grid.
-- `pol::AbstractMatrix{<:Complex}`: Polarization vectors `(3, N_omega)`.
-- `mask`: Optional direction mask.
-
-**Returns:** `Float64` projected power.
-
-The field and polarization matrices must both have exactly shape `(3, N_omega)`; an optional mask must have exactly `N_omega` entries.
-
----
-
-### `input_power(I, v)`
-
-Compute the power delivered to the structure from the excitation:
-
-```
-P_in = -1/2 * Re(I' * v)
-```
-
-For a PEC scatterer with `Z I = v`, this is the power extracted from the incident field by the induced currents. For a lossless structure, `P_in` should equal `P_rad` (energy conservation).
-
-**Parameters:**
-- `I::Vector{<:Number}`: Current coefficients.
-- `v::Vector{<:Number}`: Excitation vector.
-
-**Returns:** `Float64` input power in watts.
-
----
-
-### `energy_ratio(I, v, E_ff, grid; eta0=376.730313668)`
-
-Compute `P_rad / P_in` as an energy conservation diagnostic.
-
-**Interpretation:**
-- `P_rad / P_in ~ 1.0`: Energy is conserved (expected for lossless PEC).
-- `P_rad / P_in < 1.0`: Structure has ohmic loss (expected with `Re(Z_s) > 0`).
-- `P_rad / P_in > 1.0` or significantly != 1.0 for PEC: Indicates a numerical issue (insufficient mesh density, quadrature order, or far-field grid resolution).
-
-**Parameters:** `I`, `v`, `E_ff`, `grid`, `eta0` (same types as `radiated_power` and `input_power`).
-
-**Returns:** `Float64` energy ratio (dimensionless).
-
----
-
-### `condition_diagnostics(Z)`
-
-Return condition number and singular value extremes of the MoM matrix. Useful for diagnosing solver issues and understanding preconditioning needs.
-
-**Parameters:** `Z::Matrix{<:Number}`: System matrix.
-
-**Returns:** Named tuple `(cond, sv_max, sv_min)`:
-- `cond::Float64`: Condition number `sigma_max / sigma_min`. Values > 10^6 may indicate ill-conditioning.
-- `sv_max::Float64`: Largest singular value.
-- `sv_min::Float64`: Smallest singular value.
-
----
-
-### `bistatic_rcs(E_ff; E0=1.0)`
-
-Compute bistatic radar cross section from far-field amplitudes:
-
-```
-sigma(r_hat_q) = 4*pi * |E_inf(r_hat_q)|^2 / |E0|^2
-```
-
-**Parameters:**
-- `E_ff::Matrix{<:Number}`: Far-field matrix `(3, N_omega)`.
-- `E0::Real=1.0`: Finite, nonzero incident field amplitude (must match the amplitude used in excitation assembly).
-
-**Returns:** `Vector{Float64}` of length `N_omega` containing RCS values in m^2 (linear units, not dBsm).
-
-**To convert to dBsm:** `rcs_dBsm = 10 * log10.(rcs_linear)`
-
----
-
-### `backscatter_rcs(E_ff, grid, k_inc_hat; E0=1.0)`
-
-Return monostatic (backscatter) RCS for a given incidence direction. The backscatter direction is `-k_inc_hat`, mapped to the nearest sample on the spherical grid.
-
-**Parameters:**
-- `E_ff::Matrix{<:Number}`: Far-field matrix `(3, N_omega)`.
-- `grid::SphGrid`: Spherical grid.
-- `k_inc_hat::Vec3`: Finite, nonzero incident propagation direction (normalized internally).
-- `E0::Real=1.0`: Incident field amplitude.
-
-**Returns:** Named tuple `(sigma, index, theta, phi, angular_error_deg)`:
-- `sigma::Float64`: Backscatter RCS in m^2.
-- `index::Int`: Grid index of the nearest backscatter direction.
-- `theta`, `phi`: Spherical coordinates of that direction (radians).
-- `angular_error_deg`: Mismatch between `-k_inc_hat` and the nearest grid direction (degrees). Should be small (< 1 deg) for adequate grid resolution.
-
----
-
-## Excitation
-
-### `assemble_v_plane_wave(mesh, rwg, k_vec, E0, pol; quad_order=3)`
-
-Assemble the excitation vector for a plane wave. See [excitation.md](excitation.md) for the full excitation system.
-
-**Parameters:**
-- `mesh::TriMesh`, `rwg::RWGData`: Mesh and basis data.
-- `k_vec::Vec3`: Wave vector (wavevector, not unit direction).
-- `E0`: Amplitude of incident plane wave.
-- `pol::Vec3`: Polarization vector.
-- `quad_order::Int=3`: Quadrature order.
-
-**Returns:** `Vector{ComplexF64}` of length `N`.
-
----
-
-## Analytical Reference
-
-### `mie_s1s2_pec(x, mu; nmax=nothing)`
-
-Compute Mie scattering amplitudes `S1` and `S2` for a perfect-electric-conducting (PEC) sphere.
-
-**Parameters:**
-- `x::Float64`: Size parameter `x = k * a` (dimensionless, where `a` is sphere radius).
-- `mu::Float64`: Cosine of scattering angle `mu = cos(gamma)` where `gamma` is the angle between incident and observation directions.
-- `nmax=nothing`: Maximum order for Mie series. Auto-computed from `x` if not provided (uses Wiscombe's criterion).
-
-**Returns:** Tuple `(S1, S2)` of `ComplexF64` scattering amplitudes.
-
-**Note:** This is a low-level function. For RCS values, use `mie_bistatic_rcs_pec` instead.
-
----
-
-### `mie_bistatic_rcs_pec(k, a, k_inc_hat, pol_inc, rhat; nmax=nothing)`
-
-Compute PEC-sphere bistatic RCS using Mie series. This provides an exact analytical reference for validating MoM results against theory.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `k` | `Float64` | Wavenumber (rad/m). |
-| `a` | `Float64` | Sphere radius (meters). |
-| `k_inc_hat` | `Vec3` | Incident propagation direction (unit vector). |
-| `pol_inc` | `Vec3` | Incident polarization (unit vector, must be orthogonal to `k_inc_hat`). |
-| `rhat` | `Vec3` | Observation direction (unit vector). |
-| `nmax` | `Nothing` or `Int` | Maximum Mie series order. Auto-computed if `nothing`; an underflowed exact `k*a` uses order 3. If `k*a` overflows `Float64`, an explicit bounded order is required. Exceptional products use a precision- and work-bounded exact fallback. |
-
-**Returns:** `Float64` RCS value in m^2.
-
-**Validation workflow:**
 ```julia
-# MoM RCS
-rcs_mom = bistatic_rcs(E_ff; E0=1.0)
-
-# Mie reference (same directions)
-rcs_mie = [mie_bistatic_rcs_pec(k, a, k_inc_hat, pol, grid.rhat[:, q])
-           for q in 1:length(grid.w)]
-
-# Compare
-rel_error = abs.(rcs_mom .- rcs_mie) ./ max.(rcs_mie, 1e-30)
+sigma = bistatic_rcs(E_ff; E0=1.0)
+back = backscatter_rcs(E_ff, grid, incident_direction; E0=1.0)
 ```
 
----
+`bistatic_rcs` returns one linear RCS value per stored direction.
+`backscatter_rcs` accepts the incident propagation direction and returns the
+stored sample nearest its negative, including the selected angles and angular
+error. Refine the grid or use a separately evaluated direction when that error
+matters.
 
-### `mie_s1s2_dielectric(x, cosgamma, eps_r; mu_r=1.0+0im, nmax=nothing)`
+State the incident amplitude and any logarithmic floor when converting to
+dBsm. Retain linear values near pattern nulls.
 
-Compute Mie scattering amplitudes `S1` and `S2` for a homogeneous, isotropic dielectric (or magnetodielectric) sphere in vacuum. This is the dielectric counterpart of `mie_s1s2_pec`. The coefficients use outgoing spherical Hankel functions of the second kind, matching the package-wide `exp(+i omega t)` convention.
+## Analytical references
 
-**Parameters:**
+`mie_s1s2_pec` and `mie_bistatic_rcs_pec` provide the PEC-sphere reference.
+`mie_s1s2_dielectric` and `mie_bistatic_rcs_dielectric` cover homogeneous
+dielectric or magnetodielectric spheres. Their direction, polarization,
+material, truncation, and work-limit contracts are in the source docstrings.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `x` | `Float64` | -- | Exterior size parameter `x = k0 * a` (`k0` is the free-space wavenumber, `a` the sphere radius). |
-| `cosgamma` | `Float64` | -- | Cosine of the scattering angle `gamma` (angle between incident and observation directions). |
-| `eps_r` | (any, converted to `ComplexF64`) | -- | Relative permittivity (may be complex; must be nonzero). |
-| `mu_r` | (any, converted to `ComplexF64`) | `1.0 + 0im` | Relative permeability (must be nonzero). |
-| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed from the exterior size parameter `x` if `nothing`. |
+Run the repository PEC benchmark with:
 
-**Returns:** Tuple `(S1, S2)` of `ComplexF64` scattering amplitudes.
-
-**Note:** This is a low-level function. For RCS values, use `mie_bistatic_rcs_dielectric` instead.
-
----
-
-### `mie_bistatic_rcs_dielectric(k, a, k_inc_hat, pol_inc, rhat, eps_r; mu_r=1.0+0im, nmax=nothing)`
-
-Compute exact homogeneous-sphere bistatic RCS (linear units, m^2) from dielectric Mie theory. This is the dielectric counterpart of `mie_bistatic_rcs_pec`; the exterior medium is vacuum.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `k` | `Float64` | -- | Wavenumber (rad/m). Must be positive. |
-| `a` | `Float64` | -- | Sphere radius (meters). Must be positive. |
-| `k_inc_hat` | `Vec3` | -- | Incident propagation direction (normalized internally). |
-| `pol_inc` | `Vec3` | -- | Incident polarization (normalized internally; must be orthogonal to `k_inc_hat`). |
-| `rhat` | `Vec3` | -- | Observation direction (normalized internally). |
-| `eps_r` | (any, converted to `ComplexF64`) | -- | Relative permittivity (may be complex). |
-| `mu_r` | (any, converted to `ComplexF64`) | `1.0 + 0im` | Relative permeability. |
-| `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie series order. Auto-computed if `nothing`; an underflowed exact `k*a` uses order 3. If `k*a` overflows `Float64`, an explicit bounded order is required. Exceptional products use a precision- and work-bounded exact fallback. |
-
-**Returns:** `Float64` RCS value in m^2.
-
-**Validation workflow:**
-```julia
-eps_r = 4.0 + 0im
-
-# Dielectric Mie reference over all grid directions
-rcs_mie = [mie_bistatic_rcs_dielectric(k, a, k_inc_hat, pol, grid.rhat[:, q], eps_r)
-           for q in 1:length(grid.w)]
+```bash
+julia --project=. --startup-file=no validation/mie/validate_mie_rcs.jl
 ```
 
----
+## Source map
 
-## Code Mapping
-
-| File | Contents |
-|------|----------|
-| `src/postprocessing/FarField.jl` | `make_sph_grid`, `radiation_vectors`, `compute_farfield`, `incident_farfield` |
-| `src/optimization/QMatrix.jl` | `build_Q`, `build_Q_operator`, `apply_Q`, `FarFieldQMatrix`, `SumQMatrix`, `pol_linear_x`, `pol_linear_y`, `cap_mask`, `direction_mask` |
-| `src/postprocessing/Diagnostics.jl` | `radiated_power`, `projected_power`, `input_power`, `energy_ratio`, `condition_diagnostics`, `bistatic_rcs`, `backscatter_rcs` |
-| `src/assembly/Excitation.jl` | `assemble_v_plane_wave` |
-| `src/postprocessing/Mie.jl` | `mie_s1s2_pec`, `mie_bistatic_rcs_pec`, `mie_s1s2_dielectric`, `mie_bistatic_rcs_dielectric` |
-
----
-
-## Exercises
-
-- **Basic:** Compute `energy_ratio` for a PEC plate scattering problem. Verify it is close to 1.0.
-- **Practical:** Compute bistatic RCS for a PEC sphere (ka = 1) and overlay with `mie_bistatic_rcs_pec`. Quantify the maximum relative error.
-- **Challenge:** Build `Q_target` and `Q_total` for different `theta_max` cone angles (5, 10, 20, 30 degrees). For each, compute the directivity ratio `(I' Q_target I) / (I' Q_total I)` and plot directivity vs cone angle.
+| Area | Source |
+|:--|:--|
+| Spherical grids, radiation vectors, and incident far fields | `src/postprocessing/FarField.jl` |
+| Scattered and total fields | `src/postprocessing/NearField.jl` |
+| Power, conditioning, and RCS | `src/postprocessing/Diagnostics.jl` |
+| Dense and matrix-free Q operators | `src/optimization/QMatrix.jl` |
+| Mie references | `src/postprocessing/Mie.jl` |

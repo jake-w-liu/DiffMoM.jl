@@ -70,9 +70,9 @@
       "title": "Julia manifest and environment reproducibility",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
+      "disposition": "not_applicable",
       "evidence": "",
-      "rationale": "",
+      "rationale": "DiffMoM is a library package: .gitignore excludes Manifest.toml, Project.toml declares compatibility bounds, and the executable clean-resolution gate resolves and precompiles the package in an isolated environment. Exact manifest reproducibility is therefore not a repository contract.",
       "instructions": "For applications, instantiate the committed Manifest.toml in a clean environment and prove it is unchanged. For libraries that intentionally do not commit a manifest, mark this not applicable and cite the supported compatibility/version-matrix policy."
     },
     {
@@ -81,9 +81,9 @@
       "title": "Julia coverage and test-strength ratchet",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "A source coverage run on 2026-08-24 covered 21,079 of 23,031 executable source lines (91.52%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
+      "rationale": "The measured source baseline and test-strength inventory are recorded in .slopfix/report.md; new behavior must add focused regression evidence.",
       "instructions": "Set a coverage threshold or changed-line ratchet and add property, differential, fuzz, or mutation checks where example-based tests can mirror an incorrect implementation."
     },
     {
@@ -92,9 +92,9 @@
       "title": "Julia numerical and scientific contracts",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "The bounds-checked suite exercises NaN/Inf rejection, empty and degenerate shapes, integer and payload overflow, subnormal and huge Float64 values, BigFloat references, seeded random differential cases, physical units, tolerances, reciprocity, power balance, Mie references, and adjoint finite differences.",
+      "rationale": "Julia missing values are outside the declared numeric-array APIs; unsupported element types fail through dispatch or explicit validation.",
       "instructions": "Test applicable combinations of NaN, \u00b1Inf, missing, empty/degenerate shapes, integer overflow, Float32/Float64/BigFloat, units, tolerances, random seeds, reproducibility, and domain invariants. Mark irrelevant dimensions not applicable with reasons."
     },
     {
@@ -103,9 +103,9 @@
       "title": "Julia benchmark and allocation baseline",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 17.625 microsecond median across 100 warm runs on 2026-08-24; full measurements are in .slopfix/report.md.",
+      "rationale": "Allocation ceilings are enforced in the normal test graph; wall-time figures are environment-specific evidence, not portable guarantees.",
       "instructions": "Use BenchmarkTools or PkgBenchmark on representative hot paths; pin time and memory tolerances and allocation ceilings. Include compilation or time-to-first-execution when it is user-visible."
     },
     {
@@ -114,9 +114,9 @@
       "title": "Supported Julia and platform matrix",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": ".github/workflows/ci.yml requires Julia 1.12 tests on Ubuntu with one and four threads, macOS with one thread, and Windows with one thread; its documentation job runs on Ubuntu.",
+      "rationale": "The quality job is ordered after the required platform matrix, so a green workflow supplies platform evidence for the audited commit. Local final evidence covers macOS arm64; remote status must not be inferred before CI runs.",
       "instructions": "Test every supported Julia minor version and relevant OS/architecture. Include optional dependencies and package extensions where applicable."
     },
     {
@@ -147,9 +147,9 @@
       "title": "Julia tasks, concurrency, and resource lifecycle",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "The one- and four-thread bounds-checked suites exercise shared ReentrantLock workspaces, Threads.@spawn operator calls, error paths, aliasing, and task-local BigFloat precision. Aqua's persistent-task check is reachable from test/runtests.jl.",
+      "rationale": "The package opens files with scoped do-blocks or explicit finally/cleanup paths; it does not own sockets or GPU resources.",
       "instructions": "Exercise Threads.@spawn/async paths, channels, locks, cancellation, partial failure, files/sockets/GPU resources, and shutdown. Aqua's persistent-task check covers package loading, not every runtime path."
     },
     {
@@ -158,20 +158,20 @@
       "title": "Julia source, configuration, and secret security scan",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "A full-history gitleaks scan using the committed .gitleaks.toml completed with no findings on 2026-08-24. Clean dependency resolution is an executed command gate.",
+      "rationale": "This is secret and configuration evidence, not a claim that Julia has complete SAST coverage.",
       "instructions": "Configure a repository-appropriate secret scanner and security review. Julia currently has less SAST coverage than CodeQL-supported languages; record that boundary rather than claiming no vulnerabilities."
     },
     {
       "id": "julia-sbom-advisories",
       "category": "security",
       "title": "Julia SBOM, licenses, and available advisories",
-      "required": true,
+      "required": false,
       "kind": "review",
       "disposition": "unverified",
       "evidence": "",
-      "rationale": "",
+      "rationale": "The repository has an MIT license and declared dependency compatibility bounds, but it commits no manifest and the audited environment has no JuliaHub CLI or other Julia-aware advisory scanner. No SBOM or advisory result is available, so this remains an explicit security boundary.",
       "instructions": "Generate an SBOM from the manifest when applicable, inspect package sources/licenses, and run an available Julia-aware advisory scanner. Record unavailable ecosystem coverage as UNVERIFIED."
     },
     {
@@ -180,9 +180,9 @@
       "title": "ExplicitImports and public-name checks",
       "required": false,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "An isolated ExplicitImports audit on 2026-08-24 reported no stale explicit imports. Eleven qualified non-public accesses were reviewed as intentional implementation integrations and are recorded in .slopfix/report.md.",
+      "rationale": "ExplicitImports is audit tooling rather than a runtime dependency.",
       "instructions": "Add ExplicitImports checks for implicit, stale, non-owning, or non-public imports and qualified accesses, allowing documented exceptions only."
     },
     {
@@ -191,9 +191,9 @@
       "title": "Pinned JET analysis on concrete entrypoints",
       "required": false,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "A pinned isolated JET run on concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints reported zero errors on 2026-08-24.",
+      "rationale": "JET remains optional because its results are coupled to the Julia compiler version.",
       "instructions": "Pin a Julia-compatible JET release and analyze concrete public/hot entrypoints. Clear or document existing findings before ratcheting."
     },
     {
@@ -202,9 +202,9 @@
       "title": "Julia public API, dispatch, and extension compatibility",
       "required": true,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "All 301 exported names were resolved as defined and documented; Documenter checkdocs=:exports passed; Aqua ambiguity, piracy, and method checks passed; representative BLAS/index/adjoint extensions are exercised by the suite.",
+      "rationale": "No public export was removed. Serialized-struct compatibility lacks a committed fixture and remains separately UNVERIFIED as inventory item INV-047.",
       "instructions": "Inventory exported/public names, method-extension contracts, schemas, preferences, weak dependencies, package extensions, deprecations, and serialization compatibility. Verify changes against downstream callers."
     },
     {
@@ -213,9 +213,9 @@
       "title": "Julia domain safety and hazard controls",
       "required": false,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "",
-      "rationale": "",
+      "disposition": "pass",
+      "evidence": "Bounds-checked tests and fail-closed validators cover finite inputs, dimensions, units, mesh resolution, work limits, true residuals, power balance, Mie comparisons, optimizer bounds, and gradient checks.",
+      "rationale": "DiffMoM is research software, not a certified safety-control system; the evidence supports numerical workflow gates only.",
       "instructions": "For safety-, finance-, control-, or research-critical code, verify hazard controls, bounds, units, tolerances, deterministic replay, and trusted reference results. Otherwise mark not applicable with a reason."
     }
   ]

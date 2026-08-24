@@ -16,6 +16,11 @@ using .DiffMoM
 using LinearAlgebra
 using Statistics
 
+const MIE_EXAMPLE_MAX_ENERGY_RATIO_ERROR = 0.02
+const MIE_EXAMPLE_MAX_MAE_DB = 0.25
+const MIE_EXAMPLE_MAX_ERROR_DB = 0.5
+const MIE_EXAMPLE_MAX_BACKSCATTER_ERROR_DB = 0.5
+
 println("="^60)
 println("Example 04: PEC Sphere — MoM vs Mie Benchmark")
 println("="^60)
@@ -122,8 +127,12 @@ E_ff  = compute_farfield(G_mat, Vector{ComplexF64}(I_coeffs), NΩ)
 P_in  = input_power(Vector{ComplexF64}(I_coeffs), Vector{ComplexF64}(v))
 P_rad = radiated_power(E_ff, grid)
 println("\nEnergy: P_rad/P_in = $(round(P_rad/P_in, digits=4))  (should ≈ 1)")
-abs(P_rad / P_in - 1) <= 0.02 ||
-    error("PEC sphere energy ratio differs from unity by more than 2%")
+energy_ratio_error = abs(P_rad / P_in - 1)
+energy_ratio_error <= MIE_EXAMPLE_MAX_ENERGY_RATIO_ERROR ||
+    error(
+        "PEC sphere example: energy-ratio error $energy_ratio_error exceeds " *
+        "$MIE_EXAMPLE_MAX_ENERGY_RATIO_ERROR; refine the mesh or spherical " *
+        "grid before using this result")
 
 # ── 5. Extract a φ-cut for comparison ──────────────
 # Take the φ ≈ 0 cut
@@ -153,9 +162,16 @@ max_db  = maximum(abs.(ΔdB))
 σ_bs_mie = mie_bistatic_rcs_pec(k, a, khat, pol, -khat)
 Δbs_db   = 10log10(max(σ_bs_mom, 1e-30)) - 10log10(max(σ_bs_mie, 1e-30))
 
-mae_db <= 0.25 || error("MoM/Mie mean absolute error exceeds 0.25 dB")
-max_db <= 0.5 || error("MoM/Mie maximum error exceeds 0.5 dB")
-abs(Δbs_db) <= 0.5 || error("MoM/Mie backscatter error exceeds 0.5 dB")
+mae_db <= MIE_EXAMPLE_MAX_MAE_DB || error(
+    "PEC sphere example: MoM/Mie mean absolute error $mae_db dB exceeds " *
+    "$MIE_EXAMPLE_MAX_MAE_DB dB; inspect the mesh and angular sampling")
+max_db <= MIE_EXAMPLE_MAX_ERROR_DB || error(
+    "PEC sphere example: MoM/Mie maximum error $max_db dB exceeds " *
+    "$MIE_EXAMPLE_MAX_ERROR_DB dB; inspect the mesh and angular sampling")
+abs(Δbs_db) <= MIE_EXAMPLE_MAX_BACKSCATTER_ERROR_DB || error(
+    "PEC sphere example: MoM/Mie backscatter error $(abs(Δbs_db)) dB " *
+    "exceeds $MIE_EXAMPLE_MAX_BACKSCATTER_ERROR_DB dB; inspect the " *
+    "backscatter direction and angular sampling")
 
 println("\n── MoM vs Mie (φ = $(round(rad2deg(phi_target), digits=1))° cut) ──")
 println("  MAE:     $(round(mae_db, digits=3)) dB")
@@ -173,4 +189,4 @@ for i in 1:10:length(cut_idx)
 end
 
 println("\n" * "="^60)
-println("Done.")
+println("PEC sphere example complete.")

@@ -1,479 +1,339 @@
-# Chapter 1: Mesh Pipeline
+# Mesh pipeline
 
-## Purpose
+Use this workflow to import or generate a triangle mesh, apply an explicit
+boundary policy, repair supported defects, build RWG basis functions, and
+preflight resource use.
 
-Establish a robust geometry preprocessing workflow that transforms raw CAD meshes into simulation-ready triangulated surfaces suitable for RWG-based MoM. The mesh pipeline ensures topological correctness, manages computational complexity through coarsening, and provides quality guarantees required for stable EFIE solutions. This chapter covers mesh representation, quality diagnostics, repair algorithms, coarsening strategies, and integration with the RWG basis function generation.
+## Mesh and RWG requirements
 
----
-
-## Learning Goals
-
-After this chapter, you should be able to:
-
-1. Understand the `TriMesh` data structure and its role in the MoM pipeline.
-2. Diagnose mesh quality issues using comprehensive validation reports.
-3. Apply repair algorithms to fix common CAD mesh problems.
-4. Implement coarsening strategies to control problem size while preserving geometric fidelity.
-5. Estimate memory requirements for dense MoM matrices.
-6. Design reproducible mesh preprocessing workflows for complex platforms.
-7. Troubleshoot mesh-related solver failures and performance bottlenecks.
-
----
-
-## 1) Mathematical and Computational Foundations
-
-### 1.1 Surface Representation for MoM
-
-The Method of Moments with RWG basis functions requires a **piecewise-planar triangulated surface** $\Gamma$ represented as a union of flat triangles:
-
-```math
-\Gamma = \bigcup_{n=1}^{N_t} T_n
-```
-
-where each triangle $T_n$ is defined by three vertices $\mathbf{v}_{n1}, \mathbf{v}_{n2}, \mathbf{v}_{n3} \in \mathbb{R}^3$. The RWG basis functions are defined on **pairs of triangles sharing an edge**, imposing specific topological requirements:
-
-- **Manifold edges**: Each interior edge must be shared by exactly two triangles
-- **Consistent orientation**: Triangle normals must follow a consistent ordering (typically counterclockwise when viewed from outside)
-- **Non-degenerate geometry**: Triangle areas must be non-zero, edges non-zero length
-
-### 1.2 Topological Requirements for RWG Bases
-
-The RWG basis function $\mathbf{f}_m(\mathbf{r})$ is defined on a pair of triangles $T_m^+$ and $T_m^-$ sharing edge $m$. This requires:
-
-1. **Edge-based connectivity**: Each interior edge maps to exactly two triangles
-2. **Orientation consistency**: The edge direction must be opposite in the two triangles for proper current continuity
-3. **Surface closure**: For closed surfaces, every edge must be interior (shared by two triangles); for open surfaces, boundary edges are allowed but require special treatment
-
-### 1.3 Computational Complexity Considerations
-
-The dense MoM matrix has size $N \times N$ where $N$ is the number of RWG basis functions (approximately equal to the number of interior edges). Memory usage grows as $O(N^2)$:
-
-```math
-\text{Memory (GB)} \approx \frac{16 \times N^2}{1024^3} \quad \text{(complex double precision)}
-```
-
-For $N = 10,000$, matrix storage requires ~1.5 GB; for $N = 50,000$, ~37 GB. This motivates **mesh coarsening** to control problem size while preserving essential geometric features.
-
----
-
-## 2) Implementation in `DiffMoM.jl`
-
-### 2.1 Core Data Structure: `TriMesh`
-
-The `TriMesh` type stores surface geometry in minimal format:
+`TriMesh` stores vertex coordinates and triangle connectivity:
 
 ```julia
 struct TriMesh
-    xyz::Matrix{Float64}  # (3, Nv) vertex coordinates
-    tri::Matrix{Int}      # (3, Nt) triangle vertex indices (1-based)
+    xyz::Matrix{Float64}  # size (3, number of vertices)
+    tri::Matrix{Int}      # size (3, number of triangles)
 end
 ```
 
-Key properties:
-- **Vertex coordinates**: Stored as columns for memory efficiency
-- **Triangle indexing**: 1-based indices into vertex columns
-- **Implicit topology**: Edge connectivity derived from triangle adjacency
+Each standard RWG basis function is associated with an edge shared by exactly
+two triangles. `build_rwg` skips boundary edges and rejects invalid,
+degenerate, duplicate, non-manifold, or orientation-conflicting topology when
+its default precheck is enabled.
 
-Helper functions:
-- `nvertices(mesh)`: Returns $N_v$ (number of vertices)
-- `ntriangles(mesh)`: Returns $N_t$ (number of triangles)
-- `triangle_area(mesh, t)`: Area of triangle $t$
-- `triangle_center(mesh, t)`: Centroid of triangle $t$
-- `triangle_normal(mesh, t)`: Unit normal vector (right-hand rule from vertex order)
+Choose the boundary policy from the physical model:
 
-### 2.2 Mesh Generation and Import
+| Model | `allow_boundary` | `require_closed` |
+|:--|:--:|:--:|
+| Open sheet or plate | `true` | `false` |
+| Closed surface | `false` | `true` |
 
-#### Analytical Plate Generation
-For benchmark problems, generate rectangular plates:
+`require_closed=true` rejects any boundary edge. It does not determine whether
+the connected components or enclosed volume match the intended geometry.
+
+## Generate or import a mesh
+
+The package includes analytical plate, disk, and reflector constructors:
 
 ```julia
-mesh = make_rect_plate(Lx, Ly, Nx, Ny)
+plate = make_rect_plate(0.2, 0.1, 12, 6)
+disk = make_circular_plate(0.05, 8, 48)
+reflector = make_parabolic_reflector(0.3, 0.12, 12, 72)
 ```
 
-Creates a plate in the $xy$-plane centered at origin with $(N_x+1)\times(N_y+1)$ vertices and $2N_xN_y$ triangles. The triangulation follows a regular grid with alternating diagonal orientation.
-
-#### OBJ File Import
-For complex CAD geometry:
+For OBJ input:
 
 ```julia
-mesh = read_obj_mesh("aircraft.obj")
+mesh = read_obj_mesh("geometry.obj")
 ```
 
-The importer handles:
-- **Polygon faces**: Automatically triangulates $n$-gons via fan triangulation
-- **Vertex normals/textures**: Ignored (only geometry retained)
-- **Relative/absolute paths**: Standard OBJ syntax
-- **Multiple objects**: Combined into single mesh
+`read_obj_mesh` accepts `v` records and faces with at least three vertices.
+Polygon faces are fan-triangulated. Positive and negative OBJ vertex indices
+are supported; texture and normal indices are ignored. The reader enforces
+input-size, line-size, vertex-count, triangle-count, and raw-output limits.
 
-### 2.3 Quality Diagnostics System
+STL and Gmsh MSH readers, plus format-dispatch helpers, are defined in
+`src/geometry/MeshIO.jl`.
 
-The `mesh_quality_report` function performs comprehensive validation:
+OBJ has no mandatory unit. Scale coordinates explicitly before topology repair
+when the source file is not in metres:
 
 ```julia
-report = mesh_quality_report(mesh; 
-    area_tol_rel=1e-12, 
-    check_orientation=true)
+scale_to_m = 1e-3
+mesh_m = TriMesh(mesh.xyz .* scale_to_m, copy(mesh.tri))
 ```
 
-#### Validation Categories:
+Record the scale factor. A topology report cannot detect a unit error.
 
-1. **Invalid triangles**: Index out of bounds or repeated vertices
-2. **Degenerate triangles**: Area below tolerance $A_{\min} = \epsilon_{\text{rel}} \times L_{\text{bbox}}^2$
-3. **Duplicate triangles**: The same three vertex indices in any winding
-4. **Boundary edges**: Edges with only one incident triangle (acceptable for open surfaces)
-5. **Non-manifold edges**: Edges with ≥3 incident triangles (topologically invalid)
-6. **Orientation conflicts**: Interior edges where adjacent triangles disagree on edge direction
-
-#### Interpretation and Acceptance:
+## Inspect mesh quality
 
 ```julia
-ok = mesh_quality_ok(report;
+report = mesh_quality_report(
+    mesh_m;
+    area_tol_rel=1e-12,
+    check_orientation=true,
+)
+
+println(report)
+accepted = mesh_quality_ok(
+    report;
     allow_boundary=true,
-    require_closed=false)
+    require_closed=false,
+)
 ```
 
-Typical acceptance criteria for RWG generation:
-- **Closed surfaces**: `require_closed=true`
-- **Open surfaces**: `allow_boundary=true`
+The returned named tuple contains:
 
-### 2.4 Mesh Repair Pipeline
+- vertex, triangle, total-edge, interior-edge, and boundary-edge counts;
+- non-finite vertex and invalid-triangle indices;
+- degenerate and duplicate triangle indices;
+- non-manifold-edge and orientation-conflict counts; and
+- the mesh scale and absolute area tolerance used by the check.
 
-For CAD meshes with topological defects:
+The area threshold is
+$\texttt{area_tol_rel}\,L_{\mathrm{bbox}}^2$. A report does not measure
+connected components, genus, absolute outward orientation, geometric fidelity,
+or electromagnetic accuracy.
+
+To fail with a detailed message instead of receiving a Boolean:
 
 ```julia
-rep = repair_mesh_for_simulation(mesh;
+report = assert_mesh_quality(
+    mesh_m;
     allow_boundary=true,
-    strict_nonmanifold=true,
+    require_closed=false,
+    area_tol_rel=1e-12,
+)
+```
+
+## Repair supported defects
+
+```julia
+repair = repair_mesh_for_simulation(
+    mesh_m;
+    allow_boundary=true,
+    require_closed=false,
+    area_tol_rel=1e-12,
+    drop_invalid=true,
+    drop_degenerate=true,
     fix_orientation=true,
-    area_tol_rel=1e-12)
+    auto_drop_nonmanifold=true,
+    strict_nonmanifold=true,
+)
+mesh_repaired = repair.mesh
 ```
 
-#### Repair Algorithms:
+The repair routine can:
 
-1. **Degenerate triangle removal**: Triangles with area below threshold
-2. **Duplicate face elimination**: Identical triangles (within tolerance)
-3. **Orientation fixing**: Flood-fill algorithm to establish consistent normals
-4. **Non-manifold resolution**: 
-   - If `strict_nonmanifold=true`: Remove triangles causing non-manifold edges
-   - If `strict_nonmanifold=false`: Allow non-manifold edges (not recommended for RWG)
+- remove invalid and degenerate triangles;
+- remove later duplicate faces regardless of winding;
+- compact unreferenced vertices;
+- drop triangles incident to non-manifold edges when
+  `auto_drop_nonmanifold=true`; and
+- make neighboring triangle windings consistent when
+  `fix_orientation=true`.
 
-#### OBJ-Level Wrapper:
+`strict_nonmanifold=true` rejects the result if such edges remain after the
+selected cleanup. Orientation propagation does not determine the absolute
+outward direction of a component. Removing faces can also remove an intended
+feature, so inspect the returned `before`, `cleaned`, and `after` reports and
+the repaired geometry.
+
+The result also records removed triangle and vertex indices, the old-to-new
+vertex map, non-manifold removal count, flipped triangles, and the area
+tolerance. For file-to-file repair:
 
 ```julia
-repair_obj_mesh("input.obj", "output.obj")
+repair_obj_mesh(
+    "input.obj",
+    "repaired.obj";
+    allow_boundary=true,
+    require_closed=false,
+)
 ```
 
-Produces a cleaned OBJ file with metadata about removed elements.
-
-### 2.5 Coarsening for Computational Feasibility
-
-To control problem size while preserving shape:
+## Build RWG basis functions
 
 ```julia
-coarse = coarsen_mesh_to_target_rwg(mesh, target_rwg;
-    max_iters=10)
+rwg = build_rwg(
+    mesh_repaired;
+    precheck=true,
+    allow_boundary=true,
+    require_closed=false,
+    area_tol_rel=1e-12,
+)
+
+println((triangles=ntriangles(mesh_repaired), unknowns=rwg.nedges))
 ```
 
-#### Coarsening Strategy:
+For a valid non-periodic mesh, `rwg.nedges` is the number of edges with exactly
+two incident triangles. Boundary edges do not receive half-RWG functions.
 
-1. **Vertex clustering**: Group vertices within distance $\delta = \alpha \times L_{\text{bbox}}$
-2. **Edge collapse**: Remove short edges while maintaining manifold property
-3. **Quality preservation**: Reject operations that create degenerate triangles
-4. **Iterative refinement**: Repeat until target RWG count reached or convergence
+## Check electrical resolution
 
-#### RWG Count Estimation:
+```julia
+frequency = 3.0e9
+resolution = mesh_resolution_report(
+    mesh_repaired,
+    frequency;
+    points_per_wavelength=10.0,
+)
 
-The number of RWG basis functions $N_{\text{RWG}}$ is approximately:
+println(resolution)
+@assert mesh_resolution_ok(resolution; criterion=:max)
+```
+
+The report records minimum, median, mean, 95th-percentile, and maximum unique
+edge lengths, together with their wavelength ratios. The default acceptance
+uses the maximum edge against `wavelength / points_per_wavelength`.
+
+This geometric rule is a preflight, not an observable-error bound. Establish
+accuracy with mesh and quadrature convergence or an analytical reference.
+
+## Estimate dense storage
+
+One dense `N x N` `ComplexF64` matrix has a raw payload of
 
 ```math
-N_{\text{RWG}} \approx \frac{3}{2} N_t - N_v + \chi
+16N^2\ \text{bytes}.
 ```
 
-where $\chi$ is the Euler characteristic ($\chi = 2$ for closed sphere-like surfaces). The coarsening algorithm uses this approximation to track progress toward the target.
-
-### 2.6 Memory Estimation
-
-Before committing to solve, estimate memory requirements:
-
 ```julia
-gib = estimate_dense_matrix_gib(N)
-println("Estimated matrix memory: $gib GB")
+matrix_gib = estimate_dense_matrix_gib(rwg.nedges)
+println((unknowns=rwg.nedges, one_matrix_gib=matrix_gib))
 ```
 
-Implementation:
-- Complex double precision: 16 bytes per entry
-- Dense storage: $16 \times N^2$ bytes
-- Conversion to GiB: divide by $1024^3$
+This value excludes factorization, assembly caches, right-hand sides,
+preconditioners, radiation matrices, Q matrices, and runtime overhead. Use the
+resource limits on the selected APIs and measure peak memory for the complete
+workflow.
 
-#### Practical Guidelines:
-- **Desktop (< 32 GB RAM)**: $N \lesssim 40,000$
-- **Workstation (128 GB RAM)**: $N \lesssim 80,000$  
-- **Cluster/HPC**: $N \gtrsim 100,000$ with out-of-core or iterative solvers
-
----
-
-## 3) Practical Workflow Examples
-
-### 3.1 Complete CAD-to-Simulation Pipeline
+## Coarsen toward a target count
 
 ```julia
-using DiffMoM
-
-# 1. Import CAD mesh
-mesh_raw = read_obj_mesh("aircraft.obj")
-println("Raw mesh: $(nvertices(mesh_raw)) vertices, $(ntriangles(mesh_raw)) triangles")
-
-# 2. Quality assessment
-report_raw = mesh_quality_report(mesh_raw)
-println("Non-manifold edges: $(report_raw.n_nonmanifold_edges)")
-println("Orientation conflicts: $(report_raw.n_orientation_conflicts)")
-
-# 3. Repair topological defects
-rep = repair_mesh_for_simulation(mesh_raw;
+coarse = coarsen_mesh_to_target_rwg(
+    mesh_repaired,
+    500;
+    max_iters=10,
     allow_boundary=true,
+    require_closed=false,
+    area_tol_rel=1e-12,
     strict_nonmanifold=true,
-    fix_orientation=true)
-mesh_repaired = rep.mesh
-removed_triangles = length(rep.removed_invalid) +
-                    length(rep.removed_degenerate) +
-                    length(rep.removed_duplicate) +
-                    rep.removed_nonmanifold
-println("Repaired: removed $removed_triangles triangles")
+)
 
-# 4. Coarsen to target complexity
-target_rwg = 5000
-coarse = coarsen_mesh_to_target_rwg(mesh_repaired, target_rwg)
-mesh_final = coarse.mesh
-println("Coarsened: $(ntriangles(mesh_final)) triangles → ~$(coarse.rwg_count) RWG")
-
-# 5. Final validation
-assert_mesh_quality(mesh_final; 
-    allow_boundary=true, 
-    require_closed=false)
-
-# 6. RWG generation
-rwg = build_rwg(mesh_final; 
-    precheck=true, 
-    allow_boundary=true, 
-    require_closed=false)
-println("Actual RWG count: $(rwg.nedges)")
-
-# 7. Memory estimation
-gib = estimate_dense_matrix_gib(rwg.nedges)
-println("Matrix memory estimate: $(round(gib, digits=2)) GB")
+mesh_simulation = coarse.mesh
+println((
+    requested=coarse.target_rwg,
+    achieved=coarse.rwg_count,
+    gap=coarse.best_gap,
+    iterations=coarse.iterations,
+))
 ```
 
-### 3.2 Batch Processing for Multiple Geometries
+The routine voxel-clusters vertices, cleans and repairs each candidate, and
+counts its interior edges. It returns immediately when the input is no more
+than 15 percent above the target. During the search it returns on a candidate
+within 15 percent, or otherwise returns the closest valid candidate found in
+`max_iters`.
+
+The target is not an exact-count promise. Voxel clustering can alter curved
+surfaces, sharp edges, gaps, and small features. Save the achieved count,
+inspect the returned mesh, and compare the required observable across a bounded
+sequence of target counts.
+
+## Complete reusable function
 
 ```julia
-function process_geometry(input_path, output_path, target_rwg)
-    # Load and repair
-    mesh = read_obj_mesh(input_path)
-    rep = repair_mesh_for_simulation(mesh)
-    
-    # Coarsen if needed
-    rwg_est = build_rwg(rep.mesh; precheck=true, allow_boundary=true, require_closed=false).nedges
-    if rwg_est > target_rwg
-        coarse = coarsen_mesh_to_target_rwg(rep.mesh, target_rwg)
-        mesh = coarse.mesh
+function prepare_obj(
+    input_path,
+    output_path;
+    scale_to_m=1.0,
+    target_rwg=nothing,
+    allow_boundary=true,
+    require_closed=false,
+)
+    raw = read_obj_mesh(input_path)
+    scaled = TriMesh(raw.xyz .* scale_to_m, copy(raw.tri))
+    repaired = repair_mesh_for_simulation(
+        scaled;
+        allow_boundary=allow_boundary,
+        require_closed=require_closed,
+        auto_drop_nonmanifold=true,
+        strict_nonmanifold=true,
+    )
+
+    prepared = repaired.mesh
+    initial_rwg = build_rwg(
+        prepared;
+        allow_boundary=allow_boundary,
+        require_closed=require_closed,
+    )
+
+    coarsening = nothing
+    if target_rwg !== nothing && initial_rwg.nedges > target_rwg
+        coarsening = coarsen_mesh_to_target_rwg(
+            prepared,
+            target_rwg;
+            allow_boundary=allow_boundary,
+            require_closed=require_closed,
+        )
+        prepared = coarsening.mesh
     end
-    
-    # Save processed mesh
-    write_obj_mesh(output_path, mesh)
-    
-    # Generate quality report
-    report = mesh_quality_report(mesh)
-    return (mesh=mesh, report=report)
+
+    final_report = assert_mesh_quality(
+        prepared;
+        allow_boundary=allow_boundary,
+        require_closed=require_closed,
+    )
+    final_rwg = build_rwg(
+        prepared;
+        allow_boundary=allow_boundary,
+        require_closed=require_closed,
+    )
+    write_obj_mesh(output_path, prepared)
+
+    return (
+        mesh=prepared,
+        rwg=final_rwg,
+        report=final_report,
+        repair=repaired,
+        coarsening=coarsening,
+    )
 end
 ```
 
-### 3.3 Quality Inspection Workflow
+## Visual inspection
 
 ```julia
-using DiffMoM
+preview = save_mesh_preview(
+    mesh_repaired,
+    mesh_simulation,
+    "figures/mesh_comparison";
+    title_a="Repaired",
+    title_b="Simulation mesh",
+)
 
-mesh = read_obj_mesh("platform.obj")
-report = mesh_quality_report(mesh)
-println(report)
-
-# Optional visual check
-plot_mesh_wireframe(mesh; title="Raw mesh")
-
-# Repair and re-check
-rep = repair_mesh_for_simulation(mesh)
-println(rep.after)
-plot_mesh_wireframe(rep.mesh; title="Repaired mesh")
+println((png=preview.png_path, pdf=preview.pdf_path))
 ```
 
----
+The preview is a geometry check, not a topology or convergence test.
 
-## 4) Troubleshooting Common Issues
+## Code map
 
-### 4.1 Diagnostic Decision Tree
+| Area | Source |
+|:--|:--|
+| Analytical meshes, OBJ I/O, quality, repair, coarsening, and resolution | `src/geometry/Mesh.jl` |
+| STL, MSH, and dispatch I/O | `src/geometry/MeshIO.jl` |
+| RWG construction | `src/basis/RWG.jl` |
+| Mesh previews | `src/postprocessing/Visualization.jl` |
+| Imported-platform example | `examples/06_aircraft_rcs.jl` |
 
-1. **`build_rwg` fails with "non-manifold edge"**
-   - Run `mesh_quality_report` to identify problematic edges
-   - Use `repair_mesh_for_simulation` with `strict_nonmanifold=true`
-   - Manually inspect edge connectivity with `mesh_unique_edges`
+## Pre-solve checklist
 
-2. **Excessive memory usage**
-   - Estimate RWG count before solve: `build_rwg(mesh; precheck=true, allow_boundary=true, require_closed=false).nedges`
-   - Coarsen mesh: `coarsen_mesh_to_target_rwg`
-   - Consider iterative solver or domain decomposition
-
-3. **Poor solution accuracy after coarsening**
-   - Compare key geometric features before/after coarsening
-   - Increase `target_rwg` (retain more unknowns)
-   - Use multi-resolution approach: solve coarse, refine regionally
-
-4. **OBJ import fails or produces degenerate geometry**
-   - Check OBJ format compliance (triangles vs. polygons)
-   - Scale geometry: CAD often uses mm, MoM expects meters
-   - Use external repair tools (MeshLab, Blender) for severe defects
-
-### 4.2 Performance Optimization
-
-- **Batch processing**: Repair/coarsen multiple meshes offline
-- **Parallel coarsening**: Independent regions can be processed concurrently
-- **Incremental refinement**: Start coarse, refine based on solution sensitivity
-- **Caching**: Save processed meshes to avoid recomputation
-
-### 4.3 Validation Metrics
-
-Establish quality metrics for processed meshes:
-- **Aspect ratio**: Triangle quality $\text{area} / \text{perimeter}^2$
-- **Edge length uniformity**: Coefficient of variation
-- **Feature preservation**: Hausdorff distance from original
-- **RWG suitability**: Percentage of edges with exactly two incident triangles
-
----
-
-## 5) Advanced Topics
-
-### 5.1 Adaptive Mesh Refinement
-
-Combine coarsening with refinement based on solution features:
-
-```julia
-# Initial coarse solve
-coarse = coarsen_mesh_to_target_rwg(mesh, 2000)
-mesh_coarse = coarse.mesh
-rwg_coarse = build_rwg(mesh_coarse)
-Z = assemble_Z_efie(mesh_coarse, rwg_coarse, k; quad_order=3, eta0=η0)
-v = assemble_v_plane_wave(mesh_coarse, rwg_coarse, k_vec, E0, pol_inc; quad_order=3)
-I_coarse = solve_forward(Z, v)
-
-# Region-selective refinement is not implemented in the current package.
-# Typical practice: repeat solve with higher target_rwg and compare observables.
-```
-
-### 5.2 Multi-Resolution Workflows
-
-1. **Coarse exploration**: Rapid parameter sweeps on coarse mesh
-2. **Medium fidelity**: Design optimization with balanced accuracy/speed
-3. **Fine validation**: Final verification on detailed mesh
-
-### 5.3 Integration with External Tools
-
-- **MeshLab**: Advanced repair and processing scripts
-- **Blender Python API**: Automated geometry processing
-- **CAD kernels**: Direct import of STEP/IGES files (future extension)
-
----
-
-## 6) Code Mapping
-
-### 6.1 Primary Implementation Files
-
-- **Mesh data structures and algorithms**: `src/geometry/Mesh.jl`
-  - `make_rect_plate`, `read_obj_mesh`, `write_obj_mesh`
-  - `mesh_quality_report`, `mesh_quality_ok`, `assert_mesh_quality`
-  - `repair_mesh_for_simulation`, `repair_obj_mesh`
-  - `coarsen_mesh_to_target_rwg`, `estimate_dense_matrix_gib`
-
-- **RWG basis generation**: `src/basis/RWG.jl`
-  - `build_rwg`
-  - Pre-check integration with mesh quality system
-
-- **Visualization utilities**: `src/postprocessing/Visualization.jl`
-  - Mesh inspection and quality visualization
-
-### 6.2 Example Scripts
-
-- **Mesh repair + coarsening demonstration**: `examples/06_aircraft_rcs.jl`
-- **STL roundtrip and mesh handling**: `examples/12_plate_rcs_stl_roundtrip.jl`
-- **Sphere benchmark mesh flow**: `examples/04_pec_sphere_mie.jl`
-
-### 6.3 Supporting Functions
-
-- **Geometry utilities**: `src/geometry/Mesh.jl` (`triangle_area`, `triangle_center`, `triangle_normal`)
-- **Performance estimation**: `src/geometry/Mesh.jl` (`estimate_dense_matrix_gib`)
-
----
-
-## 7) Exercises
-
-### 7.1 Basic Level
-
-1. **Mesh quality assessment**:
-   - Load an OBJ file from the `data/` directory
-   - Generate a comprehensive quality report
-   - Identify and categorize all topological issues
-   - Document the repair steps needed
-
-2. **Coarsening experiment**:
-   - Take a rectangular plate with $N_x = N_y = 20$
-   - Coarsen to target RWG counts of 1000, 2000, 3000
-   - Plot triangle count vs. RWG count and memory estimate
-   - Visually compare geometry preservation
-
-### 7.2 Intermediate Level
-
-3. **Repair algorithm analysis**:
-   - Intentionally corrupt a mesh (duplicate faces, flipped normals)
-   - Apply repair pipeline with different parameter settings
-   - Quantify repair effectiveness (triangles removed, orientation fixed)
-   - Propose improvements to the repair algorithm
-
-4. **Memory scalability study**:
-   - Generate plate meshes with $N_x = N_y = 5, 10, 20, 40$
-   - Estimate RWG count and memory requirements
-   - Compare estimates with actual `build_rwg` results
-   - Derive empirical scaling laws
-
-### 7.3 Advanced Level
-
-5. **Adaptive coarsening design**:
-   - Implement curvature-based coarsening that preserves high-curvature regions
-   - Compare with uniform coarsening on a complex geometry
-   - Evaluate impact on RCS accuracy for different coarsening strategies
-
-6. **Pipeline automation**:
-   - Create a batch processing system for multiple CAD files
-   - Generate comprehensive reports (quality metrics, repair statistics)
-   - Implement automatic parameter tuning based on mesh characteristics
-
----
-
-## 8) Chapter Checklist
-
-Before proceeding to forward simulation, ensure you can:
-
-- [ ] Import OBJ files and generate analytical meshes
-- [ ] Interpret mesh quality reports and identify critical issues
-- [ ] Apply repair algorithms to fix common topological defects
-- [ ] Coarsen meshes to meet computational constraints
-- [ ] Estimate memory requirements for MoM matrices
-- [ ] Validate mesh suitability for RWG basis generation
-- [ ] Design reproducible mesh processing workflows
-
----
-
-## 9) Further Reading
-
-- **Computational geometry**: O'Rourke, *Computational Geometry in C* (1998)
-- **Mesh generation**: Shewchuk, *Delaunay Refinement Algorithms* (2002)
-- **RWG basis requirements**: Rao et al., *Electromagnetic Scattering by Surfaces of Arbitrary Shape* (1982)
-- **Mesh repair algorithms**: Attene et al., *Mesh Repair* (2013)
-- **Multi-resolution modeling**: Katz & Tal, *Mesh Simplification* (2003)
-- **CAD interoperability**: Pratt & Anderson, *A Shape Representation for CAD/CAM* (2005)
+- [ ] Record source units and the applied scale factor.
+- [ ] Apply the intended open or closed boundary policy.
+- [ ] Inspect every repair removal and the resulting geometry.
+- [ ] Run `assert_mesh_quality` on the exact simulation mesh.
+- [ ] Record the achieved RWG count and electrical-resolution report.
+- [ ] Preflight the complete solver and postprocessing memory, not one matrix
+  alone.
+- [ ] Establish mesh and quadrature convergence for the reported observable.

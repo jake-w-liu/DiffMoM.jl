@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Run and summarize a multi-case impedance-loaded external validation matrix.
-
-This script orchestrates:
-1) Julia reference generation for each case
-2) Bempp impedance-loaded solve for each case
-3) Bempp-vs-Julia comparison for each case
-4) Matrix-level summary with acceptance-oriented gates
-"""
+"""Run Julia and Bempp impedance cases, compare them, and write gate summaries."""
 
 from __future__ import annotations
 
@@ -39,6 +32,10 @@ CASES: List[ValidationCase] = [
     ValidationCase("case06_z100_n5_f3p00", 3.00, 100.0, 5.0, 0.0),
     ValidationCase("case07_z100_n0_f3p06", 3.06, 100.0, 0.0, 0.0),
 ]
+
+MAX_MAIN_THETA_DIFF_DEG = 3.0
+MAX_MAIN_LEVEL_DIFF_DB = 1.5
+MAX_SLL_DIFF_DB = 3.0
 
 CONVENTION_PROFILES: Dict[str, Dict[str, object]] = {
     "paper_default": {
@@ -81,9 +78,11 @@ def compute_case_pass_flags(metrics: Dict) -> Dict[str, bool]:
     main_level_diff = abs(float(pf.get("main_level_diff_db", float("inf"))))
     sll_diff = abs(float(pf.get("sll_down_diff_db", float("inf"))))
     return {
-        "pass_main_theta_le_3deg": main_theta_diff <= 3.0,
-        "pass_main_level_le_1p5db": main_level_diff <= 1.5,
-        "pass_sll_le_3db": sll_diff <= 3.0,
+        "pass_main_theta_le_3deg":
+            main_theta_diff <= MAX_MAIN_THETA_DIFF_DEG,
+        "pass_main_level_le_1p5db":
+            main_level_diff <= MAX_MAIN_LEVEL_DIFF_DB,
+        "pass_sll_le_3db": sll_diff <= MAX_SLL_DIFF_DB,
     }
 
 
@@ -119,7 +118,8 @@ def write_summary_md(
     lines.append("")
     lines.append("## Case Results")
     lines.append(
-        "| Case | f (GHz) | Zs imag (ohm) | theta_inc (deg) | Main |Δθ| (deg) | Main |ΔL| (dB) | SLL |Δ| (dB) |"
+        "| Case | f (GHz) | Zs imag (ohm) | theta_inc (deg) | "
+        "Main |Δθ| (deg) | Main |ΔL| (dB) | SLL |Δ| (dB) |"
     )
     lines.append("|---|---:|---:|---:|---:|---:|---:|")
     for row in rows:
@@ -131,13 +131,16 @@ def write_summary_md(
     lines.append("")
     lines.append("## Acceptance Gates")
     lines.append(
-        f"- Cases with main-beam |Δθ| <= 3 deg: {gates['count_main_theta_le_3deg']}/{gates['num_cases']}"
+        f"- Cases with main-beam |Δθ| <= {MAX_MAIN_THETA_DIFF_DEG:g} "
+        f"deg: {gates['count_main_theta_le_3deg']}/{gates['num_cases']}"
     )
     lines.append(
-        f"- Cases with main-beam |ΔL| <= 1.5 dB: {gates['count_main_level_le_1p5db']}/{gates['num_cases']}"
+        f"- Cases with main-beam |ΔL| <= {MAX_MAIN_LEVEL_DIFF_DB:g} "
+        f"dB: {gates['count_main_level_le_1p5db']}/{gates['num_cases']}"
     )
     lines.append(
-        f"- Cases with |ΔSLL| <= 3 dB: {gates['count_sll_le_3db']}/{gates['num_cases']}"
+        f"- Cases with |ΔSLL| <= {MAX_SLL_DIFF_DB:g} "
+        f"dB: {gates['count_sll_le_3db']}/{gates['num_cases']}"
     )
     lines.append("")
     lines.append(
@@ -155,27 +158,79 @@ def main() -> None:
         default=Path(__file__).resolve().parents[2],
         help="Project root containing data/ and Project.toml",
     )
-    parser.add_argument("--n-theta", type=int, default=180)
-    parser.add_argument("--n-phi", type=int, default=72)
-    parser.add_argument("--mesh-mode", choices=["gmsh_screen", "structured"], default="gmsh_screen")
-    parser.add_argument("--nx", type=int, default=12)
-    parser.add_argument("--ny", type=int, default=12)
-    parser.add_argument("--mesh-step-lambda", type=float, default=0.2)
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--skip-julia", action="store_true")
-    parser.add_argument("--skip-bempp", action="store_true")
-    parser.add_argument("--skip-compare", action="store_true")
+    parser.add_argument(
+        "--n-theta", type=int, default=180,
+        help="Polar sample count for both solvers (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--n-phi", type=int, default=72,
+        help="Azimuth sample count for both solvers (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--mesh-mode",
+        choices=["gmsh_screen", "structured"],
+        default="gmsh_screen",
+        help="Bempp mesh construction mode (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--nx", type=int, default=12,
+        help="Structured-mesh cells along x (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--ny", type=int, default=12,
+        help="Structured-mesh cells along y (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--mesh-step-lambda", type=float, default=0.2,
+        help="Gmsh target edge length in wavelengths (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print subprocess commands without running or writing summaries",
+    )
+    parser.add_argument(
+        "--skip-julia", action="store_true",
+        help="Reuse existing Julia reference artifacts",
+    )
+    parser.add_argument(
+        "--skip-bempp", action="store_true",
+        help="Reuse existing Bempp artifacts",
+    )
+    parser.add_argument(
+        "--skip-compare", action="store_true",
+        help="Reuse existing comparison reports",
+    )
     parser.add_argument(
         "--convention-profile",
         choices=sorted(CONVENTION_PROFILES.keys()),
         default="paper_default",
-        help="Named Bempp impedance-convention profile to use by default.",
+        help=(
+            "Base convention profile; explicit --bempp-* options override "
+            "individual fields (default: %(default)s)"
+        ),
     )
-    parser.add_argument("--bempp-op-sign", choices=["minus", "plus"], default=None)
-    parser.add_argument("--bempp-rhs-cross", choices=["e_cross_n", "n_cross_e"], default=None)
-    parser.add_argument("--bempp-rhs-sign", type=float, default=None)
-    parser.add_argument("--bempp-phase-sign", choices=["plus", "minus"], default=None)
-    parser.add_argument("--bempp-zs-scale", type=float, default=None)
+    parser.add_argument(
+        "--bempp-op-sign", choices=["minus", "plus"], default=None,
+        help="Override the profile's Bempp operator sign",
+    )
+    parser.add_argument(
+        "--bempp-rhs-cross",
+        choices=["e_cross_n", "n_cross_e"],
+        default=None,
+        help="Override the profile's RHS cross-product order",
+    )
+    parser.add_argument(
+        "--bempp-rhs-sign", type=float, default=None,
+        help="Override the profile's RHS scalar sign",
+    )
+    parser.add_argument(
+        "--bempp-phase-sign", choices=["plus", "minus"], default=None,
+        help="Override the profile's far-field phase sign",
+    )
+    parser.add_argument(
+        "--bempp-zs-scale", type=float, default=None,
+        help="Override the profile's sheet-impedance scale",
+    )
     args = parser.parse_args()
 
     project_root = args.project_root.resolve()
@@ -184,10 +239,26 @@ def main() -> None:
     profile = CONVENTION_PROFILES[args.convention_profile]
 
     effective_op_sign = args.bempp_op_sign if args.bempp_op_sign is not None else profile["op_sign"]
-    effective_rhs_cross = args.bempp_rhs_cross if args.bempp_rhs_cross is not None else profile["rhs_cross"]
-    effective_rhs_sign = args.bempp_rhs_sign if args.bempp_rhs_sign is not None else profile["rhs_sign"]
-    effective_phase_sign = args.bempp_phase_sign if args.bempp_phase_sign is not None else profile["phase_sign"]
-    effective_zs_scale = args.bempp_zs_scale if args.bempp_zs_scale is not None else profile["zs_scale"]
+    effective_rhs_cross = (
+        args.bempp_rhs_cross
+        if args.bempp_rhs_cross is not None
+        else profile["rhs_cross"]
+    )
+    effective_rhs_sign = (
+        args.bempp_rhs_sign
+        if args.bempp_rhs_sign is not None
+        else profile["rhs_sign"]
+    )
+    effective_phase_sign = (
+        args.bempp_phase_sign
+        if args.bempp_phase_sign is not None
+        else profile["phase_sign"]
+    )
+    effective_zs_scale = (
+        args.bempp_zs_scale
+        if args.bempp_zs_scale is not None
+        else profile["zs_scale"]
+    )
 
     summary_rows: List[Dict[str, object]] = []
 
@@ -282,7 +353,9 @@ def main() -> None:
         report_json = data_dir / f"bempp_{prefix}_cross_validation_report.json"
         if not report_json.exists():
             raise SystemExit(
-                f"Missing comparison report for {case.case_id}: {report_json}"
+                f"Missing comparison report for {case.case_id}: {report_json}. "
+                "Rerun without --skip-compare; also regenerate either solver "
+                "artifact if its corresponding skip option reused stale data."
             )
 
         metrics = load_json(report_json)
@@ -293,7 +366,9 @@ def main() -> None:
             "zs_imag_ohm": case.zs_imag_ohm,
             "theta_inc_deg": case.theta_inc_deg,
             "phi_inc_deg": case.phi_inc_deg,
-            "main_theta_abs_diff_deg": float(metrics["pattern_features"]["main_theta_abs_diff_deg"]),
+            "main_theta_abs_diff_deg": float(
+                metrics["pattern_features"]["main_theta_abs_diff_deg"]
+            ),
             "main_level_abs_diff_db": abs(float(metrics["pattern_features"]["main_level_diff_db"])),
             "sll_abs_diff_db": abs(float(metrics["pattern_features"]["sll_down_diff_db"])),
             **flags,
@@ -346,9 +421,12 @@ def main() -> None:
     print(f"Saved {summary_json}")
     print(
         f"Beam-centric gate status: {'PASS' if gates['beam_gate_pass'] else 'FAIL'} "
-        f"(main_theta<=3deg: {gates['count_main_theta_le_3deg']}/{gates['num_cases']}, "
-        f"main_level<=1.5dB: {gates['count_main_level_le_1p5db']}/{gates['num_cases']}, "
-        f"sll<=3dB: {gates['count_sll_le_3db']}/{gates['num_cases']})"
+        f"(main_theta<={MAX_MAIN_THETA_DIFF_DEG:g}deg: "
+        f"{gates['count_main_theta_le_3deg']}/{gates['num_cases']}, "
+        f"main_level<={MAX_MAIN_LEVEL_DIFF_DB:g}dB: "
+        f"{gates['count_main_level_le_1p5db']}/{gates['num_cases']}, "
+        f"sll<={MAX_SLL_DIFF_DB:g}dB: "
+        f"{gates['count_sll_le_3db']}/{gates['num_cases']})"
     )
     if not gates["beam_gate_pass"]:
         raise SystemExit(2)

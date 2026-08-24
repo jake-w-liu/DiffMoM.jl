@@ -29,7 +29,13 @@ function _projected_power_component_bounds(values)
             else
                 converted = try
                     Float64(component)
-                catch
+                catch err
+                    @debug(
+                        "projected-power bound conversion failed; using " *
+                        "the conservative fallback precision",
+                        component_type=typeof(component),
+                        exception=(err, catch_backtrace()),
+                    )
                     return nothing
                 end
                 isfinite(converted) || return nothing

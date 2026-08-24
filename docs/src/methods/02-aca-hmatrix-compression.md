@@ -575,20 +575,15 @@ This is efficient because:
 
 ### 8.3 The `solve_scattering` High-Level API
 
-For convenience, `solve_scattering` automatically selects ACA for large problems:
+`solve_scattering` may select ACA when `method=:auto`:
 
 ```julia
 result = solve_scattering(mesh, freq_hz, excitation; method=:auto)
 ```
 
-The auto-selection logic is:
-
-| Problem Size | Method | Description |
-|-------------|--------|-------------|
-| $N \le 2{,}000$ | `:dense_direct` | Dense assembly + LU solve |
-| $2{,}000 < N \le 10{,}000$ | `:dense_gmres` | Dense + NF-preconditioned GMRES |
-| $10{,}000 < N \le 50{,}000$ | `:aca_gmres` | ACA H-matrix + NF-preconditioned GMRES |
-| $N > 50{,}000$ | `:mlfma` | MLFMA + NF-preconditioned GMRES |
+The [high-level workflow](05-solve-scattering-workflow.md) owns the selection
+rules. Exact thresholds and keyword defaults are rendered from the source in the
+[`solve_scattering` docstring](../api/exported-core.md).
 
 You can also force ACA explicitly:
 
@@ -598,24 +593,16 @@ result = solve_scattering(mesh, freq_hz, excitation;
                            aca_tol=1e-6,
                            aca_leaf_size=64,
                            aca_eta=1.5,
-                           aca_max_rank=50,
-                           nf_cutoff_lambda=1.0)
+                           aca_max_rank=50)
 ```
 
 ### 8.4 Preconditioner Effectiveness with ACA
 
-In tested regimes, the near-field preconditioner often gives weak iteration growth with problem size. This is because the preconditioner captures the dominant near-field coupling structure of the Green's function, and the far-field interactions (handled by the low-rank blocks) are better conditioned after preconditioning.
-
-Typical iteration counts with the near-field preconditioner:
-
-| $N$ | Without Preconditioner | With NF Preconditioner |
-|-----|----------------------|----------------------|
-| 1,000 | 50--100 | 15--25 |
-| 5,000 | 150--300 | 15--25 |
-| 10,000 | 300--500+ | 15--25 |
-| 50,000 | diverges | 15--25 |
-
-The cutoff distance (default $1\lambda$) controls the density of the preconditioner. Larger cutoffs give better preconditioning but cost more to factorize.
+The high-level ACA path constructs its sparse preconditioner from the operator's
+stored dense inadmissible blocks. Its fill therefore follows the ACA block
+partition; `nf_cutoff_lambda` does not alter it. Record the block counts,
+preconditioner fill and setup time, GMRES iterations, and true residual for the
+target problem.
 
 ---
 

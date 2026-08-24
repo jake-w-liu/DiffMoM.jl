@@ -59,14 +59,16 @@ This guarantees that geometric differences reflect true shape changes, not arbit
 
 ### 2.3 Keyword Arguments and Customization
 
-Each function accepts standard `PlotlySupply` keywords (e.g., `color`, `linewidth`, `camera`, `title`) plus package‑specific options:
+The plotting functions expose mesh-specific options such as:
 
 - **`camera = (30, 30)`** – azimuth and elevation angles in degrees.
 - **`pad_frac = 0.04`** – fractional padding added to the cubic bounding box.
 - **`size = (1200, 520)`** – total figure size in pixels (width × height).
 - **`color_a`, `color_b`** – distinct colors for the two meshes in comparison plots.
 
-All functions return a `PlotlySupply` plot object. PNG/PDF/SVG export is handled by PlotlySupply.
+`plot_mesh_wireframe` and `plot_mesh_comparison` return a PlotlySupply plot
+object. `save_mesh_preview` returns that object together with the two paths it
+wrote. It exports PNG and PDF through PlotlySupply.
 
 ### 2.4 Integration with the MoM Pipeline
 
@@ -205,9 +207,12 @@ This ordering avoids expensive solves on obviously bad meshes.
 
 **Possible causes and remedies:**
 
-1. **Mesh scale mismatch:** If the mesh coordinates are in millimeters but the axis limits are set for meters, the geometry may be outside the viewport. Use `plot_mesh_wireframe` with default limits (automatically computed) or check `_realistic_axis_limits` output.
-2. **Disconnected components:** If the mesh contains disconnected surface fragments, some may appear outside the viewport. Run `mesh_quality_report` to identify topological issues.
-3. **Camera orientation:** The default camera `(30, 30)` may be looking from a direction that hides features. Adjust the `camera` keyword (azimuth, elevation) to rotate the view.
+1. **Manual limits exclude the mesh:** Remove `xlims`, `ylims`, and `zlims` to
+   let Plotly scale the view, or compute limits from the mesh coordinates.
+2. **Unexpected units:** Axis labels use meters. Confirm the import scale before
+   interpreting a view whose shape looks correct but whose dimensions do not.
+3. **Camera orientation:** Change the `camera=(azimuth, elevation)` keyword when
+   one surface hides another.
 
 ### 4.2 Misleading Visual Comparison
 
@@ -219,25 +224,40 @@ This ordering avoids expensive solves on obviously bad meshes.
 - **Equal aspect ratio:** The implementation uses `aspectmode = "cube"` internally (the default in `plot_mesh_comparison`).
 - **Padding factor:** If `pad_frac` is too large (e.g., `> 0.5`), the cubic bounding box may dwarf small geometric details. Reduce `pad_frac` to `0.02`–`0.05`.
 
-### 4.3 Missing Plotting Backend
+### 4.3 Plotting Dependency Failure
 
-**Symptoms:** Julia throws an error about the plotting backend not being installed.
+**Symptoms:** `using DiffMoM` reports that PlotlySupply cannot be loaded.
 
-**Solution:** The package uses PlotlySupply for plotting and file export. Ensure PlotlySupply is installed and up to date:
+**Next step:** Resolve the package environment from the repository root. Because
+PlotlySupply is a declared DiffMoM dependency, do not add a separate version by
+hand.
+
 ```julia
 import Pkg
-Pkg.add("PlotlySupply")
+Pkg.activate(".")
+Pkg.instantiate()
+Pkg.status()
 ```
 
 ### 4.4 File‑Save Failures
 
-**Symptoms:** `save_mesh_preview` returns but no PNG/PDF files are created, or permissions errors occur.
+**Symptoms:** `save_mesh_preview` throws while writing PNG or PDF.
 
 **Diagnostics:**
 
-- Check that the output directory exists (the function creates parent directories via `mkpath`).
-- Ensure write permissions for the destination.
-- PNG, PDF, and SVG export are handled by PlotlySupply. Ensure PlotlySupply is installed and working.
+- Confirm that the destination's nearest existing parent is writable. The
+  function creates missing parent directories.
+- Retry with an output prefix inside `mktempdir()` to separate a
+  destination-path problem from a PlotlySupply export problem:
+
+  ```julia
+  mktempdir() do dir
+      mesh = make_rect_plate(1.0, 1.0, 1, 1)
+      preview = save_mesh_preview(mesh, mesh, joinpath(dir, "preview"))
+      @assert filesize(preview.png_path) > 0
+      @assert filesize(preview.pdf_path) > 0
+  end
+  ```
 
 ---
 

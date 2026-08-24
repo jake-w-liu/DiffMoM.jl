@@ -1,0 +1,16 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+    [[rules.allowlists]]
+    description = "Security-inventory prose, not a credential assignment"
+    condition = "AND"
+    regexTarget = "line"
+    regexes = [
+      '''\| INV-046 \| Dependency/security boundary \| A clean isolated environment resolves declared dependencies and precompiles; no credentials are committed; dependency provenance/licenses/advisories are recorded to the available tool limit \|''',
+    ]
+    paths = [
+      '''^\.slopfix/behaviour-inventory\.md$''',
+    ]

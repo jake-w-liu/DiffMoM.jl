@@ -1,12 +1,12 @@
 # 13_sphere_rcs_optimization.jl — Sphere RCS: Mie validation + impedance optimization
 #
-# End-to-end demonstration combining MoM validation and differentiable design:
+# This example combines MoM validation and differentiable design:
 #   Part A: Build an icosphere, compute PEC bistatic RCS, compare with Mie series
 #   Part B: Apply spatial patch assignment and multi-angle RCS optimization
 #           to reduce backscatter with resistive impedance coatings
 #
-# This showcases the full pipeline: geometry → MoM solve → Mie validation →
-# spatial patches → adjoint gradient → L-BFGS optimization → RCS comparison.
+# The pipeline is geometry → MoM solve → Mie validation → spatial patches →
+# adjoint gradient → L-BFGS optimization → RCS comparison.
 #
 # Run: julia --project=. examples/13_sphere_rcs_optimization.jl
 
@@ -15,8 +15,23 @@ using LinearAlgebra
 using Statistics
 using PlotlySupply
 
+const SPHERE_MAX_RELATIVE_RESIDUAL = 1e-10
+const SPHERE_MAX_PEC_ENERGY_RATIO_ERROR = 0.02
+const SPHERE_MAX_PASSIVE_ENERGY_RATIO = 1.02
+const SPHERE_MAX_MIE_MAE_DB = 0.5
+const SPHERE_MAX_MIE_ERROR_DB = 1.0
+const SPHERE_GMRES_TEST_TOL = 1e-6
+
 figdir = joinpath(@__DIR__, "figs")
 mkpath(figdir)
+
+function relative_residual(A, x, rhs)
+    rhs_norm = norm(rhs)
+    residual_norm = norm(A * x - rhs)
+    return iszero(rhs_norm) ?
+           (iszero(residual_norm) ? 0.0 : Inf) :
+           residual_norm / rhs_norm
+end
 
 # ── Icosphere generator ─────────────────────────────
 function make_icosphere(radius::Float64; subdivisions::Int=2)
@@ -102,12 +117,17 @@ println("Frequency: $(freq/1e9) GHz,  λ = $(round(lambda0*100, digits=2)) cm")
 println("ka:        $(round(ka, digits=3))")
 
 # ── A2. Build icosphere and export/reimport STL ───────
-subdiv = 3
+# Repeated dense factorizations dominate Part B. Subdivision 2 bounds the
+# example's runtime; validation/mie/validate_mie_rcs.jl uses subdivision 3 for
+# its finer Mie benchmark.
+subdiv = 2
 mesh = make_icosphere(a; subdivisions=subdiv)
 println("\nIcosphere: $(nvertices(mesh)) vertices, $(ntriangles(mesh)) triangles (subdiv=$subdiv)")
 
-# STL round-trip (demonstrate mesh I/O)
-stl_path = joinpath(@__DIR__, "tmp_sphere_ex13.stl")
+# Exercise the STL round-trip before assembly.
+stl_path, stl_stream = mktemp()
+close(stl_stream)
+atexit(() -> rm(stl_path; force=true))
 write_stl_mesh(stl_path, mesh; header="PEC sphere a=$(a)m ka=$(round(ka, digits=2))")
 mesh = read_stl_mesh(stl_path)
 println("STL round-trip: $(nvertices(mesh)) vertices, $(ntriangles(mesh)) triangles")
@@ -134,7 +154,9 @@ residual = norm(Z_efie * I_pec - v_exc) / norm(v_exc)
 println("  Solve: $(round(t_sol, digits=3)) s,  residual = $(round(residual, sigdigits=3))")
 
 # ── A5. Far-field and RCS on a full spherical grid ────
-grid = make_sph_grid(90, 72)
+# This grid fits `radiation_vectors`' default work budget if the mesh is changed
+# to the subdivision-3 resolution used by the dedicated Mie validator.
+grid = make_sph_grid(60, 36)
 NΩ = length(grid.w)
 G_mat = radiation_vectors(mesh, rwg, grid, k)
 E_ff_pec = compute_farfield(G_mat, Vector{ComplexF64}(I_pec), NΩ)
@@ -173,7 +195,8 @@ delta_dB = dB_mom .- dB_mie
 mae_dB = mean(abs.(delta_dB))
 rmse_dB = sqrt(mean(abs2, delta_dB))
 
-println("\n── Phi=0 Cut (E-plane) ──")
+phi_target_deg = rad2deg(phi_target)
+println("\n── Sampled azimuth cut (φ=$(round(phi_target_deg, digits=1))°) ──")
 println("  MAE:     $(round(mae_dB, digits=3)) dB")
 println("  RMSE:    $(round(rmse_dB, digits=3)) dB")
 println("  Max |Δ|: $(round(maximum(abs.(delta_dB)), digits=3)) dB")
@@ -247,10 +270,15 @@ println("PART B: Impedance Optimization to Reduce Backscatter RCS")
 println("─"^70)
 
 # ── B1. Spatial patch assignment ──────────────────────
-# Divide the sphere into patches with a 4×4×4 grid
-partition = assign_patches_grid(mesh; nx=4, ny=4, nz=4)
+# Divide the sphere into patches with a Cartesian grid.
+patch_grid = (4, 4, 4)
+partition = assign_patches_grid(
+    mesh; nx=patch_grid[1], ny=patch_grid[2], nz=patch_grid[3])
 P = partition.P
-println("\nSpatial patches: $P (from 4×4×4 grid, empty cells skipped)")
+println(
+    "\nSpatial patches: $P (from $(join(patch_grid, '×')) grid; " *
+    "empty cells skipped)",
+)
 
 # ── B2. Precompute patch mass matrices ────────────────
 println("Precomputing patch mass matrices ($P patches)...")
@@ -258,12 +286,17 @@ Mp = precompute_patch_mass(mesh, rwg, partition)
 
 # ── B3. Build Q matrix for backscatter ────────────────
 # Target backscatter direction: -k̂ = +z
+backscatter_half_angle_deg = 15.0
 pol_grid = pol_linear_x(grid)
-mask_bs = direction_mask(grid, -khat; half_angle=15*π/180)   # 15° cone
+mask_bs = direction_mask(
+    grid, -khat; half_angle=deg2rad(backscatter_half_angle_deg))
 Q_bs = build_Q(G_mat, grid, pol_grid; mask=mask_bs)
 
 n_bs = count(mask_bs)
-println("Backscatter Q: 15° cone around -k̂, $n_bs of $NΩ directions selected")
+println(
+    "Backscatter Q: $(backscatter_half_angle_deg)° cone around -k̂, " *
+    "$n_bs of $NΩ directions selected",
+)
 
 # ── B4. Compute initial (PEC) backscatter objective ───
 J_pec = real(dot(I_pec, Q_bs * I_pec))
@@ -286,6 +319,9 @@ theta_opt_single, trace_single = optimize_lbfgs(
     verbose=true,
 )
 
+isempty(trace_single) && error(
+    "single-angle optimizer returned an empty trace; inspect the optimizer " *
+    "settings and initial design before using this run")
 J_opt_single = trace_single[end].J
 reduction_dB_single = 10 * log10(J_pec / max(J_opt_single, 1e-30))
 println("\n  J(PEC)       = $(round(J_pec, sigdigits=4))")
@@ -296,6 +332,7 @@ println("  Iterations:    $(length(trace_single))")
 # Recompute optimized RCS
 Z_opt = assemble_full_Z(Z_efie, Mp, theta_opt_single)
 I_opt_single = Z_opt \ Vector{ComplexF64}(v_exc)
+residual_opt_single = relative_residual(Z_opt, I_opt_single, v_exc)
 E_ff_opt_single = compute_farfield(G_mat, Vector{ComplexF64}(I_opt_single), NΩ)
 bs_opt_single = backscatter_rcs(E_ff_opt_single, grid, khat; E0=E0)
 bs_opt_dB = 10 * log10(max(bs_opt_single.sigma, 1e-30))
@@ -304,14 +341,13 @@ println("  Opt backscatter:   $(round(bs_opt_dB, digits=2)) dBsm")
 println("  RCS reduction:     $(round(bs_mom_dB - bs_opt_dB, digits=2)) dB")
 
 # ── B6. Multi-angle RCS optimization ─────────────────
-println("\n── Multi-angle optimization (2 incidence angles) ──")
-
 # Two incidence angles: broadside (-z) and 45° off broadside
 # theta_inc is measured from +z, so broadside (-z incidence) = π
 angles = [
     (theta_inc=π,      phi_inc=0.0, pol=Vec3(1.0, 0.0, 0.0), weight=1.0),   # broadside (-z)
     (theta_inc=3π/4,   phi_inc=0.0, pol=Vec3(1.0, 0.0, 0.0), weight=1.0),   # 45° off broadside
 ]
+println("\n── Multi-angle optimization ($(length(angles)) incidence angles) ──")
 
 grid_opt = make_sph_grid(36, 36)
 configs = build_multiangle_configs(mesh, rwg, k, angles;
@@ -331,17 +367,23 @@ theta_opt_multi, trace_multi = optimize_multiangle_rcs(
     verbose=true,
 )
 
+isempty(trace_multi) && error(
+    "multi-angle optimizer returned an empty trace; inspect the optimizer " *
+    "settings and initial design before using this run")
 J_multi_init = trace_multi[1].J
 J_multi_opt  = trace_multi[end].J
 reduction_dB_multi = 10 * log10(J_multi_init / max(J_multi_opt, 1e-30))
 println("\n  J(initial) = $(round(J_multi_init, sigdigits=4))")
-println("  J(optimal) = $(round(J_multi_opt, sigdigits=4))")
+println("  J(optimized) = $(round(J_multi_opt, sigdigits=4))")
 println("  J reduction:   $(round(reduction_dB_multi, digits=1)) dB")
 
 # ── B7. Recompute and compare RCS for both angles ────
 println("\n── RCS comparison (optimized vs PEC) ──")
 
 Z_opt_multi = assemble_full_Z(Z_efie, Mp, theta_opt_multi)
+angle_residuals_pec = Float64[]
+angle_residuals_opt = Float64[]
+angle_reductions_dB = Float64[]
 for (a_idx, ang) in enumerate(angles)
     cfg = configs[a_idx]
     # PEC solve at this angle
@@ -353,16 +395,19 @@ for (a_idx, ang) in enumerate(angles)
 
     # PEC
     I_pec_a = Z_efie \ Vector{ComplexF64}(v_a)
+    push!(angle_residuals_pec, relative_residual(Z_efie, I_pec_a, v_a))
     E_pec_a = compute_farfield(G_mat, Vector{ComplexF64}(I_pec_a), NΩ)
     bs_pec_a = backscatter_rcs(E_pec_a, grid, khat_a; E0=E0)
 
     # Optimized
     I_opt_a = Z_opt_multi \ Vector{ComplexF64}(v_a)
+    push!(angle_residuals_opt, relative_residual(Z_opt_multi, I_opt_a, v_a))
     E_opt_a = compute_farfield(G_mat, Vector{ComplexF64}(I_opt_a), NΩ)
     bs_opt_a = backscatter_rcs(E_opt_a, grid, khat_a; E0=E0)
 
     pec_dB = 10 * log10(max(bs_pec_a.sigma, 1e-30))
     opt_dB = 10 * log10(max(bs_opt_a.sigma, 1e-30))
+    push!(angle_reductions_dB, pec_dB - opt_dB)
 
     theta_deg = round(rad2deg(ang.theta_inc), digits=1)
     println("  Angle $a_idx (θ=$(theta_deg)°): PEC = $(round(pec_dB, digits=2)) dBsm, " *
@@ -396,7 +441,105 @@ end
 # Energy conservation check for optimized sphere
 P_in_opt  = input_power(Vector{ComplexF64}(I_opt_bs), Vector{ComplexF64}(v_exc))
 P_rad_opt = radiated_power(E_opt_bs, grid)
-println("\n  P_rad/P_in (optimized): $(round(P_rad_opt/P_in_opt, digits=4))  (< 1 → energy absorbed by coating)")
+energy_ratio_pec = P_rad / P_in
+energy_ratio_opt = P_rad_opt / P_in_opt
+println(
+    "\n  P_rad/P_in (optimized): " *
+    "$(round(energy_ratio_opt, digits=4)) " *
+    "(passive-case gate: 0 < ratio <= $SPHERE_MAX_PASSIVE_ENERGY_RATIO)",
+)
+
+scalar_metrics = (
+    residual=residual,
+    energy_ratio_pec=energy_ratio_pec,
+    bs_mom_dB=bs_mom_dB,
+    bs_mie_dB=bs_mie_dB,
+    mie_mae_dB=mae_dB,
+    mie_rmse_dB=rmse_dB,
+    mie_max_error_dB=maximum(abs.(delta_dB)),
+    J_pec=J_pec,
+    J_opt_single=J_opt_single,
+    reduction_dB_single=reduction_dB_single,
+    residual_opt_single=residual_opt_single,
+    J_multi_init=J_multi_init,
+    J_multi_opt=J_multi_opt,
+    reduction_dB_multi=reduction_dB_multi,
+    energy_ratio_opt=energy_ratio_opt,
+)
+nonfinite_metrics = [
+    string(name) for (name, value) in pairs(scalar_metrics) if !isfinite(value)
+]
+isempty(nonfinite_metrics) || error(
+    "sphere optimization produced non-finite metrics: " *
+    join(nonfinite_metrics, ", ") *
+    ". Inspect the corresponding solve or objective before using this run.")
+all(isfinite, angle_residuals_pec) ||
+    error(
+        "a PEC angle solve produced a non-finite residual; inspect the " *
+        "per-angle excitation and system before using this run")
+all(isfinite, angle_residuals_opt) ||
+    error(
+        "an optimized angle solve produced a non-finite residual; inspect the " *
+        "loaded system before using this run")
+all(isfinite, angle_reductions_dB) ||
+    error(
+        "an angle comparison produced a non-finite RCS reduction; inspect the " *
+        "PEC and optimized RCS values before using this run")
+all(isfinite, theta_opt_single) ||
+    error(
+        "single-angle optimizer produced a non-finite design; inspect its " *
+        "trace and bounds before using this run")
+all(isfinite, theta_opt_multi) ||
+    error(
+        "multi-angle optimizer produced a non-finite design; inspect its " *
+        "trace and bounds before using this run")
+all(t -> isfinite(t.J) && isfinite(t.gnorm), trace_single) ||
+    error(
+        "single-angle optimizer trace contains a non-finite objective or " *
+        "gradient norm; inspect the first affected iteration")
+all(t -> isfinite(t.J) && isfinite(t.gnorm), trace_multi) ||
+    error(
+        "multi-angle optimizer trace contains a non-finite objective or " *
+        "gradient norm; inspect the first affected iteration")
+
+checks = [
+    ("PEC relative residual <= $SPHERE_MAX_RELATIVE_RESIDUAL",
+     residual <= SPHERE_MAX_RELATIVE_RESIDUAL),
+    ("optimized relative residual <= $SPHERE_MAX_RELATIVE_RESIDUAL",
+     residual_opt_single <= SPHERE_MAX_RELATIVE_RESIDUAL &&
+     maximum(angle_residuals_opt) <= SPHERE_MAX_RELATIVE_RESIDUAL),
+    ("PEC angle residuals <= $SPHERE_MAX_RELATIVE_RESIDUAL",
+     maximum(angle_residuals_pec) <= SPHERE_MAX_RELATIVE_RESIDUAL),
+    ("PEC energy-ratio error <= " *
+     "$(100 * SPHERE_MAX_PEC_ENERGY_RATIO_ERROR)%",
+     abs(energy_ratio_pec - 1.0) <= SPHERE_MAX_PEC_ENERGY_RATIO_ERROR),
+    ("passive optimized energy ratio is in " *
+     "(0, $SPHERE_MAX_PASSIVE_ENERGY_RATIO]",
+     0.0 < energy_ratio_opt <= SPHERE_MAX_PASSIVE_ENERGY_RATIO),
+    ("Mie cut MAE <= $SPHERE_MAX_MIE_MAE_DB dB",
+     mae_dB <= SPHERE_MAX_MIE_MAE_DB),
+    ("Mie cut maximum error <= $SPHERE_MAX_MIE_ERROR_DB dB",
+     maximum(abs.(delta_dB)) <= SPHERE_MAX_MIE_ERROR_DB),
+    ("MoM/Mie backscatter difference <= $SPHERE_MAX_MIE_ERROR_DB dB",
+     abs(bs_mom_dB - bs_mie_dB) <= SPHERE_MAX_MIE_ERROR_DB),
+    ("single-angle objective decreases", J_opt_single < J_pec),
+    ("multi-angle objective decreases", J_multi_opt < J_multi_init),
+    ("every optimized angle reduces RCS",
+     all(reduction > 0.0 for reduction in angle_reductions_dB)),
+    ("single-angle design respects bounds",
+     all(lb .<= theta_opt_single .<= ub)),
+    ("multi-angle design respects bounds",
+     all(lb .<= theta_opt_multi .<= ub)),
+]
+println("\n── Verification ──")
+for (label, pass) in checks
+    println("[$(pass ? "PASS" : "FAIL")] $label")
+end
+failed_checks = first.(filter(check -> !last(check), checks))
+isempty(failed_checks) ||
+    error(
+        "sphere optimization checks failed: " * join(failed_checks, "; ") *
+        ". Review the printed metrics before using the plots.")
 
 # ── B10. Plot 2: Optimization comparison (broadside, phi=0 cut) ────
 println("\nGenerating Plot 2: PEC vs optimized RCS (broadside incidence)...")
@@ -465,8 +608,12 @@ grid_sc = SphGrid(rhat_sc, theta_sc, phi_sc, w_sc)
 G_sc = radiation_vectors(mesh, rwg, grid_sc, k)
 
 # Compute backscatter positions in signed-θ for annotation
-bs_signed_deg = zeros(2)
+bs_signed_deg = zeros(length(angles))
 angle_labels = ["Broadside (-z)", "45° off broadside"]
+length(angle_labels) == length(angles) ||
+    error(
+        "plot configuration has $(length(angles)) incidence angles but " *
+        "$(length(angle_labels)) labels; update `angle_labels` before plotting")
 for (a_idx, ang) in enumerate(angles)
     khat_a = Vec3(sin(ang.theta_inc)*cos(ang.phi_inc),
                   sin(ang.theta_inc)*sin(ang.phi_inc),
@@ -489,8 +636,8 @@ end
 println("  Backscatter directions: $(round.(bs_signed_deg, digits=1))° (signed-θ)")
 
 # Solve both angles on the signed-θ grid
-pec_sc_dB = Vector{Vector{Float64}}(undef, 2)
-opt_sc_dB = Vector{Vector{Float64}}(undef, 2)
+pec_sc_dB = Vector{Vector{Float64}}(undef, length(angles))
+opt_sc_dB = Vector{Vector{Float64}}(undef, length(angles))
 for (a_idx, ang) in enumerate(angles)
     cfg = configs[a_idx]
     khat_a = Vec3(sin(ang.theta_inc)*cos(ang.phi_inc),
@@ -513,13 +660,15 @@ sf4 = subplots(1, 1; sync=false, width=700, height=400)
 addtraces!(sf4, scatter(x=theta_signed_deg, y=pec_sc_dB[1], mode="lines",
            name="PEC, $(angle_labels[1])", line=attr(color="black", width=2)); row=1, col=1)
 addtraces!(sf4, scatter(x=theta_signed_deg, y=opt_sc_dB[1], mode="lines",
-           name="Opt, $(angle_labels[1])", line=attr(color="#d62728", width=2, dash="dash")); row=1, col=1)
+           name="Optimized, $(angle_labels[1])",
+           line=attr(color="#d62728", width=2, dash="dash")); row=1, col=1)
 
 # Angle 2: 45° off broadside
 addtraces!(sf4, scatter(x=theta_signed_deg, y=pec_sc_dB[2], mode="lines",
            name="PEC, $(angle_labels[2])", line=attr(color="gray", width=2)); row=1, col=1)
 addtraces!(sf4, scatter(x=theta_signed_deg, y=opt_sc_dB[2], mode="lines",
-           name="Opt, $(angle_labels[2])", line=attr(color="#ff7f0e", width=2, dash="dash")); row=1, col=1)
+           name="Optimized, $(angle_labels[2])",
+           line=attr(color="#ff7f0e", width=2, dash="dash")); row=1, col=1)
 
 p4 = sf4.plot
 
@@ -568,7 +717,8 @@ addtraces!(sf3, scatter(x=iters_s, y=J_s_dB, mode="lines+markers",
            name="Single-angle", line=attr(color="#2ca02c", width=2),
            marker=attr(size=8)); row=1, col=1)
 addtraces!(sf3, scatter(x=iters_m, y=J_m_dB, mode="lines+markers",
-           name="Multi-angle (2 angles)", line=attr(color="#d62728", width=2),
+           name="Multi-angle ($(length(angles)) angles)",
+           line=attr(color="#d62728", width=2),
            marker=attr(size=6)); row=1, col=1)
 p3 = sf3.plot
 relayout!(p3,
@@ -671,7 +821,10 @@ println("  Saved: $fig6_path")
 
 # ── B15. GMRES iteration count analysis ─────────────────
 println("\n── GMRES Iteration Count Analysis ──")
-println("  Forward solve (Z(θ)·I = v) convergence, rtol=1e-6, N=$N\n")
+println(
+    "  Forward solve (Z(θ)·I = v) convergence, " *
+    "rtol=$SPHERE_GMRES_TEST_TOL, N=$N\n",
+)
 
 gmres_test_configs = [
     ("PEC (θ=0)",             zeros(P)),
@@ -689,25 +842,30 @@ for (label, theta_test) in gmres_test_configs
 
     # Without preconditioner
     _, stats_no = solve_gmres(Z_test, Vector{ComplexF64}(v_exc);
-                               tol=1e-6, maxiter=500)
+                               tol=SPHERE_GMRES_TEST_TOL, maxiter=500)
 
     # With NF preconditioner (right)
     _, stats_nf = solve_gmres(Z_test, Vector{ComplexF64}(v_exc);
                                preconditioner=P_nf,
-                               tol=1e-6, maxiter=500)
+                               tol=SPHERE_GMRES_TEST_TOL, maxiter=500)
 
     println("  " * rpad(label, 24) * rpad("$(stats_no.niter)", 14) * "$(stats_nf.niter)")
     push!(gmres_results, (label=label, no_precond=stats_no.niter, nf_precond=stats_nf.niter))
 end
 
 
-# ── Cleanup temp file ────────────────────────────────
 rm(stl_path; force=true)
 
 println("\n" * "="^70)
 println("Example 13 complete.")
 println("  Part A: PEC sphere RCS validated against Mie (MAE = $(round(mae_dB, digits=2)) dB)")
-println("  Part B: Single-angle backscatter reduced by $(round(bs_mom_dB - bs_opt_dB, digits=1)) dB")
-println("          Multi-angle (2 angles) J reduced by $(round(reduction_dB_multi, digits=1)) dB")
+println(
+    "  Part B: Single-angle backscatter reduced by " *
+    "$(round(bs_mom_dB - bs_opt_dB, digits=1)) dB",
+)
+println(
+    "          Multi-angle ($(length(angles)) angles) J reduced by " *
+    "$(round(reduction_dB_multi, digits=1)) dB",
+)
 println("          via resistive impedance optimization ($P spatial patches)")
 println("="^70)

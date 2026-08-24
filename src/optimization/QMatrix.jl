@@ -998,6 +998,121 @@ end
     return result
 end
 
+@inline function _q_neumaier_add(
+        total::Float64, correction::Float64, value::Float64)
+    combined = total + value
+    if abs(total) >= abs(value)
+        correction += (total - combined) + value
+    else
+        correction += (value - combined) + total
+    end
+    return combined, correction
+end
+
+function _farfield_q_entry_compensated(
+        projections::Matrix{ComplexF64},
+        weights::Vector{Float64},
+        mask,
+        row::Int,
+        column::Int)
+    real_total = 0.0
+    real_correction = 0.0
+    imag_total = 0.0
+    imag_correction = 0.0
+    @inbounds for q in eachindex(weights)
+        mask !== nothing && !mask[q] && continue
+        row_projection = conj(projections[q, row])
+        weighted_projection = weights[q] * row_projection
+        _farfield_q_product_requires_exact(
+            weights[q], row_projection, weighted_projection) &&
+            return zero(ComplexF64), true
+        contribution = weighted_projection * projections[q, column]
+        _farfield_q_product_requires_exact(
+            weighted_projection, projections[q, column], contribution) &&
+            return zero(ComplexF64), true
+        real_total, real_correction = _q_neumaier_add(
+            real_total, real_correction, real(contribution))
+        imag_total, imag_correction = _q_neumaier_add(
+            imag_total, imag_correction, imag(contribution))
+        (isfinite(real_total) && isfinite(real_correction) &&
+         isfinite(imag_total) && isfinite(imag_correction)) ||
+            return zero(ComplexF64), true
+    end
+    value = ComplexF64(
+        real_total + real_correction,
+        imag_total + imag_correction,
+    )
+    return value, !isfinite(value)
+end
+
+function _build_q_from_projections!(
+        result::Matrix{ComplexF64},
+        projections::Matrix{ComplexF64},
+        weighted_projections::Matrix{ComplexF64},
+        G_mat::Matrix{ComplexF64},
+        weights::Vector{Float64},
+        pol::Matrix{ComplexF64},
+        mask,
+        N::Int)
+    active_terms = 0
+    @inbounds for q in eachindex(weights)
+        active = mask === nothing || mask[q]
+        active_terms += active && !iszero(weights[q])
+        weight = active ? weights[q] : 0.0
+        for column in 1:N
+            weighted_projections[q, column] =
+                weight * projections[q, column]
+        end
+    end
+    mul!(result, adjoint(projections), weighted_projections)
+
+    # BLAS handles the ordinary O(N²NΩ) product. Recompute an entry when one
+    # component is small enough to have lost a cancellation-sensitive product.
+    # The diagonal supplies a Cauchy-Schwarz bound without another NΩ×N
+    # workspace or a second matrix product.
+    column_has_real = falses(N)
+    column_has_imag = falses(N)
+    @inbounds for column in 1:N, q in eachindex(weights)
+        mask !== nothing && !mask[q] && continue
+        projection = projections[q, column]
+        column_has_real[column] |= !iszero(real(projection))
+        column_has_imag[column] |= !iszero(imag(projection))
+    end
+    error_factor = min(1.0, 32eps(Float64) * max(active_terms, 1))
+    @inbounds for column in 1:N
+        column_norm = sqrt(max(real(result[column, column]), 0.0))
+        for row in 1:column
+            value = result[row, column]
+            row_norm = sqrt(max(real(result[row, row]), 0.0))
+            magnitude_bound = row_norm * column_norm
+            real_component_possible =
+                (column_has_real[row] && column_has_real[column]) ||
+                (column_has_imag[row] && column_has_imag[column])
+            imag_component_possible =
+                (column_has_real[row] && column_has_imag[column]) ||
+                (column_has_imag[row] && column_has_real[column])
+            component_requires_check = row != column &&
+                !iszero(magnitude_bound) &&
+                ((real_component_possible &&
+                  abs(real(value)) <= error_factor * magnitude_bound) ||
+                 (imag_component_possible &&
+                  abs(imag(value)) <= error_factor * magnitude_bound))
+            if !isfinite(value) ||
+               component_requires_check
+                value, requires_exact = _farfield_q_entry_compensated(
+                    projections, weights, mask, row, column)
+                requires_exact &&
+                    (value = _farfield_q_entry_bigfloat_arrays(
+                        G_mat, weights, pol, mask, row, column))
+            end
+            row == column && (value = ComplexF64(real(value), 0.0))
+            result[row, column] = value
+            result[column, row] = conj(value)
+        end
+    end
+    return result
+end
+
 """
     build_Q(G_mat, grid, pol;
             mask=nothing,
@@ -1032,10 +1147,20 @@ function build_Q(
         _checked_array_payload_bytes(
             UInt64, cld(NΩ, 8sizeof(UInt64));
             label="build_Q checked mask workspace") : 0
+    weighted_projection_bytes = checked_products ? 0 : projection_bytes
+    component_flag_bytes = checked_products ? 0 :
+        _checked_array_payload_bytes(
+            UInt64, 2, cld(N, 8sizeof(UInt64));
+            label="build_Q component-flag workspace")
     work_bytes = try
         checked_products ?
             Base.Checked.checked_add(matrix_bytes, mask_copy_bytes) :
-            Base.Checked.checked_add(projection_bytes, matrix_bytes)
+            Base.Checked.checked_add(
+                Base.Checked.checked_add(
+                    Base.Checked.checked_add(
+                        projection_bytes, weighted_projection_bytes),
+                    component_flag_bytes),
+                matrix_bytes)
     catch err
         err isa OverflowError || rethrow()
         throw(ArgumentError("build_Q raw-work estimate overflows Int"))
@@ -1071,62 +1196,13 @@ function build_Q(
         projection_requires_exact && break
     end
 
-    # Q_mn = Σ_q w_q conj(y_qm) y_qn
+    # Q_mn = Σ_q w_q conj(y_qm) y_qn.
     Q = zeros(ComplexF64, N, N)
-    projection_requires_exact && return _build_q_checked_into!(
-        Q, G_mat, grid.w, pol, mask, N)
-    for q in 1:NΩ
-        if mask !== nothing && !mask[q]
-            continue
-        end
-        wq = grid.w[q]
-        for m in 1:N
-            ym = conj(y[q, m])
-            weighted_projection = wq * ym
-            if _farfield_q_product_requires_exact(
-                    wq, ym, weighted_projection)
-                return _build_q_checked_into!(
-                    Q, G_mat, grid.w, pol, mask, N)
-            end
-            for n in 1:N
-                contribution = if m == n
-                    projection_squared = abs2(y[q, m])
-                    if (!iszero(y[q, m]) && iszero(projection_squared)) ||
-                       (!iszero(projection_squared) &&
-                        projection_squared < floatmin(Float64))
-                        return _build_q_checked_into!(
-                            Q, G_mat, grid.w, pol, mask, N)
-                    end
-                    weighted_squared = wq * projection_squared
-                    if !isfinite(weighted_squared) ||
-                       (!iszero(wq) && !iszero(projection_squared) &&
-                        iszero(weighted_squared))
-                        return _build_q_checked_into!(
-                            Q, G_mat, grid.w, pol, mask, N)
-                    end
-                    ComplexF64(weighted_squared)
-                else
-                    product = weighted_projection * y[q, n]
-                    if _farfield_q_product_requires_exact(
-                            weighted_projection, y[q, n], product)
-                        return _build_q_checked_into!(
-                            Q, G_mat, grid.w, pol, mask, N)
-                    end
-                    product
-                end
-                next_value = Q[m, n] + contribution
-                if !isfinite(next_value) ||
-                   _scaled_sum_requires_exact(
-                       Q[m, n], contribution, next_value)
-                    return _build_q_checked_into!(
-                        Q, G_mat, grid.w, pol, mask, N)
-                end
-                Q[m, n] = next_value
-            end
-        end
-    end
-
-    return Q
+    projection_requires_exact &&
+        return _build_q_checked(G_mat, grid.w, pol, mask, N)
+    weighted_y = similar(y)
+    return _build_q_from_projections!(
+        Q, y, weighted_y, G_mat, grid.w, pol, mask, N)
 end
 
 """

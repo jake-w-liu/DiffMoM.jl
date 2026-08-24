@@ -1,7 +1,7 @@
 # Workflow.jl — High-level scattering solve with automatic method selection
 #
 # Provides `solve_scattering` which validates mesh resolution, selects the
-# appropriate solver method (dense direct / dense GMRES / ACA GMRES / MLFMA)
+# solver method (dense direct / dense GMRES / ACA GMRES / MLFMA)
 # based on problem size, and handles preconditioner setup automatically.
 
 export solve_scattering
@@ -11,8 +11,8 @@ const C0_DEFAULT = 299792458.0
 """
     solve_scattering(mesh, freq_hz, excitation; kwargs...)
 
-High-level scattering solve that automatically selects the appropriate method
-based on problem size:
+High-level scattering solve that selects a method from the configured problem-
+size thresholds:
 
 - **N <= dense_direct_limit** (default 2000): Dense EFIE assembly + LU direct solve
 - **dense_direct_limit < N <= dense_gmres_limit** (default 10000): Dense + NF-preconditioned GMRES
@@ -43,9 +43,12 @@ produce a warning (or error if `error_on_underresolved=true`).
 - `gmres_tol=1e-6`: GMRES relative tolerance
 - `gmres_maxiter=300`: maximum GMRES iterations
 - `check_gmres_convergence=true`: reject unconverged or non-finite GMRES results
+- `check_true_residual=true`: verify the residual against the selected operator
+- `true_residual_factor=100.0`: allowed true-residual multiple of `gmres_tol`
 
 ## NF preconditioner
-- `nf_cutoff_lambda=1.0`: near-field cutoff in wavelengths
+- `nf_cutoff_lambda=1.0`: near-field cutoff in wavelengths for dense GMRES;
+  ACA and MLFMA use their stored near-field structures
 - `preconditioner=:auto`: one of `:auto`, `:lu`, `:ilu` (MLFMA), `:diag`, `:none`
 
 ## ACA settings
@@ -75,6 +78,8 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           gmres_tol::Float64=1e-6,
                           gmres_maxiter::Int=300,
                           check_gmres_convergence::Bool=true,
+                          check_true_residual::Bool=true,
+                          true_residual_factor::Float64=100.0,
                           nf_cutoff_lambda::Float64=1.0,
                           preconditioner::Symbol=:auto,
                           aca_tol::Float64=1e-6,
@@ -95,9 +100,13 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
         throw(ArgumentError(
             "solve_scattering: c0 must be finite and positive, got $c0"))
     method in (:auto, :dense_direct, :dense_gmres, :aca_gmres, :mlfma) ||
-        error("solve_scattering: method must be :auto, :dense_direct, :dense_gmres, :aca_gmres, or :mlfma")
+        error(
+            "solve_scattering: method must be :auto, :dense_direct, " *
+            ":dense_gmres, :aca_gmres, or :mlfma")
     preconditioner in (:auto, :lu, :ilu, :diag, :none) ||
-        throw(ArgumentError("solve_scattering: preconditioner must be :auto, :lu, :ilu, :diag, or :none"))
+        throw(ArgumentError(
+            "solve_scattering: preconditioner must be :auto, :lu, :ilu, " *
+            ":diag, or :none"))
     dense_direct_limit >= 0 ||
         throw(ArgumentError(
             "solve_scattering: dense_direct_limit must be nonnegative, got $dense_direct_limit"))
@@ -109,6 +118,12 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
         throw(ArgumentError(
             "solve_scattering: mlfma_threshold ($mlfma_threshold) must be at least " *
             "dense_gmres_limit ($dense_gmres_limit)"))
+    if check_true_residual
+        (isfinite(true_residual_factor) && true_residual_factor > 0.0) ||
+            throw(ArgumentError(
+                "solve_scattering: true_residual_factor must be finite and " *
+                "positive, got $true_residual_factor"))
+    end
 
     warnings = String[]
     lambda = propagation_speed / frequency
@@ -124,9 +139,11 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                                           c0=propagation_speed)
 
     if check_resolution && !mesh_report.meets_target
-        msg = "Mesh under-resolved: edge_max/lambda=$(round(mesh_report.edge_max_over_lambda, digits=3)), " *
+        msg = "Mesh under-resolved: edge_max/lambda=" *
+              "$(round(mesh_report.edge_max_over_lambda, digits=3)), " *
               "target <= $(round(1.0/points_per_wavelength, digits=3)). " *
-              "Results may be inaccurate."
+              "Refine the mesh, lower the frequency, or disable the check " *
+              "only for a deliberate coarse-mesh study."
         push!(warnings, msg)
         if error_on_underresolved
             error("solve_scattering: $msg")
@@ -140,8 +157,12 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     N = rwg.nedges
     N >= 1 ||
         throw(ArgumentError(
-            "solve_scattering: mesh produces no RWG unknowns; at least two triangles sharing an edge are required"))
-    verbose && println("  N = $N RWG unknowns ($(round(estimate_dense_matrix_gib(N), sigdigits=3)) GiB dense)")
+            "solve_scattering: mesh produces no RWG unknowns; at least two " *
+            "triangles sharing an edge are required"))
+    verbose && println(
+        "  N = $N RWG unknowns " *
+        "($(round(estimate_dense_matrix_gib(N), sigdigits=3)) GiB " *
+        "one-matrix payload)")
 
     # ── Step 3: Method selection ──
     selected_method = method
@@ -262,9 +283,16 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                                                            factorization=factorization)
                 end
             end
-            verbose && println("  Preconditioner ($precond_used): $(round(t_precond, digits=3)) s, " *
-                               "cutoff=$(round(cutoff, sigdigits=3)) m ($(nf_cutoff_lambda)lambda), " *
-                               "nnz=$(round(P_nf.nnz_ratio*100, digits=1))%")
+            if verbose
+                detail = selected_method == :dense_gmres ?
+                    "cutoff=$(round(cutoff, sigdigits=3)) m " *
+                    "(nf_cutoff_lambda=$(nf_cutoff_lambda))" :
+                    "source=ACA inadmissible blocks"
+                println(
+                    "  Preconditioner ($precond_used): " *
+                    "$(round(t_precond, digits=3)) s, $detail, " *
+                    "nnz=$(round(P_nf.nnz_ratio * 100, digits=1))%")
+            end
         end
     end
 
@@ -298,6 +326,24 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             gmres_iters = stats.niter
             gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         end
+    end
+
+    if check_true_residual && selected_method != :dense_direct
+        selected_operator = if selected_method == :dense_gmres
+            Z
+        elseif selected_method == :aca_gmres
+            A_aca
+        else
+            A_mlfma
+        end
+        _assert_true_residual(
+            selected_operator,
+            I_coeffs,
+            v,
+            "solve_scattering";
+            tol=gmres_tol,
+            factor=true_residual_factor,
+        )
     end
     verbose && println("  Solve: $(round(t_solve, digits=3)) s" *
                        (gmres_iters >= 0 ? " ($gmres_iters GMRES iters)" : " (direct LU)"))

@@ -10,14 +10,19 @@
 #
 # Run: julia --project=. validation/mie/validate_mie_rcs.jl
 
-push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "src"))
-include(joinpath(@__DIR__, "..", "..", "src", "DiffMoM.jl"))
-using .DiffMoM
+using DiffMoM
 using LinearAlgebra
 using Statistics
 using CSV
 using DataFrames
 using PlotlySupply
+
+const MIE_MAX_RELATIVE_RESIDUAL = 1e-10
+const MIE_MAX_MAE_DB = 0.25
+const MIE_MAX_ERROR_DB = 0.5
+const MIE_MAX_BACKSCATTER_ERROR_DB = 0.5
+const MIE_MAX_ENERGY_RATIO_ERROR = 0.02
+
 # ── Icosphere generator ─────────────────────────────
 function make_icosphere(radius::Float64; subdivisions::Int=2)
     phi_gold = (1 + sqrt(5.0)) / 2
@@ -99,24 +104,39 @@ subdiv = 3
 mesh_orig = make_icosphere(a; subdivisions=subdiv)
 println("\nOriginal mesh: $(nvertices(mesh_orig)) vertices, $(ntriangles(mesh_orig)) triangles")
 
-stl_path = joinpath(@__DIR__, "sphere_ka$(round(ka, digits=2)).stl")
+stl_path, stl_stream = mktemp()
+close(stl_stream)
+atexit(() -> rm(stl_path; force=true))
 write_stl_mesh(stl_path, mesh_orig; header="PEC sphere a=$(a)m ka=$(round(ka, digits=2))")
-println("Exported to STL: $stl_path")
+println("Exported temporary STL round-trip fixture")
 
 # ── 3. Import STL mesh back ──────────────────────────
 mesh = read_stl_mesh(stl_path)
+rm(stl_path; force=true)
 report = assert_mesh_quality(mesh; allow_boundary=false, require_closed=true)
 println("Re-imported STL: $(nvertices(mesh)) vertices, $(ntriangles(mesh)) triangles")
 println("Quality: OK (closed surface, 0 boundary edges)")
 
-res = mesh_resolution_report(mesh, freq)
-println("Edge max/lambda: $(round(res.edge_max_over_lambda, digits=3))  (target <= 0.1)")
+points_per_wavelength = 10.0
+res = mesh_resolution_report(
+    mesh,
+    freq;
+    points_per_wavelength=points_per_wavelength,
+)
+resolution_target = inv(points_per_wavelength)
+println(
+    "Edge max/lambda: $(round(res.edge_max_over_lambda, digits=3)) " *
+    "(target <= $resolution_target)",
+)
 
 # ── 4. Build RWG and assemble EFIE ───────────────────
 rwg = build_rwg(mesh)
 N = rwg.nedges
 println("\nRWG basis functions: $N")
-println("Estimated memory: $(round(estimate_dense_matrix_gib(N)*1024, digits=1)) MiB")
+println(
+    "One dense ComplexF64 matrix payload: " *
+    "$(round(estimate_dense_matrix_gib(N) * 1024, digits=1)) MiB",
+)
 
 println("Assembling Z_efie ($N x $N)...")
 t_asm = @elapsed Z = assemble_Z_efie(mesh, rwg, k)
@@ -204,23 +224,25 @@ println("  MAE:     $(round(mean(abs.(delta_phi90)), digits=3)) dB")
 println("  RMSE:    $(round(sqrt(mean(abs2, delta_phi90)), digits=3)) dB")
 println("  Max |Δ|: $(round(maximum(abs.(delta_phi90)), digits=3)) dB")
 
-# Backscatter (theta = 180)
-idx_back = argmin(abs.(theta_cut .- π))
-println("\n── Backscatter (theta ≈ 180°) ──")
+# The incident wave propagates along -z. Backscatter is therefore +z (theta=0).
+idx_back = argmin(abs.(theta_cut))
+println("\n── Backscatter (theta ≈ 0°) ──")
 println("  MoM phi=0:  $(round(dB_mom_phi0[idx_back], digits=2)) dBsm")
 println("  Mie phi=0:  $(round(dB_mie_phi0[idx_back], digits=2)) dBsm")
 println("  Delta:      $(round(delta_phi0[idx_back], digits=2)) dB")
 
-# Forward scatter (theta ≈ 0)
-idx_fwd = argmin(abs.(theta_cut))
-println("\n── Forward scatter (theta ≈ 0°) ──")
+# Forward scatter follows -z (theta=180°).
+idx_fwd = argmin(abs.(theta_cut .- π))
+println("\n── Forward scatter (theta ≈ 180°) ──")
 println("  MoM phi=0:  $(round(dB_mom_phi0[idx_fwd], digits=2)) dBsm")
 println("  Mie phi=0:  $(round(dB_mie_phi0[idx_fwd], digits=2)) dBsm")
 println("  Delta:      $(round(delta_phi0[idx_fwd], digits=2)) dB")
 
 # Energy conservation (full sphere grid)
 println("\nComputing energy conservation (full sphere)...")
-grid_full = make_sph_grid(90, 72)
+# Keep the radiation matrix within `radiation_vectors`' default work limit while
+# retaining sufficient angular resolution for the power-balance integral.
+grid_full = make_sph_grid(60, 36)
 G_full = radiation_vectors(mesh, rwg, grid_full, k)
 E_ff_full = compute_farfield(G_full, Vector{ComplexF64}(I_pec), length(grid_full.w))
 P_in  = input_power(Vector{ComplexF64}(I_pec), Vector{ComplexF64}(v_exc))
@@ -351,9 +373,56 @@ fig_err_path = joinpath(figdir, "mie_rcs_error.png")
 savefig(p_err, fig_err_path; width=900, height=550)
 println("Plot saved: $fig_err_path")
 
+mae_phi0 = mean(abs.(delta_phi0))
+mae_phi90 = mean(abs.(delta_phi90))
+max_delta_phi0 = maximum(abs.(delta_phi0))
+max_delta_phi90 = maximum(abs.(delta_phi90))
+backscatter_delta = abs(delta_phi0[idx_back])
+energy_ratio = P_rad / P_in
+scalar_metrics = (
+    residual=residual,
+    mae_phi0=mae_phi0,
+    mae_phi90=mae_phi90,
+    max_delta_phi0=max_delta_phi0,
+    max_delta_phi90=max_delta_phi90,
+    backscatter_delta=backscatter_delta,
+    energy_ratio=energy_ratio,
+)
+nonfinite_metrics = [
+    string(name) for (name, value) in pairs(scalar_metrics) if !isfinite(value)
+]
+isempty(nonfinite_metrics) || error(
+    "PEC sphere validation produced non-finite metrics: " *
+    join(nonfinite_metrics, ", ") *
+    ". Inspect the corresponding solve or comparison artifact.")
+checks = [
+    ("relative residual <= $MIE_MAX_RELATIVE_RESIDUAL",
+     residual <= MIE_MAX_RELATIVE_RESIDUAL),
+    ("E-plane MoM/Mie MAE <= $MIE_MAX_MAE_DB dB",
+     mae_phi0 <= MIE_MAX_MAE_DB),
+    ("H-plane MoM/Mie MAE <= $MIE_MAX_MAE_DB dB",
+     mae_phi90 <= MIE_MAX_MAE_DB),
+    ("E-plane MoM/Mie maximum error <= $MIE_MAX_ERROR_DB dB",
+     max_delta_phi0 <= MIE_MAX_ERROR_DB),
+    ("H-plane MoM/Mie maximum error <= $MIE_MAX_ERROR_DB dB",
+     max_delta_phi90 <= MIE_MAX_ERROR_DB),
+    ("MoM/Mie backscatter error <= $MIE_MAX_BACKSCATTER_ERROR_DB dB",
+     backscatter_delta <= MIE_MAX_BACKSCATTER_ERROR_DB),
+    ("PEC energy-ratio error <= $(100 * MIE_MAX_ENERGY_RATIO_ERROR)%",
+     abs(energy_ratio - 1) <= MIE_MAX_ENERGY_RATIO_ERROR),
+]
+println("\n── Verification ──")
+for (label, pass) in checks
+    println("[$(pass ? "PASS" : "FAIL")] $label")
+end
+failed_checks = first.(filter(check -> !last(check), checks))
+isempty(failed_checks) || error(
+    "PEC sphere validation checks failed: " * join(failed_checks, "; ") *
+    ". Inspect the generated metrics before using the artifacts.")
+
 println("\n" * "="^70)
 println("Mie validation complete.")
-println("  E-plane MAE:  $(round(mean(abs.(delta_phi0)), digits=3)) dB")
-println("  H-plane MAE:  $(round(mean(abs.(delta_phi90)), digits=3)) dB")
-println("  P_rad/P_in:   $(round(P_rad / P_in, digits=4))")
+println("  E-plane MAE:  $(round(mae_phi0, digits=3)) dB")
+println("  H-plane MAE:  $(round(mae_phi90, digits=3)) dB")
+println("  P_rad/P_in:   $(round(energy_ratio, digits=4))")
 println("="^70)

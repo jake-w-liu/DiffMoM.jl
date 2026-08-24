@@ -6,8 +6,24 @@ using CSV
 using DataFrames
 using DiffMoM
 
-const DATADIR = joinpath(@__DIR__, "..", "..", "data")
+const DATADIR = normpath(joinpath(@__DIR__, "..", "..", "data"))
+const BEAM_MAX_RELATIVE_RESIDUAL = 1e-10
+const BEAM_MAX_ENERGY_RATIO_ERROR = 0.02
+const BEAM_MAX_GRADIENT_ERROR = 1e-5
 mkpath(DATADIR)
+
+function relative_residual(A, x, rhs)
+    rhs_norm = norm(rhs)
+    residual_norm = norm(A * x - rhs)
+    return iszero(rhs_norm) ?
+           (iszero(residual_norm) ? 0.0 : Inf) :
+           residual_norm / rhs_norm
+end
+
+function symmetric_relative_error(a::Real, b::Real)
+    scale = max(abs(a), abs(b))
+    return iszero(scale) ? 0.0 : abs(a - b) / scale
+end
 
 println("="^60)
 println("Beam-Steering Metasurface Optimization")
@@ -19,8 +35,8 @@ lambda0 = c0 / freq
 k = 2π / lambda0
 eta0 = 376.730313668
 
-Lx = 4 * lambda0
-Ly = 4 * lambda0
+Lx = lambda0
+Ly = lambda0
 Nx, Ny = 12, 12
 
 mesh = make_rect_plate(Lx, Ly, Nx, Ny)
@@ -62,10 +78,16 @@ println("\n── Building far-field objective ──")
 
 theta_steer = 30.0 * π / 180
 phi_steer = 0.0
+target_half_angle_deg = 5.0
 
-grid = make_sph_grid(180, 72)
+grid_ntheta = 180
+grid_nphi = 72
+grid = make_sph_grid(grid_ntheta, grid_nphi)
 NΩ = length(grid.w)
-println("  Far-field grid: $NΩ directions (1° θ × 5° φ)")
+println(
+    "  Far-field grid: $NΩ directions " *
+    "($(180 / grid_ntheta)° θ × $(360 / grid_nphi)° φ)",
+)
 
 G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=eta0)
 pol_mat = pol_linear_x(grid)
@@ -79,23 +101,33 @@ steer_rhat = Vec3(
 mask = BitVector([begin
     rh = Vec3(grid.rhat[:, q])
     angle = acos(clamp(dot(rh, steer_rhat), -1.0, 1.0))
-    angle <= 5.0 * π / 180
+    angle <= deg2rad(target_half_angle_deg)
 end for q in 1:NΩ])
-println("  Target directions (θ_s=$(round(rad2deg(theta_steer)))°, Δθ=5°): $(count(mask)) points")
+println(
+    "  Target directions (θ_s=$(round(rad2deg(theta_steer)))°, " *
+    "half-angle=$(target_half_angle_deg)°): $(count(mask)) points",
+)
 
 Q_target = build_Q(G_mat, grid, pol_mat; mask=mask)
 Q_total = build_Q(G_mat, grid, pol_mat)
 
 println("\n── Reference: PEC solution ──")
 I_pec = Z_efie \ v
+residual_pec = relative_residual(Z_efie, I_pec, v)
 E_ff_pec = compute_farfield(G_mat, I_pec, NΩ)
 P_target_pec = real(dot(I_pec, Q_target * I_pec))
 P_total_pec = real(dot(I_pec, Q_total * I_pec))
+isfinite(P_total_pec) && P_total_pec > 0.0 ||
+    error(
+        "PEC total-pattern objective is $P_total_pec; inspect the solve and " *
+        "far-field grid before optimizing")
 J_pec = P_target_pec / P_total_pec
 P_rad_pec = radiated_power(E_ff_pec, grid)
 P_in_pec = input_power(I_pec, v)
+energy_ratio_pec = P_rad_pec / P_in_pec
 println("  J_pec (directivity fraction) = $(round(J_pec * 100, digits=2))%")
-println("  Energy ratio P_rad/P_in = $(round(P_rad_pec / P_in_pec, sigdigits=4))")
+println("  Relative residual = $(round(residual_pec, sigdigits=4))")
+println("  Energy ratio P_rad/P_in = $(round(energy_ratio_pec, sigdigits=4))")
 
 println("\n── Optimization (L-BFGS, reactive impedance, directivity) ──")
 
@@ -105,14 +137,18 @@ x_halfspan = Lx / 2 - Lx / (2Np)
 theta_init = [300.0 * cx_p / x_halfspan for cx_p in cell_cx]
 theta_bound = 500.0
 
-println("  Phase-gradient init: θ ∈ [$(round(minimum(theta_init), digits=1)), $(round(maximum(theta_init), digits=1))] Ω")
+println(
+    "  Phase-gradient init: θ ∈ [" *
+    "$(round(minimum(theta_init), digits=1)), " *
+    "$(round(maximum(theta_init), digits=1))] Ω",
+)
 
 theta_opt, trace = optimize_directivity(
     Z_efie, Mp, v, Q_target, Q_total, theta_init;
     maxiter=300,
     tol=1e-12,
     alpha0=1e8,
-    verbose=true,
+    verbose=false,
     reactive=true,
     lb=-theta_bound,
     ub=theta_bound,
@@ -122,16 +158,26 @@ println("\n── Post-optimization ──")
 
 Z_opt = assemble_full_Z(Z_efie, Mp, theta_opt; reactive=true)
 I_opt = Z_opt \ v
+residual_opt = relative_residual(Z_opt, I_opt, v)
 E_ff_opt = compute_farfield(G_mat, I_opt, NΩ)
 P_target_opt = real(dot(I_opt, Q_target * I_opt))
 P_total_opt = real(dot(I_opt, Q_total * I_opt))
+isfinite(P_total_opt) && P_total_opt > 0.0 ||
+    error(
+        "optimized total-pattern objective is $P_total_opt; inspect the " *
+        "loaded solve and far-field grid before saving this design")
 J_opt = P_target_opt / P_total_opt
 P_rad_opt = radiated_power(E_ff_opt, grid)
 P_in_opt = input_power(I_opt, v)
+energy_ratio_opt = P_rad_opt / P_in_opt
 
 println("  J_pec = $(round(J_pec * 100, digits=2))%")
-println("  J_opt = $(round(J_opt * 100, digits=2))%  ($(round(J_opt / J_pec, sigdigits=3))x over PEC)")
-println("  Energy ratio P_rad/P_in = $(round(P_rad_opt / P_in_opt, sigdigits=4))")
+println(
+    "  J_opt = $(round(J_opt * 100, digits=2))% " *
+    "($(round(J_opt / J_pec, sigdigits=3))x over PEC)",
+)
+println("  Relative residual = $(round(residual_opt, sigdigits=4))")
+println("  Energy ratio P_rad/P_in = $(round(energy_ratio_opt, sigdigits=4))")
 
 cond_opt = condition_diagnostics(Z_opt)
 println("  cond(Z_opt) = $(round(cond_opt.cond, sigdigits=3))")
@@ -141,9 +187,9 @@ lam_a_opt = Z_opt' \ (Q_total * I_opt)
 g_f_opt = gradient_impedance(Mp, I_opt, lam_t_opt; reactive=true)
 g_g_opt = gradient_impedance(Mp, I_opt, lam_a_opt; reactive=true)
 g_opt = (P_total_opt .* g_f_opt .- P_target_opt .* g_g_opt) ./ (P_total_opt^2)
-println("  |g| at optimum = $(norm(g_opt))")
+println("  |g| at optimized design = $(norm(g_opt))")
 
-println("\n── Gradient verification (FD at optimum) ──")
+println("\n── Gradient verification (FD at optimized design) ──")
 
 function J_of_theta_reactive(theta_vec)
     Z_t = copy(Z_efie)
@@ -156,11 +202,75 @@ function J_of_theta_reactive(theta_vec)
     return f_t / g_t
 end
 
+gradient_errors = Float64[]
 for p in 1:min(5, length(theta_opt))
-    g_fd = fd_grad(J_of_theta_reactive, theta_opt, p; h=1e-5)
-    rel_err = abs(g_opt[p] - g_fd) / max(abs(g_opt[p]), 1e-30)
+    g_fd = fd_grad(J_of_theta_reactive, theta_opt, p; h=3e-4)
+    rel_err = symmetric_relative_error(g_opt[p], g_fd)
+    push!(gradient_errors, rel_err)
     println("  p=$p: adj=$(g_opt[p])  fd=$g_fd  rel_err=$rel_err")
 end
+
+scalar_metrics = (
+    cond_pec=cond_info.cond,
+    cond_opt=cond_opt.cond,
+    residual_pec=residual_pec,
+    residual_opt=residual_opt,
+    P_target_pec=P_target_pec,
+    P_total_pec=P_total_pec,
+    J_pec=J_pec,
+    energy_ratio_pec=energy_ratio_pec,
+    P_target_opt=P_target_opt,
+    P_total_opt=P_total_opt,
+    J_opt=J_opt,
+    energy_ratio_opt=energy_ratio_opt,
+    gradient_norm=norm(g_opt),
+)
+nonfinite_metrics = [
+    string(name) for (name, value) in pairs(scalar_metrics) if !isfinite(value)
+]
+isempty(nonfinite_metrics) || error(
+    "beam-steering workflow produced non-finite metrics: " *
+    join(nonfinite_metrics, ", ") *
+    ". Inspect the corresponding solve or objective before saving artifacts.")
+all(isfinite, theta_opt) ||
+    error(
+        "beam-steering optimizer produced a non-finite design; inspect the " *
+        "trace and bounds before saving artifacts")
+all(isfinite, gradient_errors) ||
+    error(
+        "beam-steering gradient check produced a non-finite error; inspect " *
+        "the adjoint and finite-difference values above")
+isempty(trace) && error(
+    "beam-steering optimizer returned an empty trace; inspect the optimizer " *
+    "settings and initial design before saving artifacts")
+all(t -> isfinite(t.J) && isfinite(t.gnorm), trace) ||
+    error(
+        "beam-steering optimizer trace contains a non-finite objective or " *
+        "gradient norm; inspect the first affected iteration")
+
+checks = [
+    ("PEC relative residual <= $BEAM_MAX_RELATIVE_RESIDUAL",
+     residual_pec <= BEAM_MAX_RELATIVE_RESIDUAL),
+    ("optimized relative residual <= $BEAM_MAX_RELATIVE_RESIDUAL",
+     residual_opt <= BEAM_MAX_RELATIVE_RESIDUAL),
+    ("PEC energy-ratio error <= $(100 * BEAM_MAX_ENERGY_RATIO_ERROR)%",
+     abs(energy_ratio_pec - 1.0) <= BEAM_MAX_ENERGY_RATIO_ERROR),
+    ("optimized energy-ratio error <= $(100 * BEAM_MAX_ENERGY_RATIO_ERROR)%",
+     abs(energy_ratio_opt - 1.0) <= BEAM_MAX_ENERGY_RATIO_ERROR),
+    ("optimized objective exceeds PEC", J_opt > J_pec),
+    ("maximum gradient error <= $BEAM_MAX_GRADIENT_ERROR",
+     maximum(gradient_errors) <= BEAM_MAX_GRADIENT_ERROR),
+    ("optimized design respects bounds",
+     all(abs(value) <= theta_bound + 8eps(theta_bound) for value in theta_opt)),
+]
+for (label, pass) in checks
+    println("[$(pass ? "PASS" : "FAIL")] $label")
+end
+failed_checks = first.(filter(check -> !last(check), checks))
+isempty(failed_checks) ||
+    error(
+        "beam-steering checks failed: " * join(failed_checks, "; ") *
+        ". Review the printed metrics before saving artifacts.")
 
 println("\n── Saving data ──")
 
@@ -198,6 +308,14 @@ ff_power_opt = [real(dot(E_ff_opt[:, q], E_ff_opt[:, q])) for q in 1:NΩ]
 
 P_sphere_pec = sum(ff_power_pec[q] * grid.w[q] for q in 1:NΩ)
 P_sphere_opt = sum(ff_power_opt[q] * grid.w[q] for q in 1:NΩ)
+isfinite(P_sphere_pec) && P_sphere_pec > 0.0 ||
+    error(
+        "PEC sampled far-field power is $P_sphere_pec; inspect the PEC field " *
+        "and spherical grid before saving artifacts")
+isfinite(P_sphere_opt) && P_sphere_opt > 0.0 ||
+    error(
+        "optimized sampled far-field power is $P_sphere_opt; inspect the " *
+        "optimized field and spherical grid before saving artifacts")
 D_pec = [4π * ff_power_pec[q] / P_sphere_pec for q in 1:NΩ]
 D_opt = [4π * ff_power_opt[q] / P_sphere_opt for q in 1:NΩ]
 

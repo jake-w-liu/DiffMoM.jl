@@ -19,8 +19,9 @@ After this chapter, you should be able to:
 
 ## 1) Prerequisites
 
-- Julia `1.12` or newer.
-- A local checkout of the repository (recommended for learning/tutorial use).
+- A Julia version allowed by the `julia` entry under `[compat]` in the
+  repository-root `Project.toml`.
+- A local checkout of the repository for the examples and validation scripts.
 
 Check Julia version:
 
@@ -39,8 +40,9 @@ cd /path/to/DiffMoM.jl
 julia --project=. -e 'import Pkg; Pkg.instantiate()'
 ```
 
-This installs all dependencies pinned by `Project.toml` in the project
-environment.
+This resolves the dependencies declared by `Project.toml` within its compatibility
+bounds. The package does not commit a manifest, so a fresh checkout resolves a
+compatible environment for the active Julia version.
 
 ---
 
@@ -68,7 +70,7 @@ julia --project=. -e 'using DiffMoM; println("DiffMoM loaded")'
 Then run the regression suite:
 
 ```bash
-julia --project=. test/runtests.jl
+julia --project=. --startup-file=no -e 'using Pkg; Pkg.test()'
 ```
 
 If this passes, your installation is correct.
@@ -95,7 +97,9 @@ julia --project=. examples/05_solver_methods.jl
 julia --project=. examples/04_pec_sphere_mie.jl
 ```
 
-Generated numeric artifacts are written into `data/` and figures into `figs/`.
+Each script prints the paths of any generated artifacts. Output locations are
+owned by the script because some workflows target package data while others
+target paper-specific directories.
 
 ---
 

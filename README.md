@@ -1,9 +1,9 @@
 # DiffMoM.jl
 
 `DiffMoM.jl` is a Julia package for Method-of-Moments electromagnetic
-simulation and differentiable inverse design. 
+simulation and differentiable inverse design.
 
-The current implementation includes surface EFIE MoM for PEC and impedance
+DiffMoM includes surface EFIE MoM for PEC and impedance
 surfaces, 2D volume integral equation tools, 3D DDA/VIE-style material
 scattering, dielectric surface integral equations, physical-optics/PTD
 approximations, periodic EFIE utilities, topology optimization helpers, and
@@ -11,7 +11,8 @@ analytical/external validation workflows.
 
 ## Installation
 
-DiffMoM requires Julia 1.12 or newer.
+Use a Julia version allowed by the `julia` compatibility entry in
+[`Project.toml`](Project.toml).
 
 From a local checkout
 
@@ -41,7 +42,7 @@ julia --project=docs docs/make.jl
 Run from the package root:
 
 ```bash
-julia --project=. test/runtests.jl
+julia --project=. --startup-file=no -e 'using Pkg; Pkg.test()'
 julia --project=. examples/01_pec_plate_basics.jl
 julia --project=. examples/08_solve_scattering_workflow.jl
 ```
@@ -94,10 +95,17 @@ res_em = solve_em_dda_3d(grid, k, 2.5 + 0im, 1.2 + 0im, Einc, Hinc; solver=:gmre
 Closed dielectric surface IE:
 
 ```julia
+xyz = 0.05 .* [1.0 -1.0 -1.0  1.0;
+               1.0 -1.0  1.0 -1.0;
+               1.0  1.0 -1.0 -1.0]
+tri = [1 1 1 2;
+       2 4 3 4;
+       3 2 4 3]
+mesh_closed = TriMesh(xyz, tri)
 rwg_closed = build_rwg(mesh_closed; allow_boundary=false, require_closed=true)
-A = assemble_pmchwt_3d(mesh_closed, rwg_closed, k, 2.5 + 0im)
-res_sie = solve_dielectric_sie_3d(mesh_closed, rwg_closed, k, 2.5 + 0im, rhs;
-                                  solver=:gmres)
+pw = make_plane_wave(Vec3(0.0, 0.0, -k), 1.0, Vec3(1.0, 0.0, 0.0))
+res_sie = solve_dielectric_sie_3d(
+    mesh_closed, rwg_closed, k, 2.5 + 0im, pw; solver=:direct)
 ```
 
 ## Implemented Capabilities
@@ -113,13 +121,12 @@ res_sie = solve_dielectric_sie_3d(mesh_closed, rwg_closed, k, 2.5 + 0im, rhs;
 - Dense and matrix-free PMCHWT/Muller dielectric SIE assembly/solves for closed homogeneous isotropic surfaces.
 - Validation scripts for internal consistency, Mie sphere benchmarks, Bempp-cl comparisons, Meep periodic comparisons, physical-optics checks, cost scaling, and robustness studies.
 
-
 ## Validation
 
 Regression suite:
 
 ```bash
-julia --project=. test/runtests.jl
+julia --project=. --startup-file=no -e 'using Pkg; Pkg.test()'
 ```
 
 Analytical and internal checks:
@@ -131,6 +138,9 @@ julia --project=. validation/po/validate_po_vs_pofacets.jl
 julia --project=. validation/scaling/run_cost_scaling.jl
 julia --project=. validation/robustness/run_robustness_sweep.jl
 ```
+
+`validation/po/validate_po_vs_pofacets.jl` requires a user-supplied
+`examples/demo_aircraft.obj`; that geometry is not included in this repository.
 
 Bempp-cl cross-validation requires Python, `bempp-cl`, and Gmsh:
 
@@ -152,9 +162,8 @@ listed under `validation/meep/requirements.txt`.
 - `examples/` - runnable examples from basic PEC plates through periodic topology optimization and PO/PTD comparisons.
 - `docs/` - Documenter.jl manual and API reference.
 - `validation/` - analytical, external-solver, paper, scaling, robustness, and consistency workflows.
-- `data/` and `figures/` - generated outputs from tests, examples, and validation scripts.
-
-
+- `data/` and `figures/` - generated-output locations created by examples and
+  validation scripts when needed.
 
 ## License
 

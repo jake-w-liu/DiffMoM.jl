@@ -1,565 +1,268 @@
-# API: Excitation System
+# Excitation API
 
-## Purpose
+Excitations produce the right-hand side in the MoM system
 
-Reference for incident-field excitation assembly. The excitation system provides a unified interface for assembling the right-hand-side (RHS) vector `v` in the MoM equation `Z * I = v`. Different physical excitation types (plane waves, ports, dipoles, imported fields, pattern feeds) are all handled through a single `assemble_excitation` interface.
+\[
+\mathbf Z\mathbf I=\mathbf v,\qquad
+v_m=-\int_{S_m}\mathbf f_m(\mathbf r)\mathbin{\cdot}
+\mathbf E^{\mathrm{inc}}(\mathbf r)\,\mathrm dS.
+\]
 
-For full physics derivations and guidance on choosing between excitation types, see `fundamentals/06-excitation-theory-and-usage.md`.
+Use a source constructor, then pass the source to `assemble_excitation`:
 
-If you plan to call `compute_total_field`, prefer constructing an excitation
-object with `make_plane_wave`, `make_dipole`, `make_loop`, `make_monopole`,
-`make_pattern_feed`, or `make_imported_excitation(...; kind=:electric_field)` and
-assembling via `assemble_excitation(...)`. The legacy `assemble_v_plane_wave(...)` helper
-remains valid for RHS assembly, but it does not by itself retain the excitation
-object needed for total-field observation.
-
----
-
-## Excitation Types
-
-All excitation types inherit from `AbstractExcitation`. You create an excitation using a constructor function (e.g., `make_plane_wave`), then pass it to `assemble_excitation` to get the RHS vector.
-
-### `PlaneWaveExcitation`
-
-A uniform plane wave illumination -- the most common excitation for scattering problems and RCS computation.
-
-**Fields:**
-- `k_vec::Vec3`: Wave vector (rad/m). Direction of propagation is along `k_vec`; magnitude is `|k_vec| = k = 2*pi/lambda`.
-- `E0::Float64`: Amplitude of the electric field (V/m).
-- `pol::Vec3`: Polarization direction (unit vector, must be orthogonal to `k_vec`).
-
-**Constructor:**
 ```julia
-pw = make_plane_wave(k_vec, E0, pol)
-```
+using DiffMoM
 
-**Example:**
-```julia
-# z-propagating, x-polarized plane wave at 1 GHz
-freq = 1e9
-lambda0 = 3e8 / freq
-k = 2pi / lambda0
-pw = make_plane_wave(Vec3(0, 0, -k), 1.0, Vec3(1, 0, 0))
-v = assemble_excitation(mesh, rwg, pw)
-```
-
----
-
-### `DeltaGapExcitation`
-
-A voltage source applied across a single RWG edge. This is the simplest antenna feed model: a uniform electric field is applied across the gap, driving current into the structure.
-
-**Fields:**
-- `edge::Int`: RWG edge index where the gap is placed.
-- `voltage::ComplexF64`: Gap voltage (V).
-- `gap_length::Float64`: Physical gap length (m). The excitation field is `V/gap_length` applied across the edge.
-
-**Constructor:**
-```julia
-gap = make_delta_gap(edge, voltage, gap_length)
-```
-
-**Choosing the edge:** The delta-gap edge should be at the antenna feed point. For a center-fed dipole, place it at the middle edge.
-
----
-
-### `PortExcitation`
-
-Port excitation defined by a set of RWG edges with applied voltage. This generalizes `DeltaGapExcitation` to multi-edge ports.
-
-**Fields:**
-- `port_edges::Vector{Int}`: RWG edge indices forming the port.
-- `voltage::ComplexF64`: Port voltage (V).
-- `impedance::ComplexF64`: Port impedance (stored for model completeness; the present RHS assembly uses only `voltage` and `port_edges`).
-
-**Note:** The RHS contribution is edge-localized: `v_m = V / l_m` for edges in the port, zero otherwise.
-
----
-
-### `DipoleExcitation`
-
-Electric or magnetic dipole source. The incident field from the dipole is computed at each quadrature point on the mesh and integrated against the RWG basis functions.
-
-**Fields:**
-- `position::Vec3`: Dipole position (m).
-- `moment::CVec3`: Dipole moment (electric: C*m, magnetic: A*m^2).
-- `orientation::Vec3`: Dipole orientation metadata (unit vector).
-- `type::Symbol`: `:electric` or `:magnetic`.
-- `frequency::Float64`: Source frequency (Hz).
-
-**Constructor:**
-```julia
-dip = make_dipole(position, moment, orientation, type, frequency=1e9)
-```
-
-**Placement:** The dipole must not be placed on the mesh surface itself (the field is singular at the source). Place it at least a fraction of a wavelength away from the scatterer.
-
----
-
-### `LoopExcitation`
-
-Circular current loop source. Models a small magnetic source.
-
-**Fields:**
-- `center::Vec3`: Loop center (m).
-- `normal::Vec3`: Loop normal direction (unit vector).
-- `radius::Float64`: Loop radius (m).
-- `current::ComplexF64`: Loop current (A).
-- `frequency::Float64`: Source frequency (Hz).
-
-**Constructor:**
-```julia
-lp = make_loop(center, normal, radius, current, frequency=1e9)
-```
-
----
-
-### `MonopoleExcitation`
-
-Center-fed linear monopole of length `height` at `position` with axis along the unit vector `axis`. The incident field is computed by Simpson integration of the sinusoidal current distribution on the wire (see `monopole_incident_field`).
-
-**Fields:**
-- `position::Vec3`: Base of the monopole on the ground plane (m).
-- `axis::Vec3`: Unit vector along the monopole (normalized by the constructor).
-- `height::Float64`: Physical length `h` (m); must be positive.
-- `amplitude::ComplexF64`: UTD-consistent field amplitude scaling.
-- `frequency::Float64`: Source frequency (Hz); must be positive.
-- `include_image::Bool`: Selects the source model (see below).
-
-**Two modes (`include_image`):**
-- `include_image=true` (default) -- equivalent source for a monopole on an infinite PEC ground. Image theory turns the physical wire into a length-`2*height` dipole with sinusoidal current `I(z') = I0 * sin(k*(height - |z'|))` on `z' in [-height, height]`. `monopole_incident_field` returns zero below the ground plane. Use this when no explicit ground-plane scatterer is modeled.
-- `include_image=false` -- physical half-wire only, with current `I(z') = I0 * sin(k*(height - z'))` on `z' in [0, height]`, radiating into all of free space. Use this when the finite ground plane is meshed as a MoM scatterer.
-
-The `amplitude` parameter follows the UTD `Monopole` convention: when `include_image=true` the far field satisfies `|E_theta| = |amplitude| * |F(theta)| / R` with `F(theta) = [cos(k*h*cos(theta)) - cos(k*h)] / sin(theta)`, and the internal current is `I0 = -i * 2*pi * amplitude / eta0`.
-
-**Constructor:**
-```julia
-mono = make_monopole(position, axis, height, amplitude, frequency=1e9;
-                     include_image=true)
-```
-
-**Placement:** As with other near-field sources, the wire should not coincide with the mesh surface.
-
----
-
-### `ImportedExcitation`
-
-A general imported or distributed source model. You provide a function `source(r) -> CVec3` that returns the incident field (or surface current density) at any point `r` on the mesh. This is the most flexible excitation type, supporting externally computed fields from other solvers or measurements.
-
-**Fields:**
-- `source_func::F`: Spatial function `source(r) -> CVec3`; its concrete function
-  type is retained so repeated quadrature calls do not require dynamic dispatch.
-- `kind::Symbol`: How to interpret the source function:
-  - `:electric_field` -- `source(r)` is the incident electric field `E_inc(r)` directly.
-  - `:surface_current_density` -- `source(r)` is an impressed surface current density `J_s(r)`, mapped via `E_inc(r) = eta_equiv * J_s(r)` (local equivalent-sheet approximation).
-- `eta_equiv::ComplexF64`: Equivalent sheet impedance, used only when `kind=:surface_current_density`.
-- `min_quad_order::Int`: Minimum quadrature order for assembly. Values from 1 through 7 are rounded up to a supported order (1, 3, 4, or 7); larger values are rejected because no rule can satisfy them.
-
-**Constructors:**
-```julia
-# Recommended
-exc = make_imported_excitation(source_func; kind=:electric_field,
-                               eta_equiv=376.730313668+0im, min_quad_order=3)
-
-# Direct constructor
-exc = ImportedExcitation(source_func; kind=:electric_field, ...)
-```
-
-**When to use each `kind`:**
-
-| `kind` | Use when... | Example |
-|--------|-------------|---------|
-| `:electric_field` | You know `E_inc(r)` at the scatterer (from external solver, analytical formula, etc.) | Horn antenna near-field import, external full-wave simulation |
-| `:surface_current_density` | You have an impressed surface current `J_s(r)` and want a local equivalent-sheet mapping `E = eta * J_s` | Aperture-based feed models, sheet-like sources |
-
-**Scope and limitations:**
-
-`ImportedExcitation` is an **RHS field model** only. It does not solve an auxiliary radiation problem for the source. For `:surface_current_density`, the mapping `E = eta * J_s` is a local approximation valid near sheet-like or aperture sources; it is **not** a rigorous dyadic Green's function radiation integral.
-
-For rigorous imported sources, compute `E_inc(r)` externally and use `kind=:electric_field`.
-
-For total-field observation via `compute_total_field`, only
-`ImportedExcitation(kind=:electric_field)` is supported. The
-`:surface_current_density` mode remains a local RHS approximation and is
-intentionally excluded from v1 total-field evaluation.
-
----
-
-### `PatternFeedExcitation`
-
-Incident field synthesized from imported spherical far-field coefficients. Use this when you have radiation pattern data (e.g., from a horn antenna measurement or simulation) and want to use it as a feed illuminating a reflector or scatterer.
-
-**Fields:**
-- `theta::Vector{Float64}`: Polar-angle grid (rad), strictly increasing in [0, pi].
-- `phi::Vector{Float64}`: Azimuth grid (rad), strictly increasing over one open 2*pi period.
-- `Ftheta::Matrix{ComplexF64}`: Far-field coefficient F_theta(theta, phi).
-- `Fphi::Matrix{ComplexF64}`: Far-field coefficient F_phi(theta, phi).
-- `frequency::Float64`: Frequency (Hz).
-- `phase_center::Vec3`: Pattern phase-center location (m).
-- `convention::Symbol`: `:exp_plus_iwt` or `:exp_minus_iwt` for the imported data.
-
-**The field model is:**
-
-```
-E(r) = (exp(-ikR)/R) * [F_theta * theta_hat + F_phi * phi_hat]
-```
-
-where `R = |r - r_c|` is the distance from the phase center.
-
-**Constructors:**
-```julia
-# From arrays
-pf = make_pattern_feed(theta, phi, Ftheta, Fphi, frequency;
-                        phase_center=Vec3(0,0,0), angles_in_degrees=false,
-                        convention=:exp_plus_iwt,
-                        max_storage_bytes=2_000_000_000)
-
-# From pattern objects (RadiationPatterns.jl compatible)
-pf = make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency; ...)
-```
-
-The second form accepts pattern objects with `.x`, `.y`, `.U` fields (e.g., `RadiationPatterns.jl` `Pattern` objects).
-
-`max_storage_bytes` bounds the raw payload of the copied angle grids and the
-two stored `ComplexF64` coefficient matrices. The same keyword is available on
-the pattern-object overload and `make_analytic_dipole_pattern_feed`; the latter
-checks the limit before allocating its coefficient matrices.
-
-**Important:** Use two complex patterns (E_theta and E_phi), not a power-only pattern, to preserve polarization and phase.
-
----
-
-### `MultiExcitation`
-
-Combination of multiple excitations with complex weights. The resulting RHS is a weighted sum of individual excitation vectors.
-
-**Fields:**
-- `excitations::Vector{AbstractExcitation}`: List of excitations.
-- `weights::Vector{ComplexF64}`: Weight for each excitation.
-
-**Constructor:**
-```julia
-multi = make_multi_excitation(excitations, weights=nothing)
-```
-If `weights` is not provided, equal weights (all 1.0) are used.
-
----
-
-## Core Functions
-
-### `plane_wave_field(r, k_vec, E0, pol)`
-
-Evaluate a plane wave `E_inc(r) = pol * E0 * exp(-i k_vec . r)` at point `r`. Useful for computing incident fields at arbitrary points (e.g., for PO surface currents or field probes).
-
-**Parameters:**
-- `r::Vec3`: Observation point (meters).
-- `k_vec::Vec3`: Wave vector (rad/m).
-- `E0`: Amplitude (V/m).
-- `pol::Vec3`: Polarization (unit vector).
-
-**Returns:** `CVec3` electric field phasor.
-
-**Convention:** Uses `exp(+iwt)` time convention, hence `exp(-i k_vec . r)` spatial phase.
-
----
-
-### `pattern_feed_field(r, pat)`
-
-Evaluate the incident electric field at position `r` generated by a `PatternFeedExcitation`. Interpolates the stored far-field pattern to the direction from the phase center to `r`, and applies the appropriate spherical-wave phase and amplitude decay.
-
-**Parameters:**
-- `r::Vec3`: Observation point (meters).
-- `pat::PatternFeedExcitation`: Pattern feed excitation source.
-
-**Returns:** `CVec3` electric field phasor at `r`.
-
-**Details:** Computes the spherical angles `(theta, phi)` from `pat.phase_center` to `r`, bilinearly interpolates `F_theta` and `F_phi` from the stored pattern grid, applies time-convention correction if needed, and multiplies by `exp(-jkR)/R`.
-
----
-
-### `monopole_incident_field(r, mono; max_exact_work=2_000_000)`
-
-Evaluate the incident electric field at position `r` from a `MonopoleExcitation`. The field is computed by Simpson integration of the sinusoidal current on the equivalent dipole-plus-image distribution (or the physical half-wire when `include_image=false`).
-
-**Parameters:**
-- `r::Vec3`: Observation point (meters).
-- `mono::MonopoleExcitation`: Monopole excitation source.
-- `max_exact_work::Integer=2_000_000`: Precision-weighted work limit for
-  exceptional large-coordinate phase evaluation. Rejection occurs before
-  high-precision integration is allocated.
-
-**Returns:** `CVec3` electric field phasor at `r`.
-
-**Convention:** Uses `exp(+iwt)`. When `mono.include_image=true`, returns zero below the ground plane (i.e. where the axial projection of `r - mono.position` onto `mono.axis` is negative).
-
----
-
-### `assemble_v_plane_wave(mesh, rwg, k_vec, E0, pol; quad_order=3)`
-
-Assemble the excitation vector for a plane wave directly. This is a convenience function equivalent to `assemble_excitation(mesh, rwg, make_plane_wave(k_vec, E0, pol))`.
-
-**Parameters:**
-- `mesh::TriMesh`, `rwg::RWGData`: Mesh and basis data.
-- `k_vec::Vec3`: Wave vector (rad/m).
-- `E0`: Amplitude (V/m).
-- `pol::Vec3`: Polarization (unit vector).
-- `quad_order::Int=3`: Quadrature order on reference triangle.
-
-**Returns:** `Vector{ComplexF64}` of length `N = rwg.nedges`.
-
----
-
-### `assemble_excitation(mesh, rwg, excitation; quad_order=3, quad_cache=nothing)`
-
-**The unified excitation assembly function.** Assembles the RHS vector `v` for any `AbstractExcitation` subtype.
-
-**Parameters:**
-- `mesh::TriMesh`: Triangle mesh.
-- `rwg::RWGData`: RWG basis data.
-- `excitation::AbstractExcitation`: Any excitation type.
-- `quad_order::Int=3`: Quadrature order on reference triangle.
-- `quad_cache::Union{Nothing,ExcitationQuadCache}=nothing`: Optional precomputed mesh quadrature cache. When provided, the mesh quadrature (points and areas) is shared across many excitations assembled against the same mesh, avoiding redundant recomputation; a cache created for a different mesh is rejected. Lazy cache access is synchronized, so one cache may be shared across concurrent assemblies. Cache-free contributions (delta-gap, port) ignore it. `assemble_multiple_excitations` builds and shares such a cache internally.
-
-**Returns:** `Vector{ComplexF64}` excitation vector `v` of length `N`, where:
-
-```
-v[m] = -integral_{S_m} f_m(r) . E_inc_t(r) dS
-```
-
-The integral is over the support of basis `m`, and `E_inc_t` is the tangential component of the incident electric field.
-
-**Dispatch:** Automatically selects the correct assembly method based on the excitation type:
-- `PlaneWaveExcitation`: Quadrature integration of `E_inc = pol * E0 * exp(-ik.r)`
-- `PortExcitation`: Delta-gap approximation across port edges
-- `DeltaGapExcitation`: Single-edge delta gap
-- `DipoleExcitation`: Field from electric/magnetic dipole formula
-- `LoopExcitation`: Field from circular current loop
-- `MonopoleExcitation`: Field from Simpson-integrated monopole current (with optional ground-plane image)
-- `ImportedExcitation`: Quadrature integration of user-provided field function
-- `PatternFeedExcitation`: Bilinear interpolation of spherical pattern data
-- `MultiExcitation`: Weighted combination of component excitations
-
-`MultiExcitation` graphs must be acyclic and may contain at most 64 nested
-levels. Reuse of the same child in separate branches is supported.
-
----
-
-### `assemble_multiple_excitations(mesh, rwg, excitations; quad_order=3, max_output_bytes=2_000_000_000, max_work_bytes=536_870_912, max_terms=200_000_000)`
-
-Assemble RHS vectors for multiple excitations at once (multiple right-hand sides).
-
-**Parameters:**
-- `mesh::TriMesh`, `rwg::RWGData`: Mesh and basis data.
-- `excitations::Vector{<:AbstractExcitation}`: List of excitations.
-- `quad_order::Int=3`: Quadrature order.
-- `max_output_bytes::Integer=2_000_000_000`: Raw-payload ceiling for the dense `N x M` result, checked before quadrature-cache or output allocation.
-- `max_work_bytes::Integer=536_870_912`: Combined raw-payload ceiling for the output, every retained effective-order quadrature cache, and the maximum nested temporary-RHS stack.
-- `max_terms::Integer=200_000_000`: Conservative ceiling for direct basis/support/quadrature work across all excitations, including nested `MultiExcitation` fallback reassembly.
-
-**Returns:** `Matrix{ComplexF64}` of size `N x M` where each column is the RHS for one excitation.
-
----
-
-## Assembly Details
-
-### Plane Wave
-The excitation vector is computed via quadrature:
-
-```
-v_m = -integral_{S_m} f_m(r) . E_inc(r) dS
-```
-
-where `E_inc(r) = pol * E0 * exp(-i k . r)` and `S_m` is the union of the two support triangles of basis `m`.
-
-### Port and Delta-Gap
-Port excitations use edge-localized voltage injection:
-
-```
-v_m = (V / l_m) * delta_{m in port}
-```
-
-where `l_m` is the edge length. For `DeltaGapExcitation`, the gap length `g` is used instead:
-
-```
-v_m = (V / g) * delta_{m = gap_edge}
-```
-
-### Dipole and Loop Sources
-
-The incident field from the dipole or loop is evaluated at quadrature points on each support triangle and integrated numerically via `dipole_incident_field(r, dipole)` (internal). The explicit field formulas (exp(+iwt) convention) are:
-
-**Electric dipole** (moment `p`, position `r_0`):
-
-```
-E(r) = [exp(-ikR) / (4*pi*eps0*R)] * { k^2 (R_hat x p) x R_hat
-        + (3 R_hat (R_hat . p) - p) * (1/R^2 + ik/R) }
-```
-
-where `R = |r - r_0|` and `R_hat = (r - r_0) / R`. This is the full near-field + far-field electric dipole radiation formula (Balanis, Ch. 4). It includes the 1/R^3 quasi-static term, the 1/R^2 induction term, and the 1/R radiation term.
-
-**Magnetic dipole** (moment `m`, position `r_0`):
-
-```
-E(r) = (eta0 / 4*pi) * (k^2/R - ik/R^2) * exp(-ikR) * (m x R_hat)
-```
-
-This follows from Balanis's small circular loop result (Ch. 5): `E_phi = +(eta*k^2*m*sin(theta))/(4*pi*r) * (i + 1/(kr)) * exp(-ikr)`, generalized to 3D vector form. It includes both the 1/R^2 induction term and the 1/R radiation (far-field) term. The quasi-static 1/R^3 term for the magnetic dipole is in H, not E.
-
-**Loop excitation** maps to a magnetic dipole with moment `m = I * pi * a^2 * n_hat`, where `I` is the loop current, `a` is the loop radius, and `n_hat` is the loop normal.
-
-**Far-field pattern coefficients** (used by `make_analytic_dipole_pattern_feed`):
-
-- Electric: `F(r_hat) = k^2 / (4*pi*eps0) * (r_hat x (p x r_hat))`
-- Magnetic: `F(r_hat) = eta0 * k^2 / (4*pi) * (m x r_hat)`
-
-### Imported/Distributed source (`ImportedExcitation`)
-The same quadrature integral is used, with the source function evaluated at each quadrature point. For `kind=:electric_field`, `E_inc = source(r)` directly. For `kind=:surface_current_density`, `E_inc = eta_equiv * source(r)`.
-
-Implementation guards: the source function output is validated as a finite 3-component vector; tuple/array/SVector returns are accepted and converted to complex 3-vectors; malformed outputs throw explicit errors.
-
-### Pattern Feed
-Pattern feeds interpolate complex `(F_theta, F_phi)` data on the spherical grid, reconstruct `E_inc` at quadrature points using the phase-center geometry, and assemble via the standard MoM RHS integral.
-
----
-
-## Examples
-
-### Basic Plane Wave
-```julia
-k = 2pi / 0.1   # lambda = 0.1m
-k_vec = Vec3(0.0, 0.0, -k)    # propagating in -z
-E0 = 1.0
-pol = Vec3(1.0, 0.0, 0.0)     # x-polarized
-
-# Legacy method
-v_old = assemble_v_plane_wave(mesh, rwg, k_vec, E0, pol)
-
-# Unified method (recommended)
-pw = make_plane_wave(k_vec, E0, pol)
-v_new = assemble_excitation(mesh, rwg, pw)
-```
-
-### Delta-Gap Antenna Feed
-```julia
-# 1V source across edge 10 with 1mm physical gap
-gap = make_delta_gap(10, 1.0, 0.001)
-v_gap = assemble_excitation(mesh, rwg, gap)
-```
-
-### Multi-Port Excitation
-```julia
-# Two ports with different voltages
-port1 = PortExcitation([1, 2, 3], 1.0 + 0.0im, 50.0 + 0.0im)
-port2 = PortExcitation([4, 5, 6], 0.5 + 0.0im, 50.0 + 0.0im)
-V = assemble_multiple_excitations(mesh, rwg, [port1, port2])
-# V[:,1] is RHS from port1, V[:,2] from port2
-```
-
-### Near-Field Dipole Source
-```julia
-# Electric dipole at z=0.1m, oriented in x-direction
-dipole = make_dipole(Vec3(0, 0, 0.1),
-                     CVec3(1e-9, 0, 0),
-                     Vec3(1, 0, 0), :electric, 1e9)
-v_dip = assemble_excitation(mesh, rwg, dipole)
-```
-
-### Imported Electric Field
-```julia
-# Custom incident field: x-polarized wave propagating in z
-Efun(r) = CVec3(exp(-1im * k * r[3]), 0.0 + 0im, 0.0 + 0im)
-exc = make_imported_excitation(Efun; kind=:electric_field, min_quad_order=3)
-v = assemble_excitation(mesh, rwg, exc)
-```
-
-### Imported Surface Current Density
-```julia
-# Impressed surface current with cosine distribution
-Lx = 0.1
-Jsfun(r) = CVec3(cos(2pi * r[1] / Lx) + 0im, 0.0 + 0im, 0.0 + 0im)
-exc = make_imported_excitation(Jsfun;
-    kind=:surface_current_density, eta_equiv=120 + 30im, min_quad_order=4)
-v = assemble_excitation(mesh, rwg, exc)
-```
-
-### Pattern Feed from Analytical Dipole
-```julia
 freq = 1.0e9
-dip = make_dipole(Vec3(0,0,0), CVec3(0, 0, 1e-12+0im),
-                  Vec3(0,0,1), :electric, freq)
+k = 2pi * freq / 299792458.0
+source = make_plane_wave(
+    Vec3(0.0, 0.0, -k),
+    1.0,
+    Vec3(1.0, 0.0, 0.0),
+)
+v = assemble_excitation(mesh, rwg, source; quad_order=3)
+```
+
+The public concrete source types are exported. Their common abstract base is an
+implementation detail, so application code should use the constructors and
+`assemble_excitation` instead of extending that base.
+
+## Source models
+
+| Model | Construction | RHS model |
+|---|---|---|
+| Plane wave | `make_plane_wave(k_vec, E0, pol)` | Quadrature of `E0 * pol * exp(-im * dot(k_vec, r))` |
+| Delta gap | `make_delta_gap(edge, voltage, gap_length)` | One entry, `voltage / gap_length` |
+| Port | `PortExcitation(edges, voltage, impedance)` | `voltage / rwg.len[e]` on each listed edge |
+| Electric or magnetic dipole | `make_dipole(position, moment, orientation, type, frequency)` | Dipole electric field evaluated at quadrature points |
+| Current loop | `make_loop(center, normal, radius, current, frequency)` | Magnetic-dipole field with moment `current * pi * radius^2 * normal` |
+| Monopole | `make_monopole(position, axis, height, amplitude, frequency; include_image=true)` | Simpson-integrated wire field |
+| Imported field | `make_imported_excitation(source_func; ...)` | User function evaluated at quadrature points |
+| Pattern feed | `make_pattern_feed(...)` | Interpolated complex spherical far-field coefficients |
+| Weighted sum | `make_multi_excitation(sources, weights)` | Weighted sum of child right-hand sides |
+
+Constructors validate finite values, dimensions, supported symbols, and
+source-specific invariants before assembly. The
+[assembly docstrings](exported-assembly-1.md) own their exact signatures and
+defaults.
+
+### Plane waves
+
+`k_vec` points in the propagation direction and has magnitude in rad/m. `pol`
+must be transverse to `k_vec`. The package uses the `exp(+iwt)` convention, so
+the spatial phase is `exp(-im * dot(k_vec, r))`.
+
+Evaluate the same field away from assembly points with:
+
+```julia
+Einc = plane_wave_field(r, source.k_vec, source.E0, source.pol)
+```
+
+`assemble_v_plane_wave(mesh, rwg, k_vec, E0, pol; quad_order=3)` remains a
+supported convenience wrapper. Constructing a source object is preferable when
+the same incident field will later be passed to `compute_total_field`.
+
+### Delta gaps and ports
+
+A delta gap addresses one RWG edge. A port addresses several edges and stores
+an impedance value, but current RHS assembly uses only its voltage and edge
+indices. These are localized voltage models; they do not represent an incident
+electric field away from the mesh.
+
+```julia
+gap = make_delta_gap(10, 1.0 + 0im, 1.0e-3)
+v_gap = assemble_excitation(mesh, rwg, gap)
+
+port = PortExcitation([10, 11], 1.0 + 0im, 50.0 + 0im)
+v_port = assemble_excitation(mesh, rwg, port)
+```
+
+### Dipoles and loops
+
+`make_dipole` accepts `type=:electric` or `type=:magnetic`. The moment units are
+C m for an electric dipole and A m^2 for a magnetic dipole. `orientation` is
+validated and stored as source metadata; the complex moment determines the
+field.
+
+```julia
+dipole = make_dipole(
+    Vec3(0.0, 0.0, 0.1),
+    CVec3(1.0e-9 + 0im, 0im, 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    1.0e9,
+)
+v_dipole = assemble_excitation(mesh, rwg, dipole)
+```
+
+Dipole and loop fields are singular at their source location. Assembly rejects
+non-finite results, but the caller must choose source positions that do not
+coincide with mesh quadrature points.
+
+### Monopoles
+
+With `include_image=true`, the monopole uses a wire-plus-image equivalent for an
+infinite PEC ground and returns zero below the source ground plane. With
+`include_image=false`, it uses the physical half-wire and radiates into free
+space; use that mode when a finite ground plane is explicitly meshed.
+
+```julia
+monopole = make_monopole(
+    Vec3(0.0, 0.0, 0.0),
+    Vec3(0.0, 0.0, 1.0),
+    0.075,
+    1.0 + 0im,
+    1.0e9;
+    include_image=false,
+)
+Einc = monopole_incident_field(observation_point, monopole)
+```
+
+`monopole_incident_field` accepts `max_exact_work` to bound exceptional
+high-precision phase evaluation. Its exact default is rendered from the source
+in the [assembly docstrings](exported-assembly-1.md).
+
+### Imported fields
+
+The source function must return a finite three-component vector.
+
+```julia
+field(r) = CVec3(exp(-1im * k * r[3]), 0im, 0im)
+imported = make_imported_excitation(
+    field;
+    kind=:electric_field,
+    min_quad_order=3,
+)
+v_imported = assemble_excitation(mesh, rwg, imported)
+```
+
+Two interpretations are available:
+
+- `kind=:electric_field` uses `source_func(r)` as the incident electric field.
+- `kind=:surface_current_density` applies the local map
+  `E_inc(r) = eta_equiv * source_func(r)`.
+
+The surface-current mode is an equivalent-sheet RHS approximation, not a
+Green-function radiation solve. If the incident field is available from an
+external solver, import it as `kind=:electric_field`.
+
+`min_quad_order` must be from 1 through 7. Assembly selects the smallest
+supported rule in `(1, 3, 4, 7)` that is no lower than both the caller's
+`quad_order` and `min_quad_order`.
+
+### Pattern feeds
+
+Pattern feeds store complex `Ftheta` and `Fphi` coefficients on strictly
+increasing spherical grids. For the package convention,
+
+\[
+\mathbf E(\mathbf r)=\frac{e^{-ikR}}{R}
+\left(F_\theta\hat{\boldsymbol\theta}+
+F_\phi\hat{\boldsymbol\phi}\right).
+\]
+
+The theta grid must lie in `[0, pi]`. The phi grid must span less than one full
+period and must not repeat the endpoint. Both grids need at least two points.
+
+```julia
 theta_deg = collect(0.0:2.0:180.0)
 phi_deg = collect(0.0:5.0:355.0)
-pat = make_analytic_dipole_pattern_feed(dip, theta_deg, phi_deg;
-                                        angles_in_degrees=true)
-v_pat = assemble_excitation(mesh, rwg, pat; quad_order=3)
+Ftheta = zeros(ComplexF64, length(theta_deg), length(phi_deg))
+Fphi = similar(Ftheta)
+
+pattern = make_pattern_feed(
+    theta_deg,
+    phi_deg,
+    Ftheta,
+    Fphi,
+    1.0e9;
+    angles_in_degrees=true,
+    convention=:exp_plus_iwt,
+)
+Einc = pattern_feed_field(observation_point, pattern)
 ```
 
-### Pattern Feed from Tabulated Data
+Use `convention=:exp_minus_iwt` when imported coefficients use the opposite
+time convention. The constructor converts angle arrays and coefficient matrices
+to owned `Float64` and `ComplexF64` storage. `max_storage_bytes` bounds their raw
+payload before allocation.
+
+The pattern-object overload accepts two objects with matching `.x`, `.y`, and
+`.U` fields. `make_analytic_dipole_pattern_feed` samples a `DipoleExcitation`
+onto a pattern grid. In either case, retain both complex polarizations; a power
+pattern does not contain enough phase or polarization information.
+
+The field is undefined at the phase center. `pattern_feed_field` returns the
+zero vector there, matching the behavior used during assembly.
+
+### Weighted sources
+
+`MultiExcitation` assembles a complex weighted sum. If `weights` is omitted,
+each child has weight `1 + 0im`.
+
 ```julia
-# Build a pattern feed from externally tabulated spherical grids and
-# complex far-field coefficient matrices (Ftheta, Fphi). Here theta and phi
-# are length-Nθ and length-Nφ vectors, and Fθ, Fφ are Nθ × Nφ matrices that
-# you have loaded/parsed from your own data source.
-freq = 1.0e9
-theta_deg = collect(0.0:2.0:180.0)
-phi_deg   = collect(0.0:5.0:355.0)
-Ftheta = fill(0.0 + 0im, length(theta_deg), length(phi_deg))
-Fphi   = fill(0.0 + 0im, length(theta_deg), length(phi_deg))
-pat = make_pattern_feed(theta_deg, phi_deg, Ftheta, Fphi, freq;
-                        angles_in_degrees=true)
-v_pat = assemble_excitation(mesh, rwg, pat; quad_order=3)
+combined = make_multi_excitation(
+    [source, gap],
+    ComplexF64[0.7, 0.3],
+)
+v_combined = assemble_excitation(mesh, rwg, combined)
 ```
 
-### Combined Excitation
+Nested graphs must be acyclic and no deeper than 64 levels. Shared children in
+separate branches are allowed. `max_exact_bytes` on `assemble_excitation`
+bounds the high-precision accumulator used only for exceptional range or
+cancellation recovery.
+
+## Assembly functions
+
+### `assemble_excitation`
+
 ```julia
-pw = make_plane_wave(k_vec, E0, pol)
-gap = make_delta_gap(10, 1.0, 0.001)
-multi = make_multi_excitation([pw, gap], [0.7, 0.3])
-v_multi = assemble_excitation(mesh, rwg, multi)
+v = assemble_excitation(
+    mesh,
+    rwg,
+    source;
+    quad_order=3,
+    max_exact_bytes=536_870_912,
+)
 ```
 
----
+Supported quadrature orders are 1, 3, 4, and 7. Port and delta-gap models do not
+use surface quadrature. The function validates that `mesh` and `rwg` match and
+that the returned vector is finite.
 
-## Integration with Optimization
+### `assemble_multiple_excitations`
 
-All excitations are compatible with the adjoint gradient computation. The excitation vector `v` enters the adjoint equation as a fixed right-hand side; the gradient depends on `Z` and `Q`, not on `v`. This means you can optimize impedance parameters with any excitation type without modifying the adjoint code.
+```julia
+V = assemble_multiple_excitations(
+    mesh,
+    rwg,
+    [source_a, source_b];
+    quad_order=3,
+    max_output_bytes=2_000_000_000,
+    max_work_bytes=536_870_912,
+    max_terms=200_000_000,
+)
+```
 
----
+The result has size `rwg.nedges x length(sources)`, with one RHS per column.
+The batch path shares cached mesh quadrature between compatible sources.
+Resource limits are checked before the dense output and retained quadrature
+caches are allocated.
 
-## Code Mapping
+## Total-field compatibility
 
-| File | Contents |
-|------|----------|
-| `src/assembly/Excitation.jl` | All excitation types and assembly methods |
-| `src/basis/Quadrature.jl` | Quadrature rules used for integration |
-| `examples/07_pattern_feed.jl` | Analytical-dipole pattern feed demo: pattern generation, interpolation, and end-to-end scattering solve |
+`compute_total_field` can add incident fields from plane waves, dipoles, loops,
+monopoles, pattern feeds, electric-field imports, and weighted combinations of
+those models. It rejects ports, delta gaps, and surface-current-density imports
+because those models do not define an incident electric field at arbitrary
+observation points.
 
----
+## Source map
 
-## Notes
-
-- For plane waves, `quad_order=3` is sufficient for typical accuracy.
-- Port and delta-gap excitations are local (affect only the specified edges, no quadrature needed).
-- Near-field sources (dipole, loop) must be placed away from the mesh surface to avoid singular fields.
-- For imported fields, prefer `make_imported_excitation(...)` so `kind` and scaling are explicit.
-- If you need a rigorously radiating impressed-current model, use `kind=:electric_field` with externally computed `E_inc`, rather than assuming `E = eta * J` outside sheet-like cases.
-
----
-
-## Exercises
-
-### Basic
-1. Assemble plane-wave excitation with both `assemble_v_plane_wave(...)` and `assemble_excitation(..., make_plane_wave(...))`. Verify they match element-by-element.
-2. Create a delta-gap excitation on edge 5 and inspect which entries of `v` are non-zero.
-
-### Practical
-1. Set up a two-port excitation and solve for currents. Compute the input impedance at each port.
-2. Combine plane wave and dipole excitations with weights 0.6 and 0.4 using `MultiExcitation`.
-
-### `compute_total_field` compatibility
-- Supported: `PlaneWaveExcitation`, `DipoleExcitation`, `LoopExcitation`, `MonopoleExcitation`, `PatternFeedExcitation`, `ImportedExcitation(kind=:electric_field)`, and `MultiExcitation` composed only of those supported source types.
-- Not supported: `PortExcitation`, `DeltaGapExcitation`, and `ImportedExcitation(kind=:surface_current_density)`.
-
-### Advanced
-1. Write a function that imports field data from a CSV file and creates an `ImportedExcitation`. Compare the RHS against a plane-wave reference.
-2. Use `make_analytic_dipole_pattern_feed` to create a pattern feed, then compare its RHS against the direct `DipoleExcitation` RHS for the same dipole. Quantify the agreement.
+| API | Source |
+|---|---|
+| Source types, constructors, field evaluation, and RHS assembly | `src/assembly/Excitation.jl` |
+| Triangle quadrature rules | `src/basis/Quadrature.jl` |
+| Total-field support | `src/postprocessing/NearField.jl` |
+| Pattern-feed example | `examples/07_pattern_feed.jl` |

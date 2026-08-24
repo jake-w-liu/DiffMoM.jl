@@ -77,7 +77,6 @@ println("─"^60)
 
 result_aca = solve_scattering(mesh, freq, pw;
     method=:aca_gmres,
-    nf_cutoff_lambda=1.0,
     aca_tol=1e-6,
     aca_leaf_size=32,
     verbose=true,
