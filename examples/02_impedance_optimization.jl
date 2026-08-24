@@ -114,6 +114,9 @@ theta_opt, trace = optimize_lbfgs(
     Z_efie, Mp, Vector{ComplexF64}(v), Q, theta0;
     maxiter=30,
     tol=1e-8,
+    # The design variables are measured in ohms while this objective's
+    # gradients are O(1e-5), so scale the initial inverse Hessian accordingly.
+    alpha0=1e6,
     maximize=true,
     lb=fill(10.0, P),                   # Lower bound: 10 Ω/sq
     ub=fill(500.0, P),                  # Upper bound: 500 Ω/sq
@@ -121,6 +124,8 @@ theta_opt, trace = optimize_lbfgs(
 )
 
 J_opt = trace[end].J
+J_opt >= 1.5 * J_init ||
+    error("Optimization failed to improve broadside power by at least 50%")
 println("\n── Result ──")
 println("  J(θ₀) = $(round(J_init, sigdigits=4))")
 println("  J(θ*) = $(round(J_opt, sigdigits=4))")
