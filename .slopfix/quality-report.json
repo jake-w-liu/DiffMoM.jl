@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "kind": "slopfix-quality-report",
+  "generated_at": "2026-08-24T18:19:11+00:00",
+  "quality_model": "ISO/IEC 25010:2023",
+  "profile": "julia",
+  "root": "/Users/jake/EMPIRE/codes/DiffMoM.jl",
+  "config_sha256": "a08d537c2fd8890130372aa7aeaec5914c7fe0a7ab0cca8ba02c9d1ac660bf16",
+  "partial": false,
+  "selected_gate_ids": [
+    "julia-tests",
+    "julia-aqua",
+    "julia-clean-resolution",
+    "julia-manifest-reproducibility",
+    "julia-coverage-ratchet",
+    "julia-numerical-contracts",
+    "julia-benchmarks",
+    "julia-version-platform-matrix",
+    "julia-docs-doctests",
+    "julia-tasks-resources",
+    "julia-secrets-security",
+    "julia-sbom-advisories",
+    "julia-explicit-imports",
+    "julia-jet-entrypoints",
+    "julia-public-api",
+    "julia-safety-hazards"
+  ],
+  "summary": {
+    "total": 16,
+    "by_status": {
+      "PASS": 13,
+      "FAIL": 0,
+      "UNVERIFIED": 2,
+      "NOT_APPLICABLE": 1
+    },
+    "by_category": {
+      "functional-suitability": {
+        "PASS": 3,
+        "FAIL": 0,
+        "UNVERIFIED": 0,
+        "NOT_APPLICABLE": 0
+      },
+      "performance-efficiency": {
+        "PASS": 1,
+        "FAIL": 0,
+        "UNVERIFIED": 0,
+        "NOT_APPLICABLE": 0
+      },
+      "compatibility": {
+        "PASS": 1,
+        "FAIL": 0,
+        "UNVERIFIED": 0,
+        "NOT_APPLICABLE": 1
+      },
+      "interaction-capability": {
+        "PASS": 1,
+        "FAIL": 0,
+        "UNVERIFIED": 0,
+        "NOT_APPLICABLE": 0
+      },
+      "reliability": {
+        "PASS": 1,
+        "FAIL": 0,
+        "UNVERIFIED": 0,
+        "NOT_APPLICABLE": 0
+      },
+      "security": {
+        "PASS": 2,
+        "FAIL": 0,
+        "UNVERIFIED": 1,
+        "NOT_APPLICABLE": 0
+      },
+      "maintainability": {
+        "PASS": 2,
+        "FAIL": 0,
+        "UNVERIFIED": 1,
+        "NOT_APPLICABLE": 0
+      },
+      "flexibility": {
+        "PASS": 1,
+        "FAIL": 0,
+        "UNVERIFIED": 0,
+        "NOT_APPLICABLE": 0
+      },
+      "safety": {
+        "PASS": 1,
+        "FAIL": 0,
+        "UNVERIFIED": 0,
+        "NOT_APPLICABLE": 0
+      }
+    },
+    "failures": 0,
+    "required_unverified": 0,
+    "strict_pass": true
+  },
+  "gates": [
+    {
+      "id": "julia-tests",
+      "category": "functional-suitability",
+      "title": "Julia project tests",
+      "required": true,
+      "kind": "command",
+      "status": "PASS",
+      "source": "command",
+      "message": "exit code 0",
+      "command": [
+        "julia",
+        "--startup-file=no",
+        "-e",
+        "using Pkg, TOML; root = abspath(ARGS[1]); project = let candidates = [joinpath(root, \"Project.toml\"), joinpath(root, \"JuliaProject.toml\")]; existing = filter(isfile, candidates); isempty(existing) && error(\"no Julia project file\"); first(existing); end; name = get(TOML.parsefile(project), \"name\", nothing); name isa String || error(\"Julia package project has no string name\"); mktempdir() do env; Pkg.activate(env); Pkg.develop(Pkg.PackageSpec(path=root)); Pkg.test(Pkg.PackageSpec(name=name)); end",
+        "."
+      ],
+      "executable": "/Users/jake/.juliaup/bin/julia",
+      "cwd": ".",
+      "duration_seconds": 456.315,
+      "exit_code": 0,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 31147,
+        "sha256": "e2d14b3373dc56697cbe2e402da50166a1954bf6fc1dce1dc82f526dfea50bdf"
+      },
+      "protected_paths_changed": []
+    },
+    {
+      "id": "julia-aqua",
+      "category": "maintainability",
+      "title": "Aqua package checks are in the reachable Julia test graph",
+      "required": true,
+      "kind": "julia-reachable-contains",
+      "status": "PASS",
+      "source": "julia-ast",
+      "message": "all required Julia expressions are in the reachable test graph",
+      "files_checked": [
+        "test/runtests.jl",
+        "test/test_material_models3d.jl",
+        "test/test_mom2d.jl",
+        "test/test_mom3d.jl",
+        "test/test_mom3d_adjoint.jl",
+        "test/test_mom3d_em.jl",
+        "test/test_mom3d_fft.jl",
+        "test/test_periodic_topology.jl",
+        "test/test_runtime_contract.jl",
+        "test/test_surface_ie3d.jl"
+      ],
+      "matches": {
+        "Aqua.test_all": [
+          "test/runtests.jl"
+        ]
+      }
+    },
+    {
+      "id": "julia-clean-resolution",
+      "category": "security",
+      "title": "Clean Julia package resolution and precompile",
+      "required": true,
+      "kind": "command",
+      "status": "PASS",
+      "source": "command",
+      "message": "exit code 0",
+      "command": [
+        "julia",
+        "--startup-file=no",
+        "-e",
+        "using Pkg; root = abspath(ARGS[1]); mktempdir() do env; Pkg.activate(env); Pkg.develop(Pkg.PackageSpec(path=root)); Pkg.instantiate(); Pkg.precompile(); end",
+        "."
+      ],
+      "executable": "/Users/jake/.juliaup/bin/julia",
+      "cwd": ".",
+      "duration_seconds": 461.001,
+      "exit_code": 0,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 24021,
+        "sha256": "9b7717373b256a77e6563864b8dc9894352390d390c87ba072035bb55e94fe29"
+      },
+      "protected_paths_changed": []
+    },
+    {
+      "id": "julia-manifest-reproducibility",
+      "category": "compatibility",
+      "title": "Julia manifest and environment reproducibility",
+      "required": true,
+      "kind": "review",
+      "status": "NOT_APPLICABLE",
+      "source": "review",
+      "message": "DiffMoM is a library package: .gitignore excludes Manifest.toml, Project.toml declares compatibility bounds, and the executable clean-resolution gate resolves and precompiles the package in an isolated environment. Exact manifest reproducibility is therefore not a repository contract.",
+      "evidence": "",
+      "rationale": "DiffMoM is a library package: .gitignore excludes Manifest.toml, Project.toml declares compatibility bounds, and the executable clean-resolution gate resolves and precompiles the package in an isolated environment. Exact manifest reproducibility is therefore not a repository contract."
+    },
+    {
+      "id": "julia-coverage-ratchet",
+      "category": "functional-suitability",
+      "title": "Julia coverage and test-strength ratchet",
+      "required": true,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "A source coverage run on 2026-08-24 covered 21,079 of 23,031 executable source lines (91.52%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
+      "evidence": "A source coverage run on 2026-08-24 covered 21,079 of 23,031 executable source lines (91.52%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
+      "rationale": "The measured source baseline and test-strength inventory are recorded in .slopfix/report.md; new behavior must add focused regression evidence."
+    },
+    {
+      "id": "julia-numerical-contracts",
+      "category": "functional-suitability",
+      "title": "Julia numerical and scientific contracts",
+      "required": true,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "The bounds-checked suite exercises NaN/Inf rejection, empty and degenerate shapes, integer and payload overflow, subnormal and huge Float64 values, BigFloat references, seeded random differential cases, physical units, tolerances, reciprocity, power balance, Mie references, and adjoint finite differences.",
+      "evidence": "The bounds-checked suite exercises NaN/Inf rejection, empty and degenerate shapes, integer and payload overflow, subnormal and huge Float64 values, BigFloat references, seeded random differential cases, physical units, tolerances, reciprocity, power balance, Mie references, and adjoint finite differences.",
+      "rationale": "Julia missing values are outside the declared numeric-array APIs; unsupported element types fail through dispatch or explicit validation."
+    },
+    {
+      "id": "julia-benchmarks",
+      "category": "performance-efficiency",
+      "title": "Julia benchmark and allocation baseline",
+      "required": true,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 17.625 microsecond median across 100 warm runs on 2026-08-24; full measurements are in .slopfix/report.md.",
+      "evidence": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 17.625 microsecond median across 100 warm runs on 2026-08-24; full measurements are in .slopfix/report.md.",
+      "rationale": "Allocation ceilings are enforced in the normal test graph; wall-time figures are environment-specific evidence, not portable guarantees."
+    },
+    {
+      "id": "julia-version-platform-matrix",
+      "category": "compatibility",
+      "title": "Configured Julia and platform matrix",
+      "required": true,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": ".github/workflows/ci.yml configures Julia 1.12 tests on Ubuntu with one and four threads, macOS with one thread, and Windows with one thread; its documentation job runs on Ubuntu.",
+      "evidence": ".github/workflows/ci.yml configures Julia 1.12 tests on Ubuntu with one and four threads, macOS with one thread, and Windows with one thread; its documentation job runs on Ubuntu.",
+      "rationale": "This gate verifies the checked-in CI contract, not a remote run. The quality job is ordered after the required platform jobs, so a green workflow supplies platform evidence for that commit. Until then, INV-044 remains UNVERIFIED."
+    },
+    {
+      "id": "julia-docs-doctests",
+      "category": "interaction-capability",
+      "title": "Julia documentation, doctests, and examples",
+      "required": true,
+      "kind": "command",
+      "status": "PASS",
+      "source": "command",
+      "message": "exit code 0",
+      "command": [
+        "julia",
+        "--project=docs",
+        "--startup-file=no",
+        "docs/make.jl"
+      ],
+      "executable": "/Users/jake/.juliaup/bin/julia",
+      "cwd": ".",
+      "duration_seconds": 22.078,
+      "exit_code": 0,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 1719,
+        "sha256": "1d26a6ef80d58a3866d791c83a85dc41f3ec6087d255d68c6e42826e7380631b"
+      },
+      "protected_paths_changed": []
+    },
+    {
+      "id": "julia-tasks-resources",
+      "category": "reliability",
+      "title": "Julia tasks, concurrency, and resource lifecycle",
+      "required": true,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "The one- and four-thread bounds-checked suites exercise shared ReentrantLock workspaces, Threads.@spawn operator calls, error paths, aliasing, and task-local BigFloat precision. Aqua's persistent-task check is reachable from test/runtests.jl.",
+      "evidence": "The one- and four-thread bounds-checked suites exercise shared ReentrantLock workspaces, Threads.@spawn operator calls, error paths, aliasing, and task-local BigFloat precision. Aqua's persistent-task check is reachable from test/runtests.jl.",
+      "rationale": "The package opens files with scoped do-blocks or explicit finally/cleanup paths; it does not own sockets or GPU resources."
+    },
+    {
+      "id": "julia-secrets-security",
+      "category": "security",
+      "title": "Julia source, configuration, and secret security scan",
+      "required": true,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "A full-history gitleaks scan using the committed .gitleaks.toml completed with no findings on 2026-08-24. Clean dependency resolution is an executed command gate.",
+      "evidence": "A full-history gitleaks scan using the committed .gitleaks.toml completed with no findings on 2026-08-24. Clean dependency resolution is an executed command gate.",
+      "rationale": "This is secret and configuration evidence, not a claim that Julia has complete SAST coverage."
+    },
+    {
+      "id": "julia-sbom-advisories",
+      "category": "security",
+      "title": "Julia SBOM, licenses, and available advisories",
+      "required": false,
+      "kind": "review",
+      "status": "UNVERIFIED",
+      "source": "review",
+      "message": "Generate an SBOM from the manifest when applicable, inspect package sources/licenses, and run an available Julia-aware advisory scanner. Record unavailable ecosystem coverage as UNVERIFIED.",
+      "evidence": "",
+      "rationale": "The repository has an MIT license and declared dependency compatibility bounds, but it commits no manifest and the audited environment has no JuliaHub CLI or other Julia-aware advisory scanner. No SBOM or advisory result is available, so this remains an explicit security boundary."
+    },
+    {
+      "id": "julia-explicit-imports",
+      "category": "maintainability",
+      "title": "ExplicitImports and public-name checks",
+      "required": false,
+      "kind": "review",
+      "status": "UNVERIFIED",
+      "source": "review",
+      "message": "Add ExplicitImports checks for implicit, stale, non-owning, or non-public imports and qualified accesses, allowing documented exceptions only.",
+      "evidence": "An isolated ExplicitImports v1.15.0 audit on 2026-08-24 reported no stale explicit imports, 59 potential implicit imports, and 11 qualified non-public accesses. The non-public accesses were reviewed; the potential implicit-import set still needs per-symbol triage because it includes local-binding false positives such as path and volume.",
+      "rationale": "No bulk namespace rewrite was attempted without first separating real implicit dependencies from analyzer false positives. ExplicitImports remains audit tooling rather than a runtime dependency."
+    },
+    {
+      "id": "julia-jet-entrypoints",
+      "category": "maintainability",
+      "title": "Pinned JET analysis on concrete entrypoints",
+      "required": false,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "A pinned isolated JET run on concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints reported zero errors on 2026-08-24.",
+      "evidence": "A pinned isolated JET run on concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints reported zero errors on 2026-08-24.",
+      "rationale": "JET remains optional because its results are coupled to the Julia compiler version."
+    },
+    {
+      "id": "julia-public-api",
+      "category": "flexibility",
+      "title": "Julia public API, dispatch, and extension compatibility",
+      "required": true,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "All 301 exported names were resolved as defined and documented; Documenter checkdocs=:exports passed; Aqua ambiguity, piracy, and method checks passed; representative BLAS/index/adjoint extensions are exercised by the suite.",
+      "evidence": "All 301 exported names were resolved as defined and documented; Documenter checkdocs=:exports passed; Aqua ambiguity, piracy, and method checks passed; representative BLAS/index/adjoint extensions are exercised by the suite.",
+      "rationale": "No public export was removed. Serialized-struct compatibility lacks a committed fixture and remains separately UNVERIFIED as inventory item INV-047."
+    },
+    {
+      "id": "julia-safety-hazards",
+      "category": "safety",
+      "title": "Julia domain safety and hazard controls",
+      "required": false,
+      "kind": "review",
+      "status": "PASS",
+      "source": "review",
+      "message": "Bounds-checked tests and fail-closed validators cover finite inputs, dimensions, units, mesh resolution, work limits, true residuals, power balance, Mie comparisons, optimizer bounds, and gradient checks.",
+      "evidence": "Bounds-checked tests and fail-closed validators cover finite inputs, dimensions, units, mesh resolution, work limits, true residuals, power balance, Mie comparisons, optimizer bounds, and gradient checks.",
+      "rationale": "DiffMoM is research software, not a certified safety-control system; the evidence supports numerical workflow gates only."
+    }
+  ]
+}

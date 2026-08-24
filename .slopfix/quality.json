@@ -111,12 +111,12 @@
     {
       "id": "julia-version-platform-matrix",
       "category": "compatibility",
-      "title": "Supported Julia and platform matrix",
+      "title": "Configured Julia and platform matrix",
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": ".github/workflows/ci.yml requires Julia 1.12 tests on Ubuntu with one and four threads, macOS with one thread, and Windows with one thread; its documentation job runs on Ubuntu.",
-      "rationale": "The quality job is ordered after the required platform matrix, so a green workflow supplies platform evidence for the audited commit. Local final evidence covers macOS arm64; remote status must not be inferred before CI runs.",
+      "evidence": ".github/workflows/ci.yml configures Julia 1.12 tests on Ubuntu with one and four threads, macOS with one thread, and Windows with one thread; its documentation job runs on Ubuntu.",
+      "rationale": "This gate verifies the checked-in CI contract, not a remote run. The quality job is ordered after the required platform jobs, so a green workflow supplies platform evidence for that commit. Until then, INV-044 remains UNVERIFIED.",
       "instructions": "Test every supported Julia minor version and relevant OS/architecture. Include optional dependencies and package extensions where applicable."
     },
     {
@@ -180,9 +180,9 @@
       "title": "ExplicitImports and public-name checks",
       "required": false,
       "kind": "review",
-      "disposition": "pass",
-      "evidence": "An isolated ExplicitImports audit on 2026-08-24 reported no stale explicit imports. Eleven qualified non-public accesses were reviewed as intentional implementation integrations and are recorded in .slopfix/report.md.",
-      "rationale": "ExplicitImports is audit tooling rather than a runtime dependency.",
+      "disposition": "unverified",
+      "evidence": "An isolated ExplicitImports v1.15.0 audit on 2026-08-24 reported no stale explicit imports, 59 potential implicit imports, and 11 qualified non-public accesses. The non-public accesses were reviewed; the potential implicit-import set still needs per-symbol triage because it includes local-binding false positives such as path and volume.",
+      "rationale": "No bulk namespace rewrite was attempted without first separating real implicit dependencies from analyzer false positives. ExplicitImports remains audit tooling rather than a runtime dependency.",
       "instructions": "Add ExplicitImports checks for implicit, stale, non-owning, or non-public imports and qualified accesses, allowing documented exceptions only."
     },
     {
