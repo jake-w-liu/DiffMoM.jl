@@ -261,7 +261,7 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
             phase_lattice.ky_bloch,
         )
         zk = im * kz / (2phase_lattice.E)
-        spectral_kernel = (DiffMoM.erfc(zk) + DiffMoM.erfc(zk)) /
+        spectral_kernel = (erfc(zk) + erfc(zk)) /
                           (4im * kz)
         spectral_reference = DiffMoM._periodic_scale_by_cell_area(
             spectral_kernel, phase_lattice.dx, phase_lattice.dy)
@@ -370,7 +370,7 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         wide_kz = ComplexF64(wide_k, 0.0)
         wide_zk = im * wide_kz / (2wide_E)
         wide_spectral =
-            (DiffMoM.erfc(wide_zk) + DiffMoM.erfc(wide_zk)) /
+            (erfc(wide_zk) + erfc(wide_zk)) /
             (4im * wide_kz)
         wide_scaled = setprecision(BigFloat, 256) do
             ComplexF64(
@@ -410,7 +410,7 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         damping_reference = setprecision(BigFloat, 512) do
             R_big = BigFloat(damping_R)
             E_big = BigFloat(damping_E)
-            Float64(DiffMoM.erfc(E_big * R_big) /
+            Float64(erfc(E_big * R_big) /
                     (4big(π) * R_big))
         end
         @test DiffMoM._ewald_spatial_kernel(

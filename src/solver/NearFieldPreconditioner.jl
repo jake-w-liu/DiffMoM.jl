@@ -12,9 +12,6 @@
 # coupling structure of the Green's function, giving N-independent iteration
 # counts for GMRES.
 
-using SparseArrays
-using IncompleteLU
-
 export NearFieldPreconditionerData,
        ILUPreconditionerData,
        DiagonalPreconditionerData,

@@ -1,12 +1,46 @@
 module DiffMoM
 
-using LinearAlgebra
-using SparseArrays
-using StaticArrays
-using Random
-using Krylov
-using SpecialFunctions
-using FFTW
+using LinearAlgebra: LinearAlgebra,
+                     Adjoint,
+                     Hermitian,
+                     I,
+                     SymTridiagonal,
+                     Transpose,
+                     axpy!,
+                     cross,
+                     dot,
+                     eigen,
+                     eigvals,
+                     issuccess,
+                     ldiv!,
+                     lu,
+                     lu!,
+                     mul!,
+                     norm,
+                     opnorm,
+                     rmul!,
+                     svdvals
+using SparseArrays: SparseArrays,
+                    AbstractSparseMatrix,
+                    SparseMatrixCSC,
+                    dropzeros!,
+                    nnz,
+                    nonzeros,
+                    nzrange,
+                    rowvals,
+                    sparse
+using StaticArrays: @SMatrix, MVector, SMatrix, SVector
+using Random: Random, randperm
+using Krylov: Krylov
+using SpecialFunctions: besselh,
+                        besselj,
+                        besseljx,
+                        bessely,
+                        erfc,
+                        erfcx,
+                        sphericalbesselj
+using FFTW: FFTW
+using IncompleteLU: IncompleteLU
 
 include("Types.jl")
 

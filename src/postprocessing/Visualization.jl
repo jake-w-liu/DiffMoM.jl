@@ -2,7 +2,13 @@
 
 export plot_mesh_wireframe, plot_mesh_comparison, save_mesh_preview
 
-using PlotlySupply
+using PlotlySupply: Spec,
+                    addtraces!,
+                    attr,
+                    relayout!,
+                    savefig,
+                    scatter3d,
+                    subplots
 
 @noinline function _visualization_axis_span_big(
         lower::Float64,

@@ -3,8 +3,6 @@
 # Provides iterative solve alternatives to the dense direct factorization
 # in Solve.jl, with support for near-field sparse preconditioning.
 
-using Krylov
-
 export solve_gmres, solve_gmres_adjoint
 
 const _DEFAULT_MAX_GMRES_WORKSPACE_BYTES = 512 * 1024 * 1024

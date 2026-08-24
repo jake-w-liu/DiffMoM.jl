@@ -12,10 +12,6 @@ export make_plane_wave, make_delta_gap, make_dipole, make_loop, make_monopole,
        make_analytic_dipole_pattern_feed, make_imported_excitation,
        monopole_incident_field
 
-using LinearAlgebra
-using SparseArrays
-using StaticArrays
-
 const _DEFAULT_MAX_EXCITATION_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_EXCITATION_TERMS = 200_000_000
 const _DEFAULT_MAX_MULTI_EXACT_BYTES = 512 * 1024 * 1024

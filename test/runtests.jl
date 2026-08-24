@@ -9,6 +9,15 @@ using Statistics
 using Random
 using Test
 using Aqua
+using SpecialFunctions: erfc, sphericalbesselj, sphericalbessely
+using ExplicitImports: check_all_explicit_imports_are_public,
+                       check_all_explicit_imports_via_owners,
+                       check_all_qualified_accesses_are_public,
+                       check_all_qualified_accesses_via_owners,
+                       check_no_implicit_imports,
+                       check_no_self_qualified_accesses,
+                       check_no_stale_explicit_imports,
+                       improper_qualified_accesses
 using CSV
 using DataFrames
 using DiffMoM
@@ -18,6 +27,41 @@ Aqua.test_all(
     stale_deps=(ignore=[:CSV, :DataFrames, :JSON],),
     persistent_tasks=(tmax=60,),
 )
+
+# These reviewed implementation boundaries currently rely on non-public names.
+# Keep the allowlist exact so every new non-public name fails the
+# import-discipline gate.
+const _NONPUBLIC_QUALIFIED_ACCESS_ALLOWLIST = (
+    :AbstractSparseMatrixCSC,
+    :ILUFactorization,
+    :RefValue,
+    :UMFPACK,
+    :checked_add,
+    :checked_mul,
+    :decompose,
+    :gecon!,
+    :mightalias,
+    :promote_op,
+    :setindex,
+)
+
+@test check_no_implicit_imports(DiffMoM) === nothing
+@test check_no_stale_explicit_imports(DiffMoM) === nothing
+@test check_all_explicit_imports_via_owners(DiffMoM) === nothing
+@test check_all_explicit_imports_are_public(DiffMoM) === nothing
+@test check_all_qualified_accesses_via_owners(DiffMoM) === nothing
+@test check_no_self_qualified_accesses(DiffMoM) === nothing
+@test check_all_qualified_accesses_are_public(
+    DiffMoM; ignore=_NONPUBLIC_QUALIFIED_ACCESS_ALLOWLIST) === nothing
+
+nonpublic_qualified_accesses = Set(
+    access.name
+    for (_, accesses) in improper_qualified_accesses(DiffMoM)
+    for access in accesses
+    if !access.public_access
+)
+@test nonpublic_qualified_accesses ==
+      Set(_NONPUBLIC_QUALIFIED_ACCESS_ALLOWLIST)
 
 include("test_runtime_contract.jl")
 
@@ -48,7 +92,13 @@ function _complex_matrix_output_allocation(m::Int, n::Int)
 end
 
 function _radiation_vectors_allocation(mesh, rwg, grid, k)
-    return @allocated radiation_vectors(mesh, rwg, grid, k; quad_order=3)
+    radiation_vectors(mesh, rwg, grid, k; quad_order=3)
+    # Take the minimum of repeated warm samples to exclude one-time JIT
+    # allocations from the steady-state contract.
+    samples = ntuple(3) do _
+        @allocated radiation_vectors(mesh, rwg, grid, k; quad_order=3)
+    end
+    return minimum(samples)
 end
 
 function _radiated_power_allocation(E_ff, grid)
@@ -3131,9 +3181,6 @@ end
 mesh_radiation_alloc = make_rect_plate(1.0, 1.0, 12, 12)
 rwg_radiation_alloc = build_rwg(mesh_radiation_alloc)
 grid_radiation_alloc = make_sph_grid(8, 16)
-radiation_vectors(
-    mesh_radiation_alloc, rwg_radiation_alloc, grid_radiation_alloc, 2π;
-    quad_order=3)
 GC.gc()
 radiation_alloc = _radiation_vectors_allocation(
     mesh_radiation_alloc, rwg_radiation_alloc, grid_radiation_alloc, 2π)
@@ -10944,8 +10991,8 @@ mlfma_hankel_coarse_x = 130.59355422486368
 mlfma_hankel_coarse = DiffMoM.spherical_hankel2_all(
     mlfma_hankel_coarse_L, mlfma_hankel_coarse_x)
 mlfma_hankel_coarse_reference = ComplexF64[
-    DiffMoM.sphericalbesselj(l, mlfma_hankel_coarse_x) -
-    im * DiffMoM.sphericalbessely(l, mlfma_hankel_coarse_x)
+    sphericalbesselj(l, mlfma_hankel_coarse_x) -
+    im * sphericalbessely(l, mlfma_hankel_coarse_x)
     for l in 0:mlfma_hankel_coarse_L
 ]
 @test norm(mlfma_hankel_coarse - mlfma_hankel_coarse_reference) /
