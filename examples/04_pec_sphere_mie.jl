@@ -110,7 +110,9 @@ residual = norm(Z * I_coeffs - v) / norm(v)
 println("  Solve: $(round(t_sol, digits=3)) s,  residual = $residual")
 
 # ── 4. Far-field and bistatic RCS ───────────────────
-grid  = make_sph_grid(90, 72)
+# This still resolves the Mie cut to 3° while keeping the returned dense
+# radiation-vector matrix below the public API's default workspace ceiling.
+grid  = make_sph_grid(60, 36)
 G_mat = radiation_vectors(mesh, rwg, grid, k)
 NΩ    = length(grid.w)
 E_ff  = compute_farfield(G_mat, Vector{ComplexF64}(I_coeffs), NΩ)
@@ -120,6 +122,8 @@ E_ff  = compute_farfield(G_mat, Vector{ComplexF64}(I_coeffs), NΩ)
 P_in  = input_power(Vector{ComplexF64}(I_coeffs), Vector{ComplexF64}(v))
 P_rad = radiated_power(E_ff, grid)
 println("\nEnergy: P_rad/P_in = $(round(P_rad/P_in, digits=4))  (should ≈ 1)")
+abs(P_rad / P_in - 1) <= 0.02 ||
+    error("PEC sphere energy ratio differs from unity by more than 2%")
 
 # ── 5. Extract a φ-cut for comparison ──────────────
 # Take the φ ≈ 0 cut
@@ -148,6 +152,10 @@ max_db  = maximum(abs.(ΔdB))
 σ_bs_mom = backscatter_rcs(E_ff, grid, khat; E0=1.0).sigma
 σ_bs_mie = mie_bistatic_rcs_pec(k, a, khat, pol, -khat)
 Δbs_db   = 10log10(max(σ_bs_mom, 1e-30)) - 10log10(max(σ_bs_mie, 1e-30))
+
+mae_db <= 0.25 || error("MoM/Mie mean absolute error exceeds 0.25 dB")
+max_db <= 0.5 || error("MoM/Mie maximum error exceeds 0.5 dB")
+abs(Δbs_db) <= 0.5 || error("MoM/Mie backscatter error exceeds 0.5 dB")
 
 println("\n── MoM vs Mie (φ = $(round(rad2deg(phi_target), digits=1))° cut) ──")
 println("  MAE:     $(round(mae_db, digits=3)) dB")
