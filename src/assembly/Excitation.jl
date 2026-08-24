@@ -2153,9 +2153,18 @@ end
                             direction_norm_squared
         term2 = (3 * radial_projection - p) *
                 (1 / R^2 + 1im * k / R)
-        value = (term1 + term2) * exp(-1im * k * R) / (4π * ϵ0 * R)
-        return all(isfinite, value) ? CVec3(value) :
-               _dipole_incident_field_exact(r, dipole, k)
+        combined = term1 + term2
+        phase = exp(-1im * k * R)
+        phased = combined * phase
+        value = phased / (4π * ϵ0 * R)
+        all(isfinite, value) ||
+            return _dipole_incident_field_exact(r, dipole, k)
+        @inbounds for component in 1:3
+            _source_product_requires_exact(
+                combined[component], phase, phased[component]) &&
+                return _dipole_incident_field_exact(r, dipole, k)
+        end
+        return CVec3(value)
     elseif dipole.type == :magnetic
         # E = (η0/4π) (k^2/R - i k/R^2) e^{-ikR} (m × R̂)
         # Derived from E = -i k η0 (∇G × m), G = e^{-ikR}/(4πR); radiating (1/R)

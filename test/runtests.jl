@@ -5896,6 +5896,40 @@ end
     dipole_field_phase_source,
 ) == dipole_field_phase_reference
 
+electric_dipole_field_phase_moment = CVec3(
+    ComplexF64(1.0e16, 1.853416429104924e18),
+    0.0 + 0im,
+    0.0 + 0im,
+)
+electric_dipole_field_phase_source = make_dipole(
+    Vec3(0.0, 0.0, 0.0),
+    electric_dipole_field_phase_moment,
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    dipole_field_phase_frequency,
+)
+electric_dipole_field_phase_reference = setprecision(BigFloat, 1024) do
+    displacement = SVector{3,BigFloat}(
+        BigFloat.(dipole_field_phase_point))
+    distance = sqrt(sum(abs2, displacement))
+    direction = displacement / distance
+    moment = SVector{3,Complex{BigFloat}}(
+        Complex{BigFloat}.(electric_dipole_field_phase_moment))
+    wavenumber = BigFloat(dipole_field_phase_k)
+    phase = exp(Complex{BigFloat}(0, -wavenumber * distance))
+    transverse = cross(cross(direction, moment), direction) *
+                 wavenumber^2
+    near = (3 * direction * dot(direction, moment) - moment) *
+           (inv(distance^2) +
+            Complex{BigFloat}(0, 1) * wavenumber / distance)
+    CVec3((transverse + near) * phase /
+          (4 * BigFloat(π) * BigFloat(DiffMoM._EPS0) * distance))
+end
+@test DiffMoM.dipole_incident_field(
+    dipole_field_phase_point,
+    electric_dipole_field_phase_source,
+) == electric_dipole_field_phase_reference
+
 pattern_phase_cancellation_scale = 1.0e16
 pattern_phase_cancellation_value = ComplexF64(
     pattern_phase_cancellation_scale,
