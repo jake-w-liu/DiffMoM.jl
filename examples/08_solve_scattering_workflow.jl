@@ -119,11 +119,16 @@ println("─"^60)
 
 # Use a high frequency where the mesh is under-resolved
 freq_high = 30e9
+k_high = 2π * freq_high / c0
+pw_high = make_plane_wave(
+    Vec3(0.0, 0.0, -k_high), 1.0, Vec3(1.0, 0.0, 0.0))
 println("Solving at $(freq_high/1e9) GHz (mesh will be under-resolved)...")
-result_warn = solve_scattering(mesh, freq_high, pw;
+result_warn = solve_scattering(mesh, freq_high, pw_high;
     verbose=true,
     error_on_underresolved=false,
 )
+isempty(result_warn.warnings) &&
+    error("Expected an under-resolved mesh warning at $(freq_high/1e9) GHz")
 if !isempty(result_warn.warnings)
     println("  Warnings captured: $(length(result_warn.warnings))")
     for w in result_warn.warnings
