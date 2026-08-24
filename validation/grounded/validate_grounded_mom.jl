@@ -64,15 +64,19 @@ println("  Grounded periodic MoM validation")
 println("="^70)
 
 println("\n[1] Full PEC sheet at height h (expect R00 = -1, full vector budget = 1):")
+pec_results = NamedTuple[]
 for h in [lam/8, lam/4, 3lam/8, lam/2]
     r = solve_grounded(0.5, 8, h)
+    push!(pec_results, (; height=h, result=r))
     @printf("  h=%.3fλ | R00=%+.5f%+.5fi  |R00|=%.5f | vector_budget=%.6f\n",
             h/lam, real(r.R00), imag(r.R00), abs(r.R00), r.refl)
 end
 
 println("\n[2] Lossless reactive sheet, 1.2λ cell (full vector budget → 1):")
+reactive_results = NamedTuple[]
 for h in [lam/8, lam/4]
     r = solve_grounded(1.2, 12, h; reactive=true, Zfac=8.0)
+    push!(reactive_results, (; height=h, result=r))
     @printf("  h=%.3fλ | |R00|=%.5f | vector_budget=%.6f | abs_frac=%.2e\n",
             h/lam, abs(r.R00), r.refl, r.abs)
 end
@@ -80,3 +84,25 @@ end
 println("\n[3] Resistive density penalties are not used as a grounded absorption certificate here;")
 println("    this validation certifies the lossless image-theory reflection budget.")
 println("="^70)
+
+for case in pec_results
+    r = case.result
+    all(isfinite, (r.R00, r.refl, r.abs)) ||
+        error("non-finite full-PEC result at h=$(case.height / lam)λ")
+    abs(r.R00 + 1) <= 5e-3 ||
+        error("full-PEC R00 differs from -1 at h=$(case.height / lam)λ: $(r.R00)")
+    abs(r.refl - 1) <= 1e-6 ||
+        error("full-PEC reflected-power budget failed at h=$(case.height / lam)λ: $(r.refl)")
+end
+
+for case in reactive_results
+    r = case.result
+    all(isfinite, (r.R00, r.refl, r.abs)) ||
+        error("non-finite reactive-sheet result at h=$(case.height / lam)λ")
+    abs(r.refl - 1) <= 1e-6 ||
+        error("reactive-sheet reflected-power budget failed at h=$(case.height / lam)λ: $(r.refl)")
+    abs(r.abs) <= 1e-10 ||
+        error("reactive-sheet absorption is nonzero at h=$(case.height / lam)λ: $(r.abs)")
+end
+
+println("PASS: grounded lossless reflection contracts satisfied")

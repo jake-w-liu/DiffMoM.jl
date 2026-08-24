@@ -77,3 +77,10 @@ println("="^72)
 @printf("  MAX E-independence rel error:        %.3e  %s\n", maxE, maxE < 1e-9 ? "PASS" : "FAIL")
 @printf("  MAX Ewald-vs-spectral rel error:     %.3e  %s\n", maxS, maxS < 1e-7 ? "PASS" : "FAIL")
 println("="^72)
+
+if !(maxE < 1e-9 && maxS < 1e-7)
+    error(
+        "periodic Green validation failed: " *
+        "E-independence=$(maxE), Ewald-vs-spectral=$(maxS)",
+    )
+end

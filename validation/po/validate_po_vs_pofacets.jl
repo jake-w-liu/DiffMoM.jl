@@ -448,3 +448,5 @@ end
 
 println("\nSaved: validation/data/po_validation_phi0.csv")
 println("Saved: validation/data/po_validation_phi90.csv")
+
+overall_pass || error("POFacets comparison failed its RMSE or illumination gate")

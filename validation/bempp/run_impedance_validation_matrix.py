@@ -281,8 +281,9 @@ def main() -> None:
 
         report_json = data_dir / f"bempp_{prefix}_cross_validation_report.json"
         if not report_json.exists():
-            print(f"WARNING: missing report {report_json}, skipping summary row")
-            continue
+            raise SystemExit(
+                f"Missing comparison report for {case.case_id}: {report_json}"
+            )
 
         metrics = load_json(report_json)
         flags = compute_case_pass_flags(metrics)
@@ -349,6 +350,8 @@ def main() -> None:
         f"main_level<=1.5dB: {gates['count_main_level_le_1p5db']}/{gates['num_cases']}, "
         f"sll<=3dB: {gates['count_sll_le_3db']}/{gates['num_cases']})"
     )
+    if not gates["beam_gate_pass"]:
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

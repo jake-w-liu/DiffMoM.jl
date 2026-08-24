@@ -263,6 +263,10 @@ function main()
         mark = pass ? "PASS" : "FAIL"
         println("[$mark] $label")
     end
+
+    failed = [label for (label, pass) in checks if !pass]
+    isempty(failed) ||
+        error("paper consistency checks failed: " * join(failed, "; "))
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
