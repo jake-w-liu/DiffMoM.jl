@@ -22,14 +22,14 @@
 | Gross removed | 856 |
 | Gross added | 8,105 |
 | Gross method | `slopfix-builtin/2-line-fingerprint-diff` |
-| **Net removed** | **-7,248** |
+| **Net change** | **+7,248** |
 | **Reduction** | **-9.70%** |
 
 | | |
 | --- | ---: |
 | Promised reduction | 0.2% (150 lines) |
-| Delivered | -7,248 lines removed (a net addition of 7,248) |
-| **Attainment** | **0% of the committed goal** |
+| Shortfall from target | 7,398 lines |
+| **Target attained** | **No** |
 
 Reproduce the current number:
 
