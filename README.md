@@ -141,6 +141,10 @@ julia --project=. validation/robustness/run_robustness_sweep.jl
 
 `validation/po/validate_po_vs_pofacets.jl` requires a user-supplied
 `examples/demo_aircraft.obj`; that geometry is not included in this repository.
+Set `DMOM_AIRCRAFT_OBJ` to use another path.
+The optional MATLAB aircraft comparisons also require `POFACETS_DIR`, or an
+explicit `POFACETS_AIRCRAFT_MAT`, and fail unless their generated Julia inputs
+are present.
 
 Bempp-cl cross-validation requires Python, `bempp-cl`, and Gmsh:
 

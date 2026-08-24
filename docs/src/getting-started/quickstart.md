@@ -115,6 +115,10 @@ julia --project=. examples/21_near_total_field_rayleigh_sphere.jl
 julia --project=. examples/06_aircraft_rcs.jl
 ```
 
+The aircraft geometry is not bundled. Put it at
+`examples/demo_aircraft.obj`, or set `DMOM_AIRCRAFT_OBJ` to another OBJ path,
+before running the last command.
+
 ---
 
 ## Code Mapping

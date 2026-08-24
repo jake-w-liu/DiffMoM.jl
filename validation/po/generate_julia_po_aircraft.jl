@@ -9,11 +9,15 @@ using .DiffMoM
 using CSV, DataFrames
 
 println("="^60)
-println("Julia PO: demo_aircraft.obj at 0.3 GHz")
+println("Julia PO: Aircraft Geometry at 0.3 GHz")
 println("="^60)
 
 # Load aircraft mesh
-obj_path = joinpath(@__DIR__, "..", "..", "examples", "demo_aircraft.obj")
+obj_path = abspath(get(ENV, "DMOM_AIRCRAFT_OBJ",
+    joinpath(@__DIR__, "..", "..", "examples", "demo_aircraft.obj")))
+isfile(obj_path) || error(
+    "Required aircraft geometry not found at $obj_path. Supply an OBJ there " *
+    "or set DMOM_AIRCRAFT_OBJ to its path, then rerun this generator.")
 mesh_raw = read_obj_mesh(obj_path)
 rep = repair_mesh_for_simulation(mesh_raw; allow_boundary=true, auto_drop_nonmanifold=true)
 mesh = rep.mesh
@@ -24,7 +28,8 @@ freq = 0.3e9
 λ0 = c0 / freq
 k = 2π / λ0
 
-println("\nMesh: $(nvertices(mesh)) verts, $(ntriangles(mesh)) tri")
+println("\nGeometry: $obj_path")
+println("Mesh: $(nvertices(mesh)) vertices, $(ntriangles(mesh)) triangles")
 println("Frequency: $(freq/1e9) GHz, λ = $(round(λ0, digits=2)) m")
 
 # Plane wave: -z incidence, x-polarized
@@ -96,7 +101,7 @@ df0 = DataFrame(
 )
 out_file_0 = joinpath(out_dir, "julia_po_aircraft_0p3_phi0.csv")
 CSV.write(out_file_0, df0)
-println("\nSaved: $out_file_0")
+println("\nSaved: $(abspath(out_file_0))")
 
 # φ=90° cut
 df90 = DataFrame(
@@ -106,8 +111,10 @@ df90 = DataFrame(
 )
 out_file_90 = joinpath(out_dir, "julia_po_aircraft_0p3_phi90.csv")
 CSV.write(out_file_90, df90)
-println("Saved: $out_file_90")
+println("Saved: $(abspath(out_file_90))")
 
 println("\n" * "="^60)
-println("Done. Run compare_po_aircraft.m in MATLAB for comparison.")
+println("Julia PO data generation complete.")
+println("Next: set POFACETS_DIR and run " *
+        "validation/po/compare_po_aircraft.m in MATLAB.")
 println("="^60)

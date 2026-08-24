@@ -212,8 +212,8 @@ julia --project=. --startup-file=no validation/po/validate_po_vs_pofacets.jl
 ```
 
 That script requires a user-supplied `examples/demo_aircraft.obj`; the file is
-not included in the repository. Keep this external-geometry prerequisite with
-any reported result.
+not included in the repository. Set `DMOM_AIRCRAFT_OBJ` to use another path.
+Record the effective geometry path with any reported result.
 
 The regression suite contains bounded PO and PTD checks:
 

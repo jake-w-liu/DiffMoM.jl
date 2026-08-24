@@ -3,7 +3,8 @@
 # Implements POFacets 4.5 bistatic RCS algorithm (facetRCS.m) directly in Julia,
 # then compares against DiffMoM.jl's solve_po on the SAME mesh.
 #
-# No MATLAB required — the POFacets algorithm is faithfully transliterated.
+# No MATLAB is required; the comparison uses the POFacets equations implemented
+# below in Julia.
 #
 # Run: julia --project=. validation/po/validate_po_vs_pofacets.jl
 
@@ -299,9 +300,12 @@ println("="^65)
 c0 = 299792458.0
 
 # ─── Load mesh ───
-obj_path = joinpath(@__DIR__, "..", "..", "examples", "demo_aircraft.obj")
+obj_path = abspath(get(ENV, "DMOM_AIRCRAFT_OBJ",
+    joinpath(@__DIR__, "..", "..", "examples", "demo_aircraft.obj")))
 if !isfile(obj_path)
-    error("demo_aircraft.obj not found at $obj_path")
+    error(
+        "Required aircraft geometry not found at $obj_path. Supply an OBJ " *
+        "there or set DMOM_AIRCRAFT_OBJ to its path, then rerun this validator.")
 end
 mesh_raw = read_obj_mesh(obj_path)
 rep = repair_mesh_for_simulation(mesh_raw; allow_boundary=true, auto_drop_nonmanifold=true)
@@ -311,7 +315,8 @@ freq = 0.3e9
 λ0 = c0 / freq
 k = 2π / λ0
 
-println("\nMesh: $(nvertices(mesh)) verts, $(ntriangles(mesh)) tri")
+println("\nGeometry: $obj_path")
+println("Mesh: $(nvertices(mesh)) vertices, $(ntriangles(mesh)) triangles")
 println("Frequency: $(freq/1e9) GHz, λ = $(round(λ0, digits=2)) m")
 
 # ─── Observation grid: 1° at φ=0° and φ=90° ───
@@ -369,7 +374,10 @@ println("─"^65)
 # Allow ±1 tolerance for grazing facets (n̂·k̂ ≈ 0) that contribute negligible power
 illum_diff = abs(count(po.illuminated) - n_illum_pof)
 illum_match = illum_diff <= 1
-println("\nIlluminated facets: Julia=$(count(po.illuminated)), POFacets=$n_illum_pof → $(illum_match ? "MATCH ✓ (±$illum_diff)" : "MISMATCH ✗ (Δ=$illum_diff)")")
+illum_status = illum_match ? "MATCH (difference=$illum_diff)" :
+               "MISMATCH (difference=$illum_diff)"
+println("\nIlluminated facets: DiffMoM=$(count(po.illuminated)), " *
+        "POFacets=$n_illum_pof; $illum_status")
 
 # Backscatter (θ ≈ 0°, propagation is -z so backscatter toward +z)
 bs_julia = backscatter_rcs(po.E_ff, grid, Vec3(0.0, 0.0, -k); E0=1.0)
@@ -430,7 +438,8 @@ mkpath(out_dir)
 
 θ_deg_0 = rad2deg.(grid.theta[phi0_idx])
 data_0 = hcat(θ_deg_0, σ_julia_dB[phi0_idx], σ_pof_dB[phi0_idx])
-open(joinpath(out_dir, "po_validation_phi0.csv"), "w") do f
+out_file_0 = joinpath(out_dir, "po_validation_phi0.csv")
+open(out_file_0, "w") do f
     println(f, "theta_deg,julia_dBsm,pofacets_dBsm")
     for row in eachrow(data_0)
         println(f, "$(row[1]),$(row[2]),$(row[3])")
@@ -439,14 +448,18 @@ end
 
 θ_deg_90 = rad2deg.(grid.theta[phi90_idx])
 data_90 = hcat(θ_deg_90, σ_julia_dB[phi90_idx], σ_pof_dB[phi90_idx])
-open(joinpath(out_dir, "po_validation_phi90.csv"), "w") do f
+out_file_90 = joinpath(out_dir, "po_validation_phi90.csv")
+open(out_file_90, "w") do f
     println(f, "theta_deg,julia_dBsm,pofacets_dBsm")
     for row in eachrow(data_90)
         println(f, "$(row[1]),$(row[2]),$(row[3])")
     end
 end
 
-println("\nSaved: validation/data/po_validation_phi0.csv")
-println("Saved: validation/data/po_validation_phi90.csv")
+println("\nSaved: $(abspath(out_file_0))")
+println("Saved: $(abspath(out_file_90))")
 
-overall_pass || error("POFacets comparison failed its RMSE or illumination gate")
+overall_pass || error(
+    "POFacets comparison failed: phi0_rmse=$rmse_0 dB, " *
+    "phi90_rmse=$rmse_90 dB, illumination_difference=$illum_diff. " *
+    "Inspect the effective geometry, incidence convention, and PO equations.")

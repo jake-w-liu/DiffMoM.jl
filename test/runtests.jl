@@ -13,7 +13,11 @@ using CSV
 using DataFrames
 using DiffMoM
 
-Aqua.test_all(DiffMoM; stale_deps=(ignore=[:CSV, :DataFrames, :JSON],))
+Aqua.test_all(
+    DiffMoM;
+    stale_deps=(ignore=[:CSV, :DataFrames, :JSON],),
+    persistent_tasks=(tmax=60,),
+)
 
 include("test_runtime_contract.jl")
 

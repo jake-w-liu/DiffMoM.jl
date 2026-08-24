@@ -1,15 +1,15 @@
-# 14_periodic_to_validation.jl — Heuristic validation of periodic MoM + topology optimization
+# 14_periodic_to_validation.jl — Numerical checks for periodic MoM and density TO
 #
-# Six validation experiments:
-#   1. Helmholtz-Ewald convergence (exponential with N)
-#   2. Ewald vs direct image sum cross-validation (d = λ/2)
-#   3. Large-period Ewald stability (d up to 100λ)
-#   4. E-independence verification (non-Wood vs Wood anomaly)
+# Six numerical checks:
+#   1. Helmholtz-Ewald convergence toward a higher-truncation reference
+#   2. Ewald vs truncated direct image sum diagnostic (d = λ/2)
+#   3. Large-period Ewald stability (d up to 100.5λ)
+#   4. E-independence check (non-Wood vs Wood anomaly)
 #   5. Density filtering + Heaviside projection pipeline
-#   6. Adjoint gradient verification (finite difference vs adjoint)
+#   6. Adjoint gradient check (finite difference vs adjoint)
 #
 # Plots (saved as PDF in figures/):
-#   heuristic_ewald_convergence.pdf — exponential convergence
+#   heuristic_ewald_convergence.pdf — truncation convergence
 #   heuristic_ewald_large_period_greens.pdf — |ΔG| vs d/λ
 #   heuristic_ewald_large_period_efie.pdf — EFIE rel_diff vs d/λ
 #   heuristic_E_independence.pdf — E-independence for Wood vs non-Wood
@@ -29,13 +29,18 @@ import PlotlySupply: savefig
 Random.seed!(42)
 
 const PKG_DIR = dirname(@__DIR__)
-const DATA_DIR = joinpath(PKG_DIR, "..", "paper", "data")
-const FIG_DIR = joinpath(PKG_DIR, "..", "paper", "figs")
+const DATA_DIR = joinpath(PKG_DIR, "data")
+const FIG_DIR = joinpath(PKG_DIR, "figures")
+const MAX_EWALD_REFERENCE_ERROR = 1e-10
+const MAX_NONWOOD_E_VARIATION = 1e-10
+const MIN_WOOD_E_VARIATION = 1e-2
+const MAX_FILTER_MEAN_SHIFT = 1e-2
+const MAX_GRADIENT_RELATIVE_ERROR = 1e-5
 mkpath(DATA_DIR)
 mkpath(FIG_DIR)
 
 println("=" ^ 60)
-println("  Periodic MoM + Topology Optimization — Heuristic Validation")
+println("  Periodic MoM + Density TO — Numerical Checks")
 println("=" ^ 60)
 
 # Common parameters
@@ -57,7 +62,7 @@ dx_cell = 0.5 * lambda
 dy_cell = 0.5 * lambda
 println("  Unit cell: $(round(dx_cell*1e3, digits=2)) mm × $(round(dy_cell*1e3, digits=2)) mm (λ/2)")
 
-# Reference: N=8 (fully converged)
+# Higher-truncation comparison value; the executable gate checks N=6 against it.
 lat_ref = PeriodicLattice(dx_cell, dy_cell, 0.0, 0.0, k; N_spatial=8, N_spectral=8)
 dG_ref = greens_periodic_correction(r, rp, k, lat_ref)
 
@@ -75,7 +80,13 @@ for Ni in [1, 2, 3, 4, 5, 6]
 end
 
 CSV.write(joinpath(DATA_DIR, "validation_ewald_convergence.csv"), results_ewald)
-println("  ✓ Saved: data/validation_ewald_convergence.csv")
+println("  Saved: $(joinpath(DATA_DIR, "validation_ewald_convergence.csv"))")
+ewald_errors = collect(results_ewald.error_vs_ref)
+ewald_converged = ewald_errors[end] < MAX_EWALD_REFERENCE_ERROR &&
+                  all(diff(ewald_errors) .<= 0.0)
+ewald_converged || error(
+    "Ewald truncation errors were not nonincreasing to below " *
+    "$MAX_EWALD_REFERENCE_ERROR; inspect validation_ewald_convergence.csv")
 
 # ── Plot: Ewald convergence ──
 fig_conv = plot_scatter(
@@ -89,12 +100,12 @@ fig_conv = plot_scatter(
     yscale="log", yrange=[-16, 0],
     width=500, height=400, fontsize=12)
 savefig(fig_conv, joinpath(FIG_DIR, "heuristic_ewald_convergence.pdf"))
-println("  ✓ Saved: figures/heuristic_ewald_convergence.pdf")
+println("  Saved: $(joinpath(FIG_DIR, "heuristic_ewald_convergence.pdf"))")
 
 # ─────────────────────────────────────────────────────────────────
-# Test 2: Ewald vs direct image sum cross-validation
+# Test 2: Ewald vs truncated direct image sum diagnostic
 # ─────────────────────────────────────────────────────────────────
-println("\n▸ Test 2: Ewald vs Direct Image Sum (d = λ/2)")
+println("\n▸ Test 2: Ewald vs Truncated Direct Image Sum (diagnostic)")
 
 function _greens_periodic_direct(r, rp, k, dx, dy, kx_b, ky_b, N_images)
     val = zero(ComplexF64)
@@ -122,7 +133,7 @@ println("  Ewald  (N=6):      ΔG = $(round(dG_ewald, sigdigits=8))")
 println("  Direct (N_img=30): ΔG = $(round(dG_direct, sigdigits=8))")
 println("  Relative diff = $(round(rel_diff, sigdigits=3))")
 
-# Multi-point cross-validation
+# Multi-point comparison against the same truncated direct-image diagnostic.
 test_points = [
     SVector(0.001, 0.001, 0.0), SVector(0.005, 0.002, 0.0),
     SVector(0.007, 0.007, 0.0), SVector(0.01, 0.005, 0.0),
@@ -137,21 +148,23 @@ for (i, ri) in enumerate(test_points)
     println("    point $i: rel_diff = $(round(rel, sigdigits=3))")
 end
 max_xval_err = maximum(xval_errs)
+all(isfinite, (rel_diff, max_xval_err)) || error(
+    "The Ewald/direct-image diagnostic produced a non-finite difference")
 
 CSV.write(joinpath(DATA_DIR, "validation_ewald_vs_direct.csv"),
           DataFrame(metric=["single_point_rel_diff", "max_xval_err"],
                     value=[rel_diff, max_xval_err]))
-println("  ✓ Saved: data/validation_ewald_vs_direct.csv")
+println("  Saved: $(joinpath(DATA_DIR, "validation_ewald_vs_direct.csv"))")
 
 # ─────────────────────────────────────────────────────────────────
 # Test 3: Large-period Ewald stability
 # ─────────────────────────────────────────────────────────────────
-println("\n▸ Test 3: Large-Period Ewald Stability (d up to 100λ)")
+println("\n▸ Test 3: Large-Period Ewald Stability (d up to 100.5λ)")
 
 r_test  = SVector(0.002, 0.003, 0.0)
 rp_test = SVector(0.0, 0.0, 0.0)
 
-# Non-integer d/λ avoids Wood anomaly; integer d/λ tests Wood anomaly handling
+# Non-integer d/λ avoids Wood anomalies in this stability sweep.
 alphas_large = [0.5, 0.7, 1.5, 2.5, 3.7, 5.5, 7.3, 10.5, 15.5, 20.5, 30.5, 50.5, 75.5, 100.5]
 
 results_large = DataFrame(d_over_lambda=Float64[], E_used=Float64[],
@@ -176,8 +189,11 @@ for alpha in alphas_large
 end
 
 CSV.write(joinpath(DATA_DIR, "validation_ewald_large_period.csv"), results_large)
-println("  ✓ Saved: data/validation_ewald_large_period.csv")
+println("  Saved: $(joinpath(DATA_DIR, "validation_ewald_large_period.csv"))")
 println("  All finite: $(all(results_large.is_finite))")
+all(results_large.is_finite) || error(
+    "Large-period Ewald correction produced NaN or Inf; inspect " *
+    "validation_ewald_large_period.csv")
 
 # Periodic EFIE: rel_diff vs d/λ
 println("\n  Periodic EFIE: ‖Z_per - Z_free‖ / ‖Z_free‖ vs d/λ")
@@ -202,7 +218,13 @@ for alpha in alphas_efie
 end
 
 CSV.write(joinpath(DATA_DIR, "validation_efie_large_period.csv"), results_efie)
-println("  ✓ Saved: data/validation_efie_large_period.csv")
+println("  Saved: $(joinpath(DATA_DIR, "validation_efie_large_period.csv"))")
+efie_ok = all(.!results_efie.has_nan) &&
+          all(isfinite, results_efie.rel_diff_efie) &&
+          all(results_efie.rel_diff_efie .< 1.0)
+efie_ok || error(
+    "Large-period periodic EFIE comparison produced a non-finite or " *
+    "order-one relative difference; inspect validation_efie_large_period.csv")
 
 # ── Plot: Large-period results (two plots: Green's correction + EFIE) ──
 fig_large_greens = plot_scatter(
@@ -215,7 +237,7 @@ fig_large_greens = plot_scatter(
     xscale="log",
     width=500, height=400, fontsize=12)
 savefig(fig_large_greens, joinpath(FIG_DIR, "heuristic_ewald_large_period_greens.pdf"))
-println("  ✓ Saved: figures/heuristic_ewald_large_period_greens.pdf")
+println("  Saved: $(joinpath(FIG_DIR, "heuristic_ewald_large_period_greens.pdf"))")
 
 fig_large_efie = plot_scatter(
     collect(Float64, results_efie.d_over_lambda),
@@ -227,12 +249,12 @@ fig_large_efie = plot_scatter(
     xscale="log", yscale="log",
     width=500, height=400, fontsize=12)
 savefig(fig_large_efie, joinpath(FIG_DIR, "heuristic_ewald_large_period_efie.pdf"))
-println("  ✓ Saved: figures/heuristic_ewald_large_period_efie.pdf")
+println("  Saved: $(joinpath(FIG_DIR, "heuristic_ewald_large_period_efie.pdf"))")
 
 # ─────────────────────────────────────────────────────────────────
 # Test 4: E-independence verification
 # ─────────────────────────────────────────────────────────────────
-println("\n▸ Test 4: E-Independence Verification")
+println("\n▸ Test 4: E-Independence Check")
 println("  (Splitting parameter E is mathematical; result must be E-independent)")
 
 r_ei  = SVector(0.002, 0.003, 0.0)
@@ -270,11 +292,13 @@ for alpha in alphas_ei
 end
 
 CSV.write(joinpath(DATA_DIR, "validation_E_independence.csv"), results_ei)
-println("  ✓ Saved: data/validation_E_independence.csv")
+println("  Saved: $(joinpath(DATA_DIR, "validation_E_independence.csv"))")
 
 # Compute max relative deviation per d/λ
 println("\n  d/λ        Wood?  max ΔE (relative to E=E_min)")
 println("  " * "-"^55)
+ei_summary = DataFrame(
+    d_over_lambda=Float64[], is_wood=Bool[], max_delta=Float64[])
 for alpha in alphas_ei
     rows = filter(r -> r.d_over_lambda == alpha, results_ei)
     ref_mag = rows[1, :dG_mag]
@@ -284,43 +308,46 @@ for alpha in alphas_ei
     deltas = [abs(complex(r.dG_real, r.dG_imag) - complex(rows[1,:dG_real], rows[1,:dG_imag])) / ref_mag
               for r in eachrow(rows)]
     max_delta = maximum(deltas)
+    push!(ei_summary, (alpha, rows[1, :is_wood], max_delta))
     wood_str = rows[1, :is_wood] ? "YES" : "no "
-    status = max_delta < 1e-10 ? "EXACT" : "$(round(100*max_delta, digits=1))%"
+    status = max_delta <= MAX_NONWOOD_E_VARIATION ?
+             "within tolerance" : "$(round(100*max_delta, digits=1))%"
     println("  $(rpad(alpha, 11)) $wood_str    $status")
 end
 
+wood_ei = filter(r -> r.is_wood, ei_summary)
+nonwood_ei = filter(r -> !r.is_wood, ei_summary)
+nonwood_max_delta = maximum(nonwood_ei.max_delta)
+wood_min_delta = minimum(wood_ei.max_delta)
+nonwood_max_delta <= MAX_NONWOOD_E_VARIATION || error(
+    "Non-Wood Ewald results varied by $nonwood_max_delta across splitting " *
+    "parameters, above $MAX_NONWOOD_E_VARIATION; inspect " *
+    "validation_E_independence.csv")
+wood_min_delta >= MIN_WOOD_E_VARIATION || error(
+    "Wood-anomaly Ewald results varied by only $wood_min_delta, below the " *
+    "expected diagnostic floor $MIN_WOOD_E_VARIATION; inspect the anomaly " *
+    "classification and E sweep")
+
 # ── Plot: E-independence ──
 fig_ei = let
-    # Compute max delta per alpha
-    ei_summary = DataFrame(d_over_lambda=Float64[], is_wood=Bool[], max_delta=Float64[])
-    for alpha in alphas_ei
-        rows = filter(r -> r.d_over_lambda == alpha, results_ei)
-        ref = complex(rows[1,:dG_real], rows[1,:dG_imag])
-        ref_mag = abs(ref)
-        ref_mag < 1e-30 && continue
-        deltas = [abs(complex(r.dG_real, r.dG_imag) - ref) / ref_mag for r in eachrow(rows)]
-        push!(ei_summary, (alpha, rows[1,:is_wood], maximum(deltas)))
-    end
-
-    wood = filter(r -> r.is_wood, ei_summary)
-    nowood = filter(r -> !r.is_wood, ei_summary)
-
     plot_scatter(
-        [collect(Float64, nowood.d_over_lambda), collect(Float64, wood.d_over_lambda)],
-        [max.(nowood.max_delta, 1e-16), max.(wood.max_delta, 1e-16)];
+        [collect(Float64, nonwood_ei.d_over_lambda),
+         collect(Float64, wood_ei.d_over_lambda)],
+        [max.(nonwood_ei.max_delta, 1e-16),
+         max.(wood_ei.max_delta, 1e-16)];
         mode=["markers", "markers"],
         legend=["No Wood anomaly", "Wood anomaly (integer d/λ)"],
         marker_size=[10, 10],
         marker_symbol=["circle", "x"],
         color=["green", "red"],
-        title="E-Independence: Non-Wood (exact) vs Wood Anomaly",
+        title="E-Independence: Non-Wood Tolerance vs Wood Anomaly",
         xlabel="d / λ",
         ylabel="max |ΔG(E) - ΔG(E_min)| / |ΔG(E_min)|",
         yscale="log", yrange=[-16, 0],
         width=550, height=400, fontsize=12)
 end
 savefig(fig_ei, joinpath(FIG_DIR, "heuristic_E_independence.pdf"))
-println("  ✓ Saved: figures/heuristic_E_independence.pdf")
+println("  Saved: $(joinpath(FIG_DIR, "heuristic_E_independence.pdf"))")
 
 # ─────────────────────────────────────────────────────────────────
 # Test 5: Density filtering + Heaviside projection pipeline
@@ -354,15 +381,20 @@ for beta_val in [1.0, 4.0, 16.0, 64.0]
 end
 
 CSV.write(joinpath(DATA_DIR, "validation_heaviside.csv"), results_heaviside)
-println("  ✓ Saved: data/validation_heaviside.csv")
+println("  Saved: $(joinpath(DATA_DIR, "validation_heaviside.csv"))")
 
-@assert abs(mean(rho) - mean(rho_tilde)) < 0.01 "Filter should preserve mean density"
-println("  ✓ Filter preserves mean (Δ=$(round(abs(mean(rho)-mean(rho_tilde)), sigdigits=3)))")
+filter_mean_shift = abs(mean(rho) - mean(rho_tilde))
+filter_mean_shift < MAX_FILTER_MEAN_SHIFT || error(
+    "Density filtering shifted the mean by $filter_mean_shift, above " *
+    "$MAX_FILTER_MEAN_SHIFT; inspect filter normalization")
+all(isfinite, Matrix(results_heaviside[:, 2:5])) || error(
+    "Heaviside projection produced a non-finite density metric")
+println("  Filter mean-shift gate: PASS (Δ=$(round(filter_mean_shift, sigdigits=3)))")
 
 # ─────────────────────────────────────────────────────────────────
 # Test 6: Adjoint gradient verification
 # ─────────────────────────────────────────────────────────────────
-println("\n▸ Test 6: Adjoint Gradient Verification (FD vs Adjoint)")
+println("\n▸ Test 6: Adjoint Gradient Check (FD vs Adjoint)")
 
 rwg = build_rwg(mesh; precheck=false)
 N = rwg.nedges
@@ -426,29 +458,26 @@ for t in check_indices
 end
 
 CSV.write(joinpath(DATA_DIR, "validation_gradient.csv"), results_grad)
-println("  ✓ Saved: data/validation_gradient.csv")
+println("  Saved: $(joinpath(DATA_DIR, "validation_gradient.csv"))")
 println("  Max relative error: $(round(max_rel_err, sigdigits=3))")
+isfinite(max_rel_err) && max_rel_err < MAX_GRADIENT_RELATIVE_ERROR || error(
+    "Periodic density-adjoint maximum relative error $max_rel_err exceeds " *
+    "$MAX_GRADIENT_RELATIVE_ERROR; inspect validation_gradient.csv")
 
 # ─────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────
 println("\n" * "=" ^ 60)
-println("  Validation Summary")
+println("  Numerical Checks Summary")
 println("=" ^ 60)
 
-ewald_converged = results_ewald[end, :error_vs_ref] < 1e-10
-xval_ok = max_xval_err < 0.05
-large_ok = all(results_large.is_finite)
-efie_ok = all(.!results_efie.has_nan) && all(results_efie.rel_diff_efie .< 1.0)
-gradient_ok = max_rel_err < 0.05
-
-println("  1. Ewald convergence:    $(ewald_converged ? "✓ exponential (error < 1e-10 at N=6)" : "✗")")
-println("  2. Ewald vs direct sum:  $(xval_ok ? "✓ max rel_diff = $(round(max_xval_err, sigdigits=3))" : "⚠ max rel_diff = $(round(max_xval_err, sigdigits=3))")")
-println("  3. Large-period (≤100λ): $(large_ok ? "✓ all finite, no NaN/Inf" : "✗ NaN/Inf detected")")
-println("  4. E-independence:       ✓ non-Wood: exact; Wood: expected divergence")
-println("  5. Density pipeline:     ✓ filter + Heaviside working correctly")
-println("  6. Adjoint gradient:     $(gradient_ok ? "✓ max rel_err = $(round(max_rel_err, sigdigits=3))" : "⚠ max rel_err = $(round(max_rel_err, sigdigits=3))")")
+println("  1. Ewald convergence:    PASS (N=6 error < $MAX_EWALD_REFERENCE_ERROR)")
+println("  2. Direct-sum diagnostic: max rel_diff = $(round(max_xval_err, sigdigits=3)) (not an acceptance gate)")
+println("  3. Large-period (≤100.5λ): PASS (finite Green and EFIE results)")
+println("  4. E-independence:       PASS (non-Wood invariant; Wood sensitive)")
+println("  5. Density pipeline:     PASS (finite; mean shift < $MAX_FILTER_MEAN_SHIFT)")
+println("  6. Adjoint gradient:     PASS (max rel_err = $(round(max_rel_err, sigdigits=3)))")
 println()
-println("  Data files:   data/validation_*.csv")
-println("  Plot files:   figures/heuristic_ewald_convergence.pdf, heuristic_ewald_large_period_*.pdf, heuristic_E_independence.pdf")
+println("  Data directory:    $DATA_DIR")
+println("  Figures directory: $FIG_DIR")
 println("=" ^ 60)

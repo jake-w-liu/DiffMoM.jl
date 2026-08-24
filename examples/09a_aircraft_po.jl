@@ -4,7 +4,7 @@
 #   Aircraft at 0.3 GHz (14λ wingspan) — PO, direct, iterative solvers
 #   at three mesh refinement levels, with 1° RCS pattern plots
 #
-# Requires: examples/demo_aircraft.obj
+# Requires: examples/demo_aircraft.obj, or DMOM_AIRCRAFT_OBJ set to another OBJ.
 #
 # Run: julia -t 4 --project=. examples/09a_aircraft_po.jl
 
@@ -64,9 +64,13 @@ println("\n" * "─"^60)
 println("Aircraft at 0.3 GHz — PO / Direct / Iterative")
 println("─"^60)
 
-obj_path = joinpath(@__DIR__, "demo_aircraft.obj")
+obj_path = abspath(get(
+    ENV, "DMOM_AIRCRAFT_OBJ", joinpath(@__DIR__, "demo_aircraft.obj")))
 if !isfile(obj_path)
-    println("SKIP: demo_aircraft.obj not found")
+    error(
+        "Required aircraft geometry not found at $obj_path. This repository " *
+        "does not include it; supply an OBJ there or set DMOM_AIRCRAFT_OBJ " *
+        "to its path, then rerun this command.")
 else
     mesh_raw = read_obj_mesh(obj_path)
     rep = repair_mesh_for_simulation(mesh_raw; allow_boundary=true, auto_drop_nonmanifold=true)
@@ -77,7 +81,9 @@ else
     k_air = 2π / λ_air
 
     res = mesh_resolution_report(mesh_air, freq_air)
-    println("\nAircraft: $(nvertices(mesh_air)) verts, $(ntriangles(mesh_air)) tri")
+    println("\nGeometry: $obj_path")
+    println("Aircraft mesh: $(nvertices(mesh_air)) vertices, " *
+            "$(ntriangles(mesh_air)) triangles")
     println("Frequency: $(freq_air/1e9) GHz, λ = $(round(λ_air, digits=2)) m")
     println("Wingspan ~14m ≈ $(round(14.0/λ_air, digits=1))λ")
     println("Original max edge/λ: $(round(res.edge_max_over_lambda, digits=2))")
@@ -196,7 +202,8 @@ else
     end
     csv_path = joinpath(datadir, "09a_aircraft_rcs.csv")
     CSV.write(csv_path, df_rcs)
-    println("  Saved: $csv_path ($(nrow(df_rcs)) rows, $(ncol(df_rcs)) cols)")
+    println("  Saved: $(abspath(csv_path)) " *
+            "($(nrow(df_rcs)) rows, $(ncol(df_rcs)) columns)")
 
     # ════════════════════════════════════════════════════
     # RCS pattern plots (1° resolution)
@@ -251,14 +258,16 @@ else
 
     p0 = make_rcs_plot(phi0_idx, θ_deg_0,
         "Aircraft RCS — φ=0° ($(freq_air/1e9) GHz, λ=$(round(λ_air, digits=2))m, 1° resolution)")
-    savefig(p0, joinpath(figdir, "09a_aircraft_rcs_phi0.png"))
-    println("Plot saved: 09a_aircraft_rcs_phi0.png")
+    fig_phi0 = joinpath(figdir, "09a_aircraft_rcs_phi0.png")
+    savefig(p0, fig_phi0)
+    println("Plot saved: $(abspath(fig_phi0))")
 
     p90 = make_rcs_plot(phi90_idx, θ_deg_90,
         "Aircraft RCS — φ=90° ($(freq_air/1e9) GHz, λ=$(round(λ_air, digits=2))m, 1° resolution)")
-    savefig(p90, joinpath(figdir, "09a_aircraft_rcs_phi90.png"))
-    println("Plot saved: 09a_aircraft_rcs_phi90.png")
+    fig_phi90 = joinpath(figdir, "09a_aircraft_rcs_phi90.png")
+    savefig(p90, fig_phi90)
+    println("Plot saved: $(abspath(fig_phi90))")
 end
 
 println("\n" * "="^60)
-println("Done.")
+println("Aircraft PO/MoM calculations complete for $obj_path")

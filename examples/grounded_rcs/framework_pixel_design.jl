@@ -1,7 +1,5 @@
-# Ground-backed RCS-reduction optimization, T-AP quality:
-# DESIGN resolution (coarse, well-resolved square pixels) is decoupled from
-# ANALYSIS resolution (fine mesh) so the optimizer cannot exploit sub-mesh
-# structure and the energy balance is accurate.
+# Ground-backed RCS-reduction helpers with separate design and analysis meshes.
+# The coarse square-pixel design grid is mapped onto a finer analysis mesh.
 using DiffMoM, LinearAlgebra, StaticArrays, Random, Printf
 const C0 = 2.99792458e8
 

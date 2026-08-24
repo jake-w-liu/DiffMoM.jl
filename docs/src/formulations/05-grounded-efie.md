@@ -257,10 +257,10 @@ whose total should be $\approx 1$ for a lossless (purely reactive) loaded surfac
 
 ## Worked Example
 
-The following script is self-contained and runs in seconds with
-`julia --project=/Users/jake/DiffMoM.jl <file>.jl`. It assembles the grounded
-EFIE on a tiny $0.5\lambda$ unit cell at 10 GHz, performs a single forward solve,
-and checks all three observables against analytic values: the full-PEC-sheet
+Run the following self-contained script from the repository root with
+`julia --project=. <file>.jl`. It assembles the grounded EFIE on a bounded
+$0.5\lambda$ unit cell at 10 GHz, performs one forward solve, and checks four
+conditions: the full-PEC-sheet
 limit $|R_{00}| = 1$, the empty-cell bare-ground background $R_{00} = -e^{-2i k_{z,\text{inc}} h}$,
 the lossless power budget $\approx 1$, and the positive-height guard.
 
@@ -276,7 +276,7 @@ the lossless power budget $\approx 1$, and the positive-height guard.
 # reflection (factor 1 - exp(-2i*kz_inc*h)). We solve once and read off the
 # specular Floquet reflection coefficient R00.
 #
-# Convention check (PeriodicGreens.jl line 23): exp(+iωt), G0 = exp(-ikR)/(4πR).
+# Convention: exp(+iωt), G0 = exp(-ikR)/(4πR).
 
 using DiffMoM, LinearAlgebra, StaticArrays, Printf
 
@@ -284,10 +284,8 @@ const C0 = 2.99792458e8
 freq = 10e9
 lam  = C0 / freq
 k    = 2π / lam
-eta0 = 376.730313668
-
 dxc = 0.5 * lam        # sub-wavelength unit cell (only the (0,0) order propagates)
-Nx  = 6                # tiny mesh -> runs in seconds
+Nx  = 6                # bounded demonstration mesh
 h   = lam / 4          # ground-plane height
 
 # --- Geometry: coplanar unit-cell plate + periodic lattice + Bloch-paired RWG ---
@@ -310,8 +308,11 @@ I  = Zg \ v          # single forward solve
 modes, R_g = reflection_coefficients_grounded(mesh, rwg, I, k, lat;
                  height=h, N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
 i00 = findfirst(m -> m.m == 0 && m.n == 0, modes)
+i00 === nothing && error("Grounded result has no specular (0,0) mode")
 @printf("full PEC sheet on ground:  R00 = %+.4f %+.4fi  |R00| = %.4f\n",
         real(R_g[i00]), imag(R_g[i00]), abs(R_g[i00]))
+abs(abs(R_g[i00]) - 1) <= 2e-3 || error(
+    "Full-PEC |R00|=$(abs(R_g[i00])) differs from one by more than 2e-3")
 
 # --- (2) Bare-ground limit from an EMPTY cell (zero current) ---
 # reflection_coefficients_grounded with I = 0 reproduces the analytic bare-ground
@@ -319,16 +320,21 @@ i00 = findfirst(m -> m.m == 0 && m.n == 0, modes)
 modes0, R0 = reflection_coefficients_grounded(mesh, rwg, zeros(ComplexF64, N), k, lat;
                  height=h, N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
 j00 = findfirst(m -> m.m == 0 && m.n == 0, modes0)
+j00 === nothing && error("Empty-cell result has no specular (0,0) mode")
 kz_inc = k                              # normal incidence: kz_inc = k cosθ = k
 R00_analytic = -exp(-2im * kz_inc * h)  # -exp(-i*k*λ/2) = -exp(-iπ) = +1
 @printf("empty cell (I=0):          R00 = %+.4f %+.4fi  (analytic %+.4f %+.4fi)\n",
         real(R0[j00]), imag(R0[j00]), real(R00_analytic), imag(R00_analytic))
+abs(R0[j00] - R00_analytic) <= 2e-3 || error(
+    "Empty-cell R00 differs from the analytic background by more than 2e-3")
 
 # --- (3) Vector form + reflected-power budget (lossless check) ---
 modesv, Rv = reflection_coefficient_vectors_grounded(mesh, rwg, I, k, lat;
                  height=h, N_orders=1, E0=1.0, pol=SVector(1.0, 0.0, 0.0))
 budget = sum(reflected_power_fractions(modesv, Rv, k))
 @printf("total reflected power budget (should be ~1) = %.4f\n", budget)
+isfinite(budget) && abs(budget - 1) <= 3e-3 || error(
+    "Reflected-power budget $budget differs from one by more than 3e-3")
 
 # --- (4) Positive height is required ---
 ok = false
@@ -338,8 +344,9 @@ catch e
     global ok = e isa ArgumentError
 end
 @printf("negative height rejected with ArgumentError: %s\n", ok)
+ok || error("Negative grounded height did not raise ArgumentError")
 
-println("done.")
+println("PASS: grounded reflection, background, power, and height gates")
 ```
 
 Running this prints (numbers reproduced from an actual run):
@@ -350,7 +357,7 @@ full PEC sheet on ground:  R00 = -1.0000 +0.0040i  |R00| = 1.0000
 empty cell (I=0):          R00 = +1.0000 +0.0000i  (analytic +1.0000 +0.0000i)
 total reflected power budget (should be ~1) = 1.0000
 negative height rejected with ArgumentError: true
-done.
+PASS: grounded reflection, background, power, and height gates
 ```
 
 The full PEC sheet on ground gives $|R_{00}| = 1.0000$; the empty cell reproduces the analytic bare-ground $R_{00} = -e^{-2i k\lambda/4} = +1.0000$; the total reflected-power budget is $1.0000$; and a negative height is rejected with `ArgumentError`.
@@ -366,13 +373,13 @@ The grounded EFIE has a dedicated validation testset, `"B: Grounded metasurface 
 3. **Lossless power conservation.** The scalar Floquet sum $\approx 1.0$ (`atol=3e-3`) and the full vector budget `sum(reflected_power_fractions) ≈ 1.0` (`atol=3e-3`); the scalar and vector routines return identical mode lists.
 4. **Guard.** A negative height raises `ArgumentError`.
 
-End-to-end usage lives in `examples/21_grounded_rcs_demo.jl` (a grounded RCS topology-optimization demo on a $1.2\lambda$ cell at $h = \lambda/4$, $N_x = 14$). The scripts in `examples/grounded_rcs/` (`framework_energy_honest.jl`, `framework_pixel_design.jl`) recompute the grounded per-mode maps independently and cross-check them against `reflection_coefficient_vectors_grounded` / `reflected_power_fractions`, serving as an independent oracle for the reflection formulas.
+End-to-end usage lives in `examples/21_grounded_rcs_demo.jl` (a grounded RCS density-optimization demo on a $1.2\lambda$ cell at $h = \lambda/4$, $N_x = 14$). The scripts in `examples/grounded_rcs/` (`framework_energy_honest.jl`, `framework_pixel_design.jl`) recompute the grounded per-mode maps and cross-check them against `reflection_coefficient_vectors_grounded` and `reflected_power_fractions`.
 
 ---
 
 ## When to Use / Limitations
 
-Use the grounded EFIE when modeling a coplanar periodic conductor a known height above an **infinite planar PEC** ground (reflectarrays, reconfigurable intelligent surfaces, frequency-selective reflectors). It is exact for that geometry and costs no more unknowns than the free-standing periodic problem -- the ground never enters the mesh.
+Use the grounded EFIE when modeling a coplanar periodic conductor a known height above an **infinite planar PEC** ground (reflectarrays, reconfigurable intelligent surfaces, frequency-selective reflectors). The image-theory model does not mesh the ground and adds no unknowns beyond the free-standing periodic problem; numerical accuracy still depends on the surface discretization and quadrature.
 
 It is **not** applicable to: non-planar or finite-extent grounds; dielectric or lossy (non-PEC) backplanes; vertical currents (the single-$-1$ image identity assumes horizontal currents); or transmissive (no-ground) structures, for which the free-standing periodic EFIE applies directly.
 

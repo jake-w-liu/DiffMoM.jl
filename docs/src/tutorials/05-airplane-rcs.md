@@ -12,8 +12,15 @@ Place a model at:
 examples/demo_aircraft.obj
 ```
 
-The script exits with status 1 if that file is absent. It has no command-line
-options, so copy the script when changing its path or fixed parameters.
+Alternatively, point the example at another file without editing it:
+
+```bash
+DMOM_AIRCRAFT_OBJ=/absolute/path/to/aircraft.obj \
+  julia --project=. examples/06_aircraft_rcs.jl
+```
+
+The script exits with status 1 and prints the effective path if the selected
+file is absent.
 
 OBJ coordinates are interpreted as metres. If the source file uses another
 unit, scale a copy of its coordinate matrix before repair:
@@ -71,7 +78,7 @@ RCS. Add application-specific gates before using it as a validation driver.
 
 ### Repair
 
-The example calls:
+After optional unit scaling, repair the mesh with:
 
 ```julia
 repair = repair_mesh_for_simulation(

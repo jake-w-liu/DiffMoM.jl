@@ -1,9 +1,8 @@
 # 22_po_ptd_comparison.jl — MoM vs PO vs PO+PTD RCS comparison
 #
-# Validates the PTD (Physical Theory of Diffraction) implementation by
-# comparing MoM, PO-only, and PO+PTD bistatic RCS for flat plates at
-# three sizes (2λ, 5λ, 10λ). PTD should improve side-lobe prediction
-# over PO-only.
+# Compares MoM, PO-only, and PO+PTD bistatic RCS for flat plates at three
+# bounded sizes. The output reports whether the PTD edge correction improves
+# agreement with this discretized MoM reference.
 #
 # Run: julia --project=. examples/22_po_ptd_comparison.jl
 
@@ -18,6 +17,7 @@ println("Example 22: MoM vs PO vs PO+PTD")
 println("="^60)
 
 c0 = 299792458.0
+const MAX_RELATIVE_RESIDUAL = 1e-10
 figdir = joinpath(@__DIR__, "figs")
 mkpath(figdir)
 
@@ -61,6 +61,9 @@ function run_plate_case(nλ::Int, freq, λ0, k, pw, grid, NΩ)
     N    = rwg.nedges
 
     println("\n  Plate: $(nλ)λ × $(nλ)λ, $(Ns)×$(Ns) mesh, $N RWG unknowns")
+    println("  One dense matrix: " *
+            "$(round(estimate_dense_matrix_gib(N), digits=3)) GiB " *
+            "(the direct solve needs additional workspace)")
 
     # PO
     t_po = @elapsed po = solve_po(mesh, freq, pw; grid=grid)
@@ -74,9 +77,16 @@ function run_plate_case(nλ::Int, freq, λ0, k, pw, grid, NΩ)
     t_asm = @elapsed Z = assemble_Z_efie(mesh, rwg, k)
     v = assemble_excitation(mesh, rwg, pw)
     t_sol = @elapsed I_mom = Z \ v
+    residual = norm(Z * I_mom - v) / norm(v)
+    isfinite(residual) && residual <= MAX_RELATIVE_RESIDUAL || error(
+        "The $(nλ)λ plate solve returned relative residual $residual, " *
+        "above $MAX_RELATIVE_RESIDUAL; inspect the dense solve before " *
+        "comparing PO and PTD")
     G_mat = radiation_vectors(mesh, rwg, grid, k)
     E_ff_mom = compute_farfield(G_mat, Vector{ComplexF64}(I_mom), NΩ)
-    println("  MoM: asm $(round(t_asm, digits=2)) s, solve $(round(t_sol, digits=2)) s")
+    println("  MoM: asm $(round(t_asm, digits=2)) s, " *
+            "solve $(round(t_sol, digits=2)) s, residual " *
+            "$(round(residual, sigdigits=3))")
 
     σ_po_dB   = 10 .* log10.(max.(bistatic_rcs(po.E_ff; E0=1.0), 1e-30))
     σ_ptd_dB  = 10 .* log10.(max.(bistatic_rcs(ptd.E_ff; E0=1.0), 1e-30))
@@ -85,8 +95,13 @@ function run_plate_case(nλ::Int, freq, λ0, k, pw, grid, NΩ)
 
     # RMS error (θ < 90°, σ > -40 dBsm)
     mask = (grid.theta .< π/2) .& (σ_mom_dB .> -40.0)
-    rms_po  = count(mask) > 0 ? sqrt(sum((σ_po_dB[mask] .- σ_mom_dB[mask]).^2) / count(mask)) : NaN
-    rms_ptd = count(mask) > 0 ? sqrt(sum((σ_ptd_dB[mask] .- σ_mom_dB[mask]).^2) / count(mask)) : NaN
+    ncompared = count(mask)
+    ncompared > 0 || error(
+        "The $(nλ)λ plate has no finite comparison samples above -40 dBsm")
+    rms_po = sqrt(sum((σ_po_dB[mask] .- σ_mom_dB[mask]).^2) / ncompared)
+    rms_ptd = sqrt(sum((σ_ptd_dB[mask] .- σ_mom_dB[mask]).^2) / ncompared)
+    all(isfinite, (rms_po, rms_ptd)) || error(
+        "The $(nλ)λ plate produced non-finite PO/PTD RMS errors")
     println("  RMS vs MoM: PO=$(round(rms_po, digits=1)) dB, PO+PTD=$(round(rms_ptd, digits=1)) dB")
 
     return (; nλ, N, σ_po_dB, σ_ptd_dB, σ_edge_dB, σ_mom_dB, rms_po, rms_ptd)
@@ -108,7 +123,7 @@ NΩ = length(grid.w)
 # ═══════════════════════════════════════════════════════
 # Run all three plate sizes
 # ═══════════════════════════════════════════════════════
-cases = [2, 5, 10]
+cases = [2, 4, 6]
 results = []
 for nλ in cases
     println("\n" * "─"^60)
@@ -158,8 +173,9 @@ let
     end
     relayout!(p, legend=attr(x=0.01, y=0.98, bgcolor="rgba(255,255,255,0.8)"),
               margin=attr(l=60, r=20, t=50, b=50))
-    savefig(p, joinpath(figdir, "22_ptd_3panel.png"); width=1800, height=500)
-    println("\nPlot saved: 22_ptd_3panel.png")
+    plot_path = joinpath(figdir, "22_ptd_3panel.png")
+    savefig(p, plot_path; width=1800, height=500)
+    println("\nPlot saved: $plot_path")
 end
 
 # Individual plots per plate size
@@ -183,8 +199,9 @@ let
         relayout!(p, xaxis=attr(title="θ (deg)", range=[0, 180]),
                   yaxis=attr(title="Bistatic RCS (dBsm)", range=yranges[i]),
                   legend=attr(x=0.55, y=0.95), margin=attr(l=60, r=30, t=60, b=50))
-        savefig(p, joinpath(figdir, "22_plate_$(r.nλ)lam_rcs.png"); width=900, height=550)
-        println("Plot saved: 22_plate_$(r.nλ)lam_rcs.png")
+        plot_path = joinpath(figdir, "22_plate_$(r.nλ)lam_rcs.png")
+        savefig(p, plot_path; width=900, height=550)
+        println("Plot saved: $plot_path")
     end
 end
 
@@ -192,13 +209,14 @@ end
 # Summary table
 # ═══════════════════════════════════════════════════════
 println("\n" * "="^60)
-println("Summary: RMS Error vs MoM (dB)")
+println("Summary: RMS Error vs Discretized MoM Reference (dB)")
 println("="^60)
-println("  Plate size    PO       PO+PTD   Improvement")
+println("  Plate size    PO       PO+PTD   PO − PO+PTD")
 println("  ──────────    ──────   ──────   ───────────")
 for r in results
     imp = r.rms_po - r.rms_ptd
     println("  $(rpad("$(r.nλ)λ × $(r.nλ)λ", 12))$(lpad(round(r.rms_po, digits=1), 5))    $(lpad(round(r.rms_ptd, digits=1), 5))    $(lpad(round(imp, digits=1), 5)) dB")
 end
 
-println("\nDone.")
+println("\nPASS: all dense-solve residual and finite-RMS gates passed.")
+println("A positive final column means PTD reduced RMS error for that case.")

@@ -1,9 +1,8 @@
-# 18_periodic_to_multistart_study.jl — Multi-start study for periodic TO nontriviality
+# 18_periodic_to_multistart_study.jl — Multi-start study for a periodic density relaxation
 #
 # Purpose:
-#   Stress-test initialization dependence for the lambda/2 periodic RCS objective.
-#   This directly supports TAP-grade robustness claims by checking whether a
-#   nontrivial topology branch exists beyond the near-uniform solution.
+#   Measure initialization dependence for the λ/2 periodic RCS objective
+#   and report whether the relaxation finds a binary branch or remains gray.
 #
 # Outputs:
 #   data/results_multistart_summary.csv
@@ -32,8 +31,10 @@ using PlotlySupply
 import PlotlySupply: savefig
 
 const PKG_DIR = dirname(@__DIR__)
-const DATA_DIR = joinpath(PKG_DIR, "..", "paper", "data")
-const FIG_DIR = joinpath(PKG_DIR, "..", "paper", "figs")
+const DATA_DIR = joinpath(PKG_DIR, "data")
+const FIG_DIR = joinpath(PKG_DIR, "figures")
+const MIN_BEST_REDUCTION_DB = 20.0
+const MAX_VOLUME_FRACTION_ERROR = 1e-2
 mkpath(DATA_DIR)
 mkpath(FIG_DIR)
 
@@ -41,11 +42,25 @@ function parse_betas(s::String)
     vals = Float64[]
     for part in split(s, ",")
         t = strip(part)
-        isempty(t) && continue
-        push!(vals, parse(Float64, t))
+        isempty(t) && error("DMOM_MS_BETAS contains an empty list element")
+        value = tryparse(Float64, t)
+        value === nothing && error(
+            "DMOM_MS_BETAS must be a comma-separated numeric list; could not parse '$t'")
+        push!(vals, value)
     end
     isempty(vals) && error("DMOM_MS_BETAS produced empty beta list")
+    all(isfinite, vals) && all(>(0.0), vals) || error(
+        "DMOM_MS_BETAS must contain only positive finite values, got '$s'")
+    all(diff(vals) .> 0.0) || error(
+        "DMOM_MS_BETAS must be strictly increasing, got '$s'")
     return vals
+end
+
+function parse_env_int(variable::String, default::String)
+    text = get(ENV, variable, default)
+    value = tryparse(Int, text)
+    value === nothing && error("$variable must be an integer; got '$text'")
+    return value
 end
 
 function smooth_raw_density(rho_raw::Vector{Float64}, W::SparseMatrixCSC{Float64, Int}, w_sum::Vector{Float64})
@@ -55,7 +70,8 @@ end
 """
     run_optimization(Z_per, Mt, v, Q, config, W, w_sum, rho0; kwargs...)
 
-Same optimization core as ex15, returned for multi-start analysis.
+Minimize the specular objective from one initial density using L-BFGS,
+projection, and beta continuation.
 Returns `(rho_opt, trace)`.
 """
 function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum, rho0;
@@ -70,6 +86,13 @@ function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum,
                       J_vf=Float64[], J_total=Float64[], gnorm=Float64[],
                       vf=Float64[], frac_binary=Float64[])
     global_iter = 0
+
+    function trial_objective(rho_trial, beta)
+        _, rho_bar_trial = filter_and_project(W, w_sum, rho_trial, beta)
+        I_trial = (Z_per + assemble_Z_penalty(Mt, rho_bar_trial, config)) \ v
+        return real(dot(I_trial, Q * I_trial)) +
+               alpha_vf * (mean(rho_bar_trial) - vf_target)^2
+    end
 
     for beta in betas
         s_list = Vector{Float64}[]
@@ -101,7 +124,8 @@ function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum,
             push!(trace, (global_iter, beta, J_scat, J_vf, J_tot, gnorm, vf_cur, fb))
 
             verbose && global_iter % max(1, iters_per_beta) == 0 &&
-                println("    beta=$(Int(beta)) it=$global_iter J=$(round(J_tot, sigdigits=5))")
+                println("    beta=$(round(beta, sigdigits=4)) it=$global_iter " *
+                        "J=$(round(J_tot, sigdigits=5))")
 
             if global_iter > 1
                 s_k = rho .- rho_old
@@ -139,17 +163,41 @@ function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum,
             accepted = false
             for _ in 1:20
                 rho_trial = project!(rho_old .+ alpha_ls .* d)
-                _, rb = filter_and_project(W, w_sum, rho_trial, beta)
-                I_t = (Z_per + assemble_Z_penalty(Mt, rb, config)) \ v
-                Jt = real(dot(I_t, Q * I_t)) + alpha_vf * (mean(rb) - vf_target)^2
-                if Jt <= J_tot + 1e-4 * alpha_ls * dot(g, d)
+                Jt = trial_objective(rho_trial, beta)
+                projected_step = rho_trial .- rho_old
+                armijo_slope = dot(g, projected_step)
+                if armijo_slope < 0 && Jt <= J_tot + 1e-4 * armijo_slope
                     rho .= rho_trial
                     accepted = true
                     break
                 end
                 alpha_ls *= 0.5
             end
-            !accepted && (rho .= project!(rho_old .+ alpha_ls .* d))
+            if !accepted
+                fallback_direction = -g ./ max(gnorm, eps(Float64))
+                fallback_alpha = 0.1
+                for _ in 1:20
+                    rho_trial = project!(rho_old .+ fallback_alpha .* fallback_direction)
+                    Jt = trial_objective(rho_trial, beta)
+                    projected_step = rho_trial .- rho_old
+                    armijo_slope = dot(g, projected_step)
+                    if armijo_slope < 0 && Jt <= J_tot + 1e-4 * armijo_slope
+                        rho .= rho_trial
+                        accepted = true
+                        empty!(s_list)
+                        empty!(y_list)
+                        break
+                    end
+                    fallback_alpha *= 0.5
+                end
+            end
+            if !accepted
+                rho .= rho_old
+                if verbose
+                    @warn "Line search found no acceptable density update; advancing to the next beta stage" beta=beta iteration=global_iter
+                end
+                break
+            end
         end
     end
 
@@ -157,10 +205,10 @@ function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum,
 end
 
 println("="^72)
-println("  Multi-Start Study: Periodic TO Nontriviality (lambda/2 unit cell)")
+println("  Multi-Start Study: Periodic Density Relaxation (λ/2 cell)")
 println("="^72)
 
-seed = parse(Int, get(ENV, "DMOM_MS_SEED", "2026"))
+seed = parse_env_int("DMOM_MS_SEED", "2026")
 Random.seed!(seed)
 
 freq = 10e9
@@ -168,11 +216,17 @@ c0 = 3e8
 lambda = c0 / freq
 k = 2π / lambda
 
-Nx = parse(Int, get(ENV, "DMOM_MS_NX", "10"))
-Ny = parse(Int, get(ENV, "DMOM_MS_NY", string(Nx)))
-iters_per_beta = parse(Int, get(ENV, "DMOM_MS_ITERS_PER_BETA", "20"))
+Nx = parse_env_int("DMOM_MS_NX", "10")
+Ny = parse_env_int("DMOM_MS_NY", string(Nx))
+iters_per_beta = parse_env_int("DMOM_MS_ITERS_PER_BETA", "20")
 betas = parse_betas(get(ENV, "DMOM_MS_BETAS", "1,2,4,8,16,32,64"))
-n_rand = parse(Int, get(ENV, "DMOM_MS_RANDOM_STARTS", "4"))
+n_rand = parse_env_int("DMOM_MS_RANDOM_STARTS", "4")
+(Nx > 0 && Ny > 0) || error(
+    "DMOM_MS_NX and DMOM_MS_NY must be positive, got Nx=$Nx and Ny=$Ny")
+iters_per_beta > 0 || error(
+    "DMOM_MS_ITERS_PER_BETA must be positive, got $iters_per_beta")
+n_rand >= 0 || error(
+    "DMOM_MS_RANDOM_STARTS must be nonnegative, got $n_rand")
 
 dx_cell = 0.5 * lambda
 dy_cell = 0.5 * lambda
@@ -184,13 +238,13 @@ Nt = ntriangles(mesh)
 N = rwg.nedges
 
 println("  Setup: Nx=$Nx, Ny=$Ny, Nt=$Nt, N=$N, random_starts=$n_rand")
-println("  Betas: $(Int.(betas))  iters_per_beta=$iters_per_beta")
+println("  Betas: $betas  iters_per_beta=$iters_per_beta")
 
 println("  Assembling Z_per ...")
 Z_per = Matrix{ComplexF64}(assemble_Z_efie_periodic(mesh, rwg, k, lattice))
 Mt = precompute_triangle_mass(mesh, rwg)
 
-edge_len = dx_cell / Nx
+edge_len = max(dx_cell / Nx, dy_cell / Ny)
 r_min = 2.5 * edge_len
 W, w_sum = build_filter_weights(mesh, r_min)
 
@@ -339,7 +393,7 @@ fig = plot_scatter(
     marker_symbol=["circle", "diamond"],
     xlabel="Final binary fraction [%]",
     ylabel="J vs PEC [dB]",
-    title="Multi-start distribution: nontriviality vs objective",
+    title="Multi-start density outcome vs objective",
     width=560, height=400, fontsize=14)
 set_legend!(fig; position=:topright)
 savefig(fig, joinpath(FIG_DIR, "fig_results_multistart_distribution.pdf"))
@@ -349,7 +403,27 @@ println("  Multi-Start Summary")
 println("="^72)
 println("  Baseline PEC: J=$(round(J_pec, sigdigits=6)), |R00|=$(round(R00_pec, sigdigits=6))")
 println("  Best start: $(best_name), J=$(round(best_J, sigdigits=6))")
-println("  Saved: data/results_multistart_summary.csv")
-println("  Saved: data/results_multistart_best_rho.csv")
-println("  Saved: figures/fig_results_multistart_distribution.pdf")
+max_vf_error = maximum(abs.(rows.vf .- config.vf_target))
+best_reduction_db = minimum(rows.J_vs_pec_dB)
+max_binary_pct = maximum(rows.binary_pct)
+all(isfinite, Matrix(rows[:, 3:12])) || error(
+    "Multi-start study produced a non-finite result; inspect " *
+    "$(joinpath(DATA_DIR, "results_multistart_summary.csv"))")
+best_reduction_db <= -MIN_BEST_REDUCTION_DB || error(
+    "Best multi-start J was $best_reduction_db dB relative to PEC; expected " *
+    "at most $(-MIN_BEST_REDUCTION_DB) dB. Inspect the objective and " *
+    "optimization traces.")
+max_vf_error <= MAX_VOLUME_FRACTION_ERROR || error(
+    "A multi-start volume fraction missed target $(config.vf_target) by " *
+    "$max_vf_error, above $MAX_VOLUME_FRACTION_ERROR")
+if max_binary_pct < 85.0
+    println("  Interpretation: no binary branch was found (maximum binary " *
+            "fraction $(round(max_binary_pct, digits=1))%). Treat these as " *
+            "relaxed-density results; run example 20 for a constrained " *
+            "binary design.")
+end
+println("  Saved: $(joinpath(DATA_DIR, "results_multistart_summary.csv"))")
+println("  Saved: $(joinpath(DATA_DIR, "results_multistart_best_rho.csv"))")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_multistart_distribution.pdf"))")
+println("  Acceptance gates: PASS")
 println("="^72)

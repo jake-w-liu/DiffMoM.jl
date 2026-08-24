@@ -279,6 +279,9 @@ The aircraft example needs a user-supplied `examples/demo_aircraft.obj`:
 julia --project=. --startup-file=no examples/06_aircraft_rcs.jl
 ```
 
+For a file elsewhere, set `DMOM_AIRCRAFT_OBJ=/absolute/path/to/model.obj` on
+that command.
+
 Use Julia's `Profile` standard library or BenchmarkTools for a bounded hot-path
 measurement. Record warm-up, thread count, input sizes, allocations, and the
 exact command. A timing without those inputs is not a reusable baseline.

@@ -1,7 +1,9 @@
-# 15_periodic_to_demo.jl — Topology optimization of an RCS-reducing periodic metasurface
+# 15_periodic_to_demo.jl — Relaxed density optimization of a periodic metasurface
 #
-# Optimizes PEC/void density distribution on a periodic unit cell to minimize
-# specular scattered power via adjoint-based gradient + L-BFGS with beta continuation.
+# Optimizes a continuous PEC/void density relaxation on a periodic unit cell
+# to minimize specular scattered power via an adjoint gradient, L-BFGS, and
+# beta continuation. The reported binary fraction distinguishes a relaxed
+# sheet result from a manufacturable binary topology.
 #
 # Run: julia --project=. examples/15_periodic_to_demo.jl
 
@@ -18,13 +20,17 @@ import PlotlySupply: savefig
 Random.seed!(42)
 
 const PKG_DIR  = dirname(@__DIR__)
-const DATA_DIR = joinpath(PKG_DIR, "..", "paper", "data")
-const FIG_DIR  = joinpath(PKG_DIR, "..", "paper", "figs")
+const DATA_DIR = joinpath(PKG_DIR, "data")
+const FIG_DIR  = joinpath(PKG_DIR, "figures")
+const MIN_SPECULAR_REDUCTION_DB = 20.0
+const MAX_POWER_BALANCE_RESIDUAL = 1e-6
+const MAX_VOLUME_FRACTION_ERROR = 1e-2
+const MAX_GRADIENT_RELATIVE_ERROR = 1e-5
 mkpath(DATA_DIR)
 mkpath(FIG_DIR)
 
 println("=" ^ 70)
-println("  Periodic Metasurface Topology Optimization — RCS Reduction Demo")
+println("  Periodic Metasurface Density Relaxation — RCS Reduction Demo")
 println("=" ^ 70)
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -115,7 +121,7 @@ println("  Power balance (PEC): P_refl/P_inc=$(round(100*pb_pec.refl_frac, digit
 """
     run_optimization(Z_per, Mt, v, Q, config, W, w_sum, rho0; kwargs...)
 
-Density topology optimization with L-BFGS and Heaviside beta continuation.
+Density-relaxation optimization with L-BFGS and Heaviside beta continuation.
 Returns (rho_opt, trace::DataFrame, snapshots::Dict{Float64,Vector{Float64}}).
 """
 function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum, rho0;
@@ -131,6 +137,13 @@ function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum,
                       vf=Float64[], frac_binary=Float64[])
     snapshots = Dict{Float64, Vector{Float64}}()
     global_iter = 0
+
+    function trial_objective(rho_trial, beta)
+        _, rho_bar_trial = filter_and_project(W, w_sum, rho_trial, beta)
+        I_trial = (Z_per + assemble_Z_penalty(Mt, rho_bar_trial, config)) \ v
+        return real(dot(I_trial, Q * I_trial)) +
+               alpha_vf * (mean(rho_bar_trial) - vf_target)^2
+    end
 
     for beta in betas
         verbose && println("\n  ── β = $(Int(beta)) ──")
@@ -208,17 +221,43 @@ function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum,
             alpha_ls = 1.0
             rho_old .= rho
             g_old .= g
-            for ls in 1:20
+            accepted = false
+            for _ in 1:20
                 rho_trial = project!(rho_old .+ alpha_ls .* d)
-                _, rb = filter_and_project(W, w_sum, rho_trial, beta)
-                I_t = (Z_per + assemble_Z_penalty(Mt, rb, config)) \ v
-                Jt = real(dot(I_t, Q * I_t)) + alpha_vf * (mean(rb) - vf_target)^2
-                if Jt <= J_tot + 1e-4 * alpha_ls * dot(g, d)
+                Jt = trial_objective(rho_trial, beta)
+                projected_step = rho_trial .- rho_old
+                armijo_slope = dot(g, projected_step)
+                if armijo_slope < 0 && Jt <= J_tot + 1e-4 * armijo_slope
                     rho .= rho_trial
+                    accepted = true
                     break
                 end
                 alpha_ls *= 0.5
-                ls == 20 && (rho .= project!(rho_old .+ alpha_ls .* d))
+            end
+            if !accepted
+                fallback_direction = -g ./ max(gnorm, eps(Float64))
+                fallback_alpha = 0.1
+                for _ in 1:20
+                    rho_trial = project!(rho_old .+ fallback_alpha .* fallback_direction)
+                    Jt = trial_objective(rho_trial, beta)
+                    projected_step = rho_trial .- rho_old
+                    armijo_slope = dot(g, projected_step)
+                    if armijo_slope < 0 && Jt <= J_tot + 1e-4 * armijo_slope
+                        rho .= rho_trial
+                        accepted = true
+                        empty!(s_list)
+                        empty!(y_list)
+                        break
+                    end
+                    fallback_alpha *= 0.5
+                end
+            end
+            if !accepted
+                rho .= rho_old
+                if verbose
+                    @warn "Line search found no acceptable density update; advancing to the next beta stage" beta=beta iteration=global_iter
+                end
+                break
             end
         end
     end
@@ -229,7 +268,7 @@ function run_optimization(Z_per::Matrix{ComplexF64}, Mt, v, Q, config, W, w_sum,
 end
 
 # --- Run main optimization ---
-println("\n▸ Running Topology Optimization")
+println("\n▸ Running Density-Relaxation Optimization")
 println("  β schedule: [1,2,4,8,16,32,64] × 30 iters = 210 total")
 
 rho0 = fill(0.5, Nt)
@@ -239,18 +278,26 @@ rho_opt, trace, snapshots = run_optimization(
     Z_per, Mt, v, Q_spec, config, W_default, w_sum_default, rho0;
     betas=[1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0], iters_per_beta=30, alpha_vf=alpha_vf)
 t_opt = time() - t0
-println("\n  Optimization completed in $(round(t_opt, digits=1)) s")
+println("\n  Optimization-loop elapsed time: $(round(t_opt, digits=1)) s")
 
 _, rho_bar_final = filter_and_project(W_default, w_sum_default, rho_opt, 64.0)
 Z_opt = Z_per + assemble_Z_penalty(Mt, rho_bar_final, config)
 F_opt = lu(Z_opt)
 I_opt = F_opt \ v
 J_opt = real(dot(I_opt, Q_spec * I_opt))
-reduction_dB = 10 * log10(max(J_opt, 1e-30) / max(J_pec, 1e-30))
-println("  J: PEC=$(round(J_pec, sigdigits=5)) → opt=$(round(J_opt, sigdigits=5)) " *
-        "($(round(reduction_dB, digits=2)) dB)")
-println("  VF=$(round(mean(rho_bar_final), digits=3)), " *
-        "binary=$(round(100*count(x -> x < 0.05 || x > 0.95, rho_bar_final)/Nt, digits=1))%")
+relative_to_pec_dB = 10 * log10(max(J_opt, 1e-30) / max(J_pec, 1e-30))
+volume_fraction_final = mean(rho_bar_final)
+binary_fraction_final =
+    count(x -> x < 0.05 || x > 0.95, rho_bar_final) / Nt
+println("  J: PEC=$(round(J_pec, sigdigits=5)) → relaxed=$(round(J_opt, sigdigits=5)) " *
+        "($(round(relative_to_pec_dB, digits=2)) dB relative to PEC)")
+println("  VF=$(round(volume_fraction_final, digits=3)), " *
+        "binary=$(round(100 * binary_fraction_final, digits=1))%")
+if binary_fraction_final < 0.85
+    println("  Interpretation: this is a relaxed gray-density sheet, not a " *
+            "manufacturable binary topology; run example 20 for a " *
+            "binarization-constrained design.")
+end
 
 # Save optimization data
 CSV.write(joinpath(DATA_DIR, "results_optimization_trace.csv"), trace)
@@ -264,13 +311,15 @@ for (b, rb) in sort(collect(snapshots), by=first)
     for t in 1:Nt; push!(snap_df, (t, b, rb[t])); end
 end
 CSV.write(joinpath(DATA_DIR, "results_rho_snapshots.csv"), snap_df)
-println("  ✓ Saved: data/results_optimization_trace.csv, results_rho_final.csv, results_rho_snapshots.csv")
+println("  Saved: $(joinpath(DATA_DIR, "results_optimization_trace.csv"))")
+println("  Saved: $(joinpath(DATA_DIR, "results_rho_final.csv"))")
+println("  Saved: $(joinpath(DATA_DIR, "results_rho_snapshots.csv"))")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Section 4: Floquet Mode Analysis
 # ═══════════════════════════════════════════════════════════════════════════
 
-println("\n▸ Floquet Mode Analysis (properly normalized)")
+println("\n▸ Floquet Mode Analysis (normalized reflection coefficients)")
 modes_opt, R_opt = reflection_coefficients(mesh, rwg, Vector{ComplexF64}(I_opt), k, lattice;
                                             pol=pol_inc, E0=1.0)
 prop_idx_opt = findall(m -> m.propagating, modes_opt)
@@ -284,7 +333,7 @@ CSV.write(joinpath(DATA_DIR, "results_floquet_comparison.csv"), floquet_df)
 for i in prop_idx_opt
     mo = modes_opt[i]
     println("  ($(mo.m),$(mo.n)): PEC R=$(round(R_pec[i], sigdigits=4)) (|R|=$(round(abs(R_pec[i]), sigdigits=4))) → " *
-            "opt R=$(round(R_opt[i], sigdigits=4)) (|R|=$(round(abs(R_opt[i]), sigdigits=4)))")
+            "relaxed R=$(round(R_opt[i], sigdigits=4)) (|R|=$(round(abs(R_opt[i]), sigdigits=4)))")
 end
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -334,7 +383,9 @@ for (j, theta_deg) in enumerate(theta_sweep_deg)
 
     prop_count_pec = count(m -> m.propagating, modes_pec_a)
     prop_count_opt = count(m -> m.propagating, modes_opt_a)
-    prop_count_pec == prop_count_opt || error("PEC/optimized propagating-mode count mismatch at θ=$(theta_deg)°")
+    prop_count_pec == prop_count_opt || error(
+        "PEC/relaxed-design propagating-mode count mismatch at " *
+        "θ=$(theta_deg)°")
     prop_count_pec == 1 || error("Expected single-mode regime in angle sweep, got $(prop_count_pec) modes at θ=$(theta_deg)°")
 
     idx00_pec = findfirst(m -> m.m == 0 && m.n == 0, modes_pec_a)
@@ -363,13 +414,13 @@ CSV.write(joinpath(DATA_DIR, "results_r00_angle_sweep.csv"), r00_angle_df)
 idx_theta0 = findfirst(t -> isapprox(t, 0.0; atol=1e-12), r00_angle_df.theta_inc_deg)
 idx_theta_max = nrow(r00_angle_df)
 println("  θ=0°:  |R00| PEC=$(round(r00_angle_df.R00_pec_abs[idx_theta0], sigdigits=4)), " *
-        "opt=$(round(r00_angle_df.R00_opt_abs[idx_theta0], sigdigits=4)), " *
+        "relaxed=$(round(r00_angle_df.R00_opt_abs[idx_theta0], sigdigits=4)), " *
         "Δ=$(round(r00_angle_df.opt_vs_pec_dB[idx_theta0], digits=2)) dB")
 println("  θ=$(round(r00_angle_df.theta_inc_deg[idx_theta_max], digits=1))°: " *
         "|R00| PEC=$(round(r00_angle_df.R00_pec_abs[idx_theta_max], sigdigits=4)), " *
-        "opt=$(round(r00_angle_df.R00_opt_abs[idx_theta_max], sigdigits=4)), " *
+        "relaxed=$(round(r00_angle_df.R00_opt_abs[idx_theta_max], sigdigits=4)), " *
         "Δ=$(round(r00_angle_df.opt_vs_pec_dB[idx_theta_max], digits=2)) dB")
-println("  ✓ Saved: data/results_r00_angle_sweep.csv")
+println("  Saved: $(joinpath(DATA_DIR, "results_r00_angle_sweep.csv"))")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Section 4c: Power Balance Analysis
@@ -383,14 +434,14 @@ println("  PEC:       P_refl/P_inc=$(round(100*pb_pec.refl_frac, digits=1))%, " 
         "P_abs/P_inc=$(round(100*pb_pec.abs_frac, digits=1))%, " *
         "P_trans/P_inc=$(round(100*pb_pec.trans_frac, digits=1))%, " *
         "P_resid/P_inc=$(round(100*pb_pec.resid_frac, digits=2))%")
-println("  Optimized: P_refl/P_inc=$(round(100*pb_opt.refl_frac, digits=1))%, " *
+println("  Relaxed:   P_refl/P_inc=$(round(100*pb_opt.refl_frac, digits=1))%, " *
         "P_abs/P_inc=$(round(100*pb_opt.abs_frac, digits=1))%, " *
         "P_trans/P_inc=$(round(100*pb_opt.trans_frac, digits=1))%, " *
         "P_resid/P_inc=$(round(100*pb_opt.resid_frac, digits=2))%")
-println("  |R₀₀|² reduction: $(round(10*log10(abs(R_opt[prop_idx_opt[1]])^2 / abs(R_pec[prop_idx_opt[1]])^2), digits=2)) dB")
+println("  |R₀₀|² relative to PEC: $(round(10*log10(abs(R_opt[prop_idx_opt[1]])^2 / abs(R_pec[prop_idx_opt[1]])^2), digits=2)) dB")
 
 pb_df = DataFrame(
-    case=["PEC", "Optimized"],
+    case=["PEC", "Relaxed density"],
     P_inc=[pb_pec.P_inc, pb_opt.P_inc],
     P_refl=[pb_pec.P_refl, pb_opt.P_refl],
     P_abs=[pb_pec.P_abs, pb_opt.P_abs],
@@ -402,13 +453,13 @@ pb_df = DataFrame(
     resid_frac=[pb_pec.resid_frac, pb_opt.resid_frac],
     R00_abs=[abs(R_pec[prop_idx_opt[1]]), abs(R_opt[prop_idx_opt[1]])])
 CSV.write(joinpath(DATA_DIR, "results_power_balance.csv"), pb_df)
-println("  ✓ Saved: data/results_power_balance.csv")
+println("  Saved: $(joinpath(DATA_DIR, "results_power_balance.csv"))")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Section 5: Full Gradient Verification (all triangles)
 # ═══════════════════════════════════════════════════════════════════════════
 
-println("\n▸ Gradient Verification (all $Nt triangles)")
+println("\n▸ Gradient Check (all $Nt triangles)")
 rho_gv = 0.3 .+ 0.4 * rand(Nt)
 beta_gv = 4.0
 rt_gv, rb_gv = filter_and_project(W_default, w_sum_default, rho_gv, beta_gv)
@@ -432,11 +483,12 @@ for t in 1:Nt
 end
 
 rel_err_gv = abs.(g_adj .- g_fd) ./ max.(abs.(g_fd), 1e-20)
-println("  Max rel error:  $(round(maximum(rel_err_gv), sigdigits=3))")
+max_gradient_relative_error = maximum(rel_err_gv)
+println("  Max rel error:  $(round(max_gradient_relative_error, sigdigits=3))")
 println("  Mean rel error: $(round(mean(rel_err_gv), sigdigits=3))")
 CSV.write(joinpath(DATA_DIR, "results_gradient_full.csv"),
           DataFrame(triangle=1:Nt, g_adjoint=g_adj, g_fd=g_fd, rel_error=rel_err_gv))
-println("  ✓ Saved: data/results_gradient_full.csv")
+println("  Saved: $(joinpath(DATA_DIR, "results_gradient_full.csv"))")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Section 6: Parametric Sweeps
@@ -445,7 +497,8 @@ println("  ✓ Saved: data/results_gradient_full.csv")
 println("\n▸ Parametric Sweep: Filter Radius")
 rmin_factors = [1.5, 2.0, 2.5, 3.0, 3.5]
 results_rmin = DataFrame(r_min_factor=Float64[], J_final=Float64[],
-                         reduction_dB=Float64[], vf=Float64[], binary_pct=Float64[])
+                         relative_to_pec_dB=Float64[], vf=Float64[],
+                         binary_pct=Float64[])
 for factor in rmin_factors
     rm_s = factor * edge_len
     W_s, ws_s = build_filter_weights(mesh, rm_s)
@@ -467,7 +520,7 @@ beta_schedules = [
     ([1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0],      64.0),
 ]
 results_beta = DataFrame(beta_max=Float64[], J_final=Float64[],
-                         reduction_dB=Float64[], binary_pct=Float64[])
+                         relative_to_pec_dB=Float64[], binary_pct=Float64[])
 for (bs, bmax) in beta_schedules
     _, tr_s, _ = run_optimization(Z_per, Mt, v, Q_spec, config,
         W_default, w_sum_default, fill(0.5, Nt);
@@ -479,15 +532,16 @@ for (bs, bmax) in beta_schedules
             "binary=$(round(tr_s.frac_binary[end]*100, digits=0))%")
 end
 CSV.write(joinpath(DATA_DIR, "results_parametric_beta.csv"), results_beta)
-println("  ✓ Saved parametric data")
+println("  Saved: $(joinpath(DATA_DIR, "results_parametric_rmin.csv"))")
+println("  Saved: $(joinpath(DATA_DIR, "results_parametric_beta.csv"))")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Section 7: Publication Figures
+# Section 7: Result Figures
 # ═══════════════════════════════════════════════════════════════════════════
 
-println("\n▸ Generating Publication Figures")
+println("\n▸ Generating Result Figures")
 
-# --- Fig 1a,b: Validation (from existing data) ---
+# --- Fig 1a,b: numerical checks from example 14 ---
 ewald_df = CSV.read(joinpath(DATA_DIR, "validation_ewald_convergence.csv"), DataFrame)
 efie_df  = CSV.read(joinpath(DATA_DIR, "validation_efie_large_period.csv"), DataFrame)
 
@@ -510,9 +564,10 @@ fig1b = plot_scatter(
     title="(b) Periodic EFIE → free-space",
     width=500, height=380, fontsize=14)
 savefig(fig1b, joinpath(FIG_DIR, "fig_results_efie_convergence.pdf"))
-println("  ✓ Fig 1: Validation plots")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_ewald_convergence.pdf"))")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_efie_convergence.pdf"))")
 
-# --- Fig 2: Gradient verification scatter ---
+# --- Fig 2: Gradient-check scatter ---
 grad_df = CSV.read(joinpath(DATA_DIR, "results_gradient_full.csv"), DataFrame)
 gall = vcat(grad_df.g_adjoint, grad_df.g_fd)
 glo, ghi = minimum(gall), maximum(gall)
@@ -526,11 +581,11 @@ fig2 = plot_scatter(
     marker_size=[6, 0],
     dash=["", "dash"], color=["#1f77b4", "gray"],
     xlabel="Finite-difference gradient", ylabel="Adjoint gradient",
-    title="Gradient verification ($Nt triangles)",
+    title="Gradient check ($Nt triangles)",
     width=480, height=440, fontsize=14)
 set_legend!(fig2; position=:topleft)
 savefig(fig2, joinpath(FIG_DIR, "fig_results_gradient_verification.pdf"))
-println("  ✓ Fig 2: Gradient scatter plot")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_gradient_verification.pdf"))")
 
 # --- Fig 3: Optimization convergence ---
 betas_uniq = unique(trace.beta)
@@ -547,9 +602,9 @@ fig3 = plot_scatter(x_segs, y_segs;
     width=550, height=400, fontsize=14)
 set_legend!(fig3; position=:topleft)
 savefig(fig3, joinpath(FIG_DIR, "fig_results_convergence.pdf"))
-println("  ✓ Fig 3: Convergence")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_convergence.pdf"))")
 
-# --- Fig 4: Topology snapshots ---
+# --- Fig 4: Projected-density snapshots ---
 function density_to_grid(rho_bar_vec, cents, nx, ny, dxc, dyc)
     grid_rho = zeros(ny, nx)
     grid_cnt = zeros(Int, ny, nx)
@@ -571,7 +626,7 @@ snap_labels = [("initial", snap_betas[1]),
                ("mid",     snap_betas[length(snap_betas) ÷ 2]),
                ("final",   Inf)]
 
-# Individual topology plots (used by LaTeX subfloat)
+# Individual projected-density plots (used by LaTeX subfloat)
 for (label, bkey) in snap_labels
     rb = snapshots[bkey]
     beta_disp = bkey == Inf ? Int(snap_betas[end]) : Int(bkey)
@@ -583,31 +638,32 @@ for (label, bkey) in snap_labels
     savefig(fig, joinpath(FIG_DIR, "fig_results_topology_$(label).pdf"))
 end
 
-println("  ✓ Fig 4: Topology snapshots (individual, equalar=true)")
+println("  Saved projected-density snapshots to $FIG_DIR")
 
 # --- Fig 5: Parametric studies (individual) ---
 fig5a = plot_scatter(
-    collect(results_rmin.r_min_factor), collect(results_rmin.reduction_dB);
-    mode="lines+markers", legend="Specular reduction",
+    collect(results_rmin.r_min_factor), collect(results_rmin.relative_to_pec_dB);
+    mode="lines+markers", legend="Relative to PEC",
     marker_size=8,
-    xlabel="r_min / h", ylabel="Specular reduction (dB)",
+    xlabel="r_min / h", ylabel="Specular objective relative to PEC (dB)",
     title="(a) Filter radius sensitivity",
     width=500, height=380, fontsize=14)
 set_legend!(fig5a; position=:topleft)
 savefig(fig5a, joinpath(FIG_DIR, "fig_results_parametric_rmin.pdf"))
 
 fig5b = plot_scatter(
-    collect(results_beta.beta_max), collect(results_beta.reduction_dB);
-    mode="lines+markers", legend="Specular reduction",
+    collect(results_beta.beta_max), collect(results_beta.relative_to_pec_dB);
+    mode="lines+markers", legend="Relative to PEC",
     marker_size=8,
-    xlabel="β_max", ylabel="Specular reduction (dB)",
+    xlabel="β_max", ylabel="Specular objective relative to PEC (dB)",
     xscale="log",
     title="(b) Continuation schedule sensitivity",
     width=500, height=380, fontsize=14)
 set_legend!(fig5b; position=:topleft)
 savefig(fig5b, joinpath(FIG_DIR, "fig_results_parametric_beta.pdf"))
 
-println("  ✓ Fig 5: Parametric studies (individual)")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_parametric_rmin.pdf"))")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_parametric_beta.pdf"))")
 
 # --- Fig 6: Periodic specular reflection vs incidence angle (10 GHz, TE) ---
 r00a_data = CSV.read(joinpath(DATA_DIR, "results_r00_angle_sweep.csv"), DataFrame)
@@ -615,7 +671,7 @@ fig6 = plot_scatter(
     [collect(r00a_data.theta_inc_deg), collect(r00a_data.theta_inc_deg)],
     [collect(r00a_data.R00_pec_abs), collect(r00a_data.R00_opt_abs)];
     mode=["lines", "lines"],
-    legend=["PEC plate", "Optimized"],
+    legend=["PEC plate", "Relaxed density"],
     color=["#1f77b4", "#d62728"],
     dash=["solid", "dashdot"],
     xlabel="Incidence angle θ_inc (deg), φ_inc = 0° (TE)",
@@ -631,11 +687,13 @@ for stale in (
     joinpath(DATA_DIR, "results_rcs_comparison.csv"),
     joinpath(DATA_DIR, "results_r00_frequency_sweep.csv"),
 )
-    isfile(stale) && rm(stale; force=true)
+    if isfile(stale)
+        @warn "Legacy output remains and was not overwritten by this run" path=stale
+    end
 end
-println("  ✓ Fig 6: Periodic |R00| angle sweep (10 GHz, TE)")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_r00_angle_sweep.pdf"))")
 
-# --- Supplementary Fig: Power budget comparison (PEC vs Optimized) ---
+# --- Supplementary Fig: Power budget comparison (PEC vs relaxed density) ---
 pb_data = CSV.read(joinpath(DATA_DIR, "results_power_balance.csv"), DataFrame)
 # Bar chart: reflected, absorbed, and transmitted power as % of P_inc
 refl_pct = pb_data.refl_frac .* 100
@@ -649,14 +707,16 @@ fig7 = plot_scatter(
     legend=["Reflected (%)", "Absorbed (%)", "Transmitted (%)"],
     color=["#1f77b4", "#d62728", "#2ca02c"],
     xlabel="", ylabel="Fraction of incident power (%)",
-    title="Power budget: PEC vs Optimized",
+    title="Power budget: PEC vs relaxed density",
     xrange=[0.5, 2.5],
     width=500, height=400, fontsize=14)
 set_legend!(fig7; position=:bottomleft)
 savefig(fig7, joinpath(FIG_DIR, "fig_supp_power_balance.pdf"))
 legacy_pb = joinpath(FIG_DIR, "fig_results_power_balance.pdf")
-isfile(legacy_pb) && rm(legacy_pb; force=true)
-println("  ✓ Supplementary Fig: Power balance (table is primary in paper)")
+if isfile(legacy_pb)
+    @warn "Legacy output remains and was not overwritten by this run" path=legacy_pb
+end
+println("  Saved: $(joinpath(FIG_DIR, "fig_supp_power_balance.pdf"))")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Summary
@@ -665,22 +725,44 @@ println("  ✓ Supplementary Fig: Power balance (table is primary in paper)")
 println("\n" * "=" ^ 70)
 println("  Results Summary")
 println("=" ^ 70)
-println("  Specular RCS reduction: $(round(reduction_dB, digits=2)) dB")
+println("  Specular objective relative to PEC: $(round(relative_to_pec_dB, digits=2)) dB")
+println("  Reduction magnitude: $(round(-relative_to_pec_dB, digits=2)) dB")
 R00_pec = abs(R_pec[prop_idx_pec[1]])
 R00_opt = abs(R_opt[prop_idx_opt[1]])
 R00_dB = 20 * log10(R00_opt / R00_pec)
-println("  |R₀₀|: PEC=$(round(R00_pec, sigdigits=4)) → opt=$(round(R00_opt, sigdigits=4)) ($(round(R00_dB, digits=1)) dB)")
-println("  Reflected:   PEC=$(round(100*pb_pec.refl_frac, digits=1))%, opt=$(round(100*pb_opt.refl_frac, digits=1))%")
-println("  Absorbed:    PEC=$(round(100*pb_pec.abs_frac, digits=1))%, opt=$(round(100*pb_opt.abs_frac, digits=1))%")
-println("  Transmitted: PEC=$(round(100*pb_pec.trans_frac, digits=1))%, opt=$(round(100*pb_opt.trans_frac, digits=1))%")
-println("  Residual*:   PEC=$(round(100*pb_pec.resid_frac, digits=2))%, opt=$(round(100*pb_opt.resid_frac, digits=2))%")
+println("  |R₀₀|: PEC=$(round(R00_pec, sigdigits=4)) → relaxed=$(round(R00_opt, sigdigits=4)) ($(round(R00_dB, digits=1)) dB)")
+println("  Reflected:   PEC=$(round(100*pb_pec.refl_frac, digits=1))%, relaxed=$(round(100*pb_opt.refl_frac, digits=1))%")
+println("  Absorbed:    PEC=$(round(100*pb_pec.abs_frac, digits=1))%, relaxed=$(round(100*pb_opt.abs_frac, digits=1))%")
+println("  Transmitted: PEC=$(round(100*pb_pec.trans_frac, digits=1))%, relaxed=$(round(100*pb_opt.trans_frac, digits=1))%")
+println("  Residual*:   PEC=$(round(100*pb_pec.resid_frac, digits=2))%, relaxed=$(round(100*pb_opt.resid_frac, digits=2))%")
 println("    *Residual = 1 - reflected - absorbed - transmitted (power-balance closure residual)")
 println("  Final volume fraction:  $(round(mean(rho_bar_final), digits=3))")
 println("  Binary fraction:        $(round(100*count(x -> x < 0.05 || x > 0.95, rho_bar_final)/Nt, digits=1))%")
-println("  Gradient max rel error: $(round(maximum(rel_err_gv), sigdigits=3))")
+println("  Gradient max rel error: " *
+        "$(round(max_gradient_relative_error, sigdigits=3))")
+all(isfinite, (
+    J_pec, J_opt, relative_to_pec_dB, volume_fraction_final,
+    binary_fraction_final, pb_pec.resid_frac, pb_opt.resid_frac,
+    max_gradient_relative_error,
+)) || error("The relaxed periodic design produced a non-finite acceptance metric")
+relative_to_pec_dB <= -MIN_SPECULAR_REDUCTION_DB || error(
+    "Specular objective was $(round(relative_to_pec_dB, digits=2)) dB relative to PEC; expected " *
+    "at least $MIN_SPECULAR_REDUCTION_DB dB below PEC. Inspect the " *
+    "optimization trace and objective normalization.")
+abs(volume_fraction_final - config.vf_target) <=
+    MAX_VOLUME_FRACTION_ERROR || error(
+        "Final volume fraction $volume_fraction_final differs from target " *
+        "$(config.vf_target) by more than $MAX_VOLUME_FRACTION_ERROR")
+maximum(abs, (pb_pec.resid_frac, pb_opt.resid_frac)) <=
+    MAX_POWER_BALANCE_RESIDUAL || error(
+        "Power-balance residual exceeded $MAX_POWER_BALANCE_RESIDUAL: " *
+        "PEC=$(pb_pec.resid_frac), relaxed=$(pb_opt.resid_frac)")
+max_gradient_relative_error <= MAX_GRADIENT_RELATIVE_ERROR || error(
+    "Density-adjoint maximum relative error " *
+    "$max_gradient_relative_error exceeds $MAX_GRADIENT_RELATIVE_ERROR; " *
+    "inspect data/results_gradient_full.csv")
 println()
-results_csvs = filter(f -> startswith(f, "results_") && endswith(f, ".csv"), readdir(DATA_DIR))
-result_figs = filter(f -> startswith(f, "fig_results_") && endswith(f, ".pdf"), readdir(FIG_DIR))
-println("  Data:    data/results_*.csv ($(length(results_csvs)) files)")
-println("  Figures: figures/fig_results_*.pdf ($(length(result_figs)) figures)")
+println("  Data directory:    $DATA_DIR")
+println("  Figures directory: $FIG_DIR")
+println("  Acceptance gates:  PASS")
 println("=" ^ 70)

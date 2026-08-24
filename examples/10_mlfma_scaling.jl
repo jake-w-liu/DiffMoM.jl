@@ -3,11 +3,8 @@
 # Demonstrates Dense vs ACA vs MLFMA solvers on the aircraft at 0.3 GHz
 # across two mesh refinement levels (4λ and 1λ), matching the setup from ex09 Part B.
 #
-# Key results:
-#   - MLFMA gives same RCS patterns as Dense/ACA (within ~0.5 dB)
-#   - MLFMA scales to N>10k where dense methods become impractical
-#   - All methods produce consistent backscatter RCS values
-#   - MIN_N_MLFMA threshold (2000) prevents inefficient use on small problems
+# The printed current-vector differences and RCS curves expose agreement between
+# methods for the supplied geometry; this script does not impose an accuracy gate.
 #
 # Run: julia -t 4 --project=. examples/10_mlfma_scaling.jl
 
@@ -58,8 +55,12 @@ end
 # ════════════════════════════════════════════════════
 # Setup
 # ════════════════════════════════════════════════════
-obj_path = joinpath(@__DIR__, "demo_aircraft.obj")
-isfile(obj_path) || error("demo_aircraft.obj not found at $obj_path")
+obj_path = abspath(get(
+    ENV, "DMOM_AIRCRAFT_OBJ", joinpath(@__DIR__, "demo_aircraft.obj")))
+isfile(obj_path) || error(
+    "Required aircraft geometry not found at $obj_path. This repository " *
+    "does not include it; supply an OBJ there or set DMOM_AIRCRAFT_OBJ to " *
+    "its path, then rerun this command.")
 
 mesh_raw = read_obj_mesh(obj_path)
 rep = repair_mesh_for_simulation(mesh_raw; allow_boundary=true, auto_drop_nonmanifold=true)
@@ -69,7 +70,9 @@ freq = 0.3e9
 λ0 = c0 / freq
 k  = 2π / λ0
 
-println("\nAircraft: $(nvertices(mesh_air)) verts, $(ntriangles(mesh_air)) tri")
+println("\nGeometry: $obj_path")
+println("Aircraft mesh: $(nvertices(mesh_air)) vertices, " *
+        "$(ntriangles(mesh_air)) triangles")
 println("Frequency: $(freq/1e9) GHz, λ = $(round(λ0, digits=2)) m")
 println("Wingspan ~14m ≈ $(round(14.0/λ0, digits=1))λ")
 
@@ -138,7 +141,7 @@ for (m, label) in mesh_levels
 
         println("  $(rpad(label, 12))  $(lpad(N_m, 5))  $(rpad("Dense (LU)", 16))  " *
                 "$(lpad(round(t_asm_d, digits=1), 5))  $(lpad(round(t_sol_d, digits=1), 6))      —  " *
-                "$(lpad(bs_d_dB, 10)) dBsm  ground truth")
+                "$(lpad(bs_d_dB, 10)) dBsm  direct reference")
 
         dlabel = "$label Dense"
         all_curves[dlabel] = σ_d
@@ -280,13 +283,15 @@ end
 
 p0 = make_rcs_plot(phi0_idx, θ_deg_0,
     "Aircraft RCS φ=0° — Dense vs ACA vs MLFMA ($(freq/1e9) GHz)")
-savefig(p0, joinpath(figdir, "10_aircraft_rcs_phi0.png"); width=950, height=600)
-println("Plot saved: 10_aircraft_rcs_phi0.png")
+fig_phi0 = joinpath(figdir, "10_aircraft_rcs_phi0.png")
+savefig(p0, fig_phi0; width=950, height=600)
+println("Plot saved: $(abspath(fig_phi0))")
 
 p90 = make_rcs_plot(phi90_idx, θ_deg_90,
     "Aircraft RCS φ=90° — Dense vs ACA vs MLFMA ($(freq/1e9) GHz)")
-savefig(p90, joinpath(figdir, "10_aircraft_rcs_phi90.png"); width=950, height=600)
-println("Plot saved: 10_aircraft_rcs_phi90.png")
+fig_phi90 = joinpath(figdir, "10_aircraft_rcs_phi90.png")
+savefig(p90, fig_phi90; width=950, height=600)
+println("Plot saved: $(abspath(fig_phi90))")
 
 println("\n" * "="^72)
-println("Done.")
+println("Aircraft solver comparison complete for $obj_path")

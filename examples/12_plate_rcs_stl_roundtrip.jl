@@ -15,8 +15,8 @@
 #       * sinc^2(k Ly sin(theta) sin(phi) / 2)
 #
 # where A = Lx * Ly and sinc(x) = sin(x)/x.
-# This is exact in the PO limit (electrically large plates); edge diffraction
-# causes deviations for small plates.
+# This is the high-frequency PO area formula; edge diffraction and finite-size
+# effects cause deviations from the full-wave result.
 #
 # Run: julia --project=. examples/12_plate_rcs_stl_roundtrip.jl
 
@@ -29,8 +29,13 @@ using CSV
 using DataFrames
 using PlotlySupply
 
+const MAX_RELATIVE_RESIDUAL = 1e-10
+const MAX_ENERGY_RATIO_ERROR = 0.02
+const MAX_MAIN_LOBE_DELTA_DB = 0.5
+const MAIN_LOBE_LIMIT_DEG = 20.0
+
 println("="^60)
-println("Example 12: PEC Plate RCS — STL Round-Trip + PO Analytical")
+println("Example 12: PEC Plate RCS — STL Round-Trip + PO Formula")
 println("="^60)
 
 # ── 1. Problem parameters ─────────────────────────
@@ -41,7 +46,7 @@ k    = 2π / lambda0
 eta0 = 376.730313668
 
 Lx, Ly = 0.20, 0.15                # 20 cm × 15 cm plate (2λ × 1.5λ)
-Nx, Ny = 20, 15                     # ~λ/10 edge length
+Nx, Ny = 28, 22                     # diagonal edges no longer than λ/10
 
 println("\nFrequency: $(freq/1e9) GHz,  lambda = $(round(lambda0*100, digits=2)) cm")
 println("Plate: $(Lx*100) cm x $(Ly*100) cm  ($(round(Lx/lambda0, digits=2))lambda x $(round(Ly/lambda0, digits=2))lambda)")
@@ -50,7 +55,7 @@ println("Plate: $(Lx*100) cm x $(Ly*100) cm  ($(round(Lx/lambda0, digits=2))lamb
 mesh_orig = make_rect_plate(Lx, Ly, Nx, Ny)
 println("\nOriginal mesh: $(nvertices(mesh_orig)) vertices, $(ntriangles(mesh_orig)) triangles")
 
-stl_path = joinpath(@__DIR__, "..", "data", "plate_rcs_demo.stl")
+stl_path = abspath(joinpath(@__DIR__, "..", "data", "plate_rcs_demo.stl"))
 mkpath(dirname(stl_path))
 write_stl_mesh(stl_path, mesh_orig; header="PEC plate $(Lx)x$(Ly)m")
 println("Exported to STL: $stl_path")
@@ -64,6 +69,10 @@ println("Quality: OK ($(report.n_boundary_edges) boundary edges, 0 defects)")
 # Check resolution
 res = mesh_resolution_report(mesh, freq)
 println("Edge max/lambda: $(round(res.edge_max_over_lambda, digits=3))  (target <= 0.1)")
+res.meets_target || error(
+    "The STL round-trip mesh has maximum edge/λ=" *
+    "$(res.edge_max_over_lambda), above the target " *
+    "$(inv(res.points_per_wavelength)); increase Nx or Ny before solving")
 
 # ── 4. Build RWG and assemble EFIE ────────────────
 rwg = build_rwg(mesh)
@@ -73,7 +82,7 @@ println("Estimated memory: $(round(estimate_dense_matrix_gib(N)*1024, digits=1))
 
 println("Assembling Z_efie ($N x $N)...")
 t_asm = @elapsed Z = assemble_Z_efie(mesh, rwg, k)
-println("  Done in $(round(t_asm, digits=2)) s")
+println("  Assembly time: $(round(t_asm, digits=2)) s")
 
 # ── 5. Plane-wave excitation and solve ────────────
 # Normal incidence: wave propagating in -z, x-polarized
@@ -86,6 +95,9 @@ println("Solving Z I = v...")
 t_solve = @elapsed I_pec = Z \ v
 residual = norm(Z * I_pec - v) / norm(v)
 println("  Relative residual: $(round(residual, sigdigits=3))")
+isfinite(residual) && residual <= MAX_RELATIVE_RESIDUAL || error(
+    "The STL round-trip solve returned relative residual $residual, above " *
+    "$MAX_RELATIVE_RESIDUAL; inspect the imported mesh and EFIE solve")
 
 # ── 6. Far-field computation (fine phi=0 cut) ─────
 Ntheta_cut = 360
@@ -132,30 +144,51 @@ sigma_mom_dB = 10 .* log10.(max.(sigma_mom, 1e-30))
 sigma_po_dB  = 10 .* log10.(max.(sigma_po, 1e-30))
 theta_deg = rad2deg.(theta_cut)
 
-# Broadside (theta ~ 0) comparison
+# Nearest sampled direction to broadside (the midpoint grid excludes the pole).
 idx_broadside = argmin(abs.(theta_cut))
-sigma_broadside_mom = sigma_mom_dB[idx_broadside]
-sigma_broadside_po  = sigma_po_dB[idx_broadside]
-sigma_broadside_exact_dB = 10 * log10(4π * A_plate^2 / lambda0^2)
+nearest_broadside_deg = theta_deg[idx_broadside]
+sigma_near_broadside_mom = sigma_mom_dB[idx_broadside]
+sigma_near_broadside_po  = sigma_po_dB[idx_broadside]
+sigma_broadside_area_formula_dB = 10 * log10(4π * A_plate^2 / lambda0^2)
 
-println("\n── Broadside RCS (theta = 0) ──")
-println("  MoM:        $(round(sigma_broadside_mom, digits=2)) dBsm")
-println("  PO formula: $(round(sigma_broadside_po, digits=2)) dBsm")
-println("  Exact 4piA^2/lambda^2: $(round(sigma_broadside_exact_dB, digits=2)) dBsm")
-println("  MoM - PO:   $(round(sigma_broadside_mom - sigma_broadside_po, digits=2)) dB")
+println("\n── Nearest broadside sample (theta = " *
+        "$(round(nearest_broadside_deg, digits=3)) degrees) ──")
+println("  MoM:        $(round(sigma_near_broadside_mom, digits=2)) dBsm")
+println("  PO formula: $(round(sigma_near_broadside_po, digits=2)) dBsm")
+println("  PO area formula 4piA^2/lambda^2: " *
+        "$(round(sigma_broadside_area_formula_dB, digits=2)) dBsm")
+println("  MoM - PO at sampled angle: " *
+        "$(round(sigma_near_broadside_mom - sigma_near_broadside_po, digits=2)) dB")
 
-# Main-lobe comparison (|theta| < 30 deg)
-main_lobe = (theta_deg .< 30) .| (theta_deg .> 150)
+# Compare the central portion of each broadside lobe. The first PO null is at
+# about 30°, where a dB difference is not a stable agreement metric.
+main_lobe = (theta_deg .< MAIN_LOBE_LIMIT_DEG) .|
+            (theta_deg .> 180 - MAIN_LOBE_LIMIT_DEG)
 delta_main = abs.(sigma_mom_dB[main_lobe] - sigma_po_dB[main_lobe])
-println("\n── Main-lobe agreement (|theta| < 30 deg from broadside) ──")
+println("\n── Main-lobe interior (within $(MAIN_LOBE_LIMIT_DEG)° of broadside) ──")
 println("  Mean |MoM - PO|: $(round(mean(delta_main), digits=2)) dB")
 println("  Max  |MoM - PO|: $(round(maximum(delta_main), digits=2)) dB")
+maximum(delta_main) <= MAX_MAIN_LOBE_DELTA_DB || error(
+    "The central-lobe MoM/PO difference reached " *
+    "$(maximum(delta_main)) dB, above $MAX_MAIN_LOBE_DELTA_DB dB; inspect " *
+    "the STL round-trip, mesh resolution, and far-field cut")
 
-# Energy conservation
+# Energy conservation requires a full spherical quadrature; a single azimuth
+# cut cannot be replicated around a rectangular, polarized plate.
+grid_energy = make_sph_grid(24, 48)
+G_energy = radiation_vectors(mesh, rwg, grid_energy, k)
+E_energy = compute_farfield(
+    G_energy, Vector{ComplexF64}(I_pec), length(grid_energy.w))
 P_in = input_power(Vector{ComplexF64}(I_pec), Vector{ComplexF64}(v))
-P_rad = radiated_power(E_ff, grid_cut)
+P_rad = radiated_power(E_energy, grid_energy)
+energy_ratio = P_rad / P_in
 println("\n── Energy conservation ──")
-println("  P_rad/P_in = $(round(P_rad / P_in, digits=4))  (should be ~ 1 for PEC)")
+println("  P_rad/P_in = $(round(energy_ratio, digits=4))  (should be ~ 1 for PEC)")
+energy_ratio_error = abs(energy_ratio - 1.0)
+isfinite(energy_ratio_error) &&
+    energy_ratio_error <= MAX_ENERGY_RATIO_ERROR || error(
+        "The STL round-trip energy-ratio error $energy_ratio_error exceeds " *
+        "$MAX_ENERGY_RATIO_ERROR; refine the spherical grid or mesh")
 
 # ── 9. Save CSV ───────────────────────────────────
 datadir = joinpath(@__DIR__, "..", "data")
@@ -168,26 +201,33 @@ df = DataFrame(
     rcs_mom_m2 = sigma_mom,
     rcs_po_m2 = sigma_po,
 )
-csv_path = joinpath(datadir, "plate_rcs_mom_vs_po_phi0.csv")
+csv_path = abspath(joinpath(datadir, "plate_rcs_mom_vs_po_phi0.csv"))
 CSV.write(csv_path, df)
 println("\nCSV saved: $csv_path")
 
 df_summary = DataFrame(
     metric = [
         "freq_GHz", "lambda_m", "Lx_m", "Ly_m", "Lx_over_lambda", "Ly_over_lambda",
-        "N_rwg", "broadside_mom_dBsm", "broadside_po_dBsm", "broadside_exact_dBsm",
-        "broadside_delta_dB", "main_lobe_mean_delta_dB", "main_lobe_max_delta_dB",
+        "N_rwg", "nearest_broadside_theta_deg", "nearest_broadside_mom_dBsm",
+        "nearest_broadside_po_dBsm",
+        "broadside_po_area_formula_dBsm",
+        "nearest_broadside_delta_dB", "main_lobe_mean_delta_dB",
+        "main_lobe_max_delta_dB",
         "P_rad_over_P_in",
     ],
     value = [
         freq/1e9, lambda0, Lx, Ly, Lx/lambda0, Ly/lambda0,
-        N, sigma_broadside_mom, sigma_broadside_po, sigma_broadside_exact_dB,
-        sigma_broadside_mom - sigma_broadside_po,
+        N, nearest_broadside_deg, sigma_near_broadside_mom,
+        sigma_near_broadside_po,
+        sigma_broadside_area_formula_dB,
+        sigma_near_broadside_mom - sigma_near_broadside_po,
         mean(delta_main), maximum(delta_main),
-        P_rad / P_in,
+        energy_ratio,
     ],
 )
-CSV.write(joinpath(datadir, "plate_rcs_mom_vs_po_summary.csv"), df_summary)
+summary_path = abspath(joinpath(datadir, "plate_rcs_mom_vs_po_summary.csv"))
+CSV.write(summary_path, df_summary)
+println("Summary CSV saved: $summary_path")
 
 # ── 10. Plot ──────────────────────────────────────
 figdir = joinpath(@__DIR__, "figs")
@@ -208,11 +248,11 @@ relayout!(p, xaxis=attr(title="θ (deg)", range=[0, 180], dtick=30),
           yaxis=attr(title="Bistatic RCS (dBsm)", range=[-50, 10]),
           legend=attr(x=0.60, y=0.95),
           margin=attr(l=60, r=30, t=60, b=50))
-fig_path = joinpath(figdir, "12_plate_rcs_mom_vs_po.png")
+fig_path = abspath(joinpath(figdir, "12_plate_rcs_mom_vs_po.png"))
 savefig(p, fig_path)
 println("\nPlot saved: $fig_path")
 
 println("\n" * "="^60)
-println("Done.  MoM and PO analytical results agree well in the main lobe.")
-println("Edge diffraction (not captured by PO) causes deviations at wide angles.")
+println("STL round-trip example complete: resolution, residual, central-lobe,")
+println("and full-sphere energy gates passed.")
 println("="^60)

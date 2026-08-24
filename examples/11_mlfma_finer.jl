@@ -4,8 +4,8 @@
 # PO is computed on the SAME mesh at each level for fair comparison.
 #
 # Mesh levels:
-#   Level 0: 4λ edge (N≈7.5k)  — Dense (ground truth) + MLFMA + PO
-#   Level 1: 2λ edge (N≈15k)   — MLFMA + PO  (demonstrates mesh convergence)
+#   Level 0: 4λ edge (N≈7.5k) — direct reference + MLFMA + PO
+#   Level 1: 2λ edge (N≈15k) — MLFMA + PO discretization comparison
 #
 # Run: julia -t 4 --project=. examples/11_mlfma_finer.jl
 
@@ -51,8 +51,12 @@ end
 # ════════════════════════════════════════════════════
 # Setup
 # ════════════════════════════════════════════════════
-obj_path = joinpath(@__DIR__, "demo_aircraft.obj")
-isfile(obj_path) || error("demo_aircraft.obj not found at $obj_path")
+obj_path = abspath(get(
+    ENV, "DMOM_AIRCRAFT_OBJ", joinpath(@__DIR__, "demo_aircraft.obj")))
+isfile(obj_path) || error(
+    "Required aircraft geometry not found at $obj_path. This repository " *
+    "does not include it; supply an OBJ there or set DMOM_AIRCRAFT_OBJ to " *
+    "its path, then rerun this command.")
 
 mesh_raw = read_obj_mesh(obj_path)
 rep = repair_mesh_for_simulation(mesh_raw; allow_boundary=true, auto_drop_nonmanifold=true)
@@ -62,7 +66,9 @@ freq = 0.3e9
 λ0 = c0 / freq
 k  = 2π / λ0
 
-println("\nAircraft: $(nvertices(mesh_air)) verts, $(ntriangles(mesh_air)) tri")
+println("\nGeometry: $obj_path")
+println("Aircraft mesh: $(nvertices(mesh_air)) vertices, " *
+        "$(ntriangles(mesh_air)) triangles")
 println("Frequency: $(freq/1e9) GHz, λ = $(round(λ0, digits=2)) m")
 println("Wingspan ~14m ≈ $(round(14.0/λ0, digits=1))λ")
 
@@ -86,7 +92,7 @@ all_curves = Dict{String, Vector{Float64}}()
 curve_order = String[]
 
 # ════════════════════════════════════════════════════════════════════════
-# Level 0: 4λ mesh — Dense (ground truth) + MLFMA + PO
+# Level 0: 4λ mesh — direct reference + MLFMA + PO
 # ════════════════════════════════════════════════════════════════════════
 println("\n" * "="^72)
 println("Level 0: 4λ mesh — Dense + MLFMA + PO")
@@ -210,7 +216,7 @@ println("="^72)
 println("  Level  Mesh    N        Method     Backscatter  Iters  Notes")
 println("  " * "─"^68)
 println("  L0     4λ   $(lpad(N0, 6))    PO         $(lpad(round(10*log10(max(bs_po0.sigma, 1e-30)), digits=2), 8)) dBsm      —")
-println("  L0     4λ   $(lpad(N0, 6))    Dense      $(lpad(round(10*log10(max(bs_d0.sigma, 1e-30)), digits=2), 8)) dBsm      —     ground truth")
+println("  L0     4λ   $(lpad(N0, 6))    Dense      $(lpad(round(10*log10(max(bs_d0.sigma, 1e-30)), digits=2), 8)) dBsm      —     direct reference")
 println("  L0     4λ   $(lpad(N0, 6))    MLFMA      $(lpad(round(10*log10(max(bs_m0.sigma, 1e-30)), digits=2), 8)) dBsm  $(lpad(stats0.niter, 4))     err=$(round(err0, sigdigits=2))")
 println("  L1     2λ   $(lpad(N1, 6))    PO         $(lpad(round(10*log10(max(bs_po1.sigma, 1e-30)), digits=2), 8)) dBsm      —")
 println("  L1     2λ   $(lpad(N1, 6))    MLFMA      $(lpad(round(10*log10(max(bs_m1.sigma, 1e-30)), digits=2), 8)) dBsm  $(lpad(stats1.niter, 4))")
@@ -260,14 +266,16 @@ function make_rcs_plot(cut_idx, θ_deg, title_str)
 end
 
 p0 = make_rcs_plot(phi0_idx, θ_deg_0,
-    "Aircraft RCS φ=0° — MLFMA + PO ($(freq/1e9) GHz, mesh convergence)")
-savefig(p0, joinpath(figdir, "11_aircraft_rcs_phi0.png"); width=950, height=600)
-println("Plot saved: 11_aircraft_rcs_phi0.png")
+    "Aircraft RCS φ=0° — MLFMA + PO ($(freq/1e9) GHz, two meshes)")
+fig_phi0 = joinpath(figdir, "11_aircraft_rcs_phi0.png")
+savefig(p0, fig_phi0; width=950, height=600)
+println("Plot saved: $(abspath(fig_phi0))")
 
 p90 = make_rcs_plot(phi90_idx, θ_deg_90,
-    "Aircraft RCS φ=90° — MLFMA + PO ($(freq/1e9) GHz, mesh convergence)")
-savefig(p90, joinpath(figdir, "11_aircraft_rcs_phi90.png"); width=950, height=600)
-println("Plot saved: 11_aircraft_rcs_phi90.png")
+    "Aircraft RCS φ=90° — MLFMA + PO ($(freq/1e9) GHz, two meshes)")
+fig_phi90 = joinpath(figdir, "11_aircraft_rcs_phi90.png")
+savefig(p90, fig_phi90; width=950, height=600)
+println("Plot saved: $(abspath(fig_phi90))")
 
 println("\n" * "="^72)
-println("Done.")
+println("Aircraft mesh-discretization comparison complete for $obj_path")

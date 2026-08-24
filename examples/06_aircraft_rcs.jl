@@ -7,7 +7,7 @@
 #   4. Check mesh resolution against frequency
 #   5. Solve and compute bistatic + monostatic RCS
 #
-# Requires: examples/demo_aircraft.obj
+# Requires: examples/demo_aircraft.obj, or DMOM_AIRCRAFT_OBJ set to another OBJ.
 #
 # Run: julia --project=. examples/06_aircraft_rcs.jl
 
@@ -21,14 +21,16 @@ println("Example 06: Aircraft RCS Pipeline")
 println("="^60)
 
 # ── 1. Load OBJ mesh ───────────────────────────────
-obj_path = joinpath(@__DIR__, "demo_aircraft.obj")
+obj_path = abspath(get(
+    ENV, "DMOM_AIRCRAFT_OBJ", joinpath(@__DIR__, "demo_aircraft.obj")))
 if !isfile(obj_path)
     println("ERROR: $obj_path not found.")
-    println("This example requires the demo_aircraft.obj file in the examples/ directory.")
+    println("This repository does not include the aircraft geometry.")
+    println("Supply an OBJ there or set DMOM_AIRCRAFT_OBJ to its path, then rerun.")
     exit(1)
 end
 
-println("\nLoading: $obj_path")
+println("\nGeometry: $obj_path")
 mesh_raw = read_obj_mesh(obj_path)
 println("  Raw mesh: $(nvertices(mesh_raw)) vertices, $(ntriangles(mesh_raw)) triangles")
 
@@ -128,4 +130,4 @@ println("\n── Matrix conditioning ──")
 println("  cond(Z) = $(round(diag.cond, sigdigits=4))")
 
 println("\n" * "="^60)
-println("Done.")
+println("Aircraft RCS calculation complete for $obj_path")

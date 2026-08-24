@@ -1,12 +1,20 @@
 # 20_periodic_to_redistribution_demo.jl — RCS reduction on a multi-mode cell
 #
-# Demonstrates TO-discovered binary topology on a 1.2λ cell that outperforms
-# analytical baselines (checkerboard) for specular RCS reduction.
+# Demonstrates a TO-discovered near-binary density pattern on a 1.2λ cell that
+# outperforms a checkerboard with the same minimum-feature constraint for
+# specular RCS reduction.
 #
-# Key: binarization penalty forces binary solutions; the optimizer must use
-# spatial topology (diffraction into non-specular modes) instead of absorption.
+# With the default reactive penalty, the optimizer must use spatial diffraction
+# rather than absorption; the binarization term favors a binary density.
 #
 # Run: julia --project=. examples/20_periodic_to_redistribution_demo.jl
+#
+# Optional env vars:
+#   DMOM_RD_NX=14
+#   DMOM_RD_NY=14
+#   DMOM_RD_ITERS=30
+#   DMOM_RD_ZMAX=100.0
+#   DMOM_RD_REACTIVE=true
 
 using DiffMoM
 using LinearAlgebra
@@ -20,10 +28,23 @@ import PlotlySupply: savefig
 Random.seed!(2024)
 
 const PKG_DIR  = dirname(@__DIR__)
-const DATA_DIR = joinpath(PKG_DIR, "..", "paper", "data")
-const FIG_DIR  = joinpath(PKG_DIR, "..", "paper", "figs")
+const DATA_DIR = joinpath(PKG_DIR, "data")
+const FIG_DIR  = joinpath(PKG_DIR, "figures")
+const MIN_BINARY_FRACTION = 0.85
+const MIN_REDUCTION_VS_PEC_DB = 10.0
+const MIN_ADVANTAGE_VS_CHECKER_DB = 1.0
+const MAX_VOLUME_ERROR = 0.02
+const MAX_POWER_RESIDUAL = 0.10
 mkpath(DATA_DIR)
 mkpath(FIG_DIR)
+
+function positive_env_int(variable::String, default::String; minimum::Int=1)
+    text = get(ENV, variable, default)
+    value = tryparse(Int, text)
+    value === nothing && error("$variable must be an integer; got '$text'")
+    value >= minimum || error("$variable must be at least $minimum; got $value")
+    return value
+end
 
 println("=" ^ 70)
 println("  RCS Reduction on Multi-Mode Cell (d = 1.2λ)")
@@ -34,14 +55,23 @@ freq   = 10e9
 c0     = 3e8
 lambda = c0 / freq
 k      = 2π / lambda
-eta0   = 376.730313668
-
 dx_cell = 1.2 * lambda
 dy_cell = 1.2 * lambda
 
-Nx = parse(Int, get(ENV, "DMOM_RD_NX", "14"))
-Ny = parse(Int, get(ENV, "DMOM_RD_NY", string(Nx)))
-iters_per_beta = parse(Int, get(ENV, "DMOM_RD_ITERS", "30"))
+Nx = positive_env_int("DMOM_RD_NX", "14"; minimum=5)
+Ny = positive_env_int("DMOM_RD_NY", string(Nx); minimum=5)
+iters_per_beta = positive_env_int("DMOM_RD_ITERS", "30")
+zmax_text = get(ENV, "DMOM_RD_ZMAX", "100.0")
+Z_max_f = tryparse(Float64, zmax_text)
+Z_max_f === nothing && error("DMOM_RD_ZMAX must be numeric; got '$zmax_text'")
+(isfinite(Z_max_f) && Z_max_f > 0) || error(
+    "DMOM_RD_ZMAX must be finite and greater than zero; got $Z_max_f")
+reactive_text = get(ENV, "DMOM_RD_REACTIVE", "true")
+reactive = tryparse(Bool, reactive_text)
+reactive === nothing && error(
+    "DMOM_RD_REACTIVE must be 'true' or 'false'; got '$reactive_text'")
+config = DensityConfig(;
+    p=3.0, Z_max_factor=Z_max_f, vf_target=0.5, reactive=reactive)
 betas = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]
 
 println("  Frequency: $(freq/1e9) GHz, λ = $(round(lambda*1e3, digits=2)) mm")
@@ -59,7 +89,7 @@ println("  Assembling periodic EFIE matrix...")
 Z_per = Matrix{ComplexF64}(assemble_Z_efie_periodic(mesh, rwg, k, lattice))
 
 Mt = precompute_triangle_mass(mesh, rwg)
-edge_len = dx_cell / Nx
+edge_len = max(dx_cell / Nx, dy_cell / Ny)
 r_min = 2.5 * edge_len
 W, w_sum = build_filter_weights(mesh, r_min)
 
@@ -73,12 +103,10 @@ grid_ff = make_sph_grid(Ntheta_ff, Nphi_ff)
 Q_spec = Matrix{ComplexF64}(specular_rcs_objective(
     mesh, rwg, grid_ff, k, lattice; half_angle=spec_half_angle, polarization=:x))
 
-Z_max_f = parse(Float64, get(ENV, "DMOM_RD_ZMAX", "100.0"))
-reactive = parse(Bool, get(ENV, "DMOM_RD_REACTIVE", "true"))
-config = DensityConfig(; p=3.0, Z_max_factor=Z_max_f, vf_target=0.5, reactive=reactive)
 alpha_vf = 0.5
 centroids = [triangle_center(mesh, t) for t in 1:Nt]
 pol_inc = SVector(1.0, 0.0, 0.0)
+println("  Density penalty: Z_max_factor=$Z_max_f, reactive=$reactive")
 
 # ── Reference PEC ──────────────────────────────────────────────────────────
 println("\n▸ Reference: full PEC plate")
@@ -89,6 +117,7 @@ J_spec_pec = real(dot(I_pec, Q_spec * I_pec))
 modes_pec, R_pec = reflection_coefficients(mesh, rwg, Vector{ComplexF64}(I_pec), k, lattice;
                                            pol=pol_inc, E0=1.0)
 spec_pos = findfirst(i -> modes_pec[i].m == 0 && modes_pec[i].n == 0, eachindex(modes_pec))
+spec_pos === nothing && error("Specular (0,0) Floquet mode is missing from the PEC reference")
 println("  PEC: J_spec=$(round(J_spec_pec, sigdigits=4)), |R00|=$(round(abs(R_pec[spec_pos]), sigdigits=4))")
 
 # ── Gradient verification ──────────────────────────────────────────────────
@@ -154,6 +183,14 @@ function run_rcs_binary_opt(Z_per, Mt, v, Q_spec, config, W, w_sum, rho0;
                       frac_binary=Float64[], R00=Float64[])
     rho_by_beta = Dict{Float64, Vector{Float64}}()
     global_iter = 0
+
+    function trial_objective(rho_trial, beta, alpha_bin)
+        _, rho_bar_trial = filter_and_project(W, w_sum, rho_trial, beta)
+        I_trial = (Z_per + assemble_Z_penalty(Mt, rho_bar_trial, config)) \ v
+        return real(dot(I_trial, Q_spec * I_trial)) +
+               alpha_bin * sum(rho_bar_trial .* (1.0 .- rho_bar_trial)) +
+               alpha_vf * (mean(rho_bar_trial) - vf_target)^2
+    end
 
     for beta in betas
         # Binarization ramp: zero for first 2 stages, then quadratic ramp
@@ -238,21 +275,46 @@ function run_rcs_binary_opt(Z_per, Mt, v, Q_spec, config, W, w_sum, rho0;
             rho_old .= rho
             g_old .= g
             accepted = false
-            for ls in 1:20
+            for _ in 1:20
                 rho_trial = project!(rho_old .+ alpha_ls .* d)
-                _, rb = filter_and_project(W, w_sum, rho_trial, beta)
-                I_t = (Z_per + assemble_Z_penalty(Mt, rb, config)) \ v
-                Jt = real(dot(I_t, Q_spec * I_t)) +
-                     alpha_bin * sum(rb .* (1.0 .- rb)) +
-                     alpha_vf * (mean(rb) - vf_target)^2
-                if Jt <= J_total + 1e-4 * alpha_ls * dot(g, d)
+                Jt = trial_objective(rho_trial, beta, alpha_bin)
+                projected_step = rho_trial .- rho_old
+                armijo_slope = dot(g, projected_step)
+                if armijo_slope < 0 && Jt <= J_total + 1e-4 * armijo_slope
                     rho .= rho_trial
                     accepted = true
                     break
                 end
                 alpha_ls *= 0.5
             end
-            !accepted && (rho .= project!(rho_old .+ alpha_ls .* d))
+            if !accepted
+                # Curvature information can become unhelpful after a sharp beta
+                # transition. Retry with projected steepest descent and accept
+                # only a measured Armijo decrease.
+                fallback_direction = -g ./ max(gnorm, eps(Float64))
+                fallback_alpha = 0.1
+                for _ in 1:20
+                    rho_trial = project!(rho_old .+ fallback_alpha .* fallback_direction)
+                    Jt = trial_objective(rho_trial, beta, alpha_bin)
+                    projected_step = rho_trial .- rho_old
+                    armijo_slope = dot(g, projected_step)
+                    if armijo_slope < 0 && Jt <= J_total + 1e-4 * armijo_slope
+                        rho .= rho_trial
+                        accepted = true
+                        empty!(s_list)
+                        empty!(y_list)
+                        break
+                    end
+                    fallback_alpha *= 0.5
+                end
+            end
+            if !accepted
+                rho .= rho_old
+                if verbose
+                    @warn "Line search found no acceptable binarization update; advancing to the next beta stage" beta=beta iteration=global_iter
+                end
+                break
+            end
         end
         rho_by_beta[beta] = copy(rho)
     end
@@ -284,8 +346,10 @@ candidates = [evaluate_candidate(rho_opt_last)]
 for beta in sort(collect(keys(rho_by_beta)))
     push!(candidates, evaluate_candidate(rho_by_beta[beta]))
 end
-eligible = filter(c -> c.binary >= 0.85, candidates)
-isempty(eligible) && error("no redistribution candidate reached the binary threshold")
+eligible = filter(c -> c.binary >= MIN_BINARY_FRACTION, candidates)
+isempty(eligible) && error(
+    "No density candidate reached a $(round(100 * MIN_BINARY_FRACTION, digits=1))% " *
+    "near-binary fraction; increase DMOM_RD_ITERS or inspect the optimization trace")
 best_candidate = eligible[argmin([c.R00 for c in eligible])]
 rho_opt = best_candidate.rho_raw
 
@@ -314,9 +378,10 @@ J_spec_red_dB = 10 * log10(max(J_spec_opt, 1e-30) / max(J_spec_pec, 1e-30))
 R00_red_dB = 20 * log10(max(R00_opt, 1e-30) / max(R00_pec, 1e-30))
 
 println("\n" * "=" ^ 70)
-println("  RCS Optimization Results")
+println("  Density-TO RCS Results")
 println("=" ^ 70)
-println("  J_spec: PEC=$(round(J_spec_pec, sigdigits=4)) → opt=$(round(J_spec_opt, sigdigits=4)) ($(round(J_spec_red_dB, digits=2)) dB)")
+println("  J_spec: PEC=$(round(J_spec_pec, sigdigits=4)) → " *
+        "density-TO=$(round(J_spec_opt, sigdigits=4)) ($(round(J_spec_red_dB, digits=2)) dB)")
 println("  |R00|: $(round(R00_pec, sigdigits=4)) → $(round(R00_opt, sigdigits=4)) ($(round(R00_red_dB, digits=2)) dB)")
 println("  Power: refl=$(round(100pb_opt.refl_frac, digits=1))%, abs=$(round(100pb_opt.abs_frac, digits=1))%, " *
         "trans=$(round(100pb_opt.trans_frac, digits=1))%, resid=$(round(100pb_opt.resid_frac, digits=1))%")
@@ -347,26 +412,72 @@ function analyze_baseline(name, rho_bar_in)
             pb=pb_b, modes=modes_b, R=R_b)
 end
 
-# Checkerboard
+# Use the finest even checkerboard whose square width is at least the density
+# filter radius. Comparing against one square per mesh cell would give the
+# baseline smaller features than the optimizer is allowed to produce.
+checker_tiles_x = 2 * fld(floor(Int, dx_cell / r_min), 2)
+checker_tiles_y = 2 * fld(floor(Int, dy_cell / r_min), 2)
+(checker_tiles_x >= 2 && checker_tiles_y >= 2) || error(
+    "The $(Nx)×$(Ny) mesh cannot represent a feasible checkerboard with " *
+    "minimum feature radius $(round(r_min / lambda, digits=3))λ; increase " *
+    "DMOM_RD_NX and DMOM_RD_NY to at least 5")
 rho_checker = zeros(Float64, Nt)
 xs = [c[1] for c in centroids]; ys = [c[2] for c in centroids]
 x0, y0 = minimum(xs), minimum(ys)
 for t in 1:Nt
-    ix = clamp(floor(Int, (centroids[t][1] - x0) / (dx_cell / Nx)) + 1, 1, Nx)
-    iy = clamp(floor(Int, (centroids[t][2] - y0) / (dy_cell / Ny)) + 1, 1, Ny)
+    ix = clamp(floor(Int, (centroids[t][1] - x0) /
+                          (dx_cell / checker_tiles_x)) + 1,
+               1, checker_tiles_x)
+    iy = clamp(floor(Int, (centroids[t][2] - y0) /
+                          (dy_cell / checker_tiles_y)) + 1,
+               1, checker_tiles_y)
     rho_checker[t] = isodd(ix + iy) ? 1.0 : 0.0
 end
 rho_gray = fill(0.5, Nt)
 
 bl_pec     = analyze_baseline("PEC plate", rho_bar_pec)
-bl_checker = analyze_baseline("Checkerboard", rho_checker)
+checker_name = "Feasible $(checker_tiles_x)×$(checker_tiles_y) checker"
+bl_checker = analyze_baseline(checker_name, rho_checker)
 bl_gray    = analyze_baseline("Gray sheet (ρ=0.5)", rho_gray)
-bl_opt     = analyze_baseline("Optimized (binary)", rho_bar_final)
+bl_opt     = analyze_baseline("Density-TO result", rho_bar_final)
 
 # Advantage over checkerboard
 adv_dB = bl_checker.R00_red_dB - bl_opt.R00_red_dB
 println("\n  Advantage over checkerboard: $(round(adv_dB, digits=2)) dB")
-bl_opt.R00 < bl_checker.R00 || error("optimized redistribution design does not beat checkerboard")
+bl_opt.R00 < bl_checker.R00 || error(
+    "Density-TO |R00|=$(round(bl_opt.R00, digits=4)) did not improve on " *
+    "the $(checker_tiles_x)×$(checker_tiles_y) feasible checkerboard " *
+    "|R00|=$(round(bl_checker.R00, digits=4)); increase DMOM_RD_ITERS or " *
+    "inspect the optimization trace")
+
+acceptance_metrics = (
+    max_rel_gv, J_spec_pec, J_spec_opt, R00_pec, R00_opt,
+    binary_frac, vf_final, pb_opt.refl_frac, pb_opt.abs_frac,
+    pb_opt.trans_frac, pb_opt.resid_frac, adv_dB,
+)
+all(isfinite, acceptance_metrics) || error(
+    "RCS redistribution produced a non-finite acceptance metric")
+J_spec_pec >= 0 && J_spec_opt >= 0 || error(
+    "RCS redistribution produced a negative specular-power objective")
+-R00_red_dB >= MIN_REDUCTION_VS_PEC_DB || error(
+    "Density-TO result reduces |R00| by only $(round(-R00_red_dB, digits=3)) dB; " *
+    "expected at least $MIN_REDUCTION_VS_PEC_DB dB")
+adv_dB >= MIN_ADVANTAGE_VS_CHECKER_DB || error(
+    "Density-TO result beats the feasible checker by only $(round(adv_dB, digits=3)) dB; " *
+    "expected at least $MIN_ADVANTAGE_VS_CHECKER_DB dB")
+binary_frac >= MIN_BINARY_FRACTION || error(
+    "Selected result is only $(round(100 * binary_frac, digits=1))% near-binary; " *
+    "expected at least $(100 * MIN_BINARY_FRACTION)%")
+abs(vf_final - config.vf_target) <= MAX_VOLUME_ERROR || error(
+    "Selected volume fraction $(round(vf_final, digits=4)) differs from target " *
+    "$(config.vf_target) by more than $MAX_VOLUME_ERROR")
+abs(pb_opt.resid_frac) <= MAX_POWER_RESIDUAL || error(
+    "Power-balance residual $(round(100 * pb_opt.resid_frac, digits=2))% exceeds " *
+    "$(100 * MAX_POWER_RESIDUAL)%; refine the mesh or inspect the Floquet truncation")
+if reactive
+    abs(pb_opt.abs_frac) <= 1e-8 || error(
+        "Reactive density penalty produced nonzero absorption fraction $(pb_opt.abs_frac)")
+end
 
 # ── Save data ──────────────────────────────────────────────────────────────
 CSV.write(joinpath(DATA_DIR, "results_redistribution_trace.csv"), trace)
@@ -412,7 +523,10 @@ for mode in bl_opt.modes
     ))
 end
 CSV.write(joinpath(DATA_DIR, "results_redistribution_floquet.csv"), floquet_rows)
-println("  ✓ Saved data/results_redistribution_*.csv")
+println("  Saved: $(joinpath(DATA_DIR, "results_redistribution_trace.csv"))")
+println("  Saved: $(joinpath(DATA_DIR, "results_redistribution_topology.csv"))")
+println("  Saved: $(joinpath(DATA_DIR, "results_redistribution_summary.csv"))")
+println("  Saved: $(joinpath(DATA_DIR, "results_redistribution_floquet.csv"))")
 
 # ── Figures ────────────────────────────────────────────────────────────────
 println("\n▸ Generating figures")
@@ -481,21 +595,25 @@ savefig(fig_check, joinpath(FIG_DIR, "fig_results_redistribution_checker.pdf");
 fig_conv = plot_scatter(collect(trace.iter), collect(trace.R00);
     mode="lines", color=COLORS[1], dash=DASHES[1],
     xlabel="Iteration", ylabel="|R00|",
-    title="Specular reflection convergence (d = 1.2lambda)",
+    title="Specular reflection convergence (d = 1.2λ)",
     width=IEEE_W, height=IEEE_H, fontsize=12)
 savefig(fig_conv, joinpath(FIG_DIR, "fig_results_redistribution_convergence.pdf"))
 
-println("  ✓ Saved figures/fig_results_redistribution_*.pdf")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_redistribution_topology.pdf"))")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_redistribution_checker.pdf"))")
+println("  Saved: $(joinpath(FIG_DIR, "fig_results_redistribution_convergence.pdf"))")
 
 # ── Final summary ──────────────────────────────────────────────────────────
 println("\n" * "=" ^ 70)
 println("  Summary: RCS Reduction Demo (d = 1.2λ)")
 println("=" ^ 70)
-println("  Design               |R00|    dB vs PEC  Bin%")
+println("  Design               |R00|    dB vs PEC  Near-bin%")
 for bl in [bl_pec, bl_checker, bl_gray, bl_opt]
     println("  $(rpad(bl.name, 22)) $(lpad(round(bl.R00, digits=4), 6))  " *
             "$(lpad(round(bl.R00_red_dB, digits=1), 8))  $(lpad(round(100bl.bin, digits=0), 4))")
 end
 println("  Gradient max rel error: $(round(max_rel_gv, sigdigits=3))")
 println("  Advantage over checkerboard: $(round(adv_dB, digits=2)) dB")
+println("  Power-balance residual: $(round(100 * pb_opt.resid_frac, digits=2))%")
+println("  PASS: gradient, reduction, matched-checker, binarity, volume, and power gates")
 println("=" ^ 70)

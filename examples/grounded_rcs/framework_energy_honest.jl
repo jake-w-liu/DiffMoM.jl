@@ -22,7 +22,8 @@ function svec_mode(mesh, rwg, k, lat, mode; quad_order=3, E0=1.0, eta0=376.73031
     return -(eta0*k)/(2*kz*E0) .* (G ./ A_cell)
 end
 
-# Energy-honest problem: precompute all propagating modes' grounded reflection maps.
+# Full-vector energy-budget problem: precompute each propagating mode's
+# grounded reflection map.
 struct HProblem
     k; h; mesh; lat; rwg; Nt; Mt; Zg; v; cfg
     i00            # index (in modelist) of (0,0)
@@ -47,7 +48,7 @@ function make_hproblem(mesh, lat, rwg, k, h, Zg, v, cfg)
     return HProblem(k,h,mesh,lat,rwg,Nt,Mt,Zg,v,cfg,i00,Ws,bs,wts)
 end
 
-# Objective J = |R00|² for the co-polar specular return. The full vector
+# Objective J = |R00|² for the co-polar specular return. The full-vector
 # reflected-power budget is reported separately by `eval_honest`; using only a
 # scalar co-polar Floquet sum as an energy denominator misses cross-polarized
 # power and can create a false conservation residual.

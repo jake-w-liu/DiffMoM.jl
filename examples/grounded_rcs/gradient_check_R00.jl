@@ -1,9 +1,12 @@
-using DiffMoM, LinearAlgebra, StaticArrays, Random, Printf, Statistics, CSV, DataFrames
+# Check the grounded specular objective gradient against finite differences.
+# Run: julia --project=. examples/grounded_rcs/gradient_check_R00.jl
+
+include(joinpath(@__DIR__, "framework_pixel_design.jl"))
+using Statistics, CSV, DataFrames
 const PKG_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
-const PROJECT_ROOT = normpath(joinpath(PKG_ROOT, ".."))
-const DATA_DIR = joinpath(PROJECT_ROOT, "paper", "data")
+const DATA_DIR = joinpath(PKG_ROOT, "data")
 mkpath(DATA_DIR)
-const C0 = 2.99792458e8; lam = C0/10e9; k = 2π/lam; eta0 = 376.730313668
+lam = C0/10e9; k = 2π/lam
 dxc = 1.2*lam; Nx = 10; h = lam/4
 mesh = make_rect_plate(dxc, dxc, Nx, Nx); lat = PeriodicLattice(dxc, dxc, 0.0, 0.0, k)
 rwg = build_rwg_periodic(mesh, lat; precheck=true, allow_boundary=true, require_closed=false)
@@ -17,7 +20,8 @@ cfg = DensityConfig(; p=3.0, Z_max_factor=100.0, reactive=true)
 # (0,0) reflection vector s: R_cur00 = sᵀ I  (extract column-by-column via unit currents)
 modes, _ = reflection_coefficients(mesh, rwg, zeros(ComplexF64, N), k, lat; N_orders=3, E0=1.0, pol=SVector(1.0,0.0,0.0))
 i00 = findfirst(m -> m.m==0 && m.n==0, modes)
-s = ComplexF64[ reflection_coefficients(mesh, rwg, ComplexF64.((1:N) .== n), k, lat; N_orders=3, E0=1.0, pol=SVector(1.0,0.0,0.0))[2][i00] for n in 1:N ]
+i00 === nothing && error("Specular (0,0) Floquet mode is missing")
+s = svec_fast(mesh, rwg, k, lat)
 phf = 1 - exp(-2im*k*h); w = phf .* s; b = -exp(-2im*k*h)
 R00g(I) = sum(w .* I) + b
 beta = 8.0
@@ -35,7 +39,7 @@ end
 
 Random.seed!(7); rho = 0.3 .+ 0.4*rand(Nt)
 J0, g, R, Rgg = objgrad(rho)
-@printf("R00 my-formula=%+.5f%+.5fi | grounded-fn=%+.5f%+.5fi | match=%.2e\n", real(R), imag(R), real(Rgg), imag(Rgg), abs(R-Rgg))
+@printf("R00 linear-map=%+.5f%+.5fi | postprocessor=%+.5f%+.5fi | difference=%.2e\n", real(R), imag(R), real(Rgg), imag(Rgg), abs(R-Rgg))
 hfd = 1e-5
 rows = DataFrame(triangle=Int[], g_adjoint=Float64[], g_fd=Float64[],
     abs_error=Float64[], rel_error=Float64[])
@@ -62,5 +66,7 @@ pass = max_abs_error < 1e-10 && max_scaled_error < 1e-2
 @printf("MAX gradient abs error=%.3e, max scaled error=%.3e  %s\n",
     max_abs_error, max_scaled_error, pass ? "PASS" : "FAIL")
 @printf("initial |R00_grounded|=%.4f (%.2f dB vs bare ground)\n", abs(R), 20log10(abs(R)+1e-15))
-abs(R - Rgg) < 1e-10 || error("grounded R00 formula mismatch")
-pass || error("grounded R00 gradient finite-difference check failed")
+println("Saved: $(joinpath(DATA_DIR, "grounded_gradient_check.csv"))")
+println("Saved: $(joinpath(DATA_DIR, "grounded_gradient_summary.csv"))")
+abs(R - Rgg) < 1e-10 || error("Grounded R00 linear map does not match the postprocessor")
+pass || error("Grounded R00 gradient finite-difference check failed")
