@@ -216,6 +216,22 @@ class ValidationReportTests(unittest.TestCase):
                 n_phi=2,
             )
 
+    def test_plot_help_does_not_require_matplotlib(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(BEMPP_DIR / "plot_impedance_comparison.py"),
+                "--help",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--julia-prefix", result.stdout)
+
     def test_matrix_rejects_report_without_sidelobe_metric(self) -> None:
         matrix_module = load_module(
             "validation_matrix",

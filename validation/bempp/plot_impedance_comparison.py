@@ -13,10 +13,6 @@ from typing import Dict, List, Tuple
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/mpl")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -228,6 +224,17 @@ def main() -> None:
     summary_lines = summarize_delta(delta, julia_vals)
     for line in summary_lines:
         print(line)
+
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise SystemExit(
+            "Matplotlib is required to render this diagnostic. Install the "
+            "validation requirements, then rerun the plotter."
+        ) from exc
 
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
 
