@@ -156,8 +156,8 @@ end
 
 Wraps an inner preconditioner (ILU or LU) that operates in a permuted ordering.
 On apply: permute input → apply inner preconditioner → unpermute output.
-Used for MLFMA where reordering Z_near to block-banded form before ILU
-dramatically speeds up factorization and improves quality.
+MLFMA uses this wrapper to expose the block-banded structure of `Z_near`
+before ILU.
 A reusable, lock-protected vector performs both permutations without
 allocating indexed copies on every application.
 """
@@ -1551,8 +1551,9 @@ end
 Build a block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes.
 Each leaf box's diagonal block in Z_near is LU-factorized independently.
 
-Much faster than ILU for large N: O(n_boxes × n_bf³) where n_bf is the
-average BFs per box (typically 100-500), versus O(nnz × fill) for ILU.
+Construction costs `O(n_boxes × n_bf³)`, where `n_bf` is the average number
+of basis functions per box. This avoids a global sparse factorization but may
+require more Krylov iterations than ILU.
 `max_storage_bytes` bounds the raw payload of dense LU factors, leaf and pivot
 indices, and the reusable largest-block work vector. The complete bound is
 checked before the first block is allocated or factorized.
@@ -1711,8 +1712,7 @@ end
     build_mlfma_preconditioner(A_mlfma; factorization=:ilu, ilu_tau=1e-2)
 
 Build a preconditioner for MLFMA by reordering Z_near to MLFMA ordering
-(block-banded structure) before factorization. This makes ILU dramatically
-faster and more effective than operating on the original scattered ordering.
+(block-banded structure) before factorization.
 
 The resulting preconditioner handles the permutation automatically.
 """

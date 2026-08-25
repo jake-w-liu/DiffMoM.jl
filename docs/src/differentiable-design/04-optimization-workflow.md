@@ -370,7 +370,8 @@ This can avoid symmetry traps and improve convergence.
 If additional constraints are needed (e.g., total power consumption, manufacturing constraints), consider:
 
 - **Penalty method**: Add penalty terms to the objective.
-- **Augmented Lagrangian**: Incorporate constraints via Lagrange multipliers (not currently implemented).
+- **Augmented Lagrangian**: Not supported by the package; use an external
+  constrained optimizer if penalty terms are insufficient.
 - **Filtering**: Post‑process `theta_opt` to enforce smoothness or discreteness.
 
 ### 7.4 Warm‑Starting Across Frequencies
@@ -472,4 +473,5 @@ After studying this chapter, you should be able to:
 
 ---
 
-*Congratulations! You have completed Part III — Differentiable Design. You now understand the adjoint method, impedance sensitivities, ratio objectives, and the complete optimization workflow. The next part, Part IV — Validation, shows how to verify the correctness and accuracy of the solver through internal consistency checks, gradient verification, and cross‑validation with external codes.*
+Continue to Part IV — Validation for internal consistency checks, gradient
+verification, and cross‑validation with external codes.

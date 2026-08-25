@@ -149,14 +149,12 @@ after budgeting memory for the target geometry. Direct calls to
 
 **Choosing `leaf_lambda`:**
 
-| `leaf_lambda` | Typical levels | Matvec error | Recommendation |
-|---------------|---------------|--------------|----------------|
-| 3.0 | 4 | ~0.0007% | Maximum accuracy |
-| 2.0 | 4 | ~0.004% | High accuracy |
-| 1.0 | 5 | ~0.15% | **Recommended minimum for production** |
-| 0.75 | 6 | ~11% | Unstable (L > kr in translation) |
-
-Use `leaf_lambda >= 1.0` for production runs. Smaller values increase octree depth but cause translation operator instability when the truncation order exceeds `k * r` for the box separation distance.
+`leaf_lambda` changes octree depth, near-field storage, sampling work, and
+translation accuracy. No single value is reliable across geometries and
+frequencies. Sweep candidate values on a representative problem and record
+matvec or RCS error against a trusted reference together with build time,
+solve time, and peak memory. Reject settings that fail the required observable
+tolerance even when their solver residual is small.
 
 **Example:**
 

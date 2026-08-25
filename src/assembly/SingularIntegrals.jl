@@ -329,7 +329,7 @@ end
 Compute the EFIE self-cell integral for basis functions m, n on the same
 triangle tm using singularity extraction.
 
-Returns the value (vec_part - scl_part), not yet multiplied by -iωμ₀.
+Returns `(vec_part - scl_part)` before multiplication by `-iωμ₀`.
 
 The integral splits as:
   I = I_smooth  (product quadrature with G_smooth)
@@ -458,7 +458,7 @@ For coplanar triangles, splits G = G_smooth + 1/(4πR):
   * Scalar potential: high-order outer quad × analytical inner `∫ 1/R dS'`
   * Vector potential: high-order outer quad × high-order inner quad with `f_n/R`
 
-Returns the value (vec_part - scl_part), not yet multiplied by -iωμ₀.
+Returns `(vec_part - scl_part)` before multiplication by `-iωμ₀`.
 """
 function adjacent_cell_contribution(
     mesh::TriMesh, rwg::RWGData,

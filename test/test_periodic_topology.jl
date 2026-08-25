@@ -333,7 +333,7 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
             dG_N = greens_periodic_correction(r, rp, k, lat_N)
             push!(errors, abs(dG_N - dG_ref))
         end
-        # Exponential convergence: each step should improve dramatically
+        # Exponential convergence: each refinement should reduce the error.
         @test errors[2] < errors[1] * 0.01  # N=1→2: 100× improvement
         @test errors[3] < 1e-10 * abs(dG_ref)  # N=3: machine precision
         @test errors[4] < 1e-13 * abs(dG_ref)  # N=4: essentially zero

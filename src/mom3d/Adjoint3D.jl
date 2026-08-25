@@ -234,7 +234,10 @@ function gradient_epsr_dda_3d(res::DDAResult3D, lambda)
     N = _validate_dda_result_3d(res)
     _validate_scalar_epsr_gradient_result_3d(res, N)
     res.radiative_correction &&
-        error("gradient_epsr_dda_3d currently supports uncorrected Clausius-Mossotti alpha only.")
+        throw(ArgumentError(
+            "gradient_epsr_dda_3d requires an uncorrected " *
+            "Clausius-Mossotti result; got radiative_correction=true. " *
+            "Re-run solve_dda_3d with radiative_correction=false."))
 
     lambda_flat = _coerce_adjoint_rhs_3d(lambda, N, "lambda")
     grad = zeros(Float64, N)

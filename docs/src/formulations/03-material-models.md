@@ -89,7 +89,9 @@ A general anisotropic medium with off-axis coupling needs the full $3\times3$ te
 \mathbf{D} = \varepsilon_0\,\boldsymbol{\varepsilon}_r\,\mathbf{E}, \qquad \boldsymbol{\varepsilon}_r \in \mathbb{C}^{3\times3}.
 ```
 
-Passivity is now more subtle than "every imaginary part $\le 0$." Decompose the tensor into Hermitian and anti-Hermitian parts. The anti-Hermitian part governs power exchange. Define the **loss matrix**
+Tensor passivity is more subtle than "every imaginary part $\le 0$." Decompose
+the tensor into Hermitian and anti-Hermitian parts. The anti-Hermitian part
+governs power exchange. Define the **loss matrix**
 
 ```math
 \mathbf{L} = \frac{\boldsymbol{\varepsilon}_r - \boldsymbol{\varepsilon}_r^{\dagger}}{2i},

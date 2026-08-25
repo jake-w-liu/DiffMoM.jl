@@ -273,7 +273,7 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 | `reactive` | `Bool` | `false` | Impedance mode: `false` = resistive, `true` = reactive. |
 | `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on theta. |
 | `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on theta. |
-| `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner (strongly recommended). |
+| `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner; compare iteration count and true residual for the target system. |
 | `preconditioner_builder` | function or `nothing` | `nothing` | Optional `theta -> preconditioner` builder for design-dependent preconditioners (cached for unchanged `theta`). |
 | `trial_preconditioner_mode` | `Symbol` | `:rebuild` | Line-search preconditioner policy: `:rebuild`, `:current`, or `:current_then_rebuild`. |
 | `gmres_precond_side` | `Symbol` | `:left` | Preconditioner application side (`:left` or `:right`). |
@@ -316,7 +316,10 @@ Both optimizers support two independent preconditioning mechanisms:
 
 ### 1. GMRES with near-field preconditioner (for the linear solves)
 
-When `solver=:gmres`, each forward and adjoint solve uses GMRES instead of LU factorization. The `nf_preconditioner` provides a sparse near-field approximation that dramatically reduces iteration counts.
+When `solver=:gmres`, each forward and adjoint solve uses GMRES instead of LU
+factorization. The `nf_preconditioner` provides a sparse near-field
+approximation. Its effect on iteration count is problem-dependent; verify the
+reported true residual and compare iterations for the target system.
 
 ```julia
 P_nf = build_nearfield_preconditioner(Z_efie, mesh, rwg, 1.0 * lambda0)

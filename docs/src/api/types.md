@@ -418,13 +418,21 @@ P_bd = build_block_diag_preconditioner(
     A_mlfma; max_storage_bytes=536_870_912)
 ```
 
-**When to use:** When full ILU factorization of `Z_near` is too slow or memory-intensive. Block-diagonal builds in `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Weaker than ILU but much faster to construct. `max_storage_bytes` is checked before the first dense block is allocated.
+**When to use:** When a full ILU factorization of `Z_near` exceeds the available
+time or memory. Block-diagonal construction costs
+`O(n_boxes * n_bf^3)`, where `n_bf` is the average number of basis functions
+per leaf box. It avoids a global factorization but may require more Krylov
+iterations than ILU. `max_storage_bytes` is checked before the first dense
+block is allocated.
 
 ---
 
 ### `PermutedPrecondData` -- Permuted Preconditioner Wrapper
 
-Wraps an inner preconditioner (ILU or LU) that operates in a permuted BF ordering. On application: permute input to reordered space, apply inner preconditioner, unpermute output. Used for MLFMA where reordering `Z_near` to block-banded form before ILU dramatically improves factorization speed and quality.
+Wraps an inner preconditioner (ILU or LU) that operates in a permuted BF
+ordering. On application: permute the input to reordered space, apply the inner
+preconditioner, then unpermute the output. MLFMA uses this wrapper to expose the
+block-banded structure of `Z_near` before ILU.
 
 ```julia
 struct PermutedPrecondData{T<:AbstractPreconditionerData} <: AbstractPreconditionerData

@@ -23,7 +23,7 @@ After this chapter, you should be able to:
 2. Derive the `G = G_smooth + 1/(4πR)` split used in code.
 3. Describe how `analytical_integral_1overR` is used inside `self_cell_contribution` and `adjacent_cell_contribution`.
 4. Map the self/adjacent/non-adjacent branching in `assemble_Z_efie` to the formulas.
-5. Identify current limitations (what is not yet special-cased).
+5. Identify which interaction classes use the generic quadrature path.
 
 ---
 

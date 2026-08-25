@@ -284,7 +284,10 @@ spherical/filter allocations. Raise them only with an explicit memory budget.
 
 ### 9.3 `solve_scattering` MLFMA Path
 
-`solve_scattering(...; method=:mlfma)` currently calls `build_mlfma_operator(mesh, rwg, k; quad_order, verbose)` and does not expose `leaf_lambda`/`precision` keywords directly. Use manual MLFMA construction when you need to tune those parameters.
+`solve_scattering(...; method=:mlfma)` calls
+`build_mlfma_operator(mesh, rwg, k; quad_order, verbose)` and does not expose
+`leaf_lambda` or `precision`. Build the MLFMA operator directly when you need
+to tune those parameters.
 
 ---
 

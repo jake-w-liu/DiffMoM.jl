@@ -30,7 +30,10 @@ A single-angle optimization minimizes:
 J_single(theta) = I_a^dagger Q_a I_a
 ```
 
-where $Q_a$ selects far-field power near the backscatter direction for incidence angle $a$. The optimizer is free to redistribute scattered energy to other directions — the RCS at the optimized angle drops, but RCS at other angles may increase dramatically.
+where $Q_a$ selects far-field power near the backscatter direction for
+incidence angle $a$. The optimizer may redistribute scattered energy to other
+directions, so evaluate the full angular response rather than only the
+optimized samples.
 
 ### 1.2 The Multi-Angle Objective
 
@@ -204,7 +207,7 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 | `reactive` | `Bool` | `false` | `false` = resistive, `true` = reactive loading. |
 | `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on theta. |
 | `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on theta. |
-| `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner (strongly recommended for convergence). |
+| `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner; compare iteration count and true residual for the target system. |
 | `gmres_tol` | `Float64` | `1e-6` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `300` | Maximum GMRES iterations per solve. |
 | `max_workspace_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the reusable dense system workspace when `Z_base` is a dense matrix. Matrix-free ACA/MLFMA paths do not allocate this workspace. |
@@ -215,7 +218,8 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 
 **Note:** A dense `Matrix{ComplexF64}` base uses verified direct factorization;
 matrix-free ACA/MLFMA bases use GMRES through `ImpedanceLoadedOperator`. A
-near-field preconditioner is strongly recommended for the latter.
+For a matrix-free base, evaluate a near-field preconditioner against the
+unpreconditioned iteration count and true residual.
 
 ---
 

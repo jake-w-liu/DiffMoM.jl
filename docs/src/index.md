@@ -2,8 +2,10 @@
 
 Welcome to the full user manual and API reference for `DiffMoM.jl`.
 
-This documentation is intentionally structured for readers with basic electromagnetics background who are new to computational methods.
-It now covers scattered near-field, total-field, and far-field postprocessing workflows alongside the core EFIE solve.
+This documentation is structured for readers with a basic electromagnetics
+background who are new to computational methods. It covers scattered
+near-field, total-field, and far-field postprocessing alongside the core EFIE
+solve.
 
 ## How to Use This Manual
 

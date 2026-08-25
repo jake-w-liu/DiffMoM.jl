@@ -28,7 +28,7 @@ Aqua.test_all(
     persistent_tasks=(tmax=60,),
 )
 
-# These reviewed implementation boundaries currently rely on non-public names.
+# These reviewed implementation boundaries rely on non-public names.
 # Keep the allowlist exact so every new non-public name fails the
 # import-discipline gate.
 const _NONPUBLIC_QUALIFIED_ACCESS_ALLOWLIST = (

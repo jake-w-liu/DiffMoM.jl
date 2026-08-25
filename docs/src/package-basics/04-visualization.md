@@ -216,7 +216,8 @@ This ordering avoids expensive solves on obviously bad meshes.
 
 ### 4.2 Misleading Visual Comparison
 
-**Symptoms:** Two meshes appear dramatically different in size or shape even though they represent the same geometry.
+**Symptoms:** Two meshes appear different in size or shape even though they
+represent the same geometry.
 
 **Checklist:**
 

@@ -295,7 +295,11 @@ When regularization or left preconditioning is applied to the forward solve, the
 
 ### 6.2 Complex‑ versus Real‑Valued Parameters
 
-The derivation assumes $\theta_p \in \mathbb{R}$. If parameters were complex (e.g., complex impedance), the gradient formula would involve both $\partial J/\partial \theta_p$ and $\partial J/\partial \theta_p^*$. The package currently supports only real resistive or reactive parameters, for which $\eqref{eq:adjoint_grad}$ is exact.
+The derivation assumes $\theta_p \in \mathbb{R}$. If parameters were complex
+(e.g., complex impedance), the gradient formula would involve both
+$\partial J/\partial \theta_p$ and $\partial J/\partial \theta_p^*$. The package
+supports real resistive or reactive parameters, for which
+$\eqref{eq:adjoint_grad}$ is exact.
 
 ### 6.3 Multiple Right‑Hand Sides
 
@@ -355,7 +359,8 @@ For ratio objectives $J = f/g$ (Chapter 3), the gradient requires derivatives 
 
 ### 8.2 Second‑Order Sensitivities (Hessian‑Vector Products)
 
-The adjoint framework can be extended to compute Hessian‑vector products $\mathbf{H} \mathbf{d}$ via a second‑order adjoint solve, enabling Newton‑type optimization or uncertainty quantification. This is not currently implemented in the package but could be added following the same pattern.
+The package does not provide Hessian‑vector products. Computing
+$\mathbf{H}\mathbf{d}$ would require a second‑order adjoint solve.
 
 ### 8.3 Shape Derivatives
 

@@ -63,8 +63,10 @@ function _assert_coplanar_periodic_metrics_mesh(mesh::TriMesh; atol::Float64=1e-
     spread = abs(zmax - zmin)
     if !_periodic_coordinate_within(zmax, zmin, atol)
         throw(ArgumentError(
-            "reflection_coefficients currently supports coplanar unit-cell meshes only " *
-            "(max z spread <= $(atol)). Got z spread=$spread."
+            "reflection_coefficients requires a coplanar unit-cell mesh " *
+            "with z spread <= $atol; got z spread=$spread. " *
+            "Project the mesh vertices onto one z plane before computing " *
+            "periodic reflection coefficients."
         ))
     end
 end

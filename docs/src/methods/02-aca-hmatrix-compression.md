@@ -499,13 +499,18 @@ This evaluates the exact EFIE entry on demand using the cached quadrature data. 
 | Direct solve (LU) | $O(N^3)$ | Not supported |
 | GMRES (per iteration) | $O(N^2)$ | $O(N \log^2 N)$ |
 
-Here $k$ is the typical rank of low-rank blocks (usually 10--30) and $N_q^2$ is the cost per entry evaluation.
+Here $k$ is the accepted rank of each low-rank block and $N_q^2$ is the cost
+per entry evaluation. The observed rank depends on geometry, frequency,
+admissibility, and tolerance.
 
 ### 7.2 Where the $\log^2 N$ Comes From
 
 The cluster tree has $O(\log N)$ levels. At each level, the total number of index pairs covered by admissible blocks is $O(N)$ (each index appears in a bounded number of interactions at each level). The rank of each low-rank block is bounded by a constant $k$ (independent of $N$ for a fixed tolerance and smooth kernel). Summing over all $O(\log N)$ levels and accounting for the tree traversal overhead gives $O(N \log^2 N)$.
 
-In practice, for typical MoM problems, the $\log^2 N$ factor is small. The crossover point where ACA becomes faster than dense assembly is typically around $N \approx 3{,}000$--$5{,}000$, depending on the geometry and hardware.
+The asymptotic costs do not determine the dense-to-ACA crossover for a given
+problem. Benchmark both paths with the same geometry, tolerance, and hardware;
+record assembly time, matvec time, memory, accepted ranks, and approximation
+error.
 
 ### 7.3 Memory Breakdown
 

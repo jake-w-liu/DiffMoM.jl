@@ -392,7 +392,7 @@ For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise
 | Time complexity | O(N^3) | O(N^2 * n_iter) |
 | Memory | O(N^2) for factorization | O(N^2) for matrix + O(N * n_iter) for Krylov |
 | Accuracy | Machine precision | Controlled by `gmres_tol` |
-| Requires preconditioner? | No | Strongly recommended |
+| Preconditioner | Not used | Problem-dependent; compare iterations and true residual |
 
 ---
 
@@ -620,7 +620,10 @@ Compute the center point of each RWG basis function, defined as the average of t
 
 ### `build_block_diag_preconditioner(A_mlfma; max_storage_bytes=536_870_912)`
 
-Build a block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes. Each leaf box's diagonal block in `Z_near` is LU-factorized independently. Much faster than ILU for large N.
+Build a block-diagonal (block-Jacobi) preconditioner from MLFMA leaf boxes.
+Each leaf box's diagonal block in `Z_near` is LU-factorized independently,
+avoiding a global sparse factorization. Compare build time, storage, iteration
+count, and true residual against ILU for the target problem.
 
 **Parameters:**
 
@@ -652,7 +655,11 @@ I, stats = solve_gmres(A_mlfma, v; preconditioner=P_bd)
 
 ### `build_mlfma_preconditioner(A_mlfma; factorization=:ilu, ilu_tau=1e-2)`
 
-Build a preconditioner for MLFMA by reordering `Z_near` to MLFMA BF ordering (block-banded structure) before factorization. The block-banded structure makes ILU dramatically faster and more effective than operating on the original scattered BF ordering. The resulting `PermutedPrecondData` handles the permutation automatically on each preconditioner application.
+Build a preconditioner for MLFMA by reordering `Z_near` to MLFMA BF ordering
+before factorization. This exposes the block-banded near-field structure to
+ILU. The resulting `PermutedPrecondData` applies and reverses the permutation
+automatically. Measure factorization cost, iteration count, and true residual
+for the target problem.
 
 **Parameters:**
 

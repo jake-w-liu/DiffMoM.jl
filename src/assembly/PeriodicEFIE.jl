@@ -351,8 +351,9 @@ function _assert_coplanar_periodic_mesh(mesh::TriMesh; atol::Float64=1e-12)
     spread = abs(zmax - zmin)
     if !_periodic_coordinate_within(zmax, zmin, atol)
         throw(ArgumentError(
-            "PeriodicEFIE currently supports coplanar unit-cell meshes only " *
-            "(max z spread <= $(atol)). Got z spread=$spread."
+            "PeriodicEFIE requires a coplanar unit-cell mesh with z spread " *
+            "<= $atol; got z spread=$spread. Project the mesh vertices " *
+            "onto one z plane before assembly."
         ))
     end
 end

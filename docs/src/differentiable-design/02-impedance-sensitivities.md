@@ -403,7 +403,7 @@ The current implementation supports either purely resistive or purely reactive s
 \frac{\partial J}{\partial X_p} = -2\Im\{\boldsymbol{\lambda}^\dagger \mathbf{M}_p \mathbf{I}\}.
 ```
 
-This extension is straightforward but not yet implemented.
+Mixed resistive‑reactive design is not supported by this API.
 
 ### 7.2 Spatially Varying Impedance Profiles
 

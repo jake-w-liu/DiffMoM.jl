@@ -746,10 +746,10 @@ radiation condition `F_E = -eta0 * (n_hat x F_H)`.
 
 The uniform Cartesian grid gives the dipole interaction matrix a block-Toeplitz
 structure, so the dense all-pairs sum can be replaced by a zero-padded
-convolution evaluated with FFTs. These operators produce matvecs that match the
-dense / direct operators to machine precision while scaling far better with
-voxel count. They are used by `solve_dda_3d`/`solve_em_dda_3d` via GMRES or via
-the `:fft_gmres` solver mode.
+convolution evaluated with FFTs. The regression suite compares these matvecs
+with the dense operators. They are used by `solve_dda_3d` and
+`solve_em_dda_3d` through GMRES or the `:fft_gmres` solver mode. Benchmark peak
+memory and solve time on the target grid before choosing an operator.
 
 ### `FFTDDAKernel3D`
 
@@ -971,10 +971,10 @@ alpha = 3V * (eps_r - 1) / (eps_r + 2)
 d alpha / d eps_r = 9V / (eps_r + 2)^2
 ```
 
-and the DDA system convention `A_ij = delta_ij - G_ij * alpha_j`. This currently
-supports only scalar-permittivity results with the uncorrected
-Clausius-Mossotti polarizability; it rejects tensor-material results and raises
-an error if `result.radiative_correction` is `true`.
+and the DDA system convention `A_ij = delta_ij - G_ij * alpha_j`. This function
+requires scalar-permittivity results with the uncorrected Clausius-Mossotti
+polarizability. It rejects tensor-material results and directs callers to
+re-solve with `radiative_correction=false` when necessary.
 
 **Parameters:**
 

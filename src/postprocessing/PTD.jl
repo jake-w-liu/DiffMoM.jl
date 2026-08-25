@@ -738,16 +738,16 @@ function solve_ptd(mesh::TriMesh, freq_hz::Real, excitation::PlaneWaveExcitation
     edges = _extract_diffraction_edges_validated(
         mesh, min_dihedral, include_boundary)
 
-    # The implemented Sáez de Adana coefficient branch is the validated
-    # half-plane/boundary formula. Applying its bottom-side convention to an
-    # interior wedge requires a physical illuminated-side classification;
-    # choosing a side by face order, vertex labels, coordinates, or normals
-    # makes the field depend on mesh representation. Fail closed until both
-    # interior side branches are implemented and benchmarked.
+    # The Sáez de Adana coefficient branch is validated for boundary
+    # half-planes. An interior wedge needs a physical illuminated-side
+    # classification; face order, vertex labels, coordinates, and normal
+    # orientation are not invariant choices. Reject interior wedges rather
+    # than make the field depend on mesh representation.
     any(edge -> edge.face_n != 0, edges) &&
         throw(ArgumentError(
-            "solve_ptd currently supports boundary half-plane edges only; " *
-            "interior-wedge PTD requires an invariant illuminated-side formulation"))
+            "solve_ptd requires boundary half-plane edges, but the mesh " *
+            "contains an interior diffraction wedge. Use solve_po for this " *
+            "mesh or pass boundary-only diffraction geometry."))
 
     _, work_limit = _preflight_ptd_work(
         ntriangles(mesh), length(edges), length(grid.w), max_work_bytes)

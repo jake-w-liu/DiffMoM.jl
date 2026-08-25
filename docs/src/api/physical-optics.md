@@ -121,12 +121,11 @@ PO contribution, extracts diffraction edges from the mesh, and adds the edge
 fringe far-field using the Sáez de Adana et al. formulation.
 
 !!! warning "Validity"
-    `solve_ptd` currently evaluates **boundary half-plane edges only**
-    (`n = 2`, `α = 2π`). If an interior wedge passes `min_dihedral_deg`, the
-    solver fails closed because the implemented bottom-side coefficient branch
-    does not yet provide a mesh-label-independent illuminated-side convention.
-    `extract_diffraction_edges` can still be used to inspect interior wedge
-    geometry.
+    `solve_ptd` accepts **boundary half-plane edges only** (`n = 2`, `α =
+    2π`). It rejects an interior wedge that passes `min_dihedral_deg` because
+    the coefficient branch has no mesh-label-independent illuminated-side
+    convention. Use `solve_po` for that mesh, or use
+    `extract_diffraction_edges` to inspect the wedge geometry.
 
     When mixed-scale inputs require 8704-bit direction accumulation,
     `solve_ptd` retains at most 12,288 high-precision field values (4,096
