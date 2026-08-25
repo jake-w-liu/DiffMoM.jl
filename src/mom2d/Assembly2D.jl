@@ -103,14 +103,6 @@ function _solve_vie_factored_2d!(
     return workspace
 end
 
-function _solve_vie_factored_2d(
-        factorization,
-        Z::Matrix{ComplexF64},
-        rhs::Union{AbstractVector{ComplexF64},AbstractMatrix{ComplexF64}},
-        label::AbstractString)
-    return _solve_vie_factored_2d!(copy(rhs), factorization, Z, label)
-end
-
 function _factor_vie_system_2d(Z::Matrix{ComplexF64}, label::AbstractString)
     raw_factor = try
         lu(Z)

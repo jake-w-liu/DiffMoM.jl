@@ -14,10 +14,6 @@ export electric_dipole_dyadic_3d, assemble_dda_3d, solve_dda_3d
 export planewave_dda_3d, induced_dipoles_dda_3d
 export scattered_field_dda_3d, farfield_dda_3d
 
-const _I3_DDA = @SMatrix [1.0 0.0 0.0;
-                          0.0 1.0 0.0;
-                          0.0 0.0 1.0]
-
 const _CI3_DDA = @SMatrix [1.0 + 0im 0.0 + 0im 0.0 + 0im;
                            0.0 + 0im 1.0 + 0im 0.0 + 0im;
                            0.0 + 0im 0.0 + 0im 1.0 + 0im]
@@ -388,8 +384,6 @@ end
 
 @inline _alpha_apply(alpha::Number, E::CVec3) = alpha * E
 @inline _alpha_apply(alpha::_CMat3DDA, E::CVec3) = alpha * E
-@inline _alpha_adjoint_apply(alpha::Number, E::CVec3) = conj(alpha) * E
-@inline _alpha_adjoint_apply(alpha::_CMat3DDA, E::CVec3) = adjoint(alpha) * E
 @inline _alpha_block(G, alpha::Number) = G * alpha
 @inline _alpha_block(G, alpha::_CMat3DDA) = G * alpha
 

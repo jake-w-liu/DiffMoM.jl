@@ -5,7 +5,6 @@
 
 export mie_coefficients_2d, mie_scattered_field_2d, mie_total_field_2d
 
-const _MIE2D_FALLBACK_PRECISION = 256
 const _MIE2D_SMALL_ARGUMENT_CUTOFF = 1e-25
 const _MIE2D_INTERNAL_SERIES_LIMIT = 0.5
 const _MAX_MIE2D_ORDER = 100_000
@@ -327,14 +326,6 @@ function _mie2d_besselj_values_miller_float!(
         end
     end
     return result
-end
-
-function _mie2d_besselj_values_miller_float(
-        argument::Float64, maximum_order::Int)
-    result = Vector{Float64}(undef, maximum_order + 1)
-    ratios = Vector{Float64}(undef, maximum_order)
-    return _mie2d_besselj_values_miller_float!(
-        result, ratios, argument, maximum_order)
 end
 
 function _mie2d_exterior_sequences_float!(
