@@ -33,11 +33,11 @@ Census taken at commit `2c31d91064b07758eac5debdf9e710934e96bc17` on
 | SL-024 | K | The public `planewave_dda_3d` docstring was attached to the intervening stale private helper instead of the exported function | `src/mom3d/DDA3D.jl`, `test/runtests.jl` | negative | R2 | INV-032, INV-045, INV-049 | complete: removing the stale helper restored the public binding; `Docs.hasdoc` now guards it | `dea2628` |
 | SL-025 | K | The CAD-conversion availability probe described every Gmsh execution failure as "not found" | `src/geometry/MeshIO.jl`, `test/runtests.jl` | negative | R2 | INV-031, INV-036, INV-049 | complete: the diagnostic preserves the executable path and underlying failure, distinguishes a nonzero version probe, and gives a recovery action | `551d73b` |
 | SL-026 | C/E | The private-symbol census found five additional definition-only symbols | `src/mom3d/DDA3D.jl`, `src/mom2d/Mie2D.jl`, `src/mom2d/Assembly2D.jl` | 20 | R2 | INV-045, INV-047 | complete: removed after the user approved the exact audited set | `09f6b7e` |
-| SL-027 | C/E | Removing the approved allocating VIE wrapper exposed its private in-place solver and six support definitions as one unreachable cluster | `src/mom2d/Assembly2D.jl` | 50–65 | R2 | INV-045, INV-047 | audited; deletion awaits explicit approval | |
-| SL-028 | C/E/J | Five unexported MLFMA interpolation and Legendre routines are outside the production and test reachability graph | `src/fast/MLFMA.jl` | 80–100 | R2 | INV-018, INV-041, INV-045, INV-047 | audited; deletion awaits explicit approval | |
-| SL-029 | C/E | One unused grounded-design `Problem` workflow remains in an included helper file; the two helpers consumed by active examples are separate | `examples/grounded_rcs/framework_pixel_design.jl` | 60–75 | R2 | INV-033, INV-045, INV-047 | audited; example compatibility decision awaits explicit approval | |
-| SL-030 | C | Two figure constants have no use in their validation script | `validation/meep/meep_validation_figure.jl` | 2 | R1 | INV-034, INV-045 | audited; deletion awaits explicit approval | |
-| SL-031 | C/E | Four definitions in the repository-local slopfix tooling have no static or reflective consumer | `scripts/slopfix_lib/{scope,langs,quality,manifest}.py` | 20–30 | R2 | INV-041, INV-045, INV-047 | audited; deletion awaits explicit approval | |
+| SL-027 | C/E | Removing the approved allocating VIE wrapper exposed its private in-place solver and six support definitions as one unreachable cluster | `src/mom2d/Assembly2D.jl` | 50–65 | R2 | INV-045, INV-047 | complete: removed after the user approved the exact audited set | `a1103cd` |
+| SL-028 | C/E/J | Five unexported MLFMA interpolation and Legendre routines are outside the production and test reachability graph | `src/fast/MLFMA.jl` | 80–100 | R2 | INV-018, INV-041, INV-045, INV-047 | complete: removed after the user approved the exact audited set | `a1103cd` |
+| SL-029 | C/E | One unused grounded-design `Problem` workflow remains in an included helper file; the two helpers consumed by active examples are separate | `examples/grounded_rcs/framework_pixel_design.jl` | 60–75 | R2 | INV-033, INV-045, INV-047 | complete: removed after the user approved the example compatibility change | `a1103cd` |
+| SL-030 | C | Two figure constants have no use in their validation script | `validation/meep/meep_validation_figure.jl` | 2 | R1 | INV-034, INV-045 | complete: removed after the user approved the exact audited set | `a1103cd` |
+| SL-031 | C/E | Four definitions in the repository-local slopfix tooling have no static or reflective consumer | `scripts/slopfix_lib/{scope,langs,quality,manifest}.py` | 20–30 | R2 | INV-041, INV-045, INV-047 | complete: removed after the user approved the exact audited set | `a1103cd` |
 
 ## Behavioural diff — SL-001 (pending full site resolution)
 
@@ -96,9 +96,10 @@ adjoint path used its checked scalar/tensor helpers. The focused 2D and 3D MoM
 suites and the full one-thread bounds-checked package suite passed after the
 deletion.
 
-## Audited reachability-closure set awaiting approval
+## Approved reachability-closure removal
 
-The next static reachability closure contains these exact definitions:
+The user approved the following exact set on 2026-08-25; commit `a1103cd`
+removes it:
 
 - SL-027 — `_VIE_RHS_SCALE_LOWER_2D`, `_VIE_RHS_SCALE_UPPER_2D`,
   `_VIE_SOLVE_MIN_FALLBACK_PRECISION_2D`,
@@ -115,14 +116,13 @@ The next static reachability closure contains these exact definitions:
   `source_language_share`.
 
 Repository-wide token searches found no references outside each listed
-cluster. None of the Julia package symbols is exported or documented as public,
-and the reflective-use sweep found no lookup by name. `solve_vie_2d` uses
-`_factor_vie_system_2d` with `_solve_factored_linear_system`; MLFMA builds the
-active per-mode filters with `_build_disagg_filters_all_m`; the grounded
-examples use `svec_fast` and `conic_filter_matrix`, which remain. The three
-unprefixed MLFMA functions and the included example workflow carry a higher
-compatibility risk than private definition-only leaves, so this exact set is
-not removed without explicit approval.
+cluster. None of the Julia package symbols was exported or documented as
+public, and the reflective-use sweep found no lookup by name. `solve_vie_2d`
+uses `_factor_vie_system_2d` with `_solve_factored_linear_system`; MLFMA builds
+the active per-mode filters with `_build_disagg_filters_all_m`; the grounded
+examples continue to use `svec_fast` and `conic_filter_matrix`. After removal,
+the bounds-checked 2D suite passed 264 tests, and the bounds-checked one-thread
+package suite passed all 52 sections, including the MLFMA operator checks.
 
 ## Running totals
 
@@ -131,7 +131,7 @@ not removed without explicit approval.
 | Baseline code lines | 74,755 |
 | Raw census estimate (unverified) | 7,668 |
 | Promised net reduction | 150 |
-| Gross removed so far | 1,174 |
-| Gross added so far | 8,320 |
-| Net removed so far | -7,145 |
-| Remaining to target | 7,295 |
+| Gross removed so far | 1,399 |
+| Gross added so far | 8,293 |
+| Net removed so far | -6,893 |
+| Remaining to target | 7,043 |
