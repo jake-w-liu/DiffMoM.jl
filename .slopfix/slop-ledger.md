@@ -11,7 +11,7 @@ Census taken at commit `2c31d91064b07758eac5debdf9e710934e96bc17` on
 | SL-002 | A | Two large MLFMA sections are token clones and may be forward/adjoint variants with different ordering and conjugation | `src/fast/MLFMA.jl:3038`, `:3355` | 0–45 | R3 | INV-018, 040–043 | open; read both completely | |
 | SL-003 | A | FFT electric and coupled EM kernel/operator setup sections repeat structure but may encode different tensor/block semantics | `src/mom3d/FFTDDA3D.jl:292`, `:600` | 0–40 | R3 | INV-028, 040–043 | open; behavioural diff required | |
 | SL-004 | A | Repeated example bootstrap blocks activate/instantiate DiffMoM and create output directories | seven example files beginning near lines 8–35 | 45–65 | R1 | INV-031, INV-033 | open; example command compatibility approval required | |
-| SL-005 | A | `ensure_gmsh_on_path` is duplicated in two Bempp drivers | `validation/bempp/run_impedance_cross_validation.py:17`, `run_pec_cross_validation.py:29` | 8–14 | R1 | INV-035, INV-036 | open; external workflow approval required | |
+| SL-005 | A | `ensure_gmsh_on_path` was duplicated in two Bempp drivers | `validation/bempp/_bempp_common.py` and both solver drivers | 8–14 | R1 | INV-035, INV-036 | complete: one workflow-local helper owns the check; help and dry-run paths pass, while external solver execution remains unverified | `3465163` |
 | SL-006 | C | `Tuple` was imported but had no static reference | `validation/bempp/sweep_impedance_conventions.py` | 1 | R1 | INV-035 | complete: removed after the user approved the audited deletion set | `dea2628` |
 | SL-007 | G | Scanner flags abstract incident-field fallbacks as placeholders | `src/assembly/Excitation.jl:2484`, `:2561` | 0 | R1 | INV-007, INV-014 | false positive: intentional explicit unsupported-type errors | |
 | SL-008 | G | Scanner flags numeric conversion probe as a swallowed error | `src/postprocessing/Diagnostics.jl:32` | 0 | R1 | INV-013, INV-040 | false positive: conservative precision fallback | |
@@ -38,6 +38,12 @@ Census taken at commit `2c31d91064b07758eac5debdf9e710934e96bc17` on
 | SL-029 | C/E | One unused grounded-design `Problem` workflow remains in an included helper file; the two helpers consumed by active examples are separate | `examples/grounded_rcs/framework_pixel_design.jl` | 60–75 | R2 | INV-033, INV-045, INV-047 | complete: removed after the user approved the example compatibility change | `a1103cd` |
 | SL-030 | C | Two figure constants have no use in their validation script | `validation/meep/meep_validation_figure.jl` | 2 | R1 | INV-034, INV-045 | complete: removed after the user approved the exact audited set | `a1103cd` |
 | SL-031 | C/E | Four definitions in the repository-local slopfix tooling have no static or reflective consumer | `scripts/slopfix_lib/{scope,langs,quality,manifest}.py` | 20–30 | R2 | INV-041, INV-045, INV-047 | complete: removed after the user approved the exact audited set | `a1103cd` |
+| SL-032 | J/K | Validation comparators accepted malformed or non-finite report data, could emit non-standard JSON, and did not consistently fail when a declared matrix metric was unavailable | Bempp/Meep comparators, orchestrators, docs, CI regression job | negative | R3 | INV-034, INV-035, INV-040, INV-048, INV-049 | complete: strict input/report validation, standard JSON output, and nonzero gate failures are covered by Python regressions | `e9fa08c` |
+| SL-033 | J/K | The impedance plotter duplicated equidistant azimuth samples instead of averaging one physical cut; several diagnostics exposed tracebacks or unsupported performance guidance | validation plotters, validation tests, `docs/src/` | negative | R2 | INV-032, INV-034, INV-040, INV-049 | complete: the cut is reduced by theta, diagnostics name recovery actions, and the documentation describes measured or source-owned behavior | `44f2c75` |
+| SL-034 | H/K | The impedance plotter imported Matplotlib before argument parsing, so `--help` failed when the optional plotting dependency was absent | `validation/bempp/plot_impedance_comparison.py` | negative | R1 | INV-034, INV-035, INV-049 | complete: plotting imports are lazy and the help path has a dependency-free regression | `ee9bf69` |
+| SL-035 | A/C/E/J/K | Thirteen Bempp/Meep commands repeated CLI validators, strict artifact readers, project-root handling, and subprocess setup; invalid numeric options reached later stages, and approved intermediates or test stubs had no consumer | `validation/bempp/`, `validation/meep/`, `validation/tests/test_validation_reports.py` | 250–400 | R2 | INV-034, INV-035, INV-040, INV-041, INV-048, INV-049 | complete: two workflow-local helpers own the shared contracts, every help path remains dependency-free, numeric inputs fail during parsing, and the exact approved stale values/stubs were removed | `3465163` |
+| SL-036 | K | Optimizer and solver guidance misstated the absolute gradient stop, trace fields, and single-adjoint ratio formula; permanent pages repeated mutable thresholds and unsupported performance preferences; the multi-angle stagnation message said the objective was unchanged when the actual criterion allowed a small change | optimizer, solver, formulation, mesh, and validation docs plus the multi-angle diagnostic | negative | R2 | INV-032, INV-040, INV-048, INV-049 | complete: formulas and runtime contracts match source, mutable values point to their owning symbols, claims name required measurements, and the diagnostic reports its effective criterion and recovery action | `311613c` |
+| SL-037 | B/H | `build_aca_operator` rebound its `max_rank` keyword after a `Threads.@threads` loop captured that binding, obscuring inference of the threaded limit and the distinct workspace requirement | `src/fast/ACA.jl` | negative | R2 | INV-018, INV-041, INV-048 | complete: the keyword remains immutable, the post-build workspace rank has a separate binding, a four-thread bounds-checked construction passed, and six concrete JET entrypoints reported zero errors | `e0d99c4` |
 
 ## Behavioural diff — SL-001 (pending full site resolution)
 
@@ -124,14 +130,32 @@ examples continue to use `svec_fast` and `conic_filter_matrix`. After removal,
 the bounds-checked 2D suite passed 264 tests, and the bounds-checked one-thread
 package suite passed all 52 sections, including the MLFMA operator checks.
 
+## Approved validation consolidation and stale-value removal
+
+The user approved this exact set on 2026-08-25; commit `3465163` implements it:
+
+- Move repeated Bempp CLI, strict JSON/CSV, project-root, subprocess, solver,
+  spherical-grid, and angular-alignment logic into
+  `validation/bempp/_bempp_common.py`.
+- Move repeated Meep CLI, strict JSON, project-root, subprocess, and layout
+  preflight logic into `validation/meep/_meep_common.py`.
+- Reject non-finite or out-of-domain numeric options during argument parsing.
+- Remove the unused `bempp_mag`, `julia_grid`, `bempp_grid`, `n_phi`, and
+  `e_ff` intermediates and the redundant Matplotlib test stubs.
+
+All 13 command help paths, 13 Python regressions, Ruff, syntax compilation,
+three orchestration dry runs, and invalid-layout preflight checks passed. The
+commit removed 355 physical lines across the validation implementation and
+tests.
+
 ## Running totals
 
 | | Lines |
 | --- | ---: |
 | Baseline code lines | 74,755 |
-| Raw census estimate (unverified) | 7,668 |
+| Current duplication estimate | 7,489 |
 | Promised net reduction | 150 |
-| Gross removed so far | 1,399 |
-| Gross added so far | 8,293 |
-| Net removed so far | -6,893 |
-| Remaining to target | 7,043 |
+| Gross removed so far | 2,322 |
+| Gross added so far | 10,215 |
+| Net reduction so far | -7,892 |
+| Remaining to target | 8,042 |

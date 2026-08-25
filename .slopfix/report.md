@@ -1,15 +1,15 @@
 # Slopfix report — DiffMoM.jl
 
-> Status: the source and UX-writing audit has reached `49c78f5`. The approved
-> SL-026 definitions were removed in `09f6b7e`; the exact SL-027–SL-031
-> reachability-closure set awaits a separate deletion decision. Full final
-> gates will be replayed after that decision.
+> Status: complete for the locally executable scope at audited source commit
+> `e0d99c4`. Every confirmed defect in the ledger was fixed. The remaining
+> consolidation candidates are deferred for stated compatibility reasons, and
+> seven external or artifact-bound behaviours remain unverified below.
 
 | | |
 | --- | --- |
 | Period | `2026-08-24` → `2026-08-25` |
 | Baseline commit | `2c31d91064b07758eac5debdf9e710934e96bc17` |
-| Audited source commit | `49c78f5` |
+| Audited source commit | `e0d99c4` |
 | Counter | `slopfix-builtin/2+julia/1.12.7` |
 | Definition | non-blank, non-comment source lines |
 | Scope | frozen in `.slopfix/baseline.json` |
@@ -19,24 +19,24 @@
 | | Lines |
 | --- | ---: |
 | Baseline code | 74,755 |
-| Audited code | 81,900 |
-| Gross removed | 1,174 |
-| Gross added | 8,320 |
+| Audited code | 82,647 |
+| Gross removed | 2,322 |
+| Gross added | 10,215 |
 | Gross method | `slopfix-builtin/2-line-fingerprint-diff` |
-| **Net change** | **+7,145** |
-| **Reduction** | **-9.56%** |
+| **Net change** | **+7,892** |
+| **Reduction** | **-10.56%** |
 
 | | |
 | --- | ---: |
 | Promised reduction | 0.2% (150 lines) |
-| Shortfall from target | 7,295 lines |
+| Shortfall from target | 8,042 lines |
 | **Target attained** | **No** |
 
 Reproduce the current number:
 
 ```bash
-git checkout 49c78f5
-python3 scripts/slopfix.py measure --strict
+python3 scripts/slopfix.py measure --strict \
+  --ceiling "$(tr -d '[:space:]' < .slopfix/line-ceiling.txt)"
 ```
 
 The reduction target was not met. The original clone census included distinct
@@ -45,10 +45,13 @@ workflow contracts were not interchangeable. Correctness fixes,
 characterisation tests, public-documentation coverage, fail-closed example
 gates, explicit-import regression checks, and the executable quality tooling
 added more source than the audit safely removed. After explicit approval, the
-15 private helpers and one unused Python import that passed the static
-dead-code audit were removed in `dea2628`; the next approved five-symbol set
-was removed in `09f6b7e`. No tests or documentation were removed, and no
-source was parked or compressed to manufacture a reduction.
+audit removed 15 private helpers and one unused Python import in `dea2628`, five
+definition-only symbols in `09f6b7e`, the SL-027–SL-031 reachability closure in
+`a1103cd`, and unused validation intermediates and test stubs in `3465163`.
+The validation consolidation in `3465163` removed 355 physical lines while
+preserving the generalized regression coverage. No documentation page or
+behavioral test was removed, and no source was parked or compressed to
+manufacture a reduction.
 
 ## Verification
 
@@ -80,23 +83,22 @@ Final-gate checks:
 | Four-thread bounds-checked project suite | PASS; all 52 sections |
 | Isolated package test gate | PASS; exit 0 |
 | Documentation and doctests | PASS; export coverage and cross-references checked |
-| Modified Julia parser sweep | PASS; all 56 changed Julia files |
-| Python bytecode compilation | PASS; all 13 changed Python files |
+| Julia parser sweep | PASS; all 115 repository Julia files parsed |
+| Python validation regressions | PASS; 13 tests |
+| Python static checks | PASS; 27 files compiled and Ruff reported no selected findings |
 | Aqua | PASS through the installed-package test graph |
-| JET | PASS; zero reports on the selected concrete entrypoints |
-| Source coverage | 21,079 / 23,031 executable lines (91.52%) |
+| JET 0.11.5 | PASS; zero reports across six concrete entrypoints |
+| Source coverage | 21,125 / 22,802 instrumented lines (92.65%) |
 | Blocking smells | 0 |
-| Duplication ratchet | 7,668 estimated removable lines, ceiling 7,900 |
-| Line ratchet | 81,854 code lines, ceiling 82,648 |
-| Secret scan | Gitleaks 8.30.1: 442-commit history and audited source files passed |
+| Duplication ratchet | 7,489 estimated removable lines, ceiling 7,900 |
+| Line ratchet | 82,647 code lines, ceiling 82,648 |
+| Secret scan | Gitleaks 8.30.1: all 465 commits passed |
 | `slopfix measure --strict` | Exit 0; no warnings or integrity findings |
 
-The one-thread, four-thread, and strict quality runs in this table completed at
-`e6a2afa`. The approved SL-026 deletion passed its focused suites and a full
-one-thread bounds-checked suite. The validation-copy changes in `49c78f5`
-passed their focused Python regression, parser checks, and documentation build.
-The full matrix will be replayed after the SL-027–SL-031 deletion decision so
-the final report describes one exact source state.
+The one-thread, four-thread, coverage, documentation, parser, Python, JET,
+quality-contract, smell, duplication, line, integrity, and secret checks were
+replayed against the final implementation tree. The quality contract also ran
+the package tests and clean dependency resolution in temporary environments.
 
 The bounds-checked commands were:
 
@@ -113,7 +115,8 @@ JULIA_NUM_THREADS=4 JULIA_NUM_PRECOMPILE_TASKS=1 OPENBLAS_NUM_THREADS=1 \
 Focused numerical evidence:
 
 - The cancellation-sensitive 32-column dense-Q case allocated 20,144 bytes
-  and had a 17.625 microsecond median over 100 warm runs on this machine. The
+  and had a 10.75 microsecond median over 100 warm runs on this machine
+  (9.292–15.292 microseconds observed). The
   previous all-BigFloat implementation measured 249,783,504 bytes and
   45.418 milliseconds on the same case. Wall time is machine-specific; the
   regression suite enforces allocation ceilings.
@@ -142,10 +145,10 @@ Focused numerical evidence:
   `0.113160 s` and `17,609,680` bytes, with maximum coefficient difference
   `2.22e-16`. Timing is machine-specific; the coefficient comparison is the
   correctness gate.
-- Aqua's default 10-second persistent-task window failed under a fresh
-  bounds-checked compile. The same check completed with `persistent=false`
-  after `16.733 s`; a 60-second test window then passed in both one-thread
-  (`13.6 s`) and four-thread (`15.0 s`) suites.
+- Aqua's default 10-second persistent-task window failed under an earlier fresh
+  bounds-checked compile. The same diagnostic completed with
+  `persistent=false` after `16.733 s`; the final 60-second gate passed in the
+  one-thread (`10.1 s`) and four-thread (`8.4 s`) suites.
 - Before `dea2628`, `Docs.hasdoc(DiffMoM, :planewave_dda_3d)` returned `false`
   while the adjacent stale private helper returned `true`. After the approved
   deletion, the public function returns `true`; `test/runtests.jl` now protects
@@ -159,6 +162,17 @@ Focused numerical evidence:
   returned `gmsh_diagnostic=PASS`. The error retained that exact path and the
   operating-system failure, then directed the caller to install Gmsh, update
   `PATH`, or pass a working `gmsh_exe`.
+- A four-thread, bounds-checked ACA construction produced 108 low-rank blocks
+  with observed maximum rank 3 and a three-element multiplication workspace.
+  The post-build workspace calculation no longer rebinds the `max_rank`
+  keyword captured by the threaded block loop. The final pinned JET sweep
+  reported zero errors for all six concrete entrypoints.
+- All 13 Bempp/Meep command help paths completed without importing their
+  optional solvers. The benchmark, seven-case matrix, and 48-case convention
+  sweep dry runs emitted their complete subprocess plans. Invalid numeric and
+  Meep layout inputs stopped during argument parsing with exit code 2. Each
+  diagnostic named the invalid option or geometry relation and the required
+  valid range.
 
 The test suite skipped the optional paper-consistency comparisons because their
 generated artifacts were absent. Test 32 verified the Gmsh executable and error
@@ -178,14 +192,14 @@ The final matrix is recorded in `.slopfix/quality-report.json`.
 | --- | --- |
 | Quality model | `ISO/IEC 25010:2023` |
 | Profile | `julia` |
-| Config SHA-256 | `680eca22432a9339880ddf0d51b7e1aa273d19cbd4d34b74f47392599133ad6c` |
-| Run scope | full; all 16 gates selected |
-| Totals | 14 PASS, 0 FAIL, 1 UNVERIFIED, 1 NOT_APPLICABLE |
+| Config SHA-256 | `498bc4d85e2a60fe7fbd9448c4b06439ea841263a2c4adf819f31c3fdd2c76f6` |
+| Run scope | full; all 17 gates selected |
+| Totals | 15 PASS, 0 FAIL, 1 UNVERIFIED, 1 NOT_APPLICABLE |
 | Strict verdict | PASS; no required gate failed or remained unverified |
 
 | Characteristic | PASS | FAIL | UNVERIFIED | NOT_APPLICABLE | Evidence or limit |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Functional suitability | 3 | 0 | 0 | 0 | tests, coverage, numerical contracts |
+| Functional suitability | 4 | 0 | 0 | 0 | package and validation tests, coverage, numerical contracts |
 | Performance efficiency | 1 | 0 | 0 | 0 | allocation and warm latency baseline |
 | Compatibility | 1 | 0 | 0 | 1 | CI configuration checked; no committed library manifest |
 | Interaction capability | 1 | 0 | 0 | 0 | docs/doctest command |
@@ -226,6 +240,9 @@ implementation dependencies, but remain a compatibility boundary.
 | 2026-08-25 | INV-001, 048 | Aqua's persistent-task gate uses a 60-second completion window while retaining the same subprocess-based task check | A measured 16.733-second clean bounds-checked compile exceeded Aqua's 10-second default without leaving a persistent task | User's request to verify and fix the full test graph |
 | 2026-08-25 | INV-031, 032, 049 | Diagnostics state the rejected input, observed value, and recovery action; permanent docs state capabilities directly and limit performance guidance to measured comparisons | Keep user-facing copy useful after the implementation and runtime environment change | User's explicit full `$ux-writing` pass request |
 | 2026-08-25 | INV-031, 036, 049 | CAD conversion distinguishes an unavailable executable from a nonzero Gmsh version probe and preserves the effective path and recovery action | Prevent an executable or permission failure from being mislabeled as a missing installation | User's explicit full `$ux-writing` pass request |
+| 2026-08-25 | INV-032, 034, 035, 040, 048, 049 | Bempp/Meep readers reject malformed and non-finite artifacts, generated JSON uses finite numbers or `null`, and matrix runs stop when a required metric is unavailable | Prevent invalid validation artifacts from appearing to pass | User's deep-debug and full `$ux-writing` pass request |
+| 2026-08-25 | INV-034, 035, 040, 041, 048, 049 | Two workflow-local helpers own shared validation CLI, artifact, grid, and subprocess contracts; numeric options fail during parsing, and optional dependencies do not block help output | Reduce repeated code while preserving command behavior and making invalid input actionable | User's explicit approval of the audited consolidation and stale-value set |
+| 2026-08-25 | INV-032, 040, 048, 049 | Optimizer formulas and stop/trace contracts match source; method-selection and discretization guidance names the measurements that decide the choice; the stagnation message reports the criterion and next checks | Remove incorrect formulas, mutable snapshots, unsupported preferences, and a misleading diagnostic found in the final `$ux-writing` sweep | User's explicit full `$ux-writing` pass request |
 
 No confirmed bug was deliberately preserved.
 
@@ -249,6 +266,13 @@ No confirmed bug was deliberately preserved.
 | SL-024 | Restored the exported `planewave_dda_3d` docstring binding and added a direct regression | `dea2628` | INV-032, 045, 049 |
 | SL-025 | Made Gmsh availability failures specific, path-preserving, and actionable | `551d73b` | INV-031, 036, 049 |
 | SL-026 | Removed the explicitly approved set of five additional definition-only symbols | `09f6b7e` | INV-045, 047 |
+| SL-027–SL-031 | Removed the approved unreachable VIE/MLFMA/example/figure/tooling closure | `a1103cd` | INV-018, 033, 041, 045, 047 |
+| SL-032 | Made validation artifact parsing and report gates fail closed; added the Python regression job | `e9fa08c` | INV-034, 035, 040, 048, 049 |
+| SL-033 | Corrected equidistant azimuth-cut reduction and removed unsupported documentation guidance | `44f2c75` | INV-032, 034, 040, 049 |
+| SL-034 | Kept plotter help usable without the optional Matplotlib dependency | `ee9bf69` | INV-034, 035, 049 |
+| SL-005, SL-035 | Consolidated shared Bempp/Meep command infrastructure and removed the exact approved stale intermediates and stubs | `3465163` | INV-034–036, 040, 041, 048, 049 |
+| SL-036 | Corrected optimizer formulas and runtime guidance, removed stale or unsupported method preferences, and made the stagnation diagnostic truthful and actionable | `311613c` | INV-032, 040, 048, 049 |
+| SL-037 | Kept the threaded ACA rank limit immutable and gave the post-build workspace rank its own binding | `e0d99c4` | INV-018, 041, 048 |
 
 No production module was wholesale rewritten.
 
@@ -260,16 +284,14 @@ No production module was wholesale rewritten.
 | SL-002 | Mirrored MLFMA sections | Forward/adjoint ordering and conjugation make token similarity unsafe | Extract and prove a shared invariant before editing |
 | SL-003 | Electric and coupled FFT-DDA setup | Tensor/block semantics differ | Differential dense/operator tests for every material mode, then approval |
 | SL-004 | Example bootstrap blocks | Invocation and environment behaviour are user-visible | Define one supported example launcher contract and replay the example matrix |
-| SL-005 | Bempp Gmsh-path helpers | External environments were unavailable | Provision Bempp/Gmsh and characterize both drivers first |
 | SL-012 | Large test/source files | A split is high-risk churn without a module-level characterization spec | Separate approved restructuring task |
-| SL-027–SL-031 | VIE, MLFMA, grounded-example, Meep-figure, and slopfix-tool reachability closures | The static audit found no users, but deletion requires an explicit compatibility decision | Approve or reject the exact set in `.slopfix/slop-ledger.md` |
 
 ## Integrity findings
 
 | Finding | Detail | Disposition |
 | --- | --- | --- |
 | MATLAB scanner warning | The fallback scanner previously misread MATLAB's non-conjugating transpose apostrophe as a string delimiter | Replaced the expression with the equivalent `transpose(Ri)` form; the current strict measurement reports no warning |
-| Generated-doc secret false positives | A worktree-wide scan matched `API:...` HTML anchor IDs in ignored `docs/build/` files | Confirmed generated anchors, not credentials; the 442-commit history and audited source files passed |
+| Generated-doc secret false positives | A worktree-wide scan matched `API:...` HTML anchor IDs in ignored `docs/build/` files | Confirmed generated anchors, not credentials; the final 465-commit history passed |
 | Parked/compressed/deleted verification code | None reported by `measure --strict` | No action required |
 
 ## Remaining known problems
@@ -277,15 +299,13 @@ No production module was wholesale rewritten.
 - Remote platform results, external Bempp/Meep/MATLAB comparisons, successful
   CAD conversion, artifact-dependent example/validation paths, and
   serialization compatibility remain unverified as itemized above.
-- The SL-027–SL-031 reachability-closure definitions remain pending explicit
-  deletion approval; the exact set and evidence are in the slop ledger.
 - The docs build passes but warns that two API pages exceed 100 KiB and the
   generated search index is about 1.4 MiB.
 - `test/runtests.jl` remains a 14,480-line sequential driver. Large source files
   include `src/geometry/Mesh.jl`, `src/fast/MLFMA.jl`, and
   `src/assembly/Excitation.jl`; splitting them without behavioural specs was
   deliberately deferred.
-- The source coverage result is 91.52%, not complete coverage. External and
+- The source coverage result is 92.65%, not complete coverage. External and
   artifact-dependent workflows are the clearest remaining evidence gap.
 
 ## Guardrails installed
@@ -299,9 +319,10 @@ No production module was wholesale rewritten.
 | `.slopfix/quality.json` | Replays the reviewed ISO/IEC 25010 contract | Any failed or required-unverified gate |
 | `.github/workflows/ci.yml` | Runs the platform matrix, docs, ratchets, smells, and quality contract | Any configured job or gate failure |
 
-The line ceiling is 794 lines above the audited count. Raising either ceiling
-requires a deliberate reviewed commit. These checks expose re-accumulation; they
-do not prove that every future change is non-duplicative.
+The line ceiling is one line above the audited count, and the duplication ceiling
+is 411 lines above the current estimate. Raising either ceiling requires a
+deliberate reviewed commit. These checks expose re-accumulation; they do not
+prove that every future change is non-duplicative.
 
 ## Artefacts
 

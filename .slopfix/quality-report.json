@@ -1,14 +1,15 @@
 {
   "schema_version": 1,
   "kind": "slopfix-quality-report",
-  "generated_at": "2026-08-25T08:28:53+00:00",
+  "generated_at": "2026-08-25T18:16:11+00:00",
   "quality_model": "ISO/IEC 25010:2023",
   "profile": "julia",
   "root": "/Users/jake/EMPIRE/codes/DiffMoM.jl",
-  "config_sha256": "680eca22432a9339880ddf0d51b7e1aa273d19cbd4d34b74f47392599133ad6c",
+  "config_sha256": "498bc4d85e2a60fe7fbd9448c4b06439ea841263a2c4adf819f31c3fdd2c76f6",
   "partial": false,
   "selected_gate_ids": [
     "julia-tests",
+    "validation-report-tests",
     "julia-aqua",
     "julia-clean-resolution",
     "julia-manifest-reproducibility",
@@ -26,16 +27,16 @@
     "julia-safety-hazards"
   ],
   "summary": {
-    "total": 16,
+    "total": 17,
     "by_status": {
-      "PASS": 14,
+      "PASS": 15,
       "FAIL": 0,
       "UNVERIFIED": 1,
       "NOT_APPLICABLE": 1
     },
     "by_category": {
       "functional-suitability": {
-        "PASS": 3,
+        "PASS": 4,
         "FAIL": 0,
         "UNVERIFIED": 0,
         "NOT_APPLICABLE": 0
@@ -112,15 +113,48 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 753.739,
+      "duration_seconds": 470.273,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 31226,
-        "sha256": "34a893d3c3933446eae0a048fd6763bd55449f79cb94e49c0abe9c240d822153"
+        "bytes": 31239,
+        "sha256": "db464980881774e0b520a737c04fbb4f10d7fee30d0eaa8d98d32fcf53f037a2"
+      },
+      "protected_paths_changed": []
+    },
+    {
+      "id": "validation-report-tests",
+      "category": "functional-suitability",
+      "title": "Validation report and strict-JSON regressions",
+      "required": true,
+      "kind": "command",
+      "status": "PASS",
+      "source": "command",
+      "message": "exit code 0",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "validation/tests",
+        "-p",
+        "test_*.py"
+      ],
+      "executable": "/opt/homebrew/bin/python3",
+      "cwd": ".",
+      "duration_seconds": 3.25,
+      "exit_code": 0,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 112,
+        "sha256": "ffb1ac44907c7d347702de0508ce24f0be07dd395e20a9ab02fc470981fb6dfe"
       },
       "protected_paths_changed": []
     },
@@ -169,15 +203,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 633.863,
+      "duration_seconds": 497.113,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 24022,
-        "sha256": "1fcbacc20381855f0d114c91d3660fd873a6f9cb05c3c6a5c56f90fbd6afd6e8"
+        "bytes": 23969,
+        "sha256": "2b6d1ae3eb1d88fcaa32c7cb0a9c6f4f33a25afbfec9508c6e518f071ed09df0"
       },
       "protected_paths_changed": []
     },
@@ -201,8 +235,8 @@
       "kind": "review",
       "status": "PASS",
       "source": "review",
-      "message": "A source coverage run on 2026-08-24 covered 21,079 of 23,031 executable source lines (91.52%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
-      "evidence": "A source coverage run on 2026-08-24 covered 21,079 of 23,031 executable source lines (91.52%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
+      "message": "A fresh bounds-checked source coverage run on 2026-08-25 covered 21,125 of 22,802 instrumented source lines (92.65%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
+      "evidence": "A fresh bounds-checked source coverage run on 2026-08-25 covered 21,125 of 22,802 instrumented source lines (92.65%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
       "rationale": "The measured source baseline and test-strength inventory are recorded in .slopfix/report.md; new behavior must add focused regression evidence."
     },
     {
@@ -225,8 +259,8 @@
       "kind": "review",
       "status": "PASS",
       "source": "review",
-      "message": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 17.625 microsecond median across 100 warm runs on 2026-08-24; full measurements are in .slopfix/report.md.",
-      "evidence": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 17.625 microsecond median across 100 warm runs on 2026-08-24; full measurements are in .slopfix/report.md.",
+      "message": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 10.75 microsecond median across 100 warm runs on 2026-08-25; full measurements are in .slopfix/report.md.",
+      "evidence": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 10.75 microsecond median across 100 warm runs on 2026-08-25; full measurements are in .slopfix/report.md.",
       "rationale": "Allocation ceilings are enforced in the normal test graph; wall-time figures are environment-specific evidence, not portable guarantees."
     },
     {
@@ -258,15 +292,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 32.913,
+      "duration_seconds": 20.515,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 1718,
-        "sha256": "6abb4ceb14547165d06e6bd9081c98be7e312741b3de9086ad59bdf161a2266c"
+        "bytes": 1719,
+        "sha256": "bfe59fe16706b7e2dbdb408c5b4ffcba92a1ba00c342de4d9e4800d59ef61f68"
       },
       "protected_paths_changed": []
     },
@@ -290,8 +324,8 @@
       "kind": "review",
       "status": "PASS",
       "source": "review",
-      "message": "A full-history gitleaks scan using the committed .gitleaks.toml completed with no findings on 2026-08-24. Clean dependency resolution is an executed command gate.",
-      "evidence": "A full-history gitleaks scan using the committed .gitleaks.toml completed with no findings on 2026-08-24. Clean dependency resolution is an executed command gate.",
+      "message": "Gitleaks 8.30.1 scanned all 465 commits with the committed .gitleaks.toml and reported no leaks on 2026-08-25. Clean dependency resolution is an executed command gate.",
+      "evidence": "Gitleaks 8.30.1 scanned all 465 commits with the committed .gitleaks.toml and reported no leaks on 2026-08-25. Clean dependency resolution is an executed command gate.",
       "rationale": "This is secret and configuration evidence, not a claim that Julia has complete SAST coverage."
     },
     {
@@ -326,8 +360,8 @@
       "kind": "review",
       "status": "PASS",
       "source": "review",
-      "message": "A pinned isolated JET run on concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints reported zero errors on 2026-08-24.",
-      "evidence": "A pinned isolated JET run on concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints reported zero errors on 2026-08-24.",
+      "message": "A temporary environment pinned to JET 0.11.5 analyzed concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints and reported zero errors on 2026-08-25. A four-thread bounds-checked ACA construction also verified that its workspace length equals the maximum assembled low-rank block rank.",
+      "evidence": "A temporary environment pinned to JET 0.11.5 analyzed concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints and reported zero errors on 2026-08-25. A four-thread bounds-checked ACA construction also verified that its workspace length equals the maximum assembled low-rank block rank.",
       "rationale": "JET remains optional because its results are coupled to the Julia compiler version."
     },
     {

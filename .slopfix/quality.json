@@ -102,7 +102,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "A source coverage run on 2026-08-24 covered 21,079 of 23,031 executable source lines (91.52%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
+      "evidence": "A fresh bounds-checked source coverage run on 2026-08-25 covered 21,125 of 22,802 instrumented source lines (92.65%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
       "rationale": "The measured source baseline and test-strength inventory are recorded in .slopfix/report.md; new behavior must add focused regression evidence.",
       "instructions": "Set a coverage threshold or changed-line ratchet and add property, differential, fuzz, or mutation checks where example-based tests can mirror an incorrect implementation."
     },
@@ -124,7 +124,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 17.625 microsecond median across 100 warm runs on 2026-08-24; full measurements are in .slopfix/report.md.",
+      "evidence": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 10.75 microsecond median across 100 warm runs on 2026-08-25; full measurements are in .slopfix/report.md.",
       "rationale": "Allocation ceilings are enforced in the normal test graph; wall-time figures are environment-specific evidence, not portable guarantees.",
       "instructions": "Use BenchmarkTools or PkgBenchmark on representative hot paths; pin time and memory tolerances and allocation ceilings. Include compilation or time-to-first-execution when it is user-visible."
     },
@@ -179,7 +179,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "A full-history gitleaks scan using the committed .gitleaks.toml completed with no findings on 2026-08-24. Clean dependency resolution is an executed command gate.",
+      "evidence": "Gitleaks 8.30.1 scanned all 465 commits with the committed .gitleaks.toml and reported no leaks on 2026-08-25. Clean dependency resolution is an executed command gate.",
       "rationale": "This is secret and configuration evidence, not a claim that Julia has complete SAST coverage.",
       "instructions": "Configure a repository-appropriate secret scanner and security review. Record any unavailable Julia-aware SAST coverage as a boundary rather than claiming no vulnerabilities."
     },
@@ -212,7 +212,7 @@
       "required": false,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "A pinned isolated JET run on concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints reported zero errors on 2026-08-24.",
+      "evidence": "A temporary environment pinned to JET 0.11.5 analyzed concrete mesh, excitation, dense assembly, far-field, Q, and workflow entrypoints and reported zero errors on 2026-08-25. A four-thread bounds-checked ACA construction also verified that its workspace length equals the maximum assembled low-rank block rank.",
       "rationale": "JET remains optional because its results are coupled to the Julia compiler version.",
       "instructions": "Pin a Julia-compatible JET release and analyze concrete public/hot entrypoints. Clear or document existing findings before ratcheting."
     },
