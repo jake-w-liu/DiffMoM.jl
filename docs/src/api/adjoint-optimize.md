@@ -60,7 +60,6 @@ where `Z'` is the conjugate transpose of the system matrix. The adjoint variable
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
-| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the reusable dense `N x N` impedance workspace. Checked before allocation. |
 | `check_gmres_convergence` | `Bool` | `true` | If `true`, an unconverged GMRES solve throws instead of returning an unverified adjoint vector. |
 | `check_true_residual` | `Bool` | `true` | Verify the true relative residual after the GMRES solve without an absolute denominator floor. |
 | `true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol` when `check_true_residual=true`. |
