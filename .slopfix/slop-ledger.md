@@ -32,7 +32,12 @@ Census taken at commit `2c31d91064b07758eac5debdf9e710934e96bc17` on
 | SL-023 | H/J | A single fresh-resolution radiation-vector allocation sample included one-time JIT work at a new Julia call site | `test/runtests.jl` | negative | R2 | INV-041, INV-048 | complete: the helper takes the minimum of three warm samples, retains the original ceiling, and passes the isolated and bounds-checked suites | `89a24f9` |
 | SL-024 | K | The public `planewave_dda_3d` docstring was attached to the intervening stale private helper instead of the exported function | `src/mom3d/DDA3D.jl`, `test/runtests.jl` | negative | R2 | INV-032, INV-045, INV-049 | complete: removing the stale helper restored the public binding; `Docs.hasdoc` now guards it | `dea2628` |
 | SL-025 | K | The CAD-conversion availability probe described every Gmsh execution failure as "not found" | `src/geometry/MeshIO.jl`, `test/runtests.jl` | negative | R2 | INV-031, INV-036, INV-049 | complete: the diagnostic preserves the executable path and underlying failure, distinguishes a nonzero version probe, and gives a recovery action | `551d73b` |
-| SL-026 | C/E | The final private-symbol census found five additional definition-only symbols | `src/mom3d/DDA3D.jl`, `src/mom2d/Mie2D.jl`, `src/mom2d/Assembly2D.jl` | 20 | R2 | INV-045, INV-047 | audited with no callers, exports, docs, reflective lookup, or extension contract; deletion awaits explicit approval | |
+| SL-026 | C/E | The private-symbol census found five additional definition-only symbols | `src/mom3d/DDA3D.jl`, `src/mom2d/Mie2D.jl`, `src/mom2d/Assembly2D.jl` | 20 | R2 | INV-045, INV-047 | complete: removed after the user approved the exact audited set | `09f6b7e` |
+| SL-027 | C/E | Removing the approved allocating VIE wrapper exposed its private in-place solver and six support definitions as one unreachable cluster | `src/mom2d/Assembly2D.jl` | 50–65 | R2 | INV-045, INV-047 | audited; deletion awaits explicit approval | |
+| SL-028 | C/E/J | Five unexported MLFMA interpolation and Legendre routines are outside the production and test reachability graph | `src/fast/MLFMA.jl` | 80–100 | R2 | INV-018, INV-041, INV-045, INV-047 | audited; deletion awaits explicit approval | |
+| SL-029 | C/E | One unused grounded-design `Problem` workflow remains in an included helper file; the two helpers consumed by active examples are separate | `examples/grounded_rcs/framework_pixel_design.jl` | 60–75 | R2 | INV-033, INV-045, INV-047 | audited; example compatibility decision awaits explicit approval | |
+| SL-030 | C | Two figure constants have no use in their validation script | `validation/meep/meep_validation_figure.jl` | 2 | R1 | INV-034, INV-045 | audited; deletion awaits explicit approval | |
+| SL-031 | C/E | Four definitions in the repository-local slopfix tooling have no static or reflective consumer | `scripts/slopfix_lib/{scope,langs,quality,manifest}.py` | 20–30 | R2 | INV-041, INV-045, INV-047 | audited; deletion awaits explicit approval | |
 
 ## Behavioural diff — SL-001 (pending full site resolution)
 
@@ -75,10 +80,10 @@ The same commit removes the unused `Tuple` import from
 `planewave_dda_3d`, where it belongs; the package test graph now checks that
 binding directly.
 
-## Additional audited deletion set awaiting approval
+## Approved definition-only removal
 
-The final private-symbol census found five more symbols whose only repository
-occurrences are their definitions:
+The user approved the following exact set on 2026-08-25; commit `09f6b7e`
+removes it:
 
 - `_alpha_adjoint_apply` (two methods)
 - `_mie2d_besselj_values_miller_float`
@@ -86,11 +91,38 @@ occurrences are their definitions:
 - `_I3_DDA`
 - `_MIE2D_FALLBACK_PRECISION`
 
-The two allocating wrappers have active in-place counterparts, and the DDA
-adjoint path uses its newer checked scalar/tensor helpers. Repository-wide
-search, export and documentation review, reflective-use search, and history
-review found no consumer or extension contract for this exact set. Deletion is
-not recorded without a separate explicit approval.
+The two allocating wrappers had active in-place counterparts, and the DDA
+adjoint path used its checked scalar/tensor helpers. The focused 2D and 3D MoM
+suites and the full one-thread bounds-checked package suite passed after the
+deletion.
+
+## Audited reachability-closure set awaiting approval
+
+The next static reachability closure contains these exact definitions:
+
+- SL-027 — `_VIE_RHS_SCALE_LOWER_2D`, `_VIE_RHS_SCALE_UPPER_2D`,
+  `_VIE_SOLVE_MIN_FALLBACK_PRECISION_2D`,
+  `_VIE_SOLVE_FALLBACK_GUARD_BITS_2D`,
+  `_vie_solve_fallback_precision_2d`, `_solve_vie_high_precision_2d`, and
+  `_solve_vie_factored_2d!`.
+- SL-028 — `_build_spectral_phi`, `_build_spectral_theta`, `legendre_all`,
+  `associated_legendre_m_all`, and `build_interp_matrices`.
+- SL-029 — `Problem`, `make_problem`, `objgrad(::Problem, ...)`,
+  `evaluate(::Problem, ...)`, and `optimize(::Problem, ...)`.
+- SL-030 — `DASHES` and `IEEE_SINGLE_COL_H` in
+  `validation/meep/meep_validation_figure.jl`.
+- SL-031 — `COUNTED`, `NON_SOURCE_LANGUAGES`, `_file_output_evidence`, and
+  `source_language_share`.
+
+Repository-wide token searches found no references outside each listed
+cluster. None of the Julia package symbols is exported or documented as public,
+and the reflective-use sweep found no lookup by name. `solve_vie_2d` uses
+`_factor_vie_system_2d` with `_solve_factored_linear_system`; MLFMA builds the
+active per-mode filters with `_build_disagg_filters_all_m`; the grounded
+examples use `svec_fast` and `conic_filter_matrix`, which remain. The three
+unprefixed MLFMA functions and the included example workflow carry a higher
+compatibility risk than private definition-only leaves, so this exact set is
+not removed without explicit approval.
 
 ## Running totals
 
@@ -99,7 +131,7 @@ not recorded without a separate explicit approval.
 | Baseline code lines | 74,755 |
 | Raw census estimate (unverified) | 7,668 |
 | Promised net reduction | 150 |
-| Gross removed so far | 1,136 |
-| Gross added so far | 8,236 |
-| Net removed so far | -7,099 |
-| Remaining to target | 7,249 |
+| Gross removed so far | 1,174 |
+| Gross added so far | 8,320 |
+| Net removed so far | -7,145 |
+| Remaining to target | 7,295 |

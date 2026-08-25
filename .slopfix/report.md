@@ -1,14 +1,15 @@
 # Slopfix report — DiffMoM.jl
 
-> Status: source audit and UX-writing pass complete at `551d73b`. Five
-> additional definition-only symbols await explicit deletion approval. Full
-> final gates will be replayed after that decision.
+> Status: the source and UX-writing audit has reached `49c78f5`. The approved
+> SL-026 definitions were removed in `09f6b7e`; the exact SL-027–SL-031
+> reachability-closure set awaits a separate deletion decision. Full final
+> gates will be replayed after that decision.
 
 | | |
 | --- | --- |
 | Period | `2026-08-24` → `2026-08-25` |
 | Baseline commit | `2c31d91064b07758eac5debdf9e710934e96bc17` |
-| Audited source commit | `551d73b` |
+| Audited source commit | `49c78f5` |
 | Counter | `slopfix-builtin/2+julia/1.12.7` |
 | Definition | non-blank, non-comment source lines |
 | Scope | frozen in `.slopfix/baseline.json` |
@@ -18,23 +19,23 @@
 | | Lines |
 | --- | ---: |
 | Baseline code | 74,755 |
-| Audited code | 81,854 |
-| Gross removed | 1,136 |
-| Gross added | 8,236 |
+| Audited code | 81,900 |
+| Gross removed | 1,174 |
+| Gross added | 8,320 |
 | Gross method | `slopfix-builtin/2-line-fingerprint-diff` |
-| **Net change** | **+7,099** |
-| **Reduction** | **-9.50%** |
+| **Net change** | **+7,145** |
+| **Reduction** | **-9.56%** |
 
 | | |
 | --- | ---: |
 | Promised reduction | 0.2% (150 lines) |
-| Shortfall from target | 7,249 lines |
+| Shortfall from target | 7,295 lines |
 | **Target attained** | **No** |
 
 Reproduce the current number:
 
 ```bash
-git checkout 551d73b
+git checkout 49c78f5
 python3 scripts/slopfix.py measure --strict
 ```
 
@@ -45,8 +46,9 @@ characterisation tests, public-documentation coverage, fail-closed example
 gates, explicit-import regression checks, and the executable quality tooling
 added more source than the audit safely removed. After explicit approval, the
 15 private helpers and one unused Python import that passed the static
-dead-code audit were removed in `dea2628`. No tests or documentation were
-removed, and no source was parked or compressed to manufacture a reduction.
+dead-code audit were removed in `dea2628`; the next approved five-symbol set
+was removed in `09f6b7e`. No tests or documentation were removed, and no
+source was parked or compressed to manufacture a reduction.
 
 ## Verification
 
@@ -90,10 +92,11 @@ Final-gate checks:
 | `slopfix measure --strict` | Exit 0; no warnings or integrity findings |
 
 The one-thread, four-thread, and strict quality runs in this table completed at
-`e6a2afa`. Commit `551d73b` changes only the Gmsh failure diagnostic and its
-regression; its parser and focused diagnostic replay pass. The full matrix will
-be replayed after the SL-026 deletion decision so the final report describes
-one exact source state.
+`e6a2afa`. The approved SL-026 deletion passed its focused suites and a full
+one-thread bounds-checked suite. The validation-copy changes in `49c78f5`
+passed their focused Python regression, parser checks, and documentation build.
+The full matrix will be replayed after the SL-027–SL-031 deletion decision so
+the final report describes one exact source state.
 
 The bounds-checked commands were:
 
@@ -245,6 +248,7 @@ No confirmed bug was deliberately preserved.
 | SL-006, SL-013 | Removed the explicitly approved set of 15 unreachable private helpers and one unused Python import | `dea2628` | INV-035, 045, 047 |
 | SL-024 | Restored the exported `planewave_dda_3d` docstring binding and added a direct regression | `dea2628` | INV-032, 045, 049 |
 | SL-025 | Made Gmsh availability failures specific, path-preserving, and actionable | `551d73b` | INV-031, 036, 049 |
+| SL-026 | Removed the explicitly approved set of five additional definition-only symbols | `09f6b7e` | INV-045, 047 |
 
 No production module was wholesale rewritten.
 
@@ -258,7 +262,7 @@ No production module was wholesale rewritten.
 | SL-004 | Example bootstrap blocks | Invocation and environment behaviour are user-visible | Define one supported example launcher contract and replay the example matrix |
 | SL-005 | Bempp Gmsh-path helpers | External environments were unavailable | Provision Bempp/Gmsh and characterize both drivers first |
 | SL-012 | Large test/source files | A split is high-risk churn without a module-level characterization spec | Separate approved restructuring task |
-| SL-026 | Five private definition-only symbols | The full static audit found no users, but deletion requires explicit human approval | Approve or reject the exact set in `.slopfix/slop-ledger.md` |
+| SL-027–SL-031 | VIE, MLFMA, grounded-example, Meep-figure, and slopfix-tool reachability closures | The static audit found no users, but deletion requires an explicit compatibility decision | Approve or reject the exact set in `.slopfix/slop-ledger.md` |
 
 ## Integrity findings
 
@@ -273,7 +277,7 @@ No production module was wholesale rewritten.
 - Remote platform results, external Bempp/Meep/MATLAB comparisons, successful
   CAD conversion, artifact-dependent example/validation paths, and
   serialization compatibility remain unverified as itemized above.
-- Five additional definition-only private symbols remain pending explicit
+- The SL-027–SL-031 reachability-closure definitions remain pending explicit
   deletion approval; the exact set and evidence are in the slop ledger.
 - The docs build passes but warns that two API pages exceed 100 KiB and the
   generated search index is about 1.4 MiB.
