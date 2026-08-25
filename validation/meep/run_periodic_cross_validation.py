@@ -58,7 +58,7 @@ def run_meep_case(
     except ImportError as exc:
         raise SystemExit(
             "Meep Python bindings are required.\n"
-            "Recommended install: conda install -c conda-forge pymeep"
+            "Install with: conda install -c conda-forge pymeep"
         ) from exc
 
     dx_lambda = float(geometry_json["dx_lambda"])

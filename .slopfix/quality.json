@@ -161,7 +161,7 @@
       "disposition": "pass",
       "evidence": "A full-history gitleaks scan using the committed .gitleaks.toml completed with no findings on 2026-08-24. Clean dependency resolution is an executed command gate.",
       "rationale": "This is secret and configuration evidence, not a claim that Julia has complete SAST coverage.",
-      "instructions": "Configure a repository-appropriate secret scanner and security review. Julia currently has less SAST coverage than CodeQL-supported languages; record that boundary rather than claiming no vulnerabilities."
+      "instructions": "Configure a repository-appropriate secret scanner and security review. Record any unavailable Julia-aware SAST coverage as a boundary rather than claiming no vulnerabilities."
     },
     {
       "id": "julia-sbom-advisories",

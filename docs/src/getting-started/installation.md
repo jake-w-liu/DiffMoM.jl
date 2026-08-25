@@ -55,7 +55,7 @@ import Pkg
 Pkg.add(url="https://github.com/jake-w-liu/DiffMoM.jl")
 ```
 
-For tutorial reproducibility, the local project environment is still preferred.
+For tutorial reproducibility, use the local project environment.
 
 ---
 

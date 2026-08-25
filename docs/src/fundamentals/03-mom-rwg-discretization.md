@@ -708,14 +708,15 @@ This section provides a concise roadmap to the source files that implement the R
 
 ### 8.4 How to Extend the Code
 
-If you wish to implement a different integral equation (e.g., Magnetic Field Integral Equation, MFIE) or a higher‑order basis function, the following steps are recommended:
+To add another surface integral operator or a higher-order basis function:
 
-1. **Add new basis functions** in a new source file under `src/` (for example, a future `HigherOrderBasis.jl`) following the pattern of `src/basis/RWG.jl`. Provide evaluation and divergence routines.
-2. **Create a new assembly routine** in a new file under `src/` (for example, a future `MFIE.jl`) that mirrors the structure of `src/assembly/EFIE.jl` but implements the desired operator.
+1. **Add new basis functions** in a source file under `src/basis/`, following the interface in `src/basis/RWG.jl`. Provide evaluation and divergence routines.
+2. **Create the operator assembly** alongside the related implementation. Use `src/assembly/EFIE.jl` for two-dimensional EFIE assembly or `src/mom3d/SurfaceIE3D.jl` for the three-dimensional EFIE, MFIE, and CFIE structure.
 3. **Extend the mesh quality checks** if the new basis requires additional geometric constraints (e.g., curved elements).
 4. **Integrate with the solve path** by adding a wrapper that assembles your new operator and calls `solve_forward`/`solve_system` consistently.
 
-The modular design of `DiffMoM.jl` separates geometry, basis functions, quadrature, and operator assembly, making such extensions straightforward.
+Keep the new implementation within the existing geometry, basis, quadrature,
+assembly, and solve boundaries.
 
 ---
 

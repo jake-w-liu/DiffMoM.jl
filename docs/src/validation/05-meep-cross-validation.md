@@ -68,22 +68,20 @@ Outputs in `data/`:
 
 ---
 
-## 3) Verified Compact Matrix
+## 3) Interpret the Generated Report
 
-Verified run set (10 GHz, normal incidence, `x`-polarized):
+`compare_periodic_to_julia.py` records the effective boundary model,
+transmission reference, tolerances, totals, and verdict in the generated JSON
+and Markdown reports. The overall verdict is reflectance-primary: it is `PASS`
+when `|ΔR|` does not exceed the effective `--tol-refl` value. `|ΔT|` receives a
+separate diagnostic status against `--tol-trans`; it does not change the overall
+verdict because the sheet and finite-thickness models are not operator-identical.
 
-| Case | Mesh | Slot `(wx, wy)` | `|ΔR|` | `|ΔT|` | Verdict |
-|---|---:|---:|---:|---:|---:|
-| Representative | 8×8 | (0.40, 0.20) | 0.067 | 0.069 | PASS |
-| Stress | 8×8 | (0.30, 0.20) | 0.127 | 0.095 | CHECK |
-| Stress | 10×10 | (0.30, 0.20) | 0.140 | 0.032 | CHECK |
-
-Notes:
-- Coarse periodic meshes (`nx,ny < 14`) can depress Julia reflectance and enlarge
-  `|ΔR|`; use `nx,ny >= 14` for primary comparisons.
-- The legacy periodic-BC path is removed in this workflow; use Bloch pairing only.
-- The previous `R>1` artifact was traced to polarization projection and fixed.
-- Matrix CSV artifact: `data/meep_open_source_matrix.csv`.
+The workflow accepts Bloch pairing only. For a mesh-convergence check, repeat
+the reference export with increasing `--nx` and `--ny` while holding the
+geometry, Meep resolution, and comparison tolerances fixed. Read the measured
+values from `<prefix_base>_curve_summary.json` or the per-case comparison JSON
+rather than copying one run into this chapter.
 
 ---
 

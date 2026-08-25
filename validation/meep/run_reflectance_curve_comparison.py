@@ -100,8 +100,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.nx < 14 or args.ny < 14:
         print(
-            "WARNING: nx/ny below 14 can under-resolve the periodic current basis and "
-            "bias Julia reflectance low versus Meep."
+            "WARNING: nx/ny below 14 is outside this workflow's comparison "
+            "configuration. Confirm mesh convergence before interpreting the "
+            "solver difference."
         )
         print(f"         received nx={args.nx}, ny={args.ny}")
 

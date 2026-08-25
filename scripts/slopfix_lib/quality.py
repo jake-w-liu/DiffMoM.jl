@@ -407,8 +407,8 @@ def _julia_gates(root: str) -> list[dict[str, Any]]:
             "julia-secrets-security", "security",
             "Julia source, configuration, and secret security scan",
             "Configure a repository-appropriate secret scanner and security review. "
-            "Julia currently has less SAST coverage than CodeQL-supported languages; "
-            "record that boundary rather than claiming no vulnerabilities.",
+            "Record any unavailable Julia-aware SAST coverage as a boundary rather "
+            "than claiming no vulnerabilities.",
         ),
         _review_gate(
             "julia-sbom-advisories", "security",

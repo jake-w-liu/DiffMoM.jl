@@ -1,9 +1,9 @@
 # 21_meep_validation_figure.jl — Generate MEEP vs MoM comparison figure
 #
-# Reads results_meep_validation.csv and generates a bar-chart comparison figure
+# Reads results_meep_validation.csv and generates a scatter comparison figure
 # showing reflectance agreement between the periodic MoM solver and Meep FDTD.
 #
-# Run: julia --project=. examples/21_meep_validation_figure.jl
+# Run: julia --project=. validation/meep/meep_validation_figure.jl
 
 using CSV, DataFrames
 using PlotlySupply

@@ -121,7 +121,7 @@ python validation/bempp/run_impedance_validation_matrix.py --dry-run
 ```
 
 `--skip-julia`, `--skip-bempp`, and `--skip-compare` reuse existing artifacts.
-The driver still requires each expected comparison JSON before building its
+The driver requires each expected comparison JSON before building its
 summary, so stale or mismatched prefixes can invalidate a reused run.
 
 ## Convention checks

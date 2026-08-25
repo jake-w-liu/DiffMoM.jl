@@ -26,6 +26,7 @@ The workflow uses a binary PEC pixel pattern:
 - `run_reflectance_curve_comparison.py`:
   Runs a slot-width sweep and saves a heuristic curve match plot:
   - `data/<prefix_base>_curve_summary.csv`
+  - `data/<prefix_base>_curve_summary.json`
   - `data/<prefix_base>_reflectance_curve.png`
 - `analyze_meep_detailed_comparison.py`:
   Builds a detailed heuristic report/plot from existing curve and mesh-convergence
@@ -36,14 +37,13 @@ The workflow uses a binary PEC pixel pattern:
 
 ## Setup
 
-From `DiffMoM.jl/validation/meep`:
+Create a conda environment with Meep, then install the remaining Python
+dependencies from `DiffMoM.jl/validation/meep`:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-# Meep is installed from conda-forge (recommended):
-# conda install -c conda-forge pymeep
+conda create -n diffmom-meep -c conda-forge python pymeep
+conda activate diffmom-meep
+python -m pip install -r requirements.txt
 ```
 
 ## Run
@@ -84,7 +84,7 @@ python validation/meep/analyze_meep_detailed_comparison.py \
 - The reference case is normal-incidence, `x`-polarized illumination.
 - Comparison uses Julia `closure` transmission for a conservative power-bounded
   baseline; Floquet-derived transmission is still exported as a diagnostic.
-- For heuristic visual matching, prefer trend curves (e.g., `R` vs slot width)
-  rather than single-point scalar agreement.
-- Avoid `nx,ny < 14` for cross-validation runs: coarse periodic discretization can
-  depress Julia reflectance and exaggerate Julia-vs-Meep gaps.
+- Use trend curves (for example, `R` versus slot width) to interpret the
+  cross-method comparison; a single point does not establish convergence.
+- The supplied comparison command uses `nx=ny=14`. Repeat the run at finer
+  meshes and confirm convergence before interpreting Julia-versus-Meep gaps.

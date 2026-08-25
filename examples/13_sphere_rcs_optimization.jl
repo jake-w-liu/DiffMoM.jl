@@ -602,7 +602,7 @@ for i in 1:Nsc
     rhat_sc[1, i] = sin(theta_sc[i]) * cos(phi_sc[i])
     rhat_sc[2, i] = sin(theta_sc[i]) * sin(phi_sc[i])
     rhat_sc[3, i] = cos(theta_sc[i])
-    # radiation_vectors uses the directions, while SphGrid still requires
+    # radiation_vectors uses the directions, while SphGrid requires
     # finite, nonnegative quadrature weights.
     w_sc[i] = sin(max(theta_sc[i], 1e-12)) * deg2rad(360.0/Nsc)
 end
