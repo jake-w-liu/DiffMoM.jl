@@ -5,25 +5,46 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
 
 
+def reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard numeric constant {value}")
+
+
 def load_json(path: Path) -> Dict[str, Any]:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle, parse_constant=reject_nonstandard_json_constant)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(
+            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
+            "source result before building this comparison."
+        ) from exc
+    if not isinstance(data, dict):
+        raise SystemExit(
+            f"Invalid result in {path}: expected a JSON object. Regenerate the "
+            "source result before building this comparison."
+        )
+    return data
 
 
-def load_curve_cases(data_dir: Path, curve_prefix_base: str, suffixes: List[str]) -> List[Dict[str, Any]]:
+def load_curve_cases(
+    data_dir: Path, curve_prefix_base: str, suffixes: List[str]
+) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for sfx in suffixes:
         prefix = f"{curve_prefix_base}_{sfx}"
         jpath = data_dir / f"julia_{prefix}_reference.json"
         mpath = data_dir / f"meep_{prefix}_results.json"
         if not jpath.exists() or not mpath.exists():
-            raise SystemExit(f"Missing curve files for prefix '{prefix}': {jpath} or {mpath}")
+            raise SystemExit(
+                f"Missing curve files for prefix '{prefix}': {jpath} or {mpath}"
+            )
         j = load_json(jpath)
         m = load_json(mpath)
         rows.append(
@@ -46,7 +67,9 @@ def load_convergence_cases(data_dir: Path, prefixes: List[str]) -> List[Dict[str
         jpath = data_dir / f"julia_{prefix}_reference.json"
         mpath = data_dir / f"meep_{prefix}_results.json"
         if not jpath.exists() or not mpath.exists():
-            raise SystemExit(f"Missing convergence files for prefix '{prefix}': {jpath} or {mpath}")
+            raise SystemExit(
+                f"Missing convergence files for prefix '{prefix}': {jpath} or {mpath}"
+            )
         j = load_json(jpath)
         m = load_json(mpath)
         rows.append(
@@ -63,18 +86,22 @@ def load_convergence_cases(data_dir: Path, prefixes: List[str]) -> List[Dict[str
     return rows
 
 
-def compute_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
+def compute_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not rows:
+        raise ValueError("at least one comparison row is required")
     j = np.array([r["julia_refl"] for r in rows], dtype=float)
     m = np.array([r["meep_refl"] for r in rows], dtype=float)
+    if not np.all(np.isfinite(j)) or not np.all(np.isfinite(m)):
+        raise ValueError("comparison rows must contain finite reflectance values")
     d = j - m
     mae = float(np.mean(np.abs(d)))
     rmse = float(np.sqrt(np.mean(d**2)))
     bias = float(np.mean(d))
     max_abs = float(np.max(np.abs(d)))
-    if len(rows) >= 2:
-        corr = float(np.corrcoef(j, m)[0, 1])
-    else:
-        corr = float("nan")
+    corr = None
+    if len(rows) >= 2 and np.std(j) > 0.0 and np.std(m) > 0.0:
+        candidate = float(np.corrcoef(j, m)[0, 1])
+        corr = candidate if math.isfinite(candidate) else None
     return {
         "mae": mae,
         "rmse": rmse,
@@ -84,7 +111,9 @@ def compute_metrics(rows: List[Dict[str, Any]]) -> Dict[str, float]:
     }
 
 
-def make_plot(curve_rows: List[Dict[str, Any]], conv_rows: List[Dict[str, Any]], out_png: Path) -> None:
+def make_plot(
+    curve_rows: List[Dict[str, Any]], conv_rows: List[Dict[str, Any]], out_png: Path
+) -> None:
     import matplotlib.pyplot as plt
 
     wx = np.array([r["wx"] for r in curve_rows], dtype=float)
@@ -131,8 +160,8 @@ def write_markdown(
     out_md: Path,
     curve_rows: List[Dict[str, Any]],
     conv_rows: List[Dict[str, Any]],
-    curve_metrics: Dict[str, float],
-    conv_metrics: Dict[str, float],
+    curve_metrics: Dict[str, Any],
+    conv_metrics: Dict[str, Any],
     out_png: Path,
 ) -> None:
     lines: List[str] = []
@@ -143,21 +172,32 @@ def write_markdown(
     lines.append(f"- RMSE(ΔR): {curve_metrics['rmse']:.6f}")
     lines.append(f"- Mean bias (Julia - Meep): {curve_metrics['bias']:.6f}")
     lines.append(f"- Max |ΔR|: {curve_metrics['max_abs_diff']:.6f}")
-    lines.append(f"- Pearson corr(R_julia, R_meep): {curve_metrics['corr']:.6f}")
+    curve_corr = curve_metrics["corr"]
+    if curve_corr is None:
+        lines.append(
+            "- Pearson corr(R_julia, R_meep): not available (fewer than two "
+            "varying samples)"
+        )
+    else:
+        lines.append(f"- Pearson corr(R_julia, R_meep): {curve_corr:.6f}")
     lines.append("")
     lines.append("## Curve-Sweep Points")
     lines.append("| wx | Julia R | Meep R | ΔR |")
     lines.append("|---:|--------:|-------:|---:|")
     for r in curve_rows:
         d = r["julia_refl"] - r["meep_refl"]
-        lines.append(f"| {r['wx']:.3f} | {r['julia_refl']:.6f} | {r['meep_refl']:.6f} | {d:.6f} |")
+        lines.append(
+            f"| {r['wx']:.3f} | {r['julia_refl']:.6f} | {r['meep_refl']:.6f} | {d:.6f} |"
+        )
     lines.append("")
     lines.append("## Mesh-Convergence Points")
     lines.append("| nx | Julia R | Meep R | ΔR |")
     lines.append("|---:|--------:|-------:|---:|")
     for r in conv_rows:
         d = r["julia_refl"] - r["meep_refl"]
-        lines.append(f"| {r['nx']} | {r['julia_refl']:.6f} | {r['meep_refl']:.6f} | {d:.6f} |")
+        lines.append(
+            f"| {r['nx']} | {r['julia_refl']:.6f} | {r['meep_refl']:.6f} | {d:.6f} |"
+        )
     lines.append("")
     lines.append("## Mesh-Convergence Metrics")
     lines.append(f"- MAE(|ΔR|): {conv_metrics['mae']:.6f}")
@@ -180,7 +220,9 @@ def main() -> None:
     )
     parser.add_argument("--curve-prefix-base", type=str, default="meep_curve_bugfix")
     parser.add_argument("--curve-suffixes", type=str, default="wx0p200,wx0p300,wx0p400")
-    parser.add_argument("--conv-prefixes", type=str, default="dbg_jconv_n10,dbg_jconv_n14,dbg_jconv_n20")
+    parser.add_argument(
+        "--conv-prefixes", type=str, default="dbg_jconv_n10,dbg_jconv_n14,dbg_jconv_n20"
+    )
     parser.add_argument("--out-base", type=str, default="meep_detailed_heuristic_check")
     args = parser.parse_args()
 
@@ -211,7 +253,7 @@ def main() -> None:
         "plot_file": out_png.name,
     }
     with out_json.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+        json.dump(payload, f, indent=2, allow_nan=False)
         f.write("\n")
 
     write_markdown(out_md, curve_rows, conv_rows, curve_metrics, conv_metrics, out_png)

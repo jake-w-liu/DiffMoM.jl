@@ -29,8 +29,10 @@ python validation/bempp/compare_pec_to_julia.py
 ```
 
 The comparison joins samples on `(theta_deg, phi_deg)` after rounding each key
-to `1e-6` degrees. It reports global, near-target, and sampled phi-zero-cut
-differences in:
+to `1e-6` degrees and uses the matched angular cut with the smallest periodic
+distance to phi zero. Empty, duplicate, malformed, or non-finite samples stop
+the comparison before a report is written. It reports global, near-target, and
+sampled-cut differences in:
 
 - `data/bempp_cross_validation_report.json`
 - `data/bempp_cross_validation_report.md`
@@ -71,12 +73,18 @@ python validation/bempp/compare_impedance_to_julia.py \
 ```
 
 The comparator extracts main-beam and sidelobe features from the sampled cut
-nearest phi zero. It writes:
+nearest phi zero. When a pattern has no eligible sidelobe outside the declared
+main-beam exclusion window, the optional sidelobe fields are JSON `null` and
+the Markdown report says that they are unavailable. It writes:
 
 - `data/bempp_z100_cross_validation_report.json`
 - `data/bempp_z100_cross_validation_report.md`
 
 The single-case comparator reports metrics without applying matrix-level gates.
+All generated JSON uses standard finite numbers; the scripts reject non-standard
+`NaN` and infinity constants. The matrix requires finite main-beam and sidelobe
+metrics, so an unavailable sidelobe stops the run with a regeneration or
+feature-window action instead of being counted as a passing case.
 
 ## Validation matrix
 
@@ -170,7 +178,9 @@ python validation/bempp/run_impedance_operator_aligned_benchmark.py \
 It combines far-field features with element-center current, phase, coherence,
 and forward-residual reports. The current comparator accepts optional
 `--max-vector-rms-rel` and `--min-coherence` gates; without those options it
-only reports the metrics.
+only reports the metrics. Missing residual metadata is recorded as JSON `null`;
+malformed or non-finite metadata stops the comparison and identifies the file
+that must be regenerated.
 
 For existing far-field artifacts, generate diagnostic plots with:
 

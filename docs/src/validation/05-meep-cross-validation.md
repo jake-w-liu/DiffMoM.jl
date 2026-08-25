@@ -83,6 +83,11 @@ geometry, Meep resolution, and comparison tolerances fixed. Read the measured
 values from `<prefix_base>_curve_summary.json` or the per-case comparison JSON
 rather than copying one run into this chapter.
 
+The workflow rejects non-standard `NaN` and infinity constants when reading
+JSON and writes only standard finite numbers or `null`. A detailed heuristic
+report records Pearson correlation as `null` when fewer than two varying points
+make that statistic unavailable.
+
 ---
 
 ## 4) Practical Interpretation

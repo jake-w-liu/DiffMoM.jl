@@ -10,11 +10,18 @@ from pathlib import Path
 from typing import Any, Dict
 
 
+def reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard numeric constant {value}")
+
+
 def load_json(path: Path) -> Dict[str, Any]:
     try:
         with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
+            data = json.load(
+                f,
+                parse_constant=reject_nonstandard_json_constant,
+            )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise SystemExit(
             f"Could not read a JSON result from {path}: {exc}. Regenerate the "
             "source result before comparing it."
@@ -114,7 +121,9 @@ def main() -> None:
     data_dir = args.project_root / "data"
     julia_path = data_dir / f"julia_{args.output_prefix}_reference.json"
     meep_path = data_dir / f"meep_{args.output_prefix}_results.json"
-    report_json_path = data_dir / f"meep_{args.output_prefix}_cross_validation_report.json"
+    report_json_path = (
+        data_dir / f"meep_{args.output_prefix}_cross_validation_report.json"
+    )
     report_md_path = data_dir / f"meep_{args.output_prefix}_cross_validation_report.md"
 
     if not julia_path.exists():
@@ -141,9 +150,7 @@ def main() -> None:
         )
         j_trans_model = "closure"
     else:
-        j_trans = require_finite_metric(
-            julia_path, julia, "trans_total_fraction"
-        )
+        j_trans = require_finite_metric(julia_path, julia, "trans_total_fraction")
         j_trans_model = "direct"
     j_abs = require_finite_metric(julia_path, julia, "abs_total_fraction")
 
@@ -180,7 +187,7 @@ def main() -> None:
     }
 
     with report_json_path.open("w", encoding="utf-8") as f:
-        json.dump(metrics, f, indent=2)
+        json.dump(metrics, f, indent=2, allow_nan=False)
         f.write("\n")
 
     write_markdown(report_md_path, metrics)

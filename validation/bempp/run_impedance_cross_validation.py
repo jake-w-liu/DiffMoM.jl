@@ -145,7 +145,11 @@ def run_bempp_impedance(
             "mesh_step_m": mesh_h,
         }
     elif mesh_mode == "structured":
-        mesh_file = Path(__file__).resolve().parents[2] / "data" / f"structured_plate_nx{nx}_ny{ny}.msh"
+        mesh_file = (
+            Path(__file__).resolve().parents[2]
+            / "data"
+            / f"structured_plate_nx{nx}_ny{ny}.msh"
+        )
         mesh_file.parent.mkdir(parents=True, exist_ok=True)
         write_structured_plate_msh(mesh_file, side=side, nx=nx, ny=ny)
         grid = bempp.import_grid(str(mesh_file))
@@ -195,7 +199,7 @@ def run_bempp_impedance(
     )
 
     @bempp.complex_callable
-    def tangential_trace(x, n, domain_index, result):
+    def tangential_trace(x, n, _domain_index, result):
         if phase_sign == "plus":
             phase = np.exp(1j * k0 * np.dot(direction, x))
         elif phase_sign == "minus":
@@ -277,7 +281,9 @@ def run_bempp_impedance(
         "solve_residual_l2_abs": residual_coeff_l2,
         "solve_residual_l2_rel": residual_coeff_rel,
         "surface_current_l2_norm": float(surface_current.l2_norm()),
-        "surface_current_coeff_l2_norm": float(np.linalg.norm(surface_current.coefficients)),
+        "surface_current_coeff_l2_norm": float(
+            np.linalg.norm(surface_current.coefficients)
+        ),
     }
 
     centers = np.asarray(grid.centroids)
@@ -286,7 +292,9 @@ def run_bempp_impedance(
     if centers.shape[0] != 3 and centers.shape[1] == 3:
         centers = centers.T
     if centers.shape[0] != 3:
-        raise ValueError(f"Unexpected centroid shape after normalization: {centers.shape}")
+        raise ValueError(
+            f"Unexpected centroid shape after normalization: {centers.shape}"
+        )
 
     currents = np.asarray(surface_current.evaluate_on_element_centers())
     if currents.ndim != 2:
@@ -294,7 +302,9 @@ def run_bempp_impedance(
     if currents.shape[0] != 3 and currents.shape[1] == 3:
         currents = currents.T
     if currents.shape[0] != 3:
-        raise ValueError(f"Unexpected current shape after normalization: {currents.shape}")
+        raise ValueError(
+            f"Unexpected current shape after normalization: {currents.shape}"
+        )
     current_mag = np.sqrt(np.sum(np.abs(currents) ** 2, axis=0))
     pol_tan = polarization.copy()
     pol_tan[2] = 0.0
@@ -324,12 +334,31 @@ def run_bempp_impedance(
     return theta_flat, phi_flat, dir_dbi, metadata, current_data
 
 
-def write_farfield_csv(path: Path, theta: np.ndarray, phi: np.ndarray, dir_dbi: np.ndarray) -> None:
+def write_farfield_csv(
+    path: Path, theta: np.ndarray, phi: np.ndarray, dir_dbi: np.ndarray
+) -> None:
+    if (
+        theta.ndim != 1
+        or phi.ndim != 1
+        or dir_dbi.ndim != 1
+        or theta.shape != phi.shape
+        or theta.shape != dir_dbi.shape
+    ):
+        raise ValueError(
+            "Far-field theta, phi, and directivity arrays must be one-dimensional "
+            "and have equal shapes."
+        )
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["theta_deg", "phi_deg", "dir_bempp_imp_dBi"])
-        for t, p, d in zip(theta, phi, dir_dbi):
-            writer.writerow([float(np.rad2deg(t)), float(np.rad2deg(p)), float(d)])
+        for index in range(theta.size):
+            writer.writerow(
+                [
+                    float(np.rad2deg(theta[index])),
+                    float(np.rad2deg(phi[index])),
+                    float(dir_dbi[index]),
+                ]
+            )
 
 
 def write_phi0_cut_csv(
@@ -374,16 +403,30 @@ def main() -> None:
     parser.add_argument("--freq-ghz", type=float, default=3.0)
     parser.add_argument("--aperture-lambda", type=float, default=4.0)
     parser.add_argument("--mesh-step-lambda", type=float, default=1.0 / 3.0)
-    parser.add_argument("--mesh-mode", choices=["gmsh_screen", "structured"], default="gmsh_screen")
-    parser.add_argument("--nx", type=int, default=12, help="Structured mesh x-cells when --mesh-mode structured")
-    parser.add_argument("--ny", type=int, default=12, help="Structured mesh y-cells when --mesh-mode structured")
+    parser.add_argument(
+        "--mesh-mode", choices=["gmsh_screen", "structured"], default="gmsh_screen"
+    )
+    parser.add_argument(
+        "--nx",
+        type=int,
+        default=12,
+        help="Structured mesh x-cells when --mesh-mode structured",
+    )
+    parser.add_argument(
+        "--ny",
+        type=int,
+        default=12,
+        help="Structured mesh y-cells when --mesh-mode structured",
+    )
     parser.add_argument("--zs-imag-ohm", type=float, default=200.0)
     parser.add_argument("--theta-inc-deg", type=float, default=0.0)
     parser.add_argument("--phi-inc-deg", type=float, default=0.0)
     parser.add_argument("--n-theta", type=int, default=180)
     parser.add_argument("--n-phi", type=int, default=72)
     parser.add_argument("--op-sign", choices=["minus", "plus"], default="minus")
-    parser.add_argument("--rhs-cross", choices=["e_cross_n", "n_cross_e"], default="e_cross_n")
+    parser.add_argument(
+        "--rhs-cross", choices=["e_cross_n", "n_cross_e"], default="e_cross_n"
+    )
     parser.add_argument("--rhs-sign", type=float, default=1.0)
     parser.add_argument("--phase-sign", choices=["plus", "minus"], default="plus")
     parser.add_argument("--zs-scale", type=float, default=1.0)
@@ -426,7 +469,9 @@ def main() -> None:
     write_farfield_csv(farfield_csv, theta, phi, dir_dbi)
     write_phi0_cut_csv(cut_csv, theta, phi, dir_dbi, args.n_phi)
     write_element_currents_csv(current_csv, current_data)
-    meta_json.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    meta_json.write_text(
+        json.dumps(meta, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+    )
 
     print(f"Saved {farfield_csv}")
     print(f"Saved {cut_csv}")

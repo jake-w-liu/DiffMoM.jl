@@ -29,6 +29,26 @@
       ]
     },
     {
+      "id": "validation-report-tests",
+      "category": "functional-suitability",
+      "title": "Validation report and strict-JSON regressions",
+      "required": true,
+      "kind": "command",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "validation/tests",
+        "-p",
+        "test_*.py"
+      ],
+      "cwd": ".",
+      "timeout_seconds": 120,
+      "capture": "digest"
+    },
+    {
       "id": "julia-aqua",
       "category": "maintainability",
       "title": "Aqua package checks are in the reachable Julia test graph",

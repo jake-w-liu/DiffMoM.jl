@@ -13,6 +13,7 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/mpl")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,7 +35,9 @@ def build_common_arrays(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     keys = sorted(set(julia_map).intersection(bempp_map))
     if not keys:
-        raise RuntimeError("No common angular samples found between Julia and Bempp data.")
+        raise RuntimeError(
+            "No common angular samples found between Julia and Bempp data."
+        )
 
     theta = np.array([k[0] for k in keys], dtype=float)
     phi = np.array([k[1] for k in keys], dtype=float)
@@ -48,6 +51,17 @@ def to_grid(
     phi: np.ndarray,
     values: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if (
+        theta.ndim != 1
+        or phi.ndim != 1
+        or values.ndim != 1
+        or theta.shape != phi.shape
+        or theta.shape != values.shape
+    ):
+        raise ValueError(
+            "theta, phi, and values arrays must be one-dimensional and have "
+            "equal shapes"
+        )
     theta_u = np.unique(theta)
     phi_u = np.unique(phi)
     grid = np.full((theta_u.size, phi_u.size), np.nan, dtype=float)
@@ -55,8 +69,8 @@ def to_grid(
     theta_index = {v: i for i, v in enumerate(theta_u.tolist())}
     phi_index = {v: i for i, v in enumerate(phi_u.tolist())}
 
-    for t, p, v in zip(theta, phi, values):
-        grid[theta_index[t], phi_index[p]] = v
+    for index in range(theta.size):
+        grid[theta_index[theta[index]], phi_index[phi[index]]] = values[index]
     return theta_u, phi_u, grid
 
 
@@ -67,9 +81,11 @@ def nearest_phi_cut(
     bempp_vals: np.ndarray,
     n_phi: int,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    half_bin = 0.5 * (360.0 / n_phi)
-    phi_dist = np.minimum(phi, 360.0 - phi)
-    mask = phi_dist <= half_bin + 1e-12
+    if n_phi <= 0:
+        raise ValueError("n_phi must be positive")
+    phi_dist = np.abs(np.mod(phi + 180.0, 360.0) - 180.0)
+    nearest_distance = float(np.min(phi_dist))
+    mask = np.isclose(phi_dist, nearest_distance, atol=1e-9, rtol=0.0)
     idx = np.argsort(theta[mask])
     return theta[mask][idx], julia_vals[mask][idx], bempp_vals[mask][idx]
 
@@ -89,12 +105,11 @@ def summarize_delta(delta: np.ndarray, julia_vals: np.ndarray) -> List[str]:
             f"p95|Δ|={q95:.3f} dB"
         )
 
-    lines = [
+    return [
         stat_line("Global", np.ones_like(delta, dtype=bool)),
         stat_line("Main-lobe (Julia >= peak-10 dB)", main_lobe_mask),
         stat_line("Deep-null (Julia <= -20 dBi)", deep_null_mask),
     ]
-    return lines
 
 
 def main() -> None:
@@ -134,7 +149,9 @@ def main() -> None:
     _, _, delta_grid = to_grid(theta, phi, delta)
 
     n_phi = phi_u.size
-    cut_theta, cut_julia, cut_bempp = nearest_phi_cut(theta, phi, julia_vals, bempp_vals, n_phi=n_phi)
+    cut_theta, cut_julia, cut_bempp = nearest_phi_cut(
+        theta, phi, julia_vals, bempp_vals, n_phi=n_phi
+    )
     cut_delta = cut_bempp - cut_julia
 
     summary_lines = summarize_delta(delta, julia_vals)
@@ -167,7 +184,12 @@ def main() -> None:
         delta_grid,
         origin="lower",
         aspect="auto",
-        extent=[float(phi_u.min()), float(phi_u.max()), float(theta_u.min()), float(theta_u.max())],
+        extent=[
+            float(phi_u.min()),
+            float(phi_u.max()),
+            float(theta_u.min()),
+            float(theta_u.max()),
+        ],
         cmap="coolwarm",
         vmin=-args.delta_clim,
         vmax=args.delta_clim,
@@ -187,7 +209,11 @@ def main() -> None:
     ax.set_title("Error vs Julia level")
     ax.grid(True, alpha=0.25)
 
-    title = args.title if args.title else f"Impedance comparison: Julia={args.julia_prefix}, Bempp={args.bempp_prefix}"
+    title = (
+        args.title
+        if args.title
+        else f"Impedance comparison: Julia={args.julia_prefix}, Bempp={args.bempp_prefix}"
+    )
     fig.suptitle(title, fontsize=12)
 
     out_png = data_dir / f"bempp_{args.output_prefix}_diagnostic.png"

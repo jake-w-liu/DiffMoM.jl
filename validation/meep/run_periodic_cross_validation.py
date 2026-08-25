@@ -6,16 +6,35 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from pathlib import Path
 from typing import Any, Dict, List
 
 
+def reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard numeric constant {value}")
+
+
 def load_json(path: Path) -> Dict[str, Any]:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle, parse_constant=reject_nonstandard_json_constant)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(
+            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
+            "Julia artifact before running Meep."
+        ) from exc
+    if not isinstance(data, dict):
+        raise SystemExit(
+            f"Invalid result in {path}: expected a JSON object. Regenerate the "
+            "Julia artifact before running Meep."
+        )
+    return data
 
 
-def build_meep_geometry(mp: Any, mask: List[List[int]], dx_cell: float, dy_cell: float, thickness: float) -> List[Any]:
+def build_meep_geometry(
+    mp: Any, mask: List[List[int]], dx_cell: float, dy_cell: float, thickness: float
+) -> List[Any]:
     ny = len(mask)
     nx = len(mask[0]) if ny else 0
     if nx == 0:
@@ -73,7 +92,9 @@ def run_meep_case(
     refl_z = src_z - refl_offset_lambda
     tran_z = -0.5 * sz_lambda + pml_lambda + tran_offset_lambda
     if refl_z <= tran_z:
-        raise SystemExit("Flux monitor placement invalid: reflection plane must be above transmission plane.")
+        raise SystemExit(
+            "Flux monitor placement invalid: reflection plane must be above transmission plane."
+        )
 
     source = mp.Source(
         src=mp.GaussianSource(fcen, fwidth=fwidth),
@@ -129,12 +150,30 @@ def run_meep_case(
     tran_flux = float(mp.get_fluxes(tran)[0])
     sim_geom.reset_meep()
 
+    if not all(
+        math.isfinite(value)
+        for value in (incident_flux, incident_refl_flux, refl_flux, tran_flux)
+    ):
+        raise SystemExit(
+            "Meep returned a non-finite flux value. Check the resolution, source, "
+            "monitor placement, and simulation duration before rerunning."
+        )
     if abs(incident_flux) < 1e-15:
-        raise SystemExit("Incident normalization flux is near zero; adjust source/monitor placement.")
+        raise SystemExit(
+            "Incident normalization flux is near zero. Adjust the source or monitor "
+            "placement before rerunning."
+        )
 
     reflectance = max(0.0, -refl_flux / incident_flux)
     transmittance = max(0.0, tran_flux / incident_flux)
     absorption = 1.0 - reflectance - transmittance
+    if not all(
+        math.isfinite(value) for value in (reflectance, transmittance, absorption)
+    ):
+        raise SystemExit(
+            "Computed Meep power totals contain a non-finite value. Check the flux "
+            "normalization and rerun the simulation."
+        )
 
     return {
         "meep_frequency_normalized": fcen,
@@ -167,7 +206,9 @@ def main() -> None:
         help="Project root containing data/.",
     )
     parser.add_argument("--output-prefix", type=str, default="meep_periodic")
-    parser.add_argument("--resolution", type=int, default=36, help="Pixels per wavelength.")
+    parser.add_argument(
+        "--resolution", type=int, default=36, help="Pixels per wavelength."
+    )
     parser.add_argument("--pml-lambda", type=float, default=1.0)
     parser.add_argument("--sz-lambda", type=float, default=6.0)
     parser.add_argument("--metal-thickness-lambda", type=float, default=0.03)
@@ -218,7 +259,7 @@ def main() -> None:
     }
 
     with results_json_path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+        json.dump(payload, f, indent=2, allow_nan=False)
         f.write("\n")
 
     with results_csv_path.open("w", encoding="utf-8", newline="") as f:

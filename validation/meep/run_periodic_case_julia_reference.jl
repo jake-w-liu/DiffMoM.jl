@@ -83,24 +83,55 @@ function cell_triangle_indices(mask::BitMatrix, Nx::Int, Ny::Int)
 end
 
 freq_ghz = parse_float_flag(ARGS, "--freq-ghz", 10.0)
+isfinite(freq_ghz) && freq_ghz > 0.0 ||
+    throw(ArgumentError(
+        "--freq-ghz must be finite and positive; received $freq_ghz"))
 freq = freq_ghz * 1e9
 lambda0 = C0 / freq
 k = 2π / lambda0
+all(isfinite, (freq, lambda0, k)) && lambda0 > 0.0 && k > 0.0 ||
+    throw(ArgumentError(
+        "--freq-ghz produces an unrepresentable frequency or wavelength; " *
+        "received $freq_ghz"))
 
 dx_lambda = parse_float_flag(ARGS, "--dx-lambda", 1.2)
 dy_lambda = parse_float_flag(ARGS, "--dy-lambda", 1.2)
 Nx = parse_int_flag(ARGS, "--nx", 24)
 Ny = parse_int_flag(ARGS, "--ny", 24)
+isfinite(dx_lambda) && dx_lambda > 0.0 ||
+    throw(ArgumentError(
+        "--dx-lambda must be finite and positive; received $dx_lambda"))
+isfinite(dy_lambda) && dy_lambda > 0.0 ||
+    throw(ArgumentError(
+        "--dy-lambda must be finite and positive; received $dy_lambda"))
+Nx > 0 || throw(ArgumentError("--nx must be positive; received $Nx"))
+Ny > 0 || throw(ArgumentError("--ny must be positive; received $Ny"))
 
 slot_wx_frac = parse_float_flag(ARGS, "--slot-wx-frac", 0.40)
 slot_wy_frac = parse_float_flag(ARGS, "--slot-wy-frac", 0.20)
 output_prefix = parse_string_flag(ARGS, "--output-prefix", "meep_periodic")
+isfinite(slot_wx_frac) && 0.0 <= slot_wx_frac <= 1.0 ||
+    throw(ArgumentError(
+        "--slot-wx-frac must be finite and between 0 and 1; " *
+        "received $slot_wx_frac"))
+isfinite(slot_wy_frac) && 0.0 <= slot_wy_frac <= 1.0 ||
+    throw(ArgumentError(
+        "--slot-wy-frac must be finite and between 0 and 1; " *
+        "received $slot_wy_frac"))
+occursin(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$", output_prefix) ||
+    throw(ArgumentError(
+        "--output-prefix must start with an ASCII letter or digit and contain " *
+        "only letters, digits, '.', '_', or '-'; received $(repr(output_prefix))"))
 periodic_bc = lowercase(parse_string_flag(ARGS, "--periodic-bc", "bloch"))
 periodic_bc == "bloch" ||
     error("Unsupported --periodic-bc=$(periodic_bc). Legacy mode has been removed; use 'bloch'.")
 
 dx_cell = dx_lambda * lambda0
 dy_cell = dy_lambda * lambda0
+all(isfinite, (dx_cell, dy_cell)) && dx_cell > 0.0 && dy_cell > 0.0 ||
+    throw(ArgumentError(
+        "The requested cell dimensions are outside the representable Float64 " *
+        "range. Reduce --dx-lambda, --dy-lambda, or --freq-ghz."))
 
 mask = build_rect_slot_mask(Nx, Ny, dx_cell, dy_cell, slot_wx_frac, slot_wy_frac)
 tri_ids = cell_triangle_indices(mask, Nx, Ny)
@@ -118,8 +149,9 @@ println("  pixels = $(Nx) × $(Ny)")
 println("  slot fractions = ($(slot_wx_frac), $(slot_wy_frac))")
 println("  periodic BC model = $(periodic_bc)")
 if Nx < 14 || Ny < 14
-    println("  WARNING: coarse nx/ny can under-resolve periodic currents and bias reflectance low.")
-    println("           Recommended for Meep cross-validation: nx,ny >= 14.")
+    println("  WARNING: nx/ny below 14 is outside this workflow's comparison configuration.")
+    println("           Confirm mesh convergence before interpreting the solver difference.")
+    println("           Received nx=$Nx, ny=$Ny.")
 end
 println("  selected triangles = $(ntriangles(mesh))")
 println("  RWG basis count = $(rwg.nedges)")
@@ -129,11 +161,27 @@ Z_per = assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=3)
 pw = make_plane_wave(Vec3(0.0, 0.0, -k), 1.0, Vec3(1.0, 0.0, 0.0))
 v = Vector{ComplexF64}(assemble_excitation(mesh, rwg, pw; quad_order=3))
 I = Z_per \ v
+all(isfinite, I) ||
+    error(
+        "The periodic solve returned non-finite currents. Check the geometry, " *
+        "frequency, and matrix conditioning before regenerating the reference.")
 
 res = Z_per * I - v
 rhs_l2 = norm(v)
 res_l2 = norm(res)
-res_rel = rhs_l2 > 0 ? res_l2 / rhs_l2 : NaN
+isfinite(rhs_l2) && rhs_l2 > 0.0 ||
+    error(
+        "The incident-field right-hand side must have a finite, positive norm; " *
+        "received $rhs_l2. Check the excitation and geometry.")
+isfinite(res_l2) ||
+    error(
+        "The periodic solve residual is non-finite. Check the matrix conditioning " *
+        "before regenerating the reference.")
+res_rel = res_l2 / rhs_l2
+isfinite(res_rel) ||
+    error(
+        "The periodic solve relative residual is non-finite. Check the matrix " *
+        "conditioning before regenerating the reference.")
 
 modes, R = reflection_coefficients(
     mesh, rwg, I, k, lattice;
@@ -142,6 +190,10 @@ modes, R = reflection_coefficients(
     E0=1.0,
     pol=SVector(1.0, 0.0, 0.0),
 )
+all(isfinite, R) ||
+    error(
+        "The reflected Floquet coefficients contain a non-finite value. Check " *
+        "the solve residual and periodic-mode configuration.")
 
 idx00 = findfirst(m -> m.m == 0 && m.n == 0, modes)
 idx00 === nothing && error("Could not locate Floquet order (0,0).")
@@ -172,6 +224,16 @@ pb_floquet = power_balance(
     transmission=:floquet,
     incident_order=(0, 0),
 )
+all(isfinite, (
+    pb_closure.refl_frac,
+    pb_closure.trans_frac,
+    pb_closure.abs_frac,
+    pb_closure.resid_frac,
+    pb_floquet.trans_frac,
+    pb_floquet.resid_frac,
+)) || error(
+    "The periodic power-balance metrics contain a non-finite value. Check the " *
+    "solve residual and Floquet-mode configuration before writing artifacts.")
 
 rows = DataFrame(
     m=Int[],
@@ -275,11 +337,11 @@ reference_payload = Dict(
 )
 
 open(geometry_json_path, "w") do io
-    write(io, JSON.json(geometry_payload, 2))
+    write(io, JSON.json(geometry_payload, 2), '\n')
 end
 
 open(reference_json_path, "w") do io
-    write(io, JSON.json(reference_payload, 2))
+    write(io, JSON.json(reference_payload, 2), '\n')
 end
 
 CSV.write(modes_csv_path, rows)

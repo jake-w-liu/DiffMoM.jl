@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -25,32 +26,137 @@ def run_cmd(cmd: List[str], cwd: Path, dry_run: bool) -> None:
     subprocess.run(cmd, cwd=str(cwd), check=True, env=env)
 
 
+def reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard numeric constant {value}")
+
+
 def load_json(path: Path) -> Dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonstandard_json_constant,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(
+            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
+            "benchmark artifacts, then rerun the summary."
+        ) from exc
+    if not isinstance(data, dict):
+        raise SystemExit(
+            f"Invalid report in {path}: expected a JSON object. Regenerate the "
+            "benchmark artifacts, then rerun the summary."
+        )
+    return data
+
+
+def finite_float(raw: str) -> float:
+    """Parse one finite command-line number."""
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a number, got {raw!r}") from exc
+    if not math.isfinite(value):
+        raise argparse.ArgumentTypeError(f"expected a finite number, got {raw!r}")
+    return value
+
+
+def positive_int(raw: str) -> int:
+    """Parse one positive command-line integer."""
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {raw!r}") from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {raw!r}")
+    return value
+
+
+def positive_finite_float(raw: str) -> float:
+    """Parse one finite, positive command-line number."""
+    value = finite_float(raw)
+    if value <= 0.0:
+        raise argparse.ArgumentTypeError(
+            f"expected a finite, positive number, got {raw!r}"
+        )
+    return value
+
+
+def require_finite_metric(data: Dict, key: str, report_name: str) -> float:
+    value = data.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SystemExit(
+            f"Invalid {key!r} in {report_name}: expected a finite JSON number, "
+            f"got {value!r}. Regenerate the benchmark artifacts."
+        )
+    converted = float(value)
+    if not math.isfinite(converted):
+        raise SystemExit(
+            f"Invalid {key!r} in {report_name}: expected a finite JSON number, "
+            f"got {value!r}. Regenerate the benchmark artifacts."
+        )
+    return converted
+
+
+def format_optional_metric(value: object, spec: str, unit: str = "") -> str:
+    if value is None:
+        return "not available"
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SystemExit(
+            f"Invalid optional report metric {value!r}. Regenerate the benchmark "
+            "artifacts before writing the summary."
+        )
+    converted = float(value)
+    if not math.isfinite(converted):
+        raise SystemExit(
+            f"Invalid optional report metric {value!r}. Regenerate the benchmark "
+            "artifacts before writing the summary."
+        )
+    suffix = f" {unit}" if unit else ""
+    return f"{converted:{spec}}{suffix}"
 
 
 def write_summary(path: Path, ff: Dict, op: Dict) -> None:
     pf = ff.get("pattern_features", {})
+    if not isinstance(pf, dict):
+        raise SystemExit(
+            "Invalid far-field report: missing object 'pattern_features'. "
+            "Regenerate the benchmark artifacts."
+        )
+    main_theta = require_finite_metric(
+        pf, "main_theta_abs_diff_deg", "far-field report"
+    )
+    main_level = require_finite_metric(pf, "main_level_diff_db", "far-field report")
+    vector_rms = require_finite_metric(op, "vector_rms_rel", "operator report")
+    coherence = require_finite_metric(op, "coherence_mean", "operator report")
+    phase_mean = require_finite_metric(op, "phase_mean_deg", "operator report")
+    phase_std = require_finite_metric(op, "phase_std_deg", "operator report")
+    hypothesis_rms = require_finite_metric(
+        op, "best_hypothesis_rms_rel", "operator report"
+    )
     lines = [
         "# Operator-Aligned Impedance Benchmark Summary",
         "",
         "## Far-Field Beam Metrics",
-        f"- Main-beam angle abs diff: {pf.get('main_theta_abs_diff_deg', float('nan')):.4f} deg",
-        f"- Main-beam level diff: {pf.get('main_level_diff_db', float('nan')):.4f} dB",
-        f"- Side-lobe angle abs diff: {pf.get('sidelobe_theta_abs_diff_deg', float('nan')):.4f} deg",
-        f"- SLL diff: {pf.get('sll_down_diff_db', float('nan')):.4f} dB",
+        f"- Main-beam angle abs diff: {main_theta:.4f} deg",
+        f"- Main-beam level diff: {main_level:.4f} dB",
+        "- Side-lobe angle abs diff: "
+        f"{format_optional_metric(pf.get('sidelobe_theta_abs_diff_deg'), '.4f', 'deg')}",
+        "- SLL diff: "
+        f"{format_optional_metric(pf.get('sll_down_diff_db'), '.4f', 'dB')}",
         "",
         "## Current/Phase Metrics",
-        f"- Vector RMS relative error: {op.get('vector_rms_rel', float('nan')):.6f}",
-        f"- Mean coherence: {op.get('coherence_mean', float('nan')):.6f}",
-        f"- Circular phase mean: {op.get('phase_mean_deg', float('nan')):.4f} deg",
-        f"- Circular phase std: {op.get('phase_std_deg', float('nan')):.4f} deg",
+        f"- Vector RMS relative error: {vector_rms:.6f}",
+        f"- Mean coherence: {coherence:.6f}",
+        f"- Circular phase mean: {phase_mean:.4f} deg",
+        f"- Circular phase std: {phase_std:.4f} deg",
         f"- Best transform hypothesis: {op.get('best_hypothesis', 'n/a')} "
-        f"({op.get('best_hypothesis_rms_rel', float('nan')):.6f})",
+        f"({hypothesis_rms:.6f})",
         "",
         "## Operator Residuals",
-        f"- Julia residual rel L2: {op.get('julia_residual_rel_l2', float('nan')):.6e}",
-        f"- Bempp residual rel L2: {op.get('bempp_residual_rel_l2', float('nan')):.6e}",
+        "- Julia residual rel L2: "
+        f"{format_optional_metric(op.get('julia_residual_rel_l2'), '.6e')}",
+        "- Bempp residual rel L2: "
+        f"{format_optional_metric(op.get('bempp_residual_rel_l2'), '.6e')}",
         "",
         "## Interpretation",
         "- Beam metrics show pattern-level agreement.",
@@ -68,18 +174,20 @@ def main() -> None:
         help="Project root containing data/ and Project.toml",
     )
     parser.add_argument("--output-prefix", type=str, default="impedance_operator")
-    parser.add_argument("--freq-ghz", type=float, default=3.0)
-    parser.add_argument("--zs-imag-ohm", type=float, default=200.0)
-    parser.add_argument("--theta-inc-deg", type=float, default=0.0)
-    parser.add_argument("--phi-inc-deg", type=float, default=0.0)
-    parser.add_argument("--n-theta", type=int, default=180)
-    parser.add_argument("--n-phi", type=int, default=72)
-    parser.add_argument("--mesh-mode", choices=["gmsh_screen", "structured"], default="structured")
-    parser.add_argument("--nx", type=int, default=12)
-    parser.add_argument("--ny", type=int, default=12)
-    parser.add_argument("--mesh-step-lambda", type=float, default=0.2)
-    parser.add_argument("--target-theta-deg", type=float, default=30.0)
-    parser.add_argument("--mag-floor-db", type=float, default=-20.0)
+    parser.add_argument("--freq-ghz", type=positive_finite_float, default=3.0)
+    parser.add_argument("--zs-imag-ohm", type=finite_float, default=200.0)
+    parser.add_argument("--theta-inc-deg", type=finite_float, default=0.0)
+    parser.add_argument("--phi-inc-deg", type=finite_float, default=0.0)
+    parser.add_argument("--n-theta", type=positive_int, default=180)
+    parser.add_argument("--n-phi", type=positive_int, default=72)
+    parser.add_argument(
+        "--mesh-mode", choices=["gmsh_screen", "structured"], default="structured"
+    )
+    parser.add_argument("--nx", type=positive_int, default=12)
+    parser.add_argument("--ny", type=positive_int, default=12)
+    parser.add_argument("--mesh-step-lambda", type=positive_finite_float, default=0.2)
+    parser.add_argument("--target-theta-deg", type=finite_float, default=30.0)
+    parser.add_argument("--mag-floor-db", type=finite_float, default=-20.0)
     parser.add_argument("--skip-julia", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

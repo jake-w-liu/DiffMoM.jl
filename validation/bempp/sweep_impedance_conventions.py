@@ -7,6 +7,7 @@ import argparse
 import csv
 import itertools
 import json
+import math
 import os
 import subprocess
 import sys
@@ -30,8 +31,50 @@ def run_cmd(cmd: List[str], cwd: Path, dry_run: bool) -> None:
     subprocess.run(cmd, cwd=str(cwd), check=True, env=env)
 
 
+def reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard numeric constant {value}")
+
+
 def load_json(path: Path) -> Dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonstandard_json_constant,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(
+            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
+            "comparison report, then rerun the sweep."
+        ) from exc
+    if not isinstance(data, dict):
+        raise SystemExit(
+            f"Invalid report in {path}: expected a JSON object. Regenerate the "
+            "comparison report, then rerun the sweep."
+        )
+    return data
+
+
+def require_pattern_metric(report: Dict, key: str, source: Path) -> float:
+    pattern_features = report.get("pattern_features")
+    if not isinstance(pattern_features, dict):
+        raise SystemExit(
+            f"Invalid report in {source}: missing object 'pattern_features'. "
+            "Regenerate the comparison report, then rerun the sweep."
+        )
+    value = pattern_features.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SystemExit(
+            f"Invalid pattern_features.{key} in {source}: expected a finite JSON "
+            f"number, got {value!r}. Adjust the feature window if no sidelobe was "
+            "found, regenerate the report, then rerun the sweep."
+        )
+    converted = float(value)
+    if not math.isfinite(converted):
+        raise SystemExit(
+            f"Invalid pattern_features.{key} in {source}: expected a finite JSON "
+            f"number, got {value!r}. Regenerate the report, then rerun the sweep."
+        )
+    return converted
 
 
 def write_csv(path: Path, rows: List[Dict[str, object]]) -> None:
@@ -75,7 +118,9 @@ def main() -> None:
     parser.add_argument("--phi-inc-deg", type=float, default=0.0)
     parser.add_argument("--n-theta", type=int, default=60)
     parser.add_argument("--n-phi", type=int, default=24)
-    parser.add_argument("--mesh-mode", choices=["gmsh_screen", "structured"], default="structured")
+    parser.add_argument(
+        "--mesh-mode", choices=["gmsh_screen", "structured"], default="structured"
+    )
     parser.add_argument("--nx", type=int, default=12)
     parser.add_argument("--ny", type=int, default=12)
     parser.add_argument("--mesh-step-lambda", type=float, default=0.2)
@@ -126,7 +171,9 @@ def main() -> None:
     )
 
     rows: List[Dict[str, object]] = []
-    for idx, (op_sign, rhs_cross, rhs_sign, phase_sign, zs_scale) in enumerate(combos, start=1):
+    for idx, (op_sign, rhs_cross, rhs_sign, phase_sign, zs_scale) in enumerate(
+        combos, start=1
+    ):
         prefix = f"{args.tag}_{idx:02d}"
         run_cmd(
             [
@@ -187,11 +234,17 @@ def main() -> None:
         if args.dry_run:
             continue
 
-        report = load_json(data_dir / f"bempp_{prefix}_cross_validation_report.json")
-        pf = report.get("pattern_features", {})
-        main_theta_abs_diff = abs(float(pf.get("main_theta_abs_diff_deg", float("inf"))))
-        main_level_abs_diff = abs(float(pf.get("main_level_diff_db", float("inf"))))
-        sll_abs_diff = abs(float(pf.get("sll_down_diff_db", float("inf"))))
+        report_path = data_dir / f"bempp_{prefix}_cross_validation_report.json"
+        report = load_json(report_path)
+        main_theta_abs_diff = abs(
+            require_pattern_metric(report, "main_theta_abs_diff_deg", report_path)
+        )
+        main_level_abs_diff = abs(
+            require_pattern_metric(report, "main_level_diff_db", report_path)
+        )
+        sll_abs_diff = abs(
+            require_pattern_metric(report, "sll_down_diff_db", report_path)
+        )
         score = main_theta_abs_diff + main_level_abs_diff + sll_abs_diff
         rows.append(
             {
@@ -239,7 +292,9 @@ def main() -> None:
                 "rows": rows,
             },
             indent=2,
-        ),
+            allow_nan=False,
+        )
+        + "\n",
         encoding="utf-8",
     )
 

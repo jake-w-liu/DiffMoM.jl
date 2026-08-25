@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import subprocess
 import sys
@@ -68,20 +69,75 @@ def run_cmd(cmd: List[str], cwd: Path, dry_run: bool) -> None:
     subprocess.run(cmd, cwd=str(cwd), check=True, env=env)
 
 
+def positive_int(raw: str) -> int:
+    """Parse one positive command-line integer."""
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {raw!r}") from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {raw!r}")
+    return value
+
+
+def finite_float(raw: str) -> float:
+    """Parse one finite command-line number."""
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a number, got {raw!r}") from exc
+    if not math.isfinite(value):
+        raise argparse.ArgumentTypeError(f"expected a finite number, got {raw!r}")
+    return value
+
+
+def positive_finite_float(raw: str) -> float:
+    """Parse one finite, positive command-line number."""
+    value = finite_float(raw)
+    if value <= 0.0:
+        raise argparse.ArgumentTypeError(
+            f"expected a finite, positive number, got {raw!r}"
+        )
+    return value
+
+
+def reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard numeric constant {value}")
+
+
 def load_json(path: Path) -> Dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=reject_nonstandard_json_constant,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"could not read standard JSON from {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"expected a JSON object in {path}")
+    return data
+
+
+def require_pattern_metric(metrics: Dict, key: str) -> float:
+    pattern_features = metrics.get("pattern_features")
+    if not isinstance(pattern_features, dict):
+        raise ValueError("missing object 'pattern_features'")
+    value = pattern_features.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"pattern_features.{key} must be a finite JSON number")
+    converted = float(value)
+    if not math.isfinite(converted):
+        raise ValueError(f"pattern_features.{key} must be finite")
+    return converted
 
 
 def compute_case_pass_flags(metrics: Dict) -> Dict[str, bool]:
-    pf = metrics.get("pattern_features", {})
-    main_theta_diff = float(pf.get("main_theta_abs_diff_deg", float("inf")))
-    main_level_diff = abs(float(pf.get("main_level_diff_db", float("inf"))))
-    sll_diff = abs(float(pf.get("sll_down_diff_db", float("inf"))))
+    main_theta_diff = require_pattern_metric(metrics, "main_theta_abs_diff_deg")
+    main_level_diff = abs(require_pattern_metric(metrics, "main_level_diff_db"))
+    sll_diff = abs(require_pattern_metric(metrics, "sll_down_diff_db"))
     return {
-        "pass_main_theta_le_3deg":
-            main_theta_diff <= MAX_MAIN_THETA_DIFF_DEG,
-        "pass_main_level_le_1p5db":
-            main_level_diff <= MAX_MAIN_LEVEL_DIFF_DB,
+        "pass_main_theta_le_3deg": main_theta_diff <= MAX_MAIN_THETA_DIFF_DEG,
+        "pass_main_level_le_1p5db": main_level_diff <= MAX_MAIN_LEVEL_DIFF_DB,
         "pass_sll_le_3db": sll_diff <= MAX_SLL_DIFF_DB,
     }
 
@@ -159,11 +215,15 @@ def main() -> None:
         help="Project root containing data/ and Project.toml",
     )
     parser.add_argument(
-        "--n-theta", type=int, default=180,
+        "--n-theta",
+        type=positive_int,
+        default=180,
         help="Polar sample count for both solvers (default: %(default)s)",
     )
     parser.add_argument(
-        "--n-phi", type=int, default=72,
+        "--n-phi",
+        type=positive_int,
+        default=72,
         help="Azimuth sample count for both solvers (default: %(default)s)",
     )
     parser.add_argument(
@@ -173,31 +233,41 @@ def main() -> None:
         help="Bempp mesh construction mode (default: %(default)s)",
     )
     parser.add_argument(
-        "--nx", type=int, default=12,
+        "--nx",
+        type=positive_int,
+        default=12,
         help="Structured-mesh cells along x (default: %(default)s)",
     )
     parser.add_argument(
-        "--ny", type=int, default=12,
+        "--ny",
+        type=positive_int,
+        default=12,
         help="Structured-mesh cells along y (default: %(default)s)",
     )
     parser.add_argument(
-        "--mesh-step-lambda", type=float, default=0.2,
+        "--mesh-step-lambda",
+        type=positive_finite_float,
+        default=0.2,
         help="Gmsh target edge length in wavelengths (default: %(default)s)",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Print subprocess commands without running or writing summaries",
     )
     parser.add_argument(
-        "--skip-julia", action="store_true",
+        "--skip-julia",
+        action="store_true",
         help="Reuse existing Julia reference artifacts",
     )
     parser.add_argument(
-        "--skip-bempp", action="store_true",
+        "--skip-bempp",
+        action="store_true",
         help="Reuse existing Bempp artifacts",
     )
     parser.add_argument(
-        "--skip-compare", action="store_true",
+        "--skip-compare",
+        action="store_true",
         help="Reuse existing comparison reports",
     )
     parser.add_argument(
@@ -210,7 +280,9 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--bempp-op-sign", choices=["minus", "plus"], default=None,
+        "--bempp-op-sign",
+        choices=["minus", "plus"],
+        default=None,
         help="Override the profile's Bempp operator sign",
     )
     parser.add_argument(
@@ -220,15 +292,21 @@ def main() -> None:
         help="Override the profile's RHS cross-product order",
     )
     parser.add_argument(
-        "--bempp-rhs-sign", type=float, default=None,
+        "--bempp-rhs-sign",
+        type=finite_float,
+        default=None,
         help="Override the profile's RHS scalar sign",
     )
     parser.add_argument(
-        "--bempp-phase-sign", choices=["plus", "minus"], default=None,
+        "--bempp-phase-sign",
+        choices=["plus", "minus"],
+        default=None,
         help="Override the profile's far-field phase sign",
     )
     parser.add_argument(
-        "--bempp-zs-scale", type=float, default=None,
+        "--bempp-zs-scale",
+        type=finite_float,
+        default=None,
         help="Override the profile's sheet-impedance scale",
     )
     args = parser.parse_args()
@@ -238,16 +316,16 @@ def main() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     profile = CONVENTION_PROFILES[args.convention_profile]
 
-    effective_op_sign = args.bempp_op_sign if args.bempp_op_sign is not None else profile["op_sign"]
+    effective_op_sign = (
+        args.bempp_op_sign if args.bempp_op_sign is not None else profile["op_sign"]
+    )
     effective_rhs_cross = (
         args.bempp_rhs_cross
         if args.bempp_rhs_cross is not None
         else profile["rhs_cross"]
     )
     effective_rhs_sign = (
-        args.bempp_rhs_sign
-        if args.bempp_rhs_sign is not None
-        else profile["rhs_sign"]
+        args.bempp_rhs_sign if args.bempp_rhs_sign is not None else profile["rhs_sign"]
     )
     effective_phase_sign = (
         args.bempp_phase_sign
@@ -255,9 +333,7 @@ def main() -> None:
         else profile["phase_sign"]
     )
     effective_zs_scale = (
-        args.bempp_zs_scale
-        if args.bempp_zs_scale is not None
-        else profile["zs_scale"]
+        args.bempp_zs_scale if args.bempp_zs_scale is not None else profile["zs_scale"]
     )
 
     summary_rows: List[Dict[str, object]] = []
@@ -358,19 +434,27 @@ def main() -> None:
                 "artifact if its corresponding skip option reused stale data."
             )
 
-        metrics = load_json(report_json)
-        flags = compute_case_pass_flags(metrics)
+        try:
+            metrics = load_json(report_json)
+            flags = compute_case_pass_flags(metrics)
+            main_theta_diff = require_pattern_metric(metrics, "main_theta_abs_diff_deg")
+            main_level_diff = abs(require_pattern_metric(metrics, "main_level_diff_db"))
+            sll_diff = abs(require_pattern_metric(metrics, "sll_down_diff_db"))
+        except ValueError as exc:
+            raise SystemExit(
+                f"Invalid comparison report for {case.case_id}: {exc}. Rerun "
+                "without --skip-compare; regenerate either solver artifact if a "
+                "skip option reused stale or incomplete data."
+            ) from exc
         row: Dict[str, object] = {
             "case_id": case.case_id,
             "freq_ghz": case.freq_ghz,
             "zs_imag_ohm": case.zs_imag_ohm,
             "theta_inc_deg": case.theta_inc_deg,
             "phi_inc_deg": case.phi_inc_deg,
-            "main_theta_abs_diff_deg": float(
-                metrics["pattern_features"]["main_theta_abs_diff_deg"]
-            ),
-            "main_level_abs_diff_db": abs(float(metrics["pattern_features"]["main_level_diff_db"])),
-            "sll_abs_diff_db": abs(float(metrics["pattern_features"]["sll_down_diff_db"])),
+            "main_theta_abs_diff_deg": main_theta_diff,
+            "main_level_abs_diff_db": main_level_diff,
+            "sll_abs_diff_db": sll_diff,
             **flags,
         }
         summary_rows.append(row)
@@ -387,8 +471,12 @@ def main() -> None:
 
     gates = {
         "num_cases": len(summary_rows),
-        "count_main_theta_le_3deg": sum(bool(r["pass_main_theta_le_3deg"]) for r in summary_rows),
-        "count_main_level_le_1p5db": sum(bool(r["pass_main_level_le_1p5db"]) for r in summary_rows),
+        "count_main_theta_le_3deg": sum(
+            bool(r["pass_main_theta_le_3deg"]) for r in summary_rows
+        ),
+        "count_main_level_le_1p5db": sum(
+            bool(r["pass_main_level_le_1p5db"]) for r in summary_rows
+        ),
         "count_sll_le_3db": sum(bool(r["pass_sll_le_3db"]) for r in summary_rows),
     }
     gates["beam_gate_pass"] = (
@@ -412,7 +500,12 @@ def main() -> None:
     }
     write_summary_md(summary_md, summary_rows, gates, config)
     summary_json.write_text(
-        json.dumps({"config": config, "cases": summary_rows, "gates": gates}, indent=2),
+        json.dumps(
+            {"config": config, "cases": summary_rows, "gates": gates},
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n",
         encoding="utf-8",
     )
 

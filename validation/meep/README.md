@@ -86,5 +86,8 @@ python validation/meep/analyze_meep_detailed_comparison.py \
   baseline; Floquet-derived transmission is still exported as a diagnostic.
 - Use trend curves (for example, `R` versus slot width) to interpret the
   cross-method comparison; a single point does not establish convergence.
+- JSON readers reject `NaN` and infinity constants, and generated JSON contains
+  only standard finite numbers or `null`. The detailed report uses `null` when
+  fewer than two varying points make Pearson correlation unavailable.
 - The supplied comparison command uses `nx=ny=14`. Repeat the run at finer
   meshes and confirm convergence before interpreting Julia-versus-Meep gaps.

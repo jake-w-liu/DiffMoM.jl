@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from pathlib import Path
 import subprocess
 import sys
@@ -18,7 +19,10 @@ def parse_float_list(raw: str) -> List[float]:
         t = token.strip()
         if not t:
             continue
-        vals.append(float(t))
+        value = float(t)
+        if not math.isfinite(value):
+            raise ValueError(f"Expected finite values in --slot-wx-fracs, got {t!r}.")
+        vals.append(value)
     if not vals:
         raise ValueError("No values parsed from --slot-wx-fracs.")
     return vals
@@ -28,9 +32,25 @@ def slug_float(x: float) -> str:
     return f"{x:.3f}".replace("-", "m").replace(".", "p")
 
 
+def reject_nonstandard_json_constant(value: str):
+    raise ValueError(f"non-standard numeric constant {value}")
+
+
 def load_json(path: Path) -> Dict[str, Any]:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle, parse_constant=reject_nonstandard_json_constant)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(
+            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
+            "case artifacts before building the curve summary."
+        ) from exc
+    if not isinstance(data, dict):
+        raise SystemExit(
+            f"Invalid result in {path}: expected a JSON object. Regenerate the "
+            "case artifacts before building the curve summary."
+        )
+    return data
 
 
 def run_cmd(cmd: List[str], cwd: Path) -> None:
@@ -46,7 +66,9 @@ def make_plot(rows: List[Dict[str, Any]], out_png: Path, tol_refl: float) -> Non
     m_r = [float(r["meep_refl_total"]) for r in rows]
     d_r = [float(r["abs_diff_refl"]) for r in rows]
 
-    fig, axes = plt.subplots(2, 1, figsize=(7.2, 6.4), sharex=True, constrained_layout=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=(7.2, 6.4), sharex=True, constrained_layout=True
+    )
 
     axes[0].plot(x, j_r, "o-", label="Julia (MoM)", linewidth=1.6)
     axes[0].plot(x, m_r, "s-", label="Meep (FDTD)", linewidth=1.6)
@@ -56,7 +78,13 @@ def make_plot(rows: List[Dict[str, Any]], out_png: Path, tol_refl: float) -> Non
     axes[0].legend()
 
     axes[1].plot(x, d_r, "d-", color="tab:red", linewidth=1.6, label="|ΔR|")
-    axes[1].axhline(tol_refl, color="gray", linestyle="--", linewidth=1.2, label=f"Tolerance ({tol_refl:.3f})")
+    axes[1].axhline(
+        tol_refl,
+        color="gray",
+        linestyle="--",
+        linewidth=1.2,
+        label=f"Tolerance ({tol_refl:.3f})",
+    )
     axes[1].set_xlabel("Slot width fraction wx")
     axes[1].set_ylabel("|ΔR|")
     axes[1].grid(True, alpha=0.3)
@@ -126,7 +154,12 @@ def main() -> None:
         meep_ref = data_dir / f"meep_{case_prefix}_results.json"
         cmp_ref = data_dir / f"meep_{case_prefix}_cross_validation_report.json"
 
-        if not (args.reuse_existing and julia_ref.exists() and meep_ref.exists() and cmp_ref.exists()):
+        if not (
+            args.reuse_existing
+            and julia_ref.exists()
+            and meep_ref.exists()
+            and cmp_ref.exists()
+        ):
             run_cmd(
                 [
                     "julia",
@@ -213,7 +246,11 @@ def main() -> None:
                 "julia_refl_total": float(julia["refl_total_fraction"]),
                 "meep_refl_total": float(meep["reflectance_total"]),
                 "abs_diff_refl": float(rep["abs_diff_refl"]),
-                "julia_trans_total": float(julia.get("trans_total_fraction_closure", julia["trans_total_fraction"])),
+                "julia_trans_total": float(
+                    julia.get(
+                        "trans_total_fraction_closure", julia["trans_total_fraction"]
+                    )
+                ),
                 "meep_trans_total": float(meep["transmittance_total"]),
                 "abs_diff_trans": float(rep["abs_diff_trans"]),
                 "verdict": rep["verdict"],
@@ -230,7 +267,7 @@ def main() -> None:
 
     json_path = data_dir / f"{args.prefix_base}_curve_summary.json"
     with json_path.open("w", encoding="utf-8") as f:
-        json.dump({"rows": rows}, f, indent=2)
+        json.dump({"rows": rows}, f, indent=2, allow_nan=False)
         f.write("\n")
 
     plot_path = data_dir / f"{args.prefix_base}_reflectance_curve.png"

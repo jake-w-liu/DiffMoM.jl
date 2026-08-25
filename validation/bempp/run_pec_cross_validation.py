@@ -104,7 +104,7 @@ def run_bempp_pec(
     polarization = np.array([1.0, 0.0, 0.0], dtype=np.complex128)
 
     @bempp.complex_callable
-    def tangential_trace(x, n, domain_index, result):
+    def tangential_trace(x, n, _domain_index, result):
         phase = np.exp(1j * k0 * np.dot(direction, x))
         e_inc = polarization * phase
         result[:] = np.cross(e_inc, n)
@@ -145,12 +145,31 @@ def run_bempp_pec(
     return theta_flat, phi_flat, dir_dbi, e_ff, metadata
 
 
-def write_farfield_csv(path: Path, theta: np.ndarray, phi: np.ndarray, dir_dbi: np.ndarray) -> None:
+def write_farfield_csv(
+    path: Path, theta: np.ndarray, phi: np.ndarray, dir_dbi: np.ndarray
+) -> None:
+    if (
+        theta.ndim != 1
+        or phi.ndim != 1
+        or dir_dbi.ndim != 1
+        or theta.shape != phi.shape
+        or theta.shape != dir_dbi.shape
+    ):
+        raise ValueError(
+            "Far-field theta, phi, and directivity arrays must be one-dimensional "
+            "and have equal shapes."
+        )
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["theta_deg", "phi_deg", "dir_bempp_dBi"])
-        for t, p, d in zip(theta, phi, dir_dbi):
-            writer.writerow([float(np.rad2deg(t)), float(np.rad2deg(p)), float(d)])
+        for index in range(theta.size):
+            writer.writerow(
+                [
+                    float(np.rad2deg(theta[index])),
+                    float(np.rad2deg(phi[index])),
+                    float(dir_dbi[index]),
+                ]
+            )
 
 
 def write_phi0_cut_csv(
@@ -200,7 +219,9 @@ def main() -> None:
 
     write_farfield_csv(farfield_csv, theta, phi, dir_dbi)
     write_phi0_cut_csv(cut_csv, theta, phi, dir_dbi, args.n_phi)
-    meta_json.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    meta_json.write_text(
+        json.dumps(meta, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+    )
 
     print(f"Saved {farfield_csv}")
     print(f"Saved {cut_csv}")

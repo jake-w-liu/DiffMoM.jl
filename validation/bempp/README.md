@@ -25,7 +25,8 @@ python validation/bempp/compare_pec_to_julia.py
 
 The comparison writes `data/bempp_cross_validation_report.json` and
 `data/bempp_cross_validation_report.md`. It reports differences but does not
-apply an acceptance gate.
+apply an acceptance gate. The comparator selects the matched angular cut nearest
+phi zero and rejects empty, duplicate, malformed, or non-finite samples.
 
 ## One impedance-loaded case
 
@@ -60,6 +61,9 @@ python validation/bempp/compare_impedance_to_julia.py \
 
 This writes `data/bempp_z100_cross_validation_report.{json,md}`. The comparator
 extracts main-beam and sidelobe features from the sampled cut nearest phi zero.
+If no eligible sidelobe exists outside the exclusion window, the JSON fields are
+`null` and the Markdown report labels them as unavailable. The matrix requires
+finite sidelobe metrics and stops with an action instead of accepting that case.
 
 ## Validation matrix
 
@@ -142,7 +146,8 @@ python validation/bempp/compare_impedance_operator_aligned.py \
 ```
 
 Optional `--max-vector-rms-rel` and `--min-coherence` values turn those current
-metrics into executable gates.
+metrics into executable gates. Missing residual metadata is written as JSON
+`null`; malformed or non-finite metadata identifies the file to regenerate.
 
 ## Diagnostic plots
 
@@ -164,4 +169,5 @@ The plotter writes a PNG and a text summary under `data/`.
   degrees.
 - Preserve the generated metadata and convention configuration with the
   comparison report.
+- Generated reports use standard JSON and reject `NaN` and infinity constants.
 - Inspect linear-scale values when dB differences are concentrated near nulls.

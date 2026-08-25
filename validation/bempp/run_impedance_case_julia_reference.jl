@@ -45,10 +45,17 @@ function parse_string_flag(args::Vector{String}, name::String, default::String)
 end
 
 freq_ghz = parse_float_flag(ARGS, "--freq-ghz", 3.0)
+isfinite(freq_ghz) && freq_ghz > 0.0 ||
+    throw(ArgumentError(
+        "--freq-ghz must be finite and positive; received $freq_ghz"))
 freq = freq_ghz * 1e9
 c0 = 299792458.0
 lambda0 = c0 / freq
 k = 2π / lambda0
+all(isfinite, (freq, lambda0, k)) && lambda0 > 0.0 && k > 0.0 ||
+    throw(ArgumentError(
+        "--freq-ghz produces an unrepresentable frequency or wavelength; " *
+        "received $freq_ghz"))
 eta0 = 376.730313668
 
 Lx = 4 * lambda0
@@ -61,6 +68,22 @@ n_phi = parse_int_flag(ARGS, "--n-phi", 72)
 theta_inc_deg = parse_float_flag(ARGS, "--theta-inc-deg", 0.0)
 phi_inc_deg = parse_float_flag(ARGS, "--phi-inc-deg", 0.0)
 output_prefix = parse_string_flag(ARGS, "--output-prefix", "impedance")
+isfinite(theta_uniform) ||
+    throw(ArgumentError(
+        "--theta-ohm must be finite; received $theta_uniform"))
+n_theta > 0 ||
+    throw(ArgumentError("--n-theta must be positive; received $n_theta"))
+n_phi > 0 || throw(ArgumentError("--n-phi must be positive; received $n_phi"))
+isfinite(theta_inc_deg) ||
+    throw(ArgumentError(
+        "--theta-inc-deg must be finite; received $theta_inc_deg"))
+isfinite(phi_inc_deg) ||
+    throw(ArgumentError(
+        "--phi-inc-deg must be finite; received $phi_inc_deg"))
+occursin(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$", output_prefix) ||
+    throw(ArgumentError(
+        "--output-prefix must start with an ASCII letter or digit and contain " *
+        "only letters, digits, '.', '_', or '-'; received $(repr(output_prefix))"))
 
 theta_inc = deg2rad(theta_inc_deg)
 phi_inc = deg2rad(phi_inc_deg)
@@ -101,6 +124,11 @@ Z_imp = assemble_full_Z(Z_efie, Mp, theta_vec; reactive=true)
 E0 = 1.0
 v = assemble_v_plane_wave(mesh, rwg, k_vec, E0, pol_inc; quad_order=3)
 I_imp = Z_imp \ v
+all(isfinite, I_imp) ||
+    error(
+        "The impedance solve returned non-finite currents. Check the sheet " *
+        "impedance, frequency, and matrix conditioning before regenerating the " *
+        "reference.")
 
 n_hat = Vec3(0.0, 0.0, 1.0)
 pol_tan_raw = pol_inc - dot(pol_inc, n_hat) * n_hat
@@ -165,7 +193,19 @@ df_curr = DataFrame(
 res = Z_imp * I_imp - v
 rhs_l2 = norm(v)
 res_l2 = norm(res)
-res_rel = rhs_l2 > 0 ? res_l2 / rhs_l2 : NaN
+isfinite(rhs_l2) && rhs_l2 > 0.0 ||
+    error(
+        "The incident-field right-hand side must have a finite, positive norm; " *
+        "received $rhs_l2. Check the excitation and geometry.")
+isfinite(res_l2) ||
+    error(
+        "The impedance solve residual is non-finite. Check the matrix conditioning " *
+        "before regenerating the reference.")
+res_rel = res_l2 / rhs_l2
+isfinite(res_rel) ||
+    error(
+        "The impedance solve relative residual is non-finite. Check the matrix " *
+        "conditioning before regenerating the reference.")
 
 operator_checks = Dict(
     "frequency_ghz" => freq_ghz,
@@ -186,7 +226,15 @@ G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=eta0)
 E_ff_imp = compute_farfield(G_mat, I_imp, NΩ)
 
 ff_power_imp = [real(dot(E_ff_imp[:, q], E_ff_imp[:, q])) for q in 1:NΩ]
+all(isfinite, ff_power_imp) ||
+    error(
+        "The impedance far field contains non-finite power samples. Check the " *
+        "current solution before writing artifacts.")
 P_sphere_imp = sum(ff_power_imp[q] * grid.w[q] for q in 1:NΩ)
+isfinite(P_sphere_imp) && P_sphere_imp > 0.0 ||
+    error(
+        "The integrated far-field power must be finite and positive; received " *
+        "$P_sphere_imp. Check the current solution and angular grid.")
 D_imp = [4π * ff_power_imp[q] / P_sphere_imp for q in 1:NΩ]
 dir_imp_dBi = 10 .* log10.(max.(D_imp, 1e-30))
 
@@ -220,6 +268,7 @@ CSV.write(joinpath(DATADIR, "julia_$(output_prefix)_element_currents.csv"), df_c
 
 open(joinpath(DATADIR, "julia_$(output_prefix)_operator_checks.json"), "w") do io
     JSON.print(io, operator_checks, 4)
+    write(io, '\n')
 end
 
 println("Saved data/julia_$(output_prefix)_farfield.csv")
