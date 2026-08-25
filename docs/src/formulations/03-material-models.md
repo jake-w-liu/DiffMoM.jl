@@ -136,7 +136,7 @@ A gas of free electrons with number density driving plasma frequency $\omega_p$ 
 
 The sign of the $-i\gamma\omega$ term in the denominator is chosen so that the resulting $\operatorname{Im}\varepsilon_r \le 0$ -- passive loss. Below the plasma frequency the real part goes negative, reproducing the metal-like screening response. As a concrete check, `drude_epsr_3d(2.0e14; eps_inf=1.0, plasma_freq_hz=1.0e15, gamma_hz=1.0e13)` returns $\varepsilon_r \approx -23.94 - 1.25i$ (negative real part, negative imaginary part).
 
-`DrudePermittivity3D(eps_inf, plasma_freq_hz, gamma_hz)` stores the parameters; the model evaluator delegates to the standalone `drude_epsr_3d`. Because $\omega$ appears in the denominator, Drude evaluation requires $f > 0$ strictly (the DC limit $\omega\to0$ would make the denominator vanish and is rejected rather than returning `Inf`).
+`DrudePermittivity3D(eps_inf, plasma_freq_hz, gamma_hz)` stores the parameters and the constructor's `passive` policy; the model evaluator delegates both to the standalone `drude_epsr_3d`. Because $\omega$ appears in the denominator, Drude evaluation requires $f > 0$ strictly (the DC limit $\omega\to0$ would make the denominator vanish and is rejected rather than returning `Inf`).
 
 ### 3.2 Lorentz (Bound-Charge Resonance) Response
 

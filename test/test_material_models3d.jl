@@ -83,6 +83,41 @@ using .DiffMoM
                                resonance_freq_hz=2.0e14, gamma_hz=1.0e13)) <= 0
     @test imag(debye_epsr_3d(1.0e9; eps_static=4.0, eps_inf=2.0, tau_s=1.0e-10)) <= 0
 
+    active_drude = DrudePermittivity3D(
+        1.0 + 0.2im, 0.0, 1.0; passive=false)
+    active_lorentz = LorentzPermittivity3D(
+        1.0 + 0.2im, -0.5 + 0.1im, 2.0, 0.1; passive=false)
+    active_debye = DebyePermittivity3D(
+        1.0 + 0.2im, 2.0 + 0.1im, 0.1; passive=false)
+    @test !active_drude.passive
+    @test !active_lorentz.passive
+    @test !active_debye.passive
+    @test material_epsr_3d(active_drude, 1.0) ==
+          drude_epsr_3d(
+              1.0;
+              eps_inf=1.0 + 0.2im,
+              plasma_freq_hz=0.0,
+              gamma_hz=1.0,
+              passive=false,
+          )
+    @test material_epsr_3d(active_lorentz, 1.0) ==
+          lorentz_epsr_3d(
+              1.0;
+              eps_inf=1.0 + 0.2im,
+              strength=-0.5 + 0.1im,
+              resonance_freq_hz=2.0,
+              gamma_hz=0.1,
+              passive=false,
+          )
+    @test material_epsr_3d(active_debye, 1.0) ==
+          debye_epsr_3d(
+              1.0;
+              eps_static=1.0 + 0.2im,
+              eps_inf=2.0 + 0.1im,
+              tau_s=0.1,
+              passive=false,
+          )
+
     adjacent_frequency = prevfloat(1.0)
     adjacent_drude_reference = setprecision(BigFloat, 512) do
         ComplexF64(

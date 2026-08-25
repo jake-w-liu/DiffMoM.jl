@@ -129,7 +129,8 @@ evaluated via `material_epsr_3d(model, freq_hz)` or `drude_epsr_3d`.
 | `gamma_hz` | Real (coerced to `Float64`) | -- | Collision / damping rate in Hz. Must be finite and nonnegative. |
 | `passive` | `Bool` | `true` | If `true`, require `imag(eps_inf) <= 0`. |
 
-**Fields:** `eps_inf::ComplexF64`, `plasma_freq_hz::Float64`, `gamma_hz::Float64`.
+**Fields:** `eps_inf::ComplexF64`, `plasma_freq_hz::Float64`,
+`gamma_hz::Float64`, `passive::Bool`.
 
 **Returns:** a `DrudePermittivity3D` instance.
 
@@ -162,7 +163,7 @@ where `omega = 2*pi*freq_hz`, `omega_0 = 2*pi*resonance_freq_hz`, and
 | `passive` | `Bool` | `true` | If `true`, require `imag(eps_inf) <= 0`, `imag(strength) <= 0`, and `real(strength) >= 0`. |
 
 **Fields:** `eps_inf::ComplexF64`, `strength::ComplexF64`,
-`resonance_freq_hz::Float64`, `gamma_hz::Float64`.
+`resonance_freq_hz::Float64`, `gamma_hz::Float64`, `passive::Bool`.
 
 **Returns:** a `LorentzPermittivity3D` instance.
 
@@ -192,7 +193,8 @@ where `omega = 2*pi*freq_hz` and `tau = tau_s`.
 | `tau_s` | Real (coerced to `Float64`) | -- | Relaxation time in seconds. Must be finite and positive. |
 | `passive` | `Bool` | `true` | If `true`, require `imag(eps_static) <= 0`, `imag(eps_inf) <= 0`, and `real(eps_static - eps_inf) >= 0`. |
 
-**Fields:** `eps_static::ComplexF64`, `eps_inf::ComplexF64`, `tau_s::Float64`.
+**Fields:** `eps_static::ComplexF64`, `eps_inf::ComplexF64`, `tau_s::Float64`,
+`passive::Bool`.
 
 **Returns:** a `DebyePermittivity3D` instance.
 

@@ -341,12 +341,14 @@ struct DrudePermittivity3D
     eps_inf::ComplexF64
     plasma_freq_hz::Float64
     gamma_hz::Float64
+    passive::Bool
     function DrudePermittivity3D(eps_inf, plasma_freq_hz, gamma_hz; passive::Bool=true)
         epsc = _finite_complex_3d(eps_inf, "eps_inf")
         passive && _validate_passive_scalar_3d(epsc, "eps_inf")
         return new(epsc,
                    _finite_nonnegative_float_3d(plasma_freq_hz, "plasma_freq_hz"),
-                   _finite_nonnegative_float_3d(gamma_hz, "gamma_hz"))
+                   _finite_nonnegative_float_3d(gamma_hz, "gamma_hz"),
+                   passive)
     end
 end
 
@@ -361,6 +363,7 @@ struct LorentzPermittivity3D
     strength::ComplexF64
     resonance_freq_hz::Float64
     gamma_hz::Float64
+    passive::Bool
     function LorentzPermittivity3D(eps_inf, strength, resonance_freq_hz, gamma_hz;
                                    passive::Bool=true)
         epsc = _finite_complex_3d(eps_inf, "eps_inf")
@@ -373,7 +376,8 @@ struct LorentzPermittivity3D
         end
         return new(epsc, fc,
                    _finite_positive_float_3d(resonance_freq_hz, "resonance_freq_hz"),
-                   _finite_nonnegative_float_3d(gamma_hz, "gamma_hz"))
+                   _finite_nonnegative_float_3d(gamma_hz, "gamma_hz"),
+                   passive)
     end
 end
 
@@ -387,6 +391,7 @@ struct DebyePermittivity3D
     eps_static::ComplexF64
     eps_inf::ComplexF64
     tau_s::Float64
+    passive::Bool
     function DebyePermittivity3D(eps_static, eps_inf, tau_s; passive::Bool=true)
         epss = _finite_complex_3d(eps_static, "eps_static")
         epsi = _finite_complex_3d(eps_inf, "eps_inf")
@@ -397,7 +402,7 @@ struct DebyePermittivity3D
             real(epss - epsi) >= -_PASSIVITY_TOL_3D ||
                 error("Debye passive relaxation requires real(eps_static - eps_inf) >= 0.")
         end
-        return new(epss, epsi, tau)
+        return new(epss, epsi, tau, passive)
     end
 end
 
@@ -436,20 +441,23 @@ material_epsr_3d(model::DrudePermittivity3D, freq_hz_or_k0) =
     drude_epsr_3d(freq_hz_or_k0;
                   eps_inf=model.eps_inf,
                   plasma_freq_hz=model.plasma_freq_hz,
-                  gamma_hz=model.gamma_hz)
+                  gamma_hz=model.gamma_hz,
+                  passive=model.passive)
 
 material_epsr_3d(model::LorentzPermittivity3D, freq_hz_or_k0) =
     lorentz_epsr_3d(freq_hz_or_k0;
                     eps_inf=model.eps_inf,
                     strength=model.strength,
                     resonance_freq_hz=model.resonance_freq_hz,
-                    gamma_hz=model.gamma_hz)
+                    gamma_hz=model.gamma_hz,
+                    passive=model.passive)
 
 material_epsr_3d(model::DebyePermittivity3D, freq_hz_or_k0) =
     debye_epsr_3d(freq_hz_or_k0;
                   eps_static=model.eps_static,
                   eps_inf=model.eps_inf,
-                  tau_s=model.tau_s)
+                  tau_s=model.tau_s,
+                  passive=model.passive)
 
 """
     material_mur_3d(model, freq_hz_or_k0)
