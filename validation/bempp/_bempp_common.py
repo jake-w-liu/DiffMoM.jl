@@ -191,13 +191,68 @@ def load_csv_rows(path: Path) -> List[dict]:
     try:
         with path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle, strict=True)
-            rows = list(reader)
+            fieldnames = reader.fieldnames
+            if not fieldnames:
+                raise SystemExit(
+                    f"No CSV header found in {path}. Regenerate the source artifact "
+                    "with the expected schema, then rerun this command."
+                )
+
+            empty_columns = [
+                position
+                for position, name in enumerate(fieldnames, start=1)
+                if not name.strip()
+            ]
+            if empty_columns:
+                positions = ", ".join(str(position) for position in empty_columns)
+                raise SystemExit(
+                    f"Invalid CSV header in {path}: empty column name at position(s) "
+                    f"{positions}. Regenerate the source artifact with nonempty, "
+                    "unique column names, then rerun this command."
+                )
+
+            seen = set()
+            duplicate_columns = []
+            for name in fieldnames:
+                if name in seen and name not in duplicate_columns:
+                    duplicate_columns.append(name)
+                seen.add(name)
+            if duplicate_columns:
+                names = ", ".join(repr(name) for name in duplicate_columns)
+                raise SystemExit(
+                    f"Invalid CSV header in {path}: duplicate column name(s) {names}. "
+                    "Regenerate the source artifact with nonempty, unique column "
+                    "names, then rerun this command."
+                )
+
+            rows = []
+            for row in reader:
+                if None in row:
+                    extra_count = len(row[None])
+                    raise SystemExit(
+                        f"Invalid CSV record ending at line {reader.line_num} in "
+                        f"{path}: found {extra_count} field(s) beyond the header. "
+                        "Regenerate the source artifact with the expected schema, "
+                        "then rerun this command."
+                    )
+                missing_columns = [
+                    name for name in fieldnames if row[name] is None
+                ]
+                if missing_columns:
+                    names = ", ".join(repr(name) for name in missing_columns)
+                    raise SystemExit(
+                        f"Invalid CSV record ending at line {reader.line_num} in "
+                        f"{path}: missing value(s) for column(s) {names}. Regenerate "
+                        "the source artifact with the expected schema, then rerun "
+                        "this command."
+                    )
+                rows.append(row)
     except (OSError, UnicodeError, csv.Error) as exc:
         raise SystemExit(
             f"Could not read CSV data from {path}: {exc}. Regenerate the source "
             "artifact, then rerun this command."
         ) from exc
-    if reader.fieldnames is None or not rows:
+    if not rows:
         raise SystemExit(
             f"No CSV data rows found in {path}. Regenerate the source artifact, "
             "then rerun this command."

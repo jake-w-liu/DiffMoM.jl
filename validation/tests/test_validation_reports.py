@@ -128,6 +128,39 @@ class ValidationReportTests(unittest.TestCase):
             self.assertIn("Non-finite numeric value", result.stderr)
             self.assertFalse((data / "bempp_cross_validation_report.json").exists())
 
+    def test_csv_reader_rejects_ambiguous_record_structure(self) -> None:
+        common = load_module(
+            "validation_bempp_common_csv",
+            BEMPP_DIR / "_bempp_common.py",
+        )
+        cases = {
+            "duplicate column name": (
+                "theta_deg,theta_deg,phi_deg,value\n0,90,5,1\n",
+                "duplicate column name",
+            ),
+            "empty column name": (
+                "theta_deg,phi_deg,value,\n0,5,1,unused\n",
+                "empty column name",
+            ),
+            "extra record field": (
+                "theta_deg,phi_deg,value\n0,5,1,unexpected\n",
+                "beyond the header",
+            ),
+            "missing record field": (
+                "theta_deg,phi_deg,value\n0,5\n",
+                "missing value",
+            ),
+        }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name, (contents, expected) in cases.items():
+                with self.subTest(case=name):
+                    path = root / f"{name.replace(' ', '_')}.csv"
+                    path.write_text(contents, encoding="utf-8")
+                    with self.assertRaisesRegex(SystemExit, expected):
+                        common.load_csv_rows(path)
+
     def test_impedance_uses_json_null_when_no_sidelobe_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
