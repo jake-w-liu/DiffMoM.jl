@@ -89,4 +89,3 @@ human approval under the unused-is-not-unwanted rule.
   targets.
 - Domain algorithms are not merged on token similarity alone.
 - Documentation and tests may grow; deleting them is forbidden.
-

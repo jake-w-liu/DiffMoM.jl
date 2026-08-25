@@ -18,7 +18,7 @@ Census taken at commit `2c31d91064b07758eac5debdf9e710934e96bc17` on
 | SL-009 | H | Aqua was unreachable from the normal test graph; package tests included source directly instead of loading the installed package | `test/runtests.jl`, `Project.toml`, `.slopfix/quality.json` | negative | R2 | INV-001, INV-045, INV-048 | complete: tests load the package and run Aqua in the normal graph | `62f59e6` |
 | SL-010 | H/J | Allocation assertions existed without a consolidated representative latency/allocation baseline | Q-matrix regression and `.slopfix/quality.json` | negative | R2 | INV-013, INV-041 | complete: warm dense-Q allocation and latency evidence recorded; allocation ceiling enforced by test | `62f59e6` |
 | SL-011 | K | Documenter disabled public-doc coverage checking with `checkdocs=:none` | `docs/make.jl`, generated exported-docstring pages | negative | R2 | INV-032, INV-045, INV-049 | complete: `checkdocs=:exports`; every export is defined and rendered | `62f59e6` |
-| SL-012 | D | `test/runtests.jl` is a 14,415-line sequential test driver; source god files include Mesh/MLFMA/Excitation/DDA | `test/runtests.jl`, largest source files in `.slopfix/triage.md` | 0 | R3 | all | deferred unless a behaviour-preserving split is separately approved | |
+| SL-012 | D | `test/runtests.jl` is a 14,466-line sequential test driver; source god files include Mesh/MLFMA/Excitation/DDA | `test/runtests.jl`, largest source files in `.slopfix/triage.md` | 0 | R3 | all | deferred unless a behaviour-preserving split is separately approved | |
 | SL-013 | C/E | Internal definitions with one textual occurrence may be dead or public/dynamic extension points | whole `src/` public/internal symbol census | 15 | R3 | INV-045, INV-047 | 15 private helpers audited with no callers, exports, docs, reflective use, or extension contract; deletion awaits explicit approval | |
 | SL-014 | J | One cancellation-sensitive dense-Q entry forced every entry through BigFloat; the replacement BLAS path initially missed cancellation in one complex component | `src/optimization/QMatrix.jl`, Q regressions in `test/runtests.jl` | negative | R3 | INV-013, INV-040–042 | complete: local checked recomputation, component-specific regression, exact Hermitian completion, and measured allocation/latency | `62f59e6` |
 | SL-015 | J | The high-level iterative workflow trusted solver status without checking the returned vector against the selected operator | `src/Workflow.jl`, workflow regressions | negative | R3 | INV-011, INV-019, INV-040 | complete: configurable true-residual gate is enabled by default and partial-iterate retrieval is explicit | `62f59e6` |
@@ -26,9 +26,10 @@ Census taken at commit `2c31d91064b07758eac5debdf9e710934e96bc17` on
 | SL-017 | K | User guides duplicated mutable defaults, mixed tasks, and retained unsupported or misleading workflow claims | `README.md`, changed `docs/src/` guides, Bempp help/readme | negative | R2 | INV-031, INV-032, INV-049 | complete for the edited surface: canonical source pointers, task-focused pages, effective-value output, actionable errors, and link/build checks | `62f59e6` |
 | SL-018 | F | Regression tests wrote scratch mesh files into the repository `data/` directory | `test/runtests.jl` | negative | R2 | INV-003, INV-048 | complete: scratch files use one test-owned temporary directory | `62f59e6` |
 | SL-019 | L | No repository ratchets guarded line growth, blocking smells, duplication, or the wider quality contract | `.github/workflows/ci.yml`, `AGENTS.md`, `CLAUDE.md`, `.slopfix/`, `scripts/` | negative | R2 | INV-041–046, INV-048 | complete: CI and local commands enforce the committed ceilings and quality contract | `62f59e6` |
-| SL-020 | B | ExplicitImports v1.15.0 reports 59 potential implicit imports; its output includes local-binding false positives such as `path` and `volume`, so the actionable set is not yet isolated | package namespace across `src/` | unknown | R2 | INV-045 | open: triage each symbol before any broad import rewrite; 11 qualified non-public accesses are separately reviewed and recorded in the report | |
+| SL-020 | B | Broad dependency imports obscured the package's actual namespace requirements and produced 59 potential implicit-import findings, including four local-binding misattributions | `src/DiffMoM.jl`, four redundant file-local imports, `test/runtests.jl` | negative | R2 | INV-045 | complete: dependency names are imported explicitly; all import/owner checks pass; the 11 reviewed non-public qualified names are pinned to an exact allowlist | `89a24f9` |
 | SL-021 | J/K | Advanced examples used unchecked or mislabeled validation paths: four topology optimizers could apply an unevaluated line-search step, grounded postprocessing repeated one solve per basis vector, several studies overstated relaxed-density or discretized-reference results, and artifact failures hid the effective path | `examples/12_plate_rcs_stl_roundtrip.jl`, `14_periodic_to_validation.jl` through `23_circular_plate_ptd.jl`, `examples/grounded_rcs/`, aircraft/PO validators and their guides | negative | R3 | INV-033, INV-034, INV-040, INV-041, INV-048, INV-049 | complete for executable paths: projected accepted-step line searches, one-pass grounded linear maps, bounded defaults, finite/objective/power/gradient gates, honest result labels, and actionable artifact errors | `b318e51` |
 | SL-022 | G/H | Aqua's 10-second persistent-task default classified a clean bounds-checked package precompile as a task leak | `test/runtests.jl` | negative | R2 | INV-001, INV-048 | complete: a 300-second diagnostic returned `persistent=false` after 16.733 seconds; the test now retains Aqua's check with a 60-second window and passes in one- and four-thread suites | `b318e51` |
+| SL-023 | H/J | A single fresh-resolution radiation-vector allocation sample included one-time JIT work at a new Julia call site | `test/runtests.jl` | negative | R2 | INV-041, INV-048 | complete: the helper takes the minimum of three warm samples, retains the original ceiling, and passes the isolated and bounds-checked suites | `89a24f9` |
 
 ## Behavioural diff — SL-001 (pending full site resolution)
 
@@ -73,9 +74,9 @@ No deletion is recorded until the user explicitly approves this set.
 | | Lines |
 | --- | ---: |
 | Baseline code lines | 74,755 |
-| Raw census estimate (unverified) | 7,738 |
+| Raw census estimate (unverified) | 7,691 |
 | Promised net reduction | 150 |
-| Gross removed so far | 856 |
-| Gross added so far | 8,105 |
-| Net removed so far | -7,248 |
-| Remaining to target | 7,398 |
+| Gross removed so far | 879 |
+| Gross added so far | 8,201 |
+| Net removed so far | -7,321 |
+| Remaining to target | 7,471 |

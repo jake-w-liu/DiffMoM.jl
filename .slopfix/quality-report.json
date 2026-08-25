@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "kind": "slopfix-quality-report",
-  "generated_at": "2026-08-24T22:37:55+00:00",
+  "generated_at": "2026-08-25T00:46:37+00:00",
   "quality_model": "ISO/IEC 25010:2023",
   "profile": "julia",
   "root": "/Users/jake/EMPIRE/codes/DiffMoM.jl",
-  "config_sha256": "a08d537c2fd8890130372aa7aeaec5914c7fe0a7ab0cca8ba02c9d1ac660bf16",
+  "config_sha256": "680eca22432a9339880ddf0d51b7e1aa273d19cbd4d34b74f47392599133ad6c",
   "partial": false,
   "selected_gate_ids": [
     "julia-tests",
@@ -28,9 +28,9 @@
   "summary": {
     "total": 16,
     "by_status": {
-      "PASS": 13,
+      "PASS": 14,
       "FAIL": 0,
-      "UNVERIFIED": 2,
+      "UNVERIFIED": 1,
       "NOT_APPLICABLE": 1
     },
     "by_category": {
@@ -71,9 +71,9 @@
         "NOT_APPLICABLE": 0
       },
       "maintainability": {
-        "PASS": 2,
+        "PASS": 3,
         "FAIL": 0,
-        "UNVERIFIED": 1,
+        "UNVERIFIED": 0,
         "NOT_APPLICABLE": 0
       },
       "flexibility": {
@@ -112,15 +112,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 1763.575,
+      "duration_seconds": 496.298,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 31163,
-        "sha256": "41afdcc654ec4d8d6af3e3e72fa3331268722d70c4e8c5f0479c772f8bdeab28"
+        "bytes": 31224,
+        "sha256": "24acd760213cc2070b9bf4719ac50a99cf8ebb445270e06416b1597c6ec92e97"
       },
       "protected_paths_changed": []
     },
@@ -169,15 +169,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 1189.28,
+      "duration_seconds": 409.636,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 24022,
-        "sha256": "20dd1e108b0cb3ecf302109a54744731cad1ad56dbb8e262e393ecb17cbd6203"
+        "bytes": 24021,
+        "sha256": "87d89f1fe7bb37be8fcc3c59a4a8aa2c8b4d328ed94ad1c80ce1abd9f91cf2dc"
       },
       "protected_paths_changed": []
     },
@@ -258,7 +258,7 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 67.888,
+      "duration_seconds": 20.485,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
@@ -312,11 +312,11 @@
       "title": "ExplicitImports and public-name checks",
       "required": false,
       "kind": "review",
-      "status": "UNVERIFIED",
+      "status": "PASS",
       "source": "review",
-      "message": "Add ExplicitImports checks for implicit, stale, non-owning, or non-public imports and qualified accesses, allowing documented exceptions only.",
-      "evidence": "An isolated ExplicitImports v1.15.0 audit on 2026-08-24 reported no stale explicit imports, 59 potential implicit imports, and 11 qualified non-public accesses. The non-public accesses were reviewed; the potential implicit-import set still needs per-symbol triage because it includes local-binding false positives such as path and volume.",
-      "rationale": "No bulk namespace rewrite was attempted without first separating real implicit dependencies from analyzer false positives. ExplicitImports remains audit tooling rather than a runtime dependency."
+      "message": "ExplicitImports v1.15 is a test-only dependency. The normal test graph checks for implicit, stale, non-owning, non-public, and self-qualified imports or accesses. An isolated replay on 2026-08-25 passed all seven checks: zero implicit or stale imports, public owner-correct explicit imports, owner-correct qualified accesses, and no self-qualified accesses. The 11 reviewed non-public qualified names are pinned to an exact allowlist and the observed set must equal it.",
+      "evidence": "ExplicitImports v1.15 is a test-only dependency. The normal test graph checks for implicit, stale, non-owning, non-public, and self-qualified imports or accesses. An isolated replay on 2026-08-25 passed all seven checks: zero implicit or stale imports, public owner-correct explicit imports, owner-correct qualified accesses, and no self-qualified accesses. The 11 reviewed non-public qualified names are pinned to an exact allowlist and the observed set must equal it.",
+      "rationale": "Narrow package imports replaced broad namespace imports. This removed all 59 potential implicit-import findings, including four local-binding misattributions that disappeared when their names were no longer imported broadly. Any new non-public qualified name now fails the regression gate."
     },
     {
       "id": "julia-jet-entrypoints",

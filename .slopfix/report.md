@@ -1,14 +1,14 @@
 # Slopfix report — DiffMoM.jl
 
-> Status: implementation audit complete at `b318e51`; removal of the audited
-> private dead-code set still requires the user's explicit approval. Amend the
-> final commit and measurements if that set is approved.
+> Status: implementation audit complete at `89a24f9`; removal of the audited
+> private dead-code set still requires the user's explicit approval. Update the
+> report and measurements if that set is approved.
 
 | | |
 | --- | --- |
 | Period | `2026-08-24` → `2026-08-25` |
 | Baseline commit | `2c31d91064b07758eac5debdf9e710934e96bc17` |
-| Audited source commit | `b318e51` |
+| Audited source commit | `89a24f9` |
 | Counter | `slopfix-builtin/2+julia/1.12.7` |
 | Definition | non-blank, non-comment source lines |
 | Scope | frozen in `.slopfix/baseline.json` |
@@ -18,23 +18,23 @@
 | | Lines |
 | --- | ---: |
 | Baseline code | 74,755 |
-| Audited code | 82,003 |
-| Gross removed | 856 |
-| Gross added | 8,105 |
+| Audited code | 82,076 |
+| Gross removed | 879 |
+| Gross added | 8,201 |
 | Gross method | `slopfix-builtin/2-line-fingerprint-diff` |
-| **Net change** | **+7,248** |
-| **Reduction** | **-9.70%** |
+| **Net change** | **+7,321** |
+| **Reduction** | **-9.79%** |
 
 | | |
 | --- | ---: |
 | Promised reduction | 0.2% (150 lines) |
-| Shortfall from target | 7,398 lines |
+| Shortfall from target | 7,471 lines |
 | **Target attained** | **No** |
 
 Reproduce the current number:
 
 ```bash
-git checkout b318e51
+git checkout 89a24f9
 python3 scripts/slopfix.py measure --strict
 ```
 
@@ -42,11 +42,12 @@ The reduction target was not met. The original clone census included distinct
 scientific algorithms whose ordering, conjugation, precision, or external
 workflow contracts were not interchangeable. Correctness fixes,
 characterisation tests, public-documentation coverage, fail-closed example
-gates, and the executable quality tooling added more source than the audit
-safely removed. Fifteen private helpers and one Python import passed the static
-dead-code audit, but the skill's unused-is-not-unwanted rule prohibits deleting
-them without explicit approval. No tests or documentation were removed, and no
-source was parked or compressed to manufacture a reduction.
+gates, explicit-import regression checks, and the executable quality tooling
+added more source than the audit safely removed. Fifteen private helpers and one
+Python import passed the static dead-code audit, but the skill's
+unused-is-not-unwanted rule prohibits deleting them without explicit approval.
+No tests or documentation were removed, and no source was parked or compressed
+to manufacture a reduction.
 
 ## Verification
 
@@ -67,7 +68,7 @@ Unverified items and the evidence needed to close them:
 | INV-034 | Complete internal-validation matrix | Bounded Mie, beam-steering, convergence, robustness, periodic, and grounded checks passed; external PO/MATLAB and artifact-dependent paper/scaling workflows were not all executable | Provision their declared artifacts and MATLAB/Octave, then run the remaining validation gates |
 | INV-035 | Bempp-cl and Meep comparisons | Their separate Python solver environments were not provisioned | Install the pinned external requirements and run each comparison gate |
 | INV-036 | Successful CAD conversion | Missing-path, unsupported-format, executable-presence, and mesh-I/O paths passed; the repository has no small CAD fixture | Add a licensed test CAD fixture, convert it with Gmsh, and import the result |
-| INV-044 | Current remote CI result | The platform matrix is configured, but commit `b318e51` has not been observed in GitHub Actions | Push the commit and retain green Ubuntu, macOS, Windows, one-thread, four-thread, and docs jobs |
+| INV-044 | Current remote CI result | The platform matrix is configured, but the audited source has not been observed in GitHub Actions | Push the final commit and retain green Ubuntu, macOS, Windows, one-thread, four-thread, and docs jobs |
 | INV-047 | Serialized-struct compatibility | There is no committed serialized fixture or schema/migration policy | Add versioned fixtures and round-trip/migration tests for supported public structs |
 
 Final-gate checks:
@@ -78,14 +79,14 @@ Final-gate checks:
 | Four-thread bounds-checked project suite | PASS; all 52 sections |
 | Isolated package test gate | PASS; exit 0 |
 | Documentation and doctests | PASS; export coverage and cross-references checked |
-| Modified Julia parser/lowering sweep | PASS; all 24 changed Julia files |
-| Python bytecode compilation | PASS for `validation/` and `scripts/` |
+| Modified Julia parser sweep | PASS; all 47 changed Julia files |
+| Python bytecode compilation | PASS; all 12 changed Python files |
 | Aqua | PASS through the installed-package test graph |
 | JET | PASS; zero reports on the selected concrete entrypoints |
 | Source coverage | 21,079 / 23,031 executable lines (91.52%) |
 | Blocking smells | 0 |
 | Duplication ratchet | 7,691 estimated removable lines, ceiling 7,900 |
-| Line ratchet | 82,003 code lines, ceiling 82,648 |
+| Line ratchet | 82,076 code lines, ceiling 82,648 |
 | Secret scan | Gitleaks 8.30.1: 442-commit history and audited source files passed |
 | `slopfix measure --strict` | Exit 0; no warnings or integrity findings |
 
@@ -108,6 +109,10 @@ Focused numerical evidence:
   previous all-BigFloat implementation measured 249,783,504 bytes and
   45.418 milliseconds on the same case. Wall time is machine-specific; the
   regression suite enforces allocation ceilings.
+- A fresh-resolution replay of the radiation-vector allocation gate measured
+  4,552,992 bytes on its first sample at a new Julia call site, then 2,619,680
+  bytes on each of four repeats. The gate now takes the minimum of three warm
+  samples and retains its original 3,018,752-byte ceiling.
 - One hundred seeded dense-Q cases agreed with a 512-bit BigFloat reference to
   a maximum relative error of `4.73455569118545e-16`; every result was exactly
   Hermitian.
@@ -152,9 +157,9 @@ The final matrix is recorded in `.slopfix/quality-report.json`.
 | --- | --- |
 | Quality model | `ISO/IEC 25010:2023` |
 | Profile | `julia` |
-| Config SHA-256 | `a08d537c2fd8890130372aa7aeaec5914c7fe0a7ab0cca8ba02c9d1ac660bf16` |
+| Config SHA-256 | `680eca22432a9339880ddf0d51b7e1aa273d19cbd4d34b74f47392599133ad6c` |
 | Run scope | full; all 16 gates selected |
-| Totals | 13 PASS, 0 FAIL, 2 UNVERIFIED, 1 NOT_APPLICABLE |
+| Totals | 14 PASS, 0 FAIL, 1 UNVERIFIED, 1 NOT_APPLICABLE |
 | Strict verdict | PASS; no required gate failed or remained unverified |
 
 | Characteristic | PASS | FAIL | UNVERIFIED | NOT_APPLICABLE | Evidence or limit |
@@ -165,18 +170,20 @@ The final matrix is recorded in `.slopfix/quality-report.json`.
 | Interaction capability | 1 | 0 | 0 | 0 | docs/doctest command |
 | Reliability | 1 | 0 | 0 | 0 | one/four-thread and resource-lifecycle evidence |
 | Security | 2 | 0 | 1 | 0 | clean resolution and secrets pass; SBOM/advisories unverified |
-| Maintainability | 2 | 0 | 1 | 0 | Aqua/JET pass; ExplicitImports triage incomplete |
+| Maintainability | 3 | 0 | 0 | 0 | Aqua, JET, and ExplicitImports pass |
 | Flexibility | 1 | 0 | 0 | 0 | exports, dispatch, and public docs |
 | Safety | 1 | 0 | 0 | 0 | finite, bounds, residual, power, and gradient gates |
 
-Optional unverified quality gates:
+Optional unverified quality gate:
 
 - `julia-sbom-advisories`: the library commits no manifest and the environment
   has no Julia-aware advisory scanner, so no SBOM/advisory result exists.
-- `julia-explicit-imports`: ExplicitImports v1.15.0 found no stale explicit
-  imports but reported 59 potential implicit imports and 11 non-public qualified
-  accesses. The potential set includes analyzer false positives for local
-  bindings such as `path` and `volume` and still needs per-symbol triage.
+
+ExplicitImports v1.15 now runs in the normal test graph. Its seven checks report
+no implicit or stale imports, no non-owning or non-public explicit imports, and
+no self-qualified accesses. All qualified accesses use the owning module. The
+exact non-public qualified allowlist remains a compatibility boundary and fails
+if a new name appears.
 
 The 11 reviewed non-public integrations are `Base.RefValue`, `Base.decompose`,
 `Base.mightalias`, `Base.promote_op`, `Base.setindex`,
@@ -211,8 +218,10 @@ No confirmed bug was deliberately preserved.
 | SL-017 | Reworked README/docs and user-facing diagnostics under the UX-writing contract | `62f59e6` | INV-031, 032, 049 |
 | SL-018 | Moved test scratch files to a test-owned temporary directory | `62f59e6` | INV-003, 048 |
 | SL-019 | Added line, duplication, smell, secret, and ISO/IEC 25010 quality ratchets | `62f59e6` | INV-041–046, 048 |
+| SL-020 | Replaced broad dependency imports with the exact package namespace and added executable import/owner ratchets | `89a24f9` | INV-045, 048 |
 | SL-021 | Hardened and executed the advanced periodic, optimization, grounded, and PO example gates; artifact-dependent scripts now fail with the effective path and recovery command | `b318e51` | INV-033, 034, 040, 041, 048, 049 |
 | SL-022 | Replaced Aqua's too-short default completion window with a measured 60-second window | `b318e51` | INV-001, 048 |
+| SL-023 | Excluded one-time JIT allocations from the steady-state radiation-vector allocation gate without raising its ceiling | `89a24f9` | INV-041, 048 |
 
 No production module was wholesale rewritten.
 
@@ -227,7 +236,6 @@ No production module was wholesale rewritten.
 | SL-005 | Bempp Gmsh-path helpers | External environments were unavailable | Provision Bempp/Gmsh and characterize both drivers first |
 | SL-006, SL-013 | Fifteen private helpers and one Python import | Static audit found no users, but deletion requires explicit human approval | Approve or reject the exact set in `.slopfix/slop-ledger.md` |
 | SL-012 | Large test/source files | A split is high-risk churn without a module-level characterization spec | Separate approved restructuring task |
-| SL-020 | Potential implicit imports | Analyzer output includes local-binding false positives | Per-symbol triage before any namespace rewrite |
 
 ## Integrity findings
 
@@ -243,10 +251,9 @@ No production module was wholesale rewritten.
 - Remote platform results, external Bempp/Meep/MATLAB comparisons, successful
   CAD conversion, artifact-dependent example/validation paths, and
   serialization compatibility remain unverified as itemized above.
-- ExplicitImports' 59 potential implicit imports need per-symbol triage.
 - The docs build passes but warns that two API pages exceed 100 KiB and the
   generated search index is about 1.4 MiB.
-- `test/runtests.jl` remains a 14,419-line sequential driver. Large source files
+- `test/runtests.jl` remains a 14,466-line sequential driver. Large source files
   include `src/geometry/Mesh.jl`, `src/fast/MLFMA.jl`, and
   `src/assembly/Excitation.jl`; splitting them without behavioural specs was
   deliberately deferred.
@@ -264,7 +271,7 @@ No production module was wholesale rewritten.
 | `.slopfix/quality.json` | Replays the reviewed ISO/IEC 25010 contract | Any failed or required-unverified gate |
 | `.github/workflows/ci.yml` | Runs the platform matrix, docs, ratchets, smells, and quality contract | Any configured job or gate failure |
 
-The line ceiling is 645 lines above the audited count. Raising either ceiling
+The line ceiling is 572 lines above the audited count. Raising either ceiling
 requires a deliberate reviewed commit. These checks expose re-accumulation; they
 do not prove that every future change is non-duplicative.
 

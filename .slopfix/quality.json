@@ -180,9 +180,9 @@
       "title": "ExplicitImports and public-name checks",
       "required": false,
       "kind": "review",
-      "disposition": "unverified",
-      "evidence": "An isolated ExplicitImports v1.15.0 audit on 2026-08-24 reported no stale explicit imports, 59 potential implicit imports, and 11 qualified non-public accesses. The non-public accesses were reviewed; the potential implicit-import set still needs per-symbol triage because it includes local-binding false positives such as path and volume.",
-      "rationale": "No bulk namespace rewrite was attempted without first separating real implicit dependencies from analyzer false positives. ExplicitImports remains audit tooling rather than a runtime dependency.",
+      "disposition": "pass",
+      "evidence": "ExplicitImports v1.15 is a test-only dependency. The normal test graph checks for implicit, stale, non-owning, non-public, and self-qualified imports or accesses. An isolated replay on 2026-08-25 passed all seven checks: zero implicit or stale imports, public owner-correct explicit imports, owner-correct qualified accesses, and no self-qualified accesses. The 11 reviewed non-public qualified names are pinned to an exact allowlist and the observed set must equal it.",
+      "rationale": "Narrow package imports replaced broad namespace imports. This removed all 59 potential implicit-import findings, including four local-binding misattributions that disappeared when their names were no longer imported broadly. Any new non-public qualified name now fails the regression gate.",
       "instructions": "Add ExplicitImports checks for implicit, stale, non-owning, or non-public imports and qualified accesses, allowing documented exceptions only."
     },
     {
