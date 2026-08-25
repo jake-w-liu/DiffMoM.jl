@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "slopfix-quality-report",
-  "generated_at": "2026-08-25T00:46:37+00:00",
+  "generated_at": "2026-08-25T08:28:53+00:00",
   "quality_model": "ISO/IEC 25010:2023",
   "profile": "julia",
   "root": "/Users/jake/EMPIRE/codes/DiffMoM.jl",
@@ -112,15 +112,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 496.298,
+      "duration_seconds": 753.739,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 31224,
-        "sha256": "24acd760213cc2070b9bf4719ac50a99cf8ebb445270e06416b1597c6ec92e97"
+        "bytes": 31226,
+        "sha256": "34a893d3c3933446eae0a048fd6763bd55449f79cb94e49c0abe9c240d822153"
       },
       "protected_paths_changed": []
     },
@@ -169,15 +169,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 409.636,
+      "duration_seconds": 633.863,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 24021,
-        "sha256": "87d89f1fe7bb37be8fcc3c59a4a8aa2c8b4d328ed94ad1c80ce1abd9f91cf2dc"
+        "bytes": 24022,
+        "sha256": "1fcbacc20381855f0d114c91d3660fd873a6f9cb05c3c6a5c56f90fbd6afd6e8"
       },
       "protected_paths_changed": []
     },
@@ -258,15 +258,15 @@
       ],
       "executable": "/Users/jake/.juliaup/bin/julia",
       "cwd": ".",
-      "duration_seconds": 20.485,
+      "duration_seconds": 32.913,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 1719,
-        "sha256": "1d26a6ef80d58a3866d791c83a85dc41f3ec6087d255d68c6e42826e7380631b"
+        "bytes": 1718,
+        "sha256": "6abb4ceb14547165d06e6bd9081c98be7e312741b3de9086ad59bdf161a2266c"
       },
       "protected_paths_changed": []
     },
