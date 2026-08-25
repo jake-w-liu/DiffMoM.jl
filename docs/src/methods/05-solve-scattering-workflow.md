@@ -86,8 +86,15 @@ The workflow also rejects:
 - unsupported method or preconditioner symbols;
 - inconsistent method thresholds;
 - a mesh with no RWG unknowns;
-- a plane-wave wavenumber inconsistent with the supplied frequency; and
+- a plane-wave wavenumber or analytic-source frequency inconsistent with the
+  supplied frequency and propagation speed; and
 - an excitation vector with the wrong length or non-finite components.
+
+The built-in dipole, loop, monopole, and pattern-feed fields use vacuum
+`c0=299792458.0`. Use the workflow's default `c0` with those sources. For a
+different propagation medium, assemble a consistent excitation vector or use an
+imported field rather than combining a vacuum source model with another wave
+speed.
 
 ## Preconditioners
 

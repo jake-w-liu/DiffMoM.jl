@@ -10049,6 +10049,82 @@ workflow_dense_bytes = sizeof(ComplexF64) * N^2
     make_plane_wave(2 .* k_vec, E0, pol);
     verbose=false,
     check_resolution=false)
+
+workflow_matching_dipole = make_dipole(
+    Vec3(0.0, 0.0, 0.2),
+    CVec3(1.0e-12 + 0im, 0.0 + 0im, 0.0 + 0im),
+    Vec3(1.0, 0.0, 0.0),
+    :electric,
+    freq,
+)
+@test DiffMoM._validate_scattering_excitation_wavenumber(
+    workflow_matching_dipole, k, "solve_scattering") ≈ k
+
+workflow_mismatched_sources = (
+    make_dipole(
+        Vec3(0.0, 0.0, 0.2),
+        CVec3(1.0e-12 + 0im, 0.0 + 0im, 0.0 + 0im),
+        Vec3(1.0, 0.0, 0.0),
+        :electric,
+        2freq,
+    ),
+    make_loop(
+        Vec3(0.0, 0.0, 0.2),
+        Vec3(0.0, 0.0, 1.0),
+        0.01,
+        1.0 + 0im,
+        2freq,
+    ),
+    make_monopole(
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(0.0, 0.0, 1.0),
+        0.01,
+        1.0 + 0im,
+        2freq,
+    ),
+    pat_plus,
+)
+for source in workflow_mismatched_sources
+    @test_throws ArgumentError solve_scattering(
+        mesh, freq, source;
+        verbose=false,
+        check_resolution=false,
+        quad_order=1,
+    )
+end
+
+workflow_mismatched_multi = make_multi_excitation(
+    DiffMoM.AbstractExcitation[
+        pw_exc,
+        make_plane_wave(2 .* k_vec, E0, pol),
+    ],
+    ComplexF64[1.0, 1.0],
+)
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, workflow_mismatched_multi;
+    verbose=false,
+    check_resolution=false,
+    quad_order=1,
+)
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, workflow_matching_dipole;
+    c0=2c0,
+    verbose=false,
+    check_resolution=false,
+    quad_order=1,
+)
+
+for source in (
+    PortExcitation([1], 1.0 + 0im, 50.0 + 0im),
+    make_delta_gap(1, 1.0 + 0im, 1.0e-3),
+    make_imported_excitation(
+        _ -> CVec3(1.0 + 0im, 0.0 + 0im, 0.0 + 0im);
+        kind=:electric_field,
+    ),
+)
+    @test isnothing(DiffMoM._validate_scattering_excitation_wavenumber(
+        source, k, "solve_scattering"))
+end
 @test_throws ArgumentError solve_scattering(
     mesh, freq, fill(ComplexF64(NaN, 0.0), N);
     verbose=false,

@@ -25,7 +25,10 @@ produce a warning (or error if `error_on_underresolved=true`).
 # Arguments
 - `mesh::TriMesh`: triangle surface mesh
 - `freq_hz::Real`: frequency in Hz
-- `excitation`: either an `AbstractExcitation` or a pre-assembled `Vector{ComplexF64}` excitation vector
+- `excitation`: either an `AbstractExcitation` or a pre-assembled
+  `Vector{ComplexF64}` excitation vector. Frequency-bearing excitations must
+  match `freq_hz` and `c0`; built-in dipole, loop, monopole, and pattern-feed
+  source models use vacuum `c0`.
 
 # Keyword Arguments
 ## Method selection
@@ -129,8 +132,8 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     lambda = propagation_speed / frequency
     k = _frequency_to_wavenumber(
         frequency, propagation_speed, "solve_scattering")
-    excitation isa PlaneWaveExcitation &&
-        _validate_plane_wave_wavenumber(
+    excitation isa AbstractExcitation &&
+        _validate_scattering_excitation_wavenumber(
             excitation, k, "solve_scattering")
 
     # ── Step 1: Mesh validation ──

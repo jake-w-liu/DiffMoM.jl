@@ -1808,6 +1808,76 @@ function _validate_plane_wave_wavenumber(pw::PlaneWaveExcitation,
     return k_norm
 end
 
+function _validate_source_frequency_wavenumber(
+        excitation,
+        expected_k::Real,
+        context::AbstractString)
+    label = string(nameof(typeof(excitation)))
+    model_k = _frequency_to_wavenumber(
+        excitation.frequency, _C0, label)
+    expected = Float64(expected_k)
+    (isfinite(expected) && expected > 0.0) ||
+        throw(ArgumentError(
+            "$context expected wavenumber must be finite and positive, got $expected."))
+    isapprox(model_k, expected; rtol=1e-8, atol=0.0) ||
+        throw(ArgumentError(
+            "$context $label uses |k|=$model_k from its stored frequency and " *
+            "vacuum c0=$_C0, but the scattering problem uses |k|=$expected. " *
+            "Rebuild the excitation for the solve frequency. Built-in analytic " *
+            "sources require the default c0; use a preassembled or imported " *
+            "excitation for another propagation medium."))
+    return model_k
+end
+
+_validate_scattering_excitation_wavenumber_unchecked(
+    ::Union{PortExcitation,DeltaGapExcitation,ImportedExcitation},
+    ::Real,
+    ::AbstractString,
+) = nothing
+
+function _validate_scattering_excitation_wavenumber_unchecked(
+        excitation::PlaneWaveExcitation,
+        expected_k::Real,
+        context::AbstractString)
+    return _validate_plane_wave_wavenumber(excitation, expected_k, context)
+end
+
+function _validate_scattering_excitation_wavenumber_unchecked(
+        excitation::Union{
+            DipoleExcitation,
+            LoopExcitation,
+            MonopoleExcitation,
+            PatternFeedExcitation,
+        },
+        expected_k::Real,
+        context::AbstractString)
+    return _validate_source_frequency_wavenumber(
+        excitation, expected_k, context)
+end
+
+function _validate_scattering_excitation_wavenumber_unchecked(
+        excitation::MultiExcitation,
+        expected_k::Real,
+        context::AbstractString)
+    @inbounds for index in eachindex(excitation.excitations)
+        _validate_scattering_excitation_wavenumber_unchecked(
+            excitation.excitations[index],
+            expected_k,
+            "$context MultiExcitation child $index",
+        )
+    end
+    return nothing
+end
+
+function _validate_scattering_excitation_wavenumber(
+        excitation::AbstractExcitation,
+        expected_k::Real,
+        context::AbstractString)
+    _validate_excitation_model(excitation)
+    return _validate_scattering_excitation_wavenumber_unchecked(
+        excitation, expected_k, context)
+end
+
 @inline function _check_finite_cvec3(v::CVec3, label::AbstractString)
     for comp in v
         if !isfinite(real(comp)) || !isfinite(imag(comp))
