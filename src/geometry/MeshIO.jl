@@ -1484,15 +1484,19 @@ function convert_cad_to_mesh(cad_path::AbstractString, output_path::AbstractStri
     out_ext in (".msh", ".stl", ".obj") ||
         error("Unsupported output format '$(out_ext)'. Supported: .msh, .stl, .obj")
 
-    # Check gmsh availability
+    # Check Gmsh availability without replacing the command failure with a
+    # generic "not found" diagnosis.
     gmsh_found = try
         success(`$(gmsh_exe) --version`)
-    catch
-        false
+    catch err
+        throw(ErrorException(
+            "Could not run Gmsh executable '$gmsh_exe': " *
+            "$(sprint(showerror, err)). Install Gmsh from https://gmsh.info, " *
+            "add it to PATH, or pass a working path with gmsh_exe."))
     end
     gmsh_found || error(
-        "Gmsh not found at '$(gmsh_exe)'. Install Gmsh (https://gmsh.info) and " *
-        "ensure it is on your PATH, or pass the full path via gmsh_exe."
+        "Gmsh executable '$gmsh_exe' returned a nonzero status for --version. " *
+        "Verify that it is executable, or pass a working path with gmsh_exe."
     )
 
     # Build command

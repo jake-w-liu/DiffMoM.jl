@@ -12632,6 +12632,19 @@ mktempdir() do cad_test_dir
         @test occursin("mesh_size", sprint(showerror, mesh_size_error))
     end
 
+    missing_gmsh_error = try
+        convert_cad_to_mesh(
+            cad_test_path, cad_test_output; gmsh_exe=missing_gmsh)
+        nothing
+    catch err
+        err
+    end
+    @test missing_gmsh_error isa ErrorException
+    missing_gmsh_message = sprint(showerror, missing_gmsh_error)
+    @test occursin("Could not run Gmsh executable '$missing_gmsh'",
+                   missing_gmsh_message)
+    @test occursin("pass a working path with gmsh_exe", missing_gmsh_message)
+
     if !gmsh_available
         # Verify the availability diagnostic after all local arguments pass.
         thrown_gmsh = try
