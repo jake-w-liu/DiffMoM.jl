@@ -425,6 +425,72 @@ class ValidationReportTests(unittest.TestCase):
                     recovery="Regenerate the source artifact.",
                 )
 
+    def test_meep_comparison_fails_only_the_primary_reflectance_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data = root / "data"
+            data.mkdir()
+
+            def write_case(prefix: str, julia_refl: float, meep_refl: float) -> None:
+                (data / f"julia_{prefix}_reference.json").write_text(
+                    json.dumps(
+                        {
+                            "frequency_ghz": 10.0,
+                            "refl_total_fraction": julia_refl,
+                            "trans_total_fraction_closure": 1.0 - julia_refl,
+                            "abs_total_fraction": 0.0,
+                            "periodic_bc_model": "bloch",
+                        },
+                        allow_nan=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                (data / f"meep_{prefix}_results.json").write_text(
+                    json.dumps(
+                        {
+                            "reflectance_total": meep_refl,
+                            "transmittance_total": 0.0,
+                            "absorption_total": 0.0,
+                        },
+                        allow_nan=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+
+            write_case("reflectance_fail", julia_refl=0.0, meep_refl=1.0)
+            failed = self.run_script(
+                MEEP_DIR / "compare_periodic_to_julia.py",
+                root,
+                "--output-prefix",
+                "reflectance_fail",
+                "--tol-refl",
+                "0.1",
+            )
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("Reflectance comparison failed", failed.stderr)
+            failed_report = self.load_standard_json(
+                data / "meep_reflectance_fail_cross_validation_report.json"
+            )
+            self.assertEqual(failed_report["verdict"], "CHECK")
+
+            write_case("trans_diagnostic", julia_refl=0.5, meep_refl=0.5)
+            passed = self.run_script(
+                MEEP_DIR / "compare_periodic_to_julia.py",
+                root,
+                "--output-prefix",
+                "trans_diagnostic",
+                "--tol-trans",
+                "0.1",
+            )
+            self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+            passed_report = self.load_standard_json(
+                data / "meep_trans_diagnostic_cross_validation_report.json"
+            )
+            self.assertEqual(passed_report["verdict"], "PASS")
+            self.assertEqual(passed_report["trans_verdict"], "CHECK")
+
     def test_single_point_meep_correlation_is_unavailable(self) -> None:
         analyzer = load_module(
             "meep_detailed_analysis",

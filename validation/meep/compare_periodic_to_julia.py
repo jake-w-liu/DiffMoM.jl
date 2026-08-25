@@ -153,6 +153,13 @@ def main() -> None:
         f"reflectance verdict={verdict}, "
         f"transmittance diagnostic={trans_verdict}"
     )
+    if verdict != "PASS":
+        raise SystemExit(
+            f"Reflectance comparison failed: |delta R|={diff_refl:.6f} exceeds "
+            f"--tol-refl={args.tol_refl:.6f}. Inspect {report_json_path} and the "
+            "source artifacts before rerunning with a scientifically justified "
+            "tolerance."
+        )
 
 
 if __name__ == "__main__":

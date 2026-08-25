@@ -76,6 +76,8 @@ and Markdown reports. The overall verdict is reflectance-primary: it is `PASS`
 when `|ΔR|` does not exceed the effective `--tol-refl` value. `|ΔT|` receives a
 separate diagnostic status against `--tol-trans`; it does not change the overall
 verdict because the sheet and finite-thickness models are not operator-identical.
+The comparator writes both reports and exits nonzero when the reflectance verdict
+is not `PASS`; a transmission-only diagnostic does not change the exit status.
 
 The workflow accepts Bloch pairing only. For a mesh-convergence check, repeat
 the reference export with increasing `--nx` and `--ny` while holding the
