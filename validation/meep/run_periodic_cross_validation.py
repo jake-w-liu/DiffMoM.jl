@@ -7,29 +7,14 @@ import argparse
 import csv
 import json
 import math
-from pathlib import Path
 from typing import Any, Dict, List
 
-
-def reject_nonstandard_json_constant(value: str):
-    raise ValueError(f"non-standard numeric constant {value}")
-
-
-def load_json(path: Path) -> Dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle, parse_constant=reject_nonstandard_json_constant)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SystemExit(
-            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
-            "Julia artifact before running Meep."
-        ) from exc
-    if not isinstance(data, dict):
-        raise SystemExit(
-            f"Invalid result in {path}: expected a JSON object. Regenerate the "
-            "Julia artifact before running Meep."
-        )
-    return data
+from _meep_common import (
+    add_project_root_argument,
+    add_runtime_arguments,
+    load_json_object,
+    validate_runtime_geometry,
+)
 
 
 def build_meep_geometry(
@@ -76,8 +61,8 @@ def run_meep_case(
         import meep as mp
     except ImportError as exc:
         raise SystemExit(
-            "Meep Python bindings are required.\n"
-            "Install with: conda install -c conda-forge pymeep"
+            f"Could not import Meep or one of its dependencies: {exc}. Run "
+            "conda install -c conda-forge pymeep, then rerun the command."
         ) from exc
 
     dx_lambda = float(geometry_json["dx_lambda"])
@@ -199,25 +184,13 @@ def run_meep_case(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     parser.add_argument("--output-prefix", type=str, default="meep_periodic")
-    parser.add_argument(
-        "--resolution", type=int, default=36, help="Pixels per wavelength."
+    add_runtime_arguments(
+        parser, resolution_default=36, after_sources_default=200.0
     )
-    parser.add_argument("--pml-lambda", type=float, default=1.0)
-    parser.add_argument("--sz-lambda", type=float, default=6.0)
-    parser.add_argument("--metal-thickness-lambda", type=float, default=0.03)
-    parser.add_argument("--source-offset-lambda", type=float, default=0.35)
-    parser.add_argument("--refl-offset-lambda", type=float, default=0.25)
-    parser.add_argument("--tran-offset-lambda", type=float, default=0.35)
-    parser.add_argument("--fwidth", type=float, default=0.2)
-    parser.add_argument("--after-sources-time", type=float, default=200.0)
     args = parser.parse_args()
+    validate_runtime_geometry(parser, args)
 
     data_dir = args.project_root / "data"
     geometry_path = data_dir / f"julia_{args.output_prefix}_geometry.json"
@@ -238,8 +211,9 @@ def main() -> None:
             "output prefix, then rerun Meep."
         )
 
-    geometry_json = load_json(geometry_path)
-    reference_json = load_json(reference_path)
+    recovery = "Regenerate the Julia artifact before running Meep."
+    geometry_json = load_json_object(geometry_path, recovery=recovery)
+    reference_json = load_json_object(reference_path, recovery=recovery)
 
     meep_results = run_meep_case(
         geometry_json=geometry_json,

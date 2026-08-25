@@ -7,74 +7,23 @@ import argparse
 import csv
 import itertools
 import json
-import math
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, List
 
+from _bempp_common import (
+    ImpedanceValidationConfig,
+    add_incident_arguments,
+    add_project_root_argument,
+    add_sampling_arguments,
+    finite_float,
+    impedance_comparison_command,
+    load_json_object,
+    require_pattern_metric,
+    run_command,
+)
+
 
 ETA0 = 376.730313668
-
-
-def run_cmd(cmd: List[str], cwd: Path, dry_run: bool) -> None:
-    print("+", " ".join(cmd))
-    if dry_run:
-        return
-    env = os.environ.copy()
-    venv_bin = str(Path(sys.executable).parent)
-    path = env.get("PATH", "")
-    entries = path.split(os.pathsep) if path else []
-    if venv_bin not in entries:
-        env["PATH"] = venv_bin + os.pathsep + path
-    subprocess.run(cmd, cwd=str(cwd), check=True, env=env)
-
-
-def reject_nonstandard_json_constant(value: str):
-    raise ValueError(f"non-standard numeric constant {value}")
-
-
-def load_json(path: Path) -> Dict:
-    try:
-        data = json.loads(
-            path.read_text(encoding="utf-8"),
-            parse_constant=reject_nonstandard_json_constant,
-        )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SystemExit(
-            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
-            "comparison report, then rerun the sweep."
-        ) from exc
-    if not isinstance(data, dict):
-        raise SystemExit(
-            f"Invalid report in {path}: expected a JSON object. Regenerate the "
-            "comparison report, then rerun the sweep."
-        )
-    return data
-
-
-def require_pattern_metric(report: Dict, key: str, source: Path) -> float:
-    pattern_features = report.get("pattern_features")
-    if not isinstance(pattern_features, dict):
-        raise SystemExit(
-            f"Invalid report in {source}: missing object 'pattern_features'. "
-            "Regenerate the comparison report, then rerun the sweep."
-        )
-    value = pattern_features.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise SystemExit(
-            f"Invalid pattern_features.{key} in {source}: expected a finite JSON "
-            f"number, got {value!r}. Adjust the feature window if no sidelobe was "
-            "found, regenerate the report, then rerun the sweep."
-        )
-    converted = float(value)
-    if not math.isfinite(converted):
-        raise SystemExit(
-            f"Invalid pattern_features.{key} in {source}: expected a finite JSON "
-            f"number, got {value!r}. Regenerate the report, then rerun the sweep."
-        )
-    return converted
 
 
 def write_csv(path: Path, rows: List[Dict[str, object]]) -> None:
@@ -106,25 +55,16 @@ def write_md(path: Path, rows: List[Dict[str, object]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/ and Project.toml",
+    add_project_root_argument(parser, __file__)
+    add_incident_arguments(parser)
+    add_sampling_arguments(
+        parser,
+        n_theta_default=60,
+        n_phi_default=24,
+        mesh_mode_default="structured",
+        mesh_step_default=0.2,
     )
-    parser.add_argument("--freq-ghz", type=float, default=3.0)
-    parser.add_argument("--zs-imag-ohm", type=float, default=200.0)
-    parser.add_argument("--theta-inc-deg", type=float, default=0.0)
-    parser.add_argument("--phi-inc-deg", type=float, default=0.0)
-    parser.add_argument("--n-theta", type=int, default=60)
-    parser.add_argument("--n-phi", type=int, default=24)
-    parser.add_argument(
-        "--mesh-mode", choices=["gmsh_screen", "structured"], default="structured"
-    )
-    parser.add_argument("--nx", type=int, default=12)
-    parser.add_argument("--ny", type=int, default=12)
-    parser.add_argument("--mesh-step-lambda", type=float, default=0.2)
-    parser.add_argument("--target-theta-deg", type=float, default=30.0)
+    parser.add_argument("--target-theta-deg", type=finite_float, default=30.0)
     parser.add_argument("--julia-prefix", type=str, default="convref")
     parser.add_argument("--tag", type=str, default="convsweep")
     parser.add_argument("--run-julia", action="store_true")
@@ -134,28 +74,11 @@ def main() -> None:
     project_root = args.project_root.resolve()
     data_dir = project_root / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
+    validation = ImpedanceValidationConfig.from_namespace(args)
 
     if args.run_julia:
-        run_cmd(
-            [
-                "julia",
-                "--project=.",
-                "validation/bempp/run_impedance_case_julia_reference.jl",
-                "--freq-ghz",
-                str(args.freq_ghz),
-                "--theta-ohm",
-                str(args.zs_imag_ohm),
-                "--theta-inc-deg",
-                str(args.theta_inc_deg),
-                "--phi-inc-deg",
-                str(args.phi_inc_deg),
-                "--n-theta",
-                str(args.n_theta),
-                "--n-phi",
-                str(args.n_phi),
-                "--output-prefix",
-                args.julia_prefix,
-            ],
+        run_command(
+            validation.julia_command(args.julia_prefix),
             cwd=project_root,
             dry_run=args.dry_run,
         )
@@ -175,59 +98,25 @@ def main() -> None:
         combos, start=1
     ):
         prefix = f"{args.tag}_{idx:02d}"
-        run_cmd(
-            [
-                sys.executable,
-                "validation/bempp/run_impedance_cross_validation.py",
-                "--freq-ghz",
-                str(args.freq_ghz),
-                "--zs-imag-ohm",
-                str(args.zs_imag_ohm),
-                "--theta-inc-deg",
-                str(args.theta_inc_deg),
-                "--phi-inc-deg",
-                str(args.phi_inc_deg),
-                "--n-theta",
-                str(args.n_theta),
-                "--n-phi",
-                str(args.n_phi),
-                "--mesh-mode",
-                args.mesh_mode,
-                "--nx",
-                str(args.nx),
-                "--ny",
-                str(args.ny),
-                "--mesh-step-lambda",
-                str(args.mesh_step_lambda),
-                "--op-sign",
-                op_sign,
-                "--rhs-cross",
-                rhs_cross,
-                "--rhs-sign",
-                str(rhs_sign),
-                "--phase-sign",
-                phase_sign,
-                "--zs-scale",
-                str(zs_scale),
-                "--output-prefix",
+        run_command(
+            validation.bempp_command(
                 prefix,
-            ],
+                op_sign=op_sign,
+                rhs_cross=rhs_cross,
+                rhs_sign=rhs_sign,
+                phase_sign=phase_sign,
+                zs_scale=zs_scale,
+            ),
             cwd=project_root,
             dry_run=args.dry_run,
         )
-        run_cmd(
-            [
-                sys.executable,
-                "validation/bempp/compare_impedance_to_julia.py",
-                "--output-prefix",
+        run_command(
+            impedance_comparison_command(
                 prefix,
-                "--julia-prefix",
-                args.julia_prefix,
-                "--bempp-prefix",
-                prefix,
-                "--target-theta-deg",
-                str(args.target_theta_deg),
-            ],
+                target_theta_deg=args.target_theta_deg,
+                julia_prefix=args.julia_prefix,
+                bempp_prefix=prefix,
+            ),
             cwd=project_root,
             dry_run=args.dry_run,
         )
@@ -235,16 +124,23 @@ def main() -> None:
             continue
 
         report_path = data_dir / f"bempp_{prefix}_cross_validation_report.json"
-        report = load_json(report_path)
-        main_theta_abs_diff = abs(
-            require_pattern_metric(report, "main_theta_abs_diff_deg", report_path)
+        report = load_json_object(
+            report_path,
+            recovery="Regenerate the comparison report, then rerun the sweep.",
         )
-        main_level_abs_diff = abs(
-            require_pattern_metric(report, "main_level_diff_db", report_path)
-        )
-        sll_abs_diff = abs(
-            require_pattern_metric(report, "sll_down_diff_db", report_path)
-        )
+        try:
+            main_theta_abs_diff = abs(
+                require_pattern_metric(report, "main_theta_abs_diff_deg")
+            )
+            main_level_abs_diff = abs(
+                require_pattern_metric(report, "main_level_diff_db")
+            )
+            sll_abs_diff = abs(require_pattern_metric(report, "sll_down_diff_db"))
+        except ValueError as exc:
+            raise SystemExit(
+                f"Invalid report in {report_path}: {exc}. Regenerate the comparison "
+                "report, then rerun the sweep."
+            ) from exc
         score = main_theta_abs_diff + main_level_abs_diff + sll_abs_diff
         rows.append(
             {

@@ -11,44 +11,29 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-
-def reject_nonstandard_json_constant(value: str):
-    raise ValueError(f"non-standard numeric constant {value}")
+from _meep_common import add_project_root_argument, load_json_object
 
 
-def load_json(path: Path) -> Dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle, parse_constant=reject_nonstandard_json_constant)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SystemExit(
-            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
-            "source result before building this comparison."
-        ) from exc
-    if not isinstance(data, dict):
-        raise SystemExit(
-            f"Invalid result in {path}: expected a JSON object. Regenerate the "
-            "source result before building this comparison."
-        )
-    return data
+JSON_RECOVERY = "Regenerate the source result before building this comparison."
 
 
-def load_curve_cases(
-    data_dir: Path, curve_prefix_base: str, suffixes: List[str]
+def load_cases(
+    data_dir: Path, names: List[str], *, prefix_base: str = ""
 ) -> List[Dict[str, Any]]:
+    """Load matched Julia and Meep artifacts for each requested prefix."""
     rows: List[Dict[str, Any]] = []
-    for sfx in suffixes:
-        prefix = f"{curve_prefix_base}_{sfx}"
+    for name in names:
+        prefix = f"{prefix_base}_{name}" if prefix_base else name
         jpath = data_dir / f"julia_{prefix}_reference.json"
         mpath = data_dir / f"meep_{prefix}_results.json"
         if not jpath.exists() or not mpath.exists():
             raise SystemExit(
-                f"Missing curve artifacts for prefix {prefix!r}: expected {jpath} "
-                f"and {mpath}. Run run_reflectance_curve_comparison.py for that "
+                f"Missing validation artifacts for prefix {prefix!r}: expected "
+                f"{jpath} and {mpath}. Generate both solver results for that "
                 "prefix, then rerun this analysis."
             )
-        j = load_json(jpath)
-        m = load_json(mpath)
+        j = load_json_object(jpath, recovery=JSON_RECOVERY)
+        m = load_json_object(mpath, recovery=JSON_RECOVERY)
         rows.append(
             {
                 "prefix": prefix,
@@ -59,34 +44,6 @@ def load_curve_cases(
                 "meep_refl": float(m["reflectance_total"]),
             }
         )
-    rows.sort(key=lambda r: r["wx"])
-    return rows
-
-
-def load_convergence_cases(data_dir: Path, prefixes: List[str]) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    for prefix in prefixes:
-        jpath = data_dir / f"julia_{prefix}_reference.json"
-        mpath = data_dir / f"meep_{prefix}_results.json"
-        if not jpath.exists() or not mpath.exists():
-            raise SystemExit(
-                f"Missing convergence artifacts for prefix {prefix!r}: expected "
-                f"{jpath} and {mpath}. Generate both Julia and Meep results for "
-                "that prefix, then rerun this analysis."
-            )
-        j = load_json(jpath)
-        m = load_json(mpath)
-        rows.append(
-            {
-                "prefix": prefix,
-                "nx": int(j["nx"]),
-                "ny": int(j["ny"]),
-                "wx": float(j["slot_wx_frac"]),
-                "julia_refl": float(j["refl_total_fraction"]),
-                "meep_refl": float(m["reflectance_total"]),
-            }
-        )
-    rows.sort(key=lambda r: r["nx"])
     return rows
 
 
@@ -216,12 +173,7 @@ def write_markdown(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     parser.add_argument("--curve-prefix-base", type=str, default="meep_curve_bugfix")
     parser.add_argument("--curve-suffixes", type=str, default="wx0p200,wx0p300,wx0p400")
     parser.add_argument(
@@ -238,8 +190,12 @@ def main() -> None:
     if not conv_prefixes:
         parser.error("--conv-prefixes must contain at least one nonempty prefix")
 
-    curve_rows = load_curve_cases(data_dir, args.curve_prefix_base, curve_suffixes)
-    conv_rows = load_convergence_cases(data_dir, conv_prefixes)
+    curve_rows = load_cases(
+        data_dir, curve_suffixes, prefix_base=args.curve_prefix_base
+    )
+    conv_rows = load_cases(data_dir, conv_prefixes)
+    curve_rows.sort(key=lambda row: row["wx"])
+    conv_rows.sort(key=lambda row: row["nx"])
 
     curve_metrics = compute_metrics(curve_rows)
     conv_metrics = compute_metrics(conv_rows)

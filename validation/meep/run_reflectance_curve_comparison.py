@@ -6,61 +6,27 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 from pathlib import Path
-import subprocess
 import sys
 from typing import Any, Dict, List
 
-
-def parse_float_list(raw: str) -> List[float]:
-    vals: List[float] = []
-    for token in raw.split(","):
-        t = token.strip()
-        if not t:
-            continue
-        try:
-            value = float(t)
-        except ValueError as exc:
-            raise ValueError(
-                f"Expected comma-separated numbers in --slot-wx-fracs, got {t!r}."
-            ) from exc
-        if not math.isfinite(value):
-            raise ValueError(f"Expected finite values in --slot-wx-fracs, got {t!r}.")
-        vals.append(value)
-    if not vals:
-        raise ValueError("No values parsed from --slot-wx-fracs.")
-    return vals
+from _meep_common import (
+    add_project_root_argument,
+    add_runtime_arguments,
+    cli_options,
+    load_json_object,
+    nonnegative_finite_float,
+    parse_unit_interval_list,
+    positive_finite_float,
+    positive_int,
+    run_command,
+    unit_interval_float,
+    validate_runtime_geometry,
+)
 
 
 def slug_float(x: float) -> str:
     return f"{x:.3f}".replace("-", "m").replace(".", "p")
-
-
-def reject_nonstandard_json_constant(value: str):
-    raise ValueError(f"non-standard numeric constant {value}")
-
-
-def load_json(path: Path) -> Dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle, parse_constant=reject_nonstandard_json_constant)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SystemExit(
-            f"Could not read standard JSON from {path}: {exc}. Regenerate the "
-            "case artifacts before building the curve summary."
-        ) from exc
-    if not isinstance(data, dict):
-        raise SystemExit(
-            f"Invalid result in {path}: expected a JSON object. Regenerate the "
-            "case artifacts before building the curve summary."
-        )
-    return data
-
-
-def run_cmd(cmd: List[str], cwd: Path) -> None:
-    print("$", " ".join(cmd))
-    subprocess.run(cmd, cwd=str(cwd), check=True)
 
 
 def make_plot(rows: List[Dict[str, Any]], out_png: Path, tol_refl: float) -> None:
@@ -102,35 +68,28 @@ def make_plot(rows: List[Dict[str, Any]], out_png: Path, tol_refl: float) -> Non
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     parser.add_argument("--prefix-base", type=str, default="meep_curve")
-    parser.add_argument("--freq-ghz", type=float, default=10.0)
-    parser.add_argument("--dx-lambda", type=float, default=1.2)
-    parser.add_argument("--dy-lambda", type=float, default=1.2)
-    parser.add_argument("--nx", type=int, default=14)
-    parser.add_argument("--ny", type=int, default=14)
-    parser.add_argument("--slot-wx-fracs", type=str, default="0.20,0.30,0.40")
-    parser.add_argument("--slot-wy-frac", type=float, default=0.20)
-    parser.add_argument("--tol-refl", type=float, default=0.12)
+    parser.add_argument("--freq-ghz", type=positive_finite_float, default=10.0)
+    parser.add_argument("--dx-lambda", type=positive_finite_float, default=1.2)
+    parser.add_argument("--dy-lambda", type=positive_finite_float, default=1.2)
+    parser.add_argument("--nx", type=positive_int, default=14)
+    parser.add_argument("--ny", type=positive_int, default=14)
+    parser.add_argument(
+        "--slot-wx-fracs",
+        type=parse_unit_interval_list,
+        default="0.20,0.30,0.40",
+    )
+    parser.add_argument("--slot-wy-frac", type=unit_interval_float, default=0.20)
+    parser.add_argument("--tol-refl", type=nonnegative_finite_float, default=0.12)
     parser.add_argument("--periodic-bc", type=str, default="bloch", choices=["bloch"])
     parser.add_argument("--reuse-existing", action="store_true")
 
-    # Forwarded to Meep run script
-    parser.add_argument("--resolution", type=int, default=30)
-    parser.add_argument("--pml-lambda", type=float, default=1.0)
-    parser.add_argument("--sz-lambda", type=float, default=6.0)
-    parser.add_argument("--metal-thickness-lambda", type=float, default=0.03)
-    parser.add_argument("--source-offset-lambda", type=float, default=0.35)
-    parser.add_argument("--refl-offset-lambda", type=float, default=0.25)
-    parser.add_argument("--tran-offset-lambda", type=float, default=0.35)
-    parser.add_argument("--fwidth", type=float, default=0.2)
-    parser.add_argument("--after-sources-time", type=float, default=180.0)
+    add_runtime_arguments(
+        parser, resolution_default=30, after_sources_default=180.0
+    )
     args = parser.parse_args()
+    validate_runtime_geometry(parser, args)
     if args.nx < 14 or args.ny < 14:
         print(
             "WARNING: nx/ny below 14 is outside this workflow's comparison "
@@ -148,13 +107,9 @@ def main() -> None:
     meep_script = meep_dir / "run_periodic_cross_validation.py"
     compare_script = meep_dir / "compare_periodic_to_julia.py"
 
-    try:
-        wx_list = parse_float_list(args.slot_wx_fracs)
-    except ValueError as exc:
-        parser.error(str(exc))
     rows: List[Dict[str, Any]] = []
 
-    for wx in wx_list:
+    for wx in args.slot_wx_fracs:
         case_prefix = f"{args.prefix_base}_wx{slug_float(wx)}"
         print(f"\n=== Curve Case wx={wx:.3f} ({case_prefix}) ===")
 
@@ -168,80 +123,64 @@ def main() -> None:
             and meep_ref.exists()
             and cmp_ref.exists()
         ):
-            run_cmd(
+            run_command(
                 [
                     "julia",
                     f"--project={project_root}",
                     str(julia_script),
-                    "--output-prefix",
-                    case_prefix,
-                    "--freq-ghz",
-                    str(args.freq_ghz),
-                    "--dx-lambda",
-                    str(args.dx_lambda),
-                    "--dy-lambda",
-                    str(args.dy_lambda),
-                    "--nx",
-                    str(args.nx),
-                    "--ny",
-                    str(args.ny),
-                    "--slot-wx-frac",
-                    str(wx),
-                    "--slot-wy-frac",
-                    str(args.slot_wy_frac),
-                    "--periodic-bc",
-                    str(args.periodic_bc),
-                ],
+                ]
+                + cli_options(
+                    ("--output-prefix", case_prefix),
+                    ("--freq-ghz", args.freq_ghz),
+                    ("--dx-lambda", args.dx_lambda),
+                    ("--dy-lambda", args.dy_lambda),
+                    ("--nx", args.nx),
+                    ("--ny", args.ny),
+                    ("--slot-wx-frac", wx),
+                    ("--slot-wy-frac", args.slot_wy_frac),
+                    ("--periodic-bc", args.periodic_bc),
+                ),
                 cwd=project_root,
             )
 
-            run_cmd(
+            run_command(
                 [
                     sys.executable,
                     str(meep_script),
-                    "--project-root",
-                    str(project_root),
-                    "--output-prefix",
-                    case_prefix,
-                    "--resolution",
-                    str(args.resolution),
-                    "--pml-lambda",
-                    str(args.pml_lambda),
-                    "--sz-lambda",
-                    str(args.sz_lambda),
-                    "--metal-thickness-lambda",
-                    str(args.metal_thickness_lambda),
-                    "--source-offset-lambda",
-                    str(args.source_offset_lambda),
-                    "--refl-offset-lambda",
-                    str(args.refl_offset_lambda),
-                    "--tran-offset-lambda",
-                    str(args.tran_offset_lambda),
-                    "--fwidth",
-                    str(args.fwidth),
-                    "--after-sources-time",
-                    str(args.after_sources_time),
-                ],
+                ]
+                + cli_options(
+                    ("--project-root", project_root),
+                    ("--output-prefix", case_prefix),
+                    ("--resolution", args.resolution),
+                    ("--pml-lambda", args.pml_lambda),
+                    ("--sz-lambda", args.sz_lambda),
+                    ("--metal-thickness-lambda", args.metal_thickness_lambda),
+                    ("--source-offset-lambda", args.source_offset_lambda),
+                    ("--refl-offset-lambda", args.refl_offset_lambda),
+                    ("--tran-offset-lambda", args.tran_offset_lambda),
+                    ("--fwidth", args.fwidth),
+                    ("--after-sources-time", args.after_sources_time),
+                ),
                 cwd=project_root,
             )
 
-            run_cmd(
+            run_command(
                 [
                     sys.executable,
                     str(compare_script),
-                    "--project-root",
-                    str(project_root),
-                    "--output-prefix",
-                    case_prefix,
-                    "--tol-refl",
-                    str(args.tol_refl),
-                ],
+                ]
+                + cli_options(
+                    ("--project-root", project_root),
+                    ("--output-prefix", case_prefix),
+                    ("--tol-refl", args.tol_refl),
+                ),
                 cwd=project_root,
             )
 
-        julia = load_json(julia_ref)
-        meep = load_json(meep_ref)
-        rep = load_json(cmp_ref)
+        recovery = "Regenerate the case artifacts before building the curve summary."
+        julia = load_json_object(julia_ref, recovery=recovery)
+        meep = load_json_object(meep_ref, recovery=recovery)
+        rep = load_json_object(cmp_ref, recovery=recovery)
 
         rows.append(
             {

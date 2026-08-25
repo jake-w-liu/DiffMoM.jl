@@ -5,46 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 from typing import Any, Dict
 
-
-def reject_nonstandard_json_constant(value: str):
-    raise ValueError(f"non-standard numeric constant {value}")
-
-
-def load_json(path: Path) -> Dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(
-                f,
-                parse_constant=reject_nonstandard_json_constant,
-            )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SystemExit(
-            f"Could not read a JSON result from {path}: {exc}. Regenerate the "
-            "source result before comparing it."
-        ) from exc
-    if not isinstance(data, dict):
-        raise SystemExit(
-            f"Invalid result in {path}: expected a JSON object. Regenerate the "
-            "source result before comparing it."
-        )
-    return data
-
-
-def nonnegative_finite_float(raw: str) -> float:
-    """Parse a finite, nonnegative command-line tolerance."""
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected a number, got {raw!r}") from exc
-    if not math.isfinite(value) or value < 0.0:
-        raise argparse.ArgumentTypeError(
-            f"expected a finite, nonnegative value, got {raw!r}"
-        )
-    return value
+from _meep_common import (
+    add_project_root_argument,
+    load_json_object,
+    nonnegative_finite_float,
+)
 
 
 def require_finite_metric(source: Path, data: Dict[str, Any], key: str) -> float:
@@ -60,19 +28,7 @@ def require_finite_metric(source: Path, data: Dict[str, Any], key: str) -> float
             f"Invalid {key!r} in {source}: expected a JSON number, got {value!r}. "
             "Regenerate the source result before comparing it."
         )
-    try:
-        converted = float(value)
-    except (OverflowError, TypeError, ValueError) as exc:
-        raise SystemExit(
-            f"Invalid {key!r} in {source}: expected a number, got {value!r}. "
-            "Regenerate the source result before comparing it."
-        ) from exc
-    if not math.isfinite(converted):
-        raise SystemExit(
-            f"Invalid {key!r} in {source}: expected a finite number, got "
-            f"{converted!r}. Regenerate the source result before comparing it."
-        )
-    return converted
+    return float(value)
 
 
 def write_markdown(path: Path, metrics: Dict[str, Any]) -> None:
@@ -107,12 +63,7 @@ def write_markdown(path: Path, metrics: Dict[str, Any]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     parser.add_argument("--output-prefix", type=str, default="meep_periodic")
     parser.add_argument("--tol-refl", type=nonnegative_finite_float, default=0.12)
     parser.add_argument("--tol-trans", type=nonnegative_finite_float, default=0.12)
@@ -139,8 +90,9 @@ def main() -> None:
             "--output-prefix, then rerun this comparison."
         )
 
-    julia = load_json(julia_path)
-    meep = load_json(meep_path)
+    recovery = "Regenerate the source result before comparing it."
+    julia = load_json_object(julia_path, recovery=recovery)
+    meep = load_json_object(meep_path, recovery=recovery)
 
     frequency_ghz = require_finite_metric(julia_path, julia, "frequency_ghz")
     j_refl = require_finite_metric(julia_path, julia, "refl_total_fraction")

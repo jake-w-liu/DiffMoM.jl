@@ -6,57 +6,25 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 from pathlib import Path
-import sys
 from typing import Dict, Tuple
 
 import numpy as np
 
-
-def ensure_gmsh_on_path() -> None:
-    venv_bin = str(Path(sys.executable).parent)
-    path = os.environ.get("PATH", "")
-    entries = path.split(os.pathsep) if path else []
-    if venv_bin not in entries:
-        os.environ["PATH"] = venv_bin + os.pathsep + path
-
-
-ensure_gmsh_on_path()
-
-
-try:
-    import bempp_cl.api as bempp
-    from bempp_cl.api.linalg import lu
-except ImportError as exc:
-    raise SystemExit(
-        "Bempp-cl is required. Install it first, then rerun this script.\n"
-        "Example: pip install bempp-cl"
-    ) from exc
+from _bempp_common import (
+    add_incident_arguments,
+    add_project_root_argument,
+    add_sampling_arguments,
+    finite_float,
+    load_bempp,
+    positive_finite_float,
+    spherical_sampling_grid,
+    write_farfield_csv,
+    write_phi_zero_cut_csv,
+)
 
 
 C0 = 299_792_458.0
-
-
-def spherical_sampling_grid(
-    n_theta: int, n_phi: int
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    dtheta = np.pi / n_theta
-    dphi = 2.0 * np.pi / n_phi
-    theta = (np.arange(n_theta) + 0.5) * dtheta
-    phi = (np.arange(n_phi) + 0.5) * dphi
-    theta_grid, phi_grid = np.meshgrid(theta, phi, indexing="ij")
-    theta_flat = theta_grid.ravel()
-    phi_flat = phi_grid.ravel()
-    directions = np.vstack(
-        (
-            np.sin(theta_flat) * np.cos(phi_flat),
-            np.sin(theta_flat) * np.sin(phi_flat),
-            np.cos(theta_flat),
-        )
-    )
-    weights = np.sin(theta_flat) * dtheta * dphi
-    return theta_flat, phi_flat, directions, weights, np.array([dtheta, dphi])
 
 
 def write_structured_plate_msh(path: Path, side: float, nx: int, ny: int) -> None:
@@ -124,6 +92,7 @@ def run_bempp_impedance(
     phase_sign: str,
     zs_scale: float,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict, Dict[str, np.ndarray]]:
+    bempp, lu = load_bempp()
     lambda0 = C0 / freq_hz
     k0 = 2.0 * np.pi / lambda0
     side = aperture_lambda * lambda0
@@ -334,47 +303,6 @@ def run_bempp_impedance(
     return theta_flat, phi_flat, dir_dbi, metadata, current_data
 
 
-def write_farfield_csv(
-    path: Path, theta: np.ndarray, phi: np.ndarray, dir_dbi: np.ndarray
-) -> None:
-    if (
-        theta.ndim != 1
-        or phi.ndim != 1
-        or dir_dbi.ndim != 1
-        or theta.shape != phi.shape
-        or theta.shape != dir_dbi.shape
-    ):
-        raise ValueError(
-            "Far-field theta, phi, and directivity arrays must be one-dimensional "
-            "and have equal shapes."
-        )
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["theta_deg", "phi_deg", "dir_bempp_imp_dBi"])
-        for index in range(theta.size):
-            writer.writerow(
-                [
-                    float(np.rad2deg(theta[index])),
-                    float(np.rad2deg(phi[index])),
-                    float(dir_dbi[index]),
-                ]
-            )
-
-
-def write_phi0_cut_csv(
-    path: Path, theta: np.ndarray, phi: np.ndarray, dir_dbi: np.ndarray, n_phi: int
-) -> None:
-    half_bin = 0.5 * (2.0 * np.pi / n_phi)
-    phi_dist = np.minimum(phi, 2.0 * np.pi - phi)
-    indices = np.where(phi_dist <= half_bin + 1e-12)[0]
-    order = indices[np.argsort(theta[indices])]
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["theta_deg", "dir_bempp_imp_dBi"])
-        for i in order:
-            writer.writerow([float(np.rad2deg(theta[i])), float(dir_dbi[i])])
-
-
 def write_element_currents_csv(path: Path, current_data: Dict[str, np.ndarray]) -> None:
     keys = [
         "element_index",
@@ -400,43 +328,24 @@ def write_element_currents_csv(path: Path, current_data: Dict[str, np.ndarray]) 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--freq-ghz", type=float, default=3.0)
-    parser.add_argument("--aperture-lambda", type=float, default=4.0)
-    parser.add_argument("--mesh-step-lambda", type=float, default=1.0 / 3.0)
-    parser.add_argument(
-        "--mesh-mode", choices=["gmsh_screen", "structured"], default="gmsh_screen"
+    add_incident_arguments(parser)
+    add_sampling_arguments(
+        parser,
+        n_theta_default=180,
+        n_phi_default=72,
+        mesh_mode_default="gmsh_screen",
+        mesh_step_default=1.0 / 3.0,
     )
-    parser.add_argument(
-        "--nx",
-        type=int,
-        default=12,
-        help="Structured mesh x-cells when --mesh-mode structured",
-    )
-    parser.add_argument(
-        "--ny",
-        type=int,
-        default=12,
-        help="Structured mesh y-cells when --mesh-mode structured",
-    )
-    parser.add_argument("--zs-imag-ohm", type=float, default=200.0)
-    parser.add_argument("--theta-inc-deg", type=float, default=0.0)
-    parser.add_argument("--phi-inc-deg", type=float, default=0.0)
-    parser.add_argument("--n-theta", type=int, default=180)
-    parser.add_argument("--n-phi", type=int, default=72)
+    parser.add_argument("--aperture-lambda", type=positive_finite_float, default=4.0)
     parser.add_argument("--op-sign", choices=["minus", "plus"], default="minus")
     parser.add_argument(
         "--rhs-cross", choices=["e_cross_n", "n_cross_e"], default="e_cross_n"
     )
-    parser.add_argument("--rhs-sign", type=float, default=1.0)
+    parser.add_argument("--rhs-sign", type=finite_float, default=1.0)
     parser.add_argument("--phase-sign", choices=["plus", "minus"], default="plus")
-    parser.add_argument("--zs-scale", type=float, default=1.0)
+    parser.add_argument("--zs-scale", type=finite_float, default=1.0)
     parser.add_argument("--output-prefix", type=str, default="impedance")
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     args = parser.parse_args()
 
     data_dir = args.project_root / "data"
@@ -466,8 +375,17 @@ def main() -> None:
     meta_json = data_dir / f"bempp_{args.output_prefix}_metadata.json"
     current_csv = data_dir / f"bempp_{args.output_prefix}_element_currents.csv"
 
-    write_farfield_csv(farfield_csv, theta, phi, dir_dbi)
-    write_phi0_cut_csv(cut_csv, theta, phi, dir_dbi, args.n_phi)
+    write_farfield_csv(
+        farfield_csv, theta, phi, dir_dbi, value_header="dir_bempp_imp_dBi"
+    )
+    write_phi_zero_cut_csv(
+        cut_csv,
+        theta,
+        phi,
+        dir_dbi,
+        args.n_phi,
+        value_header="dir_bempp_imp_dBi",
+    )
     write_element_currents_csv(current_csv, current_data)
     meta_json.write_text(
         json.dumps(meta, indent=2, allow_nan=False) + "\n", encoding="utf-8"

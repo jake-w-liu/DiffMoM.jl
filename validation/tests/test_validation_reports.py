@@ -7,9 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import types
 import unittest
-from unittest import mock
 
 import numpy as np
 
@@ -25,7 +23,11 @@ def load_module(name: str, path: Path):
         raise RuntimeError(f"Could not load test module from {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(path.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
     return module
 
 
@@ -44,14 +46,13 @@ class ValidationReportTests(unittest.TestCase):
     def run_script(
         self, script: Path, project_root: Path, *args: str
     ) -> subprocess.CompletedProcess[str]:
+        return self.run_cli(script, "--project-root", str(project_root), *args)
+
+    def run_cli(
+        self, script: Path, *args: str
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [
-                sys.executable,
-                str(script),
-                "--project-root",
-                str(project_root),
-                *args,
-            ],
+            [sys.executable, str(script), *args],
             cwd=REPO_ROOT,
             check=False,
             capture_output=True,
@@ -178,29 +179,17 @@ class ValidationReportTests(unittest.TestCase):
             self.assertIn("not available", markdown)
 
     def test_plot_cut_averages_equidistant_azimuth_samples(self) -> None:
-        matplotlib = types.ModuleType("matplotlib")
-        matplotlib.__path__ = []
-
-        def use_backend(_backend: str) -> None:
-            return None
-
-        matplotlib.use = use_backend
-        pyplot = types.ModuleType("matplotlib.pyplot")
-        with mock.patch.dict(
-            sys.modules,
-            {"matplotlib": matplotlib, "matplotlib.pyplot": pyplot},
-        ):
-            plotter = load_module(
-                "validation_impedance_plot",
-                BEMPP_DIR / "plot_impedance_comparison.py",
-            )
+        plotter = load_module(
+            "validation_impedance_plot",
+            BEMPP_DIR / "plot_impedance_comparison.py",
+        )
         theta = np.array([0.0, 0.0, 30.0, 30.0])
         phi = np.array([-5.0, 5.0, -5.0, 5.0])
         julia = np.array([1.0, 3.0, 5.0, 9.0])
         bempp = np.array([2.0, 4.0, 8.0, 10.0])
 
         cut_theta, cut_julia, cut_bempp = plotter.nearest_phi_cut(
-            theta, phi, julia, bempp, n_phi=2
+            theta, phi, julia, bempp
         )
 
         np.testing.assert_array_equal(cut_theta, np.array([0.0, 30.0]))
@@ -213,24 +202,43 @@ class ValidationReportTests(unittest.TestCase):
                 np.array([-5.0, 5.0, -5.0, np.nan]),
                 julia,
                 bempp,
-                n_phi=2,
             )
 
-    def test_plot_help_does_not_require_matplotlib(self) -> None:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(BEMPP_DIR / "plot_impedance_comparison.py"),
-                "--help",
-            ],
-            cwd=REPO_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+    def test_validation_python_help_does_not_require_optional_solvers(self) -> None:
+        scripts = sorted(BEMPP_DIR.glob("*.py")) + sorted(MEEP_DIR.glob("*.py"))
+        scripts = [path for path in scripts if not path.name.startswith("_")]
+        for script in scripts:
+            with self.subTest(script=script.name):
+                result = self.run_cli(script, "--help")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("--project-root", result.stdout)
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("--julia-prefix", result.stdout)
+    def test_invalid_numeric_options_fail_during_argument_parsing(self) -> None:
+        cases = [
+            (BEMPP_DIR / "run_pec_cross_validation.py", ["--freq-ghz", "nan"]),
+            (
+                BEMPP_DIR / "run_impedance_cross_validation.py",
+                ["--n-phi", "0"],
+            ),
+            (
+                BEMPP_DIR / "sweep_impedance_conventions.py",
+                ["--mesh-step-lambda", "-1"],
+            ),
+            (
+                MEEP_DIR / "run_periodic_cross_validation.py",
+                ["--resolution", "0"],
+            ),
+            (
+                MEEP_DIR / "run_reflectance_curve_comparison.py",
+                ["--slot-wx-fracs", "1.1"],
+            ),
+        ]
+        for script, arguments in cases:
+            with self.subTest(script=script.name):
+                result = self.run_cli(script, *arguments)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("error:", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
 
     def test_matrix_rejects_report_without_sidelobe_metric(self) -> None:
         matrix_module = load_module(
@@ -333,7 +341,25 @@ class ValidationReportTests(unittest.TestCase):
                 "case",
             )
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("standard JSON metadata", result.stderr)
+            self.assertIn("standard JSON", result.stderr)
+
+    def test_operator_report_rejects_overflowed_json_number(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data = root / "data"
+            self.write_current_pair(data, "case")
+            (data / "julia_case_operator_checks.json").write_text(
+                '{"solve_residual_l2_rel": 1e999}\n', encoding="utf-8"
+            )
+
+            result = self.run_script(
+                BEMPP_DIR / "compare_impedance_operator_aligned.py",
+                root,
+                "--output-prefix",
+                "case",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("non-finite number", result.stderr)
 
     def test_single_point_meep_correlation_is_unavailable(self) -> None:
         analyzer = load_module(
@@ -345,17 +371,10 @@ class ValidationReportTests(unittest.TestCase):
         json.dumps(metrics, allow_nan=False)
 
     def test_curve_runner_reports_invalid_width_list_without_traceback(self) -> None:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(MEEP_DIR / "run_reflectance_curve_comparison.py"),
-                "--slot-wx-fracs",
-                "not-a-number",
-            ],
-            cwd=REPO_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
+        result = self.run_cli(
+            MEEP_DIR / "run_reflectance_curve_comparison.py",
+            "--slot-wx-fracs",
+            "not-a-number",
         )
 
         self.assertEqual(result.returncode, 2)
@@ -363,19 +382,12 @@ class ValidationReportTests(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr)
 
     def test_meep_analyzer_rejects_empty_case_lists_without_traceback(self) -> None:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(MEEP_DIR / "analyze_meep_detailed_comparison.py"),
-                "--curve-suffixes",
-                "",
-                "--conv-prefixes",
-                "",
-            ],
-            cwd=REPO_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
+        result = self.run_cli(
+            MEEP_DIR / "analyze_meep_detailed_comparison.py",
+            "--curve-suffixes",
+            "",
+            "--conv-prefixes",
+            "",
         )
 
         self.assertEqual(result.returncode, 2)

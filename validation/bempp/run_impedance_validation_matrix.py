@@ -6,13 +6,20 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
-import os
-import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
+
+from _bempp_common import (
+    ImpedanceValidationConfig,
+    add_project_root_argument,
+    add_sampling_arguments,
+    finite_float,
+    impedance_comparison_command,
+    read_json_object,
+    require_pattern_metric,
+    run_command,
+)
 
 
 @dataclass(frozen=True)
@@ -54,92 +61,6 @@ CONVENTION_PROFILES: Dict[str, Dict[str, object]] = {
         "zs_scale": 1.0 / 376.730313668,
     },
 }
-
-
-def run_cmd(cmd: List[str], cwd: Path, dry_run: bool) -> None:
-    print("+", " ".join(cmd))
-    if dry_run:
-        return
-    env = os.environ.copy()
-    venv_bin = str(Path(sys.executable).parent)
-    path = env.get("PATH", "")
-    entries = path.split(os.pathsep) if path else []
-    if venv_bin not in entries:
-        env["PATH"] = venv_bin + os.pathsep + path
-    subprocess.run(cmd, cwd=str(cwd), check=True, env=env)
-
-
-def positive_int(raw: str) -> int:
-    """Parse one positive command-line integer."""
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected an integer, got {raw!r}") from exc
-    if value <= 0:
-        raise argparse.ArgumentTypeError(f"expected a positive integer, got {raw!r}")
-    return value
-
-
-def finite_float(raw: str) -> float:
-    """Parse one finite command-line number."""
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected a number, got {raw!r}") from exc
-    if not math.isfinite(value):
-        raise argparse.ArgumentTypeError(f"expected a finite number, got {raw!r}")
-    return value
-
-
-def positive_finite_float(raw: str) -> float:
-    """Parse one finite, positive command-line number."""
-    value = finite_float(raw)
-    if value <= 0.0:
-        raise argparse.ArgumentTypeError(
-            f"expected a finite, positive number, got {raw!r}"
-        )
-    return value
-
-
-def reject_nonstandard_json_constant(value: str):
-    raise ValueError(f"non-standard numeric constant {value}")
-
-
-def load_json(path: Path) -> Dict:
-    try:
-        data = json.loads(
-            path.read_text(encoding="utf-8"),
-            parse_constant=reject_nonstandard_json_constant,
-        )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise ValueError(f"could not read standard JSON from {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError(f"expected a JSON object in {path}")
-    return data
-
-
-def require_pattern_metric(metrics: Dict, key: str) -> float:
-    pattern_features = metrics.get("pattern_features")
-    if not isinstance(pattern_features, dict):
-        raise ValueError("missing object 'pattern_features'")
-    value = pattern_features.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"pattern_features.{key} must be a finite JSON number")
-    converted = float(value)
-    if not math.isfinite(converted):
-        raise ValueError(f"pattern_features.{key} must be finite")
-    return converted
-
-
-def compute_case_pass_flags(metrics: Dict) -> Dict[str, bool]:
-    main_theta_diff = require_pattern_metric(metrics, "main_theta_abs_diff_deg")
-    main_level_diff = abs(require_pattern_metric(metrics, "main_level_diff_db"))
-    sll_diff = abs(require_pattern_metric(metrics, "sll_down_diff_db"))
-    return {
-        "pass_main_theta_le_3deg": main_theta_diff <= MAX_MAIN_THETA_DIFF_DEG,
-        "pass_main_level_le_1p5db": main_level_diff <= MAX_MAIN_LEVEL_DIFF_DB,
-        "pass_sll_le_3db": sll_diff <= MAX_SLL_DIFF_DB,
-    }
 
 
 def write_summary_csv(path: Path, rows: List[Dict[str, object]]) -> None:
@@ -208,47 +129,13 @@ def write_summary_md(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/ and Project.toml",
-    )
-    parser.add_argument(
-        "--n-theta",
-        type=positive_int,
-        default=180,
-        help="Polar sample count for both solvers (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--n-phi",
-        type=positive_int,
-        default=72,
-        help="Azimuth sample count for both solvers (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--mesh-mode",
-        choices=["gmsh_screen", "structured"],
-        default="gmsh_screen",
-        help="Bempp mesh construction mode (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--nx",
-        type=positive_int,
-        default=12,
-        help="Structured-mesh cells along x (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--ny",
-        type=positive_int,
-        default=12,
-        help="Structured-mesh cells along y (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--mesh-step-lambda",
-        type=positive_finite_float,
-        default=0.2,
-        help="Gmsh target edge length in wavelengths (default: %(default)s)",
+    add_project_root_argument(parser, __file__)
+    add_sampling_arguments(
+        parser,
+        n_theta_default=180,
+        n_phi_default=72,
+        mesh_mode_default="gmsh_screen",
+        mesh_step_default=0.2,
     )
     parser.add_argument(
         "--dry-run",
@@ -341,84 +228,38 @@ def main() -> None:
     for case in CASES:
         prefix = case.case_id
         print(f"\n=== {case.case_id} ===")
+        validation = ImpedanceValidationConfig.from_namespace(
+            args,
+            freq_ghz=case.freq_ghz,
+            zs_imag_ohm=case.zs_imag_ohm,
+            theta_inc_deg=case.theta_inc_deg,
+            phi_inc_deg=case.phi_inc_deg,
+        )
 
         if not args.skip_julia:
-            run_cmd(
-                [
-                    "julia",
-                    "--project=.",
-                    "validation/bempp/run_impedance_case_julia_reference.jl",
-                    "--freq-ghz",
-                    str(case.freq_ghz),
-                    "--theta-ohm",
-                    str(case.zs_imag_ohm),
-                    "--theta-inc-deg",
-                    str(case.theta_inc_deg),
-                    "--phi-inc-deg",
-                    str(case.phi_inc_deg),
-                    "--n-theta",
-                    str(args.n_theta),
-                    "--n-phi",
-                    str(args.n_phi),
-                    "--output-prefix",
-                    prefix,
-                ],
+            run_command(
+                validation.julia_command(prefix),
                 cwd=project_root,
                 dry_run=args.dry_run,
             )
 
         if not args.skip_bempp:
-            run_cmd(
-                [
-                    sys.executable,
-                    "validation/bempp/run_impedance_cross_validation.py",
-                    "--freq-ghz",
-                    str(case.freq_ghz),
-                    "--zs-imag-ohm",
-                    str(case.zs_imag_ohm),
-                    "--theta-inc-deg",
-                    str(case.theta_inc_deg),
-                    "--phi-inc-deg",
-                    str(case.phi_inc_deg),
-                    "--n-theta",
-                    str(args.n_theta),
-                    "--n-phi",
-                    str(args.n_phi),
-                    "--mesh-mode",
-                    args.mesh_mode,
-                    "--nx",
-                    str(args.nx),
-                    "--ny",
-                    str(args.ny),
-                    "--mesh-step-lambda",
-                    str(args.mesh_step_lambda),
-                    "--op-sign",
-                    str(effective_op_sign),
-                    "--rhs-cross",
-                    str(effective_rhs_cross),
-                    "--rhs-sign",
-                    str(effective_rhs_sign),
-                    "--phase-sign",
-                    str(effective_phase_sign),
-                    "--zs-scale",
-                    str(effective_zs_scale),
-                    "--output-prefix",
+            run_command(
+                validation.bempp_command(
                     prefix,
-                ],
+                    op_sign=str(effective_op_sign),
+                    rhs_cross=str(effective_rhs_cross),
+                    rhs_sign=float(effective_rhs_sign),
+                    phase_sign=str(effective_phase_sign),
+                    zs_scale=float(effective_zs_scale),
+                ),
                 cwd=project_root,
                 dry_run=args.dry_run,
             )
 
         if not args.skip_compare:
-            run_cmd(
-                [
-                    sys.executable,
-                    "validation/bempp/compare_impedance_to_julia.py",
-                    "--output-prefix",
-                    prefix,
-                    "--target-theta-deg",
-                    "30.0",
-                ],
+            run_command(
+                impedance_comparison_command(prefix),
                 cwd=project_root,
                 dry_run=args.dry_run,
             )
@@ -435,11 +276,15 @@ def main() -> None:
             )
 
         try:
-            metrics = load_json(report_json)
-            flags = compute_case_pass_flags(metrics)
+            metrics = read_json_object(report_json)
             main_theta_diff = require_pattern_metric(metrics, "main_theta_abs_diff_deg")
             main_level_diff = abs(require_pattern_metric(metrics, "main_level_diff_db"))
             sll_diff = abs(require_pattern_metric(metrics, "sll_down_diff_db"))
+            flags = {
+                "pass_main_theta_le_3deg": main_theta_diff <= MAX_MAIN_THETA_DIFF_DEG,
+                "pass_main_level_le_1p5db": main_level_diff <= MAX_MAIN_LEVEL_DIFF_DB,
+                "pass_sll_le_3db": sll_diff <= MAX_SLL_DIFF_DB,
+            }
         except ValueError as exc:
             raise SystemExit(
                 f"Invalid comparison report for {case.case_id}: {exc}. Rerun "

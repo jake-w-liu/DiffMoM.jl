@@ -4,62 +4,21 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import math
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, Tuple
 
 import numpy as np
 
-
-def finite_float(raw: str) -> float:
-    """Parse one finite command-line number."""
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected a number, got {raw!r}") from exc
-    if not math.isfinite(value):
-        raise argparse.ArgumentTypeError(f"expected a finite number, got {raw!r}")
-    return value
-
-
-def positive_finite_float(raw: str) -> float:
-    """Parse one finite, positive command-line number."""
-    value = finite_float(raw)
-    if value <= 0.0:
-        raise argparse.ArgumentTypeError(
-            f"expected a finite, positive number, got {raw!r}"
-        )
-    return value
-
-
-def nonnegative_finite_float(raw: str) -> float:
-    """Parse one finite, nonnegative command-line number."""
-    value = finite_float(raw)
-    if value < 0.0:
-        raise argparse.ArgumentTypeError(
-            f"expected a finite, nonnegative number, got {raw!r}"
-        )
-    return value
-
-
-def load_csv_rows(path: Path) -> List[dict]:
-    try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            rows = list(reader)
-    except (OSError, UnicodeError) as exc:
-        raise SystemExit(
-            f"Could not read CSV data from {path}: {exc}. Regenerate the source "
-            "artifact, then rerun this comparison."
-        ) from exc
-    if reader.fieldnames is None or not rows:
-        raise SystemExit(
-            f"No CSV data rows found in {path}. Regenerate the source artifact, "
-            "then rerun this comparison."
-        )
-    return rows
+from _bempp_common import (
+    add_project_root_argument,
+    finite_float,
+    load_csv_rows,
+    load_json_object,
+    nonnegative_finite_float,
+    positive_finite_float,
+)
 
 
 def xyz_key(row: dict, decimals: int) -> Tuple[float, float, float]:
@@ -158,29 +117,14 @@ def hypothesis_rms_rel(
     return float(np.sqrt(np.mean(rel**2)))
 
 
-def reject_nonstandard_json_constant(value: str):
-    raise ValueError(f"non-standard numeric constant {value}")
-
-
 def load_optional_residual(path: Path):
     """Load an optional finite residual; return None when no metric is available."""
     if not path.exists():
         return None
-    try:
-        data = json.loads(
-            path.read_text(encoding="utf-8"),
-            parse_constant=reject_nonstandard_json_constant,
-        )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise SystemExit(
-            f"Could not read standard JSON metadata from {path}: {exc}. Regenerate "
-            "the source artifact, then rerun this comparison."
-        ) from exc
-    if not isinstance(data, dict):
-        raise SystemExit(
-            f"Invalid metadata in {path}: expected a JSON object. Regenerate the "
-            "source artifact, then rerun this comparison."
-        )
+    data = load_json_object(
+        path,
+        recovery="Regenerate the source artifact, then rerun this comparison.",
+    )
     value = data.get("solve_residual_l2_rel")
     if value is None:
         return None
@@ -244,12 +188,7 @@ def write_markdown(path: Path, metrics: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     parser.add_argument("--output-prefix", type=str, default="impedance")
     parser.add_argument("--julia-prefix", type=str, default=None)
     parser.add_argument("--bempp-prefix", type=str, default=None)
@@ -309,7 +248,6 @@ def main() -> None:
     bempp_curr = np.stack([current_vec(bempp_map[k]) for k in common], axis=0)
 
     julia_mag = np.linalg.norm(julia_curr, axis=1)
-    bempp_mag = np.linalg.norm(bempp_curr, axis=1)
     max_mag = float(np.max(julia_mag))
     if not math.isfinite(max_mag) or max_mag <= 0.0:
         raise SystemExit(

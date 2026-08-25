@@ -4,80 +4,18 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import math
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 
-
-def finite_float(raw: str) -> float:
-    """Parse one finite command-line number."""
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected a number, got {raw!r}") from exc
-    if not math.isfinite(value):
-        raise argparse.ArgumentTypeError(f"expected a finite number, got {raw!r}")
-    return value
-
-
-def load_csv_rows(path: Path) -> List[dict]:
-    try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            rows = list(reader)
-    except (OSError, UnicodeError) as exc:
-        raise SystemExit(
-            f"Could not read CSV data from {path}: {exc}. Regenerate the source "
-            "artifact, then rerun this comparison."
-        ) from exc
-    if reader.fieldnames is None or not rows:
-        raise SystemExit(
-            f"No CSV data rows found in {path}. Regenerate the source artifact, "
-            "then rerun this comparison."
-        )
-    return rows
-
-
-def keyed_map(
-    rows: Iterable[dict],
-    theta_key: str,
-    phi_key: str,
-    value_key: str,
-    source: Path,
-) -> Dict[Tuple[float, float], float]:
-    out: Dict[Tuple[float, float], float] = {}
-    for row_number, row in enumerate(rows, start=2):
-        try:
-            theta_raw = float(row[theta_key])
-            phi_raw = float(row[phi_key])
-            value = float(row[value_key])
-        except KeyError as exc:
-            raise SystemExit(
-                f"Missing required column {exc.args[0]!r} in {source}. Regenerate "
-                "the source artifact with the expected schema."
-            ) from exc
-        except (TypeError, ValueError) as exc:
-            raise SystemExit(
-                f"Invalid numeric value in {source} row {row_number}: {exc}. "
-                "Regenerate the source artifact with finite numeric samples."
-            ) from exc
-        if not all(math.isfinite(value) for value in (theta_raw, phi_raw, value)):
-            raise SystemExit(
-                f"Non-finite numeric value in {source} row {row_number}. Regenerate "
-                "the source artifact with finite angular and directivity samples."
-            )
-        key = (round(theta_raw, 6), round(phi_raw, 6))
-        if key in out:
-            raise SystemExit(
-                f"Duplicate rounded angular key {key} in {source}. Regenerate the "
-                "source artifact with one sample per angular key."
-            )
-        out[key] = value
-    return out
+from _bempp_common import (
+    add_project_root_argument,
+    common_angular_arrays,
+    finite_float,
+    load_angular_map,
+    nearest_theta_stats,
+)
 
 
 def summary_stats(values: np.ndarray) -> dict:
@@ -87,21 +25,6 @@ def summary_stats(values: np.ndarray) -> dict:
     return {
         "mean_diff_db": float(np.mean(values)),
         "mean_abs_diff_db": float(np.mean(abs_values)),
-    }
-
-
-def nearest_theta_stats(
-    theta: np.ndarray, delta: np.ndarray, target_deg: float
-) -> dict:
-    if theta.size == 0 or theta.size != delta.size:
-        raise ValueError("theta and delta must be nonempty arrays of equal length")
-    unique_thetas = np.unique(theta)
-    nearest = unique_thetas[np.argmin(np.abs(unique_thetas - target_deg))]
-    mask = np.isclose(theta, nearest, atol=1e-9)
-    return {
-        "target_theta_deg": target_deg,
-        "nearest_theta_deg": float(nearest),
-        "mean_abs_diff_db": float(np.mean(np.abs(delta[mask]))),
     }
 
 
@@ -134,12 +57,7 @@ def write_markdown(path: Path, metrics: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     parser.add_argument("--target-theta-deg", type=finite_float, default=30.0)
     args = parser.parse_args()
 
@@ -160,26 +78,9 @@ def main() -> None:
             "validation/bempp/run_pec_cross_validation.py`, then rerun this comparison."
         )
 
-    julia_rows = load_csv_rows(julia_csv)
-    bempp_rows = load_csv_rows(bempp_csv)
-
-    julia_map = keyed_map(julia_rows, "theta_deg", "phi_deg", "dir_pec_dBi", julia_csv)
-    bempp_map = keyed_map(
-        bempp_rows, "theta_deg", "phi_deg", "dir_bempp_dBi", bempp_csv
-    )
-
-    common_keys = sorted(set(julia_map.keys()) & set(bempp_map.keys()))
-    if not common_keys:
-        raise SystemExit(
-            "No common rounded (theta_deg, phi_deg) keys were found. Regenerate "
-            "both far-field files with the same angular grid, then rerun this "
-            "comparison."
-        )
-
-    theta = np.array([k[0] for k in common_keys], dtype=float)
-    phi = np.array([k[1] for k in common_keys], dtype=float)
-    julia_vals = np.array([julia_map[k] for k in common_keys], dtype=float)
-    bempp_vals = np.array([bempp_map[k] for k in common_keys], dtype=float)
+    julia_map = load_angular_map(julia_csv, "dir_pec_dBi")
+    bempp_map = load_angular_map(bempp_csv, "dir_bempp_dBi")
+    theta, phi, julia_vals, bempp_vals = common_angular_arrays(julia_map, bempp_map)
     delta = bempp_vals - julia_vals
 
     phi_dist = np.abs(np.mod(phi + 180.0, 360.0) - 180.0)
@@ -187,7 +88,7 @@ def main() -> None:
     phi0_mask = np.isclose(phi_dist, nearest_phi_distance, atol=1e-9, rtol=0.0)
 
     metrics = {
-        "num_common_points": int(len(common_keys)),
+        "num_common_points": int(theta.size),
         "global": summary_stats(delta),
         "phi0_cut": {
             "nearest_phi_abs_deg": nearest_phi_distance,

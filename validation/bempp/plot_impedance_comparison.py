@@ -4,80 +4,21 @@
 from __future__ import annotations
 
 import argparse
-import csv
-import math
 import os
-from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/mpl")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 
 import numpy as np
 
-
-def load_farfield_map(path: Path, value_key: str) -> Dict[Tuple[float, float], float]:
-    data: Dict[Tuple[float, float], float] = {}
-    try:
-        with path.open(newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-    except (OSError, UnicodeError) as exc:
-        raise SystemExit(
-            f"Could not read far-field CSV {path}: {exc}. Regenerate the source "
-            "artifact, then rerun this plotter."
-        ) from exc
-    if reader.fieldnames is None or not rows:
-        raise SystemExit(
-            f"No far-field rows found in {path}. Regenerate the source artifact, "
-            "then rerun this plotter."
-        )
-    for row_number, row in enumerate(rows, start=2):
-        try:
-            theta = float(row["theta_deg"])
-            phi = float(row["phi_deg"])
-            value = float(row[value_key])
-        except KeyError as exc:
-            raise SystemExit(
-                f"Missing required column {exc.args[0]!r} in {path}. Regenerate "
-                "the source artifact with the expected schema."
-            ) from exc
-        except (TypeError, ValueError) as exc:
-            raise SystemExit(
-                f"Invalid numeric value in {path} row {row_number}: {exc}. "
-                "Regenerate the source artifact with finite samples."
-            ) from exc
-        if not all(math.isfinite(number) for number in (theta, phi, value)):
-            raise SystemExit(
-                f"Non-finite numeric value in {path} row {row_number}. Regenerate "
-                "the source artifact with finite angular and directivity samples."
-            )
-        key = (round(theta, 6), round(phi, 6))
-        if key in data:
-            raise SystemExit(
-                f"Duplicate rounded angular key {key} in {path}. Regenerate the "
-                "source artifact with one sample per angular key."
-            )
-        data[key] = value
-    return data
-
-
-def build_common_arrays(
-    julia_map: Dict[Tuple[float, float], float],
-    bempp_map: Dict[Tuple[float, float], float],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    keys = sorted(set(julia_map).intersection(bempp_map))
-    if not keys:
-        raise SystemExit(
-            "No common rounded angular samples were found between the Julia and "
-            "Bempp data. Regenerate both files on the same angular grid."
-        )
-
-    theta = np.array([k[0] for k in keys], dtype=float)
-    phi = np.array([k[1] for k in keys], dtype=float)
-    julia_vals = np.array([julia_map[k] for k in keys], dtype=float)
-    bempp_vals = np.array([bempp_map[k] for k in keys], dtype=float)
-    return theta, phi, julia_vals, bempp_vals
+from _bempp_common import (
+    add_project_root_argument,
+    common_angular_arrays,
+    finite_float,
+    load_angular_map,
+    positive_finite_float,
+)
 
 
 def to_grid(
@@ -113,10 +54,7 @@ def nearest_phi_cut(
     phi: np.ndarray,
     julia_vals: np.ndarray,
     bempp_vals: np.ndarray,
-    n_phi: int,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    if n_phi <= 0:
-        raise ValueError("n_phi must be positive")
     if (
         theta.ndim != 1
         or phi.ndim != 1
@@ -173,20 +111,17 @@ def summarize_delta(delta: np.ndarray, julia_vals: np.ndarray) -> List[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--project-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[2],
-        help="Project root containing data/.",
-    )
+    add_project_root_argument(parser, __file__)
     parser.add_argument("--julia-prefix", required=True)
     parser.add_argument("--bempp-prefix", required=True)
     parser.add_argument("--output-prefix", default="impedance_diag")
     parser.add_argument("--title", default="")
-    parser.add_argument("--delta-clim", type=float, default=12.0)
-    parser.add_argument("--theta-min", type=float, default=0.0)
-    parser.add_argument("--theta-max", type=float, default=90.0)
+    parser.add_argument("--delta-clim", type=positive_finite_float, default=12.0)
+    parser.add_argument("--theta-min", type=finite_float, default=0.0)
+    parser.add_argument("--theta-max", type=finite_float, default=90.0)
     args = parser.parse_args()
+    if args.theta_min > args.theta_max:
+        parser.error("--theta-min must not exceed --theta-max")
 
     data_dir = args.project_root / "data"
     julia_csv = data_dir / f"julia_{args.julia_prefix}_farfield.csv"
@@ -205,19 +140,16 @@ def main() -> None:
             "prefix, then rerun this plotter."
         )
 
-    julia_map = load_farfield_map(julia_csv, "dir_julia_imp_dBi")
-    bempp_map = load_farfield_map(bempp_csv, "dir_bempp_imp_dBi")
+    julia_map = load_angular_map(julia_csv, "dir_julia_imp_dBi")
+    bempp_map = load_angular_map(bempp_csv, "dir_bempp_imp_dBi")
 
-    theta, phi, julia_vals, bempp_vals = build_common_arrays(julia_map, bempp_map)
+    theta, phi, julia_vals, bempp_vals = common_angular_arrays(julia_map, bempp_map)
     delta = bempp_vals - julia_vals
 
-    theta_u, phi_u, julia_grid = to_grid(theta, phi, julia_vals)
-    _, _, bempp_grid = to_grid(theta, phi, bempp_vals)
-    _, _, delta_grid = to_grid(theta, phi, delta)
+    theta_u, phi_u, delta_grid = to_grid(theta, phi, delta)
 
-    n_phi = phi_u.size
     cut_theta, cut_julia, cut_bempp = nearest_phi_cut(
-        theta, phi, julia_vals, bempp_vals, n_phi=n_phi
+        theta, phi, julia_vals, bempp_vals
     )
     cut_delta = cut_bempp - cut_julia
 
@@ -232,8 +164,8 @@ def main() -> None:
         import matplotlib.pyplot as plt
     except ImportError as exc:
         raise SystemExit(
-            "Matplotlib is required to render this diagnostic. Install the "
-            "validation requirements, then rerun the plotter."
+            f"Could not import Matplotlib or one of its dependencies: {exc}. "
+            "Install the validation requirements, then rerun the plotter."
         ) from exc
 
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
