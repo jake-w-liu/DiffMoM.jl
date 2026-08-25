@@ -98,17 +98,16 @@ so the full time-space dependence $e^{+i\omega t} e^{-ikr}$ describes a wave tra
 
 ### 2.3 The Coincident-Point Guard
 
-The Green's function is singular as $\mathbf{r}\to\mathbf{r}'$ (it diverges logarithmically). The implementation returns **exactly zero** when the separation falls below $10^{-30}$ rather than `Inf`:
+The Green's function is singular as $\mathbf{r}\to\mathbf{r}'$ (it diverges
+logarithmically). The implementation returns exactly zero only when the two
+stored points coincide. Every distinct finite separation, including values below
+$10^{-30}$, uses a small-argument or exceptional-precision evaluation rather
+than being classified as a self term.
 
-```julia
-function greens_2d(r::Vec2, rp::Vec2, k::Float64)
-    R = sqrt(dot(r - rp, r - rp))
-    R < 1e-30 && return zero(ComplexF64)
-    return (-im / 4) * besselh(0, 2, k * R)
-end
-```
-
-This is a deliberate sentinel: the true self-interaction (the diagonal of the system) is *not* the value of $G_\text{2D}$ at zero separation -- it is the integral of $G_\text{2D}$ over the cell, supplied separately by `self_cell_integral_2d` (Section 4). Never use `greens_2d` for a self term.
+The zero is a sentinel: the true self-interaction (the diagonal of the system)
+is *not* the point value of $G_\text{2D}$. It is the integral of
+$G_\text{2D}$ over the cell, supplied separately by `self_cell_integral_2d`
+(Section 4). Never use `greens_2d` for a self term.
 
 ---
 

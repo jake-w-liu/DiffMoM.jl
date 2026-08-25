@@ -191,9 +191,10 @@ G_2D(r, rp) = (-i/4) H0(2)(k |r - rp|)
 ```
 
 with the `exp(+i omega t)` convention and outgoing Hankel function `H0(2)`. As a
-guard against the singularity at coincident points, the function returns `0` when
-the separation is below `1e-30`; the self-cell contribution is supplied separately
-by `self_cell_integral_2d`.
+guard against the singularity at coincident points, the function returns `0` only
+for exactly coincident stored points. Distinct finite separations use the small-
+argument or exceptional-precision path. The self-cell contribution is supplied
+separately by `self_cell_integral_2d`.
 
 **Parameters:**
 
