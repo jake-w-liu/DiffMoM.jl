@@ -964,10 +964,11 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
         end
     end
 
-    max_rank = isempty(lowrank_blocks) ? 0 : maximum(size(blk.U, 2) for blk in lowrank_blocks)
+    workspace_rank = isempty(lowrank_blocks) ?
+        0 : maximum(size(block.U, 2) for block in lowrank_blocks)
     ws = ACAWorkspace(Vector{ComplexF64}(undef, N),
                        zeros(ComplexF64, N),
-                       Vector{ComplexF64}(undef, max(max_rank, 1)))
+                       Vector{ComplexF64}(undef, max(workspace_rank, 1)))
     return ACAOperator{typeof(cache)}(cache, tree, dense_blocks, lowrank_blocks, N, ws)
 end
 
