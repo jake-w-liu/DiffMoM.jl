@@ -118,6 +118,17 @@ using .DiffMoM
               passive=false,
           )
 
+    dispersive_mu_models = (
+        DrudePermittivity3D(1.0, 0.5, 0.1),
+        LorentzPermittivity3D(1.0, 0.5, 2.0, 0.1),
+        DebyePermittivity3D(2.0, 1.0, 0.1),
+    )
+    for mu_model in dispersive_mu_models
+        dispersive_magnetic = MagneticMaterial3D(iso, mu_model)
+        @test material_mur_3d(dispersive_magnetic, 1.0) ==
+              material_epsr_3d(mu_model, 1.0)
+    end
+
     adjacent_frequency = prevfloat(1.0)
     adjacent_drude_reference = setprecision(BigFloat, 512) do
         ComplexF64(

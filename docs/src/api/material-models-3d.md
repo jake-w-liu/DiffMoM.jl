@@ -376,14 +376,17 @@ material_epsr_3d(iso, 1.0e9)   # 2.5 - 0.1im
 Evaluate a material's relative permeability at a frequency scale. Static models
 (`Number`, `IsotropicPermeability3D`, `DiagonalPermeability3D`,
 `TensorPermeability3D`) ignore the frequency scale except for finite nonnegative
-validation. A `MagneticMaterial3D` delegates to its `mu_model`.
+validation. The dispersive response objects `DrudePermittivity3D`,
+`LorentzPermittivity3D`, and `DebyePermittivity3D` use the argument as frequency
+in Hz when supplied as a permeability model. A `MagneticMaterial3D` delegates to
+its `mu_model`.
 
 **Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `model` | permeability model or `Number` | -- | Material model to evaluate. |
-| `freq_hz_or_k0` | Real (coerced to `Float64`) | -- | Frequency / wavenumber scale. Must be finite and nonnegative. |
+| `freq_hz_or_k0` | Real (coerced to `Float64`) | -- | Frequency in Hz (dispersive models) or a frequency/wavenumber scale (static models). Must be finite and nonnegative. |
 
 **Returns:** `ComplexF64` for scalar models, `SVector{3,ComplexF64}` for diagonal
 models, or `SMatrix{3,3,ComplexF64,9}` for tensor models.

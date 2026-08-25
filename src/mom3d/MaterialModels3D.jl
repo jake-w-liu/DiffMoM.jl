@@ -463,7 +463,8 @@ material_epsr_3d(model::DebyePermittivity3D, freq_hz_or_k0) =
     material_mur_3d(model, freq_hz_or_k0)
 
 Evaluate a 3D relative permeability helper. Static models ignore the frequency
-scale except for finite nonnegative validation.
+scale except for finite nonnegative validation. Drude, Lorentz, and Debye
+response models interpret the argument as frequency in Hz.
 """
 material_mur_3d(model::Number, freq_hz_or_k0) = begin
     _validate_frequency_argument_3d(freq_hz_or_k0)
@@ -484,6 +485,15 @@ material_mur_3d(model::TensorPermeability3D, freq_hz_or_k0) = begin
     _validate_frequency_argument_3d(freq_hz_or_k0)
     model.mu_r
 end
+
+material_mur_3d(model::DrudePermittivity3D, freq_hz_or_k0) =
+    material_epsr_3d(model, freq_hz_or_k0)
+
+material_mur_3d(model::LorentzPermittivity3D, freq_hz_or_k0) =
+    material_epsr_3d(model, freq_hz_or_k0)
+
+material_mur_3d(model::DebyePermittivity3D, freq_hz_or_k0) =
+    material_epsr_3d(model, freq_hz_or_k0)
 
 material_mur_3d(model::MagneticMaterial3D, freq_hz_or_k0) =
     material_mur_3d(model.mu_model, freq_hz_or_k0)
