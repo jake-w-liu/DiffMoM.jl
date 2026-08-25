@@ -773,7 +773,7 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `objective`: `:linear` for Σw_aJ_a, `:sum_log` for Σw_a log(J_a/J_ref,a),
   or `:smoothmax_log` for a smooth worst-angle normalized log objective
 - `reference_objectives`: positive per-angle reference values for normalized
-  objectives, typically the PEC objective values
+  objectives, such as values computed for a PEC reference
 - `smooth_beta`: sharpness parameter for `:smoothmax_log`
 - `verbose`: print progress
 
@@ -1055,11 +1055,14 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             break
         end
 
-        # Stagnation detection: stop if J hasn't improved by >0.1% in 10 iterations
+        # Stop when the objective-change criterion is met over ten iterations.
         if length(trace) >= 11
             J_10_ago = trace[end-10].J
             if _multiangle_objective_stagnated(J_val, J_10_ago)
-                verbose && println("Stagnated at iteration $iter (J unchanged for 10 iters)")
+                verbose && println(
+                    "Stopped at iteration $iter: objective changed by less " *
+                    "than 0.1% over 10 iterations; inspect the trace or " *
+                    "adjust the initialization and optimizer settings")
                 break
             end
         end

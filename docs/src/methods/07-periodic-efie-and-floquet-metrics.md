@@ -84,16 +84,16 @@ The periodic kernel contribution used by the assembly is:
 2. spatial image sum over `(m,n) != (0,0)`,
 3. Floquet/spectral sum.
 
-Scope in current implementation:
+Supported scope:
 - The kernel supports both coplanar point pairs and finite vertical separation;
   the grounded-EFIE image interaction uses the vertical-separation path.
 - For boundary-touching periodic conductors, assembly/postprocessing require
   Bloch-paired RWG data from `build_rwg_periodic(mesh, lattice; ...)` and reject
   non-Bloch RWG input with `ArgumentError`.
-- Every API that accepts both `k` and `lattice` requires `k` to match
-  `lattice.k` within `1e-12` relative tolerance. The stored Bloch phase, Ewald
-  split, and spectral truncation were all derived from that construction
-  wavenumber and cannot be reused at a materially different frequency.
+- Every API that accepts both `k` and `lattice` validates them with
+  `_validated_lattice_wavenumber`. The stored Bloch phase, Ewald split, and
+  spectral truncation were derived from that construction wavenumber and
+  cannot be reused at another frequency.
 
 ### 2.2 Wood-Anomaly Guard
 
@@ -287,15 +287,15 @@ Q_spec = specular_rcs_objective(mesh, rwg, grid, k, lattice;
 
 ## 9. Validation and Correspondence Checks
 
-The implementation is directly validated by periodic test blocks in
-`test/test_periodic_topology.jl`:
+Periodic regression checks live in `test/test_periodic_topology.jl` under
+these named sections:
 
-- Test 37: Ewald kernel behavior and convergence,
-- Test 41: periodic EFIE assembly checks,
-- Test 42: Floquet metrics (`floquet_modes`, `power_balance`, transmission modes).
+- `PeriodicGreens (Helmholtz-Ewald)`: kernel behavior and convergence,
+- `PeriodicEFIE`: periodic assembly checks,
+- `PeriodicMetrics`: `floquet_modes`, `power_balance`, and transmission modes.
 
-In the project test suite, these pass under the periodic-topology block and serve as formulation-to-code regression checks.
-The same block also verifies strict input validation: boundary-touching periodic meshes must use Bloch-paired RWG via `build_rwg_periodic`.
+The same file checks that boundary-touching periodic meshes use Bloch-paired
+RWG data from `build_rwg_periodic`.
 
 ---
 

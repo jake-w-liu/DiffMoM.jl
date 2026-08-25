@@ -2,7 +2,11 @@
 
 ## Purpose
 
-This chapter explains why ratio objectives of the form $J = f/g$—where $f$ is power radiated into a target angular region and $g$ is total radiated power—are preferred for beam‑steering and directivity optimization. Ratio objectives are scale‑invariant, avoid trivial solutions (e.g., simply increasing input power), and naturally trade off beam concentration against sidelobe levels. The chapter derives the quotient‑rule gradient formula and explains why the package uses **two separate adjoint solves** for numerical stability, avoiding the cancellation errors that plague a single‑adjoint approach near convergence.
+This chapter covers ratio objectives of the form $J=f/g$, where $f$ is power
+radiated into a target angular region and $g$ is total radiated power. The
+ratio is invariant to a common scaling of the current. The chapter derives the
+quotient-rule gradient and describes the two-adjoint Float64 path and the
+high-precision fallback used by `optimize_directivity`.
 
 ---
 
@@ -12,7 +16,7 @@ After this chapter, you should be able to:
 
 1. Write the ratio objective $J = f/g$ in terms of Hermitian positive‑semidefinite matrices $\mathbf{Q}_t$ and $\mathbf{Q}_{\mathrm{tot}}$.
 2. Derive the quotient‑rule gradient $\partial J/\partial \theta_p = (g \partial f/\partial \theta_p - f \partial g/\partial \theta_p)/g^2$.
-3. Explain why two adjoint solves are numerically more stable than a single adjoint solve with an effective matrix $\mathbf{Q}_t - J\mathbf{Q}_{\mathrm{tot}}$.
+3. Compare the algebraically equivalent one- and two-adjoint gradient forms used by the implementation.
 4. Use `optimize_directivity` for beam‑steering design with box constraints.
 5. Interpret optimization traces and adjust target‑region parameters to control sidelobes.
 
@@ -231,28 +235,28 @@ These formulas are implemented in `optimize_directivity` (Section 5).
 
 ---
 
-## 3. Why Two Adjoint Solves Are Necessary
+## 3. Adjoint Forms Used by the Implementation
 
-### 3.1 The Tempting Single‑Adjoint Approach
+### 3.1 Equivalent Single-Adjoint Form
 
-At first glance, one might try to combine the two adjoint systems into a single solve. Define an "effective" matrix
+The quotient-rule gradient can be written with an effective matrix
 
 ```math
 \mathbf{Q}_{\mathrm{eff}} = \mathbf{Q}_t - J \mathbf{Q}_{\mathrm{tot}}.
 ```
 
-Then, using the linearity of the adjoint equation, it appears that
+The corresponding adjoint equation is
 
 ```math
 \mathbf{Z}^\dagger \boldsymbol{\lambda}_{\mathrm{eff}} = \mathbf{Q}_{\mathrm{eff}} \mathbf{I}
 ```
 
-would yield a gradient satisfying
+yields the equivalent gradient
 
 ```math
 \frac{\partial J}{\partial \theta_p}
 =
--2\,\Re\!\left\{
+-\frac{2}{g}\,\Re\!\left\{
 \boldsymbol{\lambda}_{\mathrm{eff}}^\dagger
 \left(
 \frac{\partial \mathbf{Z}}{\partial \theta_p}
@@ -261,35 +265,46 @@ would yield a gradient satisfying
 \right\}.
 ```
 
-This approach would require only **one** adjoint solve per iteration instead of two.
+This form requires one adjoint solve. The factor $1/g$ follows from the
+quotient-rule differential $\partial J=(\partial f-J\partial g)/g$.
 
-### 3.2 Numerical Cancellation Problem
+### 3.2 Ordinary Float64 Path
 
-The issue is that near convergence, $J \approx f/g$, so
-
-```math
-\mathbf{Q}_{\mathrm{eff}} \mathbf{I}
-\approx
-\mathbf{Q}_t \mathbf{I} - \frac{f}{g} \mathbf{Q}_{\mathrm{tot}} \mathbf{I}.
-```
-
-But $\mathbf{Q}_t \mathbf{I}$ and $(f/g) \mathbf{Q}_{\mathrm{tot}} \mathbf{I}$ can be nearly equal in magnitude, leading to **catastrophic cancellation** when forming the right‑hand side. This cancellation amplifies round‑off errors, making the gradient noisy and potentially destabilizing the optimization.
-
-### 3.3 Two‑Solve Approach Avoids Cancellation
-
-By solving two separate adjoint systems, we compute $\boldsymbol{\lambda}_f$ and $\boldsymbol{\lambda}_g$ from well‑conditioned right‑hand sides $\mathbf{Q}_t \mathbf{I}$ and $\mathbf{Q}_{\mathrm{tot}} \mathbf{I}$, each of which is numerically stable. The cancellation occurs only in the final linear combination
+The ordinary path computes $\mathbf{Q}_t\mathbf{I}$ and
+$\mathbf{Q}_{\mathrm{tot}}\mathbf{I}$ separately, solves for
+$\boldsymbol{\lambda}_f$ and $\boldsymbol{\lambda}_g$, and combines the two
+parameter gradients as
 
 ```math
 \frac{\partial J}{\partial \theta_p}
-\propto
-g \frac{\partial f}{\partial \theta_p} - f \frac{\partial g}{\partial \theta_p},
+=
+\frac{\partial f/\partial\theta_p-J\,\partial g/\partial\theta_p}{g}.
 ```
 
-which involves **scalar** numbers $f$ and $g$ rather than large vectors. Scalar cancellation is much less harmful and can be controlled with standard floating‑point precautions.
+`_combine_directivity_gradient!` uses a fused multiply-add for the Float64
+combination and recomputes extreme-range scalar combinations in `BigFloat`.
+The matrix-vector products use the package's guarded finite-reduction path.
 
-### 3.4 Cost‑Benefit Trade‑Off
+### 3.3 High-Precision Fallback
 
-The two‑adjoint approach doubles the linear‑solve cost per iteration compared to a single quadratic objective. However, this is still **independent of $P$** and vastly cheaper than finite differences. The added stability is well worth the extra solve, especially for challenging beam‑steering problems where high directivity requires precise gradient information.
+If the ordinary accepted-iterate path raises an `OverflowError`,
+`_directivity_ratio_gradient_bigfloat` recomputes the objective products and
+forms the normalized effective right-hand side
+
+```math
+\frac{(\mathbf{Q}_t-J\mathbf{Q}_{\mathrm{tot}})\mathbf{I}}{g}
+```
+
+in `BigFloat`, then performs one high-precision adjoint solve. A gradient
+component that cannot be represented as `Float64` is rejected with an
+`OverflowError` instead of being clamped.
+
+### 3.4 Solve Count
+
+The ordinary ratio path uses one forward solve and two adjoint solves per
+accepted iteration, independent of the parameter count $P$. Backtracking adds
+forward trial solves. The high-precision overflow path replaces the two
+Float64 adjoint solves for that gradient evaluation with one `BigFloat` solve.
 
 ---
 
@@ -564,7 +579,7 @@ After studying this chapter, you should be able to:
 
 - [ ] **Write** the ratio objective $J = f/g$ in terms of target‑ and total‑power matrices $\mathbf{Q}_t$, $\mathbf{Q}_{\mathrm{tot}}$.
 - [ ] **Derive** the quotient‑rule gradient formula and explain why it requires derivatives of both $f$ and $g$.
-- [ ] **Explain** why two separate adjoint solves are numerically more stable than a single adjoint solve with $\mathbf{Q}_{\mathrm{eff}} = \mathbf{Q}_t - J\mathbf{Q}_{\mathrm{tot}}$.
+- [ ] **Compare** the ordinary two-adjoint path with the equivalent high-precision single-adjoint fallback.
 - [ ] **Use** `optimize_directivity` with appropriate box constraints and conditioning options.
 - [ ] **Interpret** optimization traces and adjust target‑region parameters to control beam width and sidelobe levels.
 - [ ] **Verify** ratio‑objective gradients with finite‑difference checks.

@@ -122,9 +122,9 @@ z = \frac{x^2 + y^2}{4f}, \qquad x^2 + y^2 \le (D/2)^2.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `D` | `Real` | Finite, positive aperture diameter (meters). |
-| `f` | `Real` | Finite, positive focal length (meters). The focal point is at `(0, 0, f)` relative to the apex. Common f/D ratios: 0.3--0.5. |
+| `f` | `Real` | Finite, positive focal length (meters). The focal point is at `(0, 0, f)` relative to the apex. |
 | `Nr` | `Int` | Number of radial rings (>= 2). More rings = finer radial resolution. |
-| `Nphi` | `Int` | Number of azimuthal samples per ring (>= 3). Typically 20--40 for smooth curvature. |
+| `Nphi` | `Int` | Number of azimuthal samples per ring (>= 3). Select it with a geometry and observable refinement check. |
 | `center` | `Vec3` | Finite reflector apex location, default `Vec3(0,0,0)`. |
 | resource keywords | `Integer` | Shared output limits described above. |
 
@@ -173,7 +173,7 @@ per-field split vectors, or intermediate vertex and face collections.
 accepts OBJ reader limits in `reader_kwargs`; remaining keywords configure
 `repair_mesh_for_simulation`.
 
-**Typical workflow for imported meshes:**
+**Imported-mesh workflow:**
 ```julia
 mesh_raw = read_obj_mesh("input.obj")
 rep = repair_mesh_for_simulation(mesh_raw)   # clean up
@@ -322,7 +322,7 @@ Return `true` if a mesh-quality report passes all hard checks.
 
 ### `assert_mesh_quality(mesh; allow_boundary=true, require_closed=false, area_tol_rel=1e-12)`
 
-Run mesh-quality checks and **throw a detailed error** if the mesh is unsuitable for simulation. This is the recommended one-call check: it runs `mesh_quality_report` internally and provides a human-readable error message listing all problems found.
+Run mesh-quality checks and **throw a detailed error** if the mesh is unsuitable for simulation. This is the fail-closed entry point: it runs `mesh_quality_report` internally and lists every detected problem.
 
 **Parameters:** Same as `mesh_quality_report` plus the `allow_boundary`/`require_closed` flags from `mesh_quality_ok`.
 
@@ -361,7 +361,7 @@ repair_mesh_for_simulation(mesh;
 | Parameter | Default | When to change |
 |-----------|---------|----------------|
 | `auto_drop_nonmanifold` | `true` | Set to `false` for strict fail-fast validation (error instead of auto-fix). |
-| `strict_nonmanifold` | `true` | Set to `false` only if you want to tolerate non-manifold edges (not recommended). |
+| `strict_nonmanifold` | `true` | Set to `false` only when the downstream workflow explicitly accepts retained non-manifold edges. |
 | `allow_boundary` | `true` | Set to `false` for closed surfaces. |
 | `require_closed` | `false` | Set to `true` for enclosed bodies (sphere, aircraft hull). |
 
@@ -421,7 +421,7 @@ coarsen_mesh_to_target_rwg(mesh, target_rwg;
 | `allow_boundary` | `Bool` | `true` | Allow boundary edges in the repair and RWG-counting of each candidate mesh. Set to `false` for closed surfaces where every edge must be interior. |
 | `require_closed` | `Bool` | `false` | Require that each candidate surface is closed (zero boundary edges). Use for enclosed bodies (spheres, aircraft hulls) where boundary edges indicate a mesh defect. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection during candidate repair and RWG counting. A triangle is degenerate if its area is less than `area_tol_rel * bbox_diagonal^2`. |
-| `strict_nonmanifold` | `Bool` | `true` | Forwarded to the per-candidate `repair_mesh_for_simulation` call. Set to `false` only if you want to tolerate non-manifold edges (not recommended). |
+| `strict_nonmanifold` | `Bool` | `true` | Forwarded to the per-candidate `repair_mesh_for_simulation` call. Set to `false` only when the downstream workflow explicitly accepts retained non-manifold edges. |
 
 **Returns:** Named tuple `(mesh, rwg_count, target_rwg, best_gap, iterations)`.
 
@@ -482,7 +482,7 @@ Estimate memory (GiB) for a dense `ComplexF64` N x N matrix (16 bytes per entry)
 
 ## Resolution Diagnostics
 
-These functions assess whether a mesh is adequately resolved for MoM simulation at a given frequency. The core criterion is that the maximum edge length should be no larger than `lambda / points_per_wavelength` (typically lambda/10). Under-resolved meshes produce inaccurate MoM solutions without any obvious error message -- always check resolution before running a simulation.
+These functions compare mesh edges with `lambda / points_per_wavelength` at a given frequency. Passing that geometric target does not establish observable convergence; repeat the solve on a refined mesh before treating the result as resolved.
 
 ### `mesh_resolution_report(mesh, freq_hz; points_per_wavelength=10.0, c0=299792458.0)`
 
@@ -494,7 +494,7 @@ Compute electrical mesh-resolution diagnostics for MoM at the specified frequenc
 |-----------|------|---------|-------------|
 | `mesh` | `TriMesh` | -- | Triangle mesh to check. |
 | `freq_hz` | `Real` | -- | Simulation frequency in Hz. |
-| `points_per_wavelength` | `Real` | `10.0` | Target resolution: `target_max_edge = lambda / points_per_wavelength`. The standard MoM rule of thumb is 10 edges per wavelength. Use 15--20 for high-accuracy studies. |
+| `points_per_wavelength` | `Real` | `10.0` | Defines `target_max_edge = lambda / points_per_wavelength`. Select it with an observable mesh-refinement study. |
 | `c0` | `Real` | `299792458.0` | Speed of light (m/s). |
 
 **Returns:** Named tuple with fields:
@@ -540,9 +540,9 @@ Evaluate a `mesh_resolution_report` against a selected criterion.
 
 | Criterion | Passes when | Use case |
 |-----------|-------------|----------|
-| `:max` | Every edge meets the target | Default, recommended for standard simulations |
-| `:p95` | 95% of edges meet the target | Meshes with a few long edges at boundaries or corners |
-| `:median` | The median edge is acceptable | Quick feasibility check |
+| `:max` | Every edge meets the target | Strict whole-mesh preflight |
+| `:p95` | 95% of edges meet the target | Diagnostic that tolerates the longest 5% of edges |
+| `:median` | The median edge is acceptable | Diagnostic of the central edge length only |
 
 ---
 
@@ -612,7 +612,7 @@ mesh_fine = result.mesh
 
 ---
 
-## Typical Safe Pipeline
+## Imported-mesh pipeline
 
 A robust workflow for imported OBJ meshes:
 
@@ -713,7 +713,7 @@ Only 3-node triangle elements (Gmsh element type 2) are extracted. Lines, quads,
 
 **Returns:** `TriMesh`
 
-**Typical workflow (STEP → MSH → TriMesh):**
+**STEP → MSH → `TriMesh` workflow:**
 ```bash
 gmsh -2 model.step -o model.msh -clmax 0.01
 ```

@@ -102,12 +102,15 @@ println("Far-field shape: ", size(result.E_ff))
 
 | Aspect | MoM (`solve_scattering`) | PO (`solve_po`) |
 |--------|-------------------------|-----------------|
-| Accuracy | Exact (within discretization) | High-frequency approximation |
-| Complexity | O(N^2) to O(N log N) | O(Nt * N_omega) |
+| Model | Full-wave PEC surface-current integral equation | High-frequency illuminated-surface approximation |
+| Error controls | Mesh, quadrature, operator, and solve convergence | Mesh, observation sampling, and high-frequency model validity |
+| Cost model | Dense or accelerated operator, depending on `method` | O(Nt * N_omega) for Nt triangles and N_omega directions |
 | Requires RWG | Yes | No |
-| Handles diffraction | Yes | No (shadow boundary artifacts) |
-| Handles creeping waves | Yes | No |
-| Best for | lambda-scale to moderate objects | Electrically large objects (D >> lambda) |
+| Diffraction | Emerges from the solved current when the discretization resolves it | Not included in the base PO term; `solve_ptd` adds supported edge corrections |
+
+Choose between them from the required observable accuracy, electrical size,
+available memory, and a convergence or reference comparison for the target
+geometry.
 
 ---
 

@@ -104,7 +104,7 @@ local-field validation is meaningful.
 
 ### 2.2 API Pattern Used
 
-The benchmark follows the recommended excitation-object workflow:
+The benchmark uses the excitation-object workflow below:
 
 ```julia
 k_vec = Vec3(0.0, 0.0, -k)

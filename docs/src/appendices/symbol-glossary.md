@@ -143,7 +143,7 @@ Quick reference for mathematical symbols used throughout `DiffMoM.jl` documentat
 | $P_{\mathrm{rad}}$ | Radiated power | $P_{\mathrm{rad}}=\frac{1}{2\eta_0}\int \lvert\mathbf E^\infty\rvert^2\,d\Omega$ | W |
 | $P_{\mathrm{in}}$ | Input power | $P_{\mathrm{in}}=-\frac{1}{2}\text{Re}\{\mathbf I^\dagger\mathbf v\}$ | W |
 | FD | Finite Difference | Numerical gradient approximation |
-| CS | Complex Step | Exact gradient via complex perturbation |
+| CS | Complex Step | Derivative estimate from a complex perturbation |
 | RMSE | Root Mean Square Error | $\sqrt{\frac{1}{N}\sum_i\lvert y_i-\hat{y}_i\rvert^2}$ |
 | SLL | Sidelobe Level | Ratio of main lobe to highest sidelobe | dB |
 

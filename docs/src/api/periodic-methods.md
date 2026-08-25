@@ -64,14 +64,14 @@ DeltaG(r,rp) = G_per(r,rp) - G_0(r,rp)
 
 using Helmholtz-Ewald decomposition (self-correction + spatial images + spectral sum).
 
-Current implementation scope:
+Supported scope:
 - Supports both coplanar point pairs and finite vertical separation `z-z'`; the
   grounded-EFIE image block uses the latter path.
 - For periodic EFIE/Floquet postprocessing with boundary-touching conductors, use
   `build_rwg_periodic(mesh, lattice; ...)`; non-Bloch RWG input is rejected.
-- `k` must match `lattice.k` (within `1e-12` relative tolerance). A lattice stores
-  Bloch phases, Ewald splitting, and spectral truncation derived from its
-  construction wavenumber, so reusing it at a different `k` is invalid.
+- `_validated_lattice_wavenumber` requires `k` to match `lattice.k`. A lattice
+  stores Bloch phases, Ewald splitting, and spectral truncation derived from
+  its construction wavenumber, so reusing it at another frequency is invalid.
 - All point coordinates must be finite.
 
 **Parameters:**

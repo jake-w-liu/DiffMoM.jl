@@ -234,7 +234,7 @@ G_mat = radiation_vectors(mesh, rwg, grid, k; quad_order=3, eta0=η0)
 E_ff = compute_farfield(G_mat, I, length(grid.w))
 ```
 
-This is the recommended post-solve workflow for observation-space fields:
+Map solved currents to observation-space fields as follows:
 `compute_nearfield` for scattered field only, `compute_total_field` for
 `E_inc + E_sca`, and `compute_farfield` for radiation and RCS quantities.
 

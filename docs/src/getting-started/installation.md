@@ -31,7 +31,7 @@ julia --version
 
 ---
 
-## 2) Local-Checkout Installation (Recommended)
+## 2) Local-Checkout Installation
 
 From your shell:
 

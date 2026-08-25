@@ -22,7 +22,7 @@ export DensityConfig
 Configuration for density-based topology optimization.
 """
 struct DensityConfig
-    p::Float64          # SIMP penalization power (typically 3)
+    p::Float64          # SIMP penalization power
     Z_max::ComplexF64   # void penalty impedance (real = resistive, imaginary = reactive)
     vf_target::Float64  # target volume fraction (metal fraction)
 

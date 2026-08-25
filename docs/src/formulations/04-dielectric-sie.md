@@ -4,7 +4,14 @@
 
 A perfect electric conductor scatters with a single equivalent electric current and one boundary integral equation. A *penetrable* dielectric body does not: the field exists on both sides of the boundary, so the scattering problem is governed by *two* equivalent currents (electric and magnetic) coupled across the surface. This chapter covers the closed-surface dielectric surface integral equation (SIE) solver in `DiffMoM.jl`, which discretizes a homogeneous isotropic body with stacked RWG electric and magnetic currents `[J; M]` and solves the resulting $2N \times 2N$ block system.
 
-Two equivalent formulations of the same boundary-value problem are implemented. **PMCHWT** (Poggio-Miller-Chang-Harrington-Wu-Tsai) is a *first-kind* system whose blocks are all weakly singular integral operators. **Müller** is a *second-kind* system that adds an identity (Gram) term to the diagonal and is consequently better conditioned. Because they discretize the same physics, the two solvers return the same currents `J`, `M` (validated to under 1% on a dielectric sphere) — they differ only in the algebraic structure of the matrix and therefore in conditioning. This chapter derives both, explains the role of the principal-value magnetic-field operator and its second-kind identity residue, and walks through a runnable solve of both formulations on a closed mesh.
+Two formulations of the same boundary-value problem are implemented.
+**PMCHWT** (Poggio-Miller-Chang-Harrington-Wu-Tsai) is a first-kind system
+whose blocks are weakly singular integral operators. **Müller** is a
+second-kind system that adds an identity (Gram) term. Their discrete matrices
+differ; compare current agreement under mesh refinement and measure
+conditioning for the target problem. This chapter derives both, explains the
+principal-value magnetic-field operator and its identity residue, and walks
+through a solve on a closed mesh.
 
 ---
 
@@ -204,9 +211,15 @@ c^{H}_{\text{int}} = \frac{\varepsilon^{\text{ext}}_r}{\varepsilon^{\text{ext}}_
 
 Now the exterior and interior weights *differ* in each row, so the Gram coefficient is nonzero and the $\hat{\mathbf{n}}\times$ Gram identity term is added on the off-diagonal blocks. This identity term dominates the diagonal of the system, converting it into a *second-kind* (identity + compact) operator. The right-hand side must be scaled consistently by the exterior row weights, $[\,c^{E}_{\text{ext}}\,\mathbf{v}_E;\; c^{H}_{\text{ext}}\,\mathbf{v}_H\,]$, which is why the Müller RHS assembly requires the interior medium (to compute the weights). The denominators $\mu^{\text{ext}}_r + \mu^{\text{int}}_r$ and $\varepsilon^{\text{ext}}_r + \varepsilon^{\text{int}}_r$ must be nonzero — the code raises an error if either vanishes (the Müller weights are singular there).
 
-### 6.3 Same Physics, Different Conditioning
+### 6.3 Same Boundary-Value Problem, Different Matrices
 
-PMCHWT and Müller are **distinct matrices** (the tests assert their norm difference exceeds $10^{-4}$; the worked example below sees roughly 48% relative difference). But they discretize the *same* boundary-value problem, so the solved currents `J`, `M` coincide. The trade-off is conditioning: PMCHWT is first-kind (no compact-resolvent structure), while Müller is second-kind and better conditioned because the identity Gram term dominates the diagonal. **The $\hat{\mathbf{n}}\times$ Gram term is not optional cosmetics** — without it the Müller currents disagree with PMCHWT by 20–50% (over 100% for the magnetic current), as the validation testset records.
+PMCHWT and Müller produce distinct discrete matrices for the same
+boundary-value problem. Their current solutions should approach one another
+under mesh and quadrature refinement. The Müller definition includes the
+$\hat{\mathbf{n}}\times$ Gram identity term together with its weighted blocks
+and right-hand side; omitting any of those terms changes the formulation.
+Compare condition estimates, solve residuals, and refined observables instead
+of assuming one formulation will converge faster for every geometry.
 
 ---
 
@@ -231,7 +244,11 @@ c_{g,E} = -\,(c^{E}_{\text{ext}} - c^{E}_{\text{int}})\cdot\tfrac{1}{2}, \qquad
 c_{g,H} = +\,(c^{H}_{\text{ext}} - c^{H}_{\text{int}})\cdot\tfrac{1}{2},
 ```
 
-matching the dense block signs of Section 5.2. The dense $\hat{\mathbf{n}}\times$ Gram matrix is precomputed *only when nonzero* — i.e. for Müller; PMCHWT stores a $0\times0$ placeholder and the matvec skips the Gram contribution. The dense and matrix-free operators are validated to agree to machine precision ($< 10^{-13}$).
+matching the dense block signs of Section 5.2. The dense
+$\hat{\mathbf{n}}\times$ Gram matrix is precomputed only when nonzero—i.e. for
+Müller; PMCHWT stores a $0\times0$ placeholder and the matvec skips the Gram
+contribution. The `Dielectric 3D SIE assembly/solve` testset owns the current
+dense/matrix-free comparison tolerance.
 
 ---
 
@@ -323,8 +340,7 @@ relJ = norm(res_mu.J - res_pm.J) / norm(res_pm.J)
 relM = norm(res_mu.M - res_pm.M) / norm(res_pm.M)
 println("PMCHWT vs Muller current agreement: relJ = ", round(relJ, digits=4),
         ", relM = ", round(relM, digits=4))
-println("(On a refined dielectric SPHERE the test asserts relJ, relM < 1%, ",
-        "tightening under refinement; the tiny tetra is coarser.)")
+println("Check current agreement over a mesh-refinement sequence.")
 
 # --- Matrix-free GMRES path matches the dense direct solve ---
 res_gmres = solve_dielectric_sie_3d(mesh, rwg, k0, eps_in, pw;
@@ -341,7 +357,7 @@ println("DONE")
 
 ### 9.1 What the Output Shows
 
-Running the script prints (values from an actual run):
+One run produced the output below; rerun the script for the current result:
 
 ```
 mesh: 4 triangles, RWG edges N = 6  (system size 2N = 12)
@@ -353,34 +369,42 @@ matrix difference ||A_pm - A_mu|| / ||A_pm|| = 0.4833 (distinct formulations)
 PMCHWT relative residual = 5.79e-16
 Muller relative residual = 3.43e-16
 PMCHWT vs Muller current agreement: relJ = 0.0433, relM = 0.0858
+Check current agreement over a mesh-refinement sequence.
 GMRES vs direct (PMCHWT) relative difference = 2.70e-15  (A_LU===nothing: true)
 DONE
 ```
 
 Key observations:
 
-- The lossy interior produces a **complex** wavenumber ($k = 1.18 - 0.017i$, the negative imaginary part being attenuation under $e^{+i\omega t}$) and a **complex** impedance ($\eta = 289.6 - 0.25i$).
-- PMCHWT and Müller are genuinely different matrices ($\approx 48\%$ relative difference) yet each solution satisfies its own system to machine precision ($\sim 10^{-16}$).
-- The two formulations' currents agree to a few percent on this *very coarse* 4-triangle mesh ($\text{relJ} \approx 4\%$, $\text{relM} \approx 9\%$). On a refined sphere the validation testset asserts agreement under 1% (Section 10) — the coarse agreement here reflects discretization error, not a formulation error.
-- The matrix-free GMRES path reproduces the dense direct solve to $\sim 10^{-15}$, and returns `A_LU === nothing` (no dense factorization is formed for the iterative path).
+- The lossy interior produces a complex wavenumber and impedance; under the
+  documented $e^{+i\omega t}$ convention, the negative imaginary part of $k$
+  represents attenuation.
+- The two formulations produce different matrices, and each printed solution
+  has a small residual for this input.
+- Current agreement on one coarse mesh is not a convergence result; repeat the
+  comparison over mesh and quadrature refinement.
+- `A_LU === nothing` confirms that the matrix-free GMRES result did not retain
+  a dense factorization.
 
 ---
 
 ## 10. Validation
 
-This subsystem has no standalone `validation/` script; its validation lives entirely in the test suite at `test/test_surface_ie3d.jl` (registered in `test/runtests.jl`). Two testsets are decisive:
+This subsystem's regression checks live in `test/test_surface_ie3d.jl`, loaded
+by `test/runtests.jl`. Read the named testsets for their current inputs and
+tolerances:
 
 **`Dielectric 3D SIE assembly/solve`** checks the algebraic machinery:
 
-- The dense and matrix-free $K$ operators agree to $< 10^{-13}$ (`mul!` vs dense).
-- The dense and matrix-free PMCHWT operators agree to $< 10^{-13}$.
-- PMCHWT and Müller are **distinct** matrices (norm difference $> 10^{-4}$).
-- A zero RHS yields zero currents with an exact residual.
-- Direct and GMRES PMCHWT solves agree to $< 10^{-9}$.
-- Plane-wave PMCHWT and Müller solves have machine-precision residuals.
+- Dense and matrix-free $K$ and PMCHWT operator correspondence.
+- Distinct PMCHWT and Müller matrices.
+- Zero-right-hand-side behavior and direct/GMRES correspondence.
+- Plane-wave solve residuals for both formulations.
 - An **open** mesh (a rectangular plate) makes `assemble_pmchwt_3d` throw, and `formulation=:cfie` throws.
 
-**`PMCHWT vs Muller currents agree (dielectric sphere)`** is the physics oracle. On a 1-subdivision icosphere, for two $(\varepsilon_{\text{int}}, \mu_{\text{int}})$ cases, it asserts the relative current mismatch $\text{relJ} < 1\%$ and $\text{relM} < 1\%$. The testset comment records that **without** the $\hat{\mathbf{n}}\times$ Gram identity term the mismatch is roughly 20–50% (over 100% for the magnetic current), confirming that the residue of Section 5 is essential for the two formulations to coincide. It also checks the Müller RHS-consistent residual ($< 10^{-10}$) and that the dense and matrix-free Müller operators are identical to $< 10^{-13}$.
+**`PMCHWT vs Muller currents agree (dielectric sphere)`** compares the two
+current solutions on a closed sphere, checks the Müller weighted-system
+residual, and compares the dense and matrix-free Müller operators.
 
 The worked example in Section 9 is the coarse-mesh counterpart. Its 4-triangle
 tetrahedron reproduces the checked properties (distinct matrices, small
@@ -391,7 +415,10 @@ also checked on a refined mesh in the test suite.
 
 ## 11. When to Use / Limitations
 
-**Use the dielectric SIE solver when** you scatter from a homogeneous, isotropic, *penetrable* body (a dielectric or magnetic object) bounded by a closed surface. Use **PMCHWT** as the well-understood reference formulation, and **Müller** when you want better-conditioned iterative convergence — both return the same currents.
+**Use the dielectric SIE solver when** you scatter from a homogeneous,
+isotropic, penetrable body bounded by a closed surface. Compare PMCHWT and
+Müller with the same mesh, quadrature, residual target, and observable checks;
+their conditioning and runtime depend on the assembled problem.
 
 **Hard requirements (the code enforces these):**
 
@@ -401,7 +428,10 @@ also checked on a refined mesh in the test suite.
 - **Müller-specific.** The Müller weights are singular when $\mu_{\text{ext}} + \mu_{\text{int}} = 0$ or $\varepsilon_{\text{ext}} + \varepsilon_{\text{int}} = 0$, and the code errors in those cases. Müller RHS assembly also requires the interior medium (the plane-wave overload supplies it automatically).
 - **Finite, nonzero media.** `dielectric_medium_3d` requires `k0 > 0`, `eta0 > 0`, and both $\varepsilon_r, \mu_r$ finite and nonzero.
 
-**Accuracy notes.** The sub-1% PMCHWT-vs-Müller agreement is a property of a *sufficiently refined* mesh; on a tiny tetrahedron the agreement is coarser (a few percent) purely because the discretization is coarse. Quadrature orders are restricted to the package's available rules (1, 3, 4, 7); the defaults `quad_order=3`, `singular_quad_order=7` are a good starting point.
+**Accuracy notes.** Establish PMCHWT-vs-Müller agreement with a mesh and
+quadrature refinement study. Quadrature orders are restricted to the package's
+available rules; read the function docstrings for the accepted values and
+current defaults.
 
 ---
 
@@ -436,13 +466,13 @@ See the full API reference at [API: Dielectric Surface Integral Equation (3D)](.
 
 2. **The $1/\eta$ row.** The H-row diagonal reuses the EFIE assembly with `eta0 = 1/eta` instead of `eta`. Argue from electric-magnetic duality why the inverse impedance produces the correct magnetic-current $T$ operator.
 
-3. **Why the Gram term cancels for PMCHWT.** The off-diagonal Gram coefficient is $(c_{\text{ext}} - c_{\text{int}})/2$. Show that PMCHWT's unit weights make this zero, and that Müller's $\mu/\varepsilon$ weights make it nonzero. What would happen to the Müller solution if the term were omitted?
+3. **Why the Gram term cancels for PMCHWT.** The off-diagonal Gram coefficient is $(c_{\text{ext}} - c_{\text{int}})/2$. Show that PMCHWT's unit weights make this zero, and derive the nonzero Müller coefficients and their block signs.
 
-4. **First vs second kind.** Explain why adding the identity-like $\hat{\mathbf{n}}\times$ Gram term to the diagonal improves conditioning. Why is a first-kind system (PMCHWT) typically worse-conditioned than a second-kind one (Müller)?
+4. **First vs second kind.** Compare condition estimates for PMCHWT and Müller over a refinement sequence, then relate the observed spectra to the identity-like $\hat{\mathbf{n}}\times$ Gram term.
 
 ### 13.2 Numerical Experiments
 
-5. **Refinement study.** Replace the tetrahedron with a refined closed surface (an icosphere; the test suite uses `_icosphere_mesh` internally). Solve both formulations and confirm that `relJ` and `relM` shrink below 1% as you refine, matching the validation testset.
+5. **Refinement study.** Replace the tetrahedron with a sequence of refined closed meshes. Solve both formulations, plot `relJ`, `relM`, and the target observable, and report whether each quantity converges.
 
 6. **Lossless vs lossy.** Re-run the worked example with a *lossless* interior (`eps_in = 2.2`, `mu_in = 1.3`, no imaginary part). Confirm that `int.k` and `int.eta` become real, and compare the currents to the lossy case.
 

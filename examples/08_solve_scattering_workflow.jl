@@ -6,7 +6,7 @@
 #   3. Handles preconditioner setup automatically
 #   4. Returns a ScatteringResult with all metadata
 #
-# This is the recommended entry point for production simulations.
+# This high-level entry point applies the checks and options shown below.
 #
 # Run: julia --project=. examples/08_solve_scattering_workflow.jl
 

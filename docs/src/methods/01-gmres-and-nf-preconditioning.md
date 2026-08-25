@@ -48,22 +48,14 @@ The iteration count $m$ depends on the spectrum, restart, tolerance, geometry,
 frequency, mesh, and preconditioner. Record it across the intended problem
 sequence; the implementation does not assume an `N`-independent value.
 
-### 1.3 When to Switch from Direct to Iterative
+### 1.3 Selecting the solve method
 
-The package provides automatic method selection via `solve_scattering`. Its
-current default branch thresholds are:
-
-| Problem size $N$ | Recommended method | Rationale |
-|---|---|---|
-| $N \le 2{,}000$ | Dense direct (LU) | First automatic branch |
-| $2{,}000 < N \le 10{,}000$ | Dense GMRES + NF preconditioner | Second automatic branch |
-| $10{,}000 < N \le 50{,}000$ | ACA H-matrix + preconditioned GMRES | Third automatic branch |
-| $N > 50{,}000$ | MLFMA + preconditioned GMRES | Fourth automatic branch |
-
-These are configurable dispatch defaults, not performance guarantees. The
-`solve_scattering` docstring owns their exact values. Override `method` or the
-thresholds after measuring memory, setup, solve time, accuracy, and the true
-residual for the target workload.
+`solve_scattering(method=:auto)` selects among dense direct, dense GMRES, ACA,
+and MLFMA branches from the unknown count and its configurable thresholds. The
+`solve_scattering` docstring owns the exact branch conditions and defaults;
+they are dispatch rules, not performance guarantees. Override them after
+measuring memory, setup time, solve time, observable accuracy, and the checked
+true residual for the target workload.
 
 ### 1.4 Physical Insight: Spatial Decay of Interactions
 
@@ -537,7 +529,7 @@ cutoff with any timing or iteration result.
 
 ### 7.2 Factorization Choice
 
-| Factorization | Build cost | Apply cost | Best for |
+| Factorization | Build cost | Apply cost | Selection condition |
 |---|---|---|---|
 | `:lu` (sparse LU) | Fill- and ordering-dependent | Sparse triangular solves | Exact near-field factorization when its factors fit |
 | `:ilu` (incomplete LU) | Drop-tolerance-dependent | Sparse triangular solves | Lower-fill approximation to compare with LU |
@@ -587,7 +579,9 @@ If `stats.niter` equals `maxiter` and the residual is above tolerance, the solve
 
 The sparse near-field matrix requires approximately $16 \cdot \mathrm{nnz}$ bytes (complex double entries). For $N = 10{,}000$ and $d_{\mathrm{cut}} = 1\lambda$ with 10% fill, this is roughly $16 \times 10^7 = 160$ MB---much less than the $16 \times 10^8 = 1.6$ GB required for the full dense matrix.
 
-The LU factorization introduces fill-in, typically increasing storage by a factor of 2--5x depending on the sparsity pattern and matrix ordering. UMFPACK applies internal reordering (approximate minimum degree) to minimize fill-in.
+LU factorization introduces fill-in whose storage depends on the sparsity
+pattern and ordering. Measure the factors for the target matrix before choosing
+a memory budget.
 
 ---
 

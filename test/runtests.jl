@@ -13433,7 +13433,7 @@ println("  35b: PASS")
 
 # 35c: optimize_multiangle_rcs smoke test
 println("  35c: optimize_multiangle_rcs (5 iterations) ...")
-# Use spatial grid patches instead of one-per-triangle (fewer parameters = faster)
+# Keep this smoke problem's parameter count bounded with spatial grid patches.
 part_opt = assign_patches_grid(mesh; nx=3, ny=3, nz=1)
 Mp_opt = precompute_patch_mass(mesh, rwg, part_opt; quad_order=3)
 theta_init = fill(200.0, part_opt.P)

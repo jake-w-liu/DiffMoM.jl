@@ -175,12 +175,16 @@ compared.
 
 ### 4.2 Why This Matters for High-Frequency Problems
 
-At high frequencies, $h$ must be small relative to wavelength $\lambda$ (typically $h < \lambda/10$). As frequency increases:
-- $\lambda$ decreases → $h$ must decrease
+At high frequencies, select the discretization size $h$ relative to wavelength
+$\lambda$ through an observable refinement study. As frequency increases at a
+fixed points-per-wavelength target:
+- $\lambda$ decreases, so $h$ decreases
 - $L/h$ increases rapidly
-- Volume methods become prohibitively expensive due to cubic scaling
+- the dimensional unknown-count models above grow
 
-Surface methods mitigate this through quadratic rather than cubic scaling, making them attractive for high-frequency scattering.
+Surface and volume methods therefore have different unknown-count growth under
+the assumptions above. Their actual memory and runtime also depend on operator
+storage, solver choice, and convergence.
 
 ### 4.3 The Dense Matrix Trade-off
 

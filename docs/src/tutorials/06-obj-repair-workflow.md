@@ -60,7 +60,7 @@ open_surface_ok = mesh_quality_ok(
 )
 ```
 
-Typical interpretations are:
+Interpret the report fields as follows:
 
 | Finding | Effect on the normal solver path |
 |---|---|

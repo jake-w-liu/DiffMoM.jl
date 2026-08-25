@@ -101,7 +101,7 @@ end
 rwg = build_rwg(mesh; precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12)
 ```
 
-- `precheck=true`: Run mesh quality checks before building. Recommended for imported meshes.
+- `precheck=true`: Run mesh quality checks before building. Keep this enabled for imported meshes unless they were checked separately.
 - `allow_boundary=true`: Allow boundary edges (edges with only one triangle). Set to `false` for closed surfaces where every edge must be interior.
 - `require_closed=false`: If `true`, throw an error if any boundary edges exist.
 - `area_tol_rel=1e-12`: Relative tolerance for degenerate triangle detection.
@@ -180,7 +180,7 @@ end
 
 **Design choices:**
 
-- **One patch per triangle** (`P = Nt`): Maximum design freedom. Each triangle has an independent impedance. This is the typical choice for fine-grained optimization.
+- **One patch per triangle** (`P = Nt`): Each triangle has an independent impedance, giving the largest design space and parameter count.
 - **Coarser grouping** (`P < Nt`): Reduced design space. Group triangles into regions (e.g., by quadrant, by ring, etc.) to reduce the number of optimization variables when fine-grained control is not needed.
 
 **Example:**
@@ -188,7 +188,7 @@ end
 ```julia
 Nt = ntriangles(mesh)
 
-# One patch per triangle (typical for optimization)
+# One patch per triangle
 tri_patch = collect(1:Nt)
 partition = PatchPartition(tri_patch, Nt)
 
@@ -675,7 +675,7 @@ Compute a single EFIE matrix entry Z[m,n] from a `MatrixFreeEFIEOperator`. This 
 
 **When to use matrix-free operators:**
 
-| Scenario | Recommended approach |
+| Requirement | Available approach |
 |----------|---------------------|
 | Materialized entries or direct LU required | Dense `assemble_Z_efie` |
 | Dense matrix exceeds the memory budget | `matrixfree_efie_operator` + GMRES, then measure convergence and runtime |

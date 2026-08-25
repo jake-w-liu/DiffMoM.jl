@@ -4,7 +4,12 @@
 
 Reference for the closed-surface dielectric surface integral equation (SIE) solver for homogeneous isotropic bodies. Two formulations are supported: the first-kind **PMCHWT** (Poggio-Miller-Chang-Harrington-Wu-Tsai) system and the second-kind **Müller** system. Both equivalent-current formulations solve for the tangential electric and magnetic surface currents `[J; M]` on the closed boundary between an exterior and an interior medium, using RWG basis functions on a closed triangle mesh.
 
-The electric-current blocks reuse the package's singularity-treated EFIE assembly (see [assembly-solve.md](assembly-solve.md)); the magnetic-field `K` operator is assembled by principal-value product quadrature with higher-order quadrature on near-singular panel pairs (pairs sharing at least one vertex). The Müller formulation is a validated alternative to PMCHWT: on a dielectric sphere the PMCHWT and Müller surface currents agree to better than 1%, tightening under mesh refinement.
+The electric-current blocks reuse the package's singularity-treated EFIE
+assembly (see [assembly-solve.md](assembly-solve.md)); the magnetic-field `K`
+operator is assembled by principal-value product quadrature with higher-order
+quadrature on near-singular panel pairs. The PMCHWT/Müller sphere comparison
+and its current tolerances live in the `PMCHWT vs Muller currents agree
+(dielectric sphere)` testset.
 
 All routines require a **closed** mesh: build the RWG basis with `build_rwg(mesh; allow_boundary=false, require_closed=true)` (see [rwg.md](rwg.md) and [types.md](types.md)). Both dense and matrix-free assembly are available; the matrix-free path is used by `solver=:gmres`.
 
@@ -265,7 +270,11 @@ A = assemble_pmchwt_3d(mesh_closed, rwg_closed, k, 2.5 + 0im)
 
 Assemble the dense second-kind **Müller** system. Equivalent to `assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in; formulation=:muller, kwargs...)`. All keyword arguments of `assemble_dielectric_sie_3d` (except `formulation`) are forwarded.
 
-The Müller formulation applies mu/eps-weighted row coefficients to both the diagonal `T` blocks and the off-diagonal `K` blocks, and includes the `nhat x` Gram identity residue on the off-diagonal that the principal-value `K` operator omits. This is a validated alternative to PMCHWT: on a dielectric sphere the Müller and PMCHWT currents agree to better than 1%, tightening under mesh refinement. The Müller system is distinct from PMCHWT (a different matrix), but discretizes the same boundary value problem, so the solved `J`, `M` match.
+The Müller formulation applies mu/eps-weighted row coefficients to both the
+diagonal `T` blocks and the off-diagonal `K` blocks, and includes the `nhat x`
+Gram identity residue omitted by the principal-value `K` operator. Its matrix
+is distinct from PMCHWT even though both discretize the same boundary-value
+problem; assess current and observable agreement under refinement.
 
 **Returns:** `Matrix{ComplexF64}` `A` of size `(2N, 2N)`.
 

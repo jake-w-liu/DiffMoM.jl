@@ -95,8 +95,8 @@ mesh_levels = [
 
 # Parameters
 MAX_N_DENSE = 10_000
-MIN_N_MLFMA = 2_000  # MLFMA not suitable for small problems
-LEAF_LAMBDA = 2.0     # Octree leaf size in wavelengths (larger = fewer levels, faster build)
+MIN_N_MLFMA = 2_000  # Lower bound chosen for this comparison
+LEAF_LAMBDA = 2.0     # Octree leaf size in wavelengths for this comparison
 ILU_TAU = 1e-3
 GMRES_TOL = 1e-6
 

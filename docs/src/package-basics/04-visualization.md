@@ -28,7 +28,7 @@ Many forward-solve failures are geometry failures in disguise:
 - unit-scale mistakes (mm treated as m, etc.),
 - disconnected surface fragments.
 
-A mesh preview often reveals these issues faster than matrix diagnostics.
+A mesh preview can reveal these issues before matrix assembly and solution.
 
 ---
 
@@ -155,7 +155,7 @@ println(preview.png_path)
 println(preview.pdf_path)
 ```
 
-The returned paths make it easy to log generated assets in scripts/CI.
+The returned paths can be recorded in scripts or CI logs.
 
 ---
 

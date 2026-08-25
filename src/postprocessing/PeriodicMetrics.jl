@@ -10,10 +10,10 @@
 #   ky_mn = ky_inc + 2πn/dy
 #   kz_mn = sqrt(k² - kx_mn² - ky_mn²)  (propagating if real)
 #
-# Reflection coefficient normalization (Fix 1.3):
+# Reflection coefficient normalization:
 #   R_mn = -(η₀ k)/(2 κz_mn E₀) × (ê_pol · J̃_mn)
 #   where J̃_mn = (1/A) ∫_cell J(r') exp(i κ_t·r') dS'
-#   For PEC at normal incidence: R₀₀ = -1 (verified).
+#   For PEC at normal incidence: R₀₀ = -1.
 
 export floquet_modes, reflection_coefficients, reflection_coefficient_vectors
 export reflected_power_fractions, transmission_coefficients, specular_rcs_objective

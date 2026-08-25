@@ -109,9 +109,9 @@ Stores an incomplete LU (ILU) factorization of the near-field sparse matrix.
 Uses IncompleteLU.jl's Crout ILU with drop tolerance τ.
 
 Compared to full sparse LU (`NearFieldPreconditionerData`):
-- Much less fill-in → feasible for large N with moderate nnz%
-- Slightly weaker preconditioner → more GMRES iterations
-- Memory: controlled by τ (smaller τ = more fill = better preconditioner)
+- Drops entries according to τ instead of retaining a full sparse LU
+- Factor fill, setup cost, and GMRES convergence depend on the matrix and τ
+- Compare factor storage, setup time, iterations, and the checked true residual
 """
 struct ILUPreconditionerData <: AbstractPreconditionerData
     ilu_fac::IncompleteLU.ILUFactorization{ComplexF64, Int64}

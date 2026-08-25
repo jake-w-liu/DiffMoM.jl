@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This chapter provides an end‑to‑end practical guide for inverse design using `DiffMoM.jl`. It covers the complete workflow from problem setup and optimizer configuration through iteration monitoring, convergence diagnosis, and post‑optimization validation. By following the structured steps and checklists presented here, you can reliably perform gradient‑based optimization of impedance metasurfaces for beam steering, directivity enhancement, and other radiation‑pattern objectives.
+This chapter covers the inverse-design workflow from problem setup and
+optimizer configuration through trace inspection and post-optimization
+validation.
 
 ---
 
@@ -14,7 +16,7 @@ After this chapter, you should be able to:
 2. Interpret optimization traces (objective value $J$, gradient norm $\|\mathbf{g}\|$, iteration count) to diagnose convergence issues.
 3. Apply practical safeguards: parameter initialization, bounds enforcement, regularization/preconditioning selection.
 4. Validate optimization results through independent far‑field recomputation and sensitivity analysis.
-5. Log all settings and seeds to ensure full reproducibility.
+5. Log the inputs, settings, and seeds needed to repeat a run.
 
 ---
 
@@ -97,13 +99,16 @@ The initial guess $\boldsymbol{\theta}^{(0)}$ can significantly influence conver
 
 ### 3.1 L‑BFGS‑Specific Parameters
 
-| Parameter | Typical value | Effect |
-|-----------|---------------|--------|
-| `maxiter` | 100–500 | Maximum number of iterations. Too low may prevent convergence; too high wastes time after convergence. |
-| `tol` | 1e‑6 – 1e‑8 | Gradient‑norm tolerance. Stop when $\|\mathbf{g}\| < \mathtt{tol} \cdot \max(1, \|\boldsymbol{\theta}\|)$. |
-| `m_lbfgs` | 5–20 | Memory size (number of past updates stored). Larger memory may improve convergence but increases per‑iteration cost. |
+| Parameter | What to inspect when tuning |
+|-----------|-----------------------------|
+| `maxiter` | Whether the trace reaches the iteration cap before another stopping condition. |
+| `tol` | Repeatability of the final objective and observables as the absolute gradient-norm threshold changes. |
+| `m_lbfgs` | Stored curvature history, runtime, and accepted-step progress. |
 
-The line search is hardcoded as **backtracking Armijo** (always starting from step length 1.0). The `alpha0` keyword argument (default 0.01) controls the **initial inverse‑Hessian scaling** used in the L‑BFGS two‑loop recursion before any curvature pairs have been accumulated (i.e., on the very first iteration, the search direction is `d = -alpha0 * g`).
+The line search uses backtracking Armijo and starts each search at step length
+1.0. The `alpha0` keyword controls the initial inverse-Hessian scaling before
+any curvature pairs have been accumulated. Read the current keyword defaults
+from the `optimize_lbfgs` or `optimize_directivity` docstring.
 
 ### 3.2 Box Constraints (`lb`, `ub`)
 
@@ -117,18 +122,20 @@ Box constraints are enforced via **projection**: after each L‑BFGS step, param
 
 ### 3.3 Conditioning and Solver Options
 
-- `solver`: `:direct` (LU factorization, default) or `:gmres` (iterative via Krylov.jl). This is the primary solver dispatch keyword, used for both forward and adjoint solves.
-- `nf_preconditioner`: Near‑field sparse preconditioner for GMRES (default `nothing`). Build with `build_nearfield_preconditioner(Z, mesh, rwg, cutoff)`.
-- `gmres_tol`: GMRES convergence tolerance (default 1e-8).
-- `gmres_maxiter`: Maximum GMRES iterations (default 200).
-- `preconditioning`: `:off` (default), `:on`, or `:auto` (see Chapter 5). For large or ill‑conditioned problems, `:auto` is recommended.
+- `solver`: `:direct` for LU factorization or `:gmres` for Krylov.jl; the choice applies to both forward and adjoint solves.
+- `nf_preconditioner`: Near-field sparse preconditioner for GMRES. Build one with `build_nearfield_preconditioner(Z, mesh, rwg, cutoff)`.
+- `gmres_tol`: GMRES convergence tolerance.
+- `gmres_maxiter`: Maximum GMRES iterations.
+- `preconditioning`: `:off`, `:on`, or `:auto` (see Chapter 5). In `:auto` mode, `select_preconditioner` uses `iterative_solver` and the configured unknown-count threshold.
 - `iterative_solver`: A Boolean flag passed to `select_preconditioner` that influences auto‑preconditioning decisions. When `true`, the auto‑preconditioner logic accounts for the use of an iterative solver. Note: this does **not** switch the solver itself; use the `solver` keyword (`:direct` or `:gmres`) for that.
-- `regularization_alpha`: Small regularization parameter (default 0). Useful for low‑frequency stabilization.
+- `regularization_alpha`: Weight applied to the selected regularization matrix.
 
 ### 3.4 Verbosity and Tracing
 
 - `verbose=true`: Print iteration progress (objective value, gradient norm).
-- The trace is always recorded and returned as the second element of the return tuple `(theta_opt, trace)`. It is a `Vector{NamedTuple{(:iter, :J, :gnorm)}}` containing iteration number, objective value, and gradient norm at each iteration.
+- The trace is returned as the second element of `(theta_opt, trace)`.
+  `optimize_directivity` records `(iter, J, gnorm)`; `optimize_lbfgs` also
+  records cumulative forward- and adjoint-solve counts as `n_fwd` and `n_adj`.
 
 ---
 
@@ -136,38 +143,42 @@ Box constraints are enforced via **projection**: after each L‑BFGS step, param
 
 ### 4.1 What to Monitor
 
-The optimization trace is a `Vector{NamedTuple{(:iter, :J, :gnorm)}}` containing three fields per iteration:
+Every optimization trace contains these fields per iteration:
 
 - **Iteration number** `iter`.
 - **Objective value** `J`.
 - **Gradient norm** `gnorm`.
 
-Plotting `J` vs. iteration shows whether the objective is improving monotonically or oscillating.
+Plotting `J` against iteration shows the accepted objective sequence.
 
-### 4.2 Healthy Convergence Patterns
+### 4.2 Trace Checks
 
-- **Steady decrease**: $J$ drops rapidly in early iterations, then more slowly as it approaches a minimum.
-- **Gradient norm decay**: $\|\mathbf{g}\|$ decreases roughly exponentially.
-- **Objective improvement each iteration**: Each iteration should reduce $J$ (for minimization) or increase $J$ (for directivity maximization). Consistent improvement indicates that the backtracking Armijo line search is finding good step lengths.
+- **Objective direction**: Accepted iterates should reduce `J` for minimization
+  or increase it for maximization.
+- **Gradient threshold**: Compare the final `gnorm` directly with `tol`.
+- **Solve work**: For `optimize_lbfgs`, differences in `n_fwd` expose the
+  number of line-search trial solves between accepted iterates.
 
 ### 4.3 Common Convergence Problems and Remedies
 
-| Symptom | Possible cause | Remedy |
-|---------|----------------|--------|
-| **Objective oscillates** | Step size too large; ill‑conditioned Hessian approximation | Reduce `m_lbfgs` (smaller memory), add regularization. |
-| **Gradient norm stagnates** | Poor local minimum; symmetry trapping; conditioning issues | Try asymmetric initialization, increase `m_lbfgs`, enable preconditioning. |
-| **Tiny objective changes** ($|\Delta J| \ll 1$) | Gradient inaccurate (e.g., inconsistent conditioning); line search taking many backtracks | Verify adjoint‑gradient consistency with finite differences; ensure same conditioned operator in forward/adjoint solves. |
-| **Objective increases suddenly** | Numerical instability (ill‑conditioned Z) | Add regularization (`regularization_alpha=1e‑10`), enable preconditioning, check mesh quality. |
-| **Optimization stalls early** | Box constraints too tight; initial guess at bound | Loosen bounds, move initial guess away from bounds. |
+| Symptom | Checks to run |
+|---------|---------------|
+| **Objective moves in the wrong direction** | Confirm `maximize`, recompute the objective from the returned parameters, and check the solve residuals. |
+| **Gradient norm stops changing** | Compare the adjoint gradient with finite differences, inspect active bounds, and compare solver residuals. |
+| **Many forward solves between iterates** | Inspect line-search diagnostics, scaling, active bounds, and the directional derivative. |
+| **Run stops before the iteration cap with `gnorm > tol`** | Read the verbose line-search diagnostic and check whether projection prevented a distinct trial point or Armijo rejected every trial. |
 
 ### 4.4 Stopping Criteria
 
-The optimizer stops when **any** of the following conditions is met:
+An optimizer run ends when any of the following occurs:
 
-1. **Gradient norm criterion**: $\|\mathbf{g}\| < \mathtt{tol} \cdot \max(1, \|\boldsymbol{\theta}\|)$.
-2. **Iteration limit**: $k \ge \mathtt{maxiter}$.
+1. **Gradient norm criterion**: $\|\mathbf{g}\| \le \mathtt{tol}$.
+2. **Iteration limit**: the `maxiter` loop is exhausted.
+3. **Line-search failure**: no trial step satisfies the acceptance condition.
 
-In practice, the gradient‑norm criterion is the most reliable indicator of convergence.
+Treat the stopping path as one diagnostic. Verify the returned objective and
+gradient, the underlying solve residual, and the target observable before
+accepting the result.
 
 ---
 
@@ -175,7 +186,7 @@ In practice, the gradient‑norm criterion is the most reliable indicator of con
 
 ### 5.1 Complete Script for Beam Steering
 
-The following template incorporates all recommended practices:
+The following template shows the checked end-to-end workflow:
 
 ```julia
 using DiffMoM

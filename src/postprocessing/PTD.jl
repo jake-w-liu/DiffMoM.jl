@@ -456,15 +456,13 @@ evaluated through a single common-denominator expression
 
     S = [ sign_Y·a·cos(γ−v) + sign_tan·(1/2)·sin(γ−v)·D ] / [ D·cos(γ−v) ],
 
-with `a = sin(π/n)/n` and `D = cos(π/n) − cos(2v/n)`. This is the exact
-value of `sign_Y·Y + sign_tan·(1/2)tan(γ−v)` (verified algebraically) and
+with `a = sin(π/n)/n` and `D = cos(π/n) − cos(2v/n)`. This is algebraically
+equal to `sign_Y·Y + sign_tan·(1/2)tan(γ−v)` and
 avoids catastrophic cancellation when the two large terms partially cancel
 away from a pole.
 
 For the half-plane case `n = 2` (γ = 2π) one has `tan(2π−v) = −tan(v)`, so
-this reduces *exactly* to the legacy `sign_Y·Y − sign_tan·(1/2)tan(v)`
-expression (and to its fallback) — i.e. the previous code is recovered with
-the tan sign flipped, which is why the caller flips `sign_tan` below.
+this reduces to `sign_Y·Y − sign_tan·(1/2)tan(v)`.
 
 At a true reflection boundary `Y` and `tan(γ−v)` diverge together; the GTD
 fringe coefficient genuinely blows up there (ray theory limitation). One-sided
@@ -526,8 +524,7 @@ function _ptd_fringe_fg(n::Float64, delta_s::Float64, delta_i::Float64,
     # The (1/2)tan(γ-v) term is computed exactly through _stable_YplusTanG,
     # which pairs it with ∓Y in a common-denominator form. Y and tan(γ-v)
     # both diverge at the reflection boundary and must be combined stably.
-    # For n=2, γ=2π and tan(2π-v)=-tan(v), so this reduces exactly to the
-    # previous half-plane expression (verified to ≤1e-10).
+    # For n=2, γ=2π and tan(2π-v)=-tan(v), giving the half-plane form.
     B_bot = _stable_YplusTanG(v, n, gamma, -1, -1; cap=Inf)
     C_bot = _stable_YplusTanG(v, n, gamma, +1, +1; cap=Inf)
 

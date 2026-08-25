@@ -217,8 +217,8 @@ end
     # Relative to the least input bit, an endpoint difference needs at most
     # `highest_bit - lowest_exponent + 2` bits (the extra bit covers
     # opposite-sign subtraction). Squaring and summing three components needs
-    # at most twice that width plus two carry bits. At full Float64 range this
-    # is 4,200 bits; ordinary same-scale geometry typically needs only 128.
+    # at most twice that width plus two carry bits. The 128-bit floor covers
+    # inputs whose exponent span requires less precision.
     difference_bits = highest_bit - lowest_exponent + 2
     return max(128, 2 * difference_bits + 2)
 end

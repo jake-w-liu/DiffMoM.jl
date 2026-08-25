@@ -66,7 +66,7 @@ where $Z(\theta)^\dagger \lambda_a = Q_a I_a$.
 | Forward solves | M GMRES solves with composite operator | M * (cost of Z * x) * (GMRES iters) |
 | Adjoint solves | M GMRES solves with adjoint operator | Same as forward |
 | Gradient | P inner products per angle | M * P * O(N) |
-| Line search | M forward solves per trial step | Typically 1--3 trial steps |
+| Line search | M forward solves per trial step | One or more trials; inspect the trace and diagnostics for the actual count |
 
 For MLFMA with O(N log N) matvec cost, the total per-iteration cost is O(M * N log N * GMRES_iters).
 
@@ -425,7 +425,7 @@ test_configs = build_multiangle_configs(mesh, rwg, k, test_angles; grid=grid)
 
 ### 9.1 Conceptual Questions
 
-1. **Angle interaction:** Why might optimizing for two incidence angles at 0 and 90 degrees give a better overall design than optimizing for just 0 degrees, even if we only care about 0-degree RCS?
+1. **Angle interaction:** How does adding a 90-degree incidence objective change the trade-off relative to optimizing only 0-degree RCS?
 2. **Weight selection:** How would you choose weights $w_a$ for an aircraft where nose-on RCS is 3x more important than broadside RCS?
 3. **Cost scaling:** If a single-angle optimization takes 10 seconds per iteration with N = 5000, approximately how long would a 4-angle optimization take per iteration? What dominates the cost?
 

@@ -4,10 +4,11 @@
 
 The MLFMA module provides a hierarchical EFIE matrix-vector product with an
 expected `O(N log N)` cost under its sampling and tree-balance assumptions. It
-integrates with the GMRES/preconditioner infrastructure. With
-`solve_scattering`'s current default thresholds, `method=:auto` selects MLFMA
-when `N > 50_000`; the thresholds are configurable and are dispatch defaults,
-not hardware-independent crossover measurements.
+integrates with the GMRES/preconditioner infrastructure.
+`solve_scattering(method=:auto)` can select MLFMA through configurable
+unknown-count thresholds. The `solve_scattering` docstring owns the exact
+branch conditions and defaults; they are dispatch rules, not
+hardware-independent crossover measurements.
 
 ---
 

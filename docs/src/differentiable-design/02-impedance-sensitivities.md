@@ -2,7 +2,11 @@
 
 ## Purpose
 
-This chapter explains why impedance parameters are particularly well‑suited for gradient‑based inverse design in the EFIE–MoM framework. The key insight is that the derivative of the system matrix with respect to an impedance parameter, $\partial \mathbf{Z}/\partial \theta_p$, can be expressed **analytically** using precomputed patch mass matrices $\mathbf{M}_p$. This eliminates the need for numerical differentiation of the singular EFIE kernel, ensures exact gradients, and decouples the expensive geometry‑dependent assembly from the parameter‑dependent optimization loop.
+This chapter derives impedance-parameter gradients for inverse design in the
+EFIE-MoM framework. The system-matrix derivative
+$\partial\mathbf{Z}/\partial\theta_p$ is expressed analytically with
+precomputed patch mass matrices $\mathbf{M}_p$, so it does not require finite
+differences of the singular EFIE kernel.
 
 ---
 
@@ -221,9 +225,11 @@ The matrices $\mathbf{M}_p$ depend solely on the mesh and patch partition. They 
 
 This precomputation amortizes the assembly cost over the entire design workflow.
 
-### 3.4 Exact Gradients
+### 3.4 Discrete Adjoint Gradients
 
-Since $\partial \mathbf{Z}/\partial \theta_p$ is exact, the adjoint gradient is also exact (up to floating‑point roundoff). There is no approximation error from finite‑difference step size or iterative linear‑solver tolerances.
+The analytic matrix derivative removes finite-difference step-size error. The
+computed gradient still depends on mesh and quadrature discretization,
+floating-point arithmetic, and the forward and adjoint linear-solve errors.
 
 ### 3.5 Scalability
 
@@ -339,7 +345,7 @@ g = gradient_impedance(Mp, I, λ; reactive=true)
 
 ### 5.3 Gradient Scaling and Units
 
-- **Resistive gradient**: $\partial J/\partial \theta_p$ has units of $\text{W}/\Omega$ (watts per ohm). Increasing $\theta_p$ (adding resistance) generally **dissipates** power, so $\partial J/\partial \theta_p$ is often negative for radiation‑maximization objectives.
+- **Resistive gradient**: $\partial J/\partial \theta_p$ has units of $\text{W}/\Omega$ (watts per ohm). Its sign depends on the objective and on the current's response to the impedance change.
 - **Reactive gradient**: $\partial J/\partial \theta_p$ has units of $\text{W}/\Omega$ as well, but $\theta_p$ is a reactance. Positive $\theta_p$ (inductive) stores magnetic energy, negative $\theta_p$ (capacitive) stores electric energy.
 
 These sign conventions are consistent with the gradient formulas above.
@@ -381,7 +387,9 @@ function check_single_patch(p, epsilon=1e-8)
 end
 ```
 
-The relative error should be $\lesssim 10^{-6}$ for well‑conditioned problems.
+Repeat the check over a range of finite-difference steps. Accept a result only
+when the adjoint/finite-difference discrepancy reaches a stable minimum and
+the forward and adjoint solves satisfy their residual targets.
 
 ### 6.2 Common Mistakes
 
@@ -396,7 +404,10 @@ The relative error should be $\lesssim 10^{-6}$ for well‑conditioned problems.
 
 ### 7.1 Mixed Resistive‑Reactive Design
 
-The current implementation supports either purely resistive or purely reactive sheets. A mixed design with complex impedance $Z_s = R + iX$ would require two parameters per patch: $\theta_p^{\mathrm{res}}$ and $\theta_p^{\mathrm{react}}$. The gradient would then have two components:
+The optimizer accepts either purely resistive or purely reactive sheets. A
+mixed design with complex impedance $Z_s=R+iX$ would require two parameters
+per patch, $\theta_p^{\mathrm{res}}$ and $\theta_p^{\mathrm{react}}$, with
+gradient components
 
 ```math
 \frac{\partial J}{\partial R_p} = 2\Re\{\boldsymbol{\lambda}^\dagger \mathbf{M}_p \mathbf{I}\}, \qquad
@@ -407,7 +418,9 @@ Mixed resistive‑reactive design is not supported by this API.
 
 ### 7.2 Spatially Varying Impedance Profiles
 
-The piecewise‑constant model can approximate any continuous impedance profile $Z_s(\mathbf{r})$ by using many small patches. For smooth profiles, one could introduce higher‑order basis functions (e.g., linear or bilinear) on the patches, leading to more complex derivative blocks. The current implementation uses the simplest (constant‑per‑patch) model, which is sufficient for many metasurface applications.
+The piecewise-constant model approximates a continuous impedance profile
+$Z_s(\mathbf{r})$ by refining the patch partition. The API does not expose
+higher-order impedance basis functions.
 
 ### 7.3 Connection to Surface Susceptibility Models
 
@@ -458,7 +471,10 @@ For thin dielectric layers, the impedance is related to surface susceptibility t
 
 ### 10.4 Advanced Challenges
 
-1. **Sparse storage benchmark**: The current implementation already stores $\mathbf{M}_p$ as sparse matrices (`SparseMatrixCSC`, via `spzeros` in `precompute_patch_mass`). Benchmark the memory savings compared to dense storage for a large mesh (e.g., $N > 2000$) by comparing `sizeof(Matrix(Mp[p]))` vs. the sparse representation. Also profile `gradient_impedance` to measure the speed‑up from sparse matrix‑vector products.
+1. **Sparse storage benchmark**: `precompute_patch_mass` stores $\mathbf{M}_p$
+   as `SparseMatrixCSC`. Compare sparse and dense payload size and profile
+   `gradient_impedance` for a sequence of problem sizes; report the measured
+   runtime difference rather than assuming a speed-up.
 2. **Gradient with respect to patch geometry**: Suppose patch boundaries can move (changing which triangles belong to which patch). Derive the gradient of $J$ with respect to patch‑boundary positions. This is a shape‑derivative problem that combines impedance and geometry sensitivities.
 
 ---
@@ -498,4 +514,5 @@ If you can confidently check all items, you have mastered impedance sensitivitie
 
 ---
 
-*Next: Chapter 3, “Ratio Objectives,” explains why directivity‑style ratio objectives are preferred for beam steering and how the package computes stable gradients using two separate adjoint solves.*
+*Next: Chapter 3, “Ratio Objectives,” derives the quotient-rule gradient and
+documents the optimizer's ordinary and high-precision adjoint paths.*

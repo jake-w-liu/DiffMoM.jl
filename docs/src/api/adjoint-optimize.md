@@ -6,7 +6,10 @@ Reference for adjoint sensitivity analysis and optimization. This page covers:
 1. **Adjoint primitives** -- the building blocks for computing gradients of far-field objectives with respect to impedance parameters.
 2. **Optimizers** -- projected L-BFGS routines that use the adjoint gradient to optimize surface impedance distributions.
 
-The key idea: instead of computing N finite-difference solves (one per parameter), the adjoint method computes the exact gradient in just **one additional linear solve** (the adjoint system), regardless of the number of parameters.
+For a single quadratic objective, the adjoint method computes the discrete
+gradient with one adjoint solve in addition to the forward solve, independent
+of the number of parameters. The result remains subject to discretization,
+quadrature, and linear-solve error.
 
 ---
 
@@ -169,12 +172,12 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 |--------|------|---------|-------------|
 | `reactive` | `Bool` | `false` | If `true`, impedance is `Z_s = i*theta` (reactive/lossless). If `false`, `Z_s = theta` (resistive/lossy). |
 | `maximize` | `Bool` | `false` | If `true`, maximize `J` instead of minimizing. Internally minimizes `-J`. |
-| `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on `theta` (projected L-BFGS-B). `nothing` = no lower bound. |
+| `lb` | `Vector` or `nothing` | `nothing` | Lower bounds applied by projection. `nothing` means no lower bound. |
 | `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on `theta`. `nothing` = no upper bound. |
 | `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. A gradient evaluation uses one forward and one adjoint solve; backtracking can add multiple forward trial solves. |
-| `tol` | `Float64` | `1e-10` | Gradient-norm convergence tolerance. The optimizer stops when `||g|| < tol`. |
+| `tol` | `Float64` | `1e-10` | Absolute gradient-norm tolerance. The optimizer stops when `||g|| <= tol`. |
 | `m_lbfgs` | `Int` | `10` | Number of past gradient pairs retained. Larger values use more storage and can change convergence; compare traces on the target objective. |
-| `alpha0` | `Float64` | `0.01` | Initial step-size scaling for the first iteration. Subsequent step sizes are adapted by L-BFGS. |
+| `alpha0` | `Float64` | `0.01` | Initial inverse-Hessian scaling before any curvature pairs are retained. Each backtracking search starts with step length 1. |
 | `verbose` | `Bool` | `true` | Print iteration progress (iteration number, objective value, gradient norm). |
 
 **Solver options (controls how the forward and adjoint systems are solved):**
@@ -189,14 +192,17 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 
 **Mass-based conditioning options (advanced):**
 
-These options apply a mass-based left preconditioner `M` to the system `Z_eff = M^{-1} Z` for better conditioning. This is separate from the GMRES near-field preconditioner and addresses the conditioning of the optimization problem itself.
+These options apply a mass-based left transformation `M` to the system
+`Z_eff = M^{-1} Z`. This is separate from the GMRES near-field preconditioner;
+compare condition estimates, solve residuals, and optimization traces for the
+target problem.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `regularization_alpha` | `Float64` | `0.0` | Regularization coefficient. Adds `alpha * R` to the system matrix where `R = sum(Mp)`. |
 | `regularization_R` | Matrix or `nothing` | `nothing` | Custom regularization matrix. Default: `sum(Mp)` when alpha > 0. |
 | `preconditioner_M` | Matrix or `nothing` | `nothing` | Explicit left preconditioner matrix. Takes precedence over `preconditioning` mode. |
-| `preconditioning` | `Symbol` | `:off` | `:off` (disabled), `:on` (always), or `:auto` (enable when N >= threshold). |
+| `preconditioning` | `Symbol` | `:off` | `:off` (disabled), `:on` (always), or `:auto` (enable when `iterative_solver=true` or N reaches the configured threshold). |
 | `auto_precondition_n_threshold` | `Int` | `256` | System size threshold for `:auto` mode. |
 | `iterative_solver` | `Bool` | `false` | If `true`, enables preconditioning in `:auto` mode. |
 | `auto_precondition_eps_rel` | `Float64` | `1e-6` | Relative diagonal shift for auto-built preconditioner. |
@@ -215,7 +221,8 @@ Maximize the directivity ratio:
 J = (I' * Q_target * I) / (I' * Q_total * I)
 ```
 
-using projected L-BFGS. This is the standard formulation for maximizing directivity in a target direction: `Q_target` selects the far-field power in the desired region, and `Q_total` represents total radiated power.
+using projected L-BFGS. `Q_target` selects far-field power in the target region,
+and `Q_total` represents total radiated power.
 
 **Required parameters:**
 
@@ -286,7 +293,7 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 | `check_gmres_true_residual` | `Bool` | `true` | Verify true physical residuals for GMRES solves. |
 | `gmres_true_residual_factor` | `Float64` | `100.0` | Allowed true-residual multiple of `gmres_tol`. |
 | `objective` | `Symbol` | `:linear` | Scalarization: `:linear` (Σ w_a J_a), `:sum_log` (Σ w_a log(J_a/J_ref,a)), or `:smoothmax_log` (smooth worst-angle normalized log). |
-| `reference_objectives` | `Vector{Float64}` or `nothing` | `nothing` | Positive per-angle reference values for normalized objectives (typically the PEC objective values). |
+| `reference_objectives` | `Vector{Float64}` or `nothing` | `nothing` | Positive per-angle reference values for normalized objectives, such as values computed for a PEC reference. |
 | `smooth_beta` | `Float64` | `8.0` | Sharpness parameter for `:smoothmax_log`. |
 | `max_workspace_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the reusable dense system workspace when `Z_base` is a dense matrix. Matrix-free ACA/MLFMA paths do not allocate this workspace. |
 
@@ -328,11 +335,17 @@ theta_opt, trace = optimize_lbfgs(Z_efie, Mp, v, Q, theta0;
     gmres_tol=1e-8, gmres_maxiter=300)
 ```
 
-**Note:** The preconditioner is built from the PEC EFIE matrix `Z_efie` and reused throughout the optimization, even as the impedance loading changes. This works because the near-field structure of the EFIE matrix is the dominant conditioning factor.
+**Note:** The preconditioner is built from the PEC EFIE matrix `Z_efie` and
+reused as the impedance loading changes. Because it does not include the
+changing load, compare iteration counts and checked true residuals over the
+intended parameter range.
 
 ### 2. Mass-based conditioning (for the optimization problem)
 
-The conditioning options (`regularization_alpha`, `preconditioning`, `preconditioner_M`) transform the system `Z_eff = M^{-1} Z` to improve the conditioning of the optimization landscape. This is a different concern from GMRES convergence: it affects gradient quality and optimizer convergence rate.
+The conditioning options (`regularization_alpha`, `preconditioning`,
+`preconditioner_M`) transform the system and its derivative blocks. This path
+is independent of the GMRES near-field preconditioner; measure both effects
+separately.
 
 These two mechanisms are independent and can be combined.
 

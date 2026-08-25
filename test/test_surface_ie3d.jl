@@ -1006,13 +1006,9 @@ end
 end
 
 @testset "PMCHWT vs Muller currents agree (dielectric sphere)" begin
-    # Decisive Muller oracle: PMCHWT and Muller discretize the same boundary
-    # value problem, so the surface currents J, M must match. This passes only
-    # when the off-diagonal K blocks are mu/eps-weighted, the RHS is scaled by
-    # the exterior row weights, and the second-kind (nhat x Gram) identity term
-    # is included on the off-diagonal. Without the identity term the mismatch is
-    # ~20-50% (or >100% for the H current); with it the agreement is <1% and
-    # tightens under mesh refinement.
+    # PMCHWT and Muller discretize the same boundary-value problem. Check their
+    # currents on a closed sphere together with the weighted-system residual
+    # and the dense/matrix-free Muller operator correspondence.
     mesh = _icosphere_mesh(1.0, 1)
     rwg = build_rwg(mesh; allow_boundary=false, require_closed=true)
     k0 = 1.0

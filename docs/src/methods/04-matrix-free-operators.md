@@ -220,10 +220,10 @@ z_mn = A[m, n]                # standard indexing
 | Hierarchical multipole evaluation | `build_mlfma_operator` | Sparse near field plus hierarchical data | Expected $O(N\log N)$ under implementation assumptions |
 | Adjoint solve | All four representations support adjoint application | --- | --- |
 
-With its current defaults, `solve_scattering(method=:auto)` dispatches to
-dense-direct through `N=2_000`, dense-GMRES through `N=10_000`, ACA-GMRES
-through `N=50_000`, and MLFMA above that. These configurable thresholds select
-code paths; benchmark before treating them as performance crossovers.
+`solve_scattering(method=:auto)` dispatches from configurable unknown-count
+thresholds. The `solve_scattering` docstring owns their exact branch conditions
+and defaults. They select code paths; benchmark before treating them as
+performance crossovers.
 
 ---
 

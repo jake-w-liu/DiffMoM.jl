@@ -19,7 +19,7 @@ Constructs `RWGData` from the interior edges of a triangle mesh. Each interior e
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `mesh` | `TriMesh` | -- | Triangle mesh. Must pass quality checks (no degenerate triangles, no non-manifold edges, consistent orientation). |
-| `precheck` | `Bool` | `true` | Run mesh quality checks before basis construction. **Recommended for imported meshes.** Set to `false` only if you have already verified the mesh quality and want to skip redundant checks. |
+| `precheck` | `Bool` | `true` | Run mesh quality checks before basis construction. Keep this enabled for imported meshes unless they were checked separately. |
 | `allow_boundary` | `Bool` | `true` | Allow boundary edges (edges belonging to only one triangle). These edges do not generate RWG basis functions. Set to `true` for open surfaces (plates, reflectors). |
 | `require_closed` | `Bool` | `false` | Require that the surface is closed (zero boundary edges). Set to `true` for enclosed PEC bodies where boundary edges indicate a mesh defect. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection during precheck. |

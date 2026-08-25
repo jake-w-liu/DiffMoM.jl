@@ -396,7 +396,7 @@ For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise
 
 | Criterion | Direct (`:direct`) | GMRES (`:gmres`) |
 |-----------|-------------------|-------------------|
-| Best for | Problems whose dense factorization fits the time and memory budget | Problems with a verified convergent operator/preconditioner combination |
+| Selection condition | Dense factorization fits the time and memory budget | Operator/preconditioner convergence is verified on the target system |
 | Time complexity | O(N^3) | O(N^2 * n_iter) |
 | Memory | O(N^2) for factorization | O(N^2) for matrix + O(N * n_iter) for Krylov |
 | Accuracy | Conditioning- and residual-dependent | Controlled by convergence and true-residual checks |

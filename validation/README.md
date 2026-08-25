@@ -3,7 +3,7 @@
 This directory contains the public reproducibility and cross-validation scripts
 for `DiffMoM.jl`.
 
-Recommended run order from the package root:
+Run these workflows from the package root in the following order:
 
 ```bash
 # Analytical / standalone validation

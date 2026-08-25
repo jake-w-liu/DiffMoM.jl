@@ -1028,8 +1028,7 @@ projected L-BFGS on the minimization of -J.
 
 At each iteration, evaluates the ratio directly and computes the gradient via
 the quotient rule using two adjoint solves (one for Q_target and one for
-Q_total). The ratio J_ratio is evaluated directly in the line search.  This
-naturally steers the beam rather than just broadening it.
+Q_total). The ratio J_ratio is evaluated directly in the line search.
 
 Options:
   solver:    `:direct` (default) for LU, `:gmres` for GMRES
@@ -1193,7 +1192,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             )
             J_ratio = _directivity_ratio(f_val, g_val, "accepted iterate")
 
-            # Two separate adjoint solves for numerically stable ratio gradient
+            # Form numerator and denominator derivatives separately before
+            # applying the quotient rule.
             # ∂(f/g)/∂θ = (g·∂f/∂θ - f·∂g/∂θ) / g²
             lam_t = solve_adjoint_rhs(Z, QI_target;
                                        solver=solver, preconditioner=nf_preconditioner,

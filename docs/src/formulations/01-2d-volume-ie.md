@@ -394,21 +394,32 @@ Jacobian FD spot-check (cell 3) rel-err = 5.826e-7
 DONE
 ```
 
-The roughly 2% scattered-field error at these coarse grids reflects the staircase approximation of the curved boundary (Section 9), not a coding error -- the test suite drives the error below 1% on a $40\times40$ grid.
+These values belong to the example input and grid sequence. Re-run the example
+after implementation changes, and use a refinement study against the Mie
+reference to determine the error trend.
 
 ---
 
 ## 9. When to Use / Limitations
 
-**Use this 2D VIE when** you need TM scattering from an *inhomogeneous* dielectric region: graded-index profiles, designed permittivity distributions, or any problem where the unknown naturally lives in the volume rather than on a surface. The second-kind Fredholm structure ($Z = I - \text{compact}$) keeps the system well conditioned (the tests check $\mathrm{cond}(Z) < 10^{10}$ for a $25\times25$ case), and the analytic contrast Jacobian makes it a clean target for gradient-based inverse design.
+**Use this 2D VIE when** you need TM scattering from an *inhomogeneous*
+dielectric region: graded-index profiles, designed permittivity distributions,
+or another problem whose unknown lives in the volume. The system has the
+second-kind form $Z=I-\text{interaction}$ and exposes an analytic contrast
+Jacobian. Measure conditioning on the target grid rather than inferring it
+from the operator class alone.
 
 **Be aware of these limitations**, all grounded in the implementation:
 
-- **Staircasing.** Curved scatterers are approximated on a Cartesian grid, so VIE-vs-Mie convergence is **non-monotonic** with refinement (the test explicitly warns about this). The tests assert overall accuracy bands -- coarse grid $<5\%$, fine grid $<1\%$ -- rather than strict monotonicity.
-- **Midpoint quadrature.** Off-diagonal $D_{mn}$ uses a single-point rule, accurate only for small cells relative to $\lambda$. Coarse or electrically large cells degrade accuracy.
+- **Staircasing.** Curved scatterers are approximated on a Cartesian grid.
+  Check a sequence of refinements because the error need not decrease at every
+  individual grid size.
+- **Midpoint quadrature.** Off-diagonal $D_{mn}$ uses a single-point rule.
+  Measure convergence as the cell size changes relative to wavelength and
+  source-observer separation.
 - **Real contrast only.** `chi` is `Vector{Float64}`; the VIE path models lossless real-$\varepsilon_r$ dielectrics. No lossy or PEC support in the VIE itself (PEC is only in the Mie oracle).
 - **Exterior observation/sources.** Observation points and line sources must lie outside the domain; coincidence with a cell center makes the midpoint Green's evaluation singular.
-- **Mie truncation.** The oracle uses finite order $N$; boundary conditions and coefficient symmetries hold only to truncation accuracy (tests use $\sim10^{-6}$ / $10^{-12}$ tolerances).
+- **Mie truncation.** The oracle uses finite order $N$; boundary conditions and coefficient symmetries hold only to truncation accuracy.
 
 **Validation lives in** `test/test_mom2d.jl`:
 
@@ -416,12 +427,12 @@ The roughly 2% scattered-field error at these coarse grids reflects the staircas
 |----------|----------------|
 | `2D Green's function` | $G = (-i/4)H_0^{(2)}(kR)$, symmetry, zero self-sentinel, decay |
 | `Self-cell integral` | finite, nonzero real/imag parts; asserts on $a_\text{eq}\le0$, $k\le0$ |
-| `VIE assembly and solve` | $Z$ is $25\times25$, $\mathrm{cond}(Z)<10^{10}$; $\chi=0\Rightarrow Z\approx I$ and $E_\text{total}\approx E_\text{inc}$ |
+| `VIE assembly and solve` | Matrix dimensions and finiteness, conditioning guard, and the $\chi=0$ free-space limit |
 | `Plane wave` / `Line source` | unit-amplitude phase $e^{-ik_0 x}$; line-source decay |
-| `MoM vs Mie convergence` | dielectric cylinder, coarse $<5\%$, fine $<1\%$, finer beats coarser |
-| `Mie series - PEC / dielectric` | $c_0 = -J_0/H_0^{(2)}$; PEC surface field $<10^{-6}$; $c_{-n}\approx c_n$ |
-| `Jacobian accuracy` | $J$ shape, no NaN/Inf, column rel-err $<10^{-4}$ vs finite differences |
-| `Reciprocity check` | $D \approx D^\top$ to `atol=1e-13` |
+| `MoM vs Mie convergence` | dielectric-cylinder refinement against the Mie reference |
+| `Mie series - PEC / dielectric` | coefficient identities, boundary fields, and symmetry |
+| `Jacobian accuracy` | shape, finiteness, and finite-difference agreement |
+| `Reciprocity check` | symmetry of the interaction matrix |
 
 ---
 

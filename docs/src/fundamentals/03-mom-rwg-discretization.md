@@ -603,7 +603,9 @@ println("A⁺ × div_plus = $(A_plus * div_plus) (should be ≈ $ℓ)")
 println("A⁻ × div_minus = $(A_minus * div_minus) (should be ≈ -$ℓ)")
 ```
 
-The two products should equal $+\ell_n$ and $-\ell_n$ up to rounding error (typically $\sim 10^{-15}$ for double‑precision arithmetic). If they differ significantly, the mesh likely contains geometric inconsistencies.
+The two products should equal $+\ell_n$ and $-\ell_n$ within a tolerance scaled
+to the edge length and floating-point precision. A mismatch indicates that the
+RWG geometry and support-triangle data should be checked.
 
 ### 7.5 Visualizing Current Flow (Optional)
 

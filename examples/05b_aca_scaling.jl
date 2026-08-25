@@ -1,7 +1,7 @@
 # 05b_aca_scaling.jl — ACA vs Dense scaling comparison
 #
-# Demonstrates the N-dependent crossover where ACA becomes faster than
-# dense methods. Sweeps over increasing mesh sizes and reports timing.
+# Measures dense-direct and ACA setup/solve time over increasing mesh sizes.
+# The printed speedup shows whether a crossover occurs on the current machine.
 #
 # Run: julia --project=. examples/05b_aca_scaling.jl
 
@@ -75,7 +75,7 @@ for cfg in configs
 end
 
 println("\n  Note: Speedup > 1× means ACA is faster than dense direct.")
-println("  ACA overhead dominates at small N; crossover depends on hardware.")
+println("  Compare every row; the crossover depends on this workload and machine.")
 
 println("\n" * "="^60)
 println("Done.")

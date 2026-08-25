@@ -214,9 +214,8 @@ end
 # pairs sharing at least one vertex (this subsumes edge-sharing pairs, which
 # share two vertices). These pairs use the higher-order quadrature rule. The
 # 1/R singularity of grad(G) makes both edge-touching AND vertex-touching pairs
-# under-integrated by the coarse far rule; promoting vertex-touching pairs to
-# the high-order rule measurably reduces the K-operator quadrature error toward
-# a fine-quadrature reference (verified ~0.99%->0.27% on an icosphere).
+# under-integrated by the coarse far rule, so vertex-touching pairs use the
+# configured near-pair quadrature order.
 function _surface_cache_work_bytes_3d(
         fixed_payload_bytes::Int,
         triangle_count::Int,
@@ -1482,10 +1481,9 @@ end
 assemble_pmchwt_3d(mesh::TriMesh, rwg::RWGData, k0::Real, epsr_in=1.0 + 0im; kwargs...) =
     assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in; formulation=:pmchwt, kwargs...)
 
-# Second-kind Müller system: μ/ε-weighted diagonal T AND off-diagonal K blocks,
-# weighted RHS, plus the (n̂× Gram) identity residue the principal-value K operator
-# omits. Verified to match PMCHWT currents to <1% on a sphere (tightening under
-# refinement), so it is a validated alternative to assemble_pmchwt_3d.
+# Second-kind Müller system: μ/ε-weighted diagonal T and off-diagonal K
+# blocks, weighted RHS, and the n̂× Gram identity residue omitted by the
+# principal-value K operator.
 assemble_muller_3d(mesh::TriMesh, rwg::RWGData, k0::Real, epsr_in=1.0 + 0im; kwargs...) =
     assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in; formulation=:muller, kwargs...)
 
