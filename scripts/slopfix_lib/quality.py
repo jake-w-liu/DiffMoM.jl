@@ -729,27 +729,6 @@ def _output_evidence(data: bytes, capture: str) -> dict[str, Any]:
     return result
 
 
-def _file_output_evidence(handle: BinaryIO, capture: str) -> dict[str, Any]:
-    handle.flush()
-    handle.seek(0)
-    digest = hashlib.sha256()
-    total = 0
-    tail = b""
-    for block in iter(lambda: handle.read(1024 * 1024), b""):
-        total += len(block)
-        digest.update(block)
-        if capture == "tail":
-            tail = (tail + block)[-_MAX_CAPTURE_BYTES:]
-    result: dict[str, Any] = {
-        "bytes": total,
-        "sha256": digest.hexdigest(),
-    }
-    if capture == "tail":
-        result["tail"] = tail.decode("utf-8", errors="replace")
-        result["truncated"] = total > _MAX_CAPTURE_BYTES
-    return result
-
-
 def _stream_output_evidence(
     stream: BinaryIO,
     capture: str,

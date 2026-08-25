@@ -565,10 +565,6 @@ SCC_NAME_ALIASES: dict[str, str] = {
     "Docker ignore": "Plain Text",
 }
 
-# Languages that are reported but never counted toward the reduction target.
-NON_SOURCE_LANGUAGES = frozenset(lang.name for lang in LANGUAGES if not lang.is_source)
-
-
 def detect(path: str) -> Language | None:
     """Return the language for `path`, or None when the file is not recognised."""
     base = os.path.basename(path)

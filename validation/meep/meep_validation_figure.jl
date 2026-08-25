@@ -14,9 +14,7 @@ const FIG_DIR = joinpath(PKG_DIR, "..", "figures")
 
 # IEEE figure constants
 const COLORS = ["#0072B2", "#D55E00", "#009E73", "#CC79A7"]
-const DASHES = ["solid", "dash", "dashdot", "dot"]
 const IEEE_SINGLE_COL_W = 504
-const IEEE_SINGLE_COL_H = 360
 
 df = CSV.read(joinpath(DATA_DIR, "results_meep_validation.csv"), DataFrame)
 

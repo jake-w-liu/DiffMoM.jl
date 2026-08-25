@@ -9,10 +9,6 @@
 export assemble_vie_2d, solve_vie_2d
 
 const _VIE_PRODUCT_FALLBACK_PRECISION_2D = 256
-const _VIE_RHS_SCALE_LOWER_2D = sqrt(floatmin(Float64))
-const _VIE_RHS_SCALE_UPPER_2D = sqrt(floatmax(Float64))
-const _VIE_SOLVE_MIN_FALLBACK_PRECISION_2D = 256
-const _VIE_SOLVE_FALLBACK_GUARD_BITS_2D = 128
 
 @inline _complex_component_scale_2d(value::ComplexF64) =
     max(abs(real(value)), abs(imag(value)))
@@ -38,69 +34,6 @@ function _vie_reciprocal_condition_2d(factorization, Z::Matrix{ComplexF64})
         '1', factorization.factors, matrix_norm)
     isfinite(reciprocal_condition) || return 0.0
     return reciprocal_condition
-end
-
-@inline function _vie_solve_fallback_precision_2d(
-        reciprocal_condition::Float64,
-        label::AbstractString)
-    reciprocal_condition > 0.0 ||
-        error(
-            "$label system is too ill-conditioned for a reliable " *
-            "Float64 reciprocal-condition estimate.")
-    condition_bits = ceil(Int, -log2(reciprocal_condition))
-    return max(
-        _VIE_SOLVE_MIN_FALLBACK_PRECISION_2D,
-        condition_bits + _VIE_SOLVE_FALLBACK_GUARD_BITS_2D)
-end
-
-@noinline function _solve_vie_high_precision_2d(
-        Z::Matrix{ComplexF64},
-        rhs::Union{AbstractVector{ComplexF64},AbstractMatrix{ComplexF64}},
-        reciprocal_condition::Float64,
-        label::AbstractString)
-    precision_bits = _vie_solve_fallback_precision_2d(
-        reciprocal_condition, label)
-    return setprecision(BigFloat, precision_bits) do
-        Z_big = Complex{BigFloat}.(Z)
-        rhs_big = Complex{BigFloat}.(rhs)
-        solution_big = ldiv!(lu(Z_big), rhs_big)
-        solution = ComplexF64.(solution_big)
-        all(isfinite, solution) ||
-            error(
-                "$label high-precision solution is outside the " *
-                "representable ComplexF64 range.")
-        return solution
-    end
-end
-
-function _solve_vie_factored_2d!(
-        workspace::Union{AbstractVector{ComplexF64},AbstractMatrix{ComplexF64}},
-        factorization,
-        Z::Matrix{ComplexF64},
-        label::AbstractString,
-        reciprocal_condition::Float64 =
-            _vie_reciprocal_condition_2d(factorization, Z))
-    reciprocal_condition <= eps(Float64) &&
-        return _solve_vie_high_precision_2d(
-            Z, workspace, reciprocal_condition, label)
-
-    rhs_scale = 0.0
-    @inbounds for value in workspace
-        rhs_scale = max(rhs_scale, _complex_component_scale_2d(value))
-    end
-
-    if !iszero(rhs_scale) &&
-       (rhs_scale < _VIE_RHS_SCALE_LOWER_2D ||
-        rhs_scale > _VIE_RHS_SCALE_UPPER_2D)
-        workspace ./= rhs_scale
-        ldiv!(factorization, workspace)
-        @inbounds for index in eachindex(workspace)
-            workspace[index] *= rhs_scale
-        end
-        return workspace
-    end
-    ldiv!(factorization, workspace)
-    return workspace
 end
 
 function _factor_vie_system_2d(Z::Matrix{ComplexF64}, label::AbstractString)

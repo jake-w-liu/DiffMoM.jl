@@ -962,12 +962,3 @@ def summarise_languages(baseline: dict) -> list[tuple[str, int, int]]:
     ]
     rows.sort(key=lambda row: -row[2])
     return rows
-
-
-def source_language_share(baseline: dict) -> dict[str, int]:
-    """Code lines per language, restricted to languages inside the target."""
-    return {
-        name: values.get("code", 0)
-        for name, values in baseline.get("per_language", {}).items()
-        if langs.is_source_language(name)
-    }

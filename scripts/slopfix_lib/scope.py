@@ -141,7 +141,6 @@ class Scope:
 
 # Why a file was not counted. Every discovered file lands in exactly one bucket
 # so the manifest can account for the whole tree.
-COUNTED = "counted"
 EXCLUDED_DIR = "excluded_dir"
 EXCLUDED_GLOB = "excluded_glob"
 GENERATED = "generated"

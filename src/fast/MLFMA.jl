@@ -460,23 +460,6 @@ function spherical_hankel2_all(l_max::Int, x::Float64)
     return h
 end
 
-"""
-    legendre_all(l_max, x)
-
-Compute P_l(x) for l = 0, 1, ..., l_max using 3-term recurrence.
-"""
-function legendre_all(l_max::Int, x::Float64)
-    P = Vector{Float64}(undef, l_max + 1)
-    P[1] = 1.0
-    if l_max >= 1
-        P[2] = x
-    end
-    for l in 1:l_max-1
-        P[l + 2] = ((2l + 1) * x * P[l + 1] - l * P[l]) / (l + 1)
-    end
-    return P
-end
-
 # ─── Translation operators ──────────────────────────────────────
 
 """
@@ -985,34 +968,6 @@ function _cyclic_dist(a::Float64, b::Float64, period::Float64)
     end
 end
 
-"""
-Build interpolation matrices for transitioning between two SphereSamplings.
-Returns (I_theta, I_phi) sparse matrices for the aggregation direction (fine → coarse).
-For disaggregation, use the TRANSPOSE of these matrices (anterpolation).
-"""
-function build_interp_matrices(target::SphereSampling, source::SphereSampling; order::Int=6)
-    # θ interpolation: clamped stencil (no polar reflection for xyz components —
-    # polar sign-flip is only correct for θ/φ component representation)
-    #
-    # IMPORTANT: GL nodes are stored ascending in x = cos(θ), so θ is DESCENDING
-    # in the data arrays (it=1 → θ≈π, it=nθ → θ≈0). The Lagrange builder
-    # requires sorted (ascending) θ values, so we build with sorted values
-    # then reverse both dimensions to match the data (GL-node) ordering.
-    src_theta_sorted = sort(unique(source.theta))
-    tgt_theta_sorted = sort(unique(target.theta))
-    I_theta_sorted = build_lagrange_interp_1d(tgt_theta_sorted, src_theta_sorted; order=order)
-    # Reverse both dims: sorted ascending-θ → data order (descending-θ = ascending-x)
-    I_theta = sparse(I_theta_sorted[end:-1:1, end:-1:1])
-
-    # φ interpolation: uniform grids with cyclic boundary (already in correct order)
-    src_phi = [(j - 0.5) * 2π / source.nphi for j in 1:source.nphi]
-    tgt_phi = [(j - 0.5) * 2π / target.nphi for j in 1:target.nphi]
-    I_phi = build_lagrange_interp_1d(tgt_phi, src_phi;
-                                      order=order, cyclic=true, period=2π)
-
-    return I_theta, I_phi
-end
-
 # ─── Radiation patterns ─────────────────────────────────────────
 
 """
@@ -1134,113 +1089,6 @@ function assemble_mlfma_nearfield(octree::Octree, mesh::TriMesh, rwg::RWGData, k
     end
 
     return sparse(rows, cols, vals, N, N)
-end
-
-# ─── Spectral filter for disaggregation ────────────────────────
-
-"""
-    _build_spectral_theta(src_samp, tgt_samp, L_trunc)
-
-Build a dense spectral transfer matrix for θ direction.
-Performs Legendre analysis at source GL nodes then synthesis at target GL nodes,
-retaining only modes 0:L_trunc.
-
-    T[tgt_i, src_j] = w_src_j * Σ_{l=0}^{L_trunc} ((2l+1)/2) P_l(x_src_j) P_l(x_tgt_i)
-
-Used for BOTH:
-- Disaggregation (parent→child): src=parent, tgt=child, L_trunc=L_child
-- Aggregation   (child→parent): src=child,  tgt=parent, L_trunc=L_child
-"""
-function _build_spectral_theta(src_samp::SphereSampling, tgt_samp::SphereSampling, L_trunc::Int)
-    nθs = src_samp.ntheta
-    nθt = tgt_samp.ntheta
-
-    # Use GL nodes directly in data order (ascending x = descending θ).
-    # This ensures F[i,j] matches the data layout where it=1 → first GL node.
-    src_gl_nodes, src_gl_weights = gauss_legendre(nθs)
-    tgt_gl_nodes, _ = gauss_legendre(nθt)
-
-    F = zeros(Float64, nθt, nθs)
-    for j in 1:nθs
-        xj = src_gl_nodes[j]
-        wj = src_gl_weights[j]
-        Pj = legendre_all(L_trunc, xj)
-        for i in 1:nθt
-            xi = tgt_gl_nodes[i]
-            Pi = legendre_all(L_trunc, xi)
-            val = 0.0
-            for l in 0:L_trunc
-                val += (2l + 1) / 2.0 * Pi[l + 1] * Pj[l + 1]
-            end
-            F[i, j] = wj * val
-        end
-    end
-    return F
-end
-
-"""
-    _build_spectral_phi(src_nphi, tgt_nphi, src_phi, tgt_phi, M_trunc)
-
-Build a dense spectral transfer matrix for φ direction.
-Performs Fourier analysis on source uniform grid then synthesis on target uniform grid,
-retaining only modes 0:M_trunc.
-
-Used for BOTH disaggregation and aggregation.
-"""
-function _build_spectral_phi(src_nphi::Int, tgt_nphi::Int,
-                              src_phi::Vector{Float64}, tgt_phi::Vector{Float64},
-                              M_trunc::Int)
-    F = zeros(Float64, tgt_nphi, src_nphi)
-    for j in 1:src_nphi
-        for i in 1:tgt_nphi
-            delta = tgt_phi[i] - src_phi[j]
-            val = 1.0
-            for m in 1:M_trunc
-                val += 2.0 * cos(m * delta)
-            end
-            F[i, j] = val / src_nphi
-        end
-    end
-    return F
-end
-
-"""
-    associated_legendre_m_all(l_max, m, x)
-
-Compute P_l^m(x) for l = m, m+1, ..., l_max using stable upward recurrence.
-Uses unnormalized (Ferrer) associated Legendre functions without Condon-Shortley phase.
-"""
-function associated_legendre_m_all(l_max::Int, m::Int, x::Float64)
-    m >= 0 || error("m must be non-negative")
-    l_max >= m || error("l_max must be >= m")
-
-    P = Vector{Float64}(undef, l_max - m + 1)
-
-    # P_m^m(x) = (2m-1)!! * (1-x²)^{m/2}
-    pmm = 1.0
-    fact = 1.0
-    omx2 = sqrt(max(1.0 - x * x, 0.0))
-    for i in 1:m
-        pmm *= fact * omx2
-        fact += 2.0
-    end
-    P[1] = pmm
-
-    if l_max == m
-        return P
-    end
-
-    # P_{m+1}^m(x) = x * (2m+1) * P_m^m(x)
-    pmm1 = x * (2m + 1) * pmm
-    P[2] = pmm1
-
-    # Upward recurrence: (l-m) P_l^m = (2l-1) x P_{l-1}^m - (l+m-1) P_{l-2}^m
-    for l in (m + 2):l_max
-        pll = ((2l - 1) * x * P[l - m] - (l + m - 1) * P[l - m - 1]) / (l - m)
-        P[l - m + 1] = pll
-    end
-
-    return P
 end
 
 """
@@ -2026,10 +1874,10 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
             child_samp = samplings[l]      # level l+1 (finer)
             parent_samp = samplings[l - 1]  # level l (coarser)
 
-            # NOTE: the dense Lagrange interpolation matrices (build_interp_matrices)
-            # are not used by the matvec — it uses the per-m spectral filters below.
-            # They are therefore not built/stored (saves O(npts²) dense memory and
-            # setup time per level); interp_theta/interp_phi remain empty for compat.
+            # The matvec uses the per-m spectral filters below. Dense Lagrange
+            # interpolation matrices are not built, which avoids O(npts²) setup
+            # memory and work per level; interp_theta/interp_phi remain empty for
+            # compatibility.
 
             # Per-m spectral filters using associated Legendre P_l^m
             L_child = child_samp.L
