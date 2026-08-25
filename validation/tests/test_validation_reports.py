@@ -394,6 +394,37 @@ class ValidationReportTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("non-finite number", result.stderr)
 
+    def test_json_readers_reject_duplicate_object_members(self) -> None:
+        bempp_common = load_module(
+            "validation_bempp_common_json",
+            BEMPP_DIR / "_bempp_common.py",
+        )
+        meep_common = load_module(
+            "validation_meep_common_json",
+            MEEP_DIR / "_meep_common.py",
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "duplicate.json"
+            path.write_text(
+                '{"metrics": {"residual": 0.1, "residual": 0.9}}\n',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                bempp_common.ArtifactReadError,
+                "duplicate object member 'residual'",
+            ):
+                bempp_common.read_json_object(path)
+            with self.assertRaisesRegex(
+                SystemExit,
+                "duplicate object member 'residual'",
+            ):
+                meep_common.load_json_object(
+                    path,
+                    recovery="Regenerate the source artifact.",
+                )
+
     def test_single_point_meep_correlation_is_unavailable(self) -> None:
         analyzer = load_module(
             "meep_detailed_analysis",

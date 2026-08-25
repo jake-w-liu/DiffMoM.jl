@@ -156,6 +156,17 @@ def _reject_nonstandard_json_constant(value: str) -> None:
     raise ValueError(f"non-standard numeric constant {value}")
 
 
+def _reject_duplicate_json_members(
+    pairs: List[tuple[str, Any]],
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object member {key!r}")
+        result[key] = value
+    return result
+
+
 def _validate_json_numbers(value: Any, location: str = "$") -> None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         try:
@@ -178,6 +189,7 @@ def load_json_object(path: Path, *, recovery: str) -> Dict[str, Any]:
         data = json.loads(
             path.read_text(encoding="utf-8"),
             parse_constant=_reject_nonstandard_json_constant,
+            object_pairs_hook=_reject_duplicate_json_members,
         )
         _validate_json_numbers(data)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
