@@ -52,12 +52,10 @@ println("Patches: ", partition_fine.P)   # 64
 
 **Choosing grid resolution:**
 
-| Geometry | Recommended `(nx, ny, nz)` | Typical P |
-|----------|----------------------------|-----------|
-| Flat plate | `(4, 4, 1)` to `(8, 8, 1)` | 16--64 |
-| Cylinder | `(4, 4, 4)` | 16--64 |
-| Aircraft-like | `(6, 4, 2)` | 24--48 |
-| Sphere | `(4, 4, 4)` | 20--64 (many cells empty) |
+Set each axis count from the desired physical patch width and the mesh's extent
+on that axis. Empty cells are omitted, so the returned `P` can be smaller than
+`nx * ny * nz`. Inspect triangle counts and physical area per patch before
+using the partition as a design parameterization.
 
 ---
 

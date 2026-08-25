@@ -226,9 +226,17 @@ def main() -> None:
     results_csv_path = data_dir / f"meep_{args.output_prefix}_results.csv"
 
     if not geometry_path.exists():
-        raise SystemExit(f"Missing Julia geometry file: {geometry_path}")
+        raise SystemExit(
+            f"Missing Julia geometry file: {geometry_path}. Run `julia --project=. "
+            "validation/meep/run_periodic_case_julia_reference.jl` with the same "
+            "output prefix, then rerun Meep."
+        )
     if not reference_path.exists():
-        raise SystemExit(f"Missing Julia reference file: {reference_path}")
+        raise SystemExit(
+            f"Missing Julia reference file: {reference_path}. Run `julia --project=. "
+            "validation/meep/run_periodic_case_julia_reference.jl` with the same "
+            "output prefix, then rerun Meep."
+        )
 
     geometry_json = load_json(geometry_path)
     reference_json = load_json(reference_path)

@@ -96,7 +96,10 @@ Z_op = ImpedanceLoadedOperator(aca, Mp, theta)
 y = Z(theta) * x = Z_base * x - Sigma_p coeff_p * (M_p * x)
 ```
 
-The impedance contribution is O(nnz) per patch — negligible compared to the base operator's cost (O(N log N) for MLFMA, O(N log^2 N) for ACA).
+The impedance contribution costs
+`O(sum(nnz(Mp[p]) for p in eachindex(Mp)))` per product. Its share of runtime
+depends on patch storage and the selected base operator; measure both parts on
+the target problem.
 
 For resistive loading (`reactive=false`): `coeff_p = theta_p`
 For reactive loading (`reactive=true`): `coeff_p = i * theta_p`
@@ -135,7 +138,7 @@ The adjoint wrapper. Obtained via `adjoint(Z_op)`, not constructed directly. Imp
 
 | Approach | Base operator | Impedance loading | Use case |
 |----------|---------------|-------------------|----------|
-| `assemble_full_Z(Z_efie, Mp, theta)` | Dense `Matrix{ComplexF64}` | Forms dense Z_efie + Z_imp | N < ~5000, direct solver |
+| `assemble_full_Z(Z_efie, Mp, theta)` | Dense `Matrix{ComplexF64}` | Forms dense Z_efie + Z_imp | Workflows that require a materialized matrix or direct factorization |
 | `ImpedanceLoadedOperator(Z_base, Mp, theta)` | Any `AbstractMatrix{ComplexF64}` | Matrix-free sparse perturbation | Any N, GMRES solver |
 
 The composite operator is designed for the optimization loop: at each iteration, a new `ImpedanceLoadedOperator` is created with updated `theta`, and GMRES solves the forward/adjoint systems without re-assembling any dense matrices.
@@ -192,9 +195,12 @@ end
 | MLFMA base | O(N log N) | O(N log N) |
 | ACA base | O(N log^2 N) | O(N log^2 N) |
 | Dense base | O(N^2) | O(N^2) |
-| Impedance perturbation | O(nnz(M_p) * P) | O(nnz(M_p) * P) |
+| Impedance perturbation | O(sum_p nnz(M_p)) | O(sum_p nnz(M_p)) |
 
-The impedance perturbation cost is typically negligible: each `M_p` is sparse with O(N/P) nonzeros per patch, and there are P patches, giving O(N) total work per matvec for the impedance term.
+For localized, nonoverlapping patches whose total stored entries grow linearly
+with `N`, the impedance term is O(N). Overlap or denser patch matrices change
+that cost, so use the stored-entry sum rather than `P` alone when estimating a
+run.
 
 ---
 

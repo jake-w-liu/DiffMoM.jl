@@ -3,12 +3,12 @@
 ## Purpose
 
 Dense EFIE matrices scale as $O(N^2)$ in storage and $O(N^3)$ for direct
-factorization, limiting practical problem sizes to a few thousand unknowns on
-workstation hardware. This chapter explains how `DiffMoM.jl` uses
+factorization. The usable problem size therefore depends on memory, hardware,
+and the target time budget. This chapter explains how `DiffMoM.jl` uses
 Hierarchical Matrices (H-matrices) with Adaptive Cross Approximation (ACA) to
 compress the EFIE operator into a mixture of dense near-field blocks and
-low-rank far-field blocks, reducing both storage and matrix-vector product cost
-to $O(N \log^2 N)$.
+low-rank far-field blocks. Under bounded-rank, balanced-tree assumptions, this
+reduces storage and matrix-vector product cost to $O(N \log^2 N)$.
 
 We cover the full pipeline: constructing a binary cluster tree from RWG basis
 function centers, partitioning the matrix into admissible and inadmissible
@@ -48,17 +48,13 @@ For each of the $N^2$ entries, the double integral is evaluated with $N_q^2$ qua
 \text{Storage} = N^2 \times 16 \;\text{bytes} \quad (\texttt{ComplexF64}).
 ```
 
-### 1.2 Practical Scaling
+### 1.2 Resource planning
 
-| $N$ | Storage | LU Factor Time | Dense Matvec |
-|-----|---------|----------------|--------------|
-| 1,000 | 15 MiB | < 1 s | trivial |
-| 5,000 | 381 MiB | ~10 s | ~ms |
-| 10,000 | 1.5 GiB | ~1 min | ~10 ms |
-| 50,000 | 37.3 GiB | hours | ~0.2 s |
-| 100,000 | 149 GiB | infeasible | ~1 s |
-
-For moderate-to-large problems ($N > 10{,}000$), dense assembly and direct factorization become impractical. The matvec cost alone ($O(N^2)$ per iteration) makes GMRES slow, and the storage cost exceeds available memory on typical workstations.
+The dense matrix payload is exactly `16N^2` bytes for `ComplexF64`, before
+factorization workspace and metadata. Assembly, factorization, and matvec times
+are hardware- and geometry-dependent. Calculate the payload, set an explicit
+memory budget, and benchmark a representative mesh before selecting dense or
+compressed storage.
 
 ### 1.3 The Key Physical Observation
 
@@ -183,7 +179,7 @@ The `leaf_size` parameter controls the granularity of the block partition:
 
 - **Smaller leaf size** (e.g., 16): More blocks, finer partition, potentially better compression, but more overhead from block bookkeeping.
 - **Larger leaf size** (e.g., 128): Fewer blocks, coarser partition, less overhead, but dense blocks are larger and some compressible regions may be lumped with near-field.
-- **Default** (`leaf_size=64`): A good balance for typical electromagnetic problems.
+- **Default** (`leaf_size=64`): The package's starting value; sweep it when block count, accepted ranks, or storage matter.
 
 The tree depth is approximately $\log_2(N/\text{leaf\_size})$ levels.
 
@@ -226,7 +222,9 @@ For an admissible block with row indices $\mathcal{I}$ (size $m$) and column ind
 
 A naive approach would compute the full $m \times n$ block and then apply a truncated SVD. This requires $O(mn)$ entry evaluations and $O(mn \min(m,n))$ factorization work, negating the benefit of compression.
 
-ACA achieves the same approximation quality using only $O(k(m+n))$ entry evaluations by adaptively selecting rows and columns that capture the dominant interactions.
+ACA constructs a rank-`k` approximation from $O(k(m+n))$ sampled entries by
+adaptively selecting rows and columns. Its achieved error must be checked; it is
+not generally identical to a truncated SVD of the full block.
 
 ### 4.2 Physical Intuition for Low Rank
 
@@ -236,7 +234,12 @@ Why are far-field blocks low-rank? Consider two well-separated groups of basis f
 G(\mathbf{r}, \mathbf{r}') = \sum_{\ell=0}^{\infty} \sum_{m=-\ell}^{\ell} \alpha_{\ell m}(\mathbf{r}) \, \beta_{\ell m}(\mathbf{r}'),
 ```
 
-where $\alpha_{\ell m}$ depends only on the observation point and $\beta_{\ell m}$ depends only on the source point. For well-separated groups, truncating this series at $\ell = L$ gives an approximation with rank $(L+1)^2$ that converges exponentially in $L$. In practice, ranks of 5--30 suffice for engineering accuracy ($10^{-6}$ relative error), regardless of the block size.
+where $\alpha_{\ell m}$ depends only on the observation point and
+$\beta_{\ell m}$ depends only on the source point. A finite truncation separates
+observation and source dependence and therefore motivates a low-rank block.
+The required rank depends on separation, electrical size, geometry, and the
+requested tolerance; inspect the accepted ranks rather than assuming a fixed
+range.
 
 ### 4.3 The Partially-Pivoted ACA Algorithm
 
@@ -305,15 +308,16 @@ The `V` matrix stores the **conjugate** of the residual rows, so the approximati
 
 ### 4.6 Convergence and Accuracy
 
-The ACA tolerance `tol` controls the approximation accuracy. For typical electromagnetic problems:
+The ACA tolerance `tol` is the stopping tolerance for each low-rank block; it
+does not directly guarantee a global operator or observable error. Accepted
+ranks and errors depend on geometry, frequency, admissibility, and block size.
+Validate candidate values against a dense reference where practical, or against
+a tighter ACA build and the final observable otherwise.
 
-| `tol` | Typical Rank | Relative Error | Use Case |
-|-------|-------------|----------------|----------|
-| $10^{-3}$ | 3--10 | ~0.1% | Quick estimates, visualization |
-| $10^{-6}$ | 10--25 | ~$10^{-4}$% | Engineering accuracy (default) |
-| $10^{-9}$ | 20--40 | ~$10^{-7}$% | High-precision, gradient computation |
-
-The maximum rank `max_rank` (default 50) is a safety bound that prevents runaway iterations if the block is not truly low-rank (which should not happen for properly admissible blocks).
+The maximum rank `max_rank` (default 50) bounds work and storage for each
+low-rank block. Reaching the bound before the tolerance is met emits a warning;
+increase the limit, loosen the tolerance, or revise the partition only after
+checking the resulting operator error.
 
 ---
 
@@ -375,7 +379,10 @@ The key optimization: multiple RWG basis functions share the same supporting tri
 2. **Precomputes the Green's function** for all $(T_m, T_n)$ triangle pairs at all quadrature point combinations, storing them in a dictionary.
 3. **Fills block entries** by looking up the precomputed values.
 
-This triangle-pair caching yields approximately 8 times fewer Green's function evaluations compared to the naive approach, because each triangle typically supports 3 RWG basis functions.
+The number of avoided Green-function evaluations depends on how many row and
+column basis functions share supporting triangles. Measure the cache hit rate or
+entry-evaluation count for the target block partition when this optimization is
+performance-critical.
 
 ### 5.3 Block Data Structures
 
@@ -450,7 +457,9 @@ For each low-rank block with $\mathbf{U} \in \mathbb{C}^{m \times k}$ and $\math
 \mathbf{t} = \mathbf{V}' \cdot x_{\text{perm}}[\mathcal{C}], \qquad y_{\text{perm}}[\mathcal{R}] \mathrel{+}= \mathbf{U} \cdot \mathbf{t}.
 ```
 
-The intermediate vector $\mathbf{t} \in \mathbb{C}^k$ is small (typically $k \le 30$), so this requires $O(kn + km)$ operations instead of $O(mn)$.
+The intermediate vector $\mathbf{t} \in \mathbb{C}^k$ has the accepted block
+rank `k`, so this requires $O(k(n+m))$ operations instead of $O(mn)$. Whether
+that is a reduction depends on the accepted rank relative to the block sizes.
 
 **Step 4: Un-permute output**
 
@@ -493,11 +502,11 @@ This evaluates the exact EFIE entry on demand using the cached quadrature data. 
 
 | Operation | Dense | ACA H-Matrix |
 |-----------|-------|--------------|
-| Storage | $O(N^2)$ | $O(N \log^2 N)$ |
-| Assembly | $O(N^2 N_q^2)$ | $O(N \log^2 N \cdot k \cdot N_q^2)$ |
-| Matvec | $O(N^2)$ | $O(N \log^2 N)$ |
+| Storage | $O(N^2)$ | $O(N \log^2 N)$ under bounded-rank assumptions |
+| Assembly | $O(N^2 N_q^2)$ | $O(N \log^2 N \cdot k \cdot N_q^2)$ under balanced-tree assumptions |
+| Matvec | $O(N^2)$ | $O(N \log^2 N)$ under bounded-rank assumptions |
 | Direct solve (LU) | $O(N^3)$ | Not supported |
-| GMRES (per iteration) | $O(N^2)$ | $O(N \log^2 N)$ |
+| GMRES (per iteration) | $O(N^2)$ | $O(N \log^2 N)$ under bounded-rank assumptions |
 
 Here $k$ is the accepted rank of each low-rank block and $N_q^2$ is the cost
 per entry evaluation. The observed rank depends on geometry, frequency,
@@ -505,7 +514,11 @@ admissibility, and tolerance.
 
 ### 7.2 Where the $\log^2 N$ Comes From
 
-The cluster tree has $O(\log N)$ levels. At each level, the total number of index pairs covered by admissible blocks is $O(N)$ (each index appears in a bounded number of interactions at each level). The rank of each low-rank block is bounded by a constant $k$ (independent of $N$ for a fixed tolerance and smooth kernel). Summing over all $O(\log N)$ levels and accounting for the tree traversal overhead gives $O(N \log^2 N)$.
+For a balanced cluster tree, the depth is $O(\log N)$. If interaction counts
+per index and accepted ranks remain bounded as `N` grows, summing block work
+over the hierarchy gives the stated $O(N \log^2 N)$ model. High frequency,
+geometry, tolerance, or an unbalanced partition can violate those assumptions,
+so record tree depth, block counts, and accepted ranks in scaling studies.
 
 The asymptotic costs do not determine the dense-to-ACA crossover for a given
 problem. Benchmark both paths with the same geometry, tolerance, and hardware;
@@ -520,14 +533,18 @@ For an H-matrix with $B_d$ dense blocks of average size $s_d \times s_d$ and $B_
 \text{Memory} = B_d \cdot s_d^2 \cdot 16 + B_r \cdot 2 k s_r \cdot 16 \quad \text{bytes}.
 ```
 
-The dense blocks dominate near the diagonal (where clusters are close), while the low-rank blocks dominate in the far field (where $2ks_r \ll s_r^2$). The total is $O(N \log^2 N)$.
+Dense storage is used for inadmissible blocks, while a low-rank block saves
+entries only when $2ks_r < s_r^2$ in this square-block model. The overall
+$O(N \log^2 N)$ estimate relies on the balanced-tree and bounded-rank
+assumptions above.
 
 ### 7.4 Limitation: No Direct Solve
 
-Unlike the dense matrix, the H-matrix does not support direct $LU$ factorization. Solving $\mathbf{A}\mathbf{x} = \mathbf{b}$ requires an iterative solver (GMRES). This is not a significant limitation in practice because:
-
-1. GMRES with a near-field preconditioner converges in $O(1)$ iterations (independent of $N$).
-2. Each GMRES iteration costs $O(N \log^2 N)$, so the total solve time is $O(N \log^2 N)$.
+Unlike the dense matrix, this H-matrix implementation does not provide direct
+LU factorization. Solving $\mathbf{A}\mathbf{x}=\mathbf{b}$ therefore requires
+an iterative solver. Per-iteration work follows the operator matvec cost, while
+the iteration count depends on the spectrum, requested tolerance, and
+preconditioner. Always inspect the reported status and recomputed true residual.
 
 For the adjoint solve needed in gradient computation, the `ACAAdjointOperator` provides the necessary adjoint matvec.
 
@@ -625,8 +642,8 @@ c0 = 299792458.0
 lambda = c0 / freq
 k = 2pi / lambda
 
-# Create mesh with ~5000 unknowns
-mesh = make_rect_plate(lambda, lambda, 50, 50)
+# Create a bounded demonstration mesh
+mesh = make_rect_plate(lambda, lambda, 12, 12)
 rwg = build_rwg(mesh)
 println("N = ", rwg.nedges, " unknowns")
 ```
@@ -657,7 +674,7 @@ y_aca = A_aca * x
 
 rel_error = norm(y_dense - y_aca) / norm(y_dense)
 println("Relative matvec error: ", rel_error)
-# Expected: ~1e-6 (matching aca_tol)
+# Compare this measured error with the accuracy required by your observable.
 ```
 
 ### 9.4 Full Solve Comparison
@@ -735,11 +752,11 @@ The complete ACA pipeline follows this flow:
 
 ### Computational
 
-5. **Compression ratio**: For a $2\lambda \times 2\lambda$ plate with $N = 5{,}000$ unknowns, build the ACA operator and compute the compression ratio (total H-matrix storage / dense storage). Vary `aca_tol` from $10^{-3}$ to $10^{-9}$ and plot the compression ratio vs. tolerance.
+5. **Compression ratio**: For a sequence of refined $2\lambda \times 2\lambda$ plate meshes, build the ACA operator and compute the compression ratio (total H-matrix storage / dense storage). Vary `aca_tol` and plot compression ratio and matvec error versus tolerance.
 
-6. **Matvec accuracy**: Generate a random vector $\mathbf{x}$ and compare $\mathbf{Z}\mathbf{x}$ (dense) with $\mathbf{A}_{\text{ACA}}\mathbf{x}$. Plot the relative error as a function of `aca_tol`. Verify that the error is approximately proportional to the tolerance.
+6. **Matvec accuracy**: Generate a random vector $\mathbf{x}$ and compare $\mathbf{Z}\mathbf{x}$ (dense) with $\mathbf{A}_{\text{ACA}}\mathbf{x}$. Plot the relative error as a function of `aca_tol` and determine the observed relationship.
 
-7. **Scaling study**: Create meshes of increasing size ($N = 1{,}000$ to $50{,}000$) and measure the ACA assembly time and matvec time. Plot both on a log-log scale and verify the $O(N \log^2 N)$ scaling.
+7. **Scaling study**: Create meshes of increasing size and measure ACA assembly time, matvec time, storage, and accepted ranks. Plot them on log-log axes and compare the observed slopes with the bounded-rank complexity model.
 
 8. **Preconditioner interaction**: Solve the same scattering problem with and without the near-field preconditioner when using ACA. Record the iteration counts and total solve times. At what problem size does the preconditioner become essential?
 

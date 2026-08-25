@@ -43,7 +43,9 @@ def load_curve_cases(
         mpath = data_dir / f"meep_{prefix}_results.json"
         if not jpath.exists() or not mpath.exists():
             raise SystemExit(
-                f"Missing curve files for prefix '{prefix}': {jpath} or {mpath}"
+                f"Missing curve artifacts for prefix {prefix!r}: expected {jpath} "
+                f"and {mpath}. Run run_reflectance_curve_comparison.py for that "
+                "prefix, then rerun this analysis."
             )
         j = load_json(jpath)
         m = load_json(mpath)
@@ -68,7 +70,9 @@ def load_convergence_cases(data_dir: Path, prefixes: List[str]) -> List[Dict[str
         mpath = data_dir / f"meep_{prefix}_results.json"
         if not jpath.exists() or not mpath.exists():
             raise SystemExit(
-                f"Missing convergence files for prefix '{prefix}': {jpath} or {mpath}"
+                f"Missing convergence artifacts for prefix {prefix!r}: expected "
+                f"{jpath} and {mpath}. Generate both Julia and Meep results for "
+                "that prefix, then rerun this analysis."
             )
         j = load_json(jpath)
         m = load_json(mpath)
@@ -229,6 +233,10 @@ def main() -> None:
     data_dir = args.project_root / "data"
     curve_suffixes = [s.strip() for s in args.curve_suffixes.split(",") if s.strip()]
     conv_prefixes = [s.strip() for s in args.conv_prefixes.split(",") if s.strip()]
+    if not curve_suffixes:
+        parser.error("--curve-suffixes must contain at least one nonempty suffix")
+    if not conv_prefixes:
+        parser.error("--conv-prefixes must contain at least one nonempty prefix")
 
     curve_rows = load_curve_cases(data_dir, args.curve_prefix_base, curve_suffixes)
     conv_rows = load_convergence_cases(data_dir, conv_prefixes)

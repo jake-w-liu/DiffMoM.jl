@@ -7,7 +7,11 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
+from unittest import mock
+
+import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -173,6 +177,45 @@ class ValidationReportTests(unittest.TestCase):
             )
             self.assertIn("not available", markdown)
 
+    def test_plot_cut_averages_equidistant_azimuth_samples(self) -> None:
+        matplotlib = types.ModuleType("matplotlib")
+        matplotlib.__path__ = []
+
+        def use_backend(_backend: str) -> None:
+            return None
+
+        matplotlib.use = use_backend
+        pyplot = types.ModuleType("matplotlib.pyplot")
+        with mock.patch.dict(
+            sys.modules,
+            {"matplotlib": matplotlib, "matplotlib.pyplot": pyplot},
+        ):
+            plotter = load_module(
+                "validation_impedance_plot",
+                BEMPP_DIR / "plot_impedance_comparison.py",
+            )
+        theta = np.array([0.0, 0.0, 30.0, 30.0])
+        phi = np.array([-5.0, 5.0, -5.0, 5.0])
+        julia = np.array([1.0, 3.0, 5.0, 9.0])
+        bempp = np.array([2.0, 4.0, 8.0, 10.0])
+
+        cut_theta, cut_julia, cut_bempp = plotter.nearest_phi_cut(
+            theta, phi, julia, bempp, n_phi=2
+        )
+
+        np.testing.assert_array_equal(cut_theta, np.array([0.0, 30.0]))
+        np.testing.assert_allclose(cut_julia, np.array([2.0, 7.0]))
+        np.testing.assert_allclose(cut_bempp, np.array([3.0, 9.0]))
+
+        with self.assertRaisesRegex(ValueError, "finite values"):
+            plotter.nearest_phi_cut(
+                theta,
+                np.array([-5.0, 5.0, -5.0, np.nan]),
+                julia,
+                bempp,
+                n_phi=2,
+            )
+
     def test_matrix_rejects_report_without_sidelobe_metric(self) -> None:
         matrix_module = load_module(
             "validation_matrix",
@@ -284,6 +327,44 @@ class ValidationReportTests(unittest.TestCase):
         metrics = analyzer.compute_metrics([{"julia_refl": 0.5, "meep_refl": 0.4}])
         self.assertIsNone(metrics["corr"])
         json.dumps(metrics, allow_nan=False)
+
+    def test_curve_runner_reports_invalid_width_list_without_traceback(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MEEP_DIR / "run_reflectance_curve_comparison.py"),
+                "--slot-wx-fracs",
+                "not-a-number",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--slot-wx-fracs", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_meep_analyzer_rejects_empty_case_lists_without_traceback(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(MEEP_DIR / "analyze_meep_detailed_comparison.py"),
+                "--curve-suffixes",
+                "",
+                "--conv-prefixes",
+                "",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--curve-suffixes", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":

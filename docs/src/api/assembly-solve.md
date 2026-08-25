@@ -179,7 +179,11 @@ Assembly is O(N^2) in both time and memory. Each entry `Z[m,n]` involves a doubl
 
 **Returns:** `Matrix{ComplexF64}` of size `N x N` where `N = rwg.nedges`.
 
-**Performance:** Assembly time scales as O(N^2 * Nq^2) where Nq is the number of quadrature points. For N = 500, assembly takes seconds; for N = 5000, it takes minutes.
+**Performance:** Dense storage scales as O(N^2). Regular entry assembly scales
+as O(N^2 * Nq^2), where Nq is the number of quadrature points; singular and
+near-singular entries use different kernels. Measure wall time on the target
+mesh and machine, and use the byte limits or a matrix-free operator to make the
+resource decision.
 
 ---
 
@@ -230,13 +234,17 @@ Compute a single EFIE matrix entry `Z[m,n]` from a `MatrixFreeEFIEOperator`. Use
 
 ---
 
-### When to use matrix-free operators
+### Choosing an operator representation
 
-| Scenario | Recommended approach |
-|----------|---------------------|
-| N < ~5000 | Dense `assemble_Z_efie` (simpler, enables direct LU) |
-| N > ~5000, memory-limited | `matrixfree_efie_operator` + GMRES with NF preconditioner |
-| ACA H-matrix | Used internally by `build_aca_operator` (see [aca-workflow.md](aca-workflow.md)) |
+| Requirement | Available approach |
+|-------------|--------------------|
+| Dense entries and direct factorization | `assemble_Z_efie` |
+| Avoid storing an `N x N` matrix | `matrixfree_efie_operator` + GMRES |
+| Compress admissible far-field blocks | `build_aca_operator` (see [aca-workflow.md](aca-workflow.md)) |
+
+The crossover depends on the geometry, quadrature order, solver behavior, and
+available memory. Compare peak memory, setup time, solve time, and checked true
+residual on the target workload.
 
 **Example:**
 
@@ -371,11 +379,11 @@ For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise
 |-----------|------|---------|-------------|
 | `Z` | `AbstractMatrix{<:Number}` | -- | System matrix (N x N). Typically from `assemble_full_Z` or `assemble_Z_efie`. For `:direct`, must be a dense `Matrix`. |
 | `v` | `AbstractVector{<:Number}` | -- | Excitation vector (length N). From `assemble_excitation` or `assemble_v_plane_wave`. |
-| `solver` | `Symbol` | `:direct` | **`:direct`**: verified dense factorization with automatic equilibration and a high-precision fallback for exceptional ranges. O(N^3). Best for N < ~2000. **`:gmres`**: Iterative GMRES. O(N^2 * n_iter). Best for large N with a good preconditioner. |
+| `solver` | `Symbol` | `:direct` | **`:direct`**: verified dense factorization with automatic equilibration and a high-precision fallback for exceptional ranges. **`:gmres`**: iterative GMRES for dense or matrix-free operators. Choose from measured memory, factorization cost, iteration count, and true residual on the target problem. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner for GMRES. Ignored when `solver=:direct`. Build with `build_nearfield_preconditioner`. |
 | `gmres_precond_side` | `Symbol` | `:left` | `:left` or `:right` preconditioner application side (forwarded to `solve_gmres` as `precond_side`). |
-| `gmres_tol` | `Float64` | `1e-8` | Relative convergence tolerance for GMRES. Smaller = more accurate but more iterations. `1e-8` is conservative; `1e-6` is often sufficient. |
-| `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. With a good preconditioner, convergence typically occurs in 10--50 iterations. Set higher (300--500) for difficult problems or tight tolerances. |
+| `gmres_tol` | `Float64` | `1e-8` | Relative convergence tolerance for GMRES. Select it from the required true residual and observable accuracy; a smaller value can require more iterations. |
+| `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations. Increase it only after inspecting convergence history, preconditioner quality, and the checked true residual. |
 | `gmres_memory` | `Int` | `20` | GMRES restart length / Krylov memory (forwarded to `solve_gmres` as `memory`). |
 | `verbose_gmres` | `Bool` | `false` | Print GMRES convergence information (iteration count, residual). |
 | `check_gmres_convergence` | `Bool` | `true` | If `true`, raise an error when GMRES returns an unconverged solve. |
@@ -388,10 +396,10 @@ For `solver=:direct`, `Z` must be a dense `Matrix` (an error is raised otherwise
 
 | Criterion | Direct (`:direct`) | GMRES (`:gmres`) |
 |-----------|-------------------|-------------------|
-| Best for | N < ~2000 | N > ~1000 with preconditioner |
+| Best for | Problems whose dense factorization fits the time and memory budget | Problems with a verified convergent operator/preconditioner combination |
 | Time complexity | O(N^3) | O(N^2 * n_iter) |
 | Memory | O(N^2) for factorization | O(N^2) for matrix + O(N * n_iter) for Krylov |
-| Accuracy | Machine precision | Controlled by `gmres_tol` |
+| Accuracy | Conditioning- and residual-dependent | Controlled by convergence and true-residual checks |
 | Preconditioner | Not used | Problem-dependent; compare iterations and true residual |
 
 ---
@@ -417,7 +425,7 @@ Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field precond
 | `Z` | `AbstractMatrix{<:Number}` | -- | System matrix. |
 | `rhs` | `Vector{ComplexF64}` | -- | Right-hand side. |
 | `preconditioner` | `Nothing` or `AbstractPreconditionerData` | `nothing` | Near-field preconditioner. When provided, applies `Z_nf^{-1}` as a preconditioner to reduce GMRES iterations. |
-| `precond_side` | `Symbol` | `:left` | `:left` or `:right` preconditioning. Both give the same iteration count for EFIE matrices. Left is the default. |
+| `precond_side` | `Symbol` | `:left` | `:left` or `:right` preconditioning. The side changes the residual minimized by GMRES and can change convergence; compare the checked true residual on the target system. |
 | `tol` | `Float64` | `1e-8` | Relative convergence tolerance. |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart length (number of Krylov vectors stored). Larger values may improve convergence for difficult problems at the cost of O(N * memory) storage. |
@@ -448,7 +456,7 @@ Solve the adjoint system `Z' * x = rhs` using GMRES with the adjoint preconditio
 
 ## Near-Field Sparse Preconditioner
 
-The near-field preconditioner retains entries `Z[m,n]` where basis functions `m` and `n` are within a cutoff distance, then factorizes the resulting sparse matrix. This is the recommended preconditioning strategy for dense EFIE systems. See [types.md](types.md) for the `AbstractPreconditionerData` type hierarchy.
+The near-field preconditioner retains entries `Z[m,n]` where basis functions `m` and `n` are within a cutoff distance, then factorizes the resulting sparse matrix. Its effectiveness and storage are problem-dependent. See [types.md](types.md) for the `AbstractPreconditionerData` type hierarchy.
 
 Multiple overloads of `build_nearfield_preconditioner` are available, depending on what data you have:
 
@@ -467,7 +475,7 @@ Build a preconditioner by extracting near-field entries from a pre-assembled den
 | `Z` | `Matrix{<:Number}` | -- | The full N x N MoM matrix. |
 | `mesh` | `TriMesh` | -- | Triangle mesh. |
 | `rwg` | `RWGData` | -- | RWG basis data. |
-| `cutoff` | `Float64` | -- | Distance cutoff in meters. Typical: `0.5 * lambda` to `2.0 * lambda`. |
+| `cutoff` | `Float64` | -- | Nonnegative distance cutoff in meters. Select it with a storage/convergence sweep for the target problem. |
 | `neighbor_search` | `Symbol` | `:spatial` | **`:spatial`** (default): O(N) spatial hashing for neighbor finding. **`:bruteforce`**: O(N^2) all-pairs reference mode. Use `:bruteforce` only for testing/validation. |
 | `factorization` | `Symbol` | `:lu` | **`:lu`** (default): Sparse LU factorization. Returns `NearFieldPreconditionerData`. **`:ilu`**: Incomplete LU with drop tolerance `ilu_tau`. Returns `ILUPreconditionerData`. **`:diag`**: Jacobi/diagonal preconditioner (only retains `Z[i,i]`). Entries smaller than `1e-10` times the largest diagonal magnitude are regularized at that relative floor; an all-zero diagonal is rejected. Returns `DiagonalPreconditionerData`. |
 | `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU factorization (only used when `factorization=:ilu`). |
@@ -591,20 +599,16 @@ Build a preconditioner directly from an already-assembled sparse near-field matr
 | Keyword | Values | Description |
 |---------|--------|-------------|
 | `neighbor_search` | `:spatial` (default), `:bruteforce` | **`:spatial`**: Uses spatial hashing (cell size = cutoff) for O(N) neighbor finding. Each basis function is hashed into a 3D grid cell, and only the 27 neighboring cells are searched. **`:bruteforce`**: O(N^2) all-pairs distance check. Gives identical results; use only for validation. |
-| `factorization` | `:lu` (default), `:ilu`, `:diag` | **`:lu`**: Sparse LU factorization of the near-field matrix. Best GMRES convergence. **`:ilu`**: Incomplete LU with drop tolerance `ilu_tau`. Less fill than full LU, feasible for large N. **`:diag`**: Jacobi preconditioner using only diagonal entries. Cheapest to build and apply, but weaker convergence. |
-| `ilu_tau` | `Float64`, default `1e-3` | Drop tolerance for ILU factorization (only used when `factorization=:ilu`). Smaller values = more fill = better preconditioner. |
+| `factorization` | `:lu` (default), `:ilu`, `:diag` | **`:lu`**: sparse LU of the retained matrix. **`:ilu`**: incomplete LU with drop tolerance `ilu_tau`. **`:diag`**: Jacobi preconditioning from the diagonal. Compare setup, factor storage, iterations, and true residual. |
+| `ilu_tau` | `Float64`, default `1e-3` | Nonnegative ILU drop tolerance. Changing it alters fill, setup cost, and convergence; measure all three. |
 
-### Performance benchmarks
+### Performance evaluation
 
-| Scenario | Cutoff | GMRES iters | Speedup vs direct LU |
-|----------|--------|-------------|---------------------|
-| Impedance-loaded, N=96--736 | 1.0 lambda | ~10 (constant) | 3--6x at N=736 |
-| PEC, N=736 | 0.5 lambda | 28--45 | ~5.5x |
-| PEC, N=736, unpreconditioned | -- | ~194 | (baseline) |
-
-**Key insight:** In tested impedance-loaded cases, NF preconditioning keeps
-iteration growth weak as N increases. This keeps GMRES+NF close to O(N^2) per
-solve for dense-matvec workflows, versus O(N^3) for direct LU.
+Preconditioner effectiveness depends on geometry, frequency, mesh density,
+loading, cutoff, and factorization. Compare setup time, factor storage, GMRES
+iterations, solve time, and the checked true residual on the target problem.
+`examples/05_solver_methods.jl` and `examples/05b_aca_scaling.jl` provide
+runnable comparisons without treating one machine's measurements as defaults.
 
 ---
 
@@ -634,7 +638,10 @@ count, and true residual against ILU for the target problem.
 
 **Returns:** `BlockDiagPrecondData`. See [types.md](types.md) for field details.
 
-**Complexity:** `O(n_boxes * n_bf^3)` where `n_bf` is the average BFs per leaf box (typically 100--500). Memory is bounded by `max_storage_bytes`.
+**Complexity:** If box `b` contains `n_b` basis functions, factorization
+cost is `O(sum_b n_b^3)` and stored dense factors require
+`O(sum_b n_b^2)` entries. `max_storage_bytes` bounds the estimated raw payload
+before allocation.
 
 The loaded overload
 `build_block_diag_preconditioner(A_mlfma, Mp, theta; reactive=false,
@@ -666,7 +673,7 @@ for the target problem.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `A_mlfma` | `MLFMAOperator` | -- | The MLFMA operator. |
-| `factorization` | `Symbol` | `:ilu` | `:ilu` for incomplete LU (recommended), `:lu` for full sparse LU. |
+| `factorization` | `Symbol` | `:ilu` | `:ilu` for incomplete LU or `:lu` for full sparse LU. Compare factor storage, setup cost, iterations, and true residual. |
 | `ilu_tau` | `Float64` | `1e-2` | Drop tolerance for ILU. |
 
 **Returns:** `PermutedPrecondData` wrapping an `ILUPreconditionerData` (or `NearFieldPreconditionerData` for `:lu`). It retains one reusable length-`N` permutation vector, avoiding two transient full-vector allocations per application. See [types.md](types.md) for field details.

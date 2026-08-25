@@ -2,7 +2,11 @@
 
 ## Purpose
 
-For very large problems ($N > 50{,}000$ unknowns), even H-matrix compression with ACA becomes limited by the $O(N \log^2 N)$ near-field storage cost. The Multi-Level Fast Multipole Algorithm (MLFMA) reduces both storage and matrix-vector product cost to $O(N \log N)$ by hierarchically decomposing electromagnetic interactions into near-field (directly computed) and far-field (computed via radiation patterns and translation operators) contributions.
+The Multi-Level Fast Multipole Algorithm (MLFMA) represents near-field
+interactions directly and far-field interactions through a multilevel
+aggregation, translation, and disaggregation hierarchy. Under the algorithm's
+sampling and tree-balance assumptions, this reduces both storage and
+matrix-vector product cost relative to a dense operator.
 
 This chapter explains the MLFMA implementation in `DiffMoM.jl`: octree construction, radiation pattern computation, multi-level aggregation and disaggregation with per-$m$ spectral filters, translation operators, near-field preconditioning, and practical usage guidelines including accuracy considerations.
 
@@ -27,11 +31,11 @@ After this chapter, you should be able to:
 
 ### 1.1 Comparison of Methods
 
-| Method | Storage | Matvec | Assembly | Best for |
-|--------|---------|--------|----------|----------|
-| Dense | $O(N^2)$ | $O(N^2)$ | $O(N^2)$ | $N < 2{,}000$ |
-| ACA H-matrix | $O(N \log^2 N)$ | $O(N \log^2 N)$ | $O(N \log^2 N)$ | $2{,}000 < N < 50{,}000$ |
-| **MLFMA** | **$O(N \log N)$** | **$O(N \log N)$** | **$O(N \log N)$** | **$N > 50{,}000$** |
+| Method | Storage model | Matvec model | Selection considerations |
+|--------|---------------|--------------|--------------------------|
+| Dense | $O(N^2)$ | $O(N^2)$ | Direct factorization or complete entry access is required |
+| ACA H-matrix | $O(N \log^2 N)$ under bounded-rank assumptions | $O(N \log^2 N)$ under bounded-rank assumptions | Admissible blocks remain low-rank at the requested tolerance |
+| **MLFMA** | **$O(N \log N)$ under sampling/tree assumptions** | **$O(N \log N)$ under sampling/tree assumptions** | Accuracy, setup storage, and solve convergence meet the target budget |
 
 In practice, the exact memory and runtime depend strongly on geometry, frequency, and parameter choices (`leaf_lambda`, `precision`, quadrature order, and preconditioner settings). Treat performance numbers as problem-specific and benchmark on your target case.
 
@@ -217,7 +221,7 @@ freq = 3e8  # 0.3 GHz
 k = 2pi * freq / 299792458.0
 pw = make_plane_wave(Vec3(0.0, 0.0, -k), 1.0, Vec3(1.0, 0.0, 0.0))
 
-# Auto-selects MLFMA for N > 50,000
+# With the default thresholds, :auto selects MLFMA when N > 50,000
 result = solve_scattering(mesh, freq, pw)
 ```
 
@@ -280,7 +284,7 @@ spherical/filter allocations. Raise them only with an explicit memory budget.
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `factorization` | `:ilu` | One of `:ilu`, `:lu` |
-| `ilu_tau` | 1e-2 | ILU drop tolerance (smaller = more fill, better preconditioner) |
+| `ilu_tau` | 1e-2 | Nonnegative ILU drop tolerance; measure its effects on fill and convergence |
 
 ### 9.3 `solve_scattering` MLFMA Path
 

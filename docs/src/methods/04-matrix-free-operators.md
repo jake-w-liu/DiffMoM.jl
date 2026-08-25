@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Dense EFIE matrices consume enormous memory for large problems, yet many
+Dense EFIE matrices require quadratic storage, yet many
 algorithms (GMRES, ACA, near-field preconditioning) only need matrix-vector
 products or individual entry evaluations. This chapter introduces the
 matrix-free operator infrastructure in `DiffMoM.jl`, which stores the
@@ -33,13 +33,17 @@ A dense EFIE matrix $\mathbf{Z} \in \mathbb{C}^{N \times N}$ stores $N^2$ `Compl
 
 | $N$ (unknowns) | Dense storage |
 |-----------------|---------------|
-| 1 000           | 16 MB         |
-| 5 000           | 400 MB        |
-| 10 000          | 1.6 GiB       |
-| 20 000          | 6.4 GiB       |
-| 50 000          | 40 GiB        |
+| 1 000           | 15.3 MiB      |
+| 5 000           | 381 MiB       |
+| 10 000          | 1.49 GiB      |
+| 20 000          | 5.96 GiB      |
+| 50 000          | 37.3 GiB      |
 
-At $N = 20\,000$, the dense matrix alone exceeds most workstation RAM. Yet GMRES only needs the matvec $\mathbf{y} = \mathbf{Z}\mathbf{x}$, ACA and the near-field preconditioner only need individual entries $Z_{mn}$, and the adjoint solve only needs $\mathbf{y} = \mathbf{Z}^\dagger \mathbf{x}$. None require all $N^2$ entries stored simultaneously.
+These values cover only the matrix payload; factorization and assembly need
+additional memory. GMRES needs the matvec $\mathbf{y}=\mathbf{Z}\mathbf{x}$,
+ACA and near-field construction need selected entries $Z_{mn}$, and the adjoint
+solve needs $\mathbf{y}=\mathbf{Z}^\dagger\mathbf{x}$. Those operations do not
+require all $N^2$ entries to remain stored simultaneously.
 
 A matrix-free operator stores the *recipe* for computing any entry $Z_{mn}$ on demand, bundled into an `EFIEApplyCache`. The trade-off:
 
@@ -50,7 +54,9 @@ A matrix-free operator stores the *recipe* for computing any entry $Z_{mn}$ on d
 | Single entry | $O(1)$ (lookup) | $O(N_q^2)$ (compute) |
 | Setup cost | $O(N^2 N_q^2)$ (full assembly) | $O(N N_q + N_t\log N_t)$ (cache build) |
 
-The matvec has the same asymptotic $O(N^2)$ complexity, but the matrix-free version carries a larger constant factor $N_q^2$ from recomputing Green's function evaluations. For memory-limited problems, this is an acceptable trade.
+The matvec has the same asymptotic $O(N^2)$ complexity, while the matrix-free
+version recomputes Green-function evaluations instead of reading stored matrix
+entries. Compare peak memory and total solve time for the target workload.
 
 ---
 
@@ -204,17 +210,20 @@ z_mn = A[m, n]                # standard indexing
 
 ---
 
-## 8. When to Use What
+## 8. Choosing a representation
 
-| Scenario | Approach | Storage | Matvec cost |
-|----------|----------|---------|-------------|
-| $N < 5\,000$, need LU | `assemble_Z_efie` (dense) | $O(N^2)$ | $O(N^2)$ |
-| $N > 5\,000$, memory-limited | `matrixfree_efie_operator` + GMRES | $O(N)$ | $O(N^2)$ per iter |
-| $10\,000 < N \le 50\,000$ | `build_aca_operator` (ACA H-matrix) | $O(N \log^2 N)$ | $O(N \log^2 N)$ per iter |
-| $N > 50\,000$ | `build_mlfma_operator` (MLFMA) | sparse near-field + hierarchical data | $O(N \log N)$ per iter |
-| Need adjoint solve | All three support adjoint | --- | --- |
+| Requirement | Approach | Storage model | Matvec model |
+|-------------|----------|---------------|--------------|
+| Materialized entries or direct LU | `assemble_Z_efie` | $O(N^2)$ | $O(N^2)$ |
+| Avoid dense storage while retaining exact on-demand entries | `matrixfree_efie_operator` + GMRES | Geometry/cache data | $O(N^2N_q^2)$ per iteration |
+| Compress admissible far-field blocks | `build_aca_operator` | Problem- and rank-dependent | Problem- and rank-dependent |
+| Hierarchical multipole evaluation | `build_mlfma_operator` | Sparse near field plus hierarchical data | Expected $O(N\log N)$ under implementation assumptions |
+| Adjoint solve | All four representations support adjoint application | --- | --- |
 
-The `solve_scattering` high-level API selects automatically: dense-direct for $N \le 2\,000$, dense-GMRES for $N \le 10\,000$, ACA-GMRES for $10\,000 < N \le 50\,000$, and MLFMA for larger problems.
+With its current defaults, `solve_scattering(method=:auto)` dispatches to
+dense-direct through `N=2_000`, dense-GMRES through `N=10_000`, ACA-GMRES
+through `N=50_000`, and MLFMA above that. These configurable thresholds select
+code paths; benchmark before treating them as performance crossovers.
 
 ---
 
@@ -280,13 +289,13 @@ println("Adjoint GMRES: $(adj_stats.niter) iterations")
 
 1. **Memory calculation**: For $N = 15\,000$, compute the dense matrix storage in GiB. Then estimate the `EFIEApplyCache` storage (hint: dominant terms are `quad_pts` at $O(N_t \cdot N_q)$ and `rwg_vals` at $O(N \cdot N_q)$).
 
-2. **Matvec timing**: Create a matrix-free operator and a dense matrix for $N \approx 500$. Time `A * x` for both and compute the ratio. Explain why the matrix-free version is slower per matvec.
+2. **Matvec timing**: Create a matrix-free operator and a dense matrix for $N \approx 500$. Time `A * x` for both and compute the ratio. Relate the result to stored-entry reads and on-demand kernel evaluation.
 
 3. **Adjoint verification**: Verify `adjoint(A)[i,j] == conj(A[j,i])` for random index pairs, then check $\langle \mathbf{Z}^\dagger \mathbf{x}, \mathbf{y} \rangle = \langle \mathbf{x}, \mathbf{Z}\mathbf{y} \rangle$ for random vectors.
 
 4. **Preconditioner from operator**: Build a near-field preconditioner from a matrix-free operator and from a dense matrix for the same problem. Verify the resulting sparse matrices are identical entry-wise.
 
-5. **Crossover point**: Run problems with $N = 500, 1000, 2000, 5000$ using both dense-direct and matrix-free-GMRES. Plot total solve time versus $N$ and find the crossover.
+5. **Crossover point**: Run a sequence of increasing meshes using both dense-direct and matrix-free-GMRES. Plot total time and peak memory versus $N$ and identify the crossover on your hardware.
 
 ---
 
@@ -297,7 +306,7 @@ println("Adjoint GMRES: $(adj_stats.niter) iterations")
 - [ ] Construct a `MatrixFreeEFIEOperator` using `matrixfree_efie_operator`.
 - [ ] Use the operator for matvecs (`A * x`), entry queries (`A[m, n]`), and adjoint formation (`adjoint(A)`).
 - [ ] Explain the cost per entry ($O(N_q^2)$) and per matvec ($O(N^2 N_q^2)$).
-- [ ] Choose between dense, matrix-free, and ACA based on problem size and solver requirements.
+- [ ] Choose between dense, matrix-free, and ACA from measured memory, time, and accuracy requirements.
 - [ ] Integrate the matrix-free operator with `solve_gmres` and `build_nearfield_preconditioner`.
 
 ---

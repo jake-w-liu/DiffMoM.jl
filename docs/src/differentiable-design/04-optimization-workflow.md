@@ -44,7 +44,9 @@ The inverse‑design pipeline in `DiffMoM.jl` follows a standard projected L‑B
     7. Check stopping criteria → continue or exit
 ```
 
-Each iteration requires one forward solve and one (quadratic) or two (ratio) adjoint solves, plus inexpensive gradient contractions.
+Each gradient evaluation requires one forward solve and one adjoint solve for a
+quadratic objective, or two adjoint solves for a ratio objective. Backtracking
+can add multiple forward trial solves before a step is accepted.
 
 ### 1.2 Two Optimizer Entry Points
 
@@ -473,5 +475,5 @@ After studying this chapter, you should be able to:
 
 ---
 
-Continue to Part IV — Validation for internal consistency checks, gradient
+Continue to Part VI — Validation for internal consistency checks, gradient
 verification, and cross‑validation with external codes.

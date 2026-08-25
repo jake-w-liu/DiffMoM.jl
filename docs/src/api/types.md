@@ -262,11 +262,11 @@ The common supertype for all preconditioner data. Functions that accept precondi
 
 | Type | Strategy | When to use |
 |------|----------|-------------|
-| `NearFieldPreconditionerData` | Sparse LU of near-field entries | Default choice. Best convergence, moderate memory. |
-| `ILUPreconditionerData` | Incomplete LU (ILU) of near-field entries | Large N with moderate nnz%. Less fill than full LU, slightly more GMRES iters. |
-| `DiagonalPreconditionerData` | Jacobi (inverse diagonal) | Minimal memory and setup cost. Weaker convergence. |
-| `BlockDiagPrecondData` | Block-Jacobi from MLFMA leaf boxes | Fast to build, good for MLFMA. Each leaf box LU-factorized independently. |
-| `PermutedPrecondData` | Wrapped preconditioner with reordered BFs | MLFMA: reorder Z_near to block-banded form before ILU for better quality. |
+| `NearFieldPreconditionerData` | Sparse LU of near-field entries | Exact factorization of the retained sparse approximation. |
+| `ILUPreconditionerData` | Incomplete LU (ILU) of near-field entries | Controls factor fill with a drop tolerance. |
+| `DiagonalPreconditionerData` | Jacobi (inverse diagonal) | Stores and applies one inverse diagonal entry per unknown. |
+| `BlockDiagPrecondData` | Block-Jacobi from MLFMA leaf boxes | LU-factorizes each leaf-box diagonal block independently. |
+| `PermutedPrecondData` | Wrapped preconditioner with reordered BFs | Applies a basis permutation around another preconditioner. |
 
 ---
 
@@ -274,7 +274,9 @@ The common supertype for all preconditioner data. Functions that accept precondi
 
 Stores a factorized sparse approximation of the MoM matrix, used as a preconditioner for GMRES. The near-field preconditioner retains only entries `Z[m,n]` where basis functions `m` and `n` are within a cutoff distance, then LU-factorizes the resulting sparse matrix.
 
-This is the recommended approach for preconditioning dense EFIE systems: near-field interactions dominate the matrix structure, so a sparse near-field approximation captures the essential conditioning information.
+This representation keeps a distance-selected sparse approximation and applies
+its LU factorization. Whether it improves total solve time depends on cutoff,
+geometry, frequency, loading, and the Krylov tolerance.
 
 ```julia
 struct NearFieldPreconditionerData <: AbstractPreconditionerData
@@ -302,18 +304,11 @@ See [assembly-solve.md](assembly-solve.md) for all `build_nearfield_precondition
 
 **Choosing the cutoff distance:**
 
-The cutoff is specified in meters. It is typically expressed in wavelengths for physical intuition:
-
-| Cutoff | Sparsity | GMRES iters (impedance-loaded) | GMRES iters (PEC) | When to use |
-|--------|----------|------|------|------|
-| `0.5 * lambda0` | Very sparse | ~15 | 28--45 | Large problems, memory-limited |
-| `1.0 * lambda0` | Moderate | ~10 | 15--25 | Best balance of cost vs convergence |
-| `2.0 * lambda0` | Denser | ~8 | 10--15 | Aggressive convergence, smaller problems |
-
-Key properties:
-- Impedance-loaded EFIE: ~10 iterations with 1.0-lambda cutoff in tested cases, with weak growth over N = 96 to 736.
-- PEC EFIE: 28--45 iterations with 0.5-lambda cutoff (vs ~194 unpreconditioned at N = 736).
-- The preconditioner is built once and reused across all GMRES solves (forward, adjoint, line search in optimization).
+The cutoff is a nonnegative distance in meters. Expressing it in wavelengths
+can make sweeps easier to compare across frequencies, but no fixed value is a
+portable optimum. Record retained `nnz_ratio`, setup time, factor storage,
+iteration count, and checked true residual for each candidate. A constructed
+preconditioner can be reused while the underlying operator remains unchanged.
 
 ---
 
@@ -347,13 +342,17 @@ end
 P_diag = build_nearfield_preconditioner(Z_efie, mesh, rwg, 0.0; factorization=:diag)
 ```
 
-**When to use:** The diagonal preconditioner is useful as a baseline comparison or when memory for sparse LU is limited. It provides modest iteration reduction compared to unpreconditioned GMRES but is much weaker than the near-field sparse preconditioner.
+**When to use:** The diagonal form is a low-storage baseline. Compare its
+iteration count and total solve time with unpreconditioned and sparse-factor
+options on the target operator.
 
 ---
 
 ### `ILUPreconditionerData` -- Incomplete LU Preconditioner
 
-Stores an incomplete LU (ILU) factorization of the near-field sparse matrix, using IncompleteLU.jl's Crout ILU with drop tolerance `tau`. Compared to full sparse LU (`NearFieldPreconditionerData`), ILU has much less fill-in and is feasible for large N, at the cost of slightly more GMRES iterations.
+Stores an incomplete LU (ILU) factorization of the near-field sparse matrix,
+using IncompleteLU.jl's Crout ILU with drop tolerance `tau`. The resulting fill,
+factorization cost, and effect on GMRES are matrix-dependent.
 
 ```julia
 struct ILUPreconditionerData <: AbstractPreconditionerData
@@ -371,7 +370,7 @@ end
 | `ilu_fac` | `ILUFactorization{ComplexF64, Int64}` | Incomplete LU factorization. Applying the preconditioner solves the approximate system via forward/back substitution. |
 | `cutoff` | `Float64` | Distance cutoff in meters (or `Inf` when built from a pre-assembled sparse matrix). |
 | `nnz_ratio` | `Float64` | Fraction of nonzeros retained in the sparse near-field matrix. |
-| `tau` | `Float64` | Drop tolerance for ILU. Smaller `tau` = more fill = better preconditioner. |
+| `tau` | `Float64` | Nonnegative ILU drop tolerance. Its effect on fill and convergence is matrix-dependent. |
 
 **Constructor:**
 
@@ -381,13 +380,19 @@ P_ilu = build_nearfield_preconditioner(Z_efie, mesh, rwg, cutoff; factorization=
 P_ilu = build_nearfield_preconditioner(Z_near_sparse; factorization=:ilu, ilu_tau=1e-3)
 ```
 
-**When to use:** ILU is the recommended factorization for MLFMA-scale problems (N > 10k) where full sparse LU is too slow or memory-intensive. The drop tolerance `tau` controls the memory/quality trade-off (typical: `1e-3` for distance-based, `1e-2` for MLFMA-reordered).
+**When to use:** Consider ILU when an exact sparse LU exceeds the available
+setup or storage budget. Sweep `tau` and compare factor storage, setup time,
+iteration count, and checked true residual. The API defaults are `1e-3` for
+distance-based builders and `1e-2` for the MLFMA-reordered builder.
 
 ---
 
 ### `BlockDiagPrecondData` -- Block-Diagonal Preconditioner
 
-Block-diagonal (block-Jacobi) preconditioner built from MLFMA leaf boxes. Each leaf box contributes a small dense diagonal block from `Z_near`, which is LU-factorized independently. Very fast to build and memory-efficient.
+Block-diagonal (block-Jacobi) preconditioner built from MLFMA leaf boxes. Each
+leaf box contributes a dense diagonal block from `Z_near`, which is
+LU-factorized independently. Its setup cost and effectiveness depend on the
+leaf partition and operator.
 
 ```julia
 struct BlockDiagPrecondData <: AbstractPreconditionerData
@@ -464,7 +469,10 @@ end
 P_mlfma = build_mlfma_preconditioner(A_mlfma; factorization=:ilu, ilu_tau=1e-2)
 ```
 
-**When to use:** This is the recommended preconditioner for MLFMA. `build_mlfma_preconditioner` handles the reordering automatically; you do not need to construct `PermutedPrecondData` directly.
+**When to use:** `build_mlfma_preconditioner` constructs this wrapper when a
+reordered MLFMA near-field factorization is requested; callers normally do not
+construct `PermutedPrecondData` directly. Compare it with block-diagonal and
+unreordered alternatives on the target problem.
 
 ---
 
@@ -669,8 +677,8 @@ Compute a single EFIE matrix entry Z[m,n] from a `MatrixFreeEFIEOperator`. This 
 
 | Scenario | Recommended approach |
 |----------|---------------------|
-| N < ~5000 | Dense `assemble_Z_efie` (simpler, enables direct LU) |
-| N > ~5000, memory-limited | `matrixfree_efie_operator` + GMRES with NF preconditioner |
+| Materialized entries or direct LU required | Dense `assemble_Z_efie` |
+| Dense matrix exceeds the memory budget | `matrixfree_efie_operator` + GMRES, then measure convergence and runtime |
 | ACA H-matrix solve | Used internally by `build_aca_operator` |
 
 **Example:**

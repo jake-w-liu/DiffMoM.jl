@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Run a minimal end-to-end workflow in a few minutes:
+Run a minimal end-to-end workflow:
 mesh → RWG basis → EFIE solve → field postprocessing → objective.
 
 ---
@@ -101,7 +101,7 @@ This is the same `Q`-matrix objective form used by adjoint optimization.
 
 - **Forward/mesh fundamentals**: Part II.
 - **Adjoint + optimization**: Part III.
-- **Validation and benchmarks**: Part V.
+- **Validation and benchmarks**: Part VI.
 - **Runnable full workflows**: Tutorials section.
 
 ---

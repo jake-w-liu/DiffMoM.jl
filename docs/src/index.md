@@ -38,6 +38,7 @@ solve.
   - [Impedance Sensitivities](differentiable-design/02-impedance-sensitivities.md)
   - [Ratio Objectives](differentiable-design/03-ratio-objectives.md)
   - [Optimization Workflow](differentiable-design/04-optimization-workflow.md)
+  - [Multi-Angle RCS](differentiable-design/05-multiangle-rcs.md)
 - **Part IV — Methods**
   - [GMRES and Near-Field Preconditioning](methods/01-gmres-and-nf-preconditioning.md)
   - [ACA H-Matrix Compression](methods/02-aca-hmatrix-compression.md)

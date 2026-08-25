@@ -464,11 +464,20 @@ When the EFIE matrix is ill‑conditioned (low frequencies, fine meshes), both f
 
 ### 6.2 Avoiding Division by Zero
 
-The denominator $g$ is total radiated power, which is positive for any non‑zero current. The code computes the ratio directly as `J_ratio = f_val / g_val` without an explicit epsilon guard. In practice, $g > 0$ whenever the current vector is non‑zero (which is guaranteed after a successful forward solve). If numerical issues are suspected (e.g., extremely lossy sheets), monitor $g$ in the optimization trace and consider adding regularization.
+The denominator $g$ must be finite and strictly positive. A nonzero current
+does not establish that condition for an arbitrary positive-semidefinite
+`Q_total`, because the current can lie in its null space. The implementation
+checks the computed denominator and throws `DomainError` when the ratio is
+undefined; it does not replace $g$ with an epsilon floor.
 
 ### 6.3 Scaling of $f$ and $g$
 
-The implementation computes $f$ and $g$ directly as quadratic forms (`real(dot(I, Q * I))`) and forms the ratio $J = f/g$ without any additional scaling. For typical metasurface problems, the magnitudes of $f$ and $g$ are well within double‑precision range. If very large problems lead to overflow concerns, the user can pre‑scale the $\mathbf{Q}$ matrices externally before passing them to the optimizer.
+The implementation forms $f$ and $g$ from checked matrix-vector products and
+quadratic reductions. Ordinary finite inputs stay on the `Float64` path;
+range-sensitive products and reductions use the package's exact or
+high-precision fallback before the representable ratio is converted back to
+`Float64`. An unrepresentable result raises an error instead of being reported
+as a finite objective.
 
 ---
 

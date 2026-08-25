@@ -23,7 +23,7 @@ Goal: build numerical intuition before optimization.
 3. methods/01 (GMRES) → methods/05 (solve_scattering Workflow)
 4. Tutorial 02 (Adjoint gradient check)
 5. Tutorial 03 (Beam steering design)
-6. Part V — Validation
+6. Part VI — Validation
 
 Goal: trust gradients, then optimize.
 
@@ -59,7 +59,7 @@ Goal: implement custom workflows quickly.
 
 ## Path E: Validation-Focused Reviewer
 
-1. Part V — Validation
+1. Part VI — Validation
 2. Tutorial 04 (Sphere–Mie)
 3. validation/06 (Near/Total-Field Rayleigh Sphere)
 4. Tutorial 03 (Beam steering)

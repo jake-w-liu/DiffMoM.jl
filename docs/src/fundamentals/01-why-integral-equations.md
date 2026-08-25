@@ -168,7 +168,10 @@ For example, with $L = 1\ \text{m}$ and $h = 1\ \text{cm}$:
 - Volume: $N_{\text{vol}} \sim 100^3 = 10^6$ unknowns
 - Surface: $N_{\text{surf}} \sim 100^2 = 10^4$ unknowns
 
-The surface method reduces the unknown count by **one order of magnitude** in terms of $L/h$.
+In this dimensional model, the surface-to-volume unknown ratio scales as
+$h/L$. For the numerical example above, the estimates differ by a factor of
+100; constants and auxiliary-domain requirements depend on the methods being
+compared.
 
 ### 4.2 Why This Matters for High-Frequency Problems
 
@@ -303,14 +306,14 @@ where 16 bytes = 8 bytes for real part + 8 bytes for imaginary part (double prec
 - **Matrix-vector multiply:** $O(N^2)$ operations
 - **Iterative solve (GMRES/Krylov):** $O(kN^2)$ operations for $k$ iterations
 
-### 7.3 Practical Scaling Limits
+### 7.3 Resource planning
 
-For a typical workstation with 64 GB RAM:
-- Maximum $N \approx \sqrt{64\times 1024^3 / 16} \approx 65,\!000$
-- LU factorization time: $O((6.5\times 10^4)^3) \sim 2.7\times 10^{14}$ operations
-- At 100 GFLOP/s: $\sim 2.7\times 10^3$ seconds $\approx 45$ minutes
-
-This illustrates why dense MoM is practical for moderate-sized problems ($N < 10^4$) but requires acceleration techniques (FMM, FFT) or iterative methods for larger problems.
+The `16N^2` formula gives only the raw `ComplexF64` matrix payload. Dense
+assembly and factorization need additional workspace, and runtime depends on
+the matrix, implementation, and hardware. Before choosing a representation,
+calculate the payload, leave room for the rest of the process, and measure a
+representative assembly and solve. The package also provides matrix-free, ACA,
+and MLFMA paths when dense storage does not fit the target budget.
 
 ---
 

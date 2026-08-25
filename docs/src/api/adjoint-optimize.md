@@ -171,9 +171,9 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 | `maximize` | `Bool` | `false` | If `true`, maximize `J` instead of minimizing. Internally minimizes `-J`. |
 | `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on `theta` (projected L-BFGS-B). `nothing` = no lower bound. |
 | `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on `theta`. `nothing` = no upper bound. |
-| `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. Each iteration requires one forward solve + one adjoint solve + one line-search solve. |
+| `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. A gradient evaluation uses one forward and one adjoint solve; backtracking can add multiple forward trial solves. |
 | `tol` | `Float64` | `1e-10` | Gradient-norm convergence tolerance. The optimizer stops when `||g|| < tol`. |
-| `m_lbfgs` | `Int` | `10` | L-BFGS memory length (number of past gradient pairs stored). Higher values give better Hessian approximation but use more memory. 5--20 is typical. |
+| `m_lbfgs` | `Int` | `10` | Number of past gradient pairs retained. Larger values use more storage and can change convergence; compare traces on the target objective. |
 | `alpha0` | `Float64` | `0.01` | Initial step-size scaling for the first iteration. Subsequent step sizes are adapted by L-BFGS. |
 | `verbose` | `Bool` | `true` | Print iteration progress (iteration number, objective value, gradient norm). |
 

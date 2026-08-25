@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -21,11 +22,47 @@ import numpy as np
 
 def load_farfield_map(path: Path, value_key: str) -> Dict[Tuple[float, float], float]:
     data: Dict[Tuple[float, float], float] = {}
-    with path.open(newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            key = (float(row["theta_deg"]), float(row["phi_deg"]))
-            data[key] = float(row[value_key])
+    try:
+        with path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+    except (OSError, UnicodeError) as exc:
+        raise SystemExit(
+            f"Could not read far-field CSV {path}: {exc}. Regenerate the source "
+            "artifact, then rerun this plotter."
+        ) from exc
+    if reader.fieldnames is None or not rows:
+        raise SystemExit(
+            f"No far-field rows found in {path}. Regenerate the source artifact, "
+            "then rerun this plotter."
+        )
+    for row_number, row in enumerate(rows, start=2):
+        try:
+            theta = float(row["theta_deg"])
+            phi = float(row["phi_deg"])
+            value = float(row[value_key])
+        except KeyError as exc:
+            raise SystemExit(
+                f"Missing required column {exc.args[0]!r} in {path}. Regenerate "
+                "the source artifact with the expected schema."
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            raise SystemExit(
+                f"Invalid numeric value in {path} row {row_number}: {exc}. "
+                "Regenerate the source artifact with finite samples."
+            ) from exc
+        if not all(math.isfinite(number) for number in (theta, phi, value)):
+            raise SystemExit(
+                f"Non-finite numeric value in {path} row {row_number}. Regenerate "
+                "the source artifact with finite angular and directivity samples."
+            )
+        key = (round(theta, 6), round(phi, 6))
+        if key in data:
+            raise SystemExit(
+                f"Duplicate rounded angular key {key} in {path}. Regenerate the "
+                "source artifact with one sample per angular key."
+            )
+        data[key] = value
     return data
 
 
@@ -35,8 +72,9 @@ def build_common_arrays(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     keys = sorted(set(julia_map).intersection(bempp_map))
     if not keys:
-        raise RuntimeError(
-            "No common angular samples found between Julia and Bempp data."
+        raise SystemExit(
+            "No common rounded angular samples were found between the Julia and "
+            "Bempp data. Regenerate both files on the same angular grid."
         )
 
     theta = np.array([k[0] for k in keys], dtype=float)
@@ -83,11 +121,36 @@ def nearest_phi_cut(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     if n_phi <= 0:
         raise ValueError("n_phi must be positive")
+    if (
+        theta.ndim != 1
+        or phi.ndim != 1
+        or julia_vals.ndim != 1
+        or bempp_vals.ndim != 1
+        or theta.shape != phi.shape
+        or theta.shape != julia_vals.shape
+        or theta.shape != bempp_vals.shape
+        or theta.size == 0
+    ):
+        raise ValueError("cut inputs must be nonempty one-dimensional arrays of equal size")
+    if not all(
+        np.all(np.isfinite(values))
+        for values in (theta, phi, julia_vals, bempp_vals)
+    ):
+        raise ValueError("cut inputs must contain only finite values")
     phi_dist = np.abs(np.mod(phi + 180.0, 360.0) - 180.0)
     nearest_distance = float(np.min(phi_dist))
     mask = np.isclose(phi_dist, nearest_distance, atol=1e-9, rtol=0.0)
-    idx = np.argsort(theta[mask])
-    return theta[mask][idx], julia_vals[mask][idx], bempp_vals[mask][idx]
+    selected_theta = theta[mask]
+    selected_julia = julia_vals[mask]
+    selected_bempp = bempp_vals[mask]
+    unique_theta = np.unique(selected_theta)
+    cut_julia = np.empty_like(unique_theta, dtype=float)
+    cut_bempp = np.empty_like(unique_theta, dtype=float)
+    for index, angle in enumerate(unique_theta):
+        angle_mask = np.isclose(selected_theta, angle, atol=1e-9, rtol=0.0)
+        cut_julia[index] = float(np.mean(selected_julia[angle_mask]))
+        cut_bempp[index] = float(np.mean(selected_bempp[angle_mask]))
+    return unique_theta, cut_julia, cut_bempp
 
 
 def summarize_delta(delta: np.ndarray, julia_vals: np.ndarray) -> List[str]:
@@ -134,9 +197,17 @@ def main() -> None:
     bempp_csv = data_dir / f"bempp_{args.bempp_prefix}_farfield.csv"
 
     if not julia_csv.exists():
-        raise FileNotFoundError(f"Missing Julia far-field file: {julia_csv}")
+        raise SystemExit(
+            f"Missing Julia far-field file: {julia_csv}. Run "
+            "validation/bempp/run_impedance_case_julia_reference.jl with the same "
+            "prefix, then rerun this plotter."
+        )
     if not bempp_csv.exists():
-        raise FileNotFoundError(f"Missing Bempp far-field file: {bempp_csv}")
+        raise SystemExit(
+            f"Missing Bempp far-field file: {bempp_csv}. Run "
+            "validation/bempp/run_impedance_cross_validation.py with the same "
+            "prefix, then rerun this plotter."
+        )
 
     julia_map = load_farfield_map(julia_csv, "dir_julia_imp_dBi")
     bempp_map = load_farfield_map(bempp_csv, "dir_bempp_imp_dBi")

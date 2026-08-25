@@ -395,7 +395,10 @@ However, the **local support** of RWG basis functions still provides important b
 2. **Efficient geometric queries**: The mesh connectivity needed for assembly is limited to the two triangles per basis function.
 3. **Compatible with fast methods**: The same RWG discretization can be used with the package’s fast/operator-based pathways (e.g., matrix-free and MLFMA components) when dense assembly is too expensive.
 
-For moderate problems ($N \lesssim 10^4$), the direct $O(N^2)$ assembly is feasible and is the method implemented in the current version of `DiffMoM.jl`.
+`DiffMoM.jl` provides dense assembly as well as matrix-free, ACA, and MLFMA
+operators. Choose among them from measured memory, runtime, convergence, and
+observable accuracy on the target problem; no fixed `N` is a portable
+crossover.
 
 ---
 

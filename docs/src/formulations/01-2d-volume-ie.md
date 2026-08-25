@@ -288,7 +288,10 @@ The Mie tests confirm: the PEC surface field is nullified to $\sim10^{-6}$ (boun
 
 ## Worked Example
 
-The following self-contained script solves the VIE for a small dielectric cylinder, compares the scattered field to the Mie series at two grid resolutions, and runs the internal-consistency checks (free-space identity, $D$ symmetry, self-cell integral, Jacobian vs. finite differences). It runs in well under a second.
+The following self-contained script solves the VIE for a small dielectric
+cylinder, compares the scattered field to the Mie series at two grid
+resolutions, and runs the internal-consistency checks (free-space identity,
+$D$ symmetry, self-cell integral, and Jacobian versus finite differences).
 
 ```julia
 # Worked example: 2D Volume Integral Equation (TM polarization).
@@ -299,7 +302,7 @@ The following self-contained script solves the VIE for a small dielectric cylind
 using DiffMoM
 using LinearAlgebra
 
-# --- Problem setup (small; runs in well under a second) ---
+# --- Small problem setup ---
 freq   = 1e9
 c0     = 3e8
 lambda = c0 / freq

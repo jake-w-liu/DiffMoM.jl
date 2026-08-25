@@ -367,8 +367,8 @@ The following self-contained script reproduces the
 carves a small dielectric sphere out of a $7^3$ voxel box, solves the
 coupled-dipole system with matrix-free GMRES, and validates both the total
 induced dipole and the bistatic RCS against the analytic Rayleigh and exact
-dielectric-Mie references in the low-frequency limit. It runs in a few seconds
-with `julia --project`.
+dielectric-Mie references in the low-frequency limit. The bounded grid keeps
+the example suitable for an interactive run with `julia --project`.
 
 ```julia
 using DiffMoM

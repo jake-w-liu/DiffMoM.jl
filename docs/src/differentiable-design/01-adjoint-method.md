@@ -2,9 +2,20 @@
 
 ## Purpose
 
-This chapter explains the adjoint method for computing gradients of electromagnetic objectives with respect to impedance parameters. The adjoint method is the mathematical foundation that enables high‑dimensional inverse design in `DiffMoM.jl` by providing gradients at a computational cost that is **essentially independent** of the number of design variables. Unlike finite‑difference approximations that require $O(P)$ forward solves, the adjoint method requires only **one additional linear solve** per iteration (two for ratio objectives), regardless of $P$.
+This chapter explains the adjoint method for computing gradients of
+electromagnetic objectives with respect to impedance parameters. Unlike central
+finite differences, which require `2P` perturbed forward solves, the quadratic
+adjoint formulation adds one adjoint solve regardless of `P` (two for the ratio
+formulation). Parameter contractions still scale with the stored patch-matrix
+entries.
 
-**What makes this approach "differentiable"?** The key is that we compute **exact analytical derivatives** of the system matrix with respect to design parameters, not numerical approximations. By combining these analytical derivatives with the solution of an auxiliary (adjoint) linear system, we obtain gradients that are accurate to machine precision—enabling reliable gradient‑based optimization even with thousands of design variables.
+**What makes this approach "differentiable"?** The system-matrix derivatives
+with respect to design parameters are evaluated analytically rather than by
+finite differences. Combining them with an auxiliary adjoint solve gives every
+parameter derivative without one perturbed forward solve per parameter. The
+achieved gradient accuracy still depends on the forward/adjoint residuals and
+floating-point conditioning; use the package's finite-difference checks on the
+target problem.
 
 ---
 
@@ -186,7 +197,7 @@ For a quadratic objective, each optimization iteration requires:
 
 1. **One forward solve** for $\mathbf{I}$ (already needed to evaluate $J$).
 2. **One adjoint solve** for $\boldsymbol{\lambda}$ (same cost as a forward solve).
-3. **$P$ matrix‑vector contractions** of the form $\boldsymbol{\lambda}^\dagger \mathbf{M}_p \mathbf{I}$, each costing $O(N^2)$ operations (or less if $\mathbf{M}_p$ is sparse).
+3. **$P$ contractions** of the form $\boldsymbol{\lambda}^\dagger \mathbf{M}_p \mathbf{I}$. Their combined cost follows the stored nonzeros in the patch mass matrices.
 
 The total cost is therefore **$O(1)$ linear solves + $O(P)$ inner products**, independent of $P$ in the number of solves.
 
@@ -197,7 +208,10 @@ The total cost is therefore **$O(1)$ linear solves + $O(P)$ inner products**, in
 | Finite difference (central) | $2P$ | $0$ | $0$ | $O(P)$ |
 | Adjoint method | $1$ | $1$ | $P$ | $O(1)$ in solves |
 
-For typical metasurface problems with $P \sim 10^2–10^3$ patches, the adjoint method reduces the per‑iteration cost by **two to three orders of magnitude**, making gradient‑based optimization feasible.
+The solve count is the key difference: central differences need `2P` perturbed
+forward solves, whereas the adjoint calculation needs one forward and one
+adjoint solve. Actual wall-time savings also depend on factor reuse, sparse
+contraction cost, and solver convergence, so measure them on the target case.
 
 ### 3.3 Diagram: Adjoint Gradient Pipeline
 

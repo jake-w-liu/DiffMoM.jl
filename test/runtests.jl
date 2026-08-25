@@ -4640,7 +4640,7 @@ if err1 > 1e-15 && err2 > 1e-15
     # Rate should be near 2 for central differences (O(h²))
     @assert rate > 1.5 "FD convergence rate too low: $rate (expected ~2)"
 else
-    println("  Errors at machine precision — gradient is exact")
+    println("  Finite-difference comparison reached the floating-point error floor")
 end
 
 println("  PASS ✓")

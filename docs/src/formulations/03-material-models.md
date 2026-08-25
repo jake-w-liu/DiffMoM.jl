@@ -231,7 +231,12 @@ This polarizability is what the per-voxel solve returns in `res.alpha`, and it i
 
 ## 6. Worked Example
 
-The following script is fully self-contained. It builds every model type, evaluates the dispersive laws (and sweeps Drude passivity), and then feeds *evaluated* permittivities -- scalar and tensor -- into `solve_dda_3d` for a single voxel and a tiny $2\times2\times2$ grid. Run it with `julia --project=/path/to/DiffMoM.jl worked_example.jl`; it finishes in a few seconds and prints `ALL MATERIAL-MODEL CHECKS PASSED`.
+The following script is self-contained. It builds every model type, evaluates
+the dispersive laws (including a Drude passivity sweep), and feeds evaluated
+scalar and tensor permittivities into `solve_dda_3d` for one voxel and a small
+$2\times2\times2$ grid. Run it with
+`julia --project=/path/to/DiffMoM.jl worked_example.jl`; it prints
+`ALL MATERIAL-MODEL CHECKS PASSED` on success.
 
 ```julia
 using DiffMoM

@@ -2,7 +2,12 @@
 
 ## Purpose
 
-The MLFMA module provides an O(N log N) matrix-vector product for the EFIE system matrix, enabling iterative solution of large scattering problems that are too expensive for dense O(N^2) assembly. The MLFMA operator integrates with the existing GMRES/preconditioner infrastructure and is used automatically by `solve_scattering` for N > 50,000.
+The MLFMA module provides a hierarchical EFIE matrix-vector product with an
+expected `O(N log N)` cost under its sampling and tree-balance assumptions. It
+integrates with the GMRES/preconditioner infrastructure. With
+`solve_scattering`'s current default thresholds, `method=:auto` selects MLFMA
+when `N > 50_000`; the thresholds are configurable and are dispatch defaults,
+not hardware-independent crossover measurements.
 
 ---
 
@@ -220,12 +225,13 @@ Aggregation and disaggregation use per-azimuthal-mode (`m`) spectral filters bas
 
 ## Preconditioners for MLFMA
 
-See [assembly-solve.md](assembly-solve.md) for the full preconditioner API. The recommended options for MLFMA:
+See [assembly-solve.md](assembly-solve.md) for the full preconditioner API.
+MLFMA-compatible options include:
 
 | Builder | Type | When to use |
 |---------|------|-------------|
-| `build_mlfma_preconditioner(A; ilu_tau=1e-2)` | `PermutedPrecondData` wrapping `ILUPreconditionerData` | **Recommended.** Reorders Z_near for block-banded ILU. |
-| `build_block_diag_preconditioner(A; max_storage_bytes=536_870_912)` | `BlockDiagPrecondData` | Fast fallback when ILU is too slow; dense leaf-factor storage is preflighted. |
+| `build_mlfma_preconditioner(A; ilu_tau=1e-2)` | `PermutedPrecondData` wrapping `ILUPreconditionerData` | Reorders `Z_near` before ILU; compare fill, setup, and iterations. |
+| `build_block_diag_preconditioner(A; max_storage_bytes=536_870_912)` | `BlockDiagPrecondData` | Independently factors leaf blocks; dense leaf-factor storage is preflighted. |
 | `build_nearfield_preconditioner(A.Z_near; factorization=:ilu)` | `ILUPreconditionerData` | Direct ILU on Z_near without reordering. |
 
 ---

@@ -19,7 +19,12 @@ def parse_float_list(raw: str) -> List[float]:
         t = token.strip()
         if not t:
             continue
-        value = float(t)
+        try:
+            value = float(t)
+        except ValueError as exc:
+            raise ValueError(
+                f"Expected comma-separated numbers in --slot-wx-fracs, got {t!r}."
+            ) from exc
         if not math.isfinite(value):
             raise ValueError(f"Expected finite values in --slot-wx-fracs, got {t!r}.")
         vals.append(value)
@@ -143,7 +148,10 @@ def main() -> None:
     meep_script = meep_dir / "run_periodic_cross_validation.py"
     compare_script = meep_dir / "compare_periodic_to_julia.py"
 
-    wx_list = parse_float_list(args.slot_wx_fracs)
+    try:
+        wx_list = parse_float_list(args.slot_wx_fracs)
+    except ValueError as exc:
+        parser.error(str(exc))
     rows: List[Dict[str, Any]] = []
 
     for wx in wx_list:

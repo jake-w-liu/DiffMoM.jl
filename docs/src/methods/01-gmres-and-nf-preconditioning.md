@@ -2,7 +2,13 @@
 
 ## Purpose
 
-Dense Method of Moments (MoM) systems produce impedance matrices with $O(N^2)$ storage and $O(N^3)$ direct-solve cost, making LU factorization impractical for problems beyond a few thousand unknowns. This chapter introduces the GMRES iterative solver with near-field sparse preconditioning as implemented in `DiffMoM.jl`, which reduces the per-solve cost to $O(N^2)$ matvecs and often keeps iteration growth weak in practical regimes. The treatment covers the algorithm, the physics-based near-field preconditioner, the adjoint extension for gradient computation, and practical usage of the package API.
+Dense Method of Moments (MoM) systems produce impedance matrices with $O(N^2)$
+storage and $O(N^3)$ direct-factorization cost. This chapter introduces the
+GMRES iterative solver with near-field sparse preconditioning as implemented
+in `DiffMoM.jl`. A dense GMRES matvec remains $O(N^2)$; whether iteration
+reduces total cost depends on measured convergence and preconditioner setup for
+the target problem. The treatment covers the algorithm, preconditioner, adjoint
+extension, and package API.
 
 ---
 
@@ -10,9 +16,9 @@ Dense Method of Moments (MoM) systems produce impedance matrices with $O(N^2)$ s
 
 After this chapter, you should be able to:
 
-1. Explain why iterative methods are preferred over direct LU factorization for large MoM systems, and quantify the crossover point.
+1. Compare direct and iterative resource costs and measure their crossover for a target problem.
 2. Describe the GMRES algorithm for non-symmetric complex linear systems and the role of the Krylov subspace.
-3. Construct a near-field sparse preconditioner from the spatial decay of the Green's function, and explain why it often yields weak iteration growth with $N$.
+3. Construct a near-field sparse preconditioner and measure its effect on iteration growth.
 4. Distinguish left and right preconditioning and their implications for residual monitoring.
 5. Use the `solve_gmres`, `build_nearfield_preconditioner`, and `solve_gmres_adjoint` functions from the package API.
 6. Set up preconditioned adjoint solves for gradient-based impedance optimization.
@@ -29,26 +35,35 @@ The MoM discretization of the EFIE produces a dense impedance matrix $\mathbf{Z}
 - **Factorization**: $O(\tfrac{2}{3}N^3)$ floating-point operations.
 - **Back-substitution**: $O(N^2)$ per right-hand side.
 
-For a surface mesh at 10 points per wavelength on a $10\lambda \times 10\lambda$ plate, $N \approx 20{,}000$, leading to roughly 6 GiB of matrix storage and an LU factorization time on the order of minutes to hours on a single workstation. Doubling the problem size to $N = 40{,}000$ increases factorization time by a factor of 8.
+A dense `ComplexF64` matrix alone requires $16N^2$ payload bytes, before
+factorization storage and workspaces. Use the package's resource estimates and
+measure factorization time on the target machine; a universal wall-time
+crossover does not follow from asymptotic complexity.
 
 ### 1.2 Iterative Solvers: Trading Exact Factorization for Matvecs
 
 Iterative Krylov methods replace the single $O(N^3)$ factorization with a sequence of matrix-vector products (matvecs), each costing $O(N^2)$ for a dense matrix. If the solver converges in $m$ iterations, the total cost is $O(mN^2)$. The critical question is: **how does $m$ depend on $N$?**
 
-Without preconditioning, $m$ typically grows with $N$ (often $m \sim O(\sqrt{N})$ or worse for EFIE), erasing the advantage over direct solves. With a good preconditioner, $m$ can be made **independent of $N$**, yielding a true $O(N^2)$ solver.
+The iteration count $m$ depends on the spectrum, restart, tolerance, geometry,
+frequency, mesh, and preconditioner. Record it across the intended problem
+sequence; the implementation does not assume an `N`-independent value.
 
 ### 1.3 When to Switch from Direct to Iterative
 
-The package provides automatic method selection via `solve_scattering`, which uses the following heuristic:
+The package provides automatic method selection via `solve_scattering`. Its
+current default branch thresholds are:
 
 | Problem size $N$ | Recommended method | Rationale |
 |---|---|---|
-| $N \le 2{,}000$ | Dense direct (LU) | Factorization is fast; no preconditioner setup needed |
-| $2{,}000 < N \le 10{,}000$ | Dense GMRES + NF preconditioner | GMRES with $O(1)$ iterations beats $O(N^3)$ LU |
-| $10{,}000 < N \le 50{,}000$ | ACA H-matrix + NF-preconditioned GMRES | Dense storage itself becomes prohibitive |
-| $N > 50{,}000$ | MLFMA + NF-preconditioned GMRES | Hierarchical fast multipole scaling becomes necessary |
+| $N \le 2{,}000$ | Dense direct (LU) | First automatic branch |
+| $2{,}000 < N \le 10{,}000$ | Dense GMRES + NF preconditioner | Second automatic branch |
+| $10{,}000 < N \le 50{,}000$ | ACA H-matrix + preconditioned GMRES | Third automatic branch |
+| $N > 50{,}000$ | MLFMA + preconditioned GMRES | Fourth automatic branch |
 
-These thresholds are configurable via `dense_direct_limit`, `dense_gmres_limit`, and `mlfma_threshold`.
+These are configurable dispatch defaults, not performance guarantees. The
+`solve_scattering` docstring owns their exact values. Override `method` or the
+thresholds after measuring memory, setup, solve time, accuracy, and the true
+residual for the target workload.
 
 ### 1.4 Physical Insight: Spatial Decay of Interactions
 
@@ -58,7 +73,11 @@ The MoM impedance matrix has a distinctive structure rooted in the physics of th
 G(\mathbf{r}, \mathbf{r}') = \frac{e^{-ikR}}{4\pi R}, \qquad R = |\mathbf{r} - \mathbf{r}'|,
 ```
 
-which decays as $1/R$ with distance. Consequently, the matrix entries $Z_{mn}$ are large when basis functions $m$ and $n$ are close together (near-field) and small when they are far apart (far-field). This spatial decay is the key insight that makes near-field preconditioning effective: the "important" part of $\mathbf{Z}$ is sparse.
+whose scalar magnitude decays as $1/R$ with distance. A near-field
+preconditioner retains local interactions exactly and omits longer-range ones.
+That structure can improve conditioning, but oscillatory phase, geometry, and
+basis coupling prevent distance alone from guaranteeing entry ordering or
+convergence.
 
 ---
 
@@ -149,7 +168,10 @@ x, stats = Krylov.gmres(Z, b; M=M_left, rtol=1e-8)
 x, stats = Krylov.gmres(Z, b; N=M_right, rtol=1e-8)
 ```
 
-**Empirical observation for EFIE**: For the near-field sparse preconditioner, both left and right preconditioning yield the same iteration count in practice. The default in `DiffMoM.jl` is left preconditioning (`precond_side=:left`).
+The default is left preconditioning (`precond_side=:left`). Left and right
+preconditioning minimize different residuals, so their iteration counts need
+not match. Compare convergence history and the true physical residual for the
+target system.
 
 ---
 
@@ -181,7 +203,12 @@ Z_{mn}, & \text{if } |\mathbf{c}_m - \mathbf{c}_n| \le d_{\mathrm{cut}} \text{ o
 
 where $\mathbf{c}_m$ and $\mathbf{c}_n$ are the RWG centers. The diagonal is always retained.
 
-The number of nonzero entries in $\mathbf{Z}_{\mathrm{nf}}$ scales as $O(N \cdot n_{\mathrm{local}})$, where $n_{\mathrm{local}}$ is the average number of neighbors within the cutoff radius. For a fixed cutoff measured in wavelengths, $n_{\mathrm{local}}$ is independent of $N$ (assuming roughly uniform mesh density), making $\mathbf{Z}_{\mathrm{nf}}$ genuinely sparse.
+The number of nonzero entries in $\mathbf{Z}_{\mathrm{nf}}$ scales as
+$O(N \cdot n_{\mathrm{local}})$, where $n_{\mathrm{local}}$ is the average
+number of neighbors within the cutoff radius. It remains linear in `N` only
+when $n_{\mathrm{local}}$ stays bounded, such as growth by adding similarly
+resolved area. Refining a fixed physical region increases the number of basis
+functions inside a fixed-wavelength cutoff and can increase fill faster.
 
 ### 3.3 Factorization Strategies
 
@@ -203,12 +230,11 @@ Application cost is $O(N)$. This is much cheaper than sparse LU but less effecti
 
 The cutoff distance $d_{\mathrm{cut}}$ controls the trade-off between preconditioner quality and cost:
 
-| Cutoff | Typical nnz ratio | GMRES iters | Preconditioner cost |
-|---|---|---|---|
-| $0.5\lambda$ | 1--5% | 40--80 | Low |
-| $1.0\lambda$ | 5--15% | 15--30 | Moderate |
-| $2.0\lambda$ | 15--40% | 8--15 | High |
-| $\infty$ (full matrix) | 100% | 1 | $O(N^3)$ LU |
+| Cutoff change | Stored near-field entries | Likely tradeoff to measure |
+|---|---|---|
+| Decrease | Fewer | Cheaper setup/apply, potentially more iterations |
+| Increase | More | Costlier setup/apply, potentially fewer iterations |
+| $\infty$ | Full matrix | Exact factorization when supported; dense-like cost |
 
 Choose $d_{\mathrm{cut}}$ by measuring factorization cost, fill, iteration count,
 and the true residual on the target problem. In `solve_scattering`,
@@ -216,19 +242,16 @@ and the true residual on the target problem. In `solve_scattering`,
 and MLFMA reuse near-field structures stored by their operators. The
 [`solve_scattering` docstring](../api/exported-core.md) owns the exact default.
 
-### 3.5 Why Iteration Growth Is Often Weak
+### 3.5 What the Preconditioner Retains
 
-In tested regimes, near-field preconditioning substantially reduces GMRES
-iterations and often yields only weak growth with $N$ when the cutoff is held
-fixed in wavelengths. The physical reason is:
-
-1. The preconditioner $\mathbf{M} = \mathbf{Z}_{\mathrm{nf}}$ captures all interactions within $d_{\mathrm{cut}}$.
-2. The residual matrix $\mathbf{M}^{-1}\mathbf{Z} - \mathbf{I}$ has entries that are only nonzero for basis-function pairs separated by more than $d_{\mathrm{cut}}$.
-3. These far-field entries are small (order $1/(kd_{\mathrm{cut}})$ relative to the diagonal), so the eigenvalues of $\mathbf{M}^{-1}\mathbf{Z}$ cluster tightly around 1.
-4. As $N$ increases (finer mesh, same geometry), the number of local neighbors within $d_{\mathrm{cut}}$ stays nearly constant, while long-range interactions remain weaker after preconditioning.
-
-This is the hallmark of a **physics-based preconditioner**: it exploits spatial
-structure to mitigate iteration growth.
+The preconditioner $\mathbf{M} = \mathbf{Z}_{\mathrm{nf}}$ retains every
+interaction inside $d_{\mathrm{cut}}$ plus the diagonal. The preconditioned
+operator is
+$\mathbf{M}^{-1}\mathbf{Z} = \mathbf{I} +
+\mathbf{M}^{-1}(\mathbf{Z}-\mathbf{M})$.
+This decomposition motivates the method without asserting a spectral bound.
+Measure fill, factor stability, iterations, and true residual as the mesh or
+frequency changes.
 
 ### 3.6 Spatial Hashing for Efficient Neighbor Search
 
@@ -238,7 +261,9 @@ A naive search for all basis-function pairs within the cutoff distance costs $O(
 2. Hash each RWG center into its cell using $\texttt{key} = (\lfloor x/d_{\mathrm{cut}} \rfloor, \lfloor y/d_{\mathrm{cut}} \rfloor, \lfloor z/d_{\mathrm{cut}} \rfloor)$.
 3. For each basis function $m$, check only the 27 neighboring cells (the $3\times3\times3$ stencil) for candidates within the cutoff.
 
-Since each cell contains $O(1)$ basis functions (for uniform mesh density) and each basis function checks $O(1)$ cells, the total neighbor-search cost is $O(N)$.
+If occupancy and candidate checks per cell remain bounded, the neighbor search
+is O(N). Local refinement or a large cutoff can increase occupancy, so the
+implementation also enforces candidate-work and storage limits.
 
 ---
 
@@ -392,9 +417,9 @@ where $\mathbf{c}_{T_n^\pm}$ are the triangle centroids. These centers are used 
 
 ---
 
-## 5. $N$-Independent Iteration Counts: Theory and Demonstration
+## 5. Interpreting Iteration Growth
 
-### 5.1 Theoretical Basis
+### 5.1 Operator Decomposition
 
 Consider the preconditioned matrix $\tilde{\mathbf{Z}} = \mathbf{Z}_{\mathrm{nf}}^{-1}\mathbf{Z}$. We can decompose it as
 
@@ -402,24 +427,27 @@ Consider the preconditioned matrix $\tilde{\mathbf{Z}} = \mathbf{Z}_{\mathrm{nf}
 \tilde{\mathbf{Z}} = \mathbf{I} + \mathbf{Z}_{\mathrm{nf}}^{-1}(\mathbf{Z} - \mathbf{Z}_{\mathrm{nf}}) = \mathbf{I} + \mathbf{Z}_{\mathrm{nf}}^{-1}\mathbf{Z}_{\mathrm{ff}},
 ```
 
-where $\mathbf{Z}_{\mathrm{ff}} = \mathbf{Z} - \mathbf{Z}_{\mathrm{nf}}$ contains only the far-field entries. Since $\|\mathbf{Z}_{\mathrm{nf}}^{-1}\mathbf{Z}_{\mathrm{ff}}\|$ remains bounded as $N$ grows (because the far-field entries decay with distance and the near-field inverse is well-conditioned), the eigenvalues of $\tilde{\mathbf{Z}}$ cluster around 1 independently of $N$.
+where $\mathbf{Z}_{\mathrm{ff}} = \mathbf{Z} - \mathbf{Z}_{\mathrm{nf}}$
+contains the omitted interactions. This identity explains what the
+preconditioner removes, but it does not prove an `N`-independent spectrum:
+that would also require bounds on the inverse and omitted operator for the
+specific geometry, frequency, mesh family, and cutoff.
 
-### 5.2 Expected Iteration Counts
+### 5.2 Measure the Target Sequence
 
-Typical iteration counts observed with the near-field sparse preconditioner at cutoff $d_{\mathrm{cut}} = 1\lambda$:
+For a mesh sequence, record the unknown count, mesh-resolution rule, cutoff,
+near-field fill and factor storage, setup time, iteration count, solve time,
+and true residual. Weak iteration growth on one sequence is evidence for that
+sequence only; a frequency sweep, local refinement, or changed geometry can
+produce different conditioning.
 
-| $N$ (unknowns) | Unpreconditioned GMRES | NF-preconditioned GMRES |
-|---|---|---|
-| 500 | 80--120 | 20--30 |
-| 2,000 | 200--400 | 20--30 |
-| 5,000 | 500+ (stagnation) | 20--30 |
-| 10,000 | Does not converge | 20--30 |
+### 5.3 Compare Left and Right Preconditioning
 
-The unpreconditioned iteration count grows roughly as $O(\sqrt{N})$ or worse, while the preconditioned count remains essentially constant. This is the practical manifestation of the $N$-independence property.
-
-### 5.3 Left vs. Right: Same Iteration Count for EFIE
-
-An empirical observation specific to EFIE matrices is that **left and right preconditioning yield the same iteration count** when the near-field sparse preconditioner is used. This is because the near-field matrix captures the dominant conditioning behavior symmetrically. In practice, the choice between left and right preconditioning is therefore a matter of residual-monitoring preference rather than convergence speed.
+Left and right preconditioning solve related but different Krylov systems.
+Either can converge faster on a particular EFIE matrix. Use the same restart,
+tolerance, maximum iteration count, and preconditioner when comparing them,
+then verify both returned currents against the original unpreconditioned
+equation.
 
 ---
 
@@ -501,21 +529,23 @@ The near-field cutoff $d_{\mathrm{cut}}$ should be expressed in wavelengths:
 d_{\mathrm{cut}} = \alpha \cdot \lambda_0, \qquad \lambda_0 = \frac{2\pi}{k}.
 ```
 
-Recommended values:
-
-- **$\alpha = 0.5$**: Minimal preconditioner. Cheap to build and apply, but may require 40--80 GMRES iterations. Use for very large problems where factorization cost dominates.
-- **$\alpha = 1.0$**: The standard choice. Balances cost and convergence, typically 15--30 iterations. This is the default in `solve_scattering`.
-- **$\alpha = 2.0$**: Aggressive preconditioner. Fewest iterations (8--15), but the sparse matrix becomes denser and factorization is more expensive. Use when GMRES iteration cost (matvec) is the bottleneck.
+Start with the workflow's source-owned default when using
+`method=:dense_gmres`, then sweep $\alpha$ for the target problem. A larger
+cutoff retains more entries and can strengthen the preconditioner, but it also
+increases assembly, factorization, and storage cost. Report the effective
+cutoff with any timing or iteration result.
 
 ### 7.2 Factorization Choice
 
 | Factorization | Build cost | Apply cost | Best for |
 |---|---|---|---|
-| `:lu` (sparse LU) | $O(\mathrm{nnz}^{1.5})$ typical | $O(\mathrm{nnz})$ | $N \lesssim 50{,}000$; best convergence |
-| `:ilu` (incomplete LU) | lower than sparse LU (drop-tolerance controlled) | sparse triangular solves | Very large $N$ where full sparse LU is too costly |
-| `:diag` (Jacobi) | $O(N)$ | $O(N)$ | Very large $N$; memory-constrained |
+| `:lu` (sparse LU) | Fill- and ordering-dependent | Sparse triangular solves | Exact near-field factorization when its factors fit |
+| `:ilu` (incomplete LU) | Drop-tolerance-dependent | Sparse triangular solves | Lower-fill approximation to compare with LU |
+| `:diag` (Jacobi) | $O(N)$ | $O(N)$ | Lowest-storage baseline |
 
-The sparse LU factorization is performed by UMFPACK, which handles complex sparse matrices efficiently. For very large problems, ILU (`:ilu`) and diagonal (`:diag`) provide lower-cost alternatives.
+Sparse LU uses UMFPACK. Compare factor storage, setup time, application time,
+iterations, and true residual among LU, ILU, and diagonal modes; problem size
+alone does not select the best mode.
 
 ### 7.3 Operator Compatibility
 
@@ -794,7 +824,9 @@ gradient_impedance(Mp, I, lambda)
 
 ### Conceptual
 
-1. Explain physically why the near-field preconditioner achieves $N$-independent iteration counts while a diagonal (Jacobi) preconditioner does not. What property of the Green's function is being exploited?
+1. Explain why retaining near-field interactions can improve conditioning over
+   a diagonal (Jacobi) preconditioner. Which additional coupling does it retain,
+   and what measurements would establish how iteration count scales?
 
 2. Suppose you double the operating frequency while keeping the physical mesh fixed. What happens to (a) the number of unknowns $N$, (b) the near-field cutoff in meters for $\alpha = 1\lambda$, (c) the sparsity of $\mathbf{Z}_{\mathrm{nf}}$, and (d) the expected GMRES iteration count?
 
@@ -822,14 +854,14 @@ gradient_impedance(Mp, I, lambda)
 
 ## 11. Chapter Checklist
 
-- [ ] Explain why iterative methods become necessary for MoM problems with $N > 2{,}000$ and quantify the $O(N^3)$ vs. $O(mN^2)$ trade-off.
+- [ ] Compare the measured direct and iterative costs against the $O(N^3)$ and $O(mN^2)$ models.
 - [ ] Describe the GMRES algorithm: Krylov subspace, Arnoldi process, least-squares minimization, and convergence dependence on eigenvalue clustering.
 - [ ] Construct a near-field sparse preconditioner using `build_nearfield_preconditioner` with an appropriate cutoff in wavelengths.
 - [ ] Distinguish left preconditioning ($\mathbf{M}^{-1}\mathbf{Z}\mathbf{x} = \mathbf{M}^{-1}\mathbf{b}$) from right preconditioning ($\mathbf{Z}\mathbf{M}^{-1}\mathbf{y} = \mathbf{b}$) and their residual-monitoring implications.
-- [ ] Explain why near-field preconditioning often yields weak iteration growth with $N$ from the spatial decay of the Green's function.
+- [ ] Explain which interactions the near-field preconditioner retains and measure iteration growth over a defined problem sequence.
 - [ ] Use `solve_gmres` and `solve_gmres_adjoint` with a `NearFieldPreconditionerData` object for forward and adjoint solves.
 - [ ] Set up the adjoint preconditioner $\mathbf{Z}_{\mathrm{nf}}^{-\dagger}$ and verify that the same `P_nf` object is reused for both forward and adjoint directions.
-- [ ] Choose between `:lu`, `:ilu`, and `:diag` factorization modes based on problem size and memory constraints.
+- [ ] Choose between `:lu`, `:ilu`, and `:diag` from measured setup, storage, iteration, and residual results.
 - [ ] Diagnose GMRES convergence issues using `stats.niter` and `stats.residuals`, and apply appropriate remedies (increase cutoff, switch factorization, check mesh).
 - [ ] Locate the relevant source files: `src/solver/NearFieldPreconditioner.jl`, `src/solver/IterativeSolve.jl`, `src/solver/Solve.jl`, `src/optimization/Adjoint.jl`, `src/Workflow.jl`.
 

@@ -237,7 +237,12 @@ matching the dense block signs of Section 5.2. The dense $\hat{\mathbf{n}}\times
 
 ## 9. Worked Example
 
-The script below solves a lossy dielectric body in vacuum with both PMCHWT and Müller, on a tiny closed tetrahedron (4 triangles, $N=6$, system size $2N=12$) so it runs in seconds. It demonstrates the full workflow: building a closed-surface RWG basis, deriving the medium constants, solving both formulations, confirming the matrices are distinct yet yield the same currents, and matching the matrix-free GMRES path to the dense direct solve.
+The script below solves a lossy dielectric body in vacuum with both PMCHWT and
+Müller on a small closed tetrahedron (4 triangles, $N=6$, system size $2N=12$).
+It demonstrates the full workflow: building a closed-surface RWG basis,
+deriving the medium constants, solving both formulations, confirming that the
+matrices are distinct yet yield the same currents, and matching the matrix-free
+GMRES path to the dense direct solve.
 
 No exported closed-mesh generator exists, so the helper `oriented_tetrahedron_mesh` is inlined verbatim; it orients every face outward so the surface is genuinely closed. For a quantitative accuracy study you would use a refined closed surface such as an icosphere — see Section 10.
 
@@ -377,7 +382,10 @@ This subsystem has no standalone `validation/` script; its validation lives enti
 
 **`PMCHWT vs Muller currents agree (dielectric sphere)`** is the physics oracle. On a 1-subdivision icosphere, for two $(\varepsilon_{\text{int}}, \mu_{\text{int}})$ cases, it asserts the relative current mismatch $\text{relJ} < 1\%$ and $\text{relM} < 1\%$. The testset comment records that **without** the $\hat{\mathbf{n}}\times$ Gram identity term the mismatch is roughly 20–50% (over 100% for the magnetic current), confirming that the residue of Section 5 is essential for the two formulations to coincide. It also checks the Müller RHS-consistent residual ($< 10^{-10}$) and that the dense and matrix-free Müller operators are identical to $< 10^{-13}$.
 
-The worked example in Section 9 is the coarse-mesh counterpart: it runs in seconds on a 4-triangle tetrahedron and reproduces every qualitative property (distinct matrices, machine-precision residuals, GMRES matching direct), with the percent-level current agreement tightening toward the test's sub-1% bound under mesh refinement.
+The worked example in Section 9 is the coarse-mesh counterpart. Its 4-triangle
+tetrahedron reproduces the checked properties (distinct matrices, small
+residuals, and GMRES agreement with the direct solve); the current agreement is
+also checked on a refined mesh in the test suite.
 
 ---
 

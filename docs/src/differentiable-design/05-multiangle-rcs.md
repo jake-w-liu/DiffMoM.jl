@@ -4,7 +4,10 @@
 
 This chapter extends the single-objective optimization framework from Chapters 1--4 to **multi-angle monostatic RCS minimization**: simultaneously reducing backscatter radar cross section over multiple incidence angles. This is the core requirement for practical stealth and scattering control design, where a single-angle optimum often shifts energy to unprotected angles rather than truly reducing scattering.
 
-The chapter also covers the integration of **fast operators** (MLFMA, ACA) into the optimization loop via the `ImpedanceLoadedOperator` composite operator, enabling optimization of large-scale problems (N > 10,000) that are intractable with dense methods.
+The chapter also covers integrating ACA and MLFMA base operators into the
+optimization loop through `ImpedanceLoadedOperator`. These representations can
+reduce operator storage relative to a dense matrix; the practical crossover is
+problem- and hardware-dependent.
 
 ---
 
@@ -355,30 +358,26 @@ theta_opt, trace = optimize_multiangle_rcs(
 
 The `backscatter_cone` parameter controls the angular resolution of the RCS objective:
 
-| Cone half-angle | Effect | Use case |
-|-----------------|--------|----------|
-| 5 deg | Tight, precise backscatter | Fine grids, narrow-beam applications |
-| 10 deg (default) | Good balance | Most applications |
-| 20 deg | Broad, robust | Coarse grids, initial exploration |
-
-Larger cones are more robust to grid discretization but capture power from neighboring directions.
+The code default is 10 degrees. A larger cone includes more neighboring
+directions in the objective, while a smaller cone localizes the sampled region.
+Sweep the cone together with the spherical-grid resolution and verify the final
+pattern on an independently refined grid.
 
 ### 6.3 Number of Angles vs. Convergence
 
-More angles increase per-iteration cost linearly but improve the quality of the multi-angle objective. Typical guidelines:
-
-| Problem type | Recommended M | Notes |
-|-------------|---------------|-------|
-| Single-sector RCS | 2--4 | Cover the primary threat sector |
-| Hemisphere coverage | 6--12 | Uniform spacing over forward hemisphere |
-| Full-sphere coverage | 12--26 | Icosahedral or uniform grid on sphere |
+Each additional incidence angle adds its forward and adjoint work. Choose
+angles from the incidence domain the objective must cover, then refine the set
+until the held-out-angle response is stable. The number required depends on
+geometry, frequency, and how sharply the response varies with incidence.
 
 ### 6.4 Passive vs. Reactive Impedance
 
 - **Resistive (`reactive=false`):** Absorptive coatings. Physical, always passive for `theta >= 0`. Use `lb=0` for passivity.
 - **Reactive (`reactive=true`):** Lossless frequency-selective surfaces. Can redirect energy but not absorb it. Useful for RCS shaping rather than reduction.
 
-For pure RCS reduction, resistive loading with passivity constraints (`lb=0`) is the standard approach.
+For a resistive passive design in this parameterization, set `lb=0`. Reactive
+loading represents a different design constraint and should be judged by its
+full scattering pattern rather than absorption.
 
 ---
 
