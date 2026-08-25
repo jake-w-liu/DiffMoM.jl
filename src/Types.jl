@@ -214,13 +214,6 @@ const _LOCAL_MASS_FALLBACK_PRECISION = 6656
 @inline _local_mass_real_type(::Type{T}) where {T<:AbstractFloat} = T
 @inline _local_mass_real_type(::Type) = Float64
 
-@inline function _local_mass_component_scale(value::Number)
-    return max(
-        abs(Float64(real(value))),
-        abs(Float64(imag(value))),
-    )
-end
-
 @inline function _local_mass_finite(value::Number)
     return isfinite(real(value)) && isfinite(imag(value))
 end
@@ -400,22 +393,6 @@ end
         throw(OverflowError(
             "$label is outside the representable $T range at index $index"))
     return converted
-end
-
-@noinline function _local_mass_entry_bigfloat(
-        M::LocalMassMatrix{T},
-        i::Int,
-        j::Int) where {T<:Number}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
-        total = zero(Complex{BigFloat})
-        @inbounds for k in eachindex(M.vals)
-            if M.rows[k] == i && M.cols[k] == j
-                total += Complex{BigFloat}(M.vals[k])
-            end
-        end
-        return _local_mass_convert_bigfloat(
-            T, total, "LocalMassMatrix entry", (i, j))
-    end
 end
 
 function Base.getindex(M::LocalMassMatrix{T}, i::Int, j::Int) where {T<:Number}

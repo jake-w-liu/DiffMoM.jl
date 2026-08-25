@@ -58,16 +58,6 @@ function _assert_gmres_converged(stats, label::AbstractString; tol::Float64, max
           "final_residual=$resid, tol=$tol, maxiter=$maxiter")
 end
 
-function _assert_gmres_result(x::AbstractVector, stats, label::AbstractString;
-                              tol::Float64, maxiter::Int)
-    _assert_gmres_converged(stats, label; tol=tol, maxiter=maxiter)
-    @inbounds for i in eachindex(x)
-        isfinite(x[i]) ||
-            error("$label GMRES returned a non-finite solution component at index $i: $(x[i])")
-    end
-    return stats
-end
-
 @inline function _validate_gmres_options(tol::Float64, maxiter::Int,
                                          memory::Int, precond_side::Symbol)
     (isfinite(tol) && tol > 0.0) ||

@@ -959,24 +959,6 @@ function LinearAlgebra.mul!(result::AbstractVector{ComplexF64},
     return result
 end
 
-@noinline function _build_q_checked_into!(
-        result::Matrix{ComplexF64},
-        G_mat::Matrix{ComplexF64},
-        weights::Vector{Float64},
-        pol::Matrix{ComplexF64},
-        mask,
-        N::Int)
-    @inbounds for column in 1:N
-        for row in 1:column
-            value = _farfield_q_entry_bigfloat_arrays(
-                G_mat, weights, pol, mask, row, column)
-            result[row, column] = value
-            result[column, row] = conj(value)
-        end
-    end
-    return result
-end
-
 @noinline function _build_q_checked(
         G_mat::Matrix{ComplexF64},
         weights::Vector{Float64},

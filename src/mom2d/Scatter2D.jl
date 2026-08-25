@@ -6,36 +6,6 @@
 
 export scattered_field_2d, green_obs_matrix, jacobian_scattered_field_2d
 
-@noinline function _jacobian_scattered_field_high_precision_2d(
-        vr::VIEResult2D,
-        G_obs::Matrix{ComplexF64},
-        reciprocal_condition::Float64)
-    precision_bits = _vie_solve_fallback_precision_2d(
-        reciprocal_condition, "jacobian_scattered_field_2d")
-    return setprecision(BigFloat, precision_bits) do
-        Z_big = Complex{BigFloat}.(vr.Z)
-        sensitivity_transpose = ldiv!(
-            lu(Z_big), Complex{BigFloat}.(transpose(G_obs)))
-        k0_squared_area = BigFloat(vr.k0)^2 * BigFloat(vr.mesh.cell_area)
-        M, N = size(G_obs)
-        J = Matrix{ComplexF64}(undef, M, N)
-        @inbounds for p in 1:N
-            field = Complex{BigFloat}(vr.E_total[p])
-            for m in 1:M
-                value = k0_squared_area * field *
-                        sensitivity_transpose[p, m]
-                converted = ComplexF64(value)
-                isfinite(converted) ||
-                    throw(OverflowError(
-                        "jacobian_scattered_field_2d entry is outside the " *
-                        "representable ComplexF64 range at ($m, $p)."))
-                J[m, p] = converted
-            end
-        end
-        return J
-    end
-end
-
 """
     green_obs_matrix(r_obs, mesh, k0;
                      max_output_bytes=2_000_000_000)

@@ -950,17 +950,6 @@ end
     return scaled / scaled_norm
 end
 
-@inline function _mie_rcs_from_amplitude(fvec::CVec3,
-                                         label::AbstractString)
-    amplitude_norm = norm(fvec)
-    isfinite(amplitude_norm) ||
-        error("$label produced a non-finite scattering amplitude")
-    sigma = 4π * amplitude_norm * amplitude_norm
-    isfinite(sigma) ||
-        throw(OverflowError("$label is outside the representable Float64 range"))
-    return sigma
-end
-
 @noinline function _mie_rcs_from_scaled_components(
         first::ComplexF64, first_weight::Float64,
         second::ComplexF64, second_weight::Float64,

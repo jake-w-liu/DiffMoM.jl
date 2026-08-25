@@ -1949,13 +1949,6 @@ Evaluate a transverse plane wave at voxel centers:
 
     E_inc(r) = pol * E0 * exp(-i k_vec dot r)
 """
-@noinline function _planewave_phase_bigfloat_dda_3d(
-        k_vec::Vec3, center::Vec3, voxel::Int)
-    return _source_phase_exact(
-        1.0, k_vec, center, -1.0,
-        "DDA plane-wave phase at voxel $voxel")
-end
-
 function planewave_dda_3d(grid::VoxelGrid3D, k_vec::Vec3, E0, pol)
     khat = _normalized_real_direction_dda_3d(k_vec, "k_vec")
     polv = _as_cvec3(pol, "pol")

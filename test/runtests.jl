@@ -62,6 +62,7 @@ nonpublic_qualified_accesses = Set(
 )
 @test nonpublic_qualified_accesses ==
       Set(_NONPUBLIC_QUALIFIED_ACCESS_ALLOWLIST)
+@test Docs.hasdoc(DiffMoM, :planewave_dda_3d)
 
 include("test_runtime_contract.jl")
 

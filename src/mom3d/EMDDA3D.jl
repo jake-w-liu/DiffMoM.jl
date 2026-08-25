@@ -131,26 +131,6 @@ function _coerce_alpha6_3d(alpha6, n::Int)
     end
 end
 
-@inline function _scale6_matrix_3d(eta0::Float64)
-    isfinite(eta0) && eta0 > 0 ||
-        throw(ArgumentError("eta0 must be finite and positive, got $eta0."))
-    return SMatrix{6,6,ComplexF64,36}(ntuple(idx -> begin
-        row = mod1(idx, 6)
-        col = div(idx - 1, 6) + 1
-        row == col ? (row <= 3 ? 1.0 + 0im : eta0 + 0im) : 0.0 + 0im
-    end, 36))
-end
-
-@inline function _inv_scale6_matrix_3d(eta0::Float64)
-    isfinite(eta0) && eta0 > 0 ||
-        throw(ArgumentError("eta0 must be finite and positive, got $eta0."))
-    return SMatrix{6,6,ComplexF64,36}(ntuple(idx -> begin
-        row = mod1(idx, 6)
-        col = div(idx - 1, 6) + 1
-        row == col ? (row <= 3 ? 1.0 + 0im : (1 / eta0) + 0im) : 0.0 + 0im
-    end, 36))
-end
-
 @inline function _transform_normalized_alpha6_3d(
     alpha::_CMat6DDA,
     eta0::Float64,

@@ -128,14 +128,6 @@ end
            _aca_extreme_component(imag(value))
 end
 
-@inline function _aca_internal_product_requires_fallback(
-        value::ComplexF64)
-    real_scale = abs(real(value))
-    imag_scale = abs(imag(value))
-    return !isfinite(real_scale) || !isfinite(imag_scale) ||
-           max(real_scale, imag_scale) < floatmin(Float64)
-end
-
 function _aca_blocks_have_extreme_factor(
         dense_blocks::Vector{DenseBlock},
         lowrank_blocks::Vector{LowRankBlock})

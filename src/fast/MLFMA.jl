@@ -1205,47 +1205,6 @@ function _build_spectral_phi(src_nphi::Int, tgt_nphi::Int,
 end
 
 """
-Apply spectral filtering to a (4, npts_src) matrix using separated θ/φ filters.
-Used for aggregation (Lagrange interpolation child→parent).
-"""
-function _filter_2step(data::Matrix{ComplexF64},
-                        src::SphereSampling, tgt::SphereSampling,
-                        F_theta::Matrix{Float64}, F_phi::Matrix{Float64})
-    nθs, nφs = src.ntheta, src.nphi
-    nθt, nφt = tgt.ntheta, tgt.nphi
-
-    # Step 1: φ filtering (for each θ row)
-    mid = zeros(ComplexF64, 4, nθs, nφt)
-    for it in 1:nθs
-        for c in 1:4
-            for ip_tgt in 1:nφt
-                val = zero(ComplexF64)
-                for ip_src in 1:nφs
-                    val += F_phi[ip_tgt, ip_src] * data[c, (it - 1) * nφs + ip_src]
-                end
-                mid[c, it, ip_tgt] = val
-            end
-        end
-    end
-
-    # Step 2: θ filtering (for each φ column)
-    result = zeros(ComplexF64, 4, nθt * nφt)
-    for ip in 1:nφt
-        for c in 1:4
-            for it_tgt in 1:nθt
-                val = zero(ComplexF64)
-                for it_src in 1:nθs
-                    val += F_theta[it_tgt, it_src] * mid[c, it_src, ip]
-                end
-                result[c, (it_tgt - 1) * nφt + ip] = val
-            end
-        end
-    end
-
-    return result
-end
-
-"""
     associated_legendre_m_all(l_max, m, x)
 
 Compute P_l^m(x) for l = m, m+1, ..., l_max using stable upward recurrence.
@@ -2108,88 +2067,6 @@ function _apply_phase_shift!(data::Matrix{ComplexF64}, sampling::SphereSampling,
             data[c, q] *= phase
         end
     end
-end
-
-# ─── Two-step interpolation / anterpolation helpers ────────────
-
-"""
-Interpolate a (4, npts_src) matrix from source to target sampling.
-Applies φ interpolation first, then θ (matching MoM_Kernels convention).
-Data layout: (4, ntheta * nphi) with θ as the outer index.
-"""
-function _interp_2step(data::Matrix{ComplexF64},
-                        src::SphereSampling, tgt::SphereSampling,
-                        I_theta::SparseMatrixCSC{Float64,Int},
-                        I_phi::SparseMatrixCSC{Float64,Int})
-    nθs, nφs = src.ntheta, src.nphi
-    nθt, nφt = tgt.ntheta, tgt.nphi
-
-    # Step 1: φ interpolation (for each θ row)
-    mid = zeros(ComplexF64, 4, nθs, nφt)
-    for it in 1:nθs
-        for c in 1:4
-            src_row = [data[c, (it - 1) * nφs + ip] for ip in 1:nφs]
-            tgt_row = I_phi * src_row
-            for ip in 1:nφt
-                mid[c, it, ip] = tgt_row[ip]
-            end
-        end
-    end
-
-    # Step 2: θ interpolation (for each φ column)
-    result = zeros(ComplexF64, 4, nθt * nφt)
-    for ip in 1:nφt
-        for c in 1:4
-            src_col = [mid[c, it, ip] for it in 1:nθs]
-            tgt_col = I_theta * src_col
-            for it in 1:nθt
-                result[c, (it - 1) * nφt + ip] = tgt_col[it]
-            end
-        end
-    end
-
-    return result
-end
-
-"""
-Anterpolate (transpose interpolation) a (4, npts_src) matrix.
-Applies θ^T first, then φ^T (reverse order of interpolation, matching
-the standard MLFMA convention for disaggregation).
-"""
-function _anterp_2step(data::Matrix{ComplexF64},
-                        src::SphereSampling, tgt::SphereSampling,
-                        I_theta::SparseMatrixCSC{Float64,Int},
-                        I_phi::SparseMatrixCSC{Float64,Int})
-    nθs, nφs = src.ntheta, src.nphi
-    nθt, nφt = tgt.ntheta, tgt.nphi
-
-    # Step 1: θ^T anterpolation (for each φ column)
-    # I_theta is (nθ_coarse × nθ_fine), so I_theta' is (nθ_fine × nθ_coarse)
-    mid = zeros(ComplexF64, 4, nθt, nφs)
-    for ip in 1:nφs
-        for c in 1:4
-            src_col = [data[c, (it - 1) * nφs + ip] for it in 1:nθs]
-            tgt_col = I_theta' * src_col
-            for it in 1:nθt
-                mid[c, it, ip] = tgt_col[it]
-            end
-        end
-    end
-
-    # Step 2: φ^T anterpolation (for each θ row)
-    # I_phi is (nφ_coarse × nφ_fine), so I_phi' is (nφ_fine × nφ_coarse)
-    result = zeros(ComplexF64, 4, nθt * nφt)
-    for it in 1:nθt
-        for c in 1:4
-            src_row = [mid[c, it, ip] for ip in 1:nφs]
-            tgt_row = I_phi' * src_row
-            for ip in 1:nφt
-                result[c, (it - 1) * nφt + ip] = tgt_row[ip]
-            end
-        end
-    end
-
-    return result
 end
 
 # ─── Forward matvec ─────────────────────────────────────────────

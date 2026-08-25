@@ -101,40 +101,6 @@ end
     end
 end
 
-@noinline function _po_farfield_contribution_geometry_exact(
-    k::Float64,
-    amplitude::Float64,
-    projection::Vec3,
-    delta_k::Vec3,
-    p1::Vec3,
-    p2::Vec3,
-    p3::Vec3,
-    area::Float64,
-    triangle::Int,
-    direction::Int,
-)
-    return setprecision(BigFloat, _PO_PHASE_FALLBACK_PRECISION) do
-        vertices = sort((p1, p2, p3); by=Tuple)
-        canonical_p1, canonical_p2, canonical_p3 =
-            vertices[2], vertices[3], vertices[1]
-        integral = _phase_integral_analytical_big_value(
-            k, delta_k, canonical_p1, canonical_p2, canonical_p3,
-            area, 1e-5, 5)
-        scale = Complex{BigFloat}(0, 1) * BigFloat(k) *
-                BigFloat(amplitude) / BigFloat(2π)
-        value = CVec3(ntuple(component -> begin
-            converted = ComplexF64(
-                scale * BigFloat(projection[component]) * integral)
-            isfinite(converted) ||
-                throw(OverflowError(
-                    "PO far-field contribution is outside the ComplexF64 " *
-                    "range for triangle $triangle, direction $direction"))
-            converted
-        end, 3))
-        return value
-    end
-end
-
 @inline function _po_farfield_contribution(
     prefactor::ComplexF64,
     k::Float64,

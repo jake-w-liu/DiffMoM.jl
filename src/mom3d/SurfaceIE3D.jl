@@ -1268,15 +1268,6 @@ end
     return nothing
 end
 
-@noinline function _surface_sie_block_sum_bigfloat_3d(
-        A::MatrixFreeDielectricSIE3D,
-        row::Int,
-        electric_row::Bool)
-    pairs = _surface_sie_block_pairs_3d(A, row, electric_row)
-    output_row = electric_row ? row : length(A.tmp1) + row
-    return _surface_sie_pair_sum_bigfloat_3d(pairs, output_row, 0)
-end
-
 @inline function _surface_sie_block_pairs_3d(
         A::MatrixFreeDielectricSIE3D,
         row::Int,
