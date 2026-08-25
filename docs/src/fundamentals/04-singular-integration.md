@@ -204,13 +204,13 @@ with `omega_mu0 = k * eta0`.
 
 ---
 
-## 7. Current Scope and Limitations
+## 7. Supported Singularity Treatments
 
-1. **Implemented**: exact self-cell extraction for `tm == tn`.
-2. **Implemented**: adjacent-cell (edge-sharing) singularity subtraction with high-order inner quadrature.
-3. **Implemented**: full off-plane `analytical_integral_1overR` (Graglia 1993 / Wilton et al. 1984) with `arctan` correction terms. Works for both coplanar and non-coplanar triangle pairs.
-4. **Not special-cased**: vertex-touching (but non-edge-sharing) triangle pairs.
-5. **Not implemented**: dedicated near-singular quadrature for close but non-touching interactions, or Duffy-transform path.
+1. **Self cells**: exact singularity extraction for `tm == tn`.
+2. **Edge-sharing cells**: singularity subtraction with high-order inner quadrature.
+3. **Coplanar and non-coplanar cells**: full off-plane `analytical_integral_1overR` (Graglia 1993 / Wilton et al. 1984) with `arctan` correction terms.
+4. **Vertex-touching cells without a shared edge**: standard non-adjacent product quadrature.
+5. **Close, non-touching cells**: standard non-adjacent product quadrature; there is no dedicated near-singular or Duffy-transform branch.
 
 ---
 
