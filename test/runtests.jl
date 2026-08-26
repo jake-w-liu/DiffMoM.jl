@@ -5134,6 +5134,31 @@ Z_reg, v_reg, _ = prepare_conditioned_system(
     regularization_R=R_mass,
     preconditioner_M=nothing,
 )
+regularization_cancellation_alpha = nextfloat(1.0)
+regularization_cancellation_entry = nextfloat(1.0)
+regularization_cancellation_input = reshape(
+    ComplexF64[-regularization_cancellation_alpha *
+               regularization_cancellation_entry],
+    1,
+    1,
+)
+regularization_cancellation_matrix = reshape(
+    ComplexF64[regularization_cancellation_entry], 1, 1)
+regularization_cancellation_reference = setprecision(BigFloat, 256) do
+    ComplexF64(
+        Complex{BigFloat}(regularization_cancellation_input[1]) +
+        BigFloat(regularization_cancellation_alpha) *
+        Complex{BigFloat}(regularization_cancellation_matrix[1]))
+end
+regularization_cancellation_result = prepare_conditioned_system(
+    regularization_cancellation_input,
+    ComplexF64[1.0];
+    regularization_alpha=regularization_cancellation_alpha,
+    regularization_R=regularization_cancellation_matrix,
+)[1]
+@test regularization_cancellation_result[1] ==
+      regularization_cancellation_reference
+@test !iszero(regularization_cancellation_result[1])
 @test_throws DimensionMismatch prepare_conditioned_system(
     ones(ComplexF64, 2, 1), ComplexF64[1.0, 2.0])
 @test_throws ArgumentError prepare_conditioned_system(

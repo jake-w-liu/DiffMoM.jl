@@ -1809,9 +1809,7 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
                 "regularization_alpha is positive but regularization_R is nothing"))
         R = _validated_conditioning_matrix(
             regularization_R, N, "regularization_R")
-        @inbounds @simd for i in eachindex(Z_eff, R)
-            Z_eff[i] += regularization_alpha * R[i]
-        end
+        _add_scaled_matrix!(Z_eff, regularization_alpha, R)
         all(isfinite, Z_eff) ||
             error("regularized system matrix contains non-finite values")
     end
