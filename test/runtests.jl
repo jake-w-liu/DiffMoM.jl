@@ -5321,10 +5321,12 @@ end  # if isfile(convergence_study.csv)
 mie_validation_script = joinpath(
     @__DIR__, "..", "validation", "mie",
     "validate_dielectric_mie_dda.jl")
+mie_subprocess_load_path = join(
+    ("@", "@stdlib"), Sys.iswindows() ? ';' : ':')
 mie_boolean_stderr = IOBuffer()
 mie_boolean_command = addenv(
     `$(Base.julia_cmd()) --project=$(joinpath(@__DIR__, "..")) --startup-file=no $mie_validation_script`,
-    "JULIA_LOAD_PATH" => "@:@stdlib",
+    "JULIA_LOAD_PATH" => mie_subprocess_load_path,
     "DDA_MIE_EFFECTIVE_A" => "treu",
     "DDA_MIE_NSIDE" => "0",
 )
@@ -5347,7 +5349,7 @@ mie_artifact_names = (
 mktempdir() do output_directory
     output_command = addenv(
         `$(Base.julia_cmd()) --project=$(joinpath(@__DIR__, "..")) --startup-file=no $mie_validation_script`,
-        "JULIA_LOAD_PATH" => "@:@stdlib",
+        "JULIA_LOAD_PATH" => mie_subprocess_load_path,
         "DDA_MIE_EFFECTIVE_A" => "false",
         "DDA_MIE_NSIDE" => "3",
         "DDA_MIE_NTHETA" => "3",
