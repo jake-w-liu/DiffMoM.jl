@@ -42,6 +42,10 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+        with:
+          # No coverage artifact is consumed in this matrix. Julia 1.12's
+          # coverage-instrumented precompile exceeded an hour on Windows.
+          coverage: false
 
   docs:
     name: Documentation
