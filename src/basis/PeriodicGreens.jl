@@ -459,6 +459,108 @@ end
            _periodic_transverse_phase_exact(kx, ky, x, y)
 end
 
+@noinline function _periodic_spatial_image_phase_exact(
+        lattice::PeriodicLattice, m::Int, n::Int)
+    return setprecision(BigFloat, _PERIODIC_PHASE_FALLBACK_PRECISION) do
+        argument = BigFloat(lattice.kx_bloch) * BigFloat(m) *
+                   BigFloat(lattice.dx) +
+                   BigFloat(lattice.ky_bloch) * BigFloat(n) *
+                   BigFloat(lattice.dy)
+        ComplexF64(exp(Complex{BigFloat}(0, -argument)))
+    end
+end
+
+@inline function _periodic_spatial_image_phase(
+        lattice::PeriodicLattice,
+        m::Int,
+        n::Int,
+        sx::Float64=m * lattice.dx,
+        sy::Float64=n * lattice.dy)
+    if isfinite(sx) && isfinite(sy)
+        return _periodic_transverse_phase(
+            lattice.kx_bloch, lattice.ky_bloch, sx, sy)
+    end
+    return _periodic_spatial_image_phase_exact(lattice, m, n)
+end
+
+@noinline function _periodic_spatial_image_kernel_exact_distance(
+        drho_x::Float64,
+        drho_y::Float64,
+        drho_z::Float64,
+        m::Int,
+        n::Int,
+        lattice::PeriodicLattice)
+    return setprecision(BigFloat, _PERIODIC_PHASE_FALLBACK_PRECISION) do
+        offset_x = BigFloat(drho_x) -
+                   BigFloat(m) * BigFloat(lattice.dx)
+        offset_y = BigFloat(drho_y) -
+                   BigFloat(n) * BigFloat(lattice.dy)
+        offset_z = BigFloat(drho_z)
+        distance = sqrt(
+            offset_x * offset_x + offset_y * offset_y +
+            offset_z * offset_z)
+        iszero(distance) &&
+            throw(ArgumentError(
+                "periodic spatial image has zero exceptional distance"))
+
+        spatial_argument_big = BigFloat(lattice.E) * distance
+        phase_ratio_big =
+            (BigFloat(lattice.k) / BigFloat(lattice.E)) / 2
+        spatial_argument = Float64(spatial_argument_big)
+        phase_ratio = Float64(phase_ratio_big)
+        isinf(spatial_argument) && isfinite(phase_ratio) && return 0.0
+        (isfinite(spatial_argument) && isfinite(phase_ratio)) ||
+            throw(OverflowError(
+                "periodic Green exceptional spatial kernel arguments " *
+                "are outside the supported range"))
+
+        scaled_erfc_real = real(erfcx(
+            spatial_argument - im * phase_ratio))
+        isfinite(scaled_erfc_real) ||
+            throw(OverflowError(
+                "periodic Green exceptional spatial kernel is outside " *
+                "the representable range"))
+        iszero(scaled_erfc_real) && return 0.0
+        exponent = phase_ratio * phase_ratio -
+                   spatial_argument * spatial_argument
+        exponent == -Inf && return 0.0
+        isfinite(exponent) ||
+            throw(OverflowError(
+                "periodic Green exceptional spatial kernel is outside " *
+                "the representable range"))
+        numerator = exp(exponent) * scaled_erfc_real
+        iszero(numerator) && return 0.0
+        result = Float64(
+            BigFloat(numerator) /
+            (distance * BigFloat(4π)))
+        isfinite(result) ||
+            throw(OverflowError(
+                "periodic Green exceptional spatial kernel is outside " *
+                "the representable Float64 range"))
+        return result
+    end
+end
+
+@inline function _periodic_spatial_image_kernel(
+        drho_x::Float64,
+        drho_y::Float64,
+        drho_z::Float64,
+        m::Int,
+        n::Int,
+        lattice::PeriodicLattice,
+        sx::Float64=m * lattice.dx,
+        sy::Float64=n * lattice.dy)
+    if isfinite(sx) && isfinite(sy)
+        distance = hypot(
+            hypot(drho_x - sx, drho_y - sy), drho_z)
+        isfinite(distance) &&
+            return _ewald_spatial_kernel(
+                distance, lattice.k, lattice.E)
+    end
+    return _periodic_spatial_image_kernel_exact_distance(
+        drho_x, drho_y, drho_z, m, n, lattice)
+end
+
 @inline function _periodic_spectral_vertical_kernel(
         kz::ComplexF64,
         zk::ComplexF64,
@@ -729,17 +831,16 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             # Image displacement
             sx = m * dx
             sy = n * dy
-            (isfinite(sx) && isfinite(sy)) || continue
-            R_mn = hypot(
-                hypot(drho_x - sx, drho_y - sy), drho_z)
-            isfinite(R_mn) || continue
 
             # Ewald-damped spatial kernel (real-valued)
-            K_sp = _ewald_spatial_kernel(R_mn, kw, E)
+            K_sp = _periodic_spatial_image_kernel(
+                drho_x, drho_y, drho_z,
+                m, n, lattice, sx, sy)
             iszero(K_sp) && continue
 
             # Bloch phase: exp(-i k_∥ · R_mn)
-            phase = _periodic_transverse_phase(kx, ky, sx, sy)
+            phase = _periodic_spatial_image_phase(
+                lattice, m, n, sx, sy)
 
             val += phase * K_sp
         end

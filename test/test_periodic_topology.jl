@@ -436,7 +436,8 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
             1.0, 1.0, 2, 0)
         overflow_image_point = Vec3(0.0, 0.0, 0.0)
         # Independent finite Ewald decomposition after zero-kernel images are
-        # omitted; the m=±2 x shifts lie beyond the Float64 coordinate range.
+        # retained in the cache but omitted from the evaluated sum; the m=±2
+        # x shifts lie beyond the Float64 coordinate range.
         overflow_image_reference =
             -0.03648908496552651 + 0.07957747154594767im
         @test greens_periodic_correction(
@@ -448,7 +449,7 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         overflow_spatial_terms, overflow_spectral_terms =
             DiffMoM._build_periodic_ewald_terms(
                 overflow_image_lattice, 1)
-        @test length(overflow_spatial_terms) <
+        @test length(overflow_spatial_terms) ==
               DiffMoM._periodic_term_count(2) - 1
         @test DiffMoM._greens_periodic_correction_cached(
             overflow_image_point,
@@ -460,6 +461,74 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         ) == overflow_image_reference
         @test DiffMoM._periodic_transverse_phase(
             0.0, 0.0, Inf, -Inf) == 1.0 + 0im
+
+        # An overflowed image shift is not itself evidence that the Ewald
+        # kernel vanishes: a simultaneously small splitting parameter can
+        # leave E*R and the final 1/R contribution representable.
+        image_period = floatmax(Float64)
+        image_scale = 4.0
+        image_point = Vec3(0.0, 0.0, 0.0)
+        finite_overflow_lattice = PeriodicLattice(
+            image_period,
+            image_period,
+            5.0e-309,
+            0.0,
+            1.0e-308,
+            5.0e-309,
+            2,
+            0,
+        )
+        scaled_overflow_lattice = PeriodicLattice(
+            image_period / image_scale,
+            image_period / image_scale,
+            image_scale * 5.0e-309,
+            0.0,
+            image_scale * 1.0e-308,
+            image_scale * 5.0e-309,
+            2,
+            0,
+        )
+        finite_terms, finite_spectral =
+            DiffMoM._build_periodic_ewald_terms(
+                finite_overflow_lattice, 1)
+        scaled_terms, scaled_spectral =
+            DiffMoM._build_periodic_ewald_terms(
+                scaled_overflow_lattice, 1)
+        @test length(finite_terms) == length(scaled_terms) ==
+              DiffMoM._periodic_term_count(2) - 1
+        finite_public = greens_periodic_correction(
+            image_point,
+            image_point,
+            finite_overflow_lattice.k,
+            finite_overflow_lattice,
+        )
+        scaled_public = greens_periodic_correction(
+            image_point,
+            image_point,
+            scaled_overflow_lattice.k,
+            scaled_overflow_lattice,
+        ) / image_scale
+        finite_cached = DiffMoM._greens_periodic_correction_cached(
+            image_point,
+            image_point,
+            finite_overflow_lattice.k,
+            finite_overflow_lattice,
+            finite_terms,
+            finite_spectral,
+        )
+        scaled_cached = DiffMoM._greens_periodic_correction_cached(
+            image_point,
+            image_point,
+            scaled_overflow_lattice.k,
+            scaled_overflow_lattice,
+            scaled_terms,
+            scaled_spectral,
+        ) / image_scale
+        @test finite_public == finite_cached
+        @test abs(real(finite_public - scaled_public)) <= nextfloat(0.0)
+        @test imag(finite_public) == imag(scaled_public)
+        @test abs(real(finite_cached - scaled_cached)) <= nextfloat(0.0)
+        @test imag(finite_cached) == imag(scaled_cached)
     end
 
     # ── E: Call-site wavenumber must agree with the lattice ──

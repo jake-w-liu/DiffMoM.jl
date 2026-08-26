@@ -32,6 +32,8 @@ struct _PeriodicTriangleIncidence
 end
 
 struct _PeriodicSpatialEwaldTerm
+    m::Int
+    n::Int
     sx::Float64
     sy::Float64
     phase::ComplexF64
@@ -129,11 +131,10 @@ function _build_periodic_ewald_terms(
         iszero(m) && iszero(n) && continue
         sx = m * lattice.dx
         sy = n * lattice.dy
-        (isfinite(sx) && isfinite(sy)) || continue
-        phase = _periodic_transverse_phase(
-            lattice.kx_bloch, lattice.ky_bloch, sx, sy)
+        phase = _periodic_spatial_image_phase(
+            lattice, m, n, sx, sy)
         spatial_terms[spatial_idx] =
-            _PeriodicSpatialEwaldTerm(sx, sy, phase)
+            _PeriodicSpatialEwaldTerm(m, n, sx, sy, phase)
         spatial_idx += 1
     end
     resize!(spatial_terms, spatial_idx - 1)
@@ -177,10 +178,9 @@ function _greens_periodic_correction_cached(
     R_self = hypot(hypot(drho_x, drho_y), drho_z)
     value = ComplexF64(_ewald_self_correction(R_self, k, lattice.E))
     @inbounds for term in spatial_terms
-        R = hypot(
-            hypot(drho_x - term.sx, drho_y - term.sy), drho_z)
-        isfinite(R) || continue
-        spatial_value = _ewald_spatial_kernel(R, k, lattice.E)
+        spatial_value = _periodic_spatial_image_kernel(
+            drho_x, drho_y, drho_z,
+            term.m, term.n, lattice, term.sx, term.sy)
         iszero(spatial_value) && continue
         value += term.phase * spatial_value
     end
