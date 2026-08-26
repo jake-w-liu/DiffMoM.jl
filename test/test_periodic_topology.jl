@@ -3018,6 +3018,77 @@ println("\n── Test 42: PeriodicMetrics ──")
             kg, grounded_extreme_height) == grounded_extreme_phase
         grounded_incident = assemble_excitation(
             mesh_g, rwg_g, pw_g; quad_order=1)
+
+        grounded_cancellation_height = ldexp(1.0, -30) / kg
+        grounded_cancellation_factor = setprecision(BigFloat, 2304) do
+            ComplexF64(-expm1(Complex{BigFloat}(
+                0,
+                -2BigFloat(kg) *
+                BigFloat(grounded_cancellation_height),
+            )))
+        end
+        @test real(grounded_cancellation_factor) > 0.0
+        @test DiffMoM._grounded_interference_factor(
+            kg, grounded_cancellation_height) ==
+            grounded_cancellation_factor
+        grounded_cancellation_excitation = assemble_excitation_grounded(
+            mesh_g,
+            rwg_g,
+            pw_g,
+            kg,
+            lat_g;
+            height=grounded_cancellation_height,
+            quad_order=1,
+        )
+        grounded_cancellation_excitation_reference = setprecision(
+            BigFloat, 2304) do
+            ComplexF64[
+                ComplexF64(
+                    Complex{BigFloat}(grounded_cancellation_factor) *
+                    Complex{BigFloat}(value))
+                for value in grounded_incident
+            ]
+        end
+        @test grounded_cancellation_excitation ==
+              grounded_cancellation_excitation_reference
+
+        grounded_cancellation_modes, grounded_cancellation_current =
+            reflection_coefficients(
+                mesh_g,
+                rwg_g,
+                grounded_incident,
+                kg,
+                lat_g;
+                N_orders=0,
+                quad_order=1,
+            )
+        grounded_cancellation_ground_modes,
+        grounded_cancellation_reflection =
+            reflection_coefficients_grounded(
+                mesh_g,
+                rwg_g,
+                grounded_incident,
+                kg,
+                lat_g;
+                height=grounded_cancellation_height,
+                N_orders=0,
+                quad_order=1,
+            )
+        @test grounded_cancellation_ground_modes ==
+              grounded_cancellation_modes
+        grounded_cancellation_phase =
+            DiffMoM._grounded_round_trip_phase(
+                kg, grounded_cancellation_height)
+        grounded_cancellation_reflection_reference = setprecision(
+            BigFloat, 2304) do
+            ComplexF64(
+                Complex{BigFloat}(only(grounded_cancellation_current)) *
+                Complex{BigFloat}(grounded_cancellation_factor) -
+                Complex{BigFloat}(grounded_cancellation_phase))
+        end
+        @test only(grounded_cancellation_reflection) ==
+              grounded_cancellation_reflection_reference
+
         grounded_extreme_incident = assemble_excitation_grounded(
             mesh_g, rwg_g, pw_g, kg, lat_g;
             height=grounded_extreme_height, quad_order=1)

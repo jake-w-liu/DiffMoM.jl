@@ -315,6 +315,72 @@ end
     return _grounded_round_trip_phase_exact(vertical_wavenumber, height)
 end
 
+@noinline function _grounded_interference_factor_exact(
+    vertical_wavenumber::Float64,
+    height::Float64,
+)
+    return setprecision(BigFloat, _PERIODIC_RWG_PHASE_FALLBACK_PRECISION) do
+        ComplexF64(-expm1(Complex{BigFloat}(
+            0,
+            -2BigFloat(vertical_wavenumber) * BigFloat(height),
+        )))
+    end
+end
+
+@inline function _grounded_interference_factor(
+    vertical_wavenumber::Float64,
+    height::Float64,
+)
+    iszero(vertical_wavenumber) && return zero(ComplexF64)
+    phase = _grounded_round_trip_phase(vertical_wavenumber, height)
+    factor = one(ComplexF64) - phase
+    return _scaled_sum_requires_exact(one(ComplexF64), -phase, factor) ?
+        _grounded_interference_factor_exact(vertical_wavenumber, height) :
+        factor
+end
+
+@noinline function _grounded_reflection_component_exact(
+    current::ComplexF64,
+    factor::ComplexF64,
+    background_phase::ComplexF64,
+    background_projection::ComplexF64,
+    index,
+)
+    return setprecision(BigFloat, _PERIODIC_RWG_PHASE_FALLBACK_PRECISION) do
+        value = Complex{BigFloat}(current) * Complex{BigFloat}(factor) -
+                Complex{BigFloat}(background_phase) *
+                Complex{BigFloat}(background_projection)
+        _local_mass_convert_bigfloat(
+            ComplexF64, value, "grounded reflection coefficient", index)
+    end
+end
+
+@inline function _grounded_reflection_component(
+    current::ComplexF64,
+    factor::ComplexF64,
+    background_phase::ComplexF64,
+    background_projection::ComplexF64,
+    index,
+)
+    image = current * factor
+    background = background_phase * background_projection
+    value = image - background
+    requires_exact =
+        !isfinite(value) ||
+        _source_product_requires_exact(current, factor, image) ||
+        _source_product_requires_exact(
+            background_phase, background_projection, background) ||
+        _scaled_sum_requires_exact(image, -background, value)
+    return requires_exact ?
+        _grounded_reflection_component_exact(
+            current,
+            factor,
+            background_phase,
+            background_projection,
+            index,
+        ) : value
+end
+
 function _validated_grounded_plane_wave(
         pw,
         k::Float64,
@@ -366,8 +432,17 @@ function assemble_excitation_grounded(mesh::TriMesh, rwg::RWGData, pw, k,
     h = _validated_ground_height(height)
     vertical_wavenumber = _validated_grounded_plane_wave(pw, kw, lattice)
     v_inc = assemble_excitation(mesh, rwg, pw; quad_order=quad_order)
-    factor = 1 - _grounded_round_trip_phase(vertical_wavenumber, h)
-    v_grounded = factor .* v_inc
+    factor = _grounded_interference_factor(vertical_wavenumber, h)
+    v_grounded = similar(v_inc)
+    @inbounds for index in eachindex(v_inc)
+        v_grounded[index] = _checked_number_product(
+            ComplexF64,
+            factor,
+            v_inc[index],
+            "grounded excitation",
+            index,
+        )
+    end
     all(isfinite, v_grounded) ||
         throw(OverflowError(
             "grounded excitation contains entries outside the " *
@@ -395,16 +470,22 @@ function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
     modes, R_cur = reflection_coefficients(mesh, rwg, I, kw, lattice; kwargs...)
     kzi = _kz_inc(kw, lattice)
     R_g = similar(R_cur)
+    background_phase = _grounded_round_trip_phase(kzi, h)
     for (i, m) in enumerate(modes)
         # Use real(m.kz): evanescent orders store kz = i·β (positive imaginary), so
         # exp(-2im·kz·h) = exp(2βh) overflows and 0·Inf = NaN (R_cur is 0 there).
         # The image phase delay is governed by the real vertical wavenumber; this
         # matches reflection_coefficient_vectors_grounded.
-        R_g[i] = R_cur[i] *
-                 (1 - _grounded_round_trip_phase(real(m.kz), h))
-        if m.m == 0 && m.n == 0
-            R_g[i] -= _grounded_round_trip_phase(kzi, h)
-        end
+        factor = _grounded_interference_factor(real(m.kz), h)
+        background_projection = m.m == 0 && m.n == 0 ?
+            one(ComplexF64) : zero(ComplexF64)
+        R_g[i] = _grounded_reflection_component(
+            R_cur[i],
+            factor,
+            background_phase,
+            background_projection,
+            i,
+        )
     end
     all(isfinite, R_g) ||
         throw(OverflowError(
@@ -431,17 +512,21 @@ function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I,
     _validate_periodic_polarization(pol)
     modes, R_cur = reflection_coefficient_vectors(mesh, rwg, I, kw, lattice; kwargs...)
     kzi = _kz_inc(kw, lattice)
-    R_g = copy(R_cur)
+    R_g = similar(R_cur)
+    background_phase = _grounded_round_trip_phase(kzi, h)
     for (i, m) in enumerate(modes)
-        R_g[i] = R_cur[i] *
-                 (1 - _grounded_round_trip_phase(real(m.kz), h))
-        if m.m == 0 && m.n == 0
-            pol_mode = _mode_transverse_projection(pol, m, kw)
-            if !isnothing(pol_mode)
-                R_g[i] -= _grounded_round_trip_phase(kzi, h) .*
-                          ComplexF64.(pol_mode)
-            end
-        end
+        factor = _grounded_interference_factor(real(m.kz), h)
+        pol_mode = m.m == 0 && m.n == 0 ?
+            _mode_transverse_projection(pol, m, kw) : nothing
+        R_g[i] = CVec3(ntuple(component ->
+            _grounded_reflection_component(
+                R_cur[i][component],
+                factor,
+                background_phase,
+                isnothing(pol_mode) ? zero(ComplexF64) :
+                    ComplexF64(pol_mode[component]),
+                (i, component),
+            ), 3))
     end
     all(vector -> all(isfinite, vector), R_g) ||
         throw(OverflowError(
