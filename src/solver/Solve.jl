@@ -1885,6 +1885,11 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
     (isfinite(regularization_alpha) && regularization_alpha >= 0.0) ||
         throw(ArgumentError(
             "regularization_alpha must be finite and nonnegative, got $regularization_alpha"))
+    if iszero(regularization_alpha) &&
+       preconditioner_M === nothing &&
+       preconditioner_factor === nothing
+        return Z_raw, rhs, nothing
+    end
     Z_eff = Matrix{ComplexF64}(Z_raw)
     rhs_eff = Vector{ComplexF64}(rhs)
     R = nothing

@@ -5234,6 +5234,14 @@ println("  Auto preconditioning (low threshold): enabled=$enabled_auto_on ($reas
 @assert enabled_auto_on
 @assert M_auto_on !== nothing
 
+# With conditioning disabled, preserve the documented no-op identity and avoid
+# allocating copies of the full system and RHS.
+Z_unconditioned, v_unconditioned, factor_unconditioned =
+    prepare_conditioned_system(Z_raw, v)
+@test Z_unconditioned === Z_raw
+@test v_unconditioned === v
+@test factor_unconditioned === nothing
+
 # Left-preconditioned system should preserve the same solution
 Z_pre, v_pre, fac_pre = prepare_conditioned_system(
     Z_raw,
