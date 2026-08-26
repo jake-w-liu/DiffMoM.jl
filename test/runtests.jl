@@ -10694,8 +10694,16 @@ workflow_expected_cutoff = round(c0 / freq, sigdigits=3)
     workflow_dense_gmres_output,
 )
 @test !occursin("source=ACA inadmissible blocks", workflow_dense_gmres_output)
+# The workflow converts frequency with its canonical helper. That result can
+# differ by one ulp from `2π / (c0 / freq)`, so reconstruct the selected
+# operator instead of testing metadata against the earlier manual matrix.
+workflow_k = DiffMoM._frequency_to_wavenumber(
+    freq, c0, "workflow metadata oracle")
+workflow_Z = assemble_Z_efie(
+    mesh, rwg, workflow_k;
+    quad_order=3, eta0=eta0, mesh_precheck=false)
 @test result_dgm.gmres_residual == DiffMoM._true_residual_ratio(
-    Z_efie,
+    workflow_Z,
     result_dgm.I_coeffs,
     Vector{ComplexF64}(v),
     "workflow metadata regression",
@@ -10729,7 +10737,7 @@ result_dgm_partial = solve_scattering(
 )
 @test result_dgm_partial.gmres_iters == 1
 @test result_dgm_partial.gmres_residual == DiffMoM._true_residual_ratio(
-    Z_efie,
+    workflow_Z,
     result_dgm_partial.I_coeffs,
     Vector{ComplexF64}(v),
     "workflow partial metadata regression",
