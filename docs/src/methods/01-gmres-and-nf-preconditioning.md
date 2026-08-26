@@ -378,6 +378,7 @@ Key behavior:
 - If `preconditioner === nothing`, calls `Krylov.gmres(Z, rhs)` without preconditioning.
 - If `precond_side == :left`, wraps the preconditioner as a `NearFieldOperator` and passes it as the `M` keyword to `Krylov.gmres`.
 - If `precond_side == :right`, passes it as the `N` keyword instead.
+- Krylov runs with `restart=true`; `memory` is the restart length and bounds the retained Arnoldi basis.
 - The `tol` parameter maps to Krylov.jl's `rtol` (relative tolerance) with `atol=0.0`.
 - The returned vector must also satisfy the unpreconditioned true-residual gate
   by default; Krylov's preconditioned status alone is not sufficient.

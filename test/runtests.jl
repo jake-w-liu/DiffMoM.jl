@@ -7765,6 +7765,29 @@ rel_adj_nop = norm(lam_gmres_nop - lam_gm_direct) / max(norm(lam_gm_direct), 1e-
 println("  GMRES adjoint (no precond) rel error: $rel_adj_nop  iters: $(stats_adj_nop.niter)")
 @assert rel_adj_nop < 1e-6
 
+bounded_restart_matrix = Matrix(Diagonal(
+    ComplexF64.(range(1.0, 2.0; length=8))))
+bounded_restart_rhs = ones(ComplexF64, 8)
+bounded_restart_bytes = DiffMoM._gmres_workspace_bytes(8, 1)
+for (gmres_solver, residual_operator) in (
+    (solve_gmres, bounded_restart_matrix),
+    (solve_gmres_adjoint, adjoint(bounded_restart_matrix)),
+)
+    bounded_solution, bounded_stats = gmres_solver(
+        bounded_restart_matrix,
+        bounded_restart_rhs;
+        memory=1,
+        maxiter=500,
+        tol=1e-10,
+        max_workspace_bytes=bounded_restart_bytes,
+    )
+    @test bounded_stats.solved
+    @test bounded_stats.niter > 1
+    @test norm(
+        residual_operator * bounded_solution - bounded_restart_rhs) /
+        norm(bounded_restart_rhs) <= 1e-8
+end
+
 # Krylov's internal absolute breakdown threshold must not classify a globally
 # tiny, perfectly conditioned system as an inconsistent least-squares solve.
 for tiny_gmres_scale in (1e-200, 1e-300, nextfloat(0.0))

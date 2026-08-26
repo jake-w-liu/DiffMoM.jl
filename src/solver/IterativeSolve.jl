@@ -918,6 +918,9 @@ If `preconditioner` is an `AbstractPreconditionerData`, it is applied via:
 - `precond_side=:left` (default): left preconditioner M in Krylov.gmres
 - `precond_side=:right`: right preconditioner N in Krylov.gmres
 
+GMRES is restarted after `memory` inner iterations, so the preflighted Krylov
+basis size remains an actual workspace bound rather than an allocation hint.
+
 Returns `(x, stats)` where `stats` is the Krylov.jl convergence info.
 By default, an unconverged, non-finite, or excessive true-residual result throws.
 Set both checks to `false` only when intentionally inspecting a partial iterate
@@ -954,6 +957,7 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
     if preconditioner === nothing
         x, stats = Krylov.gmres(scaled_Z, scaled_rhs;
                                  memory=memory,
+                                 restart=true,
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
@@ -962,6 +966,7 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
         x, stats = Krylov.gmres(scaled_Z, scaled_rhs;
                                  N=N_op,
                                  memory=memory,
+                                 restart=true,
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
@@ -970,6 +975,7 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
         x, stats = Krylov.gmres(scaled_Z, scaled_rhs;
                                  M=M,
                                  memory=memory,
+                                 restart=true,
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
@@ -994,6 +1000,9 @@ end
                         true_residual_factor=100.0)
 
 Solve Z† x = rhs using GMRES, with the adjoint preconditioner Z_nf⁻ᴴ.
+
+The adjoint solve uses the same restarted `memory` workspace contract as the
+forward solve.
 
 This is used for the adjoint linear system in sensitivity analysis:
   Z†(θ) λ = ∂Φ/∂I*
@@ -1031,6 +1040,7 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
     if preconditioner === nothing
         x, stats = Krylov.gmres(adjoint(scaled_Z), scaled_rhs;
                                  memory=memory,
+                                 restart=true,
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
@@ -1039,6 +1049,7 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
         x, stats = Krylov.gmres(adjoint(scaled_Z), scaled_rhs;
                                  N=N_adj,
                                  memory=memory,
+                                 restart=true,
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
@@ -1047,6 +1058,7 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
         x, stats = Krylov.gmres(adjoint(scaled_Z), scaled_rhs;
                                  M=M_adj,
                                  memory=memory,
+                                 restart=true,
                                  rtol=tol, atol=0.0,
                                  itmax=maxiter,
                                  verbose=(verbose ? 1 : 0))
