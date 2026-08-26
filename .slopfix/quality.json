@@ -23,9 +23,7 @@
       "timeout_seconds": 3600,
       "capture": "tail",
       "protect_paths": [
-        "JuliaManifest.toml",
         "JuliaProject.toml",
-        "Manifest.toml",
         "Project.toml"
       ]
     },
