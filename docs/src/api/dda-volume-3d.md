@@ -397,7 +397,7 @@ field at voxel centers.
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
 | `verbose` | `Bool` | `false` | Print GMRES progress. |
-| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES result instead of returning a partial field. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject Krylov failure, a non-finite field, or an excessive unpreconditioned true residual instead of returning a partial field. |
 
 **Returns:** `DDAResult3D`.
 
@@ -674,7 +674,7 @@ scattered-field and far-field post-processing.
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
 | `verbose` | `Bool` | `false` | Print GMRES progress. |
-| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite `:gmres`/`:fft_gmres` result. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject Krylov failure, a non-finite field, or an excessive unpreconditioned true residual for `:gmres`/`:fft_gmres`. |
 
 **Returns:** `EMDDAResult3D`.
 
@@ -955,7 +955,7 @@ available. It does not materialize a matrix-free forward operator: use
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
 | `verbose` | `Bool` | `false` | Print GMRES progress. |
-| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES adjoint. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject Krylov failure, a non-finite adjoint, or an excessive unpreconditioned true residual. |
 
 **Returns:** `Vector{ComplexF64}` adjoint variable `lambda` of length `3*nvoxels`.
 

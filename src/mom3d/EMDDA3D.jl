@@ -861,6 +861,7 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
             maxiter=maxiter,
             verbose=verbose,
             check_gmres_convergence=check_gmres_convergence,
+            check_true_residual=check_gmres_convergence,
         )
         E_total, H_total = _unflatten_em_fields_3d(total_flat, grid.nvoxels)
         E_rhs, H_rhs = _unflatten_em_fields_3d(rhs, grid.nvoxels)

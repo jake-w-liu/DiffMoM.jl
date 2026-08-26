@@ -1580,6 +1580,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
             maxiter=maxiter,
             verbose=verbose,
             check_gmres_convergence=check_gmres_convergence,
+            check_true_residual=check_gmres_convergence,
         )
         J, M = _split_surface_currents_3d(x, rwg.nedges)
         return DielectricSIEResult3D(copy(J), copy(M), A, rhsv, nothing,

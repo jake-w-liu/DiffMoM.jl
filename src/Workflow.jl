@@ -311,21 +311,24 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             I_coeffs, stats = solve_gmres(Z, v;
                                            preconditioner=P_nf,
                                            tol=gmres_tol, maxiter=gmres_maxiter,
-                                           check_gmres_convergence=check_gmres_convergence)
+                                           check_gmres_convergence=check_gmres_convergence,
+                                           check_true_residual=false)
             gmres_iters = stats.niter
             gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         elseif selected_method == :aca_gmres
             I_coeffs, stats = solve_gmres(A_aca, v;
                                            preconditioner=P_nf,
                                            tol=gmres_tol, maxiter=gmres_maxiter,
-                                           check_gmres_convergence=check_gmres_convergence)
+                                           check_gmres_convergence=check_gmres_convergence,
+                                           check_true_residual=false)
             gmres_iters = stats.niter
             gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         elseif selected_method == :mlfma
             I_coeffs, stats = solve_gmres(A_mlfma, v;
                                            preconditioner=P_nf,
                                            tol=gmres_tol, maxiter=gmres_maxiter,
-                                           check_gmres_convergence=check_gmres_convergence)
+                                           check_gmres_convergence=check_gmres_convergence,
+                                           check_true_residual=false)
             gmres_iters = stats.niter
             gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         end

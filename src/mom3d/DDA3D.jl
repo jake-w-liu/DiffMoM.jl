@@ -2033,6 +2033,7 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
             maxiter=maxiter,
             verbose=verbose,
             check_gmres_convergence=check_gmres_convergence,
+            check_true_residual=check_gmres_convergence,
         )
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),

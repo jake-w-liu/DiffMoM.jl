@@ -1009,11 +1009,9 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
                                         precond_side=gmres_precond_side,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
                                         memory=gmres_memory,
-                                        check_gmres_convergence=check_gmres_convergence)
-        check_true_residual &&
-            _assert_true_residual(adjoint(Z), x, rhs, "adjoint";
-                                  tol=gmres_tol,
-                                  factor=true_residual_factor)
+                                        check_gmres_convergence=check_gmres_convergence,
+                                        check_true_residual=check_true_residual,
+                                        true_residual_factor=true_residual_factor)
         return _assert_finite_linear_vector(x, "GMRES adjoint solution")
     end
 end
@@ -1055,11 +1053,9 @@ function solve_adjoint_rhs(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Nu
                                         precond_side=gmres_precond_side,
                                         tol=gmres_tol, maxiter=gmres_maxiter,
                                         memory=gmres_memory,
-                                        check_gmres_convergence=check_gmres_convergence)
-        check_true_residual &&
-            _assert_true_residual(adjoint(Z), x, rhs, "adjoint";
-                                  tol=gmres_tol,
-                                  factor=true_residual_factor)
+                                        check_gmres_convergence=check_gmres_convergence,
+                                        check_true_residual=check_true_residual,
+                                        true_residual_factor=true_residual_factor)
         return _assert_finite_linear_vector(x, "GMRES adjoint solution")
     end
 end

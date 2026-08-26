@@ -1367,11 +1367,9 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                                 tol=gmres_tol, maxiter=gmres_maxiter,
                                 memory=gmres_memory,
                                 verbose=verbose_gmres,
-                                check_gmres_convergence=check_gmres_convergence)
-        check_true_residual &&
-            _assert_true_residual(Z, x, v, "forward";
-                                  tol=gmres_tol,
-                                  factor=true_residual_factor)
+                                check_gmres_convergence=check_gmres_convergence,
+                                check_true_residual=check_true_residual,
+                                true_residual_factor=true_residual_factor)
         return _assert_finite_linear_vector(x, "GMRES forward solution")
     end
 end

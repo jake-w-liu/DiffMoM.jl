@@ -880,19 +880,26 @@ function _true_residual_ratio(
     return residual_norm / rhs_norm
 end
 
-function _assert_true_residual(A::AbstractMatrix, x::AbstractVector, rhs::AbstractVector,
-                               label::AbstractString;
-                               tol::Float64,
-                               factor::Float64=100.0)
+function _validated_true_residual_limit(
+        tol::Float64,
+        factor::Float64)
     (isfinite(factor) && factor > 0.0) ||
         throw(ArgumentError(
             "true residual factor must be finite and positive, got $factor"))
-    rhs_c = _as_complex_rhs(rhs)
-    relres = _true_residual_ratio(A, x, rhs_c, label)
     limit = factor * tol
     isfinite(limit) ||
         throw(ArgumentError(
             "true residual limit must be finite, got factor*tol=$limit"))
+    return limit
+end
+
+function _assert_true_residual(A::AbstractMatrix, x::AbstractVector, rhs::AbstractVector,
+                               label::AbstractString;
+                               tol::Float64,
+                               factor::Float64=100.0)
+    limit = _validated_true_residual_limit(tol, factor)
+    rhs_c = _as_complex_rhs(rhs)
+    relres = _true_residual_ratio(A, x, rhs_c, label)
     isfinite(relres) && relres <= limit && return relres
     error("$label GMRES true residual too large: relative_residual=$relres, " *
           "limit=$limit, tol=$tol, factor=$factor")
@@ -902,7 +909,8 @@ end
     solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8,
                 maxiter=200, memory=20, max_workspace_bytes=536_870_912,
                 verbose=false,
-                check_gmres_convergence=true)
+                check_gmres_convergence=true, check_true_residual=true,
+                true_residual_factor=100.0)
 
 Solve Z x = rhs using GMRES from Krylov.jl.
 
@@ -911,9 +919,9 @@ If `preconditioner` is an `AbstractPreconditionerData`, it is applied via:
 - `precond_side=:right`: right preconditioner N in Krylov.gmres
 
 Returns `(x, stats)` where `stats` is the Krylov.jl convergence info.
-By default, an unconverged or non-finite result throws. Set
-`check_gmres_convergence=false` only when intentionally inspecting a partial
-iterate and its `stats`.
+By default, an unconverged, non-finite, or excessive true-residual result throws.
+Set both checks to `false` only when intentionally inspecting a partial iterate
+and its `stats`.
 `max_workspace_bytes` bounds the raw payload of the Krylov basis, solver
 vectors, and Hessenberg/rotation storage before Krylov allocates them.
 """
@@ -926,8 +934,12 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      max_workspace_bytes::Integer=
                          _DEFAULT_MAX_GMRES_WORKSPACE_BYTES,
                      verbose::Bool=false,
-                     check_gmres_convergence::Bool=true)
+                     check_gmres_convergence::Bool=true,
+                     check_true_residual::Bool=true,
+                     true_residual_factor::Float64=100.0)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
+    check_true_residual &&
+        _validated_true_residual_limit(tol, true_residual_factor)
     _validate_linear_system_inputs(Z, rhs, "forward GMRES")
     workspace_limit = _validated_resource_limit(
         "max_workspace_bytes", max_workspace_bytes)
@@ -967,6 +979,10 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
     check_gmres_convergence &&
         _assert_gmres_converged(
             stats, "forward"; tol=tol, maxiter=maxiter)
+    check_true_residual &&
+        _assert_true_residual(
+            Z, x, rhs_c, "forward";
+            tol=tol, factor=true_residual_factor)
     return x, stats
 end
 
@@ -974,16 +990,17 @@ end
     solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left,
                         tol=1e-8, maxiter=200, memory=20,
                         max_workspace_bytes=536_870_912, verbose=false,
-                        check_gmres_convergence=true)
+                        check_gmres_convergence=true, check_true_residual=true,
+                        true_residual_factor=100.0)
 
 Solve Z† x = rhs using GMRES, with the adjoint preconditioner Z_nf⁻ᴴ.
 
 This is used for the adjoint linear system in sensitivity analysis:
   Z†(θ) λ = ∂Φ/∂I*
 
-Returns `(x, stats)`. By default, an unconverged or non-finite result throws.
-Set `check_gmres_convergence=false` only when intentionally inspecting a
-partial iterate and its `stats`.
+Returns `(x, stats)`. By default, an unconverged, non-finite, or excessive
+true-residual result throws. Set both checks to `false` only when intentionally
+inspecting a partial iterate and its `stats`.
 """
 function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                               preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
@@ -994,8 +1011,12 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                               max_workspace_bytes::Integer=
                                   _DEFAULT_MAX_GMRES_WORKSPACE_BYTES,
                               verbose::Bool=false,
-                              check_gmres_convergence::Bool=true)
+                              check_gmres_convergence::Bool=true,
+                              check_true_residual::Bool=true,
+                              true_residual_factor::Float64=100.0)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
+    check_true_residual &&
+        _validated_true_residual_limit(tol, true_residual_factor)
     _validate_linear_system_inputs(Z, rhs, "adjoint GMRES")
     workspace_limit = _validated_resource_limit(
         "max_workspace_bytes", max_workspace_bytes)
@@ -1035,5 +1056,9 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
     check_gmres_convergence &&
         _assert_gmres_converged(
             stats, "adjoint"; tol=tol, maxiter=maxiter)
+    check_true_residual &&
+        _assert_true_residual(
+            adjoint(Z), x, rhs_c, "adjoint";
+            tol=tol, factor=true_residual_factor)
     return x, stats
 end

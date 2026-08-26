@@ -391,7 +391,7 @@ With `solver=:direct` the dense `2N x 2N` matrix is assembled and LU-factorized.
 | `maxiter` | `Int` | `200` | GMRES maximum iterations (`itmax`); used only for `solver=:gmres`. |
 | `memory` | `Int` | `20` | GMRES restart memory; used only for `solver=:gmres`. |
 | `verbose` | `Bool` | `false` | If `true`, print GMRES progress; used only for `solver=:gmres`. |
-| `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged or non-finite GMRES result instead of returning partial surface currents. |
+| `check_gmres_convergence` | `Bool` | `true` | Reject Krylov failure, non-finite currents, or an excessive unpreconditioned true residual instead of returning partial surface currents. |
 | `max_work_bytes` | `Integer` | `2_000_000_000` | Dense work-payload ceiling for `solver=:direct`; ignored by `:gmres`. |
 | `max_gram_storage_bytes` | `Integer` | `2_000_000_000` | Compact Müller Gram triplet-payload ceiling for `solver=:gmres`; PMCHWT does not construct it. |
 | `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated per-transient-cache ceiling for `:direct`; aggregate shared-cache and work-vector ceiling for `:gmres`. |

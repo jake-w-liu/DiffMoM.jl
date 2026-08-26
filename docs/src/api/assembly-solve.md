@@ -414,7 +414,7 @@ General linear solve `Z * x = rhs` with the same solver dispatch as `solve_forwa
 
 These are the low-level GMRES interfaces using Krylov.jl. Most users should use `solve_forward(...; solver=:gmres)` instead, which wraps these.
 
-### `solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, max_workspace_bytes=536_870_912, verbose=false, check_gmres_convergence=true)`
+### `solve_gmres(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, max_workspace_bytes=536_870_912, verbose=false, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)`
 
 Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field preconditioning.
 
@@ -432,6 +432,8 @@ Solve `Z * x = rhs` using GMRES from Krylov.jl, with optional near-field precond
 | `max_workspace_bytes` | `Integer` | `536_870_912` | Maximum raw payload of the Krylov vectors and Hessenberg/rotation workspace, checked before Krylov allocation. |
 | `verbose` | `Bool` | `false` | Print convergence info. |
 | `check_gmres_convergence` | `Bool` | `true` | Reject an unconverged, inconsistent, or non-finite result. Set to `false` only to inspect a partial iterate and its stats. |
+| `check_true_residual` | `Bool` | `true` | Verify `norm(Z*x-rhs)/norm(rhs)` against the unpreconditioned operator. Disable this as well as the convergence check only when deliberately retrieving a partial iterate. |
+| `true_residual_factor` | `Float64` | `100.0` | Maximum allowed true residual as a multiple of `tol` when `check_true_residual=true`. |
 
 **Returns:** Tuple `(x, stats)` where `x` is the verified solution and `stats` is the Krylov.jl convergence info. Access iteration count with `stats.niter`.
 
@@ -441,12 +443,11 @@ thresholds from misclassifying a globally tiny, well-conditioned system.
 
 ---
 
-### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, max_workspace_bytes=536_870_912, verbose=false, check_gmres_convergence=true)`
+### `solve_gmres_adjoint(Z, rhs; preconditioner=nothing, precond_side=:left, tol=1e-8, maxiter=200, memory=20, max_workspace_bytes=536_870_912, verbose=false, check_gmres_convergence=true, check_true_residual=true, true_residual_factor=100.0)`
 
 Solve the adjoint system `Z' * x = rhs` using GMRES with the adjoint preconditioner `Z_nf^{-H}` (inverse conjugate transpose of the near-field matrix). Used internally by `solve_adjoint` for sensitivity analysis.
 
-**Parameters:** Same as `solve_gmres`, including the default fail-closed
-`check_gmres_convergence=true` behavior.
+**Parameters:** Same as `solve_gmres`, including both default fail-closed checks.
 
 **Returns:** Tuple `(x, stats)`.
 

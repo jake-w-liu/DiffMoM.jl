@@ -7839,6 +7839,46 @@ for tiny_gmres_side in (:left, :right)
     @test !preconditioned_tiny_stats.inconsistent
 end
 
+misleading_gmres_matrix = Matrix{ComplexF64}(I, 2, 2)
+misleading_gmres_rhs = ones(ComplexF64, 2)
+misleading_gmres_preconditioner = build_nearfield_preconditioner(
+    spdiagm(0 => ComplexF64[1.0, 1.0e12]);
+    factorization=:diag,
+)
+for (gmres_solver, residual_operator) in (
+    (solve_gmres, misleading_gmres_matrix),
+    (solve_gmres_adjoint, adjoint(misleading_gmres_matrix)),
+)
+    @test_throws ErrorException gmres_solver(
+        misleading_gmres_matrix,
+        misleading_gmres_rhs;
+        preconditioner=misleading_gmres_preconditioner,
+        precond_side=:left,
+        tol=1e-8,
+        maxiter=2,
+        memory=1,
+    )
+    partial_solution, partial_stats = gmres_solver(
+        misleading_gmres_matrix,
+        misleading_gmres_rhs;
+        preconditioner=misleading_gmres_preconditioner,
+        precond_side=:left,
+        tol=1e-8,
+        maxiter=2,
+        memory=1,
+        check_true_residual=false,
+    )
+    @test partial_stats.solved
+    @test !partial_stats.inconsistent
+    @test norm(residual_operator * partial_solution - misleading_gmres_rhs) /
+          norm(misleading_gmres_rhs) > 0.7
+end
+@test_throws ArgumentError solve_gmres(
+    misleading_gmres_matrix,
+    misleading_gmres_rhs;
+    true_residual_factor=Inf,
+)
+
 @test DiffMoM._true_residual_ratio(
     tiny_gmres_matrix,
     ComplexF64[0.0],
@@ -9005,6 +9045,7 @@ _, stats_forward_partial = solve_gmres(
     Z_fail, rhs_fail;
     tol=1e-14, maxiter=1, memory=1,
     check_gmres_convergence=false,
+    check_true_residual=false,
 )
 @test !stats_forward_partial.solved
 
@@ -9016,6 +9057,7 @@ _, stats_adjoint_partial = solve_gmres_adjoint(
     Z_fail, rhs_fail;
     tol=1e-14, maxiter=1, memory=1,
     check_gmres_convergence=false,
+    check_true_residual=false,
 )
 @test !stats_adjoint_partial.solved
 

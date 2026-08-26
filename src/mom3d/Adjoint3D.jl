@@ -214,6 +214,7 @@ function solve_dda_adjoint_3d(res::DDAResult3D, grad_E_flat;
             maxiter=maxiter,
             verbose=verbose,
             check_gmres_convergence=check_gmres_convergence,
+            check_true_residual=check_gmres_convergence,
         )
         return Vector{ComplexF64}(lambda)
     end

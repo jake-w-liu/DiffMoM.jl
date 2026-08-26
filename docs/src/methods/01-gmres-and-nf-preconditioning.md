@@ -367,7 +367,10 @@ function solve_gmres(Z, rhs;
                      tol=1e-8,
                      maxiter=200,
                      memory=20,
-                     verbose=false)
+                     verbose=false,
+                     check_gmres_convergence=true,
+                     check_true_residual=true,
+                     true_residual_factor=100.0)
 ```
 
 Key behavior:
@@ -376,6 +379,8 @@ Key behavior:
 - If `precond_side == :left`, wraps the preconditioner as a `NearFieldOperator` and passes it as the `M` keyword to `Krylov.gmres`.
 - If `precond_side == :right`, passes it as the `N` keyword instead.
 - The `tol` parameter maps to Krylov.jl's `rtol` (relative tolerance) with `atol=0.0`.
+- The returned vector must also satisfy the unpreconditioned true-residual gate
+  by default; Krylov's preconditioned status alone is not sufficient.
 - Returns `(x, stats)` where `stats.niter` gives the iteration count and `stats.residuals` gives the residual history.
 
 ### 4.6 The `solve_gmres_adjoint` Function
@@ -563,10 +568,11 @@ println("Final residual: ", stats.residuals[end])
 ```
 
 The public `solve_gmres` and `solve_gmres_adjoint` entry points fail closed by
-default when `stats.solved` is false or the returned vector is non-finite. To
-inspect an unconverged partial iterate, pass
-`check_gmres_convergence=false` explicitly and then check `stats.solved`,
-`stats.status`, and `stats.residuals`.
+default when Krylov reports failure, the returned vector is non-finite, or the
+unpreconditioned true residual exceeds its gate. To inspect a partial iterate,
+pass both `check_gmres_convergence=false` and `check_true_residual=false`, then
+inspect the returned statistics and independently evaluate the residual needed
+by the study.
 
 If `stats.niter` equals `maxiter` and the residual is above tolerance, the solver has **stagnated**. Common remedies:
 

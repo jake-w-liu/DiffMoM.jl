@@ -249,7 +249,8 @@ modes are available:
 | `:gmres` | matrix-free `DDAOperator3D` | $O(N^2)$/matvec, near-zero alloc | any non-tiny grid |
 
 The iterative path validates its tolerance, iteration limit, and restart
-memory. It also rejects unconverged or non-finite fields by default. Set
+memory. It also rejects Krylov failure, non-finite fields, and excessive
+unpreconditioned true residuals by default. Set
 `check_gmres_convergence=false` only when deliberately retrieving a partial
 iterate for solver diagnostics.
 
