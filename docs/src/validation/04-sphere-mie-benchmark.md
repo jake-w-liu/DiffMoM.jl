@@ -72,7 +72,7 @@ H-plane cuts. It writes:
 - `data/mie_rcs_phi0.csv`;
 - `data/mie_rcs_phi90.csv`;
 - `data/mie_rcs_summary.csv`; and
-- four PNG files under `validation/mie/figs/`.
+- four PNG files under `data/figs/`.
 
 The tracked `validation/mie/sphere_ka2.1.stl` fixture can also be used for a
 manual run.

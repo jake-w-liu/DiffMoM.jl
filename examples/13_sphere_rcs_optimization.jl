@@ -327,7 +327,7 @@ reduction_dB_single = 10 * log10(J_pec / max(J_opt_single, 1e-30))
 println("\n  J(PEC)       = $(round(J_pec, sigdigits=4))")
 println("  J(optimized) = $(round(J_opt_single, sigdigits=4))")
 println("  J reduction:   $(round(reduction_dB_single, digits=1)) dB")
-println("  Iterations:    $(length(trace_single))")
+println("  State evals:   $(length(trace_single))")
 
 # Recompute optimized RCS
 Z_opt = assemble_full_Z(Z_efie, Mp, theta_opt_single)

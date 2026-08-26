@@ -290,7 +290,7 @@ function log_optimization_run(config, trace)
         println(io, "\nTrace summary:")
         println(io, "  Final J = ", trace[end].J)
         println(io, "  Final ‖g‖ = ", trace[end].gnorm)
-        println(io, "  Iterations = ", length(trace))
+        println(io, "  State evaluations = ", length(trace))
     end
 end
 ```

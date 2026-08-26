@@ -176,8 +176,8 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 |--------|------|---------|-------------|
 | `reactive` | `Bool` | `false` | If `true`, impedance is `Z_s = i*theta` (reactive/lossless). If `false`, `Z_s = theta` (resistive/lossy). |
 | `maximize` | `Bool` | `false` | If `true`, maximize `J` instead of minimizing. Internally minimizes `-J`. |
-| `lb` | `Vector` or `nothing` | `nothing` | Lower bounds applied by projection. `nothing` means no lower bound. |
-| `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on `theta`. `nothing` = no upper bound. |
+| `lb` | real scalar, real vector, or `nothing` | `nothing` | Lower bounds applied by projection. A scalar applies to every parameter; `nothing` means no lower bound. |
+| `ub` | real scalar, real vector, or `nothing` | `nothing` | Upper bounds on `theta`. A scalar applies to every parameter; `nothing` means no upper bound. |
 | `maxiter` | `Int` | `100` | Maximum accepted L-BFGS update steps. If the final step is accepted, one additional state evaluation records the returned parameters. |
 | `tol` | `Float64` | `1e-10` | Absolute box-projected gradient-norm tolerance. With no bounds this is the ordinary gradient norm. |
 | `m_lbfgs` | `Int` | `10` | Number of past gradient pairs retained. Larger values use more storage and can change convergence; compare traces on the target objective. |
@@ -285,8 +285,8 @@ matrix-free far-field Q builders satisfy this contract.
 | `alpha0` | `Float64` | `0.01` | Initial inverse-Hessian scaling. |
 | `verbose` | `Bool` | `true` | Print iteration progress. |
 | `reactive` | `Bool` | `false` | Impedance mode: `false` = resistive, `true` = reactive. |
-| `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on theta. |
-| `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on theta. |
+| `lb` | real scalar, real vector, or `nothing` | `nothing` | Lower bounds on theta. A scalar applies to every parameter. |
+| `ub` | real scalar, real vector, or `nothing` | `nothing` | Upper bounds on theta. A scalar applies to every parameter. |
 | `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner; compare iteration count and true residual for the target system. |
 | `preconditioner_builder` | function or `nothing` | `nothing` | Optional `theta -> preconditioner` builder for design-dependent preconditioners (cached for unchanged `theta`). |
 | `trial_preconditioner_mode` | `Symbol` | `:rebuild` | Line-search preconditioner policy: `:rebuild`, `:current`, or `:current_then_rebuild`. |

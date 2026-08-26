@@ -208,8 +208,8 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 | `alpha0` | `Float64` | `0.01` | Initial inverse-Hessian scaling. |
 | `verbose` | `Bool` | `true` | Print iteration progress. |
 | `reactive` | `Bool` | `false` | `false` = resistive, `true` = reactive loading. |
-| `lb` | `Vector` or `nothing` | `nothing` | Lower bounds on theta. |
-| `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on theta. |
+| `lb` | real scalar, real vector, or `nothing` | `nothing` | Lower bounds on theta. A scalar applies to every parameter. |
+| `ub` | real scalar, real vector, or `nothing` | `nothing` | Upper bounds on theta. A scalar applies to every parameter. |
 | `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner; compare iteration count and true residual for the target system. |
 | `gmres_tol` | `Float64` | `1e-6` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `300` | Maximum GMRES iterations per solve. |

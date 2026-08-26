@@ -46,8 +46,8 @@ The detailed outputs are:
 - `data/mie_rcs_summary.csv`
 - `data/figs/mie_rcs_phi0.png`
 - `data/figs/mie_rcs_phi90.png`
-- `validation/mie/figs/mie_rcs_both_cuts.png`
-- `validation/mie/figs/mie_rcs_error.png`
+- `data/figs/mie_rcs_both_cuts.png`
+- `data/figs/mie_rcs_error.png`
 
 ## Assemble the comparison manually
 
