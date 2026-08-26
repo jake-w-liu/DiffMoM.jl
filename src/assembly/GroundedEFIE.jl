@@ -327,27 +327,62 @@ end
     end
 end
 
+@inline function _grounded_interference_factor_state(
+    vertical_wavenumber::Float64,
+    height::Float64,
+)
+    iszero(vertical_wavenumber) &&
+        return zero(ComplexF64), false
+    phase = _grounded_round_trip_phase(vertical_wavenumber, height)
+    factor = one(ComplexF64) - phase
+    requires_primitive = _scaled_sum_requires_exact(
+        one(ComplexF64), -phase, factor)
+    factor = requires_primitive ?
+        _grounded_interference_factor_exact(
+            vertical_wavenumber, height) : factor
+    return factor, requires_primitive
+end
+
 @inline function _grounded_interference_factor(
     vertical_wavenumber::Float64,
     height::Float64,
 )
-    iszero(vertical_wavenumber) && return zero(ComplexF64)
-    phase = _grounded_round_trip_phase(vertical_wavenumber, height)
-    factor = one(ComplexF64) - phase
-    return _scaled_sum_requires_exact(one(ComplexF64), -phase, factor) ?
-        _grounded_interference_factor_exact(vertical_wavenumber, height) :
-        factor
+    factor, _ = _grounded_interference_factor_state(
+        vertical_wavenumber, height)
+    return factor
+end
+
+@noinline function _grounded_excitation_product_exact(
+    vertical_wavenumber::Float64,
+    height::Float64,
+    incident::ComplexF64,
+    index,
+)
+    return setprecision(BigFloat, _PERIODIC_RWG_PHASE_FALLBACK_PRECISION) do
+        factor = -expm1(Complex{BigFloat}(
+            0,
+            -2BigFloat(vertical_wavenumber) * BigFloat(height),
+        ))
+        value = factor * Complex{BigFloat}(incident)
+        _local_mass_convert_bigfloat(
+            ComplexF64, value, "grounded excitation", index)
+    end
 end
 
 @noinline function _grounded_reflection_component_exact(
     current::ComplexF64,
-    factor::ComplexF64,
+    vertical_wavenumber::Float64,
+    height::Float64,
     background_phase::ComplexF64,
     background_projection::ComplexF64,
     index,
 )
     return setprecision(BigFloat, _PERIODIC_RWG_PHASE_FALLBACK_PRECISION) do
-        value = Complex{BigFloat}(current) * Complex{BigFloat}(factor) -
+        factor = -expm1(Complex{BigFloat}(
+            0,
+            -2BigFloat(vertical_wavenumber) * BigFloat(height),
+        ))
+        value = Complex{BigFloat}(current) * factor -
                 Complex{BigFloat}(background_phase) *
                 Complex{BigFloat}(background_projection)
         _local_mass_convert_bigfloat(
@@ -358,6 +393,9 @@ end
 @inline function _grounded_reflection_component(
     current::ComplexF64,
     factor::ComplexF64,
+    factor_requires_primitive::Bool,
+    vertical_wavenumber::Float64,
+    height::Float64,
     background_phase::ComplexF64,
     background_projection::ComplexF64,
     index,
@@ -366,6 +404,7 @@ end
     background = background_phase * background_projection
     value = image - background
     requires_exact =
+        factor_requires_primitive ||
         !isfinite(value) ||
         _source_product_requires_exact(current, factor, image) ||
         _source_product_requires_exact(
@@ -374,7 +413,8 @@ end
     return requires_exact ?
         _grounded_reflection_component_exact(
             current,
-            factor,
+            vertical_wavenumber,
+            height,
             background_phase,
             background_projection,
             index,
@@ -432,16 +472,20 @@ function assemble_excitation_grounded(mesh::TriMesh, rwg::RWGData, pw, k,
     h = _validated_ground_height(height)
     vertical_wavenumber = _validated_grounded_plane_wave(pw, kw, lattice)
     v_inc = assemble_excitation(mesh, rwg, pw; quad_order=quad_order)
-    factor = _grounded_interference_factor(vertical_wavenumber, h)
+    factor, factor_requires_primitive =
+        _grounded_interference_factor_state(vertical_wavenumber, h)
     v_grounded = similar(v_inc)
     @inbounds for index in eachindex(v_inc)
-        v_grounded[index] = _checked_number_product(
-            ComplexF64,
-            factor,
-            v_inc[index],
-            "grounded excitation",
-            index,
-        )
+        v_grounded[index] = factor_requires_primitive ?
+            _grounded_excitation_product_exact(
+                vertical_wavenumber, h, v_inc[index], index) :
+            _checked_number_product(
+                ComplexF64,
+                factor,
+                v_inc[index],
+                "grounded excitation",
+                index,
+            )
     end
     all(isfinite, v_grounded) ||
         throw(OverflowError(
@@ -476,12 +520,18 @@ function reflection_coefficients_grounded(mesh::TriMesh, rwg::RWGData, I, k,
         # exp(-2im·kz·h) = exp(2βh) overflows and 0·Inf = NaN (R_cur is 0 there).
         # The image phase delay is governed by the real vertical wavenumber; this
         # matches reflection_coefficient_vectors_grounded.
-        factor = _grounded_interference_factor(real(m.kz), h)
+        vertical_wavenumber = real(m.kz)
+        factor, factor_requires_primitive =
+            _grounded_interference_factor_state(
+                vertical_wavenumber, h)
         background_projection = m.m == 0 && m.n == 0 ?
             one(ComplexF64) : zero(ComplexF64)
         R_g[i] = _grounded_reflection_component(
             R_cur[i],
             factor,
+            factor_requires_primitive,
+            vertical_wavenumber,
+            h,
             background_phase,
             background_projection,
             i,
@@ -515,13 +565,19 @@ function reflection_coefficient_vectors_grounded(mesh::TriMesh, rwg::RWGData, I,
     R_g = similar(R_cur)
     background_phase = _grounded_round_trip_phase(kzi, h)
     for (i, m) in enumerate(modes)
-        factor = _grounded_interference_factor(real(m.kz), h)
+        vertical_wavenumber = real(m.kz)
+        factor, factor_requires_primitive =
+            _grounded_interference_factor_state(
+                vertical_wavenumber, h)
         pol_mode = m.m == 0 && m.n == 0 ?
             _mode_transverse_projection(pol, m, kw) : nothing
         R_g[i] = CVec3(ntuple(component ->
             _grounded_reflection_component(
                 R_cur[i][component],
                 factor,
+                factor_requires_primitive,
+                vertical_wavenumber,
+                h,
                 background_phase,
                 isnothing(pol_mode) ? zero(ComplexF64) :
                     ComplexF64(pol_mode[component]),

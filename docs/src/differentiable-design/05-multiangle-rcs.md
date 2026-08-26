@@ -213,15 +213,15 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 | `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner; compare iteration count and true residual for the target system. |
 | `gmres_tol` | `Float64` | `1e-6` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `300` | Maximum GMRES iterations per solve. |
-| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the reusable dense system workspace when `Z_base` is a dense matrix. Matrix-free ACA/MLFMA paths do not allocate this workspace. |
+| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Aggregate raw-payload ceiling for dense optimization, including accepted/trial factors and pivots, per-angle fields and objective buffers, parameter work vectors, and conditional exact solves. Matrix-free ACA/MLFMA paths do not allocate this dense workspace. |
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized impedance parameters.
 - `trace::Vector{NamedTuple}`: Evaluated accepted states with fields `(iter, J, gnorm, n_fwd, n_adj)`. The last record represents the returned parameters, uses the box-projected gradient norm, and includes cumulative final-state solves.
 
 **Note:** A dense `Matrix{ComplexF64}` base uses verified direct factorization;
-matrix-free ACA/MLFMA bases use GMRES through `ImpedanceLoadedOperator`. A
-For a matrix-free base, evaluate a near-field preconditioner against the
+matrix-free ACA/MLFMA bases use GMRES through `ImpedanceLoadedOperator`. For a
+matrix-free base, evaluate a near-field preconditioner against the
 unpreconditioned iteration count and true residual.
 
 ---

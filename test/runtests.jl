@@ -4105,6 +4105,48 @@ nearfield_scale_result = compute_nearfield(
     eta0=nearfield_scale_max, check_surface=false)
 @test nearfield_scale_result == nearfield_scale_reference
 
+# A primitive current/basis product may underflow before a later huge-k
+# prefactor restores a representable field. Extreme coupled inputs must route
+# the complete stored-geometry expression through the bounded point retry.
+nearfield_coupled_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+nearfield_coupled_rwg = build_rwg(nearfield_coupled_mesh)
+nearfield_coupled_current = ComplexF64[nextfloat(0.0)]
+nearfield_coupled_point = Vec3(0.2, -0.1, 2.0)
+nearfield_coupled_k = 1.0e300
+nearfield_coupled_reference = DiffMoM._compute_total_field_point_exact(
+    nearfield_coupled_mesh,
+    nearfield_coupled_rwg,
+    nearfield_coupled_current,
+    nothing,
+    nearfield_coupled_point,
+    zero(CVec3),
+    nearfield_coupled_k,
+    1.0,
+    1,
+    1,
+)
+@test compute_nearfield(
+    nearfield_coupled_mesh,
+    nearfield_coupled_rwg,
+    nearfield_coupled_current,
+    nearfield_coupled_point,
+    nearfield_coupled_k;
+    eta0=1.0,
+    quad_order=1,
+    check_surface=false,
+) == nearfield_coupled_reference
+@test_throws ArgumentError compute_nearfield(
+    nearfield_coupled_mesh,
+    nearfield_coupled_rwg,
+    nearfield_coupled_current,
+    nearfield_coupled_point,
+    nearfield_coupled_k;
+    eta0=1.0,
+    quad_order=1,
+    check_surface=false,
+    max_exact_work=1,
+)
+
 # Uniformly scaling every coordinate by L while changing k to k/L leaves the
 # vector-potential contribution unchanged and multiplies the scalar-potential
 # prefactor by the compensating 1/L.  A power-of-two L makes that identity
@@ -5883,6 +5925,70 @@ reduction_reference = setprecision(BigFloat, 4352) do
 end
 @test reduction_reference == 2.333333333333335 + 0im
 @test reduction_actual == reduction_reference
+
+# Even when every exact per-sample term is below the ComplexF64 range, their
+# aggregate can round to a representable subnormal and must use the retained
+# basis/field/area/weight primitives.
+zero_term_points = Vec3[]
+zero_term_fields = CVec3[]
+zero_term_primitives = Tuple{CVec3,CVec3,Float64,Float64}[]
+minimum_subnormal_excitation = nextfloat(0.0)
+for triangle in (
+        excitation_cancellation_rwg.tplus[1],
+        excitation_cancellation_rwg.tminus[1])
+    area = triangle_area(excitation_cancellation_mesh, triangle)
+    triangle_points = tri_quad_points(
+        excitation_cancellation_mesh, triangle, reduction_xi)
+    for q in eachindex(triangle_points)
+        point = triangle_points[q]
+        basis = CVec3(eval_rwg(
+            excitation_cancellation_rwg, 1, point, triangle))
+        coefficient = CVec3(
+            -2reduction_weights[q] * area .* basis)
+        component = argmax(abs.(coefficient))
+        field = CVec3(ntuple(index ->
+            index == component ?
+            ComplexF64(copysign(
+                minimum_subnormal_excitation,
+                real(coefficient[index]))) : 0.0 + 0.0im,
+            3,
+        ))
+        push!(zero_term_points, point)
+        push!(zero_term_fields, field)
+        push!(zero_term_primitives,
+              (basis, field, area, reduction_weights[q]))
+    end
+end
+zero_term_source = ImportedExcitation(
+    point -> begin
+        index = findfirst(==(point), zero_term_points)
+        index === nothing ? zero(CVec3) : zero_term_fields[index]
+    end;
+    kind=:electric_field,
+    min_quad_order=3,
+)
+zero_term_individual = [
+    DiffMoM._excitation_surface_term(primitive...)
+    for primitive in zero_term_primitives
+]
+zero_term_reference = setprecision(BigFloat, 4352) do
+    total = zero(Complex{BigFloat})
+    for (basis, field, area, weight) in zero_term_primitives
+        inner_product = sum(
+            conj(Complex{BigFloat}(basis[index])) *
+            Complex{BigFloat}(field[index])
+            for index in 1:3)
+        total -= 2BigFloat(weight) * BigFloat(area) * inner_product
+    end
+    ComplexF64(total)
+end
+@test all(iszero, zero_term_individual)
+@test assemble_excitation(
+    excitation_cancellation_mesh,
+    excitation_cancellation_rwg,
+    zero_term_source;
+    quad_order=3,
+)[1] == zero_term_reference == minimum_subnormal_excitation + 0.0im
 
 # Surface integration must combine a finite extreme triangle area with a tiny
 # incident amplitude before either factor overflows or underflows.  Scaling

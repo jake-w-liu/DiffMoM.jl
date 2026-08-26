@@ -3111,9 +3111,14 @@ println("\n── Test 42: PeriodicMetrics ──")
         )
         grounded_cancellation_excitation_reference = setprecision(
             BigFloat, 2304) do
+            exact_factor = -expm1(Complex{BigFloat}(
+                0,
+                -2BigFloat(kg) *
+                BigFloat(grounded_cancellation_height),
+            ))
             ComplexF64[
                 ComplexF64(
-                    Complex{BigFloat}(grounded_cancellation_factor) *
+                    exact_factor *
                     Complex{BigFloat}(value))
                 for value in grounded_incident
             ]
@@ -3150,13 +3155,69 @@ println("\n── Test 42: PeriodicMetrics ──")
                 kg, grounded_cancellation_height)
         grounded_cancellation_reflection_reference = setprecision(
             BigFloat, 2304) do
+            exact_factor = -expm1(Complex{BigFloat}(
+                0,
+                -2BigFloat(kg) *
+                BigFloat(grounded_cancellation_height),
+            ))
             ComplexF64(
                 Complex{BigFloat}(only(grounded_cancellation_current)) *
-                Complex{BigFloat}(grounded_cancellation_factor) -
+                exact_factor -
                 Complex{BigFloat}(grounded_cancellation_phase))
         end
         @test only(grounded_cancellation_reflection) ==
               grounded_cancellation_reflection_reference
+
+        # The interference factor itself can lie below ComplexF64 while its
+        # product with a large, finite incident RHS remains representable.
+        grounded_tiny_k = nextfloat(0.0)
+        grounded_tiny_height = 0.25
+        grounded_tiny_lattice = PeriodicLattice(
+            1.0,
+            1.0,
+            0.0,
+            0.0,
+            grounded_tiny_k,
+            1.0,
+            1,
+            1,
+        )
+        grounded_tiny_mesh = make_rect_plate(1.0, 1.0, 1, 1)
+        grounded_tiny_rwg = build_rwg_periodic(
+            grounded_tiny_mesh, grounded_tiny_lattice;
+            precheck=false)
+        grounded_tiny_wave = PlaneWaveExcitation(
+            Vec3(0.0, 0.0, -grounded_tiny_k),
+            1.0e308,
+            Vec3(1.0, 0.0, 0.0),
+        )
+        grounded_tiny_incident = assemble_excitation(
+            grounded_tiny_mesh,
+            grounded_tiny_rwg,
+            grounded_tiny_wave;
+            quad_order=1)
+        grounded_tiny_result = assemble_excitation_grounded(
+            grounded_tiny_mesh,
+            grounded_tiny_rwg,
+            grounded_tiny_wave,
+            grounded_tiny_k,
+            grounded_tiny_lattice;
+            height=grounded_tiny_height,
+            quad_order=1)
+        @test iszero(DiffMoM._grounded_interference_factor(
+            grounded_tiny_k, grounded_tiny_height))
+        grounded_tiny_reference = setprecision(BigFloat, 2304) do
+            exact_factor = -expm1(Complex{BigFloat}(
+                0,
+                -2BigFloat(grounded_tiny_k) *
+                BigFloat(grounded_tiny_height),
+            ))
+            ComplexF64[
+                ComplexF64(exact_factor * Complex{BigFloat}(value))
+                for value in grounded_tiny_incident
+            ]
+        end
+        @test grounded_tiny_result == grounded_tiny_reference
 
         grounded_extreme_incident = assemble_excitation_grounded(
             mesh_g, rwg_g, pw_g, kg, lat_g;

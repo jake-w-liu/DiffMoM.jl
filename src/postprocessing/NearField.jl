@@ -970,6 +970,11 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
     effective_currents = I_coeffs
     effective_eta0 = eta0
+    coupled_scaling_requires_exact =
+        _source_scaling_extreme_value(k) ||
+        _source_scaling_extreme_value(eta0) ||
+        any(current ->
+            _source_scaling_extreme_value(ComplexF64(current)), I_coeffs)
     pref_vec = -1im * k * effective_eta0
     pref_scl = -1im * effective_eta0 / k
     if !(isfinite(pref_vec) && isfinite(pref_scl))
@@ -1237,7 +1242,8 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                 field_term_count,
             )
         end
-        exact_retry[i] = needs_exact_retry
+        exact_retry[i] =
+            coupled_scaling_requires_exact || needs_exact_retry
         E[1, i] = field[1]
         E[2, i] = field[2]
         E[3, i] = field[3]

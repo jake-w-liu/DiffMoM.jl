@@ -2974,6 +2974,7 @@ struct _ExcitationSurfacePrimitive
     incident_field::CVec3
     area::Float64
     quadrature_weight::Float64
+    rounded_zero_requires_retry::Bool
 end
 
 @inline function _store_excitation_surface_term!(
@@ -2987,10 +2988,21 @@ end
 )
     basis = CVec3(basis_value)
     field = CVec3(incident_field)
+    term = _excitation_surface_term(
+        basis, field, area, quadrature_weight)
+    rounded_zero_requires_retry = iszero(term) &&
+        (_source_scaling_extreme_value(area) ||
+         _source_scaling_extreme_value(quadrature_weight) ||
+         any(_source_scaling_extreme_value, basis) ||
+         any(_source_scaling_extreme_value, field))
     primitives[index] = _ExcitationSurfacePrimitive(
-        basis, field, area, quadrature_weight)
-    terms[index] = _excitation_surface_term(
-        basis, field, area, quadrature_weight)
+        basis,
+        field,
+        area,
+        quadrature_weight,
+        rounded_zero_requires_retry,
+    )
+    terms[index] = term
     return nothing
 end
 
@@ -3081,6 +3093,14 @@ end
         basis_index::Int)
     total, needs_fallback =
         _excitation_surface_sum_state(terms, term_count)
+    if !needs_fallback
+        @inbounds for index in 1:term_count
+            if primitives[index].rounded_zero_requires_retry
+                needs_fallback = true
+                break
+            end
+        end
+    end
     return needs_fallback ?
            _excitation_surface_sum_exact(
                primitives, term_count, basis_index) : total
