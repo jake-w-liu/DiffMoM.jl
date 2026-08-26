@@ -4183,6 +4183,127 @@ rel_nf_lin = norm(E_nf_ab - (E_nf_a + E_nf_b)) / max(norm(E_nf_ab), 1e-30)
 println("  Near-field linearity rel. error: $rel_nf_lin")
 @assert rel_nf_lin < 1e-12
 
+# Triangle-current preprocessing must reduce the original current and RWG
+# primitives when three basis contributions cancel.
+nearfield_current_mesh = TriMesh(
+    Float64[0 1 0 0; 0 0 1 0; 0 0 0 1],
+    Int[1 1 1 2; 3 2 4 3; 2 4 3 4],
+)
+nearfield_current_rwg = build_rwg(nearfield_current_mesh)
+nearfield_current_xi, _ = tri_quad_rule(1)
+nearfield_current_point = only(tri_quad_points(
+    nearfield_current_mesh, 1, nearfield_current_xi))
+nearfield_current_ids = findall(
+    basis -> nearfield_current_rwg.tplus[basis] == 1 ||
+             nearfield_current_rwg.tminus[basis] == 1,
+    1:nearfield_current_rwg.nedges,
+)
+nearfield_current_targets = ComplexF64[1.0e16, 3.0, -1.0e16]
+nearfield_current_coefficients = zeros(
+    ComplexF64, nearfield_current_rwg.nedges)
+for index in eachindex(nearfield_current_ids)
+    basis = nearfield_current_ids[index]
+    nearfield_current_coefficients[basis] =
+        nearfield_current_targets[index] /
+        eval_rwg(
+            nearfield_current_rwg,
+            basis,
+            nearfield_current_point,
+            1,
+        )[1]
+end
+_, _, nearfield_current_samples, _, _ =
+    DiffMoM._precompute_nearfield_triangle_data(
+        nearfield_current_mesh,
+        nearfield_current_rwg,
+        nearfield_current_coefficients,
+        nearfield_current_xi,
+    )
+nearfield_current_reference = setprecision(BigFloat, 4352) do
+    ComplexF64(sum(
+        Complex{BigFloat}(nearfield_current_coefficients[basis]) *
+        Complex{BigFloat}(eval_rwg(
+            nearfield_current_rwg,
+            basis,
+            nearfield_current_point,
+            1,
+        )[1])
+        for basis in nearfield_current_ids
+    ))
+end
+@test nearfield_current_samples[1, 1][1] ==
+      nearfield_current_reference
+nearfield_current_exact_work =
+    DiffMoM._nearfield_exact_triangle_data_work(
+        length(nearfield_current_ids), 1)
+@test_throws ArgumentError DiffMoM._precompute_nearfield_triangle_data(
+    nearfield_current_mesh,
+    nearfield_current_rwg,
+    nearfield_current_coefficients,
+    nearfield_current_xi;
+    max_exact_work=nearfield_current_exact_work - 1,
+)
+
+# These fixed currents scale three disconnected unit-current y fields to
+# opposing O(1e16) terms. The full field must use the bounded primitive retry.
+nearfield_reduction_base = make_rect_plate(1.0, 1.0, 1, 1)
+nearfield_reduction_xyz = Matrix{Float64}(undef, 3, 12)
+nearfield_reduction_tri = Matrix{Int}(undef, 3, 6)
+for patch in 1:3
+    vertex_offset = 4 * (patch - 1)
+    nearfield_reduction_xyz[:, vertex_offset+1:vertex_offset+4] =
+        nearfield_reduction_base.xyz .+
+        [2.0 * (patch - 2), 0.0, 0.0]
+    nearfield_reduction_tri[:, 2patch-1:2patch] =
+        nearfield_reduction_base.tri .+ vertex_offset
+end
+nearfield_reduction_mesh = TriMesh(
+    nearfield_reduction_xyz, nearfield_reduction_tri)
+nearfield_reduction_rwg = build_rwg(nearfield_reduction_mesh)
+nearfield_reduction_observation = Vec3(0.0, 0.0, 3.0)
+nearfield_reduction_currents = ComplexF64[
+    6.902172019727261e17 - 7.261797523100448e17im,
+    207.06516059181777 - 217.85392569301357im,
+    -1.886013202810526e17 + 8.234245159254291e17im,
+]
+nearfield_reduction_exact_work =
+    DiffMoM._nearfield_exact_point_work(3, 1)
+nearfield_reduction_reference =
+    DiffMoM._compute_total_field_point_exact(
+        nearfield_reduction_mesh,
+        nearfield_reduction_rwg,
+        nearfield_reduction_currents,
+        nothing,
+        nearfield_reduction_observation,
+        zero(CVec3),
+        1.0,
+        1.0,
+        1,
+        1,
+    )
+@test compute_nearfield(
+    nearfield_reduction_mesh,
+    nearfield_reduction_rwg,
+    nearfield_reduction_currents,
+    nearfield_reduction_observation,
+    1.0;
+    eta0=1.0,
+    quad_order=1,
+    check_surface=false,
+    max_exact_work=nearfield_reduction_exact_work,
+) == nearfield_reduction_reference
+@test_throws ArgumentError compute_nearfield(
+    nearfield_reduction_mesh,
+    nearfield_reduction_rwg,
+    nearfield_reduction_currents,
+    nearfield_reduction_observation,
+    1.0;
+    eta0=1.0,
+    quad_order=1,
+    check_surface=false,
+    max_exact_work=nearfield_reduction_exact_work - 1,
+)
+
 surface_err = try
     compute_nearfield(mesh, rwg, I_pec, triangle_center(mesh, 1), k; quad_order=3, eta0=eta0)
     false
@@ -4404,10 +4525,21 @@ let
         CVec3(ComplexF64.(total))
     end
 
-    rounded_scattered = compute_nearfield(
-        cancellation_mesh, cancellation_rwg,
-        ComplexF64[cancellation_current], cancellation_point, 1.0;
-        eta0=1.0, quad_order=1, check_surface=false)
+    scattered_retry = zeros(Bool, 1)
+    rounded_scattered_matrix = DiffMoM._compute_nearfield_matrix(
+        cancellation_mesh,
+        cancellation_rwg,
+        ComplexF64[cancellation_current],
+        [cancellation_point],
+        1.0;
+        eta0=1.0,
+        quad_order=1,
+        check_surface=false,
+        defer_exact_retries=true,
+        exact_retry_output=scattered_retry,
+    )
+    @test only(scattered_retry)
+    rounded_scattered = CVec3(rounded_scattered_matrix[:, 1])
     rounded_incident = plane_wave_field(
         cancellation_point, cancellation_excitation.k_vec,
         cancellation_excitation.E0, cancellation_excitation.pol)

@@ -34,7 +34,9 @@ function _nearfield_work_bytes(
         quadrature_count::Int)
     total = BigInt(0)
     # Output field and the owned observation snapshot.
-    total += BigInt(3sizeof(ComplexF64) + sizeof(Vec3)) * observation_count
+    total += BigInt(
+        3sizeof(ComplexF64) + sizeof(Vec3) + sizeof(Bool)) *
+        observation_count
     # Per-triangle quadrature points, current samples, affine current values,
     # scalar samples, geometry caches, and the top-level vector references.
     total += BigInt(
@@ -46,6 +48,10 @@ function _nearfield_work_bytes(
     # Every RWG belongs to two triangle adjacency lists.  Include their stored
     # integer payload; object headers and allocator bookkeeping are excluded.
     total += BigInt(2sizeof(Int)) * basis_count
+    # Reused component-magnitude bounds for cancellation detection while one
+    # triangle's quadrature, vertex, and divergence currents are accumulated.
+    total += BigInt(quadrature_count + 3) * sizeof(CVec3) +
+             sizeof(ComplexF64)
     total <= typemax(Int) ||
         throw(ArgumentError("near-field raw-workspace estimate overflows Int"))
     return Int(total)
@@ -79,6 +85,12 @@ end
     # value plus the two analytical terms used by the near-surface branch,
     # even when the observation takes the cheaper far-field branch.
     units = BigInt(2) * nonzero_current_count * (quadrature_count + 2)
+    return units * _NEARFIELD_EXACT_PRECISION
+end
+
+@inline function _nearfield_exact_triangle_data_work(
+        basis_count::Int, quadrature_count::Int)
+    units = BigInt(basis_count) * (quadrature_count + 4)
     return units * _NEARFIELD_EXACT_PRECISION
 end
 
@@ -348,12 +360,113 @@ function _prepare_nearfield_observations(
     return _collect_observation_points(observation_points)
 end
 
+@inline function _nearfield_add_product_bound(
+        bound::ComplexF64, first::Number, second::Number)
+    real_magnitude, imag_magnitude =
+        _local_mass_product_component_bounds(first, second)
+    return ComplexF64(
+        real(bound) + real_magnitude,
+        imag(bound) + imag_magnitude,
+    )
+end
+
+@inline function _nearfield_reduction_requires_exact(
+        value::ComplexF64, bound::ComplexF64, term_count::Int)
+    return !isfinite(real(bound)) || !isfinite(imag(bound)) ||
+           _matrixfree_complex_reduction_requires_exact(
+               value, real(bound), imag(bound), term_count)
+end
+
+@inline function _nearfield_accumulate_product(
+        total::ComplexF64,
+        bound::ComplexF64,
+        first::Number,
+        second::Number,
+        third::Number)
+    product = ComplexF64(first * second * third)
+    real_magnitude, imag_magnitude =
+        _local_mass_product_component_bounds(first, second, third)
+    updated_bound = ComplexF64(
+        real(bound) + real_magnitude,
+        imag(bound) + imag_magnitude,
+    )
+    return total + product, updated_bound
+end
+
+@inline function _nearfield_accumulate_vector_product(
+        totals::CVec3,
+        bounds::CVec3,
+        first::Number,
+        second::SVector{3,<:Number},
+        third::Number)
+    states = ntuple(component ->
+        _nearfield_accumulate_product(
+            totals[component],
+            bounds[component],
+            first,
+            second[component],
+            third,
+        ), 3)
+    return CVec3(ntuple(component -> states[component][1], 3)),
+           CVec3(ntuple(component -> states[component][2], 3))
+end
+
+@inline function _nearfield_accumulate_scalar_vector_product(
+        totals::CVec3,
+        bounds::CVec3,
+        first::Number,
+        second::Number,
+        third::Number,
+        vector::SVector{3,<:Number})
+    scalar = first * second * third
+    scalar_real_magnitude, scalar_imag_magnitude =
+        _local_mass_product_component_bounds(first, second, third)
+    products = ntuple(component -> scalar * vector[component], 3)
+    updated_totals = CVec3(ntuple(component ->
+        totals[component] + products[component], 3))
+    updated_bounds = CVec3(ntuple(component -> begin
+        vector_real = abs(Float64(real(vector[component])))
+        vector_imag = abs(Float64(imag(vector[component])))
+        real_magnitude =
+            scalar_real_magnitude * vector_real +
+            scalar_imag_magnitude * vector_imag
+        imag_magnitude =
+            scalar_real_magnitude * vector_imag +
+            scalar_imag_magnitude * vector_real
+        ComplexF64(
+            real(bounds[component]) + real_magnitude,
+            imag(bounds[component]) + imag_magnitude,
+        )
+    end, 3))
+    return updated_totals, updated_bounds
+end
+
+function _consume_nearfield_exact_work!(
+        used::Base.RefValue{BigInt},
+        amount::BigInt,
+        limit::Int,
+        context::AbstractString)
+    next_used = used[] + amount
+    next_used <= limit ||
+        throw(ArgumentError(
+            "$context exact retries require $next_used " *
+            "precision-weighted terms, exceeding max_exact_work=$limit"))
+    used[] = next_used
+    return nothing
+end
+
 function _precompute_nearfield_triangle_data(mesh::TriMesh, rwg::RWGData,
                                              I_coeffs::AbstractVector{<:Number},
-                                             xi::Vector{<:SVector{2}})
+                                             xi::Vector{<:SVector{2}};
+                                             max_exact_work::Integer=
+                                                 _DEFAULT_MAX_NEARFIELD_EXACT_WORK,
+                                             exact_work_used::Base.RefValue{BigInt}=
+                                                 Ref(BigInt(0)))
     Nt = ntriangles(mesh)
     Nq = length(xi)
     N = rwg.nedges
+    exact_limit = _validated_resource_limit(
+        "max_exact_work", max_exact_work)
 
     quad_pts = Vector{Vector{Vec3}}(undef, Nt)
     areas = Vector{Float64}(undef, Nt)
@@ -374,6 +487,8 @@ function _precompute_nearfield_triangle_data(mesh::TriMesh, rwg::RWGData,
     # point) exactly via barycentric interpolation — needed by the
     # singularity-subtracted near-field branch.
     J_verts = Matrix{CVec3}(undef, 3, Nt)
+    J_sample_bounds = zeros(CVec3, Nq)
+    J_vertex_bounds = zeros(CVec3, 3)
 
     @inbounds for t in 1:Nt
         quad_pts[t] = tri_quad_points(mesh, t, xi)
@@ -383,16 +498,122 @@ function _precompute_nearfield_triangle_data(mesh::TriMesh, rwg::RWGData,
         v3 = _mesh_vertex(mesh, mesh.tri[3, t])
         Jv1 = zero(CVec3); Jv2 = zero(CVec3); Jv3 = zero(CVec3)
         divt = 0.0 + 0im
+        fill!(J_sample_bounds, zero(CVec3))
+        fill!(J_vertex_bounds, zero(CVec3))
+        div_bound = zero(ComplexF64)
 
         for n in tri_to_basis[t]
             In = ComplexF64(I_coeffs[n])
-            divt += In * div_rwg(rwg, n, t)
+            divergence = div_rwg(rwg, n, t)
+            divt += In * divergence
+            div_bound = _nearfield_add_product_bound(
+                div_bound, In, divergence)
             for q in 1:Nq
-                J_samples[q, t] += In * eval_rwg(rwg, n, quad_pts[t][q], t)
+                basis_value = eval_rwg(rwg, n, quad_pts[t][q], t)
+                J_samples[q, t] += In * basis_value
+                J_sample_bounds[q] = CVec3(ntuple(component ->
+                    _nearfield_add_product_bound(
+                        J_sample_bounds[q][component],
+                        In,
+                        basis_value[component],
+                    ), 3))
             end
-            Jv1 += In * eval_rwg(rwg, n, v1, t)
-            Jv2 += In * eval_rwg(rwg, n, v2, t)
-            Jv3 += In * eval_rwg(rwg, n, v3, t)
+            for (vertex_index, vertex) in enumerate((v1, v2, v3))
+                basis_value = eval_rwg(rwg, n, vertex, t)
+                contribution = In * basis_value
+                if vertex_index == 1
+                    Jv1 += contribution
+                elseif vertex_index == 2
+                    Jv2 += contribution
+                else
+                    Jv3 += contribution
+                end
+                J_vertex_bounds[vertex_index] = CVec3(ntuple(component ->
+                    _nearfield_add_product_bound(
+                        J_vertex_bounds[vertex_index][component],
+                        In,
+                        basis_value[component],
+                    ), 3))
+            end
+        end
+
+        basis_term_count = length(tri_to_basis[t])
+        requires_exact = _nearfield_reduction_requires_exact(
+            divt, div_bound, basis_term_count)
+        for q in 1:Nq, component in 1:3
+            requires_exact |= _nearfield_reduction_requires_exact(
+                J_samples[q, t][component],
+                J_sample_bounds[q][component],
+                basis_term_count,
+            )
+        end
+        vertex_values = (Jv1, Jv2, Jv3)
+        for vertex_index in 1:3, component in 1:3
+            requires_exact |= _nearfield_reduction_requires_exact(
+                vertex_values[vertex_index][component],
+                J_vertex_bounds[vertex_index][component],
+                basis_term_count,
+            )
+        end
+
+        if requires_exact
+            _consume_nearfield_exact_work!(
+                exact_work_used,
+                _nearfield_exact_triangle_data_work(
+                    basis_term_count, Nq),
+                exact_limit,
+                "compute_nearfield preprocessing",
+            )
+            setprecision(BigFloat, _NEARFIELD_EXACT_PRECISION) do
+                complex_big = Complex{BigFloat}
+                for q in 1:Nq
+                    J_samples[q, t] = CVec3(ntuple(component -> begin
+                        total = zero(complex_big)
+                        for n in tri_to_basis[t]
+                            basis_value = eval_rwg(
+                                rwg, n, quad_pts[t][q], t)
+                            total += complex_big(ComplexF64(I_coeffs[n])) *
+                                     complex_big(basis_value[component])
+                        end
+                        _local_mass_convert_bigfloat(
+                            ComplexF64,
+                            total,
+                            "near-field triangle current sample",
+                            (t, q, component),
+                        )
+                    end, 3))
+                end
+                exact_vertices = ntuple(vertex_index -> begin
+                    vertex = (v1, v2, v3)[vertex_index]
+                    CVec3(ntuple(component -> begin
+                        total = zero(complex_big)
+                        for n in tri_to_basis[t]
+                            basis_value = eval_rwg(rwg, n, vertex, t)
+                            total += complex_big(ComplexF64(I_coeffs[n])) *
+                                     complex_big(basis_value[component])
+                        end
+                        _local_mass_convert_bigfloat(
+                            ComplexF64,
+                            total,
+                            "near-field triangle vertex current",
+                            (t, vertex_index, component),
+                        )
+                    end, 3))
+                end, 3)
+                Jv1, Jv2, Jv3 = exact_vertices
+                exact_divergence = zero(complex_big)
+                for n in tri_to_basis[t]
+                    exact_divergence +=
+                        complex_big(ComplexF64(I_coeffs[n])) *
+                        complex_big(div_rwg(rwg, n, t))
+                end
+                divt = _local_mass_convert_bigfloat(
+                    ComplexF64,
+                    exact_divergence,
+                    "near-field triangle divergence",
+                    t,
+                )
+            end
         end
 
         J_verts[1, t] = Jv1
@@ -688,7 +909,14 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                                    max_work_bytes::Integer=
                                        _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                                    max_interaction_terms::Integer=
-                                       _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                                       _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                                   max_exact_work::Integer=
+                                       _DEFAULT_MAX_NEARFIELD_EXACT_WORK,
+                                   exact_work_used::Base.RefValue{BigInt}=
+                                       Ref(BigInt(0)),
+                                   defer_exact_retries::Bool=false,
+                                   exact_retry_output::Union{Nothing,Vector{Bool}}=
+                                       nothing)
     _validate_mesh_rwg_pair(mesh, rwg)
     length(I_coeffs) == rwg.nedges ||
         throw(DimensionMismatch("I_coeffs length $(length(I_coeffs)) != rwg.nedges=$(rwg.nedges)."))
@@ -717,6 +945,8 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
 
     Nobs = length(observation_points)
     Nq = _nearfield_quadrature_count(quad_order)
+    exact_limit = _validated_resource_limit(
+        "max_exact_work", max_exact_work)
     _preflight_nearfield_work(
         ntriangles(mesh), rwg.nedges, Nobs, Nq,
         max_work_bytes, max_interaction_terms)
@@ -798,10 +1028,23 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
     @assert length(wq) == Nq
     quad_pts, areas, J_samples, div_samples, J_verts =
         _precompute_nearfield_triangle_data(
-            mesh, rwg, effective_currents, xi)
+            mesh,
+            rwg,
+            effective_currents,
+            xi;
+            max_exact_work=exact_limit,
+            exact_work_used=exact_work_used,
+        )
 
     Nt = ntriangles(mesh)
     E = zeros(ComplexF64, 3, Nobs)
+    exact_retry = exact_retry_output === nothing ?
+        zeros(Bool, Nobs) : exact_retry_output
+    length(exact_retry) == Nobs ||
+        throw(DimensionMismatch(
+            "near-field exact-retry output length $(length(exact_retry)) " *
+            "must equal observation count $Nobs"))
+    fill!(exact_retry, false)
 
     # Near-singular quadrature is activated per-triangle when the observation
     # point is closer than the triangle's characteristic edge length.
@@ -828,9 +1071,9 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
     Threads.@threads for i in 1:Nobs
         @inbounds begin
         robs = observation_points[i]
-        Ex = 0.0 + 0im
-        Ey = 0.0 + 0im
-        Ez = 0.0 + 0im
+        field = zero(CVec3)
+        field_bounds = zero(CVec3)
+        field_term_count = 0
 
         for t in 1:Nt
             At = areas[t]
@@ -876,9 +1119,15 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                     Jq = J_samples[q, t]
 
                     # Vector smooth part
-                    Ex += pref_vec * Jq[1] * weighted_smooth_green
-                    Ey += pref_vec * Jq[2] * weighted_smooth_green
-                    Ez += pref_vec * Jq[3] * weighted_smooth_green
+                    field, field_bounds =
+                        _nearfield_accumulate_vector_product(
+                            field,
+                            field_bounds,
+                            pref_vec,
+                            Jq,
+                            weighted_smooth_green,
+                        )
+                    field_term_count += 1
 
                     # Vector singular remainder: [J(rq) − J(r'_*)]/(4πR)
                     Rv = robs - rq
@@ -886,9 +1135,15 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                     if !iszero(R)
                         dJ = Jq - J_star
                         crem = (At / R) * (2 * wq[q] * inv4pi)
-                        Ex += pref_vec * dJ[1] * crem
-                        Ey += pref_vec * dJ[2] * crem
-                        Ez += pref_vec * dJ[3] * crem
+                        field, field_bounds =
+                            _nearfield_accumulate_vector_product(
+                                field,
+                                field_bounds,
+                                pref_vec,
+                                dJ,
+                                crem,
+                            )
+                        field_term_count += 1
                     end
 
                     if abs(divt) > 0.0
@@ -899,25 +1154,44 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                         weighted_smooth_gradient =
                             _nearfield_weighted_smooth_grad_green(
                                 robs, rq, k, At, wq[q])
-                        Ex += pref_scl * divt * weighted_smooth_gradient[1]
-                        Ey += pref_scl * divt * weighted_smooth_gradient[2]
-                        Ez += pref_scl * divt * weighted_smooth_gradient[3]
+                        field, field_bounds =
+                            _nearfield_accumulate_scalar_vector_product(
+                                field,
+                                field_bounds,
+                                pref_scl,
+                                divt,
+                                one(Float64),
+                                weighted_smooth_gradient,
+                            )
+                        field_term_count += 1
                     end
                 end
 
                 # Vector singular leading term: J(r'_*) · S/(4π)
-                Ex += pref_vec * J_star[1] * (inv4pi * S)
-                Ey += pref_vec * J_star[2] * (inv4pi * S)
-                Ez += pref_vec * J_star[3] * (inv4pi * S)
+                field, field_bounds =
+                    _nearfield_accumulate_vector_product(
+                        field,
+                        field_bounds,
+                        pref_vec,
+                        J_star,
+                        inv4pi * S,
+                    )
+                field_term_count += 1
 
                 # Scalar singular term: (1/4π) ∇_r S (analytical)
                 if abs(divt) > 0.0
                     gradS = grad_analytical_integral_1overR(
                         robs, V1, V2, V3)
-                    cscl = pref_scl * divt * inv4pi
-                    Ex += cscl * gradS[1]
-                    Ey += cscl * gradS[2]
-                    Ez += cscl * gradS[3]
+                    field, field_bounds =
+                        _nearfield_accumulate_scalar_vector_product(
+                            field,
+                            field_bounds,
+                            pref_scl,
+                            divt,
+                            inv4pi,
+                            gradS,
+                        )
+                    field_term_count += 1
                 end
             else
                 # ── Standard quadrature (far from surface) ──
@@ -927,25 +1201,78 @@ function _compute_nearfield_matrix(mesh::TriMesh, rwg::RWGData,
                         robs, rq, k, At, wq[q])
                     Jq = J_samples[q, t]
 
-                    Ex += pref_vec * Jq[1] * weighted_green
-                    Ey += pref_vec * Jq[2] * weighted_green
-                    Ez += pref_vec * Jq[3] * weighted_green
+                    field, field_bounds =
+                        _nearfield_accumulate_vector_product(
+                            field,
+                            field_bounds,
+                            pref_vec,
+                            Jq,
+                            weighted_green,
+                        )
+                    field_term_count += 1
 
                     if abs(divt) > 0.0
                         weighted_gradient = _nearfield_weighted_grad_green(
                             robs, rq, k, At, wq[q])
-                        Ex += pref_scl * divt * weighted_gradient[1]
-                        Ey += pref_scl * divt * weighted_gradient[2]
-                        Ez += pref_scl * divt * weighted_gradient[3]
+                        field, field_bounds =
+                            _nearfield_accumulate_scalar_vector_product(
+                                field,
+                                field_bounds,
+                                pref_scl,
+                                divt,
+                                one(Float64),
+                                weighted_gradient,
+                            )
+                        field_term_count += 1
                     end
                 end
             end
         end
 
-        E[1, i] = Ex
-        E[2, i] = Ey
-        E[3, i] = Ez
+        needs_exact_retry = false
+        for component in 1:3
+            needs_exact_retry |= _nearfield_reduction_requires_exact(
+                field[component],
+                field_bounds[component],
+                field_term_count,
+            )
+        end
+        exact_retry[i] = needs_exact_retry
+        E[1, i] = field[1]
+        E[2, i] = field[2]
+        E[3, i] = field[3]
         end  # @inbounds
+    end
+
+    if !defer_exact_retries
+        nonzero_current_count = count(current ->
+            !iszero(ComplexF64(current)), I_coeffs)
+        point_exact_work = _nearfield_exact_point_work(
+            nonzero_current_count, Nq)
+        @inbounds for i in eachindex(observation_points, exact_retry)
+            exact_retry[i] || continue
+            _consume_nearfield_exact_work!(
+                exact_work_used,
+                point_exact_work,
+                exact_limit,
+                "compute_nearfield",
+            )
+            exact_field = _compute_total_field_point_exact(
+                mesh,
+                rwg,
+                I_coeffs,
+                nothing,
+                observation_points[i],
+                zero(CVec3),
+                k,
+                eta0,
+                quad_order,
+                i,
+            )
+            E[1, i] = exact_field[1]
+            E[2, i] = exact_field[2]
+            E[3, i] = exact_field[3]
+        end
     end
 
     all(isfinite, E) ||
@@ -962,6 +1289,13 @@ end
         Complex{BigFloat}(cached[2]),
         Complex{BigFloat}(cached[3]),
     )
+end
+
+@inline function _nearfield_incident_big(
+        ::Nothing, ::Vec3, ::CVec3)
+    zero_complex = zero(Complex{BigFloat})
+    return SVector{3,Complex{BigFloat}}(
+        zero_complex, zero_complex, zero_complex)
 end
 
 @inline function _nearfield_incident_big(
@@ -1031,7 +1365,7 @@ end
         mesh::TriMesh,
         rwg::RWGData,
         I_coeffs::AbstractVector{<:Number},
-        excitation::AbstractExcitation,
+        excitation::Union{Nothing,AbstractExcitation},
         observation::Vec3,
         cached_incident::CVec3,
         k,
@@ -1202,7 +1536,8 @@ end
             converted = ComplexF64(total[component] + incident[component])
             isfinite(converted) ||
                 throw(OverflowError(
-                    "compute_total_field result is outside the " *
+                    "$(isnothing(excitation) ? "compute_nearfield" : "compute_total_field") " *
+                    "result is outside the " *
                     "ComplexF64 range at observation $observation_index, " *
                     "component $component"))
             converted
@@ -1227,19 +1562,24 @@ function _compute_total_field_matrix(mesh::TriMesh, rwg::RWGData,
     _validate_incident_electric_field_wavenumber(excitation, k)
     exact_limit = _validated_resource_limit(
         "max_exact_work", max_exact_work)
+    exact_work_used = Ref(BigInt(0))
+    scattered_exact_retry = zeros(Bool, length(observation_points))
     E_total = _compute_nearfield_matrix(mesh, rwg, I_coeffs, observation_points, k;
                                         quad_order=quad_order,
                                         eta0=eta0,
                                         check_surface=check_surface,
                                         surface_tol=surface_tol,
                                         max_work_bytes=max_work_bytes,
-                                        max_interaction_terms=max_interaction_terms)
+                                        max_interaction_terms=max_interaction_terms,
+                                        max_exact_work=exact_limit,
+                                        exact_work_used=exact_work_used,
+                                        defer_exact_retries=true,
+                                        exact_retry_output=scattered_exact_retry)
     nonzero_current_count = count(current ->
         !iszero(ComplexF64(current)), I_coeffs)
     quadrature_count = _nearfield_quadrature_count(quad_order)
     point_exact_work = _nearfield_exact_point_work(
         nonzero_current_count, quadrature_count)
-    exact_work = BigInt(0)
     @inbounds for i in eachindex(observation_points)
         E_inc = _check_finite_cvec3(
             _incident_electric_field(excitation, observation_points[i], k),
@@ -1251,15 +1591,15 @@ function _compute_total_field_matrix(mesh::TriMesh, rwg::RWGData,
             scattered[1] + E_inc[1],
             scattered[2] + E_inc[2],
             scattered[3] + E_inc[3])
-        if _nearfield_total_reduction_requires_exact(
-                combined, scattered, E_inc)
-            next_exact_work = exact_work + point_exact_work
-            next_exact_work <= exact_limit ||
-                throw(ArgumentError(
-                    "compute_total_field exact retries require " *
-                    "$next_exact_work precision-weighted terms, " *
-                    "exceeding max_exact_work=$exact_limit"))
-            exact_work = next_exact_work
+        if scattered_exact_retry[i] ||
+           _nearfield_total_reduction_requires_exact(
+               combined, scattered, E_inc)
+            _consume_nearfield_exact_work!(
+                exact_work_used,
+                point_exact_work,
+                exact_limit,
+                "compute_total_field",
+            )
             combined = _compute_total_field_point_exact(
                 mesh, rwg, I_coeffs, excitation,
                 observation_points[i], E_inc, k, eta0,
@@ -1304,6 +1644,8 @@ sign convention as the rest of the package:
   construction workspaces, checked before geometry or field arrays are built
 - `max_interaction_terms=200_000_000`: maximum number of direct
   triangle-quadrature interactions across all observation points
+- `max_exact_work=20_000_000`: maximum precision-weighted basis-side terms
+  used by exceptional scattered-field cancellation retries
 
 # Returns
 - Single-point input: `CVec3`
@@ -1327,14 +1669,17 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                            max_work_bytes::Integer=
                                _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                            max_interaction_terms::Integer=
-                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                           max_exact_work::Integer=
+                               _DEFAULT_MAX_NEARFIELD_EXACT_WORK)
     E = _compute_nearfield_matrix(mesh, rwg, I_coeffs, [observation_point], k;
                                   quad_order=quad_order,
                                   eta0=eta0,
                                   check_surface=check_surface,
                                   surface_tol=surface_tol,
                                   max_work_bytes=max_work_bytes,
-                                  max_interaction_terms=max_interaction_terms)
+                                  max_interaction_terms=max_interaction_terms,
+                                  max_exact_work=max_exact_work)
     return CVec3(E[:, 1])
 end
 
@@ -1348,7 +1693,9 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                            max_work_bytes::Integer=
                                _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                            max_interaction_terms::Integer=
-                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                           max_exact_work::Integer=
+                               _DEFAULT_MAX_NEARFIELD_EXACT_WORK)
     _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
@@ -1358,7 +1705,8 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                                      check_surface=check_surface,
                                      surface_tol=surface_tol,
                                      max_work_bytes=max_work_bytes,
-                                     max_interaction_terms=max_interaction_terms)
+                                     max_interaction_terms=max_interaction_terms,
+                                     max_exact_work=max_exact_work)
 end
 
 function compute_nearfield(mesh::TriMesh, rwg::RWGData,
@@ -1371,7 +1719,9 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                            max_work_bytes::Integer=
                                _DEFAULT_MAX_NEARFIELD_WORK_BYTES,
                            max_interaction_terms::Integer=
-                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS)
+                               _DEFAULT_MAX_NEARFIELD_INTERACTION_TERMS,
+                           max_exact_work::Integer=
+                               _DEFAULT_MAX_NEARFIELD_EXACT_WORK)
     _validate_mesh_rwg_pair(mesh, rwg)
     obs = _prepare_nearfield_observations(
         observation_points, max_work_bytes)
@@ -1381,7 +1731,8 @@ function compute_nearfield(mesh::TriMesh, rwg::RWGData,
                                      check_surface=check_surface,
                                      surface_tol=surface_tol,
                                      max_work_bytes=max_work_bytes,
-                                     max_interaction_terms=max_interaction_terms)
+                                     max_interaction_terms=max_interaction_terms,
+                                     max_exact_work=max_exact_work)
 end
 
 """
