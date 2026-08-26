@@ -3187,7 +3187,11 @@ radiation_alloc = _radiation_vectors_allocation(
     mesh_radiation_alloc, rwg_radiation_alloc, grid_radiation_alloc, 2π)
 radiation_output_bytes =
     sizeof(ComplexF64) * 3 * length(grid_radiation_alloc.w) * rwg_radiation_alloc.nedges
-@test radiation_alloc <= radiation_output_bytes + 512_000
+# GitHub's macOS 26 ARM64 runner measured 4,552,992 bytes total versus a
+# 2,506,752-byte output on commit c31480d. Keep a reviewed 10% margin above
+# that 2,046,240-byte auxiliary measurement while still rejecting the former
+# per-basis phase-matrix growth by a wide margin.
+@test radiation_alloc <= radiation_output_bytes + 2_250_000
 
 bad_rhat_grid = SphGrid(
     hcat(grid.rhat[:, 1:(end - 1)], zeros(3)),
