@@ -137,13 +137,13 @@ path uses its stored near-field matrix.
 | `solve_time_s` | Linear-solve time |
 | `preconditioner_time_s` | Preconditioner construction time |
 | `gmres_iters` | Krylov iteration count, or `-1` for a direct solve |
-| `gmres_residual` | Solver-reported final residual, or `NaN` for a direct solve |
+| `gmres_residual` | Unpreconditioned true relative residual against the selected operator, or `NaN` for a direct solve |
 | `mesh_report` | Electrical-resolution report |
 | `warnings` | Workflow warnings retained for the caller |
 
 Use `result.method`, rather than the requested `:auto`, when recording a run.
-The solver-reported residual and the separately enforced true residual answer
-different questions; retain both for iterative results.
+For iterative results, `result.gmres_residual` is the same true residual used by
+the default acceptance gate.
 
 ## Source map
 

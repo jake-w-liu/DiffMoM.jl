@@ -10275,6 +10275,7 @@ result_auto = solve_scattering(mesh, freq, pw_exc;
                                 verbose=false, check_resolution=false)
 @assert result_auto.method == :dense_direct "Expected :dense_direct for N=$(result_auto.N), got $(result_auto.method)"
 @assert result_auto.N == N
+@test isnan(result_auto.gmres_residual)
 workflow_dense_bytes = sizeof(ComplexF64) * N^2
 @test_throws ArgumentError solve_scattering(
     mesh, freq, pw_exc;
@@ -10443,6 +10444,8 @@ result_aca_forced, workflow_aca_output = mktemp() do _, stream
     return result, join(split(read(stream, String)), " ")
 end
 @assert result_aca_forced.method == :aca_gmres
+@test isfinite(result_aca_forced.gmres_residual)
+@test result_aca_forced.gmres_residual <= 100 * 1e-8
 @test occursin("source=ACA inadmissible blocks", workflow_aca_output)
 @test !occursin("cutoff=", workflow_aca_output)
 rel_aca_workflow = norm(result_aca_forced.I_coeffs - I_pec) / norm(I_pec)
@@ -10469,6 +10472,13 @@ workflow_expected_cutoff = round(c0 / freq, sigdigits=3)
     workflow_dense_gmres_output,
 )
 @test !occursin("source=ACA inadmissible blocks", workflow_dense_gmres_output)
+@test result_dgm.gmres_residual == DiffMoM._true_residual_ratio(
+    Z_efie,
+    result_dgm.I_coeffs,
+    Vector{ComplexF64}(v),
+    "workflow metadata regression",
+)
+@test isfinite(result_dgm.gmres_residual)
 rel_dgm = norm(result_dgm.I_coeffs - I_pec) / norm(I_pec)
 println("  Forced dense_gmres vs direct: rel_err=$rel_dgm")
 @assert rel_dgm < 1e-6 "Workflow dense GMRES solution mismatch: $rel_dgm"
@@ -10496,6 +10506,12 @@ result_dgm_partial = solve_scattering(
     verbose=false,
 )
 @test result_dgm_partial.gmres_iters == 1
+@test result_dgm_partial.gmres_residual == DiffMoM._true_residual_ratio(
+    Z_efie,
+    result_dgm_partial.I_coeffs,
+    Vector{ComplexF64}(v),
+    "workflow partial metadata regression",
+)
 @test_throws ErrorException solve_scattering(
     mesh, freq, v;
     method=:dense_gmres,

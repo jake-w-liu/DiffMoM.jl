@@ -146,7 +146,7 @@ the assembled matrix in a lower-level workflow when that evidence is required.
 | `solve_time_s` | Linear-solve time |
 | `preconditioner_time_s` | Preconditioner construction time |
 | `gmres_iters` | GMRES iteration count, or `-1` for direct LU |
-| `gmres_residual` | Solver-reported residual, or `NaN` for direct LU |
+| `gmres_residual` | Unpreconditioned true relative residual, or `NaN` for direct LU |
 | `mesh_report` | Electrical-resolution report |
 | `warnings` | Warnings retained by the workflow |
 

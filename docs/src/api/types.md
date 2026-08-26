@@ -533,7 +533,7 @@ end
 | `solve_time_s` | `Float64` | Wall-clock time for the linear solve (seconds). |
 | `preconditioner_time_s` | `Float64` | Wall-clock time for preconditioner construction (0.0 for direct solves). |
 | `gmres_iters` | `Int` | GMRES iteration count (-1 for direct solves). |
-| `gmres_residual` | `Float64` | Final GMRES relative residual (NaN for direct solves). |
+| `gmres_residual` | `Float64` | Unpreconditioned true relative residual against the selected operator (`NaN` for direct solves). |
 | `mesh_report` | `NamedTuple` | Output of `mesh_resolution_report` for the mesh at the given frequency. |
 | `warnings` | `Vector{String}` | Any warnings generated during the solve (e.g., under-resolved mesh). |
 

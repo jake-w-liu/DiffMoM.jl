@@ -68,7 +68,9 @@ produce a warning (or error if `error_on_underresolved=true`).
 
 # Returns
 A `ScatteringResult` with fields: `I_coeffs`, `method`, `N`, timing info,
-GMRES stats, `mesh_report`, and `warnings`.
+GMRES stats, `mesh_report`, and `warnings`. For iterative methods,
+`gmres_residual` is the unpreconditioned true relative residual against the
+selected operator; it is `NaN` for a direct solve.
 """
 function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           method::Symbol=:auto,
@@ -314,7 +316,6 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                                            check_gmres_convergence=check_gmres_convergence,
                                            check_true_residual=false)
             gmres_iters = stats.niter
-            gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         elseif selected_method == :aca_gmres
             I_coeffs, stats = solve_gmres(A_aca, v;
                                            preconditioner=P_nf,
@@ -322,7 +323,6 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                                            check_gmres_convergence=check_gmres_convergence,
                                            check_true_residual=false)
             gmres_iters = stats.niter
-            gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         elseif selected_method == :mlfma
             I_coeffs, stats = solve_gmres(A_mlfma, v;
                                            preconditioner=P_nf,
@@ -330,11 +330,10 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                                            check_gmres_convergence=check_gmres_convergence,
                                            check_true_residual=false)
             gmres_iters = stats.niter
-            gmres_residual = isempty(stats.residuals) ? NaN : stats.residuals[end]
         end
     end
 
-    if check_true_residual && selected_method != :dense_direct
+    if selected_method != :dense_direct
         selected_operator = if selected_method == :dense_gmres
             Z
         elseif selected_method == :aca_gmres
@@ -342,14 +341,19 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
         else
             A_mlfma
         end
-        _assert_true_residual(
-            selected_operator,
-            I_coeffs,
-            v,
-            "solve_scattering";
-            tol=gmres_tol,
-            factor=true_residual_factor,
-        )
+        gmres_residual = if check_true_residual
+            _assert_true_residual(
+                selected_operator,
+                I_coeffs,
+                v,
+                "solve_scattering";
+                tol=gmres_tol,
+                factor=true_residual_factor,
+            )
+        else
+            _true_residual_ratio(
+                selected_operator, I_coeffs, v, "solve_scattering")
+        end
     end
     verbose && println("  Solve: $(round(t_solve, digits=3)) s" *
                        (gmres_iters >= 0 ? " ($gmres_iters GMRES iters)" : " (direct LU)"))

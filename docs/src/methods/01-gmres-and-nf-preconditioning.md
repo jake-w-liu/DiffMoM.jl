@@ -382,7 +382,7 @@ Key behavior:
 - The `tol` parameter maps to Krylov.jl's `rtol` (relative tolerance) with `atol=0.0`.
 - The returned vector must also satisfy the unpreconditioned true-residual gate
   by default; Krylov's preconditioned status alone is not sufficient.
-- Returns `(x, stats)` where `stats.niter` gives the iteration count and `stats.residuals` gives the residual history.
+- Returns `(x, stats)` where `stats.niter` gives the iteration count. The low-level wrapper does not request Krylov's optional residual history.
 
 ### 4.6 The `solve_gmres_adjoint` Function
 
@@ -565,7 +565,8 @@ I, stats = solve_gmres(Z, v; preconditioner=P_nf)
 
 println("Converged: ", stats.solved)
 println("Iterations: ", stats.niter)
-println("Final residual: ", stats.residuals[end])
+true_residual = norm(Z * I - v) / norm(v)
+println("True relative residual: ", true_residual)
 ```
 
 The public `solve_gmres` and `solve_gmres_adjoint` entry points fail closed by
@@ -841,7 +842,7 @@ gradient_impedance(Mp, I, lambda)
 
 6. Implement a cutoff sweep: for a fixed problem ($N \approx 1000$), vary $d_{\mathrm{cut}}$ from $0.25\lambda$ to $3\lambda$ in steps of $0.25\lambda$. Record the number of GMRES iterations and the preconditioner build time. Plot both quantities and find the optimal cutoff that minimizes total solve time (build + iterations $\times$ matvec cost).
 
-7. Compare the convergence behavior of `:lu` and `:diag` factorizations by plotting the residual history (available in `stats.residuals`) for both preconditioners on the same problem. How many additional iterations does the diagonal preconditioner require?
+7. Compare the convergence behavior of `:lu` and `:diag` factorizations using iteration counts and independently evaluated final true residuals on the same problem. How many additional iterations does the diagonal preconditioner require?
 
 8. Verify adjoint consistency: for a small problem ($N \approx 100$) with impedance parameters, compute the adjoint gradient and compare with a centered finite-difference approximation. Use the `fd_grad` utility from `src/optimization/Verification.jl`. The relative error should be below $10^{-5}$.
 
@@ -863,7 +864,7 @@ gradient_impedance(Mp, I, lambda)
 - [ ] Use `solve_gmres` and `solve_gmres_adjoint` with a `NearFieldPreconditionerData` object for forward and adjoint solves.
 - [ ] Set up the adjoint preconditioner $\mathbf{Z}_{\mathrm{nf}}^{-\dagger}$ and verify that the same `P_nf` object is reused for both forward and adjoint directions.
 - [ ] Choose between `:lu`, `:ilu`, and `:diag` from measured setup, storage, iteration, and residual results.
-- [ ] Diagnose GMRES convergence issues using `stats.niter` and `stats.residuals`, and apply appropriate remedies (increase cutoff, switch factorization, check mesh).
+- [ ] Diagnose GMRES convergence issues using `stats.niter`, `stats.status`, and an independently evaluated true residual, then apply appropriate remedies (increase cutoff, switch factorization, check mesh).
 - [ ] Locate the relevant source files: `src/solver/NearFieldPreconditioner.jl`, `src/solver/IterativeSolve.jl`, `src/solver/Solve.jl`, `src/optimization/Adjoint.jl`, `src/Workflow.jl`.
 
 ---
