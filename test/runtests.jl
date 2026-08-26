@@ -7550,6 +7550,192 @@ println("\n── Test 17: GMRES solver and dispatch ──")
 Z_gm = Matrix{ComplexF64}(Z_full)
 I_gm_direct = Z_gm \ v
 
+residual_cancellation_matrix = reshape(
+    ComplexF64[1.0, 1.0, 1.0], 1, 3)
+residual_cancellation_solution = ComplexF64[1.0e16, 3.0, -1.0e16]
+residual_cancellation_rhs = ComplexF64[4.0]
+residual_cancellation_reference = setprecision(BigFloat, 256) do
+    exact_product = sum(
+        Complex{BigFloat}(residual_cancellation_matrix[1, column]) *
+        Complex{BigFloat}(residual_cancellation_solution[column])
+        for column in axes(residual_cancellation_matrix, 2)
+    )
+    Float64(abs(
+        exact_product -
+        Complex{BigFloat}(residual_cancellation_rhs[1])) /
+        abs(Complex{BigFloat}(residual_cancellation_rhs[1])))
+end
+true_residual_exact_limit =
+    DiffMoM._DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS
+@test DiffMoM._enforce_true_residual_exact_work(
+    true_residual_exact_limit - 1,
+    1,
+    "exact-work boundary",
+) == true_residual_exact_limit
+@test_throws ArgumentError DiffMoM._enforce_true_residual_exact_work(
+    true_residual_exact_limit,
+    1,
+    "exact-work boundary",
+)
+residual_identity_solution = ComplexF64[1.0, -2.0, 3.0]
+for residual_identity in (
+    Matrix{ComplexF64}(I, 3, 3),
+    sparse(Matrix{ComplexF64}(I, 3, 3)),
+)
+    identity_product = residual_identity * residual_identity_solution
+    identity_analysis = DiffMoM._true_residual_fallback_rows(
+        residual_identity,
+        residual_identity_solution,
+        identity_product,
+    )
+    @test !any(identity_analysis.fallback)
+    @test all(identity_analysis.exact)
+end
+for residual_operator in (
+    residual_cancellation_matrix,
+    sparse(residual_cancellation_matrix),
+)
+    @test DiffMoM._true_residual_ratio(
+        residual_operator,
+        residual_cancellation_solution,
+        residual_cancellation_rhs,
+        "cancellation regression",
+    ) == residual_cancellation_reference
+    @test_throws ErrorException DiffMoM._assert_true_residual(
+        residual_operator,
+        residual_cancellation_solution,
+        residual_cancellation_rhs,
+        "cancellation regression";
+        tol=0.2,
+        factor=1.0,
+    )
+end
+residual_wrapper_parent = sparse(
+    [1, 2, 3],
+    [1, 1, 1],
+    ComplexF64[1.0, 1.0, 1.0],
+    3,
+    3,
+)
+@test DiffMoM._true_residual_sparse_materialization_copies(
+    adjoint(residual_wrapper_parent)) == 1
+@test DiffMoM._true_residual_sparse_materialization_copies(
+    adjoint(Symmetric(residual_wrapper_parent))) == 2
+residual_wrapper_rhs = ComplexF64[4.0, 0.0, 0.0]
+for residual_operator in (
+    adjoint(residual_wrapper_parent),
+    transpose(residual_wrapper_parent),
+    adjoint(Matrix(residual_wrapper_parent)),
+    transpose(Matrix(residual_wrapper_parent)),
+)
+    @test DiffMoM._true_residual_ratio(
+        residual_operator,
+        residual_cancellation_solution,
+        residual_wrapper_rhs,
+        "wrapped cancellation regression",
+    ) == residual_cancellation_reference
+end
+local_residual_direct = DiffMoM.LocalMassMatrix(
+    3,
+    [1, 1, 1],
+    [1, 2, 3],
+    ComplexF64[1.0, 1.0, 1.0],
+)
+local_residual_wrapper_parent = DiffMoM.LocalMassMatrix(
+    3,
+    [1, 2, 3],
+    [1, 1, 1],
+    ComplexF64[1.0, 1.0, 1.0],
+)
+for residual_operator in (
+    local_residual_direct,
+    adjoint(local_residual_wrapper_parent),
+    transpose(local_residual_wrapper_parent),
+)
+    @test DiffMoM._true_residual_ratio(
+        residual_operator,
+        residual_cancellation_solution,
+        residual_wrapper_rhs,
+        "local-mass cancellation regression",
+    ) == residual_cancellation_reference
+end
+sparse_extreme_scale = ldexp(nextfloat(1.0), 500)
+sparse_extreme_solution_component = nextfloat(1.0)
+sparse_extreme_cancel = -(
+    sparse_extreme_scale * sparse_extreme_solution_component)
+sparse_extreme_solution = ComplexF64[
+    sparse_extreme_solution_component,
+    1.0,
+]
+sparse_extreme_rhs = ComplexF64[0.0, 1.0]
+sparse_extreme_direct = sparse(ComplexF64[
+    sparse_extreme_scale sparse_extreme_cancel
+    0.0                  1.0
+])
+sparse_extreme_wrapper_parent = sparse(ComplexF64[
+    sparse_extreme_scale 0.0
+    sparse_extreme_cancel 1.0
+])
+sparse_extreme_reference = setprecision(BigFloat, 4352) do
+    Float64(abs(
+        BigFloat(sparse_extreme_scale) *
+        BigFloat(sparse_extreme_solution_component) +
+        BigFloat(sparse_extreme_cancel)))
+end
+@test isfinite(sparse_extreme_reference)
+@test sparse_extreme_reference > 0.0
+@test DiffMoM._true_residual_ratio(
+    sparse_extreme_direct,
+    sparse_extreme_solution,
+    sparse_extreme_rhs,
+    "sparse extreme cancellation regression",
+) == sparse_extreme_reference
+for residual_operator in (
+    adjoint(sparse_extreme_wrapper_parent),
+    transpose(sparse_extreme_wrapper_parent),
+)
+    @test DiffMoM._true_residual_ratio(
+        residual_operator,
+        sparse_extreme_solution,
+        sparse_extreme_rhs,
+        "wrapped sparse extreme cancellation regression",
+    ) == sparse_extreme_reference
+end
+structured_residual_parent = ComplexF64[
+    1.0e16 1.0 1.0
+    1.0    0.0 0.0
+    1.0    0.0 0.0
+]
+structured_residual_solution = ComplexF64[1.0, 3.0, -1.0e16]
+structured_residual_rhs = ComplexF64[4.0, 1.0, 1.0]
+structured_residual_reference = setprecision(BigFloat, 256) do
+    exact_residual =
+        Complex{BigFloat}.(structured_residual_parent) *
+        Complex{BigFloat}.(structured_residual_solution) -
+        Complex{BigFloat}.(structured_residual_rhs)
+    Float64(sqrt(
+        sum(abs2, exact_residual) /
+        sum(abs2, Complex{BigFloat}.(structured_residual_rhs))))
+end
+for parent_matrix in (
+    structured_residual_parent,
+    sparse(structured_residual_parent),
+)
+    for residual_operator in (
+        Hermitian(parent_matrix),
+        Symmetric(parent_matrix),
+        adjoint(Symmetric(parent_matrix)),
+        transpose(Hermitian(parent_matrix)),
+    )
+        @test DiffMoM._true_residual_ratio(
+            residual_operator,
+            structured_residual_solution,
+            structured_residual_rhs,
+            "structured cancellation regression",
+        ) == structured_residual_reference
+    end
+end
+
 # GMRES forward solve (no preconditioner)
 gmres_workspace_bytes = DiffMoM._gmres_workspace_bytes(
     size(Z_gm, 1), 20)
