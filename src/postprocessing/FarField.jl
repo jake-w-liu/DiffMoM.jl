@@ -1056,15 +1056,9 @@ end
 
 function incident_farfield(multi::MultiExcitation, r_hat::Vec3, k::Real)
     _validated_incident_farfield_args(r_hat, k)
-    length(multi.excitations) == length(multi.weights) ||
-        error("MultiExcitation has mismatched excitation/weight lengths.")
-    isempty(multi.excitations) &&
-        throw(ArgumentError("MultiExcitation requires at least one child excitation."))
+    _validate_excitation_model(multi)
     E = CVec3(0.0 + 0im, 0.0 + 0im, 0.0 + 0im)
     for (i, (exc, w)) in enumerate(zip(multi.excitations, multi.weights))
-        isfinite(w) ||
-            throw(ArgumentError(
-                "MultiExcitation weight $i must be finite, got $w."))
         child = incident_farfield(exc, r_hat, k)::CVec3
         _source_scaled_vector_requires_fallback(w, child) &&
             return _multi_incident_farfield_exact(multi, r_hat, k)

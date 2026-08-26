@@ -7207,6 +7207,10 @@ multi_farfield = make_multi_excitation(multi_farfield_children)
 @test incident_farfield(
     multi_farfield, Vec3(0.0, 0.0, 1.0), k_exc) ==
     CVec3(ComplexF64(multi_farfield_maximum), 0.0 + 0im, 0.0 + 0im)
+@test_throws ArgumentError incident_farfield(
+    cyclic_multi, Vec3(0.0, 0.0, 1.0), k_exc)
+@test_throws ArgumentError incident_farfield(
+    too_deep_multi, Vec3(0.0, 0.0, 1.0), k_exc)
 multi_farfield_cancellation_values = (1.0e16, 1.0, -1.0e16)
 multi_farfield_cancellation = make_multi_excitation([
     make_pattern_feed(
