@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -593,6 +594,101 @@ class ValidationReportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("--slot-wx-fracs", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
+
+    def test_curve_reuse_rechecks_verdict_and_accepts_closure_only(self) -> None:
+        curve = load_module(
+            "meep_curve_reuse_validation",
+            MEEP_DIR / "run_reflectance_curve_comparison.py",
+        )
+        curve.make_plot = (
+            lambda rows, output, tol_refl: output.write_bytes(b"plot")
+        )
+
+        for verdict in ("CHECK", "PASS"):
+            with self.subTest(verdict=verdict), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                data = root / "data"
+                data.mkdir()
+                case_prefix = "curve_wx0p200"
+                (data / f"julia_{case_prefix}_geometry.json").write_text(
+                    "{}\n", encoding="utf-8"
+                )
+                (data / f"julia_{case_prefix}_reference.json").write_text(
+                    json.dumps(
+                        {
+                            "periodic_bc_model": "bloch",
+                            "refl_total_fraction": 0.1,
+                            "trans_total_fraction_closure": 0.9,
+                        },
+                        allow_nan=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                (data / f"meep_{case_prefix}_results.json").write_text(
+                    json.dumps(
+                        {
+                            "reflectance_total": 0.1,
+                            "transmittance_total": 0.9,
+                        },
+                        allow_nan=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                report_path = (
+                    data
+                    / f"meep_{case_prefix}_cross_validation_report.json"
+                )
+                report_path.write_text(
+                    json.dumps(
+                        {
+                            "abs_diff_refl": 0.0,
+                            "abs_diff_trans": 0.0,
+                            "verdict": verdict,
+                        },
+                        allow_nan=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                commands: list[list[str]] = []
+                curve.run_command = lambda command, cwd: commands.append(command)
+                arguments = [
+                    str(MEEP_DIR / "run_reflectance_curve_comparison.py"),
+                    "--project-root",
+                    str(root),
+                    "--prefix-base",
+                    "curve",
+                    "--slot-wx-fracs",
+                    "0.2",
+                    "--reuse-existing",
+                ]
+                with mock.patch.object(sys, "argv", arguments):
+                    if verdict == "CHECK":
+                        with self.assertRaisesRegex(SystemExit, "is not PASS"):
+                            curve.main()
+                    else:
+                        curve.main()
+
+                self.assertEqual(len(commands), 1)
+                self.assertIn("compare_periodic_to_julia.py", commands[0][1])
+                summary_path = data / "curve_curve_summary.json"
+                if verdict == "CHECK":
+                    self.assertFalse(summary_path.exists())
+                else:
+                    summary = self.load_standard_json(summary_path)
+                    self.assertEqual(summary["rows"][0]["julia_trans_total"], 0.9)
+
+    def test_meep_subprocess_failure_has_actionable_exit(self) -> None:
+        common = load_module(
+            "meep_common_subprocess_failure",
+            MEEP_DIR / "_meep_common.py",
+        )
+        failure = subprocess.CalledProcessError(7, ["solver", "--case", "bad"])
+        with mock.patch.object(common.subprocess, "run", side_effect=failure):
+            with self.assertRaisesRegex(SystemExit, "exited with status 7"):
+                common.run_command(["solver", "--case", "bad"], REPO_ROOT)
 
     def test_meep_analyzer_rejects_empty_case_lists_without_traceback(self) -> None:
         result = self.run_cli(

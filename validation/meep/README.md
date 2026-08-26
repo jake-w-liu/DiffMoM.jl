@@ -76,6 +76,11 @@ python validation/meep/analyze_meep_detailed_comparison.py \
   --out-base meep_detailed_heuristic_check
 ```
 
+`--reuse-existing` skips matching Julia and Meep solver inputs only. It always
+reruns the comparator so current artifact hashes and `--tol-refl` apply. Any
+case with a `CHECK` reflectance verdict stops the curve command with a nonzero
+exit before it writes a new summary.
+
 ## Notes
 
 - This path is intentionally open-source only (Julia + Meep).

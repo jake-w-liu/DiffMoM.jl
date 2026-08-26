@@ -96,6 +96,11 @@ case fields; the comparator then requires their current digests to match the
 ones stored in the Meep result. A mismatch is stale or mixed provenance, not a
 comparison result: regenerate the Julia pair and rerun Meep.
 
+For a curve sweep, `--reuse-existing` reuses only matching Julia and Meep
+solver inputs. The comparator still runs for every point with the current
+tolerance and provenance checks. A reflectance `CHECK` stops the sweep with a
+nonzero exit before a new curve summary is written.
+
 ---
 
 ## 4) Practical Interpretation

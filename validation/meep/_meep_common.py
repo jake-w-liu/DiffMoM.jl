@@ -304,4 +304,10 @@ def cli_options(*pairs: tuple[str, Any]) -> List[str]:
 def run_command(cmd: Sequence[str], cwd: Path) -> None:
     """Run one validation subprocess and fail if it does not complete."""
     print("$", shlex.join(cmd))
-    subprocess.run(list(cmd), cwd=str(cwd), check=True)
+    try:
+        subprocess.run(list(cmd), cwd=str(cwd), check=True)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(
+            f"Validation subprocess exited with status {exc.returncode}: "
+            f"{shlex.join(cmd)}. Review its output above before rerunning."
+        ) from exc

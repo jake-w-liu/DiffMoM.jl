@@ -83,7 +83,14 @@ def main() -> None:
     parser.add_argument("--slot-wy-frac", type=unit_interval_float, default=0.20)
     parser.add_argument("--tol-refl", type=nonnegative_finite_float, default=0.12)
     parser.add_argument("--periodic-bc", type=str, default="bloch", choices=["bloch"])
-    parser.add_argument("--reuse-existing", action="store_true")
+    parser.add_argument(
+        "--reuse-existing",
+        action="store_true",
+        help=(
+            "Reuse matching Julia and Meep inputs, but rerun provenance and "
+            "tolerance comparison for every case."
+        ),
+    )
 
     add_runtime_arguments(
         parser, resolution_default=30, after_sources_default=180.0
@@ -113,16 +120,18 @@ def main() -> None:
         case_prefix = f"{args.prefix_base}_wx{slug_float(wx)}"
         print(f"\n=== Curve Case wx={wx:.3f} ({case_prefix}) ===")
 
+        geometry_ref = data_dir / f"julia_{case_prefix}_geometry.json"
         julia_ref = data_dir / f"julia_{case_prefix}_reference.json"
         meep_ref = data_dir / f"meep_{case_prefix}_results.json"
         cmp_ref = data_dir / f"meep_{case_prefix}_cross_validation_report.json"
 
-        if not (
+        reuse_inputs = (
             args.reuse_existing
+            and geometry_ref.exists()
             and julia_ref.exists()
             and meep_ref.exists()
-            and cmp_ref.exists()
-        ):
+        )
+        if not reuse_inputs:
             run_command(
                 [
                     "julia",
@@ -164,23 +173,42 @@ def main() -> None:
                 cwd=project_root,
             )
 
-            run_command(
-                [
-                    sys.executable,
-                    str(compare_script),
-                ]
-                + cli_options(
-                    ("--project-root", project_root),
-                    ("--output-prefix", case_prefix),
-                    ("--tol-refl", args.tol_refl),
-                ),
-                cwd=project_root,
-            )
+        # Always regenerate the comparison report. This validates artifact
+        # provenance against the current Julia inputs, applies the requested
+        # tolerance, and exits nonzero when the primary reflectance gate fails.
+        run_command(
+            [
+                sys.executable,
+                str(compare_script),
+            ]
+            + cli_options(
+                ("--project-root", project_root),
+                ("--output-prefix", case_prefix),
+                ("--tol-refl", args.tol_refl),
+            ),
+            cwd=project_root,
+        )
 
         recovery = "Regenerate the case artifacts before building the curve summary."
         julia = load_json_object(julia_ref, recovery=recovery)
         meep = load_json_object(meep_ref, recovery=recovery)
         rep = load_json_object(cmp_ref, recovery=recovery)
+        verdict = rep.get("verdict")
+        if verdict not in ("PASS", "CHECK"):
+            raise SystemExit(
+                f"Invalid verdict in {cmp_ref}: expected 'PASS' or 'CHECK', "
+                f"got {verdict!r}. Regenerate the comparison report."
+            )
+        if verdict != "PASS":
+            raise SystemExit(
+                f"Reflectance curve case {case_prefix!r} is not PASS: "
+                f"verdict={verdict}. Inspect {cmp_ref} and rerun the case "
+                "before building a curve summary."
+            )
+        if "trans_total_fraction_closure" in julia:
+            julia_trans_total = float(julia["trans_total_fraction_closure"])
+        else:
+            julia_trans_total = float(julia["trans_total_fraction"])
 
         rows.append(
             {
@@ -193,14 +221,10 @@ def main() -> None:
                 "julia_refl_total": float(julia["refl_total_fraction"]),
                 "meep_refl_total": float(meep["reflectance_total"]),
                 "abs_diff_refl": float(rep["abs_diff_refl"]),
-                "julia_trans_total": float(
-                    julia.get(
-                        "trans_total_fraction_closure", julia["trans_total_fraction"]
-                    )
-                ),
+                "julia_trans_total": julia_trans_total,
                 "meep_trans_total": float(meep["transmittance_total"]),
                 "abs_diff_trans": float(rep["abs_diff_trans"]),
-                "verdict": rep["verdict"],
+                "verdict": verdict,
             }
         )
 
