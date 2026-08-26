@@ -959,6 +959,55 @@ end
 # unbounded multi-gigabyte workspace.
 const _MAX_DIRECT_BIGFLOAT_VALUES = 1_000_000
 
+# MPFR stores 4352-bit significands in 544 bytes on 64-bit limbs. Reserve
+# eight additional limbs for the BigFloat/MPFR/GC metadata associated with
+# every distinct value. This is deliberately above Base.summarysize's measured
+# 600 bytes per BigFloat at the configured precision.
+const _DIRECT_BIGFLOAT_BYTES_PER_REAL =
+    cld(_IEEE_DENSE_PRODUCT_FALLBACK_PRECISION, 8sizeof(UInt)) * sizeof(UInt) +
+    8sizeof(UInt)
+
+function _checked_exact_dense_solve_work_bytes(
+        ::Type{T},
+        system_size::Int,
+        ieee_matrix_count::Int,
+        integer_vector_count::Int,
+        ieee_vector_count::Int,
+        additional_payloads::Integer...;
+        label::AbstractString) where {
+            T<:Union{Float32,Float64,ComplexF32,ComplexF64}}
+    system_size >= 0 ||
+        throw(ArgumentError("$label system size must be nonnegative"))
+    ieee_matrix_count >= 0 && integer_vector_count >= 0 &&
+        ieee_vector_count >= 0 ||
+        throw(ArgumentError("$label retained counts must be nonnegative"))
+    component_count = T <: Real ? 1 : 2
+    big_value_bytes =
+        BigInt(component_count) * _DIRECT_BIGFLOAT_BYTES_PER_REAL
+    count = BigInt(system_size)
+    total = BigInt(ieee_matrix_count) * sizeof(T) * count^2
+    total += big_value_bytes * count^2
+    # Exact solve retains the converted RHS, a distinct BigFloat solution,
+    # and the IEEE output while the exact factor remains live.
+    total += 2big_value_bytes * count
+    total += BigInt(ieee_vector_count) * sizeof(T) * count
+    total += BigInt(integer_vector_count) * sizeof(Int) * count
+    for payload in additional_payloads
+        payload >= 0 ||
+            throw(ArgumentError(
+                "$label additional payloads must be nonnegative"))
+        total += payload
+    end
+    total <= typemax(Int) ||
+        throw(ArgumentError("$label exact raw-payload estimate overflows Int"))
+    return Int(total)
+end
+
+@inline function _run_exact_fallback_check(exact_fallback_check)
+    exact_fallback_check === nothing || exact_fallback_check()
+    return nothing
+end
+
 struct _BigFloatDenseLUPlan{T<:Number,F}
     factorization::F
 end
@@ -1035,10 +1084,13 @@ function _solve_factored_linear_system(
     matrix::AbstractMatrix{<:Number},
     rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
     label::AbstractString,
+    ;
+    exact_fallback_check=nothing,
 )
     size(matrix) == size(factorization) ||
         throw(DimensionMismatch(
             "$label matrix has size $(size(matrix)), expected $(size(factorization))"))
+    _run_exact_fallback_check(exact_fallback_check)
     return _solve_bigfloat_plan(factorization, rhs, label)
 end
 
@@ -1071,6 +1123,8 @@ end
     rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
     ::Type{T},
     label::AbstractString,
+    ;
+    exact_fallback_check=nothing,
 ) where {T<:Number}
     T <: Union{Float32,Float64,ComplexF32,ComplexF64} ||
         throw(ArgumentError(
@@ -1081,6 +1135,7 @@ end
         _factor_equilibrated_ieee_matrix(matrix, T, label)
     catch err
         _recoverable_direct_solve_error(err) || rethrow()
+        _run_exact_fallback_check(exact_fallback_check)
         exact_solution = _solve_bigfloat_ieee_linear_system(
             matrix, rhs, T, label)
         exact_backward_error = _direct_backward_error(
@@ -1097,6 +1152,7 @@ end
         isfinite(backward_error) && backward_error <= limit &&
             return solution
         if refinement == 2
+            _run_exact_fallback_check(exact_fallback_check)
             exact_solution = _solve_bigfloat_ieee_linear_system(
                 matrix, rhs, T, label)
             exact_backward_error = _direct_backward_error(
@@ -1124,7 +1180,8 @@ end
 function _factor_dense_linear_system(
         matrix::AbstractMatrix{<:Number},
         ::Type{T},
-        label::AbstractString) where {T<:Number}
+        label::AbstractString;
+        exact_fallback_check=nothing) where {T<:Number}
     real_type = typeof(real(zero(T)))
     use_ieee_scaling = real_type <: Union{Float32,Float64} &&
                        T <: Union{Float32,Float64,ComplexF32,ComplexF64}
@@ -1136,6 +1193,7 @@ function _factor_dense_linear_system(
             return _factor_equilibrated_ieee_matrix(matrix, T, label)
         catch balanced_error
             _recoverable_direct_solve_error(balanced_error) || rethrow()
+            _run_exact_fallback_check(exact_fallback_check)
             return _factor_bigfloat_ieee_matrix(matrix, T, label)
         end
     end
@@ -1148,6 +1206,8 @@ function _solve_factored_linear_system(
     matrix::AbstractMatrix{<:Number},
     rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
     label::AbstractString,
+    ;
+    exact_fallback_check=nothing,
 )
     scalar_type = promote_type(eltype(matrix), eltype(rhs))
     real_type = typeof(real(zero(scalar_type)))
@@ -1161,14 +1221,16 @@ function _solve_factored_linear_system(
     catch err
         use_ieee_scaling && _recoverable_direct_solve_error(err) || rethrow()
         return _solve_scaled_ieee_linear_system(
-            matrix, rhs, scalar_type, label)
+            matrix, rhs, scalar_type, label;
+            exact_fallback_check=exact_fallback_check)
     end
     @inbounds for value in solution
         if !isfinite(value)
             use_ieee_scaling ||
                 return _assert_finite_linear_array(solution, label)
             return _solve_scaled_ieee_linear_system(
-                matrix, rhs, scalar_type, label)
+                matrix, rhs, scalar_type, label;
+                exact_fallback_check=exact_fallback_check)
         end
     end
     if use_ieee_scaling
@@ -1178,7 +1240,8 @@ function _solve_factored_linear_system(
             real_type, size(matrix, 1))
         if !isfinite(backward_error) || backward_error > limit
             return _solve_scaled_ieee_linear_system(
-                matrix, rhs, scalar_type, label)
+                matrix, rhs, scalar_type, label;
+                exact_fallback_check=exact_fallback_check)
         end
     end
     return solution

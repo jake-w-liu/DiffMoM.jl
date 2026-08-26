@@ -112,8 +112,11 @@ end
         )
         res = solve_em_dda_3d(grid, k0, 1.0 + 0im, 1.0 + 0im, E_inc, H_inc)
         direct_em_dda_bytes = DiffMoM._direct_em_dda_solve_work_bytes(grid)
+        exact_em_dda_bytes =
+            DiffMoM._exact_direct_em_dda_solve_work_bytes(grid)
         one_em_matrix_bytes = sizeof(ComplexF64) * (6grid.nvoxels)^2
         @test direct_em_dda_bytes > 2one_em_matrix_bytes
+        @test exact_em_dda_bytes > direct_em_dda_bytes
         @test_throws ArgumentError solve_em_dda_3d(
             grid, k0, 1.0 + 0im, 1.0 + 0im, E_inc, H_inc;
             max_matrix_bytes=direct_em_dda_bytes - 1)

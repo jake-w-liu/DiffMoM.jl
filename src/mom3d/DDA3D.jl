@@ -1894,6 +1894,23 @@ function _direct_dda_solve_work_bytes(grid::VoxelGrid3D)
         field_payload,
         material_payload;
         label="direct DDA solve",
+        integer_vector_count=3,
+    )
+end
+
+function _exact_direct_dda_solve_work_bytes(grid::VoxelGrid3D)
+    system_size = _dense_dda_system_size(grid)
+    material_payload = _checked_array_payload_bytes(
+        _CMat3DDA, 2, grid.nvoxels;
+        label="exact direct DDA material vectors")
+    return _checked_exact_dense_solve_work_bytes(
+        ComplexF64,
+        system_size,
+        3,
+        7,
+        8,
+        material_payload;
+        label="exact direct DDA solve",
     )
 end
 
@@ -2017,6 +2034,8 @@ voxel centers.
 For `solver=:direct`, `max_matrix_bytes` bounds the combined raw payload of
 the retained dense system, LU factors and pivots, worst-case material vectors,
 and simultaneous flattened/returned field buffers.
+The limit is rechecked against the larger bounded exact-factor workspace only
+when ordinary and equilibrated IEEE factorization cannot verify the solve.
 """
 function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
                       radiative_correction::Bool=false,
@@ -2037,6 +2056,14 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
         "direct DDA retained output and factorization",
         "max_matrix_bytes",
     )
+    exact_work_bytes = solver == :direct ?
+        _exact_direct_dda_solve_work_bytes(grid) : 0
+    enforce_exact_work = () -> _enforce_payload_limit(
+        exact_work_bytes,
+        max_matrix_bytes,
+        "exact direct DDA factorization and solve workspace",
+        "max_matrix_bytes",
+    )
     rhs = _flatten_fields_3d(E_inc, grid.nvoxels, "E_inc")
 
     if solver == :direct
@@ -2046,9 +2073,11 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
             max_output_bytes=max_matrix_bytes,
         )
         fac = _factor_dense_linear_system(
-            A, ComplexF64, "direct DDA factorization")
+            A, ComplexF64, "direct DDA factorization";
+            exact_fallback_check=enforce_exact_work)
         E_total_flat = _solve_factored_linear_system(
-            fac, A, rhs, "direct DDA solution")
+            fac, A, rhs, "direct DDA solution";
+            exact_fallback_check=enforce_exact_work)
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),
                            epsv, alpha, A, fac, :direct, nothing,

@@ -314,8 +314,10 @@ println("\n── Test 46: 3D vector material DDA solver ──")
         E_inc = planewave_dda_3d(grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0))
         res = solve_dda_3d(grid, k0, 1.0 + 0im, E_inc)
         direct_dda_bytes = DiffMoM._direct_dda_solve_work_bytes(grid)
+        exact_dda_bytes = DiffMoM._exact_direct_dda_solve_work_bytes(grid)
         one_dda_matrix_bytes = sizeof(ComplexF64) * (3grid.nvoxels)^2
         @test direct_dda_bytes > 2one_dda_matrix_bytes
+        @test exact_dda_bytes > direct_dda_bytes
         @test_throws ArgumentError solve_dda_3d(
             grid, k0, 1.0 + 0im, E_inc;
             max_matrix_bytes=direct_dda_bytes - 1)

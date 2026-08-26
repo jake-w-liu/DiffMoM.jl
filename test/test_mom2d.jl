@@ -517,7 +517,18 @@ end
         # Working-precision LU loses the first component by about 267 orders
         # of magnitude because this matrix has reciprocal condition ~1e-300.
         E_inc = copy(@view Z[:, 2])
-        vr = solve_vie_2d(mesh, k0, chi, E_inc)
+        ordinary_work_bytes = DiffMoM._direct_vie_solve_work_bytes(
+            mesh.ncells)
+        exact_work_bytes = DiffMoM._exact_direct_vie_solve_work_bytes(
+            mesh.ncells)
+        @test exact_work_bytes > ordinary_work_bytes
+        @test_throws ArgumentError solve_vie_2d(
+            mesh, k0, chi, E_inc;
+            max_output_bytes=exact_work_bytes - 1)
+        vr = solve_vie_2d(
+            mesh, k0, chi, E_inc;
+            max_output_bytes=exact_work_bytes)
+        @test vr.Z_LU isa DiffMoM._BigFloatDenseLUPlan
         reference = setprecision(BigFloat, 4096) do
             Z_big = Complex{BigFloat}.(Z)
             rhs_big = Complex{BigFloat}.(E_inc)

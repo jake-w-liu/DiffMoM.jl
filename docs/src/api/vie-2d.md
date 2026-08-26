@@ -297,7 +297,7 @@ Jacobian evaluation.
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
 | `chi` | `AbstractVector{Float64}` | -- | Per-cell dielectric contrast (length `ncells`). |
 | `E_inc` | `AbstractVector{ComplexF64}` | -- | Incident field at cell centers (length `ncells`), e.g. from `planewave_2d` or `linesource_2d`. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for retained `D`, `Z`, LU factors/pivots, field vectors, and contrast. The one-matrix assembly limit is checked separately inside the solve. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for retained `D`, `Z`, LU factors/pivots, field vectors, and contrast. The one-matrix assembly limit is checked separately; a larger 4352-bit factor/solve estimate is enforced only when that exceptional path is required. |
 
 **Returns:** `VIEResult2D` with the total field `E_total`, the incident field, the
 contrast profile, the matrices `D` and `Z`, the verified factorization, the mesh, and

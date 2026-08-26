@@ -766,6 +766,23 @@ function _direct_em_dda_solve_work_bytes(grid::VoxelGrid3D)
         field_payload,
         polarizability_payload;
         label="direct EM DDA solve",
+        integer_vector_count=3,
+    )
+end
+
+function _exact_direct_em_dda_solve_work_bytes(grid::VoxelGrid3D)
+    system_size = _dense_em_dda_system_size(grid)
+    polarizability_payload = _checked_array_payload_bytes(
+        _CMat6DDA, grid.nvoxels;
+        label="exact direct EM DDA polarizability vector")
+    return _checked_exact_dense_solve_work_bytes(
+        ComplexF64,
+        system_size,
+        3,
+        7,
+        8,
+        polarizability_payload;
+        label="exact direct EM DDA solve",
     )
 end
 
@@ -864,11 +881,20 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
     rhs = _flatten_em_fields_3d(E_inc, H_inc, grid.nvoxels, "E_inc", "H_inc")
 
     if solver == :direct
+        exact_work_bytes = _exact_direct_em_dda_solve_work_bytes(grid)
+        enforce_exact_work = () -> _enforce_payload_limit(
+            exact_work_bytes,
+            max_matrix_bytes,
+            "exact direct EM DDA factorization and solve workspace",
+            "max_matrix_bytes",
+        )
         A = _dense_em_dda_matrix(Aop, max_matrix_bytes)
         fac = _factor_dense_linear_system(
-            A, ComplexF64, "direct EM DDA factorization")
+            A, ComplexF64, "direct EM DDA factorization";
+            exact_fallback_check=enforce_exact_work)
         total_flat = _solve_factored_linear_system(
-            fac, A, rhs, "direct EM DDA solution")
+            fac, A, rhs, "direct EM DDA solution";
+            exact_fallback_check=enforce_exact_work)
         E_total, H_total = _unflatten_em_fields_3d(total_flat, grid.nvoxels)
         E_rhs, H_rhs = _unflatten_em_fields_3d(rhs, grid.nvoxels)
         return EMDDAResult3D(E_total, H_total, E_rhs, H_rhs,
@@ -909,6 +935,8 @@ Solve coupled electric-magnetic volume DDA for magnetodielectric voxels.
 For `solver=:direct`, `max_matrix_bytes` bounds the combined raw payload of
 the retained dense system, LU factors and pivots, polarizabilities, and
 simultaneous flattened/returned field buffers.
+The limit is rechecked against the larger bounded exact-factor workspace only
+when ordinary and equilibrated IEEE factorization cannot verify the solve.
 """
 function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
                          E_inc::AbstractVector, H_inc::AbstractVector;

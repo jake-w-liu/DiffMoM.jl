@@ -36,7 +36,10 @@ function _vie_reciprocal_condition_2d(factorization, Z::Matrix{ComplexF64})
     return reciprocal_condition
 end
 
-function _factor_vie_system_2d(Z::Matrix{ComplexF64}, label::AbstractString)
+function _factor_vie_system_2d(
+        Z::Matrix{ComplexF64},
+        label::AbstractString;
+        exact_fallback_check=nothing)
     raw_factor = try
         lu(Z)
     catch err
@@ -55,6 +58,7 @@ function _factor_vie_system_2d(Z::Matrix{ComplexF64}, label::AbstractString)
     # severely ill-conditioned VIE system. Factor the stored Float64 matrix
     # exactly in the bounded high-precision backend and cache that plan for
     # both the forward solve and subsequent Jacobian block solves.
+    _run_exact_fallback_check(exact_fallback_check)
     return _factor_bigfloat_ieee_matrix(Z, ComplexF64, label)
 end
 
@@ -72,6 +76,25 @@ function _direct_vie_solve_work_bytes(cell_count::Int)
         field_payload,
         contrast_payload;
         label="direct VIE solve",
+    )
+end
+
+function _exact_direct_vie_solve_work_bytes(cell_count::Int)
+    contrast_payload = _checked_array_payload_bytes(
+        Float64, cell_count;
+        label="exact direct VIE retained contrast vector")
+    # D and Z, a retained IEEE factor, and the equilibrated retry can coexist
+    # with a transient exact factor. Five integer vectors cover their pivots
+    # and equilibration shifts; eight IEEE vectors cover the physical and
+    # refinement field buffers at the exact-solve peak.
+    return _checked_exact_dense_solve_work_bytes(
+        ComplexF64,
+        cell_count,
+        4,
+        5,
+        8,
+        contrast_payload;
+        label="exact direct VIE solve",
     )
 end
 
@@ -342,6 +365,9 @@ Solve the 2D VIE for internal total fields.
 Returns `VIEResult2D` with all computed quantities for downstream use.
 `max_output_bytes` bounds the combined raw payload retained by the dense
 result: `D`, `Z`, LU factors and pivots, field vectors, and contrast.
+If the stored system needs the bounded 4352-bit factorization path, the same
+limit is checked against its larger factor and solve workspace before
+allocating that factor.
 """
 function solve_vie_2d(
         mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
@@ -359,14 +385,24 @@ function solve_vie_2d(
         "direct VIE retained output and factorization",
         "max_output_bytes",
     )
+    exact_work_bytes = _exact_direct_vie_solve_work_bytes(mesh.ncells)
+    enforce_exact_work = () -> _enforce_payload_limit(
+        exact_work_bytes,
+        max_output_bytes,
+        "exact direct VIE factorization and solve workspace",
+        "max_output_bytes",
+    )
 
     Z, D = assemble_vie_2d(
         mesh, k0, chi; max_output_bytes=max_output_bytes)
-    Z_lu = _factor_vie_system_2d(Z, "solve_vie_2d")
+    Z_lu = _factor_vie_system_2d(
+        Z, "solve_vie_2d";
+        exact_fallback_check=enforce_exact_work)
     issuccess(Z_lu) ||
         error("solve_vie_2d system matrix factorization failed.")
     E_total = _solve_factored_linear_system(
-        Z_lu, Z, E_inc, "solve_vie_2d")
+        Z_lu, Z, E_inc, "solve_vie_2d";
+        exact_fallback_check=enforce_exact_work)
     all(isfinite, E_total) ||
         error("solve_vie_2d produced non-finite total-field values.")
 

@@ -100,16 +100,20 @@ function _checked_dense_lu_work_bytes(
         system_size::Int,
         retained_matrix_count::Int,
         additional_payloads::Integer...;
-        label::AbstractString) where {T}
+        label::AbstractString,
+        integer_vector_count::Int=1) where {T}
     system_size >= 0 ||
         throw(ArgumentError("$label system size must be nonnegative"))
     retained_matrix_count >= 1 ||
         throw(ArgumentError(
             "$label retained matrix count must be positive"))
+    integer_vector_count >= 1 ||
+        throw(ArgumentError(
+            "$label integer vector count must be positive"))
     matrix_bytes = _checked_array_payload_bytes(
         T, system_size, system_size; label="$label matrix")
     total = BigInt(retained_matrix_count) * matrix_bytes
-    total += BigInt(sizeof(Int)) * system_size
+    total += BigInt(integer_vector_count) * sizeof(Int) * system_size
     for payload in additional_payloads
         payload >= 0 ||
             throw(ArgumentError(
