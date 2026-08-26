@@ -4863,6 +4863,9 @@ GC.gc()
 @test_throws ArgumentError optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
     maxiter=1, lb=[1.0], ub=[0.0], verbose=false)
+@test DiffMoM._optimizer_evaluation_limit(0) == 0
+@test DiffMoM._optimizer_evaluation_limit(1) == 2
+@test_throws ArgumentError DiffMoM._optimizer_evaluation_limit(typemax(Int))
 @test DiffMoM._recoverable_optimizer_trial_error(SingularException(1))
 @test DiffMoM._recoverable_optimizer_trial_error(OverflowError("trial"))
 @test !DiffMoM._recoverable_optimizer_trial_error(DomainError(1.0))
@@ -4875,11 +4878,21 @@ theta_fixed_guard, trace_fixed_guard = optimize_lbfgs(
 @test theta_fixed_guard == theta_opt_guard
 @test length(trace_fixed_guard) == 1
 @test trace_fixed_guard[1].n_fwd == 1
+@test trace_fixed_guard[1].gnorm == 0.0
+theta_lower_guard, trace_lower_guard = optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=3, tol=0.0, lb=[0.0], ub=[Inf], verbose=false)
+@test theta_lower_guard == theta_opt_guard
+@test length(trace_lower_guard) == 1
+@test only(trace_lower_guard).gnorm == 0.0
 theta_backtracked_guard, trace_backtracked_guard = optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
     maxiter=1, tol=0.0, alpha0=0.5, maximize=true, verbose=false)
 @test theta_backtracked_guard ≈ [0.5]
-@test length(trace_backtracked_guard) == 1
+@test length(trace_backtracked_guard) == 2
+@test last(trace_backtracked_guard).J == 4.0
+@test last(trace_backtracked_guard).n_fwd == 3
+@test last(trace_backtracked_guard).n_adj == 2
 @test all(isfinite, theta_backtracked_guard)
 
 Z_dir_guard = Matrix{ComplexF64}(I, 2, 2)
@@ -4893,12 +4906,21 @@ theta_dir_guard, trace_dir_guard = optimize_directivity(
     maxiter=3, tol=0.0, lb=[0.0], ub=[0.0], verbose=false)
 @test theta_dir_guard == theta_opt_guard
 @test length(trace_dir_guard) == 1
+@test only(trace_dir_guard).gnorm == 0.0
+theta_dir_upper_guard, trace_dir_upper_guard = optimize_directivity(
+    Z_dir_guard, Mp_dir_guard, v_dir_guard,
+    Q_target_guard, Q_total_guard, theta_opt_guard;
+    maxiter=3, tol=0.0, lb=[-Inf], ub=[0.0], verbose=false)
+@test theta_dir_upper_guard == theta_opt_guard
+@test length(trace_dir_upper_guard) == 1
+@test only(trace_dir_upper_guard).gnorm == 0.0
 theta_dir_backtracked_guard, trace_dir_backtracked_guard = optimize_directivity(
     Z_dir_guard, Mp_dir_guard, v_dir_guard, Q_target_guard, Q_total_guard,
     theta_opt_guard;
     maxiter=1, tol=0.0, alpha0=2.0, verbose=false)
 @test theta_dir_backtracked_guard ≈ [0.5]
-@test length(trace_dir_backtracked_guard) == 1
+@test length(trace_dir_backtracked_guard) == 2
+@test last(trace_dir_backtracked_guard).J ≈ 0.8
 @test all(isfinite, theta_dir_backtracked_guard)
 @test_throws DomainError optimize_directivity(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard,
@@ -8504,8 +8526,9 @@ direct_false_singular_Z, direct_false_singular_v, _ =
 # adjoint RHS finite. The exceptional product restart must recover the full
 # sum without adding workspace allocations to ordinary dense products.
 adjoint_product_scale = 0.8 * floatmax(Float64)
-Q_extreme_product = zeros(ComplexF64, 4, 4)
-Q_extreme_product[1, :] .= ComplexF64[1.0, 1.0, -1.0, -1.0]
+adjoint_product_signs = ComplexF64[1.0, 1.0, -1.0, -1.0]
+Q_extreme_product =
+    adjoint_product_signs * transpose(adjoint_product_signs)
 I_extreme_product = fill(ComplexF64(adjoint_product_scale), 4)
 ordinary_extreme_product = Q_extreme_product * I_extreme_product
 @test !isfinite(ordinary_extreme_product[1])
@@ -8520,13 +8543,7 @@ end
     Q_extreme_product,
     I_extreme_product,
 ) == extreme_product_reference
-Q_extreme_operands = zeros(ComplexF64, 4, 4)
-Q_extreme_operands[1, :] .= ComplexF64[
-    floatmax(Float64),
-    floatmax(Float64),
-    -floatmax(Float64),
-    -floatmax(Float64),
-]
+Q_extreme_operands = floatmax(Float64) .* Q_extreme_product
 I_extreme_operands = fill(ComplexF64(floatmax(Float64)), 4)
 @test !all(isfinite, Q_extreme_operands * I_extreme_operands)
 @test solve_adjoint(
@@ -14070,7 +14087,7 @@ _, multiangle_stagnation_trace = optimize_multiangle_rcs(
     maxiter=20, tol=0.0, alpha0=1e299, m_lbfgs=0,
     verbose=false, fallback_to_steepest=false,
     lbfgs_line_search_maxiter=40)
-@test length(multiangle_stagnation_trace) == 20
+@test length(multiangle_stagnation_trace) == 21
 @test last(multiangle_stagnation_trace).J <
       0.5first(multiangle_stagnation_trace).J
 println("  35b: PASS")
@@ -14096,6 +14113,15 @@ theta_init = fill(200.0, part_opt.P)
     theta_opt_guard;
     maxiter=0, verbose=false,
     max_workspace_bytes=sizeof(ComplexF64) - 1)
+multiangle_bound_theta, multiangle_bound_trace = optimize_multiangle_rcs(
+    Z_opt_guard, Mp_opt_guard,
+    [AngleConfig(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
+                 v_opt_guard, Q_opt_guard, 1.0)],
+    theta_opt_guard;
+    maxiter=3, tol=0.0, lb=[0.0], ub=[Inf], verbose=false)
+@test multiangle_bound_theta == theta_opt_guard
+@test length(multiangle_bound_trace) == 1
+@test only(multiangle_bound_trace).gnorm == 0.0
 
 theta_opt_35, trace_35 = optimize_multiangle_rcs(
     Z_efie, Mp_opt, configs_test, theta_init;
@@ -14103,7 +14129,7 @@ theta_opt_35, trace_35 = optimize_multiangle_rcs(
     reactive=false, verbose=false,
     lb=fill(0.0, part_opt.P), ub=fill(1000.0, part_opt.P)
 )
-@assert length(trace_35) == 5 "Should run exactly 5 iterations"
+@assert length(trace_35) == 6 "Five accepted update steps require six state evaluations"
 @assert all(t -> isfinite(t.J), trace_35) "All objectives should be finite"
 @assert all(t -> isfinite(t.gnorm), trace_35) "All gradients should be finite"
 J_trace_35 = [t.J for t in trace_35]
@@ -14115,8 +14141,9 @@ println("    |g|: $(round(trace_35[1].gnorm, sigdigits=4)) → $(round(trace_35[
 # Dense Q products at both accepted iterates and exploratory line-search points
 # must restart exact accumulation when BLAS loses an otherwise finite sum.
 multiangle_extreme_scale = 0.8 * floatmax(Float64)
-multiangle_extreme_Q = zeros(ComplexF64, 4, 4)
-multiangle_extreme_Q[1, :] .= ComplexF64[1.0, 1.0, -1.0, -1.0]
+multiangle_extreme_signs = ComplexF64[1.0, 1.0, -1.0, -1.0]
+multiangle_extreme_Q =
+    multiangle_extreme_signs * transpose(multiangle_extreme_signs)
 multiangle_extreme_v = fill(ComplexF64(multiangle_extreme_scale), 4)
 @test !isfinite((multiangle_extreme_Q * multiangle_extreme_v)[1])
 multiangle_extreme_reference = setprecision(BigFloat, 4096) do
@@ -14148,12 +14175,10 @@ multiangle_extreme_theta, multiangle_extreme_trace =
 
 multiangle_line_Q = zeros(ComplexF64, 5, 5)
 multiangle_line_coefficient = 0.4 * floatmax(Float64)
-multiangle_line_Q[1, 1:4] .= ComplexF64[
-    multiangle_line_coefficient,
-    multiangle_line_coefficient,
-    -multiangle_line_coefficient,
-    -multiangle_line_coefficient,
-]
+multiangle_line_signs = ComplexF64[1.0, 1.0, -1.0, -1.0]
+multiangle_line_Q[1:4, 1:4] .=
+    multiangle_line_coefficient .* (
+        multiangle_line_signs * transpose(multiangle_line_signs))
 multiangle_line_Q[5, 5] = -0.5
 multiangle_line_trial_current = fill(ComplexF64(2.0), 5)
 @test !isfinite((multiangle_line_Q * multiangle_line_trial_current)[1])
@@ -14187,7 +14212,10 @@ multiangle_line_theta, multiangle_line_trace = optimize_multiangle_rcs(
     fallback_to_steepest=false,
 )
 @test multiangle_line_theta == [0.5]
-@test length(multiangle_line_trace) == 1
+@test length(multiangle_line_trace) == 2
+@test last(multiangle_line_trace).J == -2.0
+@test last(multiangle_line_trace).n_fwd == 3
+@test last(multiangle_line_trace).n_adj == 2
 
 multiangle_tiny_matrix = reshape(ComplexF64[nextfloat(0.0)], 1, 1)
 multiangle_tiny_rhs = ComplexF64[floatmin(Float64)]
@@ -14248,10 +14276,10 @@ multiangle_false_singular_theta, multiangle_false_singular_trace =
 multiangle_adjoint_matrix = ComplexF64[1.0 -2.0; -2.0 1.0]
 multiangle_adjoint_current = ComplexF64[1.0, -1.0]
 multiangle_adjoint_qscale = 0.4 * floatmax(Float64)
-multiangle_adjoint_Q = ComplexF64[
-    multiangle_adjoint_qscale -multiangle_adjoint_qscale;
-    multiangle_adjoint_qscale -multiangle_adjoint_qscale
-]
+multiangle_adjoint_Q = Matrix(Diagonal(ComplexF64[
+    2multiangle_adjoint_qscale,
+    -2multiangle_adjoint_qscale,
+]))
 multiangle_adjoint_rhs =
     multiangle_adjoint_Q * multiangle_adjoint_current
 multiangle_adjoint_reference = setprecision(BigFloat, 4096) do
@@ -14302,7 +14330,9 @@ multiangle_trial_theta, multiangle_trial_trace = optimize_multiangle_rcs(
     fallback_to_steepest=false,
 )
 @test multiangle_trial_theta == [multiangle_trial_alpha]
-@test length(multiangle_trial_trace) == 1
+@test length(multiangle_trial_trace) == 2
+@test last(multiangle_trial_trace).n_fwd == 3
+@test last(multiangle_trial_trace).n_adj == 2
 println("  35c: PASS")
 
 # 35d: normalized smooth worst-angle objective
@@ -14634,7 +14664,7 @@ projected_theta_35, projected_trace_35 = optimize_multiangle_rcs(
     ub=[Inf, Inf],
     verbose=false,
 )
-@test length(projected_trace_35) == 2
+@test length(projected_trace_35) == 3
 @test projected_theta_35[1] == 0.0
 @test projected_theta_35[2] < 0.0
 @test projected_trace_35[2].J < projected_trace_35[1].J
@@ -14654,7 +14684,7 @@ theta_bal_35, trace_bal_35 = optimize_multiangle_rcs(
     reference_objectives=refs_35,
     smooth_beta=6.0,
 )
-@assert length(trace_bal_35) == 3 "smoothmax objective should run exactly 3 iterations"
+@assert length(trace_bal_35) == 4 "Three accepted update steps require four state evaluations"
 @assert all(t -> isfinite(t.J), trace_bal_35) "smoothmax objectives should be finite"
 @assert all(t -> isfinite(t.gnorm), trace_bal_35) "smoothmax gradients should be finite"
 J_trace_bal_35 = [t.J for t in trace_bal_35]
@@ -14758,7 +14788,7 @@ theta_opt_ico, trace_ico = optimize_multiangle_rcs(
     preconditioner_builder=preconditioner_builder_ico,
     gmres_tol=1e-6, gmres_maxiter=300
 )
-@assert length(trace_ico) == 3 "Should run exactly 3 iterations"
+@assert length(trace_ico) == 4 "Three accepted update steps require four state evaluations"
 @assert all(t -> isfinite(t.J), trace_ico) "All objectives should be finite"
 @assert all(t -> isfinite(t.gnorm), trace_ico) "All gradients should be finite"
 @assert builder_calls_ico[] >= length(trace_ico) "Dynamic MLFMA preconditioner builder was not exercised"
@@ -14787,7 +14817,7 @@ theta_current_ico, trace_current_ico = optimize_multiangle_rcs(
     check_gmres_true_residual=true,
 )
 @assert length(theta_current_ico) == part_ico.P
-@assert length(trace_current_ico) == 2 "Current-preconditioner mode should run exactly 2 iterations"
+@assert length(trace_current_ico) == 3 "Two accepted update steps require three state evaluations"
 @assert builder_calls_current_ico[] <= length(trace_current_ico) + 1 "Line-search trials should avoid dynamic preconditioner rebuilds when current-preconditioner solves pass"
 J_trace_current_ico = [t.J for t in trace_current_ico]
 @assert all(J_trace_current_ico[2:end] .<= J_trace_current_ico[1:end-1] .+ 1e-12) "Current-preconditioner mode should not accept uphill objective steps"

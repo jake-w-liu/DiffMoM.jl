@@ -147,7 +147,8 @@ Every optimization trace contains these fields per iteration:
 
 - **Iteration number** `iter`.
 - **Objective value** `J`.
-- **Gradient norm** `gnorm`.
+- **Box-projected gradient norm** `gnorm` (the ordinary norm when no bounds
+  are active).
 
 Plotting `J` against iteration shows the accepted objective sequence.
 
@@ -155,7 +156,8 @@ Plotting `J` against iteration shows the accepted objective sequence.
 
 - **Objective direction**: Accepted iterates should reduce `J` for minimization
   or increase it for maximization.
-- **Gradient threshold**: Compare the final `gnorm` directly with `tol`.
+- **Gradient threshold**: Compare the final projected `gnorm` directly with
+  `tol`.
 - **Solve work**: For `optimize_lbfgs`, differences in `n_fwd` expose the
   number of line-search trial solves between accepted iterates.
 
@@ -166,7 +168,7 @@ Plotting `J` against iteration shows the accepted objective sequence.
 | **Objective moves in the wrong direction** | Confirm `maximize`, recompute the objective from the returned parameters, and check the solve residuals. |
 | **Gradient norm stops changing** | Compare the adjoint gradient with finite differences, inspect active bounds, and compare solver residuals. |
 | **Many forward solves between iterates** | Inspect line-search diagnostics, scaling, active bounds, and the directional derivative. |
-| **Run stops before the iteration cap with `gnorm > tol`** | Read the verbose line-search diagnostic and check whether projection prevented a distinct trial point or Armijo rejected every trial. |
+| **Run stops before the update-step cap with `gnorm > tol`** | Read the verbose line-search diagnostic and check whether Armijo rejected every feasible trial. A bound-constrained KKT point has projected `gnorm == 0`. |
 
 ### 4.4 Stopping Criteria
 

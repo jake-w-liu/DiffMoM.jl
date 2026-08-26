@@ -779,8 +779,11 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `verbose`: print progress
 
 # Returns
-`(theta_opt, trace)` where trace records `(iter, J, gnorm, n_fwd, n_adj)` per iteration.
-Every `AngleConfig.Q` must be Hermitian.
+`(theta_opt, trace)` where trace records evaluated accepted states as
+`(iter, J, gnorm, n_fwd, n_adj)`. The final record always represents
+`theta_opt`; after the last permitted update, this can produce `maxiter + 1`
+records. `gnorm` is the box-projected gradient norm. Every `AngleConfig.Q`
+must be Hermitian.
 """
 function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   Mp::Vector{<:AbstractMatrix},
@@ -819,6 +822,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         throw(ArgumentError("optimize_multiangle_rcs requires at least one design parameter"))
     maxiter >= 0 ||
         throw(ArgumentError("maxiter must be nonnegative, got $maxiter"))
+    evaluation_limit = _optimizer_evaluation_limit(maxiter)
     (isfinite(tol) && tol >= 0.0) ||
         throw(ArgumentError("tol must be finite and nonnegative, got $tol"))
     m_lbfgs >= 0 ||
@@ -950,7 +954,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
     # Pre-allocate Z buffer for in-place assembly (dense LU path)
     Z_buf = use_dense_lu ? Matrix{ComplexF64}(undef, size(Z_base)...) : Matrix{ComplexF64}(undef, 0, 0)
 
-    for iter in 1:maxiter
+    for iter in 1:evaluation_limit
         # ── 1. Build system matrix Z(θ) ──────────────────────────
         if use_dense_lu
             assemble_full_Z!(Z_buf, Z_base, Mp, theta; reactive=reactive)
@@ -1042,18 +1046,20 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 Mp, I_all, lambda_all, objective_scales, reactive)
         end
         _assert_finite_optimizer_vector(g, "multi-angle objective gradient")
-        gnorm = norm(g)
+        gnorm = _optimizer_projected_gradient_norm(g, theta, lb, ub)
         isfinite(gnorm) ||
             error(
-                "multi-angle objective gradient norm is non-finite at iteration $iter")
+                "multi-angle projected gradient norm is non-finite at iteration $iter")
 
         push!(trace, (iter=iter, J=J_val, gnorm=gnorm, n_fwd=n_fwd_solves, n_adj=n_adj_solves))
         if verbose
             println("  iter=$iter  J=$(round(J_val, sigdigits=6))  |g|=$(round(gnorm, sigdigits=4))  solves(fwd=$n_fwd_solves, adj=$n_adj_solves)")
         end
 
-        if gnorm < tol
-            verbose && println("Converged at iteration $iter (gradient < tol)")
+        iter > maxiter && break
+
+        if gnorm <= tol
+            verbose && println("Converged at iteration $iter (projected gradient <= tol)")
             break
         end
 
@@ -1219,7 +1225,6 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             empty!(y_list)
             copyto!(d, g)
             rmul!(d, -alpha0)
-            gd = -alpha0 * gnorm^2
             verbose && println("L-BFGS line search failed at iteration $iter; retrying projected steepest descent")
             ls_success = try_projected_line_search!(
                 d, "Steepest-descent line-search",

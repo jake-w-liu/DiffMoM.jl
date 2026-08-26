@@ -217,7 +217,7 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized impedance parameters.
-- `trace::Vector{NamedTuple}`: Records with fields `(iter, J, gnorm, n_fwd, n_adj)`, including cumulative forward and adjoint solve counts.
+- `trace::Vector{NamedTuple}`: Evaluated accepted states with fields `(iter, J, gnorm, n_fwd, n_adj)`. The last record represents the returned parameters, uses the box-projected gradient norm, and includes cumulative final-state solves.
 
 **Note:** A dense `Matrix{ComplexF64}` base uses verified direct factorization;
 matrix-free ACA/MLFMA bases use GMRES through `ImpedanceLoadedOperator`. A

@@ -178,8 +178,8 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 | `maximize` | `Bool` | `false` | If `true`, maximize `J` instead of minimizing. Internally minimizes `-J`. |
 | `lb` | `Vector` or `nothing` | `nothing` | Lower bounds applied by projection. `nothing` means no lower bound. |
 | `ub` | `Vector` or `nothing` | `nothing` | Upper bounds on `theta`. `nothing` = no upper bound. |
-| `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. A gradient evaluation uses one forward and one adjoint solve; backtracking can add multiple forward trial solves. |
-| `tol` | `Float64` | `1e-10` | Absolute gradient-norm tolerance. The optimizer stops when `||g|| <= tol`. |
+| `maxiter` | `Int` | `100` | Maximum accepted L-BFGS update steps. If the final step is accepted, one additional state evaluation records the returned parameters. |
+| `tol` | `Float64` | `1e-10` | Absolute box-projected gradient-norm tolerance. With no bounds this is the ordinary gradient norm. |
 | `m_lbfgs` | `Int` | `10` | Number of past gradient pairs retained. Larger values use more storage and can change convergence; compare traces on the target objective. |
 | `alpha0` | `Float64` | `0.01` | Initial inverse-Hessian scaling before any curvature pairs are retained. Each backtracking search starts with step length 1. |
 | `verbose` | `Bool` | `true` | Print iteration progress (iteration number, objective value, gradient norm). |
@@ -213,7 +213,7 @@ target problem.
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized parameter vector.
-- `trace::Vector{NamedTuple}`: Iteration records with fields `(iter, J, gnorm, n_fwd, n_adj)` -- iteration number, objective value, gradient norm, and cumulative forward/adjoint solve counts (including line-search solves).
+- `trace::Vector{NamedTuple}`: Evaluated accepted states with fields `(iter, J, gnorm, n_fwd, n_adj)`. The last record represents `theta_opt`; it includes all line-search and final-state solves. A run that accepts all `maxiter` updates has `maxiter + 1` records.
 
 ---
 
@@ -244,7 +244,7 @@ conditioning, and `max_workspace_bytes` options), except `maximize` is
 implicitly true for the ratio (there is no `maximize` keyword) and `tol`
 defaults to `1e-6`. The routine internally minimizes `-J`.
 
-**Returns:** Tuple `(theta_opt, trace)` where `theta_opt::Vector{Float64}` is the optimized parameter vector and `trace::Vector{NamedTuple}` records `(iter, J, gnorm)` per iteration (`J` is the directivity ratio).
+**Returns:** Tuple `(theta_opt, trace)` where `theta_opt::Vector{Float64}` is the optimized parameter vector and `trace::Vector{NamedTuple}` records evaluated accepted states as `(iter, J, gnorm)`. The last record represents `theta_opt`; `gnorm` is the box-projected gradient norm, and a run that accepts all `maxiter` updates has `maxiter + 1` records.
 
 **How to build Q_target and Q_total:**
 ```julia
@@ -279,8 +279,8 @@ matrix-free far-field Q builders satisfy this contract.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxiter` | `Int` | `100` | Maximum L-BFGS iterations. |
-| `tol` | `Float64` | `1e-10` | Gradient-norm convergence tolerance. |
+| `maxiter` | `Int` | `100` | Maximum accepted L-BFGS update steps. If the final step is accepted, one additional state evaluation records the returned parameters. |
+| `tol` | `Float64` | `1e-10` | Box-projected gradient-norm convergence tolerance. |
 | `m_lbfgs` | `Int` | `10` | L-BFGS memory length. |
 | `alpha0` | `Float64` | `0.01` | Initial inverse-Hessian scaling. |
 | `verbose` | `Bool` | `true` | Print iteration progress. |
@@ -306,7 +306,7 @@ matrix-free far-field Q builders satisfy this contract.
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized parameter vector.
-- `trace::Vector{NamedTuple}`: Iteration records with fields `(iter, J, gnorm, n_fwd, n_adj)` -- iteration number, objective value, gradient norm, and cumulative forward/adjoint solve counts (including line-search solves).
+- `trace::Vector{NamedTuple}`: Evaluated accepted states with fields `(iter, J, gnorm, n_fwd, n_adj)`. The last record represents `theta_opt`, includes the final-state solves, and can be record `maxiter + 1` after the last permitted update.
 
 **Per-iteration cost:** M forward solves + M adjoint solves + line-search forward solves (M per trial step). When `Z_base` is a dense `Matrix{ComplexF64}`, one verified dense factorization is reused for all solves; for matrix-free operators (MLFMA, ACA) the composite `ImpedanceLoadedOperator` is solved with GMRES.
 

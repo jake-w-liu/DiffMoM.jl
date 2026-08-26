@@ -85,6 +85,15 @@ function _validate_optimizer_controls(; maxiter::Int, tol::Float64,
     return nothing
 end
 
+@inline function _optimizer_evaluation_limit(maxiter::Int)
+    iszero(maxiter) && return 0
+    maxiter < typemax(Int) ||
+        throw(ArgumentError(
+            "maxiter must be smaller than typemax(Int) so the returned " *
+            "parameter vector can receive a final trace evaluation"))
+    return maxiter + 1
+end
+
 function _validate_optimizer_problem(
     Z_efie::Matrix{ComplexF64},
     Mp::Vector{<:AbstractMatrix},
@@ -704,6 +713,29 @@ end
     return derivative
 end
 
+function _optimizer_projected_gradient_norm(
+        gradient::AbstractVector{Float64},
+        theta::AbstractVector{Float64},
+        lb,
+        ub)
+    length(gradient) == length(theta) ||
+        throw(DimensionMismatch(
+            "optimizer gradient and parameter lengths must match"))
+    projected_norm = 0.0
+    @inbounds for parameter in eachindex(gradient, theta)
+        value = gradient[parameter]
+        blocked_at_lower = lb !== nothing &&
+            theta[parameter] <= _optimizer_bound_value(lb, parameter) &&
+            value > 0.0
+        blocked_at_upper = ub !== nothing &&
+            theta[parameter] >= _optimizer_bound_value(ub, parameter) &&
+            value < 0.0
+        (blocked_at_lower || blocked_at_upper) && continue
+        projected_norm = hypot(projected_norm, value)
+    end
+    return projected_norm
+end
+
 """
     optimize_lbfgs(Z_efie, Mp, v, Q, theta0; kwargs...)
 
@@ -720,7 +752,9 @@ Options:
   gmres_maxiter: maximum GMRES iterations (default 200)
   gmres_memory: Krylov restart/memory parameter (default 20)
 
-Returns (theta_opt, trace) where trace records (iter, J, |g|) per iteration.
+Returns `(theta_opt, trace)`. Trace records cover every evaluated accepted
+state, including the returned state after the final permitted update, and
+`gnorm` is the box-projected gradient norm.
 """
 function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                         Mp::Vector{<:AbstractMatrix},
@@ -851,7 +885,7 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     Z_raw = Matrix{ComplexF64}(undef, N_sys, N_sys)
     QI = Vector{ComplexF64}(undef, N_sys)
 
-    for iter in 1:maxiter
+    for iter in 1:_optimizer_evaluation_limit(maxiter)
         # Assemble and solve
         assemble_full_Z!(Z_raw, Z_efie, Mp, theta; reactive=reactive)
         Z, _, _ = prepare_conditioned_system(
@@ -890,17 +924,18 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
         # Gradient of J (true objective)
         g = gradient_impedance(Mp_eff, I_coeffs, lambda; reactive=reactive)
         _assert_finite_optimizer_vector(g, "objective gradient")
-        gnorm = norm(g)
-        isfinite(gnorm) ||
-            error("objective gradient norm is non-finite at iteration $iter: $gnorm")
-
         # For minimization: g = g_true; for maximization: g = -g_true
         rmul!(g, sense)
+        gnorm = _optimizer_projected_gradient_norm(g, theta, lb, ub)
+        isfinite(gnorm) ||
+            error("projected objective gradient norm is non-finite at iteration $iter: $gnorm")
 
         push!(trace, (iter=iter, J=J_val, gnorm=gnorm, n_fwd=n_fwd_solves, n_adj=n_adj_solves))
         if verbose
             println("  iter=$iter  J=$J_val  |g|=$gnorm  solves(fwd=$n_fwd_solves, adj=$n_adj_solves)")
         end
+
+        iter > maxiter && break
 
         if gnorm <= tol
             if verbose
@@ -1040,7 +1075,9 @@ Options:
   gmres_maxiter: maximum GMRES iterations (default 200)
   gmres_memory: Krylov restart/memory parameter (default 20)
 
-Returns (theta_opt, trace) where trace records (iter, J, |g|) per iteration.
+Returns `(theta_opt, trace)`. Trace records cover every evaluated accepted
+state, including the returned state after the final permitted update, and
+`gnorm` is the box-projected gradient norm.
 """
 function optimize_directivity(Z_efie::Matrix{ComplexF64},
                               Mp::Vector{<:AbstractMatrix},
@@ -1165,7 +1202,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     QI_target = Vector{ComplexF64}(undef, N_sys)
     QI_total = Vector{ComplexF64}(undef, N_sys)
 
-    for iter in 1:maxiter
+    for iter in 1:_optimizer_evaluation_limit(maxiter)
         assemble_full_Z!(Z_raw, Z_efie, Mp, theta; reactive=reactive)
         Z, _, _ = prepare_conditioned_system(
             Z_raw,
@@ -1223,17 +1260,19 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                 reactive=reactive,
             )
         end
-        _assert_finite_optimizer_vector(g_f, "directivity gradient")
-        gnorm = norm(g_f)
-        isfinite(gnorm) ||
-            error("directivity gradient norm is non-finite at iteration $iter: $gnorm")
-
         # For L-BFGS we minimize -J_ratio, so g_lbfgs = -g_true
         g_lbfgs = g_f
         rmul!(g_lbfgs, -1.0)
+        _assert_finite_optimizer_vector(g_lbfgs, "directivity gradient")
+        gnorm = _optimizer_projected_gradient_norm(
+            g_lbfgs, theta, lb, ub)
+        isfinite(gnorm) ||
+            error("projected directivity gradient norm is non-finite at iteration $iter: $gnorm")
 
         push!(trace, (iter=iter, J=J_ratio, gnorm=gnorm))
         verbose && println("  iter=$iter  J_ratio=$(round(J_ratio, sigdigits=6))  |g|=$gnorm")
+
+        iter > maxiter && break
 
         if gnorm <= tol
             verbose && println("Converged at iteration $iter")

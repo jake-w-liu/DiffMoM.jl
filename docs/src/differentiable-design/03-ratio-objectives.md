@@ -364,7 +364,7 @@ function optimize_directivity(
 - `gmres_maxiter`: Maximum GMRES iterations (default 200).
 - `verbose`: Print progress information.
 
-**Returns**: A tuple `(theta_opt, trace)`, where `theta_opt` is the optimized parameter vector and `trace` is a `Vector{NamedTuple{(:iter, :J, :gnorm)}}` recording iteration number, objective value, and gradient norm at each iteration.
+**Returns**: A tuple `(theta_opt, trace)`, where `theta_opt` is the optimized parameter vector and `trace` is a `Vector{NamedTuple{(:iter, :J, :gnorm)}}` recording each evaluated accepted state. The last record represents `theta_opt`, and `gnorm` is the box-projected gradient norm.
 
 ### 4.2 Internal Steps per Iteration
 
