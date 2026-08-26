@@ -322,9 +322,15 @@ end
             mesh, k0, chi, E_inc_bad)
         @test_throws DimensionMismatch solve_vie_2d(
             mesh, k0, chi, E_inc[1:end-1])
+        direct_vie_bytes = DiffMoM._direct_vie_solve_work_bytes(
+            mesh.ncells)
+        @test direct_vie_bytes > 2matrix_bytes
         @test_throws ArgumentError solve_vie_2d(
             mesh, k0, chi, E_inc;
-            max_output_bytes=2matrix_bytes - 1)
+            max_output_bytes=direct_vie_bytes - 1)
+        @test solve_vie_2d(
+            mesh, k0, chi, E_inc;
+            max_output_bytes=direct_vie_bytes).E_total == vr.E_total
 
         # In free space (chi=0), total field = incident field
         vr_free = solve_vie_2d(mesh, k0, zeros(mesh.ncells), E_inc)

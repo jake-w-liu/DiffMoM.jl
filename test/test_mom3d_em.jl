@@ -111,6 +111,17 @@ end
             grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0),
         )
         res = solve_em_dda_3d(grid, k0, 1.0 + 0im, 1.0 + 0im, E_inc, H_inc)
+        direct_em_dda_bytes = DiffMoM._direct_em_dda_solve_work_bytes(grid)
+        one_em_matrix_bytes = sizeof(ComplexF64) * (6grid.nvoxels)^2
+        @test direct_em_dda_bytes > 2one_em_matrix_bytes
+        @test_throws ArgumentError solve_em_dda_3d(
+            grid, k0, 1.0 + 0im, 1.0 + 0im, E_inc, H_inc;
+            max_matrix_bytes=direct_em_dda_bytes - 1)
+        limited_res = solve_em_dda_3d(
+            grid, k0, 1.0 + 0im, 1.0 + 0im, E_inc, H_inc;
+            max_matrix_bytes=direct_em_dda_bytes)
+        @test limited_res.E_total == res.E_total
+        @test limited_res.H_total == res.H_total
 
         @test norm(reduce(vcat, res.E_total) - reduce(vcat, E_inc)) < 1e-13
         @test norm(reduce(vcat, res.H_total) - reduce(vcat, H_inc)) < 1e-13

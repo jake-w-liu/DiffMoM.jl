@@ -729,15 +729,19 @@ end
 # `AbstractMatrix` fallback would call `getindex` per scalar entry, recomputing
 # every 6x6 voxel-pair interaction 36 times. The work for distinct source voxels
 # j writes disjoint columns, so it is threaded when worker threads exist.
-function _validated_dense_em_dda_system_size(
-        grid::VoxelGrid3D,
-        max_output_bytes::Integer)
-    system_size = try
+function _dense_em_dda_system_size(grid::VoxelGrid3D)
+    return try
         Base.Checked.checked_mul(6, grid.nvoxels)
     catch err
         err isa OverflowError || rethrow()
         throw(ArgumentError("EM DDA system dimension overflows Int"))
     end
+end
+
+function _validated_dense_em_dda_system_size(
+        grid::VoxelGrid3D,
+        max_output_bytes::Integer)
+    system_size = _dense_em_dda_system_size(grid)
     matrix_bytes = _checked_array_payload_bytes(
         ComplexF64, system_size, system_size;
         label="dense EM DDA system matrix")
@@ -745,6 +749,24 @@ function _validated_dense_em_dda_system_size(
         matrix_bytes, max_output_bytes,
         "dense EM DDA system matrix", "max_output_bytes")
     return system_size
+end
+
+function _direct_em_dda_solve_work_bytes(grid::VoxelGrid3D)
+    system_size = _dense_em_dda_system_size(grid)
+    field_payload = _checked_array_payload_bytes(
+        ComplexF64, 4, system_size;
+        label="direct EM DDA field buffers")
+    polarizability_payload = _checked_array_payload_bytes(
+        _CMat6DDA, grid.nvoxels;
+        label="direct EM DDA polarizability vector")
+    return _checked_dense_lu_work_bytes(
+        ComplexF64,
+        system_size,
+        2,
+        field_payload,
+        polarizability_payload;
+        label="direct EM DDA solve",
+    )
 end
 
 function _dense_em_dda_matrix(
@@ -884,6 +906,9 @@ end
     solve_em_dda_3d(grid, k0, eps_r, mu_r, E_inc, H_inc; solver=:direct)
 
 Solve coupled electric-magnetic volume DDA for magnetodielectric voxels.
+For `solver=:direct`, `max_matrix_bytes` bounds the combined raw payload of
+the retained dense system, LU factors and pivots, polarizabilities, and
+simultaneous flattened/returned field buffers.
 """
 function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
                          E_inc::AbstractVector, H_inc::AbstractVector;
@@ -898,8 +923,12 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
                          check_gmres_convergence::Bool=true)
     _validated_em_dda_public_solver(solver)
     solve_mode = solver == :fft_gmres ? :gmres : solver
-    solve_mode == :direct && _validated_dense_em_dda_system_size(
-        grid, max_matrix_bytes)
+    solve_mode == :direct && _enforce_payload_limit(
+        _direct_em_dda_solve_work_bytes(grid),
+        max_matrix_bytes,
+        "direct EM DDA retained output and factorization",
+        "max_matrix_bytes",
+    )
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
             grid, k0, eps_r, mu_r;
@@ -941,8 +970,12 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6,
                          check_gmres_convergence::Bool=true)
     _validated_em_dda_public_solver(solver)
     solve_mode = solver == :fft_gmres ? :gmres : solver
-    solve_mode == :direct && _validated_dense_em_dda_system_size(
-        grid, max_matrix_bytes)
+    solve_mode == :direct && _enforce_payload_limit(
+        _direct_em_dda_solve_work_bytes(grid),
+        max_matrix_bytes,
+        "direct EM DDA retained output and factorization",
+        "max_matrix_bytes",
+    )
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
             grid, k0, alpha6;
@@ -981,8 +1014,12 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
                          eta0::Real=_ETA0_DDA)
     _validated_em_dda_public_solver(solver)
     solve_mode = solver == :fft_gmres ? :gmres : solver
-    solve_mode == :direct && _validated_dense_em_dda_system_size(
-        grid, max_matrix_bytes)
+    solve_mode == :direct && _enforce_payload_limit(
+        _direct_em_dda_solve_work_bytes(grid),
+        max_matrix_bytes,
+        "direct EM DDA retained output and factorization",
+        "max_matrix_bytes",
+    )
     Aop = solver == :fft_gmres ?
         fft_em_dda_operator_3d(
             grid, k0, material;

@@ -95,6 +95,32 @@ function _enforce_payload_limit(
     return payload_bytes
 end
 
+function _checked_dense_lu_work_bytes(
+        ::Type{T},
+        system_size::Int,
+        retained_matrix_count::Int,
+        additional_payloads::Integer...;
+        label::AbstractString) where {T}
+    system_size >= 0 ||
+        throw(ArgumentError("$label system size must be nonnegative"))
+    retained_matrix_count >= 1 ||
+        throw(ArgumentError(
+            "$label retained matrix count must be positive"))
+    matrix_bytes = _checked_array_payload_bytes(
+        T, system_size, system_size; label="$label matrix")
+    total = BigInt(retained_matrix_count) * matrix_bytes
+    total += BigInt(sizeof(Int)) * system_size
+    for payload in additional_payloads
+        payload >= 0 ||
+            throw(ArgumentError(
+                "$label additional payloads must be nonnegative"))
+        total += payload
+    end
+    total <= typemax(Int) ||
+        throw(ArgumentError("$label raw-payload estimate overflows Int"))
+    return Int(total)
+end
+
 @inline _complex_vector_input(x::AbstractVector{ComplexF64}) = x
 @inline _complex_vector_input(x::AbstractVector) = Vector{ComplexF64}(x)
 

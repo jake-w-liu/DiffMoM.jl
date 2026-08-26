@@ -313,6 +313,16 @@ println("\n── Test 46: 3D vector material DDA solver ──")
             CVec3(1.0e200 + 0im, 0.0 + 0im, 0.0 + 0im))
         E_inc = planewave_dda_3d(grid, Vec3(0.0, 0.0, k0), 1.0 + 0im, Vec3(1.0, 0.0, 0.0))
         res = solve_dda_3d(grid, k0, 1.0 + 0im, E_inc)
+        direct_dda_bytes = DiffMoM._direct_dda_solve_work_bytes(grid)
+        one_dda_matrix_bytes = sizeof(ComplexF64) * (3grid.nvoxels)^2
+        @test direct_dda_bytes > 2one_dda_matrix_bytes
+        @test_throws ArgumentError solve_dda_3d(
+            grid, k0, 1.0 + 0im, E_inc;
+            max_matrix_bytes=direct_dda_bytes - 1)
+        limited_res = solve_dda_3d(
+            grid, k0, 1.0 + 0im, E_inc;
+            max_matrix_bytes=direct_dda_bytes)
+        @test limited_res.E_total == res.E_total
 
         @test norm(reduce(vcat, res.E_total) - reduce(vcat, E_inc)) < 1e-13
         @test norm(scattered_field_dda_3d(res, [Vec3(1.0, 0.0, 0.0)])[1]) < 1e-13

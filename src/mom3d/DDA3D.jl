@@ -1854,15 +1854,19 @@ LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
                    x::AbstractVector{ComplexF64}) =
     LinearAlgebra.mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
-function _validated_dense_dda_system_size(
-        grid::VoxelGrid3D,
-        max_output_bytes::Integer)
-    system_size = try
+function _dense_dda_system_size(grid::VoxelGrid3D)
+    return try
         Base.Checked.checked_mul(3, grid.nvoxels)
     catch err
         err isa OverflowError || rethrow()
         throw(ArgumentError("DDA system dimension overflows Int"))
     end
+end
+
+function _validated_dense_dda_system_size(
+        grid::VoxelGrid3D,
+        max_output_bytes::Integer)
+    system_size = _dense_dda_system_size(grid)
     matrix_bytes = _checked_array_payload_bytes(
         ComplexF64, system_size, system_size;
         label="dense DDA system matrix")
@@ -1870,6 +1874,27 @@ function _validated_dense_dda_system_size(
         matrix_bytes, max_output_bytes,
         "dense DDA system matrix", "max_output_bytes")
     return system_size
+end
+
+function _direct_dda_solve_work_bytes(grid::VoxelGrid3D)
+    system_size = _dense_dda_system_size(grid)
+    # The flattened RHS/solution and their two returned CVec3 copies can all
+    # coexist while the result is constructed. Material vectors are charged
+    # at the supported full-tensor element size.
+    field_payload = _checked_array_payload_bytes(
+        ComplexF64, 4, system_size;
+        label="direct DDA field buffers")
+    material_payload = _checked_array_payload_bytes(
+        _CMat3DDA, 2, grid.nvoxels;
+        label="direct DDA material vectors")
+    return _checked_dense_lu_work_bytes(
+        ComplexF64,
+        system_size,
+        2,
+        field_payload,
+        material_payload;
+        label="direct DDA solve",
+    )
 end
 
 """
@@ -1989,6 +2014,9 @@ end
 
 Solve the 3D vector material scattering problem for total electric fields at
 voxel centers.
+For `solver=:direct`, `max_matrix_bytes` bounds the combined raw payload of
+the retained dense system, LU factors and pivots, worst-case material vectors,
+and simultaneous flattened/returned field buffers.
 """
 function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
                       radiative_correction::Bool=false,
@@ -2003,8 +2031,12 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
     solver in (:direct, :gmres) ||
         throw(ArgumentError(
             "Unsupported DDA solver: $solver (expected :direct or :gmres)."))
-    solver == :direct && _validated_dense_dda_system_size(
-        grid, max_matrix_bytes)
+    solver == :direct && _enforce_payload_limit(
+        _direct_dda_solve_work_bytes(grid),
+        max_matrix_bytes,
+        "direct DDA retained output and factorization",
+        "max_matrix_bytes",
+    )
     rhs = _flatten_fields_3d(E_inc, grid.nvoxels, "E_inc")
 
     if solver == :direct

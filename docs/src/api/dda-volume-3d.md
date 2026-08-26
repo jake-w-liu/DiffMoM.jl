@@ -392,7 +392,7 @@ field at voxel centers.
 | `E_inc` | `AbstractVector` (of `CVec3`) | -- | Incident E-field per voxel (e.g. from `planewave_dda_3d`). |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 | `solver` | `Symbol` | `:direct` | `:direct` (dense LU) or `:gmres` (matrix-free). |
-| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the direct solver's dense matrix; ignored by `:gmres`. |
+| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for the direct solver's retained dense matrix, LU factors/pivots, worst-case material vectors, and simultaneous field buffers; ignored by `:gmres`. |
 | `tol` | `Float64` | `1e-8` | GMRES relative tolerance (`rtol`). |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
@@ -669,7 +669,7 @@ scattered-field and far-field post-processing.
 | `H_inc` | `AbstractVector` (of `CVec3`) | -- | Incident H-field per voxel. |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 | `solver` | `Symbol` | `:direct` | `:direct`, `:gmres`, or `:fft_gmres` (uses the FFT operator). |
-| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the direct solver's dense matrix; ignored by iterative solvers. |
+| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for the direct solver's retained dense matrix, LU factors/pivots, polarizability vector, and simultaneous electric/magnetic field buffers; ignored by iterative solvers. |
 | `tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
