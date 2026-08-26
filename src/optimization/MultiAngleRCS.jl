@@ -136,6 +136,7 @@ function _validate_multiangle_q(Q::AbstractMatrix{ComplexF64},
     else
         _validate_known_matrix_entries(Q, label)
     end
+    _validate_hermitian_objective_matrix(Q, label)
     return nothing
 end
 
@@ -779,6 +780,7 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 
 # Returns
 `(theta_opt, trace)` where trace records `(iter, J, gnorm, n_fwd, n_adj)` per iteration.
+Every `AngleConfig.Q` must be Hermitian.
 """
 function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   Mp::Vector{<:AbstractMatrix},

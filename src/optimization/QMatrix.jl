@@ -5,6 +5,17 @@
 
 export FarFieldQMatrix, SumQMatrix, build_Q, build_Q_operator, apply_Q, pol_linear_x, pol_linear_y, cap_mask, direction_mask
 
+function _validate_hermitian_objective_matrix(
+        Q::AbstractMatrix,
+        label::AbstractString)
+    LinearAlgebra.ishermitian(Q) ||
+        throw(ArgumentError(
+            "$label must be Hermitian because adjoint gradients use Q*I " *
+            "as the derivative of Re(I' * Q * I). Symmetrize the matrix " *
+            "or rebuild it with build_Q."))
+    return nothing
+end
+
 # A primitive G'WGx term contains at most six input factors. Restricting each
 # to ±128 binary exponents keeps the product, complex-component additions,
 # and any addressable reduction count inside the normal Float64 exponent range.
@@ -504,6 +515,8 @@ end
 
 Base.size(Q::SumQMatrix) = size(Q.A)
 Base.eltype(::SumQMatrix) = ComplexF64
+LinearAlgebra.ishermitian(Q::SumQMatrix) =
+    LinearAlgebra.ishermitian(Q.A) && LinearAlgebra.ishermitian(Q.B)
 
 @noinline function _sum_q_entry_bigfloat(
         value_a::ComplexF64,
@@ -790,6 +803,7 @@ end
 
 Base.size(Q::FarFieldQMatrix) = (Q.N, Q.N)
 Base.eltype(::FarFieldQMatrix) = ComplexF64
+LinearAlgebra.ishermitian(::FarFieldQMatrix) = true
 
 @noinline function _farfield_q_entry_bigfloat_arrays(
         G_mat::Matrix{ComplexF64},

@@ -25,6 +25,11 @@ J = Re(I' * Q * I)
 
 where `I` is the current coefficient vector and `Q` is a Hermitian positive-semidefinite matrix built from far-field operators (see `build_Q` in [farfield-rcs.md](farfield-rcs.md)).
 
+Adjoint and optimizer entry points reject a non-Hermitian `Q`: for
+`J = Re(I' * Q * I)`, the derivative would otherwise depend on the Hermitian
+part of `Q`, not on `Q * I`. Use `build_Q` or explicitly symmetrize a custom
+objective matrix before passing it to these APIs.
+
 **Parameters:**
 - `I::Vector{<:Number}`: MoM current coefficients (length N).
 - `Q::Matrix{<:Number}`: Hermitian PSD objective matrix (N x N).
@@ -266,6 +271,9 @@ Minimize total weighted backscatter RCS over multiple incidence angles using pro
 | `Mp` | `Vector{<:AbstractMatrix}` | Patch mass matrices from `precompute_patch_mass`. |
 | `configs` | `Vector{AngleConfig}` | Per-angle configurations from `build_multiangle_configs`. |
 | `theta0` | `Vector{Float64}` | Initial parameter vector (length P). |
+
+Every `Q` stored in an `AngleConfig` must be Hermitian. Built-in dense and
+matrix-free far-field Q builders satisfy this contract.
 
 **Keyword arguments:**
 

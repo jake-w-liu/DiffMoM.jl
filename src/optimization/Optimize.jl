@@ -112,6 +112,7 @@ function _validate_optimizer_problem(
                 "$name has size $(size(Q)), expected $(size(Z_efie))"))
         all(isfinite, Q) ||
             throw(ArgumentError("$name entries must be finite"))
+        _validate_hermitian_objective_matrix(Q, name)
     end
     return (N, P)
 end
@@ -707,7 +708,7 @@ end
     optimize_lbfgs(Z_efie, Mp, v, Q, theta0; kwargs...)
 
 L-BFGS optimization with precomputed EFIE matrix, patch mass matrices,
-excitation vector, and Q matrix.
+excitation vector, and Hermitian Q matrix.
 
 Options:
   reactive:  if true, impedance is Z_s = iθ (reactive/lossless)
@@ -1025,6 +1026,8 @@ end
 
 Maximize the directivity ratio J = (I†Q_target I) / (I†Q_total I) using
 projected L-BFGS on the minimization of -J.
+
+Both objective matrices must be Hermitian.
 
 At each iteration, evaluates the ratio directly and computes the gradient via
 the quotient rule using two adjoint solves (one for Q_target and one for

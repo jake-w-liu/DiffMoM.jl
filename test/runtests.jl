@@ -4698,6 +4698,7 @@ Z_opt_guard = ComplexF64[1.0;;]
 Mp_opt_guard = Matrix{Float64}[[1.0;;]]
 v_opt_guard = ComplexF64[1.0]
 Q_opt_guard = ComplexF64[1.0;;]
+Q_nonhermitian_guard = ComplexF64[1.0 + 1.0im;;]
 theta_opt_guard = [0.0]
 @test optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
@@ -4712,6 +4713,25 @@ theta_opt_guard = [0.0]
     theta_opt_guard;
     maxiter=0, verbose=false,
     max_workspace_bytes=sizeof(ComplexF64) - 1)
+@test_throws ArgumentError optimize_lbfgs(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard,
+    Q_nonhermitian_guard, theta_opt_guard;
+    maxiter=0, verbose=false)
+@test_throws ArgumentError optimize_directivity(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard,
+    Q_nonhermitian_guard, Q_opt_guard, theta_opt_guard;
+    maxiter=0, verbose=false)
+nonhermitian_angle_config = AngleConfig(
+    Vec3(1.0, 0.0, 0.0),
+    Vec3(0.0, 1.0, 0.0),
+    ComplexF64[1.0],
+    Q_nonhermitian_guard,
+    1.0,
+)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_opt_guard, Mp_opt_guard,
+    [nonhermitian_angle_config], theta_opt_guard;
+    maxiter=0, verbose=false)
 
 # L-BFGS curvature is invariant to parameter and objective units.  The former
 # absolute `s⋅y > 1e-30` gate discarded the first two valid pairs below even
@@ -8710,6 +8730,17 @@ compute_objective(objective_probe_I, objective_probe_Q)
     objective_probe_I, objective_probe_Q)) == 0
 @test_throws ArgumentError compute_objective(
     objective_probe_I, ComplexF64[NaN 0.0; 0.0 1.0])
+objective_nonhermitian_Q = ComplexF64[
+    1.0 2.0 + 1.0im
+    -0.4 + 0.3im 0.5
+]
+@test_throws ArgumentError compute_objective(
+    objective_probe_I, objective_nonhermitian_Q)
+@test_throws ArgumentError solve_adjoint(
+    Matrix{ComplexF64}(I, 2, 2),
+    objective_nonhermitian_Q,
+    objective_probe_I,
+)
 objective_extreme_scale = floatmax(Float64)
 objective_extreme_I = ComplexF64[
     objective_extreme_scale,
@@ -8719,12 +8750,10 @@ objective_extreme_I = ComplexF64[
     1.0,
 ]
 objective_extreme_Q = zeros(ComplexF64, 5, 5)
-objective_extreme_Q[1, 1:4] .= ComplexF64[
-    objective_extreme_scale,
-    objective_extreme_scale,
-    -objective_extreme_scale,
-    -objective_extreme_scale,
-]
+objective_extreme_signs = ComplexF64[1.0, 1.0, -1.0, -1.0]
+objective_extreme_Q[1:4, 1:4] .=
+    objective_extreme_scale .* (
+        objective_extreme_signs * transpose(objective_extreme_signs))
 objective_extreme_Q[5, 5] = 3.0
 @test !isfinite(real(DiffMoM._dot_left_matrix_right(
     objective_extreme_I, objective_extreme_Q, objective_extreme_I)))

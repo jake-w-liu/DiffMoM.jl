@@ -912,10 +912,12 @@ end
 """
     compute_objective(I, Q)
 
-Compute the quadratic objective J = Re(I† Q I).
+Compute the quadratic objective J = Re(I† Q I). `Q` must be Hermitian so
+this objective and the adjoint derivative use the same matrix.
 """
 function compute_objective(I::Vector{<:Number}, Q::Matrix{<:Number})
     _validate_linear_system_inputs(Q, I, "quadratic objective")
+    _validate_hermitian_objective_matrix(Q, "quadratic objective matrix")
     value = real(_dot_left_matrix_right(I, Q, I))
     value_type = typeof(value)
     if value_type <: Union{Float32,Float64}
@@ -970,6 +972,9 @@ end
 Solve the adjoint system: Z† λ = Q I
 Returns λ ∈ C^N.
 
+`Q` must be Hermitian. A non-Hermitian matrix is rejected because `Q*I` is
+not the derivative of `Re(I† Q I)` in that case.
+
 When `solver=:gmres`, uses GMRES with the adjoint preconditioner P⁻ᴴ.
 By default, an unconverged GMRES solve throws instead of returning an
 unverified adjoint vector.
@@ -998,6 +1003,7 @@ function solve_adjoint(Z::AbstractMatrix{<:Number}, Q::Matrix{<:Number},
         throw(DimensionMismatch(
             "adjoint objective matrix has size $(size(Q)), expected ($N, $N)"))
     _validate_known_matrix_entries(Q, "adjoint objective matrix")
+    _validate_hermitian_objective_matrix(Q, "adjoint objective matrix")
     rhs = _finite_matrix_vector_product(Q, I, "adjoint RHS")
     if solver == :direct
         adjoint_Z = adjoint(Z)
