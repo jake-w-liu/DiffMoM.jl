@@ -2969,6 +2969,31 @@ end
         basis_value, incident_field, area, quadrature_weight)
 end
 
+struct _ExcitationSurfacePrimitive
+    basis_value::CVec3
+    incident_field::CVec3
+    area::Float64
+    quadrature_weight::Float64
+end
+
+@inline function _store_excitation_surface_term!(
+    terms::Vector{ComplexF64},
+    primitives::Vector{_ExcitationSurfacePrimitive},
+    index::Int,
+    basis_value::SVector{3,<:Number},
+    incident_field::SVector{3,<:Number},
+    area::Float64,
+    quadrature_weight::Float64,
+)
+    basis = CVec3(basis_value)
+    field = CVec3(incident_field)
+    primitives[index] = _ExcitationSurfacePrimitive(
+        basis, field, area, quadrature_weight)
+    terms[index] = _excitation_surface_term(
+        basis, field, area, quadrature_weight)
+    return nothing
+end
+
 @noinline function _excitation_surface_sum_exact(
         terms::Vector{ComplexF64},
         term_count::Int,
@@ -2988,10 +3013,37 @@ end
     end
 end
 
-@inline function _excitation_surface_sum(
-        terms::Vector{ComplexF64},
+@noinline function _excitation_surface_sum_exact(
+        primitives::Vector{_ExcitationSurfacePrimitive},
         term_count::Int,
         basis_index::Int)
+    return setprecision(
+            BigFloat, _EXCITATION_SURFACE_FALLBACK_PRECISION) do
+        total = zero(Complex{BigFloat})
+        @inbounds for index in 1:term_count
+            primitive = primitives[index]
+            inner_product = zero(Complex{BigFloat})
+            for component in 1:3
+                inner_product +=
+                    conj(Complex{BigFloat}(
+                        primitive.basis_value[component])) *
+                    Complex{BigFloat}(
+                        primitive.incident_field[component])
+            end
+            total -= 2 * BigFloat(primitive.quadrature_weight) *
+                     BigFloat(primitive.area) * inner_product
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "excitation RHS entry $basis_index is outside the " *
+                "ComplexF64 range"))
+        return converted
+    end
+end
+
+@inline function _excitation_surface_sum_state(
+        terms::Vector{ComplexF64}, term_count::Int)
     total = zero(ComplexF64)
     real_magnitude = 0.0
     imag_magnitude = 0.0
@@ -3008,9 +3060,30 @@ end
                       !isfinite(imag_magnitude) ||
                       _matrixfree_complex_reduction_requires_exact(
                           total, real_magnitude, imag_magnitude, term_count)
+    return total, needs_fallback
+end
+
+@inline function _excitation_surface_sum(
+        terms::Vector{ComplexF64},
+        term_count::Int,
+        basis_index::Int)
+    total, needs_fallback =
+        _excitation_surface_sum_state(terms, term_count)
     return needs_fallback ?
            _excitation_surface_sum_exact(
                terms, term_count, basis_index) : total
+end
+
+@inline function _excitation_surface_sum(
+        terms::Vector{ComplexF64},
+        primitives::Vector{_ExcitationSurfacePrimitive},
+        term_count::Int,
+        basis_index::Int)
+    total, needs_fallback =
+        _excitation_surface_sum_state(terms, term_count)
+    return needs_fallback ?
+           _excitation_surface_sum_exact(
+               primitives, term_count, basis_index) : total
 end
 
 function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
@@ -3027,6 +3100,7 @@ function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
     CT = ComplexF64
     v = zeros(CT, N)
     terms = Vector{ComplexF64}(undef, 2Nq)
+    primitives = Vector{_ExcitationSurfacePrimitive}(undef, 2Nq)
 
     for n in 1:N
         term_count = 0
@@ -3040,11 +3114,12 @@ function assemble_plane_wave(mesh::TriMesh, rwg::RWGData,
                 Einc = _plane_wave_field_unchecked(
                     rq, pw.k_vec, pw.E0, pw.pol)
                 term_count += 1
-                terms[term_count] =
-                    _excitation_surface_term(fn, Einc, A, wq[q])
+                _store_excitation_surface_term!(
+                    terms, primitives, term_count, fn, Einc, A, wq[q])
             end
         end
-        v[n] = _excitation_surface_sum(terms, term_count, n)
+        v[n] = _excitation_surface_sum(
+            terms, primitives, term_count, n)
     end
 
     return v
@@ -3088,6 +3163,7 @@ function assemble_dipole(mesh::TriMesh, rwg::RWGData,
 
     v = zeros(ComplexF64, N)
     terms = Vector{ComplexF64}(undef, 2Nq)
+    primitives = Vector{_ExcitationSurfacePrimitive}(undef, 2Nq)
 
     for n in 1:N
         term_count = 0
@@ -3102,11 +3178,12 @@ function assemble_dipole(mesh::TriMesh, rwg::RWGData,
                 Einc = _dipole_incident_field_unchecked(rq, dipole)
 
                 term_count += 1
-                terms[term_count] =
-                    _excitation_surface_term(fn, Einc, A, wq[q])
+                _store_excitation_surface_term!(
+                    terms, primitives, term_count, fn, Einc, A, wq[q])
             end
         end
-        v[n] = _excitation_surface_sum(terms, term_count, n)
+        v[n] = _excitation_surface_sum(
+            terms, primitives, term_count, n)
     end
 
     return v
@@ -3124,6 +3201,7 @@ function assemble_loop(mesh::TriMesh, rwg::RWGData,
 
     v = zeros(ComplexF64, N)
     terms = Vector{ComplexF64}(undef, 2Nq)
+    primitives = Vector{_ExcitationSurfacePrimitive}(undef, 2Nq)
     for n in 1:N
         term_count = 0
         for t in (rwg.tplus[n], rwg.tminus[n])
@@ -3134,11 +3212,12 @@ function assemble_loop(mesh::TriMesh, rwg::RWGData,
                 fn = eval_rwg(rwg, n, rq, t)
                 Einc = _loop_incident_field_unchecked(rq, loop)
                 term_count += 1
-                terms[term_count] =
-                    _excitation_surface_term(fn, Einc, A, wq[q])
+                _store_excitation_surface_term!(
+                    terms, primitives, term_count, fn, Einc, A, wq[q])
             end
         end
-        v[n] = _excitation_surface_sum(terms, term_count, n)
+        v[n] = _excitation_surface_sum(
+            terms, primitives, term_count, n)
     end
     return v
 end
@@ -3155,6 +3234,7 @@ function assemble_monopole(mesh::TriMesh, rwg::RWGData,
 
     v = zeros(ComplexF64, N)
     terms = Vector{ComplexF64}(undef, 2Nq)
+    primitives = Vector{_ExcitationSurfacePrimitive}(undef, 2Nq)
     for n in 1:N
         term_count = 0
         for t in (rwg.tplus[n], rwg.tminus[n])
@@ -3165,11 +3245,12 @@ function assemble_monopole(mesh::TriMesh, rwg::RWGData,
                 fn = eval_rwg(rwg, n, rq, t)
                 Einc = _monopole_incident_field_unchecked(rq, mono)
                 term_count += 1
-                terms[term_count] =
-                    _excitation_surface_term(fn, Einc, A, wq[q])
+                _store_excitation_surface_term!(
+                    terms, primitives, term_count, fn, Einc, A, wq[q])
             end
         end
-        v[n] = _excitation_surface_sum(terms, term_count, n)
+        v[n] = _excitation_surface_sum(
+            terms, primitives, term_count, n)
     end
     return v
 end
@@ -3187,6 +3268,7 @@ function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
 
     v = zeros(ComplexF64, N)
     terms = Vector{ComplexF64}(undef, 2Nq)
+    primitives = Vector{_ExcitationSurfacePrimitive}(undef, 2Nq)
 
     for n in 1:N
         term_count = 0
@@ -3206,11 +3288,12 @@ function assemble_imported_excitation(mesh::TriMesh, rwg::RWGData,
                 Einc = _check_finite_cvec3(
                     Einc, "ImportedExcitation mapped electric field")
                 term_count += 1
-                terms[term_count] =
-                    _excitation_surface_term(fn, Einc, A, wq[q])
+                _store_excitation_surface_term!(
+                    terms, primitives, term_count, fn, Einc, A, wq[q])
             end
         end
-        v[n] = _excitation_surface_sum(terms, term_count, n)
+        v[n] = _excitation_surface_sum(
+            terms, primitives, term_count, n)
     end
 
     return v
@@ -3228,6 +3311,7 @@ function assemble_pattern_feed(mesh::TriMesh, rwg::RWGData,
 
     v = zeros(ComplexF64, N)
     terms = Vector{ComplexF64}(undef, 2Nq)
+    primitives = Vector{_ExcitationSurfacePrimitive}(undef, 2Nq)
 
     for n in 1:N
         term_count = 0
@@ -3240,11 +3324,12 @@ function assemble_pattern_feed(mesh::TriMesh, rwg::RWGData,
                 fn = eval_rwg(rwg, n, rq, t)
                 Einc = _pattern_feed_field_unchecked(rq, pat)
                 term_count += 1
-                terms[term_count] =
-                    _excitation_surface_term(fn, Einc, A, wq[q])
+                _store_excitation_surface_term!(
+                    terms, primitives, term_count, fn, Einc, A, wq[q])
             end
         end
-        v[n] = _excitation_surface_sum(terms, term_count, n)
+        v[n] = _excitation_surface_sum(
+            terms, primitives, term_count, n)
     end
 
     return v

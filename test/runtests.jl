@@ -5621,7 +5621,11 @@ reduction_xi, reduction_weights = tri_quad_rule(3)
 reduction_points = tri_quad_points(
     excitation_cancellation_mesh, 1, reduction_xi)
 reduction_area = triangle_area(excitation_cancellation_mesh, 1)
-reduction_targets = ComplexF64[1.0e16, 3.0, -1.0e16]
+reduction_targets = ComplexF64[
+    1.0e16,
+    -1.000000000000001e16,
+    13.0,
+]
 reduction_fields = map(eachindex(reduction_points)) do index
     basis = eval_rwg(
         excitation_cancellation_rwg, 1, reduction_points[index], 1)
@@ -5669,7 +5673,7 @@ reduction_reference = setprecision(BigFloat, 4352) do
     end
     ComplexF64(total)
 end
-@test reduction_reference == 3.0 + 0im
+@test reduction_reference == 2.333333333333335 + 0im
 @test reduction_actual == reduction_reference
 
 # Surface integration must combine a finite extreme triangle area with a tiny
