@@ -2898,7 +2898,8 @@ println("\n── Test 42: PeriodicMetrics ──")
         end
 
         # (3) A finite positive height and matching lattice wavenumber are required
-        # across every grounded public entry point.
+        # across every grounded public entry point. The excitation must also be
+        # the down-going plane wave represented by the lattice's Bloch vector.
         I_zero = zeros(ComplexF64, rwg_g.nedges)
         for bad_h in (-1.0, 0.0, Inf, NaN)
             @test_throws ArgumentError assemble_Z_efie_grounded(
@@ -2914,6 +2915,47 @@ println("\n── Test 42: PeriodicMetrics ──")
                 mesh_g, rwg_g, I_zero, kg, lat_g; height=bad_h
             )
         end
+        @test_throws ArgumentError assemble_excitation_grounded(
+            mesh_g, rwg_g,
+            PortExcitation([1], 1.0 + 0im, 50.0 + 0im),
+            kg, lat_g; height=lam_g / 8)
+        for inconsistent_wave in (
+            make_plane_wave(
+                Vec3(0.0, 0.0, -0.5kg), 1.0,
+                Vec3(1.0, 0.0, 0.0)),
+            make_plane_wave(
+                Vec3(0.5kg, 0.0, -sqrt(0.75) * kg), 1.0,
+                Vec3(0.0, 1.0, 0.0)),
+            make_plane_wave(
+                Vec3(0.0, 0.0, kg), 1.0,
+                Vec3(1.0, 0.0, 0.0)),
+        )
+            @test_throws ArgumentError assemble_excitation_grounded(
+                mesh_g, rwg_g, inconsistent_wave, kg, lat_g;
+                height=lam_g / 8)
+        end
+        oblique_lattice = PeriodicLattice(
+            dcg, dcg, pi / 6, 0.0, kg;
+            N_spatial=1, N_spectral=1)
+        oblique_rwg = build_rwg_periodic(
+            mesh_g, oblique_lattice;
+            precheck=false)
+        oblique_kz = DiffMoM._kz_inc(kg, oblique_lattice)
+        oblique_wave = make_plane_wave(
+            Vec3(oblique_lattice.kx_bloch,
+                 oblique_lattice.ky_bloch,
+                 -oblique_kz),
+            1.0,
+            Vec3(0.0, 1.0, 0.0),
+        )
+        oblique_incident = assemble_excitation(
+            mesh_g, oblique_rwg, oblique_wave; quad_order=1)
+        oblique_grounded = assemble_excitation_grounded(
+            mesh_g, oblique_rwg, oblique_wave, kg, oblique_lattice;
+            height=lam_g / 8, quad_order=1)
+        @test oblique_grounded ==
+              (1 - DiffMoM._grounded_round_trip_phase(
+                  oblique_kz, lam_g / 8)) .* oblique_incident
         for bad_pol in (
             SVector(0.0, 0.0, 0.0),
             SVector(Inf, 0.0, 0.0),

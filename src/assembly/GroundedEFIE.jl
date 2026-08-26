@@ -315,21 +315,58 @@ end
     return _grounded_round_trip_phase_exact(vertical_wavenumber, height)
 end
 
+function _validated_grounded_plane_wave(
+        pw,
+        k::Float64,
+        lattice::PeriodicLattice)
+    pw isa PlaneWaveExcitation ||
+        throw(ArgumentError(
+            "assemble_excitation_grounded requires a PlaneWaveExcitation; " *
+            "got $(typeof(pw)). Use assemble_excitation for other source models."))
+    _validate_plane_wave_wavenumber(
+        pw, k, "assemble_excitation_grounded")
+
+    vertical_wavenumber = _kz_inc(k, lattice)
+    expected = Vec3(
+        lattice.kx_bloch,
+        lattice.ky_bloch,
+        -vertical_wavenumber,
+    )
+    normalized_actual = pw.k_vec / k
+    normalized_expected = expected / k
+    @inbounds for component in 1:3
+        isapprox(
+            normalized_actual[component],
+            normalized_expected[component];
+            rtol=0.0,
+            atol=1e-8,
+        ) || throw(ArgumentError(
+            "assemble_excitation_grounded plane-wave k_vec=$(pw.k_vec) " *
+            "does not match the lattice's down-going incident wavevector " *
+            "$expected. Rebuild the plane wave from the lattice incidence " *
+            "angles and wavenumber."))
+    end
+    return vertical_wavenumber
+end
+
 """
     assemble_excitation_grounded(mesh, rwg, pw, k, lattice; height, quad_order=3)
 
 Excitation vector for the grounded problem: the metasurface is illuminated by the
 incident plane wave plus its bare-ground reflection. For a TE/normal-incidence plane
 wave referenced at the metasurface plane (z=0), the total tangential drive is scaled by
-`(1 - exp(-2i kz_inc h))`, where `kz_inc` is the incident vertical wavenumber.
+`(1 - exp(-2i kz_inc h))`, where `kz_inc` is the incident vertical wavenumber. `pw`
+must be a down-going `PlaneWaveExcitation` whose wavevector matches the wavenumber and
+Bloch components stored in `lattice`.
 """
 function assemble_excitation_grounded(mesh::TriMesh, rwg::RWGData, pw, k,
                                       lattice::PeriodicLattice; height::Real, quad_order::Int=3)
     _validate_mesh_rwg_pair(mesh, rwg)
     kw = _validated_lattice_wavenumber(k, lattice)
     h = _validated_ground_height(height)
+    vertical_wavenumber = _validated_grounded_plane_wave(pw, kw, lattice)
     v_inc = assemble_excitation(mesh, rwg, pw; quad_order=quad_order)
-    factor = 1 - _grounded_round_trip_phase(_kz_inc(kw, lattice), h)
+    factor = 1 - _grounded_round_trip_phase(vertical_wavenumber, h)
     v_grounded = factor .* v_inc
     all(isfinite, v_grounded) ||
         throw(OverflowError(

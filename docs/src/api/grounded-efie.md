@@ -94,11 +94,15 @@ of the specular order (`kz_inc = k cos(theta_inc)`).
 | `rwg` | `RWGData` | -- | Bloch-paired RWG basis data from `build_rwg_periodic`. |
 | `k` | Real | -- | Positive free-space wavenumber (rad/m); must match `lattice.k`. |
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup (carries the Bloch wavenumbers). |
-| `pw` | -- | -- | Plane-wave excitation model (e.g. from `make_plane_wave`), passed through to `assemble_excitation`. |
+| `pw` | `PlaneWaveExcitation` | -- | Down-going plane wave whose magnitude and transverse components match `k` and the Bloch wavenumbers stored in `lattice`. |
 | `height` | `Real` | -- | Finite positive distance `h` above the PEC ground plane (meters). |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 
 **Returns:** `Vector{ComplexF64}` of length `N` (the free-standing excitation scaled by `1 - exp(-2i kz_inc h)`).
+
+The function rejects other source models and plane waves whose wavevector does
+not describe the lattice incidence. Rebuild both objects from the same
+wavenumber and incidence angles when changing frequency or scan direction.
 
 ```julia
 pw = make_plane_wave(Vec3(0.0, 0.0, -k), 1.0, Vec3(1.0, 0.0, 0.0))

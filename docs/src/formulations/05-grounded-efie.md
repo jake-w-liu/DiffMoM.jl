@@ -175,6 +175,12 @@ function assemble_excitation_grounded(mesh, rwg, pw, k, lattice; height, quad_or
 end
 ```
 
+`pw` must be the down-going `PlaneWaveExcitation` represented by the periodic
+lattice: its magnitude must equal `k`, its transverse components must equal
+`lattice.kx_bloch` and `lattice.ky_bloch`, and its vertical component must be
+$-k_{z,\text{inc}}$. The function rejects other source types and inconsistent
+wavevectors before assembling the drive.
+
 ### 5.2 The Vanishing-Drive Heights
 
 The factor $\bigl(1 - e^{-2i k_{z,\text{inc}} h}\bigr)$ vanishes when $2 k_{z,\text{inc}} h$ is a multiple of $2\pi$ -- for example $h = \lambda/2$ at normal incidence. Physically the incident and ground-reflected fields cancel at the sheet (a field node), so the sheet is undriven. The strongest drive occurs at the quarter-wave height $h = \lambda/4$, where $2 k_{z,\text{inc}} h = \pi$ and the factor is $1 - e^{-i\pi} = 2$.
