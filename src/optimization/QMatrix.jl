@@ -1383,7 +1383,9 @@ end
     direction_mask(grid, direction; half_angle=π/18)
 
 Create a mask selecting directions within a cone of `half_angle` (radians)
-around an arbitrary `direction` vector. Generalizes `cap_mask` to any direction.
+around an arbitrary `direction` vector. Both the requested direction and each
+stored grid direction are normalized before the angular comparison. Generalizes
+`cap_mask` to any direction.
 
 # Example: backscatter mask for incidence from +z
 ```julia
@@ -1408,9 +1410,16 @@ function direction_mask(grid::SphGrid, direction::Vec3; half_angle::Real=π/18)
     threshold = cos(half_angle)
     mask = BitVector(undef, NΩ)
     @inbounds for q in 1:NΩ
-        mask[q] = grid.rhat[1, q] * d[1] +
-                  grid.rhat[2, q] * d[2] +
-                  grid.rhat[3, q] * d[3] >= threshold
+        x = grid.rhat[1, q]
+        y = grid.rhat[2, q]
+        z = grid.rhat[3, q]
+        inverse_norm = inv(hypot(x, y, z))
+        cosine = clamp(
+            (x * d[1] + y * d[2] + z * d[3]) * inverse_norm,
+            -1.0,
+            1.0,
+        )
+        mask[q] = cosine >= threshold
     end
     return mask
 end

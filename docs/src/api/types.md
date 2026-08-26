@@ -222,6 +222,12 @@ end
 | `phi` | `Vector{Float64}` | `N_omega` | Azimuthal angle in [0, 2pi), measured from the +x axis in the xy-plane. |
 | `w` | `Vector{Float64}` | `N_omega` | Quadrature weights in steradians. For a full sphere, `sum(w) ~ 4pi`. To integrate a function over the sphere: `integral = sum(f.(directions) .* w)`. |
 
+Far-field and optimization routines validate custom grids before use. Every
+angle must be in the stated range, every weight must be finite and
+nonnegative, and each normalized `rhat[:, q]` must agree with its stored
+`theta[q]` and `phi[q]`. Use `make_sph_grid` unless a custom quadrature rule is
+required.
+
 **Constructor:**
 
 ```julia

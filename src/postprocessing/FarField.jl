@@ -12,6 +12,7 @@ const _DEFAULT_MAX_RADIATION_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_RADIATION_TERMS = 200_000_000
 const _DEFAULT_MAX_RADIATION_EXACT_WORK = 2_000_000
 const _RADIATION_EXACT_PRECISION = 4352
+const _SPH_GRID_DIRECTION_ATOL = 64eps(Float64)
 
 function _radiation_vectors_work_bytes(
         Nt::Int, Nq::Int, NΩ::Int, output_bytes::Int)
@@ -297,6 +298,12 @@ function _validate_sph_grid(grid::SphGrid)
         (isfinite(θ) && isfinite(ϕ)) ||
             throw(ArgumentError(
                 "spherical grid angles must be finite; direction $q has theta=$θ, phi=$ϕ"))
+        0.0 <= θ <= π ||
+            throw(ArgumentError(
+                "spherical grid theta must lie in [0, π]; direction $q has theta=$θ"))
+        0.0 <= ϕ < 2π ||
+            throw(ArgumentError(
+                "spherical grid phi must lie in [0, 2π); direction $q has phi=$ϕ"))
         (isfinite(wq) && wq >= 0.0) ||
             throw(ArgumentError(
                 "spherical grid weights must be finite and nonnegative; weight $q is $wq"))
@@ -307,10 +314,23 @@ function _validate_sph_grid(grid::SphGrid)
         (isfinite(x) && isfinite(y) && isfinite(z)) ||
             throw(ArgumentError(
                 "spherical grid directions must be finite; direction $q is ($x, $y, $z)"))
-        nrm = sqrt(x * x + y * y + z * z)
+        nrm = hypot(x, y, z)
         (isfinite(nrm) && isapprox(nrm, 1.0; rtol=1e-10, atol=1e-12)) ||
             throw(ArgumentError(
                 "spherical grid directions must be unit vectors; direction $q has norm $nrm"))
+
+        sin_theta, cos_theta = sincos(θ)
+        sin_phi, cos_phi = sincos(ϕ)
+        inverse_norm = inv(nrm)
+        expected_x = sin_theta * cos_phi
+        expected_y = sin_theta * sin_phi
+        expected_z = cos_theta
+        (abs(x * inverse_norm - expected_x) <= _SPH_GRID_DIRECTION_ATOL &&
+         abs(y * inverse_norm - expected_y) <= _SPH_GRID_DIRECTION_ATOL &&
+         abs(z * inverse_norm - expected_z) <= _SPH_GRID_DIRECTION_ATOL) ||
+            throw(ArgumentError(
+                "spherical grid direction $q does not match its stored " *
+                "theta=$θ and phi=$ϕ angles"))
     end
     return NΩ
 end

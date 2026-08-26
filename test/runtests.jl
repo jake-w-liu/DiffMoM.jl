@@ -3203,6 +3203,19 @@ bad_weight_grid = SphGrid(
     vcat(grid.w[1:(end - 1)], -1.0),
 )
 @test_throws ArgumentError radiation_vectors(mesh, rwg, bad_weight_grid, k; eta0=eta0)
+inconsistent_angle_grid = SphGrid(
+    reshape(Float64[0.0, 0.0, 1.0], 3, 1),
+    [π], [0.0], [1.0])
+@test_throws ArgumentError pol_linear_x(inconsistent_angle_grid)
+for bad_angle_grid in (
+        SphGrid(
+            reshape(Float64[-sin(0.1), 0.0, cos(0.1)], 3, 1),
+            [-0.1], [0.0], [1.0]),
+        SphGrid(
+            reshape(Float64[1.0, 0.0, 0.0], 3, 1),
+            [π / 2], [2π], [1.0]))
+    @test_throws ArgumentError pol_linear_x(bad_angle_grid)
+end
 
 dipole_ff_validation = make_dipole(
     Vec3(0.0, 0.0, 0.0),
@@ -13806,6 +13819,19 @@ mask_mz = direction_mask(grid_test, Vec3(0.0, 0.0, -1.0); half_angle=10.0 * π /
     grid_test, Vec3(0.0, 0.0, 1.0); half_angle=-0.1)
 @test_throws ArgumentError direction_mask(
     grid_test, Vec3(0.0, 0.0, 1.0); half_angle=π + 0.1)
+direction_offset = 1.0e-5
+direction_rounding_grid = SphGrid(
+    reshape(Float64[1.0, direction_offset, 0.0], 3, 1),
+    [π / 2], [atan(direction_offset)], [1.0])
+@test !only(direction_mask(
+    direction_rounding_grid, Vec3(1.0, 0.0, 0.0);
+    half_angle=0.0))
+aligned_rounding_grid = SphGrid(
+    reshape(Float64[1.0 + 5.0e-11, 0.0, 0.0], 3, 1),
+    [π / 2], [0.0], [1.0])
+@test only(direction_mask(
+    aligned_rounding_grid, Vec3(1.0, 0.0, 0.0);
+    half_angle=0.0))
 direction_mask(grid_test, Vec3(0.0, 0.0, 1.0); half_angle=0.1)
 @test @allocated(direction_mask(
     grid_test, Vec3(0.0, 0.0, 1.0); half_angle=0.1)) <=
