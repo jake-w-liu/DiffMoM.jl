@@ -1291,6 +1291,12 @@ Base.:\(factor::_ConditioningFactorization, rhs) =
     )
 LinearAlgebra.issuccess(factor::_ConditioningFactorization) =
     issuccess(factor.factorization)
+function LinearAlgebra.adjoint(factor::_ConditioningFactorization)
+    adjoint_factorization = adjoint(factor.factorization)
+    adjoint_matrix = adjoint(factor.matrix)
+    return _ConditioningFactorization(
+        adjoint_factorization, adjoint_matrix)
+end
 LinearAlgebra.ldiv!(factor::_ConditioningFactorization, rhs) =
     _solve_factored_linear_system!(
         rhs,
@@ -1339,6 +1345,12 @@ function _solve_factored_linear_system!(
 
     solve_error = nothing
     solve_factorization = _direct_factorization_backend(factorization)
+    if solve_factorization isa _BigFloatDenseLUPlan
+        solution = _solve_bigfloat_plan(
+            solve_factorization, rhs_reference, label)
+        copyto!(destination, solution)
+        return destination
+    end
     solution = try
         _ldiv_reusing_input(solve_factorization, destination)
     catch err

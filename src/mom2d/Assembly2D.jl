@@ -407,5 +407,8 @@ function solve_vie_2d(
     all(isfinite, E_total) ||
         error("solve_vie_2d produced non-finite total-field values.")
 
-    return VIEResult2D(E_total, Vector(E_inc), Vector(chi), D, Z, Z_lu, mesh, k0)
+    verified_factor = _ConditioningFactorization(Z_lu, Z)
+    return VIEResult2D(
+        E_total, Vector(E_inc), Vector(chi), D, Z,
+        verified_factor, mesh, k0)
 end

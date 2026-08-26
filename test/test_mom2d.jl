@@ -528,7 +528,8 @@ end
         vr = solve_vie_2d(
             mesh, k0, chi, E_inc;
             max_output_bytes=exact_work_bytes)
-        @test vr.Z_LU isa DiffMoM._BigFloatDenseLUPlan
+        @test vr.Z_LU isa DiffMoM._ConditioningFactorization
+        @test vr.Z_LU.factorization isa DiffMoM._BigFloatDenseLUPlan
         reference = setprecision(BigFloat, 4096) do
             Z_big = Complex{BigFloat}.(Z)
             rhs_big = Complex{BigFloat}.(E_inc)

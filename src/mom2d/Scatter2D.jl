@@ -213,7 +213,8 @@ function jacobian_scattered_field_2d(
         sensitivity_transpose, vr.Z_LU, vr.Z,
         transpose(G_obs), "jacobian_scattered_field_2d")
 
-    if vr.Z_LU isa _BigFloatDenseLUPlan
+    factor_backend = _direct_factorization_backend(vr.Z_LU)
+    if factor_backend isa _BigFloatDenseLUPlan
         # In the exact-factor branch, converting Z⁻¹Gᵀ to ComplexF64 before
         # multiplying by k₀² can erase a representable final Jacobian entry.
         # Retain the exact solve through the complete physical product.
@@ -223,7 +224,7 @@ function jacobian_scattered_field_2d(
             @inbounds for p in 1:N, m in 1:M
                 rhs_big[p, m] = big_type(G_obs[m, p])
             end
-            sensitivity_big = vr.Z_LU.factorization \ rhs_big
+            sensitivity_big = factor_backend.factorization \ rhs_big
             result = Matrix{ComplexF64}(undef, M, N)
             scale = BigFloat(vr.k0)^2 * BigFloat(A)
             @inbounds for p in 1:N, m in 1:M

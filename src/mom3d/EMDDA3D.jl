@@ -897,8 +897,9 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
             exact_fallback_check=enforce_exact_work)
         E_total, H_total = _unflatten_em_fields_3d(total_flat, grid.nvoxels)
         E_rhs, H_rhs = _unflatten_em_fields_3d(rhs, grid.nvoxels)
+        verified_factor = _ConditioningFactorization(fac, A)
         return EMDDAResult3D(E_total, H_total, E_rhs, H_rhs,
-                             Aop.alpha, A, fac, :direct, nothing,
+                             Aop.alpha, A, verified_factor, :direct, nothing,
                              grid, Float64(k0), Aop.radiative_correction,
                              Aop.eta0)
     elseif solver == :gmres

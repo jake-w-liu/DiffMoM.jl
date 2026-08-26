@@ -2079,8 +2079,9 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
             fac, A, rhs, "direct DDA solution";
             exact_fallback_check=enforce_exact_work)
         E_total = _unflatten_fields_3d(E_total_flat, grid.nvoxels)
+        verified_factor = _ConditioningFactorization(fac, A)
         return DDAResult3D(E_total, _unflatten_fields_3d(rhs, grid.nvoxels),
-                           epsv, alpha, A, fac, :direct, nothing,
+                           epsv, alpha, A, verified_factor, :direct, nothing,
                            grid, Float64(k0), radiative_correction)
     elseif solver == :gmres
         A = dda_operator_3d(

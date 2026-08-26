@@ -8475,6 +8475,19 @@ _, direct_wilkinson_solution, _ = prepare_conditioned_system(
 ) <= DiffMoM._direct_backward_error_limit(Float64, direct_wilkinson_size)
 @test direct_wilkinson_solution ≈
       direct_wilkinson_reference rtol=8eps(Float64)
+direct_wilkinson_verified_factor = DiffMoM._ConditioningFactorization(
+    direct_wilkinson_factor, direct_wilkinson_matrix)
+@test direct_wilkinson_verified_factor \ direct_wilkinson_rhs ≈
+      direct_wilkinson_reference rtol=8eps(Float64)
+direct_wilkinson_adjoint_reference = conj.(direct_wilkinson_reference)
+direct_wilkinson_adjoint_rhs = setprecision(BigFloat, 512) do
+    ComplexF64.(
+        adjoint(Matrix{Complex{BigFloat}}(direct_wilkinson_matrix)) *
+        Complex{BigFloat}.(direct_wilkinson_adjoint_reference))
+end
+@test adjoint(direct_wilkinson_verified_factor) \
+      direct_wilkinson_adjoint_rhs ≈
+      direct_wilkinson_adjoint_reference rtol=8eps(Float64)
 
 # Equilibration may round away an irrelevant component; the physical residual
 # check determines whether doing so was safe.

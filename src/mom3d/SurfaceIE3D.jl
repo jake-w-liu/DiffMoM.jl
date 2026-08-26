@@ -1553,7 +1553,9 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
         x = _solve_factored_linear_system(
             fac, A, rhsv, "direct dielectric SIE solution")
         J, M = _split_surface_currents_3d(x, rwg.nedges)
-        return DielectricSIEResult3D(copy(J), copy(M), A, rhsv, fac,
+        verified_factor = _ConditioningFactorization(fac, A)
+        return DielectricSIEResult3D(
+                                     copy(J), copy(M), A, rhsv, verified_factor,
                                      :direct, nothing,
                                      formulation, exterior, interior)
     elseif solver == :gmres
