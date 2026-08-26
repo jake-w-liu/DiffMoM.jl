@@ -13,14 +13,15 @@
       "kind": "command",
       "command": [
         "julia",
+        "--project=.",
         "--startup-file=no",
+        "--check-bounds=yes",
         "-e",
-        "using Pkg, TOML; root = abspath(ARGS[1]); project = let candidates = [joinpath(root, \"Project.toml\"), joinpath(root, \"JuliaProject.toml\")]; existing = filter(isfile, candidates); isempty(existing) && error(\"no Julia project file\"); first(existing); end; name = get(TOML.parsefile(project), \"name\", nothing); name isa String || error(\"Julia package project has no string name\"); mktempdir() do env; Pkg.activate(env); Pkg.develop(Pkg.PackageSpec(path=root)); Pkg.test(Pkg.PackageSpec(name=name)); end",
-        "."
+        "using Pkg; Pkg.test()"
       ],
       "cwd": ".",
       "timeout_seconds": 3600,
-      "capture": "digest",
+      "capture": "tail",
       "protect_paths": [
         "JuliaManifest.toml",
         "JuliaProject.toml",
@@ -156,9 +157,7 @@
       "capture": "digest",
       "protect_paths": [
         "docs/Project.toml",
-        "docs/Manifest.toml",
-        "docs/JuliaProject.toml",
-        "docs/JuliaManifest.toml"
+        "docs/JuliaProject.toml"
       ]
     },
     {

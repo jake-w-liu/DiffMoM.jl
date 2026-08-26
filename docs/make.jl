@@ -1,6 +1,8 @@
 import Pkg
 Pkg.activate(@__DIR__)
-Pkg.develop(Pkg.PackageSpec(path = joinpath(@__DIR__, "..")))
+cd(@__DIR__) do
+    Pkg.develop(Pkg.PackageSpec(path = ".."))
+end
 Pkg.instantiate()
 
 using Documenter
