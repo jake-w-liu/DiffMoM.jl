@@ -1330,6 +1330,8 @@ function _solve_factored_linear_system!(
     matrix::Union{Nothing,AbstractMatrix{<:Number}},
     rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
     label::AbstractString,
+    ;
+    exact_fallback_check=nothing,
 ) where {T<:Number}
     size(destination) == size(rhs) ||
         throw(DimensionMismatch(
@@ -1346,6 +1348,7 @@ function _solve_factored_linear_system!(
     solve_error = nothing
     solve_factorization = _direct_factorization_backend(factorization)
     if solve_factorization isa _BigFloatDenseLUPlan
+        _run_exact_fallback_check(exact_fallback_check)
         solution = _solve_bigfloat_plan(
             solve_factorization, rhs_reference, label)
         copyto!(destination, solution)
@@ -1380,7 +1383,8 @@ function _solve_factored_linear_system!(
         return _assert_finite_linear_array(solution, label)
     end
     fallback_solution = _solve_scaled_ieee_linear_system(
-        matrix_reference, rhs_reference, scalar_type, label)
+        matrix_reference, rhs_reference, scalar_type, label;
+        exact_fallback_check=exact_fallback_check)
     copyto!(destination, fallback_solution)
     return destination
 end
@@ -1392,6 +1396,8 @@ function _solve_factored_linear_system!(
     matrix::Union{Nothing,AbstractMatrix{<:Number}},
     rhs::Union{AbstractVector{<:Number},AbstractMatrix{<:Number}},
     label::AbstractString,
+    ;
+    exact_fallback_check=nothing,
 ) where {T<:Number}
     size(destination) == size(rhs) ||
         throw(DimensionMismatch(
@@ -1404,6 +1410,7 @@ function _solve_factored_linear_system!(
     # `_solve_bigfloat_plan` finishes reading `rhs` before `destination` is
     # touched, so an in-place caller does not require a second physical-RHS
     # copy on this cold exact path.
+    _run_exact_fallback_check(exact_fallback_check)
     solution = _solve_bigfloat_plan(factorization, rhs, label)
     copyto!(destination, solution)
     return destination
@@ -1799,11 +1806,13 @@ and can be reused alone. Pair an externally constructed factor with its
 
 Returns `(Mp_tilde, factor)` where `factor` is `nothing` for the unpreconditioned
 case. `max_output_bytes` bounds the combined raw payload of the returned dense
-transformed matrices before allocation.
+transformed matrices before allocation. The internal `exact_fallback_check`
+hook runs before an exceptional high-precision factor or solve is allocated.
 """
 function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
                                   preconditioner_M=nothing,
                                   preconditioner_factor=nothing,
+                                  exact_fallback_check=nothing,
                                   max_output_bytes::Integer=
                                       _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     N = _validated_mass_matrix_size(Mp)
@@ -1833,7 +1842,8 @@ function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
             _factor_dense_linear_system(
                 preconditioner_matrix,
                 ComplexF64,
-                "preconditioner factorization",
+                "preconditioner factorization";
+                exact_fallback_check=exact_fallback_check,
             ),
             preconditioner_matrix,
         )
@@ -1850,7 +1860,8 @@ function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
             fac,
             preconditioner_matrix,
             Mp[p],
-            "transformed patch matrix $p",
+            "transformed patch matrix $p";
+            exact_fallback_check=exact_fallback_check,
         )
     end
     return Mp_tilde, fac
@@ -1873,13 +1884,16 @@ Returns `(Z_eff, rhs_eff, factor)` where `factor` is the reusable verified
 factorization used for preconditioning (or `nothing`). Package-created factors
 retain their physical matrix and can be reused alone; externally constructed
 factors must remain paired with `preconditioner_M`.
+The internal `exact_fallback_check` hook runs before an exceptional
+high-precision factor or solve is allocated.
 """
 function prepare_conditioned_system(Z_raw::Matrix{<:Number},
                                     rhs::Vector{<:Number};
                                     regularization_alpha::Float64=0.0,
                                     regularization_R=nothing,
                                     preconditioner_M=nothing,
-                                    preconditioner_factor=nothing)
+                                    preconditioner_factor=nothing,
+                                    exact_fallback_check=nothing)
     N = _validate_linear_system_inputs(
         Z_raw, rhs, "conditioned system")
     (isfinite(regularization_alpha) && regularization_alpha >= 0.0) ||
@@ -1921,7 +1935,8 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
             _factor_dense_linear_system(
                 preconditioner_matrix,
                 ComplexF64,
-                "preconditioner factorization",
+                "preconditioner factorization";
+                exact_fallback_check=exact_fallback_check,
             ),
             preconditioner_matrix,
         )
@@ -1934,14 +1949,16 @@ function prepare_conditioned_system(Z_raw::Matrix{<:Number},
         fac,
         preconditioner_matrix,
         Z_eff,
-        "conditioned system matrix",
+        "conditioned system matrix";
+        exact_fallback_check=exact_fallback_check,
     )
     rhs_eff = _solve_factored_linear_system!(
         rhs_eff,
         fac,
         preconditioner_matrix,
         rhs,
-        "conditioned RHS",
+        "conditioned RHS";
+        exact_fallback_check=exact_fallback_check,
     )
     return Z_eff, rhs_eff, fac
 end

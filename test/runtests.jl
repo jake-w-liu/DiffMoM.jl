@@ -4855,19 +4855,87 @@ v_opt_guard = ComplexF64[1.0]
 Q_opt_guard = ComplexF64[1.0;;]
 Q_nonhermitian_guard = ComplexF64[1.0 + 1.0im;;]
 theta_opt_guard = [0.0]
+optimizer_lbfgs_setup_bytes = DiffMoM._optimizer_raw_work_bytes(
+    1, 1;
+    matrix_count=1,
+    complex_vector_count=2,
+    parameter_vector_count=4,
+    label="test L-BFGS setup")
+optimizer_lbfgs_direct_bytes = DiffMoM._optimizer_raw_work_bytes(
+    1, 1;
+    matrix_count=3,
+    complex_vector_count=5,
+    parameter_vector_count=6,
+    integer_vector_count=2,
+    label="test L-BFGS direct workspace")
+optimizer_directivity_setup_bytes = DiffMoM._optimizer_raw_work_bytes(
+    1, 1;
+    matrix_count=1,
+    complex_vector_count=3,
+    parameter_vector_count=4,
+    label="test directivity setup")
+optimizer_directivity_direct_bytes = DiffMoM._optimizer_raw_work_bytes(
+    1, 1;
+    matrix_count=3,
+    complex_vector_count=7,
+    parameter_vector_count=7,
+    integer_vector_count=2,
+    label="test directivity direct workspace")
 @test optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
     maxiter=0, verbose=false,
-    max_workspace_bytes=sizeof(ComplexF64))[1] == theta_opt_guard
+    max_workspace_bytes=optimizer_lbfgs_setup_bytes)[1] == theta_opt_guard
 @test_throws ArgumentError optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, theta_opt_guard;
     maxiter=0, verbose=false,
-    max_workspace_bytes=sizeof(ComplexF64) - 1)
+    max_workspace_bytes=optimizer_lbfgs_setup_bytes - 1)
 @test_throws ArgumentError optimize_directivity(
     Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, Q_opt_guard,
     theta_opt_guard;
     maxiter=0, verbose=false,
-    max_workspace_bytes=sizeof(ComplexF64) - 1)
+    max_workspace_bytes=optimizer_directivity_setup_bytes - 1)
+@test optimize_directivity(
+    Z_opt_guard, Mp_opt_guard, v_opt_guard, Q_opt_guard, Q_opt_guard,
+    theta_opt_guard;
+    maxiter=0, verbose=false,
+    max_workspace_bytes=optimizer_directivity_setup_bytes)[1] ==
+      theta_opt_guard
+@test_throws ArgumentError optimize_lbfgs(
+    ComplexF64[5.0;;],
+    Mp_opt_guard,
+    v_opt_guard,
+    Q_opt_guard,
+    theta_opt_guard;
+    maxiter=1,
+    tol=0.0,
+    alpha0=0.01,
+    solver=:direct,
+    verbose=false,
+    max_workspace_bytes=optimizer_lbfgs_direct_bytes - 1)
+@test optimize_lbfgs(
+    ComplexF64[5.0;;],
+    Mp_opt_guard,
+    v_opt_guard,
+    Q_opt_guard,
+    theta_opt_guard;
+    maxiter=1,
+    tol=0.0,
+    alpha0=0.01,
+    solver=:direct,
+    verbose=false,
+    max_workspace_bytes=optimizer_lbfgs_direct_bytes)[1] ≈
+      [-0.00016]
+@test_throws ArgumentError optimize_directivity(
+    Z_opt_guard,
+    Mp_opt_guard,
+    v_opt_guard,
+    Q_opt_guard,
+    Q_opt_guard,
+    theta_opt_guard;
+    maxiter=1,
+    tol=0.0,
+    verbose=false,
+    max_workspace_bytes=optimizer_directivity_direct_bytes - 1)
 @test_throws ArgumentError optimize_lbfgs(
     Z_opt_guard, Mp_opt_guard, v_opt_guard,
     Q_nonhermitian_guard, theta_opt_guard;
@@ -14394,20 +14462,48 @@ part_opt = assign_patches_grid(mesh; nx=3, ny=3, nz=1)
 Mp_opt = precompute_patch_mass(mesh, rwg, part_opt; quad_order=3)
 theta_init = fill(200.0, part_opt.P)
 
+multiangle_guard_configs = [
+    AngleConfig(
+        Vec3(1.0, 0.0, 0.0),
+        Vec3(0.0, 1.0, 0.0),
+        v_opt_guard,
+        Q_opt_guard,
+        1.0,
+    ),
+]
+multiangle_setup_bytes = DiffMoM._optimizer_raw_work_bytes(
+    1, 1;
+    matrix_count=1,
+    complex_vector_count=0,
+    parameter_vector_count=3,
+    additional_float_count=2,
+    label="test multi-angle setup")
+multiangle_direct_bytes = DiffMoM._optimizer_raw_work_bytes(
+    1, 1;
+    matrix_count=3,
+    complex_vector_count=5,
+    parameter_vector_count=6,
+    integer_vector_count=2,
+    additional_float_count=5,
+    label="test multi-angle direct workspace")
 @test optimize_multiangle_rcs(
     Z_opt_guard, Mp_opt_guard,
-    [AngleConfig(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
-                 v_opt_guard, Q_opt_guard, 1.0)],
+    multiangle_guard_configs,
     theta_opt_guard;
     maxiter=0, verbose=false,
-    max_workspace_bytes=sizeof(ComplexF64))[1] == theta_opt_guard
+    max_workspace_bytes=multiangle_setup_bytes)[1] == theta_opt_guard
 @test_throws ArgumentError optimize_multiangle_rcs(
     Z_opt_guard, Mp_opt_guard,
-    [AngleConfig(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),
-                 v_opt_guard, Q_opt_guard, 1.0)],
+    multiangle_guard_configs,
     theta_opt_guard;
     maxiter=0, verbose=false,
-    max_workspace_bytes=sizeof(ComplexF64) - 1)
+    max_workspace_bytes=multiangle_setup_bytes - 1)
+@test_throws ArgumentError optimize_multiangle_rcs(
+    Z_opt_guard, Mp_opt_guard,
+    multiangle_guard_configs,
+    theta_opt_guard;
+    maxiter=1, tol=0.0, verbose=false,
+    max_workspace_bytes=multiangle_direct_bytes - 1)
 multiangle_bound_theta, multiangle_bound_trace = optimize_multiangle_rcs(
     Z_opt_guard, Mp_opt_guard,
     [AngleConfig(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0),

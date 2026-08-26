@@ -255,7 +255,9 @@ end
 @noinline function _multiangle_linear_objective_bigfloat(
     J_angles::Vector{Float64},
     weights::Vector{Float64},
+    exact_fallback_check=nothing,
 )
+    _run_exact_fallback_check(exact_fallback_check)
     return setprecision(
             BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
         total = zero(BigFloat)
@@ -276,7 +278,9 @@ end
     reference_objectives::Vector{Float64},
     smooth_beta::Float64,
     tiny::Float64,
+    exact_fallback_check=nothing,
 )
+    _run_exact_fallback_check(exact_fallback_check)
     return setprecision(
             BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
         beta_big = BigFloat(smooth_beta)
@@ -332,7 +336,9 @@ end
     weights::Vector{Float64},
     reference_objectives::Vector{Float64},
     tiny::Float64,
+    exact_fallback_check=nothing,
 )
+    _run_exact_fallback_check(exact_fallback_check)
     return setprecision(
             BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
         total = zero(BigFloat)
@@ -370,7 +376,9 @@ end
     lambda_all::Vector{Vector{ComplexF64}},
     objective_scales::Vector{Float64},
     reactive::Bool,
+    exact_fallback_check=nothing,
 )
+    _run_exact_fallback_check(exact_fallback_check)
     parameter_count = length(Mp)
     return setprecision(
             BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
@@ -402,7 +410,8 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
                                       weights::Vector{Float64},
                                       objective::Symbol,
                                       reference_objectives::Vector{Float64},
-                                      smooth_beta::Float64)
+                                      smooth_beta::Float64;
+                                      exact_fallback_check=nothing)
     M = length(J_angles)
     M >= 1 ||
         throw(ArgumentError("multi-angle objective requires at least one angle"))
@@ -437,7 +446,7 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
                 J_angles, Float64)
         needs_fallback &&
             (value = _multiangle_linear_objective_bigfloat(
-                J_angles, weights))
+                J_angles, weights, exact_fallback_check))
         return value, scales
     elseif objective == :sum_log
         value = 0.0
@@ -466,7 +475,8 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
         end
         needs_fallback &&
             ((value, scales) = _multiangle_sum_log_objective_bigfloat(
-                J_angles, weights, reference_objectives, tiny))
+                J_angles, weights, reference_objectives, tiny,
+                exact_fallback_check))
         all(isfinite, scales) ||
             error("sum_log derivative scales overflowed")
         return value, scales
@@ -522,7 +532,8 @@ function _multiangle_objective_scales(J_angles::Vector{Float64},
             ((iszero(correction) || abs(correction) < floatmin(Float64)) &&
              (!iszero(shiftmax) || denom != 1.0))
         needs_fallback && return _multiangle_smoothmax_objective_bigfloat(
-            J_angles, weights, reference_objectives, smooth_beta, tiny)
+            J_angles, weights, reference_objectives, smooth_beta, tiny,
+            exact_fallback_check)
         (isfinite(value) && all(isfinite, scales)) ||
             error("smoothmax_log objective or derivative scales overflowed")
         return value, scales
@@ -776,6 +787,9 @@ Uses `ImpedanceLoadedOperator` internally to build Z(θ) = Z_base + Z_imp(θ).
 - `reference_objectives`: positive per-angle reference values for normalized
   objectives, such as values computed for a PEC reference
 - `smooth_beta`: sharpness parameter for `:smoothmax_log`
+- `max_workspace_bytes`: aggregate raw-payload ceiling for the dense
+  optimizer's matrices, accepted/trial factors and pivots, per-angle fields,
+  objective buffers, parameter work vectors, and conditional exact path
 - `verbose`: print progress
 
 # Returns
@@ -848,14 +862,64 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
     solver = use_dense_lu ? :direct : :gmres
     workspace_limit = _validated_resource_limit(
         "max_workspace_bytes", max_workspace_bytes)
+    exact_workspace_bytes = 0
     if use_dense_lu
-        workspace_bytes = _checked_array_payload_bytes(
-            ComplexF64, size(Z_base)...;
-            label="multi-angle dense system workspace")
+        system_size = size(Z_base, 1)
+        twice_angle_count = _checked_optimizer_count(
+            2, M, "multi-angle workspace")
+        thrice_angle_count = _checked_optimizer_count(
+            3, M, "multi-angle workspace")
+        five_angle_count = _checked_optimizer_count(
+            5, M, "multi-angle workspace")
+        workspace_bytes = if iszero(evaluation_limit)
+            _optimizer_raw_work_bytes(
+                system_size,
+                P;
+                matrix_count=1,
+                complex_vector_count=0,
+                parameter_vector_count=3,
+                additional_float_count=twice_angle_count,
+                label="multi-angle setup workspace",
+            )
+        else
+            _optimizer_raw_work_bytes(
+                system_size,
+                P;
+                matrix_count=3,
+                complex_vector_count=_checked_optimizer_count_add(
+                    thrice_angle_count, 2, "multi-angle workspace"),
+                parameter_vector_count=6,
+                integer_vector_count=2,
+                additional_float_count=five_angle_count,
+                label="multi-angle dense direct workspace",
+            )
+        end
         _enforce_payload_limit(
             workspace_bytes, workspace_limit,
-            "multi-angle dense system workspace", "max_workspace_bytes")
+            "multi-angle aggregate workspace", "max_workspace_bytes")
+        if !iszero(evaluation_limit)
+            exact_workspace_bytes = _optimizer_exact_direct_work_bytes(
+                system_size,
+                P;
+                ieee_matrix_count=4,
+                ieee_vector_count=_checked_optimizer_count_add(
+                    thrice_angle_count, 3, "multi-angle workspace"),
+                integer_vector_count=4,
+                parameter_vector_count=6,
+                additional_float_count=five_angle_count,
+                additional_exact_matrix_count=1,
+                label="multi-angle exact direct workspace",
+            )
+        end
     end
+    enforce_exact_workspace = () -> _enforce_payload_limit(
+        exact_workspace_bytes,
+        workspace_limit,
+        "multi-angle exact direct workspace",
+        "max_workspace_bytes",
+    )
+    exact_fallback_check = use_dense_lu ?
+        enforce_exact_workspace : nothing
     if !use_dense_lu
         _validate_gmres_options(
             gmres_tol, gmres_maxiter, gmres_memory, gmres_precond_side)
@@ -961,7 +1025,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             Z_full = Z_buf
             Z_factor = _factor_dense_linear_system(
                 Z_full, ComplexF64,
-                "multi-angle direct factorization")
+                "multi-angle direct factorization";
+                exact_fallback_check=enforce_exact_workspace)
         else
             Z_full = ImpedanceLoadedOperator(Z_base, Mp, theta, reactive)
             Z_factor = nothing
@@ -974,7 +1039,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             I_all[a] = if use_dense_lu
                 _solve_factored_linear_system(
                     Z_factor, Z_full, configs[a].v,
-                    "multi-angle direct forward solution")
+                    "multi-angle direct forward solution";
+                    exact_fallback_check=enforce_exact_workspace)
             else
                 solve_forward(Z_full, configs[a].v;
                               solver=solver,
@@ -997,7 +1063,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 configs[a].Q, I_all[a], "multi-angle Q product")
         end
         J_val, objective_scales = _multiangle_objective_scales(
-            J_angles, weights, objective, refs, smooth_beta)
+            J_angles, weights, objective, refs, smooth_beta;
+            exact_fallback_check=exact_fallback_check)
 
         # ── 4. Adjoint solves: Z(θ)† λ_a = Q_a I_a ────────────
         lambda_all = Vector{Vector{ComplexF64}}(undef, M)
@@ -1007,8 +1074,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 adjoint_Z = adjoint(Z_full)
                 _solve_factored_linear_system(
                     adjoint(Z_factor), adjoint_Z,
-                    Vector{ComplexF64}(rhs_a),
-                    "multi-angle direct adjoint solution")
+                    rhs_a,
+                    "multi-angle direct adjoint solution";
+                    exact_fallback_check=enforce_exact_workspace)
             else
                 solve_adjoint_rhs(Z_full, rhs_a;
                                   solver=solver,
@@ -1043,7 +1111,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
         end
         if !gradient_finite
             g = _multiangle_gradient_bigfloat(
-                Mp, I_all, lambda_all, objective_scales, reactive)
+                Mp, I_all, lambda_all, objective_scales, reactive,
+                exact_fallback_check)
         end
         _assert_finite_optimizer_vector(g, "multi-angle objective gradient")
         gnorm = _optimizer_projected_gradient_norm(g, theta, lb, ub)
@@ -1153,7 +1222,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                             Z_trial_factor = _factor_dense_linear_system(
                                 Z_trial,
                                 ComplexF64,
-                                "multi-angle trial direct factorization",
+                                "multi-angle trial direct factorization";
+                                exact_fallback_check=
+                                    enforce_exact_workspace,
                             )
                         else
                             Z_trial = ImpedanceLoadedOperator(Z_base, Mp, theta_trial, reactive)
@@ -1169,7 +1240,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                             I_trial = if use_dense_lu
                                 _solve_factored_linear_system(
                                     Z_trial_factor, Z_trial, configs[a].v,
-                                    "multi-angle trial direct solution")
+                                    "multi-angle trial direct solution";
+                                    exact_fallback_check=
+                                        enforce_exact_workspace)
                             else
                                 solve_forward(Z_trial, configs[a].v;
                                               solver=solver,
@@ -1188,7 +1261,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                     "multi-angle trial Q product")
                         end
                         J_trial, _ = _multiangle_objective_scales(
-                            J_trial_angles, weights, objective, refs, smooth_beta)
+                            J_trial_angles, weights, objective, refs,
+                            smooth_beta;
+                            exact_fallback_check=exact_fallback_check)
                         trial_valid = true
                         break
                     catch err

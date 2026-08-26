@@ -2,6 +2,169 @@
 
 export optimize_lbfgs, optimize_directivity
 
+function _checked_optimizer_count(
+        factor::Int, count::Int, label::AbstractString)
+    try
+        return Base.Checked.checked_mul(factor, count)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("$label count overflows Int"))
+    end
+end
+
+function _checked_optimizer_count_add(
+        first::Int, second::Int, label::AbstractString)
+    try
+        return Base.Checked.checked_add(first, second)
+    catch err
+        err isa OverflowError || rethrow()
+        throw(ArgumentError("$label count overflows Int"))
+    end
+end
+
+function _optimizer_raw_work_bytes(
+        system_size::Int,
+        parameter_count::Int;
+        matrix_count::Int,
+        complex_vector_count::Int,
+        parameter_vector_count::Int,
+        integer_vector_count::Int=0,
+        additional_float_count::Int=0,
+        additional_bytes::Int=0,
+        label::AbstractString)
+    all(>=(0), (
+        system_size,
+        parameter_count,
+        matrix_count,
+        complex_vector_count,
+        parameter_vector_count,
+        integer_vector_count,
+        additional_float_count,
+        additional_bytes,
+    )) || throw(ArgumentError("$label payload counts must be nonnegative"))
+    system_count = BigInt(system_size)
+    total = BigInt(sizeof(ComplexF64)) * (
+        BigInt(matrix_count) * system_count^2 +
+        BigInt(complex_vector_count) * system_count)
+    total += BigInt(sizeof(Float64)) * (
+        BigInt(parameter_vector_count) * parameter_count +
+        additional_float_count)
+    total += BigInt(sizeof(Int)) * integer_vector_count * system_count
+    total += additional_bytes
+    total <= typemax(Int) ||
+        throw(ArgumentError("$label raw-payload estimate overflows Int"))
+    return Int(total)
+end
+
+function _optimizer_exact_direct_work_bytes(
+        system_size::Int,
+        parameter_count::Int;
+        ieee_matrix_count::Int,
+        ieee_vector_count::Int,
+        integer_vector_count::Int,
+        parameter_vector_count::Int,
+        additional_float_count::Int=0,
+        additional_exact_matrix_count::Int=0,
+        label::AbstractString)
+    all(>=(0), (
+        system_size,
+        parameter_count,
+        ieee_matrix_count,
+        ieee_vector_count,
+        integer_vector_count,
+        parameter_vector_count,
+        additional_float_count,
+        additional_exact_matrix_count,
+    )) || throw(ArgumentError(
+        "$label exact payload counts must be nonnegative"))
+    parameter_payload = BigInt(sizeof(Float64)) * (
+        BigInt(parameter_vector_count) * parameter_count +
+        additional_float_count)
+    exact_matrix_payload =
+        BigInt(additional_exact_matrix_count) * 2 *
+        _DIRECT_BIGFLOAT_BYTES_PER_REAL * BigInt(system_size)^2
+    total_additional = parameter_payload + exact_matrix_payload
+    total_additional <= typemax(Int) ||
+        throw(ArgumentError("$label exact payload estimate overflows Int"))
+    return _checked_exact_dense_solve_work_bytes(
+        ComplexF64,
+        system_size,
+        ieee_matrix_count,
+        integer_vector_count,
+        ieee_vector_count,
+        Int(total_additional);
+        label=label,
+    )
+end
+
+@inline function _optimizer_preconditioning_enabled(
+        mode::Symbol,
+        preconditioner_M,
+        system_size::Int,
+        threshold::Int,
+        iterative_solver::Bool)
+    return preconditioner_M !== nothing || mode == :on ||
+           (mode == :auto &&
+            (iterative_solver || system_size >= threshold))
+end
+
+function _optimizer_conditioning_matrix_count(
+        parameter_count::Int,
+        regularized::Bool,
+        preconditioned::Bool)
+    # R_mat is retained when regularization is enabled. Preconditioning keeps
+    # the selected matrix, its validated physical copy and LU factors, the
+    # transformed patch matrices, and one conditioned-system validation copy.
+    preconditioner_count = preconditioned ?
+        _checked_optimizer_count_add(
+            parameter_count, 4, "optimizer conditioning matrix") : 0
+    return _checked_optimizer_count_add(
+        regularized ? 1 : 0,
+        preconditioner_count,
+        "optimizer conditioning matrix",
+    )
+end
+
+function _optimizer_gmres_forward(
+        system::AbstractMatrix,
+        rhs::AbstractVector,
+        preconditioner,
+        tolerance::Float64,
+        maxiter::Int,
+        memory::Int,
+        workspace_limit::Int)
+    solution, _ = solve_gmres(
+        system,
+        rhs;
+        preconditioner=preconditioner,
+        tol=tolerance,
+        maxiter=maxiter,
+        memory=memory,
+        max_workspace_bytes=workspace_limit,
+    )
+    return solution
+end
+
+function _optimizer_gmres_adjoint(
+        system::AbstractMatrix,
+        rhs::AbstractVector,
+        preconditioner,
+        tolerance::Float64,
+        maxiter::Int,
+        memory::Int,
+        workspace_limit::Int)
+    solution, _ = solve_gmres_adjoint(
+        system,
+        rhs;
+        preconditioner=preconditioner,
+        tol=tolerance,
+        maxiter=maxiter,
+        memory=memory,
+        max_workspace_bytes=workspace_limit,
+    )
+    return solution
+end
+
 @inline function _optimizer_bound_value(bound, p::Int)
     return bound isa Real ? bound : bound[p]
 end
@@ -414,7 +577,10 @@ end
     Q_total::Matrix{ComplexF64},
     current::Vector{ComplexF64},
     label::AbstractString,
+    ;
+    exact_fallback_check=nothing,
 )
+    _run_exact_fallback_check(exact_fallback_check)
     return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
         target_big = _directivity_bigfloat_product(Q_target, current)
         total_big = _directivity_bigfloat_product(Q_total, current)
@@ -436,7 +602,9 @@ end
     current::Vector{ComplexF64},
     label::AbstractString;
     reactive::Bool,
+    exact_fallback_check=nothing,
 )
+    _run_exact_fallback_check(exact_fallback_check)
     return setprecision(BigFloat, _IEEE_BILINEAR_FALLBACK_PRECISION) do
         target_big = _directivity_bigfloat_product(Q_target, current)
         total_big = _directivity_bigfloat_product(Q_total, current)
@@ -751,6 +919,9 @@ Options:
   gmres_tol: GMRES relative tolerance (default 1e-8)
   gmres_maxiter: maximum GMRES iterations (default 200)
   gmres_memory: Krylov restart/memory parameter (default 20)
+  max_workspace_bytes: aggregate raw-payload ceiling for optimizer-owned
+    matrices, factors, pivots, field/objective buffers, parameter work
+    vectors, and the conditional exact direct-solve path
 
 Returns `(theta_opt, trace)`. Trace records cover every evaluated accepted
 state, including the returned state after the final permitted update, and
@@ -803,12 +974,82 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     _validate_optimizer_bounds(lb, ub, P)
     _validate_optimizer_auxiliary_matrices(
         size(Z_efie), regularization_alpha, regularization_R, preconditioner_M)
-    workspace_bytes = _checked_array_payload_bytes(
-        ComplexF64, N_sys, N_sys;
-        label="L-BFGS dense system workspace")
+    evaluation_limit = _optimizer_evaluation_limit(maxiter)
+    regularized = !iszero(regularization_alpha)
+    preconditioned = _optimizer_preconditioning_enabled(
+        preconditioning,
+        preconditioner_M,
+        N_sys,
+        auto_precondition_n_threshold,
+        iterative_solver,
+    )
+    conditioning_matrix_count = _optimizer_conditioning_matrix_count(
+        P, regularized, preconditioned)
+    conditioned = regularized || preconditioned
+    gmres_workspace_payload =
+        solver == :gmres && !iszero(evaluation_limit) ?
+        _gmres_workspace_bytes(N_sys, gmres_memory) : 0
+    workspace_bytes = if iszero(evaluation_limit)
+        _optimizer_raw_work_bytes(
+            N_sys,
+            P;
+            matrix_count=1 + conditioning_matrix_count,
+            complex_vector_count=2,
+            parameter_vector_count=4,
+            integer_vector_count=preconditioned ? 1 : 0,
+            label="L-BFGS setup workspace",
+        )
+    elseif solver == :direct
+        _optimizer_raw_work_bytes(
+            N_sys,
+            P;
+            matrix_count=3 + (conditioned ? 1 : 0) +
+                         conditioning_matrix_count,
+            complex_vector_count=5 + (conditioned ? 1 : 0),
+            parameter_vector_count=6,
+            integer_vector_count=2 + (preconditioned ? 1 : 0),
+            label="L-BFGS direct workspace",
+        )
+    else
+        _optimizer_raw_work_bytes(
+            N_sys,
+            P;
+            matrix_count=1 + (conditioned ? 1 : 0) +
+                         conditioning_matrix_count,
+            complex_vector_count=5 + (conditioned ? 1 : 0),
+            parameter_vector_count=6,
+            integer_vector_count=preconditioned ? 1 : 0,
+            additional_bytes=gmres_workspace_payload,
+            label="L-BFGS GMRES workspace",
+        )
+    end
+    workspace_limit = _validated_resource_limit(
+        "max_workspace_bytes", max_workspace_bytes)
     _enforce_payload_limit(
         workspace_bytes, max_workspace_bytes,
-        "L-BFGS dense system workspace", "max_workspace_bytes")
+        "L-BFGS aggregate workspace", "max_workspace_bytes")
+    gmres_nested_workspace_limit = solver == :gmres ?
+        workspace_limit - (workspace_bytes - gmres_workspace_payload) :
+        workspace_limit
+    exact_workspace_bytes =
+        (preconditioned ||
+         (solver == :direct && !iszero(evaluation_limit))) ?
+        _optimizer_exact_direct_work_bytes(
+            N_sys,
+            P;
+            ieee_matrix_count=4 + conditioning_matrix_count,
+            ieee_vector_count=6 + (conditioned ? 1 : 0),
+            integer_vector_count=4 + (preconditioned ? 1 : 0),
+            parameter_vector_count=6,
+            additional_exact_matrix_count=preconditioned ? 2 : 1,
+            label="L-BFGS exact direct workspace",
+        ) : 0
+    enforce_exact_workspace = () -> _enforce_payload_limit(
+        exact_workspace_bytes,
+        workspace_limit,
+        "L-BFGS exact direct workspace",
+        "max_workspace_bytes",
+    )
 
     theta = copy(theta0)
     sense = maximize ? -1.0 : 1.0
@@ -849,6 +1090,7 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     Mp_eff, precond_fac = transform_patch_matrices(
         Mp;
         preconditioner_M=precond_M_eff,
+        exact_fallback_check=enforce_exact_workspace,
         max_output_bytes=max_workspace_bytes,
     )
     rhs_eff_base = precond_fac === nothing ?
@@ -857,7 +1099,8 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                        precond_fac,
                        precond_M_eff,
                        v,
-                       "optimizer conditioned RHS",
+                       "optimizer conditioned RHS";
+                       exact_fallback_check=enforce_exact_workspace,
                    )
 
     if solver == :gmres && verbose
@@ -885,7 +1128,7 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     Z_raw = Matrix{ComplexF64}(undef, N_sys, N_sys)
     QI = Vector{ComplexF64}(undef, N_sys)
 
-    for iter in 1:_optimizer_evaluation_limit(maxiter)
+    for iter in 1:evaluation_limit
         # Assemble and solve
         assemble_full_Z!(Z_raw, Z_efie, Mp, theta; reactive=reactive)
         Z, _, _ = prepare_conditioned_system(
@@ -895,12 +1138,38 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
             regularization_R=R_mat,
             preconditioner_M=precond_M_eff,
             preconditioner_factor=precond_fac,
+            exact_fallback_check=enforce_exact_workspace,
         )
 
-        I_coeffs = solve_forward(Z, rhs_eff_base;
-                                  solver=solver, preconditioner=nf_preconditioner,
-                                  gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                  gmres_memory=gmres_memory)
+        Z_factor = if solver == :direct
+            _factor_dense_linear_system(
+                Z,
+                ComplexF64,
+                "optimizer accepted direct factorization";
+                exact_fallback_check=enforce_exact_workspace,
+            )
+        else
+            nothing
+        end
+        I_coeffs = if solver == :direct
+            _solve_factored_linear_system(
+                Z_factor,
+                Z,
+                rhs_eff_base,
+                "optimizer accepted direct solution";
+                exact_fallback_check=enforce_exact_workspace,
+            )
+        else
+            _optimizer_gmres_forward(
+                Z,
+                rhs_eff_base,
+                nf_preconditioner,
+                gmres_tol,
+                gmres_maxiter,
+                gmres_memory,
+                gmres_nested_workspace_limit,
+            )
+        end
         n_fwd_solves += 1
         _assert_finite_optimizer_vector(I_coeffs, "forward solution")
 
@@ -914,10 +1183,25 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
             error("objective is non-finite at iteration $iter: $J_val")
 
         # Adjoint solve
-        lambda = solve_adjoint_rhs(Z, QI;
-                                    solver=solver, preconditioner=nf_preconditioner,
-                                    gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                    gmres_memory=gmres_memory)
+        lambda = if solver == :direct
+            _solve_factored_linear_system(
+                adjoint(Z_factor),
+                adjoint(Z),
+                QI,
+                "optimizer accepted direct adjoint solution";
+                exact_fallback_check=enforce_exact_workspace,
+            )
+        else
+            _optimizer_gmres_adjoint(
+                Z,
+                QI,
+                nf_preconditioner,
+                gmres_tol,
+                gmres_maxiter,
+                gmres_memory,
+                gmres_nested_workspace_limit,
+            )
+        end
         n_adj_solves += 1
         _assert_finite_optimizer_vector(lambda, "adjoint solution")
 
@@ -1012,11 +1296,33 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                     regularization_R=R_mat,
                     preconditioner_M=precond_M_eff,
                     preconditioner_factor=precond_fac,
+                    exact_fallback_check=enforce_exact_workspace,
                 )
-                I_trial = solve_forward(Z_trial, rhs_eff_base;
-                                         solver=solver, preconditioner=nf_preconditioner,
-                                         gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                         gmres_memory=gmres_memory)
+                I_trial = if solver == :direct
+                    Z_trial_factor = _factor_dense_linear_system(
+                        Z_trial,
+                        ComplexF64,
+                        "optimizer trial direct factorization";
+                        exact_fallback_check=enforce_exact_workspace,
+                    )
+                    _solve_factored_linear_system(
+                        Z_trial_factor,
+                        Z_trial,
+                        rhs_eff_base,
+                        "optimizer trial direct solution";
+                        exact_fallback_check=enforce_exact_workspace,
+                    )
+                else
+                    _optimizer_gmres_forward(
+                        Z_trial,
+                        rhs_eff_base,
+                        nf_preconditioner,
+                        gmres_tol,
+                        gmres_maxiter,
+                        gmres_memory,
+                        gmres_nested_workspace_limit,
+                    )
+                end
                 n_fwd_solves += 1
                 trial_finite = all(isfinite, I_trial)
                 if trial_finite
@@ -1131,12 +1437,82 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     _validate_optimizer_bounds(lb, ub, P)
     _validate_optimizer_auxiliary_matrices(
         size(Z_efie), regularization_alpha, regularization_R, preconditioner_M)
-    workspace_bytes = _checked_array_payload_bytes(
-        ComplexF64, N_sys, N_sys;
-        label="directivity dense system workspace")
+    evaluation_limit = _optimizer_evaluation_limit(maxiter)
+    regularized = !iszero(regularization_alpha)
+    preconditioned = _optimizer_preconditioning_enabled(
+        preconditioning,
+        preconditioner_M,
+        N_sys,
+        auto_precondition_n_threshold,
+        iterative_solver,
+    )
+    conditioning_matrix_count = _optimizer_conditioning_matrix_count(
+        P, regularized, preconditioned)
+    conditioned = regularized || preconditioned
+    gmres_workspace_payload =
+        solver == :gmres && !iszero(evaluation_limit) ?
+        _gmres_workspace_bytes(N_sys, gmres_memory) : 0
+    workspace_bytes = if iszero(evaluation_limit)
+        _optimizer_raw_work_bytes(
+            N_sys,
+            P;
+            matrix_count=1 + conditioning_matrix_count,
+            complex_vector_count=3,
+            parameter_vector_count=4,
+            integer_vector_count=preconditioned ? 1 : 0,
+            label="directivity setup workspace",
+        )
+    elseif solver == :direct
+        _optimizer_raw_work_bytes(
+            N_sys,
+            P;
+            matrix_count=3 + (conditioned ? 1 : 0) +
+                         conditioning_matrix_count,
+            complex_vector_count=7 + (conditioned ? 1 : 0),
+            parameter_vector_count=7,
+            integer_vector_count=2 + (preconditioned ? 1 : 0),
+            label="directivity direct workspace",
+        )
+    else
+        _optimizer_raw_work_bytes(
+            N_sys,
+            P;
+            matrix_count=1 + (conditioned ? 1 : 0) +
+                         conditioning_matrix_count,
+            complex_vector_count=7 + (conditioned ? 1 : 0),
+            parameter_vector_count=7,
+            integer_vector_count=preconditioned ? 1 : 0,
+            additional_bytes=gmres_workspace_payload,
+            label="directivity GMRES workspace",
+        )
+    end
+    workspace_limit = _validated_resource_limit(
+        "max_workspace_bytes", max_workspace_bytes)
     _enforce_payload_limit(
         workspace_bytes, max_workspace_bytes,
-        "directivity dense system workspace", "max_workspace_bytes")
+        "directivity aggregate workspace", "max_workspace_bytes")
+    gmres_nested_workspace_limit = solver == :gmres ?
+        workspace_limit - (workspace_bytes - gmres_workspace_payload) :
+        workspace_limit
+    exact_workspace_bytes =
+        (preconditioned ||
+         (solver == :direct && !iszero(evaluation_limit))) ?
+        _optimizer_exact_direct_work_bytes(
+            N_sys,
+            P;
+            ieee_matrix_count=4 + conditioning_matrix_count,
+            ieee_vector_count=8 + (conditioned ? 1 : 0),
+            integer_vector_count=4 + (preconditioned ? 1 : 0),
+            parameter_vector_count=7,
+            additional_exact_matrix_count=preconditioned ? 2 : 1,
+            label="directivity exact direct workspace",
+        ) : 0
+    enforce_exact_workspace = () -> _enforce_payload_limit(
+        exact_workspace_bytes,
+        workspace_limit,
+        "directivity exact direct workspace",
+        "max_workspace_bytes",
+    )
 
     theta = copy(theta0)
 
@@ -1171,6 +1547,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     Mp_eff, precond_fac = transform_patch_matrices(
         Mp;
         preconditioner_M=precond_M_eff,
+        exact_fallback_check=enforce_exact_workspace,
         max_output_bytes=max_workspace_bytes,
     )
     rhs_eff_base = precond_fac === nothing ?
@@ -1179,7 +1556,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                        precond_fac,
                        precond_M_eff,
                        v,
-                       "directivity optimizer conditioned RHS",
+                       "directivity optimizer conditioned RHS";
+                       exact_fallback_check=enforce_exact_workspace,
                    )
 
     if solver == :gmres && verbose
@@ -1202,7 +1580,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     QI_target = Vector{ComplexF64}(undef, N_sys)
     QI_total = Vector{ComplexF64}(undef, N_sys)
 
-    for iter in 1:_optimizer_evaluation_limit(maxiter)
+    for iter in 1:evaluation_limit
         assemble_full_Z!(Z_raw, Z_efie, Mp, theta; reactive=reactive)
         Z, _, _ = prepare_conditioned_system(
             Z_raw,
@@ -1211,12 +1589,38 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             regularization_R=R_mat,
             preconditioner_M=precond_M_eff,
             preconditioner_factor=precond_fac,
+            exact_fallback_check=enforce_exact_workspace,
         )
 
-        I_c = solve_forward(Z, rhs_eff_base;
-                             solver=solver, preconditioner=nf_preconditioner,
-                             gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                             gmres_memory=gmres_memory)
+        Z_factor = if solver == :direct
+            _factor_dense_linear_system(
+                Z,
+                ComplexF64,
+                "directivity accepted direct factorization";
+                exact_fallback_check=enforce_exact_workspace,
+            )
+        else
+            nothing
+        end
+        I_c = if solver == :direct
+            _solve_factored_linear_system(
+                Z_factor,
+                Z,
+                rhs_eff_base,
+                "directivity accepted direct solution";
+                exact_fallback_check=enforce_exact_workspace,
+            )
+        else
+            _optimizer_gmres_forward(
+                Z,
+                rhs_eff_base,
+                nf_preconditioner,
+                gmres_tol,
+                gmres_maxiter,
+                gmres_memory,
+                gmres_nested_workspace_limit,
+            )
+        end
         _assert_finite_optimizer_vector(I_c, "forward solution")
 
         local J_ratio::Float64
@@ -1235,14 +1639,44 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             # Form numerator and denominator derivatives separately before
             # applying the quotient rule.
             # ∂(f/g)/∂θ = (g·∂f/∂θ - f·∂g/∂θ) / g²
-            lam_t = solve_adjoint_rhs(Z, QI_target;
-                                       solver=solver, preconditioner=nf_preconditioner,
-                                       gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                       gmres_memory=gmres_memory)
-            lam_a = solve_adjoint_rhs(Z, QI_total;
-                                       solver=solver, preconditioner=nf_preconditioner,
-                                       gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                       gmres_memory=gmres_memory)
+            lam_t = if solver == :direct
+                _solve_factored_linear_system(
+                    adjoint(Z_factor),
+                    adjoint(Z),
+                    QI_target,
+                    "directivity target direct adjoint solution";
+                    exact_fallback_check=enforce_exact_workspace,
+                )
+            else
+                _optimizer_gmres_adjoint(
+                    Z,
+                    QI_target,
+                    nf_preconditioner,
+                    gmres_tol,
+                    gmres_maxiter,
+                    gmres_memory,
+                    gmres_nested_workspace_limit,
+                )
+            end
+            lam_a = if solver == :direct
+                _solve_factored_linear_system(
+                    adjoint(Z_factor),
+                    adjoint(Z),
+                    QI_total,
+                    "directivity total-power direct adjoint solution";
+                    exact_fallback_check=enforce_exact_workspace,
+                )
+            else
+                _optimizer_gmres_adjoint(
+                    Z,
+                    QI_total,
+                    nf_preconditioner,
+                    gmres_tol,
+                    gmres_maxiter,
+                    gmres_memory,
+                    gmres_nested_workspace_limit,
+                )
+            end
             _assert_finite_optimizer_vector(lam_t, "target adjoint solution")
             _assert_finite_optimizer_vector(lam_a, "total-power adjoint solution")
             g_f = gradient_impedance(Mp_eff, I_c, lam_t; reactive=reactive)
@@ -1258,6 +1692,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                 I_c,
                 "accepted iterate";
                 reactive=reactive,
+                exact_fallback_check=enforce_exact_workspace,
             )
         end
         # For L-BFGS we minimize -J_ratio, so g_lbfgs = -g_true
@@ -1345,11 +1780,33 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                     regularization_R=R_mat,
                     preconditioner_M=precond_M_eff,
                     preconditioner_factor=precond_fac,
+                    exact_fallback_check=enforce_exact_workspace,
                 )
-                I_trial = solve_forward(Z_trial, rhs_eff_base;
-                                         solver=solver, preconditioner=nf_preconditioner,
-                                         gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
-                                         gmres_memory=gmres_memory)
+                I_trial = if solver == :direct
+                    Z_trial_factor = _factor_dense_linear_system(
+                        Z_trial,
+                        ComplexF64,
+                        "directivity trial direct factorization";
+                        exact_fallback_check=enforce_exact_workspace,
+                    )
+                    _solve_factored_linear_system(
+                        Z_trial_factor,
+                        Z_trial,
+                        rhs_eff_base,
+                        "directivity trial direct solution";
+                        exact_fallback_check=enforce_exact_workspace,
+                    )
+                else
+                    _optimizer_gmres_forward(
+                        Z_trial,
+                        rhs_eff_base,
+                        nf_preconditioner,
+                        gmres_tol,
+                        gmres_maxiter,
+                        gmres_memory,
+                        gmres_nested_workspace_limit,
+                    )
+                end
                 trial_valid = all(isfinite, I_trial)
                 if trial_valid
                     try
@@ -1370,7 +1827,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                             Q_target,
                             Q_total,
                             I_trial,
-                            "trial iterate",
+                            "trial iterate";
+                            exact_fallback_check=enforce_exact_workspace,
                         )
                     end
                     trial_valid = true
