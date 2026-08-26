@@ -62,6 +62,60 @@ class ValidationReportTests(unittest.TestCase):
             "metal_fill_fraction": 1.0,
         }
 
+    def write_meep_artifact_chain(
+        self,
+        data: Path,
+        prefix: str,
+        *,
+        identity_overrides: dict[str, object] | None = None,
+        reference_metrics: dict[str, object] | None = None,
+        result_metrics: dict[str, object] | None = None,
+    ) -> tuple[Path, Path, Path]:
+        identity = self.meep_identity(prefix)
+        identity.update(identity_overrides or {})
+        nx = int(identity["nx"])
+        ny = int(identity["ny"])
+        geometry_path = data / f"julia_{prefix}_geometry.json"
+        geometry_path.write_text(
+            json.dumps(
+                {
+                    **identity,
+                    "metal_mask_row_major": [[1] * nx for _ in range(ny)],
+                },
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        reference_path = data / f"julia_{prefix}_reference.json"
+        reference_path.write_text(
+            json.dumps(
+                {**identity, **(reference_metrics or {})},
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result_path = data / f"meep_{prefix}_results.json"
+        result_path.write_text(
+            json.dumps(
+                {
+                    "output_prefix": prefix,
+                    "julia_geometry_sha256": hashlib.sha256(
+                        geometry_path.read_bytes()
+                    ).hexdigest(),
+                    "julia_reference_sha256": hashlib.sha256(
+                        reference_path.read_bytes()
+                    ).hexdigest(),
+                    **(result_metrics or {}),
+                },
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return geometry_path, reference_path, result_path
+
     def run_script(
         self, script: Path, project_root: Path, *args: str
     ) -> subprocess.CompletedProcess[str]:
@@ -451,50 +505,19 @@ class ValidationReportTests(unittest.TestCase):
             data.mkdir()
 
             def write_case(prefix: str, julia_refl: float, meep_refl: float) -> None:
-                identity = self.meep_identity(prefix)
-                geometry_path = data / f"julia_{prefix}_geometry.json"
-                geometry_path.write_text(
-                    json.dumps(
-                        {**identity, "metal_mask_row_major": [[1]]},
-                        allow_nan=False,
-                    )
-                    + "\n",
-                    encoding="utf-8",
-                )
-                reference_path = data / f"julia_{prefix}_reference.json"
-                reference_path.write_text(
-                    json.dumps(
-                        {
-                            **identity,
-                            "refl_total_fraction": julia_refl,
-                            "trans_total_fraction_closure": 1.0 - julia_refl,
-                            "abs_total_fraction": 0.0,
-                        },
-                        allow_nan=False,
-                    )
-                    + "\n",
-                    encoding="utf-8",
-                )
-                geometry_sha256 = hashlib.sha256(
-                    geometry_path.read_bytes()
-                ).hexdigest()
-                reference_sha256 = hashlib.sha256(
-                    reference_path.read_bytes()
-                ).hexdigest()
-                (data / f"meep_{prefix}_results.json").write_text(
-                    json.dumps(
-                        {
-                            "output_prefix": prefix,
-                            "julia_geometry_sha256": geometry_sha256,
-                            "julia_reference_sha256": reference_sha256,
-                            "reflectance_total": meep_refl,
-                            "transmittance_total": 0.0,
-                            "absorption_total": 0.0,
-                        },
-                        allow_nan=False,
-                    )
-                    + "\n",
-                    encoding="utf-8",
+                self.write_meep_artifact_chain(
+                    data,
+                    prefix,
+                    reference_metrics={
+                        "refl_total_fraction": julia_refl,
+                        "trans_total_fraction_closure": 1.0 - julia_refl,
+                        "abs_total_fraction": 0.0,
+                    },
+                    result_metrics={
+                        "reflectance_total": meep_refl,
+                        "transmittance_total": 0.0,
+                        "absorption_total": 0.0,
+                    },
                 )
 
             write_case("reflectance_fail", julia_refl=0.0, meep_refl=1.0)
@@ -610,31 +633,31 @@ class ValidationReportTests(unittest.TestCase):
                 data = root / "data"
                 data.mkdir()
                 case_prefix = "curve_wx0p200"
-                (data / f"julia_{case_prefix}_geometry.json").write_text(
-                    "{}\n", encoding="utf-8"
-                )
-                (data / f"julia_{case_prefix}_reference.json").write_text(
-                    json.dumps(
-                        {
-                            "periodic_bc_model": "bloch",
-                            "refl_total_fraction": 0.1,
-                            "trans_total_fraction_closure": 0.9,
-                        },
-                        allow_nan=False,
-                    )
-                    + "\n",
-                    encoding="utf-8",
-                )
-                (data / f"meep_{case_prefix}_results.json").write_text(
-                    json.dumps(
-                        {
-                            "reflectance_total": 0.1,
-                            "transmittance_total": 0.9,
-                        },
-                        allow_nan=False,
-                    )
-                    + "\n",
-                    encoding="utf-8",
+                self.write_meep_artifact_chain(
+                    data,
+                    case_prefix,
+                    identity_overrides={
+                        "nx": 14,
+                        "ny": 14,
+                        "slot_wx_frac": 0.2,
+                    },
+                    reference_metrics={
+                        "refl_total_fraction": 0.1,
+                        "trans_total_fraction_closure": 0.9,
+                    },
+                    result_metrics={
+                        "resolution_px_per_lambda": 30,
+                        "pml_lambda": 1.0,
+                        "sz_lambda": 6.0,
+                        "requested_metal_thickness_lambda": 0.03,
+                        "source_offset_lambda": 0.35,
+                        "refl_offset_lambda": 0.25,
+                        "tran_offset_lambda": 0.35,
+                        "fwidth": 0.2,
+                        "after_sources_time": 180.0,
+                        "reflectance_total": 0.1,
+                        "transmittance_total": 0.9,
+                    },
                 )
                 report_path = (
                     data
@@ -679,6 +702,13 @@ class ValidationReportTests(unittest.TestCase):
                 else:
                     summary = self.load_standard_json(summary_path)
                     self.assertEqual(summary["rows"][0]["julia_trans_total"], 0.9)
+
+                mismatched_arguments = [*arguments, "--nx", "15"]
+                with mock.patch.object(sys, "argv", mismatched_arguments):
+                    with self.assertRaisesRegex(
+                        SystemExit, "does not match current --nx"
+                    ):
+                        curve.main()
 
     def test_meep_subprocess_failure_has_actionable_exit(self) -> None:
         common = load_module(

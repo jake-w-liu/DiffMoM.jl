@@ -99,7 +99,10 @@ comparison result: regenerate the Julia pair and rerun Meep.
 For a curve sweep, `--reuse-existing` reuses only matching Julia and Meep
 solver inputs. The comparator still runs for every point with the current
 tolerance and provenance checks. A reflectance `CHECK` stops the sweep with a
-nonzero exit before a new curve summary is written.
+nonzero exit before a new curve summary is written. Reuse requires all Julia
+geometry controls and Meep source, monitor, PML, resolution, bandwidth, and
+runtime controls to match the current command exactly. Curve rows take their
+mesh and slot values from those validated artifacts.
 
 ---
 

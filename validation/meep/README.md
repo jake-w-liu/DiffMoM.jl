@@ -79,7 +79,10 @@ python validation/meep/analyze_meep_detailed_comparison.py \
 `--reuse-existing` skips matching Julia and Meep solver inputs only. It always
 reruns the comparator so current artifact hashes and `--tol-refl` apply. Any
 case with a `CHECK` reflectance verdict stops the curve command with a nonzero
-exit before it writes a new summary.
+exit before it writes a new summary. Reuse also requires every Julia geometry
+control and Meep runtime control to equal the current command; otherwise the
+error names the mismatched option and asks you to regenerate. Summary geometry
+fields come from the validated artifacts, not from unverified CLI labels.
 
 ## Notes
 

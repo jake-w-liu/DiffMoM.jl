@@ -296,6 +296,67 @@ def validate_julia_artifact_pair(
                 )
 
 
+def _required_nonempty_text(
+    source: Path, data: Dict[str, Any], key: str, recovery: str
+) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value:
+        raise SystemExit(
+            f"Invalid or missing {key!r} in {source}: expected a nonempty JSON "
+            f"string. {recovery}"
+        )
+    return value
+
+
+def validate_meep_result_provenance(
+    requested_prefix: str,
+    geometry_path: Path,
+    geometry: Dict[str, Any],
+    reference_path: Path,
+    reference: Dict[str, Any],
+    result_path: Path,
+    result: Dict[str, Any],
+) -> tuple[str, str]:
+    """Bind one Meep result to the exact current Julia artifact pair."""
+    recovery = "Regenerate the Meep result from the current Julia artifacts."
+    validate_julia_artifact_pair(
+        requested_prefix,
+        geometry_path,
+        geometry,
+        reference_path,
+        reference,
+    )
+    geometry_sha256 = sha256_file(geometry_path, recovery=recovery)
+    reference_sha256 = sha256_file(reference_path, recovery=recovery)
+    result_prefix = _required_nonempty_text(
+        result_path, result, "output_prefix", recovery
+    )
+    if result_prefix != requested_prefix:
+        raise SystemExit(
+            f"Meep result {result_path} identifies output_prefix={result_prefix!r}, "
+            f"but the command requested {requested_prefix!r}. {recovery}"
+        )
+    recorded_geometry_sha256 = _required_nonempty_text(
+        result_path, result, "julia_geometry_sha256", recovery
+    )
+    recorded_reference_sha256 = _required_nonempty_text(
+        result_path, result, "julia_reference_sha256", recovery
+    )
+    if recorded_geometry_sha256 != geometry_sha256:
+        raise SystemExit(
+            f"Meep result {result_path} was generated from Julia geometry "
+            f"SHA-256 {recorded_geometry_sha256}, which does not match current "
+            f"artifact {geometry_path} ({geometry_sha256}). {recovery}"
+        )
+    if recorded_reference_sha256 != reference_sha256:
+        raise SystemExit(
+            f"Meep result {result_path} was generated from Julia reference "
+            f"SHA-256 {recorded_reference_sha256}, which does not match current "
+            f"artifact {reference_path} ({reference_sha256}). {recovery}"
+        )
+    return geometry_sha256, reference_sha256
+
+
 def cli_options(*pairs: tuple[str, Any]) -> List[str]:
     """Flatten command-line option/value pairs into subprocess arguments."""
     return [str(token) for pair in pairs for token in pair]

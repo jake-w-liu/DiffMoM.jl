@@ -21,6 +21,7 @@ from _meep_common import (
     positive_int,
     run_command,
     unit_interval_float,
+    validate_meep_result_provenance,
     validate_runtime_geometry,
 )
 
@@ -64,6 +65,74 @@ def make_plot(rows: List[Dict[str, Any]], out_png: Path, tol_refl: float) -> Non
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_png, dpi=160)
     plt.close(fig)
+
+
+def require_reuse_control(
+    source: Path,
+    payload: Dict[str, Any],
+    field: str,
+    expected: Any,
+    option: str,
+) -> None:
+    value = payload.get(field)
+    if type(value) is not type(expected) or value != expected:
+        raise SystemExit(
+            f"Cannot reuse {source}: stored {field}={value!r} does not match "
+            f"current {option}={expected!r}. Rerun without --reuse-existing "
+            "to regenerate this case."
+        )
+
+
+def validate_reuse_controls(
+    args: Any,
+    geometry_path: Path,
+    geometry: Dict[str, Any],
+    reference_path: Path,
+    reference: Dict[str, Any],
+    meep_path: Path,
+    meep: Dict[str, Any],
+    case_prefix: str,
+    slot_wx_frac: float,
+) -> None:
+    validate_meep_result_provenance(
+        case_prefix,
+        geometry_path,
+        geometry,
+        reference_path,
+        reference,
+        meep_path,
+        meep,
+    )
+    julia_controls = (
+        ("frequency_ghz", args.freq_ghz, "--freq-ghz"),
+        ("dx_lambda", args.dx_lambda, "--dx-lambda"),
+        ("dy_lambda", args.dy_lambda, "--dy-lambda"),
+        ("nx", args.nx, "--nx"),
+        ("ny", args.ny, "--ny"),
+        ("slot_wx_frac", slot_wx_frac, "--slot-wx-fracs"),
+        ("slot_wy_frac", args.slot_wy_frac, "--slot-wy-frac"),
+        ("periodic_bc_model", args.periodic_bc, "--periodic-bc"),
+    )
+    for field, expected, option in julia_controls:
+        require_reuse_control(reference_path, reference, field, expected, option)
+
+    meep_controls = (
+        ("resolution_px_per_lambda", args.resolution, "--resolution"),
+        ("pml_lambda", args.pml_lambda, "--pml-lambda"),
+        ("sz_lambda", args.sz_lambda, "--sz-lambda"),
+        (
+            "requested_metal_thickness_lambda",
+            args.metal_thickness_lambda,
+            "--metal-thickness-lambda",
+        ),
+        ("source_offset_lambda", args.source_offset_lambda, "--source-offset-lambda"),
+        ("refl_offset_lambda", args.refl_offset_lambda, "--refl-offset-lambda"),
+        ("tran_offset_lambda", args.tran_offset_lambda, "--tran-offset-lambda"),
+        ("fwidth", args.fwidth, "--fwidth"),
+        ("after_sources_time", args.after_sources_time, "--after-sources-time"),
+    )
+    for field, expected, option in meep_controls:
+        require_reuse_control(meep_path, meep, field, expected, option)
 
 
 def main() -> None:
@@ -131,6 +200,24 @@ def main() -> None:
             and julia_ref.exists()
             and meep_ref.exists()
         )
+        if reuse_inputs:
+            recovery = (
+                "Regenerate the case artifacts before reusing this curve point."
+            )
+            reuse_geometry = load_json_object(geometry_ref, recovery=recovery)
+            reuse_julia = load_json_object(julia_ref, recovery=recovery)
+            reuse_meep = load_json_object(meep_ref, recovery=recovery)
+            validate_reuse_controls(
+                args,
+                geometry_ref,
+                reuse_geometry,
+                julia_ref,
+                reuse_julia,
+                meep_ref,
+                reuse_meep,
+                case_prefix,
+                wx,
+            )
         if not reuse_inputs:
             run_command(
                 [
@@ -213,10 +300,10 @@ def main() -> None:
         rows.append(
             {
                 "case_prefix": case_prefix,
-                "slot_wx_frac": wx,
-                "slot_wy_frac": float(args.slot_wy_frac),
-                "nx": int(args.nx),
-                "ny": int(args.ny),
+                "slot_wx_frac": float(julia["slot_wx_frac"]),
+                "slot_wy_frac": float(julia["slot_wy_frac"]),
+                "nx": int(julia["nx"]),
+                "ny": int(julia["ny"]),
                 "periodic_bc_model": str(julia.get("periodic_bc_model", "unknown")),
                 "julia_refl_total": float(julia["refl_total_fraction"]),
                 "meep_refl_total": float(meep["reflectance_total"]),
