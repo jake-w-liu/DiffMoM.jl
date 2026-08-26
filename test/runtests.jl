@@ -8489,6 +8489,29 @@ end
     direct_mixed_component_matrix, direct_mixed_rhs) ≈
       direct_mixed_component_reference rtol=8eps(Float64)
 
+# LAPACK can report success even when elimination overflowed its retained
+# factors. Such a factor is not safe to cache for later adjoint/RHS solves.
+direct_factor_overflow_scale = 0.75 * floatmax(Float64)
+direct_factor_overflow_matrix = ComplexF64[
+    direct_factor_overflow_scale direct_factor_overflow_scale
+    -direct_factor_overflow_scale direct_factor_overflow_scale
+]
+direct_factor_overflow_rhs = ComplexF64[0.0, direct_factor_overflow_scale]
+direct_factor_overflow_raw = lu(direct_factor_overflow_matrix)
+@test issuccess(direct_factor_overflow_raw)
+@test !all(isfinite, direct_factor_overflow_raw.factors)
+@test direct_factor_overflow_raw \ direct_factor_overflow_rhs !=
+      ComplexF64[-0.5, 0.5]
+direct_factor_overflow_verified = DiffMoM._factor_dense_linear_system(
+    direct_factor_overflow_matrix,
+    ComplexF64,
+    "non-finite LU factor regression",
+)
+@test direct_factor_overflow_verified isa DiffMoM._EquilibratedDenseLUPlan
+@test all(isfinite, direct_factor_overflow_verified.factorization.factors)
+@test direct_factor_overflow_verified \ direct_factor_overflow_rhs ==
+      ComplexF64[-0.5, 0.5]
+
 # A subnormal component can be the only rank-restoring information. The
 # balanced Float64 factor intentionally rounds it away, so the final exact
 # physical-matrix factorization must recover the representable solution.

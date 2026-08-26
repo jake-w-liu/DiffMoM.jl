@@ -679,6 +679,9 @@ function _factor_equilibrated_ieee_matrix(
         )
     end
     factorization = lu!(equilibrated)
+    issuccess(factorization) && all(isfinite, factorization.factors) ||
+        throw(OverflowError(
+            "$label equilibrated LU produced non-finite or unsuccessful factors"))
     return _EquilibratedDenseLUPlan{T,typeof(factorization)}(
         factorization, row_shifts, column_shifts)
 end
@@ -1185,17 +1188,25 @@ function _factor_dense_linear_system(
     real_type = typeof(real(zero(T)))
     use_ieee_scaling = real_type <: Union{Float32,Float64} &&
                        T <: Union{Float32,Float64,ComplexF32,ComplexF64}
-    try
-        return lu(matrix)
+    raw_factor = try
+        lu(matrix)
     catch err
         use_ieee_scaling && _recoverable_direct_solve_error(err) || rethrow()
-        try
-            return _factor_equilibrated_ieee_matrix(matrix, T, label)
-        catch balanced_error
-            _recoverable_direct_solve_error(balanced_error) || rethrow()
-            _run_exact_fallback_check(exact_fallback_check)
-            return _factor_bigfloat_ieee_matrix(matrix, T, label)
-        end
+        nothing
+    end
+    if raw_factor !== nothing && issuccess(raw_factor) &&
+       all(isfinite, raw_factor.factors)
+        return raw_factor
+    end
+    use_ieee_scaling ||
+        error("$label LU produced non-finite or unsuccessful factors")
+    raw_factor = nothing
+    try
+        return _factor_equilibrated_ieee_matrix(matrix, T, label)
+    catch balanced_error
+        _recoverable_direct_solve_error(balanced_error) || rethrow()
+        _run_exact_fallback_check(exact_fallback_check)
+        return _factor_bigfloat_ieee_matrix(matrix, T, label)
     end
 end
 

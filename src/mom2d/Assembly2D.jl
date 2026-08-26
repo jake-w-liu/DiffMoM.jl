@@ -46,7 +46,8 @@ function _factor_vie_system_2d(
         _recoverable_direct_solve_error(err) || rethrow()
         nothing
     end
-    if raw_factor !== nothing && issuccess(raw_factor)
+    if raw_factor !== nothing && issuccess(raw_factor) &&
+       all(isfinite, raw_factor.factors)
         reciprocal_condition = _vie_reciprocal_condition_2d(raw_factor, Z)
         reciprocal_condition > eps(Float64) && return raw_factor
     end
