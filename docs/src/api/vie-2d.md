@@ -297,7 +297,7 @@ Jacobian evaluation.
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
 | `chi` | `AbstractVector{Float64}` | -- | Per-cell dielectric contrast (length `ncells`). |
 | `E_inc` | `AbstractVector{ComplexF64}` | -- | Incident field at cell centers (length `ncells`), e.g. from `planewave_2d` or `linesource_2d`. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for retained `D`, `Z`, LU factors/pivots, field vectors, and contrast. The one-matrix assembly limit is checked separately; a larger 4352-bit factor/solve estimate is enforced only when that exceptional path is required. |
+| `max_output_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for retained `D`, `Z`, LU factors/pivots, field vectors, and contrast. The two-matrix assembly/output limit is checked separately; a larger 4352-bit factor/solve estimate is enforced only when that exceptional path is required. |
 
 **Returns:** `VIEResult2D` with the total field `E_total`, the incident field, the
 contrast profile, the matrices `D` and `Z`, the verified factorization, the mesh, and
@@ -458,7 +458,7 @@ the equivalent factor `W = (I - k0^2 diag(chi) D)^-1 = Z^-T` through the cached
 |-----------|------|---------|-------------|
 | `vie_result` | `VIEResult2D` | -- | Solved result from `solve_vie_2d`. |
 | `r_obs` | `AbstractVector{Vec2}` | -- | Observation points (m), length M (outside the domain). |
-| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of `G_obs`, the transposed-sensitivity workspace, and `J`. |
+| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of `G_obs`, the transposed-sensitivity workspace, and `J` on the ordinary path. With an exact cached VIE factor, it instead covers `G_obs`, `J`, and both 4352-bit RHS/sensitivity matrices. |
 
 **Returns:** Tuple `(J, G_obs)`:
 - `J::Matrix{ComplexF64}` of size `M x ncells` (the Jacobian).

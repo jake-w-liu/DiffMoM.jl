@@ -541,7 +541,17 @@ end
         @test all(isfinite, vr.E_total)
 
         observation = [Vec2(2.0, 0.25)]
-        J, G_obs = jacobian_scattered_field_2d(vr, observation)
+        exact_jacobian_bytes =
+            DiffMoM._jacobian_scattered_field_work_bytes_2d(
+                length(observation), mesh.ncells, true)
+        @test exact_jacobian_bytes >
+              3sizeof(ComplexF64) * length(observation) * mesh.ncells
+        @test_throws ArgumentError jacobian_scattered_field_2d(
+            vr, observation;
+            max_work_bytes=exact_jacobian_bytes - 1)
+        J, G_obs = jacobian_scattered_field_2d(
+            vr, observation;
+            max_work_bytes=exact_jacobian_bytes)
         jacobian_reference = setprecision(BigFloat, 4096) do
             Z_big = Complex{BigFloat}.(Z)
             G_big = Complex{BigFloat}.(G_obs)
@@ -1069,10 +1079,14 @@ end
             vr, r_obs; max_output_bytes=scattered_output_bytes) == E_scat_ref
         @test_throws ArgumentError jacobian_scattered_field_2d(
             vr, r_obs;
-            max_work_bytes=3observation_matrix_bytes - 1)
+            max_work_bytes=
+                DiffMoM._jacobian_scattered_field_work_bytes_2d(
+                    length(r_obs), mesh.ncells, false) - 1)
         @test jacobian_scattered_field_2d(
             vr, r_obs;
-            max_work_bytes=3observation_matrix_bytes)[1] == J
+            max_work_bytes=
+                DiffMoM._jacobian_scattered_field_work_bytes_2d(
+                    length(r_obs), mesh.ncells, false))[1] == J
 
         # Scattered-field evaluation streams Green-function values and should
         # allocate only its returned vector. The Jacobian needs its returned

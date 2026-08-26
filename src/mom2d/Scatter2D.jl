@@ -172,28 +172,47 @@ For reciprocal D, evaluates the equivalent factor
 W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ through the cached LU factorization.
 
 Returns (J, G_obs) where J is M_rx × N_cells.
+`max_work_bytes` covers three ComplexF64 rectangular matrices on the ordinary
+path or `G_obs`, `J`, and both 4352-bit rectangular solve arrays when the
+stored VIE factor uses exact arithmetic.
 """
+function _jacobian_scattered_field_work_bytes_2d(
+        observation_count::Int,
+        cell_count::Int,
+        exact_factor::Bool)
+    rectangular_bytes = _checked_array_payload_bytes(
+        ComplexF64, observation_count, cell_count;
+        label="jacobian_scattered_field_2d rectangular matrix")
+    total = if exact_factor
+        entry_count = BigInt(observation_count) * cell_count
+        big_value_bytes = 2BigInt(_DIRECT_BIGFLOAT_BYTES_PER_REAL)
+        # G_obs and J coexist with exact RHS and sensitivity matrices.
+        2BigInt(rectangular_bytes) + 2big_value_bytes * entry_count
+    else
+        3BigInt(rectangular_bytes)
+    end
+    total <= typemax(Int) ||
+        throw(ArgumentError(
+            "jacobian_scattered_field_2d raw-work estimate overflows Int"))
+    return Int(total)
+end
+
 function jacobian_scattered_field_2d(
         vr::VIEResult2D, r_obs::AbstractVector{Vec2};
         max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     _validate_vie_result_2d(vr; require_system=true)
     _validate_observation_points_2d(
         r_obs, vr.mesh, "jacobian_scattered_field_2d")
-    rectangular_bytes = _checked_array_payload_bytes(
-        ComplexF64, length(r_obs), vr.mesh.ncells;
-        label="jacobian_scattered_field_2d rectangular matrix")
-    # G_obs, the transposed sensitivity solve, and the returned Jacobian have
-    # identical raw payloads and coexist on the ordinary path.
-    work_bytes = try
-        Base.Checked.checked_mul(3, rectangular_bytes)
-    catch err
-        err isa OverflowError || rethrow()
-        throw(ArgumentError(
-            "jacobian_scattered_field_2d raw-work estimate overflows Int"))
-    end
+    factor_backend = _direct_factorization_backend(vr.Z_LU)
+    exact_factor = factor_backend isa _BigFloatDenseLUPlan
+    work_bytes = _jacobian_scattered_field_work_bytes_2d(
+        length(r_obs), vr.mesh.ncells, exact_factor)
     _enforce_payload_limit(
         work_bytes, max_work_bytes,
-        "jacobian_scattered_field_2d dense matrices", "max_work_bytes")
+        exact_factor ?
+            "jacobian_scattered_field_2d exact workspace" :
+            "jacobian_scattered_field_2d dense matrices",
+        "max_work_bytes")
     G_obs = _green_obs_matrix_unchecked(r_obs, vr.mesh, vr.k0)
     A = vr.mesh.cell_area
     k0sq = vr.k0^2
@@ -208,13 +227,7 @@ function jacobian_scattered_field_2d(
     # W = (I - k₀² diag(χ)D)⁻¹ = Z⁻ᵀ. Evaluate G_obs*W through
     # (G_obs*Z⁻ᵀ)ᵀ = Z⁻¹*G_obsᵀ. This reuses the cached forward LU and needs
     # an N×M workspace instead of materializing the N×N inverse.
-    sensitivity_transpose = Matrix{ComplexF64}(undef, N, M)
-    sensitivity_transpose = _solve_factored_linear_system!(
-        sensitivity_transpose, vr.Z_LU, vr.Z,
-        transpose(G_obs), "jacobian_scattered_field_2d")
-
-    factor_backend = _direct_factorization_backend(vr.Z_LU)
-    if factor_backend isa _BigFloatDenseLUPlan
+    if exact_factor
         # In the exact-factor branch, converting Z⁻¹Gᵀ to ComplexF64 before
         # multiplying by k₀² can erase a representable final Jacobian entry.
         # Retain the exact solve through the complete physical product.
@@ -240,6 +253,11 @@ function jacobian_scattered_field_2d(
         end
         return J, G_obs
     end
+
+    sensitivity_transpose = Matrix{ComplexF64}(undef, N, M)
+    sensitivity_transpose = _solve_factored_linear_system!(
+        sensitivity_transpose, vr.Z_LU, vr.Z,
+        transpose(G_obs), "jacobian_scattered_field_2d")
 
     # J = k₀² A × (G_obs × W) × diag(E).
     J = Matrix{ComplexF64}(undef, M, N)
