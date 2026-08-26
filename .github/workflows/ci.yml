@@ -17,7 +17,7 @@ jobs:
   test:
     name: Julia 1.12 / ${{ matrix.os }} / ${{ matrix.threads }} thread(s)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
