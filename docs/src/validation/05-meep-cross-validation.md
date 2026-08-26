@@ -103,6 +103,9 @@ nonzero exit before a new curve summary is written. Reuse requires all Julia
 geometry controls and Meep source, monitor, PML, resolution, bandwidth, and
 runtime controls to match the current command exactly. Curve rows take their
 mesh and slot values from those validated artifacts.
+Case identifiers preserve the familiar three-decimal width for exact values
+such as `0.200`. Higher-precision widths add an exact Float64 suffix, preventing
+distinct inputs from colliding; duplicate widths are rejected before work.
 
 ---
 

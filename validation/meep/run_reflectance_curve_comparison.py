@@ -7,6 +7,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
+import struct
 import sys
 from typing import Any, Dict, List
 
@@ -27,7 +28,11 @@ from _meep_common import (
 
 
 def slug_float(x: float) -> str:
-    return f"{x:.3f}".replace("-", "m").replace(".", "p")
+    rounded_text = f"{x:.3f}"
+    base = rounded_text.replace("-", "m").replace(".", "p")
+    if x == float(rounded_text):
+        return base
+    return f"{base}_{struct.pack('>d', x).hex()}"
 
 
 def make_plot(rows: List[Dict[str, Any]], out_png: Path, tol_refl: float) -> None:
@@ -166,6 +171,15 @@ def main() -> None:
     )
     args = parser.parse_args()
     validate_runtime_geometry(parser, args)
+    case_prefixes = [
+        f"{args.prefix_base}_wx{slug_float(width)}"
+        for width in args.slot_wx_fracs
+    ]
+    if len(set(case_prefixes)) != len(case_prefixes):
+        parser.error(
+            "--slot-wx-fracs contains duplicate widths; every curve point "
+            "must have a distinct exact Float64 case identifier"
+        )
     if args.nx < 14 or args.ny < 14:
         print(
             "WARNING: nx/ny below 14 is outside this workflow's comparison "
@@ -185,8 +199,7 @@ def main() -> None:
 
     rows: List[Dict[str, Any]] = []
 
-    for wx in args.slot_wx_fracs:
-        case_prefix = f"{args.prefix_base}_wx{slug_float(wx)}"
+    for wx, case_prefix in zip(args.slot_wx_fracs, case_prefixes):
         print(f"\n=== Curve Case wx={wx:.3f} ({case_prefix}) ===")
 
         geometry_ref = data_dir / f"julia_{case_prefix}_geometry.json"

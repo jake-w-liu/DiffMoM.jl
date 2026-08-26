@@ -83,6 +83,9 @@ exit before it writes a new summary. Reuse also requires every Julia geometry
 control and Meep runtime control to equal the current command; otherwise the
 error names the mismatched option and asks you to regenerate. Summary geometry
 fields come from the validated artifacts, not from unverified CLI labels.
+Common three-decimal widths retain identifiers such as `wx0p200`; widths with
+additional precision include their exact Float64 bits so distinct curve points
+cannot overwrite one another. Exact duplicate widths are rejected.
 
 ## Notes
 

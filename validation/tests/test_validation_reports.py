@@ -618,6 +618,24 @@ class ValidationReportTests(unittest.TestCase):
         self.assertIn("--slot-wx-fracs", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
+        duplicate = self.run_cli(
+            MEEP_DIR / "run_reflectance_curve_comparison.py",
+            "--slot-wx-fracs",
+            "0.2,0.2",
+        )
+        self.assertEqual(duplicate.returncode, 2)
+        self.assertIn("duplicate widths", duplicate.stderr)
+
+        curve = load_module(
+            "meep_curve_slug_validation",
+            MEEP_DIR / "run_reflectance_curve_comparison.py",
+        )
+        self.assertEqual(curve.slug_float(0.2), "0p200")
+        self.assertNotEqual(
+            curve.slug_float(0.2001),
+            curve.slug_float(0.2004),
+        )
+
     def test_curve_reuse_rechecks_verdict_and_accepts_closure_only(self) -> None:
         curve = load_module(
             "meep_curve_reuse_validation",
