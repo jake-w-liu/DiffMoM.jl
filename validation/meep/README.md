@@ -89,5 +89,10 @@ python validation/meep/analyze_meep_detailed_comparison.py \
 - JSON readers reject `NaN` and infinity constants, and generated JSON contains
   only standard finite numbers or `null`. The detailed report uses `null` when
   fewer than two varying points make Pearson correlation unavailable.
+- The Meep result records SHA-256 digests of the exact Julia geometry and
+  reference JSON files. Comparisons stop if either source artifact has changed,
+  or if the geometry and reference identity fields do not describe the same
+  case. Regenerate the Julia and Meep artifacts instead of mixing prefixes or
+  stale files.
 - The supplied comparison command uses `nx=ny=14`. Repeat the run at finer
   meshes and confirm convergence before interpreting Julia-versus-Meep gaps.

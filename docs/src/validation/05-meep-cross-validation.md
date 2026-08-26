@@ -90,6 +90,12 @@ JSON and writes only standard finite numbers or `null`. A detailed heuristic
 report records Pearson correlation as `null` when fewer than two varying points
 make that statistic unavailable.
 
+Each Meep result records SHA-256 digests of its Julia geometry and reference
+JSON inputs. The runner first requires those two artifacts to carry identical
+case fields; the comparator then requires their current digests to match the
+ones stored in the Meep result. A mismatch is stale or mixed provenance, not a
+comparison result: regenerate the Julia pair and rerun Meep.
+
 ---
 
 ## 4) Practical Interpretation

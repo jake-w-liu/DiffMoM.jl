@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -42,6 +43,23 @@ class ValidationReportTests(unittest.TestCase):
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
+
+    def meep_identity(self, prefix: str) -> dict[str, object]:
+        return {
+            "output_prefix": prefix,
+            "periodic_bc_model": "bloch",
+            "frequency_ghz": 10.0,
+            "lambda_m": 0.03,
+            "dx_cell_m": 0.036,
+            "dy_cell_m": 0.036,
+            "dx_lambda": 1.2,
+            "dy_lambda": 1.2,
+            "nx": 1,
+            "ny": 1,
+            "slot_wx_frac": 0.2,
+            "slot_wy_frac": 0.2,
+            "metal_fill_fraction": 1.0,
+        }
 
     def run_script(
         self, script: Path, project_root: Path, *args: str
@@ -432,23 +450,42 @@ class ValidationReportTests(unittest.TestCase):
             data.mkdir()
 
             def write_case(prefix: str, julia_refl: float, meep_refl: float) -> None:
-                (data / f"julia_{prefix}_reference.json").write_text(
+                identity = self.meep_identity(prefix)
+                geometry_path = data / f"julia_{prefix}_geometry.json"
+                geometry_path.write_text(
+                    json.dumps(
+                        {**identity, "metal_mask_row_major": [[1]]},
+                        allow_nan=False,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                reference_path = data / f"julia_{prefix}_reference.json"
+                reference_path.write_text(
                     json.dumps(
                         {
-                            "frequency_ghz": 10.0,
+                            **identity,
                             "refl_total_fraction": julia_refl,
                             "trans_total_fraction_closure": 1.0 - julia_refl,
                             "abs_total_fraction": 0.0,
-                            "periodic_bc_model": "bloch",
                         },
                         allow_nan=False,
                     )
                     + "\n",
                     encoding="utf-8",
                 )
+                geometry_sha256 = hashlib.sha256(
+                    geometry_path.read_bytes()
+                ).hexdigest()
+                reference_sha256 = hashlib.sha256(
+                    reference_path.read_bytes()
+                ).hexdigest()
                 (data / f"meep_{prefix}_results.json").write_text(
                     json.dumps(
                         {
+                            "output_prefix": prefix,
+                            "julia_geometry_sha256": geometry_sha256,
+                            "julia_reference_sha256": reference_sha256,
                             "reflectance_total": meep_refl,
                             "transmittance_total": 0.0,
                             "absorption_total": 0.0,
@@ -490,6 +527,52 @@ class ValidationReportTests(unittest.TestCase):
             )
             self.assertEqual(passed_report["verdict"], "PASS")
             self.assertEqual(passed_report["trans_verdict"], "CHECK")
+
+            reference_path = data / "julia_trans_diagnostic_reference.json"
+            changed_reference = json.loads(reference_path.read_text(encoding="utf-8"))
+            changed_reference["abs_total_fraction"] = 0.25
+            reference_path.write_text(
+                json.dumps(changed_reference, allow_nan=False) + "\n",
+                encoding="utf-8",
+            )
+            stale = self.run_script(
+                MEEP_DIR / "compare_periodic_to_julia.py",
+                root,
+                "--output-prefix",
+                "trans_diagnostic",
+            )
+            self.assertNotEqual(stale.returncode, 0)
+            self.assertIn("does not match current artifact", stale.stderr)
+
+    def test_meep_runner_rejects_mismatched_julia_artifacts_before_solver(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data = root / "data"
+            data.mkdir()
+            prefix = "identity_mismatch"
+            identity = self.meep_identity(prefix)
+            (data / f"julia_{prefix}_geometry.json").write_text(
+                json.dumps(
+                    {**identity, "metal_mask_row_major": [[1]]},
+                    allow_nan=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (data / f"julia_{prefix}_reference.json").write_text(
+                json.dumps({**identity, "nx": 2}, allow_nan=False) + "\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_script(
+                MEEP_DIR / "run_periodic_cross_validation.py",
+                root,
+                "--output-prefix",
+                prefix,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("artifact identity mismatch", result.stderr)
+            self.assertNotIn("Could not import Meep", result.stderr)
 
     def test_single_point_meep_correlation_is_unavailable(self) -> None:
         analyzer = load_module(

@@ -13,6 +13,8 @@ from _meep_common import (
     add_project_root_argument,
     add_runtime_arguments,
     load_json_object,
+    sha256_file,
+    validate_julia_artifact_pair,
     validate_runtime_geometry,
 )
 
@@ -214,6 +216,15 @@ def main() -> None:
     recovery = "Regenerate the Julia artifact before running Meep."
     geometry_json = load_json_object(geometry_path, recovery=recovery)
     reference_json = load_json_object(reference_path, recovery=recovery)
+    validate_julia_artifact_pair(
+        args.output_prefix,
+        geometry_path,
+        geometry_json,
+        reference_path,
+        reference_json,
+    )
+    geometry_sha256 = sha256_file(geometry_path, recovery=recovery)
+    reference_sha256 = sha256_file(reference_path, recovery=recovery)
 
     meep_results = run_meep_case(
         geometry_json=geometry_json,
@@ -230,6 +241,8 @@ def main() -> None:
 
     payload = {
         "output_prefix": args.output_prefix,
+        "julia_geometry_sha256": geometry_sha256,
+        "julia_reference_sha256": reference_sha256,
         "frequency_ghz": reference_json["frequency_ghz"],
         "lambda_m": reference_json["lambda_m"],
         "dx_lambda": geometry_json["dx_lambda"],

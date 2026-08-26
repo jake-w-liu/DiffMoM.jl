@@ -12,6 +12,8 @@ from _meep_common import (
     add_project_root_argument,
     load_json_object,
     nonnegative_finite_float,
+    sha256_file,
+    validate_julia_artifact_pair,
 )
 
 
@@ -31,6 +33,17 @@ def require_finite_metric(source: Path, data: Dict[str, Any], key: str) -> float
     return float(value)
 
 
+def require_text_metric(source: Path, data: Dict[str, Any], key: str) -> str:
+    """Return one required nonempty JSON string or stop with recovery text."""
+    value = data.get(key)
+    if not isinstance(value, str) or not value:
+        raise SystemExit(
+            f"Invalid or missing {key!r} in {source}: expected a nonempty JSON "
+            "string. Regenerate the source result before comparing it."
+        )
+    return value
+
+
 def write_markdown(path: Path, metrics: Dict[str, Any]) -> None:
     lines = [
         "# Meep vs Julia Periodic Cross-Validation",
@@ -38,6 +51,8 @@ def write_markdown(path: Path, metrics: Dict[str, Any]) -> None:
         f"- Julia periodic BC model: `{metrics['julia_periodic_bc_model']}`",
         f"- Julia transmission reference model: `{metrics['julia_trans_model']}`",
         f"- Verdict basis: `{metrics['verdict_basis']}`",
+        f"- Julia geometry SHA-256: `{metrics['julia_geometry_sha256']}`",
+        f"- Julia reference SHA-256: `{metrics['julia_reference_sha256']}`",
         "",
         "## Totals",
         f"- Julia reflected total: {metrics['julia_refl_total']:.6f}",
@@ -70,6 +85,7 @@ def main() -> None:
     args = parser.parse_args()
 
     data_dir = args.project_root / "data"
+    geometry_path = data_dir / f"julia_{args.output_prefix}_geometry.json"
     julia_path = data_dir / f"julia_{args.output_prefix}_reference.json"
     meep_path = data_dir / f"meep_{args.output_prefix}_results.json"
     report_json_path = (
@@ -77,6 +93,12 @@ def main() -> None:
     )
     report_md_path = data_dir / f"meep_{args.output_prefix}_cross_validation_report.md"
 
+    if not geometry_path.exists():
+        raise SystemExit(
+            f"Missing Julia geometry file: {geometry_path}. Run "
+            "validation/meep/run_periodic_case_julia_reference.jl with the "
+            "same --output-prefix, then rerun this comparison."
+        )
     if not julia_path.exists():
         raise SystemExit(
             f"Missing Julia reference file: {julia_path}. Run "
@@ -91,8 +113,43 @@ def main() -> None:
         )
 
     recovery = "Regenerate the source result before comparing it."
+    geometry = load_json_object(geometry_path, recovery=recovery)
     julia = load_json_object(julia_path, recovery=recovery)
     meep = load_json_object(meep_path, recovery=recovery)
+    validate_julia_artifact_pair(
+        args.output_prefix,
+        geometry_path,
+        geometry,
+        julia_path,
+        julia,
+    )
+    geometry_sha256 = sha256_file(geometry_path, recovery=recovery)
+    reference_sha256 = sha256_file(julia_path, recovery=recovery)
+    meep_prefix = require_text_metric(meep_path, meep, "output_prefix")
+    if meep_prefix != args.output_prefix:
+        raise SystemExit(
+            f"Meep result {meep_path} identifies output_prefix={meep_prefix!r}, "
+            f"but the command requested {args.output_prefix!r}. Regenerate or "
+            "select the matching Meep result."
+        )
+    recorded_geometry_sha256 = require_text_metric(
+        meep_path, meep, "julia_geometry_sha256"
+    )
+    recorded_reference_sha256 = require_text_metric(
+        meep_path, meep, "julia_reference_sha256"
+    )
+    if recorded_geometry_sha256 != geometry_sha256:
+        raise SystemExit(
+            f"Meep result {meep_path} was generated from Julia geometry SHA-256 "
+            f"{recorded_geometry_sha256}, which does not match current artifact "
+            f"{geometry_path} ({geometry_sha256}). Regenerate the Meep result."
+        )
+    if recorded_reference_sha256 != reference_sha256:
+        raise SystemExit(
+            f"Meep result {meep_path} was generated from Julia reference SHA-256 "
+            f"{recorded_reference_sha256}, which does not match current artifact "
+            f"{julia_path} ({reference_sha256}). Regenerate the Meep result."
+        )
 
     frequency_ghz = require_finite_metric(julia_path, julia, "frequency_ghz")
     j_refl = require_finite_metric(julia_path, julia, "refl_total_fraction")
@@ -120,6 +177,8 @@ def main() -> None:
     metrics = {
         "output_prefix": args.output_prefix,
         "frequency_ghz": frequency_ghz,
+        "julia_geometry_sha256": geometry_sha256,
+        "julia_reference_sha256": reference_sha256,
         "julia_periodic_bc_model": julia.get("periodic_bc_model", "unknown"),
         "julia_trans_model": j_trans_model,
         "verdict_basis": "reflectance_primary",

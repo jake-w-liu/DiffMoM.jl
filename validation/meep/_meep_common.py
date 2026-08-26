@@ -3,12 +3,30 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
 import shlex
 import subprocess
 from typing import Any, Dict, List, Sequence
+
+
+JULIA_ARTIFACT_IDENTITY_FIELDS = (
+    "output_prefix",
+    "periodic_bc_model",
+    "frequency_ghz",
+    "lambda_m",
+    "dx_cell_m",
+    "dy_cell_m",
+    "dx_lambda",
+    "dy_lambda",
+    "nx",
+    "ny",
+    "slot_wx_frac",
+    "slot_wy_frac",
+    "metal_fill_fraction",
+)
 
 
 def add_project_root_argument(parser: argparse.ArgumentParser, source_file: str) -> None:
@@ -199,6 +217,83 @@ def load_json_object(path: Path, *, recovery: str) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise SystemExit(f"Invalid JSON in {path}: expected an object. {recovery}")
     return data
+
+
+def sha256_file(path: Path, *, recovery: str) -> str:
+    """Return the SHA-256 digest of one artifact or stop with recovery text."""
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        raise SystemExit(f"Could not hash artifact {path}: {exc}. {recovery}") from exc
+    return digest.hexdigest()
+
+
+def validate_julia_artifact_pair(
+    requested_prefix: str,
+    geometry_path: Path,
+    geometry: Dict[str, Any],
+    reference_path: Path,
+    reference: Dict[str, Any],
+) -> None:
+    """Require geometry and reference JSON to describe one exact Julia case."""
+    for field in JULIA_ARTIFACT_IDENTITY_FIELDS:
+        if field not in geometry:
+            raise SystemExit(
+                f"Missing identity field {field!r} in {geometry_path}. "
+                "Regenerate both Julia artifacts with the same output prefix."
+            )
+        if field not in reference:
+            raise SystemExit(
+                f"Missing identity field {field!r} in {reference_path}. "
+                "Regenerate both Julia artifacts with the same output prefix."
+            )
+        geometry_value = geometry[field]
+        reference_value = reference[field]
+        if type(geometry_value) is not type(reference_value) or (
+            geometry_value != reference_value
+        ):
+            raise SystemExit(
+                f"Julia artifact identity mismatch for {field!r}: "
+                f"{geometry_path} has {geometry_value!r}, while {reference_path} "
+                f"has {reference_value!r}. Regenerate both Julia artifacts "
+                "with the same output prefix."
+            )
+
+    if geometry["output_prefix"] != requested_prefix:
+        raise SystemExit(
+            f"Julia artifacts identify output_prefix={geometry['output_prefix']!r}, "
+            f"but the command requested {requested_prefix!r}. Regenerate or select "
+            "the matching artifacts."
+        )
+
+    nx = geometry["nx"]
+    ny = geometry["ny"]
+    if isinstance(nx, bool) or not isinstance(nx, int) or nx <= 0:
+        raise SystemExit(f"Invalid positive integer 'nx' in {geometry_path}: {nx!r}.")
+    if isinstance(ny, bool) or not isinstance(ny, int) or ny <= 0:
+        raise SystemExit(f"Invalid positive integer 'ny' in {geometry_path}: {ny!r}.")
+    mask = geometry.get("metal_mask_row_major")
+    if not isinstance(mask, list) or len(mask) != ny:
+        raise SystemExit(
+            f"Invalid metal mask in {geometry_path}: expected {ny} rows. "
+            "Regenerate the Julia geometry artifact."
+        )
+    for row_index, row in enumerate(mask):
+        if not isinstance(row, list) or len(row) != nx:
+            raise SystemExit(
+                f"Invalid metal mask row {row_index} in {geometry_path}: "
+                f"expected {nx} entries. Regenerate the Julia geometry artifact."
+            )
+        for column_index, value in enumerate(row):
+            if isinstance(value, bool) or not isinstance(value, int) or value not in (0, 1):
+                raise SystemExit(
+                    f"Invalid metal mask value at ({row_index}, {column_index}) "
+                    f"in {geometry_path}: expected integer 0 or 1, got {value!r}. "
+                    "Regenerate the Julia geometry artifact."
+                )
 
 
 def cli_options(*pairs: tuple[str, Any]) -> List[str]:
