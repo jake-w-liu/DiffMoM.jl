@@ -9189,11 +9189,40 @@ for efie_op in (A_mf, adjoint(A_mf))
     @test (efie_op * efie_cancellation_input)[efie_cancellation_row] ==
           ComplexF64(efie_cancellation_reference)
 
+    _assert_scaled_mul_contract(efie_op, x_probe, reverse(x_probe))
+    efie_scaled_product = efie_op * efie_cancellation_input
+    efie_scaled_factor = complex(floatmax(Float64))
+    @test any(!isfinite, efie_scaled_factor .* efie_scaled_product)
+    efie_scaled_result = -efie_scaled_product
+    mul!(
+        efie_scaled_result,
+        efie_op,
+        efie_cancellation_input,
+        efie_scaled_factor,
+        efie_scaled_factor,
+    )
+    @test efie_scaled_result == zeros(ComplexF64, N)
+
+    efie_alias = copy(x_probe)
+    efie_alias_reference = efie_op * copy(x_probe)
+    mul!(efie_alias, efie_op, efie_alias, 1.0, 0.0)
+    @test efie_alias == efie_alias_reference
+
     efie_overlap_storage = vcat(x_probe, 0.0 + 0im)
     efie_overlap_x = view(efie_overlap_storage, 1:N)
     efie_overlap_y = view(efie_overlap_storage, 2:(N + 1))
-    efie_overlap_expected = efie_op * copy(efie_overlap_x)
-    mul!(efie_overlap_y, efie_op, efie_overlap_x)
+    efie_overlap_alpha = 1.2 - 0.1im
+    efie_overlap_beta = -0.4 + 0.2im
+    efie_overlap_expected =
+        efie_overlap_alpha .* (efie_op * copy(efie_overlap_x)) .+
+        efie_overlap_beta .* copy(efie_overlap_y)
+    mul!(
+        efie_overlap_y,
+        efie_op,
+        efie_overlap_x,
+        efie_overlap_alpha,
+        efie_overlap_beta,
+    )
     @test efie_overlap_y ≈ efie_overlap_expected rtol=1e-12
 
     efie_nonalias_y = zeros(ComplexF64, N)

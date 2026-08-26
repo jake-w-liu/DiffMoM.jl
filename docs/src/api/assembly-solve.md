@@ -210,9 +210,9 @@ linear in mesh size rather than allocating an `N_t × N_t` pair matrix.
 | Operation | Syntax | Cost | Description |
 |-----------|--------|------|-------------|
 | Single entry | `A[i, j]` or `efie_entry(A, i, j)` | O(Nq^2) | Compute one EFIE entry on the fly. |
-| Matrix-vector product | `A * x` or `mul!(y, A, x)` | O(N^2 * Nq^2) | Full matvec, row by row. |
+| Matrix-vector product | `A * x`, `mul!(y, A, x)`, or `mul!(y, A, x, alpha, beta)` | O(N^2 * Nq^2) | Full alias-safe matvec with BLAS `alpha*A*x + beta*y` semantics. |
 | Adjoint | `A'` or `adjoint(A)` | Free | Returns `MatrixFreeEFIEAdjointOperator`. |
-| Adjoint matvec | `A' * x` | O(N^2 * Nq^2) | Adjoint matvec for adjoint sensitivity solves. |
+| Adjoint matvec | `A' * x` or either `mul!` form | O(N^2 * Nq^2) | Alias-safe adjoint matvec for sensitivity solves. |
 
 ---
 

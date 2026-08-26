@@ -804,7 +804,68 @@ end
     return (!iszero(real_magnitude) &&
             abs(Float64(real(value))) <= error_factor * real_magnitude) ||
            (!iszero(imag_magnitude) &&
-            abs(Float64(imag(value))) <= error_factor * imag_magnitude)
+           abs(Float64(imag(value))) <= error_factor * imag_magnitude)
+end
+
+@noinline function _matrixfree_scaled_output_bigfloat(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int,
+        label::AbstractString)
+    return setprecision(BigFloat, _EFIE_MATVEC_FALLBACK_PRECISION) do
+        total = Complex{BigFloat}(alpha_scale) *
+                Complex{BigFloat}(value)
+        if !overwrite
+            total += Complex{BigFloat}(beta_scale) *
+                     Complex{BigFloat}(previous)
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "$label scaled output is outside the representable " *
+                "ComplexF64 range at row $row."))
+        return converted
+    end
+end
+
+@inline function _matrixfree_scaled_output(
+        value::ComplexF64,
+        previous::ComplexF64,
+        alpha_scale::Number,
+        beta_scale::Number,
+        overwrite::Bool,
+        row::Int,
+        label::AbstractString)
+    needs_fallback =
+        _matrixfree_extreme_factor(value) ||
+        _matrixfree_extreme_factor(alpha_scale) ||
+        (!overwrite &&
+         (_matrixfree_extreme_factor(previous) ||
+          _matrixfree_extreme_factor(beta_scale)))
+    needs_fallback && return _matrixfree_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, overwrite, row, label)
+    alpha_term = alpha_scale * value
+    if overwrite
+        converted = ComplexF64(alpha_term)
+        return isfinite(converted) ? converted :
+               _matrixfree_scaled_output_bigfloat(
+                   value, previous, alpha_scale, beta_scale, true, row, label)
+    end
+    beta_term = beta_scale * previous
+    combined = alpha_term + beta_term
+    real_magnitude = abs(real(alpha_term)) + abs(real(beta_term))
+    imag_magnitude = abs(imag(alpha_term)) + abs(imag(beta_term))
+    converted = ComplexF64(combined)
+    if isfinite(converted) && isfinite(real_magnitude) &&
+       isfinite(imag_magnitude) &&
+       !_scaled_sum_requires_exact(alpha_term, beta_term, combined)
+        return converted
+    end
+    return _matrixfree_scaled_output_bigfloat(
+        value, previous, alpha_scale, beta_scale, false, row, label)
 end
 
 Base.size(A::MatrixFreeEFIEOperator) = (A.cache.rwg.nedges, A.cache.rwg.nedges)
@@ -864,49 +925,85 @@ end
     end
 end
 
-function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEOperator{T}, x::AbstractVector) where {T<:Number}
+@inline function _matrixfree_efie_row(
+        A::MatrixFreeEFIEOperator{T},
+        x::AbstractVector,
+        row::Int) where {T<:Number}
+    N = size(A, 2)
+    acc = zero(T)
+    real_magnitude = 0.0
+    imag_magnitude = 0.0
+    needs_fallback = false
+    try
+        @inbounds for column in 1:N
+            entry = efie_entry(A, row, column)
+            input = x[column]
+            if !iszero(entry) && !iszero(input) &&
+               (_matrixfree_extreme_factor(entry) ||
+                _matrixfree_extreme_factor(input))
+                needs_fallback = true
+                break
+            end
+            term = entry * input
+            next_acc = acc + term
+            real_magnitude += abs(Float64(real(term)))
+            imag_magnitude += abs(Float64(imag(term)))
+            if !isfinite(next_acc) || !isfinite(real_magnitude) ||
+               !isfinite(imag_magnitude)
+                needs_fallback = true
+                break
+            end
+            acc = next_acc
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        needs_fallback = true
+    end
+    needs_fallback |= _matrixfree_complex_reduction_requires_exact(
+        acc, real_magnitude, imag_magnitude, N)
+    return needs_fallback ?
+           _matrixfree_efie_row_bigfloat(A, x, row) : acc
+end
+
+function LinearAlgebra.mul!(
+        y::AbstractVector{ComplexF64},
+        A::MatrixFreeEFIEOperator{ComplexF64},
+        x::AbstractVector,
+        alpha_scale::Number,
+        beta_scale::Number)
     N = size(A, 1)
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            @inbounds for row in eachindex(y)
+                y[row] = _matrixfree_scaled_output(
+                    zero(ComplexF64), y[row], zero(ComplexF64), beta_scale,
+                    false, row, "matrix-free EFIE")
+            end
+        end
+        return y
+    end
 
     xread = Base.mightalias(y, x) ? copy(x) : x
-    @inbounds for m in 1:N
-        acc = zero(T)
-        real_magnitude = 0.0
-        imag_magnitude = 0.0
-        needs_fallback = false
-        try
-            for n in 1:N
-                entry = efie_entry(A, m, n)
-                input = xread[n]
-                if !iszero(entry) && !iszero(input) &&
-                   (_matrixfree_extreme_factor(entry) ||
-                    _matrixfree_extreme_factor(input))
-                    needs_fallback = true
-                    break
-                end
-                term = entry * input
-                next_acc = acc + term
-                real_magnitude += abs(Float64(real(term)))
-                imag_magnitude += abs(Float64(imag(term)))
-                if !isfinite(next_acc) || !isfinite(real_magnitude) ||
-                   !isfinite(imag_magnitude)
-                    needs_fallback = true
-                    break
-                end
-                acc = next_acc
-            end
-        catch err
-            err isa OverflowError || rethrow()
-            needs_fallback = true
-        end
-        needs_fallback |= _matrixfree_complex_reduction_requires_exact(
-            acc, real_magnitude, imag_magnitude, N)
-        y[m] = needs_fallback ?
-               _matrixfree_efie_row_bigfloat(A, xread, m) : acc
+    overwrite = iszero(beta_scale)
+    @inbounds for row in 1:N
+        previous = overwrite ? zero(ComplexF64) : y[row]
+        product = _matrixfree_efie_row(A, xread, row)
+        y[row] = _matrixfree_scaled_output(
+            product, previous, alpha_scale, beta_scale,
+            overwrite, row, "matrix-free EFIE")
     end
     return y
 end
+
+LinearAlgebra.mul!(
+    y::AbstractVector{ComplexF64},
+    A::MatrixFreeEFIEOperator{ComplexF64},
+    x::AbstractVector,
+) = mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::MatrixFreeEFIEOperator{T}, x::AbstractVector) where {T<:Number}
     y = zeros(T, size(A, 1))
@@ -914,49 +1011,85 @@ function Base.:*(A::MatrixFreeEFIEOperator{T}, x::AbstractVector) where {T<:Numb
     return y
 end
 
-function LinearAlgebra.mul!(y::AbstractVector{T}, A::MatrixFreeEFIEAdjointOperator{T}, x::AbstractVector) where {T<:Number}
+@inline function _matrixfree_efie_adjoint_row(
+        A::MatrixFreeEFIEAdjointOperator{T},
+        x::AbstractVector,
+        row::Int) where {T<:Number}
+    N = size(A, 2)
+    acc = zero(T)
+    real_magnitude = 0.0
+    imag_magnitude = 0.0
+    needs_fallback = false
+    try
+        @inbounds for column in 1:N
+            entry = conj(efie_entry(A.op, column, row))
+            input = x[column]
+            if !iszero(entry) && !iszero(input) &&
+               (_matrixfree_extreme_factor(entry) ||
+                _matrixfree_extreme_factor(input))
+                needs_fallback = true
+                break
+            end
+            term = entry * input
+            next_acc = acc + term
+            real_magnitude += abs(Float64(real(term)))
+            imag_magnitude += abs(Float64(imag(term)))
+            if !isfinite(next_acc) || !isfinite(real_magnitude) ||
+               !isfinite(imag_magnitude)
+                needs_fallback = true
+                break
+            end
+            acc = next_acc
+        end
+    catch err
+        err isa OverflowError || rethrow()
+        needs_fallback = true
+    end
+    needs_fallback |= _matrixfree_complex_reduction_requires_exact(
+        acc, real_magnitude, imag_magnitude, N)
+    return needs_fallback ?
+           _matrixfree_efie_adjoint_row_bigfloat(A, x, row) : acc
+end
+
+function LinearAlgebra.mul!(
+        y::AbstractVector{ComplexF64},
+        A::MatrixFreeEFIEAdjointOperator{ComplexF64},
+        x::AbstractVector,
+        alpha_scale::Number,
+        beta_scale::Number)
     N = size(A, 1)
     length(x) == N || throw(DimensionMismatch("x length $(length(x)) != $N"))
     length(y) == N || throw(DimensionMismatch("y length $(length(y)) != $N"))
+    if iszero(alpha_scale)
+        if iszero(beta_scale)
+            fill!(y, zero(ComplexF64))
+        elseif beta_scale != one(beta_scale)
+            @inbounds for row in eachindex(y)
+                y[row] = _matrixfree_scaled_output(
+                    zero(ComplexF64), y[row], zero(ComplexF64), beta_scale,
+                    false, row, "adjoint matrix-free EFIE")
+            end
+        end
+        return y
+    end
 
     xread = Base.mightalias(y, x) ? copy(x) : x
-    @inbounds for n in 1:N
-        acc = zero(T)
-        real_magnitude = 0.0
-        imag_magnitude = 0.0
-        needs_fallback = false
-        try
-            for m in 1:N
-                entry = conj(efie_entry(A.op, m, n))
-                input = xread[m]
-                if !iszero(entry) && !iszero(input) &&
-                   (_matrixfree_extreme_factor(entry) ||
-                    _matrixfree_extreme_factor(input))
-                    needs_fallback = true
-                    break
-                end
-                term = entry * input
-                next_acc = acc + term
-                real_magnitude += abs(Float64(real(term)))
-                imag_magnitude += abs(Float64(imag(term)))
-                if !isfinite(next_acc) || !isfinite(real_magnitude) ||
-                   !isfinite(imag_magnitude)
-                    needs_fallback = true
-                    break
-                end
-                acc = next_acc
-            end
-        catch err
-            err isa OverflowError || rethrow()
-            needs_fallback = true
-        end
-        needs_fallback |= _matrixfree_complex_reduction_requires_exact(
-            acc, real_magnitude, imag_magnitude, N)
-        y[n] = needs_fallback ?
-               _matrixfree_efie_adjoint_row_bigfloat(A, xread, n) : acc
+    overwrite = iszero(beta_scale)
+    @inbounds for row in 1:N
+        previous = overwrite ? zero(ComplexF64) : y[row]
+        product = _matrixfree_efie_adjoint_row(A, xread, row)
+        y[row] = _matrixfree_scaled_output(
+            product, previous, alpha_scale, beta_scale,
+            overwrite, row, "adjoint matrix-free EFIE")
     end
     return y
 end
+
+LinearAlgebra.mul!(
+    y::AbstractVector{ComplexF64},
+    A::MatrixFreeEFIEAdjointOperator{ComplexF64},
+    x::AbstractVector,
+) = mul!(y, A, x, one(ComplexF64), zero(ComplexF64))
 
 function Base.:*(A::MatrixFreeEFIEAdjointOperator{T}, x::AbstractVector) where {T<:Number}
     y = zeros(T, size(A, 1))
