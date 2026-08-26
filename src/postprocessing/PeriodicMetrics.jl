@@ -566,6 +566,45 @@ end
 const _FLOQUET_MODE_FALLBACK_PRECISION = 256
 const _FLOQUET_CURRENT_FALLBACK_PRECISION =
     _IEEE_BILINEAR_FALLBACK_PRECISION
+const _PERIODIC_POWER_BALANCE_FALLBACK_PRECISION = 256
+
+@noinline function _periodic_power_residual_exact(
+    incident::Float64,
+    reflected::Float64,
+    absorbed::Float64,
+    transmitted::Float64,
+)
+    return setprecision(
+        BigFloat, _PERIODIC_POWER_BALANCE_FALLBACK_PRECISION) do
+        Float64(
+            BigFloat(incident) - BigFloat(reflected) -
+            BigFloat(absorbed) - BigFloat(transmitted))
+    end
+end
+
+@inline function _periodic_power_residual(
+    incident::Float64,
+    reflected::Float64,
+    absorbed::Float64,
+    transmitted::Float64,
+)
+    after_reflection = incident - reflected
+    after_absorption = after_reflection - absorbed
+    residual = after_absorption - transmitted
+    requires_exact =
+        !isfinite(after_reflection) ||
+        !isfinite(after_absorption) ||
+        !isfinite(residual) ||
+        _scaled_sum_requires_exact(
+            incident, -reflected, after_reflection) ||
+        _scaled_sum_requires_exact(
+            after_reflection, -absorbed, after_absorption) ||
+        _scaled_sum_requires_exact(
+            after_absorption, -transmitted, residual)
+    return requires_exact ?
+        _periodic_power_residual_exact(
+            incident, reflected, absorbed, transmitted) : residual
+end
 # A primitive Fourier term has five Float64 factors.  Their mantissa product
 # needs at most 265 bits and their exponent sum spans -5370:4855.  Another
 # 63 bits covers any Int-indexable reduction; 10_624 is the next whole-word
@@ -1601,7 +1640,11 @@ function power_balance(I_coeffs::Vector{<:Number},
         P_trans = 0.0
     elseif transmission == :closure
         # Conservation-based transmission estimate from unaccounted non-absorbed power.
-        P_trans = clamp(P_inc - P_refl - P_abs, 0.0, P_inc)
+        P_trans = clamp(
+            _periodic_power_residual(P_inc, P_refl, P_abs, 0.0),
+            0.0,
+            P_inc,
+        )
     elseif transmission == :floquet
         Tc = isnothing(T_coeffs) ?
             transmission_coefficients(modes, R_coeffs; incident_order=incident_order) :
@@ -1620,7 +1663,8 @@ function power_balance(I_coeffs::Vector{<:Number},
     refl_frac = P_refl / P_inc
     abs_frac = P_abs / P_inc
     trans_frac = P_trans / P_inc
-    P_resid = P_inc - P_refl - P_abs - P_trans
+    P_resid = _periodic_power_residual(
+        P_inc, P_refl, P_abs, P_trans)
     resid_frac = P_resid / P_inc
     all(isfinite, (refl_frac, abs_frac, trans_frac, P_resid, resid_frac)) ||
         throw(OverflowError("power-balance result contains non-finite values"))

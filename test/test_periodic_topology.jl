@@ -2485,6 +2485,26 @@ println("\n── Test 42: PeriodicMetrics ──")
         @test absorbed_maximum.P_resid == 0.0
         @test absorbed_maximum.abs_frac == 1.0
 
+        residual_reflection = sqrt(3.0e-16)
+        residual_cancellation = power_balance(
+            ComplexF64[1.0],
+            ComplexF64[2.0e16;;],
+            2.0e16,
+            1.0,
+            [incident_mode],
+            ComplexF64[residual_reflection];
+            eta0=1.0,
+        )
+        residual_cancellation_reference = setprecision(BigFloat, 256) do
+            Float64(
+                BigFloat(residual_cancellation.P_inc) -
+                BigFloat(residual_cancellation.P_refl) -
+                BigFloat(residual_cancellation.P_abs) -
+                BigFloat(residual_cancellation.P_trans))
+        end
+        @test residual_cancellation.P_resid ==
+              residual_cancellation_reference
+
         reflected_power_fractions(
             extreme_modes, extreme_mode_vectors, 1.0)
         @test @allocated(reflected_power_fractions(
