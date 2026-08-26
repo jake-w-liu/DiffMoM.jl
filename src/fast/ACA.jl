@@ -1379,8 +1379,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
                 error_bounds, blk.U, rows, tmp)
         end
 
-        reduction_terms = Int(min(
-            BigInt(typemax(Int)), BigInt(N) + length(ws.tmp)))
+        reduction_terms = N > typemax(Int) - length(ws.tmp) ?
+            typemax(Int) : N + length(ws.tmp)
         needs_fallback |= _aca_output_reduction_requires_exact(
             y_perm, error_bounds, reduction_terms)
 
@@ -1494,8 +1494,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
                 error_bounds, blk.V, cols, tmp)
         end
 
-        reduction_terms = Int(min(
-            BigInt(typemax(Int)), BigInt(N) + length(ws.tmp)))
+        reduction_terms = N > typemax(Int) - length(ws.tmp) ?
+            typemax(Int) : N + length(ws.tmp)
         needs_fallback |= _aca_output_reduction_requires_exact(
             y_perm, error_bounds, reduction_terms)
 
