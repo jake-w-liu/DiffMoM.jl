@@ -148,6 +148,7 @@ mutable struct ACAWorkspace
     x_perm::Vector{ComplexF64}
     y_perm::Vector{ComplexF64}
     tmp::Vector{ComplexF64}   # sized to max rank across all low-rank blocks
+    error_bounds::Vector{ComplexF64}
     work_lock::ReentrantLock
 end
 
@@ -155,6 +156,120 @@ ACAWorkspace(x_perm::Vector{ComplexF64},
              y_perm::Vector{ComplexF64},
              tmp::Vector{ComplexF64}) =
     ACAWorkspace(x_perm, y_perm, tmp, ReentrantLock())
+
+ACAWorkspace(x_perm::Vector{ComplexF64},
+             y_perm::Vector{ComplexF64},
+             tmp::Vector{ComplexF64},
+             work_lock::ReentrantLock) =
+    ACAWorkspace(
+        x_perm, y_perm, tmp,
+        zeros(ComplexF64, length(y_perm)), work_lock)
+
+@inline function _aca_product_component_magnitudes(
+        left::ComplexF64,
+        right::ComplexF64)
+    left_real = real(left)
+    left_imag = imag(left)
+    right_real = real(right)
+    right_imag = imag(right)
+    return (
+        abs(left_real * right_real) + abs(left_imag * right_imag),
+        abs(left_real * right_imag) + abs(left_imag * right_real),
+    )
+end
+
+@inline function _aca_add_error_bound(
+        bound::ComplexF64,
+        real_magnitude::Float64,
+        imag_magnitude::Float64)
+    return ComplexF64(
+        real(bound) + real_magnitude,
+        imag(bound) + imag_magnitude)
+end
+
+function _aca_accumulate_dense_error_bounds!(
+        error_bounds::Vector{ComplexF64},
+        block::DenseBlock,
+        x_perm::Vector{ComplexF64},
+        ::Val{ADJOINT}) where {ADJOINT}
+    output_range = ADJOINT ? block.col_range : block.row_range
+    input_range = ADJOINT ? block.row_range : block.col_range
+    @inbounds for (local_input, input_index) in enumerate(input_range)
+        input_value = x_perm[input_index]
+        for (local_output, output_index) in enumerate(output_range)
+            matrix_value = ADJOINT ?
+                conj(block.data[local_input, local_output]) :
+                block.data[local_output, local_input]
+            real_magnitude, imag_magnitude =
+                _aca_product_component_magnitudes(
+                    matrix_value, input_value)
+            error_bounds[output_index] = _aca_add_error_bound(
+                error_bounds[output_index],
+                real_magnitude, imag_magnitude)
+        end
+    end
+    return nothing
+end
+
+function _aca_lowrank_inner_requires_exact(
+        tmp::AbstractVector{ComplexF64},
+        factor::Matrix{ComplexF64},
+        input_range::UnitRange{Int},
+        x_perm::Vector{ComplexF64})
+    needs_fallback = false
+    @inbounds for rank in axes(factor, 2)
+        real_magnitude = 0.0
+        imag_magnitude = 0.0
+        for (local_input, input_index) in enumerate(input_range)
+            term_real, term_imag =
+                _aca_product_component_magnitudes(
+                    conj(factor[local_input, rank]),
+                    x_perm[input_index])
+            real_magnitude += term_real
+            imag_magnitude += term_imag
+        end
+        needs_fallback |=
+            !isfinite(real_magnitude) || !isfinite(imag_magnitude) ||
+            _matrixfree_complex_reduction_requires_exact(
+                tmp[rank], real_magnitude, imag_magnitude,
+                length(input_range))
+    end
+    return needs_fallback
+end
+
+function _aca_accumulate_lowrank_error_bounds!(
+        error_bounds::Vector{ComplexF64},
+        factor::Matrix{ComplexF64},
+        output_range::UnitRange{Int},
+        tmp::AbstractVector{ComplexF64})
+    @inbounds for rank in axes(factor, 2)
+        inner = tmp[rank]
+        for (local_output, output_index) in enumerate(output_range)
+            real_magnitude, imag_magnitude =
+                _aca_product_component_magnitudes(
+                    factor[local_output, rank], inner)
+            error_bounds[output_index] = _aca_add_error_bound(
+                error_bounds[output_index],
+                real_magnitude, imag_magnitude)
+        end
+    end
+    return nothing
+end
+
+function _aca_output_reduction_requires_exact(
+        output::Vector{ComplexF64},
+        error_bounds::Vector{ComplexF64},
+        term_count::Int)
+    @inbounds for output_index in eachindex(output, error_bounds)
+        bound = error_bounds[output_index]
+        if !isfinite(real(bound)) || !isfinite(imag(bound)) ||
+           _matrixfree_complex_reduction_requires_exact(
+               output[output_index], real(bound), imag(bound), term_count)
+            return true
+        end
+    end
+    return false
+end
 
 """
     ACAOperator{TC} <: AbstractMatrix{ComplexF64}
@@ -1226,6 +1341,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
     try
         x_perm = ws.x_perm
         y_perm = ws.y_perm
+        error_bounds = ws.error_bounds
 
         # Permute x to tree order and decide whether Float64 block products
         # can preserve their full exponent range.
@@ -1235,6 +1351,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
             needs_fallback |= _aca_extreme_factor(x_perm[k])
         end
         fill!(y_perm, zero(ComplexF64))
+        fill!(error_bounds, zero(ComplexF64))
 
         # Dense blocks — BLAS gemv
         for blk in A.dense_blocks
@@ -1242,6 +1359,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
             cols = blk.col_range
             mul!(@view(y_perm[rows]), blk.data, @view(x_perm[cols]),
                  one(ComplexF64), one(ComplexF64))
+            _aca_accumulate_dense_error_bounds!(
+                error_bounds, blk, x_perm, Val(false))
         end
 
         # Low-rank blocks: y += U * (V' * x)
@@ -1252,9 +1371,18 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
             cols = blk.col_range
             tmp = @view(ws.tmp[1:k_rank])
             mul!(tmp, blk.V', @view(x_perm[cols]))
+            needs_fallback |= _aca_lowrank_inner_requires_exact(
+                tmp, blk.V, cols, x_perm)
             mul!(@view(y_perm[rows]), blk.U, tmp,
                  one(ComplexF64), one(ComplexF64))
+            _aca_accumulate_lowrank_error_bounds!(
+                error_bounds, blk.U, rows, tmp)
         end
+
+        reduction_terms = Int(min(
+            BigInt(typemax(Int)), BigInt(N) + length(ws.tmp)))
+        needs_fallback |= _aca_output_reduction_requires_exact(
+            y_perm, error_bounds, reduction_terms)
 
         if needs_fallback
             return _aca_product_bigfloat!(
@@ -1328,6 +1456,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
     try
         x_perm = ws.x_perm
         y_perm = ws.y_perm
+        error_bounds = ws.error_bounds
 
         # Permute x to tree order and decide whether Float64 block products
         # can preserve their full exponent range.
@@ -1337,6 +1466,7 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
             needs_fallback |= _aca_extreme_factor(x_perm[k])
         end
         fill!(y_perm, zero(ComplexF64))
+        fill!(error_bounds, zero(ComplexF64))
 
         # Dense blocks: adjoint means transpose-conjugate
         for blk in A.op.dense_blocks
@@ -1344,6 +1474,8 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
             cols = blk.col_range
             mul!(@view(y_perm[cols]), blk.data', @view(x_perm[rows]),
                  one(ComplexF64), one(ComplexF64))
+            _aca_accumulate_dense_error_bounds!(
+                error_bounds, blk, x_perm, Val(true))
         end
 
         # Low-rank blocks: adjoint of U * V' is V * U'
@@ -1354,9 +1486,18 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
             cols = blk.col_range
             tmp = @view(ws.tmp[1:k_rank])
             mul!(tmp, blk.U', @view(x_perm[rows]))
+            needs_fallback |= _aca_lowrank_inner_requires_exact(
+                tmp, blk.U, rows, x_perm)
             mul!(@view(y_perm[cols]), blk.V, tmp,
                  one(ComplexF64), one(ComplexF64))
+            _aca_accumulate_lowrank_error_bounds!(
+                error_bounds, blk.V, cols, tmp)
         end
+
+        reduction_terms = Int(min(
+            BigInt(typemax(Int)), BigInt(N) + length(ws.tmp)))
+        needs_fallback |= _aca_output_reduction_requires_exact(
+            y_perm, error_bounds, reduction_terms)
 
         if needs_fallback
             return _aca_product_bigfloat!(

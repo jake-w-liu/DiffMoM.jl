@@ -32,6 +32,10 @@ Indexed access returns the compressed operator entry and is consistent with a
 basis-vector product. Use `efie_entry(A, i, j)` only when the uncompressed EFIE
 entry is explicitly required.
 
+Forward and adjoint products track componentwise reduction bounds through
+dense blocks and both low-rank stages. Cancellation-sensitive products retry
+the compressed operator in bounded high-precision output chunks.
+
 The main accuracy controls are:
 
 | Keyword | Effect |

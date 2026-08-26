@@ -10533,6 +10533,31 @@ end
       DiffMoM._efie_entry(aca_index_operator.cache, 1, 1)
 @test aca_index_operator[1, 1] != efie_entry(aca_index_operator, 1, 1)
 
+# Indexed low-rank access and basis-vector products must preserve the same
+# ordinary-factor cancellation in both forward and adjoint directions.
+aca_cancellation_U = zeros(ComplexF64, N, 3)
+aca_cancellation_V = zeros(ComplexF64, N, 3)
+aca_cancellation_U[1, :] .= ComplexF64[1.0e16, 3.0, -1.0e16]
+aca_cancellation_V[1, :] .= 1.0 + 0im
+aca_cancellation_operator = _aca_operator_with_blocks(
+    A_aca_op,
+    DiffMoM.DenseBlock[],
+    [DiffMoM.LowRankBlock(
+        1:N, 1:N, aca_cancellation_U, aca_cancellation_V)],
+)
+aca_cancellation_row = aca_cancellation_operator.tree.perm[1]
+aca_cancellation_column = aca_cancellation_operator.tree.perm[1]
+aca_cancellation_column_basis = zeros(ComplexF64, N)
+aca_cancellation_column_basis[aca_cancellation_column] = 1.0
+aca_cancellation_row_basis = zeros(ComplexF64, N)
+aca_cancellation_row_basis[aca_cancellation_row] = 1.0
+@test aca_cancellation_operator[
+    aca_cancellation_row, aca_cancellation_column] == 3.0 + 0im
+@test (aca_cancellation_operator *
+       aca_cancellation_column_basis)[aca_cancellation_row] == 3.0 + 0im
+@test (adjoint(aca_cancellation_operator) *
+       aca_cancellation_row_basis)[aca_cancellation_column] == 3.0 + 0im
+
 # Use an exactly represented identity block here.  If `scaled_aca_previous`
 # were formed from a rounded general block product, the mathematical
 # `alpha*A*x + beta*y` need not cancel: the large scales can legitimately

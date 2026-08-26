@@ -431,6 +431,11 @@ Because `ACAOperator <: AbstractMatrix{ComplexF64}`, it can be passed directly t
 
 The matrix-vector product $\mathbf{y} = \mathbf{A}\mathbf{x}$ is implemented in `LinearAlgebra.mul!` and proceeds in four steps:
 
+The ordinary BLAS path also accumulates componentwise magnitude bounds for
+each output and checks the intermediate low-rank inner products. If those
+bounds expose cancellation, forward and adjoint multiplication recompute the
+same compressed blocks in bounded high-precision output chunks.
+
 **Step 1: Permute input to tree order**
 
 ```math
