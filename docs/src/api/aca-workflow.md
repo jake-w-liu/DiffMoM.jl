@@ -28,6 +28,10 @@ admissible blocks as low-rank factors. The returned `ACAOperator` implements
 `size`, indexed access, forward `mul!`, and adjoint products, so it can be used
 with `solve_gmres` and the near-field preconditioner API.
 
+Indexed access returns the compressed operator entry and is consistent with a
+basis-vector product. Use `efie_entry(A, i, j)` only when the uncompressed EFIE
+entry is explicitly required.
+
 The main accuracy controls are:
 
 | Keyword | Effect |

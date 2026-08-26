@@ -482,17 +482,20 @@ The adjoint matvec transposes each block operation:
 - **Dense blocks**: $y_{\text{perm}}[\mathcal{C}] \mathrel{+}= \mathbf{D}^H \cdot x_{\text{perm}}[\mathcal{R}]$ (rows and columns swapped, data conjugate-transposed).
 - **Low-rank blocks**: The adjoint of $\mathbf{U}\mathbf{V}'$ is $\mathbf{V}\mathbf{U}'$, so: $\mathbf{t} = \mathbf{U}' \cdot x_{\text{perm}}[\mathcal{R}]$, then $y_{\text{perm}}[\mathcal{C}] \mathrel{+}= \mathbf{V} \cdot \mathbf{t}$.
 
-### 6.4 Fallback `getindex`
+### 6.4 Indexed Access and Exact EFIE Queries
 
-For compatibility with the near-field preconditioner (which needs to extract individual matrix entries), `ACAOperator` provides a `getindex` fallback:
+`ACAOperator` indexing follows its `AbstractMatrix` contract: `A[i,j]` returns
+the stored dense-block value or the corresponding `U*V'` low-rank
+approximation. It is therefore consistent with `A*x` and with adjoint products.
 
 ```julia
-function Base.getindex(A::ACAOperator, i::Int, j::Int)
-    return _efie_entry(A.cache, i, j)
-end
+compressed_value = A[i, j]
+exact_efie_value = efie_entry(A, i, j)
 ```
 
-This evaluates the exact EFIE entry on demand using the cached quadrature data. While $O(N_q^2)$ per call (not fast for forming the full matrix), it is efficient for the sparse near-field extraction used by `build_nearfield_preconditioner`.
+`efie_entry(A, i, j)` remains the explicit on-demand query for the uncompressed
+EFIE entry. The ACA-specific `build_nearfield_preconditioner(A)` overload copies
+the already stored dense inadmissible blocks and does not recompute entries.
 
 ---
 
@@ -587,7 +590,10 @@ println("GMRES converged in $(stats.niter) iterations")
 
 ### 8.2 Near-Field Preconditioner Construction from ACAOperator
 
-The `build_nearfield_preconditioner` function accepts any `AbstractMatrix`, including `ACAOperator`. It extracts individual entries $A[m, n]$ via the `getindex` fallback (which calls `_efie_entry`), keeping only entries where the RWG centers are within the cutoff distance. The extracted sparse matrix is then LU-factorized.
+The ACA-specific `build_nearfield_preconditioner(A_aca)` overload assembles the
+sparse near field directly from stored dense inadmissible blocks, then
+factorizes it. The general geometry-and-cutoff overload treats ACA like any
+other `AbstractMatrix` and therefore extracts its compressed indexed entries.
 
 This is efficient because:
 
@@ -779,7 +785,7 @@ Before proceeding, ensure you understand:
 - [ ] How `build_aca_operator` uses two-phase assembly: serial block enumeration followed by parallel block computation.
 - [ ] The batched Green's function optimization in dense blocks ($\sim 8\times$ fewer evaluations).
 - [ ] How the ACA matvec works: permute, dense `gemv`, low-rank two-step `gemv`, un-permute.
-- [ ] Why `ACAOperator` provides a `getindex` fallback (for near-field preconditioner extraction via `_efie_entry`).
+- [ ] Why `ACAOperator` indexed access follows the compressed matrix while `efie_entry` is the explicit uncompressed EFIE query.
 - [ ] The complexity: $O(N \log^2 N)$ storage and matvec, compared to $O(N^2)$ dense.
 - [ ] How `solve_scattering` auto-selects ACA for $10{,}000 < N \le 50{,}000$ (default thresholds).
 

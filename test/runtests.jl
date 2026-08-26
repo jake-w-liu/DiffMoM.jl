@@ -10230,6 +10230,28 @@ y_adj_dense = Z_efie' * x_test
 y_adj_aca = A_adj * x_test
 _assert_single_complex_output_allocation(A_adj, x_test)
 _assert_scaled_mul_contract(A_adj, x_test, reverse(x_test))
+@test adjoint(A_adj) === A_aca_op
+
+aca_index_rng = MersenneTwister(2601)
+aca_index_U = randn(aca_index_rng, ComplexF64, N, 2)
+aca_index_V = randn(aca_index_rng, ComplexF64, N, 2)
+aca_index_operator = _aca_operator_with_blocks(
+    A_aca_op,
+    DiffMoM.DenseBlock[],
+    [DiffMoM.LowRankBlock(1:N, 1:N, aca_index_U, aca_index_V)],
+)
+for column in 1:N
+    basis_column = zeros(ComplexF64, N)
+    basis_column[column] = 1.0
+    compressed_column = aca_index_operator * basis_column
+    for row in 1:N
+        @test aca_index_operator[row, column] ≈ compressed_column[row] rtol=8eps(Float64) atol=0.0
+    end
+end
+@test adjoint(adjoint(aca_index_operator)) === aca_index_operator
+@test efie_entry(aca_index_operator, 1, 1) ==
+      DiffMoM._efie_entry(aca_index_operator.cache, 1, 1)
+@test aca_index_operator[1, 1] != efie_entry(aca_index_operator, 1, 1)
 
 # Use an exactly represented identity block here.  If `scaled_aca_previous`
 # were formed from a rounded general block product, the mathematical

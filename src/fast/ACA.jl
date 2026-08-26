@@ -159,8 +159,8 @@ ACAWorkspace(x_perm::Vector{ComplexF64},
 """
     ACAOperator{TC} <: AbstractMatrix{ComplexF64}
 
-H-matrix operator assembled via ACA. Supports `mul!` for GMRES
-and `getindex` for preconditioner construction.
+H-matrix operator assembled via ACA. `mul!` and `getindex` represent the same
+compressed matrix; `efie_entry` evaluates an uncompressed EFIE entry on demand.
 """
 struct ACAOperator{TC<:EFIEApplyCache} <: AbstractMatrix{ComplexF64}
     cache::TC
@@ -208,16 +208,98 @@ Base.eltype(::ACAOperator) = ComplexF64
 Base.size(A::ACAAdjointOperator) = size(A.op)
 Base.eltype(::ACAAdjointOperator) = ComplexF64
 
-# Fallback getindex via entry evaluation (for NF preconditioner construction)
+@noinline function _aca_lowrank_entry_bigfloat(
+        block::LowRankBlock,
+        local_row::Int,
+        local_column::Int)
+    return setprecision(BigFloat, _ACA_SCALED_OUTPUT_FALLBACK_PRECISION) do
+        total = zero(Complex{BigFloat})
+        @inbounds for rank in axes(block.U, 2)
+            total += Complex{BigFloat}(block.U[local_row, rank]) *
+                     conj(Complex{BigFloat}(block.V[local_column, rank]))
+        end
+        converted = ComplexF64(total)
+        isfinite(converted) ||
+            throw(OverflowError(
+                "ACA low-rank entry is outside the representable " *
+                "ComplexF64 range"))
+        return converted
+    end
+end
+
+function _aca_lowrank_entry(
+        block::LowRankBlock,
+        local_row::Int,
+        local_column::Int)
+    value = zero(ComplexF64)
+    real_magnitude = 0.0
+    imag_magnitude = 0.0
+    needs_fallback = false
+    @inbounds for rank in axes(block.U, 2)
+        left = block.U[local_row, rank]
+        right = conj(block.V[local_column, rank])
+        if !iszero(left) && !iszero(right) &&
+           (_aca_extreme_factor(left) || _aca_extreme_factor(right))
+            needs_fallback = true
+            break
+        end
+        term = left * right
+        value += term
+        real_magnitude += abs(real(term))
+        imag_magnitude += abs(imag(term))
+        if !isfinite(value) || !isfinite(real_magnitude) ||
+           !isfinite(imag_magnitude)
+            needs_fallback = true
+            break
+        end
+    end
+    needs_fallback |= _matrixfree_complex_reduction_requires_exact(
+        value, real_magnitude, imag_magnitude, size(block.U, 2))
+    return needs_fallback ?
+           _aca_lowrank_entry_bigfloat(block, local_row, local_column) : value
+end
+
 function Base.getindex(A::ACAOperator, i::Int, j::Int)
-    return _efie_entry(A.cache, i, j)
+    checkbounds(A, i, j)
+    tree_row = A.tree.iperm[i]
+    tree_column = A.tree.iperm[j]
+    @inbounds for block in A.dense_blocks
+        if tree_row in block.row_range && tree_column in block.col_range
+            return block.data[
+                tree_row - first(block.row_range) + 1,
+                tree_column - first(block.col_range) + 1,
+            ]
+        end
+    end
+    @inbounds for block in A.lowrank_blocks
+        if tree_row in block.row_range && tree_column in block.col_range
+            return _aca_lowrank_entry(
+                block,
+                tree_row - first(block.row_range) + 1,
+                tree_column - first(block.col_range) + 1,
+            )
+        end
+    end
+    error("ACA block partition does not cover entry ($i, $j)")
 end
 
 function Base.getindex(A::ACAAdjointOperator, i::Int, j::Int)
-    return conj(_efie_entry(A.op.cache, j, i))
+    checkbounds(A, i, j)
+    return conj(A.op[j, i])
 end
 
 LinearAlgebra.adjoint(A::ACAOperator) = ACAAdjointOperator{typeof(A)}(A)
+LinearAlgebra.adjoint(A::ACAAdjointOperator) = A.op
+
+function efie_entry(A::ACAOperator, i::Int, j::Int)
+    checkbounds(A, i, j)
+    return _efie_entry(A.cache, i, j)
+end
+
+function efie_entry(A::ACAAdjointOperator, i::Int, j::Int)
+    checkbounds(A, i, j)
+    return conj(_efie_entry(A.op.cache, j, i))
+end
 
 # ─── ACA low-rank approximation ──────────────────────────────────
 
