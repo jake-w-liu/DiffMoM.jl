@@ -607,6 +607,46 @@ class ValidationReportTests(unittest.TestCase):
         self.assertIsNone(metrics["corr"])
         json.dumps(metrics, allow_nan=False)
 
+    def test_meep_detailed_analyzer_requires_current_provenance(self) -> None:
+        analyzer = load_module(
+            "meep_detailed_provenance",
+            MEEP_DIR / "analyze_meep_detailed_comparison.py",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            prefix = "detailed_case"
+            _, reference_path, result_path = self.write_meep_artifact_chain(
+                data,
+                prefix,
+                reference_metrics={"refl_total_fraction": 0.4},
+                result_metrics={"reflectance_total": 0.5},
+            )
+            rows = analyzer.load_cases(data, [prefix])
+            self.assertEqual(rows[0]["julia_refl"], 0.4)
+            self.assertEqual(rows[0]["meep_refl"], 0.5)
+
+            changed_reference = json.loads(
+                reference_path.read_text(encoding="utf-8")
+            )
+            changed_reference["refl_total_fraction"] = 0.6
+            reference_path.write_text(
+                json.dumps(changed_reference, allow_nan=False) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                SystemExit, "does not match current artifact"
+            ):
+                analyzer.load_cases(data, [prefix])
+
+            stale_result = json.loads(result_path.read_text(encoding="utf-8"))
+            stale_result.pop("julia_reference_sha256")
+            result_path.write_text(
+                json.dumps(stale_result, allow_nan=False) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(SystemExit, "Invalid or missing"):
+                analyzer.load_cases(data, [prefix])
+
     def test_curve_runner_reports_invalid_width_list_without_traceback(self) -> None:
         result = self.run_cli(
             MEEP_DIR / "run_reflectance_curve_comparison.py",

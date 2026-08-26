@@ -11,7 +11,11 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from _meep_common import add_project_root_argument, load_json_object
+from _meep_common import (
+    add_project_root_argument,
+    load_json_object,
+    validate_meep_result_provenance,
+)
 
 
 JSON_RECOVERY = "Regenerate the source result before building this comparison."
@@ -24,19 +28,25 @@ def load_cases(
     rows: List[Dict[str, Any]] = []
     for name in names:
         prefix = f"{prefix_base}_{name}" if prefix_base else name
+        gpath = data_dir / f"julia_{prefix}_geometry.json"
         jpath = data_dir / f"julia_{prefix}_reference.json"
         mpath = data_dir / f"meep_{prefix}_results.json"
-        if not jpath.exists() or not mpath.exists():
+        if not gpath.exists() or not jpath.exists() or not mpath.exists():
             raise SystemExit(
                 f"Missing validation artifacts for prefix {prefix!r}: expected "
-                f"{jpath} and {mpath}. Generate both solver results for that "
-                "prefix, then rerun this analysis."
+                f"{gpath}, {jpath}, and {mpath}. Generate the Julia artifact "
+                "pair and Meep result for that prefix, then rerun this analysis."
             )
+        g = load_json_object(gpath, recovery=JSON_RECOVERY)
         j = load_json_object(jpath, recovery=JSON_RECOVERY)
         m = load_json_object(mpath, recovery=JSON_RECOVERY)
+        geometry_sha256, reference_sha256 = validate_meep_result_provenance(
+            prefix, gpath, g, jpath, j, mpath, m)
         rows.append(
             {
                 "prefix": prefix,
+                "julia_geometry_sha256": geometry_sha256,
+                "julia_reference_sha256": reference_sha256,
                 "wx": float(j["slot_wx_frac"]),
                 "nx": int(j["nx"]),
                 "ny": int(j["ny"]),

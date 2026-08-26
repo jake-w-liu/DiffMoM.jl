@@ -105,5 +105,9 @@ cannot overwrite one another. Exact duplicate widths are rejected.
   or if the geometry and reference identity fields do not describe the same
   case. Regenerate the Julia and Meep artifacts instead of mixing prefixes or
   stale files.
+- The detailed heuristic analyzer enforces the same artifact identity and hash
+  chain. It may still analyze a current `CHECK` case deliberately, because its
+  purpose is diagnosing cross-solver differences rather than issuing the
+  primary acceptance verdict.
 - The supplied comparison command uses `nx=ny=14`. Repeat the run at finer
   meshes and confirm convergence before interpreting Julia-versus-Meep gaps.

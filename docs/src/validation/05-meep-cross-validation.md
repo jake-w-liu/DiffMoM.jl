@@ -107,6 +107,11 @@ Case identifiers preserve the familiar three-decimal width for exact values
 such as `0.200`. Higher-precision widths add an exact Float64 suffix, preventing
 distinct inputs from colliding; duplicate widths are rejected before work.
 
+The detailed heuristic analyzer also validates the Julia geometry/reference
+identity and the Meep result hashes. It intentionally permits a current
+`CHECK` case for diagnosis; provenance validity and scientific agreement are
+separate questions.
+
 ---
 
 ## 4) Practical Interpretation
