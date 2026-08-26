@@ -428,15 +428,17 @@ end
         ky::Float64,
         x::Float64,
         y::Float64)
-    x_product = kx * x
-    y_product = ky * y
+    x_product = iszero(kx) ? 0.0 : kx * x
+    y_product = iszero(ky) ? 0.0 : ky * y
     if _periodic_phase_term_requires_exact(kx, x, x_product) ||
        _periodic_phase_term_requires_exact(ky, y, y_product)
         return _periodic_transverse_phase_exact(kx, ky, x, y)
     end
 
-    x_error = fma(kx, x, -x_product)
-    y_error = fma(ky, y, -y_product)
+    x_error = (iszero(kx) || iszero(x)) ?
+              0.0 : fma(kx, x, -x_product)
+    y_error = (iszero(ky) || iszero(y)) ?
+              0.0 : fma(ky, y, -y_product)
     if !(isfinite(x_error) && isfinite(y_error))
         return _periodic_transverse_phase_exact(kx, ky, x, y)
     end
@@ -727,14 +729,17 @@ function greens_periodic_correction(r::SVector{3,<:Real},
             # Image displacement
             sx = m * dx
             sy = n * dy
+            (isfinite(sx) && isfinite(sy)) || continue
             R_mn = hypot(
                 hypot(drho_x - sx, drho_y - sy), drho_z)
-
-            # Bloch phase: exp(-i k_∥ · R_mn)
-            phase = _periodic_transverse_phase(kx, ky, sx, sy)
+            isfinite(R_mn) || continue
 
             # Ewald-damped spatial kernel (real-valued)
             K_sp = _ewald_spatial_kernel(R_mn, kw, E)
+            iszero(K_sp) && continue
+
+            # Bloch phase: exp(-i k_∥ · R_mn)
+            phase = _periodic_transverse_phase(kx, ky, sx, sy)
 
             val += phase * K_sp
         end

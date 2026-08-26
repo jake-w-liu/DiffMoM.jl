@@ -430,6 +430,36 @@ println("\n── Test 37: PeriodicGreens (Helmholtz-Ewald) ──")
         end
         @test DiffMoM._ewald_self_correction(
             maximum_radius, overflow_phase_k, 1.0) == radial_reference
+
+        overflow_image_lattice = PeriodicLattice(
+            floatmax(Float64), 1.0, 0.0, 0.0,
+            1.0, 1.0, 2, 0)
+        overflow_image_point = Vec3(0.0, 0.0, 0.0)
+        # Independent finite Ewald decomposition after zero-kernel images are
+        # omitted; the m=±2 x shifts lie beyond the Float64 coordinate range.
+        overflow_image_reference =
+            -0.03648908496552651 + 0.07957747154594767im
+        @test greens_periodic_correction(
+            overflow_image_point,
+            overflow_image_point,
+            1.0,
+            overflow_image_lattice,
+        ) == overflow_image_reference
+        overflow_spatial_terms, overflow_spectral_terms =
+            DiffMoM._build_periodic_ewald_terms(
+                overflow_image_lattice, 1)
+        @test length(overflow_spatial_terms) <
+              DiffMoM._periodic_term_count(2) - 1
+        @test DiffMoM._greens_periodic_correction_cached(
+            overflow_image_point,
+            overflow_image_point,
+            1.0,
+            overflow_image_lattice,
+            overflow_spatial_terms,
+            overflow_spectral_terms,
+        ) == overflow_image_reference
+        @test DiffMoM._periodic_transverse_phase(
+            0.0, 0.0, Inf, -Inf) == 1.0 + 0im
     end
 
     # ── E: Call-site wavenumber must agree with the lattice ──

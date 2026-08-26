@@ -129,12 +129,14 @@ function _build_periodic_ewald_terms(
         iszero(m) && iszero(n) && continue
         sx = m * lattice.dx
         sy = n * lattice.dy
+        (isfinite(sx) && isfinite(sy)) || continue
         phase = _periodic_transverse_phase(
             lattice.kx_bloch, lattice.ky_bloch, sx, sy)
         spatial_terms[spatial_idx] =
             _PeriodicSpatialEwaldTerm(sx, sy, phase)
         spatial_idx += 1
     end
+    resize!(spatial_terms, spatial_idx - 1)
 
     spectral_idx = 1
     @inbounds for p in -Nf:Nf, q in -Nf:Nf
@@ -177,7 +179,10 @@ function _greens_periodic_correction_cached(
     @inbounds for term in spatial_terms
         R = hypot(
             hypot(drho_x - term.sx, drho_y - term.sy), drho_z)
-        value += term.phase * _ewald_spatial_kernel(R, k, lattice.E)
+        isfinite(R) || continue
+        spatial_value = _ewald_spatial_kernel(R, k, lattice.E)
+        iszero(spatial_value) && continue
+        value += term.phase * spatial_value
     end
 
     @inbounds for term in spectral_terms
