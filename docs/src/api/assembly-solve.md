@@ -679,6 +679,14 @@ for the target problem.
 
 **Returns:** `PermutedPrecondData` wrapping an `ILUPreconditionerData` (or `NearFieldPreconditionerData` for `:lu`). It retains one reusable length-`N` permutation vector, avoiding two transient full-vector allocations per application. See [types.md](types.md) for field details.
 
+The impedance-loaded overload
+`build_mlfma_preconditioner(A_mlfma, Mp, theta; reactive=false,
+factorization=:ilu, ilu_tau=1e-2, max_pattern_bytes=536_870_912,
+max_exact_work=20_000_000)` forms the union near-field sparsity pattern before
+evaluating its entries. `max_pattern_bytes` bounds pattern construction and the
+resulting CSC payload; `max_exact_work` bounds cancellation-sensitive
+high-precision accumulation.
+
 **Example:**
 
 ```julia

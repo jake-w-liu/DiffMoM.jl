@@ -11988,6 +11988,35 @@ println("  31e: MLFMA+GMRES — $(stats_mlfma.niter) iters, sol rel error = $(ro
 println("  31e: PASS")
 
 # 31f: impedance-loaded MLFMA preconditioner
+loaded_cancellation_base = sparse(
+    [1], [1], ComplexF64[1.0], 1, 1)
+loaded_cancellation_masses = AbstractMatrix[
+    sparse([1], [1], ComplexF64[floatmax(Float64)], 1, 1),
+    sparse([1], [1], ComplexF64[-floatmax(Float64)], 1, 1),
+]
+loaded_cancellation_theta = [1.0, 1.0]
+loaded_cancellation_storage = DiffMoM._loaded_pattern_storage_bytes(1, 3)
+@test_throws ArgumentError DiffMoM._loaded_nearfield_matrix(
+    loaded_cancellation_base,
+    loaded_cancellation_masses,
+    loaded_cancellation_theta;
+    max_storage_bytes=loaded_cancellation_storage - 1,
+)
+loaded_cancellation_result = DiffMoM._loaded_nearfield_matrix(
+    loaded_cancellation_base,
+    loaded_cancellation_masses,
+    loaded_cancellation_theta;
+    max_storage_bytes=loaded_cancellation_storage,
+)
+@test nnz(loaded_cancellation_result) == 1
+@test loaded_cancellation_result[1, 1] == 1.0 + 0im
+@test_throws ArgumentError DiffMoM._loaded_nearfield_matrix(
+    loaded_cancellation_base,
+    loaded_cancellation_masses,
+    loaded_cancellation_theta;
+    max_exact_work=1,
+)
+
 part_mlfma_loaded = assign_patches_grid(mlfma_mesh; nx=2, ny=2, nz=1)
 Mp_mlfma_loaded = precompute_patch_mass(mlfma_mesh, mlfma_rwg, part_mlfma_loaded)
 theta_mlfma_loaded = fill(150.0, part_mlfma_loaded.P)

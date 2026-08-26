@@ -1418,13 +1418,14 @@ end
     return false
 end
 
-@noinline function _block_diag_loaded_entry_bigfloat(
+@noinline function _loaded_matrix_entry_bigfloat(
         base::ComplexF64,
         matrices::Vector{<:AbstractMatrix},
         theta::AbstractVector,
         reactive::Bool,
         original_row::Int,
-        original_column::Int)
+        original_column::Int,
+        label::AbstractString)
     return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
         total = Complex{BigFloat}(base)
         @inbounds for patch in eachindex(theta)
@@ -1438,7 +1439,7 @@ end
         value = ComplexF64(total)
         isfinite(value) ||
             throw(OverflowError(
-                "loaded block-diagonal entry ($original_row, " *
+                "$label entry ($original_row, " *
                 "$original_column) is outside the ComplexF64 range"))
         return value
     end
@@ -1484,23 +1485,24 @@ end
     return value, ambiguous
 end
 
-@inline function _register_block_diag_exact_work!(
+@inline function _register_loaded_exact_work!(
         used_work::Base.RefValue{Int},
         term_count::Int,
-        work_limit::Int)
+        work_limit::Int,
+        label::AbstractString)
     try
         entry_work = Base.Checked.checked_mul(
             term_count, _LOCAL_MASS_FALLBACK_PRECISION)
         next_work = Base.Checked.checked_add(used_work[], entry_work)
         next_work <= work_limit ||
             throw(ArgumentError(
-                "loaded block-diagonal exact accumulation exceeds " *
+                "$label exact accumulation exceeds " *
                 "max_exact_work=$work_limit"))
         used_work[] = next_work
     catch err
         err isa OverflowError || rethrow()
         throw(ArgumentError(
-            "loaded block-diagonal exact-work estimate overflows Int"))
+            "$label exact-work estimate overflows Int"))
     end
     return nothing
 end
@@ -1534,11 +1536,13 @@ function _load_block_diag_matrix!(
             end
         end
         if needs_exact
-            _register_block_diag_exact_work!(
-                exact_work, length(theta) + 1, exact_work_limit)
-            block[row, column] = _block_diag_loaded_entry_bigfloat(
+            _register_loaded_exact_work!(
+                exact_work, length(theta) + 1, exact_work_limit,
+                "loaded block-diagonal")
+            block[row, column] = _loaded_matrix_entry_bigfloat(
                 base, matrices, theta, reactive,
-                original_row, original_column)
+                original_row, original_column,
+                "loaded block-diagonal")
         end
     end
     return block
@@ -1635,29 +1639,168 @@ function build_block_diag_preconditioner(A_mlfma,
     return BlockDiagPrecondData(lu_blocks, box_bf_indices, N, nnz_ratio)
 end
 
-function _sparse_complex(A::SparseMatrixCSC)
-    return SparseMatrixCSC{ComplexF64, Int}(
-        size(A, 1), size(A, 2),
-        Vector{Int}(A.colptr),
-        Vector{Int}(A.rowval),
-        ComplexF64.(A.nzval),
-    )
+@inline _loaded_pattern_entry_count(A::LocalMassMatrix) =
+    count(!iszero, A.vals)
+
+@inline _loaded_pattern_entry_count(A::SparseMatrixCSC) =
+    count(!iszero, nonzeros(A))
+
+function _loaded_pattern_entry_count(A::AbstractMatrix)
+    count_entries = 0
+    @inbounds for value in A
+        !iszero(value) && (count_entries += 1)
+    end
+    return count_entries
 end
 
-function _sparse_complex(A::AbstractMatrix)
-    return _sparse_complex(sparse(A))
+function _loaded_pattern_storage_bytes(
+        matrix_size::Int,
+        triplet_count::Int)
+    triplet_payload = BigInt(triplet_count) *
+                      (2 * sizeof(Int) + sizeof(ComplexF64))
+    csc_payload = BigInt(triplet_count) *
+                  (sizeof(Int) + sizeof(ComplexF64)) +
+                  BigInt(matrix_size + 1) * sizeof(Int)
+    # Sparse construction may retain the caller's triplets while allocating
+    # sorted work arrays and the final CSC payload.
+    peak = 2 * triplet_payload + csc_payload
+    peak <= typemax(Int) ||
+        throw(ArgumentError(
+            "loaded near-field pattern workspace estimate overflows Int"))
+    return Int(peak)
+end
+
+function _append_loaded_pattern_triplets!(
+        rows::Vector{Int},
+        columns::Vector{Int},
+        values::Vector{ComplexF64},
+        A::LocalMassMatrix)
+    @inbounds for position in eachindex(A.vals)
+        iszero(A.vals[position]) && continue
+        push!(rows, A.rows[position])
+        push!(columns, A.cols[position])
+        push!(values, one(ComplexF64))
+    end
+    return nothing
+end
+
+function _append_loaded_pattern_triplets!(
+        rows::Vector{Int},
+        columns::Vector{Int},
+        values::Vector{ComplexF64},
+        A::SparseMatrixCSC)
+    stored_rows = rowvals(A)
+    stored_values = nonzeros(A)
+    @inbounds for column in axes(A, 2)
+        for position in nzrange(A, column)
+            iszero(stored_values[position]) && continue
+            push!(rows, stored_rows[position])
+            push!(columns, column)
+            push!(values, one(ComplexF64))
+        end
+    end
+    return nothing
+end
+
+function _append_loaded_pattern_triplets!(
+        rows::Vector{Int},
+        columns::Vector{Int},
+        values::Vector{ComplexF64},
+        A::AbstractMatrix)
+    @inbounds for column in axes(A, 2), row in axes(A, 1)
+        iszero(A[row, column]) && continue
+        push!(rows, row)
+        push!(columns, column)
+        push!(values, one(ComplexF64))
+    end
+    return nothing
+end
+
+function _loaded_nearfield_pattern(
+        Z_near::SparseMatrixCSC,
+        Mp::Vector{<:AbstractMatrix},
+        theta::AbstractVector,
+        max_storage_bytes::Integer)
+    total_entries = BigInt(_loaded_pattern_entry_count(Z_near))
+    @inbounds for patch in eachindex(Mp, theta)
+        iszero(theta[patch]) && continue
+        total_entries += _loaded_pattern_entry_count(Mp[patch])
+    end
+    total_entries <= typemax(Int) ||
+        throw(ArgumentError(
+            "loaded near-field pattern entry count overflows Int"))
+    entry_count = Int(total_entries)
+    required_bytes = _loaded_pattern_storage_bytes(
+        size(Z_near, 1), entry_count)
+    _enforce_payload_limit(
+        required_bytes,
+        max_storage_bytes,
+        "loaded near-field pattern workspace",
+        "max_storage_bytes",
+    )
+
+    rows = Int[]
+    columns = Int[]
+    values = ComplexF64[]
+    sizehint!(rows, entry_count)
+    sizehint!(columns, entry_count)
+    sizehint!(values, entry_count)
+    _append_loaded_pattern_triplets!(rows, columns, values, Z_near)
+    @inbounds for patch in eachindex(Mp, theta)
+        iszero(theta[patch]) && continue
+        _append_loaded_pattern_triplets!(
+            rows, columns, values, Mp[patch])
+    end
+    length(rows) == entry_count ||
+        error("loaded near-field pattern changed between count and fill passes")
+    return sparse(
+        rows, columns, values,
+        size(Z_near, 1), size(Z_near, 2),
+        (_, _) -> one(ComplexF64),
+    )
 end
 
 function _loaded_nearfield_matrix(Z_near::SparseMatrixCSC,
                                   Mp::Vector{<:AbstractMatrix},
                                   theta::AbstractVector;
-                                  reactive::Bool=false)
+                                  reactive::Bool=false,
+                                  max_storage_bytes::Integer=
+                                      _DEFAULT_MAX_BLOCK_DIAG_STORAGE_BYTES,
+                                  max_exact_work::Integer=
+                                      _DEFAULT_MAX_BLOCK_DIAG_EXACT_WORK)
     _validate_impedance_inputs(Mp, theta, size(Z_near))
-    Z_loaded = _sparse_complex(Z_near)
-    for p in eachindex(theta)
-        iszero(theta[p]) && continue
-        coeff = reactive ? (1im * theta[p]) : ComplexF64(theta[p])
-        Z_loaded = Z_loaded - coeff * _sparse_complex(Mp[p])
+    exact_work_limit = _validated_resource_limit(
+        "max_exact_work", max_exact_work)
+    Z_loaded = _loaded_nearfield_pattern(
+        Z_near, Mp, theta, max_storage_bytes)
+    loaded_rows = rowvals(Z_loaded)
+    loaded_values = nonzeros(Z_loaded)
+    exact_work = Ref(0)
+    @inbounds for column in axes(Z_loaded, 2)
+        for position in nzrange(Z_loaded, column)
+            row = loaded_rows[position]
+            base = ComplexF64(Z_near[row, column])
+            needs_exact = _block_diag_entry_requires_exact(
+                base, Mp, theta, reactive, row, column)
+            value = zero(ComplexF64)
+            if !needs_exact
+                value, needs_exact = _block_diag_loaded_entry_float(
+                    base, Mp, theta, reactive, row, column)
+            end
+            if needs_exact
+                _register_loaded_exact_work!(
+                    exact_work, length(theta) + 1, exact_work_limit,
+                    "loaded near-field")
+                value = _loaded_matrix_entry_bigfloat(
+                    base, Mp, theta, reactive, row, column,
+                    "loaded near-field")
+            end
+            isfinite(value) ||
+                throw(OverflowError(
+                    "loaded near-field entry ($row, $column) is outside " *
+                    "the ComplexF64 range"))
+            loaded_values[position] = value
+        end
     end
     dropzeros!(Z_loaded)
     return Z_loaded
@@ -1727,7 +1870,10 @@ function build_mlfma_preconditioner(A_mlfma;
 end
 
 """
-    build_mlfma_preconditioner(A_mlfma, Mp, theta; reactive=false, factorization=:ilu, ilu_tau=1e-2)
+    build_mlfma_preconditioner(A_mlfma, Mp, theta; reactive=false,
+                               factorization=:ilu, ilu_tau=1e-2,
+                               max_pattern_bytes=536_870_912,
+                               max_exact_work=20_000_000)
 
 Build an MLFMA near-field preconditioner for the current impedance-loaded
 operator `Z(theta) = Z_mlfma - sum(theta[p] * Mp[p])`. This is intended for
@@ -1739,11 +1885,17 @@ function build_mlfma_preconditioner(A_mlfma,
                                     theta::AbstractVector;
                                     reactive::Bool=false,
                                     factorization::Symbol=:ilu,
-                                    ilu_tau::Float64=1e-2)
+                                    ilu_tau::Float64=1e-2,
+                                    max_pattern_bytes::Integer=
+                                        _DEFAULT_MAX_BLOCK_DIAG_STORAGE_BYTES,
+                                    max_exact_work::Integer=
+                                        _DEFAULT_MAX_BLOCK_DIAG_EXACT_WORK)
     _validate_preconditioner_factorization(
         factorization, ilu_tau; allow_diag=false)
     Z_loaded = _loaded_nearfield_matrix(A_mlfma.Z_near, Mp, theta;
-        reactive=reactive)
+        reactive=reactive,
+        max_storage_bytes=max_pattern_bytes,
+        max_exact_work=max_exact_work)
     return _build_mlfma_preconditioner_from_nearfield(A_mlfma, Z_loaded;
         factorization=factorization,
         ilu_tau=ilu_tau)
