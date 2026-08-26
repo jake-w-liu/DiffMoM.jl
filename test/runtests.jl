@@ -5409,6 +5409,134 @@ rel_rhs_exc = norm(v_new_exc - v_old_exc) / max(norm(v_old_exc), 1e-30)
 println("  Plane-wave path-consistency RHS rel. diff: $rel_rhs_exc")
 @assert rel_rhs_exc < 1e-13
 
+excitation_component_basis = Vec3(1.0, 1.0, 1.0)
+excitation_component_field = CVec3(1.0e16, 3.0, -1.0e16)
+excitation_component_reference = setprecision(BigFloat, 4352) do
+    inner_product = sum(
+        conj(Complex{BigFloat}(excitation_component_basis[component])) *
+        Complex{BigFloat}(excitation_component_field[component])
+        for component in 1:3
+    )
+    ComplexF64(-inner_product)
+end
+@test DiffMoM._excitation_surface_term(
+    excitation_component_basis,
+    excitation_component_field,
+    0.5,
+    1.0,
+) == excitation_component_reference
+
+excitation_reduction_terms = ComplexF64[1.0e16, 3.0, -1.0e16]
+excitation_reduction_reference = setprecision(BigFloat, 4352) do
+    ComplexF64(sum(Complex{BigFloat}.(excitation_reduction_terms)))
+end
+@test DiffMoM._excitation_surface_sum(
+    excitation_reduction_terms,
+    length(excitation_reduction_terms),
+    1,
+) == excitation_reduction_reference
+
+excitation_cancellation_mesh = TriMesh(
+    Float64[
+        0  1  0   0
+        0  0  1  -1
+        0  0  1   2
+    ],
+    Int[
+        1  2
+        2  1
+        3  4
+    ],
+)
+excitation_cancellation_rwg = build_rwg(excitation_cancellation_mesh)
+@test excitation_cancellation_rwg.nedges == 1
+
+component_xi, component_weights = tri_quad_rule(1)
+component_point = only(tri_quad_points(
+    excitation_cancellation_mesh, 1, component_xi))
+component_basis = eval_rwg(
+    excitation_cancellation_rwg, 1, component_point, 1)
+component_targets = ComplexF64[1.0e16, 3.0, -1.0e16]
+component_field = CVec3(component_targets ./ conj.(component_basis))
+component_source = ImportedExcitation(
+    point -> point == component_point ? component_field : zero(CVec3);
+    kind=:electric_field,
+    min_quad_order=1,
+)
+component_actual = assemble_excitation(
+    excitation_cancellation_mesh,
+    excitation_cancellation_rwg,
+    component_source;
+    quad_order=1,
+)[1]
+component_reference = setprecision(BigFloat, 4352) do
+    inner_product = sum(
+        conj(Complex{BigFloat}(component_basis[index])) *
+        Complex{BigFloat}(component_field[index])
+        for index in 1:3
+    )
+    ComplexF64(
+        -2 * BigFloat(component_weights[1]) *
+        BigFloat(triangle_area(excitation_cancellation_mesh, 1)) *
+        inner_product)
+end
+@test component_actual == component_reference
+
+reduction_xi, reduction_weights = tri_quad_rule(3)
+reduction_points = tri_quad_points(
+    excitation_cancellation_mesh, 1, reduction_xi)
+reduction_area = triangle_area(excitation_cancellation_mesh, 1)
+reduction_targets = ComplexF64[1.0e16, 3.0, -1.0e16]
+reduction_fields = map(eachindex(reduction_points)) do index
+    basis = eval_rwg(
+        excitation_cancellation_rwg, 1, reduction_points[index], 1)
+    CVec3(
+        reduction_targets[index] /
+        (-2 * reduction_weights[index] * reduction_area * conj(basis[1])),
+        0,
+        0,
+    )
+end
+reduction_source = ImportedExcitation(
+    point -> begin
+        index = findfirst(==(point), reduction_points)
+        index === nothing ? zero(CVec3) : reduction_fields[index]
+    end;
+    kind=:electric_field,
+    min_quad_order=3,
+)
+reduction_individual = [
+    DiffMoM._excitation_surface_term(
+        eval_rwg(
+            excitation_cancellation_rwg, 1, reduction_points[index], 1),
+        reduction_fields[index],
+        reduction_area,
+        reduction_weights[index],
+    )
+    for index in eachindex(reduction_points)
+]
+@test reduction_individual == reduction_targets
+reduction_actual = assemble_excitation(
+    excitation_cancellation_mesh,
+    excitation_cancellation_rwg,
+    reduction_source;
+    quad_order=3,
+)[1]
+reduction_reference = setprecision(BigFloat, 4352) do
+    total = zero(Complex{BigFloat})
+    for index in eachindex(reduction_points)
+        basis = eval_rwg(
+            excitation_cancellation_rwg, 1, reduction_points[index], 1)
+        total += -2 * BigFloat(reduction_weights[index]) *
+                 BigFloat(reduction_area) *
+                 conj(Complex{BigFloat}(basis[1])) *
+                 Complex{BigFloat}(reduction_fields[index][1])
+    end
+    ComplexF64(total)
+end
+@test reduction_reference == 3.0 + 0im
+@test reduction_actual == reduction_reference
+
 # Surface integration must combine a finite extreme triangle area with a tiny
 # incident amplitude before either factor overflows or underflows.  Scaling
 # coordinates by L, the wave vector by 1/L, and E0 by 1/L² leaves this RHS
