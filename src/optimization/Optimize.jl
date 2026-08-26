@@ -22,6 +22,21 @@ function _checked_optimizer_count_add(
     end
 end
 
+function _optimizer_history_payload_counts(
+        maxiter::Int, m_lbfgs::Int)
+    if maxiter <= 1 || iszero(m_lbfgs)
+        return 0, 0
+    end
+    update_count = maxiter - 1
+    retained_count = min(m_lbfgs, update_count)
+    pair_peak_limit = m_lbfgs == typemax(Int) ?
+        typemax(Int) : m_lbfgs + 1
+    pair_peak = min(update_count, pair_peak_limit)
+    parameter_vector_count = _checked_optimizer_count(
+        2, pair_peak, "L-BFGS history")
+    return parameter_vector_count, retained_count
+end
+
 function _optimizer_raw_work_bytes(
         system_size::Int,
         parameter_count::Int;
@@ -986,6 +1001,10 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
     conditioning_matrix_count = _optimizer_conditioning_matrix_count(
         P, regularized, preconditioned)
     conditioned = regularized || preconditioned
+    history_parameter_vectors, history_float_count =
+        _optimizer_history_payload_counts(maxiter, m_lbfgs)
+    iteration_parameter_vectors = _checked_optimizer_count_add(
+        6, history_parameter_vectors, "L-BFGS workspace")
     gmres_workspace_payload =
         solver == :gmres && !iszero(evaluation_limit) ?
         _gmres_workspace_bytes(N_sys, gmres_memory) : 0
@@ -1006,8 +1025,9 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
             matrix_count=3 + (conditioned ? 1 : 0) +
                          conditioning_matrix_count,
             complex_vector_count=5 + (conditioned ? 1 : 0),
-            parameter_vector_count=6,
+            parameter_vector_count=iteration_parameter_vectors,
             integer_vector_count=2 + (preconditioned ? 1 : 0),
+            additional_float_count=history_float_count,
             label="L-BFGS direct workspace",
         )
     else
@@ -1017,8 +1037,9 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
             matrix_count=1 + (conditioned ? 1 : 0) +
                          conditioning_matrix_count,
             complex_vector_count=5 + (conditioned ? 1 : 0),
-            parameter_vector_count=6,
+            parameter_vector_count=iteration_parameter_vectors,
             integer_vector_count=preconditioned ? 1 : 0,
+            additional_float_count=history_float_count,
             additional_bytes=gmres_workspace_payload,
             label="L-BFGS GMRES workspace",
         )
@@ -1040,7 +1061,8 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
             ieee_matrix_count=4 + conditioning_matrix_count,
             ieee_vector_count=6 + (conditioned ? 1 : 0),
             integer_vector_count=4 + (preconditioned ? 1 : 0),
-            parameter_vector_count=6,
+            parameter_vector_count=iteration_parameter_vectors,
+            additional_float_count=history_float_count,
             additional_exact_matrix_count=preconditioned ? 2 : 1,
             label="L-BFGS exact direct workspace",
         ) : 0
@@ -1449,6 +1471,10 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
     conditioning_matrix_count = _optimizer_conditioning_matrix_count(
         P, regularized, preconditioned)
     conditioned = regularized || preconditioned
+    history_parameter_vectors, history_float_count =
+        _optimizer_history_payload_counts(maxiter, m_lbfgs)
+    iteration_parameter_vectors = _checked_optimizer_count_add(
+        7, history_parameter_vectors, "directivity workspace")
     gmres_workspace_payload =
         solver == :gmres && !iszero(evaluation_limit) ?
         _gmres_workspace_bytes(N_sys, gmres_memory) : 0
@@ -1469,8 +1495,9 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             matrix_count=3 + (conditioned ? 1 : 0) +
                          conditioning_matrix_count,
             complex_vector_count=7 + (conditioned ? 1 : 0),
-            parameter_vector_count=7,
+            parameter_vector_count=iteration_parameter_vectors,
             integer_vector_count=2 + (preconditioned ? 1 : 0),
+            additional_float_count=history_float_count,
             label="directivity direct workspace",
         )
     else
@@ -1480,8 +1507,9 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             matrix_count=1 + (conditioned ? 1 : 0) +
                          conditioning_matrix_count,
             complex_vector_count=7 + (conditioned ? 1 : 0),
-            parameter_vector_count=7,
+            parameter_vector_count=iteration_parameter_vectors,
             integer_vector_count=preconditioned ? 1 : 0,
+            additional_float_count=history_float_count,
             additional_bytes=gmres_workspace_payload,
             label="directivity GMRES workspace",
         )
@@ -1503,7 +1531,8 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
             ieee_matrix_count=4 + conditioning_matrix_count,
             ieee_vector_count=8 + (conditioned ? 1 : 0),
             integer_vector_count=4 + (preconditioned ? 1 : 0),
-            parameter_vector_count=7,
+            parameter_vector_count=iteration_parameter_vectors,
+            additional_float_count=history_float_count,
             additional_exact_matrix_count=preconditioned ? 2 : 1,
             label="directivity exact direct workspace",
         ) : 0

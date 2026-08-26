@@ -871,6 +871,13 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
             3, M, "multi-angle workspace")
         five_angle_count = _checked_optimizer_count(
             5, M, "multi-angle workspace")
+        history_parameter_vectors, history_float_count =
+            _optimizer_history_payload_counts(maxiter, m_lbfgs)
+        iteration_parameter_vectors = _checked_optimizer_count_add(
+            6, history_parameter_vectors, "multi-angle workspace")
+        iteration_float_count = _checked_optimizer_count_add(
+            five_angle_count, history_float_count,
+            "multi-angle workspace")
         workspace_bytes = if iszero(evaluation_limit)
             _optimizer_raw_work_bytes(
                 system_size,
@@ -888,9 +895,9 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 matrix_count=3,
                 complex_vector_count=_checked_optimizer_count_add(
                     thrice_angle_count, 2, "multi-angle workspace"),
-                parameter_vector_count=6,
+                parameter_vector_count=iteration_parameter_vectors,
                 integer_vector_count=2,
-                additional_float_count=five_angle_count,
+                additional_float_count=iteration_float_count,
                 label="multi-angle dense direct workspace",
             )
         end
@@ -905,8 +912,8 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                 ieee_vector_count=_checked_optimizer_count_add(
                     thrice_angle_count, 3, "multi-angle workspace"),
                 integer_vector_count=4,
-                parameter_vector_count=6,
-                additional_float_count=five_angle_count,
+                parameter_vector_count=iteration_parameter_vectors,
+                additional_float_count=iteration_float_count,
                 additional_exact_matrix_count=1,
                 label="multi-angle exact direct workspace",
             )

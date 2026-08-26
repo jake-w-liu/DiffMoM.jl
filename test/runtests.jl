@@ -5131,6 +5131,11 @@ GC.gc()
 @test DiffMoM._optimizer_evaluation_limit(0) == 0
 @test DiffMoM._optimizer_evaluation_limit(1) == 2
 @test_throws ArgumentError DiffMoM._optimizer_evaluation_limit(typemax(Int))
+@test DiffMoM._optimizer_history_payload_counts(0, 10) == (0, 0)
+@test DiffMoM._optimizer_history_payload_counts(1, 10) == (0, 0)
+@test DiffMoM._optimizer_history_payload_counts(2, 1) == (2, 1)
+@test DiffMoM._optimizer_history_payload_counts(4, 1) == (4, 1)
+@test DiffMoM._optimizer_history_payload_counts(4, 2) == (6, 2)
 @test DiffMoM._recoverable_optimizer_trial_error(SingularException(1))
 @test DiffMoM._recoverable_optimizer_trial_error(OverflowError("trial"))
 @test !DiffMoM._recoverable_optimizer_trial_error(DomainError(1.0))
