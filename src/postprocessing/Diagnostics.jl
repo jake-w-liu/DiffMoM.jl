@@ -501,16 +501,23 @@ function backscatter_rcs(E_ff::Matrix{<:Number}, grid::SphGrid,
     best_idx = 1
     best_dot = -Inf
     @inbounds for q in 1:NΩ
-        d = r_back[1] * grid.rhat[1, q] +
-            r_back[2] * grid.rhat[2, q] +
-            r_back[3] * grid.rhat[3, q]
+        x = grid.rhat[1, q]
+        y = grid.rhat[2, q]
+        z = grid.rhat[3, q]
+        inverse_norm = inv(hypot(x, y, z))
+        d = clamp(
+            (r_back[1] * x + r_back[2] * y + r_back[3] * z) *
+            inverse_norm,
+            -1.0,
+            1.0,
+        )
         if d > best_dot
             best_dot = d
             best_idx = q
         end
     end
 
-    ang_err = acos(clamp(best_dot, -1.0, 1.0)) * 180 / π
+    ang_err = acos(best_dot) * 180 / π
     sigma = _rcs_sample(E_ff, best_idx, E0_abs)
 
     return (

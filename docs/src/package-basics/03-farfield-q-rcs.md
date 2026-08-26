@@ -239,7 +239,9 @@ println((
 ```
 
 The result is a nearest-grid sample, not an interpolation. Refine the angular
-grid and report `angular_error_deg` when the exact direction matters.
+grid and report `angular_error_deg` when the exact direction matters. The
+nearest-direction comparison normalizes tolerated floating-point norm drift in
+custom `SphGrid.rhat` columns.
 
 For an incident wave propagating along negative z, forward scattering is toward
 negative z and backscatter is toward positive z. Do not infer these directions

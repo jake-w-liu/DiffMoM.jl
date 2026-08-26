@@ -3971,6 +3971,29 @@ bs = backscatter_rcs(E_ff, grid, Vec3(0.0, 0.0, -1.0); E0=1.0)
     Vec3(0.0, 0.0, -1.0);
     E0=1.0e200,
 ).sigma == diagnostic_rcs_reference
+backscatter_offset = 1.0e-6
+backscatter_norm_grid = SphGrid(
+    Float64[
+        1.0 - 5.0e-11  (1.0 + 5.0e-11) * cos(backscatter_offset)
+        0.0             (1.0 + 5.0e-11) * sin(backscatter_offset)
+        0.0             0.0
+    ],
+    fill(π / 2, 2),
+    [0.0, backscatter_offset],
+    ones(2),
+)
+backscatter_norm_field = ComplexF64[
+    1.0 2.0
+    0.0 0.0
+    0.0 0.0
+]
+backscatter_norm_result = backscatter_rcs(
+    backscatter_norm_field,
+    backscatter_norm_grid,
+    Vec3(-1.0, 0.0, 0.0),
+)
+@test backscatter_norm_result.index == 1
+@test backscatter_norm_result.angular_error_deg == 0.0
 @test_throws DimensionMismatch input_power(
     ComplexF64[1.0], ComplexF64[1.0, 2.0])
 @test_throws ArgumentError input_power(ComplexF64[], ComplexF64[])
