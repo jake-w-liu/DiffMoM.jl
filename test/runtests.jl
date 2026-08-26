@@ -10693,7 +10693,13 @@ result_auto = solve_scattering(mesh, freq, pw_exc;
 @assert result_auto.method == :dense_direct "Expected :dense_direct for N=$(result_auto.N), got $(result_auto.method)"
 @assert result_auto.N == N
 @test isnan(result_auto.gmres_residual)
-workflow_dense_bytes = sizeof(ComplexF64) * N^2
+workflow_one_matrix_bytes = sizeof(ComplexF64) * N^2
+workflow_dense_bytes = DiffMoM._workflow_dense_direct_work_bytes(N)
+@test_throws ArgumentError solve_scattering(
+    mesh, freq, pw_exc;
+    max_dense_matrix_bytes=workflow_one_matrix_bytes,
+    verbose=false,
+    check_resolution=false)
 @test_throws ArgumentError solve_scattering(
     mesh, freq, pw_exc;
     max_dense_matrix_bytes=workflow_dense_bytes - 1,

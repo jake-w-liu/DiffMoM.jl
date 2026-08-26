@@ -8,6 +8,32 @@ export solve_scattering
 
 const C0_DEFAULT = 299792458.0
 
+function _workflow_dense_direct_work_bytes(system_size::Int)
+    field_payload = _checked_array_payload_bytes(
+        ComplexF64, 2, system_size;
+        label="solve_scattering direct field vectors")
+    return _checked_dense_lu_work_bytes(
+        ComplexF64,
+        system_size,
+        2,
+        field_payload;
+        label="solve_scattering dense direct solve",
+    )
+end
+
+function _workflow_exact_dense_direct_work_bytes(system_size::Int)
+    # The physical matrix, rejected IEEE factor/equilibration retries, input
+    # and output vectors can coexist with the bounded exact factor and solve.
+    return _checked_exact_dense_solve_work_bytes(
+        ComplexF64,
+        system_size,
+        3,
+        3,
+        3;
+        label="solve_scattering exact dense direct solve",
+    )
+end
+
 """
     solve_scattering(mesh, freq_hz, excitation; kwargs...)
 
@@ -64,7 +90,9 @@ produce a warning (or error if `error_on_underresolved=true`).
 - `verbose=true`: print progress info
 - `quad_order=3`: quadrature order for EFIE entries
 - `c0=299792458.0`: speed of light (m/s)
-- `max_dense_matrix_bytes=2_000_000_000`: raw-payload ceiling for dense EFIE methods
+- `max_dense_matrix_bytes=2_000_000_000`: raw-payload ceiling for the dense
+  EFIE matrix, and for the simultaneous matrix, factor, pivot, and field
+  buffers on the dense-direct path
 
 # Returns
 A `ScatteringResult` with fields: `I_coeffs`, `method`, `N`, timing info,
@@ -193,11 +221,17 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     end
 
     if selected_method in (:dense_direct, :dense_gmres)
-        dense_bytes = _checked_array_payload_bytes(
-            ComplexF64, N, N; label="solve_scattering dense EFIE matrix")
+        dense_bytes = selected_method == :dense_direct ?
+            _workflow_dense_direct_work_bytes(N) :
+            _checked_array_payload_bytes(
+                ComplexF64, N, N;
+                label="solve_scattering dense EFIE matrix")
         _enforce_payload_limit(
             dense_bytes, max_dense_matrix_bytes,
-            "solve_scattering dense EFIE matrix", "max_dense_matrix_bytes")
+            selected_method == :dense_direct ?
+                "solve_scattering dense direct workspace" :
+                "solve_scattering dense EFIE matrix",
+            "max_dense_matrix_bytes")
     end
 
     # ── Step 4: Excitation vector ──
@@ -308,7 +342,27 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
 
     t_solve = @elapsed begin
         if selected_method == :dense_direct
-            I_coeffs = solve_forward(Z, v; solver=:direct)
+            exact_work_bytes =
+                _workflow_exact_dense_direct_work_bytes(N)
+            enforce_exact_work = () -> _enforce_payload_limit(
+                exact_work_bytes,
+                max_dense_matrix_bytes,
+                "solve_scattering exact dense direct workspace",
+                "max_dense_matrix_bytes",
+            )
+            factor = _factor_dense_linear_system(
+                Z,
+                ComplexF64,
+                "solve_scattering direct factorization";
+                exact_fallback_check=enforce_exact_work,
+            )
+            I_coeffs = _solve_factored_linear_system(
+                factor,
+                Z,
+                v,
+                "solve_scattering direct solution";
+                exact_fallback_check=enforce_exact_work,
+            )
         elseif selected_method == :dense_gmres
             I_coeffs, stats = solve_gmres(Z, v;
                                            preconditioner=P_nf,
