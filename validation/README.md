@@ -26,4 +26,7 @@ python validation/bempp/run_impedance_validation_matrix.py
 julia --project=. validation/paper/generate_consistency_report.jl
 ```
 
+`DDA_MIE_EFFECTIVE_A` accepts `1/true/yes/on` or `0/false/no/off`
+(case-insensitive). Any other value is a configuration error.
+
 Outputs are written to `data/`.

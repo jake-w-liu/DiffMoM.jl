@@ -5042,6 +5042,29 @@ println("  Beam-centric passes (main θ / main L / SLL): $n_pass_main_theta/$n_b
 println("  PASS ✓")
 end  # if isfile(convergence_study.csv)
 
+# A misspelled boolean override must fail before an invalid numerical setting
+# or a validation solve can hide the configuration error.
+mie_validation_script = joinpath(
+    @__DIR__, "..", "validation", "mie",
+    "validate_dielectric_mie_dda.jl")
+mie_boolean_stderr = IOBuffer()
+mie_boolean_command = addenv(
+    `$(Base.julia_cmd()) --project=$(joinpath(@__DIR__, "..")) --startup-file=no $mie_validation_script`,
+    "DDA_MIE_EFFECTIVE_A" => "treu",
+    "DDA_MIE_NSIDE" => "0",
+)
+mie_boolean_process = run(pipeline(
+    ignorestatus(mie_boolean_command),
+    stdout=devnull,
+    stderr=mie_boolean_stderr,
+))
+@test mie_boolean_process.exitcode != 0
+seekstart(mie_boolean_stderr)
+@test occursin(
+    "DDA_MIE_EFFECTIVE_A must be one of",
+    read(mie_boolean_stderr, String),
+)
+
 # ─────────────────────────────────────────────────
 # Test 12: Conditioning / preconditioning consistency
 # ─────────────────────────────────────────────────

@@ -32,7 +32,14 @@ function _env_float(name::AbstractString, default::Float64)
 end
 
 function _env_bool(name::AbstractString, default::Bool)
-    return haskey(ENV, name) ? ENV[name] in ("1", "true", "TRUE", "yes", "YES") : default
+    haskey(ENV, name) || return default
+    raw_value = ENV[name]
+    value = lowercase(strip(raw_value))
+    value in ("1", "true", "yes", "on") && return true
+    value in ("0", "false", "no", "off") && return false
+    throw(ArgumentError(
+        "$name must be one of 1, true, yes, on, 0, false, no, or off; " *
+        "got $(repr(raw_value))"))
 end
 
 function _phi_cut_dirs(theta_vals, phi::Float64)
