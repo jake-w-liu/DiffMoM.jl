@@ -5064,6 +5064,38 @@ seekstart(mie_boolean_stderr)
     "DDA_MIE_EFFECTIVE_A must be one of",
     read(mie_boolean_stderr, String),
 )
+mie_artifact_names = (
+    "dielectric_mie_dda_phi0.csv",
+    "dielectric_mie_dda_phi90.csv",
+    "dielectric_mie_dda_summary.csv",
+)
+mktempdir() do output_directory
+    output_command = addenv(
+        `$(Base.julia_cmd()) --project=$(joinpath(@__DIR__, "..")) --startup-file=no $mie_validation_script`,
+        "DDA_MIE_EFFECTIVE_A" => "false",
+        "DDA_MIE_NSIDE" => "3",
+        "DDA_MIE_NTHETA" => "3",
+        "DIFFMOM_VALIDATION_OUTPUT_DIR" => output_directory,
+    )
+    run(pipeline(
+        ignorestatus(output_command),
+        stdout=devnull,
+        stderr=devnull,
+    ))
+    @test all(
+        name -> isfile(joinpath(output_directory, name)),
+        mie_artifact_names,
+    )
+end
+@test all(
+    name -> !isfile(joinpath(@__DIR__, "..", "validation", "mie", name)),
+    (
+        mie_artifact_names...,
+        "mie_rcs_phi0.csv",
+        "mie_rcs_phi90.csv",
+        "mie_rcs_summary.csv",
+    ),
+)
 
 # ─────────────────────────────────────────────────
 # Test 12: Conditioning / preconditioning consistency

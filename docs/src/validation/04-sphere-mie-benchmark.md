@@ -69,9 +69,9 @@ This driver generates an icosphere, writes and rereads its STL representation,
 runs the MoM and Mie comparison, and applies gates to both stored E-plane and
 H-plane cuts. It writes:
 
-- `validation/mie/mie_rcs_phi0.csv`;
-- `validation/mie/mie_rcs_phi90.csv`;
-- `validation/mie/mie_rcs_summary.csv`; and
+- `data/mie_rcs_phi0.csv`;
+- `data/mie_rcs_phi90.csv`;
+- `data/mie_rcs_summary.csv`; and
 - four PNG files under `validation/mie/figs/`.
 
 The tracked `validation/mie/sphere_ka2.1.stl` fixture can also be used for a

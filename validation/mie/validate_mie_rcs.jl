@@ -250,7 +250,12 @@ P_rad = radiated_power(E_ff_full, grid_full)
 println("  P_rad/P_in = $(round(P_rad / P_in, digits=4))  (should be ≈ 1 for PEC)")
 
 # ── 9. Save CSV data ─────────────────────────────────
-datadir = @__DIR__
+datadir = abspath(get(
+    ENV,
+    "DIFFMOM_VALIDATION_OUTPUT_DIR",
+    joinpath(@__DIR__, "..", "..", "data"),
+))
+mkpath(datadir)
 df_phi0 = DataFrame(
     theta_deg = theta_deg,
     rcs_mom_dBsm = dB_mom_phi0,
@@ -293,7 +298,7 @@ CSV.write(joinpath(datadir, "mie_rcs_summary.csv"), df_summary)
 println("\nCSV data saved to $datadir")
 
 # ── 10. Plots ─────────────────────────────────────────
-figdir = joinpath(@__DIR__, "figs")
+figdir = joinpath(datadir, "figs")
 mkpath(figdir)
 
 ka_str = round(ka, digits=2)

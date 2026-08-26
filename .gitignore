@@ -18,7 +18,6 @@ figures
 # Generated validation data/artifacts (can be regenerated)
 data/
 data
-validation/mie/mie_rcs_*.csv
 
 # Generated documentation build artifacts
 docs/build/

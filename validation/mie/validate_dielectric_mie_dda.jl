@@ -12,6 +12,7 @@
 #   DDA_MIE_KA=0.6         target exterior size parameter k*a, default 0.6
 #   DDA_MIE_NTHETA=73      theta samples per phi cut, default 73
 #   DDA_MIE_EFFECTIVE_A=1  compare to equal-volume sphere, default 1
+#   DIFFMOM_VALIDATION_OUTPUT_DIR=/path/to/output  override data/ output
 
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "src"))
 include(joinpath(@__DIR__, "..", "..", "src", "DiffMoM.jl"))
@@ -148,7 +149,12 @@ println("\n-- Phi = 0 deg cut --")
 println("\n-- Phi = 90 deg cut --")
 @printf("MAE/RMSE/max |delta|: %.3f / %.3f / %.3f dB\n", mae90, rmse90, max90)
 
-outdir = @__DIR__
+outdir = abspath(get(
+    ENV,
+    "DIFFMOM_VALIDATION_OUTPUT_DIR",
+    joinpath(@__DIR__, "..", "..", "data"),
+))
+mkpath(outdir)
 CSV.write(joinpath(outdir, "dielectric_mie_dda_phi0.csv"), DataFrame(
     theta_deg=theta_deg,
     rcs_dda_dBsm=dB0,

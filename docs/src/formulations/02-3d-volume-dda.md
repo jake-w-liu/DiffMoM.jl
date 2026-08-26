@@ -499,7 +499,7 @@ asserted in the repository (not estimated here):
 - **Coupled EM** (`test/test_mom3d_em.jl`): free-space magnetodielectric limit, electric-only reduction to $< 10^{-13}$, single-voxel magnetic response, explicit bianisotropic `6 x 6` closure, dense-vs-matrix-free equivalence, and the radiation condition $\mathbf{F}_E = -\eta_0(\hat{\mathbf{n}}\times\mathbf{F}_H)$ to $< 10^{-10}$.
 - **FFT operators** (`test/test_mom3d_fft.jl`): `fft_dda_operator_3d` / `fft_em_dda_operator_3d` match the dense/direct matvec to $< 10^{-12}$ for scalar, tensor, and the EM `6 x 6` case.
 - **Adjoint** (`test/test_mom3d_adjoint.jl`): `gradient_epsr_dda_3d` matches central finite differences of $J = \Re(\mathbf{E}^{\dagger}\,\mathrm{diag}(w)\,\mathbf{E})$ to `rtol=2e-5`; the gradient is real; GMRES adjoint matches the direct adjoint to $< 10^{-6}$.
-- **Full Mie sweep** (`validation/mie/validate_dielectric_mie_dda.jl`): a dielectric-sphere DDA-vs-exact-Mie bistatic RCS sweep (default $11^3$ grid, $ka = 0.6$, $\varepsilon_r = 2.5 - 0.02i$) over $\theta$ in the $\phi = 0$ and $\phi = 90$ cuts; passes if MAE $<$ 0.4 dB, RMSE $<$ 0.7 dB, max $|\Delta| <$ 3.0 dB on both cuts. The agreement improves qualitatively under refinement.
+- **Full Mie sweep** (`validation/mie/validate_dielectric_mie_dda.jl`): a dielectric-sphere DDA-vs-exact-Mie bistatic RCS sweep (default $11^3$ grid, $ka = 0.6$, $\varepsilon_r = 2.5 - 0.02i$) over $\theta$ in the $\phi = 0$ and $\phi = 90$ cuts; passes if MAE $<$ 0.4 dB, RMSE $<$ 0.7 dB, max $|\Delta| <$ 3.0 dB on both cuts. The agreement improves qualitatively under refinement. Generated CSV files are written under `data/`.
 
 ### 9.2 Choosing an Operator
 

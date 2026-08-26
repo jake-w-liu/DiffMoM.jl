@@ -29,4 +29,6 @@ julia --project=. validation/paper/generate_consistency_report.jl
 `DDA_MIE_EFFECTIVE_A` accepts `1/true/yes/on` or `0/false/no/off`
 (case-insensitive). Any other value is a configuration error.
 
-Outputs are written to `data/`.
+Outputs are written to `data/`. Set `DIFFMOM_VALIDATION_OUTPUT_DIR` to route
+the Mie CSV and figure artifacts to another directory without changing the
+validator sources.

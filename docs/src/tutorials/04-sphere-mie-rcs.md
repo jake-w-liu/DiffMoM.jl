@@ -41,11 +41,11 @@ verification output prints those same values.
 
 The detailed outputs are:
 
-- `validation/mie/mie_rcs_phi0.csv`
-- `validation/mie/mie_rcs_phi90.csv`
-- `validation/mie/mie_rcs_summary.csv`
-- `validation/mie/figs/mie_rcs_phi0.png`
-- `validation/mie/figs/mie_rcs_phi90.png`
+- `data/mie_rcs_phi0.csv`
+- `data/mie_rcs_phi90.csv`
+- `data/mie_rcs_summary.csv`
+- `data/figs/mie_rcs_phi0.png`
+- `data/figs/mie_rcs_phi90.png`
 - `validation/mie/figs/mie_rcs_both_cuts.png`
 - `validation/mie/figs/mie_rcs_error.png`
 
