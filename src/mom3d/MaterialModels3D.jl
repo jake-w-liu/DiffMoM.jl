@@ -437,27 +437,54 @@ end
 material_epsr_3d(model::MagneticMaterial3D, freq_hz_or_k0) =
     material_epsr_3d(model.eps_model, freq_hz_or_k0)
 
-material_epsr_3d(model::DrudePermittivity3D, freq_hz_or_k0) =
-    drude_epsr_3d(freq_hz_or_k0;
-                  eps_inf=model.eps_inf,
-                  plasma_freq_hz=model.plasma_freq_hz,
-                  gamma_hz=model.gamma_hz,
-                  passive=model.passive)
+function _material_dispersive_response_3d(
+        model::DrudePermittivity3D,
+        freq_hz_or_k0,
+        label::AbstractString)
+    value = drude_epsr_3d(freq_hz_or_k0;
+                          eps_inf=model.eps_inf,
+                          plasma_freq_hz=model.plasma_freq_hz,
+                          gamma_hz=model.gamma_hz,
+                          passive=false)
+    model.passive && _validate_passive_scalar_3d(value, label)
+    return value
+end
 
-material_epsr_3d(model::LorentzPermittivity3D, freq_hz_or_k0) =
-    lorentz_epsr_3d(freq_hz_or_k0;
-                    eps_inf=model.eps_inf,
-                    strength=model.strength,
-                    resonance_freq_hz=model.resonance_freq_hz,
-                    gamma_hz=model.gamma_hz,
-                    passive=model.passive)
+function _material_dispersive_response_3d(
+        model::LorentzPermittivity3D,
+        freq_hz_or_k0,
+        label::AbstractString)
+    value = lorentz_epsr_3d(freq_hz_or_k0;
+                            eps_inf=model.eps_inf,
+                            strength=model.strength,
+                            resonance_freq_hz=model.resonance_freq_hz,
+                            gamma_hz=model.gamma_hz,
+                            passive=false)
+    model.passive && _validate_passive_scalar_3d(value, label)
+    return value
+end
 
-material_epsr_3d(model::DebyePermittivity3D, freq_hz_or_k0) =
-    debye_epsr_3d(freq_hz_or_k0;
-                  eps_static=model.eps_static,
-                  eps_inf=model.eps_inf,
-                  tau_s=model.tau_s,
-                  passive=model.passive)
+function _material_dispersive_response_3d(
+        model::DebyePermittivity3D,
+        freq_hz_or_k0,
+        label::AbstractString)
+    value = debye_epsr_3d(freq_hz_or_k0;
+                          eps_static=model.eps_static,
+                          eps_inf=model.eps_inf,
+                          tau_s=model.tau_s,
+                          passive=false)
+    model.passive && _validate_passive_scalar_3d(value, label)
+    return value
+end
+
+material_epsr_3d(
+    model::Union{
+        DrudePermittivity3D,
+        LorentzPermittivity3D,
+        DebyePermittivity3D,
+    },
+    freq_hz_or_k0,
+) = _material_dispersive_response_3d(model, freq_hz_or_k0, "eps_r")
 
 """
     material_mur_3d(model, freq_hz_or_k0)
@@ -486,14 +513,14 @@ material_mur_3d(model::TensorPermeability3D, freq_hz_or_k0) = begin
     model.mu_r
 end
 
-material_mur_3d(model::DrudePermittivity3D, freq_hz_or_k0) =
-    material_epsr_3d(model, freq_hz_or_k0)
-
-material_mur_3d(model::LorentzPermittivity3D, freq_hz_or_k0) =
-    material_epsr_3d(model, freq_hz_or_k0)
-
-material_mur_3d(model::DebyePermittivity3D, freq_hz_or_k0) =
-    material_epsr_3d(model, freq_hz_or_k0)
+material_mur_3d(
+    model::Union{
+        DrudePermittivity3D,
+        LorentzPermittivity3D,
+        DebyePermittivity3D,
+    },
+    freq_hz_or_k0,
+) = _material_dispersive_response_3d(model, freq_hz_or_k0, "mu_r")
 
 material_mur_3d(model::MagneticMaterial3D, freq_hz_or_k0) =
     material_mur_3d(model.mu_model, freq_hz_or_k0)

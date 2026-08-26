@@ -379,7 +379,8 @@ Evaluate a material's relative permeability at a frequency scale. Static models
 validation. The dispersive response objects `DrudePermittivity3D`,
 `LorentzPermittivity3D`, and `DebyePermittivity3D` use the argument as frequency
 in Hz when supplied as a permeability model. A `MagneticMaterial3D` delegates to
-its `mu_model`.
+its `mu_model`. Passivity errors identify the response as `mu_r`, even though
+the shared dispersive object type is named `Permittivity3D`.
 
 **Parameters:**
 

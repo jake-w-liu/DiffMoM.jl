@@ -128,6 +128,23 @@ using .DiffMoM
         @test material_mur_3d(dispersive_magnetic, 1.0) ==
               material_epsr_3d(mu_model, 1.0)
     end
+    active_at_evaluation = LorentzPermittivity3D(
+        1.0, 0.5 - 1.0im, 1.0, 0.01)
+    eps_passivity_error = try
+        material_epsr_3d(active_at_evaluation, 2.0)
+        ""
+    catch err
+        sprint(showerror, err)
+    end
+    mu_passivity_error = try
+        material_mur_3d(active_at_evaluation, 2.0)
+        ""
+    catch err
+        sprint(showerror, err)
+    end
+    @test occursin("eps_r violates", eps_passivity_error)
+    @test occursin("mu_r violates", mu_passivity_error)
+    @test !occursin("eps_r", mu_passivity_error)
 
     adjacent_frequency = prevfloat(1.0)
     adjacent_drude_reference = setprecision(BigFloat, 512) do
