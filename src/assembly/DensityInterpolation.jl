@@ -275,13 +275,63 @@ Compute the derivative ∂Z_penalty/∂ρ̄_t for triangle t:
 
 This is exact and closed-form (no finite differences needed).
 """
+function _scale_density_derivative(
+        coefficient::ComplexF64,
+        matrix::LocalMassMatrix,
+        triangle::Int)
+    return coefficient * matrix
+end
+
+function _scale_density_derivative(
+        coefficient::ComplexF64,
+        matrix::SparseArrays.AbstractSparseMatrixCSC,
+        triangle::Int)
+    derivative = SparseMatrixCSC{ComplexF64,Int}(
+        size(matrix, 1),
+        size(matrix, 2),
+        Vector{Int}(matrix.colptr),
+        Vector{Int}(matrix.rowval),
+        Vector{ComplexF64}(undef, nnz(matrix)),
+    )
+    input_values = nonzeros(matrix)
+    output_values = nonzeros(derivative)
+    @inbounds for index in eachindex(input_values, output_values)
+        output_values[index] = _checked_number_product(
+            ComplexF64,
+            coefficient,
+            input_values[index],
+            "density derivative for triangle $triangle",
+            index,
+        )
+    end
+    dropzeros!(derivative)
+    return derivative
+end
+
+function _scale_density_derivative(
+        coefficient::ComplexF64,
+        matrix::AbstractMatrix,
+        triangle::Int)
+    derivative = Matrix{ComplexF64}(undef, size(matrix))
+    @inbounds for index in eachindex(derivative, matrix)
+        derivative[index] = _checked_number_product(
+            ComplexF64,
+            coefficient,
+            matrix[index],
+            "density derivative for triangle $triangle",
+            index,
+        )
+    end
+    return derivative
+end
+
 function assemble_dZ_drhobar(Mt::Vector{<:AbstractMatrix},
                              rho_bar::AbstractVector{<:Real},
                              config::DensityConfig, t::Int)
     1 <= t <= length(Mt) || throw(BoundsError(Mt, t))
     _validate_density_mass_inputs(Mt, rho_bar)
     coefficient = _density_derivative_coefficient(rho_bar[t], config)
-    derivative = coefficient * Mt[t]
+    derivative = _scale_density_derivative(coefficient, Mt[t], t)
     _density_matrix_entries_are_finite(derivative) ||
         throw(OverflowError(
             "density derivative for triangle $t contains entries outside " *

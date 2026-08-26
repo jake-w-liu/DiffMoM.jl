@@ -711,6 +711,35 @@ println("\n── Test 38: DensityInterpolation ──")
         end
         @test !iszero(derivative_reference)
         @test recovered_derivative[1, 1] == derivative_reference
+
+        derivative_scale = sqrt(floatmax(Float64))
+        derivative_config = DensityConfig(
+            1.0,
+            derivative_scale + 0.5 * derivative_scale * im,
+            0.5,
+        )
+        derivative_mass_value =
+            -1.2 * derivative_scale - 0.4 * derivative_scale * im
+        derivative_coefficient = DiffMoM._density_derivative_coefficient(
+            0.5, derivative_config)
+        scaled_derivative_reference = setprecision(BigFloat, 4352) do
+            ComplexF64(
+                Complex{BigFloat}(derivative_coefficient) *
+                Complex{BigFloat}(derivative_mass_value))
+        end
+        derivative_matrices = (
+            reshape(ComplexF64[derivative_mass_value], 1, 1),
+            sparse(
+                [1], [1], ComplexF64[derivative_mass_value], 1, 1),
+            LocalMassMatrix(
+                1, [1], [1], ComplexF64[derivative_mass_value]),
+        )
+        for derivative_matrix in derivative_matrices
+            scaled_derivative = assemble_dZ_drhobar(
+                [derivative_matrix], [0.5], derivative_config, 1)
+            @test scaled_derivative[1, 1] == scaled_derivative_reference
+            @test isfinite(scaled_derivative[1, 1])
+        end
     end
 
     # ── E: Dimension mismatch assertion ──

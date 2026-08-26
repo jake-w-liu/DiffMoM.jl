@@ -395,6 +395,45 @@ end
     return converted
 end
 
+@noinline function _checked_number_product_bigfloat(
+        ::Type{T},
+        first::Number,
+        second::Number,
+        label::AbstractString,
+        index) where {T<:Number}
+    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        value = Complex{BigFloat}(first) * Complex{BigFloat}(second)
+        return _local_mass_convert_bigfloat(T, value, label, index)
+    end
+end
+
+@inline function _checked_number_product(
+        ::Type{T},
+        first::Number,
+        second::Number,
+        label::AbstractString,
+        index) where {T<:Number}
+    product = convert(T, first * second)
+    real_type = _local_mass_ieee_real_type(T)
+    needs_exact = !_local_mass_finite(product) ||
+                  (!iszero(first) && !iszero(second) && iszero(product))
+    if !needs_exact && real_type !== nothing &&
+       !iszero(first) && !iszero(second)
+        needs_exact = _local_mass_extreme_factor(first, real_type) ||
+                      _local_mass_extreme_factor(second, real_type)
+        real_magnitude, imag_magnitude =
+            _local_mass_product_component_bounds(first, second)
+        needs_exact |= !isfinite(real_magnitude) ||
+                       !isfinite(imag_magnitude) ||
+                       _local_mass_reduction_requires_exact(
+                           product, real_magnitude, imag_magnitude,
+                           2, real_type)
+    end
+    return needs_exact ?
+           _checked_number_product_bigfloat(
+               T, first, second, label, index) : product
+end
+
 function Base.getindex(M::LocalMassMatrix{T}, i::Int, j::Int) where {T<:Number}
     (1 <= i <= M.n && 1 <= j <= M.n) || throw(BoundsError(M, (i, j)))
     @inbounds for k in eachindex(M.vals)
