@@ -50,7 +50,9 @@ function _multiple_excitation_profile_work_bytes(
         total += BigInt(sizeof(SVector{2,Float64}) + sizeof(Float64)) * Nq
     end
     total += BigInt(sizeof(ComplexF64)) * N * temporary_rhs_count
-    total += BigInt(2 * sizeof(ComplexF64)) * max_quadrature_points
+    total += BigInt(2) * (
+        sizeof(ComplexF64) + sizeof(_ExcitationSurfacePrimitive)) *
+        max_quadrature_points
     total <= typemax(Int) ||
         throw(ArgumentError(
             "multiple-excitation raw-workspace estimate overflows Int"))

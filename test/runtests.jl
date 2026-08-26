@@ -6148,6 +6148,10 @@ multiple_excitation_nq = length(tri_quad_rule(3)[2])
 multiple_excitation_work_bytes = DiffMoM._multiple_excitation_work_bytes(
     rwg_exc.nedges, 2, ntriangles(mesh_exc), multiple_excitation_nq,
     multiple_excitation_bytes)
+@test multiple_excitation_work_bytes >=
+      multiple_excitation_bytes +
+      2multiple_excitation_nq *
+      sizeof(DiffMoM._ExcitationSurfacePrimitive)
 multiple_excitation_terms = DiffMoM._multiple_excitation_term_count(
     rwg_exc.nedges, 2, multiple_excitation_nq)
 @test_throws ArgumentError assemble_multiple_excitations(
