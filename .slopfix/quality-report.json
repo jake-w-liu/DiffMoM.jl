@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "kind": "slopfix-quality-report",
-  "generated_at": "2026-08-25T18:16:11+00:00",
+  "generated_at": "2026-08-28T13:36:29+00:00",
   "quality_model": "ISO/IEC 25010:2023",
   "profile": "julia",
   "root": "/Users/jake/EMPIRE/codes/DiffMoM.jl",
-  "config_sha256": "498bc4d85e2a60fe7fbd9448c4b06439ea841263a2c4adf819f31c3fdd2c76f6",
+  "config_sha256": "9c1692979a80e9b8c22ea7ce71854c36d647a607d12e5e3e1435e4da2d5b8f7d",
   "partial": false,
   "selected_gate_ids": [
     "julia-tests",
@@ -106,22 +106,27 @@
       "message": "exit code 0",
       "command": [
         "julia",
+        "--project=.",
         "--startup-file=no",
+        "--check-bounds=yes",
         "-e",
-        "using Pkg, TOML; root = abspath(ARGS[1]); project = let candidates = [joinpath(root, \"Project.toml\"), joinpath(root, \"JuliaProject.toml\")]; existing = filter(isfile, candidates); isempty(existing) && error(\"no Julia project file\"); first(existing); end; name = get(TOML.parsefile(project), \"name\", nothing); name isa String || error(\"Julia package project has no string name\"); mktempdir() do env; Pkg.activate(env); Pkg.develop(Pkg.PackageSpec(path=root)); Pkg.test(Pkg.PackageSpec(name=name)); end",
-        "."
+        "using Pkg; Pkg.test()"
       ],
-      "executable": "/Users/jake/.juliaup/bin/julia",
+      "executable": "/Users/jake/.julia/juliaup/julia-1.12.7+0.aarch64.apple.darwin14/Julia-1.12.app/Contents/Resources/julia/bin/julia",
       "cwd": ".",
-      "duration_seconds": 470.273,
+      "duration_seconds": 718.9,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
-        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tail": "",
+        "truncated": false
       },
       "stderr": {
-        "bytes": 31239,
-        "sha256": "db464980881774e0b520a737c04fbb4f10d7fee30d0eaa8d98d32fcf53f037a2"
+        "bytes": 49441,
+        "sha256": "c0ad7a55f36fcc22d8347fb16e46d4810d850d96e54a8cce73593f24f7b51292",
+        "tail": "directions\n  Max radial E-field component: 3.7669445244887595e-16\n  Q is Hermitian PSD \u2713\n  Objective consistency (I\u2020QI vs direct projected power): 2.6618741751824104e-16\n  PASS \u2713\n\n\u2500\u2500 Test 6b: Scattered near-field evaluation \u2500\u2500\n  Near-field linearity rel. error: 2.8830327835059753e-16\n  Near-field far-zone rel. error: 0.009293386733102928\n  Near-singular branch max rel. error vs refined reference: 0.01852658071143987\n  PASS \u2713\n\n\u2500\u2500 Test 6c: Total electric-field evaluation \u2500\u2500\n  Total minus scattered rel. error: 2.7329741178528664e-16\n  Total-field far-zone rel. error: 0.00014239973257431193\n  MultiExcitation total-field rel. error: 7.468251829247548e-17\n  PASS \u2713\n\n\u2500\u2500 Test 7: Adjoint gradient verification (CRITICAL) \u2500\u2500\n  J(\u03b8\u2080) = 0.0003666817320569647\n  |g_adj| = 5.181939561753671e-7\n  Checking adjoint vs central finite difference (h=1e-5)...\n    p=1: adj=-1.4567313067506094e-7  fd=-1.4567313550887606e-7  rel_err=3.3182612991848286e-8\n    p=2: adj=-4.7291897481632166e-8  fd=-4.729190941432421e-8  rel_err=2.5232001001231015e-7\n    p=3: adj=-1.723025915249745e-7  fd=-1.7230259910858947e-7  rel_err=4.401335404699666e-8\n    p=4: adj=-1.4082691826567468e-7  fd=-1.408269090087191e-7  rel_err=6.573285626747891e-8\n    p=5: adj=-3.5356997275074624e-8  fd=-3.535699292985407e-8  rel_err=1.228956328073732e-7\n    p=6: adj=-1.7507197818050489e-7  fd=-1.7507198484840645e-7  rel_err=3.808662949450639e-8\n    p=7: adj=-1.1516555012733954e-7  fd=-1.1516555392305957e-7  rel_err=3.29588147572551e-8\n    p=8: adj=-2.5062729832290118e-8  fd=-2.5062731829849687e-8  rel_err=7.970239407451649e-8\n    p=9: adj=-1.24472247600416e-7  fd=-1.2447224779052555e-7  rel_err=1.5273248507547437e-9\n    p=10: adj=-1.2447224760041597e-7  fd=-1.2447224779052555e-7  rel_err=1.527325063410819e-9\n  Max relative error (adjoint vs central FD): 2.5232001001231015e-7\n  PASS \u2713  (adjoint gradients match central FD)\n\n\u2500\u2500 Test 8: FD convergence rate check \u2500\u2500\n  Finite-difference comparison reached the floating-point error floor\n  PASS \u2713\n\n\u2500\u2500 Test 9: Reciprocity check \u2500\u2500\n  Symmetry error (EFIE, PEC): 0.0\n  PASS \u2713\n\n\u2500\u2500 Test 10: Optimization smoke test \u2500\u2500\n  J(iter=1)  = 0.00022749708962340755\n  J(iter=8) = 1.8291193529295608e-5\n  PASS \u2713\n\n\u2500\u2500 Test 11: Paper-consistency metrics \u2500\u2500\n  SKIPPED (optional paper-consistency artifacts not found: convergence_study.csv, gradient_verification.csv, robustness_sweep.csv, beam_steer_farfield.csv, bempp_pec_farfield.csv, julia_impedance_farfield.csv, bempp_impedance_farfield.csv, impedance_validation_matrix_summary.csv)\n\n\u2500\u2500 Test 12: Conditioning and preconditioning \u2500\u2500\n  Auto preconditioning (high threshold): enabled=false (mode=:auto (N=21 < 10000))\n  Auto preconditioning (low threshold): enabled=true (mode=:auto (N=21 >= 1))\n  Left-preconditioned solution mismatch: 8.823368917900011e-16\n  Auto-preconditioned solution mismatch: 8.823368917900011e-16\n  Regularized solution change (alpha=0.001): 3.068602855427404e-6\n  Preconditioned gradient rel. error (p=1): 5.985120173696409e-8\n  PASS \u2713\n\n\u2500\u2500 Test 13: Sphere Mie benchmark gate \u2500\u2500\n  MAE(dB): 0.20300630403117106\n  RMSE(dB): 0.23035979810867424\n  Max |\u0394|(dB): 0.404265550506949\n  Backscatter \u0394(dB): -0.415396254992924\n  PASS \u2713\n\n\u2500\u2500 Test 14: Excitation physics sanity checks \u2500\u2500\n  Plane-wave path-consistency RHS rel. diff: 0.0\n  Plane-wave vs explicit quadrature RHS rel. diff: 1.1901867885406352e-16\n  Delta-gap scaling ratio (g=1mm/g=2mm): 2.0\n  Multi-excitation linearity rel. diff: 0.0\n  ImportedExcitation(:electric_field) self-consistency rel. diff: 0.0\n  ImportedExcitation tuple-return rel. diff: 0.0\n  ImportedExcitation(:surface_current_density) map rel. diff: 0.0\n  Magnetic-dipole far-field rel. error: 0.009542686641975221\n  Electric-dipole broadside far-field rel. error: 0.005964281651709884\n  Electric-dipole axial quasi-static rel. error: 5.4905572062287234e-5\n  Loop vs equivalent magnetic-dipole field rel. diff: 0.0\n  Loop vs equivalent magnetic-dipole RHS rel. diff: 0.0\n  PASS \u2713\n\n\u2500\u2500 Test 15: Dipole/loop far-field pattern gate \u2500\u2500\n  Dipole pattern RMSE:      2.4933029155982844e-5\n  Dipole pattern max |err|: 4.0529294742515934e-5\n  Loop pattern RMSE:        1.6347771837502317e-16\n  Loop pattern max |err|:   7.771561172376096e-16\n  Dipole null max:          4.0529294742515934e-5\n  Loop null max:            1.499759782661858e-32\n  Dipole max cross-pol frac: 2.4187265853414275e-16\n  Loop max cross-pol frac:   2.0629856395443048e-16\n  Phase dev std (deg):           4.8841012952784314e-21\n  Phase max err to {0,180}\u00b0 (deg): 1.8478768000484141e-6\n  PASS \u2713\n\n\u2500\u2500 Test 16: Pattern-feed excitation gate \u2500\u2500\n  Pattern-object adapter mismatch:    0.0\n  Pattern-transpose auto-fix mismatch: 0.0\n  Pattern-feed RMSE (linear):        0.000135760893885093\n  Pattern-feed max |err| (linear):   0.00030449371752194754\n  Pattern-feed max cross-pol ratio:  0.0\n  Pattern-feed phase mean (deg):     179.9999999999919\n  Pattern-feed phase std (deg):      1.4282609067230447e-12\n  Pattern-feed phase max |err| (deg): 179.99999999999451\n  Pattern-feed phase residual std (deg): 1.2180872800935675e-12\n  Pattern-feed phase residual max |err| (deg): 3.922195901395753e-12\n  Convention conversion mismatch:    0.0\n  RHS path mismatch (pattern vs imported): 0.0\n  PASS \u2713\n\n\u2500\u2500 Test 17: GMRES solver and dispatch \u2500\u2500\n  GMRES (no precond) rel error: 6.685887339412395e-16  iters: 11\n  GMRES adjoint (no precond) rel error: 8.129411507823416e-16  iters: 11\n  solve_forward :gmres rel error: 6.685887339412395e-16\n  solve_adjoint :gmres rel error: 8.129411507823416e-16\n  matrix-free matvec rel error: 3.354472045255207e-16\n  matrix-free GMRES rel error: 8.833250019055778e-14  iters: 11\n  matrix-free adjoint GMRES rel error: 2.6214412850257764e-14\n  PASS \u2713\n\n\u2500\u2500 Test 18: GMRES adjoint gradient verification \u2500\u2500\n  Checking GMRES adjoint gradient vs central FD (h=1e-5)...\n  Max rel error (GMRES adjoint vs FD): 2.5231994648686643e-7\n  GMRES vs direct gradient rel diff: 8.555086688634538e-16\n  Max rel error (GMRES reactive gradient vs FD): 3.1233269333140113e-7\n  Reactive gradient GMRES vs direct: 5.2272415722191666e-12\n  PASS \u2713\n\n\u2500\u2500 Test 19: Near-field sparse preconditioner \u2500\u2500\n  NF spatial vs brute rel diff: 0.0\n  Diag precond + matrix-free rel error: 2.157131151157546e-13  iters: 11\n  NF precond (1.0\u03bb) rel error: 1.01011819381215e-15  iters: 1\n  NF precond + matrix-free rel error: 1.4105312140862932e-15  iters: 1\n  Iterations: no_precond=11, NF=1\n  Adjoint consistency: 7.540672729150676e-16\n  NF adjoint solve rel error: 8.148425563204668e-16  iters: 1\n  PASS \u2713\n\n\u2500\u2500 Test 20: Right preconditioning \u2500\u2500\n  NF right precond rel error: 1.085539389436445e-15  iters: 1\n  NF right adjoint rel error: 7.875802836750133e-16  iters: 1\n  PASS \u2713\n\n\u2500\u2500 Test 21: Optimization with GMRES solver \u2500\u2500\n  First-iteration J agreement (lbfgs): 4.765784803138638e-16\n  First-iteration J_ratio agreement (directivity): 2.44239470144289e-16\n  PASS \u2713\n\n\u2500\u2500 Test 22: Regression \u2014 default solver=:direct \u2500\u2500\n  All defaults unchanged\n  PASS \u2713\n\n\u2500\u2500 Test 23: NF-preconditioned optimization \u2500\u2500\n  NF preconditioner: cutoff=0.0999, nnz=100.0%\n  First-iteration J agreement (lbfgs, NF): 1.1914462007846595e-16\n  NF-preconditioned gradient max rel error vs FD: 1.0736532670177123e-7\n  First-iteration J_ratio agreement (directivity, NF): 4.88478940288578e-16\n  nf_preconditioner=nothing matches unpreconditioned: 0.0\n  PASS \u2713\n\n\u2500\u2500 Test 24: Cluster tree construction \u2500\u2500\n  Tree: 7 nodes, 4 leaves\n  PASS \u2713\n\n\u2500\u2500 Test 25: ACA low-rank approximation accuracy \u2500\u2500\n  Fallback block size: 37 x 37, ACA rank: 15, rel error: 4.248700629221649e-5\n  PASS \u2713\n\n\u2500\u2500 Test 26: ACA operator matvec accuracy \u2500\u2500\n  Dense blocks: 16, Low-rank blocks: 0\n  Matvec relative error: 2.1443556500474823e-15\n  Adjoint matvec relative error: 1.913907598603881e-15\n  PASS \u2713\n\n\u2500\u2500 Test 27: ACA operator solve (forward + adjoint) \u2500\u2500\n  Forward solve relative error vs direct: 1.3877432898106124e-15\n  GMRES iterations: 1\n  Adjoint solve relative error: 2.306839635961831e-15\n  PASS \u2713\n\n\u2500\u2500 Test 28: solve_scattering workflow \u2500\u2500\n  Auto (dense_direct) vs manual: rel_err=1.6001200678804842e-15\n  Forced ACA vs dense direct: rel_err=2.6601991370889083e-15\n  Forced dense_gmres vs direct: rel_err=1.3327840305914031e-15\n  PASS \u2713\n\n\u2500\u2500 Test 29: Physical Optics (PO) solver \u2500\u2500\n  Illumination (wave -z on +z plate): 50 / 50\n  Illumination (wave +z on +z plate): 0 / 50\n  PO specular RCS: 2.92 dBsm\n  Analytical 4\u03c0A\u00b2/\u03bb\u00b2: 3.04 dBsm\n  Error: 0.12 dB\n  MoM specular RCS: 2.27 dBsm\n  MoM vs PO specular diff: 0.65 dB\n  PASS \u2713\n\n\u2500\u2500 Test 30: ILU preconditioner \u2500\u2500\n  30a: ILU preconditioner built \u2014 nnz=87.2%, \u03c4=0.001\n  30b: ILU GMRES \u2014 7 iters, rel error 4.16e-9\n  30c: LU GMRES \u2014 7 iters (ILU: 7 iters)\n  30d: Matrix-free ILU build \u2014 nnz=87.2%\n  30e: ILU adjoint GMRES \u2014 7 iters, rel error 4.16e-9\n  30f: ILU preconditioner adjoint identity \u2014 1.95e-15\n  PASS \u2713\n\n--- Test 31: MLFMA operator ---\n  Setup: 6\u00d76 plate, N=96, freq=3.0 GHz\n  31a: Octree \u2014 3 levels, 16 leaf boxes\n  31a: PASS \u2014 no neighbor/interaction_list overlaps\n  31b: Near-field accuracy \u2014 checked 3626 entries, max rel error = 0.0\n  31b: PASS\n  31c: MLFMA matvec \u2014 rel error = 0.002\n  31c: PASS\n  31d: MLFMA adjoint identity \u2014 rel error = 1.7e-15\n  31d: PASS\n  31e: MLFMA+GMRES \u2014 8 iters, sol rel error = 0.00346\n  31e: PASS\n  Reordering Z_near to MLFMA ordering...\n  Running sparse LU on reordered matrix...\n  LU done in 0.0s\n  31f: Loaded MLFMA preconditioner \u2014 5 iters, residual = 2.62e-5\n  31f: PASS\n  Block-diag preconditioner: 16 blocks, avg 6 BFs/block, 0.0 MB\n  Block-diag preconditioner: 16 blocks, avg 6 BFs/block, 0.0 MB\n  Loaded block-diag preconditioner: 16 blocks, avg 6 BFs/block, 0.0 MB\n  PASS \u2713\n\n\u2500\u2500 Test 32: Mesh I/O formats and geometry coverage \u2500\u2500\n  32a: write_obj_mesh round-trip ...\n  32a: PASS\n  32b: triangle_area explicit test ...\n  32b: PASS\n  32c: STL binary round-trip ...\n  32c: PASS\n  32d: STL ASCII round-trip ...\n  32d: PASS\n  32e: STL vertex merging ...\n  32e: PASS\n  32f: MSH v2 import ...\n  32f: PASS\n  32g: MSH v4 import ...\n  32g: PASS\n  32h: Unified read_mesh / write_mesh dispatcher ...\n  32h: PASS\n  32i: convert_cad_to_mesh (gmsh check) ...\n  32i: SKIP (gmsh available but no test CAD file) \u2014 presence verified\n  32j: Closed-surface mesh workflow ...\n  32j: PASS\n  32k: mesh_resolution_ok criteria ...\n  32k: PASS\n  32l: STL ASCII write round-trip ...\n  32l: PASS\n  PASS \u2713\n\n\u2500\u2500 Test 33: Spatial patch assignment \u2500\u2500\n  33a: Grid-based partitioning ...\n    18 triangles \u2192 6 patches\n  33a: PASS\n  33b: Region-based partitioning ...\n    Region 1 (y>=0): 9 tris,  Region 2 (y<0): 9 tris\n  33b: PASS\n  33c: Sphere and box predicates ...\n  33c: PASS\n  33d: Uniform k-means partitioning ...\n    Requested 5 patches \u2192 got 5\n  33d: PASS\n  PASS \u2713\n\n\u2500\u2500 Test 34: CompositeOperator \u2500\u2500\n  34a: Forward matvec accuracy ...\n    Forward matvec relative error: 2.1465968637697927e-16\n  34a: PASS\n  34b: Adjoint matvec accuracy ...\n    Adjoint matvec relative error: 1.650219840368248e-16\n  34b: PASS\n  34c: Reactive mode ...\n  34c: PASS\n  34d: GMRES solve via composite operator ...\n    GMRES vs direct relative diff: 4.80280263449265e-16\n  34d: PASS\n  34e: solve_adjoint_rhs ...\n    GMRES adjoint_rhs vs direct: 7.263233131043615e-16\n  34e: PASS\n  PASS \u2713\n\n\u2500\u2500 Test 35: Multi-angle RCS optimization \u2500\u2500\n  35a: direction_mask ...\n    +z mask: 36 pts,  -z mask: 36 pts\n  35a: PASS\n  35b: build_multiangle_configs ...\n  35b: PASS\n  35c: optimize_multiangle_rcs (5 iterations) ...\n    J: 0.0001767 \u2192 3.088e-5\n    |g|: 3.247e-7 \u2192 2.407e-8\n  35c: PASS\n  35d: smoothmax_log normalized objective ...\n    smoothmax \u03a6: 0.1155 \u2192 -0.2042\n  35d: PASS\n  PASS \u2713\n\n\u2500\u2500 Test 36: MLFMA + optimizer integration \u2500\u2500\n  36a: Build icosphere + MLFMA operator ...\n    Icosphere: 162 verts, 320 tris, 480 RWG\n    MLFMA operator built: (480, 480)\n  36a: PASS\n  36b: Composite operator + MLFMA ...\n    Icosphere: 26 spatial patches\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n    Forward solve OK, |I| = 0.03339\n  36b: PASS\n  36c: Adjoint solve with MLFMA composite ...\n    Adjoint solve OK, |\u03bb| = 552.0\n  36c: PASS\n  36d: Multi-angle RCS + MLFMA (3 iterations) ...\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n    J: 7.578e-5 \u2192 1.474e-6\n    |g|: 1.72e-7 \u2192 5.952e-8\n  36d: PASS\n  36e: MLFMA adaptive line-search trial preconditioner reuse ...\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n  Reordering Z_near to MLFMA ordering...\n  Running ILU(\u03c4=0.01) on reordered matrix (230396 nnz)...\n  ILU done in 0.0s\n    builder calls: 3 for 3 iterations\n  36e: PASS\n  PASS \u2713\n\nTest 43: Graded mesh generation\n  Center/edge area ratio: 12.6\n  PASS \u2713\n\nTest 44: Analytical integral 1/R\n  S(centroid) = 2.40723\n  S(vertex) = 1.24645\n  Scaling test: PASS\n  S(centroid, h=0.5) = 0.851574\n  Off-plane tests: PASS\n  PASS \u2713\n\nTest 45: Adjacent-cell near-singular integration\n  Z size: (40, 40), max|Z|=0.2\n  Relative symmetry error: 0.0%\n  Adjacent pairs: 40\n  High-order quad points: 7 (standard: 4)\n  Adjacency storage: 6184 \u2192 101224 bytes (200 \u2192 3200 triangles)\n  Quad convergence (order 3\u21924): 2.5971% relative diff\n  PASS \u2713\n\n\u2500\u2500 Test 37: PeriodicGreens (Helmholtz-Ewald) \u2500\u2500\nTest Summary:                    | Pass  Total  Time\nPeriodicGreens (Helmholtz-Ewald) |  123    123  0.7s\n  PASS \u2713\n\n\u2500\u2500 Test 38: DensityInterpolation \u2500\u2500\nTest Summary:        | Pass  Total  Time\nDensityInterpolation | 1384   1384  1.3s\n  PASS \u2713\n\n\u2500\u2500 Test 39: DensityFiltering \u2500\u2500\nTest Summary:    | Pass  Total  Time\nDensityFiltering |  160    160  1.7s\n  PASS \u2713\n\n\u2500\u2500 Test 40: DensityAdjoint \u2500\u2500\n    Max adjoint vs FD relative error: 5.22e-10\n    Reactive Z_max adjoint vs FD relative error: 2.41e-10\nTest Summary:  | Pass  Total   Time\nDensityAdjoint |   30     30  13.4s\n  PASS \u2713\n\n\u2500\u2500 Test 41: PeriodicEFIE \u2500\u2500\nTest Summary: | Pass  Total   Time\nPeriodicEFIE  |  101    101  11.2s\n  PASS \u2713\n\n\u2500\u2500 Test 42: PeriodicMetrics \u2500\u2500\nTest Summary:   | Pass  Total  Time\nPeriodicMetrics |  729    729  7.4s\n  PASS \u2713\nTest Summary: | Pass  Total  Time\n2D TM MoM     |  272    272  6.0s\nTest Summary:             | Pass  Total  Time\n3D material model helpers |   53     53  1.1s\n\n\u2500\u2500 Test 46: 3D vector material DDA solver \u2500\u2500\nTest Summary:                 | Pass  Total   Time\n3D vector material DDA solver |  364    364  13.1s\n  PASS \u2713\n\n-- Test: 3D DDA material adjoint sensitivities --\nTest Summary:                         | Pass  Total  Time\n3D DDA material adjoint sensitivities |   30     30  1.8s\n  PASS\n\n\u2500\u2500 Test 47: FFT-accelerated 3D DDA/EM-DDA matvec \u2500\u2500\nTest Summary:                        | Pass  Total  Time\nFFT-accelerated 3D DDA/EM-DDA matvec |   92     92  9.5s\n  PASS\n\n\u2500\u2500 Test 48: Coupled electric-magnetic 3D DDA solver \u2500\u2500\nTest Summary:                           | Pass  Total   Time\nCoupled electric-magnetic 3D DDA solver |  257    257  14.3s\n  PASS\n\n\u2500\u2500 Test 49: Dielectric 3D SIE assembly/solve \u2500\u2500\nTest Summary:                    | Pass  Total  Time\nDielectric 3D SIE assembly/solve |  144    144  8.6s\nTest Summary:                                       | Pass  Total  Time\nPMCHWT vs Muller currents agree (dielectric sphere) |   10     10  4.0s\n  PASS\n\n============================================================\nALL 52 TESTS PASSED\n============================================================\n     Testing DiffMoM tests passed \n",
+        "truncated": true
       },
       "protected_paths_changed": []
     },
@@ -146,15 +151,15 @@
       ],
       "executable": "/opt/homebrew/bin/python3",
       "cwd": ".",
-      "duration_seconds": 3.25,
+      "duration_seconds": 3.337,
       "exit_code": 0,
       "stdout": {
-        "bytes": 0,
-        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        "bytes": 604,
+        "sha256": "4b1875afeb35811f09e4a5dd354a8a93d51a271ccc380d3bda171edfdb5ead5f"
       },
       "stderr": {
-        "bytes": 112,
-        "sha256": "ffb1ac44907c7d347702de0508ce24f0be07dd395e20a9ab02fc470981fb6dfe"
+        "bytes": 119,
+        "sha256": "2efad0fcfca624646007fed8b7d05eec2747a4a772d252e3341d0fd526a59250"
       },
       "protected_paths_changed": []
     },
@@ -201,17 +206,17 @@
         "using Pkg; root = abspath(ARGS[1]); mktempdir() do env; Pkg.activate(env); Pkg.develop(Pkg.PackageSpec(path=root)); Pkg.instantiate(); Pkg.precompile(); end",
         "."
       ],
-      "executable": "/Users/jake/.juliaup/bin/julia",
+      "executable": "/Users/jake/.julia/juliaup/julia-1.12.7+0.aarch64.apple.darwin14/Julia-1.12.app/Contents/Resources/julia/bin/julia",
       "cwd": ".",
-      "duration_seconds": 497.113,
+      "duration_seconds": 250.63,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 23969,
-        "sha256": "2b6d1ae3eb1d88fcaa32c7cb0a9c6f4f33a25afbfec9508c6e518f071ed09df0"
+        "bytes": 24008,
+        "sha256": "32da25b7bfed763896bb602e6d97027414f0c584f4f6d632b9c8fa546e74dd39"
       },
       "protected_paths_changed": []
     },
@@ -290,17 +295,17 @@
         "--startup-file=no",
         "docs/make.jl"
       ],
-      "executable": "/Users/jake/.juliaup/bin/julia",
+      "executable": "/Users/jake/.julia/juliaup/julia-1.12.7+0.aarch64.apple.darwin14/Julia-1.12.app/Contents/Resources/julia/bin/julia",
       "cwd": ".",
-      "duration_seconds": 20.515,
+      "duration_seconds": 140.689,
       "exit_code": 0,
       "stdout": {
         "bytes": 0,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr": {
-        "bytes": 1719,
-        "sha256": "bfe59fe16706b7e2dbdb408c5b4ffcba92a1ba00c342de4d9e4800d59ef61f68"
+        "bytes": 7173,
+        "sha256": "c6f4c3f3b0140acd3e39fc323d69f198a13d2edabbdce32f538b5833c7c02f1e"
       },
       "protected_paths_changed": []
     },
