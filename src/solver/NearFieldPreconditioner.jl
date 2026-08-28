@@ -944,7 +944,9 @@ end
 Build a preconditioner by extracting the dense (inadmissible) blocks that are
 already computed inside the ACA H-matrix operator.  This avoids recomputing
 any EFIE entries — the near-field matrix is assembled directly from the block
-data using the cluster-tree permutation.
+data using the cluster-tree permutation. With `factorization=:diag`, the
+Jacobi entries are evaluated by the exact EFIE evaluator backed by the
+operator's assembly cache, so no sparse triplet payload is materialized.
 """
 function build_nearfield_preconditioner(A_aca::ACAOperator;
                                          factorization::Symbol=:lu,
@@ -954,6 +956,14 @@ function build_nearfield_preconditioner(A_aca::ACAOperator;
     _validate_preconditioner_factorization(factorization, ilu_tau)
     N = A_aca.N
     perm = A_aca.tree.perm   # tree-order → original index
+
+    # Jacobi needs only the exact EFIE diagonal available through the ACA
+    # operator's assembly cache. Avoid materializing every dense near-field
+    # block as sparse triplets merely to discard its off-diagonal entries.
+    if factorization == :diag
+        return _build_diagonal_preconditioner_data(
+            (i, _) -> efie_entry(A_aca, i, i), N, Inf)
+    end
 
     # Pre-allocate triplets: dense blocks tile the near field without overlap
     budget = _nearfield_triplet_budget(max_triplet_bytes)

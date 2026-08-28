@@ -500,7 +500,9 @@ exact_efie_value = efie_entry(A, i, j)
 
 `efie_entry(A, i, j)` remains the explicit on-demand query for the uncompressed
 EFIE entry. The ACA-specific `build_nearfield_preconditioner(A)` overload copies
-the already stored dense inadmissible blocks and does not recompute entries.
+the already stored dense inadmissible blocks for LU and ILU construction. With
+`factorization=:diag`, it evaluates only the exact EFIE diagonal and does not
+materialize a sparse-triplet payload.
 
 ---
 
@@ -597,8 +599,11 @@ println("GMRES converged in $(stats.niter) iterations")
 
 The ACA-specific `build_nearfield_preconditioner(A_aca)` overload assembles the
 sparse near field directly from stored dense inadmissible blocks, then
-factorizes it. The general geometry-and-cutoff overload treats ACA like any
-other `AbstractMatrix` and therefore extracts its compressed indexed entries.
+factorizes it for `factorization=:lu` or `:ilu`. For `factorization=:diag`, it
+evaluates the exact EFIE diagonal in $O(N)$ storage without assembling the
+off-diagonal near field. The general geometry-and-cutoff overload treats ACA
+like any other `AbstractMatrix` and therefore extracts its compressed indexed
+entries.
 
 This is efficient because:
 

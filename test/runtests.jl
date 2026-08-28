@@ -10723,6 +10723,16 @@ A_aca_op = build_aca_operator(mesh, rwg, k;
 @assert size(A_aca_op) == (N, N)
 @assert A_aca_op.workspace.work_lock isa ReentrantLock
 
+# ACA Jacobi construction is O(N) and does not allocate the full near-field
+# sparse-triplet payload. A one-byte triplet budget therefore remains valid.
+aca_diag_preconditioner = build_nearfield_preconditioner(
+    A_aca_op; factorization=:diag, max_triplet_bytes=1)
+@test aca_diag_preconditioner isa DiagonalPreconditionerData
+@test isinf(aca_diag_preconditioner.cutoff)
+@test aca_diag_preconditioner.nnz_ratio == inv(Float64(N))
+@test aca_diag_preconditioner.dinv ≈
+      [inv(efie_entry(A_aca_op, i, i)) for i in 1:N] rtol=8eps(Float64)
+
 # One Green-matrix slot disables retention and reuses a bounded scratch matrix
 # without changing the assembled operator. A smaller slot fails before the
 # first regular-pair matrix allocation.
