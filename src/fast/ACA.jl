@@ -256,19 +256,22 @@ function _aca_accumulate_lowrank_error_bounds!(
     return nothing
 end
 
-function _aca_output_reduction_requires_exact(
+function _aca_output_reduction_exact_rows(
         output::Vector{ComplexF64},
         error_bounds::Vector{ComplexF64},
         term_count::Int)
+    exact_rows = nothing
     @inbounds for output_index in eachindex(output, error_bounds)
         bound = error_bounds[output_index]
         if !isfinite(real(bound)) || !isfinite(imag(bound)) ||
            _matrixfree_complex_reduction_requires_exact(
                output[output_index], real(bound), imag(bound), term_count)
-            return true
+            isnothing(exact_rows) &&
+                (exact_rows = falses(length(output)))
+            exact_rows[output_index] = true
         end
     end
-    return false
+    return exact_rows
 end
 
 """
@@ -1178,8 +1181,12 @@ end
         normal_product::Vector{ComplexF64},
         alpha_scale::Number,
         beta_scale::Number,
+        exact_rows::Union{Nothing,BitVector},
         adjoint_mode::Val{ADJOINT}) where {ADJOINT}
     N = A.N
+    !isnothing(exact_rows) && length(exact_rows) != N &&
+        throw(DimensionMismatch(
+            "exact-row mask length $(length(exact_rows)) != $N"))
     return setprecision(BigFloat, _ACA_PRODUCT_FALLBACK_PRECISION) do
         chunk_capacity = min(N, _ACA_BIGFLOAT_OUTPUT_CHUNK)
         totals = Vector{Complex{BigFloat}}(undef, chunk_capacity)
@@ -1192,12 +1199,12 @@ end
         for chunk_first in 1:_ACA_BIGFLOAT_OUTPUT_CHUNK:N
             chunk_last = min(N, chunk_first + _ACA_BIGFLOAT_OUTPUT_CHUNK - 1)
             chunk_length = chunk_last - chunk_first + 1
-            # This routine is entered only after an extreme stored factor or
-            # input was detected.  Recompute every row in the chunk: a tiny
-            # inner product may have rounded to zero before multiplication by
-            # a large low-rank factor even when the final Float64 row is
-            # ordinary and finite.
-            chunk_needs_fallback = true
+            # Extreme stored factors, inputs, or low-rank inner products can
+            # affect every row, so `exact_rows === nothing` retains the full
+            # exact fallback. Ordinary output cancellation is row-local; in
+            # that case only the certified mask is recomputed exactly.
+            chunk_needs_fallback = isnothing(exact_rows) ||
+                any(@view exact_rows[chunk_first:chunk_last])
 
             if chunk_needs_fallback
                 @inbounds for offset in 1:chunk_length
@@ -1213,6 +1220,8 @@ end
                     output_first > output_last && continue
                     input_range = block.row_range
                     for output_index in output_first:output_last
+                        !isnothing(exact_rows) &&
+                            !exact_rows[output_index] && continue
                         total = totals[output_index - chunk_first + 1]
                         local_column = output_index - first(output_range) + 1
                         for input_index in input_range
@@ -1242,6 +1251,8 @@ end
                                 Complex{BigFloat}(x_perm[input_index])
                         end
                         for output_index in output_first:output_last
+                            !isnothing(exact_rows) &&
+                                !exact_rows[output_index] && continue
                             local_column =
                                 output_index - first(output_range) + 1
                             totals[output_index - chunk_first + 1] +=
@@ -1258,6 +1269,8 @@ end
                     output_first > output_last && continue
                     input_range = block.col_range
                     for output_index in output_first:output_last
+                        !isnothing(exact_rows) &&
+                            !exact_rows[output_index] && continue
                         total = totals[output_index - chunk_first + 1]
                         local_row = output_index - first(output_range) + 1
                         for input_index in input_range
@@ -1288,6 +1301,8 @@ end
                                 Complex{BigFloat}(x_perm[input_index])
                         end
                         for output_index in output_first:output_last
+                            !isnothing(exact_rows) &&
+                                !exact_rows[output_index] && continue
                             local_row = output_index - first(output_range) + 1
                             totals[output_index - chunk_first + 1] +=
                                 Complex{BigFloat}(
@@ -1300,6 +1315,12 @@ end
             @inbounds for output_index in chunk_first:chunk_last
                 original_index = A.tree.perm[output_index]
                 normal_value = normal_product[output_index]
+                if !isnothing(exact_rows) && !exact_rows[output_index]
+                    y[original_index] = _aca_scaled_output(
+                        normal_value, y[original_index], alpha_scale,
+                        beta_scale, !include_previous, original_index)
+                    continue
+                end
                 total = alpha_big * totals[output_index - chunk_first + 1]
                 if include_previous
                     total += beta_big * Complex{BigFloat}(y[original_index])
@@ -1381,13 +1402,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAOperator,
 
         reduction_terms = N > typemax(Int) - length(ws.tmp) ?
             typemax(Int) : N + length(ws.tmp)
-        needs_fallback |= _aca_output_reduction_requires_exact(
+        exact_rows = _aca_output_reduction_exact_rows(
             y_perm, error_bounds, reduction_terms)
 
         if needs_fallback
             return _aca_product_bigfloat!(
                 y, A, x_perm, y_perm,
-                alpha_scale, beta_scale, Val(false))
+                alpha_scale, beta_scale, nothing, Val(false))
+        elseif !isnothing(exact_rows)
+            return _aca_product_bigfloat!(
+                y, A, x_perm, y_perm,
+                alpha_scale, beta_scale, exact_rows, Val(false))
         end
 
         # Un-permute y back to original order
@@ -1496,13 +1521,17 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64}, A::ACAAdjointOperator
 
         reduction_terms = N > typemax(Int) - length(ws.tmp) ?
             typemax(Int) : N + length(ws.tmp)
-        needs_fallback |= _aca_output_reduction_requires_exact(
+        exact_rows = _aca_output_reduction_exact_rows(
             y_perm, error_bounds, reduction_terms)
 
         if needs_fallback
             return _aca_product_bigfloat!(
                 y, A.op, x_perm, y_perm,
-                alpha_scale, beta_scale, Val(true))
+                alpha_scale, beta_scale, nothing, Val(true))
+        elseif !isnothing(exact_rows)
+            return _aca_product_bigfloat!(
+                y, A.op, x_perm, y_perm,
+                alpha_scale, beta_scale, exact_rows, Val(true))
         end
 
         # Un-permute

@@ -114,6 +114,11 @@ JULIA_NUM_THREADS=4 JULIA_NUM_PRECOMPILE_TASKS=1 OPENBLAS_NUM_THREADS=1 \
 
 Focused numerical evidence:
 
+- A 176-row ACA product with cancellation confined to one row matched the
+  whole-product 8704-bit reference exactly. After compilation, the selective
+  retry took 6.88 ms versus 76.99 ms for recomputing every row (11.20x on this
+  machine); the regression suite checks the exact selected-row mask and both
+  forward and adjoint numerical results.
 - The cancellation-sensitive 32-column dense-Q case allocated 20,144 bytes
   and had a 10.75 microsecond median over 100 warm runs on this machine
   (9.292–15.292 microseconds observed). The

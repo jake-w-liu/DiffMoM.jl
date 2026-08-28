@@ -10772,6 +10772,23 @@ aca_range_rows = 1:aca_range_N
 aca_range_input = fill(complex(floatmax(Float64)), aca_range_N)
 aca_range_zero = zeros(ComplexF64, aca_range_N)
 
+# A cancellation in one output row must not promote every ordinary row to the
+# allocation-heavy exact fallback. The row mask is the regression contract for
+# large ACA products that contain local cancellation in only a small subset of
+# their outputs.
+aca_selective_output = fill(1.0 + 1.0im, aca_range_N)
+aca_selective_bounds = ones(ComplexF64, aca_range_N)
+aca_selective_output[1] = 0.0 + 1.0im
+aca_selective_bounds[1] = 1.0 + 1.0im
+aca_selective_rows = DiffMoM._aca_output_reduction_exact_rows(
+    aca_selective_output, aca_selective_bounds, aca_range_N)
+@test aca_selective_rows == BitVector(
+    index == 1 for index in 1:aca_range_N)
+@test isnothing(DiffMoM._aca_output_reduction_exact_rows(
+    fill(1.0 + 1.0im, aca_range_N),
+    fill(0.5 + 0.5im, aca_range_N),
+    aca_range_N))
+
 aca_forward_dense_data = zeros(ComplexF64, aca_range_N, aca_range_N)
 aca_forward_dense_data[1, 1] = 2.0
 aca_forward_dense_data[1, 2] = -2.0
