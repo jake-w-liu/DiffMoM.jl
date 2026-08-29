@@ -3413,7 +3413,9 @@ end
 Compute electrical mesh-resolution diagnostics for MoM at frequency `freq_hz`.
 
 The core criterion is `h_max <= λ / points_per_wavelength`, where `h_max` is
-the maximum unique edge length.
+the maximum unique edge length. Comparisons admit at most 64 floating-point
+steps of roundoff at the boundary so an analytically exact target is not
+rejected after coordinate transforms and Euclidean-norm evaluation.
 """
 function mesh_resolution_report(mesh::TriMesh, freq_hz::Real;
                                 points_per_wavelength::Real=10.0,
@@ -3440,7 +3442,7 @@ function mesh_resolution_report(mesh::TriMesh, freq_hz::Real;
     h_mean = _finite_nonnegative_mean(lens_sorted)
     h_max = lens_sorted[end]
 
-    meets = h_max <= target_h
+    meets = _mesh_resolution_at_or_below(h_max, target_h)
 
     return (
         freq_hz = freq_hz_f,
@@ -3462,6 +3464,11 @@ function mesh_resolution_report(mesh::TriMesh, freq_hz::Real;
     )
 end
 
+@inline function _mesh_resolution_at_or_below(value::Float64, limit::Float64)
+    value <= limit && return true
+    return value - limit <= 64 * eps(max(value, limit))
+end
+
 """
     mesh_resolution_ok(report; criterion=:max)
 
@@ -3472,11 +3479,14 @@ Evaluate a `mesh_resolution_report` against a selected criterion:
 """
 function mesh_resolution_ok(report; criterion::Symbol=:max)
     if criterion == :max
-        return report.edge_max_m <= report.target_max_edge_m
+        return _mesh_resolution_at_or_below(
+            report.edge_max_m, report.target_max_edge_m)
     elseif criterion == :p95
-        return report.edge_p95_m <= report.target_max_edge_m
+        return _mesh_resolution_at_or_below(
+            report.edge_p95_m, report.target_max_edge_m)
     elseif criterion == :median
-        return report.edge_median_m <= report.target_max_edge_m
+        return _mesh_resolution_at_or_below(
+            report.edge_median_m, report.target_max_edge_m)
     end
     error("mesh_resolution_ok: unknown criterion=$(criterion). Use :max, :p95, or :median.")
 end

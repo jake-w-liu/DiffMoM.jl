@@ -1480,6 +1480,31 @@ report_res_before = mesh_resolution_report(mesh_edges_test, 3e8; points_per_wave
 @assert report_res_before.wavelength_m ≈ 299792458.0 / 3e8
 @assert report_res_before.edge_max_m > report_res_before.target_max_edge_m
 @assert !mesh_resolution_ok(report_res_before)
+
+# A target-sized edge can land a few ulps above its analytic length after
+# affine coordinate transforms and norm evaluation. Preserve the exact-target
+# contract without accepting a materially over-sized edge.
+resolution_boundary_xyz = Float64[
+    0.0 nextfloat(1.0, 23) 0.5
+    0.0 0.0                 eps(Float64)
+    0.0 0.0                 0.0
+]
+resolution_boundary_mesh = TriMesh(
+    resolution_boundary_xyz, reshape(Int[1, 2, 3], 3, 1))
+resolution_boundary_report = mesh_resolution_report(
+    resolution_boundary_mesh, 1.0; points_per_wavelength=1.0, c0=1.0)
+@test resolution_boundary_report.edge_max_m == nextfloat(1.0, 23)
+@test resolution_boundary_report.meets_target
+@test mesh_resolution_ok(resolution_boundary_report)
+
+resolution_oversized_report = merge(
+    resolution_boundary_report,
+    (edge_max_m=nextfloat(1.0, 65),
+     edge_p95_m=nextfloat(1.0, 65),
+     edge_median_m=nextfloat(1.0, 65)))
+@test !mesh_resolution_ok(resolution_oversized_report; criterion=:max)
+@test !mesh_resolution_ok(resolution_oversized_report; criterion=:p95)
+@test !mesh_resolution_ok(resolution_oversized_report; criterion=:median)
 @test_throws ArgumentError mesh_resolution_report(mesh_edges_test, Inf; points_per_wavelength=2.0)
 @test_throws ArgumentError mesh_resolution_report(mesh_edges_test, 3e8; points_per_wavelength=Inf)
 @test_throws ArgumentError mesh_resolution_report(
