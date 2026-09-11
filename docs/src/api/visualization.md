@@ -3,14 +3,14 @@
 ## Purpose
 
 Reference for mesh plotting helpers that produce interactive 3D wireframe views
-using [PlotlySupply.jl](https://github.com/plotly/PlotlySupply.jl). Use them to
+using [PlotlySupply.jl](https://github.com/jake-w-liu/PlotlySupply.jl). Use them to
 inspect a mesh, compare processing stages, or export a preview.
 
 ---
 
 ## When to Use
 
-- **Before simulation:** Visually verify that an imported OBJ mesh looks correct (no missing faces, no gross distortion) and that coarsening preserved the geometry.
+- **Before simulation:** Inspect the imported OBJ for missing faces, distortion, and geometry changes introduced by coarsening.
 - **During debugging:** Confirm that mesh repair (vertex merging, non-manifold removal) did not damage the surface.
 - **For publication:** Generate side-by-side comparison plots of different mesh densities.
 
@@ -27,7 +27,7 @@ Create an interactive 3D wireframe plot of a single mesh.
 | `mesh` | `TriMesh` | -- | Triangle mesh to plot. |
 | `color` | Symbol or String | `:steelblue` | Line color for the wireframe edges. Any CSS color name or hex string works (e.g., `:red`, `"#ff0000"`). |
 | `title` | `AbstractString` | `"Mesh"` | Plot title displayed above the 3D viewport. |
-| `camera` | `Tuple{Real,Real}` | `(30, 30)` | Camera view angles `(azimuth, elevation)` in degrees. `(0, 0)` looks along +x; `(0, 90)` looks straight down from +z. |
+| `camera` | `Tuple{Real,Real}` | `(30, 30)` | Camera view angles `(azimuth, elevation)` in degrees. `(0, 0)` views the origin from +x; `(0, 90)` looks straight down from +z. |
 | `linewidth` | `Real` | `0.7` | Wireframe line width in pixels. Increase to 1.0--1.5 for coarse meshes; decrease to 0.3--0.5 for dense meshes. |
 | `xlims`, `ylims`, `zlims` | Tuple or `nothing` | `nothing` | Axis limits `(min, max)` in meters. Default: auto-scaled from mesh extents. Set manually to align multiple plots. |
 | `size` | `Tuple{Int,Int}` | `(700, 500)` | Figure size `(width, height)` in pixels. |
@@ -42,7 +42,7 @@ Create an interactive 3D wireframe plot of a single mesh.
 it. To call the backend's general export function directly, import it explicitly
 with `using PlotlySupply: savefig`.
 
-**How it works:** Internally calls `mesh_wireframe_segments(mesh)` (from `Mesh.jl`) to extract all triangle edges as disconnected line segments, then renders them as a single Plotly `scatter3d` trace with `mode="lines"`. The axes use equal aspect ratio (`aspectmode = "cube"`) so the geometry is not distorted.
+**How it works:** Internally calls `mesh_wireframe_segments(mesh)` (from `Mesh.jl`) to extract all triangle edges as disconnected line segments, then renders them as a single Plotly `scatter3d` trace with `mode="lines"`. The scene uses `aspectmode = "data"`: axis lengths are proportional to their coordinate ranges, so one meter has the same displayed scale on every axis.
 
 **Example:**
 
@@ -140,9 +140,9 @@ The `camera` parameter is `(azimuth, elevation)` in degrees:
 | View | Camera Setting | Description |
 |------|---------------|-------------|
 | Default 3D | `(30, 30)` | Standard isometric-like view. Good general-purpose default. |
-| Front | `(0, 0)` | Looking along the +x axis (sees the yz-plane). |
+| Front | `(0, 0)` | Viewing the origin from +x (sees the yz-plane). |
 | Top-down | `(0, 90)` | Looking straight down from +z (sees the xy-plane). |
-| Side | `(90, 0)` | Looking along the +y axis (sees the xz-plane). |
+| Side | `(90, 0)` | Viewing the origin from +y (sees the xz-plane). |
 | Steep angle | `(45, 60)` | Emphasizes the z-dimension; good for parabolic reflectors. |
 
 ---
@@ -154,7 +154,7 @@ The `camera` parameter is `(azimuth, elevation)` in degrees:
   edges. Use the resource-limit keywords and coarsen a visualization copy when
   interaction becomes slow; do not substitute that copy for the simulation mesh
   without a convergence check.
-- **Aspect ratio:** All plots use `aspectmode = "cube"` to ensure equal scaling on all three axes. This prevents flat structures from appearing stretched.
+- **Aspect ratio:** The default `aspectmode = "data"` preserves physical coordinate scaling, including unequal axis ranges. Comparison plots also share coordinate ranges between panels. Explicit layout overrides can change these defaults.
 - **Transparent background:** The 3D scene background is transparent (`rgba(0,0,0,0)`), which works well when embedding in papers or presentations.
 
 ---

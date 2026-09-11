@@ -346,7 +346,7 @@ function _build_efie_cache(
 
     xi, wq = tri_quad_rule(quad_order)
     Nq = length(wq)
-    xi_hi, wq_hi = tri_quad_rule(7)
+    xi_hi, wq_hi = tri_quad_rule(max(7, quad_order))
     Nq_hi = length(wq_hi)
     fixed_payload_bytes = _efie_cache_fixed_payload_bytes(
         N, Nt, Nq, Nq_hi, Tcoef, TVec)

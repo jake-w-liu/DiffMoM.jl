@@ -316,9 +316,10 @@ def common_angular_arrays(
             "No common rounded angular samples were found. Regenerate both "
             "far-field artifacts on the same angular grid, then rerun this command."
         )
-    theta, phi = (
-        np.array(component, dtype=float) for component in zip(*keys, strict=True)
-    )
+    if any(len(key) != 2 for key in keys):
+        raise ValueError("Each angular key must contain exactly theta and phi")
+    theta = np.array([key[0] for key in keys], dtype=float)
+    phi = np.array([key[1] for key in keys], dtype=float)
     return (
         theta,
         phi,

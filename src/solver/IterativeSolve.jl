@@ -660,25 +660,30 @@ end
 function _enforce_true_residual_exact_work(
         exact_terms::Integer,
         exact_rows::Integer,
-        label::AbstractString)
+        label::AbstractString;
+        max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
+    limit = _validated_nonnegative_resource_limit(
+        "max_true_residual_exact_terms", max_true_residual_exact_terms)
     exact_terms >= 0 && exact_rows >= 0 ||
         error("internal exact true-residual work counts must be nonnegative")
     exact_work = BigInt(exact_terms) + exact_rows
-    exact_work <= _DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS ||
+    exact_work <= limit ||
         throw(ArgumentError(
             "$label exact true-residual work requires $exact_work terms, " *
             "exceeding the limit of " *
-            "$_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS"))
+            "$limit (max_true_residual_exact_terms)"))
     return Int(exact_work)
 end
 
 function _preflight_true_residual_exact_work(
         A::AbstractMatrix,
         fallback_rows::BitVector,
-        label::AbstractString)
+        label::AbstractString;
+        max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
     exact_terms = _true_residual_exact_term_count(A, fallback_rows)
     return _enforce_true_residual_exact_work(
-        exact_terms, count(fallback_rows), label)
+        exact_terms, count(fallback_rows), label;
+        max_true_residual_exact_terms=max_true_residual_exact_terms)
 end
 
 @noinline function _mixed_local_mass_true_residual_ratio_bigfloat(
@@ -738,6 +743,40 @@ end
     end
 end
 
+function _true_residual_component_bits(values)
+    lowest, highest = typemax(Int), typemin(Int)
+    for value in values
+        for component in (real(value), imag(value))
+            isfinite(component) || return nothing
+            iszero(component) && continue
+            component_exponent = exponent(abs(Float64(component)))
+            # A Float64 component is an integer multiple of 2^(e-52);
+            # subnormals cannot have a bit below 2^-1074.
+            lowest = min(lowest, max(component_exponent - 52, -1074))
+            highest = max(highest, component_exponent + 1)
+        end
+    end
+    return (lowest=lowest, highest=highest)
+end
+
+function _true_residual_dot_precision(A, row, x_bits, rhs_value)
+    a_bits = _true_residual_component_bits(view(A, row, :))
+    b_bits = _true_residual_component_bits((rhs_value,))
+    (a_bits === nothing || b_bits === nothing || x_bits === nothing) &&
+        return _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION
+    lower, upper = b_bits.lowest, b_bits.highest
+    if a_bits.highest != typemin(Int) && x_bits.highest != typemin(Int)
+        lower = min(lower, a_bits.lowest + x_bits.lowest)
+        # Each complex component has at most 2N real products. Their sum
+        # requires this many carry bits; one further bit covers subtraction.
+        upper = max(upper, a_bits.highest + x_bits.highest +
+                           ndigits(size(A, 2); base=2) + 1)
+    end
+    upper == typemin(Int) && return 256
+    return min(_IEEE_DENSE_PRODUCT_FALLBACK_PRECISION,
+               max(256, upper - lower + 17))
+end
+
 @noinline function _mixed_true_residual_ratio_bigfloat(
         A::AbstractMatrix,
         x::AbstractVector,
@@ -750,6 +789,27 @@ end
     residual_scale, residual_sumsq = _true_residual_scaled_sumsq(
         residual, fallback_rows; selected=false)
     rhs_scale, rhs_sumsq = _true_residual_scaled_sumsq(rhs)
+    ieee_types = Union{Float32,Float64,ComplexF32,ComplexF64}
+    adaptive = A isa Union{StridedMatrix,Adjoint{<:Any,<:StridedMatrix}} &&
+               eltype(A) <: ieee_types && eltype(x) <: ieee_types &&
+               eltype(rhs) <: ieee_types
+    x_bits = adaptive ? _true_residual_component_bits(x) : nothing
+    # Cache only when it fits the same existing workspace ceiling. The
+    # 4352-bit storage allowance conservatively bounds these 64-bit operands.
+    cache_bytes = BigInt(length(x)) *
+        (2 * _DIRECT_BIGFLOAT_BYTES_PER_REAL + sizeof(Complex{BigFloat}))
+    remaining = _DEFAULT_MAX_GMRES_WORKSPACE_BYTES -
+                _true_residual_workspace_bytes(A, length(rhs))
+    expansion_inputs = adaptive && remaining >= 2 * _RESIDUAL_EXPANSION_SLOTS * sizeof(Float64) &&
+        !any(value -> _ieee_dense_extreme_factor(value, Float64), x) &&
+        !any(value -> _ieee_dense_extreme_factor(value, Float64), rhs)
+    # FMA and FastTwoSum retain product/addition errors in a short expansion.
+    # Its components need not occupy full mantissas, so exponent span does not
+    # bound the count by span/53. Saturation uses the MPFR row path below.
+    real_parts = expansion_inputs ? Vector{Float64}(undef, _RESIDUAL_EXPANSION_SLOTS) : Float64[]
+    imag_parts = expansion_inputs ? Vector{Float64}(undef, _RESIDUAL_EXPANSION_SLOTS) : Float64[]
+    cached_x = adaptive && !expansion_inputs && cache_bytes <= remaining ?
+               [_true_residual_exact_ieee(value) for value in x] : nothing
     return setprecision(BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
         residual_squared = _true_residual_bigfloat_sumsq(
             residual_scale, residual_sumsq)
@@ -757,13 +817,28 @@ end
             rhs_scale, rhs_sumsq)
         @inbounds for row in axes(A, 1)
             if fallback_rows[row]
-                total = zero(Complex{BigFloat})
-                for column in axes(A, 2)
-                    total += Complex{BigFloat}(A[row, column]) *
-                             Complex{BigFloat}(x[column])
+                row_in_band = expansion_inputs &&
+                    !any(value -> _ieee_dense_extreme_factor(value, Float64), view(A, row, :))
+                row_residual = row_in_band ?
+                    _true_residual_expansion_row(
+                        A, row, x, rhs[row], real_parts, imag_parts) : nothing
+                if row_residual === nothing
+                    row_residual = if adaptive
+                        bits = _true_residual_dot_precision(A, row, x_bits, rhs[row])
+                        setprecision(BigFloat, bits) do
+                            _true_residual_ieee_row_bigfloat(A, row, x, rhs[row], cached_x)
+                        end
+                    else
+                        total = zero(Complex{BigFloat})
+                        for column in axes(A, 2)
+                            total += Complex{BigFloat}(A[row, column]) *
+                                     Complex{BigFloat}(x[column])
+                        end
+                        total - Complex{BigFloat}(rhs[row])
+                    end
                 end
-                residual_squared += abs2(
-                    total - Complex{BigFloat}(rhs[row]))
+                # Keep the original outer precision for norm accumulation.
+                residual_squared += abs2(row_residual)
             end
         end
         if iszero(rhs_squared)
@@ -814,7 +889,10 @@ function _true_residual_ratio(
         A::AbstractMatrix,
         x::AbstractVector,
         rhs::Vector{ComplexF64},
-        label::AbstractString)
+        label::AbstractString;
+        max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
+    exact_term_limit = _validated_nonnegative_resource_limit(
+        "max_true_residual_exact_terms", max_true_residual_exact_terms)
     base_workspace_bytes = _true_residual_workspace_bytes(A, length(rhs))
     _enforce_payload_limit(
         base_workspace_bytes,
@@ -858,7 +936,8 @@ function _true_residual_ratio(
     end
     if analysis !== nothing && any(analysis.fallback)
         _preflight_true_residual_exact_work(
-            residual_operator, analysis.fallback, label)
+            residual_operator, analysis.fallback, label;
+            max_true_residual_exact_terms=exact_term_limit)
         if residual_operator isa SparseArrays.AbstractSparseMatrixCSC
             exact_workspace_bytes = _true_residual_workspace_bytes(
                 A, length(rhs); include_sparse_transpose=true)
@@ -896,10 +975,12 @@ end
 function _assert_true_residual(A::AbstractMatrix, x::AbstractVector, rhs::AbstractVector,
                                label::AbstractString;
                                tol::Float64,
-                               factor::Float64=100.0)
+                               factor::Float64=100.0,
+                               max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
     limit = _validated_true_residual_limit(tol, factor)
     rhs_c = _as_complex_rhs(rhs)
-    relres = _true_residual_ratio(A, x, rhs_c, label)
+    relres = _true_residual_ratio(A, x, rhs_c, label;
+        max_true_residual_exact_terms=max_true_residual_exact_terms)
     isfinite(relres) && relres <= limit && return relres
     error("$label GMRES true residual too large: relative_residual=$relres, " *
           "limit=$limit, tol=$tol, factor=$factor")
@@ -927,6 +1008,9 @@ Set both checks to `false` only when intentionally inspecting a partial iterate
 and its `stats`.
 `max_workspace_bytes` bounds the raw payload of the Krylov basis, solver
 vectors, and Hessenberg/rotation storage before Krylov allocates them.
+`max_true_residual_exact_terms` defaults to 2,000,000 terms per residual
+evaluation. It bounds cancellation-sensitive matrix products plus one RHS
+term per affected row. Raising this work budget does not relax accuracy checks.
 """
 function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      preconditioner::Union{Nothing, AbstractPreconditionerData}=nothing,
@@ -939,7 +1023,10 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
                      verbose::Bool=false,
                      check_gmres_convergence::Bool=true,
                      check_true_residual::Bool=true,
-                     true_residual_factor::Float64=100.0)
+                     true_residual_factor::Float64=100.0,
+                     max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
+    exact_term_limit = _validated_nonnegative_resource_limit(
+        "max_true_residual_exact_terms", max_true_residual_exact_terms)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
     check_true_residual &&
         _validated_true_residual_limit(tol, true_residual_factor)
@@ -988,7 +1075,8 @@ function solve_gmres(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number};
     check_true_residual &&
         _assert_true_residual(
             Z, x, rhs_c, "forward";
-            tol=tol, factor=true_residual_factor)
+            tol=tol, factor=true_residual_factor,
+            max_true_residual_exact_terms=exact_term_limit)
     return x, stats
 end
 
@@ -1002,7 +1090,7 @@ end
 Solve Z† x = rhs using GMRES, with the adjoint preconditioner Z_nf⁻ᴴ.
 
 The adjoint solve uses the same restarted `memory` workspace contract as the
-forward solve.
+forward solve and the same `max_true_residual_exact_terms` work budget.
 
 This is used for the adjoint linear system in sensitivity analysis:
   Z†(θ) λ = ∂Φ/∂I*
@@ -1022,7 +1110,10 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
                               verbose::Bool=false,
                               check_gmres_convergence::Bool=true,
                               check_true_residual::Bool=true,
-                              true_residual_factor::Float64=100.0)
+                              true_residual_factor::Float64=100.0,
+                              max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
+    exact_term_limit = _validated_nonnegative_resource_limit(
+        "max_true_residual_exact_terms", max_true_residual_exact_terms)
     _validate_gmres_options(tol, maxiter, memory, precond_side)
     check_true_residual &&
         _validated_true_residual_limit(tol, true_residual_factor)
@@ -1071,6 +1162,7 @@ function solve_gmres_adjoint(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:
     check_true_residual &&
         _assert_true_residual(
             adjoint(Z), x, rhs_c, "adjoint";
-            tol=tol, factor=true_residual_factor)
+            tol=tol, factor=true_residual_factor,
+            max_true_residual_exact_terms=exact_term_limit)
     return x, stats
 end

@@ -138,7 +138,7 @@ function _scene_attr(; camera::Tuple{Real, Real},
         xaxis = _scene_axis("x (m)", xlims; guidefontsize = guidefontsize, tickfontsize = tickfontsize),
         yaxis = _scene_axis("y (m)", ylims; guidefontsize = guidefontsize, tickfontsize = tickfontsize),
         zaxis = _scene_axis("z (m)", zlims; guidefontsize = guidefontsize, tickfontsize = tickfontsize),
-        aspectmode = "cube",
+        aspectmode = "data",
         camera = attr(eye = _camera_eye(camera)),
         bgcolor = "rgba(0,0,0,0)",
     )

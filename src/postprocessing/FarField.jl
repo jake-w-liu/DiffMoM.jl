@@ -4,6 +4,7 @@
 #        = Σ_n I_n g_n(r̂)
 
 export make_sph_grid, radiation_vectors, compute_farfield, incident_farfield
+export rcs_output_map
 
 const _DEFAULT_MAX_SPH_GRID_POINTS = 2_100_000
 const _DEFAULT_MAX_SPH_GRID_RAW_BYTES = 134_400_000
@@ -622,6 +623,49 @@ function compute_farfield(G_mat::Matrix{ComplexF64}, I_coeffs::Vector{ComplexF64
         G_mat, I_coeffs, "far-field product") # (3*NΩ,)
     E = reshape(E_flat, 3, NΩ)
     return E
+end
+
+"""
+    rcs_output_map(mesh, rwg, grid, k; quad_order=3,
+                   max_work_bytes=536_870_912)
+
+Construct two orthonormal transverse far-field rows per prescribed look,
+ordered theta, phi. Reuse the canonical radiation-vector assembly and phase
+convention. Summing the squared magnitudes of each row pair gives the same
+field norm as the three Cartesian components. Grid weights do not enter RCS.
+"""
+function rcs_output_map(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
+        quad_order::Int=3, eta0=376.730313668,
+        max_work_bytes::Integer=_DEFAULT_MAX_RADIATION_WORK_BYTES,
+        max_terms::Integer=_DEFAULT_MAX_RADIATION_TERMS,
+        max_exact_work::Integer=_DEFAULT_MAX_RADIATION_EXACT_WORK)
+    looks = _validate_sph_grid(grid)
+    output_bytes = _checked_array_payload_bytes(
+        ComplexF64, 2, looks, rwg.nedges; label="transverse output map")
+    limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    other_bytes = _checked_payload_sum(
+        "transverse output map", output_bytes,
+        _checked_array_payload_bytes(ComplexF64, 16))
+    _enforce_payload_limit(other_bytes, limit, "transverse output map", "max_work_bytes")
+    cartesian = radiation_vectors(
+        mesh, rwg, grid, k; quad_order=quad_order, eta0=eta0,
+        max_output_bytes=limit - other_bytes, max_work_bytes=limit - other_bytes,
+        max_terms=max_terms, max_exact_work=max_exact_work)
+    output = Matrix{ComplexF64}(undef, 2looks, rwg.nedges)
+    frame = Matrix{ComplexF64}(undef, 2, 3)
+    for look in 1:looks
+        _, theta_direction, phi_direction = _spherical_basis(grid.theta[look], grid.phi[look])
+        frame[1, :] .= theta_direction
+        frame[2, :] .= phi_direction
+        rows = (3look - 2):(3look)
+        for edge in 1:rwg.nedges
+            projected = _finite_matrix_vector_product(
+                frame, view(cartesian, rows, edge), "transverse far-field projection")
+            output[2look-1, edge] = projected[1]
+            output[2look, edge] = projected[2]
+        end
+    end
+    return output
 end
 
 # ══════════════════════════════════════════════════════════════════════

@@ -65,6 +65,12 @@ nonpublic_qualified_accesses = Set(
 @test Docs.hasdoc(DiffMoM, :planewave_dda_3d)
 
 include("test_runtime_contract.jl")
+include("test_discretization_error.jl")
+include("test_conditioned_error.jl")
+include("test_rcs_calibration.jl")
+include("test_pn_panel.jl")
+include("test_pn_study.jl")
+include("test_residual_precision.jl")
 
 complex_vector_input = ComplexF64[1 + 2im, 3 - 4im]
 @assert DiffMoM._complex_vector_input(complex_vector_input) === complex_vector_input
@@ -6378,13 +6384,13 @@ catch
 end
 @assert thrown_cur
 @test_throws ArgumentError make_imported_excitation(
-    E_field_test; min_quad_order=8)
+    E_field_test; min_quad_order=113)
 @test_throws ArgumentError make_imported_excitation(
     E_field_test; kind=:unsupported)
 @test_throws ArgumentError assemble_excitation(
     mesh_exc, rwg_exc, imp_E; quad_order=0)
 @test_throws ArgumentError assemble_excitation(
-    mesh_exc, rwg_exc, imp_E; quad_order=8)
+    mesh_exc, rwg_exc, imp_E; quad_order=113)
 @test DiffMoM._effective_quad_order(2, 1) == 3
 
 thrown_cur_bad_dim = try
@@ -15709,10 +15715,16 @@ include("test_mom3d_adjoint.jl")
 include("test_mom3d_fft.jl")
 include("test_mom3d_em.jl")
 include("test_surface_ie3d.jl")
+include("test_matrix_columns.jl")
+include("test_composite_quadrature.jl")
+include("test_residual_work_budget.jl")
+include("test_workflow_aca_budget.jl")
+include("test_workflow_gmres_memory.jl")
+include("test_mesh_plot_aspect.jl")
 
 # ─────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────
 println("\n" * "="^60)
-println("ALL 52 TESTS PASSED")
+println("ALL TESTS PASSED")
 println("="^60)

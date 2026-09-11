@@ -9,6 +9,7 @@ Pages = [
     "basis/PeriodicGreens.jl",
     "basis/Quadrature.jl",
     "basis/RWG.jl",
+    "basis/NestedRWG.jl",
 ]
 Public = true
 Private = false

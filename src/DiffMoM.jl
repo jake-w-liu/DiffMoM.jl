@@ -50,6 +50,7 @@ include("geometry/MeshIO.jl")
 
 # Basis functions & quadrature
 include("basis/RWG.jl")
+include("basis/NestedRWG.jl")
 include("basis/Quadrature.jl")
 include("basis/Greens.jl")
 include("basis/PeriodicGreens.jl")
@@ -108,7 +109,11 @@ include("mom3d/FFTDDA3D.jl")
 include("mom3d/SurfaceIE3D.jl")
 
 # Workflow
+include("solver/RetainedSolve.jl")
 include("Workflow.jl")
+include("error_estimation/GalerkinError.jl")
+include("error_estimation/Conditioning.jl")
+include("error_estimation/Calibration.jl")
 
 # Post-processing (remaining)
 include("postprocessing/Diagnostics.jl")

@@ -8,6 +8,144 @@ export coarsen_mesh_to_target_rwg
 export mesh_unique_edges, mesh_wireframe_segments
 export mesh_resolution_report, mesh_resolution_ok
 export refine_mesh_to_target_edge, refine_mesh_for_mom
+export make_bent_slotted_panel
+
+function _panel_axis_counts(knots, spacing, limit)
+    counts = Int[]
+    for index in 1:(length(knots) - 1)
+        span = knots[index + 1] - knots[index]
+        isfinite(span) && span > 0 ||
+            throw(ArgumentError("panel boundaries are not distinct finite coordinates"))
+        ratio = span / spacing
+        isfinite(ratio) && ratio < limit ||
+            throw(ArgumentError("panel subdivision exceeds the mesh resource limit"))
+        push!(counts, max(1, ceil(Int, ratio)))
+    end
+    return counts
+end
+
+function _panel_axis_coordinates(knots, counts)
+    coordinates = Float64[]
+    sizehint!(coordinates, sum(counts) + 1)
+    for segment in eachindex(counts)
+        points = range(knots[segment], knots[segment + 1]; length=counts[segment] + 1)
+        append!(coordinates, points[1:end-1])
+    end
+    push!(coordinates, last(knots))
+    all(diff(coordinates) .> 0) ||
+        throw(ArgumentError("panel subdivision does not advance Float64 coordinates"))
+    return coordinates
+end
+
+"""
+    make_bent_slotted_panel(; panel_length=0.40, panel_width=0.30,
+        flange_width=0.15, bend_angle=pi/2, slot_length=0.12, slot_width=0.02,
+        max_edge=0.05, resource_limits...)
+
+Generate an open conducting panel with a centered rectangular slot and a
+conforming flange on its positive-x edge. Lengths are meters. The interior
+bend angle is radians: pi/2 is perpendicular and pi is unfolded.
+Slot edges and the flange seam are mesh boundaries shared by their adjacent
+cells. No finite thickness or conductivity is modeled.
+
+Each coordinate interval is subdivided with nominal cell sides at most
+max_edge/sqrt(2). Floating-point edge lengths may differ by rounding.
+Resource counts include the full grid before unused slot vertices are removed;
+max_work_bytes also covers coordinate compaction and its index buffers.
+"""
+function make_bent_slotted_panel(;
+        panel_length::Real=0.40, panel_width::Real=0.30, flange_width::Real=0.15,
+        bend_angle::Real=pi/2, slot_length::Real=0.12, slot_width::Real=0.02,
+        max_edge::Real=0.05,
+        max_vertices::Integer=_DEFAULT_MESH_MAX_VERTICES,
+        max_triangles::Integer=_DEFAULT_MESH_MAX_TRIANGLES,
+        max_raw_bytes::Integer=_DEFAULT_MESH_MAX_RAW_BYTES,
+        max_work_bytes::Integer=512 * 1024 * 1024)
+    lx = _positive_finite_length("panel_length", panel_length)
+    ly = _positive_finite_length("panel_width", panel_width)
+    flange = _positive_finite_length("flange_width", flange_width)
+    slot_x = _positive_finite_length("slot_length", slot_length)
+    slot_y = _positive_finite_length("slot_width", slot_width)
+    edge = _positive_finite_length("max_edge", max_edge)
+    angle = Float64(bend_angle)
+    isfinite(angle) && 0 < angle <= pi ||
+        throw(ArgumentError("bend_angle must lie in (0, pi]"))
+    slot_x < lx && slot_y < ly ||
+        throw(ArgumentError("the slot must have positive margins to every panel edge"))
+    vertex_limit = _validated_resource_limit("max_vertices", max_vertices)
+    triangle_limit = _validated_resource_limit("max_triangles", max_triangles)
+    work_limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    spacing = edge / sqrt(2.0)
+    x_knots = [-lx/2, -slot_x/2, slot_x/2, lx/2]
+    y_knots = [-ly/2, -slot_y/2, slot_y/2, ly/2]
+    x_counts = _panel_axis_counts(x_knots, spacing, vertex_limit)
+    y_counts = _panel_axis_counts(y_knots, spacing, vertex_limit)
+    u_counts = _panel_axis_counts([0.0, flange], spacing, vertex_limit)
+    nx, ny, nu = sum(BigInt.(x_counts)), sum(BigInt.(y_counts)), BigInt(u_counts[1])
+    vertices = (nx + nu + 1) * (ny + 1)
+    triangles = 2 * ((nx + nu) * ny - BigInt(x_counts[2]) * y_counts[2])
+    vertices <= vertex_limit && triangles <= triangle_limit ||
+        throw(ArgumentError("panel mesh exceeds its vertex or triangle limit"))
+    nv, nt = Int(vertices), Int(triangles)
+    _validate_mesh_resource_request(
+        nv, nt, "make_bent_slotted_panel";
+        max_vertices=max_vertices, max_triangles=max_triangles, max_raw_bytes=max_raw_bytes)
+    raw = _checked_mesh_payload_bytes(nv, nt)
+    work = _checked_payload_sum(
+        "bent-panel construction", raw,
+        _checked_array_payload_bytes(Float64, 3, nv),
+        _checked_array_payload_bytes(Int, 2, nv),
+        _checked_array_payload_bytes(UInt8, nv),
+        _checked_array_payload_bytes(Float64, Int(nx + ny + nu + 32)))
+    _enforce_payload_limit(work, work_limit, "bent-panel construction", "max_work_bytes")
+    nx_i, ny_i, nu_i = Int(nx), Int(ny), Int(nu)
+    xs = _panel_axis_coordinates(x_knots, x_counts)
+    ys = _panel_axis_coordinates(y_knots, y_counts)
+    us = _panel_axis_coordinates([0.0, flange], u_counts)
+    xyz = zeros(3, nv)
+    tri = Matrix{Int}(undef, 3, nt)
+    main_id(ix, iy) = iy * (nx_i + 1) + ix + 1
+    main_count = (nx_i + 1) * (ny_i + 1)
+    flange_id(iu, iy) = iu == 0 ? main_id(nx_i, iy) :
+                        main_count + iy * nu_i + iu
+    for iy in 0:ny_i, ix in 0:nx_i
+        vertex = main_id(ix, iy)
+        xyz[:, vertex] .= (xs[ix + 1], ys[iy + 1], 0.0)
+    end
+    sine, cosine = angle == Float64(pi) ? (0.0, -1.0) : sincos(angle)
+    for iy in 0:ny_i, iu in 1:nu_i
+        vertex = flange_id(iu, iy)
+        xyz[:, vertex] .= (lx/2 - us[iu + 1] * cosine,
+                           ys[iy + 1], us[iu + 1] * sine)
+    end
+    if angle < Float64(pi)
+        all(value -> value > 0, view(xyz, 3, (main_count + 1):nv)) ||
+            throw(ArgumentError("the bend is too small to resolve a separate flange surface"))
+    end
+    triangle = 0
+    for iy in 0:(ny_i - 1), ix in 0:(nx_i - 1)
+        in_slot_x = x_counts[1] <= ix < x_counts[1] + x_counts[2]
+        in_slot_y = y_counts[1] <= iy < y_counts[1] + y_counts[2]
+        in_slot_x && in_slot_y && continue
+        a, b = main_id(ix, iy), main_id(ix + 1, iy)
+        c, d = main_id(ix + 1, iy + 1), main_id(ix, iy + 1)
+        tri[:, triangle + 1] .= (a, b, c)
+        tri[:, triangle + 2] .= (a, c, d)
+        triangle += 2
+    end
+    for iy in 0:(ny_i - 1), iu in 0:(nu_i - 1)
+        a, b = flange_id(iu, iy), flange_id(iu + 1, iy)
+        c, d = flange_id(iu + 1, iy + 1), flange_id(iu, iy + 1)
+        tri[:, triangle + 1] .= (a, b, c)
+        tri[:, triangle + 2] .= (a, c, d)
+        triangle += 2
+    end
+    triangle == nt || error("panel triangulation count does not match its allocation")
+    _require_finite_coordinates(xyz, "make_bent_slotted_panel")
+    mesh, _, _ = _compact_mesh_vertices(xyz, tri)
+    assert_mesh_quality(mesh; allow_boundary=true, require_closed=false)
+    return mesh
+end
 
 const _DEFAULT_MESH_MAX_VERTICES = 5_000_000
 const _DEFAULT_MESH_MAX_TRIANGLES = 10_000_000

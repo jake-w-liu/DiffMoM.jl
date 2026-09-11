@@ -101,7 +101,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "A fresh bounds-checked source coverage run on 2026-08-25 covered 21,125 of 22,802 instrumented source lines (92.65%). test/runtests.jl also contains seeded differential, BigFloat-reference, finite-difference, allocation, and four-thread checks.",
+      "evidence": "The 2026-08-25 source-coverage measurement remains the historical baseline: 21,125 of 22,802 instrumented lines (92.65%), not a current coverage percentage. Current-source bounds-checked one/four-thread suites passed on 2026-09-09. Added behavior has independent algebraic, 4352-bit, physical, boundary, and saturation regressions; focused repair checks total 149. Current evidence is recorded in TEST_REPORT.md.",
       "rationale": "The measured source baseline and test-strength inventory are recorded in .slopfix/report.md; new behavior must add focused regression evidence.",
       "instructions": "Set a coverage threshold or changed-line ratchet and add property, differential, fuzz, or mutation checks where example-based tests can mirror an incorrect implementation."
     },
@@ -112,7 +112,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "The bounds-checked suite exercises NaN/Inf rejection, empty and degenerate shapes, integer and payload overflow, subnormal and huge Float64 values, BigFloat references, seeded random differential cases, physical units, tolerances, reciprocity, power balance, Mie references, and adjoint finite differences.",
+      "evidence": "Current-source bounds-checked one/four-thread suites passed with an unchanged source/test/environment snapshot. The 21-configuration PEC sphere campaign passed its predeclared field, RCS, phase, and residual limits; independent Bempp comparisons and fixed-facet versus projected geometry are recorded separately. New exact-residual saturation tests use captured inputs and independent 4352-bit expectations. Python validation reports pass 23 tests on both Python 3.9 and 3.14. See TEST_REPORT.md; these checks do not establish a main-method performance or calibrated-coverage advantage.",
       "rationale": "Julia missing values are outside the declared numeric-array APIs; unsupported element types fail through dispatch or explicit validation.",
       "instructions": "Test applicable combinations of NaN, \u00b1Inf, missing, empty/degenerate shapes, integer overflow, Float32/Float64/BigFloat, units, tolerances, random seeds, reproducibility, and domain invariants. Mark irrelevant dimensions not applicable with reasons."
     },
@@ -123,7 +123,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "test/runtests.jl contains warm-path allocation ceilings and zero-allocation mul! contracts. The 32-column cancellation-sensitive dense-Q benchmark recorded 20,144 bytes and a 10.75 microsecond median across 100 warm runs on 2026-08-25; full measurements are in .slopfix/report.md.",
+      "evidence": "The current bounds-checked test graph retains its warm-path allocation ceilings and mul! contracts. The 2026-08-25 dense-Q timing/allocation measurement remains historical, not a current performance claim. PN3D exploratory runs record setup, restrictions, output preparation, conditioning, and native solve components; no engineering speedup or break-even has been established. See TEST_REPORT.md and the archived experiment reports.",
       "rationale": "Allocation ceilings are enforced in the normal test graph; wall-time figures are environment-specific evidence, not portable guarantees.",
       "instructions": "Use BenchmarkTools or PkgBenchmark on representative hot paths; pin time and memory tolerances and allocation ceilings. Include compilation or time-to-first-execution when it is user-visible."
     },
@@ -134,7 +134,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": ".github/workflows/ci.yml configures Julia 1.12 tests on Ubuntu with one and four threads, macOS with one thread, and Windows with one thread; its documentation job runs on Ubuntu.",
+      "evidence": "The inspected .github/workflows/ci.yml configures Julia 1.12 on Ubuntu with one/four threads, macOS with one thread, and Windows with one thread. Current local macOS Julia 1.12.7 one/four-thread runs passed. Remote platform jobs have not been verified for these uncommitted changes; INV-044 remains a remote-evidence boundary.",
       "rationale": "This gate verifies the checked-in CI contract, not a remote run. The quality job is ordered after the required platform jobs, so a green workflow supplies platform evidence for that commit. Until then, INV-044 remains UNVERIFIED.",
       "instructions": "Test every supported Julia minor version and relevant OS/architecture. Include optional dependencies and package extensions where applicable."
     },
@@ -165,7 +165,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "The one- and four-thread bounds-checked suites exercise shared ReentrantLock workspaces, Threads.@spawn operator calls, error paths, aliasing, and task-local BigFloat precision. Aqua's persistent-task check is reachable from test/runtests.jl.",
+      "evidence": "Current one/four-thread bounds-checked suites passed, including retained-state, shared-workspace, aliasing, failure, and resource-limit cases. The expanded residual path uses bounded scratch and a canonical exact per-row calculation on saturation. Aqua's persistent-task import check remains in the test graph. See TEST_REPORT.md.",
       "rationale": "The package opens files with scoped do-blocks or explicit finally/cleanup paths; it does not own sockets or GPU resources.",
       "instructions": "Exercise Threads.@spawn/async paths, channels, locks, cancellation, partial failure, files/sockets/GPU resources, and shutdown. Aqua's persistent-task check covers package loading, not every runtime path."
     },
@@ -176,7 +176,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "Gitleaks 8.30.1 scanned all 465 commits with the committed .gitleaks.toml and reported no leaks on 2026-08-25. Clean dependency resolution is an executed command gate.",
+      "evidence": "Gitleaks 8.30.1 was obtained from the current official release with its published SHA256 checked. The current history scan covered 581 commits and found no leaks. A working-tree scan produced four generic-api-key findings, all inspected as generated Documenter API heading fragment identifiers, not credentials. No new allowlist or suppression was added. See TEST_REPORT.md for the scan boundary and evidence; this is not a general vulnerability-free claim.",
       "rationale": "This is secret and configuration evidence, not a claim that Julia has complete SAST coverage.",
       "instructions": "Configure a repository-appropriate secret scanner and security review. Record any unavailable Julia-aware SAST coverage as a boundary rather than claiming no vulnerabilities."
     },
@@ -198,7 +198,7 @@
       "required": false,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "ExplicitImports v1.15 is a test-only dependency. The normal test graph checks for implicit, stale, non-owning, non-public, and self-qualified imports or accesses. An isolated replay on 2026-08-25 passed all seven checks: zero implicit or stale imports, public owner-correct explicit imports, owner-correct qualified accesses, and no self-qualified accesses. The 11 reviewed non-public qualified names are pinned to an exact allowlist and the observed set must equal it.",
+      "evidence": "The current one/four-thread test graph passed its ExplicitImports checks. The new proper-complex sampling code uses Base.randn, its checked canonical owner, rather than Random.randn. The existing exact non-public-name allowlist and stale/implicit/owner checks were retained. See TEST_REPORT.md.",
       "rationale": "Narrow package imports replaced broad namespace imports. This removed all 59 potential implicit-import findings, including four local-binding misattributions that disappeared when their names were no longer imported broadly. Any new non-public qualified name now fails the regression gate.",
       "instructions": "Add ExplicitImports checks for implicit, stale, non-owning, or non-public imports and qualified accesses, allowing documented exceptions only."
     },
@@ -220,7 +220,7 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "All 301 exported names were resolved as defined and documented; Documenter checkdocs=:exports passed; Aqua ambiguity, piracy, and method checks passed; representative BLAS/index/adjoint extensions are exercised by the suite.",
+      "evidence": "All 332 current exported names were observed as defined. Current Documenter checkdocs=:exports and the one/four-thread Aqua/dispatch suites passed. Opt-in retained state preserves the default solve_scattering return contract. New finite-space modeling, output, calibration, and resource-budget behavior is documented and regression-tested. Serialized-struct compatibility still lacks a committed cross-version fixture and remains INV-047's unverified boundary.",
       "rationale": "No public export was removed. Serialized-struct compatibility lacks a committed fixture and remains separately UNVERIFIED as inventory item INV-047.",
       "instructions": "Inventory exported/public names, method-extension contracts, schemas, preferences, weak dependencies, package extensions, deprecations, and serialization compatibility. Verify changes against downstream callers."
     },

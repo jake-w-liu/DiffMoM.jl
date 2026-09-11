@@ -822,9 +822,12 @@ function _fill_dense_block_batched!(
 
     # 3. Fill block entries using cached Green's values
     @inbounds for jj in 1:nc
-        n_idx = col_indices[jj]
         for ii in 1:mr
             m_idx = row_indices[ii]
+            n_idx = col_indices[jj]
+            if !cache.rwg.has_periodic_bloch && m_idx > n_idx
+                m_idx, n_idx = n_idx, m_idx
+            end
             val = zero(ComplexF64)
 
             for itm in 1:2

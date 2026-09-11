@@ -98,6 +98,7 @@ makedocs(
             "Octree" => "api/octree.md",
             "MLFMA" => "api/mlfma.md",
             "Fields and RCS" => "api/farfield-rcs.md",
+            "Finite-Space Error and RCS Screening" => "api/discretization-error.md",
             "2D VIE" => "api/vie-2d.md",
             "3D Volume DDA" => "api/dda-volume-3d.md",
             "Material Models" => "api/material-models-3d.md",

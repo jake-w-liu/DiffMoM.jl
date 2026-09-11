@@ -124,6 +124,9 @@ only after measuring the intended problem.
 For iterative methods, `check_gmres_convergence` rejects failed Krylov status
 and `check_true_residual` checks the returned vector against the selected
 operator. `true_residual_factor` sets the allowed multiple of `gmres_tol`.
+`gmres_memory` sets the restart length (default 20) for dense GMRES, ACA GMRES,
+and MLFMA, including later solves through a retained state. Its workspace is
+checked before iterative assembly and again against the retained-call budget.
 Disabling either check is appropriate only when the caller deliberately wants
 to inspect a partial iterate.
 

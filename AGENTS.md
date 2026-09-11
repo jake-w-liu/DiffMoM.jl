@@ -27,7 +27,10 @@ implementation next to the caller that happens to need it.
 | PEC EFIE and composite operators | `src/assembly/EFIE.jl`, `src/assembly/CompositeOperator.jl` | BLAS `mul!` semantics include aliasing and `alpha`/`beta` cases. |
 | Impedance and density assembly | `src/assembly/Impedance.jl`, `src/assembly/DensityInterpolation.jl` | Keep patch and interpolation conventions aligned with adjoints. |
 | Direct and iterative solves | `src/solver/Solve.jl`, `src/solver/IterativeSolve.jl` | Returned iterative results require checked convergence and true residuals. |
+| Retained scattering state | `src/solver/RetainedSolve.jl`, `src/Workflow.jl` | Reuse canonical checked solves; validate state before reuse. |
+| Fixed-facet RWG nesting | `src/basis/NestedRWG.jl` | Flux injection and sparse coordinate completion reuse mesh/RWG primitives. |
 | Preconditioners | `src/solver/NearFieldPreconditioner.jl` | Preserve forward/adjoint and left/right semantics. |
+| Finite-space error and calibrated RCS screening | `src/error_estimation/` | Preserve restricted Galerkin equations, complete output corrections, shared complex covariance, and whole-case calibration context. |
 | Far fields, power, and RCS | `src/postprocessing/FarField.jl`, `src/postprocessing/Diagnostics.jl` | Validate dimensions, finite values, weights, and physical invariants. |
 | Far-field objective matrices | `src/optimization/QMatrix.jl` | Keep dense, matrix-free, and one-shot paths numerically consistent. |
 | Adjoint gradients and optimizers | `src/optimization/` | Check gradients against an independent finite-difference oracle. |

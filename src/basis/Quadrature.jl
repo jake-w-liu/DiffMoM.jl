@@ -2,6 +2,8 @@
 
 export tri_quad_rule, tri_quad_points
 
+const _TRI_QUAD_ORDERS = (1, 3, 4, 7, 28, 112)
+
 """
     tri_quad_rule(order)
 
@@ -12,7 +14,9 @@ for unit reference triangle, so ∫f dA ≈ Σ w_q f(ξ_q) * 2A for a physical
 triangle of area A, or equivalently integrate on the reference triangle
 and multiply by 2A).
 
-Supported orders: 1, 3, 4, 7.
+Supported point counts are 1, 3, 4, 7, 28, and 112. The 28- and 112-point
+rules apply the degree-five seven-point rule on four or sixteen equal-area
+subtriangles. Subdivision increases sampling resolution, not polynomial degree.
 """
 function tri_quad_rule(order::Int)
     if order == 1
@@ -47,8 +51,27 @@ function tri_quad_rule(order::Int)
         w1 = 0.0661970763942530
         w2 = 0.0629695902724135
         w  = [w0, w1, w1, w1, w2, w2, w2]
+    elseif order == 28 || order == 112
+        xi, w = tri_quad_rule(7)
+        # Each affine child map has determinant 1/4. Applying all four maps
+        # recursively partitions the same reference triangle without overlap.
+        for level in 1:(order == 28 ? 1 : 2)
+            parent_xi, parent_w = xi, w
+            xi = SVector{2,Float64}[]
+            w = Float64[]
+            sizehint!(xi, 4length(parent_xi))
+            sizehint!(w, 4length(parent_w))
+            for (point, weight) in zip(parent_xi, parent_w)
+                u, v = point
+                append!(xi, (SVector(u / 2, v / 2),
+                    SVector((1 + u) / 2, v / 2),
+                    SVector(u / 2, (1 + v) / 2),
+                    SVector((1 - v) / 2, (u + v) / 2)))
+                append!(w, (weight / 4, weight / 4, weight / 4, weight / 4))
+            end
+        end
     else
-        error("Unsupported quadrature order $order. Use 1, 3, 4, or 7.")
+        error("Unsupported quadrature order $order. Use one of $(_TRI_QUAD_ORDERS).")
     end
     return xi, w
 end

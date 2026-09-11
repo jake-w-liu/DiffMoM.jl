@@ -155,7 +155,21 @@ Before any production consolidation:
 3. Which rows are critical enough that their current tests are insufficient?
 4. Is any current behaviour known to be wrong but required to remain compatible?
 
+## PN-MoM additions
+
+| ID | Behaviour and boundaries | Implemented in | Verify | Crit | Status |
+| --- | --- | --- | --- | --- | --- |
+| INV-050 | Opt-in retained scattering state reuses checked forward/adjoint solves, preserves the default result, detects changed physical state, serializes shared-state calls, and commits new RHS/current only after all columns succeed. | Workflow.jl; solver/RetainedSolve.jl | test/test_discretization_error.jl | C1 | Current one/four-thread suites, docs, development harness, and required quality gates passed |
+| INV-051 | Fixed-facet midpoint RWG injection preserves fields, divergence, boundary flux and edge signs; sparse QR selects a full-rank coordinate complement under a declared work budget. | basis/NestedRWG.jl; existing Mesh.jl and RWG.jl | test/test_discretization_error.jl | C1 | Integrated one/four-thread checks passed; no continuum or calibrated-error claim |
+
 ## Approved behaviour changes
+
+2026-09-08: The user requested the complete PN-MoM integration from project
+2026_171/material. INV-050 and INV-051 add the first two implementation
+components. They preserve the default scattering interface. Their independent
+oracles, remaining checks, and planned line-budget adjustment are recorded in
+CODE_NOTES.md and TEST_REPORT.md. The two existing maintenance-script edits
+remain outside this change.
 
 | Date | Inventory | Change | Approval basis |
 | --- | --- | --- | --- |
@@ -229,3 +243,32 @@ Before any production consolidation:
 | 2026-08-30 | INV-004, INV-019 | Mesh-resolution boundary comparisons admit up to 64 Float64 steps of roundoff so analytically target-sized transformed edges do not emit an under-resolution warning; larger violations still fail. | A transformed Fig. 11 triangle edge measured 23 ulps above its analytic target; focused tests cover both the accepted boundary and the first rejected value beyond the allowance. |
 | 2026-08-28 | INV-012, INV-017, INV-048 | ACA Jacobi preconditioners evaluate only the exact EFIE diagonal and do not materialize the stored dense near-field blocks as sparse triplets. | A 30,964-unknown authorized validation run exceeded the 512 MiB triplet limit while requesting a diagonal preconditioner; the discarded off-diagonal triplets were unnecessary for Jacobi scaling. |
 | 2026-08-29 | INV-017, INV-040, INV-048 | ACA forward and adjoint products recompute only cancellation-sensitive output rows when stored factors, inputs, and low-rank inner reductions remain ordinary; genuinely global exceptional conditions retain the bounded whole-product retry. | A one-row ordinary-factor reproducer promoted every output row to the 8704-bit fallback; the user requested complete bug fixes and current reference regeneration. |
+
+## Finite-space error behaviours added on 2026-09-08
+
+These extend the frozen baseline; they do not replace its existing contracts.
+Full-suite and independent-scattering verification are recorded separately from
+finite-dimensional algebra tests.
+
+| ID | Behaviour and boundaries | Implemented in | Verify | Crit | Current verification |
+| --- | --- | --- | --- | --- | --- |
+| INV-052 | Fine/coarse restrictions are checked; mismatches rebuild a separate consistent coarse solve or fail. Complete output corrections include unresolved-basis radiation, and cached outputs reject stale forward revisions. | `src/error_estimation/GalerkinError.jl` | `T` `test_conditioned_error.jl`; direct block/output oracle | C1 | Current one/four-thread suites and development harness passed |
+| INV-053 | Positive weighted RWG field mass defines a proper-complex prior. Rank-aware exact conditioning preserves compatible observations, rejects inconsistent data, and propagates shared output covariance and seeded joint samples. | `src/assembly/Impedance.jl`, `src/error_estimation/Conditioning.jl` | `T` `test_conditioned_error.jl`; independent mass and Gaussian oracles | C1 | Current one/four-thread suites and development harness passed |
+| INV-054 | Calibration scores cover whole cases across all looks and levels; augmented ranks include infinity. RCS decisions use outward field-ball bounds and reject stale context, unsupported cases, and missing numerical budgets. | `src/error_estimation/Calibration.jl` | `T` `test_rcs_calibration.jl`; exact-rank and BigFloat containment oracles | C1 | Current one/four-thread suites passed; empirical population coverage is separate and pending |
+| INV-055 | Bent slotted-panel geometry preserves its dimensions, open boundaries, fold seam, and positive element areas across the supported bend range. | `src/geometry/Mesh.jl` | `T` `test_pn_panel.jl`; area and topology identities | C1 | Tests passed; 559 parameter meshes also passed topology preflight |
+| INV-056 | Batched dense/adjoint products and true-residual reductions retain checked cancellation and extreme-exponent behavior while sharing ordinary numerical work. Saturated short expansions use the canonical exact row accumulator, not dropped terms. | `src/solver/Solve.jl`, `src/solver/IterativeSolve.jl` | `T` `test_matrix_columns.jl`, `test_residual_precision.jl`; independent 4352-bit arithmetic | C1 | Current one/four-thread suites and captured saturation regression passed |
+| INV-057 | Composite 28/112-point triangle rules preserve degree-five integration and default 3/7-point behavior; excitation and self/adjacent EFIE paths use the selected rule under checked work limits. | `src/basis/Quadrature.jl`, `src/assembly/Excitation.jl`, `src/assembly/EFIE.jl` | `T` `test_composite_quadrature.jl`; moments, RHS, and dense/matrix-free oracles | C1 | 76 focused checks and current full suites passed |
+| INV-058 | Exact-residual work and high-level ACA storage budgets are explicit, validated, and forwarded through the supported solve/state paths without changing default limits or tolerances. | `src/Workflow.jl`, `src/solver/Solve.jl`, `src/solver/IterativeSolve.jl`, `src/solver/RetainedSolve.jl` | `T` `test_residual_work_budget.jl`, `test_workflow_aca_budget.jl` | C1 | 35 focused checks and current full suites passed |
+| INV-059 | Default mesh figures preserve physical coordinate proportions, including unequal and explicitly selected axis ranges. | `src/postprocessing/Visualization.jl` | `T` `test_mesh_plot_aspect.jl`; publication-scale geometry inspection | C1 | Seven focused checks and current full suites passed |
+| INV-060 | Independent-reference reports align two-component angular keys without truncation on supported Python versions; PEC field CLI paths honor the shared project-root contract. | `validation/bempp/_bempp_common.py`, `validation/bempp/run_pec_field_case.py` | `T` `validation/tests/test_pn_validation_contracts.py`; real Bempp case | C1 | 23 validator tests passed on Python 3.9/3.14; project-relative Bempp integration passed |
+| INV-061 | The registered-population study drivers write atomic, hash-guarded per-case records; verify protocol, driver, population, and source digests; mark incomplete runs; and evaluate held-out decisions only after predictions and calibration are frozen. | `validation/pn3d/` | `T` `test/test_pn_study.jl`; independent record fixtures | C1 | 40 focused checks and current one-thread suite passed; campaign in progress |
+| INV-062 | Algebraic-correction measurements solve the retained operator against the forward residual and verify the achieved residual against the ORIGINAL forward right-hand side scale, not the already-small residual. | `validation/pn3d/reference_population.jl` | `T` `test/test_pn_study.jl`; live ACA campaign case | C1 | Focused checks passed; relative checks against the residual RHS were unattainable |
+
+Approval basis: the user requested the material's three-dimensional nested-RWG
+error formulation, its implementation in DiffMoM, and bug verification before
+pushing the completed code. No continuum accuracy or calibrated screening
+benefit follows from these algebraic contracts alone.
+
+| Date | Inventory | Change | Approval basis |
+| --- | --- | --- | --- |
+| 2026-09-11 | INV-017 | Batched ACA dense blocks apply canonical `_efie_entry` ordering to every non-Bloch entry, matching the sequential and indexed-access paths. | A fresh reproducer found batched entry (65,17) differing at 1e-3 in the imaginary part; the user requested a deep-debug and verification pass before pushing. |

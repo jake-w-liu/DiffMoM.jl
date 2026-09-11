@@ -2,9 +2,9 @@
 
 `solve_scattering` combines mesh validation, RWG construction, method
 selection, excitation assembly, preconditioner construction, and the linear
-solve. Use it when those defaults match the study. Use the lower-level API when
-you need to retain or customize an intermediate operator, basis, or
-preconditioner.
+solve. Use it when those defaults match the study. Set `return_state=true`
+to retain the prepared operator and solver state for repeated RHS or adjoint
+solves. Use the lower-level API to customize assembly or backend controls.
 
 Exact keyword defaults are rendered from the source under
 [Core docstrings](../api/exported-core.md). The
@@ -117,6 +117,13 @@ control.
 
 ## Convergence checks
 
+`gmres_memory` sets the restarted Krylov basis length, with the same default
+of 20 as `solve_gmres`. A larger value can change convergence and requires
+more workspace; it does not relax either residual check. The iterative
+workflow validates the controls and checks the Krylov workspace limit before
+operator assembly. A retained state uses the selected memory for its later
+forward and adjoint solves and charges that workspace to `max_work_bytes`.
+
 For GMRES paths, keep both checks enabled:
 
 - `check_gmres_convergence` rejects failed, inconsistent, or non-finite solver
@@ -153,13 +160,58 @@ the assembled matrix in a lower-level workflow when that evidence is required.
 When `method=:auto`, record `result.method` as the effective value. Timing
 fields are measurements for that run, not portable performance guarantees.
 
-## When to use the lower-level pipeline
+## Reusing a prepared solve
+
+```julia
+prepared = solve_scattering(mesh, frequency, source; return_state=true)
+state = prepared.state
+current_again = solve_prepared!(state)
+adjoint_current = solve_prepared_adjoint!(state, state.rhs)
+println(state.last_solve.true_residuals)
+```
+
+Repeated solves reuse the existing dense factor or iterative operator and
+preconditioner. A numeric matrix RHS represents independent columns. The
+forward call updates the saved RHS/current only when all columns succeed;
+an adjoint call preserves them. `last_solve` records actual per-column
+iterations, selected-operator residuals, and elapsed time.
+It is `nothing` until the first successful retained solve; initial preparation
+and solve measurements remain in `prepared.result`.
+
+Treat state fields as read-only. Changes to geometry, physical operator,
+frequency, quadrature, solver options, or saved RHS/current invalidate reuse.
+Build a new state after such changes. Passing a different RHS through
+`solve_prepared!` is supported and increments `rhs_revision`; it clears the
+old incident-field descriptor because a tested RHS alone does not define the
+excitation on a different mesh. A state lock serializes repeated solves.
+
+Set `max_work_bytes` on a repeated call to bound retained storage and new
+solver work together. Its initial default is the preparation call's
+`max_dense_matrix_bytes`. Retained-storage accounting includes object
+metadata as well as array payload. A smaller budget rejects the operation
+before its RHS/output buffers are allocated. Exceptional direct work and
+Krylov work are checked against the same total budget.
+
+## Fixed-facet RWG enrichment
+
+`build_nested_rwg_pair(mesh)` subdivides each facet without changing the
+polyhedral surface. Its sparse `P` reconstructs the coarse RWG field on the
+fine mesh using oriented normal traces. Sparse QR selects a native-coordinate
+complement `Q`; `[P Q]` is a complete fine-space basis. The returned QR
+`pivot_ratio` is a rank diagnostic, not a condition number.
+
+The identity `A = P' * Z_f * P` defines the consistently restricted coarse
+operator. Independently assembling a coarse matrix generally introduces a
+quadrature discrepancy that must be measured before reusing its factor in
+an enriched error model. The injection itself does not estimate continuum,
+geometry, compression, or algebraic error.
+
+## Customizing the lower-level pipeline
 
 Use explicit calls to `build_rwg`, operator construction, excitation assembly,
 preconditioner construction, and solve functions when you need to:
 
-- reuse an RWG basis or operator across several right-hand sides;
-- retain a dense matrix for diagnostics or impedance derivatives;
+- combine independently prepared operators or impedance derivatives;
 - configure ACA, MLFMA, or preconditioner controls not exposed here;
 - measure each intermediate allocation or setup phase independently; or
 - compare two methods with precisely shared inputs.

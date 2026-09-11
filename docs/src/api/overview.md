@@ -167,6 +167,11 @@ Validate simulation results and compute scattering cross sections.
 - **Periodic Floquet metrics:** `FloquetMode`, `floquet_modes`, `reflection_coefficients`, `reflection_coefficient_vectors`, `reflected_power_fractions`, `transmission_coefficients`, `specular_rcs_objective`, `power_balance`
   Post-process periodic unit-cell responses into Floquet coefficients and power accounting. `reflection_coefficient_vectors` returns full (vector) Floquet reflection coefficients and `reflected_power_fractions` gives the per-mode reflected power split. See [periodic-methods.md](periodic-methods.md).
 
+### Finite-space error models
+
+For nested fixed-facet RWG error models and casewise-calibrated RCS intervals,
+see [Finite-Space Error and RCS Screening](discretization-error.md).
+
 ### 4b) Physical Optics and PTD
 
 High-frequency approximate solvers for electrically large problems where full MoM is too expensive.

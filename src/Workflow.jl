@@ -71,6 +71,7 @@ produce a warning (or error if `error_on_underresolved=true`).
 ## Solver settings
 - `gmres_tol=1e-6`: GMRES relative tolerance
 - `gmres_maxiter=300`: maximum GMRES iterations
+- `gmres_memory=20`: restarted Krylov basis length; also retained for repeated solves
 - `check_gmres_convergence=true`: reject unconverged or non-finite GMRES results
 - `check_true_residual=true`: verify the residual against the selected operator
 - `true_residual_factor=100.0`: allowed true-residual multiple of `gmres_tol`
@@ -85,11 +86,17 @@ produce a warning (or error if `error_on_underresolved=true`).
 - `aca_leaf_size=64`: cluster tree leaf size
 - `aca_eta=1.5`: admissibility parameter
 - `aca_max_rank=50`: maximum rank per low-rank block
+- `max_aca_storage_bytes=2_000_000_000`: persistent ACA block-payload limit,
+  including dense replacements of low-rank blocks
 
 ## General
 - `verbose=true`: print progress info
 - `quad_order=3`: quadrature order for EFIE entries
 - `c0=299792458.0`: speed of light (m/s)
+- `return_state=false`: return `(result, state)` when true; the state retains
+  the assembled operator, checked factorization, preconditioner, and excitation
+- `max_true_residual_exact_terms=2_000_000`: cancellation-sensitive work budget
+  per true-residual evaluation, also inherited by a retained state
 - `max_dense_matrix_bytes=2_000_000_000`: raw-payload ceiling for the dense
   EFIE matrix, and for the simultaneous matrix, factor, pivot, and field
   buffers on the dense-direct path
@@ -98,7 +105,10 @@ produce a warning (or error if `error_on_underresolved=true`).
 A `ScatteringResult` with fields: `I_coeffs`, `method`, `N`, timing info,
 GMRES stats, `mesh_report`, and `warnings`. For iterative methods,
 `gmres_residual` is the unpreconditioned true relative residual against the
-selected operator; it is `NaN` for a direct solve.
+selected operator; it is `NaN` for a direct solve. With `return_state=true`,
+return a named tuple with this `result` and a `RetainedScatteringState`.
+The retained state's subsequent solve-workspace ceiling initially equals
+`max_dense_matrix_bytes`; each repeated solve may set `max_work_bytes`.
 """
 function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           method::Symbol=:auto,
@@ -110,6 +120,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           error_on_underresolved::Bool=false,
                           gmres_tol::Float64=1e-6,
                           gmres_maxiter::Int=300,
+                          gmres_memory::Int=20,
                           check_gmres_convergence::Bool=true,
                           check_true_residual::Bool=true,
                           true_residual_factor::Float64=100.0,
@@ -119,11 +130,18 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           aca_leaf_size::Int=64,
                           aca_eta::Float64=1.5,
                           aca_max_rank::Int=50,
+                          max_aca_storage_bytes::Integer=_DEFAULT_MAX_ACA_STORAGE_BYTES,
                           verbose::Bool=true,
                           quad_order::Int=3,
                           c0::Real=C0_DEFAULT,
+                          return_state::Bool=false,
+                          max_true_residual_exact_terms::Integer=
+                              _DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS,
                           max_dense_matrix_bytes::Integer=
                               _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    exact_term_limit = _validated_nonnegative_resource_limit(
+        "max_true_residual_exact_terms", max_true_residual_exact_terms)
+    aca_storage_limit = _validated_resource_limit("max_aca_storage_bytes", max_aca_storage_bytes)
     frequency = Float64(freq_hz)
     isfinite(frequency) && frequency > 0 ||
         throw(ArgumentError(
@@ -220,6 +238,11 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             "use :lu, :diag, :none, or :auto with $selected_method"))
     end
 
+    if selected_method !== :dense_direct
+        _validate_gmres_options(gmres_tol, gmres_maxiter, gmres_memory, :left)
+        _preflight_gmres_workspace(N, gmres_memory, _DEFAULT_MAX_GMRES_WORKSPACE_BYTES)
+    end
+
     if selected_method in (:dense_direct, :dense_gmres)
         dense_bytes = selected_method == :dense_direct ?
             _workflow_dense_direct_work_bytes(N) :
@@ -265,6 +288,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             A_aca = build_aca_operator(mesh, rwg, k;
                                        leaf_size=aca_leaf_size, eta=aca_eta,
                                        aca_tol=aca_tol, max_rank=aca_max_rank,
+                                       max_storage_bytes=aca_storage_limit,
                                        quad_order=quad_order, mesh_precheck=false)
         elseif selected_method == :mlfma
             A_mlfma = build_mlfma_operator(mesh, rwg, k;
@@ -339,6 +363,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
     gmres_iters = -1
     gmres_residual = NaN
     local I_coeffs::Vector{ComplexF64}
+    retained_factor = nothing
 
     t_solve = @elapsed begin
         if selected_method == :dense_direct
@@ -356,6 +381,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                 "solve_scattering direct factorization";
                 exact_fallback_check=enforce_exact_work,
             )
+            retained_factor = factor
             I_coeffs = _solve_factored_linear_system(
                 factor,
                 Z,
@@ -367,6 +393,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             I_coeffs, stats = solve_gmres(Z, v;
                                            preconditioner=P_nf,
                                            tol=gmres_tol, maxiter=gmres_maxiter,
+                                           memory=gmres_memory,
                                            check_gmres_convergence=check_gmres_convergence,
                                            check_true_residual=false)
             gmres_iters = stats.niter
@@ -374,6 +401,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             I_coeffs, stats = solve_gmres(A_aca, v;
                                            preconditioner=P_nf,
                                            tol=gmres_tol, maxiter=gmres_maxiter,
+                                           memory=gmres_memory,
                                            check_gmres_convergence=check_gmres_convergence,
                                            check_true_residual=false)
             gmres_iters = stats.niter
@@ -381,20 +409,21 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             I_coeffs, stats = solve_gmres(A_mlfma, v;
                                            preconditioner=P_nf,
                                            tol=gmres_tol, maxiter=gmres_maxiter,
+                                           memory=gmres_memory,
                                            check_gmres_convergence=check_gmres_convergence,
                                            check_true_residual=false)
             gmres_iters = stats.niter
         end
     end
 
+    selected_operator = if selected_method in (:dense_direct, :dense_gmres)
+        Z
+    elseif selected_method == :aca_gmres
+        A_aca
+    else
+        A_mlfma
+    end
     if selected_method != :dense_direct
-        selected_operator = if selected_method == :dense_gmres
-            Z
-        elseif selected_method == :aca_gmres
-            A_aca
-        else
-            A_mlfma
-        end
         gmres_residual = if check_true_residual
             _assert_true_residual(
                 selected_operator,
@@ -403,16 +432,18 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                 "solve_scattering";
                 tol=gmres_tol,
                 factor=true_residual_factor,
+                max_true_residual_exact_terms=exact_term_limit,
             )
         else
             _true_residual_ratio(
-                selected_operator, I_coeffs, v, "solve_scattering")
+                selected_operator, I_coeffs, v, "solve_scattering";
+                max_true_residual_exact_terms=exact_term_limit)
         end
     end
     verbose && println("  Solve: $(round(t_solve, digits=3)) s" *
                        (gmres_iters >= 0 ? " ($gmres_iters GMRES iters)" : " (direct LU)"))
 
-    return ScatteringResult(
+    result = ScatteringResult(
         I_coeffs,
         selected_method,
         N,
@@ -424,4 +455,16 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
         mesh_report,
         warnings,
     )
+    return_state || return result
+    state = _retain_scattering_state(
+        mesh, rwg, selected_operator, retained_factor, P_nf, v, I_coeffs,
+        frequency, propagation_speed, quad_order, selected_method,
+        (tol=gmres_tol, maxiter=gmres_maxiter, memory=gmres_memory,
+         check_gmres_convergence=check_gmres_convergence,
+         check_true_residual=check_true_residual,
+         true_residual_factor=true_residual_factor,
+         max_true_residual_exact_terms=exact_term_limit),
+        max_dense_matrix_bytes;
+        excitation=excitation isa AbstractExcitation ? excitation : nothing)
+    return (result=result, state=state)
 end

@@ -8,6 +8,68 @@ export assemble_Z_impedance, precompute_patch_mass, assemble_dZ_dtheta
 const _DEFAULT_MAX_MASS_PRECOMPUTE_WORK_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_MASS_PRECOMPUTE_TERMS = 200_000_000
 
+export assemble_rwg_gram
+
+"""
+    assemble_rwg_gram(mesh, rwg; triangle_weights=ones(ntriangles(mesh)),
+                      max_work_bytes=536_870_912)
+
+Assemble the sparse weighted surface Gram matrix. Weights are positive,
+dimensionless, and constant on each triangle. For an inverse-field-energy
+prior with amplitude profile a, pass the precision weights a.^(-2).
+
+The canonical three-point local mass rule integrates affine-triangle quadratic
+products exactly. Checked local scaling and duplicate reduction are reused.
+The work ceiling includes local matrices, merge triplets, sparse output and
+construction transients.
+"""
+function assemble_rwg_gram(mesh::TriMesh, rwg::RWGData;
+        triangle_weights::Union{Nothing,AbstractVector{<:Real}}=nothing,
+        max_work_bytes::Integer=_DEFAULT_MAX_MASS_PRECOMPUTE_WORK_BYTES)
+    _validate_mesh_rwg_pair(mesh, rwg)
+    nt = ntriangles(mesh)
+    if triangle_weights !== nothing
+        length(triangle_weights) == nt ||
+            throw(DimensionMismatch("Gram weights must have one value per triangle"))
+        all(w -> isfinite(w) && w > 0, triangle_weights) ||
+            throw(ArgumentError("Gram weights must be finite and positive"))
+    end
+    limit = _validated_resource_limit("max_work_bytes", max_work_bytes)
+    tcoef = promote_type(eltype(rwg.coeff_plus), eltype(rwg.coeff_minus))
+    tmass = tcoef <: Real ? Float64 : ComplexF64
+    profile = _mass_precompute_profile(
+        rwg, nt, 3, tmass, nothing, nt, limit)
+    merge_bytes = _checked_payload_sum(
+        "weighted Gram assembly",
+        _checked_array_payload_bytes(Int, 10, profile.entry_count),
+        _checked_array_payload_bytes(tmass, 5, profile.entry_count),
+        _checked_array_payload_bytes(Int, rwg.nedges + 1),
+        _checked_array_payload_bytes(Float64, nt))
+    _enforce_payload_limit(
+        _checked_payload_sum("weighted Gram assembly", profile.work_bytes, merge_bytes),
+        limit, "weighted Gram assembly", "max_work_bytes")
+    weights = triangle_weights === nothing ? ones(nt) : Float64.(triangle_weights)
+    all(w -> isfinite(w) && w > 0, weights) ||
+        throw(ArgumentError("Gram weights must be representable positive Float64 values"))
+    local_matrices = precompute_triangle_mass(
+        mesh, rwg; quad_order=3, max_work_bytes=limit - merge_bytes)
+    rows = Int[]
+    columns = Int[]
+    values = tmass[]
+    sizehint!(rows, profile.entry_count)
+    sizehint!(columns, profile.entry_count)
+    sizehint!(values, profile.entry_count)
+    for triangle in 1:nt
+        scaled = weights[triangle] * local_matrices[triangle]
+        append!(rows, scaled.rows)
+        append!(columns, scaled.cols)
+        append!(values, scaled.vals)
+    end
+    result = sparse(LocalMassMatrix(rwg.nedges, rows, columns, values))
+    _validate_known_matrix_entries(result, "weighted Gram matrix")
+    return result
+end
+
 @noinline function _local_surface_mass_entry_exact(
         ::Type{T}, rwg::RWGData, m::Int, n::Int, triangle::Int,
         points::AbstractVector{Vec3}, weights::AbstractVector{Float64},

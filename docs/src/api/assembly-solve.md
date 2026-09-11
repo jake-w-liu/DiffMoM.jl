@@ -76,16 +76,21 @@ Return Gaussian quadrature points and weights on the reference triangle with ver
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `order` | `Int` | Quadrature order. Supported values: **1** (1 point), **3** (3 points), **4** (4 points), **7** (7 points). |
+| `order` | `Int` | Point count: **1**, **3**, **4**, **7**, **28**, or **112**. The last two use the seven-point rule on four or sixteen subtriangles. |
 
 **Returns:** Tuple `(xi, w)` where:
 - `xi::Vector{SVector{2,Float64}}`: Barycentric coordinates `(xi_1, xi_2)` on the reference triangle.
 - `w::Vector{Float64}`: Weights (already include the Jacobian factor of `1/2` for the unit reference triangle).
 
 **Choosing quadrature order:**
-- `order=3` (3 points): Default. Sufficient for most EFIE assembly and excitation integration.
-- `order=7` (7 points): Higher accuracy for curved surfaces or when high precision is needed.
-- `order=1` (1 point): Centroid rule. Fast but low accuracy; use only for rough estimates.
+- `order=1`, `3`, `4`, and `7` integrate polynomials through degrees one, two, three, and five, respectively. The default is `3`.
+- `order=28` and `112` retain degree-five polynomial exactness and increase spatial sampling by uniform subdivision. They do not change the surface geometry.
+- EFIE self and adjacent interactions use at least seven points and honor a larger requested count. All retained quadrature arrays enter the cache memory estimate.
+- Assess accuracy by convergence of the quantity of interest. No fixed point count guarantees an electromagnetic error tolerance.
+
+Imported fields round their requested minimum sampling count up to the next
+supported rule. A target of eight therefore selects 28 points; targets above
+112 are rejected.
 
 **Integration formula:** To integrate `f` over a physical triangle of area `A`:
 
@@ -167,7 +172,7 @@ Assembly is O(N^2) in both time and memory. Each entry `Z[m,n]` involves a doubl
 | `mesh` | `TriMesh` | -- | Triangle mesh. |
 | `rwg` | `RWGData` | -- | RWG basis data. |
 | `k` | Real or Complex | -- | Wavenumber `k = 2*pi/lambda` in rad/m. Can be complex for complex-step gradient verification. |
-| `quad_order` | `Int` | `3` | Quadrature order on the reference triangle. Use `3` for standard accuracy; `7` for high-precision validation. |
+| `quad_order` | `Int` | `3` | Reference-triangle point count; see the quadrature rules and convergence guidance above. |
 | `eta0` | `Real` | `376.730313668` | Free-space impedance in Ohms. The default is `mu_0 * c_0 = 376.73...` The EFIE matrix scales linearly with `eta0`. |
 | `mesh_precheck` | `Bool` | `true` | Run mesh quality checks before assembly. Disable only for performance when you are certain the mesh is valid. |
 | `allow_boundary` | `Bool` | `true` | Allow boundary edges during precheck. |

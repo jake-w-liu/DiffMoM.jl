@@ -13,6 +13,55 @@ const CVec3 = SVector{3,ComplexF64}
 const _DEFAULT_MAX_DENSE_PAYLOAD_BYTES = 2_000_000_000
 const _INTERVAL_SPACING_FALLBACK_PRECISION = 2304
 
+function _checked_payload_sum(label::AbstractString, payloads::Integer...)
+    all(value -> value >= 0, payloads) ||
+        throw(ArgumentError("$label payloads must be nonnegative"))
+    total = sum((BigInt(value) for value in payloads); init=BigInt(0))
+    total <= typemax(Int) ||
+        throw(ArgumentError("$label workspace estimate overflows Int"))
+    return Int(total)
+end
+
+# Visit every entry; sampled hashes cannot detect every changed coefficient.
+# Operator-specific methods exclude mutable numerical scratch.
+function _content_fingerprint(value, seed::UInt)
+    if isbitstype(typeof(value)) || value isa Union{Number,AbstractString}
+        return hash(value, seed)
+    end
+    result = hash(typeof(value), seed)
+    for index in 1:fieldcount(typeof(value))
+        result = _content_fingerprint(getfield(value, index), result)
+    end
+    return result
+end
+
+function _content_fingerprint(values::AbstractArray, seed::UInt)
+    result = hash(size(values), seed)
+    for value in values
+        result = _content_fingerprint(value, result)
+    end
+    return result
+end
+
+function _content_fingerprint(values::AbstractDict, seed::UInt)
+    result = hash(length(values), seed)
+    for (key, value) in values
+        result = _content_fingerprint((key, value), result)
+    end
+    return result
+end
+
+function _content_fingerprint(matrix::SparseMatrixCSC, seed::UInt)
+    return _content_fingerprint(
+        (size(matrix), matrix.colptr, rowvals(matrix), nonzeros(matrix)), seed)
+end
+
+function _content_fingerprint(
+        matrix::Union{LinearAlgebra.LowerTriangular,LinearAlgebra.UpperTriangular},
+        seed::UInt)
+    return _content_fingerprint(parent(matrix), hash(typeof(matrix), seed))
+end
+
 @noinline function _interval_spacing_bigfloat(
         lower::Float64, upper::Float64, count::Int,
         label::AbstractString)

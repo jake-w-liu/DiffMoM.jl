@@ -79,6 +79,79 @@ end
 # guard margin. The ordinary BLAS/generic multiplication path is unchanged.
 const _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION = 4352
 
+# A small scratch budget, not a mathematical bound on expansion length.
+# Crowded expansions use the existing exact MPFR row reduction instead.
+const _RESIDUAL_EXPANSION_SLOTS = 16
+
+@inline _true_residual_exact_ieee(value) = Complex{BigFloat}(
+    BigFloat(real(value); precision=64), BigFloat(imag(value); precision=64))
+
+function _true_residual_ieee_row_bigfloat(A, row, x, rhs_value, cached_x=nothing)
+    total = zero(Complex{BigFloat})
+    for column in axes(A, 2)
+        x_value = cached_x === nothing ? _true_residual_exact_ieee(x[column]) : cached_x[column]
+        total += _true_residual_exact_ieee(A[row, column]) * x_value
+    end
+    return total - _true_residual_exact_ieee(rhs_value)
+end
+
+@inline function _residual_expansion_add!(partials, count, value)
+    count < 0 && return count
+    output_index = 1
+    for index in 1:count
+        other = partials[index]
+        if abs(value) < abs(other)
+            value, other = other, value
+        end
+        high = value + other
+        low = other - (high - value)
+        if !iszero(low)
+            output_index <= length(partials) || return -1
+            partials[output_index] = low
+            output_index += 1
+        end
+        value = high
+    end
+    output_index <= length(partials) || return -1
+    partials[output_index] = value
+    return output_index
+end
+
+@inline function _residual_expansion_product!(partials, count, first, second, sign)
+    product = first * second
+    error = fma(first, second, -product)
+    count = _residual_expansion_add!(partials, count, sign * product)
+    return iszero(error) ? count :
+        _residual_expansion_add!(partials, count, sign * error)
+end
+
+function _true_residual_expansion_row(A, row, x, rhs_value, real_parts, imag_parts)
+    nr = 0
+    ni = 0
+    for column in axes(A, 2)
+        matrix_value, vector_value = A[row, column], x[column]
+        ar, ai = Float64(real(matrix_value)), Float64(imag(matrix_value))
+        xr, xi = Float64(real(vector_value)), Float64(imag(vector_value))
+        nr = _residual_expansion_product!(real_parts, nr, ar, xr, 1.0)
+        nr = _residual_expansion_product!(real_parts, nr, ai, xi, -1.0)
+        ni = _residual_expansion_product!(imag_parts, ni, ar, xi, 1.0)
+        ni = _residual_expansion_product!(imag_parts, ni, ai, xr, 1.0)
+        (nr < 0 || ni < 0) && return nothing
+    end
+    nr = _residual_expansion_add!(real_parts, nr, -Float64(real(rhs_value)))
+    ni = _residual_expansion_add!(imag_parts, ni, -Float64(imag(rhs_value)))
+    (nr < 0 || ni < 0) && return nothing
+    real_total = zero(BigFloat)
+    imag_total = zero(BigFloat)
+    for index in 1:nr
+        real_total += BigFloat(real_parts[index]; precision=64)
+    end
+    for index in 1:ni
+        imag_total += BigFloat(imag_parts[index]; precision=64)
+    end
+    return Complex{BigFloat}(real_total, imag_total)
+end
+
 # With Float64 component exponents restricted to ±128, every exact real
 # product is a multiple of at least 2^-360 and every addressable reduction is
 # smaller than 2^322. For Float32, the corresponding ±16 bounds are 2^-78
@@ -86,6 +159,63 @@ const _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION = 4352
 # cannot overflow on the ordinary path. Inputs outside these bounds use the
 # exact exceptional path so individually rounded-away terms can still combine
 # into a representable result.
+function _finite_matrix_columns(
+        matrix::Union{StridedMatrix{ComplexF64},Adjoint{ComplexF64,<:StridedMatrix}},
+        vectors::StridedMatrix{ComplexF64}, label::AbstractString)
+    size(matrix, 2) == size(vectors, 1) ||
+        throw(DimensionMismatch("$label matrix dimensions do not match"))
+    rows, terms, columns = size(matrix, 1), size(matrix, 2), size(vectors, 2)
+    columns == 0 && return Matrix{ComplexF64}(undef, rows, 0)
+    normal_band = terms * eps(Float64) < 0.125 &&
+        !any(value -> _ieee_dense_extreme_factor(value, Float64), matrix) &&
+        !any(value -> _ieee_dense_extreme_factor(value, Float64), vectors)
+    if !normal_band
+        result = Matrix{ComplexF64}(undef, rows, columns)
+        for column in 1:columns
+            result[:, column] .= _finite_matrix_vector_product(
+                matrix, view(vectors, :, column), label)
+        end
+        return result
+    end
+    result = matrix * vectors
+    real_vectors = abs.(real.(vectors))
+    imag_vectors = abs.(imag.(vectors))
+    real_parts = Vector{Float64}(undef, _RESIDUAL_EXPANSION_SLOTS)
+    imag_parts = similar(real_parts)
+    error_factor = _ieee_product_error_factor(Float64, 2, terms)
+    tile_rows = max(1, min(rows, columns))
+    for first_row in 1:tile_rows:rows
+        selected = first_row:min(rows, first_row + tile_rows - 1)
+        real_matrix = abs.(real.(view(matrix, selected, :)))
+        imag_matrix = abs.(imag.(view(matrix, selected, :)))
+        real_bound = real_matrix * real_vectors
+        mul!(real_bound, imag_matrix, imag_vectors, 1.0, 1.0)
+        imag_bound = real_matrix * imag_vectors
+        mul!(imag_bound, imag_matrix, real_vectors, 1.0, 1.0)
+        for column in 1:columns, (local_row, row) in enumerate(selected)
+            value = result[row, column]
+            # Positive BLAS sums have relative error below one half in the
+            # guarded dimension range. Doubling their magnitudes is an upper
+            # bound and can only request more exact recomputations.
+            suspicious = _ieee_product_component_is_suspicious(
+                real(value), 2real_bound[local_row, column], error_factor) ||
+                _ieee_product_component_is_suspicious(
+                    imag(value), 2imag_bound[local_row, column], error_factor)
+            suspicious || continue
+            result[row, column] = setprecision(
+                    BigFloat, _IEEE_DENSE_PRODUCT_FALLBACK_PRECISION) do
+                exact = _true_residual_expansion_row(
+                    matrix, row, view(vectors, :, column), 0.0im,
+                    real_parts, imag_parts)
+                exact === nothing && (exact = _true_residual_ieee_row_bigfloat(
+                    matrix, row, view(vectors, :, column), 0.0im))
+                ComplexF64(exact)
+            end
+        end
+    end
+    return _assert_finite_linear_array(result, label)
+end
+
 @inline _ieee_dense_safe_factor_exponent(::Type{Float64}) = 128
 @inline _ieee_dense_safe_factor_exponent(::Type{Float32}) = 16
 
@@ -1431,6 +1561,8 @@ Solve Z I = v. Uses direct factorization by default, or GMRES when `solver=:gmre
 - `check_gmres_convergence`: throw an error if GMRES returns an unconverged solve
 - `check_true_residual`: additionally verify `norm(Z*x-v)/norm(v)`
 - `true_residual_factor`: allowed true-residual multiple of `gmres_tol`
+- `max_true_residual_exact_terms`: work budget per checked GMRES residual;
+  changing the budget does not change its accuracy tolerance
 """
 function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        solver::Symbol=:direct,
@@ -1442,7 +1574,10 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                        verbose_gmres::Bool=false,
                        check_gmres_convergence::Bool=true,
                        check_true_residual::Bool=true,
-                       true_residual_factor::Float64=100.0)
+                       true_residual_factor::Float64=100.0,
+                       max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
+    exact_term_limit = _validated_nonnegative_resource_limit(
+        "max_true_residual_exact_terms", max_true_residual_exact_terms)
     solver in (:direct, :gmres) ||
         throw(ArgumentError(
             "Unknown solver: $solver (expected :direct or :gmres)"))
@@ -1462,7 +1597,8 @@ function solve_forward(Z::AbstractMatrix{<:Number}, v::AbstractVector{<:Number};
                                 verbose=verbose_gmres,
                                 check_gmres_convergence=check_gmres_convergence,
                                 check_true_residual=check_true_residual,
-                                true_residual_factor=true_residual_factor)
+                                true_residual_factor=true_residual_factor,
+                                max_true_residual_exact_terms=exact_term_limit)
         return _assert_finite_linear_vector(x, "GMRES forward solution")
     end
 end
@@ -1481,14 +1617,16 @@ function solve_system(Z::AbstractMatrix{<:Number}, rhs::AbstractVector{<:Number}
                       gmres_memory::Int=20,
                       check_gmres_convergence::Bool=true,
                       check_true_residual::Bool=true,
-                      true_residual_factor::Float64=100.0)
+                      true_residual_factor::Float64=100.0,
+                      max_true_residual_exact_terms::Integer=_DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS)
     return solve_forward(Z, rhs; solver=solver, preconditioner=preconditioner,
                           gmres_tol=gmres_tol, gmres_maxiter=gmres_maxiter,
                           gmres_precond_side=gmres_precond_side,
                           gmres_memory=gmres_memory,
                           check_gmres_convergence=check_gmres_convergence,
                           check_true_residual=check_true_residual,
-                          true_residual_factor=true_residual_factor)
+                          true_residual_factor=true_residual_factor,
+                          max_true_residual_exact_terms=max_true_residual_exact_terms)
 end
 
 """
