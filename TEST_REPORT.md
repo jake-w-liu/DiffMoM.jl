@@ -61,7 +61,40 @@ Latest focused log: /tmp/pn3d-pr12-final-focused.log. Latest documentation:
 /tmp/pn3d-development-pr12.log. The latter recorded false positives from a
 now-corrected project audit script and cannot count as a passing harness run.
 
-## Current PN3D verification: 2026-09-11
+## Current PN3D verification: 2026-09-15
+
+This checkpoint records the completed package gates. It does not declare
+the engineering study or manuscript complete; the registered campaign is
+still running.
+
+- Full `Pkg.test()` passed bounds-checked at one thread
+  (`/tmp/pn3d-pkg-final-1t-v2.log`) and at four threads
+  (`/tmp/pn3d-pkg-final-4t.log`), including all Aqua checks. The earlier
+  `persistent_tasks` failure at `tmax=60` was measured to be a load flake —
+  the wrapper subprocess needed 322 s to load under campaign load and exited
+  2 s after its sentinel; `tmax` is now 900 with the measurement recorded in
+  `test/runtests.jl`. The 4-thread run cleared persistent tasks in 52 s.
+- The corrected development harness
+  (`dev-harness-audit.sh /Users/jake/EMPIRE/codes/DiffMoM.jl`) passed with
+  165 checks, zero failures (`/tmp/dev-harness-diffmom.log`), including its
+  own `Pkg.test()` and `examples/experiments.jl` runs.
+- `examples/experiments.jl` passed bounds-checked, including the
+  independent full-information field recovery assertion.
+- `git diff --check` is clean over the push range; `slopfix` blocking
+  smells report zero hits; the line ratchet is within the committed
+  ceiling.
+- First complete registered reference cases landed in
+  `reference_population_formal` (levels 0–3, worst ACA level-3 relative
+  linear residual 1.8e-10 against the 1e-9 tolerance); `train-0001`
+  through `train-0003` predictions are complete in
+  `study_predictions_formal`. The 559-case reference and prediction
+  campaigns remain in progress; calibration, held-out evaluation, and all
+  cost/error/abstention comparisons remain unmeasured. No engineering
+  advantage is claimed.
+
+Earlier verified results are retained below.
+
+## Prior PN3D verification: 2026-09-11
 
 This checkpoint updates the earlier feature status. It does not declare the
 engineering study or manuscript complete.
