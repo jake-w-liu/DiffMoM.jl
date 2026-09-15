@@ -25,7 +25,12 @@ using DiffMoM
 Aqua.test_all(
     DiffMoM;
     stale_deps=(ignore=[:CSV, :DataFrames, :JSON],),
-    persistent_tasks=(tmax=60,),
+    # The check spawns a fresh process that precompiles a wrapper around the
+    # package; under the registered-campaign load that load phase measured
+    # 322 s before the process exited cleanly 2 s later. tmax only bounds how
+    # long the suite waits for the subprocess to exit after loading; a real
+    # persistent task still blocks exit and is caught at any tmax.
+    persistent_tasks=(tmax=900,),
 )
 
 # These reviewed implementation boundaries rely on non-public names.
