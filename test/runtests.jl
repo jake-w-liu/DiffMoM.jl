@@ -12792,7 +12792,7 @@ loaded_cancellation_masses = AbstractMatrix[
     sparse([1], [1], ComplexF64[-floatmax(Float64)], 1, 1),
 ]
 loaded_cancellation_theta = [1.0, 1.0]
-loaded_cancellation_storage = DiffMoM._loaded_pattern_storage_bytes(1, 3)
+loaded_cancellation_storage = DiffMoM._loaded_pattern_storage_bytes(1, 3, 2)
 @test_throws ArgumentError DiffMoM._loaded_nearfield_matrix(
     loaded_cancellation_base,
     loaded_cancellation_masses,
