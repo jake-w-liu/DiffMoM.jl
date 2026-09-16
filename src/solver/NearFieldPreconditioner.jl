@@ -25,48 +25,10 @@ export NearFieldPreconditionerData,
        NearFieldAdjointOperator,
        rwg_centers
 
-const _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES = 256 * 1024 * 1024
 const _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES = 250_000
 const _DEFAULT_MAX_BLOCK_DIAG_STORAGE_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_BLOCK_DIAG_EXACT_WORK = 20_000_000
-const _NEARFIELD_TRIPLET_ENTRY_BYTES =
-    2 * sizeof(Int) + sizeof(ComplexF64)
-
-mutable struct _NearFieldTripletBudget
-    count::Int
-    entry_limit::Int
-    byte_limit::Int
-end
-
-function _nearfield_triplet_budget(max_triplet_bytes::Integer)
-    byte_limit = _validated_resource_limit(
-        "max_triplet_bytes", max_triplet_bytes)
-    return _NearFieldTripletBudget(
-        0, div(byte_limit, _NEARFIELD_TRIPLET_ENTRY_BYTES), byte_limit)
-end
-
-@inline function _register_nearfield_triplet!(
-        budget::_NearFieldTripletBudget)
-    budget.count < budget.entry_limit ||
-        throw(ArgumentError(
-            "near-field triplet payload exceeds " *
-            "max_triplet_bytes=$(budget.byte_limit) after " *
-            "$(budget.count) retained entries"))
-    budget.count += 1
-    return nothing
-end
-
-function _preflight_nearfield_triplets!(
-        budget::_NearFieldTripletBudget,
-        required_entries::Int)
-    required_entries <= budget.entry_limit ||
-        throw(ArgumentError(
-            "near-field triplet payload requires at least " *
-            "$required_entries entries, " *
-            "exceeding max_triplet_bytes=$(budget.byte_limit)"))
-    return required_entries
-end
 
 @inline function _checked_nearfield_product(a::Int, b::Int,
                                              label::AbstractString)
@@ -215,7 +177,7 @@ function _validate_nearfield_build_controls(cutoff::Float64,
     return nothing
 end
 
-function _validate_nearfield_triplet_values(values::Vector{ComplexF64})
+function _validate_nearfield_matrix_values(values::Vector{ComplexF64})
     all(isfinite, values) ||
         throw(ArgumentError(
             "near-field matrix entries must contain only finite values"))
@@ -365,79 +327,111 @@ end
     return nothing
 end
 
-function _count_nearfield_pairs!(
-        foreach_pair, budget::_NearFieldTripletBudget)
-    foreach_pair() do _, _
-        _register_nearfield_triplet!(budget)
+# Two-pass column-major CSC assembly with no triplet intermediate. The
+# near-pair relation is symmetric, so the enumeration's outer index serves
+# as the matrix column and the inner index as the row: for outer index c the
+# traversal visits every inner r with (c, r) near, which is exactly the row
+# set of column c. Pass one accumulates per-column counts into colptr; pass
+# two fills rowval/nzval through a running cursor.
+function _nearfield_csc_colptr!(colptr::Vector{Int}, foreach_pair)
+    fill!(colptr, 0)
+    foreach_pair() do column, row
+        colptr[column + 1] += 1
     end
-    return budget.count
+    running = 1
+    @inbounds for column in 1:(length(colptr) - 1)
+        count = colptr[column + 1]
+        colptr[column] = running
+        running += count
+    end
+    colptr[end] = running
+    return colptr
 end
 
-function _materialize_nearfield_triplets(
-        count::Int, foreach_pair, getvalue)
-    I_idx = Vector{Int}(undef, count)
-    J_idx = Vector{Int}(undef, count)
-    V_val = Vector{ComplexF64}(undef, count)
-    position = Ref(0)
-    foreach_pair() do m, n
-        position[] += 1
-        I_idx[position[]] = m
-        J_idx[position[]] = n
-        V_val[position[]] = ComplexF64(getvalue(m, n))
+# SparseMatrixCSC getindex and vector-indexing binary-search each column's
+# rowval, so rows must be stored sorted; neighbor enumeration emits them in
+# bucket order. Sort each column segment in place before constructing the
+# matrix. The per-column temporaries are bounded by the column fill.
+function _sort_nearfield_csc_columns!(
+        colptr::Vector{Int}, rowval::Vector{Int}, nzval::Vector{ComplexF64})
+    @inbounds for column in 1:(length(colptr) - 1)
+        lo = colptr[column]
+        hi = colptr[column + 1] - 1
+        hi - lo <= 0 && continue
+        issorted(view(rowval, lo:hi)) && continue
+        order = sortperm(view(rowval, lo:hi))
+        rows = rowval[lo:hi][order]
+        vals = nzval[lo:hi][order]
+        rowval[lo:hi] .= rows
+        nzval[lo:hi] .= vals
     end
-    position[] == count ||
+    return nothing
+end
+
+function _assemble_nearfield_csc(N::Int, foreach_pair, getvalue)
+    colptr = _nearfield_csc_colptr!(Vector{Int}(undef, N + 1), foreach_pair)
+    entries = colptr[N + 1] - 1
+    rowval = Vector{Int}(undef, entries)
+    nzval = Vector{ComplexF64}(undef, entries)
+    cursor = copy(colptr)
+    foreach_pair() do column, row
+        position = cursor[column]
+        rowval[position] = row
+        nzval[position] = ComplexF64(getvalue(row, column))
+        cursor[column] = position + 1
+    end
+    view(cursor, 1:N) == view(colptr, 2:N + 1) ||
         error("near-field neighbor enumeration changed between count and fill passes")
-    return I_idx, J_idx, V_val
+    _sort_nearfield_csc_columns!(colptr, rowval, nzval)
+    return SparseMatrixCSC{ComplexF64,Int}(N, N, colptr, rowval, nzval)
 end
 
-function _nearfield_triplets_bruteforce(
-        centers::Vector{Vec3}, cutoff::Float64, getvalue;
-        max_triplet_bytes::Integer=_DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
-        _budget::Union{Nothing,_NearFieldTripletBudget}=nothing)
+function _nearfield_csc_bruteforce(
+        centers::Vector{Vec3}, cutoff::Float64, getvalue)
     N = length(centers)
-    budget = _budget === nothing ?
-        _nearfield_triplet_budget(max_triplet_bytes) : _budget
-    N == 0 && return Int[], Int[], ComplexF64[]
+    N == 0 && return SparseMatrixCSC{ComplexF64,Int}(
+        0, 0, ones(Int, 1), Int[], ComplexF64[])
 
     if cutoff <= 0
-        _preflight_nearfield_triplets!(budget, N)
-        return _materialize_nearfield_triplets(
-            N,
-            visit -> _foreach_nearfield_pair_bruteforce(
-                centers, cutoff, visit),
-            getvalue)
+        colptr = collect(1:N + 1)
+        rowval = collect(1:N)
+        nzval = Vector{ComplexF64}(undef, N)
+        @inbounds for i in 1:N
+            nzval[i] = ComplexF64(getvalue(i, i))
+        end
+        return SparseMatrixCSC{ComplexF64,Int}(N, N, colptr, rowval, nzval)
     elseif !isfinite(cutoff)
-        required_entries = _checked_nearfield_product(
+        entries = _checked_nearfield_product(
             N, N, "near-field all-pairs entry count")
-        _preflight_nearfield_triplets!(budget, required_entries)
-        return _materialize_nearfield_triplets(
-            required_entries,
-            visit -> _foreach_nearfield_pair_bruteforce(
-                centers, cutoff, visit),
-            getvalue)
+        colptr = Vector{Int}(undef, N + 1)
+        colptr[1] = 1
+        @inbounds for column in 1:N
+            colptr[column + 1] = colptr[column] + N
+        end
+        rowval = repeat(1:N, N)
+        nzval = Vector{ComplexF64}(undef, entries)
+        position = 0
+        @inbounds for column in 1:N, row in 1:N
+            position += 1
+            nzval[position] = ComplexF64(getvalue(row, column))
+        end
+        return SparseMatrixCSC{ComplexF64,Int}(N, N, colptr, rowval, nzval)
     end
 
     foreach_pair = visit -> _foreach_nearfield_pair_bruteforce(
         centers, cutoff, visit)
-    count = _count_nearfield_pairs!(foreach_pair, budget)
-    return _materialize_nearfield_triplets(count, foreach_pair, getvalue)
+    return _assemble_nearfield_csc(N, foreach_pair, getvalue)
 end
 
-function _nearfield_triplets_spatial(
-        centers::Vector{Vec3}, cutoff::Float64, getvalue;
-        max_triplet_bytes::Integer=_DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
-        _budget::Union{Nothing,_NearFieldTripletBudget}=nothing)
+function _nearfield_csc_spatial(
+        centers::Vector{Vec3}, cutoff::Float64, getvalue)
     N = length(centers)
-    budget = _budget === nothing ?
-        _nearfield_triplet_budget(max_triplet_bytes) : _budget
-    N == 0 && return Int[], Int[], ComplexF64[]
+    N == 0 && return SparseMatrixCSC{ComplexF64,Int}(
+        0, 0, ones(Int, 1), Int[], ComplexF64[])
 
     if cutoff <= 0 || !isfinite(cutoff)
-        return _nearfield_triplets_bruteforce(
-            centers, cutoff, getvalue; _budget=budget)
+        return _nearfield_csc_bruteforce(centers, cutoff, getvalue)
     end
-
-    _preflight_nearfield_triplets!(budget, N)
 
     origin, cell_size = _spatial_hash_parameters(centers, cutoff)
     buckets = Dict{NTuple{3,Int}, Vector{Int}}()
@@ -448,37 +442,31 @@ function _nearfield_triplets_spatial(
 
     foreach_pair = visit -> _foreach_nearfield_pair_spatial(
         centers, cutoff, origin, cell_size, buckets, visit)
-    count = _count_nearfield_pairs!(foreach_pair, budget)
-    return _materialize_nearfield_triplets(count, foreach_pair, getvalue)
+    return _assemble_nearfield_csc(N, foreach_pair, getvalue)
 end
 
 """
-Single-pass near-field triplet assembly with lazy Green's caching for EFIE.
+Two-pass near-field CSC assembly with lazy Green's caching for EFIE.
 
 Iterates the spatial-hash neighbor structure and computes EFIE entries on
 the fly, but caches Green's quadrature matrices G[qm,qn] per unique
-(tm, tn) triangle pair so that shared pairs are evaluated only once.
+(tr, tc) triangle pair so that shared pairs are evaluated only once.
 Self-cell and adjacent-cell terms bypass the cache entirely.
 """
-function _nearfield_triplets_batched(
+function _nearfield_csc_batched(
         cache::EFIEApplyCache, centers::Vector{Vec3}, cutoff::Float64;
-        max_triplet_bytes::Integer=_DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
         max_green_cache_bytes::Integer=
             _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES,
         max_green_cache_entries::Integer=
             _DEFAULT_MAX_NEARFIELD_GREEN_CACHE_ENTRIES)
     N = length(centers)
-    N == 0 && return Int[], Int[], ComplexF64[]
-    budget = _nearfield_triplet_budget(max_triplet_bytes)
+    N == 0 && return SparseMatrixCSC{ComplexF64,Int}(
+        0, 0, ones(Int, 1), Int[], ComplexF64[])
 
     if cutoff <= 0 || !isfinite(cutoff)
-        return _nearfield_triplets_spatial(
-            centers, cutoff, (m, n) -> _efie_entry(cache, m, n);
-            _budget=budget)
+        return _nearfield_csc_spatial(
+            centers, cutoff, (m, n) -> _efie_entry(cache, m, n))
     end
-
-
-    _preflight_nearfield_triplets!(budget, N)
 
     # Spatial hash
     origin, cell_size = _spatial_hash_parameters(centers, cutoff)
@@ -490,11 +478,10 @@ function _nearfield_triplets_batched(
 
     foreach_pair = visit -> _foreach_nearfield_pair_spatial(
         centers, cutoff, origin, cell_size, buckets, visit)
-    pair_count = _count_nearfield_pairs!(foreach_pair, budget)
-    I_idx = Vector{Int}(undef, pair_count)
-    J_idx = Vector{Int}(undef, pair_count)
-    V_val = Vector{ComplexF64}(undef, pair_count)
-    position = 0
+    colptr = _nearfield_csc_colptr!(Vector{Int}(undef, N + 1), foreach_pair)
+    rowval = Vector{Int}(undef, colptr[N + 1] - 1)
+    nzval = Vector{ComplexF64}(undef, colptr[N + 1] - 1)
+    cursor = copy(colptr)
 
     Nq     = cache.Nq
     inv_k2 = cache.inv_k2
@@ -543,61 +530,60 @@ function _nearfield_triplets_batched(
         return _fill_greens!(something(green_scratch[]), tm, tn)
     end
 
-    @inbounds for m in 1:N
-        cm = centers[m]
-        key = _cell_key(cm, origin, cell_size)
+    @inbounds for c in 1:N
+        cc = centers[c]
+        key = _cell_key(cc, origin, cell_size)
         for dz in -1:1, dy in -1:1, dx in -1:1
             key_n = (key[1] + dx, key[2] + dy, key[3] + dz)
-            n_list = get(buckets, key_n, nothing)
-            n_list === nothing && continue
-            for n in n_list
-                is_near = (m == n) ||
-                    _within_nearfield_cutoff(cm, centers[n], cutoff)
+            r_list = get(buckets, key_n, nothing)
+            r_list === nothing && continue
+            for r in r_list
+                is_near = (c == r) ||
+                    _within_nearfield_cutoff(cc, centers[r], cutoff)
                 is_near || continue
-                position += 1
 
-                # Compute EFIE entry with cached Green's
+                # Compute EFIE entry (row r, column c) with cached Green's
                 val = zero(ComplexF64)
-                for itm in 1:2
-                    tm = cache.tri_ids[itm, m]
-                    Am = cache.areas[tm]
-                    dvm = cache.div_vals[itm, m]
-                    fm_vals = _rwg_vals(cache, m, itm)
-                    fm_vals_hi = _rwg_vals_hi(cache, m, itm)
+                for itr in 1:2
+                    tr = cache.tri_ids[itr, r]
+                    Ar = cache.areas[tr]
+                    dvr = cache.div_vals[itr, r]
+                    fr_vals = _rwg_vals(cache, r, itr)
+                    fr_vals_hi = _rwg_vals_hi(cache, r, itr)
 
-                    for itn in 1:2
-                        tn = cache.tri_ids[itn, n]
-                        An = cache.areas[tn]
-                        dvn = cache.div_vals[itn, n]
-                        fn_vals = _rwg_vals(cache, n, itn)
-                        fn_vals_hi = _rwg_vals_hi(cache, n, itn)
+                    for itc in 1:2
+                        tc = cache.tri_ids[itc, c]
+                        Ac = cache.areas[tc]
+                        dvc = cache.div_vals[itc, c]
+                        fc_vals = _rwg_vals(cache, c, itc)
+                        fc_vals_hi = _rwg_vals_hi(cache, c, itc)
 
-                        if tm == tn
+                        if tr == tc
                             val += _self_cell_cached(
-                                cache.mesh, tm,
-                                fm_vals_hi, fn_vals_hi,
-                                dvm, dvn,
-                                Am, cache.k, inv_k2,
-                                cache.wq_hi, cache.quad_pts_hi[tm])
-                        elseif _is_adjacent(cache, tm, tn)
+                                cache.mesh, tr,
+                                fr_vals_hi, fc_vals_hi,
+                                dvr, dvc,
+                                Ar, cache.k, inv_k2,
+                                cache.wq_hi, cache.quad_pts_hi[tr])
+                        elseif _is_adjacent(cache, tr, tc)
                             val += _adjacent_cell_cached(
-                                cache.mesh, tn,
-                                cache.quad_pts[tm], cache.quad_pts[tn],
-                                fm_vals, fn_vals,
-                                fm_vals_hi, fn_vals_hi,
-                                dvm, dvn, Am, An,
+                                cache.mesh, tc,
+                                cache.quad_pts[tr], cache.quad_pts[tc],
+                                fr_vals, fc_vals,
+                                fr_vals_hi, fc_vals_hi,
+                                dvr, dvc, Ar, Ac,
                                 cache.wq, cache.k, inv_k2,
-                                cache.wq_hi, cache.quad_pts_hi[tm], cache.quad_pts_hi[tn])
+                                cache.wq_hi, cache.quad_pts_hi[tr], cache.quad_pts_hi[tc])
                         else
-                            G_mat = _get_greens(tm, tn)
-                            dvmn_inv_k2 = conj(dvm) * dvn * inv_k2
+                            G_mat = _get_greens(tr, tc)
+                            dvrc_inv_k2 = conj(dvr) * dvc * inv_k2
                             for qm in 1:Nq
-                                fm = fm_vals[qm]
+                                fr = fr_vals[qm]
                                 for qn in 1:Nq
                                     G = G_mat[qm, qn]
-                                    vec_part = dot(fm, fn_vals[qn]) * G
-                                    scl_part = dvmn_inv_k2 * G
-                                    weight = cache.wq[qm] * cache.wq[qn] * (2*Am) * (2*An)
+                                    vec_part = dot(fr, fc_vals[qn]) * G
+                                    scl_part = dvrc_inv_k2 * G
+                                    weight = cache.wq[qm] * cache.wq[qn] * (2*Ar) * (2*Ac)
                                     val += (vec_part - scl_part) * weight
                                 end
                             end
@@ -605,16 +591,18 @@ function _nearfield_triplets_batched(
                     end
                 end
 
-                I_idx[position] = m
-                J_idx[position] = n
-                V_val[position] = -1im * cache.omega_mu0 * val
+                position = cursor[c]
+                rowval[position] = r
+                nzval[position] = -1im * cache.omega_mu0 * val
+                cursor[c] = position + 1
             end
         end
     end
 
-    position == pair_count ||
+    view(cursor, 1:N) == view(colptr, 2:N + 1) ||
         error("near-field neighbor enumeration changed between count and fill passes")
-    return I_idx, J_idx, V_val
+    _sort_nearfield_csc_columns!(colptr, rowval, nzval)
+    return SparseMatrixCSC{ComplexF64,Int}(N, N, colptr, rowval, nzval)
 end
 
 function _build_diagonal_preconditioner_data(getvalue, N::Int, cutoff::Float64)
@@ -668,9 +656,7 @@ function _build_nearfield_preconditioner_from_entries(mesh::TriMesh, rwg::RWGDat
                                                        getvalue;
                                                        neighbor_search::Symbol=:spatial,
                                                        factorization::Symbol=:lu,
-                                                       ilu_tau::Float64=1e-3,
-                                                       max_triplet_bytes::Integer=
-                                                           _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+                                                       ilu_tau::Float64=1e-3)
     _validate_mesh_rwg_pair(mesh, rwg)
     N = rwg.nedges
     _validate_nearfield_build_controls(
@@ -685,17 +671,14 @@ function _build_nearfield_preconditioner_from_entries(mesh::TriMesh, rwg::RWGDat
 
     centers = rwg_centers(mesh, rwg)
 
-    I_idx, J_idx, V_val = if neighbor_search == :spatial
-        _nearfield_triplets_spatial(
-            centers, cutoff, getvalue; max_triplet_bytes)
+    Z_nf = if neighbor_search == :spatial
+        _nearfield_csc_spatial(centers, cutoff, getvalue)
     elseif neighbor_search == :bruteforce
-        _nearfield_triplets_bruteforce(
-            centers, cutoff, getvalue; max_triplet_bytes)
+        _nearfield_csc_bruteforce(centers, cutoff, getvalue)
     end
 
-    _validate_nearfield_triplet_values(V_val)
+    _validate_nearfield_matrix_values(nonzeros(Z_nf))
 
-    Z_nf = sparse(I_idx, J_idx, V_val, N, N)
     nnz_ratio = (Float64(nnz(Z_nf)) / Float64(N)) / Float64(N)
 
     if factorization == :ilu
@@ -730,9 +713,7 @@ function build_nearfield_preconditioner(Z::Matrix{<:Number}, mesh::TriMesh,
                                          rwg::RWGData, cutoff::Float64;
                                          neighbor_search::Symbol=:spatial,
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3,
-                                         max_triplet_bytes::Integer=
-                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+                                         ilu_tau::Float64=1e-3)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -745,7 +726,6 @@ function build_nearfield_preconditioner(Z::Matrix{<:Number}, mesh::TriMesh,
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
-        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -759,9 +739,7 @@ function build_nearfield_preconditioner(A::AbstractMatrix{<:Number}, mesh::TriMe
                                          rwg::RWGData, cutoff::Float64;
                                          neighbor_search::Symbol=:spatial,
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3,
-                                         max_triplet_bytes::Integer=
-                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+                                         ilu_tau::Float64=1e-3)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -772,7 +750,6 @@ function build_nearfield_preconditioner(A::AbstractMatrix{<:Number}, mesh::TriMe
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
-        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -791,9 +768,7 @@ function build_nearfield_preconditioner(
         cutoff::Float64;
         neighbor_search::Symbol=:spatial,
         factorization::Symbol=:lu,
-        ilu_tau::Float64=1e-3,
-        max_triplet_bytes::Integer=
-            _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+        ilu_tau::Float64=1e-3)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -805,7 +780,6 @@ function build_nearfield_preconditioner(
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
-        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -816,9 +790,7 @@ function build_nearfield_preconditioner(
         cutoff::Float64;
         neighbor_search::Symbol=:spatial,
         factorization::Symbol=:lu,
-        ilu_tau::Float64=1e-3,
-        max_triplet_bytes::Integer=
-            _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+        ilu_tau::Float64=1e-3)
     N = rwg.nedges
     _validate_nearfield_build_controls(
         cutoff, neighbor_search, factorization, ilu_tau)
@@ -830,7 +802,6 @@ function build_nearfield_preconditioner(
         neighbor_search=neighbor_search,
         factorization=factorization,
         ilu_tau=ilu_tau,
-        max_triplet_bytes=max_triplet_bytes,
     )
 end
 
@@ -845,8 +816,6 @@ function build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff::Float
                                          neighbor_search::Symbol=:spatial,
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3,
-                                         max_triplet_bytes::Integer=
-                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
                                          max_green_cache_bytes::Integer=
                                              _DEFAULT_MAX_NEARFIELD_GREEN_WORKSPACE_BYTES,
                                          max_green_cache_entries::Integer=
@@ -865,21 +834,18 @@ function build_nearfield_preconditioner(A::MatrixFreeEFIEOperator, cutoff::Float
     end
 
     centers = rwg_centers(cache.mesh, cache.rwg)
-    I_idx, J_idx, V_val = if neighbor_search == :bruteforce
-        _nearfield_triplets_bruteforce(centers, cutoff,
-                                        (m, n) -> _efie_entry(cache, m, n);
-                                        max_triplet_bytes)
+    Z_nf = if neighbor_search == :bruteforce
+        _nearfield_csc_bruteforce(centers, cutoff,
+                                  (m, n) -> _efie_entry(cache, m, n))
     else
-        _nearfield_triplets_batched(
+        _nearfield_csc_batched(
             cache, centers, cutoff;
-            max_triplet_bytes,
             max_green_cache_bytes,
             max_green_cache_entries)
     end
 
-    _validate_nearfield_triplet_values(V_val)
+    _validate_nearfield_matrix_values(nonzeros(Z_nf))
 
-    Z_nf = sparse(I_idx, J_idx, V_val, N, N)
     nnz_ratio = (Float64(nnz(Z_nf)) / Float64(N)) / Float64(N)
 
     if factorization == :ilu
@@ -906,8 +872,6 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
                                          area_tol_rel::Float64=1e-12,
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3,
-                                         max_triplet_bytes::Integer=
-                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES,
                                          max_cache_bytes::Integer=
                                              _DEFAULT_MAX_EFIE_CACHE_BYTES,
                                          max_adjacency_pairs::Integer=
@@ -932,7 +896,6 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
     return build_nearfield_preconditioner(A, cutoff;
         factorization=factorization,
         ilu_tau=ilu_tau,
-        max_triplet_bytes=max_triplet_bytes,
         max_green_cache_bytes=max_green_cache_bytes,
         max_green_cache_entries=max_green_cache_entries,
     )
@@ -946,62 +909,59 @@ already computed inside the ACA H-matrix operator.  This avoids recomputing
 any EFIE entries — the near-field matrix is assembled directly from the block
 data using the cluster-tree permutation. With `factorization=:diag`, the
 Jacobi entries are evaluated by the exact EFIE evaluator backed by the
-operator's assembly cache, so no sparse triplet payload is materialized.
+operator's assembly cache, so no sparse near-field matrix is materialized.
 """
 function build_nearfield_preconditioner(A_aca::ACAOperator;
                                          factorization::Symbol=:lu,
-                                         ilu_tau::Float64=1e-3,
-                                         max_triplet_bytes::Integer=
-                                             _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+                                         ilu_tau::Float64=1e-3)
     _validate_preconditioner_factorization(factorization, ilu_tau)
     N = A_aca.N
     perm = A_aca.tree.perm   # tree-order → original index
 
     # Jacobi needs only the exact EFIE diagonal available through the ACA
-    # operator's assembly cache. Avoid materializing every dense near-field
-    # block as sparse triplets merely to discard its off-diagonal entries.
+    # operator's assembly cache, so no sparse matrix is materialized.
     if factorization == :diag
         return _build_diagonal_preconditioner_data(
             (i, _) -> efie_entry(A_aca, i, i), N, Inf)
     end
 
-    # Pre-allocate triplets: dense blocks tile the near field without overlap
-    budget = _nearfield_triplet_budget(max_triplet_bytes)
-    total_entries = 0
+    # Dense blocks tile the near field without overlap. Fill the CSC arrays
+    # directly: pass one accumulates per-column counts, pass two writes
+    # rowval/nzval through a running cursor — no triplet intermediate.
+    colptr = zeros(Int, N + 1)
     for db in A_aca.dense_blocks
-        block_entries = _checked_nearfield_product(
-            length(db.row_range), length(db.col_range),
-            "ACA near-field dense-block entry count")
-        total_entries = try
-            Base.Checked.checked_add(total_entries, block_entries)
-        catch err
-            err isa OverflowError || rethrow()
-            throw(ArgumentError(
-                "ACA near-field triplet count exceeds the supported Int range"))
+        block_rows = length(db.row_range)
+        for jj in eachindex(db.col_range)
+            colptr[perm[db.col_range[jj]] + 1] += block_rows
         end
-        _preflight_nearfield_triplets!(budget, total_entries)
     end
-    I_idx = Vector{Int}(undef, total_entries)
-    J_idx = Vector{Int}(undef, total_entries)
-    V_val = Vector{ComplexF64}(undef, total_entries)
-
-    pos = 0
+    running = 1
+    @inbounds for column in 1:N
+        count = colptr[column + 1]
+        colptr[column] = running
+        running = Base.Checked.checked_add(running, count)
+    end
+    colptr[N + 1] = running
+    rowval = Vector{Int}(undef, running - 1)
+    nzval = Vector{ComplexF64}(undef, running - 1)
+    cursor = copy(colptr)
     @inbounds for db in A_aca.dense_blocks
-        nr = length(db.row_range)
-        nc = length(db.col_range)
-        for jj in 1:nc
+        for jj in eachindex(db.col_range)
             j_orig = perm[db.col_range[jj]]
-            for ii in 1:nr
-                i_orig = perm[db.row_range[ii]]
-                pos += 1
-                I_idx[pos] = i_orig
-                J_idx[pos] = j_orig
-                V_val[pos] = db.data[ii, jj]
+            position = cursor[j_orig]
+            for ii in eachindex(db.row_range)
+                rowval[position] = perm[db.row_range[ii]]
+                nzval[position] = db.data[ii, jj]
+                position += 1
             end
+            cursor[j_orig] = position
         end
     end
+    view(cursor, 1:N) == view(colptr, 2:N + 1) ||
+        error("ACA dense-block enumeration changed between count and fill passes")
+    _sort_nearfield_csc_columns!(colptr, rowval, nzval)
 
-    Z_nf = sparse(I_idx, J_idx, V_val, N, N)
+    Z_nf = SparseMatrixCSC{ComplexF64,Int}(N, N, colptr, rowval, nzval)
     return build_nearfield_preconditioner(Z_nf; factorization=factorization,
                                            ilu_tau=ilu_tau)
 end
@@ -1665,72 +1625,88 @@ end
 
 function _loaded_pattern_storage_bytes(
         matrix_size::Int,
-        triplet_count::Int)
-    triplet_payload = BigInt(triplet_count) *
-                      (2 * sizeof(Int) + sizeof(ComplexF64))
-    csc_payload = BigInt(triplet_count) *
+        entry_bound::Int,
+        patch_count::Int)
+    # Column-major union construction: the CSC payload plus a marker row
+    # vector, per-patch column-bucket offsets and position arrays, and push!
+    # headroom on rowval. No triplet arrays or sparse() consolidation
+    # workspace are materialized.
+    csc_payload = BigInt(entry_bound) *
                   (sizeof(Int) + sizeof(ComplexF64)) +
                   BigInt(matrix_size + 1) * sizeof(Int)
-    # Sparse construction may retain the caller's triplets while allocating
-    # sorted work arrays and the final CSC payload.
-    peak = 2 * triplet_payload + csc_payload
+    workspace = BigInt(matrix_size) * sizeof(Int) +
+                BigInt(entry_bound) * sizeof(Int) +
+                BigInt(patch_count) * BigInt(matrix_size + 1) * sizeof(Int)
+    peak = csc_payload + workspace
     peak <= typemax(Int) ||
         throw(ArgumentError(
             "loaded near-field pattern workspace estimate overflows Int"))
     return Int(peak)
 end
 
-function _append_loaded_pattern_triplets!(
-        rows::Vector{Int},
-        columns::Vector{Int},
-        values::Vector{ComplexF64},
-        A::LocalMassMatrix)
-    @inbounds for position in eachindex(A.vals)
-        iszero(A.vals[position]) && continue
-        push!(rows, A.rows[position])
-        push!(columns, A.cols[position])
-        push!(values, one(ComplexF64))
-    end
-    return nothing
-end
-
-function _append_loaded_pattern_triplets!(
-        rows::Vector{Int},
-        columns::Vector{Int},
-        values::Vector{ComplexF64},
-        A::SparseMatrixCSC)
+# Iterate the nonzero row indices of one matrix column. SparseMatrixCSC uses
+# its stored column directly; LocalMassMatrix uses a precomputed column
+# bucket; a generic AbstractMatrix scans the column (O(N) per column, the
+# same total cost the previous triplet append paid).
+function _foreach_pattern_row(f, A::SparseMatrixCSC, column::Int, _)
     stored_rows = rowvals(A)
     stored_values = nonzeros(A)
-    @inbounds for column in axes(A, 2)
-        for position in nzrange(A, column)
-            iszero(stored_values[position]) && continue
-            push!(rows, stored_rows[position])
-            push!(columns, column)
-            push!(values, one(ComplexF64))
-        end
+    @inbounds for position in nzrange(A, column)
+        iszero(stored_values[position]) || f(stored_rows[position])
     end
     return nothing
 end
 
-function _append_loaded_pattern_triplets!(
-        rows::Vector{Int},
-        columns::Vector{Int},
-        values::Vector{ComplexF64},
-        A::AbstractMatrix)
-    @inbounds for column in axes(A, 2), row in axes(A, 1)
-        iszero(A[row, column]) && continue
-        push!(rows, row)
-        push!(columns, column)
-        push!(values, one(ComplexF64))
+function _foreach_pattern_row(f, A::LocalMassMatrix, column::Int,
+                              buckets::Tuple{Vector{Int},Vector{Int}})
+    offsets, positions = buckets
+    @inbounds for slot in offsets[column]:(offsets[column + 1] - 1)
+        f(A.rows[positions[slot]])
     end
     return nothing
 end
+
+function _foreach_pattern_row(f, A::AbstractMatrix, column::Int, _)
+    @inbounds for row in axes(A, 1)
+        iszero(A[row, column]) || f(row)
+    end
+    return nothing
+end
+
+# Counting-sort a LocalMassMatrix's nonzero positions by column so that
+# column iteration stays O(entries) overall instead of rescanning the entry
+# list for every column.
+function _pattern_column_buckets(A::LocalMassMatrix, N::Int)
+    offsets = zeros(Int, N + 1)
+    @inbounds for position in eachindex(A.vals)
+        iszero(A.vals[position]) || (offsets[A.cols[position] + 1] += 1)
+    end
+    running = 1
+    @inbounds for column in 1:N
+        count = offsets[column + 1]
+        offsets[column] = running
+        running += count
+    end
+    offsets[N + 1] = running
+    positions = Vector{Int}(undef, running - 1)
+    cursor = copy(offsets)
+    @inbounds for position in eachindex(A.vals)
+        iszero(A.vals[position]) && continue
+        slot = cursor[A.cols[position]]
+        positions[slot] = position
+        cursor[A.cols[position]] = slot + 1
+    end
+    return offsets, positions
+end
+
+_pattern_column_buckets(_, ::Int) = nothing
 
 function _loaded_nearfield_pattern(
         Z_near::SparseMatrixCSC,
         Mp::Vector{<:AbstractMatrix},
         theta::AbstractVector,
         max_storage_bytes::Integer)
+    N = size(Z_near, 1)
     total_entries = BigInt(_loaded_pattern_entry_count(Z_near))
     @inbounds for patch in eachindex(Mp, theta)
         iszero(theta[patch]) && continue
@@ -1739,9 +1715,10 @@ function _loaded_nearfield_pattern(
     total_entries <= typemax(Int) ||
         throw(ArgumentError(
             "loaded near-field pattern entry count overflows Int"))
-    entry_count = Int(total_entries)
-    required_bytes = _loaded_pattern_storage_bytes(
-        size(Z_near, 1), entry_count)
+    entry_bound = Int(total_entries)
+    active = [patch for patch in eachindex(Mp, theta)
+              if !iszero(theta[patch])]
+    required_bytes = _loaded_pattern_storage_bytes(N, entry_bound, length(active))
     _enforce_payload_limit(
         required_bytes,
         max_storage_bytes,
@@ -1749,25 +1726,38 @@ function _loaded_nearfield_pattern(
         "max_storage_bytes",
     )
 
-    rows = Int[]
-    columns = Int[]
-    values = ComplexF64[]
-    sizehint!(rows, entry_count)
-    sizehint!(columns, entry_count)
-    sizehint!(values, entry_count)
-    _append_loaded_pattern_triplets!(rows, columns, values, Z_near)
-    @inbounds for patch in eachindex(Mp, theta)
-        iszero(theta[patch]) && continue
-        _append_loaded_pattern_triplets!(
-            rows, columns, values, Mp[patch])
+    buckets = [_pattern_column_buckets(Mp[patch], N) for patch in active]
+
+    # Single column-major pass: marker[row] == column marks rows already
+    # emitted for the current column, so the union is deduplicated in place
+    # and rowval is appended in column order without any triplet arrays.
+    marker = zeros(Int, N)
+    rowval = Int[]
+    sizehint!(rowval, entry_bound)
+    colptr = Vector{Int}(undef, N + 1)
+    colptr[1] = 1
+    for column in 1:N
+        _foreach_pattern_row(Z_near, column, nothing) do row
+            if marker[row] != column
+                marker[row] = column
+                push!(rowval, row)
+            end
+        end
+        @inbounds for index in eachindex(active, buckets)
+            patch = Mp[active[index]]
+            _foreach_pattern_row(patch, column, buckets[index]) do row
+                if marker[row] != column
+                    marker[row] = column
+                    push!(rowval, row)
+                end
+            end
+        end
+        colptr[column + 1] = length(rowval) + 1
     end
-    length(rows) == entry_count ||
-        error("loaded near-field pattern changed between count and fill passes")
-    return sparse(
-        rows, columns, values,
-        size(Z_near, 1), size(Z_near, 2),
-        (_, _) -> one(ComplexF64),
-    )
+    nzval = Vector{ComplexF64}(undef, length(rowval))
+    _sort_nearfield_csc_columns!(colptr, rowval, nzval)
+    return SparseMatrixCSC{ComplexF64,Int}(
+        N, size(Z_near, 2), colptr, rowval, nzval)
 end
 
 function _loaded_nearfield_matrix(Z_near::SparseMatrixCSC,

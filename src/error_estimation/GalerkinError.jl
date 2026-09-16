@@ -160,21 +160,34 @@ function prepare_galerkin_error(
             limit, "enriched preparation", "max_work_bytes")
         pt, qt = sparse(adjoint(pair.P)), sparse(adjoint(pair.Q))
         restricted = Matrix{ComplexF64}(undef, nc, nc)
-        previous = state.operator isa StridedMatrix ?
-                   Matrix{ComplexF64}(state.operator) : similar(restricted)
-        unit = zeros(ComplexF64, nc)
+        # Accumulate the infinity-norm difference against the previous
+        # operator column by column: the full previous matrix and the
+        # restricted-minus-previous copy are never materialized.
+        dense_previous = state.operator isa StridedMatrix
+        row_differences = zeros(Float64, nc)
+        previous_column = dense_previous ? nothing : Vector{ComplexF64}(undef, nc)
+        unit = dense_previous ? nothing : zeros(ComplexF64, nc)
         for column in 1:nc
-            restricted[:, column] .= _error_action(
+            target = view(restricted, :, column)
+            target .= _error_action(
                 pt, _error_column_action(fine_operator, pair.P, column))
-            if !(state.operator isa StridedMatrix)
+            if dense_previous
+                stored = view(state.operator, :, column)
+                @inbounds for row in 1:nc
+                    row_differences[row] += abs(target[row] - stored[row])
+                end
+            else
                 fill!(unit, 0)
                 unit[column] = 1
-                previous[:, column] .= _error_action(state.operator, unit)
+                previous_column .= _error_action(state.operator, unit)
+                @inbounds for row in 1:nc
+                    row_differences[row] += abs(target[row] - previous_column[row])
+                end
             end
         end
         fine_b = Vector{ComplexF64}(fine_rhs)
         bc = _error_action(pt, fine_b)
-        matrix_difference = opnorm(restricted - previous, Inf)
+        matrix_difference = maximum(row_differences)
         rhs_difference = norm(bc - state.rhs)
         matrix_scale = opnorm(restricted, Inf)
         rhs_scale = norm(bc)
@@ -239,7 +252,7 @@ function _enriched_output_rows(system::GalerkinErrorSystem, fine_rows, solve_bud
     p, q = system.pair.P, system.pair.Q
     gc = fine_rows * p
     lambda = solve_prepared_adjoint!(
-        system.coarse, Matrix(adjoint(gc)); max_work_bytes=solve_budget)
+        system.coarse, adjoint(gc); max_work_bytes=solve_budget)
     correction = _error_action_columns(
         adjoint(system.fine_operator), p * lambda)
     h = fine_rows * q - adjoint(correction) * q

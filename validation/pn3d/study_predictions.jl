@@ -4,12 +4,7 @@ const STUDY_LEVELS = (0, 1)
 const STUDY_PROBE_COUNTS = (0, 2, 8, 24)
 const STUDY_MAX_WORK_BYTES = 16_000_000_000
 const STUDY_MAX_EXACT_TERMS = 64_000_000
-const STUDY_MAX_TRIPLET_BYTES = 4_000_000_000
 const STUDY_ALGORITHM_VERSION = 1
-
-function _study_main_rows(main_looks)
-    return reduce(vcat, ([2look - 1, 2look] for look in main_looks))
-end
 
 function _study_field_record(field, look_count)
     values = reshape(Vector{ComplexF64}(field), 2, look_count)
@@ -42,7 +37,6 @@ function _study_level_solve(mesh, row, source, level)
         max_true_residual_exact_terms=STUDY_MAX_EXACT_TERMS,
         max_aca_storage_bytes=STUDY_MAX_WORK_BYTES,
         max_dense_matrix_bytes=STUDY_MAX_WORK_BYTES,
-        max_triplet_bytes=STUDY_MAX_TRIPLET_BYTES,
         return_state=true, check_resolution=false, verbose=false,
     )
 end
@@ -50,14 +44,14 @@ end
 function _study_global_factor(system, output_map)
     coarse_map = output_map * system.pair.P
     adjoint_solution = solve_prepared_adjoint!(
-        system.coarse, Matrix(adjoint(coarse_map));
+        system.coarse, adjoint(coarse_map);
         max_work_bytes=STUDY_MAX_WORK_BYTES)
-    factor = norm(system.coarse.rhs) * Matrix(adjoint(adjoint_solution))
+    factor = norm(system.coarse.rhs) * adjoint(adjoint_solution)
     all(isfinite, factor) || error("global-covariance output factor is non-finite")
     return factor
 end
 
-function _study_level_prediction(mesh, fine_mesh, state, fine_state, grid, main_rows,
+function _study_level_prediction(mesh, fine_mesh, state, fine_state, grid,
                                  look_count, source_amplitude)
     pair, nesting_s = @timed build_nested_rwg_pair(
         mesh; max_work_bytes=STUDY_MAX_WORK_BYTES)
@@ -68,10 +62,9 @@ function _study_level_prediction(mesh, fine_mesh, state, fine_state, grid, main_
         max_work_bytes=STUDY_MAX_WORK_BYTES)
     k = DiffMoM._frequency_to_wavenumber(
         state.frequency_hz, state.c0, "panel study output map")
-    wide_map, radiation_s = @timed rcs_output_map(
+    output_map, radiation_s = @timed rcs_output_map(
         pair.fine_mesh, pair.fine_rwg, grid, k; quad_order=7,
         max_work_bytes=STUDY_MAX_WORK_BYTES, max_exact_work=5_000_000_000)
-    output_map = wide_map[main_rows, :]
     coarse_map = output_map * pair.P
     algebraic_coarse_v, algebraic_coarse_s = @timed _study_residual_output_change(
         state, coarse_map, look_count)
@@ -195,7 +188,11 @@ function _study_predict_case(row, population_dir, protocol, protocol_hash)
     meshes = reference_case_meshes(row, 0.05, maximum(STUDY_LEVELS) + 1)
     _, source = reference_case_source(row)
     grid, main_looks = reference_observation_grid(population_dir)
-    main_rows = _study_main_rows(main_looks)
+    # Assemble only the twelve registered looks; the wide grid exists solely
+    # to reproduce and validate their exact coordinates.
+    main_grid = DiffMoM.SphGrid(
+        grid.rhat[:, main_looks], grid.theta[main_looks],
+        grid.phi[main_looks], grid.w[main_looks])
     states = Any[]
     solves = NamedTuple[]
     for level in 0:(maximum(STUDY_LEVELS) + 1)
@@ -213,7 +210,7 @@ function _study_predict_case(row, population_dir, protocol, protocol_hash)
     end
     levels = [_study_level_prediction(
         meshes[level + 1], meshes[level + 2], states[level + 1], states[level + 2],
-        grid, main_rows, length(main_looks), row.incident_amplitude_v_m)
+        main_grid, length(main_looks), row.incident_amplitude_v_m)
         for level in STUDY_LEVELS]
     _study_validate_protocol(protocol, protocol_hash)
     return (

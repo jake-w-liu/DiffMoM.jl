@@ -110,7 +110,7 @@ function reference_backend_comparison(population_dir, output_dir, case_id;
             end
             preconditioner, preconditioner_s = @timed (
                 name == "aca" ? build_nearfield_preconditioner(operator;
-                    factorization=:lu, max_triplet_bytes=controls.max_work_bytes) :
+                    factorization=:lu) :
                 build_nearfield_preconditioner(operator.Z_near; factorization=:lu))
             action_error = NaN
             entry_error = nothing

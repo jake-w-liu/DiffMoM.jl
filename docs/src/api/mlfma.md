@@ -134,8 +134,8 @@ Build an MLFMA operator for the EFIE system. This is the main entry point for co
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
 | `max_sampling_points` | `Int` | `2_100_000` | Maximum spherical-grid points at any level. |
 | `max_setup_bytes` | `Int` | `2_000_000_000` | Maximum estimated bytes for the octree plus MLFMA sampling, translation, filter, pattern, and workspace storage. |
-| `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact count of leaf-neighbor matrix triplets. |
-| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw payload of the three near-field triplet arrays. |
+| `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact count of leaf-neighbor matrix entries. |
+| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw payload of the near-field CSC arrays. |
 | `max_adjacency_pairs` | `Int` | `20_000_000` | Maximum edge-derived triangle-pair records in the near-field EFIE cache. |
 | `max_translation_terms` | `Int` | `50_000_000` | Maximum Legendre recurrence terms for one unique translation offset. |
 | `max_matvec_scratch_bytes` | `Int` | `536_870_912` | Maximum raw temporary payload for an exceptional exponent-banded matvec. |
@@ -190,16 +190,17 @@ Assemble the near-field (neighbor interaction) sparse matrix for MLFMA. Only com
 | `k` | `Float64` | -- | Wavenumber (rad/m). |
 | `quad_order` | `Int` | `3` | Quadrature order for EFIE entry evaluation. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
-| `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact leaf-neighbor triplet count. |
-| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw triplet-array payload. |
+| `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact leaf-neighbor entry count. |
+| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw CSC-array payload. |
 | `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated EFIE quadrature/RWG/adjacency cache ceiling. |
 | `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived triangle-pair records. |
 
 **Returns:** `SparseMatrixCSC{ComplexF64, Int}` of size `(N, N)`.
 
-**Note:** Resource limits are checked before the EFIE cache or triplet arrays
-are allocated. This is called internally by `build_mlfma_operator`; direct
-custom workflows receive the same fail-closed limits.
+**Note:** Resource limits are checked before the EFIE cache or CSC arrays
+are allocated. The matrix is assembled directly in column-major order without
+a triplet intermediate. This is called internally by `build_mlfma_operator`;
+direct custom workflows receive the same fail-closed limits.
 
 ---
 

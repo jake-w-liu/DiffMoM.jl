@@ -502,7 +502,7 @@ exact_efie_value = efie_entry(A, i, j)
 EFIE entry. The ACA-specific `build_nearfield_preconditioner(A)` overload copies
 the already stored dense inadmissible blocks for LU and ILU construction. With
 `factorization=:diag`, it evaluates only the exact EFIE diagonal and does not
-materialize a sparse-triplet payload.
+materialize a sparse near-field matrix.
 
 ---
 

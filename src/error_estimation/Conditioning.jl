@@ -57,15 +57,27 @@ function _conditioning_work_bytes(m::Int, q::Int)
 end
 
 function _whiten_error_rows(lower, permutation, tau, rows)
-    rhs = Matrix(adjoint(rows))[permutation, :]
-    values = tau * Matrix(adjoint(lower \ rhs))
+    # rhs[i, j] = conj(rows[j, permutation[i]]): fuse the adjoint and the
+    # row permutation into a single fill instead of materializing both.
+    m, q = size(rows, 2), size(rows, 1)
+    rhs = Matrix{ComplexF64}(undef, m, q)
+    @inbounds for column in 1:q, row in 1:m
+        rhs[row, column] = conj(rows[column, permutation[row]])
+    end
+    ldiv!(lower, rhs)
+    values = Matrix{ComplexF64}(undef, q, m)
+    @inbounds for column in 1:m, row in 1:q
+        values[row, column] = tau * conj(rhs[column, row])
+    end
     return _assert_finite_linear_array(values, "whitened error rows")
 end
 
 function _unwhiten_error_columns(lower, permutation, tau, columns)
-    values = tau * (adjoint(lower) \ columns)
-    output = similar(values)
-    output[permutation, :] .= values
+    solved = adjoint(lower) \ columns
+    output = similar(solved)
+    @inbounds for column in axes(output, 2), row in axes(output, 1)
+        output[permutation[row], column] = tau * solved[row, column]
+    end
     return _assert_finite_linear_array(output, "conditional coefficients")
 end
 
@@ -272,11 +284,14 @@ function condition_discretization_error(
         system.pair.fine_mesh, system.pair.fine_rwg;
         triangle_weights=triangle_weights, max_work_bytes=limit - retained - rows_bytes)
     mass = sparse(adjoint(system.pair.Q) * fine_mass * system.pair.Q)
+    # The restricted mass is what conditioning consumes; release the
+    # fine-space mass before the sparse Cholesky allocates its factors.
+    fine_mass = nothing
+    GC.gc()
     conditioning = condition_error_observations(
         mass, v, t; tau=tau, rank_rtol=rank_rtol,
         consistency_rtol=consistency_rtol,
-        max_work_bytes=limit - retained -
-            Base.summarysize((fine_mass, r, v, t)))
+        max_work_bytes=limit - retained - Base.summarysize((r, v, t)))
     _validate_error_system(system)
     return ConditionedErrorModel(
         system, conditioning, r, (time_ns() - started) / 1e9,
@@ -360,7 +375,10 @@ function evaluate_error_outputs(
             square_root[indices, :] .= 0
         else
             projected = whitened * conditioning.right_basis
-            square_root[indices, :] .= whitened - projected * adjoint(conditioning.right_basis)
+            target = view(square_root, indices, :)
+            copyto!(target, whitened)
+            mul!(target, projected, adjoint(conditioning.right_basis),
+                 -one(ComplexF64), true)
         end
     end
     covariance = square_root * adjoint(square_root)
@@ -398,7 +416,9 @@ function sample_conditioned_error(
     latent = conditioning.rank == m ? zeros(ComplexF64, m, n) :
              Base.randn(rng, ComplexF64, m, n)
     if 0 < conditioning.rank < m
-        latent .-= conditioning.right_basis * (adjoint(conditioning.right_basis) * latent)
+        coefficients = adjoint(conditioning.right_basis) * latent
+        mul!(latent, conditioning.right_basis, coefficients,
+             -one(ComplexF64), true)
     end
     latent .+= conditioning.latent_mean
     return _unwhiten_error_columns(

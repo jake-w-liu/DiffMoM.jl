@@ -7,13 +7,12 @@ include("reference_population.jl")
 # dense operator at unchanged quadrature. Both records are empirical error
 # budgets in volts at the 12 registered looks, not continuum-error bounds.
 
-function _study_main_look_fields(mesh, rwg, coefficients, grid, k, main_looks;
+function _study_main_look_fields(mesh, rwg, coefficients, grid, k;
         quad_order, max_work_bytes)
     mapping = rcs_output_map(mesh, rwg, grid, k;
         quad_order, max_work_bytes, max_exact_work=5_000_000_000)
-    field = reshape(vec(DiffMoM._error_action_columns(
+    return reshape(vec(DiffMoM._error_action_columns(
         mapping, reshape(coefficients, :, 1))), 2, :)
-    return field[:, main_looks]
 end
 
 function _study_look_differences(first_field, second_field)
@@ -42,13 +41,15 @@ function study_numerical_checks(population_dir, output_path, case_id)
     driver_hashes = Dict(basename(path) => bytes2hex(sha256(read(path)))
                          for path in dependencies)
     grid, main_looks = reference_observation_grid(population_dir)
+    main_grid = DiffMoM.SphGrid(
+        grid.rhat[:, main_looks], grid.theta[main_looks],
+        grid.phi[main_looks], grid.w[main_looks])
     controls = (; quadrature_level=1, quadrature_orders=(7, 28),
         compression_level=2, quad_order=7, aca_tol=1e-12, aca_max_rank=256,
         gmres_tol=1e-10, gmres_maxiter=1500, gmres_memory=80,
         true_residual_factor=10.0,
         max_true_residual_exact_terms=64_000_000,
-        max_work_bytes=16_000_000_000, initial_edge_m=0.05,
-        preconditioner_triplet_bytes=4_000_000_000)
+        max_work_bytes=16_000_000_000, initial_edge_m=0.05)
     record = nothing
     failure = nothing
     completed = false
@@ -69,7 +70,7 @@ function study_numerical_checks(population_dir, output_path, case_id)
                 return_state=true, check_resolution=false, verbose=false)
             costs["quadrature_$(order)_solve_s"] = elapsed
             field, map_s = @timed _study_main_look_fields(
-                quad_mesh, quad_rwg, prepared.state.I_coeffs, grid, k, main_looks;
+                quad_mesh, quad_rwg, prepared.state.I_coeffs, main_grid, k;
                 quad_order=order, max_work_bytes=controls.max_work_bytes)
             costs["quadrature_$(order)_map_s"] = map_s
             field
@@ -92,15 +93,14 @@ function study_numerical_checks(population_dir, output_path, case_id)
             max_true_residual_exact_terms=controls.max_true_residual_exact_terms,
             max_aca_storage_bytes=controls.max_work_bytes,
             max_dense_matrix_bytes=controls.max_work_bytes,
-            max_triplet_bytes=controls.preconditioner_triplet_bytes,
             return_state=true, check_resolution=false, verbose=false)
         dense_field, costs["compression_map_s"] = @timed _study_main_look_fields(
             compression_mesh, compression_rwg, dense.state.I_coeffs,
-            grid, k, main_looks;
+            main_grid, k;
             quad_order=controls.quad_order, max_work_bytes=controls.max_work_bytes)
         compressed_field = _study_main_look_fields(
             compression_mesh, compression_rwg, compressed.state.I_coeffs,
-            grid, k, main_looks;
+            main_grid, k;
             quad_order=controls.quad_order, max_work_bytes=controls.max_work_bytes)
         compression_v = _study_look_differences(dense_field, compressed_field)
         record = (

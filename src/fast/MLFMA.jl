@@ -17,8 +17,11 @@ const _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES = 50_000_000
 const _DEFAULT_MAX_MLFMA_TRANSLATION_TERMS = 50_000_000
 const _DEFAULT_MAX_MLFMA_MATVEC_SCRATCH_BYTES = 512 * 1024 * 1024
 const _DEFAULT_MAX_MLFMA_EXACT_COMBINE_WORK = 2_000_000
-const _MLFMA_NEARFIELD_TRIPLET_BYTES =
-    sizeof(Int) + sizeof(Int) + sizeof(ComplexF64)
+# Per-entry CSC payload (row index + value) plus the amortized colptr share
+# of one Int per column is bounded by adding a per-entry Int; this slightly
+# overestimates when a column is empty, which is the safe direction.
+const _MLFMA_NEARFIELD_ENTRY_BYTES =
+    2 * sizeof(Int) + sizeof(ComplexF64)
 
 # ─── Spherical sampling ─────────────────────────────────────────
 
@@ -303,14 +306,14 @@ function _validate_mlfma_nearfield_resources(
         throw(ArgumentError(
             "$label: max_nearfield_bytes must be positive, got $max_nearfield_bytes"))
     entries = _mlfma_nearfield_entry_count(octree)
-    raw_bytes = entries * _MLFMA_NEARFIELD_TRIPLET_BYTES
+    raw_bytes = entries * _MLFMA_NEARFIELD_ENTRY_BYTES
     entries <= max_nearfield_entries ||
         throw(ArgumentError(
             "$label: estimated near-field entry count " *
             "$entries exceeds max_nearfield_entries=$max_nearfield_entries"))
     raw_bytes <= max_nearfield_bytes ||
         throw(ArgumentError(
-            "$label: estimated near-field triplet payload " *
+            "$label: estimated near-field CSC payload " *
             "$raw_bytes bytes exceeds max_nearfield_bytes=$max_nearfield_bytes"))
     return Int(entries)
 end
@@ -1036,8 +1039,9 @@ end
 
 Assemble the near-field (neighbor interaction) sparse matrix for MLFMA.
 Only computes entries for BF pairs in neighboring leaf boxes.
-Returns a CSC sparse matrix in original BF ordering.
-The exact triplet count and raw triplet payload are capped before the EFIE
+Returns a CSC sparse matrix in original BF ordering, assembled directly in
+column-major order without a triplet intermediate.
+The exact entry count and raw CSC payload are capped before the EFIE
 cache or output arrays are allocated.
 """
 function assemble_mlfma_nearfield(octree::Octree, mesh::TriMesh, rwg::RWGData, k::Float64;
@@ -1064,31 +1068,52 @@ function assemble_mlfma_nearfield(octree::Octree, mesh::TriMesh, rwg::RWGData, k
         max_adjacency_pairs=max_adjacency_pairs)
     leaf_level = octree.levels[octree.nLevels]
 
-    rows = Int[]
-    cols = Int[]
-    vals = ComplexF64[]
-    sizehint!(rows, entry_count)
-    sizehint!(cols, entry_count)
-    sizehint!(vals, entry_count)
-
-    for box in leaf_level.boxes
+    # Direct column-major CSC assembly — no triplet intermediate. Neighbor
+    # lists are symmetric (boxes within ±1 ijk), so column n ∈ box B receives
+    # exactly the basis functions of B's neighbor boxes; per-column counts are
+    # box sums, and the fill pass writes each column's segment contiguously.
+    colptr = Vector{Int}(undef, N + 1)
+    colptr[1] = 1
+    @inbounds for box in leaf_level.boxes
+        column_entries = 0
         for nbr_id in box.neighbors
-            nbr_box = leaf_level.boxes[nbr_id]
-            # Compute all entries Z[m, n] for m ∈ box, n ∈ nbr_box
-            for m_perm in box.bf_range
-                m = octree.perm[m_perm]
-                for n_perm in nbr_box.bf_range
-                    n = octree.perm[n_perm]
-                    val = _efie_entry(cache, m, n)
-                    push!(rows, m)
-                    push!(cols, n)
-                    push!(vals, val)
-                end
-            end
+            column_entries += length(leaf_level.boxes[nbr_id].bf_range)
+        end
+        for n_perm in box.bf_range
+            colptr[octree.perm[n_perm] + 1] = column_entries
         end
     end
+    @inbounds for column in 1:N
+        colptr[column + 1] += colptr[column]
+    end
+    colptr[N + 1] - 1 == entry_count ||
+        error("MLFMA near-field column counts disagree with the entry-count estimate")
+    rowval = Vector{Int}(undef, entry_count)
+    nzval = Vector{ComplexF64}(undef, entry_count)
+    cursor = copy(colptr)
 
-    return sparse(rows, cols, vals, N, N)
+    for box in leaf_level.boxes
+        for n_perm in box.bf_range
+            n = octree.perm[n_perm]
+            position = cursor[n]
+            for nbr_id in box.neighbors
+                nbr_box = leaf_level.boxes[nbr_id]
+                # Emit Z[m, n] for m ∈ nbr_box into column n
+                for m_perm in nbr_box.bf_range
+                    m = octree.perm[m_perm]
+                    rowval[position] = m
+                    nzval[position] = _efie_entry(cache, m, n)
+                    position += 1
+                end
+            end
+            cursor[n] = position
+        end
+    end
+    view(cursor, 1:N) == view(colptr, 2:N + 1) ||
+        error("MLFMA near-field fill did not match the computed column counts")
+    _sort_nearfield_csc_columns!(colptr, rowval, nzval)
+
+    return SparseMatrixCSC{ComplexF64,Int}(N, N, colptr, rowval, nzval)
 end
 
 """
@@ -1702,8 +1727,8 @@ Build an MLFMA operator for the EFIE system.
 - `eta0=376.730313668`: free-space impedance
 - `max_sampling_points=2_100_000`: per-level spherical-grid resource limit
 - `max_setup_bytes=2_000_000_000`: estimated octree and MLFMA setup-storage limit
-- `max_nearfield_entries=50_000_000`: exact near-field triplet-count limit
-- `max_nearfield_bytes=2_000_000_000`: raw near-field triplet-payload limit
+- `max_nearfield_entries=50_000_000`: exact near-field entry-count limit
+- `max_nearfield_bytes=2_000_000_000`: raw near-field CSC-payload limit
 - `max_adjacency_pairs=20_000_000`: triangle-adjacency pair-record limit
 - `max_translation_terms=50_000_000`: per-offset Legendre work limit
 - `max_matvec_scratch_bytes=536_870_912`: exponent-band scratch limit
@@ -1812,7 +1837,7 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
         round(Float64(estimated_setup_bytes) / 2.0^20; digits=2),
         " MiB")
     verbose && println(
-        "  MLFMA: Near-field triplets — ", nearfield_entries)
+        "  MLFMA: Near-field entries — ", nearfield_entries)
 
     # 3. Near-field matrix
     verbose && print("  MLFMA: Assembling near-field... ")

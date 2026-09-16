@@ -100,9 +100,6 @@ produce a warning (or error if `error_on_underresolved=true`).
 - `max_dense_matrix_bytes=2_000_000_000`: raw-payload ceiling for the dense
   EFIE matrix, and for the simultaneous matrix, factor, pivot, and field
   buffers on the dense-direct path
-- `max_triplet_bytes=536870912`: near-field triplet-payload ceiling for the
-  dense-GMRES and ACA preconditioner builds; the MLFMA path consumes its
-  stored sparse near-field under the operator builder's own budgets
 
 # Returns
 A `ScatteringResult` with fields: `I_coeffs`, `method`, `N`, timing info,
@@ -141,9 +138,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           max_true_residual_exact_terms::Integer=
                               _DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS,
                           max_dense_matrix_bytes::Integer=
-                              _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
-                          max_triplet_bytes::Integer=
-                              _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
+                              _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     exact_term_limit = _validated_nonnegative_resource_limit(
         "max_true_residual_exact_terms", max_true_residual_exact_terms)
     aca_storage_limit = _validated_resource_limit("max_aca_storage_bytes", max_aca_storage_bytes)
@@ -345,12 +340,10 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             t_precond = @elapsed begin
                 if selected_method == :dense_gmres
                     P_nf = build_nearfield_preconditioner(Z, mesh, rwg, cutoff;
-                                                           factorization=factorization,
-                                                           max_triplet_bytes=max_triplet_bytes)
+                                                           factorization=factorization)
                 elseif selected_method == :aca_gmres
                     P_nf = build_nearfield_preconditioner(A_aca;
-                                                           factorization=factorization,
-                                                           max_triplet_bytes=max_triplet_bytes)
+                                                           factorization=factorization)
                 end
             end
             if verbose

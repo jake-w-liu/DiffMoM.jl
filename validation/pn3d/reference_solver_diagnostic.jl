@@ -20,7 +20,7 @@ function reference_solver_diagnostic(population_dir, output_dir, case_id)
     grid, main_looks = reference_observation_grid(population_dir)
     controls = (; level=3, initial_edge_m=0.05, quad_order=7,
         aca_tol=1e-9, aca_max_rank=256, max_storage_bytes=16_000_000_000,
-        max_triplet_bytes=16_000_000_000, max_workspace_bytes=512*1024*1024,
+        max_workspace_bytes=512*1024*1024,
         tolerance=1e-10, true_residual_factor=10.0,
         maxiter=1500, max_true_residual_exact_terms=64_000_000)
     attempts = NamedTuple[]
@@ -66,7 +66,7 @@ function reference_solver_diagnostic(population_dir, output_dir, case_id)
         active = "ACA-block preconditioner"
         checkpoint()
         preconditioner, costs["preconditioner_s"] = @timed build_nearfield_preconditioner(
-            operator; factorization=:lu, max_triplet_bytes=controls.max_triplet_bytes)
+            operator; factorization=:lu)
         # The high-level ACA path uses inadmissible blocks, not a distance
         # cutoff. These attempts change actual Krylov controls and reuse setup.
         for (memory, side) in ((80, :left), (80, :right), (160, :right))

@@ -63,16 +63,19 @@ now-corrected project audit script and cannot count as a passing harness run.
 
 ## Current PN3D verification: 2026-10-12
 
-Checkpoint: the near-field triplet budget is now reachable from
-`solve_scattering` (`max_triplet_bytes`, default unchanged at 512 MiB) and
-the registered drivers set it explicitly at 4 GiB. A level-2 campaign case
-had failed closed needing 16,779,488 triplet entries. Verified by a direct
-bounds-checked call (`max_triplet_bytes=64` throws `ArgumentError` listing
-the required 2704 entries) and by the extended
-`test_workflow_aca_budget.jl` (8/8 pass, including the new rejection test).
-Because `src/` participates in `source_digest`, the registered campaign
-restarted into `reference_population_formal_v2` /
-`study_predictions_formal_v2`; v1 records are superseded.
+Checkpoint: near-field matrices are now assembled directly into
+column-major `SparseMatrixCSC` (two-pass count-then-fill with per-column
+row sorting). The previous triplet `I/J/V` intermediate and its `sparse()`
+consolidation are gone, together with the `max_triplet_bytes` control that
+bounded only that transient — for the level-2 case needing 16,779,488
+entries the peak near-field payload drops from roughly 1 GiB (triplets plus
+consolidated CSC) to about 0.4 GiB of CSC arrays. Verified by direct CSC
+tests against brute-force and spatial-hash enumeration, including
+asymmetric `getvalue` orientation, and by the MLFMA near-field test
+comparing assembled entries to dense EFIE values. Because `src/`
+participates in `source_digest`, the registered campaign restarted into
+`reference_population_formal_v3` / `study_predictions_formal_v3`; v1/v2
+records are superseded.
 
 ## Prior PN3D verification: 2026-09-15
 

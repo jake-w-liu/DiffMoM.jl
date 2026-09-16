@@ -73,7 +73,6 @@ function probe_experiment_setup(mesh; fine_method=:dense_direct, quad_order=3,
     fine_controls = (; method=fine_method, quad_order=quad_order, c0=SPEED,
         aca_tol=1e-8, aca_max_rank=256, gmres_tol=1e-9, gmres_maxiter=1000,
         nf_cutoff_lambda=0.25, max_true_residual_exact_terms=residual_exact_terms,
-        max_triplet_bytes=WORK_BYTES,
         check_resolution=false, return_state=true, verbose=false)
     (fine_result, fine), fine_s = @timed solve_scattering(
         pair.fine_mesh, FREQUENCY, source; fine_controls...)
@@ -161,7 +160,7 @@ function nearfield_experiment_main()
             frequency_hz=FREQUENCY, tau=PROBE_TAU, fine_method=string(fine.method),
             fine_controls=setup.fine_controls, requested_max_edge_m=EDGE,
             quadrature_order=quad_order, radiation_exact_work_limit=radiation_exact_work,
-            nearfield_triplet_limit=WORK_BYTES,
+            max_work_bytes=WORK_BYTES,
             coarse_edges=size(pair.P, 2), fine_edges=size(pair.P, 1),
             coarse_relative_error=norm(prepared.coarse_mean - reference) / reference_norm,
             costs=setup.costs, active_config, failure, rows,
@@ -179,7 +178,7 @@ function nearfield_experiment_main()
         active_started = time_ns()
         nf, nf_s = @timed build_nearfield_preconditioner(
             fine.operator, pair.fine_mesh, pair.fine_rwg,
-            cutoff_lambda * SPEED / FREQUENCY; max_triplet_bytes=WORK_BYTES)
+            cutoff_lambda * SPEED / FREQUENCY)
         for q in (2, 8, size(prepared.rows, 1))
             active_config = (; cutoff_lambda, probe_rows=q, stage="conditioning_and_outputs")
             write_report("partial")

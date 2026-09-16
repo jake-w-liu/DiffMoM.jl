@@ -141,8 +141,7 @@ function population_reference_main(population_dir, output_dir, split, first_case
         gmres_memory=80, true_residual_factor=10.0, aca_tol=1e-9, aca_max_rank=256,
         max_true_residual_exact_terms=64_000_000,
         radiation_exact_work_limit=5_000_000_000, initial_edge_m=0.05,
-        max_work_bytes=16_000_000_000, max_aca_storage_bytes=16_000_000_000,
-        preconditioner_triplet_bytes=4_000_000_000)
+        max_work_bytes=16_000_000_000, max_aca_storage_bytes=16_000_000_000)
     grid, main_looks = reference_observation_grid(population_dir)
     protocol = (; schema_version=1, code_hash, driver_hash, controls,
         helper_sha256=pilot_hash,
@@ -196,7 +195,6 @@ function population_reference_main(population_dir, output_dir, split, first_case
                     gmres_memory=controls.gmres_memory,
                     true_residual_factor=controls.true_residual_factor,
                     max_true_residual_exact_terms=controls.max_true_residual_exact_terms,
-                    max_triplet_bytes=controls.preconditioner_triplet_bytes,
                     return_state=true,
                     check_resolution=false, verbose=false)
                 residual = DiffMoM._true_residual_ratio(state.operator, state.I_coeffs, state.rhs,

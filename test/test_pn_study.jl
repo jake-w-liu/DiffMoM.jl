@@ -7,7 +7,16 @@ using DiffMoM
 include(joinpath(@__DIR__, "..", "validation", "pn3d", "study_analysis.jl"))
 
 @testset "PN3D study prediction contracts" begin
-    @test _study_main_rows([2, 5]) == [3, 4, 9, 10]
+    grid = make_sph_grid(3, 4)
+    main_looks = [2, 5]
+    main_grid = DiffMoM.SphGrid(
+        grid.rhat[:, main_looks], grid.theta[main_looks],
+        grid.phi[main_looks], grid.w[main_looks])
+    @test size(main_grid.rhat, 2) == 2
+    @test main_grid.theta == grid.theta[main_looks]
+    @test main_grid.phi == grid.phi[main_looks]
+    @test main_grid.w == grid.w[main_looks]
+    @test main_grid.rhat == grid.rhat[:, main_looks]
     field = _study_field_record(ComplexF64[1, 2, 3, 4], 2)
     @test field.real == [[1.0, 2.0], [3.0, 4.0]]
     @test field.imag == [[0.0, 0.0], [0.0, 0.0]]
@@ -186,8 +195,7 @@ include(joinpath(@__DIR__, "..", "validation", "pn3d", "study_analysis.jl"))
         pair.fine_mesh, 3e9, source; method=:dense_direct, return_state=true,
         check_resolution=false, verbose=false).state
     result = _study_level_prediction(
-        mesh, pair.fine_mesh, coarse, fine, make_sph_grid(3, 4),
-        collect(1:24), 12, 1.0)
+        mesh, pair.fine_mesh, coarse, fine, make_sph_grid(3, 4), 12, 1.0)
     @test result.coarse_unknowns == coarse.rwg.nedges
     @test result.fine_unknowns == fine.rwg.nedges
     @test result.unresolved_unknowns == size(pair.Q, 2)
@@ -196,5 +204,5 @@ include(joinpath(@__DIR__, "..", "validation", "pn3d", "study_analysis.jl"))
     @test all(all(isfinite, entry.scales) for entry in result.proposed)
     @test_throws ErrorException _study_level_prediction(
         mesh, make_rect_plate(0.05, 0.04, 1, 1), coarse, fine,
-        make_sph_grid(3, 4), collect(1:24), 12, 1.0)
+        make_sph_grid(3, 4), 12, 1.0)
 end

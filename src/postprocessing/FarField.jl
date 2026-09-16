@@ -653,14 +653,16 @@ function rcs_output_map(mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
         max_terms=max_terms, max_exact_work=max_exact_work)
     output = Matrix{ComplexF64}(undef, 2looks, rwg.nedges)
     frame = Matrix{ComplexF64}(undef, 2, 3)
+    projected = Vector{ComplexF64}(undef, 2)
     for look in 1:looks
         _, theta_direction, phi_direction = _spherical_basis(grid.theta[look], grid.phi[look])
         frame[1, :] .= theta_direction
         frame[2, :] .= phi_direction
         rows = (3look - 2):(3look)
         for edge in 1:rwg.nedges
-            projected = _finite_matrix_vector_product(
-                frame, view(cartesian, rows, edge), "transverse far-field projection")
+            _finite_matrix_vector_product_status!(
+                projected, frame, view(cartesian, rows, edge),
+                "transverse far-field projection")
             output[2look-1, edge] = projected[1]
             output[2look, edge] = projected[2]
         end

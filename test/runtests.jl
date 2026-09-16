@@ -10078,9 +10078,11 @@ P_nf_translated_brute = build_nearfield_preconditioner(
 @test P_nf_translated.nnz_ratio == P_nf_translated_brute.nnz_ratio
 
 extreme_centers = Vec3[Vec3(0.0, 0.0, 0.0), Vec3(1.0e200, 0.0, 0.0)]
-extreme_I, extreme_J, _ = DiffMoM._nearfield_triplets_bruteforce(
+extreme_Z = DiffMoM._nearfield_csc_bruteforce(
     extreme_centers, 1.0e190, (m, n) -> 1.0 + 0im)
-@test collect(zip(extreme_I, extreme_J)) == [(1, 1), (2, 2)]
+@test nnz(extreme_Z) == 2
+@test extreme_Z[1, 1] == 1.0 + 0im && extreme_Z[2, 2] == 1.0 + 0im
+@test iszero(extreme_Z[1, 2]) && iszero(extreme_Z[2, 1])
 
 # A rounded distance exactly equal to the cutoff is ambiguous: settle the
 # inclusion from the exact stored centers so a just-outside pair is excluded
@@ -10097,27 +10099,24 @@ nearfield_rounded_inside = Vec3[
 ]
 @test hypot(nearfield_rounded_outside[2]...) == 1.0
 @test hypot(nearfield_rounded_inside[2]...) == 1.0
-outside_I, outside_J, _ = DiffMoM._nearfield_triplets_bruteforce(
+outside_Z = DiffMoM._nearfield_csc_bruteforce(
     nearfield_rounded_outside, 1.0, (m, n) -> ComplexF64(m, n))
-inside_I, inside_J, _ = DiffMoM._nearfield_triplets_bruteforce(
+inside_Z = DiffMoM._nearfield_csc_bruteforce(
     nearfield_rounded_inside, 1.0, (m, n) -> ComplexF64(m, n))
-@test collect(zip(outside_I, outside_J)) == [(1, 1), (2, 2)]
-@test collect(zip(inside_I, inside_J)) ==
-      [(1, 1), (1, 2), (2, 1), (2, 2)]
+inside_Z_spatial = DiffMoM._nearfield_csc_spatial(
+    nearfield_rounded_inside, 1.0, (m, n) -> ComplexF64(m, n))
+@test nnz(outside_Z) == 2 && iszero(outside_Z[1, 2]) && iszero(outside_Z[2, 1])
+@test Matrix(inside_Z) == ComplexF64[1+1im 1+2im; 2+1im 2+2im]
+@test Matrix(inside_Z_spatial) == Matrix(inside_Z)
 
-# Triplet payload limits are enforced before all-pairs preallocation, and the
-# exact raw boundary (two Int indices plus one ComplexF64 per entry) is usable.
-nearfield_pair_bytes = 2 * sizeof(Int) + sizeof(ComplexF64)
-bounded_I, bounded_J, bounded_V = DiffMoM._nearfield_triplets_bruteforce(
-    extreme_centers, Inf, (m, n) -> ComplexF64(m, n);
-    max_triplet_bytes=4 * nearfield_pair_bytes)
-@test length(bounded_I) == length(bounded_J) == length(bounded_V) == 4
-@test_throws ArgumentError DiffMoM._nearfield_triplets_bruteforce(
-    extreme_centers, Inf, (m, n) -> ComplexF64(m, n);
-    max_triplet_bytes=4 * nearfield_pair_bytes - 1)
-@test_throws ArgumentError build_nearfield_preconditioner(
-    Z_efie, mesh, rwg, lambda0;
-    max_triplet_bytes=max(1, N * nearfield_pair_bytes - 1))
+# Direct CSC assembly fills getvalue(row, column) at position (row, column):
+# an asymmetric payload pins the orientation end to end.
+asym_Z = DiffMoM._nearfield_csc_bruteforce(
+    nearfield_rounded_inside, Inf, (m, n) -> ComplexF64(m, 100n))
+@test Matrix(asym_Z) == ComplexF64[1+100im 1+200im; 2+100im 2+200im]
+asym_Z_spatial = DiffMoM._nearfield_csc_spatial(
+    nearfield_rounded_inside, Inf, (m, n) -> ComplexF64(m, 100n))
+@test Matrix(asym_Z_spatial) == Matrix(asym_Z)
 
 # Build near-field preconditioner without dense Z (matrix-free and geometry paths)
 P_nf_mf = build_nearfield_preconditioner(A_mf, lambda0)
@@ -10759,10 +10758,10 @@ A_aca_op = build_aca_operator(mesh, rwg, k;
 @assert size(A_aca_op) == (N, N)
 @assert A_aca_op.workspace.work_lock isa ReentrantLock
 
-# ACA Jacobi construction is O(N) and does not allocate the full near-field
-# sparse-triplet payload. A one-byte triplet budget therefore remains valid.
+# ACA Jacobi construction is O(N) and does not materialize the near-field
+# sparse matrix at all.
 aca_diag_preconditioner = build_nearfield_preconditioner(
-    A_aca_op; factorization=:diag, max_triplet_bytes=1)
+    A_aca_op; factorization=:diag)
 @test aca_diag_preconditioner isa DiagonalPreconditionerData
 @test isinf(aca_diag_preconditioner.cutoff)
 @test aca_diag_preconditioner.nnz_ratio == inv(Float64(N))
@@ -12321,7 +12320,7 @@ mlfma_nearfield_entries = Int(DiffMoM._mlfma_nearfield_entry_count(octree))
 @test_throws ArgumentError assemble_mlfma_nearfield(
     octree, mlfma_mesh, mlfma_rwg, mlfma_k;
     max_nearfield_bytes=
-        mlfma_nearfield_entries * DiffMoM._MLFMA_NEARFIELD_TRIPLET_BYTES - 1)
+        mlfma_nearfield_entries * DiffMoM._MLFMA_NEARFIELD_ENTRY_BYTES - 1)
 
 # Check that near-field entries match dense for neighbor pairs
 max_nf_err = 0.0
