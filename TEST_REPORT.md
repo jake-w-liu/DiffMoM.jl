@@ -61,7 +61,20 @@ Latest focused log: /tmp/pn3d-pr12-final-focused.log. Latest documentation:
 /tmp/pn3d-development-pr12.log. The latter recorded false positives from a
 now-corrected project audit script and cannot count as a passing harness run.
 
-## Current PN3D verification: 2026-09-15
+## Current PN3D verification: 2026-10-12
+
+Checkpoint: the near-field triplet budget is now reachable from
+`solve_scattering` (`max_triplet_bytes`, default unchanged at 512 MiB) and
+the registered drivers set it explicitly at 4 GiB. A level-2 campaign case
+had failed closed needing 16,779,488 triplet entries. Verified by a direct
+bounds-checked call (`max_triplet_bytes=64` throws `ArgumentError` listing
+the required 2704 entries) and by the extended
+`test_workflow_aca_budget.jl` (8/8 pass, including the new rejection test).
+Because `src/` participates in `source_digest`, the registered campaign
+restarted into `reference_population_formal_v2` /
+`study_predictions_formal_v2`; v1 records are superseded.
+
+## Prior PN3D verification: 2026-09-15
 
 This checkpoint records the completed package gates. It does not declare
 the engineering study or manuscript complete; the registered campaign is
