@@ -512,7 +512,7 @@ def _validate_baseline(payload: object, path: str) -> dict:
     promised = target.get("promised_reduction_pct")
     if (
         isinstance(promised, bool)
-        or not isinstance(promised, int | float)
+        or not isinstance(promised, (int, float))
         or not math.isfinite(float(promised))
         or not 0.0 <= float(promised) <= 100.0
     ):
@@ -567,7 +567,7 @@ def _validate_baseline(payload: object, path: str) -> dict:
     mean_chars = builtin.get("mean_code_chars")
     if (
         isinstance(mean_chars, bool)
-        or not isinstance(mean_chars, int | float)
+        or not isinstance(mean_chars, (int, float))
         or not math.isfinite(float(mean_chars))
         or mean_chars < 0
     ):

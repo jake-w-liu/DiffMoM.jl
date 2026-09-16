@@ -235,7 +235,7 @@ def _python_reraising_handlers(text: str) -> set[int]:
             isinstance(node.body[-1], ast.Raise) and node.body[-1].exc is None
         )
         preceding_control_transfer = any(
-            isinstance(child, ast.Return | ast.Break | ast.Continue)
+            isinstance(child, (ast.Return, ast.Break, ast.Continue))
             for statement in node.body[:-1]
             for child in ast.walk(statement)
         )
