@@ -100,6 +100,9 @@ produce a warning (or error if `error_on_underresolved=true`).
 - `max_dense_matrix_bytes=2_000_000_000`: raw-payload ceiling for the dense
   EFIE matrix, and for the simultaneous matrix, factor, pivot, and field
   buffers on the dense-direct path
+- `max_triplet_bytes=536870912`: near-field triplet-payload ceiling for the
+  dense-GMRES and ACA preconditioner builds; the MLFMA path consumes its
+  stored sparse near-field under the operator builder's own budgets
 
 # Returns
 A `ScatteringResult` with fields: `I_coeffs`, `method`, `N`, timing info,
@@ -323,8 +326,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             factorization = precond_used == :diag ? :diag : (precond_used == :ilu ? :ilu : :lu)
             t_precond = @elapsed begin
                 P_nf = build_nearfield_preconditioner(A_mlfma.Z_near;
-                                                       factorization=factorization,
-                                                       max_triplet_bytes=max_triplet_bytes)
+                                                       factorization=factorization)
             end
             nnz_ratio = nnz(A_mlfma.Z_near) / N^2
             verbose && println("  Preconditioner ($precond_used): $(round(t_precond, digits=3)) s, " *
