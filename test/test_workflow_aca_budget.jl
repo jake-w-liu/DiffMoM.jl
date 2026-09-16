@@ -10,6 +10,9 @@ using Test, LinearAlgebra
         check_resolution=false, verbose=false)
     @test_throws ArgumentError solve_scattering(mesh, frequency, wave;
         max_aca_storage_bytes=0, check_resolution=false, verbose=false)
+    @test_throws ArgumentError solve_scattering(mesh, frequency, wave;
+        method=:aca_gmres, max_triplet_bytes=1,
+        check_resolution=false, verbose=false)
     dense = solve_scattering(mesh, frequency, wave;
         method=:dense_direct, check_resolution=false, verbose=false)
     compressed = solve_scattering(mesh, frequency, wave;
