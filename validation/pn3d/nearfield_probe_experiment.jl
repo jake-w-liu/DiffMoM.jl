@@ -73,6 +73,7 @@ function probe_experiment_setup(mesh; fine_method=:dense_direct, quad_order=3,
     fine_controls = (; method=fine_method, quad_order=quad_order, c0=SPEED,
         aca_tol=1e-8, aca_max_rank=256, gmres_tol=1e-9, gmres_maxiter=1000,
         nf_cutoff_lambda=0.25, max_true_residual_exact_terms=residual_exact_terms,
+        max_triplet_bytes=WORK_BYTES,
         check_resolution=false, return_state=true, verbose=false)
     (fine_result, fine), fine_s = @timed solve_scattering(
         pair.fine_mesh, FREQUENCY, source; fine_controls...)

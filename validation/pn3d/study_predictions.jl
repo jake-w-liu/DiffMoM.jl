@@ -4,6 +4,7 @@ const STUDY_LEVELS = (0, 1)
 const STUDY_PROBE_COUNTS = (0, 2, 8, 24)
 const STUDY_MAX_WORK_BYTES = 16_000_000_000
 const STUDY_MAX_EXACT_TERMS = 64_000_000
+const STUDY_MAX_TRIPLET_BYTES = 4_000_000_000
 const STUDY_ALGORITHM_VERSION = 1
 
 function _study_main_rows(main_looks)
@@ -41,6 +42,7 @@ function _study_level_solve(mesh, row, source, level)
         max_true_residual_exact_terms=STUDY_MAX_EXACT_TERMS,
         max_aca_storage_bytes=STUDY_MAX_WORK_BYTES,
         max_dense_matrix_bytes=STUDY_MAX_WORK_BYTES,
+        max_triplet_bytes=STUDY_MAX_TRIPLET_BYTES,
         return_state=true, check_resolution=false, verbose=false,
     )
 end

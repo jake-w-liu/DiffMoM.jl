@@ -47,7 +47,8 @@ function study_numerical_checks(population_dir, output_path, case_id)
         gmres_tol=1e-10, gmres_maxiter=1500, gmres_memory=80,
         true_residual_factor=10.0,
         max_true_residual_exact_terms=64_000_000,
-        max_work_bytes=16_000_000_000, initial_edge_m=0.05)
+        max_work_bytes=16_000_000_000, initial_edge_m=0.05,
+        preconditioner_triplet_bytes=4_000_000_000)
     record = nothing
     failure = nothing
     completed = false
@@ -91,6 +92,7 @@ function study_numerical_checks(population_dir, output_path, case_id)
             max_true_residual_exact_terms=controls.max_true_residual_exact_terms,
             max_aca_storage_bytes=controls.max_work_bytes,
             max_dense_matrix_bytes=controls.max_work_bytes,
+            max_triplet_bytes=controls.preconditioner_triplet_bytes,
             return_state=true, check_resolution=false, verbose=false)
         dense_field, costs["compression_map_s"] = @timed _study_main_look_fields(
             compression_mesh, compression_rwg, dense.state.I_coeffs,

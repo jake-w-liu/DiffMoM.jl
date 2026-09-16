@@ -138,7 +138,9 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           max_true_residual_exact_terms::Integer=
                               _DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS,
                           max_dense_matrix_bytes::Integer=
-                              _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                              _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                          max_triplet_bytes::Integer=
+                              _DEFAULT_MAX_NEARFIELD_TRIPLET_BYTES)
     exact_term_limit = _validated_nonnegative_resource_limit(
         "max_true_residual_exact_terms", max_true_residual_exact_terms)
     aca_storage_limit = _validated_resource_limit("max_aca_storage_bytes", max_aca_storage_bytes)
@@ -321,7 +323,8 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             factorization = precond_used == :diag ? :diag : (precond_used == :ilu ? :ilu : :lu)
             t_precond = @elapsed begin
                 P_nf = build_nearfield_preconditioner(A_mlfma.Z_near;
-                                                       factorization=factorization)
+                                                       factorization=factorization,
+                                                       max_triplet_bytes=max_triplet_bytes)
             end
             nnz_ratio = nnz(A_mlfma.Z_near) / N^2
             verbose && println("  Preconditioner ($precond_used): $(round(t_precond, digits=3)) s, " *
@@ -340,10 +343,12 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
             t_precond = @elapsed begin
                 if selected_method == :dense_gmres
                     P_nf = build_nearfield_preconditioner(Z, mesh, rwg, cutoff;
-                                                           factorization=factorization)
+                                                           factorization=factorization,
+                                                           max_triplet_bytes=max_triplet_bytes)
                 elseif selected_method == :aca_gmres
                     P_nf = build_nearfield_preconditioner(A_aca;
-                                                           factorization=factorization)
+                                                           factorization=factorization,
+                                                           max_triplet_bytes=max_triplet_bytes)
                 end
             end
             if verbose

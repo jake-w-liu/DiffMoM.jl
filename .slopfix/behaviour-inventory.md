@@ -272,3 +272,4 @@ benefit follows from these algebraic contracts alone.
 | Date | Inventory | Change | Approval basis |
 | --- | --- | --- | --- |
 | 2026-09-11 | INV-017 | Batched ACA dense blocks apply canonical `_efie_entry` ordering to every non-Bloch entry, matching the sequential and indexed-access paths. | A fresh reproducer found batched entry (65,17) differing at 1e-3 in the imaginary part; the user requested a deep-debug and verification pass before pushing. |
+| 2026-10-12 | INV-012, INV-048 | `solve_scattering` exposes the near-field triplet payload bound as `max_triplet_bytes` (default unchanged at 512 MiB) and the registered population drivers set it explicitly within their declared work budgets. | A registered level-2 case required 16,779,488 triplet entries (about 537 MiB), just over the internal default; the user requested the campaign continue without weakening resource accounting. |
