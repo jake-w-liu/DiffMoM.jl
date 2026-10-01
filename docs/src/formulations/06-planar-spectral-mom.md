@@ -29,6 +29,22 @@ Zc_TE   = i*omega*mu_l / gamma_l
 Zc_TM   = gamma_l / (i*omega*eps_l)
 ```
 
+A layer may be uniaxial with optic axis along `z` (common for laminated
+substrates and woven dielectrics): `PlanarLayer(epsr, mur, d; epsr_z, mur_z)`
+stores the transverse constants in `epsr`/`mur` and the axial ones in
+`epsr_z`/`mur_z` (defaulting to the transverse values). Each polarization
+then sees its own decay constant while the characteristic impedances keep
+the transverse constants:
+
+```
+gamma_TE^2 = (mur/mur_z)*kc^2 - k_l^2      (ordinary wave)
+gamma_TM^2 = (epsr/epsr_z)*kc^2 - k_l^2    (extraordinary wave)
+k_l^2      = (omega/c0)^2 * epsr * mur     (transverse product)
+```
+
+so a layer with `epsr_z > epsr` (typical laminate anisotropy) raises the
+cutoff of TM modes but leaves TE modes unchanged when `mur_z = mur`.
+
 All cascade arithmetic uses the `exp(-2*gamma*d)` transfer form so deeply
 evanescent modes cannot overflow, and exact-cutoff modes
 (`gamma*d = 0`) reduce to transparent sections. A unit modal sheet current on
@@ -97,8 +113,8 @@ frequency.
 
 `planar_objective_gradient(prob, freq, f)` differentiates a real port-space
 objective `f(Y)` with respect to `PlanarParam` descriptors covering every
-layer `epsr`/`mur`/`thickness` component and surface/open terminator
-parameters. The port-space adjoint uses the already-factored LU
+layer `epsr`/`mur`/`thickness`/`epsr_z`/`mur_z` component and surface/open
+terminator parameters. The port-space adjoint uses the already-factored LU
 (`dY = -transpose(Λ) dZ X` with `Λ = Z^{-T} E`), and the Wirtinger
 contraction is evaluated per mode so that no parameter-dependent dense
 `dZ` is ever materialized. Modal-voltage derivatives come from a minimal

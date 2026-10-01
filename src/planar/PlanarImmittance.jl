@@ -5,6 +5,13 @@
 # section with propagation constant gamma_l = sqrt(kc^2 - k_l^2) (Re >= 0 by
 # the principal root, convention e^{+i w t}) and characteristic impedance
 #   Zc_TE = i*omega*mu_l / gamma_l,   Zc_TM = gamma_l / (i*omega*eps_l).
+# A layer may be uniaxial with optic axis z (epsr_z, mur_z distinct from
+# the transverse epsr, mur); then each polarization sees its own decay
+# constant,
+#   gamma_TE^2 = (mu_t/mu_z)*kc^2 - k_t^2,
+#   gamma_TM^2 = (eps_t/eps_z)*kc^2 - k_t^2,   k_t^2 = w^2 mu_t eps_t,
+# while the characteristic impedances keep the transverse constants above
+# (TE sees mu_t, TM sees eps_t).
 # Interface i (i = 0..L) is the top face of layer i.  Looking-down impedances
 # Zdn[i] terminate in `stack.bottom`, looking-up Zup[i] in `stack.top`.
 # A unit modal sheet current on source interface s sees the parallel
@@ -60,6 +67,21 @@ end
 
 @inline _planar_k2(omega::Number, epsr::Number, mur::Number) =
     planar_k2_layer(omega, epsr, mur)
+
+# Uniaxial layer (optic axis z): the axial decay constant differs per
+# polarization —
+#   gamma_TE^2 = (mur/mur_z)*kc2 - k2_t  (ordinary wave)
+#   gamma_TM^2 = (epsr/epsr_z)*kc2 - k2_t (extraordinary wave)
+# with k2_t = (omega/c0)^2 * epsr * mur the transverse product, which also
+# enters Zc_TE = i*w*mu_t/gamma and Zc_TM = gamma/(i*w*eps_t).  Isotropic
+# (epsr_z = epsr, mur_z = mur) recovers sqrt(kc2 - k2).
+@inline function _planar_gamma_layer(pol::PlanarPol, kc2::Float64,
+        omega::Number, layer::PlanarLayer{T}) where {T<:Number}
+    k2 = planar_k2_layer(omega, layer.epsr, layer.mur)
+    alpha = pol === TE_POL ? layer.mur / layer.mur_z :
+                             layer.epsr / layer.epsr_z
+    return sqrt(alpha * ComplexF64(kc2) - k2)
+end
 
 """Terminator impedance seen by a mode with transverse cutoff kc2."""
 @inline function _planar_term_impedance(term::PlanarTerminator{T},
@@ -138,7 +160,7 @@ function planar_mode_cascade!(ws::PlanarCascade{S},
 
     @inbounds for l in 1:L
         layer = stack.layers[l]
-        gamma = _planar_gamma(kc2, _planar_k2(omega, layer.epsr, layer.mur))
+        gamma = _planar_gamma_layer(pol, kc2, omega, layer)
         zchar[l] = _planar_zchar(pol, omega,
             layer.epsr * _EPS0, layer.mur * _MU0, gamma)
         gd = gamma * layer.thickness

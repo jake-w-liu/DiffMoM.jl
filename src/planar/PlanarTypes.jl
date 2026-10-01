@@ -20,18 +20,26 @@ export TERM_GND, TERM_SPACE
 export planar_interfaces, planar_k0_layer, planar_validate
 
 """Layer of the stratified medium: complex eps_r, mu_r, thickness [m].
-`T` promotes to the scalar type used for differentiation (Float64 for
-plain analysis)."""
+`epsr`/`mur` are the transverse (in-plane) constants; `epsr_z`/`mur_z`
+are the axial constants of a uniaxial layer with optic axis z (they
+default to the transverse values, i.e. isotropic).  `T` promotes to the
+scalar type used for differentiation (Float64 for plain analysis)."""
 struct PlanarLayer{T<:Number}
     epsr::T        # includes dielectric loss: epsr*(1 - i*tand) for e^{+iwt}
     mur::T
     thickness::T   # d > 0 [m]
+    epsr_z::T
+    mur_z::T
 end
 
 # promote naturally: Float64 inputs -> Float64 fields; dual/complex inputs
 # keep their perturbation type so gradients flow through the cascade
-PlanarLayer(epsr::Number, mur::Number, d::Number) =
-    PlanarLayer(promote(epsr, mur, Float64(d))...)
+PlanarLayer(epsr::Number, mur::Number, d::Number;
+            epsr_z::Number=epsr, mur_z::Number=mur) =
+    PlanarLayer(promote(epsr, mur, Float64(d), epsr_z, mur_z)...)
+PlanarLayer(epsr::Number, mur::Number, d::Number,
+            epsr_z::Number, mur_z::Number) =
+    PlanarLayer(promote(epsr, mur, Float64(d), epsr_z, mur_z)...)
 
 """Box z-termination kind: `TERM_PEC`/`TERM_PMC`/`TERM_SURFACE`/`TERM_OPEN`."""
 @enum BoundaryKind::UInt8 begin
@@ -88,7 +96,8 @@ function PlanarStackup(layers::Vector{<:PlanarLayer},
                      _term_scalar(bottom), _term_scalar(top))
     l2 = [PlanarLayer(
             convert(T, l.epsr), convert(T, l.mur),
-            convert(T, l.thickness)) for l in layers]
+            convert(T, l.thickness),
+            convert(T, l.epsr_z), convert(T, l.mur_z)) for l in layers]
     bt = PlanarTerminator{T}(bottom.kind, convert(T, bottom.zs),
         convert(T, bottom.epsr), convert(T, bottom.mur))
     tp = PlanarTerminator{T}(top.kind, convert(T, top.zs),
@@ -124,6 +133,10 @@ function planar_validate(stack::PlanarStackup)
             throw(ArgumentError("layer $l mur must be finite"))
         real(layer.mur) > 0 ||
             throw(ArgumentError("layer $l mur must have Re > 0"))
+        isfinite(real(layer.epsr_z)) && real(layer.epsr_z) > 0 ||
+            throw(ArgumentError("layer $l epsr_z must have Re > 0"))
+        isfinite(real(layer.mur_z)) && real(layer.mur_z) > 0 ||
+            throw(ArgumentError("layer $l mur_z must have Re > 0"))
         isfinite(real(layer.thickness)) && real(layer.thickness) > 0 ||
             throw(ArgumentError("layer $l thickness must be positive"))
     end
@@ -152,7 +165,9 @@ end
     return (omega / _C0)^2 * epsr * mur
 end
 
-"""Wavenumber of a layer at `omega`: `sqrt(planar_k2_layer(omega, ...))`."""
+"""Transverse wavenumber of a layer at `omega`:
+`sqrt(planar_k2_layer(omega, layer.epsr, layer.mur))` — the transverse
+(in-plane) constants for a uniaxial layer."""
 @inline planar_k0_layer(omega::Number, layer::PlanarLayer) =
     sqrt(planar_k2_layer(omega, layer.epsr, layer.mur))
 

@@ -28,10 +28,18 @@ function _ref_term(stack, which, pol, omega, kc2)
         term.epsr * _PG._EPS0, term.mur * _PG._MU0, gamma0)
 end
 
+# axial decay of a (possibly uniaxial) layer, written in kz form:
+#   kz_TE^2 = k_t^2 - (mur/mur_z)*kc2,  kz_TM^2 = k_t^2 - (epsr/epsr_z)*kc2
+# and gamma = sqrt(-kz^2) (exp(-gamma*z) convention, principal root)
+function _ref_gamma(l, omega, kc2, pol)
+    k2 = _PG.planar_k2_layer(omega, l.epsr, l.mur)
+    a = pol === TE_POL ? l.mur / l.mur_z : l.epsr / l.epsr_z
+    return sqrt(ComplexF64(-(k2 - a * kc2)))
+end
+
 function _ref_modal_voltage(stack, omega, kc2, pol, f, s)
     L = length(stack.layers)
-    gamma = [sqrt(ComplexF64(kc2) -
-        _PG.planar_k2_layer(omega, l.epsr, l.mur)) for l in stack.layers]
+    gamma = [_ref_gamma(l, omega, kc2, pol) for l in stack.layers]
     zc = [_PG._planar_zchar(pol, omega, l.epsr * _PG._EPS0,
         l.mur * _PG._MU0, gamma[i]) for (i, l) in enumerate(stack.layers)]
     zdn = Vector{ComplexF64}(undef, L + 1)
@@ -262,6 +270,136 @@ end
             end
         end
     end
+end
+
+@testset "planar: uniaxial layers" begin
+    omega = 2pi * 10e9
+    # constructor forms agree; isotropic default is bitwise-identical
+    li = PlanarLayer(4.0 - 0.1im, 1.2 + 0.01im, 0.3e-3)
+    lk = PlanarLayer(3.0, 1.0, 0.5e-3; epsr_z=5.0, mur_z=2.0)
+    lp = PlanarLayer(3.0, 1.0, 0.5e-3, 5.0, 2.0)
+    @test (lk.epsr_z, lk.mur_z) == (5.0, 2.0) == (lp.epsr_z, lp.mur_z)
+    @test li.epsr_z == li.epsr && li.mur_z == li.mur
+
+    # mixed isotropic/uniaxial stackup vs the independent kz-form cascade
+    stack = PlanarStackup(
+        [PlanarLayer(4.0, 1.0, 0.5e-3; epsr_z=6.0),
+         PlanarLayer(2.0, 1.5, 0.25e-3; mur_z=3.0),
+         PlanarLayer(9.0, 1.0, 0.25e-3)],
+        TERM_GND, TERM_GND, 10e-3, 8e-3)
+    for m in 0:4, n in 0:3
+        (m == 0 && n == 0) && continue
+        kc2 = (m * pi / 10e-3)^2 + (n * pi / 8e-3)^2
+        for pol in (TE_POL, TM_POL)
+            (pol === TM_POL && (m == 0 || n == 0)) && continue
+            c = planar_mode_cascade(stack, omega, kc2, pol)
+            for f in 0:3, s in 0:3
+                @test planar_modal_voltage(c, f, s) ≈
+                    _ref_modal_voltage(stack, omega, kc2, pol, f, s) rtol=1e-9
+            end
+        end
+    end
+
+    # isotropic reduction must be bitwise identical to the scalar formula
+    kc2 = 1.5e5
+    for pol in (TE_POL, TM_POL)
+        @test _PG._planar_gamma_layer(pol, kc2, omega, li) ==
+            sqrt(ComplexF64(kc2) -
+                 _PG.planar_k2_layer(omega, li.epsr, li.mur))
+    end
+
+    # physical resonance: a PEC-PEC uniaxial cavity resonates when the
+    # standing wave closes, gamma*h = i*n*pi (n=1 here).  For TM that is
+    # k_t^2 = (pi/h)^2 + (epsr/epsr_z)*kc^2; for TE, (mur/mur_z)*kc^2.
+    h = 2.0e-3; ab = 10e-3
+    kc2 = (pi / ab)^2 + (pi / ab)^2     # (1,1) box mode
+    et, ez = 3.0, 6.0
+    cav_tm = PlanarStackup(
+        [PlanarLayer(et, 1.0, h; epsr_z=ez)], TERM_GND, TERM_GND, ab, ab)
+    k2_tm = (pi / h)^2 + (et / ez) * kc2
+    f_tm = sqrt(k2_tm / et) * _PG._C0 / (2pi)
+    mt, mz = 2.0, 4.0
+    cav_te = PlanarStackup(
+        [PlanarLayer(et, mt, h; mur_z=mz)], TERM_GND, TERM_GND, ab, ab)
+    k2_te = (pi / h)^2 + (mt / mz) * kc2
+    f_te = sqrt(k2_te / (et * mt)) * _PG._C0 / (2pi)
+    for (cav, fres, pol) in ((cav_tm, f_tm, TM_POL),
+                             (cav_te, f_te, TE_POL))
+        c = planar_mode_cascade(cav, 2pi * fres, kc2, pol)
+        res = abs(c.zdn[2] + c.zup[2])
+        cd = planar_mode_cascade(cav, 2pi * fres * 1.02, kc2, pol)
+        off = abs(cd.zdn[2] + cd.zup[2])
+        @test isfinite(res) && res < 1e-2 * off
+    end
+
+    # assembly level: direct modal sum on a uniaxial stackup
+    st_u = PlanarStackup(
+        [PlanarLayer(4.0, 1.0, 0.5e-3; epsr_z=6.5),
+         PlanarLayer(1.0, 1.0, 0.5e-3)],
+        TERM_GND, TERM_GND, 8e-3, 6e-3)
+    grid = CellGrid(8e-3, 6e-3, 8, 6)
+    su = sheet_level(1, 8, 6)
+    rasterize_rect!(su, grid, 1e-3, 4e-3, 1e-3, 5e-3)
+    bu = build_planar_basis(grid, [su], PlanarPort[])
+    Zu = assemble_planar_z(st_u, grid, [su], bu, omega; mx=20, my=16)
+    @test Zu[1, 1] ≈ _direct_z(st_u, grid, [su], bu, omega, 1, 1;
+        mx=20, my=16) rtol = 1e-9
+
+    # axial parameter gradients through the dual-number cascade
+    stack_g = PlanarStackup(
+        [PlanarLayer(3.0 - 0.02im, 1.1, 0.5e-3; epsr_z=4.5, mur_z=0.8),
+         PlanarLayer(1.0, 1.0, 0.5e-3)],
+        TERM_GND, TERM_GND, ab, ab)
+    grid_g = CellGrid(ab, ab, 12, 12)
+    sg = sheet_level(1, 12, 12)
+    rasterize_rect!(sg, grid_g, 0.0, ab, ab / 2 - 0.5e-3, ab / 2 + 0.5e-3)
+    prg = findall(j -> any(sg.mask[:, j]), 1:12)
+    for j in prg
+        sg.connect_west[j] = true; sg.connect_east[j] = true
+    end
+    prob_g = build_planar_problem(stack_g, grid_g, [sg],
+        PlanarPort[PlanarPort(1, :west, prg[1]:prg[end], 50.0),
+                   PlanarPort(1, :east, prg[1]:prg[end], 50.0)])
+    fg = Y -> abs2(planar_y_to_s(Y, [50.0, 50.0])[2, 1])
+    params = PlanarParam[PlanarParam(1, :epsr_z, :re),
+        PlanarParam(1, :epsr_z, :im), PlanarParam(1, :mur_z, :re),
+        PlanarParam(1, :mur_z, :im), PlanarParam(1, :epsr, :re)]
+    theta = planar_param_values(stack_g, params)
+    @test theta ≈ [4.5, 0.0, 0.8, 0.0, 3.0]
+    J, g = planar_objective_gradient(prob_g, 12e9, fg; params=params)
+    for j in eachindex(params)
+        hs = 1e-6 * max(abs(theta[j]), 1.0)
+        tp = copy(theta); tm = copy(theta)
+        tp[j] += hs; tm[j] -= hs
+        Jp = fg(solve_planar(PlanarProblem(
+            planar_with_params(stack_g, params, tp), prob_g.grid,
+            prob_g.sheets, prob_g.ports, prob_g.basis), 12e9).y)
+        Jm = fg(solve_planar(PlanarProblem(
+            planar_with_params(stack_g, params, tm), prob_g.grid,
+            prob_g.sheets, prob_g.ports, prob_g.basis), 12e9).y)
+        @test g[j] ≈ (Jp - Jm) / (2hs) rtol = 1e-4
+    end
+    # default params: axial fields appear only for anisotropic layers
+    dp_iso = planar_default_params(PlanarStackup([PlanarLayer(2.0, 1.0, 1e-3)],
+        TERM_GND, TERM_GND, ab, ab))
+    @test !any(p -> p.field in (:epsr_z, :mur_z), dp_iso)
+    dp_an = planar_default_params(stack_g)
+    @test any(p -> p.field === :epsr_z && p.index == 1, dp_an)
+    @test any(p -> p.field === :mur_z && p.index == 1, dp_an)
+    @test !any(p -> p.field in (:epsr_z, :mur_z) && p.index == 2, dp_an)
+
+    # validation: axial constants must be finite with Re > 0
+    @test_throws ArgumentError planar_validate(PlanarStackup(
+        [PlanarLayer(2.0, 1.0, 1e-3; epsr_z=-1.0)],
+        TERM_GND, TERM_GND, ab, ab))
+    @test_throws ArgumentError planar_validate(PlanarStackup(
+        [PlanarLayer(2.0, 1.0, 1e-3; mur_z=0.0)],
+        TERM_GND, TERM_GND, ab, ab))
+    @test_throws ArgumentError planar_validate(PlanarStackup(
+        [PlanarLayer(2.0, 1.0, 1e-3; epsr_z=NaN)],
+        TERM_GND, TERM_GND, ab, ab))
+    @test_throws ArgumentError planar_param_values(stack_g,
+        [PlanarParam(1, :epsr_y, :re)])
 end
 
 @testset "planar: assembly matches direct modal sum" begin

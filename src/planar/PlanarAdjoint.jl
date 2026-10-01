@@ -103,8 +103,8 @@ end
 
 """One scalar degree of freedom of a `PlanarStackup`: `index` selects a
 layer (`1..L`) or a box terminator (`0` = bottom, `L+1` = top); `field` is
-`:epsr`, `:mur`, `:thickness` for layers and `:zs`, `:epsr`, `:mur` for
-terminators; `part` is `:re` or `:im`."""
+`:epsr`, `:mur`, `:thickness`, `:epsr_z` or `:mur_z` for layers and `:zs`,
+`:epsr`, `:mur` for terminators; `part` is `:re` or `:im`."""
 struct PlanarParam
     index::Int
     field::Symbol
@@ -112,16 +112,18 @@ struct PlanarParam
     function PlanarParam(index::Integer, field::Symbol, part::Symbol)
         index >= 0 || throw(ArgumentError(
             "PlanarParam index must be >= 0, got $index"))
-        field in (:epsr, :mur, :thickness, :zs) || throw(ArgumentError(
-            "PlanarParam field must be :epsr, :mur, :thickness or :zs, " *
-            "got :$field"))
+        field in (:epsr, :mur, :thickness, :epsr_z, :mur_z, :zs) ||
+            throw(ArgumentError(
+            "PlanarParam field must be :epsr, :mur, :thickness, " *
+            ":epsr_z, :mur_z or :zs, got :$field"))
         part in (:re, :im) || throw(ArgumentError(
             "PlanarParam part must be :re or :im, got :$part"))
         return new(Int(index), field, part)
     end
 end
 
-@inline _planar_param_fields_layer() = (:epsr, :mur, :thickness)
+@inline _planar_param_fields_layer() =
+    (:epsr, :mur, :thickness, :epsr_z, :mur_z)
 @inline _planar_param_fields_term() = (:zs, :epsr, :mur)
 
 function _planar_param_check(stack::PlanarStackup, p::PlanarParam)
@@ -130,8 +132,8 @@ function _planar_param_check(stack::PlanarStackup, p::PlanarParam)
         "PlanarParam index $(p.index) outside 0:$(L + 1) for $L layers"))
     if 1 <= p.index <= L
         p.field in _planar_param_fields_layer() || throw(ArgumentError(
-            "layer parameter field must be :epsr, :mur or :thickness, " *
-            "got :$(p.field)"))
+            "layer parameter field must be :epsr, :mur, :thickness, " *
+            ":epsr_z or :mur_z, got :$(p.field)"))
     else
         p.field in _planar_param_fields_term() || throw(ArgumentError(
             "terminator parameter field must be :zs, :epsr or :mur, " *
@@ -166,11 +168,21 @@ exterior `epsr`/`mur` (re, im) when the stackup uses those kinds."""
 function planar_default_params(stack::PlanarStackup)
     params = PlanarParam[]
     for l in eachindex(stack.layers)
+        lay = stack.layers[l]
         for f in (:epsr, :mur)
             push!(params, PlanarParam(l, f, :re))
             push!(params, PlanarParam(l, f, :im))
         end
         push!(params, PlanarParam(l, :thickness, :re))
+        # axial constants only matter when the layer is uniaxial
+        if lay.epsr_z != lay.epsr
+            push!(params, PlanarParam(l, :epsr_z, :re))
+            push!(params, PlanarParam(l, :epsr_z, :im))
+        end
+        if lay.mur_z != lay.mur
+            push!(params, PlanarParam(l, :mur_z, :re))
+            push!(params, PlanarParam(l, :mur_z, :im))
+        end
     end
     for (idx, term) in ((0, stack.bottom), (length(stack.layers) + 1,
                         stack.top))
@@ -214,16 +226,21 @@ function planar_with_params(stack::PlanarStackup,
         haskey(upd, l) || return stack.layers[l]
         lay = stack.layers[l]
         e, m, d = lay.epsr, lay.mur, lay.thickness
+        ez, mz = lay.epsr_z, lay.mur_z
         for (field, part, x) in upd[l]
             if field === :epsr
                 e = _set_part(e, Val(part), x)
             elseif field === :mur
                 m = _set_part(m, Val(part), x)
+            elseif field === :epsr_z
+                ez = _set_part(ez, Val(part), x)
+            elseif field === :mur_z
+                mz = _set_part(mz, Val(part), x)
             else
                 d = _set_part(d, Val(part), x)
             end
         end
-        return PlanarLayer(e, m, d)
+        return PlanarLayer(e, m, d, ez, mz)
     end
     function term_for(idx, term)
         haskey(upd, idx) || return term
@@ -253,6 +270,7 @@ function _planar_dual_stackup(stack::PlanarStackup, p::PlanarParam)
     layers = map(1:L) do l
         lay = stack.layers[l]
         e, m, d = D(lay.epsr), D(lay.mur), D(lay.thickness)
+        ez, mz = D(lay.epsr_z), D(lay.mur_z)
         if l == p.index
             if p.field === :epsr
                 e = _PlanarDual{ComplexF64}(ComplexF64(lay.epsr),
@@ -260,12 +278,18 @@ function _planar_dual_stackup(stack::PlanarStackup, p::PlanarParam)
             elseif p.field === :mur
                 m = _PlanarDual{ComplexF64}(ComplexF64(lay.mur),
                     _seed(p.part))
+            elseif p.field === :epsr_z
+                ez = _PlanarDual{ComplexF64}(ComplexF64(lay.epsr_z),
+                    _seed(p.part))
+            elseif p.field === :mur_z
+                mz = _PlanarDual{ComplexF64}(ComplexF64(lay.mur_z),
+                    _seed(p.part))
             else
                 d = _PlanarDual{ComplexF64}(ComplexF64(lay.thickness),
                     _seed(p.part))
             end
         end
-        return PlanarLayer(e, m, d)
+        return PlanarLayer(e, m, d, ez, mz)
     end
     function term_for(idx, term)
         zs, e, m = D(term.zs), D(term.epsr), D(term.mur)
