@@ -162,6 +162,15 @@ Before any production consolidation:
 | INV-050 | Opt-in retained scattering state reuses checked forward/adjoint solves, preserves the default result, detects changed physical state, serializes shared-state calls, and commits new RHS/current only after all columns succeed. | Workflow.jl; solver/RetainedSolve.jl | test/test_discretization_error.jl | C1 | Current one/four-thread suites, docs, development harness, and required quality gates passed |
 | INV-051 | Fixed-facet midpoint RWG injection preserves fields, divergence, boundary flux and edge signs; sparse QR selects a full-rank coordinate complement under a declared work budget. | basis/NestedRWG.jl; existing Mesh.jl and RWG.jl | test/test_discretization_error.jl | C1 | Integrated one/four-thread checks passed; no continuum or calibrated-error claim |
 
+## Planar spectral-domain MoM additions
+
+| ID | Behaviour and boundaries | Implemented in | Verify | Crit | Status |
+| --- | --- | --- | --- | --- | --- |
+| INV-063 | Layered stackups, terminators, cell grids, and sheet masks validate dimensions, finiteness, positivity, and port edge claims before assembly; invalid inputs fail explicitly. | src/planar/PlanarTypes.jl, src/planar/PlanarBasis.jl | test/test_planar.jl | C1 | Focused planar suite passed |
+| INV-064 | Per-mode TE/TM transmission-line cascades match an independent tanh-form reference to roundoff across layers, terminations, and interface pairs; exact-cutoff and deeply evanescent modes degenerate to transparent/decoupled sections rather than NaN. | src/planar/PlanarImmittance.jl | test/test_planar.jl (closed-form and tanh-form checks) | C1 | Focused planar suite passed |
+| INV-065 | Blocked Galerkin impedance assembly matches an independent direct modal sum, is deterministic across block sizes and repeated calls, supports non-contiguous interface ordering, preserves reciprocity symmetry, and enforces the declared workspace limit. | src/planar/PlanarGreens.jl | test/test_planar.jl | C1 | Focused planar suite passed |
+| INV-066 | Gap-port solve extracts short-circuit admittance and power-wave S-parameters with per-port real reference impedances; port signs follow wall orientation, capacitive/inductive low-frequency physics is preserved, and the canonical 50-Ohm shielded stripline benchmark agrees within published subsectioning error. | src/planar/PlanarSolve.jl | test/test_planar.jl | C1 | Focused planar suite passed |
+
 ## Approved behaviour changes
 
 2026-09-08: The user requested the complete PN-MoM integration from project

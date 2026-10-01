@@ -64,6 +64,8 @@ makedocs(
             "Material Models" => "formulations/03-material-models.md",
             "Dielectric SIE (PMCHWT / Müller)" => "formulations/04-dielectric-sie.md",
             "Grounded EFIE (Image Theory)" => "formulations/05-grounded-efie.md",
+            "Shielded Planar Spectral-Domain MoM" =>
+                "formulations/06-planar-spectral-mom.md",
         ],
         "Part VI — Validation" => [
             "Internal Consistency" => "validation/01-internal-consistency.md",
@@ -106,6 +108,7 @@ makedocs(
             "Periodic Methods" => "api/periodic-methods.md",
             "Grounded EFIE" => "api/grounded-efie.md",
             "Composite Operators" => "api/composite-operators.md",
+            "Planar Spectral-Domain MoM" => "api/planar.md",
             "Spatial Patches" => "api/spatial-patches.md",
             "Adjoint and Optimization" => "api/adjoint-optimize.md",
             "Density Topology" => "api/density-topology.md",

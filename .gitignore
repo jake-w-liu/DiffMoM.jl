@@ -30,3 +30,7 @@ Manifest.toml
 .juliaup_depot/
 
 *.obj
+
+# Local reference papers and upgrade tracker (never committed)
+ref/
+UPGRADE_TRACKER.md

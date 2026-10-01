@@ -36,6 +36,7 @@ implementation next to the caller that happens to need it.
 | Adjoint gradients and optimizers | `src/optimization/` | Check gradients against an independent finite-difference oracle. |
 | ACA and MLFMA acceleration | `src/fast/` | Forward and adjoint orderings are not interchangeable clones. |
 | 2D and 3D material solvers | `src/mom2d/`, `src/mom3d/` | Preserve units, tensor layout, and exceptional-value behavior. |
+| Shielded planar spectral-domain MoM | `src/planar/` | Box modes, layered TL cascade, rooftop basis, gap ports. Reuse the checked cascade and blocked dgemm assembly; keep e^{+i wt} sign and port orientation conventions. |
 | High-level solver selection | `src/Workflow.jl` | Keep method choice, memory estimates, and result metadata together. |
 | Public documentation | `docs/src/`, `docs/make.jl` | User-facing claims must match an implementation, test, or measured run. |
 | Scientific validation | `validation/` | A validator must fail with a nonzero exit when a stated gate fails. |

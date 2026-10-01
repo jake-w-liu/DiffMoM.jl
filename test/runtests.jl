@@ -69,6 +69,7 @@ nonpublic_qualified_accesses = Set(
       Set(_NONPUBLIC_QUALIFIED_ACCESS_ALLOWLIST)
 @test Docs.hasdoc(DiffMoM, :planewave_dda_3d)
 
+include("test_planar.jl")
 include("test_runtime_contract.jl")
 include("test_discretization_error.jl")
 include("test_conditioned_error.jl")

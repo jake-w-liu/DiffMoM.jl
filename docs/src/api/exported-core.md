@@ -2,7 +2,7 @@
 
 ```@autodocs
 Modules = [DiffMoM]
-Pages = ["Types.jl", "Workflow.jl"]
+Pages = [joinpath("src", "Types.jl"), joinpath("src", "Workflow.jl")]
 Public = true
 Private = false
 ```

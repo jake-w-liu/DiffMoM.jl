@@ -124,4 +124,11 @@ include("postprocessing/Visualization.jl")
 include("postprocessing/PeriodicMetrics.jl")
 include("assembly/GroundedEFIE.jl")
 
+# Shielded planar layered-media MoM (spectral box modes + rooftop basis)
+include("planar/PlanarTypes.jl")
+include("planar/PlanarImmittance.jl")
+include("planar/PlanarBasis.jl")
+include("planar/PlanarGreens.jl")
+include("planar/PlanarSolve.jl")
+
 end # module
