@@ -2,6 +2,7 @@ module DiffMoM
 
 using LinearAlgebra: LinearAlgebra,
                      Adjoint,
+                     Diagonal,
                      Hermitian,
                      I,
                      SymTridiagonal,
@@ -131,6 +132,7 @@ include("planar/PlanarBasis.jl")
 include("planar/PlanarGreens.jl")
 include("planar/PlanarSolve.jl")
 include("planar/PlanarSurface.jl")
+include("planar/PlanarDeembed.jl")
 include("planar/PlanarAdjoint.jl")
 
 end # module

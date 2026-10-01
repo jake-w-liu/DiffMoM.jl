@@ -107,6 +107,33 @@ cascade — complex-stepping cannot be used there because the modal
 voltages (and `Y` itself) are already complex, so a real
 `imag(v)/eps` extraction would lose the derivative to cancellation.
 
+## Port de-embedding
+
+A gap port carries a parasitic chain between the EM reference plane and
+the device plane: in the shielded box it is, to leading order, a pure
+shunt admittance `yd` (gap fringe) followed by a length of the port's
+connecting line. `deembed_ports(Y, chains)` removes arbitrary per-port
+2x2 ABCD chains from a port-admittance matrix — with `chains[p]` mapping
+`(V_B, I_B) -> (V_A, I_A)` the result is
+`Y_B = (Y_A*B - D)^{-1}*(C - Y_A*A)` where `A,B,C,D` are the diagonal
+per-port ABCD entries. `deembed_port_extension(Y, zc, gl)` is the
+special case removing the same `planar_line_abcd(zc, gl)` line section at
+every port (`gl` may be negative to add length).
+
+`deembed_double_delay_calibrate(Y_l, Y_2l; len)` implements the
+double-delay extraction: for thru standards of length `len` and `2*len`
+built with the same port geometry, `P = T_l*T_2l^{-1}*T_l` cancels the
+line and leaves the doubled shunt discontinuity `[1 0; 2*yd 1]`. The
+pure-shunt form is a fail-closed self-diagnostic (`tol`) — the solver's
+gap ports satisfy it to machine precision. Removing `yd` from the `len`
+standard then yields the connecting line's TEM-equivalent `zc` and
+`gamma*len` (electrical-length branch resolved so that
+`planar_line_abcd(zc, gamma_l)` reconstructs the measured section; keep
+standards under roughly a quarter wave so `acosh` does not wrap).
+`deembed_double_delay_apply(Y, cal)` then removes `Md*L(len)` per port —
+moving each reference plane `len` into the DUT — or just `Md` with
+`line=false`.
+
 ## Worked example
 
 ```julia
@@ -134,8 +161,10 @@ quarter-wave at 15 GHz).
 
 * Sheets are infinitely thin; conductor thickness is not modelled.
 * Vertical vias / volume currents are not yet implemented.
-* The gap port is not de-embedded; port parasitics shift the extracted
-  electrical length by a few percent on coarse grids.
+* The gap port carries a shunt capacitance and feed-line parasitic; use
+  `deembed_ports` / `deembed_double_delay_*` to move the reference plane
+  (double-delay assumes the discontinuity is a pure shunt — checked
+  fail-closed at calibration).
 * Wall ports on :south/:north require the same `connect_*` flags and claim
   cell *columns* rather than rows.
 
@@ -146,3 +175,7 @@ quarter-wave at 15 GHz).
 * J. C. Rautio, "An experimental investigation of the microwave properties
   of a roughly etched stripline," IEEE Trans. MTT-42, 1994 (shielded
   stripline standard problem).
+* J. C. Rautio and V. I. Okhmatovski, "Unification of double-delay and
+  SOC electromagnetic deembedding," IEEE Trans. MTT-53, Sep. 2005
+  (shunt-discontinuity form of the gap port and the `T_l T_2l^{-1} T_l`
+  extraction).

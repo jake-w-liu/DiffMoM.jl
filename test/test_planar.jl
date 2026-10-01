@@ -162,10 +162,10 @@ end
 
 # canonical stripline problem: air dielectric, h gnd spacing, width w for
 # 50 Ohm, quarter-wave line at 15 GHz, west/east ports
-function _stripline_problem(nx, ny; bw=10.0e-3, two_ports=true)
+function _stripline_problem(nx, ny; bw=10.0e-3, a=4.99654097e-3,
+        two_ports=true)
     h = 1.0e-3
     w = 1.4423896e-3
-    a = 4.99654097e-3
     stack = PlanarStackup(
         [PlanarLayer(1.0, 1.0, h / 2), PlanarLayer(1.0, 1.0, h / 2)],
         TERM_GND, TERM_GND, a, bw)
@@ -535,6 +535,95 @@ end
     s_eq = planar_y_to_s(ynet, [50.0, 50.0])
     s_eq_ref = (znet - 50I) * inv(znet + 50I)
     @test s_eq ≈ s_eq_ref rtol = 1e-12
+end
+
+@testset "planar: port de-embedding" begin
+    # synthetic calibration standards from known (yd, zc, gl)
+    yd = 0.0003 + 0.004im
+    zc = 53.0 + 0.7im
+    gl = 0.32 + 0.05im
+    Md = ComplexF64[1 0; yd 1]
+    L = planar_line_abcd(zc, gl)
+    L2 = planar_line_abcd(zc, 2gl)
+    yl = _PG._y_of_abcd(Md * L * Md)
+    y2l = _PG._y_of_abcd(Md * L2 * Md)
+    cal = deembed_double_delay_calibrate(yl, y2l; len=5e-3)
+    @test cal.yd ≈ yd
+    @test cal.zc ≈ zc rtol = 1e-10
+    @test cal.gamma_l ≈ gl rtol = 1e-10
+    @test cal.residual < 1e-10
+
+    # measured DUT = parasitic chain on each port around device
+    ydev = ComplexF64[0.02+0.03im 0.005-0.001im;
+                      0.005-0.001im -0.01+0.04im]
+    M1 = Md * L
+    M2 = Md * L
+    A_ = Diagonal([M1[1, 1], M2[1, 1]])
+    B_ = Diagonal([M1[1, 2], M2[1, 2]])
+    C_ = Diagonal([M1[2, 1], M2[2, 1]])
+    D_ = Diagonal([M1[2, 2], M2[2, 2]])
+    ya = (C_ + D_ * ydev) * inv(A_ + B_ * ydev)
+    @test deembed_ports(ya, [M1, M2]) ≈ ydev rtol = 1e-10
+    @test deembed_double_delay_apply(ya, cal) ≈ ydev rtol = 1e-9
+    # identity chains leave Y untouched
+    I2 = Matrix{ComplexF64}(I, 2, 2)
+    @test deembed_ports(ya, [I2, I2]) ≈ ya
+
+    # 1-port port extension vs direct transmission-line input impedance
+    zc0 = 50.0; gl0 = 0.7 + 0.02im
+    yb1 = fill(0.015 + 0.002im, 1, 1)
+    t = tanh(gl0)
+    za = zc0 * (inv(yb1[1, 1]) + zc0 * t) / (zc0 + inv(yb1[1, 1]) * t)
+    ya1 = fill(inv(za), 1, 1)
+    @test deembed_port_extension(ya1, zc0, gl0)[1, 1] ≈ yb1[1, 1] rtol = 1e-10
+    # removing a negative length equals adding it: round-trip identity
+    yr = deembed_port_extension(
+        deembed_port_extension(ya1, zc0, gl0), zc0, -gl0)
+    @test yr[1, 1] ≈ ya1[1, 1] rtol = 1e-10
+
+    # invalid inputs
+    @test_throws DimensionMismatch deembed_ports(ya, [M1])
+    @test_throws DimensionMismatch deembed_ports(ya, [M1, ones(2, 3)])
+    @test_throws ArgumentError deembed_ports(
+        fill(NaN * im, 2, 2), [M1, M2])
+    @test_throws ArgumentError deembed_double_delay_calibrate(
+        yl, y2l; len=0.0)
+    @test_throws ArgumentError deembed_double_delay_calibrate(
+        yl, y2l; len=5e-3, tol=-1.0)
+    @test_throws DimensionMismatch deembed_double_delay_calibrate(
+        yl, ones(3, 3); len=5e-3)
+    # a standard pair that violates the pure-shunt assumption must fail:
+    # discontinuity with a series impedance component gives P12 != 0
+    Ms = ComplexF64[1 0.8+0.4im; 0 1] * Md   # series z + shunt yd
+    ybl = _PG._y_of_abcd(Ms * L * Ms)
+    yb2 = _PG._y_of_abcd(Ms * L2 * Ms)
+    @test_throws ArgumentError deembed_double_delay_calibrate(
+        ybl, yb2; len=5e-3)
+
+    # solver end-to-end: calibrate on simulated thru standards
+    # (4 mm and 8 mm strips) and de-embed a 12 mm strip; the residual is
+    # a pure 4 mm line of the extracted (zc, gamma*l)
+    f = 15e9; ell = 4.0e-3
+    pl = _stripline_problem(16, 20; a=ell)
+    p2l = _stripline_problem(32, 20; a=2ell)
+    pdut = _stripline_problem(48, 20; a=3ell)
+    y1 = solve_planar(pl, f).y
+    y2 = solve_planar(p2l, f).y
+    cs = deembed_double_delay_calibrate(y1, y2; len=ell)
+    @test cs.residual < 1e-6         # gap ports are intrinsically shunt
+    @test 40 < real(cs.zc) < 90      # ~50-70 Ohm at this discretization
+    @test abs(imag(cs.gamma_l)) > 0.5   # electrically long enough
+    # free-space electrical length of the 4 mm standard at 15 GHz
+    @test imag(cs.gamma_l) ≈ 2pi * f * ell / _PG._C0 rtol = 0.02
+    yd3 = solve_planar(pdut, f).y
+    yde = deembed_double_delay_apply(yd3, cs)
+    # device after removing Md*L(ell) at each port: pure ell-length line
+    yline = _PG._y_of_abcd(planar_line_abcd(cs.zc, cs.gamma_l))
+    @test yde ≈ yline rtol = 1e-4
+    # naked-only removal leaves the full 3*ell line
+    ynak = deembed_double_delay_apply(yd3, cs; line=false)
+    yline3 = _PG._y_of_abcd(planar_line_abcd(cs.zc, 3 * cs.gamma_l))
+    @test ynak ≈ yline3 rtol = 1e-4
 end
 
 @testset "planar: parameter adjoint gradients" begin

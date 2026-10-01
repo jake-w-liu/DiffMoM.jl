@@ -54,4 +54,10 @@ planar_default_params
 planar_param_values
 planar_with_params
 planar_objective_gradient
+DoubleDelayCal
+planar_line_abcd
+deembed_ports
+deembed_port_extension
+deembed_double_delay_calibrate
+deembed_double_delay_apply
 ```
