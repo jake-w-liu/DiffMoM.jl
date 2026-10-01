@@ -43,4 +43,9 @@ solve_planar
 planar_sparams
 planar_y_to_s
 write_touchstone
+PlanarParam
+planar_default_params
+planar_param_values
+planar_with_params
+planar_objective_gradient
 ```

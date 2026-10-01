@@ -288,40 +288,9 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
     scratch = (Vector{ComplexF64}(undef, L), Vector{ComplexF64}(undef, L),
                Vector{ComplexF64}(undef, L))
 
-    # modal voltages per level pair, norm factors folded in
-    for c in 1:cblk
-        m, n = mlist[c], nlist[c]
-        kx, ky = mg.kx[m], mg.ky[n]
-        kc2 = kx * kx + ky * ky
-        nte2 = ky * ky * mg.ic[m] * mg.js[n] +
-               kx * kx * mg.is[m] * mg.jc[n]
-        ntm2 = kc2 * ab4
-        te_ok = kc2 != 0.0 && nte2 != 0.0
-        tm_ok = m > 1 && n > 1 && ntm2 != 0.0
-        te_ok && planar_mode_cascade!(casc_te, stack, omega, kc2, TE_POL,
-                                      scratch)
-        tm_ok && planar_mode_cascade!(casc_tm, stack, omega, kc2, TM_POL,
-                                      scratch)
-        @inbounds for pi_ in eachindex(pairs)
-            f, s = pairs[pi_]
-            vte[c, pi_] = te_ok ?
-                planar_modal_voltage(casc_te, f, s) / nte2 : 0.0im
-            vtm[c, pi_] = tm_ok ?
-                planar_modal_voltage(casc_tm, f, s) / ntm2 : 0.0im
-        end
-    end
-
-    # weight blocks: W[c,p] = modal factor * fx_p[m] * fy_p[n]
-    for p in 1:nb
-        xdir = _is_xdir(basis.kind[p])
-        fx = view(fxb, :, p)
-        fy = view(fyb, :, p)
-        @inbounds for c in 1:cblk
-            m, n = mlist[c], nlist[c]
-            Wte[c, p] = (xdir ? mg.ky[n] : -mg.kx[m]) * fx[m] * fy[n]
-            Wtm[c, p] = (xdir ? mg.kx[m] : mg.ky[n]) * fx[m] * fy[n]
-        end
-    end
+    _planar_mode_voltages!(vte, vtm, casc_te, casc_tm, scratch, stack,
+        omega, mg, mlist, nlist, pairs, ab4)
+    _planar_weight_block!(Wte, Wtm, mlist, nlist, mg, fxb, fyb, basis)
 
     # Z[rows,cols] -= W_f' * (V .* W_s) via real dgemm on each component
     @inbounds for pi_ in eachindex(pairs)
@@ -343,6 +312,61 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
             wf = view(W, 1:cblk, rows)
             mul!(view(Zr, rows, cols), transpose(wf), sd_r, -1.0, 1.0)
             mul!(view(Zi, rows, cols), transpose(wf), sd_i, -1.0, 1.0)
+        end
+    end
+    return nothing
+end
+
+# TE/TM modal voltages V(f,s)/N_pol^2 for one mode block.  `vte`/`vtm` are
+# (cblk x npair); the cascade workspaces must carry the scalar type that
+# differentiates the call (ComplexF64 analysis, _PlanarDual for gradients).
+function _planar_mode_voltages!(vte::AbstractMatrix,
+        vtm::AbstractMatrix, casc_te::PlanarCascade,
+        casc_tm::PlanarCascade, scratch, stack::PlanarStackup,
+        omega::Number, mg::PlanarModeGrid,
+        mlist::AbstractVector{Int}, nlist::AbstractVector{Int},
+        pairs::Vector{Tuple{Int,Int}}, ab4::Float64)
+    cblk = length(mlist)
+    for c in 1:cblk
+        m, n = mlist[c], nlist[c]
+        kx, ky = mg.kx[m], mg.ky[n]
+        kc2 = kx * kx + ky * ky
+        nte2 = ky * ky * mg.ic[m] * mg.js[n] +
+               kx * kx * mg.is[m] * mg.jc[n]
+        ntm2 = kc2 * ab4
+        te_ok = kc2 != 0.0 && nte2 != 0.0
+        tm_ok = m > 1 && n > 1 && ntm2 != 0.0
+        te_ok && planar_mode_cascade!(casc_te, stack, omega, kc2, TE_POL,
+                                      scratch)
+        tm_ok && planar_mode_cascade!(casc_tm, stack, omega, kc2, TM_POL,
+                                      scratch)
+        @inbounds for pi_ in eachindex(pairs)
+            f, s = pairs[pi_]
+            vte[c, pi_] = te_ok ?
+                planar_modal_voltage(casc_te, f, s) / nte2 : 0.0im
+            vtm[c, pi_] = tm_ok ?
+                planar_modal_voltage(casc_tm, f, s) / ntm2 : 0.0im
+        end
+    end
+    return nothing
+end
+
+# weight blocks: W[c,p] = modal factor * fx_p[m] * fy_p[n]
+function _planar_weight_block!(Wte::AbstractMatrix{Float64},
+        Wtm::AbstractMatrix{Float64},
+        mlist::AbstractVector{Int}, nlist::AbstractVector{Int},
+        mg::PlanarModeGrid, fxb::Matrix{Float64}, fyb::Matrix{Float64},
+        basis::PlanarBasisSet)
+    nb = planar_basis_count(basis)
+    cblk = length(mlist)
+    for p in 1:nb
+        xdir = _is_xdir(basis.kind[p])
+        fx = view(fxb, :, p)
+        fy = view(fyb, :, p)
+        @inbounds for c in 1:cblk
+            m, n = mlist[c], nlist[c]
+            Wte[c, p] = (xdir ? mg.ky[n] : -mg.kx[m]) * fx[m] * fy[n]
+            Wtm[c, p] = (xdir ? mg.kx[m] : mg.ky[n]) * fx[m] * fy[n]
         end
     end
     return nothing

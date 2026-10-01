@@ -84,6 +84,18 @@ assembly preserves the perturbation exactly (both parts are kept). Solve
 with `solve_planar(prob, ComplexF64(f0, tiny))` to complex-step the
 frequency.
 
+`planar_objective_gradient(prob, freq, f)` differentiates a real port-space
+objective `f(Y)` with respect to `PlanarParam` descriptors covering every
+layer `epsr`/`mur`/`thickness` component and surface/open terminator
+parameters. The port-space adjoint uses the already-factored LU
+(`dY = -transpose(Λ) dZ X` with `Λ = Z^{-T} E`), and the Wirtinger
+contraction is evaluated per mode so that no parameter-dependent dense
+`dZ` is ever materialized. Modal-voltage derivatives come from a minimal
+forward-mode `_PlanarDual` scalar propagated through the same generic
+cascade — complex-stepping cannot be used there because the modal
+voltages (and `Y` itself) are already complex, so a real
+`imag(v)/eps` extraction would lose the derivative to cancellation.
+
 ## Worked example
 
 ```julia

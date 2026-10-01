@@ -84,9 +84,9 @@ A zero denominator is a physical anti-resonance and returns Inf.
 """
 @inline function _planar_input_impedance(zc::T, e2::T,
         zl::T) where {T<:Number}
-    # e2 = 1 (gamma*d = 0, mode at cutoff): the section is transparent and
-    # the formula is 0/0 with a degenerate Zc -- return the load directly
-    isone(e2) && return zl
+    # e2 = 1 (gamma*d = 0, mode at cutoff, or a half/full-wave layer): the
+    # section is transparent and the formula is 0/0 with a degenerate Zc
+    isone(e2) && return _planar_e2_one_limit(zc, e2, zl)
     if _planarisinf(zl)
         num = one(T) + e2
         den = one(T) - e2
@@ -99,6 +99,10 @@ A zero denominator is a physical anti-resonance and returns Inf.
     return num / den
 end
 
+# value-level limit at e2 = 1 (transparent section); PlanarAdjoint.jl adds
+# the _PlanarDual method carrying d(Zin) = dzl - (Zc - zl^2/Zc)*e2'/2
+@inline _planar_e2_one_limit(zc::T, e2::T, zl::T) where {T<:Number} = zl
+
 """
     planar_mode_cascade(stack, omega, kc2, pol) -> PlanarCascade
 
@@ -109,7 +113,7 @@ function planar_mode_cascade(stack::PlanarStackup{T}, omega::Number,
         kc2::Float64, pol::PlanarPol) where {T<:Number}
     L = length(stack.layers)
     # working scalar carries omega's perturbation type too (complex-step)
-    S = promote_type(T, Complex{typeof(omega)})
+    S = promote_type(T, typeof(complex(omega)))
     ws = PlanarCascade(Vector{S}(undef, L + 1), Vector{S}(undef, L + 1),
         Vector{S}(undef, L), Vector{S}(undef, L))
     scratch = (Vector{S}(undef, L), Vector{S}(undef, L),
@@ -168,12 +172,16 @@ end
 # e1 = 0 (gamma*d underflow, deeply evanescent) -> the layer decouples
 # completely; return Inf rather than finite/0 = NaN in complex division.
 @inline function _planar_inv_tau(u::T, e2::T, e1::T) where {T<:Number}
-    # e1 = 1 (gamma*d = 0): no z-drop across the layer even though u is
-    # degenerate (Zc is 0 or Inf at cutoff)
-    isone(e1) && return one(T)
+    # e1 = 1 (gamma*d = 0 or a full-wave layer): no z-drop across the
+    # layer even though u is degenerate (Zc is 0 or Inf at cutoff)
+    isone(e1) && return _planar_e1_one_limit(u, e1)
     (_planarisinf(u) || iszero(e1)) && return T(Inf)
     return ((one(T) + u) + e2 * (one(T) - u)) / (2 * e1)
 end
+
+# value-level limit at e1 = 1; PlanarAdjoint.jl adds the _PlanarDual
+# method carrying d(inv_tau) = -u * d(e1)/dtheta (from d/dx = u at x=0)
+@inline _planar_e1_one_limit(u::T, e1::T) where {T<:Number} = one(T)
 
 """
     planar_modal_voltage(cascade, f, s) -> T

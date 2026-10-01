@@ -460,6 +460,217 @@ end
     @test s_eq ≈ s_eq_ref rtol = 1e-12
 end
 
+@testset "planar: parameter adjoint gradients" begin
+    # lossy stripline: nonzero imag baselines so the FD step sizes are sane
+    h = 1.0e-3; w = 1.4423896e-3; a = 4.99654097e-3; bw = 10e-3
+    stack = PlanarStackup(
+        [PlanarLayer(2.2 - 0.04im, 1.3 + 0.01im, h / 2),
+         PlanarLayer(2.2 - 0.04im, 1.3 + 0.01im, h / 2)],
+        TERM_GND, TERM_GND, a, bw)
+    grid = CellGrid(a, bw, 16, 20)
+    s = sheet_level(1, 16, 20)
+    rasterize_rect!(s, grid, 0.0, a, bw / 2 - w / 2, bw / 2 + w / 2)
+    prow = findall(j -> any(s.mask[:, j]), 1:20)
+    for j in prow
+        s.connect_west[j] = true
+        s.connect_east[j] = true
+    end
+    ports = PlanarPort[PlanarPort(1, :west, prow[1]:prow[end], 50.0),
+                       PlanarPort(1, :east, prow[1]:prow[end], 50.0)]
+    prob = build_planar_problem(stack, grid, [s], ports)
+    f = Y -> abs2(planar_y_to_s(Y, [50.0, 50.0])[2, 1])
+    freq = 15e9
+
+    params = PlanarParam[PlanarParam(1, :epsr, :re),
+        PlanarParam(1, :epsr, :im), PlanarParam(1, :mur, :re),
+        PlanarParam(1, :mur, :im), PlanarParam(1, :thickness, :re),
+        PlanarParam(2, :epsr, :re)]
+    theta = planar_param_values(stack, params)
+    @test theta ≈ [2.2, -0.04, 1.3, 0.01, 0.0005, 2.2]
+    J, g = planar_objective_gradient(prob, freq, f; params=params)
+    @test J ≈ f(solve_planar(prob, freq).y)
+    for j in eachindex(params)
+        hs = 1e-6 * max(abs(theta[j]), 1.0)
+        tp = copy(theta); tm = copy(theta)
+        tp[j] += hs; tm[j] -= hs
+        Jp = f(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tp), prob.grid,
+            prob.sheets, prob.ports, prob.basis), freq).y)
+        Jm = f(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tm), prob.grid,
+            prob.sheets, prob.ports, prob.basis), freq).y)
+        fd = (Jp - Jm) / (2hs)
+        @test g[j] ≈ fd rtol = 1e-4
+    end
+    # symmetric stackup: layer-1 and layer-2 epsr gradients must agree
+    @test g[1] ≈ g[6] rtol = 1e-9
+
+    # multi-interface contraction: sheets on interfaces 1 and 2
+    a2 = 6e-3; bw2 = 6e-3; hh = 0.6e-3
+    stack2 = PlanarStackup(
+        [PlanarLayer(3.0 + 0im, 1.0, hh), PlanarLayer(1.0 + 0im, 1.0, hh),
+         PlanarLayer(2.0 + 0im, 1.0, hh)],
+        TERM_GND, TERM_GND, a2, bw2)
+    grid2 = CellGrid(a2, bw2, 12, 12)
+    s1 = sheet_level(1, 12, 12)
+    rasterize_rect!(s1, grid2, 0.0, a2, bw2 / 2 - 0.4e-3, bw2 / 2 + 0.4e-3)
+    s2 = sheet_level(2, 12, 12)
+    rasterize_rect!(s2, grid2, 0.0, a2, bw2 / 2 - 0.8e-3, bw2 / 2 + 0.8e-3)
+    pr1 = findall(j -> any(s1.mask[:, j]), 1:12)
+    pr2 = findall(j -> any(s2.mask[:, j]), 1:12)
+    for j in pr1
+        s1.connect_west[j] = true; s1.connect_east[j] = true
+    end
+    for j in pr2
+        s2.connect_west[j] = true; s2.connect_east[j] = true
+    end
+    prob2 = build_planar_problem(stack2, grid2, [s1, s2],
+        PlanarPort[PlanarPort(1, :west, pr1[1]:pr1[end], 50.0),
+                   PlanarPort(2, :east, pr2[1]:pr2[end], 50.0)])
+    params2 = PlanarParam[PlanarParam(2, :epsr, :re),
+        PlanarParam(2, :thickness, :re), PlanarParam(3, :mur, :re)]
+    theta2 = planar_param_values(stack2, params2)
+    J2, g2 = planar_objective_gradient(prob2, 8e9, f; params=params2)
+    for j in eachindex(params2)
+        hs = 1e-6 * max(abs(theta2[j]), 1.0)
+        tp = copy(theta2); tm = copy(theta2)
+        tp[j] += hs; tm[j] -= hs
+        Jp = f(solve_planar(PlanarProblem(
+            planar_with_params(stack2, params2, tp), prob2.grid,
+            prob2.sheets, prob2.ports, prob2.basis), 8e9).y)
+        Jm = f(solve_planar(PlanarProblem(
+            planar_with_params(stack2, params2, tm), prob2.grid,
+            prob2.sheets, prob2.ports, prob2.basis), 8e9).y)
+        fd = (Jp - Jm) / (2hs)
+        @test g2[j] ≈ fd rtol = 1e-4
+    end
+
+    # terminator parameters: surface-impedance top
+    top = PlanarTerminator(TERM_SURFACE, 0.5 + 0.2im, 1.0 + 0im, 1.0 + 0im)
+    stack3 = PlanarStackup(
+        [PlanarLayer(2.2 + 0im, 1.0, hh), PlanarLayer(1.0 + 0im, 1.0, hh)],
+        TERM_GND, top, a2, bw2)
+    s3 = sheet_level(1, 12, 12)
+    rasterize_rect!(s3, grid2, 0.0, a2, bw2 / 2 - 0.6e-3, bw2 / 2 + 0.6e-3)
+    pr3 = findall(j -> any(s3.mask[:, j]), 1:12)
+    for j in pr3
+        s3.connect_west[j] = true; s3.connect_east[j] = true
+    end
+    prob3 = build_planar_problem(stack3, grid2, [s3],
+        PlanarPort[PlanarPort(1, :west, pr3[1]:pr3[end], 50.0),
+                   PlanarPort(1, :east, pr3[1]:pr3[end], 50.0)])
+    params3 = PlanarParam[PlanarParam(3, :zs, :re),
+        PlanarParam(3, :zs, :im), PlanarParam(1, :epsr, :re)]
+    theta3 = planar_param_values(stack3, params3)
+    J3, g3 = planar_objective_gradient(prob3, 8e9, f; params=params3)
+    for j in eachindex(params3)
+        hs = 1e-6 * max(abs(theta3[j]), 1.0)
+        tp = copy(theta3); tm = copy(theta3)
+        tp[j] += hs; tm[j] -= hs
+        Jp = f(solve_planar(PlanarProblem(
+            planar_with_params(stack3, params3, tp), prob3.grid,
+            prob3.sheets, prob3.ports, prob3.basis), 8e9).y)
+        Jm = f(solve_planar(PlanarProblem(
+            planar_with_params(stack3, params3, tm), prob3.grid,
+            prob3.sheets, prob3.ports, prob3.basis), 8e9).y)
+        fd = (Jp - Jm) / (2hs)
+        @test g3[j] ≈ fd rtol = 1e-4
+    end
+
+    # analytic Wirtinger gradient path: f = Re(Y11) has G[1,1] = 1
+    fre = Y -> real(Y[1, 1])
+    gY = Y -> ComplexF64[i == 1 && j == 1 ? 1.0 + 0im : 0.0 + 0im
+                         for i in 1:2, j in 1:2]
+    Jr, gr = planar_objective_gradient(prob, freq, fre;
+        params=[PlanarParam(1, :epsr, :re)], gY=gY)
+    _, gr_fd = planar_objective_gradient(prob, freq, fre;
+        params=[PlanarParam(1, :epsr, :re)])
+    @test gr[1] ≈ gr_fd[1] rtol = 1e-6
+
+    # dual cascade: modal-voltage derivative vs central FD of the real
+    # cascade on the same mode (independent of the contraction path)
+    p_d = PlanarParam(1, :epsr, :re)
+    ds = _PG._planar_dual_stackup(stack, p_d)
+    omega = 2pi * freq
+    kc2 = (pi / a)^2 + (pi / bw)^2
+    h2 = 1e-7
+    for pol in (TE_POL, TM_POL)
+        cd = planar_mode_cascade(ds, omega, kc2, pol)
+        sp = planar_with_params(stack, [p_d], [2.2 + h2])
+        sm = planar_with_params(stack, [p_d], [2.2 - h2])
+        cp = planar_mode_cascade(sp, omega, kc2, pol)
+        cm = planar_mode_cascade(sm, omega, kc2, pol)
+        for fi in 0:2, si in 0:2
+            dv = planar_modal_voltage(cd, fi, si)
+            fdv = (planar_modal_voltage(cp, fi, si) -
+                   planar_modal_voltage(cm, fi, si)) / (2h2)
+            @test dv.v ≈ planar_modal_voltage(
+                planar_mode_cascade(stack, omega, kc2, pol), fi, si)
+            @test dv.d ≈ fdv rtol = 1e-6
+        end
+    end
+
+    # default params cover every layer scalar and run to finite values
+    dp = planar_default_params(prob3.stack)
+    @test any(p.field === :zs for p in dp)
+    J4, g4 = planar_objective_gradient(prob3, 8e9, f; params=dp)
+    @test all(isfinite, g4)
+
+    # invalid descriptors and limits
+    @test_throws ArgumentError PlanarParam(-1, :epsr, :re)
+    @test_throws ArgumentError PlanarParam(1, :bogus, :re)
+    @test_throws ArgumentError PlanarParam(1, :epsr, :cc)
+    @test_throws ArgumentError planar_objective_gradient(prob, freq, f;
+        params=[PlanarParam(9, :epsr, :re)])
+    @test_throws ArgumentError planar_objective_gradient(prob, freq, f;
+        params=[PlanarParam(1, :zs, :re)])
+    @test_throws ArgumentError planar_with_params(stack,
+        [PlanarParam(1, :epsr, :re)], [NaN])
+    @test_throws DimensionMismatch planar_with_params(stack,
+        [PlanarParam(1, :epsr, :re)], [2.2, 2.2])
+    @test_throws ArgumentError planar_objective_gradient(prob, freq, f;
+        params=[PlanarParam(1, :epsr, :re)], max_bytes=64)
+    @test_throws ArgumentError planar_objective_gradient(prob, freq, f;
+        params=[PlanarParam(1, :epsr, :re)], h_fd=-1.0)
+    @test_throws ArgumentError planar_objective_gradient(prob, freq,
+        Y -> NaN; params=[PlanarParam(1, :epsr, :re)])
+end
+
+@testset "planar: dual-scalar degenerate-mode limits" begin
+    D = _PG._PlanarDual{ComplexF64}
+    # sqrt at exact cutoff: zero seed must not produce NaN through 0/0
+    x0 = D(0.0 + 0im, 0.0 + 0im)
+    @test sqrt(x0).v == 0 && sqrt(x0).d == 0
+    xs = D(0.0 + 0im, 1.0 + 0im)
+    @test !isfinite(sqrt(xs).d)          # genuine singular derivative
+
+    # inv_tau at gd = 0: limit value 1 with d = -u * e1.d
+    u = D(0.3 + 0.2im, 9.0 + 9im)
+    dx = 0.4 + 0.1im
+    e1 = D(1.0 + 0im, -dx)              # e1 = exp(-gd), so e1.d = -dx
+    e2 = D(1.0 + 0im, -2dx)
+    it = _PG._planar_inv_tau(u, e2, e1)
+    @test it.v == 1.0 + 0im
+    @test it.d ≈ u.v * dx               # d/dgd(cosh + u*sinh) at 0 = u
+    # reference via explicit dual cosh/sinh
+    xdu = D(0.0 + 0im, dx)
+    cosh_x = D(cosh(xdu.v), xdu.d * sinh(xdu.v))
+    sinh_x = D(sinh(xdu.v), xdu.d * cosh(xdu.v))
+    @test (cosh_x + u * sinh_x).d ≈ it.d
+
+    # input impedance at e2 = 1: dZin = dzl + (Zc - zl^2/Zc)*dx
+    zc = D(50.0 + 3im, 0.0im)
+    zl = D(30.0 - 2im, 0.1 + 0.2im)
+    zi = _PG._planar_input_impedance(zc, e2, zl)
+    @test zi.v ≈ zl.v
+    K = zc.v - zl.v * zl.v / zc.v
+    @test zi.d ≈ zl.d + K * dx
+    # tanh-form reference with duals: Zin = Zc(zl + Zc t)/(Zc + zl t)
+    t = D(0.0 + 0im, dx)                # t = tanh(gd)
+    ref = zc * (zl + zc * t) / (zc + zl * t)
+    @test ref.d ≈ zi.d rtol = 1e-10
+end
+
 @testset "planar: complex-step frequency perturbation" begin
     prob = _stripline_problem(16, 20)
     f0 = 10e9
