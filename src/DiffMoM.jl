@@ -133,6 +133,7 @@ include("planar/PlanarGreens.jl")
 include("planar/PlanarSolve.jl")
 include("planar/PlanarSurface.jl")
 include("planar/PlanarDeembed.jl")
+include("planar/PlanarExtract.jl")
 include("planar/PlanarAdjoint.jl")
 
 end # module

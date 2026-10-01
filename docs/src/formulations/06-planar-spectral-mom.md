@@ -134,6 +134,16 @@ standards under roughly a quarter wave so `acosh` does not wrap).
 moving each reference plane `len` into the DUT — or just `Md` with
 `line=false`.
 
+Circuit extraction turns de-embedded port data into element values:
+`planar_line_params(Y)` recovers a uniform line's `zc` and `gamma*len`;
+`planar_rlgc(Y, len, f)` (or `planar_rlgc(cal, f)`) reports the
+per-unit-length `z = gamma*zc` and `y = gamma/zc` as R, L, G, C;
+`planar_pi_model(Y)` gives the pi-equivalent admittances of a 2-port; and
+`planar_inductor(Y, f)` reports the series-branch `r`, `l`, and
+`q = Im(Z)/Re(Z)` — for a 1x1 `Y` the branch is the port impedance, for a
+2x2 the pi-model series branch `-1/Y12`. For the air stripline the
+TEM identity `L*C = mu0*eps0` holds to the extracted line's accuracy.
+
 ## Worked example
 
 ```julia

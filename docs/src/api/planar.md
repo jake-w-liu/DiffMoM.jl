@@ -60,4 +60,11 @@ deembed_ports
 deembed_port_extension
 deembed_double_delay_calibrate
 deembed_double_delay_apply
+RLGC
+PiModel
+InductorParams
+planar_line_params
+planar_rlgc
+planar_pi_model
+planar_inductor
 ```

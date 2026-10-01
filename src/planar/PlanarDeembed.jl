@@ -174,29 +174,38 @@ function deembed_double_delay_calibrate(Yl::AbstractMatrix,
     Tline = (Mi * Tl) * Mi
     all(isfinite, Tline) || throw(ArgumentError(
         "de-embedded line ABCD is non-finite"))
+    zc, gl = _line_params_of_abcd(Tline)
+    isfinite(yd) || throw(ArgumentError(
+        "extracted port discontinuity is non-finite"))
+    return DoubleDelayCal(yd, zc, gl, Float64(len), Float64(resid))
+end
+
+# Recover (zc, gamma*len) from a symmetric line-section ABCD:
+# A = D = cosh(gl), B = zc*sinh(gl), C = sinh(gl)/zc.  The (s, zc) ->
+# (-s, -zc) ambiguity in B = zc*s is resolved to Re(zc) > 0, and the
+# acosh +/- branch is resolved so that planar_line_abcd(zc, gl)
+# reconstructs the section (fail-closed on non-line sections).
+function _line_params_of_abcd(Tline::AbstractMatrix)
     c = (Tline[1, 1] + Tline[2, 2]) / 2
     s2 = Tline[1, 2] * Tline[2, 1]
     abs2(s2) > eps(real(abs(s2)))^2 || throw(ArgumentError(
-        "de-embedded line has zero B*C: no propagating mode"))
+        "line section has zero B*C: no propagating mode"))
     s = sqrt(s2)
     zc = Tline[1, 2] / s
-    # (s, Zc) and (-s, -Zc) both satisfy B = Zc*s: resolve to Re(Zc) > 0
     real(zc) < 0 && (s = -s; zc = -zc)
-    (isfinite(zc) && isfinite(yd)) || throw(ArgumentError(
-        "extracted port parameters are non-finite"))
+    isfinite(zc) || throw(ArgumentError(
+        "extracted characteristic impedance is non-finite"))
     # consistency: the two sinh products must agree
     abs(Tline[2, 1] - s / zc) <=
         0.05 * max(abs(s / zc), abs(Tline[2, 1])) ||
         throw(ArgumentError(
-            "de-embedded line ABCD is not a symmetric line section " *
+            "ABCD is not a symmetric line section " *
             "(B/Zc != C*Zc within 5%)"))
-    # acosh has a +/- branch; pick the one whose sinh matches the
-    # extracted line so planar_line_abcd(zc, gamma_l) rebuilds it
     gl = acosh(c)
     abs(sinh(-gl) - s) < abs(sinh(gl) - s) && (gl = -gl)
     abs(sinh(gl) - s) <= 0.05 * max(abs(s), 1.0) || throw(ArgumentError(
-        "reconstructed line does not match the de-embedded section"))
-    return DoubleDelayCal(yd, zc, gl, Float64(len), Float64(resid))
+        "reconstructed line does not match the given section"))
+    return zc, gl
 end
 
 """    deembed_double_delay_apply(Y, cal; line=true) -> Matrix{ComplexF64}

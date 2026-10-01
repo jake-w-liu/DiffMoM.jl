@@ -626,6 +626,76 @@ end
     @test ynak ≈ yline3 rtol = 1e-4
 end
 
+@testset "planar: circuit-element extraction" begin
+    f = 10e9; om = 2pi * f; len = 6e-3
+    # known per-unit-length constants -> line ABCD -> extract
+    zp = 12.0 + om * 250e-9im          # 12 Ohm/m, 250 nH/m
+    yp = 0.05 + om * 80e-12im          # 0.05 S/m, 80 pF/m
+    zc = sqrt(zp / yp); gl = len * sqrt(zp * yp)
+    Yl = _PG._y_of_abcd(planar_line_abcd(zc, gl))
+    rl = planar_rlgc(Yl, len, f)
+    @test rl.r ≈ 12.0 rtol = 1e-10
+    @test rl.l ≈ 250e-9 rtol = 1e-10
+    @test rl.g ≈ 0.05 rtol = 1e-10
+    @test rl.c ≈ 80e-12 rtol = 1e-10
+    lp = planar_line_params(Yl)
+    @test lp.zc ≈ zc rtol = 1e-12
+    @test lp.gl ≈ gl rtol = 1e-12
+    # from a double-delay calibration
+    cal = DoubleDelayCal(0.001im, zc, gl, len, 1e-12)
+    rl2 = planar_rlgc(cal, f)
+    @test rl2.l ≈ rl.l rtol = 1e-12
+    @test rl2.c ≈ rl.c rtol = 1e-12
+
+    # pi-model roundtrip from known branches
+    ys0 = 0.01 + 0.03im; ya0 = 0.002 - 0.001im; yb0 = 0.004 + 0.0005im
+    Yp = ComplexF64[ya0+ys0 -ys0; -ys0 yb0+ys0]
+    pm = planar_pi_model(Yp)
+    @test pm.ys ≈ ys0 && pm.ya ≈ ya0 && pm.yb ≈ yb0
+
+    # inductor: series RL branch -> 2-port Y -> extract L, R, Q
+    zI = 0.8 + om * 4e-9im
+    Yi = ComplexF64[1 -1; -1 1] .* inv(zI) .+
+         ComplexF64[0.001 0; 0 0.002]
+    ip = planar_inductor(Yi, f)
+    @test ip.r ≈ 0.8 rtol = 1e-10
+    @test ip.l ≈ 4e-9 rtol = 1e-10
+    @test ip.q ≈ imag(zI) / real(zI) rtol = 1e-10
+    ip1 = planar_inductor(fill(inv(zI), 1, 1), f)
+    @test ip1.l ≈ 4e-9 rtol = 1e-10
+    # lossless branch -> infinite Q
+    ipl = planar_inductor(fill(inv(om * 4e-9im), 1, 1), f)
+    @test ipl.q == Inf
+
+    # invalid inputs
+    @test_throws DimensionMismatch planar_rlgc(ones(3, 3), len, f)
+    @test_throws ArgumentError planar_rlgc(Yl, 0.0, f)
+    @test_throws ArgumentError planar_rlgc(Yl, len, -f)
+    @test_throws ArgumentError planar_rlgc(fill(NaN * im, 2, 2), len, f)
+    @test_throws DimensionMismatch planar_pi_model(ones(3, 3))
+    @test_throws DimensionMismatch planar_inductor(ones(3, 3), f)
+    @test_throws ArgumentError planar_inductor(zeros(2, 2), f)
+    # non-line section (shunt only: B = 0) fails closed
+    @test_throws ArgumentError planar_line_params(
+        ComplexF64[0.01 0; 0 0.01])
+
+    # solver end-to-end: air stripline is TEM, so L*C = mu0*eps0 = 1/c0^2
+    # and the extracted p.u.l. values are frequency-consistent
+    fe = 15e9; elle = 4.0e-3
+    cs = deembed_double_delay_calibrate(
+        solve_planar(_stripline_problem(16, 20; a=elle), fe).y,
+        solve_planar(_stripline_problem(32, 20; a=2elle), fe).y;
+        len=elle)
+    yd3 = solve_planar(_stripline_problem(48, 20; a=3elle), fe).y
+    yde = deembed_double_delay_apply(yd3, cs)   # pure elle line
+    rle = planar_rlgc(yde, elle, fe)
+    @test rle.l * rle.c ≈ 1 / _PG._C0^2 rtol = 0.02
+    @test rle.l > 0 && rle.c > 0
+    rlcal = planar_rlgc(cs, fe)
+    @test rlcal.l ≈ rle.l rtol = 0.05
+    @test rlcal.c ≈ rle.c rtol = 0.05
+end
+
 @testset "planar: parameter adjoint gradients" begin
     # lossy stripline: nonzero imag baselines so the FD step sizes are sane
     h = 1.0e-3; w = 1.4423896e-3; a = 4.99654097e-3; bw = 10e-3
