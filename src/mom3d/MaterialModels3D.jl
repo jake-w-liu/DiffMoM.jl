@@ -7,9 +7,11 @@ export IsotropicMaterial3D, DiagonalAnisotropicMaterial3D, TensorAnisotropicMate
 export IsotropicPermeability3D, DiagonalPermeability3D, TensorPermeability3D
 export MagneticMaterial3D, BianisotropicMaterial3D
 export DrudePermittivity3D, LorentzPermittivity3D, DebyePermittivity3D
+export WidebandDebyePermittivity3D
 export material_epsr_3d, material_mur_3d
 export material_bianisotropic_matrix_3d
 export drude_epsr_3d, lorentz_epsr_3d, debye_epsr_3d
+export wideband_debye_3d, wideband_debye_epsr_3d
 
 const _PASSIVITY_TOL_3D = 100 * eps(Float64)
 const _PASSIVITY_SAFE_EXPONENT_3D = 128
@@ -407,6 +409,109 @@ struct DebyePermittivity3D
 end
 
 """
+    WidebandDebyePermittivity3D(eps_inf, delta, tau; passive=true)
+
+Multi-pole Debye relaxation (Djordjevic-Sarkar wideband form):
+`eps = eps_inf + sum_k delta[k] / (1 + i omega tau[k])`.  `delta[k] >= 0`
+with `tau[k] > 0` keeps the response passive under exp(+i omega t).
+Use `wideband_debye_3d` to fit the pole set from a measured
+`(eps_r, tan delta)` pair at a reference frequency.
+"""
+struct WidebandDebyePermittivity3D
+    eps_inf::ComplexF64
+    delta::Vector{Float64}
+    tau::Vector{Float64}
+    passive::Bool
+    function WidebandDebyePermittivity3D(eps_inf, delta::AbstractVector,
+                                         tau::AbstractVector; passive::Bool=true)
+        epsi = _finite_complex_3d(eps_inf, "eps_inf")
+        length(delta) == length(tau) ||
+            throw(DimensionMismatch("delta and tau must have equal length"))
+        isempty(delta) &&
+            error("wideband Debye model needs at least one pole")
+        deltas = Vector{Float64}(undef, length(delta))
+        taus = Vector{Float64}(undef, length(tau))
+        for k in eachindex(deltas, taus)
+            deltas[k] = Float64(delta[k])
+            taus[k] = _finite_positive_float_3d(tau[k], "tau[$k]")
+            isfinite(deltas[k]) ||
+                error("delta[$k] must be finite, got $(delta[k]).")
+            passive && deltas[k] < -_PASSIVITY_TOL_3D &&
+                error("wideband Debye passive relaxation requires delta[$k] >= 0.")
+        end
+        passive && _validate_passive_scalar_3d(epsi, "eps_inf")
+        return new(epsi, deltas, taus, passive)
+    end
+end
+
+"""
+    wideband_debye_3d(epsr_ref, tand_ref, freq_ref_hz;
+                      npoles=60, half_decades=3.0, passive=true)
+
+Fit a `WidebandDebyePermittivity3D` so that `Re epsr = epsr_ref` and the
+loss tangent equals `tand_ref` at `freq_ref_hz` [Hz].  `npoles` Debye
+poles are placed with `omega_ref * tau_k` log-spaced over
+`[10^-half_decades, 10^half_decades]` (equal weights, matching the
+constant-log-density Djordjevic-Sarkar relaxation continuum).  Fails if
+`epsr_ref <= 0`, `tand_ref < 0`, or the fit yields `eps_inf <= 0`
+(span too narrow for the requested loss tangent).
+"""
+function wideband_debye_3d(epsr_ref, tand_ref, freq_ref_hz;
+                           npoles::Integer=60, half_decades::Real=3.0,
+                           passive::Bool=true)
+    er = _finite_positive_float_3d(epsr_ref, "epsr_ref")
+    td = _finite_nonnegative_float_3d(tand_ref, "tand_ref")
+    fr = _finite_positive_float_3d(freq_ref_hz, "freq_ref_hz")
+    npoles >= 1 ||
+        error("npoles must be >= 1, got $npoles.")
+    hd = _finite_positive_float_3d(half_decades, "half_decades")
+    # equal-weight poles: log10(omega_ref * tau_k) centers the bins
+    xk = [10.0^(-hd + (k - 0.5) * (2hd) / npoles) for k in 1:npoles]
+    s1 = 0.0
+    s2 = 0.0
+    @inbounds for k in 1:npoles
+        x = xk[k]
+        s1 += 1 / (1 + x * x)
+        s2 += x / (1 + x * x)
+    end
+    # eps' = eps_inf + A*s1 = er; eps''/eps' = A*s2/er = td  =>
+    # A = td*er/s2, eps_inf = er - A*s1
+    amp = td * er / s2
+    eps_inf = er - amp * s1
+    eps_inf > 0 ||
+        error("wideband Debye fit gives eps_inf = $eps_inf <= 0: " *
+              "increase half_decades or npoles, or reduce tand_ref")
+    omegar = 2pi * fr
+    return WidebandDebyePermittivity3D(
+        ComplexF64(eps_inf), fill(amp, npoles), xk ./ omegar;
+        passive=passive)
+end
+
+"""
+    wideband_debye_epsr_3d(freq_hz; eps_inf, delta, tau, passive=true)
+
+Evaluate `eps_inf + sum_k delta[k]/(1 + i omega tau[k])` at `freq_hz`.
+"""
+function wideband_debye_epsr_3d(freq_hz; eps_inf, delta, tau,
+                                passive::Bool=true)
+    f = _finite_nonnegative_float_3d(freq_hz, "freq_hz")
+    epsi = _finite_complex_3d(eps_inf, "eps_inf")
+    length(delta) == length(tau) ||
+        throw(DimensionMismatch("delta and tau must have equal length"))
+    omega = 2pi * f
+    acc = epsi
+    @inbounds for k in eachindex(delta, tau)
+        _finite_positive_float_3d(tau[k], "tau[$k]")
+        dk = Float64(delta[k])
+        isfinite(dk) || error("delta[$k] must be finite, got $(delta[k]).")
+        acc += dk / (1 + 1im * omega * tau[k])
+    end
+    epsr = ComplexF64(acc)
+    passive && _validate_passive_scalar_3d(epsr, "eps_r")
+    return epsr
+end
+
+"""
     material_epsr_3d(model, freq_hz_or_k0)
 
 Evaluate a 3D material permittivity helper. Static models ignore the frequency
@@ -477,11 +582,25 @@ function _material_dispersive_response_3d(
     return value
 end
 
+function _material_dispersive_response_3d(
+        model::WidebandDebyePermittivity3D,
+        freq_hz_or_k0,
+        label::AbstractString)
+    value = wideband_debye_epsr_3d(freq_hz_or_k0;
+                                   eps_inf=model.eps_inf,
+                                   delta=model.delta,
+                                   tau=model.tau,
+                                   passive=false)
+    model.passive && _validate_passive_scalar_3d(value, label)
+    return value
+end
+
 material_epsr_3d(
     model::Union{
         DrudePermittivity3D,
         LorentzPermittivity3D,
         DebyePermittivity3D,
+        WidebandDebyePermittivity3D,
     },
     freq_hz_or_k0,
 ) = _material_dispersive_response_3d(model, freq_hz_or_k0, "eps_r")

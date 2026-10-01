@@ -296,3 +296,56 @@ using .DiffMoM
     @test_throws ErrorException BianisotropicMaterial3D(ones(ComplexF64, 5, 5))
     @test_throws ErrorException material_epsr_3d(iso, Inf)
 end
+
+@testset "wideband Debye (Djordjevic-Sarkar) permittivity" begin
+    # fit reproduces (epsr, tand) at the reference frequency exactly and
+    # keeps tand nearly flat across the pole span
+    m = wideband_debye_3d(4.3, 0.02, 1e9)
+    e_ref = material_epsr_3d(m, 1e9)
+    @test real(e_ref) ≈ 4.3 rtol = 1e-12
+    @test -imag(e_ref) / real(e_ref) ≈ 0.02 rtol = 1e-10
+    for f in (1e8, 1e10, 1e11)
+        e = material_epsr_3d(m, f)
+        @test -imag(e) / real(e) ≈ 0.02 rtol = 0.08
+        @test 3.9 < real(e) < 4.5        # eps' decays gently with log f
+    end
+    @test real(material_epsr_3d(m, 1e6)) > real(e_ref)  # causal rise at low f
+
+    # tand = 0 degenerates to the lossless constant
+    m0 = wideband_debye_3d(2.2, 0.0, 10e9)
+    @test material_epsr_3d(m0, 5e9) == 2.2 + 0.0im
+    @test m0.eps_inf == 2.2 + 0.0im
+
+    # single pole == DebyePermittivity3D
+    m1 = WidebandDebyePermittivity3D(1.0 + 0im, [3.0], [1e-10])
+    d1 = DebyePermittivity3D(4.0, 1.0, 1e-10)
+    @test material_epsr_3d(m1, 3e9) ≈ material_epsr_3d(d1, 3e9)
+
+    # monotonicity: eps' decreases with frequency (relaxation)
+    e_lo = material_epsr_3d(m, 1e7)
+    e_hi = material_epsr_3d(m, 1e11)
+    @test real(e_lo) > real(e_hi)
+
+    # invalid inputs / fail-closed paths
+    @test_throws ErrorException wideband_debye_3d(0.0, 0.02, 1e9)
+    @test_throws ErrorException wideband_debye_3d(4.3, -0.01, 1e9)
+    @test_throws ErrorException wideband_debye_3d(4.3, 0.02, -1e9)
+    @test_throws ErrorException wideband_debye_3d(4.3, 0.02, 1e9; npoles=0)
+    # extreme tand over a narrow span -> eps_inf <= 0 is caught
+    @test_throws ErrorException wideband_debye_3d(
+        4.3, 50.0, 1e9; half_decades=0.5)
+    @test_throws DimensionMismatch WidebandDebyePermittivity3D(
+        2.0, [1.0, 1.0], [1e-9])
+    @test_throws ErrorException WidebandDebyePermittivity3D(
+        2.0, Float64[], Float64[])
+    @test_throws ErrorException WidebandDebyePermittivity3D(
+        2.0, [-0.5], [1e-9])
+    @test_throws ErrorException WidebandDebyePermittivity3D(
+        2.0, [0.5], [-1e-9])
+    @test_throws DimensionMismatch wideband_debye_epsr_3d(
+        1e9; eps_inf=1.0, delta=[1.0, 1.0], tau=[1e-9])
+    @test_throws ErrorException wideband_debye_epsr_3d(
+        1e9; eps_inf=1.0, delta=[-5.0], tau=[1e-9])
+    @test_throws ErrorException wideband_debye_epsr_3d(
+        1e9; eps_inf=1.0, delta=[1.0], tau=[-1e-9])
+end

@@ -19,14 +19,15 @@ The models split into four groups:
 
 - **Permittivity models:** `IsotropicMaterial3D`, `DiagonalAnisotropicMaterial3D`,
   `TensorAnisotropicMaterial3D`, and the dispersive `DrudePermittivity3D`,
-  `LorentzPermittivity3D`, `DebyePermittivity3D`.
+  `LorentzPermittivity3D`, `DebyePermittivity3D`, `WidebandDebyePermittivity3D`.
 - **Permeability models:** `IsotropicPermeability3D`, `DiagonalPermeability3D`,
   `TensorPermeability3D`.
 - **Magnetodielectric and bianisotropic media:** `MagneticMaterial3D`,
   `BianisotropicMaterial3D`.
 - **Evaluator functions:** `material_epsr_3d`, `material_mur_3d`,
-  `material_bianisotropic_matrix_3d`, and the standalone dispersive evaluators
-  `drude_epsr_3d`, `lorentz_epsr_3d`, `debye_epsr_3d`.
+  `material_bianisotropic_matrix_3d`, the standalone dispersive evaluators
+  `drude_epsr_3d`, `lorentz_epsr_3d`, `debye_epsr_3d`, `wideband_debye_epsr_3d`,
+  and the Djordjevic–Sarkar fitter `wideband_debye_3d`.
 
 **See also:** for the theory and a worked walkthrough, see
 [Material Models: Dispersive and Anisotropic Media](../formulations/03-material-models.md).
@@ -205,6 +206,75 @@ material_epsr_3d(debye, 1.0e9)   # ComplexF64, frequency-dependent
 
 ---
 
+### `WidebandDebyePermittivity3D(eps_inf, delta, tau; passive=true)`
+
+Multi-pole Debye relaxation (Djordjevic–Sarkar wideband form):
+
+```
+eps_r(omega) = eps_inf + sum_k delta[k] / (1 + i*omega*tau[k])
+```
+
+A logarithmically spaced pole set with equal weights reproduces the nearly
+constant loss tangent and the slow `Re eps` roll-off of the
+Djordjevic–Sarkar causal relaxation continuum. `delta[k] >= 0` with
+`tau[k] > 0` keeps `imag(eps_r) <= 0` under the `exp(+i omega t)`
+convention.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `eps_inf` | Number (coerced to `ComplexF64`) | -- | High-frequency permittivity limit. Finite; with `passive=true`, `imag <= 0`. |
+| `delta` | AbstractVector{<:Real} | -- | Pole strengths, nonempty, finite; with `passive=true`, all `>= 0`. |
+| `tau` | AbstractVector{<:Real} | -- | Pole time constants in seconds, same length as `delta`, all finite and positive. |
+| `passive` | `Bool` | `true` | Enforce passivity on the constants and each evaluated value. |
+
+**Fields:** `eps_inf::ComplexF64`, `delta::Vector{Float64}`,
+`tau::Vector{Float64}`, `passive::Bool`.
+
+**Returns:** a `WidebandDebyePermittivity3D` instance, evaluated by
+`material_epsr_3d(model, freq_hz)` or `wideband_debye_epsr_3d`.
+
+```julia
+wb = WidebandDebyePermittivity3D(3.8, fill(0.01, 20),
+    10.0 .^ range(-13, -9, length=20))
+material_epsr_3d(wb, 1.0e9)
+```
+
+---
+
+### `wideband_debye_3d(epsr_ref, tand_ref, freq_ref_hz; npoles=60, half_decades=3.0, passive=true)`
+
+Fit a `WidebandDebyePermittivity3D` to a measured `(epsr, tand)` pair at a
+single reference frequency. `npoles` equal-weight poles are log-spaced so
+that `omega_ref * tau[k]` covers `10^-half_decades` to `10^half_decades`
+decades around 1; a common pole amplitude and `eps_inf` are solved so the
+model reproduces `Re epsr = epsr_ref` and `tand = tand_ref` exactly at
+`freq_ref_hz`.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `epsr_ref` | Real | -- | Measured real permittivity at the reference frequency; `> 0`. |
+| `tand_ref` | Real | -- | Measured loss tangent at the reference frequency; `>= 0`. |
+| `freq_ref_hz` | Real | -- | Reference frequency in Hz; `> 0`. |
+| `npoles` | Integer | `60` | Number of poles; `>= 1`. |
+| `half_decades` | Real | `3.0` | Half-width, in decades, of the `omega_ref*tau` coverage. |
+| `passive` | `Bool` | `true` | Passed to the constructed model. |
+
+**Returns:** a `WidebandDebyePermittivity3D` instance. Throws if the fit
+requires `eps_inf <= 0` (pole span too narrow for the requested loss
+tangent).
+
+```julia
+fr4 = wideband_debye_3d(4.3, 0.02, 1.0e9)
+material_epsr_3d(fr4, 1.0e9)   # 4.3 - 0.086im
+material_epsr_3d(fr4, 1.0e11)  # slightly lower Re epsr, ~0.02 tand
+```
+
+---
+
 ## Permeability Models
 
 ### `IsotropicPermeability3D(mu_r; passive=true)`
@@ -351,8 +421,9 @@ Evaluate a material's relative permittivity at a frequency scale. Static models
 (`Number`, `IsotropicMaterial3D`, `DiagonalAnisotropicMaterial3D`,
 `TensorAnisotropicMaterial3D`) ignore the frequency scale except for finite
 nonnegative validation; dispersive models (`DrudePermittivity3D`,
-`LorentzPermittivity3D`, `DebyePermittivity3D`) interpret the argument as
-frequency in Hz. A `MagneticMaterial3D` delegates to its `eps_model`.
+`LorentzPermittivity3D`, `DebyePermittivity3D`, `WidebandDebyePermittivity3D`)
+interpret the argument as frequency in Hz. A `MagneticMaterial3D` delegates
+to its `eps_model`.
 
 **Parameters:**
 
@@ -515,13 +586,45 @@ imag(eps) <= 0   # true (passive)
 
 ---
 
+### `wideband_debye_epsr_3d(freq_hz; eps_inf, delta, tau, passive=true)`
+
+Evaluate a multi-pole Debye relative permittivity directly from parameters:
+
+```
+eps = eps_inf + sum_k delta[k] / (1 + i omega tau[k])
+```
+
+with `omega = 2*pi*freq_hz`. `delta` and `tau` must have equal nonzero
+length; every `tau[k]` must be finite and positive.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `freq_hz` | Real (coerced to `Float64`) | -- | Evaluation frequency in Hz. Must be finite and nonnegative. |
+| `eps_inf` | Number (coerced to `ComplexF64`) | -- (required keyword) | High-frequency permittivity limit. Must be finite. |
+| `delta` | AbstractVector{<:Real} | -- (required keyword) | Pole strengths; nonempty and finite. |
+| `tau` | AbstractVector{<:Real} | -- (required keyword) | Pole time constants in seconds; finite and positive. |
+| `passive` | `Bool` | `true` | If `true`, require the resulting `imag(eps_r) <= 0`. |
+
+**Returns:** `ComplexF64` relative permittivity.
+
+```julia
+eps = wideband_debye_epsr_3d(1.0e9; eps_inf=3.8,
+    delta=fill(0.01, 8), tau=10.0 .^ range(-13, -9, length=8))
+imag(eps) <= 0   # true (passive)
+```
+
+---
+
 ## Code Mapping
 
 | Symbol | Source File | Primary Users |
 |--------|-------------|---------------|
 | All permittivity, permeability, magnetodielectric, and bianisotropic models | `src/mom3d/MaterialModels3D.jl` | 3D volume DDA solver (see [dda-volume-3d.md](dda-volume-3d.md)) |
 | `material_epsr_3d`, `material_mur_3d`, `material_bianisotropic_matrix_3d` | `src/mom3d/MaterialModels3D.jl` | Constitutive evaluation in the volume solver |
-| `drude_epsr_3d`, `lorentz_epsr_3d`, `debye_epsr_3d` | `src/mom3d/MaterialModels3D.jl` | Standalone dispersive permittivity evaluation |
+| `drude_epsr_3d`, `lorentz_epsr_3d`, `debye_epsr_3d`, `wideband_debye_epsr_3d` | `src/mom3d/MaterialModels3D.jl` | Standalone dispersive permittivity evaluation |
+| `wideband_debye_3d` | `src/mom3d/MaterialModels3D.jl` | Djordjevic–Sarkar pole-set fit from a measured `(epsr, tand)` pair |
 
 ---
 

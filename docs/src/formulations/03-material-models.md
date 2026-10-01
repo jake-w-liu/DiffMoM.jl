@@ -160,6 +160,26 @@ Polar molecules (water, for instance) relax orientationally with a single time c
 
 Here $\varepsilon_s$ is the static (zero-frequency) permittivity and $\varepsilon_\infty$ the high-frequency limit. The $+i\omega\tau$ denominator again yields $\operatorname{Im}\varepsilon_r \le 0$. A passive relaxation requires $\operatorname{Re}(\varepsilon_s - \varepsilon_\infty) \ge 0$ (the permittivity must drop, not rise, with frequency), checked at construction. `DebyePermittivity3D(eps_static, eps_inf, tau_s)` accepts $f \ge 0$ and requires $\tau > 0$.
 
+### 3.4 Wideband Debye (Djordjevic–Sarkar) Response
+
+A single-pole Debye medium cannot reproduce a real substrate: FR-4-class dielectrics hold $\tan\delta$ nearly constant over decades of frequency while $\operatorname{Re}\varepsilon_r$ falls slowly. A *distribution* of relaxation times does both. The Djordjevic–Sarkar construction is the causal continuum limit of that idea, implemented here as a finite multi-pole sum
+
+```math
+\varepsilon_r(\omega) = \varepsilon_\infty + \sum_{k=1}^{N} \frac{\Delta_k}{1 + i\omega\tau_k},
+```
+
+with $\Delta_k \ge 0$ and $\tau_k > 0$, so every pole contributes $-\Delta_k\,\omega\tau_k/(1+\omega^2\tau_k^2)$ to $\operatorname{Im}\varepsilon_r$ and passivity holds term by term. Placing the poles logarithmically in $\omega\tau$ with equal weights approximates the constant spectral density of the continuum: $\tan\delta$ stays flat wherever several decades of poles straddle $\omega\tau = 1$, while $\operatorname{Re}\varepsilon_r$ rolls off in steps of $\Delta_k$ per crossed pole — the measured signature of a causal dielectric.
+
+`wideband_debye_3d(epsr_ref, tand_ref, f_ref)` builds such a model from one measured data pair. `npoles` poles are log-spaced so that $\omega_{\rm ref}\tau_k$ covers $10^{\pm\textsf{half\_decades}}$ around 1, share a common amplitude $A$, and the two measured numbers close the system:
+
+```math
+A\,\sum_k \frac{\omega_{\rm ref}\tau_k}{1+\omega_{\rm ref}^2\tau_k^2} = \texttt{tand\_ref}\cdot\texttt{epsr\_ref},
+\qquad
+\varepsilon_\infty = \texttt{epsr\_ref} - A\sum_k \frac{1}{1+\omega_{\rm ref}^2\tau_k^2}.
+```
+
+The pair is reproduced exactly at $f_{\rm ref}$. The fit throws when it would require $\varepsilon_\infty \le 0$ — that is the model saying the requested $\tan\delta$ cannot be causal over the chosen pole span; widen `half_decades` or check the data. The model evaluates through `material_epsr_3d` like any dispersive model and, once evaluated at each analysis frequency, feeds `PlanarLayer` or the volume solver unchanged.
+
 ---
 
 ## 4. Magnetodielectric and Bianisotropic Media
