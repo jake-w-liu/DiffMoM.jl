@@ -72,7 +72,18 @@ frequency vector; `write_touchstone` writes `.sNp` files.
 
 `surface_zs` (scalar or per-sheet vector) adds the analytic Gram term
 `Zs * int f_p . f_q dA` to `Z`, nonzero only for a rooftop and its immediate
-neighbour on the same level.
+neighbour on the same level. `planar_surface_zs(f, sigma)` builds the value
+from bulk conductivity as `Zs = Rs*(1 + i)` with
+`Rs = sqrt(omega*mu/(2*sigma))` and skin depth
+`delta = sqrt(2/(omega*mu*sigma))` (`planar_skin_depth`). Published
+roughness corrections enter through `roughness_factor`:
+`HammerstadRoughness(rms; rf=2)` gives the Hammerstad-Jensen factor
+`1 + (rf - 1)*(2/pi)*atan(1.4*(rms/delta)^2)` saturating at `rf`, and
+`HurayRoughness(radius, density)` gives the snowball factor
+`1 + (3/2)*(4*pi*r^2*rho)/(1 + delta/r + delta^2/(2*r^2))`, which approaches
+1 at low frequency and saturates at the nodule-area factor when the skin
+depth falls below the nodule radius. The factor scales the full complex
+`Zs` by default; `loss_only=true` restricts it to `Re(Zs)`.
 
 ## Differentiability
 

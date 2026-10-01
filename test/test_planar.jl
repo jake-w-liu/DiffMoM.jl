@@ -337,6 +337,83 @@ end
     end
 end
 
+@testset "planar: conductor surface impedance and roughness" begin
+    sig_cu = 5.8e7
+    # textbook values: delta(Cu, 1 GHz) = 2.088 um, Rs = 8.25 mOhm
+    @test planar_skin_depth(1e9, sig_cu) ≈ 2.089e-6 rtol = 1e-3
+    @test planar_skin_depth(4e9, sig_cu) ≈ planar_skin_depth(1e9, sig_cu) / 2 rtol = 1e-12
+    zs = planar_surface_zs(1e9, sig_cu)
+    @test real(zs) ≈ 8.2502e-3 rtol = 1e-3
+    @test imag(zs) ≈ real(zs)          # (1+i)*Rs under e^{+i wt}
+
+    # Hammerstad-Jensen: K = 1 + (2/pi)*atan(1.4*(rms/delta)^2)
+    d1 = planar_skin_depth(1e9, sig_cu)
+    @test roughness_factor(HammerstadRoughness(0.0), 1e9, sig_cu) == 1.0
+    @test roughness_factor(HammerstadRoughness(d1), 1e9, sig_cu) ≈
+        1 + (2 / pi) * atan(1.4) rtol = 1e-12
+    @test roughness_factor(HammerstadRoughness(50 * d1), 1e9, sig_cu) ≈ 2.0 atol = 1e-3
+    # modified form: rf is the asymptotic multiplier
+    @test roughness_factor(HammerstadRoughness(50 * d1; rf=1.5),
+        1e9, sig_cu) ≈ 1.5 atol = 1e-3
+    # monotone in rms, saturating
+    k1 = roughness_factor(HammerstadRoughness(0.5 * d1), 1e9, sig_cu)
+    k2 = roughness_factor(HammerstadRoughness(2.0 * d1), 1e9, sig_cu)
+    @test 1 < k1 < k2 < 2
+
+    # Huray snowball: K = 1 + (3/2)*(4*pi*r^2*rho)/(1 + x + x^2/2), x = d/r
+    r_n = 0.5e-6; rho = 1.4e11
+    @test roughness_factor(HurayRoughness(r_n, 0.0), 1e9, sig_cu) == 1.0
+    kh = roughness_factor(HurayRoughness(r_n, rho), 1e9, sig_cu)
+    x = d1 / r_n
+    @test kh ≈ 1 + 1.5 * 4pi * r_n^2 * rho / (1 + x + x^2 / 2) rtol = 1e-12
+    # delta >> r (low f): nodules electrically small, fields bypass -> K -> 1
+    @test roughness_factor(HurayRoughness(r_n, rho), 1.0, sig_cu) ≈ 1.0 atol = 1e-6
+    # delta << r (high f): saturates at the nodule-area factor 1+6*pi*r^2*rho
+    kmax = roughness_factor(HurayRoughness(r_n, rho), 1e16, sig_cu)
+    @test kmax ≈ 1 + 1.5 * 4pi * r_n^2 * rho rtol = 1e-3
+    @test 1 < kh < kmax
+
+    # roughness application: full scaling vs loss_only (Re(Zs) only)
+    zsr = planar_surface_zs(1e9, sig_cu;
+        roughness=HurayRoughness(r_n, rho))
+    @test zsr ≈ kh * zs rtol = 1e-12
+    zsl = planar_surface_zs(1e9, sig_cu;
+        roughness=HurayRoughness(r_n, rho), loss_only=true)
+    @test real(zsl) ≈ kh * real(zs) rtol = 1e-12
+    @test imag(zsl) ≈ imag(zs) rtol = 1e-12
+
+    # end-to-end: the Gram loss term is linear in surface_zs, so a rough
+    # surface scales the whole loss contribution by K
+    stack = PlanarStackup(
+        [PlanarLayer(1.0, 1.0, 0.5e-3), PlanarLayer(1.0, 1.0, 0.5e-3)],
+        TERM_GND, TERM_GND, 4e-3, 4e-3)
+    grid = CellGrid(4e-3, 4e-3, 8, 6)
+    s = sheet_level(1, 8, 6)
+    rasterize_rect!(s, grid, 0.0, 4e-3, 1e-3, 3e-3)
+    rows = findall(j -> any(s.mask[:, j]), 1:6)
+    s.connect_west[rows] .= true
+    s.connect_east[rows] .= true
+    basis = build_planar_basis(grid, [s], PlanarPort[])
+    omega = 2pi * 1e9
+    Z0 = assemble_planar_z(stack, grid, [s], basis, omega; mx=16, my=12)
+    Zsm = assemble_planar_z(stack, grid, [s], basis, omega;
+        mx=16, my=12, surface_zs=zs)
+    Zro = assemble_planar_z(stack, grid, [s], basis, omega;
+        mx=16, my=12, surface_zs=zsr)
+    @test Zro - Z0 ≈ kh .* (Zsm - Z0) rtol = 1e-10
+    @test maximum(real.(Zro - Zsm)) > 0   # extra dissipation
+
+    # validation
+    @test_throws ArgumentError HammerstadRoughness(-1e-6)
+    @test_throws ArgumentError HammerstadRoughness(1e-6; rf=0.5)
+    @test_throws ArgumentError HurayRoughness(0.0, 1e11)
+    @test_throws ArgumentError HurayRoughness(1e-6, -1.0)
+    @test_throws ArgumentError planar_skin_depth(0.0, sig_cu)
+    @test_throws ArgumentError planar_skin_depth(1e9, 0.0)
+    @test_throws ArgumentError planar_skin_depth(1e9, sig_cu; mur=0.0)
+    @test_throws ArgumentError planar_surface_zs(NaN, sig_cu)
+end
+
 @testset "planar: low-frequency port conventions" begin
     # floating metal patch between two grounds, driven at the west edge:
     # quasi-static parallel-plate capacitor, Y11 positive imaginary.

@@ -43,6 +43,12 @@ solve_planar
 planar_sparams
 planar_y_to_s
 write_touchstone
+PlanarRoughness
+HammerstadRoughness
+HurayRoughness
+planar_skin_depth
+roughness_factor
+planar_surface_zs
 PlanarParam
 planar_default_params
 planar_param_values

@@ -130,6 +130,7 @@ include("planar/PlanarImmittance.jl")
 include("planar/PlanarBasis.jl")
 include("planar/PlanarGreens.jl")
 include("planar/PlanarSolve.jl")
+include("planar/PlanarSurface.jl")
 include("planar/PlanarAdjoint.jl")
 
 end # module
