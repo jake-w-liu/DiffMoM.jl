@@ -1690,8 +1690,8 @@ Base.size(A::MLFMAOperator) = (A.N, A.N)
 Base.eltype(::MLFMAOperator) = ComplexF64
 Base.size(A::MLFMAAdjointOperator) = size(A.op)
 Base.eltype(::MLFMAAdjointOperator) = ComplexF64
-LinearAlgebra.adjoint(A::MLFMAOperator) = MLFMAAdjointOperator(A)
-LinearAlgebra.adjoint(A::MLFMAAdjointOperator) = A.op
+Base.adjoint(A::MLFMAOperator) = MLFMAAdjointOperator(A)
+Base.adjoint(A::MLFMAAdjointOperator) = A.op
 
 function Base.getindex(A::MLFMAOperator, i::Int, j::Int)
     checkbounds(A, i, j)

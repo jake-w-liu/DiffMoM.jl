@@ -1097,7 +1097,7 @@ function Base.:*(A::MatrixFreeEFIEAdjointOperator{T}, x::AbstractVector) where {
     return y
 end
 
-LinearAlgebra.adjoint(A::MatrixFreeEFIEOperator{T}) where {T<:Number} =
+Base.adjoint(A::MatrixFreeEFIEOperator{T}) where {T<:Number} =
     MatrixFreeEFIEAdjointOperator{T,typeof(A)}(A)
 
 """

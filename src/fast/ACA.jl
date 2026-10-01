@@ -406,8 +406,8 @@ function Base.getindex(A::ACAAdjointOperator, i::Int, j::Int)
     return conj(A.op[j, i])
 end
 
-LinearAlgebra.adjoint(A::ACAOperator) = ACAAdjointOperator{typeof(A)}(A)
-LinearAlgebra.adjoint(A::ACAAdjointOperator) = A.op
+Base.adjoint(A::ACAOperator) = ACAAdjointOperator{typeof(A)}(A)
+Base.adjoint(A::ACAAdjointOperator) = A.op
 
 function efie_entry(A::ACAOperator, i::Int, j::Int)
     checkbounds(A, i, j)

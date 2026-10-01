@@ -915,7 +915,7 @@ function LinearAlgebra.ldiv!(plan::_EquilibratedDenseLUPlan, rhs)
     copyto!(rhs, solution)
     return rhs
 end
-function LinearAlgebra.adjoint(plan::_EquilibratedDenseLUPlan{T}) where {T}
+function Base.adjoint(plan::_EquilibratedDenseLUPlan{T}) where {T}
     factorization = adjoint(plan.factorization)
     return _EquilibratedDenseLUPlan{T,typeof(factorization)}(
         factorization, plan.column_shifts, plan.row_shifts)
@@ -1236,7 +1236,7 @@ function LinearAlgebra.ldiv!(plan::_BigFloatDenseLUPlan, rhs)
     copyto!(rhs, solution)
     return rhs
 end
-function LinearAlgebra.adjoint(plan::_BigFloatDenseLUPlan{T}) where {T}
+function Base.adjoint(plan::_BigFloatDenseLUPlan{T}) where {T}
     factorization = adjoint(plan.factorization)
     return _BigFloatDenseLUPlan{T,typeof(factorization)}(factorization)
 end
@@ -1421,7 +1421,7 @@ Base.:\(factor::_ConditioningFactorization, rhs) =
     )
 LinearAlgebra.issuccess(factor::_ConditioningFactorization) =
     issuccess(factor.factorization)
-function LinearAlgebra.adjoint(factor::_ConditioningFactorization)
+function Base.adjoint(factor::_ConditioningFactorization)
     adjoint_factorization = adjoint(factor.factorization)
     adjoint_matrix = adjoint(factor.matrix)
     return _ConditioningFactorization(

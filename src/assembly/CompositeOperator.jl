@@ -87,8 +87,8 @@ Base.size(A::ImpedanceLoadedAdjointOperator) = size(A.parent)
 Base.size(A::ImpedanceLoadedAdjointOperator, d::Int) = size(A.parent, d)
 Base.eltype(::ImpedanceLoadedAdjointOperator) = ComplexF64
 
-LinearAlgebra.adjoint(A::ImpedanceLoadedOperator) = ImpedanceLoadedAdjointOperator(A)
-LinearAlgebra.adjoint(A::ImpedanceLoadedAdjointOperator) = A.parent
+Base.adjoint(A::ImpedanceLoadedOperator) = ImpedanceLoadedAdjointOperator(A)
+Base.adjoint(A::ImpedanceLoadedAdjointOperator) = A.parent
 
 @inline function _composite_patch_factor(
         A::ImpedanceLoadedOperator,
