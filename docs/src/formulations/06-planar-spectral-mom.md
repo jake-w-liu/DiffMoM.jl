@@ -5,11 +5,12 @@
 Reference for the shielded multilayer planar solver under `src/planar/`. This
 is the formulation for printed-circuit and RFIC-style problems: infinitely
 thin metal sheets on the interfaces of a stratified dielectric stack inside a
-rectangular shielding box with PEC sidewalls.
+rectangular shielding box with PEC (default) or PMC sidewalls.
 
 ## Model
 
-* Box `0 <= x <= a`, `0 <= y <= b`, PEC sidewalls.
+* Box `0 <= x <= a`, `0 <= y <= b` with PEC (`WALL_PEC`, default) or PMC
+  (`WALL_PMC`) sidewalls, selected by the `walls` keyword of `CellGrid`.
 * `L` dielectric layers fill `z = 0 .. sum(thickness)`, ordered bottom to top.
 * Interface `i` (`i = 0..L`) is the top face of layer `i`; metal sheets carry
   a cell mask (`SheetLevel`) on one interface each.
@@ -28,6 +29,19 @@ gamma_l = sqrt(kc^2 - k_l^2),   Re gamma >= 0   (e^{+i w t} convention)
 Zc_TE   = i*omega*mu_l / gamma_l
 Zc_TM   = gamma_l / (i*omega*eps_l)
 ```
+
+The lateral eigenvalue lattice `kx = m*pi/a`, `ky = n*pi/b` is the same for
+both sidewall kinds, but the mode parity changes: on `WALL_PEC` walls the
+transverse modal E field is
+`(e_TE, e_TM) ~ (ky cos(kx x) sin(ky y), -kx sin(kx x) cos(ky y))` /
+`(kx cos sin, ky sin cos)`, while on `WALL_PMC` walls every sin/cos factor
+swaps.  Consequently the PMC box loses the TE modes with `m = 0` or
+`n = 0` (their `H_z = sin*sin` needs both indices) but gains the TM modes
+on the `m = 0` / `n = 0` axes (`E_z = cos*cos`, only the uniform `(0,0)`
+mode — which has no transverse E — is excluded).  The modal norms, basis
+transforms, and the wall half-rooftop transforms all follow the wall
+parity; wall-port half rooftops on `WALL_PMC` transform with the one-sided
+sin kernel `Hs(k,h) = (k h - sin(k h)) / (k^2 h)` instead of `Hc`.
 
 A layer may be uniaxial with optic axis along `z` (common for laminated
 substrates and woven dielectrics): `PlanarLayer(epsr, mur, d; epsr_z, mur_z)`
@@ -187,6 +201,11 @@ quarter-wave at 15 GHz).
 
 * Sheets are infinitely thin; conductor thickness is not modelled.
 * Vertical vias / volume currents are not yet implemented.
+* Sidewalls are uniform per box (`CellGrid(...; walls=...)`): either all
+  four PEC or all four PMC.  A gap port on a `WALL_PMC` boundary is a
+  mathematical port — it drives the sheet edge against the boundary
+  surface, and with no wall conductor to return current the line end is
+  electrically open.
 * The gap port carries a shunt capacitance and feed-line parasitic; use
   `deembed_ports` / `deembed_double_delay_*` to move the reference plane
   (double-delay assumes the discontinuity is a pure shunt — checked

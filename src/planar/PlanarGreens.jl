@@ -4,9 +4,18 @@
 # Normalized modal vectors for PEC sidewalls, with
 #   g1 = cos(kx x) sin(ky y),  g2 = sin(kx x) cos(ky y):
 #     e_TE = ( ky g1, -kx g2 ) / N_TE,  N_TE^2 = ky^2 Ic_m Js_n + kx^2 Is_m Jc_n
-#     e_TM = ( kx g1,  ky g2 ) / N_TM,  N_TM^2 = kc2 * ab/4   (m,n >= 1 only)
+#     e_TM = ( kx g1,  ky g2 ) / N_TM,  N_TM^2 = kx^2 Ic_m Js_n + ky^2 Is_m Jc_n
 # where Ic_m = a (m=0) or a/2, Is_m = 0 (m=0) or a/2 — Neumann-type factors
-# that handle the m=0/n=0 degenerate modes without special-casing.
+# that handle the m=0/n=0 degenerate modes without special-casing (the
+# norm formula gives N_TM = 0 exactly on the non-existing modes).
+#
+# PMC sidewalls swap the parity on every axis (E_x uses sin(kx x)cos(ky y),
+# E_y uses cos(kx x)sin(ky y)) and swap the TE/TM norm formulas:
+#   N_TE^2(PMC) = ky^2 Is_m Jc_n + kx^2 Ic_m Js_n   (m,n >= 1 only)
+#   N_TM^2(PMC) = kx^2 Is_m Jc_n + ky^2 Ic_m Js_n   (m,n >= 0, incl. axes)
+# so the PMC TE fields carry the PEC TM parity and vice versa.  Wall-port
+# half-rooftops transform against sin(kx x) on PMC walls via Hs instead of
+# the PEC Hc.
 #
 # An x-directed rooftop couples only through e_x, a y-directed one through
 # e_y, so per-basis modal weights factor:
@@ -28,22 +37,26 @@ export assemble_planar_z
 
 """Precomputed box-mode data on a `CellGrid`: wavenumbers `kx/ky`,
 cos^2/sin^2 wall integrals, and the analytic pulse transforms used by the
-rooftop modal inner products."""
+rooftop modal inner products.  `walls` selects the sidewall parity
+(`WALL_PEC` or `WALL_PMC`, taken from `grid.walls`)."""
 struct PlanarModeGrid
     mx::Int              # modes m = 0..mx-1
     my::Int              # modes n = 0..my-1
+    walls::SidewallKind
     ic::Vector{Float64}  # integral cos^2(m pi x/a) over the box
     is::Vector{Float64}  # integral sin^2(m pi x/a)
     jc::Vector{Float64}
     js::Vector{Float64}
     kx::Vector{Float64}
     ky::Vector{Float64}
-    tx_tri_cos::Vector{Float64}  # triangle (support 2dx) vs cos(kx x)
-    ty_tri_cos::Vector{Float64}
-    tx_rect_sin::Vector{Float64} # rectangle (width dx) vs sin(kx x)
+    tx_tri_cos::Vector{Float64}  # triangle (support 2dx) kernel sinc^2(k dx/2)
+    ty_tri_cos::Vector{Float64}  # (same kernel multiplies the sin transform too)
+    tx_rect_sin::Vector{Float64} # rectangle (width dx) kernel sinc(k dx/2)
     ty_rect_sin::Vector{Float64}
     hx_cos::Vector{Float64}      # wall half-ramp (1-x/dx) vs cos(kx x)
     hy_cos::Vector{Float64}
+    hx_sin::Vector{Float64}      # wall half-ramp vs sin(kx x) (PMC parity)
+    hy_sin::Vector{Float64}
 end
 
 @inline _sinc0(t::Float64) = abs2(t) < 1e-6 ? 1.0 - t*t/6.0 : sin(t) / t
@@ -56,8 +69,16 @@ end
     return (1.0 - cos(kh)) / (k * k * h)
 end
 
+# half-ramp sin transform: (kh - sin(kh))/(k^2 h), ~ k h^2/6 at k -> 0
+@inline function _ramp_sin(k::Float64, h::Float64)
+    kh = k * h
+    abs2(kh) < 1e-6 && return k * h * h * (1 / 6 - kh * kh / 120)
+    return (kh - sin(kh)) / (k * k * h)
+end
+
 """Build the mode grid for `mx` x-modes and `my` y-modes (indices
-m = 0..mx-1, n = 0..my-1)."""
+m = 0..mx-1, n = 0..my-1) on the box `grid` (sidewall kind from
+`grid.walls`)."""
 function planar_mode_grid(grid::CellGrid, mx::Integer, my::Integer)
     mx >= 1 && my >= 1 ||
         throw(ArgumentError("mode counts must be >= 1"))
@@ -74,8 +95,11 @@ function planar_mode_grid(grid::CellGrid, mx::Integer, my::Integer)
     ty_rect_sin = [dy * _sinc0(k * dy / 2) for k in ky]
     hx_cos = [_ramp_cos(k, dx) for k in kx]
     hy_cos = [_ramp_cos(k, dy) for k in ky]
-    return PlanarModeGrid(mx, my, ic, isv, jc, jsv, kx, ky,
-        tx_tri_cos, ty_tri_cos, tx_rect_sin, ty_rect_sin, hx_cos, hy_cos)
+    hx_sin = [_ramp_sin(k, dx) for k in kx]
+    hy_sin = [_ramp_sin(k, dy) for k in ky]
+    return PlanarModeGrid(mx, my, grid.walls, ic, isv, jc, jsv, kx, ky,
+        tx_tri_cos, ty_tri_cos, tx_rect_sin, ty_rect_sin, hx_cos, hy_cos,
+        hx_sin, hy_sin)
 end
 
 # ---------------- per-basis separable pulse vectors ----------------
@@ -84,21 +108,28 @@ function _basis_fx!(fx::AbstractVector{Float64}, basis::PlanarBasisSet,
         p::Int, mg::PlanarModeGrid, grid::CellGrid)
     kind = basis.kind[p]
     nx = grid.nx
+    pec = mg.walls == WALL_PEC
     @inbounds if kind == _BASIS_X_FULL
         e = basis.ei[p]
         for m in 1:mg.mx
-            fx[m] = mg.tx_tri_cos[m] * cospi((m - 1) * e / nx)
+            # x-flow rooftop transforms vs cos(kx x) on PEC, sin on PMC
+            fx[m] = mg.tx_tri_cos[m] *
+                (pec ? cospi((m - 1) * e / nx) : sinpi((m - 1) * e / nx))
         end
     elseif kind == _BASIS_X_LO
-        copyto!(fx, mg.hx_cos)
+        copyto!(fx, pec ? mg.hx_cos : mg.hx_sin)
     elseif kind == _BASIS_X_HI
         for m in 1:mg.mx
-            fx[m] = isodd(m - 1) ? -mg.hx_cos[m] : mg.hx_cos[m]
+            # cos: (-1)^(m-1) Hc;  sin: -(-1)^(m-1) Hs
+            s = isodd(m - 1) ? -1.0 : 1.0
+            fx[m] = pec ? s * mg.hx_cos[m] : -s * mg.hx_sin[m]
         end
-    else # y-directed: rectangle vs sin(kx x) at cell-centre x
+    else # y-directed: rectangle vs sin(kx x) on PEC / cos on PMC, at centre
         i = basis.ei[p]
         for m in 1:mg.mx
-            fx[m] = mg.tx_rect_sin[m] * sinpi((m - 1) * (i - 0.5) / nx)
+            fx[m] = mg.tx_rect_sin[m] *
+                (pec ? sinpi((m - 1) * (i - 0.5) / nx) :
+                       cospi((m - 1) * (i - 0.5) / nx))
         end
     end
     return fx
@@ -108,21 +139,26 @@ function _basis_fy!(fy::AbstractVector{Float64}, basis::PlanarBasisSet,
         p::Int, mg::PlanarModeGrid, grid::CellGrid)
     kind = basis.kind[p]
     ny = grid.ny
+    pec = mg.walls == WALL_PEC
     @inbounds if kind == _BASIS_Y_FULL
         f = basis.ej[p]
         for n in 1:mg.my
-            fy[n] = mg.ty_tri_cos[n] * cospi((n - 1) * f / ny)
+            fy[n] = mg.ty_tri_cos[n] *
+                (pec ? cospi((n - 1) * f / ny) : sinpi((n - 1) * f / ny))
         end
     elseif kind == _BASIS_Y_LO
-        copyto!(fy, mg.hy_cos)
+        copyto!(fy, pec ? mg.hy_cos : mg.hy_sin)
     elseif kind == _BASIS_Y_HI
         for n in 1:mg.my
-            fy[n] = isodd(n - 1) ? -mg.hy_cos[n] : mg.hy_cos[n]
+            s = isodd(n - 1) ? -1.0 : 1.0
+            fy[n] = pec ? s * mg.hy_cos[n] : -s * mg.hy_sin[n]
         end
-    else # x-directed: rectangle vs sin(ky y) at cell-centre y
+    else # x-directed: rectangle vs sin(ky y) on PEC / cos on PMC, at centre
         j = basis.ej[p]
         for n in 1:mg.my
-            fy[n] = mg.ty_rect_sin[n] * sinpi((n - 1) * (j - 0.5) / ny)
+            fy[n] = mg.ty_rect_sin[n] *
+                (pec ? sinpi((n - 1) * (j - 0.5) / ny) :
+                       cospi((n - 1) * (j - 0.5) / ny))
         end
     end
     return fy
@@ -273,7 +309,6 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
         sdr::Matrix{Float64}, sdi::Matrix{Float64})
     cblk = length(mlist)
     nb = planar_basis_count(basis)
-    ab4 = grid.a * grid.b / 4
 
     # cascade workspaces are reused across all modes of the block; the
     # four cascade vectors + three scratch vectors are allocated once per
@@ -289,7 +324,7 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
                Vector{ComplexF64}(undef, L))
 
     _planar_mode_voltages!(vte, vtm, casc_te, casc_tm, scratch, stack,
-        omega, mg, mlist, nlist, pairs, ab4)
+        omega, mg, mlist, nlist, pairs)
     _planar_weight_block!(Wte, Wtm, mlist, nlist, mg, fxb, fyb, basis)
 
     # Z[rows,cols] -= W_f' * (V .* W_s) via real dgemm on each component
@@ -325,17 +360,29 @@ function _planar_mode_voltages!(vte::AbstractMatrix,
         casc_tm::PlanarCascade, scratch, stack::PlanarStackup,
         omega::Number, mg::PlanarModeGrid,
         mlist::AbstractVector{Int}, nlist::AbstractVector{Int},
-        pairs::Vector{Tuple{Int,Int}}, ab4::Float64)
+        pairs::Vector{Tuple{Int,Int}})
     cblk = length(mlist)
+    pec = mg.walls == WALL_PEC
     for c in 1:cblk
         m, n = mlist[c], nlist[c]
         kx, ky = mg.kx[m], mg.ky[n]
         kc2 = kx * kx + ky * ky
-        nte2 = ky * ky * mg.ic[m] * mg.js[n] +
-               kx * kx * mg.is[m] * mg.jc[n]
-        ntm2 = kc2 * ab4
+        # norm^2 factors: PMC swaps the TE/TM sin/cos parities.  A zero
+        # norm marks a non-existent mode (PEC TM needs m,n >= 1; PMC TE
+        # needs m,n >= 1 and PMC TM drops only the uniform (0,0) mode).
+        nte2, ntm2 = if pec
+            (ky * ky * mg.ic[m] * mg.js[n] +
+             kx * kx * mg.is[m] * mg.jc[n],
+             kx * kx * mg.ic[m] * mg.js[n] +
+             ky * ky * mg.is[m] * mg.jc[n])
+        else
+            (ky * ky * mg.is[m] * mg.jc[n] +
+             kx * kx * mg.ic[m] * mg.js[n],
+             kx * kx * mg.is[m] * mg.jc[n] +
+             ky * ky * mg.ic[m] * mg.js[n])
+        end
         te_ok = kc2 != 0.0 && nte2 != 0.0
-        tm_ok = m > 1 && n > 1 && ntm2 != 0.0
+        tm_ok = ntm2 != 0.0
         te_ok && planar_mode_cascade!(casc_te, stack, omega, kc2, TE_POL,
                                       scratch)
         tm_ok && planar_mode_cascade!(casc_tm, stack, omega, kc2, TM_POL,

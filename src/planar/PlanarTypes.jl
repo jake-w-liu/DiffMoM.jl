@@ -1,7 +1,8 @@
 # PlanarTypes.jl — Data structures for shielded layered-media planar analysis
 #
 # Geometry model: a rectangular shielding box 0<=x<=a, 0<=y<=b with PEC
-# sidewalls.  A stack of `L` dielectric layers fills 0 = z_0 < z_1 < ... <
+# (default) or PMC sidewalls.  A stack of `L` dielectric layers fills 0 =
+# z_0 < z_1 < ... <
 # z_L = h_box.  Infinitely thin metal sheets (cell masks on a uniform grid)
 # live on selected interfaces; vertical terminations at z=0 and z=h_box are
 # PEC, PMC, a surface impedance, or an open half-space.
@@ -17,6 +18,7 @@
 export PlanarLayer, PlanarTerminator, PlanarStackup, CellGrid
 export BoundaryKind, TERM_PEC, TERM_PMC, TERM_SURFACE, TERM_OPEN
 export TERM_GND, TERM_SPACE
+export SidewallKind, WALL_PEC, WALL_PMC
 export planar_interfaces, planar_k0_layer, planar_validate
 
 """Layer of the stratified medium: complex eps_r, mu_r, thickness [m].
@@ -171,12 +173,28 @@ end
 @inline planar_k0_layer(omega::Number, layer::PlanarLayer) =
     sqrt(planar_k2_layer(omega, layer.epsr, layer.mur))
 
+"""Sidewall boundary condition of the analysis box: `WALL_PEC` (electric
+wall, the default shielded box) or `WALL_PMC` (magnetic wall, an idealized
+open/symmetry lateral boundary).  The PMC choice swaps the sin/cos parity
+of every box-mode function and swaps the TE/TM existence masks."""
+@enum SidewallKind::UInt8 begin
+    WALL_PEC
+    WALL_PMC
+end
+@doc "Electric sidewall: tangential E vanishes on the box sides." WALL_PEC
+@doc "Magnetic sidewall: tangential H vanishes on the box sides (open/symmetry lateral boundary)." WALL_PMC
+
 """
-    CellGrid(a, b, nx, ny)
+    CellGrid(a, b, nx, ny; walls=WALL_PEC)
 
 Uniform rectangular cell grid over the box cross-section, dx = a/nx,
 dy = b/ny.  Cell (i,j), 1-based, covers
-[(i-1)*dx, i*dx] x [(j-1)*dy, j*dy].
+[(i-1)*dx, i*dx] x [(j-1)*dy, j*dy].  `walls` selects the sidewall
+boundary condition of the box (`WALL_PEC` default, `WALL_PMC` for a
+magnetic-wall / approximate open lateral boundary).  Gap ports on a
+`WALL_PMC` boundary are mathematical ports driving the sheet edge
+against the boundary surface; there is no wall conductor to carry a
+return current.
 """
 struct CellGrid
     nx::Int
@@ -185,13 +203,15 @@ struct CellGrid
     dy::Float64
     a::Float64
     b::Float64
+    walls::SidewallKind
 end
 
-function CellGrid(a::Real, b::Real, nx::Integer, ny::Integer)
+function CellGrid(a::Real, b::Real, nx::Integer, ny::Integer;
+        walls::SidewallKind=WALL_PEC)
     nx >= 1 && ny >= 1 ||
         throw(ArgumentError("CellGrid requires nx, ny >= 1"))
     af, bf = Float64(a), Float64(b)
     isfinite(af) && af > 0 || throw(ArgumentError("grid a must be positive"))
     isfinite(bf) && bf > 0 || throw(ArgumentError("grid b must be positive"))
-    return CellGrid(nx, ny, af / nx, bf / ny, af, bf)
+    return CellGrid(nx, ny, af / nx, bf / ny, af, bf, walls)
 end

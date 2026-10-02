@@ -16,6 +16,9 @@ TERM_SURFACE
 TERM_OPEN
 TERM_GND
 TERM_SPACE
+SidewallKind
+WALL_PEC
+WALL_PMC
 SheetLevel
 PlanarPort
 planar_interfaces

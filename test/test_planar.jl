@@ -90,17 +90,28 @@ function _direct_z(stack, grid, sheets, basis, omega, p, q; mx, my)
     mg = _PG.planar_mode_grid(grid, mx, my)
     nb = _PG.planar_basis_count(basis)
     iface = [sheets[basis.level[r]].interface for r in 1:nb]
-    ab4 = grid.a * grid.b / 4
     fx_p = _PG._basis_fx!(zeros(mg.mx), basis, p, mg, grid)
     fy_p = _PG._basis_fy!(zeros(mg.my), basis, p, mg, grid)
     fx_q = _PG._basis_fx!(zeros(mg.mx), basis, q, mg, grid)
     fy_q = _PG._basis_fy!(zeros(mg.my), basis, q, mg, grid)
     acc = zero(ComplexF64)
+    pec = mg.walls == WALL_PEC
     for n in 1:mg.my, m in 1:mg.mx
         kx, ky = mg.kx[m], mg.ky[n]
         kc2 = kx * kx + ky * ky
-        nte2 = ky * ky * mg.ic[m] * mg.js[n] +
-               kx * kx * mg.is[m] * mg.jc[n]
+        # modal norms swap sin/cos parity under PMC sidewalls; a zero norm
+        # marks a mode that does not exist under the wall boundary
+        nte2, ntm2 = if pec
+            (ky * ky * mg.ic[m] * mg.js[n] +
+             kx * kx * mg.is[m] * mg.jc[n],
+             kx * kx * mg.ic[m] * mg.js[n] +
+             ky * ky * mg.is[m] * mg.jc[n])
+        else
+            (ky * ky * mg.is[m] * mg.jc[n] +
+             kx * kx * mg.ic[m] * mg.js[n],
+             kx * kx * mg.is[m] * mg.jc[n] +
+             ky * ky * mg.ic[m] * mg.js[n])
+        end
         if kc2 != 0 && nte2 != 0      # TE contribution
             wp = (_PG._is_xdir(basis.kind[p]) ? ky : -kx) *
                  fx_p[m] * fy_p[n]
@@ -110,8 +121,7 @@ function _direct_z(stack, grid, sheets, basis, omega, p, q; mx, my)
                 iface[p], iface[q])
             acc -= v * wp * wq / nte2
         end
-        if m > 1 && n > 1             # TM contribution
-            ntm2 = kc2 * ab4
+        if ntm2 != 0                  # TM contribution
             wp = (_PG._is_xdir(basis.kind[p]) ? kx : ky) *
                  fx_p[m] * fy_p[n]
             wq = (_PG._is_xdir(basis.kind[q]) ? kx : ky) *
@@ -438,6 +448,225 @@ end
         mx=24, my=20, block=32)
     # Galerkin Z of a reciprocal network is symmetric
     @test Z ≈ transpose(Z) rtol = 1e-8
+end
+
+# quadrature of rooftop p against the transverse mode parity factors:
+# x-directed bases couple through e_x (PEC cos*sin, PMC sin*cos),
+# y-directed bases through e_y (PEC sin*cos, PMC cos*sin).  The sum is
+# restricted to the basis support (one or two cells) so `sub` can be fine.
+function _mode_overlap_quadrature(basis, grid, p, m, n, mg; sub=256)
+    kx, ky = mg.kx[m], mg.ky[n]
+    pec = mg.walls == WALL_PEC
+    xdir = _PG._is_xdir(basis.kind[p])
+    tx(x) = xdir == pec ? cos(kx * x) : sin(kx * x)
+    ty(y) = xdir == pec ? sin(ky * y) : cos(ky * y)
+    kind = basis.kind[p]
+    i, j = basis.ei[p], basis.ej[p]
+    dx, dy = grid.dx, grid.dy
+    # flow-direction support spans two cells for a full rooftop, one for
+    # a wall half; the transverse direction always spans one cell
+    if kind == _PG._BASIS_X_LO || kind == _PG._BASIS_Y_LO
+        xr = xdir ? (0.0, dx) : ((i - 1) * dx, i * dx)
+        yr = xdir ? ((j - 1) * dy, j * dy) : (0.0, dy)
+    elseif kind == _PG._BASIS_X_HI || kind == _PG._BASIS_Y_HI
+        xr = xdir ? (grid.a - dx, grid.a) : ((i - 1) * dx, i * dx)
+        yr = xdir ? ((j - 1) * dy, j * dy) : (grid.b - dy, grid.b)
+    else
+        xr = xdir ? ((i - 1) * dx, (i + 1) * dx) : ((i - 1) * dx, i * dx)
+        yr = xdir ? ((j - 1) * dy, j * dy) : ((j - 1) * dy, (j + 1) * dy)
+    end
+    xs = range(xr[1], xr[2]; length=sub + 1)
+    ys = range(yr[1], yr[2]; length=sub + 1)
+    ddx = step(xs); ddy = step(ys)
+    acc = 0.0
+    for yy in Iterators.drop(ys, 1) .- ddy / 2, xx in Iterators.drop(xs, 1) .- ddx / 2
+        acc += _rooftop_at(basis, grid, p, xx, yy) * tx(xx) * ty(yy)
+    end
+    return acc * ddx * ddy
+end
+
+@testset "planar: PMC sidewalls" begin
+    omega = 2pi * 10e9
+    stack = PlanarStackup(
+        [PlanarLayer(4.0, 1.0, 0.5e-3), PlanarLayer(1.0, 1.0, 0.5e-3)],
+        TERM_GND, TERM_GND, 8e-3, 6e-3)
+    g_pec = CellGrid(8e-3, 6e-3, 8, 6)
+    g_pmc = CellGrid(8e-3, 6e-3, 8, 6; walls=WALL_PMC)
+    @test g_pec.walls == WALL_PEC
+    @test g_pmc.walls == WALL_PMC
+    @test_throws TypeError CellGrid(8e-3, 6e-3, 8, 6; walls=:pmc)
+
+    mg_p = planar_mode_grid(g_pmc, 10, 8)
+    @test mg_p.walls == WALL_PMC
+
+    # half-ramp sin transform (kh - sin kh)/(k^2 h) vs quadrature
+    @test mg_p.hx_sin[1] == 0.0
+    @test mg_p.hy_sin[1] == 0.0
+    for m in (2, 4, mg_p.mx)
+        k = mg_p.kx[m]
+        M = 8000
+        num = sum(1:M) do s
+            x = g_pmc.dx * (s - 0.5) / M
+            (1 - x / g_pmc.dx) * sin(k * x) * (g_pmc.dx / M)
+        end
+        @test mg_p.hx_sin[m] ≈ num rtol = 1e-5
+    end
+
+    # modal norm^2 factors vs box quadrature of the modal |e_t|^2:
+    # PMC TE e ∝ (ky sinx cosy, -kx cosx siny); TM e ∝ (kx sinx cosy, ky cosx siny)
+    # (midpoint rule integrates the sin^2/cos^2 products exactly)
+    K = 240
+    ddx, ddy = g_pmc.a / K, g_pmc.b / K
+    for m in 1:mg_p.mx, n in 1:mg_p.my
+        kx, ky = mg_p.kx[m], mg_p.ky[n]
+        te_num = tm_num = 0.0
+        for jj in 1:K, ii in 1:K
+            x, y = (ii - 0.5) * ddx, (jj - 0.5) * ddy
+            sx, cx = sin(kx * x), cos(kx * x)
+            sy, cy = sin(ky * y), cos(ky * y)
+            te_num += ky^2 * sx^2 * cy^2 + kx^2 * cx^2 * sy^2
+            tm_num += kx^2 * sx^2 * cy^2 + ky^2 * cx^2 * sy^2
+        end
+        te_num *= ddx * ddy
+        tm_num *= ddx * ddy
+        @test te_num ≈ ky^2 * mg_p.is[m] * mg_p.jc[n] +
+                      kx^2 * mg_p.ic[m] * mg_p.js[n] rtol = 1e-10
+        @test tm_num ≈ kx^2 * mg_p.is[m] * mg_p.jc[n] +
+                      ky^2 * mg_p.ic[m] * mg_p.js[n] rtol = 1e-10
+    end
+
+    # mode existence masks: PMC drops TE on the m=0/n=0 axes but keeps
+    # TM there (except the transverse-free (0,0)); PEC does the converse
+    function _mode_volt(walls, m, n)
+        L = length(stack.layers)
+        mkc() = _PG.PlanarCascade(zeros(ComplexF64, L + 1),
+            zeros(ComplexF64, L + 1), zeros(ComplexF64, L),
+            zeros(ComplexF64, L))
+        scr = (zeros(ComplexF64, L), zeros(ComplexF64, L),
+            zeros(ComplexF64, L))
+        grid = CellGrid(stack.a, stack.b, 4, 4; walls=walls)
+        mg = planar_mode_grid(grid, m + 1, n + 1)
+        vte = zeros(ComplexF64, 1, 1)
+        vtm = zeros(ComplexF64, 1, 1)
+        _PG._planar_mode_voltages!(vte, vtm, mkc(), mkc(), scr,
+            stack, omega, mg, [m], [n], [(1, 1)])
+        return vte[1, 1], vtm[1, 1]
+    end
+    te01, tm01 = _mode_volt(WALL_PMC, 1, 2)
+    @test iszero(te01) && !iszero(tm01)   # PMC: TE(0,n) absent, TM(0,n) lives
+    te10, tm10 = _mode_volt(WALL_PMC, 2, 1)
+    @test iszero(te10) && !iszero(tm10)   # PMC: TE(m,0) absent, TM(m,0) lives
+    @test all(iszero, _mode_volt(WALL_PMC, 1, 1))  # no uniform (0,0) mode
+    te01e, tm01e = _mode_volt(WALL_PEC, 1, 2)
+    @test !iszero(te01e) && iszero(tm01e) # PEC: TE(0,n) lives, TM absent
+    te10e, tm10e = _mode_volt(WALL_PEC, 2, 1)
+    @test !iszero(te10e) && iszero(tm10e)
+    @test all(!iszero, _mode_volt(WALL_PMC, 2, 2))
+    @test all(!iszero, _mode_volt(WALL_PEC, 2, 2))
+
+    # separable basis transforms vs 2-D quadrature of the rooftop against
+    # the wall-specific mode parity factors (all six basis kinds, both
+    # wall kinds); PMC walls get wall-connected half rooftops too
+    for walls in (WALL_PEC, WALL_PMC)
+        gr = CellGrid(8e-3, 6e-3, 8, 6; walls=walls)
+        mg = planar_mode_grid(gr, 8, 6)
+        s = sheet_level(1, 8, 6)
+        rasterize_rect!(s, gr, 0.0, gr.a, 0.0, gr.b)
+        for j in 1:gr.ny
+            s.connect_west[j] = true
+            s.connect_east[j] = true
+        end
+        for i in 1:gr.nx
+            s.connect_south[i] = true
+            s.connect_north[i] = true
+        end
+        basis = build_planar_basis(gr, [s], PlanarPort[])
+        fxb = zeros(mg.mx)
+        fyb = zeros(mg.my)
+        kinds = [_PG._BASIS_X_FULL, _PG._BASIS_X_LO, _PG._BASIS_X_HI,
+            _PG._BASIS_Y_FULL, _PG._BASIS_Y_LO, _PG._BASIS_Y_HI]
+        for kd in kinds
+            p = findfirst(==(kd), basis.kind)
+            @test !isnothing(p)   # full-metal sheet must spawn every kind
+            _PG._basis_fx!(fxb, basis, p, mg, gr)
+            _PG._basis_fy!(fyb, basis, p, mg, gr)
+            for (m, n) in ((1, 2), (2, 1), (3, 3), (mg.mx, mg.my))
+                num = _mode_overlap_quadrature(basis, gr, p, m, n, mg)
+                @test fxb[m] * fyb[n] ≈ num rtol = 2e-4 atol = 1e-12
+            end
+        end
+    end
+
+    # blocked assembly vs the independent direct modal sum on PMC walls
+    s1p = sheet_level(1, 8, 6)
+    rasterize_rect!(s1p, g_pmc, 0.0, 5e-3, 1e-3, 5e-3)
+    for j in findall(jj -> any(s1p.mask[:, jj]), 1:6)
+        s1p.connect_west[j] = true
+    end
+    s2p = sheet_level(2, 8, 6)
+    rasterize_rect!(s2p, g_pmc, 3e-3, 8e-3, 2e-3, 6e-3)
+    for i in findall(ii -> any(s2p.mask[ii, :]), 1:8)
+        s2p.connect_north[i] = true
+    end
+    sheets_p = [s1p, s2p]
+    basis_p = build_planar_basis(g_pmc, sheets_p, PlanarPort[])
+    Zp = assemble_planar_z(stack, g_pmc, sheets_p, basis_p, omega;
+        mx=20, my=16, block=9)
+    nb_p = _PG.planar_basis_count(basis_p)
+    @test size(Zp) == (nb_p, nb_p)
+    @test all(isfinite, Zp)
+    for (p, q) in ((1, 1), (1, nb_p), (nb_p, nb_p), (2, 3), (nb_p - 1, 2))
+        d = _direct_z(stack, g_pmc, sheets_p, basis_p, omega, p, q;
+            mx=20, my=16)
+        @test Zp[p, q] ≈ d rtol = 1e-9
+    end
+    @test Zp ≈ transpose(Zp) rtol = 1e-8   # reciprocity
+    @test Zp == assemble_planar_z(stack, g_pmc, sheets_p, basis_p, omega;
+        mx=20, my=16, block=9)             # deterministic assembly
+
+    # end-to-end port solve on PMC walls: a gap port on a magnetic wall
+    # drives the sheet edge against a non-conducting boundary, so the
+    # line end is electrically open and the transmission collapses
+    sline = sheet_level(1, 8, 6)
+    rasterize_rect!(sline, g_pmc, 0.0, 8e-3, 2e-3, 4e-3)
+    for j in findall(jj -> any(sline.mask[:, jj]), 1:6)
+        sline.connect_west[j] = true
+        sline.connect_east[j] = true
+    end
+    prow = findall(jj -> any(sline.mask[:, jj]), 1:6)
+    prob_pmc = build_planar_problem(stack, g_pmc, [sline],
+        PlanarPort[PlanarPort(1, :west, prow[1]:prow[end], 50.0),
+                   PlanarPort(1, :east, prow[1]:prow[end], 50.0)])
+    r_pmc = solve_planar(prob_pmc, omega)
+    @test all(isfinite, r_pmc.y)
+    @test r_pmc.y ≈ transpose(r_pmc.y) rtol = 1e-8
+    @test abs(r_pmc.s[1, 1]) > 0.9          # open-ended strip reflects
+    @test abs(r_pmc.s[2, 1]) < 0.2          # ... and hardly transmits
+    prob_pec = build_planar_problem(stack, g_pec, [sline],
+        PlanarPort[PlanarPort(1, :west, prow[1]:prow[end], 50.0),
+                   PlanarPort(1, :east, prow[1]:prow[end], 50.0)])
+    r_pec = solve_planar(prob_pec, omega)
+    @test !isapprox(r_pec.y[1, 1], r_pmc.y[1, 1]; rtol=1e-3)
+
+    # adjoint gradient on a PMC-wall problem matches finite differences
+    f = Y -> imag(Y[1, 1])
+    params = PlanarParam[PlanarParam(1, :epsr, :re),
+        PlanarParam(1, :thickness, :re), PlanarParam(2, :mur, :re)]
+    theta = planar_param_values(stack, params)
+    J, g = planar_objective_gradient(prob_pmc, 10e9, f; params=params)
+    @test J ≈ f(solve_planar(prob_pmc, 10e9).y)
+    for j in eachindex(params)
+        hs = 1e-6 * max(abs(theta[j]), 1.0)
+        tp = copy(theta); tm = copy(theta)
+        tp[j] += hs; tm[j] -= hs
+        Jp = f(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tp), prob_pmc.grid,
+            prob_pmc.sheets, prob_pmc.ports, prob_pmc.basis), 10e9).y)
+        Jm = f(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tm), prob_pmc.grid,
+            prob_pmc.sheets, prob_pmc.ports, prob_pmc.basis), 10e9).y)
+        @test g[j] ≈ (Jp - Jm) / (2hs) rtol = 1e-4
+    end
 end
 
 @testset "planar: surface-impedance Gram term" begin

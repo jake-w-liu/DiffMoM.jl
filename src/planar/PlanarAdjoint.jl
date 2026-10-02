@@ -480,7 +480,6 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
                Vector{D}(undef, L))
     mlist = Vector{Int}(undef, blk)
     nlist = Vector{Int}(undef, blk)
-    ab4 = prob.grid.a * prob.grid.b / 4
     g = zeros(Float64, length(params))
     dual_stacks = [_planar_dual_stackup(prob.stack, p) for p in params]
 
@@ -516,7 +515,7 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
                 ds = dual_stacks[j]
                 _planar_mode_voltages!(dvte, dvtm, casc_te, casc_tm,
                     scratch, ds, r.omega, mg, view(mlist, 1:cblk),
-                    view(nlist, 1:cblk), pairs, ab4)
+                    view(nlist, 1:cblk), pairs)
                 acc = zero(ComplexF64)
                 @inbounds for pi_ in 1:npair, cm in 1:cblk
                     acc += Cte[cm, pi_] * dvte[cm, pi_].d +

@@ -4,8 +4,10 @@
 # Basis functions are one-cell-wide rooftops placed on grid edges:
 #   * an interior vertical edge e (1..nx-1) carries an x-directed rooftop
 #     spanning cells (e,j) and (e+1,j) iff BOTH cells are metal;
-#   * a boundary edge on a conducting sidewall carries a half rooftop only
-#     where the sheet is electrically connected to that wall (short or port);
+#   * a boundary edge carries a half rooftop only where the sheet is
+#     electrically connected to that sidewall (short or port; on a PMC
+#     wall this is a mathematical connection — the wall carries no
+#     return current);
 #   * horizontal edges carry y-directed rooftops by the same rule.
 # An edge that borders metal on only one side is an open boundary and gets no
 # basis function, so J x n_hat = 0 holds naturally at metal edges.
