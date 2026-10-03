@@ -311,7 +311,9 @@ function _extract_diffraction_edges_validated(
     end
 
     out = DiffractionEdge[]
-    for recs in values(edgemap)
+    # deterministic edge order: Dict iteration order is version-dependent
+    for edge_key in sort!(collect(keys(edgemap)))
+        recs = edgemap[edge_key]
         if length(recs) == 1
             include_boundary || continue
             rec = recs[1]

@@ -654,9 +654,11 @@ function assign_patches_uniform(
     end
     n_patches == 1 && return PatchPartition(fill(1, Nt), 1)
 
-    # Initialize cluster centers via uniform sampling
+    # Initialize cluster centers via uniform sampling.  sortperm over the
+    # scalar RNG stream is used instead of randperm, whose algorithm changed
+    # between Julia versions and would seed differently under each.
     rng = Random.MersenneTwister(42)  # deterministic
-    indices = randperm(rng, Nt)[1:min(n_patches, Nt)]
+    indices = sortperm(rand(rng, Nt))[1:min(n_patches, Nt)]
     n_patches == Nt &&
         return _uniform_patch_per_distinct_centroid(centroids, indices)
     centers = [centroids[i] for i in indices]

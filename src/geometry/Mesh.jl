@@ -3436,7 +3436,8 @@ function mesh_unique_edges(
             push!(edges, key)
         end
     end
-    return collect(edges)
+    # deterministic order: Set iteration order is implementation-defined
+    return sort!(collect(edges))
 end
 
 """

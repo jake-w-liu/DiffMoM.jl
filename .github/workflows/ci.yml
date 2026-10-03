@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   test:
-    name: Julia 1.12 / ${{ matrix.os }} / ${{ matrix.threads }} thread(s)
+    name: Julia ${{ matrix.julia }} / ${{ matrix.os }} / ${{ matrix.threads }} thread(s)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -23,12 +23,19 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            julia: '1.13'
             threads: 1
           - os: ubuntu-latest
+            julia: '1.13'
             threads: 4
           - os: macos-latest
+            julia: '1.13'
             threads: 1
           - os: windows-latest
+            julia: '1.13'
+            threads: 1
+          - os: ubuntu-latest
+            julia: '1.12'
             threads: 1
     env:
       JULIA_NUM_THREADS: ${{ matrix.threads }}
@@ -38,7 +45,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
         with:
-          version: '1.12'
+          version: ${{ matrix.julia }}
       - uses: julia-actions/cache@v3
         with:
           # Do not restore compiled state saved after earlier interrupted
@@ -48,7 +55,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         with:
-          # No coverage artifact is consumed in this matrix. Julia 1.12's
+          # No coverage artifact is consumed in this matrix. Julia's
           # coverage-instrumented precompile exceeded an hour on Windows.
           coverage: false
 
@@ -64,7 +71,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
         with:
-          version: '1.12'
+          version: '1.13'
       - uses: julia-actions/cache@v3
         with:
           cache-name: diffmom-julia-cache-v2
@@ -86,6 +93,9 @@ jobs:
       - uses: julia-actions/setup-julia@v3
         with:
           version: '1.12'
+      # setup-julia stays on 1.12: the slopfix line counter identity is
+      # pinned to the baseline toolchain; measuring under another Julia
+      # version is rejected as a cross-counter comparison.
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'

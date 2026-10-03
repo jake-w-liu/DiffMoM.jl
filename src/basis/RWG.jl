@@ -125,7 +125,11 @@ function build_rwg(mesh::TriMesh;
     coeff_plus_vec = Float64[]
     coeff_minus_vec = Float64[]
 
-    for (edge_key, tlist) in edge_tris
+    # iterate in sorted edge-key order: Dict iteration order is
+    # implementation-defined and differs across Julia versions, which
+    # would make edge numbering (and any edge-indexed data) unstable
+    for edge_key in sort!(collect(keys(edge_tris)))
+        tlist = edge_tris[edge_key]
         length(tlist) == 2 || continue  # skip boundary edges
         (t1, le1) = tlist[1]
         (t2, le2) = tlist[2]
@@ -670,7 +674,8 @@ function build_rwg_periodic(mesh::TriMesh, lattice;
     ymin_edges = _PeriodicBoundaryEdge[]
     ymax_edges = _PeriodicBoundaryEdge[]
 
-    for (edge_key, tlist) in edge_tris
+    for edge_key in sort!(collect(keys(edge_tris)))
+        tlist = edge_tris[edge_key]
         if length(tlist) == 2
             (t1, le1) = tlist[1]
             (t2, le2) = tlist[2]

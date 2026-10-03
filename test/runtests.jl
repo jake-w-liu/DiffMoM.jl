@@ -4346,8 +4346,8 @@ nearfield_reduction_rwg = build_rwg(nearfield_reduction_mesh)
 nearfield_reduction_observation = Vec3(0.0, 0.0, 3.0)
 nearfield_reduction_currents = ComplexF64[
     6.902172019727261e17 - 7.261797523100448e17im,
-    207.06516059181777 - 217.85392569301357im,
     -1.886013202810526e17 + 8.234245159254291e17im,
+    207.06516059181777 - 217.85392569301357im,
 ]
 nearfield_reduction_exact_work =
     DiffMoM._nearfield_exact_point_work(3, 1)
@@ -12394,13 +12394,52 @@ mlfma_far_entry = A_mlfma[mlfma_far_row, mlfma_far_column]
 @test _matrix_entry_allocation(
           A_mlfma, mlfma_far_row, mlfma_far_column) <= 128
 
-# MLFMA is an AbstractMatrix, so a cancelled sparse combination must agree
-# with the high-precision sum of the same stored basis-response columns.  The
-# ordinary multilevel reductions previously leaked a roughly 1e-15 residual
-# into this row even though the correctly rounded matrix product is 1e-19.
-mlfma_linearity_row = 94
-mlfma_linearity_first_column = 61
-mlfma_linearity_second_column = 56
+# Far-field columns of a basis-function row: entries reached only through
+# the multilevel projection and carrying no sparse near-field term.  The
+# leaf interaction list enumerates the well-separated column boxes;
+# `entry_of` selects the forward or adjoint orientation of the entry.
+function mlfma_far_columns(row, entry_of)
+    row_box = nothing
+    for candidate_box in leaf_level.boxes
+        if row in octree.perm[candidate_box.bf_range]
+            row_box = candidate_box
+            break
+        end
+    end
+    row_box === nothing && return Int[]
+    columns = Int[]
+    for far_box_id in row_box.interaction_list
+        for permuted in leaf_level.boxes[far_box_id].bf_range
+            column = octree.perm[permuted]
+            !iszero(entry_of(column)) && push!(columns, column)
+        end
+    end
+    return columns
+end
+
+# MLFMA is an AbstractMatrix, so a cancelled two-column combination must
+# agree with the high-precision sum of the same stored basis-response
+# columns.  Positions follow the deterministic RWG edge order, so each
+# row/column pair is selected by matrix structure.  A pair needs one
+# far-field contribution so that the combined output is cancelled relative
+# to the nonzero far reduction magnitude tracked by the exact-row retry;
+# two sparse-only columns would cancel before that bound is measured.
+mlfma_linearity_row = 0
+mlfma_linearity_first_column = 0
+mlfma_linearity_second_column = 0
+for candidate_row in 1:mlfma_N
+    near_columns = findall(
+        !iszero, A_mlfma.Z_near[candidate_row, :])
+    isempty(near_columns) && continue
+    far_columns = mlfma_far_columns(
+        candidate_row, column -> A_mlfma[candidate_row, column])
+    isempty(far_columns) && continue
+    global mlfma_linearity_row = candidate_row
+    global mlfma_linearity_first_column = near_columns[1]
+    global mlfma_linearity_second_column = far_columns[1]
+    break
+end
+@test mlfma_linearity_row > 0
 mlfma_linearity_first = A_mlfma[
     mlfma_linearity_row, mlfma_linearity_first_column]
 mlfma_linearity_second = A_mlfma[
@@ -12418,15 +12457,26 @@ mlfma_linearity_reference = setprecision(BigFloat, 512) do
         Complex{BigFloat}(mlfma_linearity_second))
 end
 mlfma_linearity_result = A_mlfma * mlfma_linearity_input
+@test A_mlfma.workspace.exact_rows[mlfma_linearity_row]
 @test mlfma_linearity_result[mlfma_linearity_row] ==
       mlfma_linearity_reference
 
 # Cancellation can also occur wholly inside the far-field projection, where
 # both sparse near-field entries are zero.  This must still preserve the
 # AbstractMatrix contract rather than returning the rounded reduction residue.
-mlfma_far_linearity_row = 82
-mlfma_far_linearity_first_column = 6
-mlfma_far_linearity_second_column = 36
+mlfma_far_linearity_row = 0
+mlfma_far_linearity_first_column = 0
+mlfma_far_linearity_second_column = 0
+for candidate_row in 1:mlfma_N
+    far_columns = mlfma_far_columns(
+        candidate_row, column -> A_mlfma[candidate_row, column])
+    length(far_columns) >= 2 || continue
+    global mlfma_far_linearity_row = candidate_row
+    global mlfma_far_linearity_first_column = far_columns[1]
+    global mlfma_far_linearity_second_column = far_columns[2]
+    break
+end
+@test mlfma_far_linearity_row > 0
 @test iszero(A_mlfma.Z_near[
     mlfma_far_linearity_row, mlfma_far_linearity_first_column])
 @test iszero(A_mlfma.Z_near[
@@ -12448,12 +12498,29 @@ mlfma_far_linearity_reference = setprecision(BigFloat, 512) do
         Complex{BigFloat}(mlfma_far_linearity_second))
 end
 mlfma_far_linearity_result = A_mlfma * mlfma_far_linearity_input
+@test A_mlfma.workspace.exact_rows[mlfma_far_linearity_row]
 @test mlfma_far_linearity_result[mlfma_far_linearity_row] ==
       mlfma_far_linearity_reference
 
-mlfma_adjoint_linearity_row = 9
-mlfma_adjoint_linearity_first_column = 41
-mlfma_adjoint_linearity_second_column = 34
+# The adjoint reuses the same row flagging on transposed positions: a near
+# column of an adjoint row is a nonzero Z_near column entry, and its far
+# columns pair a zero near entry with a nonzero projected entry.
+mlfma_adjoint_linearity_row = 0
+mlfma_adjoint_linearity_first_column = 0
+mlfma_adjoint_linearity_second_column = 0
+for candidate_row in 1:mlfma_N
+    near_columns = findall(
+        !iszero, A_mlfma.Z_near[:, candidate_row])
+    isempty(near_columns) && continue
+    far_columns = mlfma_far_columns(
+        candidate_row, column -> A_mlfma[column, candidate_row])
+    isempty(far_columns) && continue
+    global mlfma_adjoint_linearity_row = candidate_row
+    global mlfma_adjoint_linearity_first_column = near_columns[1]
+    global mlfma_adjoint_linearity_second_column = far_columns[1]
+    break
+end
+@test mlfma_adjoint_linearity_row > 0
 mlfma_adjoint_operator = adjoint(A_mlfma)
 mlfma_adjoint_linearity_first = mlfma_adjoint_operator[
     mlfma_adjoint_linearity_row,
@@ -12477,13 +12544,24 @@ mlfma_adjoint_linearity_reference = setprecision(BigFloat, 512) do
 end
 mlfma_adjoint_linearity_result =
     mlfma_adjoint_operator * mlfma_adjoint_linearity_input
+@test A_mlfma.workspace.exact_rows[mlfma_adjoint_linearity_row]
 @test mlfma_adjoint_linearity_result[
           mlfma_adjoint_linearity_row] ==
       mlfma_adjoint_linearity_reference
 
-mlfma_adjoint_far_linearity_row = 31
-mlfma_adjoint_far_linearity_first_column = 11
-mlfma_adjoint_far_linearity_second_column = 38
+mlfma_adjoint_far_linearity_row = 0
+mlfma_adjoint_far_linearity_first_column = 0
+mlfma_adjoint_far_linearity_second_column = 0
+for candidate_row in 1:mlfma_N
+    far_columns = mlfma_far_columns(
+        candidate_row, column -> A_mlfma[column, candidate_row])
+    length(far_columns) >= 2 || continue
+    global mlfma_adjoint_far_linearity_row = candidate_row
+    global mlfma_adjoint_far_linearity_first_column = far_columns[1]
+    global mlfma_adjoint_far_linearity_second_column = far_columns[2]
+    break
+end
+@test mlfma_adjoint_far_linearity_row > 0
 @test iszero(A_mlfma.Z_near[
     mlfma_adjoint_far_linearity_first_column,
     mlfma_adjoint_far_linearity_row])
@@ -12513,6 +12591,8 @@ mlfma_adjoint_far_linearity_reference = setprecision(BigFloat, 512) do
 end
 mlfma_adjoint_far_linearity_result =
     mlfma_adjoint_operator * mlfma_adjoint_far_linearity_input
+@test A_mlfma.workspace.exact_rows[
+          mlfma_adjoint_far_linearity_row]
 @test mlfma_adjoint_far_linearity_result[
           mlfma_adjoint_far_linearity_row] ==
       mlfma_adjoint_far_linearity_reference
@@ -14185,7 +14265,7 @@ end
 patch_reference_mesh = TriMesh(patch_reference_xyz, patch_reference_tri)
 @test assign_patches_uniform(
     patch_reference_mesh; n_patches=2).tri_patch ==
-      [2, 2, 1, 2, 2, 1, 1, 2]
+      [1, 2, 2, 1, 1, 2, 2, 1]
 @test_throws ArgumentError assign_patches_uniform(
     patch_reference_mesh;
     n_patches=2,

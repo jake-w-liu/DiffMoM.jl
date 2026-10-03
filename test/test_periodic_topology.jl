@@ -2151,15 +2151,17 @@ println("\n── Test 42: PeriodicMetrics ──")
         cancellation_rwg = build_rwg(cancellation_mesh)
         cancellation_lattice = PeriodicLattice(
             1.0, 1.0, 0.0, 0.0, 2π)
+        # Per-edge coefficients follow the deterministic sorted RWG edge
+        # order; the underlying physical current distribution is unchanged.
         cancellation_currents = ComplexF64[
-            3.3333333333333335e15 - 0.574859618608291im,
-            -3.333333333333334e15 + 0.4952528582638097im,
-            7.09246526965761e15 - 0.4934342258793853im,
-            -2.9075347303423905e15 - 0.08016977075392688im,
-            -1.027968762180252e15 + 0.37627715840682663im,
             -2.9075347303423905e15 + 0.8710733417957057im,
+            -3.333333333333334e15 + 0.4952528582638097im,
+            -2.9075347303423905e15 - 0.08016977075392688im,
+            3.3333333333333335e15 - 0.574859618608291im,
             -2.9075347303423895e15 - 0.2921997205621716im,
+            -1.027968762180252e15 + 0.37627715840682663im,
             1.0279687621802516e15 - 0.4919982633290702im,
+            7.09246526965761e15 - 0.4934342258793853im,
         ]
         cancellation_modes, cancellation_coefficients =
             DiffMoM._floquet_current_fourier_coefficients(

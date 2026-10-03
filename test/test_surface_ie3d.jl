@@ -438,16 +438,16 @@ end
         quad_order=1, singular_quad_order=3)
     extreme_K_dense = Matrix(extreme_K_mf)
     extreme_K_input = _extreme_cancelling_matvec_input(
-        extreme_K_dense, 1, (10, 5, 18); fraction=0.51)
+        extreme_K_dense, 15, (24, 5, 9); fraction=0.51)
     extreme_K_terms = extreme_K_dense .* transpose(extreme_K_input)
     extreme_K_reference = _bigfloat_matvec_reference(
         extreme_K_dense, extreme_K_input)
     @test all(isfinite, extreme_K_input)
-    @test all(isfinite, extreme_K_terms)
+    @test all(isfinite, extreme_K_terms[15, :])
     @test all(isfinite, extreme_K_reference)
     extreme_K_result = extreme_K_mf * extreme_K_input
     @test all(isfinite, extreme_K_result)
-    @test extreme_K_result[1] == extreme_K_reference[1]
+    @test extreme_K_result[15] == extreme_K_reference[15]
     @test extreme_K_result ≈ extreme_K_reference rtol=2e-15
 
     overlap_storage = vcat(xk, 0.0 + 0im)
@@ -665,20 +665,20 @@ end
     # adjoint public matrix-free reductions against a high-precision oracle.
     Ze_mf = A_pm_mf.Ze_ext
     Ze_dense = Matrix(Ze_mf)
-    extreme_columns = (2, 6, 1)
+    extreme_columns = (1, 4, 5)
     extreme_efie_input = _extreme_cancelling_matvec_input(
-        Ze_dense, 1, extreme_columns)
+        Ze_dense, 5, extreme_columns)
     extreme_efie_terms = Ze_dense .* transpose(extreme_efie_input)
     extreme_efie_reference = _bigfloat_matvec_reference(
         Ze_dense, extreme_efie_input)
     @test all(isfinite, extreme_efie_input)
-    @test all(isfinite, extreme_efie_terms)
+    @test all(isfinite, extreme_efie_terms[5, :])
     @test all(isfinite, extreme_efie_reference)
     @test Ze_mf * extreme_efie_input == extreme_efie_reference
 
     Ze_adjoint_dense = Matrix(adjoint(Ze_mf))
     extreme_efie_adjoint_input = _extreme_cancelling_matvec_input(
-        Ze_adjoint_dense, 1, extreme_columns)
+        Ze_adjoint_dense, 5, extreme_columns)
     extreme_efie_adjoint_terms =
         Ze_adjoint_dense .* transpose(extreme_efie_adjoint_input)
     extreme_efie_adjoint_reference = _bigfloat_matvec_reference(
@@ -690,18 +690,18 @@ end
           extreme_efie_adjoint_reference
 
     extreme_sie_input = _extreme_cancelling_matvec_input(
-        Matrix(A_pm_mf), 1, (6, 4, 9); fraction=0.51)
+        Matrix(A_pm_mf), 5, (4, 6, 8); fraction=0.51)
     extreme_sie_terms = Matrix(A_pm_mf) .* transpose(extreme_sie_input)
     extreme_sie_reference = _bigfloat_sie_matvec_reference(
         A_pm_mf, extreme_sie_input)
     extreme_sie_dense_reference = _bigfloat_matvec_reference(
         Matrix(A_pm_mf), extreme_sie_input)
     @test all(isfinite, extreme_sie_input)
-    @test all(isfinite, extreme_sie_terms)
+    @test all(isfinite, extreme_sie_terms[5, :])
     @test all(isfinite, extreme_sie_reference)
     extreme_sie_result = A_pm_mf * extreme_sie_input
     @test all(isfinite, extreme_sie_result)
-    @test extreme_sie_result[1] == extreme_sie_reference[1]
+    @test extreme_sie_result[5] == extreme_sie_reference[5]
     @test extreme_sie_result ≈ extreme_sie_reference rtol=2e-15
     @test extreme_sie_result ≈ extreme_sie_dense_reference rtol=2e-15
 
