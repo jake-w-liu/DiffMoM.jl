@@ -31,7 +31,7 @@ using SparseArrays: SparseArrays,
                     rowvals,
                     sparse
 using StaticArrays: @SMatrix, MVector, SMatrix, SVector
-using Random: Random, randperm
+using Random: Random
 using Krylov: Krylov
 using SpecialFunctions: besselh,
                         besselj,
@@ -129,8 +129,11 @@ include("assembly/GroundedEFIE.jl")
 include("planar/PlanarTypes.jl")
 include("planar/PlanarImmittance.jl")
 include("planar/PlanarBasis.jl")
+include("planar/PlanarVias.jl")
+include("planar/PlanarVolumes.jl")
 include("planar/PlanarGreens.jl")
 include("planar/PlanarSolve.jl")
+include("planar/PlanarSweep.jl")
 include("planar/PlanarSurface.jl")
 include("planar/PlanarDeembed.jl")
 include("planar/PlanarExtract.jl")

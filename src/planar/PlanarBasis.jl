@@ -12,6 +12,13 @@
 # An edge that borders metal on only one side is an open boundary and gets no
 # basis function, so J x n_hat = 0 holds naturally at metal edges.
 #
+# Via columns are z-directed volume-current unknowns on single cells: a
+# `ViaLevel` on layer l contributes a uniform (constant in z) and/or an
+# up-tapered (0 at bottom -> max at top) basis per marked cell, spanning
+# interface l-1 (bottom face) to l (top face).  They couple to sheets only
+# through the TM modal E_z field, and to each other through it plus the
+# filament contact term on the shared layer.
+#
 # Modal inner products: a rooftop <f_p, e_mn> factors as an x-transform times
 # a y-transform times trig factors at the basis centre.  Full rooftops use
 #   T_full(k,h) = h * sinc^2(k*h/2)          (triangle, support 2h)
@@ -57,7 +64,7 @@ end
 """Fill cells overlapped by axis-aligned rectangle [x0,x1] x [y0,y1].
 A cell is metal when its centre lies inside the rectangle; `connected=true`
 also marks wall-connection flags where the rectangle touches a sidewall."""
-function rasterize_rect!(sheet::SheetLevel, grid::CellGrid,
+function rasterize_rect!(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid,
         x0::Real, x1::Real, y0::Real, y1::Real; connected::Bool=false)
     0 <= x0 < x1 <= grid.a || throw(ArgumentError(
         "rectangle x-range [$x0,$x1] outside box [0,$(grid.a)]"))
@@ -106,7 +113,7 @@ end
 
 """Fill cells whose centre lies inside an arbitrary polygon given by vertex
 lists `xs`, `ys` (ray-casting rule).  Connection flags are not modified."""
-function rasterize_poly!(sheet::SheetLevel, grid::CellGrid,
+function rasterize_poly!(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid,
         xs::AbstractVector{<:Real}, ys::AbstractVector{<:Real})
     nv = length(xs)
     nv == length(ys) && nv >= 3 ||
@@ -139,6 +146,21 @@ const _BASIS_X_HI   = UInt8(3)   # half rooftop on the x=a wall
 const _BASIS_Y_FULL = UInt8(4)
 const _BASIS_Y_LO   = UInt8(5)   # half rooftop on the y=0 wall
 const _BASIS_Y_HI   = UInt8(6)   # half rooftop on the y=b wall
+const _BASIS_VIA_U  = UInt8(7)   # uniform z-directed via column
+const _BASIS_VIA_T  = UInt8(8)   # up-tapered via column
+const _BASIS_VX_FULL = UInt8(9)  # thick-metal volume rooftop, x-directed
+const _BASIS_VX_LO   = UInt8(10)
+const _BASIS_VX_HI   = UInt8(11)
+const _BASIS_VY_FULL = UInt8(12)
+const _BASIS_VY_LO   = UInt8(13)
+const _BASIS_VY_HI   = UInt8(14)
+
+# same-direction map volume -> sheet kind for transform/weight reuse
+@inline _sheet_kind(kind::UInt8) = kind <= _BASIS_Y_HI ? kind :
+    kind >= _BASIS_VX_FULL ? kind - UInt8(8) : kind
+@inline _is_vol_kind(kind::UInt8) = kind >= _BASIS_VX_FULL
+@inline _is_via_kind(kind::UInt8) =
+    kind == _BASIS_VIA_U || kind == _BASIS_VIA_T
 
 """Flat storage of rooftop basis functions built by `build_planar_basis`:
 kind (direction/full/half-wall), cell-edge indices, sheet level, centre,
@@ -168,6 +190,13 @@ function _push_y!(b::PlanarBasisSet, kind, i, f, lv, x0, y0, dx, port)
     push!(b.kind, kind); push!(b.ei, i); push!(b.ej, f)
     push!(b.level, lv);  push!(b.x0, x0); push!(b.y0, y0)
     push!(b.width, dx);  push!(b.port, port)
+    return nothing
+end
+
+function _push_via!(b::PlanarBasisSet, kind, i, j, lv, x0, y0, area)
+    push!(b.kind, kind); push!(b.ei, i); push!(b.ej, j)
+    push!(b.level, lv);  push!(b.x0, x0); push!(b.y0, y0)
+    push!(b.width, area);  push!(b.port, 0)
     return nothing
 end
 
@@ -219,15 +248,23 @@ function _wall_port_maps(ports::Vector{PlanarPort}, lv::Int,
 end
 
 """
-    build_planar_basis(grid, sheets, ports) -> PlanarBasisSet
+    build_planar_basis(grid, sheets, ports; vias=ViaLevel[], vols=VolLevel[])
+        -> PlanarBasisSet
 
 Enumerate all x- and y-directed rooftop basis functions on every metal
-level.  `sheets[lv].interface` is the stackup interface index the mask lives
-on; `ports` claim connected wall edges (an edge marked `connect_*` but not
-in any port is a galvanic short to the sidewall).
+level plus the via columns in `vias` and the volume rooftops in `vols`.
+`sheets[lv].interface` is the stackup interface index the mask lives on;
+`ports` claim connected wall edges (an edge marked `connect_*` but not in
+any port is a galvanic short to the sidewall).  `vias[vl].layer` is the
+stackup layer the column spans; each marked cell contributes one basis
+per via kind present.  `vols[vl].layer` is the stackup layer the thick
+metal occupies through its full thickness; each marked cell contributes
+volume rooftops that carry a uniform z-profile across the layer (ports
+do not drive volume bases).
 """
 function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
-        ports::Vector{PlanarPort})
+        ports::Vector{PlanarPort}; vias::Vector{ViaLevel}=ViaLevel[],
+        vols::Vector{VolLevel}=VolLevel[])
     nx, ny = grid.nx, grid.ny
     b = PlanarBasisSet(UInt8[], Int[], Int[], Int[], Float64[],
                        Float64[], Float64[], Int[])
@@ -275,6 +312,65 @@ function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
             else
                 if below && above
                     _push_y!(b, _BASIS_Y_FULL, i, f, lv,
+                             (i - 0.5) * grid.dx, f * grid.dy, grid.dx, 0)
+                end
+            end
+        end
+    end
+    for (vl, vlvl) in enumerate(vias)
+        (size(vlvl.uni) == (nx, ny) && size(vlvl.tap) == (nx, ny)) ||
+            throw(DimensionMismatch(
+                "vias[$vl] masks must be $nx x $ny"))
+        @inbounds for j in 1:ny, i in 1:nx
+            x0 = (i - 0.5) * grid.dx
+            y0 = (j - 0.5) * grid.dy
+            vlvl.uni[i, j] && _push_via!(b, _BASIS_VIA_U, i, j, vl,
+                x0, y0, grid.dx * grid.dy)
+            vlvl.tap[i, j] && _push_via!(b, _BASIS_VIA_T, i, j, vl,
+                x0, y0, grid.dx * grid.dy)
+        end
+    end
+    # volume rooftops: same x/y edge enumeration as sheets on the layer
+    # mask, shifted to the VX/VY kind range; ports never claim them
+    for (vl, vol) in enumerate(vols)
+        size(vol.mask) == (nx, ny) || throw(DimensionMismatch(
+            "vol $vl mask size $(size(vol.mask)) != grid ($nx,$ny)"))
+        @inbounds for j in 1:ny, e in 0:nx
+            left = e >= 1 ? vol.mask[e, j] : false
+            right = e <= nx - 1 ? vol.mask[e + 1, j] : false
+            if e == 0
+                if right && vol.connect_west[j]
+                    _push_x!(b, _BASIS_VX_LO, e, j, vl,
+                             0.0, (j - 0.5) * grid.dy, grid.dy, 0)
+                end
+            elseif e == nx
+                if left && vol.connect_east[j]
+                    _push_x!(b, _BASIS_VX_HI, e, j, vl,
+                             grid.a, (j - 0.5) * grid.dy, grid.dy, 0)
+                end
+            else
+                if left && right
+                    _push_x!(b, _BASIS_VX_FULL, e, j, vl,
+                             e * grid.dx, (j - 0.5) * grid.dy, grid.dy, 0)
+                end
+            end
+        end
+        @inbounds for f in 0:ny, i in 1:nx
+            below = f >= 1 ? vol.mask[i, f] : false
+            above = f <= ny - 1 ? vol.mask[i, f + 1] : false
+            if f == 0
+                if above && vol.connect_south[i]
+                    _push_y!(b, _BASIS_VY_LO, i, f, vl,
+                             (i - 0.5) * grid.dx, 0.0, grid.dx, 0)
+                end
+            elseif f == ny
+                if below && vol.connect_north[i]
+                    _push_y!(b, _BASIS_VY_HI, i, f, vl,
+                             (i - 0.5) * grid.dx, grid.b, grid.dx, 0)
+                end
+            else
+                if below && above
+                    _push_y!(b, _BASIS_VY_FULL, i, f, vl,
                              (i - 0.5) * grid.dx, f * grid.dy, grid.dx, 0)
                 end
             end

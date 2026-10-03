@@ -53,6 +53,8 @@ Base.isone(x::_PlanarDual) = isone(x.v)
 Base.isfinite(x::_PlanarDual) = isfinite(x.v)
 Base.real(x::_PlanarDual) = real(x.v)
 Base.imag(x::_PlanarDual) = imag(x.v)
+# branch predicates inspect v only
+Base.abs2(x::_PlanarDual) = abs2(x.v)
 Base.show(io::IO, x::_PlanarDual) = print(io, "(", x.v, ")+(", x.d, ")ε")
 
 @inline Base.:+(x::_PlanarDual, y::_PlanarDual) =
@@ -406,9 +408,18 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
     nmode = mg.mx * mg.my
     blk = clamp(Int(block), 1, nmode)
     iface = Vector{Int}(undef, nb)
+    vialayers = Set{Int}()
+    vollayers = Set{Int}()
     @inbounds for b in 1:nb
-        iface[b] = prob.sheets[prob.basis.level[b]].interface
+        iface[b] = _basis_elem(prob.basis, b, prob.sheets, prob.vias,
+            prob.vols)
+        _is_vol_elem(iface[b]) &&
+            push!(vollayers, _vol_elem_layer(iface[b]))
+        iface[b] < 0 && !_is_vol_elem(iface[b]) &&
+            push!(vialayers, _via_elem_layer(iface[b]))
     end
+    vlay = sort!(collect(vialayers))
+    volay = sort!(collect(vollayers))
     pairs = _level_pairs(iface)
     npair = length(pairs)
     pbs = _port_basis_indices(prob.basis, np)
@@ -480,6 +491,12 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
                Vector{D}(undef, L))
     mlist = Vector{Int}(undef, blk)
     nlist = Vector{Int}(undef, blk)
+    vsts_d = isempty(vlay) ? _ViaLayerState{D}[] :
+        Vector{_ViaLayerState{D}}(undef, L)
+    volsts_d = isempty(volay) ? (_VolLayerState{D}[],
+        _VolLayerState{D}[]) :
+        (Vector{_VolLayerState{D}}(undef, L),
+         Vector{_VolLayerState{D}}(undef, L))
     g = zeros(Float64, length(params))
     dual_stacks = [_planar_dual_stackup(prob.stack, p) for p in params]
 
@@ -515,7 +532,8 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
                 ds = dual_stacks[j]
                 _planar_mode_voltages!(dvte, dvtm, casc_te, casc_tm,
                     scratch, ds, r.omega, mg, view(mlist, 1:cblk),
-                    view(nlist, 1:cblk), pairs)
+                    view(nlist, 1:cblk), pairs, vsts_d, vlay,
+                    volsts_d, volay)
                 acc = zero(ComplexF64)
                 @inbounds for pi_ in 1:npair, cm in 1:cblk
                     acc += Cte[cm, pi_] * dvte[cm, pi_].d +

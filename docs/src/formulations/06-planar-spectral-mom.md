@@ -79,6 +79,93 @@ is accumulated per interface pair through real `dgemm` on mode blocks, so the
 assembly is `O(nb * nmode)` in workspace and `O(nb^2 * nmode)` in flops with
 BLAS utilization.
 
+## Via columns
+
+`ViaLevel` adds z-directed volume-current unknowns on the same cell grid: a
+via column on stackup `layer` spans from interface `layer-1` (its bottom
+face) to interface `layer` (its top). Two independent axial profiles exist
+per cell — `uni[i,j]` marks a uniform (constant in z) column and `tap[i,j]`
+an up-tapered one (linearly zero at the bottom face to maximum at the top);
+a downward taper is realized by the MoM solution as `uniform - up-taper`,
+so a cell may carry both marks. Build one with `via_level(layer, nx, ny)`,
+mark the masks, and pass `vias=[...]` to `build_planar_basis`,
+`build_planar_problem`, or `assemble_planar_z`.
+
+Via columns couple only through TM modes — TE modes have no `E_z`. Their
+lateral transforms are the raw cell-pulse transforms `fx*fy` (including the
+PMC parity swap), without the transverse `kx`/`ky` factor carried by sheet
+rooftops. The axial coupling uses the TM relation `E_z = beta * dV/dz` with
+`beta = kc^2 * eps_t / (gamma^2 * eps_z)`, evaluated coefficientwise through
+the same `exp(-2*gamma*d)` cascade, so exact-cutoff and deeply evanescent
+modes stay finite; open/infinite endpoint loads are handled by the
+coefficientwise limits.
+
+A volume-current via basis is a Galerkin current unknown, not an ideal
+galvanic clamp: its z-directed self-impedance is dominated by end-face
+charge and remains capacitive at low frequency, so a via "to ground" loads
+the structure in the inductive direction without driving the voltage to
+zero. Expect a partial loading effect rather than a perfect short.
+
+## Volume rooftops (thick metal)
+
+`VolLevel` adds the Rautio-Thelen volume-rooftop basis family: x- and
+y-directed volume currents that occupy the full thickness of one stackup
+`layer` — a sheet rooftop extended uniformly through the conductor
+thickness. Build one with `vol_level(layer, nx, ny)`, mark `mask` and the
+`connect_*` wall flags exactly as for `sheet_level`, and pass `vols=[...]`
+to `build_planar_basis`, `build_planar_problem`, or `assemble_planar_z`.
+Ports still attach only to sheets; drive a thick conductor through a
+co-located sheet on a bounding interface, or place the volume level on a
+feed-free interior conductor.
+
+Where a sheet rooftop samples the interface modal voltage `V(f,s)`, a
+volume rooftop sees the layer's full voltage profile. Its axial kernels are
+evaluated analytically from the per-layer endpoint voltages `Vt`, `Vb` and
+the uniform-source self moment `mself = (1/h^2) int int G(z,u)` of the
+modal Green's function `G(z,u) = Zc*phi_d(z<)*phi_u(z>)/Dz`:
+
+* vol field <- sheet/vol source on another layer: the source's endpoint
+  voltages propagate through the cascade and the field basis takes the
+  smooth-profile moment `wbar*(Vt + Vb)` with
+  `wbar = tanh(gamma*h/2)/(gamma*h)`;
+* vol self term: `mself` (the full double integral, not a sheet value);
+* via field <- vol source: the via's profile moment of the volume's
+  voltage profile — `Vt - Vb` for a uniform via, `Vt - <V>` for a taper —
+  and reciprocally for a volume field driven by a via.
+
+Volume bases carry horizontal current, so they couple through both TE and
+TM modes with the same `kx`/`ky` lateral weights as sheets; via-involving
+pairs stay TM-only. All axial formulas use the `exp(-2*gamma*d)`
+coefficient forms, so exact-cutoff and evanescent modes stay finite, and
+the gamma -> 0 limit reduces every layer state to the parallel impedance
+`zdn || zup`. In the thin-layer limit (mid-stack, `V` ~ const) a volume
+rooftop approaches the equivalent sheet rooftop; against a nearby ground
+return it instead recovers the classical `h/3` uniform-current internal
+inductance correction — the two models are only identical where the axial
+field is uniform.
+
+## Fast frequency sweeps and box resonances
+
+`planar_sweep_abs(prob, fmin, fmax; n_eval=..., max_points=...)` is the
+ABS-style adaptive rational sweep: each frequency solves `solve_planar`
+once, and a Thiele continued-fraction interpolant predicts the S-parameter
+curves between analysis points. The error is estimated by comparing the
+highest-order interpolant against the next lower order on a probe set; new
+analyses are inserted where the estimate is largest until the predicted
+error falls about 40 dB below the data or `max_points` is reached — so the
+sweep cost is the small set of adaptively placed full solves, not the
+dense evaluation grid. It returns a `PlanarSweep` with the analysis
+frequencies plus dense frequency/S samples.
+
+`planar_box_resonances(stack, grid, fspan; mx=..., my=...) ` scans the
+modal cascade for box resonances without solving a system: for every
+existing TE/TM mode it tracks the parallel impedance `Zdn + Zup` at each
+interface and reports a `PlanarResonance` (mode indices, polarization,
+interface, frequency, `|Zdn + Zup|` minimum) wherever the pole condition
+`Zdn + Zup -> 0` is bracketed over the span. Results agree with the
+analytic cavity eigenfrequencies on empty boxes and locate the resonances
+a frequency sweep must resolve or step over.
+
 ## Ports and network extraction
 
 A `PlanarPort` claims a contiguous range of wall-connected edges on one sheet
@@ -199,8 +286,18 @@ quarter-wave at 15 GHz).
 
 ## Limitations
 
-* Sheets are infinitely thin; conductor thickness is not modelled.
-* Vertical vias / volume currents are not yet implemented.
+* Conductor thickness is modelled only through the uniform-current
+  `VolLevel` rooftop: the current profile is constrained uniform in z
+  across the layer, so skin-effect redistribution inside one thick
+  conductor is approximated, not resolved (subdivide the layer and place
+  a `VolLevel` on each sublayer for a finer axial profile).
+* Volume rooftops carry no port and no `surface_zs` Gram term — drive
+  them through a co-located sheet and apply sheet-level loss models on
+  the bounding interfaces.
+* Via columns are z-directed volume-current bases spanning exactly one
+  layer each — multi-layer via stacks are built by marking the same cells
+  on consecutive `ViaLevel`s. They are not ideal shorts: see the partial
+  clamp discussion above.
 * Sidewalls are uniform per box (`CellGrid(...; walls=...)`): either all
   four PEC or all four PMC.  A gap port on a `WALL_PMC` boundary is a
   mathematical port — it drives the sheet edge against the boundary
@@ -217,6 +314,9 @@ quarter-wave at 15 GHz).
 
 * J. C. Rautio and R. F. Harrington, "An electromagnetic time-harmonic
   analysis of shielded microstrip circuits," IEEE Trans. MTT-35, 1987.
+* J. C. Rautio and M. A. Thelen, "Method of moments analysis of arbitrary
+  structures in shielded layered media," IEEE Trans. MTT-69(1), 2021
+  (volume-current rooftop and uniform/tapered via basis functions).
 * J. C. Rautio, "An experimental investigation of the microwave properties
   of a roughly etched stripline," IEEE Trans. MTT-42, 1994 (shielded
   stripline standard problem).

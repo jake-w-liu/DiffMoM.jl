@@ -27,6 +27,13 @@ planar_validate
 sheet_level
 rasterize_rect!
 rasterize_poly!
+ViaKind
+VIA_UNIFORM
+VIA_TAPER
+ViaLevel
+via_level
+VolLevel
+vol_level
 build_planar_basis
 planar_basis_count
 PlanarBasisSet
@@ -70,4 +77,8 @@ planar_line_params
 planar_rlgc
 planar_pi_model
 planar_inductor
+PlanarSweep
+planar_sweep_abs
+PlanarResonance
+planar_box_resonances
 ```

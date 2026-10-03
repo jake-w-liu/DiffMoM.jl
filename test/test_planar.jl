@@ -1293,3 +1293,846 @@ end
     # perturbation is consistent with the FD slope
     @test abs(rc.s[2, 1] - r0.s[2, 1]) ≈ abs(dfd) * eps_step rtol = 0.01
 end
+
+# ---------- via columns ----------
+
+# axial via profiles on t = u/h in [0,1]: uniform, up-taper, and the
+# internal down-taper (reversed up-taper used for Ju moments)
+_via_prof(prof, t) = prof == 1 ? 1.0 : prof == 2 ? t : 1.0 - t
+
+# quadrature reference for the 2*exp(-x)-scaled moment coefficients:
+#   cA[prof] = 2 e^-x int_0^1 w(t) cosh(x t) dt,
+#   cB[prof] = 2 e^-x int_0^1 w(t) sinh(x t) dt
+function _via_moment_ref(x, prof, fun; n=8192)
+    acc = 0.0
+    for k in 1:n
+        t = (k - 0.5) / n
+        acc += _via_prof(prof, t) * fun(x * t)
+    end
+    return 2 * exp(-x) * acc / n
+end
+
+# driven-line reference for the via<->via kernel: integrate the modal TM
+# transmission line V' = -gamma*Zc*I + s(u), I' = -(gamma/Zc)*V over the
+# stack by shooting (linear, so one homogeneous + one particular pass),
+# then reduce the field-side moment int w_a*V' du over layer ja.
+function _via_line_moment(stack, omega, kc2, jb, kb, ja, ka; n=8192)
+    L = length(stack.layers)
+    hlay = [Float64(real(l.thickness)) for l in stack.layers]
+    zb = [0.0; cumsum(hlay)]
+    gam = [_PG._planar_gamma_layer(TM_POL, kc2, omega, l)
+           for l in stack.layers]
+    zc = [gam[i] / (im * omega * stack.layers[i].epsr * _PG._EPS0)
+          for i in 1:L]
+    H = zb[end]; du = H / n
+    lay(u) = clamp(searchsortedlast(zb, min(u, H - du / 2)), 1, L)
+    hsrc = hlay[jb]
+    wb(t) = _via_prof(kb == _PG._BASIS_VIA_U ? 1 : 2, t / hsrc)
+    function integrate(with_source)
+        V, I = zero(ComplexF64), one(ComplexF64)   # V(0) = -zbot*I(0)
+        Vs = Vector{ComplexF64}(undef, n + 1)
+        Is = similar(Vs)
+        Vs[1] = V; Is[1] = I
+        for k in 1:n
+            u = (k - 1) * du
+            function rhs(u, V, I)
+                s = with_source && lay(u) == jb ? wb(u - zb[jb]) : 0.0
+                l = lay(u)
+                return -gam[l] * zc[l] * I + s, -(gam[l] / zc[l]) * V
+            end
+            k1v, k1i = rhs(u, V, I)
+            k2v, k2i = rhs(u + du / 2, V + du / 2 * k1v, I + du / 2 * k1i)
+            k3v, k3i = rhs(u + du / 2, V + du / 2 * k2v, I + du / 2 * k2i)
+            k4v, k4i = rhs(u + du, V + du * k3v, I + du * k3i)
+            V += du / 6 * (k1v + 2 * k2v + 2 * k3v + k4v)
+            I += du / 6 * (k1i + 2 * k2i + 2 * k3i + k4i)
+            Vs[k + 1] = V; Is[k + 1] = I
+        end
+        return Vs, Is
+    end
+    Qv, Qi = integrate(false)          # homogeneous (I(0) = 1)
+    Pv, Pi = integrate(true)           # particular + I(0) = 1
+    res(Ve, Ie) = Ve[end]              # top face: V(H) = ztop*I = 0
+    alpha = -res(Pv, Pi) / res(Qv, Qi)
+    V = Pv .+ alpha .* Qv
+    I = Pi .+ alpha .* Qi
+    lo, hi = zb[ja], zb[ja + 1]
+    hfld = hlay[ja]
+    wa(t) = _via_prof(ka == _PG._BASIS_VIA_U ? 1 : 2, t / hfld)
+    acc = zero(ComplexF64)
+    for k in 1:n
+        u0 = (k - 1) * du
+        (u0 >= lo && u0 < hi) || continue
+        um = u0 + du / 2
+        # V' = -gamma*Zc*(I - i_z); the impressed source adds back inside
+        # its own layer (the filament contact handled separately below)
+        s = ja == jb ? wb(um - lo) : 0.0
+        vp = -gam[ja] * zc[ja] * (I[k] + I[k + 1]) / 2 + s
+        acc += wa(um - lo) * vp
+    end
+    return acc * du
+end
+
+@testset "planar: via columns" begin
+    omega = 2pi * 10e9
+    # layer 2 is uniaxial so beta = kc^2 eps_t/(gamma^2 eps_z) != 1+k^2/g^2
+    stack = PlanarStackup(
+        [PlanarLayer(4.0, 1.0, 0.4e-3),
+         PlanarLayer(2.2, 1.0, 0.6e-3; epsr_z=1.6),
+         PlanarLayer(2.5, 1.0, 0.3e-3)],
+        TERM_GND, TERM_GND, 8e-3, 6e-3)
+    L = length(stack.layers)
+    grid = CellGrid(8e-3, 6e-3, 8, 6)
+
+    # --- axial moment coefficients: closed forms vs quadrature,
+    #     small-x analytic continuations, and branch-edge agreement ---
+    for x in (0.05, 0.7, 3.0, 9.0)
+        e1 = exp(-x); e2 = e1 * e1
+        for prof in 1:3
+            @test _PG._via_ca(x, e1, e2, prof) ≈
+                _via_moment_ref(x, prof, cosh) rtol = 1e-5
+            @test _PG._via_cb(x, e1, e2, prof) ≈
+                _via_moment_ref(x, prof, sinh) rtol = 1e-5
+        end
+        @test _PG._via_q1(x, e1, e2) ≈
+            (_via_moment_ref(x, 3, cosh) - _via_moment_ref(x, 2, cosh)) /
+            x rtol = 1e-5
+        @test _PG._via_q2(x, e1, e2) ≈
+            _via_moment_ref(x, 3, sinh) / x rtol = 1e-5
+        @test _PG._via_q3(x, e1, e2) ≈
+            _via_moment_ref(x, 2, sinh) / x rtol = 1e-5
+        @test _PG._via_cbx_u(x, e1, e2) ≈
+            _via_moment_ref(x, 1, sinh) / x rtol = 1e-5
+        @test _PG._via_wbar(x, e1) ≈ tanh(x / 2) / x rtol = 1e-10
+    end
+    # x -> 0 limits of each analytic-continuation branch, normalized by
+    # the 2*e1 scaling
+    xs = 1e-6; e1s = exp(-xs); e2s = e1s * e1s
+    @test _PG._via_ca(xs, e1s, e2s, 1) / e1s ≈ 2.0 rtol = 1e-10
+    @test _PG._via_ca(xs, e1s, e2s, 2) / e1s ≈ 1.0 rtol = 1e-10
+    @test _PG._via_ca(xs, e1s, e2s, 3) / e1s ≈ 1.0 rtol = 1e-10
+    @test _PG._via_cb(xs, e1s, e2s, 1) / (e1s * xs) ≈ 1.0 rtol = 1e-8
+    @test _PG._via_cb(xs, e1s, e2s, 2) / (e1s * xs) ≈ 2 / 3 rtol = 1e-8
+    @test _PG._via_cb(xs, e1s, e2s, 3) / (e1s * xs) ≈ 1 / 3 rtol = 1e-8
+    @test _PG._via_q1(xs, e1s, e2s) / (e1s * xs) ≈ -1 / 6 rtol = 1e-8
+    @test _PG._via_q2(xs, e1s, e2s) / e1s ≈ 1 / 3 rtol = 1e-10
+    @test _PG._via_q3(xs, e1s, e2s) / e1s ≈ 2 / 3 rtol = 1e-10
+    @test _PG._via_cbx_u(xs, e1s, e2s) / e1s ≈ 1.0 rtol = 1e-10
+    @test _PG._via_wbar(xs, e1s) ≈ 0.5 rtol = 1e-10
+    # pin the x^2 order term of the q1 series (regression: 1/180, not 1/240)
+    xb = 0.005; e1b = exp(-xb); e2b = e1b * e1b
+    @test _PG._via_q1(xb, e1b, e2b) ≈
+        -2 * e1b * xb * (1 / 12 + xb * xb / 180) rtol = 1e-9
+    # the |x| < 0.01 series branch must reproduce the closed forms
+    # evaluated inside the branch (same analytic function)
+    xc = 0.0095; e1c = exp(-xc); e2c = e1c * e1c
+    @test _PG._via_ca(xc, e1c, e2c, 1) ≈ (1 - e2c) / xc rtol = 1e-9
+    @test _PG._via_ca(xc, e1c, e2c, 2) ≈
+        (1 - e2c) / xc - (1 + e2c - 2 * e1c) / xc^2 rtol = 1e-8
+    @test _PG._via_ca(xc, e1c, e2c, 3) ≈
+        (1 + e2c - 2 * e1c) / xc^2 rtol = 1e-8
+    @test _PG._via_cb(xc, e1c, e2c, 1) ≈ (1 + e2c - 2 * e1c) / xc rtol = 1e-8
+    @test _PG._via_cb(xc, e1c, e2c, 2) ≈
+        ((xc - 1) + e2c * (xc + 1)) / xc^2 rtol = 1e-8
+    @test _PG._via_cb(xc, e1c, e2c, 3) ≈
+        ((1 - e2c) - 2 * xc * e1c) / xc^2 rtol = 1e-7
+    @test _PG._via_q1(xc, e1c, e2c) ≈
+        (2 * (1 + e2c - 2 * e1c) - xc * (1 - e2c)) / xc^3 rtol = 1e-5
+    @test _PG._via_q2(xc, e1c, e2c) ≈
+        ((1 - e2c) - 2 * xc * e1c) / xc^3 rtol = 1e-6
+    @test _PG._via_q3(xc, e1c, e2c) ≈
+        ((xc - 1) + e2c * (xc + 1)) / xc^3 rtol = 1e-7
+    @test _PG._via_cbx_u(xc, e1c, e2c) ≈
+        (1 + e2c - 2 * e1c) / xc^2 rtol = 1e-8
+    @test _PG._via_wbar(xc, e1c) ≈ (1 - e1c) / ((1 + e1c) * xc) rtol = 1e-10
+
+    # --- via <- sheet kernel telescopes to face voltages (independent
+    #     tanh-form cascade reference) ---
+    mg = planar_mode_grid(grid, 10, 8)
+    for n in (2, 5), m in (2, 6)
+        kx, ky = mg.kx[m], mg.ky[n]
+        kc2 = kx * kx + ky * ky
+        ntm2 = kx^2 * mg.ic[m] * mg.js[n] + ky^2 * mg.is[m] * mg.jc[n]
+        n3_2 = mg.is[m] * mg.js[n]
+        casc = planar_mode_cascade(stack, omega, kc2, TM_POL)
+        vsts = [_PG._via_layer_state(stack, casc, omega, kc2, j)
+                for j in 1:L]
+        for j in 1:L, s in 0:L
+            lj = stack.layers[j]
+            gj = _ref_gamma(lj, omega, kc2, TM_POL)
+            k2t = _PG.planar_k2_layer(omega, lj.epsr, lj.mur)
+            coef = 1 + k2t / (gj * gj)
+            wbar = tanh(gj * lj.thickness / 2) / (gj * lj.thickness)
+            vt = _ref_modal_voltage(stack, omega, kc2, TM_POL, j, s)
+            vb = _ref_modal_voltage(stack, omega, kc2, TM_POL, j - 1, s)
+            for kind in (_PG._BASIS_VIA_U, _PG._BASIS_VIA_T)
+                at, ab, kk = kind == _PG._BASIS_VIA_U ?
+                    (1.0, -1.0, 0.0) : (1.0, 0.0, -1.0)
+                ref = coef * (at * vt + ab * vb +
+                    kk * wbar * (vt + vb)) / ntm2
+                got = _PG._elem_pair_pol(_PG._via_elem(j, kind), s,
+                    casc, vsts, _PG._VolLayerState{ComplexF64}[],
+                    ntm2, n3_2)
+                @test got ≈ ref rtol = 1e-10
+                # sheet <- via is the reciprocal of the same kernel
+                got2 = _PG._elem_pair_pol(s, _PG._via_elem(j, kind),
+                    casc, vsts, _PG._VolLayerState{ComplexF64}[],
+                    ntm2, n3_2)
+                @test got2 == got
+            end
+        end
+    end
+
+    # --- via <-> via kernel vs an independent driven-line solve ---
+    combos = Tuple{Int,UInt8}[]
+    for j in 1:L
+        push!(combos, (j, _PG._BASIS_VIA_U), (j, _PG._BASIS_VIA_T))
+    end
+    for n in (1, 2, 4), m in (1, 3, 7)
+        kx, ky = mg.kx[m], mg.ky[n]
+        kc2 = kx * kx + ky * ky
+        ntm2 = kx^2 * mg.ic[m] * mg.js[n] + ky^2 * mg.is[m] * mg.jc[n]
+        n3_2 = mg.is[m] * mg.js[n]
+        ntm2 == 0 && continue
+        casc = planar_mode_cascade(stack, omega, kc2, TM_POL)
+        vsts = [_PG._via_layer_state(stack, casc, omega, kc2, j)
+                for j in 1:L]
+        for (jb, kb) in combos, (ja, ka) in combos
+            M = _via_line_moment(stack, omega, kc2, jb, kb, ja, ka)
+            iab = ja == jb ? _PG._via_overlap(ka, kb,
+                Float64(real(stack.layers[ja].thickness))) : 0.0
+            st = vsts[ja]
+            om_eps_z = omega * stack.layers[jb].epsr_z * _PG._EPS0
+            refk = 1im * (st.coef * M + (1 - st.coef) * iab) /
+                (om_eps_z * n3_2)
+            got = _PG._elem_pair_pol(_PG._via_elem(ja, ka),
+                _PG._via_elem(jb, kb), casc, vsts,
+                _PG._VolLayerState{ComplexF64}[], ntm2, n3_2)
+            @test got ≈ refk rtol = 3e-3   # shooting-rule residual
+        end
+    end
+
+    # --- PMC sidewall parity: via transforms follow the g3 factor ---
+    for walls in (WALL_PEC, WALL_PMC)
+        gr = CellGrid(8e-3, 6e-3, 8, 6; walls=walls)
+        mgw = planar_mode_grid(gr, 10, 8)
+        sv = sheet_level(1, 8, 6)
+        vpm = via_level(1, 8, 6)
+        vpm.uni[3, 4] = true
+        bw = build_planar_basis(gr, [sv], PlanarPort[]; vias=[vpm])
+        pv = _PG.planar_basis_count(bw)
+        @test bw.kind[pv] == _PG._BASIS_VIA_U
+        fxv = _PG._basis_fx!(zeros(mgw.mx), bw, pv, mgw, gr)
+        fyv = _PG._basis_fy!(zeros(mgw.my), bw, pv, mgw, gr)
+        # via lateral profile is a rectangle pulse on cell (3,4):
+        # PEC transforms vs sin, PMC vs cos
+        dx, dy = gr.dx, gr.dy
+        for m in (2, 4, mgw.mx)
+            k = mgw.kx[m]
+            num = sum(0:511) do q
+                x = (3 - 1) * dx + (q + 0.5) * dx / 512
+                (walls == WALL_PEC ? sin(k * x) : cos(k * x)) * dx / 512
+            end
+            @test fxv[m] ≈ num rtol = 1e-5
+        end
+        for n in (2, 5, mgw.my)
+            k = mgw.ky[n]
+            num = sum(0:511) do q
+                y = (4 - 1) * dy + (q + 0.5) * dy / 512
+                (walls == WALL_PEC ? sin(k * y) : cos(k * y)) * dy / 512
+            end
+            @test fyv[n] ≈ num rtol = 1e-5
+        end
+    end
+
+    # --- validation boundaries ---
+    @test_throws ArgumentError via_level(0, 8, 6)
+    s0 = sheet_level(1, 8, 6)
+    rasterize_rect!(s0, grid, 0.0, 3e-3, 1e-3, 5e-3)
+    # via layer outside 1:L rejected at problem build
+    badlay = ViaLevel(L + 1, falses(8, 6), falses(8, 6))
+    badlay.uni[1, 1] = true
+    @test_throws ArgumentError build_planar_problem(stack, grid, [s0],
+        PlanarPort[PlanarPort(1, :west, 1:2, 50.0)]; vias=[badlay])
+    # mask shape must match the cell grid
+    badsz = ViaLevel(1, falses(4, 4), falses(4, 4))
+    @test_throws DimensionMismatch build_planar_basis(grid, [s0],
+        PlanarPort[]; vias=[badsz])
+    badsz2 = ViaLevel(1, falses(8, 6), falses(8, 7))
+    @test_throws DimensionMismatch build_planar_basis(grid, [s0],
+        PlanarPort[]; vias=[badsz2])
+    # a basis that references a missing via level must fail, not guess
+    vone = via_level(1, 8, 6)
+    vone.uni[2, 2] = true
+    bv = build_planar_basis(grid, [s0], PlanarPort[]; vias=[vone])
+    @test_throws ArgumentError assemble_planar_z(stack, grid, [s0],
+        bv, omega; vias=ViaLevel[], mx=8, my=8)
+    # exact axial cutoff (gamma == 0) is a loud DomainError
+    kc2_cut = real(_PG.planar_k2_layer(omega,
+        stack.layers[1].epsr, stack.layers[1].mur))
+    casc0 = _PG.PlanarCascade(zeros(ComplexF64, L + 1),
+        zeros(ComplexF64, L + 1), zeros(ComplexF64, L),
+        zeros(ComplexF64, L))
+    @test_throws DomainError _PG._via_layer_state(stack, casc0, omega,
+        kc2_cut, 1)
+
+    # --- basis enumeration: one basis per marked cell per kind ---
+    vl = via_level(1, 8, 6)
+    vl.uni[2, 3] = true; vl.tap[2, 3] = true; vl.tap[4, 1] = true
+    pr1 = findall(j -> any(s0.mask[:, j]), 1:6)
+    s0.connect_west[pr1[1]] = true
+    probv = build_planar_problem(stack, grid, [s0],
+        PlanarPort[PlanarPort(1, :west, pr1[1]:pr1[1], 50.0)];
+        vias=[vl])
+    nb = _PG.planar_basis_count(probv.basis)
+    @test count(>=(_PG._BASIS_VIA_U), probv.basis.kind) == 3
+    # pushes run j-outer, i-inner, uni before tap within a cell:
+    # (4,1) tap first, then (2,3) uni then (2,3) tap
+    @test probv.basis.kind[nb - 2] == _PG._BASIS_VIA_T
+    @test probv.basis.kind[nb - 1] == _PG._BASIS_VIA_U
+    @test probv.basis.kind[nb] == _PG._BASIS_VIA_T
+    @test probv.basis.width[nb] == grid.dx * grid.dy
+
+    # --- assembled Z with vias: finite, symmetric, block-size invariant
+    Z = assemble_planar_z(stack, grid, [s0], probv.basis, omega;
+        vias=[vl], mx=12, my=10)
+    @test size(Z) == (nb, nb) && all(isfinite, Z)
+    @test Z ≈ transpose(Z) rtol = 1e-10
+    Zb = assemble_planar_z(stack, grid, [s0], probv.basis, omega;
+        vias=[vl], mx=12, my=10, block=5)
+    @test maximum(abs.(Z .- Zb)) / maximum(abs.(Z)) < 1e-12
+    # a via level with empty masks contributes no bases and no coupling
+    vempty = via_level(2, 8, 6)
+    Ze = assemble_planar_z(stack, grid, [s0], probv.basis, omega;
+        vias=[vl, vempty], mx=12, my=10)
+    @test Ze == Z
+
+    # direct per-mode sum for one via-sheet and one via-via entry: the
+    # via<-sheet reference uses the independent tanh-form cascade
+    function _direct_pair(p, q)
+        kp, kq = probv.basis.kind[p], probv.basis.kind[q]
+        ep = kp >= _PG._BASIS_VIA_U ?
+            _PG._via_elem(vl.layer, kp) : s0.interface
+        eq = kq >= _PG._BASIS_VIA_U ?
+            _PG._via_elem(vl.layer, kq) : s0.interface
+        mgd = planar_mode_grid(grid, 12, 10)
+        fxp = _PG._basis_fx!(zeros(mgd.mx), probv.basis, p, mgd, grid)
+        fyp = _PG._basis_fy!(zeros(mgd.my), probv.basis, p, mgd, grid)
+        fxq = _PG._basis_fx!(zeros(mgd.mx), probv.basis, q, mgd, grid)
+        fyq = _PG._basis_fy!(zeros(mgd.my), probv.basis, q, mgd, grid)
+        acc = zero(ComplexF64)
+        for n in 1:mgd.my, m in 1:mgd.mx
+            kx, ky = mgd.kx[m], mgd.ky[n]
+            kc2 = kx^2 + ky^2
+            nte2 = ky^2 * mgd.ic[m] * mgd.js[n] +
+                kx^2 * mgd.is[m] * mgd.jc[n]
+            ntm2 = kx^2 * mgd.ic[m] * mgd.js[n] +
+                ky^2 * mgd.is[m] * mgd.jc[n]
+            n3_2 = mgd.is[m] * mgd.js[n]
+            if ep >= 0 && eq >= 0
+                xdir_p = _PG._is_xdir(kp); xdir_q = _PG._is_xdir(kq)
+                if kc2 != 0 && nte2 != 0
+                    wp = (xdir_p ? ky : -kx) * fxp[m] * fyp[n]
+                    wq = (xdir_q ? ky : -kx) * fxq[m] * fyq[n]
+                    acc -= _ref_modal_voltage(stack, omega, kc2, TE_POL,
+                        ep, eq) * wp * wq / nte2
+                end
+                if ntm2 != 0
+                    wp = (xdir_p ? kx : ky) * fxp[m] * fyp[n]
+                    wq = (xdir_q ? kx : ky) * fxq[m] * fyq[n]
+                    acc -= _ref_modal_voltage(stack, omega, kc2, TM_POL,
+                        ep, eq) * wp * wq / ntm2
+                end
+            elseif ntm2 != 0
+                # via pair: via transforms are raw fx*fy; a sheet keeps
+                # its TM kx/ky factor
+                wp = kp >= _PG._BASIS_VIA_U ? fxp[m] * fyp[n] :
+                    (_PG._is_xdir(kp) ? kx : ky) * fxp[m] * fyp[n]
+                wq = kq >= _PG._BASIS_VIA_U ? fxq[m] * fyq[n] :
+                    (_PG._is_xdir(kq) ? kx : ky) * fxq[m] * fyq[n]
+                if ep < 0 && eq < 0
+                    casc = planar_mode_cascade(stack, omega, kc2, TM_POL)
+                    vsts = [_PG._via_layer_state(stack, casc, omega,
+                        kc2, j) for j in 1:L]
+                    kern = _PG._elem_pair_pol(ep, eq, casc, vsts,
+                        _PG._VolLayerState{ComplexF64}[], ntm2, n3_2)
+                else
+                    # telescope the via field element onto the sheet's
+                    # face voltages from the independent tanh cascade
+                    fe, se = ep < 0 ? (ep, eq) : (eq, ep)
+                    jv = _PG._via_elem_layer(fe)
+                    kv = _PG._via_elem_kind(fe)
+                    lj = stack.layers[jv]
+                    gj = _ref_gamma(lj, omega, kc2, TM_POL)
+                    k2t = _PG.planar_k2_layer(omega, lj.epsr, lj.mur)
+                    coef = 1 + k2t / (gj * gj)
+                    wbar = tanh(gj * lj.thickness / 2) /
+                        (gj * lj.thickness)
+                    vt = _ref_modal_voltage(stack, omega, kc2, TM_POL,
+                        jv, se)
+                    vb = _ref_modal_voltage(stack, omega, kc2, TM_POL,
+                        jv - 1, se)
+                    at, ab, kk = kv == _PG._BASIS_VIA_U ?
+                        (1.0, -1.0, 0.0) : (1.0, 0.0, -1.0)
+                    kern = coef * (at * vt + ab * vb +
+                        kk * wbar * (vt + vb)) / ntm2
+                end
+                acc -= kern * wp * wq
+            end
+        end
+        return acc
+    end
+    psheet = findfirst(<(_PG._BASIS_VIA_U), probv.basis.kind)
+    @test Z[nb - 2, psheet] ≈ _direct_pair(nb - 2, psheet) rtol = 1e-9
+    @test Z[nb - 2, nb - 1] ≈ _direct_pair(nb - 2, nb - 1) rtol = 1e-9
+    @test Z[psheet, nb] ≈ _direct_pair(psheet, nb) rtol = 1e-9
+
+    # --- end to end: via wall shunts the stripline to ground ---
+    probw = _stripline_problem(16, 20)
+    s_w = probw.sheets[1]
+    prow = findall(j -> any(s_w.mask[:, j]), 1:20)
+    istrip = findall(i -> any(s_w.mask[i, :]), 1:16)
+    vwall = via_level(1, 16, 20)
+    for i in istrip, j in prow
+        vwall.uni[i, j] = true
+    end
+    probw2 = build_planar_problem(probw.stack, probw.grid,
+        probw.sheets, probw.ports; vias=[vwall])
+    rv = solve_planar(probw2, 1.0e9; mx=48, my=60)
+    r0 = solve_planar(probw, 1.0e9; mx=48, my=60)
+    @test all(isfinite, rv.s)
+    @test rv.s[2, 1] ≈ rv.s[1, 2] rtol = 1e-10   # reciprocity
+    # the via wall shifts the port susceptance in the inductive direction
+    # (imag(Y) decreases); the volume-current column is a partial clamp,
+    # not an ideal short — verified independently at kernel level
+    yv = rv.y[1, 1]; y0 = r0.y[1, 1]
+    @test isfinite(yv)
+    @test imag(yv) < imag(y0)
+    @test 1e-4 < abs(yv - y0) / abs(y0) < 0.5
+
+    # --- gradient through the via kernels matches finite difference ---
+    s_g = sheet_level(1, 8, 6)
+    rasterize_rect!(s_g, grid, 0.0, 8e-3, 2e-3, 4e-3)
+    prg = findall(j -> any(s_g.mask[:, j]), 1:6)
+    for j in prg
+        s_g.connect_west[j] = true; s_g.connect_east[j] = true
+    end
+    vg = via_level(1, 8, 6)
+    vg.uni[4, 3] = true; vg.tap[4, 3] = true
+    ports_g = PlanarPort[PlanarPort(1, :west, prg[1]:prg[end], 50.0),
+                         PlanarPort(1, :east, prg[1]:prg[end], 50.0)]
+    probg = build_planar_problem(stack, grid, [s_g], ports_g;
+        vias=[vg])
+    fg = Y -> abs2(planar_y_to_s(Y, [50.0, 50.0])[2, 1])
+    params = PlanarParam[PlanarParam(1, :epsr, :re),
+        PlanarParam(1, :thickness, :re)]
+    theta = planar_param_values(stack, params)
+    J, g = planar_objective_gradient(probg, 8e9, fg; params=params)
+    @test J ≈ fg(solve_planar(probg, 8e9).y)
+    for j in eachindex(params)
+        hs = 1e-6 * max(abs(theta[j]), 1.0)
+        tp = copy(theta); tm = copy(theta)
+        tp[j] += hs; tm[j] -= hs
+        Jp = fg(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tp), probg.grid,
+            probg.sheets, probg.ports, probg.vias, probg.basis), 8e9).y)
+        Jm = fg(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tm), probg.grid,
+            probg.sheets, probg.ports, probg.vias, probg.basis), 8e9).y)
+        @test g[j] ≈ (Jp - Jm) / (2hs) rtol = 1e-4
+    end
+end
+
+# single-layer modal-voltage Green's function by direct 4x4 BVP solve:
+# V(0+) satisfies the zdn load, V(h-) the zup load, V continuous at the
+# source plane u with the normalized derivative jump  zc .
+function _vol_bvp_green(gam, zc, zdn, zup, h, u, z)
+    e_u, e_h = exp(-gam * u), exp(-gam * h)
+    M = ComplexF64[
+        (zc + zdn) (zc - zdn) 0 0;
+        0 0 e_h * (zc - zup) inv(e_h) * (zc + zup);
+        e_u inv(e_u) -e_u -inv(e_u);
+        -e_u inv(e_u) e_u -inv(e_u)]
+    x = M \ ComplexF64[0, 0, 0, zc]
+    a1, b1, a2, b2 = x
+    return z <= u ? a1 * exp(-gam * z) + b1 * exp(gam * z) :
+                    a2 * exp(-gam * z) + b2 * exp(gam * z)
+end
+
+_vol_trapz(f, xs) = sum((xs[i + 1] - xs[i]) *
+    (f(xs[i]) + f(xs[i + 1])) / 2 for i in 1:length(xs) - 1)
+
+@testset "planar: volume rooftops" begin
+    omega = 2pi * 10e9
+    stack = PlanarStackup(
+        [PlanarLayer(4.0, 1.0, 0.4e-3),
+         PlanarLayer(2.2, 1.0, 0.6e-3; epsr_z=1.6),
+         PlanarLayer(2.5, 1.0, 0.3e-3)],
+        TERM_GND, TERM_GND, 8e-3, 6e-3)
+    L = length(stack.layers)
+    grid = CellGrid(8e-3, 6e-3, 8, 6)
+
+    # --- endpoint and self kernels vs the independent BVP Green's
+    #     function, single layer with prescribed endpoint loads ---
+    eps0 = _PG._EPS0
+    for (gam, zc, zdn, zup) in (
+            (2.0 + 0im, 3.0, 1.0, 5.0),
+            (0.8 - 0.05im, 1.2 + 0.3im, 0.4, 2.0 + 1.0im),
+            (5.0 + 0im, 0.6, 3.0, 0.2))
+        # fabricate a TM layer that realizes (gamma, Zc) at omega=1:
+        #   Zc = gamma/(i*eps) -> eps = gamma/(i*Zc)
+        w1 = 1.0
+        epsr = gam / (1im * zc * eps0)
+        lay = PlanarLayer(epsr, 1.0 + 0im, 1.0)
+        stk = PlanarStackup([lay], TERM_GND, TERM_GND, 1.0, 1.0)
+        # gamma^2 = (epsr/epsr_z)*kc2 - w^2*epsr*mur/c0^2
+        kc2 = real(gam^2 + w1^2 * epsr * 1.0 / _PG._C0^2)
+        casc = _PG.PlanarCascade(ComplexF64[zdn, 0.0],
+            ComplexF64[0.0, zup], ComplexF64[1.0], ComplexF64[1.0])
+        st = _PG._vol_layer_state(stk, casc, w1, kc2, 1, TM_POL)
+        h = 1.0
+        # the state runs on the layer's effective gamma/Zc -- feed the
+        # same effective values to the independent BVP
+        geff = _ref_gamma(lay, w1, kc2, TM_POL)
+        zceff = _PG._planar_zchar(TM_POL, w1, lay.epsr * eps0,
+            lay.mur * _PG._MU0, geff)
+        nz, nu = 800, 800
+        zs = range(0, h; length=nz); us = range(0, h; length=nu)
+        vt_ref = _vol_trapz(
+            u -> _vol_bvp_green(geff, zceff, zdn, zup, h, u, h) / h, us)
+        vb_ref = _vol_trapz(
+            u -> _vol_bvp_green(geff, zceff, zdn, zup, h, u, 0.0) / h, us)
+        ms_ref = _vol_trapz(u -> _vol_trapz(
+            z -> _vol_bvp_green(geff, zceff, zdn, zup, h, u, z) / h,
+            zs) / h, us)
+        @test st.vt ≈ vt_ref rtol = 1e-3
+        @test st.vb ≈ vb_ref rtol = 1e-3
+        @test st.mself ≈ ms_ref rtol = 1e-3
+        # wbar = tanh(x/2)/x on the effective (complex) layer gamma
+        @test st.wbar ≈ tanh(geff * h / 2) / (geff * h) rtol = 1e-10
+    end
+
+    # --- the unscaled closed forms agree with the scaled state on a
+    #     real stackup (independent formula organization) ---
+    mg = planar_mode_grid(grid, 10, 8)
+    for n in (2, 5), m in (2, 6), pol in (TE_POL, TM_POL)
+        kx, ky = mg.kx[m], mg.ky[n]
+        kc2 = kx^2 + ky^2
+        casc = planar_mode_cascade(stack, omega, kc2, pol)
+        for j in 1:L
+            lay = stack.layers[j]
+            h = Float64(real(lay.thickness))
+            gam = _ref_gamma(lay, omega, kc2, pol)
+            zc = _PG._planar_zchar(pol, omega, lay.epsr * eps0,
+                lay.mur * _PG._MU0, gam)
+            x = gam * h
+            zdn, zup = casc.zdn[j], casc.zup[j + 1]
+            Sh = sinh(x) / gam; Ch = (cosh(x) - 1) / gam
+            idu = zdn * Sh + zc * Ch; iuu = zup * Sh + zc * Ch
+            dz = zc * (zdn + zup) * cosh(x) +
+                (zc * zc + zdn * zup) * sinh(x)
+            vt_ref = zc * zup * idu / (h * dz)
+            vb_ref = zc * zdn * iuu / (h * dz)
+            phi_d(u) = zdn * cosh(gam * u) + zc * sinh(gam * u)
+            phi_u(u) = zup * cosh(gam * (h - u)) +
+                zc * sinh(gam * (h - u))
+            G(z, u) = zc * (z <= u ? phi_d(z) * phi_u(u) :
+                                     phi_d(u) * phi_u(z)) / dz
+            ms_ref = _vol_trapz(u -> _vol_trapz(
+                z -> G(z, u), range(0, h; length=400)) / h,
+                range(0, h; length=2000)) / h
+            st = _PG._vol_layer_state(stack, casc, omega, kc2, j, pol)
+            @test st.vt ≈ vt_ref rtol = 1e-9
+            @test st.vb ≈ vb_ref rtol = 1e-9
+            @test st.mself ≈ ms_ref rtol = 1e-4
+        end
+    end
+
+    # --- thin layer -> interface sheet (mid-stack, V ~ const) ---
+    # the residual is first-order in the layer thickness
+    for (h, tol) in ((1e-6, 3e-3), (1e-8, 5e-5))
+        stk = PlanarStackup(
+            [PlanarLayer(1.0, 1.0, 1e-3), PlanarLayer(1.0, 1.0, h),
+             PlanarLayer(1.0, 1.0, 1e-3)],
+            TERM_GND, TERM_GND, 1.0, 1.0)
+        s1 = sheet_level(2, 8, 6)
+        rasterize_rect!(s1, grid, 1e-3, 6e-3, 2e-3, 4e-3)
+        bs = build_planar_basis(grid, [s1], PlanarPort[])
+        Zs = assemble_planar_z(stk, grid, [s1], bs, omega; mx=12, my=10)
+        vl = vol_level(2, 8, 6)
+        rasterize_rect!(vl, grid, 1e-3, 6e-3, 2e-3, 4e-3)
+        bv = build_planar_basis(grid, SheetLevel[], PlanarPort[];
+            vols=[vl])
+        Zv = assemble_planar_z(stk, grid, SheetLevel[], bv, omega;
+            mx=12, my=10, vols=[vl])
+        @test maximum(abs.(Zv - Zs)) / maximum(abs.(Zs)) < tol
+    end
+
+    # --- assembled Z: finite, symmetric through every pair family ---
+    sv = sheet_level(1, 8, 6)
+    rasterize_rect!(sv, grid, 0.0, 5e-3, 1e-3, 5e-3; connected=true)
+    vv = vol_level(2, 8, 6)
+    rasterize_rect!(vv, grid, 1e-3, 6e-3, 1e-3, 5e-3)
+    vvia = via_level(3, 8, 6)
+    vvia.uni[4, 3] = true; vvia.tap[4, 3] = true
+    ports_v = PlanarPort[PlanarPort(1, :west, 3:4, 50.0)]
+    probv = build_planar_problem(stack, grid, [sv], ports_v;
+        vias=[vvia], vols=[vv])
+    nb = _PG.planar_basis_count(probv.basis)
+    @test count(k -> _PG._is_vol_kind(k), probv.basis.kind) > 0
+    # vol bases carry no port
+    @test all(p -> !_PG._is_vol_kind(probv.basis.kind[p]) ||
+        probv.basis.port[p] == 0, 1:nb)
+    Z = assemble_planar_z(stack, grid, [sv], probv.basis, omega;
+        vias=[vvia], vols=[vv], mx=12, my=10)
+    @test size(Z) == (nb, nb) && all(isfinite, Z)
+    @test Z ≈ transpose(Z) rtol = 1e-10
+    Zb = assemble_planar_z(stack, grid, [sv], probv.basis, omega;
+        vias=[vvia], vols=[vv], mx=12, my=10, block=5)
+    @test maximum(abs.(Z .- Zb)) / maximum(abs.(Z)) < 1e-12
+
+    # PMC sidewalls: same kernel path with swapped modal parity
+    gridp = CellGrid(8e-3, 6e-3, 8, 6; walls=WALL_PMC)
+    svp = sheet_level(1, 8, 6)
+    rasterize_rect!(svp, gridp, 0.0, 5e-3, 1e-3, 5e-3; connected=true)
+    vvp = vol_level(2, 8, 6)
+    rasterize_rect!(vvp, gridp, 1e-3, 6e-3, 1e-3, 5e-3)
+    probvp = build_planar_problem(stack, gridp, [svp],
+        PlanarPort[PlanarPort(1, :west, 3:4, 50.0)]; vols=[vvp])
+    Zp = assemble_planar_z(stack, gridp, [svp], probvp.basis, omega;
+        vols=[vvp], mx=12, my=10)
+    @test all(isfinite, Zp)
+    @test Zp ≈ transpose(Zp) rtol = 1e-10
+
+    # --- vol <-> sheet / via pair reciprocity at kernel level ---
+    for n in (2, 5), m in (2, 6)
+        kx, ky = mg.kx[m], mg.ky[n]
+        kc2 = kx^2 + ky^2
+        ntm2 = kx^2 * mg.ic[m] * mg.js[n] + ky^2 * mg.is[m] * mg.jc[n]
+        n3_2 = mg.is[m] * mg.js[n]
+        casc = planar_mode_cascade(stack, omega, kc2, TM_POL)
+        vsts = [_PG._via_layer_state(stack, casc, omega, kc2, j)
+                for j in 1:L]
+        vsts_tm = [_PG._vol_layer_state(stack, casc, omega, kc2, j,
+            TM_POL) for j in 1:L]
+        for jv in 1:L, js in 1:L
+            ev = _PG._vol_elem(js)
+            # uniform via sees Vt - Vb; taper sees Vt - <V> (same layer)
+            for kind in (_PG._BASIS_VIA_U, _PG._BASIS_VIA_T)
+                evia = _PG._via_elem(jv, kind)
+                got = _PG._elem_pair_pol(evia, ev, casc, vsts,
+                    vsts_tm, ntm2, n3_2)
+                got2 = _PG._elem_pair_pol(ev, evia, casc, vsts,
+                    vsts_tm, ntm2, n3_2)
+                @test got ≈ got2
+                if jv == js
+                    stv = vsts_tm[js]
+                    stvia = vsts[jv]
+                    m = kind == _PG._BASIS_VIA_U ? stv.vt - stv.vb :
+                        stv.vt - stv.mself
+                    @test got ≈ stvia.coef * m / ntm2
+                end
+            end
+            # vol <-> vol symmetry
+            got = _PG._elem_pair_pol(_PG._vol_elem(jv), ev, casc,
+                vsts, vsts_tm, ntm2, n3_2)
+            got2 = _PG._elem_pair_pol(ev, _PG._vol_elem(jv), casc,
+                vsts, vsts_tm, ntm2, n3_2)
+            @test got ≈ got2
+            jv == js && @test got ≈ vsts_tm[jv].mself / ntm2
+            # vol <-> sheet reciprocity vs direct telescoping
+            s = 1
+            gotv = _PG._elem_pair_pol(_PG._vol_elem(jv), s, casc,
+                vsts, vsts_tm, ntm2, n3_2)
+            gots = _PG._elem_pair_pol(s, _PG._vol_elem(jv), casc,
+                vsts, vsts_tm, ntm2, n3_2)
+            @test gotv ≈ gots
+            refv = vsts_tm[jv].wbar *
+                (planar_modal_voltage(casc, jv, s) +
+                 planar_modal_voltage(casc, jv - 1, s)) / ntm2
+            @test gotv ≈ refv
+        end
+    end
+
+    # --- TE kernel for volume elements: same formulas on the TE
+    #     cascade; via-involving pairs are identically zero ---
+    for n in (2, 4), m in (2, 5)
+        kx, ky = mg.kx[m], mg.ky[n]
+        kc2 = kx^2 + ky^2
+        nte2 = ky^2 * mg.ic[m] * mg.js[n] + kx^2 * mg.is[m] * mg.jc[n]
+        nte2 == 0 && continue
+        casc = planar_mode_cascade(stack, omega, kc2, TE_POL)
+        vsts_te = [_PG._vol_layer_state(stack, casc, omega, kc2, j,
+            TE_POL) for j in 1:L]
+        j1, j2 = 2, 3   # j1 < j2: field faces take the source's vb
+        st = _PG._vol_layer_state(stack, casc, omega, kc2, j1, TE_POL)
+        stb = vsts_te[j2]
+        denom = planar_modal_voltage(casc, j2 - 1, j2 - 1)
+        vt = stb.vb * planar_modal_voltage(casc, j1, j2 - 1) / denom
+        vb = stb.vb * planar_modal_voltage(casc, j1 - 1, j2 - 1) / denom
+        ref = st.wbar * (vt + vb) / nte2
+        got = _PG._elem_pair_pol(_PG._vol_elem(j1), _PG._vol_elem(j2),
+            casc, _PG._ViaLayerState{ComplexF64}[], vsts_te, nte2, 0.0)
+        @test got ≈ ref
+    end
+
+    # --- validation boundaries ---
+    @test_throws ArgumentError vol_level(0, 8, 6)
+    badlay = VolLevel(L + 1, falses(8, 6),
+        falses(6), falses(6), falses(8), falses(8))
+    badlay.mask[1, 1] = true
+    @test_throws ArgumentError build_planar_problem(stack, grid, [sv],
+        ports_v; vols=[badlay])
+    badsz = VolLevel(1, falses(4, 4),
+        falses(4), falses(4), falses(4), falses(4))
+    @test_throws DimensionMismatch build_planar_basis(grid, [sv],
+        PlanarPort[]; vols=[badsz])
+    vone = vol_level(1, 8, 6)
+    rasterize_rect!(vone, grid, 1e-3, 3e-3, 1e-3, 3e-3)
+    bv2 = build_planar_basis(grid, [sv], PlanarPort[]; vols=[vone])
+    @test_throws ArgumentError assemble_planar_z(stack, grid, [sv],
+        bv2, omega; vols=VolLevel[], mx=8, my=8)
+
+    # --- deeply evanescent mode: all state values finite ---
+    casc_ev = planar_mode_cascade(stack, omega, 1e8, TM_POL)
+    for j in 1:L
+        st = _PG._vol_layer_state(stack, casc_ev, omega, 1e8, j, TM_POL)
+        @test isfinite(st.wbar) && isfinite(st.vt) &&
+              isfinite(st.vb) && isfinite(st.mself)
+    end
+
+    # --- end to end: thick strip with a co-located port sheet ---
+    sv2 = sheet_level(1, 8, 6)
+    rasterize_rect!(sv2, grid, 0.0, 5e-3, 1e-3, 5e-3; connected=true)
+    vv2 = vol_level(1, 8, 6)
+    rasterize_rect!(vv2, grid, 0.0, 5e-3, 1e-3, 5e-3; connected=true)
+    ports2 = PlanarPort[PlanarPort(1, :west, 2:5, 50.0)]
+    prob2 = build_planar_problem(stack, grid, [sv2], ports2;
+        vols=[vv2])
+    r2 = solve_planar(prob2, 8e9; mx=16, my=12)
+    @test all(isfinite, r2.s)
+    r2b = solve_planar(build_planar_problem(stack, grid, [sv2],
+        ports2), 8e9; mx=16, my=12)
+    # the volume bases change the answer (physics: thick conductor)
+    @test abs(r2.y[1, 1] - r2b.y[1, 1]) > 1e-4 * abs(r2b.y[1, 1])
+
+    # --- gradient through the volume kernels vs finite difference ---
+    s_g = sheet_level(1, 8, 6)
+    rasterize_rect!(s_g, grid, 0.0, 5e-3, 1e-3, 5e-3; connected=true)
+    v_g = vol_level(2, 8, 6)
+    rasterize_rect!(v_g, grid, 0.0, 5e-3, 1e-3, 5e-3; connected=true)
+    ports_g = PlanarPort[PlanarPort(1, :west, 2:5, 50.0)]
+    probg = build_planar_problem(stack, grid, [s_g], ports_g;
+        vols=[v_g])
+    fg = Y -> abs2(Y[1, 1])
+    params = PlanarParam[PlanarParam(2, :epsr, :re),
+        PlanarParam(2, :thickness, :re)]
+    theta = planar_param_values(stack, params)
+    J, g = planar_objective_gradient(probg, 8e9, fg; params=params)
+    @test J ≈ fg(solve_planar(probg, 8e9).y)
+    for j in eachindex(params)
+        hs = 1e-6 * max(abs(theta[j]), 1.0)
+        tp = copy(theta); tm = copy(theta)
+        tp[j] += hs; tm[j] -= hs
+        Jp = fg(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tp), probg.grid,
+            probg.sheets, probg.ports, probg.vias, probg.basis,
+            probg.vols), 8e9).y)
+        Jm = fg(solve_planar(PlanarProblem(
+            planar_with_params(stack, params, tm), probg.grid,
+            probg.sheets, probg.ports, probg.vias, probg.basis,
+            probg.vols), 8e9).y)
+        @test g[j] ≈ (Jp - Jm) / (2hs) rtol = 1e-4
+    end
+end
+
+@testset "planar: adaptive sweep and box resonances" begin
+    # Thiele rational interpolant: a model through N samples of a
+    # rational function R(f) = num(f)/den(f) of degree <= (N-2)/2
+    # reproduces it to roundoff at off-grid points.
+    R = f -> (2.0 - 0.5im + (1.0 + 0.2im) * f) / (1.0 - (0.3 - 0.1im) * f)
+    xs = collect(range(0.0, 4.0; length=5))
+    cf = _PG._thiele_build(xs, R.(xs))
+    for f in (0.3, 1.7, 2.9, 3.99)
+        @test _PG._thiele_eval(cf, f) ≈ R(f) rtol = 1e-12
+    end
+    # two samples -> linear interpolant
+    c2 = _PG._thiele_build([0.0, 1.0], [1.0 + 2im, 3.0 - 1im])
+    @test _PG._thiele_eval(c2, 0.4) ≈ (1 + 2im) + 0.4 * ((3 - 1im) - (1 + 2im))
+    # degenerate ordinates truncate and flag the model
+    cd = _PG._thiele_build([0.0, 1.0, 2.0], [1.0, 1.0, 2.0])
+    @test cd.ndeg < 3
+    @test_throws ArgumentError _PG._thiele_build(Float64[], ComplexF64[])
+
+    # ABS sweep on the stripline benchmark problem: interpolated S must
+    # reproduce direct solves away from the analysis points.
+    prob = _stripline_problem(16, 20)
+    sw = planar_sweep_abs(prob, 1e9, 8e9; n_eval=33, rel_tol=1e-3,
+                          max_points=20, mx=64, my=80)
+    @test sw isa PlanarSweep
+    @test length(sw.freqs) >= 3
+    @test length(sw.s) == length(sw.freqs)
+    @test length(sw.dense_s) == length(sw.dense_freqs) == 33
+    @test length(sw.est_err) == 33
+    # every dense S-matrix is fully populated and finite
+    for S in sw.dense_s
+        @test size(S) == (2, 2)
+        @test all(isfinite, S)
+    end
+    # analyzed frequencies are reproduced by direct solves
+    @test all(sw.s[j] ≈ solve_planar(prob, sw.freqs[j]; mx=64, my=80).s
+              for j in eachindex(sw.freqs))
+    if sw.converged
+        # interpolated S tracks a direct solve at an off-analysis point
+        jw = argmax(sw.est_err)
+        fcheck = sw.dense_freqs[jw]
+        if !any(fk -> abs(fcheck - fk) < 0.5 * 7e9 / 33, sw.freqs)
+            @test sw.dense_s[jw] ≈
+                solve_planar(prob, fcheck; mx=64, my=80).s rtol = 2e-2
+        end
+        @test all(e <= 1e-3 for (j, e) in enumerate(sw.est_err)
+                  if !any(fk -> abs(sw.dense_freqs[j] - fk) <=
+                          0.5 * 7e9 / 33, sw.freqs))
+    end
+    # capped sweep reports non-convergence instead of a trusted result
+    sw3 = planar_sweep_abs(prob, 1e9, 8e9; n_eval=33, rel_tol=1e-9,
+                           max_points=3, mx=64, my=80)
+    @test !sw3.converged
+    @test all(all(isfinite, S) for S in sw3.dense_s)
+    @test_throws ArgumentError planar_sweep_abs(prob, 8e9, 1e9)
+    @test_throws ArgumentError planar_sweep_abs(prob, 1e9, 8e9; rel_tol=0.0)
+    @test_throws ArgumentError planar_sweep_abs(prob, 1e9, 8e9; n_eval=4)
+    @test_throws ArgumentError planar_sweep_abs(prob, 1e9, 8e9; max_points=2)
+
+    # box resonances: PEC-PEC air cavity, TM_mn0 poles at the transverse
+    # eigenfrequencies c/(2)*sqrt((m/a)^2 + (n/b)^2)
+    c0 = _PG._C0
+    a, b, h = 15e-3, 10e-3, 1.0e-3
+    cav = PlanarStackup([PlanarLayer(1.0, 1.0, h)],
+                        TERM_GND, TERM_GND, a, b)
+    res = planar_box_resonances(cav, 10e9, 40e9;
+                                walls=WALL_PEC, mmax=4, nmax=4)
+    @test all(r -> r isa PlanarResonance, res)
+    for (m, n) in ((1, 1), (2, 1), (1, 2), (3, 1))
+        fana = c0 / 2 * sqrt((m / a)^2 + (n / b)^2)
+        10e9 < fana < 40e9 || continue
+        hits = findall(r -> r.m == m && r.n == n && r.pol == TM_POL, res)
+        @test !isempty(hits)
+        @test minimum(abs(res[k].freq - fana) / fana for k in hits) < 2e-3
+    end
+    # no spurious TE poles in the low band of a thin cavity
+    @test all(r -> r.pol == TM_POL || r.freq > 30e9, res)
+    # sorted, deduplicated
+    @test issorted([r.freq for r in res])
+    # sidewall parity: PEC TM modes need m,n >= 1, so no (m,0) TM pole;
+    # PMC walls allow the cos-parity TM_(1,0) mode at c/(2a) = 10 GHz
+    @test all(r -> r.pol != TM_POL || (r.m >= 1 && r.n >= 1), res)
+    res_pmc = planar_box_resonances(cav, 5e9, 40e9;
+                                    walls=WALL_PMC, mmax=4, nmax=4)
+    @test any(r -> r.pol == TM_POL && r.m == 1 && r.n == 0 &&
+                   abs(r.freq - c0 / 2 / a) / (c0 / 2 / a) < 2e-3,
+              res_pmc)
+    @test_throws ArgumentError planar_box_resonances(cav, 40e9, 10e9)
+    @test_throws ArgumentError planar_box_resonances(cav, 10e9, 40e9;
+                                                     nsamp=4)
+end

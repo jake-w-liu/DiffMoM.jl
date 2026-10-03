@@ -22,6 +22,9 @@
 #   <f_p, e_pol> = w_pol(dir_p, m, n) * fx_p[m] * fy_p[n]
 #     x-directed:  w_TE = ky/N_TE,  w_TM = kx/N_TM
 #     y-directed:  w_TE = -kx/N_TE, w_TM = ky/N_TM
+# A via column (z-directed) couples only through the TM g3 = Ez parity:
+#     via: w_TE = 0,  w_TM = fx*fy = Ta (raw transform, norm folded into
+#     the per-pair kernel in PlanarVias.jl).
 # and the Galerkin impedance between rooftop p (interface f) and q
 # (interface s) is the modal sum
 #   Z[p,q] = -sum_mn V_pol(f,s;mn) * <f_p,e_pol> * <e_pol,f_q>
@@ -106,7 +109,7 @@ end
 
 function _basis_fx!(fx::AbstractVector{Float64}, basis::PlanarBasisSet,
         p::Int, mg::PlanarModeGrid, grid::CellGrid)
-    kind = basis.kind[p]
+    kind = _sheet_kind(basis.kind[p])
     nx = grid.nx
     pec = mg.walls == WALL_PEC
     @inbounds if kind == _BASIS_X_FULL
@@ -137,7 +140,7 @@ end
 
 function _basis_fy!(fy::AbstractVector{Float64}, basis::PlanarBasisSet,
         p::Int, mg::PlanarModeGrid, grid::CellGrid)
-    kind = basis.kind[p]
+    kind = _sheet_kind(basis.kind[p])
     ny = grid.ny
     pec = mg.walls == WALL_PEC
     @inbounds if kind == _BASIS_Y_FULL
@@ -165,7 +168,8 @@ function _basis_fy!(fy::AbstractVector{Float64}, basis::PlanarBasisSet,
 end
 
 @inline _is_xdir(kind::UInt8) =
-    kind == _BASIS_X_FULL || kind == _BASIS_X_LO || kind == _BASIS_X_HI
+    kind == _BASIS_X_FULL || kind == _BASIS_X_LO || kind == _BASIS_X_HI ||
+    kind == _BASIS_VX_FULL || kind == _BASIS_VX_LO || kind == _BASIS_VX_HI
 
 # ---------------- impedance assembly ----------------
 
@@ -187,10 +191,13 @@ processed in column blocks; combined operation-owned workspace (the two real
 accumulator matrices, the returned complex matrix, modal weight blocks, and
 per-mode cascade state) is bounded by `max_bytes`.  `surface_zs` (scalar or
 per-sheet vector) adds the analytic surface-impedance Gram term for
-conductor loss.
+conductor loss.  `vias` lists the `ViaLevel` column levels the basis was
+built with (via basis functions index into it through `basis.level`).
 """
 function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
         sheets::Vector{SheetLevel}, basis::PlanarBasisSet, omega::Number;
+        vias::Vector{ViaLevel}=ViaLevel[],
+        vols::Vector{VolLevel}=VolLevel[],
         mx::Integer=2 * grid.nx, my::Integer=2 * grid.ny,
         block::Integer=512,
         surface_zs=zero(ComplexF64),
@@ -212,16 +219,40 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
     nmode = mg.mx * mg.my
     L = length(stack.layers)
 
+    # element axis: sheet bases key on their interface, via/volume bases
+    # on negative ids from PlanarVias.jl / PlanarVolumes.jl
     iface = Vector{Int}(undef, nb)
+    vialayers = Set{Int}()
+    vollayers = Set{Int}()
     @inbounds for p in 1:nb
         lv = basis.level[p]
-        1 <= lv <= length(sheets) ||
-            throw(ArgumentError("basis $p references missing sheet $lv"))
-        iface[p] = sheets[lv].interface
-        0 <= iface[p] <= L ||
-            throw(ArgumentError(
-                "sheet $lv interface $(iface[p]) outside 0:$L"))
+        if _is_vol_kind(basis.kind[p])
+            1 <= lv <= length(vols) ||
+                throw(ArgumentError("basis $p references missing vol $lv"))
+            lay = vols[lv].layer
+            1 <= lay <= L || throw(ArgumentError(
+                "vol $lv layer $lay outside 1:$L"))
+            iface[p] = _vol_elem(lay)
+            push!(vollayers, lay)
+        elseif _is_via_kind(basis.kind[p])
+            1 <= lv <= length(vias) ||
+                throw(ArgumentError("basis $p references missing via $lv"))
+            lay = vias[lv].layer
+            1 <= lay <= L || throw(ArgumentError(
+                "via $lv layer $lay outside 1:$L"))
+            iface[p] = _via_elem(lay, basis.kind[p])
+            push!(vialayers, lay)
+        else
+            1 <= lv <= length(sheets) ||
+                throw(ArgumentError("basis $p references missing sheet $lv"))
+            iface[p] = sheets[lv].interface
+            0 <= iface[p] <= L ||
+                throw(ArgumentError(
+                    "sheet $lv interface $(iface[p]) outside 0:$L"))
+        end
     end
+    vlay = sort!(collect(vialayers))
+    volay = sort!(collect(vollayers))
     pairs = _level_pairs(iface)
     npair = length(pairs)
     blk = clamp(Int(block), 1, nmode)
@@ -242,6 +273,10 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
         _checked_array_payload_bytes(Float64, blk, nb),
         _checked_array_payload_bytes(Int, blk),
         _checked_array_payload_bytes(Int, blk),
+        # per-layer via modal state + volume states + element id vector
+        _checked_array_payload_bytes(ComplexF64, 10 * max(L, 1)),
+        _checked_array_payload_bytes(ComplexF64, 8 * max(L, 1)),
+        _checked_array_payload_bytes(Int, nb),
         # per-pair row/col index vectors, each <= nb entries
         _checked_array_payload_bytes(Int, 2 * npair, nb))
     _enforce_payload_limit(est, max_bytes, "planar Z", "max_bytes")
@@ -283,7 +318,8 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
             _planar_z_block!(Zr, Zi, stack, omega, mg, grid,
                 view(mlist, 1:c), view(nlist, 1:c),
                 Wte, Wtm, view(vte, 1:c, :), view(vtm, 1:c, :),
-                fxb, fyb, basis, pairs, pair_rows, pair_cols, sdr, sdi)
+                fxb, fyb, basis, pairs, pair_rows, pair_cols, sdr, sdi,
+                vlay, volay)
             c = 0
         end
     end
@@ -306,7 +342,8 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
         basis::PlanarBasisSet, pairs::Vector{Tuple{Int,Int}},
         pair_rows::Dict{Tuple{Int,Int},Vector{Int}},
         pair_cols::Dict{Tuple{Int,Int},Vector{Int}},
-        sdr::Matrix{Float64}, sdi::Matrix{Float64})
+        sdr::Matrix{Float64}, sdi::Matrix{Float64},
+        vlay::Vector{Int}=Int[], volay::Vector{Int}=Int[])
     cblk = length(mlist)
     nb = planar_basis_count(basis)
 
@@ -322,9 +359,15 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
         Vector{ComplexF64}(undef, L))
     scratch = (Vector{ComplexF64}(undef, L), Vector{ComplexF64}(undef, L),
                Vector{ComplexF64}(undef, L))
+    vsts = isempty(vlay) ? _ViaLayerState{ComplexF64}[] :
+        Vector{_ViaLayerState{ComplexF64}}(undef, L)
+    volsts = isempty(volay) ? (_VolLayerState{ComplexF64}[],
+        _VolLayerState{ComplexF64}[]) :
+        (Vector{_VolLayerState{ComplexF64}}(undef, L),
+         Vector{_VolLayerState{ComplexF64}}(undef, L))
 
     _planar_mode_voltages!(vte, vtm, casc_te, casc_tm, scratch, stack,
-        omega, mg, mlist, nlist, pairs)
+        omega, mg, mlist, nlist, pairs, vsts, vlay, volsts, volay)
     _planar_weight_block!(Wte, Wtm, mlist, nlist, mg, fxb, fyb, basis)
 
     # Z[rows,cols] -= W_f' * (V .* W_s) via real dgemm on each component
@@ -355,14 +398,25 @@ end
 # TE/TM modal voltages V(f,s)/N_pol^2 for one mode block.  `vte`/`vtm` are
 # (cblk x npair); the cascade workspaces must carry the scalar type that
 # differentiates the call (ComplexF64 analysis, _PlanarDual for gradients).
+# Pair element ids: >= 0 sheet interface, < 0 via element (layer, kind)
+# encoded by PlanarVias.jl — via pairs couple through TM only and their
+# kernels are evaluated against the per-layer `vsts` state.
 function _planar_mode_voltages!(vte::AbstractMatrix,
         vtm::AbstractMatrix, casc_te::PlanarCascade,
         casc_tm::PlanarCascade, scratch, stack::PlanarStackup,
         omega::Number, mg::PlanarModeGrid,
         mlist::AbstractVector{Int}, nlist::AbstractVector{Int},
-        pairs::Vector{Tuple{Int,Int}})
+        pairs::Vector{Tuple{Int,Int}},
+        vsts::Vector{<:_ViaLayerState}=_ViaLayerState{ComplexF64}[],
+        vlay::AbstractVector{Int}=Int[],
+        volsts::Tuple=(_VolLayerState{ComplexF64}[],
+            _VolLayerState{ComplexF64}[]),
+        volay::AbstractVector{Int}=Int[])
     cblk = length(mlist)
     pec = mg.walls == WALL_PEC
+    nvia = length(vlay)
+    nvol = length(volay)
+    volsts_te, volsts_tm = volsts
     for c in 1:cblk
         m, n = mlist[c], nlist[c]
         kx, ky = mg.kx[m], mg.ky[n]
@@ -381,18 +435,46 @@ function _planar_mode_voltages!(vte::AbstractMatrix,
              kx * kx * mg.is[m] * mg.jc[n] +
              ky * ky * mg.ic[m] * mg.js[n])
         end
+        n3_2 = pec ? mg.is[m] * mg.js[n] : mg.ic[m] * mg.jc[n]
         te_ok = kc2 != 0.0 && nte2 != 0.0
         tm_ok = ntm2 != 0.0
         te_ok && planar_mode_cascade!(casc_te, stack, omega, kc2, TE_POL,
                                       scratch)
         tm_ok && planar_mode_cascade!(casc_tm, stack, omega, kc2, TM_POL,
                                       scratch)
+        if nvol != 0
+            te_ok && @inbounds for j in volay
+                volsts_te[j] = _vol_layer_state(stack, casc_te, omega,
+                    kc2, j, TE_POL)
+            end
+            tm_ok && @inbounds for j in volay
+                volsts_tm[j] = _vol_layer_state(stack, casc_tm, omega,
+                    kc2, j, TM_POL)
+            end
+        end
+        if tm_ok && nvia != 0
+            @inbounds for j in vlay
+                vsts[j] = _via_layer_state(stack, casc_tm, omega, kc2, j)
+            end
+        end
         @inbounds for pi_ in eachindex(pairs)
             f, s = pairs[pi_]
-            vte[c, pi_] = te_ok ?
-                planar_modal_voltage(casc_te, f, s) / nte2 : 0.0im
-            vtm[c, pi_] = tm_ok ?
-                planar_modal_voltage(casc_tm, f, s) / ntm2 : 0.0im
+            if f >= 0 && s >= 0
+                vte[c, pi_] = te_ok ?
+                    planar_modal_voltage(casc_te, f, s) / nte2 : 0.0im
+                vtm[c, pi_] = tm_ok ?
+                    planar_modal_voltage(casc_tm, f, s) / ntm2 : 0.0im
+            else
+                # via elements couple through TM only; volume elements
+                # (transverse current) couple through both pols
+                vte[c, pi_] = te_ok && (_is_vol_elem(f) || f >= 0) &&
+                    (_is_vol_elem(s) || s >= 0) ?
+                    _elem_pair_pol(f, s, casc_te, vsts,
+                        volsts_te, nte2, 0.0) : 0.0im
+                vtm[c, pi_] = tm_ok ?
+                    _elem_pair_pol(f, s, casc_tm, vsts,
+                        volsts_tm, ntm2, n3_2) : 0.0im
+            end
         end
     end
     return nothing
@@ -408,12 +490,19 @@ function _planar_weight_block!(Wte::AbstractMatrix{Float64},
     cblk = length(mlist)
     for p in 1:nb
         xdir = _is_xdir(basis.kind[p])
+        via = _is_via_kind(basis.kind[p])
         fx = view(fxb, :, p)
         fy = view(fyb, :, p)
         @inbounds for c in 1:cblk
             m, n = mlist[c], nlist[c]
-            Wte[c, p] = (xdir ? mg.ky[n] : -mg.kx[m]) * fx[m] * fy[n]
-            Wtm[c, p] = (xdir ? mg.kx[m] : mg.ky[n]) * fx[m] * fy[n]
+            if via
+                # z-directed: couples through TM g3 only (raw transform)
+                Wte[c, p] = 0.0
+                Wtm[c, p] = fx[m] * fy[n]
+            else
+                Wte[c, p] = (xdir ? mg.ky[n] : -mg.kx[m]) * fx[m] * fy[n]
+                Wtm[c, p] = (xdir ? mg.kx[m] : mg.ky[n]) * fx[m] * fy[n]
+            end
         end
     end
     return nothing
@@ -474,10 +563,11 @@ function _add_gram!(Z::Matrix{ComplexF64}, basis::PlanarBasisSet,
                 basis.ei[p], basis.ej[p])] = p
     end
     @inbounds for p in 1:nb
+        kp = basis.kind[p]
+        kp >= _BASIS_VIA_U && continue   # vias/volumes carry no sheet Gram term
         zs = _zs_for_level(surface_zs, basis.level[p])
         iszero(zs) && continue
         lv = basis.level[p]
-        kp = basis.kind[p]
         Z[p, p] += zs * _gram_self(kp, grid)
         if _is_xdir(kp)
             # colinear neighbour along the flow direction: FULL bases reach

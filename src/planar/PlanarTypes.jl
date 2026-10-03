@@ -5,7 +5,9 @@
 # z_0 < z_1 < ... <
 # z_L = h_box.  Infinitely thin metal sheets (cell masks on a uniform grid)
 # live on selected interfaces; vertical terminations at z=0 and z=h_box are
-# PEC, PMC, a surface impedance, or an open half-space.
+# PEC, PMC, a surface impedance, or an open half-space.  Via columns are
+# z-directed volume currents on one cell footprint spanning a single layer
+# (interface l-1 to interface l).
 #
 # Scalar type parameter T supports Float64 for analysis and dual/complex
 # perturbation types for gradients of layer parameters (epsr, mur, d, zs).
@@ -19,6 +21,8 @@ export PlanarLayer, PlanarTerminator, PlanarStackup, CellGrid
 export BoundaryKind, TERM_PEC, TERM_PMC, TERM_SURFACE, TERM_OPEN
 export TERM_GND, TERM_SPACE
 export SidewallKind, WALL_PEC, WALL_PMC
+export ViaKind, VIA_UNIFORM, VIA_TAPER, ViaLevel, via_level
+export VolLevel, vol_level
 export planar_interfaces, planar_k0_layer, planar_validate
 
 """Layer of the stratified medium: complex eps_r, mu_r, thickness [m].
@@ -214,4 +218,55 @@ function CellGrid(a::Real, b::Real, nx::Integer, ny::Integer;
     isfinite(af) && af > 0 || throw(ArgumentError("grid a must be positive"))
     isfinite(bf) && bf > 0 || throw(ArgumentError("grid b must be positive"))
     return CellGrid(nx, ny, af / nx, bf / ny, af, bf, walls)
+end
+
+"""Via current profile along z within its layer: `VIA_UNIFORM` (constant)
+or `VIA_TAPER` (up-tapered, linearly 0 at the bottom face to max at the
+top).  A down-tapered profile is realized by the MoM as uniform - taper,
+so only these two independent kinds exist per cell column."""
+@enum ViaKind::UInt8 begin
+    VIA_UNIFORM
+    VIA_TAPER
+end
+@doc "Uniform via: constant z-directed volume current across the layer." VIA_UNIFORM
+@doc "Up-tapered via: z-directed current rising linearly 0 -> max, bottom to top." VIA_TAPER
+
+"""Via columns occupying one cell footprint through a single stackup
+`layer` (spanning interface `layer-1` at its bottom face to interface
+`layer` at its top).  `uni[i,j]`/`tap[i,j]` mark cell (i,j) carrying an
+independent uniform / up-tapered via unknown; a cell may carry both (any
+downward taper then comes out as uniform - up)."""
+struct ViaLevel
+    layer::Int
+    uni::BitMatrix
+    tap::BitMatrix
+end
+
+"""Empty `ViaLevel` on `layer` for an `nx` x `ny` cell grid."""
+function via_level(layer::Integer, nx::Integer, ny::Integer)
+    layer >= 1 || throw(ArgumentError("via layer must be >= 1, got $layer"))
+    return ViaLevel(Int(layer), falses(nx, ny), falses(nx, ny))
+end
+
+"""Thick-metal level occupying stackup `layer` through its full
+thickness: x- and y-directed *volume* rooftops whose current distributes
+uniformly in z across the layer (the Rautio-Thelen volume-rooftop family,
+a sheet rooftop extended through the conductor thickness).  The `mask`
+and `connect_*` fields have the same layout as `SheetLevel` but index
+the layer, not an interface.  Ports cannot drive volume bases directly —
+use sheets on the bounding interfaces for wall ports."""
+struct VolLevel
+    layer::Int
+    mask::BitMatrix
+    connect_west::BitVector
+    connect_east::BitVector
+    connect_south::BitVector
+    connect_north::BitVector
+end
+
+"""Empty `VolLevel` on `layer` for an `nx` x `ny` cell grid."""
+function vol_level(layer::Integer, nx::Integer, ny::Integer)
+    layer >= 1 || throw(ArgumentError("volume layer must be >= 1, got $layer"))
+    return VolLevel(Int(layer), falses(nx, ny),
+        falses(ny), falses(ny), falses(nx), falses(nx))
 end

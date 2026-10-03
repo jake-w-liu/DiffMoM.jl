@@ -15,24 +15,52 @@ export PlanarProblem, PlanarResult
 export build_planar_problem, solve_planar, planar_sparams
 export planar_y_to_s, write_touchstone
 
-"""Assembled-ready planar problem: stackup, grid, sheets, ports, and the
-rooftop basis built from them."""
+"""Assembled-ready planar problem: stackup, grid, sheets, ports, via
+levels, and the rooftop basis built from them."""
 struct PlanarProblem
     stack::PlanarStackup
     grid::CellGrid
     sheets::Vector{SheetLevel}
     ports::Vector{PlanarPort}
+    vias::Vector{ViaLevel}
     basis::PlanarBasisSet
+    vols::Vector{VolLevel}
 end
 
+# convenience constructors: no via/volume levels, or via only
+PlanarProblem(stack::PlanarStackup, grid::CellGrid,
+    sheets::Vector{SheetLevel}, ports::Vector{PlanarPort},
+    basis::PlanarBasisSet) =
+    PlanarProblem(stack, grid, sheets, ports, ViaLevel[], basis,
+        VolLevel[])
+PlanarProblem(stack::PlanarStackup, grid::CellGrid,
+    sheets::Vector{SheetLevel}, ports::Vector{PlanarPort},
+    vias::Vector{ViaLevel}, basis::PlanarBasisSet) =
+    PlanarProblem(stack, grid, sheets, ports, vias, basis, VolLevel[])
+
 """Validate the stackup/ports and build the rooftop basis; every port must
-claim at least one wall-connected edge."""
+claim at least one wall-connected edge.  `vias` adds z-directed via
+columns on `ViaLevel`s (uniform and up-tapered profiles per cell);
+`vols` adds thick-metal volume rooftops on `VolLevel`s (x- and
+y-directed volume current distributed uniformly through each level's
+layer).  Every level's `layer` must lie inside the stackup."""
 function build_planar_problem(stack::PlanarStackup, grid::CellGrid,
-        sheets::Vector{SheetLevel}, ports::Vector{PlanarPort})
+        sheets::Vector{SheetLevel}, ports::Vector{PlanarPort};
+        vias::Vector{ViaLevel}=ViaLevel[],
+        vols::Vector{VolLevel}=VolLevel[])
     planar_validate(stack)
     isempty(ports) &&
         throw(ArgumentError("at least one port is required"))
-    basis = build_planar_basis(grid, sheets, ports)
+    L = length(stack.layers)
+    for (vl, vlvl) in enumerate(vias)
+        1 <= vlvl.layer <= L || throw(ArgumentError(
+            "vias[$vl] layer $(vlvl.layer) outside 1:$L"))
+    end
+    for (vl, vlvl) in enumerate(vols)
+        1 <= vlvl.layer <= L || throw(ArgumentError(
+            "vols[$vl] layer $(vlvl.layer) outside 1:$L"))
+    end
+    basis = build_planar_basis(grid, sheets, ports; vias=vias, vols=vols)
     planar_basis_count(basis) == 0 &&
         throw(ArgumentError("no basis functions: check masks/connections"))
     # every port must claim at least one basis
@@ -44,7 +72,7 @@ function build_planar_problem(stack::PlanarStackup, grid::CellGrid,
         c || throw(ArgumentError(
             "port $i claimed no wall edges; check cells/wall/mask"))
     end
-    return PlanarProblem(stack, grid, sheets, ports, basis)
+    return PlanarProblem(stack, grid, sheets, ports, vias, basis, vols)
 end
 
 """Result of `solve_planar`: retained problem, MoM matrix and LU
@@ -87,7 +115,7 @@ function solve_planar(prob::PlanarProblem, freq::Number; kw...)
     nports = length(prob.ports)
 
     Z = assemble_planar_z(prob.stack, prob.grid, prob.sheets,
-        prob.basis, omega; kw...)
+        prob.basis, omega; vias=prob.vias, vols=prob.vols, kw...)
     pbs = _port_basis_indices(prob.basis, nports)
 
     est = _checked_payload_sum("planar solve",
