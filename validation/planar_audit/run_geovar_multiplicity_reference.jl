@@ -11,9 +11,12 @@ function main()
         for (dir,_,files) in walkdir(folder) for file in files]
     append!(paths,[@__FILE__,joinpath(repo,"validation/sonnet_stripline/sonnet_reference.jl")])
     hashes()=Dict(relpath(path,repo)=>bytes2hex(sha256(read(path))) for path in paths)
-    report=Dict{String,Any}("scope"=>"exact native repeated ordinary point parameter/literal inputs; full matrix identity gate 1e-12", "source_before"=>hashes(),"cases"=>Any[])
+    report=Dict{String,Any}("scope"=>"exact native repeated ordinary points and NSCD ANC/RAD moving references; parameter/literal full matrix identity gate 1e-12", "source_before"=>hashes(),"cases"=>Any[])
+    cases=TOML.parsefile(joinpath(fixture,"source_before/geovar_ordinary_multiplicity_before_20261004.toml"))["cases"]
+    append!(cases,[Dict("kind"=>"anc","tag"=>"nscd_reference","literal_suffix"=>"multiplicity"),
+        Dict("kind"=>"rad","tag"=>"rad_reference","literal_suffix"=>"multiplicity")])
     try
-        for row in TOML.parsefile(joinpath(fixture,"source_before/geovar_ordinary_multiplicity_before_20261004.toml"))["cases"]
+        for row in cases
             family=row["kind"]=="sym" ? "symmetric" : "anchored_radial"
             directory=joinpath(fixture,family);tag=row["tag"];matrices=Matrix{ComplexF64}[]
             for suffix in ("parameter",row["literal_suffix"])

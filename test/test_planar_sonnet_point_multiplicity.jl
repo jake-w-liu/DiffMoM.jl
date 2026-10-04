@@ -66,7 +66,7 @@ const observations=NamedTuple[]
     end
 end
 
-@testset "Explicit reference repetitions reject before physical output" begin
+@testset "Native reference repetitions and guarded scaling hypotheses" begin
     directory=joinpath(fixture,"anchored_radial")
     proof=TOML.parsefile(joinpath(directory,"comparison.toml"))
     @test proof["source_unchanged"] && proof["source_before"]==proof["source_after"]
@@ -75,8 +75,37 @@ end
         @test row["parameter_status"]=="ACCEPT"
         @test row["deduplicated_full_s_error"]>1e-3
         p=read_sonnet_project(joinpath(directory,row["tag"]*"_parameter.son"));saved=deepcopy(p.polygons)
-        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9)
-        @test_throws ArgumentError solve_sonnet_project(p,1e9;raw=true)
+        if row["mode"] in ("NSCD","RAD")
+            q=read_sonnet_project(joinpath(directory,row["tag"]*"_multiplicity.son"))
+            @test row["multiplicity_bit_identical"]
+            @test maximum(abs,only(PreviousGeometry._sonnet_geometry_project(p,1e9).polygons).vertices-only(q.polygons).vertices)>1e-5
+            resolved=DiffMoM._sonnet_geometry_project(p,1e9)
+            @test only(resolved.polygons).vertices≈only(q.polygons).vertices rtol=8eps(Float64)
+            @test resolved.source==p.source && resolved.records===p.records
+            for (port,literal) in zip(resolved.ports,q.ports)
+                @test parse.(Float64,port.values[6:7])≈parse.(Float64,literal.values[6:7]) rtol=8eps(Float64)
+            end
+            @test only(sonnet_planar_problem(p;freq=1e9).sheets).mask==only(sonnet_planar_problem(q;freq=1e9).sheets).mask
+            result=solve_sonnet_project(p,1e9;raw=true,method=:dense_fft,mx=128,my=128,retain_matrix=true)
+            native=planar_read_touchstone(joinpath(directory,row["tag"]*"_parameter/native_raw.s2p"))
+            @test native.s==planar_read_touchstone(joinpath(directory,row["tag"]*"_multiplicity/native_raw.s2p")).s
+            @test maximum(abs,result.s-only(native.s))<=.005
+            raw=result.raw;rhs=zeros(ComplexF64,size(raw.currents))
+            for b in eachindex(raw.problem.basis.port)
+                port=raw.problem.basis.port[b];iszero(port) && continue
+                rhs[b,port]=(port==1 ? -1. : 1.)*raw.problem.basis.width[b]
+            end
+            @test norm(raw.z_mom*raw.currents-rhs)/norm(rhs)<=1e-9
+            @test maximum(abs,result.s-transpose(result.s))<=1e-10
+            @test opnorm(result.s)<=1+1e-9
+            for options in ((max_points=3,),(max_bytes=1,),(max_parameters=0,))
+                @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9;options...)
+            end
+        else
+            @test !row["multiplicity_bit_identical"]
+            @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9)
+            @test_throws ArgumentError solve_sonnet_project(p,1e9;raw=true)
+        end
         @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved))
     end
 end
