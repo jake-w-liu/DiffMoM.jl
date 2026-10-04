@@ -4,10 +4,14 @@ export assemble_planar_z_ufft
     (sx==1 ? f.xplus[m+1] : f.xminus[m+1])*
     (sy==1 ? f.yplus[n+1] : f.yminus[n+1])
 
-function _planar_fft_dense_fill!(Z::Matrix{ComplexF64},A::PlanarUFFTOperator)
-    size(Z)==size(A) || throw(DimensionMismatch("FFT dense matrix and operator dimensions differ"))
+_planar_fft_element_count(A::PlanarUFFTOperator)=size(A.source_te,2)
+_planar_fft_element_count(A::_PlanarFFTAssemblyWorkspace)=A.ne
+
+function _planar_fft_dense_fill!(Z::Matrix{ComplexF64},
+        A::Union{PlanarUFFTOperator,_PlanarFFTAssemblyWorkspace})
+    size(Z)==(A.n,A.n) || throw(DimensionMismatch("FFT dense matrix and workspace dimensions differ"))
     fill!(Z,0)
-    F=A.lattice;px,py=size(F);mg=A.modes;ne=size(A.source_te,2)
+    F=A.lattice;px,py=size(F);mg=A.modes;ne=_planar_fft_element_count(A)
     # A product of real sin/cos subsection transforms is a sum of four
     # kernels evaluated at signed sums/differences of lattice locations.
     # Reuse one Fourier buffer, retaining every high mode before folding.
@@ -55,7 +59,9 @@ includes all supplied modes, translated half rooftops, layers, vias,
 volume currents, PEC/PMC walls and local/coupled conductor loss exactly as
 [`assemble_planar_z`](@ref). No quadrature, projection or near-cell
 correction is used. `max_bytes` reserves the dense output before constructing
-the FFT operator. For factorization use `solve_planar(...;method=:dense_fft)`;
+the modal/FFT workspace. Dense assembly omits the four mode-by-element
+matvec arrays needed by the iterative operator. For factorization use
+`solve_planar(...;method=:dense_fft)`;
 for storage without an Nb² matrix use `method=:ufft`."""
 function assemble_planar_z_ufft(prob::PlanarProblem,freq::Number;
         max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
@@ -63,7 +69,7 @@ function assemble_planar_z_ufft(prob::PlanarProblem,freq::Number;
     matrix_bytes=_checked_array_payload_bytes(ComplexF64,nb,nb)
     _enforce_payload_limit(matrix_bytes,max_bytes,"FFT dense assembly","max_bytes")
     remaining=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-matrix_bytes)
-    A=planar_ufft_operator(prob,freq;max_bytes=remaining,kw...)
+    A=_planar_fft_workspace(prob,freq,Val(true);max_bytes=remaining,kw...)
     Z=Matrix{ComplexF64}(undef,nb,nb)
     _planar_fft_dense_fill!(Z,A)
     all(isfinite,Z) || throw(ArgumentError("FFT dense matrix is nonfinite"))

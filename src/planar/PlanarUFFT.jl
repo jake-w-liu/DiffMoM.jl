@@ -41,6 +41,20 @@ struct PlanarUFFTOperator{PF,PB} <: AbstractMatrix{ComplexF64}
     output::Vector{ComplexF64}
 end
 
+# Retained dense assembly uses the same finite modal kernels, without the
+# four mode-by-element matvec buffers or the per-basis output vector.
+struct _PlanarFFTAssemblyWorkspace{PB}
+    n::Int
+    ne::Int
+    modes::PlanarModeGrid
+    families::Vector{_PlanarUFFTFamily}
+    k_te::Matrix{ComplexF64}
+    k_tm::Matrix{ComplexF64}
+    lattice::Matrix{ComplexF64}
+    backward::PB
+    local_loss::SparseMatrixCSC{ComplexF64,Int}
+end
+
 Base.size(A::PlanarUFFTOperator) = (A.n, A.n)
 Base.size(A::PlanarUFFTOperator, d::Integer) = d < 1 ?
     throw(ArgumentError("dimension must be positive")) : d <= 2 ? A.n : 1
@@ -95,12 +109,15 @@ end
 constructs the exact modal FFT operator.  The mode counts can exceed
 Nyquist; every analytic high-mode contribution is retained by alias folding.
 `max_bytes` bounds owned array payloads before FFT/kernel allocation."""
-function planar_ufft_operator(prob::PlanarProblem, freq::Number;
+planar_ufft_operator(prob::PlanarProblem, freq::Number;kw...) =
+    _planar_fft_workspace(prob,freq,Val(false);kw...)
+
+function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         mx::Integer=2prob.grid.nx, my::Integer=2prob.grid.ny,
         surface_zs=zero(ComplexF64), via_sigma=Inf, volume_sigma=Inf,
         sheet_coupling_zs=nothing,
         block::Integer=512,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES) where {dense}
     planar_validate(prob.stack)
     omega = 2pi * ComplexF64(freq)
     isfinite(omega) && real(omega) > 0 ||
@@ -109,6 +126,11 @@ function planar_ufft_operator(prob::PlanarProblem, freq::Number;
     block >= 1 || throw(ArgumentError("block must be >= 1"))
     nb = planar_basis_count(prob.basis)
     nb > 0 || throw(ArgumentError("FFT operator requires basis functions"))
+    # Discovery alone owns linear element/group/index arrays. Reject an
+    # insufficient budget before constructing those arrays; the complete
+    # estimate below still includes this same payload exactly once.
+    _enforce_payload_limit(_checked_array_payload_bytes(Int,8,nb),max_bytes,
+        "planar FFT discovery","max_bytes")
     _validate_planar_surface_zs(surface_zs,length(prob.sheets),prob.grid)
     _validate_planar_sheet_coupling(sheet_coupling_zs,length(prob.sheets),prob.grid)
     nmode = _checked_array_payload_bytes(UInt8, mx, my; label="FFT mode count")
@@ -124,12 +146,16 @@ function planar_ufft_operator(prob::PlanarProblem, freq::Number;
     L = length(prob.stack.layers)
     est = _checked_payload_sum("planar FFT",
         _checked_array_payload_bytes(ComplexF64, 2, nmode, ne, ne),
-        _checked_array_payload_bytes(ComplexF64, 4, nmode, ne),
+        dense ? 0 : _checked_array_payload_bytes(ComplexF64, 4, nmode, ne),
         _checked_array_payload_bytes(ComplexF64, 2prob.grid.nx, 2prob.grid.ny),
         _checked_array_payload_bytes(ComplexF64, 2, nf, mx + my),
         _checked_array_payload_bytes(Float64, 7, mx + my),
-        _checked_array_payload_bytes(Int, 3, nb),
-        _checked_array_payload_bytes(ComplexF64, nb),
+        # Element/group discovery, retained family indices and lattice
+        # locations, element-pair records and bounded mode-index blocks.
+        _checked_array_payload_bytes(Int, 8, nb),
+        _checked_array_payload_bytes(Int, 2, ne, ne),
+        _checked_array_payload_bytes(Int, 2, min(BigInt(nmode),BigInt(block))),
+        dense ? 0 : _checked_array_payload_bytes(ComplexF64, nb),
         _checked_array_payload_bytes(ComplexF64, length(prob.vias) + length(prob.vols)),
         _checked_array_payload_bytes(ComplexF64, 50, L + 1),
         # local loss sparse triplets and CSC; each basis has <=3 entries
@@ -180,8 +206,10 @@ function planar_ufft_operator(prob::PlanarProblem, freq::Number;
     loss = sparse(rows, cols, values, nb, nb)
     lattice = zeros(ComplexF64, 2prob.grid.nx, 2prob.grid.ny)
     # FFTW's supported plan API defaults to its inexpensive estimate.
-    forward = FFTW.plan_fft!(lattice)
     backward = FFTW.plan_bfft!(lattice)
+    dense && return _PlanarFFTAssemblyWorkspace(nb,ne,mg,families,k_te,k_tm,
+        lattice,backward,loss)
+    forward = FFTW.plan_fft!(lattice)
     src_te = zeros(ComplexF64, nmode, ne)
     src_tm = similar(src_te)
     dst_te, dst_tm = similar(src_te), similar(src_te)
