@@ -293,21 +293,46 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         keys=[_sonnet_expr(x,project,overrides,freq,active,depth+1) for x in ex.args[3:end]]
         return _sonnet_scalar_table_value(overrides,kind,ex.args[2],keys)
     end
-    ops=Dict{Symbol,Function}(Symbol("+") => (+), Symbol("-") => (-),
-        Symbol("*") => (*), Symbol("/") => (/), Symbol("^") => (^),
-        :sqrt => sqrt, :sin => sin, :cos => cos, :tan => tan,
-        :exp => exp, :ln => x->log(abs(x)), :log10 => x->log10(abs(x)), :abs => abs,
-        :h2p => x->x/project.frequency_scale,
-        :p2h => x->x*project.frequency_scale,
-        :m2p => x->x/project.length_scale,
-        :p2m => x->x*project.length_scale)
-    op=get(ops,ex.args[1],nothing)
-    op===nothing && throw(ArgumentError("unsupported Sonnet expression function $(ex.args[1])"))
-    ex.args[1] in (:h2p,:p2h,:m2p,:p2m) && length(ex.args)!=2 &&
-        throw(ArgumentError("native unit conversion requires exactly one scalar argument"))
-    ex.args[1] in (:ln,:log10) && length(ex.args)!=2 &&
-        throw(ArgumentError("native magnitude logarithm requires exactly one scalar argument"))
-    return op((_sonnet_expr(x,project,overrides,freq,active,depth+1) for x in ex.args[2:end])...)
+    # Dispatch directly instead of rebuilding a dictionary of boxed functions
+    # and project-capturing closures at every node in every material/provider
+    # evaluation. Fold the n-ary ASTs produced for native sums and products
+    # without constructing argument vectors or dynamic splat buffers.
+    op=ex.args[1];n=length(ex.args)-1
+    if op in (:+,:*)
+        n==0 && return op===:+ ? 0. : 1.
+        value=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
+        for i in 3:length(ex.args)
+            argument=_sonnet_expr(ex.args[i],project,overrides,freq,active,depth+1)
+            value=op===:+ ? value+argument : value*argument
+        end
+        return value
+    elseif op===:-
+        n in (1,2) || throw(ArgumentError("native subtraction requires one or two scalar arguments"))
+        a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
+        n==1 && return -a
+        return a-_sonnet_expr(ex.args[3],project,overrides,freq,active,depth+1)
+    elseif op in (:/,:^)
+        n==2 || throw(ArgumentError("native $op requires exactly two scalar arguments"))
+        a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
+        b=_sonnet_expr(ex.args[3],project,overrides,freq,active,depth+1)
+        return op===:/ ? a/b : a^b
+    elseif op in (:sqrt,:sin,:cos,:tan,:exp,:ln,:log10,:abs,:h2p,:p2h,:m2p,:p2m)
+        n==1 || throw(ArgumentError("native $op requires exactly one scalar argument"))
+        a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
+        op===:sqrt && return sqrt(a)
+        op===:sin && return sin(a)
+        op===:cos && return cos(a)
+        op===:tan && return tan(a)
+        op===:exp && return exp(a)
+        op===:ln && return log(abs(a))
+        op===:log10 && return log10(abs(a))
+        op===:abs && return abs(a)
+        op===:h2p && return a/project.frequency_scale
+        op===:p2h && return a*project.frequency_scale
+        op===:m2p && return a/project.length_scale
+        return a*project.length_scale
+    end
+    throw(ArgumentError("unsupported Sonnet expression function $op"))
 end
 
 """Evaluate a native scalar/variable expression without arbitrary code execution.

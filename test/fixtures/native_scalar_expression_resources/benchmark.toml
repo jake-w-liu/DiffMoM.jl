@@ -1,0 +1,11 @@
+scope = "Supported native scalar AST arithmetic, pre-parsed and public evaluation"
+julia_version = "1.12.7"
+expression = "sin(0.25)+cos(0.5)*sqrt(4)+ln(exp(2))+p2h(2)/FREQ"
+frequency_hz = 1000000000.0
+expected = 6.002569083035269
+before_prepared_allocated_bytes = 22128
+after_prepared_allocated_bytes = 3024
+before_public_allocated_bytes = 34528
+after_public_allocated_bytes = 15424
+before_10000_prepared_seconds = 0.4439707
+after_10000_prepared_seconds = 0.0099303
