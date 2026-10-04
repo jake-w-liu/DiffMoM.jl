@@ -79,6 +79,15 @@ end
     @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9;max_points=0)
     @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9;max_bytes=0)
     original=read(source,String)
+    invalid_fixture=joinpath(@__DIR__,"fixtures/native_invalid_nominal_geovar")
+    for (file,digest) in TOML.parsefile(joinpath(invalid_fixture,"sha256.toml"))["sha256"]
+        @test bytes2hex(sha256(read(joinpath(invalid_fixture,file))))==digest
+    end
+    @test occursin("Geo Variable Scaled Keyword not understood",
+        read(joinpath(invalid_fixture,"engine_stderr.log"),String))
+    invalid_nominal=read_sonnet_project(joinpath(invalid_fixture,"invalid_nominal.son"))
+    @test_throws ArgumentError DiffMoM._sonnet_geometry_project(invalid_nominal,1e9)
+    @test_throws ArgumentError sonnet_planar_problem(invalid_nominal;freq=1e9)
     # Nominal imported geometry remains valid for metadata that has no proved
     # displacement adapter. Every dimension must match NOM exactly.
     for row in TOML.parsefile(joinpath(fixture,"compatibility/index.toml"))["cases"]
@@ -96,7 +105,8 @@ end
     end
     mktempdir() do directory
         for mode in ("RAD","ANC")
-            text=replace(original," ANC "=>" $mode "," NSCD"=>" SCD",
+            scaling=mode=="RAD" ? "NSCD" : "SCXY"
+            text=replace(original," ANC "=>" $mode "," NSCD"=>" $scaling",
                 "VALVAR Width LNG 0.375"=>"VALVAR Width LNG 0.25")
             file=joinpath(directory,"nominal.son");write(file,text)
             nominal=read_sonnet_project(file)
@@ -104,6 +114,22 @@ end
             @test only(sonnet_planar_problem(nominal;freq=1e9).sheets).mask==
                 only(sonnet_planar_problem(p;freq=1e9,variables=Dict("Width"=>.25)).sheets).mask
             @test_throws ArgumentError DiffMoM._sonnet_geometry_project(nominal,1e9,Dict("Width"=>.375))
+        end
+    end
+    # Sonnet rejects these headers before evaluating NOM. The unchanged
+    # geometry shortcut must not accept malformed native dimension metadata.
+    mktempdir() do directory
+        nominal=replace(original,"VALVAR Width LNG 0.375"=>"VALVAR Width LNG 0.25")
+        for (from,to) in ((" NSCD"," SCD"),(" ANC "," INVALID "),
+                ("YDIR 1","ZDIR 1"),("YDIR 1","YDIR 0"),
+                ("YDIR 1 NSCD","YDIR 1 NSCD EXTRA"))
+            file=joinpath(directory,"invalid_nominal.son")
+            write(file,replace(nominal,from=>to))
+            candidate=read_sonnet_project(file)
+            saved=deepcopy(candidate.polygons)
+            @test_throws ArgumentError DiffMoM._sonnet_geometry_project(candidate,1e9)
+            @test all(a.vertices==b.vertices for (a,b) in zip(candidate.polygons,saved))
+            @test_throws ArgumentError sonnet_planar_problem(candidate;freq=1e9)
         end
     end
     polygon=only(p.polygons)

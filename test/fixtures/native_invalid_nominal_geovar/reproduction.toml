@@ -1,0 +1,4 @@
+reader_accepted = true
+scope = "invalid SCD keyword is accepted only because the current nominal geometry fast path skips grammar validation"
+source_sha256 = "bf52b4599765ab24545b32c579c33ad77fa51e4de50c9bd798ec77884505860d"
+native_rejected_invalid_keyword = true

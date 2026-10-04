@@ -131,6 +131,9 @@ function _sonnet_geovar_nominal_geometry(p,frequency,variables)
     unchanged=true
     for (index,row) in enumerate(rows)
         t=row.tokens;t[1]=="GEOVAR" || continue
+        length(t)==6 && t[3] in ("ANC","SYM","RAD") && t[4] in ("XDIR","YDIR") &&
+            t[5] in ("1","-1") && t[6] in ("NSCD","SCUNI","SCXY") ||
+            _sonnet_error(p.source,row.line,"invalid GEOVAR dimension header")
         length(t)>=2 && haskey(p.variables,t[2]) && get(quantities,t[2],"")=="LNG" ||
             _sonnet_error(p.source,row.line,"GEOVAR lacks its declared LNG quantity variable")
         nominalrow=_sonnet_geovar_row(rows,index+2,p)
