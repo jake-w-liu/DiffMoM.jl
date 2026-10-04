@@ -131,18 +131,26 @@ end
         @test g.raw isa PlanarHybridResult
         @test abs(g.s[2,1])<.03
         @test opnorm(g.s)<=1+1e-10
-        # Native adjacent triangles form one genuine sheet with an actual
-        # diagonal source constraint, not an axis-aligned replacement.
+        # Native Sonnet rejects diagonal internal sources. The general
+        # physical conformal API supports this actual diagonal constraint.
         va=[.25e-3 .75e-3 .75e-3 .25e-3;.25e-3 .25e-3 .75e-3 .25e-3]
         vb=[.25e-3 .75e-3 .25e-3 .25e-3;.25e-3 .75e-3 .75e-3 .25e-3]
         polys=[SonnetPolygon(:sheet,0,-1,9,va,"","",String[]),SonnetPolygon(:sheet,0,-1,10,vb,"","",String[])]
         gap=SonnetPortSpec(:gap,9,2,1,["1","50","0","0","0",".5",".5"],SonnetRecord[])
         diagonal=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,p.metals,p.top,p.bottom,
             polys,[gap],p.variables,p.components,p.sweeps,p.records)
-        d=sonnet_conformal_layout(diagonal;sizes...)
-        @test only(d.layout.problem.ports).wall===:internal
-        @test sum(d.layout.problem.basis.width[d.layout.problem.basis.port.==1])≈sqrt(2)*.5e-3 rtol=1e-14
-        dr=solve_sonnet_conformal(diagonal,1e7;raw=true,sizes...,mx=24,my=24)
+        @test_throws ArgumentError sonnet_conformal_layout(diagonal;sizes...)
+        physical=PlanarPolygon[]
+        for poly in polys
+            v,b=planar_normalize_polygon([Tuple(col) for col in eachcol(poly.vertices)])
+            push!(physical,PlanarPolygon(string(poly.id),1,"pec","",v,b))
+        end
+        stack=DiffMoM._sonnet_stack_geometry(diagonal,1e7,nothing,Dict{String,Float64}()).stack
+        source=PlanarConformalPort(1,:internal,((.25e-3,.25e-3),(.75e-3,.75e-3)))
+        d=build_planar_conformal_layout(stack,physical,[source];sizes...)
+        @test only(d.problem.ports).wall===:internal
+        @test sum(d.problem.basis.width[d.problem.basis.port.==1])≈sqrt(2)*.5e-3 rtol=1e-14
+        dr=solve_planar_conformal(d.problem,1e7;mx=24,my=24)
         @test imag(dr.y[1,1])>0
         @test abs(dr.s[1,1])≈1 rtol=1e-10
         # Sheet-free native axial sources retain their established bulk

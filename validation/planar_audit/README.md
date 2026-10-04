@@ -67,11 +67,12 @@ wall excitation and undriven wall grounding. It preserves complete matrices
 at the unchanged 1e-12 identity gate and checks importer acceptance/rejection.
 The original incorrect responses remain in the immutable fixture reports.
 
-`run_internal_port_attachment_reference.jl` replays 17 native shared-edge,
+`run_internal_port_attachment_reference.jl` replays 21 native shared-edge,
 partial-overlap, annotation, kind-alias and invalid-return controls. Both
 axes have two-port phase controls referenced from either adjacent polygon.
 It checks complete retained matrices at the unchanged 1e-12 identity gate
-and importer acceptance/rejection. Original failures remain immutable.
+and raster/conformal acceptance/rejection, including four diagonal source
+rejections. Original failures remain immutable.
 
 `run_whole_geovar_reference.jl` replays sixteen whole-polygon zero-count,
 explicit vertex-list and independent literal triples. It checks native full

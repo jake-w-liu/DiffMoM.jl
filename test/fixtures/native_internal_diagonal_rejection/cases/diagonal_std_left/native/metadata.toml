@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_internal_diagonal_contract_rmgnFe\\std_left.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T23:13:27.034"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T23:13:26.881"
+source_sha256 = "96c86313deeb26417675f25eac4df17fc22eb2210697b66bb274f38914fa4709"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_internal_diagonal_contract_rmgnFe\\std_left\\std_left.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\native_internal_diagonal_contract_rmgnFe\\\\std_left\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

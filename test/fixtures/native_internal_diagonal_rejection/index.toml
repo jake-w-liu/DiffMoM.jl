@@ -1,0 +1,21 @@
+scope = "Native rejects diagonal internal BOX/STD/GAP ports; original conformal false acceptances preserved. No native full-S claim for rejected inputs."
+
+[[cases]]
+name = "diagonal_std_left"
+native_status = "REJECT"
+nports = 2
+
+[[cases]]
+name = "diagonal_std_right"
+native_status = "REJECT"
+nports = 2
+
+[[cases]]
+name = "diagonal_box_left"
+native_status = "REJECT"
+nports = 2
+
+[[cases]]
+name = "diagonal_gap_left"
+native_status = "REJECT"
+nports = 2

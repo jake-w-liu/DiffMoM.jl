@@ -98,4 +98,30 @@ end
     end
     @test all(maximum(abs,m-matrices[1])<=1e-10 for m in matrices)
 end
+@testset "Native diagonal internal sources reject before conformal lowering" begin
+    folder=joinpath(@__DIR__,"fixtures/native_internal_diagonal_rejection")
+    hashes=TOML.parsefile(joinpath(folder,"sha256.toml"))["sha256"]
+    for (path,digest) in hashes
+        @test bytes2hex(sha256(read(joinpath(folder,path))))==digest
+    end
+    before=TOML.parsefile(joinpath(folder,"original_before_comparison.toml"))
+    @test before["source_unchanged"]
+    @test bytes2hex(sha256(read(joinpath(folder,"source_before/PlanarSonnetConformal.jl"))))==before["source_before"]["src\\planar\\PlanarSonnetConformal.jl"]
+    cases=TOML.parsefile(joinpath(folder,"index.toml"))["cases"]
+    @test length(cases)==4
+    for row in cases
+        path=joinpath(folder,"cases",row["name"]);p=read_sonnet_project(joinpath(path,"project.son"))
+        saved=deepcopy(p);metadata=TOML.parsefile(joinpath(path,"native/metadata.toml"))
+        @test !metadata["process_success"]
+        @test metadata["source_sha256"]==bytes2hex(sha256(read(p.source)))
+        @test occursin("Port 1 is diagonal",read(joinpath(path,"native/engine_stderr.log"),String))
+        for route in (q->sonnet_planar_problem(q),
+            q->sonnet_conformal_layout(q;edge_size=.125e-3,interior_size=.25e-3))
+            err=try;route(p);nothing;catch err;err;end
+            @test err isa ArgumentError && occursin("diagonal",sprint(showerror,err))
+        end
+        @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved.polygons))
+        @test all(a.values==b.values for (a,b) in zip(p.ports,saved.ports))
+    end
+end
 end

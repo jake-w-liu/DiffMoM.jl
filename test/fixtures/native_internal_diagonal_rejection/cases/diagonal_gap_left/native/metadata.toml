@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_internal_diagonal_contract_rmgnFe\\gap_left.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T23:13:37.037"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T23:13:36.088"
+source_sha256 = "61040fbca26012ad98be946f83dac883c8e615f29f5615b74f079981fb8ccdba"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_internal_diagonal_contract_rmgnFe\\gap_left\\gap_left.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\native_internal_diagonal_contract_rmgnFe\\\\gap_left\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

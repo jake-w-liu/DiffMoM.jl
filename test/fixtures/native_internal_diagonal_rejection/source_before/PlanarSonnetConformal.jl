@@ -3,8 +3,8 @@ export sonnet_conformal_layout,solve_sonnet_conformal
 """Lower a native Sonnet project onto genuine physical sheet triangles.
 The native stack/material helper preserves SI units, variable expressions,
 cover impedances, dielectric loss and physical two-face thick geometry.
-Sheet polygons are unioned exactly, with material seams and shared axial
-source cuts. Tiny sheet features do not pass through a raster lowerer.
+Sheet polygons are unioned exactly, with material seams and shared diagonal
+gap cuts. Tiny sheet features do not pass through a raster lowerer.
 `edge_size,interior_size` declare independent physical mesh bounds.
 
 Via columns retain the native uniform-grid SOLID/RING/CENTER/VERTICES/BAR
@@ -123,8 +123,6 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
             a[2]==b[2]==0. ? :south : a[2]==b[2]==stack.b ? :north : nothing
         if wall===nothing
             ps.number!=0 || throw(ArgumentError("native interior port zero requires its explicit reference conductor"))
-            (a[1]==b[1] || a[2]==b[2]) ||
-                throw(ArgumentError("native internal port is diagonal"))
             a,b=_sonnet_shared_port_segment(p,poly,i,j)
             # Native internal source orientation is independent of which
             # adjacent polygon is referenced; match positive raster axes.

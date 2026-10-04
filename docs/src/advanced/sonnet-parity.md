@@ -301,6 +301,11 @@ plus two-port orientation controls on both axes, retain the 0.005 full-S and 1e-
 gates in `test/fixtures/native_internal_port_attachment` and
 `test/fixtures/native_internal_port_orientation` and
 `test/fixtures/native_internal_y_port_orientation`.
+Native Sonnet rejects diagonal internal ports. The native conformal adapter
+enforces that restriction, backed by four independent BOX/STD/GAP rejection
+controls in `test/fixtures/native_internal_diagonal_rejection`. General
+physical diagonal sources remain available through `PlanarConformalPort`
+and `build_planar_conformal_layout`.
 A repeated whole-polygon control confirms the native rejection when its port edge extends
 outside the box; `test/fixtures/native_geovar_box_port_extent` retains the
 engine error and independent native-normalizer stages.
