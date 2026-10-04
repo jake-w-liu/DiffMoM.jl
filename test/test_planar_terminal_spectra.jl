@@ -76,5 +76,52 @@ using DiffMoM, Test, LinearAlgebra, Random
         @test dense.s≈transpose(dense.s) rtol=1e-10
         fast=solve_planar_ufft(prob,7e9;memory=100,rtol=1e-10,kw...)
         @test fast.s≈dense.s rtol=2e-9
+        # High modes select folded storage even with separate cosine/sine
+        # channels for all four translated terminal-half orientations.
+        highkw=merge(kw,(;mx=65,my=63))
+        high=solve_planar(prob,7e9;highkw...)
+        for block in (1,7,512,typemax(Int))
+            images=planar_ufft_operator(prob,7e9;highkw...,block)
+            # The oversized block may select retained storage; every
+            # smaller block must exercise the translated image channels.
+            block==typemax(Int) || @test images.folded!==nothing
+            if images.folded!==nothing
+                @test length(images.folded.images)>length(images.families)
+                @test size(images.folded.spectra,3)==length(images.families)*length(images.folded.images)
+            end
+            @test images*x≈high.z_mom*x rtol=2e-12
+            @test G._planar_ufft_diagonal(images)≈diag(high.z_mom) rtol=2e-12
+            @test G._planar_fft_dense_fill!(similar(high.z_mom),images)≈high.z_mom rtol=2e-12
+            aliased=copy(x);mul!(aliased,images,aliased)
+            @test aliased≈high.z_mom*x rtol=2e-12
+            out=similar(x);mul!(out,images,x)
+            @test (@allocated mul!(out,images,x))==0
+        end
+        highfast=solve_planar_ufft(prob,7e9;memory=100,rtol=1e-10,highkw...)
+        @test highfast.operator.folded!==nothing
+        @test highfast.s≈high.s rtol=2e-9
+        @test highfast.currents≈high.currents rtol=1e-8
+        @test maximum(highfast.relative_residuals)<1e-10
+        # Wall and translated halves can belong to the same kind/element
+        # family. Its two source channels must also preserve the wall rows.
+        mixedsheet=sheet_level(1,grid.nx,grid.ny);mixedsheet.mask.=sh.mask
+        # Separate corner cells add box-wall halves without closing any
+        # of the existing open terminal edges.
+        mixedsheet.mask[[1,grid.nx],[1,grid.ny]].=true
+        mixedsheet.connect_west[[1,grid.ny]].=true
+        mixedsheet.connect_east[[1,grid.ny]].=true
+        mixedsheet.connect_south[[1,grid.nx]].=true
+        mixedsheet.connect_north[[1,grid.nx]].=true
+        mixed=build_planar_problem(stack,grid,[mixedsheet],ports)
+        mixedmatrix=assemble_planar_z(stack,grid,[mixedsheet],mixed.basis,2pi*7e9;highkw...)
+        mixedoperator=planar_ufft_operator(mixed,7e9;highkw...)
+        @test mixedoperator.folded!==nothing
+        @test any(f->f.kind==G._BASIS_X_LO &&
+            any(z->rem(z-1,2grid.nx)==0,f.lattice) &&
+            any(z->rem(z-1,2grid.nx)==1,f.lattice),mixedoperator.families)
+        mixedx=randn(MersenneTwister(632),ComplexF64,size(mixedmatrix,1))
+        @test mixedoperator*mixedx≈mixedmatrix*mixedx rtol=2e-12
+        @test G._planar_ufft_diagonal(mixedoperator)≈diag(mixedmatrix) rtol=2e-12
+        @test G._planar_fft_dense_fill!(similar(mixedmatrix),mixedoperator)≈mixedmatrix rtol=2e-12
     end
 end

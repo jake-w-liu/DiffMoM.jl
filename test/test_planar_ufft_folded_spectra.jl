@@ -133,8 +133,8 @@ end
             # to the independently assembled Galerkin modal equation.
             A=planar_ufft_operator(prob,8e9;kw...,_fold_iterative=false)
             mg=A.modes;nf=length(A.families);ne=size(A.source_te,2)
-            images=[DiffMoM._ufft_source_images(f,prob.grid) for f in A.families]
-            spectra=zeros(ComplexF64,size(A.lattice)...,nf*nf)
+            images=DiffMoM._ufft_source_images(A.families,prob.grid)
+            spectra=zeros(ComplexF64,size(A.lattice)...,nf*length(images))
             mlist=[m+1 for n in 0:my-1 for m in 0:mx-1]
             nlist=[n+1 for n in 0:my-1 for m in 0:mx-1]
             DiffMoM._planar_fft_fold_images_block!(spectra,A.families,images,ne,mg,

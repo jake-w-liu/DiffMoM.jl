@@ -19,20 +19,56 @@ struct _PlanarUFFTFamily
 end
 
 struct _PlanarUFFTSourceImages
+    source::Int
     halfx::Bool
     halfy::Bool
     sinx::Bool
     siny::Bool
     shiftx::Bool
     shifty::Bool
+    projection::UInt8
 end
 
-function _ufft_source_images(source,grid)
+@inline function _ufft_translated_half(kind,xi,yi,grid)
+    k=_sheet_kind(kind)
+    return (k in (_BASIS_X_LO,_BASIS_X_HI) && !(xi in (0,grid.nx))) ||
+        (k in (_BASIS_Y_LO,_BASIS_Y_HI) && !(yi in (0,grid.ny)))
+end
+
+function _ufft_family_translated_half(source,grid)
+    px=2grid.nx
+    any(z->_ufft_translated_half(source.kind,rem(z-1,px),(z-1)÷px,grid),source.lattice)
+end
+
+function _ufft_source_images(source,grid,si,projection=0)
     k=_sheet_kind(source.kind);via=_is_via_kind(source.kind);xd=_is_xdir(source.kind)
     pec=grid.walls===WALL_PEC
-    return _PlanarUFFTSourceImages(k in (_BASIS_X_LO,_BASIS_X_HI),
-        k in (_BASIS_Y_LO,_BASIS_Y_HI),via || !xd ? pec : !pec,
-        via || xd ? pec : !pec,via || !xd,via || xd)
+    projectx=projection in (1,2);projecty=projection in (3,4)
+    return _PlanarUFFTSourceImages(si,!projectx && k in (_BASIS_X_LO,_BASIS_X_HI),
+        !projecty && k in (_BASIS_Y_LO,_BASIS_Y_HI),
+        projectx ? projection==2 : via || !xd ? pec : !pec,
+        projecty ? projection==4 : via || xd ? pec : !pec,
+        via || !xd,via || xd,UInt8(projection))
+end
+
+function _ufft_source_images(families::Vector{_PlanarUFFTFamily},grid,
+        nimages=length(families)+count(f->_ufft_family_translated_half(f,grid),families))
+    images=Vector{_PlanarUFFTSourceImages}(undef,nimages);ci=0
+    for (si,source) in enumerate(families)
+        if _ufft_family_translated_half(source,grid)
+            # A translated half ramp contains independent cosine and sine
+            # transforms. Each has its own reflection parity; combining
+            # the two coefficients is valid only on a box wall.
+            firstprojection=_is_xdir(source.kind) ? 1 : 3
+            for projection in firstprojection:firstprojection+1
+                ci+=1;images[ci]=_ufft_source_images(source,grid,si,projection)
+            end
+        else
+            ci+=1;images[ci]=_ufft_source_images(source,grid,si)
+        end
+    end
+    ci==nimages || error("FFT source image count differs from preflight")
+    return images
 end
 
 @inline _ufft_image_signs(half::Bool)=half ? (1,) : (1,-1)
@@ -162,7 +198,8 @@ end
 """`planar_ufft_operator(problem, freq; mx=2nx, my=2ny, ...)`
 constructs the exact modal FFT operator.  The mode counts can exceed
 Nyquist; every analytic high-mode contribution is retained by alias folding.
-When smaller, bounded modal blocks are folded into one spectrum per family pair;
+When smaller, bounded modal blocks are folded into family-pair spectra;
+translated terminal halves retain separate cosine and sine source channels.
 matvecs then use lattice convolutions without mode-by-element work arrays.
 `max_bytes` bounds owned array payloads before FFT/kernel allocation."""
 planar_ufft_operator(prob::PlanarProblem, freq::Number;kw...) =
@@ -197,6 +234,11 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     ne = length(uniq)
     group_keys = unique([(elements[p], prob.basis.kind[p]) for p in 1:nb])
     nf = length(group_keys)
+    nimages=nf+count(group_keys) do key
+        e,k=key
+        any(p->elements[p]==e && prob.basis.kind[p]==k &&
+            _ufft_translated_half(k,prob.basis.ei[p],prob.basis.ej[p],prob.grid),1:nb)
+    end
     loss_links=sheet_coupling_zs===nothing ? 0 : maximum(
         sum(!iszero(sheet_coupling_zs[i,j]) for j in axes(sheet_coupling_zs,2))
         for i in axes(sheet_coupling_zs,1);init=0)
@@ -204,10 +246,10 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     kernel_block=Int(min(BigInt(nmode),BigInt(block)))
     full_kernel_bytes=32BigInt(nmode)*ne*ne
     block_kernel_bytes=32BigInt(kernel_block)*ne*ne
-    pair_spectrum_bytes=16BigInt(nf)*nf*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
-    dense_folded_bytes=block_kernel_bytes+4pair_spectrum_bytes
-    iterative_folded_bytes=block_kernel_bytes+pair_spectrum_bytes+
-        _checked_array_payload_bytes(_PlanarUFFTSourceImages,nf)
+    grid_spectrum_bytes=16BigInt(2)*prob.grid.nx*(2BigInt(prob.grid.ny))
+    dense_folded_bytes=block_kernel_bytes+4BigInt(nf)*nf*grid_spectrum_bytes
+    iterative_folded_bytes=block_kernel_bytes+BigInt(nf)*nimages*grid_spectrum_bytes+
+        _checked_array_payload_bytes(_PlanarUFFTSourceImages,nimages)
     fold_dense=dense && _fold_dense && dense_folded_bytes<full_kernel_bytes
     modal_work_bytes=64BigInt(nmode)*ne
     folded_work_bytes=16BigInt(nf)*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
@@ -245,8 +287,8 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     k_te = Matrix{ComplexF64}(undef, fold_kernels ? kernel_block : nmode, ne * ne)
     k_tm = similar(k_te)
     spectra=fold_kernels ? zeros(ComplexF64,2prob.grid.nx,2prob.grid.ny,
-        (fold_dense ? 4 : 1)*nf*nf) : nothing
-    images=fold_iterative ? [_ufft_source_images(f,prob.grid) for f in families] : nothing
+        nf*(fold_dense ? 4nf : nimages)) : nothing
+    images=fold_iterative ? _ufft_source_images(families,prob.grid,nimages) : nothing
     vlay = sort!(unique([v.layer for v in prob.vias]))
     volay = sort!(unique([v.layer for v in prob.vols]))
     cte, ctm, scratch, vsts, volsts = _planar_mode_workspace(L, !isempty(vlay), !isempty(volay))
@@ -421,8 +463,9 @@ end
 function _planar_ufft_folded_apply!(A,x,folded::_PlanarUFFTFoldedWorkspace)
     F=A.lattice;px,py=size(F);nf=length(A.families);fields=folded.fields
     fill!(fields,0)
-    for (si,source) in enumerate(A.families)
-        image=folded.images[si];fill!(F,0)
+    nc=length(folded.images)
+    for (ci,image) in enumerate(folded.images)
+        source=A.families[image.source];fill!(F,0)
         for q in eachindex(source.indices)
             z=source.lattice[q]-1;xs,ys=rem(z,px),z÷px
             for rx in _ufft_image_signs(image.halfx),ry in _ufft_image_signs(image.halfy)
@@ -432,7 +475,7 @@ function _planar_ufft_folded_apply!(A,x,folded::_PlanarUFFTFoldedWorkspace)
         end
         A.forward*F
         for fi in 1:nf
-            K=view(folded.spectra,:,:,(fi-1)*nf+si)
+            K=view(folded.spectra,:,:,(fi-1)*nc+ci)
             # Constructor-owned spectra share F's lattice dimensions;
             # fields has length(F) rows and one column per family.
             @inbounds for t in eachindex(F)
@@ -495,11 +538,11 @@ function _planar_ufft_diagonal(A::PlanarUFFTOperator)
 end
 
 function _planar_ufft_folded_diagonal(A,folded::_PlanarUFFTFoldedWorkspace)
-    F=A.lattice;px,py=size(F);nf=length(A.families)
+    F=A.lattice;px,py=size(F);nc=length(folded.images)
     d=zeros(ComplexF64,A.n)
-    for (fi,family) in enumerate(A.families)
-        image=folded.images[fi]
-        copyto!(F,view(folded.spectra,:,:,(fi-1)*nf+fi));A.backward*F
+    for (ci,image) in enumerate(folded.images)
+        fi=image.source;family=A.families[fi]
+        copyto!(F,view(folded.spectra,:,:,(fi-1)*nc+ci));A.backward*F
         for q in eachindex(family.indices)
             z=family.lattice[q]-1;xs,ys=rem(z,px),z÷px
             for rx in _ufft_image_signs(image.halfx),ry in _ufft_image_signs(image.halfy)

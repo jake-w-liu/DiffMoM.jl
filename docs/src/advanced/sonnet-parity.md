@@ -1050,9 +1050,11 @@ ladder remain open.
   source `a028459b`, under local `data/planar_audit`.
   Evidence: `dxf_folded_iterative_operator_audit_ZRgNgt` under local
   `data/planar_audit`, anchored to source `a028459b`.
-  Source images now combine the four signed source terms into one spectrum
-  per family pair, preserving half-rooftop mixed coefficients at walls.
-  The current 4096-mode operator retains 70167892 bytes of Julia arrays;
+  Source images combine the four signed source terms into one spectrum
+  per family pair for box-wall halves. Translated interior terminal halves
+  retain two separate cosine/sine source channels, including families that
+  contain both wall and interior halves; both channels are reserved before
+  allocation. The `07aa67c4` 4096-mode operator retains 70167892 bytes of Julia arrays;
   its spectrum payload falls from 226492416 to 56623104 bytes. Against the
   full finite-modal matrix, action and diagonal relative errors are
   1.76e-15 and 1.61e-16, with zero warmed matvec allocation. Evidence:
@@ -1067,6 +1069,13 @@ ladder remain open.
   reference by 2.5044e-9. Native error remains 0.06492637, **FAIL** at 0.06.
   Evidence: `dxf_source_images_public_solve_zpuQlw`; this run began with
   uncommitted edits, and its recorded source hashes match `07aa67c4`.
+  After the translated-terminal correction, a fresh 4096-mode DXF action
+  and diagonal replay retains 70167952 bytes, with relative errors
+  1.76e-15/1.61e-16 and zero warmed allocation
+  (`dxf_translated_source_images_operator_audit_nbpnaQ`). The additional
+  descriptor fields explain the 60-byte increase; the DXF spectrum
+  payload is unchanged. This replay compares the full finite matrix and
+  does not replace the source-specific native accuracy result above.
   Public dense assembly retains its original bit-identical summation order;
   materializing an iterative image operator changes floating-point grouping
   and uses the same 2e-12 independent equation gate.
@@ -1297,6 +1306,7 @@ ladder remain open.
 | Matrix-free FFT retains high-mode kernels and four mode-by-element buffers / measured resource use | DXF mode4096 rejects the 4 GB limit because its estimate is 8.061 GB | choose smaller family-pair spectra plus reusable grid fields; the same public operator fits the unchanged budget and retains 240 MB of Julia arrays, with full-matrix action error 1.66e-15 and zero warmed matvec allocation; independent mixed PEC/PMC modal matrices, all wall halves, local/coupled losses and port solves gate correctness; peak process memory and DXF physical acceptance remain unverified |
 | Folded iterative FFT stores four signed spectra per family pair / measured resource use | preceding 4096-mode DXF operator retains 240037168 bytes, including 226492416 spectrum bytes | reflected source images reduce spectrum storage to one quarter and total retained arrays to 70167892 bytes; full finite-matrix action/diagonal errors 1.76e-15/1.61e-16, zero warmed allocation, independent low/aliased-mode equations and exact preflight boundary tests; public dense summation order is unchanged |
 | Uniform FFT accepts vectors borrowed from its own scratch arrays / correctness | input aliases of output/field buffers silently change the equation; an output alias with nonzero beta loses its initial values, producing relative errors up to 1.0 | reject owned workspace aliases before mutation for retained and folded operators; ordinary input/output aliasing and strided views remain supported, with zero warmed allocation |
+| Source-image folding combines translated half-rooftop coefficients as if on a box wall / correctness | full package tests catch six failed action, diagonal and port-response checks for interior terminals in `07aa67c4` | preserve separate cosine/sine channels for translated halves, including mixed wall/interior families; independent original equations, materialized matrices, currents, complete port responses and preflight limits gate the correction |
 | Folded accumulation checks owned indices and public results erase FFT plan types / measured CPU and allocations | paired mixed PEC/PMC prototypes spend 17–32% less time with the owned accumulation ranges unchecked; real physical result matvec calls allocate48 bytes despite zero allocation through concrete operators | remove checks only inside the constructor-sized accumulation loop and retain the concrete operator type in `PlanarUFFTResult`; original vector/input indexing and preflight guards remain checked; outputs stay bit-identical in scoped prototypes, and public result/legacy-constructor matvec allocation is gated at zero; timings are workload-specific and do not certify global optimization |
 | Finite wide circuit scalars lose stored invariants / numerical and state correctness | finite BigFloat R/L become infinity; positive C and nonzero transformer ratios become zero in owned elements | validate stored Float64 values before mutation; invalid inputs leave elements/nodes/ports unchanged, explicit zero and representable wide values remain supported |
 | Circuit frequency overflow/underflow after callbacks / public workflow correctness | pure network input frequencies `1e1000`/`1e-1000` return result frequencies infinity/zero after two callbacks | preflight the stored frequency before providers; invalid frequencies invoke zero callbacks, valid wide inputs use finite Float64 provider/result frequencies |

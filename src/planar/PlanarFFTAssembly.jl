@@ -60,27 +60,33 @@ function _planar_fft_fold_dense_block!(spectra::Array{ComplexF64,3},
     return nothing
 end
 
-# Half rooftops lie on the wall in their ramp direction: both reflected
-# lattice coordinates coincide, so sum their distinct Hc/Hs coefficients
-# in the spectrum. Other axes use the parity/shift of source images.
+# At a box wall both reflected half-rooftop coordinates coincide. Interior
+# terminal halves instead have separate symmetric/antisymmetric channels.
+# Each channel uses its own reflection parity and the original transforms.
+Base.@propagate_inbounds function _ufft_image_coefficient(plus,minus,mode,sign,half,projection)
+    projection==1 && return (plus[mode]+minus[mode])/2
+    projection==2 && return sign*(plus[mode]-minus[mode])/2
+    return half ? plus[mode]+minus[mode] : sign==1 ? plus[mode] : minus[mode]
+end
+
 function _planar_fft_fold_images_block!(spectra::Array{ComplexF64,3},
         families,images,ne,mg,k_te,k_tm,mlist,nlist,count)
-    nf=length(families)
-    for (fi,field) in enumerate(families),(si,source) in enumerate(families)
-        pair=(field.element-1)*ne+source.element;image=images[si]
+    nc=length(images)
+    for (fi,field) in enumerate(families),(ci,image) in enumerate(images)
+        source=families[image.source];pair=(field.element-1)*ne+source.element
         fv,sv=_is_via_kind(field.kind),_is_via_kind(source.kind)
         fx,sxdir=_is_xdir(field.kind),_is_xdir(source.kind)
-        F=view(spectra,:,:,(fi-1)*nf+si);px,py=size(F)
+        F=view(spectra,:,:,(fi-1)*nc+ci);px,py=size(F)
         # Constructor-owned coefficient ranges and bounded mode/pair
         # indices are valid; every spectral index is reduced to the grid.
         @inbounds for q in 1:count
             m=mlist[q]-1;n=nlist[q]-1
             kernel=_planar_fft_family_kernel(k_te[q,pair],k_tm[q,pair],fv,sv,fx,sxdir,mg.kx[m+1],mg.ky[n+1])
             for sx in (-1,1),sy in (-1,1)
-                cx=image.halfx ? source.xplus[m+1]+source.xminus[m+1] :
-                    sx==1 ? source.xplus[m+1] : source.xminus[m+1]
-                cy=image.halfy ? source.yplus[n+1]+source.yminus[n+1] :
-                    sy==1 ? source.yplus[n+1] : source.yminus[n+1]
+                cx=_ufft_image_coefficient(source.xplus,source.xminus,m+1,sx,image.halfx,
+                    image.projection<=2 ? image.projection : 0)
+                cy=_ufft_image_coefficient(source.yplus,source.yminus,n+1,sy,image.halfy,
+                    image.projection>=3 ? image.projection-2 : 0)
                 F[mod(sx*m,px)+1,mod(sy*n,py)+1]+=
                     kernel*_planar_family_coefficient(field,m,n,sx,sy)*cx*cy
             end
@@ -90,10 +96,10 @@ function _planar_fft_fold_images_block!(spectra::Array{ComplexF64,3},
 end
 
 function _planar_fft_images_dense_kernels!(Z,A,folded)
-    F=A.lattice;px,py=size(F);nf=length(A.families)
-    for (fi,field) in enumerate(A.families),(si,source) in enumerate(A.families)
-        image=folded.images[si]
-        copyto!(F,view(folded.spectra,:,:,(fi-1)*nf+si));A.backward*F
+    F=A.lattice;px,py=size(F);nc=length(folded.images)
+    for (fi,field) in enumerate(A.families),(ci,image) in enumerate(folded.images)
+        source=A.families[image.source]
+        copyto!(F,view(folded.spectra,:,:,(fi-1)*nc+ci));A.backward*F
         for q in eachindex(source.indices)
             sq=source.lattice[q]-1;xs,ys=rem(sq,px),sq÷px
             for rx in _ufft_image_signs(image.halfx),ry in _ufft_image_signs(image.halfy)
