@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_kinds_4xFMBY\\box_isolated.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T22:44:53.050"
+response_nports = 1
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T22:44:52.340"
+source_sha256 = "4f789a0a3bf0bc306efd7dbe2992684724368e16fa49e156d7fbc06c559be74d"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_kinds_4xFMBY\\box_isolated\\box_isolated.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\native_interior_edge_kinds_4xFMBY\\\\box_isolated\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

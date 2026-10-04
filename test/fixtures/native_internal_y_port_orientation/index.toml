@@ -1,0 +1,11 @@
+scope = "Independent native y-axis two-port orientation controls, positive verification of both references after canonical conformal orientation."
+
+[[cases]]
+name = "y_left_reference"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "y_right_reference"
+native_status = "ACCEPT"
+nports = 2

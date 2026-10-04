@@ -97,6 +97,36 @@ function _sonnet_port_edge_indices(vertices,edge)
     return edge+1,mod1(edge+2,n)
 end
 
+function _sonnet_shared_port_segment(p,poly,first,second)
+    v=poly.vertices;a=(v[1,first],v[2,first]);b=(v[1,second],v[2,second])
+    a!=b || throw(ArgumentError("native port has a degenerate edge"))
+    axis=abs(b[1]-a[1])>=abs(b[2]-a[2]) ? 1 : 2
+    lower,upper=minmax(a[axis],b[axis]);shared=nothing
+    for other in p.polygons
+        other.kind===:sheet && other.level==poly.level && other.id!=poly.id || continue
+        w=other.vertices;n=_sonnet_polygon_edge_count(w)
+        for i in 1:n
+            j=mod1(i+1,n);c=(w[1,i],w[2,i]);d=(w[1,j],w[2,j])
+            lo=max(lower,min(c[axis],d[axis]));hi=min(upper,max(c[axis],d[axis]))
+            lo<hi || continue
+            collinear=if a[1]==b[1]
+                c[1]==d[1]==a[1]
+            elseif a[2]==b[2]
+                c[2]==d[2]==a[2]
+            else
+                iszero(_planar_orient2d(a...,b...,c...)) && iszero(_planar_orient2d(a...,b...,d...))
+            end
+            collinear || continue
+            shared===nothing || throw(ArgumentError("more than two polygon edges coincide with native port edge"))
+            low=a[axis]==lo ? a : b[axis]==lo ? b : c[axis]==lo ? c : d
+            high=a[axis]==hi ? a : b[axis]==hi ? b : c[axis]==hi ? c : d
+            shared=a[axis]<b[axis] ? (low,high) : (high,low)
+        end
+    end
+    shared===nothing && throw(ArgumentError("native internal port has no adjacent return polygon edge"))
+    return shared
+end
+
 function _sonnet_box_port_edge_inside(vertices,edge,a,b,nx,ny)
     first,second=_sonnet_port_edge_indices(vertices,edge)
     return -.5001<(vertices[1,first]/a)*nx<nx+.5001 &&
@@ -1160,18 +1190,23 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         end
         poly.kind==:sheet || throw(ArgumentError("sheet port must reference a sheet"))
         index,next=_sonnet_port_edge_indices(poly.vertices,ps.edge)
-        if ps.kind==:gap
-            x,y=val(q[6])*ls,val(q[7])*ls
-            v=poly.vertices
-            dx,dy=v[:,next]-v[:,index]
+        v=poly.vertices
+        _sonnet_box_port_edge_inside(v,ps.edge,a,b,native_nx,native_ny) ||
+            throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
+        wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
+            v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north : nothing
+        if wall===nothing
+            ps.number!=0 || throw(ArgumentError("interior native port zero requires an explicit ground return adapter"))
+            start,finish=_sonnet_shared_port_segment(p,poly,index,next)
+            dx,dy=finish[1]-start[1],finish[2]-start[2]
             abs(dx)<=1e-8*max(a,b) || abs(dy)<=1e-8*max(a,b) ||
                 throw(ArgumentError("diagonal native gap port requires a conformal terminal adapter"))
             direction=abs(dx)<abs(dy) ? :x : :y
-            edge=round(Int,direction==:x ? x/gr.dx : y/gr.dy)
-            coordinate=direction==:x ? x/gr.dx : y/gr.dy
+            coordinate=direction==:x ? start[1]/gr.dx : start[2]/gr.dy
+            edge=round(Int,coordinate)
             abs(coordinate-edge)<=1e-7 || throw(ArgumentError("gap port is not aligned to the selected raster grid"))
             sh=sheets[sheetidx[poly.level]]
-            lower,upper=extrema(direction==:x ? v[2,[index,next]] : v[1,[index,next]])
+            lower,upper=direction==:x ? minmax(start[2],finish[2]) : minmax(start[1],finish[1])
             spacing=direction==:x ? gr.dy : gr.dx
             candidates=findall(cell->lower<=(cell-.5)*spacing<=upper,
                 1:(direction==:x ? ny : nx))
@@ -1183,12 +1218,6 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             push!(port_weights,1.)
             continue
         end
-        _sonnet_box_port_edge_inside(poly.vertices,ps.edge,a,b,native_nx,native_ny) ||
-            throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
-        v=poly.vertices
-        wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
-            v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north :
-            throw(ArgumentError("native box port $(ps.number) is not on a box wall"))
         mask=masks[poly.id]
         occupied=wall==:west ? (@view mask[1,:]) : wall==:east ? (@view mask[end,:]) :
             wall==:south ? (@view mask[:,1]) : (@view mask[:,end])

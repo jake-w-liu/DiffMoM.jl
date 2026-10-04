@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_contract_xmgxHV\\gap_baseline.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T22:39:41.049"
+response_nports = 1
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [95]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T22:39:40.049"
+source_sha256 = "2218792e3993b765e71413f0b6c608a4659724a332a55d6684cad79fd3ecc4c1"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_contract_xmgxHV\\gap_baseline\\gap_baseline.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\native_interior_edge_contract_xmgxHV\\\\gap_baseline\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "77c7323a976ad0d02e58ba34a5b65f98672111c039bf73615ce6bf034bcb2971"
+intended_deembedded = false
+max_difference = 5.451834023314325e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_contract_xmgxHV\\gap_baseline\\native_raw.s1p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0]]
+max_printed_bound_ratio = 0.6211747804659693
+intended_log_section = "raw"
+output_reference_imag = [[0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s1p"]
+output_sha256 = "77c7323a976ad0d02e58ba34a5b65f98672111c039bf73615ce6bf034bcb2971"
+intended_deembedded = false
+max_difference = 5.451834023314325e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_contract_xmgxHV\\gap_baseline\\native_raw.s1p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0]]
+max_printed_bound_ratio = 0.6211747804659693
+intended_log_section = "raw"
+output_reference_imag = [[0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

@@ -277,7 +277,7 @@ unported metal can still be clipped by rasterization. Evidence is retained in
 The boundary and moved controls are retained in
 `test/fixtures/native_box_port_boundary_allowance` and
 `test/fixtures/native_moved_box_port_boundary_allowance`.
-BOX/STD sheet ports attach to their referenced logical polygon edge. Stored
+BOX/STD/GAP sheet ports attach to their referenced logical polygon edge. Stored
 position fields are annotations; changing them does not select another wall
 or reject an otherwise valid attachment. Active geometry updates reset those
 fields to the new referenced-edge midpoint. A closing duplicate vertex does
@@ -289,8 +289,18 @@ Twenty independent controls and the original failures are retained in
 `test/fixtures/native_box_port_attachment`, replayed by
 `validation/planar_audit/run_port_attachment_reference.jl`. Five one-port
 short/open controls retain the 0.005 full-S and 1e-9 voltage-residual gates.
-Genuine conformal sheet geometry retains its physical coordinates; its BOX
-ports use referenced physical wall edges and preserve annotation metadata.
+Genuine conformal sheet geometry retains its physical coordinates and
+preserves annotation metadata. A physical wall edge supplies a wall source;
+an interior edge supplies a source on its shared segment with one adjacent
+sheet edge. Native BOX/STD/GAP labels all accept these two attachment forms.
+Partial shared edges use their actual overlap. Isolated interior edges and
+edges shared by three polygons reject with the native return requirements.
+Internal conformal sources preserve the native phase convention when the
+other adjacent polygon is referenced. Thirteen independent native controls,
+plus two-port orientation controls on both axes, retain the 0.005 full-S and 1e-9 residual
+gates in `test/fixtures/native_internal_port_attachment` and
+`test/fixtures/native_internal_port_orientation` and
+`test/fixtures/native_internal_y_port_orientation`.
 A repeated whole-polygon control confirms the native rejection when its port edge extends
 outside the box; `test/fixtures/native_geovar_box_port_extent` retains the
 engine error and independent native-normalizer stages.

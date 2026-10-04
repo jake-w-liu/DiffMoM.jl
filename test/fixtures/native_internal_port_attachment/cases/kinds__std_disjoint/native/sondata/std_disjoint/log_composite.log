@@ -1,0 +1,22 @@
+Run 1:  Mon Oct 05 06:44:51 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\native_interior_edge_kinds_4xFMBY\std_disjoint\std_disjoint.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+      Subsectioning at 1 GHz with Eeff of 2.5.
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      Delta-gap port 1 cannot be constructed.
+      More than two polygon edges coincide with port edge.
+      Sonnet: metal level 0; x=0.5, y=0.5 mm.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 05 06:44:51 2026.

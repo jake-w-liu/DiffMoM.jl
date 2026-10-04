@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_guards_6Mo6VF\\gap_isolated.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T22:42:51.048"
+response_nports = 1
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T22:42:50.174"
+source_sha256 = "24eeb5684a0f867e4a891f4a3879c758487b1bdb07f4f626e3c69efa8a67f77d"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_interior_edge_guards_6Mo6VF\\gap_isolated\\gap_isolated.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\native_interior_edge_guards_6Mo6VF\\\\gap_isolated\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

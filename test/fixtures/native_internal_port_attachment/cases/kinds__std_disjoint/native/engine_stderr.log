@@ -1,0 +1,9 @@
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      Delta-gap port 1 cannot be constructed.
+      More than two polygon edges coincide with port edge.
+      Sonnet: metal level 0; x=0.5, y=0.5 mm.
+

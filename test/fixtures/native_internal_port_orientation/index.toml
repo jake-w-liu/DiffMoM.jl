@@ -1,0 +1,11 @@
+scope = "Native two-port internal orientation independent of left/right polygon reference. Complete raster/conformal original responses retained."
+
+[[cases]]
+name = "left_reference"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "right_reference"
+native_status = "ACCEPT"
+nports = 2

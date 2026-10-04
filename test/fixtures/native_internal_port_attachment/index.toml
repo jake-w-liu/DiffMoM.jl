@@ -1,0 +1,66 @@
+scope = "Native internal edge attachment, alias kinds, annotations, partial shared edges and missing/ambiguous return rejection. Original failures retained."
+
+[[cases]]
+name = "contract__std_baseline"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "contract__std_offedge"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "contract__std_opposite_wall"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "contract__gap_baseline"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "contract__gap_offedge"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "guards__std_isolated"
+native_status = "REJECT"
+nports = 1
+
+[[cases]]
+name = "guards__gap_isolated"
+native_status = "REJECT"
+nports = 1
+
+[[cases]]
+name = "guards__std_partial"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "kinds__box_internal"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "kinds__box_partial"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "kinds__std_disjoint"
+native_status = "REJECT"
+nports = 1
+
+[[cases]]
+name = "kinds__gap_wall"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "kinds__box_isolated"
+native_status = "REJECT"
+nports = 1
