@@ -1032,6 +1032,20 @@ ladder remain open.
   0.06533993/0.06492637: both still **FAIL** the unchanged 0.06 gate.
   Their cumulative Julia solve allocations, including returned results, are
   approximately 2.818/2.782 GB; these do not establish peak process memory.
+  The public matrix-free operator now folds bounded modal blocks into
+  family-pair spectra when they require less storage than retained kernels
+  and mode-by-element work arrays. On the same 4096-mode DXF case it fits
+  the unchanged 4 GB payload budget, retaining 240037168 bytes of Julia
+  arrays. Its action matches the full finite-modal matrix within 1.66e-15,
+  its diagonal matches exactly, and warmed matvecs allocate zero bytes.
+  This resolves the former 8060904784-byte preflight rejection, while the
+  accuracy and fine-grid iterative convergence checks remain open.
+  Evidence: `dxf_folded_iterative_operator_audit_ZRgNgt` under local
+  `data/planar_audit`. Array payloads exclude opaque FFTW plans and process
+  overhead. Folding increases construction work; subsequent actions use
+  grid-sized convolutions. Hybrid cross reactions continue using individual
+  modal fields, so this storage reduction applies to the uniform-grid
+  operator rather than the hybrid cross kernels.
   Exact current source hashes and retained native inputs are recorded in
   `dxf_folded_dense_bounds_modal_ladder_xU521C`. Replacing all shapes by exact
   occupied-cell rectangles gives the identical native response; partial
@@ -1251,6 +1265,7 @@ ladder remain open.
 |---|---|---|
 | Retained FFT assembly keeps unused iterative buffers / measured resource use | multilayer 273-unknown fixture retains four mode-by-element arrays and an unused output vector totaling 3936528 B; warmed assembly allocates 15281904 B | separate compact assembly workspace preserves bit-identical finite-modal matrix and complete public iterative operator; warmed allocation 11344885 B (25.76% reduction), 42 new + 116 neighboring + 112 independent checks; raw payload budget still excludes opaque FFTW and process overhead |
 | Dense FFT retains every modal layer-pair kernel / measured resource use | 273-unknown mixed fixture allocates 11.344 MB and rejects an 8 MB payload limit; DXF mode4096 requires a 4.839 GB FFT workspace before its dense matrix | bounded blocks fold each mode in its original order into smaller family-pair lattices; mixed PEC/PMC matrices match the frozen source byte for byte, allocations fall to 3.695 MB and the 8 MB gate passes; DXF mode4096 fits the original 4 GB limit, while its native accuracy gate remains FAIL |
+| Matrix-free FFT retains high-mode kernels and four mode-by-element buffers / measured resource use | DXF mode4096 rejects the 4 GB limit because its estimate is 8.061 GB | choose smaller family-pair spectra plus reusable grid fields; the same public operator fits the unchanged budget and retains 240 MB of Julia arrays, with full-matrix action error 1.66e-15 and zero warmed matvec allocation; independent mixed PEC/PMC modal matrices, all wall halves, local/coupled losses and port solves gate correctness; peak process memory and DXF physical acceptance remain unverified |
 | Finite wide circuit scalars lose stored invariants / numerical and state correctness | finite BigFloat R/L become infinity; positive C and nonzero transformer ratios become zero in owned elements | validate stored Float64 values before mutation; invalid inputs leave elements/nodes/ports unchanged, explicit zero and representable wide values remain supported |
 | Circuit frequency overflow/underflow after callbacks / public workflow correctness | pure network input frequencies `1e1000`/`1e-1000` return result frequencies infinity/zero after two callbacks | preflight the stored frequency before providers; invalid frequencies invoke zero callbacks, valid wide inputs use finite Float64 provider/result frequencies |
 | Attenuating circuit line loses reciprocity / numerical and physical correctness | matched `40+0.37im` line gives reverse transmission magnitude 4 instead of `exp(-40)`; attenuation 710 rejects finite S | bounded travelling-wave MNA, stored complex-domain validation and no ABCD temporary; 908 independent high-precision/domain/allocation checks |

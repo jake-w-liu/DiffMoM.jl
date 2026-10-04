@@ -19,7 +19,7 @@ end
 # Preserve the former retained-assembly route as a regression oracle. Its
 # original complete source is archived under validation/planar_audit.
 function _legacy_fft_dense_workspace_assembly(prob,freq;kw...)
-    operator=planar_ufft_operator(prob,freq;kw...)
+    operator=planar_ufft_operator(prob,freq;kw...,_fold_iterative=false)
     matrix=Matrix{ComplexF64}(undef,size(operator))
     DiffMoM._planar_fft_dense_fill!(matrix,operator)
 end
@@ -65,7 +65,9 @@ end
     limited=assemble_planar_z_ufft(prob,8e9;max_bytes=11_500_000,kw...)
     @test limited==_legacy_fft_dense_workspace_assembly(prob,8e9;kw...)
     @test_throws ArgumentError planar_ufft_operator(prob,8e9;
-        max_bytes=11_500_000-sizeof(limited),kw...)
+        max_bytes=11_500_000-sizeof(limited),kw...,_fold_iterative=false)
+    @test planar_ufft_operator(prob,8e9;
+        max_bytes=11_500_000-sizeof(limited),kw...).folded!==nothing
     @test_throws ArgumentError assemble_planar_z_ufft(prob,8e9;max_bytes=1,kw...)
     @test_throws ArgumentError assemble_planar_z_ufft(prob,8e9;mx=typemax(Int))
     @test_throws ArgumentError assemble_planar_z_ufft(prob,8e9;block=0)

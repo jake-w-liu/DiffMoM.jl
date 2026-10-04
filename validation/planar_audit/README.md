@@ -51,3 +51,10 @@ pairs using an installed native Sonnet engine. It creates a fresh evidence
 directory under `data/planar_audit/`; its optional argument selects an output
 root. It retains logs, complete matrices, metadata and source-before/after
 hashes, and fails on matrix disagreement or source drift.
+
+`run_folded_ufft_resource_audit.jl` compares retained modal arrays with folded
+family-pair spectra on mixed sheet/via/volume PEC and PMC problems. Independent
+modal matrices gate complete actions and diagonals; alternating warmed samples
+record construction and matvec costs. Reports use a fresh ignored directory;
+an optional argument selects its parent. These measurements exclude peak
+process memory and opaque FFTW plan storage.

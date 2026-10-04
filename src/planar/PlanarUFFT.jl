@@ -18,6 +18,11 @@ struct _PlanarUFFTFamily
     yminus::Vector{ComplexF64}
 end
 
+struct _PlanarUFFTFoldedWorkspace
+    spectra::Array{ComplexF64,3}
+    fields::Matrix{ComplexF64}
+end
+
 """FFT operator for the same analytic Galerkin modal sum as
 `assemble_planar_z`.  Supports sheets, wall half rooftops, uniform/tapered
 vias, volume rooftops, multilayers, PEC/PMC sidewalls and metal loss.
@@ -39,7 +44,14 @@ struct PlanarUFFTOperator{PF,PB} <: AbstractMatrix{ComplexF64}
     backward::PB
     local_loss::SparseMatrixCSC{ComplexF64,Int}
     output::Vector{ComplexF64}
+    folded::Union{Nothing,_PlanarUFFTFoldedWorkspace}
 end
+
+# Preserve construction with the former retained-workspace field list.
+PlanarUFFTOperator(n,grid,modes,families,k_te,k_tm,source_te,source_tm,
+    field_te,field_tm,lattice,forward,backward,local_loss,output)=
+    PlanarUFFTOperator(n,grid,modes,families,k_te,k_tm,source_te,source_tm,
+        field_te,field_tm,lattice,forward,backward,local_loss,output,nothing)
 
 # Retained dense assembly uses the same finite modal kernels, without the
 # four mode-by-element matvec buffers or the per-basis output vector.
@@ -121,6 +133,8 @@ end
 """`planar_ufft_operator(problem, freq; mx=2nx, my=2ny, ...)`
 constructs the exact modal FFT operator.  The mode counts can exceed
 Nyquist; every analytic high-mode contribution is retained by alias folding.
+When smaller, bounded modal blocks are folded into family-pair spectra;
+matvecs then use lattice convolutions without mode-by-element work arrays.
 `max_bytes` bounds owned array payloads before FFT/kernel allocation."""
 planar_ufft_operator(prob::PlanarProblem, freq::Number;kw...) =
     _planar_fft_workspace(prob,freq,Val(false);kw...)
@@ -131,7 +145,7 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         sheet_coupling_zs=nothing,
         block::Integer=512,
         max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
-        _fold_dense::Bool=false) where {dense}
+        _fold_dense::Bool=false, _fold_iterative::Bool=true) where {dense}
     planar_validate(prob.stack)
     omega = 2pi * ComplexF64(freq)
     isfinite(omega) && real(omega) > 0 ||
@@ -163,9 +177,14 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     folded_kernel_bytes=32BigInt(kernel_block)*ne*ne+
         16BigInt(4)*nf*nf*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
     fold_dense=dense && _fold_dense && folded_kernel_bytes<full_kernel_bytes
+    modal_work_bytes=64BigInt(nmode)*ne
+    folded_work_bytes=16BigInt(nf)*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
+    fold_iterative=!dense && _fold_iterative &&
+        folded_kernel_bytes+folded_work_bytes<full_kernel_bytes+modal_work_bytes
+    fold_kernels=fold_dense || fold_iterative
     est = _checked_payload_sum("planar FFT",
-        fold_dense ? folded_kernel_bytes : full_kernel_bytes,
-        dense ? 0 : _checked_array_payload_bytes(ComplexF64, 4, nmode, ne),
+        fold_kernels ? folded_kernel_bytes : full_kernel_bytes,
+        dense ? 0 : fold_iterative ? folded_work_bytes : modal_work_bytes,
         _checked_array_payload_bytes(ComplexF64, 2prob.grid.nx, 2prob.grid.ny),
         _checked_array_payload_bytes(ComplexF64, 2, nf, mx + my),
         _checked_array_payload_bytes(Float64, 7, mx + my),
@@ -191,9 +210,9 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         findall(p -> elements[p] == e && prob.basis.kind[p] == k, 1:nb),
         elem_index[e]) for (e, k) in group_keys]
     pairs = [(f, s) for f in uniq for s in uniq]
-    k_te = Matrix{ComplexF64}(undef, fold_dense ? kernel_block : nmode, ne * ne)
+    k_te = Matrix{ComplexF64}(undef, fold_kernels ? kernel_block : nmode, ne * ne)
     k_tm = similar(k_te)
-    spectra=fold_dense ? zeros(ComplexF64,2prob.grid.nx,2prob.grid.ny,4nf*nf) : nothing
+    spectra=fold_kernels ? zeros(ComplexF64,2prob.grid.nx,2prob.grid.ny,4nf*nf) : nothing
     vlay = sort!(unique([v.layer for v in prob.vias]))
     volay = sort!(unique([v.layer for v in prob.vols]))
     cte, ctm, scratch, vsts, volsts = _planar_mode_workspace(L, !isempty(vlay), !isempty(volay))
@@ -208,19 +227,19 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
             mb[q] = rem(t, Int(mx)) + 1
             nbmode[q] = t ÷ Int(mx) + 1
         end
-        range=fold_dense ? (1:count) : (firstmode:firstmode+count-1)
+        range=fold_kernels ? (1:count) : (firstmode:firstmode+count-1)
         te=view(k_te,range,:);tm=view(k_tm,range,:)
         _planar_mode_voltages!(te,tm, cte, ctm, scratch,
             prob.stack, omega, mg, view(mb, 1:count), view(nbmode, 1:count),
             pairs, vsts, vlay, volsts, volay)
-        if fold_dense
+        if fold_kernels
             all(isfinite,te) && all(isfinite,tm) ||
                 throw(ArgumentError("FFT modal kernel is non-finite at a box resonance"))
             _planar_fft_fold_dense_block!(spectra,families,ne,mg,te,tm,mb,nbmode,count)
         end
         firstmode += count
     end
-    fold_dense || (all(isfinite, k_te) && all(isfinite, k_tm)) ||
+    fold_kernels || (all(isfinite, k_te) && all(isfinite, k_tm)) ||
         throw(ArgumentError("FFT modal kernel is non-finite at a box resonance"))
     rows, cols, values = Int[], Int[], ComplexF64[]
     emit(p, q, v) = (push!(rows, p); push!(cols, q); push!(values, v); nothing)
@@ -238,6 +257,14 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     dense && return _PlanarFFTAssemblyWorkspace(nb,ne,mg,families,k_te,k_tm,
         lattice,backward,loss)
     forward = FFTW.plan_fft!(lattice)
+    if fold_iterative
+        folded=_PlanarUFFTFoldedWorkspace(spectra,zeros(ComplexF64,length(lattice),nf))
+        empty_kernel=zeros(ComplexF64,0,ne*ne)
+        empty_modes=zeros(ComplexF64,0,ne)
+        return PlanarUFFTOperator(nb,prob.grid,mg,families,empty_kernel,empty_kernel,
+            empty_modes,empty_modes,empty_modes,empty_modes,lattice,forward,backward,
+            loss,zeros(ComplexF64,nb),folded)
+    end
     src_te = zeros(ComplexF64, nmode, ne)
     src_tm = similar(src_te)
     dst_te, dst_tm = similar(src_te), similar(src_te)
@@ -277,6 +304,13 @@ end
 function LinearAlgebra.mul!(y::AbstractVector, A::PlanarUFFTOperator,
         x::AbstractVector, alpha::Number, beta::Number)
     length(y) == length(x) == A.n || throw(DimensionMismatch("FFT matvec vector size mismatch"))
+    if A.folded!==nothing
+        _planar_ufft_folded_apply!(A,x,A.folded)
+        for q in eachindex(y)
+            y[q]=iszero(beta) ? alpha*A.output[q] : alpha*A.output[q]+beta*y[q]
+        end
+        return y
+    end
     st, sm, ft, fm = A.source_te, A.source_tm, A.field_te, A.field_tm
     fill!(st, 0); fill!(sm, 0)
     F = A.lattice
@@ -332,6 +366,38 @@ function LinearAlgebra.mul!(y::AbstractVector, A::PlanarUFFTOperator,
     return y
 end
 
+# The signed spatial kernel is h(field + r*source). Reflecting the source
+# lattice by -r makes its application an ordinary circular convolution.
+function _planar_ufft_folded_apply!(A,x,folded::_PlanarUFFTFoldedWorkspace)
+    F=A.lattice;px,py=size(F);nf=length(A.families);fields=folded.fields
+    fill!(fields,0)
+    for (si,source) in enumerate(A.families)
+        for (xi,rx) in enumerate((-1,1)),(yi,ry) in enumerate((-1,1))
+            fill!(F,0)
+            for q in eachindex(source.indices)
+                z=source.lattice[q]-1;xs,ys=rem(z,px),z÷px
+                F[mod(-rx*xs,px)+1,mod(-ry*ys,py)+1]+=x[source.indices[q]]
+            end
+            A.forward*F
+            for fi in 1:nf
+                K=view(folded.spectra,:,:,4*((fi-1)*nf+si-1)+2*(xi-1)+yi)
+                for t in eachindex(F)
+                    fields[t,fi]+=K[t]*F[t]
+                end
+            end
+        end
+    end
+    fill!(A.output,0)
+    for (fi,field) in enumerate(A.families)
+        copyto!(F,view(fields,:,fi));A.backward*F
+        for q in eachindex(field.indices)
+            A.output[field.indices[q]]+=F[field.lattice[q]]
+        end
+    end
+    mul!(A.output,A.local_loss,x,1.,1.)
+    return nothing
+end
+
 LinearAlgebra.mul!(y::AbstractVector, A::PlanarUFFTOperator, x::AbstractVector) =
     mul!(y, A, x, 1.0, 0.0)
 
@@ -343,6 +409,7 @@ end
 # This remains O(number-of-families * modes + families * grid log grid)
 # and scales the different sheet/via units without any dense probing.
 function _planar_ufft_diagonal(A::PlanarUFFTOperator)
+    A.folded===nothing || return _planar_ufft_folded_diagonal(A,A.folded)
     d = zeros(ComplexF64, A.n)
     F, mg = A.lattice, A.modes
     px, py = size(F)
@@ -370,6 +437,25 @@ function _planar_ufft_diagonal(A::PlanarUFFTOperator)
             p = family.indices[q]
             d[p] = F[family.lattice[q]] + A.local_loss[p, p]
         end
+    end
+    return d
+end
+
+function _planar_ufft_folded_diagonal(A,folded::_PlanarUFFTFoldedWorkspace)
+    F=A.lattice;px,py=size(F);nf=length(A.families)
+    d=zeros(ComplexF64,A.n)
+    for (fi,family) in enumerate(A.families)
+        for (xi,rx) in enumerate((-1,1)),(yi,ry) in enumerate((-1,1))
+            copyto!(F,view(folded.spectra,:,:,4*((fi-1)*nf+fi-1)+2*(xi-1)+yi))
+            A.backward*F
+            for q in eachindex(family.indices)
+                z=family.lattice[q]-1;xs,ys=rem(z,px),z÷px
+                d[family.indices[q]]+=F[mod((1+rx)*xs,px)+1,mod((1+ry)*ys,py)+1]
+            end
+        end
+    end
+    for p in eachindex(d)
+        d[p]+=A.local_loss[p,p]
     end
     return d
 end

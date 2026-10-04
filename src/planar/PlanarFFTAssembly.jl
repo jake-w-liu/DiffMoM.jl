@@ -60,11 +60,11 @@ function _planar_fft_fold_dense_block!(spectra::Array{ComplexF64,3},
     return nothing
 end
 
-function _planar_fft_dense_kernels!(Z,A::_PlanarFFTBlockAssemblyWorkspace)
+function _planar_fft_folded_dense_kernels!(Z,A,spectra)
     F=A.lattice;nf=length(A.families)
     for (fi,field) in enumerate(A.families),(si,source) in enumerate(A.families)
         for (xi,rx) in enumerate((-1,1)),(yi,ry) in enumerate((-1,1))
-            copyto!(F,view(A.spectra,:,:,4*((fi-1)*nf+si-1)+2*(xi-1)+yi))
+            copyto!(F,view(spectra,:,:,4*((fi-1)*nf+si-1)+2*(xi-1)+yi))
             A.backward*F
             _planar_fft_dense_update!(Z,F,field,source,rx,ry)
         end
@@ -72,8 +72,14 @@ function _planar_fft_dense_kernels!(Z,A::_PlanarFFTBlockAssemblyWorkspace)
     return Z
 end
 
+_planar_fft_dense_kernels!(Z,A::_PlanarFFTBlockAssemblyWorkspace)=
+    _planar_fft_folded_dense_kernels!(Z,A,A.spectra)
+
 function _planar_fft_dense_kernels!(Z,
         A::Union{PlanarUFFTOperator,_PlanarFFTAssemblyWorkspace})
+    if A isa PlanarUFFTOperator && A.folded!==nothing
+        return _planar_fft_folded_dense_kernels!(Z,A,A.folded.spectra)
+    end
     F=A.lattice;px,py=size(F);mg=A.modes;ne=_planar_fft_element_count(A)
     # A product of real sin/cos subsection transforms is a sum of four
     # kernels evaluated at signed sums/differences of lattice locations.

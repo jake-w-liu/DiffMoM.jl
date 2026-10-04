@@ -73,7 +73,9 @@ function planar_hybrid_ufft_operator(prob::PlanarHybridProblem,freq::Number;
     C=nc==0 ? nothing : planar_conformal_ufft_operator(prob.conformal,freq;
         nx=prob.bulk.grid.nx,ny=prob.bulk.grid.ny,mx,my,surface_zs,max_bytes=max_bytes-reserved)
     cb=_planar_hybrid_conformal_owned_payload(C)
-    B=nr==0 ? nothing : planar_ufft_operator(prob.bulk,freq;mx,my,via_sigma,volume_sigma,block,max_bytes=max_bytes-cross-cb)
+    # Cross reactions consume the individual modal TE/TM source fields.
+    B=nr==0 ? nothing : planar_ufft_operator(prob.bulk,freq;mx,my,via_sigma,volume_sigma,block,
+        max_bytes=max_bytes-cross-cb,_fold_iterative=false)
     kt=zeros(ComplexF64,nm,length(levels)*length(elems));km=similar(kt)
     if !isempty(levels) && !isempty(elems)
         mg=B.modes;pairs=[(f,s) for f in levels for s in elems]

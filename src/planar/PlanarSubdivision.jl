@@ -62,7 +62,7 @@ function _subdivision_retained_payload(value,seen=Base.IdSet{Any}())
             _subdivision_retained_payload(value.nzval,seen))
     elseif value isa Union{PlanarResult,PlanarUFFTResult,PlanarCalibratedResult,
             PlanarContractedResult,PlanarSourceResult,
-            PlanarUFFTOperator,PlanarModeGrid,_PlanarUFFTFamily,LinearAlgebra.LU,
+            PlanarUFFTOperator,PlanarModeGrid,_PlanarUFFTFamily,_PlanarUFFTFoldedWorkspace,LinearAlgebra.LU,
             PlanarBasisSet,SheetLevel,ViaLevel,VolLevel}
         return _checked_payload_sum("retained subdivision result",
             (_subdivision_retained_payload(getfield(value,k),seen)
