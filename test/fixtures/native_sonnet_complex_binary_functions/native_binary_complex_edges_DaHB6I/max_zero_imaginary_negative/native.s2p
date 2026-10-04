@@ -1,0 +1,14 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: max_zero_imaginary_negative
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 10:15:00
+!< HDATE 10/04/2026 05:47:13
+!< MDATE 10/04/2026 05:47:13
+!< PARAMS
+!< Rho = 7.0
+!< Rs = 2.0
+!< Loss = 4.0
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 0.1667191186894 6.7139259897e-4 0.8330963618450 -0.019430863170 0.8330963618450 -0.019430863170 0.1667191277971 6.7119203704e-4

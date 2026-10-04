@@ -1,0 +1,21 @@
+{
+  "engine": "18.53-Lite 64-bit Windows",
+  "artifacts": [
+    "native_binary_complex_arguments_2plm0x",
+    "native_binary_complex_signs_JlscT9",
+    "native_binary_complex_edges_DaHB6I",
+    "native_binary_complex_ordering_gCO9fn",
+    "native_binary_complex_zero_phase_ocnvdx"
+  ],
+  "jobs": 73,
+  "matrices": 72,
+  "scope": "Actual literal raw-R50 material coupons proving complex binary function arguments and exact-zero phase.",
+  "restrictions": [
+    "Original hypotheses, pre-upgrade evaluator errors and all false native/literal gates are retained verbatim.",
+    "One complex atan2 pole is an actual fatal native IMSL error with no matrix; it does not certify complex atan2 semantics.",
+    "Negative physical resistance is not accepted by our passive material lowerer despite native fallback.",
+    "Complex max/min/fmod use signed magnitude, negative exactly when real part is negative; pure imaginary and -0 real operands are positive.",
+    "min/max ties retain the second complex operand; int and fmod exact zero reset positive.",
+    "Printed quantity values have six significant digits; native.s2p retains independent full complex response."
+  ]
+}

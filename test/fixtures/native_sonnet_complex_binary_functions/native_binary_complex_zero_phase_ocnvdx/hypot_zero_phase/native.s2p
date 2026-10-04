@@ -1,0 +1,14 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: hypot_zero_phase
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 10:17:41
+!< HDATE 10/04/2026 05:47:13
+!< MDATE 10/04/2026 05:47:13
+!< PARAMS
+!< Rho = 7.0
+!< Rs = 2.0
+!< Loss = 180.0
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 0.8996976779168 -0.012512824510 0.0997429805164 -6.228365275e-3 0.0997429805164 -6.228365275e-3 0.8996974011565 -0.012513885097

@@ -1,0 +1,14 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_binary_complex_arguments_2plm0x\\atan2_complex.son"
+ended_utc = "2026-10-04T02:03:22.016"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T02:03:21.062"
+source_sha256 = "a7fd8f76ae51fed5055d9a1dee549a3dc633f80d70c92d761ee971de4577370e"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_binary_complex_arguments_2plm0x\\atan2_complex\\atan2_complex.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_binary_complex_arguments_2plm0x\\\\atan2_complex\")"
+box_halfcell_counts = [40, 40]
+
+[dependency_sha256]

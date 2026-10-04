@@ -1,0 +1,82 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_binary_complex_zero_phase_ocnvdx"
+
+[[runs]]
+hypothesized_real_ohm_square = 0
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+expression = ""
+field = "0"
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+current_value = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "3da2d16c9edf4d669292c10aeb368ae150242a58ae0798a1bbe2ef236826d758"
+tag = "literal0"
+[[runs]]
+hypothesized_real_ohm_square = 180
+s_imag = [-0.01251282451, -0.006228365275, -0.006228365275, -0.012513885097]
+expression = ""
+field = "180"
+native_stderr = ""
+s_real = [0.8996976779168, 0.0997429805164, 0.0997429805164, 0.8996974011565]
+current_value = 180.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "b5eb9154631cd3d9587136048d03317ecd80a2df5273018becf8d5eef68b8504"
+tag = "literal1"
+[[runs]]
+hypothesized_real_ohm_square = 0
+s_imag = [-0.01251282451, -0.006228365275, -0.006228365275, -0.012513885097]
+native_literal_gate_pass = false
+expression = "180+deg(int(-.2))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.8996976779168, 0.0997429805164, 0.0997429805164, 0.8996974011565]
+current_value = 360.0
+native_literal_delta_s = 0.9001348354765626
+native_variable_lines = ["      Loss = 180 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "05a76f8cae459c8d28f39ca52f46b8753b46c14a6a033e9ecf35ec68ac99d111"
+tag = "int_zero_phase"
+[[runs]]
+hypothesized_real_ohm_square = 0
+s_imag = [-0.01251282451, -0.006228365275, -0.006228365275, -0.012513885097]
+native_literal_gate_pass = false
+expression = "180+deg(fmod(-6,3))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.8996976779168, 0.0997429805164, 0.0997429805164, 0.8996974011565]
+current_value = 360.0
+native_literal_delta_s = 0.9001348354765626
+native_variable_lines = ["      Loss = 180 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "8d3d1832d757b759043a79c6aa57c707107f9c358ce665e1c833fe03fed7e976"
+tag = "fmod_zero_phase"
+[[runs]]
+hypothesized_real_ohm_square = 0
+s_imag = [-0.01251282451, -0.006228365275, -0.006228365275, -0.012513885097]
+native_literal_gate_pass = false
+expression = "180+deg(fmod(-0,3))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.8996976779168, 0.0997429805164, 0.0997429805164, 0.8996974011565]
+current_value = 180.0
+native_literal_delta_s = 0.9001348354765626
+native_variable_lines = ["      Loss = 180 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "dae0030b97699c6f26a6fb8070f57998b533f51a87f12aeb84bc36cad8df73b4"
+tag = "fmod_negative_zero_phase"
+[[runs]]
+hypothesized_real_ohm_square = 180
+s_imag = [-0.01251282451, -0.006228365275, -0.006228365275, -0.012513885097]
+native_literal_gate_pass = true
+expression = "180+deg(hypot(-0,-0))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.8996976779168, 0.0997429805164, 0.0997429805164, 0.8996974011565]
+current_value = 180.0
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 180 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "41b9aeee918280fed4c5451311e38eb65082e966568f9a22987d3f30727ec548"
+tag = "hypot_zero_phase"

@@ -1,0 +1,6 @@
+
+      Sonnet Error:
+      IMSL Math Function ERROR.
+      ***  Z = (-0.000000e+00,-1.000000e+00) is so close to +i or -i that all
+      ***  precision is lost because ATAN is nearly singular.
+

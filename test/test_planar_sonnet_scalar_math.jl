@@ -59,7 +59,7 @@ end
     # the real projection of finite complex quantities at this boundary.
     @test sonnet_variable_value(p,"cmplx(2,3)")==2.
     @test sonnet_variable_value(p,"sqrt(-1)")==0.
-    @test_throws ArgumentError sonnet_variable_value(p,"min(cmplx(2,3),4)")
+    @test sonnet_variable_value(p,"min(cmplx(2,3),4)")==2.
     @test_throws ArgumentError sonnet_variable_value(p,"log(exp(2))")
     @test_throws ArgumentError sonnet_variable_value(p,"exp(1000)")
     p.variables["ComplexIntermediate"]="cmplx(3,4)"

@@ -1,0 +1,14 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: cmplx_nested_imag
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 10:03:20
+!< HDATE 10/04/2026 05:47:13
+!< MDATE 10/04/2026 05:47:13
+!< PARAMS
+!< Rho = 7.0
+!< Rs = 2.0
+!< Loss = 9.0
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 0.3103366489946 -2.809035391e-3 0.6894681678612 -0.015950127043 0.6894681678612 -0.015950127043 0.3103366488397 -2.809408435e-3
