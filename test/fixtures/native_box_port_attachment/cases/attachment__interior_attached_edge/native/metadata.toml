@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_attachment_contract_a0ffFo\\interior_attached_edge.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T21:20:51.057"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T21:20:50.072"
+source_sha256 = "82774d1ef968144909b232f8a1702f0725401520e3e270953393fa06771318c0"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_attachment_contract_a0ffFo\\interior_attached_edge\\interior_attached_edge.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\plain_box_port_attachment_contract_a0ffFo\\\\interior_attached_edge\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

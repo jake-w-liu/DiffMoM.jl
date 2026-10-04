@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\port_attachment_variants_v3_iX8Y0c\\normal_outside_limit.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T21:56:23.053"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T21:56:22.096"
+source_sha256 = "9dbc3466137dd16963e86f08c9ec5f029b7708f314865b7d436bcd7c1235f959"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\port_attachment_variants_v3_iX8Y0c\\normal_outside_limit\\normal_outside_limit.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\port_attachment_variants_v3_iX8Y0c\\\\normal_outside_limit\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

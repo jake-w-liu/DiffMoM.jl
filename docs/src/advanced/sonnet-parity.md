@@ -277,6 +277,20 @@ unported metal can still be clipped by rasterization. Evidence is retained in
 The boundary and moved controls are retained in
 `test/fixtures/native_box_port_boundary_allowance` and
 `test/fixtures/native_moved_box_port_boundary_allowance`.
+BOX/STD sheet ports attach to their referenced logical polygon edge. Stored
+position fields are annotations; changing them does not select another wall
+or reject an otherwise valid attachment. Active geometry updates reset those
+fields to the new referenced-edge midpoint. A closing duplicate vertex does
+not introduce another edge. Contiguous collinear wall subdivisions share a
+physical excitation span. Raster sheet vertices in the native half-cell wall
+band project to that wall using the source BOX counts. Undriven sheet contacts,
+including metal clipped at the wall, impose the native ground connection.
+Twenty independent controls and the original failures are retained in
+`test/fixtures/native_box_port_attachment`, replayed by
+`validation/planar_audit/run_port_attachment_reference.jl`. Five one-port
+short/open controls retain the 0.005 full-S and 1e-9 voltage-residual gates.
+Genuine conformal sheet geometry retains its physical coordinates; its BOX
+ports use referenced physical wall edges and preserve annotation metadata.
 A repeated whole-polygon control confirms the native rejection when its port edge extends
 outside the box; `test/fixtures/native_geovar_box_port_extent` retains the
 engine error and independent native-normalizer stages.

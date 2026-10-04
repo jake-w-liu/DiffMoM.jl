@@ -1,0 +1,101 @@
+scope = "Native edge attachment, annotation midpoints, collinear excitation and raster wall grounding. Original failures are retained."
+
+[[cases]]
+name = "attachment__baseline"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "attachment__off_edge_position"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "attachment__opposite_wall_position"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "attachment__interior_attached_edge"
+native_status = "REJECT"
+nports = 2
+
+[[cases]]
+name = "attachment__duplicate_closing_edge"
+native_status = "REJECT"
+nports = 2
+
+[[cases]]
+name = "variants__plain_baseline"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__collinear_upper"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__collinear_lower"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__normal_inside"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__normal_near_limit"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__normal_outside_limit"
+native_status = "REJECT"
+nports = 2
+
+[[cases]]
+name = "variants__active_baseline"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__active_nonmid_position"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__active_offedge_position"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "variants__active_opposite_wall_position"
+native_status = "ACCEPT"
+nports = 2
+
+[[cases]]
+name = "unported__exact"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "unported__inside"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "unported__near_limit"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "unported__outside_limit"
+native_status = "ACCEPT"
+nports = 1
+
+[[cases]]
+name = "clipped__outside_negative"
+native_status = "ACCEPT"
+nports = 1

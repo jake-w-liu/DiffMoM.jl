@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_unported_wall_contact_v2_4epKaW\\near_limit.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T22:13:34.040"
+response_nports = 1
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [59]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T22:13:33.108"
+source_sha256 = "0e21dbc3666da857642f0ec6b7ed162584873c699c7c897200e845bb0f46199e"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_unported_wall_contact_v2_4epKaW\\near_limit\\near_limit.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\native_unported_wall_contact_v2_4epKaW\\\\near_limit\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "da037b672e1ad3bf3844de8b45d502492390c972a2783df9b4b2fd8ba33f8cdc"
+intended_deembedded = false
+max_difference = 3.8087033442376685e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_unported_wall_contact_v2_4epKaW\\near_limit\\native_raw.s1p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0]]
+max_printed_bound_ratio = 0.4339586373318381
+intended_log_section = "raw"
+output_reference_imag = [[0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s1p"]
+output_sha256 = "da037b672e1ad3bf3844de8b45d502492390c972a2783df9b4b2fd8ba33f8cdc"
+intended_deembedded = false
+max_difference = 3.8087033442376685e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_unported_wall_contact_v2_4epKaW\\near_limit\\native_raw.s1p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0]]
+max_printed_bound_ratio = 0.4339586373318381
+intended_log_section = "raw"
+output_reference_imag = [[0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

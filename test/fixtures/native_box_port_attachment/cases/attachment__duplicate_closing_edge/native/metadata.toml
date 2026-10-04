@@ -1,0 +1,14 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_attachment_contract_a0ffFo\\duplicate_closing_edge.son"
+ended_utc = "2026-10-04T21:20:52.014"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T21:20:51.088"
+source_sha256 = "be28054a7fba1f6cacc91ad16f962acbd1f465428ef8a0bfddccf5f025f0deb2"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_attachment_contract_a0ffFo\\duplicate_closing_edge\\duplicate_closing_edge.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\plain_box_port_attachment_contract_a0ffFo\\\\duplicate_closing_edge\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

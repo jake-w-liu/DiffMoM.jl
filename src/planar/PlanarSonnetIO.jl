@@ -86,12 +86,48 @@ end
 
 # Native port-edge checks allow half an actual cell plus 0.0001 cell at a
 # wall. Compare in cell coordinates: SI subtraction can flip boundary ties.
+function _sonnet_polygon_edge_count(vertices)
+    n=size(vertices,2)
+    return n>1 && vertices[1,1]==vertices[1,n] && vertices[2,1]==vertices[2,n] ? n-1 : n
+end
+
+function _sonnet_port_edge_indices(vertices,edge)
+    n=_sonnet_polygon_edge_count(vertices)
+    0<=edge<n || throw(ArgumentError("native port edge is invalid"))
+    return edge+1,mod1(edge+2,n)
+end
+
 function _sonnet_box_port_edge_inside(vertices,edge,a,b,nx,ny)
-    first=edge+1;second=mod1(first+1,size(vertices,2))
+    first,second=_sonnet_port_edge_indices(vertices,edge)
     return -.5001<(vertices[1,first]/a)*nx<nx+.5001 &&
         -.5001<(vertices[1,second]/a)*nx<nx+.5001 &&
         -.5001<(vertices[2,first]/b)*ny<ny+.5001 &&
         -.5001<(vertices[2,second]/b)*ny<ny+.5001
+end
+
+# Raster wall ownership uses the source BOX grid, even with a caller grid.
+# Copy only sheets containing vertices that actually need wall projection.
+function _sonnet_raster_wall_project(p,a,b,nx,ny)
+    polygons=p.polygons
+    for (index,poly) in enumerate(p.polygons)
+        poly.kind===:sheet || continue
+        vertices=poly.vertices
+        for j in axes(vertices,2),axis in 1:2
+            extent=axis==1 ? a : b;count=axis==1 ? nx : ny
+            value=poly.vertices[axis,j];cell=(value/extent)*count
+            projected=-.5001<cell<.5001 ? 0. : count-.5001<cell<count+.5001 ? extent : value
+            projected==value && continue
+            vertices===poly.vertices && (vertices=copy(vertices))
+            vertices[axis,j]=projected
+        end
+        vertices===poly.vertices && continue
+        polygons===p.polygons && (polygons=copy(polygons))
+        polygons[index]=SonnetPolygon(poly.kind,poly.level,poly.material,poly.id,
+            vertices,poly.target,poly.technology,poly.flags)
+    end
+    polygons===p.polygons && return p
+    return SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,p.metals,
+        p.top,p.bottom,polygons,p.ports,p.variables,p.components,p.sweeps,p.records)
 end
 
 function _sonnet_tokens(line::AbstractString)
@@ -271,7 +307,7 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
             length(values)>=7 || _sonnet_error(source,r.line,"incomplete port values")
             number=parse(Int,values[1])
             haskey(ids,polygon) || _sonnet_error(source,r.line,"unknown port polygon $polygon")
-            0<=edge<size(ids[polygon].vertices,2) || _sonnet_error(source,r.line,"invalid port edge")
+            0<=edge<_sonnet_polygon_edge_count(ids[polygon].vertices) || _sonnet_error(source,r.line,"invalid port edge")
             push!(ports,SonnetPortSpec(Symbol(lowercase(r.tokens[2])),polygon,edge,number,copy(values),pr))
             i=j
         elseif r.tokens[1]=="SMD" && i+1<ni && geo[i+1].tokens[1]=="ID"
@@ -1006,6 +1042,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     gr=physical.grid;st=physical.stack;layers=st.layers
     a,b=gr.a,gr.b;nx,ny=gr.nx,gr.ny
     native_nx=parse(Int,p.box[4])÷2;native_ny=parse(Int,p.box[5])÷2
+    p=_sonnet_raster_wall_project(p,a,b,native_nx,native_ny)
     L=length(layers)
     any(poly->poly.kind==:brick,p.polygons) && throw(ArgumentError("native dielectric bricks require a volume dielectric adapter"))
     sheets=SheetLevel[]; sheetidx=Dict{Int,Int}(); masks=Dict{Int,BitMatrix}()
@@ -1044,11 +1081,11 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             sh.mask .|= tmp.mask
             # A sheet touching a box wall is galvanically connected even
             # where no driven port is present on that wall.
-            xtol=1e-8*max(a,b)
-            any(abs.(poly.vertices[1,:]).<=xtol) && (sh.connect_west .|= tmp.mask[1,:])
-            any(abs.(poly.vertices[1,:].-a).<=xtol) && (sh.connect_east .|= tmp.mask[end,:])
-            any(abs.(poly.vertices[2,:]).<=xtol) && (sh.connect_south .|= tmp.mask[:,1])
-            any(abs.(poly.vertices[2,:].-b).<=xtol) && (sh.connect_north .|= tmp.mask[:,end])
+            xmin,xmax=extrema(@view poly.vertices[1,:]);ymin,ymax=extrema(@view poly.vertices[2,:])
+            xmin<=0<=xmax && (sh.connect_west .|= tmp.mask[1,:])
+            xmin<=a<=xmax && (sh.connect_east .|= tmp.mask[end,:])
+            ymin<=0<=ymax && (sh.connect_south .|= tmp.mask[:,1])
+            ymin<=b<=ymax && (sh.connect_north .|= tmp.mask[:,end])
         else
             target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
             lo,hi=minmax(poly.level,target)
@@ -1122,9 +1159,10 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             continue
         end
         poly.kind==:sheet || throw(ArgumentError("sheet port must reference a sheet"))
-        x,y=val(q[6])*ls,val(q[7])*ls
+        index,next=_sonnet_port_edge_indices(poly.vertices,ps.edge)
         if ps.kind==:gap
-            v=poly.vertices; index=ps.edge+1; next=index==size(v,2) ? 1 : index+1
+            x,y=val(q[6])*ls,val(q[7])*ls
+            v=poly.vertices
             dx,dy=v[:,next]-v[:,index]
             abs(dx)<=1e-8*max(a,b) || abs(dy)<=1e-8*max(a,b) ||
                 throw(ArgumentError("diagonal native gap port requires a conformal terminal adapter"))
@@ -1147,20 +1185,22 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         end
         _sonnet_box_port_edge_inside(poly.vertices,ps.edge,a,b,native_nx,native_ny) ||
             throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
-        tol=1e-8*max(a,b)
-        wall=abs(x)<=tol ? :west : abs(x-a)<=tol ? :east :
-            abs(y)<=tol ? :south : abs(y-b)<=tol ? :north :
+        v=poly.vertices
+        wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
+            v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north :
             throw(ArgumentError("native box port $(ps.number) is not on a box wall"))
         mask=masks[poly.id]
-        occupied=wall==:west ? findall(mask[1,:]) : wall==:east ? findall(mask[end,:]) :
-            wall==:south ? findall(mask[:,1]) : findall(mask[:,end])
-        isempty(occupied) && throw(ArgumentError("port $(ps.number) disappeared at raster resolution"))
+        occupied=wall==:west ? (@view mask[1,:]) : wall==:east ? (@view mask[end,:]) :
+            wall==:south ? (@view mask[:,1]) : (@view mask[:,end])
+        any(occupied) || throw(ArgumentError("port $(ps.number) disappeared at raster resolution"))
         # Select only the connected wall segment containing the native port.
-        center=wall in (:west,:east) ? clamp(floor(Int,y/gr.dy)+1,1,ny) : clamp(floor(Int,x/gr.dx)+1,1,nx)
-        center in occupied || throw(ArgumentError("port $(ps.number) does not lie on rasterized metal"))
+        axis=wall in (:west,:east) ? 2 : 1;spacing=axis==2 ? gr.dy : gr.dx
+        coordinate=v[axis,index]/2+v[axis,next]/2
+        center=clamp(floor(Int,coordinate/spacing)+1,1,length(occupied))
+        occupied[center] || throw(ArgumentError("port $(ps.number) does not lie on rasterized metal"))
         firstcell=lastcell=center
-        while firstcell-1 in occupied; firstcell-=1; end
-        while lastcell+1 in occupied; lastcell+=1; end
+        while firstcell>1 && occupied[firstcell-1];firstcell-=1;end
+        while lastcell<length(occupied) && occupied[lastcell+1];lastcell+=1;end
         sh=sheets[sheetidx[poly.level]]
         flags=wall==:west ? sh.connect_west : wall==:east ? sh.connect_east : wall==:south ? sh.connect_south : sh.connect_north
         flags[firstcell:lastcell].=true

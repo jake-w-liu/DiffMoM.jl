@@ -61,6 +61,12 @@ unchanged 1e-12 identity gate and public raster outcomes. Both the original
 false acceptances and the overly strict candidate's false rejections remain
 in separate immutable fixtures.
 
+`run_port_attachment_reference.jl` replays 20 native controls for logical port
+edges, annotation coordinates, active geometry midpoint updates, collinear
+wall excitation and undriven wall grounding. It preserves complete matrices
+at the unchanged 1e-12 identity gate and checks importer acceptance/rejection.
+The original incorrect responses remain in the immutable fixture reports.
+
 `run_whole_geovar_reference.jl` replays sixteen whole-polygon zero-count,
 explicit vertex-list and independent literal triples. It checks native full
 matrix identity, source stability, both axes/directions and contraction/expansion.

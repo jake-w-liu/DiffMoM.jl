@@ -117,15 +117,15 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
             continue
         end
         poly.kind===:sheet || throw(ArgumentError("native sheet port must reference a sheet polygon"))
-        v=poly.vertices;n=size(v,2);v[:,1]==v[:,end] && (n-=1);i=ps.edge+1;1<=i<=n || throw(ArgumentError("native port edge is invalid"))
-        j=mod1(i+1,n);a=(v[1,i],v[2,i]);b=(v[1,j],v[2,j]);level=L-1-poly.level
-        x,y=val(q[6])*p.length_scale,val(q[7])*p.length_scale
-        dx,dy=b[1]-a[1],b[2]-a[2];edge_length=hypot(dx,dy);tol=1e-8*max(stack.a,stack.b)
-        all(isfinite,(x,y)) && edge_length>0 &&
-            abs(dx*(y-a[2])-dy*(x-a[1]))<=tol*edge_length &&
-            -tol*edge_length<=dx*(x-a[1])+dy*(y-a[2])<=edge_length^2+tol*edge_length ||
-            throw(ArgumentError("native source position must lie on its referenced polygon edge"))
+        v=poly.vertices;n=_sonnet_polygon_edge_count(v);i,j=_sonnet_port_edge_indices(v,ps.edge)
+        a=(v[1,i],v[2,i]);b=(v[1,j],v[2,j]);level=L-1-poly.level
         if ps.kind===:gap
+            x,y=val(q[6])*p.length_scale,val(q[7])*p.length_scale
+            dx,dy=b[1]-a[1],b[2]-a[2];edge_length=hypot(dx,dy);tol=1e-8*max(stack.a,stack.b)
+            all(isfinite,(x,y)) && edge_length>0 &&
+                abs(dx*(y-a[2])-dy*(x-a[1]))<=tol*edge_length &&
+                -tol*edge_length<=dx*(x-a[1])+dy*(y-a[2])<=edge_length^2+tol*edge_length ||
+                throw(ArgumentError("native source position must lie on its referenced polygon edge"))
             ps.number!=0 || throw(ArgumentError("native interior port zero requires its explicit reference conductor"))
             raw=[_P2(v[1,k],v[2,k]) for k in 1:n];_p2_signed_area(raw)<0 && ((a,b)=(b,a))
             push!(cp,PlanarConformalPort(level,:internal,(a,b);z0,polarity=ps.number<0 ? -1 : 1))
@@ -134,7 +134,18 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
                 a[2]==b[2]==0. ? :south : a[2]==b[2]==stack.b ? :north : nothing
             wall===nothing && throw(ArgumentError("native box port edge is not on a physical box wall"))
             ps.number==0 && continue
-            dim=wall in (:west,:east) ? 2 : 1;push!(cp,PlanarConformalPort(level,wall,minmax(a[dim],b[dim]);z0,polarity=ps.number<0 ? -1 : 1))
+            dim=wall in (:west,:east) ? 2 : 1;normal=3-dim;position=a[normal]
+            lo,hi=minmax(a[dim],b[dim])
+            # Collinear subdivisions share one physical wall excitation.
+            for direction in (-1,1)
+                k=direction==-1 ? i : j
+                for _ in 1:n-2
+                    next=mod1(k+direction,n)
+                    v[normal,next]==position || break
+                    lo=min(lo,v[dim,next]);hi=max(hi,v[dim,next]);k=next
+                end
+            end
+            push!(cp,PlanarConformalPort(level,wall,(lo,hi);z0,polarity=ps.number<0 ? -1 : 1))
         end
         push!(cnumbers,abs(ps.number));push!(crefs,z0)
     end

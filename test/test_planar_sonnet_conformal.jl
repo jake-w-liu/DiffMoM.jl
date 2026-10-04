@@ -77,8 +77,8 @@ end
         @test sum(preserved.layout.problem.mesh.areas)≈.375e-6+.5e-12 rtol=1e-14
         @test_throws ArgumentError sonnet_conformal_layout(p;sizes...,max_bytes=1)
         @test_throws ArgumentError solve_sonnet_conformal(p,10e9;sizes...,max_bytes=1)
-        # A native source retains both its kind and its stored physical
-        # position; the adapter must not silently reinterpret either.
+        # BOX annotations do not choose the physical source edge. The kind
+        # and referenced edge retain their native meaning.
         function ports_project(ports;polygons=p.polygons,box=p.box,layers=p.layers)
             SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,box,layers,p.metals,p.top,p.bottom,
                 polygons,ports,p.variables,p.components,p.sweeps,p.records)
@@ -87,8 +87,10 @@ end
         @test_throws ArgumentError sonnet_conformal_layout(ports_project([
             SonnetPortSpec(:via,ps.polygon,ps.edge,ps.number,ps.values,ps.records)]);sizes...)
         values=copy(ps.values);values[7]=".9"
-        @test_throws ArgumentError sonnet_conformal_layout(ports_project([
-            SonnetPortSpec(ps.kind,ps.polygon,ps.edge,ps.number,values,ps.records)]);sizes...)
+        annotated=ports_project([SonnetPortSpec(ps.kind,ps.polygon,ps.edge,ps.number,values,ps.records),last(p.ports)])
+        amended=sonnet_conformal_layout(annotated;sizes...)
+        @test [port.span for port in amended.layout.problem.ports]==[port.span for port in c.ports]
+        @test first(annotated.ports).values[7]==".9"
         # Native negative labels define a floating reference. They do not
         # impose arbitrary equal magnitudes of the two ground voltages.
         east=last(p.ports);negative=SonnetPortSpec(east.kind,east.polygon,east.edge,-1,east.values,east.records)

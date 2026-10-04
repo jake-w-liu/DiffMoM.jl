@@ -1,0 +1,18 @@
+Run 1:  Mon Oct 05 05:56:25 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\port_attachment_variants_v3_iX8Y0c\active_nonmid_position\active_nonmid_position.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Width = 0.375 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.032151 -92.83 0.999483 -2.833 0.999483 -2.833 0.032151 -92.83
+
+Em simulation completed Mon Oct 05 05:56:25 2026.

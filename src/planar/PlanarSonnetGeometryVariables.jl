@@ -580,18 +580,16 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         throw(ArgumentError("native BOX half-cell counts must be positive even integers"))
     native_nx=halfcounts[1]÷2;native_ny=halfcounts[2]÷2
     for port in p.ports
-        old=original[port.polygon].vertices;new=polygons[port.polygon]
-        first=port.edge+1;second=mod1(first+1,size(old,2))
+        new=polygons[port.polygon]
+        first,second=_sonnet_port_edge_indices(new,port.edge)
         _sonnet_box_port_edge_inside(new,port.edge,boxa,boxb,native_nx,native_ny) ||
             throw(ArgumentError("GEOVAR box-port edge is partially or entirely outside the box"))
-        displacement=old[:,second]-old[:,first];axis=abs(displacement[1])>=abs(displacement[2]) ? 1 : 2
-        !iszero(displacement[axis]) || throw(ArgumentError("GEOVAR port has a degenerate edge"))
-        coordinate=(sonnet_variable_value(p,port.values[5+axis];variables,freq=frequency)::Float64)*p.length_scale
-        fraction=(coordinate-old[axis,first])/displacement[axis]
-        isfinite(fraction) && 0<=fraction<=1 || throw(ArgumentError("GEOVAR port coordinate is outside its attached edge"))
+        (new[1,first]!=new[1,second] || new[2,first]!=new[2,second]) ||
+            throw(ArgumentError("GEOVAR port has a degenerate edge"))
         values=copy(port.values)
         for component in 1:2
-            coordinate=((1-fraction)*new[component,first]+fraction*new[component,second])/p.length_scale
+            # Native ReadWrite resets annotations to the referenced edge midpoint.
+            coordinate=(new[component,first]/2+new[component,second]/2)/p.length_scale
             isfinite(coordinate) || throw(ArgumentError("GEOVAR port coordinate is unrepresentable"))
             values[5+component]=string(coordinate)
         end
