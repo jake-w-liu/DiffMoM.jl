@@ -1,0 +1,38 @@
+stf_sha256 = "71cee6eaa8ca296d0a1f052968217104a0410008b0b4d410f71250899c205f1f"
+scope = "manufactured scalar linked-STF/inline-stack engine controls; no table, etch, encrypted or production-STF acceptance"
+independent_handlayout_complex_s_gate = 0.005
+native_linked_inline_identity_gate = 1.0e-9
+
+[[runs]]
+output_sha256 = "3d8d1bd167423392d0196ed38990fda8947493fbcb18a448685e74447cd13699"
+handlayout_native_full_s_errors = [7.651943724073767e-6, 0.00010712148959983778]
+frequencies_hz = [1.0e9, 1.0e10]
+s_imag = [[-0.009264273684, -0.037615856052, -0.037615856052, -0.009264275286], [-0.083007354063, -0.364927412073, -0.364927412073, -0.083009038952]]
+linked_stf = false
+case = "inline"
+s_real = [[-0.0003487667136, 0.9992492676847, 0.9992492676847, -0.0003487241462], [-0.032688302383, 0.9267519829904, 0.9267519829904, -0.032684023521]]
+handlayout_original_residuals = [9.955880517461475e-12, 8.460256534993419e-14]
+serialized_cover_rdc = 0.0
+status = "SIMULATED"
+handlayout_status = "PASS"
+source_sha256 = "8214c8598a2e9e5105078fb0a7467318a49f2d709aa8529086610f37ba3a8a52"
+[[runs]]
+native_stdout = """\r\n               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS\r\n                                 Version 18.53-Lite\r\n\r\n                Copyright (c) 1986-2021 Sonnet Software Inc.\r\n                             All rights reserved.\r\n\r\nRun 1:  Sun Oct 04 04:14:06 2026.  SL6ac09225.\r\n        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.\r\n\r\n  Project:  C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_stf_scalar_rZbgen\\linked\\linked.son.\r\n\r\n    Begin electromagnetic simulation using independent parameters:\r\n      TopH = 0.1 mm\r\n      BottomH = 0.1 mm\r\n\r\n    Begin electromagnetic simulation using frequency sweep:\r\n      Linear Start = 1, Stop = 10, Step = 9 GHZ\r\n\r\n    Frequency:  1 GHZ\r\n      Subsectioning time:  0.001 seconds.\r\n      Em errors detected: 1    Em warnings detected: 0.\r\n\r\nAnalysis failed due to error Sun Oct 04 04:14:06 2026.\r\n"""
+native_stderr = """\r\n      Sonnet Error:\r\n      Sonnet Lite Limitation\r\n      linked.son exceeds your Sonnet Lite license because:\r\n      Project includes linked STF file.\r\n      Sonnet Lite does not allow use of linked STF files.\r\n      Contact your Sonnet Software representative for information about upgrading your license.\r\n\r\n"""
+serialized_cover_rdc = 0.0
+linked_stf = true
+status = "UNVERIFIED_LICENSE"
+source_sha256 = "b8d329eb21217d907a5db73fbbf11a0cc32418fa563c0c59b159e87cb7ae6686"
+native_stderr_sha256 = "b9038fdb2d9de3a7db7f0a6472c5db55a920254a55ca6cf36211ac621243f1a0"
+case = "linked"
+error = "Sonnet analysis failed; see C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_stf_scalar_rZbgen\\linked"
+[[runs]]
+native_stdout = """\r\n               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS\r\n                                 Version 18.53-Lite\r\n\r\n                Copyright (c) 1986-2021 Sonnet Software Inc.\r\n                             All rights reserved.\r\n\r\nRun 1:  Sun Oct 04 04:14:07 2026.  SL6ac09225.\r\n        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.\r\n\r\n  Project:  C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_stf_scalar_rZbgen\\linked_serialized_cover10\\linked_serialized_cover10.son.\r\n\r\n    Begin electromagnetic simulation using independent parameters:\r\n      TopH = 0.1 mm\r\n      BottomH = 0.1 mm\r\n\r\n    Begin electromagnetic simulation using frequency sweep:\r\n      Linear Start = 1, Stop = 10, Step = 9 GHZ\r\n\r\n    Frequency:  1 GHZ\r\n      Subsectioning time:  0.001 seconds.\r\n      Em errors detected: 1    Em warnings detected: 0.\r\n\r\nAnalysis failed due to error Sun Oct 04 04:14:07 2026.\r\n"""
+native_stderr = """\r\n      Sonnet Error:\r\n      Sonnet Lite Limitation\r\n      linked_serialized_cover10.son exceeds your Sonnet Lite license because:\r\n      Project includes linked STF file.\r\n      Sonnet Lite does not allow use of linked STF files.\r\n      Contact your Sonnet Software representative for information about upgrading your license.\r\n\r\n"""
+serialized_cover_rdc = 10.0
+linked_stf = true
+status = "UNVERIFIED_LICENSE"
+source_sha256 = "9e2f7156ee23cd625fe485ae230f1bc444ee16e5c88807af856d4822c35d7ec5"
+native_stderr_sha256 = "5e9bafa370822270d88400712d7c99f1ec850cceeae84761680b4f2ae40bd45d"
+case = "linked_serialized_cover10"
+error = "Sonnet analysis failed; see C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_stf_scalar_rZbgen\\linked_serialized_cover10"

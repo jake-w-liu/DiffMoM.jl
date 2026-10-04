@@ -1,0 +1,114 @@
+[
+  {
+    "control": "Text",
+    "text": "Metals/Bricks"
+  },
+  {
+    "control": "ListItem",
+    "text": "Units"
+  },
+  {
+    "control": "ListItem",
+    "text": "Box"
+  },
+  {
+    "control": "ListItem",
+    "text": "Dielectric Layers"
+  },
+  {
+    "control": "ListItem",
+    "text": "Tech Layers"
+  },
+  {
+    "control": "ListItem",
+    "text": "Metals/Bricks"
+  },
+  {
+    "control": "ListItem",
+    "text": "Ports"
+  },
+  {
+    "control": "ListItem",
+    "text": "Variables"
+  },
+  {
+    "control": "ListItem",
+    "text": "EM Options"
+  },
+  {
+    "control": "ListItem",
+    "text": "Sweeps"
+  },
+  {
+    "control": "ListItem",
+    "text": "Optimization"
+  },
+  {
+    "control": "ListItem",
+    "text": "Output Files"
+  },
+  {
+    "control": "ListItem",
+    "text": "Startup Graphs"
+  },
+  {
+    "control": "ListItem",
+    "text": "Comments"
+  },
+  {
+    "control": "DataItem",
+    "text": "Lossless: Cnd:INF"
+  },
+  {
+    "control": "DataItem",
+    "text": "Planar:  Planar General: Rdc:1 Rrf:2 Xdc:3 Ls:4"
+  },
+  {
+    "control": "Text",
+    "text": "Default metal for"
+  },
+  {
+    "control": "Text",
+    "text": "new planar:"
+  },
+  {
+    "control": "ListItem",
+    "text": "Lossless"
+  },
+  {
+    "control": "ListItem",
+    "text": "Planar"
+  },
+  {
+    "control": "ListItem",
+    "text": "0"
+  },
+  {
+    "control": "ListItem",
+    "text": "1"
+  },
+  {
+    "control": "ListItem",
+    "text": "GND"
+  },
+  {
+    "control": "Text",
+    "text": "Pointer"
+  },
+  {
+    "control": "Text",
+    "text": "Insert"
+  },
+  {
+    "control": "Text",
+    "text": "Edit"
+  },
+  {
+    "control": "Text",
+    "text": "Object"
+  },
+  {
+    "control": "Text",
+    "text": "Drag or Click to select, ctrl toggles, shift adds"
+  }
+]

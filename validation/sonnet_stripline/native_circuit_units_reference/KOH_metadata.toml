@@ -1,0 +1,13 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_resistance_units_OC8cbf\\KOH.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T19:13:19.030"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+started_utc = "2026-10-03T19:13:18.036"
+source_sha256 = "4e9ea062102daec97dd38e8a51bfa5a7352d0f77d75f668515c51f2f71c220c6"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_resistance_units_OC8cbf\\KOH\\KOH.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_resistance_units_OC8cbf\\\\KOH\")"
+
+[dependency_sha256]

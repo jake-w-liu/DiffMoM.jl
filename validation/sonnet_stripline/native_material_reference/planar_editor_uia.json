@@ -1,0 +1,182 @@
+[
+  {
+    "control": "MenuBar",
+    "text": "系統"
+  },
+  {
+    "control": "MenuItem",
+    "text": "系統"
+  },
+  {
+    "control": "Button",
+    "text": "關閉"
+  },
+  {
+    "control": "Text",
+    "text": "Planar"
+  },
+  {
+    "control": "Button",
+    "text": "Select from Library..."
+  },
+  {
+    "control": "Text",
+    "text": "Name:"
+  },
+  {
+    "control": "Edit",
+    "text": "Planar"
+  },
+  {
+    "control": "Text",
+    "text": "Pattern"
+  },
+  {
+    "control": "Button",
+    "text": "Pattern"
+  },
+  {
+    "control": "Text",
+    "text": "Model:"
+  },
+  {
+    "control": "ComboBox",
+    "text": "Model:"
+  },
+  {
+    "control": "ListItem",
+    "text": "Normal"
+  },
+  {
+    "control": "ListItem",
+    "text": "Thick Metal Model"
+  },
+  {
+    "control": "ListItem",
+    "text": "TrueVolume"
+  },
+  {
+    "control": "ListItem",
+    "text": "Resistor"
+  },
+  {
+    "control": "ListItem",
+    "text": "Rdc/Rrf"
+  },
+  {
+    "control": "ListItem",
+    "text": "General"
+  },
+  {
+    "control": "ListItem",
+    "text": "Rough Metal"
+  },
+  {
+    "control": "ListItem",
+    "text": "Sense Metal"
+  },
+  {
+    "control": "Text",
+    "text": "Usage: "
+  },
+  {
+    "control": "Text",
+    "text": "For special cases modeled as a 2D sheet"
+  },
+  {
+    "control": "ComboBox",
+    "text": "Ls:"
+  },
+  {
+    "control": "Edit",
+    "text": "4.0"
+  },
+  {
+    "control": "Text",
+    "text": "Rrf:"
+  },
+  {
+    "control": "Text",
+    "text": "Rdc:"
+  },
+  {
+    "control": "ComboBox",
+    "text": "Rdc:"
+  },
+  {
+    "control": "Edit",
+    "text": "1.0"
+  },
+  {
+    "control": "Text",
+    "text": "Ls:"
+  },
+  {
+    "control": "ComboBox",
+    "text": "Xdc:"
+  },
+  {
+    "control": "Edit",
+    "text": "3.0"
+  },
+  {
+    "control": "Text",
+    "text": "pH/sq"
+  },
+  {
+    "control": "ComboBox",
+    "text": "Rrf:"
+  },
+  {
+    "control": "Edit",
+    "text": "2.0"
+  },
+  {
+    "control": "Text",
+    "text": "Ohms/sq"
+  },
+  {
+    "control": "Text",
+    "text": "Thickness*:"
+  },
+  {
+    "control": "Text",
+    "text": "Ohms/sq"
+  },
+  {
+    "control": "Text",
+    "text": "Xdc:"
+  },
+  {
+    "control": "ComboBox",
+    "text": "Thickness*:"
+  },
+  {
+    "control": "Edit",
+    "text": "0.0"
+  },
+  {
+    "control": "Text",
+    "text": "mm"
+  },
+  {
+    "control": "Text",
+    "text": "Ohm-Hz-1/2/sq"
+  },
+  {
+    "control": "Text",
+    "text": "*Thickness is optional and is only used when viewing currents"
+  },
+  {
+    "control": "Button",
+    "text": "OK"
+  },
+  {
+    "control": "Button",
+    "text": "Cancel"
+  },
+  {
+    "control": "Button",
+    "text": "Help"
+  }
+]

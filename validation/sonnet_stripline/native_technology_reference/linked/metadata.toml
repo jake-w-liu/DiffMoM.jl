@@ -1,0 +1,16 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_stf_scalar_rZbgen\\linked.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T20:14:06.041"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-03T20:14:05.959"
+source_sha256 = "b8d329eb21217d907a5db73fbbf11a0cc32418fa563c0c59b159e87cb7ae6686"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_stf_scalar_rZbgen\\linked\\linked.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_stf_scalar_rZbgen\\\\linked\")"
+box_halfcell_counts = [40, 40]
+
+[dependency_sha256]
+"mini.stf" = "71cee6eaa8ca296d0a1f052968217104a0410008b0b4d410f71250899c205f1f"

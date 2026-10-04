@@ -1,0 +1,48 @@
+{
+  "utc": "2026-10-03T16:59:34.829864+00:00",
+  "native_version": "18.53-Lite",
+  "scope": "Actual installed native GUI decodes independently authored nonzero material records; no nonzero native EM acceptance inferred.",
+  "sfc_record": [
+    "Bulk",
+    "1",
+    "SFC",
+    "1",
+    "1e-5",
+    ".2"
+  ],
+  "sfc_decoded": {
+    "Rdc": 1,
+    "Xdc": 1e-05,
+    "Rrf": 0.2
+  },
+  "sup_record": [
+    "Planar",
+    "1",
+    "SUP",
+    "1",
+    "2",
+    "3",
+    "4"
+  ],
+  "sup_decoded": {
+    "Rdc": 1,
+    "Rrf": 2,
+    "Xdc": 3,
+    "Ls": 4
+  },
+  "rf_units": "Ohm Hz^(-1/2)/square",
+  "ls_units": "pH/square",
+  "kinetic_inductance": "Actual Lite warning blocks saving/analyzing this nonzero Ls control.",
+  "hashes": {
+    "planar_editor.png": "be05d777710ba303b7f347c6f1799c146fef4c90d1d2e5f200219eabd4086bcf",
+    "planar_editor_uia.json": "9a9c18f3890a1450876d5c4cf8ac5c0c4c58bed8c191196bc7d9e72c5cd2b8e3",
+    "planar_metals.png": "855f52aad043647ac1a77d5ac3ccb81aceb515d499d184b2bb2927ceb0c2be8e",
+    "planar_metals_uia.json": "6bca80a145e420d535a3de1c131d3c7204f1bc956214b60d728815fde049e897",
+    "planar_order_probe.son": "5d4b80d6dcf3d4fe3ea3babb9ef0497dc7b2ae9415b8c5ee4bb5fb9cd2f1ffb2",
+    "planar_warning.png": "9004a3a5e70a844406ce9abc34c6725765e37432700c9598d7e91dbda4869b20",
+    "README.md": "eb4b93e090dc9afeb16a5338a1b1ced5e216a45a32105241be693a8a61dbadad",
+    "via_editor.png": "cc43a3d15d1bc90cac6af70977125947fbc50443700457d688f81dd7c6b9cc3b",
+    "via_metals.png": "022fccba2fbf86999f60c461a5863ed2952e0338b0c3f238a102c3d3d0a92973",
+    "via_metals_uia.json": "a7c2f8859090e9fa1f2765a82216e3063e530105f3f3a847fc8f5c6131cca74b"
+  }
+}

@@ -1,0 +1,193 @@
+{
+  "utc": "2026-10-03T13:25:30.970231+00:00",
+  "scope": "actual native graph postprocessor R/X/L/C normalization, EM complex port license remains unverified",
+  "source": "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\complex_graph_7bhIy2\\native\\baseline.son",
+  "source_sha256": "032320c724644f26dc73a1f6eb843584ba0b108a421c736b6f0127fb4dfb2ac0",
+  "baseline": "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\complex_graph_7bhIy2\\native\\baseline.s2p",
+  "baseline_sha256": "d6946a8c1b294af5a58efac6b5e1dd475058feed15c1d211a4f3b88c523a8373",
+  "helper_sha256": "1774d3a1267c7dd9db0c4c55a6dcb9540031660bcb0472ea8e2ba4d0d76228c3",
+  "engine_version": "18.53-Lite",
+  "complex_s_gate": 1e-09,
+  "variants": [
+    {
+      "kind": "reactance",
+      "frequency_hz": 1000000000.0,
+      "reference_real_ohm": [
+        50.0,
+        75.0
+      ],
+      "reference_imag_ohm": [
+        20.000000000000004,
+        -10.0
+      ],
+      "power_wave_max_complex_s_error": 4.942250850377375e-13,
+      "pseudo_wave_max_complex_s_error": 0.33536880270640285,
+      "status": "PASS"
+    },
+    {
+      "kind": "reactance",
+      "frequency_hz": 5000000000.0,
+      "reference_real_ohm": [
+        50.0,
+        75.0
+      ],
+      "reference_imag_ohm": [
+        20.000000000000004,
+        -10.0
+      ],
+      "power_wave_max_complex_s_error": 5.622864010516977e-13,
+      "pseudo_wave_max_complex_s_error": 0.43761494437391935,
+      "status": "PASS"
+    },
+    {
+      "kind": "reactance",
+      "frequency_hz": 10000000000.0,
+      "reference_real_ohm": [
+        50.0,
+        75.0
+      ],
+      "reference_imag_ohm": [
+        20.000000000000004,
+        -10.0
+      ],
+      "power_wave_max_complex_s_error": 6.963075109619645e-13,
+      "pseudo_wave_max_complex_s_error": 0.4954782958551032,
+      "status": "PASS"
+    },
+    {
+      "kind": "inductance",
+      "frequency_hz": 1000000000.0,
+      "reference_real_ohm": [
+        50.0,
+        75.0
+      ],
+      "reference_imag_ohm": [
+        6.283185307179586,
+        3.141592653589793
+      ],
+      "power_wave_max_complex_s_error": 4.5453512597780186e-13,
+      "pseudo_wave_max_complex_s_error": 0.10116873716487335,
+      "status": "PASS"
+    },
+    {
+      "kind": "inductance",
+      "frequency_hz": 5000000000.0,
+      "reference_real_ohm": [
+        50.00000000000001,
+        75.00000000000001
+      ],
+      "reference_imag_ohm": [
+        31.415926535897935,
+        15.707963267948971
+      ],
+      "power_wave_max_complex_s_error": 5.096047160586673e-13,
+      "pseudo_wave_max_complex_s_error": 0.5828626100518202,
+      "status": "PASS"
+    },
+    {
+      "kind": "inductance",
+      "frequency_hz": 10000000000.0,
+      "reference_real_ohm": [
+        50.00000000000001,
+        75.0
+      ],
+      "reference_imag_ohm": [
+        62.83185307179586,
+        31.415926535897928
+      ],
+      "power_wave_max_complex_s_error": 6.624006466784169e-13,
+      "pseudo_wave_max_complex_s_error": 1.3757224972993378,
+      "status": "PASS"
+    },
+    {
+      "kind": "capacitance",
+      "frequency_hz": 1000000000.0,
+      "reference_real_ohm": [
+        35.84784001624489,
+        16.472447055600433
+      ],
+      "reference_imag_ohm": [
+        -22.523862168419427,
+        -31.049831193912684
+      ],
+      "power_wave_max_complex_s_error": 2.7313458701053076e-13,
+      "pseudo_wave_max_complex_s_error": 0.8904015986852697,
+      "status": "PASS"
+    },
+    {
+      "kind": "capacitance",
+      "frequency_hz": 5000000000.0,
+      "reference_real_ohm": [
+        4.5999834175187635,
+        0.8349434790668698
+      ],
+      "reference_imag_ohm": [
+        -14.451274111111813,
+        -7.869156899997543
+      ],
+      "power_wave_max_complex_s_error": 4.901583814546137e-12,
+      "pseudo_wave_max_complex_s_error": 3.47181553447307,
+      "status": "PASS"
+    },
+    {
+      "kind": "capacitance",
+      "frequency_hz": 10000000000.0,
+      "reference_real_ohm": [
+        1.2352261515928826,
+        0.21049337043704966
+      ],
+      "reference_imag_ohm": [
+        -7.761154806732383,
+        -3.9677065571663404
+      ],
+      "power_wave_max_complex_s_error": 4.1034425738808604e-14,
+      "pseudo_wave_max_complex_s_error": 0.2815897831657523,
+      "status": "PASS"
+    },
+    {
+      "kind": "combined",
+      "frequency_hz": 1000000000.0,
+      "reference_real_ohm": [
+        44.43969023397359,
+        15.220668168288858
+      ],
+      "reference_imag_ohm": [
+        -19.133559934315723,
+        -30.322059954056193
+      ],
+      "power_wave_max_complex_s_error": 3.7809828161847876e-13,
+      "pseudo_wave_max_complex_s_error": 0.8271081474255884,
+      "status": "PASS"
+    },
+    {
+      "kind": "combined",
+      "frequency_hz": 5000000000.0,
+      "reference_real_ohm": [
+        5.058455851305056,
+        0.8435841171548725
+      ],
+      "reference_imag_ohm": [
+        -16.111609360204316,
+        -7.932442061877364
+      ],
+      "power_wave_max_complex_s_error": 6.591388038433244e-12,
+      "pseudo_wave_max_complex_s_error": 4.293960644677133,
+      "status": "PASS"
+    },
+    {
+      "kind": "combined",
+      "frequency_hz": 10000000000.0,
+      "reference_real_ohm": [
+        1.124763077040428,
+        0.20026099584579263
+      ],
+      "reference_imag_ohm": [
+        -8.357042908470545,
+        -4.025433065165453
+      ],
+      "power_wave_max_complex_s_error": 4.2023642370360755e-14,
+      "pseudo_wave_max_complex_s_error": 0.29629432380432885,
+      "status": "PASS"
+    }
+  ]
+}

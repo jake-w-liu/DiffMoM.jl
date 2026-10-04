@@ -1,0 +1,71 @@
+{
+  "native_version": "18.53-Lite",
+  "source_archive": "data\\sonnet_validation\\native_stf_scalar_rZbgen",
+  "scope": "manufactured scalar STF reference; inline actual EM verified, linked actual EM rejected by Lite; no table interpolation/etch/rpv acceptance",
+  "files": [
+    {
+      "path": "mini.stf",
+      "sha256": "71cee6eaa8ca296d0a1f052968217104a0410008b0b4d410f71250899c205f1f"
+    },
+    {
+      "path": "inline.son",
+      "sha256": "8214c8598a2e9e5105078fb0a7467318a49f2d709aa8529086610f37ba3a8a52"
+    },
+    {
+      "path": "linked.son",
+      "sha256": "b8d329eb21217d907a5db73fbbf11a0cc32418fa563c0c59b159e87cb7ae6686"
+    },
+    {
+      "path": "linked_serialized_cover10.son",
+      "sha256": "9e2f7156ee23cd625fe485ae230f1bc444ee16e5c88807af856d4822c35d7ec5"
+    },
+    {
+      "path": "comparison.toml",
+      "sha256": "db776b01639d932d12001e371364fea5148bf990c1c047e4093aabb3b8d8b594"
+    },
+    {
+      "path": "inline/native.s2p",
+      "sha256": "3d8d1bd167423392d0196ed38990fda8947493fbcb18a448685e74447cd13699"
+    },
+    {
+      "path": "inline/engine_stdout.log",
+      "sha256": "9345089579a2a60339ce2d1101d04966c4eaa54918ee79a0b3737732823649c1"
+    },
+    {
+      "path": "inline/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "linked/engine_stdout.log",
+      "sha256": "568120cebc2c3ec3d6fa6a332156cb1ea586a2508d5bc59bed0cdf50efa7f516"
+    },
+    {
+      "path": "linked/engine_stderr.log",
+      "sha256": "b9038fdb2d9de3a7db7f0a6472c5db55a920254a55ca6cf36211ac621243f1a0"
+    },
+    {
+      "path": "linked_serialized_cover10/engine_stderr.log",
+      "sha256": "5e9bafa370822270d88400712d7c99f1ec850cceeae84761680b4f2ae40bd45d"
+    },
+    {
+      "path": "inline/metadata.toml",
+      "sha256": "e87fd67abfb4a404ef73e6f013c438c42d9224a55e675f30cbbeaf04a8bbfc45"
+    },
+    {
+      "path": "linked/metadata.toml",
+      "sha256": "533c33dcd4c20edb6cbf9ee5182942426d35f63a20b4418208092fca07266cd3"
+    },
+    {
+      "path": "linked_serialized_cover10/metadata.toml",
+      "sha256": "b90ffad868cdbbfd8e7bb8f17a0c2f44172e1ae786571171fdb1e93f8f9c8dff"
+    },
+    {
+      "path": "linked_serialized_cover10/engine_stdout.log",
+      "sha256": "6250993f7c543ff2f622bf3eb580a7aa7d8ddf53e0cd7f1d84e0f0f90b5439ae"
+    },
+    {
+      "path": "benchmark_source.jl",
+      "sha256": "fa72bcbbf40de5c5dd5032c38f336a9eb15e32f69e35fb795c21f3306b0ec5d4"
+    }
+  ]
+}

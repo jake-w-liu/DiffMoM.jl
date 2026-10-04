@@ -1,0 +1,28 @@
+{
+  "scope": "Actual installed Sonnet18.53-Lite primitive RES units; fixed DEF references50ohm",
+  "runtime_source": "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_resistance_units_OC8cbf",
+  "scales": {
+    "OH": 1,
+    "OHMS": 1,
+    "KOH": 1000,
+    "MOH": 1000000
+  },
+  "files": {
+    "KOH.s2p": "b4c25f15308faea2a7e45ca666c2b3debdbb1a8befc86a15d6ceeb6462fbd125",
+    "KOH.son": "4e9ea062102daec97dd38e8a51bfa5a7352d0f77d75f668515c51f2f71c220c6",
+    "KOH_metadata.toml": "27819b5b772b2b8a9b104137e4059d34818a3a4809796fab38df2c634d7ea4da",
+    "KOH_response.log": "64b3f3e07e2c140bbd52be39dd8043e757796fcca0fa7cfebb87506f0b81ae38",
+    "MOH.s2p": "b7f6e4435f4ace4e78112182ce6f3974ee499872f14e896e3b43ce36ff28abcd",
+    "MOH.son": "d6071c4c4f97272caec9e30cb49841de8a8451464cda9fe05e4e1d3c22124050",
+    "MOH_metadata.toml": "798f337496e93be85e642c03c4a35b81aecb671eb5242869036d6f621db0c9fa",
+    "MOH_response.log": "819f7380a37d37656d1e743fe73f4f859e1aa02a4ebd3a29261f8180e29d4411",
+    "OH.s2p": "1e8015696ab7b8e5a12b739dabedbdbc96a7844851c6fe4f56b0998ee197822e",
+    "OH.son": "8f72b7d1a1331e30083f71ea2fa7e5f6a719d57f8cff74cf33a8ef88f425aca3",
+    "OHMS.s2p": "e043bbab2d62db3d2a5157d1553f6f3f573fb3999f6065f0a2d0f5fdb8fe747b",
+    "OHMS.son": "fce4e7c7410f4742c3d0f9c38d32a3774307201ebfa78e10a1a2238d75ea5c91",
+    "OHMS_metadata.toml": "87f1aa40c0700ed077b8125230af3f93ed9859c2ad31c238b75e33c3403b3f7d",
+    "OHMS_response.log": "91417d64b2e01be2ba3d9ff699cc5996f73ff298501a32e38c481b56d3d2cc7f",
+    "OH_metadata.toml": "82e0ff81ab17061d78c516b8385f09e041faa71124e2affea153af0ed5ab4c24",
+    "OH_response.log": "0328693d2b797a7ccfd3e649b6a48575f4445fab133a21515a9434b9fb820518"
+  }
+}

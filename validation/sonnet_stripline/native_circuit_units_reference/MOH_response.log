@@ -1,0 +1,21 @@
+Run 1:  Sun Oct 04 03:13:20 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_resistance_units_OC8cbf\MOH\MOH.son.
+
+    Begin circuit-theory simulation using frequency sweep:
+      Linear Start = 200, Stop = 400, Step = 100 MHZ
+
+    Frequency:  200 MHz
+
+      S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      200.000000 0.333333 0.0000 0.666667 0.0000 0.666667 0.0000 0.333333 0.0000
+
+    Frequency:  300 MHz
+      300.000000 0.333333 0.0000 0.666667 0.0000 0.666667 0.0000 0.333333 0.0000
+
+    Frequency:  400 MHz
+      400.000000 0.333333 0.0000 0.666667 0.0000 0.666667 0.0000 0.333333 0.0000
+
+Em simulation completed Sun Oct 04 03:13:20 2026.

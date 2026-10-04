@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<technology_file has_private="false" version="1700">
+  <units cunit="SM" lunit="UM" runit="OHUM" srunit="OHSQ" tempunit="C"/>
+  <public>
+    <variables><var name="TopH" units="LENG" value="100"/><var name="BottomH" units="LENG" value="100"/></variables>
+    <materials>
+      <dielectric name="Air"><params erel="1"/></dielectric>
+      <dielectric name="Substrate"><params erel="4"/></dielectric>
+    </materials>
+    <metal_model_defs><metal_model model_type="Normal" name="Thin_def"/></metal_model_defs>
+    <stackup>
+      <TOP material="Lossless" model="Thin_def"/>
+      <diel dielectric="Air" name="Upper" thickness="TopH"/>
+      <diel dielectric="Substrate" name="Lower" thickness="BottomH"/>
+      <BOTTOM material="Lossless" model="Thin_def"/>
+    </stackup>
+  </public>
+</technology_file>
