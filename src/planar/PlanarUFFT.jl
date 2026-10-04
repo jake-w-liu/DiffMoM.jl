@@ -18,9 +18,36 @@ struct _PlanarUFFTFamily
     yminus::Vector{ComplexF64}
 end
 
+struct _PlanarUFFTSourceImages
+    halfx::Bool
+    halfy::Bool
+    sinx::Bool
+    siny::Bool
+    shiftx::Bool
+    shifty::Bool
+end
+
+function _ufft_source_images(source,grid)
+    k=_sheet_kind(source.kind);via=_is_via_kind(source.kind);xd=_is_xdir(source.kind)
+    pec=grid.walls===WALL_PEC
+    return _PlanarUFFTSourceImages(k in (_BASIS_X_LO,_BASIS_X_HI),
+        k in (_BASIS_Y_LO,_BASIS_Y_HI),via || !xd ? pec : !pec,
+        via || xd ? pec : !pec,via || !xd,via || xd)
+end
+
+@inline _ufft_image_signs(half::Bool)=half ? (1,) : (1,-1)
+
+@inline function _ufft_source_image(image,xs,ys,rx,ry)
+    ix=rx==1 ? -xs : xs+image.shiftx
+    iy=ry==1 ? -ys : ys+image.shifty
+    sign=(rx==-1 && image.sinx ? -1 : 1)*(ry==-1 && image.siny ? -1 : 1)
+    return ix,iy,sign
+end
+
 struct _PlanarUFFTFoldedWorkspace
     spectra::Array{ComplexF64,3}
     fields::Matrix{ComplexF64}
+    images::Vector{_PlanarUFFTSourceImages}
 end
 
 """FFT operator for the same analytic Galerkin modal sum as
@@ -133,7 +160,7 @@ end
 """`planar_ufft_operator(problem, freq; mx=2nx, my=2ny, ...)`
 constructs the exact modal FFT operator.  The mode counts can exceed
 Nyquist; every analytic high-mode contribution is retained by alias folding.
-When smaller, bounded modal blocks are folded into family-pair spectra;
+When smaller, bounded modal blocks are folded into one spectrum per family pair;
 matvecs then use lattice convolutions without mode-by-element work arrays.
 `max_bytes` bounds owned array payloads before FFT/kernel allocation."""
 planar_ufft_operator(prob::PlanarProblem, freq::Number;kw...) =
@@ -174,16 +201,19 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     L = length(prob.stack.layers)
     kernel_block=Int(min(BigInt(nmode),BigInt(block)))
     full_kernel_bytes=32BigInt(nmode)*ne*ne
-    folded_kernel_bytes=32BigInt(kernel_block)*ne*ne+
-        16BigInt(4)*nf*nf*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
-    fold_dense=dense && _fold_dense && folded_kernel_bytes<full_kernel_bytes
+    block_kernel_bytes=32BigInt(kernel_block)*ne*ne
+    pair_spectrum_bytes=16BigInt(nf)*nf*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
+    dense_folded_bytes=block_kernel_bytes+4pair_spectrum_bytes
+    iterative_folded_bytes=block_kernel_bytes+pair_spectrum_bytes+
+        _checked_array_payload_bytes(_PlanarUFFTSourceImages,nf)
+    fold_dense=dense && _fold_dense && dense_folded_bytes<full_kernel_bytes
     modal_work_bytes=64BigInt(nmode)*ne
     folded_work_bytes=16BigInt(nf)*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
     fold_iterative=!dense && _fold_iterative &&
-        folded_kernel_bytes+folded_work_bytes<full_kernel_bytes+modal_work_bytes
+        iterative_folded_bytes+folded_work_bytes<full_kernel_bytes+modal_work_bytes
     fold_kernels=fold_dense || fold_iterative
     est = _checked_payload_sum("planar FFT",
-        fold_kernels ? folded_kernel_bytes : full_kernel_bytes,
+        fold_dense ? dense_folded_bytes : fold_iterative ? iterative_folded_bytes : full_kernel_bytes,
         dense ? 0 : fold_iterative ? folded_work_bytes : modal_work_bytes,
         _checked_array_payload_bytes(ComplexF64, 2prob.grid.nx, 2prob.grid.ny),
         _checked_array_payload_bytes(ComplexF64, 2, nf, mx + my),
@@ -212,7 +242,9 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     pairs = [(f, s) for f in uniq for s in uniq]
     k_te = Matrix{ComplexF64}(undef, fold_kernels ? kernel_block : nmode, ne * ne)
     k_tm = similar(k_te)
-    spectra=fold_kernels ? zeros(ComplexF64,2prob.grid.nx,2prob.grid.ny,4nf*nf) : nothing
+    spectra=fold_kernels ? zeros(ComplexF64,2prob.grid.nx,2prob.grid.ny,
+        (fold_dense ? 4 : 1)*nf*nf) : nothing
+    images=fold_iterative ? [_ufft_source_images(f,prob.grid) for f in families] : nothing
     vlay = sort!(unique([v.layer for v in prob.vias]))
     volay = sort!(unique([v.layer for v in prob.vols]))
     cte, ctm, scratch, vsts, volsts = _planar_mode_workspace(L, !isempty(vlay), !isempty(volay))
@@ -235,7 +267,11 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         if fold_kernels
             all(isfinite,te) && all(isfinite,tm) ||
                 throw(ArgumentError("FFT modal kernel is non-finite at a box resonance"))
-            _planar_fft_fold_dense_block!(spectra,families,ne,mg,te,tm,mb,nbmode,count)
+            if fold_dense
+                _planar_fft_fold_dense_block!(spectra,families,ne,mg,te,tm,mb,nbmode,count)
+            else
+                _planar_fft_fold_images_block!(spectra,families,images,ne,mg,te,tm,mb,nbmode,count)
+            end
         end
         firstmode += count
     end
@@ -258,7 +294,7 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         lattice,backward,loss)
     forward = FFTW.plan_fft!(lattice)
     if fold_iterative
-        folded=_PlanarUFFTFoldedWorkspace(spectra,zeros(ComplexF64,length(lattice),nf))
+        folded=_PlanarUFFTFoldedWorkspace(spectra,zeros(ComplexF64,length(lattice),nf),images)
         empty_kernel=zeros(ComplexF64,0,ne*ne)
         empty_modes=zeros(ComplexF64,0,ne)
         return PlanarUFFTOperator(nb,prob.grid,mg,families,empty_kernel,empty_kernel,
@@ -366,26 +402,29 @@ function LinearAlgebra.mul!(y::AbstractVector, A::PlanarUFFTOperator,
     return y
 end
 
-# The signed spatial kernel is h(field + r*source). Reflecting the source
-# lattice by -r makes its application an ordinary circular convolution.
+# The negative source Fourier coefficient equals its positive coefficient
+# times sine/cosine parity and a phase for twice the half-cell offset.
+# Put that parity and integer shift into reflected source images, so all
+# four signed source terms share one spectrum and one forward FFT.
 function _planar_ufft_folded_apply!(A,x,folded::_PlanarUFFTFoldedWorkspace)
     F=A.lattice;px,py=size(F);nf=length(A.families);fields=folded.fields
     fill!(fields,0)
     for (si,source) in enumerate(A.families)
-        for (xi,rx) in enumerate((-1,1)),(yi,ry) in enumerate((-1,1))
-            fill!(F,0)
-            for q in eachindex(source.indices)
-                z=source.lattice[q]-1;xs,ys=rem(z,px),z÷px
-                F[mod(-rx*xs,px)+1,mod(-ry*ys,py)+1]+=x[source.indices[q]]
+        image=folded.images[si];fill!(F,0)
+        for q in eachindex(source.indices)
+            z=source.lattice[q]-1;xs,ys=rem(z,px),z÷px
+            for rx in _ufft_image_signs(image.halfx),ry in _ufft_image_signs(image.halfy)
+                ix,iy,sign=_ufft_source_image(image,xs,ys,rx,ry)
+                F[mod(ix,px)+1,mod(iy,py)+1]+=sign*x[source.indices[q]]
             end
-            A.forward*F
-            for fi in 1:nf
-                K=view(folded.spectra,:,:,4*((fi-1)*nf+si-1)+2*(xi-1)+yi)
-                # Constructor-owned spectra share F's lattice dimensions;
-                # fields has length(F) rows and one column per family.
-                @inbounds for t in eachindex(F)
-                    fields[t,fi]+=K[t]*F[t]
-                end
+        end
+        A.forward*F
+        for fi in 1:nf
+            K=view(folded.spectra,:,:,(fi-1)*nf+si)
+            # Constructor-owned spectra share F's lattice dimensions;
+            # fields has length(F) rows and one column per family.
+            @inbounds for t in eachindex(F)
+                fields[t,fi]+=K[t]*F[t]
             end
         end
     end
@@ -447,12 +486,13 @@ function _planar_ufft_folded_diagonal(A,folded::_PlanarUFFTFoldedWorkspace)
     F=A.lattice;px,py=size(F);nf=length(A.families)
     d=zeros(ComplexF64,A.n)
     for (fi,family) in enumerate(A.families)
-        for (xi,rx) in enumerate((-1,1)),(yi,ry) in enumerate((-1,1))
-            copyto!(F,view(folded.spectra,:,:,4*((fi-1)*nf+fi-1)+2*(xi-1)+yi))
-            A.backward*F
-            for q in eachindex(family.indices)
-                z=family.lattice[q]-1;xs,ys=rem(z,px),z÷px
-                d[family.indices[q]]+=F[mod((1+rx)*xs,px)+1,mod((1+ry)*ys,py)+1]
+        image=folded.images[fi]
+        copyto!(F,view(folded.spectra,:,:,(fi-1)*nf+fi));A.backward*F
+        for q in eachindex(family.indices)
+            z=family.lattice[q]-1;xs,ys=rem(z,px),z÷px
+            for rx in _ufft_image_signs(image.halfx),ry in _ufft_image_signs(image.halfy)
+                ix,iy,sign=_ufft_source_image(image,xs,ys,rx,ry)
+                d[family.indices[q]]+=sign*F[mod(xs-ix,px)+1,mod(ys-iy,py)+1]
             end
         end
     end

@@ -16,7 +16,7 @@ end
         retained=planar_ufft_operator(prob,8e9;kw...,_fold_iterative=false)
         x=ComplexF64[sin(p)+im*cos(p) for p in 1:size(Z,1)]
         v=ComplexF64[cos(p/3)-im*sin(p/2) for p in 1:size(Z,1)]
-        for block in (1,7,512)
+        for block in (1,7,512,typemax(Int))
             A=planar_ufft_operator(prob,8e9;kw...,block)
             @test A isa PlanarUFFTOperator && A.folded!==nothing
             @test isempty(A.k_te) && isempty(A.k_tm)
@@ -31,20 +31,29 @@ end
             @test initial≈(2+.3im).*(Z*x)+(-.2+.1im).*v rtol=2e-12
             initial.=NaN;mul!(initial,A,x,1.,0.)
             @test initial≈Z*x rtol=2e-12
+            storage=zeros(ComplexF64,2length(x))
+            strided=view(storage,1:2:length(storage));strided.=x
+            mul!(strided,A,strided)
+            @test strided≈Z*x rtol=2e-12
             matrix=DiffMoM._planar_fft_dense_fill!(similar(Z),A)
             @test matrix≈Z rtol=2e-12
-            @test matrix==assemble_planar_z_ufft(prob,8e9;kw...,block)
+            # Source-image grouping changes roundoff in this private
+            # operator materialization. Public dense assembly still has
+            # its original bit-identical summation-order regressions.
+            @test matrix≈assemble_planar_z_ufft(prob,8e9;kw...,block) rtol=2e-12
             @test DiffMoM._subdivision_retained_payload(A.folded)==
-                sizeof(A.folded.spectra)+sizeof(A.folded.fields)
+                sizeof(A.folded.spectra)+sizeof(A.folded.fields)+sizeof(A.folded.images)
+            @test size(A.folded.spectra,3)==length(A.families)^2
             @test DiffMoM._subdivision_retained_payload(A)<
                 DiffMoM._subdivision_retained_payload(retained)
             out=similar(x);mul!(out,A,x)
             @test (@allocated mul!(out,A,x))==0
             @test_throws DimensionMismatch mul!(zeros(ComplexF64,length(x)+1),A,x)
         end
-        # An oversized block can make folding more expensive; use the
-        # smaller retained representation rather than exceed its storage.
-        @test planar_ufft_operator(prob,8e9;kw...,block=typemax(Int)).folded===nothing
+        # At low counts the retained representation is still smaller,
+        # even after source images reduce each family pair to one plane.
+        lowkw=merge(kw,(;mx=23,my=19))
+        @test planar_ufft_operator(prob,8e9;lowkw...,block=typemax(Int)).folded===nothing
         # Include every wall half rooftop for both transverse directions,
         # on sheets and on the volume, rather than only the port walls.
         for sh in prob.sheets
@@ -67,6 +76,47 @@ end
     end
 end
 
+@testset "Source images preserve low and aliased modes at every wall half" begin
+    for walls in (WALL_PEC,WALL_PMC)
+        base=_dense_workspace_fixture(walls)
+        for sh in base.sheets
+            sh.connect_south.=true;sh.connect_north.=true
+        end
+        for vol in base.vols
+            vol.connect_west.=true;vol.connect_east.=true
+            vol.connect_south.=true;vol.connect_north.=true
+        end
+        prob=build_planar_problem(base.stack,base.grid,base.sheets,base.ports;
+            vias=base.vias,vols=base.vols)
+        for (mx,my) in ((3,2),(17,13),(65,63))
+            kw=(;mx,my,surface_zs=[.3+.2im,.5+.1im],via_sigma=5.8e7,volume_sigma=4e7,
+                sheet_coupling_zs=[.01+.01im .002;.002 .02+.01im])
+            # Low counts normally choose retained kernels. Exercise the
+            # production image folding directly as well, and compare it
+            # to the independently assembled Galerkin modal equation.
+            A=planar_ufft_operator(prob,8e9;kw...,_fold_iterative=false)
+            mg=A.modes;nf=length(A.families);ne=size(A.source_te,2)
+            images=[DiffMoM._ufft_source_images(f,prob.grid) for f in A.families]
+            spectra=zeros(ComplexF64,size(A.lattice)...,nf*nf)
+            mlist=[m+1 for n in 0:my-1 for m in 0:mx-1]
+            nlist=[n+1 for n in 0:my-1 for m in 0:mx-1]
+            DiffMoM._planar_fft_fold_images_block!(spectra,A.families,images,ne,mg,
+                A.k_te,A.k_tm,mlist,nlist,length(mlist))
+            folded=DiffMoM._PlanarUFFTFoldedWorkspace(spectra,
+                zeros(ComplexF64,length(A.lattice),nf),images)
+            imageoperator=PlanarUFFTOperator(A.n,A.grid,A.modes,A.families,A.k_te,A.k_tm,
+                A.source_te,A.source_tm,A.field_te,A.field_tm,A.lattice,A.forward,A.backward,
+                A.local_loss,A.output,folded)
+            Z=assemble_planar_z(prob.stack,prob.grid,prob.sheets,prob.basis,2pi*8e9;
+                vias=prob.vias,vols=prob.vols,kw...)
+            x=ComplexF64[sin(p)+im*cos(p) for p in 1:A.n]
+            @test imageoperator*x≈Z*x rtol=2e-12
+            @test DiffMoM._planar_ufft_diagonal(imageoperator)≈diag(Z) rtol=2e-12
+            @test DiffMoM._planar_fft_dense_fill!(similar(Z),imageoperator)≈Z rtol=2e-12
+        end
+    end
+end
+
 @testset "Folded FFT resources and complete port solution" begin
     prob=_dense_workspace_fixture()
     kw=(;mx=128,my=96,surface_zs=[.3+.2im,.5+.1im],via_sigma=5.8e7,volume_sigma=4e7)
@@ -81,6 +131,20 @@ end
     @test_throws ArgumentError planar_ufft_operator(prob,8e9;mx=typemax(Int))
     @test_throws ArgumentError planar_ufft_operator(prob,0.;kw...)
     @test_throws ArgumentError planar_ufft_operator(prob,8e9;mx=128,my=96,via_sigma=0.)
+    # Check the actual reported preflight boundary, including the source
+    # image descriptor payload, without duplicating its estimate formula.
+    rejected=try
+        planar_ufft_operator(prob,8e9;kw...,max_bytes=DiffMoM._subdivision_retained_payload(A)-1)
+        nothing
+    catch err
+        err
+    end
+    @test rejected isa ArgumentError
+    limit=parse(Int,only(match(r"requires (\d+) raw bytes",sprint(showerror,rejected)).captures))
+    @test_throws ArgumentError planar_ufft_operator(prob,8e9;kw...,max_bytes=limit-1)
+    limited=planar_ufft_operator(prob,8e9;kw...,max_bytes=limit)
+    @test DiffMoM._subdivision_retained_payload(limited)<=limit
+    @test limited.folded!==nothing
     bytes=minimum(@allocated(construct()) for _ in 1:3)
     oldbytes=minimum(@allocated(legacy()) for _ in 1:3)
     @test bytes<.3oldbytes

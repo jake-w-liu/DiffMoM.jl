@@ -60,6 +60,54 @@ function _planar_fft_fold_dense_block!(spectra::Array{ComplexF64,3},
     return nothing
 end
 
+# Half rooftops lie on the wall in their ramp direction: both reflected
+# lattice coordinates coincide, so sum their distinct Hc/Hs coefficients
+# in the spectrum. Other axes use the parity/shift of source images.
+function _planar_fft_fold_images_block!(spectra::Array{ComplexF64,3},
+        families,images,ne,mg,k_te,k_tm,mlist,nlist,count)
+    nf=length(families)
+    for (fi,field) in enumerate(families),(si,source) in enumerate(families)
+        pair=(field.element-1)*ne+source.element;image=images[si]
+        fv,sv=_is_via_kind(field.kind),_is_via_kind(source.kind)
+        fx,sxdir=_is_xdir(field.kind),_is_xdir(source.kind)
+        F=view(spectra,:,:,(fi-1)*nf+si);px,py=size(F)
+        # Constructor-owned coefficient ranges and bounded mode/pair
+        # indices are valid; every spectral index is reduced to the grid.
+        @inbounds for q in 1:count
+            m=mlist[q]-1;n=nlist[q]-1
+            kernel=_planar_fft_family_kernel(k_te[q,pair],k_tm[q,pair],fv,sv,fx,sxdir,mg.kx[m+1],mg.ky[n+1])
+            for sx in (-1,1),sy in (-1,1)
+                cx=image.halfx ? source.xplus[m+1]+source.xminus[m+1] :
+                    sx==1 ? source.xplus[m+1] : source.xminus[m+1]
+                cy=image.halfy ? source.yplus[n+1]+source.yminus[n+1] :
+                    sy==1 ? source.yplus[n+1] : source.yminus[n+1]
+                F[mod(sx*m,px)+1,mod(sy*n,py)+1]+=
+                    kernel*_planar_family_coefficient(field,m,n,sx,sy)*cx*cy
+            end
+        end
+    end
+    return nothing
+end
+
+function _planar_fft_images_dense_kernels!(Z,A,folded)
+    F=A.lattice;px,py=size(F);nf=length(A.families)
+    for (fi,field) in enumerate(A.families),(si,source) in enumerate(A.families)
+        image=folded.images[si]
+        copyto!(F,view(folded.spectra,:,:,(fi-1)*nf+si));A.backward*F
+        for q in eachindex(source.indices)
+            sq=source.lattice[q]-1;xs,ys=rem(sq,px),sq÷px
+            for rx in _ufft_image_signs(image.halfx),ry in _ufft_image_signs(image.halfy)
+                ix,iy,sign=_ufft_source_image(image,xs,ys,rx,ry)
+                for p in eachindex(field.indices)
+                    fp=field.lattice[p]-1;xf,yf=rem(fp,px),fp÷px
+                    Z[field.indices[p],source.indices[q]]+=sign*F[mod(xf-ix,px)+1,mod(yf-iy,py)+1]
+                end
+            end
+        end
+    end
+    return Z
+end
+
 function _planar_fft_folded_dense_kernels!(Z,A,spectra)
     F=A.lattice;nf=length(A.families)
     for (fi,field) in enumerate(A.families),(si,source) in enumerate(A.families)
@@ -78,7 +126,7 @@ _planar_fft_dense_kernels!(Z,A::_PlanarFFTBlockAssemblyWorkspace)=
 function _planar_fft_dense_kernels!(Z,
         A::Union{PlanarUFFTOperator,_PlanarFFTAssemblyWorkspace})
     if A isa PlanarUFFTOperator && A.folded!==nothing
-        return _planar_fft_folded_dense_kernels!(Z,A,A.folded.spectra)
+        return _planar_fft_images_dense_kernels!(Z,A,A.folded)
     end
     F=A.lattice;px,py=size(F);mg=A.modes;ne=_planar_fft_element_count(A)
     # A product of real sin/cos subsection transforms is a sum of four

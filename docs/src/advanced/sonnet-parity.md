@@ -1032,7 +1032,7 @@ ladder remain open.
   0.06533993/0.06492637: both still **FAIL** the unchanged 0.06 gate.
   Their cumulative Julia solve allocations, including returned results, are
   approximately 2.818/2.782 GB; these do not establish peak process memory.
-  The public matrix-free operator now folds bounded modal blocks into
+  The first public matrix-free folding implementation folds bounded modal blocks into
   family-pair spectra when they require less storage than retained kernels
   and mode-by-element work arrays. On the same 4096-mode DXF case it fits
   the unchanged 4 GB payload budget, retaining 240037168 bytes of Julia
@@ -1049,7 +1049,22 @@ ladder remain open.
   separate checks. Evidence: `dxf_folded_public_solve_3zDFGO`, anchored to
   source `a028459b`, under local `data/planar_audit`.
   Evidence: `dxf_folded_iterative_operator_audit_ZRgNgt` under local
-  `data/planar_audit`. Array payloads exclude opaque FFTW plans and process
+  `data/planar_audit`, anchored to source `a028459b`.
+  Source images now combine the four signed source terms into one spectrum
+  per family pair, preserving half-rooftop mixed coefficients at walls.
+  The current 4096-mode operator retains 70167892 bytes of Julia arrays;
+  its spectrum payload falls from 226492416 to 56623104 bytes. Against the
+  full finite-modal matrix, action and diagonal relative errors are
+  1.76e-15 and 1.61e-16, with zero warmed matvec allocation. Evidence:
+  `dxf_source_images_operator_audit_OExCoI`. A preceding paired prototype
+  measured median actions of 0.0537792 versus 0.016238 seconds across
+  15 samples (`dxf_source_images_prototype_mwnZLo`); this is a scoped timing
+  measurement. Independent modal equations cover low and aliased modes,
+  PEC/PMC walls, every wall half, sheets/vias/volumes and coupled loss.
+  Public dense assembly retains its original bit-identical summation order;
+  materializing an iterative image operator changes floating-point grouping
+  and uses the same 2e-12 independent equation gate.
+  Array payloads exclude opaque FFTW plans and process
   overhead. Folding increases construction work; subsequent actions use
   grid-sized convolutions. Hybrid cross reactions continue using individual
   modal fields, so this storage reduction applies to the uniform-grid
@@ -1274,6 +1289,7 @@ ladder remain open.
 | Retained FFT assembly keeps unused iterative buffers / measured resource use | multilayer 273-unknown fixture retains four mode-by-element arrays and an unused output vector totaling 3936528 B; warmed assembly allocates 15281904 B | separate compact assembly workspace preserves bit-identical finite-modal matrix and complete public iterative operator; warmed allocation 11344885 B (25.76% reduction), 42 new + 116 neighboring + 112 independent checks; raw payload budget still excludes opaque FFTW and process overhead |
 | Dense FFT retains every modal layer-pair kernel / measured resource use | 273-unknown mixed fixture allocates 11.344 MB and rejects an 8 MB payload limit; DXF mode4096 requires a 4.839 GB FFT workspace before its dense matrix | bounded blocks fold each mode in its original order into smaller family-pair lattices; mixed PEC/PMC matrices match the frozen source byte for byte, allocations fall to 3.695 MB and the 8 MB gate passes; DXF mode4096 fits the original 4 GB limit, while its native accuracy gate remains FAIL |
 | Matrix-free FFT retains high-mode kernels and four mode-by-element buffers / measured resource use | DXF mode4096 rejects the 4 GB limit because its estimate is 8.061 GB | choose smaller family-pair spectra plus reusable grid fields; the same public operator fits the unchanged budget and retains 240 MB of Julia arrays, with full-matrix action error 1.66e-15 and zero warmed matvec allocation; independent mixed PEC/PMC modal matrices, all wall halves, local/coupled losses and port solves gate correctness; peak process memory and DXF physical acceptance remain unverified |
+| Folded iterative FFT stores four signed spectra per family pair / measured resource use | preceding 4096-mode DXF operator retains 240037168 bytes, including 226492416 spectrum bytes | reflected source images reduce spectrum storage to one quarter and total retained arrays to 70167892 bytes; full finite-matrix action/diagonal errors 1.76e-15/1.61e-16, zero warmed allocation, independent low/aliased-mode equations and exact preflight boundary tests; public dense summation order is unchanged |
 | Folded accumulation checks owned indices and public results erase FFT plan types / measured CPU and allocations | paired mixed PEC/PMC prototypes spend 17–32% less time with the owned accumulation ranges unchecked; real physical result matvec calls allocate48 bytes despite zero allocation through concrete operators | remove checks only inside the constructor-sized accumulation loop and retain the concrete operator type in `PlanarUFFTResult`; original vector/input indexing and preflight guards remain checked; outputs stay bit-identical in scoped prototypes, and public result/legacy-constructor matvec allocation is gated at zero; timings are workload-specific and do not certify global optimization |
 | Finite wide circuit scalars lose stored invariants / numerical and state correctness | finite BigFloat R/L become infinity; positive C and nonzero transformer ratios become zero in owned elements | validate stored Float64 values before mutation; invalid inputs leave elements/nodes/ports unchanged, explicit zero and representable wide values remain supported |
 | Circuit frequency overflow/underflow after callbacks / public workflow correctness | pure network input frequencies `1e1000`/`1e-1000` return result frequencies infinity/zero after two callbacks | preflight the stored frequency before providers; invalid frequencies invoke zero callbacks, valid wide inputs use finite Float64 provider/result frequencies |
