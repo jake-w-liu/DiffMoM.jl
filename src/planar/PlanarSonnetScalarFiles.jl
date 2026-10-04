@@ -288,8 +288,121 @@ function _sonnet_scalar_number(text)
     return value
 end
 
-# Check decimal literals before Meta.parse can silently round nonzero input to
-# zero. Quoted CSV filenames are skipped; this does not execute native code.
+# Native ^ chains associate left, whereas Julia's parser associates right.
+# Keep explicit parentheses and the native low-precedence unary sign: a signed
+# exponent consumes its following power expression (2^-3^2 = 2^(-(3^2))).
+mutable struct _SonnetScalarParser
+    chars::Vector{Char}
+    position::Int
+end
+
+function _sonnet_scalar_space!(p)
+    while p.position<=length(p.chars) && isspace(p.chars[p.position]);p.position+=1;end
+    return nothing
+end
+
+function _sonnet_scalar_peek(p)
+    _sonnet_scalar_space!(p)
+    return p.position>length(p.chars) ? '\0' : p.chars[p.position]
+end
+
+function _sonnet_scalar_atom!(p,depth)
+    depth<=128 || throw(ArgumentError("native scalar expression nesting budget exceeded"))
+    c=_sonnet_scalar_peek(p);start=p.position
+    if c=='('
+        p.position+=1
+        ex=_sonnet_scalar_sum!(p,depth+1)
+        _sonnet_scalar_peek(p)==')' || throw(ArgumentError("native scalar requires a closing parenthesis"))
+        p.position+=1
+        return ex
+    elseif c=='"'
+        p.position+=1;out=IOBuffer()
+        while p.position<=length(p.chars)
+            c=p.chars[p.position];p.position+=1
+            c=='"' && return String(take!(out))
+            if c=='\\' && p.position<=length(p.chars) && p.chars[p.position] in ('"','\\')
+                c=p.chars[p.position];p.position+=1
+            end
+            c in ('\0','\n','\r') && throw(ArgumentError("invalid native scalar string"))
+            print(out,c)
+        end
+        throw(ArgumentError("unterminated native scalar string"))
+    elseif isdigit(c) || c=='.'
+        while p.position<=length(p.chars) && (isdigit(p.chars[p.position]) || p.chars[p.position]=='.');p.position+=1;end
+        if p.position<=length(p.chars) && p.chars[p.position] in ('e','E')
+            p.position+=1
+            p.position<=length(p.chars) && p.chars[p.position] in ('+','-') && (p.position+=1)
+            while p.position<=length(p.chars) && isdigit(p.chars[p.position]);p.position+=1;end
+        end
+        return _sonnet_scalar_number(String(p.chars[start:p.position-1]))
+    elseif isletter(c) || c=='_'
+        p.position+=1
+        while p.position<=length(p.chars) && (isletter(p.chars[p.position]) || isdigit(p.chars[p.position]) || p.chars[p.position]=='_');p.position+=1;end
+        name=Symbol(String(p.chars[start:p.position-1]))
+        _sonnet_scalar_peek(p)=='(' || return name
+        p.position+=1;ex=Expr(:call,name)
+        if _sonnet_scalar_peek(p)!=')'
+            while true
+                push!(ex.args,_sonnet_scalar_sum!(p,depth+1))
+                _sonnet_scalar_peek(p)==',' || break
+                p.position+=1
+            end
+        end
+        _sonnet_scalar_peek(p)==')' || throw(ArgumentError("native scalar requires a closing function parenthesis"))
+        p.position+=1
+        return ex
+    end
+    throw(ArgumentError("unsupported Sonnet expression token"))
+end
+
+function _sonnet_scalar_power!(p,depth)
+    value=_sonnet_scalar_atom!(p,depth)
+    while _sonnet_scalar_peek(p)=='^'
+        p.position+=1
+        rhs=_sonnet_scalar_peek(p) in ('+','-') ? _sonnet_scalar_unary!(p,depth+1) : _sonnet_scalar_atom!(p,depth)
+        value=Expr(:call,:^,value,rhs)
+    end
+    return value
+end
+
+function _sonnet_scalar_unary!(p,depth)
+    depth<=128 || throw(ArgumentError("native scalar expression depth budget exceeded"))
+    c=_sonnet_scalar_peek(p)
+    if c in ('+','-')
+        p.position+=1
+        return Expr(:call,Symbol(c),_sonnet_scalar_unary!(p,depth+1))
+    end
+    return _sonnet_scalar_power!(p,depth)
+end
+
+function _sonnet_scalar_fold(op,a,b)
+    if op in (:+,:*) && a isa Expr && a.head==:call && first(a.args)==op
+        push!(a.args,b)
+        return a
+    end
+    return Expr(:call,op,a,b)
+end
+
+function _sonnet_scalar_product!(p,depth)
+    value=_sonnet_scalar_unary!(p,depth)
+    while _sonnet_scalar_peek(p) in ('*','/')
+        op=Symbol(p.chars[p.position]);p.position+=1
+        value=_sonnet_scalar_fold(op,value,_sonnet_scalar_unary!(p,depth))
+    end
+    return value
+end
+
+function _sonnet_scalar_sum!(p,depth)
+    value=_sonnet_scalar_product!(p,depth)
+    while _sonnet_scalar_peek(p) in ('+','-')
+        op=Symbol(p.chars[p.position]);p.position+=1
+        value=_sonnet_scalar_fold(op,value,_sonnet_scalar_product!(p,depth))
+    end
+    return value
+end
+
+# Check decimal literals before parsing can silently round nonzero input to
+# zero. Quoted CSV filenames are skipped; no host-language code is parsed.
 function _sonnet_parse_scalar(text::AbstractString)
     ncodeunits(text)<=16384 || throw(ArgumentError("native scalar expression byte budget exceeded"))
     chars=collect(text);i=1;quoted=false;nesting=0
@@ -325,7 +438,9 @@ function _sonnet_parse_scalar(text::AbstractString)
             i+=1
         end
     end
-    ex=Meta.parse(text)
+    parser=_SonnetScalarParser(chars,1)
+    ex=_sonnet_scalar_sum!(parser,0)
+    _sonnet_scalar_peek(parser)=='\0' || throw(ArgumentError("unsupported Sonnet expression suffix"))
     pending=Tuple{Any,Int}[(ex,0)]
     while !isempty(pending)
         node,depth=pop!(pending)
@@ -503,16 +618,24 @@ function _sonnet_scalar_axis(axis,key,outside)
     i=clamp(searchsortedlast(axis,key),1,length(axis)-1)
     key==axis[i] && return (i,i+1,0.)
     key==axis[i+1] && return (i,i+1,1.)
-    scale=max(abs(key),abs(axis[i]),abs(axis[i+1]))
-    return (i,i+1,(key/scale-axis[i]/scale)/(axis[i+1]/scale-axis[i]/scale))
+    # Subtract stored coordinates before division: normalizing large, close
+    # keys independently can round away a material fraction of their gap.
+    # Only an interval crossing opposite extreme signs can overflow; halving
+    # those coordinates preserves its finite ratio without normalizing away
+    # the close-key differences that are exact by Sterbenz's lemma.
+    width=axis[i+1]-axis[i]
+    fraction=isfinite(width) ? (key-axis[i])/width :
+        (key/2-axis[i]/2)/(axis[i+1]/2-axis[i]/2)
+    return (i,i+1,fraction)
 end
 function _sonnet_scalar_lerp(x,y,a)
     a==0 && return x
     a==1 && return y
     x==y && return x
-    scale=max(abs(x),abs(y))
-    iszero(scale) && return 0.
-    return scale*clamp((1-a)*(x/scale)+a*(y/scale),-1.,1.)
+    # Same-sign differences are finite and retain close value gaps. Across
+    # opposite signs the convex weighted sum avoids an overflowing y-x.
+    value=signbit(x)==signbit(y) ? x+a*(y-x) : (1-a)*x+a*y
+    return clamp(value,min(x,y),max(x,y))
 end
 function _sonnet_scalar_table_value(variables,kind,name,keys)
     variables isa SonnetScalarVariables || throw(ArgumentError("native scalar CSV dependencies must be staged before evaluation"))
