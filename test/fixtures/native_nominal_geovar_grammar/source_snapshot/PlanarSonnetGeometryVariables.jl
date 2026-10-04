@@ -22,21 +22,6 @@ function _sonnet_geovar_row(rows,index,p)
     return rows[index]
 end
 
-function _sonnet_geovar_position(rows,index,p)
-    row=_sonnet_geovar_row(rows,index,p)
-    length(row.tokens)==3 && row.tokens[1]=="POS" &&
-        all(i->(v=tryparse(Float64,row.tokens[i]);v!==nothing && isfinite(v)),2:3) ||
-        _sonnet_error(p.source,row.line,"invalid GEOVAR display position")
-    return nothing
-end
-
-function _sonnet_geovar_groups(row,p)
-    length(row.tokens)==2 || _sonnet_error(p.source,row.line,"invalid GEOVAR point-set group count")
-    groups=tryparse(Int,row.tokens[2])
-    groups!==nothing && groups>=0 || _sonnet_error(p.source,row.line,"invalid GEOVAR point-set group count")
-    return groups
-end
-
 function _sonnet_geovar_point(p,polygons,row,index)
     t=row.tokens
     length(t)==3 && t[1]=="POLY" || _sonnet_error(p.source,row.line,"GEOVAR requires a literal POLY point identity")
@@ -63,8 +48,8 @@ end
 function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used)
     row=_sonnet_geovar_row(rows,index,p);t=row.tokens
     length(t)==2 && t[1]==tag || _sonnet_error(p.source,row.line,"GEOVAR requires $tag")
-    groups=_sonnet_geovar_groups(row,p)
-    groups<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR point-set group count")
+    groups=tryparse(Int,t[2])
+    groups!==nothing && 0<=groups<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR point-set group count")
     points=Tuple{Int,Int}[];index+=1
     for _ in 1:groups
         row=_sonnet_geovar_row(rows,index,p);t=row.tokens
@@ -100,7 +85,10 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         name=t[2];haskey(p.variables,name) || _sonnet_error(p.source,row.line,"GEOVAR lacks its declared quantity variable")
         get(quantities,name,"")=="LNG" ||
             _sonnet_error(p.source,row.line,"GEOVAR variable must have one LNG declaration")
-        _sonnet_geovar_position(rows,index+1,p)
+        position=_sonnet_geovar_row(rows,index+1,p)
+        length(position.tokens)==3 && position.tokens[1]=="POS" &&
+            all(x->(v=tryparse(Float64,x);v!==nothing && isfinite(v)),position.tokens[2:3]) ||
+            _sonnet_error(p.source,position.line,"invalid GEOVAR display position")
         nominalrow=_sonnet_geovar_row(rows,index+2,p)
         length(nominalrow.tokens)==2 && nominalrow.tokens[1]=="NOM" ||
             _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
@@ -140,28 +128,13 @@ end
 # permits this path; an effective change still requires the proved adapter.
 function _sonnet_geovar_nominal_geometry(p,frequency,variables)
     rows=_sonnet_section(p.records,"GEO",p.source)
-    polygons=Dict(q.id=>q for q in p.polygons)
     quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && r.tokens[1]=="VALVAR")
     unchanged=true
     for (index,row) in enumerate(rows)
-        t=row.tokens
-        t[1] in ("PS1","PS2") && _sonnet_geovar_groups(row,p)
-        if t[1] in ("REF1","REF2") && length(t)==4 && t[2]=="POLY" && t[4]=="1"
-            id=tryparse(Int,t[3])
-            if id!==nothing && haskey(polygons,id)
-                pointrow=_sonnet_geovar_row(rows,index+1,p)
-                point=length(pointrow.tokens)==1 ? tryparse(Int,only(pointrow.tokens)) : nothing
-                vertices=polygons[id].vertices
-                closed=vertices[1,1]==vertices[1,end] && vertices[2,1]==vertices[2,end]
-                point!==nothing && 0<=point<size(vertices,2)-Int(closed) ||
-                    _sonnet_error(p.source,pointrow.line,"GEOVAR saved out-of-range reference needs its native point adapter")
-            end
-        end
-        t[1]=="GEOVAR" || continue
+        t=row.tokens;t[1]=="GEOVAR" || continue
         length(t)==6 && t[3] in ("ANC","SYM","RAD") && t[4] in ("XDIR","YDIR") &&
             t[5] in ("1","-1") && t[6] in ("NSCD","SCUNI","SCXY") ||
             _sonnet_error(p.source,row.line,"invalid GEOVAR dimension header")
-        _sonnet_geovar_position(rows,index+1,p)
         length(t)>=2 && haskey(p.variables,t[2]) && get(quantities,t[2],"")=="LNG" ||
             _sonnet_error(p.source,row.line,"GEOVAR lacks its declared LNG quantity variable")
         nominalrow=_sonnet_geovar_row(rows,index+2,p)

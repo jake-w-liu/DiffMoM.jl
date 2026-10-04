@@ -140,23 +140,11 @@ end
 # permits this path; an effective change still requires the proved adapter.
 function _sonnet_geovar_nominal_geometry(p,frequency,variables)
     rows=_sonnet_section(p.records,"GEO",p.source)
-    polygons=Dict(q.id=>q for q in p.polygons)
     quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && r.tokens[1]=="VALVAR")
     unchanged=true
     for (index,row) in enumerate(rows)
         t=row.tokens
         t[1] in ("PS1","PS2") && _sonnet_geovar_groups(row,p)
-        if t[1] in ("REF1","REF2") && length(t)==4 && t[2]=="POLY" && t[4]=="1"
-            id=tryparse(Int,t[3])
-            if id!==nothing && haskey(polygons,id)
-                pointrow=_sonnet_geovar_row(rows,index+1,p)
-                point=length(pointrow.tokens)==1 ? tryparse(Int,only(pointrow.tokens)) : nothing
-                vertices=polygons[id].vertices
-                closed=vertices[1,1]==vertices[1,end] && vertices[2,1]==vertices[2,end]
-                point!==nothing && 0<=point<size(vertices,2)-Int(closed) ||
-                    _sonnet_error(p.source,pointrow.line,"GEOVAR saved out-of-range reference needs its native point adapter")
-            end
-        end
         t[1]=="GEOVAR" || continue
         length(t)==6 && t[3] in ("ANC","SYM","RAD") && t[4] in ("XDIR","YDIR") &&
             t[5] in ("1","-1") && t[6] in ("NSCD","SCUNI","SCXY") ||

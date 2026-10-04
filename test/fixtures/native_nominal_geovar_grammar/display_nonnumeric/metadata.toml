@@ -1,0 +1,14 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\nominal_geovar_grammar_QHh5AS\\display_nonnumeric.son"
+ended_utc = "2026-10-04T04:47:55.013"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T04:47:54.128"
+source_sha256 = "ef6f12477aaadf32a40143242fa4d93cfc470c345c603c3770d8bf891275c4e6"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\nominal_geovar_grammar_QHh5AS\\display_nonnumeric\\display_nonnumeric.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\nominal_geovar_grammar_QHh5AS\\\\display_nonnumeric\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

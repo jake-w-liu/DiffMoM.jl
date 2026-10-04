@@ -176,6 +176,15 @@ These cumulative Julia allocation checks do not establish peak process RSS.
 Exact nominal passthrough preserves all twenty archived installed examples,
 including radial and zero-offset metadata, while invalid dimension headers
 reject even at their nominal value, as confirmed by an actual native error.
+Fresh native grammar controls also confirm rejection of nonnumeric display
+coordinates and negative point-set counts at nominal value. An unused unknown
+polygon identity retains native nominal compatibility. An out-of-range point
+of a known polygon changes the native response despite nominal equality;
+saved-coordinate passthrough has full-S error 1.00014 in the retained repeat.
+Current lowering rejects that unsupported point convention explicitly. The
+valid nominal and independent literal controls pass the unchanged 0.005 gate
+with error 2.78e-5. Exact evidence is retained in
+`test/fixtures/native_nominal_geovar_grammar`.
 Active radial/two-axis scaling,
 overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored

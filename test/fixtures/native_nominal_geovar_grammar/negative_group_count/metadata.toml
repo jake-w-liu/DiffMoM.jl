@@ -1,0 +1,14 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\nominal_geovar_grammar_QHh5AS\\negative_group_count.son"
+ended_utc = "2026-10-04T04:47:58.013"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T04:47:57.059"
+source_sha256 = "d9a2472624d88e7e3232552dca43c98610bc8024e4757be0a591e919be0b51ba"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\nominal_geovar_grammar_QHh5AS\\negative_group_count\\negative_group_count.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\nominal_geovar_grammar_QHh5AS\\\\negative_group_count\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]
