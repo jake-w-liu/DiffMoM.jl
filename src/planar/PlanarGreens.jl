@@ -184,6 +184,24 @@ function _level_pairs(iface::Vector{Int})
     return pairs
 end
 
+function _planar_pair_indices(iface::Vector{Int}, pairs)
+    rows = Dict{Tuple{Int,Int},Vector{Int}}()
+    cols = Dict{Tuple{Int,Int},Vector{Int}}()
+    for (f,s) in pairs
+        rows[(f,s)] = findall(==(f),iface)
+        cols[(f,s)] = findall(==(s),iface)
+    end
+    # Ranges keep every matrix view strided, so modal contractions
+    # dispatch to BLAS. Concrete dictionary value types also keep the
+    # per-block loop allocation-free. Interleaved elements retain the
+    # general indexed path, without reordering physical coefficients.
+    if all(v->length(v)==last(v)-first(v)+1,values(rows))
+        ranges(d) = Dict(k=>(first(v):last(v)) for (k,v) in d)
+        return ranges(rows), ranges(cols)
+    end
+    return rows, cols
+end
+
 """
     assemble_planar_z(stack, grid, sheets, basis, omega; kw...) -> Matrix{ComplexF64}
 
@@ -310,12 +328,7 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
     vte = fill(ComplexF64(NaN), blk, npair)
     vtm = fill(ComplexF64(NaN), blk, npair)
 
-    pair_rows = Dict{Tuple{Int,Int},Vector{Int}}()
-    pair_cols = Dict{Tuple{Int,Int},Vector{Int}}()
-    for (f, s) in pairs
-        pair_rows[(f, s)] = findall(==(f), iface)
-        pair_cols[(f, s)] = findall(==(s), iface)
-    end
+    pair_rows, pair_cols = _planar_pair_indices(iface, pairs)
     maxc = maximum((p -> length(pair_cols[p])), pairs)
     sdr = fill(NaN, blk, maxc)
     sdi = fill(NaN, blk, maxc)
@@ -365,10 +378,11 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
         vte::AbstractMatrix{ComplexF64}, vtm::AbstractMatrix{ComplexF64},
         fxb::Matrix{Float64}, fyb::Matrix{Float64},
         basis::PlanarBasisSet, pairs::Vector{Tuple{Int,Int}},
-        pair_rows::Dict{Tuple{Int,Int},Vector{Int}},
-        pair_cols::Dict{Tuple{Int,Int},Vector{Int}},
+        pair_rows::Dict{Tuple{Int,Int},R},
+        pair_cols::Dict{Tuple{Int,Int},C},
         sdr::Matrix{Float64}, sdi::Matrix{Float64},
-        vlay::Vector{Int}, volay::Vector{Int}, mode_workspace)
+        vlay::Vector{Int}, volay::Vector{Int}, mode_workspace) where
+        {R<:AbstractVector{Int},C<:AbstractVector{Int}}
     cblk = length(mlist)
     nb = planar_basis_count(basis)
 
