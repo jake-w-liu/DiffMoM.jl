@@ -6,6 +6,43 @@ function _folded_result_matvec_bytes(result)
     minimum(@allocated(mul!(out,result.operator,x)) for _ in 1:5)
 end
 
+@testset "FFT vectors reject owned workspace aliases before mutation" begin
+    prob=_dense_workspace_fixture()
+    for fold in (false,true)
+        A=planar_ufft_operator(prob,8e9;mx=64,my=64,surface_zs=[.3+.2im,.5+.1im],
+            via_sigma=5.8e7,volume_sigma=4e7,_fold_iterative=fold)
+        x=ComplexF64[sin(p)+im*cos(p) for p in 1:A.n];out=similar(x)
+        workspaces=fold ? (A.output,A.folded.fields,A.folded.spectra) :
+            (A.output,A.source_te,A.source_tm,A.field_te,A.field_tm)
+        for array in workspaces
+            borrowed=view(vec(array),1:A.n);borrowed.=x
+            saved=copy(borrowed)
+            @test_throws ArgumentError mul!(out,A,borrowed)
+            @test borrowed==saved
+            @test_throws ArgumentError mul!(borrowed,A,x,2+.3im,-.2+.1im)
+            @test borrowed==saved
+        end
+    end
+    # A small sheet-only problem fits a vector inside the FFT lattice,
+    # including a strided view rather than only an owning array.
+    grid=CellGrid(.004,.003,4,3)
+    stack=PlanarStackup([PlanarLayer(2.,1.,.0004),PlanarLayer(1.,1.,.0004)],
+        TERM_GND,TERM_GND,grid.a,grid.b)
+    sheet=sheet_level(1,4,3);sheet.mask[:,2].=true
+    sheet.connect_west[2]=sheet.connect_east[2]=true
+    line=build_planar_problem(stack,grid,[sheet],
+        [PlanarPort(1,:west,2:2,50.),PlanarPort(1,:east,2:2,50.)])
+    for fold in (false,true)
+        A=planar_ufft_operator(line,5e9;mx=64,my=64,_fold_iterative=fold)
+        borrowed=view(vec(A.lattice),1:2:2A.n);borrowed.=1+.2im
+        saved=copy(A.lattice);x=ones(ComplexF64,A.n);out=similar(x)
+        @test_throws ArgumentError mul!(out,A,borrowed)
+        @test A.lattice==saved
+        @test_throws ArgumentError mul!(borrowed,A,x)
+        @test A.lattice==saved
+    end
+end
+
 @testset "Folded FFT operator preserves physical reactions and diagonal" begin
     for walls in (WALL_PEC,WALL_PMC)
         prob=_dense_workspace_fixture(walls)

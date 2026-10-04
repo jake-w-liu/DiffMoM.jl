@@ -54,7 +54,9 @@ end
 `assemble_planar_z`.  Supports sheets, wall half rooftops, uniform/tapered
 vias, volume rooftops, multilayers, PEC/PMC sidewalls and metal loss.
 Its mutable FFT workspace belongs to this operator; simultaneous calls
-require separate operators.  Storage has no dense basis-by-basis matrix."""
+require separate operators. Input/output vectors may alias each other,
+but must not alias the operator's workspace arrays.
+Storage has no dense basis-by-basis matrix."""
 struct PlanarUFFTOperator{PF,PB} <: AbstractMatrix{ComplexF64}
     n::Int
     grid::CellGrid
@@ -337,9 +339,19 @@ end
     return nothing
 end
 
+function _planar_ufft_workspace_alias(A,x)
+    Base.mightalias(x,A.output)||Base.mightalias(x,A.lattice)||
+        Base.mightalias(x,A.source_te)||Base.mightalias(x,A.source_tm)||
+        Base.mightalias(x,A.field_te)||Base.mightalias(x,A.field_tm)||
+        (A.folded!==nothing && (Base.mightalias(x,A.folded.fields)||
+            Base.mightalias(x,A.folded.spectra)))
+end
+
 function LinearAlgebra.mul!(y::AbstractVector, A::PlanarUFFTOperator,
         x::AbstractVector, alpha::Number, beta::Number)
     length(y) == length(x) == A.n || throw(DimensionMismatch("FFT matvec vector size mismatch"))
+    (_planar_ufft_workspace_alias(A,x)||_planar_ufft_workspace_alias(A,y)) &&
+        throw(ArgumentError("FFT vectors must not alias operator workspaces"))
     if A.folded!==nothing
         _planar_ufft_folded_apply!(A,x,A.folded)
         for q in eachindex(y)
