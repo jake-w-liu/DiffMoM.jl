@@ -49,6 +49,7 @@ function planar_group_double_delay_calibrate(Y1::AbstractMatrix,Y2::AbstractMatr
         length::Real,tol::Real=1e-6,
         max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     isfinite(length) && length>0 || throw(ArgumentError("standard length must be positive"))
+    length=_circuit_stored_real(length,"calibration standard length")
     isfinite(tol) && tol>0 || throw(ArgumentError("calibration tolerance must be positive"))
     n2=size(Y1,1);n=n2÷2
     n2>0 && iseven(n2) || throw(ArgumentError("group calibration needs an even port count"))
@@ -104,6 +105,7 @@ subdivision APIs, and removes the full launch rather than just a shunt."""
 function planar_double_delay_calibrate(Y1::AbstractMatrix,Y2::AbstractMatrix;
         length::Real,tol::Real=1e-6)
     isfinite(length) && length>0 || throw(ArgumentError("standard length must be finite and positive"))
+    length=_circuit_stored_real(length,"calibration standard length")
     isfinite(tol) && tol>0 || throw(ArgumentError("calibration tolerance must be positive"))
     T1,T2 = _abcd_of_y(Y1),_abcd_of_y(Y2)
     factor = lu(T2;check=false)
@@ -356,6 +358,7 @@ function planar_line_calibrate(thru::AbstractMatrix,line::AbstractMatrix;
         phase_hint::Union{Nothing,Real}=nothing,tol::Real=1e-6,z0=50.,
         line_impedance::Union{Nothing,Number}=nothing)
     isfinite(delta_length) && delta_length>0 || throw(ArgumentError("delta_length must be finite and positive"))
+    delta_length=_circuit_stored_real(delta_length,"calibration delta_length")
     isfinite(tol) && tol>0 || throw(ArgumentError("calibration tolerance must be finite and positive"))
     reflect_sign in (-1,1) || throw(ArgumentError("reflect_sign must be +1 or -1"))
     reflection === nothing || (isfinite(reflection) && !iszero(reflection)) ||
@@ -415,8 +418,10 @@ function planar_line_calibrate(thru::AbstractMatrix,line::AbstractMatrix;
         abs(_calibration_reflection(reflected_right,reflect_load)-gright))
     isfinite(residual) && residual <= tol || throw(ArgumentError(
         "calibration standards are inconsistent (residual $residual > $tol)"))
-    return PlanarCalibration(left,right,ComplexF64(gam/delta_length),
-        Float64(delta_length),reflect_load,Float64(residual),:line_impedance,refs,known_line)
+    gamma=ComplexF64(gam/delta_length)
+    isfinite(gamma) || throw(ArgumentError("calibrated propagation constant must remain finite in ComplexF64"))
+    return PlanarCalibration(left,right,gamma,delta_length,
+        reflect_load,Float64(residual),:line_impedance,refs,known_line)
 end
 
 """Remove calibrated two-port launches. Input `z0` defaults to the
