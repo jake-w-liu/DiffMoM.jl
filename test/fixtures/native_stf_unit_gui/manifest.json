@@ -1,0 +1,79 @@
+{
+  "files": [
+    {
+      "path": "before_reader_failure.log",
+      "bytes": 1377,
+      "sha256": "4c3828a335d8377d5f526d7fa21331fe27973d9b1bfe2eeced2450aa3dd74e90"
+    },
+    {
+      "path": "before_reader_failure.toml",
+      "bytes": 815,
+      "sha256": "94c798700d0c79eaab904479c89d1ee7080fe29a9ef2cdfcee66773ee8d69c13"
+    },
+    {
+      "path": "input_resistivity.stf",
+      "bytes": 774,
+      "sha256": "0d8301bf57cb5a0629856a74476d76e7848bfa94e3637680df86f5e936b4b6a2"
+    },
+    {
+      "path": "input_schema_sheet_alias.stf",
+      "bytes": 1932,
+      "sha256": "29b77401f38276b2efa0da726363913dd4ce0b48476270433a5882369e1a79dc"
+    },
+    {
+      "path": "input_sheet_variable.stf",
+      "bytes": 992,
+      "sha256": "41e812b6ea4245735b7df6d53c41a148cc8ac4c8ac0000fe7d661edf21c35476"
+    },
+    {
+      "path": "matl-1.4.xsd",
+      "bytes": 25496,
+      "sha256": "f8e6f507e806d5ed78b8ed3aca14705f0e82ebd5c521e9bb9d0a403884d233ac"
+    },
+    {
+      "path": "native_resistivity_export.stf",
+      "bytes": 1921,
+      "sha256": "1ed61f060137fc64630e392609b0f17d5a6eee62d0ee7fc2cde33ceb5a6e60eb"
+    },
+    {
+      "path": "native_schema_sheet_alias_roundtrip.stf",
+      "bytes": 1974,
+      "sha256": "e6ebaed7ac90173333108d4896eb282549e9ac75547b0ad8d2dd3c5a939db963"
+    },
+    {
+      "path": "native_sheet_variable_export.stf",
+      "bytes": 1974,
+      "sha256": "e6ebaed7ac90173333108d4896eb282549e9ac75547b0ad8d2dd3c5a939db963"
+    },
+    {
+      "path": "provenance.json",
+      "bytes": 960,
+      "sha256": "441e653765ff5257d2439cc1de1432284a1ea56499211a2e522b5fd2d2def365"
+    },
+    {
+      "path": "README.md",
+      "bytes": 980,
+      "sha256": "acef6151c07a0459ecf6280c059cfae0b9ec76228cd7fb44eaf266bbf9c9c4dc"
+    },
+    {
+      "path": "resistivity_settings.png",
+      "bytes": 16856,
+      "sha256": "0f20463f9cb11ed23dea10a60bc50b1bc991b2ec930ed67464cc97d096c8bf0c"
+    },
+    {
+      "path": "schema_sheet_alias_settings.png",
+      "bytes": 76408,
+      "sha256": "3252bd36cd90c17363a7bd3e43d11ff70e287f7b092292fa285f4543aeae01ad"
+    },
+    {
+      "path": "schema_sheet_alias_variables.png",
+      "bytes": 16692,
+      "sha256": "b54ce63d9b5540865abeff121203e2bce88f857d9cefebb4dca1a8ab22e7a968"
+    },
+    {
+      "path": "sheet_variable_settings.png",
+      "bytes": 16864,
+      "sha256": "8e4fd2cc3450c53e241efe1e90cce9ce32da952fc51a2151dc8601022ca9a4a5"
+    }
+  ]
+}

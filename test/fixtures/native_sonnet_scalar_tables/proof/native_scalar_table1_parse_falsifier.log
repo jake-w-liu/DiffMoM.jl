@@ -1,0 +1,5 @@
+"table1(\\loss.csv\\,FREQ)"
+ParseError:
+# Error @ none:1:8
+table1(\loss.csv\,FREQ)
+#      ╙ ── not a unary operator

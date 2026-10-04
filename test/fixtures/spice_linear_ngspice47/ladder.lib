@@ -1,0 +1,6 @@
+* nested hierarchy and parameter isolation
+.include "section.inc"
+.SUBCKT Ladder p1 p2 ref rval=25
+Xleft p1 join ref section rval={rval}
+Xright join p2 ref SECTION rval={2*rval}
+.ends ladder

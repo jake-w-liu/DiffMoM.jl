@@ -1,0 +1,205 @@
+full_complex_s_gate = 0.005
+scope = "public RFIC library two-finger-per-electrode IDC plus physical wall leads versus independent literal native GEO; PEC and constant resistive film, air/substrate and matched finite grids; no measured-device, nonlinear, general loss or continuum claim"
+source_unchanged = true
+original_voltage_residual_gate = 1.0e-9
+
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 4.052749408739707e-15
+native_source_sha256 = "3c3448cb08a11781a40a5fc79ebfadae5f658bbf75851c0c88fcb1bdeb76cc47"
+full_complex_s_error = 9.551359340359117e-6
+native_output_sha256 = "7ca02cdd1b398dc07e0fde18e25e363312b2223cc6a3b5deaec6af50c5774a9b"
+basis_count = 60
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [16, 16]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 5.029419777615664e-15
+native_source_sha256 = "934d29bb7307586cf242eccf48bf5c5416626dd7df2b0c6aeb379b11a567fbc4"
+full_complex_s_error = 9.504550412484819e-5
+native_output_sha256 = "f2cb0daa094299c368ff0aa4374ca13d66e0f967dd69fa5caea460fe4177916a"
+basis_count = 60
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [16, 16]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 4.219525848300664e-15
+native_source_sha256 = "a15c17b383992d2cc0a2f5145d83cf3a198879d974846f85e64e91c4d0dd0aa4"
+full_complex_s_error = 0.0001882517620808297
+native_output_sha256 = "39fa754506e0b857f505d951a9f9ce8cc254afbf699340232507a6bbd00f4603"
+basis_count = 60
+status = "PASS"
+frequency_hz = 2.0e10
+actual_grid = [16, 16]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 1.0018279467235333e-14
+native_source_sha256 = "783077685c46c7660053e438ae35cb7b684a3dcb73cf62d7b89a80549af92cb5"
+full_complex_s_error = 8.49749252405986e-6
+native_output_sha256 = "3790fe5287dfb83ab2e0ae8eea32219a69f225405cd30d2e2b592a1fb9c45318"
+basis_count = 320
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [32, 32]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 1.347905387287192e-14
+native_source_sha256 = "2d424f501660ee8d0e336c2ea000e690ce801b1538ff831ad785c9e98b64fec0"
+full_complex_s_error = 8.06310413848529e-5
+native_output_sha256 = "01e141f3d910563906e5b2df0302c5fb2953ac64930216b34a21c7e61948eae0"
+basis_count = 320
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [32, 32]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 1.2697863878058607e-14
+native_source_sha256 = "c7aae9db458d31439d93c222364871a8a78ca4c4b1d5b9c3ee0408f792d5e28f"
+full_complex_s_error = 0.00014033401672800615
+native_output_sha256 = "cb37d3495e3a5744a68fd7891187eb758231b9b2f41e4560de54e9c244732139"
+basis_count = 320
+status = "PASS"
+frequency_hz = 2.0e10
+actual_grid = [32, 32]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 1.896938605829555e-14
+native_source_sha256 = "53491429a953b5286841be5bcd5ea5e9736a77ee10fe4020cca2f86f618dba9b"
+full_complex_s_error = 8.763703170867356e-6
+native_output_sha256 = "e91d1e2a74e9b233c74a58e2789ebc2c55160c466cc3c5ce01c86612cf654263"
+basis_count = 1440
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [64, 64]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 1.8947551493828227e-14
+native_source_sha256 = "876b01d0640d5afe3dd7240c8cb5b13fa57f73941519de72f70f17f12c067980"
+full_complex_s_error = 8.009164018677218e-5
+native_output_sha256 = "f59fcbd9fddb22aa1e66bd16a8fc32ece0d2aa85d031c30b6efbde9cd145b5fc"
+basis_count = 1440
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [64, 64]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 2.1841079168862792e-14
+native_source_sha256 = "25794e67f61be31b4673ae75948e06418be25d58243a130ee9f124362bf1d64a"
+full_complex_s_error = 0.000124569025531717
+native_output_sha256 = "776e7e1b74d99dc7aafcf74e5f9459385326876a563d2475d5f6c1733b83ca07"
+basis_count = 1440
+status = "PASS"
+frequency_hz = 2.0e10
+actual_grid = [64, 64]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 3.7934254443281925e-15
+native_source_sha256 = "be779638ea8d216955cc2f58e85c8bdacfd7cd4d381254d25aeed695cfe9972a"
+full_complex_s_error = 9.551280564969402e-6
+native_output_sha256 = "f2d7550a1b64253b739b8fe7658d58678ecc5c8715f4226c87e0c68ed69af918"
+basis_count = 60
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [16, 16]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 4.7050585936150555e-15
+native_source_sha256 = "4cad7bb12d4691913967fb1f0e36c1a34c148b750c037613c95e86af04bbcb13"
+full_complex_s_error = 9.497554675997332e-5
+native_output_sha256 = "02080341be3bb6f5d44f6eafdf245461b442048f832ee7a43abd1f31101eb847"
+basis_count = 60
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [16, 16]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 5.312450391135076e-15
+native_source_sha256 = "27c768d8ae2b89a1271e2d978c4421bac5da9848c4e5595914892c55bcdfbf28"
+full_complex_s_error = 0.00018774805313100478
+native_output_sha256 = "1835a24727d008ceca4cf6a2a58be32ebe6ba33ef88a627fe1a6b85ecf7b293f"
+basis_count = 60
+status = "PASS"
+frequency_hz = 2.0e10
+actual_grid = [16, 16]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 1.205426951980037e-14
+native_source_sha256 = "66e8c32850816733c3d14869a863f994d21110774aebe831c5d18b990b464456"
+full_complex_s_error = 8.497358901032624e-6
+native_output_sha256 = "2e750bb04d6e6dadf723c01cb0679601223b3acda971fb195c70e9b039138835"
+basis_count = 320
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [32, 32]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 1.1783491160605529e-14
+native_source_sha256 = "94bf3e6e75936dee1f0ba53b2de97a8a3076e4823d8eda22a762ff59bd9df07b"
+full_complex_s_error = 8.057264365205234e-5
+native_output_sha256 = "384f832b0c343a0158a1b6e00c8eb0212d5450fe793cbadf81de9137e512d3cc"
+basis_count = 320
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [32, 32]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 1.2699355674956754e-14
+native_source_sha256 = "d4b5d3c5532c7c381ed665572d063984ffeaf52014448ee9d3ee75720b6a36f0"
+full_complex_s_error = 0.00013991438251403308
+native_output_sha256 = "d947b0bf4eb4f0cb555a3620ac00e20c945affbeeadc1ada05e3acfd8bec9b5f"
+basis_count = 320
+status = "PASS"
+frequency_hz = 2.0e10
+actual_grid = [32, 32]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 1.7648495990483604e-14
+native_source_sha256 = "66e7f6d80c8ca48ceea5013091a1da290d7caf024504cbe698f0c2f0ef187847"
+full_complex_s_error = 8.740329280441453e-6
+native_output_sha256 = "be3d3bd8cb3885bde0ddca4552f2f3e6069528e58a9512a90dd2fa4b1e494e0a"
+basis_count = 1440
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [64, 64]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 2.095270509826989e-14
+native_source_sha256 = "c6234cc6e199158362ed284deec7680f49c7cbf8705beb555045af38a1e78a9f"
+full_complex_s_error = 8.278184008890281e-5
+native_output_sha256 = "956659b66fd284aa3079dc350dc26481797da15727db871c85fc78682f2d594e"
+basis_count = 1440
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [64, 64]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 2.2614460102835513e-14
+native_source_sha256 = "5697a32ba03334e325f6ed8a4818ac50f08e73c61fa8a7c65e3afa3a918b35ba"
+full_complex_s_error = 0.00013110464273713624
+native_output_sha256 = "65b110cee42d9171a560f0d7b82533a1ebcc40606ab29cbf50ce5b93b1c96842"
+basis_count = 1440
+status = "PASS"
+frequency_hz = 2.0e10
+actual_grid = [64, 64]
+
+[source_sha256_before]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "da8158ef7f23ac727a6030188ef1faef667fd9b3a3f171e49414bd82153b6216"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_library_idc.jl" = "02516e5da3cbf7b3617e43f632b1987c493bbb10b72fddd7b8e3c6c110644a1a"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\library_idc_fixture.jl" = "c6ff7565da2d3afee9859068cc052499bc314b0e47a7f8ab193cd3b7dc8728ca"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayoutIO.jl" = "37c70d85bfbcafcb2d6d655b60a9ede2936a84b2a49e3280fda47f1133b2c85c"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"
+
+[source_sha256_after]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "da8158ef7f23ac727a6030188ef1faef667fd9b3a3f171e49414bd82153b6216"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_library_idc.jl" = "02516e5da3cbf7b3617e43f632b1987c493bbb10b72fddd7b8e3c6c110644a1a"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\library_idc_fixture.jl" = "c6ff7565da2d3afee9859068cc052499bc314b0e47a7f8ab193cd3b7dc8728ca"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayoutIO.jl" = "37c70d85bfbcafcb2d6d655b60a9ede2936a84b2a49e3280fda47f1133b2c85c"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"

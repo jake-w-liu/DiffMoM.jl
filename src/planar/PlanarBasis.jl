@@ -28,7 +28,7 @@
 #   Hs(k,h) = (k*h - sin(k*h)) / (k^2*h)     (sin transform)
 # all evaluated with the small-argument series when |k*h| is tiny.
 
-export SheetLevel, PlanarPort, PlanarBasisSet
+export SheetLevel, PlanarPort, PlanarReferencePlane, PlanarBasisSet
 export sheet_level, rasterize_rect!, rasterize_poly!
 export build_planar_basis, planar_basis_count
 
@@ -50,22 +50,119 @@ function sheet_level(interface::Integer, nx::Integer, ny::Integer)
         falses(ny), falses(ny), falses(nx), falses(nx))
 end
 
-"""A co-calibrated port: a contiguous range of wall-connected edges.
-`cells` indexes cell rows (west/east walls) or columns (south/north)."""
+"""Per-port physical reference-plane shift. `length` is signed distance
+[m] removed from the raw port launch; `zc` [Ω] and `gamma` [1/m] are
+numbers or `f_hz -> value` providers, so broadband sweeps evaluate the
+appropriate propagation at every frequency. Raw solves retain their gap
+plane; [`planar_reference_planes`](@ref) produces calibrated results."""
+struct PlanarReferencePlane{Z,G}
+    length::Float64
+    zc::Z
+    gamma::G
+    function PlanarReferencePlane(length::Real,zc,gamma)
+        isfinite(length) || throw(ArgumentError("reference-plane distance must be finite"))
+        for (provider,label) in ((zc,"zc"),(gamma,"gamma"))
+            provider isa Number ? isfinite(provider) || throw(ArgumentError("$label must be finite")) :
+                applicable(provider,1.0) || throw(ArgumentError("$label must be a number or frequency provider"))
+        end
+        return new{typeof(zc),typeof(gamma)}(Float64(length),zc,gamma)
+    end
+end
+
+"""A planar gap-voltage port. Wall ports use `:west/:east/:south/:north`.
+Internal zero-width gaps use `:internal_x/:internal_y` and an interior
+grid `edge`; `cells` indexes transverse rows/columns. A `:via` port drives
+the axial column on a via level, with `cells` indexing column-major cell
+numbers. `:volume_west/:volume_east/:volume_south/:volume_north` drive
+the corresponding wall of a `VolLevel`; `level` is its volume ordinal.
+Its normalized axial profile gives trace weight equal to lateral width,
+so the extracted current is the integral through the physical thickness.
+`polarity` is +1 or -1. `refplane` optionally holds a physical
+per-frequency reference-plane contract. The four-argument wall constructor
+is preserved; raw solver results retain their original gap plane. `z0` may
+be a finite complex impedance with positive real part or a frequency [Hz]
+provider, including `PlanarPortImpedance`. Solves retain the evaluated
+reference impedances; the physical gap voltage/current basis is unchanged."""
 struct PlanarPort
     level::Int                 # index into the sheets array
     wall::Symbol               # :west :east :south :north
     cells::UnitRange{Int}
-    z0::ComplexF64             # reference impedance for S-parameters [Ohm]
+    z0::Any                    # finite positive-Re impedance or frequency provider
+    edge::Int                 # internal shared-cell edge, otherwise 0
+    polarity::Int             # terminal voltage/current polarity
+    refplane::Union{Nothing,PlanarReferencePlane}
 end
 
+PlanarPort(level::Int,wall::Symbol,cells::UnitRange{Int},z0,
+    edge::Int,polarity::Int) = PlanarPort(level,wall,cells,z0;edge=edge,polarity=polarity)
+
+function PlanarPort(level::Integer, wall::Symbol, cells::UnitRange{Int},
+        z0; edge::Integer=0, polarity::Integer=1,
+        refplane::Union{Nothing,PlanarReferencePlane}=nothing)
+    polarity in (-1, 1) || throw(ArgumentError("port polarity must be +1 or -1"))
+    return PlanarPort(Int(level), wall, cells, _planar_store_reference(z0),
+        Int(edge), Int(polarity),refplane)
+end
+
+"""`PlanarPort(level, direction, edge, cells, z0; polarity=1)` places an
+internal infinitesimal gap on edge `edge`, flowing along `direction=:x`
+or `:y`. Metal must occupy the cells on both sides of each claimed edge.
+Positive voltage drives current along the positive coordinate direction.
+Use `direction=:terminal_x/:terminal_y` and
+`metal_side=:positive/:negative` for a one-sided rooftop on an open
+sheet edge. `edge` identifies its physical grid plane and `cells` its
+full transverse pad span. Positive terminal current flows into its metal
+side. This mathematical gap-field source retains endpoint charge; it
+does not create a conductive return to ground. Use
+[`planar_terminal_returns`](@ref) for physical box-cover sources, or supply
+explicit return geometry. `refplane` holds a supplied launch calibration;
+Sonnet automatic local-ground calibration is not inferred.
+"""
+function PlanarPort(level::Integer, direction::Symbol, edge::Integer,
+        cells::UnitRange{Int}, z0; polarity::Integer=1,
+        refplane::Union{Nothing,PlanarReferencePlane}=nothing,
+        metal_side::Symbol=:positive)
+    direction in (:x,:y,:terminal_x,:terminal_y) || throw(ArgumentError(
+        "port direction must be :x/:y or :terminal_x/:terminal_y"))
+    wall = if direction in (:terminal_x,:terminal_y)
+        metal_side in (:positive,:negative) || throw(ArgumentError(
+            "terminal metal_side must be :positive or :negative"))
+        direction===:terminal_x ? (metal_side===:positive ? :terminal_x_lo : :terminal_x_hi) :
+            (metal_side===:positive ? :terminal_y_lo : :terminal_y_hi)
+    else
+        direction===:x ? :internal_x : :internal_y
+    end
+    return PlanarPort(level, wall,
+        cells, z0; edge=edge, polarity=polarity,refplane=refplane)
+end
+
+@inline _is_planar_terminal(wall::Symbol) = wall in
+    (:terminal_x_lo,:terminal_x_hi,:terminal_y_lo,:terminal_y_hi)
+@inline _is_planar_x_terminal(wall::Symbol) = wall in (:terminal_x_lo,:terminal_x_hi)
+@inline _is_planar_positive_terminal(wall::Symbol) = wall in (:terminal_x_lo,:terminal_y_lo)
+@inline _is_planar_volume_port(wall::Symbol) = wall in
+    (:volume_west,:volume_east,:volume_south,:volume_north)
+@inline _planar_volume_wall(wall::Symbol) = wall===:volume_west ? :west :
+    wall===:volume_east ? :east : wall===:volume_south ? :south : :north
+
 # ---------------- rasterization ----------------
+
+function _validate_sheet_grid(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid)
+    nx, ny = grid.nx, grid.ny
+    size(sheet.mask) == (nx, ny) || throw(DimensionMismatch(
+        "metal mask size $(size(sheet.mask)) != grid ($nx,$ny)"))
+    length(sheet.connect_west) == ny && length(sheet.connect_east) == ny &&
+        length(sheet.connect_south) == nx && length(sheet.connect_north) == nx ||
+        throw(DimensionMismatch("metal wall-connection vectors must match the grid"))
+    return nothing
+end
 
 """Fill cells overlapped by axis-aligned rectangle [x0,x1] x [y0,y1].
 A cell is metal when its centre lies inside the rectangle; `connected=true`
 also marks wall-connection flags where the rectangle touches a sidewall."""
 function rasterize_rect!(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid,
         x0::Real, x1::Real, y0::Real, y1::Real; connected::Bool=false)
+    _validate_sheet_grid(sheet, grid)
     0 <= x0 < x1 <= grid.a || throw(ArgumentError(
         "rectangle x-range [$x0,$x1] outside box [0,$(grid.a)]"))
     0 <= y0 < y1 <= grid.b || throw(ArgumentError(
@@ -115,9 +212,12 @@ end
 lists `xs`, `ys` (ray-casting rule).  Connection flags are not modified."""
 function rasterize_poly!(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid,
         xs::AbstractVector{<:Real}, ys::AbstractVector{<:Real})
+    _validate_sheet_grid(sheet, grid)
     nv = length(xs)
     nv == length(ys) && nv >= 3 ||
         throw(ArgumentError("polygon needs >= 3 vertices"))
+    all(isfinite, xs) && all(isfinite, ys) ||
+        throw(ArgumentError("polygon vertices must be finite"))
     @inbounds for j in 1:grid.ny
         yc = (j - 0.5) * grid.dy
         for i in 1:grid.nx
@@ -202,12 +302,15 @@ end
 
 # edge->port lookup tables from the port list
 function _wall_port_maps(ports::Vector{PlanarPort}, lv::Int,
-        nx::Int, ny::Int)
+        nx::Int, ny::Int; volume::Bool=false)
     west = zeros(Int, ny); east = zeros(Int, ny)
     south = zeros(Int, nx); north = zeros(Int, nx)
     for (pidx, p) in enumerate(ports)
+        (p.wall in (:internal_x,:internal_y,:via) || _is_planar_terminal(p.wall)) && continue
+        _is_planar_volume_port(p.wall)==volume || continue
         p.level == lv || continue
-        if p.wall === :west
+        wall=volume ? _planar_volume_wall(p.wall) : p.wall
+        if wall === :west
             for j in p.cells
                 1 <= j <= ny || throw(ArgumentError(
                     "port $pidx west cells $j outside 1:$ny"))
@@ -215,7 +318,7 @@ function _wall_port_maps(ports::Vector{PlanarPort}, lv::Int,
                     "ports overlap on west edge row $j"))
                 west[j] = pidx
             end
-        elseif p.wall === :east
+        elseif wall === :east
             for j in p.cells
                 1 <= j <= ny || throw(ArgumentError(
                     "port $pidx east cells $j outside 1:$ny"))
@@ -223,7 +326,7 @@ function _wall_port_maps(ports::Vector{PlanarPort}, lv::Int,
                     "ports overlap on east edge row $j"))
                 east[j] = pidx
             end
-        elseif p.wall === :south
+        elseif wall === :south
             for i in p.cells
                 1 <= i <= nx || throw(ArgumentError(
                     "port $pidx south cells $i outside 1:$nx"))
@@ -231,7 +334,7 @@ function _wall_port_maps(ports::Vector{PlanarPort}, lv::Int,
                     "ports overlap on south edge col $i"))
                 south[i] = pidx
             end
-        elseif p.wall === :north
+        elseif wall === :north
             for i in p.cells
                 1 <= i <= nx || throw(ArgumentError(
                     "port $pidx north cells $i outside 1:$nx"))
@@ -259,8 +362,8 @@ any port is a galvanic short to the sidewall).  `vias[vl].layer` is the
 stackup layer the column spans; each marked cell contributes one basis
 per via kind present.  `vols[vl].layer` is the stackup layer the thick
 metal occupies through its full thickness; each marked cell contributes
-volume rooftops that carry a uniform z-profile across the layer (ports
-do not drive volume bases).
+volume rooftops that carry a normalized uniform z-profile across the
+layer. Volume wall ports claim their wall-connected half rooftops.
 """
 function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
         ports::Vector{PlanarPort}; vias::Vector{ViaLevel}=ViaLevel[],
@@ -268,10 +371,51 @@ function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
     nx, ny = grid.nx, grid.ny
     b = PlanarBasisSet(UInt8[], Int[], Int[], Int[], Float64[],
                        Float64[], Float64[], Int[])
+    for (pidx, p) in enumerate(ports)
+        levels = p.wall === :via ? length(vias) :
+            _is_planar_volume_port(p.wall) ? length(vols) : length(sheets)
+        1 <= p.level <= levels || throw(ArgumentError(
+            "port $pidx level $(p.level) outside 1:$levels"))
+        isempty(p.cells) && throw(ArgumentError("port $pidx cell range is empty"))
+        p.polarity in (-1, 1) || throw(ArgumentError("port $pidx polarity must be +1 or -1"))
+        if p.wall in (:internal_x, :internal_y)
+            axis_count = p.wall === :internal_x ? nx : ny
+            1 <= p.edge < axis_count || throw(ArgumentError(
+                "port $pidx internal edge outside 1:$(axis_count - 1)"))
+            transverse_count = p.wall === :internal_x ? ny : nx
+            1 <= first(p.cells) <= last(p.cells) <= transverse_count ||
+                throw(ArgumentError("port $pidx internal cells outside grid"))
+        elseif _is_planar_terminal(p.wall)
+            axis_count = _is_planar_x_terminal(p.wall) ? nx : ny
+            positive = _is_planar_positive_terminal(p.wall)
+            (positive ? 0<=p.edge<axis_count : 0<p.edge<=axis_count) ||
+                throw(ArgumentError("port $pidx terminal edge has no adjacent metal cell"))
+            transverse_count = _is_planar_x_terminal(p.wall) ? ny : nx
+            1<=first(p.cells)<=last(p.cells)<=transverse_count ||
+                throw(ArgumentError("port $pidx terminal span lies outside the grid"))
+        elseif p.wall === :via
+            1 <= first(p.cells) <= last(p.cells) <= nx * ny ||
+                throw(ArgumentError("port $pidx via cells outside grid"))
+        elseif !(p.wall in (:west, :east, :south, :north) || _is_planar_volume_port(p.wall))
+            throw(ArgumentError("port $pidx has unknown kind $(p.wall)"))
+        end
+    end
     for (lv, sheet) in enumerate(sheets)
-        size(sheet.mask) == (nx, ny) || throw(DimensionMismatch(
-            "sheet $lv mask size $(size(sheet.mask)) != grid ($nx,$ny)"))
+        _validate_sheet_grid(sheet, grid)
         west, east, south, north = _wall_port_maps(ports, lv, nx, ny)
+        for (wall, ids, connections) in ((:west, west, sheet.connect_west),
+                (:east, east, sheet.connect_east),
+                (:south, south, sheet.connect_south),
+                (:north, north, sheet.connect_north))
+            for idx in eachindex(ids)
+                ids[idx] == 0 && continue
+                metal = wall === :west ? sheet.mask[1, idx] :
+                    wall === :east ? sheet.mask[nx, idx] :
+                    wall === :south ? sheet.mask[idx, 1] : sheet.mask[idx, ny]
+                metal && connections[idx] || throw(ArgumentError(
+                    "port $(ids[idx]) includes unconnected $wall edge $idx"))
+            end
+        end
 
         # --- x-directed rooftops on vertical edges e = 0..nx ---
         @inbounds for j in 1:ny, e in 0:nx
@@ -317,6 +461,7 @@ function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
             end
         end
     end
+    _append_planar_terminal_ports!(b,ports,sheets,grid)
     for (vl, vlvl) in enumerate(vias)
         (size(vlvl.uni) == (nx, ny) && size(vlvl.tap) == (nx, ny)) ||
             throw(DimensionMismatch(
@@ -331,22 +476,33 @@ function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
         end
     end
     # volume rooftops: same x/y edge enumeration as sheets on the layer
-    # mask, shifted to the VX/VY kind range; ports never claim them
+    # mask, shifted to the VX/VY kind range.
     for (vl, vol) in enumerate(vols)
-        size(vol.mask) == (nx, ny) || throw(DimensionMismatch(
-            "vol $vl mask size $(size(vol.mask)) != grid ($nx,$ny)"))
+        _validate_sheet_grid(vol, grid)
+        west,east,south,north=_wall_port_maps(ports,vl,nx,ny;volume=true)
+        for (wall,ids,connections) in ((:west,west,vol.connect_west),
+                (:east,east,vol.connect_east),(:south,south,vol.connect_south),
+                (:north,north,vol.connect_north))
+            for idx in eachindex(ids)
+                ids[idx]==0 && continue
+                metal=wall===:west ? vol.mask[1,idx] : wall===:east ? vol.mask[nx,idx] :
+                    wall===:south ? vol.mask[idx,1] : vol.mask[idx,ny]
+                metal && connections[idx] || throw(ArgumentError(
+                    "volume port $(ids[idx]) includes unconnected $wall edge $idx"))
+            end
+        end
         @inbounds for j in 1:ny, e in 0:nx
             left = e >= 1 ? vol.mask[e, j] : false
             right = e <= nx - 1 ? vol.mask[e + 1, j] : false
             if e == 0
                 if right && vol.connect_west[j]
                     _push_x!(b, _BASIS_VX_LO, e, j, vl,
-                             0.0, (j - 0.5) * grid.dy, grid.dy, 0)
+                             0.0, (j - 0.5) * grid.dy, grid.dy, west[j])
                 end
             elseif e == nx
                 if left && vol.connect_east[j]
                     _push_x!(b, _BASIS_VX_HI, e, j, vl,
-                             grid.a, (j - 0.5) * grid.dy, grid.dy, 0)
+                             grid.a, (j - 0.5) * grid.dy, grid.dy, east[j])
                 end
             else
                 if left && right
@@ -361,12 +517,12 @@ function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
             if f == 0
                 if above && vol.connect_south[i]
                     _push_y!(b, _BASIS_VY_LO, i, f, vl,
-                             (i - 0.5) * grid.dx, 0.0, grid.dx, 0)
+                             (i - 0.5) * grid.dx, 0.0, grid.dx, south[i])
                 end
             elseif f == ny
                 if below && vol.connect_north[i]
                     _push_y!(b, _BASIS_VY_HI, i, f, vl,
-                             (i - 0.5) * grid.dx, grid.b, grid.dx, 0)
+                             (i - 0.5) * grid.dx, grid.b, grid.dx, north[i])
                 end
             else
                 if below && above
@@ -376,5 +532,76 @@ function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
             end
         end
     end
+    _assign_planar_internal_ports!(b, ports, grid)
     return b
+end
+
+function _append_planar_terminal_ports!(basis::PlanarBasisSet,
+        ports::Vector{PlanarPort},sheets::Vector{SheetLevel},grid::CellGrid)
+    for (pidx,p) in enumerate(ports)
+        _is_planar_terminal(p.wall) || continue
+        xaxis=_is_planar_x_terminal(p.wall)
+        positive=_is_planar_positive_terminal(p.wall)
+        sheet=sheets[p.level]
+        kind=xaxis ? (positive ? _BASIS_X_LO : _BASIS_X_HI) :
+            (positive ? _BASIS_Y_LO : _BASIS_Y_HI)
+        for transverse in p.cells
+            cell=p.edge+(positive ? 1 : 0)
+            opposite=p.edge+(positive ? 0 : 1)
+            i,j=xaxis ? (cell,transverse) : (transverse,cell)
+            sheet.mask[i,j] || throw(ArgumentError(
+                "terminal port $pidx includes edge without metal on its requested side"))
+            if 1<=opposite<=(xaxis ? grid.nx : grid.ny)
+                oi,oj=xaxis ? (opposite,transverse) : (transverse,opposite)
+                sheet.mask[oi,oj] && throw(ArgumentError(
+                    "terminal port $pidx must lie on an open metal edge; use an internal gap for continuous metal"))
+            end
+            ei,ej=xaxis ? (p.edge,transverse) : (transverse,p.edge)
+            existing=findfirst(k -> basis.kind[k]==kind && basis.level[k]==p.level &&
+                basis.ei[k]==ei && basis.ej[k]==ej,eachindex(basis.kind))
+            if existing!==nothing
+                basis.port[existing]==0 || throw(ArgumentError(
+                    "terminal port $pidx overlaps port $(basis.port[existing])"))
+                basis.port[existing]=pidx
+            elseif xaxis
+                _push_x!(basis,kind,ei,ej,p.level,p.edge*grid.dx,
+                    (transverse-0.5)*grid.dy,grid.dy,pidx)
+            else
+                _push_y!(basis,kind,ei,ej,p.level,(transverse-0.5)*grid.dx,
+                    p.edge*grid.dy,grid.dx,pidx)
+            end
+        end
+    end
+    return nothing
+end
+
+function _assign_planar_internal_ports!(basis::PlanarBasisSet,
+        ports::Vector{PlanarPort}, grid::CellGrid)
+    for (pidx, p) in enumerate(ports)
+        p.wall in (:internal_x, :internal_y, :via) || continue
+        claimed = Set{Int}()
+        for b in eachindex(basis.kind)
+            basis.level[b] == p.level || continue
+            kind = basis.kind[b]
+            cell = if p.wall === :internal_x && kind == _BASIS_X_FULL &&
+                    basis.ei[b] == p.edge
+                basis.ej[b]
+            elseif p.wall === :internal_y && kind == _BASIS_Y_FULL &&
+                    basis.ej[b] == p.edge
+                basis.ei[b]
+            elseif p.wall === :via && _is_via_kind(kind)
+                basis.ei[b] + grid.nx * (basis.ej[b] - 1)
+            else
+                continue
+            end
+            cell in p.cells || continue
+            basis.port[b] == 0 || throw(ArgumentError(
+                "port $pidx overlaps port $(basis.port[b])"))
+            basis.port[b] = pidx
+            push!(claimed, cell)
+        end
+        length(claimed) == length(p.cells) || throw(ArgumentError(
+            "port $pidx contains edges/cells without conductor basis functions"))
+    end
+    return nothing
 end

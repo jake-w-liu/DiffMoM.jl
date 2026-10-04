@@ -1,0 +1,4 @@
+.subckt a n
+.ends a
+.subckt A n
+.ends A

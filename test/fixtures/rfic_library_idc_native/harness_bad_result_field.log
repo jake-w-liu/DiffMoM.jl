@@ -1,0 +1,27 @@
+
+Actual native public RFIC library IDC: Error During Test at C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:56
+  Got exception outside of a @test
+  FieldError: type PlanarResult has no field `relative_residuals`, available fields: `problem`, `omega`, `freq`, `z_mom`, `lu_fact`, `currents`, `y`, `s`, `z0`
+  Stacktrace:
+   [1] getproperty
+     @ .\Base_compiler.jl:57 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:78 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [4] idc_native_proof()
+     @ Main C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:57
+   [5] top-level scope
+     @ C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:102
+   [6] include(mod::Module, _path::String)
+     @ Base .\Base.jl:309
+   [7] exec_options(opts::Base.JLOptions)
+     @ Base .\client.jl:344
+   [8] _start()
+     @ Base .\client.jl:577
+Test Summary:                         | Pass  Error  Total  Time
+Actual native public RFIC library IDC |    5      1      6  8.6s
+RNG of the outermost testset: Random.Xoshiro(0x39480fad00477457, 0x8048c98a0fae7b73, 0x6d2eb45c294695aa, 0x347b77d6b1f28bfc, 0x4b6c38f6db55a6e6)
+evidence: C:\Users\User\DiffMoM.jl\data\sonnet_validation\library_idc_native_Ij4Hyd
+ERROR: LoadError: Some tests did not pass: 5 passed, 0 failed, 1 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:102

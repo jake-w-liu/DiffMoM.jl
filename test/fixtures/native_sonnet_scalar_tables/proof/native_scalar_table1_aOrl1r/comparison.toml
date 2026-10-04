@@ -1,0 +1,21 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_table1_aOrl1r"
+primary_sha256 = "ff9f47696e8f5839ac9897d09f2b563da1207f41f170085917a7871ce6679b4e"
+scope = "native table1 CSV scalar expression; separate from unproved STF XML interpolation; no production changes"
+csv_sha256 = "341f93b323e4e7cd54d3ffdc48ae43e9b27e16aa807811ea6d0483b37f7e1c6f"
+
+[[runs]]
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.4930974327143, 0.4851933742834, 0.4851933742834, 0.4930955162422]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [-0.066671739337, -0.118948221613, -0.118948221613, -0.066677808208]]
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+expression_in_source = "table1(\\\"loss.csv\\\",FREQ)"
+source_sha256 = "f827b883e821a983931b0cde4ace797226574e80723d1dfa2d5085c38086b191"
+tag = "escaped"
+[[runs]]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0111537982636, 0.9712948103141, 0.9712948103141, 0.0111555033479]]
+s_imag = [[0.0047946849606, -0.02355440236, -0.02355440236, 0.0047946845594], [0.046495222391, -0.23302398704, -0.23302398704, 0.046494813323]]
+native_literal_delta_s = [0.09092145202702363, 0.49930740668336243]
+status = "SIMULATED"
+expression_in_source = "table1(\"loss.csv\",FREQ)"
+source_sha256 = "a1fb5426c13ee909d622ed60f5692affce8acf369c600bfec9a003844f781e6a"
+tag = "nested"

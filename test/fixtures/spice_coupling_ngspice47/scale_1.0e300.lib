@@ -1,0 +1,7 @@
+.subckt scale p1 p2 ref
+Kmut Lp Ls .5
+R1 p1 a 20
+R2 p2 b 30
+Lp a ref 1.0e300
+Ls b ref 1.0e300
+.ends scale

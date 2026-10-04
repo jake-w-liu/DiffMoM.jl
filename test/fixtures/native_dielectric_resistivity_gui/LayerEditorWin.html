@@ -1,0 +1,138 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Dielectric Editor</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="Manuals and Help for Sonnet Suites" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet Suites Documentation.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("LayerEditorWin");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Dielectric Editor</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="UsingSonnet.html">Using Sonnet</a> &rsaquo;&rsaquo; <a href="EditingaProject.html">Editing a Project</a> &rsaquo;&rsaquo; <a href="ProjectEditorMenus.html">Project Editor Menus</a> &rsaquo;&rsaquo; <a href="CircuitMenu.html">Circuit Menu</a> &rsaquo;&rsaquo; <a href="CircuitSettings.html">Circuit - Settings</a> &rsaquo;&rsaquo; <a href="LayersWin.html">Dielectric Layers</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="LayersWin.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="LayersWin.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="DielectricLibrary.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">The Dielectric Editor dialog box may be opened in one of two modes: Adding/Editing a dielectric layer and Adding/Editing a dielectric brick material. This dialog box allows you to enter the parameters of a dielectric in order to define a dielectric material for use in your circuit.</span></p>
+<p class="rvps2"><span class="rvts6">Dielectric Layer mode occurs when:</span></p>
+<ul style="text-indent: 0px; padding: 0; margin: 0 0 0 48px; list-style-position: outside; list-style-type: disc;">
+<li style="margin-left: 0px" class="rvps8"><span class="rvts6">You click on the </span><span class="rvts14">Above, </span><span class="rvts6">or</span><span class="rvts14">&nbsp;Below </span><span class="rvts6">button in the </span><a class="rvts11" href="LayersWin.html">Dielectric Layers page</a><span class="rvts6">&nbsp;of the </span><a class="rvts11" href="CircuitSettings.html">Circuit Settings dialog box</a><a class="rvts11" href="LayersWin.html">.</a></li>
+<li style="margin-left: 0px" class="rvps8"><span class="rvts6">You click on the </span><span class="rvts14">Add or Edit button</span><span class="rvts6">&nbsp;in the </span><a class="rvts11" href="DielectricLibrary.html">Dielectric Library dialog box</a><span class="rvts6">,</span></li>
+<li style="margin-left: 0px" class="rvps8"><span class="rvts6">You click on "Properties" in the Dielectrics pop-up menu in the </span><a class="rvts11" href="ProjectEditortab-StackupManager.html">Stackup Manager</a><span class="rvts6">.</span></li>
+</ul>
+<p class="rvps2"><a class="rvts11" href="UsingVariablesinaDialogBox.html">Using Variables in this dialog box</a></p>
+<p class="rvps2"><span class="rvts6">The dielectric defined here is to be used for a dielectric layer in your circuit.</span></p>
+<p class="rvps2"><span class="rvts14">Mat. Name:</span><span class="rvts6">&nbsp;Enter the desired name for the dielectric material to be used in the layer here.</span></p>
+<p class="rvps2"><span class="rvts14">Thickness:</span><span class="rvts6">&nbsp;Enter the desired thickness of the dielectric layer here. It is possible to also edit this value in the </span><a class="rvts11" href="LayersWin.html">Dielectric Layers page</a><span class="rvts6">.</span></p>
+<p class="rvps2"><span class="rvts14">Specify Using</span><span class="rvts6">: You may chose to define your dielectric loss using </span><a class="rvts11" href="Conductivity.html">Conductivity</a><span class="rvts6">&nbsp;or </span><a class="rvts11" href="Resistivity.html">Resistivity</a><span class="rvts6">. Select whichever value you have available for your dielectric material. The dialog box is updated to include a text entry box for whichever choice you make in the drop list.</span></p>
+<p class="rvps2"><span class="rvts14">Anisotropic:</span><span class="rvts6">&nbsp;If you wish the dielectric material to be anisotropic, indicating that its parameters are different in each dimension, click on this checkbox. The dialog box is updated with an additional set of entries; one for the x and y (view in the project editor) direction and one for the z direction. You can then enter the parameters by editing the entries in the row.</span></p>
+<p class="rvps2"><span class="rvts14">Erel:</span><span class="rvts6">&nbsp;Enter the </span><a class="rvts11" href="Relativedielectricconstant.html">relative dielectric constant</a><span class="rvts6">&nbsp;here.</span></p>
+<p class="rvps2"><span class="rvts14">Dielectric Loss Tan:</span><span class="rvts6">&nbsp;Enter the </span><a class="rvts11" href="DielectricLossTangent.html">dielectric loss tangent</a><span class="rvts6">&nbsp;here.</span></p>
+<p class="rvps2"><span class="rvts14">Conductivity</span><span class="rvts6">: Enter the dielectric </span><a class="rvts11" href="Conductivity.html">conductivity</a><span class="rvts6">&nbsp;here. This text entry box only appears when "Conductivity" is selected in the Specify Using drop list.</span></p>
+<p class="rvps2"><span class="rvts14">Resistivity:</span><span class="rvts6">&nbsp;Enter the dielectric r</span><a class="rvts11" href="Resistivity.html">esistivity</a><span class="rvts6">&nbsp;here. This text entry box only appears when "Resistivity" is selected in the Specify Using drop list. </span></p>
+<p class="rvps2"><span class="rvts14">Mrel:</span><span class="rvts6">&nbsp;Enter the </span><a class="rvts11" href="Relativemagneticpermeability.html">relative magnetic permeability</a><span class="rvts6">&nbsp;here.</span></p>
+<p class="rvps2"><span class="rvts14">Mag Loss Tan:</span><span class="rvts6">&nbsp;Enter the</span><a class="rvts11" href="Magneticlosstangent.html">&nbsp;magnetic loss tangent</a><span class="rvts6">&nbsp;of the dielectric layer material here.</span></p>
+<p class="rvps2"><span class="rvts14">Select Dielectric from Library:</span><span class="rvts6">&nbsp;Click on this button to select a dielectric material from your dielectric library to use in a dielectric layer. The </span><a class="rvts11" href="DielectricLibrary.html">Dielectric Library dialog box</a><span class="rvts6">&nbsp;is opened.</span></p>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">Advanced</span></span></h3>
+<p class="rvps2"><span class="rvts6">This section of the dialog box is not displayed by default. Click on the "&gt;" to display the Advanced options. </span></p>
+<p class="rvps2"><span class="rvts14">Brick Z Partitions:</span><span class="rvts6">&nbsp;Z subsectioning of dielectric bricks is controlled by the value entered in this text entry box. There is an entry box for each layer. It is important that a sufficient number of z partitions are used in order to obtain accurate simulation results.</span></p>
+<p class="rvps7"><span class="rvts68">WARNING</span><span class="rvts18">: Misuse of dielectric bricks can lead to significantly inaccurate results. It is highly recommended that you read the </span><span class="rvts18"></span><span class="rvts18"></span><a class="rvts31" href="../users_guide/DielectricBricks.html" >Dielectric Bricks</a><span class="rvts18"></span><span class="rvts18">&nbsp;chapter in the Sonnet User's Guide before attempting to use dielectric bricks.</span><span class="rvts18"></span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/manuals_icon.png"><span class="rvts6">&nbsp;For a detailed discussion on using dielectric bricks, please refer to the </span><span class="rvts6"></span><span class="rvts6"></span><a class="rvts11" href="../users_guide/DielectricBricks.html" >Dielectric Bricks</a><span class="rvts6"></span><span class="rvts6">&nbsp;chapter in the </span><span class="rvts14">Sonnet User's Guide</span><span class="rvts6">.</span><span class="rvts6"></span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/manuals_icon.png"><span class="rvts6">For a detailed discussion of dielectric loss, please see the </span><span class="rvts6">Metalization and Dielectric Layer Loss</span><span class="rvts6">&nbsp;chapter in the </span><span class="rvts14">Sonnet User's Guide</span><span class="rvts6">.</span></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

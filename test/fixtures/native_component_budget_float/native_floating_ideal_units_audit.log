@@ -1,0 +1,4 @@
+OH 10 expected=10.0 direct_stored=10.0 wrapper_stored=10.0
+KOH 10 expected=10000.0 direct_stored=10.0 wrapper_stored=10.0
+KOH .01 expected=10.0 direct_stored=0.01 wrapper_stored=0.01
+direct floating nonzero BigFloat override stored=0.0

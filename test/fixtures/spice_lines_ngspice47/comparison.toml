@@ -1,0 +1,5 @@
+common_shift_full_s_error = 3.2155493545626967e-12
+scope = "validation-only T/O-LTRA card subset and actual ngspice47 full-wave comparisons; no production parser changes"
+maximum_full_s_error = 9.222654310712085e-13
+model_cases = 13
+frequencies_per_case = 23

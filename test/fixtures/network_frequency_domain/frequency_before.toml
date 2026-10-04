@@ -1,0 +1,23 @@
+scope = "public databank wide-frequency storage and provider argument identity; explicit DC and representable controls"
+source_sha256 = "478da8803d739d52e947eaac3c422d00ed1c7dbe866c5bbbdb70188537774327"
+
+[[rows]]
+provider_calls_hz = [0.0]
+stored_frequency_hz = 0.0
+status = "accepted"
+input_frequency_hz = "9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+[[rows]]
+provider_calls_hz = [0.0]
+stored_frequency_hz = 0.0
+status = "accepted"
+input_frequency_hz = "0.0"
+[[rows]]
+provider_calls_hz = [1.0e9]
+stored_frequency_hz = 1.0e9
+status = "accepted"
+input_frequency_hz = "1.0e9"
+[[rows]]
+provider_calls_hz = []
+status = "rejected"
+input_frequency_hz = "1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+diagnostic = "ArgumentError: network frequencies must be finite, nonnegative and strictly increasing"

@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_ideal_reactive_units_QEsJjZ\\cap_base.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T22:06:22.048"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [47]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 40]
+started_utc = "2026-10-03T22:06:21.644"
+source_sha256 = "159084b0fa5cf184fbe13dccba5a44cf75ac25537c017a7f1f203f153f715de4"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_ideal_reactive_units_QEsJjZ\\cap_base\\cap_base.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_ideal_reactive_units_QEsJjZ\\\\cap_base\")"
+box_halfcell_counts = [64, 80]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "eefe8e7a7c8e14ff057c7d3ad4a7bfd683ec0cc6a8040dfae9ac93943e2207f9"
+intended_deembedded = false
+max_difference = 2.029060929909603e-5
+frequency_scale_hz = 1.0e6
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_ideal_reactive_units_QEsJjZ\\cap_base\\native_device.s2p"
+source_frequency_unit = "MHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.23639910079435927
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_device.s2p"]
+output_sha256 = "eefe8e7a7c8e14ff057c7d3ad4a7bfd683ec0cc6a8040dfae9ac93943e2207f9"
+intended_deembedded = false
+max_difference = 2.029060929909603e-5
+frequency_scale_hz = 1.0e6
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_ideal_reactive_units_QEsJjZ\\cap_base\\native_device.s2p"
+source_frequency_unit = "MHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.23639910079435927
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

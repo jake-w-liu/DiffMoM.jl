@@ -1,0 +1,2 @@
+(32, 40) max_bytes=20000 allocation=178527 live_sheet_zs_lower_bound=20480 accepted
+(128, 160) max_bytes=20000 allocation=745532 live_sheet_zs_lower_bound=327680 ArgumentError: physical terminal returns requires 107896 raw bytes, exceeding max_bytes=20000

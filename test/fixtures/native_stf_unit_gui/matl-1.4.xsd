@@ -1,0 +1,618 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" 
+          elementFormDefault="qualified" >
+
+  
+<xs:element name="technology_file" type="sontechfileType" />
+
+<!--========================================================================-->
+<!--                                 Type definitions                       -->
+<xs:complexType name="sontechfileType" >
+  <xs:sequence>
+    <xs:element name="source" type="sourceType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="units" type="unitsType" minOccurs="1" maxOccurs="1" />
+    <xs:element name="comments" type="commentsType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="public" type="publicType" minOccurs="1" maxOccurs="1" />
+    <xs:element name="private" type="privateType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="privenc" type="privencType" minOccurs="0" maxOccurs="1" />
+  </xs:sequence>
+  <xs:attribute name="version" type="xs:string" />
+  <xs:attribute name="has_private" type="xs:boolean" use="optional" default="false" />
+  <xs:attribute name="writeable" type="xs:boolean" use="optional" default="true" />
+</xs:complexType>
+
+<xs:complexType name="publicType">
+  <xs:sequence>
+    <xs:element name="variables" type="variablesType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="materials" type="materialsType" minOccurs="1" maxOccurs="1" />
+    <xs:element name="mesh_defs" type="mesh_defsType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="metal_model_defs" type="metalmodeldefsType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="bias_defs" type="biasdefsType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="stackup" type="stackupType" minOccurs="1" maxOccurs="1" />
+  </xs:sequence>
+</xs:complexType>
+
+<xs:simpleType name="encryptType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="[0-9a-f]+|[0-9]+" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="privateType">
+  <xs:sequence>
+    <xs:element name="materials" type="materialsType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="bias_defs" type="biasdefsType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="stackup" type="stackupType" minOccurs="1" maxOccurs="1" />
+    <xs:element name="diel_map" type="adielectricMapType" minOccurs="0" maxOccurs="1" />
+  </xs:sequence>
+</xs:complexType>
+
+<xs:complexType name="privencType">
+  <xs:sequence>
+    <xs:element name="enc" type="encryptType" minOccurs="0" maxOccurs="unbounded" />
+  </xs:sequence>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--          basic types                                                   -->
+
+<xs:simpleType name="yesnoType">
+  <xs:annotation>
+    <xs:documentation>The yesnoType is used for boolean-like attributes. We cannot use W3C XML Schema booleans due to their restrictions on expression of boolean values.</xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="yes" />
+    <xs:enumeration value="no" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="onoffType">
+  <xs:annotation>
+    <xs:documentation>The onoffType is used for boolean-like attributes. We cannot use W3C XML Schema booleans due to their restrictions on expression of boolean values.</xs:documentation>
+  </xs:annotation>
+  <xs:restriction base="xs:token">
+    <xs:enumeration value="on" />
+    <xs:enumeration value="off" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="axesType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="xy|xyz|x|y|z" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="condresType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="cond|rsvy" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="positiveIntType">
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="0"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="positiveDoubleType">
+  <xs:restriction base="xs:double">
+    <xs:minInclusive value="0" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="doubleOrVarType">
+  <xs:restriction base="xs:token">
+    <xs:pattern value="[A-Za-z][A-Za-z0-9_]*|[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="posdoubleOrVarType">
+  <xs:restriction base="xs:token">
+    <xs:pattern value="private|private:0.5|[A-Za-z][A-Za-z0-9_]*|[+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="colorType">
+  <xs:union memberTypes="xs:NMTOKEN">
+    <xs:simpleType>
+      <xs:restriction base="xs:token">
+        <xs:pattern value="#[0-9a-fA-F]{6}"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:union>
+</xs:simpleType>
+
+<!--========================================================================-->
+<!--          Source                                                        -->
+<xs:complexType name="srcType" >
+  <xs:attribute name="name" type="xs:string" use="required" />
+  <xs:attribute name="value" type="xs:string" use="optional" />
+</xs:complexType>
+
+<xs:complexType name="sourceType" >
+  <xs:choice minOccurs="0" maxOccurs="unbounded" >
+    <xs:element name="src" type="srcType" />
+  </xs:choice>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--          Units                                                         -->
+<xs:simpleType name="lunitType">
+	<xs:restriction base="xs:string">
+		<xs:pattern value="um|cm|mm|m|mil|inch|UM|CM|MM|M|MIL|INCH"/>
+	</xs:restriction>
+</xs:simpleType>
+<xs:attribute name="lunit" type="lunitType"/>
+
+<xs:simpleType name="cunitType">
+	<xs:restriction base="xs:string">
+		<xs:pattern value="SM|SCM|MSCM|USCM"/>
+	</xs:restriction>
+</xs:simpleType>
+<xs:attribute name="cunit" type="cunitType"/>
+
+<xs:simpleType name="runitType">
+	<xs:restriction base="xs:string">
+		<xs:pattern value="OHCM|OHMM|OHUM"/>
+	</xs:restriction>
+</xs:simpleType>
+<xs:attribute name="runit" type="runitType"/>
+
+<xs:simpleType name="srunitType">
+	<xs:restriction base="xs:string">
+		<xs:pattern value="OHSQ|MOHSQ"/>
+	</xs:restriction>
+</xs:simpleType>
+<xs:attribute name="srunit" type="srunitType"/>
+
+<xs:simpleType name="tempunitType">
+	<xs:restriction base="xs:string">
+		<xs:pattern value="C|celsius|F|fahrenheit|K|kelvin"/>
+	</xs:restriction>
+</xs:simpleType>
+<xs:attribute name="tempunit" type="tempunitType"/>
+
+<xs:complexType name="unitsType">
+  <xs:attribute ref="lunit" use="optional" default="UM" />
+  <xs:attribute ref="cunit" use="optional" default="SM" />
+  <xs:attribute ref="runit" use="optional" default="OHUM" />
+  <xs:attribute ref="srunit" use="optional" default="OHSQ" />
+  <xs:attribute ref="tempunit" use="optional" default="C" />
+</xs:complexType>
+
+<!--========================================================================-->
+<!--        Comments                                                        -->
+
+<xs:complexType name="commentsType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded" >
+    <xs:element name="line" type="xs:string"/>
+  </xs:choice>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--        Units String type for variables                                 -->
+
+<xs:simpleType name="unitsNameType">
+	<xs:restriction base="xs:string">
+		<xs:pattern value="LENG|COND|RES|RSVY|SHRES|FREQ|IND|CAP|TEMP|OTHER"/>
+	</xs:restriction>
+</xs:simpleType>
+
+<!--========================================================================-->
+<!--        Variables                                                       -->
+<xs:complexType name="varType" >
+  <xs:attribute name="name" type="xs:string" use="required" />
+  <xs:attribute name="value" type="xs:string" use="optional" />
+  <xs:attribute name="units" type="unitsNameType" use="optional" default="OTHER" />
+</xs:complexType>
+
+<xs:complexType name="variablesType" >
+  <xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="var" type="varType" minOccurs="0" />
+  </xs:choice>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--        Materials                                                       -->
+
+<xs:attribute name="cond" default="0.0" >
+  <xs:simpleType>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="private|[A-Za-z][A-Za-z0-9_]*|INF|[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?" />
+    </xs:restriction>
+  </xs:simpleType>
+</xs:attribute>
+
+<xs:simpleType name="condspecType" >
+  <xs:restriction base="xs:string" >
+    <xs:pattern value="cond|rsvy|shres|rpv|res|rdcrrf|general|sense|surface" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="conductorType" >
+  <xs:attribute name="name" use="required" type="xs:string" />
+  <xs:attribute ref="cond" />
+  <xs:attribute name="rsvy" type="posdoubleOrVarType" default="0" />
+  <xs:attribute name="shres" type="posdoubleOrVarType" default="0" />
+  <xs:attribute name="rpv" type="posdoubleOrVarType" default="0" />
+  <xs:attribute name="condspec" type="condspecType" default="cond" />
+  <xs:attribute name="rdc" type="doubleOrVarType" default="0.0" />
+  <xs:attribute name="rrf" type="doubleOrVarType" default="0.0" />
+  <xs:attribute name="xdc" type="doubleOrVarType" default="0.0" />
+  <xs:attribute name="ls"  type="doubleOrVarType" default="0.0" />
+</xs:complexType>
+
+<xs:complexType name="dielparamsType" >
+  <xs:attribute name="axes" type="axesType" use="optional" default="xyz" />
+  <xs:attribute name="erel" type="posdoubleOrVarType" use="optional" default="1.0" />
+  <xs:attribute name="mrel" type="posdoubleOrVarType" use="optional" default="1.0" />
+  <xs:attribute name="tane" type="posdoubleOrVarType" use="optional" default="0.0" />
+  <xs:attribute name="tanm" type="posdoubleOrVarType" use="optional" default="0.0" />
+  <xs:attribute name="cond" type="posdoubleOrVarType" use="optional" default="0.0" />
+  <xs:attribute name="rsvy" type="posdoubleOrVarType" use="optional" default="0.0" />
+</xs:complexType>
+
+<xs:complexType name="dielectricType" >
+  <xs:sequence>
+    <xs:element name="params" type="dielparamsType" minOccurs="1" maxOccurs="5" />
+  </xs:sequence>
+  <xs:attribute name="name" use="required" type="xs:string" />
+  <xs:attribute name="anisotropic" use="optional" type="yesnoType" default="no" />
+  <xs:attribute name="cond_res" use="optional" type="condresType" default="cond" />
+</xs:complexType>
+
+<xs:complexType name="materialsType" >
+  <xs:choice minOccurs="0" maxOccurs="unbounded" >
+    <xs:element name="conductor" type="conductorType" minOccurs="0" />
+    <xs:element name="dielectric" type="dielectricType" minOccurs="0" />
+  </xs:choice>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--        Mesh definitions                                                -->
+
+<xs:simpleType name="metalFillType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="Default|Staircase|Conformal|Diagonal|Ring|Vertices|Center|Full|Solid|Bar" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="IsoType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="X and Y|X Only|Y Only" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="metal_via_brickType">
+  <xs:restriction base="xs:token">
+    <xs:pattern value="metal|via|brick" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="xysubsType">
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="1"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="meshType" >
+  <xs:attribute name="name" use="required" type="xs:string" />
+  <xs:attribute name="type" type="metal_via_brickType" use="required" />
+  <xs:attribute name="fill_type" type="metalFillType" use="required" />
+  <xs:attribute name="iso_type" type="IsoType" default="X and Y" />
+  <xs:attribute name="xmin" type="xysubsType" default="1" />
+  <xs:attribute name="xmax" type="xysubsType" default="100" />
+  <xs:attribute name="ymin" type="xysubsType" default="1" />
+  <xs:attribute name="ymax" type="xysubsType" default="100" />
+  <xs:attribute name="use_edge_mesh" type="onoffType" default="on" />
+  <xs:attribute name="pads" type="onoffType" default="off" />
+  <xs:attribute name="usemaxlength" type="yesnoType" default="no" />
+  <xs:attribute name="maxlen" type="positiveDoubleType" default="0.0" />
+</xs:complexType>
+
+<xs:complexType name="mesh_defsType" >
+  <xs:choice minOccurs="1" maxOccurs="unbounded" >
+    <xs:element name="mesh" type="meshType" minOccurs="1" />
+  </xs:choice>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--        Metal Model definitions                                         -->
+
+<xs:simpleType name="metalmodelspecType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="Normal|ThickMetal|TrueVolume|RoughMetal|Resistor|Rdc/Rrf|General|Sense" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="viamodelspecType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="Volume|Array|Surface" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="truevolumemode">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="1LYR|3LYR|5LYR|7LYR" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="crosssectionType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="Thin|Thick" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="volumeType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="Solid|Wall"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="fillfactorType">
+  <xs:restriction base="xs:decimal">
+    <xs:minExclusive value="0.0" />
+    <xs:maxInclusive value="100.0" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="viadensityType">
+  <xs:restriction base="xs:decimal">
+    <xs:minExclusive value="0.0" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="numsheetsType">
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="2" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="metalmodelType" >
+  <xs:attribute name="name" use="required" type="xs:string" />
+  <xs:attribute name="model_type" type="metalmodelspecType" use="required" />
+  <xs:attribute name="top_roughness" type="positiveDoubleType" default="0.0" />
+  <xs:attribute name="bottom_roughness" type="positiveDoubleType" default="0.0" />
+  <xs:attribute name="current_ratio" type="positiveDoubleType" default="0.5" />
+  <xs:attribute name="cross_section" type="crosssectionType" default="Thin" />
+  <xs:attribute name="num_sheets" type="numsheetsType" default="2" />
+  <xs:attribute name="true_volume_mode" type="truevolumemode" default="3LYR" />
+</xs:complexType>
+
+<xs:complexType name="viamodelType" >
+  <xs:attribute name="name" use="required" type="xs:string" />
+  <xs:attribute name="model_type" type="viamodelspecType" use="required" />
+  <xs:attribute name="fill_factor" type="fillfactorType" default="100.0" />
+  <xs:attribute name="volume_type" type="volumeType" default="Solid" />
+  <xs:attribute name="wall_thickness" type="doubleOrVarType" default="0.0" />
+  <xs:attribute name="via_density" type="viadensityType" default="1.0" />
+</xs:complexType>
+
+<xs:complexType name="metalmodeldefsType" >
+  <xs:choice minOccurs="1" maxOccurs="unbounded" >
+    <xs:element name="metal_model" type="metalmodelType" minOccurs="1" />
+    <xs:element name="via_model" type="viamodelType" minOccurs="1" />
+  </xs:choice>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--        bias definitions                                                -->
+
+<xs:simpleType name="doubleListType">
+  <xs:list itemType="xs:double"/>
+</xs:simpleType>
+
+<xs:simpleType name="sizeType">
+  <xs:restriction base="xs:integer" >
+    <xs:minInclusive value="1" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="rowType">
+	<xs:simpleContent>
+		<xs:extension base="doubleListType">
+			<xs:attribute name="key" type="xs:double" use="required"/>
+		</xs:extension>
+	</xs:simpleContent>
+</xs:complexType>
+
+<xs:complexType name="lookupVectorType" >
+	<xs:sequence>
+		<xs:element name="vector" type="rowType" minOccurs="1" maxOccurs="unbounded" />
+	</xs:sequence>
+	<xs:attribute name="value_name" type="xs:string" use="required" />
+	<xs:attribute name="row_name" type="xs:string" use="required" />
+  <xs:attribute name="size" type="sizeType" use="required" />
+</xs:complexType>
+
+<xs:simpleType name="etchtypeType" >
+  <xs:restriction base="xs:token" >
+    <xs:pattern value="DEFAULT|RES|CAP|TOP" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="lookupType">
+	<xs:sequence>
+		<xs:element name="column_keys" type="doubleListType" minOccurs="1" maxOccurs="1" />
+		<xs:element name="row" type="rowType" minOccurs="1" maxOccurs="unbounded" />
+	</xs:sequence>
+  <xs:attribute name="etch_type" type="etchtypeType" use="optional" />
+	<xs:attribute name="value_name" type="xs:string" use="required" />
+	<xs:attribute name="row_name" type="xs:string" use="required" />
+	<xs:attribute name="col_name" type="xs:string" use="required" />
+</xs:complexType>
+
+<xs:complexType name="biasType">
+  <xs:choice minOccurs="0" maxOccurs="unbounded" >
+    <xs:element name="lookup_table" type="lookupType" />
+    <xs:element name="lookup_vector" type="lookupVectorType" />
+  </xs:choice>
+  <xs:attribute name="name" type="xs:token" use="required" />
+  <xs:attribute name="is_private" type="xs:boolean" use="optional" default="false" />
+  <xs:attribute name="crt1" type="positiveDoubleType" default="0.0" />
+  <xs:attribute name="crt2" type="positiveDoubleType" default="0.0" />
+  <xs:attribute name="area" type="positiveDoubleType" default="0.0" />
+  <xs:attribute name="rpv" type="positiveDoubleType" default="0.0" />
+</xs:complexType>
+
+<xs:complexType name="biasdefsType" >
+  <xs:choice minOccurs="0" maxOccurs="unbounded" >
+    <xs:element name="bias" type="biasType" />
+  </xs:choice>
+</xs:complexType>
+
+<!--========================================================================-->
+<!--        stackup definitions                                             -->
+
+<xs:simpleType name="thicknessType" >
+  <xs:restriction base="xs:double" >
+    <xs:minInclusive value="0.0" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="gdsstreamType" >
+  <xs:restriction base="xs:integer" >
+    <xs:minInclusive value="0" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="colpatType" >
+  <xs:restriction base="xs:integer">
+    <xs:minInclusive value="0" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="directionType">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="Up|up|Down|down" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="mapType" >
+  <xs:attribute name="dxf_layer" type="xs:token" use="optional" />
+  <xs:attribute name="gerber_name" type="xs:token" use="optional" />
+  <xs:attribute name="gds_stream" type="gdsstreamType" use="optional" default="0" />
+  <xs:attribute name="gds_datatype" type="xs:integer" use="optional" default="0" />
+  <xs:attribute name="mask" type="positiveIntType" use="optional" default="0" />
+</xs:complexType>
+
+<xs:complexType name="bricktechlayerType" >
+  <xs:choice minOccurs="0" maxOccurs="1" >
+    <xs:element name="map" type="mapType" />
+  </xs:choice>
+  <xs:attribute name="name" type="xs:token" use="required" />
+  <xs:attribute name="layer_name" type="xs:token" use="optional" />
+  <xs:attribute name="purpose" type="xs:token" use="optional" />
+  <xs:attribute name="material" type="xs:token" use="required" />
+  <xs:attribute name="mesh" type="xs:token" use="optional" />
+  <xs:attribute name="color_pattern" type="colpatType" default="1" />
+  <xs:attribute name="color" type="colorType" default="#0066ff" />
+  <xs:attribute name="pattern" type="xs:token" default="updiag" />
+</xs:complexType>
+
+<xs:complexType name="metaltechlayerType" >
+  <xs:choice minOccurs="0" maxOccurs="1" >
+    <xs:element name="map" type="mapType" />
+  </xs:choice>
+  <xs:attribute name="name" type="xs:token" use="required" />
+  <xs:attribute name="layer_name" type="xs:token" use="required" />
+  <xs:attribute name="purpose" type="xs:token" use="optional" />
+  <xs:attribute name="material" type="xs:token" use="required" />
+  <xs:attribute name="model" type="xs:token" use="optional" />
+  <xs:attribute name="thickness" type="posdoubleOrVarType" use="required" />
+  <xs:attribute name="bias" type="xs:token" use="optional" />
+  <xs:attribute name="mesh" type="xs:token" use="optional" />
+  <xs:attribute name="direction" type="directionType" default="Up" />
+  <xs:attribute name="color_pattern" type="colpatType" default="1" />
+  <xs:attribute name="color" type="colorType" default="#0066ff" />
+  <xs:attribute name="pattern" type="xs:token" default="updiag" />
+  <xs:attribute name="ignore" type="xs:boolean" use="optional" default="false" />
+</xs:complexType>
+
+<xs:simpleType name="viafromtoType" >
+  <xs:restriction base="xs:token">
+    <xs:pattern value="TOP|GND|BOT|BOTTOM|[A-Za-z][A-Za-z0-9_]*|[0-9]*" />
+  </xs:restriction>
+</xs:simpleType>
+
+<xs:complexType name="viatechlayerType" >
+  <xs:choice minOccurs="0" maxOccurs="1" >
+    <xs:element name="map" type="mapType" />
+  </xs:choice>
+  <xs:attribute name="name" type="xs:token" use="required" />
+  <xs:attribute name="material" type="xs:token" use="required" />
+  <xs:attribute name="model" type="xs:token" use="optional" />
+  <xs:attribute name="layer_name" type="xs:token" use="required" />
+  <xs:attribute name="purpose" type="xs:token" use="optional" />
+  <xs:attribute name="from" type="viafromtoType" use="required" />
+  <xs:attribute name="to" type="viafromtoType" use="required" />
+  <xs:attribute name="bias" type="xs:token" use="optional" />
+  <xs:attribute name="mesh" type="xs:token" use="optional" />
+  <xs:attribute name="color_pattern" type="colpatType" default="1" />
+  <xs:attribute name="color" type="colorType" default="#0066ff" />
+  <xs:attribute name="pattern" type="xs:token" default="updiag" />
+  <xs:attribute name="ignore" type="xs:boolean" use="optional" default="false" />
+</xs:complexType>
+
+<xs:complexType name="dielType" >
+  <xs:choice minOccurs="0" maxOccurs="unbounded" >
+    <xs:element name="metal_techlayer" type="metaltechlayerType" />
+    <xs:element name="brick_techlayer" type="bricktechlayerType" />
+  </xs:choice>
+  <xs:attribute name="name" type="xs:token" use="required" />
+  <xs:attribute name="dielectric" type="xs:token" use="required" />
+  <xs:attribute name="thickness" type="posdoubleOrVarType" use="required" />
+  <xs:attribute name="zpart" use="optional" default="0" type="positiveIntType" />
+  <xs:attribute name="is_conformal" type="xs:boolean" use="optional" default="false" />
+  <xs:attribute name="measured_from" type="xs:token" use="optional" default="N/A" />
+  <xs:attribute name="associated_cond" type="xs:token" use="optional" default="N/A" />
+  <xs:attribute name="sidewall_thickness" type="posdoubleOrVarType" use="optional" default="0.0" />
+  <xs:attribute name="topwall_thickness" type="posdoubleOrVarType" use="optional" default="0.0" />
+  <xs:attribute name="bottomwall_thickness" type="posdoubleOrVarType" use="optional" default="0.0" />
+</xs:complexType>
+
+<xs:complexType name="viasType" >
+  <xs:choice minOccurs="0" maxOccurs="unbounded" >
+    <xs:element name="via_techlayer" type="viatechlayerType" />
+  </xs:choice>
+</xs:complexType>
+
+<xs:complexType name="TopCoverType" >
+  <xs:attribute name="material" type="xs:token" use="required" />
+  <xs:attribute name="model" type="xs:token" use="required" />
+</xs:complexType>
+
+<xs:complexType name="BotCoverType" >
+  <xs:attribute name="material" type="xs:token" use="required" />
+  <xs:attribute name="model" type="xs:token" use="required" />
+</xs:complexType>
+
+
+<xs:complexType name="stackupType" >
+  <xs:sequence>
+    <xs:element name="TOP" type="TopCoverType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="diel" type="dielType" minOccurs="1" maxOccurs="unbounded"/>
+    <xs:element name="BOTTOM" type="BotCoverType" minOccurs="0" maxOccurs="1" />
+    <xs:element name="vias" type="viasType" minOccurs="0" maxOccurs="1" />
+  </xs:sequence>
+</xs:complexType>
+<!--========================================================================-->
+<!--        dielectric map from public to private                           -->
+
+<xs:simpleType name="dielListType">
+  <xs:list itemType="xs:token"/>
+</xs:simpleType>
+
+<xs:complexType name="dielmapType" >
+  <xs:attribute name="name" type="xs:token" use="required" />
+  <xs:attribute name="pub_diel" type="xs:token" use="required" />
+  <xs:attribute name="priv_diel_list" type="dielListType" use="required" />
+</xs:complexType>
+
+<xs:complexType name="adielectricMapType" >
+  <xs:choice minOccurs="1" maxOccurs="unbounded" >
+    <xs:element name="dielmap" type="dielmapType" />
+  </xs:choice>
+</xs:complexType>
+<!--  END -->
+</xs:schema>

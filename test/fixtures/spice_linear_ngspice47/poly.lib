@@ -1,0 +1,3 @@
+.subckt bad p1 p2 ref
+E1 p1 ref POLY(1) p2 ref 0 1
+.ends bad

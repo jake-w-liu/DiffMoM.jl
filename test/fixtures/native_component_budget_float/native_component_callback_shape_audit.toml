@@ -1,0 +1,4 @@
+warmed_allocation = 186967
+production_sha256 = "a6ca82787fe4f2e80a915c927bdee1a5dc17f7115a68951aedfa9a9a89099dbb"
+max_bytes = 10000000
+diagnostic = "ArgumentError: network matrix must match its local ports before conversion"

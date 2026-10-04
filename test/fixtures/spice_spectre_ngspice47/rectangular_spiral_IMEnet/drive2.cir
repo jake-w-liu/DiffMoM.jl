@@ -1,0 +1,15 @@
+Independent installed Spectre export AC drive
+.include model.cir
+Xdevice n1 n2 n3 0 rectangular_spiral_IMEnet
+Vdrive1 n1 0 DC 0 AC 0
+Vdrive2 n2 0 DC 0 AC 0
+Vdrive3 n3 0 DC 0 AC 1
+.control
+set wr_singlescale
+set wr_vecnames
+set numdgt=17
+ac lin 19 1000000 20000000000
+wrdata drive2.dat i(Vdrive1) i(Vdrive2) i(Vdrive3)
+quit
+.endc
+.end

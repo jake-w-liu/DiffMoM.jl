@@ -1,0 +1,40 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+Run 1:  Sun Oct 04 06:17:44 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_normal_resistivity_mz8D3l\sigma_5e6\sigma_5e6.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1, Stop = 10, Step = 9 GHZ
+
+    Frequency:  1 GHZ
+      Subsectioning time:  0.001 seconds.
+      Circuit requires 38 subsections and 1 MB of memory.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.011292 25.631 0.989925 -1.369 0.989925 -1.369 0.011292 25.631
+      Total time per frequency:  0.004 seconds.
+
+    Frequency:  10 GHZ
+      Waveguide mode time:  0 seconds.
+      Matrix fill time:  0 seconds.
+      Matrix solve time:  0 seconds.
+      10.0000000 0.049069 64.018 0.988197 -13.50 0.988197 -13.50 0.049069 64.016
+      Total time per frequency:  0.002 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 2 frequencies:  0.008 seconds.
+      Em errors detected: 0    Em warnings detected: 1.
+
+Em simulation completed Sun Oct 04 06:17:44 2026.

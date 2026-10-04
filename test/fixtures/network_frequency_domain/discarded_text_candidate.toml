@@ -1,0 +1,50 @@
+scope = "discarded text-underflow candidate: isolated byte-exact original NetworkIO parser already rejects the nonzero fields; surrounding reference helpers current and unchanged"
+before_source_sha256 = "478da8803d739d52e947eaac3c422d00ed1c7dbe866c5bbbdb70188537774327"
+after_source_sha256 = "6e2b29ceb3b9609d64d7a549ad68ac3aff8d99c9155bebe5c3a3e7d80cf6001e"
+
+[[rows]]
+source_text = """# HZ S RI R 50\n1e-500 .25 0\n"""
+tag = "frequency"
+
+    [rows.after]
+    status = "rejected"
+    diagnostic = "ArgumentError: cannot parse \"1e-500\" as Float64"
+
+    [rows.before]
+    status = "rejected"
+    diagnostic = "ArgumentError: cannot parse \"1e-500\" as Float64"
+[[rows]]
+source_text = """# HZ S RI R 50\n1 1e-500 0\n"""
+tag = "matrix_real"
+
+    [rows.after]
+    status = "rejected"
+    diagnostic = "ArgumentError: cannot parse \"1e-500\" as Float64"
+
+    [rows.before]
+    status = "rejected"
+    diagnostic = "ArgumentError: cannot parse \"1e-500\" as Float64"
+[[rows]]
+source_text = """# HZ S RI R 50\n1 0 -1D-500\n"""
+tag = "matrix_imag"
+
+    [rows.after]
+    status = "rejected"
+    diagnostic = "ArgumentError: cannot parse \"-1E-500\" as Float64"
+
+    [rows.before]
+    status = "rejected"
+    diagnostic = "ArgumentError: cannot parse \"-1E-500\" as Float64"
+[[rows]]
+source_text = """# HZ S RI R 50\n0e-500 .25 0\n"""
+tag = "explicit_zero"
+
+    [rows.after]
+    status = "accepted"
+    frequency_hz = 0.0
+
+    [rows.before]
+    s_real = 0.25
+    s_imag = 0.0
+    status = "accepted"
+    frequency_hz = 0.0

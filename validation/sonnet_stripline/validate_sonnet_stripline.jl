@@ -20,12 +20,16 @@
 #
 # The validator locates em.exe via the SONNET_EM environment variable or
 # the standard install root; if Sonnet is not installed it prints
-# UNVERIFIED and exits 0 (a missing external tool is never a pass).
+# UNVERIFIED and exits 2. Native outputs and metadata are retained under
+# data/sonnet_validation (override with SONNET_VALIDATION_DIR).
 #
 # Run: julia --project=. validation/sonnet_stripline/validate_sonnet_stripline.jl
 
 using DiffMoM
 using Printf
+using TOML
+include("sonnet_reference.jl")
+using .SonnetReference
 
 const A = 4.996541e-3          # box length (x, port-to-port) [m]
 const H = 1.0e-3               # total substrate height (two halves) [m]
@@ -40,56 +44,22 @@ const CASES = [
 
 # ---------------- Sonnet side ----------------
 
-function find_em()
-    haskey(ENV, "SONNET_EM") && isfile(ENV["SONNET_EM"]) &&
-        return ENV["SONNET_EM"]
-    for root in (ENV["ProgramFiles"], ENV["ProgramFiles(x86)"],
-                 raw"C:\Program Files", raw"C:\Program Files (x86)")
-        dir = joinpath(root, "Sonnet Software")
-        isdir(dir) || continue
-        for ver in sort(readdir(dir); rev=true)
-            em = joinpath(dir, ver, "bin", "em.exe")
-            isfile(em) && return em
-        end
-    end
-    return nothing
-end
-
-"""Run `em` on `sonfile` inside a scratch dir; return the parsed
+"""Run `em` on `sonfile` inside a retained directory; return the parsed
 de-embedded S row (freq, |S11|, ang, |S21|, ang, |S12|, ang, |S22|, ang)
 plus the per-port Z0 diagnostic."""
-function run_sonnet(em::String, sonfile::String)
-    mktempdir() do dir
-        src = joinpath(@__DIR__, sonfile)
-        dst = joinpath(dir, sonfile)
-        cp(src, dst)
-        run(`$em $dst`)
-        logf = joinpath(dir, "sondata", replace(sonfile, ".son" => ""),
-                        "log_response.log")
-        isfile(logf) || error("sonnet produced no response log for $sonfile")
-        lines = split(read(logf, String), '\n')
-        svals = Float64[]
-        z0 = NaN
-        for (i, line) in enumerate(lines)
-            if occursin("De-embedded S-Parameters", line)
-                # scan forward: f |S11| ang |S21| ang |S12| ang |S22| ang
-                for l2 in @view lines[(i + 1):end]
-                    tok = split(l2)
-                    length(tok) == 9 || continue
-                    vals = tryparse.(Float64, tok)
-                    all(!isnothing, vals) || continue
-                    svals = Float64.(vals)
-                    break
-                end
-            elseif occursin("Z0=", line)
-                m = match(r"Z0=\(([-+0-9.eE]+)", line)
-                m !== nothing && (z0 = parse(Float64, m.captures[1]))
-            end
-        end
-        isempty(svals) &&
-            error("no de-embedded S row in sonnet response for $sonfile")
-        return svals, z0
-    end
+function run_sonnet(em::String, sonfile::String, evidence_dir::String)
+    # Native BOX fields count half-cells. Match the actual DiffMoM grid.
+    source=joinpath(evidence_dir,sonfile)
+    original=replace(read(joinpath(@__DIR__,sonfile),String),"\r\n"=>"\n")
+    write(source,replace(original,r"(?m)^(BOX 1 [^ ]+ [^ ]+) \d+ \d+"=>
+        m->first(match(r"^(BOX 1 [^ ]+ [^ ]+)",m).captures)*" $(2NX) $(2NY)"))
+    ref = reference_run(em, source;
+        output_dir=joinpath(evidence_dir, splitext(sonfile)[1]))
+    length(ref.rows) == 1 && ref.rows[1][1] == 15.0 ||
+        error("$sonfile must report exactly one 15 GHz row")
+    sz0 = get(ref.z0, (1, 15.0), complex(NaN))
+    isfinite(sz0) && real(sz0) > 0 || error("missing Sonnet port Z0: $(ref.logf)")
+    return ref.rows[1], real(sz0)
 end
 
 # ---------------- DiffMoM side ----------------
@@ -120,15 +90,19 @@ function main()
     em === nothing && begin
         println("UNVERIFIED: sonnet em.exe not found " *
                 "(set SONNET_EM to its path)")
-        return 0
+        return 2
     end
+    evidence_dir = evidence_directory("stripline")
     println("em: $em")
+    println("evidence: $evidence_dir")
     println(@sprintf("%-5s %9s %9s %9s %9s %9s %9s %9s",
                      "case", "|S11|", "d|S11|", "|S21|", "d|S21|",
                      "angS21", "dang", "dZ0%"))
     fails = String[]
+    results = Dict{String,Any}[]
     for (name, b, w, son) in CASES
-        (sv, sz0) = run_sonnet(em, son)
+        (sv, sz0) = run_sonnet(em, son, evidence_dir)
+        Sref = twoport_matrix(sv)
         prob = dmm_case(A, b, w, NX, NY)
         probl = dmm_case(A / 2, b, w, NX ÷ 2, NY)
         r = solve_planar(prob, 15e9; mx=2NX, my=2NY,
@@ -142,8 +116,16 @@ function main()
         S = planar_y_to_s(Yd, [50.0, 50.0])
         d_s11 = abs(S[1, 1]) - sv[2]
         d_s21 = abs(S[2, 1]) - sv[4]
-        d_ang = rad2deg(angle(S[2, 1])) - sv[5]
+        d_ang = wrapped_phase_deg(S[2, 1], Sref[2, 1])
         dz0 = (real(cal.zc) - sz0) / sz0 * 100
+        max_complex_error = maximum(abs, S - Sref)
+        write_touchstone(joinpath(evidence_dir, name, "diffmom.s2p"), [15e9], [S])
+        push!(results, Dict("case" => name, "nx" => NX, "ny" => NY,
+            "native_box_halfcell_counts" => [2NX,2NY],
+            "mx" => 2NX, "my" => 2NY, "basis_count" => planar_basis_count(prob.basis),
+            "max_complex_s_error" => max_complex_error, "s21_phase_error_deg" => d_ang,
+            "z0_error_percent" => dz0, "calibration_residual" => cal.residual,
+            "sonnet_z0_ohm" => sz0, "diffmom_z0_real_ohm" => real(cal.zc)))
         @printf("%-5s %9.6f %+9.6f %9.6f %+9.6f %9.3f %+9.3f %+8.2f\n",
                 name, abs(S[1, 1]), d_s11, abs(S[2, 1]), d_s21,
                 rad2deg(angle(S[2, 1])), d_ang, dz0)
@@ -157,6 +139,13 @@ function main()
             push!(fails, "$name Z0 off by $(abs(dz0))% (> 5%)")
         abs(d_s11) <= 0.06 ||
             push!(fails, "$name |S11| off by $(abs(d_s11))")
+        max_complex_error <= 0.06 ||
+            push!(fails, "$name max complex S error $max_complex_error (> 0.06)")
+    end
+    open(joinpath(evidence_dir, "comparison.toml"), "w") do io
+        TOML.print(io, Dict("cases" => results, "failures" => fails,
+            "status" => isempty(fails) ? "PASS" : "FAIL",
+            "scope" => "64x64 lossless wall-port striplines; not a full Sonnet parity certificate"))
     end
     isempty(fails) && return 0
     foreach(f -> println("FAIL: ", f), fails)

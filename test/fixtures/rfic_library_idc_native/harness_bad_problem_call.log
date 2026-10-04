@@ -1,0 +1,29 @@
+
+Actual native public RFIC library IDC: Error During Test at C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:56
+  Got exception outside of a @test
+  MethodError: no method matching sonnet_planar_problem(::SonnetProject, ::Float64; raw::Bool)
+  The function `sonnet_planar_problem` exists, but no method is defined for this combination of argument types.
+  Closest candidates are:
+    sonnet_planar_problem(::SonnetProject; freq, grid, variables, _materials, _details, _allow_portless, scalar_files, scalar_root, scalar_outside, scalar_max_files, scalar_max_bytes, scalar_max_nodes, scalar_max_line_bytes, scalar_max_storage) got unsupported keyword argument "raw"
+     @ DiffMoM C:\Users\User\DiffMoM.jl\src\planar\PlanarSonnetIO.jl:747
+  Stacktrace:
+   [1] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:73 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [3] idc_native_proof()
+     @ Main C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:57
+   [4] top-level scope
+     @ C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:102
+   [5] include(mod::Module, _path::String)
+     @ Base .\Base.jl:309
+   [6] exec_options(opts::Base.JLOptions)
+     @ Base .\client.jl:344
+   [7] _start()
+     @ Base .\client.jl:577
+Test Summary:                         | Pass  Error  Total  Time
+Actual native public RFIC library IDC |    4      1      5  6.4s
+RNG of the outermost testset: Random.Xoshiro(0xeb8c824ce78b6777, 0xa92d39fc1cfd39e6, 0xf86d2da0ea962cfa, 0x0c0083416aa3102a, 0x1539ab2fbde76731)
+evidence: C:\Users\User\DiffMoM.jl\data\sonnet_validation\library_idc_native_TeF88N
+ERROR: LoadError: Some tests did not pass: 4 passed, 0 failed, 1 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\validate_sonnet_library_idc.jl:102

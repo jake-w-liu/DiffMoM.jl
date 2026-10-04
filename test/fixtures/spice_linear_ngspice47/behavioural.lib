@@ -1,0 +1,3 @@
+.subckt bad p1 p2 ref
+B1 p1 ref V={v(p2)}
+.ends bad

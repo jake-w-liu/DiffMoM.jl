@@ -1,0 +1,62 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_ideal_reactive_units_QEsJjZ"
+original_source_sha256 = "264aeedd9453799357e4ec88c82fd3e1a8d21b01696c01789176b8cd06ad477f"
+scope = "manufactured component DIM CAP/IND native unit controls; exact raw R50 selection; no calibration fit"
+cap_same_literal_delta_s = 0.9910165546122901
+ind_same_literal_delta_s = 0.9961051420153024
+cap_same_physical_delta_s = 0.0
+ind_same_physical_delta_s = 0.0
+
+[[runs]]
+s_real = [0.9746242660624, 0.0299861145265, 0.0299861145265, 0.9499206725043]
+kind = "CAP"
+s_imag = [-0.184878070806, 0.122590667968, 0.1225906679681, -0.285872483831]
+status = "SIMULATED"
+source_sha256 = "159084b0fa5cf184fbe13dccba5a44cf75ac25537c017a7f1f203f153f715de4"
+literal_component_value = "1"
+tag = "cap_base"
+dim_unit = "PF"
+[[runs]]
+s_real = [-0.0005776663611, 0.9944778953111, 0.9944778953111, -0.00121181542]
+kind = "CAP"
+s_imag = [-0.008540319564, -0.104596582071, -0.104596582071, -0.008473621426]
+status = "SIMULATED"
+source_sha256 = "259c8f1ea8c67e380505392ccbaa840ce39dd888eb6b8a8bec155f9a3ca9b0ea"
+literal_component_value = "1"
+tag = "cap_same_literal"
+dim_unit = "NF"
+[[runs]]
+s_real = [0.9746242660624, 0.0299861145265, 0.0299861145265, 0.9499206725043]
+kind = "CAP"
+s_imag = [-0.184878070806, 0.122590667968, 0.1225906679681, -0.285872483831]
+status = "SIMULATED"
+source_sha256 = "1f1c72474b689c7d0e1b4c46fb53b6b6dc8edf6fe23f72e7a33fb3fc50262e2e"
+literal_component_value = ".001"
+tag = "cap_same_physical"
+dim_unit = "NF"
+[[runs]]
+s_real = [0.00074210544798, 0.9920860983663, 0.9920860983663, 0.0022451515279]
+kind = "IND"
+s_imag = [0.0119503541839, -0.12498724632, -0.12498724632, 0.0117609940155]
+status = "SIMULATED"
+source_sha256 = "3151906b33b5d5724b87c1df1eeb50781cd92c971caba3d275911412a4500098"
+literal_component_value = "1"
+tag = "ind_base"
+dim_unit = "NH"
+[[runs]]
+s_real = [0.9968353218357, -0.002763689152, -0.002763689152, 0.9931164363136]
+kind = "IND"
+s_imag = [0.0168245941957, -0.077644292728, -0.077644292728, -0.087655403443]
+status = "SIMULATED"
+source_sha256 = "136ddd5c53617928bf2c904f17bcb4327fbe68bac271cd10be680ee2e36ed5ae"
+literal_component_value = "1"
+tag = "ind_same_literal"
+dim_unit = "UH"
+[[runs]]
+s_real = [0.00074210544798, 0.9920860983663, 0.9920860983663, 0.0022451515279]
+kind = "IND"
+s_imag = [0.0119503541839, -0.12498724632, -0.12498724632, 0.0117609940155]
+status = "SIMULATED"
+source_sha256 = "63db55b52f0ac3e7467fcee52fefdddb70dda1fc421ab7a4388e2cb695716c97"
+literal_component_value = ".001"
+tag = "ind_same_physical"
+dim_unit = "UH"

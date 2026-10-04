@@ -1,0 +1,23 @@
+runs = []
+full_complex_s_gate = 0.06
+scope = "public RFIC library two-finger-per-electrode IDC plus physical wall leads versus independent literal native GEO; PEC, air/substrate and matched finite grids; no measured-device, nonlinear, loss or continuum claim"
+source_unchanged = true
+original_voltage_residual_gate = 1.0e-9
+
+[source_sha256_before]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "da8158ef7f23ac727a6030188ef1faef667fd9b3a3f171e49414bd82153b6216"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_library_idc.jl" = "49eb8c3d8265329f480bf4bf24d8dba3c4b05e98b488cffd1ee5bbb94cf181d8"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayoutIO.jl" = "37c70d85bfbcafcb2d6d655b60a9ede2936a84b2a49e3280fda47f1133b2c85c"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"
+
+[source_sha256_after]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "da8158ef7f23ac727a6030188ef1faef667fd9b3a3f171e49414bd82153b6216"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_library_idc.jl" = "49eb8c3d8265329f480bf4bf24d8dba3c4b05e98b488cffd1ee5bbb94cf181d8"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayoutIO.jl" = "37c70d85bfbcafcb2d6d655b60a9ede2936a84b2a49e3280fda47f1133b2c85c"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"

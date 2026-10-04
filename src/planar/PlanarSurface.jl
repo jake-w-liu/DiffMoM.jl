@@ -1,7 +1,7 @@
 # PlanarSurface.jl — conductor surface-impedance models
 #
 # The `surface_zs` keyword of assemble_planar_z / solve_planar adds a
-# surface-impedance Gram loss term Z += Zs * Gram on every sheet.  This
+# surface-impedance Gram loss term Z -= Zs * Gram on every sheet.  This
 # file produces that value from bulk conductor properties and published
 # roughness correction factors:
 #

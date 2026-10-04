@@ -1,0 +1,6 @@
+circuit_sha256 = "148b5813c6def1d2482faea1bdb6f58c0df14fef0f4aa1341926d6f892994a3e"
+components_sha256 = "a6ca82787fe4f2e80a915c927bdee1a5dc17f7115a68951aedfa9a9a89099dbb"
+max_bytes = 10000000
+warmed_allocation = 16964254
+diagnostic = "ArgumentError: network matrix must be finite and match its local ports"
+provenance = "Original allocation/diagnostic retained verbatim in the before log; source identity verified against the frozen checkpoint."

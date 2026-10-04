@@ -1,0 +1,16 @@
+Independent actual ngspice SPICE ingestion drive
+.include "C:\Users\User\DiffMoM.jl\validation\planar_audit\..\spice_ingestion\linear_hcOAu3\controlled.lib"
+Xuut p1 p2 0 controlled 
+Vdrv1 drv1 0 DC 0 AC 0
+Rdrv1 drv1 p1 50.0
+Vdrv2 drv2 0 DC 0 AC 17.320508075688775
+Rdrv2 drv2 p2 75.0
+.control
+set wr_singlescale
+set wr_vecnames
+set numdgt=17
+ac lin 21 1000.0 1.0e10
+wrdata drive2.dat v(p1) v(p2)
+quit
+.endc
+.end

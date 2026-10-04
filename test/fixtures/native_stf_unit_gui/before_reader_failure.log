@@ -1,0 +1,12 @@
+Dict{String, Any}("scope" => "actual Sonnet18.53 GUI maintain-physical export; read-only production falsifier", "expected_sigma_S_m" => 14.285714285714286, "sigma_ratio" => 999.9999999999999, "native_input_runit" => "OHUM", "utc" => "2026-10-03T21:20:30.636", "native_export_runit" => "OHMM", "rho_ratio" => 0.0010000000000000002, "reader_input_sigma_S_m" => 14.285714285714286, "reader_export_sigma_S_m" => 14285.714285714284, "expected_rho_Ohm_m" => 0.06999999999999999, "export_sha256" => "1ed61f060137fc64630e392609b0f17d5a6eee62d0ee7fc2cde33ceb5a6e60eb", "technology_module_sha256" => "0260b39894c2e4cfce6db8fbf079cc7a8ebc80d0210c2c6ac1d27b1bb25cc090", "reader_input_rho_Ohm_m" => 0.06999999999999999, "gate_pass" => false, "native_export_srunit" => "MOSQ", "source_sha256" => "0d8301bf57cb5a0629856a74476d76e7848bfa94e3637680df86f5e936b4b6a2", "reader_export_rho_Ohm_m" => 7.000000000000001e-5)
+ERROR: LoadError: AssertionError: Native OHMM SI conversion defect
+Stacktrace:
+ [1] top-level scope
+   @ C:\Users\User\DiffMoM.jl\validation\planar_audit\stf_native_unit_falsifier.jl:32
+ [2] include(mod::Module, _path::String)
+   @ Base .\Base.jl:309
+ [3] exec_options(opts::Base.JLOptions)
+   @ Base .\client.jl:344
+ [4] _start()
+   @ Base .\client.jl:577
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\stf_native_unit_falsifier.jl:32

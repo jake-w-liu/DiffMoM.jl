@@ -1,0 +1,55 @@
+{
+  "checks": 308,
+  "cases": [
+    {
+      "source": "raw\\examples\\1nH_oct_inductor\\1nH_oct_inductor.scs",
+      "source_sha256": "5ff099156ca645d10999b8b659e4f2ddb63407caf6c22d79cd68e904aa2067d7",
+      "formal_pins": [
+        "1",
+        "4",
+        "REF"
+      ],
+      "ports": 2,
+      "mutual_cards": 0,
+      "frequency_points": 19,
+      "max_relative_y": 1.1134698724103178e-14,
+      "max_full_s": 7.216449660063518e-15,
+      "translated_sha256": "71b90cea2b36f55f250fc4b8e4173b30b7b118bba2f2b08ef09d850d07ce96f8"
+    },
+    {
+      "source": "raw\\examples\\ct_inductor_noshield\\ct_inductor_noshield_IMEnet.scs",
+      "source_sha256": "33d8954067fd4e1d74e437ad6a55a80a7c8d986b1d339f0c442db56c33dc4ab8",
+      "formal_pins": [
+        "1",
+        "2",
+        "3",
+        "REF"
+      ],
+      "ports": 3,
+      "mutual_cards": 1,
+      "frequency_points": 19,
+      "max_relative_y": 4.7979199534301524e-14,
+      "max_full_s": 8.016137473963735e-14,
+      "translated_sha256": "f45f64ec6a637a62403100aaad33b776e558e06e1861381de794f41940f93fef"
+    },
+    {
+      "source": "raw\\examples\\rectangular_spiral\\rectangular_spiral_IMEnet.scs",
+      "source_sha256": "3da46e09d07d87202273cecbfd8970eae076a7708c846a15fb1bfb12034dea7c",
+      "formal_pins": [
+        "1",
+        "2",
+        "3",
+        "REF"
+      ],
+      "ports": 3,
+      "mutual_cards": 1,
+      "frequency_points": 19,
+      "max_relative_y": 2.620030564020265e-14,
+      "max_full_s": 6.464872530390545e-14,
+      "translated_sha256": "1d5b6c5636b0b9ff8717d206684e55f33e43423dcde8554f5a5c358a66d7bce1"
+    }
+  ],
+  "engine": "C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\external_tools\\ngspice47\\Spice64\\bin\\ngspice_con.exe",
+  "engine_sha256": "22d5cae2bd32b2e39157a8d27bf457122f68285b72a9ebefdf41551b628233ab",
+  "scope": "Actual ngspice evaluation of literal translated installed Spectre exports; independent coupled-inductor branch MNA. No native Spectre or Sonnet UserModel execution."
+}

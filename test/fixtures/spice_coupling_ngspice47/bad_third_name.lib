@@ -1,0 +1,6 @@
+.subckt bad p1 p2 ref
+K1 L1 L2 L3 .5
+L1 p1 ref 1n
+L2 p2 ref 2n
+L3 p1 p2 3n
+.ends bad

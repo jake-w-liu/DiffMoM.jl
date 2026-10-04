@@ -1,0 +1,40 @@
+* DiffMoM real stable N-port admittance model
+* relative_rms_error: 9.608851922779122e-14
+* sampled_passive: true  checked_margin: 0.017937058800625637  conductance_shift: 0.0
+* globally_passive: true  certificate: hamiltonian  capacitance_adjustment: 2.5601506600895616e-26
+.subckt diffmom_nport p1 p2 dm_ref
+Gd1_1 p1 dm_ref p1 dm_ref 0.02000000000000062
+Gd1_2 p1 dm_ref p2 dm_ref -0.0050000000000001285
+Gd2_1 p2 dm_ref p1 dm_ref -0.0050000000000001285
+Gd2_2 p2 dm_ref p2 dm_ref 0.030000000000000495
+Edm_copy1 dm_v1 0 p1 dm_ref 1
+Vdm_sense1 dm_v1 dm_c1 0
+Cdm_affine1 dm_c1 0 1
+Fdm_affine1_1 p1 dm_ref Vdm_sense1 1.5645271847885375e-40
+Edm_copy2 dm_v2 0 p2 dm_ref 1
+Vdm_sense2 dm_v2 dm_c2 0
+Cdm_affine2 dm_c2 0 1
+Fdm_affine2_2 p2 dm_ref Vdm_sense2 1.5645271847885375e-40
+Cdm_u1 dm_u1 0 1
+Rdm_u1 dm_u1 0 1.0000000000024688e-9
+Gindm_u1 dm_u1 0 p1 dm_ref -1
+Cdm_u2 dm_u2 0 1
+Rdm_u2 dm_u2 0 1.0000000000024688e-9
+Gxdm_u1_dm_u2 dm_u1 0 dm_u2 0 3.000000000000845e9
+Gxdm_u2_dm_u1 dm_u2 0 dm_u1 0 -3.000000000000845e9
+Gsdm_u1_1 p1 dm_ref dm_u1 0 1.999999999997033e7
+Gsdm_u2_1 p1 dm_ref dm_u2 0 -3.9999999999764403e6
+Gsdm_u1_2 p2 dm_ref dm_u1 0 -3.9999999999940824e6
+Gsdm_u2_2 p2 dm_ref dm_u2 0 -2.0000000000002652e6
+Cdm_u3 dm_u3 0 1
+Rdm_u3 dm_u3 0 1.0000000000024688e-9
+Gindm_u3 dm_u3 0 p2 dm_ref -1
+Cdm_u4 dm_u4 0 1
+Rdm_u4 dm_u4 0 1.0000000000024688e-9
+Gxdm_u3_dm_u4 dm_u3 0 dm_u4 0 3.000000000000845e9
+Gxdm_u4_dm_u3 dm_u4 0 dm_u3 0 -3.000000000000845e9
+Gsdm_u3_1 p1 dm_ref dm_u3 0 -3.9999999999940824e6
+Gsdm_u4_1 p1 dm_ref dm_u4 0 -2.0000000000002652e6
+Gsdm_u3_2 p2 dm_ref dm_u3 0 1.5999999999976283e7
+Gsdm_u4_2 p2 dm_ref dm_u4 0 -1.99999999998306e6
+.ends diffmom_nport

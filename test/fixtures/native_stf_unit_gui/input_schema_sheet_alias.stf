@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<technology_file xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2" writeable="true" xsi:noNamespaceSchemaLocation="https://www.sonnetsoftware.com/schema/matl/matl-1.4.xsd">
+  <units cunit="SM" lunit="um" runit="OHMM" srunit="MOHSQ" tempunit="C"/>
+  <public>
+    <variables>
+      <var name="Rho" value="0.07" units="RSVY"/>
+      <var name="Rs" value="2000.0" units="SHRES"/>
+    </variables>
+    <materials>
+      <dielectric name="Upper">
+        <params/>
+      </dielectric>
+      <dielectric name="Lower" cond_res="rsvy">
+        <params erel="11.9" rsvy="Rho"/>
+      </dielectric>
+    </materials>
+    <mesh_defs>
+      <mesh name="Bar_def" fill_type="Bar" type="via"/>
+      <mesh name="Conformal_def" fill_type="Conformal" type="metal"/>
+      <mesh name="Default" fill_type="Staircase" type="metal"/>
+      <mesh name="Full_def" fill_type="Full" type="via"/>
+      <mesh name="Ring_def" fill_type="Ring" type="via"/>
+      <mesh name="Staircase_def" fill_type="Staircase" type="metal"/>
+      <mesh name="Vertices_def" fill_type="Vertices" type="via"/>
+    </mesh_defs>
+    <metal_model_defs>
+      <metal_model name="Default" model_type="Normal"/>
+      <metal_model name="Normal" model_type="Normal"/>
+      <metal_model name="TVM_def" model_type="TrueVolume"/>
+      <metal_model name="Thick_def" model_type="ThickMetal"/>
+      <metal_model name="Thin_def" model_type="Normal"/>
+      <via_model name="Array_def" model_type="Array"/>
+      <via_model name="Surface_def" model_type="Surface"/>
+      <via_model name="Volume_def" model_type="Volume"/>
+    </metal_model_defs>
+    <stackup>
+      <TOP material="Lossless" model="Default"/>
+      <diel name="Upper" dielectric="Upper" thickness="100.0"/>
+      <diel name="Lower" dielectric="Lower" thickness="100.0"/>
+      <BOTTOM material="Lossless" model="Default"/>
+    </stackup>
+  </public>
+</technology_file>

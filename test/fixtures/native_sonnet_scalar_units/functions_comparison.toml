@@ -1,0 +1,43 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_unit_functions_S2kK6f"
+scope = "installed primary scalar unit functions versus independent material nodes; raw R50; no production edits"
+
+[[runs]]
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.4930974327143, 0.4851933742834, 0.4851933742834, 0.4930955162422]]
+native_literal_targets = ["sigma_5e5", "sigma_5e4"]
+selector = "SRVY"
+native_literal_delta_s = [0.0, 0.0]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [-0.066671739337, -0.118948221613, -0.118948221613, -0.066677808208]]
+status = "SIMULATED"
+expression = "2*h2p(FREQ)"
+source_sha256 = "5493e4bd3714528a52fee497e029c50fc259daa8a555a2179df2bb5d80df2ab7"
+tag = "h2p"
+[[runs]]
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0214963085198, 0.9609066356397, 0.9609066356397, 0.0214979706961]]
+native_literal_targets = ["sigma_5e5", "sigma_5e6"]
+selector = "CDVY"
+native_literal_delta_s = [0.0, 0.0]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.0441098642102, -0.230632481004, -0.230632481004, 0.0441093248773]]
+status = "SIMULATED"
+expression = "500000*FREQ/p2h(1)"
+source_sha256 = "011a439d679b58b1b4f6512753a1a54c30272f3028d3f9da5bbd9bb164e76e48"
+tag = "p2h"
+[[runs]]
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_literal_targets = ["sigma_5e5", "sigma_5e5"]
+selector = "SRVY"
+native_literal_delta_s = [0.0, 0.0]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+status = "SIMULATED"
+expression = "2*p2m(1)/.001"
+source_sha256 = "451fc24aa5ed9d088bb75030b65b60def8b973624fb9f2ff47943c94414a10d3"
+tag = "p2m"
+[[runs]]
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_literal_targets = ["sigma_5e5", "sigma_5e5"]
+selector = "RSVY"
+native_literal_delta_s = [0.0, 0.0]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+status = "SIMULATED"
+expression = ".0002*m2p(.001)"
+source_sha256 = "e5a87119615c271bd68d8ce790a8bbacfde7a4c78fb8bdc822c6693ffd914867"
+tag = "m2p"

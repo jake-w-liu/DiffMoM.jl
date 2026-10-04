@@ -1,0 +1,5 @@
+.subckt device p1 g1 p2 g2
+Vprobe p1 a 0
+T1 a g1 b g2 Z0=63 TD=1.25n
+H1 b p2 Vprobe 3
+.ends device

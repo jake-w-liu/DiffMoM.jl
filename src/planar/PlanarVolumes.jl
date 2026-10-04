@@ -29,8 +29,8 @@
 #   p2 = e1*sinh = x*sS/2
 #   p4 = e1*(cosh-sinch) = ((1+e2) - sS)/2
 #   iu = zup*sS + Zc*sC
-# Each has an x -> 0 series branch; at x = 0 everything reduces to the
-# parallel impedance zdn||zup (the sheet limit).  Infinite endpoint
+# Each has an x -> 0 series branch; at gamma = 0 the finite TE series
+# impedance or TM shunt admittance remains in the layer.  Infinite endpoint
 # loads (open-circuit faces) take Inf limits coefficientwise, matching
 # _via_drives.  As h -> 0, V_t = V_b = M -> zdn||zup, recovering the
 # interface sheet kernel.
@@ -46,14 +46,12 @@
 # ---------------- element axis ----------------
 #
 # elem >= 0          : sheet basis on interface `elem`
-# -SHIFT < elem < 0  : via element (PlanarVias.jl encoding)
-# elem <= -SHIFT-1   : volume element; layer = -elem - SHIFT
+# elem < 0, rem(-elem,3) == 1/2 : uniform/tapered via element
+# elem < 0, rem(-elem,3) == 0   : volume element; layer = -elem / 3
 #
-const _VOL_ELEM_SHIFT = 1 << 14   # via encoding occupies -1 .. -16384
-
-@inline _is_vol_elem(e::Int) = e < -_VOL_ELEM_SHIFT
-@inline _vol_elem(layer::Int) = -(_VOL_ELEM_SHIFT + layer)
-@inline _vol_elem_layer(e::Int) = -e - _VOL_ELEM_SHIFT
+@inline _is_vol_elem(e::Int) = e < 0 && rem(e, 3) == 0
+@inline _vol_elem(layer::Int) = -3 * layer
+@inline _vol_elem_layer(e::Int) = -e ÷ 3
 @inline _is_inlayer_elem(e::Int) = e < 0   # via or volume element
 
 # element id for basis p (vol kinds index `vols`, via kinds index
@@ -128,7 +126,12 @@ struct _VolLayerState{T<:Number}
     vt::T
     vb::T
     mself::T
+    ht::T
+    hb::T
 end
+
+_VolLayerState(w::T,vt::T,vb::T,ms::T) where {T<:Number} =
+    _VolLayerState(w,vt,vb,ms,zero(T),zero(T))
 
 """Fill the volume state for layer `j` (1..L) at mode cutoff `kc2` and
 polarization `pol`: reuses the cascade's endpoint loads zdn[j],
@@ -147,36 +150,77 @@ function _vol_layer_state(stack::PlanarStackup, casc::PlanarCascade{T},
     zdn = casc.zdn[j]
     zup = casc.zup[j + 1]
     wbar = _via_wbar(x, e1)
-    # exact axial cutoff (x == 0): the layer is transparent and all
-    # endpoint quantities collapse to the parallel sheet impedance
-    iszero(x) && return _VolLayerState(wbar,
-        _vol_parallel(zdn, zup), _vol_parallel(zdn, zup),
-        _vol_parallel(zdn, zup))
+    iszero(x) && return _vol_cutoff_state(pol, omega, layer, zdn, zup, wbar)
     sS = _vol_ss(x, e1, e2)
     sC = _vol_sc(x, e1, e2)
     dinf, uinf = _planarisinf(zdn), _planarisinf(zup)
     if dinf && uinf
         # dz ~ zdn*zup*(1-e2); Vt = Vb = M = Zc*sS/(1-e2) = Zc/x
         v = zc * sS / (1 - e2)
-        return _VolLayerState(wbar, v, v, v)
+        return _VolLayerState(wbar, v, v, v, zero(T), zero(T))
     elseif dinf
         dz = zc * (1 + e2) + zup * (1 - e2)
         vt = zc * zup * sS / dz
         vb = zc * (zup * sS + zc * sC) / dz
         ms = 2 * zc * (zup * (sS / 2) + zc * _vol_p4x(x, e1, e2, sS)) / dz
-        return _VolLayerState(wbar, vt, vb, ms)
+        return _VolLayerState(wbar, vt, vb, ms, zc*sS/dz, zero(T))
     elseif uinf
         dz = zc * (1 + e2) + zdn * (1 - e2)
         vt = zc * (zdn * sS + zc * sC) / dz
         vb = zc * zdn * sS / dz
         ms = 2 * zc * (zdn * (sS / 2) + zc * _vol_p4x(x, e1, e2, sS)) / dz
-        return _VolLayerState(wbar, vt, vb, ms)
+        return _VolLayerState(wbar, vt, vb, ms, zero(T), -zc*sS/dz)
     end
     dz = zc * (zdn + zup) * (1 + e2) + (zc * zc + zdn * zup) * (1 - e2)
     vt = zc * zup * (zdn * sS + zc * sC) / dz
     vb = zc * zdn * (zup * sS + zc * sC) / dz
     ms = 2 * zc * _vol_bx(zc, zdn, zup, x, e1, e2, sS, sC) / dz
-    return _VolLayerState(wbar, vt, vb, ms)
+    return _VolLayerState(wbar, vt, vb, ms,
+        zc*(zdn*sS+zc*sC)/dz, -zc*(zup*sS+zc*sC)/dz)
+end
+
+# Uniform-source integral of the exact cutoff Green function.  A TE
+# layer remains a finite series impedance; a TM layer a finite shunt
+# admittance.  Finite thickness therefore differs from a sheet even
+# though gamma is zero.
+function _vol_cutoff_state(pol::PlanarPol, omega::Number,
+        layer::PlanarLayer, zdn::T, zup::T, wbar::T) where {T<:Number}
+    dinf, uinf = _planarisinf(zdn), _planarisinf(zup)
+    if pol === TM_POL
+        yh = 1im * omega * layer.epsr * _EPS0 * layer.thickness
+        v = if iszero(zdn) || iszero(zup)
+            zero(T)
+        else
+            yd = dinf ? zero(T) : inv(zdn)
+            yu = uinf ? zero(T) : inv(zup)
+            inv(yd + yu + yh)
+        end
+        ht, hb = _vol_tm_cutoff_currents(zdn,zup,yh)
+        return _VolLayerState(wbar, v, v, v, ht, hb)
+    end
+    bh = 1im * omega * layer.mur * _MU0 * layer.thickness
+    dinf && uinf && return _VolLayerState(wbar, T(Inf), T(Inf), T(Inf), T(Inf), T(Inf))
+    if dinf
+        return _VolLayerState(wbar, zup, zup + bh / 2, zup + bh / 3, one(T), zero(T))
+    elseif uinf
+        return _VolLayerState(wbar, zdn + bh / 2, zdn, zdn + bh / 3, zero(T), -one(T))
+    end
+    den = zdn + zup + bh
+    vt = zup * (zdn + bh / 2) / den
+    vb = zdn * (zup + bh / 2) / den
+    ms = (zdn * zup + bh * (zdn + zup) / 3 + bh * bh / 12) / den
+    return _VolLayerState(wbar, vt, vb, ms,
+        (zdn+bh/2)/den, -(zup+bh/2)/den)
+end
+
+@inline function _vol_tm_cutoff_currents(zd::T, zu::T, yh::T) where {T<:Number}
+    dinf, uinf = _planarisinf(zd), _planarisinf(zu)
+    dinf && uinf && return zero(T), zero(T)
+    dinf && return inv(1+zu*yh), zero(T)
+    uinf && return zero(T), -inv(1+zd*yh)
+    den = zd+zu+yh*zd*zu
+    iszero(den) && return T(Inf), T(Inf)
+    return zd/den, -zu/den
 end
 
 # p4/x = e1*(cosh x - sinch x)/x — used by the Inf-load mself limits;
@@ -201,6 +245,18 @@ end
 @inline function _vol_via_kern(ja::Int, ka::UInt8, jb::Int,
         casc::PlanarCascade{T}, sta::_ViaLayerState{T},
         stb::_VolLayerState{T}, ntm2::Float64) where {T}
+    if iszero(sta.coef)
+        ht, hb = if ja == jb
+            (stb.ht, stb.hb)
+        elseif ja > jb
+            (_via_current_prop_up(casc,stb.ht,jb,ja),
+             _via_current_prop_up(casc,stb.ht,jb,ja-1))
+        else
+            (_via_current_prop_dn(casc,stb.hb,jb-1,ja),
+             _via_current_prop_dn(casc,stb.hb,jb-1,ja-1))
+        end
+        return sta.amp_h*_via_current_moment_smooth(ht,hb,ka,sta)/ntm2
+    end
     if ja == jb
         m = ka == _BASIS_VIA_U ? stb.vt - stb.vb :
                                  stb.vt - stb.mself

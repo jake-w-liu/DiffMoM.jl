@@ -1,0 +1,14 @@
+production_sha256 = "b2dc6ab9873fe5d0045f009c02186bb5a2b88fccd9870f8e4e020743e102c8d8"
+source_sha256 = "083dd773dae1c6d816d63f729843c5ed0485d7ad537310c88047927e62156d26"
+
+["(32, 40)"]
+max_bytes = 20000
+warmed_allocated_bytes = 178527
+diagnostic = "accepted"
+live_sheet_zs_lower_bound = 20480
+
+["(128, 160)"]
+max_bytes = 20000
+warmed_allocated_bytes = 745532
+diagnostic = "ArgumentError: physical terminal returns requires 107896 raw bytes, exceeding max_bytes=20000"
+live_sheet_zs_lower_bound = 327680

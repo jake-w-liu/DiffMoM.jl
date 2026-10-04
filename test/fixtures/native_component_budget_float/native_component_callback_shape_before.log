@@ -1,0 +1,1 @@
+max_bytes=10000000 preexisting_bad_shape=1024x1024 allocated=16964254 ArgumentError: network matrix must be finite and match its local ports

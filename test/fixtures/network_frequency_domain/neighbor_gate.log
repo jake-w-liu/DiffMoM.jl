@@ -1,0 +1,52 @@
+Test Summary:                                          | Pass  Total  Time
+Databank stored-frequency preflight precedes providers |   27     27  2.2s
+Test Summary:                                       | Pass  Total  Time
+Touchstone nonzero numeric text must remain nonzero |   17     17  1.7s
+Test Summary:                                                      | Pass  Total  Time
+network complex references: independent constitutive source oracle |   38     38  0.7s
+Test Summary:                                                 | Pass  Total   Time
+frequency-dependent databanks and fixed-reference file export |   55     55  16.7s
+Test Summary:                                      | Pass  Total  Time
+Touchstone export versions and legacy matrix lines |  245    245  0.9s
+Test Summary:                                                | Pass  Total  Time
+actual Sonnet graph TERM/FTERM files retain their wave bases |   69     69  0.8s
+Test Summary:                                             | Pass  Total  Time
+complex terminated impedance, Smith chart and voltage SWR |   11     11  1.3s
+Test Summary:                                                            | Pass  Total  Time
+layout ABS and radiation preserve physical complex-reference excitations |   30     30  9.6s
+Test Summary:                                                          | Pass  Total  Time
+Explicit empty Touchstone Reference rejects rather than using defaults |   48     48  0.2s
+Test Summary:                                                  | Pass  Total  Time
+Touchstone valid long records reject before numeric allocation |   18     18  0.5s
+Test Summary:                                              | Pass  Total  Time
+Touchstone streaming numeric/options/termination preflight |   13     13  0.1s
+Test Summary:                                                            | Pass  Total  Time
+Touchstone legacy per-port normalization vs independent physical sources |  324    324  2.5s
+Test Summary:                                                       | Pass  Total  Time
+Touchstone legacy normalization vs archived actual ngspice voltages |  402    402  0.3s
+Test Summary:                   | Pass  Total   Time
+planar: solve resource contract |   10     10  52.1s
+Test Summary:                            | Pass  Total  Time
+planar: normalized admittance conversion |    6      6  0.0s
+Test Summary:                                 | Pass  Total  Time
+planar: Touchstone validation preserves files |   13     13  0.1s
+Test Summary:                                         | Pass  Total  Time
+planar databanks: power-wave references and standards |   76     76  2.5s
+Test Summary:                                    | Pass  Total  Time
+planar response curves and verified report scope |   21     21  2.9s
+Test Summary:                                    | Pass  Total  Time
+planar interactive response/layout/current plots |   24     24  6.0s
+Test Summary:                                                    | Pass  Total  Time
+Circuit stored scalars reject overflow/underflow transactionally |  202    202  0.3s
+Test Summary:                                               | Pass  Total  Time
+Circuit frequencies validate stored domain before callbacks |   50     50  0.3s
+Test Summary:                                        | Pass  Total  Time
+Network callbacks validate converted complex storage |    5      5  0.1s
+Test Summary:                                               | Pass  Total  Time
+Circuit internal network workspace rejects before providers |   75     75  0.3s
+Test Summary:                                       | Pass  Total  Time
+Direct native equations preserve response snapshots |    4      4  0.1s
+Test Summary:                                      | Pass  Total  Time
+Scattering stamps retain only a linear root buffer |    3      3  0.0s
+Test Summary:                  | Pass  Total   Time
+Native SPARAM physical adapter |  213    213  33.7s

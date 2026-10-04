@@ -1,0 +1,4 @@
+.subckt device p1 g1 p2 g2
+Oline p1 g1 p2 g2 model
+.model model LTRA (R=12.45 G=.03 L=0 C=0 LEN=16)
+.ends device

@@ -1,0 +1,21 @@
+Run 1:  Sun Oct 04 06:36:24 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_normal_variable_selectors_Qeh2ng\srvy_ghz_constant\srvy_ghz_constant.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Loss = 2 Ohms/sq
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1, Stop = 10, Step = 9 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.091045 1.6878 0.909067 -1.351 0.909067 -1.351 0.091045 1.6877
+
+    Frequency:  10 GHZ
+      10.0000000 0.102922 13.925 0.907061 -13.47 0.907061 -13.47 0.102923 13.924
+
+Em simulation completed Sun Oct 04 06:36:24 2026.

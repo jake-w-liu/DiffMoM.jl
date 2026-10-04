@@ -1,0 +1,34 @@
+;  Sonnet Data File
+;  From: em Version : 17.56.079
+;  From Emgraph Data: 
+;  Data File Written: 06/01/2021 15:05:55
+; < HDATE 08/23/2013 12:39:07
+; < MDATE 08/23/2013 12:39:07
+;  Ls1 = 0.665347 nH
+;  Rs1 = 0.098799 Ohms
+;  Lk1 = 0.177693 nH
+;  Rk1 = 0.915167 Ohms
+
+simulator lang=spectre
+subckt ct_inductor_noshield_IMEnet 1 2 3 REF
+L_1 1 4 inductor l = 1.776926028e-10
+R_2 1 4  resistor r = 0.9151670090601
+R_3 4 5  resistor r = 0.0987991625540
+L_4 2 6 inductor l = 8.289110158e-11
+R_5 2 6  resistor r = 9155.4937365381
+R_6 6 7  resistor r = 0.6006142569521
+C_7 1 2  capacitor c = 7.634805792e-16
+L1_8 5 11  inductor l = 6.653467933e-10
+L2_8 7 11  inductor l = 6.728686570e-10
+M_8 mutual_inductor coupling=0.0235132482547 ind1=L1_8 ind2=L2_8
+R_9 11 3  resistor r = 1.1125211750623
+C_10 1 8  capacitor c = 6.228178799e-14
+R_11 8 REF  resistor r = 168.83607244707
+C_12 8 REF  capacitor c = 9.933927825e-14
+C_13 2 9  capacitor c = 6.259470404e-14
+R_14 9 REF  resistor r = 167.65033314439
+C_15 9 REF  capacitor c = 2.612167775e-13
+C_16 11 10  capacitor c = 6.650627695e-14
+R_17 10 REF  resistor r = 131.01813950434
+C_18 10 REF  capacitor c = 1.002437492e-16
+ends ct_inductor_noshield_IMEnet

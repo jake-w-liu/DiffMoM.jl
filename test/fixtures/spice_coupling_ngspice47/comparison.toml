@@ -1,0 +1,65 @@
+engine_sha256 = "22d5cae2bd32b2e39157a8d27bf457122f68285b72a9ebefdf41551b628233ab"
+scope = "Validation-only signed pairwise/equal-multi-coil K extension, actual ngspice loaded fullS, nested/forward identities, independent galvanic gauges, common-mode invariance, scale-safe mutuals, literal physical zero and PSD matrix rejection. No production modifications. ngspice actual engine accepts signed K beyond its manual's positive-K wording; endpoint reversal equivalence is independently verified."
+
+[isolated_two_gauges]
+gauge_count = 2
+frequency_points = 23
+max_full_s = 8.95090418262362e-16
+max_common_shift_delta = 2.7109682159298164e-15
+source_sha256 = "5d7f2d9064f11094cbf31b20c9e9e686cc691d9164bf160b2f46987b459eed60"
+
+[reverse_winding]
+max_full_s = 1.428014695551292e-15
+frequency_points = 23
+max_residual = 2.236367590945794e-16
+float_reference = false
+source_sha256 = "d41d1123efa681de5160ff8361ea874bc77a8686e22717fda2ee0b04306021d7"
+
+[unit_coupling]
+max_full_s = 1.4930125129956136e-15
+frequency_points = 23
+max_residual = 1.823276155954223e-16
+float_reference = false
+source_sha256 = "d5a069774e1ed68d6d18ae02283784341e193e4360233687e25e3e20df84f5d2"
+
+[forward]
+max_full_s = 1.3347637560384795e-15
+frequency_points = 23
+max_residual = 1.8865925576882887e-16
+float_reference = false
+source_sha256 = "57a77ffcc522c4ba7048b4060d7f85990281996e2be15e0be8cf746f7f03989e"
+
+[negative_coupling]
+max_full_s = 1.428014695551292e-15
+frequency_points = 23
+max_residual = 2.236367590945794e-16
+float_reference = false
+source_sha256 = "709831d9825f52f50e78770637adb25f7ff5e9a62c732fe33e5602aab346aba5"
+
+[nested_global_zero]
+max_full_s = 1.4602703977091186e-15
+frequency_points = 23
+max_residual = 1.7334353438272788e-16
+float_reference = true
+source_sha256 = "e6064ecfb54b59907160e1bccae307aa559f42efd334c1a7333b3d598810097d"
+
+[three_inductor_equal_k]
+max_full_s = 3.010267102378803e-15
+frequency_points = 23
+max_residual = 1.5448214800171256e-16
+float_reference = false
+source_sha256 = "949fc74daab5844f9c3440f1ee0eecdf538043103b5e3a65887d3d211d2115e6"
+
+[zero_coupling]
+max_full_s = 1.171098267721422e-15
+frequency_points = 23
+max_residual = 5.678412029061879e-17
+float_reference = false
+source_sha256 = "235c1da12fa56856e753a2f73a78534b8a3e9758371f9f29c81881a7402c7a35"
+
+[negative_unit_coupling]
+max_full_s = 1.117140368961273e-15
+frequency_points = 23
+max_residual = 2.6969123787822077e-16
+float_reference = false
+source_sha256 = "56359377e3a8ab6ae439676a1d2dca6730ab8fd81231b9309f4cd197fbeb2704"

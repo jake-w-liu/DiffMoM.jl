@@ -1,0 +1,11 @@
+[voltage_controller_after_line]
+maximum_full_s_error = 5.871434697848822e-14
+common_shift_error = 2.6908938634060015e-15
+
+[forward_current_controller]
+maximum_full_s_error = 6.156627141028607e-14
+common_shift_error = 2.08203482866448e-15
+
+[coupled_branches_after_line]
+maximum_full_s_error = 9.048426628985959e-14
+common_shift_error = 3.992180686455387e-15

@@ -1,0 +1,16 @@
+Independent loaded-wave installed Spectre export drive
+.include model.cir
+Xdevice n1 n2 0 _1nH_oct_inductor
+Vdrive1 src1 0 DC 0 AC 0
+Rref1 src1 n1 50
+Vdrive2 src2 0 DC 0 AC 17.320508075688775
+Rref2 src2 n2 75
+.control
+set wr_singlescale
+set wr_vecnames
+set numdgt=17
+ac lin 19 1000000 20000000000
+wrdata wave1.dat v(n1) i(Vdrive1) v(n2) i(Vdrive2)
+quit
+.endc
+.end

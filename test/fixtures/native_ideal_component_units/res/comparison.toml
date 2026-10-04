@@ -1,0 +1,30 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_ideal_component_units_qY6wcp"
+original_source_sha256 = "264aeedd9453799357e4ec88c82fd3e1a8d21b01696c01789176b8cd06ad477f"
+ohm_vs_kohm_same_literal_delta_s = 0.85051716217869
+scope = "manufacturedcomponent literalDIMRES nativecrosscontrols; no nativecalibrationfit"
+ohm_vs_kohm_same_physical_delta_s = 0.0
+
+[[runs]]
+s_real = [0.1432600665854, 0.8508916673787, 0.8508916673787, 0.141728174235]
+s_imag = [-0.00920920798, -0.096389498419, -0.096389498419, -0.024194374375]
+status = "SIMULATED"
+dim_res = "OH"
+source_sha256 = "083dd773dae1c6d816d63f729843c5ed0485d7ad537310c88047927e62156d26"
+literal_component_value = "16.77"
+tag = "ohm"
+[[runs]]
+s_real = [0.992130796107, 0.0060708044758, 0.0060708044758, 0.9801773396153]
+s_imag = [-0.06210464939, 0.00091959299805, 0.00091959299807, -0.165638010351]
+status = "SIMULATED"
+dim_res = "KOH"
+source_sha256 = "c175777f343452cf99a632a7049c54561d2873b5b7677cd6d47d906233111fa8"
+literal_component_value = "16.77"
+tag = "kohm_same_literal"
+[[runs]]
+s_real = [0.1432600665854, 0.8508916673787, 0.8508916673787, 0.141728174235]
+s_imag = [-0.00920920798, -0.096389498419, -0.096389498419, -0.024194374375]
+status = "SIMULATED"
+dim_res = "KOH"
+source_sha256 = "8863a2d23a387178e5f8c7bfd9f8a1575e52b44a20bd26d1912db278ce2e6687"
+literal_component_value = ".01677"
+tag = "kohm_same_physical"

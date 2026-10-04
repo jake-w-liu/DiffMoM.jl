@@ -1,0 +1,14 @@
+
+      Sonnet Warning:
+      Project File Error.
+      Line 59: Unexpected parameter sweep syntax.
+      unknown parameter Rho has been ignored
+
+
+    Pre-Analysis:
+
+      Sonnet Warning:
+      Parameter warning.
+      Key is smaller than smallest key in file C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_scalar_table1_domain_M6hNeJ\table_below\loss.csv in variable Loss
+      Frequency: 0.5 GHZ
+

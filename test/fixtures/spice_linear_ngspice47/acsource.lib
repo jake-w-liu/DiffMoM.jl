@@ -1,0 +1,3 @@
+.subckt bad p1 p2 ref
+V1 p1 ref DC 0 AC 1
+.ends bad

@@ -1,0 +1,56 @@
+engine_sha256 = "22d5cae2bd32b2e39157a8d27bf457122f68285b72a9ebefdf41551b628233ab"
+engine_version = """******\r\n** ngspice-47 : Circuit level simulation program\r\n** Compiled with KLU Direct Linear Solver\r\n** The U. C. Berkeley CAD Group\r\n** Copyright 1985-1994, Regents of the University of California.\r\n** Copyright 2001-2026, The ngspice team.\r\n** Please get your ngspice manual from https://ngspice.sourceforge.io/docs.html\r\n** Please file your bug-reports at https://ngspice.sourceforge.io/bugrep.html\r\n** Creation Date: Aug 11 2026   13:55:25\r\n******\r\n"""
+scope = "validation-only bounded linear SPICE library parser/expansion/MNA; actual ngspice AC full complex S, not arbitrary nonlinear/vendor model certification"
+
+[[rows]]
+points = 21
+max_absolute_full_s = 1.2412670766236366e-15
+name = "ladder"
+source_sha256 = "587f741e48f6313c12246e7bd7d6077ea9e28a24cb74b7185d414005afdbe719"
+common_mode_drive = false
+[[rows]]
+points = 21
+max_absolute_full_s = 1.1322097734007351e-15
+name = "ladder"
+source_sha256 = "587f741e48f6313c12246e7bd7d6077ea9e28a24cb74b7185d414005afdbe719"
+common_mode_drive = true
+[[rows]]
+points = 21
+max_absolute_full_s = 1.3349176686603426e-15
+name = "controlled"
+source_sha256 = "edfedb038fc2012d9fce7b20be4c7da82a137dfb979a47e3275d0c835eca3d96"
+common_mode_drive = false
+[[rows]]
+points = 21
+max_absolute_full_s = 1.32089299797638e-15
+name = "controlled"
+source_sha256 = "edfedb038fc2012d9fce7b20be4c7da82a137dfb979a47e3275d0c835eca3d96"
+common_mode_drive = true
+[[rows]]
+points = 21
+max_absolute_full_s = 3.3306690738754696e-16
+name = "tie"
+source_sha256 = "8b454d942f4ed51a13099d80ed6f3cde66cf1241d08a07f2040cc26c395cc6f5"
+common_mode_drive = false
+[[rows]]
+points = 21
+max_absolute_full_s = 3.3312858073450416e-16
+name = "tie"
+source_sha256 = "8b454d942f4ed51a13099d80ed6f3cde66cf1241d08a07f2040cc26c395cc6f5"
+common_mode_drive = true
+[[rows]]
+points = 21
+max_absolute_full_s = 4.440892098500626e-16
+name = "gain"
+source_sha256 = "12dc6c678bd9cc0f1252e56e8aaaaeff5c73e8abde7a499b50374399b2ca1190"
+common_mode_drive = false
+[[rows]]
+points = 21
+max_absolute_full_s = 8.881784197001252e-16
+name = "gain"
+source_sha256 = "12dc6c678bd9cc0f1252e56e8aaaaeff5c73e8abde7a499b50374399b2ca1190"
+common_mode_drive = true
+[[rows]]
+points = 21
+max_absolute_full_s = 1.1295700899707568e-15
+name = "global_ground_full_common_mode"

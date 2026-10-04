@@ -1,0 +1,115 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Normal Metal Model</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="Manuals and Help for Sonnet Suites" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet Suites Documentation.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("NormalMetalModel");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Normal Metal Model</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="UsingSonnet.html">Using Sonnet</a> &rsaquo;&rsaquo; <a href="EditingaProject.html">Editing a Project</a> &rsaquo;&rsaquo; <a href="ProjectEditorMenus.html">Project Editor Menus</a> &rsaquo;&rsaquo; <a href="CircuitMenu.html">Circuit Menu</a> &rsaquo;&rsaquo; <a href="CircuitSettings.html">Circuit - Settings</a> &rsaquo;&rsaquo; <a href="MetalsBricks.html">Metals/Bricks</a> &rsaquo;&rsaquo; <a href="MetalTypesPlanarWin.html">Planar metals</a> &rsaquo;&rsaquo; <a href="SPlanarMetalEditorWin.html"> Planar Metal Editor dialog box</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="SPlanarMetalEditorWin.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="SPlanarMetalEditorWin.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="ThickMetalModel.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">The Normal planar metal loss model is used for most circuit metal. It models the conductor as a &nbsp;</span><span class="rvts6"></span><span class="rvts6"></span><a class="rvts11" href="../users_guide/PlanarMetalizationLoss.html">zero-thickness</a><span class="rvts6"></span><span class="rvts6"></span><span class="rvts6">&nbsp;sheet of metal. You enter the metal thickness and the Current Ratio, and chose how you will specify the third field: </span><a class="rvts11" href="Conductivity.html">Conductvity</a><span class="rvts6">, </span><a class="rvts11" href="Resistivity.html">Resistivity</a><span class="rvts6">, or </span><a class="rvts11" href="SheetResistanceatDC.html">Sheet Resistance at DC</a><span class="rvts6">&nbsp;by selecting an entry from the Specify Using drop list. These three values are used to determine the frequency dependent surface impedance of the metal.</span></p>
+<p class="rvps2"><span class="rvts6">For more information on the current ratio, see </span><a class="rvts11" href="CurrentRatio.html">Current Ratio</a><span class="rvts6">.</span></p>
+<p class="rvps7"><span class="rvts18">Note:</span><span class="rvts18">&nbsp;Metal thickness is used only in calculating loss; it does not change the physical thickness of metalization in your circuit. The metalization in your circuit is still modeled as zero-thickness. To model thick metal, see the </span><a class="rvts31" href="ThickMetalModel.html">Thick Metal Model type</a><span class="rvts18">.</span></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

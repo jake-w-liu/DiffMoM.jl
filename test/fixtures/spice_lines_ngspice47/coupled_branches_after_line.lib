@@ -1,0 +1,8 @@
+.subckt device p1 g1 p2 g2
+T1 p1 g1 a g2 Z0=63 TD=1.25n
+R1 a b 20
+L1 b g2 1n
+R2 p2 c 30
+L2 c g2 2n
+K1 L1 L2 .35
+.ends device

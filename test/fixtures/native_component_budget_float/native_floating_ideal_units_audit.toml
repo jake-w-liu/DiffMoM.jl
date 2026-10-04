@@ -1,0 +1,17 @@
+production_sha256 = "4478d633377fe5ceba366f4882c648ffddbbad05f3aab90f796808651bc829f8"
+BigFloat_override_underflow = 0.0
+
+["KOH 10"]
+expected = 10000.0
+direct_stored = 10.0
+wrapper_stored = 10.0
+
+["OH 10"]
+expected = 10.0
+direct_stored = 10.0
+wrapper_stored = 10.0
+
+["KOH .01"]
+expected = 10.0
+direct_stored = 0.01
+wrapper_stored = 0.01

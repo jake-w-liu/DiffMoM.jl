@@ -1,0 +1,26 @@
+;  Sonnet Data File
+;  From: em Version : 17.56.075
+;  From Emgraph Data: 
+;  Data File Written: 05/14/2021 13:53:41
+; < HDATE 10/22/2012 09:56:08
+; < MDATE 10/22/2012 09:56:08
+;  Ls = 0.911673 nH
+;  Rs = 2.73366 Ohms
+;  Cs = 1.469e-4 pF
+;  Lk = 0.047575 nH
+;  Rk = 3.166136 Ohms
+
+simulator lang=spectre
+subckt _1nH_oct_inductor 1 4 REF
+L_1 1 2 inductor l = 9.116734639e-10
+R_2 2 3  resistor r = 2.7336596775424
+C_3 1 3  capacitor c = 1.468662978e-16
+L_4 3 4 inductor l = 4.757452211e-11
+R_5 3 4  resistor r = 3.1661357096091
+C_6 1 5  capacitor c = 1.250410265e-14
+R_7 5 REF  resistor r = 254.57849585114
+C_8 5 REF  capacitor c = 1.449623511e-14
+C_9 4 6  capacitor c = 1.014429984e-14
+R_10 6 REF  resistor r = 359.45826103001
+C_11 6 REF  capacitor c = 7.804572346e-15
+ends _1nH_oct_inductor

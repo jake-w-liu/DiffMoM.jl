@@ -1,0 +1,9 @@
+.param td=1.25n
+.subckt child a ga b gb zc=73 delay=1n
+Tline a ga b gb Z0={zc} TD={delay}
+.ends child
+.subckt device p1 g1 p2 g2
+Rinput p1 a 7
+Xchild a g1 b g2 child zc=63 delay={td}
+Routput b p2 11
+.ends device

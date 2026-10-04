@@ -21,6 +21,8 @@
 # Re gamma >= 0) so deeply evanescent modes cannot overflow and tanh poles
 # of lossless propagating modes never appear as Inf/Inf.
 #
+# Near axial cutoff, scaled ABCD coefficients use an even-power series
+# in gamma^2 instead of separating singular characteristic impedances.
 # All arithmetic runs in the scalar type T carried by the stackup, so
 # complex-step / dual-number perturbations of layer parameters propagate
 # straight through.
@@ -53,7 +55,15 @@ struct PlanarCascade{T<:Number}
     # so modal voltages accumulate *divisions* by these factors.
     inv_tau_up::Vector{T}
     inv_tau_dn::Vector{T}
+    inv_current_up::Vector{T}
+    inv_current_dn::Vector{T}
 end
+
+# Preserve the original four-vector workspace constructor.  Current
+# transfers are filled alongside voltage transfers by the cascade.
+PlanarCascade(zdn::Vector{T}, zup::Vector{T}, up::Vector{T}, dn::Vector{T}) where {T<:Number} =
+    PlanarCascade(zdn, zup, up, dn, Vector{T}(undef, length(up)),
+        Vector{T}(undef, length(dn)))
 
 @inline function _planar_zchar(pol::PlanarPol, omega::Number,
         eps::T, mu::T, gamma::T) where {T<:Number}
@@ -77,10 +87,70 @@ end
 # (epsr_z = epsr, mur_z = mur) recovers sqrt(kc2 - k2).
 @inline function _planar_gamma_layer(pol::PlanarPol, kc2::Float64,
         omega::Number, layer::PlanarLayer{T}) where {T<:Number}
+    return sqrt(_planar_gamma2_layer(pol, kc2, omega, layer))
+end
+
+@inline function _planar_gamma2_layer(pol::PlanarPol, kc2::Float64,
+        omega::Number, layer::PlanarLayer{T}) where {T<:Number}
     k2 = planar_k2_layer(omega, layer.epsr, layer.mur)
     alpha = pol === TE_POL ? layer.mur / layer.mur_z :
                              layer.epsr / layer.epsr_z
-    return sqrt(alpha * ComplexF64(kc2) - k2)
+    return alpha * ComplexF64(kc2) - k2
+end
+
+# Scaled ABCD coefficients of one layer.  Forming Zc*sinh(gamma*h)
+# and sinh(gamma*h)/Zc separately loses the finite TE series impedance
+# / TM shunt admittance at gamma == 0.  The even-power small-argument
+# series is analytic in gamma^2, including parameter derivatives there.
+@inline function _planar_layer_abcd(pol::PlanarPol, omega::Number,
+        kc2::Float64, layer::PlanarLayer)
+    g2 = _planar_gamma2_layer(pol, kc2, omega, layer)
+    h = layer.thickness
+    q = g2 * h * h
+    if abs2(q) < 1e-8
+        a = 1 + q * (1 / 2 + q * (1 / 24 + q / 720))
+        sh = h * (1 + q * (1 / 6 + q * (1 / 120 + q / 5040)))
+        scale = one(a)
+    else
+        x = sqrt(g2) * h
+        e1 = exp(-x)
+        e2 = e1 * e1
+        a = 1 + e2
+        sh = h * (1 - e2) / x
+        scale = 2 * e1
+    end
+    ze = 1im * omega * layer.mur * _MU0
+    ym = 1im * omega * layer.epsr * _EPS0
+    b, c = pol === TE_POL ? (ze * sh, g2 * sh / ze) :
+                            (g2 * sh / ym, ym * sh)
+    return a, b, c, scale
+end
+
+@inline function _planar_input_abcd(a::T, b::T, c::T,
+        zl::T) where {T<:Number}
+    if _planarisinf(zl)
+        return iszero(c) ? T(Inf) : a / c
+    end
+    den = a + c * zl
+    return iszero(den) ? T(Inf) : (a * zl + b) / den
+end
+
+@inline function _planar_inv_abcd(a::T, b::T, scale::T,
+        zl::T) where {T<:Number}
+    iszero(scale) && return T(Inf)
+    _planarisinf(zl) && return a / scale
+    iszero(zl) && return _planar_inv_zero_load_limit(a, b, scale, zl)
+    return (a + b / zl) / scale
+end
+
+@inline _planar_inv_zero_load_limit(a::T, b::T, scale::T,
+        zl::T) where {T<:Number} = iszero(b) ? a / scale : T(Inf)
+
+@inline function _planar_inv_current_abcd(a::T, c::T, scale::T,
+        zl::T) where {T<:Number}
+    iszero(scale) && return T(Inf)
+    _planarisinf(zl) && return iszero(c) ? a / scale : T(Inf)
+    return (a + c * zl) / scale
 end
 
 """Terminator impedance seen by a mode with transverse cutoff kc2."""
@@ -133,6 +203,11 @@ Per-mode transmission-line state for transverse cutoff `kc2 = kx^2 + ky^2`
 """
 function planar_mode_cascade(stack::PlanarStackup{T}, omega::Number,
         kc2::Float64, pol::PlanarPol) where {T<:Number}
+    planar_validate(stack)
+    isfinite(omega) && real(omega) > 0 ||
+        throw(ArgumentError("omega must be finite with Re > 0"))
+    isfinite(kc2) && kc2 >= 0 ||
+        throw(ArgumentError("kc2 must be finite and nonnegative"))
     L = length(stack.layers)
     # working scalar carries omega's perturbation type too (complex-step)
     S = promote_type(T, typeof(complex(omega)))
@@ -151,40 +226,37 @@ function planar_mode_cascade!(ws::PlanarCascade{S},
     L = length(stack.layers)
     zdn, zup, inv_tau_up, inv_tau_dn =
         ws.zdn, ws.zup, ws.inv_tau_up, ws.inv_tau_dn
-    zchar, e1, e2 = scratch
+    amat, bmat, cmat = scratch
     length(zdn) == L + 1 && length(zup) == L + 1 &&
         length(inv_tau_up) == L && length(inv_tau_dn) == L &&
+        length(ws.inv_current_up) == L && length(ws.inv_current_dn) == L &&
         all(v -> length(v) == L, scratch) ||
         throw(ArgumentError("cascade workspace sized for $(length(zdn)-1) " *
                             "layers, stackup has $L"))
 
     @inbounds for l in 1:L
         layer = stack.layers[l]
-        gamma = _planar_gamma_layer(pol, kc2, omega, layer)
-        zchar[l] = _planar_zchar(pol, omega,
-            layer.epsr * _EPS0, layer.mur * _MU0, gamma)
-        gd = gamma * layer.thickness
-        e1[l] = exp(-gd)
-        e2[l] = e1[l] * e1[l]
+        a, b, c, _ = _planar_layer_abcd(pol, omega, kc2, layer)
+        amat[l], bmat[l], cmat[l] = a, b, c
     end
 
     zdn[1] = _planar_term_impedance(stack.bottom, pol, omega, kc2)
     @inbounds for l in 1:L
-        zdn[l + 1] = _planar_input_impedance(zchar[l], e2[l], zdn[l])
+        zdn[l + 1] = _planar_input_abcd(amat[l], bmat[l], cmat[l], zdn[l])
     end
     zup[L + 1] = _planar_term_impedance(stack.top, pol, omega, kc2)
     # looking up from interface l-1 (bottom face of layer l):
     # layer-l section terminated by zup[l+1] (looking up at interface l)
     @inbounds for l in L:-1:1
-        zup[l] = _planar_input_impedance(zchar[l], e2[l], zup[l + 1])
+        zup[l] = _planar_input_abcd(amat[l], bmat[l], cmat[l], zup[l + 1])
     end
 
     @inbounds for l in 1:L
-        # cosh(gd) + u*sinh(gd) = ((1+u) + e2*(1-u)) / (2*e1)
-        inv_tau_up[l] = _planar_inv_tau(zchar[l] / zup[l + 1],
-                                        e2[l], e1[l])
-        inv_tau_dn[l] = _planar_inv_tau(zchar[l] / zdn[l],
-                                        e2[l], e1[l])
+        _, _, _, scale = _planar_layer_abcd(pol, omega, kc2, stack.layers[l])
+        inv_tau_up[l] = _planar_inv_abcd(amat[l], bmat[l], scale, zup[l + 1])
+        inv_tau_dn[l] = _planar_inv_abcd(amat[l], bmat[l], scale, zdn[l])
+        ws.inv_current_up[l] = _planar_inv_current_abcd(amat[l], cmat[l], scale, zup[l+1])
+        ws.inv_current_dn[l] = _planar_inv_current_abcd(amat[l], cmat[l], scale, zdn[l])
     end
     return ws
 end
@@ -218,7 +290,9 @@ function planar_modal_voltage(c::PlanarCascade{T}, f::Integer,
     (0 <= f <= L && 0 <= s <= L) ||
         throw(ArgumentError("interfaces must be in 0:$L, got f=$f s=$s"))
     zd, zu = c.zdn[s + 1], c.zup[s + 1]
-    vs = if _planarisinf(zd) && _planarisinf(zu)
+    vs = if iszero(zd) && iszero(zu)
+        _planar_zero_parallel_limit(zd, zu)
+    elseif _planarisinf(zd) && _planarisinf(zu)
         T(Inf)
     elseif _planarisinf(zd)
         zu
@@ -240,4 +314,41 @@ function planar_modal_voltage(c::PlanarCascade{T}, f::Integer,
         end
     end
     return v
+end
+
+@inline _planar_zero_parallel_limit(zd::T, zu::T) where {T<:Number} = zero(T)
+
+# Modal line current associated with the positive sheet-voltage Green
+# function.  Its source jump is H(up)-H(down)=+1.  Current transfers
+# remain regular when voltage is zero at a PEC-loaded axial cutoff.
+function _planar_modal_current(c::PlanarCascade{T}, f::Int, s::Int,
+        side::Symbol) where {T<:Number}
+    L = length(c.inv_tau_up)
+    0 <= f <= L && 0 <= s <= L || throw(ArgumentError("invalid current interface"))
+    zd, zu = c.zdn[s+1], c.zup[s+1]
+    dinf, uinf = _planarisinf(zd), _planarisinf(zu)
+    hup, hdn = if dinf && uinf
+        (T(Inf), T(Inf))
+    elseif dinf
+        (one(T), zero(T))
+    elseif uinf
+        (zero(T), -one(T))
+    else
+        den = zd + zu
+        iszero(den) ? (T(Inf), T(Inf)) : (zd / den, -zu / den)
+    end
+    if f > s
+        v = hup
+        for l in s+1:f
+            v /= c.inv_current_up[l]
+        end
+        return v
+    elseif f < s
+        v = hdn
+        for l in f+1:s
+            v /= c.inv_current_dn[l]
+        end
+        return v
+    end
+    return side === :up ? hup : hdn
 end

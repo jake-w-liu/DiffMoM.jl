@@ -1,0 +1,12 @@
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Equation: log(exp(2))
+      Unknown function name starting with 'log'. Detected at line 1, column 4
+
+
+      Sonnet Warning:
+      Project File Error.
+      Line 59: Unexpected parameter sweep syntax.
+      unknown parameter Rho has been ignored
+

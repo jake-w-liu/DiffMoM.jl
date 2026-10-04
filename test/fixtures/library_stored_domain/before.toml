@@ -1,0 +1,82 @@
+scope = "public RFIC library stored scalar, finite reference and rigid placement input/output domains; ordinary representable controls included"
+source_sha256 = "da8158ef7f23ac727a6030188ef1faef667fd9b3a3f171e49414bd82153b6216"
+
+[[rows]]
+status = "accepted"
+finite = true
+case = "wheeler_turns_9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+value = "0.0"
+[[rows]]
+status = "accepted"
+finite = false
+case = "wheeler_turns_1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+value = "Inf"
+[[rows]]
+status = "accepted"
+finite = true
+case = "wheeler_turns_2.0"
+value = "4.602569828493986e-9"
+[[rows]]
+status = "accepted"
+finite = true
+case = "current_sheet_turns_9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+value = "0.0"
+[[rows]]
+status = "accepted"
+finite = false
+case = "current_sheet_turns_1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+value = "Inf"
+[[rows]]
+status = "accepted"
+finite = true
+case = "current_sheet_turns_2.0"
+value = "4.549846964353575e-9"
+[[rows]]
+status = "accepted"
+finite = true
+case = "capacitance_area_9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+value = "0.0"
+[[rows]]
+status = "accepted"
+finite = false
+case = "capacitance_area_1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+value = "Inf"
+[[rows]]
+status = "accepted"
+finite = true
+case = "capacitance_area_9.999999999999999999999999999999999999999999999999999999999999999999999999999956e-9"
+value = "3.5416751268e-13"
+[[rows]]
+status = "accepted"
+finite = true
+case = "wheeler_intermediate_1.0e-200_1.0e300"
+value = "0.0"
+[[rows]]
+status = "accepted"
+finite = false
+case = "wheeler_intermediate_1.0e200_1.0e-300"
+value = "Inf"
+[[rows]]
+status = "accepted"
+finite = false
+case = "wheeler_intermediate_1.0e-150_1.0e308"
+value = "Inf"
+[[rows]]
+status = "rejected"
+diagnostic = """MethodError: no method matching _lib_rot(::StaticArraysCore.SVector{2, Float64}, ::BigFloat, ::BigFloat)\nThe function `_lib_rot` exists, but no method is defined for this combination of argument types.\n\nClosest candidates are:\n  _lib_rot(::StaticArraysCore.SVector{2, Float64}, !Matched::Float64, !Matched::Float64)\n   @ DiffMoM C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl:78\n"""
+case = "representable_BigFloat_angle"
+[[rows]]
+status = "accepted"
+finite = false
+case = "overflow_BigFloat_offset"
+value = "[Inf, 0.0]"
+[[rows]]
+status = "accepted"
+finite = true
+case = "underflow_BigFloat_offset"
+value = "[0.0, 0.0]"
+[[rows]]
+status = "accepted"
+finite = true
+case = "collapsed_finite_translation"
+value = "[1.0e100, 1.0e100]"

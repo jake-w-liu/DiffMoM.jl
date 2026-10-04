@@ -1,0 +1,3 @@
+.subckt bad p1 p2 ref
+.ac dec 10 1k 1meg
+.ends bad

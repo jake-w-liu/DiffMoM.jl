@@ -1,0 +1,13 @@
+scope = "byte-exact original/final public Library sources; stored scalar, reference intermediate range, representable rotation and invalid placement reproductions; independent256-bit reference and neighbor gates"
+
+[sha256]
+"after.log" = "da41785294926017a79b2553bc7dcec353f944fffbc5026c9fc9493254000b83"
+"before.log" = "dada6f2847d3e5b28fa37a11fede25285352dbd662d259dcf27f9a5cdd9522ec"
+"before.toml" = "1d11f4258d5c6a0089b998fe7281886758ef179496217a8ac7b5b2e657c20c68"
+"README.md" = "6e4e442cfa56dcd9a902be42480d56cc66a5eb3a0667aa1e7532576c9e7e43a5"
+"audit.jl" = "5cb1ea9c1a71a9d129e6cee0e43fd5b0504ef44fb6c74bc6a0c447c0e2f13e67"
+"source_before.jl" = "da8158ef7f23ac727a6030188ef1faef667fd9b3a3f171e49414bd82153b6216"
+"after.toml" = "5f1e01974c53dfefef3f545d6542e01210e3d3c8d43dd99b27bbcf8f02a56a1a"
+"neighbors.log" = "62284f683b26bf7c8ed1744b1dcd8a13d072160d5adb553ed8b58f7720f00bb6"
+"source_after.jl" = "b69db254f721e9c0b57637b36849f1184619407859439ab559977f6f914cdab3"
+"regressions.log" = "861158f9308447605c74d3481b7ef671c19c86c7d6cbafb456f75c930cb3f663"

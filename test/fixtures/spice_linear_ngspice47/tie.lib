@@ -1,0 +1,5 @@
+* Exact short through an ideal voltage source
+.subckt tie p1 p2 ref
+Vtie p1 p2 0
+Rload p1 ref 100
+.ends tie

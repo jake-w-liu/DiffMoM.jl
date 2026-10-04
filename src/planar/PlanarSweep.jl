@@ -15,10 +15,11 @@
 #      can be up to 20 dB worse than the estimate),
 #   6. otherwise analyze the worst frequency and repeat.
 #
-# The interpolant is a Thiele continued fraction (reciprocal-difference
-# form), the closed-form equivalent of the Pade quotient R(f) =
-# (a0 + a1 f + ...)/(1 + b1 f + ...) without the f^N Vandermonde matrix
-# that paper warns is ill-conditioned for large N.
+# Interpolation uses a greedy barycentric rational representation with
+# Loewner-SVD weights. Small or unresolved sample sets retain the Thiele
+# continued-fraction and Floater-Hormann paths. Every accepted barycentric
+# model must reproduce all analyzed data to roundoff; the adaptive error
+# estimate remains the difference of the full and reduced models.
 #
 # Box resonances are natural modes of the shielded stackup: the parallel
 # modal impedance zdn(f) || zup(f) at a reference interface develops a
@@ -85,6 +86,112 @@ end
     return t.a[1] + (x - t.x[1]) / acc
 end
 
+# Floater-Hormann rational interpolation handles equal ordinates and
+# low-degree data where reciprocal differences terminate. With sorted
+# real nodes its denominator has no real poles. The normalized frequency
+# coordinate prevents products of GHz-valued differences from dominating.
+struct _SweepRational
+    x::Vector{Float64}
+    y::Vector{ComplexF64}
+    w::Vector{Float64}
+end
+
+# Greedy barycentric rational interpolation following Nakatsukasa, Sète
+# and Trefethen, SIAM J. Sci. Comput. 40 (2018), A1494–A1522,
+# doi:10.1137/16M1106122. The smallest right singular vector of the
+# Loewner matrix supplies weights. Only a model reproducing every
+# analyzed value to the same roundoff gate is accepted here.
+struct _SweepAAA
+    x::Vector{Float64}
+    y::Vector{ComplexF64}
+    w::Vector{ComplexF64}
+    scale::Float64
+end
+
+function _sweep_eval(t::_SweepAAA,x::Float64)
+    near=argmin(abs(x-xi) for xi in t.x)
+    distance=x-t.x[near]
+    iszero(distance) && return t.scale*t.y[near]
+    numerator=zero(ComplexF64);denominator=zero(ComplexF64)
+    @inbounds for k in eachindex(t.x)
+        # Scaling by the closest-node distance avoids large partial
+        # fractions arbitrarily near a support point.
+        term=t.w[k]*(distance/(x-t.x[k]))
+        numerator+=term*t.y[k];denominator+=term
+    end
+    return t.scale*(numerator/denominator)
+end
+
+function _sweep_aaa_model(x::Vector{Float64},y::Vector{ComplexF64})
+    n=length(x);n>3 || return nothing
+    scale=maximum(z->max(abs(real(z)),abs(imag(z))),y)
+    iszero(scale) && return nothing
+    values=y./scale
+    tolerance=64eps(Float64)*max(maximum(abs,values),floatmin(Float64))
+    approximation=fill(sum(values)/n,n);support=Int[]
+    for _ in 1:cld(n+1,2)
+        remaining=[k for k in 1:n if !(k in support)]
+        isempty(remaining) && break
+        chosen=remaining[argmax(abs.(values[remaining]-approximation[remaining]))]
+        push!(support,chosen)
+        remaining=[k for k in 1:n if !(k in support)]
+        loewner=ComplexF64[(values[i]-values[j])/(x[i]-x[j]) for i in remaining,j in support]
+        all(isfinite,loewner) || return nothing
+        decomposition=LinearAlgebra.svd(loewner;full=true)
+        weights=Vector{ComplexF64}(decomposition.V[:,end])
+        nonzero=findall(!iszero,weights)
+        isempty(nonzero) && return nothing
+        selected=support[nonzero]
+        model=_SweepAAA(x[selected],values[selected],weights[nonzero],1.)
+        approximation=[_sweep_eval(model,xi) for xi in x]
+        if all(isfinite,approximation) && maximum(abs,approximation-values)<=tolerance
+            return _SweepAAA(model.x,model.y,model.w,scale)
+        end
+    end
+    return nothing
+end
+
+function _sweep_model(x::Vector{Float64}, y::Vector{ComplexF64})
+    barycentric=_sweep_aaa_model(x,y)
+    barycentric===nothing || return barycentric
+    t = _thiele_build(x, y)
+    # A terminated continued fraction may represent every sample exactly
+    # (constant/linear/low-degree rational response). Only trust it after
+    # checking the requested data, including the samples it did not use.
+    tolerance = 64eps(Float64) * max(maximum(abs, y), floatmin(Float64))
+    all(abs(_thiele_eval(t, x[k]) - y[k]) <= tolerance for k in eachindex(x)) &&
+        return t
+    order = sortperm(x)
+    xs, ys = x[order], y[order]
+    n = length(xs)
+    d = min(3, n - 1)
+    w = zeros(Float64, n)
+    for i in 1:n, k in max(1, i - d):min(i, n - d)
+        term = isodd(k) ? 1.0 : -1.0
+        for j in k:(k + d)
+            j == i || (term /= xs[i] - xs[j])
+        end
+        w[i] += term
+    end
+    w ./= maximum(abs, w)
+    return _SweepRational(xs, ys, w)
+end
+
+@inline _sweep_eval(t::_ThieleCF, x::Float64) = _thiele_eval(t, x)
+function _sweep_eval(t::_SweepRational, x::Float64)
+    near = argmin(abs(x - xi) for xi in t.x)
+    distance = x - t.x[near]
+    iszero(distance) && return t.y[near]
+    numerator = zero(ComplexF64)
+    denominator = 0.0
+    @inbounds for k in eachindex(t.x)
+        term = t.w[k] * (distance / (x - t.x[k]))
+        numerator += term * t.y[k]
+        denominator += term
+    end
+    return numerator / denominator
+end
+
 # ---------------- adaptive sweep ----------------
 
 """Result of [`planar_sweep_abs`](@ref): the analyzed frequency set, the
@@ -97,7 +204,9 @@ struct PlanarSweep
     dense_s::Vector{Matrix{ComplexF64}} # interpolated S on the dense grid
     est_err::Vector{Float64}            # worst-entry |R - R_lo|/|R| per dense f
     converged::Bool                     # est_err < rel_tol everywhere
+    z0::Union{Nothing,Vector{ComplexF64}} # fixed wave references, when supplied
 end
+PlanarSweep(f,s,df,ds,e,c)=PlanarSweep(f,s,df,ds,e,c,nothing)
 
 """
     planar_sweep_abs(prob, fmin, fmax; kw...) -> PlanarSweep
@@ -112,87 +221,172 @@ magnitude, i.e. `rel_tol = 1e-2`).
 Keywords: `rel_tol=1e-2`, `n_eval=257` dense candidates, `max_points=32`
 analysis cap (the sweep then returns `converged=false`),
 `solve_kw...` forwarded to `solve_planar`.
+Frequency endpoints and candidate frequencies must be distinct, positive
+and finite in Float64 storage. `max_bytes` includes the sequential
+barycentric interpolation workspace before any response analysis.
+`converged` certifies the reported interpolation estimate on the declared
+grid; it does not guarantee discovery of an unsampled narrow resonance.
 """
 function planar_sweep_abs(prob::PlanarProblem,
         fmin::Real, fmax::Real; rel_tol::Real=1e-2,
         n_eval::Integer=257, max_points::Integer=32,
         max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
         solve_kw...)
-    isfinite(fmin) && isfinite(fmax) ||
-        throw(ArgumentError("sweep band must be finite"))
-    0 < fmin < fmax ||
-        throw(ArgumentError("sweep band needs 0 < fmin < fmax, " *
-            "got [$fmin, $fmax]"))
-    0 < rel_tol ||
-        throw(ArgumentError("rel_tol must be positive, got $rel_tol"))
-    n_eval = Int(n_eval)
-    n_eval >= 8 ||
-        throw(ArgumentError("n_eval must be >= 8, got $n_eval"))
-    max_points = Int(max_points)
-    max_points >= 3 ||
-        throw(ArgumentError("max_points must be >= 3, got $max_points"))
-    nports = length(prob.ports)
-    _enforce_payload_limit(
-        _checked_array_payload_bytes(ComplexF64, n_eval * max_points,
-            max(nports * nports, 1); label="sweep storage"),
-        max_bytes, "planar sweep", "max_bytes")
+    fmin,fmax,n_eval,max_points=_planar_abs_parameters(fmin,fmax,rel_tol,n_eval,max_points)
+    n=length(prob.ports)
+    storage = _checked_payload_sum("physical sweep storage",
+        _planar_sweep_storage_bytes(n,n_eval,max_points),
+        _checked_array_payload_bytes(ComplexF64,8,n,n),
+        _checked_array_payload_bytes(ComplexF64,3,n))
+    _enforce_payload_limit(storage, max_bytes, "planar sweep", "max_bytes")
+    _planar_abs_frequency_grid(fmin,fmax,n_eval)
+    remaining = _validated_resource_limit("max_bytes", max_bytes) - storage
+    options = merge((retain_matrix=false, max_bytes=remaining), (; solve_kw...))
+    refs=_planar_reference_values([port.z0 for port in prob.ports],n;freq=fmin)
+    response(f)=begin
+        result=solve_planar(prob,f;options...)
+        planar_renormalize_s(result.s,result.z0,refs)
+    end
+    return _planar_sweep_abs(response,n,fmin,fmax;rel_tol,n_eval,
+        max_points,max_bytes,z0=refs)
+end
 
-    dense = collect(range(fmin, fmax; length=n_eval))
-    freqs = Float64[fmin, (fmin + fmax) / 2, fmax]
-    svals = Matrix{ComplexF64}[solve_planar(prob, f; solve_kw...).s
-                               for f in freqs]
+function _planar_sweep_storage_bytes(nports::Integer, n_eval::Integer,
+        max_points::Integer)
+    return _checked_payload_sum("sweep storage",
+        _checked_array_payload_bytes(ComplexF64, n_eval, nports, nports),
+        _checked_array_payload_bytes(ComplexF64, max_points, nports, nports),
+        # Full/reduced interpolation coefficients and their data.
+        _checked_array_payload_bytes(ComplexF64, 6, max_points, nports, nports),
+        # One sequential Loewner/SVD construction, factors and numerical
+        # workspace; stored entry models remain linear in sample count.
+        _checked_array_payload_bytes(ComplexF64, 12, max_points, max_points),
+        _checked_array_payload_bytes(Float64, 3, n_eval),
+        _checked_array_payload_bytes(Float64, 3, max_points))
+end
+
+"""`planar_sweep_abs(response, fmin, fmax; nports, kw...)` adaptively
+samples a callable returning a finite `nports × nports` S-matrix. This
+shares the interpolation path with the EM solver and can sweep calibrated
+networks or combined circuit/EM responses."""
+function planar_sweep_abs(response::Function, fmin::Real, fmax::Real;
+        nports::Integer, kw...)
+    return _planar_sweep_abs(response, Int(nports), fmin, fmax; kw...)
+end
+
+function _planar_abs_parameters(fmin,fmax,rel_tol,n_eval,max_points)
+    isfinite(fmin) && isfinite(fmax) && 0<fmin<fmax ||
+        throw(ArgumentError("sweep band needs finite 0 < fmin < fmax"))
+    lo,hi=try
+        Float64(fmin),Float64(fmax)
+    catch
+        throw(ArgumentError("sweep band must be representable in Float64"))
+    end
+    isfinite(lo) && isfinite(hi) && 0<lo<hi ||
+        throw(ArgumentError("sweep band needs finite distinct positive Float64 endpoints"))
+    lo<lo+(hi-lo)/2<hi ||
+        throw(ArgumentError("sweep band has no distinct Float64 midpoint"))
+    isfinite(rel_tol) && rel_tol>0 ||
+        throw(ArgumentError("rel_tol must be finite and positive, got $rel_tol"))
+    ne,mp=Int(n_eval),Int(max_points)
+    ne>=8 || throw(ArgumentError("n_eval must be >= 8, got $ne"))
+    mp>=3 || throw(ArgumentError("max_points must be >= 3, got $mp"))
+    return lo,hi,ne,mp
+end
+
+# Validate the lazy grid after storage preflight and before reference or
+# response callbacks. A fixed Float64 result cannot represent repeated
+# candidate frequencies as distinct analysis samples.
+function _planar_abs_frequency_grid(fmin::Float64,fmax::Float64,n_eval::Int)
+    grid=range(fmin,fmax;length=n_eval)
+    previous=first(grid)
+    for k in 2:n_eval
+        current=grid[k]
+        isfinite(current) && current>previous ||
+            throw(ArgumentError("sweep candidate grid needs distinct finite Float64 frequencies"))
+        previous=current
+    end
+    return grid
+end
+
+function _planar_sweep_abs(response, nports::Int,
+        fmin::Real, fmax::Real; rel_tol::Real=1e-2,
+        n_eval::Integer=257, max_points::Integer=32,
+        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,z0=nothing)
+    fmin,fmax,n_eval,max_points=_planar_abs_parameters(fmin,fmax,rel_tol,n_eval,max_points)
+    nports >= 1 || throw(ArgumentError("nports must be positive"))
+    _enforce_payload_limit(
+        _checked_payload_sum("sweep reference storage",
+            _planar_sweep_storage_bytes(nports,n_eval,max_points),
+            _checked_array_payload_bytes(ComplexF64,2,nports)),
+        max_bytes, "planar sweep", "max_bytes")
+    dense=collect(_planar_abs_frequency_grid(fmin,fmax,n_eval))
+    refs=z0===nothing ? nothing : _planar_reference_values(z0,nports)
+    midpoint = fmin + (fmax - fmin) / 2
+    freqs = Float64[fmin, midpoint, fmax]
+    function analyze(f)
+        S = response(f)
+        S isa AbstractMatrix && size(S) == (nports, nports) ||
+            throw(ArgumentError("sweep response must return a $(nports)x$(nports) S-matrix"))
+        all(isfinite, S) || throw(ArgumentError("sweep response contains non-finite entries"))
+        stored=Matrix{ComplexF64}(S)
+        all(isfinite,stored) || throw(ArgumentError("sweep response is not finite in ComplexF64 storage"))
+        return stored
+    end
+    svals = Matrix{ComplexF64}[analyze(f) for f in freqs]
     converged = false
     est_err = fill(Inf, n_eval)
-    dense_s = Matrix{ComplexF64}[]
+    dense_s = [Matrix{ComplexF64}(undef, nports, nports) for _ in 1:n_eval]
+    entries = [(p, q) for p in 1:nports for q in 1:nports]
+    scaled = f -> 2 * ((f - fmin) / (fmax - fmin)) - 1
 
     while true
         n = length(freqs)
-        entries = [(p, q) for p in 1:nports for q in 1:nports]
+        xs = scaled.(freqs)
         # full model vs the model missing the newest analysis point
-        hi = [_thiele_build(freqs, [s[p, q] for s in svals])
+        hi = [_sweep_model(xs, [s[p, q] for s in svals])
               for (p, q) in entries]
-        lo = [_thiele_build(freqs[1:(n - 1)], [s[p, q] for s in svals[1:(n - 1)]])
+        lo = [_sweep_model(xs[1:(n - 1)], [svals[k][p, q] for k in 1:(n - 1)])
               for (p, q) in entries]
-        dense_s = [Matrix{ComplexF64}(undef, nports, nports)
-                   for _ in 1:n_eval]
         fill!(est_err, 0.0)
         @inbounds for j in 1:n_eval
-            f = dense[j]
+            f = scaled(dense[j])
             worst = 0.0
             fill!(dense_s[j], zero(ComplexF64))
             for (e, (p, q)) in enumerate(entries)
-                vh = _thiele_eval(hi[e], f)
+                vh = _sweep_eval(hi[e], f)
                 dense_s[j][p, q] = vh
-                # a truncated (degenerate) model does not reach every
-                # sample: its estimate is untrusted, force refinement
-                (hi[e].ndeg < hi[e].nfull ||
-                 lo[e].ndeg < lo[e].nfull) && (worst = Inf; break)
                 isfinite(real(vh)) && isfinite(imag(vh)) ||
                     (worst = Inf; continue)
-                vl = _thiele_eval(lo[e], f)
-                d = abs(vh - vl) / max(abs(vh), floatmin(Float64))
+                vl = _sweep_eval(lo[e], f)
+                isfinite(vl) || (worst = Inf; continue)
+                d = abs(vh - vl) / max(abs(vh), 1e-12)
                 d > worst && (worst = d)
             end
             est_err[j] = worst
+            known = findfirst(==(dense[j]), freqs)
+            if known !== nothing
+                copyto!(dense_s[j], svals[known])
+                est_err[j] = 0.0
+            end
         end
         # never pick an already-analyzed frequency (interpolated exactly)
         worst_err, jstar = 0.0, 0
         for j in 1:n_eval
-            any(fk -> abs(dense[j] - fk) <= 0.5 * (fmax - fmin) / n_eval,
-                freqs) && continue
+            dense[j] in freqs && continue
             est_err[j] > worst_err &&
                 (worst_err = est_err[j]; jstar = j)
         end
         jstar == 0 &&
             (converged = all(e -> e <= rel_tol, est_err); break)
-        worst_err <= rel_tol && (converged = true; break)
+        worst_err <= rel_tol && (converged = all(e -> e <= rel_tol, est_err); break)
         # the cap bounds the number of EM analyses; the current model
         # still reports its dense evaluation before giving up
         length(freqs) >= max_points && break
         push!(freqs, dense[jstar])
-        push!(svals, solve_planar(prob, dense[jstar]; solve_kw...).s)
+        push!(svals, analyze(dense[jstar]))
     end
-    return PlanarSweep(freqs, svals, dense, dense_s, est_err, converged)
+    return PlanarSweep(freqs,svals,dense,dense_s,est_err,converged,refs)
 end
 
 # ---------------- box-resonance pole scan ----------------
@@ -228,13 +422,26 @@ function _mode_exists(walls::SidewallKind, a::Float64, b::Float64,
     return pol === TE_POL ? (kc2 != 0.0 && nte2 != 0.0) : ntm2 != 0.0
 end
 
-# parallel-impedance residual zdn + zup at the reference interface; a zero
-# is a natural resonance.  Interface L (top of stack) is used; the zero
-# set is interface-independent for a lossless stack.
+# Propagate a bottom-boundary voltage/current state and test the top
+# boundary. Unlike zdn+zup this characteristic residual remains finite at
+# PMC covers and at impedance poles, and does not depend on observation
+# interface. Layer coefficients share the stable cutoff/evanescent path.
 function _resonance_residual(stack::PlanarStackup, omega::Number,
         kc2::Float64, pol::PlanarPol, iface::Int)
-    casc = planar_mode_cascade(stack, omega, kc2, pol)
-    return casc.zdn[iface + 1] + casc.zup[iface + 1]
+    zref = sqrt(_MU0 / _EPS0)
+    zb = _planar_term_impedance(stack.bottom, pol, omega, kc2)
+    v, qi = _planarisinf(zb) ? (1.0 + 0im, 0.0 + 0im) :
+                              (ComplexF64(zb / zref), -1.0 + 0im)
+    for layer in stack.layers
+        a, b, c, _ = _planar_layer_abcd(pol, omega, kc2, layer)
+        v, qi = a * v - (b / zref) * qi, -(c * zref) * v + a * qi
+        norm = max(abs(v), abs(qi), floatmin(Float64))
+        v /= norm
+        qi /= norm
+    end
+    zt = _planar_term_impedance(stack.top, pol, omega, kc2)
+    return _planarisinf(zt) ? qi : (v - (zt / zref) * qi) /
+        max(1.0, abs(zt / zref))
 end
 
 """
@@ -243,8 +450,11 @@ end
 Scan the shielded stackup for natural resonances in `[fmin, fmax]`: for
 every existing transverse mode `(m, n, pol)` with `m <= mmax`,
 `n <= nmax`, find frequencies where the parallel modal impedance
-`zdn || zup` diverges (`zdn + zup -> 0`).  Candidates are refined by
-bracketed bisection/golden-section on the residual.
+the bottom and top boundary conditions agree. Candidates are refined by
+bracketed bisection/golden-section on a bounded characteristic residual.
+Lossless PEC, PMC and reactive covers have real resonances; lossy/open
+stacks only report a real-frequency candidate when its residual meets
+`rtol`. Complex resonance frequencies are not extracted by this scan.
 
 Keywords: `walls=WALL_PEC`, `mmax=8`, `nmax=8`, `nsamp=1024` scan points,
 `rtol=1e-9` residual acceptance relative to the modal scale.
@@ -261,6 +471,8 @@ function planar_box_resonances(stack::PlanarStackup{T},
     nsamp = Int(nsamp)
     nsamp >= 16 ||
         throw(ArgumentError("nsamp must be >= 16, got $nsamp"))
+    isfinite(rtol) && rtol > 0 || throw(ArgumentError(
+        "rtol must be finite and positive"))
     L = length(stack.layers)
     0 <= iface <= L ||
         throw(ArgumentError("iface must be in 0:$L, got $iface"))

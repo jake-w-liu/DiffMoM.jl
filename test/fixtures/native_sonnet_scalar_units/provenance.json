@@ -1,0 +1,349 @@
+{
+  "scope": "24 manufactured native coupons, 48 actual raw-R50 frequency responses. Literal material nodes independently define expected conductivity; no calibration fit.",
+  "engine": "installed18.53-Lite64bitWindows",
+  "cases": [
+    {
+      "group": "selectors",
+      "tag": "cdvy_5e5",
+      "path": "selectors/cdvy_5e5",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "d8201a12ffb02efe0c3a9c2f79f47eea2218b3a77c91f31512521fa7dbee6f3a"
+    },
+    {
+      "group": "selectors",
+      "tag": "native_srvY",
+      "path": "selectors/native_srvY",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000000.0,
+        500000000.0
+      ],
+      "source_sha256": "facc027a0ad6b5aceeec99ebb175d19d3c12b61254b0f8de887041deab134e98"
+    },
+    {
+      "group": "selectors",
+      "tag": "rsvy_0002",
+      "path": "selectors/rsvy_0002",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "c75924bedffae1b471a6d6d50deb10fc0b3e00f08aeb667daba9964ab45c47a0"
+    },
+    {
+      "group": "selectors",
+      "tag": "sigma_5e4",
+      "path": "selectors/sigma_5e4",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        50000.0,
+        50000.0
+      ],
+      "source_sha256": "aac651c3b0e40d432f411846f8244e4aa5fde4a9f1a5060aed53aa384c6a7106"
+    },
+    {
+      "group": "selectors",
+      "tag": "sigma_5e5",
+      "path": "selectors/sigma_5e5",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "9f5df9792dbdab5a808f46e6d1db0b87f8cc29b2121a48ecdd9686bc9e9ab997"
+    },
+    {
+      "group": "selectors",
+      "tag": "sigma_5e6",
+      "path": "selectors/sigma_5e6",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        5000000.0,
+        5000000.0
+      ],
+      "source_sha256": "fc2d5d03e139c7ced13d66eb8807a7bbdca2dbb095fff0c09cb6d6fd04df5f7c"
+    },
+    {
+      "group": "selectors",
+      "tag": "sigma_5e8",
+      "path": "selectors/sigma_5e8",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000000.0,
+        500000000.0
+      ],
+      "source_sha256": "c59f39119e458076586b24e08fd1217fff4b8d88d4f6ae8572e4c1aa8fee7439"
+    },
+    {
+      "group": "selectors",
+      "tag": "srvy_2",
+      "path": "selectors/srvy_2",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "255fc141400db63d3c4290fade88314442395491628da89117d1bea7013cd454"
+    },
+    {
+      "group": "variables",
+      "tag": "cdvy_ghz_constant",
+      "path": "variables/cdvy_ghz_constant",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "44c1667ce6d5e920352f068123fb6471f4e737578cb5e9de13976e8a1c68b353"
+    },
+    {
+      "group": "variables",
+      "tag": "cdvy_ghz_freq",
+      "path": "variables/cdvy_ghz_freq",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        5000000.0
+      ],
+      "source_sha256": "c2cbc14d5272c9b20cecdddc3bdb96b596361c76932c69fa3cd4519068f8034d"
+    },
+    {
+      "group": "variables",
+      "tag": "cdvy_mhz_freq",
+      "path": "variables/cdvy_mhz_freq",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        5000000.0
+      ],
+      "source_sha256": "060ceec56ce0e94dcdcbce59979a68fac8c02b13d0461dafa2389c2ef8bd8aec"
+    },
+    {
+      "group": "variables",
+      "tag": "rsvy_ghz_constant",
+      "path": "variables/rsvy_ghz_constant",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "e81d3bf622b5ac8aadaf5bfdaaa414eaf9cb58080c717e389ae357d87e7d7120"
+    },
+    {
+      "group": "variables",
+      "tag": "rsvy_ghz_freq",
+      "path": "variables/rsvy_ghz_freq",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        50000.0
+      ],
+      "source_sha256": "7731700de8fd69ac46561c0833487cc35edba073cefa7e5e2258e04ad654b6e8"
+    },
+    {
+      "group": "variables",
+      "tag": "rsvy_mhz_freq",
+      "path": "variables/rsvy_mhz_freq",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        50000.0
+      ],
+      "source_sha256": "b67e5ce31b8594371881a6ee97b4c7bf846aeff055cf5066fa66ee952ffb891d"
+    },
+    {
+      "group": "variables",
+      "tag": "srvy_ghz_constant",
+      "path": "variables/srvy_ghz_constant",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "6b4d7ee41cce8856b4951b7803489fa079db4041485b2cd2ce7f4bc29602fe62"
+    },
+    {
+      "group": "variables",
+      "tag": "srvy_ghz_freq",
+      "path": "variables/srvy_ghz_freq",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        50000.0
+      ],
+      "source_sha256": "3067d6dea30b80d0ba2962b3e6612a80db641cbd6bfed33acd6f2aed1bfd738c"
+    },
+    {
+      "group": "variables",
+      "tag": "srvy_mhz_freq",
+      "path": "variables/srvy_mhz_freq",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        50000.0
+      ],
+      "source_sha256": "584280cc64288c57db03038675bd4577f76ad5c29df1c8ffc71c07ec29acb08b"
+    },
+    {
+      "group": "functions",
+      "tag": "h2p",
+      "path": "functions/h2p",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        50000.0
+      ],
+      "source_sha256": "5493e4bd3714528a52fee497e029c50fc259daa8a555a2179df2bb5d80df2ab7"
+    },
+    {
+      "group": "functions",
+      "tag": "m2p",
+      "path": "functions/m2p",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "e5a87119615c271bd68d8ce790a8bbacfde7a4c78fb8bdc822c6693ffd914867"
+    },
+    {
+      "group": "functions",
+      "tag": "p2h",
+      "path": "functions/p2h",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        5000000.0
+      ],
+      "source_sha256": "011a439d679b58b1b4f6512753a1a54c30272f3028d3f9da5bbd9bb164e76e48"
+    },
+    {
+      "group": "functions",
+      "tag": "p2m",
+      "path": "functions/p2m",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        500000.0,
+        500000.0
+      ],
+      "source_sha256": "451fc24aa5ed9d088bb75030b65b60def8b973624fb9f2ff47943c94414a10d3"
+    },
+    {
+      "group": "zero",
+      "tag": "pec",
+      "path": "zero/pec",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        "PEC",
+        "PEC"
+      ],
+      "source_sha256": "d5fbd2d09f6d9b2f579fbf1b3f95e9c07166bf664c26d75a3f78f59797912e05"
+    },
+    {
+      "group": "zero",
+      "tag": "rsvy",
+      "path": "zero/rsvy",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        "PEC",
+        "PEC"
+      ],
+      "source_sha256": "1cfad5acc43f993b96810bb11bcb52975f6f425b5b7a149cab120000210e1d37"
+    },
+    {
+      "group": "zero",
+      "tag": "srvy",
+      "path": "zero/srvy",
+      "frequencies_Hz": [
+        1000000000.0,
+        10000000000.0
+      ],
+      "sigma_S_m": [
+        "PEC",
+        "PEC"
+      ],
+      "source_sha256": "08e15aaa5cb9253675c7a54e64d85dadb7bf3301a16866af10b28766a9cdeb2e"
+    }
+  ],
+  "gates": {
+    "full_complex_s": 0.005,
+    "original_voltage_equation": 1e-09
+  },
+  "original_failures": "FREQ evaluated in project units instead of Hz gives preserved fullS error up to .988197; ratio1e308 gave NaN despite finite one-face limit.",
+  "native_STF_discrepancy": "MOHSQ variableRs2000\u2192native.002\u03a9/sq, literal2000MOHSQ\u2192native2\u03a9/sq, OHSQ variable2\u2192native2\u03a9/sq. DiffMoM SI provider2\u03a9/sq in allthree. No native loader bug is inherited.",
+  "limits": "These normal thin-metal selector/unit controls do not prove general STF bias/interpolation/technology geometry, thick-metal or finite-conductivity volume-via parity."
+}

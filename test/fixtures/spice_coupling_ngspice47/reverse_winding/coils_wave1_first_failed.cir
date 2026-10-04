@@ -1,0 +1,16 @@
+Actual loaded-wave K hierarchy proof
+.include model.lib
+Xdevice n1 n2 0 coils
+Vdrive1 src1 0 DC 0 AC 14.142135623730951
+Rport1 src1 n1 50.0
+Vdrive2 src2 0 DC 0 AC 0
+Rport2 src2 n2 75.0
+.control
+set wr_singlescale
+set wr_vecnames
+set numdgt=17
+ac lin 23 1.0e6 2.0e10
+wrdata coils_wave1.cir.dat v(n1,0) i(Vdrive1) v(n2,0) i(Vdrive2)
+quit
+.endc
+.end

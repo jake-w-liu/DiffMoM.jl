@@ -1,0 +1,43 @@
+{
+  "utc": "2026-10-03T21:58:31.414974+00:00",
+  "scope": "Actual GUI LoadTechnology/export followed by six fresh native1/5/10GHz controls with unused technology definitions explicitlyremoved; exact originalGUIsource preserved.",
+  "native_version": "18.53-Lite",
+  "physical_box_m": [
+    0.001,
+    0.001
+  ],
+  "actual_grid": [
+    20,
+    20
+  ],
+  "box_halfcell_counts": [
+    40,
+    40
+  ],
+  "raw": true,
+  "z0_ohms": [
+    50,
+    50
+  ],
+  "dmm_modes": [
+    160,
+    160
+  ],
+  "native_subsections": 38,
+  "primary_contract": "Installed Resistivity help: reciprocalconductivity and defaultOhm-cm; actualengineprintsRho7Ohm-cm.",
+  "expected_sigma_S_m": 14.285714285714286,
+  "native_rsvy_conductivity_delta_s": [
+    1.0000030317702802e-13,
+    0.0,
+    1.000310945187266e-13
+  ],
+  "before_reader_errors": [
+    0.17542935064669396,
+    0.1727589403675055,
+    0.16561575595792194
+  ],
+  "after_max_reader_error": 0.0005455157880727569,
+  "unchanged_full_s_gate": 0.005,
+  "unchanged_original_residual_gate": 1e-09,
+  "limits": "No inheritedtechnology geometry, NOR/SRVY or generalVOL skinmodel widening."
+}

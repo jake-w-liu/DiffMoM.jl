@@ -1,0 +1,3 @@
+.subckt bad p1 p2 ref
+D1 p1 ref diode
+.ends bad

@@ -1,0 +1,76 @@
+{
+  "files": [
+    {
+      "path": "native/sparameter.son",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/sparameter.son",
+      "sha256": "cf09c019450672341122677f02744f4994ead6c87b9c28ee87983db6ef5d2eb8",
+      "bytes": 995
+    },
+    {
+      "path": "native/device_model.s2p",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/device_model.s2p",
+      "sha256": "6013961cb54bdd2e023ef8b62655aba6a4c0ea6a034b8ffa6c053041a204d81a",
+      "bytes": 286
+    },
+    {
+      "path": "native/ideal.son",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/ideal.son",
+      "sha256": "264aeedd9453799357e4ec88c82fd3e1a8d21b01696c01789176b8cd06ad477f",
+      "bytes": 958
+    },
+    {
+      "path": "native/ideal_response.s2p",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/ideal/native_device.s2p",
+      "sha256": "7b372d176dfd3316be8a756ed564a5328e01e3fd77d9701787df12aff3205876",
+      "bytes": 670
+    },
+    {
+      "path": "native/sparameter_engine_stderr.log",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/sparameter/engine_stderr.log",
+      "sha256": "34b1949a92664cb6a9d5a5b6fa9d3e298d9f57ddd871f66186b3fe09a9bb5de3",
+      "bytes": 330
+    },
+    {
+      "path": "native/ideal_engine_stderr.log",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/ideal/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native/sparameter_metadata.toml",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/sparameter/metadata.toml",
+      "sha256": "cbae051bc70f9f822a4c716ebccb807bf8ee9129d5727b0536fce84e8be04776",
+      "bytes": 975
+    },
+    {
+      "path": "native/license_diagnosis.json",
+      "original": "data/sonnet_validation/native_smd_sparameter_0ilXCf/license_diagnosis.json",
+      "sha256": "dc6bb6746f4cfd356156faa16cb9f8b02b067990139d4763d3ee280de22d5de5",
+      "bytes": 737
+    },
+    {
+      "path": "installed/amp/amp.son",
+      "original": "validation/native_component_schema/raw/examples/amp/amp.son",
+      "sha256": "6fa34fa6e0d08e87bd0d451a7d82a22caa49e543f864aaf73b5eec9887409f40",
+      "bytes": 2395
+    },
+    {
+      "path": "installed/amp/amp_dev.s2p",
+      "original": "validation/native_component_schema/raw/examples/amp/amp_dev.s2p",
+      "sha256": "9b8d7b9d2cc74080f1e01a52874ebe09ad6f104be8fcc1502299f57b774d474c",
+      "bytes": 1943
+    },
+    {
+      "path": "installed/7GHz_amp/7GHz_amp.son",
+      "original": "validation/native_component_schema/raw/examples/7GHz_amp/7GHz_amp.son",
+      "sha256": "615d8ebd85b08f77955fe29b0eabdb5eb3e062e8518b7a034ff335dc25c5e252",
+      "bytes": 5069
+    },
+    {
+      "path": "installed/7GHz_amp/fsx017wf1.s2p",
+      "original": "validation/native_component_schema/raw/examples/7GHz_amp/fsx017wf1.s2p",
+      "sha256": "0477ee72d75e2c8dc595c10f68d82acea66afdec76cf336d1c6a67a76b9f702a",
+      "bytes": 1277
+    }
+  ]
+}

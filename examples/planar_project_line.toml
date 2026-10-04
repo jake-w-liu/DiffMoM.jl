@@ -1,0 +1,64 @@
+[project]
+name = "dispersive_line"
+unit = "mm"
+schema_version = 1
+
+[variables]
+width = "1 mm"
+center = "1 mm"
+epsilon = 2.0
+
+[box]
+width = 3.0
+length = 2.0
+bottom_cover = "pec"
+top_cover = "pec"
+
+[mesh]
+nx = 6
+ny = 4
+
+[stackup]
+order = "bottom_to_top"
+
+[[stackup.layers]]
+name = "substrate"
+thickness = 0.5
+eps_r = "=epsilon + 0.01*freq/1e9"
+tan_delta = 0.002
+
+[[stackup.layers]]
+name = "air"
+thickness = 0.5
+eps_r = 1.0
+
+[metals.conductor]
+type = "surface_impedance"
+rs = "=0.1+0.01*freq/1e9"
+
+[[polygons]]
+name = "line"
+level = 1
+metal = "conductor"
+net = "signal"
+vertices = [[0.0, "=center-width/2"], [3.0, "=center-width/2"],
+            [3.0, "=center+width/2"], [0.0, "=center+width/2"]]
+
+[[ports]]
+name = "input"
+number = 1
+type = "box_wall"
+polygon = "line"
+edge = 4
+resistance = "50 ohm"
+
+[[ports]]
+name = "output"
+number = 2
+type = "box_wall"
+polygon = "line"
+edge = 2
+resistance = "50 ohm"
+
+[sweep]
+frequencies = ["0.9 GHz", "1 GHz", "1.1 GHz"]

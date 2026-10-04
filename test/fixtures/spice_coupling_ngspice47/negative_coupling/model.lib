@@ -1,0 +1,9 @@
+.subckt coils p1 p2 ref kval=-0.8
+Kmut Lp Ls {kval}
+Rin p1 a 20
+Lp a ref 1n
+Rout p2 b 30
+Ls b ref 2n
+C1 p1 ref 1p
+C2 p2 ref 2p
+.ends coils

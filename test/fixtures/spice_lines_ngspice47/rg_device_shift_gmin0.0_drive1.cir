@@ -1,0 +1,19 @@
+Actual loaded-wave linear line proof
+.include rg.lib
+Xdev n1 n2 n3 n4 device
+Vdrive1 src1 n2 DC 0 AC 14.142135623730951
+Rport1 src1 n1 50.0
+Vdrive2 src2 n4 DC 0 AC 0
+Rport2 src2 n3 75.0
+Vgauge1 n2 0 DC 0 AC 37 23
+Vgauge2 n4 0 DC 0 AC 43 -73
+.options gmin=0.0
+.control
+set wr_singlescale
+set wr_vecnames
+set numdgt=17
+ac lin 23 1.0e6 1.2e10
+wrdata rg_device_shift_gmin0.0_drive1.cir.dat v(n1,n2) i(Vdrive1) v(n3,n4) i(Vdrive2)
+quit
+.endc
+.end

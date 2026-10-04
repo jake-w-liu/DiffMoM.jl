@@ -1,0 +1,17 @@
+{
+  "scope": "Actual native magnitude ln/log10 controls; unsupported log warning/fallback and previous accepted wrong material retained.",
+  "origin_artifact": "native_scalar_logarithms_5FYyhH",
+  "engine": "18.53-Lite 64-bit Windows",
+  "cases": [
+    "ln_positive",
+    "ln_negative",
+    "log10_positive",
+    "log10_negative",
+    "log_alias"
+  ],
+  "independent_reference": "Explicit sigma500000 S/m and1um film gives Rs2 ohm/square by DC constitutive law.",
+  "restrictions": [
+    "Original unused VAR Rho parameter warning remains in raw sources.",
+    "The native log warning/fallback0 is failure evidence; DiffMoM rejects invalid syntax instead of reproducing warning fallback."
+  ]
+}

@@ -1,0 +1,6 @@
+Test Summary:                                 | Pass  Total  Time
+Library stored positive and placement domains |   72     72  1.2s
+Test Summary:                                                  | Pass  Total  Time
+Library spiral reference avoids finite intermediate range loss |  904    904  0.2s
+Test Summary:                                                | Pass  Total  Time
+Library capacitance reference retains representable products |   28     28  0.0s

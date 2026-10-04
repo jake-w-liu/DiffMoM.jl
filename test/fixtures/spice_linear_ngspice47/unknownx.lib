@@ -1,0 +1,3 @@
+.subckt bad p1 p2 ref
+X1 p1 ref not_defined
+.ends bad

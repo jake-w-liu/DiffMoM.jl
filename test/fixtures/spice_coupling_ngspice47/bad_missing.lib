@@ -1,0 +1,4 @@
+.subckt bad p1 p2 ref
+K1 L1 missing .5
+L1 p1 ref 1n
+.ends bad

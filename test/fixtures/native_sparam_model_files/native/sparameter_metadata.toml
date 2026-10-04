@@ -1,0 +1,16 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_smd_sparameter_0ilXCf\\sparameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T18:40:56.041"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 40]
+started_utc = "2026-10-03T18:40:55.522"
+source_sha256 = "cf09c019450672341122677f02744f4994ead6c87b9c28ee87983db6ef5d2eb8"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_smd_sparameter_0ilXCf\\sparameter\\sparameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_smd_sparameter_0ilXCf\\\\sparameter\")"
+box_halfcell_counts = [64, 80]
+
+[dependency_sha256]
+"device_model.s2p" = "6013961cb54bdd2e023ef8b62655aba6a4c0ea6a034b8ffa6c053041a204d81a"

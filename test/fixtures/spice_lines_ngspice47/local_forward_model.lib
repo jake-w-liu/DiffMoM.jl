@@ -1,0 +1,7 @@
+.subckt child a ga b gb rv=12.45 cv=.468p
+Oline a ga b gb LoSs
+.model loss LTRA R={rv} G=0 L=8.972n C={cv} LEN=16
+.ends child
+.subckt device p1 g1 p2 g2
+Xchild p1 g1 p2 g2 child rv=8 cv=.7p
+.ends device

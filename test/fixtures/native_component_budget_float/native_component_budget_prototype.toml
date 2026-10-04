@@ -1,0 +1,33 @@
+production_sha256 = "b2dc6ab9873fe5d0045f009c02186bb5a2b88fccd9870f8e4e020743e102c8d8"
+
+[none]
+live_prefix = 30138
+post_workspace = 8320
+actual_retained_payload = 33778
+
+[ideal]
+live_prefix = 30138
+post_workspace = 8320
+actual_retained_payload = 35058
+
+["(32, 40) 1"]
+rejection_allocation = 9240
+
+[callback]
+live_prefix = 30138
+post_workspace = 8320
+actual_retained_payload = 35122
+
+["(32, 40) 20000"]
+rejection_allocation = 9256
+
+["(128, 160) 1"]
+rejection_allocation = 9256
+
+["(128, 160) 20000"]
+rejection_allocation = 9272
+
+[sparam]
+live_prefix = 148320
+post_workspace = 8320
+actual_retained_payload = 153304

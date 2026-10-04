@@ -1,0 +1,9 @@
+julia_version = "1.13.1"
+compressed_bytes = 367015
+uncompressed_tar_bytes = 837120
+scope = "independent libarchive LZW transport, not a vendor manufacturing corpus"
+compressed_sha256 = "c75a1e3a1071127f3e76e14c3320663af456733a1e1524ac6d7cde2572ffc9fc"
+producer = "bsdtar 3.8.8 - libarchive 3.8.8 zlib/1.2.13.1-motley liblzma/5.8.1 bz2lib/1.0.8 libzstd/1.5.7 cng/2.0 libb2/bundled"
+seed = 918
+raw_tar_sha256 = "7336c7180c33150a6f4934a6a6b95518698b129a02bb5456288691b845550731"
+info_sha256 = "2bd966097673bfa4c9e237232a86e28b81c86e491233ef5d35ef289b1e8d99fa"

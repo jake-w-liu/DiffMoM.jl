@@ -1,0 +1,34 @@
+;  Sonnet Data File
+;  From: em Version : 17.56.079
+;  From Emgraph Data: 
+;  Data File Written: 06/01/2021 14:08:25
+; < HDATE 10/09/2015 12:39:42
+; < MDATE 10/09/2015 12:39:42
+;  Ls1 = 1.656377 nH
+;  Rs1 = 4.31755 Ohms
+;  Lk1 = 0.064382 nH
+;  Rk1 = 0.922406 Ohms
+
+simulator lang=spectre
+subckt rectangular_spiral_IMEnet 1 2 3 REF
+L_1 1 4 inductor l = 6.438238775e-11
+R_2 1 4  resistor r = 0.9224063161809
+R_3 4 5  resistor r = 4.3175498377021
+L_4 2 6 inductor l = 1.103455170e-10
+R_5 2 6  resistor r = 584.26442594856
+R_6 6 7  resistor r = 4.6205523355895
+C_7 1 2  capacitor c = 5.289876659e-14
+L1_8 5 11  inductor l = 1.6563768405e-9
+L2_8 11 7  inductor l = 1.5629346851e-9
+M_8 mutual_inductor coupling=0.7863384830837 ind1=L1_8 ind2=L2_8
+R_9 11 3  resistor r = 0.1359645159804
+C_10 1 8  capacitor c = 3.637979165e-14
+R_11 8 REF  resistor r = 2072.6011396368
+C_12 8 REF  capacitor c = 3.295932538e-14
+C_13 2 9  capacitor c = 3.896302421e-14
+R_14 9 REF  resistor r = 1978.7544147701
+C_15 9 REF  capacitor c = 1.959665534e-14
+C_16 11 10  capacitor c = 7.391117558e-14
+R_17 10 REF  resistor r = 1466.2097275830
+C_18 10 REF  capacitor c = 1.591407150e-12
+ends rectangular_spiral_IMEnet

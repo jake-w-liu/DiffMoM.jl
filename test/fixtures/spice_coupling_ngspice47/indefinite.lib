@@ -1,0 +1,11 @@
+.subckt indefinite p1 p2 ref
+R1 p1 a 10
+R2 p2 b 10
+R3 p2 c 10
+L1 a ref 1n
+L2 b ref 1n
+L3 c ref 1n
+K12 L1 L2 .9
+K23 L2 L3 .9
+K13 L1 L3 0
+.ends indefinite

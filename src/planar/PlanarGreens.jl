@@ -119,13 +119,13 @@ function _basis_fx!(fx::AbstractVector{Float64}, basis::PlanarBasisSet,
             fx[m] = mg.tx_tri_cos[m] *
                 (pec ? cospi((m - 1) * e / nx) : sinpi((m - 1) * e / nx))
         end
-    elseif kind == _BASIS_X_LO
-        copyto!(fx, pec ? mg.hx_cos : mg.hx_sin)
-    elseif kind == _BASIS_X_HI
+    elseif kind == _BASIS_X_LO || kind == _BASIS_X_HI
+        e=basis.ei[p]
+        orientation=kind==_BASIS_X_LO ? 1.0 : -1.0
         for m in 1:mg.mx
-            # cos: (-1)^(m-1) Hc;  sin: -(-1)^(m-1) Hs
-            s = isodd(m - 1) ? -1.0 : 1.0
-            fx[m] = pec ? s * mg.hx_cos[m] : -s * mg.hx_sin[m]
+            c=cospi((m-1)*e/nx);s=sinpi((m-1)*e/nx)
+            fx[m]=pec ? c*mg.hx_cos[m]-orientation*s*mg.hx_sin[m] :
+                       s*mg.hx_cos[m]+orientation*c*mg.hx_sin[m]
         end
     else # y-directed: rectangle vs sin(kx x) on PEC / cos on PMC, at centre
         i = basis.ei[p]
@@ -149,12 +149,13 @@ function _basis_fy!(fy::AbstractVector{Float64}, basis::PlanarBasisSet,
             fy[n] = mg.ty_tri_cos[n] *
                 (pec ? cospi((n - 1) * f / ny) : sinpi((n - 1) * f / ny))
         end
-    elseif kind == _BASIS_Y_LO
-        copyto!(fy, pec ? mg.hy_cos : mg.hy_sin)
-    elseif kind == _BASIS_Y_HI
+    elseif kind == _BASIS_Y_LO || kind == _BASIS_Y_HI
+        f=basis.ej[p]
+        orientation=kind==_BASIS_Y_LO ? 1.0 : -1.0
         for n in 1:mg.my
-            s = isodd(n - 1) ? -1.0 : 1.0
-            fy[n] = pec ? s * mg.hy_cos[n] : -s * mg.hy_sin[n]
+            c=cospi((n-1)*f/ny);s=sinpi((n-1)*f/ny)
+            fy[n]=pec ? c*mg.hy_cos[n]-orientation*s*mg.hy_sin[n] :
+                       s*mg.hy_cos[n]+orientation*c*mg.hy_sin[n]
         end
     else # x-directed: rectangle vs sin(ky y) on PEC / cos on PMC, at centre
         j = basis.ej[p]
@@ -201,22 +202,27 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
         mx::Integer=2 * grid.nx, my::Integer=2 * grid.ny,
         block::Integer=512,
         surface_zs=zero(ComplexF64),
+        sheet_coupling_zs=nothing,
+        via_sigma=Inf, volume_sigma=Inf,
         max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     planar_validate(stack)
     # real(omega) > 0 admits complex-step perturbation omega = w0 + i*eps
     isfinite(omega) && real(omega) > 0 ||
         throw(ArgumentError(
             "omega must be finite with Re > 0, got $omega"))
-    surface_zs isa AbstractVector &&
-        length(surface_zs) != length(sheets) &&
-        throw(ArgumentError(
-            "surface_zs length $(length(surface_zs)) != " *
-            "sheet count $(length(sheets))"))
+    _validate_planar_surface_zs(surface_zs,length(sheets),grid)
+    _validate_planar_sheet_coupling(sheet_coupling_zs,length(sheets),grid)
     block >= 1 || throw(ArgumentError("block must be >= 1, got $block"))
     nb = planar_basis_count(basis)
     nb == 0 && return zeros(ComplexF64, 0, 0)
-    mg = planar_mode_grid(grid, mx, my)
-    nmode = mg.mx * mg.my
+    mx >= 1 && my >= 1 || throw(ArgumentError("mode counts must be >= 1"))
+    # Count overflow and the mode-grid arrays must be checked before
+    # constructing them, including requests rejected by max_bytes.
+    nmode = _checked_array_payload_bytes(UInt8, mx, my; label="planar mode count")
+    mgbytes = _checked_payload_sum("planar mode grid",
+        _checked_array_payload_bytes(Float64, 7, mx),
+        _checked_array_payload_bytes(Float64, 7, my))
+    _enforce_payload_limit(mgbytes, max_bytes, "planar mode grid", "max_bytes")
     L = length(stack.layers)
 
     # element axis: sheet bases key on their interface, via/volume bases
@@ -258,6 +264,7 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
     blk = clamp(Int(block), 1, nmode)
 
     est = _checked_payload_sum("planar Z",
+        mgbytes,
         _checked_array_payload_bytes(ComplexF64, nb, nb),
         _checked_array_payload_bytes(Float64, nb, nb),
         _checked_array_payload_bytes(Float64, nb, nb),
@@ -265,21 +272,25 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
         _checked_array_payload_bytes(Float64, blk, nb),
         _checked_array_payload_bytes(ComplexF64, blk, npair),
         _checked_array_payload_bytes(ComplexF64, blk, npair),
-        _checked_array_payload_bytes(Float64, mg.mx, nb),
-        _checked_array_payload_bytes(Float64, mg.my, nb),
+        _checked_array_payload_bytes(Float64, mx, nb),
+        _checked_array_payload_bytes(Float64, my, nb),
         # per-block cascade workspaces: 2 pols x (2*(L+1) + 2*L) + 3*L
-        _checked_array_payload_bytes(ComplexF64, 11 * (L + 1)),
+        _checked_array_payload_bytes(ComplexF64, 15 * (L + 1)),
         _checked_array_payload_bytes(Float64, blk, nb),
         _checked_array_payload_bytes(Float64, blk, nb),
         _checked_array_payload_bytes(Int, blk),
         _checked_array_payload_bytes(Int, blk),
         # per-layer via modal state + volume states + element id vector
-        _checked_array_payload_bytes(ComplexF64, 10 * max(L, 1)),
-        _checked_array_payload_bytes(ComplexF64, 8 * max(L, 1)),
+        _checked_array_payload_bytes(ComplexF64, 21 * max(L, 1)),
+        _checked_array_payload_bytes(ComplexF64, 12 * max(L, 1)),
         _checked_array_payload_bytes(Int, nb),
+        _checked_array_payload_bytes(ComplexF64, length(vias) + length(vols)),
         # per-pair row/col index vectors, each <= nb entries
         _checked_array_payload_bytes(Int, 2 * npair, nb))
     _enforce_payload_limit(est, max_bytes, "planar Z", "max_bytes")
+    via_rho = _planar_bulk_resistivities(via_sigma, length(vias), "via_sigma")
+    volume_rho = _planar_bulk_resistivities(volume_sigma, length(vols), "volume_sigma")
+    mg = planar_mode_grid(grid, mx, my)
 
     Zr = zeros(Float64, nb, nb)
     Zi = zeros(Float64, nb, nb)
@@ -308,6 +319,7 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
     maxc = maximum((p -> length(pair_cols[p])), pairs)
     sdr = fill(NaN, blk, maxc)
     sdi = fill(NaN, blk, maxc)
+    mode_workspace = _planar_mode_workspace(L, !isempty(vlay), !isempty(volay))
 
     c = 0
     for n in 1:mg.my, m in 1:mg.mx
@@ -319,17 +331,30 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
                 view(mlist, 1:c), view(nlist, 1:c),
                 Wte, Wtm, view(vte, 1:c, :), view(vtm, 1:c, :),
                 fxb, fyb, basis, pairs, pair_rows, pair_cols, sdr, sdi,
-                vlay, volay)
+                vlay, volay, mode_workspace)
             c = 0
         end
     end
 
     Z = complex.(Zr, Zi)
-    _add_gram!(Z, basis, grid, surface_zs)
+    _add_gram!(Z, basis, grid, surface_zs,sheet_coupling_zs)
+    _add_planar_bulk_loss!(Z, basis, grid, stack, vias, vols, via_rho, volume_rho)
     return Z
 end
 
-
+function _planar_mode_workspace(L::Int, hasvia::Bool, hasvol::Bool)
+    cascade() = PlanarCascade(Vector{ComplexF64}(undef, L + 1),
+        Vector{ComplexF64}(undef, L + 1), Vector{ComplexF64}(undef, L),
+        Vector{ComplexF64}(undef, L))
+    scratch = (Vector{ComplexF64}(undef, L), Vector{ComplexF64}(undef, L),
+               Vector{ComplexF64}(undef, L))
+    vsts = hasvia ? Vector{_ViaLayerState{ComplexF64}}(undef, L) :
+                   _ViaLayerState{ComplexF64}[]
+    volsts = hasvol ? (Vector{_VolLayerState{ComplexF64}}(undef, L),
+        Vector{_VolLayerState{ComplexF64}}(undef, L)) :
+        (_VolLayerState{ComplexF64}[], _VolLayerState{ComplexF64}[])
+    return cascade(), cascade(), scratch, vsts, volsts
+end
 
 # process one block of modes: modal voltages, weight blocks, dgemm accumulate
 function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
@@ -343,28 +368,12 @@ function _planar_z_block!(Zr::Matrix{Float64}, Zi::Matrix{Float64},
         pair_rows::Dict{Tuple{Int,Int},Vector{Int}},
         pair_cols::Dict{Tuple{Int,Int},Vector{Int}},
         sdr::Matrix{Float64}, sdi::Matrix{Float64},
-        vlay::Vector{Int}=Int[], volay::Vector{Int}=Int[])
+        vlay::Vector{Int}, volay::Vector{Int}, mode_workspace)
     cblk = length(mlist)
     nb = planar_basis_count(basis)
 
-    # cascade workspaces are reused across all modes of the block; the
-    # four cascade vectors + three scratch vectors are allocated once per
-    # block and per polarization (accounted for in the caller's estimate)
-    L = length(stack.layers)
-    casc_te = PlanarCascade(Vector{ComplexF64}(undef, L + 1),
-        Vector{ComplexF64}(undef, L + 1), Vector{ComplexF64}(undef, L),
-        Vector{ComplexF64}(undef, L))
-    casc_tm = PlanarCascade(Vector{ComplexF64}(undef, L + 1),
-        Vector{ComplexF64}(undef, L + 1), Vector{ComplexF64}(undef, L),
-        Vector{ComplexF64}(undef, L))
-    scratch = (Vector{ComplexF64}(undef, L), Vector{ComplexF64}(undef, L),
-               Vector{ComplexF64}(undef, L))
-    vsts = isempty(vlay) ? _ViaLayerState{ComplexF64}[] :
-        Vector{_ViaLayerState{ComplexF64}}(undef, L)
-    volsts = isempty(volay) ? (_VolLayerState{ComplexF64}[],
-        _VolLayerState{ComplexF64}[]) :
-        (Vector{_VolLayerState{ComplexF64}}(undef, L),
-         Vector{_VolLayerState{ComplexF64}}(undef, L))
+    # Caller-owned state is reused across every block and every mode.
+    casc_te, casc_tm, scratch, vsts, volsts = mode_workspace
 
     _planar_mode_voltages!(vte, vtm, casc_te, casc_tm, scratch, stack,
         omega, mg, mlist, nlist, pairs, vsts, vlay, volsts, volay)
@@ -511,8 +520,28 @@ end
 # ---------------- surface-impedance Gram term ----------------
 
 @inline function _zs_for_level(surface_zs, lv::Int)
-    return surface_zs isa AbstractVector ? ComplexF64(surface_zs[lv]) :
-                                           ComplexF64(surface_zs)
+    return surface_zs isa AbstractVector ? surface_zs[lv] : surface_zs
+end
+
+@inline _planar_zs_cell(zs::AbstractMatrix,i::Int,j::Int) = ComplexF64(zs[i,j])
+@inline _planar_zs_cell(zs::Number,i::Int,j::Int) = ComplexF64(zs)
+
+function _validate_planar_surface_zs(surface_zs, count::Int, grid::CellGrid)
+    surface_zs isa AbstractVector && length(surface_zs) != count &&
+        throw(ArgumentError("surface_zs count must match sheet levels"))
+    for lv in 1:count
+        zs = _zs_for_level(surface_zs,lv)
+        if zs isa AbstractMatrix
+            size(zs) == (grid.nx,grid.ny) ||
+                throw(DimensionMismatch("surface_zs[$lv] cell map must match the grid"))
+            all(v->v isa Number && isfinite(ComplexF64(v)),zs) ||
+                throw(ArgumentError("surface_zs[$lv] cell values must be finite numbers"))
+        else
+            zs isa Number && isfinite(ComplexF64(zs)) ||
+                throw(ArgumentError("surface_zs[$lv] must be finite or a cell matrix"))
+        end
+    end
+    return nothing
 end
 
 function _gram_self(kind::UInt8, grid::CellGrid)
@@ -532,90 +561,96 @@ end
 # direction: int_0^1 s(1-s) ds * cell area = dx*dy/6
 @inline _gram_adj(grid::CellGrid) = grid.dx * grid.dy / 6
 
-# overlap of a transverse pair (x- and y-directed rooftops sharing one
-# cell): each linear profile integrates to half the cell side, so the
-# corner overlap is (dx/2)*(dy/2)
-@inline _gram_cross(grid::CellGrid) = grid.dx * grid.dy / 4
-
 # cell indices spanned by the flow-direction support of one basis
 @inline _xcells(kind::UInt8, ei::Int, nx::Int) =
-    kind == _BASIS_X_LO ? (1, 0) :
-    kind == _BASIS_X_HI ? (nx, 0) : (ei, ei + 1)
+    kind == _BASIS_X_LO ? (ei+1, 0) :
+    kind == _BASIS_X_HI ? (ei, 0) : (ei, ei + 1)
 @inline _ycells(kind::UInt8, ej::Int, ny::Int) =
-    kind == _BASIS_Y_LO ? (1, 0) :
-    kind == _BASIS_Y_HI ? (ny, 0) : (ej, ej + 1)
+    kind == _BASIS_Y_LO ? (ej+1, 0) :
+    kind == _BASIS_Y_HI ? (ej, 0) : (ej, ej + 1)
 
 """
-Add the conductor-loss term Zs * G where G[p,q] = int f_p . f_q dA is the
-analytic rooftop Gram overlap on the same sheet level: the basis self
-term, the colinear neighbour term `dx*dy/6`, and the transverse corner
-term `dx*dy/4` where an x- and a y-directed rooftop share one cell.
+Add the conductor-loss term -Zs * G where G[p,q] = int f_p . f_q dA is the
+analytic vector rooftop Gram overlap on the same sheet level: the basis
+self term and the colinear neighbour term `dx*dy/6`.  Orthogonal x- and
+y-directed currents have zero overlap for a scalar surface impedance.
+The field matrix is `Z=-sum(V*w*w')` and its RHS is minus the impressed
+field, so `E_induced + E_impressed = Zs*J` requires the negative sign.
 """
 function _add_gram!(Z::Matrix{ComplexF64}, basis::PlanarBasisSet,
-        grid::CellGrid, surface_zs)
-    iszero(surface_zs) && return Z
-    nb = planar_basis_count(basis)
-    nx, ny = grid.nx, grid.ny
-    lookup = Dict{NTuple{4,Int},Int}()
-    sizehint!(lookup, nb)
-    @inbounds for p in 1:nb
-        lookup[(basis.level[p], Int(basis.kind[p]),
-                basis.ei[p], basis.ej[p])] = p
-    end
-    @inbounds for p in 1:nb
-        kp = basis.kind[p]
-        kp >= _BASIS_VIA_U && continue   # vias/volumes carry no sheet Gram term
-        zs = _zs_for_level(surface_zs, basis.level[p])
-        iszero(zs) && continue
-        lv = basis.level[p]
-        Z[p, p] += zs * _gram_self(kp, grid)
-        if _is_xdir(kp)
-            # colinear neighbour along the flow direction: FULL bases reach
-            # ei+1; wall halves reach the interior edge (LO:1 / HI:nx-1)
-            e2 = kp == _BASIS_X_HI ? basis.ei[p] - 1 : basis.ei[p] + 1
-            q = get(lookup, (lv, Int(_BASIS_X_FULL), e2, basis.ej[p]), 0)
-            # nx == 1 box: LO and HI halves share the single cell column
-            if q == 0 && kp == _BASIS_X_LO && nx == 1
-                q = get(lookup, (lv, Int(_BASIS_X_HI), nx, basis.ej[p]), 0)
-            end
-            if q != 0
-                g = zs * _gram_adj(grid)
-                Z[p, q] += g
-                Z[q, p] += g
-            end
-            # transverse overlaps: y-bases on a column spanned by this
-            # x-basis whose y-support contains row ej[p]
-            i1, i2 = _xcells(kp, basis.ei[p], nx)
-            for i in (i1, i2)
-                i == 0 && continue
-                j = basis.ej[p]
-                for (ky, f) in ((Int(_BASIS_Y_FULL), j - 1),
-                                (Int(_BASIS_Y_FULL), j),
-                                (Int(_BASIS_Y_LO), 0),
-                                (Int(_BASIS_Y_HI), ny))
-                    # y-coverage: FULL f spans rows {f, f+1}, LO row 1,
-                    # HI row ny -- select candidates covering row j
-                    (ky == Int(_BASIS_Y_LO) && j != 1 ||
-                     ky == Int(_BASIS_Y_HI) && j != ny) && continue
-                    q = get(lookup, (lv, ky, i, f), 0)
-                    q == 0 && continue
-                    g = zs * _gram_cross(grid)
-                    Z[p, q] += g
-                    Z[q, p] += g
-                end
-            end
-        else
-            f2 = kp == _BASIS_Y_HI ? basis.ej[p] - 1 : basis.ej[p] + 1
-            q = get(lookup, (lv, Int(_BASIS_Y_FULL), basis.ei[p], f2), 0)
-            if q == 0 && kp == _BASIS_Y_LO && ny == 1
-                q = get(lookup, (lv, Int(_BASIS_Y_HI), basis.ei[p], ny), 0)
-            end
-            if q != 0
-                g = zs * _gram_adj(grid)
-                Z[p, q] += g
-                Z[q, p] += g
-            end
-        end
+        grid::CellGrid, surface_zs,sheet_coupling_zs=nothing)
+    _planar_sheet_loss_entries(basis, grid, surface_zs,sheet_coupling_zs) do p, q, value
+        Z[p, q] += value
     end
     return Z
+end
+
+function _planar_sheet_loss_entries(emit, basis::PlanarBasisSet,
+        grid::CellGrid,surface_zs,sheet_coupling_zs=nothing)
+    _planar_uncoupled_sheet_loss_entries(emit,basis,grid,surface_zs)
+    sheet_coupling_zs===nothing ||
+        _planar_coupled_sheet_loss_entries(emit,basis,grid,sheet_coupling_zs)
+    return nothing
+end
+
+function _planar_uncoupled_sheet_loss_entries(emit,basis::PlanarBasisSet,
+        grid::CellGrid,surface_zs)
+    count = surface_zs isa AbstractVector ? length(surface_zs) :
+        maximum((basis.level[p] for p in eachindex(basis.kind)
+            if basis.kind[p] < _BASIS_VIA_U); init=0)
+    _validate_planar_surface_zs(surface_zs,count,grid)
+    iszero(surface_zs) && return nothing
+    _planar_sheet_gram_entries(emit,basis,grid,
+        (lv,other) -> lv==other ? _zs_for_level(surface_zs,lv) : 0.0)
+    return nothing
+end
+
+function _validate_planar_sheet_coupling(zs,count::Int,grid::CellGrid)
+    zs===nothing && return nothing
+    zs isa AbstractMatrix && size(zs)==(count,count) ||
+        throw(DimensionMismatch("sheet_coupling_zs must be sheet_count x sheet_count"))
+    for j in 1:count,i in 1:count
+        spec=zs[i,j]
+        _validate_planar_surface_zs(spec,1,grid)
+        spec==zs[j,i] || throw(ArgumentError("sheet_coupling_zs must be complex symmetric"))
+    end
+    return nothing
+end
+
+function _planar_coupled_sheet_loss_entries(emit,basis::PlanarBasisSet,
+        grid::CellGrid,zs)
+    count=size(zs,1)
+    _validate_planar_sheet_coupling(zs,count,grid)
+    _planar_sheet_gram_entries(emit,basis,grid,(lv,other) -> zs[lv,other])
+    return nothing
+end
+
+# Accumulate each cell exactly, including translated terminal half ramps.
+function _planar_sheet_gram_entries(emit,basis::PlanarBasisSet,grid::CellGrid,spec_for)
+    lookup=Dict{Tuple{Bool,Int,Int},Vector{Int}}()
+    for p in eachindex(basis.kind)
+        k=basis.kind[p]
+        k>=_BASIS_VIA_U && continue
+        xd=_is_xdir(k)
+        edge=xd ? basis.ei[p] : basis.ej[p]
+        trans=xd ? basis.ej[p] : basis.ei[p]
+        cells=xd ? _xcells(k,edge,grid.nx) : _ycells(k,edge,grid.ny)
+        for cell in cells
+            iszero(cell) && continue
+            push!(get!(lookup,(xd,cell,trans),Int[]),p)
+        end
+    end
+    for ((xd,cell,trans),indices) in lookup
+        for p in indices,q in indices
+            spec=spec_for(basis.level[p],basis.level[q])
+            iszero(spec) && continue
+            value=xd ? _planar_zs_cell(spec,cell,trans) :
+                       _planar_zs_cell(spec,trans,cell)
+            ep=xd ? basis.ei[p] : basis.ej[p]
+            eq=xd ? basis.ei[q] : basis.ej[q]
+            factor=ep==eq ? 1/3 : 1/6
+            emit(p,q,-value*grid.dx*grid.dy*factor)
+        end
+    end
+    return nothing
 end

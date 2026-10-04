@@ -1,0 +1,3 @@
+! key in Hz; independent literal Rs nodes in ohms/square
+1000000000,2
+10000000000,20 ! final node

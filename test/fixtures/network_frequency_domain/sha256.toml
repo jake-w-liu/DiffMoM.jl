@@ -1,0 +1,15 @@
+scope = "byte-exact original and final NetworkIO sources; confirmed wide-frequency storage failure and discarded text-parser candidate; targeted neighbor gate"
+
+[sha256]
+"frequency_after.log" = "fba09089938a941793ee4f09dd76815219150f3ace8ccdfbffb2bc8c5bdbc4d0"
+"frequency_audit.jl" = "118917ac7e096dc7bfca064b2251d218350a0586a49ca2d7f974cca00e6e3a05"
+"neighbor_gate.log" = "acdd31f39e76f22f251ddc9c0c2d38223f0a6fc354e8bc92c39bf848015bd9d5"
+"source_before.jl" = "478da8803d739d52e947eaac3c422d00ed1c7dbe866c5bbbdb70188537774327"
+"source_after.jl" = "6e2b29ceb3b9609d64d7a549ad68ac3aff8d99c9155bebe5c3a3e7d80cf6001e"
+"frequency_before.toml" = "8b13ad4fe33b1461b9339802adddb6170aaa2aeac02c18686eaa0047871f250c"
+"frequency_before.log" = "7ca3f8d676d95d89ae026c32c3618ca456b0563f41b78bb0c3d618dc3b910a82"
+"frequency_after.toml" = "ff210b6c23802e495632c8ff79bc68a7cd3c5d7844835bce9777382339d63e81"
+"discarded_text_candidate.toml" = "fc0f404d1ae4c2ada77cd3a8775fdd0e995d7188124b1a78c251797732b8e49a"
+"README.md" = "606d4517c9379ddad57a0ef188e3cfb8270d2de2ffa6db1ef2980c9c2b288ead"
+"discarded_text_candidate_audit.jl" = "ab2694f9e18a8c5f793fbde6c4c41a85702eda3ece0ee8dea72e30556a056ec3"
+"discarded_text_candidate.log" = "46872db4a86e9ce39917c348ad369880f52a5a8b4fa7a27413b40d7cb4e4edfd"

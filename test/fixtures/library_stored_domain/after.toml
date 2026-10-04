@@ -1,0 +1,74 @@
+scope = "public RFIC library stored scalar, finite reference and rigid placement input/output domains; ordinary representable controls included"
+source_sha256 = "b69db254f721e9c0b57637b36849f1184619407859439ab559977f6f914cdab3"
+
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: turns must remain finite and preserve nonzero values in Float64"
+case = "wheeler_turns_9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: turns must remain finite and preserve nonzero values in Float64"
+case = "wheeler_turns_1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+[[rows]]
+status = "accepted"
+finite = true
+case = "wheeler_turns_2.0"
+value = "4.602569828493986e-9"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: turns must remain finite and preserve nonzero values in Float64"
+case = "current_sheet_turns_9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: turns must remain finite and preserve nonzero values in Float64"
+case = "current_sheet_turns_1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+[[rows]]
+status = "accepted"
+finite = true
+case = "current_sheet_turns_2.0"
+value = "4.549846964353575e-9"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: area must remain finite and preserve nonzero values in Float64"
+case = "capacitance_area_9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: area must remain finite and preserve nonzero values in Float64"
+case = "capacitance_area_1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+[[rows]]
+status = "accepted"
+finite = true
+case = "capacitance_area_9.999999999999999999999999999999999999999999999999999999999999999999999999999956e-9"
+value = "3.5416751268e-13"
+[[rows]]
+status = "accepted"
+finite = true
+case = "wheeler_intermediate_1.0e-200_1.0e300"
+value = "1.1506424571234963e-106"
+[[rows]]
+status = "accepted"
+finite = true
+case = "wheeler_intermediate_1.0e200_1.0e-300"
+value = "1.1506424571234966e94"
+[[rows]]
+status = "accepted"
+finite = true
+case = "wheeler_intermediate_1.0e-150_1.0e308"
+value = "244.0302508683625"
+[[rows]]
+status = "accepted"
+finite = true
+case = "representable_BigFloat_angle"
+value = "[0.0, 0.0]"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: placement x offset must remain finite and preserve nonzero values in Float64"
+case = "overflow_BigFloat_offset"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: placement x offset must remain finite and preserve nonzero values in Float64"
+case = "underflow_BigFloat_offset"
+[[rows]]
+status = "rejected"
+diagnostic = "ArgumentError: line requires at least 3 distinct vertices"
+case = "collapsed_finite_translation"

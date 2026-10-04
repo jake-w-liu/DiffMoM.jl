@@ -1,0 +1,7 @@
+* Global zero remains a physical node, distinct from the external return
+.subckt global_ground p1 p2 ref
+Rref ref 0 200
+Rleft p1 ref 50
+Rright p2 ref 75
+Ccross p1 p2 2p
+.ends global_ground

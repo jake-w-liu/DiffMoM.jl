@@ -1,0 +1,9 @@
+{
+  "scope": "Classification of retained actual engine failure; no new analysis claimed",
+  "status": "UNVERIFIED_LICENSE",
+  "native_stderr": "\n      Sonnet Error:\n      Sonnet Lite Limitation\n      sparameter.son exceeds your Sonnet Lite license because:\n      Circuit includes one or more data file components.\n      Sonnet Lite does not allow data file components.\n      Contact your Sonnet Software representative for information about upgrading your license.\n\n",
+  "stderr_sha256": "34b1949a92664cb6a9d5a5b6fa9d3e298d9f57ddd871f66186b3fe09a9bb5de3",
+  "ideal_control": "Three actual frequencies simulated on identical geometry with TYPE IDEAL RES16.77",
+  "source": "sparameter.son",
+  "model": "device_model.s2p"
+}

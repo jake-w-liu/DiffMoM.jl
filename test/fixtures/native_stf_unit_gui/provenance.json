@@ -1,0 +1,16 @@
+{
+  "utc": "2026-10-03T21:29:46.150327+00:00",
+  "native_version": "Sonnet18.53-Lite technology editor",
+  "source_scope": "Manufactured literal two-layer unit controls, independently edited/saved by native GUI; no linked-STF EM license claim.",
+  "maintain_physical": true,
+  "observed": {
+    "OHUM_70000_to_OHMM": 0.07,
+    "OHSQ_2_to_MOSQ": 2000.0,
+    "MOHSQ_2000_native_roundtrip_MOSQ": 2000.0
+  },
+  "schema_url": "https://www.sonnetsoftware.com/schema/matl/matl-1.4.xsd",
+  "limits": "Public bias cannot be viewed/edited; geometry/interpolation/rho/RPV semantics remain unsupported.",
+  "before_failure": "OHMM wrongly scaled .07 to .00007 Ohm-m, producing 1000x conductivity.",
+  "source_archive": "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\stf_bias_gui_x5ogkcxn",
+  "schema_native_disagreement": "Official matl1.4 XSD accepts MOHSQ, not MOSQ. Actual editor accepts MOHSQ as mOhms/sq and saves MOSQ with unchanged Rs2000."
+}

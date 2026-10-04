@@ -40,9 +40,14 @@ export deembed_double_delay_calibrate, deembed_double_delay_apply
 characteristic impedance [Ohm], `gl = gamma * len` complex electrical
 length.  e^{+i wt} convention."""
 function planar_line_abcd(zc::Number, gl::Number)
+    isfinite(zc) && !iszero(zc) && isfinite(gl) || throw(ArgumentError(
+        "line impedance must be finite and nonzero, and electrical length finite"))
     c, s = cosh(ComplexF64(gl)), sinh(ComplexF64(gl))
     z = ComplexF64(zc)
-    return ComplexF64[c z * s; s / z c]
+    result = ComplexF64[c z * s; s / z c]
+    all(isfinite, result) || throw(ArgumentError(
+        "line ABCD overflows at this electrical length"))
+    return result
 end
 
 # Y -> ABCD for a reciprocal 2-port (currents into the network)
@@ -61,6 +66,9 @@ end
 
 # ABCD -> Y for a reciprocal 2-port
 function _y_of_abcd(T::AbstractMatrix)
+    size(T) == (2, 2) || throw(DimensionMismatch(
+        "ABCD conversion needs a 2x2 matrix, got $(size(T))"))
+    all(isfinite, T) || throw(ArgumentError("ABCD contains non-finite entries"))
     b = T[1, 2]
     abs2(b) > eps(real(abs(b)))^2 || throw(ArgumentError(
         "ABCD B term is zero: cannot form Y parameters"))
@@ -107,10 +115,13 @@ function deembed_ports(Y::AbstractMatrix,
     W = YA .* transpose(B) - Diagonal(D)
     iszero(W) && throw(ArgumentError(
         "de-embedding solve is singular (Y_A*B - D = 0)"))
-    f = lu(W)
+    f = lu(W; check=false)
     issuccess(f) || throw(ArgumentError(
         "de-embedding solve is singular: check the per-port chains"))
-    return ldiv!(f, ComplexF64.(Diagonal(C)) - YA .* transpose(A))
+    result = ldiv!(f, ComplexF64.(Diagonal(C)) - YA .* transpose(A))
+    all(isfinite, result) || throw(ArgumentError(
+        "de-embedding produced non-finite admittances"))
+    return result
 end
 
 """    deembed_port_extension(Y, zc, gl) -> Matrix{ComplexF64}
@@ -156,7 +167,7 @@ function deembed_double_delay_calibrate(Yl::AbstractMatrix,
     T2 = _abcd_of_y(Y2l)
     all(isfinite, Tl) && all(isfinite, T2) || throw(ArgumentError(
         "calibration standard ABCD is non-finite (degenerate Y21)"))
-    f2 = lu(T2)
+    f2 = lu(T2; check=false)
     issuccess(f2) || throw(ArgumentError(
         "2*len standard ABCD is singular"))
     P = Tl * (f2 \ Tl)
@@ -186,6 +197,17 @@ end
 # acosh +/- branch is resolved so that planar_line_abcd(zc, gl)
 # reconstructs the section (fail-closed on non-line sections).
 function _line_params_of_abcd(Tline::AbstractMatrix)
+    size(Tline) == (2, 2) || throw(DimensionMismatch(
+        "line extraction needs a 2x2 ABCD matrix"))
+    all(isfinite, Tline) || throw(ArgumentError("line ABCD contains non-finite entries"))
+    # A reciprocal uniform section has identical end impedances and unit
+    # determinant. Checking only B/C cannot establish either invariant.
+    abs(Tline[1, 1] - Tline[2, 2]) <=
+        0.05 * max(abs(Tline[1, 1]), abs(Tline[2, 2]), 1.0) ||
+        throw(ArgumentError("ABCD is not a symmetric line section (A != D)"))
+    determinant = Tline[1, 1] * Tline[2, 2] - Tline[1, 2] * Tline[2, 1]
+    abs(determinant - 1) <= 0.05 || throw(ArgumentError(
+        "ABCD is not a reciprocal line section (determinant != 1)"))
     c = (Tline[1, 1] + Tline[2, 2]) / 2
     s2 = Tline[1, 2] * Tline[2, 1]
     abs2(s2) > eps(real(abs(s2)))^2 || throw(ArgumentError(

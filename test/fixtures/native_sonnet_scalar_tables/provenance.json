@@ -1,0 +1,89 @@
+{
+  "scope": "Actual native CSV expression controls; table1 linear/table2 bilinear. No STF XML interpolation claim.",
+  "engine": "18.53-Lite 64-bit Windows",
+  "cases": [
+    {
+      "tag": "table1_nodes",
+      "source": "escaped.son",
+      "resistance_ohm_square": [
+        2.0,
+        20.0
+      ],
+      "outside": "reject",
+      "origin_artifact": "native_scalar_table1_aOrl1r"
+    },
+    {
+      "tag": "table1_midpoint",
+      "source": "table_midpoint.son",
+      "resistance_ohm_square": [
+        11.0
+      ],
+      "outside": "reject",
+      "origin_artifact": "native_scalar_table1_domain_M6hNeJ"
+    },
+    {
+      "tag": "table1_below_hold",
+      "source": "table_below.son",
+      "resistance_ohm_square": [
+        2.0
+      ],
+      "outside": "hold",
+      "origin_artifact": "native_scalar_table1_domain_M6hNeJ"
+    },
+    {
+      "tag": "table1_above_hold",
+      "source": "table_above.son",
+      "resistance_ohm_square": [
+        20.0
+      ],
+      "outside": "hold",
+      "origin_artifact": "native_scalar_table1_domain_M6hNeJ"
+    },
+    {
+      "tag": "table2_node_first",
+      "source": "node_first_table.son",
+      "resistance_ohm_square": [
+        2.0,
+        2.0
+      ],
+      "outside": "reject",
+      "origin_artifact": "native_scalar_table2_nVT2PF"
+    },
+    {
+      "tag": "table2_node_last",
+      "source": "node_last_table.son",
+      "resistance_ohm_square": [
+        16.0,
+        16.0
+      ],
+      "outside": "reject",
+      "origin_artifact": "native_scalar_table2_nVT2PF"
+    },
+    {
+      "tag": "table2_midpoint",
+      "source": "midpoint_table.son",
+      "resistance_ohm_square": [
+        7.5,
+        7.5
+      ],
+      "outside": "reject",
+      "origin_artifact": "native_scalar_table2_nVT2PF"
+    },
+    {
+      "tag": "table2_quarter",
+      "source": "quarter_table.son",
+      "resistance_ohm_square": [
+        4.375,
+        4.375
+      ],
+      "outside": "reject",
+      "origin_artifact": "native_scalar_table2_nVT2PF"
+    }
+  ],
+  "limitations": [
+    "Native table1 outside-domain parameter warnings and endpoint holding retained; default provider rejects outside.",
+    "Unescaped nested quote control evaluates native Loss=0 and fails physical full S; preserved.",
+    "Inherited unused VAR Rho warning retained exactly in original table1 controls.",
+    "No wider technology interpolation/etch/rho/RPV geometry acceptance."
+  ]
+}

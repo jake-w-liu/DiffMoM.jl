@@ -1,0 +1,3 @@
+.subckt bad p1 p2 ref
+R1 p1 ref {x}
+.ends bad

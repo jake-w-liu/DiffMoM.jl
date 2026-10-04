@@ -1,0 +1,17 @@
+* Independent linear controlled-source classes and forward current sense
+.subckt controlled p1 p2 ref gm=2m beta=.3
+Rin p1 ref 50
+Rsense sense ref 100
+Gout cnode ref p1 ref {gm} m = 2
+Fout cnode ref VsEnSe {beta} m=1.5
+Rc cnode ref 300
+Evoltage ev ref p1 ref -1.5
+Hvoltage hv ref vsense 10
+Re ev p2 30
+Rh hv p2 40
+Rg cnode p2 200
+Cload p2 ref 1p
+Vsense p1 sense DC 0
+Vbias bias ref DC 5
+Rb bias p1 500
+.ends controlled

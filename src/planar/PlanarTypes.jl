@@ -42,10 +42,10 @@ end
 # keep their perturbation type so gradients flow through the cascade
 PlanarLayer(epsr::Number, mur::Number, d::Number;
             epsr_z::Number=epsr, mur_z::Number=mur) =
-    PlanarLayer(promote(epsr, mur, Float64(d), epsr_z, mur_z)...)
+    PlanarLayer(promote(epsr, mur, d * 1.0, epsr_z, mur_z)...)
 PlanarLayer(epsr::Number, mur::Number, d::Number,
             epsr_z::Number, mur_z::Number) =
-    PlanarLayer(promote(epsr, mur, Float64(d), epsr_z, mur_z)...)
+    PlanarLayer(promote(epsr, mur, d * 1.0, epsr_z, mur_z)...)
 
 """Box z-termination kind: `TERM_PEC`/`TERM_PMC`/`TERM_SURFACE`/`TERM_OPEN`."""
 @enum BoundaryKind::UInt8 begin
@@ -131,19 +131,19 @@ function planar_validate(stack::PlanarStackup)
         throw(ArgumentError("PlanarStackup requires at least one layer"))
     @inbounds for l in eachindex(stack.layers)
         layer = stack.layers[l]
-        isfinite(real(layer.epsr)) ||
+        isfinite(layer.epsr) ||
             throw(ArgumentError("layer $l epsr must be finite"))
         real(layer.epsr) > 0 ||
             throw(ArgumentError("layer $l epsr must have Re > 0"))
-        isfinite(real(layer.mur)) ||
+        isfinite(layer.mur) ||
             throw(ArgumentError("layer $l mur must be finite"))
         real(layer.mur) > 0 ||
             throw(ArgumentError("layer $l mur must have Re > 0"))
-        isfinite(real(layer.epsr_z)) && real(layer.epsr_z) > 0 ||
+        isfinite(layer.epsr_z) && real(layer.epsr_z) > 0 ||
             throw(ArgumentError("layer $l epsr_z must have Re > 0"))
-        isfinite(real(layer.mur_z)) && real(layer.mur_z) > 0 ||
+        isfinite(layer.mur_z) && real(layer.mur_z) > 0 ||
             throw(ArgumentError("layer $l mur_z must have Re > 0"))
-        isfinite(real(layer.thickness)) && real(layer.thickness) > 0 ||
+        isfinite(layer.thickness) && real(layer.thickness) > 0 ||
             throw(ArgumentError("layer $l thickness must be positive"))
     end
     isfinite(stack.a) && stack.a > 0 ||
@@ -152,12 +152,12 @@ function planar_validate(stack::PlanarStackup)
         throw(ArgumentError("box side b must be positive"))
     for (name, term) in (("bottom", stack.bottom), ("top", stack.top))
         if term.kind == TERM_SURFACE
-            isfinite(real(term.zs)) ||
+            isfinite(term.zs) ||
                 throw(ArgumentError("$name terminator zs must be finite"))
         elseif term.kind == TERM_OPEN
-            real(term.epsr) > 0 ||
+            isfinite(term.epsr) && real(term.epsr) > 0 ||
                 throw(ArgumentError("$name open terminator needs Re epsr > 0"))
-            real(term.mur) > 0 ||
+            isfinite(term.mur) && real(term.mur) > 0 ||
                 throw(ArgumentError("$name open terminator needs Re mur > 0"))
         end
     end
@@ -253,8 +253,9 @@ thickness: x- and y-directed *volume* rooftops whose current distributes
 uniformly in z across the layer (the Rautio-Thelen volume-rooftop family,
 a sheet rooftop extended through the conductor thickness).  The `mask`
 and `connect_*` fields have the same layout as `SheetLevel` but index
-the layer, not an interface.  Ports cannot drive volume bases directly —
-use sheets on the bounding interfaces for wall ports."""
+the layer, not an interface. `PlanarPort` volume wall kinds directly
+drive its connected half rooftops. Their trace integrates the normalized
+axial profile, and therefore uses lateral width as its current weight."""
 struct VolLevel
     layer::Int
     mask::BitMatrix

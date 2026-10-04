@@ -1,0 +1,4 @@
+Dict{String, Any}("provider_calls_hz" => Float64[], "status" => "rejected", "input_frequency_hz" => "9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501", "diagnostic" => "ArgumentError: network frequency must remain finite and preserve nonzero values in Float64")
+Dict{String, Any}("provider_calls_hz" => [0.0], "stored_frequency_hz" => 0.0, "status" => "accepted", "input_frequency_hz" => "0.0")
+Dict{String, Any}("provider_calls_hz" => [1.0e9], "stored_frequency_hz" => 1.0e9, "status" => "accepted", "input_frequency_hz" => "1.0e9")
+Dict{String, Any}("provider_calls_hz" => Float64[], "status" => "rejected", "input_frequency_hz" => "1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500", "diagnostic" => "ArgumentError: network frequency must remain finite and preserve nonzero values in Float64")

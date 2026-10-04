@@ -1,0 +1,11 @@
+[zero]
+native_vs_exact_constitutive = 9.22265390413627e-13
+native_vs_physical = 9.222654310712085e-13
+
+[default]
+native_vs_exact_constitutive = 5.424445750435228e-14
+native_vs_physical = 6.560406194227849e-9
+
+[small]
+native_vs_exact_constitutive = 5.561475623560783e-13
+native_vs_physical = 7.116607955335533e-12

@@ -1,0 +1,11 @@
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (CSV scalar probe = loss.csv) in equation table1(loss.csv,FREQ)
+
+
+      Sonnet Warning:
+      Project File Error.
+      Line 59: Unexpected parameter sweep syntax.
+      unknown parameter Rho has been ignored
+

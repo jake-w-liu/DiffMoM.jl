@@ -1,0 +1,23 @@
+scope = "public databank wide-frequency storage and provider argument identity; explicit DC and representable controls"
+source_sha256 = "6e2b29ceb3b9609d64d7a549ad68ac3aff8d99c9155bebe5c3a3e7d80cf6001e"
+
+[[rows]]
+provider_calls_hz = []
+status = "rejected"
+input_frequency_hz = "9.999999999999999999999999999999999999999999999999999999999999999999999999999996e-501"
+diagnostic = "ArgumentError: network frequency must remain finite and preserve nonzero values in Float64"
+[[rows]]
+provider_calls_hz = [0.0]
+stored_frequency_hz = 0.0
+status = "accepted"
+input_frequency_hz = "0.0"
+[[rows]]
+provider_calls_hz = [1.0e9]
+stored_frequency_hz = 1.0e9
+status = "accepted"
+input_frequency_hz = "1.0e9"
+[[rows]]
+provider_calls_hz = []
+status = "rejected"
+input_frequency_hz = "1.000000000000000000000000000000000000000000000000000000000000000000000000000004e500"
+diagnostic = "ArgumentError: network frequency must remain finite and preserve nonzero values in Float64"

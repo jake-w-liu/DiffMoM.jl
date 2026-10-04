@@ -1,0 +1,3 @@
+.subckt device p1 g1 p2 g2
+Tline p1 g1 p2 g2 Z0=63 TD=0
+.ends device

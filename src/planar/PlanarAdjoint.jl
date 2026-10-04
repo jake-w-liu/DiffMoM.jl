@@ -84,6 +84,24 @@ end
     (e = exp(x.v); _PlanarDual(e, x.d * e))
 @inline Base.conj(x::_PlanarDual) = _PlanarDual(conj(x.v), conj(x.d))
 
+# At TM axial cutoff both grounded line impedances vanish linearly in
+# gamma^2.  Their parallel impedance still has a finite first derivative.
+@inline function _planar_zero_parallel_limit(zd::D, zu::D) where {D<:_PlanarDual}
+    dd = zd.d + zu.d
+    return D(zero(zd.v), iszero(dd) ? zero(dd) : zd.d * zu.d / dd)
+end
+
+# The ratio B/Zload has a finite directional limit when both values
+# vanish at cutoff; retaining it propagates the derivative of voltage
+# between separate interfaces instead of incorrectly treating the layer
+# as transparent.
+@inline function _planar_inv_zero_load_limit(a::D, b::D, scale::D,
+        zl::D) where {D<:_PlanarDual}
+    !iszero(b.v) && return D(Inf)
+    iszero(zl.d) && return iszero(b.d) ? a / scale : D(Inf)
+    return D((a.v + b.d / zl.d) / scale.v, zero(a.d))
+end
+
 # derivative-carrying limits at the e1 = 1 / e2 = 1 transparent-section
 # points: the value branch in PlanarImmittance is exact, but a parameter
 # that moves gamma*d through the degenerate point contributes
@@ -370,7 +388,9 @@ gradient `Y -> G` with `G[p,q] = dJ/dRe Y_pq - i dJ/dIm Y_pq`; otherwise a
 central finite difference on the `f` evaluation is used (`h_fd`).  Other
 keywords (`mx`, `my`, `block`, `surface_zs`, `max_bytes`) are forwarded to
 the forward assembly.  Returns `(J, grad)` with `grad` aligned to
-`params`.
+`params`. The owned raw-array budget reserves derivative workspace before
+the forward solve, accounting for the forward result retained during the
+derivative contraction. Rejected requests never invoke the objective.
 
 Note that plain complex-stepping cannot recover `dY/dθ` because `Y` is
 already complex (the i*eps perturbation cancels against the imaginary
@@ -388,25 +408,23 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
     h = Float64(h_fd)
     isfinite(h) && h > 0 ||
         throw(ArgumentError("h_fd must be finite and positive"))
-    r = solve_planar(prob, freq; mx=mx, my=my, block=block,
-        max_bytes=max_bytes, kw...)
-    J = _checked_objective(f, r.y)
-    G = gY === nothing ? _planar_wirtinger_fd(f, r.y, h) :
-        begin
-            gv = gY(r.y)
-            (gv isa AbstractMatrix && size(gv) == size(r.y) &&
-             all(isfinite, gv)) ||
-                throw(ArgumentError(
-                    "gY(Y) must return a finite $(size(r.y)) matrix"))
-            ComplexF64.(gv)
-        end
-
+    # Reject invalid descriptors before doing any EM work or invoking the
+    # objective. This also establishes the memory estimate's parameter set.
+    for p in params
+        _planar_param_check(prob.stack, p)
+    end
     nb = planar_basis_count(prob.basis)
     np = length(prob.ports)
     L = length(prob.stack.layers)
-    mg = planar_mode_grid(prob.grid, mx, my)
-    nmode = mg.mx * mg.my
-    blk = clamp(Int(block), 1, nmode)
+    mx >= 1 && my >= 1 && block >= 1 ||
+        throw(ArgumentError("mode counts and block must be positive"))
+    nmode = _checked_array_payload_bytes(UInt8, mx, my;
+        label="planar gradient mode count")
+    blk = Int(min(BigInt(block), BigInt(nmode)))
+    # Bound the first metadata allocations before making them. The complete
+    # workspace estimate below also reserves them during the forward solve.
+    _enforce_payload_limit(_checked_array_payload_bytes(Int, nb),
+        max_bytes, "planar gradient metadata", "max_bytes")
     iface = Vector{Int}(undef, nb)
     vialayers = Set{Int}()
     vollayers = Set{Int}()
@@ -425,11 +443,13 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
     pbs = _port_basis_indices(prob.basis, np)
 
     est = _checked_payload_sum("planar gradient",
+        _checked_array_payload_bytes(Float64, 7, mx),       # mode grid
+        _checked_array_payload_bytes(Float64, 7, my),
         _checked_array_payload_bytes(ComplexF64, nb, np),   # E/adjoint
         _checked_array_payload_bytes(ComplexF64, np, np),   # G
         _checked_array_payload_bytes(ComplexF64, np, np),   # Yw scratch
-        _checked_array_payload_bytes(Float64, mg.mx, nb),   # fxb
-        _checked_array_payload_bytes(Float64, mg.my, nb),   # fyb
+        _checked_array_payload_bytes(Float64, mx, nb),      # fxb
+        _checked_array_payload_bytes(Float64, my, nb),      # fyb
         _checked_array_payload_bytes(Float64, blk, nb),     # Wte
         _checked_array_payload_bytes(Float64, blk, nb),     # Wtm
         _checked_array_payload_bytes(ComplexF64, blk, np),  # Ub
@@ -444,21 +464,48 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
         _checked_array_payload_bytes(Int, nb),              # port lists
         _checked_array_payload_bytes(Int, 2 * npair, nb),   # pair rows/cols
         _checked_array_payload_bytes(Float64, 2 * length(params) + np),
-        # dual cascade state: 2 pols x (2*(L+1) + 2*L) + 3*L duals
+        # Dual cascade state includes voltage/current transfer workspaces.
         _checked_array_payload_bytes(_PlanarDual{ComplexF64},
-            11 * (L + 1)),
-        # per-parameter dual stackups: 3 duals/layer + 3/terminator x2
+            15 * (L + 1)),
+        _checked_array_payload_bytes(_ViaLayerState{_PlanarDual{ComplexF64}},
+            isempty(vlay) ? 0 : L),
+        _checked_array_payload_bytes(_VolLayerState{_PlanarDual{ComplexF64}},
+            isempty(volay) ? 0 : 2 * L),
+        # Every layer owns five duals, including both axial constants.
         _checked_array_payload_bytes(_PlanarDual{ComplexF64},
-            (3 * L + 6) * length(params)))
+            (5 * L + 6) * length(params)))
     _enforce_payload_limit(est, max_bytes, "planar gradient", "max_bytes")
 
-    # port signs: +1 west/south, -1 east/north (solve_planar convention)
-    sgn = [p.wall in (:west, :south) ? 1.0 : -1.0 for p in prob.ports]
-    E = zeros(ComplexF64, nb, np)
-    @inbounds for p in 1:np, b in pbs[p]
-        E[b, p] = sgn[p] * prob.basis.width[b]
+    # max_bytes applies to the whole operation. The forward result remains
+    # live while the derivative workspaces are used; checking each stage
+    # separately would allow their combined payload to exceed the limit.
+    remaining = Int(BigInt(_validated_resource_limit("max_bytes", max_bytes)) - est)
+    r = solve_planar(prob, freq; mx=mx, my=my, block=block,
+        max_bytes=remaining, kw...)
+    J = _checked_objective(f, r.y)
+    G = gY === nothing ? _planar_wirtinger_fd(f, r.y, h) :
+        begin
+            gv = gY(r.y)
+            (gv isa AbstractMatrix && size(gv) == size(r.y) &&
+             all(isfinite, gv)) ||
+                throw(ArgumentError(
+                    "gY(Y) must return a finite $(size(r.y)) matrix"))
+            ComplexF64.(gv)
+        end
+    mg = planar_mode_grid(prob.grid, mx, my)
+
+    sgn = [_planar_port_sign(p) for p in prob.ports]
+    # The Galerkin matrix is complex symmetric and the forward RHS is -E.
+    # An FFT forward solve therefore already contains its port adjoints.
+    Λmat = if r isa PlanarUFFTResult
+        -r.currents
+    else
+        E = zeros(ComplexF64, nb, np)
+        @inbounds for p in 1:np, b in pbs[p]
+            E[b, p] = sgn[p] * _planar_port_weight(prob.basis, b)
+        end
+        ldiv!(transpose(r.lu_fact), E)
     end
-    Λmat = ldiv!(transpose(r.lu_fact), E)
 
     pair_rows = Dict{Tuple{Int,Int},Vector{Int}}()
     pair_cols = Dict{Tuple{Int,Int},Vector{Int}}()
@@ -545,6 +592,8 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
         end
     end
 
+    _planar_bulk_loss_gradient!(g, params, G, Λmat, r.currents, prob,
+        get(kw, :via_sigma, Inf), get(kw, :volume_sigma, Inf))
     all(isfinite, g) || throw(ArgumentError(
         "planar gradient is non-finite: the frequency may sit on a " *
         "box resonance or a parameter may leave the model space"))

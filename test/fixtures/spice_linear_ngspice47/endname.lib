@@ -1,0 +1,2 @@
+.subckt bad p1 p2 ref
+.ends wrong
