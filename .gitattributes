@@ -1,3 +1,4 @@
+*.jl text eol=lf
 # Native-engine fixtures and their SHA256 provenance retain exact source bytes
 # on every platform, including original CRLF and legacy character encodings.
 test/fixtures/** -text -whitespace
