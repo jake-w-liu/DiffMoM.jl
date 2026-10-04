@@ -1,0 +1,14 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\abs_resonance_WOASHf\\three_with_delay\\source.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T18:34:14.101"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+started_utc = "2026-10-03T18:34:13.968"
+source_sha256 = "566d3e4c0d209d6c857c4302a55d08d22cde0987f05f60961b16ac64a84d7c60"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\abs_resonance_WOASHf\\three_with_delay\\actual\\source.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\abs_resonance_WOASHf\\\\three_with_delay\\\\actual\")"
+
+[dependency_sha256]
+"delay.s2p" = "495cfda8915b19de19447151ed22531aaef340dd4dc4b43dce048e4acb40591d"

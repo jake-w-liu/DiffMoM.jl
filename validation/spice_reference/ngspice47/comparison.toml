@@ -1,0 +1,42 @@
+engine_sha256 = "22d5cae2bd32b2e39157a8d27bf457122f68285b72a9ebefdf41551b628233ab"
+engine_version = """******\r\n** ngspice-47 : Circuit level simulation program\r\n** Compiled with KLU Direct Linear Solver\r\n** The U. C. Berkeley CAD Group\r\n** Copyright 1985-1994, Regents of the University of California.\r\n** Copyright 2001-2026, The ngspice team.\r\n** Please get your ngspice manual from https://ngspice.sourceforge.io/docs.html\r\n** Please file your bug-reports at https://ngspice.sourceforge.io/bugrep.html\r\n** Creation Date: Aug 11 2026   13:55:25\r\n******\r\n"""
+scope = "actual ngspice AC evaluation of emitted real R/C/G/E/F/V subcircuits; two declared two-port fixtures at grounded and complex common-mode floating references; excludes arbitrary vendor/nonlinear models and measured RFIC acceptance"
+julia_version = "1.13.1"
+utc = "2026-10-03T16:50:05.431"
+engine_path = "C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\external_tools\\ngspice47\\Spice64\\bin\\ngspice_con.exe"
+
+[complex_conjugate_pair_floating_reference]
+max_relative_frobenius_y = 2.336128506190178e-16
+points = 37
+floating_reference = true
+ports = 2
+max_absolute_y_siemens = 6.952433221959954e-18
+subcircuit_sha256 = "a5dec6e3adfdf4aa0c6b09beeb468ebc0683a3ca91198841ca762f3f702c9e99"
+
+[real_pole_affine_capacitance_floating_reference]
+max_relative_frobenius_y = 1.0245588646897568e-15
+points = 37
+floating_reference = true
+ports = 2
+max_absolute_y_siemens = 3.885780586188048e-16
+subcircuit_sha256 = "1c9143572a6c848520a1a25f4b5c39ef26431f41c23687a4b3e8a9aea5741616"
+
+[complex_conjugate_pair_grounded]
+max_relative_frobenius_y = 1.3764504050161612e-16
+points = 37
+floating_reference = false
+ports = 2
+max_absolute_y_siemens = 3.878959614448864e-18
+subcircuit_sha256 = "a5dec6e3adfdf4aa0c6b09beeb468ebc0683a3ca91198841ca762f3f702c9e99"
+
+[real_pole_affine_capacitance_grounded]
+max_relative_frobenius_y = 9.044209789301743e-16
+points = 37
+floating_reference = false
+ports = 2
+max_absolute_y_siemens = 3.3306690738754696e-16
+subcircuit_sha256 = "1c9143572a6c848520a1a25f4b5c39ef26431f41c23687a4b3e8a9aea5741616"
+
+[source_sha256]
+"src/planar/PlanarVectorFit.jl" = "098ea6ea230005b7aa676c7ce85372644908640365f0e817458c34b3c7918667"
+"src/planar/PlanarNetworkIO.jl" = "2a957d3619186b58369d072ecc84cb4a8c852c33e5f684cba2319ef9d6297937"

@@ -1,0 +1,39 @@
+utc = "2026-10-03T18:34:17.335"
+source_unchanged = true
+scope = "actual native circuit engine with supplied RLC and matched Touchstone-delay fixtures; declared 1-6GHz points, excludes physical EM/measured RFIC resonance acceptance and hidden-resonance guarantee"
+
+[deep_notch_with_delay]
+adaptive_points = 10
+native_high_precision_exports = ["deep_notch_with_delay\\actual\\native_resonant.s2p"]
+max_native_error_to_printed_bound = 0.9952165053246805
+native_points = 101
+max_native_log_full_s = 0.0008644932469445888
+max_adaptive_full_s = 1.1535501373326722e-7
+max_native_high_precision_full_s = [3.922916496057238e-11]
+converged = true
+
+[source_sha256_before]
+"src/planar/PlanarSweep.jl" = "686e2359c405ba3cef0677e46900a50464e318b91ab3af1a79cb12e676f76c4b"
+"validation/sonnet_stripline/sonnet_reference.jl" = "694f30b736b1a267c92c56fa2de78a4a4f6b6f8d981790719535e48e37bfdb3f"
+"validation/sonnet_stripline/validate_sonnet_abs_resonance.jl" = "519321bbcfa5415bcbb6f0e4cd353dd8cdd7ece49fb1380d9ec7e8913dfdf04c"
+"src/planar/PlanarCircuit.jl" = "eebbc944ab28b57096ec83d03a5388d3fe3da934170c0e4a76a194549f144cb8"
+"src/planar/PlanarSonnetIO.jl" = "012de92b24b7c481cd92e7a56ff47eccf12871935e213a4b1846e2305820ab43"
+"src/planar/PlanarNetworkIO.jl" = "478da8803d739d52e947eaac3c422d00ed1c7dbe866c5bbbdb70188537774327"
+
+[three_with_delay]
+adaptive_points = 14
+native_high_precision_exports = ["three_with_delay\\actual\\native_resonant.s2p"]
+max_native_error_to_printed_bound = 0.9952738294921599
+native_points = 101
+max_native_log_full_s = 0.0008287470643232624
+max_adaptive_full_s = 4.213057577055603e-7
+max_native_high_precision_full_s = [6.875534688736285e-13]
+converged = true
+
+[source_sha256_after]
+"src/planar/PlanarSweep.jl" = "686e2359c405ba3cef0677e46900a50464e318b91ab3af1a79cb12e676f76c4b"
+"validation/sonnet_stripline/sonnet_reference.jl" = "694f30b736b1a267c92c56fa2de78a4a4f6b6f8d981790719535e48e37bfdb3f"
+"validation/sonnet_stripline/validate_sonnet_abs_resonance.jl" = "519321bbcfa5415bcbb6f0e4cd353dd8cdd7ece49fb1380d9ec7e8913dfdf04c"
+"src/planar/PlanarCircuit.jl" = "eebbc944ab28b57096ec83d03a5388d3fe3da934170c0e4a76a194549f144cb8"
+"src/planar/PlanarSonnetIO.jl" = "012de92b24b7c481cd92e7a56ff47eccf12871935e213a4b1846e2305820ab43"
+"src/planar/PlanarNetworkIO.jl" = "478da8803d739d52e947eaac3c422d00ed1c7dbe866c5bbbdb70188537774327"

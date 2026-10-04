@@ -1,0 +1,14 @@
+Independent ngspice admittance drive 2
+.include model.cir
+Xmodel n1 n2 0 diffmom_nport
+Vdrive1 n1 0 DC 0 AC 0
+Vdrive2 n2 0 DC 0 AC 1
+.control
+set wr_singlescale
+set wr_vecnames
+set numdgt=17
+ac lin 37 1.0e6 3.0e10
+wrdata drive2.dat i(Vdrive1) i(Vdrive2)
+quit
+.endc
+.end

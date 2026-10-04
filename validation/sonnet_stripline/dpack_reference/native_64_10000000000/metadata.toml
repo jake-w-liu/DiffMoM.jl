@@ -1,0 +1,29 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\odb_dpack_native_FTREGx\\native_64_10000000000.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T19:31:43.097"
+response_nports = 4
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [874]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [64, 64]
+started_utc = "2026-10-03T19:31:42.784"
+source_sha256 = "963ab51f53be4ad030b648fab09d389f0d80f9efd7956186f4868dc8a44032aa"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\odb_dpack_native_FTREGx\\native_64_10000000000\\native_64_10000000000.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\odb_dpack_native_FTREGx\\\\native_64_10000000000\")"
+box_halfcell_counts = [128, 128]
+
+[touchstone_selected_log_checks."native_raw.s4p"]
+output_sha256 = "900a1a4f2426c9fa96eacf0405ca9c99757cd217e15dead4564c5e7a2db39fae"
+intended_deembedded = false
+max_difference = 3.865049213761774e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\odb_dpack_native_FTREGx\\native_64_10000000000\\native_raw.s4p"
+source_frequency_unit = "GHZ"
+source_options = []
+max_printed_bound_ratio = 0.7441466243811873
+intended_log_section = "raw"
+status = "PASS"
+
+[dependency_sha256]

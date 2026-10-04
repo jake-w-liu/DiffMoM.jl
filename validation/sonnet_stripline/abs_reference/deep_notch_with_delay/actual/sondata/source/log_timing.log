@@ -1,0 +1,416 @@
+Run 1:  Sun Oct 04 02:34:17 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\abs_resonance_WOASHf\deep_notch_with_delay\actual\source.son.
+
+    Begin circuit-theory simulation using frequency sweep:
+      Linear Start = 1, Stop = 6, Step = 0.05 GHZ
+
+    Frequency:  1 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.002 seconds.
+
+    Frequency:  1.05 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.1 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.15 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.2 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.25 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.3 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.35 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.4 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.45 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.5 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.55 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.6 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.65 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.7 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.75 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.8 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.85 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  1.9 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  1.95 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.05 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.1 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.15 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.2 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.25 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.3 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.35 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.4 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.45 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.5 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.55 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.6 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.65 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.7 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.75 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.8 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.85 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  2.9 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  2.95 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.05 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.1 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.15 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.2 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.25 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.3 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.35 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.4 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.45 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.5 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.55 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.6 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.65 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.7 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.75 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.8 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.85 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  3.9 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  3.95 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.05 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.1 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.15 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.2 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.25 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.3 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.35 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.4 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.45 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.5 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.55 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.6 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.65 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.7 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.75 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.8 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.85 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  4.9 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  4.95 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.05 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.1 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.15 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.2 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.25 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.3 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.35 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.4 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.45 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.5 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.55 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.6 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.65 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.7 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.75 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.8 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.85 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  5.9 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Frequency:  5.95 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0 seconds.
+
+    Frequency:  6 GHz
+      Frequency completed Sun Oct 04 02:34:17 2026.
+      Total time per frequency:  0.001 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 101 frequencies:  0.053 seconds.
+
+Em simulation completed Sun Oct 04 02:34:17 2026.
