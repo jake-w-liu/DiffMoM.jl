@@ -122,22 +122,29 @@ function _sonnet_scalar_dependency_sources(files::SonnetScalarFiles)
     return sources
 end
 
+# File staging deduplicates dependencies by resolved path. Snapshot checks
+# must instead visit every retained source: aliases may own distinct byte
+# arrays even when they claim the same path and expected digest.
+_sonnet_scalar_snapshot_sources(files::SonnetScalarFiles)=Iterators.flatten(
+    ((files.source,),files.conversion_sources,(table.source for table in values(files.tables))))
+
 function _sonnet_scalar_files_payload(files::SonnetScalarFiles)
     n=_checked_payload_sum("native scalar snapshot",_sonnet_scalar_project_payload(files.project),
         256,ncodeunits(files.conversion))
     seen=IdDict{Any,Nothing}()
-    for source in (files.source,files.conversion_sources...,_sonnet_scalar_dependency_sources(files)...)
+    for source in _sonnet_scalar_snapshot_sources(files)
         haskey(seen,source.bytes) && continue
         seen[source.bytes]=nothing
         n=_checked_payload_sum("native scalar snapshot",n,256,ncodeunits(source.path),length(source.bytes))
     end
     for table in values(files.tables)
-        haskey(seen,table.values) && continue
-        seen[table.values]=nothing
-        n=_checked_payload_sum("native scalar snapshot",n,512,
-            _checked_array_payload_bytes(Float64,length(table.row_keys)),
-            _checked_array_payload_bytes(Float64,length(table.column_keys)),
-            _checked_array_payload_bytes(Float64,size(table.values)...))
+        haskey(seen,table.values) || (n=_checked_payload_sum("native scalar snapshot",n,512))
+        for array in (table.row_keys,table.column_keys,table.values)
+            haskey(seen,array) && continue
+            seen[array]=nothing
+            n=_checked_payload_sum("native scalar snapshot",n,
+                _checked_array_payload_bytes(Float64,size(array)...))
+        end
     end
     return n
 end
@@ -160,8 +167,11 @@ _sonnet_scalar_payload(v)=_checked_payload_sum("native scalar context",
 
 function _sonnet_check_scalar_files(files::SonnetScalarFiles)
     files.outside in (:reject,:hold) || throw(ArgumentError("invalid native scalar table domain policy"))
-    for source in (files.source,files.conversion_sources...,_sonnet_scalar_dependency_sources(files)...)
-        bytes2hex(SHA.sha256(source.bytes))==source.sha256 ||
+    hashes=IdDict{Vector{UInt8},String}()
+    for source in _sonnet_scalar_snapshot_sources(files)
+        digest=haskey(hashes,source.bytes) ? hashes[source.bytes] :
+            (hashes[source.bytes]=bytes2hex(SHA.sha256(source.bytes)))
+        digest==source.sha256 ||
             throw(ArgumentError("native scalar source snapshot was mutated"))
     end
     _sonnet_scalar_identity(files.project,files.source,files.tables,files.root,files.outside,
@@ -359,6 +369,7 @@ function _sonnet_scalar_power!(p,depth)
     value=_sonnet_scalar_atom!(p,depth)
     while _sonnet_scalar_peek(p)=='^'
         p.position+=1
+        _sonnet_scalar_peek(p)=='+' && throw(ArgumentError("native positive exponent sign is unsupported"))
         rhs=_sonnet_scalar_peek(p) in ('+','-') ? _sonnet_scalar_unary!(p,depth+1) : _sonnet_scalar_atom!(p,depth)
         value=Expr(:call,:^,value,rhs)
     end
@@ -405,6 +416,7 @@ end
 # zero. Quoted CSV filenames are skipped; no host-language code is parsed.
 function _sonnet_parse_scalar(text::AbstractString)
     ncodeunits(text)<=16384 || throw(ArgumentError("native scalar expression byte budget exceeded"))
+    '\0' in text && throw(ArgumentError("invalid native scalar NUL character"))
     chars=collect(text);i=1;quoted=false;nesting=0
     while i<=length(chars)
         c=chars[i]

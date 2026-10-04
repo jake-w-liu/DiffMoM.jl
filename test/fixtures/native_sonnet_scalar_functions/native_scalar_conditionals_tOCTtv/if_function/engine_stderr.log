@@ -1,0 +1,6 @@
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Equation: if(FREQ>2000000000,2,1)
+      Unknown function name starting with 'if'. Detected at line 1, column 3
+

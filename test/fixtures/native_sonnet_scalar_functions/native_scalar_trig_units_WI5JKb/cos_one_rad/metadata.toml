@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_WI5JKb\\cos_one_rad.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T00:58:16.037"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T00:58:15.118"
+source_sha256 = "91d2ff4b963ac487d7d5f7d53026822b3e83bee6f6c8c5b3c8fb323ea72a2d59"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_WI5JKb\\cos_one_rad\\cos_one_rad.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_scalar_trig_units_WI5JKb\\\\cos_one_rad\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "ca641970e478d75ba50f80892a7c3eed0157b1064357b10b0b5166146fa680e8"
+intended_deembedded = false
+max_difference = 5.0297585699888555e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_WI5JKb\\cos_one_rad\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.8845747608364444
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "ca641970e478d75ba50f80892a7c3eed0157b1064357b10b0b5166146fa680e8"
+intended_deembedded = false
+max_difference = 5.0297585699888555e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_WI5JKb\\cos_one_rad\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.8845747608364444
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

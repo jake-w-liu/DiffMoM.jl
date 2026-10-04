@@ -1,0 +1,14 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\prj_frequency_contract_3xU70H\\coarse_child_flag0.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T00:26:25.041"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+started_utc = "2026-10-04T00:26:24.369"
+source_sha256 = "add10e9e6e871af08d506af7cb1f65a1881df3dfce4b9536347d00f744fa3873"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\prj_frequency_contract_3xU70H\\coarse_child_flag0\\coarse_child_flag0.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\prj_frequency_contract_3xU70H\\\\coarse_child_flag0\")"
+
+[dependency_sha256]
+"coarse_child_flag0_child.son" = "b58336cc592b9393afc7fd1f5d86b5efc7ad4d6f874bde02c3db0fd4c0ea89e5"

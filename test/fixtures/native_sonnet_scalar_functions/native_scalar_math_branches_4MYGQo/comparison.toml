@@ -1,0 +1,416 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_math_branches_4MYGQo"
+reference_helper_sha256 = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+full_s_gate = 0.005
+primary_sha256 = "ff9f47696e8f5839ac9897d09f2b563da1207f41f170085917a7871ce6679b4e"
+scope = "documented complex/signed mathematical branch hypotheses versus independently declared literal material; failures retained"
+evaluator_sha256 = "c40b6797870a98933165323f3a68d8f158ba52525ade582ac6b7accad6bd0735"
+literal_native_gate = 2.0e-13
+
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+expression = ""
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "16d0b25d998b91d64ef4f818ab489013bcf045b45cbfbc414a551596735ede47"
+tag = "literal2"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "4+int(-2.9)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function int"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "218ea8fcd3f00b93953a23e98e9132168797e8442a1be3da6b0a4ea61dd5e06d"
+tag = "int_signed"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "4+fmod(-5,3)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function fmod"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "a3ef96b84ab63346f5fa6b2ca2b05f3c04a73120c5b896ae511301a72542b8b4"
+tag = "fmod_signed"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "fmod(5,-3)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function fmod"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "2173e8668fddd27fee94327ae66bdbf70e7c4ee84b8b622679567204b6a7d20a"
+tag = "fmod_divisor_negative"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "4+fmod(-5,-3)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function fmod"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "1b76decdd4f2abc9f6ddca8d2ca8345df40e0394e01d2af6919f15718c622b72"
+tag = "fmod_both_negative"
+[[runs]]
+s_imag = [[-0.0009352825685, -0.017824062772, -0.017824062772, -0.0009355600899], [-0.009835691663, -0.176458699073, -0.176458699073, -0.009838842601]]
+native_literal_gate_pass = false
+expression = "imag(sqrt(-4))+4"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.2307923716531, 0.7690188434563, 0.7690188434563, 0.2307923769392], [0.2330117405287, 0.7481766491503, 0.7481766491503, 0.2330122403952]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.13984210564962757, 0.1383857556833161]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 6 Ohms/sq"]
+source_sha256 = "6f64fc33c12709900b2c7a84afdb90dc18f2e23ec3a693d6a98bfc8cc58e4600"
+tag = "sqrt_negative_signed"
+[[runs]]
+s_imag = [[0.0047946849606, -0.02355440236, -0.02355440236, 0.0047946845594], [0.046495222391, -0.23302398704, -0.23302398704, 0.046494813323]]
+native_literal_gate_pass = false
+expression = "imag(asin(2))/ln(2+sqrt(3))+1"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0111537982636, 0.9712948103141, 0.9712948103141, 0.0111555033479]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.09092145202702363, 0.09179664103483016]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+source_sha256 = "82b7e119abcc200e2bb3f405cfd1389d028a6506fa3f4d46794bc873ad873712"
+tag = "asin_branch"
+[[runs]]
+s_imag = [[0.00067139259898, -0.01943086317, -0.01943086317, 0.00067119203706], [0.0057535277998, -0.192133632124, -0.192133632124, 0.0057511210559]]
+native_literal_gate_pass = false
+expression = "imag(acos(2))/ln(2+sqrt(3))+3"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.1667191186895, 0.833096361845, 0.833096361845, 0.1667191277972], [0.1717431907817, 0.809861463971, 0.809861463971, 0.1717440779764]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.07574448208689, 0.0747420453672833]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 4 Ohms/sq"]
+source_sha256 = "99faf8f80c6b49623f7cb3004b8008ca513cb9c01d8da1aa50d598a0cbafb0f5"
+tag = "acos_branch"
+[[runs]]
+s_imag = [[0.00067139259898, -0.01943086317, -0.01943086317, 0.00067119203706], [0.0057535277998, -0.192133632124, -0.192133632124, 0.0057511210559]]
+native_literal_gate_pass = false
+expression = "3+imag(acosh(-2))/3.141592653589793"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.1667191186895, 0.833096361845, 0.833096361845, 0.1667191277972], [0.1717431907817, 0.809861463971, 0.809861463971, 0.1717440779764]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.07574448208689, 0.0747420453672833]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 4 Ohms/sq"]
+source_sha256 = "6a54adf66ba83c211f07f5d4485647609aefa3369a4bc020dab056d588afb6bd"
+tag = "acosh_branch"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "3+imag(atanh(2))/(3.141592653589793/2)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "03ee1f378922e26bd8680dab625fcd89e5a2adf9edb7e9ab17a5d4463b697110"
+tag = "atanh_branch"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "imag(cmplx(-1,0)^.5)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "8edaba0a3462cb9d82f0f29a63916f8a4569fbaed5635a11d4f435175f7500f0"
+tag = "complex_power_poszero"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "4+imag(cmplx(-1,-0)^.5)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "fa0ec84160b7ad366447455880b668e8ec834ee6b56232a2cc2764fa70418563"
+tag = "complex_power_negzero"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "imag(sin(cmplx(0,1)))/sinh(1)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "99f49ff3bc473e298dc41f8af99e559b915dfb9b3d4ceb406e688274588136e2"
+tag = "sin_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "real(cos(cmplx(0,1)))/cosh(1)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function real"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "d4c93ee4433148d18838ddf614c5cd363a7eb5810140319cde745f10947af87e"
+tag = "cos_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "imag(tan(cmplx(0,1)))/tanh(1)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "c4d046a32641577e57c5db471d4f0239fcb27938a665c86e03c379fc1e1b9b33"
+tag = "tan_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "imag(sinh(cmplx(0,1)))/sin(1)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "3bb3f678d8aa69b64d9d9d57cc53d46f23ad0482f074caef2a3db6a4f9a222d3"
+tag = "sinh_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "real(cosh(cmplx(0,1)))/cos(1)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function real"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "d9d28251f776e0f10e86717621d6a0cfd8bc3ce1bcf6388d04b4fab76083563a"
+tag = "cosh_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "imag(tanh(cmplx(0,1)))/tan(1)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "8c6a4e5878a85dfc8da870dd5edd4f4dd39bb7a2c40e28301f285e693d08c6d3"
+tag = "tanh_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "imag(asinh(cmplx(0,.5)))/(3.141592653589793/6)*2"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "2cc701c93b403deda62fddfef41cdea1faa08ed051d5a4491c9d587b493cb986"
+tag = "asinh_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "ln(cmplx(0,exp(2)))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function cmplx"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "6b5979c2a9885451fc4f7a28f00babc402cba0fcb86a3ef1f4a75d8157ff55f0"
+tag = "ln_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "log10(cmplx(0,100))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function cmplx"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "e1c1a27b7e7f39eb69dc89a64aa111b8c0a2be3f0868cc17219bfc34a5a2de2b"
+tag = "log10_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "db10(cmplx(0,100))/10"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function db10"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "b06f2978c6e51678a675cf13919a8a3c9890736064ba03decc80fdb080f1d990"
+tag = "db10_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "db20(cmplx(0,10))/10"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function db20"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "beff8b00a8e9bd69b4cff4080789e5ab8f8503679e92caceb8499ab168d459a0"
+tag = "db20_complex"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "imag(exp(cmplx(0,3.141592653589793/2)))+1"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "584ad9c25a6b333dc42b41e99397f6212bba374989e68e8c94027ec9aed0cebb"
+tag = "exp_complex"
+[[runs]]
+s_imag = [[0.0048389105989, -0.023598626902, -0.023598626902, 0.0048388951885], [0.0434710079614, -0.229991828634, -0.229991828634, 0.0434704370808]]
+native_literal_gate_pass = false
+expression = "2^-3^2*128"
+current_reader_value = 0.25
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.627338208796637e-5, 0.00020268440797756613]
+current_reader_native_gate_pass = true
+s_real = [[0.0126013501768, 0.987222122897, 0.987222122897, 0.0126013671099], [0.0240080741471, 0.9583836051933, 0.9583836051932, 0.0240097250186]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.07843763758350504, 0.07853480081997732]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 0.25 Ohms/sq"]
+source_sha256 = "423a91ea2ec1df0cd8ff096522c6c8f2a307be1f8368aa5009b8e2d2fa15ef65"
+tag = "signed_power_chain"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "(2^-3)^2*128"
+current_reader_value = 2.0
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031384575009e-5, 0.00016225113757851016]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "4ec717c081dc144f8fb03a4db8bc9842341c70ca024858a427350dc515e3d15f"
+tag = "signed_power_left"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "2^(-3^2)*1024"
+current_reader_value = 2.0
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031384575009e-5, 0.00016225113757851016]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0, 0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "989bec9c92e8c59aecef4bc567fa09b1da603878f3a27f4ba7925dce31611f66"
+tag = "signed_power_right"

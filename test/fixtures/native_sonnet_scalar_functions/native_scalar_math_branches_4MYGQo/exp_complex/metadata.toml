@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_math_branches_4MYGQo\\exp_complex.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T01:13:20.033"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T01:13:19.054"
+source_sha256 = "584ad9c25a6b333dc42b41e99397f6212bba374989e68e8c94027ec9aed0cebb"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_math_branches_4MYGQo\\exp_complex\\exp_complex.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_scalar_math_branches_4MYGQo\\\\exp_complex\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "6e7537821619dea4efbb3dac3106f5a41d76810a90b0fa8a271ce7a468c162e8"
+intended_deembedded = false
+max_difference = 5.892649906740781e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_math_branches_4MYGQo\\exp_complex\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.93016809782442
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "6e7537821619dea4efbb3dac3106f5a41d76810a90b0fa8a271ce7a468c162e8"
+intended_deembedded = false
+max_difference = 5.892649906740781e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_math_branches_4MYGQo\\exp_complex\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.93016809782442
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

@@ -1,0 +1,52 @@
+native_subsections = [38]
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_qmdZRj\\acos_half_literal\\acos_half_literal.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_scalar_trig_units_qmdZRj\\\\acos_half_literal\")"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+source_sha256 = "060987b1bc2829859fca4534373c130cb0d2ca70a91a528631a42ea5fcf4ca06"
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+julia_version = "1.12.7"
+started_utc = "2026-10-04T01:09:51.051"
+box_halfcell_counts = [40, 40]
+response_nports = 2
+process_success = true
+deembedded = false
+ended_utc = "2026-10-04T01:09:52.037"
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_qmdZRj\\acos_half_literal.son"
+actual_cell_counts = [20, 20]
+
+[touchstone_selected_log_checks."native.s2p"]
+output_reference_imag = [[0.0, 0.0]]
+max_difference = 3.899883305361094e-6
+output_reference_real = [[50.0, 50.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_qmdZRj\\acos_half_literal\\native.s2p"
+selected_reference_deembedded = false
+source_options = []
+intended_log_section = "raw"
+reference_contract = "native geometry port R/X/L/C references"
+source_frequency_unit = "GHZ"
+status = "PASS"
+max_printed_bound_ratio = 0.7175782027999172
+frequency_scale_hz = 1.0e9
+expected_reference_imag = [[0.0, 0.0]]
+expected_reference_real = [[50.0, 50.0]]
+intended_deembedded = false
+output_sha256 = "27db74a922750b716e207bc632a3f19afa69564389f2fba1af477f749b288bb0"
+
+[[touchstone_selected_log_check_history]]
+output_reference_imag = [[0.0, 0.0]]
+max_difference = 3.899883305361094e-6
+output_reference_real = [[50.0, 50.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_trig_units_qmdZRj\\acos_half_literal\\native.s2p"
+selected_reference_deembedded = false
+source_options = []
+intended_log_section = "raw"
+reference_contract = "native geometry port R/X/L/C references"
+source_frequency_unit = "GHZ"
+status = "PASS"
+max_printed_bound_ratio = 0.7175782027999172
+frequency_scale_hz = 1.0e9
+expected_reference_imag = [[0.0, 0.0]]
+expected_reference_real = [[50.0, 50.0]]
+intended_deembedded = false
+output_sha256 = "27db74a922750b716e207bc632a3f19afa69564389f2fba1af477f749b288bb0"
+
+[dependency_sha256]

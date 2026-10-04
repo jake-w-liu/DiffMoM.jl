@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_phase_power_RbnSSX\\atan2_negative_zero.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T01:09:01.043"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T01:09:00.059"
+source_sha256 = "571776406756c13ddeeb944fa6e58a67c1ae9ba20e82de463a1cd28f379f7017"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_phase_power_RbnSSX\\atan2_negative_zero\\atan2_negative_zero.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_scalar_phase_power_RbnSSX\\\\atan2_negative_zero\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "4d4f5595c1487fd5d1a83aac3a81fa13aec70f00ac19499b794a471422618478"
+intended_deembedded = false
+max_difference = 4.8903622219724484e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_phase_power_RbnSSX\\atan2_negative_zero\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.6874080730487959
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "4d4f5595c1487fd5d1a83aac3a81fa13aec70f00ac19499b794a471422618478"
+intended_deembedded = false
+max_difference = 4.8903622219724484e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_phase_power_RbnSSX\\atan2_negative_zero\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.6874080730487959
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

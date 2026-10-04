@@ -23,7 +23,13 @@ using Test,DiffMoM,SHA,TOML,LinearAlgebra
     @test sonnet_variable_value(p,"Inner")==3.
     @test sonnet_variable_value(p,"Loss")==3.
     @test sonnet_variable_value(p,"abs(cmplx(3,4))")==5.
-    @test_throws ArgumentError sonnet_variable_value(p,"cmplx(3,4)")
+    # The inline controls in test_planar_sonnet_functions establish the
+    # same finite real projection for unnamed material quantities.
+    @test sonnet_variable_value(p,"cmplx(3,4)")==3.
+    @test sonnet_variable_value(p,"cmplx(3,4)")==sonnet_variable_value(p,"Inner")
+    @test sonnet_variable_value(p,"abs(Inner)")==3.
+    @test sonnet_variable_value(p,"imag(Inner)")==0.
+    @test sonnet_variable_value(p,"imag(cmplx(3,4))")==4.
     @test_throws ArgumentError sonnet_variable_value(p,"Inner";variables=Dict("Inner"=>3+4im))
     result=solve_sonnet_project(p,1e9;raw=true,mx=160,my=160,method=:dense_fft)
     reference=solve_sonnet_project(read_sonnet_project(joinpath(directory,"literal3/literal3.son")),1e9;

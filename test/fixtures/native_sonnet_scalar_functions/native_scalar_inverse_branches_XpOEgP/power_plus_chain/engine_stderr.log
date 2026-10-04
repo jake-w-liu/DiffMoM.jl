@@ -1,0 +1,6 @@
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Equation: 2^+3^2/256
+      Unexpected operator '+' found. Detected at line 1, column 3
+

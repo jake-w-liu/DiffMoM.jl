@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_inverse_branches_XpOEgP\\asin_cut_imag_lower.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T01:16:00.038"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T01:15:59.056"
+source_sha256 = "688ee4c5e96235002d1253e7016a43d632339d01e96846e98890121ba1a14c14"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_inverse_branches_XpOEgP\\asin_cut_imag_lower\\asin_cut_imag_lower.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_scalar_inverse_branches_XpOEgP\\\\asin_cut_imag_lower\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "9616b35af253572b3cce3e3228f3410c540883d77015d278b4bb55dd66f0c1ba"
+intended_deembedded = false
+max_difference = 7.844209363180543e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_inverse_branches_XpOEgP\\asin_cut_imag_lower\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.9301679790599747
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "9616b35af253572b3cce3e3228f3410c540883d77015d278b4bb55dd66f0c1ba"
+intended_deembedded = false
+max_difference = 7.844209363180543e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_inverse_branches_XpOEgP\\asin_cut_imag_lower\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.9301679790599747
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

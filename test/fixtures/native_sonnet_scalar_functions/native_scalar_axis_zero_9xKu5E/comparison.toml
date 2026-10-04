@@ -1,0 +1,170 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_axis_zero_9xKu5E"
+reference_helper_sha256 = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+full_s_gate = 0.005
+primary_sha256 = "ff9f47696e8f5839ac9897d09f2b563da1207f41f170085917a7871ce6679b4e"
+scope = "complex inverse branch hypotheses versus separately declared literal; numerical normalizers from independent Python cmath, failures retained"
+evaluator_sha256 = "b22011be9a0480f2787226868d7715a89e03fab6c630d49b6abd6c2ca8eaeda5"
+literal_native_gate = 2.0e-13
+
+[[runs]]
+s_imag = [[0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]]
+expression = ""
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+s_real = [[0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "689b4b06e133e23045f16851d99ca548734d96972f593f001da8581752385fce"
+tag = "literal2"
+[[runs]]
+native_literal_gate_pass = true
+expression = "imag(asin(cmplx(2,0)))/(-1.3169578969248166)*2"
+current_reader_value = -1.9999999999999998
+error = "ArgumentError: invalid NOR material parameters"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "UNVERIFIED"
+source_sha256 = "fb11cec24e55adcd18c8c02bf7549c295f5828968b354c0b46d03b1ea49adca3"
+tag = "asin_explicit_pos"
+[[runs]]
+s_imag = [[0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]]
+native_literal_gate_pass = true
+expression = "imag(asin(cmplx(2,-0)))/(-1.3169578969248166)*2"
+current_reader_value = 1.9999999999999998
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031484547992e-5]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "ac978722db106a60ee120352640fb0e4f84fe8d2d3052f5d62b0eb48ccf54ec9"
+tag = "asin_explicit_neg"
+[[runs]]
+native_literal_gate_pass = true
+expression = "imag(acos(cmplx(2,0)))/(1.3169578969248166)*2"
+current_reader_value = -2.0
+error = "ArgumentError: invalid NOR material parameters"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "UNVERIFIED"
+source_sha256 = "9faac06a28dfb544949219abf60928f0a37af9a4fc4255c823414cf908d12dc4"
+tag = "acos_explicit_pos"
+[[runs]]
+s_imag = [[0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]]
+native_literal_gate_pass = true
+expression = "imag(acos(cmplx(2,-0)))/(1.3169578969248166)*2"
+current_reader_value = 2.0
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031484547992e-5]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "e73ea3495eed96e086a20f2811ec0e5312af7dfc3e11eaa36d7e038ea892aa94"
+tag = "acos_explicit_neg"
+[[runs]]
+native_literal_gate_pass = true
+expression = "imag(atanh(cmplx(2,0)))/(-1.5707963267948966)*2"
+current_reader_value = -2.0
+error = "ArgumentError: invalid NOR material parameters"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "UNVERIFIED"
+source_sha256 = "991d2d5d61e251954405bfcad296b40915dc46dbfb4bc620c48114b4e12206a5"
+tag = "atanh_explicit_pos"
+[[runs]]
+s_imag = [[0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]]
+native_literal_gate_pass = true
+expression = "imag(atanh(cmplx(2,-0)))/(-1.5707963267948966)*2"
+current_reader_value = 2.0
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031484547992e-5]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "8629d56cbf63f2971829f661ad6dddfc13771a0ca383070805d1f216824237a2"
+tag = "atanh_explicit_neg"
+[[runs]]
+s_imag = [[0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]]
+native_literal_gate_pass = true
+expression = "imag(sqrt(cmplx(-4,0)))/(2)*2"
+current_reader_value = 2.0
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031484547992e-5]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "a4c5e8d1d2d3c3c8b9d022783cbcf73191e7689f64d39940f74c2d1aaaacf7c3"
+tag = "sqrt_explicit_pos"
+[[runs]]
+native_literal_gate_pass = true
+expression = "imag(sqrt(cmplx(-4,-0)))/(2)*2"
+current_reader_value = -2.0
+error = "ArgumentError: invalid NOR material parameters"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "UNVERIFIED"
+source_sha256 = "dfda751c99e1e82bc4a8c8d8124a6f7fbe3da83cc134fbd2f2536d8c7dfa1344"
+tag = "sqrt_explicit_neg"
+[[runs]]
+s_imag = [[0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]]
+native_literal_gate_pass = true
+expression = "imag(acosh(cmplx(-2,0)))/(3.141592653589793)*2"
+current_reader_value = 2.0
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031484547992e-5]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]]
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "SIMULATED"
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+source_sha256 = "7c6161d7eb39e6fd8b8dfd4c3957a470f6483f70d35f8ad7ea8572d21befe3da"
+tag = "acosh_explicit_pos"
+[[runs]]
+native_literal_gate_pass = true
+expression = "imag(acosh(cmplx(-2,-0)))/(3.141592653589793)*2"
+current_reader_value = -2.0
+error = "ArgumentError: invalid NOR material parameters"
+independent_literal_ohm_square = 2.0
+native_stderr = ""
+native_expression_status = "NO_EQUATION_WARNING"
+declared_angle_unit = "DEG"
+native_literal_delta_s = [0.0]
+status = "UNVERIFIED"
+source_sha256 = "a9041f3512da5f2518cda2693bc8f2e9dc1425f3ca362b2ad1cef3e0056f0f02"
+tag = "acosh_explicit_neg"

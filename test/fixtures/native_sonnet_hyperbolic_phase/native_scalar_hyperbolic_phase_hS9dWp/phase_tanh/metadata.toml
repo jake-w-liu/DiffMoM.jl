@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_hyperbolic_phase_hS9dWp\\phase_tanh.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T01:30:17.039"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T01:30:16.134"
+source_sha256 = "5f39fe3e927e555e155e4ebfc0eb0461c40c67d3dc040b8e74ced39156e229f6"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_hyperbolic_phase_hS9dWp\\phase_tanh\\phase_tanh.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_scalar_hyperbolic_phase_hS9dWp\\\\phase_tanh\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "4ad59cfd7e11c0a6734873fdbb79dc2c34326f641129eb0e9409de9a977aa8f8"
+intended_deembedded = false
+max_difference = 7.194399230899418e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_hyperbolic_phase_hS9dWp\\phase_tanh\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.8629741803801383
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "4ad59cfd7e11c0a6734873fdbb79dc2c34326f641129eb0e9409de9a977aa8f8"
+intended_deembedded = false
+max_difference = 7.194399230899418e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_hyperbolic_phase_hS9dWp\\phase_tanh\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.8629741803801383
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

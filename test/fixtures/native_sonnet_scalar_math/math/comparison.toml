@@ -1,0 +1,442 @@
+literal_native_gate = 2.0e-13
+scope = "documented native scalar real and complex functions versus independently declared literal DC sheet materials"
+primary_sha256 = "ff9f47696e8f5839ac9897d09f2b563da1207f41f170085917a7871ce6679b4e"
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_math_Y70Dau"
+
+[[runs]]
+s_imag = [0.0032634951363, -0.022023128488, -0.022023128488, 0.0032634109071]
+tag = "fmod_positive_literal"
+expression = "fmod(5.5,2)"
+s_real = [0.0698807828566, 0.929940028882, 0.929940028882, 0.0698807970856]
+status = "SIMULATED"
+source_sha256 = "d608df177e5f0e3d6d2420dbc5d32901e8c84d8648e33acedd5d8d12ed91c9a3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 1.5
+[[runs]]
+s_imag = [0.0032634951363, -0.022023128488, -0.022023128488, 0.0032634109071]
+native_literal_gate_pass = true
+source_sha256 = "029ad94827a6364aaa1e7d151a6d608f4ad61e3148740627ead1cbe6e957f972"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 1.5
+tag = "fmod_positive_expression"
+expression = "fmod(5.5,2)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function fmod"
+s_real = [0.0698807828566, 0.929940028882, 0.929940028882, 0.0698807970856]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.5 Ohms/sq"]
+[[runs]]
+s_imag = [0.0032634951363, -0.022023128488, -0.022023128488, 0.0032634109071]
+tag = "fmod_negative_literal"
+expression = "abs(fmod(-5.5,2))"
+s_real = [0.0698807828566, 0.929940028882, 0.929940028882, 0.0698807970856]
+status = "SIMULATED"
+source_sha256 = "d608df177e5f0e3d6d2420dbc5d32901e8c84d8648e33acedd5d8d12ed91c9a3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 1.5
+[[runs]]
+s_imag = [0.0032634951363, -0.022023128488, -0.022023128488, 0.0032634109071]
+native_literal_gate_pass = true
+source_sha256 = "990722a7511a20007177ba0686ba4f0966a6ee7cefbf9373f00785bec8f605c2"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 1.5
+tag = "fmod_negative_expression"
+expression = "abs(fmod(-5.5,2))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function fmod"
+s_real = [0.0698807828566, 0.929940028882, 0.929940028882, 0.0698807970856]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.5 Ohms/sq"]
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+tag = "int_positive_literal"
+expression = "int(2.8)"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+status = "SIMULATED"
+source_sha256 = "f1396065f94f55527222605f184418e5e9ac661b56adaab6e9c83dc7f34010a3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 2.0
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+native_literal_gate_pass = true
+source_sha256 = "526d9a2f6a68bb8707ec68ad88db002a279cbbb61ca71b492396c3e719cb8d36"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 2.0
+tag = "int_positive_expression"
+expression = "int(2.8)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function int"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+tag = "int_negative_literal"
+expression = "abs(int(-2.8))"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+status = "SIMULATED"
+source_sha256 = "f1396065f94f55527222605f184418e5e9ac661b56adaab6e9c83dc7f34010a3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 2.0
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+native_literal_gate_pass = true
+source_sha256 = "4d440aad56ad0a697cf1a2f356b0e3a1a9ec7b122518f28cb750ff4e3460c630"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 2.0
+tag = "int_negative_expression"
+expression = "abs(int(-2.8))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function int"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+[[runs]]
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+tag = "max_literal"
+expression = "max(2,3)"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+status = "SIMULATED"
+source_sha256 = "25262accd87abe40d4226baac2ad3c9e48d705fd6e2334979437a1176f7b6e40"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 3.0
+[[runs]]
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+native_literal_gate_pass = true
+source_sha256 = "d410735ff22fb4928940daab291ff01de340ba506f5f4f23f643c30a2f5062cd"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 3.0
+tag = "max_expression"
+expression = "max(2,3)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function max"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+tag = "min_literal"
+expression = "min(2,3)"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+status = "SIMULATED"
+source_sha256 = "f1396065f94f55527222605f184418e5e9ac661b56adaab6e9c83dc7f34010a3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 2.0
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+native_literal_gate_pass = true
+source_sha256 = "b3602a27fc58ce8f27a4d25d9d0e8eb17746a76c3dbaba599fbdf4ab4968acad"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 2.0
+tag = "min_expression"
+expression = "min(2,3)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function min"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+[[runs]]
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+tag = "hypot_literal"
+expression = "hypot(3,4)"
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+status = "SIMULATED"
+source_sha256 = "1d41ab88dbced88e8ca226a0e7e2e5a9004f6472c5f1549f5c8d6f133a44c2e3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 5.0
+[[runs]]
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+native_literal_gate_pass = true
+source_sha256 = "0bfcd36f957153b96771ff27f28ea92259096a975f0671ae065fddc58d2533b8"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 5.0
+tag = "hypot_expression"
+expression = "hypot(3,4)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function hypot"
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 5 Ohms/sq"]
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+tag = "real_literal"
+expression = "real(cmplx(2,3))"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+status = "SIMULATED"
+source_sha256 = "f1396065f94f55527222605f184418e5e9ac661b56adaab6e9c83dc7f34010a3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 2.0
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+native_literal_gate_pass = true
+source_sha256 = "9c5e8719bb7b06e4a71b9c7f1015fda7cfe4b47788ac9202c99abc46ad79568d"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 2.0
+tag = "real_expression"
+expression = "real(cmplx(2,3))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function real"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+[[runs]]
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+tag = "imag_literal"
+expression = "imag(cmplx(2,3))"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+status = "SIMULATED"
+source_sha256 = "25262accd87abe40d4226baac2ad3c9e48d705fd6e2334979437a1176f7b6e40"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 3.0
+[[runs]]
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+native_literal_gate_pass = true
+source_sha256 = "4a7d317b9a0015d0190dacb0305bf3288ed6f6a5cc0529bdc7fadad6374f1066"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 3.0
+tag = "imag_expression"
+expression = "imag(cmplx(2,3))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+[[runs]]
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+tag = "mag_literal"
+expression = "mag(cmplx(3,4))"
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+status = "SIMULATED"
+source_sha256 = "1d41ab88dbced88e8ca226a0e7e2e5a9004f6472c5f1549f5c8d6f133a44c2e3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 5.0
+[[runs]]
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+native_literal_gate_pass = true
+source_sha256 = "964925378e3819a0135e4c02760f0af4c8c91402481caf84aa7d4fba506a1f2b"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 5.0
+tag = "mag_expression"
+expression = "mag(cmplx(3,4))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function mag"
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 5 Ohms/sq"]
+[[runs]]
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+tag = "abs_literal"
+expression = "abs(cmplx(3,4))"
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+status = "SIMULATED"
+source_sha256 = "1d41ab88dbced88e8ca226a0e7e2e5a9004f6472c5f1549f5c8d6f133a44c2e3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 5.0
+[[runs]]
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+native_literal_gate_pass = true
+source_sha256 = "ad895e6a4f1bc9765ee3e4dd323675ab86c51a8b782436004b9cf3cae160c635"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 5.0
+tag = "abs_expression"
+expression = "abs(cmplx(3,4))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function cmplx"
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 5 Ohms/sq"]
+[[runs]]
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+tag = "conj_literal"
+expression = "abs(imag(conj(cmplx(2,3))))"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+status = "SIMULATED"
+source_sha256 = "25262accd87abe40d4226baac2ad3c9e48d705fd6e2334979437a1176f7b6e40"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 3.0
+[[runs]]
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+native_literal_gate_pass = true
+source_sha256 = "9ee05cf698aabba931adf63b06982b0f62fa824fa0edf21b4d01b9b7e4ced3a8"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 3.0
+tag = "conj_expression"
+expression = "abs(imag(conj(cmplx(2,3))))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+[[runs]]
+s_imag = [-0.009938602053, -0.008818240887, -0.008818240887, -0.009939432374]
+tag = "deg_literal"
+expression = "deg(cmplx(1,1))"
+s_real = [0.6921786067437, 0.3075494434891, 0.3075494434891, 0.6921785475666]
+status = "SIMULATED"
+source_sha256 = "37127358c457e8076fb05684dc3eaf91f2d0ee6e3df01fb3e2f2d4f365f798ee"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 45.0
+[[runs]]
+s_imag = [-0.009938602053, -0.008818240887, -0.008818240887, -0.009939432374]
+native_literal_gate_pass = true
+source_sha256 = "9709389913f3e80b87c62192c3e692a09fa16f42e20d31f4f7b705a5bb937495"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 45.0
+tag = "deg_expression"
+expression = "deg(cmplx(1,1))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+s_real = [0.6921786067437, 0.3075494434891, 0.3075494434891, 0.6921785475666]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 45 Ohms/sq"]
+[[runs]]
+s_imag = [0.004158157435, -0.022917838928, -0.022917838928, 0.0041581115813]
+tag = "rad_literal"
+expression = "rad(cmplx(1,1))"
+s_real = [0.0379392508647, 0.9618830839512, 0.9618830839512, 0.0379392666509]
+status = "SIMULATED"
+source_sha256 = "9f9a65473c7499420878c13f22569806c77435f2256fb733b61e684fd53418ab"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 0.7853981633974483
+[[runs]]
+s_imag = [0.004158157435, -0.022917838928, -0.022917838928, 0.0041581115813]
+native_literal_gate_pass = true
+source_sha256 = "936e29d8f633b58a32e72e4f0d065087ddb9572c6982ecbb9645c42bc47c9296"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 0.7853981633974483
+tag = "rad_expression"
+expression = "rad(cmplx(1,1))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function rad"
+s_real = [0.0379392508647, 0.9618830839512, 0.9618830839512, 0.0379392666509]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0.785398 Ohms/sq"]
+[[runs]]
+s_imag = [0.0031330572862, -0.021892683326, -0.021892683326, 0.0031329674022]
+tag = "ln_complex_literal"
+expression = "ln(cmplx(3,4))"
+s_real = [0.0745877063602, 0.9252328720506, 0.9252328720506, 0.0745877203547]
+status = "SIMULATED"
+source_sha256 = "2d8e222afdd29558f50b560c4eaa41c4ae9a679ed736ff976e56bcf0dfc22913"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 1.6094379124341003
+[[runs]]
+s_imag = [0.0031330572862, -0.021892683326, -0.021892683326, 0.0031329674022]
+native_literal_gate_pass = true
+source_sha256 = "9e4edf6cf26ebd2a057a4f9fe8f6f113df6245a59d7179fc3800b201be3eb7f4"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 1.6094379124341003
+tag = "ln_complex_expression"
+expression = "ln(cmplx(3,4))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function cmplx"
+s_real = [0.0745877063602, 0.9252328720506, 0.9252328720506, 0.0745877203547]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.60944 Ohms/sq"]
+[[runs]]
+s_imag = [0.0038818406615, -0.022641507642, -0.022641507642, 0.0038817830127]
+tag = "sqrt_complex_literal"
+expression = "imag(sqrt(cmplx(-1,0)))"
+s_real = [0.0477566027849, 0.9520652747782, 0.9520652747782, 0.0477566180991]
+status = "SIMULATED"
+source_sha256 = "47be4073281bf5e644bf945318f7d421ba1a16b6d4ff60f4edab0ab1d79ef9c6"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 1.0
+[[runs]]
+s_imag = [0.0038818406615, -0.022641507642, -0.022641507642, 0.0038817830127]
+native_literal_gate_pass = true
+source_sha256 = "b802ffde593da7c5ae7040f901ad77b8a123d1930a986b6f8b9f79af4f7ae642"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 1.0
+tag = "sqrt_complex_expression"
+expression = "imag(sqrt(cmplx(-1,0)))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+s_real = [0.0477566027849, 0.9520652747782, 0.9520652747782, 0.0477566180991]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1 Ohms/sq"]
+[[runs]]
+s_imag = [0.0038818406615, -0.022641507642, -0.022641507642, 0.0038817830127]
+tag = "sqrt_negative_literal"
+expression = "imag(sqrt(-1))"
+s_real = [0.0477566027849, 0.9520652747782, 0.9520652747782, 0.0477566180991]
+status = "SIMULATED"
+source_sha256 = "47be4073281bf5e644bf945318f7d421ba1a16b6d4ff60f4edab0ab1d79ef9c6"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 1.0
+[[runs]]
+s_imag = [0.0038818406615, -0.022641507642, -0.022641507642, 0.0038817830127]
+native_literal_gate_pass = true
+source_sha256 = "0c9fbd1e04e632792e292824e7d78f7d27f83a4929d590bbdfc9074aa7af8621"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 1.0
+tag = "sqrt_negative_expression"
+expression = "imag(sqrt(-1))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function imag"
+s_real = [0.0477566027849, 0.9520652747782, 0.9520652747782, 0.0477566180991]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1 Ohms/sq"]
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+tag = "complex_power_literal"
+expression = "real(cmplx(0,1)^2)+3"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+status = "SIMULATED"
+source_sha256 = "f1396065f94f55527222605f184418e5e9ac661b56adaab6e9c83dc7f34010a3"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 2.0
+[[runs]]
+s_imag = [0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208]
+native_literal_gate_pass = true
+source_sha256 = "8a6693dfc8c683db4d108cfd034fd6b1cc66a71d5733682b24c3854ea4a1d51f"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 2.0
+tag = "complex_power_expression"
+expression = "real(cmplx(0,1)^2)+3"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function real"
+s_real = [0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+[[runs]]
+s_imag = [0.0033011300959, -0.022060765542, -0.022060765542, 0.0033010474949]
+tag = "exp_complex_literal"
+expression = "real(exp(cmplx(1,1)))"
+s_real = [0.0685255309272, 0.9312953475556, 0.9312953475556, 0.0685255452235]
+status = "SIMULATED"
+source_sha256 = "7c071f06649cd6203dae753b1aa8b87481eb5ef5466248127fbf33b8d768d754"
+native_stderr = ""
+native_variable_lines = []
+independent_literal_ohm_square = 1.4686939399158851
+[[runs]]
+s_imag = [0.0033011300959, -0.022060765542, -0.022060765542, 0.0033010474949]
+native_literal_gate_pass = true
+source_sha256 = "06a17e34e6903a4c9600a8f932a9e8714e628b616714d6e7b389760a929dddce"
+native_stderr = ""
+status = "SIMULATED"
+independent_literal_ohm_square = 1.4686939399158851
+tag = "exp_complex_expression"
+expression = "real(exp(cmplx(1,1)))"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function real"
+s_real = [0.0685255309272, 0.9312953475556, 0.9312953475556, 0.0685255452235]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.46869 Ohms/sq"]

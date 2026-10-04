@@ -1,0 +1,450 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Functions and Operators</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="Manuals and Help for Sonnet Suites" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet Suites Documentation.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("FunctionsandOperators");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Functions and Operators</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="UsingSonnet.html">Using Sonnet</a> &rsaquo;&rsaquo; <a href="EquationSyntax.html">Equation Syntax</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="EquationSyntax.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="EquationExamples.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="Constants.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps14"><span class="rvts22">Most functions and operators should always use lower case characters. Use parentheses in your equation to delineate the order in which the operations should be performed. For example</span></p>
+<p class="rvps40"><span class="rvts110">((x *&nbsp;y)^2)</span></p>
+<p class="rvps14"><span class="rvts22">would multiply the complex number x by the complex number y and square the resulting complex number.</span></p>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">Operators</span></span></h3>
+<div class="rvps2"><a name="popup435215820"></a><table width="72%" border="1" cellpadding="6" cellspacing="2" style="border-spacing: 2px;">
+<tr valign="top">
+<td width="216" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Entry</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Definition</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="216" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">x + y</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Complex addition of x and y</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="216" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">x - y</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Complex subtraction of y from x</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="216" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">x*y</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Complex multiplication of x and y</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="216" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">x/y</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Complex division of&nbsp;of x by y</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="216" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">x^y</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Power&nbsp;x^y = x raised to the power of y</span></p>
+</td>
+</tr>
+</table>
+</div>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">Logarithmic Functions</span></span></h3>
+<div class="rvps2"><a name="popup444309190"></a><table width="72%" border="1" cellpadding="6" cellspacing="2" style="border-spacing: 2px;">
+<tr valign="top">
+<td width="219" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Entry</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Definition</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="219" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">db10(x)</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">dB of a Power value (i.e. S21^2) = 10Log10(|x|)</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="219" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">db20(x)</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">dB of a voltage value (i.e. S21) = 20Log10(|x|)</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="219" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">log10(x)</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">The base 10 logarithm of the magnitude of x</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="219" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">ln(x)</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">The natural logarithm of the magnitude of x</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="219" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">exp(x)</span></p>
+</td>
+<td width="776" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Natural antilogarithm of x</span></p>
+</td>
+</tr>
+</table>
+</div>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">Complex Math Functions</span></span></h3>
+<div class="rvps2"><a name="popup444334773"></a><table width="72%" border="1" cellpadding="6" cellspacing="2" style="border-spacing: 2px;">
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Entry</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Definition</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">real(x)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Real part of complex value x</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">imag(x)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Imaginary part of complex value x</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">mag(x), abs(x)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Magnitude of complex value x</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">deg(x)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Phase of complex value x in degrees</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">rad(x)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Phase of complex value x in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">cmplx(x,y)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps39"><span class="rvts22">Complex: form a complex number from two values&nbsp;CMPLX(x,y) = (&nbsp;x+iy)</span></p>
+<p class="rvps39"><span class="rvts22">Note that this is the only way you can form a complex number.</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">hypot(x,y)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps39"><span class="rvts22">Euclidean distance between x and y</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="222" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">conj(x)</span></p>
+</td>
+<td width="255" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps39"><span class="rvts22">Conjugate of a complex number</span></p>
+<p class="rvps39"><span class="rvts22">((&nbsp;x+iy) -&gt; (&nbsp;x+iY))</span></p>
+</td>
+</tr>
+</table>
+</div>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">Trigonometric Functions</span></span></h3>
+<div class="rvps2"><a name="popup444324056"></a><table width="72%" border="1" cellpadding="6" cellspacing="2" style="border-spacing: 2px;">
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Entry</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Definition</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">sin(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Sine of complex value x in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">cos(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Cosine of complex value x in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">tan(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Tangent of x with x in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">asin(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Inverse sine of x with result in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">acos(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Inverse cosine of x with result in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">atan(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Inverse tangent of x with result in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">atan2(y,x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Inverse tangent of y/x with result in correct quadrant</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">sinh(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Hyperbolic sine of x with x in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">cosh(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Hyperbolic cosine of x with x in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">tanh(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Hyperbolic tangent of x with x in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">asinh(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Inverse hyperbolic sine of x with result in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">acosh(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Inverse hyperbolic cosine of x with result in radians</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="253" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">atanh(x)</span></p>
+</td>
+<td width="745" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Inverse hyperbolic tangent of x with result in radians</span></p>
+</td>
+</tr>
+</table>
+</div>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">General Mathematical Functions</span></span></h3>
+<div class="rvps2"><a name="popup444328909"></a><table width="72%" border="1" cellpadding="6" cellspacing="2" style="border-spacing: 2px;">
+<tr valign="top">
+<td width="256" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Entry</span></p>
+</td>
+<td width="742" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Definition</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="256" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">fmod(x,y)</span></p>
+</td>
+<td width="742" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Floating point remainder of x divided by y</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="256" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">int(x)</span></p>
+</td>
+<td width="742" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Truncated integral value of x</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="256" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">max(x,y)</span></p>
+</td>
+<td width="742" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Maximum of x and y</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="256" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">min(x,y)</span></p>
+</td>
+<td width="742" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Minimum of x and y</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="256" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">sqrt(x)</span></p>
+</td>
+<td width="742" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Square root of x</span></p>
+</td>
+</tr>
+</table>
+</div>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">Conversion Functions</span></span></h3>
+<div class="rvps2"><a name="popup444322621"></a><table width="73%" border="1" cellpadding="6" cellspacing="2" style="border-spacing: 2px;">
+<tr valign="top">
+<td width="259" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Entry</span></p>
+</td>
+<td width="748" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts23">Definition</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="259" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">m2p(x)</span></p>
+</td>
+<td width="748" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Converts x meters to the present project units. For example, if project units are set to mils, it converts x meters to the equivalent number of mils</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="259" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">h2p(x)</span></p>
+</td>
+<td width="748" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Converts x Hz to the present project units. For example, if project units are set to&nbsp;GHz, it converts x Hz to the equivalent number of&nbsp;GHz</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="259" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">p2m(x)</span></p>
+</td>
+<td width="748" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Converts x project units to meters. For example, if project units are set to mils, it converts x mils to the equivalent number of &nbsp;meters</span></p>
+</td>
+</tr>
+<tr valign="top">
+<td width="259" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">p2h(x)</span></p>
+</td>
+<td width="748" valign="middle" style="border-style: inset; padding: 1px 10px;"><p class="rvps5"><span class="rvts22">Converts x project units to Hz. For example, if project units are&nbsp;GHz, it converts x&nbsp;GHz to the equivalent number of Hz</span></p>
+</td>
+</tr>
+</table>
+</div>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">FORMAT Function (Graph Tab Only)</span></span></h3>
+<p class="rvps2"><span class="rvts6">When you graph the response of a circuit after completing a simulation, you may choose how to plot complex data (typically s-parameters) on the graph by using the Format droplist in the Manage Curves dialog box. This Format droplist gives you the following choices: Magnitude (dB), Magnitude, Phase (Deg), Phase (Rad), REal, and Imaginary. The FORMAT() function maps your choice from the Format droplist in the Manage Curves dialog box to your equation. For example, if you choose Real in the Format droplist of Manage Curves, then FORMAT(Z) will give you the real part of argument Z in your equation.</span></p>
+<h3 class="rvps9"><span class="rvts0"><span class="rvts19">Table Functions</span></span></h3>
+<p class="rvps14"><a name="popup444415871"></a><span class="rvts22">There are two additional functions that may be used in the project editor.</span></p>
+<p class="rvps14"><span class="rvts23">table1("&nbsp;filename.csv", &lt;key&gt;)</span><span class="rvts22">&nbsp; &nbsp; This function allows you to access values in a .&nbsp;csv file; saving a file from&nbsp;Microsoft Excel for example. Note that a comma must separate the two values. Note that the quote marks are required as part of the syntax.</span></p>
+<p class="rvps14"><span class="rvts22">"&nbsp;filename.csv" is the path of the .&nbsp;csv file you wish to access. If only the file name is specified (with no path), then the file should be in the same directory as the source project. You may use relative paths. &lt;key&gt; is the value from the first column of the desired entry in the .&nbsp;csv file. The function returns the second value. If the &lt;key&gt; value does not occur in the file, then linear interpolation of the file is used to return a value. Note that you may not extrapolate; the &lt;key&gt; value must fall between two existing values in the table. The key value does not have to be a fixed number; you may use the constant&nbsp;FREQ as the key or a variable. For example, you could define a variable as table1("example.csv", FREQ) which would define a variable which changes with the frequency according to the numbers in the table example.csv. Please note that the frequency units are in Hz. Comments should be preceded by an exclamation point (!). The exclamation point may be the first character in an entry or occur later in a line entry.</span></p>
+<p class="rvps14"><span class="rvts22">For example, you have the .&nbsp;csv file "&nbsp;example.csv" which contains the following entries :</span></p>
+<p class="rvps40"><span class="rvts110">! Project galaxy data</span></p>
+<p class="rvps40"><span class="rvts110">1,45</span><br/><span class="rvts110">3,135</span><br/><span class="rvts110">7,315 !My comment</span><br/><span class="rvts110">8,360</span></p>
+<p class="rvps14"><span class="rvts22">then,</span></p>
+<p class="rvps14"><span class="rvts22">table1("&nbsp;example.csv", 3) = 135&nbsp;</span><br/><span class="rvts22">table1("&nbsp;example.csv", 4) = 180</span><br/><span class="rvts22">table1("&nbsp;example.csv", 8) = 360</span></p>
+<p class="rvps14"><span class="rvts23">table2("filename.csv", &lt;rowkey&gt;, &lt;colkey&gt;)</span><span class="rvts22">&nbsp;This function allows you to access values in a .csv file; saving a file from Microsoft Excel for example. Note that commas must separate the three values. While the table1 function allows you to have only one value per key, the table2 function allows you to define a row of multiple values, and use the two keys to identify a specific value in the row.</span></p>
+<p class="rvps14"><span class="rvts22">"filename.csv" is the path of the .csv file you wish to access. If only the file name is specified (with no path), then the file should be in the same directory as the source project. You may use relative paths. &nbsp;&lt;rowkey&gt; is the row number from which you wish to obtain a value and &lt;colkey&gt; identifies the column from which you wish to obtain the value. The function returns the value from that column in that row of the source file. If the &lt;rowkey&gt; or &lt;colkey&gt; does not occur in the file, then interpolation of the file is used to return a value. The key values do not have to be fixed numbers; you may use the constant FREQ or a variable as key values. Comments should be preceded by an exclamation point (!). The exclamation point may be the first character in an entry or occur later in a line entry.</span></p>
+<p class="rvps14"><span class="rvts22">For example, you have the .csv file "table2d.csv" which contains the following entries:</span></p>
+<p class="rvps40"><span class="rvts110">! Project galaxy data</span></p>
+<p class="rvps40"><span class="rvts110">&nbsp;, &nbsp;1, 2, 3, 4, 5, &nbsp;6</span></p>
+<p class="rvps40"><span class="rvts110">&nbsp;2, 2, 4, 6, 9, 10, 12</span></p>
+<p class="rvps40"><span class="rvts110">&nbsp;4, 4, 8,12,16, 20, 24</span></p>
+<p class="rvps40"><span class="rvts110">&nbsp;6, 6,12,18,24, 30, 36</span></p>
+<p class="rvps40"><span class="rvts110">&nbsp;8, 8,16,24,32, 40, 48</span></p>
+<p class="rvps40"><span class="rvts110">10,10,20,30,40, 50, 60</span></p>
+<p class="rvps40"><span class="rvts110">12,12,24,36,48, 60, 72 !My comment</span></p>
+<p class="rvps40"><span class="rvts110">14,14,28,42,56, 70, 84</span></p>
+<p class="rvps40"><span class="rvts110">16,16,32,48,64, 80, 96</span></p>
+<p class="rvps40"><span class="rvts110">18,18,36,54,72, 90,108</span></p>
+<p class="rvps40"><span class="rvts110">20,20,40,60,80,100,120</span></p>
+<p class="rvps40"><span class="rvts110">22,22,44,66,88,110,132</span></p>
+<p class="rvps40"><span class="rvts110">&nbsp;</span></p>
+<p class="rvps14"><span class="rvts22">Line 1 is the list of column keys. All other lines are &lt;rowkey&gt; followed by the values in each column. Note that there is no value in the first position in the first line. This is an "empty" slot as it is the intersection of the row and column keys. The .csv file is displayed below in Excel to more clearly illustrate the format.</span></p>
+<p class="rvps14"><img width="408" height="426" alt="" style="vertical-align: text-bottom;" src="lib/HelpRobohelpRelease 1656sonnetHelp_Topicsimag.gif"></p>
+<p class="rvps14"><span class="rvts22">Then,</span></p>
+<p class="rvps14"><span class="rvts22">table2("table2d.csv", 2,4) = 9</span><br/><span class="rvts22">table2("table2d.csv", 8,1) = 8</span><br/><span class="rvts22">table2("table2d.csv", 16,3) = 48</span><br/><span class="rvts22">table2("table2d.csv", 15.2,3.5) = 53.2</span></p>
+<p class="rvps2"><span class="rvts6">Note the comma at the beginning of the first line. It is not required by Sonnet, but if that comma is not present Excel will not parse the file. On the other hand Excel allows a dummy value before that first comma which is not accepted by Sonnet. Extra spaces are permitted.</span></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

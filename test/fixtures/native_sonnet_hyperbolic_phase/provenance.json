@@ -1,0 +1,16 @@
+{
+  "engine": "18.53-Lite 64-bit Windows",
+  "artifacts": [
+    "native_scalar_hyperbolic_phase_hS9dWp"
+  ],
+  "jobs": 12,
+  "matrices": 24,
+  "scope": "Declared literal materials, actual raw R50 native matrices and full installed mathematical surface.",
+  "restrictions": [
+    "Original comparison reports retain wrong phase/branch hypotheses and pre-upgrade reader failures.",
+    "Negative native SRES falls back to PEC without warning; DiffMoM instead rejects invalid physical material.",
+    "Bad Equation comparisons/conditionals/positive exponent sign are unsupported and remain rejected.",
+    "Printed variable values are quantized and are not the high precision full-S reference.",
+    "This validates material expressions, not graph-only FORMAT or arbitrary complex-valued physical materials."
+  ]
+}

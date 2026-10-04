@@ -1,0 +1,162 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_final_complex_material_VtVJQl"
+
+[[runs]]
+hypothesized_real_ohm_square = 0.0
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+expression = ""
+field = "0"
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+current_value = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "3da2d16c9edf4d669292c10aeb368ae150242a58ae0798a1bbe2ef236826d758"
+tag = "literal0"
+[[runs]]
+hypothesized_real_ohm_square = 3.0
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+expression = ""
+field = "3"
+native_stderr = ""
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+current_value = 3.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "65734a9fc8a6ada92cad5d04f5bfb07febef25ef5dc6a41cf25aa199964cf1aa"
+tag = "literal3"
+[[runs]]
+hypothesized_real_ohm_square = 4.0
+s_imag = [0.00067139259897, -0.01943086317, -0.01943086317, 0.00067119203704]
+expression = ""
+field = "4"
+native_stderr = ""
+s_real = [0.1667191186894, 0.833096361845, 0.833096361845, 0.1667191277971]
+current_value = 4.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "d60962ac77b30f09ad1c49b5924f535903fbb5c766e8b952ea4bd575ceeb0d21"
+tag = "literal4"
+[[runs]]
+hypothesized_real_ohm_square = 5.0
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+expression = ""
+field = "5"
+native_stderr = ""
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+current_value = 5.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "9fa6a929d43f0710949b48468c1d3db1ff6aec5101bb05bd4751f9248e449d45"
+tag = "literal5"
+[[runs]]
+hypothesized_real_ohm_square = 3.0
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+native_literal_gate_pass = true
+expression = "cmplx(3,4)"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+current_value = 3.0
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "9bd9af8977c2afda68bd6c45592f89f133e97e4650fdf2b3bf7200e784f8541b"
+tag = "named_complex"
+[[runs]]
+hypothesized_real_ohm_square = 0.0
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+native_literal_gate_pass = true
+expression = "sqrt(-1)"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+current_value = 0.0
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "88e3436bfc3f2e067b5fde977be5f17dee328094d9d85a96ce804ff0820286f5"
+tag = "named_sqrt"
+[[runs]]
+hypothesized_real_ohm_square = 4.0
+s_imag = [0.00067139259897, -0.01943086317, -0.01943086317, 0.00067119203704]
+native_literal_gate_pass = true
+expression = "cmplx(3,4)/sqrt(-1)"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1667191186894, 0.833096361845, 0.833096361845, 0.1667191277971]
+current_value = 4.0
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 4 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "afe1e4e3244203a5ca7341f32bc3654ecf940a5b4717d4bcb327cb630fb548a8"
+tag = "named_quotient"
+[[runs]]
+hypothesized_real_ohm_square = 3.0
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+native_literal_gate_pass = true
+expression = ""
+field = "\"3+0\""
+native_stderr = ""
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+current_value = 3.0
+native_literal_delta_s = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "d909c94e4e6693949c61a133ee7d349436c90b0232ea8f1d81987073c553d9b2"
+tag = "inline_add_quoted"
+[[runs]]
+hypothesized_real_ohm_square = 3.0
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+native_literal_gate_pass = true
+expression = ""
+field = "\"cmplx(3,4)\""
+native_stderr = ""
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+native_literal_delta_s = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "3b458c4ddfbdc35e12a0a4310879f80f6ea6e659db29e165cb300b18dc4c8aed"
+tag = "inline_complex_quoted"
+current_error = "ArgumentError: native scalar cmplx(3,4) requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3.0
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+native_literal_gate_pass = true
+expression = ""
+field = "cmplx(3,4)"
+native_stderr = ""
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+native_literal_delta_s = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "feeaa02c25ed5ebab8954cc94398754adddf1ff4cc867b8eca1071c4d14221a8"
+tag = "inline_complex_bare"
+current_error = "ArgumentError: native scalar cmplx(3,4) requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0.0
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+native_literal_gate_pass = true
+expression = ""
+field = "\"sqrt(-1)\""
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+native_literal_delta_s = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "7a6adff30eb1257c281b9df447f27e38ebd6ffa54db9aaba7308a619bba0187f"
+tag = "inline_sqrt_quoted"
+current_error = "ArgumentError: native scalar sqrt(-1) requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 4.0
+s_imag = [0.00067139259897, -0.01943086317, -0.01943086317, 0.00067119203704]
+native_literal_gate_pass = true
+expression = ""
+field = "\"cmplx(3,4)/sqrt(-1)\""
+native_stderr = ""
+s_real = [0.1667191186894, 0.833096361845, 0.833096361845, 0.1667191277971]
+native_literal_delta_s = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "ede1f412b33f5d1ca0ef730de62ba28937447f1c790fcd2209ea2014413ba4f4"
+tag = "inline_quotient_quoted"
+current_error = "ArgumentError: native scalar cmplx(3,4)/sqrt(-1) requires real arguments"

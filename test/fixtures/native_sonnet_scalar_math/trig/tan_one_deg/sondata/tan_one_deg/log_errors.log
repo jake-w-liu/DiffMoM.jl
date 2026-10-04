@@ -1,0 +1,15 @@
+Run 1:  Sun Oct 04 09:09:47 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_scalar_trig_units_qmdZRj\tan_one_deg\tan_one_deg.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Loss = 1.55741 Ohms/sq
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 09:09:47 2026.

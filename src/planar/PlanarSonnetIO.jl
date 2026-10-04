@@ -13,10 +13,10 @@ function _sonnet_port_reference(p,ps,freq::Real,variables=Dict{String,Float64}()
     # Port fields have fixed units Ω, Ω, nH, pF, independently of DIM.
     # Installed PortNormalizingImpedances.html states this contract; actual
     # DIM RES OH/KOH/MOH controls retain identical 50Ω/RPV5Ω responses.
-    series=PlanarPortImpedance(r=r,x=x,l=l*1e-9)(freq)
-    capacitor=c*1e-12
-    impedance=iszero(capacitor) ? series : inv(inv(series)+im*2pi*freq*capacitor)
-    return _planar_reference_number(impedance)
+    inductance=l*1e-9;capacitor=c*1e-12
+    (iszero(l) || !iszero(inductance)) && (iszero(c) || !iszero(capacitor)) ||
+        throw(ArgumentError("native port L/C must preserve nonzero values after SI conversion"))
+    return PlanarPortImpedance(r=r,x=x,l=inductance,c=capacitor,topology=:parallel)(freq)
 end
 
 """One native record with its source line and quoted tokens decoded."""
@@ -288,6 +288,14 @@ function _sonnet_math_real(value,quantity)
     return _circuit_stored_real(real(value),"native $quantity")
 end
 
+function _sonnet_math_signed_magnitude(value,quantity)
+    # The installed engine compares/remainders complex operands through
+    # their magnitudes with a negative sign exactly when real(value)<0.
+    # Pure imaginary operands (including a -0 real part) remain positive.
+    return _circuit_stored_real(real(value)<0 ? -abs(value) : abs(value),
+        "native $quantity magnitude")
+end
+
 function _sonnet_math_axis(value,op)
     # Native real-axis branches ignore the input's imaginary signed zero.
     # Actual +/-0 controls select upper sqrt/acosh on the negative axis and
@@ -359,15 +367,24 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         return op===:/ ? a/b : (a isa Real && a<0 ? ComplexF64(a,0.)^b : a^b)
     elseif op in (:atan2,:hypot,:fmod,:max,:min,:cmplx)
         n==2 || throw(ArgumentError("native $op requires exactly two scalar arguments"))
-        a=_sonnet_math_real(_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1),op)
-        b=_sonnet_math_real(_sonnet_expr(ex.args[3],project,overrides,freq,active,depth+1),op)
+        a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
+        b=_sonnet_expr(ex.args[3],project,overrides,freq,active,depth+1)
+        isfinite(a) && isfinite(b) || throw(ArgumentError("native $op requires finite arguments"))
         # The native atan2 control maps both signs of zero y to +pi at x<0.
-        op===:atan2 && return atan(iszero(a) ? 0. : a,b)
-        op===:hypot && return hypot(a,b)
-        op===:fmod && return rem(a,b)
-        op===:max && return max(a,b)
-        op===:min && return min(a,b)
-        return ComplexF64(a,b)
+        if op===:atan2
+            ar=_sonnet_math_real(a,op);br=_sonnet_math_real(b,op)
+            return atan(iszero(ar) ? 0. : ar,br)
+        end
+        op===:hypot && return hypot(abs(a),abs(b))
+        op===:cmplx && return a+im*b
+        ar=_sonnet_math_signed_magnitude(a,op);br=_sonnet_math_signed_magnitude(b,op)
+        if op===:fmod
+            remainder=rem(ar,br)
+            return iszero(remainder) ? 0. : remainder
+        end
+        # Preserve the selected complex operand; native ties choose the
+        # second operand for both min and max.
+        return op===:max ? (ar>br ? a : b) : (ar<br ? a : b)
     elseif op in (:sqrt,:sin,:cos,:tan,:asin,:acos,:atan,:sinh,:cosh,:tanh,
             :asinh,:acosh,:atanh,:exp,:ln,:log10,:db10,:db20,:abs,:mag,
             :real,:imag,:conj,:deg,:rad,:int,:h2p,:p2h,:m2p,:p2m)
@@ -379,11 +396,11 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         op===:tan && return tan(_sonnet_math_axis(a,op))
         op===:asin && return asin(_sonnet_math_axis(a,op))
         op===:acos && return acos(_sonnet_math_axis(a,op))
-        op===:atan && return atan(a)
+        op===:atan && return atan(_sonnet_math_axis(a,op))
         op===:sinh && return sinh(a)
         op===:cosh && return cosh(a)
         op===:tanh && return tanh(a)
-        op===:asinh && return asinh(a)
+        op===:asinh && return asinh(_sonnet_math_axis(a,op))
         op===:acosh && return acosh(_sonnet_math_axis(a,op))
         op===:atanh && return atanh(_sonnet_math_axis(a,op))
         op===:exp && return exp(a)
@@ -397,8 +414,12 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         op===:conj && return conj(a)
         op===:deg && return rad2deg(angle(a))
         op===:rad && return angle(a)
+        if op===:int
+            isfinite(a) || throw(ArgumentError("native int requires a finite argument"))
+            integer=trunc(real(a))
+            return iszero(integer) ? 0. : integer
+        end
         a=_sonnet_math_real(a,op)
-        op===:int && return trunc(a)
         op===:h2p && return a/project.frequency_scale
         op===:p2h && return a*project.frequency_scale
         op===:m2p && return a/project.length_scale
@@ -410,7 +431,9 @@ end
 """Evaluate a native scalar/variable expression without arbitrary code execution.
 Overrides use the quantity's native units. `FREQ` uses Hz independently of
 `DIM FREQ`. `h2p`/`p2h` convert Hz/project frequency units and `m2p`/`p2m`
-convert metres/project length units. Unsupported functions reject."""
+convert metres/project length units. Native powers associate left; documented
+material math permits complex intermediate values and stores the real projection
+of a finite final quantity. Unsupported functions and conditionals reject."""
 function sonnet_variable_value(project::SonnetProject,text::AbstractString;
         variables=Dict{String,Float64}(),freq::Real=1e9,scalar_files=nothing,
         scalar_root=dirname(project.source),scalar_outside::Symbol=:reject,
@@ -429,7 +452,10 @@ function sonnet_variable_value(project::SonnetProject,text::AbstractString;
     end
     val=_sonnet_expr(_sonnet_parse_scalar(text),project,variables,freq,Set{String}())
     isfinite(val) || throw(ArgumentError("non-finite Sonnet scalar: $text"))
-    return _sonnet_math_real(val,"scalar $text")
+    # Native numeric material fields accept inline complex expressions and
+    # store their real part, just like named quantity variables. Actual NOR
+    # controls (quoted/bare cmplx, sqrt and quotient) establish this boundary.
+    return _circuit_stored_real(real(val),"native scalar $text")
 end
 
 function _sonnet_touchstone_response(path::AbstractString,np::Int)
@@ -442,6 +468,29 @@ function _sonnet_touchstone_response(path::AbstractString,np::Int)
     return response,50.
 end
 
+function _sonnet_circuit_literal(p,row,text,scale=1.)
+    ncodeunits(text)<=16384 || _sonnet_error(p.source,row.line,"native circuit literal byte budget exceeded")
+    # One conversion after source parsing and SI scaling preserves subnormals
+    # and distinguishes explicit zeros from nonzero values lost in storage.
+    occursin(r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$",text) ||
+        _sonnet_error(p.source,row.line,"native circuit requires a decimal literal")
+    mantissa=first(split(lowercase(text),'e';limit=2))
+    nonzero=any(c->'1'<=c<='9',mantissa)
+    # Scoped precision/rounding is task-local on the supported Julia versions.
+    # Retain enough precision for long decimals close to a Float64 midpoint.
+    return setprecision(BigFloat,4ncodeunits(text)+2048) do
+        setrounding(BigFloat,RoundNearest) do
+            value=tryparse(BigFloat,text)
+            value!==nothing && isfinite(value) && value>=0 && (!nonzero || !iszero(value)) ||
+                _sonnet_error(p.source,row.line,"native circuit requires a finite nonnegative literal value")
+            scaled=value*BigFloat(scale);stored=Float64(scaled)
+            isfinite(stored) && (!nonzero || !iszero(stored)) ||
+                _sonnet_error(p.source,row.line,"native circuit value must remain finite and preserve nonzero units in Float64")
+            return stored
+        end
+    end
+end
+
 """Lower native CKT R/L/C, Touchstone blocks, and nested DEF<n>P subnetworks
 to modified nodal analysis. `project_response(path,f_hz)` supplies a referenced
 PRJ's calibrated S matrix; requiring it explicitly prevents accidental use of
@@ -452,9 +501,10 @@ to ohms. DEF network references remain in ohms. Touchstone data, including nativ
 TERM/FTERM references, use the general importer and a real 50 Ω circuit block.
 Native node labels are compacted within each DEF network, with literal node 0
 retained as ground; unused numeric labels do not create floating MNA nodes.
-The parsed project retains its original labels. All unknown circuit statements
-fail."""
-function sonnet_planar_circuit(p::SonnetNetlistProject;project_response=nothing)
+The parsed project retains its original labels. Nonzero literals must remain
+representable after SI conversion. All unknown circuit statements fail."""
+function sonnet_planar_circuit(p::SonnetNetlistProject;project_response=nothing,
+        _network_response=nothing,_definition_response=nothing)
     resscale=get(Dict("OH"=>1.,"OHMS"=>1.,"KOH"=>1e3,"MOH"=>1e6),
         get(p.units,"RES","OH"),NaN)
     capscale=get(Dict("F"=>1.,"PF"=>1e-12,"FF"=>1e-15,"NF"=>1e-9,
@@ -494,15 +544,21 @@ function sonnet_planar_circuit(p::SonnetNetlistProject;project_response=nothing)
                 expected=kind=="RES" ? "R" : kind=="CAP" ? "C" : "L"
                 length(parameter)==2 && parameter[1]==expected ||
                     _sonnet_error(p.source,row.line,"invalid native lumped value")
-                value=parse(Float64,parameter[2])
-                kind=="RES" ? circuit_add_rlc!(circuit,a,b;r=value*resscale) :
-                    kind=="CAP" ? circuit_add_rlc!(circuit,a,b;c=value*capscale) :
-                    circuit_add_rlc!(circuit,a,b;l=value*indscale)
+                # Convert the source literal and its units before rounding to
+                # storage. A nonzero native C/L must never become an exact
+                # open/short solely because its SI value underflows Float64.
+                scale=kind=="RES" ? resscale : kind=="CAP" ? capscale : indscale
+                stored=_sonnet_circuit_literal(p,row,parameter[2],scale)
+                kind=="RES" ? circuit_add_rlc!(circuit,a,b;r=stored) :
+                    kind=="CAP" ? circuit_add_rlc!(circuit,a,b;c=stored) :
+                    circuit_add_rlc!(circuit,a,b;l=stored)
             elseif occursin(r"^S\d+P$",kind)
                 localports=parse(Int,match(r"^S(\d+)P$",kind)[1])
                 length(q)==localports+2 || _sonnet_error(p.source,row.line,"invalid native data block")
                 terminals=[nodemap[parse(Int,token)] for token in q[2:localports+1]]
-                response,z0=_sonnet_touchstone_response(joinpath(dirname(p.source),q[end]),localports)
+                path=abspath(joinpath(dirname(p.source),q[end]))
+                response,z0=_network_response===nothing ? _sonnet_touchstone_response(path,localports) :
+                    _network_response(path,localports)
                 circuit_add_network!(circuit,terminals,response;z0=z0)
             elseif kind=="PRJ"
                 project_response===nothing && throw(ArgumentError("native PRJ requires an explicit calibrated project_response callback"))
@@ -520,8 +576,8 @@ function sonnet_planar_circuit(p::SonnetNetlistProject;project_response=nothing)
                 child=definitions[kind]
                 length(q)==length(child.ports)+1 || _sonnet_error(p.source,row.line,"subnetwork terminal count mismatch")
                 terminals=[nodemap[parse(Int,token)] for token in q[2:end]]
-                callback=let child=child
-                    f->solve_planar_circuit(child,f).s
+                callback=let child=child,provider=_definition_response
+                    f->provider===nothing ? solve_planar_circuit(child,f).s : provider(child,f)
                 end
                 circuit_add_network!(circuit,terminals,callback;z0=child.z0)
             else
@@ -553,6 +609,7 @@ Other metal models reject rather than losing roughness/thickness/plating."""
 function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString},
         freq::Real;variables=Dict{String,Float64}(),cover::Bool=false)
     isfinite(freq) && freq>0 || throw(ArgumentError("metal impedance requires finite positive frequency"))
+    freq=_circuit_stored_real(freq,"native metal frequency")
     length(metal)>=3 || throw(ArgumentError("incomplete native metal definition"))
     model=metal[3]; val(t)=sonnet_variable_value(p,t;variables=variables,freq=freq)
     if model=="RES"
@@ -568,9 +625,48 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
         rdc>=0 && rrf>=0 || throw(ArgumentError("negative sheet resistance"))
         # Sonnet's general-loss Rdc/Rrf crossover is the conductor slab
         # reaction, with the DC and RF limits set independently.
-        rf=(1+im)*rrf*sqrt(freq)
-        zr=iszero(rrf) ? complex(rdc) : iszero(rdc) ? rf : rf/tanh(rf/rdc)
-        return zr+im*(xdc+2pi*freq*ls*1e-12)
+        rs=rrf*sqrt(freq);rf=complex(rs,rs)
+        zr=if iszero(rrf)
+            complex(rdc)
+        elseif iszero(rdc)
+            !iszero(rs) || throw(ArgumentError("SUP RF impedance underflows"))
+            rf
+        else
+            ratio=rs/rdc
+            if ratio<.25
+                # x*coth(x), x=(1+i)*ratio, has a finite DC limit even
+                # when the ratio rounds to zero. Scale its leading imaginary
+                # term separately so a finite tiny reactance is retained.
+                rm,re=frexp(rs);dm,de=frexp(rdc)
+                leading=ldexp((2/3)*rm*rm/dm,2re-de)
+                fourth=ratio^4
+                # Separating the even/odd coth series retains the small
+                # imaginary component without cancellation in complex tanh.
+                real_factor=evalpoly(fourth,(1.,4/45,-16/4725,88448/638512875,
+                    -925952/162820783125,357603328/1531329465290625,
+                    -1936294633472/201919571963756521875))
+                imaginary_factor=evalpoly(fourth,(1.,-8/315,32/31185,-256/6081075,
+                    22459904/12993098493375,-318189568/4482618980214375))
+                complex(rdc*real_factor,leading*imaginary_factor)
+            elseif ratio>20
+                # The relative coth correction is below 2exp(-40), already
+                # below Float64 precision. This also avoids tanh(Inf+iInf).
+                rf
+            else
+                rf/tanh(complex(ratio,ratio))
+            end
+        end
+        # Evaluate kinetic pH reactance without an overflowing omega or an
+        # underflowing SI inductance intermediate when the final result fits.
+        lm,le=_circuit_omega_parts(freq,ls)
+        lm,shift=frexp(lm*1e-12);le+=shift
+        parts=(frexp(imag(zr)),frexp(xdc),(lm,le))
+        exponent=maximum(m==0 ? typemin(Int) : e for (m,e) in parts)
+        reactance=exponent==typemin(Int) ? 0. :
+            ldexp(sum(ldexp(m,e-exponent) for (m,e) in parts if m!=0),exponent)
+        zs=complex(real(zr),reactance)
+        isfinite(zs) || throw(ArgumentError("SUP sheet impedance is not representable"))
+        return zs
     elseif model=="NOR"
         length(metal) in (6,7) || throw(ArgumentError("NOR loss/current-ratio/thickness with optional selector required"))
         selector=length(metal)==7 ? metal[7] : "CDVY"
@@ -787,6 +883,17 @@ function _sonnet_dielectric_sigma(p::SonnetProject,row,freq,variables)
     return sigma
 end
 
+# Form sigma/(omega*epsilon0) without overflowing omega or rounding a tiny
+# denominator to zero before division. Only the final loss ratio is scaled;
+# a physically absent conductive loss stays exactly zero at every frequency.
+function _sonnet_dielectric_conduction(sigma::Real,freq::Real)
+    iszero(sigma) && return zero(float(freq))
+    sm,se=frexp(sigma);fm,fe=frexp(freq)
+    loss=ldexp(sm/(fm*(2pi*_EPS0)),se-fe)
+    isfinite(loss) || throw(ArgumentError("native dielectric conductive loss is unrepresentable"))
+    return loss
+end
+
 function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
         expand_thick::Bool=true)
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
@@ -823,7 +930,7 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
     for row in reverse(geometry.layers)
         d,e,m,te,tm=val.(row[1:5])
         sigma=_sonnet_dielectric_sigma(geometry,row,freq,variables)
-        push!(layers,PlanarLayer(e*(1-im*te)-im*sigma/(2pi*freq*_EPS0),
+        push!(layers,PlanarLayer(e*(1-im*te)-im*_sonnet_dielectric_conduction(sigma,freq),
             m*(1-im*tm),d*ls))
     end
     stack=PlanarStackup(layers,_sonnet_termination(geometry,geometry.bottom,freq,variables),

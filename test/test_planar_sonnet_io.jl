@@ -7,6 +7,7 @@ using SHA, JSON
 include("test_planar_sonnet_scalar_units.jl")
 include("test_planar_sonnet_scalar_files.jl")
 include("test_planar_sonnet_logarithms.jl")
+include("test_planar_sonnet_functions.jl")
 
 @testset "Actual native dielectric resistivity loss selection" begin
     fixture=joinpath(@__DIR__,"fixtures","native_dielectric_resistivity_gui")

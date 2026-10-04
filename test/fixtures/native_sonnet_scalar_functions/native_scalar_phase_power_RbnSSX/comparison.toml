@@ -1,0 +1,376 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_phase_power_RbnSSX"
+reference_helper_sha256 = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+full_s_gate = 0.005
+primary_sha256 = "ff9f47696e8f5839ac9897d09f2b563da1207f41f170085917a7871ce6679b4e"
+scope = "explicit power-parenthesis controls and phase quadrant/negative-axis hypotheses; failures retained"
+evaluator_sha256 = "c40b6797870a98933165323f3a68d8f158ba52525ade582ac6b7accad6bd0735"
+literal_native_gate = 2.0e-13
+
+[[runs]]
+s_real = [[0.0126013501768, 0.987222122897, 0.987222122897, 0.0126013671099], [0.0240080741471, 0.9583836051933, 0.9583836051932, 0.0240097250186]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 0.25
+native_stderr = ""
+s_imag = [[0.0048389105989, -0.023598626902, -0.023598626902, 0.0048388951885], [0.0434710079614, -0.229991828634, -0.229991828634, 0.0434704370808]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "ef137d63a40de5b4a32210fd295f29dcbf2454c2d50f884222f19f0e368ec1db"
+tag = "literal_quarter"
+[[runs]]
+s_real = [[0.0477566027849, 0.9520652747781, 0.9520652747781, 0.0477566180992], [0.0588923814698, 0.923336520785, 0.923336520785, 0.0588938787295]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_stderr = ""
+s_imag = [[0.0038818406616, -0.022641507642, -0.022641507642, 0.0038817830128], [0.0352503634276, -0.22174747315, -0.22174747315, 0.0352493543124]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "35bef42bf13c6553963dce317d409b235a62cb0455484693c508d19d35a9c984"
+tag = "literal_one"
+[[runs]]
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_stderr = ""
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "f22600ea0e709044061a2f9b2c97481777986741ed0d9599e8b5888a55cc8de0"
+tag = "literal_two"
+[[runs]]
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 3.0
+native_stderr = ""
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "f59607f07c727add267127f9f3e54a6cae1f244ae3668f0b4540de243f2ac5c7"
+tag = "literal_three"
+[[runs]]
+s_imag = [[0.0048389105989, -0.023598626902, -0.023598626902, 0.0048388951885], [0.0434710079614, -0.229991828634, -0.229991828634, 0.0434704370808]]
+native_literal_gate_pass = true
+expression = "2^3^2/256"
+current_reader_value = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [0.07843779922603755, 0.07854759638637869]
+current_reader_native_gate_pass = false
+s_real = [[0.0126013501768, 0.987222122897, 0.987222122897, 0.0126013671099], [0.0240080741471, 0.9583836051933, 0.9583836051932, 0.0240097250186]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 0.25
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 0.25 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "21b9f6b969244c2d7a939c7706cefc31cb5ca017494a72db54dd2e8f7b7469ab"
+tag = "power_chain"
+[[runs]]
+s_imag = [[0.0048389105989, -0.023598626902, -0.023598626902, 0.0048388951885], [0.0434710079614, -0.229991828634, -0.229991828634, 0.0434704370808]]
+native_literal_gate_pass = true
+expression = "(2^3)^2/256"
+current_reader_value = 0.25
+native_stderr = ""
+current_reader_native_delta_s = [1.627338208796637e-5, 0.00020268440797756613]
+current_reader_native_gate_pass = true
+s_real = [[0.0126013501768, 0.987222122897, 0.987222122897, 0.0126013671099], [0.0240080741471, 0.9583836051933, 0.9583836051932, 0.0240097250186]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 0.25
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 0.25 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "cb59c22611e30e4daf9d0e14671f89277e08970835e7efa8057a897653038db3"
+tag = "power_left"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "2^(3^2)/256"
+current_reader_value = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031384575009e-5, 0.00016225113757851016]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "6fb63c6699b9edd29a687b3a9fa38d94ada261136856431f7ac6ca1b55dff427"
+tag = "power_right"
+[[runs]]
+s_imag = [[0.0048389105989, -0.023598626902, -0.023598626902, 0.0048388951885], [0.0434710079614, -0.229991828634, -0.229991828634, 0.0434704370808]]
+native_literal_gate_pass = true
+expression = "2^3^2^1/256"
+current_reader_value = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [0.07843779922603755, 0.07854759638637869]
+current_reader_native_gate_pass = false
+s_real = [[0.0126013501768, 0.987222122897, 0.987222122897, 0.0126013671099], [0.0240080741471, 0.9583836051933, 0.9583836051932, 0.0240097250186]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 0.25
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 0.25 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "13ec071034cc9ea6441ac3ff9c8577a76e6d5bc3fec6f7f20380818623282f34"
+tag = "power_chain_three"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "2*3^2/9"
+current_reader_value = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031384575009e-5, 0.00016225113757851016]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "7e41a8d1896a16d0ab17bd85318f8c40f393d40faefed0b526d07f8261a32f6b"
+tag = "power_mul_right"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "2^3*2/8"
+current_reader_value = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031384575009e-5, 0.00016225113757851016]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "ac872597510c1dc40c0392fb3d99c3f9b5ac84fd4ea179a19a2f37c08f48a360"
+tag = "power_mul_left"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "2^(-2)*8"
+current_reader_value = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031384575009e-5, 0.00016225113757851016]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "b558940e90883e97f49794613d5d953cc268177eab426710840e588937b51e85"
+tag = "power_negative"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "-2^2+6"
+current_reader_value = 2.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5198031384575009e-5, 0.00016225113757851016]
+current_reader_native_gate_pass = true
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "9ad96d31cd086612c661fa01742190ac7cb12caf1ee6d0f89c8e87b57b4c7622"
+tag = "power_unary"
+[[runs]]
+s_imag = [[0.0038818406616, -0.022641507642, -0.022641507642, 0.0038817830128], [0.0352503634276, -0.22174747315, -0.22174747315, 0.0352493543124]]
+native_literal_gate_pass = true
+expression = "2+deg(-1)/180"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+native_stderr = ""
+s_real = [[0.0477566027849, 0.9520652747781, 0.9520652747781, 0.0477566180992], [0.0588923814698, 0.923336520785, 0.923336520785, 0.0588938787295]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 1 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "4922ab3f2a10bfff1a40e850568088b2de2e72f24c2f2d74b420847586da1718"
+tag = "phase_real_negative"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = false
+expression = "2+deg(cmplx(-1,0))/180"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+native_stderr = ""
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0827850022664502, 0.08144560800416048]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "d3ae9546f1d38514a32de03d0d7462aa97e83512ca7b9a8a7a1297348f552602"
+tag = "phase_complex_negative_axis"
+[[runs]]
+s_imag = [[0.0038818406616, -0.022641507642, -0.022641507642, 0.0038817830128], [0.0352503634276, -0.22174747315, -0.22174747315, 0.0352493543124]]
+native_literal_gate_pass = true
+expression = "2+deg(cmplx(-1,-0))/180"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+native_stderr = ""
+s_real = [[0.0477566027849, 0.9520652747781, 0.9520652747781, 0.0477566180992], [0.0588923814698, 0.923336520785, 0.923336520785, 0.0588938787295]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 1 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "146df1cb447465a0240814b00788b401b787168ef26b659c9643dd6ac10ed220"
+tag = "phase_negative_zero"
+[[runs]]
+s_imag = [[0.0038818406616, -0.022641507642, -0.022641507642, 0.0038817830128], [0.0352503634276, -0.22174747315, -0.22174747315, 0.0352493543124]]
+native_literal_gate_pass = true
+expression = "2+rad(-1)/3.141592653589793"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function rad"
+native_stderr = ""
+s_real = [[0.0477566027849, 0.9520652747781, 0.9520652747781, 0.0477566180992], [0.0588923814698, 0.923336520785, 0.923336520785, 0.0588938787295]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 1 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "3da00523f10b2f0a23bac4fd788d1a2998c9306d3f52cea4f336d94b0869769d"
+tag = "phase_real_negative_rad"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "deg(cmplx(1,1))/22.5"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "448fa0d88a418f1d48fced2de2253803004c9e8eda2fcd22272e6ef57a4d49d1"
+tag = "phase_deg_q1"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "deg(cmplx(-1,1))/67.5"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "bdaa8b9a062dcef45f7510bc7521f29bbe5422d8dc42c539bf11edb1522d8458"
+tag = "phase_deg_q2"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "deg(cmplx(-1,-1))/-67.5"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "732e3b97c8d63436b5039d21599964466da5f33f16a019bcf03cee4ce4f38235"
+tag = "phase_deg_q3"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "deg(cmplx(1,-1))/-22.5"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function deg"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "3b0ad80302c1ec89405da99effa01d6dfeaaa1beb1cb8dc5acca19daaae38853"
+tag = "phase_deg_q4"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "rad(cmplx(1,1))/(3.141592653589793/8)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function rad"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "f91597b71978f92902c4bb5f23ad12089ead97d9bae21242ceaeac52835d3f02"
+tag = "phase_rad_q1"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "rad(cmplx(-1,1))/(3*3.141592653589793/8)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function rad"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "00c820f9c002904765c208d9f26f56dadb0e0b8822bceb9442357576c39448d0"
+tag = "phase_rad_q2"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "rad(cmplx(-1,-1))/(-3*3.141592653589793/8)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function rad"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "12197e2354d97d4ac7740fa8a1fd9a2a756c8a651ed8bc5fdaa35752d4d4bbd4"
+tag = "phase_rad_q3"
+[[runs]]
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_literal_gate_pass = true
+expression = "rad(cmplx(1,-1))/(-3.141592653589793/8)"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function rad"
+native_stderr = ""
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 2 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "774651d3ec83a785474161c791da98e3d1ce9ad210b6ee020a2fb14a991d504b"
+tag = "phase_rad_q4"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = true
+expression = "2+atan2(0,-1)/3.141592653589793"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function atan2"
+native_stderr = ""
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 3.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "f2e55fd261f39270047461d0876c27f8ad6ebdc4d2401976d60bd3da08f19605"
+tag = "atan2_positive_zero"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = false
+expression = "2+atan2(-0,-1)/3.141592653589793"
+current_reader_error = "ArgumentError: unsupported Sonnet expression function atan2"
+native_stderr = ""
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0827850022664502, 0.08144560800416048]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "571776406756c13ddeeb944fa6e58a67c1ae9ba20e82de463a1cd28f379f7017"
+tag = "atan2_negative_zero"

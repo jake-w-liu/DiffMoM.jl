@@ -1,0 +1,164 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_function_phase_FbOF7b"
+reference_helper_sha256 = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+full_s_gate = 0.005
+primary_sha256 = "ff9f47696e8f5839ac9897d09f2b563da1207f41f170085917a7871ce6679b4e"
+scope = "explicit power-parenthesis controls and phase quadrant/negative-axis hypotheses; failures retained"
+evaluator_sha256 = "cf055a460d55f0189bc776f2732709023d5d9fe8a218ff4ffbb504b8c4de74c9"
+literal_native_gate = 2.0e-13
+
+[[runs]]
+s_real = [[0.0126013501768, 0.987222122897, 0.987222122897, 0.0126013671099], [0.0240080741471, 0.9583836051933, 0.9583836051932, 0.0240097250186]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 0.25
+native_stderr = ""
+s_imag = [[0.0048389105989, -0.023598626902, -0.023598626902, 0.0048388951885], [0.0434710079614, -0.229991828634, -0.229991828634, 0.0434704370808]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "6f23f4e1a42d21500d2845bedf1e90dc04071d8d0704fbf6fb8a526dda11b79e"
+tag = "literal_quarter"
+[[runs]]
+s_real = [[0.0477566027849, 0.9520652747781, 0.9520652747781, 0.0477566180992], [0.0588923814698, 0.923336520785, 0.923336520785, 0.0588938787295]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_stderr = ""
+s_imag = [[0.0038818406616, -0.022641507642, -0.022641507642, 0.0038817830128], [0.0352503634276, -0.22174747315, -0.22174747315, 0.0352493543124]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "2c4ae61c0fa0d7da8aaa8b8d7d8f9783ef0e87c2ebb8c70ed03671bada3c88d8"
+tag = "literal_one"
+[[runs]]
+s_real = [[0.0910055822199, 0.908814163423, 0.908814163423, 0.0910055953858], [0.0998976122171, 0.8821228296375, 0.8821228296375, 0.0998989053677]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 2.0
+native_stderr = ""
+s_imag = [[0.002681509529, -0.021441109624, -0.021441109624, 0.0026813999209], [0.024768637313, -0.211229924374, -0.211229924374, 0.0247671165677]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "551d1eac5d7bec3d85559788e494fd8f0f6c88e47c30ff34efad6839f1bd611f"
+tag = "literal_two"
+[[runs]]
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 3.0
+native_stderr = ""
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "79b325f25ba0fe1046d8fc1c8e8da6ab0317f7d7b2b7bf17a906ae46b9d547c4"
+tag = "literal_three"
+[[runs]]
+s_imag = [[0.0038818406616, -0.022641507642, -0.022641507642, 0.0038817830128], [0.0352503634276, -0.22174747315, -0.22174747315, 0.0352493543124]]
+native_literal_gate_pass = true
+expression = "2+deg(cos(3.141592653589793))/180"
+current_reader_value = 1.0
+native_stderr = ""
+current_reader_native_delta_s = [1.5797908875911094e-5, 0.00017689928688618113]
+current_reader_native_gate_pass = true
+s_real = [[0.0477566027849, 0.9520652747781, 0.9520652747781, 0.0477566180992], [0.0588923814698, 0.923336520785, 0.923336520785, 0.0588938787295]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 1 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "e93d7811ac99528c0885ceb7f63384b862829b575a80c1878c54775d0a1179ad"
+tag = "phase_cos"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = false
+expression = "2+deg(sin(-3.141592653589793/2))/180"
+current_reader_value = 1.0
+native_stderr = ""
+current_reader_native_delta_s = [0.08278499775209772, 0.08144435525978516]
+current_reader_native_gate_pass = false
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0827850022664502, 0.08144560800416048]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "31aa705075bdc5337eb138f1583cd25688eef153c1ae9e73bc3dffc54ecafb2b"
+tag = "phase_sin"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = true
+expression = "2+deg(conj(-1))/180"
+current_reader_value = 3.0
+native_stderr = ""
+current_reader_native_delta_s = [1.4485338952505636e-5, 0.000153209805207153]
+current_reader_native_gate_pass = true
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 3.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "da1c557ef2b7d37ce7a4c3c81fb6e8c7c5e72ca019a72808ed3e2f6a2dee77a8"
+tag = "phase_conj"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = true
+expression = "2+deg(real(-1))/180"
+current_reader_value = 3.0
+native_stderr = ""
+current_reader_native_delta_s = [1.4485338952505636e-5, 0.000153209805207153]
+current_reader_native_gate_pass = true
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 3.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "2ebaaf56796ffaab004683592c39bb32d3dff898ad2f753fca948ccdcb65f2cc"
+tag = "phase_real"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = true
+expression = "2+deg(imag(cmplx(0,-1)))/180"
+current_reader_value = 3.0
+native_stderr = ""
+current_reader_native_delta_s = [1.4485338952505636e-5, 0.000153209805207153]
+current_reader_native_gate_pass = true
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 3.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "5991db83e081e20fbad29667e5951d514540ed70e512f604f6a20e497c1ec1c2"
+tag = "phase_imag"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = true
+expression = "2+deg(2-3)/180"
+current_reader_value = 3.0
+native_stderr = ""
+current_reader_native_delta_s = [1.4485338952505636e-5, 0.000153209805207153]
+current_reader_native_gate_pass = true
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 3.0
+native_literal_delta_s = [0.0, 0.0]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "d20a87e5d542b94e95227f121a66e4eadad5c4655c3dc7f586042a696aee5ad9"
+tag = "phase_subtract"
+[[runs]]
+s_imag = [[0.0016178037408, -0.020377338428, -0.020377338428, 0.0016176466793], [0.0148204670659, -0.201242001946, -0.201242001946, 0.0148184834642]]
+native_literal_gate_pass = false
+expression = "2+deg(neg)/180"
+current_reader_value = 1.0
+native_stderr = ""
+current_reader_native_delta_s = [0.08278499775209772, 0.08144435525978516]
+current_reader_native_gate_pass = false
+s_real = [[0.1305063723553, 0.8693112408098, 0.8693112408098, 0.1305063834567], [0.137298181214, 0.8445144888785, 0.8445144888785, 0.1372992693187]]
+native_expression_status = "NO_EQUATION_WARNING"
+hypothesized_literal_ohm_square = 1.0
+native_literal_delta_s = [0.0827850022664502, 0.08144560800416048]
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "2a3e52499f8f82a9f267a6c712b2af8cee17aa7ca4594d61ef667d13e5a7f432"
+tag = "phase_variable"

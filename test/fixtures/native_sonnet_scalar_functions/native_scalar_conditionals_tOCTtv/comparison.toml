@@ -1,0 +1,164 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_scalar_conditionals_tOCTtv"
+reference_helper_sha256 = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+full_s_gate = 0.005
+primary_sha256 = "ff9f47696e8f5839ac9897d09f2b563da1207f41f170085917a7871ce6679b4e"
+scope = "undocumented comparison/conditional hypotheses versus independent literals; rejected/warned fallback remains failure evidence"
+literal_native_gate = 2.0e-13
+
+[[runs]]
+s_real = [[0.0477566027849, 0.9520652747782, 0.9520652747782, 0.0477566180991], [0.0488251490912, 0.9495719910026, 0.9495719910026, 0.0488252864988]]
+native_expression_status = "NO_EQUATION_WARNING"
+native_stderr = ""
+s_imag = [[0.0038818406615, -0.022641507642, -0.022641507642, 0.0038817830127], [0.0115115116117, -0.067764007361, -0.067764007361, 0.0115113277243]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "b882440b50b6bce622b3e3304c90f45cef6d97eee3fc353d41f83284834a66ff"
+tag = "literal1"
+independent_expected_ohm_square = [1.0, 1.0]
+[[runs]]
+s_real = [[0.0910055822199, 0.9088141634231, 0.9088141634231, 0.0910055953858], [0.0917717834092, 0.9066062469599, 0.9066062469599, 0.0917719017148]]
+native_expression_status = "NO_EQUATION_WARNING"
+native_stderr = ""
+s_imag = [[0.0026815095289, -0.021441109623, -0.021441109623, 0.0026813999208], [0.0079884533439, -0.064239793413, -0.064239793413, 0.0079881142078]]
+native_variable_lines = []
+status = "SIMULATED"
+expression = ""
+source_sha256 = "0dee90408ec3a0f1cd7c3f067dae5cf0aa61ff41913501da60072b0740aa0555"
+tag = "literal2"
+independent_expected_ohm_square = [2.0, 2.0]
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression function >"
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "1+(FREQ>2000000000)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: 1+(FREQ>2000000000)\r\n      Unexpected value '2000000000' found. Detected at line 1, column 9\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression function >"
+independent_expected_ohm_square = [1.0, 2.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.04765452240368985, 0.09101723535315054]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "5e234f2d22fea9d4933a6785167bbf1583d9400f3096bbe06e4f91f832b7b703"
+tag = "greater"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression function <"
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "1+(FREQ<2000000000)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: 1+(FREQ<2000000000)\r\n      Unexpected value '2000000000' found. Detected at line 1, column 9\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression function <"
+independent_expected_ohm_square = [2.0, 1.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.09092145202692374, 0.047912984744130166]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "cc84713773f9366ccefad276d9277f5f745f96523a8f618ec60ce679fd2b207c"
+tag = "less"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression function >="
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "1+(FREQ>=2000000000)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: 1+(FREQ>=2000000000)\r\n      Unexpected value '2000000000' found. Detected at line 1, column 10\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression function >="
+independent_expected_ohm_square = [1.0, 2.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.04765452240368985, 0.09101723535315054]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "65f87f298ab930d116083c2d9ce44b56024d30389db49e7f442ff2f2512b52fb"
+tag = "greater_equal"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression function <="
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "1+(FREQ<=2000000000)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: 1+(FREQ<=2000000000)\r\n      Unexpected value '2000000000' found. Detected at line 1, column 10\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression function <="
+independent_expected_ohm_square = [2.0, 1.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.09092145202692374, 0.047912984744130166]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "b74b0d72c6ca4d55a3a690f617a0ebba1da61e5a5facdff7a5a5106d116ed6eb"
+tag = "less_equal"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression function =="
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "1+(FREQ==1000000000)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: 1+(FREQ==1000000000)\r\n      Unexpected value '1000000000' found. Detected at line 1, column 10\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression function =="
+independent_expected_ohm_square = [2.0, 1.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.09092145202692374, 0.047912984744130166]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "1b6fd72d43f74f7439821f330ca9964951fef503e0ddf50c838d3f955c950e14"
+tag = "equal"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression function !="
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "1+(FREQ!=1000000000)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: 1+(FREQ!=1000000000)\r\n      Unexpected value '1000000000' found. Detected at line 1, column 10\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression function !="
+independent_expected_ohm_square = [1.0, 2.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.04765452240368985, 0.09101723535315054]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "9d7bebbacd2c9a858835ada80b8877702481d6a27c8307fac95acf759d90e789"
+tag = "not_equal"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression"
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "(FREQ>2000000000) ? 2 : 1"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: (FREQ>2000000000) ? 2 : 1\r\n      Unexpected value '2000000000' found. Detected at line 1, column 7\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression"
+independent_expected_ohm_square = [1.0, 2.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.04765452240368985, 0.09101723535315054]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "0795c43b62ab35200cd189bb2585b3167553eab651aa1d71ba7f68fea8c747eb"
+tag = "ternary"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression"
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "if(FREQ>2000000000,2,1)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: if(FREQ>2000000000,2,1)\r\n      Unknown function name starting with 'if'. Detected at line 1, column 3\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression"
+independent_expected_ohm_square = [1.0, 2.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.04765452240368985, 0.09101723535315054]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "27829627dc605ba1ebf023d16361cda2c542ab683c05f91f62dbb62845500610"
+tag = "if_function"
+[[runs]]
+current_reader_3GHz_error = "ArgumentError: unsupported Sonnet expression function ifelse"
+s_imag = [[0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595], [0.014348396153, -0.070601604676, -0.070601604676, 0.0143483853046]]
+native_literal_gate_pass = false
+expression = "ifelse(FREQ>2000000000,2,1)"
+native_stderr = """\r\n      Sonnet Warning:\r\n      Invalid entry:\r\n      Bad Equation: ifelse(FREQ>2000000000,2,1)\r\n      Unknown function name starting with 'ifelse'. Detected at line 1, column 7\r\n\r\n"""
+current_reader_1GHz_error = "ArgumentError: unsupported Sonnet expression function ifelse"
+independent_expected_ohm_square = [1.0, 2.0]
+s_real = [[0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894], [0.0010155826069, 0.9974008750432, 0.9974008750432, 0.0010157358636]]
+native_expression_status = "REJECTED_WITH_FALLBACK"
+native_literal_delta_s = [0.04765452240368985, 0.09101723535315054]
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "e9f18a3fccd50833c47aded814eb70eb2aaf15d84a2b7810dde11f6c9600acd3"
+tag = "ifelse_function"

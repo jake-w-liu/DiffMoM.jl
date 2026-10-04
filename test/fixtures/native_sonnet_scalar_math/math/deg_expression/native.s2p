@@ -1,0 +1,14 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: deg_expression
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 09:12:15
+!< HDATE 10/04/2026 05:47:13
+!< MDATE 10/04/2026 05:47:13
+!< PARAMS
+!< Rho = 7.0
+!< Rs = 2.0
+!< Loss = 45.0
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 0.6921786067437 -9.938602053e-3 0.3075494434891 -8.818240887e-3 0.3075494434891 -8.818240887e-3 0.6921785475666 -9.939432374e-3

@@ -1,0 +1,21 @@
+Run 1:  Sun Oct 04 09:13:04 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_scalar_math_branches_4MYGQo\acos_branch\acos_branch.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Loss = 4 Ohms/sq
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1, Stop = 10, Step = 9 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.166720 0.2307 0.833323 -1.336 0.833323 -1.336 0.166720 0.2307
+
+    Frequency:  10 GHZ
+      10.0000000 0.171840 1.9187 0.832341 -13.35 0.832341 -13.35 0.171840 1.9179
+
+Em simulation completed Sun Oct 04 09:13:04 2026.

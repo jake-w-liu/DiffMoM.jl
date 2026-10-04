@@ -1,0 +1,6 @@
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Equation: ifelse(FREQ>2000000000,2,1)
+      Unknown function name starting with 'ifelse'. Detected at line 1, column 7
+

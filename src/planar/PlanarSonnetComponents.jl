@@ -180,9 +180,9 @@ through [`sonnet_floating_model`](@ref) and retain their finite references.
 All pad widths are inferred from
 the complete straight polygon edge. Unsupported ground references,
 non-feed terminal widths, misaligned/ambiguous pads fail explicitly.
-Observed SPARAM/SMDFILES models with explicit PEC AUTO+FEED pins are staged
+SPARAM/SMDFILES and literal linear CKT SPROJ models with explicit PEC AUTO+FEED pins are staged
 automatically through [`sonnet_component_files`](@ref). Other
-vendor/project/subcircuit models require
+vendor/geometry-project/subcircuit models require
 `component_response(project,component_records,f_hz)` returning a named
 tuple `(response=matrix,format=:s,z0=...)`; no model is silently omitted.
 The returned model retains all pin labels and native material arrays;
@@ -218,7 +218,7 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
         staged_payload,variable_payload,_sonnet_files_geometry_payload(p,grid)),max_bytes,
         "all native component geometry preflight","max_bytes")
     if _model_files===nothing && component_response===nothing &&
-            any(c->_sonnet_files_kind(p,c).tokens[2]=="SPARAM",p.components)
+            any(c->_sonnet_files_kind(p,c).tokens[2] in ("SPARAM","SPROJ"),p.components)
         _model_files=sonnet_component_files(p,freq;grid,variables,max_bytes,_preserve_scalar_geometry)
     end
     if _model_files!==nothing
@@ -304,7 +304,7 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
                 _sonnet_error(p.source,record.line,"unsupported ideal SMD $(t[3])")
         elseif length(t)==2 && t[2]=="NONE"
             # Explicit no-load model: retain its open EM terminals.
-        elseif t[2]=="SPARAM" && _model_files!==nothing
+        elseif t[2] in ("SPARAM","SPROJ") && _model_files!==nothing
             id=_sonnet_files_id(p,component)
             matches=filter(b->b.id==id,_model_files.bindings)
             length(matches)==1 || _sonnet_error(p.source,record.line,"missing unique staged component binding")
@@ -390,7 +390,7 @@ function _solve_sonnet_components(p::SonnetProject,freq::Real;grid=nothing,
         model.scalar_files,model.variables)
 end
 
-"""Solve a retained native SPARAM snapshot at its staged frequency. Later
+"""Solve a retained native SPARAM/SPROJ snapshot at its staged frequency. Later
 source/model edits do not change this solve. Raw cover-return lead effects
 remain until independently supplied coupled pin calibration is applied."""
 function solve_sonnet_project(files::SonnetComponentFiles,freq::Real=files.frequency;

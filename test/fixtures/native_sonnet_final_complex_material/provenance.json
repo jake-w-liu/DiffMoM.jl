@@ -1,0 +1,16 @@
+{
+  "engine": "18.53-Lite 64-bit Windows",
+  "artifacts": [
+    "native_final_complex_material_VtVJQl"
+  ],
+  "jobs": 12,
+  "matrices": 12,
+  "scope": "Declared literal materials, actual raw R50 native matrices and full installed mathematical surface.",
+  "restrictions": [
+    "Original comparison reports retain wrong phase/branch hypotheses and pre-upgrade reader failures.",
+    "Native named and inline finite complex quantities store real projection; all12 native jobs at1GHz verify literal0/3/4/5 and complex operands.",
+    "Bad Equation comparisons/conditionals/positive exponent sign are unsupported and remain rejected.",
+    "Printed variable values are quantized and are not the high precision full-S reference.",
+    "Physical sheet resistance is the native real projection, not a complex conductivity model."
+  ]
+}

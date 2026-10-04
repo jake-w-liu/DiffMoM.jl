@@ -1,0 +1,6 @@
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Equation: 1+(FREQ<=2000000000)
+      Unexpected value '2000000000' found. Detected at line 1, column 10
+

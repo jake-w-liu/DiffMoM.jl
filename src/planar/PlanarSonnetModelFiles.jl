@@ -11,9 +11,11 @@ struct SonnetModelSource
     sha256::String
 end
 
-"""One native SPARAM response at a single frequency. Geometry labels are in
+"""One native SPARAM or linear CKT SPROJ response at a single frequency. Geometry labels are in
 model-pin order, independently of their numeric values. `response,z0` retain
-the evaluated power-wave basis and the physical global box common return."""
+the evaluated power-wave basis and the physical global box common return.
+`file_index=0` identifies a project component; `inherited_sweep` retains its
+native flag while its linear circuit is evaluated at the requested frequency."""
 struct SonnetComponentBinding
     id::Int
     file_index::Int
@@ -22,9 +24,12 @@ struct SonnetComponentBinding
     source::String
     response::Matrix{ComplexF64}
     z0::Vector{ComplexF64}
+    inherited_sweep::Union{Nothing,Bool}
 end
+SonnetComponentBinding(id,index,labels,pins,source,response,z0)=
+    SonnetComponentBinding(id,index,labels,pins,source,response,z0,nothing)
 
-"""Owned frequency-specific native SPARAM staging. The effective project,
+"""Owned frequency-specific native SPARAM/SPROJ staging. The effective project,
 exact source/model snapshots and parsed datasets are retained separately.
 `configuration_sha256` identifies the effective project/grid/variables and
 frequency; raw `sources` hashes identify bytes and do not imply those bytes
@@ -34,6 +39,8 @@ renormalization. No pathname cache or extrapolation is used. `linked` retains
 the original SON/STF identity for explicitly materialized static technology.
 `scalar_files` retains native CSV dependencies, whose snapshots also appear
 in `sources`; their effective identity is included in the configuration hash.
+`circuits` retains compiled linear project children, whose data and recursive
+project responses use the same owned snapshots and staged frequency.
 Arrays belong to this object and should be treated as read-only."""
 struct SonnetComponentFiles
     project::SonnetProject
@@ -48,7 +55,11 @@ struct SonnetComponentFiles
     grid::Union{Nothing,Tuple{Int,Int}}
     configuration_sha256::String
     scalar_files::Union{Nothing,SonnetScalarFiles}
+    circuits::Dict{String,PlanarCircuit}
 end
+SonnetComponentFiles(p,f,r,s,n,b,payload,linked,variables,grid,identity,scalar_files)=
+    SonnetComponentFiles(p,f,r,s,n,b,payload,linked,variables,grid,identity,scalar_files,
+        Dict{String,PlanarCircuit}())
 SonnetComponentFiles(p,f,r,s,n,b,payload,linked,variables,grid,identity)=
     SonnetComponentFiles(p,f,r,s,n,b,payload,linked,variables,grid,identity,nothing)
 
@@ -123,13 +134,17 @@ end
 function _sonnet_files_contract(p,component)
     kind=_sonnet_files_kind(p,component)
     modelkind=kind.tokens[2]
-    modelkind in ("SPARAM","IDEAL","NONE") || _sonnet_error(p.source,kind.line,
+    modelkind in ("SPARAM","SPROJ","IDEAL","NONE") || _sonnet_error(p.source,kind.line,
         "TYPE $modelkind requires its explicit model adapter")
     id=_sonnet_files_id(p,component)
     if modelkind=="SPARAM"
         length(kind.tokens)==3 || _sonnet_error(p.source,kind.line,"TYPE SPARAM requires one SMDFILES index")
         index=tryparse(Int,kind.tokens[3])
         index!==nothing && index>0 || _sonnet_error(p.source,kind.line,"SPARAM file index must be a positive literal integer")
+    elseif modelkind=="SPROJ"
+        length(kind.tokens)==3 && endswith(lowercase(kind.tokens[3]),".son") ||
+            _sonnet_error(p.source,kind.line,"TYPE SPROJ requires one literal .son path; parameter bindings need their explicit adapter")
+        index=0
     elseif modelkind=="IDEAL"
         length(kind.tokens)==4 && kind.tokens[3] in ("RES","CAP","IND") ||
             _sonnet_error(p.source,kind.line,"IDEAL requires one scalar R/L/C model")
@@ -137,13 +152,17 @@ function _sonnet_files_contract(p,component)
         length(kind.tokens)==2 || _sonnet_error(p.source,kind.line,"NONE requires no model fields")
     end
     pins=Tuple{Int,Int}[]
-    topground=false;pinblock=false;ground=false;width=false
+    topground=false;pinblock=false;ground=false;width=false;inherit=nothing
     for record in component
         t=record.tokens;tag=first(t)
         if tag=="GNDREF"
             t in (["GNDREF","AUTO"],["GNDREF","BOX","AUTO"]) ||
                 _sonnet_error(p.source,record.line,"automatic SPARAM requires explicit PEC box AUTO ground")
             pinblock ? (ground=true) : (topground=true)
+        elseif tag=="INHSWP"
+            modelkind=="SPROJ" && inherit===nothing && t in (["INHSWP","N"],["INHSWP","Y"]) ||
+                _sonnet_error(p.source,record.line,"SPROJ requires one literal INHSWP N/Y")
+            inherit=t[2]=="Y"
         elseif tag=="TERMW"
             t==["TERMW","FEED"] || _sonnet_error(p.source,record.line,
                 "TERMW $(join(t[2:end]," ")) needs a physical width adapter")
@@ -177,7 +196,8 @@ function _sonnet_files_contract(p,component)
     sort!(pins;by=first)
     all(k->pins[k][1]==k,eachindex(pins)) || _sonnet_error(p.source,kind.line,"model pin indices must be unique and contiguous from one")
     modelkind=="IDEAL" && length(pins)!=2 && _sonnet_error(p.source,kind.line,"IDEAL requires two model pins")
-    return modelkind=="SPARAM" ? (;id,index,kind,labels=last.(pins)) : nothing
+    modelkind=="SPROJ" && inherit===nothing && _sonnet_error(p.source,kind.line,"SPROJ requires explicit INHSWP N/Y")
+    return modelkind in ("SPARAM","SPROJ") ? (;id,index,kind,labels=last.(pins),inherit) : nothing
 end
 
 function _sonnet_files_pin_preflight(p,f,grid,variables)
@@ -288,7 +308,9 @@ function _sonnet_files_geometry_payload(p,grid)
     return _checked_payload_sum("native component geometry preflight",needed)
 end
 
-"""Stage observed native SPARAM/SMDFILES models from bounded exact snapshots.
+include("PlanarSonnetProjectFiles.jl")
+
+"""Stage native SPARAM/SMDFILES and literal linear CKT SPROJ models from bounded exact snapshots.
 Dependencies resolve inside `root`; shared files are parsed once. Model-pin
 indices determine order independently of geometry labels. The represented
 automatic source contract requires PEC box AUTO return, explicit per-pin
@@ -296,18 +318,32 @@ FEED width and no unrepresented pin reference plane. Other widths/grounds
 reject before geometry allocation or optional reference callbacks. Frequencies
 must be within model coverage. This stages raw physical attachment; native
 coupled pin calibration and licensed SMD renderer compatibility remain separate.
-An explicit `requested_reference` only renormalizes the already interpolated
+Linear SPROJ children support literal R/L/C, Touchstone S<n>P, earlier DEF<n>P
+invocations and recursive PRJ children with literal 0/1 inheritance flags.
+They evaluate continuously at the requested frequency, retaining explicit
+INHSWP N/Y metadata; their saved child sweep is not interpolated. Shared
+dependencies parse once; cycles, root escapes, unsupported parameter bindings
+and geometry children reject. `max_project_depth` bounds project recursion,
+and `max_project_nodes/max_project_elements` bound retained definitions in
+each project. Dense nested solves also share the aggregate `max_bytes` bound.
+Geometry children still require their explicit calibrated model adapter.
+An explicit `requested_reference` only renormalizes the already evaluated
 physical response. An extracted archive tree can be supplied as `root`; native
 compressed-model formats are not inferred."""
 function sonnet_component_files(p::SonnetProject,frequency::Real;
         root=dirname(abspath(p.source)),max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
-        max_dependencies::Integer=16,requested_reference=nothing,grid=nothing,
+        max_dependencies::Integer=16,max_project_depth::Integer=16,
+        max_project_nodes::Integer=10000,max_project_elements::Integer=10000,
+        requested_reference=nothing,grid=nothing,
         variables=Dict{String,Float64}(),scalar_files=nothing,
         scalar_outside::Symbol=:reject,scalar_max_files::Integer=64,
         scalar_max_bytes::Integer=8*1024^2,scalar_max_nodes::Integer=100000,
         scalar_max_line_bytes::Integer=16384,_linked=nothing,_preserve_scalar_geometry::Bool=false)
     limit=_sonnet_files_limit("max_bytes",max_bytes);dependencies=_sonnet_files_limit("max_dependencies",max_dependencies)
-    f=Float64(frequency);isfinite(f) && f>0 || throw(ArgumentError("native component frequency must be representable and positive"))
+    depth=_sonnet_files_limit("max_project_depth",max_project_depth)
+    nodes=_sonnet_files_limit("max_project_nodes",max_project_nodes)
+    elements=_sonnet_files_limit("max_project_elements",max_project_elements)
+    f=_circuit_stored_real(frequency,"native component frequency");f>0 || throw(ArgumentError("native component frequency must be representable and positive"))
     budget=_SpiceBudget(0,limit,1,0,1)
     projectbytes=_sonnet_files_project_payload(p)
     _sonnet_files_reserve!(budget,2BigInt(projectbytes)+4096)
@@ -326,11 +362,12 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
         description=_sonnet_files_contract(p,component)
         description===nothing || push!(descriptions,description)
     end
-    !isempty(descriptions) || throw(ArgumentError("project has no SPARAM component"))
+    !isempty(descriptions) || throw(ArgumentError("project has no SPARAM or SPROJ component"))
     length(unique(d.id for d in descriptions))==length(descriptions) || throw(ArgumentError("duplicate native component ID"))
-    count(r->r.tokens==["SMDFILES"],p.records)==1 || throw(ArgumentError("SPARAM requires one SMDFILES section"))
+    has_sparam=any(d->d.kind.tokens[2]=="SPARAM",descriptions)
+    !has_sparam || count(r->r.tokens==["SMDFILES"],p.records)==1 || throw(ArgumentError("SPARAM requires one SMDFILES section"))
     table=Dict{Int,Tuple{String,SonnetRecord}}()
-    for record in _sonnet_section(p.records,"SMDFILES",p.source)
+    for record in (has_sparam ? _sonnet_section(p.records,"SMDFILES",p.source) : SonnetRecord[])
         length(record.tokens)==2 || _sonnet_error(p.source,record.line,"SMDFILES entry requires index and model path")
         index=tryparse(Int,record.tokens[1]);index!==nothing && index>0 || _sonnet_error(p.source,record.line,"invalid SMDFILES index")
         haskey(table,index) && _sonnet_error(p.source,record.line,"duplicate SMDFILES index")
@@ -349,6 +386,7 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
     !isabspath(rel) && all(x->x!="..",splitpath(rel)) || throw(ArgumentError("parent project resolves outside root"))
     paths=String[];dimensions=Dict{String,Int}()
     for d in descriptions
+        d.kind.tokens[2]=="SPARAM" || continue
         haskey(table,d.index) || _sonnet_error(p.source,d.kind.line,"unknown SMDFILES index $(d.index)")
         name,record=table[d.index];path=_sonnet_files_path(directory,p,name,record)
         suffix=match(r"\.([syz])(\d+)p$"i,path)
@@ -389,26 +427,50 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
         end
         _sonnet_files_reserve!(budget,_sonnet_files_data_payload(model));networks[path]=model
     end
+    projects=_SonnetLinearProjects(f,directory,budget,dependencies,depth,nodes,elements,
+        sources,networks,Dict{String,PlanarCircuit}(),
+        Dict{String,Tuple{Matrix{ComplexF64},Vector{ComplexF64}}}(),Set([_sonnet_project_path_key(parent)]))
+    project_paths=Dict{Int,String}()
+    for d in descriptions
+        d.kind.tokens[2]=="SPROJ" || continue
+        path=_sonnet_files_path(directory,p,d.kind.tokens[3],d.kind)
+        _sonnet_files_linear_project!(projects,path,length(d.labels))
+        project_paths[d.id]=path
+    end
     # Validate coverage and reserve every binding before any reference provider.
     for d in descriptions
-        path=_sonnet_files_path(directory,p,table[d.index]...);model=networks[path];np=length(d.labels)
-        first(model.frequencies)<=f<=last(model.frequencies) || _sonnet_error(p.source,d.kind.line,"frequency outside model coverage; extrapolation is forbidden")
+        np=length(d.labels)
+        if d.kind.tokens[2]=="SPARAM"
+            path=_sonnet_files_path(directory,p,table[d.index]...);model=networks[path]
+            first(model.frequencies)<=f<=last(model.frequencies) || _sonnet_error(p.source,d.kind.line,"frequency outside model coverage; extrapolation is forbidden")
+        end
         _sonnet_files_reserve!(budget,512+_checked_array_payload_bytes(ComplexF64,12,np,np)+_checked_array_payload_bytes(ComplexF64,12,np))
     end
     _enforce_payload_limit(_checked_payload_sum("native model provider preflight",budget.used,
         geometrybytes),limit,"native model provider preflight","max_bytes")
     bindings=SonnetComponentBinding[]
     for d in descriptions
-        path=_sonnet_files_path(directory,p,table[d.index]...);model=networks[path];np=length(d.labels)
-        original=copy(_network_reference_at(model,f));response=planar_network_response(model,f)
+        np=length(d.labels)
+        path=if d.kind.tokens[2]=="SPARAM"
+            _sonnet_files_path(directory,p,table[d.index]...)
+        else
+            project_paths[d.id]
+        end
+        response,original=if d.kind.tokens[2]=="SPARAM"
+            model=networks[path]
+            planar_network_response(model,f),copy(_network_reference_at(model,f))
+        else
+            value,refs=projects.responses[path]
+            copy(value),copy(refs)
+        end
         refs=requested_reference===nothing ? original : _planar_reference_values(requested_reference,np;freq=f)
         refs==original || (response=planar_renormalize_s(response,original,refs))
-        push!(bindings,SonnetComponentBinding(d.id,d.index,copy(d.labels),collect(1:np),path,response,ComplexF64.(refs)))
+        push!(bindings,SonnetComponentBinding(d.id,d.index,copy(d.labels),collect(1:np),path,response,ComplexF64.(refs),d.inherit))
     end
     retained_grid=grid===nothing ? nothing : (Int(grid[1]),Int(grid[2]))
     configuration=_sonnet_files_configuration_hash(p,f,retained_grid,owned_variables;scalar_files)
     return SonnetComponentFiles(p,f,directory,sources,networks,bindings,budget.used,_linked,
-        owned_variables,retained_grid,configuration,scalar_files)
+        owned_variables,retained_grid,configuration,scalar_files,projects.circuits)
 end
 
 function sonnet_component_files(path::AbstractString,frequency::Real;
@@ -442,7 +504,7 @@ function sonnet_component_files(linked::SonnetLinkedProject,frequency::Real;
     return sonnet_component_files(project,frequency;max_bytes=limit-preflight,_linked=owned,kwargs...)
 end
 
-"""Transactionally attach staged native SPARAM devices to physical circuit
+"""Transactionally attach staged native SPARAM/SPROJ devices to physical circuit
 nodes. `labels[node]` is the native geometry label at that node. Ordered model
 pins map through these labels; every model port retains box node zero as its
 common return. Invalid maps/resources leave the supplied circuit unchanged."""

@@ -1,0 +1,23 @@
+{
+  "engine": "18.53-Lite 64-bit Windows",
+  "artifacts": [
+    "native_scalar_trig_units_WI5JKb",
+    "native_scalar_general_functions_2ziws6",
+    "native_scalar_phase_power_RbnSSX",
+    "native_scalar_math_branches_4MYGQo",
+    "native_scalar_inverse_branches_XpOEgP",
+    "native_scalar_axis_zero_9xKu5E",
+    "native_scalar_function_phase_FbOF7b",
+    "native_scalar_conditionals_tOCTtv"
+  ],
+  "jobs": 210,
+  "matrices": 316,
+  "scope": "Declared literal materials, actual raw R50 native matrices and full installed mathematical surface.",
+  "restrictions": [
+    "Original comparison reports retain wrong phase/branch hypotheses and pre-upgrade reader failures.",
+    "Negative native SRES falls back to PEC without warning; DiffMoM instead rejects invalid physical material.",
+    "Bad Equation comparisons/conditionals/positive exponent sign are unsupported and remain rejected.",
+    "Printed variable values are quantized and are not the high precision full-S reference.",
+    "This validates material expressions, not graph-only FORMAT or arbitrary complex-valued physical materials."
+  ]
+}

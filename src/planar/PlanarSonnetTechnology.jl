@@ -539,7 +539,7 @@ function sonnet_technology_stack(t::SonnetTechnology,freq::Real,a::Real,b::Real;
     layers=PlanarLayer[]
     for row in reverse(rows)
         d,e,m,te,tm,sigma=parse.(Float64,row[1:6])
-        push!(layers,PlanarLayer(e*(1-im*te)-im*sigma/(2pi*freq*_EPS0),m*(1-im*tm),d))
+        push!(layers,PlanarLayer(e*(1-im*te)-im*_sonnet_dielectric_conduction(sigma,freq),m*(1-im*tm),d))
     end
     return PlanarStackup(layers,_stf_cover(t,"BOTTOM"),_stf_cover(t,"TOP"),a,b)
 end

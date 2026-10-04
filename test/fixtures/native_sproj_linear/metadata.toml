@@ -1,0 +1,13 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_smd_project_ykdIeF\\child.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T18:44:30.028"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+started_utc = "2026-10-03T18:44:29.582"
+source_sha256 = "237225db86517a70562fee409dc737aba15878eb1b79fde40957fddb8478fa50"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_smd_project_ykdIeF\\child_control\\child.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_smd_project_ykdIeF\\\\child_control\")"
+
+[dependency_sha256]

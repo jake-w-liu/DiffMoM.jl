@@ -1,0 +1,84 @@
+scope = "Native CKT PRJ frequency contract; SMD SPROJ not licensed or inferred"
+runner_sha256 = "ddd4ad6c84e0e8bbcd0c5281f22c17ea858877155356020ca5d12db3e79325ac"
+
+[[cases]]
+coarse_s_interpolation_error = 0.1097534804281287
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 8.552351393407477e-6
+inherit_field = 0
+frequency_hz = 2.5e8
+continuous_error = 6.148657860573976e-6
+case = "coarse_child_flag0"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.1337336470296239
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 1.3295117965738917e-6
+inherit_field = 0
+frequency_hz = 3.0e8
+continuous_error = 4.4715973090550216e-7
+case = "coarse_child_flag0"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.09100156247656145
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 1.0084868283367188e-5
+inherit_field = 0
+frequency_hz = 3.5e8
+continuous_error = 7.142918359760233e-6
+case = "coarse_child_flag0"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.1097534804281287
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 8.552351393407477e-6
+inherit_field = 1
+frequency_hz = 2.5e8
+continuous_error = 6.148657860573976e-6
+case = "coarse_child_flag1"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.1337336470296239
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 1.3295117965738917e-6
+inherit_field = 1
+frequency_hz = 3.0e8
+continuous_error = 4.4715973090550216e-7
+case = "coarse_child_flag1"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.09100156247656145
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 1.0084868283367188e-5
+inherit_field = 1
+frequency_hz = 3.5e8
+continuous_error = 7.142918359760233e-6
+case = "coarse_child_flag1"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.1097534804281287
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 8.552351393407477e-6
+inherit_field = 0
+frequency_hz = 2.5e8
+continuous_error = 6.148657860573976e-6
+case = "fine_child_flag0"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.1337336470296239
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 1.3295117965738917e-6
+inherit_field = 0
+frequency_hz = 3.0e8
+continuous_error = 4.4715973090550216e-7
+case = "fine_child_flag0"
+continuous_pass = true
+[[cases]]
+coarse_s_interpolation_error = 0.09100156247656145
+child_frequency_mhz = [250.0, 300.0, 350.0]
+rounding_bound = 1.0084868283367188e-5
+inherit_field = 0
+frequency_hz = 3.5e8
+continuous_error = 7.142918359760233e-6
+case = "fine_child_flag0"
+continuous_pass = true

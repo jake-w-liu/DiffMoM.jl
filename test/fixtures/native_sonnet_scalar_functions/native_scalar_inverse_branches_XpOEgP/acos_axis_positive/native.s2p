@@ -1,0 +1,14 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: acos_axis_positive
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 09:16:15
+!< HDATE 10/04/2026 05:47:13
+!< MDATE 10/04/2026 05:47:13
+!< PARAMS
+!< Rho = 7.0
+!< Rs = 2.0
+!< Loss = -2.0
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 1.1296006310e-4 0.0047946849609 0.9997110524375 -0.023554402359 0.9997110524375 -0.023554402359 1.1297708895e-4 0.0047946845598
