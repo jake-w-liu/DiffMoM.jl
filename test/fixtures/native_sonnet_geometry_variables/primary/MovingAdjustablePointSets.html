@@ -1,0 +1,128 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Moving Adjustable Point Sets</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet User's Guide.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("MovingAdjustablePointSets");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Moving Adjustable Point Sets</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="ParameterizingyourProject.html">Parameterizing your Project</a> &rsaquo;&rsaquo; <a href="DimensionParameters.html">Dimension Parameters</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="DimensionParameters.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="SymmetricalDimensionParameters.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="RadialDimensionParameters.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">Anchored and symmetric parameters have a setting which controls how the adjustable point sets are moved. There are three settings: Move points the same distance, Scale points in one direction, and Scale points in X and Y. Each type is explained below. </span></p>
+<p class="rvps2"><span class="rvts6">Below is shown the Parameter Properties dialog box in which you select the moving option from the drop list. This dialog box appears when you are entering a dimension parameter or when you select the command </span><span class="rvts6"></span><span class="rvts6"></span><a class="rvts11" href="../Sonnet_Suites/GeoVarPropertiesWin.html" >Object </a><a class="rvts46" href="../Sonnet_Suites/GeoVarPropertiesWin.html" >⇒</a><a class="rvts11" href="../Sonnet_Suites/GeoVarPropertiesWin.html" >&nbsp;Parameter Properties</a><span class="rvts6"></span><span class="rvts6"></span><span class="rvts6">&nbsp;when a dimension parameter is selected.</span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/par_prop_db_moving.gif"></p>
+<h3 class="rvps5"><span class="rvts0"><span class="rvts18">Move Points the Same Distance</span></span></h3>
+<p class="rvps2"><span class="rvts6">This setting moves the adjustable point set the same distance as the reference point is moved and all the points in the adjustable point set maintain their relative position. This is the default setting. An example using an anchored dimension parameter is shown below. Note that the adjustable point sets are highlighted.</span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/simple_move.png"></p>
+<p class="rvps2"><span class="rvts6">The anchored dimension parameter is increased by 10 mils, so each point in the adjustable point set is moved away from the anchor point by 10 mils. As shown in the illustration, the original distance from the anchor to the circled point was 40 mils; when the value of the parameter is increased, the point was moved by 10 mils so that it is now 50 mils away from the anchor point.</span></p>
+<h3 class="rvps5"><span class="rvts0"><span class="rvts18">Scale Points in one direction:</span></span></h3>
+<p class="rvps2"><span class="rvts6">&nbsp;When using this setting, the geometry controlled by the parameter is scaled or stretched along either the x or y axis depending on the orientation of the parameter. Each point in the adjustable point set is moved by an amount based on its relative distance from the anchor. Points closer to the anchor are moved a smaller distance then points further away from the anchor. For symmetric parameters, the anchor is the center point between the two reference points. </span></p>
+<p class="rvps2"><span class="rvts6">The scaling factor used is the ratio of the new nominal value to the present nominal value. Each point is moved by a delta calculated by multiplying its present distance from the anchor point by the scaling factor. &nbsp; &nbsp;</span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/scale_unidirectional.png"></p>
+<h3 class="rvps5"><span class="rvts0"><span class="rvts18">Scale Points in x and y:</span></span></h3>
+<p class="rvps2"><span class="rvts6">&nbsp;When using this setting, the geometry controlled by the parameter is scaled or stretched along both the x and y axis keeping the proportions of the geometry the same. Each point in the adjustable point set is moved by an amount based on its relative distance from the anchor. Points closer to the anchor are moved a smaller distance then points further away from the anchor. For symmetric parameters, the anchor is the center point between the two reference points. </span></p>
+<p class="rvps2"><span class="rvts6">The scaling factor used is the ratio of the new nominal value to the present nominal value. Each point is moved by a delta calculated by multiplying its present distance from the anchor point by the scaling factor. </span></p>
+<p class="rvps2"><span class="rvts6">An anchored dimension parameter being scaled in both directions is shown below. The scaling factor is 1.5 since the new nominal value is 120 mils and the present value is 80 mils. As shown in the illustration, the original distance from the anchor of the circled point was 36.5 mils along the x axis and 43.5 mils along the y axis; when the value of the parameter is increased the point was moved to 54.75 mils away from the anchor point along the x axis and 65.25 mils along the y axis; the original distances multiplied by the scaling factor of 1.5. &nbsp; </span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/scale_x_and_y.png"></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

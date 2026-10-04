@@ -1,0 +1,23 @@
+scope = "adjustable-set parser and overlap check measured independently of polygon normalization/EM solver; single Julia process, no universal performance claim"
+
+[[membership]]
+old_seconds = 0.0067279
+set_seconds = 5.63e-5
+same_false_result = true
+per_set_points = 5000
+[[membership]]
+old_seconds = 0.0268479
+set_seconds = 0.0001206
+same_false_result = true
+per_set_points = 10000
+
+[[parser]]
+seconds = 0.0011894
+implicit_reference_budget_rejection = true
+emitted_point_count = 9998
+point_budget = 10000
+[[parser]]
+seconds = 0.0332774
+implicit_reference_budget_rejection = true
+emitted_point_count = 99998
+point_budget = 100000

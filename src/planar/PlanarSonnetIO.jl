@@ -915,8 +915,7 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
     for cover in (p.top,p.bottom)
         length(cover)>=3 && cover[3]=="NOR" && sonnet_metal_zs(p,cover,freq;variables,cover=true)
     end
-    any(r->r.tokens[1]=="GEOVAR",p.records) && !isempty(variables) &&
-        throw(ArgumentError("GEOVAR coordinate transforms cannot be overridden during native lowering"))
+    p=_sonnet_geometry_project(p,freq,variables)
     geometry=expand_thick ? _sonnet_thick_geometry(p,freq,variables) : p
     val(t)=sonnet_variable_value(geometry,t;variables=variables,freq=freq)
     ls=geometry.length_scale
@@ -948,7 +947,8 @@ resistivity in ohm centimetres; an unmarked loss field is conductivity in
 siemens per metre. Unknown layer loss/anisotropy flags reject. The internal material details used by
 `solve_sonnet_project` additionally preserve supported sheet models, physical
 two-face TMM geometry, and constant VOL/ARR resistance-per-via loss.
-Co-calibration, geometry-variable overrides, dielectric bricks, general via
+Independent anchored/symmetric unscaled X/Y geometry dimensions are supported.
+Co-calibration, other geometry-variable modes, dielectric bricks, general via
 skin loss and unsupported material semantics reject explicitly. Components
 require the circuit wrapper. Parsed unsupported data remain in `SonnetProject`."""
 function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
@@ -967,8 +967,6 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         p=_sonnet_scalar_project(p,variables)
     end
     isempty(p.components) || throw(ArgumentError("native SMD components require the circuit adapter"))
-    any(r->r.tokens[1]=="GEOVAR",p.records) && !isempty(variables) &&
-        throw(ArgumentError("GEOVAR coordinate transforms cannot be overridden during native lowering"))
     physical=_sonnet_stack_geometry(p,freq,grid,variables)
     p=physical.geometry_project
     variables=physical.variables

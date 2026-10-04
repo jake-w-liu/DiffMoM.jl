@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\native_341572601630100\\split_ydir_anc_positive_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:28:19.039"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [160]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T02:28:18.053"
+source_sha256 = "b4c70c66b68c3d00676fb5fc9db9a331d957c8d032d445016827ed5766d98266"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\native_341572601630100\\split_ydir_anc_positive_parameter\\split_ydir_anc_positive_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\validation\\\\planar_audit\\\\fresh_geovar_20261004\\\\native_341572601630100\\\\split_ydir_anc_positive_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "78b0257425220121eac4bdf8c141720cfab0afc54df970c0906be94fb932dc21"
+intended_deembedded = false
+max_difference = 1.6854411009506513e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\native_341572601630100\\split_ydir_anc_positive_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5098517071629174
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "78b0257425220121eac4bdf8c141720cfab0afc54df970c0906be94fb932dc21"
+intended_deembedded = false
+max_difference = 1.6854411009506513e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\native_341572601630100\\split_ydir_anc_positive_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5098517071629174
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

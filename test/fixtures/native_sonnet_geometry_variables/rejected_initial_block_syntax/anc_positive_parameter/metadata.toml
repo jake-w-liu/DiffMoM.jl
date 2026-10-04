@@ -1,0 +1,14 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\native_340934903649900\\anc_positive_parameter.son"
+ended_utc = "2026-10-04T02:17:22.019"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T02:17:21.322"
+source_sha256 = "3a786afa537bf638e971d422f1c4b6df00b04ca6b702f9069351c7145cb6df64"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\native_340934903649900\\anc_positive_parameter\\anc_positive_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\validation\\\\planar_audit\\\\fresh_geovar_20261004\\\\native_340934903649900\\\\anc_positive_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

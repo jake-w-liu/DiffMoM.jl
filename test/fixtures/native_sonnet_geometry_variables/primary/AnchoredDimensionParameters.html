@@ -1,0 +1,122 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Anchored Dimension Parameters</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet User's Guide.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("AnchoredDimensionParameters");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Anchored Dimension Parameters</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="ParameterizingyourProject.html">Parameterizing your Project</a> &rsaquo;&rsaquo; <a href="DimensionParameters.html">Dimension Parameters</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="DimensionParameters.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="DimensionParameters.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="SymmetricalDimensionParameters.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">An anchored parameter defines a dimension using an anchor point, a reference point and an adjustable point set. The nominal value of the parameter is defined by the distance between the anchor point and the reference point. When the dimension is varied, each point moves relative to the anchor point. When defining your dimension parameter, you perform the following steps:</span></p>
+<ul style="text-indent: 0px; padding: 0; margin: 0 0 0 24px; list-style-position: outside; list-style-type: disc;"><ul style="text-indent: 0px; padding: 0; margin: 0 0 0 48px; list-style-position: outside; list-style-type: circle;">
+<li style="margin-left: 0px" class="rvps7"><span class="rvts6">&nbsp; &nbsp;You select the anchor first. This is the fixed starting point for the parameter. </span></li>
+<li style="margin-left: 0px" class="rvps7"><span class="rvts6">&nbsp; &nbsp;You select the reference point. The reference is the first point in the adjustable point set, which is the set of points moved relative to the anchor point when the value of the dimension parameter is changed. The distance from the anchor point to the reference point is the value of the dimension parameter. When the value of the dimension parameter is changed, the anchor retains the same position, but the reference point, moves to a new position. </span></li>
+<li style="margin-left: 0px" class="rvps7"><span class="rvts6">&nbsp; &nbsp;Third, you select any additional points in your circuit you wish to move when the reference point moves; this is the adjustable point set. As the value of the dimension parameter varies and the reference point is moved, the positions of the points in the adjustable point set also move. There is a setting associated with each dimension parameter that determines how the adjustable point set is moved. With the default, and simplest, option each point in the adjustable point set retains its relative distance from the reference point. For a discussion of all the options controlling moving the adjustable point set, see </span><a class="rvts11" href="MovingAdjustablePointSets.html">Moving Adjustable Point Sets</a><span class="rvts6">. </span></li>
+</ul></ul>
+<p class="rvps2"><span class="rvts6">Note that the anchored parameter is always defined as the distance between the anchor and the reference point in either the X direction or the Y direction, never as a diagonal distance between them.</span></p>
+<p class="rvps2"><span class="rvts6">Two examples of anchored parameters, each at two different nominal values, are illustrated below. This example uses the default setting for how the adjustable point set moves. </span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/ANC_PAR1.png"></p>
+<p class="rvps6"><img alt="" style="padding : 1px;" src="lib/tip_bulb.png"><span class="rvts19">Once you have finished adding a dimension parameter, double-clicking on the variable name and entering a new nominal value allows you to check whether the dimension parameter was defined correctly. </span></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

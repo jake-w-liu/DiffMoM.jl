@@ -1,0 +1,21 @@
+scope = "actual native simple ANC/SYM NSCD width changes versus independently declared literal rectangles; no production geometry adapter or broader dependent/scaled/radial claims"
+source_unchanged = true
+started_utc = "2026-10-04T02:17:21.314"
+
+[source_after]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetScalarFiles.jl" = "918b343951340e72b53129affcc3be7ce9f24ad9d750d2dc71d504dddba49ef5"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetIO.jl" = "d7d4a461a8da086f2d27b6f731b2146e7ffd9ce6502112b1afb33856130ea8d3"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\probe.jl" = "cfafac114712dba1d621b7686ede61b1a40496cb53193f7978701bd7637320e1"
+
+[[cases]]
+kind = "ANC"
+direction = 1
+width_mm = 0.375
+status = "UNVERIFIED"
+
+[source_before]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetScalarFiles.jl" = "918b343951340e72b53129affcc3be7ce9f24ad9d750d2dc71d504dddba49ef5"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetIO.jl" = "d7d4a461a8da086f2d27b6f731b2146e7ffd9ce6502112b1afb33856130ea8d3"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\planar_audit\\fresh_geovar_20261004\\probe.jl" = "cfafac114712dba1d621b7686ede61b1a40496cb53193f7978701bd7637320e1"

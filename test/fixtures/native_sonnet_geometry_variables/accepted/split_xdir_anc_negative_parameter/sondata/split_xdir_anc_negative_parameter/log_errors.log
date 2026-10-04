@@ -1,0 +1,15 @@
+Run 1:  Sun Oct 04 10:30:23 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\validation\planar_audit\fresh_geovar_20261004\native_341687448153200\split_xdir_anc_negative_parameter\split_xdir_anc_negative_parameter.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Width = 0.375 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 10:30:23 2026.

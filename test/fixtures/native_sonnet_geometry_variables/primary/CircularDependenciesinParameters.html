@@ -1,0 +1,116 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Circular Dependencies in Parameters</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet User's Guide.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("CircularDependenciesinParameters");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Circular Dependencies in Parameters</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="ParameterizingyourProject.html">Parameterizing your Project</a> &rsaquo;&rsaquo; <a href="DimensionParameters.html">Dimension Parameters</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="DimensionParameters.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="DependentDimensionParameters.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="ParameterSweep1.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">Care should be taken when adding dimension parameters to your circuit that they do not form a circular dependency. A circular dependency is formed when two dimension parameters are dependent on each other. This can happen for two dimension parameters or multiple dimension parameters. In the case of multiple dimension parameters, the dependency extends from the first dimension parameter through all the dimension parameters until the first dimension parameter is dependent upon the last.</span></p>
+<p class="rvps2"><span class="rvts6">If the project editor detects a circular dependency of dimension parameters, all the involved dimension parameters are shown in red. An example of two dimension parameters in a circular dependency is shown below. </span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/cir_depend1.png"></p>
+<p class="rvps2"><span class="rvts6">A circular dependency is an error condition and must be corrected before you can analyze your circuit. You need to redefine one of the dimension parameters such that it is no longer dependent on the other.</span></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

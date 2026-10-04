@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: split_xdir_sym_negative_parameter
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 10:30:27
+!< HDATE 10/04/2026 10:30:27
+!< MDATE 10/04/2026 10:30:27
+!< PARAMS
+!< Width = 0.375
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -1.588962064e-3 -0.032111004982 0.9982616172172 -0.049397390109 0.9982616172172 -0.049397390109 -1.588962064e-3 -0.032111004982

@@ -1,0 +1,161 @@
+scope = "read-only installed native nominal GEOVAR corpus compatibility; independent of unrelated project lowering rejections"
+
+[[cases]]
+fixture = "balun_param.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\balun_param\\balun_param.son"
+same_project = true
+status = "PASS"
+sha256 = "664a7b1f4ea0347785b9dab17520cc43e58572d27e66288866ddaaa93980bef8"
+blocks = 3
+
+[[cases]]
+fixture = "bends_param.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\bends_param\\bends_param.son"
+same_project = true
+status = "PASS"
+sha256 = "8af6eac1d66554bd3b1f50fa792c9f950f6fafd9f0e29dd0f818b423271c4075"
+blocks = 6
+
+[[cases]]
+fixture = "cmrc.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\cmrc\\cmrc.son"
+same_project = true
+status = "PASS"
+sha256 = "13c7bd7b50a345c4ee21c4b2df4d9eed711a02f9893c23eb81b5bb24603e757e"
+blocks = 1
+
+[[cases]]
+fixture = "component_lpf.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\component_lpf\\component_lpf.son"
+same_project = true
+status = "PASS"
+sha256 = "2e39ff203dca5235a63fdb8684442c84b064e9c06511603f06ce9a59a1ea4a6b"
+blocks = 4
+
+[[cases]]
+fixture = "corporate_feed_array.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\corporate_feed_array\\corporate_feed_array.son"
+same_project = true
+status = "PASS"
+sha256 = "522f93c34e94a41ed4cee6cc7209d43bc12161c2338b80b45ae1a61dc03cce80"
+blocks = 16
+
+[[cases]]
+fixture = "feedviapatch.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\feedviapatch\\feedviapatch.son"
+same_project = true
+status = "PASS"
+sha256 = "4d32d3f89efb5ad7d24cf990337ad52435f2dbbb489f31a25345bea52bcc86c2"
+blocks = 4
+
+[[cases]]
+fixture = "folded_branchline.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\folded_branchline\\folded_branchline.son"
+same_project = true
+status = "PASS"
+sha256 = "2dbc1fad51e3e3c54bc3f84a4b0385c94f5b1b32076cbaa4967701052b6d61dd"
+blocks = 1
+
+[[cases]]
+fixture = "lpf_2g_elliptic.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\lpf_2g_elliptic\\lpf_2g_elliptic.son"
+same_project = true
+status = "PASS"
+sha256 = "15b93913b70d07e19f6e50b2d3edf0a67f7c5c88c5fec21b0412cadba8336f16"
+blocks = 2
+
+[[cases]]
+fixture = "MIM_cap_only.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\mmic_stage\\MIM_cap_only.son"
+same_project = true
+status = "PASS"
+sha256 = "00f7c38c94da40bb56bf674d2339394e585ec3c9a189f862097fd912ee1753b6"
+blocks = 4
+
+[[cases]]
+fixture = "par_ds_opt.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\par_ds_opt\\par_ds_opt.son"
+same_project = true
+status = "PASS"
+sha256 = "264f4b33ca185de020fc33ed463309bb72da539f7a4e11d2d90f6a9d87cd5d41"
+blocks = 3
+
+[[cases]]
+fixture = "par_ds_tune.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\par_ds_tune\\par_ds_tune.son"
+same_project = true
+status = "PASS"
+sha256 = "2e360ac8f006e86ec4e7b9ec80ee8b038cb95e010896ee5d154af6666deaefd5"
+blocks = 3
+
+[[cases]]
+fixture = "param_combline.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\param_combline\\param_combline.son"
+same_project = true
+status = "PASS"
+sha256 = "94132422e8c4a6b513630718c5e28a8512f65ccba24cad66d513470057dc716d"
+blocks = 14
+
+[[cases]]
+fixture = "pcb_2side.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\pcb_2side\\pcb_2side.son"
+same_project = true
+status = "PASS"
+sha256 = "d4f85def008bb4607e709edd40f9879f37e88a75b93ab52ae6d2d919ec4ed8c3"
+blocks = 4
+
+[[cases]]
+fixture = "rfid_system.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\rfid_system\\rfid_system.son"
+same_project = true
+status = "PASS"
+sha256 = "cef756cfb9a68e5782eaa79381e3a002b94d14858f29886bb0b71112e44818ae"
+blocks = 10
+
+[[cases]]
+fixture = "rfid_tag_lite.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\rfid_tag_lite\\rfid_tag_lite.son"
+same_project = true
+status = "PASS"
+sha256 = "520e9ce021d02bddd2865258bf4b217a3c93c6bb2effbe298662ed0472311594"
+blocks = 1
+
+[[cases]]
+fixture = "rfid_tag_pro.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\rfid_tag_pro\\rfid_tag_pro.son"
+same_project = true
+status = "PASS"
+sha256 = "63f30eb4c8c90ebfa7b97063dc4a65dfc4bf10adc13c978a88ab306dd8f9bb60"
+blocks = 2
+
+[[cases]]
+fixture = "slotline_transition_b2b.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\slotline_transition_b2b\\slotline_transition_b2b.son"
+same_project = true
+status = "PASS"
+sha256 = "f6842f0b12ac0f9790935ba711d9ca60cfca9422795135aaf0b9e7808214b309"
+blocks = 4
+
+[[cases]]
+fixture = "trimmed_resistor.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\trimmed_resistor\\trimmed_resistor.son"
+same_project = true
+status = "PASS"
+sha256 = "a59e2bd4771b4fbf62132f265c161f7ba4c0369108eb4b0e2c745c3988316dfe"
+blocks = 2
+
+[[cases]]
+fixture = "uwb_ringres_filter.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\uwb_ringres_filter\\uwb_ringres_filter.son"
+same_project = true
+status = "PASS"
+sha256 = "63b657370012bb3efd350574902c270cbc902bf6758a6e96a66429fe1a80cabf"
+blocks = 3
+
+[[cases]]
+fixture = "wilkinson_ebg.son"
+path = "C:/Program Files/Sonnet Software/18.53/examples\\wilkinson_ebg\\wilkinson_ebg.son"
+same_project = true
+status = "PASS"
+sha256 = "be542d81ebf6b69057751a5195683e64e6a0c04eaf11d52ab68a19f35c2fb1a2"
+blocks = 21

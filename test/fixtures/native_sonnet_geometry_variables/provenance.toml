@@ -1,0 +1,11 @@
+scope = "Source snapshot availability for repeated preliminary native comparisons. The final accepted 16-pair proof includes every declared source snapshot with its exact SHA256."
+[initial_y_axis]
+report = "initial_y_axis/comparison.toml"
+source = "src/planar/PlanarSonnetIO.jl"
+declared_sha256 = "d7d4a461a8da086f2d27b6f731b2146e7ffd9ce6502112b1afb33856130ea8d3"
+byte_snapshot_available = false
+reason = "The original IO file changed after this preliminary native run before source-copy capture. No matching byte snapshot was found in current worktree, validation snapshots, or reachable file revisions. The report preserves its exact before/after hash, raw native input/output/log/metadata, and all other declared source bytes. No differently hashed replacement snapshot is represented as original evidence."
+[initial_xy_axis]
+byte_snapshot_available = true
+recovered_from = "DiffMoM_validation_snapshots/dxf_compact_fft_external_20261004/src/planar/PlanarSonnetIO.jl"
+verified_sha256 = "0628322e9388be4c2349927733d3b8f33b7eb5b58dd101d5666a67025b5e2eb3"

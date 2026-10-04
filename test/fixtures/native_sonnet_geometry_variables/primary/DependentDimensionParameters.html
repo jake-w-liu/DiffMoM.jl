@@ -1,0 +1,119 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Dependent Dimension Parameters</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet User's Guide.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("DependentDimensionParameters");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Dependent Dimension Parameters</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="ParameterizingyourProject.html">Parameterizing your Project</a> &rsaquo;&rsaquo; <a href="DimensionParameters.html">Dimension Parameters</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="DimensionParameters.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="ReferencePlanes1.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="CircularDependenciesinParameters.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">One dimension parameter is dependent upon another if the anchor point and/or the reference point(s) for the second parameter are part of an adjustable point set for the first parameter. This is allowed as long as a circular dependency is not formed; see </span><a class="rvts11" href="CircularDependenciesinParameters.html">Circular Dependencies in Parameters</a><span class="rvts6">. You need to be aware of dependent dimension parameters so that you can take into consideration the complete impact on your circuit when the value of the primary dimension parameter is changed. When the primary dimension parameter is changed, a dependent parameter is adjusted, i.e., the anchor point or reference point is moved, along with the primary dimension parameter on which they depend. A picture of a dependent dimension parameter is shown below with the Anchor and Reference points highlighted as well as the point sets.</span></p>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/DEPEND1.png"></p>
+<p class="rvps2"><span class="rvts6">You may use the Select Dependents command in the project editor to determine if there are any dependent dimension parameters. With the project open in the project editor, do the following:</span></p>
+<ol style="text-indent: 0px; padding: 0; margin: 0 0 0 24px; list-style-position: outside; list-style-type: decimal;">
+<li value="1" class="rvps2"><span class="rvts16">Right-click on a dimension parameter in your circuit.</span><br/><span class="rvts6"></span><br/><span class="rvts6">The variable name and the dimension parameter point set is highlighted and a pop-up menu appears on your display.</span></li>
+<li value="2" class="rvps2"><span class="rvts16">Select “Select Dependents” from the pop-up menu.</span><br/><span class="rvts6"></span><br/><span class="rvts6">If any dependent dimension parameters are present in your geometry, the dependent dimension parameter is highlighted. </span></li>
+</ol>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

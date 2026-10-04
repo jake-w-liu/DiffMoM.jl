@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: xdir_anc_negative_parameter
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 10:23:31
+!< HDATE 10/04/2026 10:23:31
+!< MDATE 10/04/2026 10:23:31
+!< PARAMS
+!< Width = 0.375
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -1.588987156e-3 -0.032111557433 0.9982616028951 -0.049397319606 0.9982616028951 -0.049397319606 -1.588987156e-3 -0.032111557433

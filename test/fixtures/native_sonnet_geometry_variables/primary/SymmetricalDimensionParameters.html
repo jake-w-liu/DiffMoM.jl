@@ -1,0 +1,123 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Symmetrical Dimension Parameters</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet User's Guide.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("SymmetricalDimensionParameters");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Symmetrical Dimension Parameters</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="ParameterizingyourProject.html">Parameterizing your Project</a> &rsaquo;&rsaquo; <a href="DimensionParameters.html">Dimension Parameters</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="DimensionParameters.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="AnchoredDimensionParameters.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="MovingAdjustablePointSets.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps18"><span class="rvts6">A symmetric parameter defines a dimension using two reference points and their respective adjustable point sets. The nominal value of the parameter is the distance between the two reference points. The anchor is defined as the midpoint between the two reference points; the user does not define an anchor point for a symmetric parameter. When the dimension is varied, each point moves relative to the anchor point. When defining your dimension parameter, you perform the following steps:</span></p>
+<ul style="text-indent: 0px; padding: 0; margin: 0 0 0 24px; list-style-position: outside; list-style-type: disc;"><ul style="text-indent: 0px; padding: 0; margin: 0 0 0 48px; list-style-position: outside; list-style-type: circle;">
+<li style="margin-left: 0px" class="rvps19"><span class="rvts6">&nbsp; &nbsp;Select the first reference point.</span></li>
+<li style="margin-left: 0px" class="rvps19"><span class="rvts6">&nbsp; &nbsp;Select the adjustable point set that moves with the first reference point.</span></li>
+<li style="margin-left: 0px" class="rvps19"><span class="rvts6">&nbsp; Select the second reference point. The value of the parameter is the distance between the two reference points. </span></li>
+<li style="margin-left: 0px" class="rvps20"><span class="rvts6">&nbsp; &nbsp;Select the adjustable point set that moves with the second reference point. </span></li>
+</ul></ul>
+<p class="rvps18"><span class="rvts6">There is a setting associated with each dimension parameter that determines how the adjustable point sets are moved. With the default, and simplest, option each point set moves one half the distance of the difference between the present value and the previous value out from the middle point, maintaining its relative positive to the reference point with which it is associated. For a discussion of all the options controlling moving adjustable point sets, see </span><a class="rvts11" href="MovingAdjustablePointSets.html">Moving Adjustable Point Sets</a><span class="rvts6">. </span></p>
+<p class="rvps18"><span class="rvts6">Note that the symmetric parameter is always defined as the distance between the reference points in either the X direction or the Y direction, never as a diagonal distance between them.</span></p>
+<p class="rvps18"><span class="rvts6">Two examples of symmetric parameters, each at two different nominal values, are illustrated below. This example uses the default setting for how the adjustable point set moves. &nbsp; </span></p>
+<p class="rvps18"><img alt="" style="padding : 1px;" src="lib/sym_parameter.png"></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+
