@@ -86,12 +86,34 @@ function planar_renormalize_s(S::AbstractMatrix,old_z0,new_z0)
     n>0 && size(S,2)==n && all(isfinite,S) || throw(ArgumentError(
         "renormalization requires a finite nonempty square S matrix"))
     old,new = _planar_reference_values(old_z0,n),_planar_reference_values(new_z0,n)
-    old==new && return Matrix{ComplexF64}(S)
-    scale=2sqrt.(real.(old).*real.(new))
-    all(x->isfinite(x) && x>0,scale) || throw(ArgumentError("wave-reference scaling exceeds finite Float64 range"))
-    A=Diagonal((conj.(old).+new)./scale);B=Diagonal((old.-new)./scale)
-    C=Diagonal((conj.(old).-conj.(new))./scale);D=Diagonal((old.+conj.(new))./scale)
-    result=(C+D*S)/(A+B*S)
+    matrix=eltype(S)===ComplexF64 ? S : Matrix{ComplexF64}(S)
+    all(isfinite,matrix) || throw(ArgumentError("S must remain finite in ComplexF64"))
+    old==new && return copy(matrix)
+    a=Vector{ComplexF64}(undef,n);b=similar(a);c=similar(a);d=similar(a)
+    for p in 1:n
+        left,right=sqrt(real(old[p])),sqrt(real(new[p]))
+        u=(.5left)/right+(.5right)/left
+        w=(.5left)/right-(.5right)/left
+        # The unnormalized impedance product, sum and reactance difference
+        # can overflow even when every wave-transform coefficient is finite.
+        # Root ratios retain the real terms; binary exponents retain the
+        # difference divided by 2*left*right without that product.
+        difference=imag(new[p])-imag(old[p])
+        if isfinite(difference)
+            mantissa,exponent=frexp(difference)
+        else
+            scale=max(abs(imag(old[p])),abs(imag(new[p])))
+            mantissa,exponent=frexp(scale)
+            mantissa*=imag(new[p])/scale-imag(old[p])/scale
+        end
+        lm,le=frexp(left);rm,re=frexp(right)
+        v=ldexp(mantissa/(2lm*rm),exponent-le-re)
+        a[p]=complex(u,v);b[p]=complex(w,-v)
+        c[p]=complex(w,v);d[p]=complex(u,-v)
+        all(isfinite,(a[p],b[p],c[p],d[p])) || throw(ArgumentError(
+            "wave-reference coefficients exceed finite Float64 range"))
+    end
+    result=(Diagonal(c)+Diagonal(d)*matrix)/(Diagonal(a)+Diagonal(b)*matrix)
     all(isfinite,result) || throw(ArgumentError("singular wave-reference conversion"))
     return Matrix{ComplexF64}(result)
 end
