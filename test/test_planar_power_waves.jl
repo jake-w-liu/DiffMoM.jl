@@ -197,7 +197,9 @@ end
 end
 
 @testset "native FLOAT reference and physical calibrated current transfer" begin
-    path=joinpath(@__DIR__,"..","data","sonnet_validation","floating_reference_J17qcd","floating_raw.son")
+    path=joinpath(@__DIR__,"fixtures","native_floating_power_waves","floating_raw.son")
+    @test bytes2hex(DiffMoM.SHA.sha256(read(path)))==
+        "267689d24b7e832dc19b0e9cb705097907a8941dab511790e7cac83436e1b170"
     source=read_sonnet_project(path)
     baseline=solve_sonnet_project(source,1e9;raw=true,mx=24,my=24)
     for port in source.ports
