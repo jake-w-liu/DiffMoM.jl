@@ -247,7 +247,7 @@ end
 
 @inline function _planar_conformal_half_values(prob,b,half)
     t=prob.basis.triangles[half,b];ids=view(prob.mesh.triangles,:,t)
-    a,c=prob.basis.edges[:,b];free=only(i for i in ids if i!=a && i!=c)
+    a,c=prob.basis.edges[1,b],prob.basis.edges[2,b];free=only(i for i in ids if i!=a && i!=c)
     sign=half==2 || prob.basis.triangles[2,b]==0 ? -1. : 1.
     factor=sign*prob.basis.width[b]/(2prob.mesh.areas[t]);v=prob.mesh.vertices
     x=ntuple(j->factor*(v[1,ids[j]]-v[1,free]),Val(3))
