@@ -1,0 +1,16 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\artwork_native_3hcgXi\\native_16_5000000000.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T15:05:41.038"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [126]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [16, 16]
+started_utc = "2026-10-03T15:05:39.990"
+source_sha256 = "571fde3f1a4f4fd55634de64733106a09d2144374b001719312863c7b835f47d"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\artwork_native_3hcgXi\\native_16_5000000000\\native_16_5000000000.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\artwork_native_3hcgXi\\\\native_16_5000000000\")"
+box_halfcell_counts = [32, 32]
+
+[dependency_sha256]
