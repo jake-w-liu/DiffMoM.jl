@@ -11,7 +11,7 @@ native output, complete Touchstone matrices, logs, errors, engine metadata,
 and comparison records. Their source-before/source-after hashes describe the
 code used for each historical capture, not a requirement that today's source
 equal a historical version. Source snapshots preserve the relevant producer
-and implementation bytes. `native/literal_physical_before.toml` records the
+and implementation bytes. `literal_physical_before.toml` records the
 independent literal public-solver check performed before the adapter existed.
 `sha256.toml` covers every payload and this readme.
 
