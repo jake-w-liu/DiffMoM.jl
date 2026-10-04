@@ -1,0 +1,19 @@
+geometry_gc_bytes = 167568
+scope = "warmed cumulative Julia GC allocations, not peak process memory; native ordinary radial geometry and bounded fallback points"
+parameter_storage_bytes = 104
+implementation_before = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"
+implementation_after = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"
+geometry_median_seconds = 0.0002031
+
+[[points]]
+median_seconds = 0.0
+gc_allocation_bytes = 0
+case = "ordinary"
+[[points]]
+median_seconds = 5.3e-6
+gc_allocation_bytes = 12168
+case = "range"
+[[points]]
+median_seconds = 5.3e-6
+gc_allocation_bytes = 12168
+case = "cancellation"

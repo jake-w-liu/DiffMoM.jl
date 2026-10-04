@@ -1,0 +1,41 @@
+{
+  "scope": "compact summary of exact retained local raw reports; durable tests independently rerun the same full matrices and numerical boundaries",
+  "julia_reports": [
+    {
+      "julia_version": "1.13.1",
+      "raw_report": "data\\radial_current_test_gate_1.13.1_20261004.toml",
+      "raw_report_sha256": "2abab564066adcbc1fbbf0afad3190bc0a0dba2cec3f085a8968e26e63d188bc",
+      "source_unchanged": true,
+      "implementation_sha256": "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654",
+      "test_sha256": "72d3019805c5e67585ef9c2050673bcb4a0c7651e874a4790243bc1223fd732c",
+      "native_cases": 24,
+      "radial_assertions": 1666,
+      "neighbor_assertions": 3984,
+      "full_s_gate": 0.005,
+      "voltage_residual_gate": 1e-09,
+      "max_full_s_error": 3.379495611943581e-05,
+      "max_original_voltage_residual": 3.344432348169022e-11
+    },
+    {
+      "julia_version": "1.12.7",
+      "raw_report": "data\\radial_current_test_gate_1.12.7_20261004.toml",
+      "raw_report_sha256": "fd1984588ad92eb67804ae07e0d826552312dc1f6dd938129de8733db90a9ae8",
+      "source_unchanged": true,
+      "implementation_sha256": "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654",
+      "test_sha256": "72d3019805c5e67585ef9c2050673bcb4a0c7651e874a4790243bc1223fd732c",
+      "native_cases": 24,
+      "radial_assertions": 1666,
+      "neighbor_assertions": 3984,
+      "full_s_gate": 0.005,
+      "voltage_residual_gate": 1e-09,
+      "max_full_s_error": 3.379495611943581e-05,
+      "max_original_voltage_residual": 3.344432348169022e-11
+    }
+  ],
+  "full_package_before_radial": {
+    "commit": "8c121a7c",
+    "status": "PASS",
+    "log": "data/frozen_package_two_axis_geovar_20261004.log"
+  },
+  "native_crossing_edge_repair": "UNSUPPORTED"
+}

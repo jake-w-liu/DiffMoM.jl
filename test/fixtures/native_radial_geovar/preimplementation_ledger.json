@@ -1,0 +1,9 @@
+{
+  "candidate": "active radial dimensions lack an adapter",
+  "status": "CONFIRMED_MISSING_IMPLEMENTATION",
+  "current_native_cases": 24,
+  "native_radial_literal_bit_identical": true,
+  "wrong_proportional_min_full_s_error": 0.0005083590982603683,
+  "source_before_sha256": "84d559a4df6b542d0714612351bfae7ed134b900c0c02a1633f543a44c3ea1b5",
+  "initial_nondiscriminating_probe": "data/sonnet_validation/radial_geovar_SVbMIv; producer preserved in data/radial_geovar_native_probe_equal_radii_20261004.jl"
+}

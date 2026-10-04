@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 14:27:04 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\radial_geovar_7HNIGF\expand_scxy_xdir_positive\expand_scxy_xdir_positive.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Radius = 0.375 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.999461 177.02 0.032830 86.812 0.032830 86.812 0.999461 176.61
+
+Em simulation completed Sun Oct 04 14:27:04 2026.

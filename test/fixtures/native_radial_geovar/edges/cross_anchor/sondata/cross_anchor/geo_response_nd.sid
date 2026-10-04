@@ -1,0 +1,11 @@
+! This file is intended for internal use only by Sonnet application programs.
+! Please refer to Sonnet documentation or help for instructions to generate
+! external output files which can be read by other application software.
+SIDATA 13
+PARAMS
+Radius = 0.03125
+END PARAMS
+HDATE 10/04/2026 14:29:48
+MDATE 10/04/2026 14:29:48
+PORTS 2
+1.0000000000000000e9 -2.11558002091278e-3 -0.03896774563370971 0.997768867967080753 -0.05416941237527201 0.997768867967090634 -0.05416941237527228 -2.11558002092654e-3 -0.03896774563369514

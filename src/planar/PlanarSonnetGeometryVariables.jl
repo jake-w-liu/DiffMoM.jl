@@ -1,4 +1,4 @@
-# Native anchored/symmetric dimensions with translated or scaled points.
+# Native anchored/symmetric and radial dimensions with movable points.
 # Original SON records remain the source identity of the effective geometry.
 struct _SonnetGeometryParameter
     name::String
@@ -95,9 +95,9 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         row=rows[index];t=row.tokens
         if t[1]!="GEOVAR";index+=1;continue;end
         length(parameters)<max_parameters || _sonnet_error(p.source,row.line,"GEOVAR parameter budget exceeded")
-        length(t)==6 && t[3] in ("ANC","SYM") && t[4] in ("XDIR","YDIR") &&
+        length(t)==6 && t[3] in ("ANC","SYM","RAD") && t[4] in ("XDIR","YDIR") &&
             t[5] in ("1","-1") && t[6] in ("NSCD","SCUNI","SCXY") ||
-            _sonnet_error(p.source,row.line,"GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter")
+            _sonnet_error(p.source,row.line,"GEOVAR requires an ANC/SYM/RAD XDIR/YDIR point-set adapter")
         name=t[2];haskey(p.variables,name) || _sonnet_error(p.source,row.line,"GEOVAR lacks its declared quantity variable")
         get(quantities,name,"")=="LNG" ||
             _sonnet_error(p.source,row.line,"GEOVAR variable must have one LNG declaration")
@@ -124,7 +124,7 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
             _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR block")
         index+=1
-        t[3]=="ANC" && !isempty(a) && _sonnet_error(p.source,row.line,"anchored GEOVAR has an unsupported moving anchor set")
+        t[3] in ("ANC","RAD") && !isempty(a) && _sonnet_error(p.source,row.line,"anchored/radial GEOVAR has an unsupported moving anchor set")
         t[3]=="SYM" && !(first in a) && push!(a,first)
         !(second in b) && push!(b,second)
         bset=Set(b)
@@ -136,7 +136,7 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
     return parameters
 end
 
-# Native files also retain radial/scaled/dependent dimensions whose saved
+# Native files also retain scaled/dependent dimensions whose saved
 # coordinates are usable unchanged. Only exact equality with every saved NOM
 # permits this path; an effective change still requires the proved adapter.
 function _sonnet_geovar_nominal_geometry(p,frequency,variables)
@@ -231,10 +231,33 @@ end
     end
 end
 
-"""Resolve native independent ANC/SYM NSCD/SCUNI/SCXY dimensions into effective SI geometry.
+# Native RAD moves every selected point by the same signed radial distance;
+# its XDIR/YDIR, direction and scaling fields do not change that movement.
+@inline function _sonnet_geovar_radial_point(x,y,anchorx,anchory,delta)
+    dx=x-anchorx;dy=y-anchory;radius=hypot(dx,dy)
+    if isfinite(radius) && radius>0
+        ux=dx/radius;uy=dy/radius
+        nx=fma(ux,delta,x);ny=fma(uy,delta,y)
+        safe(before,anchor,offset,unit,after)=isfinite(after) &&
+            (iszero(offset) || (!iszero(unit) && after!=before &&
+                abs(after)>sqrt(eps(Float64))*max(abs(before),abs(anchor),abs(delta))))
+        safe(x,anchorx,dx,ux,nx) && safe(y,anchory,dy,uy,ny) && return (nx,ny)
+    end
+    return setprecision(BigFloat,4352) do
+        setrounding(BigFloat,RoundNearest) do
+            bx=BigFloat(x);by=BigFloat(y);bdx=bx-BigFloat(anchorx);bdy=by-BigFloat(anchory)
+            bradius=hypot(bdx,bdy)
+            iszero(bradius) && throw(ArgumentError("radial GEOVAR point coincides with its anchor"))
+            change=BigFloat(delta)/bradius
+            (Float64(bx+bdx*change),Float64(by+bdy*change))
+        end
+    end
+end
+
+"""Resolve native independent ANC/SYM/RAD dimensions into effective SI geometry.
 Original source/records and scalar snapshot identity remain attached. Reference
 points belong implicitly to their adjustable set. Dependent/overlapping active
-dimensions, radial dimensions and moved component/interior-port semantics
+dimensions and moved component/interior-port semantics
 require separate adapters. Resource budgets are checked before geometry copy;
 effective coordinates are validated before emission. The supplied project is
 never modified."""
@@ -260,7 +283,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         nominal=parameter.nominal*p.length_scale;requested=target*p.length_scale
         isfinite(nominal) && nominal>0 && isfinite(requested) && requested>0 ||
             _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
-        delta=parameter.direction*(requested-nominal)
+        delta=(parameter.kind=="RAD" ? 1 : parameter.direction)*(requested-nominal)
         isfinite(delta) || _sonnet_error(p.source,parameter.line,"GEOVAR displacement is unrepresentable")
         target==parameter.nominal || !iszero(delta) ||
             _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost after SI conversion")
@@ -301,6 +324,19 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         firstid,firstpoint=parameter.references[1]
         secondid,secondpoint=parameter.references[2]
         firstvertices=original[firstid].vertices;secondvertices=original[secondid].vertices
+        if parameter.kind=="RAD"
+            anchorx=firstvertices[1,firstpoint];anchory=firstvertices[2,firstpoint]
+            for (id,index) in parameter.points[2]
+                beforex=polygons[id][1,index];beforey=polygons[id][2,index]
+                afterx,aftery=_sonnet_geovar_radial_point(beforex,beforey,anchorx,anchory,delta)
+                all(isfinite,(afterx,aftery)) &&
+                    (afterx!=beforex || beforex==anchorx) &&
+                    (aftery!=beforey || beforey==anchory) ||
+                    _sonnet_error(p.source,parameter.line,"radial GEOVAR displacement is lost in its stored coordinate")
+                polygons[id][1,index]=afterx;polygons[id][2,index]=aftery
+            end
+            continue
+        end
         symmetric=parameter.kind=="SYM"
         for axis in 1:2
             parameter.both_axes || axis==parameter.axis || continue

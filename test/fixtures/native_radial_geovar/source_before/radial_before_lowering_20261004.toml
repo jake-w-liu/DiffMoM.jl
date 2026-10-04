@@ -1,0 +1,124 @@
+scope = "preimplementation public RAD lowering on stable detached 8c121a7c"
+implementation_before = "84d559a4df6b542d0714612351bfae7ed134b900c0c02a1633f543a44c3ea1b5"
+implementation_after = "84d559a4df6b542d0714612351bfae7ed134b900c0c02a1633f543a44c3ea1b5"
+
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_nscd_xdir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_nscd_xdir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_nscd_xdir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_nscd_xdir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_nscd_ydir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_nscd_ydir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_nscd_ydir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_nscd_ydir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scuni_xdir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scuni_xdir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scuni_xdir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scuni_xdir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scuni_ydir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scuni_ydir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scuni_ydir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scuni_ydir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scxy_xdir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scxy_xdir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scxy_xdir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scxy_xdir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scxy_ydir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scxy_ydir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "expand_scxy_ydir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\expand_scxy_ydir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_nscd_xdir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_nscd_xdir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_nscd_xdir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_nscd_xdir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_nscd_ydir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_nscd_ydir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_nscd_ydir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_nscd_ydir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scuni_xdir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scuni_xdir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scuni_xdir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scuni_xdir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scuni_ydir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scuni_ydir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scuni_ydir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scuni_ydir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scxy_xdir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scxy_xdir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scxy_xdir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scxy_xdir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scxy_ydir_positive"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scxy_ydir_positive.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"
+[[cases]]
+input_unchanged = true
+status = "REJECT"
+case = "contract_scxy_ydir_negative"
+error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\test\\fixtures\\native_radial_geovar\\native\\contract_scxy_ydir_negative.son:25: GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter"

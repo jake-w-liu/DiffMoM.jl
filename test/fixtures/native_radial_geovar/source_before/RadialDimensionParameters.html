@@ -1,0 +1,119 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Radial Dimension Parameters</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet User's Guide.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("RadialDimensionParameters");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Radial Dimension Parameters</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="ParameterizingyourProject.html">Parameterizing your Project</a> &rsaquo;&rsaquo; <a href="DimensionParameters.html">Dimension Parameters</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="DimensionParameters.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="MovingAdjustablePointSets.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="ReferencePlanes1.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">A radial parameter defines a dimension using an anchor point, a reference point and an adjustable point set. The nominal value of the parameter is defined by the distance between the anchor point and the reference point. When the dimension is varied, each point moves along a line extending from the anchor point through it’s original position. Setting up a radial parameter is identical to setting up an anchored parameter. When defining your radial parameter, you perform the following steps:</span></p>
+<ul style="text-indent: 0px; padding: 0; margin: 0 0 0 24px; list-style-position: outside; list-style-type: disc;"><ul style="text-indent: 0px; padding: 0; margin: 0 0 0 48px; list-style-position: outside; list-style-type: circle;">
+<li style="margin-left: 0px" class="rvps7"><span class="rvts6">&nbsp; &nbsp;You select the anchor first. This is the fixed starting point for the parameter. </span></li>
+<li style="margin-left: 0px" class="rvps7"><span class="rvts6">&nbsp; &nbsp;You select the reference point. The reference is the first point in the adjustable point set, which is the set of points moved relative to the anchor point when the value of the radial parameter is changed. The diagonal distance from the anchor point to the reference point is the value of the dimension parameter. When the value of the dimension parameter is changed, the anchor retains the same position, but the reference point, along with the adjustable point set, moves to a new position. </span></li>
+<li style="margin-left: 0px" class="rvps7"><span class="rvts6">&nbsp; &nbsp;Third, you select any additional points in your circuit you wish to move when the reference point moves; this is the adjustable point set. As the value of the dimension parameter is varied, the reference point, as well as the rest of the adjustable point set, is moved accordingly. Each of the points in the point set move the same distance along their radius from the anchor point. An example is shown below. </span></li>
+</ul></ul>
+<p class="rvps2"><img alt="" style="padding : 1px;" src="lib/radial_parameters.png"></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+

@@ -202,8 +202,19 @@ snapshots and invalid diagonal-port evidence are retained in
 `test/fixtures/native_two_axis_geovar`. Both coordinate components resolve
 without changing the supplied project; an invalid physical wall attachment
 rejects as it does in the actual native engine.
-Active radial dimensions,
-overlapping/dependent dimensions and moved component/interior/via attachments
+Independent native radial dimensions now move each selected point by the same
+signed radial distance from its anchor. Twenty-four actual native controls
+cover expansion/contraction and all axis, direction and scaling headers; their
+complete matrices match the independent literals bit for bit. Proportional
+hypotheses differ by 0.000508–0.00355. Current public raw solves pass the unchanged
+0.005 full-S and 1e-9 original voltage-residual gates. The point helper uses no
+allocation for ordinary coordinates and bounded precision for range or
+cancellation cases, checked against an independent 4608-bit formula.
+Exact evidence is retained in `test/fixtures/native_radial_geovar`, and
+`validation/planar_audit/run_radial_geovar_reference.jl` replays the native pairs.
+Native repair of crossing-edge polygons remains unsupported; a retained
+native-accepted control rejects explicitly in the public simple-polygon model.
+Overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored
 coordinate cancellation reject before emitting a changed project.
 Exact native sources, matrices, metadata, rejected hypotheses, implementation

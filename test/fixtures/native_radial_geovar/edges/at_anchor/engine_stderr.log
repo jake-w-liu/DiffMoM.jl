@@ -1,0 +1,9 @@
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      The polygon edge to which port 2 is attached
+      is partially or entirely outside of the box.
+      Sonnet: metal level 0; x=1, y=0.59375 mm.
+

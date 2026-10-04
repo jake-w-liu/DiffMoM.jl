@@ -1,0 +1,24 @@
+Run 1:  Sun Oct 04 14:29:47 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\radial_geovar_edges_ndHeiI\at_anchor\at_anchor.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Radius = 0.0625 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      The polygon edge to which port 2 is attached
+      is partially or entirely outside of the box.
+      Sonnet: metal level 0; x=1, y=0.59375 mm.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Sun Oct 04 14:29:47 2026.

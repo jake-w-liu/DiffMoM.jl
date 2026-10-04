@@ -26,6 +26,10 @@ from a new execution's report.
 rebuilds the tracked compression fixture and should be run only when updating
 that fixture.
 
+`run_radial_geovar_reference.jl` replays the tracked RAD parameter/literal
+pairs, including all axis, direction and scaling headers, against the installed
+native engine. It checks full matrix identity and source stability.
+
 `run_scaled_geovar_reference.jl` replays the tracked SCUNI/SCXY parameter/literal
 pairs using an installed native Sonnet engine. It creates a fresh evidence
 directory under `data/planar_audit/`; its optional argument selects an output

@@ -1,0 +1,14 @@
+producer_sha256 = "74dd1d63dbe2d402573cff8e3ac1f1857519c16281d833b91e1e654595f12f0b"
+started_utc = "2026-10-04T06:29:46.910"
+
+[[cases]]
+status = "REJECT"
+tag = "at_anchor"
+error = "Sonnet analysis failed; see C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\radial_geovar_edges_ndHeiI\\at_anchor"
+[[cases]]
+status = "ACCEPT"
+tag = "cross_anchor"
+[[cases]]
+status = "REJECT"
+tag = "offwall"
+error = "Sonnet analysis failed; see C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\radial_geovar_edges_ndHeiI\\offwall"
