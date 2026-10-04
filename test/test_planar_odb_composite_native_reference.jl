@@ -3,7 +3,7 @@ using DiffMoM,Test,SHA,TOML,LinearAlgebra
 @testset "Public ODB composite user-symbol stroke vs actual Sonnet full matrices" begin
     root=normpath(joinpath(@__DIR__,"..","validation","sonnet_stripline","odb_composite_stroke_reference"))
     hashes=TOML.parsefile(joinpath(root,"sha256.toml"))["sha256"]
-    @test length(hashes)==367
+    @test length(hashes)==639
     for (path,wanted) in hashes
         @test open(io->bytes2hex(sha256(io)),joinpath(root,path))==wanted
     end
@@ -17,6 +17,34 @@ using DiffMoM,Test,SHA,TOML,LinearAlgebra
     @test length(repeat["runs"])==9
     @test all(r->r["status"]=="PASS" && r["full_complex_s_error"]<=.06 &&
         r["original_voltage_residual"]<=1e-9,repeat["runs"])
+    final=TOML.parsefile(joinpath(root,"canonical_query_repeat","comparison.toml"))
+    @test final["source_unchanged"]
+    @test final["source_sha256_before"]==final["source_sha256_after"]
+    @test length(final["runs"])==9
+    @test final["full_complex_s_gate"]==.06
+    @test final["original_voltage_residual_gate"]==1e-9
+    @test all(r->r["status"]=="PASS" && r["full_complex_s_error"]<=.06 &&
+        r["original_voltage_residual"]<=1e-9,final["runs"])
+    @test length(final["source_sha256_after"])==13
+    for (path,digest) in final["source_sha256_after"]
+        suffix=match(r"/((?:src|validation)/.+)$",replace(path,'\\'=>'/'))
+        @test suffix!==nothing
+        @test bytes2hex(sha256(read(joinpath(root,"canonical_source_snapshot",suffix.captures[1]))))==digest
+    end
+    allocated=TOML.parsefile(joinpath(root,"canonical_allocation_repeat","comparison.toml"))
+    @test allocated["source_unchanged"]
+    @test allocated["source_sha256_before"]==allocated["source_sha256_after"]
+    @test length(allocated["runs"])==9
+    @test allocated["full_complex_s_gate"]==.06
+    @test allocated["original_voltage_residual_gate"]==1e-9
+    @test all(r->r["status"]=="PASS" && r["full_complex_s_error"]<=.06 &&
+        r["original_voltage_residual"]<=1e-9,allocated["runs"])
+    @test length(allocated["source_sha256_after"])==13
+    for (path,digest) in allocated["source_sha256_after"]
+        suffix=match(r"/((?:src|validation)/.+)$",replace(path,'\\'=>'/'))
+        @test suffix!==nothing
+        @test bytes2hex(sha256(read(joinpath(root,"allocation_source_snapshot",suffix.captures[1]))))==digest
+    end
     # A complete public board resolves the original frame, clear hole,
     # redraw island and buses. Literal native geometry is independent.
     artwork=read_odb(joinpath(root,"odb_product");step="board",layers=["metal"],max_stroke_boundaries=27)
@@ -33,7 +61,7 @@ using DiffMoM,Test,SHA,TOML,LinearAlgebra
         prob=artwork_planar_problem(artwork,stack,grid,Dict("metal"=>(;kind=:sheet,interface=1)),ports;max_bytes=2_000_000_000)
         @test only(prob.sheets).mask==expected
         for frequency in (1e9,5e9,1e10)
-            tag="native_$(cells)_$(Int(frequency))";folder=joinpath(root,tag)
+            tag="native_$(cells)_$(Int(frequency))";folder=joinpath(root,"canonical_allocation_repeat",tag)
             metadata=TOML.parsefile(joinpath(folder,"metadata.toml"))
             @test startswith(metadata["engine_version"],"18.53-Lite")
             @test metadata["process_success"]
@@ -48,6 +76,7 @@ using DiffMoM,Test,SHA,TOML,LinearAlgebra
             file=joinpath(folder,"native_raw.s4p")
             @test guard["output_sha256"]==open(io->bytes2hex(sha256(io)),file)
             native=planar_read_touchstone(file)
+            @test native.s==planar_read_touchstone(joinpath(root,tag,"native_raw.s4p")).s
             @test native.frequencies==[frequency]
             @test native.z0==fill(50.,4)
             result=solve_planar_contracted(prob,frequency,Matrix{Float64}(I,4,4);z0=fill(50.,4),

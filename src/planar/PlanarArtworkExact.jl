@@ -419,6 +419,7 @@ function _artwork_exact_stroke(s::_ArtworkCompositeLine,x::Float64,y::Float64)
         max_events=s.boundary_count+2,max_bytes=s.exact_bytes).hit
 end
 function _artwork_exact_point(s,x::Float64,y::Float64)
+    _artwork_region_point_leaf(s)&&return _artwork_exact_region_point(s,x,y)
     depth=_artwork_exact_qtrait(s)
     inputbits=max(_artwork_exact_operand_bits(s),_artwork_exact_operand_bits((x,y)))
     bits=_checked_array_payload_bytes(UInt8,128,inputbits+1,depth+1)

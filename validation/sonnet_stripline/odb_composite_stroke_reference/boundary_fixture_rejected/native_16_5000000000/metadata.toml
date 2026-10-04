@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\odb_composite_line_prototype_FhYQAl\\native_16_5000000000.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-03T22:30:13.040"
+response_nports = 4
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [137]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [16, 16]
+started_utc = "2026-10-03T22:30:12.295"
+source_sha256 = "8cdef0955a3ee1eb4def41183309ff6abd780de103229d016d7f946071412d44"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\odb_composite_line_prototype_FhYQAl\\native_16_5000000000\\native_16_5000000000.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\odb_composite_line_prototype_FhYQAl\\\\native_16_5000000000\")"
+box_halfcell_counts = [32, 32]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "a345ba4b50dad12485528f9a87c911c2abfc61d89d5d5e89d279b9c99abd1c60"
+intended_deembedded = false
+max_difference = 3.775462700930315e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0, 0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\odb_composite_line_prototype_FhYQAl\\native_16_5000000000\\native_raw.s4p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0, 50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0, 50.0, 50.0]]
+max_printed_bound_ratio = 0.8533727511972616
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0, 0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s4p"]
+output_sha256 = "a345ba4b50dad12485528f9a87c911c2abfc61d89d5d5e89d279b9c99abd1c60"
+intended_deembedded = false
+max_difference = 3.775462700930315e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0, 0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\odb_composite_line_prototype_FhYQAl\\native_16_5000000000\\native_raw.s4p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0, 50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0, 50.0, 50.0]]
+max_printed_bound_ratio = 0.8533727511972616
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0, 0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

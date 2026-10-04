@@ -7,6 +7,12 @@ function _odb_stroke_budget_read(body;kwargs...)
     end
 end
 
+# Independent directed conversion for a cached bound of exact stored dyadics.
+function _odb_outward_bound(q,lower)
+    value=Float64(q);represented=Rational{BigInt}(value)
+    lower ? (represented>q ? prevfloat(value) : value) : (represented<q ? nextfloat(value) : value)
+end
+
 # Independently clip the translated query path against each Cartesian
 # rectangle of the original U. This oracle has no polygon crossing test.
 function _odb_rectangle_line_member(rect,a,b,x,y)
@@ -36,9 +42,12 @@ end
         start,finish=rev ? (stop,a) : (a,stop)
         body="UNITS=MM\n\$0 custom\nL $(start[1]) $(start[2]) $(finish[1]) $(finish[2]) 0 P 0\n"
         shape=only(_odb_stroke_budget_read(body;symbol_resolver=name->polygon).objects).shape
-        @test DM._artwork_bounds(shape)==(-.001+min(start[1],finish[1])*1e-3,
-            .001+max(start[1],finish[1])*1e-3,-.001+min(start[2],finish[2])*1e-3,
-            .001+max(start[2],finish[2])*1e-3)
+        q=Rational{BigInt}
+        exact_bounds=(q(-.001)+q(min(start[1],finish[1])*1e-3),
+            q(.001)+q(max(start[1],finish[1])*1e-3),q(-.001)+q(min(start[2],finish[2])*1e-3),
+            q(.001)+q(max(start[2],finish[2])*1e-3))
+        expected_bounds=ntuple(i->_odb_outward_bound(exact_bounds[i],isodd(i)),4)
+        @test DM._artwork_bounds(shape)==expected_bounds
         for x in range(-2.013,4.013;length=79),y in range(-3.017,3.017;length=77)
             expected=any(r->_odb_rectangle_line_member(r,start,finish,x,y),rectangles)
             @test DM._artwork_contains(shape,x*1e-3,y*1e-3)==expected

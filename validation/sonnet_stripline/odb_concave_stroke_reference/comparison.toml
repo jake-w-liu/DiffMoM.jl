@@ -1,0 +1,100 @@
+full_complex_s_gate = 0.06
+scope = "public concave polygon line stroke/physical EM versus independent literal native GEO; no native ODB translator or continuum-convergence certificate"
+source_unchanged = true
+original_voltage_residual_gate = 1.0e-9
+
+[[runs]]
+native_source_sha256 = "debec29bbcc48fdf5b3013c10df4ba24491e690c3f9e9d40045137e8b5530452"
+original_voltage_residual = 5.55791469842767e-11
+native_output_sha256 = "b2eefa72e61aaafccc2f359ffd1dd5444283d4dc00f7437ae6176b885647f5bc"
+full_complex_s_error = 7.944220776937068e-6
+unknowns = 164
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [16, 16]
+[[runs]]
+native_source_sha256 = "d58e13966a3962d4f5475cf9efeb9c50e38e70a8e22aea150fd8921116061c88"
+original_voltage_residual = 1.8604704336278867e-12
+native_output_sha256 = "bbe133a1e543cc9203b81cc2c8e616fd2b1aba473325751e88c3fca1b4535f5f"
+full_complex_s_error = 3.882768007735117e-5
+unknowns = 164
+status = "PASS"
+frequency_hz = 5.0e9
+actual_grid = [16, 16]
+[[runs]]
+native_source_sha256 = "c888d4592e4238e00dfb28968594def36b3b0038acdf000799d4055954187951"
+original_voltage_residual = 4.621946789590294e-13
+native_output_sha256 = "3a5efd0c20b68ad99e6e0eabed301eb5b281b3d6f60d061a3336fd5811b70666"
+full_complex_s_error = 7.635576817051766e-5
+unknowns = 164
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [16, 16]
+[[runs]]
+native_source_sha256 = "44c70f6ad72a82a41a5aca3420348783ba47e2175529c0ee112a80cfd8e37280"
+original_voltage_residual = 1.0857978209946737e-10
+native_output_sha256 = "90298502bb52b09c09010bc568a1cdf124000f6d3c9d8ea4d325bde03f2f620f"
+full_complex_s_error = 3.8324489494410614e-6
+unknowns = 712
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [32, 32]
+[[runs]]
+native_source_sha256 = "2d6a6d22e57119dfd1abb5d91660f5fdda0ebda233fc981f75f0a4f683e75a85"
+original_voltage_residual = 4.819420884525392e-12
+native_output_sha256 = "48aedad1b74449fdc2d239a94afd3fb27e43752f54ef6dab94c6e4c53a2e7443"
+full_complex_s_error = 1.8545251870176306e-5
+unknowns = 712
+status = "PASS"
+frequency_hz = 5.0e9
+actual_grid = [32, 32]
+[[runs]]
+native_source_sha256 = "04079f6f5b40fc67907e46a4f4776fc6e835cacee780cc75e528591ba261ec6b"
+original_voltage_residual = 9.350511389683322e-13
+native_output_sha256 = "a7d247c984efbbcaf1b6a59ea424379f6d912db13620540abed1199236eb7e73"
+full_complex_s_error = 3.65394370989084e-5
+unknowns = 712
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [32, 32]
+[[runs]]
+native_source_sha256 = "f776edea53cebbda25b93bfbf1ce2be97a622ba9185553494d3eb1d40e45b22f"
+original_voltage_residual = 1.8350002168290622e-10
+native_output_sha256 = "7a6b06cc99725ac4e62bbd35c30eb06ac4c7aef0a8aa3b9070c22c5234cc77fd"
+full_complex_s_error = 2.9508061876530995e-6
+unknowns = 2960
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [64, 64]
+[[runs]]
+native_source_sha256 = "2cc78b568af2e9f3f5f9ada2980ad978d529986e756703ad26d613a2180db997"
+original_voltage_residual = 6.797177721507564e-12
+native_output_sha256 = "e2836db8c2e2f83e94c0b7496a17c4bfe397a5839b3f7c92f41cd687815f3ce0"
+full_complex_s_error = 1.3972510140810397e-5
+unknowns = 2960
+status = "PASS"
+frequency_hz = 5.0e9
+actual_grid = [64, 64]
+[[runs]]
+native_source_sha256 = "684b7e8faa9cb7d6e9314d348fca2e381ddc26ab47ad3c8450034fe2874b99b7"
+original_voltage_residual = 1.8316594549803494e-12
+native_output_sha256 = "f4741cad303a79d9e4f08f75837a78a8319d7875bf0d8f1f06a9088402f6a983"
+full_complex_s_error = 2.7403995195412273e-5
+unknowns = 2960
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [64, 64]
+
+[source_sha256_before]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarArtworkIO.jl" = "525ab45e209a7061f33d936087af61a0f3c91c069d99f11ce040fb1a2dbe9751"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarODBIO.jl" = "3b9c52a48dc595186002399d1dfb66f985a5457a422c68554b27db9b84757673"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_odb_concave_stroke.jl" = "5bffbdcf60f4d71202b2992ff015c8d388b9783df556588a98ab6f78cce771a6"
+
+[source_sha256_after]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarArtworkIO.jl" = "525ab45e209a7061f33d936087af61a0f3c91c069d99f11ce040fb1a2dbe9751"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarODBIO.jl" = "3b9c52a48dc595186002399d1dfb66f985a5457a422c68554b27db9b84757673"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_odb_concave_stroke.jl" = "5bffbdcf60f4d71202b2992ff015c8d388b9783df556588a98ab6f78cce771a6"

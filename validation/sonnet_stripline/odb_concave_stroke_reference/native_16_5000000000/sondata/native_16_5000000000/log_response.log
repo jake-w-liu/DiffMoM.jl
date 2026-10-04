@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 05:32:54 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\odb_concave_stroke_native_gKltsm\native_16_5000000000\native_16_5000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 5 GHZ
+
+    Frequency:  5 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      5.00000000 0.501288 168.46 0.499388 -7.253 0.499927 -5.885 0.499395 -7.621
+                 0.499388 -7.253 0.499818 171.26 0.499395 -7.621 0.501396 -3.080
+                 0.499927 -5.885 0.499395 -7.621 0.501288 168.46 0.499388 -7.253
+                 0.499395 -7.621 0.501396 -3.080 0.499388 -7.253 0.499818 171.26
+
+Em simulation completed Sun Oct 04 05:32:54 2026.

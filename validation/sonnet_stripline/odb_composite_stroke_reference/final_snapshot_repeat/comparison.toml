@@ -1,0 +1,97 @@
+full_complex_s_gate = 0.06
+scope = "public enclosing ODB product with original ordered composite-aperture sweep and physical solve versus independent literal native GEO; no native ODB translator or continuum claim"
+repeat_fixture = "island height .125mm gives positive geometric clearance on every declared grid; full-S and original-equation gates unchanged"
+source_unchanged = true
+original_voltage_residual_gate = 1.0e-9
+initial_boundary_fixture_artifact = "data/sonnet_validation/odb_composite_line_prototype_FhYQAl"
+production_import = "read_odb enclosing board with local user symbol"
+initial_boundary_failure_reason = "four 16-cell centers exactly coincide with the literal island boundary; exact stored SI subtraction places them outside by 2.71e-20m, independently verified without a geometric tolerance change"
+
+[source_sha256_after]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarArtworkIO.jl" = "df5df10496721127eb732d20993ad7b81f1edaa405bd599f47f6a0b9452bd20d"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarODBIO.jl" = "5a02863d04ba636c6222517dbb82188cd7b84a67ab9787e6ec0f49f2dfb190a1"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarArtworkSweep.jl" = "5ebd03bdb90bfc471d939686c911f9be049d8333a472da87c1e0ee2adbbfbe5e"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_odb_composite_stroke.jl" = "89baa2c982d6c5f65ce5cb6cb9ac22dcb8ef91824951adcad7989c768cdac16e"
+
+[[runs]]
+native_source_sha256 = "74ee4a25cbe57abdafb6cfb80daea006524ea27235c2ae1e15f206b6bae56676"
+original_voltage_residual = 4.390511710316244e-11
+native_output_sha256 = "6a96a78efa788b0757137f2916a1502f197cf998cc48c921fc0cb202d5f08ab6"
+full_complex_s_error = 2.878841007960301e-6
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [16, 16]
+[[runs]]
+native_source_sha256 = "75f164f90d7a3240d5097a737b192411ee390cdd70e74f2eb47beb88870cf29a"
+original_voltage_residual = 1.6491923653177155e-12
+native_output_sha256 = "fbbbaa07dcc9bff15b19d2df2ade6af0066273bd5d78b0c7bc9f5ff53155d969"
+full_complex_s_error = 1.3643872831342792e-5
+status = "PASS"
+frequency_hz = 5.0e9
+actual_grid = [16, 16]
+[[runs]]
+native_source_sha256 = "b600c95d264e13fb31437e0ea1b4fcca9a4be6ca3884dadbbbc78e5fcd30c70a"
+original_voltage_residual = 5.611907301362284e-13
+native_output_sha256 = "1412bee32da013ce043b2a4c68c6dcd082cb70b11cdae9e850babf464c4082d1"
+full_complex_s_error = 2.6875212772486858e-5
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [16, 16]
+[[runs]]
+native_source_sha256 = "60ada80f40c4400b2f62d848deb488de02c0aef8aadeda4f4ab5ff088553adaf"
+original_voltage_residual = 7.540433697318087e-11
+native_output_sha256 = "d3acb73613b3478487ba580ed1b66800e449311b2a90c6605d5ef800ac19fc29"
+full_complex_s_error = 6.558354368949651e-6
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [32, 32]
+[[runs]]
+native_source_sha256 = "81030742efbf6d35a9fcb72d8adaca2855eb3f4d4eeb65342d9441d7d6bb670c"
+original_voltage_residual = 2.8612270360002305e-12
+native_output_sha256 = "a7085ad95e97fa8ef763bfcef21c4e2cf287a96db2519ff825a5dc2015a7e468"
+full_complex_s_error = 3.194972464123882e-5
+status = "PASS"
+frequency_hz = 5.0e9
+actual_grid = [32, 32]
+[[runs]]
+native_source_sha256 = "773052bd41c656f61b98ed587c9899761a9c9186059e51923cbc4a5e0580ee50"
+original_voltage_residual = 7.812578775761571e-13
+native_output_sha256 = "3e5433fda7eec1c8fe3eac928b8c918c063c2ff4461e47a20d401191f98cc868"
+full_complex_s_error = 6.279748533127246e-5
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [32, 32]
+[[runs]]
+native_source_sha256 = "dd80bfba3154f343c156bed9d85d876323520e000504e99970d6826e5d913358"
+original_voltage_residual = 1.408007846257492e-10
+native_output_sha256 = "d80c09c5988dcc6d61be7ffdf01f50354cae68190eee34ad022c3489ce16a04e"
+full_complex_s_error = 7.0258163492587165e-6
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [64, 64]
+[[runs]]
+native_source_sha256 = "038e948aed14c4aa5079c8722f0f193cca2e84c4336c3db1f29cf9d0a92ac7e9"
+original_voltage_residual = 5.881428315270927e-12
+native_output_sha256 = "eca21fd0787b5485d9cdba95f18d958bae0fc16d00a5ede9a803ad3b970f6ed4"
+full_complex_s_error = 3.427031443543262e-5
+status = "PASS"
+frequency_hz = 5.0e9
+actual_grid = [64, 64]
+[[runs]]
+native_source_sha256 = "e0f1f771c78ff407dcca8a237a1d706daeb70c0ba227cea13e690edb83c45924"
+original_voltage_residual = 1.4972453104192787e-12
+native_output_sha256 = "4ba9e1a45a4efc5858b6c3bb0b63211e8577396e7c51f87183fb973064683b56"
+full_complex_s_error = 6.728376042513382e-5
+status = "PASS"
+frequency_hz = 1.0e10
+actual_grid = [64, 64]
+
+[source_sha256_before]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarArtworkIO.jl" = "df5df10496721127eb732d20993ad7b81f1edaa405bd599f47f6a0b9452bd20d"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarODBIO.jl" = "5a02863d04ba636c6222517dbb82188cd7b84a67ab9787e6ec0f49f2dfb190a1"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarArtworkSweep.jl" = "5ebd03bdb90bfc471d939686c911f9be049d8333a472da87c1e0ee2adbbfbe5e"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_odb_composite_stroke.jl" = "89baa2c982d6c5f65ce5cb6cb9ac22dcb8ef91824951adcad7989c768cdac16e"

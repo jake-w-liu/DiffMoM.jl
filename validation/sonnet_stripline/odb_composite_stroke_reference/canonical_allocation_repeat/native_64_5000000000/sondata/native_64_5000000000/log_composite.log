@@ -1,0 +1,55 @@
+Run 1:  Sun Oct 04 09:44:19 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\odb_composite_line_public_native_3HLbSg\native_64_5000000000\native_64_5000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 5 GHZ
+
+    Frequency:  5 GHZ
+      Subsectioning at 5 GHz with Eeff of 1.
+      Subsectioning time:  0.009 seconds.
+      Em license feature:  emlite.
+
+      Circuit requires 840 subsections and 3 MB of memory.
+
+      Primary structure subsections by level and type:
+      Level 0:
+        Surface Staircase:  840
+
+      Process memory by type:
+        System matrix:            3 MB
+        Elemental subsections:
+          Primary structure:      0 MB
+        Fourier transform:        0 MB
+        Waveguide mode:           0 MB
+        Adaptive band synthesis:  0 MB
+        Miscellaneous:            1 MB
+        TOTAL REQUIRED MEMORY:    4 MB
+
+      Amount of RAM installed on host computer:  64 GB
+      Number of logical processors:  20
+      Matrix solver:  internal 64-bit SSE lossless.
+      Simulation mode:  local machine.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.001 seconds.
+      Fourier transform time:  0.001 seconds.
+      Coupling time:  0.024 seconds.
+      Loss time:  0.002 seconds.
+      Matrix fill time:  0.028 seconds.
+      Matrix solve time:  0.015 seconds.
+      Frequency completed Sun Oct 04 09:44:19 2026.
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      5.00000000 0.500751 169.42 0.499638 -6.952 0.500067 -5.898 0.499542 -7.609
+                 0.499638 -6.952 0.500751 169.42 0.499542 -7.609 0.500067 -5.898
+                 0.500067 -5.898 0.499542 -7.609 0.500751 169.42 0.499638 -6.952
+                 0.499542 -7.609 0.500067 -5.898 0.499638 -6.952 0.500751 169.42
+      Total time per frequency:  0.049 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 1 frequency:  0.059 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 09:44:19 2026.

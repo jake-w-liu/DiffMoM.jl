@@ -1,0 +1,6 @@
+UNITS=MM
+$0 framed_island
+$1 rect1000x125
+L .4375 .5 .5625 .5 0 P 0
+P .5 .3125 1 P 0 0
+P .5 .6875 1 P 0 0

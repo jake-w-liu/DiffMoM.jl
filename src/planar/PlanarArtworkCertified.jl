@@ -265,6 +265,10 @@ function _artwork_certified_contains(s::_ArtworkRegion,x,y)
         (x.lo==x.hi==part.start[1]&&y.lo==y.hi==part.start[2]||
             x.lo==x.hi==part.stop[1]&&y.lo==y.hi==part.stop[2])&&return Int8(1)
         a,b=_artwork_interval_point(part.start),_artwork_interval_point(part.stop)
+        # A real axis-aligned contour segment is a closed boundary. An arc's
+        # straight chord is only a winding construction and cannot use this
+        # certificate.
+        part isa _ArtworkRoundLine&&_artwork_interval_axis_boundary(a,b,x,y)&&return Int8(1)
         part.start!=part.stop&&_artwork_interval_edge_uncertain(a,b,x,y)&&return Int8(-1)
         if part isa _ArtworkRoundArc
             r=hypot(part.start[1]-part.center[1],part.start[2]-part.center[2])

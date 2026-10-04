@@ -285,6 +285,25 @@ end
     end
 end
 
+@testset "Dyadic Region point shortcut matches exact rational predicates" begin
+    for k in (1e-200,1e-160,1.,1e160,1e200)
+        circle=D._ArtworkRegion(Union{D._ArtworkRoundLine,D._ArtworkRoundArc}[
+            D._ArtworkRoundArc((.125k,0.),(.125k,0.),(0.,0.),false,0.)])
+        lens=D._ArtworkRegion(Union{D._ArtworkRoundLine,D._ArtworkRoundArc}[
+            D._ArtworkRoundArc((.125k,0.),(0.,.125k),(0.,0.),false,0.),
+            D._ArtworkRoundLine((0.,.125k),(.125k,0.),0.)])
+        for leaf in (circle,lens),x in (-.25k,-.125k,-.0625k,0.,.0625k,.125k,.25k),
+            y in (-.25k,-.125k,-.0625k,0.,.0625k,.125k,.25k)
+            @test D._artwork_exact_region_point(leaf,x,y)==D._artwork_exact_qcontains(leaf,(Q(x),Q(y)))
+        end
+    end
+    region=D._odb_extra_standard_symbol("hplate6000x4000x1000xra200xro100",1e-6)
+    for p in ((-.00284375,-.00195625),(-.00293125,-.00186875),
+              (-.00293125,.0018687500000000002),(-.00284375,.00195625))
+        @test D._artwork_exact_region_point(region,p...)==D._artwork_exact_qcontains(region,(Q(p[1]),Q(p[2])))
+    end
+end
+
 @testset "ODB leaf coverage, algebraic ordering and bounded fallback" begin
     r=.125;circle=D._ArtworkCircle((0.,0.),r)
     for shape in (D._ArtworkODBDrill(circle,:plated,0.,0.),D._ArtworkODBButterfly(circle),

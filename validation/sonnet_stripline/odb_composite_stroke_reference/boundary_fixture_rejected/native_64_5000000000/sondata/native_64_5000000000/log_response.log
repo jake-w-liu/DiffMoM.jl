@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 06:30:19 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\odb_composite_line_prototype_FhYQAl\native_64_5000000000\native_64_5000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 5 GHZ
+
+    Frequency:  5 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      5.00000000 0.500771 169.36 0.499619 -6.975 0.500086 -5.854 0.499523 -7.650
+                 0.499619 -6.975 0.500771 169.36 0.499523 -7.650 0.500086 -5.854
+                 0.500086 -5.854 0.499523 -7.650 0.500771 169.36 0.499619 -6.975
+                 0.499523 -7.650 0.500086 -5.854 0.499619 -6.975 0.500771 169.36
+
+Em simulation completed Sun Oct 04 06:30:19 2026.

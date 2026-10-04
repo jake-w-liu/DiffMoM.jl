@@ -1,0 +1,3 @@
+vertices = [[-0.25, -0.25], [0.25, -0.25], [0.25, 0.25], [0.125, 0.25], [0.125, -0.125], [-0.125, -0.125], [-0.125, 0.25], [-0.25, 0.25]]
+scope = "explicit public symbol_resolver polygon; not enclosing-product user-symbol stroke acceptance"
+units = "MM"

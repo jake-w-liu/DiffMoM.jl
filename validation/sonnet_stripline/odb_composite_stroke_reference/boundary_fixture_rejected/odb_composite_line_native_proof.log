@@ -1,0 +1,32 @@
+Test Summary:                                                |  Pass  Total  Time
+Original ordered composite line sweep versus interval oracle | 75264  75264  0.3s
+Test Summary:                                              |  Pass  Total  Time
+Concentric clear-hole circle sweep versus distance extrema | 17995  17995  0.0s
+
+Actual native composite-line prototype coupon: Test Failed at C:\Users\User\DiffMoM.jl\validation\planar_audit\odb_composite_line_native_proof.jl:60
+  Expression: (only(prob.sheets)).mask == expected
+   Evaluated: Bool[0 0 … 0 0; 0 0 … 0 0; … ; 0 0 … 0 0; 0 0 … 0 0] == Bool[0 0 … 0 0; 0 0 … 0 0; … ; 0 0 … 0 0; 0 0 … 0 0]
+  Stacktrace:
+   [1] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:758 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\odb_composite_line_native_proof.jl:60 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [4] native_proof()
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\odb_composite_line_native_proof.jl:51
+Dict{String, Any}("native_source_sha256" => "65852343c447b466053b51b82c745d8350bc89fa5662b177c87efc0efa379a93", "original_voltage_residual" => 4.5832776714967564e-11, "native_output_sha256" => "35c78ea0c35b230e3f7dc3f44c4041d65fa6ab5582a3547f88ea8f6bd5ecd088", "full_complex_s_error" => 0.0005136558555081052, "status" => "PASS", "frequency_hz" => 1.0e9, "actual_grid" => [16, 16])
+Dict{String, Any}("native_source_sha256" => "8cdef0955a3ee1eb4def41183309ff6abd780de103229d016d7f946071412d44", "original_voltage_residual" => 1.6846409847849191e-12, "native_output_sha256" => "a345ba4b50dad12485528f9a87c911c2abfc61d89d5d5e89d279b9c99abd1c60", "full_complex_s_error" => 0.0025581036033922337, "status" => "PASS", "frequency_hz" => 5.0e9, "actual_grid" => [16, 16])
+Dict{String, Any}("native_source_sha256" => "32e89118cb9f20272207990d65e98f4456dce9c0253e7b4c3f788253a659e1d4", "original_voltage_residual" => 4.708277501648242e-13, "native_output_sha256" => "15b19c75a50195cccf3fa42c7613caa1048b21b29ab296b0e7c9362f48c6551d", "full_complex_s_error" => 0.005049873424655879, "status" => "PASS", "frequency_hz" => 1.0e10, "actual_grid" => [16, 16])
+Dict{String, Any}("native_source_sha256" => "9e18be51d75fe92826eaabebe53a8df4408eceeb2e9960ab51f64ef2cf7c0f48", "original_voltage_residual" => 7.564436271203332e-11, "native_output_sha256" => "67fb2610cda2b51b749d1300b7aeb8c0b54041adf298d80ae86ce9e1cfdc6107", "full_complex_s_error" => 3.417316397032228e-6, "status" => "PASS", "frequency_hz" => 1.0e9, "actual_grid" => [32, 32])
+Dict{String, Any}("native_source_sha256" => "e3c9320f6eb66191994c98ee6a04cd6095782f8f12a1dcd8e8afbe9a12173d65", "original_voltage_residual" => 2.9419143504323473e-12, "native_output_sha256" => "01a3a1b1d78bd2b27f077bcfb37c73fa6703c5b61a20e10be07728edca1fc5e2", "full_complex_s_error" => 1.6300169443520663e-5, "status" => "PASS", "frequency_hz" => 5.0e9, "actual_grid" => [32, 32])
+Dict{String, Any}("native_source_sha256" => "139fe88ef04fb84c3cbf69195a15f825b7a077d3ca0efa94d0c184e3355e5ddc", "original_voltage_residual" => 7.578799988307833e-13, "native_output_sha256" => "8569331af2d602590adb6f1f30ad2164ec61f1927f0ee90914ea95fca7ac6ec9", "full_complex_s_error" => 3.183525635653051e-5, "status" => "PASS", "frequency_hz" => 1.0e10, "actual_grid" => [32, 32])
+Dict{String, Any}("native_source_sha256" => "864546746dee12abaef184e586749c1d4081e9f6c724bf73436e0135a1867712", "original_voltage_residual" => 1.3008774420502957e-10, "native_output_sha256" => "77fbd2453495ae7c47eb920eaaf3b758810e6bd3e2115f4c860bbe5edbdc4752", "full_complex_s_error" => 2.5364785476994887e-6, "status" => "PASS", "frequency_hz" => 1.0e9, "actual_grid" => [64, 64])
+Dict{String, Any}("native_source_sha256" => "1adb09c7456bf9160dc55e0dbbeac2e2614bcb58d6b2b2dba32a62b2fc1b10b6", "original_voltage_residual" => 5.6526171392096856e-12, "native_output_sha256" => "77443bb1ec7fc1a08b3d96d6e5c37badd2b5d2577ec6f40e12305fe2620e4dbe", "full_complex_s_error" => 1.1892343588880087e-5, "status" => "PASS", "frequency_hz" => 5.0e9, "actual_grid" => [64, 64])
+Dict{String, Any}("native_source_sha256" => "3c9e0b25fb5eaa7e025a3e0472b3bd846ff22b484d0e7027ee6dce7adc0fa585", "original_voltage_residual" => 1.285247259511243e-12, "native_output_sha256" => "e5250cfbdce0079bf6a1e359099ea0f29a9ae6d1e7157941c2d40a028ad9c3a9", "full_complex_s_error" => 2.294665039462407e-5, "status" => "PASS", "frequency_hz" => 1.0e10, "actual_grid" => [64, 64])
+Test Summary:                                 | Pass  Fail  Total   Time
+Actual native composite-line prototype coupon |   38     1     39  14.4s
+RNG of the outermost testset: Random.Xoshiro(0x95f6b18a63aa8ee8, 0x0e2d7201fa2e9fb3, 0xc639842735b54b03, 0x65d06dfde52fca87, 0x68519e45a30f6ec1)
+evidence: C:\Users\User\DiffMoM.jl\data\sonnet_validation\odb_composite_line_prototype_FhYQAl
+ERROR: LoadError: Some tests did not pass: 38 passed, 1 failed, 0 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\odb_composite_line_native_proof.jl:103
