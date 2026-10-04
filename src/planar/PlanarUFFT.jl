@@ -55,6 +55,19 @@ struct _PlanarFFTAssemblyWorkspace{PB}
     local_loss::SparseMatrixCSC{ComplexF64,Int}
 end
 
+# High mode counts can be folded into the small family-pair lattices before
+# allocating the dense matrix, retaining only a bounded modal kernel block.
+struct _PlanarFFTBlockAssemblyWorkspace{PB}
+    n::Int
+    ne::Int
+    modes::PlanarModeGrid
+    families::Vector{_PlanarUFFTFamily}
+    spectra::Array{ComplexF64,3}
+    lattice::Matrix{ComplexF64}
+    backward::PB
+    local_loss::SparseMatrixCSC{ComplexF64,Int}
+end
+
 Base.size(A::PlanarUFFTOperator) = (A.n, A.n)
 Base.size(A::PlanarUFFTOperator, d::Integer) = d < 1 ?
     throw(ArgumentError("dimension must be positive")) : d <= 2 ? A.n : 1
@@ -117,7 +130,8 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         surface_zs=zero(ComplexF64), via_sigma=Inf, volume_sigma=Inf,
         sheet_coupling_zs=nothing,
         block::Integer=512,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES) where {dense}
+        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        _fold_dense::Bool=false) where {dense}
     planar_validate(prob.stack)
     omega = 2pi * ComplexF64(freq)
     isfinite(omega) && real(omega) > 0 ||
@@ -144,8 +158,13 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         sum(!iszero(sheet_coupling_zs[i,j]) for j in axes(sheet_coupling_zs,2))
         for i in axes(sheet_coupling_zs,1);init=0)
     L = length(prob.stack.layers)
+    kernel_block=Int(min(BigInt(nmode),BigInt(block)))
+    full_kernel_bytes=32BigInt(nmode)*ne*ne
+    folded_kernel_bytes=32BigInt(kernel_block)*ne*ne+
+        16BigInt(4)*nf*nf*(2BigInt(prob.grid.nx))*(2BigInt(prob.grid.ny))
+    fold_dense=dense && _fold_dense && folded_kernel_bytes<full_kernel_bytes
     est = _checked_payload_sum("planar FFT",
-        _checked_array_payload_bytes(ComplexF64, 2, nmode, ne, ne),
+        fold_dense ? folded_kernel_bytes : full_kernel_bytes,
         dense ? 0 : _checked_array_payload_bytes(ComplexF64, 4, nmode, ne),
         _checked_array_payload_bytes(ComplexF64, 2prob.grid.nx, 2prob.grid.ny),
         _checked_array_payload_bytes(ComplexF64, 2, nf, mx + my),
@@ -154,7 +173,7 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         # locations, element-pair records and bounded mode-index blocks.
         _checked_array_payload_bytes(Int, 8, nb),
         _checked_array_payload_bytes(Int, 2, ne, ne),
-        _checked_array_payload_bytes(Int, 2, min(BigInt(nmode),BigInt(block))),
+        _checked_array_payload_bytes(Int, 2, kernel_block),
         dense ? 0 : _checked_array_payload_bytes(ComplexF64, nb),
         _checked_array_payload_bytes(ComplexF64, length(prob.vias) + length(prob.vols)),
         _checked_array_payload_bytes(ComplexF64, 50, L + 1),
@@ -172,13 +191,14 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         findall(p -> elements[p] == e && prob.basis.kind[p] == k, 1:nb),
         elem_index[e]) for (e, k) in group_keys]
     pairs = [(f, s) for f in uniq for s in uniq]
-    k_te = Matrix{ComplexF64}(undef, nmode, ne * ne)
+    k_te = Matrix{ComplexF64}(undef, fold_dense ? kernel_block : nmode, ne * ne)
     k_tm = similar(k_te)
+    spectra=fold_dense ? zeros(ComplexF64,2prob.grid.nx,2prob.grid.ny,4nf*nf) : nothing
     vlay = sort!(unique([v.layer for v in prob.vias]))
     volay = sort!(unique([v.layer for v in prob.vols]))
     cte, ctm, scratch, vsts, volsts = _planar_mode_workspace(L, !isempty(vlay), !isempty(volay))
     # Fill in modest blocks so mode-index vectors stay bounded.
-    mb = Vector{Int}(undef, Int(min(BigInt(nmode), BigInt(block))))
+    mb = Vector{Int}(undef, kernel_block)
     nbmode = similar(mb)
     firstmode = 1
     while firstmode <= nmode
@@ -188,13 +208,19 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
             mb[q] = rem(t, Int(mx)) + 1
             nbmode[q] = t ÷ Int(mx) + 1
         end
-        _planar_mode_voltages!(view(k_te, firstmode:firstmode+count-1, :),
-            view(k_tm, firstmode:firstmode+count-1, :), cte, ctm, scratch,
+        range=fold_dense ? (1:count) : (firstmode:firstmode+count-1)
+        te=view(k_te,range,:);tm=view(k_tm,range,:)
+        _planar_mode_voltages!(te,tm, cte, ctm, scratch,
             prob.stack, omega, mg, view(mb, 1:count), view(nbmode, 1:count),
             pairs, vsts, vlay, volsts, volay)
+        if fold_dense
+            all(isfinite,te) && all(isfinite,tm) ||
+                throw(ArgumentError("FFT modal kernel is non-finite at a box resonance"))
+            _planar_fft_fold_dense_block!(spectra,families,ne,mg,te,tm,mb,nbmode,count)
+        end
         firstmode += count
     end
-    all(isfinite, k_te) && all(isfinite, k_tm) ||
+    fold_dense || (all(isfinite, k_te) && all(isfinite, k_tm)) ||
         throw(ArgumentError("FFT modal kernel is non-finite at a box resonance"))
     rows, cols, values = Int[], Int[], ComplexF64[]
     emit(p, q, v) = (push!(rows, p); push!(cols, q); push!(values, v); nothing)
@@ -207,6 +233,8 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     lattice = zeros(ComplexF64, 2prob.grid.nx, 2prob.grid.ny)
     # FFTW's supported plan API defaults to its inexpensive estimate.
     backward = FFTW.plan_bfft!(lattice)
+    fold_dense && return _PlanarFFTBlockAssemblyWorkspace(nb,ne,mg,families,
+        spectra,lattice,backward,loss)
     dense && return _PlanarFFTAssemblyWorkspace(nb,ne,mg,families,k_te,k_tm,
         lattice,backward,loss)
     forward = FFTW.plan_fft!(lattice)

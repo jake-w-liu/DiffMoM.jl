@@ -1008,7 +1008,14 @@ ladder remain open.
   0.06533993 above 0.06, so physical acceptance remains **FAIL**. The replay
   uses 139 unchanged copied source/configuration files and retained actual
   native raw-log matrices (`dxf_compact_fft_hMG0qJ`); it is not a fresh engine
-  run or a continuum certificate. Replacing all shapes by exact
+  run or a continuum certificate. Bounded dense modal blocks now permit mode
+  4096 under the same 4 GB raw-payload limit, with original unfactorized-matrix
+  residuals below 2.15e-12. The current 2048/4096 raw complex S errors are
+  0.06533993/0.06492637: both still **FAIL** the unchanged 0.06 gate.
+  Their cumulative Julia solve allocations, including returned results, are
+  approximately 2.818/2.782 GB; these do not establish peak process memory.
+  Exact current source hashes and retained native inputs are recorded in
+  `dxf_folded_dense_bounds_modal_ladder_xU521C`. Replacing all shapes by exact
   occupied-cell rectangles gives the identical native response; partial
   polygon rastering does not explain this discrepancy. Uniform-only via
   profiles give 0.06466 at mode 1536, also fail, and are kept as a diagnostic
@@ -1225,6 +1232,7 @@ ladder remain open.
 | Candidate / dimension | Verification | Fix and recheck |
 |---|---|---|
 | Retained FFT assembly keeps unused iterative buffers / measured resource use | multilayer 273-unknown fixture retains four mode-by-element arrays and an unused output vector totaling 3936528 B; warmed assembly allocates 15281904 B | separate compact assembly workspace preserves bit-identical finite-modal matrix and complete public iterative operator; warmed allocation 11344885 B (25.76% reduction), 42 new + 116 neighboring + 112 independent checks; raw payload budget still excludes opaque FFTW and process overhead |
+| Dense FFT retains every modal layer-pair kernel / measured resource use | 273-unknown mixed fixture allocates 11.344 MB and rejects an 8 MB payload limit; DXF mode4096 requires a 4.839 GB FFT workspace before its dense matrix | bounded blocks fold each mode in its original order into smaller family-pair lattices; mixed PEC/PMC matrices match the frozen source byte for byte, allocations fall to 3.695 MB and the 8 MB gate passes; DXF mode4096 fits the original 4 GB limit, while its native accuracy gate remains FAIL |
 | Finite wide circuit scalars lose stored invariants / numerical and state correctness | finite BigFloat R/L become infinity; positive C and nonzero transformer ratios become zero in owned elements | validate stored Float64 values before mutation; invalid inputs leave elements/nodes/ports unchanged, explicit zero and representable wide values remain supported |
 | Circuit frequency overflow/underflow after callbacks / public workflow correctness | pure network input frequencies `1e1000`/`1e-1000` return result frequencies infinity/zero after two callbacks | preflight the stored frequency before providers; invalid frequencies invoke zero callbacks, valid wide inputs use finite Float64 provider/result frequencies |
 | Attenuating circuit line loses reciprocity / numerical and physical correctness | matched `40+0.37im` line gives reverse transmission magnitude 4 instead of `exp(-40)`; attenuation 710 rejects finite S | bounded travelling-wave MNA, stored complex-domain validation and no ABCD temporary; 908 independent high-precision/domain/allocation checks |
