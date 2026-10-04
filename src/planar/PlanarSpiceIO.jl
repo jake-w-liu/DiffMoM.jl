@@ -522,8 +522,12 @@ end
 _circuit_owned_model(e::_CircuitSpiceLine)=e.owner.model
 _circuit_stamp_extra!(matrix,row,e::_CircuitSpiceLine,f,branch_rows)=_spice_line_stamp!(matrix,row,e.terminals,e.spec,f)
 _CircuitSpicePrimitive(t,k,v,c,i,o,w)=_CircuitSpicePrimitive(t,k,v,c,i,o,w,0.,Tuple{Int,Float64}[])
-_circuit_gauge_terminals(e::_CircuitSpicePrimitive)=e.kind in ('E','G') ?
+_circuit_gauge_terminals(e::_CircuitSpicePrimitive)=e.kind in ('E','G') && !iszero(e.value) ?
     (e.terminals[1],e.control_terminals) : (e.terminals[1],)
+_circuit_zero_current(e::_CircuitSpicePrimitive,f)=e.kind=='I' ||
+    e.kind=='C' && (iszero(e.value) || iszero(f)) ||
+    e.kind in ('F','G') && iszero(e.value) ||
+    e.kind=='G' && e.control_terminals[1]==e.control_terminals[2]
 _circuit_owned_model(e::_CircuitSpicePrimitive)=e.owner.model
 function _circuit_stamp_extra!(M,row,e::_CircuitSpicePrimitive,f,branch_rows)
     omega=2pi*f

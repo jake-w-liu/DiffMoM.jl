@@ -196,6 +196,7 @@ PlanarCircuitResult(f,s,y,v,i)=PlanarCircuitResult(f,s,y,v,i,Int[])
 PlanarCircuitResult(f,s,y,v,i,g)=PlanarCircuitResult(f,s,y,v,i,g,fill(50.0+0im,size(s,1)))
 
 _circuit_gauge_terminals(element)=element.terminals
+_circuit_zero_current(element,f)=false
 function _circuit_uniform_y_null(H)
     n=size(H,1)
     # Exact algebraic closure is deliberate: a small finite common-mode
@@ -206,7 +207,8 @@ function _circuit_uniform_y_null(H)
     return true
 end
 
-function _circuit_gauge_nodes(circuit,uniform_y_null=falses(length(circuit.elements)))
+function _circuit_gauge_nodes(circuit,uniform_y_null=falses(length(circuit.elements)),
+        zero_current=falses(length(circuit.elements)))
     n=circuit.nnodes;parent=collect(0:n);used=falses(n)
     function root(node)
         while parent[node+1]!=node
@@ -221,6 +223,9 @@ function _circuit_gauge_nodes(circuit,uniform_y_null=falses(length(circuit.eleme
     end
     for pair in circuit.ports;join(pair);end
     for (k,element) in enumerate(circuit.elements)
+        # An exact open imposes no voltage equation and injects no nodal
+        # current. Its terminal coordinates remain independently free.
+        zero_current[k] && continue
         pairs=_circuit_gauge_terminals(element)
         if uniform_y_null[k] && all(p->p[2]==pairs[1][2],pairs)
             # A nodal Y block with zero row/column sums has no current
@@ -370,11 +375,13 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
     column = circuit.nnodes
     omega = 2pi * f
     branch_rows=Vector{Int}(undef,length(circuit.elements));uniform_y_null=falses(length(circuit.elements))
+    zero_current=falses(length(circuit.elements))
     nextrow=circuit.nnodes+1
     for (k,element) in enumerate(circuit.elements)
         branch_rows[k]=nextrow;nextrow+=length(element.terminals)
     end
     for (element_index,element) in enumerate(circuit.elements)
+        floating_gauge===:auto && (zero_current[element_index]=_circuit_zero_current(element,f))
         nl = length(element.terminals)
         ids = (column+1):(column+nl)
         for (local_index,id) in enumerate(ids)
@@ -386,6 +393,7 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
             if e.topology === :series
                 if e.c !== nothing && (iszero(e.c) || iszero(omega))
                     M[row,row] = 1.0 # series capacitor is open at DC
+                    zero_current[element_index]=true
                 else
                     z = (e.r === nothing ? 0.0 : e.r) +
                         (e.l === nothing ? 0.0 : 1im*omega*e.l) +
@@ -404,6 +412,7 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
                         (e.c === nothing ? 0.0 : 1im*omega*e.c)
                     _circuit_voltage_stamp!(M,row,e.terminals[1],y)
                     M[row,row] = -1.0
+                    zero_current[element_index]=iszero(y)
                 end
             end
         elseif element isa _CircuitNetwork
@@ -414,6 +423,8 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
             H = Matrix{ComplexF64}(value)
             all(isfinite,H) || throw(ArgumentError("network response must remain finite in ComplexF64 at $f Hz"))
             floating_gauge===:auto && e.format===:y && (uniform_y_null[element_index]=_circuit_uniform_y_null(H))
+            floating_gauge===:auto && (zero_current[element_index]=
+                e.format===:y ? all(iszero,H) : e.format===:s && H==I)
             if e.format === :y
                 for p in 1:nl
                     for q in 1:nl
@@ -457,7 +468,7 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
         RHS[id,p] = 2roots[p]
     end
     all(isfinite,M) || throw(ArgumentError("circuit coefficients are non-finite"))
-    gauges=floating_gauge===:auto ? _circuit_gauge_nodes(circuit,uniform_y_null) : Int[]
+    gauges=floating_gauge===:auto ? _circuit_gauge_nodes(circuit,uniform_y_null,zero_current) : Int[]
     # The sum of KCL rows in each ungrounded terminal component is
     # redundant. Replace one such row by a voltage-coordinate choice.
     # This removes only the arbitrary common potential, not a physical
