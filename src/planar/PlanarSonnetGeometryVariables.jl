@@ -1,4 +1,4 @@
-# Native anchored/symmetric dimensions with translated or axis-scaled points.
+# Native anchored/symmetric dimensions with translated or scaled points.
 # Original SON records remain the source identity of the effective geometry.
 struct _SonnetGeometryParameter
     name::String
@@ -6,6 +6,7 @@ struct _SonnetGeometryParameter
     axis::Int
     direction::Int
     scaled::Bool
+    both_axes::Bool
     nominal::Float64
     references::NTuple{2,Tuple{Int,Int}}
     points::NTuple{2,Vector{Tuple{Int,Int}}}
@@ -95,8 +96,8 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         if t[1]!="GEOVAR";index+=1;continue;end
         length(parameters)<max_parameters || _sonnet_error(p.source,row.line,"GEOVAR parameter budget exceeded")
         length(t)==6 && t[3] in ("ANC","SYM") && t[4] in ("XDIR","YDIR") &&
-            t[5] in ("1","-1") && t[6] in ("NSCD","SCUNI") ||
-            _sonnet_error(p.source,row.line,"GEOVAR requires an ANC/SYM XDIR/YDIR translated or axis-scaled point-set adapter")
+            t[5] in ("1","-1") && t[6] in ("NSCD","SCUNI","SCXY") ||
+            _sonnet_error(p.source,row.line,"GEOVAR requires an ANC/SYM XDIR/YDIR translated or scaled point-set adapter")
         name=t[2];haskey(p.variables,name) || _sonnet_error(p.source,row.line,"GEOVAR lacks its declared quantity variable")
         get(quantities,name,"")=="LNG" ||
             _sonnet_error(p.source,row.line,"GEOVAR variable must have one LNG declaration")
@@ -130,7 +131,7 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         (first==second || any(point->point in bset,a) || first in bset) &&
             _sonnet_error(p.source,row.line,"GEOVAR adjustable sets conflict with their references")
         push!(parameters,_SonnetGeometryParameter(name,t[3],t[4]=="XDIR" ? 1 : 2,
-            parse(Int,t[5]),t[6]=="SCUNI",nominal,(first,second),(a,b),row.line))
+            parse(Int,t[5]),t[6]!="NSCD",t[6]=="SCXY",nominal,(first,second),(a,b),row.line))
     end
     return parameters
 end
@@ -230,12 +231,13 @@ end
     end
 end
 
-"""Resolve native independent ANC/SYM NSCD/SCUNI dimensions into effective SI geometry.
+"""Resolve native independent ANC/SYM NSCD/SCUNI/SCXY dimensions into effective SI geometry.
 Original source/records and scalar snapshot identity remain attached. Reference
 points belong implicitly to their adjustable set. Dependent/overlapping active
-dimensions, radial/two-axis scaling and moved component/interior-port semantics
-require separate adapters. All domains and metadata/copy budgets are checked
-before polygon mutation; the supplied project is never modified."""
+dimensions, radial dimensions and moved component/interior-port semantics
+require separate adapters. Resource budgets are checked before geometry copy;
+effective coordinates are validated before emission. The supplied project is
+never modified."""
 function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{String,Float64}();
         max_parameters::Integer=1024,max_points::Integer=100000,
         max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
@@ -298,20 +300,23 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         iszero(delta) && continue
         firstid,firstpoint=parameter.references[1]
         secondid,secondpoint=parameter.references[2]
-        first=original[firstid].vertices[parameter.axis,firstpoint]
-        second=original[secondid].vertices[parameter.axis,secondpoint]
+        firstvertices=original[firstid].vertices;secondvertices=original[secondid].vertices
         symmetric=parameter.kind=="SYM"
-        anchor=symmetric ? first/2+second/2 : first
-        for side in 1:2
-            shift=parameter.kind=="ANC" ? delta : (side==1 ? -delta/2 : delta/2)
-            for (id,index) in parameter.points[side]
-                before=polygons[id][parameter.axis,index]
-                after=parameter.scaled ? _sonnet_geovar_scaled_coordinate(before,first,second,
-                    parameter.nominal,target,symmetric) : before+shift
-                isfinite(after) && (after!=before || (parameter.scaled ?
-                    (before==anchor || _sonnet_geovar_fixed_coordinate(before,first,second,symmetric)) : iszero(shift))) ||
-                    _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
-                polygons[id][parameter.axis,index]=after
+        for axis in 1:2
+            parameter.both_axes || axis==parameter.axis || continue
+            first=firstvertices[axis,firstpoint];second=secondvertices[axis,secondpoint]
+            anchor=symmetric ? first/2+second/2 : first
+            for side in 1:2
+                shift=symmetric ? (side==1 ? -delta/2 : delta/2) : delta
+                for (id,index) in parameter.points[side]
+                    before=polygons[id][axis,index]
+                    after=parameter.scaled ? _sonnet_geovar_scaled_coordinate(before,first,second,
+                        parameter.nominal,target,symmetric) : before+shift
+                    isfinite(after) && (after!=before || (parameter.scaled ?
+                        (before==anchor || _sonnet_geovar_fixed_coordinate(before,first,second,symmetric)) : iszero(shift))) ||
+                        _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
+                    polygons[id][axis,index]=after
+                end
             end
         end
     end

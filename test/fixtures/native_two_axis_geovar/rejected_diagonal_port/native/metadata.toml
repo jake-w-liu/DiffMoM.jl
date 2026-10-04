@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\two_axis_offwall_UooIDw\\offwall.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T05:20:44.048"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T05:20:43.599"
+source_sha256 = "93abe559ce480eb3765d7d83486ed67d98b88db1584e572a3b3b364f171bdf3c"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\two_axis_offwall_UooIDw\\native\\offwall.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\two_axis_offwall_UooIDw\\\\native\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

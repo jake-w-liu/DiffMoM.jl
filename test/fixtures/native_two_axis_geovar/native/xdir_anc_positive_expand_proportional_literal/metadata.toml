@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\two_axis_geovar_HagV1m\\xdir_anc_positive_expand_proportional_literal.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T05:08:43.045"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [261]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T05:08:42.519"
+source_sha256 = "243389a29c090fde2a0bd1a60b31fc8291dbbf265c7acfbb2c54a6b530a24218"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\two_axis_geovar_HagV1m\\xdir_anc_positive_expand_proportional_literal\\xdir_anc_positive_expand_proportional_literal.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\two_axis_geovar_HagV1m\\\\xdir_anc_positive_expand_proportional_literal\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "52bad3508f8a981a102d70cd64d78f4b8c8d3ed1f8fc1c00e28529a7e16a41fb"
+intended_deembedded = false
+max_difference = 4.6271169645052303e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\two_axis_geovar_HagV1m\\xdir_anc_positive_expand_proportional_literal\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.527400583798579
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "52bad3508f8a981a102d70cd64d78f4b8c8d3ed1f8fc1c00e28529a7e16a41fb"
+intended_deembedded = false
+max_difference = 4.6271169645052303e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\two_axis_geovar_HagV1m\\xdir_anc_positive_expand_proportional_literal\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.527400583798579
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

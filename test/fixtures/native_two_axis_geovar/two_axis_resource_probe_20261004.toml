@@ -1,0 +1,17 @@
+scope = "warmed cumulative Julia GC allocation, not process peak RSS; identical metadata and point counts for NSCD/SCUNI/SCXY controls"
+parameter_storage_bytes = 104
+implementation_before = "84d559a4df6b542d0714612351bfae7ed134b900c0c02a1633f543a44c3ea1b5"
+implementation_after = "84d559a4df6b542d0714612351bfae7ed134b900c0c02a1633f543a44c3ea1b5"
+
+[[cases]]
+median_seconds = 0.00021
+gc_allocation_bytes = 169104
+mode = "NSCD"
+[[cases]]
+median_seconds = 0.0001784
+gc_allocation_bytes = 169168
+mode = "SCUNI"
+[[cases]]
+median_seconds = 0.000187
+gc_allocation_bytes = 169168
+mode = "SCXY"

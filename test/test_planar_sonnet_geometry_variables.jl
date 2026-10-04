@@ -113,7 +113,13 @@ end
             @test DiffMoM._sonnet_geometry_project(nominal,1e9)===nominal
             @test only(sonnet_planar_problem(nominal;freq=1e9).sheets).mask==
                 only(sonnet_planar_problem(p;freq=1e9,variables=Dict("Width"=>.25)).sheets).mask
-            @test_throws ArgumentError DiffMoM._sonnet_geometry_project(nominal,1e9,Dict("Width"=>.375))
+            if mode=="RAD"
+                @test_throws ArgumentError DiffMoM._sonnet_geometry_project(nominal,1e9,Dict("Width"=>.375))
+            else
+                # SCXY is supported. This particular wall attachment becomes
+                # diagonal; actual native Sonnet rejects that circuit too.
+                @test_throws ArgumentError sonnet_planar_problem(nominal;freq=1e9,variables=Dict("Width"=>.375))
+            end
         end
     end
     # Sonnet rejects these headers before evaluating NOM. The unchanged

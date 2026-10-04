@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: ydir_sym_positive_contract_parameter
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 13:09:11
+!< HDATE 10/04/2026 13:09:11
+!< MDATE 10/04/2026 13:09:11
+!< PARAMS
+!< Width = 0.125
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -0.997646656098 0.0675207676187 5.4462864327e-4 0.0119079342004 5.4462864327e-4 0.0119079342004 -0.999644988177 0.0238285982852

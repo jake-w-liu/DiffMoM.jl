@@ -1,0 +1,64 @@
+[[cases]]
+original_voltage_residual = 3.141756902200595e-11
+case = "xdir_anc_positive_expand"
+full_s_error = 2.553748325656422e-5
+[[cases]]
+original_voltage_residual = 3.848079867034724e-11
+case = "xdir_anc_positive_contract"
+full_s_error = 6.020131602192178e-6
+[[cases]]
+original_voltage_residual = 3.243887955807999e-11
+case = "xdir_anc_negative_expand"
+full_s_error = 2.137720298389345e-5
+[[cases]]
+original_voltage_residual = 4.1360119141817076e-11
+case = "xdir_anc_negative_contract"
+full_s_error = 5.227979505398174e-6
+[[cases]]
+original_voltage_residual = 3.2220831405206296e-11
+case = "xdir_sym_positive_expand"
+full_s_error = 1.8317414196317443e-5
+[[cases]]
+original_voltage_residual = 3.859167141216901e-11
+case = "xdir_sym_positive_contract"
+full_s_error = 5.4500830532931335e-6
+[[cases]]
+original_voltage_residual = 3.2220831405206296e-11
+case = "xdir_sym_negative_expand"
+full_s_error = 1.8317414196317443e-5
+[[cases]]
+original_voltage_residual = 3.859167141216901e-11
+case = "xdir_sym_negative_contract"
+full_s_error = 5.4500830532931335e-6
+[[cases]]
+original_voltage_residual = 2.9082451641746766e-11
+case = "ydir_anc_positive_expand"
+full_s_error = 2.553750361896124e-5
+[[cases]]
+original_voltage_residual = 4.9837956797474155e-11
+case = "ydir_anc_positive_contract"
+full_s_error = 6.020126144967876e-6
+[[cases]]
+original_voltage_residual = 2.9850114361062115e-11
+case = "ydir_anc_negative_expand"
+full_s_error = 2.1366608273663848e-5
+[[cases]]
+original_voltage_residual = 4.776146887863252e-11
+case = "ydir_anc_negative_contract"
+full_s_error = 6.377161133553936e-6
+[[cases]]
+original_voltage_residual = 2.700829366117327e-11
+case = "ydir_sym_positive_expand"
+full_s_error = 1.8317430197328404e-5
+[[cases]]
+original_voltage_residual = 4.553936769855561e-11
+case = "ydir_sym_positive_contract"
+full_s_error = 5.450076485949133e-6
+[[cases]]
+original_voltage_residual = 2.700829366117327e-11
+case = "ydir_sym_negative_expand"
+full_s_error = 1.8317430197328404e-5
+[[cases]]
+original_voltage_residual = 4.553936769855561e-11
+case = "ydir_sym_negative_contract"
+full_s_error = 5.450076485949133e-6

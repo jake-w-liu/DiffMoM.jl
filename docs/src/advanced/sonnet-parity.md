@@ -158,7 +158,7 @@ Ordinary FLOAT model references, loss-aware AUTO, other width/reference-plane
 contracts, geometry SPROJ traversal, other GEOVAR modes and licensed native pin-group
 calibration remain open implementation/acceptance items.
 
-Independent native ANC/SYM XDIR/YDIR dimensions with NSCD/SCUNI point sets now
+Independent native ANC/SYM XDIR/YDIR dimensions with NSCD/SCUNI/SCXY point sets now
 resolve into effective geometry before thick-metal expansion. Sparse polygon
 identities, implicit reference points and attached sheet wall-port coordinates
 are preserved without modifying the supplied project. Sixteen fresh native
@@ -193,7 +193,16 @@ Current lowering rejects that unsupported point convention explicitly. The
 valid nominal and independent literal controls pass the unchanged 0.005 gate
 with error 2.78e-5. Exact evidence is retained in
 `test/fixtures/native_nominal_geovar_grammar`.
-Active radial/two-axis scaling,
+Sixteen additional SCXY native parameter/literal pairs cover both axes, signs,
+expansion and contraction, with attached ports on their original wall. All
+complete native matrices are bit-identical; axis-only hypotheses differ by
+more than 0.014. Current public parameter solves pass the same fixed 0.005
+full-S and 1e-9 voltage-residual gates. Exact sources, responses, logs, source
+snapshots and invalid diagonal-port evidence are retained in
+`test/fixtures/native_two_axis_geovar`. Both coordinate components resolve
+without changing the supplied project; an invalid physical wall attachment
+rejects as it does in the actual native engine.
+Active radial dimensions,
 overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored
 coordinate cancellation reject before emitting a changed project.
