@@ -1,0 +1,16 @@
+normal_point_count = 100000
+implementation_sha256_before = "73813a951b1257323c9495e370dbbc1104c061c9aa79e2c0bb67de097e2c24d4"
+scope = "warmed cumulative Julia GC allocation, not process peak RSS; identical metadata and point counts for NSCD/SCUNI controls"
+normal_coordinate_gc_allocation_bytes = 0
+normal_coordinate_median_seconds = 0.0001915
+exceptional_coordinate_gc_allocation_bytes = 6608
+implementation_sha256_after = "73813a951b1257323c9495e370dbbc1104c061c9aa79e2c0bb67de097e2c24d4"
+julia_version = "1.13.1"
+
+[resolver.SCUNI]
+median_seconds = 0.0001987
+gc_allocation_bytes_per_resolution = 170672
+
+[resolver.NSCD]
+median_seconds = 0.0001936
+gc_allocation_bytes_per_resolution = 170576

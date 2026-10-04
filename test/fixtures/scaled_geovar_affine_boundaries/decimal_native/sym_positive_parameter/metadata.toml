@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_decimal_midpoint_xWaOhf\\sym_positive_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T05:38:39.046"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [154]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T05:38:38.822"
+source_sha256 = "823f355036b83c6f04caf66d2ce81e6bf2122613c6ea2cbe8d58051d04159e64"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_decimal_midpoint_xWaOhf\\sym_positive_parameter\\sym_positive_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\scaled_decimal_midpoint_xWaOhf\\\\sym_positive_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "4d480348788e781a3332ca071a01e325a719f1191fe121da5a76b6faea5e3380"
+intended_deembedded = false
+max_difference = 5.108358885484549e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_decimal_midpoint_xWaOhf\\sym_positive_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5821328655365335
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "4d480348788e781a3332ca071a01e325a719f1191fe121da5a76b6faea5e3380"
+intended_deembedded = false
+max_difference = 5.108358885484549e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_decimal_midpoint_xWaOhf\\sym_positive_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5821328655365335
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

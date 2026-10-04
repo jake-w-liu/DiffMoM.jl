@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 13:38:39 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\scaled_decimal_midpoint_xWaOhf\sym_positive_parameter\sym_positive_parameter.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Width = 0.3 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.999839 176.65 0.017955 87.296 0.017955 87.296 0.999839 177.94
+
+Em simulation completed Sun Oct 04 13:38:39 2026.

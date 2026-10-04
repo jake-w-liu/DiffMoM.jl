@@ -1,0 +1,43 @@
+scope = "fresh independent 4608-bit affine oracle for represented Float64 inputs; not a native EM or continuum claim"
+source_sha256 = "89130141c9c97a8ce8a9250162685e0fad00e675ff96826db93928d069c9f112"
+
+[[cases]]
+target = 1.0
+second = 1.0000000000000002
+first = 1.0
+observed_before = 1.0
+nominal = 2.220446049250313e-16
+symmetric = true
+affine_oracle = 0.5000000000000001
+case = "rounded_symmetric_center_first"
+value = 1.0
+[[cases]]
+target = 1.0
+second = 1.0000000000000002
+first = 1.0
+observed_before = 2.0
+nominal = 2.220446049250313e-16
+symmetric = true
+affine_oracle = 1.5
+case = "rounded_symmetric_center_second"
+value = 1.0000000000000002
+[[cases]]
+target = 1.0e-16
+second = 1.0
+first = 1.0
+observed_before = 1.1102230246251565
+nominal = 1.0
+symmetric = false
+affine_oracle = 1.9999999999999998
+case = "strong_contraction"
+value = 1.0e16
+[[cases]]
+target = 1.5e-323
+second = 1.5e-323
+first = 1.5e-323
+observed_before = 5.0e-324
+nominal = 5.0e-324
+symmetric = true
+affine_oracle = 1.5e-323
+case = "nonzero_half_rounding"
+value = 1.5e-323

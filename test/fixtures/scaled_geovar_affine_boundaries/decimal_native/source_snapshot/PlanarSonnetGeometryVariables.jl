@@ -202,9 +202,8 @@ end
             fma(anchor_error,1-ratio,fma(offset_error,ratio,fma(offset,ratio,anchor)))
         end
         fixed=iszero(offset) && iszero(anchor_error)
-        rounded_unchanged=iszero(offset) && after==value
         cancellation=abs(after)<=sqrt(eps(Float64))*max(abs(value),abs(anchor))
-        isfinite(after) && (fixed || rounded_unchanged || target==nominal ||
+        isfinite(after) && (fixed || target==nominal ||
             (!iszero(after) && after!=value && !cancellation)) && return after
     end
     return setprecision(BigFloat,4352) do
@@ -301,7 +300,6 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         first=original[firstid].vertices[parameter.axis,firstpoint]
         second=original[secondid].vertices[parameter.axis,secondpoint]
         symmetric=parameter.kind=="SYM"
-        anchor=symmetric ? first/2+second/2 : first
         for side in 1:2
             shift=parameter.kind=="ANC" ? delta : (side==1 ? -delta/2 : delta/2)
             for (id,index) in parameter.points[side]
@@ -309,7 +307,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
                 after=parameter.scaled ? _sonnet_geovar_scaled_coordinate(before,first,second,
                     parameter.nominal,target,symmetric) : before+shift
                 isfinite(after) && (after!=before || (parameter.scaled ?
-                    (before==anchor || _sonnet_geovar_fixed_coordinate(before,first,second,symmetric)) : iszero(shift))) ||
+                    _sonnet_geovar_fixed_coordinate(before,first,second,symmetric) : iszero(shift))) ||
                     _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
                 polygons[id][parameter.axis,index]=after
             end

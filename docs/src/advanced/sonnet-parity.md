@@ -173,6 +173,14 @@ voltage residual below 5.34e-11 under the same fixed gates. The normal scaling
 loop allocates zero bytes in a warmed 100,000-point measurement; rare range
 fallbacks use bounded precision and preserve caller rounding and task scope.
 These cumulative Julia allocation checks do not establish peak process RSS.
+Scaling arithmetic also retains midpoint/subtraction roundoff and selects
+the ratio or relative change to preserve strong contractions and small changes.
+Four archived failures now agree with an independent 4608-bit affine oracle.
+Exact subnormal fixed points and native rounded-center behavior are retained;
+two fresh decimal SCUNI controls have bit-identical native literal matrices.
+The original helper and failed outputs remain in
+`test/fixtures/scaled_geovar_affine_boundaries`, with unchanged native physical
+and zero-allocation gates.
 Exact nominal passthrough preserves all twenty archived installed examples,
 including radial and zero-offset metadata, while invalid dimension headers
 reject even at their nominal value, as confirmed by an actual native error.
