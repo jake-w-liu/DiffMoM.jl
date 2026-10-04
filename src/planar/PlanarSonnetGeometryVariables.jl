@@ -122,8 +122,13 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         end
         a,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used)
         b,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used)
-        count(==(second),b)<=1 || _sonnet_error(p.source,row.line,
-            "multiple explicit GEOVAR moving references require their native movement adapter")
+        explicit_reference=false
+        for point in b
+            point==second || continue
+            explicit_reference && _sonnet_error(p.source,row.line,
+                "multiple explicit GEOVAR moving references require their native movement adapter")
+            explicit_reference=true
+        end
         # The implicit moving reference is an additional movement for native
         # unscaled anchored/radial dimensions, even when explicitly listed.
         (first in a || (second in b && !(t[3] in ("ANC","RAD") && t[6]=="NSCD"))) && _sonnet_error(p.source,row.line,
