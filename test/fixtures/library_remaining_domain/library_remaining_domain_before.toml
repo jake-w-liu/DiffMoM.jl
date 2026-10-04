@@ -1,0 +1,60 @@
+source_sha256 = "b69db254f721e9c0b57637b36849f1184619407859439ab559977f6f914cdab3"
+
+[[rows]]
+input = "1.000000000000000000000000000000000000000000000000000000000000000000000000000007e-1000"
+stored_offset = 0.0
+status = "accepted"
+case = "nonzero_broadside_offset_stored_zero"
+[[rows]]
+input = "-1.000000000000000000000000000000000000000000000000000000000000000000000000000007e-1000"
+stored_offset = -0.0
+status = "accepted"
+case = "nonzero_broadside_offset_stored_zero"
+[[rows]]
+emitted_width_m = 9.989738464355469e-5
+stored_width_m = 0.0001
+status = "accepted"
+offset_m = 1.0e9
+pin = "p1"
+case = "placed_pin_width_differs_from_its_edge"
+relative_difference = 0.001026153564453173
+[[rows]]
+emitted_width_m = 9.989738464355469e-5
+stored_width_m = 0.0001
+status = "accepted"
+offset_m = 1.0e9
+pin = "p2"
+case = "placed_pin_width_differs_from_its_edge"
+relative_difference = 0.001026153564453173
+[[rows]]
+emitted_width_m = 9.918212890625e-5
+stored_width_m = 0.0001
+status = "accepted"
+offset_m = 1.0e10
+pin = "p1"
+case = "placed_pin_width_differs_from_its_edge"
+relative_difference = 0.008178710937500047
+[[rows]]
+emitted_width_m = 9.918212890625e-5
+stored_width_m = 0.0001
+status = "accepted"
+offset_m = 1.0e10
+pin = "p2"
+case = "placed_pin_width_differs_from_its_edge"
+relative_difference = 0.008178710937500047
+[[rows]]
+emitted_width_m = 9.1552734375e-5
+stored_width_m = 0.0001
+status = "accepted"
+offset_m = 1.0e11
+pin = "p1"
+case = "placed_pin_width_differs_from_its_edge"
+relative_difference = 0.08447265625000004
+[[rows]]
+emitted_width_m = 9.1552734375e-5
+stored_width_m = 0.0001
+status = "accepted"
+offset_m = 1.0e11
+pin = "p2"
+case = "placed_pin_width_differs_from_its_edge"
+relative_difference = 0.08447265625000004

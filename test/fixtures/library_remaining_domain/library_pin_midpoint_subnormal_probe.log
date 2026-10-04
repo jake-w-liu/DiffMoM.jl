@@ -1,0 +1,13 @@
+(a = [5.0e-324, 5.0e-5], b = [5.0e-324, -5.0e-5], p = [0.0, 0.0], expected_x = 5.0e-324)
+ERROR: UndefVarError: `SHA` not defined in `Main`
+Suggestion: check for spelling errors or missing imports.
+Hint: SHA is loaded but not imported in the active module Main.
+Stacktrace:
+ [1] top-level scope
+   @ none:1
+ [2] eval(m::Module, e::Any)
+   @ Core .\boot.jl:489
+ [3] exec_options(opts::Base.JLOptions)
+   @ Base .\client.jl:310
+ [4] _start()
+   @ Base .\client.jl:577

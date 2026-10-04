@@ -63,6 +63,48 @@ end
     end
 end
 
+@testset "Library broadside offsets and emitted placement pin contracts" begin
+    for offset in (big"1e-1000",-big"1e-1000",big"1e1000",-big"1e1000",BigFloat(Inf),BigFloat(NaN))
+        @test_throws ArgumentError planar_broadside_coupled_lines(length=.001,width=.0001,
+            upper_level=2,lower_level=1,offset=offset,metal="pec")
+    end
+    for offset in (0.,.0001,-.0001,BigFloat(.0001),-BigFloat(.0001))
+        shape=planar_broadside_coupled_lines(length=.001,width=.0001,
+            upper_level=2,lower_level=1,offset=offset,metal="pec")
+        @test shape.meta["offset"]==Float64(offset)
+    end
+    original=planar_line(length=.001,width=.0001,level=1,metal="pec")
+    for shift in (0.,.003,1e9,1e10,1e11),mirror in (false,true),angle in (0.,.1,pi/2)
+        placed=planar_transform(original;offset=(shift,shift),angle=angle,mirror=mirror,name="placed")
+        polygon=only(placed.polygons)
+        for pin in placed.pins
+            a=polygon.vertices[pin.edge];b=polygon.vertices[mod1(pin.edge+1,length(polygon.vertices))]
+            delta=b-a
+            @test pin.polygon==polygon.name
+            @test pin.level==polygon.level
+            @test pin.width==hypot(delta[1],delta[2])
+            expected_point=setprecision(BigFloat,256) do
+                Float64.((BigFloat.(a)+BigFloat.(b))/2)
+            end
+            @test pin.point==expected_point
+            @test norm(pin.direction)≈1 rtol=2e-15
+            @test abs(sum(pin.direction.*delta))<=2eps(Float64)*pin.width
+            @test sum(pin.direction.*(pin.point-sum(polygon.vertices)/length(polygon.vertices)))>0
+        end
+    end
+    for value in (nextfloat(0.),-nextfloat(0.))
+        pin=planar_pin(planar_transform(original;offset=(value,0)),"p1")
+        @test pin.point[1]==value
+    end
+    for (a,b) in ((nextfloat(0.),2nextfloat(0.)),(floatmax(Float64),floatmax(Float64)),
+            (-floatmax(Float64),-floatmax(Float64)),(floatmax(Float64),-floatmax(Float64)))
+        expected=setprecision(BigFloat,256) do
+            Float64((BigFloat(a)+BigFloat(b))/2)
+        end
+        @test DiffMoM._lib_midpoint_coordinate(a,b)==expected
+    end
+end
+
 function reference_inductance(shape,n,outside,inside,method)
     setprecision(BigFloat,256) do
         turns=BigFloat(n);outer=BigFloat(outside);inner=BigFloat(inside)
@@ -113,6 +155,47 @@ end
             @test planar_parallel_plate_capacitance(stack,1,0,area)≈expected rtol=2e-15 atol=nextfloat(0.)
         else
             @test_throws ArgumentError planar_parallel_plate_capacitance(stack,1,0,area)
+        end
+    end
+end
+
+@testset "Library thin bridge vias and scaled dielectric ratios" begin
+    for span in (.001,1.)
+        @test_throws ArgumentError planar_air_bridge(;span,width=.0001,landing=.0001,
+            bridge_level=2,base_level=1,via_type="v",metal="pec",via_margin=prevfloat(.00005))
+        shape=planar_air_bridge(;span,width=.0001,landing=.0001,
+            bridge_level=2,base_level=1,via_type="v",metal="pec",via_margin=.000025)
+        @test length(shape.vias)==2
+        for via in shape.vias
+            @test length(unique(via.vertices))==4
+            x=first.(via.vertices);y=last.(via.vertices)
+            @test (maximum(x)-minimum(x))*(maximum(y)-minimum(y))>0
+        end
+    end
+    for height in (1e-300,1e-100,1e-6,1.,1e100,1e300),
+            epsilon in (1e-100,1.,1e100),area in (1e-300,1e-100,1e-8,1e100,1e300)
+        stack=PlanarStackup([PlanarLayer(epsilon,1.,height)],TERM_GND,TERM_GND,.001,.001)
+        expected=setprecision(BigFloat,256) do
+            Float64(BigFloat(DiffMoM._EPS0)*BigFloat(area)*BigFloat(epsilon)/BigFloat(height))
+        end
+        if isfinite(expected) && expected>0
+            @test planar_parallel_plate_capacitance(stack,1,0,area)≈expected rtol=2e-15 atol=nextfloat(0.)
+        else
+            @test_throws ArgumentError planar_parallel_plate_capacitance(stack,1,0,area)
+        end
+    end
+    for ((h1,e1),(h2,e2)) in (((1e-300,1e100),(1e-200,1e100)),
+            ((1e300,1e-100),(1e200,1e-100)),((1e-100,1e100),(1e100,1e-100)))
+        for area in (1e-300,1e-8,1e300)
+            stack=PlanarStackup([PlanarLayer(e1,1.,h1),PlanarLayer(e2,1.,h2)],TERM_GND,TERM_GND,.001,.001)
+            expected=setprecision(BigFloat,256) do
+                Float64(BigFloat(DiffMoM._EPS0)*BigFloat(area)/(BigFloat(h1)/BigFloat(e1)+BigFloat(h2)/BigFloat(e2)))
+            end
+            if isfinite(expected) && expected>0
+                @test planar_parallel_plate_capacitance(stack,2,0,area)≈expected rtol=2e-15 atol=nextfloat(0.)
+            else
+                @test_throws ArgumentError planar_parallel_plate_capacitance(stack,2,0,area)
+            end
         end
     end
 end

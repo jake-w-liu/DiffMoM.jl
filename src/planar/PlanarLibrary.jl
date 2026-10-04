@@ -78,6 +78,11 @@ end
 @inline _lib_rot(v::_P2, c::Float64, s::Float64) =
     _P2(c * v[1] - s * v[2], s * v[1] + c * v[2])
 
+@inline function _lib_midpoint_coordinate(a::Float64,b::Float64)
+    total=a+b
+    return isfinite(total) ? total/2 : a/2+b/2
+end
+
 function _lib_unit(v::_P2, label::AbstractString)
     n = _lib_norm(v)
     n > 0 || throw(ArgumentError("$label: zero-length segment"))
@@ -97,9 +102,10 @@ end
 
 # Range-safe evaluation of a positive reference product. Separate binary
 # exponents avoid overflowing/underflowing intermediates with a finite result.
-function _lib_reference_product(factors::Tuple,divisor::Float64,label::AbstractString)
+function _lib_reference_product(factors::Tuple,divisor::Float64,label::AbstractString;
+                                exponent_shift::Int=0)
     isfinite(divisor) && divisor!=0 || throw(ArgumentError("$label denominator must be finite and nonzero"))
-    mantissa=1.;exponent=0
+    mantissa=1.;exponent=exponent_shift
     for factor in factors
         part,power=frexp(factor)
         mantissa*=part;exponent+=power
@@ -424,7 +430,7 @@ end
                                     metal2=metal, name="broadside", ...)
 
 Broadside pair: line A on `upper_level`, line B on `lower_level` (larger
-index = lower in the stackup), laterally offset by `offset` (centre to
+interface index = higher in the stackup), laterally offset by `offset` (centre to
 centre, +y for B). Pins as [`planar_coupled_lines`](@ref).
 """
 function planar_broadside_coupled_lines(; length::Real, width::Real,
@@ -438,14 +444,14 @@ function planar_broadside_coupled_lines(; length::Real, width::Real,
     L = _lib_pos(length, "planar_broadside_coupled_lines length")
     wa = _lib_pos(width, "planar_broadside_coupled_lines width")
     wb = _lib_pos(width2, "planar_broadside_coupled_lines width2")
-    isfinite(offset) || throw(ArgumentError("offset must be finite"))
+    stored_offset=_circuit_stored_real(offset,"broadside offset")
     lu = _lib_level(upper_level, "upper_level")
     ll = _lib_level(lower_level, "lower_level")
     lu > ll || throw(ArgumentError(
         "upper_level must be above (larger interface index than) lower_level"))
-    return _lib_coupled_pair(String(name), L, wa, wb, 0.0, Float64(offset), lu,
+    return _lib_coupled_pair(String(name), L, wa, wb, 0.0, stored_offset, lu,
                              ll, metal, metal2, net1, net2,
-                             Dict("offset" => Float64(offset)))
+                             Dict("offset" => stored_offset))
 end
 
 function _lib_coupled_pair(name, L, wa, wb, ya, yb, la, lb, ma, mb, na, nb, meta)
@@ -705,12 +711,24 @@ function planar_parallel_plate_capacitance(s::PlanarStackup, upper_level::Intege
     n = length(s.layers)
     0 <= lower_level < upper_level <= n || throw(ArgumentError(
         "need 0 <= lower_level < upper_level <= $n"))
+    largest_exponent=typemin(Int)
+    for i in (lower_level+1):upper_level
+        layer=s.layers[i]
+        height,he=frexp(real(layer.thickness));epsilon,ee=frexp(real(layer.epsr_z))
+        _,re=frexp(height/epsilon)
+        largest_exponent=max(largest_exponent,he-ee+re)
+    end
+    # Sum positive dielectric ratios at a common binary exponent. Neither
+    # an individual t/epsilon nor its reciprocal needs to fit in Float64.
     acc = 0.0
     for i in (lower_level + 1):upper_level
         layer = s.layers[i]
-        acc += real(layer.thickness) / real(layer.epsr_z)
+        height,he=frexp(real(layer.thickness));epsilon,ee=frexp(real(layer.epsr_z))
+        ratio,re=frexp(height/epsilon)
+        acc += ldexp(ratio,he-ee+re-largest_exponent)
     end
-    return _lib_reference_product((_EPS0,A),Float64(acc),"parallel-plate capacitance")
+    return _lib_reference_product((_EPS0,A),Float64(acc),"parallel-plate capacitance";
+        exponent_shift=-largest_exponent)
 end
 
 """
@@ -815,6 +833,9 @@ function planar_air_bridge(; span::Real, width::Real, landing::Real,
                            rect(-b + vm, -a - vm, -h + vm, h - vm)),
             PlanarShapeVia("$(name)_via2", String(via_type), lb, lv,
                            rect(a + vm, b - vm, -h + vm, h - vm))]
+    for via in vias
+        planar_normalize_polygon(via.vertices;label=via.name)
+    end
     pins = [_lib_pin("p1", padl, 4, _P2(-1, 0)), _lib_pin("p2", padr, 2, _P2(1, 0))]
     meta = Dict("span" => S, "strip_length" => 2b)
     return PlanarShape(String(name), [strip, padl, padr], vias, pins, meta)
@@ -867,8 +888,21 @@ function planar_transform(sh::PlanarShape; offset = (0.0, 0.0), angle::Real = 0.
                                 p.net, placed_vertices(p.vertices,p.name)) for p in sh.polygons]
     vias = [PlanarShapeVia(_lib_rename(v.name, old, new), v.via_type, v.from_level,
                            v.to_level, placed_vertices(v.vertices,v.name)) for v in sh.vias]
-    pins = [PlanarPin(p.name, _lib_rename(p.polygon, old, new), p.edge, p.level,
-                      xf(p.point), xd(p.direction), p.width) for p in sh.pins]
+    pins = map(sh.pins) do pin
+        index=findfirst(p->p.name==pin.polygon,sh.polygons)
+        index===nothing && throw(ArgumentError("pin $(pin.name) has no emitted polygon"))
+        poly=polys[index];vertices=poly.vertices
+        1<=pin.edge<=length(vertices) || throw(ArgumentError("pin $(pin.name) edge is outside its polygon"))
+        a=vertices[pin.edge];b=vertices[mod1(pin.edge+1,length(vertices))]
+        delta=b-a;width=hypot(delta[1],delta[2])
+        isfinite(width) && width>0 || throw(ArgumentError("placed pin $(pin.name) has no finite nonzero edge length"))
+        normal=_P2(delta[2]/width,-delta[1]/width)
+        alignment=sum(normal.*xd(pin.direction))
+        isfinite(alignment) && alignment!=0 || throw(ArgumentError("placed pin $(pin.name) has no outward edge direction"))
+        direction=alignment<0 ? -normal : normal
+        point=_P2(_lib_midpoint_coordinate(a[1],b[1]),_lib_midpoint_coordinate(a[2],b[2]))
+        PlanarPin(pin.name,poly.name,pin.edge,poly.level,point,direction,width)
+    end
     return PlanarShape(new, polys, vias, pins, copy(sh.meta))
 end
 

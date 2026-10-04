@@ -1,0 +1,4 @@
+Test Summary:                                       | Pass  Total  Time
+Accepted air bridge contains collapsed via polygons |   10     10  0.7s
+Test Summary:                                                               | Pass  Total  Time
+Reference capacitance loses a representable result in an intermediate ratio |    9      9  0.1s

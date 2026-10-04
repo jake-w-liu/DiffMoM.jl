@@ -1,0 +1,12 @@
+source_sha256 = "be566fa5838091fad9a009ecab6a31924131352abfb70cb1bc216436be31d96b"
+
+[[rows]]
+exact_midpoint_x = 5.0e-324
+offset = 5.0e-324
+edge_x = 5.0e-324
+stored_midpoint_x = 0.0
+[[rows]]
+exact_midpoint_x = -5.0e-324
+offset = -5.0e-324
+edge_x = -5.0e-324
+stored_midpoint_x = -0.0

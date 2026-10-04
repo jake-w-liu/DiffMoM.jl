@@ -1,0 +1,70 @@
+before_source = "source_before.jl"
+before_sha256 = "b69db254f721e9c0b57637b36849f1184619407859439ab559977f6f914cdab3"
+after_source = "source_after.jl"
+after_sha256 = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+current_public_assertions = 1109
+current_source_unchanged_assertions = 1
+
+[[reports]]
+file = "library_remaining_domain_before.toml"
+source = "source_before.jl"
+source_snapshot_present = true
+assertions = 24
+status = "original_failures_confirmed"
+
+[[reports]]
+file = "library_pin_geometry_archived_before.toml"
+source = "source_before.jl"
+source_snapshot_present = true
+assertions = 2
+status = "original_failures_confirmed"
+
+[[reports]]
+file = "library_air_bridge_capacitance_archived_before.toml"
+source = "source_before.jl"
+source_snapshot_present = true
+assertions = 14
+status = "original_failures_confirmed"
+
+[[reports]]
+file = "library_current_independent_review.toml"
+source = "source_after.jl"
+source_snapshot_present = true
+assertions = 1109
+status = "corrected_public_contracts_pass"
+
+[[reports]]
+file = "library_pin_midpoint_subnormal_before.toml"
+source = ""
+source_snapshot_present = false
+assertions = 6
+source_sha256 = "be566fa5838091fad9a009ecab6a31924131352abfb70cb1bc216436be31d96b"
+status = "observed_intermediate_failure_without_complete_source"
+
+[[reports]]
+file = "library_air_bridge_capacitance_before.toml"
+source = ""
+source_snapshot_present = false
+assertions = 19
+source_sha256 = "db883488fbdd425699b17c11521272dd574ab93b0a456002137fc25e304d0bd1"
+status = "superseded_by_captured_source_replay"
+
+[[dispositions]]
+file = "library_pin_geometry_before.log"
+status = "harness_race"
+source_snapshot_present = false
+reason = "Loaded corrected pins; no contradictory rows; two assertions expecting old failures did not pass. No source hash recorded."
+
+[[dispositions]]
+file = "library_pin_midpoint_subnormal_probe.log"
+status = "harness_missing_import"
+reason = "Witness printed before UndefVarError for omitted SHA import; clean six-check report is credited instead."
+
+[[dispositions]]
+file = "library_pin_translation_probe.log"
+status = "frequency_keyword_candidate_not_classified"
+reason = "Static capacitance formula ignores f_hz; acceptance of invalid unused keyword values was not classified as wrong numerical output."
+
+[[dispositions]]
+status = "norm_candidate_unconfirmed"
+reason = "Range-sensitive norm arithmetic inspected; no accepted invalid geometry was independently reproduced from this candidate."

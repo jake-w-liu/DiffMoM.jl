@@ -1,0 +1,47 @@
+source_sha256 = "db883488fbdd425699b17c11521272dd574ab93b0a456002137fc25e304d0bd1"
+
+[[rows]]
+span_m = 0.001
+vertices = [[-0.00055, -6.776263578034403e-21], [-0.00055, -6.776263578034403e-21], [-0.00055, 6.776263578034403e-21], [-0.00055, 6.776263578034403e-21]]
+via = "bridge_via1"
+margin_m = 4.9999999999999996e-5
+case = "accepted_collapsed_air_bridge_via"
+[[rows]]
+span_m = 0.001
+vertices = [[0.00055, -6.776263578034403e-21], [0.00055, -6.776263578034403e-21], [0.00055, 6.776263578034403e-21], [0.00055, 6.776263578034403e-21]]
+via = "bridge_via2"
+margin_m = 4.9999999999999996e-5
+case = "accepted_collapsed_air_bridge_via"
+[[rows]]
+span_m = 1.0
+vertices = [[-0.50005, -6.776263578034403e-21], [-0.50005, -6.776263578034403e-21], [-0.50005, 6.776263578034403e-21], [-0.50005, 6.776263578034403e-21]]
+via = "bridge_via1"
+margin_m = 4.9999999999999996e-5
+case = "accepted_collapsed_air_bridge_via"
+[[rows]]
+span_m = 1.0
+vertices = [[0.50005, -6.776263578034403e-21], [0.50005, -6.776263578034403e-21], [0.50005, 6.776263578034403e-21], [0.50005, 6.776263578034403e-21]]
+via = "bridge_via2"
+margin_m = 4.9999999999999996e-5
+case = "accepted_collapsed_air_bridge_via"
+[[rows]]
+thickness_m = 1.0e-300
+area_m2 = 1.0e-300
+float_denominator = "0.0"
+independent_expected_F = 8.854187817000001e88
+case = "rejected_representable_capacitance"
+epsr_z = 1.0e100
+[[rows]]
+thickness_m = 1.0e300
+area_m2 = 1.0e300
+float_denominator = "Inf"
+independent_expected_F = 8.854187817e-112
+case = "rejected_representable_capacitance"
+epsr_z = 1.0e-100
+[[rows]]
+thickness_m = 1.0e-300
+area_m2 = 1.0e-200
+float_denominator = "0.0"
+independent_expected_F = 8.854187817000001e188
+case = "rejected_representable_capacitance"
+epsr_z = 1.0e100

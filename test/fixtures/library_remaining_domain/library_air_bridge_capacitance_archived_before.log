@@ -1,0 +1,4 @@
+Test Summary:                               | Pass  Total  Time
+Archived air bridge accepts zero-width vias |    8      8  0.2s
+Test Summary:                                                | Pass  Total  Time
+Archived capacitance rejects representable range-safe answer |    6      6  0.1s

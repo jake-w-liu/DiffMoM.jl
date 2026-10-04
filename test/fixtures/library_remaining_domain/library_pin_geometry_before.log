@@ -1,0 +1,37 @@
+
+Accepted placements retain off-edge pins and non-normal directions: Test Failed at C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:26
+  Expression: any((row->begin
+            #= C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:26 =#
+            row["direction_tangent_component"] > 0.05
+        end), rows)
+   Evaluated: any(var"#3#4"(), Dict{String, Any}[])
+  Stacktrace:
+   [1] top-level scope
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:26
+   [2] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:26 [inlined]
+   [4] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:758 [inlined]
+
+Accepted placements retain off-edge pins and non-normal directions: Test Failed at C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:27
+  Expression: any((row->begin
+            #= C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:27 =#
+            row["relative_midpoint_error"] > 0.05
+        end), rows)
+   Evaluated: any(var"#5#6"(), Dict{String, Any}[])
+  Stacktrace:
+   [1] top-level scope
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:26
+   [2] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:27 [inlined]
+   [4] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:758 [inlined]
+Test Summary:                                                      | Fail  Total  Time
+Accepted placements retain off-edge pins and non-normal directions |    2      2  1.4s
+RNG of the outermost testset: Random.Xoshiro(0xa6076a692602b74c, 0x0f51e21943afd419, 0xa7d89b85097ca10e, 0x70a3faaff346c89f, 0x2fb3f51dc770d536)
+ERROR: LoadError: Some tests did not pass: 0 passed, 2 failed, 0 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\library_pin_geometry_before.jl:25

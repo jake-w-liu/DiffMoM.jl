@@ -1,0 +1,702 @@
+source_sha256 = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 1
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000001e188
+expected = 8.854187817000001e188
+layer_count = 1
+area = 1.0e-200
+[[rows]]
+actual = 8.854187817000001e-212
+expected = 8.854187817e-212
+layer_count = 1
+area = 1.0e200
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 1
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-112
+expected = 8.854187817e-112
+layer_count = 1
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817e-12
+expected = 8.854187817e-12
+layer_count = 1
+area = 1.0e-200
+[[rows]]
+actual = 8.854187817e180
+expected = 8.854187817000001e180
+layer_count = 1
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 1
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817e-12
+expected = 8.854187817e-12
+layer_count = 1
+area = 1.0e200
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 1
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 1
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000001e188
+expected = 8.854187817000001e188
+layer_count = 1
+area = 1.0e-200
+[[rows]]
+actual = 8.854187817000001e-212
+expected = 8.854187817e-212
+layer_count = 1
+area = 1.0e200
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 1
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 1
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-205
+expected = 3.5416751268000005e-205
+layer_count = 1
+area = 1.0e-200
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 1
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000006e195
+expected = 3.5416751268e195
+layer_count = 1
+area = 1.0e200
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 1
+area = 1.0e300
+[[rows]]
+actual = 1.7921075653669376e112
+expected = 1.7921075653669378e112
+layer_count = 1
+area = 1.0e-300
+[[rows]]
+actual = 1.7921075653669377e212
+expected = 1.7921075653669377e212
+layer_count = 1
+area = 1.0e-200
+[[rows]]
+actual = 4.374550022205802e-235
+expected = 4.3745500222058016e-235
+layer_count = 1
+area = 1.0e200
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 1
+area = 1.0e300
+[[rows]]
+actual = 4.4270939085000004e88
+expected = 4.4270939085000004e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817e180
+expected = 8.854187817000001e180
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.4270939085000004e88
+expected = 4.4270939085000004e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.427093908500001e-112
+expected = 4.4270939085e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.427093908500001e-112
+expected = 4.4270939085e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817e180
+expected = 8.854187817000001e180
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.4270939085e-112
+expected = 4.4270939085e-112
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 4.4270939085e180
+expected = 4.427093908500001e180
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817e180
+expected = 8.854187817000001e180
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817e180
+expected = 8.854187817000001e180
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.4270939085e-220
+expected = 4.4270939085e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 4.4270939085000004e88
+expected = 4.4270939085000004e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.4270939085000004e88
+expected = 4.4270939085000004e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817e180
+expected = 8.854187817000001e180
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.4270939085000004e88
+expected = 4.4270939085000004e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.427093908500001e-112
+expected = 4.4270939085e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.427093908500001e-112
+expected = 4.4270939085e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 1.7708375634000002e-305
+expected = 1.7708375634000002e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 1.7708375634e-13
+expected = 1.7708375634000003e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 1.7708375634000004e295
+expected = 1.7708375634000004e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817e180
+expected = 8.854187817000001e180
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817e-220
+expected = 8.854187817e-220
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.854187817000001e88
+expected = 8.854187817000001e88
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 8.854187817000002e-112
+expected = 8.854187817e-112
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 3.5416751268000004e-305
+expected = 3.5416751268000004e-305
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 3.5416751268e-13
+expected = 3.5416751268000006e-13
+layer_count = 2
+area = 1.0e-8
+[[rows]]
+actual = 3.5416751268000008e295
+expected = 3.5416751268000008e295
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 8.960537826834688e111
+expected = 8.960537826834689e111
+layer_count = 2
+area = 1.0e-300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 4.374550022205802e-135
+expected = 4.374550022205802e-135
+layer_count = 2
+area = 1.0e300
+[[rows]]
+actual = 2.187275011102901e-135
+expected = 2.187275011102901e-135
+layer_count = 2
+area = 1.0e300

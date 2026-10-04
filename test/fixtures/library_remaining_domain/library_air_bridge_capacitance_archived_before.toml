@@ -1,0 +1,17 @@
+source_sha256 = "b69db254f721e9c0b57637b36849f1184619407859439ab559977f6f914cdab3"
+
+[[rows]]
+height = 1.0e-300
+epsr = 1.0e100
+independent_expected = 8.854187817000001e88
+area = 1.0e-300
+[[rows]]
+height = 1.0e300
+epsr = 1.0e-100
+independent_expected = 8.854187817e-112
+area = 1.0e300
+[[rows]]
+height = 1.0e-300
+epsr = 1.0e100
+independent_expected = 8.854187817000001e188
+area = 1.0e-200

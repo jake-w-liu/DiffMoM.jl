@@ -1,0 +1,3 @@
+(h = 1.0e-300, eps = 1.0e100, a = 1.0e-300, error = "ArgumentError(\"parallel-plate capacitance denominator must be finite and nonzero\")")
+(h = 1.0e300, eps = 1.0e-100, a = 1.0e300, error = "ArgumentError(\"parallel-plate capacitance denominator must be finite and nonzero\")")
+(h = 1.0e-300, eps = 1.0e100, a = 1.0e-200, error = "ArgumentError(\"parallel-plate capacitance denominator must be finite and nonzero\")")
