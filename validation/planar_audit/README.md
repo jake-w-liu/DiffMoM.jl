@@ -25,3 +25,9 @@ from a new execution's report.
 `odb_compression_fixture.jl` is a separate deterministic fixture producer. It
 rebuilds the tracked compression fixture and should be run only when updating
 that fixture.
+
+`run_scaled_geovar_reference.jl` replays the tracked SCUNI parameter/literal
+pairs using an installed native Sonnet engine. It creates a fresh evidence
+directory under `data/planar_audit/`; its optional argument selects an output
+root. It retains logs, complete matrices, metadata and source-before/after
+hashes, and fails on matrix disagreement or source drift.

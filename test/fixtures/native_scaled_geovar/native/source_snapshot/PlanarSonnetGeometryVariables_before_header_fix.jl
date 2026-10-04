@@ -1,0 +1,256 @@
+# Native anchored/symmetric dimensions with unscaled adjustable point sets.
+# Original SON records remain the source identity of the effective geometry.
+struct _SonnetGeometryParameter
+    name::String
+    kind::String
+    axis::Int
+    direction::Int
+    nominal::Float64
+    references::NTuple{2,Tuple{Int,Int}}
+    points::NTuple{2,Vector{Tuple{Int,Int}}}
+    line::Int
+end
+
+function _sonnet_geovar_limit(value::Integer,label)
+    0<value<=typemax(Int) || throw(ArgumentError("$label must be a positive stored integer"))
+    return Int(value)
+end
+
+function _sonnet_geovar_row(rows,index,p)
+    index<=length(rows) || _sonnet_error(p.source,0,"truncated GEOVAR block")
+    return rows[index]
+end
+
+function _sonnet_geovar_point(p,polygons,row,index)
+    t=row.tokens
+    length(t)==3 && t[1]=="POLY" || _sonnet_error(p.source,row.line,"GEOVAR requires a literal POLY point identity")
+    id=tryparse(Int,t[2]);id!==nothing && haskey(polygons,id) ||
+        _sonnet_error(p.source,row.line,"GEOVAR references an unknown polygon")
+    point=tryparse(Int,index)
+    vertices=polygons[id].vertices
+    closed=vertices[1,1]==vertices[1,end] && vertices[2,1]==vertices[2,end]
+    count=size(vertices,2)-Int(closed)
+    point!==nothing && 0<=point<count || _sonnet_error(p.source,row.line,"GEOVAR point index is outside its polygon")
+    return (id,point+1)
+end
+
+function _sonnet_geovar_reference(rows,index,p,polygons,tag)
+    row=_sonnet_geovar_row(rows,index,p);t=row.tokens
+    length(t)==4 && t[1]==tag && t[2]=="POLY" && t[4]=="1" ||
+        _sonnet_error(p.source,row.line,"GEOVAR $tag requires exactly one literal polygon point")
+    pointrow=_sonnet_geovar_row(rows,index+1,p)
+    length(pointrow.tokens)==1 || _sonnet_error(p.source,pointrow.line,"invalid GEOVAR reference point")
+    point=_sonnet_geovar_point(p,polygons,SonnetRecord(row.line,t[2:4]),only(pointrow.tokens))
+    return point,index+2
+end
+
+function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used)
+    row=_sonnet_geovar_row(rows,index,p);t=row.tokens
+    length(t)==2 && t[1]==tag || _sonnet_error(p.source,row.line,"GEOVAR requires $tag")
+    groups=tryparse(Int,t[2])
+    groups!==nothing && 0<=groups<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR point-set group count")
+    points=Tuple{Int,Int}[];index+=1
+    for _ in 1:groups
+        row=_sonnet_geovar_row(rows,index,p);t=row.tokens
+        length(t)==3 && t[1]=="POLY" || _sonnet_error(p.source,row.line,"unsupported GEOVAR point-set identity")
+        count=tryparse(Int,t[3])
+        count!==nothing && 0<count<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR polygon point count")
+        used<=max_points-count || _sonnet_error(p.source,row.line,"GEOVAR point budget exceeded")
+        used+=count;index+=1
+        for _ in 1:count
+            pointrow=_sonnet_geovar_row(rows,index,p)
+            length(pointrow.tokens)==1 || _sonnet_error(p.source,pointrow.line,"invalid GEOVAR point-set entry")
+            push!(points,_sonnet_geovar_point(p,polygons,row,only(pointrow.tokens)));index+=1
+        end
+    end
+    _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
+        _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR point set")
+    return unique!(points),index+1,used
+end
+
+function _sonnet_geovar_parameters(p,max_parameters,max_points)
+    rows=_sonnet_section(p.records,"GEO",p.source)
+    polygons=Dict(q.id=>q for q in p.polygons)
+    quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && r.tokens[1]=="VALVAR")
+    length(polygons)==length(p.polygons) || throw(ArgumentError("duplicate GEOVAR polygon identities"))
+    parameters=_SonnetGeometryParameter[];index=1;used=0
+    while index<=length(rows)
+        row=rows[index];t=row.tokens
+        if t[1]!="GEOVAR";index+=1;continue;end
+        length(parameters)<max_parameters || _sonnet_error(p.source,row.line,"GEOVAR parameter budget exceeded")
+        length(t)==6 && t[3] in ("ANC","SYM") && t[4] in ("XDIR","YDIR") &&
+            t[5] in ("1","-1") && t[6]=="NSCD" ||
+            _sonnet_error(p.source,row.line,"GEOVAR requires an ANC/SYM XDIR/YDIR unscaled point-set adapter")
+        name=t[2];haskey(p.variables,name) || _sonnet_error(p.source,row.line,"GEOVAR lacks its declared quantity variable")
+        get(quantities,name,"")=="LNG" ||
+            _sonnet_error(p.source,row.line,"GEOVAR variable must have one LNG declaration")
+        position=_sonnet_geovar_row(rows,index+1,p)
+        length(position.tokens)==3 && position.tokens[1]=="POS" &&
+            all(x->(v=tryparse(Float64,x);v!==nothing && isfinite(v)),position.tokens[2:3]) ||
+            _sonnet_error(p.source,position.line,"invalid GEOVAR display position")
+        nominalrow=_sonnet_geovar_row(rows,index+2,p)
+        length(nominalrow.tokens)==2 && nominalrow.tokens[1]=="NOM" ||
+            _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
+        nominal=tryparse(Float64,nominalrow.tokens[2])
+        nominal!==nothing && isfinite(nominal) && nominal>0 ||
+            _sonnet_error(p.source,nominalrow.line,"GEOVAR nominal dimension must be finite and positive")
+        first,index=_sonnet_geovar_reference(rows,index+3,p,polygons,"REF1")
+        second,index=_sonnet_geovar_reference(rows,index,p,polygons,"REF2")
+        used<=max_points-2 || _sonnet_error(p.source,row.line,"GEOVAR reference budget exceeded")
+        used+=2
+        equation=_sonnet_geovar_row(rows,index,p)
+        if equation.tokens[1]=="EQN"
+            length(equation.tokens)==2 && isequal(_sonnet_parse_scalar(equation.tokens[2]),
+                _sonnet_parse_scalar(p.variables[name])) ||
+                _sonnet_error(p.source,equation.line,"GEOVAR EQN disagrees with its quantity definition")
+            index+=1
+        end
+        a,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used)
+        b,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used)
+        _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
+            _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR block")
+        index+=1
+        t[3]=="ANC" && !isempty(a) && _sonnet_error(p.source,row.line,"anchored GEOVAR has an unsupported moving anchor set")
+        t[3]=="SYM" && !(first in a) && push!(a,first)
+        !(second in b) && push!(b,second)
+        bset=Set(b)
+        (first==second || any(point->point in bset,a) || first in bset) &&
+            _sonnet_error(p.source,row.line,"GEOVAR adjustable sets conflict with their references")
+        push!(parameters,_SonnetGeometryParameter(name,t[3],t[4]=="XDIR" ? 1 : 2,
+            parse(Int,t[5]),nominal,(first,second),(a,b),row.line))
+    end
+    return parameters
+end
+
+# Native files also retain radial/scaled/dependent dimensions whose saved
+# coordinates are usable unchanged. Only exact equality with every saved NOM
+# permits this path; an effective change still requires the proved adapter.
+function _sonnet_geovar_nominal_geometry(p,frequency,variables)
+    rows=_sonnet_section(p.records,"GEO",p.source)
+    quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && r.tokens[1]=="VALVAR")
+    unchanged=true
+    for (index,row) in enumerate(rows)
+        t=row.tokens;t[1]=="GEOVAR" || continue
+        length(t)>=2 && haskey(p.variables,t[2]) && get(quantities,t[2],"")=="LNG" ||
+            _sonnet_error(p.source,row.line,"GEOVAR lacks its declared LNG quantity variable")
+        nominalrow=_sonnet_geovar_row(rows,index+2,p)
+        length(nominalrow.tokens)==2 && nominalrow.tokens[1]=="NOM" ||
+            _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
+        nominal=tryparse(Float64,nominalrow.tokens[2])
+        nominal!==nothing && isfinite(nominal) && nominal>=0 ||
+            _sonnet_error(p.source,nominalrow.line,"GEOVAR saved nominal dimension must be finite and nonnegative")
+        target=sonnet_variable_value(p,t[2];variables,freq=frequency)
+        requested=target*p.length_scale;saved=nominal*p.length_scale
+        ((iszero(nominal) && iszero(target)) ||
+            (isfinite(requested) && requested>0 && isfinite(saved) && saved>0)) ||
+            _sonnet_error(p.source,row.line,"GEOVAR dimensions must preserve positive finite SI values")
+        unchanged &= target==nominal
+    end
+    return unchanged
+end
+
+"""Resolve native independent ANC/SYM NSCD dimensions into effective SI geometry.
+Original source/records and scalar snapshot identity remain attached. Reference
+points belong implicitly to their adjustable set. Dependent/overlapping active
+dimensions, radial/scaled modes and moved component/interior-port semantics
+require separate adapters. All domains and metadata/copy budgets are checked
+before polygon mutation; the supplied project is never modified."""
+function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{String,Float64}();
+        max_parameters::Integer=1024,max_points::Integer=100000,
+        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    count=Base.count(r->r.tokens[1]=="GEOVAR",p.records);iszero(count) && return p
+    nparameters=_sonnet_geovar_limit(max_parameters,"max_parameters")
+    npoints=_sonnet_geovar_limit(max_points,"max_points")
+    limit=_sonnet_geovar_limit(max_bytes,"max_bytes")
+    count<=nparameters || throw(ArgumentError("GEOVAR parameter budget exceeded"))
+    reserve=_checked_payload_sum("native geometry variable workspace",_sonnet_scalar_project_payload(p),
+        _checked_array_payload_bytes(UInt8,256,length(p.records)),
+        _checked_array_payload_bytes(UInt8,1024,count))
+    _enforce_payload_limit(reserve,limit,"native geometry variable workspace","max_bytes")
+    frequency=_circuit_stored_real(freq,"native geometry variable frequency")
+    frequency>0 || throw(ArgumentError("native geometry variable frequency must be positive"))
+    _sonnet_geovar_nominal_geometry(p,frequency,variables) && return p
+    parameters=_sonnet_geovar_parameters(p,nparameters,npoints)
+    deltas=Float64[]
+    for parameter in parameters
+        target=sonnet_variable_value(p,parameter.name;variables,freq=frequency)
+        nominal=parameter.nominal*p.length_scale;requested=target*p.length_scale
+        isfinite(nominal) && nominal>0 && isfinite(requested) && requested>0 ||
+            _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
+        delta=parameter.direction*(requested-nominal)
+        isfinite(delta) || _sonnet_error(p.source,parameter.line,"GEOVAR displacement is unrepresentable")
+        target==parameter.nominal || !iszero(delta) ||
+            _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost after SI conversion")
+        parameter.kind=="SYM" && !iszero(delta) && iszero(delta/2) &&
+            _sonnet_error(p.source,parameter.line,"symmetric GEOVAR displacement underflows")
+        push!(deltas,delta)
+    end
+    all(iszero,deltas) && return p
+    isempty(p.components) || throw(ArgumentError("moved GEOVAR component pins require their physical placement adapter"))
+    original=Dict(q.id=>q for q in p.polygons)
+    all(port->port.kind in (:box,:std) && haskey(original,port.polygon) &&
+        original[port.polygon].kind==:sheet,p.ports) ||
+        throw(ArgumentError("moved GEOVAR interior/via ports require their attachment adapter"))
+    for port in p.ports
+        vertices=original[port.polygon].vertices
+        closed=vertices[1,1]==vertices[1,end] && vertices[2,1]==vertices[2,end]
+        0<=port.edge<size(vertices,2)-Int(closed) ||
+            throw(ArgumentError("GEOVAR port edge is outside its polygon's logical edges"))
+        length(port.values)>=7 || throw(ArgumentError("GEOVAR port lacks its attached coordinate"))
+    end
+    owners=Dict{Tuple{Int,Int},Int}()
+    for (i,parameter) in enumerate(parameters)
+        iszero(deltas[i]) && continue
+        for point in Iterators.flatten(parameter.points)
+            haskey(owners,point) && owners[point]!=i && _sonnet_error(p.source,parameter.line,
+                "overlapping active GEOVAR dimensions require their ordered geometry adapter")
+            owners[point]=i
+        end
+    end
+    for (i,parameter) in enumerate(parameters),point in parameter.references
+        haskey(owners,point) && owners[point]!=i && _sonnet_error(p.source,parameter.line,
+            "dependent GEOVAR dimensions require their ordered geometry adapter")
+    end
+    polygons=Dict(q.id=>copy(q.vertices) for q in p.polygons)
+    for (parameter,delta) in zip(parameters,deltas)
+        iszero(delta) && continue
+        for side in 1:2
+            shift=parameter.kind=="ANC" ? delta : (side==1 ? -delta/2 : delta/2)
+            for (id,index) in parameter.points[side]
+                before=polygons[id][parameter.axis,index];after=before+shift
+                isfinite(after) && (iszero(shift) || after!=before) ||
+                    _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
+                polygons[id][parameter.axis,index]=after
+            end
+        end
+    end
+    emitted=SonnetPolygon[]
+    for polygon in p.polygons
+        vertices=polygons[polygon.id]
+        polygon.vertices[1,1]==polygon.vertices[1,end] && polygon.vertices[2,1]==polygon.vertices[2,end] &&
+            (vertices[:,end].=vertices[:,1])
+        planar_normalize_polygon([_P2(vertices[1,i],vertices[2,i]) for i in axes(vertices,2)];
+            label="GEOVAR polygon $(polygon.id)")
+        push!(emitted,SonnetPolygon(polygon.kind,polygon.level,polygon.material,polygon.id,
+            vertices,polygon.target,polygon.technology,polygon.flags))
+    end
+    ports=SonnetPortSpec[]
+    for port in p.ports
+        old=original[port.polygon].vertices;new=polygons[port.polygon]
+        first=port.edge+1;second=mod1(first+1,size(old,2))
+        displacement=old[:,second]-old[:,first];axis=abs(displacement[1])>=abs(displacement[2]) ? 1 : 2
+        !iszero(displacement[axis]) || throw(ArgumentError("GEOVAR port has a degenerate edge"))
+        coordinate=sonnet_variable_value(p,port.values[5+axis];variables,freq=frequency)*p.length_scale
+        fraction=(coordinate-old[axis,first])/displacement[axis]
+        isfinite(fraction) && 0<=fraction<=1 || throw(ArgumentError("GEOVAR port coordinate is outside its attached edge"))
+        values=copy(port.values)
+        for component in 1:2
+            coordinate=((1-fraction)*new[component,first]+fraction*new[component,second])/p.length_scale
+            isfinite(coordinate) || throw(ArgumentError("GEOVAR port coordinate is unrepresentable"))
+            values[5+component]=string(coordinate)
+        end
+        push!(ports,SonnetPortSpec(port.kind,port.polygon,port.edge,port.number,values,port.records))
+    end
+    return SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,p.metals,
+        p.top,p.bottom,emitted,ports,p.variables,p.components,p.sweeps,p.records)
+end

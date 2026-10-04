@@ -158,17 +158,32 @@ Ordinary FLOAT model references, loss-aware AUTO, other width/reference-plane
 contracts, geometry SPROJ traversal, other GEOVAR modes and licensed native pin-group
 calibration remain open implementation/acceptance items.
 
-Independent native ANC/SYM XDIR/YDIR dimensions with NSCD point sets now
+Independent native ANC/SYM XDIR/YDIR dimensions with NSCD/SCUNI point sets now
 resolve into effective geometry before thick-metal expansion. Sparse polygon
 identities, implicit reference points and attached sheet wall-port coordinates
 are preserved without modifying the supplied project. Sixteen fresh native
 parameter/literal pairs produce bit-identical complete S matrices; the retained
 raw coupon solves also pass the declared 0.005 full-S and 1e-9 residual gates.
+Sixteen additional fresh SCUNI parameter/literal pairs cover one-axis scaling
+in both axes and reference directions, for expansion and contraction of a
+notched polygon. Their complete native S matrices are bit-identical; incorrect
+translation hypotheses remain retained and differ by more than 0.006.
+Current public scaled solves have maximum full-S error 2.19e-5 and original
+voltage residual below 5.34e-11 under the same fixed gates. The normal scaling
+loop allocates zero bytes in a warmed 100,000-point measurement; rare range
+fallbacks use bounded precision and preserve caller rounding and task scope.
+These cumulative Julia allocation checks do not establish peak process RSS.
 Exact nominal passthrough preserves all twenty archived installed examples,
-including radial and zero-offset metadata. Active radial/scaled dimensions,
+including radial and zero-offset metadata, while invalid dimension headers
+reject even at their nominal value, as confirmed by an actual native error.
+Active radial/two-axis scaling,
 overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored
 coordinate cancellation reject before emitting a changed project.
+Exact native sources, matrices, metadata, rejected hypotheses, implementation
+snapshots and checksums are retained in `test/fixtures/native_scaled_geovar`;
+`validation/planar_audit/run_scaled_geovar_reference.jl` replays the source
+pairs into a fresh directory with source-stability checks.
 
 Literal linear CKT SPROJ children now stage through the same physical pin
 contract. R/L/C, earlier DEF invocations, Touchstone data and recursive PRJ

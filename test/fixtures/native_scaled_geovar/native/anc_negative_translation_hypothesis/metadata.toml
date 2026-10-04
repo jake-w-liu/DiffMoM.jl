@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_geovar_VF9E4G\\anc_negative_translation_hypothesis.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T03:55:29.042"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [236]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T03:55:28.062"
+source_sha256 = "9c8fd3a5bdc9cb88474a8e34c2282fab0c1ce6526db051113837a49341120f8c"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_geovar_VF9E4G\\anc_negative_translation_hypothesis\\anc_negative_translation_hypothesis.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\scaled_geovar_VF9E4G\\\\anc_negative_translation_hypothesis\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "4f7157482087f8a800a45039d6f6caea16cae56bd462f3f20cd98cdddcc9f920"
+intended_deembedded = false
+max_difference = 4.1549579732207875e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_geovar_VF9E4G\\anc_negative_translation_hypothesis\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.4734928223749973
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "4f7157482087f8a800a45039d6f6caea16cae56bd462f3f20cd98cdddcc9f920"
+intended_deembedded = false
+max_difference = 4.1549579732207875e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\scaled_geovar_VF9E4G\\anc_negative_translation_hypothesis\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.4734928223749973
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

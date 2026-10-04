@@ -1,0 +1,80 @@
+[[cases]]
+original_voltage_residual = 2.762767478321955e-11
+directory = "native"
+case = "anc_positive"
+full_s_error = 2.187634049126109e-5
+[[cases]]
+original_voltage_residual = 2.4219170099460388e-11
+directory = "native"
+case = "anc_negative"
+full_s_error = 2.1876380230784828e-5
+[[cases]]
+original_voltage_residual = 3.0374657189439716e-11
+directory = "native"
+case = "sym_positive"
+full_s_error = 2.1876927170708135e-5
+[[cases]]
+original_voltage_residual = 3.0374657189439716e-11
+directory = "native"
+case = "sym_negative"
+full_s_error = 2.1876927170708135e-5
+[[cases]]
+original_voltage_residual = 2.7316118665406254e-11
+directory = "native_x"
+case = "anc_positive"
+full_s_error = 2.1876322169141962e-5
+[[cases]]
+original_voltage_residual = 2.6704689281889457e-11
+directory = "native_x"
+case = "anc_negative"
+full_s_error = 2.187636161743773e-5
+[[cases]]
+original_voltage_residual = 3.130481424704653e-11
+directory = "native_x"
+case = "sym_positive"
+full_s_error = 2.1876908349540057e-5
+[[cases]]
+original_voltage_residual = 3.130481424704653e-11
+directory = "native_x"
+case = "sym_negative"
+full_s_error = 2.1876908349540057e-5
+[[cases]]
+original_voltage_residual = 5.281666019202416e-11
+directory = "native_contraction"
+case = "xdir_anc_positive"
+full_s_error = 5.230812764816382e-6
+[[cases]]
+original_voltage_residual = 5.3325115294578354e-11
+directory = "native_contraction"
+case = "xdir_anc_negative"
+full_s_error = 5.230810224415626e-6
+[[cases]]
+original_voltage_residual = 4.502759099911461e-11
+directory = "native_contraction"
+case = "xdir_sym_positive"
+full_s_error = 5.230813375019932e-6
+[[cases]]
+original_voltage_residual = 4.502759099911461e-11
+directory = "native_contraction"
+case = "xdir_sym_negative"
+full_s_error = 5.230813375019932e-6
+[[cases]]
+original_voltage_residual = 5.062067186891789e-11
+directory = "native_contraction"
+case = "ydir_anc_positive"
+full_s_error = 5.230808947610944e-6
+[[cases]]
+original_voltage_residual = 3.406918551665052e-11
+directory = "native_contraction"
+case = "ydir_anc_negative"
+full_s_error = 5.230806236197485e-6
+[[cases]]
+original_voltage_residual = 3.534713126390528e-11
+directory = "native_contraction"
+case = "ydir_sym_positive"
+full_s_error = 5.230814879766443e-6
+[[cases]]
+original_voltage_residual = 3.534713126390528e-11
+directory = "native_contraction"
+case = "ydir_sym_negative"
+full_s_error = 5.230814879766443e-6

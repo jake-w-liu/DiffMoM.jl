@@ -1,0 +1,18 @@
+scope = "Current public raw literal notched coupons against retained native SCUNI controls before implementation; fixed full-S gate .005, original voltage residual 1e-9"
+
+[[cases]]
+original_voltage_residual = 2.762767478321955e-11
+case = "anc_positive"
+full_s_error = 2.187634049126109e-5
+[[cases]]
+original_voltage_residual = 2.4219170099460388e-11
+case = "anc_negative"
+full_s_error = 2.1876380230784828e-5
+[[cases]]
+original_voltage_residual = 3.0374657189439716e-11
+case = "sym_positive"
+full_s_error = 2.1876927170708135e-5
+[[cases]]
+original_voltage_residual = 3.0374657189439716e-11
+case = "sym_negative"
+full_s_error = 2.1876927170708135e-5
