@@ -1,0 +1,13 @@
+scope = "Three active ANC parameter/literal pairs around the native port-edge allowance. Accepted and explicit rejected inputs, logs and geometry outcomes are retained unchanged."
+
+[[cases]]
+name = "fraction1.0001999"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "fraction1.0002"
+native_status = "REJECT"
+
+[[cases]]
+name = "fraction1.0002001"
+native_status = "REJECT"

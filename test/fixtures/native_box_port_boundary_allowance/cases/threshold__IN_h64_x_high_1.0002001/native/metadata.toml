@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_native_boundary_allowance_1nyVbr\\IN_h64_x_high_1.0002001.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T20:54:41.042"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T20:54:40.058"
+source_sha256 = "75e9ef4ae2a88ba6d4132b5f9a15df9a789834fab32885fec7b44aa5a8a7f936"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_native_boundary_allowance_1nyVbr\\IN_h64_x_high_1.0002001\\IN_h64_x_high_1.0002001.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\plain_box_port_native_boundary_allowance_1nyVbr\\\\IN_h64_x_high_1.0002001\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

@@ -1,0 +1,14 @@
+
+    Frequency:  1 GHZ
+
+      Sonnet Warning:
+      Potential problem with circuit.
+      Port 1 is attached to polygon which is shorted to bottom box wall.
+      Sonnet: metal level 0; x=0, y=0.0859359 mm.
+
+
+      Sonnet Warning:
+      Potential problem with circuit.
+      Port 2 is attached to polygon which is shorted to bottom box wall.
+      Sonnet: metal level 0; x=1, y=0.0859359 mm.
+

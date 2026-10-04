@@ -1,0 +1,26 @@
+Run 1:  Mon Oct 05 04:43:25 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\plain_box_port_native_boundary_NdYvlt\y_low_1e-14\y_low_1e-14.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Sonnet Warning:
+      Potential problem with circuit.
+      Port 1 is attached to polygon which is shorted to top box wall.
+      Sonnet: metal level 0; x=0, y=0.90625 mm.
+
+
+      Sonnet Warning:
+      Potential problem with circuit.
+      Port 2 is attached to polygon which is shorted to top box wall.
+      Sonnet: metal level 0; x=1, y=0.90625 mm.
+
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 2.
+
+Em simulation completed Mon Oct 05 04:43:25 2026.

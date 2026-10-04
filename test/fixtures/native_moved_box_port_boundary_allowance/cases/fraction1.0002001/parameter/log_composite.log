@@ -1,0 +1,25 @@
+Run 1:  Mon Oct 05 05:02:59 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\moved_box_port_native_allowance_t05UDl\fraction1.0002001\parameter\fraction1.0002001_parameter.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Width = 0.640628 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+      Subsectioning at 1 GHz with Eeff of 2.5.
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      The polygon edge to which port 1 is attached
+      is partially or entirely outside of the box.
+      Sonnet: metal level 0; x=0, y=0.304686 mm.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 05 05:02:59 2026.

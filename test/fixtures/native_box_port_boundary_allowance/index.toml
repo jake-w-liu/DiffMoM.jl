@@ -1,0 +1,341 @@
+scope = "Native port-edge allowance: both axes and ends, three native grids, MM/IN units, tiny excursions and rectangular unequal grids. Original strict candidate false rejections are retained unchanged."
+
+[[cases]]
+name = "threshold__MM_h32_x_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h32_x_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h32_x_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h32_x_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h32_x_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h32_x_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h32_y_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h32_y_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h32_y_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h32_y_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h32_y_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h32_y_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_x_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h64_x_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_x_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_x_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h64_x_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_x_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_y_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h64_y_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_y_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_y_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h64_y_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h64_y_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_x_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h128_x_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_x_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_x_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h128_x_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_x_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_y_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h128_y_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_y_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_y_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__MM_h128_y_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__MM_h128_y_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_x_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__IN_h64_x_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_x_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_x_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__IN_h64_x_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_x_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_y_low_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__IN_h64_y_low_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_y_low_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_y_high_1.0001999"
+group = "threshold"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "threshold__IN_h64_y_high_1.0002"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "threshold__IN_h64_y_high_1.0002001"
+group = "threshold"
+native_status = "REJECT"
+
+[[cases]]
+name = "tiny__x_low_1e-14"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "tiny__x_high_ulp"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "tiny__x_high_1e-12"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "tiny__x_low_1e-8"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "tiny__y_low_1e-14"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "tiny__y_high_ulp"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "tiny__y_high_1e-12"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "tiny__y_low_1e-8"
+group = "tiny"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "aspect__MM_h32_x_low_1.0001999"
+group = "aspect"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "aspect__MM_h32_x_low_1.0002"
+group = "aspect"
+native_status = "REJECT"
+
+[[cases]]
+name = "aspect__MM_h32_x_low_1.0002001"
+group = "aspect"
+native_status = "REJECT"
+
+[[cases]]
+name = "aspect__MM_h32_x_high_1.0001999"
+group = "aspect"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "aspect__MM_h32_x_high_1.0002"
+group = "aspect"
+native_status = "REJECT"
+
+[[cases]]
+name = "aspect__MM_h32_x_high_1.0002001"
+group = "aspect"
+native_status = "REJECT"
+
+[[cases]]
+name = "aspect__MM_h64_y_low_1.0001999"
+group = "aspect"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "aspect__MM_h64_y_low_1.0002"
+group = "aspect"
+native_status = "REJECT"
+
+[[cases]]
+name = "aspect__MM_h64_y_low_1.0002001"
+group = "aspect"
+native_status = "REJECT"
+
+[[cases]]
+name = "aspect__MM_h64_y_high_1.0001999"
+group = "aspect"
+native_status = "ACCEPT"
+
+[[cases]]
+name = "aspect__MM_h64_y_high_1.0002"
+group = "aspect"
+native_status = "REJECT"
+
+[[cases]]
+name = "aspect__MM_h64_y_high_1.0002001"
+group = "aspect"
+native_status = "REJECT"

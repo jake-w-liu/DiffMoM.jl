@@ -1,0 +1,9 @@
+Run 1:  Mon Oct 05 04:07:44 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\plain_box_port_extent_69slJp\y_negative\y_negative.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+Analysis failed due to error Mon Oct 05 04:07:44 2026.

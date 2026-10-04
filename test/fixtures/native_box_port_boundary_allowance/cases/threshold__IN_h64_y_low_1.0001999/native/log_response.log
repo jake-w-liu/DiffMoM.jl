@@ -1,0 +1,15 @@
+Run 1:  Mon Oct 05 04:54:42 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\plain_box_port_native_boundary_allowance_1nyVbr\IN_h64_y_low_1.0001999\IN_h64_y_low_1.0001999.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 1.000000 177.16 1.734e-5 87.158 1.734e-5 87.158 1.000000 177.16
+
+Em simulation completed Mon Oct 05 04:54:42 2026.

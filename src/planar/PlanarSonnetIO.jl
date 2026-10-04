@@ -84,6 +84,16 @@ struct SonnetNetlistProject
     records::Vector{SonnetRecord}
 end
 
+# Native port-edge checks allow half an actual cell plus 0.0001 cell at a
+# wall. Compare in cell coordinates: SI subtraction can flip boundary ties.
+function _sonnet_box_port_edge_inside(vertices,edge,a,b,nx,ny)
+    first=edge+1;second=mod1(first+1,size(vertices,2))
+    return -.5001<(vertices[1,first]/a)*nx<nx+.5001 &&
+        -.5001<(vertices[1,second]/a)*nx<nx+.5001 &&
+        -.5001<(vertices[2,first]/b)*ny<ny+.5001 &&
+        -.5001<(vertices[2,second]/b)*ny<ny+.5001
+end
+
 function _sonnet_tokens(line::AbstractString)
     out=String[]; buf=IOBuffer(); quoted=false; active=false
     chars=collect(line);i=1
@@ -995,6 +1005,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     ls=p.length_scale
     gr=physical.grid;st=physical.stack;layers=st.layers
     a,b=gr.a,gr.b;nx,ny=gr.nx,gr.ny
+    native_nx=parse(Int,p.box[4])÷2;native_ny=parse(Int,p.box[5])÷2
     L=length(layers)
     any(poly->poly.kind==:brick,p.polygons) && throw(ArgumentError("native dielectric bricks require a volume dielectric adapter"))
     sheets=SheetLevel[]; sheetidx=Dict{Int,Int}(); masks=Dict{Int,BitMatrix}()
@@ -1134,6 +1145,8 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             push!(port_weights,1.)
             continue
         end
+        _sonnet_box_port_edge_inside(poly.vertices,ps.edge,a,b,native_nx,native_ny) ||
+            throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
         tol=1e-8*max(a,b)
         wall=abs(x)<=tol ? :west : abs(x-a)<=tol ? :east :
             abs(y)<=tol ? :south : abs(y-b)<=tol ? :north :

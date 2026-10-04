@@ -259,8 +259,25 @@ because its next ray is undefined; its native full S remains unverified after
 an engine memory-allocation failure. Evidence is in
 `test/fixtures/native_radial_adjustment_sequence`, replayed by
 `validation/planar_audit/run_radial_adjustment_sequence.jl`.
-Moved box-port edges must remain wholly inside the finite box. A repeated
-whole-polygon control confirms the native rejection when its port edge extends
+Raster imports validate complete literal and moved box-port edges in the
+project's native cell coordinates. Native Sonnet allows half an actual cell
+plus 0.0001 cell at a wall; an exact SI bound incorrectly rejects valid inputs.
+Six independent literal rectangles cover both axes and both outside ends:
+native Sonnet rejects four cases that the raster importer previously accepted.
+The two valid corner controls retain the 0.005 public complex S and 1e-9
+original-voltage residual gates using independent direct modal assembly.
+Sixty-eight additional native controls cover both axes/ends, three native grids,
+MM/IN units, rectangular unequal grids and tiny excursions. Three active ANC
+parameter/literal pairs check movement across the same boundary. Native
+acceptance remains tied to the project grid when a caller selects another
+raster resolution. The extent helper allocates zero warmed bytes. Ordinary
+unported metal can still be clipped by rasterization. Evidence is retained in
+`test/fixtures/native_plain_box_port_extent`, with native replay in
+`validation/planar_audit/run_box_port_extent_reference.jl`.
+The boundary and moved controls are retained in
+`test/fixtures/native_box_port_boundary_allowance` and
+`test/fixtures/native_moved_box_port_boundary_allowance`.
+A repeated whole-polygon control confirms the native rejection when its port edge extends
 outside the box; `test/fixtures/native_geovar_box_port_extent` retains the
 engine error and independent native-normalizer stages.
 Native `POLY id 0` selectors expand every logical polygon vertex, excluding

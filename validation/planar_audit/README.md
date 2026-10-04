@@ -54,6 +54,13 @@ rays, repeated ordinary points and point-group/header variations. It checks
 the retained complete matrices and the unchanged 1e-12 identity gate in a fresh
 directory. The separate engine memory-allocation failure remains unverified.
 
+`run_box_port_extent_reference.jl` replays 80 native inputs: six ordinary edge
+controls, 68 boundary-allowance controls and three active ANC parameter/literal
+pairs. It checks exact rejection messages, complete retained matrices at the
+unchanged 1e-12 identity gate and public raster outcomes. Both the original
+false acceptances and the overly strict candidate's false rejections remain
+in separate immutable fixtures.
+
 `run_whole_geovar_reference.jl` replays sixteen whole-polygon zero-count,
 explicit vertex-list and independent literal triples. It checks native full
 matrix identity, source stability, both axes/directions and contraction/expansion.

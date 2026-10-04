@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\moved_box_port_native_allowance_t05UDl\\fraction1.0002001_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T21:02:59.054"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T21:02:58.079"
+source_sha256 = "9b55d1f92bf56b1909666c30c488645fc0a5d0568e3654d2feade8c52b94b613"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\moved_box_port_native_allowance_t05UDl\\fraction1.0002001\\parameter\\fraction1.0002001_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\moved_box_port_native_allowance_t05UDl\\\\fraction1.0002001\\\\parameter\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

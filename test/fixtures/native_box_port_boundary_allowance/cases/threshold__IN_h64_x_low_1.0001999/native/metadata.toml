@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_native_boundary_allowance_1nyVbr\\IN_h64_x_low_1.0001999.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T20:54:36.046"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [57]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T20:54:35.050"
+source_sha256 = "8c31c9bf5339706f7be749375a06933a24c2ae28ecaeed5418d405632a6790f2"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_native_boundary_allowance_1nyVbr\\IN_h64_x_low_1.0001999\\IN_h64_x_low_1.0001999.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\plain_box_port_native_boundary_allowance_1nyVbr\\\\IN_h64_x_low_1.0001999\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "7fa21ce0a65690d3f23bab5d270e7c5d7354005764da83681978e3c19d166f4f"
+intended_deembedded = false
+max_difference = 3.794865642344414e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_native_boundary_allowance_1nyVbr\\IN_h64_x_low_1.0001999\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6524797933623158
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "7fa21ce0a65690d3f23bab5d270e7c5d7354005764da83681978e3c19d166f4f"
+intended_deembedded = false
+max_difference = 3.794865642344414e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\plain_box_port_native_boundary_allowance_1nyVbr\\IN_h64_x_low_1.0001999\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6524797933623158
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

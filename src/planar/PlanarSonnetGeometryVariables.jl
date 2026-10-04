@@ -575,11 +575,14 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     boxa*=p.length_scale;boxb*=p.length_scale
     all(isfinite,(boxa,boxb)) && boxa>0 && boxb>0 ||
         throw(ArgumentError("GEOVAR box dimensions must preserve positive finite SI values"))
+    halfcounts=(parse(Int,p.box[4]),parse(Int,p.box[5]))
+    all(n->n>0 && iseven(n),halfcounts) ||
+        throw(ArgumentError("native BOX half-cell counts must be positive even integers"))
+    native_nx=halfcounts[1]÷2;native_ny=halfcounts[2]÷2
     for port in p.ports
         old=original[port.polygon].vertices;new=polygons[port.polygon]
         first=port.edge+1;second=mod1(first+1,size(old,2))
-        0<=new[1,first]<=boxa && 0<=new[1,second]<=boxa &&
-            0<=new[2,first]<=boxb && 0<=new[2,second]<=boxb ||
+        _sonnet_box_port_edge_inside(new,port.edge,boxa,boxb,native_nx,native_ny) ||
             throw(ArgumentError("GEOVAR box-port edge is partially or entirely outside the box"))
         displacement=old[:,second]-old[:,first];axis=abs(displacement[1])>=abs(displacement[2]) ? 1 : 2
         !iszero(displacement[axis]) || throw(ArgumentError("GEOVAR port has a degenerate edge"))

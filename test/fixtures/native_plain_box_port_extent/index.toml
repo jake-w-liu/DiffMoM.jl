@@ -1,0 +1,38 @@
+scope = "Six independent native literal box-port edge controls; original raster false acceptances and corrected conformal follow-up are retained unchanged."
+source_before_commit = "9f3324915702f15784f9a34266a180548b63eafc"
+
+[[cases]]
+name = "x_inside"
+native_status = "ACCEPT"
+lo = 0.0
+hi = 0.1875
+
+[[cases]]
+name = "x_negative"
+native_status = "REJECT"
+lo = -0.0625
+hi = 0.1875
+
+[[cases]]
+name = "x_positive"
+native_status = "REJECT"
+lo = 0.8125
+hi = 1.0625
+
+[[cases]]
+name = "y_inside"
+native_status = "ACCEPT"
+lo = 0.0
+hi = 0.1875
+
+[[cases]]
+name = "y_negative"
+native_status = "REJECT"
+lo = -0.0625
+hi = 0.1875
+
+[[cases]]
+name = "y_positive"
+native_status = "REJECT"
+lo = 0.8125
+hi = 1.0625
