@@ -1068,7 +1068,9 @@ ladder remain open.
   residuals are below 9.987e-11, and full complex S differs from the dense
   reference by 2.5044e-9. Native error remains 0.06492637, **FAIL** at 0.06.
   Evidence: `dxf_source_images_public_solve_zpuQlw`; this run began with
-  uncommitted edits, and its recorded source hashes match `07aa67c4`.
+  uncommitted edits. Before the correction, its source content was checked
+  against `07aa67c4` with Git's text line-ending normalization; its captured
+  raw-byte hashes remain recorded separately.
   After the translated-terminal correction, a fresh 4096-mode DXF action
   and diagonal replay retains 70167952 bytes, with relative errors
   1.76e-15/1.61e-16 and zero warmed allocation
