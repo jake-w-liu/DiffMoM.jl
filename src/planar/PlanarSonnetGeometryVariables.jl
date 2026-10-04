@@ -318,13 +318,13 @@ end
 
 # Native RAD moves every selected point by the same signed radial distance;
 # its XDIR/YDIR, direction and scaling fields do not change that movement.
-@inline function _sonnet_geovar_radial_point(x,y,anchorx,anchory,delta)
+@inline function _sonnet_geovar_radial_point(x,y,anchorx,anchory,delta,preserve_movement::Bool=true)
     dx=x-anchorx;dy=y-anchory;radius=hypot(dx,dy)
     if isfinite(radius) && radius>0
         ux=dx/radius;uy=dy/radius
         nx=fma(ux,delta,x);ny=fma(uy,delta,y)
         safe(before,anchor,offset,unit,after)=isfinite(after) &&
-            (iszero(offset) || (!iszero(unit) && after!=before &&
+            (iszero(offset) || (!iszero(unit) && (after!=before || !preserve_movement) &&
                 abs(after)>sqrt(eps(Float64))*max(abs(before),abs(anchor),abs(delta))))
         safe(x,anchorx,dx,ux,nx) && safe(y,anchory,dy,uy,ny) && return (nx,ny)
     end
@@ -339,11 +339,108 @@ end
     end
 end
 
+# The solver applies a native radial parameter three times, recomputing the
+# reference distance between adjustments. Away from anchor crossings the sum
+# reduces to r(r-1)+1 times the initial change. Crossing an anchor requires the
+# actual sequence; the distance is unsigned and each point's ray can reverse.
+@inline function _sonnet_geovar_radial_delta(target,x,y,anchorx,anchory)
+    radius=hypot(x-anchorx,y-anchory)
+    delta=target-radius
+    isfinite(radius) && isfinite(delta) && return delta
+    return setprecision(BigFloat,4352) do
+        setrounding(BigFloat,RoundNearest) do
+            Float64(BigFloat(target)-hypot(BigFloat(x)-BigFloat(anchorx),
+                BigFloat(y)-BigFloat(anchory)))
+        end
+    end
+end
+
+# Reduce the three adjustments algebraically only when every ray stays away
+# from the anchor throughout all three passes. This prevents reference-radius
+# rounding from being amplified by large multiplicities on a smooth path.
+function _sonnet_geovar_radial_linear_path(polygons,points,owners,referencex,referencey,
+        anchorx,anchory,target,nominal,references)
+    hypot(referencex-anchorx,referencey-anchory)==nominal || return false
+    change=target-nominal
+    factor=fma(Float64(references),Float64(references-1),1.)
+    minimum_step=min(0.,change,(1-references)*change,factor*change)
+    isfinite(minimum_step) || return false
+    for (id,index) in points
+        radius=hypot(polygons[id][1,index]-anchorx,polygons[id][2,index]-anchory)
+        shift=-owners[(id,index)][2]*minimum_step
+        isfinite(radius) && isfinite(shift) &&
+            radius+shift>sqrt(eps(Float64))*max(radius,abs(shift)) || return false
+    end
+    return true
+end
+
+function _sonnet_geovar_apply_radial!(p,parameter,target,original,polygons,owners)
+    firstid,firstpoint=parameter.references[1]
+    secondid,secondpoint=parameter.references[2]
+    firstvertices=original[firstid].vertices
+    # Accumulate in native units and convert once. Use SI only for
+    # extreme saved coordinates whose native-unit quotient overflows.
+    native_units=all(isfinite,(firstvertices[1,firstpoint]/p.length_scale,
+        firstvertices[2,firstpoint]/p.length_scale))
+    for (id,index) in parameter.points[2]
+        if !all(isfinite,(polygons[id][1,index]/p.length_scale,
+                polygons[id][2,index]/p.length_scale))
+            native_units=false;break
+        end
+    end
+    unit=native_units ? p.length_scale : 1.
+    anchorx=firstvertices[1,firstpoint]/unit;anchory=firstvertices[2,firstpoint]/unit
+    for (id,index) in parameter.points[2]
+        owner,movements=owners[(id,index)]
+        movements>0 || continue
+        polygons[id][1,index]/=unit;polygons[id][2,index]/=unit
+        owners[(id,index)]=(owner,-movements)
+    end
+    requested=target*(p.length_scale/unit)
+    reference=polygons[secondid]
+    linear=_sonnet_geovar_radial_linear_path(polygons,parameter.points[2],owners,
+        reference[1,secondpoint],reference[2,secondpoint],anchorx,anchory,
+        requested,parameter.nominal*(p.length_scale/unit),parameter.explicit_moving_references)
+    step=_sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale/unit,
+        linear ? parameter.explicit_moving_references : 1)
+    for pass in 1:(linear ? 1 : 3)
+        if pass>1
+            reference=polygons[secondid]
+            step=_sonnet_geovar_radial_delta(requested,reference[1,secondpoint],
+                reference[2,secondpoint],anchorx,anchory)
+        end
+        isfinite(step) || _sonnet_error(p.source,parameter.line,"radial GEOVAR displacement is unrepresentable")
+        iszero(step) && continue
+        for (id,index) in parameter.points[2]
+            beforex=polygons[id][1,index];beforey=polygons[id][2,index]
+            afterx,aftery=_sonnet_geovar_radial_point(beforex,beforey,anchorx,anchory,step,pass==1)
+            # A recomputed radius can differ by one rounding unit.
+            # Native correction passes may then leave a coordinate
+            # unchanged; the requested initial movement must survive.
+            all(isfinite,(afterx,aftery)) && (pass>1 ||
+                ((afterx!=beforex || beforex==anchorx) &&
+                 (aftery!=beforey || beforey==anchory))) ||
+                _sonnet_error(p.source,parameter.line,"radial GEOVAR displacement is lost in its stored coordinate")
+            polygons[id][1,index]=afterx;polygons[id][2,index]=aftery
+        end
+    end
+    for (id,index) in parameter.points[2]
+        owner,movements=owners[(id,index)]
+        movements<0 || continue
+        polygons[id][1,index]*=unit;polygons[id][2,index]*=unit
+        all(isfinite,(polygons[id][1,index],polygons[id][2,index])) ||
+            _sonnet_error(p.source,parameter.line,"radial GEOVAR coordinate is unrepresentable in SI")
+        owners[(id,index)]=(owner,-movements)
+    end
+    return nothing
+end
+
 """Resolve native independent ANC/SYM/RAD dimensions into effective SI geometry.
 Original source/records and scalar snapshot identity remain attached. Reference
 points belong implicitly to their adjustable set. Ordinary repeated entries
-retain their movement multiplicity. NSCD ANC and RAD moving-reference repetitions
-also apply their native common-displacement factor; ANC follows its reference
+retain their movement multiplicity. RAD follows the native three-adjustment
+sequence, recomputing its reference radius. NSCD ANC moving-reference repetitions
+apply their native common-displacement factor; ANC follows its reference
 coordinate order, using the direction field for zero offsets. Other references,
 dependent/overlapping active dimensions and moved component/interior-port semantics
 require separate adapters. Whole-polygon selectors expand logical vertices
@@ -371,13 +468,15 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     parameters=_sonnet_geovar_parameters(p,nparameters,npoints,(limit-reserve)÷256)
     deltas=Float64[];targets=Float64[]
     for parameter in parameters
-        target=sonnet_variable_value(p,parameter.name;variables,freq=frequency)
+        target=sonnet_variable_value(p,parameter.name;variables,freq=frequency)::Float64
         nominal=parameter.nominal*p.length_scale;requested=target*p.length_scale
         _sonnet_geovar_nominal_value_ok(nominal,parameter.nominal,parameter.kind,parameter.scaled) &&
             isfinite(requested) && (requested>0 ||
                 (iszero(target) && iszero(parameter.nominal) && iszero(requested))) ||
             _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
-        displacement=parameter.explicit_moving_references>1 ?
+        displacement=parameter.kind=="RAD" ?
+            _sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale,1) :
+            parameter.explicit_moving_references>1 ?
             _sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale,
                 parameter.explicit_moving_references) : requested-nominal
         delta=(parameter.kind=="RAD" ? 1 : parameter.direction)*displacement
@@ -437,16 +536,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             continue
         end
         if parameter.kind=="RAD"
-            anchorx=firstvertices[1,firstpoint];anchory=firstvertices[2,firstpoint]
-            for (id,index) in parameter.points[2]
-                beforex=polygons[id][1,index];beforey=polygons[id][2,index]
-                afterx,aftery=_sonnet_geovar_radial_point(beforex,beforey,anchorx,anchory,delta)
-                all(isfinite,(afterx,aftery)) &&
-                    (afterx!=beforex || beforex==anchorx) &&
-                    (aftery!=beforey || beforey==anchory) ||
-                    _sonnet_error(p.source,parameter.line,"radial GEOVAR displacement is lost in its stored coordinate")
-                polygons[id][1,index]=afterx;polygons[id][2,index]=aftery
-            end
+            _sonnet_geovar_apply_radial!(p,parameter,target,original,polygons,owners)
             continue
         end
         symmetric=parameter.kind=="SYM"
@@ -479,12 +569,21 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             vertices,polygon.target,polygon.technology,polygon.flags))
     end
     ports=SonnetPortSpec[]
+    parseda=tryparse(Float64,p.box[2]);parsedb=tryparse(Float64,p.box[3])
+    boxa=(parseda===nothing ? sonnet_variable_value(p,p.box[2];variables,freq=frequency) : parseda)::Float64
+    boxb=(parsedb===nothing ? sonnet_variable_value(p,p.box[3];variables,freq=frequency) : parsedb)::Float64
+    boxa*=p.length_scale;boxb*=p.length_scale
+    all(isfinite,(boxa,boxb)) && boxa>0 && boxb>0 ||
+        throw(ArgumentError("GEOVAR box dimensions must preserve positive finite SI values"))
     for port in p.ports
         old=original[port.polygon].vertices;new=polygons[port.polygon]
         first=port.edge+1;second=mod1(first+1,size(old,2))
+        0<=new[1,first]<=boxa && 0<=new[1,second]<=boxa &&
+            0<=new[2,first]<=boxb && 0<=new[2,second]<=boxb ||
+            throw(ArgumentError("GEOVAR box-port edge is partially or entirely outside the box"))
         displacement=old[:,second]-old[:,first];axis=abs(displacement[1])>=abs(displacement[2]) ? 1 : 2
         !iszero(displacement[axis]) || throw(ArgumentError("GEOVAR port has a degenerate edge"))
-        coordinate=sonnet_variable_value(p,port.values[5+axis];variables,freq=frequency)*p.length_scale
+        coordinate=(sonnet_variable_value(p,port.values[5+axis];variables,freq=frequency)::Float64)*p.length_scale
         fraction=(coordinate-old[axis,first])/displacement[axis]
         isfinite(fraction) && 0<=fraction<=1 || throw(ArgumentError("GEOVAR port coordinate is outside its attached edge"))
         values=copy(port.values)

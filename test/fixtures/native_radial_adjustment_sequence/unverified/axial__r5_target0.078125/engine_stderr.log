@@ -1,0 +1,9 @@
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Memory allocation error.
+      Unable to allocate 56 GB of memory to store 1,879,049,060 elemental subsections for the analysis.
+      Required elemental subsection memory can be reduced by increasing the X and/or Y cell sizes in the Sonnet box.
+      Please check the amount of memory available on your computer.
+

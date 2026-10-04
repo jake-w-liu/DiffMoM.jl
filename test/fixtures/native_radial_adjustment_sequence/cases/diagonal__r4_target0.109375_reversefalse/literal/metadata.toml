@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\radial_three_pass_diagonal_orWNS2\\r4_target0.109375_reversefalse_literal.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T19:16:12.049"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [144]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T19:16:11.061"
+source_sha256 = "6dd059d29c09ecfffa6a513d0adc563847a097f227282965a16b8048dd589369"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\radial_three_pass_diagonal_orWNS2\\r4_target0.109375_reversefalse_literal\\r4_target0.109375_reversefalse_literal.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\radial_three_pass_diagonal_orWNS2\\\\r4_target0.109375_reversefalse_literal\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "c62c30c21dbeb8dfd9b6000c4faaf5f1ee6b6781613c3d2ecdcb615ae2eb63f5"
+intended_deembedded = false
+max_difference = 1.741136749119206e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\radial_three_pass_diagonal_orWNS2\\r4_target0.109375_reversefalse_literal\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6703787898098653
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "c62c30c21dbeb8dfd9b6000c4faaf5f1ee6b6781613c3d2ecdcb615ae2eb63f5"
+intended_deembedded = false
+max_difference = 1.741136749119206e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\radial_three_pass_diagonal_orWNS2\\r4_target0.109375_reversefalse_literal\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6703787898098653
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

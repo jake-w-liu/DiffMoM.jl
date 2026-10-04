@@ -48,6 +48,12 @@ It checks the retained complete matrices and the unchanged 1e-12 native
 identity gate in a fresh directory. Earlier failed sequential and direction
 hypotheses remain in their original fixtures and captures.
 
+`run_radial_adjustment_sequence.jl` replays 36 native parameter/literal pairs
+for three successive radial adjustments, including anchor crossings, diagonal
+rays, repeated ordinary points and point-group/header variations. It checks
+the retained complete matrices and the unchanged 1e-12 identity gate in a fresh
+directory. The separate engine memory-allocation failure remains unverified.
+
 `run_whole_geovar_reference.jl` replays sixteen whole-polygon zero-count,
 explicit vertex-list and independent literal triples. It checks native full
 matrix identity, source stability, both axes/directions and contraction/expansion.

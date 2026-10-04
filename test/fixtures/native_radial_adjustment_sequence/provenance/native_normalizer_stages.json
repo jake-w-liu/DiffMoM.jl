@@ -1,0 +1,562 @@
+[
+  {
+    "case": "r2_target0.078125_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.703125 0.625",
+        "nom": [
+          "NOM 0.078125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "0.703125 0.625",
+        "nom": [
+          "NOM 0.078125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.703125 0.625",
+        "nom": [
+          "NOM 0.078125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r2_target0.109375_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.734375 0.625",
+        "nom": [
+          "NOM 0.109375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "0.734375 0.625",
+        "nom": [
+          "NOM 0.109375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.734375 0.625",
+        "nom": [
+          "NOM 0.109375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r2_target0.15625_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.59375 0.625",
+        "nom": [
+          "NOM 0.03125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "0.21875 0.625",
+        "nom": [
+          "NOM 0.40625"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.46875 0.625",
+        "nom": [
+          "NOM 0.15625"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r2_target0.21875_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.78125 0.625",
+        "nom": [
+          "NOM 0.15625"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "0.96875 0.625",
+        "nom": [
+          "NOM 0.34375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.59375 0.625",
+        "nom": [
+          "NOM 0.03125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 2",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U ",
+          "POR1 BOX"
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r3_target0.109375_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.59375 0.625",
+        "nom": [
+          "NOM 0.03125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 3",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U "
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "0.28125 0.625",
+        "nom": [
+          "NOM 0.34375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 3",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U "
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.75 0.625",
+        "nom": [
+          "NOM 0.125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 3",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U "
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r3_target0.21875_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.75 0.625",
+        "nom": [
+          "NOM 0.125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 3",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U "
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "1.125 0.625",
+        "nom": [
+          "NOM 0.5"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 3",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U "
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.5625 0.625",
+        "nom": [
+          "NOM 0.0625"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 3",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END",
+          "LORGN 0 1 U "
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r4_target0.078125_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.703125 0.625",
+        "nom": [
+          "NOM 0.078125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "0.703125 0.625",
+        "nom": [
+          "NOM 0.078125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.703125 0.625",
+        "nom": [
+          "NOM 0.078125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r4_target0.109375_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.734375 0.625",
+        "nom": [
+          "NOM 0.109375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "0.734375 0.625",
+        "nom": [
+          "NOM 0.109375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.734375 0.625",
+        "nom": [
+          "NOM 0.109375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r4_target0.15625_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.59375 0.625",
+        "nom": [
+          "NOM 0.03125"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "-0.03125 0.625",
+        "nom": [
+          "NOM 0.65625"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.46875 0.625",
+        "nom": [
+          "NOM 0.15625"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      }
+    ]
+  },
+  {
+    "case": "r4_target0.21875_parameter",
+    "stages": [
+      {
+        "stage": 1,
+        "moving_vertex": "0.71875 0.625",
+        "nom": [
+          "NOM 0.09375"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 2,
+        "moving_vertex": "1.34375 0.625",
+        "nom": [
+          "NOM 0.71875"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      },
+      {
+        "stage": 3,
+        "moving_vertex": "0.84375 0.625",
+        "nom": [
+          "NOM 0.21875"
+        ],
+        "ps2": [
+          "PS2 1",
+          "POLY 2 4",
+          "1",
+          "1",
+          "1",
+          "1",
+          "END",
+          "END"
+        ]
+      }
+    ]
+  }
+]

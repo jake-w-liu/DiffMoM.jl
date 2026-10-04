@@ -229,8 +229,10 @@ Sixteen native controls with a conflicting direction field expose the old
 125–250 micrometre geometry error and full-S errors above 0.016; independent
 literals pass the original physical gates.
 NSCD ANC and RAD moving references retain every explicit movement plus the
-implicit reference movement. With `r` explicit occurrences, native movement
+implicit reference movement. With `r` explicit occurrences, anchored movement
 uses the common displacement factor `r(r-1)+1` for every adjustable entry.
+That reduction also applies to radial movement when every ray stays away from
+its anchor throughout the native adjustments.
 Fresh controls cover counts 0–5, 8, 16 and 32, both axes and coordinate orders,
 zero offsets, reordered groups, ordinary duplicate points, repeated whole
 polygons and all RAD scaling headers. Ninety-four retained native
@@ -243,6 +245,24 @@ and uses bounded precision for range cases. Ordinary displacement calculations
 allocate no memory; aggregate point/storage guards remain in place. Exact
 evidence is in `test/fixtures/native_geovar_reference_count_law`, replayed by
 `validation/planar_audit/run_geovar_reference_count_law.jl`.
+RAD applies three successive adjustments, recomputing the reference radius
+between passes. Strong contractions can reverse a ray, so they require the
+actual sequence rather than the constant-factor reduction. Thirty-six further
+native parameter/literal pairs cover reference counts 0–5, anchor crossings,
+diagonal reference rays, repeated ordinary points, reversed group order and
+conflicting header fields. Their complete matrices and native subsection
+supports match; public geometry, masks, full-S and original voltage-residual
+gates are checked. The smooth-path reduction avoids amplifying radius roundoff
+at larger counts. Movement accumulates in project units before SI conversion.
+A separate case reaches the anchor before another movement and is rejected
+because its next ray is undefined; its native full S remains unverified after
+an engine memory-allocation failure. Evidence is in
+`test/fixtures/native_radial_adjustment_sequence`, replayed by
+`validation/planar_audit/run_radial_adjustment_sequence.jl`.
+Moved box-port edges must remain wholly inside the finite box. A repeated
+whole-polygon control confirms the native rejection when its port edge extends
+outside the box; `test/fixtures/native_geovar_box_port_extent` retains the
+engine error and independent native-normalizer stages.
 Native `POLY id 0` selectors expand every logical polygon vertex, excluding
 the closing duplicate. Sixteen NSCD ANC/RAD controls cover both axes, both
 directions and expansion/contraction; native zero-count, explicit-list and

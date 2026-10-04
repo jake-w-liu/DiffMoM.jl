@@ -1,0 +1,19 @@
+ERROR: LoadError: Sonnet analysis failed; see C:\Users\User\DiffMoM.jl\data\planar_audit\radial_three_pass_whole_selector_E2ZZFC\parameter
+Stacktrace:
+ [1] error(s::String)
+   @ Base .\error.jl:44
+ [2] reference_run(em::String, source::String; output_dir::String, deembedded::Bool, dependencies::Vector{String}, nports::Int64)
+   @ Main.SonnetReference C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\sonnet_reference.jl:367
+ [3] reference_run
+   @ C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\sonnet_reference.jl:316 [inlined]
+ [4] main()
+   @ Main C:\Users\User\DiffMoM.jl\data\radial_three_pass_whole_selector_probe_20261005.jl:10
+ [5] top-level scope
+   @ C:\Users\User\DiffMoM.jl\data\radial_three_pass_whole_selector_probe_20261005.jl:33
+ [6] include(mod::Module, _path::String)
+   @ Base .\Base.jl:309
+ [7] exec_options(opts::Base.JLOptions)
+   @ Base .\client.jl:344
+ [8] _start()
+   @ Base .\client.jl:577
+in expression starting at C:\Users\User\DiffMoM.jl\data\radial_three_pass_whole_selector_probe_20261005.jl:33

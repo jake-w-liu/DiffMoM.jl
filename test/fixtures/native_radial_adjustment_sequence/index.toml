@@ -1,0 +1,290 @@
+scope = "Native radial three-adjustment controls: recompute reference radius between passes, reverse rays across anchors; counts0/1/2/3/4/5, diagonal references and repeated ordinary points, group-order and header variations. Complete native matrices bit identical; separate native memory failure remains unverified."
+source_before_commit = "4efcf758f21a5fb0ee54cffd5f53e337bf4e15b8"
+
+[[cases]]
+name = "axial__r2_target0.21875"
+family = "axial"
+r = 2
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r2_target0.15625"
+family = "axial"
+r = 2
+target = 0.15625
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r2_target0.109375"
+family = "axial"
+r = 2
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r2_target0.078125"
+family = "axial"
+r = 2
+target = 0.078125
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r4_target0.21875"
+family = "axial"
+r = 4
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r4_target0.15625"
+family = "axial"
+r = 4
+target = 0.15625
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r4_target0.109375"
+family = "axial"
+r = 4
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r4_target0.078125"
+family = "axial"
+r = 4
+target = 0.078125
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r3_target0.21875"
+family = "axial"
+r = 3
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r3_target0.109375"
+family = "axial"
+r = 3
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r0_target0.21875"
+family = "axial"
+r = 0
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r0_target0.15625"
+family = "axial"
+r = 0
+target = 0.15625
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r0_target0.109375"
+family = "axial"
+r = 0
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r0_target0.078125"
+family = "axial"
+r = 0
+target = 0.078125
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r0_target0.28125"
+family = "axial"
+r = 0
+target = 0.28125
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r1_target0.21875"
+family = "axial"
+r = 1
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r1_target0.15625"
+family = "axial"
+r = 1
+target = 0.15625
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r1_target0.109375"
+family = "axial"
+r = 1
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r1_target0.078125"
+family = "axial"
+r = 1
+target = 0.078125
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r1_target0.28125"
+family = "axial"
+r = 1
+target = 0.28125
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r5_target0.21875"
+family = "axial"
+r = 5
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r5_target0.15625"
+family = "axial"
+r = 5
+target = 0.15625
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r5_target0.109375"
+family = "axial"
+r = 5
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "axial__r5_target0.28125"
+family = "axial"
+r = 5
+target = 0.28125
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r2_target0.21875_reversefalse"
+family = "diagonal"
+r = 2
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r2_target0.21875_reversetrue"
+family = "diagonal"
+r = 2
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r2_target0.109375_reversefalse"
+family = "diagonal"
+r = 2
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r2_target0.109375_reversetrue"
+family = "diagonal"
+r = 2
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r3_target0.21875_reversefalse"
+family = "diagonal"
+r = 3
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r3_target0.21875_reversetrue"
+family = "diagonal"
+r = 3
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r3_target0.109375_reversefalse"
+family = "diagonal"
+r = 3
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r3_target0.109375_reversetrue"
+family = "diagonal"
+r = 3
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r4_target0.21875_reversefalse"
+family = "diagonal"
+r = 4
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r4_target0.21875_reversetrue"
+family = "diagonal"
+r = 4
+target = 0.21875
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r4_target0.109375_reversefalse"
+family = "diagonal"
+r = 4
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true
+
+[[cases]]
+name = "diagonal__r4_target0.109375_reversetrue"
+family = "diagonal"
+r = 4
+target = 0.109375
+full_s_error = 0.0
+bit_identical = true

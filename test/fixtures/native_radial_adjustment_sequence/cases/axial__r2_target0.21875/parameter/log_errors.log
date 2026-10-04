@@ -1,0 +1,15 @@
+Run 1:  Mon Oct 05 03:07:15 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\radial_reference_three_pass_Cjn6o9\r2_target0.21875_parameter\r2_target0.21875_parameter.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Radius = 0.21875 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Mon Oct 05 03:07:15 2026.
