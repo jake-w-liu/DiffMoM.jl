@@ -126,9 +126,11 @@ Parsing a project does not certify that every feature can be simulated."""
 function read_sonnet_project(path::AbstractString)
     source=abspath(path)
     records=SonnetRecord[]
-    for (line,text) in enumerate(eachline(source))
-        tokens=_sonnet_tokens(text)
-        isempty(tokens) || push!(records,SonnetRecord(line,tokens))
+    open(source,"r") do io
+        for (line,text) in enumerate(eachline(io))
+            tokens=_sonnet_tokens(text)
+            isempty(tokens) || push!(records,SonnetRecord(line,tokens))
+        end
     end
     return _sonnet_read_records(source,records)
 end
@@ -267,6 +269,17 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
         polygons,ports,vars,components,sweeps,records)
 end
 
+function _sonnet_math_real(value,quantity)
+    value isa Complex && !iszero(imag(value)) &&
+        throw(ArgumentError("native $quantity requires real arguments"))
+    return _circuit_stored_real(real(value),"native $quantity")
+end
+
+function _sonnet_math_axis(value,op)
+    value isa Real && return ComplexF64(value,0.)
+    return value
+end
+
 function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
     depth<=128 || throw(ArgumentError("native scalar evaluation depth budget exceeded"))
     ex isa Number && return _circuit_stored_real(ex,"native scalar literal")
@@ -291,7 +304,7 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         length(ex.args)==(kind==:table1 ? 3 : 4) || throw(ArgumentError("native $kind has invalid argument count"))
         ex.args[2] isa String || throw(ArgumentError("native table filename must be a literal quoted string"))
         keys=[_sonnet_expr(x,project,overrides,freq,active,depth+1) for x in ex.args[3:end]]
-        return _sonnet_scalar_table_value(overrides,kind,ex.args[2],keys)
+        return _sonnet_scalar_table_value(overrides,kind,ex.args[2],[_sonnet_math_real(x,"$kind key") for x in keys])
     end
     # Dispatch directly instead of rebuilding a dictionary of boxed functions
     # and project-capturing closures at every node in every material/provider
@@ -309,24 +322,58 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
     elseif op===:-
         n in (1,2) || throw(ArgumentError("native subtraction requires one or two scalar arguments"))
         a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
-        n==1 && return -a
+        # Native complex phase retains the imaginary signed zero introduced
+        # by a unary negative real operand: deg(-1)=-180, but
+        # deg(cmplx(-1,0))=180.
+        n==1 && return a isa Real ? -ComplexF64(a,0.) : -a
         return a-_sonnet_expr(ex.args[3],project,overrides,freq,active,depth+1)
     elseif op in (:/,:^)
         n==2 || throw(ArgumentError("native $op requires exactly two scalar arguments"))
         a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
         b=_sonnet_expr(ex.args[3],project,overrides,freq,active,depth+1)
-        return op===:/ ? a/b : a^b
-    elseif op in (:sqrt,:sin,:cos,:tan,:exp,:ln,:log10,:abs,:h2p,:p2h,:m2p,:p2m)
+        return op===:/ ? a/b : (a isa Real && a<0 ? ComplexF64(a,0.)^b : a^b)
+    elseif op in (:atan2,:hypot,:fmod,:max,:min,:cmplx)
+        n==2 || throw(ArgumentError("native $op requires exactly two scalar arguments"))
+        a=_sonnet_math_real(_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1),op)
+        b=_sonnet_math_real(_sonnet_expr(ex.args[3],project,overrides,freq,active,depth+1),op)
+        # The native atan2 control maps both signs of zero y to +pi at x<0.
+        op===:atan2 && return atan(iszero(a) ? 0. : a,b)
+        op===:hypot && return hypot(a,b)
+        op===:fmod && return rem(a,b)
+        op===:max && return max(a,b)
+        op===:min && return min(a,b)
+        return ComplexF64(a,b)
+    elseif op in (:sqrt,:sin,:cos,:tan,:asin,:acos,:atan,:sinh,:cosh,:tanh,
+            :asinh,:acosh,:atanh,:exp,:ln,:log10,:db10,:db20,:abs,:mag,
+            :real,:imag,:conj,:deg,:rad,:int,:h2p,:p2h,:m2p,:p2m)
         n==1 || throw(ArgumentError("native $op requires exactly one scalar argument"))
         a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
-        op===:sqrt && return sqrt(a)
+        op===:sqrt && return sqrt(_sonnet_math_axis(a,op))
         op===:sin && return sin(a)
         op===:cos && return cos(a)
         op===:tan && return tan(a)
+        op===:asin && return asin(_sonnet_math_axis(a,op))
+        op===:acos && return acos(_sonnet_math_axis(a,op))
+        op===:atan && return atan(a)
+        op===:sinh && return sinh(a)
+        op===:cosh && return cosh(a)
+        op===:tanh && return tanh(a)
+        op===:asinh && return asinh(a)
+        op===:acosh && return acosh(_sonnet_math_axis(a,op))
+        op===:atanh && return atanh(_sonnet_math_axis(a,op))
         op===:exp && return exp(a)
         op===:ln && return log(abs(a))
         op===:log10 && return log10(abs(a))
-        op===:abs && return abs(a)
+        op===:db10 && return 10log10(abs(a))
+        op===:db20 && return 20log10(abs(a))
+        op in (:abs,:mag) && return abs(a)
+        op===:real && return real(a)
+        op===:imag && return imag(a)
+        op===:conj && return conj(a)
+        op===:deg && return rad2deg(angle(a))
+        op===:rad && return angle(a)
+        a=_sonnet_math_real(a,op)
+        op===:int && return trunc(a)
         op===:h2p && return a/project.frequency_scale
         op===:p2h && return a*project.frequency_scale
         op===:m2p && return a/project.length_scale
@@ -357,7 +404,7 @@ function sonnet_variable_value(project::SonnetProject,text::AbstractString;
     end
     val=_sonnet_expr(_sonnet_parse_scalar(text),project,variables,freq,Set{String}())
     isfinite(val) || throw(ArgumentError("non-finite Sonnet scalar: $text"))
-    return _circuit_stored_real(val,"native scalar $text")
+    return _sonnet_math_real(val,"scalar $text")
 end
 
 function _sonnet_touchstone_response(path::AbstractString,np::Int)
