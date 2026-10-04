@@ -217,7 +217,7 @@ be represented in Float64 is rejected.
 
 The original tangency, overflow and clipping failures and the independent
 regressions are retained in `test/test_planar_artwork_exact_boundaries.jl` and
-`validation/planar_audit/artwork_*_before` artifacts. These are geometry and
+`data/prior_worker_validation_20261004/validation/planar_audit/artwork_*_before` artifacts. These are geometry and
 resource checks; native electromagnetic comparisons have separate source
 hashes and acceptance gates.
 
@@ -253,7 +253,9 @@ geometry. Static arc cuts and a shape-specific inner loop remove the repeated
 per-cell temporary arrays and boxing. This measures cumulative Julia
 allocation for that fixture, not peak process memory or every shape family.
 The reproducer and before/after measurements are in
-`validation/planar_audit/artwork_allocations.jl` and its TOML outputs.
+`validation/planar_audit/artwork_allocations.jl`. New TOML outputs go to ignored
+`data/planar_audit`; original measurements remain in the local historical
+archive `data/prior_worker_validation_20261004/validation/planar_audit`.
 
 The new analytic rectangle-arc raster has the same 28749-byte allocation
 scope on a 400×400 grid. The UNIX-compress fixture decoder allocates 331204
@@ -289,7 +291,7 @@ fixture allocated 149580973 bytes. Concrete stroke references preserve the
 same ordered dark/clear geometry and avoid copying union-valued strokes
 at each sample. Independent preserved abstract composites check every
 mask cell; the shared composite regressions include negative strokes.
-Evidence: `validation/planar_audit/odb_font_raster_allocations.log` (original),
+Evidence: `data/prior_worker_validation_20261004/validation/planar_audit/odb_font_raster_allocations.log` (original),
 `odb_font_raster_allocations_after.log` and
 `artwork_typed_composite_prototype.toml`.
 
@@ -302,5 +304,5 @@ the general vector path, so this is a scoped performance result. The tuple
 size cap bounds compilation growth. All these figures measure warmed
 cumulative Julia allocation, excluding peak process memory. Reproduction:
 `validation/planar_audit/artwork_general_composite_allocations.jl` and
-`artwork_small_composite_prototype.jl`. The 9826 shared composite checks are
+the locally archived `artwork_small_composite_prototype.jl`. The 9826 shared composite checks are
 separate from the format-specific Gerber/ODB++ totals.

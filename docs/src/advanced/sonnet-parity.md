@@ -6,6 +6,13 @@ sources. An implementation, a synthetic regression, a native comparison,
 and an absolute accuracy certificate are different evidence levels.
 Unfinished rows remain work items; this document is not a completion claim.
 
+Historical scratch logs and source captures cited below are preserved locally
+under ignored `data/prior_worker_validation_20261004`, with original relative
+paths and a SHA-256 relocation manifest. They are historical evidence; tracked
+`test/fixtures` archives retain the durable native references. Maintained audit
+scripts remain in `validation/planar_audit` and write new reports to ignored
+`data/planar_audit` by default.
+
 The fresh October 4 follow-up also preserves finite RLC constitutive equations
 when intermediate frequency products or reciprocals exceed Float64 range.
 The independent 5000-case mixed RLC sweep has maximum complete-S error
@@ -30,12 +37,12 @@ establish general continuum, measured-device or native workflow completeness.
 | M7 adaptive sweep | `PlanarSweep` | full matrix ABS versus independent analytic cascades, zero/constant cases, callback/resource guards; barycentric fitting resolves three delayed resonances in 14 analyses with maximum full S error 4.217e-7; 12180 independent resonance, off-grid, passivity and resource checks, including a 107.96 dB notch | physical EM and measured broadband/resonance acceptance; finite candidate grids do not certify undiscovered narrow resonances |
 | M8 ports/calibration | `PlanarPowerWaves`, `PlanarBasis`, `PlanarTerminalReturns`, `PlanarPortContraction`, `PlanarCalibration`, `PlanarDeembed` | frequency-dependent complex Kurokawa references across six raw solvers, circuits, projects, calibration, retained current/field mappings and fixed-reference ABS; native R/X/L/C Graph oracle; general launch-box identification, coupled/mixed groups, physical return-path DC oracle, native IDEAL SMD and native four-port full complex matrix error 0.000851 | arbitrary nonuniform local-ground standards and calibrated native accuracy; TRL needs known line impedance to identify physical output references; installed Lite rejects non-50 Ω EM references, calibration groups and ports-only components |
 | M9 currents/radiation | `PlanarCurrents`, `PlanarRadiation` | physical current maps; exact continuous-angle sheet/via/volume/triangle spectra, receive-layer reciprocity, PEC image/short-dipole power oracles, calibrated/FFT mappings, polarization/gain/CSV/interactive outputs; installed RHP antenna raw S passes at refined modes with fresh native currents | native pattern comparison and finite-box/cover antenna convergence; installed far field viewer is disabled with fresh antenna current data, and its guide requires an optional license; substrate-edge/surface-wave scope remains infinite lateral layers |
-| C1 circuits | `PlanarCircuit`, `PlanarSpiceIO`, `PlanarSpiceLines`, `PlanarSpectreIO`, `PlanarSonnetIO`, `PlanarSonnetModelFiles`, `PlanarSonnetProjectFiles`, `PlanarSonnetComponents`, `PlanarNetworkIO` | native attenuator netlists; bounded native SPARAM and literal linear CKT SPROJ snapshots with physical attachment, recursive project/data dependencies and continuous parent-frequency evaluation; archived native PRJ full S at nine frequencies; exact open/short/thru constraints; Touchstone 1/2 S/Y/Z/H/G and mixed-mode tests; native TERM/FTERM references; bounded linear SPICE includes/hierarchy/parameters with SHA256 provenance and direct R/L/C/K/E/G/F/H/V/I MNA; T and scoped O/LTRA RLC/RC/LC/RG with exact DC and stable near-DC/high-attenuation equations; exact grouped coupled-inductor PSD, winding orientation and isolated-return gauges; explicit case-sensitive native linear Spectre export reader; archived actual ngspice47 full Y/S for three installed exports, nested networks, controlled sources, exact constraints and grounded/floating/common-mode circuits; exported affine/conjugate rational-model ingestion; project loaded current/radiation node projection; exact-null Y and isolated-node gauge fixes | nonlinear/behavioural/vendor library classes and their native model-record adapters; native SMD SPARAM/SPROJ acceptance blocked by Lite; broader Spectre grammar, other line classes, geometry project/GEOVAR blocks and vendor acceptance |
+| C1 circuits | `PlanarCircuit`, `PlanarSpiceIO`, `PlanarSpiceLines`, `PlanarSpectreIO`, `PlanarSonnetIO`, `PlanarSonnetModelFiles`, `PlanarSonnetProjectFiles`, `PlanarSonnetComponents`, `PlanarNetworkIO` | native attenuator netlists; bounded native SPARAM and literal linear CKT SPROJ snapshots with physical attachment, recursive project/data dependencies and continuous parent-frequency evaluation; archived native PRJ full S at nine frequencies; exact open/short/thru constraints; Touchstone 1/2 S/Y/Z/H/G and mixed-mode tests; native TERM/FTERM references; bounded linear SPICE includes/hierarchy/parameters with SHA256 provenance and direct R/L/C/K/E/G/F/H/V/I MNA; T and scoped O/LTRA RLC/RC/LC/RG with exact DC and stable near-DC/high-attenuation equations; exact grouped coupled-inductor PSD, winding orientation and isolated-return gauges; explicit case-sensitive native linear Spectre export reader; archived actual ngspice47 full Y/S for three installed exports, nested networks, controlled sources, exact constraints and grounded/floating/common-mode circuits; exported affine/conjugate rational-model ingestion; project loaded current/radiation node projection; exact-null Y and isolated-node gauge fixes | nonlinear/behavioural/vendor library classes and their native model-record adapters; native SMD SPARAM/SPROJ acceptance blocked by Lite; broader Spectre grammar, other line classes, geometry project traversal, other GEOVAR modes and vendor acceptance |
 | C2 extraction/models | `PlanarExtract`, `PlanarVectorFit` | coupled RLGC oracle, real SPICE restamping, positive-real certification and repair tests; actual ngspice47 complete two-port matrices at 37 frequencies for real-pole/affine-capacitance and conjugate-pole models, grounded and floating references; 444 external and 753 durable reference checks pass, maximum relative matrix error 1.025e-15 | complete measured RFIC model ladder; broader model and engine acceptance |
 | C3 subdivision | `PlanarSubdivision` | independently calibrated whole-line versus 8+16-cell circuit recombination | arbitrary filter acceptance and quantified inter-part EM coupling error |
 | C4 layout I/O | `PlanarLayoutIO`, `PlanarArtworkIO`, `PlanarArtworkAffine`, `PlanarGerberIO`, `PlanarODBIO`, `PlanarODBSymbolsExtra`, `PlanarODBFonts`, `PlanarODBLayers`, `PlanarODBCompression` | installed GDSII/DXF imports and independent hand geometry; GDS hierarchy/array transforms; GDS M4 native complex S error 0.000452; 19185 Gerber checks including legacy rectangle/ellipse strokes, all MI/SF/OF/IR orders, device-only AS and unchanged aperture/repeat semantics; official corpus and four previews; 62001 ODB++ checks on Windows including nested contours, clockwise regions, squared/rounded/line thermals, home-plate symbols, ordered numeric fillet parameters, legacy U unit records, bounded conductive font text, full-buildup FLIP, canonical matrix references, bounded JSON metadata, transport and an independent libarchive `.Z` exact SHA oracle; 9826 shared composite geometry/allocation checks; 27-point independent Gerber/ODB++ native clear-window coupon passes with maximum complex S error 0.000119 | matched-grid DXF complex S gate remains FAIL; full CT spiral process; remaining ODB++ thermal/stencil/rounded-annulus families, barcodes and dimensional resizing; font renderer/coordinate-format compatibility and broader vendor manufacturing corpus/native EM acceptance |
 | C5 native project I/O | `PlanarSonnetIO`, `PlanarSonnetTechnology` | 126/128 installed projects decoded as ordinary geometry/circuit projects; bounded linked-STF source/dependency snapshots retain the other two; all three installed public STFs validate against the captured official XSD; proven scalar/default and exact-node providers; 24 ordinary projects lower at 32×32 actual cells and 50 with aspect-preserving refinement to 256; BOX half-cell decoding verified in live GUI; constant VOL/ARR resistance-per-via loss preserved | applied STF interpolation/etch/rho/RPV/technology geometry and encrypted materials; native linked-STF EM rejected by Lite; further TMM semantics, general VOL/ARR conductivity/skin loss, bricks, CUP and unsupported port/project semantics; intake and lowering counts do not certify actual solving |
-| P0/P0' RFIC workflow | `PlanarProject`, `PlanarProjectModel`, `PlanarProjectSolve`, `PlanarLibrary`, `PlanarLayout`, `PlanarConnectivity` | safe SI expressions and units, TOML round trips, technology/material callbacks, physical thick/volume stack adapters, wall/interior and axial ports, loaded circuits/current maps, sweeps, bulk-aware gradients, declared opens/shorts | arbitrary volume interior contacts, broader technology presets and solve-level spiral/IDC/MIM acceptance |
+| P0/P0' RFIC workflow | `PlanarProject`, `PlanarProjectModel`, `PlanarProjectSolve`, `PlanarLibrary`, `PlanarLayout`, `PlanarConnectivity` | safe SI expressions and units, TOML round trips, technology/material callbacks, physical thick/volume stack adapters, wall/interior and axial ports, loaded circuits/current maps, sweeps, bulk-aware gradients, declared opens/shorts; scoped native IDC/MIM full-matrix coupons and independent low-frequency MIM overlap reference | arbitrary volume interior contacts, broader technology presets and complete spiral/coupled-line/measured RFIC acceptance |
 | P3/P6 outputs/accuracy | `PlanarOutputs`, `PlanarPlots`, `PlanarRadiation`, `validation/planar_audit` | complex response comparison, equation curves, scoped convergence/report/DC model output, Cartesian/Smith/layout/current/radiation views; stripline width refinement; independent analytic 107.96 dB notch | independent modal/grid convergence, microstrip/coupled-line/measured ladder, physical EM notch acceptance and FEM cross-validation |
 
 The M4 payload measurement excludes opaque FFTW plan allocations and Julia
@@ -65,11 +72,12 @@ Public bands are validated in the stored Float64 domain before response,
 reference or technology callbacks. Overflow, underflow, collapsed
 midpoints and duplicated candidate frequencies reject explicitly; finite
 responses must remain finite after conversion to ComplexF64. Barycentric
-SVD storage is included in the aggregate sweep budget. Reproduction and
-before/after evidence are in `validation/planar_audit`, including
-`sweep_frequency_conversion_audit.jl`,
-`abs_resonant_ladder_audit.jl` and
-`sweep_resonant_barycentric_gate.log`.
+SVD storage is included in the aggregate sweep budget. Current reproducers
+are `validation/planar_audit/sweep_frequency_conversion_audit.jl` and
+`validation/planar_audit/abs_resonant_ladder_audit.jl`; new reports default to
+ignored `data/planar_audit`. Original before/after evidence, including
+`sweep_resonant_barycentric_gate.log`, remains in the local historical archive
+`data/prior_worker_validation_20261004/validation/planar_audit`.
 
 The algorithm follows the Loewner-matrix barycentric construction in
 [Nakatsukasa, Sète and Trefethen, 2018](https://people.maths.ox.ac.uk/trefethen/AAAfinal.pdf).
@@ -147,8 +155,20 @@ snapshots, shared files, root/resource guards and transactional attachment.
 Installed AUTO/FEED amp binding succeeds; the actual CUST40 example fails
 precisely before attachment. Linked static STF snapshots remain retained.
 Ordinary FLOAT model references, loss-aware AUTO, other width/reference-plane
-contracts, geometry SPROJ/GEOVAR traversal and licensed native pin-group
+contracts, geometry SPROJ traversal, other GEOVAR modes and licensed native pin-group
 calibration remain open implementation/acceptance items.
+
+Independent native ANC/SYM XDIR/YDIR dimensions with NSCD point sets now
+resolve into effective geometry before thick-metal expansion. Sparse polygon
+identities, implicit reference points and attached sheet wall-port coordinates
+are preserved without modifying the supplied project. Sixteen fresh native
+parameter/literal pairs produce bit-identical complete S matrices; the retained
+raw coupon solves also pass the declared 0.005 full-S and 1e-9 residual gates.
+Exact nominal passthrough preserves all twenty archived installed examples,
+including radial and zero-offset metadata. Active radial/scaled dimensions,
+overlapping/dependent dimensions and moved component/interior/via attachments
+still require explicit adapters. Point/parameter/storage budgets and stored
+coordinate cancellation reject before emitting a changed project.
 
 Literal linear CKT SPROJ children now stage through the same physical pin
 contract. R/L/C, earlier DEF invocations, Touchstone data and recursive PRJ
@@ -163,6 +183,18 @@ The native source/log/complete-SID evidence and hashes are retained under
 `test/fixtures/native_sproj_linear`. Native SMD SPROJ renderer and coupled
 pin-calibration acceptance remains blocked by the Lite license; arbitrary
 geometry children and parameter bindings still require explicit adapters.
+
+Native `PRJ` records also accept an explicit common-return node after the
+signal pins. Each child pin maps to `(signal, REF)`; omission retains return
+zero. Six actual native CKT controls cover implicit/explicit zero, internal,
+external and shared returns at three frequencies. Independent nodal
+incidence agrees in all eighteen complete S matrices within `5.63e-13`
+under the unchanged `1e-10` gate. The source/log/GUI/manual evidence and
+135 public feature, rejection, node/current and ownership checks are
+retained in `test/fixtures/native_prj_common_return`. The trailing native
+0/1 field is preserved; its meaning remains unidentified. This closes the
+common-return record and physical node mapping, while automatic geometry
+calibration and licensed SMD model acceptance remain open.
 
 Touchstone export selects standard 1.0/1.1/2.0/2.1 syntax; actual Sonnet
 18.53 requires legacy syntax for the declared delay fixture. Unequal
@@ -189,8 +221,8 @@ representable BigFloat frequencies follow the same evaluated workflow as
 their stored Float64 values, covered by 62 new checks.
 Resource and empty-block gates have 79 checks; export version and legacy
 matrix-order gates have 245 checks. Reproduction logs are in
-`validation/planar_audit`; original valid inputs and before/after evidence
-are retained in `validation/touchstone_resource`.
+`data/prior_worker_validation_20261004/validation/planar_audit`; original valid inputs and before/after evidence
+are retained in `data/prior_worker_validation_20261004/validation/touchstone_resource`.
 
 ### Circuit stored-value domain
 
@@ -221,7 +253,7 @@ evaluated. All 257 new domain/transaction/provider checks and 24 previous
 circuit checks pass; the current SPICE/Spectre/project regate also passes.
 Before evidence is `circuit_scalar_conversion_before.log` and
 `circuit_frequency_conversion_before.log`; the after gate is
-`circuit_stored_domain_gate.log` in `validation/planar_audit`.
+`circuit_stored_domain_gate.log` in `data/prior_worker_validation_20261004/validation/planar_audit`.
 
 ### Transmission-line numerical stability
 
@@ -241,7 +273,7 @@ establish circuit constitutive correctness for the tested domain; native
 physical-line/material convergence remains a separate requirement.
 Reproductions are `circuit_line_conditioning_before.log`,
 `circuit_line_conditioning_after.log` and `circuit_line_production_gate.log`
-in `validation/planar_audit`.
+in `data/prior_worker_validation_20261004/validation/planar_audit`.
 
 An independent allocation profile also found missing internal-network
 workspace in circuit preflight. A 64-local-port/two-external-port block
@@ -293,7 +325,7 @@ it does not establish native linked-STF EM equivalence.
 
 Primary source/schema/help snapshots and 30 corpus checks are recorded in
 `data/sonnet_validation/sonnet_stf_primary_rd055bdl` and
-`validation/planar_audit/sonnet_technology_corpus.toml`. Static XML intake is
+`data/prior_worker_validation_20261004/validation/planar_audit/sonnet_technology_corpus.toml`. Static XML intake is
 a scoped C5 implementation; general technology geometry remains open.
 
 Actual technology-editor maintain-physical exports in
@@ -417,10 +449,21 @@ complex `cmplx`/`hypot` operands, real-part `int`, signed-magnitude
 `fmod`/`min`/`max`, second-operand ties and exact-zero phase resets. Original
 wrong sign/ordering/remainder hypotheses remain intact. One complex `atan2`
 pole produces an actual fatal IMSL error and has no response matrix.
+Two further archives, `native_sonnet_complex_atan2_units_keys` and
+`native_sonnet_complex_function_corrected`, retain 121 actual jobs,
+119 raw R50 matrices and 904 SHA/CRC checked files plus two manifests.
+Independent literal materials establish complex `atan2` quadrant branches,
+its unusual zero-denominator value `pi/2 + im*real(y)`, finite real
+projection for unit conversions and `table1` keys, and signed-magnitude
+row/real-projected column keys for `table2`. Both-zero `atan2` logs NaN
+and produces an empty high-precision export; this remains rejected along
+with nonfinite poles. Original wrong conversion/degenerate/key hypotheses
+and native fallback outputs remain archived. Corrected controls compare
+every full-S entry to independently declared literal materials.
 Native comparisons/conditionals and a positive signed exponent chain
 warn and fall back to zero; those actual failures remain rejected. This
-scope does not certify graph-only FORMAT, complex `atan2` or complex
-conversion/table keys, or broader unresolved native material and geometry models.
+scope does not certify graph-only FORMAT or broader unresolved native
+material and geometry models.
 
 Native component and FLOAT consumers retain the same owned CSV source
 contract in `scalar_files`, with numeric `scalar_overrides` recorded in
@@ -542,7 +585,7 @@ This closes the symbol implementation and declared physical workflow;
 vendor translator and independent convergence acceptance remain open.
 Prototype and production logs
 are `odb_dpack_prototype.log` and `odb_dpack_production_gate.log` in
-`validation/planar_audit`; the initial rounded-unit endpoint harness failure
+`data/prior_worker_validation_20261004/validation/planar_audit`; the initial rounded-unit endpoint harness failure
 is retained separately.
 
 ## Scoped ODB polygon strokes and reader resources
@@ -582,7 +625,7 @@ the callback's append IO. Measurements are scoped Julia
 allocations and retained-payload estimates, not process RSS or arbitrary
 callback guarantees. Original failures and current results are retained as
 `odb_stroke_lookup_domain_*`, `odb_unused_symbols_*` and
-`odb_input_growth_*` under `validation/planar_audit`.
+`odb_input_growth_*` under `data/prior_worker_validation_20261004/validation/planar_audit`.
 
 A further valid comb surface exposed allocation before contour rejection:
 20002 segments retained at least 1280128 numeric bytes under a 595544-byte
@@ -718,7 +761,7 @@ bytes. A fresh two-sign constructor on the same geometry and modes stores
 402,653,184 coefficient bytes and 433,886,088 total numerical operator
 bytes, within its independently checked 600 MB constructor budget. The
 original solve remains anchored to the earlier source copies and hashes
-in `validation/planar_audit/conformal_level6_original`; it does not certify
+in `data/prior_worker_validation_20261004/validation/planar_audit/conformal_level6_original`; it does not certify
 the later constructor. All three solves used a 1 GB aggregate numerical
 payload budget. FFTW plans and Julia overhead are excluded from these
 array-payload measurements; the timings are separate measured runs.
@@ -734,7 +777,7 @@ M1 or native conformal accuracy acceptance. Logs are
 `conformal_two_sign_level6_mode512_constructor.log`,
 `conformal_hodge_banded_level6_mode512.log` and
 `conformal_hodge_banded_level6_mode512x1024.log` in
-`validation/planar_audit`.
+`data/prior_worker_validation_20261004/validation/planar_audit`.
 
 ## Bounded nonuniform original-equation solve
 
@@ -772,7 +815,7 @@ and local construction has explicit pair-times-mode work limits. General
 fast nonuniform acceleration, bulk/contact extensions and
 native continuum convergence remain open. The production-source evidence
 is `conformal_defect_production_gate.log` and
-`conformal_defect_production_medium.log` in `validation/planar_audit`, with
+`conformal_defect_production_medium.log` in `data/prior_worker_validation_20261004/validation/planar_audit`, with
 source hashes in the latter. Earlier prototype and level-6 storage results
 retain their own source anchors and do not certify this constructor.
 
@@ -784,7 +827,7 @@ multilevel matvecs allocate zero bytes. These scoped capabilities preserve
 the original `1e-10` voltage residual gate; projected residuals alone cannot
 accept results. The reusable workspace replaces the prototype's fixed
 16 MB modal allowance. Source-bound production evidence is retained in
-`conformal_multilevel_production_gate.log` in `validation/planar_audit`.
+`conformal_multilevel_production_gate.log` in `data/prior_worker_validation_20261004/validation/planar_audit`.
 
 Independent native coupling references use two shortened overlapping PEC
 rectangles on a three-layer stack (εr 2.5/7.5/1, heights 0.3/0.2/0.5 mm).
@@ -871,8 +914,15 @@ ladder remain open.
   elapsed time. Raw/calibrated complex S errors remain 0.07730/0.07872.
   Exact FFT retained dense solves extend the fixed-grid modal ladder:
   512→768→1024→1536 reduces raw error to 0.07350→0.06826→0.06669→0.06571,
-  which still fails. Mode 2048 is explicitly refused because its matrix and
-  FFT payload exceed the declared 4 GB budget. Replacing all shapes by exact
+  which still fails. The former dense FFT route refused mode 2048 because its
+  matrix and iterative-only modal workspace exceeded the declared 4 GB budget.
+  A compact retained-assembly workspace now closes that resource gate under
+  the same 4 GB limit: mode 2048 completes in 47.78 s with independent original
+  FFT-action residuals 1.765e-12/1.775e-12. Raw complex S error remains
+  0.06533993 above 0.06, so physical acceptance remains **FAIL**. The replay
+  uses 139 unchanged copied source/configuration files and retained actual
+  native raw-log matrices (`dxf_compact_fft_hMG0qJ`); it is not a fresh engine
+  run or a continuum certificate. Replacing all shapes by exact
   occupied-cell rectangles gives the identical native response; partial
   polygon rastering does not explain this discrepancy. Uniform-only via
   profiles give 0.06466 at mode 1536, also fail, and are kept as a diagnostic
@@ -1088,6 +1138,7 @@ ladder remain open.
 
 | Candidate / dimension | Verification | Fix and recheck |
 |---|---|---|
+| Retained FFT assembly keeps unused iterative buffers / measured resource use | multilayer 273-unknown fixture retains four mode-by-element arrays and an unused output vector totaling 3936528 B; warmed assembly allocates 15281904 B | separate compact assembly workspace preserves bit-identical finite-modal matrix and complete public iterative operator; warmed allocation 11344885 B (25.76% reduction), 42 new + 116 neighboring + 112 independent checks; raw payload budget still excludes opaque FFTW and process overhead |
 | Finite wide circuit scalars lose stored invariants / numerical and state correctness | finite BigFloat R/L become infinity; positive C and nonzero transformer ratios become zero in owned elements | validate stored Float64 values before mutation; invalid inputs leave elements/nodes/ports unchanged, explicit zero and representable wide values remain supported |
 | Circuit frequency overflow/underflow after callbacks / public workflow correctness | pure network input frequencies `1e1000`/`1e-1000` return result frequencies infinity/zero after two callbacks | preflight the stored frequency before providers; invalid frequencies invoke zero callbacks, valid wide inputs use finite Float64 provider/result frequencies |
 | Attenuating circuit line loses reciprocity / numerical and physical correctness | matched `40+0.37im` line gives reverse transmission magnitude 4 instead of `exp(-40)`; attenuation 710 rejects finite S | bounded travelling-wave MNA, stored complex-domain validation and no ABCD temporary; 908 independent high-precision/domain/allocation checks |
@@ -1121,7 +1172,8 @@ ladder remain open.
 | Native logarithm contract / physical material | valid magnitude ln/log10 expressions reject, while accepted log(exp(2)) disagrees with native's invalid-equation fallback by full-S 0.091 | add exactly-one-argument magnitude ln/log10; explicitly reject undocumented log; retain five actual controls and the old physical failure |
 | Native powers parsed with Julia association / physical material | actual `2^3^2/256` gives 0.25 Ω/square, while the old reader gives 2 and changes full S by 0.07855 | bounded native grammar retains explicit parentheses, left power chains and signed-exponent precedence; independent literal and actual native controls retained |
 | Native documented functions and real-axis branches missing / source fidelity | inverse/hyperbolic/general/complex functions reject; direct library substitution disagrees at real-axis branch cuts and signed-zero phase | implement native-confirmed functions, real physical quantity boundaries and measured branch defaults; retain 222 actual jobs/340 raw matrices with original false hypotheses, warnings and failures |
-| Native binary complex operands rejected / material and component expressions | actual `hypot`, `int`, `fmod`, `min`, `max` and nested `cmplx` controls evaluate finite quantities that the reader rejects; naive complex ordering hypotheses fail by up to 0.263 in full S | preserve complex operands and measured signed-magnitude/tie/zero rules; retain 73 actual jobs, 72 matrices and 448 hashed files; complex `atan2` stays separately unverified |
+| Native complex atan2, unit conversions and CSV keys reject valid operands / source and provider fidelity | 121 actual controls establish complex quadrant/zero-denominator branches, real conversion/table1 projection and signed-magnitude table2 rows; two zero operands give NaN and an empty export | preserve every failed hypothesis and invalid export; retain 119 full matrices in 904 SHA/CRC checked files, compare all valid nonnegative materials to independent native literal controls, and verify original EM/current equations under unchanged gates |
+| Native binary complex operands rejected / material and component expressions | actual `hypot`, `int`, `fmod`, `min`, `max` and nested `cmplx` controls evaluate finite quantities that the reader rejects; naive complex ordering hypotheses fail by up to 0.263 in full S | preserve complex operands and measured signed-magnitude/tie/zero rules; retain 73 actual jobs, 72 matrices and 448 hashed files; complex `atan2` was outside that earlier checkpoint and is covered by the later controls above |
 | Decimal scalar literal silently underflows to PEC / stored units | source literal 1e-500 becomes zero in Meta.parse and SRVY lowering returns PEC before the stored-value guard sees a nonzero input | validate decimal literals before AST conversion and table numbers before storage; explicit zero remains supported and original reproduction is archived |
 | Mixed FLOAT drops ordinary SPARAM snapshots / response provenance | the public physical solve succeeds but returned model/result has no staged Touchstone source, binding or basis snapshot | retain optional model_files in FLOAT model/result, reserve its storage, and compare full S/node/current projection with independent callback wiring; source edits cannot change retained bytes/hashes |
 | Native NOR loss selectors rejected / native intake completeness | actual SRVY/RSVY/CDVY and absent-selector controls give identical full-S at matched physical loss | preserve exact selector units, zero-PEC proof and explicit invalid-domain rejection before geometry; general STF geometry and native loader discrepancy remain separate |
@@ -1243,3 +1295,15 @@ checks. Reproduction: `validate_sonnet_library_mim.jl`; fixtures:
 `test/fixtures/rfic_library_mim_native`. This closes this declared finite-grid
 wall-port coupon; internal calibration, measured-device accuracy, broader
 technology/loss and continuum convergence remain completion work.
+
+The same complete public MIM coupon also has an independent low-frequency
+overlap reference: plate plus lead overlap is `7.03125e-8 m²`, giving
+`4.669200607 pF` across the 1 μm, ε=7.5 gap. At 100/500 MHz on
+16/32/64-cell grids, extracted mutual capacitance differs by 1.14–4.19%,
+passing the declared 5% approximation gate. Independently reconstructed
+original-voltage residuals remain below `1.55e-12` against `1e-9`.
+The archive and current solve regression are in
+`test/fixtures/library_mim_low_frequency` and
+`test_planar_library_mim_low_frequency.jl`. Finite-grid lead/fringing
+effects are retained; this approximate electrostatic check does not
+establish general continuum or measured-device accuracy.
