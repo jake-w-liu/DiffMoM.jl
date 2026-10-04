@@ -13,13 +13,18 @@ const CVec3 = SVector{3,ComplexF64}
 const _DEFAULT_MAX_DENSE_PAYLOAD_BYTES = 2_000_000_000
 const _INTERVAL_SPACING_FALLBACK_PRECISION = 2304
 
-function _checked_payload_sum(label::AbstractString, payloads::Integer...)
+function _checked_payload_sum(label::AbstractString, payloads::Vararg{Integer,N}) where {N}
     all(value -> value >= 0, payloads) ||
         throw(ArgumentError("$label payloads must be nonnegative"))
-    total = sum((BigInt(value) for value in payloads); init=BigInt(0))
-    total <= typemax(Int) ||
-        throw(ArgumentError("$label workspace estimate overflows Int"))
-    return Int(total)
+    # Accepted sums fit Int. Check each term against the remaining capacity
+    # before converting or adding it, including unsigned and BigInt inputs.
+    total = 0
+    for value in payloads
+        value <= typemax(Int) - total ||
+            throw(ArgumentError("$label workspace estimate overflows Int"))
+        total += Int(value)
+    end
+    return total
 end
 
 # Visit every entry; sampled hashes cannot detect every changed coefficient.

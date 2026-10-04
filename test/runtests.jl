@@ -74,6 +74,7 @@ nonpublic_qualified_accesses = Set(
 @test Docs.hasdoc(DiffMoM, :planewave_dda_3d)
 
 include("test_planar.jl")
+include("test_payload_sum.jl")
 include("test_planar_resources.jl")
 include("test_planar_currents.jl")
 include("test_planar_internal_ports.jl")
