@@ -1,4 +1,7 @@
 *.jl text eol=lf
+.slopfix/*.txt text eol=lf
 # Native-engine fixtures and their SHA256 provenance retain exact source bytes
 # on every platform, including original CRLF and legacy character encodings.
 test/fixtures/** -text -whitespace
+validation/sonnet_stripline/*_reference/** -text -whitespace
+validation/spice_reference/** -text -whitespace
