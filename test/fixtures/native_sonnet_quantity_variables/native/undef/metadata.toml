@@ -1,0 +1,14 @@
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_variables_I6iJ9l\\undef\\undef.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_complex_variables_I6iJ9l\\\\undef\")"
+source_sha256 = "5720aeea21e4cf18cd6c169e8477e78c1399e8e56f08b8679eed8a3207296214"
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+julia_version = "1.12.7"
+started_utc = "2026-10-04T01:32:01.060"
+box_halfcell_counts = [40, 40]
+response_nports = 2
+process_success = false
+deembedded = false
+ended_utc = "2026-10-04T01:32:02.015"
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_variables_I6iJ9l\\undef.son"
+actual_cell_counts = [20, 20]
+
+[dependency_sha256]

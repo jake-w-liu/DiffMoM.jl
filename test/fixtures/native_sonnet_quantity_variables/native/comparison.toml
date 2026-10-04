@@ -1,0 +1,35 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_variables_I6iJ9l"
+
+[[runs]]
+current_value = 3.0
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+tag = "literal3"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+status = "SIMULATED"
+source_sha256 = "d189f54f941eedc7dcae90606a5a527bfeef0702190b09b8c97138a0c2c18630"
+native_stderr = ""
+native_variable_lines = ["      Loss = 3 Ohms/sq"]
+[[runs]]
+current_value = 5.0
+s_imag = [-0.0001748994187, -0.018584508102, -0.018584508102, -0.0001751400004]
+tag = "literal5"
+s_real = [0.2000366399152, 0.7997767079231, 0.7997767079231, 0.2000366470878]
+status = "SIMULATED"
+source_sha256 = "2271250a0d8b0f2ca0d0b1bab111a5f61acd449084a67e8786e28c70ad2e7544"
+native_stderr = ""
+native_variable_lines = ["      Loss = 5 Ohms/sq"]
+[[runs]]
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+tag = "sres"
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+status = "SIMULATED"
+current_error = "ArgumentError: native variable Inner requires real arguments"
+source_sha256 = "583d5b641c705422effcc5e88207f3343d4433f23421b3852e7d291c57b4c8d5"
+native_stderr = ""
+native_variable_lines = ["      Inner = 3 Ohms/sq", "      Loss = 3 Ohms/sq"]
+[[runs]]
+tag = "undef"
+error = "Sonnet analysis failed; see C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_variables_I6iJ9l\\undef"
+status = "UNVERIFIED"
+current_error = "ArgumentError: native variable Inner requires real arguments"
+source_sha256 = "5720aeea21e4cf18cd6c169e8477e78c1399e8e56f08b8679eed8a3207296214"

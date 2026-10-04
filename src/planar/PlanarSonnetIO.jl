@@ -316,10 +316,12 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         push!(active,name)
         val=_sonnet_expr(_sonnet_parse_scalar(project.variables[name]),project,overrides,freq,active,depth+1)
         delete!(active,name)
-        # Declared native quantity variables store real values, resetting the
-        # expression's imaginary signed zero (unary -1 and VAR neg=-1 differ
-        # under deg). Complex expressions remain available inside a scalar.
-        return _sonnet_math_real(val,"variable $name")
+        # Native quantity variables store the real projection of their
+        # finite defining expression. Actual SRES controls retain Inner=3
+        # from cmplx(3,4), so abs(Inner)=3 while abs(cmplx(3,4))=5.
+        # This also resets imaginary signed zero at a named variable boundary.
+        isfinite(val) || throw(ArgumentError("non-finite Sonnet variable $name"))
+        return _circuit_stored_real(real(val),"native variable $name")
     end
     ex isa Expr && ex.head==:call || throw(ArgumentError("unsupported Sonnet expression"))
     if ex.args[1] in (:table1,:table2)
