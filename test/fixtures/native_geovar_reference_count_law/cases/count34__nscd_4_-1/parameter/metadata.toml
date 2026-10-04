@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_count_law_probe_2xgDYY\\nscd_4_-1_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T16:59:36.044"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [121]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T16:59:35.053"
+source_sha256 = "23d37cbaf7cc15a628073ebe12528394ad4db8e7dca838df86aed9988fc1c21f"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_count_law_probe_2xgDYY\\nscd_4_-1_parameter\\nscd_4_-1_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\geovar_reference_count_law_probe_2xgDYY\\\\nscd_4_-1_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "f89d84c3bd1c2930abe21790657cd4b9ed50ab785427504c01ca8bd9c5cbce3c"
+intended_deembedded = false
+max_difference = 7.117441122898522e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_count_law_probe_2xgDYY\\nscd_4_-1_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7714141683549047
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "f89d84c3bd1c2930abe21790657cd4b9ed50ab785427504c01ca8bd9c5cbce3c"
+intended_deembedded = false
+max_difference = 7.117441122898522e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_count_law_probe_2xgDYY\\nscd_4_-1_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7714141683549047
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

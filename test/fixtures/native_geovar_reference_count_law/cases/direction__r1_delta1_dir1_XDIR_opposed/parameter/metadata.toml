@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_orientation_resolved_3drdml\\r1_delta1_dir1_XDIR_opposed_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T17:14:03.051"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [154]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T17:14:02.069"
+source_sha256 = "0f50ce85ba10d891e379a329ba4d54f17132d5a574381f88ef7480c716f5b806"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_orientation_resolved_3drdml\\r1_delta1_dir1_XDIR_opposed_parameter\\r1_delta1_dir1_XDIR_opposed_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\geovar_reference_orientation_resolved_3drdml\\\\r1_delta1_dir1_XDIR_opposed_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "921a85312098655f28d8c0af9855c8efe2cde28235b94f75cf158000fe38afab"
+intended_deembedded = false
+max_difference = 4.650028818812861e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_orientation_resolved_3drdml\\r1_delta1_dir1_XDIR_opposed_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5041730195583705
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "921a85312098655f28d8c0af9855c8efe2cde28235b94f75cf158000fe38afab"
+intended_deembedded = false
+max_difference = 4.650028818812861e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_orientation_resolved_3drdml\\r1_delta1_dir1_XDIR_opposed_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5041730195583705
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

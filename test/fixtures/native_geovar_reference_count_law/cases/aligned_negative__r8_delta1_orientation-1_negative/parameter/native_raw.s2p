@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: r8_delta1_orientation-1_negative_parameter
+! Data is NOT De-embedded 
+! Data File Written: 10/05/2026 01:07:07
+!< HDATE 10/05/2026 01:07:07
+!< MDATE 10/05/2026 01:07:07
+!< PARAMS
+!< Width = 0.250244140625
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -1.132606937e-3 -0.026164115399 0.9985993075184 -0.045973680412 0.9985993075184 -0.045973680412 -1.276184510e-3 -0.026157505351

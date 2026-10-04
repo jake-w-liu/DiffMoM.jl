@@ -1,0 +1,886 @@
+scope = "Native ANC NSCD reference-coordinate direction and ANC/RAD repeated-reference law; all historical captures immutable"
+
+[[cases]]
+name = "count34__nscd_3_-1"
+category = "count34"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "c6b0c651820217c259346ac42c9578851bdaf1104f2cc4495794e68ce7a578f5"
+literal_sha256 = "20cd23a3d8654d61cce81268a9b69e4b5357101da0c74771001bdc259e45d9a7"
+full_s_error = 3.511884512659092e-06
+original_voltage_residual = 1.738955109161619e-11
+
+[[cases]]
+name = "count34__nscd_3_1"
+category = "count34"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "207c6ab478cc51a621115d0b9855f25ed885ba137ced40a0abb22c0a0aab8718"
+literal_sha256 = "53f69313bd2e1914ecaed986c7162937227f929b83efedf49320c37b961df457"
+full_s_error = 6.58489693154524e-06
+original_voltage_residual = 1.3576040456540887e-11
+
+[[cases]]
+name = "count34__nscd_4_-1"
+category = "count34"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "23d37cbaf7cc15a628073ebe12528394ad4db8e7dca838df86aed9988fc1c21f"
+literal_sha256 = "312044fca93d4cbfd6370719b0b0c6786b2d160bf4048009f5b2964a1d240c88"
+full_s_error = 5.237665362703227e-06
+original_voltage_residual = 1.6758820302012307e-11
+
+[[cases]]
+name = "count34__nscd_4_1"
+category = "count34"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "fde6b39b98920a2544160d04e7ccb72004ac45873b45f8b52aa6987f6ff85a28"
+literal_sha256 = "48bbe252792f8612570873adffdb33c280c76737ff8e4411b50d10a102a2074d"
+full_s_error = 7.977346427676284e-06
+original_voltage_residual = 1.1577080101367651e-11
+
+[[cases]]
+name = "count34__rad_3_-1"
+category = "count34"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "e123cad12ec1e0e3810266b44f887ec62111c681e28d0b19cfd5b2ca2d198304"
+literal_sha256 = "12d0d4059dd84a3e79d77b0f8cdca848abf9e54adf4c66e136a7c6140dc25b69"
+full_s_error = 2.6043386612783025e-05
+original_voltage_residual = 4.136283743721128e-11
+
+[[cases]]
+name = "count34__rad_3_1"
+category = "count34"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "e3497b2d4196379ce0d35c06e32c9bd0beeba058ace7b7a20ab328928b9a5def"
+literal_sha256 = "85014325441efe897b89b41de47e661020edea9f10569757e1e8af5c1ce61ae7"
+full_s_error = 2.2722205562941784e-05
+original_voltage_residual = 2.3309599223964288e-11
+
+[[cases]]
+name = "count34__rad_4_-1"
+category = "count34"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "d0370965546f48dd1222c378ac8c0d082a37c1360cb6c406df3fca1bcfed5947"
+literal_sha256 = "e040129ad1cef38a71e51275e65f8af50d1575197b0c7dbe6b2a918da27d1a8b"
+full_s_error = 3.480304428246912e-05
+original_voltage_residual = 2.917030571443051e-11
+
+[[cases]]
+name = "count34__rad_4_1"
+category = "count34"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_probe_2xgDYY"
+parameter_sha256 = "22d1df7f35c74a48b5a0339e846154af86c24924dcfa99d785b8ec430c4fd8f4"
+literal_sha256 = "6e6ad68391f5b596222034b46fcfffeccf7fe4bdc17b8b4fdea31c290c7f51ce"
+full_s_error = 4.251134331401438e-05
+original_voltage_residual = 2.6988720332633076e-11
+
+[[cases]]
+name = "extended__nscd_5_-1"
+category = "extended"
+explicit_reference_count = 5
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "7ff0c57404ad26562ef7958b3c2c85db3ccd587622ab58eaf5818445b50dbba7"
+literal_sha256 = "862128694823b815a832eadf0e413ea4d1e00e163fdefb7197956c36b5c3fcd3"
+full_s_error = 5.414970362327745e-06
+original_voltage_residual = 1.7701736016635812e-11
+
+[[cases]]
+name = "extended__nscd_5_1"
+category = "extended"
+explicit_reference_count = 5
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "ac1b6c95a56158e228759681e53d0f597aaee219f2b05aab92c581f1b4967aae"
+literal_sha256 = "b4842adc0b3aa544a7b31fad7967b435790f5417aa0c763ea7d10ec1cd70c8eb"
+full_s_error = 8.171703429889238e-06
+original_voltage_residual = 1.236692009169677e-11
+
+[[cases]]
+name = "extended__nscd_8_-1"
+category = "extended"
+explicit_reference_count = 8
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "1792297d0cf541b04fdbad0b7b0482801d963606feffcce36b541bbf974bc5ca"
+literal_sha256 = "7812b02f91b15b9e479afd4aaeed4a0a98f1a5ec534a82ec5309818ad17e2244"
+full_s_error = 5.269042907134034e-06
+original_voltage_residual = 1.626559819043373e-11
+
+[[cases]]
+name = "extended__nscd_8_1"
+category = "extended"
+explicit_reference_count = 8
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "cdcdfa755e4692dc0bdc4b2a6e1df91bee695b40aaa871e86327a7f8aefa2f78"
+literal_sha256 = "e28c4804ade84ba5cbee22ed6c2cc01c0187c12bf20560ad1f7b1b064d91d14c"
+full_s_error = 8.383315784832124e-06
+original_voltage_residual = 1.2184260260001016e-11
+
+[[cases]]
+name = "extended__nscd_16_-1"
+category = "extended"
+explicit_reference_count = 16
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "9601e29c02ee60ef1cf691f9ddb1890b1da9e2dd7b307a7e5bf777b9acd57e66"
+literal_sha256 = "974c21e27b422e0fce3ba8c5ac10cac8263e10e8337c982b98b308fc2a49afca"
+full_s_error = 3.7919397182710268e-06
+original_voltage_residual = 1.5468839273657488e-11
+
+[[cases]]
+name = "extended__nscd_16_1"
+category = "extended"
+explicit_reference_count = 16
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "406a23c3184f705dbbd6e1ef19726073fa2e138c67ba5b3ee639ef32d3300ba6"
+literal_sha256 = "625513dabd41e9f1b6770858069eab7668bde765982f6f67bd25d03f07ae2b52"
+full_s_error = 5.310178068327099e-06
+original_voltage_residual = 1.2423475872223453e-11
+
+[[cases]]
+name = "extended__nscd_32_-1"
+category = "extended"
+explicit_reference_count = 32
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "d4140f204d07412f077054a2ffc103d0befaf32a2cb3a6d25287685ada145439"
+literal_sha256 = "247090567bab8f9b578217c73ed4526ea36cb236db7c800bb75acc65c0b0574c"
+full_s_error = 4.475029051991904e-06
+original_voltage_residual = 1.3789125370372162e-11
+
+[[cases]]
+name = "extended__nscd_32_1"
+category = "extended"
+explicit_reference_count = 32
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "4c4a111664b7879a85edb782dc71138d5d978b4113b45ccae6029637c0d48884"
+literal_sha256 = "195a46a302d3f36c16e9c75a12c58f962ab13718a2c3e1a4404931d98da92156"
+full_s_error = 5.479024351186384e-06
+original_voltage_residual = 1.3663147669543422e-11
+
+[[cases]]
+name = "extended__rad_5_-1"
+category = "extended"
+explicit_reference_count = 5
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "cfefc4422d54fc74051070e2a06629ea677b49eebbc236c668946dc68b74c7e3"
+literal_sha256 = "b11f2ab320df9279fd8aadcc8a14479cec1e912674f41701f6799f808da4f7a0"
+full_s_error = 3.480304428246912e-05
+original_voltage_residual = 2.917030571443051e-11
+
+[[cases]]
+name = "extended__rad_5_1"
+category = "extended"
+explicit_reference_count = 5
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "abf91ac4bdf30e2840ac04723491fb3405cf2287fa145bb2ca49e876d55ac9be"
+literal_sha256 = "79a96c5717a464701b8ba1490f610a11a6258c3f8aae22036c622aee158afff1"
+full_s_error = 4.0327914403743996e-05
+original_voltage_residual = 2.221354065862495e-11
+
+[[cases]]
+name = "extended__rad_8_-1"
+category = "extended"
+explicit_reference_count = 8
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "9bda6e2eefd56f39114f95063ed7ecbb0b0755a2424c8b2159e8124c0f382893"
+literal_sha256 = "0c6877120a03dd3e789e4b1f8b77b3f81438d56cf7334e090c636fd83465e611"
+full_s_error = 3.480304428246912e-05
+original_voltage_residual = 2.917030571443051e-11
+
+[[cases]]
+name = "extended__rad_8_1"
+category = "extended"
+explicit_reference_count = 8
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "a3a07fceda6526a896abaf574aa818ef5cfd9c96b68c70f59a6785227ebaa289"
+literal_sha256 = "9ec535d530c780e53fe5dd987ee9c258fa0e30a015348e75fcf8e21e2cbce059"
+full_s_error = 3.449402481297783e-05
+original_voltage_residual = 2.378612119112411e-11
+
+[[cases]]
+name = "extended__rad_16_-1"
+category = "extended"
+explicit_reference_count = 16
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "e9b81d07ff06626ba8e5cad44bed789f79593448f480426b1c2596d75e7b0a94"
+literal_sha256 = "24058b412ce1ffd93d7408f4742f5b6ddc558e3c87410d6f8932130afd19fc91"
+full_s_error = 4.0262814980949224e-05
+original_voltage_residual = 3.243570513609777e-11
+
+[[cases]]
+name = "extended__rad_16_1"
+category = "extended"
+explicit_reference_count = 16
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "23a571dac4784126fb4e35b6fb90bcaa6d4f3fce42d678d1b2f7e97c90f739d4"
+literal_sha256 = "c5be6313d088387aa162b237ffe7f4a4faa870d395d6bdbccaf1787615d6f17e"
+full_s_error = 3.449402481297783e-05
+original_voltage_residual = 2.378612119112411e-11
+
+[[cases]]
+name = "extended__rad_32_-1"
+category = "extended"
+explicit_reference_count = 32
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "bc0ab76b0526d3bb77d9e2d8f1f707b8c1c502afc1ae18e5900c7a5c1d269a59"
+literal_sha256 = "f48582bf72906b7e6a66a4ca4afdadf302a3a6d71bd11c2bd5a7bb1449c41179"
+full_s_error = 4.793707846050746e-05
+original_voltage_residual = 2.648983084420052e-11
+
+[[cases]]
+name = "extended__rad_32_1"
+category = "extended"
+explicit_reference_count = 32
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "79d503d5ae4886fa802ec1174c2b85e664ba4f084d8f1d21f2b6b19a73e55888"
+literal_sha256 = "1ba13e596ba3b14eeee9201fc23f3daa19125187ceb98cc8ea6496d9180cb2b8"
+full_s_error = 3.449402481297783e-05
+original_voltage_residual = 2.378612119112411e-11
+
+[[cases]]
+name = "extended__nscd_4_order"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "3f50c84022b78b03609aea6a0eff05027ca58c00b8e6dabfc179c4509904bf9b"
+literal_sha256 = "312044fca93d4cbfd6370719b0b0c6786b2d160bf4048009f5b2964a1d240c88"
+full_s_error = 5.237665362703227e-06
+original_voltage_residual = 1.6758820302012307e-11
+
+[[cases]]
+name = "extended__nscd_4_groups"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "6136126014785696c16a95a993d3e2d8b6561c758da951cd660da3e391106d61"
+literal_sha256 = "312044fca93d4cbfd6370719b0b0c6786b2d160bf4048009f5b2964a1d240c88"
+full_s_error = 5.237665362703227e-06
+original_voltage_residual = 1.6758820302012307e-11
+
+[[cases]]
+name = "extended__nscd_4_duplicates"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "fb6cb08cd93fccdd678cf9c2fe5449e69281f6aa6ffe7172dec99830e08a80b7"
+literal_sha256 = "71d54864a91d074204fc068bd9f282f9f6b5e332e46d0a560b2fecd55f3398dc"
+full_s_error = 5.576384102749715e-06
+original_voltage_residual = 1.4961787854565803e-11
+
+[[cases]]
+name = "extended__rad_4_order"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "a20fae7463da0c3e1adab84708b58eaceac6484f711d7e33a63ed990b0262aef"
+literal_sha256 = "e040129ad1cef38a71e51275e65f8af50d1575197b0c7dbe6b2a918da27d1a8b"
+full_s_error = 3.480304428246912e-05
+original_voltage_residual = 2.917030571443051e-11
+
+[[cases]]
+name = "extended__rad_4_groups"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "ca2c297e9bb72a9d3fc111363a79887ea47b525f295afc3aa1ed5626828e658a"
+literal_sha256 = "e040129ad1cef38a71e51275e65f8af50d1575197b0c7dbe6b2a918da27d1a8b"
+full_s_error = 3.480304428246912e-05
+original_voltage_residual = 2.917030571443051e-11
+
+[[cases]]
+name = "extended__rad_4_duplicates"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "a9a809320ea8b8e78abf2bc0c7b7b5b8b7ccbd89691c8dc6a4d231bbd169d820"
+literal_sha256 = "e0f9947d487280e2c748d64692886503153ea31c57ac89e1665e08dee1830335"
+full_s_error = 2.9853847689129167e-05
+original_voltage_residual = 3.112434108148669e-11
+
+[[cases]]
+name = "extended__rad_4_xnegative"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "702853491096ee64be76f6b0eb34653d64a67fe7cff69e44666cea5084b4fbc1"
+literal_sha256 = "13e9d88bcf191c5f96924efcfbeb43bf3fe936083e4ac0479c218f959d961dae"
+full_s_error = 3.480303922968959e-05
+original_voltage_residual = 2.75511727466422e-11
+
+[[cases]]
+name = "extended__rad_4_SCUNI"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "3de25d53fa175f644dc02adfd25c65ee8393a4410e856672693253af11be56a6"
+literal_sha256 = "e040129ad1cef38a71e51275e65f8af50d1575197b0c7dbe6b2a918da27d1a8b"
+full_s_error = 3.480304428246912e-05
+original_voltage_residual = 2.917030571443051e-11
+
+[[cases]]
+name = "extended__rad_4_SCXY"
+category = "extended"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_law_extended_CttacU"
+parameter_sha256 = "d50c1bda356cb55421d9504db180a53b708bc0b624353c5f6c6b88f8ea99db2b"
+literal_sha256 = "e040129ad1cef38a71e51275e65f8af50d1575197b0c7dbe6b2a918da27d1a8b"
+full_s_error = 3.480304428246912e-05
+original_voltage_residual = 2.917030571443051e-11
+
+[[cases]]
+name = "orientation__r2_delta-1_dir-1_opposed"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "7ae8c5e1855ece21cd7cf77a39ac258f157188fc68c34f68b076cb811ac84eed"
+literal_sha256 = "fe3161c5f81bd565ea033e03e3242d32e102bdcc4b47e61c4e73c4377c571f87"
+
+[[cases]]
+name = "orientation__r2_delta-1_dir1_opposed"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "b2a27c266b56ee1887eeae03ce0c37845bb20445dea44ad9548607b94d3b1322"
+literal_sha256 = "1ec9c5912da38949cb7fe16fd0687bf20aaf3f0be9e294808618278551c9dc3f"
+
+[[cases]]
+name = "orientation__r2_delta1_dir-1_opposed"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "8bb8caab02c4bb4cf6333a371754c8001c0932b0bd6dc998cb4f0c45bca9498a"
+literal_sha256 = "1e0cf603e674b4b8dcbe74b273c086ee98de70e0843be05d8a846d0c3841c92a"
+
+[[cases]]
+name = "orientation__r2_delta1_dir1_opposed"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "710c8d55ff7157e347620d3df2f635628683ef07c950f362f11a4f2a5a542ace"
+literal_sha256 = "f8e192cdc46a99fd3b1f15e4be0a7b3bc8938a4e7d435179b0137bbc9fd6108d"
+
+[[cases]]
+name = "orientation__r4_delta-1_dir-1_opposed"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "ba24df2b7be525ff24ae2c5f31d2c136655aa4fe08e92ee5ff46471ca7adbb24"
+literal_sha256 = "312044fca93d4cbfd6370719b0b0c6786b2d160bf4048009f5b2964a1d240c88"
+
+[[cases]]
+name = "orientation__r4_delta-1_dir1_opposed"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "8cae7fce597ac2324e56fc0b998896ae725e1d548a5f65240acef4d5501f86ce"
+literal_sha256 = "73c32f6aac998dc53037c6666531c34af649fc35267d7ccbee904c52f474b780"
+
+[[cases]]
+name = "orientation__r4_delta1_dir-1_opposed"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "551b92eef9db91610da979b112bd26f7f35a2fcc58b880bd1482035dfe42820a"
+literal_sha256 = "48bbe252792f8612570873adffdb33c280c76737ff8e4411b50d10a102a2074d"
+
+[[cases]]
+name = "orientation__r4_delta1_dir1_opposed"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "947eecd3f265015fdf86929380bb8ef57e3479bde99f6135a96163be8c7f9031"
+literal_sha256 = "3cfe21ed4017bb956d3c94393f5db59d50feef41fb93d8d9c0cfb3c877a8f9de"
+
+[[cases]]
+name = "orientation__zero_r2_dir-1_XDIR"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "dd4c776c21a705022c2e0301c6e09ca20773f71e09662a30a029f02b19b5325f"
+literal_sha256 = "5bed7008285d68786ba4e23441b1f45ff725f8ea3f32ef48598ed9475fac9fe4"
+full_s_error = 2.77983044233814e-05
+original_voltage_residual = 3.607145059986094e-11
+
+[[cases]]
+name = "orientation__zero_r2_dir-1_YDIR"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "088e2a712319d27d944e3c289916937e2df114fc45de84d761bb35fd83bfdb63"
+literal_sha256 = "57a5d51a60d386baeae67c1e48e62874128874a782119771a6a609c4b04a864e"
+full_s_error = 2.779828568970922e-05
+original_voltage_residual = 3.911251553144558e-11
+
+[[cases]]
+name = "orientation__zero_r2_dir1_XDIR"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "8e9832eaf540b2c01de1d960f84ecf58c1adc53224adb2e0294d62922988cc71"
+literal_sha256 = "f35adb6727051eadf4ffa08ae147c5f96508242d2b5067ca48f68c06e6d7ce02"
+full_s_error = 2.3697800572511858e-05
+original_voltage_residual = 3.037489442329016e-11
+
+[[cases]]
+name = "orientation__zero_r2_dir1_YDIR"
+category = "orientation"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "35e1c93b584a9b571c07a4974cd83f6a6289279990b22f2ac2c1d06f924481f2"
+literal_sha256 = "7ddae16b136e4dbdd5998ad723d95dc3776350596196a1124902e401edee07ee"
+full_s_error = 2.3697783493485622e-05
+original_voltage_residual = 3.3343360424338826e-11
+
+[[cases]]
+name = "orientation__zero_r4_dir-1_XDIR"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "aefce52ee4cdfa8ed8d27978b3fcbdfc433d7cd9ba0dab92c53ebd88b6f19aa6"
+literal_sha256 = "09cabf0adf2567f8c8bdf5e6d94a334e337cad7772d002bb446d37dceb19be2c"
+full_s_error = 6.257377102138319e-06
+original_voltage_residual = 2.348231647834844e-11
+
+[[cases]]
+name = "orientation__zero_r4_dir-1_YDIR"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "f7da82129bfc551d48069bff93994ac481a31ffb37fecd5b749fb28952f3b754"
+literal_sha256 = "b9955388c4e57309594ace5cef35e94ba73b1752250608521c471aa2ae7a0b4d"
+full_s_error = 6.257379838734146e-06
+original_voltage_residual = 3.1198032075251374e-11
+
+[[cases]]
+name = "orientation__zero_r4_dir1_XDIR"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "e07852deccb570f39771619f80628c640048882fb32ebab88db7ae0ea7aaeecb"
+literal_sha256 = "a09442e1b185457b86f14eda237bc4e0f42005131dd95227b1255ee271fb440b"
+full_s_error = 2.2761416046099798e-05
+original_voltage_residual = 3.804301616263618e-11
+
+[[cases]]
+name = "orientation__zero_r4_dir1_YDIR"
+category = "orientation"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_orientation_DrCyGL"
+parameter_sha256 = "3f888d9fca3893d9280ebff78337eff92cc52693d885221eb2690acd8cb78f75"
+literal_sha256 = "ebee91b94f0ac4667fe4e763d1d5a4dec6983bbe3e708a7c25cafb1aa7fa7300"
+full_s_error = 2.276140778616758e-05
+original_voltage_residual = 3.9698143799733206e-11
+
+[[cases]]
+name = "direction__r0_delta-1_dir-1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "e134a8c83cf6eacdfed0ad80eb0b66f25f868c02ddf308520cde82b5c89f246d"
+literal_sha256 = "b18b6df2aaa2442f91c0d5aff9213da64abba8996459ad3bf43028f35f38277e"
+full_s_error = 5.935825785964041e-06
+original_voltage_residual = 2.7899060367628464e-11
+before_parameter_full_s_error = 0.016329689116395537
+
+[[cases]]
+name = "direction__r0_delta-1_dir-1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "471b0425c880bb4d76b8a92c80fbb59c5f42a44e2a6a62a6d0337d24f9fcb800"
+literal_sha256 = "01882f2ae38f33a41fc57331b4172f0dcfd5800a82d2a85f6be57567ad7d31bd"
+full_s_error = 5.9358204566667476e-06
+original_voltage_residual = 1.433847746563112e-11
+before_parameter_full_s_error = 0.01632968911249676
+
+[[cases]]
+name = "direction__r0_delta-1_dir1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "1aa8f8560a739b2f090cb43614fe1332bbd7fb31c5803c01761fb9d2d6b85b30"
+literal_sha256 = "e4d996e07a63183ac28117ff1641bed63bb31268dfee9a36ec7efc5308694f78"
+full_s_error = 5.935826611836806e-06
+original_voltage_residual = 2.6399892501218162e-11
+before_parameter_full_s_error = 0.016329689117388645
+
+[[cases]]
+name = "direction__r0_delta-1_dir1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "f4925b1323157484c12b6d09372ef0130d02e4c4f04191825c2abbca2c141677"
+literal_sha256 = "e1c9357cd2f7f7ee3fffc6099a43de1221481f0df49a3f5014e84f117b66c3e0"
+full_s_error = 5.935820283911633e-06
+original_voltage_residual = 1.4705738770132013e-11
+before_parameter_full_s_error = 0.016329689112652975
+
+[[cases]]
+name = "direction__r0_delta1_dir-1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "90bcc1f7e2350bdb8849bb221538eee1c40c3d5eab0e9193fb9d9233b99710e5"
+literal_sha256 = "965f4db44f31cc51fde583d1b9234a561efb098148ac4c71cdd6cf69452a690b"
+full_s_error = 8.34422866656437e-06
+original_voltage_residual = 2.0901842555062642e-11
+before_parameter_full_s_error = 0.016315410736250653
+
+[[cases]]
+name = "direction__r0_delta1_dir-1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "7dd8a9ab5dce2e671729ee294b5cead0aa7b9378ed3413dfc046962ee0740a77"
+literal_sha256 = "205eeb6505df0cdf56325e5c75390cc60cb1b113d2a19f5ad640c21eff2608a2"
+full_s_error = 8.344224776354546e-06
+original_voltage_residual = 1.1474766192920255e-11
+before_parameter_full_s_error = 0.016315410741574842
+
+[[cases]]
+name = "direction__r0_delta1_dir1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "9e39d901a5c786fc6cecc1a9dac94ce7bb7e1acfcf23b91ba62e21ef0e077456"
+literal_sha256 = "15281f9c3df81f7bd1251d8921331d3d41b12418220daec8c74d64b667a4e4eb"
+full_s_error = 8.34422765845192e-06
+original_voltage_residual = 1.9325172559721598e-11
+before_parameter_full_s_error = 0.01631541073742709
+
+[[cases]]
+name = "direction__r0_delta1_dir1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 0
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "c0a5c8288fa406a889ba5a350ac4843c8279633f55d503dcdfad609d451a5f47"
+literal_sha256 = "101c4d2db1deb7fff6488073dc66ec514846c40a40b500b4a8ad43c049d56f11"
+full_s_error = 8.344224933278495e-06
+original_voltage_residual = 1.2018606082017253e-11
+before_parameter_full_s_error = 0.016315410741747693
+
+[[cases]]
+name = "direction__r1_delta-1_dir-1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "eadf654670f1d9fb0b7c2c320956c028e00fe108f8732aefdccfccb51466f57c"
+literal_sha256 = "538838f19b8e10348c27430f18bd9579aa814f9a46645d01699b6e6cf75abf73"
+full_s_error = 5.529759540480024e-06
+original_voltage_residual = 3.091879161728643e-11
+before_parameter_full_s_error = 0.025034386376934253
+
+[[cases]]
+name = "direction__r1_delta-1_dir-1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "af692f553cfd4e7d6807f3217fb407ae0f24ffdaa623d0f8635b2805e77d7228"
+literal_sha256 = "23da7432f28428807af4179494e8138138df76c59702ddd92b9daa2bc8c57342"
+full_s_error = 5.529754046165374e-06
+original_voltage_residual = 1.5591707439278886e-11
+before_parameter_full_s_error = 0.025034386373105948
+
+[[cases]]
+name = "direction__r1_delta-1_dir1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "dea3e3d20aff87bd768ef59c60b8910f08ae0fc98037926bd0f9310200a3224a"
+literal_sha256 = "746ad18e141209863a01a4cc44aa849e7991def49c8fc18a301d64664fde98a7"
+full_s_error = 5.529759124913058e-06
+original_voltage_residual = 3.1557586273132803e-11
+before_parameter_full_s_error = 0.025034386376948957
+
+[[cases]]
+name = "direction__r1_delta-1_dir1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "e7771c8b013c5afd7082de18859d938d670643789e31754666982d236565137a"
+literal_sha256 = "17da5c1527e29dc0a5afb95b9a2accec677624882168cf93601e836d7b380a06"
+full_s_error = 5.529752786396115e-06
+original_voltage_residual = 1.817186464658844e-11
+before_parameter_full_s_error = 0.025034386372128008
+
+[[cases]]
+name = "direction__r1_delta1_dir-1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "005c5910c0de4ff1efeeaa9c147836757d1d1893f83b32f1458f36f8165c1e51"
+literal_sha256 = "4781c1959e406677d5eab6dce3f503b8de7484a5781fb86e9bdfce253c43663c"
+full_s_error = 8.893988841953852e-06
+original_voltage_residual = 2.040854658337765e-11
+before_parameter_full_s_error = 0.025019967186280908
+
+[[cases]]
+name = "direction__r1_delta1_dir-1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "add03a5f82b3b149ff136ea499e574ecd5ec89843b4d904004a047acf7605b46"
+literal_sha256 = "59fba8393f1016757a7934f5d90e2b257b8335c92297fb30a56f327907a2eb0a"
+full_s_error = 8.893985025499384e-06
+original_voltage_residual = 1.2351108546949947e-11
+before_parameter_full_s_error = 0.02501996719176737
+
+[[cases]]
+name = "direction__r1_delta1_dir1_XDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "0f50ce85ba10d891e379a329ba4d54f17132d5a574381f88ef7480c716f5b806"
+literal_sha256 = "3277b88984ad351cd9bc1111d9d3f93063a82cbbaa9439f09fabb8e2c36936e8"
+full_s_error = 8.89398885614271e-06
+original_voltage_residual = 2.1229038622693304e-11
+before_parameter_full_s_error = 0.025019967186696773
+
+[[cases]]
+name = "direction__r1_delta1_dir1_YDIR_opposed"
+category = "direction"
+explicit_reference_count = 1
+original_capture = "data/planar_audit/geovar_reference_orientation_resolved_3drdml"
+parameter_sha256 = "6d1fd6531403bb5daff5dfb7bb4a6c3ce782d40d5bf2ecde2ae85e347183c0e7"
+literal_sha256 = "283460ad2b26b906c99d9513b830c0b258de7cbe025ba249a8fa28c5ee37bc33"
+full_s_error = 8.893986044431266e-06
+original_voltage_residual = 1.3164838984620381e-11
+before_parameter_full_s_error = 0.025019967191031386
+
+[[cases]]
+name = "aligned_negative__r2_delta-1_orientation-1_negative"
+category = "aligned_negative"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_count_direction_I7ln87"
+parameter_sha256 = "af69749032205767f76147ac149db58937ca152a9c61d5d9cfd16b35c3e5bba5"
+literal_sha256 = "1ec9c5912da38949cb7fe16fd0687bf20aaf3f0be9e294808618278551c9dc3f"
+
+[[cases]]
+name = "aligned_negative__r2_delta1_orientation-1_negative"
+category = "aligned_negative"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_count_direction_I7ln87"
+parameter_sha256 = "165a1a4c336cdd428c62a4b7563f5a4e24cacb6a6a981caa600898b6c55d39ba"
+literal_sha256 = "f8e192cdc46a99fd3b1f15e4be0a7b3bc8938a4e7d435179b0137bbc9fd6108d"
+
+[[cases]]
+name = "aligned_negative__r4_delta-1_orientation-1_negative"
+category = "aligned_negative"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_direction_I7ln87"
+parameter_sha256 = "bae52b8fdd596c2ca55033f945e19a221f8aad4a943fecedeae755345c94acf5"
+literal_sha256 = "73c32f6aac998dc53037c6666531c34af649fc35267d7ccbee904c52f474b780"
+
+[[cases]]
+name = "aligned_negative__r4_delta1_orientation-1_negative"
+category = "aligned_negative"
+explicit_reference_count = 4
+original_capture = "data/planar_audit/geovar_reference_count_direction_I7ln87"
+parameter_sha256 = "4adbc6e30ca3b1f9327e87e672002fafac1f1ca965b46cf700f42c07dba1981f"
+literal_sha256 = "3cfe21ed4017bb956d3c94393f5db59d50feef41fb93d8d9c0cfb3c877a8f9de"
+
+[[cases]]
+name = "aligned_negative__r8_delta-1_orientation-1_negative"
+category = "aligned_negative"
+explicit_reference_count = 8
+original_capture = "data/planar_audit/geovar_reference_count_direction_I7ln87"
+parameter_sha256 = "099554dd1d34610bfebc0fead9fbef18abd6e5f0c473dc552e2996051c6714ed"
+literal_sha256 = "aea78ceb9d53121887a5c630d948ee39c0396ef275d7ff45deac00979f6d628f"
+
+[[cases]]
+name = "aligned_negative__r8_delta1_orientation-1_negative"
+category = "aligned_negative"
+explicit_reference_count = 8
+original_capture = "data/planar_audit/geovar_reference_count_direction_I7ln87"
+parameter_sha256 = "cf9ad0a1f3c5ea84770124c7fa711a56ecb741f6e6931ef2ad09f59375a533b4"
+literal_sha256 = "badd6c6c5243ff79d282bb3682a74286ad57288b65a1b949bd229bb6aa69fc3f"
+
+[[cases]]
+name = "whole__rad_NSCD_r2_delta-1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "4936045a606ae8cdd8411ce557109d2b263b43c9b83cc67281d79f21d79f4d91"
+literal_sha256 = "caa09648126b93a9593d4e9de3d2be1ace8c4fde625ec9fadb06bd19ea4404d3"
+
+[[cases]]
+name = "whole__rad_NSCD_r2_delta1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "719924ae5e672cc48624d7153731358da81e1ee28a86730fc6907aee2cf1bed1"
+literal_sha256 = "84d3419b702d51f2be97d8e43a716f9dc8803f6131d90e63443c0a471b4afd85"
+
+[[cases]]
+name = "whole__rad_NSCD_r3_delta-1"
+category = "whole"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "0d36b2cac4ffe2471251d7699546f8cc1d71a66666da393b413318dee40eecd8"
+literal_sha256 = "fe8621ce76dda203cedda25d9a1a44cec88a6c93331351c135917f916aaf4fb4"
+
+[[cases]]
+name = "whole__rad_NSCD_r3_delta1"
+category = "whole"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "9e4e6292fd6646dcdfacc9614081c285668a3e5800162e06b91a67b1cc5772b8"
+literal_sha256 = "31e186f0ce3463d42c9889d98b922055fa644284f890dc35d74cfd2b7006a018"
+
+[[cases]]
+name = "whole__rad_SCUNI_r2_delta-1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "21607677899d5fcdf98ae6687a3d0db7e21579098e2a5270a9d46c6b67545eec"
+literal_sha256 = "caa09648126b93a9593d4e9de3d2be1ace8c4fde625ec9fadb06bd19ea4404d3"
+
+[[cases]]
+name = "whole__rad_SCUNI_r2_delta1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "7b6cb8f141b0c886057917db784206a58fb232cf461c004f2e25cde333dae9ca"
+literal_sha256 = "84d3419b702d51f2be97d8e43a716f9dc8803f6131d90e63443c0a471b4afd85"
+
+[[cases]]
+name = "whole__rad_SCUNI_r3_delta-1"
+category = "whole"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "199b316203793c1d102ce4747ff0b597a98c3a1c9a2a32624465eee7b78ca850"
+literal_sha256 = "fe8621ce76dda203cedda25d9a1a44cec88a6c93331351c135917f916aaf4fb4"
+
+[[cases]]
+name = "whole__rad_SCUNI_r3_delta1"
+category = "whole"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "963945ff5e483fa692b391c24632d3f648fe08cecbdea2e0149bbdaf7bf2fd65"
+literal_sha256 = "31e186f0ce3463d42c9889d98b922055fa644284f890dc35d74cfd2b7006a018"
+
+[[cases]]
+name = "whole__rad_SCXY_r2_delta-1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "97fa58c0559025bcc3138e8d07e84d89db590b303da3a042bdb8c43608f66887"
+literal_sha256 = "caa09648126b93a9593d4e9de3d2be1ace8c4fde625ec9fadb06bd19ea4404d3"
+
+[[cases]]
+name = "whole__rad_SCXY_r2_delta1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "0b331956f590559df7851f25661c722671ef2ea65cd4fc035bc0a75d705caabe"
+literal_sha256 = "84d3419b702d51f2be97d8e43a716f9dc8803f6131d90e63443c0a471b4afd85"
+
+[[cases]]
+name = "whole__rad_SCXY_r3_delta-1"
+category = "whole"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "70651c9e8f8e6988c37eefde3dd2a348f0ffe55004b70633917808be786718e4"
+literal_sha256 = "fe8621ce76dda203cedda25d9a1a44cec88a6c93331351c135917f916aaf4fb4"
+
+[[cases]]
+name = "whole__rad_SCXY_r3_delta1"
+category = "whole"
+explicit_reference_count = 3
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "d4076b0be27a597ab89be6d42c93f9a43f857946c2e0df2058e293b72b6f735e"
+literal_sha256 = "31e186f0ce3463d42c9889d98b922055fa644284f890dc35d74cfd2b7006a018"
+
+[[cases]]
+name = "whole__nscd_xdir_positive_expand_parameter_delta-1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "fc34d2d4012cbae5fa3a285cb6d4cea95656d64840bac7e06d546690e8882b7f"
+literal_sha256 = "507fd41ebc6f0c9ea75a004ecca630a0ec8292571f33cfe4d95a38e33ad3ffc9"
+
+[[cases]]
+name = "whole__nscd_xdir_positive_expand_parameter_delta1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "e3d67d04242a24920f51e6d3ceb1cc1bd69e1f829a5ee0e3837eaaa0f5639ca5"
+literal_sha256 = "f03bb09f5a73b7fc678449d265052fe731ce7656945638323ab0dee72e7d40e0"
+
+[[cases]]
+name = "whole__nscd_ydir_positive_expand_parameter_delta-1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "67ddaad886cb96fe1873545605168a8bfaa035674a92299e9c8c2dbecb0ed434"
+literal_sha256 = "d068b8260ccf76a52a6bcb8251d1ae2d273faa7672120d8c81f017b897568475"
+
+[[cases]]
+name = "whole__nscd_ydir_positive_expand_parameter_delta1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "de2a35d544af8abb352767066f46d0666cce0000e34731a11a90ed7d0ec80880"
+literal_sha256 = "552dd086c78f988e2f2ffce2518a058aebcdb6fcb621f89a0eb09237e3b27d7e"
+
+[[cases]]
+name = "whole__nscd_xdir_negative_expand_parameter_delta-1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "8fdb70ea50564ec7ee05700d4d4cff7f2e2fe8d684388b5a4348a225d407ee39"
+literal_sha256 = "4f849bfba4e3a1ae6821956f1203f0625043f79f4351caad03990ec5bccffadd"
+
+[[cases]]
+name = "whole__nscd_xdir_negative_expand_parameter_delta1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "1dfbc10d6d2f807343f05188c9452199540a9e4dd17e92472c246f2aa013e319"
+literal_sha256 = "2986a6e49d46959cfdb6d41b453c643b26287c919c276e265bea3db0e07455d1"
+
+[[cases]]
+name = "whole__nscd_ydir_negative_expand_parameter_delta-1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "203ba24e5357a1d24175aaef9c6b5d818720317a840147224640dd2751902405"
+literal_sha256 = "4f35cd3a67aaa6948b81ff56c9e0e2a094a3be427ba7e9574063048604d35628"
+
+[[cases]]
+name = "whole__nscd_ydir_negative_expand_parameter_delta1"
+category = "whole"
+explicit_reference_count = 2
+original_capture = "data/planar_audit/geovar_reference_repeated_whole_tARe4w"
+parameter_sha256 = "6dfdfbe6527f668c44888b2b2504750127a86259af4edf6e99336a8658ae0ba9"
+literal_sha256 = "9b406415c6930878f7ddba39ce6fbd81592cebbe0fa88ceb45875f3a21648cc3"
+
+[[cases]]
+name = "factor3__nscd_expand_2"
+category = "factor3"
+explicit_reference_count = 2
+parameter_sha256 = "a8ddb2a3821bbc846b05f05de4007932221de1c8110a506738eb669478ffecce"
+literal_sha256 = "149f4a779863fd90d02edccd7d1e465f6b19a2858e20d9b4847d9458e11f410e"
+full_s_error = 5.285778097990437e-06
+original_voltage_residual = 1.2693434826700853e-11
+
+[[cases]]
+name = "factor3__rad_expand_2"
+category = "factor3"
+explicit_reference_count = 2
+parameter_sha256 = "1fa1265cac92ae591cb8f98432880f21c08bc32f564e51bdf10290ca7e1abdf9"
+literal_sha256 = "456f4902ea23ba37215064c9fbb52af870e23a8acc51852f2ef3a79e69282d87"
+full_s_error = 2.515844409554088e-05
+original_voltage_residual = 2.0218322510689093e-11
+
+[[cases]]
+name = "factor3__rad_contract_2"
+category = "factor3"
+explicit_reference_count = 2
+parameter_sha256 = "04ddb49b8b1e337a9124e50b2b727a0c336460963d9504c4f21521fa1bbf25d9"
+literal_sha256 = "6ccbd7ed2a83639eb80b5ca3bfacd949c4fb4e3f1a81c38acea6991bff851922"
+full_s_error = 1.4656698941690942e-05
+original_voltage_residual = 4.880458221622331e-11

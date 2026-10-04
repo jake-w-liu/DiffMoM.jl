@@ -42,6 +42,12 @@ the explicit moving-reference count boundary. It verifies four single-occurrence
 literal matches, three multiple-occurrence mismatches and one native rejection
 against retained matrices and logs; all eight expected outcomes must pass.
 
+`run_geovar_reference_count_law.jl` replays 94 native parameter/literal pairs
+for anchored reference-coordinate direction and repeated ANC/RAD references.
+It checks the retained complete matrices and the unchanged 1e-12 native
+identity gate in a fresh directory. Earlier failed sequential and direction
+hypotheses remain in their original fixtures and captures.
+
 `run_whole_geovar_reference.jl` replays sixteen whole-polygon zero-count,
 explicit vertex-list and independent literal triples. It checks native full
 matrix identity, source stability, both axes/directions and contraction/expansion.

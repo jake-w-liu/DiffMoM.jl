@@ -1,0 +1,505 @@
+scope = "Native ANC NSCD multiplicity direction/orientation distinction: source references aligned or opposed to declared direction. Two independent literal candidate factors, full complex S unchanged1e-12 gate; no production edits."
+source_unchanged = true
+
+[source_after]
+"src\\solver\\IterativeSolve.jl" = "21787cd8de630b2b94aa1a8527ff96b18f9f66346ee767f689c6fc72d1adb191"
+"src\\planar\\PlanarCircuit.jl" = "b838b7b9eb14ca6c98a46d08ab3e5e9f22917fb514ba66c0d9a6838d27c1c1a8"
+"src\\basis\\Quadrature.jl" = "52f2dba2af79215e37643722a55d63fc343b5d13709b6df64c5fb274a327cc28"
+"src\\assembly\\PeriodicEFIE.jl" = "4645e9912736788ee236064d8f59d7852cf1b4c23a8fa871b8e5dce25a714ff6"
+"src\\planar\\PlanarSweep.jl" = "9ad437571a5c92fd61d21aadf6427ffb287b7589fd6e24b70f063209d1362717"
+"src\\postprocessing\\Visualization.jl" = "9994cd00e4deb32554ada6fcc2b3b460d5e67cd09ea26d8c593ed2730be8a27f"
+"src\\planar\\PlanarArtworkSweep.jl" = "5382db6d2e575d42637ce24aa4bee6adf7e856c7a9a6957e4762fa754207eb9c"
+"src\\planar\\PlanarArtworkLinearExact.jl" = "fd23273d81efe20e53862ef08f2b6f6ecfe622da48d531b67b45cff2efe2f2f1"
+"src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"src\\mom2d\\Types2D.jl" = "fa1ed3338857410c68287dfd17041f6fa7564642b65efd5301a5dd6b379f42f2"
+"src\\mom3d\\DDA3D.jl" = "77711b7b90aad16a5f9f724af8d23932caf96c172165eb5c531ad1b888b33bf2"
+"src\\planar\\PlanarMetalModel.jl" = "530793c87ccb5485653ebe02ae4bbcb7fc0e17b20daef669bd30b770efc0cbd2"
+"src\\planar\\PlanarTerminalReturns.jl" = "df4786dd59e5fd78b36104f169f9e26d859ff26ae9a4cf9721471f6753000f9c"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "406b4349461015c64d926a07c10f5c028ded9857713759dff9baf3f6820e0da5"
+"src\\assembly\\Excitation.jl" = "f7ae1f4e330ca9a9c512a3ac12442f6fb7ad8993965ad44ae0156553d1372265"
+"src\\mom2d\\Excitation2D.jl" = "0b93812f9cdcbe0597f3b592972fb06d3bd61cf86fa192673e7f22fca0599c6c"
+"src\\planar\\PlanarConductorLoss.jl" = "d9b9b26f45615361caca0f72f45cb7bf3382cc433a039ea8817ee074aa8d7f12"
+"src\\optimization\\Adjoint.jl" = "4fa84f89a402c84d40f9fb630b2562c660cc1c555979aaaf629dc457f507f168"
+"src\\solver\\NearFieldPreconditioner.jl" = "e062304b6abf2187e3edac85376255a4120d4e43d3952fd2a54acd86d6e30c07"
+"src\\solver\\Solve.jl" = "2ec482cf730795bf5d11cdfc0dac03e803d124fd693e6459669e9f761be9ca18"
+"src\\planar\\PlanarSpiceIO.jl" = "f97133f99d703440c9a4bcdfc2cb3636dc3967af708e4560208a6aaab0639bb8"
+"src\\DiffMoM.jl" = "afa5727ba57bd1a662ee864aa4d779036e53efaa7ac6b737dcaf613573199f02"
+"src\\planar\\PlanarGerberIO.jl" = "64735d27debec5e68c5ebd012ac640e826a8e91b79229cf5a6de0690fa0ed52e"
+"src\\mom2d\\Mie2D.jl" = "b81469f8a40d28c5745957585b47d2e41b2fb0e74264b8973439865dc3d1f303"
+"src\\planar\\PlanarArtworkCertified.jl" = "54db4d9a7b477e05f94aebca4b5d627655bf830c58073f58e9236947b45221cc"
+"src\\planar\\PlanarConformalMultiProjection.jl" = "0550c0a136c6f81a52d45639d2c0d628e3dd43ff8e178131b4dc45d83a995406"
+"src\\planar\\PlanarProjectPhysical.jl" = "9638f38e4fe6064963402ae39a1750e4dc78b25f20f4eb4389d70aa596a17a62"
+"src\\basis\\Greens.jl" = "1748537f4e2e85be51a22b433c5bf9b9f9b4a118ceb014b09a1394b4e6e12866"
+"src\\fast\\Octree.jl" = "9c278e9e738298db2077215128d80ae3fbe1864be9c5a9a3ba540b1cb3c7570d"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"src\\mom3d\\Adjoint3D.jl" = "1bf7a1f48c5c946d9568b8368884ec1eeb64f87a6a8dd402245d0e4fb702871a"
+"src\\planar\\PlanarVolumes.jl" = "f99725c5434154064e0b3b3c51dffae10597efab07143d3a4e237beb7c6db0a7"
+"src\\postprocessing\\NearField.jl" = "6ecf5cc0f36194f78ed42d651bc8346c40ac695bc1eb8891260246290e16e1f9"
+"src\\planar\\PlanarConformal.jl" = "4d8a18525703a4c7b13c84160fd3b80acabd99adc39907fa128c3d16b44b91e0"
+"src\\assembly\\Impedance.jl" = "bc77abdb2b977483e76a50967d1ff89ba1d46f1141d66092ebefd98a086e028d"
+"src\\planar\\PlanarAdjoint.jl" = "b8c85d41c6d57df6151724bc9665e345830fac1c7cda1af4155ee3182acbf154"
+"src\\planar\\PlanarSonnetProjectFiles.jl" = "7850d5dddf8d97d1543a0f7669ca78276d81ec741529637129ecd2927a554940"
+"src\\planar\\PlanarCalibrationStandards.jl" = "e9cf017299599d715b5dbbe510f773ae16e50f7701c4f92a67d936d77fcb028e"
+"src\\planar\\PlanarOutputs.jl" = "161e0ddd6724a2ad76b4c6cbfe8798fa2acfcb21732b3525d602233cb568f81a"
+"src\\planar\\PlanarArtworkExact.jl" = "372b5fe1ebdcbccd65e36eb73be765e38e0825fab2dbe512d94ff59547ebe808"
+"src\\postprocessing\\PeriodicMetrics.jl" = "969af75a0f924613b444b8b3048a8c392b143f01425f331a7ddae295588a988b"
+"src\\planar\\PlanarConformalLayout.jl" = "092c47a8f079c2d148c782eb06c899d6eebd3ae38b13a99a930ca677fec659e1"
+"src\\assembly\\SingularIntegrals.jl" = "5f20bd83ed16099ffc7907199e419544f7c376a6ee5efdf83bcf2f9d6b07bb09"
+"src\\postprocessing\\Mie.jl" = "79ba811b1ddb5f26c20469c156bf28ebbadd07741166fa5fe39fd4dd76bc59ce"
+"src\\assembly\\SpatialPatches.jl" = "854cc6f22a8673d65ada51c3fbb652aee9591a32ee9269da5002108edaeab863"
+"src\\error_estimation\\GalerkinError.jl" = "61f71e65ec4cf1ba607ec5b772ae39262167405163f99a371473c1c25557e632"
+"src\\mom3d\\FFTDDA3D.jl" = "85f4da519a867a692420df06cc6d2f94d2c40eadf9a7cd97af9f2817d20bb2be"
+"src\\error_estimation\\Conditioning.jl" = "c1a80f2f463e410d093664169bfc282e3417b83297bec1daac5304fc07946c6e"
+"src\\planar\\PlanarAxialRefinement.jl" = "09a0b61c6ef7611a6934106643243ee106207e42736a24ea9a4b717796ccda6d"
+"src\\planar\\PlanarSurface.jl" = "8afe273e439b617f0d73f99dccfe5a708cf37d168ebde0bfce0dbd298772a8d0"
+"src\\planar\\PlanarGreens.jl" = "b1ecb9be5963609c6c3f67d74c5c99fbfbb130fc00f888280deb7b06dab19a93"
+"src\\planar\\PlanarODBLayers.jl" = "81ec94f2760edfbd5426386ea4a368735075df407627bbcbc5c8e88cb6231195"
+"src\\planar\\PlanarSonnetScalarFiles.jl" = "918b343951340e72b53129affcc3be7ce9f24ad9d750d2dc71d504dddba49ef5"
+"src\\planar\\PlanarTriangleTransforms.jl" = "ba623d0176bf4a837ba7c7abd171f8a41d29dd7955c8f8f55b4ade37a7f5930c"
+"src\\planar\\PlanarODBSymbolsExtra.jl" = "21cf612046cb63c1601434edf46301eb6577b9703b7912e48843057980a401ba"
+"src\\fast\\ClusterTree.jl" = "f5fdd2f6f13ba93f24396046874e3b7436f3f782e2a6ce93fb626efc6d107334"
+"src\\planar\\PlanarODBIO.jl" = "ae805e1d15adf2735cc3af51e2b962081058b8fde4a26b722f98e8313fcc47b2"
+"src\\optimization\\DensityFiltering.jl" = "1a7b48222d2f7c15bea335a2cbd4d71239de3610124358bec38d6211a4c2a59a"
+"src\\error_estimation\\Calibration.jl" = "5bcd3377f836405d6daf2ee69d7ddf687f3dd6094077cc1fd19d0c28e12d76a2"
+"data\\geovar_reference_count_direction_probe_20261005.jl" = "96625ef7c802a47a4e01f30db053e449fcbac4e02ce0d3103417617d9f23a9e9"
+"src\\planar\\PlanarODBFonts.jl" = "10fcc5211d14f008d217d5a4d4382f9663339344dc4502a50781afa402cafcb7"
+"src\\planar\\PlanarImmittance.jl" = "bc2ea8a024f0ea19e1b92a4ad4222ba59de34747ed0deb7a03746ab965b2ea9f"
+"src\\mom2d\\Greens2D.jl" = "f82a53845b81f98bc78d75a8492efe813d595971db76a76b44b9de403a681f18"
+"src\\planar\\PlanarDeembed.jl" = "cdcaa5a8a4f8aabc0620aa2327e2cf0329ad5e560c487638074840ee33a097e8"
+"src\\planar\\PlanarProjectCircuitNodes.jl" = "1d4520a1a8857c3fedd21829cefa359646caeb3160930edbe0fd1c1d9d8876b7"
+"src\\fast\\MLFMA.jl" = "116eb64d95e41f9bdf06380c65b0ed242a8bd95b2f37831d13574b537818dfd4"
+"src\\Workflow.jl" = "9fabc449a5d88ea4ee51db65b967986c81e4f65fa283b80cdf582d22d337f947"
+"src\\optimization\\MultiAngleRCS.jl" = "7165ff172226c8c2602b2fbfc011dea0a2182ab4f6e5640526c3c683d06f567e"
+"src\\planar\\PlanarConformalProjection.jl" = "ed08a78a44dbef7bd7be3898fda25c479d221c1d6a770951d3f37c53c4d79d42"
+"src\\basis\\PeriodicGreens.jl" = "0ef15066497335d50ba5ba9ffa411f3bf9c5611af32047c49a74a44da7f1ded7"
+"src\\mom3d\\SurfaceIE3D.jl" = "eb5c436ef2105a8eabd5147aa2e2ba59b7be4c7f3d27e53a42936f14b85f1e81"
+"src\\postprocessing\\FarField.jl" = "bae961bb2ae05e8f6f31293249b1bfd76dad3b4b79b981cbc0ac17b2d286f562"
+"src\\planar\\PlanarArtworkIO.jl" = "679a09518a00e1074eed772aa009edbfda1fb3e7940b3e89caaea9e5c2612613"
+"src\\planar\\PlanarProject.jl" = "1def60b40b60b6ebb8c08d5e16003663594c272f8d532077bd000b4d5d367ba4"
+"src\\Types.jl" = "57c450b2803de351226d1ddda936793cb174c4fa05622db1a215584c499dea73"
+"src\\geometry\\Mesh.jl" = "aef7ab44815aa1a2e5745322f032bd1e3ea29d2c8ae67f5a3a5f2dbebbaec2a1"
+"src\\postprocessing\\PTD.jl" = "1c56c5ce6a1736b1a80efe811fbeb865a8233e855b689d70c476b8c3abbdb3a8"
+"src\\planar\\PlanarCalibration.jl" = "b91a8cd74824ba3478a5750707cc0c0b906bceb5a499d67a8af9f51167e6f668"
+"src\\planar\\PlanarSubdivision.jl" = "8c40bc5b3d8de03b645196a678a524fc7aef7430ed50e531af254b12c75ae5bd"
+"src\\planar\\PlanarBasis.jl" = "dee578c38238de7e761eb544d5a2aa9d4bab0255e09c5f3790ea56f95475a09b"
+"src\\planar\\PlanarSonnetConformal.jl" = "54383123cbe6cf208699e4583be4a6eaa73d8c2c1f4a75363e5a1e723dd2ffb7"
+"src\\planar\\PlanarFloatingBridge.jl" = "c639be61c91bfac036792c03f883e48b4c249537b54f5eb117bfc2ad1326a2f4"
+"src\\assembly\\CompositeOperator.jl" = "d4332f818437df955f480fb5c02d1e70c451b9606fea6335db627528fba1b796"
+"src\\planar\\PlanarPowerWaves.jl" = "73ed310b460e966b855abecaefcaf8f49a98577894f0c349da072b3abe5f4c5b"
+"src\\planar\\PlanarVectorFit.jl" = "82ac42b31bca26a9b0cd4684e1caf2bb470340ce1e005a176c33c7f465c7b1fa"
+"src\\planar\\PlanarLayoutIO.jl" = "cc09d029b08edbef5f14e9eb3eb6fcf377bd1c95a4f0abc49f6ee92378941ce2"
+"src\\planar\\PlanarSpectreIO.jl" = "c6cf47d1c01a5dd95ce790924854e9eeee4558fb7f91ba0177729bd761d1ac87"
+"src\\planar\\PlanarSonnetComponents.jl" = "747d83484ea0e11787c77d47da20a03f87b36bb98db91200d46fb548a94aa875"
+"src\\postprocessing\\Diagnostics.jl" = "e30d8a508a777515c8530fdca9ca4e3b57301b9da79509bfb752f561861620d9"
+"src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"
+"src\\planar\\PlanarVias.jl" = "cb3442aea4553ece7b79b6d3e1f124aaa159e15150b9e82622c7afbb99aecded"
+"src\\mom3d\\MaterialModels3D.jl" = "7831e3d9bfdbe1a00d28c476dc9a22ec5bcac657670d835ae995cd4cadac472e"
+"src\\optimization\\Optimize.jl" = "b41df2a11bae85ac71c7e6a9b705b9d9f89f2c6156f7a1eebb3afab3f5b9d68d"
+"src\\planar\\PlanarSpiceLines.jl" = "a9caef940b64c4d0118e0fea0e736bc0de2015ddc3ad12a122b7ea0cfe35f86f"
+"src\\optimization\\DensityAdjoint.jl" = "2cf99cdcab5ac5ad8ee05f56d0b2873f920acb1637d1d9b454076b0e8dd0b714"
+"src\\planar\\PlanarTypes.jl" = "d2ae874af6d738188c9daf37b82b5816c91556a8f74ddf6a2a179b817b2ec256"
+"src\\planar\\PlanarNetworkIO.jl" = "c7229b8ab91fcc4d93d7b644c5199af3f1369d0210271b152c81ccc08cfe7d5a"
+"src\\planar\\PlanarConformalUFFT.jl" = "c9e5b113faeafc9d6910a99954c5f82b70b8785802c565d3dac73276a8070799"
+"src\\mom2d\\Scatter2D.jl" = "091f385b52ed5d61b825ce5fc7b746b7bd4c2a0fb94542f8677e6f2b88a7ed91"
+"src\\planar\\PlanarArtworkRegionExact.jl" = "cf1a45781eac52b8da26f4a4deb560ca7049a260b6f274f4d04507642b2ad798"
+"src\\planar\\PlanarArtworkAffine.jl" = "0833fe6fc1f2b9658813dcc4f71404e87f0176bc0c2a55bc52cc8f91f2730e4d"
+"src\\planar\\PlanarHybrid.jl" = "fd66bc8c49ee01648e0e76f03d947e1ea9eda766d414e9fe7d19a9a84a958835"
+"src\\planar\\PlanarProjectFloating.jl" = "4212de91dc4085891bca58ad2bc134c62745fbfd903cc6ab7476182a99ac0ac2"
+"src\\fast\\ACA.jl" = "34b6bd89bab2cf93533aa1c7ba86cabf0a4068dc366317ddc685f903853328c4"
+"src\\postprocessing\\PhysicalOptics.jl" = "1a1606bb58ea2ac4be44d6d01405af5b23660c89adee7fdc1c4c521bbc1cbc73"
+"src\\assembly\\DensityInterpolation.jl" = "c6d74ec2e7df76c6fcfb7627ac196b29cd3b1f2776dc369cca1bad016005ba06"
+"src\\mom3d\\EMDDA3D.jl" = "2df9b4b4229d969f3250865588e433a752556981913700c0fc07f5c0a559885b"
+"src\\planar\\PlanarFFTAssembly.jl" = "5fb53bf25fec033aa78b46ca97f3f8e88e96288b4756a5adb6aabe409136e17b"
+"src\\planar\\PlanarCurrents.jl" = "fd8e874ebf3eb830f5f58bd164626faec36914d3b3a6633a71459d7a3e8fa7f1"
+"src\\planar\\PlanarSonnetTechnology.jl" = "01531e5a97d90e0974a10f9405f1888745036940e5d4043dabf5b7562ce2275b"
+"test\\fixtures\\native_geovar_reference_variants\\native\\nscd_expand_2_parameter.son" = "a8ddb2a3821bbc846b05f05de4007932221de1c8110a506738eb669478ffecce"
+"src\\mom2d\\Assembly2D.jl" = "0f9a6937ecb876d796b7d60cec755d39377017fb0992114146f6912bbdcf1b01"
+"src\\planar\\PlanarProjectModel.jl" = "45e371ffc43618593cf1538fb9b73dd2c58de53b801c2d7ddde59b3093d84e43"
+"src\\planar\\PlanarProjectSolve.jl" = "c3a29ac322d0f43f7d2ee26a63c85efd6589d67203e3dfcd5bdc50bff56dffa1"
+"src\\planar\\PlanarSonnetIO.jl" = "72bff147b82f57f46c60bd53adfcadd56095f845a82edc8b7ba976e1f2583e7d"
+"src\\planar\\PlanarArtworkBounds.jl" = "b70cf360f0b64c0345eb688ca21993e275f9d9a5321e9f311ef1eef6dffce1a7"
+"src\\planar\\PlanarConformalMeshing.jl" = "bc0c0a218efbb4fff9617a4ab7cf53025d66f05ac4b7abe2c9b4d59bf41eff1d"
+"src\\assembly\\EFIE.jl" = "94e80b4b81b01bff0cdeeb4906c8d88dcb34fea6eefc6c13e097d7d965d390b7"
+"src\\planar\\PlanarUFFT.jl" = "aea7cd1b588d046f7153825efb9181642b6c3827fa3cc6e2cdd5baa254fe1923"
+"src\\mom3d\\Types3D.jl" = "a4901daf5df84f85fc764a4f0aae7dbe8ddb1809f27d5634c31bb01071922d1c"
+"src\\geometry\\MeshIO.jl" = "38f4ca019f350bb45df2a08962a86432edacb15825ed859ac77ee50a6dd7cdd9"
+"src\\planar\\PlanarPortContraction.jl" = "a081e419fb5efd0b631d6f7e7ed8240e53fbb420981f5d57a7a14284e40da3b9"
+"src\\planar\\PlanarODBCompression.jl" = "c7e706d08e39cf1d203b4bfc6f359b8aa122239eb853691360496c9c561facc3"
+"src\\planar\\PlanarSonnetFloating.jl" = "e61c6b89b4e1024b1bf4fd10df2576253a848e7531991238c5a3e78ed7c58645"
+"src\\basis\\RWG.jl" = "9d8775a81b69412a81cfbfac9b29941a3b79409caa277b8531cba0d8e2bc66cb"
+"src\\solver\\RetainedSolve.jl" = "268805a16c5a0e2bb038930f5a85000caab0a76d16e86e08fa3159d359c0ec5c"
+"src\\assembly\\GroundedEFIE.jl" = "4af2e5934222062bee16ca03686f5ed60afea9de8558dba3a67ea945e192c4e3"
+"src\\optimization\\Verification.jl" = "87782c3657982acee455afa53230e75f07b9b3deca126bc892bafef7b6635421"
+"src\\planar\\PlanarConformalDefect.jl" = "0fd2c8ef50eee956c43a1dbc47c7d7ae18581c868c1c4ef38c915a93439f61db"
+"src\\planar\\PlanarGeometry.jl" = "baa723438be1809f5a9a518aba8b4ce4362679022a38e62592f45dfdb9c5b393"
+"src\\planar\\ASCENT_LIBRARY_LICENSE" = "c14befce8d1d4bc899a7af120c025710a32714064be5ff5cceb39f9c253bf620"
+"src\\planar\\PlanarPlots.jl" = "45db5e05c481e49987c50360e26bbe99429b053388bf1d44280abc7b0d31c288"
+"src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"src\\planar\\PlanarLibrary.jl" = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+"src\\basis\\NestedRWG.jl" = "9cd4e6c4d83de9cf295c0720dfc100b4c02e2bf07a21bbaa0eb3aef66c7ee9bc"
+"src\\planar\\PlanarSonnetModelFiles.jl" = "3deb08ce96e1e2d7e8e2722f012531e5d5a3b589fa570cdf679e1da44f25014b"
+"src\\planar\\PlanarRadiation.jl" = "4128692bbcca397e9f634130ecd8be1ebfcfa4544e4068b9c3ea5c69e476576c"
+"src\\planar\\PlanarHybridUFFT.jl" = "0232f516a50422b95f416b1246252c6879911055f371ef657305e866e9f20dfb"
+"src\\planar\\PlanarExtract.jl" = "d0aef6b833817c2cbaa3a8066988acd87d58e0cc4b789c51bc18c5ab0363368d"
+"src\\optimization\\QMatrix.jl" = "86b43ceb49dd9aebe2441ba36261565b69aebd57e3062b5b9a639ba8a4ba4a27"
+"src\\planar\\PlanarSpiceCoupling.jl" = "eb60e9fe75b4da58f7e5cc090a094f9c7920bf392d4185e99ebbe354462b958d"
+
+[[cases]]
+orientation = -1
+r = 2
+direction = -1
+matching_factors = [3]
+case = "r2_delta-1_orientation-1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = true
+    factor = 3
+    full_s_error = 0.0
+[[cases]]
+orientation = 1
+r = 2
+direction = -1
+matching_factors = []
+case = "r2_delta-1_orientation1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 3
+    full_s_error = 0.012225996688965471
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -1
+    full_s_error = 0.004307770091736615
+[[cases]]
+orientation = -1
+r = 2
+direction = -1
+matching_factors = [3]
+case = "r2_delta1_orientation-1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = true
+    factor = 3
+    full_s_error = 0.0
+[[cases]]
+orientation = 1
+r = 2
+direction = -1
+matching_factors = []
+case = "r2_delta1_orientation1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 3
+    full_s_error = 0.012225996688965471
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -1
+    full_s_error = 0.0038639647923652686
+[[cases]]
+orientation = -1
+r = 4
+direction = -1
+matching_factors = [13]
+case = "r4_delta-1_orientation-1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = true
+    factor = 13
+    full_s_error = 0.0
+[[cases]]
+orientation = 1
+r = 4
+direction = -1
+matching_factors = []
+case = "r4_delta-1_orientation1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 13
+    full_s_error = 0.020379265962624526
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -11
+    full_s_error = 0.002037568016312172
+[[cases]]
+orientation = -1
+r = 4
+direction = -1
+matching_factors = [13]
+case = "r4_delta1_orientation-1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = true
+    factor = 13
+    full_s_error = 0.0
+[[cases]]
+orientation = 1
+r = 4
+direction = -1
+matching_factors = []
+case = "r4_delta1_orientation1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 13
+    full_s_error = 0.020379265962624526
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -11
+    full_s_error = 0.001457634406560885
+[[cases]]
+orientation = -1
+r = 8
+direction = -1
+matching_factors = [57]
+case = "r8_delta-1_orientation-1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = true
+    factor = 57
+    full_s_error = 0.0
+[[cases]]
+orientation = 1
+r = 8
+direction = -1
+matching_factors = []
+case = "r8_delta-1_orientation1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 57
+    full_s_error = 0.019500036921467227
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -55
+    full_s_error = 0.0010018616614033856
+[[cases]]
+orientation = -1
+r = 8
+direction = -1
+matching_factors = [57]
+case = "r8_delta1_orientation-1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = true
+    factor = 57
+    full_s_error = 0.0
+[[cases]]
+orientation = 1
+r = 8
+direction = -1
+matching_factors = []
+case = "r8_delta1_orientation1_negative"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 57
+    full_s_error = 0.019500036921467227
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -55
+    full_s_error = 0.000751378786490671
+[[cases]]
+orientation = -1
+r = 4
+direction = 1
+matching_factors = []
+case = "r4_XDIR_delta-1_reverse_positive"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 13
+    full_s_error = 0.020379588871253795
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -11
+    full_s_error = 0.002038298482096285
+[[cases]]
+orientation = -1
+r = 4
+direction = 1
+matching_factors = []
+case = "r4_XDIR_delta1_reverse_positive"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 13
+    full_s_error = 0.020379588871253795
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -11
+    full_s_error = 0.0014574553511220623
+[[cases]]
+orientation = -1
+r = 4
+direction = 1
+matching_factors = []
+case = "r4_YDIR_delta-1_reverse_positive"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 13
+    full_s_error = 0.020379588870249685
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -11
+    full_s_error = 0.0020382984800938453
+[[cases]]
+orientation = -1
+r = 4
+direction = 1
+matching_factors = []
+case = "r4_YDIR_delta1_reverse_positive"
+
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = 13
+    full_s_error = 0.020379588870249685
+    [[cases.outcomes]]
+    bit_identical = false
+    factor = -11
+    full_s_error = 0.0014574553511220655
+
+[source_before]
+"src\\solver\\IterativeSolve.jl" = "21787cd8de630b2b94aa1a8527ff96b18f9f66346ee767f689c6fc72d1adb191"
+"src\\planar\\PlanarCircuit.jl" = "b838b7b9eb14ca6c98a46d08ab3e5e9f22917fb514ba66c0d9a6838d27c1c1a8"
+"src\\basis\\Quadrature.jl" = "52f2dba2af79215e37643722a55d63fc343b5d13709b6df64c5fb274a327cc28"
+"src\\assembly\\PeriodicEFIE.jl" = "4645e9912736788ee236064d8f59d7852cf1b4c23a8fa871b8e5dce25a714ff6"
+"src\\planar\\PlanarSweep.jl" = "9ad437571a5c92fd61d21aadf6427ffb287b7589fd6e24b70f063209d1362717"
+"src\\postprocessing\\Visualization.jl" = "9994cd00e4deb32554ada6fcc2b3b460d5e67cd09ea26d8c593ed2730be8a27f"
+"src\\planar\\PlanarArtworkSweep.jl" = "5382db6d2e575d42637ce24aa4bee6adf7e856c7a9a6957e4762fa754207eb9c"
+"src\\planar\\PlanarArtworkLinearExact.jl" = "fd23273d81efe20e53862ef08f2b6f6ecfe622da48d531b67b45cff2efe2f2f1"
+"src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"src\\mom2d\\Types2D.jl" = "fa1ed3338857410c68287dfd17041f6fa7564642b65efd5301a5dd6b379f42f2"
+"src\\mom3d\\DDA3D.jl" = "77711b7b90aad16a5f9f724af8d23932caf96c172165eb5c531ad1b888b33bf2"
+"src\\planar\\PlanarMetalModel.jl" = "530793c87ccb5485653ebe02ae4bbcb7fc0e17b20daef669bd30b770efc0cbd2"
+"src\\planar\\PlanarTerminalReturns.jl" = "df4786dd59e5fd78b36104f169f9e26d859ff26ae9a4cf9721471f6753000f9c"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "406b4349461015c64d926a07c10f5c028ded9857713759dff9baf3f6820e0da5"
+"src\\assembly\\Excitation.jl" = "f7ae1f4e330ca9a9c512a3ac12442f6fb7ad8993965ad44ae0156553d1372265"
+"src\\mom2d\\Excitation2D.jl" = "0b93812f9cdcbe0597f3b592972fb06d3bd61cf86fa192673e7f22fca0599c6c"
+"src\\planar\\PlanarConductorLoss.jl" = "d9b9b26f45615361caca0f72f45cb7bf3382cc433a039ea8817ee074aa8d7f12"
+"src\\optimization\\Adjoint.jl" = "4fa84f89a402c84d40f9fb630b2562c660cc1c555979aaaf629dc457f507f168"
+"src\\solver\\NearFieldPreconditioner.jl" = "e062304b6abf2187e3edac85376255a4120d4e43d3952fd2a54acd86d6e30c07"
+"src\\solver\\Solve.jl" = "2ec482cf730795bf5d11cdfc0dac03e803d124fd693e6459669e9f761be9ca18"
+"src\\planar\\PlanarSpiceIO.jl" = "f97133f99d703440c9a4bcdfc2cb3636dc3967af708e4560208a6aaab0639bb8"
+"src\\DiffMoM.jl" = "afa5727ba57bd1a662ee864aa4d779036e53efaa7ac6b737dcaf613573199f02"
+"src\\planar\\PlanarGerberIO.jl" = "64735d27debec5e68c5ebd012ac640e826a8e91b79229cf5a6de0690fa0ed52e"
+"src\\mom2d\\Mie2D.jl" = "b81469f8a40d28c5745957585b47d2e41b2fb0e74264b8973439865dc3d1f303"
+"src\\planar\\PlanarArtworkCertified.jl" = "54db4d9a7b477e05f94aebca4b5d627655bf830c58073f58e9236947b45221cc"
+"src\\planar\\PlanarConformalMultiProjection.jl" = "0550c0a136c6f81a52d45639d2c0d628e3dd43ff8e178131b4dc45d83a995406"
+"src\\planar\\PlanarProjectPhysical.jl" = "9638f38e4fe6064963402ae39a1750e4dc78b25f20f4eb4389d70aa596a17a62"
+"src\\basis\\Greens.jl" = "1748537f4e2e85be51a22b433c5bf9b9f9b4a118ceb014b09a1394b4e6e12866"
+"src\\fast\\Octree.jl" = "9c278e9e738298db2077215128d80ae3fbe1864be9c5a9a3ba540b1cb3c7570d"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"src\\mom3d\\Adjoint3D.jl" = "1bf7a1f48c5c946d9568b8368884ec1eeb64f87a6a8dd402245d0e4fb702871a"
+"src\\planar\\PlanarVolumes.jl" = "f99725c5434154064e0b3b3c51dffae10597efab07143d3a4e237beb7c6db0a7"
+"src\\postprocessing\\NearField.jl" = "6ecf5cc0f36194f78ed42d651bc8346c40ac695bc1eb8891260246290e16e1f9"
+"src\\planar\\PlanarConformal.jl" = "4d8a18525703a4c7b13c84160fd3b80acabd99adc39907fa128c3d16b44b91e0"
+"src\\assembly\\Impedance.jl" = "bc77abdb2b977483e76a50967d1ff89ba1d46f1141d66092ebefd98a086e028d"
+"src\\planar\\PlanarAdjoint.jl" = "b8c85d41c6d57df6151724bc9665e345830fac1c7cda1af4155ee3182acbf154"
+"src\\planar\\PlanarSonnetProjectFiles.jl" = "7850d5dddf8d97d1543a0f7669ca78276d81ec741529637129ecd2927a554940"
+"src\\planar\\PlanarCalibrationStandards.jl" = "e9cf017299599d715b5dbbe510f773ae16e50f7701c4f92a67d936d77fcb028e"
+"src\\planar\\PlanarOutputs.jl" = "161e0ddd6724a2ad76b4c6cbfe8798fa2acfcb21732b3525d602233cb568f81a"
+"src\\planar\\PlanarArtworkExact.jl" = "372b5fe1ebdcbccd65e36eb73be765e38e0825fab2dbe512d94ff59547ebe808"
+"src\\postprocessing\\PeriodicMetrics.jl" = "969af75a0f924613b444b8b3048a8c392b143f01425f331a7ddae295588a988b"
+"src\\planar\\PlanarConformalLayout.jl" = "092c47a8f079c2d148c782eb06c899d6eebd3ae38b13a99a930ca677fec659e1"
+"src\\assembly\\SingularIntegrals.jl" = "5f20bd83ed16099ffc7907199e419544f7c376a6ee5efdf83bcf2f9d6b07bb09"
+"src\\postprocessing\\Mie.jl" = "79ba811b1ddb5f26c20469c156bf28ebbadd07741166fa5fe39fd4dd76bc59ce"
+"src\\assembly\\SpatialPatches.jl" = "854cc6f22a8673d65ada51c3fbb652aee9591a32ee9269da5002108edaeab863"
+"src\\error_estimation\\GalerkinError.jl" = "61f71e65ec4cf1ba607ec5b772ae39262167405163f99a371473c1c25557e632"
+"src\\mom3d\\FFTDDA3D.jl" = "85f4da519a867a692420df06cc6d2f94d2c40eadf9a7cd97af9f2817d20bb2be"
+"src\\error_estimation\\Conditioning.jl" = "c1a80f2f463e410d093664169bfc282e3417b83297bec1daac5304fc07946c6e"
+"src\\planar\\PlanarAxialRefinement.jl" = "09a0b61c6ef7611a6934106643243ee106207e42736a24ea9a4b717796ccda6d"
+"src\\planar\\PlanarSurface.jl" = "8afe273e439b617f0d73f99dccfe5a708cf37d168ebde0bfce0dbd298772a8d0"
+"src\\planar\\PlanarGreens.jl" = "b1ecb9be5963609c6c3f67d74c5c99fbfbb130fc00f888280deb7b06dab19a93"
+"src\\planar\\PlanarODBLayers.jl" = "81ec94f2760edfbd5426386ea4a368735075df407627bbcbc5c8e88cb6231195"
+"src\\planar\\PlanarSonnetScalarFiles.jl" = "918b343951340e72b53129affcc3be7ce9f24ad9d750d2dc71d504dddba49ef5"
+"src\\planar\\PlanarTriangleTransforms.jl" = "ba623d0176bf4a837ba7c7abd171f8a41d29dd7955c8f8f55b4ade37a7f5930c"
+"src\\planar\\PlanarODBSymbolsExtra.jl" = "21cf612046cb63c1601434edf46301eb6577b9703b7912e48843057980a401ba"
+"src\\fast\\ClusterTree.jl" = "f5fdd2f6f13ba93f24396046874e3b7436f3f782e2a6ce93fb626efc6d107334"
+"src\\planar\\PlanarODBIO.jl" = "ae805e1d15adf2735cc3af51e2b962081058b8fde4a26b722f98e8313fcc47b2"
+"src\\optimization\\DensityFiltering.jl" = "1a7b48222d2f7c15bea335a2cbd4d71239de3610124358bec38d6211a4c2a59a"
+"src\\error_estimation\\Calibration.jl" = "5bcd3377f836405d6daf2ee69d7ddf687f3dd6094077cc1fd19d0c28e12d76a2"
+"data\\geovar_reference_count_direction_probe_20261005.jl" = "96625ef7c802a47a4e01f30db053e449fcbac4e02ce0d3103417617d9f23a9e9"
+"src\\planar\\PlanarODBFonts.jl" = "10fcc5211d14f008d217d5a4d4382f9663339344dc4502a50781afa402cafcb7"
+"src\\planar\\PlanarImmittance.jl" = "bc2ea8a024f0ea19e1b92a4ad4222ba59de34747ed0deb7a03746ab965b2ea9f"
+"src\\mom2d\\Greens2D.jl" = "f82a53845b81f98bc78d75a8492efe813d595971db76a76b44b9de403a681f18"
+"src\\planar\\PlanarDeembed.jl" = "cdcaa5a8a4f8aabc0620aa2327e2cf0329ad5e560c487638074840ee33a097e8"
+"src\\planar\\PlanarProjectCircuitNodes.jl" = "1d4520a1a8857c3fedd21829cefa359646caeb3160930edbe0fd1c1d9d8876b7"
+"src\\fast\\MLFMA.jl" = "116eb64d95e41f9bdf06380c65b0ed242a8bd95b2f37831d13574b537818dfd4"
+"src\\Workflow.jl" = "9fabc449a5d88ea4ee51db65b967986c81e4f65fa283b80cdf582d22d337f947"
+"src\\optimization\\MultiAngleRCS.jl" = "7165ff172226c8c2602b2fbfc011dea0a2182ab4f6e5640526c3c683d06f567e"
+"src\\planar\\PlanarConformalProjection.jl" = "ed08a78a44dbef7bd7be3898fda25c479d221c1d6a770951d3f37c53c4d79d42"
+"src\\basis\\PeriodicGreens.jl" = "0ef15066497335d50ba5ba9ffa411f3bf9c5611af32047c49a74a44da7f1ded7"
+"src\\mom3d\\SurfaceIE3D.jl" = "eb5c436ef2105a8eabd5147aa2e2ba59b7be4c7f3d27e53a42936f14b85f1e81"
+"src\\postprocessing\\FarField.jl" = "bae961bb2ae05e8f6f31293249b1bfd76dad3b4b79b981cbc0ac17b2d286f562"
+"src\\planar\\PlanarArtworkIO.jl" = "679a09518a00e1074eed772aa009edbfda1fb3e7940b3e89caaea9e5c2612613"
+"src\\planar\\PlanarProject.jl" = "1def60b40b60b6ebb8c08d5e16003663594c272f8d532077bd000b4d5d367ba4"
+"src\\Types.jl" = "57c450b2803de351226d1ddda936793cb174c4fa05622db1a215584c499dea73"
+"src\\geometry\\Mesh.jl" = "aef7ab44815aa1a2e5745322f032bd1e3ea29d2c8ae67f5a3a5f2dbebbaec2a1"
+"src\\postprocessing\\PTD.jl" = "1c56c5ce6a1736b1a80efe811fbeb865a8233e855b689d70c476b8c3abbdb3a8"
+"src\\planar\\PlanarCalibration.jl" = "b91a8cd74824ba3478a5750707cc0c0b906bceb5a499d67a8af9f51167e6f668"
+"src\\planar\\PlanarSubdivision.jl" = "8c40bc5b3d8de03b645196a678a524fc7aef7430ed50e531af254b12c75ae5bd"
+"src\\planar\\PlanarBasis.jl" = "dee578c38238de7e761eb544d5a2aa9d4bab0255e09c5f3790ea56f95475a09b"
+"src\\planar\\PlanarSonnetConformal.jl" = "54383123cbe6cf208699e4583be4a6eaa73d8c2c1f4a75363e5a1e723dd2ffb7"
+"src\\planar\\PlanarFloatingBridge.jl" = "c639be61c91bfac036792c03f883e48b4c249537b54f5eb117bfc2ad1326a2f4"
+"src\\assembly\\CompositeOperator.jl" = "d4332f818437df955f480fb5c02d1e70c451b9606fea6335db627528fba1b796"
+"src\\planar\\PlanarPowerWaves.jl" = "73ed310b460e966b855abecaefcaf8f49a98577894f0c349da072b3abe5f4c5b"
+"src\\planar\\PlanarVectorFit.jl" = "82ac42b31bca26a9b0cd4684e1caf2bb470340ce1e005a176c33c7f465c7b1fa"
+"src\\planar\\PlanarLayoutIO.jl" = "cc09d029b08edbef5f14e9eb3eb6fcf377bd1c95a4f0abc49f6ee92378941ce2"
+"src\\planar\\PlanarSpectreIO.jl" = "c6cf47d1c01a5dd95ce790924854e9eeee4558fb7f91ba0177729bd761d1ac87"
+"src\\planar\\PlanarSonnetComponents.jl" = "747d83484ea0e11787c77d47da20a03f87b36bb98db91200d46fb548a94aa875"
+"src\\postprocessing\\Diagnostics.jl" = "e30d8a508a777515c8530fdca9ca4e3b57301b9da79509bfb752f561861620d9"
+"src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"
+"src\\planar\\PlanarVias.jl" = "cb3442aea4553ece7b79b6d3e1f124aaa159e15150b9e82622c7afbb99aecded"
+"src\\mom3d\\MaterialModels3D.jl" = "7831e3d9bfdbe1a00d28c476dc9a22ec5bcac657670d835ae995cd4cadac472e"
+"src\\optimization\\Optimize.jl" = "b41df2a11bae85ac71c7e6a9b705b9d9f89f2c6156f7a1eebb3afab3f5b9d68d"
+"src\\planar\\PlanarSpiceLines.jl" = "a9caef940b64c4d0118e0fea0e736bc0de2015ddc3ad12a122b7ea0cfe35f86f"
+"src\\optimization\\DensityAdjoint.jl" = "2cf99cdcab5ac5ad8ee05f56d0b2873f920acb1637d1d9b454076b0e8dd0b714"
+"src\\planar\\PlanarTypes.jl" = "d2ae874af6d738188c9daf37b82b5816c91556a8f74ddf6a2a179b817b2ec256"
+"src\\planar\\PlanarNetworkIO.jl" = "c7229b8ab91fcc4d93d7b644c5199af3f1369d0210271b152c81ccc08cfe7d5a"
+"src\\planar\\PlanarConformalUFFT.jl" = "c9e5b113faeafc9d6910a99954c5f82b70b8785802c565d3dac73276a8070799"
+"src\\mom2d\\Scatter2D.jl" = "091f385b52ed5d61b825ce5fc7b746b7bd4c2a0fb94542f8677e6f2b88a7ed91"
+"src\\planar\\PlanarArtworkRegionExact.jl" = "cf1a45781eac52b8da26f4a4deb560ca7049a260b6f274f4d04507642b2ad798"
+"src\\planar\\PlanarArtworkAffine.jl" = "0833fe6fc1f2b9658813dcc4f71404e87f0176bc0c2a55bc52cc8f91f2730e4d"
+"src\\planar\\PlanarHybrid.jl" = "fd66bc8c49ee01648e0e76f03d947e1ea9eda766d414e9fe7d19a9a84a958835"
+"src\\planar\\PlanarProjectFloating.jl" = "4212de91dc4085891bca58ad2bc134c62745fbfd903cc6ab7476182a99ac0ac2"
+"src\\fast\\ACA.jl" = "34b6bd89bab2cf93533aa1c7ba86cabf0a4068dc366317ddc685f903853328c4"
+"src\\postprocessing\\PhysicalOptics.jl" = "1a1606bb58ea2ac4be44d6d01405af5b23660c89adee7fdc1c4c521bbc1cbc73"
+"src\\assembly\\DensityInterpolation.jl" = "c6d74ec2e7df76c6fcfb7627ac196b29cd3b1f2776dc369cca1bad016005ba06"
+"src\\mom3d\\EMDDA3D.jl" = "2df9b4b4229d969f3250865588e433a752556981913700c0fc07f5c0a559885b"
+"src\\planar\\PlanarFFTAssembly.jl" = "5fb53bf25fec033aa78b46ca97f3f8e88e96288b4756a5adb6aabe409136e17b"
+"src\\planar\\PlanarCurrents.jl" = "fd8e874ebf3eb830f5f58bd164626faec36914d3b3a6633a71459d7a3e8fa7f1"
+"src\\planar\\PlanarSonnetTechnology.jl" = "01531e5a97d90e0974a10f9405f1888745036940e5d4043dabf5b7562ce2275b"
+"test\\fixtures\\native_geovar_reference_variants\\native\\nscd_expand_2_parameter.son" = "a8ddb2a3821bbc846b05f05de4007932221de1c8110a506738eb669478ffecce"
+"src\\mom2d\\Assembly2D.jl" = "0f9a6937ecb876d796b7d60cec755d39377017fb0992114146f6912bbdcf1b01"
+"src\\planar\\PlanarProjectModel.jl" = "45e371ffc43618593cf1538fb9b73dd2c58de53b801c2d7ddde59b3093d84e43"
+"src\\planar\\PlanarProjectSolve.jl" = "c3a29ac322d0f43f7d2ee26a63c85efd6589d67203e3dfcd5bdc50bff56dffa1"
+"src\\planar\\PlanarSonnetIO.jl" = "72bff147b82f57f46c60bd53adfcadd56095f845a82edc8b7ba976e1f2583e7d"
+"src\\planar\\PlanarArtworkBounds.jl" = "b70cf360f0b64c0345eb688ca21993e275f9d9a5321e9f311ef1eef6dffce1a7"
+"src\\planar\\PlanarConformalMeshing.jl" = "bc0c0a218efbb4fff9617a4ab7cf53025d66f05ac4b7abe2c9b4d59bf41eff1d"
+"src\\assembly\\EFIE.jl" = "94e80b4b81b01bff0cdeeb4906c8d88dcb34fea6eefc6c13e097d7d965d390b7"
+"src\\planar\\PlanarUFFT.jl" = "aea7cd1b588d046f7153825efb9181642b6c3827fa3cc6e2cdd5baa254fe1923"
+"src\\mom3d\\Types3D.jl" = "a4901daf5df84f85fc764a4f0aae7dbe8ddb1809f27d5634c31bb01071922d1c"
+"src\\geometry\\MeshIO.jl" = "38f4ca019f350bb45df2a08962a86432edacb15825ed859ac77ee50a6dd7cdd9"
+"src\\planar\\PlanarPortContraction.jl" = "a081e419fb5efd0b631d6f7e7ed8240e53fbb420981f5d57a7a14284e40da3b9"
+"src\\planar\\PlanarODBCompression.jl" = "c7e706d08e39cf1d203b4bfc6f359b8aa122239eb853691360496c9c561facc3"
+"src\\planar\\PlanarSonnetFloating.jl" = "e61c6b89b4e1024b1bf4fd10df2576253a848e7531991238c5a3e78ed7c58645"
+"src\\basis\\RWG.jl" = "9d8775a81b69412a81cfbfac9b29941a3b79409caa277b8531cba0d8e2bc66cb"
+"src\\solver\\RetainedSolve.jl" = "268805a16c5a0e2bb038930f5a85000caab0a76d16e86e08fa3159d359c0ec5c"
+"src\\assembly\\GroundedEFIE.jl" = "4af2e5934222062bee16ca03686f5ed60afea9de8558dba3a67ea945e192c4e3"
+"src\\optimization\\Verification.jl" = "87782c3657982acee455afa53230e75f07b9b3deca126bc892bafef7b6635421"
+"src\\planar\\PlanarConformalDefect.jl" = "0fd2c8ef50eee956c43a1dbc47c7d7ae18581c868c1c4ef38c915a93439f61db"
+"src\\planar\\PlanarGeometry.jl" = "baa723438be1809f5a9a518aba8b4ce4362679022a38e62592f45dfdb9c5b393"
+"src\\planar\\ASCENT_LIBRARY_LICENSE" = "c14befce8d1d4bc899a7af120c025710a32714064be5ff5cceb39f9c253bf620"
+"src\\planar\\PlanarPlots.jl" = "45db5e05c481e49987c50360e26bbe99429b053388bf1d44280abc7b0d31c288"
+"src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"src\\planar\\PlanarLibrary.jl" = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+"src\\basis\\NestedRWG.jl" = "9cd4e6c4d83de9cf295c0720dfc100b4c02e2bf07a21bbaa0eb3aef66c7ee9bc"
+"src\\planar\\PlanarSonnetModelFiles.jl" = "3deb08ce96e1e2d7e8e2722f012531e5d5a3b589fa570cdf679e1da44f25014b"
+"src\\planar\\PlanarRadiation.jl" = "4128692bbcca397e9f634130ecd8be1ebfcfa4544e4068b9c3ea5c69e476576c"
+"src\\planar\\PlanarHybridUFFT.jl" = "0232f516a50422b95f416b1246252c6879911055f371ef657305e866e9f20dfb"
+"src\\planar\\PlanarExtract.jl" = "d0aef6b833817c2cbaa3a8066988acd87d58e0cc4b789c51bc18c5ab0363368d"
+"src\\optimization\\QMatrix.jl" = "86b43ceb49dd9aebe2441ba36261565b69aebd57e3062b5b9a639ba8a4ba4a27"
+"src\\planar\\PlanarSpiceCoupling.jl" = "eb60e9fe75b4da58f7e5cc090a094f9c7920bf392d4185e99ebbe354462b958d"

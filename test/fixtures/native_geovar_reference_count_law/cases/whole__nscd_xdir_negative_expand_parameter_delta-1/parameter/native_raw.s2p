@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: nscd_xdir_negative_expand_parameter_delta-1_parameter
+! Data is NOT De-embedded 
+! Data File Written: 10/05/2026 01:24:55
+!< HDATE 10/05/2026 01:24:55
+!< MDATE 10/05/2026 01:24:55
+!< PARAMS
+!< Move = 0.1171875
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -5.111452505e-4 -0.017758120110 0.9988560501176 -0.044395709749 0.9988560501176 -0.044395709749 -1.066332481e-3 -0.017733443950

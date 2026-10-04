@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: nscd_4_duplicates_parameter
+! Data is NOT De-embedded 
+! Data File Written: 10/05/2026 01:02:46
+!< HDATE 10/05/2026 01:02:46
+!< MDATE 10/05/2026 01:02:46
+!< PARAMS
+!< Width = 0.248046875
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -2.359938678e-4 -4.091305155e-3 0.9992961609356 -0.037287910485 0.9992961609356 -0.037287910485 -6.956520084e-5 -4.097515303e-3

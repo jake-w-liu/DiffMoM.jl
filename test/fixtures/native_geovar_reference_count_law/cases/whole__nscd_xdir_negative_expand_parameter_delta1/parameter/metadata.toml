@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\nscd_xdir_negative_expand_parameter_delta1_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T17:24:57.049"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [166]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T17:24:56.067"
+source_sha256 = "1dfbc10d6d2f807343f05188c9452199540a9e4dd17e92472c246f2aa013e319"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\nscd_xdir_negative_expand_parameter_delta1_parameter\\nscd_xdir_negative_expand_parameter_delta1_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\geovar_reference_repeated_whole_tARe4w\\\\nscd_xdir_negative_expand_parameter_delta1_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "7e4c2c0964e96dbaa3996b4a369bc899b83d2162829c8d814abdb576a13c09b8"
+intended_deembedded = false
+max_difference = 3.735236292486408e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\nscd_xdir_negative_expand_parameter_delta1_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5765553163715536
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "7e4c2c0964e96dbaa3996b4a369bc899b83d2162829c8d814abdb576a13c09b8"
+intended_deembedded = false
+max_difference = 3.735236292486408e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\nscd_xdir_negative_expand_parameter_delta1_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5765553163715536
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

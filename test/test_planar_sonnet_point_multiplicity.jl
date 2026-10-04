@@ -140,12 +140,14 @@ end
             if isempty(row["native_errors"])
                 @test row["native_full_s_error"]>.01 && row["parameter_full_s_error"]>.005
                 @test maximum(abs,reference-only(planar_read_touchstone(joinpath(native,tag*"_parameter/native_raw.s2p")).s))≈row["native_full_s_error"]
+                resolved=DiffMoM._sonnet_geometry_project(p,1e9)
+                @test maximum(abs,only(resolved.polygons).vertices-only(q.polygons).vertices)>1e-5
             else
                 @test tag=="nscd_contract_2" && haskey(row["native_errors"],"parameter")
                 @test occursin("has no subsections",read(joinpath(native,tag*"_parameter/engine_stderr.log"),String))
+                @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9)
+                @test_throws ArgumentError solve_sonnet_project(p,1e9;raw=true)
             end
-            @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9)
-            @test_throws ArgumentError solve_sonnet_project(p,1e9;raw=true)
         end
         @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved))
     end

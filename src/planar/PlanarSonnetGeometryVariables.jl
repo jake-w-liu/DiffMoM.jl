@@ -10,6 +10,7 @@ struct _SonnetGeometryParameter
     nominal::Float64
     references::NTuple{2,Tuple{Int,Int}}
     points::NTuple{2,Vector{Tuple{Int,Int}}}
+    explicit_moving_references::Int
     line::Int
 end
 
@@ -147,12 +148,9 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         end
         a,index,used,expanded=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used,max_expanded,expanded)
         b,index,used,expanded=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used,max_expanded,expanded)
-        explicit_reference=false
+        explicit_references=0
         for point in b
-            point==second || continue
-            explicit_reference && _sonnet_error(p.source,row.line,
-                "multiple explicit GEOVAR moving references require their native movement adapter")
-            explicit_reference=true
+            explicit_references+=Int(point==second)
         end
         # The implicit moving reference is an additional movement for native
         # unscaled anchored dimensions and radial dimensions under any header.
@@ -167,8 +165,17 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         bset=Set(b)
         (first==second || any(point->point in bset,a) || first in bset) &&
             _sonnet_error(p.source,row.line,"GEOVAR adjustable sets conflict with their references")
-        push!(parameters,_SonnetGeometryParameter(name,t[3],t[4]=="XDIR" ? 1 : 2,
-            parse(Int,t[5]),t[6]!="NSCD",t[6]=="SCXY",nominal,(first,second),(a,b),row.line))
+        direction=parse(Int,t[5])
+        if t[3]=="ANC" && t[6]=="NSCD"
+            fixed=polygons[first[1]].vertices[axis,first[2]]
+            moving=polygons[second[1]].vertices[axis,second[2]]
+            # Native anchored translation follows the reference-coordinate
+            # order even when its display direction field disagrees. A zero
+            # offset uses that field to choose its initial direction.
+            fixed==moving || (direction=moving>fixed ? 1 : -1)
+        end
+        push!(parameters,_SonnetGeometryParameter(name,t[3],axis,
+            direction,t[6]!="NSCD",t[6]=="SCXY",nominal,(first,second),(a,b),explicit_references,row.line))
     end
     return parameters
 end
@@ -222,6 +229,46 @@ end
 @inline function _sonnet_geovar_sum_error(first,second,total)
     tail=total-first
     return (first-(total-tail))+(second-tail)
+end
+
+# Native repeated moving references magnify every entry's displacement by
+# r(r-1)+1; the implicit reference remains one additional entry. Subtract in
+# native units before magnifying, so SI conversion cannot erase the change.
+# Ordinary counts need no allocation; rare range cases use bounded precision.
+@inline function _sonnet_geovar_repeated_delta(target,nominal,scale,repetitions::Int)
+    if repetitions<=94906266
+        factor=fma(Float64(repetitions),Float64(repetitions-1),1.)
+        change=target-nominal
+        delta=(change*factor)*scale
+        isfinite(delta) && (!iszero(delta) || target==nominal) && return delta
+    end
+    return setprecision(BigFloat,4352) do
+        setrounding(BigFloat,RoundNearest) do
+            r=BigFloat(repetitions)
+            Float64((BigFloat(target)-BigFloat(nominal))*(r*(r-1)+1)*BigFloat(scale))
+        end
+    end
+end
+
+# Constant ANC translations can combine an identity's repeated movements in
+# native units. Converting once avoids SI addition roundoff changing ownership
+# of a cell whose centre lies exactly on an axis-aligned edge. The saved SI
+# coordinate remains authoritative when its native-unit roundtrip loses data.
+@inline function _sonnet_geovar_repeated_coordinate(value,target,nominal,scale,references,movements,direction)
+    native=value/scale
+    if movements<=9007199254740992 && isfinite(native) && native*scale==value
+        change=direction*_sonnet_geovar_repeated_delta(target,nominal,1.,references)
+        total=fma(Float64(movements),change,native);after=total*scale
+        safe=abs(total)>sqrt(eps(Float64))*max(abs(native),abs(movements*change))
+        isfinite(after) && after!=value && safe && return after
+    end
+    return setprecision(BigFloat,4352) do
+        setrounding(BigFloat,RoundNearest) do
+            r=BigFloat(references)
+            Float64(BigFloat(value)+direction*(BigFloat(target)-BigFloat(nominal))*
+                (r*(r-1)+1)*BigFloat(movements)*BigFloat(scale))
+        end
+    end
 end
 
 # Retain midpoint and subtraction roundoff before magnifying an offset. Near
@@ -295,8 +342,9 @@ end
 """Resolve native independent ANC/SYM/RAD dimensions into effective SI geometry.
 Original source/records and scalar snapshot identity remain attached. Reference
 points belong implicitly to their adjustable set. Ordinary repeated entries
-retain their movement multiplicity, including one explicitly listed NSCD
-ANC/RAD moving reference. Multiple explicit occurrences and other references,
+retain their movement multiplicity. NSCD ANC and RAD moving-reference repetitions
+also apply their native common-displacement factor; ANC follows its reference
+coordinate order, using the direction field for zero offsets. Other references,
 dependent/overlapping active dimensions and moved component/interior-port semantics
 require separate adapters. Whole-polygon selectors expand logical vertices
 within point/storage budgets before geometry copy;
@@ -329,7 +377,10 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             isfinite(requested) && (requested>0 ||
                 (iszero(target) && iszero(parameter.nominal) && iszero(requested))) ||
             _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
-        delta=(parameter.kind=="RAD" ? 1 : parameter.direction)*(requested-nominal)
+        displacement=parameter.explicit_moving_references>1 ?
+            _sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale,
+                parameter.explicit_moving_references) : requested-nominal
+        delta=(parameter.kind=="RAD" ? 1 : parameter.direction)*displacement
         isfinite(delta) || _sonnet_error(p.source,parameter.line,"GEOVAR displacement is unrepresentable")
         target==parameter.nominal || !iszero(delta) ||
             _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost after SI conversion")
@@ -351,17 +402,18 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             throw(ArgumentError("GEOVAR port edge is outside its polygon's logical edges"))
         length(port.values)>=7 || throw(ArgumentError("GEOVAR port lacks its attached coordinate"))
     end
-    owners=Dict{Tuple{Int,Int},Int}()
+    owners=Dict{Tuple{Int,Int},Tuple{Int,Int}}()
     for (i,parameter) in enumerate(parameters)
         iszero(deltas[i]) && continue
         for point in Iterators.flatten(parameter.points)
-            haskey(owners,point) && owners[point]!=i && _sonnet_error(p.source,parameter.line,
+            haskey(owners,point) && owners[point][1]!=i && _sonnet_error(p.source,parameter.line,
                 "overlapping active GEOVAR dimensions require their ordered geometry adapter")
-            owners[point]=i
+            movements=get(owners,point,(i,0))[2]
+            owners[point]=(i,movements+1)
         end
     end
     for (i,parameter) in enumerate(parameters),point in parameter.references
-        haskey(owners,point) && owners[point]!=i && _sonnet_error(p.source,parameter.line,
+        haskey(owners,point) && owners[point][1]!=i && _sonnet_error(p.source,parameter.line,
             "dependent GEOVAR dimensions require their ordered geometry adapter")
     end
     polygons=Dict(q.id=>copy(q.vertices) for q in p.polygons)
@@ -370,6 +422,20 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         firstid,firstpoint=parameter.references[1]
         secondid,secondpoint=parameter.references[2]
         firstvertices=original[firstid].vertices;secondvertices=original[secondid].vertices
+        if parameter.kind=="ANC" && !parameter.scaled && parameter.explicit_moving_references>1
+            for point in parameter.points[2]
+                owner,movements=owners[point]
+                movements>0 || continue
+                id,index=point;before=polygons[id][parameter.axis,index]
+                after=_sonnet_geovar_repeated_coordinate(before,target,parameter.nominal,p.length_scale,
+                    parameter.explicit_moving_references,movements,parameter.direction)
+                isfinite(after) && after!=before ||
+                    _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
+                polygons[id][parameter.axis,index]=after
+                owners[point]=(owner,-movements)
+            end
+            continue
+        end
         if parameter.kind=="RAD"
             anchorx=firstvertices[1,firstpoint];anchory=firstvertices[2,firstpoint]
             for (id,index) in parameter.points[2]

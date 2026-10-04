@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\rad_SCUNI_r2_delta-1_literal.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T17:24:32.042"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [146]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T17:24:31.066"
+source_sha256 = "caa09648126b93a9593d4e9de3d2be1ace8c4fde625ec9fadb06bd19ea4404d3"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\rad_SCUNI_r2_delta-1_literal\\rad_SCUNI_r2_delta-1_literal.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\geovar_reference_repeated_whole_tARe4w\\\\rad_SCUNI_r2_delta-1_literal\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "d83d93f7e9fd6bb84367c4019de915fc90162df71f454140ef6168234f992cad"
+intended_deembedded = false
+max_difference = 5.179885665648633e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\rad_SCUNI_r2_delta-1_literal\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7871787709683333
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "d83d93f7e9fd6bb84367c4019de915fc90162df71f454140ef6168234f992cad"
+intended_deembedded = false
+max_difference = 5.179885665648633e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_reference_repeated_whole_tARe4w\\rad_SCUNI_r2_delta-1_literal\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = ["-j"]
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7871787709683333
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

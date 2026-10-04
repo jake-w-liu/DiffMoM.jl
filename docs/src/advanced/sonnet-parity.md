@@ -223,14 +223,26 @@ gates, with maximum full-S error 0.0001712. The earlier implementation executes
 as an independent regression control, and warmed geometry allocations are
 checked against it. Exact sources and failed reference hypotheses remain in
 `test/fixtures/native_geovar_point_multiplicity`.
-One explicitly listed NSCD anchored moving reference, or RAD reference under
-any supported axis/direction/scaling header, retains its extra
-movement in addition to the implicit reference movement. Two actual native
-controls match sequential literals bit for bit, and their public raw solves
-pass the unchanged 0.005 full-S and 1e-9 voltage-residual gates. Other explicitly
-listed references, including multiple occurrences, still reject before physical output: simple sequential
-scaling hypotheses disagree with native geometry, so their adapter remains
-unfinished.
+NSCD anchored translations follow the reference-coordinate order. Their
+direction field chooses the initial direction when the saved offset is zero.
+Sixteen native controls with a conflicting direction field expose the old
+125–250 micrometre geometry error and full-S errors above 0.016; independent
+literals pass the original physical gates.
+NSCD ANC and RAD moving references retain every explicit movement plus the
+implicit reference movement. With `r` explicit occurrences, native movement
+uses the common displacement factor `r(r-1)+1` for every adjustable entry.
+Fresh controls cover counts 0–5, 8, 16 and 32, both axes and coordinate orders,
+zero offsets, reordered groups, ordinary duplicate points, repeated whole
+polygons and all RAD scaling headers. Ninety-four retained native
+parameter/literal pairs match their complete matrices bit for bit. Linear,
+triangular, exponential and simple sequential hypotheses retain their original
+failures. Other explicitly listed references, including scaled ANC and SYM
+references, still require separate adapters.
+The repeated-reference displacement subtracts quantities before SI conversion
+and uses bounded precision for range cases. Ordinary displacement calculations
+allocate no memory; aggregate point/storage guards remain in place. Exact
+evidence is in `test/fixtures/native_geovar_reference_count_law`, replayed by
+`validation/planar_audit/run_geovar_reference_count_law.jl`.
 Native `POLY id 0` selectors expand every logical polygon vertex, excluding
 the closing duplicate. Sixteen NSCD ANC/RAD controls cover both axes, both
 directions and expansion/contraction; native zero-count, explicit-list and
