@@ -179,8 +179,9 @@ end
 
 """Circuit result: `s` is the external power-wave response, `voltages`
 are node potentials, `currents` are external currents into the circuit,
-and `y` is the port admittance when it exists. An ideal thru/short can
-have a finite S response and no finite Y representation (`y=nothing`).
+and `y` is the port admittance when it has a finite ComplexF64
+representation. An ideal thru/short or an impedance below that range can
+have a finite S response with `y=nothing`.
 `gauge_nodes` lists coordinate anchors selected for floating circuit
 components; their zero potential does not add a physical ground path."""
 struct PlanarCircuitResult
@@ -335,6 +336,69 @@ function _circuit_scattering_stamp!(M,ids,terminals,H,refs::Vector{ComplexF64})
     return nothing
 end
 
+# Keep finite stored R/L/C values in homogeneous constitutive equations.
+# A product or reciprocal may lie outside Float64 while its contribution
+# to S is finite. Mantissa/exponent pairs avoid making it Inf or zero
+# before summing and selecting a bounded equation row.
+@inline function _circuit_omega_parts(f,value)
+    (iszero(f) || iszero(value)) && return (0.,0)
+    fm,fe=frexp(f);vm,ve=frexp(value)
+    product,pe=frexp((2pi*fm)*vm)
+    return product,fe+ve+pe
+end
+
+@inline function _circuit_inverse_parts(parts)
+    m,e=parts
+    value,ve=frexp(inv(m))
+    return value,ve-e
+end
+
+@inline function _circuit_subtract_parts(positive,negative)
+    pm,pe=positive;nm,ne=negative
+    iszero(pm) && return (-nm,ne)
+    iszero(nm) && return positive
+    exponent=max(pe,ne)
+    value,ve=frexp(ldexp(pm,pe-exponent)-ldexp(nm,ne-exponent))
+    return iszero(value) ? (0.,0) : (value,exponent+ve)
+end
+
+function _circuit_rlc_coefficients_scaled(element,f)
+    e=element
+    series=e.topology===:series
+    realparts=e.r===nothing ? (0.,0) : series ? frexp(e.r) :
+        _circuit_inverse_parts(frexp(e.r))
+    positive=series ? (e.l===nothing ? (0.,0) : _circuit_omega_parts(f,e.l)) :
+        (e.c===nothing ? (0.,0) : _circuit_omega_parts(f,e.c))
+    negative=series ? (e.c===nothing ? (0.,0) : _circuit_inverse_parts(_circuit_omega_parts(f,e.c))) :
+        (e.l===nothing ? (0.,0) : _circuit_inverse_parts(_circuit_omega_parts(f,e.l)))
+    imaginaryparts=_circuit_subtract_parts(positive,negative)
+    rm,re=realparts;xm,xe=imaginaryparts
+    exponent=max(iszero(rm) ? 0 : re,iszero(xm) ? 0 : xe,0)
+    unit=ldexp(1.,-exponent)
+    coefficient=complex(ldexp(rm,re-exponent),ldexp(xm,xe-exponent))
+    return series ? (complex(unit),-coefficient) : (coefficient,complex(-unit))
+end
+
+@inline function _circuit_rlc_coefficients(element,f)
+    e=element;series=e.topology===:series
+    omega=2pi*f
+    if isfinite(omega)
+        resistance=e.r===nothing ? 0. : series ? e.r : inv(e.r)
+        value=series ? e.l : e.c
+        positive=value===nothing ? 0. : omega*value
+        negative=series ? (e.c===nothing ? 0. : inv(omega*e.c)) :
+            (e.l===nothing ? 0. : inv(omega*e.l))
+        if isfinite(resistance) && isfinite(positive) && isfinite(negative) &&
+                !(iszero(positive) && value!==nothing && !iszero(value) && !iszero(f))
+            reactance=positive-negative
+            scale=max(1.,resistance,abs(reactance));unit=inv(scale)
+            coefficient=complex(resistance/scale,reactance/scale)
+            return series ? (complex(unit),-coefficient) : (coefficient,complex(-unit))
+        end
+    end
+    return _circuit_rlc_coefficients_scaled(e,f)
+end
+
 """Solve the combined circuit/EM N-port at a nonnegative frequency [Hz]
 using modified nodal analysis and power-wave boundary excitations. A
 single LU handles every external port. `max_bytes` limits dense workspace
@@ -373,7 +437,6 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
     M = zeros(ComplexF64,N,N)
     RHS = zeros(ComplexF64,N,np)
     column = circuit.nnodes
-    omega = 2pi * f
     branch_rows=Vector{Int}(undef,length(circuit.elements));uniform_y_null=falses(length(circuit.elements))
     zero_current=falses(length(circuit.elements))
     nextrow=circuit.nnodes+1
@@ -390,29 +453,40 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
         if element isa _CircuitRLC
             e = element
             row = first(ids)
-            if e.topology === :series
-                if e.c !== nothing && (iszero(e.c) || iszero(omega))
+            if e.c !== nothing && e.r === nothing && e.l === nothing
+                # Select the bounded form of I=jωC V. A finite tiny
+                # admittance need not have a representable reciprocal.
+                susceptance=_planar_reference_omega_product(f,e.c)
+                if susceptance<=1.
+                    _circuit_voltage_stamp!(M,row,e.terminals[1],1im*susceptance)
+                    M[row,row]=-1.
+                    zero_current[element_index]=iszero(susceptance)
+                else
+                    fm,fe=frexp(f);cm,ce=frexp(e.c)
+                    inverse=ldexp(inv((2pi*fm)*cm),-fe-ce)
+                    _circuit_voltage_stamp!(M,row,e.terminals[1],1.)
+                    M[row,row]=1im*inverse
+                end
+            elseif e.topology === :series
+                if e.c !== nothing && (iszero(e.c) || iszero(f))
                     M[row,row] = 1.0 # series capacitor is open at DC
                     zero_current[element_index]=true
                 else
-                    z = (e.r === nothing ? 0.0 : e.r) +
-                        (e.l === nothing ? 0.0 : 1im*omega*e.l) +
-                        (e.c === nothing ? 0.0 : inv(1im*omega*e.c))
-                    _circuit_voltage_stamp!(M,row,e.terminals[1],1.0)
-                    M[row,row] = -z
+                    voltage,current=_circuit_rlc_coefficients(e,f)
+                    _circuit_voltage_stamp!(M,row,e.terminals[1],voltage)
+                    M[row,row] = current
+                    zero_current[element_index]=iszero(voltage)
                 end
             else
                 short = (e.r !== nothing && iszero(e.r)) ||
-                    (e.l !== nothing && (iszero(e.l) || iszero(omega)))
+                    (e.l !== nothing && (iszero(e.l) || iszero(f)))
                 if short
                     _circuit_voltage_stamp!(M,row,e.terminals[1],1.0)
                 else
-                    y = (e.r === nothing ? 0.0 : inv(e.r)) +
-                        (e.l === nothing ? 0.0 : inv(1im*omega*e.l)) +
-                        (e.c === nothing ? 0.0 : 1im*omega*e.c)
-                    _circuit_voltage_stamp!(M,row,e.terminals[1],y)
-                    M[row,row] = -1.0
-                    zero_current[element_index]=iszero(y)
+                    voltage,current=_circuit_rlc_coefficients(e,f)
+                    _circuit_voltage_stamp!(M,row,e.terminals[1],voltage)
+                    M[row,row] = current
+                    zero_current[element_index]=iszero(voltage)
                 end
             end
         elseif element isa _CircuitNetwork
@@ -492,6 +566,7 @@ function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
     end
     F = lu(Vports;check=false)
     Y = issuccess(F) ? Matrix{ComplexF64}(currents / F) : nothing
+    Y!==nothing && !all(isfinite,Y) && (Y=nothing)
     return PlanarCircuitResult(Float64(f),S,Y,voltages,currents,gauges,refs)
 end
 

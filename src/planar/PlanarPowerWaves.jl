@@ -91,20 +91,27 @@ function PlanarPortImpedance(;r=50.,x=0.,l=0.,c=0.,topology::Symbol=:series)
 end
 PlanarPortImpedance(r,x,l,c)=PlanarPortImpedance(;r,x,l,c)
 
+function _planar_reference_omega_product(f,value)
+    (iszero(f) || iszero(value)) && return 0.
+    fm,fe=frexp(f);vm,ve=frexp(value)
+    return ldexp((2pi*fm)*vm,fe+ve)
+end
+
 function (z::PlanarPortImpedance)(freq::Real)
     isfinite(freq) && freq>=0 || throw(ArgumentError("reference frequency must be finite and nonnegative"))
+    freq=_planar_reference_parameter(freq,"frequency")
     evaluate(value)=value isa Number ? value : value(freq)
     r=_planar_reference_parameter(evaluate(z.r),"resistance";positive=true)
     x=_planar_reference_parameter(evaluate(z.x),"reactance")
     l=_planar_reference_parameter(evaluate(z.l),"inductance")
     c=_planar_reference_parameter(evaluate(z.c),"capacitance")
-    omega=2pi*Float64(freq)
     z.topology in (:series,:parallel) || throw(ArgumentError("invalid reference topology"))
-    z.topology===:series && iszero(omega) && !iszero(c) && throw(ArgumentError(
+    z.topology===:series && iszero(freq) && !iszero(c) && throw(ArgumentError(
         "nonzero series capacitance has an infinite power-wave reference at DC"))
-    base=complex(r,x)+im*omega*l
-    return _planar_reference_number(iszero(c) || (z.topology===:parallel && iszero(omega)) ? base : z.topology===:series ?
-        base+inv(im*omega*c) : inv(inv(base)+im*omega*c))
+    base=complex(r,x+_planar_reference_omega_product(freq,l))
+    return _planar_reference_number(iszero(c) || (z.topology===:parallel && iszero(freq)) ? base : z.topology===:series ?
+        base+inv(im*_planar_reference_omega_product(freq,c)) :
+        inv(inv(base)+im*_planar_reference_omega_product(freq,c)))
 end
 
 function _planar_wave_voltage(S::AbstractMatrix,a::AbstractVector,refs)
