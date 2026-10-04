@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 15:23:45 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\geovar_symmetric_multiplicity_kHodLQ\scxy_ps2_parameter\scxy_ps2_parameter.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Width = 0.3125 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.999700 176.65 0.024482 87.003 0.024482 87.003 0.999700 177.36
+
+Em simulation completed Sun Oct 04 15:23:45 2026.

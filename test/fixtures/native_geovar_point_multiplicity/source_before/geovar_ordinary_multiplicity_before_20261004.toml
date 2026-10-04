@@ -1,0 +1,141 @@
+scope = "public repeated ordinary vertices; independent actual native literal gate .005 full S and 1e-9 original voltage residual, mx=my=128; pre/post effective geometry and warmed cumulative GC allocation"
+source_unchanged = true
+
+[source_after]
+"data\\geovar_ordinary_multiplicity_gate_20261004.jl" = "ce26ad680d64f0dfcbace03b45834a92fa97b8bd9a7680a21c25975be2a423a4"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"
+
+[[cases]]
+literal_voltage_residual = 1.2422006496995624e-11
+literal_suffix = "multiplicity"
+geometry_error = 6.250000000000006e-5
+parameter_status = "PASS"
+literal_full_s_error = 8.945102267237362e-6
+kind = "anc"
+directory = "data/sonnet_validation/geovar_point_multiplicity_FjM71n"
+parameter_voltage_residual = 1.1474766192920255e-11
+parameter_full_s_error = 0.003630270017107052
+geometry_gc_bytes = 165352
+tag = "nscd_ordinary"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 1.2289786006278672e-11
+literal_suffix = "multiplicity"
+geometry_error = 7.812500000000007e-5
+parameter_status = "PASS"
+literal_full_s_error = 9.027684998338308e-6
+kind = "anc"
+directory = "data/sonnet_validation/geovar_point_multiplicity_FjM71n"
+parameter_voltage_residual = 1.1474766192920255e-11
+parameter_full_s_error = 0.004251464202682321
+geometry_gc_bytes = 165416
+tag = "scuni_ordinary"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 3.417079612864582e-11
+literal_suffix = "multiplicity"
+geometry_error = 1.9531249999999963e-5
+parameter_status = "PASS"
+literal_full_s_error = 0.00017110990011828722
+kind = "anc"
+directory = "data/sonnet_validation/geovar_point_multiplicity_FjM71n"
+parameter_voltage_residual = 2.571509408872702e-11
+parameter_full_s_error = 0.000548014056360353
+geometry_gc_bytes = 170200
+tag = "scxy_ordinary"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 2.3726549306437856e-11
+literal_suffix = "multiplicity"
+geometry_error = 6.250000000000006e-5
+parameter_status = "PASS"
+literal_full_s_error = 6.841144847356881e-6
+kind = "rad"
+directory = "data/sonnet_validation/geovar_point_multiplicity_FjM71n"
+parameter_voltage_residual = 2.7460025474869687e-11
+parameter_full_s_error = 1.000265180016656
+geometry_gc_bytes = 168728
+tag = "rad_ordinary"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 1.204506013563529e-11
+literal_suffix = "literal"
+geometry_error = 3.1249999999999974e-5
+parameter_status = "PASS"
+literal_full_s_error = 8.300382436828615e-6
+kind = "sym"
+directory = "data/sonnet_validation/geovar_symmetric_multiplicity_kHodLQ"
+parameter_voltage_residual = 1.1666965327128916e-11
+parameter_full_s_error = 0.001822487665004164
+geometry_gc_bytes = 167656
+tag = "nscd_ps1"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 1.1708243324999538e-11
+literal_suffix = "literal"
+geometry_error = 3.124999999999992e-5
+parameter_status = "PASS"
+literal_full_s_error = 8.300382326945075e-6
+kind = "sym"
+directory = "data/sonnet_validation/geovar_symmetric_multiplicity_kHodLQ"
+parameter_voltage_residual = 1.1666965327128916e-11
+parameter_full_s_error = 0.0018224876660011872
+geometry_gc_bytes = 167656
+tag = "nscd_ps2"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 1.2907000083622582e-11
+literal_suffix = "literal"
+geometry_error = 3.906249999999998e-5
+parameter_status = "PASS"
+literal_full_s_error = 8.562332159686516e-6
+kind = "sym"
+directory = "data/sonnet_validation/geovar_symmetric_multiplicity_kHodLQ"
+parameter_voltage_residual = 1.1666965327128916e-11
+parameter_full_s_error = 0.002094609180209294
+geometry_gc_bytes = 167720
+tag = "scuni_ps1"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 1.174913739169831e-11
+literal_suffix = "literal"
+geometry_error = 3.9062499999999926e-5
+parameter_status = "PASS"
+literal_full_s_error = 8.562332166728097e-6
+kind = "sym"
+directory = "data/sonnet_validation/geovar_symmetric_multiplicity_kHodLQ"
+parameter_voltage_residual = 1.1666965327128916e-11
+parameter_full_s_error = 0.002094609181206513
+geometry_gc_bytes = 167720
+tag = "scuni_ps2"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 2.728440857995367e-11
+literal_suffix = "literal"
+geometry_error = 1.9531249999999963e-5
+parameter_status = "PASS"
+literal_full_s_error = 1.804441351582453e-5
+kind = "sym"
+directory = "data/sonnet_validation/geovar_symmetric_multiplicity_kHodLQ"
+parameter_voltage_residual = 3.091547709145012e-11
+parameter_full_s_error = 0.005686544323286012
+geometry_gc_bytes = 171648
+tag = "scxy_ps1"
+literal_status = "PASS"
+[[cases]]
+literal_voltage_residual = 2.275368848827513e-11
+literal_suffix = "literal"
+geometry_error = 1.953124999999991e-5
+parameter_status = "PASS"
+literal_full_s_error = 1.359745865681236e-5
+kind = "sym"
+directory = "data/sonnet_validation/geovar_symmetric_multiplicity_kHodLQ"
+parameter_voltage_residual = 3.091547709145012e-11
+parameter_full_s_error = 0.005684836880258332
+geometry_gc_bytes = 172096
+tag = "scxy_ps2"
+literal_status = "PASS"
+
+[source_before]
+"data\\geovar_ordinary_multiplicity_gate_20261004.jl" = "ce26ad680d64f0dfcbace03b45834a92fa97b8bd9a7680a21c25975be2a423a4"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"

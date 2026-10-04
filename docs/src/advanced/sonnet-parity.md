@@ -214,6 +214,18 @@ Exact evidence is retained in `test/fixtures/native_radial_geovar`, and
 `validation/planar_audit/run_radial_geovar_reference.jl` replays the native pairs.
 Native repair of crossing-edge polygons remains unsupported; a retained
 native-accepted control rejects explicitly in the public simple-polygon model.
+Repeated ordinary adjustable vertices now retain every recorded movement.
+Ten actual native ANC/SYM/RAD controls match independent sequential literals
+bit for bit. Removing repetitions previously produced radial full-S error
+above 1.0 and two symmetric SCXY errors above the existing 0.005 gate.
+Current public matrices pass the unchanged 0.005 full-S and 1e-9 voltage-residual
+gates, with maximum full-S error 0.0001712. The earlier implementation executes
+as an independent regression control, and warmed geometry allocations are
+checked against it. Exact sources and failed reference hypotheses remain in
+`test/fixtures/native_geovar_point_multiplicity`.
+Explicitly listed dimension references now reject before physical output:
+their native movement differs from both deduplicated geometry and some simple
+sequential scaling hypotheses, so their complete adapter remains unfinished.
 Overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored
 coordinate cancellation reject before emitting a changed project.

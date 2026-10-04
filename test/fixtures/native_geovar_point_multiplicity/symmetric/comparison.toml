@@ -1,0 +1,47 @@
+scope = "native repeated ordinary vertices in either symmetric set; independent sequential literal"
+source_unchanged = true
+
+[source_after]
+"data\\geovar_symmetric_multiplicity_probe_20261004.jl" = "3bcba53cf7c0bc67574b3fd2bc3b2d4b50d0c21dce0b6feb15edc3096f71b82b"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"
+
+[[cases]]
+bit_identical_s = true
+side = 1
+mode = "NSCD"
+tag = "nscd_ps1"
+full_s_error = 0.0
+[[cases]]
+bit_identical_s = true
+side = 2
+mode = "NSCD"
+tag = "nscd_ps2"
+full_s_error = 0.0
+[[cases]]
+bit_identical_s = true
+side = 1
+mode = "SCUNI"
+tag = "scuni_ps1"
+full_s_error = 0.0
+[[cases]]
+bit_identical_s = true
+side = 2
+mode = "SCUNI"
+tag = "scuni_ps2"
+full_s_error = 0.0
+[[cases]]
+bit_identical_s = true
+side = 1
+mode = "SCXY"
+tag = "scxy_ps1"
+full_s_error = 0.0
+[[cases]]
+bit_identical_s = true
+side = 2
+mode = "SCXY"
+tag = "scxy_ps2"
+full_s_error = 0.0
+
+[source_before]
+"data\\geovar_symmetric_multiplicity_probe_20261004.jl" = "3bcba53cf7c0bc67574b3fd2bc3b2d4b50d0c21dce0b6feb15edc3096f71b82b"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"

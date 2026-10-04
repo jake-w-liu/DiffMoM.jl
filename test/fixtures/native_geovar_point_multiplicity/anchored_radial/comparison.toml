@@ -1,0 +1,106 @@
+scope = "actual native explicit reference and repeated adjustable-point identities versus sequential and deduplicated independent literals"
+source_unchanged = true
+started_utc = "2026-10-04T07:12:07.650"
+
+[source_after]
+"test\\fixtures\\native_sonnet_geometry_variables\\accepted\\single_ydir_anc_positive_parameter.son" = "321862ca8326873e8d914e95c3fabf0f46514ae044be136db7a45147fee3f5a5"
+"data\\geovar_point_multiplicity_probe_20261004.jl" = "8d6e2ddb9ada32253807e08a3cc6987b4c706924689c956136b4d068889e28ef"
+"test\\fixtures\\native_radial_geovar\\native\\expand_nscd_ydir_positive.son" = "ca1ab73f16e11fc80ceabf98e646bf5dbc0a7d437af8c4e5b06da970f64ae1b0"
+"test\\fixtures\\native_two_axis_geovar\\native\\ydir_anc_positive_expand_parameter.son" = "11a8e5870779705eb0420e2de5112fb80a04c4db9682325792d8b52a161091ee"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"
+
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 0.0036386651744585736
+kind = "reference"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.0
+multiplicity_bit_identical = true
+mode = "NSCD"
+tag = "nscd_reference"
+parameter_status = "ACCEPT"
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 0.003638614044641313
+kind = "ordinary"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.0
+multiplicity_bit_identical = true
+mode = "NSCD"
+tag = "nscd_ordinary"
+parameter_status = "ACCEPT"
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 0.0043996140615320525
+kind = "reference"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.0001406465484832097
+multiplicity_bit_identical = false
+mode = "SCUNI"
+tag = "scuni_reference"
+parameter_status = "ACCEPT"
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 0.004259808306551857
+kind = "ordinary"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.0
+multiplicity_bit_identical = true
+mode = "SCUNI"
+tag = "scuni_ordinary"
+parameter_status = "ACCEPT"
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 0.004285764910464038
+kind = "reference"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.004342952269109712
+multiplicity_bit_identical = false
+mode = "SCXY"
+tag = "scxy_reference"
+parameter_status = "ACCEPT"
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 0.0005723870636409312
+kind = "ordinary"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.0
+multiplicity_bit_identical = true
+mode = "SCXY"
+tag = "scxy_ordinary"
+parameter_status = "ACCEPT"
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 0.006814925178436224
+kind = "reference"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.0
+multiplicity_bit_identical = true
+mode = "RAD"
+tag = "rad_reference"
+parameter_status = "ACCEPT"
+[[cases]]
+multiplicity_status = "ACCEPT"
+deduplicated_full_s_error = 1.0002650056648377
+kind = "ordinary"
+deduplicated_status = "ACCEPT"
+deduplicated_bit_identical = false
+multiplicity_full_s_error = 0.0
+multiplicity_bit_identical = true
+mode = "RAD"
+tag = "rad_ordinary"
+parameter_status = "ACCEPT"
+
+[source_before]
+"test\\fixtures\\native_sonnet_geometry_variables\\accepted\\single_ydir_anc_positive_parameter.son" = "321862ca8326873e8d914e95c3fabf0f46514ae044be136db7a45147fee3f5a5"
+"data\\geovar_point_multiplicity_probe_20261004.jl" = "8d6e2ddb9ada32253807e08a3cc6987b4c706924689c956136b4d068889e28ef"
+"test\\fixtures\\native_radial_geovar\\native\\expand_nscd_ydir_positive.son" = "ca1ab73f16e11fc80ceabf98e646bf5dbc0a7d437af8c4e5b06da970f64ae1b0"
+"test\\fixtures\\native_two_axis_geovar\\native\\ydir_anc_positive_expand_parameter.son" = "11a8e5870779705eb0420e2de5112fb80a04c4db9682325792d8b52a161091ee"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "719271252b97dd152634fe39a90a1c8d44bfa085b698da975db3f7255e0ad654"

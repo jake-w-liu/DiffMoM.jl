@@ -1,0 +1,19 @@
+{
+  "scope": "paired public before/after checks; exact raw reports remain local; durable tests replay the prior implementation and current native matrices",
+  "max_full_s_error": 0.00017110990011828722,
+  "max_voltage_residual": 3.417079612864582e-11,
+  "gc_allocation_savings_bytes": {
+    "nscd_ordinary": 448,
+    "scuni_ordinary": 448,
+    "scxy_ordinary": 448,
+    "rad_ordinary": 448,
+    "nscd_ps1": 448,
+    "nscd_ps2": 448,
+    "scuni_ps1": 448,
+    "scuni_ps2": 448,
+    "scxy_ps1": 272,
+    "scxy_ps2": 896
+  },
+  "explicit_reference_adapter": "UNFINISHED; rejects before physical output",
+  "after_report_sha256": "412d928ef1067d2fd89e6e7bf375a2e5da5c57680d829990dee307f44d869416"
+}

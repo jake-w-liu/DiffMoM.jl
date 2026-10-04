@@ -82,7 +82,8 @@ function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used)
     end
     _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
         _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR point set")
-    return unique!(points),index+1,used
+    # Native entries are movements: a repeated identity moves repeatedly.
+    return points,index+1,used
 end
 
 function _sonnet_geovar_parameters(p,max_parameters,max_points)
@@ -121,6 +122,8 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         end
         a,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used)
         b,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used)
+        (first in a || second in b) && _sonnet_error(p.source,row.line,
+            "explicit GEOVAR reference repetitions require their native movement adapter")
         _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
             _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR block")
         index+=1
@@ -256,8 +259,9 @@ end
 
 """Resolve native independent ANC/SYM/RAD dimensions into effective SI geometry.
 Original source/records and scalar snapshot identity remain attached. Reference
-points belong implicitly to their adjustable set. Dependent/overlapping active
-dimensions and moved component/interior-port semantics
+points belong implicitly to their adjustable set. Ordinary repeated entries
+retain their movement multiplicity. Explicitly listed references,
+dependent/overlapping active dimensions and moved component/interior-port semantics
 require separate adapters. Resource budgets are checked before geometry copy;
 effective coordinates are validated before emission. The supplied project is
 never modified."""
