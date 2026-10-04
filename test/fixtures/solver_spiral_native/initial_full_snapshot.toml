@@ -1,0 +1,14 @@
+scope = "sources at archive preparation time; initial loaded process saw concurrent importer edits, so these are not claimed to be its exact source snapshot"
+
+[sha256]
+"src/planar/PlanarSonnetIO.jl" = "202bf57a07edddc41c9eea01e104d580ce9d89fc9310b478f90cba44afe88c13"
+"src/planar/PlanarFFTAssembly.jl" = "63e5c364bd37e919eb479ce243d05e616c570a6fcbe54d8fb8cdf7830912663e"
+"validation/sonnet_stripline/validate_solver_spiral_native.jl" = "58d83b36f94fd19d424373b81613b78f5c7ce6e451ea8e3aed623c8210315f83"
+"src/planar/PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"src/planar/PlanarTerminalReturns.jl" = "df4786dd59e5fd78b36104f169f9e26d859ff26ae9a4cf9721471f6753000f9c"
+"src/planar/PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"src/planar/PlanarGreens.jl" = "b1ecb9be5963609c6c3f67d74c5c99fbfbb130fc00f888280deb7b06dab19a93"
+"validation/sonnet_stripline/solver_spiral_fixture.jl" = "ef95ad08c02ee1e93a848b387630e7c5d78af933affe7efe2972a50dd78c04d7"
+"src/planar/PlanarPortContraction.jl" = "a081e419fb5efd0b631d6f7e7ed8240e53fbb420981f5d57a7a14284e40da3b9"
+"src/planar/PlanarLibrary.jl" = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+"validation/sonnet_stripline/sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"

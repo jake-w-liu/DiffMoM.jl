@@ -1,0 +1,54 @@
+Run 1:  Sun Oct 04 09:16:10 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\library_mim_native_XscNQ4\native_pec_64_20000000000\native_pec_64_20000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 20 GHZ
+
+    Frequency:  20 GHZ
+      Subsectioning at 20 GHz with Eeff of 5.75.
+      Subsectioning time:  0.006 seconds.
+      Em license feature:  emlite.
+
+      Circuit requires 688 subsections and 2 MB of memory.
+
+      Primary structure subsections by level and type:
+      Level 0:
+        Surface Staircase:  267
+      Level 1:
+        Surface Staircase:  421
+
+      Process memory by type:
+        System matrix:            2 MB
+        Elemental subsections:
+          Primary structure:      0 MB
+        Fourier transform:        0 MB
+        Waveguide mode:           0 MB
+        Adaptive band synthesis:  0 MB
+        Miscellaneous:            1 MB
+        TOTAL REQUIRED MEMORY:    3 MB
+
+      Amount of RAM installed on host computer:  64 GB
+      Number of logical processors:  20
+      Matrix solver:  internal 64-bit SSE lossless.
+      Simulation mode:  local machine.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.001 seconds.
+      Fourier transform time:  0.002 seconds.
+      Coupling time:  0.018 seconds.
+      Loss time:  0.001 seconds.
+      Matrix fill time:  0.022 seconds.
+      Matrix solve time:  0.010 seconds.
+      Frequency completed Sun Oct 04 09:16:10 2026.
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      20.0000000 0.212784 -135.7 0.977099 -47.27 0.977099 -47.27 0.212784 -138.8
+      Total time per frequency:  0.038 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 1 frequency:  0.046 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 09:16:10 2026.

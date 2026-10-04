@@ -1,0 +1,39 @@
+scope = "closed PEC cavity, real isotropic dielectric and constant .1ohm sheet; independent exact cellwise linear-current integral versus physical terminal supplied power"
+relative_power_gate = 1.0e-8
+
+[[runs]]
+cells = 32
+supplied_watts_per_volt_squared = 0.020368860648718408
+sheet_dissipation_watts_per_volt_squared = 0.020368860648734867
+frequency_hz = 1.0e9
+relative_power_error = 8.080499260081853e-13
+[[runs]]
+cells = 32
+supplied_watts_per_volt_squared = 0.001073959568392781
+sheet_dissipation_watts_per_volt_squared = 0.0010739595683929269
+frequency_hz = 5.0e9
+relative_power_error = 1.3588371174432926e-13
+[[runs]]
+cells = 32
+supplied_watts_per_volt_squared = 0.007114063056137279
+sheet_dissipation_watts_per_volt_squared = 0.007114063056136555
+frequency_hz = 1.0e10
+relative_power_error = 1.0180498057232026e-13
+[[runs]]
+cells = 64
+supplied_watts_per_volt_squared = 0.021005472611071985
+sheet_dissipation_watts_per_volt_squared = 0.021005472611104213
+frequency_hz = 1.0e9
+relative_power_error = 1.5342522081464573e-12
+[[runs]]
+cells = 64
+supplied_watts_per_volt_squared = 0.0012429413366302625
+sheet_dissipation_watts_per_volt_squared = 0.0012429413366303102
+frequency_hz = 5.0e9
+relative_power_error = 3.838064933836291e-14
+[[runs]]
+cells = 64
+supplied_watts_per_volt_squared = 0.008744660163636734
+sheet_dissipation_watts_per_volt_squared = 0.008744660163640935
+frequency_hz = 1.0e10
+relative_power_error = 4.80464669889299e-13

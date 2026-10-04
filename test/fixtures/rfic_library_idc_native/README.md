@@ -6,6 +6,13 @@ The public `planar_interdigital_capacitor` constructs two fingers per electrode,
 
 `library_domain_repeat` retains a fresh eighteen-case native rerun after the Library scalar/reference/placement fixes. Its separately owned source snapshot and unchanged gates prevent the earlier source version from earning credit for later edits.
 
+`placement_ratio_repeat/` retains another eighteen-case native repeat after
+the emitted-pin, broadside-offset, via-footprint and capacitance-ratio fixes.
+Twelve source snapshots also capture the native scalar grammar and modal
+assembly at that run. Its parsed native matrices equal the earlier matrices
+exactly. The archive contains 941 hashed files and the current production
+replay passes 1377 checks under the same gates.
+
 The two earlier failures were validation harness errors: an incorrect `sonnet_planar_problem` call signature and a nonexistent result residual field. Their logs and native folders remain preserved and earn no solve-accuracy acceptance. The corrected proof independently reconstructs the original unit-voltage wall RHS and checks the retained physical matrix against solved currents.
 
 This is a matched finite-grid EM proof for this IDC and declared constant film. It does not certify continuum convergence, measured RFIC accuracy, other IDC geometries, spiral/MIM/Lange libraries, general conductor loss, or full Sonnet parity.

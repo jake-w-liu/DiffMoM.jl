@@ -1,0 +1,52 @@
+native_subsections = [458]
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_resistive_64_10000000000\\native_resistive_64_10000000000.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\solver_spiral_native_F99yIG\\\\native_resistive_64_10000000000\")"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+source_sha256 = "9e31a6d21580a611d7a727b706e0be9a463f5e8ebc8f60aa63d76865d2452d35"
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+julia_version = "1.12.7"
+started_utc = "2026-10-04T01:50:46.229"
+box_halfcell_counts = [128, 128]
+response_nports = 2
+process_success = true
+deembedded = false
+ended_utc = "2026-10-04T01:50:47.058"
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_resistive_64_10000000000.son"
+actual_cell_counts = [64, 64]
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_reference_imag = [[0.0, 0.0]]
+max_difference = 0.000581205059180635
+output_reference_real = [[50.0, 50.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_resistive_64_10000000000\\native_raw.s2p"
+selected_reference_deembedded = false
+source_options = []
+intended_log_section = "raw"
+reference_contract = "native geometry port R/X/L/C references"
+source_frequency_unit = "GHZ"
+status = "PASS"
+max_printed_bound_ratio = 0.7126114327547741
+frequency_scale_hz = 1.0e9
+expected_reference_imag = [[0.0, 0.0]]
+expected_reference_real = [[50.0, 50.0]]
+intended_deembedded = false
+output_sha256 = "4d3ab10e2ca7ce89e29528beb9c577102ea9b6d9233588ecb6d23be7db6d9b3d"
+
+[[touchstone_selected_log_check_history]]
+output_reference_imag = [[0.0, 0.0]]
+max_difference = 0.000581205059180635
+output_reference_real = [[50.0, 50.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_resistive_64_10000000000\\native_raw.s2p"
+selected_reference_deembedded = false
+source_options = []
+intended_log_section = "raw"
+reference_contract = "native geometry port R/X/L/C references"
+source_frequency_unit = "GHZ"
+status = "PASS"
+max_printed_bound_ratio = 0.7126114327547741
+frequency_scale_hz = 1.0e9
+expected_reference_imag = [[0.0, 0.0]]
+expected_reference_real = [[50.0, 50.0]]
+intended_deembedded = false
+output_sha256 = "4d3ab10e2ca7ce89e29528beb9c577102ea9b6d9233588ecb6d23be7db6d9b3d"
+
+[dependency_sha256]

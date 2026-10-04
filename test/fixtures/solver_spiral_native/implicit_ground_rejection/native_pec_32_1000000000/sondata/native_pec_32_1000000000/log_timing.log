@@ -1,0 +1,12 @@
+Run 1:  Sun Oct 04 09:40:17 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\solver_spiral_native_OAPuXT\native_pec_32_1000000000\native_pec_32_1000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+      Subsectioning at 1 GHz with Eeff of 2.5.
+
+Analysis failed due to error Sun Oct 04 09:40:17 2026.

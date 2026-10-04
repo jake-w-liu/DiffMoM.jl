@@ -1,0 +1,12 @@
+Run 1:  Sun Oct 04 09:16:04 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\library_mim_native_XscNQ4\native_pec_16_20000000000\native_pec_16_20000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 20 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 09:16:04 2026.

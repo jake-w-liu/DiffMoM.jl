@@ -1,0 +1,8 @@
+
+      Sonnet Error:
+      Sonnet Lite Limitation
+      native_pec_32_1000000000.son exceeds your Sonnet Lite license because:
+      Circuit has via polygon which is not set to Ring meshing fill.
+      Sonnet Lite restricts all via polygons to use Ring meshing fill.
+      Contact your Sonnet Software representative for information about upgrading your license.
+

@@ -1,0 +1,15 @@
+Run 1:  Sun Oct 04 09:47:38 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\solver_spiral_native_OhqoM3\native_pec_64_5000000000\native_pec_64_5000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 5 GHZ
+
+    Frequency:  5 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      5.00000000 0.152714 9.1673 0.988270 -81.07 0.988270 -81.07 0.152714 8.6948
+
+Em simulation completed Sun Oct 04 09:47:38 2026.

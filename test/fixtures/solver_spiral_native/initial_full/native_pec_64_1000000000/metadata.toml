@@ -1,0 +1,52 @@
+native_subsections = [458]
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_pec_64_1000000000\\native_pec_64_1000000000.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\solver_spiral_native_F99yIG\\\\native_pec_64_1000000000\")"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+source_sha256 = "4b1bb25607c645433c5977c36d0eb20b18155a89fb306b6d595e39a038c70339"
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+julia_version = "1.12.7"
+started_utc = "2026-10-04T01:50:03.400"
+box_halfcell_counts = [128, 128]
+response_nports = 2
+process_success = true
+deembedded = false
+ended_utc = "2026-10-04T01:50:04.065"
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_pec_64_1000000000.son"
+actual_cell_counts = [64, 64]
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_reference_imag = [[0.0, 0.0]]
+max_difference = 8.586403702804583e-5
+output_reference_real = [[50.0, 50.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_pec_64_1000000000\\native_raw.s2p"
+selected_reference_deembedded = false
+source_options = []
+intended_log_section = "raw"
+reference_contract = "native geometry port R/X/L/C references"
+source_frequency_unit = "GHZ"
+status = "PASS"
+max_printed_bound_ratio = 0.9791910052796164
+frequency_scale_hz = 1.0e9
+expected_reference_imag = [[0.0, 0.0]]
+expected_reference_real = [[50.0, 50.0]]
+intended_deembedded = false
+output_sha256 = "f1645a6370e1068431a89d99ee777caf45a59260f8160da0f0c0135ea93015fe"
+
+[[touchstone_selected_log_check_history]]
+output_reference_imag = [[0.0, 0.0]]
+max_difference = 8.586403702804583e-5
+output_reference_real = [[50.0, 50.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_F99yIG\\native_pec_64_1000000000\\native_raw.s2p"
+selected_reference_deembedded = false
+source_options = []
+intended_log_section = "raw"
+reference_contract = "native geometry port R/X/L/C references"
+source_frequency_unit = "GHZ"
+status = "PASS"
+max_printed_bound_ratio = 0.9791910052796164
+frequency_scale_hz = 1.0e9
+expected_reference_imag = [[0.0, 0.0]]
+expected_reference_real = [[50.0, 50.0]]
+intended_deembedded = false
+output_sha256 = "f1645a6370e1068431a89d99ee777caf45a59260f8160da0f0c0135ea93015fe"
+
+[dependency_sha256]

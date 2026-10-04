@@ -1,0 +1,11 @@
+! DiffMoM network databank
+[Version] 2.1
+# Hz S RI R 50
+[Number of Ports] 2
+[Two-Port Data Order] 12_21
+[Number of Frequencies] 1
+[Reference] 50.0 50.0
+[Matrix Format] Full
+[Network Data]
+1.0e10 -0.038230048389214843 -0.1332310177402393 0.9072404046104449 -0.3747419839520165 0.9072404046104566 -0.3747419839520157 -0.05168781980422743 -0.12817945212727702
+[End]

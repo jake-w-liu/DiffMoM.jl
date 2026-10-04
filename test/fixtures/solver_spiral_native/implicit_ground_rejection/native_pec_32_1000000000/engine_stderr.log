@@ -1,0 +1,11 @@
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      Ports 1, and 2 have no ground reference.
+      Please do one of following to fix port(s):
+      1) Move port(s) to a box wall.
+      2) Set port type under Properties to co-calibrated.
+      3) Connect port(s) between adjacent polygons.
+

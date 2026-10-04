@@ -1,0 +1,23 @@
+Run 1:  Sun Oct 04 09:40:17 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\solver_spiral_native_OAPuXT\native_pec_32_1000000000\native_pec_32_1000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      Ports 1, and 2 have no ground reference.
+      Please do one of following to fix port(s):
+      1) Move port(s) to a box wall.
+      2) Set port type under Properties to co-calibrated.
+      3) Connect port(s) between adjacent polygons.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Sun Oct 04 09:40:17 2026.

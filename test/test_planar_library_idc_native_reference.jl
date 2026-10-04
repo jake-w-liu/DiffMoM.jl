@@ -4,7 +4,7 @@ include(joinpath(@__DIR__,"..","validation","sonnet_stripline","library_idc_fixt
 @testset "Public RFIC library IDC vs actual native full matrices" begin
     directory=joinpath(@__DIR__,"fixtures","rfic_library_idc_native")
     hashes=TOML.parsefile(joinpath(directory,"sha256.toml"))["sha256"]
-    @test length(hashes)==675
+    @test length(hashes)==941
     for (path,digest) in hashes
         @test bytes2hex(sha256(read(joinpath(directory,path))))==digest
     end
@@ -16,9 +16,10 @@ include(joinpath(@__DIR__,"..","validation","sonnet_stripline","library_idc_fixt
     @test report["full_complex_s_gate"]==.005
     @test report["original_voltage_residual_gate"]==1e-9
     @test all(row->row["status"]=="PASS",report["runs"])
-    repository=normpath(joinpath(@__DIR__,".."))
     for (path,digest) in report["source_sha256_before"]
-        archived=joinpath(directory,"source_snapshot",relpath(path,repository))
+        suffix=match(r"/((?:src|validation)/.+)$",replace(path,'\\'=>'/'))
+        @test suffix!==nothing
+        archived=joinpath(directory,"source_snapshot",suffix.captures[1])
         @test bytes2hex(sha256(read(archived)))==digest
     end
     repeat=joinpath(directory,"library_domain_repeat")
@@ -30,12 +31,30 @@ include(joinpath(@__DIR__,"..","validation","sonnet_stripline","library_idc_fixt
     @test repeated["original_voltage_residual_gate"]==1e-9
     @test all(row->row["status"]=="PASS",repeated["runs"])
     for (path,digest) in repeated["source_sha256_before"]
-        archived=joinpath(directory,"repeat_source_snapshot",relpath(path,repository))
+        suffix=match(r"/((?:src|validation)/.+)$",replace(path,'\\'=>'/'))
+        @test suffix!==nothing
+        archived=joinpath(directory,"repeat_source_snapshot",suffix.captures[1])
         @test bytes2hex(sha256(read(archived)))==digest
     end
     domain=TOML.parsefile(joinpath(@__DIR__,"fixtures","library_stored_domain","after.toml"))
     library_key=only(filter(path->endswith(path,"PlanarLibrary.jl"),collect(keys(repeated["source_sha256_before"]))))
     @test repeated["source_sha256_before"][library_key]==domain["source_sha256"]
+    placement=joinpath(directory,"placement_ratio_repeat")
+    placed=TOML.parsefile(joinpath(placement,"comparison.toml"))
+    @test placed["source_unchanged"]
+    @test placed["source_sha256_before"]==placed["source_sha256_after"]
+    @test length(placed["runs"])==18
+    @test placed["full_complex_s_gate"]==.005
+    @test placed["original_voltage_residual_gate"]==1e-9
+    @test all(row->row["status"]=="PASS",placed["runs"])
+    @test length(placed["source_sha256_after"])==12
+    for (path,digest) in placed["source_sha256_after"]
+        suffix=match(r"/((?:src|validation)/.+)$",replace(path,'\\'=>'/'))
+        @test suffix!==nothing
+        @test bytes2hex(sha256(read(joinpath(directory,"placement_source_snapshot",suffix.captures[1]))))==digest
+    end
+    @test placed["source_sha256_after"][library_key]==
+        bytes2hex(sha256(read(joinpath(@__DIR__,"..","src","planar","PlanarLibrary.jl"))))
     initial=TOML.parsefile(joinpath(directory,"initial_pec","comparison.toml"))
     @test initial["source_unchanged"]
     @test length(initial["runs"])==9
@@ -55,7 +74,7 @@ include(joinpath(@__DIR__,"..","validation","sonnet_stripline","library_idc_fixt
         @test_throws ArgumentError solve_planar(layout,1e9;max_bytes=1)
         for frequency in (1e9,1e10,2e10)
             tag="native_$(resistance==0 ? "pec" : "resistive")_$(cells)_$(Int(frequency))"
-            folder=joinpath(repeat,tag)
+            folder=joinpath(placement,tag)
             metadata=TOML.parsefile(joinpath(folder,"metadata.toml"))
             @test startswith(metadata["engine_version"],"18.53-Lite")
             @test metadata["process_success"]

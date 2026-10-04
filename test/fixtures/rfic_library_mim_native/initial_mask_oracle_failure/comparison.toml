@@ -1,0 +1,49 @@
+full_complex_s_gate = 0.06
+scope = "public RFIC library two-level MIM plus literal wall leads versus independent native six-rectangle GEO; matched finite grids, 1um isotropic dielectric, PEC/constant film; no interior calibration, measured-device, nonlinear, general loss or continuum claim"
+source_unchanged = true
+original_voltage_residual_gate = 1.0e-9
+
+[[runs]]
+sheet_resistance_ohm_per_square = 0.0
+original_voltage_residual = 7.467122639716725e-13
+native_source_sha256 = "ca9bb4849909c9867611002009b784191ef46178ac762ee106c91eec08b1f108"
+full_complex_s_error = 1.3759842733154002e-6
+native_output_sha256 = "a0aab9d60f84a27a9b63d91e1dfa2c14953988f4c87b3fb6823c46cd02e2a2cb"
+basis_count = 121
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [16, 16]
+[[runs]]
+sheet_resistance_ohm_per_square = 0.1
+original_voltage_residual = 6.721627255121957e-13
+native_source_sha256 = "1bf5bae8cf1f7a048d2ba6ca514c833792a9ca7566abc6867a352745e6b12201"
+full_complex_s_error = 9.857155426655638e-7
+native_output_sha256 = "b3ddb188cbd7713d4706904129de1f280e53c4403b6ee1411c2ea4b6a126b9f5"
+basis_count = 121
+status = "PASS"
+frequency_hz = 1.0e9
+actual_grid = [16, 16]
+
+[source_sha256_before]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarGreens.jl" = "4299756ddefa63affcae5eb6101648e591d54a8268c9ff7b689d87866775add2"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarFFTAssembly.jl" = "63e5c364bd37e919eb479ce243d05e616c570a6fcbe54d8fb8cdf7830912663e"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "b69db254f721e9c0b57637b36849f1184619407859439ab559977f6f914cdab3"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_library_mim.jl" = "b38d1d9e3650668c8699007af8022bdfa364bc1e75959334a9355b99d1f906e1"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayoutIO.jl" = "cc09d029b08edbef5f14e9eb3eb6fcf377bd1c95a4f0abc49f6ee92378941ce2"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\library_mim_fixture.jl" = "4a3a9fa8641f679f1e11473edea65178e221e009c97833f71c537118cca29ee4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"
+
+[source_sha256_after]
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarGreens.jl" = "4299756ddefa63affcae5eb6101648e591d54a8268c9ff7b689d87866775add2"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarFFTAssembly.jl" = "63e5c364bd37e919eb479ce243d05e616c570a6fcbe54d8fb8cdf7830912663e"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "b69db254f721e9c0b57637b36849f1184619407859439ab559977f6f914cdab3"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_sonnet_library_mim.jl" = "b38d1d9e3650668c8699007af8022bdfa364bc1e75959334a9355b99d1f906e1"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayoutIO.jl" = "cc09d029b08edbef5f14e9eb3eb6fcf377bd1c95a4f0abc49f6ee92378941ce2"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\library_mim_fixture.jl" = "4a3a9fa8641f679f1e11473edea65178e221e009c97833f71c537118cca29ee4"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarConnectivity.jl" = "d86da7d0dbd2105f5663fe747194ea8e0c6d45f0615bee00afbdc58d19df463b"

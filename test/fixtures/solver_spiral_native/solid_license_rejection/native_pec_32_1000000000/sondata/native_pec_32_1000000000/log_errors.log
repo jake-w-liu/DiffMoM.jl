@@ -1,0 +1,22 @@
+Run 1:  Sun Oct 04 09:43:26 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\solver_spiral_native_xIolvy\native_pec_32_1000000000\native_pec_32_1000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Sonnet Lite Limitation
+      native_pec_32_1000000000.son exceeds your Sonnet Lite license because:
+      Circuit has via polygon which is not set to Ring meshing fill.
+      Sonnet Lite restricts all via polygons to use Ring meshing fill.
+      Contact your Sonnet Software representative for information about upgrading your license.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Sun Oct 04 09:43:26 2026.

@@ -1,0 +1,47 @@
+Run 1:  Sun Oct 04 09:33:02 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\library_idc_native_FCM8zj\native_resistive_16_1000000000\native_resistive_16_1000000000.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+      Subsectioning at 1 GHz with Eeff of 2.5.
+      Subsectioning time:  0 seconds.
+      Em license feature:  emlite.
+
+      Circuit requires 50 subsections and 1 MB of memory.
+
+      Primary structure subsections by level and type:
+      Level 0:
+        Surface Staircase:  50
+
+      Process memory by type:
+        System matrix:            0 MB
+        Elemental subsections:
+          Primary structure:      0 MB
+        Fourier transform:        0 MB
+        Waveguide mode:           0 MB
+        Adaptive band synthesis:  0 MB
+        Miscellaneous:            1 MB
+        TOTAL REQUIRED MEMORY:    1 MB
+
+      Amount of RAM installed on host computer:  64 GB
+      Number of logical processors:  20
+      Matrix solver:  internal 64-bit SSE with loss.
+      Simulation mode:  local machine.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0 seconds.
+      Fourier transform time:  0 seconds.
+      Coupling time:  0 seconds.
+      Loss time:  0 seconds.
+      Matrix fill time:  0 seconds.
+      Matrix solve time:  0 seconds.
+      Frequency completed Sun Oct 04 09:33:02 2026.
+      Total time per frequency:  0.004 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 1 frequency:  0.006 seconds.
+
+Em simulation completed Sun Oct 04 09:33:02 2026.

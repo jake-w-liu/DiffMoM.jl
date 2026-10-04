@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\library_idc_native_FCM8zj\\native_pec_16_1000000000.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T01:32:48.044"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [50]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [16, 16]
+started_utc = "2026-10-04T01:32:47.585"
+source_sha256 = "3c3448cb08a11781a40a5fc79ebfadae5f658bbf75851c0c88fcb1bdeb76cc47"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\library_idc_native_FCM8zj\\native_pec_16_1000000000\\native_pec_16_1000000000.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\library_idc_native_FCM8zj\\\\native_pec_16_1000000000\")"
+box_halfcell_counts = [32, 32]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "21eb1d89a401905a6ad187ae2375af25a45160c8ea91ed903050bb570955d72f"
+intended_deembedded = false
+max_difference = 6.6801157755534005e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\library_idc_native_FCM8zj\\native_pec_16_1000000000\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7240145710472333
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "21eb1d89a401905a6ad187ae2375af25a45160c8ea91ed903050bb570955d72f"
+intended_deembedded = false
+max_difference = 6.6801157755534005e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\library_idc_native_FCM8zj\\native_pec_16_1000000000\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7240145710472333
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

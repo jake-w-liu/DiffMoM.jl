@@ -1,0 +1,31 @@
+full_complex_s_gate = 0.005
+original_voltage_residual_gate = 1.0e-9
+scope = "public rectangular two-turn spiral with raw interior pins and physical PEC-cover returns versus independent literal eight-rectangle native GEO with explicit axial-source return strips; matched finite grids, isotropic dielectric, PEC/constant film; no native automatic terminal semantics, calibration, continuum convergence, underpass, measured-device or general native-loss claim"
+source_unchanged = true
+runs = []
+
+[source_sha256_before]
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarTerminalReturns.jl" = "df4786dd59e5fd78b36104f169f9e26d859ff26ae9a4cf9721471f6753000f9c"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\solver_spiral_fixture.jl" = "7554a4c65f45e6d45ff1c2fe6320fbb14f141063fb6a4a17e775788f81e13d4b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetIO.jl" = "f48558a77f92b3fa0f17f3328b7de0157e96e39ef63c748da8ac3813677b3797"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_solver_spiral_native.jl" = "1fc9cabb188af9e7bb5364ca52debe5d6f31ee2ad2e887b346fdd760eeabf282"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarFFTAssembly.jl" = "63e5c364bd37e919eb479ce243d05e616c570a6fcbe54d8fb8cdf7830912663e"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarPortContraction.jl" = "a081e419fb5efd0b631d6f7e7ed8240e53fbb420981f5d57a7a14284e40da3b9"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarGreens.jl" = "b1ecb9be5963609c6c3f67d74c5c99fbfbb130fc00f888280deb7b06dab19a93"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+
+[source_sha256_after]
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarTerminalReturns.jl" = "df4786dd59e5fd78b36104f169f9e26d859ff26ae9a4cf9721471f6753000f9c"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\solver_spiral_fixture.jl" = "7554a4c65f45e6d45ff1c2fe6320fbb14f141063fb6a4a17e775788f81e13d4b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetIO.jl" = "f48558a77f92b3fa0f17f3328b7de0157e96e39ef63c748da8ac3813677b3797"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_solver_spiral_native.jl" = "1fc9cabb188af9e7bb5364ca52debe5d6f31ee2ad2e887b346fdd760eeabf282"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarFFTAssembly.jl" = "63e5c364bd37e919eb479ce243d05e616c570a6fcbe54d8fb8cdf7830912663e"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarPortContraction.jl" = "a081e419fb5efd0b631d6f7e7ed8240e53fbb420981f5d57a7a14284e40da3b9"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarGreens.jl" = "b1ecb9be5963609c6c3f67d74c5c99fbfbb130fc00f888280deb7b06dab19a93"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"

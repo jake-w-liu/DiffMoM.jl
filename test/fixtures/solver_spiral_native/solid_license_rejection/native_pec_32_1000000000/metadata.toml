@@ -1,0 +1,15 @@
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_xIolvy\\native_pec_32_1000000000\\native_pec_32_1000000000.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\solver_spiral_native_xIolvy\\\\native_pec_32_1000000000\")"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+source_sha256 = "cbc03cb45e477c03bb11981f0e765bb48fa424554e154cd235fc471cb5e16200"
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+julia_version = "1.12.7"
+started_utc = "2026-10-04T01:43:25.426"
+box_halfcell_counts = [64, 64]
+response_nports = 2
+process_success = false
+deembedded = false
+ended_utc = "2026-10-04T01:43:26.055"
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\solver_spiral_native_xIolvy\\native_pec_32_1000000000.son"
+actual_cell_counts = [32, 32]
+
+[dependency_sha256]

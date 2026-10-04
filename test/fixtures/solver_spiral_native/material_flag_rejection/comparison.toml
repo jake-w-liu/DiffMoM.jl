@@ -1,0 +1,103 @@
+full_complex_s_gate = 0.005
+original_voltage_residual_gate = 1.0e-9
+scope = "public rectangular two-turn spiral with raw interior pins and physical PEC-cover returns versus independent literal eight-rectangle native GEO with explicit axial-source return strips; matched finite grids, isotropic dielectric, PEC/constant film; no native automatic terminal semantics, calibration, continuum convergence, underpass, measured-device or general native-loss claim"
+source_unchanged = true
+
+[[runs]]
+actual_grid = [32, 32]
+native_output_sha256 = "546d6a92fc6b20fbd3d128ab5ed5064fb989a420677567761f2dfec3dceffb64"
+max_s_singular_value = 1.0000000000000824
+sheet_resistance_ohm_per_square = 0.0
+basis_count = 426
+original_voltage_residual = 4.500731911366549e-12
+full_complex_s_error = 0.000202510904760802
+native_source_sha256 = "5a84c668a831cb36c18e6a6563292d9064fb371349b55220c892c1c2d0a21aff"
+reciprocity_error = 5.165818938893381e-15
+status = "PASS"
+frequency_hz = 1.0e9
+[[runs]]
+actual_grid = [32, 32]
+native_output_sha256 = "479b3a751b10300fe358aaa2c0b0891d2d3b8efa9b657a1316afcbc317f024ed"
+max_s_singular_value = 1.000000000000012
+sheet_resistance_ohm_per_square = 0.0
+basis_count = 426
+original_voltage_residual = 1.9297648748073227e-13
+full_complex_s_error = 0.0012663109039808792
+native_source_sha256 = "5ccf807a042306303eb43ce0593b6b23dc089fbfbe035915c722da436b67de2b"
+reciprocity_error = 1.4996232451726293e-14
+status = "PASS"
+frequency_hz = 5.0e9
+[[runs]]
+actual_grid = [32, 32]
+native_output_sha256 = "824e0abcf4edd728d0c3c9fd36dd5bffcce05f2d19e724578d37be41d5a2e87f"
+max_s_singular_value = 0.9999999999999978
+sheet_resistance_ohm_per_square = 0.0
+basis_count = 426
+original_voltage_residual = 2.331150844959066e-13
+full_complex_s_error = 0.002738490055736922
+native_source_sha256 = "d8c2a8f7dabde0708c8d2ec0def32c660489c9d2f57966f5a83b0b18b7df4256"
+reciprocity_error = 3.1264164235997256e-15
+status = "PASS"
+frequency_hz = 1.0e10
+[[runs]]
+actual_grid = [64, 64]
+native_output_sha256 = "9e8b3d9052cd96d99b9b2dd45d9710a779d5c2f1fac195fa01a81b5427549a96"
+max_s_singular_value = 1.0000000000000018
+sheet_resistance_ohm_per_square = 0.0
+basis_count = 1972
+original_voltage_residual = 9.104437069704423e-12
+full_complex_s_error = 0.0002560885387826793
+native_source_sha256 = "4b1bb25607c645433c5977c36d0eb20b18155a89fb306b6d595e39a038c70339"
+reciprocity_error = 9.881608620279816e-15
+status = "PASS"
+frequency_hz = 1.0e9
+[[runs]]
+actual_grid = [64, 64]
+native_output_sha256 = "07b8f7050e269c960c0edfb7853608e4b16ef037dc5b141c4bf47990a2beddda"
+max_s_singular_value = 1.0000000000000107
+sheet_resistance_ohm_per_square = 0.0
+basis_count = 1972
+original_voltage_residual = 4.752918863591765e-13
+full_complex_s_error = 0.001551546394742122
+native_source_sha256 = "00b449b6f3bb29268a24e336ff659c432f3b3fb0462116667a4f612939ada9bc"
+reciprocity_error = 8.772913566062459e-15
+status = "PASS"
+frequency_hz = 5.0e9
+[[runs]]
+actual_grid = [64, 64]
+native_output_sha256 = "f1624308776cd60ecc9834cf52b7961a9f8394f232d966e1dc5dae75d69ef0cd"
+max_s_singular_value = 1.0000000000000053
+sheet_resistance_ohm_per_square = 0.0
+basis_count = 1972
+original_voltage_residual = 5.680580325275133e-13
+full_complex_s_error = 0.003286779493902315
+native_source_sha256 = "e5a358e095b47caa45954d57149afe3f5eb00a1a8063830a0c04adad73f5a29e"
+reciprocity_error = 3.3274293477538095e-15
+status = "PASS"
+frequency_hz = 1.0e10
+
+[source_sha256_before]
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarTerminalReturns.jl" = "df4786dd59e5fd78b36104f169f9e26d859ff26ae9a4cf9721471f6753000f9c"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\solver_spiral_fixture.jl" = "2ddef0789d17016af91e17c81582eab40dd938761ad1d7a323331ef4047b4ecc"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetIO.jl" = "f48558a77f92b3fa0f17f3328b7de0157e96e39ef63c748da8ac3813677b3797"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_solver_spiral_native.jl" = "5f883a50cd033a4c64b5e1e35a4b971c96dc9adf2cdbb598cfb38aa60085897f"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarFFTAssembly.jl" = "63e5c364bd37e919eb479ce243d05e616c570a6fcbe54d8fb8cdf7830912663e"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarPortContraction.jl" = "a081e419fb5efd0b631d6f7e7ed8240e53fbb420981f5d57a7a14284e40da3b9"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarGreens.jl" = "b1ecb9be5963609c6c3f67d74c5c99fbfbb130fc00f888280deb7b06dab19a93"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
+
+[source_sha256_after]
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarTerminalReturns.jl" = "df4786dd59e5fd78b36104f169f9e26d859ff26ae9a4cf9721471f6753000f9c"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\solver_spiral_fixture.jl" = "2ddef0789d17016af91e17c81582eab40dd938761ad1d7a323331ef4047b4ecc"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSolve.jl" = "d9d204c2d200fe8c8482d632b1ec8ef009eb43fdeb1ffe24b01ddc22f944017b"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarSonnetIO.jl" = "f48558a77f92b3fa0f17f3328b7de0157e96e39ef63c748da8ac3813677b3797"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLibrary.jl" = "54d3328bb16cf70bb4c4597bebc7e9172e52ea7ad3619dbcd2ee8196c747ae53"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\validate_solver_spiral_native.jl" = "5f883a50cd033a4c64b5e1e35a4b971c96dc9adf2cdbb598cfb38aa60085897f"
+"C:\\Users\\User\\DiffMoM.jl\\validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarFFTAssembly.jl" = "63e5c364bd37e919eb479ce243d05e616c570a6fcbe54d8fb8cdf7830912663e"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarPortContraction.jl" = "a081e419fb5efd0b631d6f7e7ed8240e53fbb420981f5d57a7a14284e40da3b9"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarGreens.jl" = "b1ecb9be5963609c6c3f67d74c5c99fbfbb130fc00f888280deb7b06dab19a93"
+"C:\\Users\\User\\DiffMoM.jl\\src\\planar\\PlanarLayout.jl" = "e79250a8a454c781e1002cd7c43a6f3aceb5d7908f08670e86914444a68255b4"
