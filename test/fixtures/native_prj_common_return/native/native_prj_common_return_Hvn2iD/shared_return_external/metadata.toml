@@ -1,0 +1,50 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Hvn2iD\\shared_return_external.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:38:13.051"
+response_nports = 4
+julia_version = "1.13.1"
+process_success = true
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+started_utc = "2026-10-04T02:38:12.077"
+source_sha256 = "1e35c8008ae0ced13a28a8b6f78fe1d603c6ab561290baf6800494a4e57152af"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Hvn2iD\\shared_return_external\\shared_return_external.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_prj_common_return_Hvn2iD\\\\shared_return_external\")"
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "44712f872a1839f2e0999d7c00239118335df1e3afd2a150c492683858ac1d91"
+intended_deembedded = false
+max_difference = 0.00010910759172096164
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Hvn2iD\\shared_return_external\\native_parent.s4p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0]]
+max_printed_bound_ratio = 0.9125496056613286
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]
+status = "PASS"
+reference_contract = "native final DEF reference"
+
+[touchstone_selected_log_checks."native_parent.s4p"]
+output_sha256 = "44712f872a1839f2e0999d7c00239118335df1e3afd2a150c492683858ac1d91"
+intended_deembedded = false
+max_difference = 0.00010910759172096164
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Hvn2iD\\shared_return_external\\native_parent.s4p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0], [50.0, 50.0, 50.0, 50.0]]
+max_printed_bound_ratio = 0.9125496056613286
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]
+status = "PASS"
+reference_contract = "native final DEF reference"
+
+[dependency_sha256]
+"child.son" = "ad6c6cfeb75bf0156960f33d287b1e45ab35baaf5c280c90b4cad3f9fbaf56f6"

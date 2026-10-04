@@ -1,0 +1,31 @@
+
+Actual native PRJ implicit/explicit/floating/shared common return: Test Failed at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:89
+  Expression: ≈(s * ones(case.n), ones(case.n), atol = 1.0e-12)
+   Evaluated: ComplexF64[0.9999999999995 + 4.999889391399392e-13im, 1.0000000000001998 - 1.9997892231060632e-13im, 0.9999999999995 + 4.000133557724439e-13im, 1.0 + 5.000444502911705e-13im] ≈ [1.0, 1.0, 1.0, 1.0] (atol=1.0e-12)
+  Stacktrace:
+   [1] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:758 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:89 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [4] main()
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:75
+
+Actual native PRJ implicit/explicit/floating/shared common return: Test Failed at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:89
+  Expression: ≈(s * ones(case.n), ones(case.n), atol = 1.0e-12)
+   Evaluated: ComplexF64[1.0000000000006 + 2.999822612537173e-13im, 0.9999999999995 - 3.9998560019682827e-13im, 0.9999999999998 + 6.999956170261612e-13im, 0.9999999999999001 - 4.001243780749064e-13im] ≈ [1.0, 1.0, 1.0, 1.0] (atol=1.0e-12)
+  Stacktrace:
+   [1] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:758 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:89 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [4] main()
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:75
+Test Summary:                                                     | Pass  Fail  Total  Time
+Actual native PRJ implicit/explicit/floating/shared common return |   64     2     66  6.7s
+RNG of the outermost testset: Random.Xoshiro(0x406d2bd3c75c8545, 0x851dd087fb6724ac, 0x6cf81a1e5e25f155, 0x6fd4c2c97f6f3410, 0xff7073860c5a1662)
+ERROR: LoadError: Some tests did not pass: 64 passed, 2 failed, 0 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:101

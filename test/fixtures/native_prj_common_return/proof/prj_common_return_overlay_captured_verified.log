@@ -1,0 +1,10 @@
+Test Summary:                                            | Pass  Total   Time
+Preserved public before failure: valid common-return PRJ |   12     12  10.0s
+Test Summary:                                                      | Pass  Total  Time
+Isolated common-return overlay: actual native complete S and nodes |   99     99  2.3s
+Test Summary:                                         | Pass  Total  Time
+Malformed return records reject before model response |    8      8  0.0s
+Test Summary:                                                         | Pass  Total   Time
+Physical calibrated geometry common-return voltage/current projection |    9      9  17.5s
+Test Summary:                                                             | Pass  Total   Time
+Automatic bounded recursive SPROJ common return and loaded physical nodes |   19     19  13.7s

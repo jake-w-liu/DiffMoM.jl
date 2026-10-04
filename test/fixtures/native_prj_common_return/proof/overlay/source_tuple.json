@@ -1,0 +1,16 @@
+{
+  "source": {
+    "PlanarSonnetIO.jl": "0342c9cdb79ca5907fe6e388f6012b39e2e8c2acd80d2067bf3efe6843d959ae",
+    "PlanarSonnetProjectFiles.jl": "3161025143e60d4a714b3775a480fc329efbd15614bb9a42caaaea484f021db0"
+  },
+  "overlay": {
+    "circuit_return_function.jl": "30d2d5dd842cab671dd58ddab8fd4b15aff618a2a93f0cd3ea128c223915e81e",
+    "install_overlay.jl": "21983da7da6ddaa682d155d9ba1e84872bc833edbffb289d6882351b83e5f91e",
+    "PlanarSonnetIO.patch": "d37112b7c869f1a7e542b54fa57b66c0b520745860bdacda6e9784f3d3b5971f",
+    "PlanarSonnetIO_source_before.jl": "0342c9cdb79ca5907fe6e388f6012b39e2e8c2acd80d2067bf3efe6843d959ae",
+    "PlanarSonnetProjectFiles.patch": "171308f9f1f309ac4051fdc3d9b4949e3afbeadefe6d63508daa5c3036581825",
+    "PlanarSonnetProjectFiles_source_before.jl": "3161025143e60d4a714b3775a480fc329efbd15614bb9a42caaaea484f021db0",
+    "project_return_function.jl": "2f72e8346355ba2aa5e500a0fc028fdd0cf75cefaa09916198a0c026eee765bf",
+    "source_tuple.json": "fb2a89e55ef8f743c1c6c89f552f2287e9ed2497d63cf8a067559956d759a2da"
+  }
+}

@@ -1,0 +1,12 @@
+Run 1:  Sun Oct 04 10:37:26 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_prj_common_return_mTiHqk\implicit_ground\implicit_ground.son.
+
+    Begin circuit-theory simulation using frequency sweep:
+      Linear Start = 0.25, Stop = 0.35, Step = 0.05 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 10:37:26 2026.

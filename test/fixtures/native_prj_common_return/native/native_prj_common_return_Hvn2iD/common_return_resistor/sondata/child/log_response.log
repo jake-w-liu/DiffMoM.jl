@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 10:38:10 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_prj_common_return_Hvn2iD\common_return_resistor\child.son.
+
+    Frequency:  0.25 GHz
+
+      S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.25000000 0.207753 91.504 0.922731 14.334 0.922731 14.334 0.251843 93.778
+
+    Frequency:  0.3 GHz
+      0.30000000 0.069502 50.410 0.950550 3.5535 0.950550 3.5535 0.078106 56.072
+
+    Frequency:  0.35 GHz
+      0.35000000 0.093903 -65.38 0.947694 -5.687 0.947694 -5.687 0.109834 -70.13
+
+Em simulation completed Sun Oct 04 10:38:10 2026.

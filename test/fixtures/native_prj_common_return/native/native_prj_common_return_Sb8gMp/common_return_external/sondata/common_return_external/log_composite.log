@@ -1,0 +1,37 @@
+Run 1:  Sun Oct 04 10:39:20 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_prj_common_return_Sb8gMp\common_return_external\common_return_external.son.
+
+    Begin circuit-theory simulation using frequency sweep:
+      Linear Start = 0.25, Stop = 0.35, Step = 0.05 GHZ
+
+    Frequency:  0.25 GHz
+      Frequency completed Sun Oct 04 10:39:20 2026.
+
+      S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      0.25000000 0.153967 112.25 0.850429 10.621 0.372871 -53.37
+                 0.850429 10.621 0.190312 115.04 0.410158 -53.37
+                 0.372871 -53.37 0.410158 -53.37 0.823914 49.704
+      Total time per frequency:  0.003 seconds.
+
+    Frequency:  0.3 GHz
+      Frequency completed Sun Oct 04 10:39:20 2026.
+      0.30000000 0.064585 53.725 0.943774 3.4792 0.111111 -79.76
+                 0.943774 3.4792 0.072680 60.093 0.122222 -79.76
+                 0.111111 -79.76 0.122222 -79.76 0.985638 13.472
+      Total time per frequency:  0.002 seconds.
+
+    Frequency:  0.35 GHz
+      Frequency completed Sun Oct 04 10:39:20 2026.
+      0.35000000 0.083250 -72.83 0.931156 -5.392 0.173899 73.845
+                 0.931156 -5.392 0.098246 -78.41 0.191289 73.845
+                 0.173899 73.845 0.191289 73.845 0.964440 -21.33
+      Total time per frequency:  0.001 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 3 frequencies:  0.006 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 10:39:20 2026.

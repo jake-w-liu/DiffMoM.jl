@@ -565,8 +565,11 @@ function sonnet_planar_circuit(p::SonnetNetlistProject;project_response=nothing,
                 fileindex=findfirst(token->endswith(lowercase(token),".son"),q)
                 fileindex===nothing && _sonnet_error(p.source,row.line,"PRJ lacks a .son file")
                 fileindex+2<=length(q) || _sonnet_error(p.source,row.line,"PRJ lacks port count/reference data")
-                terminals=[nodemap[parse(Int,token)] for token in q[2:fileindex-1]]
-                parse(Int,q[fileindex+1])==length(terminals) || _sonnet_error(p.source,row.line,"PRJ port count mismatch")
+                count=parse(Int,q[fileindex+1])
+                count>0 && fileindex-2 in (count,count+1) ||
+                    _sonnet_error(p.source,row.line,"PRJ requires its declared pins and an optional common-return node")
+                reference=fileindex-2==count+1 ? nodemap[parse(Int,q[fileindex-1])] : 0
+                terminals=[(nodemap[parse(Int,token)],reference) for token in q[2:count+1]]
                 path=abspath(joinpath(dirname(p.source),q[fileindex]))
                 callback=let path=path,provider=project_response
                     f->provider(path,f)

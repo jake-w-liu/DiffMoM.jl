@@ -1,0 +1,582 @@
+[
+  {
+    "name": "",
+    "type": "TitleBar",
+    "enabled": true
+  },
+  {
+    "name": "\u7cfb\u7d71",
+    "type": "MenuBar",
+    "enabled": true
+  },
+  {
+    "name": "\u7cfb\u7d71",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "\u6700\u5c0f\u5316",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "\u6700\u5927\u5316",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "\u95dc\u9589",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "",
+    "type": "Custom",
+    "enabled": true
+  },
+  {
+    "name": "ckt_flag0_push0",
+    "type": "Tab",
+    "enabled": true
+  },
+  {
+    "name": "Session",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "dxf_filter_pec",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "rhp_raw_currents",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "solid_.001",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "output_control",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "out_ND",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "Graph1",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "Graph2",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "Graph3",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "Graph4",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "Graph5",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "Graph6",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "volume_currents",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "volume_currents_pec",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "volume_currents_pec",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "trapezoid_128",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "current_axis_x",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "current_axis_x",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "current_axis_y",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "current_axis_y",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "current_axis_y",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "native_gui_surface",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "sfc_zero",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "sfc_zero",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "pec",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "surface_n80_f1000000000_m320",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "planar_order_probe",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "native_loaded_variable_OHSQ",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "ckt_flag0_push0",
+    "type": "TabItem",
+    "enabled": true
+  },
+  {
+    "name": "Scroll Left",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Scroll Right",
+    "type": "Button",
+    "enabled": false
+  },
+  {
+    "name": "",
+    "type": "Custom",
+    "enabled": true
+  },
+  {
+    "name": "",
+    "type": "Window",
+    "enabled": true
+  },
+  {
+    "name": "",
+    "type": "Tree",
+    "enabled": true
+  },
+  {
+    "name": "Element",
+    "type": "Header",
+    "enabled": true
+  },
+  {
+    "name": "Nodes",
+    "type": "Header",
+    "enabled": true
+  },
+  {
+    "name": "Description",
+    "type": "Header",
+    "enabled": true
+  },
+  {
+    "name": "PARENT",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "1 2 ",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Main Network",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "PRJ",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "1 2",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "ckt_flag0_push0_child.sonckt_flag0_push0.son",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "File",
+    "type": "ToolBar",
+    "enabled": true
+  },
+  {
+    "name": "New",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Open",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Save",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Edit",
+    "type": "ToolBar",
+    "enabled": true
+  },
+  {
+    "name": "Delete",
+    "type": "Button",
+    "enabled": false
+  },
+  {
+    "name": "Cut",
+    "type": "Button",
+    "enabled": false
+  },
+  {
+    "name": "Copy",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Paste",
+    "type": "Button",
+    "enabled": false
+  },
+  {
+    "name": "",
+    "type": "Group",
+    "enabled": true
+  },
+  {
+    "name": "Move Up",
+    "type": "Button",
+    "enabled": false
+  },
+  {
+    "name": "Move Down",
+    "type": "Button",
+    "enabled": false
+  },
+  {
+    "name": "Launch",
+    "type": "ToolBar",
+    "enabled": true
+  },
+  {
+    "name": "Analyze",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Graph",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Tools",
+    "type": "ToolBar",
+    "enabled": true
+  },
+  {
+    "name": "Add Modeled",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Add Project",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Add Data",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Add User Model",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Add Network",
+    "type": "Button",
+    "enabled": false
+  },
+  {
+    "name": "",
+    "type": "Group",
+    "enabled": true
+  },
+  {
+    "name": "New Network",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Circuit",
+    "type": "ToolBar",
+    "enabled": true
+  },
+  {
+    "name": "Settings",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Session",
+    "type": "Window",
+    "enabled": true
+  },
+  {
+    "name": "",
+    "type": "Tree",
+    "enabled": true
+  },
+  {
+    "name": "Session",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "ckt_flag0_push0",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Netlist Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "current_axis_x",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Current View",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "current_axis_y",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "3D Current View",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Current View",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "dxf_filter_pec",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "native_gui_surface",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "native_loaded_variable_OHSQ",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "out_ND",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "output_control",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "pec",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Current View",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "planar_order_probe",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "rhp_raw_currents",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Project Editor",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "sfc_zero",
+    "type": "TreeItem",
+    "enabled": true
+  },
+  {
+    "name": "Close",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "Float",
+    "type": "Button",
+    "enabled": true
+  },
+  {
+    "name": "",
+    "type": "MenuBar",
+    "enabled": true
+  },
+  {
+    "name": "File",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "Edit",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "Insert",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "Object",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "Circuit",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "Launch",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "Window",
+    "type": "MenuItem",
+    "enabled": true
+  },
+  {
+    "name": "Help",
+    "type": "MenuItem",
+    "enabled": true
+  }
+]

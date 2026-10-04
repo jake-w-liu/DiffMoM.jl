@@ -1,0 +1,45 @@
+scope = "Actual native circuit PRJ common-return node semantics; geometry calibration and SMD project licensing are distinct and unverified"
+runner_sha256 = "a12ccff0c05246bc21f6814cb8c3206890859383ce23bd4f9935278f1446bae6"
+
+[[cases]]
+full_s_max_error = 4.860449543570124e-13
+ports = 2
+source_sha256 = "c7f2fede755434db12b6ca1e1de1ec1d43a501d169ad6a228f259df965788059"
+return_shunt = 0.0
+case = "implicit_ground"
+blocks = [[1, 2, 0]]
+[[cases]]
+full_s_max_error = 4.860449543570124e-13
+ports = 2
+source_sha256 = "4c43f2b71ae78297ab9a5ddc9c3c57913952bb7b01d6c7d4e3f12e79d0bf7948"
+return_shunt = 0.0
+case = "explicit_ground"
+blocks = [[1, 2, 0]]
+[[cases]]
+full_s_max_error = 3.7535766831096076e-13
+ports = 2
+source_sha256 = "ada86e0f58342011beadb3ced28b015bb60b2bb0dac51a23f794dcb618c1b4e9"
+return_shunt = 13.0
+case = "common_return_resistor"
+blocks = [[1, 2, 7]]
+[[cases]]
+full_s_max_error = 4.581301856663203e-13
+ports = 3
+source_sha256 = "e31a8620a909cc7a047704e692b4057919890579f59819b2ed58c7c36c7423c1"
+return_shunt = 0.0
+case = "common_return_external"
+blocks = [[1, 2, 3]]
+[[cases]]
+full_s_max_error = 5.405239819588744e-13
+ports = 3
+source_sha256 = "5a4c7a913f392077a54c602d8021da913b12a802a459648c2dfd41d6d54702db"
+return_shunt = 13.0
+case = "shared_return_resistor"
+blocks = [[1, 2, 7], [2, 3, 7]]
+[[cases]]
+full_s_max_error = 5.625524785616477e-13
+ports = 4
+source_sha256 = "1e35c8008ae0ced13a28a8b6f78fe1d603c6ab561290baf6800494a4e57152af"
+return_shunt = 0.0
+case = "shared_return_external"
+blocks = [[1, 2, 4], [2, 3, 4]]

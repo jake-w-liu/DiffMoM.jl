@@ -1,0 +1,16 @@
+full_s_native_max_error = 5.611150340921455e-13
+native_evidence = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_77wGmW"
+
+[source_after]
+"PlanarSonnetIO.jl" = "72bff147b82f57f46c60bd53adfcadd56095f845a82edc8b7ba976e1f2583e7d"
+"PlanarCircuit.jl" = "b838b7b9eb14ca6c98a46d08ab3e5e9f22917fb514ba66c0d9a6838d27c1c1a8"
+"PlanarSonnetProjectFiles.jl" = "7850d5dddf8d97d1543a0f7669ca78276d81ec741529637129ecd2927a554940"
+
+[source_before]
+"PlanarSonnetIO.jl" = "72bff147b82f57f46c60bd53adfcadd56095f845a82edc8b7ba976e1f2583e7d"
+"PlanarCircuit.jl" = "b838b7b9eb14ca6c98a46d08ab3e5e9f22917fb514ba66c0d9a6838d27c1c1a8"
+"PlanarSonnetProjectFiles.jl" = "7850d5dddf8d97d1543a0f7669ca78276d81ec741529637129ecd2927a554940"
+
+[captured_runtime_baseline]
+PlanarSonnetIO = "0342c9cdb79ca5907fe6e388f6012b39e2e8c2acd80d2067bf3efe6843d959ae"
+PlanarSonnetProjectFiles = "3161025143e60d4a714b3775a480fc329efbd15614bb9a42caaaea484f021db0"

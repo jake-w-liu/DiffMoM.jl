@@ -1,0 +1,50 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Sb8gMp\\common_return_resistor.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:39:19.049"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+started_utc = "2026-10-04T02:39:18.066"
+source_sha256 = "ada86e0f58342011beadb3ced28b015bb60b2bb0dac51a23f794dcb618c1b4e9"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Sb8gMp\\common_return_resistor\\common_return_resistor.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_prj_common_return_Sb8gMp\\\\common_return_resistor\")"
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "b471eec0d63229908fb5742cbcb2a11c1be22ea64f50f7d05bd8d9f41a8bcb5d"
+intended_deembedded = false
+max_difference = 4.3728958625154396e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Sb8gMp\\common_return_resistor\\native_parent.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.5008829365133236
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native final DEF reference"
+
+[touchstone_selected_log_checks."native_parent.s2p"]
+output_sha256 = "b471eec0d63229908fb5742cbcb2a11c1be22ea64f50f7d05bd8d9f41a8bcb5d"
+intended_deembedded = false
+max_difference = 4.3728958625154396e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_Sb8gMp\\common_return_resistor\\native_parent.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0], [50.0, 50.0], [50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0], [50.0, 50.0], [50.0, 50.0]]
+max_printed_bound_ratio = 0.5008829365133236
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+status = "PASS"
+reference_contract = "native final DEF reference"
+
+[dependency_sha256]
+"child.son" = "ad6c6cfeb75bf0156960f33d287b1e45ab35baaf5c280c90b4cad3f9fbaf56f6"

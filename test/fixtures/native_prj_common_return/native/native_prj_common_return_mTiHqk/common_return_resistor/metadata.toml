@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_mTiHqk\\common_return_resistor.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:37:28.041"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+started_utc = "2026-10-04T02:37:27.056"
+source_sha256 = "ada86e0f58342011beadb3ced28b015bb60b2bb0dac51a23f794dcb618c1b4e9"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_mTiHqk\\common_return_resistor\\common_return_resistor.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_prj_common_return_mTiHqk\\\\common_return_resistor\")"
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "8013abb5fb8ef877918338bad6e676d99ba5296c31353cb5c70dee40f42e5ec6"
+intended_deembedded = false
+max_difference = 0.030728354394734606
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+error = "external Touchstone numbers disagree with intended raw native log beyond printed rounding intervals"
+source_frequency_unit = "GHZ"
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_mTiHqk\\common_return_resistor\\native_parent.s2p"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 11543.695201469596
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "FAIL"
+reference_contract = "native final DEF reference"
+
+[touchstone_selected_log_checks."native_parent.s2p"]
+output_sha256 = "8013abb5fb8ef877918338bad6e676d99ba5296c31353cb5c70dee40f42e5ec6"
+intended_deembedded = false
+max_difference = 0.030728354394734606
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_prj_common_return_mTiHqk\\common_return_resistor\\native_parent.s2p"
+source_frequency_unit = "GHZ"
+error = "external Touchstone numbers disagree with intended raw native log beyond printed rounding intervals"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 11543.695201469596
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "FAIL"
+reference_contract = "native final DEF reference"
+
+[dependency_sha256]
+"child.son" = "643dcdfca26d9f1d074c7a7aa19cefe8b1379ebb5b00ec3646834a4b143f2956"

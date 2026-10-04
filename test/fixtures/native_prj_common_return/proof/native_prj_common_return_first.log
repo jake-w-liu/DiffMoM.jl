@@ -1,0 +1,30 @@
+
+Actual native PRJ implicit/explicit/floating/shared common return: Error During Test at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:73
+  Got exception outside of a @test
+  external Touchstone numbers disagree with intended raw native log beyond printed rounding intervals
+  Stacktrace:
+    [1] error(s::String)
+      @ Base .\error.jl:44
+    [2] checked_native_touchstone(reference::@NamedTuple{rows::Vector{Vector{Float64}}, row_tokens::Vector{Vector{String}}, z0::Dict{Tuple{Int64, Float64}, ComplexF64}, output_dir::String, logf::String}, path::String; deembedded::Bool, frequency_scale::Nothing, expected_z0::Nothing)
+      @ Main.SonnetReference C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\sonnet_reference.jl:295
+    [3] checked_native_touchstone
+      @ C:\Users\User\DiffMoM.jl\validation\sonnet_stripline\sonnet_reference.jl:223 [inlined]
+    [4] macro expansion
+      @ C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:77 [inlined]
+    [5] macro expansion
+      @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+    [6] main()
+      @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:74
+    [7] top-level scope
+      @ C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:100
+    [8] include(mod::Module, _path::String)
+      @ Base .\Base.jl:309
+    [9] exec_options(opts::Base.JLOptions)
+      @ Base .\client.jl:344
+   [10] _start()
+      @ Base .\client.jl:577
+Test Summary:                                                     | Pass  Error  Total  Time
+Actual native PRJ implicit/explicit/floating/shared common return |   20      1     21  2.9s
+RNG of the outermost testset: Random.Xoshiro(0x074ab413170efded, 0xc05d76c535d8b20d, 0xba441fbdfaf01823, 0x152586dcf1c5c653, 0x7fbe67233bb1f908)
+ERROR: LoadError: Some tests did not pass: 20 passed, 0 failed, 1 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:100

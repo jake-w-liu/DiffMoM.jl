@@ -1,0 +1,11 @@
+--- a/src/planar/PlanarSonnetProjectFiles.jl
++++ b/src/planar/PlanarSonnetProjectFiles.jl
+@@ -131,7 +131,7 @@
+                 fileindex!==nothing && fileindex>=3 && length(t) in (fileindex+2,fileindex+5) ||
+                     _sonnet_error(p.source,row.line,"linear PRJ requires literal path, port count and inheritance flag")
+                 count=tryparse(Int,t[fileindex+1])
+-                count!==nothing && count==fileindex-2 && count>0 && t[fileindex+2] in ("0","1") ||
++                count!==nothing && count>0 && fileindex-2 in (count,count+1) && t[fileindex+2] in ("0","1") ||
+                     _sonnet_error(p.source,row.line,"invalid linear PRJ port count or inheritance flag")
+                 length(t)==fileindex+2 || t[fileindex+3]=="DATE" ||
+                     _sonnet_error(p.source,row.line,"unrepresented linear PRJ parameter bindings")

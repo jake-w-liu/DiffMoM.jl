@@ -1,0 +1,24 @@
+
+Preserved public before failure: valid common-return PRJ: Test Failed at C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:36
+  Expression: occursin("invalid linear PRJ port count", sprint(showerror, error))
+   Evaluated: occursin("invalid linear PRJ port count", "ArgumentError: C:\\Users\\User\\AppData\\Local\\Temp\\jl_jf5WHH\\device.son:13: PRJ port count mismatch")
+  Stacktrace:
+   [1] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:758 [inlined]
+   [2] (::var"#14#15")(directory::String)
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:36
+   [3] mktempdir(fn::var"#14#15", parent::String; prefix::String)
+     @ Base.Filesystem .\file.jl:941
+   [4] mktempdir(fn::Function, parent::String)
+     @ Base.Filesystem .\file.jl:937
+   [5] top-level scope
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:16
+   [6] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [7] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:23 [inlined]
+Test Summary:                                            | Pass  Fail  Total   Time
+Preserved public before failure: valid common-return PRJ |   11     1     12  11.7s
+RNG of the outermost testset: Random.Xoshiro(0xf2fd9248c9162d60, 0x6ff0fd80ba51c823, 0x7caa94a8a8db7174, 0x6c4acc8ba61c9e46, 0xa83109e7cf1d10f7)
+ERROR: LoadError: Some tests did not pass: 11 passed, 1 failed, 0 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:15

@@ -1,0 +1,37 @@
+Run 1:  Sun Oct 04 10:38:12 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_prj_common_return_Hvn2iD\shared_return_resistor\shared_return_resistor.son.
+
+    Begin circuit-theory simulation using frequency sweep:
+      Linear Start = 0.25, Stop = 0.35, Step = 0.05 GHZ
+
+    Frequency:  0.25 GHz
+      Frequency completed Sun Oct 04 10:38:12 2026.
+
+      S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      0.25000000 0.341566 156.25 0.576313 15.222 0.517664 17.587
+                 0.576313 15.222 0.422467 156.80 0.569430 17.587
+                 0.517664 17.587 0.569430 17.587 0.384608 151.71
+      Total time per frequency:  0.002 seconds.
+
+    Frequency:  0.3 GHz
+      Frequency completed Sun Oct 04 10:38:12 2026.
+      0.30000000 0.242057 169.49 0.640051 4.3522 0.581427 4.9670
+                 0.640051 4.3522 0.302726 169.83 0.639569 4.9670
+                 0.581427 4.9670 0.639569 4.9670 0.247047 166.31
+      Total time per frequency:  0.002 seconds.
+
+    Frequency:  0.35 GHz
+      Frequency completed Sun Oct 04 10:38:12 2026.
+      0.35000000 0.256771 -164.5 0.632350 -6.856 0.573759 -7.836
+                 0.632350 -6.856 0.320340 -165.0 0.631135 -7.836
+                 0.573759 -7.836 0.631135 -7.836 0.268353 -160.2
+      Total time per frequency:  0.003 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 3 frequencies:  0.007 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 10:38:12 2026.

@@ -1,0 +1,53 @@
+
+Actual native PRJ implicit/explicit/floating/shared common return: Error During Test at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:99
+  Test threw exception
+  Expression: ≈(rawsid[f] * ones(case.n), ones(case.n), atol = 1.0e-12)
+  KeyError: key 2.5e8 not found
+  Stacktrace:
+   [1] getindex
+     @ .\dict.jl:479 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:755 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:99 [inlined]
+   [4] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [5] main()
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:75
+
+Actual native PRJ implicit/explicit/floating/shared common return: Error During Test at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:99
+  Test threw exception
+  Expression: ≈(rawsid[f] * ones(case.n), ones(case.n), atol = 1.0e-12)
+  KeyError: key 3.0e8 not found
+  Stacktrace:
+   [1] getindex
+     @ .\dict.jl:479 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:755 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:99 [inlined]
+   [4] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [5] main()
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:75
+
+Actual native PRJ implicit/explicit/floating/shared common return: Error During Test at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:99
+  Test threw exception
+  Expression: ≈(rawsid[f] * ones(case.n), ones(case.n), atol = 1.0e-12)
+  KeyError: key 3.5e8 not found
+  Stacktrace:
+   [1] getindex
+     @ .\dict.jl:479 [inlined]
+   [2] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:755 [inlined]
+   [3] macro expansion
+     @ C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:99 [inlined]
+   [4] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+   [5] main()
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:75
+Test Summary:                                                     | Pass  Error  Total  Time
+Actual native PRJ implicit/explicit/floating/shared common return |   63      3     66  7.4s
+RNG of the outermost testset: Random.Xoshiro(0xa0bea017350748a5, 0x67d5dbb06e4eb099, 0x6be019c16ac2c969, 0xa100341fcdca8979, 0x5aa220ce364b0bcc)
+ERROR: LoadError: Some tests did not pass: 63 passed, 0 failed, 3 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\validate_native_prj_common_return.jl:111

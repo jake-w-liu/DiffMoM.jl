@@ -1,0 +1,176 @@
+[
+  {
+    "name": "",
+    "type": "TitleBar",
+    "enabled": true,
+    "rect": "(L387, T111, R909, B139)"
+  },
+  {
+    "name": "\u7cfb\u7d71",
+    "type": "MenuBar",
+    "enabled": true,
+    "rect": "(L371, T116, R393, B138)"
+  },
+  {
+    "name": "\u7cfb\u7d71",
+    "type": "MenuItem",
+    "enabled": true,
+    "rect": "(L371, T116, R393, B138)"
+  },
+  {
+    "name": "\u95dc\u9589",
+    "type": "Button",
+    "enabled": true,
+    "rect": "(L876, T109, R910, B139)"
+  },
+  {
+    "name": "",
+    "type": "Group",
+    "enabled": true,
+    "rect": "(L382, T150, R898, B201)"
+  },
+  {
+    "name": "File:",
+    "type": "Text",
+    "enabled": true,
+    "rect": "(L382, T150, R402, B172)"
+  },
+  {
+    "name": "ckt_flag0_push0_child.son",
+    "type": "Edit",
+    "enabled": true,
+    "rect": "(L408, T151, R869, B171)"
+  },
+  {
+    "name": "...",
+    "type": "Button",
+    "enabled": true,
+    "rect": "(L875, T150, R898, B172)"
+  },
+  {
+    "name": "Update",
+    "type": "Button",
+    "enabled": false,
+    "rect": "(L408, T178, R483, B201)"
+  },
+  {
+    "name": "Node Assignment",
+    "type": "Text",
+    "enabled": true,
+    "rect": "(L382, T227, R638, B239)"
+  },
+  {
+    "name": "Element Parameters",
+    "type": "Text",
+    "enabled": true,
+    "rect": "(L644, T227, R898, B239)"
+  },
+  {
+    "name": "",
+    "type": "Table",
+    "enabled": true,
+    "rect": "(L382, T245, R638, B517)"
+  },
+  {
+    "name": "",
+    "type": "Pane",
+    "enabled": true,
+    "rect": "(L0, T0, R0, B0)"
+  },
+  {
+    "name": "Port",
+    "type": "Header",
+    "enabled": true,
+    "rect": "(L383, T246, R510, B269)"
+  },
+  {
+    "name": "Node",
+    "type": "Header",
+    "enabled": true,
+    "rect": "(L510, T246, R637, B269)"
+  },
+  {
+    "name": "1",
+    "type": "DataItem",
+    "enabled": true,
+    "rect": "(L383, T269, R509, B298)"
+  },
+  {
+    "name": "2",
+    "type": "DataItem",
+    "enabled": true,
+    "rect": "(L510, T269, R636, B298)"
+  },
+  {
+    "name": "2",
+    "type": "DataItem",
+    "enabled": true,
+    "rect": "(L383, T299, R509, B328)"
+  },
+  {
+    "name": "3",
+    "type": "DataItem",
+    "enabled": true,
+    "rect": "(L510, T299, R636, B328)"
+  },
+  {
+    "name": "Ref",
+    "type": "DataItem",
+    "enabled": true,
+    "rect": "(L383, T329, R509, B358)"
+  },
+  {
+    "name": "Gnd",
+    "type": "DataItem",
+    "enabled": true,
+    "rect": "(L510, T329, R636, B358)"
+  },
+  {
+    "name": "",
+    "type": "Tree",
+    "enabled": true,
+    "rect": "(L644, T245, R898, B517)"
+  },
+  {
+    "name": "Parameter",
+    "type": "Header",
+    "enabled": true,
+    "rect": "(L645, T246, R708, B266)"
+  },
+  {
+    "name": "Value",
+    "type": "Header",
+    "enabled": true,
+    "rect": "(L708, T246, R897, B266)"
+  },
+  {
+    "name": "",
+    "type": "Group",
+    "enabled": true,
+    "rect": "(L382, T523, R898, B546)"
+  },
+  {
+    "name": "OK",
+    "type": "Button",
+    "enabled": true,
+    "rect": "(L661, T523, R736, B546)"
+  },
+  {
+    "name": "Cancel",
+    "type": "Button",
+    "enabled": true,
+    "rect": "(L742, T523, R817, B546)"
+  },
+  {
+    "name": "Help",
+    "type": "Button",
+    "enabled": true,
+    "rect": "(L823, T523, R898, B546)"
+  },
+  {
+    "name": "",
+    "type": "Thumb",
+    "enabled": true,
+    "rect": "(L896, T544, R909, B557)"
+  }
+]

@@ -1,0 +1,42 @@
+Test Summary:                                            | Pass  Total  Time
+Preserved public before failure: valid common-return PRJ |   10     10  2.3s
+Test Summary:                                                      | Pass  Total  Time
+Isolated common-return overlay: actual native complete S and nodes |   99     99  3.6s
+Test Summary:                                         | Pass  Total  Time
+Malformed return records reject before model response |    8      8  0.1s
+Test Summary:                                                         | Pass  Total   Time
+Physical calibrated geometry common-return voltage/current projection |    7      7  19.8s
+
+Automatic bounded recursive SPROJ common return and loaded physical nodes: Error During Test at C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:105
+  Got exception outside of a @test
+  ArgumentError: C:\Users\User\AppData\Local\Temp\jl_jGu5hV\parent.son:40: SMD edge is not aligned to this grid; retain or refine the native raster
+  Stacktrace:
+    [1] _sonnet_error(source::String, line::Int64, message::String)
+      @ DiffMoM C:\Users\User\DiffMoM.jl\src\planar\PlanarSonnetIO.jl:113
+    [2] _sonnet_files_pin_preflight(p::SonnetProject, f::Float64, grid::Tuple{Int64, Int64}, variables::Dict{String, Float64})
+      @ DiffMoM C:\Users\User\DiffMoM.jl\src\planar\PlanarSonnetModelFiles.jl:218
+    [3] sonnet_component_files(p::SonnetProject, frequency::Float64; root::String, max_bytes::Int64, max_dependencies::Int64, max_project_depth::Int64, max_project_nodes::Int64, max_project_elements::Int64, requested_reference::Nothing, grid::Tuple{Int64, Int64}, variables::Dict{String, Float64}, scalar_files::Nothing, scalar_outside::Symbol, scalar_max_files::Int64, scalar_max_bytes::Int64, scalar_max_nodes::Int64, scalar_max_line_bytes::Int64, _linked::Nothing, _preserve_scalar_geometry::Bool)
+      @ DiffMoM C:\Users\User\DiffMoM.jl\src\planar\PlanarSonnetModelFiles.jl:383
+    [4] (::var"#33#34"{String})(directory::String)
+      @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:113
+    [5] mktempdir(fn::var"#33#34"{String}, parent::String; prefix::String)
+      @ Base.Filesystem .\file.jl:941
+    [6] mktempdir(fn::Function, parent::String)
+      @ Base.Filesystem .\file.jl:937
+    [7] top-level scope
+      @ C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:106
+    [8] macro expansion
+      @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:1967 [inlined]
+    [9] macro expansion
+      @ C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:107 [inlined]
+   [10] include(mod::Module, _path::String)
+      @ Base .\Base.jl:309
+   [11] exec_options(opts::Base.JLOptions)
+      @ Base .\client.jl:344
+   [12] _start()
+      @ Base .\client.jl:577
+Test Summary:                                                             | Error  Total   Time
+Automatic bounded recursive SPROJ common return and loaded physical nodes |     1      1  11.6s
+RNG of the outermost testset: Random.Xoshiro(0xcfd5b7df50ae27b8, 0x3ca893ef566d0e37, 0x634abadabc9ae344, 0xea9d6e6a1e185dde, 0xe0931ed9d5a653c3)
+ERROR: LoadError: Some tests did not pass: 0 passed, 0 failed, 1 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:105

@@ -1,0 +1,31 @@
+Test Summary:                                            | Pass  Total   Time
+Preserved public before failure: valid common-return PRJ |   12     12  10.1s
+Test Summary:                                                      | Pass  Total  Time
+Isolated common-return overlay: actual native complete S and nodes |   99     99  2.3s
+Test Summary:                                         | Pass  Total  Time
+Malformed return records reject before model response |    8      8  0.0s
+
+Physical calibrated geometry common-return voltage/current projection: Error During Test at C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:130
+  Test threw exception
+  Expression: ≈(child.y * (transpose(incidence) * ((v .+ 2) + 0.7im)), child.y * terminal, rtol = 1.0e-11)
+  MethodError: no method matching +(::Vector{ComplexF64}, ::ComplexF64)
+  For element-wise addition, use broadcasting with dot syntax: array .+ scalar
+  The function `+` exists, but no method is defined for this combination of argument types.
+  Closest candidates are:
+    +(::Any, ::Any, !Matched::Any, !Matched::Any...)
+     @ Base operators.jl:653
+    +(!Matched::Missing, ::Number)
+     @ Base missing.jl:120
+    +(!Matched::Bool, ::Complex)
+     @ Base complex.jl:308
+    ...
+  Stacktrace:
+   [1] macro expansion
+     @ C:\Users\User\.julia\juliaup\julia-1.13.1+0.x64.w64.mingw32\share\julia\stdlib\v1.13\Test\src\Test.jl:755 [inlined]
+   [2] (::var"#30#31")(directory::String)
+     @ Main C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:130
+Test Summary:                                                         | Pass  Error  Total   Time
+Physical calibrated geometry common-return voltage/current projection |    8      1      9  18.3s
+RNG of the outermost testset: Random.Xoshiro(0x74090dfec99dc452, 0xa3dfec6ef38b7e3d, 0x292b01630dace462, 0xf9c19e458bd8516d, 0x01cb2e21bb8aeeee)
+ERROR: LoadError: Some tests did not pass: 8 passed, 0 failed, 1 errored, 0 broken.
+in expression starting at C:\Users\User\DiffMoM.jl\validation\planar_audit\prj_common_return_overlay_tests.jl:100

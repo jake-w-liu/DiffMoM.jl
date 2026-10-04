@@ -1,0 +1,119 @@
+﻿
+
+<html>
+	
+<head>
+	<title>Insert - Add Project Element (Netlist Only)</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="generator" content="HelpNDoc Professional Edition 6.6.0.444">
+	<meta name="description" content="Manuals and Help for Sonnet Suites" /> 
+	<meta name="keywords" content="">
+	
+	
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #EFEFEF;
+		}
+	</style>
+	<script type="text/javascript" src="js/jquery.min.js"></script>
+	<script type="text/javascript" src="js/hnd.js"></script>
+	<script type="text/javascript">
+		$(document).ready(function()
+		{
+			if (top.frames.length == 0)
+			{
+				var sTopicUrl = top.location.href.substring(top.location.href.lastIndexOf("/") + 1, top.location.href.length);
+				top.location.href = "Sonnet Suites Documentation.html?" + sTopicUrl;
+			}
+			else
+			{
+				var bTocSelected = false;
+				(function waitForTOC()
+				{
+					if (top && top.FrameTOC && top.FrameTOC.SelectTocItem)
+					{
+						top.FrameTOC.SelectTocItem("NetProjectWin");
+						bTocSelected = true;
+					}
+					if (!bTocSelected) setTimeout(function() { waitForTOC(); }, 300);
+				})();
+			}
+		});
+	</script>
+	
+	
+</head>
+
+<body>
+
+
+
+	
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1 id="topic_header_text">Insert - Add Project Element (Netlist Only)</h1>
+				
+				
+				<div id="topic_breadcrumb">
+					<a href="UsingSonnet.html">Using Sonnet</a> &rsaquo;&rsaquo; <a href="EditingaProject.html">Editing a Project</a> &rsaquo;&rsaquo; <a href="ProjectEditorMenus.html">Project Editor Menus</a> &rsaquo;&rsaquo; <a href="InsertMenu.html">Insert Menu</a> &rsaquo;&rsaquo; 
+				</div>
+				
+			</div>
+			
+			<div id="topic_header_nav">
+				
+				
+				<a href="InsertMenu.html"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				
+				
+				<a href="CCVoltageSourceWin.html"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				
+				
+				<a href="NetDataWin.html"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				
+			</div>
+			
+			<div class="clear"></div>
+		</div>
+	
+	
+	<div id="topic_content">
+		
+<p></p>
+<p class="rvps2"><span class="rvts6">When you select </span><span class="rvts14">Insert - Add Project Element</span><span class="rvts6">&nbsp;from the project editor main menu, a Browse window appears on your display which allows you to select the Sonnet project file you wish to use in your network. Once you select a project, the Add/Edit Element dialog box appears on your display, configured to input a project. This dialog box is also opened if you double-click on a project element entry in the netlist so that you may edit the entry.</span></p>
+<p class="rvps2"><span class="rvts14">File: </span><span class="rvts6">This text entry box displays the project being used for the project element. If you are adding a project element, the project you selected in the Browse window that appeared after you selected the Add Project Element command is entered here. If you wish to change the project, you may directly edit the name or click on the Browse button to the right to open a browse window which allows you to select a project. This allows you to change the project being used.</span></p>
+<p class="rvps2"><span class="rvts14">Node Assignment</span><span class="rvts6">: There is a text entry box for each Port in the circuit and one more for the ground reference (REF). Enter the node in the netlist to which you wish the port to correspond in the appropriate text entry box. REF may be connected to GND or to a node in the network.</span></p>
+<p class="rvps2"><span class="rvts14">Element Parameters</span><span class="rvts6">: If there are variables defined in the project file you are adding to the network, they appear in this section of the dialog box. Enter the desired nominal value for the variable in the appropriate text entry box. The value may be either a floating point number or a variable defined in the netlist project.</span><span class="rvts6"></span><span class="rvts6">If you wish to use a variable for an Element Parameter, click on the </span><img alt="" style="padding : 1px;" src="lib/NewItem203.png"><span class="rvts6">&nbsp;in the drop list and select an existing variable. If you wish to create a new variable, select &lt;Add Variable&gt; from the drop list. The </span><a class="rvts11" href="EditParameterWin.html">Add/Edit Variable dialog box</a><span class="rvts6">&nbsp;is opened which allows you to create a new variable.</span></p>
+<p class="rvps2"><span class="rvts6"></span></p>
+<p class="rvps2"><span class="rvts6">When the project element is added to your network, its entry is listed as "PRJ."</span></p>
+<p class="rvps2"><a class="rvts11" href="ToolbarsandPanels-ToolsNetlist.html">Tool Bar Button</a><span class="rvts6">: </span><img alt="" style="padding : 1px;" src="lib/project_element_icon.gif"></p>
+<p></p>
+
+	</div>
+	
+	
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				Copyright &copy; 2021 by Sonnet Software, Inc. All Rights Reserved.
+			</div>
+		</div>
+	
+	
+
+	
+</body>
+	
+</html>
+
