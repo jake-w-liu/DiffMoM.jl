@@ -201,12 +201,24 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
         elseif geo[i].tokens==["BRI","POLY"]
             kind=:brick; i+=1
         end
+        i<=length(geo) || _sonnet_error(source,0,"polygon marker lacks its header")
         header=geo[i]; t=header.tokens; i+=1
         length(t)>=5 || _sonnet_error(source,header.line,"incomplete polygon header")
         level,nv,mat=parse.(Int,t[1:3]); id=parse(Int,t[5])
         nv>=3 || _sonnet_error(source,header.line,"polygon requires >=3 vertices")
+        endpoint=findnext(r->length(r.tokens)==1 && r.tokens[1]=="END",geo,i)
+        endpoint!==nothing || _sonnet_error(source,header.line,"unterminated polygon")
+        # A serialized count must agree with the captured coordinate records
+        # before it controls storage. A tiny malformed source can otherwise
+        # allocate gigabytes solely from its untrusted nv header.
+        coordinates=count(i:endpoint-1) do index
+            q=geo[index].tokens
+            length(q)==2 && !(q[1] in ("TOLEVEL","TLAYNAM"))
+        end
+        coordinates==nv || _sonnet_error(source,header.line,
+            "vertex count $coordinates differs from declared $nv")
         vertices=Matrix{Float64}(undef,2,nv); k=0; target=""; technology=""; flags=copy(t[4:end])
-        while i<=length(geo) && geo[i].tokens!=["END"]
+        while i<endpoint
             row=geo[i]; q=row.tokens
             if q[1]=="TOLEVEL"
                 target=q[2]
@@ -215,7 +227,8 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
                 technology=q[2]
             elseif length(q)==2 && all(v->tryparse(Float64,v)!==nothing,q)
                 k+=1; k<=nv || _sonnet_error(source,row.line,"too many polygon vertices")
-                vertices[:,k]=parse.(Float64,q).*ls
+                vertices[1,k]=parse(Float64,q[1])*ls
+                vertices[2,k]=parse(Float64,q[2])*ls
             else
                 _sonnet_error(source,row.line,"unsupported polygon record $(q[1])")
             end
@@ -276,7 +289,14 @@ function _sonnet_math_real(value,quantity)
 end
 
 function _sonnet_math_axis(value,op)
-    value isa Real && return ComplexF64(value,0.)
+    # Native real-axis branches ignore the input's imaginary signed zero.
+    # Actual +/-0 controls select upper sqrt/acosh on the negative axis and
+    # the lower (positive-x) asin/acos/atanh branch outside [-1,1].
+    if iszero(imag(value))
+        x=real(value)
+        z=(op in (:asin,:acos,:atanh) && abs(x)>1 && x>0) ? -0. : 0.
+        return ComplexF64(x,z)
+    end
     return value
 end
 
@@ -296,7 +316,10 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         push!(active,name)
         val=_sonnet_expr(_sonnet_parse_scalar(project.variables[name]),project,overrides,freq,active,depth+1)
         delete!(active,name)
-        return val
+        # Declared native quantity variables store real values, resetting the
+        # expression's imaginary signed zero (unary -1 and VAR neg=-1 differ
+        # under deg). Complex expressions remain available inside a scalar.
+        return _sonnet_math_real(val,"variable $name")
     end
     ex isa Expr && ex.head==:call || throw(ArgumentError("unsupported Sonnet expression"))
     if ex.args[1] in (:table1,:table2)
@@ -349,9 +372,9 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         n==1 || throw(ArgumentError("native $op requires exactly one scalar argument"))
         a=_sonnet_expr(ex.args[2],project,overrides,freq,active,depth+1)
         op===:sqrt && return sqrt(_sonnet_math_axis(a,op))
-        op===:sin && return sin(a)
-        op===:cos && return cos(a)
-        op===:tan && return tan(a)
+        op===:sin && return sin(_sonnet_math_axis(a,op))
+        op===:cos && return cos(_sonnet_math_axis(a,op))
+        op===:tan && return tan(_sonnet_math_axis(a,op))
         op===:asin && return asin(_sonnet_math_axis(a,op))
         op===:acos && return acos(_sonnet_math_axis(a,op))
         op===:atan && return atan(a)
