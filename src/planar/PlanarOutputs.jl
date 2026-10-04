@@ -158,12 +158,18 @@ function _curve_derivative(x,y,k)
     n=length(x)
     n==1 && return NaN
     n==2 && return (y[2]-y[1])/(x[2]-x[1])
-    start=clamp(k-1,1,n-2);value=0.
-    for j in start:start+2
-        a,b=filter(!=(j),collect(start:start+2))
-        value+=y[j]*(2x[k]-x[a]-x[b])/((x[j]-x[a])*(x[j]-x[b]))
+    start=clamp(k-1,1,n-2);middle=start+1;last=start+2
+    left=x[middle]-x[start];right=x[last]-x[middle]
+    before=(y[middle]-y[start])/left;after=(y[last]-y[middle])/right
+    # Differentiate the quadratic using offsets and secant slopes. Avoid
+    # products of frequency intervals and cancellation of absolute phases;
+    # a constant phase then has an exact zero derivative at every point.
+    if k==start
+        return before-(left/(left+right))*(after-before)
+    elseif k==last
+        return after+(right/(left+right))*(after-before)
     end
-    return value
+    return (right/(left+right))*before+(left/(left+right))*after
 end
 
 """Compute terminated-input impedance, reflection dB/SWR, effective L/C
@@ -204,7 +210,10 @@ function planar_equation_curves(data::PlanarNetworkData;phase_floor::Real=1e-12)
             phase[k]=k>1 && isfinite(phase[k-1]) ? ph+2pi*round((phase[k-1]-ph)/(2pi)) : ph
         end
         for k in 1:nf
-            delay[k]=-_curve_derivative(omega,phase,k)
+            # Multiplying a valid, closely spaced Hz grid by 2pi can merge
+            # adjacent Float64 knots. Keep its original coordinates until
+            # converting dphase/df to dphase/domega.
+            delay[k]=-_curve_derivative(data.frequencies,phase,k)/(2pi)
         end
     end
     return (frequency_hz=copy(data.frequencies),reflection_db=db,swr=swr,zin_ohm=zin,
