@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_zero_nominal_axes_GAt2Wu\\XDIR_dir_1_target_0.125_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T11:54:36.039"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [144]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T11:54:35.056"
+source_sha256 = "d125d868ca8b5dd33355c81fa9a7a15e317521636cd7d6f8d2a740df06ea84cf"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_zero_nominal_axes_GAt2Wu\\XDIR_dir_1_target_0.125_parameter\\XDIR_dir_1_target_0.125_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\geovar_zero_nominal_axes_GAt2Wu\\\\XDIR_dir_1_target_0.125_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "ea83b0486b0050fd0e3f7ab58ac48c0f80d3fbb26f8962bf64ee02ee4e8a2622"
+intended_deembedded = false
+max_difference = 5.629031773310823e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_zero_nominal_axes_GAt2Wu\\XDIR_dir_1_target_0.125_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6413893301356287
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "ea83b0486b0050fd0e3f7ab58ac48c0f80d3fbb26f8962bf64ee02ee4e8a2622"
+intended_deembedded = false
+max_difference = 5.629031773310823e-5
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_zero_nominal_axes_GAt2Wu\\XDIR_dir_1_target_0.125_parameter\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6413893301356287
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

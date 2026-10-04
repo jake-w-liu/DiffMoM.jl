@@ -248,6 +248,19 @@ rejection, independent literal geometry, full-S and voltage-residual checks,
 ownership and budget boundaries are preserved in
 `test/fixtures/native_rad_reference_headers`, replayed by
 `validation/planar_audit/run_radial_geovar_reference.jl`.
+Zero saved ANC/NSCD offsets are accepted when the reference coordinates coincide
+on the selected axis. Eight native X/Y, direction and target-size controls match
+independent literal geometry bit for bit; the prior adapter rejects all eight.
+Six literal public solves pass the unchanged 0.005 full-S and 1e-9 voltage-residual
+gates. The negative-direction 0.0625 target still fails full-S on both axes
+(approximately 1.00016 and 1.00014), despite small residuals. Those literal EM
+failures remain separate open accuracy work; the geometry extension does not
+turn them into passing physical acceptance. Exact sources, old implementation,
+complete six-PASS/two-FAIL baseline and hashes are retained in
+`test/fixtures/native_zero_nominal_geovar`, replayed by
+`validation/planar_audit/run_zero_nominal_geovar_reference.jl`.
+Scaled zero dimensions, other dimension kinds and distinct-coordinate zero
+references remain guarded. Positive source values lost in SI remain rejected.
 Overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored
 coordinate cancellation reject before emitting a changed project.

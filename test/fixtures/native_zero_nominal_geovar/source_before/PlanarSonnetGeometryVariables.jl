@@ -13,12 +13,6 @@ struct _SonnetGeometryParameter
     line::Int
 end
 
-# Zero saved offsets have a proved translation adapter for ANC/NSCD only.
-# A positive source dimension that underflows in SI remains invalid.
-@inline _sonnet_geovar_nominal_value_ok(value,nominal,kind,scaled)=
-    isfinite(value) && (value>0 ||
-        (iszero(nominal) && iszero(value) && kind=="ANC" && !scaled))
-
 function _sonnet_geovar_limit(value::Integer,label)
     0<value<=typemax(Int) || throw(ArgumentError("$label must be a positive stored integer"))
     return Int(value)
@@ -128,14 +122,10 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         length(nominalrow.tokens)==2 && nominalrow.tokens[1]=="NOM" ||
             _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
         nominal=tryparse(Float64,nominalrow.tokens[2])
-        nominal!==nothing && _sonnet_geovar_nominal_value_ok(nominal,nominal,t[3],t[6]!="NSCD") ||
-            _sonnet_error(p.source,nominalrow.line,"GEOVAR nominal dimension needs a positive value or an unscaled anchored zero-offset adapter")
+        nominal!==nothing && isfinite(nominal) && nominal>0 ||
+            _sonnet_error(p.source,nominalrow.line,"GEOVAR nominal dimension must be finite and positive")
         first,index=_sonnet_geovar_reference(rows,index+3,p,polygons,"REF1")
         second,index=_sonnet_geovar_reference(rows,index,p,polygons,"REF2")
-        axis=t[4]=="XDIR" ? 1 : 2
-        iszero(nominal) && polygons[first[1]].vertices[axis,first[2]]!=
-            polygons[second[1]].vertices[axis,second[2]] &&
-            _sonnet_error(p.source,row.line,"zero saved GEOVAR offsets require coincident reference coordinates on their axis")
         used<=max_points-2 || _sonnet_error(p.source,row.line,"GEOVAR reference budget exceeded")
         used+=2
         equation=_sonnet_geovar_row(rows,index,p)
@@ -211,8 +201,7 @@ function _sonnet_geovar_nominal_geometry(p,frequency,variables)
         target=sonnet_variable_value(p,t[2];variables,freq=frequency)
         requested=target*p.length_scale;saved=nominal*p.length_scale
         ((iszero(nominal) && iszero(target)) ||
-            (isfinite(requested) && requested>0 &&
-                _sonnet_geovar_nominal_value_ok(saved,nominal,t[3],t[6]!="NSCD"))) ||
+            (isfinite(requested) && requested>0 && isfinite(saved) && saved>0)) ||
             _sonnet_error(p.source,row.line,"GEOVAR dimensions must preserve positive finite SI values")
         unchanged &= target==nominal
     end
@@ -300,7 +289,6 @@ ANC/RAD moving reference. Multiple explicit occurrences and other references,
 dependent/overlapping active dimensions and moved component/interior-port semantics
 require separate adapters. Whole-polygon selectors expand logical vertices
 within point/storage budgets before geometry copy;
-zero saved ANC/NSCD offsets require coincident reference coordinates on their axis;
 effective coordinates are validated before emission. The supplied project is
 never modified."""
 function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{String,Float64}();
@@ -325,9 +313,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     for parameter in parameters
         target=sonnet_variable_value(p,parameter.name;variables,freq=frequency)
         nominal=parameter.nominal*p.length_scale;requested=target*p.length_scale
-        _sonnet_geovar_nominal_value_ok(nominal,parameter.nominal,parameter.kind,parameter.scaled) &&
-            isfinite(requested) && (requested>0 ||
-                (iszero(target) && iszero(parameter.nominal) && iszero(requested))) ||
+        isfinite(nominal) && nominal>0 && isfinite(requested) && requested>0 ||
             _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
         delta=(parameter.kind=="RAD" ? 1 : parameter.direction)*(requested-nominal)
         isfinite(delta) || _sonnet_error(p.source,parameter.line,"GEOVAR displacement is unrepresentable")
