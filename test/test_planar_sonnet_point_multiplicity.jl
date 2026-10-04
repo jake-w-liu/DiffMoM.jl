@@ -109,4 +109,45 @@ end
         @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved))
     end
 end
+
+@testset "Native moving-reference count boundary" begin
+    directory=joinpath(@__DIR__,"fixtures/native_geovar_reference_variants")
+    hashes=TOML.parsefile(joinpath(directory,"sha256.toml"))["sha256"]
+    actual=Set(replace(relpath(joinpath(dir,name),directory),'\\'=>'/')
+        for (dir,_,names) in walkdir(directory) for name in names if name!="sha256.toml")
+    @test Set(keys(hashes))==actual
+    for (path,digest) in hashes
+        @test bytes2hex(sha256(read(joinpath(directory,path))))==digest
+    end
+    native=joinpath(directory,"native");proof=TOML.parsefile(joinpath(native,"comparison.toml"))
+    @test proof["source_unchanged"] && proof["source_before"]==proof["source_after"]
+    @test length(proof["cases"])==8
+    for row in proof["cases"]
+        tag=row["tag"];p=read_sonnet_project(joinpath(native,tag*"_parameter.son"))
+        q=read_sonnet_project(joinpath(native,tag*"_literal.son"));saved=deepcopy(p.polygons)
+        reference=only(planar_read_touchstone(joinpath(native,tag*"_literal/native_raw.s2p")).s)
+        literal=solve_sonnet_project(q,1e9;raw=true,method=:dense_fft,mx=128,my=128)
+        @test maximum(abs,literal.s-reference)<=.005
+        if endswith(tag,"_1")
+            @test row["status"]=="PASS" && row["bit_identical_native"]
+            @test reference==only(planar_read_touchstone(joinpath(native,tag*"_parameter/native_raw.s2p")).s)
+            resolved=DiffMoM._sonnet_geometry_project(p,1e9)
+            @test only(resolved.polygons).vertices≈only(q.polygons).vertices rtol=8eps(Float64)
+            result=solve_sonnet_project(p,1e9;raw=true,method=:dense_fft,mx=128,my=128)
+            @test maximum(abs,result.s-reference)<=.005
+        else
+            @test row["status"]=="FAIL"
+            if isempty(row["native_errors"])
+                @test row["native_full_s_error"]>.01 && row["parameter_full_s_error"]>.005
+                @test maximum(abs,reference-only(planar_read_touchstone(joinpath(native,tag*"_parameter/native_raw.s2p")).s))≈row["native_full_s_error"]
+            else
+                @test tag=="nscd_contract_2" && haskey(row["native_errors"],"parameter")
+                @test occursin("has no subsections",read(joinpath(native,tag*"_parameter/engine_stderr.log"),String))
+            end
+            @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9)
+            @test_throws ArgumentError solve_sonnet_project(p,1e9;raw=true)
+        end
+        @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved))
+    end
+end
 end

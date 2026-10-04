@@ -1,0 +1,15 @@
+Run 1:  Sun Oct 04 16:34:02 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\geovar_reference_translation_variants_v2_JD2mrp\rad_expand_2_parameter\rad_expand_2_parameter.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Radius = 0.34375 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 16:34:02 2026.

@@ -223,11 +223,11 @@ gates, with maximum full-S error 0.0001712. The earlier implementation executes
 as an independent regression control, and warmed geometry allocations are
 checked against it. Exact sources and failed reference hypotheses remain in
 `test/fixtures/native_geovar_point_multiplicity`.
-Explicitly listed NSCD anchored/radial moving references retain their extra
+One explicitly listed NSCD anchored/radial moving reference retains its extra
 movement in addition to the implicit reference movement. Two actual native
 controls match sequential literals bit for bit, and their public raw solves
 pass the unchanged 0.005 full-S and 1e-9 voltage-residual gates. Other explicitly
-listed references still reject before physical output: simple sequential
+listed references, including multiple occurrences, still reject before physical output: simple sequential
 scaling hypotheses disagree with native geometry, so their adapter remains
 unfinished.
 Overlapping/dependent dimensions and moved component/interior/via attachments

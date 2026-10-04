@@ -35,6 +35,11 @@ two NSCD anchored/radial moving-reference parameter/literal pairs, preserving
 their recorded movements and checking
 complete native matrices and source stability in a fresh output directory.
 
+`run_geovar_reference_variants_reference.jl` replays expansion/contraction at
+the explicit moving-reference count boundary. It verifies four single-occurrence
+literal matches, three multiple-occurrence mismatches and one native rejection
+against retained matrices and logs; all eight expected outcomes must pass.
+
 `run_scaled_geovar_reference.jl` replays the tracked SCUNI/SCXY parameter/literal
 pairs using an installed native Sonnet engine. It creates a fresh evidence
 directory under `data/planar_audit/`; its optional argument selects an output

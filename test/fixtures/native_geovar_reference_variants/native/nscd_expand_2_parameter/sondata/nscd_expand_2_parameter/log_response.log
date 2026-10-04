@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 16:33:54 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\geovar_reference_translation_variants_v2_JD2mrp\nscd_expand_2_parameter\nscd_expand_2_parameter.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Width = 0.28125 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.039017 -92.98 0.999239 -3.130 0.999239 -3.130 0.039017 -93.29
+
+Em simulation completed Sun Oct 04 16:33:54 2026.

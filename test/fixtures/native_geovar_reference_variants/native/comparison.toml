@@ -1,0 +1,112 @@
+scope = "fresh native NSCD ANC/RAD explicit moving-reference repetitions1/2, contraction/expansion; independent literals 1e-12 native full-S identity, .005 public full-S and 1e-9 original voltage residual gates at mx=my128"
+source_unchanged = true
+
+[source_after]
+"data\\geovar_reference_translation_variants_v2_20261004.jl" = "49c9485df101596151e49366e21c30f35b4bc0d45fc94bdc4a76aa8218f8bdb9"
+"test\\fixtures\\native_geovar_point_multiplicity\\anchored_radial\\nscd_reference_parameter.son" = "a966acddc1e23b9231b9513323dc72cd63d978adc7512521d71e6bf0df1bb50f"
+"test\\fixtures\\native_geovar_point_multiplicity\\anchored_radial\\rad_reference_parameter.son" = "352f9196131af9fc894414d0708a4e2ef985d61b959f90ee8d211391a4c6cfa4"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "5091dc28515add4541173587c8069c455ff8aceee38ecb16b66e04d65cbc6b38"
+
+[[cases]]
+literal_full_s_error = 5.761583279758431e-6
+bit_identical_native = true
+parameter_voltage_residual = 1.3887646566604654e-11
+native_full_s_error = 0.0
+parameter_full_s_error = 5.761583279758431e-6
+literal_voltage_residual = 1.3887646566604654e-11
+status = "PASS"
+tag = "nscd_contract_1"
+geometry_error = 1.0842021724855044e-19
+
+    [cases.native_errors]
+[[cases]]
+literal_full_s_error = 5.912725394709676e-6
+parameter_voltage_residual = 1.6564702882842593e-11
+parameter_full_s_error = 5.912725394709676e-6
+literal_voltage_residual = 1.6564702882842593e-11
+status = "FAIL"
+tag = "nscd_contract_2"
+geometry_error = 1.0842021724855044e-19
+
+    [cases.native_errors]
+    parameter = "Sonnet analysis failed; see C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_reference_translation_variants_v2_JD2mrp\\nscd_contract_2_parameter"
+[[cases]]
+literal_full_s_error = 7.589972436324005e-6
+bit_identical_native = true
+parameter_voltage_residual = 1.2671555011480025e-11
+native_full_s_error = 0.0
+parameter_full_s_error = 7.589972436324005e-6
+literal_voltage_residual = 1.2671555011480025e-11
+status = "PASS"
+tag = "nscd_expand_1"
+geometry_error = 1.0842021724855044e-19
+
+    [cases.native_errors]
+[[cases]]
+literal_full_s_error = 0.01408734252154169
+bit_identical_native = false
+parameter_voltage_residual = 1.2170583064334348e-11
+native_full_s_error = 0.014095536816397948
+parameter_full_s_error = 0.01408734252154169
+literal_voltage_residual = 1.2170583064334348e-11
+status = "FAIL"
+tag = "nscd_expand_2"
+geometry_error = 1.0842021724855044e-19
+
+    [cases.native_errors]
+[[cases]]
+literal_full_s_error = 3.113415660492602e-5
+bit_identical_native = true
+parameter_voltage_residual = 3.34021180882838e-11
+native_full_s_error = 0.0
+parameter_full_s_error = 3.113415660492602e-5
+literal_voltage_residual = 3.34021180882838e-11
+status = "PASS"
+tag = "rad_contract_1"
+geometry_error = 1.0842021724855044e-19
+
+    [cases.native_errors]
+[[cases]]
+literal_full_s_error = 0.022278946694263398
+bit_identical_native = false
+parameter_voltage_residual = 2.989957983213902e-11
+native_full_s_error = 0.022309394159771356
+parameter_full_s_error = 0.022278946694263398
+literal_voltage_residual = 2.989957983213902e-11
+status = "FAIL"
+tag = "rad_contract_2"
+geometry_error = 2.168404344971009e-19
+
+    [cases.native_errors]
+[[cases]]
+literal_full_s_error = 7.419676794007204e-5
+bit_identical_native = true
+parameter_voltage_residual = 2.725650899089772e-11
+native_full_s_error = 0.0
+parameter_full_s_error = 7.419676794007204e-5
+literal_voltage_residual = 2.725650899089772e-11
+status = "PASS"
+tag = "rad_expand_1"
+geometry_error = 1.0842021724855044e-19
+
+    [cases.native_errors]
+[[cases]]
+literal_full_s_error = 0.04312267498292611
+bit_identical_native = false
+parameter_voltage_residual = 2.5781293534132168e-11
+native_full_s_error = 0.04304854133659966
+parameter_full_s_error = 0.04312267498292611
+literal_voltage_residual = 2.5781293534132168e-11
+status = "FAIL"
+tag = "rad_expand_2"
+geometry_error = 2.168404344971009e-19
+
+    [cases.native_errors]
+
+[source_before]
+"data\\geovar_reference_translation_variants_v2_20261004.jl" = "49c9485df101596151e49366e21c30f35b4bc0d45fc94bdc4a76aa8218f8bdb9"
+"test\\fixtures\\native_geovar_point_multiplicity\\anchored_radial\\nscd_reference_parameter.son" = "a966acddc1e23b9231b9513323dc72cd63d978adc7512521d71e6bf0df1bb50f"
+"test\\fixtures\\native_geovar_point_multiplicity\\anchored_radial\\rad_reference_parameter.son" = "352f9196131af9fc894414d0708a4e2ef985d61b959f90ee8d211391a4c6cfa4"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "5091dc28515add4541173587c8069c455ff8aceee38ecb16b66e04d65cbc6b38"

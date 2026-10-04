@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_reference_translation_variants_v2_JD2mrp\\nscd_contract_2_parameter.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T08:33:50.044"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T08:33:49.546"
+source_sha256 = "6062d54809899f7bd76fabf2089ad02d7d505d4b450645285dade65c1a9c78cf"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_reference_translation_variants_v2_JD2mrp\\nscd_contract_2_parameter\\nscd_contract_2_parameter.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\geovar_reference_translation_variants_v2_JD2mrp\\\\nscd_contract_2_parameter\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

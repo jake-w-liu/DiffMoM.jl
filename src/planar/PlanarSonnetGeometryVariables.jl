@@ -122,6 +122,8 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
         end
         a,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used)
         b,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used)
+        count(==(second),b)<=1 || _sonnet_error(p.source,row.line,
+            "multiple explicit GEOVAR moving references require their native movement adapter")
         # The implicit moving reference is an additional movement for native
         # unscaled anchored/radial dimensions, even when explicitly listed.
         (first in a || (second in b && !(t[3] in ("ANC","RAD") && t[6]=="NSCD"))) && _sonnet_error(p.source,row.line,
@@ -262,8 +264,8 @@ end
 """Resolve native independent ANC/SYM/RAD dimensions into effective SI geometry.
 Original source/records and scalar snapshot identity remain attached. Reference
 points belong implicitly to their adjustable set. Ordinary repeated entries
-retain their movement multiplicity, including explicitly listed NSCD ANC/RAD
-moving references. Other explicitly listed references,
+retain their movement multiplicity, including one explicitly listed NSCD
+ANC/RAD moving reference. Multiple explicit occurrences and other references,
 dependent/overlapping active dimensions and moved component/interior-port semantics
 require separate adapters. Resource budgets are checked before geometry copy;
 effective coordinates are validated before emission. The supplied project is
