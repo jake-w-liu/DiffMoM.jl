@@ -1,0 +1,287 @@
+scope = "native RAD whole-polygon explicit moving reference under NSCD/SCUNI/SCXY headers;8 axis/direction/contract-expand cases, native literal exact full-S identity, independent public literal .005/full voltage1e-9 gates before extension"
+source_unchanged = true
+
+[source_after]
+"data\\geovar_rad_reference_headers_probe_20261004.jl" = "a256ec08fd012a2db7725b3262e2706ce983b4c79c302f99c8fa5bb4856322ac"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_expand_parameter.son" = "92bfb242e6cfe39c9a6096f3e6f6aca9dc03c09fa6a2da1fe09130786a0cbb64"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_expand_parameter.son" = "c1d15fca4e18dab291c7cb48008cb1a2d67de5396ecb86122fa8648144871065"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_contract_parameter.son" = "bd71b31a2e22e792d6f5637f788b754ea7e0acaff9c9f1a6a08a527c95a24192"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_expand_literal.son" = "60c89abe7d614b4ce5d20912e0742d349840880dec7f2e4c609f29fdc35acf32"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_contract_parameter.son" = "cda6f30d13f6fb54c637d4c1f12145faaec191524d83a0acad3515ef2d3a6fc3"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_contract_literal.son" = "63bfa52e3c276c4cc72f02874107b5e1c6d82c8552294762a30346ae82c3bfdf"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_contract_literal.son" = "a40551ecf959d61bf69badfe3226326eb981a133d13bf07a3b0dc1d496a27feb"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_expand_parameter.son" = "9f1ea20959850fb5e25e73bca4e1f75df0a0afe23b69941ceb3734716d812c25"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_expand_literal.son" = "6c84a7b583de960b72e918f4e5a057342118fd8e5e616627a6687495cc98a9d4"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_contract_literal.son" = "3b99c0ce306965a0c8bce571891af6dc9991e64de5a8d633a1d9833f0fb99dca"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_expand_parameter.son" = "d031de5a00cde64df68cc80766aafeb65ab677ab76d3c2c5e72ac09eb5d734c7"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_contract_parameter.son" = "3782f3c878b89ab9ae1fe284892c839efac480bf4c0ec7daaa0fb53e727fb362"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_expand_literal.son" = "aa730aa68c238ef78fe31ba2a88d2f4b33ce1b23db1e927d9cb887ea056843fe"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_contract_parameter.son" = "14662c0cb25f559fe02da800f7e9d413e19ea129fb64ea198bbd613d7501cc1b"
+"src\\Types.jl" = "57c450b2803de351226d1ddda936793cb174c4fa05622db1a215584c499dea73"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_expand_literal.son" = "2d1e9b366c735c4366e99db9363ad87df95758ccc4e9ce0255cf537996fa0613"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_contract_literal.son" = "513f3392930306b94f3144a31b954cfb60fd7108d7f99d6e5fe283bdef2726f0"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "165fe1e84aebc1a55edf503b8b21993d50bc64b08c60d9ae6b3e25fbd6e04e1a"
+
+[[cases]]
+name = "rad_xdir_negative_contract_nscd"
+literal_public_full_s_error = 1.9027876554295226e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 5.6413600641396926e-15
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_xdir_negative_contract"
+[[cases]]
+name = "rad_xdir_negative_contract_scuni"
+literal_public_full_s_error = 1.9027876554295226e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 5.6413600641396926e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_negative_contract_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_xdir_negative_contract"
+[[cases]]
+name = "rad_xdir_negative_contract_scxy"
+literal_public_full_s_error = 1.9027876554295226e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 5.6413600641396926e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_negative_contract_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_xdir_negative_contract"
+[[cases]]
+name = "rad_xdir_negative_expand_nscd"
+literal_public_full_s_error = 1.0036537151028325e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 1.9036492602287976e-11
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_xdir_negative_expand"
+[[cases]]
+name = "rad_xdir_negative_expand_scuni"
+literal_public_full_s_error = 1.0036537151028325e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 1.9036492602287976e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_negative_expand_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_xdir_negative_expand"
+[[cases]]
+name = "rad_xdir_negative_expand_scxy"
+literal_public_full_s_error = 1.0036537151028325e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 1.9036492602287976e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_negative_expand_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_xdir_negative_expand"
+[[cases]]
+name = "rad_xdir_positive_contract_nscd"
+literal_public_full_s_error = 1.9027874553122703e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 5.805523205313217e-15
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_xdir_positive_contract"
+[[cases]]
+name = "rad_xdir_positive_contract_scuni"
+literal_public_full_s_error = 1.9027874553122703e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 5.805523205313217e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_contract_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_xdir_positive_contract"
+[[cases]]
+name = "rad_xdir_positive_contract_scxy"
+literal_public_full_s_error = 1.9027874553122703e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 5.805523205313217e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_contract_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_xdir_positive_contract"
+[[cases]]
+name = "rad_xdir_positive_expand_nscd"
+literal_public_full_s_error = 1.0321406968723137e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 1.9479688487720822e-11
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_xdir_positive_expand"
+[[cases]]
+name = "rad_xdir_positive_expand_scuni"
+literal_public_full_s_error = 1.0321406968723137e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 1.9479688487720822e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_expand_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_xdir_positive_expand"
+[[cases]]
+name = "rad_xdir_positive_expand_scxy"
+literal_public_full_s_error = 1.0321406968723137e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 1.9479688487720822e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_expand_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_xdir_positive_expand"
+[[cases]]
+name = "rad_ydir_negative_contract_nscd"
+literal_public_full_s_error = 1.9027875549701472e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 3.0955919072926234e-15
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_ydir_negative_contract"
+[[cases]]
+name = "rad_ydir_negative_contract_scuni"
+literal_public_full_s_error = 1.9027875549701472e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 3.0955919072926234e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_negative_contract_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_ydir_negative_contract"
+[[cases]]
+name = "rad_ydir_negative_contract_scxy"
+literal_public_full_s_error = 1.9027875549701472e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 3.0955919072926234e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_negative_contract_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_ydir_negative_contract"
+[[cases]]
+name = "rad_ydir_negative_expand_nscd"
+literal_public_full_s_error = 1.003653395753237e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 2.1144205780248868e-11
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_ydir_negative_expand"
+[[cases]]
+name = "rad_ydir_negative_expand_scuni"
+literal_public_full_s_error = 1.003653395753237e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 2.1144205780248868e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_negative_expand_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_ydir_negative_expand"
+[[cases]]
+name = "rad_ydir_negative_expand_scxy"
+literal_public_full_s_error = 1.003653395753237e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 2.1144205780248868e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_negative_expand_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_ydir_negative_expand"
+[[cases]]
+name = "rad_ydir_positive_contract_nscd"
+literal_public_full_s_error = 1.9027874544858856e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 3.3765521910685906e-15
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_ydir_positive_contract"
+[[cases]]
+name = "rad_ydir_positive_contract_scuni"
+literal_public_full_s_error = 1.9027874544858856e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 3.3765521910685906e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_positive_contract_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_ydir_positive_contract"
+[[cases]]
+name = "rad_ydir_positive_contract_scxy"
+literal_public_full_s_error = 1.9027874544858856e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 3.3765521910685906e-15
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_positive_contract_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_ydir_positive_contract"
+[[cases]]
+name = "rad_ydir_positive_expand_nscd"
+literal_public_full_s_error = 1.0629475704745819e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 2.0409202937457716e-11
+before_public_error = ""
+before_public_status = "ACCEPT"
+mode = "NSCD"
+tag = "rad_ydir_positive_expand"
+[[cases]]
+name = "rad_ydir_positive_expand_scuni"
+literal_public_full_s_error = 1.0629475704745819e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 2.0409202937457716e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_positive_expand_scuni.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCUNI"
+tag = "rad_ydir_positive_expand"
+[[cases]]
+name = "rad_ydir_positive_expand_scxy"
+literal_public_full_s_error = 1.0629475704745819e-5
+native_full_s_error = 0.0
+native_bit_identical = true
+literal_original_voltage_residual = 2.0409202937457716e-11
+before_public_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_ydir_positive_expand_scxy.son:25: explicit GEOVAR reference repetitions require their native movement adapter"
+before_public_status = "REJECT"
+mode = "SCXY"
+tag = "rad_ydir_positive_expand"
+
+[source_before]
+"data\\geovar_rad_reference_headers_probe_20261004.jl" = "a256ec08fd012a2db7725b3262e2706ce983b4c79c302f99c8fa5bb4856322ac"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_expand_parameter.son" = "92bfb242e6cfe39c9a6096f3e6f6aca9dc03c09fa6a2da1fe09130786a0cbb64"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_expand_parameter.son" = "c1d15fca4e18dab291c7cb48008cb1a2d67de5396ecb86122fa8648144871065"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_contract_parameter.son" = "bd71b31a2e22e792d6f5637f788b754ea7e0acaff9c9f1a6a08a527c95a24192"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_expand_literal.son" = "60c89abe7d614b4ce5d20912e0742d349840880dec7f2e4c609f29fdc35acf32"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_contract_parameter.son" = "cda6f30d13f6fb54c637d4c1f12145faaec191524d83a0acad3515ef2d3a6fc3"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_contract_literal.son" = "63bfa52e3c276c4cc72f02874107b5e1c6d82c8552294762a30346ae82c3bfdf"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_negative_contract_literal.son" = "a40551ecf959d61bf69badfe3226326eb981a133d13bf07a3b0dc1d496a27feb"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_expand_parameter.son" = "9f1ea20959850fb5e25e73bca4e1f75df0a0afe23b69941ceb3734716d812c25"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_expand_literal.son" = "6c84a7b583de960b72e918f4e5a057342118fd8e5e616627a6687495cc98a9d4"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_contract_literal.son" = "3b99c0ce306965a0c8bce571891af6dc9991e64de5a8d633a1d9833f0fb99dca"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_expand_parameter.son" = "d031de5a00cde64df68cc80766aafeb65ab677ab76d3c2c5e72ac09eb5d734c7"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_contract_parameter.son" = "3782f3c878b89ab9ae1fe284892c839efac480bf4c0ec7daaa0fb53e727fb362"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_positive_expand_literal.son" = "aa730aa68c238ef78fe31ba2a88d2f4b33ce1b23db1e927d9cb887ea056843fe"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_xdir_positive_contract_parameter.son" = "14662c0cb25f559fe02da800f7e9d413e19ea129fb64ea198bbd613d7501cc1b"
+"src\\Types.jl" = "57c450b2803de351226d1ddda936793cb174c4fa05622db1a215584c499dea73"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_expand_literal.son" = "2d1e9b366c735c4366e99db9363ad87df95758ccc4e9ce0255cf537996fa0613"
+"test\\fixtures\\native_geovar_whole_polygon\\variants\\rad_ydir_negative_contract_literal.son" = "513f3392930306b94f3144a31b954cfb60fd7108d7f99d6e5fe283bdef2726f0"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "165fe1e84aebc1a55edf503b8b21993d50bc64b08c60d9ae6b3e25fbd6e04e1a"

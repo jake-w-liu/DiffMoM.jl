@@ -1,0 +1,52 @@
+Run 1:  Sun Oct 04 18:07:32 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\geovar_rad_reference_headers_SLy0Ga\rad_ydir_negative_expand_literal\rad_ydir_negative_expand_literal.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+      Subsectioning at 1 GHz with Eeff of 2.5.
+      Subsectioning time:  0.001 seconds.
+      Em license feature:  emlite.
+
+      Circuit requires 175 subsections and 1 MB of memory.
+
+      Primary structure subsections by level and type:
+      Level 0:
+        Surface Staircase:  175
+
+      Process memory by type:
+        System matrix:            0 MB
+        Elemental subsections:
+          Primary structure:      0 MB
+        Fourier transform:        0 MB
+        Waveguide mode:           0 MB
+        Adaptive band synthesis:  0 MB
+        Miscellaneous:            1 MB
+        TOTAL REQUIRED MEMORY:    1 MB
+
+      Amount of RAM installed on host computer:  64 GB
+      Number of logical processors:  20
+      Matrix solver:  internal 64-bit SSE lossless.
+      Simulation mode:  local machine.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.001 seconds.
+      Fourier transform time:  0 seconds.
+      Coupling time:  0.001 seconds.
+      Loss time:  0 seconds.
+      Matrix fill time:  0.002 seconds.
+      Matrix solve time:  0 seconds.
+      Frequency completed Sun Oct 04 18:07:32 2026.
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.011177 -90.07 0.999938 -2.554 0.999938 -2.554 0.011177 -95.03
+      Total time per frequency:  0.007 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 1 frequency:  0.009 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 18:07:32 2026.

@@ -223,7 +223,8 @@ gates, with maximum full-S error 0.0001712. The earlier implementation executes
 as an independent regression control, and warmed geometry allocations are
 checked against it. Exact sources and failed reference hypotheses remain in
 `test/fixtures/native_geovar_point_multiplicity`.
-One explicitly listed NSCD anchored/radial moving reference retains its extra
+One explicitly listed NSCD anchored moving reference, or RAD reference under
+any supported axis/direction/scaling header, retains its extra
 movement in addition to the implicit reference movement. Two actual native
 controls match sequential literals bit for bit, and their public raw solves
 pass the unchanged 0.005 full-S and 1e-9 voltage-residual gates. Other explicitly
@@ -240,6 +241,13 @@ lists are allocated. Source ownership and closing vertices remain intact;
 scaled/reference and dependent adapters retain their stated limits. Exact
 evidence is in `test/fixtures/native_geovar_whole_polygon`, replayed by
 `validation/planar_audit/run_whole_geovar_reference.jl`.
+Twenty-four RAD whole-polygon controls additionally establish identical native
+matrices under NSCD, SCUNI and SCXY headers. The public adapter retains radial
+movement for each header, including one explicit moving reference; the old
+rejection, independent literal geometry, full-S and voltage-residual checks,
+ownership and budget boundaries are preserved in
+`test/fixtures/native_rad_reference_headers`, replayed by
+`validation/planar_audit/run_radial_geovar_reference.jl`.
 Overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored
 coordinate cancellation reject before emitting a changed project.

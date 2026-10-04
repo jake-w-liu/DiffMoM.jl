@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_expand_scuni.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T10:07:26.039"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [161]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T10:07:25.056"
+source_sha256 = "dd494b5931f992f24d526b66c75162795551dffcd717d7435eed0e988b2b04da"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_expand_scuni\\rad_xdir_positive_expand_scuni.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\geovar_rad_reference_headers_SLy0Ga\\\\rad_xdir_positive_expand_scuni\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "97ff5b35d296acf67ed783804e601ff78a1c108d31ceeb1e077d1f5eb75800ca"
+intended_deembedded = false
+max_difference = 2.2703022795595445e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_expand_scuni\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6746888252697713
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "97ff5b35d296acf67ed783804e601ff78a1c108d31ceeb1e077d1f5eb75800ca"
+intended_deembedded = false
+max_difference = 2.2703022795595445e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_rad_reference_headers_SLy0Ga\\rad_xdir_positive_expand_scuni\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6746888252697713
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

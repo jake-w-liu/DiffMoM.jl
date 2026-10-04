@@ -1,0 +1,15 @@
+Run 1:  Sun Oct 04 18:07:22 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\geovar_rad_reference_headers_SLy0Ga\rad_xdir_positive_contract_scuni\rad_xdir_positive_contract_scuni.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Move = 0.09375 mm
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sun Oct 04 18:07:22 2026.

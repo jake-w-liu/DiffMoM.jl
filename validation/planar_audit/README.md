@@ -28,7 +28,9 @@ that fixture.
 
 `run_radial_geovar_reference.jl` replays the tracked RAD parameter/literal
 pairs, including all axis, direction and scaling headers, against the installed
-native engine. It checks full matrix identity and source stability.
+native engine. It also replays RAD whole-polygon selectors with one explicit
+moving reference under all headers. It checks full matrix identity and source
+stability.
 
 `run_geovar_multiplicity_reference.jl` replays ten ordinary repeated-point and
 two NSCD anchored/radial moving-reference parameter/literal pairs, preserving
