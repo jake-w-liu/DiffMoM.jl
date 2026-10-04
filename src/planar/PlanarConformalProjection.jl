@@ -114,13 +114,10 @@ function _planar_physical_charge_incidence(prob)
 end
 
 function _planar_pulse_and_first_moments(v,kx,ky)
-    twicearea=abs(_planar_orient2d(v[1,1],v[2,1],v[1,2],v[2,2],v[1,3],v[2,3]))
-    phase=ntuple(i->ComplexF64(im*(kx*v[1,i]+ky*v[2,i])),3)
-    shift=phase[1];shifted=map(z->z-shift,phase)
-    sorted=_planar_sorted_phases3(shifted...)
-    factor=twicearea*exp(shift);constant=0.0im;x=0.0im;y=0.0im
+    factor,weights=_planar_triangle_fourier_weights(v,kx,ky)
+    constant=0.0im;x=0.0im;y=0.0im
     for j in 1:3
-        moment=factor*_planar_exp_divdiff(_planar_insert_phase3(sorted,shifted[j]))
+        moment=factor*weights[j]
         constant+=moment;x+=(v[1,j]-v[1,1])*moment;y+=(v[2,j]-v[2,1])*moment
     end
     constant,x,y

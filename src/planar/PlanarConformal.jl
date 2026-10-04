@@ -265,8 +265,8 @@ function _planar_conformal_fourier(prob::PlanarConformalProblem,b::Integer,kx::R
         prob.basis.triangles[half,b]==0 && continue
         t,x,y=_planar_conformal_half_values(prob,b,half)
         vertices=view(prob.mesh.vertices,:,view(prob.mesh.triangles,:,t))
-        fx+=_planar_triangle_affine_fourier(vertices,x,kx,ky)
-        fy+=_planar_triangle_affine_fourier(vertices,y,kx,ky)
+        hx,hy=_planar_triangle_affine_fourier_pair(vertices,x,y,kx,ky)
+        fx+=hx;fy+=hy
     end
     return fx,fy
 end
@@ -279,10 +279,8 @@ function _planar_conformal_weights!(te,tm,prob,kx,ky)
             prob.basis.triangles[half,b]==0 && continue
             t,x,y=_planar_conformal_half_values(prob,b,half)
             vertices=view(prob.mesh.vertices,:,view(prob.mesh.triangles,:,t))
-            xp=_planar_triangle_affine_fourier(vertices,x,kx,ky)
-            xm=_planar_triangle_affine_fourier(vertices,x,kx,-ky)
-            yp=_planar_triangle_affine_fourier(vertices,y,kx,ky)
-            ym=_planar_triangle_affine_fourier(vertices,y,kx,-ky)
+            xp,yp=_planar_triangle_affine_fourier_pair(vertices,x,y,kx,ky)
+            xm,ym=_planar_triangle_affine_fourier_pair(vertices,x,y,kx,-ky)
             if prob.sidewalls===WALL_PEC
                 px+=(imag(xp)-imag(xm))/2;py+=(imag(yp)+imag(ym))/2
             else
