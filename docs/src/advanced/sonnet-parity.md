@@ -6,6 +6,17 @@ sources. An implementation, a synthetic regression, a native comparison,
 and an absolute accuracy certificate are different evidence levels.
 Unfinished rows remain work items; this document is not a completion claim.
 
+The fresh October 4 follow-up also preserves finite RLC constitutive equations
+when intermediate frequency products or reciprocals exceed Float64 range.
+The independent 5000-case mixed RLC sweep has maximum complete-S error
+`8.89e-16`; bounded coefficient evaluation allocates zero bytes. Circuit
+results omit an unrepresentable admittance while retaining finite power waves
+and physical currents. Native CKT literals now preserve nonzero SI values,
+including extreme decimal exponents, independently of caller precision and
+rounding. Native SUP sheet loss retains its DC/RF limits and sums signed
+reactances before the final exponent scaling. These range controls do not
+establish general continuum, measured-device or native workflow completeness.
+
 ## Plan coverage
 
 | Plan | Implemented path | Current evidence | Remaining acceptance or implementation |
@@ -19,7 +30,7 @@ Unfinished rows remain work items; this document is not a completion claim.
 | M7 adaptive sweep | `PlanarSweep` | full matrix ABS versus independent analytic cascades, zero/constant cases, callback/resource guards; barycentric fitting resolves three delayed resonances in 14 analyses with maximum full S error 4.217e-7; 12180 independent resonance, off-grid, passivity and resource checks, including a 107.96 dB notch | physical EM and measured broadband/resonance acceptance; finite candidate grids do not certify undiscovered narrow resonances |
 | M8 ports/calibration | `PlanarPowerWaves`, `PlanarBasis`, `PlanarTerminalReturns`, `PlanarPortContraction`, `PlanarCalibration`, `PlanarDeembed` | frequency-dependent complex Kurokawa references across six raw solvers, circuits, projects, calibration, retained current/field mappings and fixed-reference ABS; native R/X/L/C Graph oracle; general launch-box identification, coupled/mixed groups, physical return-path DC oracle, native IDEAL SMD and native four-port full complex matrix error 0.000851 | arbitrary nonuniform local-ground standards and calibrated native accuracy; TRL needs known line impedance to identify physical output references; installed Lite rejects non-50 Ω EM references, calibration groups and ports-only components |
 | M9 currents/radiation | `PlanarCurrents`, `PlanarRadiation` | physical current maps; exact continuous-angle sheet/via/volume/triangle spectra, receive-layer reciprocity, PEC image/short-dipole power oracles, calibrated/FFT mappings, polarization/gain/CSV/interactive outputs; installed RHP antenna raw S passes at refined modes with fresh native currents | native pattern comparison and finite-box/cover antenna convergence; installed far field viewer is disabled with fresh antenna current data, and its guide requires an optional license; substrate-edge/surface-wave scope remains infinite lateral layers |
-| C1 circuits | `PlanarCircuit`, `PlanarSpiceIO`, `PlanarSpiceLines`, `PlanarSpectreIO`, `PlanarSonnetIO`, `PlanarSonnetModelFiles`, `PlanarSonnetComponents`, `PlanarNetworkIO` | native attenuator netlists; bounded native SPARAM snapshots and physical attachment; exact open/short/thru constraints; Touchstone 1/2 S/Y/Z/H/G and mixed-mode tests; native TERM/FTERM references; bounded linear SPICE includes/hierarchy/parameters with SHA256 provenance and direct R/L/C/K/E/G/F/H/V/I MNA; T and scoped O/LTRA RLC/RC/LC/RG with exact DC and stable near-DC/high-attenuation equations; exact grouped coupled-inductor PSD, winding orientation and isolated-return gauges; explicit case-sensitive native linear Spectre export reader; archived actual ngspice47 full Y/S for three installed exports, nested networks, controlled sources, exact constraints and grounded/floating/common-mode circuits; exported affine/conjugate rational-model ingestion; project loaded current/radiation node projection; exact-null Y and isolated-node gauge fixes | nonlinear/behavioural/vendor library classes and their native model-record adapters; native SMD SPARAM/SPROJ acceptance blocked by Lite; broader Spectre grammar, other line classes, native project blocks and vendor acceptance |
+| C1 circuits | `PlanarCircuit`, `PlanarSpiceIO`, `PlanarSpiceLines`, `PlanarSpectreIO`, `PlanarSonnetIO`, `PlanarSonnetModelFiles`, `PlanarSonnetProjectFiles`, `PlanarSonnetComponents`, `PlanarNetworkIO` | native attenuator netlists; bounded native SPARAM and literal linear CKT SPROJ snapshots with physical attachment, recursive project/data dependencies and continuous parent-frequency evaluation; archived native PRJ full S at nine frequencies; exact open/short/thru constraints; Touchstone 1/2 S/Y/Z/H/G and mixed-mode tests; native TERM/FTERM references; bounded linear SPICE includes/hierarchy/parameters with SHA256 provenance and direct R/L/C/K/E/G/F/H/V/I MNA; T and scoped O/LTRA RLC/RC/LC/RG with exact DC and stable near-DC/high-attenuation equations; exact grouped coupled-inductor PSD, winding orientation and isolated-return gauges; explicit case-sensitive native linear Spectre export reader; archived actual ngspice47 full Y/S for three installed exports, nested networks, controlled sources, exact constraints and grounded/floating/common-mode circuits; exported affine/conjugate rational-model ingestion; project loaded current/radiation node projection; exact-null Y and isolated-node gauge fixes | nonlinear/behavioural/vendor library classes and their native model-record adapters; native SMD SPARAM/SPROJ acceptance blocked by Lite; broader Spectre grammar, other line classes, geometry project/GEOVAR blocks and vendor acceptance |
 | C2 extraction/models | `PlanarExtract`, `PlanarVectorFit` | coupled RLGC oracle, real SPICE restamping, positive-real certification and repair tests; actual ngspice47 complete two-port matrices at 37 frequencies for real-pole/affine-capacitance and conjugate-pole models, grounded and floating references; 444 external and 753 durable reference checks pass, maximum relative matrix error 1.025e-15 | complete measured RFIC model ladder; broader model and engine acceptance |
 | C3 subdivision | `PlanarSubdivision` | independently calibrated whole-line versus 8+16-cell circuit recombination | arbitrary filter acceptance and quantified inter-part EM coupling error |
 | C4 layout I/O | `PlanarLayoutIO`, `PlanarArtworkIO`, `PlanarArtworkAffine`, `PlanarGerberIO`, `PlanarODBIO`, `PlanarODBSymbolsExtra`, `PlanarODBFonts`, `PlanarODBLayers`, `PlanarODBCompression` | installed GDSII/DXF imports and independent hand geometry; GDS hierarchy/array transforms; GDS M4 native complex S error 0.000452; 19185 Gerber checks including legacy rectangle/ellipse strokes, all MI/SF/OF/IR orders, device-only AS and unchanged aperture/repeat semantics; official corpus and four previews; 62001 ODB++ checks on Windows including nested contours, clockwise regions, squared/rounded/line thermals, home-plate symbols, ordered numeric fillet parameters, legacy U unit records, bounded conductive font text, full-buildup FLIP, canonical matrix references, bounded JSON metadata, transport and an independent libarchive `.Z` exact SHA oracle; 9826 shared composite geometry/allocation checks; 27-point independent Gerber/ODB++ native clear-window coupon passes with maximum complex S error 0.000119 | matched-grid DXF complex S gate remains FAIL; full CT spiral process; remaining ODB++ thermal/stencil/rounded-annulus families, barcodes and dimensional resizing; font renderer/coordinate-format compatibility and broader vendor manufacturing corpus/native EM acceptance |
@@ -136,8 +147,22 @@ snapshots, shared files, root/resource guards and transactional attachment.
 Installed AUTO/FEED amp binding succeeds; the actual CUST40 example fails
 precisely before attachment. Linked static STF snapshots remain retained.
 Ordinary FLOAT model references, loss-aware AUTO, other width/reference-plane
-contracts, automatic SPROJ/GEOVAR traversal and licensed native pin-group
+contracts, geometry SPROJ/GEOVAR traversal and licensed native pin-group
 calibration remain open implementation/acceptance items.
+
+Literal linear CKT SPROJ children now stage through the same physical pin
+contract. R/L/C, earlier DEF invocations, Touchstone data and recursive PRJ
+children retain exact source bytes and hashes, with shared dependency reuse,
+root/cycle/depth/node/element guards and aggregate nested-solve storage bounds.
+INHSWP N/Y is retained while the child evaluates at the requested frequency.
+Nine archived actual native PRJ controls, including inheritance flags 0/1
+and coarse/fine child sweeps, agree within `5.261e-15` in complete S.
+Independent analytic reactive responses, resistor-loaded geometry/current
+maps, changed-file snapshot isolation and transactional attachment pass.
+The native source/log/complete-SID evidence and hashes are retained under
+`test/fixtures/native_sproj_linear`. Native SMD SPROJ renderer and coupled
+pin-calibration acceptance remains blocked by the Lite license; arbitrary
+geometry children and parameter bindings still require explicit adapters.
 
 Touchstone export selects standard 1.0/1.1/2.0/2.1 syntax; actual Sonnet
 18.53 requires legacy syntax for the declared delay fixture. Unequal
@@ -365,6 +390,38 @@ previously accepted `log(exp(2))` returns 2 in the old reader, while native
 Sonnet warns of an unknown function and substitutes zero, changing full S
 by 0.0909–0.0918. The reader now rejects that invalid native syntax.
 
+The complete installed Functions and Operators page is mapped in the
+validation inventory. `native_sonnet_scalar_functions` and
+`native_sonnet_hyperbolic_phase` retain 222 actual jobs and 340 raw R50
+matrices in 1,361 SHA/CRC checked files plus two manifests. Independent
+literal materials establish radian trigonometry under both DEG/RAD settings,
+inverse/hyperbolic/general functions, complex intermediate arithmetic,
+magnitude extractors and real-axis branch defaults. Native unparenthesized
+powers associate left; explicit parentheses and a signed exponent preserve
+their distinct semantics. The old wrong exponent response and all wrong
+phase/branch hypotheses remain in their original reports.
+
+Physical replay uses the unchanged full-S `0.005` gate, independent film
+constitutive law and original source/current equations. A separately captured native SRES control stores
+`Inner=cmplx(3,4)` as 3: `abs(Inner)` is bit-identical to literal resistance
+3 and differs from literal 5. Current named-quantity storage follows this
+finite real projection. Twelve further actual controls in
+`native_sonnet_final_complex_material` retain 75 hashed files plus a manifest:
+quoted/bare inline NOR `cmplx(3,4)`, `sqrt(-1)` and their quotient are
+bit-identical to independently declared resistances 3, 0 and 4. Final
+quantity evaluation preserves that projection and rejects nonfinite complex
+expressions before storage. A further 73 actual jobs in
+`native_sonnet_complex_binary_functions` retain 72 raw R50 matrices and
+448 SHA/CRC checked files plus a manifest. Literal controls establish
+complex `cmplx`/`hypot` operands, real-part `int`, signed-magnitude
+`fmod`/`min`/`max`, second-operand ties and exact-zero phase resets. Original
+wrong sign/ordering/remainder hypotheses remain intact. One complex `atan2`
+pole produces an actual fatal IMSL error and has no response matrix.
+Native comparisons/conditionals and a positive signed exponent chain
+warn and fall back to zero; those actual failures remain rejected. This
+scope does not certify graph-only FORMAT, complex `atan2` or complex
+conversion/table keys, or broader unresolved native material and geometry models.
+
 Native component and FLOAT consumers retain the same owned CSV source
 contract in `scalar_files`, with numeric `scalar_overrides` recorded in
 results. Automatic SPARAM staging counts CSV paths with SON, Touchstone and
@@ -555,10 +612,14 @@ prototype geometry/allocation failures are retained separately.
 
 ### Bounded ordered composite user-symbol lines
 
-The fresh boundary audit remains open: a closed dyadic triangle tangent at
-`t=2/3` is missed when the event point is reconstructed in Float64.
-Exact event replay and shared analytic boundary predicates are being
-implemented; the coupon checks below do not certify all closed boundaries.
+The closed dyadic triangle tangent at `t=2/3` now passes exact event replay;
+the immediately exterior control remains outside. Shared certified boundary
+predicates and bounded exact fallbacks also close stored endpoint, ordered
+clear/redraw, extreme-scale and affine clipping failures. The recorded 4738
+boundary checks and original 189653 composite checks pass. The broader
+original 532002 neighboring checks also pass after restoring the Region
+literal-axis zero-allocation certificate. These proofs supplement the finite-clearance native
+coupon below; specialized unsupported leaves remain implementation work.
 
 `read_odb_features` and complete enclosing-product `read_odb` now sweep
 ordered analytic apertures along finite lines. At each translation, clear
@@ -578,13 +639,21 @@ separate implementation work; this is not arbitrary-symbol acceptance.
 
 `max_stroke_boundaries=256` bounds composite aperture work, with a 64-level
 nesting guard and checked bounds. Empty leaves and wrapper nodes count
-toward its conservative work bound. Query storage is constant and worst-case
-work is quadratic in the declared boundary count. Ordinary circle and
+toward its conservative work bound. Ordinary queries use fixed-size interval
+storage; exceptional queries reserve bounded exact temporary workspace
+before arbitrary-precision work. Separator work and transform depth are
+bounded explicitly. Ordinary circle and
 polygon lines retain their existing dedicated algorithms. The public
 geometry/resource/transport checks include enclosing boards, archives,
 compressed entities, clear image operations, cycles and work-limit errors.
 Independent arc-distance and convex-support oracles check the additional
-stroke leaves. Typical typed membership allocates zero bytes.
+stroke leaves. Typical typed membership allocates zero bytes. The declared
+400-by-400 hplate raster uses 92285 cumulative bytes including its mask,
+under the unchanged 100000-byte gate. Three independent exact-event stress
+processes each pass 27648 checks, with about 2.54 GB cumulative allocation;
+this is not a peak-memory or zero-allocation claim for exceptional queries.
+Point fallback uses a separate default workspace cap; the renderer's mask
+payload cap does not promise an aggregate mask-plus-query budget.
 
 Callback geometry is now reserved, depth-checked and snapshotted before
 lookup retention. Mutating caller-owned polygon arrays or appending a
@@ -601,13 +670,25 @@ zero mismatches at all seven declared scales from `1e-200` to `1e200`.
 The original and corrected evidence is `odb_composite_stroke_scale_*`;
 fixed-decimal ODB inputs retain the primary numeric grammar.
 
+Canonical affine membership uses the stored inverse transform. Bounds now
+outward-enclose that same geometry, so an accepted point cannot be clipped
+by an independently rounded forward box. Normalized and diagonal inversion
+support representable large, small and anisotropic scales; zero or infinite
+stored inverses reject. Arc radii retain the stored Float64 hypot convention
+and literal endpoints are closed, without an epsilon dilation band.
+
 The full enclosing-board coupon passes nine fresh actual native runs at
-16/32/64 cells and 1/5/10 GHz, plus a current-source repeat. Maximum complete
+16/32/64 cells and 1/5/10 GHz, plus scale, canonical and final literal-axis
+allocation source repeats. Maximum complete
 complex-S difference is `6.728376042513382e-5`; maximum original voltage
 residual is `1.408007846257492e-10`, under unchanged `0.06` and `1e-9` gates.
 The native five-rectangle geometry is independently declared. Registered
 `odb_composite_stroke_reference` preserves the byte-exact native sources,
 logs, output guards, full matrices and earlier failed boundary fixture.
+The final literal-axis repeat retains another thirteen byte-exact source
+snapshots and passes all original native gates. The archive now has 639 hashed
+files; interrupted validation attempts remain separately recorded. A fresh
+combined package/docs checkpoint is still required for the latest source batch.
 Its original exact-boundary mask failure remains recorded; the accepted
 fixture has finite clearance without a geometry-tolerance change. Native
 ODB translation, arbitrary layouts and continuum convergence remain open.
@@ -1038,6 +1119,9 @@ ladder remain open.
 | Native scalar parent source rebound / identity | editing the SON after parsing stages its new bytes alongside the old table expression, returning 2 where the fresh project returns 4 | compare decoded records and their diagnostic line positions before CSV reads; linked snapshots use explicit owned SON/STF conversion provenance |
 | Bounded scalar expression stack overflow / resources | a supported 14,023-byte expression with 3,500 nested subtractions stages but raises StackOverflowError when evaluated | reject nesting, AST and combined evaluation depth above 128; preflight expression scratch with effective project storage |
 | Native logarithm contract / physical material | valid magnitude ln/log10 expressions reject, while accepted log(exp(2)) disagrees with native's invalid-equation fallback by full-S 0.091 | add exactly-one-argument magnitude ln/log10; explicitly reject undocumented log; retain five actual controls and the old physical failure |
+| Native powers parsed with Julia association / physical material | actual `2^3^2/256` gives 0.25 Ω/square, while the old reader gives 2 and changes full S by 0.07855 | bounded native grammar retains explicit parentheses, left power chains and signed-exponent precedence; independent literal and actual native controls retained |
+| Native documented functions and real-axis branches missing / source fidelity | inverse/hyperbolic/general/complex functions reject; direct library substitution disagrees at real-axis branch cuts and signed-zero phase | implement native-confirmed functions, real physical quantity boundaries and measured branch defaults; retain 222 actual jobs/340 raw matrices with original false hypotheses, warnings and failures |
+| Native binary complex operands rejected / material and component expressions | actual `hypot`, `int`, `fmod`, `min`, `max` and nested `cmplx` controls evaluate finite quantities that the reader rejects; naive complex ordering hypotheses fail by up to 0.263 in full S | preserve complex operands and measured signed-magnitude/tie/zero rules; retain 73 actual jobs, 72 matrices and 448 hashed files; complex `atan2` stays separately unverified |
 | Decimal scalar literal silently underflows to PEC / stored units | source literal 1e-500 becomes zero in Meta.parse and SRVY lowering returns PEC before the stored-value guard sees a nonzero input | validate decimal literals before AST conversion and table numbers before storage; explicit zero remains supported and original reproduction is archived |
 | Mixed FLOAT drops ordinary SPARAM snapshots / response provenance | the public physical solve succeeds but returned model/result has no staged Touchstone source, binding or basis snapshot | retain optional model_files in FLOAT model/result, reserve its storage, and compare full S/node/current projection with independent callback wiring; source edits cannot change retained bytes/hashes |
 | Native NOR loss selectors rejected / native intake completeness | actual SRVY/RSVY/CDVY and absent-selector controls give identical full-S at matched physical loss | preserve exact selector units, zero-PEC proof and explicit invalid-domain rejection before geometry; general STF geometry and native loader discrepancy remain separate |
@@ -1061,14 +1145,17 @@ ladder remain open.
 | ODB nested conductive island erased / format fidelity | primary I/H/I containment order and independent central-island reproduction | preserve stated contour order; deep nested, negative, transparent-hole and user-symbol regressions pass |
 | ODB polygon line stroke fills concave notches / analytic geometry | a valid public U-aperture retains an open notch before stroking but the old convex hull fills it | exact endpoint and boundary-segment membership; independent rectangle-interval oracles, reversed/zero-length paths and actual nine-run native coupon pass |
 | ODB composite user-symbol line is missing / completeness | enclosing product frame with transparent hole and redraw island rejects before lowering | ordered boundary-partition sweep, supported analytic leaves and bounded nesting/work; independent interval/arc/support oracles plus nine native cases and current-source repeat pass |
+| Conformal pulse and polynomial projection erase valid triangles / numerical correctness | accepted nearly collinear triangle has exact nonzero area but rounded determinant gives zero pulse and polynomial moments | reuse the existing robust orientation for both area evaluations; 373 independent rational/simplex-series checks and 4246 conformal/hybrid neighboring checks pass with unchanged residual/allocation gates; earlier external hybrid proof remains source-scoped |
 | ODB composite sweep loses scale covariance / numerical robustness | independent normalized interval oracle finds 3 mismatches at 1e-200 and 43 at each of 1e160/1e200 | normalize boundary equations before edge determinants; zero mismatches at all seven declared scales, with unchanged native gates |
-| ODB composite stroke misses a closed tangent / analytic correctness | exact dyadic triangle tangent at t=2/3 returns false while robust polygon-segment oracle returns true | OPEN: bounded exact event replay and shared boundary predicates under implementation; passing finite-clearance native coupons do not close this failure |
+| ODB composite stroke misses a closed tangent / analytic correctness | exact dyadic triangle tangent at t=2/3 returns false while robust polygon-segment oracle returns true | certified intervals and bounded exact event replay; closed tangent and immediately exterior controls, current4738 checks and original composite/resource gates pass; final literal-axis eight-helper native repeat retained |
 | ODB caller geometry mutation invalidates accepted bounds / ownership | changing callback polygon vertices changes membership with stale bounds; caller graph cycle produces stack overflow after construction | reserve/depth-check and snapshot callback geometry at intake; independent alias/cycle/work replay5 and registered ownership/resource17 checks pass |
 | ODB empty aperture leaves bypass work bound / resources | 10000 empty leaves accepted with boundary cap1 and count0 | charge empty leaves and wrappers in conservative traversal/boundary preflight; reject before membership queries |
 | ODB circle strokes discard local center / format fidelity | public nonzero-center circle line/arc bounds move by 0.2 mm | preserve literal local center in line endpoints and arc center/endpoints; independent distance, winding and bounds regressions pass |
 | Databank wide frequency underflows to DC / stored domain | positive1e-500 accepted as stored0 and dynamic reference callback receives0 | constructor/response guards reject unrepresentable or collapsed frequencies before providers; explicit DC and representable controls pass; separate text-underflow candidate discarded after original parser rejects it |
 | RFIC library reference scalars lose stored domain / numerical correctness | positive BigFloat turns/area become zero or infinity; finite spiral arguments lose representable results through intermediate squares/sums | stored-value guards and binary-exponent reference products; 256-bit independent shape/method/range oracles pass with zero warmed reference-product allocation |
 | RFIC placement rejects valid rotation and emits invalid polygons / API correctness | representable BigFloat angle throws MethodError; wide offsets emit infinity and finite translation collapses accepted geometry | validate stored placement inputs, convert the angle before trigonometry and validate placed polygons without changing emitted order or pin indices; original reproductions and current native IDC repeat pass |
+| RFIC placement retains contradictory pins and invalid via footprints / state correctness | large translation retains original pin width/direction/midpoint despite changed emitted edges; nearly half-pad via margin emits two-vertex vias | rebuild placed pins from emitted edges with range-safe midpoint/width; validate emitted air-bridge via polygons; independent original witnesses and current replay are retained |
+| RFIC broadside offsets and capacitance ratios lose representable values / numerical correctness | nonzero wide offsets become zero; valid thickness/permittivity ratios become zero/infinity although final capacitance is finite | stored broadside offset guard; common-exponent positive dielectric-ratio sum and scaled final reference product; independent wide-range equations and controls pass |
 | ODB unused lookups bypass memory preflight / resources | 2000 valid unused stencils retain at least 1280000 numeric segment bytes under a 207721-byte limit | reserve lookup geometry/entries, attribute/text tables and output attributes; reject before later callbacks and preserve current allocation gate |
 | ODB callbacks grow live input beyond budget / source ownership | appending a caller-owned 2 MiB comment to a 19-byte source causes 4733824 reader allocation bytes under a 4096-byte budget | bounded descriptor snapshot before callbacks; file append/truncate/replace/remove no longer alter the read, and owned byte storage avoids an extra string copy |
 | ODB live contours bypass memory preflight / resources | valid 20002-segment comb retains at least 1280128 numeric bytes under a 595544-byte cap before late emit rejection, allocating about 24.14 MB | bounded allocation-free slot counting from the owned snapshot; reserve before exact allocation and transfer each distinct contour buffer into its region; original source/failures and scoped rejection/allocation regressions retained |
@@ -1113,9 +1200,9 @@ and a constant 0.1 Ω/square film. All eighteen raw full-matrix comparisons
 pass the 0.005 complex S gate, with maximum difference `0.000188252` and
 maximum independently reconstructed original-voltage residual `2.27e-14`.
 The initial nine-case PEC proof and two diagnosed validation harness failures
-are retained. The 675-file native/source archive includes a fresh eighteen-case
-repeat after the Library domain fixes, with bit-identical parsed native matrices.
-It has 1063 current-production replay checks. Reproduction:
+are retained. The 941-file native/source archive includes fresh eighteen-case
+repeats after the Library domain and placement/ratio fixes, with bit-identical
+parsed native matrices. It has 1377 current-production replay checks. Reproduction:
 `validate_sonnet_library_idc.jl`; fixtures:
 `test/fixtures/rfic_library_idc_native`. This closes the declared finite-grid
 IDC coupon gate; measured-device accuracy, other library geometries, general
@@ -1132,3 +1219,27 @@ The 1004 numerical/domain/allocation checks and 50 durable proof checks pass;
 ordinary placement, mirror, pin-edge, layout/current/gradient/connectivity and
 actual native IDC controls retain their existing gates. Before/after sources
 and public reproductions are in `test/fixtures/library_stored_domain`.
+
+The independent follow-up also closes broadside offset underflow, contradictory
+placed pin widths/midpoints/directions, collapsed air-bridge via footprints,
+and capacitance-denominator range loss. Placed pins now describe their actual
+emitted edges, including tiny midpoint and large translation controls.
+Common-exponent dielectric ratios retain representable final capacitances;
+the warmed extreme-ratio reference allocates zero bytes. Its 1109 independent
+checks and 110 durable original/source checks pass in
+`test/fixtures/library_remaining_domain`. The registered numerical/domain
+suite has 1602 checks, including 548 new placement/ratio controls.
+
+The public two-level MIM library has a separate eighteen-case actual native
+proof on 16/32/64-cell grids at 1/10/20 GHz, for PEC and constant
+0.1 Ω/square film. Independent literal rectangles declare both plates and
+wall leads across a 1 μm, ε=7.5 insulator, above ε=4 substrate and below air.
+All raw full matrices and independently reconstructed original-voltage
+residuals pass the unchanged 0.06 and 1e-9 gates. The final repeat follows
+the Library placement/ratio and scalar grammar fixes; its 554-file archive
+retains twelve source snapshots, earlier eighteen-case evidence and the
+diagnosed initial mask-order oracle failure. The current replay has 947
+checks. Reproduction: `validate_sonnet_library_mim.jl`; fixtures:
+`test/fixtures/rfic_library_mim_native`. This closes this declared finite-grid
+wall-port coupon; internal calibration, measured-device accuracy, broader
+technology/loss and continuum convergence remain completion work.
