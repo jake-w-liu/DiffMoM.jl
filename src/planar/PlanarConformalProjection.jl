@@ -94,7 +94,8 @@ function _planar_affine_polynomial_moments_fast(vertices,values,center,spacing,o
             total[p+1,q+1]+=values[i]*g[p+1,q+1]
         end
     end
-    area=abs(det(hcat(vertices[:,2]-vertices[:,1],vertices[:,3]-vertices[:,1])))/2
+    area=abs(_planar_orient2d(vertices[1,1],vertices[2,1],vertices[1,2],vertices[2,2],
+        vertices[1,3],vertices[2,3]))/2
     factorials=Float64[factorial(big(i)) for i in 0:2order+1]
     for p in 0:order-1,q in 0:order-1
         total[p+1,q+1]*=2area*factorials[p+1]*factorials[q+1]/factorials[p+q+4]
@@ -113,7 +114,7 @@ function _planar_physical_charge_incidence(prob)
 end
 
 function _planar_pulse_and_first_moments(v,kx,ky)
-    twicearea=abs((v[1,2]-v[1,1])*(v[2,3]-v[2,1])-(v[1,3]-v[1,1])*(v[2,2]-v[2,1]))
+    twicearea=abs(_planar_orient2d(v[1,1],v[2,1],v[1,2],v[2,2],v[1,3],v[2,3]))
     phase=ntuple(i->ComplexF64(im*(kx*v[1,i]+ky*v[2,i])),3)
     shift=phase[1];shifted=map(z->z-shift,phase)
     sorted=_planar_sorted_phases3(shifted...)
