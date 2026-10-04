@@ -1,0 +1,54 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\table1_pure_imaginary.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:33:48.040"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T02:33:47.075"
+source_sha256 = "b466ab797eecfd3250a4e45c04038fc647593f8b8e6b3fbce7fd9cf790dfa495"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\table1_pure_imaginary\\table1_pure_imaginary.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_remaining_complex_boundaries_HSH9KR\\\\table1_pure_imaginary\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "869b691f6b7abde3b54e22659d81626d578d4f8ec8898742f0d76b89ad69f042"
+intended_deembedded = false
+max_difference = 2.7503894822428144e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\table1_pure_imaginary\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7073269780851112
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "869b691f6b7abde3b54e22659d81626d578d4f8ec8898742f0d76b89ad69f042"
+intended_deembedded = false
+max_difference = 2.7503894822428144e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\table1_pure_imaginary\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7073269780851112
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]
+"keys2.csv" = "f1e5069fe519a0c1f480ce732de34ec8db9117bc840b67982dd04158c39fe323"
+"keys1.csv" = "6133466b324cda9a856eaa5c4f77c2e24f2e59b92c957c2b60fba256596b74ad"

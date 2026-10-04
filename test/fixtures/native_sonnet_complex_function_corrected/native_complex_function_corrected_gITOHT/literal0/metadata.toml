@@ -1,0 +1,54 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\literal0.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:55:52.033"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T02:55:51.273"
+source_sha256 = "ff964a0abf5b7c774744ad62ccf7c72a96179b5cb2890a73eecff0217adb5c94"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\literal0\\literal0.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_complex_function_corrected_gITOHT\\\\literal0\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "72476edd431ac0ac00b7770a3cd0cbda6fd0765e984a885b90fc8035dbb1e31e"
+intended_deembedded = false
+max_difference = 3.5543428574166148e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\literal0\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7114683045832699
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "72476edd431ac0ac00b7770a3cd0cbda6fd0765e984a885b90fc8035dbb1e31e"
+intended_deembedded = false
+max_difference = 3.5543428574166148e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\literal0\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.7114683045832699
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]
+"keys2.csv" = "f1e5069fe519a0c1f480ce732de34ec8db9117bc840b67982dd04158c39fe323"
+"keys1.csv" = "6133466b324cda9a856eaa5c4f77c2e24f2e59b92c957c2b60fba256596b74ad"

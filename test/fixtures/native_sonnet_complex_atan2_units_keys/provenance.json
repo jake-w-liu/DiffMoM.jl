@@ -1,0 +1,21 @@
+{
+  "engine": "18.53-Lite 64-bit Windows",
+  "artifacts": [
+    "native_remaining_complex_functions_HdGGdC",
+    "native_remaining_complex_boundaries_HSH9KR",
+    "native_complex_function_degenerate_qn5Oou"
+  ],
+  "jobs": 105,
+  "matrices": 103,
+  "invalid_domain_jobs": 2,
+  "scope": "Actual literal raw-R50 coupons proving complex atan2 including exact-zero denominator, projected conversion operands and complex CSV key conventions.",
+  "restrictions": [
+    "Original incorrect hypotheses and pre-upgrade evaluator errors retained verbatim.",
+    "Two atan2(0,0) jobs log Loss=nan and empty high precision exports despite raw PEC fallback; these are invalid domain evidence, not verified physical comparisons.",
+    "Nonzero complex atan2 uses atan(y/x), adding +/-pi when real(x)<0 according to real(y); x==0,y!=0 returns pi/2+i*real(y), even for negative real y.",
+    "Conversion operands use finite real projection; table1 key and table2 column use real projection while table2 row uses signed magnitude.",
+    "Native m2p first hypothesis mistakenly used UM scaling in a MM project; later correct MM literal control retained independently.",
+    "Quoted CSV dependencies retain exact original bytes/hashes; each job is independent fresh native engine output.",
+    "Broader native STF/geometry/material and hierarchy contracts remain separate."
+  ]
+}

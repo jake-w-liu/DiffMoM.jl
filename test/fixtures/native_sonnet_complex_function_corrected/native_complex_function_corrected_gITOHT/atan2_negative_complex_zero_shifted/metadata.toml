@@ -1,0 +1,54 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\atan2_negative_complex_zero_shifted.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:56:02.038"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T02:56:01.057"
+source_sha256 = "87bd88a104da17e6727324252ccda217e4d4c1c2c26eba35fedd7e8b74d71813"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\atan2_negative_complex_zero_shifted\\atan2_negative_complex_zero_shifted.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_complex_function_corrected_gITOHT\\\\atan2_negative_complex_zero_shifted\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "f2bd3cd2d24542c3045c0725f75d64ded00b12e1465d078b5b860fb3275433a5"
+intended_deembedded = false
+max_difference = 3.6265559844918357e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\atan2_negative_complex_zero_shifted\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5055231613852698
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native.s2p"]
+output_sha256 = "f2bd3cd2d24542c3045c0725f75d64ded00b12e1465d078b5b860fb3275433a5"
+intended_deembedded = false
+max_difference = 3.6265559844918357e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_complex_function_corrected_gITOHT\\atan2_negative_complex_zero_shifted\\native.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.5055231613852698
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]
+"keys2.csv" = "f1e5069fe519a0c1f480ce732de34ec8db9117bc840b67982dd04158c39fe323"
+"keys1.csv" = "6133466b324cda9a856eaa5c4f77c2e24f2e59b92c957c2b60fba256596b74ad"

@@ -59,8 +59,11 @@ with complex operands, and `hypot(x,y)` computes `hypot(abs(x),abs(y))`.
 magnitudes: magnitude is negative exactly when the operand's real part is
 negative. `min` and `max` preserve the selected complex operand and choose
 the second operand on ties. Exact-zero `int` and `fmod` results reset to
-positive zero. Documented arities are enforced. Complex `atan2`, conversion
-function arguments and table keys remain outside the verified evaluator.
+positive zero. Documented arities are enforced. Complex `atan2` follows
+the measured native quadrant and zero-denominator branches; two zero
+operands and nonfinite poles reject. Unit conversions and `table1` keys
+use finite real projections. `table2` uses signed magnitude for its row
+key and finite real projection for its column key.
 
 Complex intermediate values are supported, with native real-axis branch and
 signed-zero phase conventions. Native named quantity variables store the real

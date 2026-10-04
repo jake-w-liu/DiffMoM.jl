@@ -1,0 +1,42 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\atan2_zero_both_imag.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T02:33:42.045"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [38]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [20, 20]
+started_utc = "2026-10-04T02:33:41.061"
+source_sha256 = "1cd13af53cf0e7a7b741608faae3b8a94e941a9fbb9c47ff297fa1cc15d01f31"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\atan2_zero_both_imag\\atan2_zero_both_imag.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\native_remaining_complex_boundaries_HSH9KR\\\\atan2_zero_both_imag\")"
+box_halfcell_counts = [40, 40]
+
+[[touchstone_selected_log_check_history]]
+source_frequency_unit = "GHZ"
+intended_log_section = "raw"
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\atan2_zero_both_imag\\native.s2p"
+output_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+intended_deembedded = false
+source_options = []
+selected_reference_deembedded = false
+frequency_scale_hz = 1.0e9
+status = "FAIL"
+error = "ArgumentError: Touchstone needs an option line and a known port count"
+
+[touchstone_selected_log_checks."native.s2p"]
+source_frequency_unit = "GHZ"
+intended_log_section = "raw"
+error = "ArgumentError: Touchstone needs an option line and a known port count"
+output_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+intended_deembedded = false
+source_options = []
+selected_reference_deembedded = false
+frequency_scale_hz = 1.0e9
+status = "FAIL"
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_boundaries_HSH9KR\\atan2_zero_both_imag\\native.s2p"
+
+[dependency_sha256]
+"keys2.csv" = "f1e5069fe519a0c1f480ce732de34ec8db9117bc840b67982dd04158c39fe323"
+"keys1.csv" = "6133466b324cda9a856eaa5c4f77c2e24f2e59b92c957c2b60fba256596b74ad"

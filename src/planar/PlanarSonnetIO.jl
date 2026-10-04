@@ -296,6 +296,11 @@ function _sonnet_math_signed_magnitude(value,quantity)
         "native $quantity magnitude")
 end
 
+function _sonnet_math_projection(value,quantity)
+    isfinite(value) || throw(ArgumentError("native $quantity requires a finite argument"))
+    return _circuit_stored_real(real(value),"native $quantity")
+end
+
 function _sonnet_math_axis(value,op)
     # Native real-axis branches ignore the input's imaginary signed zero.
     # Actual +/-0 controls select upper sqrt/acosh on the negative axis and
@@ -337,7 +342,10 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         length(ex.args)==(kind==:table1 ? 3 : 4) || throw(ArgumentError("native $kind has invalid argument count"))
         ex.args[2] isa String || throw(ArgumentError("native table filename must be a literal quoted string"))
         keys=[_sonnet_expr(x,project,overrides,freq,active,depth+1) for x in ex.args[3:end]]
-        return _sonnet_scalar_table_value(overrides,kind,ex.args[2],[_sonnet_math_real(x,"$kind key") for x in keys])
+        native_keys=kind===:table1 ? [_sonnet_math_projection(keys[1],"table1 key")] :
+            [_sonnet_math_signed_magnitude(keys[1],"table2 row key"),
+                _sonnet_math_projection(keys[2],"table2 column key")]
+        return _sonnet_scalar_table_value(overrides,kind,ex.args[2],native_keys)
     end
     # Dispatch directly instead of rebuilding a dictionary of boxed functions
     # and project-capturing closures at every node in every material/provider
@@ -372,8 +380,18 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
         isfinite(a) && isfinite(b) || throw(ArgumentError("native $op requires finite arguments"))
         # The native atan2 control maps both signs of zero y to +pi at x<0.
         if op===:atan2
-            ar=_sonnet_math_real(a,op);br=_sonnet_math_real(b,op)
-            return atan(iszero(ar) ? 0. : ar,br)
+            if iszero(b)
+                iszero(a) && throw(ArgumentError("native atan2 is undefined for two zero operands"))
+                # Actual real/complex controls establish this native special
+                # branch, including its retained real(y) imaginary part.
+                return complex(pi/2,real(a))
+            end
+            if iszero(imag(a)) && iszero(imag(b))
+                return atan(iszero(real(a)) ? 0. : real(a),real(b))
+            end
+            value=atan(_sonnet_math_axis(a/b,:atan))
+            isfinite(value) || throw(ArgumentError("native atan2 has a non-finite complex result"))
+            return real(b)<0 ? value+(real(a)<0 ? -pi : pi) : value
         end
         op===:hypot && return hypot(abs(a),abs(b))
         op===:cmplx && return a+im*b
@@ -419,7 +437,7 @@ function _sonnet_expr(ex,project,overrides,freq,active,depth::Int=0)
             integer=trunc(real(a))
             return iszero(integer) ? 0. : integer
         end
-        a=_sonnet_math_real(a,op)
+        a=_sonnet_math_projection(a,op)
         op===:h2p && return a/project.frequency_scale
         op===:p2h && return a*project.frequency_scale
         op===:m2p && return a/project.length_scale

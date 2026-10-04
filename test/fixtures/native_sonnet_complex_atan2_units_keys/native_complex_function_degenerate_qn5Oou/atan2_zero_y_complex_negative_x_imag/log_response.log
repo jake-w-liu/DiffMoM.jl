@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 04 10:44:21 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\native_complex_function_degenerate_qn5Oou\atan2_zero_y_complex_negative_x_imag\atan2_zero_y_complex_negative_x_imag.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      Loss = 0 Ohms/sq
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.004796 88.650 0.999988 -1.350 0.999988 -1.350 0.004796 88.650
+
+Em simulation completed Sun Oct 04 10:44:21 2026.

@@ -1,0 +1,554 @@
+artifact = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\native_remaining_complex_functions_HdGGdC"
+
+[[runs]]
+hypothesized_real_ohm_square = 0
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+expression = ""
+field = "0"
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+current_value = 0.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "3da2d16c9edf4d669292c10aeb368ae150242a58ae0798a1bbe2ef236826d758"
+tag = "literal0"
+[[runs]]
+hypothesized_real_ohm_square = 0.06706599664866986
+s_imag = [0.0048718498681, -0.023631569626, -0.023631569626, 0.0048718452126]
+expression = ""
+field = "0.067065996648669857"
+native_stderr = ""
+s_real = [0.0036521953325, 0.9961716659989, 0.9961716659989, 0.0036522124108]
+current_value = 0.06706599664866986
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "1322920536cb376bf22f7c434ea803ec1a588077d68bd06b40ef5ab741019bf8"
+tag = "literal1"
+[[runs]]
+hypothesized_real_ohm_square = 0.40235947810852507
+s_imag = [0.0046582847638, -0.023417991854, -0.023417991854, 0.0046582605503]
+expression = ""
+field = "0.40235947810852507"
+native_stderr = ""
+s_real = [0.0199278921945, 0.9798952577511, 0.9798952577511, 0.0199279088201]
+current_value = 0.40235947810852507
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "a5e50c7252d8d1ef717cbe6fb4a34548ed0e1ed368a413113c9aa748f59bb4cd"
+tag = "literal2"
+[[runs]]
+hypothesized_real_ohm_square = 0.5493061443340549
+s_imag = [0.0044673843935, -0.023227081796, -0.023227081796, 0.0044673517902]
+expression = ""
+field = "0.54930614433405489"
+native_stderr = ""
+s_real = [0.0269106600002, 0.9729121774973, 0.9729121774973, 0.0269106763067]
+current_value = 0.5493061443340549
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "b217960d51d1943260cd789ec214f0bbd33bef2b4d0875f3f597d9997e27de76"
+tag = "literal3"
+[[runs]]
+hypothesized_real_ohm_square = 0.5535743588970452
+s_imag = [0.0044617829255, -0.023221480042, -0.023221480042, 0.0044617500802]
+expression = ""
+field = "0.5535743588970452"
+native_stderr = ""
+s_real = [0.0271121509632, 0.9727106774523, 0.9727106774523, 0.0271121672603]
+current_value = 0.5535743588970452
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "3d931d64bd58d288f3a8bd55475975df06e6977c5c77d51aa85c5d93716cdc14"
+tag = "literal4"
+[[runs]]
+hypothesized_real_ohm_square = 1.0172219678978514
+s_imag = [0.0038599347923, -0.022619600609, -0.022619600609, 0.0038598762072]
+expression = ""
+field = "1.0172219678978514"
+native_stderr = ""
+s_real = [0.0485359450924, 0.951285895768, 0.951285895768, 0.048535960369]
+current_value = 1.0172219678978514
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "45abea7d46c5596d24b6dbddfaf8ce66ae63b78cabda58f4c8ea74893814b2c0"
+tag = "literal5"
+[[runs]]
+hypothesized_real_ohm_square = 1.411981705307252
+s_imag = [0.0033696739381, -0.022129313184, -0.022129313184, 0.0033695942987]
+expression = ""
+field = "1.4119817053072521"
+native_stderr = ""
+s_real = [0.0660604056506, 0.9337605937396, 0.9337605937396, 0.0660604200691]
+current_value = 1.411981705307252
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "0dd8627853651e900c2d3c950dc72cea4762071732373b3ae14801103042687e"
+tag = "literal6"
+[[runs]]
+hypothesized_real_ohm_square = 1.5707963267948966
+s_imag = [0.0031789147745, -0.021938543394, -0.021938543394, 0.0031788268806]
+expression = ""
+field = "1.5707963267948966"
+native_stderr = ""
+s_real = [0.0729311586254, 0.9268895021726, 0.9268895021726, 0.0729311727026]
+current_value = 1.5707963267948966
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "2d0cad5ec86f6815d8d202fe0bdb6dbec9bea908d4ee44580111f9a25402e5f8"
+tag = "literal7"
+[[runs]]
+hypothesized_real_ohm_square = 2.1243706856919418
+s_imag = [0.0025421677994, -0.021301759681, -0.021301759681, 0.0025420520562]
+expression = ""
+field = "2.1243706856919418"
+native_stderr = ""
+s_real = [0.0961123882873, 0.903707092153, 0.903707092153, 0.0961124011921]
+current_value = 2.1243706856919418
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "bdb07d0f6e0b6a9a0a1663a5cefa7ab02e6b883206f984d09953b813564a56f2"
+tag = "literal8"
+[[runs]]
+hypothesized_real_ohm_square = 2.184682519981993
+s_imag = [0.0024753479687, -0.021234935876, -0.021234935876, 0.002475229275]
+expression = ""
+field = "2.184682519981993"
+native_stderr = ""
+s_real = [0.0985682963645, 0.9012510554674, 0.9012510554674, 0.0985683091432]
+current_value = 2.184682519981993
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "7b2cf8f64bee87748e0a30bb11aaefc068f6491097f277eaad4f13a5d8348c99"
+tag = "literal9"
+[[runs]]
+hypothesized_real_ohm_square = 2.588018294692748
+s_imag = [0.0020407350643, -0.020800296528, -0.020800296528, 0.0020405970443]
+expression = ""
+field = "2.5880182946927479"
+native_stderr = ""
+s_real = [0.114655729185, 0.8851627625499, 0.8851627625499, 0.1146557411276]
+current_value = 2.588018294692748
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "23939e99c885e99f06e2223c2e51e896ff5c6e48dea6e932a811fe97fb54677d"
+tag = "literal10"
+[[runs]]
+hypothesized_real_ohm_square = 3
+s_imag = [0.0016178037407, -0.020377338428, -0.020377338428, 0.0016176466793]
+expression = ""
+field = "3"
+native_stderr = ""
+s_real = [0.1305063723553, 0.8693112408099, 0.8693112408099, 0.1305063834567]
+current_value = 3.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "65734a9fc8a6ada92cad5d04f5bfb07febef25ef5dc6a41cf25aa199964cf1aa"
+tag = "literal11"
+[[runs]]
+hypothesized_real_ohm_square = 3.446425641102955
+s_imag = [0.0011819049485, -0.019941410867, -0.019941410867, 0.0011817280088]
+expression = ""
+field = "3.4464256411029548"
+native_stderr = ""
+s_real = [0.1470540509097, 0.8527626102059, 0.8527626102059, 0.1470540611131]
+current_value = 3.446425641102955
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "e164a6beb23c43e9e1792689b6ac2e2ea6d133e90786fd303eb18c5fce5210d0"
+tag = "literal12"
+[[runs]]
+hypothesized_real_ohm_square = 3.450693855665945
+s_imag = [0.0011778446938, -0.019937350338, -0.019937350338, 0.0011776675678]
+expression = ""
+field = "3.450693855665945"
+native_stderr = ""
+s_real = [0.1472092230845, 0.8526074289286, 0.8526074289286, 0.1472092332794]
+current_value = 3.450693855665945
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "3b9e58a9fe56f93944b1d93d38e9bd07470e25b07db21a18a782db8b9d080c58"
+tag = "literal13"
+[[runs]]
+hypothesized_real_ohm_square = 3.597640521891475
+s_imag = [0.0010392584325, -0.019798754661, -0.019798754661, 0.0010390749301]
+expression = ""
+field = "3.5976405218914751"
+native_stderr = ""
+s_real = [0.1525173049536, 0.8472990336758, 0.8472990336758, 0.1525173148558]
+current_value = 3.597640521891475
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "930f004f6b96af03e6c7f2aee7186dc8e01ef72e09799959fae448328c1fad7e"
+tag = "literal14"
+[[runs]]
+hypothesized_real_ohm_square = 4
+s_imag = [0.00067139259897, -0.01943086317, -0.01943086317, 0.00067119203704]
+expression = ""
+field = "4"
+native_stderr = ""
+s_real = [0.1667191186894, 0.833096361845, 0.833096361845, 0.1667191277971]
+current_value = 4.0
+native_variable_lines = []
+status = "SIMULATED"
+source_sha256 = "d60962ac77b30f09ad1c49b5924f535903fbb5c766e8b952ea4bd575ceeb0d21"
+tag = "literal15"
+[[runs]]
+hypothesized_real_ohm_square = 4
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+native_literal_gate_pass = false
+expression = "imag(h2p(cmplx(3000000000,4000000000)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+native_literal_delta_s = 0.16666570942061756
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "1abbdcea1b523f60d6838a51b29a30bf642c03ca955de897418ed6e400819964"
+tag = "h2p_complex_imag"
+current_error = "ArgumentError: native h2p requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 4
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+native_literal_gate_pass = false
+expression = "imag(p2h(cmplx(3,4)))/1000000000"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+native_literal_delta_s = 0.16666570942061756
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "6b0f3b2e46d93b0aa325588a2681c707997ce40558c8b3926b9a9405d3adb4fe"
+tag = "p2h_complex_imag"
+current_error = "ArgumentError: native p2h requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 4
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+native_literal_gate_pass = false
+expression = "imag(m2p(cmplx(.003,.004)))/1000"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+native_literal_delta_s = 0.16666570942061756
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "61185c5f853b8de45d5fb4a5cd57bec6d5fb46cd5e6cfec5e93d3d159c3e8a2b"
+tag = "m2p_complex_imag"
+current_error = "ArgumentError: native m2p requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 4
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+native_literal_gate_pass = false
+expression = "imag(p2m(cmplx(3,4)))/.000001"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+native_literal_delta_s = 0.16666570942061756
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "57e13fc0cb38d33e6bbfc623f52660c5eec9a9cba512c9bc2b472eecac9cec08"
+tag = "p2m_complex_imag"
+current_error = "ArgumentError: native p2m requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3
+s_imag = [0.0048343207483, -0.023594039799, -0.023594039799, 0.0048343201467]
+native_literal_gate_pass = false
+expression = "real(m2p(cmplx(.003,.004)))/1000"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.00027934358648, 0.9995446618327, 0.9995446618327, 0.00027936065808]
+native_literal_delta_s = 0.1302731404358246
+native_variable_lines = ["      Loss = 0.003 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "f2aa6b73a407a3064a258e3e449ef5c561c517f28af40cf727608d0fb306897f"
+tag = "m2p_complex_real"
+current_error = "ArgumentError: native m2p requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0.5535743588970452
+s_imag = [0.0044617829255, -0.023221480042, -0.023221480042, 0.0044617500802]
+native_literal_gate_pass = true
+expression = "0+real(atan2(cmplx(1,1),cmplx(2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0271121509632, 0.9727106774523, 0.9727106774523, 0.0271121672603]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0.553574 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "125522a63c2e3f9362c64f8e36aac993307d634cf82735d4864380692fb93220"
+tag = "atan2_ypositive_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0.40235947810852507
+s_imag = [0.0046582847638, -0.023417991854, -0.023417991854, 0.0046582605503]
+native_literal_gate_pass = true
+expression = "0+imag(atan2(cmplx(1,1),cmplx(2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0199278921945, 0.9798952577511, 0.9798952577511, 0.0199279088201]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0.402359 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "d0e4c72f7fd73785dbe15690929513c196959afafe6fd6db5ea37115cc81b8d5"
+tag = "atan2_ypositive_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 1.0172219678978514
+s_imag = [0.0038599347923, -0.022619600609, -0.022619600609, 0.0038598762072]
+native_literal_gate_pass = true
+expression = "0+real(atan2(cmplx(2,0),cmplx(1,1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0485359450924, 0.951285895768, 0.951285895768, 0.048535960369]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.01722 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "ae530dd047b3e74dd60c4f282e019498915b75a27d5e10c2c3a2f29de13d849d"
+tag = "atan2_xpositive_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3.597640521891475
+s_imag = [0.0010392584325, -0.019798754661, -0.019798754661, 0.0010390749301]
+native_literal_gate_pass = true
+expression = "4+imag(atan2(cmplx(2,0),cmplx(1,1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1525173049536, 0.8472990336758, 0.8472990336758, 0.1525173148558]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3.59764 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "75ee79938db5f2ec0e156a338fd650fbf848c347a9a36de73645d3a6bf36bce5"
+tag = "atan2_xpositive_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 2.588018294692748
+s_imag = [0.0020407350643, -0.020800296528, -0.020800296528, 0.0020405970443]
+native_literal_gate_pass = true
+expression = "0+real(atan2(cmplx(1,1),cmplx(-2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.114655729185, 0.8851627625499, 0.8851627625499, 0.1146557411276]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2.58802 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "d58dec5e4e2b3f9cd5971d118ee7aaae86b57987bdd4e3de8b52bbac9208926f"
+tag = "atan2_xnegative_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3.597640521891475
+s_imag = [0.0010392584325, -0.019798754661, -0.019798754661, 0.0010390749301]
+native_literal_gate_pass = true
+expression = "4+imag(atan2(cmplx(1,1),cmplx(-2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1525173049536, 0.8472990336758, 0.8472990336758, 0.1525173148558]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3.59764 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "e03731abdd827022840de062721a48de05eb90f6a0d31779ed07011ca9351521"
+tag = "atan2_xnegative_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3.446425641102955
+s_imag = [0.0011819049485, -0.019941410867, -0.019941410867, 0.0011817280088]
+native_literal_gate_pass = true
+expression = "4+real(atan2(cmplx(-1,1),cmplx(2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1470540509097, 0.8527626102059, 0.8527626102059, 0.1470540611131]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3.44643 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "95e9f7fa3bd9eb0f71e622c903b083025ff9d7fda129a17e4027a48eb0e4ecab"
+tag = "atan2_ynegative_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0.40235947810852507
+s_imag = [0.0046582847638, -0.023417991854, -0.023417991854, 0.0046582605503]
+native_literal_gate_pass = true
+expression = "0+imag(atan2(cmplx(-1,1),cmplx(2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0199278921945, 0.9798952577511, 0.9798952577511, 0.0199279088201]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0.402359 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "b7a90eea6364605cd468115346121f293a6d0b2cdedc85ef4ea910c741f474fc"
+tag = "atan2_ynegative_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 1.411981705307252
+s_imag = [0.0033696739381, -0.022129313184, -0.022129313184, 0.0033695942987]
+native_literal_gate_pass = true
+expression = "4+real(atan2(cmplx(-1,1),cmplx(-2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0660604056506, 0.9337605937396, 0.9337605937396, 0.0660604200691]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.41198 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "026ed69392079e5c9ce23870d49e8efbe53c7241ebb2505beb679220bb056ef0"
+tag = "atan2_bothnegative_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3.597640521891475
+s_imag = [0.0010392584325, -0.019798754661, -0.019798754661, 0.0010390749301]
+native_literal_gate_pass = true
+expression = "4+imag(atan2(cmplx(-1,1),cmplx(-2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1525173049536, 0.8472990336758, 0.8472990336758, 0.1525173148558]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3.59764 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "cf3466d59b292f816893681eb23394563f159ffb3788f650fd81e100466c7210"
+tag = "atan2_bothnegative_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 2.1243706856919418
+s_imag = [0.0025421677994, -0.021301759681, -0.021301759681, 0.0025420520562]
+native_literal_gate_pass = true
+expression = "0+real(atan2(cmplx(3,1),cmplx(-2,1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0961123882873, 0.903707092153, 0.903707092153, 0.0961124011921]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2.12437 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "ba499e01184b40d60f64975fcf27fdddb004ef99f386de7233ce5b75fe7ddce5"
+tag = "atan2_bothcomplex_xnegative_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3.597640521891475
+s_imag = [0.0010392584325, -0.019798754661, -0.019798754661, 0.0010390749301]
+native_literal_gate_pass = true
+expression = "4+imag(atan2(cmplx(3,1),cmplx(-2,1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1525173049536, 0.8472990336758, 0.8472990336758, 0.1525173148558]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3.59764 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "8d442cbebe0f07648feb36ee009c2979c2c80acb833c5f972095f57f05b063f4"
+tag = "atan2_bothcomplex_xnegative_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 2.184682519981993
+s_imag = [0.0024753479687, -0.021234935876, -0.021234935876, 0.002475229275]
+native_literal_gate_pass = true
+expression = "0+real(atan2(cmplx(3,1),cmplx(-2,-1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0985682963645, 0.9012510554674, 0.9012510554674, 0.0985683091432]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 2.18468 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "9960695b5914c69075c04c4e7543354c0f564bd79e39ccefd8ea7ee1113afbaa"
+tag = "atan2_xnegative_lower_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0.06706599664866986
+s_imag = [0.0048718498681, -0.023631569626, -0.023631569626, 0.0048718452126]
+native_literal_gate_pass = true
+expression = "0+imag(atan2(cmplx(3,1),cmplx(-2,-1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0036521953325, 0.9961716659989, 0.9961716659989, 0.0036522124108]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0.067066 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "3712999857d3f98bdec53ccc47ec31f468517e7d6fba2180c1301a876c788c9e"
+tag = "atan2_xnegative_lower_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0
+s_imag = [0.0047946849607, -0.023554402359, -0.023554402359, 0.0047946845595]
+native_literal_gate_pass = true
+expression = "0+real(atan2(cmplx(0,1),cmplx(2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0001129600631, 0.9997110524375, 0.9997110524375, 0.00011297708894]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "b680e144be93e85f99f3e1a543c08b74d4a78b2e508e630ba2f27d8cd54ec87e"
+tag = "atan2_pure_y_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0.5493061443340549
+s_imag = [0.0044673843935, -0.023227081796, -0.023227081796, 0.0044673517902]
+native_literal_gate_pass = true
+expression = "0+imag(atan2(cmplx(0,1),cmplx(2,0)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0269106600002, 0.9729121774973, 0.9729121774973, 0.0269106763067]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 0.549306 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "96c6015c5f0f00f77f7cf26ad1bb2ec53b09c4ec91fc29c655e600a8c0f83cec"
+tag = "atan2_pure_y_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 1.5707963267948966
+s_imag = [0.0031789147745, -0.021938543394, -0.021938543394, 0.0031788268806]
+native_literal_gate_pass = true
+expression = "0+real(atan2(cmplx(2,0),cmplx(0,1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0729311586254, 0.9268895021726, 0.9268895021726, 0.0729311727026]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.5708 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "cfd13ab51963f70611e36f2d3e88d1efe98c0e11bba87f3b61778d88b474c5be"
+tag = "atan2_pure_x_real"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 3.450693855665945
+s_imag = [0.0011778446938, -0.019937350338, -0.019937350338, 0.0011776675678]
+native_literal_gate_pass = true
+expression = "4+imag(atan2(cmplx(2,0),cmplx(0,1)))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.1472092230845, 0.8526074289286, 0.8526074289286, 0.1472092332794]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 3.45069 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "1f698d7d71e1d1fdd830cd51502c2c0459805b4746144be9109288736e9e0799"
+tag = "atan2_pure_x_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 1.5707963267948966
+s_imag = [0.0031789147745, -0.021938543394, -0.021938543394, 0.0031788268806]
+native_literal_gate_pass = true
+expression = "real(atan2(cmplx(1,1),0))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0729311586254, 0.9268895021726, 0.9268895021726, 0.0729311727026]
+native_literal_delta_s = 0.0
+native_variable_lines = ["      Loss = 1.5708 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "06c9f3dada3fb5eaf6db954e8c150d7fcccbecea886888871d7e2b5bc3bbce86"
+tag = "atan2_complex_y_zero_x"
+current_error = "ArgumentError: native atan2 requires real arguments"
+[[runs]]
+hypothesized_real_ohm_square = 0
+s_imag = [0.0038818406615, -0.022641507642, -0.022641507642, 0.0038817830127]
+native_literal_gate_pass = false
+expression = "imag(atan2(cmplx(1,1),0))"
+field = "\"Loss\""
+native_stderr = ""
+s_real = [0.0477566027849, 0.9520652747782, 0.9520652747782, 0.0477566180991]
+native_literal_delta_s = 0.04765452240368985
+native_variable_lines = ["      Loss = 1 Ohms/sq"]
+status = "SIMULATED"
+source_sha256 = "4248fc6cab0a85d9d51be4ab8108b2faf85e89b7b04b79c6483a48a97af50dd8"
+tag = "atan2_complex_y_zero_x_imag"
+current_error = "ArgumentError: native atan2 requires real arguments"
+
+[module_before]
+"sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"PlanarSonnetIO.jl" = "40bec2222a796f8d522297732f456d181d50f737b9d6eb66a36da0e8cb5cbbe3"
+"PlanarSonnetScalarFiles.jl" = "918b343951340e72b53129affcc3be7ce9f24ad9d750d2dc71d504dddba49ef5"
+
+[module_after]
+"sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"PlanarSonnetIO.jl" = "40bec2222a796f8d522297732f456d181d50f737b9d6eb66a36da0e8cb5cbbe3"
+"PlanarSonnetScalarFiles.jl" = "918b343951340e72b53129affcc3be7ce9f24ad9d750d2dc71d504dddba49ef5"
