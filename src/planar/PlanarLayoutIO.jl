@@ -47,22 +47,24 @@ function _layout_circle(center,radius,tolerance;segments=nothing)
 end
 
 function _layout_stroke!(out,key,points,width,pathtype,tolerance,max_elements;
-        begin_extension=0.,end_extension=0.)
+        begin_extension=0.,end_extension=0.,closed=false)
     width>0 || throw(ArgumentError("zero-width paths cannot form planar metal"))
     size(points,2)>=2 || throw(ArgumentError("path needs two points"))
     pathtype in (0,1,2,4) || throw(ArgumentError("unsupported GDSII path type $pathtype"))
     h=width/2; n=size(points,2)
-    for i in 1:n-1
-        a=copy(points[:,i]); b=copy(points[:,i+1]); d=b-a; length=norm(d)
+    for i in 1:(closed ? n : n-1)
+        next=i==n ? 1 : i+1
+        a=copy(points[:,i]); b=copy(points[:,next]); d=b-a; length=norm(d)
         length>0 || throw(ArgumentError("path has coincident successive points"))
         tangent=d/length; normal=[-tangent[2],tangent[1]]
-        i==1 && (a-=(pathtype==2 ? h : pathtype==4 ? begin_extension : 0.)*tangent)
-        i==n-1 && (b+=(pathtype==2 ? h : pathtype==4 ? end_extension : 0.)*tangent)
+        !closed && i==1 && (a-=(pathtype==2 ? h : pathtype==4 ? begin_extension : 0.)*tangent)
+        !closed && i==n-1 && (b+=(pathtype==2 ? h : pathtype==4 ? end_extension : 0.)*tangent)
         _layout_polygon!(out,key,hcat(a+h*normal,b+h*normal,b-h*normal,a-h*normal),max_elements)
     end
     # Miter joins close the outer corner without filling the path's interior.
-    for i in 2:n-1
-        v=points[:,i]; before=v-points[:,i-1]; after=points[:,i+1]-v
+    for i in (closed ? (1:n) : (2:n-1))
+        before_index=i==1 ? n : i-1; after_index=i==n ? 1 : i+1
+        v=points[:,i]; before=v-points[:,before_index]; after=points[:,after_index]-v
         u=before/norm(before); w=after/norm(after)
         turn=u[1]*w[2]-u[2]*w[1]
         abs(turn)<1e-12 && continue
@@ -72,7 +74,7 @@ function _layout_stroke!(out,key,points,width,pathtype,tolerance,max_elements;
         miter=v+h*(n1+n2)/denom
         _layout_polygon!(out,key,hcat(v,v+h*n1,miter,v+h*n2),max_elements)
     end
-    if pathtype==1
+    if pathtype==1 && !closed
         _layout_polygon!(out,key,_layout_circle(points[:,1],h,tolerance),max_elements)
         _layout_polygon!(out,key,_layout_circle(points[:,end],h,tolerance),max_elements)
     end
@@ -260,13 +262,13 @@ function read_dxf(path::AbstractString;unit_m=nothing,curve_tolerance::Real=1e-8
             throw(ArgumentError("nonplanar DXF extrusion requires a 3D adapter"))
         _dxf_number(row,38,0.)==0 && _dxf_number(row,30,0.)==0 || throw(ArgumentError("nonzero DXF elevation"))
         if kind=="LWPOLYLINE" || kind=="POLYLINE"
-            points=Vector{Vector{Float64}}(); bulges=Float64[]; widths=Float64[]
+            points=Vector{Vector{Float64}}(); bulges=Float64[]
             closed=parse(Int,_dxf_field(row,70,"0"))&1!=0
             constant=_dxf_number(row,43,0.)*unit
             if kind=="LWPOLYLINE"
                 for (code,value) in row
                     if code==10
-                        push!(points,[parse(Float64,value),NaN]); push!(bulges,0.); push!(widths,constant)
+                        push!(points,[parse(Float64,value),NaN]); push!(bulges,0.)
                     elseif code==20
                         isempty(points) && throw(ArgumentError("DXF y coordinate precedes x")); points[end][2]=parse(Float64,value)
                     elseif code==42
@@ -278,14 +280,24 @@ function read_dxf(path::AbstractString;unit_m=nothing,curve_tolerance::Real=1e-8
                 parse(Int,_dxf_field(row,90,string(length(points))))==length(points) || throw(ArgumentError("DXF vertex-count mismatch"))
             else
                 flags=parse(Int,_dxf_field(row,70,"0")); flags&0x58==0 || throw(ArgumentError("3D/polyface DXF polyline requires a 3D adapter"))
+                # Legacy POLYLINE defaults are group codes 40/41; VERTEX
+                # widths inherit them when absent (Autodesk DXF reference).
+                start_width=_dxf_number(row,40,0.)*unit
+                end_width=_dxf_number(row,41,0.)*unit
+                constant=start_width
+                start_width==end_width || throw(ArgumentError("variable-width DXF polyline requires a varying-width path adapter"))
                 i+=1
                 while i<=length(entities) && entities[i][1][2]=="VERTEX"
                     v=entities[i]; _dxf_number(v,30)==0 || throw(ArgumentError("nonplanar DXF vertex"))
-                    push!(points,[_dxf_number(v,10),_dxf_number(v,20)]); push!(bulges,_dxf_number(v,42)); push!(widths,constant)
+                    _dxf_number(v,40,start_width/unit)*unit==constant &&
+                        _dxf_number(v,41,end_width/unit)*unit==constant ||
+                        throw(ArgumentError("variable-width DXF polyline requires a varying-width path adapter"))
+                    push!(points,[_dxf_number(v,10),_dxf_number(v,20)]); push!(bulges,_dxf_number(v,42))
                     i+=1
                 end
                 i<=length(entities) && entities[i][1][2]=="SEQEND" || throw(ArgumentError("DXF POLYLINE lacks SEQEND"))
             end
+            isfinite(constant) && constant>=0 || throw(ArgumentError("DXF polyline width must be finite and nonnegative"))
             length(points)>=2 && all(p->all(isfinite,p),points) || throw(ArgumentError("invalid DXF polyline"))
             points=[p*unit for p in points]; vertices=Vector{Float64}[]
             n=length(points); count=closed ? n : n-1
@@ -295,7 +307,7 @@ function read_dxf(path::AbstractString;unit_m=nothing,curve_tolerance::Real=1e-8
             end
             closed || push!(vertices,points[end])
             if constant>0
-                _layout_stroke!(polygons,layer,hcat(vertices...),constant,0,curve_tolerance,max_elements)
+                _layout_stroke!(polygons,layer,hcat(vertices...),constant,0,curve_tolerance,max_elements;closed)
             else
                 closed || throw(ArgumentError("open zero-width DXF polyline is not filled metal"))
                 _layout_polygon!(polygons,layer,hcat(vertices...),max_elements)
