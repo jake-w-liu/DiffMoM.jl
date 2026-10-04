@@ -1,5 +1,11 @@
 using DiffMoM,Test,LinearAlgebra
 
+function _folded_result_matvec_bytes(result)
+    x=view(result.currents,:,1);out=zeros(ComplexF64,length(x))
+    for _ in 1:30;mul!(out,result.operator,x);end
+    minimum(@allocated(mul!(out,result.operator,x)) for _ in 1:5)
+end
+
 @testset "Folded FFT operator preserves physical reactions and diagonal" begin
     for walls in (WALL_PEC,WALL_PMC)
         prob=_dense_workspace_fixture(walls)
@@ -96,5 +102,10 @@ end
     @test result.s≈reference.s rtol=1e-9
     @test result.currents≈reference.currents rtol=1e-8
     @test maximum(result.relative_residuals)<1e-10
+    @test _folded_result_matvec_bytes(result)==0
+    legacy=PlanarUFFTResult(line,result.freq,result.omega,result.operator,result.currents,
+        result.y,result.s,result.iterations,result.relative_residuals)
+    @test legacy.s==result.s && legacy.z0==result.z0
+    @test _folded_result_matvec_bytes(legacy)==0
     @test_throws ErrorException solve_planar_ufft(line,5e9;linekw...,rtol=1e-13,maxiter=1,memory=1)
 end

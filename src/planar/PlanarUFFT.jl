@@ -381,7 +381,9 @@ function _planar_ufft_folded_apply!(A,x,folded::_PlanarUFFTFoldedWorkspace)
             A.forward*F
             for fi in 1:nf
                 K=view(folded.spectra,:,:,4*((fi-1)*nf+si-1)+2*(xi-1)+yi)
-                for t in eachindex(F)
+                # Constructor-owned spectra share F's lattice dimensions;
+                # fields has length(F) rows and one column per family.
+                @inbounds for t in eachindex(F)
                     fields[t,fi]+=K[t]*F[t]
                 end
             end
@@ -463,11 +465,11 @@ end
 """Result of `solve_planar_ufft`, retaining the bounded FFT operator and
 currents instead of a dense matrix/factorization.  Residuals are recomputed
 from the full operator; unconverged ports raise an error."""
-struct PlanarUFFTResult
+struct PlanarUFFTResult{O<:PlanarUFFTOperator}
     problem::PlanarProblem
     freq::ComplexF64
     omega::ComplexF64
-    operator::PlanarUFFTOperator
+    operator::O
     currents::Matrix{ComplexF64}
     y::Matrix{ComplexF64}
     s::Matrix{ComplexF64}

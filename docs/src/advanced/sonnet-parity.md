@@ -1040,6 +1040,14 @@ ladder remain open.
   its diagonal matches exactly, and warmed matvecs allocate zero bytes.
   This resolves the former 8060904784-byte preflight rejection, while the
   accuracy and fine-grid iterative convergence checks remain open.
+  A fresh public solve at this same 4096-mode grid converges with restart
+  1200 and maxiter5000 in 3354 iterations per port. Recomputed original
+  residuals are 9.986e-11/9.986e-11, and its full complex S differs from the
+  retained dense reference by 2.504e-9. Native raw error is 0.06492637,
+  still **FAIL** at 0.06. This establishes convergence for these declared
+  settings; default restart choices and broader spatial convergence remain
+  separate checks. Evidence: `dxf_folded_public_solve_3zDFGO`, anchored to
+  source `a028459b`, under local `data/planar_audit`.
   Evidence: `dxf_folded_iterative_operator_audit_ZRgNgt` under local
   `data/planar_audit`. Array payloads exclude opaque FFTW plans and process
   overhead. Folding increases construction work; subsequent actions use
@@ -1266,6 +1274,7 @@ ladder remain open.
 | Retained FFT assembly keeps unused iterative buffers / measured resource use | multilayer 273-unknown fixture retains four mode-by-element arrays and an unused output vector totaling 3936528 B; warmed assembly allocates 15281904 B | separate compact assembly workspace preserves bit-identical finite-modal matrix and complete public iterative operator; warmed allocation 11344885 B (25.76% reduction), 42 new + 116 neighboring + 112 independent checks; raw payload budget still excludes opaque FFTW and process overhead |
 | Dense FFT retains every modal layer-pair kernel / measured resource use | 273-unknown mixed fixture allocates 11.344 MB and rejects an 8 MB payload limit; DXF mode4096 requires a 4.839 GB FFT workspace before its dense matrix | bounded blocks fold each mode in its original order into smaller family-pair lattices; mixed PEC/PMC matrices match the frozen source byte for byte, allocations fall to 3.695 MB and the 8 MB gate passes; DXF mode4096 fits the original 4 GB limit, while its native accuracy gate remains FAIL |
 | Matrix-free FFT retains high-mode kernels and four mode-by-element buffers / measured resource use | DXF mode4096 rejects the 4 GB limit because its estimate is 8.061 GB | choose smaller family-pair spectra plus reusable grid fields; the same public operator fits the unchanged budget and retains 240 MB of Julia arrays, with full-matrix action error 1.66e-15 and zero warmed matvec allocation; independent mixed PEC/PMC modal matrices, all wall halves, local/coupled losses and port solves gate correctness; peak process memory and DXF physical acceptance remain unverified |
+| Folded accumulation checks owned indices and public results erase FFT plan types / measured CPU and allocations | paired mixed PEC/PMC prototypes spend 17–32% less time with the owned accumulation ranges unchecked; real physical result matvec calls allocate48 bytes despite zero allocation through concrete operators | remove checks only inside the constructor-sized accumulation loop and retain the concrete operator type in `PlanarUFFTResult`; original vector/input indexing and preflight guards remain checked; outputs stay bit-identical in scoped prototypes, and public result/legacy-constructor matvec allocation is gated at zero; timings are workload-specific and do not certify global optimization |
 | Finite wide circuit scalars lose stored invariants / numerical and state correctness | finite BigFloat R/L become infinity; positive C and nonzero transformer ratios become zero in owned elements | validate stored Float64 values before mutation; invalid inputs leave elements/nodes/ports unchanged, explicit zero and representable wide values remain supported |
 | Circuit frequency overflow/underflow after callbacks / public workflow correctness | pure network input frequencies `1e1000`/`1e-1000` return result frequencies infinity/zero after two callbacks | preflight the stored frequency before providers; invalid frequencies invoke zero callbacks, valid wide inputs use finite Float64 provider/result frequencies |
 | Attenuating circuit line loses reciprocity / numerical and physical correctness | matched `40+0.37im` line gives reverse transmission magnitude 4 instead of `exp(-40)`; attenuation 710 rejects finite S | bounded travelling-wave MNA, stored complex-domain validation and no ABCD temporary; 908 independent high-precision/domain/allocation checks |
