@@ -1,0 +1,8 @@
+{
+  "commit": "3c9a5190b236223394520788adf49926b070f35b",
+  "source_file": "src/planar/PlanarBasis.jl",
+  "source_sha256": "9f5deeffce84d7b696ffbb907d07226cab1197b8ddeb905f192bb995f2b22627",
+  "begin_byte": 10421,
+  "end_byte": 11393,
+  "block_sha256": "bbcc06fd79575fdbc3306edc1929fe4ea2af5713bfbe104f1bd93c390c6b4441"
+}

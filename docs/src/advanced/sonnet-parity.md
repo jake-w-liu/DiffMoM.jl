@@ -251,11 +251,16 @@ ownership and budget boundaries are preserved in
 Zero saved ANC/NSCD offsets are accepted when the reference coordinates coincide
 on the selected axis. Eight native X/Y, direction and target-size controls match
 independent literal geometry bit for bit; the prior adapter rejects all eight.
-Six literal public solves pass the unchanged 0.005 full-S and 1e-9 voltage-residual
-gates. The negative-direction 0.0625 target still fails full-S on both axes
-(approximately 1.00016 and 1.00014), despite small residuals. Those literal EM
-failures remain separate open accuracy work; the geometry extension does not
-turn them into passing physical acceptance. Exact sources, old implementation,
+Six literal public solves passed the unchanged 0.005 full-S and 1e-9 voltage-residual
+gates in the preserved baseline; the negative-direction 0.0625 target failed
+full-S on both axes (approximately 1.00016 and 1.00014), despite small residuals.
+Independent native current/subsection supports exposed two missing X cells and
+one spurious Y wall cell from horizontal-ray boundary ownership. Vertical-ray
+half-open rasterization with diagonal roundoff handling now passes all eight
+original physical gates, with maximum full-S error 0.0000340. Axis-aligned
+ownership and zero warmed raster allocation are preserved. The old failures,
+causal wall-contact control and rejected inclusive-diagonal hypothesis remain
+immutable in `test/fixtures/native_diagonal_boundary_raster`. Exact sources, old implementation,
 complete six-PASS/two-FAIL baseline and hashes are retained in
 `test/fixtures/native_zero_nominal_geovar`, replayed by
 `validation/planar_audit/run_zero_nominal_geovar_reference.jl`.

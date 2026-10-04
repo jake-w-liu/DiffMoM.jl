@@ -46,22 +46,22 @@ const observations=NamedTuple[]
         native=planar_read_touchstone(joinpath(fixture,"native",tag*"_parameter/native_raw.s2p"))
         @test native.s==planar_read_touchstone(joinpath(fixture,"native",tag*"_literal/native_raw.s2p")).s
         before=only(filter(b->b["axis"]==row["axis"] && b["direction"]==row["direction"] && b["target"]==row["target"],baseline["cases"]))
-        # The two retained literal EM failures remain outside this passing
-        # physical scope; their fixed gate and FAIL baseline are preserved.
+        # Preserve the literal baseline's two historical FAILs. The current
+        # vertical-ray raster repair must pass every original physical gate.
         if before["status"]=="PASS"
             @test before["full_s_error"]<=.005 && before["original_voltage_residual"]<=1e-9
-            result=solve_sonnet_project(p,1e9;raw=true,method=:dense_fft,mx=128,my=128,retain_matrix=true)
-            raw=result.raw;rhs=zeros(ComplexF64,size(raw.currents))
-            for b in eachindex(raw.problem.basis.port)
-                port=raw.problem.basis.port[b];iszero(port) && continue
-                rhs[b,port]=(port==1 ? -1. : 1.)*raw.problem.basis.width[b]
-            end
-            full_s_error=maximum(abs,result.s-only(native.s))
-            residual=norm(raw.z_mom*raw.currents-rhs)/norm(rhs)
-            @test full_s_error<=.005 && residual<=1e-9
-            @test maximum(abs,result.s-transpose(result.s))<=1e-10 && opnorm(result.s)<=1+1e-9
-            push!(observations,(case=tag,full_s_error,original_voltage_residual=residual))
         end
+        result=solve_sonnet_project(p,1e9;raw=true,method=:dense_fft,mx=128,my=128,retain_matrix=true)
+        raw=result.raw;rhs=zeros(ComplexF64,size(raw.currents))
+        for b in eachindex(raw.problem.basis.port)
+            port=raw.problem.basis.port[b];iszero(port) && continue
+            rhs[b,port]=(port==1 ? -1. : 1.)*raw.problem.basis.width[b]
+        end
+        full_s_error=maximum(abs,result.s-only(native.s))
+        residual=norm(raw.z_mom*raw.currents-rhs)/norm(rhs)
+        @test full_s_error<=.005 && residual<=1e-9
+        @test maximum(abs,result.s-transpose(result.s))<=1e-10 && opnorm(result.s)<=1+1e-9
+        push!(observations,(case=tag,full_s_error,original_voltage_residual=residual))
         @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved))
         @test all(a.values==b.values for (a,b) in zip(p.ports,savedports))
     end

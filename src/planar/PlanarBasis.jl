@@ -208,8 +208,22 @@ function rasterize_rect!(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid,
     return sheet
 end
 
+Base.@propagate_inbounds function _planar_raster_crossing(xs,ys,v,k,xc)
+    yint=ys[k]+(ys[v]-ys[k])*(xc-xs[k])/(xs[v]-xs[k])
+    tol=ys[v]!=ys[k] && isfinite(yint) ?
+        8eps(Float64)*max(abs(yint),abs(ys[v]),abs(ys[k])) : zero(yint)
+    return yint,tol
+end
+
+@inline _planar_raster_above(yc,crossing)=
+    yc<crossing[1] && crossing[1]-yc>crossing[2]
+
 """Fill cells whose centre lies inside an arbitrary polygon given by vertex
-lists `xs`, `ys` (ray-casting rule).  Connection flags are not modified."""
+lists `xs`, `ys`. A vertical ray gives half-open boundary ownership, consistent
+with native boundary controls: a centre on a lower sloped edge belongs to the polygon,
+while one on an upper edge does not. Diagonal crossing ties include a Float64
+roundoff allowance; axis-aligned sides retain their half-open rule.
+Connection flags are not modified."""
 function rasterize_poly!(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid,
         xs::AbstractVector{<:Real}, ys::AbstractVector{<:Real})
     _validate_sheet_grid(sheet, grid)
@@ -218,17 +232,41 @@ function rasterize_poly!(sheet::Union{SheetLevel,VolLevel}, grid::CellGrid,
         throw(ArgumentError("polygon needs >= 3 vertices"))
     all(isfinite, xs) && all(isfinite, ys) ||
         throw(ArgumentError("polygon vertices must be finite"))
-    @inbounds for j in 1:grid.ny
-        yc = (j - 0.5) * grid.dy
-        for i in 1:grid.nx
-            xc = (i - 0.5) * grid.dx
+    # Most columns have two or four crossings. Keep their intercepts in a
+    # fixed tuple, avoiding repeated division and tolerance work per cell.
+    # More complicated columns retain the same unrestricted parity rule.
+    z=zero(grid.dy*(ys[1]-ys[1])+(xs[1]-xs[1]));empty_crossing=(z,z)
+    @inbounds for i in 1:grid.nx
+        xc=(i-.5)*grid.dx;count=0;k=nv
+        crossings=(empty_crossing,empty_crossing,empty_crossing,empty_crossing)
+        for v in 1:nv
+            if (xs[v]>xc)!=(xs[k]>xc)
+                count+=1;count>4 && break
+                value=_planar_raster_crossing(xs,ys,v,k,xc)
+                crossings=count==1 ? (value,empty_crossing,empty_crossing,empty_crossing) :
+                    count==2 ? (crossings[1],value,empty_crossing,empty_crossing) :
+                    count==3 ? (crossings[1],crossings[2],value,empty_crossing) :
+                        (crossings[1],crossings[2],crossings[3],value)
+            end
+            k=v
+        end
+        iszero(count) && continue
+        if count<=4
+            for j in 1:grid.ny
+                yc=(j-.5)*grid.dy
+                inside=xor(_planar_raster_above(yc,crossings[1]),_planar_raster_above(yc,crossings[2]),
+                    _planar_raster_above(yc,crossings[3]),_planar_raster_above(yc,crossings[4]))
+                inside && (sheet.mask[i,j]=true)
+            end
+            continue
+        end
+        for j in 1:grid.ny
+            yc=(j-.5)*grid.dy
             inside = false
             k = nv
             for v in 1:nv
-                if (ys[v] > yc) != (ys[k] > yc)
-                    xint = xs[k] + (xs[v] - xs[k]) * (yc - ys[k]) /
-                                   (ys[v] - ys[k])
-                    xc < xint && (inside = !inside)
+                if (xs[v] > xc) != (xs[k] > xc)
+                    _planar_raster_above(yc,_planar_raster_crossing(xs,ys,v,k,xc)) && (inside=!inside)
                 end
                 k = v
             end
