@@ -62,9 +62,11 @@ end
 The integrand is affine(values)*exp(i*(kx*x+ky*y))."""
 function _planar_triangle_affine_fourier(vertices::AbstractMatrix{<:Real},
         values::NTuple{3,Float64},kx::Real,ky::Real)
-    a=vertices[1,2]-vertices[1,1];b=vertices[2,2]-vertices[2,1]
-    c=vertices[1,3]-vertices[1,1];d=vertices[2,3]-vertices[2,1]
-    twicearea=abs(a*d-b*c)
+    # Match the mesh's robust area predicate. Direct rounded products
+    # can cancel for a valid near-collinear triangle and erase its entire
+    # Fourier reaction, including the constant moment at zero phase.
+    twicearea=abs(_planar_orient2d(vertices[1,1],vertices[2,1],
+        vertices[1,2],vertices[2,2],vertices[1,3],vertices[2,3]))
     phases=ntuple(i->ComplexF64(1im*(kx*vertices[1,i]+ky*vertices[2,i])),Val(3))
     shift=phases[1]
     shifted=map(x->x-shift,phases)
