@@ -32,7 +32,7 @@ end
 function planar_rational_eval(model::PlanarRationalModel,f::Real)
     isfinite(f) || throw(ArgumentError("model frequency must be finite"))
     s = 2pi*1im*f
-    Y = ComplexF64.(model.d) + s*model.e
+    Y = model.d .+ s .* model.e
     for k in eachindex(model.poles)
         Y .+= model.residues[k] ./ (s-model.poles[k])
     end
