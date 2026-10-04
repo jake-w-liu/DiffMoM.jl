@@ -351,9 +351,23 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
         certificate.certified,certificate.method,margin,shift,capacitance_adjustment)
 end
 
+function _vf_spice_damping(io,node,alpha)
+    resistance=inv(alpha)
+    if isfinite(resistance)
+        println(io,"R",node," ",node," 0 ",resistance)
+    else
+        # A finite decay rate can have an unrepresentable reciprocal.
+        # The self-controlled current source is the same conductance,
+        # retaining that stable pole with a finite SPICE coefficient.
+        println(io,"Gdecay",node," ",node," 0 ",node," 0 ",alpha)
+    end
+    return nothing
+end
+
 """Write an N-port SPICE `.subckt` realizing the fitted admittance
-exactly with real R/C elements and controlled sources. Pole states use
-unit capacitors; the affine term uses copied input voltages and sensed
+exactly with real R/C elements and controlled sources. Pole equations
+and state voltages are scaled by their decay rate where representable;
+the affine term uses copied input voltages and sensed
 capacitor currents. The final `dm_ref` terminal is a floating reference.
 Auxiliary state voltages use node `0` to avoid subtracting tiny state
 voltages from a large reference voltage; all external current and voltage
@@ -416,29 +430,39 @@ function planar_write_spice(model::PlanarRationalModel,path::AbstractString;
         k = 1
         while k <= length(model.poles)
             alpha = -real(model.poles[k])
+            scale=max(1.0,alpha)
             for j in 1:n
+                # Keep DC state voltages and output gains balanced together.
+                # When a residue/alpha ratio cannot be stored, retain the
+                # finite original residue scale for that input column.
+                state_scale=all(r->isfinite(real(r)/alpha) && isfinite(imag(r)/alpha),
+                    view(model.residues[k],:,j)) ? alpha : scale
                 state += 1
                 u = "dm_u$state"
-                println(io,"C",u," ",u," 0 1")
-                println(io,"R",u," ",u," 0 ",inv(alpha))
-                println(io,"Gin",u," ",u," 0 ",ports[j]," dm_ref -1")
+                println(io,"C",u," ",u," 0 ",inv(scale))
+                _vf_spice_damping(io,u,alpha/scale)
+                # Paired states use twice the input drive and undoubled
+                # residues. This retains finite coefficients even when
+                # doubling a valid real/imaginary residue would overflow.
+                println(io,"Gin",u," ",u," 0 ",ports[j]," dm_ref ",
+                    (ci[k]==0 ? -1 : -2)*(state_scale/scale))
                 if ci[k]==0
                     for i in 1:n
-                        gain = real(model.residues[k][i,j])
+                        gain = real(model.residues[k][i,j])/state_scale
                         iszero(gain) || println(io,"Gs",u,"_",i," ",ports[i],
                             " dm_ref ",u," 0 ",gain)
                     end
                 else
                     state += 1
                     v = "dm_u$state"
-                    beta = imag(model.poles[k])
-                    println(io,"C",v," ",v," 0 1")
-                    println(io,"R",v," ",v," 0 ",inv(alpha))
+                    beta = imag(model.poles[k])/scale
+                    println(io,"C",v," ",v," 0 ",inv(scale))
+                    _vf_spice_damping(io,v,alpha/scale)
                     println(io,"Gx",u,"_",v," ",u," 0 ",v," 0 ",beta)
                     println(io,"Gx",v,"_",u," ",v," 0 ",u," 0 ",-beta)
                     for i in 1:n
                         residue = model.residues[k][i,j]
-                        for (node,gain) in ((u,2real(residue)),(v,-2imag(residue)))
+                        for (node,gain) in ((u,real(residue)/state_scale),(v,-imag(residue)/state_scale))
                             iszero(gain) || println(io,"Gs",node,"_",i," ",ports[i],
                                 " dm_ref ",node," 0 ",gain)
                         end
