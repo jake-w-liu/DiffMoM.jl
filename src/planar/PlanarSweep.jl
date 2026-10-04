@@ -488,6 +488,17 @@ function planar_box_resonances(stack::PlanarStackup{T},
              end for f in fs]
         scale = maximum(abs, r)
         isfinite(scale) && scale > 0 || continue
+        function accept(fres, residual)
+            # Honor the caller's residual criterion, including at either
+            # endpoint of the declared closed frequency band. A fixed
+            # numerical floor could otherwise accept lossy non-poles.
+            abs(residual) <= rtol * scale || return
+            any(o -> abs(o.freq - fres) <= 1e-6 * (fmax - fmin) &&
+                     o.m == m0 && o.n == n0 && o.pol == pol, out) ||
+                push!(out, PlanarResonance(fres, m0, n0, pol))
+        end
+        accept(fs[1], r[1])
+        accept(fs[end], r[end])
         for j in 2:(nsamp - 1)
             # sign change of the reactive part (lossless stacks carry a
             # purely imaginary residual) or a strict |r| local minimum
@@ -510,11 +521,7 @@ function planar_box_resonances(stack::PlanarStackup{T},
             fres === nothing && continue
             rstar = _resonance_residual(stack, 2pi * fres, kc2, pol,
                 Int(iface))
-            abs(rstar) <= rtol * scale || abs(rstar) < 1e-8 * scale ||
-                continue
-            any(o -> abs(o.freq - fres) <= 1e-6 * (fmax - fmin) &&
-                     o.m == m0 && o.n == n0 && o.pol == pol, out) ||
-                push!(out, PlanarResonance(fres, m0, n0, pol))
+            accept(fres, rstar)
         end
     end
     sort!(out; by=o -> o.freq)
@@ -523,18 +530,25 @@ end
 
 function _bisect_residual(stack, kc2, pol, iface, lo, hi)
     flo = imag(_resonance_residual(stack, 2pi * lo, kc2, pol, iface))
+    fhi = imag(_resonance_residual(stack, 2pi * hi, kc2, pol, iface))
+    (isfinite(flo) && isfinite(fhi)) || return nothing
+    iszero(flo) && return lo
+    iszero(fhi) && return hi
     for _ in 1:80
-        mid = (lo + hi) / 2
+        mid = lo + (hi - lo) / 2
+        (mid == lo || mid == hi) && break
         fmid = imag(_resonance_residual(stack, 2pi * mid, kc2, pol, iface))
-        (isfinite(flo) && isfinite(fmid)) || return nothing
+        isfinite(fmid) || return nothing
+        iszero(fmid) && return mid
         if sign(fmid) == sign(flo)
             lo, flo = mid, fmid
         else
-            hi = mid
+            hi, fhi = mid, fmid
         end
-        hi - lo < 1e-12 * max(1.0, lo) && break
     end
-    return (lo + hi) / 2
+    # A requested residual below the old frequency stopping tolerance
+    # needs refinement to the closest representable root candidate.
+    return abs(flo) <= abs(fhi) ? lo : hi
 end
 
 function _golden_residual(stack, kc2, pol, iface, lo, hi)
@@ -544,7 +558,7 @@ function _golden_residual(stack, kc2, pol, iface, lo, hi)
     f2 = abs(_resonance_residual(stack, 2pi * x2, kc2, pol, iface))
     for _ in 1:120
         (isfinite(f1) && isfinite(f2)) || return nothing
-        hi - lo < 1e-12 * max(1.0, lo) && break
+        hi - lo <= 4eps(max(abs(lo), abs(hi))) && break
         if f1 < f2
             hi, x2, f2 = x2, x1, f1
             x1 = hi - phi * (hi - lo)
@@ -555,5 +569,5 @@ function _golden_residual(stack, kc2, pol, iface, lo, hi)
             f2 = abs(_resonance_residual(stack, 2pi * x2, kc2, pol, iface))
         end
     end
-    return (lo + hi) / 2
+    return f1 <= f2 ? x1 : x2
 end
