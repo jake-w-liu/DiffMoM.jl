@@ -40,6 +40,10 @@ the explicit moving-reference count boundary. It verifies four single-occurrence
 literal matches, three multiple-occurrence mismatches and one native rejection
 against retained matrices and logs; all eight expected outcomes must pass.
 
+`run_whole_geovar_reference.jl` replays sixteen whole-polygon zero-count,
+explicit vertex-list and independent literal triples. It checks native full
+matrix identity, source stability, both axes/directions and contraction/expansion.
+
 `run_scaled_geovar_reference.jl` replays the tracked SCUNI/SCXY parameter/literal
 pairs using an installed native Sonnet engine. It creates a fresh evidence
 directory under `data/planar_audit/`; its optional argument selects an output

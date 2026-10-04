@@ -1,0 +1,63 @@
+scope = "native POLY count0 group with separate anchor polygon, variable rectangle and two wall ports; whole-once, reference-only and double-reference literal hypotheses"
+source_unchanged = true
+
+[source_after]
+"data\\geovar_whole_polygon_probe_20261004.jl" = "918d063f84f07987b7072d22243fa97b2a9b35914e6747be676f6608b3605995"
+"test\\fixtures\\native_scaled_geovar\\native\\anc_positive_parameter.son" = "81382be60c60680d75478b7ec2280317f3fc17dbb3066118428fbc8bc46673c6"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "7c8cdac5c647d3766038a734446f8ecc90e2415ec5a702cb05ce711bb71b781a"
+
+[[cases]]
+whole_once_full_s_error = 0.0039628316381700385
+whole_once_bit_identical = false
+whole_once_status = "ACCEPT"
+double_reference_bit_identical = true
+reference_only_full_s_error = 0.00012783609915799024
+reference_only_bit_identical = false
+parameter_status = "ACCEPT"
+double_reference_status = "ACCEPT"
+mode = "NSCD"
+reference_only_status = "ACCEPT"
+double_reference_full_s_error = 0.0
+[[cases]]
+whole_once_full_s_error = 0.001232235147037545
+whole_once_bit_identical = false
+whole_once_status = "ACCEPT"
+double_reference_bit_identical = false
+reference_only_full_s_error = 0.007972132121532208
+reference_only_bit_identical = false
+parameter_status = "ACCEPT"
+double_reference_status = "ACCEPT"
+mode = "SCUNI"
+reference_only_status = "ACCEPT"
+double_reference_full_s_error = 0.0033779372193289002
+[[cases]]
+whole_once_full_s_error = 0.001882757104600629
+whole_once_bit_identical = false
+whole_once_status = "ACCEPT"
+double_reference_bit_identical = false
+reference_only_full_s_error = 0.007321471685182403
+reference_only_bit_identical = false
+parameter_status = "ACCEPT"
+double_reference_status = "ACCEPT"
+mode = "SCXY"
+reference_only_status = "ACCEPT"
+double_reference_full_s_error = 0.003890463317376018
+[[cases]]
+whole_once_full_s_error = 0.0043008074253503325
+whole_once_bit_identical = false
+whole_once_status = "ACCEPT"
+double_reference_bit_identical = true
+reference_only_full_s_error = 0.0001893181634480473
+reference_only_bit_identical = false
+parameter_status = "ACCEPT"
+double_reference_status = "ACCEPT"
+mode = "RAD"
+reference_only_status = "ACCEPT"
+double_reference_full_s_error = 0.0
+
+[source_before]
+"data\\geovar_whole_polygon_probe_20261004.jl" = "918d063f84f07987b7072d22243fa97b2a9b35914e6747be676f6608b3605995"
+"test\\fixtures\\native_scaled_geovar\\native\\anc_positive_parameter.son" = "81382be60c60680d75478b7ec2280317f3fc17dbb3066118428fbc8bc46673c6"
+"validation\\sonnet_stripline\\sonnet_reference.jl" = "9fbf999e9d9091aede6e8eb5192a432c48326963b6c5c74abdb82c726fb9c5de"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "7c8cdac5c647d3766038a734446f8ecc90e2415ec5a702cb05ce711bb71b781a"

@@ -1,0 +1,10 @@
+! This file is intended for internal use only by Sonnet application programs.
+! Please refer to Sonnet documentation or help for instructions to generate
+! external output files which can be read by other application software.
+SIDATA 13
+PARAMS
+END PARAMS
+HDATE 10/04/2026 16:03:28
+MDATE 10/04/2026 16:03:28
+PORTS 2
+1.0000000000000000e9 -3.31511108878579e-4 -0.01529762757651432 0.998920739504580490 -0.04385463348993250 0.998920739504581268 -0.04385463348993607 -1.01037381679969e-3 -0.01526782413559470

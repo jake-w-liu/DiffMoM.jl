@@ -1,0 +1,15 @@
+Run 1:  Sun Oct 04 16:59:40 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\sonnet_validation\geovar_whole_polygon_variants_vTZihm\rad_xdir_positive_contract_literal\rad_xdir_positive_contract_literal.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      1.00000000 0.999998 -4.963 0.001795 86.436 0.001795 86.436 0.999998 -2.164
+
+Em simulation completed Sun Oct 04 16:59:40 2026.

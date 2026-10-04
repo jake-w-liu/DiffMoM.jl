@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: nscd_xdir_positive_expand_explicit
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 16:59:18
+!< HDATE 10/04/2026 16:59:18
+!< MDATE 10/04/2026 16:59:18
+!< PARAMS
+!< Move = 0.1875
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -2.363890061e-5 -0.011347444938 0.9989565183123 -0.044239229830 0.9989565183123 -0.044239229830 -9.795395905e-4 -0.011305112455

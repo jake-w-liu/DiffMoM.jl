@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\scuni_whole_once.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T08:03:32.047"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [181]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T08:03:31.063"
+source_sha256 = "9a825277c79c48d9854c684e88802566c82c6709b22a301ef81edbd736a38b8a"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\scuni_whole_once\\scuni_whole_once.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\geovar_whole_polygon_PIH1cm\\\\scuni_whole_once\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "2bf2dafd913567ab0e324a1fedc0ff1978f0f1cb35b7f2da10e8a6622f768844"
+intended_deembedded = false
+max_difference = 1.8431607381673664e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\scuni_whole_once\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.8068226462376512
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "2bf2dafd913567ab0e324a1fedc0ff1978f0f1cb35b7f2da10e8a6622f768844"
+intended_deembedded = false
+max_difference = 1.8431607381673664e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\scuni_whole_once\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.8068226462376512
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

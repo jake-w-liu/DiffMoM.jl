@@ -1,0 +1,52 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_variants_vTZihm\\nscd_ydir_positive_contract_explicit.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-04T08:59:27.038"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [191]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-04T08:59:26.051"
+source_sha256 = "461ce2cce492c41db9e197dd4a93a03d2519d1960979fc322ee47d1b60ce331c"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_variants_vTZihm\\nscd_ydir_positive_contract_explicit\\nscd_ydir_positive_contract_explicit.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\sonnet_validation\\\\geovar_whole_polygon_variants_vTZihm\\\\nscd_ydir_positive_contract_explicit\")"
+box_halfcell_counts = [64, 64]
+
+[[touchstone_selected_log_check_history]]
+output_sha256 = "a2de9efad73e547942ecd45ade4ad292fda3b4af91fee4e6a6f060eb7df2bca6"
+intended_deembedded = false
+max_difference = 6.001523902221582e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_variants_vTZihm\\nscd_ydir_positive_contract_explicit\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6505402197179192
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[touchstone_selected_log_checks."native_raw.s2p"]
+output_sha256 = "a2de9efad73e547942ecd45ade4ad292fda3b4af91fee4e6a6f060eb7df2bca6"
+intended_deembedded = false
+max_difference = 6.001523902221582e-6
+frequency_scale_hz = 1.0e9
+selected_reference_deembedded = false
+expected_reference_imag = [[0.0, 0.0]]
+output = "C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_variants_vTZihm\\nscd_ydir_positive_contract_explicit\\native_raw.s2p"
+source_frequency_unit = "GHZ"
+expected_reference_real = [[50.0, 50.0]]
+source_options = []
+output_reference_real = [[50.0, 50.0]]
+max_printed_bound_ratio = 0.6505402197179192
+intended_log_section = "raw"
+output_reference_imag = [[0.0, 0.0]]
+status = "PASS"
+reference_contract = "native geometry port R/X/L/C references"
+
+[dependency_sha256]

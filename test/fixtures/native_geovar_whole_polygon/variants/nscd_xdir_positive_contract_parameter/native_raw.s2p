@@ -1,0 +1,12 @@
+! Sonnet Data File
+! From: em Version : 18.53-Lite
+! From Project: nscd_xdir_positive_contract_parameter
+! Data is NOT De-embedded 
+! Data File Written: 10/04/2026 16:59:14
+!< HDATE 10/04/2026 16:59:14
+!< MDATE 10/04/2026 16:59:14
+!< PARAMS
+!< Move = 0.09375
+!< END PARAMS
+# GHZ S RI R 50.00000
+1.000000000000000 -4.410694531e-4 -0.016594878191 0.9988679575099 -0.044578233878 0.9988679575099 -0.044578233878 -1.038957242e-3 -0.016568195203

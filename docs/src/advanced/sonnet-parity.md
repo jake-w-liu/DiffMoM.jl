@@ -230,6 +230,16 @@ pass the unchanged 0.005 full-S and 1e-9 voltage-residual gates. Other explicitl
 listed references, including multiple occurrences, still reject before physical output: simple sequential
 scaling hypotheses disagree with native geometry, so their adapter remains
 unfinished.
+Native `POLY id 0` selectors expand every logical polygon vertex, excluding
+the closing duplicate. Sixteen NSCD ANC/RAD controls cover both axes, both
+directions and expansion/contraction; native zero-count, explicit-list and
+independent-literal matrices agree bit for bit. Public solves pass the unchanged
+0.005 full-S and 1e-9 voltage-residual gates, with maximum full-S error 0.0000191.
+Expanded selectors consume aggregate point and storage budgets before their
+lists are allocated. Source ownership and closing vertices remain intact;
+scaled/reference and dependent adapters retain their stated limits. Exact
+evidence is in `test/fixtures/native_geovar_whole_polygon`, replayed by
+`validation/planar_audit/run_whole_geovar_reference.jl`.
 Overlapping/dependent dimensions and moved component/interior/via attachments
 still require explicit adapters. Point/parameter/storage budgets and stored
 coordinate cancellation reject before emitting a changed project.

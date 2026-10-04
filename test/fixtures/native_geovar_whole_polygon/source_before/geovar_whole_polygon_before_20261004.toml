@@ -1,0 +1,33 @@
+scope = "whole-polygon count0 native selector public path; independently verified native sequential literals, .005 full-S and 1e-9 original voltage-residual gates at mx=my128; warmed returned-geometry GC"
+source_unchanged = true
+
+[source_after]
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\nscd_double_reference.son" = "223cbd73a7b197de424c0108ebe64049a2dcd06542eb986244f97a25a09452eb"
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\rad_double_reference.son" = "39f9efaf5f34d110d02ec18d63495d5aff6bac6ea937620261a63c4cfd18b6ea"
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\rad_parameter.son" = "14fd40ffb2b7d5cfe48049421ec7e8f104db2b36a3550796fed113fb9fe500d1"
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\nscd_parameter.son" = "7303c240e9f3ce823659a547bc3177a44eb3c175dd88a146928d43ee252e08a1"
+"data\\geovar_whole_polygon_gate_20261004.jl" = "bddad21371a09c2d904d4786c7ddf5a0c99ebe64a804b0dd59e36681a7e7cb9b"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "7cedbb1dbda6d38842f44e8c3a0e323d1a9278767e7b00316dc6644429e351e8"
+
+[[cases]]
+parameter_status = "REJECT"
+parameter_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\nscd_parameter.son:35: invalid GEOVAR polygon point count"
+literal_voltage_residual = 1.7996583030643938e-11
+mode = "nscd"
+literal_full_s_error = 6.406320121658962e-6
+literal_status = "PASS"
+[[cases]]
+parameter_status = "REJECT"
+parameter_error = "ArgumentError: C:\\Users\\User\\DiffMoM.jl\\data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\rad_parameter.son:35: invalid GEOVAR polygon point count"
+literal_voltage_residual = 2.0409202937457716e-11
+mode = "rad"
+literal_full_s_error = 1.0629475704745819e-5
+literal_status = "PASS"
+
+[source_before]
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\nscd_double_reference.son" = "223cbd73a7b197de424c0108ebe64049a2dcd06542eb986244f97a25a09452eb"
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\rad_double_reference.son" = "39f9efaf5f34d110d02ec18d63495d5aff6bac6ea937620261a63c4cfd18b6ea"
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\rad_parameter.son" = "14fd40ffb2b7d5cfe48049421ec7e8f104db2b36a3550796fed113fb9fe500d1"
+"data\\sonnet_validation\\geovar_whole_polygon_PIH1cm\\nscd_parameter.son" = "7303c240e9f3ce823659a547bc3177a44eb3c175dd88a146928d43ee252e08a1"
+"data\\geovar_whole_polygon_gate_20261004.jl" = "bddad21371a09c2d904d4786c7ddf5a0c99ebe64a804b0dd59e36681a7e7cb9b"
+"src\\planar\\PlanarSonnetGeometryVariables.jl" = "7cedbb1dbda6d38842f44e8c3a0e323d1a9278767e7b00316dc6644429e351e8"

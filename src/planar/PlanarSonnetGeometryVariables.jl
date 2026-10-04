@@ -61,7 +61,7 @@ function _sonnet_geovar_reference(rows,index,p,polygons,tag)
     return point,index+2
 end
 
-function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used)
+function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used,max_expanded,expanded)
     row=_sonnet_geovar_row(rows,index,p);t=row.tokens
     length(t)==2 && t[1]==tag || _sonnet_error(p.source,row.line,"GEOVAR requires $tag")
     groups=_sonnet_geovar_groups(row,p)
@@ -71,7 +71,22 @@ function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used)
         row=_sonnet_geovar_row(rows,index,p);t=row.tokens
         length(t)==3 && t[1]=="POLY" || _sonnet_error(p.source,row.line,"unsupported GEOVAR point-set identity")
         count=tryparse(Int,t[3])
-        count!==nothing && 0<count<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR polygon point count")
+        count!==nothing && 0<=count<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR polygon point count")
+        if iszero(count)
+            # POLY id 0 selects every vertex except the closing duplicate.
+            id=tryparse(Int,t[2]);id!==nothing && haskey(polygons,id) ||
+                _sonnet_error(p.source,row.line,"GEOVAR references an unknown polygon")
+            vertices=polygons[id].vertices
+            closed=vertices[1,1]==vertices[1,end] && vertices[2,1]==vertices[2,end]
+            count=size(vertices,2)-Int(closed)
+            used<=max_points-count || _sonnet_error(p.source,row.line,"GEOVAR point budget exceeded")
+            expanded<=max_expanded-count || _sonnet_error(p.source,row.line,
+                "GEOVAR whole-polygon workspace exceeds max_bytes")
+            used+=count;expanded+=count
+            sizehint!(points,length(points)+count)
+            for point in 1:count;push!(points,(id,point));end
+            index+=1;continue
+        end
         used<=max_points-count || _sonnet_error(p.source,row.line,"GEOVAR point budget exceeded")
         used+=count;index+=1
         for _ in 1:count
@@ -83,15 +98,15 @@ function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used)
     _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
         _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR point set")
     # Native entries are movements: a repeated identity moves repeatedly.
-    return points,index+1,used
+    return points,index+1,used,expanded
 end
 
-function _sonnet_geovar_parameters(p,max_parameters,max_points)
+function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
     rows=_sonnet_section(p.records,"GEO",p.source)
     polygons=Dict(q.id=>q for q in p.polygons)
     quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && r.tokens[1]=="VALVAR")
     length(polygons)==length(p.polygons) || throw(ArgumentError("duplicate GEOVAR polygon identities"))
-    parameters=_SonnetGeometryParameter[];index=1;used=0
+    parameters=_SonnetGeometryParameter[];index=1;used=0;expanded=0
     while index<=length(rows)
         row=rows[index];t=row.tokens
         if t[1]!="GEOVAR";index+=1;continue;end
@@ -120,8 +135,8 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points)
                 _sonnet_error(p.source,equation.line,"GEOVAR EQN disagrees with its quantity definition")
             index+=1
         end
-        a,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used)
-        b,index,used=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used)
+        a,index,used,expanded=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used,max_expanded,expanded)
+        b,index,used,expanded=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used,max_expanded,expanded)
         explicit_reference=false
         for point in b
             point==second || continue
@@ -272,7 +287,8 @@ points belong implicitly to their adjustable set. Ordinary repeated entries
 retain their movement multiplicity, including one explicitly listed NSCD
 ANC/RAD moving reference. Multiple explicit occurrences and other references,
 dependent/overlapping active dimensions and moved component/interior-port semantics
-require separate adapters. Resource budgets are checked before geometry copy;
+require separate adapters. Whole-polygon selectors expand logical vertices
+within point/storage budgets before geometry copy;
 effective coordinates are validated before emission. The supplied project is
 never modified."""
 function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{String,Float64}();
@@ -290,7 +306,9 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     frequency=_circuit_stored_real(freq,"native geometry variable frequency")
     frequency>0 || throw(ArgumentError("native geometry variable frequency must be positive"))
     _sonnet_geovar_nominal_geometry(p,frequency,variables) && return p
-    parameters=_sonnet_geovar_parameters(p,nparameters,npoints)
+    # Whole-polygon selectors expand beyond their source record count. Reserve
+    # their point-list and ownership workspace before materializing those lists.
+    parameters=_sonnet_geovar_parameters(p,nparameters,npoints,(limit-reserve)÷256)
     deltas=Float64[];targets=Float64[]
     for parameter in parameters
         target=sonnet_variable_value(p,parameter.name;variables,freq=frequency)
