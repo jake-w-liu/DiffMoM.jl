@@ -1,5 +1,23 @@
 export PlanarPortImpedance, planar_power_waves, planar_wave_voltages, planar_s_to_y
 
+# Excitations are stored before voltage/current transfers can amplify them.
+# Reject conversion loss rather than silently changing a nonzero drive to zero.
+@inline function _planar_stored_phasor(value::Number)
+    stored=ComplexF64(value)
+    isfinite(stored) && (iszero(real(value)) || !iszero(real(stored))) &&
+        (iszero(imag(value)) || !iszero(imag(stored))) || throw(ArgumentError(
+            "phasors must fit finite ComplexF64 values and preserve nonzero components"))
+    return stored
+end
+
+function _planar_stored_phasors(values::AbstractVector)
+    stored=Vector{ComplexF64}(undef,length(values))
+    for (i,value) in enumerate(values)
+        stored[i]=_planar_stored_phasor(value)
+    end
+    return stored
+end
+
 function _planar_reference_number(value)
     value isa Number && isfinite(value) && real(value)>0 || throw(ArgumentError(
         "power-wave reference impedances must be finite with positive real part"))
@@ -120,7 +138,7 @@ function _planar_wave_voltage(S::AbstractMatrix,a::AbstractVector,refs)
         "power-wave voltage needs finite matching S and incident waves"))
     z=_planar_reference_values(refs,n);r=_planar_reference_roots(z)
     matrix=eltype(S)===ComplexF64 ? S : Matrix{ComplexF64}(S)
-    incident=Vector{ComplexF64}(a)
+    incident=_planar_stored_phasors(a)
     all(isfinite,matrix) && all(isfinite,incident) || throw(ArgumentError("power-wave data must fit finite ComplexF64 values"))
     reflected=matrix*incident;value=Vector{ComplexF64}(undef,n)
     for p in 1:n
@@ -150,7 +168,7 @@ function _planar_incident_from_voltage(S::AbstractMatrix,v::AbstractVector,refs)
         "terminal voltages must be finite and match S ports"))
     factor=lu!(_planar_wave_voltage_matrix(S,refs);check=false)
     issuccess(factor) || throw(ArgumentError("terminal voltages do not determine independent incident waves"))
-    result=factor\ComplexF64.(v)
+    result=factor\_planar_stored_phasor.(v)
     all(isfinite,result) || throw(ArgumentError("incident waves are nonfinite"))
     return result
 end
@@ -169,7 +187,7 @@ function planar_power_waves(voltages::AbstractVector,currents::AbstractVector;z0
     _enforce_payload_limit(_checked_array_payload_bytes(ComplexF64,6,n),max_bytes,
         "power-wave conversion","max_bytes")
     z=_planar_reference_values(z0,n;freq);r=_planar_reference_roots(z)
-    v=Vector{ComplexF64}(voltages);i=Vector{ComplexF64}(currents)
+    v=_planar_stored_phasors(voltages);i=_planar_stored_phasors(currents)
     all(isfinite,v) && all(isfinite,i) || throw(ArgumentError("power-wave phasors must fit finite ComplexF64 values"))
     a=Vector{ComplexF64}(undef,n);b=similar(a)
     for p in 1:n

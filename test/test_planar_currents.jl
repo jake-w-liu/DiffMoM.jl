@@ -40,6 +40,49 @@ function _current_map_fixture()
         zeros(ComplexF64, 2, 2), ComplexF64[0.1 0.2; 0.3 0.4])
 end
 
+@testset "planar: excitation storage preserves nonzero components" begin
+    path=joinpath(@__DIR__,"fixtures","native_box_port_attachment","cases",
+        "attachment__baseline","project.son")
+    native=solve_sonnet_project(path,1e9;raw=true,grid=(8,8),mx=8,my=8)
+    tiny=BigFloat(2)^(-1075)
+    @test !iszero(tiny) && iszero(Float64(tiny))
+    # The model is linear: scaling its unit-drive fields in high precision
+    # yields finite, nonzero Float64 currents even though storing the drive
+    # first would discard it. Such a source must be rejected explicitly.
+    for result in (native,native.raw)
+        unit=planar_current_maps(result;voltages=ComplexF64[1,0])
+        oracle=[ComplexF64.(Complex{BigFloat}.(field).*tiny)
+            for m in unit for field in (m.jx,m.jy,m.jz)]
+        @test any(a->any(!iszero,a),oracle)
+        for value in (tiny,im*tiny,BigFloat(1)+im*tiny,tiny+im*BigFloat(1),
+                BigFloat("1e1000"),im*BigFloat("1e1000"))
+            source=Complex{BigFloat}[value,0]
+            @test_throws ArgumentError planar_current_maps(result;voltages=source)
+            @test_throws ArgumentError planar_current_maps(result;incident_waves=source)
+        end
+        drive=ComplexF64[.75+.5im,-.25+.125im]
+        ordinary=planar_current_maps(result;voltages=drive)
+        wide=planar_current_maps(result;voltages=Complex{BigFloat}.(drive))
+        @test all(getfield(ordinary[i],f)==getfield(wide[i],f)
+            for i in eachindex(ordinary) for f in (:jx,:jy,:jz))
+        zero=planar_current_maps(result;voltages=zeros(ComplexF64,2))
+        @test all(all(iszero,getfield(m,f)) for m in zero for f in (:jx,:jy,:jz))
+    end
+    for value in (0.,-0.,nextfloat(0.),-nextfloat(0.),floatmax(Float64),
+            1+.5im,complex(nextfloat(0.),-nextfloat(0.)))
+        @test DiffMoM._planar_stored_phasor(value)===ComplexF64(value)
+    end
+    scalar=value->DiffMoM._planar_stored_phasor(value)
+    scalar(1+.5im)
+    @test (@allocated scalar(1+.5im))==0
+    @test_throws ArgumentError planar_wave_voltages(zeros(ComplexF64,2,2),
+        Complex{BigFloat}[tiny,0])
+    @test_throws ArgumentError planar_power_waves(Complex{BigFloat}[tiny,0],
+        zeros(ComplexF64,2))
+    @test_throws ArgumentError planar_power_waves(zeros(ComplexF64,2),
+        Complex{BigFloat}[0,im*tiny])
+end
+
 @testset "planar: physical current maps" begin
     r = _current_map_fixture()
     maps = planar_current_maps(r)

@@ -147,7 +147,7 @@ function planar_subdivision_currents(result::PlanarSubdivisionResult;
     else
         incident_waves isa AbstractVector && length(incident_waves)==n && all(isfinite,incident_waves) ||
             throw(ArgumentError("incident waves must be finite and match external ports"))
-        ComplexF64.(incident_waves)
+        _planar_stored_phasor.(incident_waves)
     end
     nodes = result.circuit.voltages*waves
     maps = Vector{Vector{PlanarCurrentMap}}()

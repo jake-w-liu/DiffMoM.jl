@@ -207,7 +207,7 @@ function _planar_hybrid_current_maps(result;port::Integer=1,voltages=nothing,inc
         1<=port<=np || throw(ArgumentError("invalid hybrid port"));x=zeros(ComplexF64,np);x[port]=1;x
     else
         supplied isa AbstractVector && length(supplied)==np && all(isfinite,supplied) || throw(ArgumentError("hybrid excitation must match ports"))
-        ComplexF64.(supplied)
+        _planar_stored_phasor.(supplied)
     end
     incident_waves===nothing || (v=_planar_wave_voltage(result.s,v,result.z0))
     coeff=result.currents*v

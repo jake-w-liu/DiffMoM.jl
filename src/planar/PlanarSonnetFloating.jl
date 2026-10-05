@@ -64,7 +64,7 @@ function planar_current_maps(result::_SonnetBalancedSourceResult;port::Integer=1
     else
         supplied isa AbstractVector && length(supplied)==n && all(isfinite,supplied) ||
             throw(ArgumentError("native source excitation must be finite and match ports"))
-        ComplexF64.(supplied)
+        _planar_stored_phasor.(supplied)
     end
     incident_waves===nothing || (v=_planar_wave_voltage(result.s,v,result.z0))
     return _planar_current_maps_from_coefficients(result.problem,result.currents*v;
@@ -365,7 +365,7 @@ function planar_current_maps(result::SonnetFloatingResult;port::Integer=1,incide
     else
         incident_waves isa AbstractVector && length(incident_waves)==n && all(isfinite,incident_waves) ||
             throw(ArgumentError("native floating incident waves must be finite and match ports"))
-        ComplexF64.(incident_waves)
+        _planar_stored_phasor.(incident_waves)
     end
     v=transpose(result.source_incidence)*(result.circuit.voltages*(result.incident_transfer*a))
     return planar_current_maps(result.em;voltages=v,max_bytes=max_bytes-reserve,kw...)

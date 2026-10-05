@@ -410,7 +410,7 @@ function sonnet_component_current_maps(result::SonnetComponentResult;
     else
         incident_waves isa AbstractVector && length(incident_waves)==n && all(isfinite,incident_waves) ||
             throw(ArgumentError("native component incident waves must match external ports"))
-        ComplexF64.(incident_waves)
+        _planar_stored_phasor.(incident_waves)
     end
     nodes=result.circuit.voltages*(result.incident_transfer*a)
     return planar_current_maps(result.raw;voltages=result.contraction*(result.gap_transfer*nodes),kw...)

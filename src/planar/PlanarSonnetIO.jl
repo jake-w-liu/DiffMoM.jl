@@ -1463,7 +1463,7 @@ function planar_current_maps(result::SonnetPlanarResult;port::Integer=1,
     voltages!==nothing && incident_waves!==nothing && throw(ArgumentError("provide voltages or incident_waves"))
     v=if voltages!==nothing
         length(voltages)==n && all(isfinite,voltages) || throw(ArgumentError("native voltages must be finite and match ports"))
-        ComplexF64.(voltages)
+        _planar_stored_phasor.(voltages)
     elseif incident_waves!==nothing
         length(incident_waves)==n && all(isfinite,incident_waves) || throw(ArgumentError("native incident waves must be finite and match ports"))
         _planar_wave_voltage(result.s,incident_waves,result.z0)

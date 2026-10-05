@@ -227,7 +227,7 @@ function planar_current_maps(result::PlanarProjectResult;port::Integer=1,inciden
     else
         incident_waves isa AbstractVector && length(incident_waves)==n && all(isfinite,incident_waves) ||
             throw(ArgumentError("project incident waves must be finite and match external ports"))
-        ComplexF64.(incident_waves)
+        _planar_stored_phasor.(incident_waves)
     end
     node_voltages=result.circuit.voltages*waves
     v=transpose(result.model.source_incidence)*view(node_voltages,1:length(result.model.node_names))
@@ -253,7 +253,7 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     else
         supplied isa AbstractVector && length(supplied)==n && all(isfinite,supplied) ||
             throw(ArgumentError("project radiation excitation must be finite and match external ports"))
-        ComplexF64.(supplied)
+        _planar_stored_phasor.(supplied)
     end
     # Circuit voltages are solved per external incident power wave. An
     # external voltage request must therefore be transformed at the loaded

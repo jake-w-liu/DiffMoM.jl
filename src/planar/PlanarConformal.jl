@@ -472,7 +472,7 @@ function _planar_conformal_current_maps(result;port::Integer=1,voltages=nothing,
         x=zeros(ComplexF64,n);x[port]=1;x
     else
         supplied isa AbstractVector && length(supplied)==n && all(isfinite,supplied) || throw(ArgumentError("conformal excitation must be finite and match ports"))
-        ComplexF64.(supplied)
+        _planar_stored_phasor.(supplied)
     end
     incident_waves===nothing || (v=_planar_wave_voltage(result.s,v,result.z0))
     _planar_conformal_maps_from_coefficients(result.problem,result.currents*v;max_bytes=max_bytes-reserve)

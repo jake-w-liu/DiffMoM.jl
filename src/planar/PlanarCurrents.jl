@@ -36,7 +36,7 @@ function _planar_excitation_voltages(result::Union{PlanarResult,PlanarUFFTResult
     supplied isa AbstractVector && length(supplied) == n ||
         throw(DimensionMismatch("excitation must contain $n port values"))
     all(isfinite, supplied) || throw(ArgumentError("excitation must be finite"))
-    v = ComplexF64.(supplied)
+    v = _planar_stored_phasor.(supplied)
     if incident_waves !== nothing
         v = _planar_wave_voltage(result.s,v,result.z0)
     end
@@ -78,7 +78,9 @@ Alternatively, `incident_waves` specifies Kurokawa incident power waves,
 so ports without an incident wave are terminated in their reference
 impedance. Complex references use the evaluated `result.z0`. For the
 peak phasors used here accepted power is half the incident minus reflected
-squared wave norms. Via and volume samples lie at `z_fraction` of their layer
+squared wave norms. Supplied phasors must remain finite and preserve nonzero
+real and imaginary components in stored ComplexF64 values.
+Via and volume samples lie at `z_fraction` of their layer
 height; tapered via currents vary linearly with this height. Sheet maps
 are surface current in A/m; volume and via maps are current density in
 A/m². No cell interpolation or smoothing is applied.

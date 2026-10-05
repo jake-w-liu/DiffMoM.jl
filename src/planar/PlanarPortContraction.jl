@@ -264,7 +264,7 @@ function planar_current_maps(result::PlanarContractedResult;port::Integer=1,
     else
         supplied isa AbstractVector && length(supplied)==n && all(isfinite,supplied) ||
             throw(ArgumentError("contracted excitation must be finite and match ports"))
-        ComplexF64.(supplied)
+        _planar_stored_phasor.(supplied)
     end
     incident_waves===nothing || (v=_planar_wave_voltage(result.s,v,result.z0))
     if result.raw isa PlanarSourceResult && result.currents===result.raw.currents
@@ -293,7 +293,7 @@ function planar_current_maps(source::PlanarSourceResult;port::Integer=1,
     else
         supplied isa AbstractVector && length(supplied)==n && all(isfinite,supplied) ||
             throw(ArgumentError("physical excitation must be finite and match ports"))
-        ComplexF64.(supplied)
+        _planar_stored_phasor.(supplied)
     end
     all(isfinite,v) || throw(ArgumentError("physical excitation must fit finite ComplexF64 values"))
     incident_waves===nothing || (v=_planar_wave_voltage(source.s,v,source.z0))

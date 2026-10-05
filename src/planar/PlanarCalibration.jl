@@ -267,7 +267,7 @@ function planar_current_maps(result::PlanarCalibratedResult;port::Integer=1,
     voltage = if voltages!==nothing
         length(voltages)==n && all(isfinite,voltages) ||
             throw(ArgumentError("calibrated voltages must be finite and match ports"))
-        ComplexF64.(voltages)
+        _planar_stored_phasor.(voltages)
     elseif incident_waves!==nothing
         length(incident_waves)==n && all(isfinite,incident_waves) ||
             throw(ArgumentError("calibrated incident waves must be finite and match ports"))

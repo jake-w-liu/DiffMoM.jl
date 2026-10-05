@@ -293,7 +293,7 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
         v=zeros(ComplexF64,n);v[port]=1
     else
         input isa AbstractVector && length(input)==n && all(isfinite,input) || throw(ArgumentError("excitation must match solved ports and be finite"))
-        v=ComplexF64.(input)
+        v=_planar_stored_phasor.(input)
         if incident_waves!==nothing
             v=_planar_wave_voltage(result.s,v,refs)
         end
