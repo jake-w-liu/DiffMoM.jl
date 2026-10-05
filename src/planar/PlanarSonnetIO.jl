@@ -135,7 +135,8 @@ function _sonnet_box_port_edge_inside(vertices,edge,a,b,nx,ny)
         -.5001<(vertices[2,second]/b)*ny<ny+.5001
 end
 
-# Raster wall ownership uses the source BOX grid, even with a caller grid.
+# Native wall ownership uses the source BOX grid, even with a caller grid.
+# The conformal importer shares this boundary normalization.
 # Copy only sheets containing vertices that actually need wall projection.
 function _sonnet_raster_wall_project(p,a,b,nx,ny)
     polygons=p.polygons

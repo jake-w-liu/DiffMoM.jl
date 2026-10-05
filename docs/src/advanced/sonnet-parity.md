@@ -29,7 +29,7 @@ establish general continuum, measured-device or native workflow completeness.
 | Plan | Implemented path | Current evidence | Remaining acceptance or implementation |
 |---|---|---|---|
 | M0 layered Green functions | `PlanarTypes`, `PlanarImmittance`, `PlanarGreens` | independent TE/TM cascades, exact nonresonant axial cutoff, anisotropy and loss regressions | native dispersive material schema; full radiation boundary validation |
-| M1 subsections | `PlanarBasis`, `PlanarConformal`, `PlanarConformalUFFT`, `PlanarConformalProjection`, `PlanarConformalMultiProjection`, `PlanarConformalDefect`, `PlanarHybrid`, `PlanarHybridUFFT`, `PlanarConformalLayout`, `PlanarSonnetConformal` | genuine normal-continuous triangle currents; exact polygon unions, material seams and independent edge/interior sizes; analytic triangle/via/volume coupling and exact lattice FFT; scoped bounded nonuniform multilevel sheet defect solve with exact spatial sheet impedances, gated by the original analytic modal equation; native sloped sheets and shared diagonal terminals; independent quadrature, galvanic contact and native trapezoid checks | general nonuniform fast projection/correction and bulk/contact extensions; complete native mesh and mode convergence; broader native component, calibration and geometry lowering |
+| M1 subsections | `PlanarBasis`, `PlanarConformal`, `PlanarConformalUFFT`, `PlanarConformalProjection`, `PlanarConformalMultiProjection`, `PlanarConformalDefect`, `PlanarHybrid`, `PlanarHybridUFFT`, `PlanarConformalLayout`, `PlanarSonnetConformal` | genuine normal-continuous triangle currents; exact polygon unions, material seams and independent edge/interior sizes; analytic triangle/via/volume coupling and exact lattice FFT; scoped bounded nonuniform multilevel sheet defect solve with exact spatial sheet impedances, gated by the original analytic modal equation; native sloped sheets and shared axial terminals; general physical diagonal sources; independent quadrature, galvanic contact and native trapezoid checks | general nonuniform fast projection/correction and bulk/contact extensions; complete native mesh and mode convergence; broader native component, calibration and geometry lowering |
 | M2/M3 matrix and direct solve | `PlanarGreens`, `PlanarFFTAssembly`, `PlanarSolve` | independent modal versus exact FFT retained matrix, all rooftop/via/volume families and losses; native complex S comparisons; 1008-unknown fill 2.6603 s→0.04132 s, relative error 3.9845e-16 | broad geometry acceptance; large-layout factorization resources |
 | M4 FFT solve | `PlanarUFFT` | exact finite modal operator versus dense; zero repeated matvec allocations; latest 8192-unknown operator uses 2,212,664 bytes of Julia payload versus 1,073,741,824 bytes for one dense matrix | fine-grid iterative convergence; measured sparse preconditioner prototype did not improve convergence and is not enabled |
 | M5 metal/dielectric loss | `PlanarSurface`, `PlanarConductorLoss`, `PlanarMetalModel`, `PlanarSonnetIO` | weighted Gram quadrature; published two-sheet line DC resistance oracle; native mixed films, NOR general current ratio, SEN reactance; physical two-face TMM expansion | licensed native TMM comparison, additional face counts, roughness/plating lowering and refined plated-line agreement |
@@ -282,15 +282,20 @@ position fields are annotations; changing them does not select another wall
 or reject an otherwise valid attachment. Active geometry updates reset those
 fields to the new referenced-edge midpoint. A closing duplicate vertex does
 not introduce another edge. Contiguous collinear wall subdivisions share a
-physical excitation span. Raster sheet vertices in the native half-cell wall
-band project to that wall using the source BOX counts. Undriven sheet contacts,
-including metal clipped at the wall, impose the native ground connection.
+physical excitation span. Both native sheet backends project vertices in the
+native half-cell wall band using the source BOX counts. Undriven sheet contacts
+impose the native ground connection; the raster backend also clips metal
+extending beyond the box wall.
 Twenty independent controls and the original failures are retained in
 `test/fixtures/native_box_port_attachment`, replayed by
 `validation/planar_audit/run_port_attachment_reference.jl`. Five one-port
 short/open controls retain the 0.005 full-S and 1e-9 voltage-residual gates.
-Genuine conformal sheet geometry retains its physical coordinates and
-preserves annotation metadata. A physical wall edge supplies a wall source;
+Genuine conformal sheet geometry preserves interior coordinates and annotation
+metadata. Source BOX counts determine wall contact even with a caller bulk
+grid or different triangle sizes. Original conformal false rejections and
+one-port short/open errors near 2.0 are retained in
+`test/fixtures/native_conformal_wall_ownership`; six conformal full-S controls
+use the same 0.005 and 1e-9 residual gates. A wall edge supplies a wall source;
 an interior edge supplies a source on its shared segment with one adjacent
 sheet edge. Native BOX/STD/GAP labels all accept these two attachment forms.
 Partial shared edges use their actual overlap. Isolated interior edges and

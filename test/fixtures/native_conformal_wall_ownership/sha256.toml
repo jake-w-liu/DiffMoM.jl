@@ -1,0 +1,6 @@
+[sha256]
+"native_replay_comparison.toml" = "27b4913fba85f9b598271ea0ba0f0d2b54ba5b978c93cbc6bb376c19522b72f3"
+"original_before_comparison.toml" = "3bc8b18b60ae3b6757213af88ac017226e5bbb2c37c1aaa2dedff5a9bf4518c3"
+"producer_before.jl" = "be9154df7e8f458bf25c7ffa49079e95f9b450990fb60876974f20eec8935844"
+"producer_replay.jl" = "d74e000aa72a3b25b0954d14619f79d556fa3c18aa3b201321f837a8c8dc0268"
+"source_before/PlanarSonnetConformal.jl" = "e52fa5a32d5bbe8e682c5895309e25743e23412a59d9ecbfe06ac159ab24f634"

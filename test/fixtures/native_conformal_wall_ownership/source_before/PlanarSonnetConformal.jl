@@ -5,8 +5,6 @@ The native stack/material helper preserves SI units, variable expressions,
 cover impedances, dielectric loss and physical two-face thick geometry.
 Sheet polygons are unioned exactly, with material seams and shared axial
 source cuts. Tiny sheet features do not pass through a raster lowerer.
-Vertices in the native source BOX half-cell wall band attach to that wall;
-interior coordinates and caller-owned records remain unchanged.
 `edge_size,interior_size` declare independent physical mesh bounds.
 
 Via columns retain the native uniform-grid SOLID/RING/CENTER/VERTICES/BAR
@@ -50,10 +48,6 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         _checked_array_payload_bytes(ComplexF64,length(p.metals)+1),
         _sonnet_scalar_files(variables)===nothing ? 0 : _sonnet_scalar_payload(variables))
     _enforce_payload_limit(reserve,max_bytes,"native conformal metadata","max_bytes")
-    # Reserve geometry storage before copying any near-wall vertices.
-    # Wall ownership uses source BOX counts rather than triangle/bulk sizes.
-    p=_sonnet_raster_wall_project(p,stack.a,stack.b,
-        parse(Int,p.box[4])÷2,parse(Int,p.box[5])÷2)
     polygons=PlanarPolygon[];metals=Dict{String,Any}("pec"=>0.)
     contacts=PlanarConformalPort[];cp=PlanarConformalPort[];bp=PlanarPort[]
     vias=ViaLevel[];sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}();via_indices=Dict{Tuple{Int,Int},Int}();masks=Dict{Int,BitMatrix}()
