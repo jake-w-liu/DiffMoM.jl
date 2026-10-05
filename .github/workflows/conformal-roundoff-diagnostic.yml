@@ -1,4 +1,4 @@
-name: Conformal ARM64 roundoff capture
+name: Conformal ARM64 production verification
 
 "on":
   push:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   capture:
-    name: ARM64 unchanged residual gates and update experiments
+    name: ARM64 original conformal tests and compensated production updates
     runs-on: macos-latest
     timeout-minutes: 45
     env:
@@ -26,6 +26,6 @@ jobs:
           cache-name: diffmom-julia-cache-v2
           save-always: false
       - uses: julia-actions/julia-buildpkg@v1
-      - name: Capture baseline and process-only correction updates
+      - name: Verify actual production module and unchanged conformal gates
         shell: bash
-        run: julia --startup-file=no --check-bounds=yes --project=. validation/planar_audit/conformal_roundoff_diagnostic.jl "$PWD" "$RUNNER_TEMP/conformal-roundoff.toml"
+        run: julia --startup-file=no --check-bounds=yes --project=. validation/planar_audit/conformal_production_arm_proof.jl
