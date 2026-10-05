@@ -182,6 +182,7 @@ function planar_project_layout(project::PlanarProject;freq::Real=1e9,grid=nothin
         variables::AbstractDict=Dict{String,Any}(),
         terminal_ground::Symbol=:auto,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     freq=_project_stored_frequency(freq)
+    _validated_resource_limit("max_bytes",max_bytes)
     _project_schema(project.data)
     resolve=_project_variables(project,variables)
     unit=get(get(project.data,"project",Dict()),"unit","m")

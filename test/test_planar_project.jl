@@ -209,3 +209,32 @@ end
     @test planar_material_preset("gaas").eps_r==12.9
     @test_throws ArgumentError planar_material_preset("unknown")
 end
+
+function _project_zero_budget_rejection_bytes(project)
+    reject()=try
+        planar_project_layout(project;max_bytes=0)
+        error("zero layout budget unexpectedly accepted")
+    catch err
+        err isa ArgumentError && occursin("max_bytes",sprint(showerror,err)) || rethrow()
+        nothing
+    end
+    reject();reject()
+    return @allocated reject()
+end
+
+@testset "planar project: invalid budgets reject before layer-dependent work" begin
+    for count in (2,128,1024)
+        project=_project_test_fixture()
+        layer=first(project.data["stackup"]["layers"])
+        project.data["stackup"]["layers"]=[copy(layer) for _ in 1:count]
+        saved=planar_project_dict(project)
+        @test _project_zero_budget_rejection_bytes(project)<=4096
+        @test project.data==saved
+        for budget in (-1,big(typemax(Int))+1)
+            @test_throws ArgumentError planar_project_layout(project;max_bytes=budget)
+        end
+    end
+    project=_project_test_fixture()
+    err=try planar_project_layout(project;freq=-1.,max_bytes=0);nothing catch e;e end
+    @test err isa ArgumentError && occursin("frequency",sprint(showerror,err))
+end
