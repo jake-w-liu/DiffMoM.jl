@@ -190,6 +190,15 @@ end
         @test real.(triangle.current[1,:])≈fill(real(r.y[1,1])/b,3) rtol=2e-6
         @test maximum(abs,real.(triangle.current[2,:]))<1e-6/(resistance*a)
     end
+    # Recomputed voltage residuals used to fail after all three Arnoldi
+    # directions, despite a converged recurrence. Both physical gates stay.
+    for (frequency,rs) in ((1e6,2.),(20e6,.2))
+        low=solve_planar_conformal_defect(prob,frequency;modes=32,nx=16,ny=8,surface_zs=rs)
+        @test maximum(low.diagnostics.initial_projected_relative_residuals)<=1e-10
+        @test maximum(low.relative_residuals)<=1e-10
+        @test real(2/(low.y[1,1]-low.y[1,2]))≈rs*a/b rtol=2e-6
+        @test all(i->i<=10000,low.iterations)
+    end
 end
 
 Base.@noinline function _defect_folded_kernel_alloc(prob,workspace)

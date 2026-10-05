@@ -276,8 +276,20 @@ function solve_planar_conformal_defect(prob::PlanarConformalProblem,freq::Number
         iterations[p]=stats.niter;X[:,p].=x
         mul!(inner,A,x);inner.-=view(rhs,:,p)
         initial_projected[p]=_planar_projection_voltage_residual(inner,weights,source_norm[p])
+        # Arnoldi's recurrence can underestimate the recomputed voltage error
+        # after low-frequency cancellation. Restart from the stored solution
+        # at most twice, within the original total inner iteration limit.
+        for retry in 1:2
+            isfinite(initial_projected[p]) && initial_projected[p]>tol || break
+            remaining=Int(maxiter)-iterations[p];remaining>0 || break
+            x,stats=Krylov.gmres(A,view(rhs,:,p),view(X,:,p);M,N,rtol=tol/10,atol=0.,
+                itmax=remaining,memory=mem,restart=true,reorthogonalization=true)
+            iterations[p]+=stats.niter;X[:,p].=x
+            mul!(inner,A,x);inner.-=view(rhs,:,p)
+            initial_projected[p]=_planar_projection_voltage_residual(inner,weights,source_norm[p])
+        end
         isfinite(initial_projected[p]) && initial_projected[p]<=tol ||
-            error("conformal defect port $p failed initial projected voltage residual $(initial_projected[p]) > $tol after $(stats.niter) iterations")
+            error("conformal defect port $p failed initial projected voltage residual $(initial_projected[p]) > $tol after $(iterations[p]) iterations")
     end
     for outer in 0:Int(max_outer)
         push!(action_seconds,@elapsed begin
