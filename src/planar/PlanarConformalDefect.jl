@@ -280,8 +280,9 @@ function solve_planar_conformal_defect(prob::PlanarConformalProblem,freq::Number
         # Arnoldi's recurrence can underestimate the recomputed voltage error
         # after low-frequency cancellation. Normalize the correction source
         # so Krylov's absolute machine-precision stop does not truncate a tiny
-        # residual solve. Keep two retries and the original total iteration limit.
-        for retry in 1:2
+        # residual solve. Rounding can need several corrections; bound retries
+        # by eight and retain the original total iteration limit.
+        for retry in 1:8
             isfinite(initial_projected[p]) && initial_projected[p]>tol || break
             remaining=Int(maxiter)-iterations[p];remaining>0 || break
             scale=initial_projected[p];defect_rhs.=-inner./scale

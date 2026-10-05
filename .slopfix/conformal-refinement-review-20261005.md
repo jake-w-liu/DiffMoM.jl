@@ -12,7 +12,7 @@ plateau at 11 of 65 representable frequencies within 32 Float64 steps of
 all 11 failures. Krylov 0.9.10's gmres.jl also accepts an absolute recurrence
 residual at machine precision, even when its relative target is smaller.
 Normalizing the recomputed correction source, then scaling its solution
-back, passed all 65 cases with the existing two-retry limit. The largest
+back, passed all 65 cases on the native CPU target with two retries. The largest
 initial iteration count was nine; both projected and original voltage
 residuals remained below 1e-10, and the original DC resistance gate passed.
 Raw experiment reports and unsuccessful harness attempts remain in data/.
@@ -33,3 +33,15 @@ including all existing conformal defect tests and the new 260 assertions.
 All 142 hashed inputs stayed unchanged during each run. The code counter
 increased from 212635 to 212654 (+19); the original strict failure is retained.
 The separate line-ceiling commit records exactly that reviewed increase.
+
+A generic CPU-target check then exposed four remaining failures among the
+same 65 frequencies with only two normalized retries. That unsuccessful
+candidate and its log are retained. A process-only comparison with up to
+eight normalized corrections passed all 65 cases on both CPU targets;
+the generic target needed at most three corrections (12 initial iterations).
+The final implementation allows up to eight retries and exits as soon as
+the original residual gate passes, still within the original total maxiter.
+Neither extra unscaled retries nor tolerance relaxation is used to accept
+the result. Final focused and full checks must use this updated source.
+Updated focused checks passed 992 assertions on each Julia version; strict
+measure, blocking smells and the 400-group census passed at ceiling 212654.
