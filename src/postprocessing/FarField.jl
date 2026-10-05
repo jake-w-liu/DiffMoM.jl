@@ -48,8 +48,8 @@ end
 
 @inline function _farfield_vector_reduction_requires_exact(
     value::CVec3,
-    real_magnitudes::MVector{3,Float64},
-    imag_magnitudes::MVector{3,Float64},
+    real_magnitudes::Union{Vec3,MVector{3,Float64}},
+    imag_magnitudes::Union{Vec3,MVector{3,Float64}},
     term_count::Int,
 )
     scale = max(maximum(real_magnitudes), maximum(imag_magnitudes))
@@ -532,8 +532,10 @@ function radiation_vectors(
                 rh = rhat_vec[q_dir]
                 rh_norm_squared = sum(abs2, rh)
                 total = CVec3(0.0, 0.0, 0.0)
-                real_magnitudes = zeros(MVector{3,Float64})
-                imag_magnitudes = zeros(MVector{3,Float64})
+                # Immutable bounds remain allocation-free across a call
+                # boundary when the reduction classifier is not inlined.
+                real_magnitudes = zero(Vec3)
+                imag_magnitudes = zero(Vec3)
                 for t in (rwg.tplus[n], rwg.tminus[n])
                     A = areas[t]
                     pts = quad_pts[t]
@@ -550,10 +552,14 @@ function radiation_vectors(
                             prefactor * rh_cross_N_cross)
                         total += contribution
                         for component in 1:3
-                            real_magnitudes[component] +=
-                                abs(real(contribution[component]))
-                            imag_magnitudes[component] +=
-                                abs(imag(contribution[component]))
+                            real_magnitudes = Base.setindex(
+                                real_magnitudes,
+                                real_magnitudes[component] +
+                                    abs(real(contribution[component])), component)
+                            imag_magnitudes = Base.setindex(
+                                imag_magnitudes,
+                                imag_magnitudes[component] +
+                                    abs(imag(contribution[component])), component)
                         end
                     end
                 end

@@ -3371,6 +3371,7 @@ end
 
 # Phase factors are single-use values. Keep transient storage bounded rather
 # than allocating one NΩ × Nq phase matrix for every RWG basis function.
+include("test_radiation_resources.jl")
 mesh_radiation_alloc = make_rect_plate(1.0, 1.0, 12, 12)
 rwg_radiation_alloc = build_rwg(mesh_radiation_alloc)
 grid_radiation_alloc = make_sph_grid(8, 16)
