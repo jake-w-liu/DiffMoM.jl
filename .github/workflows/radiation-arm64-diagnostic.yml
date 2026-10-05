@@ -50,7 +50,8 @@ jobs:
               zeros(ComplexF64,rows,cols)
               [@allocated(zeros(ComplexF64,rows,cols)) for _ in 1:3]
           end
-          println("VERSION ",VERSION," ARCH ",Sys.ARCH," EDGES ",rwg.nedges)
+          println("VERSION ",VERSION," ARCH ",Sys.ARCH," EDGES ",rwg.nedges,
+              " OPT ",Base.JLOptions().opt_level," DEPWARN ",Base.JLOptions().depwarn)
           println("SAMPLES ",ntuple(_->measure(mesh,rwg,grid,k),3))
           println("OUTPUT_SAMPLES ",output_allocation(3length(grid.w),rwg.nedges))
           function profile_call(mesh,rwg,grid,k)
@@ -70,4 +71,4 @@ jobs:
           end
           println("RADIATION_ARM64_ALLOCATION_PROFILE_COMPLETE")
           JULIA
-          julia --startup-file=no --check-bounds=yes --project=. "$RUNNER_TEMP/radiation-profile.jl" 6.283185307179586
+          julia --code-coverage=none --color=yes --warn-overwrite=yes --depwarn=yes --inline=yes --startup-file=no --track-allocation=none --check-bounds=yes --compiled-modules=yes --project=. "$RUNNER_TEMP/radiation-profile.jl" 6.283185307179586
