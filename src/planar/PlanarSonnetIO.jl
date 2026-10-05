@@ -1480,5 +1480,7 @@ function solve_sonnet_project(p::SonnetNetlistProject,freq::Real;
     return solve_planar_circuit(sonnet_planar_circuit(p;project_response=project_response),freq;kw...)
 end
 
-solve_sonnet_project(path::AbstractString,freq::Real;kw...)=
-    solve_sonnet_project(read_sonnet_project(path),freq;kw...)
+function solve_sonnet_project(path::AbstractString,freq::Real;kw...)
+    _spice_limit("max_bytes",get(kw,:max_bytes,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES))
+    return solve_sonnet_project(read_sonnet_project(path),freq;kw...)
+end
