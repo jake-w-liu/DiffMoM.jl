@@ -137,8 +137,10 @@ This avoids allocating or solving independently driven raw layer sources.
 Returns [`PlanarContractedResult`](@ref), whose `raw` source solution has
 the physical coefficient columns and complete EM geometry/factor.
 
-Both solver paths equilibrate sheet-width and via-area measures before
-solving. FFT `rtol` gates the independently recomputed voltage-normalized
+Both solver paths equilibrate differing sheet-width and via-area measures.
+Dense uniform trace measures use unit scaling: global rescaling cannot
+improve conditioning and introduces avoidable rounding. FFT `rtol` gates
+the independently recomputed voltage-normalized
 full-operator residual; the unscaled Galerkin residual is also retained.
 The latter mixes different sheet and via row units. Dense `retain_matrix`
 controls retention of the original unscaled matrix. Optional `problem`
@@ -182,7 +184,8 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
     refs=_circuit_z0(z0,n;freq=real(freq))
     weights=Float64[_planar_port_weight(prob.basis,b) for b in 1:nb]
     all(w->isfinite(w) && w>0,weights) || throw(ArgumentError("source basis has invalid trace measure"))
-    scale=precondition ? inv.(weights) : ones(Float64,nb)
+    uniform=!isempty(weights) && all(==(weights[1]),weights)
+    scale=precondition && (method===:ufft || !uniform) ? inv.(weights) : ones(Float64,nb)
     X=Matrix{ComplexF64}(undef,nb,n)
     rhs=zeros(ComplexF64,nb);residual=similar(rhs)
     iterations=zeros(Int,n);voltage_residuals=Float64[];galerkin_residuals=Float64[]
@@ -196,8 +199,10 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
                 vias=prob.vias,vols=prob.vols,max_bytes=max_bytes-assembly_reserve,kw...)
         all(isfinite,original) || throw(ArgumentError("nonfinite planar source matrix"))
         scaled=retain_matrix ? copy(original) : original
-        for q in 1:nb,p in 1:nb
-            scaled[p,q]*=scale[p]*scale[q]
+        if precondition && !uniform
+            for q in 1:nb,p in 1:nb
+                scaled[p,q]*=scale[p]*scale[q]
+            end
         end
         F=lu!(scaled)
         for q in 1:n

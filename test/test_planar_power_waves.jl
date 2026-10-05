@@ -139,6 +139,14 @@ end
     contracted=solve_planar_contracted(raw.model.layout.problem,f,C;z0=raw.z0,mx=16,my=12,surface_zs=.1)
     @test contracted.y≈raw.y rtol=2e-12
     @test planar_current_maps(contracted;incident_waves=a)[1].jx≈maps[1].jx rtol=2e-12
+    # A uniform global rescaling used to perturb the identical physical
+    # equation enough to fail this gate on macOS and at lower frequencies.
+    low=solve_planar_project(_pw_project(),.1e9;mx=16,my=12)
+    low_contract=solve_planar_contracted(low.model.layout.problem,.1e9,C;
+        z0=low.z0,mx=16,my=12,surface_zs=.1)
+    @test low_contract.currents==low.em.currents
+    @test planar_current_maps(low_contract;incident_waves=a)[1].jx≈
+        planar_current_maps(low;incident_waves=a)[1].jx rtol=2e-12
     fast=solve_planar_contracted(raw.model.layout.problem,f,C;z0=raw.z0,mx=16,my=12,
         surface_zs=.1,method=:ufft,memory=40,rtol=1e-9)
     @test fast.s≈contracted.s rtol=2e-9 atol=2e-9
