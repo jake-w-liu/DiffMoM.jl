@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   profile:
-    name: ARM64 radiation allocation profile
+    name: ARM64 allocation diagnostic (partial original test)
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -25,54 +25,28 @@ jobs:
         with:
           cache-name: diffmom-julia-cache-v2
           save-always: false
-      - name: Instantiate diagnostic environment
-        run: julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
-      - name: Prepare the package test dependency environment
+      - uses: julia-actions/julia-buildpkg@v1
+      - name: Profile the original Pkg.test call order
         shell: bash
         run: |
-          export RADIATION_DIAGNOSTIC_ENV="$RUNNER_TEMP/radiation-test-env"
-          echo "RADIATION_DIAGNOSTIC_ENV=$RADIATION_DIAGNOSTIC_ENV" >> "$GITHUB_ENV"
-          julia --startup-file=no --project=. -e '
-            using Pkg,TOML
-            root=realpath(pwd());project=TOML.parsefile(joinpath(root,"Project.toml"))
-            env=ENV["RADIATION_DIAGNOSTIC_ENV"];mkpath(env)
-            open(joinpath(env,"Project.toml"),"w") do io
-                TOML.print(io,Dict("deps"=>merge(project["deps"],project["extras"]),
-                    "compat"=>project["compat"]))
-            end
-            Pkg.activate(env);Pkg.develop(PackageSpec(path=root));Pkg.instantiate()'
-      - name: Profile the original radiation allocation case
-        shell: bash
-        run: |
-          cat > "$RUNNER_TEMP/radiation-profile.jl" <<'JULIA'
-          using DiffMoM, Profile, LinearAlgebra, SHA
-          BLAS.set_num_threads(1)
-          source=read(joinpath(pkgdir(DiffMoM),"src","postprocessing","FarField.jl"),String)
-          @assert occursin("real_magnitudes = zero(Vec3)",source)
-          println("SOURCE_SHA256 ",bytes2hex(sha256(source)))
-          println("VERSION ",VERSION," ARCH ",Sys.ARCH,
-              " OPT ",Base.JLOptions().opt_level," DEPWARN ",Base.JLOptions().depwarn)
-          # Do not compile or call radiation_vectors before the untouched
-          # original test prefix. The preceding diagnostic's early call
-          # may change compilation order and mask the hosted failure.
-          root=realpath(pwd());testfile=joinpath(root,"test","runtests.jl")
+          cat > "$RUNNER_TEMP/radiation-pkg-profile.jl" <<'JULIA'
+          using Pkg,SHA
+          testfile=joinpath(realpath(pwd()),"test","runtests.jl")
           original=read(testfile,String)
-          println("ORIGINAL_TEST_SHA256 ",bytes2hex(sha256(original)))
           boundary=findfirst("@test radiation_alloc <= radiation_output_bytes + 2_250_000",original).start
-          # Run the untouched prefix and stop immediately before the known
-          # failing assertion, then measure it. This is a partial diagnostic,
-          # not a full-suite pass or a suppression in the main CI workflow.
-          prefixfile=joinpath(dirname(testfile),"radiation-diagnostic-prefix.jl")
-          @assert !ispath(prefixfile)
-          try
-              write(prefixfile,original[1:prevind(original,boundary)])
-              Base.include(Main,prefixfile)
-          finally
-              rm(prefixfile;force=true)
-          end
+          println("ORIGINAL_TEST_SHA256 ",bytes2hex(sha256(original)))
+          # Diagnostic only: execute the original prefix through its original
+          # allocation measurement, then profile it. Main's complete suite and
+          # original assertion remain untouched in the production workflow.
+          diagnostic=raw"""
+          println("PARTIAL_DIAGNOSTIC_NOT_FULL_TEST_SUITE")
           println("PREFIX_ALLOC ",radiation_alloc," LIMIT ",radiation_output_bytes+2_250_000)
-          println("PREFIX_BIGFLOAT_PRECISION ",precision(BigFloat))
-          @assert bytes2hex(sha256(read(testfile)))==bytes2hex(sha256(original))
+          using Profile,SHA
+          println("VERSION ",VERSION," ARCH ",Sys.ARCH," OPT ",Base.JLOptions().opt_level,
+              " DEPWARN ",Base.JLOptions().depwarn)
+          println("SOURCE_SHA256 ",bytes2hex(sha256(read(joinpath(pkgdir(DiffMoM),"src","postprocessing","FarField.jl")))))
+          println("POST_PROFILE_IMPORT_ALLOC ",_radiation_vectors_allocation(
+              mesh_radiation_alloc,rwg_radiation_alloc,grid_radiation_alloc,2π))
           Profile.Allocs.clear()
           Profile.Allocs.@profile sample_rate=1.0 _radiation_vectors_allocation(
               mesh_radiation_alloc,rwg_radiation_alloc,grid_radiation_alloc,2π)
@@ -86,6 +60,17 @@ jobs:
           for (key,(bytes,count)) in sort!(collect(groups);by=x->-last(x)[1])[1:min(40,length(groups))]
               println("PROFILE ",bytes," ",count," ",key)
           end
-          println("RADIATION_ARM64_ALLOCATION_PROFILE_COMPLETE")
+          println("RADIATION_ARM64_PARTIAL_PKG_PROFILE_COMPLETE")
+          """
+          try
+              write(testfile,original[1:prevind(original,boundary)]*diagnostic)
+              Pkg.test(;coverage=false,
+                  julia_args=["--check-bounds=yes","--compiled-modules=yes","--depwarn=yes"],
+                  force_latest_compatible_version=false,allow_reresolve=true)
+          finally
+              write(testfile,original)
+              @assert sha256(read(testfile))==sha256(original)
+          end
+          println("ORIGINAL_TEST_RESTORED")
           JULIA
-          julia --code-coverage=none --color=yes --warn-overwrite=yes --depwarn=yes --inline=yes --startup-file=no --track-allocation=none --check-bounds=yes --compiled-modules=yes --project="$RADIATION_DIAGNOSTIC_ENV" "$RUNNER_TEMP/radiation-profile.jl" 6.283185307179586
+          julia --startup-file=no --project=. "$RUNNER_TEMP/radiation-pkg-profile.jl"
