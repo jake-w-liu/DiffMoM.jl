@@ -65,3 +65,13 @@ The existing field workspace supplies the compensation scratch. Focused
 single/multilevel tests passed on Julia 1.12.7 and 1.13.1, including zero warm
 allocations. The original `1e-10` voltage gate and numerical fixtures remain
 unchanged. Hosted macOS and the complete workflow still require verification.
+
+The uniform dense trace-scaling repair and its low-frequency current
+regression add nine further counted lines, raising the exact reviewed ceiling
+to 212,066. The unchanged duplication estimate remains 58,394. This removes
+an unnecessary matrix rescaling when every physical trace measure is equal;
+mixed-trace equilibration and FFT preconditioning retain their existing
+contracts. The current-map tolerance remains `2e-12`. Focused contracted and
+power-wave suites passed on Julia 1.12.7 and 1.13.1. The quality workflow now
+pins Julia 1.12.7 exactly, matching the unchanged baseline counter identity
+instead of allowing an automatic patch upgrade to break that comparison.
