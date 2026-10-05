@@ -53,3 +53,15 @@ The local Python validation graph passed all 29 tests. The precise original
 voltage residual and conformal iteration limits remain unchanged. Hosted CI
 must still pass its full platform matrix, documentation and executable quality
 contract before this review can be cited as a green workflow result.
+
+## Follow-up charge precision repair
+
+The subsequent conformal repair adds 40 counted lines for compensated sparse
+RWG charge multiplication and independent 256-bit cancellation regressions.
+The reviewed line ceiling is now 212,057; the unchanged 400-group census
+estimate remains 58,394. This additional ceiling adjustment is a separate
+commit from the implementation, with the same original scope and counter.
+The existing field workspace supplies the compensation scratch. Focused
+single/multilevel tests passed on Julia 1.12.7 and 1.13.1, including zero warm
+allocations. The original `1e-10` voltage gate and numerical fixtures remain
+unchanged. Hosted macOS and the complete workflow still require verification.
