@@ -92,6 +92,21 @@ The repair and CRC evidence are recorded in
 reference, native gate or tolerance was modified. Full package and fresh
 hosted CI checks remain mandatory before claiming this commit is verified.
 
+## Radiation accumulator call-boundary repair
+
+Commit 20a0ca1 adds 30 counted lines for immutable radiation magnitude bounds,
+eight allocation/classification assertions and their test registration. The
+reviewed line ceiling is now 212,404 in this separate commit. The baseline,
+counter, counted scope and immutable archives remain unchanged. The unchanged
+400-group truncated census estimates 58,118 removable lines, below the
+existing 58,394 duplication ceiling. Blocking smells, integrity findings and
+measurement warnings remain zero. This adjustment covers regression code;
+the original radiation auxiliary-allocation allowance remains 2,250,000 bytes.
+
+`.slopfix/radiation-resource-review-20261005.md` records the actual macOS test
+failure, process-only escape-analysis probe and both focused Julia-version
+passes. Full package and fresh hosted platform/quality checks remain required.
+
 ## Unused default PEC material maps
 
 The isolated optimization 0b259e9b adds 60 counted lines for selective
