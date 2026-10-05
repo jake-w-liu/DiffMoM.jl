@@ -271,7 +271,7 @@ MM/IN units, rectangular unequal grids and tiny excursions. Three active ANC
 parameter/literal pairs check movement across the same boundary. Native
 acceptance remains tied to the project grid when a caller selects another
 raster resolution. The extent helper allocates zero warmed bytes. Ordinary
-unported metal can still be clipped by rasterization. Evidence is retained in
+unported metal can still be clipped at the box. Evidence is retained in
 `test/fixtures/native_plain_box_port_extent`, with native replay in
 `validation/planar_audit/run_box_port_extent_reference.jl`.
 The boundary and moved controls are retained in
@@ -284,8 +284,9 @@ fields to the new referenced-edge midpoint. A closing duplicate vertex does
 not introduce another edge. Contiguous collinear wall subdivisions share a
 physical excitation span. Both native sheet backends project vertices in the
 native half-cell wall band using the source BOX counts. Undriven sheet contacts
-impose the native ground connection; the raster backend also clips metal
-extending beyond the box wall.
+impose the native ground connection. Both backends clip sheet metal extending
+beyond the physical box. The conformal backend intersects the exact polygon
+union before triangulation, retaining disconnected regions and material seams.
 Twenty independent controls and the original failures are retained in
 `test/fixtures/native_box_port_attachment`, replayed by
 `validation/planar_audit/run_port_attachment_reference.jl`. Five one-port
@@ -294,7 +295,7 @@ Genuine conformal sheet geometry preserves interior coordinates and annotation
 metadata. Source BOX counts determine wall contact even with a caller bulk
 grid or different triangle sizes. Original conformal false rejections and
 one-port short/open errors near 2.0 are retained in
-`test/fixtures/native_conformal_wall_ownership`; six conformal full-S controls
+`test/fixtures/native_conformal_wall_ownership`; seven conformal full-S controls
 use the same 0.005 and 1e-9 residual gates. A wall edge supplies a wall source;
 an interior edge supplies a source on its shared segment with one adjacent
 sheet edge. Native BOX/STD/GAP labels all accept these two attachment forms.
@@ -311,6 +312,18 @@ enforces that restriction, backed by four independent BOX/STD/GAP rejection
 controls in `test/fixtures/native_internal_diagonal_rejection`. General
 physical diagonal sources remain available through `PlanarConformalPort`
 and `build_planar_conformal_layout`.
+Ten independent native box-clipping controls cover all walls, concave and
+oblique geometry, a corner cut, outside undriven metal, a shared interior
+source, and rejection of an outside driven edge. The nine accepted conformal
+controls retain the 0.005 full complex S and 1e-9 original voltage-residual
+gates. Original failures and native matrices are sealed in
+`test/fixtures/native_conformal_box_clipping`; rerun the native engine with
+`validation/planar_audit/run_conformal_clipping_reference.jl`.
+The general physical layout builder keeps strict box bounds by default;
+`clip_to_box=true` explicitly enables sheet clipping. `planar_conformal_mesh`
+accepts `clip_box=(a,b)`. A clipped-away sheet can leave a bulk-only layout
+when no driven sheet ports remain. These sheet controls do not establish
+native via or volume clipping parity.
 A repeated whole-polygon control confirms the native rejection when its port edge extends
 outside the box; `test/fixtures/native_geovar_box_port_extent` retains the
 engine error and independent native-normalizer stages.

@@ -120,24 +120,22 @@ end
         @test error<=.005 && residual<=1e-9
         @test opnorm(result.s)<=1+1e-9
         push!(observations,(case=name,full_s_error=error,original_voltage_residual=residual))
-        if name!="clipped__outside_negative"
-            saved=deepcopy(p)
-            conformal=solve_sonnet_conformal(p,1e9;raw=true,edge_size=.125e-3,
-                interior_size=.25e-3,edge_band=.05e-3,mx=128,my=128)
-            raw=conformal.raw;rhs=zeros(ComplexF64,size(raw.currents))
-            for i in eachindex(raw.problem.basis.port)
-                port=raw.problem.basis.port[i];iszero(port) && continue
-                rhs[i,port]=-raw.problem.basis.port_sign[i]*raw.problem.basis.width[i]
-            end
-            error=maximum(abs,conformal.s-expected)
-            residual=norm(raw.z_mom*raw.currents-rhs)/norm(rhs)
-            @test error<=.005 && residual<=1e-9
-            @test opnorm(conformal.s)<=1+1e-9
-            @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved.polygons))
-            @test all(a.values==b.values for (a,b) in zip(p.ports,saved.ports))
-            push!(conformal_observations,(case=name,full_s_error=error,
-                original_voltage_residual=residual))
+        saved=deepcopy(p)
+        conformal=solve_sonnet_conformal(p,1e9;raw=true,edge_size=.125e-3,
+            interior_size=.25e-3,edge_band=.05e-3,mx=128,my=128)
+        raw=conformal.raw;rhs=zeros(ComplexF64,size(raw.currents))
+        for i in eachindex(raw.problem.basis.port)
+            port=raw.problem.basis.port[i];iszero(port) && continue
+            rhs[i,port]=-raw.problem.basis.port_sign[i]*raw.problem.basis.width[i]
         end
+        error=maximum(abs,conformal.s-expected)
+        residual=norm(raw.z_mom*raw.currents-rhs)/norm(rhs)
+        @test error<=.005 && residual<=1e-9
+        @test opnorm(conformal.s)<=1+1e-9
+        @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved.polygons))
+        @test all(a.values==b.values for (a,b) in zip(p.ports,saved.ports))
+        push!(conformal_observations,(case=name,full_s_error=error,
+            original_voltage_residual=residual))
     end
     p=project("unported__exact")
     DiffMoM._sonnet_raster_wall_project(p,.001,.001,32,32)

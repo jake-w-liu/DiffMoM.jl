@@ -1,0 +1,15 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_conformal_clipping_before_rijwAM\\outside_driven_edge\\project.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-05T01:04:24.047"
+response_nports = 1
+julia_version = "1.13.1"
+process_success = false
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-05T01:04:23.072"
+source_sha256 = "78f7bc938e1584f45635514ce9f15735fd873213dc3714bda5d6881ee776f5aa"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\native_conformal_clipping_before_rijwAM\\outside_driven_edge\\native\\project.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\native_conformal_clipping_before_rijwAM\\\\outside_driven_edge\\\\native\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

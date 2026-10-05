@@ -1,0 +1,15 @@
+Run 1:  Mon Oct 05 09:04:19 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\native_conformal_clipping_before_rijwAM\wall_3\native\project.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Non-de-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      1.00000000 1.000000 177.27
+
+Em simulation completed Mon Oct 05 09:04:19 2026.

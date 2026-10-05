@@ -7,6 +7,8 @@ Sheet polygons are unioned exactly, with material seams and shared axial
 source cuts. Tiny sheet features do not pass through a raster lowerer.
 Vertices in the native source BOX half-cell wall band attach to that wall;
 interior coordinates and caller-owned records remain unchanged.
+Sheets extending beyond the box are clipped exactly. Source edge identities
+remain native; their driven attachment must still lie within the box band.
 `edge_size,interior_size` declare independent physical mesh bounds.
 
 Via columns retain the native uniform-grid SOLID/RING/CENTER/VERTICES/BAR
@@ -61,14 +63,6 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
     function add_sheet(name,level,vertices,metal)
         v,b=planar_normalize_polygon([_P2(vertices[1,i],vertices[2,i]) for i in axes(vertices,2)];label=name)
         push!(polygons,PlanarPolygon(name,level,metal,"",v,b))
-        for i in eachindex(v)
-            a,b=v[i],v[mod1(i+1,length(v))]
-            wall=a[1]==b[1]==0. ? :west : a[1]==b[1]==stack.a ? :east :
-                a[2]==b[2]==0. ? :south : a[2]==b[2]==stack.b ? :north : nothing
-            wall===nothing && continue
-            dim=wall in (:west,:east) ? 2 : 1;lo,hi=minmax(a[dim],b[dim])
-            push!(contacts,PlanarConformalPort(level,wall,(lo,hi)))
-        end
     end
     for poly in p.polygons
         if poly.kind===:sheet
@@ -105,6 +99,13 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
             end
         end
     end
+    # PEC box walls ground every actual sheet boundary touching them,
+    # including boundaries introduced by clipping. Absent metal adds no basis.
+    for level in unique(poly.level for poly in polygons)
+        for (wall,extent) in ((:west,stack.b),(:east,stack.b),(:south,stack.a),(:north,stack.a))
+            push!(contacts,PlanarConformalPort(level,wall,(0.,extent)))
+        end
+    end
     polydict=Dict(poly.id=>poly for poly in p.polygons)
     for ps in p.ports
         ps.kind in (:box,:std,:gap,:via) || throw(ArgumentError("native conformal $(ps.kind) port requires its physical return/calibration model"))
@@ -124,6 +125,9 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         end
         poly.kind===:sheet || throw(ArgumentError("native sheet port must reference a sheet polygon"))
         v=poly.vertices;n=_sonnet_polygon_edge_count(v);i,j=_sonnet_port_edge_indices(v,ps.edge)
+        _sonnet_box_port_edge_inside(v,ps.edge,stack.a,stack.b,
+            parse(Int,p.box[4])÷2,parse(Int,p.box[5])÷2) ||
+            throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
         a=(v[1,i],v[2,i]);b=(v[1,j],v[2,j]);level=L-1-poly.level
         wall=a[1]==b[1]==0. ? :west : a[1]==b[1]==stack.a ? :east :
             a[2]==b[2]==0. ? :south : a[2]==b[2]==stack.b ? :north : nothing
@@ -160,7 +164,7 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         bulk=build_planar_problem(stack,gr,SheetLevel[],bp;vias)
         PlanarConformalLayout(bulk,polygons,Int[],String[],Any[])
     else
-        build_planar_conformal_layout(stack,polygons,cp;metals,wall_contacts=contacts,
+        build_planar_conformal_layout(stack,polygons,cp;metals,wall_contacts=contacts,clip_to_box=true,
             bulk_grid=isempty(vias) ? nothing : gr,vias,bulk_ports=bp,edge_size,interior_size,edge_band,max_triangles,max_bytes=max_bytes-reserve)
     end
     _enforce_payload_limit(_checked_payload_sum("native conformal contraction",reserve,

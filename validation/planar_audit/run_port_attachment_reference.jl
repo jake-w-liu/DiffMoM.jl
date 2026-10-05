@@ -45,21 +45,16 @@ function main()
                 rejection isa ArgumentError || error("missing importer rejection: $name")
                 result["raster_status"]="REJECT"
             end
-            # Box clipping is still an explicit conformal coverage gap.
-            if name=="clipped__outside_negative"
-                result["conformal_status"]="UNVERIFIED_NATIVE_CLIPPING"
-            else
-                conformal_failure=nothing
-                try
-                    sonnet_conformal_layout(read_sonnet_project(source);freq=1e9,
-                        edge_size=.125e-3,interior_size=.25e-3,edge_band=.05e-3)
-                catch err
-                    conformal_failure=err
-                end
-                (conformal_failure===nothing)==valid || error("unexpected conformal outcome: $name")
-                result["conformal_status"]=valid ? "ACCEPT" : "REJECT"
-                valid || conformal_failure isa ArgumentError || error("unexpected conformal failure: $name")
+            conformal_failure=nothing
+            try
+                sonnet_conformal_layout(read_sonnet_project(source);freq=1e9,
+                    edge_size=.125e-3,interior_size=.25e-3,edge_band=.05e-3)
+            catch err
+                conformal_failure=err
             end
+            (conformal_failure===nothing)==valid || error("unexpected conformal outcome: $name")
+            result["conformal_status"]=valid ? "ACCEPT" : "REJECT"
+            valid || conformal_failure isa ArgumentError || error("unexpected conformal failure: $name")
             push!(report["cases"],result);println(result);flush(stdout)
         end
         report["status"]="PASS"

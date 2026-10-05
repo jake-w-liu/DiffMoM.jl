@@ -67,6 +67,14 @@ wall excitation and undriven wall grounding. It preserves complete matrices
 at the unchanged 1e-12 identity gate and checks importer acceptance/rejection.
 The original incorrect responses remain in the immutable fixture reports.
 
+`run_conformal_clipping_reference.jl` replays ten native sheet controls for
+all box walls, disconnected concave intersections, oblique and corner cuts,
+outside undriven metal, shared interior sources and an outside driven-edge
+rejection. It preserves complete native matrices at the unchanged 1e-12
+identity gate and checks conformal acceptance/rejection. Exact-geometry,
+full-S and original unweighted voltage-residual regression checks use the
+sealed `native_conformal_box_clipping` fixture in the package tests.
+
 `run_internal_port_attachment_reference.jl` replays 21 native shared-edge,
 partial-overlap, annotation, kind-alias and invalid-return controls. Both
 axes have two-port phase controls referenced from either adjacent polygon.

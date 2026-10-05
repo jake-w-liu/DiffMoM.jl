@@ -11,7 +11,10 @@ function _planar_conformal_cross_point(a,b,c,d)
     ((o1>0 && o2<0)||(o1<0 && o2>0)) && ((o3>0 && o4<0)||(o3<0 && o4>0)) || return nothing
     ax,ay=BigFloat.(a);bx,by=BigFloat.(b);cx,cy=BigFloat.(c);dx,dy=BigFloat.(d)
     u=((cx-ax)*(dy-cy)-(cy-ay)*(dx-cx))/((bx-ax)*(dy-cy)-(by-ay)*(dx-cx))
-    (Float64(ax+u*(bx-ax)),Float64(ay+u*(by-ay)))
+    # An axial segment supplies an exact coordinate, including box cuts.
+    x=a[1]==b[1] ? a[1] : c[1]==d[1] ? c[1] : Float64(ax+u*(bx-ax))
+    y=a[2]==b[2] ? a[2] : c[2]==d[2] ? c[2] : Float64(ay+u*(by-ay))
+    (x,y)
 end
 
 function _planar_conformal_arrangement_budget(ne,nx,ntrap,nv,nt,max_bytes)
@@ -60,16 +63,27 @@ coordinates; its trapezoids become conforming genuine triangles. There is
 no rasterization or staircase geometry. Independent edge/interior sizing
 then refines the shared mesh. Different materials overlapping on one
 interface reject. Constraints ending inside metal are retained as mesh
-vertices; source ports still require a complete shared-edge path."""
+vertices; source ports still require a complete shared-edge path.
+`clip_box=(a,b)` intersects the union with `[0,a]×[0,b]` before material
+selection. Concave polygons may become disconnected. `allow_empty=true`
+returns an empty mesh when no positive-area metal remains."""
 function planar_conformal_mesh(polygons::AbstractVector{PlanarPolygon};
         holes::AbstractVector{PlanarPolygon}=PlanarPolygon[],constraints=Tuple[],
         edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        clip_box=nothing,allow_empty::Bool=false)
     isempty(polygons) && throw(ArgumentError("conformal layout requires physical sheet polygons"))
     all(isfinite,(edge_size,interior_size,edge_band)) && 0<edge_size<=interior_size && edge_band>=0 && max_triangles>=1 ||
         throw(ArgumentError("conformal mesh sizes and triangle limit are invalid"))
     levels=sort!(unique(p.level for p in polygons));all(p->p.level in levels,holes) || throw(ArgumentError("void polygon requires a physical sheet interface"))
-    ne=sum(length(p.vertices) for p in polygons)+sum((length(p.vertices) for p in holes);init=0)+length(constraints)
+    clip_box===nothing || (clip_box isa Tuple && length(clip_box)==2 &&
+        all(x->x isa Real && isfinite(x) && x>0,clip_box)) ||
+        throw(ArgumentError("conformal clip box must have two positive finite extents"))
+    box=clip_box===nothing ? nothing : (Float64(clip_box[1]),Float64(clip_box[2]))
+    box===nothing || all(x->isfinite(x) && x>0,box) ||
+        throw(ArgumentError("conformal clip box must fit positive finite Float64 extents"))
+    ne=sum(length(p.vertices) for p in polygons)+sum((length(p.vertices) for p in holes);init=0)+length(constraints)+
+        (box===nothing ? 0 : 4length(levels))
     _planar_conformal_arrangement_budget(ne,2ne,0,0,0,max_bytes)
     edges=Tuple{Int,NTuple{2,Float64},NTuple{2,Float64}}[]
     for p in Iterators.flatten((polygons,holes)),i in eachindex(p.vertices)
@@ -79,6 +93,12 @@ function planar_conformal_mesh(polygons::AbstractVector{PlanarPolygon};
     for (level,(a,b)) in constraints
         level in levels && all(isfinite,(a...,b...)) && a!=b || throw(ArgumentError("conformal constraint must be finite, nonzero and on a sheet interface"))
         push!(edges,(Int(level),(Float64(a[1]),Float64(a[2])),(Float64(b[1]),Float64(b[2]))))
+    end
+    if box!==nothing
+        a,b=box;corners=((0.,0.),(a,0.),(a,b),(0.,b))
+        for level in levels,i in 1:4
+            push!(edges,(level,corners[i],corners[mod1(i+1,4)]))
+        end
     end
     vertices=NTuple{2,Float64}[];faces=NTuple{3,Int}[];interfaces=Int[]
     canonical=Dict{NTuple{2,Float64},Int}()
@@ -95,9 +115,11 @@ function planar_conformal_mesh(polygons::AbstractVector{PlanarPolygon};
             _planar_conformal_line_y(ledges[e]...,x)
         end
         sort!(unique!(cuts));traps=Tuple{Int,NTuple{2,Float64},NTuple{2,Float64},NTuple{2,Float64},NTuple{2,Float64}}[]
+        box===nothing || filter!(x->0<=x<=box[1],cuts)
         seam=[Float64[] for _ in cuts]
         for (a,b) in ledges
             if a[1]==b[1]
+                box!==nothing && !(0<=a[1]<=box[1]) && continue
                 index=searchsortedfirst(cuts,a[1]);append!(seam[index],(a[2],b[2]))
             end
         end
@@ -109,6 +131,7 @@ function planar_conformal_mesh(polygons::AbstractVector{PlanarPolygon};
             for i in 1:length(active)-1
                 low,high=active[i],active[i+1];yl=edge_y(low,mid);yu=edge_y(high,mid)
                 yl<yu || continue
+                box!==nothing && !(0<=yl<yu<=box[2]) && continue
                 point=_P2(mid,yl+(yu-yl)/2)
                 any(p.level==level && _p2_point_in_poly(point,p.vertices,0.) for p in holes) && continue
                 filled=[p.metal for p in polygons if p.level==level && _p2_point_in_poly(point,p.vertices,0.)]
@@ -147,7 +170,10 @@ function planar_conformal_mesh(polygons::AbstractVector{PlanarPolygon};
             end
         end
     end
-    isempty(faces) && throw(ArgumentError("conformal layout has no metal after subtracting voids"))
+    if isempty(faces)
+        allow_empty || throw(ArgumentError("conformal layout has no metal after subtracting voids"))
+        return PlanarConformalMesh(zeros(Float64,2,0),zeros(Int,3,0),Int[],Float64[])
+    end
     coords=hcat((collect(p) for p in vertices)...);triangles=hcat((collect(t) for t in faces)...)
     mesh=PlanarConformalMesh(coords,triangles;interfaces,max_bytes)
     planar_refine_conformal(mesh;edge_size,interior_size,edge_band,max_triangles,max_bytes)
@@ -156,7 +182,8 @@ end
 """Exact polygon layout on genuine triangles, optionally coupled to
 physical bulk grid currents. Named material models are retained per
 triangle and evaluated at each solved frequency. `problem` is a
-`PlanarConformalProblem` or `PlanarHybridProblem`; geometry is never
+`PlanarConformalProblem`, `PlanarHybridProblem`, or a bulk-only
+`PlanarProblem` when box clipping removes all sheets; geometry is never
 rasterized into sheet cells."""
 struct PlanarConformalLayout{P}
     problem::P
@@ -210,18 +237,24 @@ add mixed axial/transverse bulk currents; contact cell boundaries constrain
 the sheet mesh. `holes` supplies explicit voids. Physical coordinates,
 materials and independent edge/interior sizes are preserved. Overlapping
 different metals reject. Solve with `solve_planar(layout,f)`; a requested
-FFT solve requires all resulting vertices on its declared lattice."""
+FFT solve requires all resulting vertices on its declared lattice.
+`clip_to_box=true` intersects sheets with the physical box, preserving source
+polygons and material ownership. Fully clipped sheets can leave a bulk-only
+layout when there are no driven sheet ports."""
 function build_planar_conformal_layout(stack::PlanarStackup,polygons::AbstractVector{PlanarPolygon},
         ports::AbstractVector{PlanarConformalPort};metals::AbstractDict=Dict("pec"=>0.,"PEC"=>0.),
         holes::AbstractVector{PlanarPolygon}=PlanarPolygon[],constraints=Tuple[],
         bulk_grid=nothing,vias::Vector{ViaLevel}=ViaLevel[],vols::Vector{VolLevel}=VolLevel[],bulk_ports::Vector{PlanarPort}=PlanarPort[],
         sidewalls::SidewallKind=WALL_PEC,wall_contacts::AbstractVector{PlanarConformalPort}=PlanarConformalPort[],
         edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        clip_to_box::Bool=false)
     planar_validate(stack)
     _enforce_payload_limit(_checked_array_payload_bytes(UInt8,40,length(constraints)+length(ports)+length(wall_contacts)),
         max_bytes,"conformal layout constraints","max_bytes")
-    all(p->0<=p.level<=length(stack.layers) && all(v->0<=v[1]<=stack.a && 0<=v[2]<=stack.b,p.vertices),polygons) || throw(ArgumentError("conformal polygons lie outside the physical box/stack"))
+    all(p->0<=p.level<=length(stack.layers) &&
+        (clip_to_box || all(v->0<=v[1]<=stack.a && 0<=v[2]<=stack.b,p.vertices)),polygons) ||
+        throw(ArgumentError("conformal polygons lie outside the physical box/stack"))
     names=unique(p.metal for p in polygons);all(n->haskey(metals,n),names) || throw(ArgumentError("conformal layout material model is missing"))
     cs=Tuple[constraints...]
     for p in Iterators.flatten((ports,wall_contacts))
@@ -268,7 +301,9 @@ function build_planar_conformal_layout(stack::PlanarStackup,polygons::AbstractVe
     end
     constraintbytes=_checked_array_payload_bytes(UInt8,40,length(cs))
     _enforce_payload_limit(constraintbytes,max_bytes,"conformal layout constraints","max_bytes")
-    mesh=planar_conformal_mesh(polygons;holes,constraints=cs,edge_size,interior_size,edge_band,max_triangles,max_bytes=max_bytes-constraintbytes)
+    mesh=planar_conformal_mesh(polygons;holes,constraints=cs,edge_size,interior_size,edge_band,max_triangles,
+        max_bytes=max_bytes-constraintbytes,clip_box=clip_to_box ? (stack.a,stack.b) : nothing,
+        allow_empty=clip_to_box && bulk_grid!==nothing)
     meshbytes=_checked_payload_sum("conformal layout mesh",
         sum(sizeof(eltype(a))*length(a) for a in (mesh.vertices,mesh.triangles,mesh.interfaces,mesh.areas)),
         _checked_array_payload_bytes(Int,length(mesh.interfaces)),constraintbytes)
@@ -278,6 +313,11 @@ function build_planar_conformal_layout(stack::PlanarStackup,polygons::AbstractVe
     _enforce_payload_limit(_checked_payload_sum("conformal layout basis",meshbytes,bulkbytes,
         _checked_array_payload_bytes(Int,21,length(mesh.interfaces)),_checked_array_payload_bytes(Float64,6,length(mesh.interfaces))),
         max_bytes,"conformal layout basis","max_bytes")
+    if isempty(mesh.interfaces)
+        isempty(ports) || throw(ArgumentError("driven conformal sheet ports have no retained metal"))
+        bulk=build_planar_problem(stack,bulk_grid,SheetLevel[],bulk_ports;vias,vols)
+        return PlanarConformalLayout(bulk,collect(polygons),Int[],String[],Any[])
+    end
     c=PlanarConformalProblem(stack,mesh,ports;sidewalls,wall_contacts,max_bytes=max_bytes-meshbytes-bulkbytes)
     problem=bulk_grid===nothing ? c : PlanarHybridProblem(c,bulk_grid,bulk_ports;vias,vols)
     ids=Int[]

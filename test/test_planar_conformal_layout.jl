@@ -83,3 +83,63 @@ end
     @test abs(short.s[2,1])<.04
     @test opnorm(short.s)<=1+1e-10
 end
+
+@testset "exact box intersection preserves disconnected geometry and materials" begin
+    rect(name,x0,x1,y0,y1;kw...)=genuine_layout_polygon(name,[(x0,y0),(x1,y0),(x1,y1),(x0,y1)];kw...)
+    opts=(edge_size=.4,interior_size=.6,edge_band=.1)
+    box=rect("box",0.,2.,0.,2.)
+    source=rect("cover",-1.,3.,-1.,3.)
+    mesh=planar_conformal_mesh([source];clip_box=(2.,2.),opts...)
+    @test sum(mesh.areas)≈4. rtol=1e-14
+    @test all(x->0<=x<=2.,mesh.vertices)
+    triangle=genuine_layout_polygon("oblique",[(-1.,.25),(3.,.5),(1.,3.)])
+    clipped=planar_conformal_mesh([triangle];clip_box=(2.,2.),opts...)
+    @test sum(clipped.areas)≈independent_convex_intersection_area(triangle,box) rtol=2e-14
+    @test all(x->0<=x<=2.,clipped.vertices)
+    split=genuine_layout_polygon("split",[(-1.,.25),(2.5,.25),(2.5,.5),(-.5,.5),
+        (-.5,1.5),(2.5,1.5),(2.5,1.75),(-1.,1.75)])
+    pieces=planar_conformal_mesh([split];clip_box=(2.,2.),opts...)
+    @test sum(pieces.areas)≈1. rtol=2e-14
+    @test all(t->begin
+        ys=pieces.vertices[2,pieces.triangles[:,t]]
+        maximum(ys)<=.5 || minimum(ys)>=1.5
+    end,eachindex(pieces.interfaces))
+    hole=rect("void",-1.,1.,.5,1.5)
+    hollow=planar_conformal_mesh([source];holes=[hole],clip_box=(2.,2.),opts...)
+    @test sum(hollow.areas)≈3. rtol=1e-14
+    # Overlap outside the box must not create an in-box material conflict.
+    outside=rect("outside",-2.,-1.,0.,2.;metal="other")
+    ignored=planar_conformal_mesh([rect("inside",-2.,.5,0.,2.),outside];clip_box=(2.,2.),opts...)
+    @test sum(ignored.areas)≈1. rtol=1e-14
+    empty=planar_conformal_mesh([outside];clip_box=(2.,2.),allow_empty=true,opts...)
+    @test size(empty.vertices)==(2,0) && size(empty.triangles)==(3,0)
+    @test isempty(empty.areas) && isempty(empty.interfaces)
+    @test_throws ArgumentError planar_conformal_mesh([outside];clip_box=(2.,2.),opts...)
+    for invalid in ((0.,2.),(-1.,2.),(Inf,2.),(NaN,2.),(big"1e1000",2.))
+        @test_throws ArgumentError planar_conformal_mesh([source];clip_box=invalid,opts...)
+    end
+    @test_throws ArgumentError planar_conformal_mesh([source];clip_box=(2.,2.),max_bytes=1,opts...)
+    @test_throws ArgumentError planar_conformal_mesh([source];clip_box=(2.,2.),max_triangles=1,opts...)
+    stack=PlanarStackup([PlanarLayer(1.,1.,.5),PlanarLayer(1.,1.,.5)],TERM_GND,TERM_GND,2.,2.)
+    ports=[PlanarConformalPort(1,:west,(0.,2.)),PlanarConformalPort(1,:east,(0.,2.))]
+    @test_throws ArgumentError build_planar_conformal_layout(stack,[source],ports;opts...)
+    material=[rect("left",-1.,1.,0.,2.;metal="a"),rect("right",1.,3.,0.,2.;metal="b")]
+    layout=build_planar_conformal_layout(stack,material,ports;clip_to_box=true,metals=Dict("a"=>1.,"b"=>2.),opts...)
+    @test layout.polygons==material
+    @test sum(layout.problem.mesh.areas[layout.triangle_materials.==1])≈2. rtol=1e-14
+    @test sum(layout.problem.mesh.areas[layout.triangle_materials.==2])≈2. rtol=1e-14
+    @test_throws ArgumentError build_planar_conformal_layout(stack,[source],ports;clip_to_box=true,max_bytes=1,opts...)
+    grid=CellGrid(2.,2.,4,4);via=via_level(1,4,4);via.uni[2,2]=true;via.tap[2,2]=true
+    bulk=build_planar_conformal_layout(stack,[outside],PlanarConformalPort[];
+        clip_to_box=true,bulk_grid=grid,vias=[via],bulk_ports=[PlanarPort(1,:via,6:6,50.)],
+        metals=Dict("other"=>0.),opts...)
+    @test bulk.problem isa PlanarProblem && isempty(bulk.triangle_materials)
+    @test isempty(bulk.materials) && planar_basis_count(bulk.problem.basis)==2
+    @test_throws ArgumentError build_planar_conformal_layout(stack,[outside],ports;
+        clip_to_box=true,bulk_grid=grid,vias=[via],bulk_ports=[PlanarPort(1,:via,6:6,50.)],
+        metals=Dict("other"=>0.),opts...)
+    # Axis intersections keep exact plane coordinates rather than a residual
+    # from finite-precision division of the oblique line parameter.
+    point=DiffMoM._planar_conformal_cross_point((-.3,-.1),(.6,.2),(-1.,0.),(1.,0.))
+    @test point!==nothing && point[2]===0.
+end
