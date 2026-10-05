@@ -872,7 +872,16 @@ function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
     return sigma
 end
 
-function _sonnet_thick_geometry(p::SonnetProject,freq,variables)
+function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
+        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    any(q->q.kind===:sheet && 0<=q.material<length(p.metals) &&
+        p.metals[q.material+1][3]=="TMM",p.polygons) || return p
+    stack_workspace=_checked_payload_sum("native TMM stack preflight",
+        _checked_array_payload_bytes(PlanarLayer{ComplexF64},2,length(p.layers)),
+        _checked_array_payload_bytes(Ptr{Cvoid},4,length(p.layers)))
+    _enforce_payload_limit(stack_workspace,max_bytes,"native TMM stack preflight","max_bytes")
+    _enforce_payload_limit(_sonnet_raster_source_workspace(p),max_bytes,
+        "native TMM source workspace","max_bytes")
     thick=[q for q in p.polygons if q.kind==:sheet && q.material>=0 &&
         q.material<length(p.metals) && p.metals[q.material+1][3]=="TMM"]
     isempty(thick) && return p
@@ -1016,7 +1025,7 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
         length(cover)>=3 && cover[3]=="NOR" && sonnet_metal_zs(p,cover,freq;variables,cover=true)
     end
     p=_sonnet_geometry_project(p,freq,variables;max_bytes)
-    geometry=expand_thick ? _sonnet_thick_geometry(p,freq,variables) : p
+    geometry=expand_thick ? _sonnet_thick_geometry(p,freq,variables;max_bytes) : p
     # Reserve both layer vectors, promotion references and push! growth.
     stack_workspace=_checked_payload_sum("native stack layer workspace",
         _checked_array_payload_bytes(PlanarLayer{ComplexF64},2,length(geometry.layers)),

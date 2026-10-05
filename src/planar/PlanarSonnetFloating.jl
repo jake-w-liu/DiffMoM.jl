@@ -161,7 +161,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     isfinite(bridge_zs) && real(bridge_zs)>=0 || throw(ArgumentError("floating bridge impedance must be finite and passive"))
     stored_bridge=ComplexF64(bridge_zs)
     isfinite(stored_bridge) || throw(ArgumentError("floating bridge impedance must fit finite ComplexF64"))
-    p=_sonnet_thick_geometry(p,freq,variables)
+    p=_sonnet_thick_geometry(p,freq,variables;max_bytes=max_bytes-variable_payload)
     physical=_sonnet_stack_geometry(p,freq,grid,variables;expand_thick=false,
         max_bytes=max_bytes-variable_payload)
     cellcount=BigInt(physical.grid.nx)*physical.grid.ny

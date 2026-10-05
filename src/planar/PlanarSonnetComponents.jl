@@ -236,12 +236,12 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
     !isempty(p.components) || throw(ArgumentError("native project has no components"))
     # Expand physical thick faces before separating geometry and loads,
     # so SMD terminal levels follow the same remapped stack as polygons.
-    p=_sonnet_thick_geometry(p,freq,variables)
+    file_payload=_model_files===nothing ? 0 : _model_files.payload
+    p=_sonnet_thick_geometry(p,freq,variables;max_bytes=max_bytes-file_payload-variable_payload)
     # Internal geometric lowering preserves every polygon/material/record;
     # component physics is supplied below, never by a public discard flag.
     geometry=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,
         p.metals,p.top,p.bottom,p.polygons,p.ports,p.variables,Vector{SonnetRecord}[],p.sweeps,p.records)
-    file_payload=_model_files===nothing ? 0 : _model_files.payload
     base=sonnet_planar_problem(geometry;freq=freq,grid=grid,variables=variables,
         _materials=true,_details=true,max_bytes=max_bytes-file_payload-variable_payload)
     pins=Vector{Any}[]
