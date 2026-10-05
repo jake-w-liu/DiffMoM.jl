@@ -11,7 +11,7 @@ jobs:
   profile:
     name: ARM64 radiation allocation profile
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       JULIA_NUM_THREADS: 1
       JULIA_NUM_PRECOMPILE_TASKS: 1
@@ -27,6 +27,20 @@ jobs:
           save-always: false
       - name: Instantiate diagnostic environment
         run: julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Prepare the package test dependency environment
+        shell: bash
+        run: |
+          export RADIATION_DIAGNOSTIC_ENV="$RUNNER_TEMP/radiation-test-env"
+          echo "RADIATION_DIAGNOSTIC_ENV=$RADIATION_DIAGNOSTIC_ENV" >> "$GITHUB_ENV"
+          julia --startup-file=no --project=. -e '
+            using Pkg,TOML
+            root=realpath(pwd());project=TOML.parsefile(joinpath(root,"Project.toml"))
+            env=ENV["RADIATION_DIAGNOSTIC_ENV"];mkpath(env)
+            open(joinpath(env,"Project.toml"),"w") do io
+                TOML.print(io,Dict("deps"=>merge(project["deps"],project["extras"]),
+                    "compat"=>project["compat"]))
+            end
+            Pkg.activate(env);Pkg.develop(PackageSpec(path=root));Pkg.instantiate()'
       - name: Profile the original radiation allocation case
         shell: bash
         run: |
@@ -58,7 +72,20 @@ jobs:
               Profile.Allocs.clear()
               Profile.Allocs.@profile sample_rate=1.0 radiation_vectors(mesh,rwg,grid,k;quad_order=3)
           end
-          profile_call(mesh,rwg,grid,k)
+          root=realpath(pwd());testfile=joinpath(root,"test","runtests.jl")
+          original=read(testfile,String)
+          println("ORIGINAL_TEST_SHA256 ",bytes2hex(sha256(original)))
+          boundary=findfirst("@test radiation_alloc <= radiation_output_bytes + 2_250_000",original).start
+          # Run the untouched prefix and stop immediately before the known
+          # failing assertion, then measure it. This is a partial diagnostic,
+          # not a full-suite pass or a suppression in the main CI workflow.
+          Base.include_string(Main,original[1:prevind(original,boundary)],testfile)
+          println("PREFIX_ALLOC ",radiation_alloc," LIMIT ",radiation_output_bytes+2_250_000)
+          println("PREFIX_BIGFLOAT_PRECISION ",precision(BigFloat))
+          @assert bytes2hex(sha256(read(testfile)))==bytes2hex(sha256(original))
+          Profile.Allocs.clear()
+          Profile.Allocs.@profile sample_rate=1.0 _radiation_vectors_allocation(
+              mesh_radiation_alloc,rwg_radiation_alloc,grid_radiation_alloc,2π)
           groups=Dict{String,Tuple{Int,Int}}()
           for allocation in Profile.Allocs.fetch().allocs
               frame=findfirst(f->occursin("FarField.jl",String(f.file)),allocation.stacktrace)
@@ -71,4 +98,4 @@ jobs:
           end
           println("RADIATION_ARM64_ALLOCATION_PROFILE_COMPLETE")
           JULIA
-          julia --code-coverage=none --color=yes --warn-overwrite=yes --depwarn=yes --inline=yes --startup-file=no --track-allocation=none --check-bounds=yes --compiled-modules=yes --project=. "$RUNNER_TEMP/radiation-profile.jl" 6.283185307179586
+          julia --code-coverage=none --color=yes --warn-overwrite=yes --depwarn=yes --inline=yes --startup-file=no --track-allocation=none --check-bounds=yes --compiled-modules=yes --project="$RADIATION_DIAGNOSTIC_ENV" "$RUNNER_TEMP/radiation-profile.jl" 6.283185307179586
