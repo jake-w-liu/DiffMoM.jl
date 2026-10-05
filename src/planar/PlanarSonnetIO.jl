@@ -995,7 +995,7 @@ function _sonnet_dielectric_conduction(sigma::Real,freq::Real)
 end
 
 function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
-        expand_thick::Bool=true)
+        expand_thick::Bool=true,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
     freq=_circuit_stored_real(freq,"native geometry frequency")
     if !(variables isa SonnetScalarVariables) && _sonnet_has_scalar_tables(p)
@@ -1015,7 +1015,7 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
     for cover in (p.top,p.bottom)
         length(cover)>=3 && cover[3]=="NOR" && sonnet_metal_zs(p,cover,freq;variables,cover=true)
     end
-    p=_sonnet_geometry_project(p,freq,variables)
+    p=_sonnet_geometry_project(p,freq,variables;max_bytes)
     geometry=expand_thick ? _sonnet_thick_geometry(p,freq,variables) : p
     val(t)=sonnet_variable_value(geometry,t;variables=variables,freq=freq)
     ls=geometry.length_scale
@@ -1037,6 +1037,8 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
     return (;geometry_project=geometry,stack,grid=gr,variables)
 end
 
+include("PlanarSonnetRasterResources.jl")
+
 """Lower supported native geometry to the raw-gap planar solver.
 `grid=(nx,ny)` explicitly changes raster resolution from the native BOX grid.
 Native BOX counts are half-cell counts: `BOX ... 96 64 ...` specifies an
@@ -1050,24 +1052,36 @@ two-face TMM geometry, and constant VOL/ARR resistance-per-via loss.
 Independent anchored/symmetric unscaled X/Y geometry dimensions are supported.
 Co-calibration, other geometry-variable modes, dielectric bricks, general via
 skin loss and unsupported material semantics reject explicitly. Components
-require the circuit wrapper. Parsed unsupported data remain in `SonnetProject`."""
+require the circuit wrapper. Parsed unsupported data remain in `SonnetProject`.
+`max_bytes` bounds owned raster masks, material maps, source and basis workspace
+before allocation. It uses the same raw-payload convention as `solve_planar`."""
 function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         variables=Dict{String,Float64}(),_materials::Bool=false,_details::Bool=false,
         _allow_portless::Bool=false,scalar_files=nothing,
         scalar_root=dirname(p.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,
-        scalar_max_storage::Integer=64*1024^2)
+        scalar_max_storage::Integer=64*1024^2,
+        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
     freq=_circuit_stored_real(freq,"native geometry frequency")
+    limit=_spice_limit("max_bytes",max_bytes)
+    _enforce_payload_limit(1024,limit,"native raster source workspace","max_bytes")
+    grid=_sonnet_raster_grid(p,grid)
+    source_workspace=_sonnet_raster_source_workspace(p)
+    _enforce_payload_limit(source_workspace,limit,"native raster source workspace","max_bytes")
+    scalar_workspace=0
     if scalar_files!==nothing || (!(variables isa SonnetScalarVariables) && _sonnet_has_scalar_tables(p))
-        variables=_sonnet_scalar_variables(p,variables;scalar_files,max_bytes=scalar_max_storage,
+        variables=_sonnet_scalar_variables(p,variables;scalar_files,
+            max_bytes=min(scalar_max_storage,limit-source_workspace),
             root=scalar_root,outside=scalar_outside,max_files=scalar_max_files,
             max_bytes_source=scalar_max_bytes,max_nodes=scalar_max_nodes,max_line_bytes=scalar_max_line_bytes)
+        scalar_workspace=_sonnet_scalar_payload(variables)
         p=_sonnet_scalar_project(p,variables)
     end
+    source=p
     isempty(p.components) || throw(ArgumentError("native SMD components require the circuit adapter"))
-    physical=_sonnet_stack_geometry(p,freq,grid,variables)
+    physical=_sonnet_stack_geometry(p,freq,grid,variables;max_bytes=limit-scalar_workspace)
     p=physical.geometry_project
     variables=physical.variables
     val(t)=sonnet_variable_value(p,t;variables=variables,freq=freq)
@@ -1078,6 +1092,9 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     p=_sonnet_raster_wall_project(p,a,b,native_nx,native_ny)
     L=length(layers)
     any(poly->poly.kind==:brick,p.polygons) && throw(ArgumentError("native dielectric bricks require a volume dielectric adapter"))
+    geometry_workspace=_checked_payload_sum("native raster geometry workspace",
+        source_workspace,scalar_workspace,_sonnet_raster_mask_workspace(p,gr))
+    _enforce_payload_limit(geometry_workspace,limit,"native raster geometry workspace","max_bytes")
     sheets=SheetLevel[]; sheetidx=Dict{Int,Int}(); masks=Dict{Int,BitMatrix}()
     vias=ViaLevel[]; via_sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}()
     via_polygon_level=Dict{Tuple{Int,Int},Int}()
@@ -1162,7 +1179,11 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             end
         end
     end
-    ports=PlanarPort[]; polydict=Dict(q.id=>q for q in p.polygons)
+    polydict=Dict(q.id=>q for q in p.polygons)
+    port_workspace=_sonnet_raster_port_workspace(p,gr,masks,polydict)
+    _enforce_payload_limit(_checked_payload_sum("native raster source attachment",
+        geometry_workspace,port_workspace),limit,"native raster source attachment","max_bytes")
+    ports=PlanarPort[]
     numbers=Int[]; port_z0=ComplexF64[];port_weights=Float64[]
     for ps in p.ports
         ps.kind in (:box,:std,:gap,:via) || throw(ArgumentError("native $(ps.kind) port requires its terminal/calibration adapter"))
@@ -1244,6 +1265,9 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     end
     order=sortperm(numbers); ports=ports[order]; numbers=numbers[order]; port_z0=port_z0[order]
     port_weights=port_weights[order]
+    _enforce_payload_limit(_checked_payload_sum("native raster basis construction",
+        geometry_workspace,port_workspace,_sonnet_raster_basis_workspace(gr,sheets,vias)),
+        limit,"native raster basis construction","max_bytes")
     # Terminal adapters first lower a genuinely source-free geometry clone,
     # then attach their physical source. Do not invent a temporary driven
     # terminal or change the public requirement for a nonempty port list.
@@ -1265,9 +1289,13 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         sheet_zs=[surface_by_level[level]
             for level in sort(collect(keys(sheetidx));by=level->sheetidx[level])]
         terminal_maps=_sonnet_terminal_maps(contraction,[port.polarity for port in ports])
-        return (;problem,contraction=terminal_maps.contraction,
+        model=(;problem,contraction=terminal_maps.contraction,
             floating_common=terminal_maps.floating_common,z0,sheet_zs,via_sigma,labels,geometry_project=p,
             scalar_files=_sonnet_scalar_files(variables))
+        payload=_checked_payload_sum("native retained raster model",
+            _sonnet_raster_retained_payload(model,source),scalar_workspace)
+        _enforce_payload_limit(payload,limit,"native retained raster model","max_bytes")
+        return merge(model,(;payload))
     end
     length(unique(numbers))==length(numbers) || throw(ArgumentError("native shared terminals require solve_sonnet_project for network contraction"))
     return problem
@@ -1361,6 +1389,8 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,kw...)
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
     freq=_circuit_stored_real(freq,"native solve frequency")
+    limit=_spice_limit("max_bytes",get(kw,:max_bytes,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES))
+    _enforce_payload_limit(1024,limit,"native raster source workspace","max_bytes")
     deembed_requested=any(r->r.tokens[1]=="OPTIONS" &&
         any(occursin("d",token) for token in r.tokens[2:end]),p.records)
     !raw && deembed_requested && calibration===nothing && throw(ArgumentError(
@@ -1374,7 +1404,6 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     isempty(p.components) || return _solve_sonnet_components(p,freq;
         grid=grid,variables=variables,calibration=calibration,
         component_response=component_response,scalar_options...,kw...)
-    limit=get(kw,:max_bytes,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     if scalar_files!==nothing || _sonnet_has_scalar_tables(p) || variables isa SonnetScalarVariables
         variables=_sonnet_scalar_variables(p,variables;scalar_files,max_bytes=limit,
             root=scalar_root,outside=scalar_outside,max_files=scalar_max_files,
@@ -1383,11 +1412,14 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     end
     scalar_reserve=_sonnet_scalar_files(variables)===nothing ? 0 : _sonnet_scalar_payload(variables)
     _enforce_payload_limit(scalar_reserve,limit,"native scalar solve snapshot","max_bytes")
-    model=sonnet_planar_problem(p;freq=freq,grid=grid,variables=variables,
-        _materials=true,_details=true)
     :surface_zs in keys(kw) && throw(ArgumentError("native material loss is selected by the project; surface_zs override is unsupported"))
     :via_sigma in keys(kw) && throw(ArgumentError("native axial resistance is selected by the project; via_sigma override is unsupported"))
-    remaining=merge((;kw...),(max_bytes=limit-scalar_reserve,))
+    model=sonnet_planar_problem(p;freq=freq,grid=grid,variables=variables,
+        _materials=true,_details=true,max_bytes=limit-scalar_reserve)
+    reserve=_checked_payload_sum("native raster solve workspace",scalar_reserve,
+        model.payload,_sonnet_raster_response_workspace(model))
+    _enforce_payload_limit(reserve,limit,"native raster solve workspace","max_bytes")
+    remaining=merge((;kw...),(max_bytes=limit-reserve,))
     result=solve_planar(model.problem,freq;surface_zs=model.sheet_zs,via_sigma=model.via_sigma,remaining...)
     terminal=_sonnet_balanced_y(result.y,model)
     y=terminal.y;voltage_transfer=terminal.voltage_transfer

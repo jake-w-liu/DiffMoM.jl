@@ -134,8 +134,8 @@
       "required": true,
       "kind": "review",
       "disposition": "pass",
-      "evidence": "The inspected .github/workflows/ci.yml configures Julia 1.12 on Ubuntu with one/four threads, macOS with one thread, and Windows with one thread. Current local macOS Julia 1.12.7 one/four-thread runs passed. Remote platform jobs have not been verified for these uncommitted changes; INV-044 remains a remote-evidence boundary.",
-      "rationale": "This gate verifies the checked-in CI contract, not a remote run. The quality job is ordered after the required platform jobs, so a green workflow supplies platform evidence for that commit. Until then, INV-044 remains UNVERIFIED.",
+      "evidence": "The current .github/workflows/ci.yml configures Julia 1.13 on Ubuntu with one/four threads, macOS with one thread, and Windows with one thread, plus Julia 1.12 on Ubuntu with one thread. The quality counter is pinned to Julia 1.12.7. Hosted run https://github.com/jake-w-liu/DiffMoM.jl/actions/runs/37261055501 passed all five platform jobs, documentation and strict quality at commit 34758863647ea97aa29f6e4ddec0dd34ce0c91fa. That evidence applies to that exact commit; subsequent changes require their own successful run.",
+      "rationale": "This reviewed gate describes the configured matrix and cites a verified hosted run. The quality job depends on all required platform and documentation jobs, so a green workflow supplies remote evidence for its exact commit. Historical coverage and benchmark measurements retain their original boundaries.",
       "instructions": "Test every supported Julia minor version and relevant OS/architecture. Include optional dependencies and package extensions where applicable."
     },
     {

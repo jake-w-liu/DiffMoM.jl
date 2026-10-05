@@ -241,8 +241,9 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
     # component physics is supplied below, never by a public discard flag.
     geometry=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,
         p.metals,p.top,p.bottom,p.polygons,p.ports,p.variables,Vector{SonnetRecord}[],p.sweeps,p.records)
+    file_payload=_model_files===nothing ? 0 : _model_files.payload
     base=sonnet_planar_problem(geometry;freq=freq,grid=grid,variables=variables,
-        _materials=true,_details=true)
+        _materials=true,_details=true,max_bytes=max_bytes-file_payload-variable_payload)
     pins=Vector{Any}[]
     labels=copy(base.labels);refs=copy(base.z0)
     for component in p.components
@@ -267,7 +268,6 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
         push!(pins,local_pins)
     end
     terminals=PlanarPort[pin.terminal for local_pins in pins for pin in local_pins]
-    file_payload=_model_files===nothing ? 0 : _model_files.payload
     live_prefix=_checked_payload_sum("native component live prefix",file_payload,
         variable_payload,_sonnet_component_base_payload(base))
     post_workspace=_sonnet_component_post_payload(base,pins,labels)

@@ -179,7 +179,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     geometry=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,
         p.metals,p.top,p.bottom,p.polygons,ordinary_ports,p.variables,ordinary_components,p.sweeps,p.records)
     if isempty(ordinary_components)
-        base=sonnet_planar_problem(geometry;freq,grid,variables,_materials=true,_details=true,_allow_portless=true)
+        base=sonnet_planar_problem(geometry;freq,grid,variables,_materials=true,_details=true,
+            _allow_portless=true,max_bytes=max_bytes-variable_payload)
         problem=base.problem;C=copy(base.contraction);refs=copy(base.z0);labels=copy(base.labels)
         common=hasproperty(base,:floating_common) ? copy(base.floating_common) : zeros(length(problem.ports),0)
         nodes=length(labels);pairs=[(i,0) for i in 1:nodes]
