@@ -475,7 +475,7 @@ end
         denseproject=read_sonnet_project(densepath)
         sparseproject=read_sonnet_project(sparsepath)
         provider=(path,f)->begin
-            @test path==joinpath(directory,"coupon.son")
+            @test path==joinpath(realpath(directory),"coupon.son")
             ComplexF64[.2 .8;.8 .2]
         end
         dense=sonnet_planar_circuit(denseproject;project_response=provider)
