@@ -278,15 +278,17 @@ function solve_planar_conformal_defect(prob::PlanarConformalProblem,freq::Number
         mul!(inner,A,x);inner.-=view(rhs,:,p)
         initial_projected[p]=_planar_projection_voltage_residual(inner,weights,source_norm[p])
         # Arnoldi's recurrence can underestimate the recomputed voltage error
-        # after low-frequency cancellation. Restart from the stored solution
-        # at most twice, within the original total inner iteration limit.
+        # after low-frequency cancellation. Normalize the correction source
+        # so Krylov's absolute machine-precision stop does not truncate a tiny
+        # residual solve. Keep two retries and the original total iteration limit.
         for retry in 1:2
             isfinite(initial_projected[p]) && initial_projected[p]>tol || break
             remaining=Int(maxiter)-iterations[p];remaining>0 || break
-            x,stats=Krylov.gmres(A,view(rhs,:,p),view(X,:,p);M,N,rtol=tol/10,atol=0.,
+            scale=initial_projected[p];defect_rhs.=-inner./scale
+            delta,stats=Krylov.gmres(A,defect_rhs;M,N,rtol=tol/10,atol=0.,
                 itmax=remaining,memory=mem,restart=true,reorthogonalization=true)
-            iterations[p]+=stats.niter;X[:,p].=x
-            mul!(inner,A,x);inner.-=view(rhs,:,p)
+            iterations[p]+=stats.niter;X[:,p].+=scale.*delta
+            mul!(inner,A,view(X,:,p));inner.-=view(rhs,:,p)
             initial_projected[p]=_planar_projection_voltage_residual(inner,weights,source_norm[p])
         end
         isfinite(initial_projected[p]) && initial_projected[p]<=tol ||
