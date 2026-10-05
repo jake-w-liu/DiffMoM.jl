@@ -9,9 +9,9 @@ permissions:
 
 jobs:
   profile:
-    name: ARM64 allocation diagnostic (partial original test)
+    name: ARM64 original full-suite allocation trace
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       JULIA_NUM_THREADS: 1
       JULIA_NUM_PRECOMPILE_TASKS: 1
@@ -35,13 +35,16 @@ jobs:
           original=read(testfile,String)
           boundary=findfirst("@test radiation_alloc <= radiation_output_bytes + 2_250_000",original).start
           println("ORIGINAL_TEST_SHA256 ",bytes2hex(sha256(original)))
-          # Diagnostic only: execute the original prefix through its original
-          # allocation measurement, then profile it. Main's complete suite and
-          # original assertion remain untouched in the production workflow.
+          # Diagnostic only: insert a trace after the original allocation
+          # measurement. Retain the entire original file, including the
+          # unchanged allocation assertion and every later test.
           diagnostic=raw"""
-          println("PARTIAL_DIAGNOSTIC_NOT_FULL_TEST_SUITE")
-          println("PREFIX_ALLOC ",radiation_alloc," LIMIT ",radiation_output_bytes+2_250_000)
+          println("ORIGINAL_ALLOC ",radiation_alloc," LIMIT ",radiation_output_bytes+2_250_000)
+          # Pkg.test restricts LOAD_PATH; expose stdlibs only for the trace.
+          push!(LOAD_PATH,"@stdlib")
           using Profile,SHA
+          pop!(LOAD_PATH)
+          let
           println("VERSION ",VERSION," ARCH ",Sys.ARCH," OPT ",Base.JLOptions().opt_level,
               " DEPWARN ",Base.JLOptions().depwarn)
           println("SOURCE_SHA256 ",bytes2hex(sha256(read(joinpath(pkgdir(DiffMoM),"src","postprocessing","FarField.jl")))))
@@ -60,10 +63,12 @@ jobs:
           for (key,(bytes,count)) in sort!(collect(groups);by=x->-last(x)[1])[1:min(40,length(groups))]
               println("PROFILE ",bytes," ",count," ",key)
           end
-          println("RADIATION_ARM64_PARTIAL_PKG_PROFILE_COMPLETE")
+          Profile.Allocs.clear()
+          println("RADIATION_ARM64_FULL_FILE_TRACE_COMPLETE")
+          end
           """
           try
-              write(testfile,original[1:prevind(original,boundary)]*diagnostic)
+              write(testfile,original[1:prevind(original,boundary)]*diagnostic*original[boundary:end])
               Pkg.test(;coverage=false,
                   julia_args=["--check-bounds=yes","--compiled-modules=yes","--depwarn=yes"],
                   force_latest_compatible_version=false,allow_reresolve=true)
