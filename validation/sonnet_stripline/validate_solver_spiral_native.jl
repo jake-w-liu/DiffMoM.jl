@@ -16,7 +16,10 @@ function solver_spiral_native_proof()
              "PlanarFFTAssembly.jl","PlanarSonnetIO.jl")]...]
     hashes()=Dict(abspath(p)=>bytes2hex(sha256(read(p))) for p in sourcepaths)
     rows=Dict{String,Any}[]
-    report=Dict{String,Any}("scope"=>"public rectangular two-turn spiral with raw interior pins and physical PEC-cover returns versus independent literal eight-rectangle native GEO with explicit axial-source return strips; matched finite grids, isotropic dielectric, PEC/constant film; no native automatic terminal semantics, calibration, continuum convergence, underpass, measured-device or general native-loss claim",
+    report=Dict{String,Any}("scope"=>"public rectangular two-turn spiral with raw interior pins and physical PEC-cover returns versus " *
+        "independent literal eight-rectangle native GEO with explicit axial-source return strips; matched finite " *
+        "grids, isotropic dielectric, PEC/constant film; no native automatic terminal semantics, calibration, " *
+        "continuum convergence, underpass, measured-device or general native-loss claim",
         "full_complex_s_gate"=>.005,"original_voltage_residual_gate"=>1e-9,
         "relative_power_gate"=>1e-8,
         "source_sha256_before"=>hashes(),"runs"=>rows)

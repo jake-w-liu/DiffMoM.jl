@@ -15,7 +15,9 @@ function mim_native_proof()
              "PlanarFFTAssembly.jl","PlanarSonnetIO.jl","PlanarSonnetScalarFiles.jl")]...]
     hashes()=Dict(abspath(path)=>bytes2hex(sha256(read(path))) for path in sourcepaths)
     rows=Dict{String,Any}[]
-    report=Dict{String,Any}("scope"=>"public RFIC library two-level MIM plus literal wall leads versus independent native six-rectangle GEO; matched finite grids, 1um isotropic dielectric, PEC/constant film; no interior calibration, measured-device, nonlinear, general loss or continuum claim",
+    report=Dict{String,Any}("scope"=>"public RFIC library two-level MIM plus literal wall leads versus independent native six-rectangle " *
+        "GEO; matched finite grids, 1um isotropic dielectric, PEC/constant film; no interior calibration, " *
+        "measured-device, nonlinear, general loss or continuum claim",
         "full_complex_s_gate"=>.06,"original_voltage_residual_gate"=>1e-9,
         "source_sha256_before"=>hashes(),"runs"=>rows)
     try

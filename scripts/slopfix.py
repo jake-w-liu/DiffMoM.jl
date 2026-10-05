@@ -38,6 +38,7 @@ from slopfix_lib import (
     langs,
     manifest,
     quality,
+    reviews,
     scope,
     smells,
 )
@@ -589,10 +590,20 @@ def cmd_smells(args: argparse.Namespace) -> int:
         )
         return 2
 
+    try:
+        cleared = reviews.IntegrityReviews(sc.root)
+    except (ValueError, OSError) as error:
+        print(f"error: invalid integrity reviews: {error}", file=sys.stderr)
+        return 2
     hits: list[smells.Hit] = []
+    reviewed_hits: list[smells.Hit] = []
     for relpath, lang, text in _iter_sources(sc):
-        hits.extend(smells.scan_text(relpath, text, lang,
-                                     god_function_lines=args.god_function_lines))
+        for hit in smells.scan_text(relpath, text, lang,
+                                    god_function_lines=args.god_function_lines):
+            reviewed = cleared.apply(hit)
+            hits.append(reviewed)
+            if reviewed is not hit:
+                reviewed_hits.append(reviewed)
     if args.severity != "all":
         hits = [hit for hit in hits if hit.severity == args.severity]
 
@@ -605,6 +616,7 @@ def cmd_smells(args: argparse.Namespace) -> int:
         "root": sc.root,
         "summary": smells.summarise(hits),
         "hits": [hit.to_json() for hit in hits],
+        "reviewed_hits": [hit.to_json() for hit in reviewed_hits],
     }
 
     def render(data: dict) -> None:

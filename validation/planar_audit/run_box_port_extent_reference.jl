@@ -21,7 +21,9 @@ function main()
         for (d,_,fs) in walkdir(folder) for f in fs]
     append!(paths,[@__FILE__,joinpath(repo,"validation/sonnet_stripline/sonnet_reference.jl")])
     hashes()=Dict(relpath(p,repo)=>bytes2hex(sha256(read(p))) for p in paths)
-    report=Dict{String,Any}("scope"=>"Fresh replay of80 native inputs: literal edge extent, native boundary allowance and active ANC parameter/literal controls. Explicit rejection messages and complete retained matrices use the unchanged1e-12 identity gate; public raster outcomes must match.",
+    report=Dict{String,Any}("scope"=>"Fresh replay of80 native inputs: literal edge extent, native boundary allowance and active ANC " *
+        "parameter/literal controls. Explicit rejection messages and complete retained matrices use the " *
+        "unchanged1e-12 identity gate; public raster outcomes must match.",
         "source_before"=>hashes(),"status"=>"RUNNING","cases"=>Any[])
     try
         for row in cases

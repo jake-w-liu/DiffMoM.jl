@@ -11,7 +11,9 @@ function main()
     cp(@__FILE__,joinpath(directory,"producer.jl"))
     paths=vcat([@__FILE__,fixture],[joinpath(d,f) for (d,_,fs) in walkdir(joinpath(repo,"src")) for f in fs])
     hashes()=Dict(relpath(p,repo)=>bytes2hex(sha256(read(p))) for p in paths)
-    report=Dict{String,Any}("scope"=>"Alternating warmed retained-modal and folded-spectrum construction/matvec measurements. Julia array payload and cumulative allocations exclude opaque FFT plans and peak process memory; independent direct-modal action and diagonal gates remain2e-12.",
+    report=Dict{String,Any}("scope"=>"Alternating warmed retained-modal and folded-spectrum construction/matvec measurements. Julia array " *
+        "payload and cumulative allocations exclude opaque FFT plans and peak process memory; independent " *
+        "direct-modal action and diagonal gates remain2e-12.",
         "source_before"=>hashes(),"cases"=>Any[])
     for walls in (WALL_PEC,WALL_PMC)
         prob=_dense_workspace_fixture(walls)

@@ -114,7 +114,17 @@ M02*
             nativeoutput=joinpath(native.output_dir,"native_raw.s2p");sr=only(checked_native_touchstone(native,nativeoutput;deembedded=false).s)
             nativecounts=get(TOML.parsefile(joinpath(native.output_dir,"metadata.toml")),"native_subsections",Int[])
             for (name,prob,path) in problems
-                row=Dict{String,Any}("format"=>name,"frequency_hz"=>f,"actual_grid"=>[cells,cells],"box_halfcell_counts"=>[2cells,2cells],"modes"=>[4cells,4cells],"unknowns"=>planar_basis_count(prob.basis),"occupied_cells"=>count(expected),"independent_membership_equal"=>true,"fabrication_source_sha256"=>bytes2hex(sha256(read(path))),"native_source_sha256"=>bytes2hex(sha256(read(source))),"native_output_sha256"=>bytes2hex(sha256(read(nativeoutput))))
+                row=Dict{String,Any}("format"=>name,
+                    "frequency_hz"=>f,
+                    "actual_grid"=>[cells,cells],
+                    "box_halfcell_counts"=>[2cells,2cells],
+                    "modes"=>[4cells,4cells],
+                    "unknowns"=>planar_basis_count(prob.basis),
+                    "occupied_cells"=>count(expected),
+                    "independent_membership_equal"=>true,
+                    "fabrication_source_sha256"=>bytes2hex(sha256(read(path))),
+                    "native_source_sha256"=>bytes2hex(sha256(read(source))),
+                    "native_output_sha256"=>bytes2hex(sha256(read(nativeoutput))))
                 started=time()
                 row["native_subsections"]=nativecounts
                 haskey(priornative,f) && (row["native_grid_refinement_complex_step"]=maximum(abs.(sr-priornative[f])))

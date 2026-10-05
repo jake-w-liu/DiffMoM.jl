@@ -11,7 +11,9 @@ function main()
         for (d,_,fs) in walkdir(folder) for f in fs]
     append!(paths,[@__FILE__,joinpath(repo,"validation/sonnet_stripline/sonnet_reference.jl")])
     hashes()=Dict(relpath(p,repo)=>bytes2hex(sha256(read(p))) for p in paths)
-    report=Dict{String,Any}("scope"=>"Fresh native replay of36 radial reference-radius recomputation and anchor-crossing parameter/literal pairs, original1e-12 full complex S gate and immutable captured matrices; no historical output changes.","source_before"=>hashes(),"cases"=>Any[])
+    report=Dict{String,Any}("scope"=>"Fresh native replay of36 radial reference-radius recomputation and anchor-crossing parameter/literal " *
+        "pairs, original1e-12 full complex S gate and immutable captured matrices; no historical output " *
+        "changes.","source_before"=>hashes(),"cases"=>Any[])
     try
         for row in TOML.parsefile(joinpath(fixture,"index.toml"))["cases"]
             name=row["name"];matrices=Matrix{ComplexF64}[]

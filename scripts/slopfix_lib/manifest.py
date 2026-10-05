@@ -35,7 +35,7 @@ import tempfile
 import time
 from collections import defaultdict
 
-from . import counting, langs, scope, smells
+from . import counting, langs, reviews, scope, smells
 
 SCHEMA_VERSION = 3
 
@@ -223,7 +223,8 @@ def _out_of_scope_code(root: str, sc: scope.Scope, discovery: scope.Discovery) -
 
 
 def _builtin_metrics(
-    root: str, sc: scope.Scope, files: list[tuple[str, langs.Language]]
+    root: str, sc: scope.Scope, files: list[tuple[str, langs.Language]],
+    reviewed_long_lines: set[str] | frozenset[str] = frozenset(),
 ) -> dict:
     """Diagnostic metrics from the builtin scanner, whatever the active counter.
 
@@ -247,6 +248,7 @@ def _builtin_metrics(
     code_lines = 0
     comment_lines = 0
     longest = 0
+    longest_unreviewed = 0
     per_file: dict[str, list[int]] = {}
     for relpath, lang in files:
         result = counting.count_file(
@@ -256,6 +258,8 @@ def _builtin_metrics(
         code_lines += result.code
         comment_lines += result.comments
         longest = max(longest, result.max_code_line)
+        if relpath not in reviewed_long_lines:
+            longest_unreviewed = max(longest_unreviewed, result.max_code_line)
         # [code, comments] per file, so the prose-stripping check can ask the
         # per-file question that no aggregate ratio can answer.
         per_file[relpath] = [result.code, result.comments]
@@ -264,6 +268,7 @@ def _builtin_metrics(
         "comment_lines": comment_lines,
         "mean_code_chars": round(total_chars / code_lines, 2) if code_lines else 0.0,
         "max_code_line": longest,
+        "max_unreviewed_code_line": longest_unreviewed,
         "per_file": per_file,
     }
 
@@ -756,11 +761,15 @@ def _integrity_checks(
     baseline_code: int,
 ) -> list[dict]:
     findings: list[dict] = []
+    try:
+        cleared = reviews.IntegrityReviews(root)
+    except (ValueError, OSError) as error:
+        raise ScopeMismatch(f"invalid integrity reviews: {error}") from error
     code_removed = baseline_code - current_code
     # All comment/length diagnostics come from the builtin scanner regardless of
     # the contract counter. See _builtin_metrics for why that matters.
     before_builtin = baseline.get("builtin_metrics", {})
-    after_builtin = _builtin_metrics(root, sc, discovery.counted)
+    after_builtin = _builtin_metrics(root, sc, discovery.counted, cleared.long_lines)
 
     # 1. Code parked outside the measured scope instead of deleted.
     baseline_oos = int(baseline.get("out_of_scope_source_code", 0))
@@ -795,7 +804,7 @@ def _integrity_checks(
                 growth_pct=round(growth_pct, 2),
             ))
     before_max = int(before_golf.get("max_code_line", 0))
-    after_max = int(after_golf.get("max_code_line", 0))
+    after_max = int(after_golf.get("max_unreviewed_code_line", 0))
     if after_max >= GOLF_LONG_LINE_CHARS and after_max > before_max:
         findings.append(_finding(
             "long-line-introduced",
@@ -867,7 +876,7 @@ def _integrity_checks(
         ))
 
     # 5. New placeholders or swallowed errors in files that changed.
-    introduced = _new_blocking_smells(root, sc, discovery, baseline)
+    introduced = _new_blocking_smells(root, sc, discovery, baseline, cleared)
     if introduced:
         findings.append(_finding(
             "placeholder-introduced",
@@ -922,7 +931,8 @@ def _prose_stripped_files(before: dict, after: dict) -> list[dict]:
 
 
 def _new_blocking_smells(
-    root: str, sc: scope.Scope, discovery: scope.Discovery, baseline: dict
+    root: str, sc: scope.Scope, discovery: scope.Discovery, baseline: dict,
+    cleared: reviews.IntegrityReviews | None = None,
 ) -> list[dict]:
     """Blocking smells in files whose content changed since baseline.
 
@@ -949,6 +959,8 @@ def _new_blocking_smells(
         if text is None:
             continue
         for hit in smells.scan_text(relpath, text, lang):
+            if cleared is not None:
+                hit = cleared.apply(hit)
             if hit.severity == smells.BLOCKING:
                 hits.append(hit.to_json())
     return hits

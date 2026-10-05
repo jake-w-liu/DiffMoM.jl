@@ -21,7 +21,9 @@ function idc_native_proof()
         joinpath(@__DIR__,"../../src/planar/PlanarSolve.jl")]
     hashes()=Dict(abspath(path)=>bytes2hex(sha256(read(path))) for path in sourcepaths)
     rows=Dict{String,Any}[]
-    report=Dict{String,Any}("scope"=>"public RFIC library two-finger-per-electrode IDC plus physical wall leads versus independent literal native GEO; PEC and constant resistive film, air/substrate and matched finite grids; no measured-device, nonlinear, general loss or continuum claim",
+    report=Dict{String,Any}("scope"=>"public RFIC library two-finger-per-electrode IDC plus physical wall leads versus independent " *
+        "literal native GEO; PEC and constant resistive film, air/substrate and matched finite grids; no " *
+        "measured-device, nonlinear, general loss or continuum claim",
         "full_complex_s_gate"=>.005,"original_voltage_residual_gate"=>1e-9,
         "source_sha256_before"=>hashes(),"runs"=>rows)
     try

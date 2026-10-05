@@ -88,7 +88,21 @@ using DiffMoM,Test,LinearAlgebra
             write(path,text)
             @test planar_read_touchstone(path).s[1] ≈ S3 rtol=1e-13
         end
-        text="[Version] 2.1\n# Hz S RI\n[Number of Ports] 2\n[Two-Port Data Order] 21_12\n[Number of Frequencies] 1\n[Number of Noise Frequencies] 1\n[Begin Information]\n[arbitrary user metadata]\n[End Information]\n[Network Data]\n1 0 0 1 0 1 0 0 0\n[Noise Data]\n1 0 0 0 0\n[End]\n"
+        text="[Version] 2.1\n" *
+            "# Hz S RI\n" *
+            "[Number of Ports] 2\n" *
+            "[Two-Port Data Order] 21_12\n" *
+            "[Number of Frequencies] 1\n" *
+            "[Number of Noise Frequencies] 1\n" *
+            "[Begin Information]\n" *
+            "[arbitrary user metadata]\n" *
+            "[End Information]\n" *
+            "[Network Data]\n" *
+            "1 0 0 1 0 1 0 0 0\n" *
+            "[Noise Data]\n" *
+            "1 0 0 0 0\n" *
+            "[End]\n" *
+            ""
         @test checkfile(text).s[1]==ComplexF64[0 1;1 0]
         for bad in ("# Hz S RI\n1 0 0\n","# Hz S RI\n1 0 0 1 0 1 0 0 0\n1 0 0 1 0 1 0 0 0\n",
                 replace(text,"[End]"=>"[Unsupported]"),replace(text,"[Number of Frequencies] 1"=>"[Number of Frequencies] 2"),
