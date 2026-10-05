@@ -1,0 +1,31 @@
+name: Conformal ARM64 roundoff capture
+
+"on":
+  push:
+    branches: [audit/conformal-roundoff-diagnostic-20261005]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: ARM64 unchanged residual gates and update experiments
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      JULIA_NUM_THREADS: 1
+      JULIA_NUM_PRECOMPILE_TASKS: 1
+      OPENBLAS_NUM_THREADS: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.13.1'
+      - uses: julia-actions/cache@v3
+        with:
+          cache-name: diffmom-julia-cache-v2
+          save-always: false
+      - uses: julia-actions/julia-buildpkg@v1
+      - name: Capture baseline and process-only correction updates
+        shell: bash
+        run: julia --startup-file=no --check-bounds=yes --project=. validation/planar_audit/conformal_roundoff_diagnostic.jl "$PWD" "$RUNNER_TEMP/conformal-roundoff.toml"
