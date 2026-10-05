@@ -69,7 +69,7 @@ function LinearAlgebra.mul!(out::AbstractVector{ComplexF64},A::_PlanarConformalM
     any(a->Base.mightalias(x,a),(A.source,A.target,A.charge,A.field,A.vector_second,A.output,A.lattice,A.modes)) &&
         throw(ArgumentError("multilevel conformal input aliases workspace"))
     _planar_multi_projection_vector!(A.output,A,x)
-    mul!(A.charge,A.incidence,x)
+    _planar_projection_charge_mul!(A.charge,A.incidence,x,A.field)
     _planar_multi_projection_component!(A.field,A,A.pulse,A.charge,3,A.tlevel)
     mul!(A.field,A.charge_correction,A.charge,1.,1.)
     mul!(A.output,transpose(A.incidence),A.field,1.,1.)
@@ -240,7 +240,8 @@ function _planar_multi_original_mul!(output,w,D,X,work)
     end
     charge,field,ev,ec=work.charge,work.field,work.ev,work.ec
     contraction,errors=work.contraction,work.contraction_error
-    mul!(charge,D,X);fill!(field,0);fill!(ev,0);fill!(ec,0);fill!(output,0)
+    _planar_projection_charge_mul!(charge,D,X,ec)
+    fill!(field,0);fill!(ev,0);fill!(ec,0);fill!(output,0)
     for start in 1:w.chunk:w.nmode
         count=min(w.chunk,w.nmode-start+1);_planar_multi_exact_weights_block!(w,start,count)
         for j in 1:count

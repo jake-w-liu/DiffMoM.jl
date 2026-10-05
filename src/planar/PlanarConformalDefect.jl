@@ -129,7 +129,8 @@ function _planar_projection_original_mul!(output,w,D,X,work)
     any(a->Base.mightalias(a,output),(work.charge,work.field,work.ev,work.ec)) &&
         throw(ArgumentError("original conformal output must not alias its workspace"))
     charge,field,ev,ec=work.charge,work.field,work.ev,work.ec
-    mul!(charge,D,X);fill!(field,0);fill!(ev,0);fill!(ec,0);fill!(output,0)
+    _planar_projection_charge_mul!(charge,D,X,ec)
+    fill!(field,0);fill!(ev,0);fill!(ec,0);fill!(output,0)
     for start in 1:w.chunk:w.nmode
         count=min(w.chunk,w.nmode-start+1);_planar_projection_exact_weights_block!(w,start,count)
         for j in 1:count,p in 1:np

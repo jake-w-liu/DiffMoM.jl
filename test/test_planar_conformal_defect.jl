@@ -1,5 +1,25 @@
 using DiffMoM, Test, LinearAlgebra, SparseArrays, Random
 
+@testset "conformal: charge cancellation preserves product and sum roundoff" begin
+    D=sparse([1,1,1,2,2],[1,2,3,1,2],[1.,1.,1.,1.1,-1.],2,3)
+    X=ComplexF64[1e16+10im 10+1e16im;1+11im 11+1im;-1e16 0-1e16im]
+    exact=setprecision(256) do
+        ComplexF64.(BigFloat.(Matrix(D))*Complex{BigFloat}.(X))
+    end
+    ordinary=D*X
+    @test ordinary[1,1]!=exact[1,1]
+    @test ordinary[2,2]!=exact[2,2]
+    out=similar(exact);scratch=similar(exact)
+    @test DiffMoM._planar_projection_charge_mul!(out,D,X,scratch)===out
+    @test out==exact
+    for p in axes(X,2)
+        DiffMoM._planar_projection_charge_mul!(view(out,:,p),D,view(X,:,p),view(scratch,:,p))
+        @test out[:,p]==exact[:,p]
+    end
+    @test (@allocated DiffMoM._planar_projection_charge_mul!(out,D,X,scratch))==0
+    @test_throws DimensionMismatch DiffMoM._planar_projection_charge_mul!(out,D,X[:,1],scratch)
+end
+
 function _defect_conformal_problem(;loaded=false,z0=(50.0,75.0))
     vertices=[0. 1e-3 1e-3 0.;.375e-3 .25e-3 .75e-3 .625e-3]
     mesh=planar_conformal_mesh(vertices;interface=loaded ? 2 : 1,

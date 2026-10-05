@@ -113,6 +113,28 @@ function _planar_physical_charge_incidence(prob)
     sparse(rows,cols,values,length(prob.mesh.interfaces),length(prob.basis.width))
 end
 
+# Nearly solenoidal currents subtract large RWG charge contributions. Keep
+# product roundoff as well as sum roundoff before the 1/f scalar reaction.
+# Reuse the field scratch, which is overwritten before its next reaction.
+function _planar_projection_charge_mul!(out,D,X,error)
+    size(D,2)==size(X,1) && size(out)==size(error) &&
+        size(out,1)==size(D,1) && size(out,2)==size(X,2) || throw(DimensionMismatch())
+    fill!(out,0);fill!(error,0)
+    for p in axes(X,2),b in axes(X,1)
+        xr=real(X[b,p]);xi=imag(X[b,p])
+        for k in nzrange(D,b)
+            t=D.rowval[k];d=D.nzval[k]
+            sr=real(out[t,p]);si=imag(out[t,p]);pr=d*xr;pi=d*xi
+            tr=sr+pr;ti=si+pi
+            er=fma(d,xr,-pr)+(abs(sr)>=abs(pr) ? (sr-tr)+pr : (pr-tr)+sr)
+            ei=fma(d,xi,-pi)+(abs(si)>=abs(pi) ? (si-ti)+pi : (pi-ti)+si)
+            error[t,p]+=complex(er,ei);out[t,p]=complex(tr,ti)
+        end
+    end
+    out .+=error
+    out
+end
+
 function _planar_pulse_and_first_moments(v,kx,ky)
     factor,weights=_planar_triangle_fourier_weights(v,kx,ky)
     constant=0.0im;x=0.0im;y=0.0im
@@ -227,7 +249,8 @@ function LinearAlgebra.mul!(out::AbstractVector{ComplexF64},A::_PlanarConformalP
     fill!(A.output,0);fill!(A.charge_field,0)
     _planar_projection_fft_component!(A,A.x,x,A.output,1)
     _planar_projection_fft_component!(A,A.y,x,A.output,2)
-    mul!(A.charge,A.incidence,x)
+    _planar_projection_charge_mul!(A.charge,A.incidence,x,A.charge_field)
+    fill!(A.charge_field,0)
     _planar_projection_fft_component!(A,A.pulse,A.charge,A.charge_field,3)
     mul!(A.charge_field,A.charge_correction,A.charge,1.,1.)
     mul!(A.output,transpose(A.incidence),A.charge_field,1.,1.)
