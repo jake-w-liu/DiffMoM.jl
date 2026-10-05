@@ -91,3 +91,14 @@ The repair and CRC evidence are recorded in
 `.slopfix/sonnet-raster-resource-review-20261005.md`. No original numerical
 reference, native gate or tolerance was modified. Full package and fresh
 hosted CI checks remain mandatory before claiming this commit is verified.
+
+## Unused default PEC material maps
+
+The isolated optimization 0b259e9b adds 60 counted lines for selective
+material-map storage, documentation and 68 independent allocation/geometry/
+via/material assertions. The reviewed ceiling is now 212,374 in a separate
+commit. The original baseline, counter, scope, archives and numerical gates
+remain unchanged. The unchanged 400-group truncated census reports 58,118
+estimated removable lines; its ceiling remains 58,394. The selected-group
+change is not a source-reduction claim. Dedicated checks passed both Julia
+versions; full package, strict quality and hosted verification remain required.
