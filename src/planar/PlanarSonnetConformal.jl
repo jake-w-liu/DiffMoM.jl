@@ -36,7 +36,7 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         project=_sonnet_scalar_project(project,variables)
     end
     isempty(project.components) || throw(ArgumentError("native conformal components require their physical source/network lowering"))
-    native=_sonnet_stack_geometry(project,freq,grid,variables);p=native.geometry_project
+    native=_sonnet_stack_geometry(project,freq,grid,variables;max_bytes);p=native.geometry_project
     variables=native.variables
     stack,gr=native.stack,native.grid;L=length(stack.layers);val(x)=sonnet_variable_value(p,x;variables,freq)
     any(poly->poly.kind==:brick,p.polygons) && throw(ArgumentError("native dielectric brick needs its physical volume dielectric model"))
