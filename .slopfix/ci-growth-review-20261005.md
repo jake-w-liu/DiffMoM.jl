@@ -107,6 +107,19 @@ the original radiation auxiliary-allocation allowance remains 2,250,000 bytes.
 failure, process-only escape-analysis probe and both focused Julia-version
 passes. Full package and fresh hosted platform/quality checks remain required.
 
+## Conformal geometry budget forwarding
+
+The conformal forwarding repair adds 41 counted lines for 20 resource
+assertions and test registration. The reviewed line ceiling is now 212,445
+in this separate commit. The source fix forwards the existing max_bytes
+keyword to the existing GEOVAR guard before geometry copies; it changes no
+geometry formula, meshing parameter, numerical tolerance or original fixture.
+The baseline, counter, counted scope and immutable archives remain unchanged.
+The unchanged 400-group truncated census estimates 58,117 removable lines,
+below the existing 58,394 duplication ceiling. Blocking smells, integrity
+findings and measurement warnings remain zero. Both Julia versions pass all
+504 focused assertions. Exact-head hosted CI remains required.
+
 ## Unused default PEC material maps
 
 The isolated optimization 0b259e9b adds 60 counted lines for selective
