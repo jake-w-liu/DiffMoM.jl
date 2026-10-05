@@ -58,8 +58,17 @@ end
                 port=raw.problem.basis.port[i];iszero(port) && continue
                 rhs[i,port]=(port==1 ? -1. : 1.)*raw.problem.basis.width[i]
             end
-            error=maximum(abs,result.s-native);residual=norm(raw.z_mom*raw.currents-rhs)/norm(rhs)
-            @test error<=.005 && residual<=1e-9
+            error=maximum(abs,result.s-native)
+            # These matrices have condition numbers around 2.4e7. Evaluate
+            # the original stored Float64 inputs independently: BLAS summation
+            # alone can move the measured residual across the unchanged gate.
+            residual=setprecision(256) do
+                z=Complex{BigFloat}.(raw.z_mom);x=Complex{BigFloat}.(raw.currents)
+                b=Complex{BigFloat}.(rhs)
+                Float64(norm(z*x-b)/norm(b))
+            end
+            @test error<=.005
+            @test residual<=1e-9
             @test maximum(abs,result.s-transpose(result.s))<=1e-10 && opnorm(result.s)<=1+1e-9
             push!(observations,(case=name,full_s_error=error,original_voltage_residual=residual))
             for kind in (:box,:std)

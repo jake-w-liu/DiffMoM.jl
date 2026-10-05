@@ -256,6 +256,19 @@ end
     @test only(frompath.bindings).response==only(files.bindings).response
     @test frompath.project !== project && files.project !== project
     @test frompath.configuration_sha256==files.configuration_sha256
+    # macOS /var aliases, Unix symlinks and Windows filename casing must
+    # identify the same effective configuration and retained dependency.
+    alias=if Sys.iswindows()
+        joinpath(dirname(coupon),uppercase(basename(coupon)))
+    else
+        path=joinpath(proof,"coupon_alias.son")
+        symlink(coupon,path)
+        path
+    end
+    aliased=sonnet_component_files(alias,300e6)
+    @test aliased.project.source==realpath(coupon)==files.project.source
+    @test aliased.configuration_sha256==files.configuration_sha256
+    @test _sparam_file_hashes(aliased)==_sparam_file_hashes(files)
     before=copy(files.project.box)
     edited=deepcopy(project);staged=sonnet_component_files(edited,300e6)
     edited.box[2]="800"
@@ -364,6 +377,8 @@ end
     linkedpath=joinpath(proof,"linked.son")
     write(linkedpath,replace(read(coupon,String),"TMET \"Lossless\""=>"STF mini.stf\nTMET \"Lossless\""))
     linked=read_sonnet_linked_project(linkedpath)
+    @test linked.source==realpath(linkedpath)
+    @test linked.technology.source==realpath(technology)
     files=sonnet_component_files(linked,300e6)
     @test files.linked!==linked && length(files.sources)==3
     @test files.sources[linked.technology.source].sha256==linked.technology.sha256

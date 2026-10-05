@@ -96,7 +96,7 @@ end
                 "ends other","simulator lang=spectre","simulator lang=spice","tran stop=1n")
             error=try readcase(body);nothing catch e;e end
             @test error isa ArgumentError
-            @test occursin(source*":",sprint(showerror,error))
+            @test occursin(realpath(source)*":",sprint(showerror,error))
         end
         valid=readcase("R1 A gnd resistor r=1")
         for kw in ((max_bytes=1,),(max_records=2,),(max_line_bytes=10,))

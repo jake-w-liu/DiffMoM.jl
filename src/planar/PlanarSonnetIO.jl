@@ -201,7 +201,9 @@ An external STF stack is rejected explicitly. Expressions
 are retained and evaluated by a restricted arithmetic interpreter at lowering.
 Parsing a project does not certify that every feature can be simulated."""
 function read_sonnet_project(path::AbstractString)
-    source=abspath(path)
+    # Dependency snapshots use resolved paths as keys, including aliases of
+    # macOS temporary directories and Windows short filenames.
+    source=realpath(path)
     records=SonnetRecord[]
     open(source,"r") do io
         for (line,text) in enumerate(eachline(io))

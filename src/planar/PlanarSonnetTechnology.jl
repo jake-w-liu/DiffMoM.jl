@@ -69,6 +69,7 @@ end
 function _stf_read(path,max_bytes)
     source=abspath(path)
     isfile(source) || throw(ArgumentError("missing technology dependency $source"))
+    source=realpath(source)
     bytes=open(source,"r") do io
         size=filesize(io)
         size<=max_bytes || throw(ArgumentError("technology source byte budget exceeded"))
