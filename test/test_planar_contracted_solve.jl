@@ -121,3 +121,26 @@ end
     @test maximum(fft.raw.relative_residuals)<=1e-10
     @test all(isfinite,planar_current_maps(fft)[2].jy)
 end
+
+function _contracted_residual_allocations!(buffer,source,weights,operator,x)
+    DiffMoM._planar_source_residuals!(buffer,source,weights,operator,x)
+    return @allocated DiffMoM._planar_source_residuals!(buffer,source,weights,operator,x)
+end
+
+@testset "contracted solve: weighted residual workspace has no repeated allocations" begin
+    model=_contracted_return_fixture();prob=model.problem;C=model.contraction
+    weights=[DiffMoM._planar_port_weight(prob.basis,b) for b in eachindex(prob.basis.kind)]
+    for method in (:dense,:ufft)
+        result=solve_planar_contracted(prob,1e9,C;z0=model.z0,mx=20,my=18,
+            surface_zs=.1,method,memory=100,rtol=1e-10)
+        source=zeros(ComplexF64,size(result.currents,1))
+        DiffMoM._planar_contracted_rhs!(source,prob,C,1)
+        operator=method===:dense ? result.raw.z_mom : result.raw.operator
+        x=method===:dense ? view(result.currents,:,1) : copy(view(result.currents,:,1))
+        saved_source=copy(source);saved_x=copy(x);saved_currents=copy(result.currents)
+        @test _contracted_residual_allocations!(similar(source),source,weights,operator,x)==0
+        @test source==saved_source
+        @test x==saved_x
+        @test result.currents==saved_currents
+    end
+end

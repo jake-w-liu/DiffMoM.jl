@@ -130,6 +130,15 @@ function _planar_source_y(prob,C,X)
     return Y
 end
 
+@inline function _planar_source_residuals!(residual,rhs,weights,A,x)
+    residual.=rhs./weights
+    source_voltage_norm=norm(residual)
+    mul!(residual,A,x);residual.-=rhs
+    galerkin=norm(residual)/norm(rhs)
+    residual./=weights
+    return norm(residual)/source_voltage_norm,galerkin
+end
+
 """Solve only the physical port combinations `Vraw=C*V`.
 The real, finite, independent columns of `C` define voltage contracts;
 terminal currents are the power-conjugate `transpose(C)*Iraw`.
@@ -216,9 +225,8 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
             Z=original
             for q in 1:n
                 _planar_contracted_rhs!(rhs,prob,stored,q)
-                mul!(residual,Z,view(X,:,q));residual.-=rhs
-                push!(galerkin_residuals,norm(residual)/norm(rhs))
-                push!(voltage_residuals,norm(residual./weights)/norm(rhs./weights))
+                vr,gr=_planar_source_residuals!(residual,rhs,weights,Z,view(X,:,q))
+                push!(galerkin_residuals,gr);push!(voltage_residuals,vr)
             end
         end
     else
@@ -240,9 +248,7 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
                 itmax=Int(maxiter),memory=min(Int(memory),nb),restart,
                 reorthogonalization=true,M=D,N=D)
             x .*= source_scale
-            mul!(residual,A,x);residual.-=rhs
-            vr=norm(residual./weights)/norm(rhs./weights)
-            gr=norm(residual)/norm(rhs)
+            vr,gr=_planar_source_residuals!(residual,rhs,weights,A,x)
             isfinite(vr) && vr<=rtol || throw(ErrorException(
                 "contracted FFT port $q failed voltage residual gate: $vr > $rtol after $(stats.niter) iterations"))
             X[:,q].=x;iterations[q]=stats.niter
