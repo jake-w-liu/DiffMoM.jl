@@ -63,4 +63,4 @@ jobs:
           end
           println("RADIATION_ARM64_ALLOCATION_PROFILE_COMPLETE")
           JULIA
-          julia --startup-file=no --project=. "$RUNNER_TEMP/radiation-profile.jl"
+          julia --startup-file=no --check-bounds=yes --project=. "$RUNNER_TEMP/radiation-profile.jl"
