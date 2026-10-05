@@ -1054,7 +1054,9 @@ Co-calibration, other geometry-variable modes, dielectric bricks, general via
 skin loss and unsupported material semantics reject explicitly. Components
 require the circuit wrapper. Parsed unsupported data remain in `SonnetProject`.
 `max_bytes` bounds owned raster masks, material maps, source and basis workspace
-before allocation. It uses the same raw-payload convention as `solve_planar`."""
+before allocation. It uses the same raw-payload convention as `solve_planar`.
+Public PEC lowering omits unused material maps; adapters requesting material
+details retain those maps and their overlap checks."""
 function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         variables=Dict{String,Float64}(),_materials::Bool=false,_details::Bool=false,
         _allow_portless::Bool=false,scalar_files=nothing,
@@ -1092,8 +1094,9 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     p=_sonnet_raster_wall_project(p,a,b,native_nx,native_ny)
     L=length(layers)
     any(poly->poly.kind==:brick,p.polygons) && throw(ArgumentError("native dielectric bricks require a volume dielectric adapter"))
+    store_surfaces=_details || _materials
     geometry_workspace=_checked_payload_sum("native raster geometry workspace",
-        source_workspace,scalar_workspace,_sonnet_raster_mask_workspace(p,gr))
+        source_workspace,scalar_workspace,_sonnet_raster_mask_workspace(p,gr;surfaces=store_surfaces))
     _enforce_payload_limit(geometry_workspace,limit,"native raster geometry workspace","max_bytes")
     sheets=SheetLevel[]; sheetidx=Dict{Int,Int}(); masks=Dict{Int,BitMatrix}()
     vias=ViaLevel[]; via_sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}()
@@ -1103,7 +1106,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         if !haskey(sheetidx,level)
             push!(sheets,sheet_level(L-1-level,nx,ny))
             sheetidx[level]=length(sheets)
-            surface_by_level[level]=zeros(ComplexF64,nx,ny)
+            store_surfaces && (surface_by_level[level]=zeros(ComplexF64,nx,ny))
         end
         return sheets[sheetidx[level]]
     end
@@ -1120,12 +1123,12 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             rasterize_poly!(tmp,gr,poly.vertices[1,:],poly.vertices[2,:])
             any(tmp.mask) || throw(ArgumentError("polygon $(poly.id) vanished at raster resolution"))
             zs=poly.material==-1 ? 0.0im : sonnet_metal_zs(p,p.metals[poly.material+1],freq;variables=variables)
-            surface=surface_by_level[poly.level]
+            surface=store_surfaces ? surface_by_level[poly.level] : nothing
             for cell in eachindex(tmp.mask)
                 tmp.mask[cell] || continue
-                !sh.mask[cell] || surface[cell]==zs || throw(ArgumentError(
+                store_surfaces && sh.mask[cell] && surface[cell]!=zs && throw(ArgumentError(
                     "different sheet materials overlap in cell $cell on native level $(poly.level); refine the raster or define a composite conductor"))
-                surface[cell]=zs
+                store_surfaces && (surface[cell]=zs)
             end
             masks[poly.id]=copy(tmp.mask)
             sh.mask .|= tmp.mask
@@ -1151,7 +1154,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
                     native_level in (-1,L-1) && continue
                     pad=native_sheet(native_level)
                     pad.mask .|=tmp.mask
-                    surface_by_level[native_level][tmp.mask].=0
+                    store_surfaces && (surface_by_level[native_level][tmp.mask].=0)
                 end
             end
             mode="SOLID" in poly.flags || "FULL" in poly.flags ? :full :

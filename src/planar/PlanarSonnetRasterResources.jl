@@ -23,7 +23,7 @@ function _sonnet_raster_source_workspace(p)
         3BigInt(_sonnet_scalar_project_payload(p)),2BigInt(thick)*rowbytes)
 end
 
-function _sonnet_raster_mask_workspace(p,grid)
+function _sonnet_raster_mask_workspace(p,grid;surfaces::Bool=true)
     nx,ny=grid.nx,grid.ny;layers=length(p.layers)
     levels=Set{Int}();spans=BigInt(0)
     for poly in p.polygons
@@ -49,7 +49,7 @@ function _sonnet_raster_mask_workspace(p,grid)
     # Per-polygon masks remain live for port attachment. Temporary sheet,
     # via-mesh, overlap and index buffers are bounded before rasterization.
     return _checked_payload_sum("native raster mask workspace",
-        BigInt(length(levels))*(mask+connections+16cells),
+        BigInt(length(levels))*(mask+connections+(surfaces ? 16cells : 0)),
         2spans*mask,BigInt(length(p.polygons))*mask,
         4mask+connections+(spans>0 ? 8cells : 0),
         _checked_array_payload_bytes(Float64,2,
