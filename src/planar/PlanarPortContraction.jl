@@ -229,10 +229,17 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
         D=precondition ? Diagonal(scale) : I
         for q in 1:n
             _planar_contracted_rhs!(rhs,prob,stored,q)
-            norm(rhs)>0 || throw(ArgumentError("physical port $q has no source excitation"))
-            x,stats=Krylov.gmres(A,rhs;rtol=Float64(rtol)/10,atol=0.,
+            source_scale=maximum(abs,rhs)
+            isfinite(source_scale) && source_scale>0 || throw(ArgumentError(
+                "physical port $q must have finite nonzero source excitation"))
+            # Krylov also stops at an absolute machine-precision floor.
+            # Normalize in the existing residual buffer so small voltage
+            # contracts retain the same relative solve accuracy.
+            residual.=rhs./source_scale
+            x,stats=Krylov.gmres(A,residual;rtol=Float64(rtol)/10,atol=0.,
                 itmax=Int(maxiter),memory=min(Int(memory),nb),restart,
                 reorthogonalization=true,M=D,N=D)
+            x .*= source_scale
             mul!(residual,A,x);residual.-=rhs
             vr=norm(residual./weights)/norm(rhs./weights)
             gr=norm(residual)/norm(rhs)

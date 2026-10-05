@@ -10,6 +10,42 @@ function _contracted_return_fixture()
     return planar_terminal_returns(stack,grid,[sheet],terminals;ground_direction=:below)
 end
 
+@testset "contracted solve: FFT accuracy is independent of source amplitude" begin
+    grid=CellGrid(2e-3,1e-3,8,4)
+    stack=PlanarStackup([PlanarLayer(4.,1.,.2e-3),PlanarLayer(1.,1.,.8e-3)],
+        TERM_GND,TERM_GND,grid.a,grid.b)
+    sheet=sheet_level(1,8,4);sheet.mask[:,2:3].=true
+    sheet.connect_west[2:3].=true;sheet.connect_east[2:3].=true
+    prob=build_planar_problem(stack,grid,[sheet],
+        [PlanarPort(1,:west,2:3,50.),PlanarPort(1,:east,2:3,50.)])
+    identity=Matrix{Float64}(I,2,2)
+    dense=solve_planar_contracted(prob,1e9,identity;mx=32,my=32,surface_zs=.2)
+    weights=prob.basis.width
+    # Independent physical wall sources: west is negative, east positive.
+    B=zeros(ComplexF64,size(dense.currents))
+    for b in axes(B,1)
+        p=prob.basis.port[b];p==0 && continue
+        B[b,p]=(p==1 ? -1 : 1)*weights[b]
+    end
+    for alpha in (1.,1e-16,1e-18,-1e-16),precondition in (true,false)
+        fft=solve_planar_contracted(prob,1e9,alpha.*identity;
+            z0=50/alpha^2,method=:ufft,mx=32,my=32,surface_zs=.2,
+            rtol=1e-9,maxiter=1000,memory=50,precondition)
+        @test fft.currents≈alpha.*dense.currents rtol=1e-8
+        @test fft.s≈dense.s rtol=1e-8
+        @test maximum(fft.raw.relative_residuals)<=1e-9
+        @test all(i->1<i<=1000,fft.raw.iterations)
+        for q in 1:2
+            source=alpha.*view(B,:,q)
+            physical=norm((dense.raw.z_mom*view(fft.currents,:,q)-source)./weights)/
+                norm(source./weights)
+            @test physical<=1e-9
+        end
+    end
+    @test_throws ErrorException solve_planar_contracted(prob,1e9,1e-16.*identity;
+        method=:ufft,mx=32,my=32,surface_zs=.2,rtol=1e-9,maxiter=1)
+end
+
 @testset "contracted solve: physical layer sources and voltage residuals" begin
     model=_contracted_return_fixture();prob=model.problem;C=model.contraction
     @test size(C)==(8,2)
