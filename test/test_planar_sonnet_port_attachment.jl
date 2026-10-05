@@ -14,11 +14,12 @@ function wall_projection_allocation(p)
     DiffMoM._sonnet_raster_wall_project(p,.001,.001,32,32)
     @allocated DiffMoM._sonnet_raster_wall_project(p,.001,.001,32,32)
 end
-function wall_budget_rejection(p)
+function wall_budget_rejection(p,max_bytes=1)
     try
-        sonnet_conformal_layout(p;max_bytes=1,edge_size=.125e-3,interior_size=.25e-3)
+        sonnet_conformal_layout(p;max_bytes,edge_size=.125e-3,interior_size=.25e-3)
     catch err
-        err isa ArgumentError && occursin("native conformal metadata",sprint(showerror,err)) || rethrow()
+        label=max_bytes==1 ? "native stack layer workspace" : "native conformal metadata"
+        err isa ArgumentError && occursin(label,sprint(showerror,err)) || rethrow()
         return
     end
     error("missing conformal metadata budget rejection")
@@ -189,6 +190,10 @@ end
         bytes=minimum(@allocated(wall_budget_rejection(large)) for _ in 1:3)
         # The budget must reject before even one complete vertex copy.
         @test bytes<sizeof(only(large.polygons).vertices)
+        # A budget admitting the stack must still reject before wall copies.
+        wall_budget_rejection(large,384)
+        metadata_bytes=minimum(@allocated(wall_budget_rejection(large,384)) for _ in 1:3)
+        @test metadata_bytes<sizeof(only(large.polygons).vertices)
         @test only(large.polygons).vertices==only(saved.polygons).vertices
         @test all(a.values==b.values for (a,b) in zip(large.ports,saved.ports))
     end

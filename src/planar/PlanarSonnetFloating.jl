@@ -162,7 +162,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     stored_bridge=ComplexF64(bridge_zs)
     isfinite(stored_bridge) || throw(ArgumentError("floating bridge impedance must fit finite ComplexF64"))
     p=_sonnet_thick_geometry(p,freq,variables)
-    physical=_sonnet_stack_geometry(p,freq,grid,variables;expand_thick=false)
+    physical=_sonnet_stack_geometry(p,freq,grid,variables;expand_thick=false,
+        max_bytes=max_bytes-variable_payload)
     cellcount=BigInt(physical.grid.nx)*physical.grid.ny
     sheets=length(unique(poly.level for poly in p.polygons if poly.kind===:sheet))
     vias=count(poly->poly.kind===:via,p.polygons)*BigInt(length(p.layers))

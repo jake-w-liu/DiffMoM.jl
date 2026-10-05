@@ -1017,6 +1017,11 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
     end
     p=_sonnet_geometry_project(p,freq,variables;max_bytes)
     geometry=expand_thick ? _sonnet_thick_geometry(p,freq,variables) : p
+    # Reserve both layer vectors, promotion references and push! growth.
+    stack_workspace=_checked_payload_sum("native stack layer workspace",
+        _checked_array_payload_bytes(PlanarLayer{ComplexF64},2,length(geometry.layers)),
+        _checked_array_payload_bytes(Ptr{Cvoid},4,length(geometry.layers)))
+    _enforce_payload_limit(stack_workspace,max_bytes,"native stack layer workspace","max_bytes")
     val(t)=sonnet_variable_value(geometry,t;variables=variables,freq=freq)
     ls=geometry.length_scale
     a,b=val(geometry.box[2])*ls,val(geometry.box[3])*ls
