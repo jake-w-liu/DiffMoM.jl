@@ -75,3 +75,19 @@ contracts. The current-map tolerance remains `2e-12`. Focused contracted and
 power-wave suites passed on Julia 1.12.7 and 1.13.1. The quality workflow now
 pins Julia 1.12.7 exactly, matching the unchanged baseline counter identity
 instead of allowing an automatic patch upgrade to break that comparison.
+
+## Native raster resource preflight
+
+Commit f90bd880 adds 248 counted lines for public raster allocation preflight,
+aggregate solve ownership, budget forwarding and 52 independent resource
+assertions. The reviewed line ceiling is now 212,314 in a separate commit.
+The original 74,755-line baseline, counter identity, counted scope and archival
+evidence remain unchanged. The unchanged 400-group truncated census reports
+58,169 estimated removable lines; the existing ceiling stays 58,394. Its
+selected-group estimate is not evidence of a measured optimization or removal.
+Blocking smells, integrity findings and measurement warnings remain zero.
+
+The repair and CRC evidence are recorded in
+`.slopfix/sonnet-raster-resource-review-20261005.md`. No original numerical
+reference, native gate or tolerance was modified. Full package and fresh
+hosted CI checks remain mandatory before claiming this commit is verified.
