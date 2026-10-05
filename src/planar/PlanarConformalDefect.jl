@@ -163,6 +163,21 @@ function _planar_projection_voltage_residual(x,weights,source_norm)
     return sqrt(squared)/source_norm
 end
 
+# Retain update roundoff when a small correction is added to a large current.
+# The initial Krylov solution buffer is free after X and its residual are copied.
+function _planar_projection_compensated_update!(out,delta,scale,carry)
+    length(out)==length(delta)==length(carry) || throw(DimensionMismatch())
+    for b in eachindex(out,delta,carry)
+        xr=real(out[b]);xi=imag(out[b]);dr=real(delta[b]);di=imag(delta[b])
+        pr=scale*dr;pi=scale*di;tr=xr+pr;ti=xi+pi
+        er=fma(scale,dr,-pr)+(abs(xr)>=abs(pr) ? (xr-tr)+pr : (pr-tr)+xr)
+        ei=fma(scale,di,-pi)+(abs(xi)>=abs(pi) ? (xi-ti)+pi : (pi-ti)+xi)
+        cr=real(carry[b])+er;ci=imag(carry[b])+ei;ur=tr+cr;ui=ti+ci
+        carry[b]=complex((tr-ur)+cr,(ti-ui)+ci);out[b]=complex(ur,ui)
+    end
+    out
+end
+
 """
     solve_planar_conformal_defect(prob, freq; modes=128, nx=64, ny=nx, ...)
 
@@ -285,10 +300,12 @@ function solve_planar_conformal_defect(prob::PlanarConformalProblem,freq::Number
         for retry in 1:8
             isfinite(initial_projected[p]) && initial_projected[p]>tol || break
             remaining=Int(maxiter)-iterations[p];remaining>0 || break
+            retry==1 && fill!(x,0)
             scale=initial_projected[p];defect_rhs.=-inner./scale
             delta,stats=Krylov.gmres(A,defect_rhs;M,N,rtol=tol/10,atol=0.,
                 itmax=remaining,memory=mem,restart=true,reorthogonalization=true)
-            iterations[p]+=stats.niter;X[:,p].+=scale.*delta
+            iterations[p]+=stats.niter
+            _planar_projection_compensated_update!(view(X,:,p),delta,scale,x)
             mul!(inner,A,view(X,:,p));inner.-=view(rhs,:,p)
             initial_projected[p]=_planar_projection_voltage_residual(inner,weights,source_norm[p])
         end

@@ -45,3 +45,29 @@ Neither extra unscaled retries nor tolerance relaxation is used to accept
 the result. Final focused and full checks must use this updated source.
 Updated focused checks passed 992 assertions on each Julia version; strict
 measure, blocking smells and the 400-group census passed at ceiling 212654.
+
+Hosted f9a68370 then exposed a remaining ARM64 failure at the frequency eight
+Float64 steps below 1 MHz: port 1's projected residual stayed at
+1.1525489566043346e-10 after 27 iterations. Its original failed macOS log
+is retained (job 111841929908, SHA c04142fee73e262587593f51091d33bfd374e96bad61bb63b0119392cc024617).
+This is numerical; the runner-capacity notice is not a billing explanation.
+
+ARM64 diagnostic run 37337785316 reproduced that exact failure with unchanged
+production arithmetic. Fusing the scaled correction into the addition also
+failed at the same frequency. Preserving both product and addition roundoff
+between updates passed all 65 cases (maximum 24 initial iterations), with
+the unchanged projected/original/DC/iteration gates. Native, generic and
+Haswell CPU-target comparisons also passed all cases. The diagnostic producer
+recorded the baseline failures rather than certifying them as passing tests.
+
+The production correction now reuses the initial Krylov solution buffer as
+the update carry, clearing it only when a retry is actually needed. Every
+acceptance residual is still computed from the stored Float64 currents.
+No new scratch arrays or numeric payload reservations are added. A separate
+256-bit oracle verifies product and sum cancellation, including ordinary
+update failure and zero helper allocations. Updated focused tests passed
+999 assertions on each Julia version; exact production ARM64 and full-suite
+verification remain required before publishing this update.
+The counter increased from 212654 to 212690 (+36) for the helper and oracle;
+the original strict failure is retained. A separate ceiling commit records
+exactly this reviewed increase, with the duplication ceiling unchanged.
