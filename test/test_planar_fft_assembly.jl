@@ -51,3 +51,62 @@ using DiffMoM,Test,LinearAlgebra
     fft=assemble_planar_z_ufft(prob,5e9;kw...)
     @test norm(fft-modal)/norm(modal)<2e-12
 end
+
+function _fft_phase_tube_fixture(material)
+    grid=CellGrid(.001,.001,12,12)
+    epsr=material===:dielectric_loss ? 1-.02im : 1.
+    stack=PlanarStackup([PlanarLayer(epsr,1.,.0005) for _ in 1:3],
+        TERM_GND,TERM_GND,grid.a,grid.b)
+    sheets=[sheet_level(2,12,12),sheet_level(1,12,12)]
+    sheets[1].mask[1:8,5:8].=true;sheets[1].connect_west[5:8].=true
+    sheets[2].mask[5:12,5:8].=true;sheets[2].connect_east[5:8].=true
+    parts=[via_level(2,12,12) for _ in 1:2]
+    for i in 5:8,j in 5:8
+        sides=Int(i in (5,8))+Int(j in (5,8))
+        sides>0 && (parts[sides].uni[i,j]=true)
+    end
+    problem=build_planar_problem(stack,grid,sheets,
+        [PlanarPort(1,:west,5:8,50.),PlanarPort(2,:east,5:8,50.)];vias=parts)
+    zs=material===:conductor_loss ? .25+1im : 1im
+    return problem,[1/(zs*grid.dx),2/(zs*grid.dx)]
+end
+
+@testset "retained FFT assembly preserves imaginary modal phase and physical loss" begin
+    for frequency in (1e6,1e8),modes in (48,192),material in (:reactive,:conductor_loss,:dielectric_loss)
+        problem,sigma=_fft_phase_tube_fixture(material)
+        direct=solve_planar_contracted(problem,frequency,Matrix{Float64}(I,2,2);
+            method=:dense,mx=modes,my=modes,via_sigma=sigma,retain_matrix=true,max_bytes=256_000_000)
+        fast=solve_planar_contracted(problem,frequency,Matrix{Float64}(I,2,2);
+            method=:dense_fft,mx=modes,my=modes,via_sigma=sigma,retain_matrix=true,max_bytes=256_000_000)
+        reference=direct.raw.z_mom
+        @test norm(fast.raw.z_mom-reference)/norm(reference)<=2e-12
+        if material===:reactive
+            @test all(iszero,real.(fast.raw.z_mom))
+            @test all(iszero,real.(fast.currents))
+            @test all(iszero,real.(fast.y))
+            @test opnorm(fast.s'*fast.s-I)<=2e-12
+        elseif material===:conductor_loss
+            @test real.(fast.raw.z_mom)==real.(reference)
+            @test maximum(abs,real.(fast.raw.z_mom))>0
+        else
+            @test maximum(abs,real.(fast.raw.z_mom))>0
+        end
+        workspace=DiffMoM._planar_fft_workspace(problem,frequency,Val(true);
+            mx=modes,my=modes,via_sigma=sigma,_fold_dense=true,max_bytes=256_000_000)
+        @test (workspace isa DiffMoM._PlanarFFTBlockAssemblyWorkspace)==(modes==192)
+        for fold in (false,true)
+            operator=planar_ufft_operator(problem,frequency;mx=modes,my=modes,via_sigma=sigma,
+                _fold_iterative=fold,max_bytes=256_000_000)
+            @test (operator.folded!==nothing)==fold
+            assembled=DiffMoM._planar_fft_dense_fill!(similar(reference),operator)
+            @test norm(assembled-reference)/norm(reference)<=2e-12
+            if material===:reactive
+                @test all(iszero,real.(assembled))
+            elseif material===:conductor_loss
+                @test real.(assembled)==real.(reference)
+            else
+                @test maximum(abs,real.(assembled))>0
+            end
+        end
+    end
+end

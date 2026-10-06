@@ -84,7 +84,11 @@ struct _PlanarUFFTFoldedWorkspace
     spectra::Array{ComplexF64,3}
     fields::Matrix{ComplexF64}
     images::Vector{_PlanarUFFTSourceImages}
+    imaginary_modes::Bool
 end
+
+_PlanarUFFTFoldedWorkspace(spectra,fields,images)=
+    _PlanarUFFTFoldedWorkspace(spectra,fields,images,false)
 
 """FFT operator for the same analytic Galerkin modal sum as
 `assemble_planar_z`.  Supports sheets, wall half rooftops, uniform/tapered
@@ -143,6 +147,7 @@ struct _PlanarFFTBlockAssemblyWorkspace{PB}
     lattice::Matrix{ComplexF64}
     backward::PB
     local_loss::SparseMatrixCSC{ComplexF64,Int}
+    imaginary_modes::Bool
 end
 
 Base.size(A::PlanarUFFTOperator) = (A.n, A.n)
@@ -296,6 +301,7 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     mb = Vector{Int}(undef, kernel_block)
     nbmode = similar(mb)
     firstmode = 1
+    imaginary_modes = true
     while firstmode <= nmode
         count = min(length(mb), nmode - firstmode + 1)
         for q in 1:count
@@ -308,6 +314,7 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         _planar_mode_voltages!(te,tm, cte, ctm, scratch,
             prob.stack, omega, mg, view(mb, 1:count), view(nbmode, 1:count),
             pairs, vsts, vlay, volsts, volay)
+        imaginary_modes &= all(z->iszero(real(z)),te) && all(z->iszero(real(z)),tm)
         if fold_kernels
             all(isfinite,te) && all(isfinite,tm) ||
                 throw(ArgumentError("FFT modal kernel is non-finite at a box resonance"))
@@ -333,12 +340,12 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
     # FFTW's supported plan API defaults to its inexpensive estimate.
     backward = FFTW.plan_bfft!(lattice)
     fold_dense && return _PlanarFFTBlockAssemblyWorkspace(nb,ne,mg,families,
-        spectra,lattice,backward,loss)
+        spectra,lattice,backward,loss,imaginary_modes)
     dense && return _PlanarFFTAssemblyWorkspace(nb,ne,mg,families,k_te,k_tm,
         lattice,backward,loss)
     forward = FFTW.plan_fft!(lattice)
     if fold_iterative
-        folded=_PlanarUFFTFoldedWorkspace(spectra,zeros(ComplexF64,length(lattice),nf),images)
+        folded=_PlanarUFFTFoldedWorkspace(spectra,zeros(ComplexF64,length(lattice),nf),images,imaginary_modes)
         empty_kernel=zeros(ComplexF64,0,ne*ne)
         empty_modes=zeros(ComplexF64,0,ne)
         return PlanarUFFTOperator(nb,prob.grid,mg,families,empty_kernel,empty_kernel,

@@ -25,13 +25,30 @@ Base.@propagate_inbounds function _planar_fft_fold_family_mode!(F,kernel,field,s
     return nothing
 end
 
-function _planar_fft_dense_update!(Z,F,field,source,rx,ry)
+# A purely imaginary modal factor multiplies a real spatial sin/cos kernel.
+# Rotate that known factor out before the FFT, then restore it after gathering.
+# Local conductor loss is added separately, including every nonzero real part.
+function _planar_fft_kernel_transform!(F,backward,imaginary_modes)
+    if imaginary_modes
+        for index in eachindex(F)
+            value=F[index];F[index]=complex(imag(value),-real(value))
+        end
+    end
+    backward*F
+    return F
+end
+
+@inline _planar_fft_kernel_value(value,imaginary_modes)=
+    imaginary_modes ? complex(0.,real(value)) : value
+
+function _planar_fft_dense_update!(Z,F,field,source,rx,ry,imaginary_modes=false)
     px,py=size(F)
     for q in eachindex(source.indices)
         sq=source.lattice[q]-1;xs,ys=rem(sq,px),sq÷px
         for p in eachindex(field.indices)
             fp=field.lattice[p]-1;xf,yf=rem(fp,px),fp÷px
-            Z[field.indices[p],source.indices[q]]+=F[mod(xf+rx*xs,px)+1,mod(yf+ry*ys,py)+1]
+            value=F[mod(xf+rx*xs,px)+1,mod(yf+ry*ys,py)+1]
+            Z[field.indices[p],source.indices[q]]+=_planar_fft_kernel_value(value,imaginary_modes)
         end
     end
     return nothing
@@ -99,14 +116,16 @@ function _planar_fft_images_dense_kernels!(Z,A,folded)
     F=A.lattice;px,py=size(F);nc=length(folded.images)
     for (fi,field) in enumerate(A.families),(ci,image) in enumerate(folded.images)
         source=A.families[image.source]
-        copyto!(F,view(folded.spectra,:,:,(fi-1)*nc+ci));A.backward*F
+        copyto!(F,view(folded.spectra,:,:,(fi-1)*nc+ci))
+        _planar_fft_kernel_transform!(F,A.backward,folded.imaginary_modes)
         for q in eachindex(source.indices)
             sq=source.lattice[q]-1;xs,ys=rem(sq,px),sq÷px
             for rx in _ufft_image_signs(image.halfx),ry in _ufft_image_signs(image.halfy)
                 ix,iy,sign=_ufft_source_image(image,xs,ys,rx,ry)
                 for p in eachindex(field.indices)
                     fp=field.lattice[p]-1;xf,yf=rem(fp,px),fp÷px
-                    Z[field.indices[p],source.indices[q]]+=sign*F[mod(xf-ix,px)+1,mod(yf-iy,py)+1]
+                    value=F[mod(xf-ix,px)+1,mod(yf-iy,py)+1]
+                    Z[field.indices[p],source.indices[q]]+=sign*_planar_fft_kernel_value(value,folded.imaginary_modes)
                 end
             end
         end
@@ -119,8 +138,8 @@ function _planar_fft_folded_dense_kernels!(Z,A,spectra)
     for (fi,field) in enumerate(A.families),(si,source) in enumerate(A.families)
         for (xi,rx) in enumerate((-1,1)),(yi,ry) in enumerate((-1,1))
             copyto!(F,view(spectra,:,:,4*((fi-1)*nf+si-1)+2*(xi-1)+yi))
-            A.backward*F
-            _planar_fft_dense_update!(Z,F,field,source,rx,ry)
+            _planar_fft_kernel_transform!(F,A.backward,A.imaginary_modes)
+            _planar_fft_dense_update!(Z,F,field,source,rx,ry,A.imaginary_modes)
         end
     end
     return Z
@@ -135,6 +154,7 @@ function _planar_fft_dense_kernels!(Z,
         return _planar_fft_images_dense_kernels!(Z,A,A.folded)
     end
     F=A.lattice;px,py=size(F);mg=A.modes;ne=_planar_fft_element_count(A)
+    imaginary_modes=all(z->iszero(real(z)),A.k_te) && all(z->iszero(real(z)),A.k_tm)
     # A product of real sin/cos subsection transforms is a sum of four
     # kernels evaluated at signed sums/differences of lattice locations.
     # Reuse one Fourier buffer, retaining every high mode before folding.
@@ -150,8 +170,8 @@ function _planar_fft_dense_kernels!(Z,
                 kernel=_planar_fft_family_kernel(A.k_te[t,pair],A.k_tm[t,pair],fv,sv,fx,sxdir,mg.kx[m+1],mg.ky[n+1])
                 _planar_fft_fold_family_mode!(F,kernel,field,source,m,n,rx,ry)
             end
-            A.backward*F
-            _planar_fft_dense_update!(Z,F,field,source,rx,ry)
+            _planar_fft_kernel_transform!(F,A.backward,imaginary_modes)
+            _planar_fft_dense_update!(Z,F,field,source,rx,ry,imaginary_modes)
         end
     end
     return Z
