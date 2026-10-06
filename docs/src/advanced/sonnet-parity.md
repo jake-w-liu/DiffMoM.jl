@@ -1574,3 +1574,18 @@ The archive and current solve regression are in
 `test_planar_library_mim_low_frequency.jl`. Finite-grid lead/fringing
 effects are retained; this approximate electrostatic check does not
 establish general continuum or measured-device accuracy.
+
+
+## Axial refinement of bulk wall sources
+
+`planar_refine_axial` applies a volume wall port's full voltage to every
+refined slice of that conductor. Its terminal current adds across the
+physical thickness. Volume ordinals are remapped after earlier volumes
+are subdivided; original port impedance providers, polarity and reference
+planes are retained. Via voltages keep their thickness-distributed contract.
+
+The independent 3 mm by 1 mm by 20 micrometre conductor with conductivity
+`1e4 S/m` retains its analytical 15 ohm DC resistance after one, two or four
+axial slices in both x and y directions, under the original `5e-6` relative
+gate. This source-mapping check does not establish Sonnet's native RF volume
+loss law or general device convergence.

@@ -21,6 +21,8 @@ volume masks, via footprints, wall connections and port polarities are
 preserved. Volume currents gain a resolved axial profile. Uniform via
 profiles become piecewise uniform; tapered profiles gain the uniform
 parts needed to retain the original global linear ramp.
+Volume wall ports apply their full voltage on every corresponding slice;
+their terminal current is the sum through the complete physical thickness.
 Via-port voltage is distributed across slices in proportion to thickness,
 so total voltage and its power-conjugate terminal current are preserved.
 No new metal sheets are inserted between slices."""
@@ -36,7 +38,8 @@ function planar_refine_axial(prob::PlanarProblem,subdivisions;
     nlayer=sum(BigInt(n) for n in counts)
     nvia=sum((BigInt(counts[v.layer]) for v in prob.vias);init=BigInt(0))
     nvolume=sum((BigInt(counts[v.layer]) for v in prob.vols);init=BigInt(0))
-    nport=sum(BigInt(p.wall===:via ? counts[prob.vias[p.level].layer] : 1) for p in prob.ports)
+    nport=sum(BigInt(p.wall===:via ? counts[prob.vias[p.level].layer] :
+        _is_planar_volume_port(p.wall) ? counts[prob.vols[p.level].layer] : 1) for p in prob.ports)
     # Taper-only refinement gains a uniform component above the first
     # slice. Account for those new unknowns before allocating geometry.
     nbnew=BigInt(0)
@@ -101,6 +104,15 @@ function planar_refine_axial(prob::PlanarProblem,subdivisions;
             for id in ids
                 push!(ports,PlanarPort(id,p.wall,p.cells,p.z0;edge=p.edge,polarity=p.polarity))
                 row+=1;C[row,col]=inv(length(ids))
+            end
+        elseif _is_planar_volume_port(p.wall)
+            first_volume=searchsortedfirst(volume_parent,p.level)
+            count=counts[prob.vols[p.level].layer]
+            for id in first_volume:first_volume+count-1
+                # Every depth slice has the same physical wall voltage;
+                # power-conjugate currents add across the whole thickness.
+                push!(ports,id==p.level ? p : PlanarPort(id,p.wall,p.cells,p.z0,p.edge,p.polarity,p.refplane))
+                row+=1;C[row,col]=1
             end
         else
             push!(ports,p);row+=1;C[row,col]=1
