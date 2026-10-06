@@ -466,11 +466,12 @@ end
 unknown/off-node/outside-table coordinates reject without tolerance, fitting,
 interpolation or extrapolation. Results retain native units; geometry etch,
 rho and RPV application require separately verified physical semantics."""
-function sonnet_technology_lookup(table::SonnetTechnologyTable,coordinates::Real...)
+function sonnet_technology_lookup(table::SonnetTechnologyTable,coordinates::Vararg{Real,N}) where {N}
     length(coordinates)==length(table.axis_names) || throw(ArgumentError("STF table coordinate dimension mismatch"))
     all(isfinite,coordinates) || throw(ArgumentError("nonfinite STF table coordinate"))
     key=Tuple(Float64.(coordinates))
-    all(isfinite,key) || throw(ArgumentError("unrepresentable STF table coordinate"))
+    all(isfinite,key) && all(map((coordinate,stored)->iszero(coordinate) || !iszero(stored),coordinates,key)) ||
+        throw(ArgumentError("unrepresentable STF table coordinate"))
     haskey(table.nodes,key) || throw(ArgumentError("STF interpolation/extrapolation is unsupported; require an exact tabulated node"))
     return copy(table.nodes[key])
 end

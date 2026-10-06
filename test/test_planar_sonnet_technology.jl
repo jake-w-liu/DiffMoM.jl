@@ -298,3 +298,34 @@ end
         @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
     end
 end
+
+@testset "STF exact lookup rejects nonzero coordinate underflow" begin
+    tiny=(BigFloat("1e-400"),-BigFloat("1e-400"),BigInt(1)//big(10)^400,-BigInt(1)//big(10)^400)
+    smallest=nextfloat(0.)
+    one=SonnetTechnologyTable(Dict("value_name"=>"rho"),["width"],
+        Dict{Tuple,Vector{Float64}}((0.,)=>[1.],(-0.,)=>[2.],(1.,)=>[3.],(smallest,)=>[4.]))
+    two=SonnetTechnologyTable(Dict("value_name"=>"etch"),["width","density"],
+        Dict{Tuple,Vector{Float64}}((0.,1.)=>[1.],(-0.,1.)=>[2.],(1.,1.)=>[3.],
+            (smallest,1.)=>[4.],(1.,0.)=>[5.],(1.,-0.)=>[6.],(1.,smallest)=>[7.]))
+    for (table,coordinates,expected) in ((one,x->(x,),[1.,2.,3.,4.]),
+        (two,x->(x,1.),[1.,2.,3.,4.]),(two,x->(1.,x),[5.,6.,3.,7.]))
+        original=deepcopy(table.nodes)
+        for (coordinate,value) in zip((0.,-0.,1.,smallest),expected)
+            @test sonnet_technology_lookup(table,coordinates(coordinate)...)==[value]
+        end
+        for coordinate in tiny
+            @test isfinite(coordinate) && !iszero(coordinate)
+            @test iszero(Float64(coordinate))
+            @test_throws ArgumentError sonnet_technology_lookup(table,coordinates(coordinate)...)
+        end
+        for coordinate in (Inf,NaN,BigFloat("1e400"))
+            @test_throws ArgumentError sonnet_technology_lookup(table,coordinates(coordinate)...)
+        end
+        @test sonnet_technology_lookup(table,coordinates(BigFloat(1))...)==[3.]
+        @test table.nodes==original
+    end
+    @test_throws ArgumentError sonnet_technology_lookup(one,.5)
+    @test_throws ArgumentError sonnet_technology_lookup(two,0.)
+    copyvalue=sonnet_technology_lookup(one,0.);copyvalue[1]=99.
+    @test sonnet_technology_lookup(one,0.)==[1.]
+end
