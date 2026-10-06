@@ -242,3 +242,43 @@ end
         end
     end
 end
+
+@testset "bulk resistivity preserves nonzero reciprocal components" begin
+    values=(complex(1.,1e200),complex(1.,-1e200),complex(1e200,1.),complex(1e200,-1.))
+    for label in ("via_sigma","volume_sigma"),sigma in values,vector in (false,true)
+        value=vector ? [sigma] : sigma
+        error=try
+            DiffMoM._planar_bulk_resistivities(value,1,label)
+            nothing
+        catch exception
+            exception
+        end
+        @test error isa ArgumentError
+        @test error isa ArgumentError && occursin(label*"[1]",sprint(showerror,error))
+    end
+    for kind in (:via,:volume)
+        prob=_planar_reactive_bulk_fixture(kind)
+        label=kind===:via ? "via_sigma" : "volume_sigma"
+        for method in (:dense,:dense_fft,:ufft),sigma in values
+            material=kind===:via ? (;via_sigma=sigma) : (;volume_sigma=sigma)
+            error=try
+                solve_planar(prob,1e9;method,mx=128,my=128,material...)
+                nothing
+            catch exception
+                exception
+            end
+            @test error isa ArgumentError
+            @test error isa ArgumentError && occursin(label*"[1]",sprint(showerror,error))
+        end
+    end
+    # Large but representable reciprocal components must remain supported.
+    large=floatmax(Float64)
+    for sigma in (complex(large,0.),complex(0.,large),complex(large,large),complex(large,-large),complex(large,large/2)), vector in (false,true)
+        value=vector ? [sigma] : sigma
+        rho=only(DiffMoM._planar_bulk_resistivities(value,1,"volume_sigma"))
+        @test isfinite(rho)
+        @test iszero(real(sigma)) || !iszero(real(rho))
+        @test iszero(imag(sigma)) || !iszero(imag(rho))
+        @test rho==inv(sigma)
+    end
+end
