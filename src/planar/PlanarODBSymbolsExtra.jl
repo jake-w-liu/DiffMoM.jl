@@ -154,8 +154,32 @@ function _odb_stencil_region(points,radii)
     return _ArtworkRegion(segments)
 end
 
+# Rounded annuli use parallel inner arcs; their radius is outer radius
+# minus the wall thickness, clipped at zero. Primary Update 3 p200 depicts
+# donut_s10x8xr2 and donut_rc10x7x1xr2 with these concentric corner arcs.
+function _odb_rounded_annulus(w,h,iw,ih,wall,radius,corners)
+    all(isfinite,(w,h,iw,ih,wall,radius)) && w>0 && h>0 &&
+        0<=iw<w && 0<=ih<h && wall>0 && 0<=radius<=min(w,h)/2 ||
+        throw(ArgumentError("invalid ODB rounded annulus dimensions"))
+    outside=_odb_corner_rectangle(w,h,radius;corners)
+    inside=iw==0 || ih==0 ? _ArtworkEmpty() :
+        _odb_corner_rectangle(iw,ih,max(radius-wall,0.);corners)
+    return _ArtworkComposite(((true,outside),(false,inside)))
+end
+
 function _odb_extra_standard_symbol(name::AbstractString,unit)
     number="([+\\-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+))"
+    m=match(Regex("^donut_s"*number*"x"*number*"xr"*number*"(?:x([1-4]+))?"*raw"$"),name)
+    if m!==nothing
+        outside,inside,radius=parse.(Float64,m.captures[1:3]).*unit
+        return _odb_rounded_annulus(outside,outside,inside,inside,
+            outside/2-inside/2,radius,something(m[4],"1234"))
+    end
+    m=match(Regex("^donut_rc"*number*"x"*number*"x"*number*"xr"*number*"(?:x([1-4]+))?"*raw"$"),name)
+    if m!==nothing
+        w,h,wall,radius=parse.(Float64,m.captures[1:4]).*unit
+        return _odb_rounded_annulus(w,h,w-2wall,h-2wall,wall,radius,something(m[5],"1234"))
+    end
     m=match(Regex("^dpack"*number*"x"*number*"x"*number*"x"*number*
         "x([0-9]+)x([0-9]+)(?:x(?:ra)?"*number*")?"*raw"$"),name)
     if m!==nothing
