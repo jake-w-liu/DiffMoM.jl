@@ -312,19 +312,29 @@ function _stf_scalar(t,text,variables,active)
     delete!(active,text)
     return value
 end
+# Fixed native unit definitions are immutable and shared across evaluations.
+# Native maintain-physical exports prove OHMM=ohm-m and MOSQ=mohm/square.
+const _STF_UNIT_SCALES = (
+    length=("lunit", ("UM"=>1e-6,"CM"=>1e-2,"MM"=>1e-3,"M"=>1.,"MIL"=>25.4e-6,"INCH"=>.0254)),
+    conductivity=("cunit", ("SM"=>1.,"SCM"=>100.,"MSCM"=>.1,"USCM"=>1e-4)),
+    resistivity=("runit", ("OHCM"=>1e-2,"OHMM"=>1.,"OHUM"=>1e-6)),
+    sheet_resistance=("srunit", ("OHSQ"=>1.,"MOSQ"=>1e-3,"MOHSQ"=>1e-3)))
+
 function _stf_scale(t,quantity)
     quantity==:dimensionless && return 1.
-    _stf_known(_stf_child(t.root,"units";required=true),["lunit","cunit","runit","srunit","tempunit"])
-    maps=Dict(:length=>("lunit",Dict("UM"=>1e-6,"CM"=>1e-2,"MM"=>1e-3,"M"=>1.,"MIL"=>25.4e-6,"INCH"=>.0254)),
-        :conductivity=>("cunit",Dict("SM"=>1.,"SCM"=>100.,"MSCM"=>.1,"USCM"=>1e-4)),
-        # Native maintain-physical GUI exports prove OHMM=ohm-m (70000
-        # OHUM -> .07 OHMM), and MOSQ=mohm/square (2 OHSQ -> 2000 MOSQ).
-        :resistivity=>("runit",Dict("OHCM"=>1e-2,"OHMM"=>1.,"OHUM"=>1e-6)),
-        :sheet_resistance=>("srunit",Dict("OHSQ"=>1.,"MOSQ"=>1e-3,"MOHSQ"=>1e-3)))
-    haskey(maps,quantity) || throw(ArgumentError("unverified STF unit quantity $quantity"))
-    key,unitmap=maps[quantity];unit=uppercase(t.units[key])
-    haskey(unitmap,unit) || throw(ArgumentError("unsupported STF $key $unit"))
-    return unitmap[unit]
+    _stf_known(_stf_child(t.root,"units";required=true),("lunit","cunit","runit","srunit","tempunit"))
+    quantity==:length && return _stf_unit_factor(t,"lunit",_STF_UNIT_SCALES.length[2])
+    quantity==:conductivity && return _stf_unit_factor(t,"cunit",_STF_UNIT_SCALES.conductivity[2])
+    quantity==:resistivity && return _stf_unit_factor(t,"runit",_STF_UNIT_SCALES.resistivity[2])
+    quantity==:sheet_resistance && return _stf_unit_factor(t,"srunit",_STF_UNIT_SCALES.sheet_resistance[2])
+    throw(ArgumentError("unverified STF unit quantity $quantity"))
+end
+function _stf_unit_factor(t,key,unitmap)
+    unit=uppercase(t.units[key])
+    for (label,scale) in unitmap
+        unit==label && return scale
+    end
+    throw(ArgumentError("unsupported STF $key $unit"))
 end
 
 """Evaluate a literal or declared STF variable and convert the explicitly
@@ -341,8 +351,10 @@ function sonnet_technology_value(t::SonnetTechnology,text::AbstractString;
 end
 
 function _stf_known(node,names;children=String[])
-    unknown=setdiff(collect(keys(node.attributes)),names)
-    isempty(unknown) || throw(ArgumentError("unsupported STF $(node.name) attributes $(join(unknown,", "))"))
+    if any(key->!(key in names),keys(node.attributes))
+        unknown=setdiff(collect(keys(node.attributes)),names)
+        throw(ArgumentError("unsupported STF $(node.name) attributes $(join(unknown,", "))"))
+    end
     all(x->x.name in children,node.children) || throw(ArgumentError("unsupported STF $(node.name) child semantics"))
     isempty(strip(node.text)) || throw(ArgumentError("unsupported STF $(node.name) text semantics"))
 end
