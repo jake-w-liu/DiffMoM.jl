@@ -123,7 +123,19 @@ end
         @test occursin("NOR",sprint(showerror,error))
     end
     @test_throws ArgumentError sonnet_metal_zs(p,["Sheet","0","NOR","2",".5",".001","SRVY","SRVY"],1e9)
-    @test_throws ArgumentError sonnet_metal_zs(p,["Sheet","0","NOR","500000",".5",".001"],1e308)
+    # This thick-film RF limit is finite even though an intermediate
+    # angular-frequency product exceeds Float64 range.
+    large_reference=setprecision(BigFloat,4096) do
+        ratio=BigFloat(.5);k=(1+ratio^2)/(1+ratio)^2
+        ComplexF64(k*sqrt(BigFloat(pi)*BigFloat(1e308)*BigFloat(DiffMoM._MU0)/BigFloat(5e5))*(1+1im))
+    end
+    large=sonnet_metal_zs(p,["Sheet","0","NOR","500000",".5",".001"],1e308)
+    @test isfinite(large)
+    @test real(large)≈real(large_reference) rtol=2e-12
+    @test imag(large)≈imag(large_reference) rtol=2e-12
+    # Preserve explicit rejection when the actual material response,
+    # rather than an avoidable intermediate, cannot be represented.
+    @test_throws ArgumentError sonnet_metal_zs(p,["Sheet","0","NOR","1e-320",".5",".001"],1e308)
     for unit in ("OH","KOH","MOH")
         q=deepcopy(p);q.units["RES"]=unit
         @test sonnet_metal_zs(q,p.metals[2],1e9)==sonnet_metal_zs(p,p.metals[2],1e9)

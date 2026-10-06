@@ -66,7 +66,16 @@ function planar_skin_depth(f::Real, sigma::Real; mur::Real=1.0)
         "conductivity must be finite and > 0, got $sigma"))
     (isfinite(mur) && mur > 0) || throw(ArgumentError(
         "mur must be finite and > 0, got $mur"))
-    return inv(sqrt(pi * f * _MU0 * mur * sigma))
+    product=pi*f*_MU0*mur*sigma
+    if !isfinite(product) || iszero(product) || _planar_metal_subnormal(product) ||
+            _planar_metal_subnormal(pi*f*_MU0) || _planar_metal_subnormal(pi*f*_MU0*mur)
+        if f isa Float64 && sigma isa Float64 && mur isa Float64
+            m,e=_planar_metal_sqrt_parts(_planar_metal_product_parts((pi*_MU0,f,mur,sigma)))
+            return ldexp(inv(m),-e)
+        end
+        return _planar_surface_wide(f,sigma,mur,:depth,nothing)
+    end
+    return inv(sqrt(product))
 end
 
 """Roughness correction factor K >= 1 at `f` [Hz] for conductor `sigma`
@@ -76,15 +85,27 @@ roughness_factor
 function roughness_factor(m::HammerstadRoughness, f::Real,
         sigma::Real; mur::Real=1.0)
     d = planar_skin_depth(f, sigma; mur=mur)
-    return 1 + (m.rf - 1) * (2 / pi) * atan(1.4 * (m.rms / d)^2)
+    (iszero(m.rms) || m.rf==1) && return one(promote_type(Float64,typeof(f),typeof(sigma),typeof(mur)))
+    q=1.4*(m.rms/d)^2
+    if !isfinite(d) || iszero(d) || !isfinite(q) || iszero(q) || _planar_metal_subnormal(q)
+        return _planar_surface_wide(f,sigma,mur,:hammerstad,m)
+    end
+    return 1 + (m.rf - 1) * (2 / pi) * atan(q)
 end
 
 function roughness_factor(m::HurayRoughness, f::Real,
         sigma::Real; mur::Real=1.0)
     d = planar_skin_depth(f, sigma; mur=mur)
+    iszero(m.density) && return one(promote_type(Float64,typeof(f),typeof(sigma),typeof(mur)))
     x = d / m.radius
-    return 1 + 1.5 * (4pi * m.radius^2 * m.density) /
-        (1 + x + x^2 / 2)
+    area=4pi*m.radius^2*m.density
+    denominator=1+x+x^2/2
+    if !isfinite(area) || iszero(area) || _planar_metal_subnormal(area) ||
+            !isfinite(denominator) || !isfinite(m.radius^2) || iszero(m.radius^2) ||
+            _planar_metal_subnormal(m.radius^2)
+        return _planar_surface_wide(f,sigma,mur,:huray,m)
+    end
+    return 1 + 1.5 * area / denominator
 end
 
 """Complex surface impedance [Ohm] of a conductor with bulk `sigma` [S/m]
@@ -97,7 +118,53 @@ function planar_surface_zs(f::Real, sigma::Real; mur::Real=1.0,
         loss_only::Bool=false)
     d = planar_skin_depth(f, sigma; mur=mur)
     rs = 0.5 * _MU0 * mur * 2pi * f * d   # = sqrt(omega*mu / (2*sigma))
+    product=pi*f*_MU0*mur*sigma
+    if !isfinite(product) || iszero(product) || _planar_metal_subnormal(product) ||
+            _planar_metal_subnormal(pi*f*_MU0) || _planar_metal_subnormal(pi*f*_MU0*mur) || !isfinite(rs) || iszero(rs)
+        if roughness!==nothing
+            return _planar_surface_wide(f,sigma,mur,:impedance,(roughness,loss_only))
+        elseif f isa Float64 && sigma isa Float64 && mur isa Float64
+            m,e=_planar_metal_sqrt_parts(_planar_metal_product_parts((pi*_MU0,f,mur),sigma))
+            rs=ldexp(m,e)
+        else
+            return _planar_surface_wide(f,sigma,mur,:impedance,(roughness,loss_only))
+        end
+    end
     k = roughness === nothing ? 1.0 :
         roughness_factor(roughness, f, sigma; mur=mur)
-    return loss_only ? complex(k * rs, rs) : k * rs * (1 + 1im)
+    result=loss_only ? complex(k*rs,rs) : k*rs*(1+1im)
+    if !(f isa BigFloat && sigma isa BigFloat && mur isa BigFloat) &&
+            (!isfinite(result) || (roughness!==nothing && _planar_metal_subnormal(rs)))
+        return _planar_surface_wide(f,sigma,mur,:impedance,(roughness,loss_only))
+    end
+    return result
+end
+
+# Rare positive material equations use scoped precision; ordinary paths
+# keep their original arithmetic. The exponent helpers are shared with
+# the independently qualified conductor film recovery.
+function _planar_surface_wide(f,sigma,mur,kind,model)
+    result_type=promote_type(Float64,typeof(f),typeof(sigma),typeof(mur))
+    kind===:impedance && (result_type=Complex{result_type})
+    input_precision(x)=x isa BigFloat ? precision(x) : 0
+    working_precision=max(4096,precision(BigFloat),input_precision(f),input_precision(sigma),input_precision(mur))
+    result=setprecision(BigFloat,working_precision) do
+        factor=BigFloat(pi)*BigFloat(_MU0)*BigFloat(f)*BigFloat(mur)
+        conductivity=BigFloat(sigma)
+        depth=inv(sqrt(factor*conductivity))
+        if kind===:impedance
+            planar_surface_zs(BigFloat(f),conductivity;mur=BigFloat(mur),
+                roughness=model[1],loss_only=model[2])
+        elseif kind===:depth
+            depth
+        elseif kind===:resistance
+            sqrt(factor/conductivity)
+        elseif kind===:hammerstad
+            1+(BigFloat(model.rf)-1)*(2/BigFloat(pi))*atan(BigFloat(1.4)*(BigFloat(model.rms)/depth)^2)
+        else
+            radius=BigFloat(model.radius);x=depth/radius
+            1+BigFloat(1.5)*4*BigFloat(pi)*radius^2*BigFloat(model.density)/(1+x+x^2/2)
+        end
+    end
+    return convert(result_type,result)
 end

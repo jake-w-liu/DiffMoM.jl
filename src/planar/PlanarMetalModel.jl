@@ -160,7 +160,14 @@ function planar_layered_surface_zs(f::Number,layers::AbstractVector{<:PlanarCond
     end
     sigma=isempty(layers) ? substrate_sigma : first(layers).sigma
     mur=isempty(layers) ? substrate_mur : first(layers).mur
-    return _planar_roughen_metal(z,f,sigma,mur,roughness,loss_only)
+    result=_planar_roughen_metal(z,f,sigma,mur,roughness,loss_only)
+    fully_wide=f isa Complex{BigFloat} && all(layer->layer isa PlanarConductorLayer{Complex{BigFloat}},layers) &&
+        (substrate_sigma===nothing || (substrate_sigma isa Complex{BigFloat} && substrate_mur isa Complex{BigFloat}))
+    if !fully_wide && (!isfinite(result) || (roughness!==nothing &&
+            (_planar_metal_subnormal(z) || iszero(real(z)) || iszero(imag(z)))))
+        return _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only)
+    end
+    return result
 end
 
 
@@ -169,7 +176,7 @@ end
 # retain their arithmetic and avoid arbitrary-precision allocations.
 function _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only; thickness_divisor=1)
     if thickness_divisor==1 && f isa Float64 && length(layers)==1 && first(layers) isa PlanarConductorLayer{Float64} &&
-            substrate_sigma===nothing && load===:open
+            substrate_sigma===nothing && load===:open && roughness===nothing
         layer=first(layers)
         z=_planar_scaled_open_real_slab(f,layer.sigma,layer.thickness,layer.mur)
         return _planar_roughen_metal(z,f,layer.sigma,layer.mur,roughness,loss_only)
@@ -195,14 +202,12 @@ function _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,loa
         substrate=substrate_sigma===nothing ? nothing : Complex{BigFloat}(substrate_sigma)
         terminal=load isa Number ? Complex{BigFloat}(load) : load
         planar_layered_surface_zs(Complex{BigFloat}(f),converted;substrate_sigma=substrate,
-            substrate_mur=Complex{BigFloat}(substrate_mur),load=terminal)
+            substrate_mur=Complex{BigFloat}(substrate_mur),load=terminal,roughness,loss_only)
     end
     result=convert(scalar_type,widened)
     isfinite(result) && (!iszero(result) || iszero(widened)) ||
         throw(ArgumentError("conductor surface impedance is not representable in its result type"))
-    sigma=isempty(layers) ? substrate_sigma : first(layers).sigma
-    mur=isempty(layers) ? substrate_mur : first(layers).mur
-    return _planar_roughen_metal(result,f,sigma,mur,roughness,loss_only)
+    return result
 end
 
 # Detect component range loss before the ABCD quotient can hide it.

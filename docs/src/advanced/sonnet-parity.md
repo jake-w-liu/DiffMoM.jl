@@ -1610,3 +1610,25 @@ allocate zero Julia bytes in five warmed samples per case/version.
 Concurrent two-layer wide calls preserve precision scopes. These scoped
 results do not establish unrestricted numerical range, peak-memory limits,
 native frequency-dependent Volume Loss or complete Sonnet parity.
+
+
+## Skin depth and roughness range recovery
+
+`planar_skin_depth`, `planar_surface_zs` and the Hammerstad/Huray correction
+factors preserve documented material equations after intermediate product
+range loss. Positive Float64 skin/resistance recovery uses exponent-balanced
+products; rare roughness and mixed-type impedance recovery uses scoped wide
+precision. The complete mixed impedance stays within the precision scope.
+Zero roughness retains its identity factor after input validation.
+
+Both tested Julia versions pass 1076 focused checks, including 91 new
+surface/roughness assertions and the existing conductor/Gram tests.
+Independent high-precision references qualify the seven reproduced failure
+cases. Sixty-six ordinary controls retain response bits and allocation
+minima. Cumulative source, standalone resource limits, unrestricted range,
+native Volume Loss and full Sonnet parity remain separate acceptance work.
+
+The native NOR material adapter retains finite thick-film RF limits after
+intermediate skin-depth overflow; its regression uses independent component
+truth at the existing 2e-12 gate and retains genuine output-range rejection.
+This material-equation limit is separate from native engine acceptance.
