@@ -14,8 +14,10 @@ function _planar_bulk_resistivities(sigma, count::Int, what::String)
             value isa Number && isfinite(value) && real(value) >= 0 && !iszero(value) ||
                 throw(ArgumentError("$what[$lv] must be finite and nonzero with Re ≥ 0, or +Inf"))
             stored = ComplexF64(value)
-            isfinite(stored) && real(stored) >= 0 && !iszero(stored) || throw(ArgumentError(
-                "$what[$lv] must remain finite and nonzero with Re ≥ 0 in ComplexF64"))
+            isfinite(stored) && real(stored) >= 0 && !iszero(stored) &&
+                (iszero(real(value)) || !iszero(real(stored))) &&
+                (iszero(imag(value)) || !iszero(imag(stored))) || throw(ArgumentError(
+                "$what[$lv] must remain finite and nonzero with Re ≥ 0 and preserve nonzero components in ComplexF64"))
             resistivity = inv(stored)
             isfinite(resistivity) || throw(ArgumentError(
                 "$what[$lv] has a resistivity that is not finite in ComplexF64"))

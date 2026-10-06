@@ -212,3 +212,33 @@ end
         @test gradient[j] ≈ fd rtol=2e-4 atol=1e-7
     end
 end
+
+@testset "bulk conductivity preserves nonzero stored components" begin
+    setprecision(BigFloat,256) do
+        tiny,small=big"1e-400",big"1e-300"
+        rational_tiny=big(1)//big(10)^400
+        rational_small=big(1)//big(10)^300
+        invalid=(complex(tiny,small),complex(small,tiny),complex(small,-tiny),
+            complex(rational_tiny,rational_small),complex(rational_small,rational_tiny),
+            complex(rational_small,-rational_tiny))
+        for label in ("via_sigma","volume_sigma"),value in invalid,vector in (false,true)
+            input=vector ? [value] : value
+            error=try
+                DiffMoM._planar_bulk_resistivities(input,1,label)
+                nothing
+            catch caught
+                caught
+            end
+            @test error isa ArgumentError
+            @test occursin("$label[1]",sprint(showerror,error))
+        end
+        for kind in (:via,:volume)
+            prob=_planar_reactive_bulk_fixture(kind)
+            material(s)=kind===:via ? (;via_sigma=s) : (;volume_sigma=s)
+            for method in (:dense,:dense_fft,:ufft),value in invalid[1:3]
+                @test_throws ArgumentError solve_planar(prob,1e9;method,
+                    mx=12,my=12,material(value)...)
+            end
+        end
+    end
+end
