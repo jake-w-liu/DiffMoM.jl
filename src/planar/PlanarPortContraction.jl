@@ -130,6 +130,73 @@ function _planar_source_y(prob,C,X)
     return Y
 end
 
+@inline function _planar_source_compensated_add(high,low,a,b)
+    product=a*b;total=high+product;recovered=total-high
+    error=fma(a,b,-product)+(high-(total-recovered))+(product-recovered)
+    return total,low+error
+end
+
+function _planar_source_compensated_residual!(buffer,rhs,Z,x,imaginary)
+    if imaginary && all(z->iszero(real(z)),x) && all(z->iszero(imag(z)),rhs)
+        fill!(buffer,0)
+        for j in axes(Z,2),i in axes(Z,1)
+            high,low=_planar_source_compensated_add(real(buffer[i]),imag(buffer[i]),-imag(Z[i,j]),imag(x[j]))
+            buffer[i]=complex(high,low)
+        end
+        for i in eachindex(buffer,rhs)
+            high,low=_planar_source_compensated_add(real(buffer[i]),imag(buffer[i]),-real(rhs[i]),1.)
+            buffer[i]=complex(high+low,0.)
+        end
+    else
+        for i in axes(Z,1)
+            real_high=0.;real_low=0.;imag_high=0.;imag_low=0.
+            for j in axes(Z,2)
+                a=real(Z[i,j]);b=imag(Z[i,j]);c=real(x[j]);d=imag(x[j])
+                real_high,real_low=_planar_source_compensated_add(real_high,real_low,a,c)
+                real_high,real_low=_planar_source_compensated_add(real_high,real_low,-b,d)
+                imag_high,imag_low=_planar_source_compensated_add(imag_high,imag_low,a,d)
+                imag_high,imag_low=_planar_source_compensated_add(imag_high,imag_low,b,c)
+            end
+            real_high,real_low=_planar_source_compensated_add(real_high,real_low,-real(rhs[i]),1.)
+            imag_high,imag_low=_planar_source_compensated_add(imag_high,imag_low,-imag(rhs[i]),1.)
+            buffer[i]=complex(real_high+real_low,imag_high+imag_low)
+        end
+    end
+    return buffer
+end
+
+# Two reusable vectors fit the existing four-vector dense-source reservation.
+# Preserve the returned column until both residual measures improve. Acceptance
+# continues to use the original ordinary full-matrix voltage residual.
+function _planar_dense_source_refine!(X,rhs,residual,weights,Z,F,scale,C,prob,rtol,voltage,galerkin)
+    any(v->isfinite(v) && v>rtol,voltage) || return nothing
+    imaginary=all(z->iszero(real(z)),Z)
+    trial=similar(rhs);carry=similar(rhs)
+    weighted_norm(values)=norm((values[k]/weights[k] for k in eachindex(values,weights)))
+    for port in axes(X,2)
+        isfinite(voltage[port]) && voltage[port]>rtol || continue
+        _planar_contracted_rhs!(rhs,prob,C,port)
+        source_norm=weighted_norm(rhs)
+        column=view(X,:,port);copyto!(trial,column);fill!(carry,0)
+        _planar_source_compensated_residual!(residual,rhs,Z,trial,imaginary)
+        previous=weighted_norm(residual)/source_norm;best=previous
+        for iteration in 1:8
+            residual .*= scale;ldiv!(F,residual);residual .*= scale
+            _planar_projection_compensated_update!(trial,residual,-1.,carry)
+            vr,gr=_planar_source_residuals!(residual,rhs,weights,Z,trial)
+            _planar_source_compensated_residual!(residual,rhs,Z,trial,imaginary)
+            accurate=weighted_norm(residual)/source_norm
+            isfinite(accurate) && accurate<previous || break
+            if isfinite(vr) && vr<voltage[port] && accurate<best
+                copyto!(column,trial);voltage[port]=vr;galerkin[port]=gr;best=accurate
+            end
+            voltage[port]<=rtol && break
+            previous=accurate
+        end
+    end
+    return nothing
+end
+
 @inline function _planar_source_residuals!(residual,rhs,weights,A,x)
     residual.=rhs./weights
     source_voltage_norm=norm(residual)
@@ -148,11 +215,15 @@ the physical coefficient columns and complete EM geometry/factor.
 
 Both solver paths equilibrate differing sheet-width and via-area measures.
 Dense uniform trace measures use unit scaling: global rescaling cannot
-improve conditioning and introduces avoidable rounding. FFT `rtol` gates
+improve conditioning and introduces avoidable rounding. Iterative FFT `rtol` gates
 the independently recomputed voltage-normalized
 full-operator residual; the unscaled Galerkin residual is also retained.
 The latter mixes different sheet and via row units. Dense `retain_matrix`
-controls retention of the original unscaled matrix. Optional `problem`
+controls retention of the original unscaled matrix. Retained dense solutions
+use `rtol` as a refinement target: up to eight bounded LU corrections use
+compensated residuals, keeping a column only when both its compensated and
+ordinary voltage residual improve. Dense results can exceed this target;
+inspect `raw.relative_residuals` when accepting them. Optional `problem`
 preserves original physical port metadata. `max_bytes` preflights owned
 numeric payloads across assembly, factor/operator, Krylov work and results."""
 function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMatrix{<:Real};
@@ -228,6 +299,8 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
                 vr,gr=_planar_source_residuals!(residual,rhs,weights,Z,view(X,:,q))
                 push!(galerkin_residuals,gr);push!(voltage_residuals,vr)
             end
+            _planar_dense_source_refine!(X,rhs,residual,weights,Z,F,scale,stored,prob,rtol,
+                voltage_residuals,galerkin_residuals)
         end
     else
         A=planar_ufft_operator(prob,freq;max_bytes=max_bytes-common-

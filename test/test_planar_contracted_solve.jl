@@ -144,3 +144,55 @@ end
         @test result.currents==saved_currents
     end
 end
+
+function _contracted_compensated_residual_allocations!(buffer,source,Z,x,imaginary)
+    DiffMoM._planar_source_compensated_residual!(buffer,source,Z,x,imaginary)
+    return @allocated DiffMoM._planar_source_compensated_residual!(buffer,source,Z,x,imaginary)
+end
+
+@testset "contracted solve: compensated residual preserves complex loss and source inputs" begin
+    for scale in (1e-200,1.,1e200),scenario in (:imaginary,:complex,:complex_rhs)
+        imaginary=scenario!==:complex
+        Z=scale.*(imaginary ? ComplexF64[1im 1im 1im;2im -1im 2im] :
+            ComplexF64[.25+.5im 1.25-.75im .25+.5im;2-3im -1+2im 2-3im])
+        x=ComplexF64[1e16im,1im,-1e16im]
+        source=scale.*fill(scenario===:complex_rhs ? .25+.5im : .25+0im,2)
+        saved=(copy(Z),copy(x),copy(source));buffer=similar(source)
+        expected=setprecision(BigFloat,256) do
+            Complex{BigFloat}.(Z)*Complex{BigFloat}.(x)-Complex{BigFloat}.(source)
+        end
+        result=DiffMoM._planar_source_compensated_residual!(buffer,source,Z,x,imaginary)
+        @test result===buffer
+        @test buffer≈ComplexF64.(expected) rtol=1e-14
+        @test Z==saved[1] && x==saved[2] && source==saved[3]
+        @test _contracted_compensated_residual_allocations!(buffer,source,Z,x,imaginary)==0
+    end
+end
+
+@testset "contracted solve: retained dense refinement improves original physical residual" begin
+    model=_contracted_return_fixture();prob=model.problem;C=model.contraction
+    weights=[DiffMoM._planar_port_weight(prob.basis,b) for b in eachindex(prob.basis.kind)]
+    for surface_zs in (0.,.1)
+        reference=solve_planar_contracted(prob,1e9,C;z0=model.z0,mx=20,my=18,surface_zs)
+        raw=reference.raw;Z=raw.z_mom;X=(1+1e-3).*reference.currents
+        sources=zeros(ComplexF64,size(X))
+        for b in axes(sources,1)
+            p=prob.basis.port[b];p==0 && continue
+            sources[b,:].=-DiffMoM._planar_port_sign(prob.ports[p])*weights[b].*C[p,:]
+        end
+        physical_norm(q)=norm((Z*view(X,:,q)-view(sources,:,q))./weights)/norm(view(sources,:,q)./weights)
+        voltage=[physical_norm(q) for q in axes(X,2)]
+        galerkin=[norm(Z*view(X,:,q)-view(sources,:,q))/norm(view(sources,:,q)) for q in axes(X,2)]
+        initial=copy(voltage);saved_Z=copy(Z);saved_F=copy(raw.lu_fact.factors);saved_C=copy(C)
+        saved_reference=copy(reference.currents)
+        @test minimum(initial)>1e-4
+        DiffMoM._planar_dense_source_refine!(X,zeros(ComplexF64,size(X,1)),zeros(ComplexF64,size(X,1)),
+            weights,Z,raw.lu_fact,raw.basis_scale,C,prob,1e-9,voltage,galerkin)
+        @test maximum(voltage)<=1e-9
+        @test all(q->physical_norm(q)<=1e-9,axes(X,2))
+        @test X≈reference.currents rtol=1e-10
+        @test Z==saved_Z && raw.lu_fact.factors==saved_F && C==saved_C
+        @test reference.currents==saved_reference
+        @test all(q->isapprox(physical_norm(q),voltage[q];rtol=1e-14),axes(X,2))
+    end
+end
