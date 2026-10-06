@@ -74,8 +74,14 @@ layers when they materially affect the result."""
 function planar_two_sheet_zs(f::Number,sigma::Number,thickness::Number;
         mur::Number=1.0,roughness=nothing,loss_only::Bool=false)
     layer=PlanarConductorLayer(sigma,thickness;mur)
-    z=planar_layered_surface_zs(f,[PlanarConductorLayer(layer.sigma,
-        layer.thickness/2;mur=layer.mur)];roughness,loss_only)
+    half=layer.thickness/2
+    z=if half*2!=layer.thickness
+        # Halving can lose a subnormal component while E/H stays finite.
+        _planar_layered_surface_wide(f,[layer],nothing,1.0,:open,roughness,loss_only;
+            thickness_divisor=2)
+    else
+        planar_layered_surface_zs(f,[PlanarConductorLayer(layer.sigma,half;mur=layer.mur)];roughness,loss_only)
+    end
     return [z zero(z);zero(z) z]
 end
 
@@ -99,7 +105,12 @@ function planar_layered_surface_zs(f::Number,layers::AbstractVector{<:PlanarCond
         isfinite(substrate_sigma) && real(substrate_sigma)>0 &&
             isfinite(substrate_mur) && real(substrate_mur)>0 ||
             throw(ArgumentError("bulk substrate parameters must be finite with Re > 0"))
-        _planar_conductor_line(f,substrate_sigma,substrate_mur)[3]
+        characteristic=_planar_conductor_line(f,substrate_sigma,substrate_mur)[3]
+        if !(f isa Complex{BigFloat} && substrate_sigma isa Complex{BigFloat} &&
+                substrate_mur isa Complex{BigFloat}) && (!isfinite(characteristic) || iszero(characteristic))
+            return _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only)
+        end
+        characteristic
     elseif load===:open
         ComplexF64(Inf)
     elseif load===:pec
@@ -112,22 +123,142 @@ function planar_layered_surface_zs(f::Number,layers::AbstractVector{<:PlanarCond
     for layer in Iterators.reverse(layers)
         g2,g,zc=_planar_conductor_line(f,layer.sigma,layer.mur)
         q=g2*layer.thickness^2
+        wide_parameters=f isa Complex{BigFloat} && layer isa PlanarConductorLayer{Complex{BigFloat}}
+        if !wide_parameters &&
+                (!isfinite(g2) || iszero(g2) || !isfinite(layer.thickness^2) || iszero(layer.thickness^2) ||
+                 !isfinite(q) || iszero(q) || !isfinite(zc) || iszero(zc) ||
+                 _planar_metal_subnormal(g2) || _planar_metal_subnormal(layer.thickness^2) ||
+                 _planar_metal_subnormal(q) || _planar_metal_subnormal(zc))
+            return _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only)
+        end
         if abs2(q)<1e-8
             a=1+q/2+q*q/24+q*q*q/720
-            sh=layer.thickness*(1+q/6+q*q/120+q*q*q/5040)
+            series=1+q/6+q*q/120+q*q*q/5040
+            sh=layer.thickness*series
             b=1im*2pi*f*_MU0*layer.mur*sh
             c=layer.sigma*sh
+            if !wide_parameters && (_planar_metal_product_lost(layer.thickness,series) ||
+                    _planar_metal_product_lost(layer.sigma,sh) || _planar_metal_subnormal(b))
+                return _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only)
+            end
         else
-            e=exp(-g*layer.thickness)
-            e2=e*e
-            a=1+e2
-            b=zc*(1-e2)
-            c=(1-e2)/zc
+            x=g*layer.thickness
+            if real(x)<0
+                # Factor the growing exponential out of every ABCD entry.
+                e=exp(x);e2=e*e;a=1+e2
+                b=-zc*(1-e2);c=-(1-e2)/zc
+            else
+                e=exp(-x);e2=e*e;a=1+e2
+                b=zc*(1-e2);c=(1-e2)/zc
+            end
         end
         T=promote_type(typeof(a),typeof(b),typeof(c),typeof(z))
         z=_planar_input_abcd(T(a),T(b),T(c),T(z))
+        if !wide_parameters && !isfinite(z)
+            return _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only)
+        end
     end
     sigma=isempty(layers) ? substrate_sigma : first(layers).sigma
     mur=isempty(layers) ? substrate_mur : first(layers).mur
     return _planar_roughen_metal(z,f,sigma,mur,roughness,loss_only)
+end
+
+
+# The public do-block precision API is scoped on supported Julia versions.
+# Escalate only after a Float64 intermediate loses range; ordinary paths
+# retain their arithmetic and avoid arbitrary-precision allocations.
+function _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only; thickness_divisor=1)
+    if thickness_divisor==1 && f isa Float64 && length(layers)==1 && first(layers) isa PlanarConductorLayer{Float64} &&
+            substrate_sigma===nothing && load===:open
+        layer=first(layers)
+        z=_planar_scaled_open_real_slab(f,layer.sigma,layer.thickness,layer.mur)
+        return _planar_roughen_metal(z,f,layer.sigma,layer.mur,roughness,loss_only)
+    end
+    scalar_type=promote_type(ComplexF64,typeof(complex(f)),typeof(complex(substrate_mur)))
+    substrate_sigma!==nothing && (scalar_type=promote_type(scalar_type,typeof(complex(substrate_sigma))))
+    load isa Number && (scalar_type=promote_type(scalar_type,typeof(complex(load))))
+    for layer in layers
+        scalar_type=promote_type(scalar_type,typeof(complex(layer.sigma)),
+            typeof(complex(layer.thickness)),typeof(complex(layer.mur)))
+    end
+    input_precision(x)=x isa BigFloat ? precision(x) :
+        x isa Complex{BigFloat} ? max(precision(real(x)),precision(imag(x))) : 0
+    working_precision=max(16384,precision(BigFloat),input_precision(f),input_precision(substrate_sigma),
+        input_precision(substrate_mur),input_precision(load))
+    for layer in layers
+        working_precision=max(working_precision,input_precision(layer.sigma),
+            input_precision(layer.thickness),input_precision(layer.mur))
+    end
+    widened=setprecision(BigFloat,working_precision) do
+        converted=PlanarConductorLayer{Complex{BigFloat}}[PlanarConductorLayer(Complex{BigFloat}(layer.sigma),
+            Complex{BigFloat}(layer.thickness)/thickness_divisor;mur=Complex{BigFloat}(layer.mur)) for layer in layers]
+        substrate=substrate_sigma===nothing ? nothing : Complex{BigFloat}(substrate_sigma)
+        terminal=load isa Number ? Complex{BigFloat}(load) : load
+        planar_layered_surface_zs(Complex{BigFloat}(f),converted;substrate_sigma=substrate,
+            substrate_mur=Complex{BigFloat}(substrate_mur),load=terminal)
+    end
+    result=convert(scalar_type,widened)
+    isfinite(result) && (!iszero(result) || iszero(widened)) ||
+        throw(ArgumentError("conductor surface impedance is not representable in its result type"))
+    sigma=isempty(layers) ? substrate_sigma : first(layers).sigma
+    mur=isempty(layers) ? substrate_mur : first(layers).mur
+    return _planar_roughen_metal(result,f,sigma,mur,roughness,loss_only)
+end
+
+# Detect component range loss before the ABCD quotient can hide it.
+@inline _planar_metal_subnormal(x::Union{Float16,Float32,Float64})=issubnormal(x)
+@inline _planar_metal_subnormal(x::Complex)=_planar_metal_subnormal(real(x)) || _planar_metal_subnormal(imag(x))
+@inline _planar_metal_subnormal(x::Number)=false
+@inline function _planar_metal_scalar_product_lost(x,y)
+    (iszero(x) || iszero(y)) && return false
+    value=x*y
+    return !isfinite(value) || iszero(value) || _planar_metal_subnormal(value)
+end
+@inline function _planar_metal_product_lost(x,y)
+    return _planar_metal_scalar_product_lost(real(x),real(y)) ||
+        _planar_metal_scalar_product_lost(real(x),imag(y)) ||
+        _planar_metal_scalar_product_lost(imag(x),real(y)) ||
+        _planar_metal_scalar_product_lost(imag(x),imag(y))
+end
+
+# Exponent-balanced recovery for the positive Float64 open-film case.
+@inline function _planar_metal_product_parts(values,divisor=1.0)
+    m=1.0;e=0
+    for value in values
+        part,power=frexp(value);m*=part;e+=power
+        m,power=frexp(m);e+=power
+    end
+    part,power=frexp(divisor);m/=part;e-=power
+    m,power=frexp(m)
+    return m,e+power
+end
+@inline _planar_metal_part_value(parts)=ldexp(parts[1],parts[2])
+@inline function _planar_metal_sqrt_parts(parts)
+    m,e=parts
+    if isodd(e);m*=2;e-=1;end
+    return sqrt(m),e÷2
+end
+function _planar_scaled_open_real_slab(f::Float64,sigma::Float64,h::Float64,mur::Float64=1.)
+    all(x->isfinite(x) && x>0,(f,sigma,h,mur)) || throw(ArgumentError("finite positive real slab parameters required"))
+    constant=2pi*_MU0
+    qparts=_planar_metal_product_parts((constant,f,mur,sigma,h,h))
+    q=_planar_metal_part_value(qparts)
+    z=if q<1e-4
+        # Invert the exponent before rounding sigma*h into Float64.
+        sm,se=_planar_metal_product_parts((sigma,h));dc=ldexp(inv(sm),-se)
+        realpart=dc*(1+q*q/45)
+        imaginary=_planar_metal_part_value(_planar_metal_product_parts((constant,f,mur,h,1/3-2q*q/945)))
+        complex(realpart,imaginary)
+    else
+        xm,xe=_planar_metal_sqrt_parts((qparts[1]/2,qparts[2]));x=ldexp(xm,xe)
+        vparts=_planar_metal_sqrt_parts(_planar_metal_product_parts((constant,f,mur,.5),sigma))
+        factor=if x>400
+            complex(1.,1.)
+        else
+            decay=exp(-complex(x,x));complex(1.,1.)*(1+decay^2)/(1-decay^2)
+        end
+        complex(ldexp(vparts[1]*real(factor),vparts[2]),ldexp(vparts[1]*imag(factor),vparts[2]))
+    end
+    isfinite(z) && !iszero(z) || throw(ArgumentError("slab impedance is outside finite nonzero Float64 range"))
+    return z
 end

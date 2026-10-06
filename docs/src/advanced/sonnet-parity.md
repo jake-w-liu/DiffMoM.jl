@@ -1589,3 +1589,24 @@ The independent 3 mm by 1 mm by 20 micrometre conductor with conductivity
 axial slices in both x and y directions, under the original `5e-6` relative
 gate. This source-mapping check does not establish Sonnet's native RF volume
 loss law or general device convergence.
+
+
+## Conductor surface impedance range recovery
+
+`planar_layered_surface_zs` and the two-sheet half-film relation preserve
+representable impedance components across gamma-square, thickness-square
+and intermediate product range loss. General cascades recover in scoped
+wide precision, retaining higher caller/input precision. Positive Float64
+single open films recover through exponent-balanced products. Results
+outside the scalar output range reject explicitly. The two-sheet wrapper
+widens before halving when a subnormal thickness component would be lost.
+
+Julia 1.12.7 and 1.13.1 pass 958 focused checks, including 906 new material
+regression assertions. The public grid qualifies 244 representable cases
+and 10 range rejections; independent transfer matrices qualify 32
+loaded/plated/complex/bare cases. Sixty-six ordinary controls retain
+impedance bits and warmed allocation minima. Three rare single-film calls
+allocate zero Julia bytes in five warmed samples per case/version.
+Concurrent two-layer wide calls preserve precision scopes. These scoped
+results do not establish unrestricted numerical range, peak-memory limits,
+native frequency-dependent Volume Loss or complete Sonnet parity.
