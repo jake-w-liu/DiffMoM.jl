@@ -174,8 +174,8 @@
       "rule": "placeholder-implementation",
       "line": 459,
       "hash_mode": "lf",
-      "sha256": "ae805e1d15adf2735cc3af51e2b962081058b8fde4a26b722f98e8313fcc47b2",
-      "reason": "Explicit fail-closed rejection of dimensional pad resize (-1) in the documented read_odb_features supported subset; ordinary indexed pads are implemented. This does not certify resize support. Archived parser copies retain their original bytes."
+      "sha256": "ff0eaaba094b68b6a58c4a41532d6c5a5ae77f3a7cfe2b1e343f6cd4c17a6af8",
+      "reason": "Explicit fail-closed rejection of dimensional pad resize (-1) in the documented read_odb_features supported subset; ordinary indexed pads are implemented. This does not certify resize support. Archived parser copies retain their original bytes. Reviewed follow-up changes only three omitted byte-budget keyword defaults to the checked OS available-memory helper; the exact line459 unsupported-variant rejection and every parser body byte are unchanged."
     },
     {
       "path": "validation/sonnet_stripline/odb_composite_stroke_reference/allocation_source_snapshot/src/planar/PlanarODBIO.jl",
