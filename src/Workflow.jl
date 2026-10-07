@@ -86,7 +86,7 @@ produce a warning (or error if `error_on_underresolved=true`).
 - `aca_leaf_size=64`: cluster tree leaf size
 - `aca_eta=1.5`: admissibility parameter
 - `aca_max_rank=50`: maximum rank per low-rank block
-- `max_aca_storage_bytes=2_000_000_000`: persistent ACA block-payload limit,
+- `max_aca_storage_bytes=Sys.free_memory()`: persistent ACA block-payload limit,
   including dense replacements of low-rank blocks
 
 ## General
@@ -97,7 +97,7 @@ produce a warning (or error if `error_on_underresolved=true`).
   the assembled operator, checked factorization, preconditioner, and excitation
 - `max_true_residual_exact_terms=2_000_000`: cancellation-sensitive work budget
   per true-residual evaluation, also inherited by a retained state
-- `max_dense_matrix_bytes=2_000_000_000`: raw-payload ceiling for the dense
+- `max_dense_matrix_bytes=Sys.free_memory()`: raw-payload ceiling for the dense
   EFIE matrix, and for the simultaneous matrix, factor, pivot, and field
   buffers on the dense-direct path
 
@@ -130,7 +130,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           aca_leaf_size::Int=64,
                           aca_eta::Float64=1.5,
                           aca_max_rank::Int=50,
-                          max_aca_storage_bytes::Integer=_DEFAULT_MAX_ACA_STORAGE_BYTES,
+                          max_aca_storage_bytes::Integer=_default_max_dense_payload_bytes(),
                           verbose::Bool=true,
                           quad_order::Int=3,
                           c0::Real=C0_DEFAULT,

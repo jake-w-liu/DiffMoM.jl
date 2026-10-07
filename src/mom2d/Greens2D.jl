@@ -275,7 +275,7 @@ end
 
 """
     assemble_D_matrix(mesh::Mesh2D, k;
-                      max_output_bytes=2_000_000_000)
+                      max_output_bytes=Sys.free_memory())
 
 Assemble the Green's function integral matrix D where:
   D[m,n] = ∫_{cell_n} G₂D(r_m, r') dA'

@@ -444,7 +444,7 @@ function precompute_patch_mass(
 end
 
 """
-    assemble_Z_impedance(Mp, theta; max_output_bytes=2_000_000_000)
+    assemble_Z_impedance(Mp, theta; max_output_bytes=Sys.free_memory())
 
 Assemble the impedance contribution to the MoM matrix:
 Z_imp = -Σ_p θ_p M_p

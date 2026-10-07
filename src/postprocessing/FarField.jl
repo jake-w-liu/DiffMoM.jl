@@ -426,7 +426,7 @@ end
     radiation_vectors(mesh, rwg, grid, k;
                       quad_order=3,
                       eta0=376.730313668,
-                      max_output_bytes=2_000_000_000,
+                      max_output_bytes=Sys.free_memory(),
                       max_work_bytes=536_870_912,
                       max_terms=200_000_000,
                       max_exact_work=2_000_000)

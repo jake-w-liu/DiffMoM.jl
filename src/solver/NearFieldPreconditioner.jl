@@ -873,7 +873,7 @@ function build_nearfield_preconditioner(mesh::TriMesh, rwg::RWGData, k, cutoff::
                                          factorization::Symbol=:lu,
                                          ilu_tau::Float64=1e-3,
                                          max_cache_bytes::Integer=
-                                             _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                                             _default_max_dense_payload_bytes(),
                                          max_adjacency_pairs::Integer=
                                              _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                          max_green_cache_bytes::Integer=

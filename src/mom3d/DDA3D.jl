@@ -1917,7 +1917,7 @@ end
 """
     assemble_dda_3d(grid, k0, eps_r;
                     radiative_correction=false,
-                    max_output_bytes=2_000_000_000)
+                    max_output_bytes=Sys.free_memory())
 
 Assemble the dense coupled-dipole system
 
@@ -2205,7 +2205,7 @@ end
 
 """
     scattered_field_dda_3d(
-        result, r_obs; max_output_bytes=2_000_000_000)
+        result, r_obs; max_output_bytes=Sys.free_memory())
 
 Compute scattered electric field at observation points by summing the radiated
 field of all induced dipoles. Observation points must not coincide with voxel
@@ -2465,7 +2465,7 @@ function _farfield_sum_dda_3d(
 end
 
 """
-    farfield_dda_3d(result, rhat; max_output_bytes=2_000_000_000)
+    farfield_dda_3d(result, rhat; max_output_bytes=Sys.free_memory())
 
 Return the far-field amplitude `F(rhat)` such that
 

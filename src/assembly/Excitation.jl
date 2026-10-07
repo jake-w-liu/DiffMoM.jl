@@ -2820,7 +2820,7 @@ end
 """
     assemble_multiple_excitations(mesh, rwg, excitations;
                                   quad_order=3,
-                                  max_output_bytes=2_000_000_000,
+                                  max_output_bytes=Sys.free_memory(),
                                   max_work_bytes=536_870_912,
                                   max_terms=200_000_000)
 

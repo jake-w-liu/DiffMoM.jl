@@ -1112,7 +1112,7 @@ end
 """
     build_Q(G_mat, grid, pol;
             mask=nothing,
-            max_work_bytes=2_000_000_000)
+            max_work_bytes=Sys.free_memory())
 
 Build the Hermitian PSD matrix Q from radiation vectors and polarization.
 

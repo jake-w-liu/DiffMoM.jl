@@ -11,7 +11,6 @@ export MatrixFreeEFIEOperator, MatrixFreeEFIEAdjointOperator
 export matrixfree_efie_operator, matrixfree_efie_adjoint_operator
 export efie_entry
 
-const _DEFAULT_MAX_EFIE_CACHE_BYTES = 2_000_000_000
 const _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS = 20_000_000
 const _EFIE_EMPTY_VECTOR_BYTES = Base.summarysize(Vec3[])
 
@@ -140,7 +139,7 @@ end
 function _build_triangle_adjacency(
         mesh::TriMesh;
         fixed_payload_bytes::Int=0,
-        max_cache_bytes::Integer=_DEFAULT_MAX_EFIE_CACHE_BYTES,
+        max_cache_bytes::Integer=_default_max_dense_payload_bytes(),
         max_adjacency_pairs::Integer=_DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     Nt = ntriangles(mesh)
     cache_limit = _validated_resource_limit(
@@ -335,7 +334,7 @@ function _build_efie_cache(
         k;
         quad_order::Int=3,
         eta0=376.730313668,
-        max_cache_bytes::Integer=_DEFAULT_MAX_EFIE_CACHE_BYTES,
+        max_cache_bytes::Integer=_default_max_dense_payload_bytes(),
         max_adjacency_pairs::Integer=_DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     _validate_mesh_rwg_pair(mesh, rwg)
     kw, inv_k2, omega_mu0 = _validated_efie_prefactors(k, eta0)
@@ -689,8 +688,8 @@ end
                     mesh_precheck=true,
                     allow_boundary=true,
                     require_closed=false,
-                    max_output_bytes=2_000_000_000,
-                    max_cache_bytes=2_000_000_000,
+                    max_output_bytes=Sys.free_memory(),
+                    max_cache_bytes=Sys.free_memory(),
                     max_adjacency_pairs=20_000_000)
 
 Assemble the dense EFIE matrix `Z_efie ∈ C^{N×N}`.
@@ -705,7 +704,7 @@ function assemble_Z_efie(mesh::TriMesh, rwg::RWGData, k;
                          max_output_bytes::Integer=
                              _default_max_dense_payload_bytes(),
                          max_cache_bytes::Integer=
-                             _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                             _default_max_dense_payload_bytes(),
                          max_adjacency_pairs::Integer=
                              _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     _validate_mesh_rwg_pair(mesh, rwg)
@@ -1112,7 +1111,7 @@ function matrixfree_efie_operator(mesh::TriMesh, rwg::RWGData, k;
                                   require_closed::Bool=false,
                                   area_tol_rel::Float64=1e-12,
                                   max_cache_bytes::Integer=
-                                      _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                                      _default_max_dense_payload_bytes(),
                                   max_adjacency_pairs::Integer=
                                       _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     _validate_mesh_rwg_pair(mesh, rwg)

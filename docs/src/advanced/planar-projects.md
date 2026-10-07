@@ -297,3 +297,17 @@ changing the solved current geometry; default boundaries remain the EM box.
 return `PlanarNetworkData`. Connectivity operates on the physical geometry
 and declared nets. `max_bytes` reserves derived layout, retained EM data,
 circuit workspace and sweep output across the operation.
+
+## Radiation at normal observation angles
+
+At `theta=0` and `theta=pi`, `planar_farfield` evaluates the physical
+transverse wavevector as zero and supplies the polarization basis from the
+requested `phi`. A purely vertical current therefore has zero radiated
+field along its axis. The spherical components of a transverse current
+rotate with `phi`, including the sign of the south-pole theta basis.
+
+For nonzero angles near the axis, the transverse component uses
+`sin(theta)` directly. This preserves separately representable small
+fields even when `cos(theta)` rounds to one; no minimum transverse angle
+is imposed. The existing grazing-angle regularization is retained and
+its horizon limit requires separate verification.

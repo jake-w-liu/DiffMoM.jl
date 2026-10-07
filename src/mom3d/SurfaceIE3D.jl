@@ -52,7 +52,6 @@ end
 # EFIE primitive. The ordinary path remains allocation-free; exponent-range
 # loss, overflow, and ill-conditioned finite reductions enter this cold path.
 const _MFIE_MATVEC_FALLBACK_PRECISION_3D = 4352
-const _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D = 2_000_000_000
 const _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D = 20_000_000
 const _SURFACE_EMPTY_VECTOR_BYTES_3D = Base.summarysize(Vec3[])
 
@@ -266,7 +265,7 @@ end
 function _triangle_near_pairs_3d(
         mesh::TriMesh;
         fixed_payload_bytes::Int=0,
-        max_cache_bytes::Integer=_DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+        max_cache_bytes::Integer=_default_max_dense_payload_bytes(),
         max_near_pairs::Integer=_DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     Nt = ntriangles(mesh)
     cache_limit = _validated_resource_limit(
@@ -384,7 +383,7 @@ function _build_surface_operator_cache_3d(
         mesh::TriMesh,
         quad_order::Int,
         singular_quad_order::Int;
-        max_cache_bytes::Integer=_DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+        max_cache_bytes::Integer=_default_max_dense_payload_bytes(),
         max_near_pairs::Integer=_DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     xi, wq = tri_quad_rule(quad_order)
     xi_hi, wq_hi = tri_quad_rule(singular_quad_order)
@@ -527,8 +526,8 @@ end
 
 """
     assemble_magnetic_field_operator_3d(mesh, rwg, k; quad_order=3,
-                                        max_output_bytes=2_000_000_000,
-                                        max_cache_bytes=2_000_000_000,
+                                        max_output_bytes=Sys.free_memory(),
+                                        max_cache_bytes=Sys.free_memory(),
                                         max_near_pairs=20_000_000)
 
 Assemble the dense magnetic-field principal-value operator
@@ -542,7 +541,7 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                              area_tol_rel::Float64=1e-12,
                                              max_output_bytes::Integer=_default_max_dense_payload_bytes(),
                                              max_cache_bytes::Integer=
-                                                 _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                                 _default_max_dense_payload_bytes(),
                                              max_near_pairs::Integer=
                                                  _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     kc = _validated_surface_wavenumber_3d(k)
@@ -591,7 +590,7 @@ function matrixfree_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                                mesh_precheck::Bool=true,
                                                area_tol_rel::Float64=1e-12,
                                                max_cache_bytes::Integer=
-                                                   _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                                   _default_max_dense_payload_bytes(),
                                                max_near_pairs::Integer=
                                                    _DEFAULT_MAX_SURFACE_NEAR_PAIRS_3D)
     kc = _validated_surface_wavenumber_3d(k)
@@ -878,7 +877,7 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                 area_tol_rel::Float64=1e-12,
                                 max_work_bytes::Integer=_default_max_dense_payload_bytes(),
                                 max_cache_bytes::Integer=
-                                    _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                    _default_max_dense_payload_bytes(),
                                 max_adjacency_pairs::Integer=
                                     _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                 max_near_pairs::Integer=
@@ -1028,7 +1027,7 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
                                                area_tol_rel::Float64=1e-12,
                                                max_gram_storage_bytes::Integer=_default_max_dense_payload_bytes(),
                                                max_cache_bytes::Integer=
-                                                   _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                                   _default_max_dense_payload_bytes(),
                                                max_adjacency_pairs::Integer=
                                                    _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                                max_near_pairs::Integer=
@@ -1439,7 +1438,7 @@ end
 """
     assemble_dielectric_sie_3d(mesh, rwg, k0, epsr_in;
                                formulation=:pmchwt,
-                               max_work_bytes=2_000_000_000, ...)
+                               max_work_bytes=Sys.free_memory(), ...)
 
 Assemble a dense closed-surface dielectric SIE matrix for isotropic homogeneous
 interior/exterior media. Unknowns are stacked RWG coefficients `[J; M]`.
@@ -1457,7 +1456,7 @@ function assemble_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                     area_tol_rel::Float64=1e-12,
                                     max_work_bytes::Integer=_default_max_dense_payload_bytes(),
                                     max_cache_bytes::Integer=
-                                        _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                        _default_max_dense_payload_bytes(),
                                     max_adjacency_pairs::Integer=
                                         _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                     max_near_pairs::Integer=
@@ -1519,7 +1518,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  max_work_bytes::Integer=_default_max_dense_payload_bytes(),
                                  max_gram_storage_bytes::Integer=_default_max_dense_payload_bytes(),
                                  max_cache_bytes::Integer=
-                                     _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                     _default_max_dense_payload_bytes(),
                                  max_adjacency_pairs::Integer=
                                      _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                  max_near_pairs::Integer=
@@ -1611,7 +1610,7 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  max_work_bytes::Integer=_default_max_dense_payload_bytes(),
                                  max_gram_storage_bytes::Integer=_default_max_dense_payload_bytes(),
                                  max_cache_bytes::Integer=
-                                     _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
+                                     _default_max_dense_payload_bytes(),
                                  max_adjacency_pairs::Integer=
                                      _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                  max_near_pairs::Integer=

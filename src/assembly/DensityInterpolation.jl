@@ -221,7 +221,7 @@ end
 
 """
     assemble_Z_penalty(Mt, rho_bar, config;
-                       max_output_bytes=2_000_000_000)
+                       max_output_bytes=Sys.free_memory())
 
 Assemble the density penalty matrix:
 

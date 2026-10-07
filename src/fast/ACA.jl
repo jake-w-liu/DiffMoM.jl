@@ -23,7 +23,6 @@ const _ACA_PRODUCT_FALLBACK_PRECISION = 8704
 const _ACA_BIGFLOAT_OUTPUT_CHUNK = 512
 const _ACA_SAFE_FACTOR_EXPONENT = 128
 const _DEFAULT_MAX_ACA_BLOCK_TASKS = 2_000_000
-const _DEFAULT_MAX_ACA_STORAGE_BYTES = 2_000_000_000
 const _DEFAULT_MAX_ACA_GREEN_WORKSPACE_BYTES = 256 * 1024 * 1024
 const _DEFAULT_MAX_ACA_GREEN_CACHE_ENTRIES = 250_000
 
@@ -546,7 +545,7 @@ function aca_lowrank(cache::EFIEApplyCache,
                      tol::Float64=1e-6,
                      max_rank::Int=50,
                      max_output_bytes::Integer=
-                         _DEFAULT_MAX_ACA_STORAGE_BYTES)
+                         _default_max_dense_payload_bytes())
     _validate_aca_options(tol, max_rank)
     m = length(row_indices)
     n = length(col_indices)
@@ -986,9 +985,9 @@ Dense blocks use triangle-pair batched Green's function evaluation for
 - `quad_order=3`: quadrature order for EFIE entries
 - `eta0=376.730313668`: free-space impedance
 - `max_block_tasks=2_000_000`: block-enumeration limit
-- `max_storage_bytes=2_000_000_000`: raw persistent block-payload limit,
+- `max_storage_bytes=Sys.free_memory()`: raw persistent block-payload limit,
   including any dense replacement of a failed low-rank block
-- `max_cache_bytes=2_000_000_000`: EFIE quadrature/cache workspace limit
+- `max_cache_bytes=Sys.free_memory()`: EFIE quadrature/cache workspace limit
 - `max_adjacency_pairs=20_000_000`: triangle-adjacency pair-record limit
 - `max_green_cache_bytes=268_435_456`: per-worker cached/scratch Green-matrix
   raw-payload limit
@@ -1006,9 +1005,9 @@ function build_aca_operator(mesh::TriMesh, rwg::RWGData, k;
                             require_closed::Bool=false,
                             area_tol_rel::Float64=1e-12,
                             max_block_tasks::Int=_DEFAULT_MAX_ACA_BLOCK_TASKS,
-                            max_storage_bytes::Int=_DEFAULT_MAX_ACA_STORAGE_BYTES,
+                            max_storage_bytes::Int=_default_max_dense_payload_bytes(),
                             max_cache_bytes::Integer=
-                                _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                                _default_max_dense_payload_bytes(),
                             max_adjacency_pairs::Integer=
                                 _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                             max_green_cache_bytes::Integer=

@@ -12,7 +12,6 @@ export SphereSampling, assemble_mlfma_nearfield
 
 const _MLFMA_TRUNCATION_FALLBACK_PRECISION = 256
 const _DEFAULT_MAX_SPHERE_SAMPLING_POINTS = 2_100_000
-const _DEFAULT_MAX_MLFMA_SETUP_BYTES = 2_000_000_000
 const _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES = 50_000_000
 const _DEFAULT_MAX_MLFMA_TRANSLATION_TERMS = 50_000_000
 const _DEFAULT_MAX_MLFMA_MATVEC_SCRATCH_BYTES = 512 * 1024 * 1024
@@ -1050,9 +1049,9 @@ function assemble_mlfma_nearfield(octree::Octree, mesh::TriMesh, rwg::RWGData, k
                                    max_nearfield_entries::Int=
                                        _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES,
                                    max_nearfield_bytes::Int=
-                                       _DEFAULT_MAX_MLFMA_SETUP_BYTES,
+                                       _default_max_dense_payload_bytes(),
                                    max_cache_bytes::Integer=
-                                       _DEFAULT_MAX_EFIE_CACHE_BYTES,
+                                       _default_max_dense_payload_bytes(),
                                    max_adjacency_pairs::Integer=
                                        _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS)
     _validate_mesh_rwg_pair(mesh, rwg)
@@ -1726,9 +1725,9 @@ Build an MLFMA operator for the EFIE system.
 - `precision=3`: translation truncation precision parameter
 - `eta0=376.730313668`: free-space impedance
 - `max_sampling_points=2_100_000`: per-level spherical-grid resource limit
-- `max_setup_bytes=2_000_000_000`: estimated octree and MLFMA setup-storage limit
+- `max_setup_bytes=Sys.free_memory()`: estimated octree and MLFMA setup-storage limit
 - `max_nearfield_entries=50_000_000`: exact near-field entry-count limit
-- `max_nearfield_bytes=2_000_000_000`: raw near-field CSC-payload limit
+- `max_nearfield_bytes=Sys.free_memory()`: raw near-field CSC-payload limit
 - `max_adjacency_pairs=20_000_000`: triangle-adjacency pair-record limit
 - `max_translation_terms=50_000_000`: per-offset Legendre work limit
 - `max_matvec_scratch_bytes=536_870_912`: exponent-band scratch limit
@@ -1744,11 +1743,11 @@ function build_mlfma_operator(mesh::TriMesh, rwg::RWGData, k::Float64;
                                max_sampling_points::Int=
                                    _DEFAULT_MAX_SPHERE_SAMPLING_POINTS,
                                max_setup_bytes::Int=
-                                   _DEFAULT_MAX_MLFMA_SETUP_BYTES,
+                                   _default_max_dense_payload_bytes(),
                                max_nearfield_entries::Int=
                                    _DEFAULT_MAX_MLFMA_NEARFIELD_ENTRIES,
                                max_nearfield_bytes::Int=
-                                   _DEFAULT_MAX_MLFMA_SETUP_BYTES,
+                                   _default_max_dense_payload_bytes(),
                                max_adjacency_pairs::Int=
                                    _DEFAULT_MAX_EFIE_ADJACENCY_PAIRS,
                                max_translation_terms::Int=

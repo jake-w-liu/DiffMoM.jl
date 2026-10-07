@@ -39,7 +39,6 @@ end
 const _MAX_OCTREE_DEPTH = min(8 * sizeof(Int) - 2, precision(Float64) - 1)
 const _OCTREE_GEOMETRY_FALLBACK_PRECISION = 256
 const _DEFAULT_MAX_OCTREE_BOXES = 30_000_000
-const _DEFAULT_MAX_OCTREE_STORAGE_BYTES = 2_000_000_000
 const _MAX_OCTREE_NEIGHBORS = 27
 const _MAX_OCTREE_INTERACTIONS = 189
 const _OCTREE_EMPTY_INT_VECTOR_BYTES = Base.summarysize(Int[])
@@ -142,7 +141,7 @@ end
     build_octree(centers, k;
                  leaf_lambda=0.25,
                  max_boxes=30_000_000,
-                 max_storage_bytes=2_000_000_000)
+                 max_storage_bytes=Sys.free_memory())
 
 Build an octree over RWG basis function centers for MLFMA.
 
@@ -156,7 +155,7 @@ function build_octree(
         k::Float64;
         leaf_lambda::Float64=0.25,
         max_boxes::Integer=_DEFAULT_MAX_OCTREE_BOXES,
-        max_storage_bytes::Integer=_DEFAULT_MAX_OCTREE_STORAGE_BYTES)
+        max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     N = length(centers)
     N > 0 || throw(ArgumentError("build_octree: centers must not be empty"))
     leaf_edge = _validated_octree_leaf_edge(k, leaf_lambda)

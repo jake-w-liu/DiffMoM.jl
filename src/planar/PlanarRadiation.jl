@@ -147,10 +147,11 @@ end
         h*hb*(s-c2)-ys*h*h*vb*c3
 end
 
-function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,pol,V,H,side)
+function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.))
     cp,sp=if iszero(kx) && iszero(ky)
-        # Caller rotates this normal-incidence basis through its phi.
-        (1.,0.)
+        # At an axial pole, azimuth sets the transverse basis without
+        # adding a fictitious transverse wave number.
+        normal_direction
     else
         kc=hypot(kx,ky);(kx/kc,ky/kc)
     end
@@ -181,8 +182,8 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
     return overlap
 end
 
-function _planar_radiation_overlap(prob::PlanarConformalProblem,coeff,stack,omega,kx,ky,pol,V,H,side)
-    kc=hypot(kx,ky);cp,sp=iszero(kc) ? (1.,0.) : (kx/kc,ky/kc)
+function _planar_radiation_overlap(prob::PlanarConformalProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.))
+    kc=hypot(kx,ky);cp,sp=iszero(kc) ? normal_direction : (kx/kc,ky/kc)
     result=0.0im;L=length(stack.layers)
     for b in eachindex(coeff)
         fx,fy=_planar_conformal_fourier(prob,b,kx,ky)
@@ -192,10 +193,10 @@ function _planar_radiation_overlap(prob::PlanarConformalProblem,coeff,stack,omeg
     end
     return result
 end
-function _planar_radiation_overlap(prob::PlanarHybridProblem,coeff,stack,omega,kx,ky,pol,V,H,side)
+function _planar_radiation_overlap(prob::PlanarHybridProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.))
     nc=length(prob.conformal.basis.width)
-    return _planar_radiation_overlap(prob.conformal,view(coeff,1:nc),stack,omega,kx,ky,pol,V,H,side)+
-        _planar_radiation_overlap(prob.bulk,view(coeff,nc+1:length(coeff)),stack,omega,kx,ky,pol,V,H,side)
+    return _planar_radiation_overlap(prob.conformal,view(coeff,1:nc),stack,omega,kx,ky,pol,V,H,side,normal_direction)+
+        _planar_radiation_overlap(prob.bulk,view(coeff,nc+1:length(coeff)),stack,omega,kx,ky,pol,V,H,side,normal_direction)
 end
 _planar_radiation_basis_count(prob::PlanarProblem)=planar_basis_count(prob.basis)
 _planar_radiation_basis_count(prob::PlanarConformalProblem)=length(prob.basis.width)
@@ -210,17 +211,20 @@ function _planar_farfield_direction(prob,coeff,stack,frequency,theta,phi)
     eta=sqrt(_MU0*real(term.mur)/(_EPS0*real(term.epsr)))
     # Grazing incidence is the continuous one-sided limit. Keeping a
     # small nonzero axial component resolves the TE/TM cutoff degeneracy.
-    c=max(abs(cos(theta)),1e-7);s=sqrt(max(0.,1-c*c))
-    # Normal incidence uses a tiny azimuth-preserving transverse k, so
-    # polarization rotates with phi without dividing by zero.
-    s=max(s,1e-12)
+    axial=abs(cos(theta));c=max(axial,1e-7)
+    # Exact pole endpoints have zero transverse phase. Elsewhere sin(theta)
+    # preserves near-axis angles whose cosine rounds to one. The existing
+    # grazing regularization remains a separate qualification requirement.
+    pole=iszero(theta) || theta==Float64(pi)
+    s=c==axial ? (pole ? 0. : sin(theta)) : sqrt(max(0.,1-c*c))
+    normal_direction=(cos(phi),sin(phi))
     kx,ky=k*s*cos(phi),k*s*sin(phi);kc2=kx*kx+ky*ky
     receiving=side==1 ? stack : PlanarStackup(reverse(stack.layers),stack.top,stack.bottom,stack.a,stack.b)
     vtm=side*c
     Vtm,Htm=_planar_receive_direction(receiving,omega,k,kc2,c,TM_POL,vtm,eta*c)
     Vte,Hte=_planar_receive_direction(receiving,omega,k,kc2,c,TE_POL,1.,eta/c)
-    tm=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TM_POL,Vtm,Htm,side)
-    te=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TE_POL,Vte,Hte,side)
+    tm=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TM_POL,Vtm,Htm,side,normal_direction)
+    te=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TE_POL,Vte,Hte,side,normal_direction)
     # V/H are referenced at the exterior interface. Restore its physical
     # origin to obtain the absolute phase of the outgoing spherical wave.
     zface=side==1 ? sum(real(l.thickness) for l in stack.layers) : 0.

@@ -1168,7 +1168,7 @@ end
 
 """
     scattered_fields_em_dda_3d(
-        result, r_obs; max_output_bytes=2_000_000_000)
+        result, r_obs; max_output_bytes=Sys.free_memory())
 
 Compute scattered electric and magnetic fields at observation points by
 summing induced electric and magnetic dipoles. Returns `(E_scat, H_scat)`.
@@ -1484,7 +1484,7 @@ end
 """
     farfield_em_dda_3d(
         result, rhat; eta0=result.eta0,
-        max_output_bytes=2_000_000_000)
+        max_output_bytes=Sys.free_memory())
 
 Return `(F_E, F_H)` such that `E_scat ~= exp(-ikr) F_E / r` and
 `H_scat ~= exp(-ikr) F_H / r` in observation direction `rhat`. The output-size

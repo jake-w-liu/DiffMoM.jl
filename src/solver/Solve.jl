@@ -1631,7 +1631,7 @@ end
 
 """
     assemble_full_Z(Z_efie, Mp, theta; reactive=false,
-                    max_output_bytes=2_000_000_000)
+                    max_output_bytes=Sys.free_memory())
 
 Assemble the full MoM matrix: Z(θ) = Z_efie + Z_imp(θ)
 
@@ -1738,7 +1738,7 @@ end
 end
 
 """
-    make_mass_regularizer(Mp; max_output_bytes=2_000_000_000)
+    make_mass_regularizer(Mp; max_output_bytes=Sys.free_memory())
 
 Build a Hermitian positive-semidefinite mass-based regularizer from patch
 mass matrices:
@@ -1826,7 +1826,7 @@ end
 
 """
     make_left_preconditioner(Mp; eps_rel=1e-8,
-                             max_output_bytes=2_000_000_000)
+                             max_output_bytes=Sys.free_memory())
 
 Build a simple mass-based left preconditioner matrix:
   M = R + ϵ I,  R = Σ_p M_p
@@ -1866,7 +1866,7 @@ end
                           n_threshold=256,
                           iterative_solver=false,
                           eps_rel=1e-6,
-                          max_output_bytes=2_000_000_000)
+                          max_output_bytes=Sys.free_memory())
 
 Select the effective left preconditioner matrix used by the solver.
 
@@ -1931,7 +1931,7 @@ end
 """
     transform_patch_matrices(Mp; preconditioner_M=nothing,
                              preconditioner_factor=nothing,
-                             max_output_bytes=2_000_000_000)
+                             max_output_bytes=Sys.free_memory())
 
 Transform derivative blocks under left preconditioning:
   M_p_tilde = M^{-1} M_p

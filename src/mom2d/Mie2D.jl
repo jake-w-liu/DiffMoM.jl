@@ -955,7 +955,7 @@ end
 """
     mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing,
                            pec=false, max_field_terms=50_000_000,
-                           max_output_bytes=2_000_000_000)
+                           max_output_bytes=Sys.free_memory())
 
 Compute exact scattered field at observation points for a circular cylinder.
 Observation points must lie on or outside the cylinder (`ρ ≥ a`); the
@@ -1321,7 +1321,7 @@ end
 """
     mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing,
                        pec=false, max_field_terms=50_000_000,
-                       max_output_bytes=2_000_000_000)
+                       max_output_bytes=Sys.free_memory())
 
 Compute exact total field (incident + scattered) at observation points on or
 outside the cylinder (ρ ≥ a). `max_output_bytes` caps the raw payload of

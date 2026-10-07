@@ -463,8 +463,8 @@ end
 """
     assemble_Z_efie_periodic(mesh, rwg, k, lattice;
                              quad_order=3, eta0=376.730313668,
-                             max_work_bytes=2_000_000_000,
-                             max_cache_bytes=2_000_000_000,
+                             max_work_bytes=Sys.free_memory(),
+                             max_cache_bytes=Sys.free_memory(),
                              max_adjacency_pairs=20_000_000,
                              max_green_terms=500_000_000)
 

@@ -257,7 +257,7 @@ end
 
 """
     assemble_vie_2d(mesh, k0, chi;
-                    max_output_bytes=2_000_000_000)
+                    max_output_bytes=Sys.free_memory())
 
 Assemble VIE system matrix: Z[m,n] = δ[m,n] - k₀² χ[n] D[m,n]
 
@@ -360,7 +360,7 @@ end
 
 """
     solve_vie_2d(mesh, k0, chi, E_inc;
-                 max_output_bytes=2_000_000_000)
+                 max_output_bytes=Sys.free_memory())
 
 Solve the 2D VIE for internal total fields.
 Returns `VIEResult2D` with all computed quantities for downstream use.

@@ -84,7 +84,7 @@ end
 """
     condition_error_observations(mass, V, t; tau=1.0,
         rank_rtol=64eps(Float64), consistency_rtol=1e-10,
-        max_work_bytes=2_000_000_000)
+        max_work_bytes=Sys.free_memory())
 
 Condition w ~ CN(0, tau^2 * inv(mass)) on V*w=t. Sparse Cholesky whitens
 the coefficient prior; a thin SVD identifies independent information.
@@ -185,7 +185,7 @@ struct ErrorOutputs
 end
 
 """
-    sample_error_outputs(outputs, rng, count; max_work_bytes=2_000_000_000)
+    sample_error_outputs(outputs, rng, count; max_work_bytes=Sys.free_memory())
 
 Draw joint proper-complex output samples. A thin SVD of the existing output
 factor reduces the sampling dimension to at most the number of output rows.
@@ -242,7 +242,7 @@ end
 
 """
     condition_discretization_error(system, probes; tau,
-        triangle_weights=nothing, max_work_bytes=2_000_000_000, kwargs...)
+        triangle_weights=nothing, max_work_bytes=Sys.free_memory(), kwargs...)
 
 Compute selected Schur rows through coarse adjoints and fine operator
 actions, assemble the weighted fine-space mass, restrict it with Q, and
@@ -310,7 +310,7 @@ end
 
 """
     evaluate_error_outputs(model, fine_output_map;
-        row_batch_size=24, max_work_bytes=2_000_000_000)
+        row_batch_size=24, max_work_bytes=Sys.free_memory())
 
 Propagate H=G_f*Q-G_f*P*A^(-1)*B through selected coarse adjoints. Project
 whitened output rows and form their Gram covariance. Batches retain common
@@ -396,7 +396,7 @@ end
 
 """
     sample_conditioned_error(conditioning, rng, count;
-        max_work_bytes=2_000_000_000)
+        max_work_bytes=Sys.free_memory())
 
 Draw proper-complex coefficient samples with shared latent coordinates and
 an explicit RNG. A zero count returns an empty matrix. Full information

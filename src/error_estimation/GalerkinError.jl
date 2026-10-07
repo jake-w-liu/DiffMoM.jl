@@ -108,7 +108,7 @@ end
 """
     prepare_galerkin_error(state, pair, fine_operator, fine_rhs;
         restriction_rtol=0.0, restriction_atol=0.0,
-        rebuild_on_mismatch=true, max_work_bytes=2_000_000_000)
+        rebuild_on_mismatch=true, max_work_bytes=Sys.free_memory())
 
 Form A=P'Z_fP, b_c=P'b_f and r=Q'(b_f-Z_f*P*x_h) using canonical operator
 actions and checked solves. The supplied fine operator/RHS must use the
@@ -292,7 +292,7 @@ end
 
 """
     prepare_error_outputs(system, fine_output_map;
-        row_batch_size=24, max_work_bytes=2_000_000_000)
+        row_batch_size=24, max_work_bytes=Sys.free_memory())
 
 Compute H=G_f*Q-G_f*P*A^(-1)*B using coarse adjoints and fine actions.
 Retain common rows for conditioning comparisons or an operator-based probe
@@ -339,7 +339,7 @@ end
 
 """
     output_residual_probes(prepared; rows=nothing,
-        rank_rtol=64eps(Float64), max_work_bytes=2_000_000_000)
+        rank_rtol=64eps(Float64), max_work_bytes=Sys.free_memory())
 
 Build fixed output-informed residual tests from H*inv(diag(D)), where D is
 the unresolved fine block. An SVD returns an orthonormal basis for the

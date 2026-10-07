@@ -73,7 +73,7 @@ end
     build_cluster_tree(centers;
                        leaf_size=64,
                        max_nodes=30_000_000,
-                       max_storage_bytes=2_000_000_000)
+                       max_storage_bytes=Sys.free_memory())
 
 Build a binary cluster tree by recursive bisection along the longest
 bounding-box axis. `centers` is a `Vector{Vec3}` of point locations

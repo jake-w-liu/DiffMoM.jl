@@ -165,8 +165,8 @@ end
 
 """
     assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3,
-                             max_work_bytes=2_000_000_000,
-                             max_cache_bytes=2_000_000_000,
+                             max_work_bytes=Sys.free_memory(),
+                             max_cache_bytes=Sys.free_memory(),
                              max_adjacency_pairs=20_000_000,
                              max_green_terms=500_000_000)
 

@@ -578,7 +578,7 @@ end
     build_multiangle_configs(mesh, rwg, k, angles;
                              grid, backscatter_cone=15.0,
                              matrix_free_Q=false, rcs_component=:copol,
-                             max_work_bytes=2_000_000_000)
+                             max_work_bytes=Sys.free_memory())
 
 Build `AngleConfig` entries for multi-angle monostatic RCS optimization.
 

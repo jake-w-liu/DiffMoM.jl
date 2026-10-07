@@ -8,7 +8,7 @@ export scattered_field_2d, green_obs_matrix, jacobian_scattered_field_2d
 
 """
     green_obs_matrix(r_obs, mesh, k0;
-                     max_output_bytes=2_000_000_000)
+                     max_output_bytes=Sys.free_memory())
 
 Compute the observation Green's function matrix G_obs[m,n] = G₂D(r_obs[m], r_n).
 Observation points must be outside the scattering domain.
@@ -129,7 +129,7 @@ function _scattered_field_sum_2d(
 end
 
 """
-    scattered_field_2d(vie_result, r_obs; max_output_bytes=2_000_000_000)
+    scattered_field_2d(vie_result, r_obs; max_output_bytes=Sys.free_memory())
 
 Compute scattered field at observation points using solved VIE result.
 E_scat(r_obs) = k₀² Σ_n χ_n E_n G₂D(r_obs, r_n) A_n
@@ -163,7 +163,7 @@ end
 
 """
     jacobian_scattered_field_2d(
-        vie_result, r_obs; max_work_bytes=2_000_000_000)
+        vie_result, r_obs; max_work_bytes=Sys.free_memory())
 
 Compute the Jacobian J[m,p] = ∂E_scat(r_obs[m])/∂χ_p.
 

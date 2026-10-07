@@ -258,7 +258,7 @@ end
 """
     calibrate_rcs(case_scores, context; calibration_case_ids,
         training_case_ids=String[], epsilon=0.05,
-        max_work_bytes=2_000_000_000)
+        max_work_bytes=Sys.free_memory())
 
 Use ceil((n+1)*(1-epsilon)) in the scores augmented by infinity. Each score
 must come from a whole case through the same frozen prediction algorithm.
