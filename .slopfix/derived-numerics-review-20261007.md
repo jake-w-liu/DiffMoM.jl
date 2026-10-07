@@ -53,3 +53,20 @@ static, exact measured accounting, documentation, native equivalence and
 hosted publication evidence remain separate requirements. The first normal
 documentation build exceeded the existing API page size gate; the same
 prose moved to the project guide while preserving that gate and API page.
+
+## Separately representable near-axis fields
+
+A fresh machine-boundary probe found six of eighteen representable fields
+erased by squaring a small transverse wave number on both Julia versions.
+The vertical-current projection now uses its linear `hypot` norm; the
+squared value remains solely in the dispersion relation. No numerical
+threshold or tolerance is added. All 120 focused radiation assertions and
+134 original radiation assertions pass both versions under the unchanged
+independent field oracle. The durable module adds 36 assertions to the
+previous 84; the 18 backend assertions remain unchanged. Original docs
+with the linear-norm explanation pass the unchanged Documenter gates.
+
+The older source15 queued complete run was stopped before Julia launch,
+and all snapshots and failed probes were retained. Latest integrated full,
+native, static, exact accounting, committed equivalence and hosted CI
+qualification are required before main publication.

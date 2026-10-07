@@ -309,5 +309,7 @@ rotate with `phi`, including the sign of the south-pole theta basis.
 For nonzero angles near the axis, the transverse component uses
 `sin(theta)` directly. This preserves separately representable small
 fields even when `cos(theta)` rounds to one; no minimum transverse angle
-is imposed. The existing grazing-angle regularization is retained and
+is imposed. The vertical-current projection retains the linear transverse
+norm with `hypot`; a separately representable field is preserved when the
+squared wave number underflows. The existing grazing-angle regularization is retained and
 its horizon limit requires separate verification.

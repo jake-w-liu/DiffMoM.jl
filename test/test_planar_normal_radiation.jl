@@ -20,7 +20,10 @@ end
   sinc0(x)=iszero(x) ? 1. : sin(x)/x
   for kind in (DiffMoM._BASIS_VIA_U,DiffMoM._BASIS_VIA_T)
    coeff=zeros(ComplexF64,length(prob.basis.kind));coeff[findfirst(==(kind),prob.basis.kind)]=.8+.2im
-   for theta in (eps(Float64)^2,eps(Float64),sqrt(eps(Float64)),prevfloat(Float64(pi))),phi in (0.,.2,pi/2)
+   # The additional angles straddle the smallest representable square,
+   # where a linear projection must use the norm before squaring.
+   for theta in (eps(Float64)^2,eps(Float64),sqrt(eps(Float64)),prevfloat(Float64(pi)),
+           sqrt(nextfloat(0.))/k/2,sqrt(nextfloat(0.))/k,sqrt(floatmin(Float64))/k),phi in (0.,.2,pi/2)
     pattern=planar_farfield(prob,coeff,f;theta=[theta],phi=[phi]);kx=k*sin(theta)*cos(phi);ky=k*sin(theta)*sin(phi);kz=k*cos(theta)
     axial=sum(w[j]/2*cis(kz*(q[j]+1)*.001/2)*(kind==DiffMoM._BASIS_VIA_T ? (q[j]+1)/2 : 1.) for j in eachindex(q))
     lateral=prob.grid.dx*prob.grid.dy*sinc0(kx*prob.grid.dx/2)*sinc0(ky*prob.grid.dy/2)*cis(kx*1.5prob.grid.dx+ky*1.5prob.grid.dy)

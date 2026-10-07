@@ -148,13 +148,10 @@ end
 end
 
 function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.))
-    cp,sp=if iszero(kx) && iszero(ky)
-        # At an axial pole, azimuth sets the transverse basis without
-        # adding a fictitious transverse wave number.
-        normal_direction
-    else
-        kc=hypot(kx,ky);(kx/kc,ky/kc)
-    end
+    # Retain the linear norm even when its square underflows. The squared
+    # norm still belongs to the layer dispersion relation below.
+    kc=hypot(kx,ky)
+    cp,sp=iszero(kc) ? normal_direction : (kx/kc,ky/kc)
     overlap=0.0im;L=length(stack.layers);kc2=kx*kx+ky*ky
     for p in eachindex(coeff)
         iszero(coeff[p]) && continue
@@ -165,7 +162,7 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
             j=side==1 ? origlayer : L-origlayer+1
             layer=stack.layers[j]
             _,hu,ht=_planar_receive_moments(layer,omega,kc2,TM_POL,V[j],V[j+1],H[j],H[j+1])
-            side*sqrt(kc2)/(omega*_EPS0*layer.epsr_z)*(kind==_BASIS_VIA_U ? hu : side==1 ? ht : hu-ht)
+            side*kc/(omega*_EPS0*layer.epsr_z)*(kind==_BASIS_VIA_U ? hu : side==1 ? ht : hu-ht)
         else
             value=if _is_vol_kind(kind)
                 origlayer=prob.vols[prob.basis.level[p]].layer
