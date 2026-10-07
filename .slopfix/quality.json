@@ -20,7 +20,7 @@
         "using Pkg; Pkg.test()"
       ],
       "cwd": ".",
-      "timeout_seconds": 3600,
+      "timeout_seconds": null,
       "capture": "tail",
       "protect_paths": [
         "JuliaProject.toml",
@@ -44,7 +44,7 @@
         "test_*.py"
       ],
       "cwd": ".",
-      "timeout_seconds": 120,
+      "timeout_seconds": null,
       "capture": "digest"
     },
     {
@@ -73,7 +73,7 @@
         "."
       ],
       "cwd": ".",
-      "timeout_seconds": 3600,
+      "timeout_seconds": null,
       "capture": "digest",
       "isolation": "temporary-julia-depot",
       "protect_paths": [
@@ -151,7 +151,7 @@
         "docs/make.jl"
       ],
       "cwd": ".",
-      "timeout_seconds": 1800,
+      "timeout_seconds": null,
       "capture": "digest",
       "protect_paths": [
         "docs/Project.toml",

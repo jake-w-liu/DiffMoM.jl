@@ -132,7 +132,7 @@ def _command_gate(
     title: str,
     command: list[str],
     *,
-    timeout_seconds: int,
+    timeout_seconds: int | None,
     required: bool = True,
     cwd: str = ".",
     isolation: str = "none",
@@ -328,7 +328,7 @@ def _julia_gates(root: str) -> list[dict[str, Any]]:
         test_gate = _command_gate(
             "julia-tests", "functional-suitability", "Julia project tests",
             ["julia", "--startup-file=no", "-e", package_test, "."],
-            timeout_seconds=3600,
+            timeout_seconds=None,
             protect_paths=project_files,
         )
 
@@ -350,7 +350,7 @@ def _julia_gates(root: str) -> list[dict[str, Any]]:
             [
                 "julia", "--startup-file=no", "-e", clean_resolve, ".",
             ],
-            timeout_seconds=3600,
+            timeout_seconds=None,
             isolation="temporary-julia-depot",
             protect_paths=project_files,
         ),
@@ -459,7 +459,7 @@ def _julia_gates(root: str) -> list[dict[str, Any]]:
                         "julia", "--project=docs", "--startup-file=no",
                         "docs/make.jl",
                     ],
-                    timeout_seconds=1800,
+                    timeout_seconds=None,
                     protect_paths=[
                         "docs/Project.toml", "docs/Manifest.toml",
                         "docs/JuliaProject.toml", "docs/JuliaManifest.toml",
@@ -550,14 +550,19 @@ def _validate_common(gate: dict[str, Any], root: str, index: int) -> None:
             raise QualityConfigError(
                 f"gate {gate_id!r} command must be a non-empty argv string array"
             )
-        timeout = gate.get("timeout_seconds")
-        if (
+        _require_keys(gate, ("timeout_seconds",), where)
+        timeout = gate["timeout_seconds"]
+        # None imposes no command deadline. An explicit caller budget must
+        # fit Python's platform wait API; a template has no evidence from
+        # which to invent a repository's execution-time requirement.
+        if timeout is not None and (
             isinstance(timeout, bool)
             or not isinstance(timeout, int)
-            or not 1 <= timeout <= 86400
+            or not 0 < timeout <= threading.TIMEOUT_MAX
         ):
             raise QualityConfigError(
-                f"gate {gate_id!r} timeout_seconds must be 1..86400"
+                f"gate {gate_id!r} timeout_seconds must be null or a positive "
+                "integer within the platform wait limit"
             )
         _safe_join(root, gate.get("cwd", "."), f"gate {gate_id!r} cwd")
         capture = gate.get("capture", "digest")
