@@ -1,0 +1,37 @@
+Run 1:  Wed Oct 07 08:33:13 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\native_via_pad_material_controls_v1_20261007\pec_explicit_pec_pads\project.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 1.839e-5 89.998 1.000000 0.0000 1.000000 0.0000 1.839e-5 89.998
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+
+    Frequency:  0.01 GHZ
+      0.01000000 1.829e-4 89.983 1.000000 -0.017 1.000000 -0.017 1.829e-4 89.983
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+
+    Frequency:  0.1 GHZ
+      0.10000000 0.001828 89.830 0.999998 -0.170 0.999998 -0.170 0.001828 89.830
+      ! P1 F=0.1 Standard port
+      ! P2 F=0.1 Standard port
+
+    Frequency:  1 GHZ
+      1.00000000 0.018275 88.300 0.999833 -1.700 0.999833 -1.700 0.018275 88.300
+      ! P1 F=1.0 Eeff=(1.00017 + j0) Z0=(121.309 + j0)
+      ! P2 F=1.0 Eeff=(1.00017 + j0) Z0=(121.309 + j0)
+
+    Frequency:  10 GHZ
+      10.0000000 0.177868 73.196 0.984054 -16.80 0.984054 -16.80 0.177868 73.196
+      ! P1 F=10.0 Eeff=(1.00014 + j0) Z0=(121.305 + j0)
+      ! P2 F=10.0 Eeff=(1.00014 + j0) Z0=(121.305 + j0)
+
+Em simulation completed Wed Oct 07 08:33:13 2026.

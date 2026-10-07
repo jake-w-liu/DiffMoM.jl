@@ -1,0 +1,653 @@
+{
+  "engine_version": "18.53-Lite (64-bit Windows)",
+  "files": [
+    {
+      "path": "diamond_hollow/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "diamond_hollow/engine_stdout.log",
+      "sha256": "540105ed993e657fa318351709c1b809d1901de698fc6ab7d697aadfe83cbb86"
+    },
+    {
+      "path": "diamond_hollow/native_raw.s2p",
+      "sha256": "c68c973be66bab92b67362b4222592d0bf5cdfbf2b60761302dcdd8053f203d7"
+    },
+    {
+      "path": "diamond_hollow/project.son",
+      "sha256": "54cc174221acd852478cc61854da4c3642f38883d0f400515fdc6d87acc60c9c"
+    },
+    {
+      "path": "diamond_solid_CDVY/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "diamond_solid_CDVY/engine_stdout.log",
+      "sha256": "bd2cbe1763023148433a62fa28fad357e00d6e3d5b2a48ec0d29823c66b65f08"
+    },
+    {
+      "path": "diamond_solid_CDVY/native_raw.s2p",
+      "sha256": "4c9900b650c1cadb4f24a86c11d88fb9e386a6f59dd1215ef2952c15a9ffbcb3"
+    },
+    {
+      "path": "diamond_solid_CDVY/project.son",
+      "sha256": "324cd3d37cdc0aea763f3997bf578e9d83c15ffeea69fbdc3731de90853f0d1f"
+    },
+    {
+      "path": "diamond_solid_SRVY/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "diamond_solid_SRVY/engine_stdout.log",
+      "sha256": "0a34a89d0577d2a4eea934b0c6542bba02a9621d6eefd99ce98127df49813c77"
+    },
+    {
+      "path": "diamond_solid_SRVY/native_raw.s2p",
+      "sha256": "529d651af5778b8844475445c71345d04e61ddb1b3fc1ca25d90c3f4ff10934a"
+    },
+    {
+      "path": "diamond_solid_SRVY/project.son",
+      "sha256": "6c7ea1447af2fedf07b4ab30b3af6beb54fa05ef87254c9ee2a8fe33bf41d68b"
+    },
+    {
+      "path": "ell_hollow/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "ell_hollow/engine_stdout.log",
+      "sha256": "620daea96f59fcf65cd41304a3214abea9e3040b11a5ebef3b7aa3a2cbb24754"
+    },
+    {
+      "path": "ell_hollow/native_raw.s2p",
+      "sha256": "b1d3f8c8e61e6717f8bb9e3e321c0ae6da06c57d75dc8aa48bc51b1289e2ffda"
+    },
+    {
+      "path": "ell_hollow/project.son",
+      "sha256": "51bd9ded766267a464ece9cea3167307a12359e04a721e1fb1f2f64feb03b2e6"
+    },
+    {
+      "path": "ell_solid_CDVY/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "ell_solid_CDVY/engine_stdout.log",
+      "sha256": "d3eddc0d48b1c3a80f3c6fcb5c70e763d62f48ca853a4905e1b648f11fd0e261"
+    },
+    {
+      "path": "ell_solid_CDVY/native_raw.s2p",
+      "sha256": "adfdcab09eefaa0c667e69f81081f069b7301049dc33230048b51590e5f80a7d"
+    },
+    {
+      "path": "ell_solid_CDVY/project.son",
+      "sha256": "f6c8fad5de174f1fafe9fa1b4603f1ee19f508deb36934c4f65a10e65612ae36"
+    },
+    {
+      "path": "ell_solid_SRVY/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "ell_solid_SRVY/engine_stdout.log",
+      "sha256": "16dd2b2697692348c71b7850b3f13beeda55cc25f12a27206e25a4f5943f3b37"
+    },
+    {
+      "path": "ell_solid_SRVY/native_raw.s2p",
+      "sha256": "db05fc6ea0872c3b77a441a9e623a2323bb87d143692b80516cf5a1c398c8d4e"
+    },
+    {
+      "path": "ell_solid_SRVY/project.son",
+      "sha256": "79e401ec0ec1b61e63dd5e204e62b5be505625688f8e438a126bf4413009cf29"
+    },
+    {
+      "path": "triangle_hollow/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "triangle_hollow/engine_stdout.log",
+      "sha256": "afc52e19f8b47b11e579b1a58073de0273596ac401d384c581f78cff88d18cce"
+    },
+    {
+      "path": "triangle_hollow/native_raw.s2p",
+      "sha256": "d08bbd8ed34c4c557d1d60e2963dcfb16f10b85e2cd36b7a43152dd07e0895f7"
+    },
+    {
+      "path": "triangle_hollow/project.son",
+      "sha256": "7c640981a2604eaaf34672944df9824db8622f9d59b1b51f303d92245c506be9"
+    },
+    {
+      "path": "triangle_solid_CDVY/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "triangle_solid_CDVY/engine_stdout.log",
+      "sha256": "da47620cb3349f92f0206cde51fbec58b00e6b7921b50062139992821d9753db"
+    },
+    {
+      "path": "triangle_solid_CDVY/native_raw.s2p",
+      "sha256": "777a4690a31179dd8b965113c492938233e97f8065b8c6e13013c0688615a5d3"
+    },
+    {
+      "path": "triangle_solid_CDVY/project.son",
+      "sha256": "0639145fd003179133cc40de4900f67fb1db872cfa8b65b296e923c9e2ff30de"
+    },
+    {
+      "path": "triangle_solid_SRVY/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "triangle_solid_SRVY/engine_stdout.log",
+      "sha256": "d2dfba9a39c3b9a4efccf1569a4dc5078f251a3548684bea11c7cf8036b03029"
+    },
+    {
+      "path": "triangle_solid_SRVY/native_raw.s2p",
+      "sha256": "c7d1f7836500bc9c8209a300921f56e4525b792686698f9430a29b1f6e7631bb"
+    },
+    {
+      "path": "triangle_solid_SRVY/project.son",
+      "sha256": "b373bc731e1302e899e615fbcebf36378e03c61b01fedc56ba96dcaf99c52089"
+    },
+    {
+      "path": "triangle_solid_wall0/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "triangle_solid_wall0/engine_stdout.log",
+      "sha256": "04f04c904e9540d95c7725b638a679bef33ef1a475e308e883661a414f57d38f"
+    },
+    {
+      "path": "triangle_solid_wall0/native_raw.s2p",
+      "sha256": "d925b5779451a3e597746000e17163cb6a2c4533d9df62a9b1b1fa9a9a842870"
+    },
+    {
+      "path": "triangle_solid_wall0/project.son",
+      "sha256": "b373bc731e1302e899e615fbcebf36378e03c61b01fedc56ba96dcaf99c52089"
+    },
+    {
+      "path": "triangle_solid_wall10/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "triangle_solid_wall10/engine_stdout.log",
+      "sha256": "1b81278632fa45995455584892395556f4531d395f6302283964d89e8cb3be87"
+    },
+    {
+      "path": "triangle_solid_wall10/native_raw.s2p",
+      "sha256": "1ef979db94232467aa11b44a953f77d61febe927553ea78027ab079d070fb407"
+    },
+    {
+      "path": "triangle_solid_wall10/project.son",
+      "sha256": "2b5de3adcd8714041deae4ad662b7218d46dfde4610e283ef1000e4acb889431"
+    },
+    {
+      "path": "triangle_solid_wall20/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "triangle_solid_wall20/engine_stdout.log",
+      "sha256": "35b250ef1b5909c83b8a33241c6d3d1d598f18ea9ad395214cec945805a531d6"
+    },
+    {
+      "path": "triangle_solid_wall20/native_raw.s2p",
+      "sha256": "832af6d0ba3b7880e79cd878065bb14e79e6dd29170b52745fc780b3671e4d45"
+    },
+    {
+      "path": "triangle_solid_wall20/project.son",
+      "sha256": "243660148092f1e3890523bece389f88c3202ee815b4154ad6d6fda8c8a3cb02"
+    },
+    {
+      "path": "diamond_hollow/sondata/project/geo_response_d.sid",
+      "sha256": "13ab5273d873955a29901c40e401b1962698f9c53af738843c0eba870c12a090"
+    },
+    {
+      "path": "diamond_hollow/sondata/project/geo_response_nd.sid",
+      "sha256": "0dc8b2a3ef45319e0b1c355d4805f6d19aca2b8d3852b72643bc66eca7d02589"
+    },
+    {
+      "path": "diamond_hollow/sondata/project/info.log",
+      "sha256": "1eb5f12ce4ce48a38fddbf687ec4d411573f3be3611cb193ee6a069e1b4fa268"
+    },
+    {
+      "path": "diamond_hollow/sondata/project/log_composite.log",
+      "sha256": "b124135d186f84fe289ea611a430698cf53db55fcd3edc77c8966a15b563b87d"
+    },
+    {
+      "path": "diamond_hollow/sondata/project/log_errors.log",
+      "sha256": "a23e9b1c06601c5da58b4553f37d0512e196b706ab8cdc05eaa2359a4051d341"
+    },
+    {
+      "path": "diamond_hollow/sondata/project/log_response.log",
+      "sha256": "1821c1df856f85ab6b3f82398a5a76fd9b868333eecaee5615e2e9a575ce99e2"
+    },
+    {
+      "path": "diamond_hollow/sondata/project/log_timing.log",
+      "sha256": "cc8c6ec15f1e1efb890bea78b65f8f0fb0c68904168bb5d92905853a65807fdc"
+    },
+    {
+      "path": "diamond_solid_CDVY/sondata/project/geo_response_d.sid",
+      "sha256": "d848d8e1a8fec2aab53f834392b40dd5aa1eead58966f9ea3342b8fd8ff4053c"
+    },
+    {
+      "path": "diamond_solid_CDVY/sondata/project/geo_response_nd.sid",
+      "sha256": "63cc26ec53fd50b045c6fd921f3458d2ef7d9338316f74e47517deaea2c99104"
+    },
+    {
+      "path": "diamond_solid_CDVY/sondata/project/info.log",
+      "sha256": "b723791f1d775728d65a11c1c6708c33b95477796e5a8cac8573e1cb38fc6020"
+    },
+    {
+      "path": "diamond_solid_CDVY/sondata/project/log_composite.log",
+      "sha256": "3c905576f06c279e4bd44885c984a4f05d2c0442373b863649f942fb6cff74d8"
+    },
+    {
+      "path": "diamond_solid_CDVY/sondata/project/log_errors.log",
+      "sha256": "7c6dfed54d9c71979a84cd1fff97e628656a10722ee3b09946b21e88ce882a91"
+    },
+    {
+      "path": "diamond_solid_CDVY/sondata/project/log_response.log",
+      "sha256": "d861f92fbe161377574cc4d8ebbffb27231f69e8bd825b218f6fa29d9b2625b2"
+    },
+    {
+      "path": "diamond_solid_CDVY/sondata/project/log_timing.log",
+      "sha256": "4eea31f15f2952d272127c82c5c9f5527554fa3b8ab1ba928fb37299ed64fe5a"
+    },
+    {
+      "path": "diamond_solid_SRVY/sondata/project/geo_response_d.sid",
+      "sha256": "d5929d6c6f43f3cba952762c7bc7849d60bdd0a954e9c3687789e1531b5f4435"
+    },
+    {
+      "path": "diamond_solid_SRVY/sondata/project/geo_response_nd.sid",
+      "sha256": "8f3c9a90600641c123c1ab7b928134d408fab61c0fa53898085a2100813826cc"
+    },
+    {
+      "path": "diamond_solid_SRVY/sondata/project/info.log",
+      "sha256": "57846181846c221b73fc0364534389e7a41582917a0b8616f103f0e4acccfc56"
+    },
+    {
+      "path": "diamond_solid_SRVY/sondata/project/log_composite.log",
+      "sha256": "e4f0c484adcf3c0c968f58e8e579f8c5a8eca3603dd39683ec40547c1eb97f06"
+    },
+    {
+      "path": "diamond_solid_SRVY/sondata/project/log_errors.log",
+      "sha256": "dc456628c8194bd579b4364630e3f3de864b1057f6a018d6ec8b7f29f5a960c6"
+    },
+    {
+      "path": "diamond_solid_SRVY/sondata/project/log_response.log",
+      "sha256": "2d784db6595a3b047ad6086b500e349fb9f9cb1fd8ba6dd56af257f459d86a14"
+    },
+    {
+      "path": "diamond_solid_SRVY/sondata/project/log_timing.log",
+      "sha256": "4676a67d266fb838cd58cd61815994d4c0f045f2a183015efd1bc9921f522a7b"
+    },
+    {
+      "path": "ell_hollow/sondata/project/geo_response_d.sid",
+      "sha256": "220e873764be0c73df96f03bc4beec1a1bf3e3bfe541e59045c2f8eae3fc2114"
+    },
+    {
+      "path": "ell_hollow/sondata/project/geo_response_nd.sid",
+      "sha256": "d882892b5dabd834c568c957a2fac55975c1dc6bcddf1fe00cd6a9f8e99b92d9"
+    },
+    {
+      "path": "ell_hollow/sondata/project/info.log",
+      "sha256": "ea8af8e1bafb430654e23c6045292975943e95ad8db23e9889c82b694f6cb8cb"
+    },
+    {
+      "path": "ell_hollow/sondata/project/log_composite.log",
+      "sha256": "c6ed8b9f1b8f4b7b50bb4db3c8c1876304bf686ac4f2d57852b8f7fd55f9459a"
+    },
+    {
+      "path": "ell_hollow/sondata/project/log_errors.log",
+      "sha256": "fa4164b82b0ab058ec0d2604aaef41d993b5afc3a80d825e3587a7e7c0c5b397"
+    },
+    {
+      "path": "ell_hollow/sondata/project/log_response.log",
+      "sha256": "5fdf53bbb535226f58c9c551b004f6694ebfd189cc8b8ba241fa3748f27cd00c"
+    },
+    {
+      "path": "ell_hollow/sondata/project/log_timing.log",
+      "sha256": "c34b035403df8a728e94a700899a780914aab2036be53bce19bdea772a790fe7"
+    },
+    {
+      "path": "ell_solid_CDVY/sondata/project/geo_response_d.sid",
+      "sha256": "11fa6f53b1d0b24a93ec5b8056e780493a2ce3723e4f202ab65c67f53dcfae1e"
+    },
+    {
+      "path": "ell_solid_CDVY/sondata/project/geo_response_nd.sid",
+      "sha256": "10b8c9029110faabc1999478ba773c9bb47bc35316873e259ede17d3ad281740"
+    },
+    {
+      "path": "ell_solid_CDVY/sondata/project/info.log",
+      "sha256": "7890392e3c776adfd7ed641111618eaba46116090ae27ce2378fc9b3a15b4f1f"
+    },
+    {
+      "path": "ell_solid_CDVY/sondata/project/log_composite.log",
+      "sha256": "82d92696e1cfe60f8c86bde2ea26e22542caa23f62f430b55191dd6615e6cedc"
+    },
+    {
+      "path": "ell_solid_CDVY/sondata/project/log_errors.log",
+      "sha256": "468263d06aaf9c6d9670b251a9921ee092504e9571eac0abb3690902fc084444"
+    },
+    {
+      "path": "ell_solid_CDVY/sondata/project/log_response.log",
+      "sha256": "ec432c2b9b9da2f44a606737c4fd9765aeb2d4176dc7fa5532fb566b54443325"
+    },
+    {
+      "path": "ell_solid_CDVY/sondata/project/log_timing.log",
+      "sha256": "31b1c5c729383fbca19ab53c6679e9f8d1294cc266d0e4a8efe4f7ce17e1be15"
+    },
+    {
+      "path": "ell_solid_SRVY/sondata/project/geo_response_d.sid",
+      "sha256": "05b8c452bfa14d64688bf7ae0975ee31f3cd3aa9035bff99e53fa571cf5c7aaf"
+    },
+    {
+      "path": "ell_solid_SRVY/sondata/project/geo_response_nd.sid",
+      "sha256": "40be045cd11361cafca8bd9d25336eab754e836294bbcf602c382ca1893920f3"
+    },
+    {
+      "path": "ell_solid_SRVY/sondata/project/info.log",
+      "sha256": "a14cd31495f1eb6022d481d4f09bd4a20b5ff22728de8485dc9c3ead80b9d003"
+    },
+    {
+      "path": "ell_solid_SRVY/sondata/project/log_composite.log",
+      "sha256": "7f5ca790f25bc7d7371f5931136cb915561c3f55e12cc0a213463eda572c36e3"
+    },
+    {
+      "path": "ell_solid_SRVY/sondata/project/log_errors.log",
+      "sha256": "5e110ffa1388aa3435250c37b033782e740319020c2a68559f92af4f95c148e6"
+    },
+    {
+      "path": "ell_solid_SRVY/sondata/project/log_response.log",
+      "sha256": "3bf149f89b54e6a2e1c26b9147b29f66be3c0c3dad29ca99eb84e16b50e2d917"
+    },
+    {
+      "path": "ell_solid_SRVY/sondata/project/log_timing.log",
+      "sha256": "f5e35fbdd98d973285e5947ce2b4fb09eae21646cb133c3f1d7503d9200f78fa"
+    },
+    {
+      "path": "triangle_hollow/sondata/project/geo_response_d.sid",
+      "sha256": "8218500d9bfc4f574a22e4ad97513d9896e512b74105c1bf9844c368c69e6df2"
+    },
+    {
+      "path": "triangle_hollow/sondata/project/geo_response_nd.sid",
+      "sha256": "c4d2599e82d4e25e333f57ebc69a6094e1ad3d65dc8086ab990c7fe5efffeb73"
+    },
+    {
+      "path": "triangle_hollow/sondata/project/info.log",
+      "sha256": "7e845a26669c8779f56fcaead47206af63ffd2da7ab561ad8efefee7f302db50"
+    },
+    {
+      "path": "triangle_hollow/sondata/project/log_composite.log",
+      "sha256": "aa7a7c586daf0b7eeeac5c3c96bd15fd22c9b83e3a8c8e7a865e65f3a2a4b97b"
+    },
+    {
+      "path": "triangle_hollow/sondata/project/log_errors.log",
+      "sha256": "7966b3076153844a5fc88c3c0c195153e750f4c69ec8d8ee79a74d2db106f9e1"
+    },
+    {
+      "path": "triangle_hollow/sondata/project/log_response.log",
+      "sha256": "14a1761048499a2da99308dce32b26001247ea888f31494eb8140d14133abc94"
+    },
+    {
+      "path": "triangle_hollow/sondata/project/log_timing.log",
+      "sha256": "6e51929e0ea1841d3cf9e4f63313291e8de922a68a9099b6e7f23aeacddd5210"
+    },
+    {
+      "path": "triangle_solid_CDVY/sondata/project/geo_response_d.sid",
+      "sha256": "3c9d146b6bb391f80f5c8691b94f94acae759a2df8fcef1449e453154831d5a8"
+    },
+    {
+      "path": "triangle_solid_CDVY/sondata/project/geo_response_nd.sid",
+      "sha256": "6d29b9661d5640d3691abb459f4e7724d89de62c64ca2676bcd6908a15c6dfc5"
+    },
+    {
+      "path": "triangle_solid_CDVY/sondata/project/info.log",
+      "sha256": "bd4c1dcd00855ceccf47d8b3a6436a1881ad79a20c18dbf8113285f073134368"
+    },
+    {
+      "path": "triangle_solid_CDVY/sondata/project/log_composite.log",
+      "sha256": "ca546dfd95dd456e3161e377543e2a873d7d2b3442fe35b45c11a70cf34a2976"
+    },
+    {
+      "path": "triangle_solid_CDVY/sondata/project/log_errors.log",
+      "sha256": "ad5716d6a9eadfa071cfbc9d1d33fbeacf16a0a2d874f55e71b0c9a94bae9446"
+    },
+    {
+      "path": "triangle_solid_CDVY/sondata/project/log_response.log",
+      "sha256": "4de1b52a30767f4c1c63a4cb316ee91a836aecb33cdf175df031c2ee741fe55b"
+    },
+    {
+      "path": "triangle_solid_CDVY/sondata/project/log_timing.log",
+      "sha256": "a61ad962d9614a99fa107241db936697036a88a11e96b43abc69c44c3450f186"
+    },
+    {
+      "path": "triangle_solid_SRVY/sondata/project/geo_response_d.sid",
+      "sha256": "cfcdc2e405a2ec349f31f44ba999ab4d607098a529e9e9bcbc6bbed82a1adff1"
+    },
+    {
+      "path": "triangle_solid_SRVY/sondata/project/geo_response_nd.sid",
+      "sha256": "6e6889a8e44a4955b5665d260d51e8999b130a31c6d9e3543d4869d582337483"
+    },
+    {
+      "path": "triangle_solid_SRVY/sondata/project/info.log",
+      "sha256": "8d11ca3c7ced9289f56d8d1f07e0ea2a9d00b9e8567b8e2c70b4dfd242596c95"
+    },
+    {
+      "path": "triangle_solid_SRVY/sondata/project/log_composite.log",
+      "sha256": "8c6e93a8ae5b78fd45f1298e2fac1aa399475f732846cac1c1bf3463efe2670d"
+    },
+    {
+      "path": "triangle_solid_SRVY/sondata/project/log_errors.log",
+      "sha256": "631c4de2fb70a5fef4120bed193e99b59ce95fd9d732a6b7c5f117d6929ec270"
+    },
+    {
+      "path": "triangle_solid_SRVY/sondata/project/log_response.log",
+      "sha256": "c0f800126d4fc93714bc1347ca47109dd0787b6434a467669f4f40ec33665a64"
+    },
+    {
+      "path": "triangle_solid_SRVY/sondata/project/log_timing.log",
+      "sha256": "b845200142f660d99581942c1f6280493e55de9cdcbd6f5c40609d377d3a5843"
+    },
+    {
+      "path": "triangle_solid_wall0/sondata/project/geo_response_d.sid",
+      "sha256": "cba030b1be47b7a992b18d7bd06d27f369cefc166a56d8e58282b99b1ab18841"
+    },
+    {
+      "path": "triangle_solid_wall0/sondata/project/geo_response_nd.sid",
+      "sha256": "2fb6c459abffc10cc000f6b035f34f28536ecafbe32b008798902b7376f35690"
+    },
+    {
+      "path": "triangle_solid_wall0/sondata/project/info.log",
+      "sha256": "2aecf8f7de10d2a80fc0e29e49c699af434361098bc7707e6a48a7f9b0a56c61"
+    },
+    {
+      "path": "triangle_solid_wall0/sondata/project/log_composite.log",
+      "sha256": "d425f65c3185f06b9858c5a370f1cb3934de654a9714a0703a33ff49104a6541"
+    },
+    {
+      "path": "triangle_solid_wall0/sondata/project/log_errors.log",
+      "sha256": "89cf6cca1f7fa849e3437d82ab5b5674df9f19c6e072e01cfd6f03e0bb705005"
+    },
+    {
+      "path": "triangle_solid_wall0/sondata/project/log_response.log",
+      "sha256": "2c4f92594cde91e4c98ec9fbbffb4526d5e39748fafd234cb6ed9d582e1918d9"
+    },
+    {
+      "path": "triangle_solid_wall0/sondata/project/log_timing.log",
+      "sha256": "36a4d53847399227f51252dd9978e82baa9bf602a48ab1161e73e70f38f780c2"
+    },
+    {
+      "path": "triangle_solid_wall10/sondata/project/geo_response_d.sid",
+      "sha256": "194f289bd5c3f3301af1054ecdbb5764db6b08dc7bce07290faf0e9e948d99ed"
+    },
+    {
+      "path": "triangle_solid_wall10/sondata/project/geo_response_nd.sid",
+      "sha256": "05a54f50f1ccd804d4a1777acb98e717b02f243ddf3cd455264d288ac51fb4a6"
+    },
+    {
+      "path": "triangle_solid_wall10/sondata/project/info.log",
+      "sha256": "9195c63feaddadc0f124abe502c2038b6979c2c02ccd997089757db3d2006d29"
+    },
+    {
+      "path": "triangle_solid_wall10/sondata/project/log_composite.log",
+      "sha256": "c07286e281c3c6fff66278a3b045ac0faebda729123eb78e1622bee8c20fe316"
+    },
+    {
+      "path": "triangle_solid_wall10/sondata/project/log_errors.log",
+      "sha256": "a06d05d38acd2373da942876d90713d88120d84b87584331a6828d6fa0654279"
+    },
+    {
+      "path": "triangle_solid_wall10/sondata/project/log_response.log",
+      "sha256": "7641100e834618dbdb25d89f89f111160c59510d9ea040d0ede1104e5c3ab44d"
+    },
+    {
+      "path": "triangle_solid_wall10/sondata/project/log_timing.log",
+      "sha256": "47b21b26e2e4a52d94adb0142721da9df4d7b54ee745faebdd034eb926dea350"
+    },
+    {
+      "path": "triangle_solid_wall20/sondata/project/geo_response_d.sid",
+      "sha256": "84527623eb3a4314b2c9e2914babb519a42464759029073e39387bb1f2edfec2"
+    },
+    {
+      "path": "triangle_solid_wall20/sondata/project/geo_response_nd.sid",
+      "sha256": "749ce129e7d6f68b1b0777a88ac06b006650b4a841234bfcfa35acf659da412a"
+    },
+    {
+      "path": "triangle_solid_wall20/sondata/project/info.log",
+      "sha256": "a3a595ea7749335b6e4a2ef003e5e658c3700e61a75c96846d81235333628bcd"
+    },
+    {
+      "path": "triangle_solid_wall20/sondata/project/log_composite.log",
+      "sha256": "af2500fd77a3c29806823ad051cce5cb2fa43cca106d27492ec51940f1780aa6"
+    },
+    {
+      "path": "triangle_solid_wall20/sondata/project/log_errors.log",
+      "sha256": "86bdd9b21bc54e27646667e6f72805a1f3b204a6b6083b1d71e3b77042105c81"
+    },
+    {
+      "path": "triangle_solid_wall20/sondata/project/log_response.log",
+      "sha256": "84443591fbb2fde74a5eb1bddb67599568ad3c05f2f400eb2fa80602cb51f6b1"
+    },
+    {
+      "path": "triangle_solid_wall20/sondata/project/log_timing.log",
+      "sha256": "363d5b31873e73666a648476e87ebd777d21490955d4417dc2c2f5c163244097"
+    },
+    {
+      "path": "rectangle_hollow/project.son",
+      "sha256": "07e27a2dd1286f7018eaa16b21eadb25264cf0b2da9d5d883aa6a3948ed3b248"
+    },
+    {
+      "path": "rectangle_solid/project.son",
+      "sha256": "92e42a59eb8aea961210ed4b9e454fed8dc13e8b5180c6b7572d615c2bdf9231"
+    }
+  ],
+  "captures": [
+    {
+      "case": "triangle_hollow",
+      "capture_sha256": "1ea2db901a18efff942223de984258db4788d156278867cd14894428dc5f3ec2",
+      "source_sha256": "7c640981a2604eaaf34672944df9824db8622f9d59b1b51f303d92245c506be9",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "ell_hollow",
+      "capture_sha256": "1ea2db901a18efff942223de984258db4788d156278867cd14894428dc5f3ec2",
+      "source_sha256": "51bd9ded766267a464ece9cea3167307a12359e04a721e1fb1f2f64feb03b2e6",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "diamond_hollow",
+      "capture_sha256": "1ea2db901a18efff942223de984258db4788d156278867cd14894428dc5f3ec2",
+      "source_sha256": "54cc174221acd852478cc61854da4c3642f38883d0f400515fdc6d87acc60c9c",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "triangle_solid_wall0",
+      "capture_sha256": "1ea2db901a18efff942223de984258db4788d156278867cd14894428dc5f3ec2",
+      "source_sha256": "b373bc731e1302e899e615fbcebf36378e03c61b01fedc56ba96dcaf99c52089",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "triangle_solid_wall10",
+      "capture_sha256": "1ea2db901a18efff942223de984258db4788d156278867cd14894428dc5f3ec2",
+      "source_sha256": "2b5de3adcd8714041deae4ad662b7218d46dfde4610e283ef1000e4acb889431",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "triangle_solid_wall20",
+      "capture_sha256": "1ea2db901a18efff942223de984258db4788d156278867cd14894428dc5f3ec2",
+      "source_sha256": "243660148092f1e3890523bece389f88c3202ee815b4154ad6d6fda8c8a3cb02",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "triangle_solid_SRVY",
+      "capture_sha256": "756d8ba75093d1cc1506d52799571e343ecdd52307bea8dc25e72f41d1b8e7bc",
+      "source_sha256": "b373bc731e1302e899e615fbcebf36378e03c61b01fedc56ba96dcaf99c52089",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "triangle_solid_CDVY",
+      "capture_sha256": "756d8ba75093d1cc1506d52799571e343ecdd52307bea8dc25e72f41d1b8e7bc",
+      "source_sha256": "0639145fd003179133cc40de4900f67fb1db872cfa8b65b296e923c9e2ff30de",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "ell_solid_SRVY",
+      "capture_sha256": "756d8ba75093d1cc1506d52799571e343ecdd52307bea8dc25e72f41d1b8e7bc",
+      "source_sha256": "79e401ec0ec1b61e63dd5e204e62b5be505625688f8e438a126bf4413009cf29",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "ell_solid_CDVY",
+      "capture_sha256": "756d8ba75093d1cc1506d52799571e343ecdd52307bea8dc25e72f41d1b8e7bc",
+      "source_sha256": "f6c8fad5de174f1fafe9fa1b4603f1ee19f508deb36934c4f65a10e65612ae36",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "diamond_solid_SRVY",
+      "capture_sha256": "756d8ba75093d1cc1506d52799571e343ecdd52307bea8dc25e72f41d1b8e7bc",
+      "source_sha256": "6c7ea1447af2fedf07b4ab30b3af6beb54fa05ef87254c9ee2a8fe33bf41d68b",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    },
+    {
+      "case": "diamond_solid_CDVY",
+      "capture_sha256": "756d8ba75093d1cc1506d52799571e343ecdd52307bea8dc25e72f41d1b8e7bc",
+      "source_sha256": "324cd3d37cdc0aea763f3997bf578e9d83c15ffeea69fbdc3731de90853f0d1f",
+      "exit_code": 0,
+      "completion_marker": true,
+      "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+    }
+  ],
+  "selector_rule": "SRVY uses literal HOLLOW wall and geometric equivalent SOLID wall; paired native controls qualify this conversion.",
+  "scope": "Twelve unchanged complete source/native/process snapshots at five original frequencies plus two unchanged native rectangle geometry sources for expanded resource regressions. Original low-frequency physical failures remain open; resource tests never claim electromagnetic reference acceptance for altered in-memory loss records. No fitting, alignment or reference retagging; broader thick-wall/COVERS/ARRAY/RFIC and global optimization scope remains open.",
+  "resource_geometry_sources": [
+    {
+      "case": "rectangle_hollow",
+      "origin": "C:\\Users\\User\\DiffMoM.jl\\data\\native_volume_rectangle_saturation_controls_v1_20261007\\wall50_SRVY\\project.son",
+      "source_sha256": "07e27a2dd1286f7018eaa16b21eadb25264cf0b2da9d5d883aa6a3948ed3b248"
+    },
+    {
+      "case": "rectangle_solid",
+      "origin": "C:\\Users\\User\\DiffMoM.jl\\data\\native_volume_rectangle_saturation_controls_v1_20261007\\solid_sigma1e6\\project.son",
+      "source_sha256": "92e42a59eb8aea961210ed4b9e454fed8dc13e8b5180c6b7572d615c2bdf9231"
+    }
+  ]
+}

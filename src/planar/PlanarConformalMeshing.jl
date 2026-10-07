@@ -18,7 +18,7 @@ function planar_refine_conformal_uniform(mesh::PlanarConformalMesh,levels::Integ
     _planar_conformal_mesher_budget(BigInt(size(mesh.vertices,2))+2count,count,max_bytes)
     levels==0 && return mesh
     vertices=[(mesh.vertices[1,i],mesh.vertices[2,i]) for i in axes(mesh.vertices,2)]
-    faces=[Tuple(mesh.triangles[:,t]) for t in axes(mesh.triangles,2)];interfaces=copy(mesh.interfaces)
+    faces=[(mesh.triangles[1,t],mesh.triangles[2,t],mesh.triangles[3,t]) for t in axes(mesh.triangles,2)];interfaces=copy(mesh.interfaces)
     for _ in 1:levels
         midpoints=Dict{Tuple{Int,Int},Int}();children=NTuple{3,Int}[];childlevels=Int[]
         sizehint!(children,4length(faces));sizehint!(childlevels,4length(faces))
@@ -40,6 +40,21 @@ end
     dx,dy=b[1]-a[1],b[2]-a[2];length2=dx*dx+dy*dy
     u=clamp(((x-a[1])*dx+(y-a[2])*dy)/length2,0.,1.)
     hypot(x-a[1]-u*dx,y-a[2]-u*dy)
+end
+
+# Keep boundary coordinates local to this scalar scan. Capturing p/q in
+# nested generators while reassigning them in the outer refinement loop
+# boxes every segment coordinate in the hot path.
+function _planar_conformal_on_boundary(coordinates,level,segments,tolerance)
+    for j in 1:3
+        start,finish=coordinates[j],coordinates[mod1(j+1,3)]
+        for (segment_level,a,b) in segments
+            segment_level==level || continue
+            _planar_conformal_segment_distance(start[1],start[2],a,b)<=tolerance &&
+                _planar_conformal_segment_distance(finish[1],finish[2],a,b)<=tolerance && return true
+        end
+    end
+    return false
 end
 
 function _planar_conformal_mesher_budget(nv,nt,max_bytes)
@@ -65,7 +80,7 @@ function planar_refine_conformal(mesh::PlanarConformalMesh;
     nv,nt=size(mesh.vertices,2),size(mesh.triangles,2)
     _planar_conformal_mesher_budget(nv,nt,max_bytes)
     vertices=[(mesh.vertices[1,i],mesh.vertices[2,i]) for i in 1:nv]
-    faces=[Tuple(mesh.triangles[:,t]) for t in 1:nt];levels=copy(mesh.interfaces)
+    faces=[(mesh.triangles[1,t],mesh.triangles[2,t],mesh.triangles[3,t]) for t in 1:nt];levels=copy(mesh.interfaces)
     boundary=Dict{NTuple{3,Int},Int}()
     for t in 1:nt,j in 1:3
         a,b=faces[t][j],faces[t][mod1(j+1,3)]
@@ -79,14 +94,10 @@ function planar_refine_conformal(mesh::PlanarConformalMesh;
     while true
         selected=nothing;selected_ratio=1+64eps(Float64)
         for t in eachindex(faces)
-            ids=faces[t];coords=map(i->vertices[i],ids)
-            cx=sum(p[1] for p in coords)/3;cy=sum(p[2] for p in coords)/3
+            ids=faces[t];triangle_coordinates=map(i->vertices[i],ids)
+            cx=sum(p[1] for p in triangle_coordinates)/3;cy=sum(p[2] for p in triangle_coordinates)/3
             distance=minimum(_planar_conformal_segment_distance(cx,cy,a,b) for (level,a,b) in segments if level==levels[t];init=Inf)
-            on_boundary=any(begin
-                p,q=coords[j],coords[mod1(j+1,3)]
-                any(level==levels[t] && _planar_conformal_segment_distance(p[1],p[2],a,b)<=tolerance &&
-                    _planar_conformal_segment_distance(q[1],q[2],a,b)<=tolerance for (level,a,b) in segments)
-            end for j in 1:3)
+            on_boundary=_planar_conformal_on_boundary(triangle_coordinates,levels[t],segments,tolerance)
             target=on_boundary || distance<=band ? he : hi
             for j in 1:3
                 a,b=ids[j],ids[mod1(j+1,3)];p,q=vertices[a],vertices[b]

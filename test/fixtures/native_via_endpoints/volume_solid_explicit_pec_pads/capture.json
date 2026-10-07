@@ -1,0 +1,32 @@
+{
+  "case": "volume_solid_explicit_pec_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_explicit_pec_pads",
+  "material": "MET \"Array\" 77 VOL 10000 SOLID 0 CDVY",
+  "pad_mode": "explicit_pec_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:03.066990+00:00",
+  "ended_at": "2026-10-07T00:33:04.067462+00:00",
+  "seconds": 1.0,
+  "exit_code": 0,
+  "source_sha256_before": "4d09ad09306c322d104136f6a649f197bb5ff28443453c95ae08c7cfbc48e0f7",
+  "source_sha256_after": "4d09ad09306c322d104136f6a649f197bb5ff28443453c95ae08c7cfbc48e0f7",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "8bfdab3f9beb7c1f1eb332445d3f9149476f7edf52447200cac625f3aa4d6b97",
+    "native_raw.s2p": "40b83677179501d17a181d2b0b19b46dda4a71e9f0883ed18e5d5aa80ecb513c",
+    "project.son": "4d09ad09306c322d104136f6a649f197bb5ff28443453c95ae08c7cfbc48e0f7",
+    "sondata/project/geo_response_d.sid": "48b168c9f4c435b80da76b43bf832572bb9d3cf388e49e855aa77c70aaab51fc",
+    "sondata/project/geo_response_nd.sid": "0d441776f19a16b13c17e5745e5e6156724b9e2b387904700e99c0dbabda9cdc",
+    "sondata/project/info.log": "8e91e270342cbfb91567ade3ec7e2a9eda2c0f48b37e8dc80bac22fd832a8535",
+    "sondata/project/log_composite.log": "aba9ad0a1b7a32b3679c1050591df3319a0b748641e1bc3deb42b593e7b15912",
+    "sondata/project/log_errors.log": "6855d3c740974e290cbedb6843551df681a43cbe02bad74d39192794198e2419",
+    "sondata/project/log_response.log": "f817d6290336590b4bc20de28e33eb3ad15ce2e3c177d5616b8a1386a36e2f1c",
+    "sondata/project/log_timing.log": "470482bb852df527e5a96327611f22b2e14ad113db28d3dd622c42df70dd9af1"
+  }
+}

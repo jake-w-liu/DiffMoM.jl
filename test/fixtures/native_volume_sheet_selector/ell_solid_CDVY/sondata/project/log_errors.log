@@ -1,0 +1,12 @@
+Run 1:  Wed Oct 07 06:27:22 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\native_volume_sheet_selector_controls_v2_20261007\ell_solid_CDVY\project.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Wed Oct 07 06:27:22 2026.

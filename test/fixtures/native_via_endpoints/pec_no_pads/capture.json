@@ -1,0 +1,32 @@
+{
+  "case": "pec_no_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\pec_no_pads",
+  "material": "MET \"Array\" 77 VOL INF SOLID 0 CDVY",
+  "pad_mode": "no_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:10.079342+00:00",
+  "ended_at": "2026-10-07T00:33:11.064699+00:00",
+  "seconds": 0.9849999999860302,
+  "exit_code": 0,
+  "source_sha256_before": "3aa7252fd44f0652ab5f2f674f47ca4db50ec4f195c5bb42693d96fdd303ecf5",
+  "source_sha256_after": "3aa7252fd44f0652ab5f2f674f47ca4db50ec4f195c5bb42693d96fdd303ecf5",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "76a671f89da00b06d08b4431e02332ccf1a105d2f9d145fef261c35b1d526308",
+    "native_raw.s2p": "11dc6834d19cb9d902caa02cb15c3491e2c819ac3ae78dc843a911a8826f0c36",
+    "project.son": "3aa7252fd44f0652ab5f2f674f47ca4db50ec4f195c5bb42693d96fdd303ecf5",
+    "sondata/project/geo_response_d.sid": "a92f9e180551bdc66181fa24fc916c863bac13ee1886b4f16f4201bac867c148",
+    "sondata/project/geo_response_nd.sid": "e478a98bb3aa7da6e4ecead5133727c8b02dc84a2107534aad3acc5e9d21547a",
+    "sondata/project/info.log": "64d8e6e45d2bb465aef37a22465bb93250ba57437e7e46d56673020687b8187b",
+    "sondata/project/log_composite.log": "7386174a12287258993c8fa4e69afa48a5317f3705ad5f59030635138f9d6bb1",
+    "sondata/project/log_errors.log": "f675dfac989386916856e4f06701113bd8d91062dd691a1ffd3849f02de57e06",
+    "sondata/project/log_response.log": "ccf838f17e6628828ba96851edaf75321a6626c603f41fd25e4974d8b5e381cd",
+    "sondata/project/log_timing.log": "8583f3e0e33c365cef5cac6b5ca0fa9ae1ebd4aa95c644129e700ceb69ad80c5"
+  }
+}

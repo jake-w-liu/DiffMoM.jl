@@ -1,0 +1,32 @@
+{
+  "case": "volume_hollow_native_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_hollow_native_pads",
+  "material": "MET \"Array\" 77 VOL 10000 .01 CDVY",
+  "pad_mode": "native_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:05.079750+00:00",
+  "ended_at": "2026-10-07T00:33:06.063400+00:00",
+  "seconds": 0.9849999999860302,
+  "exit_code": 0,
+  "source_sha256_before": "538c39738a4cc4bd91f833c29dfacca0f7605d99af704811816444461eba41c5",
+  "source_sha256_after": "538c39738a4cc4bd91f833c29dfacca0f7605d99af704811816444461eba41c5",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "127746ccff759f52cabd090129624e0dabb0611e4cd4b9df3ec0674e4c34496f",
+    "native_raw.s2p": "64c7b599a3142dd7e34a2df224f21570f73d757006c1c866df851899912e876e",
+    "project.son": "538c39738a4cc4bd91f833c29dfacca0f7605d99af704811816444461eba41c5",
+    "sondata/project/geo_response_d.sid": "5fb41f32f1106f26ece633a0709896d9ef3921316ddea41723eef21d666b0fa6",
+    "sondata/project/geo_response_nd.sid": "881e6611c6a3e869d75d161878f47356eeec40721c571549b6a3795675fb19ab",
+    "sondata/project/info.log": "c95bacff8913153548bf9b0d5aa9623aefb412126ade6a38596f40a8b1f71c92",
+    "sondata/project/log_composite.log": "e2900b999d933cc093e37b72428ede600af705642edea3891635dffedc8e42af",
+    "sondata/project/log_errors.log": "69f71fb881f31b657dc1e4a67b8ca5f48caea99547fe7629f5d70c8402d4db8b",
+    "sondata/project/log_response.log": "0d9090bfb56ef16fb748fab9cf9acbea6c76f421b0d294bf0b1dc264b7562d1c",
+    "sondata/project/log_timing.log": "64b64fcc208cf778d1bc48993aa7724852eb9c3cd23c22840a40d155ff4d4e48"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "status": "NATIVE_STACKED_VIA_ORDER_CONTROLS_CAPTURED_NO_VERDICT",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_endpoint_stacked_order_controls_v1_20261007",
+  "origin": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_no_pads\\project.son",
+  "origin_sha256": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+  "engine": "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe",
+  "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac",
+  "generator_sha256": "11c9ceae896989eabd7b10c6e2c55402662f5f4ff6988734ff004c2e2894430f",
+  "captured_at": "2026-10-07T01:45:46.088232+00:00",
+  "rows": [
+    {
+      "case": "forward",
+      "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_endpoint_stacked_order_controls_v1_20261007\\forward",
+      "exit_code": 0,
+      "completion_marker": true,
+      "zero_error_marker": true,
+      "source_sha256_before": "872bdd99d6421a033f98fbd628e710668625778b24e134716f61a78de2a0039d",
+      "source_sha256_after": "872bdd99d6421a033f98fbd628e710668625778b24e134716f61a78de2a0039d",
+      "inputs": {
+        "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine_stdout.log": "ded6b3e48cfad50970f75e1c9073c1049fcdeb8b6e2de1a3aa8f814d2ff79934",
+        "native_raw.s2p": "d83ee9d67be56a1e1c225d9a1d95ce717a4a24625820b25d1a8764f885359163",
+        "project.son": "872bdd99d6421a033f98fbd628e710668625778b24e134716f61a78de2a0039d",
+        "sondata/project/geo_response_d.sid": "30f4dc4c3ace94ced36989c931ad0f370a182bbfa17e930e7453a7301a6eaeb0",
+        "sondata/project/geo_response_nd.sid": "de2dd259baa16620900d62f8cdcaaf2cca9535bf0e5c5f75efc83a8c4b11e5e4",
+        "sondata/project/info.log": "4e68f67dcd23488cffc1975dbf18c640dfa32cab3acbc5c511335de7acbe814d",
+        "sondata/project/log_composite.log": "bdd2d50afbbdd161b08672300f371f8e2ab2b370b5ec478412b0fc0b0436de82",
+        "sondata/project/log_errors.log": "14b041c90051b071b9fc0db16cf1699b0e411b5c56d9a0196b7aea7f0c3ab62c",
+        "sondata/project/log_response.log": "7026ed43e933166f3fd7d5e538357cd2faa385d825596289389ce7e05bc3f994",
+        "sondata/project/log_timing.log": "f3a2e63d932ef0bfc5be6c1ce12a45dede08ee0fa0455614ec0ba57bcb323f06"
+      }
+    },
+    {
+      "case": "reverse",
+      "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_endpoint_stacked_order_controls_v1_20261007\\reverse",
+      "exit_code": 0,
+      "completion_marker": true,
+      "zero_error_marker": true,
+      "source_sha256_before": "18799366994dd626fca320260e427c799d15beadde1fc6c3c0a702eb9bb43e3e",
+      "source_sha256_after": "18799366994dd626fca320260e427c799d15beadde1fc6c3c0a702eb9bb43e3e",
+      "inputs": {
+        "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine_stdout.log": "6044e4ef2538e5671fb966c6e92f6aa2b5a7b702f2b2c664fc77a5fe02331ed6",
+        "native_raw.s2p": "8e80a770cdb5cea934c8fa6b2b1f7a021992ba0704f568eb7b4bc83cdf737eba",
+        "project.son": "18799366994dd626fca320260e427c799d15beadde1fc6c3c0a702eb9bb43e3e",
+        "sondata/project/geo_response_d.sid": "5b05d681146c2be8c24f6f9e684ea748facd4af28eebc704698daf108e46498a",
+        "sondata/project/geo_response_nd.sid": "90fb594e67e9fd51f47fc11b4f399abc94364a412278eca4c5674191053f27ce",
+        "sondata/project/info.log": "2c48b053c44cc6d9327286f24cf6bf0be0427269376ed75bd23f7bc8fbbc7bf0",
+        "sondata/project/log_composite.log": "487ec605b0921ee91bbb875781d8a49fb4289f4ad9b007cce00e1ca1c063d5c7",
+        "sondata/project/log_errors.log": "b887f7e96a71329c9b7d231587b5e6fe7432c6050af7b8239b20dd9ea73a23a2",
+        "sondata/project/log_response.log": "49ffc14cca5f31af9648bb5a1bac7ea0ddb0ab7eaabf2d13901d36b617c599e5",
+        "sondata/project/log_timing.log": "e70310362e4b5e1b1fa4efc3d2281802b619b72a37a43669847a856784a6ded3"
+      }
+    }
+  ],
+  "scope": "Same two adjacent-height via bodies with different physical conductivities meeting on one sheet interface; via order alone reverses. Native source/output bytes untouched after execution, five frequencies and original ports retained. Tests whether inferred order-invariance is actual native behavior before any source-policy change."
+}

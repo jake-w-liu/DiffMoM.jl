@@ -1,0 +1,809 @@
+{
+  "engine_version": "18.53-Lite (64-bit Windows)",
+  "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac",
+  "cases": [
+    "volume_solid_no_pads",
+    "volume_solid_native_pads",
+    "volume_solid_explicit_pec_pads",
+    "volume_hollow_no_pads",
+    "volume_hollow_native_pads",
+    "volume_hollow_explicit_pec_pads",
+    "pec_no_pads",
+    "pec_native_pads",
+    "pec_explicit_pec_pads",
+    "rpv_inactive_wall_no_pads",
+    "rpv_inactive_wall_native_pads",
+    "rpv_solid_no_pads",
+    "rpv_solid_native_pads",
+    "stacked_forward",
+    "stacked_reverse",
+    "stacked_halfcells_80"
+  ],
+  "files": [
+    {
+      "path": "native_via_endpoint_stacked_grid_capture_v1_20261007.json",
+      "sha256": "e84a659b08b9501caa2c8b149d658db70b98d7ed0f13ae1d7d2740b8d446a813"
+    },
+    {
+      "path": "native_via_endpoint_stacked_order_capture_v1_20261007.json",
+      "sha256": "6b5e2868a05e2bc56310623ae7bde8e32dac690b5387c1f4cf4c25c02d73e1a8"
+    },
+    {
+      "path": "native_via_pad_material_capture_v1_20261007.json",
+      "sha256": "c7b99cf6425c2f60118f49c07832c5e67d96919886ea679dcb035ea0761d3e83"
+    },
+    {
+      "path": "native_via_partial_contact_rpv_capture_v1_20261007.json",
+      "sha256": "52faec4cfad60f0622d72f1b462407c842d20b7fa478d5255d5bfb34156672d3"
+    },
+    {
+      "path": "pec_explicit_pec_pads/capture.json",
+      "sha256": "2da1c1a9a00124bb05277e4702d702020e363f634830b01eedc32c8af1687bdd"
+    },
+    {
+      "path": "pec_explicit_pec_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "pec_explicit_pec_pads/engine_stdout.log",
+      "sha256": "9d7d0bda62a3a7cebcd00ec0a86e8ada5d6b293fd5b7ff454e6fca2982f0299d"
+    },
+    {
+      "path": "pec_explicit_pec_pads/native_raw.s2p",
+      "sha256": "f424f742c328223d2cd007b00b293fc6933f34f9d5e2d4733c09799a49ea7220"
+    },
+    {
+      "path": "pec_explicit_pec_pads/project.son",
+      "sha256": "3ff77b3cd317dc6384777f6050c8b9dd13cab254f99976dbd062b3fc4d7ad763"
+    },
+    {
+      "path": "pec_explicit_pec_pads/sondata/project/geo_response_d.sid",
+      "sha256": "17bb19082e2e24b0128305db0f08ee1bf6c2281177c732277b33a3b53f90b9ac"
+    },
+    {
+      "path": "pec_explicit_pec_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "943d9a5a80fd49895b3defeee7565ee12885c85e0344f6011b8e1f21c792d589"
+    },
+    {
+      "path": "pec_explicit_pec_pads/sondata/project/info.log",
+      "sha256": "61e6ac08105f74fe7b1a4af864b78aa4c27310cce4fdad3fc9c1e31711cbf431"
+    },
+    {
+      "path": "pec_explicit_pec_pads/sondata/project/log_composite.log",
+      "sha256": "47c1d742191c8e3db4a41952427273c00a83e2678b5d6bd8bc1ad5009f2bbbe6"
+    },
+    {
+      "path": "pec_explicit_pec_pads/sondata/project/log_errors.log",
+      "sha256": "b0ba29de7c2d74619f29e95d834e467942c3e7518e21da7cdedf5f30b618f95f"
+    },
+    {
+      "path": "pec_explicit_pec_pads/sondata/project/log_response.log",
+      "sha256": "402cf9a6a2b643ac2d9fdfc26912053ce078288c241f57ca70526ba37f3f61d5"
+    },
+    {
+      "path": "pec_explicit_pec_pads/sondata/project/log_timing.log",
+      "sha256": "1dafece8d8e81d5acbac1660dea1d674eece7a2ae854563f2be32ae7a608eb5b"
+    },
+    {
+      "path": "pec_native_pads/capture.json",
+      "sha256": "0f962d31d156cbec19c5962d776c781015304800504fda4db6c30028a934425f"
+    },
+    {
+      "path": "pec_native_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "pec_native_pads/engine_stdout.log",
+      "sha256": "03395973befc98021b5e5d6464c5e034040e19afc2df29f8374215e3b7f0f8ee"
+    },
+    {
+      "path": "pec_native_pads/native_raw.s2p",
+      "sha256": "058098e566401002fe2d5624f46187c392aa2065c7159b16e08ee6484d36cc11"
+    },
+    {
+      "path": "pec_native_pads/project.son",
+      "sha256": "b476733dcc877eb2611255482ed52466a32b9867f9adfeb27068d4231db67f62"
+    },
+    {
+      "path": "pec_native_pads/sondata/project/geo_response_d.sid",
+      "sha256": "1aaed6f6be0e03b86466da4c7f69ee4ac641db43ca3c57538161c743c2940ddc"
+    },
+    {
+      "path": "pec_native_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "3255ff200175e375767400511bc414b8e1b3af21a00943a726fa73bee15afd98"
+    },
+    {
+      "path": "pec_native_pads/sondata/project/info.log",
+      "sha256": "257a909630174ed9a1bd13059c4f89ce8dba2ee443a962663b1a2b984c951991"
+    },
+    {
+      "path": "pec_native_pads/sondata/project/log_composite.log",
+      "sha256": "04dee811f898656a597f92da26779bee2e31285f42c4e813cb51afbd801431dc"
+    },
+    {
+      "path": "pec_native_pads/sondata/project/log_errors.log",
+      "sha256": "73ceac9b63234308a8b3302b0decba326d24037242d510d22185b1b62a16107b"
+    },
+    {
+      "path": "pec_native_pads/sondata/project/log_response.log",
+      "sha256": "358686370a914b9b52b0e0512e3709fc940fa4f28762c8a4730b0f6e09447c71"
+    },
+    {
+      "path": "pec_native_pads/sondata/project/log_timing.log",
+      "sha256": "4ff50c20f2694b2d639b5165154ce59b1903ac257bd817e7075f275c0c35a531"
+    },
+    {
+      "path": "pec_no_pads/capture.json",
+      "sha256": "b8a98ae811e58c72965d18bc823a450d7e60c1ce9606565c31011cd665864b22"
+    },
+    {
+      "path": "pec_no_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "pec_no_pads/engine_stdout.log",
+      "sha256": "76a671f89da00b06d08b4431e02332ccf1a105d2f9d145fef261c35b1d526308"
+    },
+    {
+      "path": "pec_no_pads/native_raw.s2p",
+      "sha256": "11dc6834d19cb9d902caa02cb15c3491e2c819ac3ae78dc843a911a8826f0c36"
+    },
+    {
+      "path": "pec_no_pads/project.son",
+      "sha256": "3aa7252fd44f0652ab5f2f674f47ca4db50ec4f195c5bb42693d96fdd303ecf5"
+    },
+    {
+      "path": "pec_no_pads/sondata/project/geo_response_d.sid",
+      "sha256": "a92f9e180551bdc66181fa24fc916c863bac13ee1886b4f16f4201bac867c148"
+    },
+    {
+      "path": "pec_no_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "e478a98bb3aa7da6e4ecead5133727c8b02dc84a2107534aad3acc5e9d21547a"
+    },
+    {
+      "path": "pec_no_pads/sondata/project/info.log",
+      "sha256": "64d8e6e45d2bb465aef37a22465bb93250ba57437e7e46d56673020687b8187b"
+    },
+    {
+      "path": "pec_no_pads/sondata/project/log_composite.log",
+      "sha256": "7386174a12287258993c8fa4e69afa48a5317f3705ad5f59030635138f9d6bb1"
+    },
+    {
+      "path": "pec_no_pads/sondata/project/log_errors.log",
+      "sha256": "f675dfac989386916856e4f06701113bd8d91062dd691a1ffd3849f02de57e06"
+    },
+    {
+      "path": "pec_no_pads/sondata/project/log_response.log",
+      "sha256": "ccf838f17e6628828ba96851edaf75321a6626c603f41fd25e4974d8b5e381cd"
+    },
+    {
+      "path": "pec_no_pads/sondata/project/log_timing.log",
+      "sha256": "8583f3e0e33c365cef5cac6b5ca0fa9ae1ebd4aa95c644129e700ceb69ad80c5"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/capture.json",
+      "sha256": "464545612b4d37de531bbd0809dd5682fcfdbf18c8cbae7181a7f7afa05f4a4b"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/engine_stdout.log",
+      "sha256": "b59b97d56924828caf7abb617a69de93b816691ac3b0d26a9e004d1e8e059ce5"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/native_raw.s2p",
+      "sha256": "ac4d40122ca888733026cf3101516600715210dc02b15e205ff24aef55f96505"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/project.son",
+      "sha256": "2dd5ac5f1e051002bc0c5b434f87586c0ef47a7808d58083c5e1fbcc41de6367"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/sondata/project/geo_response_d.sid",
+      "sha256": "018f487e6c421ee3830508e511e7b89228fe44b8304e71e5936696c9464544bc"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "669a95d0ee9146d81b5bde28ebf397665860dae531ea06609a41b7d05fdc06ea"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/sondata/project/info.log",
+      "sha256": "9be1dfd7b72262d5978336f99e5dd0104e32633913cf83b5a203b6a87bc8a295"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/sondata/project/log_composite.log",
+      "sha256": "8b750d8d64b6647d0ba1209bec78fde1e9f084a6b6b1eeb9ac66d048df7e44cb"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/sondata/project/log_errors.log",
+      "sha256": "6d63499bbc2839288e142f97ccbdbc78a37d7a9a49c810b346182edfce3c69d4"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/sondata/project/log_response.log",
+      "sha256": "a2969ae49e547cf33f290a81fd109375bd36a6d0ed27b22bc6a33d4b78a554c5"
+    },
+    {
+      "path": "rpv_inactive_wall_native_pads/sondata/project/log_timing.log",
+      "sha256": "bdd4c054a4f95e2e0862ee3db5a825de6e7ace9748efc233be806315737678e6"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/capture.json",
+      "sha256": "34abdb54a40c2d12d1cdc1134fc6a8fc33b59821be639b70fcf21132bc8aa655"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/engine_stdout.log",
+      "sha256": "82db24fe9a9c0dcd10410d0c21792c45f1a63e384e9aa95b8baa3ded88427702"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/native_raw.s2p",
+      "sha256": "d6f7a646057cc63d702b508c84ebc0b3b549563145eae20834b24c22e363134b"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/project.son",
+      "sha256": "ec95620b035a4c8d4051c5ecff8f5db77ba4cdf8435f0e0356c9b951bfaa19e6"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/sondata/project/geo_response_d.sid",
+      "sha256": "aaa3979577d27b19a61e492486d41b5183f947a4dc17fdee6f46c1dc32781755"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "0fe681d9324743b14d8d35805a91e6622654cae5c1b7aa50ce9503a9677d4d61"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/sondata/project/info.log",
+      "sha256": "0025216e9bb477c606a03615095a08562d0ef3813729b297050140e9e06a2779"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/sondata/project/log_composite.log",
+      "sha256": "942cf609afee3271d6414c0d2d6f9b6f39e3e5dbc6342b373359800c01e24056"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/sondata/project/log_errors.log",
+      "sha256": "698193d6dc8c18fc786143c8fb931c7e78ab3d06db2aed99337d4e732a92d08b"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/sondata/project/log_response.log",
+      "sha256": "0e94deab1d238b639e663070e690496a1ec1d95209823dd11e0f10d5ff0a11b1"
+    },
+    {
+      "path": "rpv_inactive_wall_no_pads/sondata/project/log_timing.log",
+      "sha256": "3ad23f9999c579eedb5318eae4cd61b940d41607e79fd5c24b46a01ca470b1bb"
+    },
+    {
+      "path": "rpv_solid_native_pads/capture.json",
+      "sha256": "9547e795002ca586a8ab4c95292b0a3c907abdf8e88c26bcf9de8f24442d9dbe"
+    },
+    {
+      "path": "rpv_solid_native_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rpv_solid_native_pads/engine_stdout.log",
+      "sha256": "97edab947c02115ca4ef1d4c509317697cd119c05d62fee177518a5d2bdc7fe4"
+    },
+    {
+      "path": "rpv_solid_native_pads/native_raw.s2p",
+      "sha256": "09c80686237482bc794c6f3d7c5d0dba8e95bbf576920655d6c85b48deb4d9b7"
+    },
+    {
+      "path": "rpv_solid_native_pads/project.son",
+      "sha256": "dbf5bce90c97ce11ff6eb7a73b6bb99fefb8f3d366ce7c933ce3eb763c7a6860"
+    },
+    {
+      "path": "rpv_solid_native_pads/sondata/project/geo_response_d.sid",
+      "sha256": "a852646f542cedeebe679de7796f052bfe4c2a86f9e7d6a00ca08e5821a72831"
+    },
+    {
+      "path": "rpv_solid_native_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "b6f4296b3508649ce035ae1404c9057903df037c735eed469cdf5fbf94834450"
+    },
+    {
+      "path": "rpv_solid_native_pads/sondata/project/info.log",
+      "sha256": "73b4e667a57f9dfd67fbe5668e8432ee5fb1fc7244ad418a4765d5f257307516"
+    },
+    {
+      "path": "rpv_solid_native_pads/sondata/project/log_composite.log",
+      "sha256": "b1696ede9faa12fceb40a736d1d8b584514fc35245b29a2c5bcb3e8f7598adba"
+    },
+    {
+      "path": "rpv_solid_native_pads/sondata/project/log_errors.log",
+      "sha256": "cd81778a67eccdd44680271c9276f880bd81e5a57cca2778ea5419e6b31b749a"
+    },
+    {
+      "path": "rpv_solid_native_pads/sondata/project/log_response.log",
+      "sha256": "7669b576eeca69ca6dc725920763893028d7351a1e270edfd9c0d135a129f8c1"
+    },
+    {
+      "path": "rpv_solid_native_pads/sondata/project/log_timing.log",
+      "sha256": "1bc43211a161591f5bc9429015e1118961fa15f2348723922c5380570f7f503f"
+    },
+    {
+      "path": "rpv_solid_no_pads/capture.json",
+      "sha256": "094264c9c245a7235100465e647265480d45836408dcdf321a948949b5a1849d"
+    },
+    {
+      "path": "rpv_solid_no_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "rpv_solid_no_pads/engine_stdout.log",
+      "sha256": "6dfe976b775b55d6b49a4aed91ede82a8aad4b92f02734c563c804207dc935ce"
+    },
+    {
+      "path": "rpv_solid_no_pads/native_raw.s2p",
+      "sha256": "758ceda988ad365dcac45f66fd6932d8ea33d4949237f6144f677ba33d502f2e"
+    },
+    {
+      "path": "rpv_solid_no_pads/project.son",
+      "sha256": "b005e06ac18f794ca99321ed22b99722fb89c16afa2238a29a1665da91c05a6d"
+    },
+    {
+      "path": "rpv_solid_no_pads/sondata/project/geo_response_d.sid",
+      "sha256": "7515d18a3bf72f953ad3f5925123f58b2a03cb307af8fc75610c9725b574ce4b"
+    },
+    {
+      "path": "rpv_solid_no_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "b7dbe1df4ecefa44d5530a5ecfb12100c57949cd21d545cc673fa7968dc9549a"
+    },
+    {
+      "path": "rpv_solid_no_pads/sondata/project/info.log",
+      "sha256": "5854636959ebe991380837961820521b009c9bd36f3beb0c261f9aa04e403089"
+    },
+    {
+      "path": "rpv_solid_no_pads/sondata/project/log_composite.log",
+      "sha256": "9f26af45136396a8f1a24d530848acac2ec02dd0cebc0e4d74993218735a747a"
+    },
+    {
+      "path": "rpv_solid_no_pads/sondata/project/log_errors.log",
+      "sha256": "2b0c0c91e30b473a23cb619090eaa63eb80a1634d803e3a11dfb4eba618b1af1"
+    },
+    {
+      "path": "rpv_solid_no_pads/sondata/project/log_response.log",
+      "sha256": "97e4913353c983cd53678fcd497242a552a928359121d11fe8f59085714c1d46"
+    },
+    {
+      "path": "rpv_solid_no_pads/sondata/project/log_timing.log",
+      "sha256": "f88c32990ec7771e4add9b083b475ab15e325fd99b284144026cbefebf84d44f"
+    },
+    {
+      "path": "stacked_forward/capture.json",
+      "sha256": "654ededefa905da4b71f67671f90f5abc628271f397dfecf07cfaf1cfe36b17c"
+    },
+    {
+      "path": "stacked_forward/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stacked_forward/engine_stdout.log",
+      "sha256": "ded6b3e48cfad50970f75e1c9073c1049fcdeb8b6e2de1a3aa8f814d2ff79934"
+    },
+    {
+      "path": "stacked_forward/native_raw.s2p",
+      "sha256": "d83ee9d67be56a1e1c225d9a1d95ce717a4a24625820b25d1a8764f885359163"
+    },
+    {
+      "path": "stacked_forward/project.son",
+      "sha256": "872bdd99d6421a033f98fbd628e710668625778b24e134716f61a78de2a0039d"
+    },
+    {
+      "path": "stacked_forward/sondata/project/geo_response_d.sid",
+      "sha256": "30f4dc4c3ace94ced36989c931ad0f370a182bbfa17e930e7453a7301a6eaeb0"
+    },
+    {
+      "path": "stacked_forward/sondata/project/geo_response_nd.sid",
+      "sha256": "de2dd259baa16620900d62f8cdcaaf2cca9535bf0e5c5f75efc83a8c4b11e5e4"
+    },
+    {
+      "path": "stacked_forward/sondata/project/info.log",
+      "sha256": "4e68f67dcd23488cffc1975dbf18c640dfa32cab3acbc5c511335de7acbe814d"
+    },
+    {
+      "path": "stacked_forward/sondata/project/log_composite.log",
+      "sha256": "bdd2d50afbbdd161b08672300f371f8e2ab2b370b5ec478412b0fc0b0436de82"
+    },
+    {
+      "path": "stacked_forward/sondata/project/log_errors.log",
+      "sha256": "14b041c90051b071b9fc0db16cf1699b0e411b5c56d9a0196b7aea7f0c3ab62c"
+    },
+    {
+      "path": "stacked_forward/sondata/project/log_response.log",
+      "sha256": "7026ed43e933166f3fd7d5e538357cd2faa385d825596289389ce7e05bc3f994"
+    },
+    {
+      "path": "stacked_forward/sondata/project/log_timing.log",
+      "sha256": "f3a2e63d932ef0bfc5be6c1ce12a45dede08ee0fa0455614ec0ba57bcb323f06"
+    },
+    {
+      "path": "stacked_halfcells_80/capture.json",
+      "sha256": "aad555f86464154be7e7d761432bfb0947b122b5d2d3f24c446e7c01b195b6d0"
+    },
+    {
+      "path": "stacked_halfcells_80/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stacked_halfcells_80/engine_stdout.log",
+      "sha256": "2433ef96d05f3b26b725b5f37965c3c4d65dbd76e88d459bd934da8073d3f6ff"
+    },
+    {
+      "path": "stacked_halfcells_80/native_raw.s2p",
+      "sha256": "25c458b118397c92d62f284a97ca5852e6d2bc45dcfe07e47320fa3f21c24abc"
+    },
+    {
+      "path": "stacked_halfcells_80/project.son",
+      "sha256": "af73c5bdb31d5abe49bf48d9b8ea6e2224624805c4cdbcee9417c91cd7f4485f"
+    },
+    {
+      "path": "stacked_halfcells_80/sondata/project/geo_response_d.sid",
+      "sha256": "2a2cd126baf44ff574822876cccf2b050768433fc636f3cf685b5ac6d759016e"
+    },
+    {
+      "path": "stacked_halfcells_80/sondata/project/geo_response_nd.sid",
+      "sha256": "782fd171e621048de74dc18b8b4d6a8eeef10268619f612beda7056a5436c3d9"
+    },
+    {
+      "path": "stacked_halfcells_80/sondata/project/info.log",
+      "sha256": "4c90adf6c29baf115e6cf6597b4aed520bd3d002413389b7b6406df475e9dd81"
+    },
+    {
+      "path": "stacked_halfcells_80/sondata/project/log_composite.log",
+      "sha256": "1fb456060347dd6673b3aea258e403ad1a84deca600c975d5a37aa6f98d85bd2"
+    },
+    {
+      "path": "stacked_halfcells_80/sondata/project/log_errors.log",
+      "sha256": "c5b2b2e283d90407fe08183dd073c871de4a67d7af0547d21f636b6486f286e4"
+    },
+    {
+      "path": "stacked_halfcells_80/sondata/project/log_response.log",
+      "sha256": "70fc4708d8480823b2306eecbd887da9459b9f975a8125a4501b9dbc265c44c8"
+    },
+    {
+      "path": "stacked_halfcells_80/sondata/project/log_timing.log",
+      "sha256": "81ed04ff99115ef283bad9ecd65a2febc11a2fb48f03402a725c05fa30e7c2c1"
+    },
+    {
+      "path": "stacked_reverse/capture.json",
+      "sha256": "4f025bb0ac1a0d49c04a28209968f0777cd5ad858a7964fd8b4531e45b9c4923"
+    },
+    {
+      "path": "stacked_reverse/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stacked_reverse/engine_stdout.log",
+      "sha256": "6044e4ef2538e5671fb966c6e92f6aa2b5a7b702f2b2c664fc77a5fe02331ed6"
+    },
+    {
+      "path": "stacked_reverse/native_raw.s2p",
+      "sha256": "8e80a770cdb5cea934c8fa6b2b1f7a021992ba0704f568eb7b4bc83cdf737eba"
+    },
+    {
+      "path": "stacked_reverse/project.son",
+      "sha256": "18799366994dd626fca320260e427c799d15beadde1fc6c3c0a702eb9bb43e3e"
+    },
+    {
+      "path": "stacked_reverse/sondata/project/geo_response_d.sid",
+      "sha256": "5b05d681146c2be8c24f6f9e684ea748facd4af28eebc704698daf108e46498a"
+    },
+    {
+      "path": "stacked_reverse/sondata/project/geo_response_nd.sid",
+      "sha256": "90fb594e67e9fd51f47fc11b4f399abc94364a412278eca4c5674191053f27ce"
+    },
+    {
+      "path": "stacked_reverse/sondata/project/info.log",
+      "sha256": "2c48b053c44cc6d9327286f24cf6bf0be0427269376ed75bd23f7bc8fbbc7bf0"
+    },
+    {
+      "path": "stacked_reverse/sondata/project/log_composite.log",
+      "sha256": "487ec605b0921ee91bbb875781d8a49fb4289f4ad9b007cce00e1ca1c063d5c7"
+    },
+    {
+      "path": "stacked_reverse/sondata/project/log_errors.log",
+      "sha256": "b887f7e96a71329c9b7d231587b5e6fe7432c6050af7b8239b20dd9ea73a23a2"
+    },
+    {
+      "path": "stacked_reverse/sondata/project/log_response.log",
+      "sha256": "49ffc14cca5f31af9648bb5a1bac7ea0ddb0ab7eaabf2d13901d36b617c599e5"
+    },
+    {
+      "path": "stacked_reverse/sondata/project/log_timing.log",
+      "sha256": "e70310362e4b5e1b1fa4efc3d2281802b619b72a37a43669847a856784a6ded3"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/capture.json",
+      "sha256": "1fc43911b2f2c3c538c8ffcb6d32416761c4237be25f16844157317d4198fc04"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/engine_stdout.log",
+      "sha256": "dae4c5ec48b6d66b44670127ba0015da40ed51eccc11c08969785e47ab158270"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/native_raw.s2p",
+      "sha256": "3864278b3d32c0c6cd556c06f22ea45e72344676937afe37ad78f1861acff1ae"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/project.son",
+      "sha256": "4ac116ddf7e10b32a5de1a5bb7bc6b7a90b1aaac4b7e1a08a8ec0861f9cf81c6"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/sondata/project/geo_response_d.sid",
+      "sha256": "f9778457f75153542ee5473252c5721ccc633fb2d75907af720bc4ca884159c7"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "1c376e8ab8cd7b3d8ec13aa08813e65bd82dfe2515a7fc182a5b6e1e204d5041"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/sondata/project/info.log",
+      "sha256": "1054520b43eab186d84243381b17d5b4d08a2f58e9392f60d026eee600de3e7d"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/sondata/project/log_composite.log",
+      "sha256": "63e3624a0e90660a1c271b445bf29e3d24e355384c42d4ea23e67b7f724f353e"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/sondata/project/log_errors.log",
+      "sha256": "5111e96d2879ce1b741906e42e07cc81242e0a1323b1ced9666c48a47ff2f69c"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/sondata/project/log_response.log",
+      "sha256": "6faf184a2ecdc21b39cd5cf86f1fbd94454f0ea278cccf03a630acd601c79613"
+    },
+    {
+      "path": "volume_hollow_explicit_pec_pads/sondata/project/log_timing.log",
+      "sha256": "c5021f4d756d4debbd058960adb94a0e9efb0aa50a71f9f2d7bd544b8088d0ab"
+    },
+    {
+      "path": "volume_hollow_native_pads/capture.json",
+      "sha256": "cb671cead7bc0b76dc9b8ff86b73caf17b7b79abbcde671e28e10215a696ed25"
+    },
+    {
+      "path": "volume_hollow_native_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "volume_hollow_native_pads/engine_stdout.log",
+      "sha256": "127746ccff759f52cabd090129624e0dabb0611e4cd4b9df3ec0674e4c34496f"
+    },
+    {
+      "path": "volume_hollow_native_pads/native_raw.s2p",
+      "sha256": "64c7b599a3142dd7e34a2df224f21570f73d757006c1c866df851899912e876e"
+    },
+    {
+      "path": "volume_hollow_native_pads/project.son",
+      "sha256": "538c39738a4cc4bd91f833c29dfacca0f7605d99af704811816444461eba41c5"
+    },
+    {
+      "path": "volume_hollow_native_pads/sondata/project/geo_response_d.sid",
+      "sha256": "5fb41f32f1106f26ece633a0709896d9ef3921316ddea41723eef21d666b0fa6"
+    },
+    {
+      "path": "volume_hollow_native_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "881e6611c6a3e869d75d161878f47356eeec40721c571549b6a3795675fb19ab"
+    },
+    {
+      "path": "volume_hollow_native_pads/sondata/project/info.log",
+      "sha256": "c95bacff8913153548bf9b0d5aa9623aefb412126ade6a38596f40a8b1f71c92"
+    },
+    {
+      "path": "volume_hollow_native_pads/sondata/project/log_composite.log",
+      "sha256": "e2900b999d933cc093e37b72428ede600af705642edea3891635dffedc8e42af"
+    },
+    {
+      "path": "volume_hollow_native_pads/sondata/project/log_errors.log",
+      "sha256": "69f71fb881f31b657dc1e4a67b8ca5f48caea99547fe7629f5d70c8402d4db8b"
+    },
+    {
+      "path": "volume_hollow_native_pads/sondata/project/log_response.log",
+      "sha256": "0d9090bfb56ef16fb748fab9cf9acbea6c76f421b0d294bf0b1dc264b7562d1c"
+    },
+    {
+      "path": "volume_hollow_native_pads/sondata/project/log_timing.log",
+      "sha256": "64b64fcc208cf778d1bc48993aa7724852eb9c3cd23c22840a40d155ff4d4e48"
+    },
+    {
+      "path": "volume_hollow_no_pads/capture.json",
+      "sha256": "407e8be60324f605714763d214e0010ca4ed51e8a7fecb816b629bf044c22087"
+    },
+    {
+      "path": "volume_hollow_no_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "volume_hollow_no_pads/engine_stdout.log",
+      "sha256": "b5d8f38a7ac1b0a4de9037481cc6dfdd4b07f42ac301f24f4102150b71c88567"
+    },
+    {
+      "path": "volume_hollow_no_pads/native_raw.s2p",
+      "sha256": "813e20ab4ce91106a78243e92e9825ea848cf9b0c54f315cb5fe6c4f119ce341"
+    },
+    {
+      "path": "volume_hollow_no_pads/project.son",
+      "sha256": "852a83a833db2929022b80e34a2ca1e85a76a1191fe568cdf77a6e258d7529e2"
+    },
+    {
+      "path": "volume_hollow_no_pads/sondata/project/geo_response_d.sid",
+      "sha256": "011b5d50f8ca57dede1b1563e05746e1930b4fae73ad7ee03f9794470e9dc6ea"
+    },
+    {
+      "path": "volume_hollow_no_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "6dace54e9554c27e677521006da956c173961217d3bb46b5fce370915d4110eb"
+    },
+    {
+      "path": "volume_hollow_no_pads/sondata/project/info.log",
+      "sha256": "32d7a4e0433ce3e1fc235e9fd58eb80a5b934540db1e28a304be9ca438691008"
+    },
+    {
+      "path": "volume_hollow_no_pads/sondata/project/log_composite.log",
+      "sha256": "9a8e5b39807a37ba4e87976b9547e5852cfcc4fc9004af4004f248b37d15777b"
+    },
+    {
+      "path": "volume_hollow_no_pads/sondata/project/log_errors.log",
+      "sha256": "951fa12bb9da7c785610d6121e231d05d49aa74c5f55c6ee784153e9494c1da0"
+    },
+    {
+      "path": "volume_hollow_no_pads/sondata/project/log_response.log",
+      "sha256": "e595cc8c6d004265323ea84f506029220c3867212d95f2c3b6509b2a560efd61"
+    },
+    {
+      "path": "volume_hollow_no_pads/sondata/project/log_timing.log",
+      "sha256": "7f63f831fc2051ea49a972c093b273fc09d018884c728f192654f37b8a20871a"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/capture.json",
+      "sha256": "038906351f4a6a4d5d50f345a2f97ec5d4abeef5e5b08a0b5819692225182a18"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/engine_stdout.log",
+      "sha256": "8bfdab3f9beb7c1f1eb332445d3f9149476f7edf52447200cac625f3aa4d6b97"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/native_raw.s2p",
+      "sha256": "40b83677179501d17a181d2b0b19b46dda4a71e9f0883ed18e5d5aa80ecb513c"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/project.son",
+      "sha256": "4d09ad09306c322d104136f6a649f197bb5ff28443453c95ae08c7cfbc48e0f7"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/sondata/project/geo_response_d.sid",
+      "sha256": "48b168c9f4c435b80da76b43bf832572bb9d3cf388e49e855aa77c70aaab51fc"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "0d441776f19a16b13c17e5745e5e6156724b9e2b387904700e99c0dbabda9cdc"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/sondata/project/info.log",
+      "sha256": "8e91e270342cbfb91567ade3ec7e2a9eda2c0f48b37e8dc80bac22fd832a8535"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/sondata/project/log_composite.log",
+      "sha256": "aba9ad0a1b7a32b3679c1050591df3319a0b748641e1bc3deb42b593e7b15912"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/sondata/project/log_errors.log",
+      "sha256": "6855d3c740974e290cbedb6843551df681a43cbe02bad74d39192794198e2419"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/sondata/project/log_response.log",
+      "sha256": "f817d6290336590b4bc20de28e33eb3ad15ce2e3c177d5616b8a1386a36e2f1c"
+    },
+    {
+      "path": "volume_solid_explicit_pec_pads/sondata/project/log_timing.log",
+      "sha256": "470482bb852df527e5a96327611f22b2e14ad113db28d3dd622c42df70dd9af1"
+    },
+    {
+      "path": "volume_solid_native_pads/capture.json",
+      "sha256": "a03a3a5896742fec94d643aa305ccdadadf38d20382c2e39c0e736dcfc74a961"
+    },
+    {
+      "path": "volume_solid_native_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "volume_solid_native_pads/engine_stdout.log",
+      "sha256": "9619b9d985a0e7df1801c02e68f4e4ee9112e19bf6b0b91f78270da51b501b49"
+    },
+    {
+      "path": "volume_solid_native_pads/native_raw.s2p",
+      "sha256": "2427a5c41bed58c1e555ca8edfdb86fb7fd0ad4663624a93dc8900d15034e9ef"
+    },
+    {
+      "path": "volume_solid_native_pads/project.son",
+      "sha256": "8a9d7cdb97ea71f807242cdbec9b602e705cc6e1c1975efcf0d58922a0d12947"
+    },
+    {
+      "path": "volume_solid_native_pads/sondata/project/geo_response_d.sid",
+      "sha256": "77d4d185921dd3633d9f5ec0ab8b3b202fdc4ab3b19b2a5d5f92509e43f7efdc"
+    },
+    {
+      "path": "volume_solid_native_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "8e47b4e48d3d8e7f9987d6a2a5fc6579ee6aad446d2d34665c084e20969db073"
+    },
+    {
+      "path": "volume_solid_native_pads/sondata/project/info.log",
+      "sha256": "ef36e4b0e884fba128436c425aaa86b898f913008ce9ea26c3d973c6b30136cb"
+    },
+    {
+      "path": "volume_solid_native_pads/sondata/project/log_composite.log",
+      "sha256": "36b8192404575a663cbcbfbb3926d9763ae496f6e7c7d8da6358623e98976c8c"
+    },
+    {
+      "path": "volume_solid_native_pads/sondata/project/log_errors.log",
+      "sha256": "f9ce20815d412d93e13247bcff593f2cbcfb157515c74ceca2a7f94cebdb47db"
+    },
+    {
+      "path": "volume_solid_native_pads/sondata/project/log_response.log",
+      "sha256": "12c072e86e03697366dc42787723bb277175f204b1c3d3b8b4d583880cbb738a"
+    },
+    {
+      "path": "volume_solid_native_pads/sondata/project/log_timing.log",
+      "sha256": "804507ffeb7c86fbb2f244b78d3b9e7c35ba471ada8eedac69535c1815c14aef"
+    },
+    {
+      "path": "volume_solid_no_pads/capture.json",
+      "sha256": "781e8582835c6271e27db83083cbbf869b350c7b01cd815c9a360f5b19f2bdc5"
+    },
+    {
+      "path": "volume_solid_no_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "volume_solid_no_pads/engine_stdout.log",
+      "sha256": "527e90ebd9593dbf91e8edfa1cba7394940765a5b3a159ef276574dcb0d8e4f7"
+    },
+    {
+      "path": "volume_solid_no_pads/native_raw.s2p",
+      "sha256": "9c4b70a283b52b958177609e26ff77dd80e02b783a6184a28d38c7888acb1574"
+    },
+    {
+      "path": "volume_solid_no_pads/project.son",
+      "sha256": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2"
+    },
+    {
+      "path": "volume_solid_no_pads/sondata/project/geo_response_d.sid",
+      "sha256": "580fddcc7478d8192543d665a83576b0563b9ac6cf70cabae0d8510e3508434b"
+    },
+    {
+      "path": "volume_solid_no_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "65e3bb4abffb70afbde852daeeb6928be7b0e83df068fe3e302b1aa14f8183dc"
+    },
+    {
+      "path": "volume_solid_no_pads/sondata/project/info.log",
+      "sha256": "03dd5e0ce64de112888476ccd431becccb997859300512efd638001babcc1dbd"
+    },
+    {
+      "path": "volume_solid_no_pads/sondata/project/log_composite.log",
+      "sha256": "fb720a72d7ddbd3a6dba25aa3fab4155f3a65fff5f6e669ef98e0777e40b0c2b"
+    },
+    {
+      "path": "volume_solid_no_pads/sondata/project/log_errors.log",
+      "sha256": "e75c039d6cfa242e9d38057797b0fa58eae6949498576e17f839ee04e24d2081"
+    },
+    {
+      "path": "volume_solid_no_pads/sondata/project/log_response.log",
+      "sha256": "73fdb5ce6d82467084c9b6283a64b58ca34adb095cf4e04c188536b245c12150"
+    },
+    {
+      "path": "volume_solid_no_pads/sondata/project/log_timing.log",
+      "sha256": "f231c632c638ec600afa06a76d67eb491ba36bdc319650066d594508deae72cd"
+    }
+  ],
+  "scope": "Sixteen original native case/process archives, byte-identical source/reference/engine outputs. Ring-only installed license; original20grid is not continuum convergence. No reference fitted or retagged."
+}

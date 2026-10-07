@@ -1,0 +1,32 @@
+{
+  "case": "volume_hollow_no_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_hollow_no_pads",
+  "material": "MET \"Array\" 77 VOL 10000 .01 CDVY",
+  "pad_mode": "no_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:04.067462+00:00",
+  "ended_at": "2026-10-07T00:33:05.067733+00:00",
+  "seconds": 1.0,
+  "exit_code": 0,
+  "source_sha256_before": "852a83a833db2929022b80e34a2ca1e85a76a1191fe568cdf77a6e258d7529e2",
+  "source_sha256_after": "852a83a833db2929022b80e34a2ca1e85a76a1191fe568cdf77a6e258d7529e2",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "b5d8f38a7ac1b0a4de9037481cc6dfdd4b07f42ac301f24f4102150b71c88567",
+    "native_raw.s2p": "813e20ab4ce91106a78243e92e9825ea848cf9b0c54f315cb5fe6c4f119ce341",
+    "project.son": "852a83a833db2929022b80e34a2ca1e85a76a1191fe568cdf77a6e258d7529e2",
+    "sondata/project/geo_response_d.sid": "011b5d50f8ca57dede1b1563e05746e1930b4fae73ad7ee03f9794470e9dc6ea",
+    "sondata/project/geo_response_nd.sid": "6dace54e9554c27e677521006da956c173961217d3bb46b5fce370915d4110eb",
+    "sondata/project/info.log": "32d7a4e0433ce3e1fc235e9fd58eb80a5b934540db1e28a304be9ca438691008",
+    "sondata/project/log_composite.log": "9a8e5b39807a37ba4e87976b9547e5852cfcc4fc9004af4004f248b37d15777b",
+    "sondata/project/log_errors.log": "951fa12bb9da7c785610d6121e231d05d49aa74c5f55c6ee784153e9494c1da0",
+    "sondata/project/log_response.log": "e595cc8c6d004265323ea84f506029220c3867212d95f2c3b6509b2a560efd61",
+    "sondata/project/log_timing.log": "7f63f831fc2051ea49a972c093b273fc09d018884c728f192654f37b8a20871a"
+  }
+}

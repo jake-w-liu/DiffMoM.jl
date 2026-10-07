@@ -35,7 +35,7 @@ function _sonnet_raster_mask_workspace(p,grid;surfaces::Bool=true)
             lo,hi=minmax(poly.level,target)
             -1<=lo<hi<=layers-1 || throw(ArgumentError("via $(poly.id) target outside stack"))
             spans+=hi-lo
-            if "COVERS" in poly.flags
+            if _sonnet_via_endpoints(p,poly) || "COVERS" in poly.flags
                 for level in (poly.level,target)
                     level in (-1,layers-1) || push!(levels,level)
                 end
@@ -48,12 +48,19 @@ function _sonnet_raster_mask_workspace(p,grid;surfaces::Bool=true)
     connections=16(BigInt(cld(nx,64))+cld(ny,64))
     # Per-polygon masks remain live for port attachment. Temporary sheet,
     # via-mesh, overlap and index buffers are bounded before rasterization.
-    return _checked_payload_sum("native raster mask workspace",
-        BigInt(length(levels))*(mask+connections+(surfaces ? 16cells : 0)),
+    payload=_checked_payload_sum("native raster mask workspace",
+        BigInt(length(levels))*(2mask+connections+(surfaces ? 16cells : 0)),
         2spans*mask,BigInt(length(p.polygons))*mask,
         4mask+connections+(spans>0 ? 8cells : 0),
         _checked_array_payload_bytes(Float64,2,
             maximum(q->size(q.vertices,2),p.polygons;init=0)))
+    # Preserve the existing accounting call on healthy real contact models.
+    if _sonnet_has_volume_skin(p) || any(poly->_sonnet_via_endpoints(p,poly) && poly.material!=-1,p.polygons)
+        payload=_checked_payload_sum("native complex via metadata",payload,256spans)
+        workspace=_sonnet_volume_polygon_workspace(p)
+        iszero(workspace) || return _checked_payload_sum("native volume material workspace",payload,workspace)
+    end
+    return payload
 end
 
 function _sonnet_raster_port_workspace(p,grid,masks,polygons)

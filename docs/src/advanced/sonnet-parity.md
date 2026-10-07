@@ -33,7 +33,7 @@ establish general continuum, measured-device or native workflow completeness.
 | M2/M3 matrix and direct solve | `PlanarGreens`, `PlanarFFTAssembly`, `PlanarSolve` | independent modal versus exact FFT retained matrix, all rooftop/via/volume families and losses; native complex S comparisons; 1008-unknown fill 2.6603 s→0.04132 s, relative error 3.9845e-16 | broad geometry acceptance; large-layout factorization resources |
 | M4 FFT solve | `PlanarUFFT` | exact finite modal operator versus dense; zero repeated matvec allocations; latest 8192-unknown operator uses 2,212,664 bytes of Julia payload versus 1,073,741,824 bytes for one dense matrix | fine-grid iterative convergence; measured sparse preconditioner prototype did not improve convergence and is not enabled |
 | M5 metal/dielectric loss | `PlanarSurface`, `PlanarConductorLoss`, `PlanarMetalModel`, `PlanarSonnetIO` | weighted Gram quadrature; published two-sheet line DC resistance oracle; native mixed films, NOR general current ratio, SEN reactance; physical two-face TMM expansion | licensed native TMM comparison, additional face counts, roughness/plating lowering and refined plated-line agreement |
-| M6 vias and volume current | `PlanarVias`, `PlanarVolumes`, `PlanarAxialRefinement` | independent Maxwell BVP and cutoff tests; native interlevel/ground vias and constant VOL/ARR resistance-per-via bridges; automated slab subdivision with source contraction; axial conductor profile error 0.08595% at 128 slices; finite bulk wall-source DC resistance | native conductivity/skin-profile options, arbitrary bulk contacts and broader material coverage |
+| M6 vias and volume current | `PlanarVias`, `PlanarVolumes`, `PlanarAxialRefinement` | independent Maxwell BVP and cutoff tests; native interlevel/ground vias and constant VOL/ARR resistance-per-via bridges; automated slab subdivision with source contraction; axial conductor profile error 0.08595% at 128 slices; finite bulk wall-source DC resistance; scoped native VOL CDVY/RSVY/SRVY material laws and RF matrix/loss controls | general thick-wall topology, broader VOL contact convergence, native ARR skin/ground loss, arbitrary bulk contacts and broader material coverage |
 | M7 adaptive sweep | `PlanarSweep` | full matrix ABS versus independent analytic cascades, zero/constant cases, callback/resource guards; barycentric fitting resolves three delayed resonances in 14 analyses with maximum full S error 4.217e-7; 12180 independent resonance, off-grid, passivity and resource checks, including a 107.96 dB notch | physical EM and measured broadband/resonance acceptance; finite candidate grids do not certify undiscovered narrow resonances |
 | M8 ports/calibration | `PlanarPowerWaves`, `PlanarBasis`, `PlanarTerminalReturns`, `PlanarPortContraction`, `PlanarCalibration`, `PlanarDeembed` | frequency-dependent complex Kurokawa references across six raw solvers, circuits, projects, calibration, retained current/field mappings and fixed-reference ABS; native R/X/L/C Graph oracle; general launch-box identification, coupled/mixed groups, physical return-path DC oracle, native IDEAL SMD and native four-port full complex matrix error 0.000851 | arbitrary nonuniform local-ground standards and calibrated native accuracy; TRL needs known line impedance to identify physical output references; installed Lite rejects non-50 Ω EM references, calibration groups and ports-only components |
 | M9 currents/radiation | `PlanarCurrents`, `PlanarRadiation` | physical current maps; exact continuous-angle sheet/via/volume/triangle spectra, receive-layer reciprocity, PEC image/short-dipole power oracles, calibrated/FFT mappings, polarization/gain/CSV/interactive outputs; installed RHP antenna raw S passes at refined modes with fresh native currents | native pattern comparison and finite-box/cover antenna convergence; installed far field viewer is disabled with fresh antenna current data, and its guide requires an optional license; substrate-edge/surface-wave scope remains infinite lateral layers |
@@ -41,7 +41,7 @@ establish general continuum, measured-device or native workflow completeness.
 | C2 extraction/models | `PlanarExtract`, `PlanarVectorFit` | coupled RLGC oracle, real SPICE restamping, positive-real certification and repair tests; actual ngspice47 complete two-port matrices at 37 frequencies for real-pole/affine-capacitance and conjugate-pole models, grounded and floating references; 444 external and 753 durable reference checks pass, maximum relative matrix error 1.025e-15 | complete measured RFIC model ladder; broader model and engine acceptance |
 | C3 subdivision | `PlanarSubdivision` | independently calibrated whole-line versus 8+16-cell circuit recombination | arbitrary filter acceptance and quantified inter-part EM coupling error |
 | C4 layout I/O | `PlanarLayoutIO`, `PlanarArtworkIO`, `PlanarArtworkAffine`, `PlanarGerberIO`, `PlanarODBIO`, `PlanarODBSymbolsExtra`, `PlanarODBFonts`, `PlanarODBLayers`, `PlanarODBCompression` | installed GDSII/DXF imports and independent hand geometry; GDS hierarchy/array transforms; GDS M4 native complex S error 0.000452; 19185 Gerber checks including legacy rectangle/ellipse strokes, all MI/SF/OF/IR orders, device-only AS and unchanged aperture/repeat semantics; official corpus and four previews; 62001 ODB++ checks on Windows including nested contours, clockwise regions, squared/rounded/line thermals, home-plate symbols, ordered numeric fillet parameters, legacy U unit records, bounded conductive font text, full-buildup FLIP, canonical matrix references, bounded JSON metadata, transport and an independent libarchive `.Z` exact SHA oracle; rounded square/rectangular annuli with selectable corners, independent signed-distance/area and swept-line raster checks; 9826 shared composite geometry/allocation checks; 27-point independent Gerber/ODB++ native clear-window coupon passes with maximum complex S error 0.000119 | matched-grid DXF complex S gate remains FAIL; full CT spiral process; remaining ODB++ thermal/stencil families, barcodes and dimensional resizing; font renderer/coordinate-format compatibility and broader vendor manufacturing corpus/native EM acceptance |
-| C5 native project I/O | `PlanarSonnetIO`, `PlanarSonnetTechnology` | 126/128 installed projects decoded as ordinary geometry/circuit projects; bounded linked-STF source/dependency snapshots retain the other two; all three installed public STFs validate against the captured official XSD; proven scalar/default and exact-node providers; 24 ordinary projects lower at 32×32 actual cells and 50 with aspect-preserving refinement to 256; BOX half-cell decoding verified in live GUI; constant VOL/ARR resistance-per-via loss preserved | applied STF interpolation/etch/rho/RPV/technology geometry and encrypted materials; native linked-STF EM rejected by Lite; further TMM semantics, general VOL/ARR conductivity/skin loss, bricks, CUP and unsupported port/project semantics; intake and lowering counts do not certify actual solving |
+| C5 native project I/O | `PlanarSonnetIO`, `PlanarSonnetTechnology` | 126/128 installed projects decoded as ordinary geometry/circuit projects; bounded linked-STF source/dependency snapshots retain the other two; all three installed public STFs validate against the captured official XSD; proven scalar/default and exact-node providers; 24 ordinary projects lower at 32×32 actual cells and 50 with aspect-preserving refinement to 256; BOX half-cell decoding verified in live GUI; constant VOL/ARR resistance-per-via loss preserved; scoped VOL conductivity/resistivity/sheet-resistance lowering | applied STF interpolation/etch/rho/RPV/technology geometry and encrypted materials; native linked-STF EM rejected by Lite; further TMM semantics, general VOL thick-wall/contact and ARR conductivity/skin loss, bricks, CUP and unsupported port/project semantics; intake and lowering counts do not certify actual solving |
 | P0/P0' RFIC workflow | `PlanarProject`, `PlanarProjectModel`, `PlanarProjectSolve`, `PlanarLibrary`, `PlanarLayout`, `PlanarConnectivity` | safe SI expressions and units, TOML round trips, technology/material callbacks, physical thick/volume stack adapters, wall/interior and axial ports, loaded circuits/current maps, sweeps, bulk-aware gradients, declared opens/shorts; scoped native IDC/MIM full-matrix coupons and independent low-frequency MIM overlap reference | arbitrary volume interior contacts, broader technology presets and complete spiral/coupled-line/measured RFIC acceptance |
 | P3/P6 outputs/accuracy | `PlanarOutputs`, `PlanarPlots`, `PlanarRadiation`, `validation/planar_audit` | complex response comparison, equation curves, scoped convergence/report/DC model output, Cartesian/Smith/layout/current/radiation views; stripline width refinement; independent analytic 107.96 dB notch | independent modal/grid convergence, microstrip/coupled-line/measured ladder, physical EM notch acceptance and FEM cross-validation |
 
@@ -1262,9 +1262,12 @@ ladder remain open.
   Two distinct 2-ohm/5-ohm models sharing both dielectric layers and driven
   by axial ports also pass at 1, 5 and 10 GHz (errors 0.000200, 0.000997 and
   0.001914), verifying per-material level grouping and height contraction.
-  General conductivity/skin models remain explicit rejects. Evidence:
+  These RPV controls certify constant loss. Scoped VOL conductivity/skin
+  lowering is documented separately below; general ARR and thick
+  nonrectangular wall semantics remain open; scoped VOL endpoint pads are
+  described below. Evidence:
   `rfic_xLa8AB`, `multilevel_rpv_SnyNQq`, and `import_PkFr4U`.
-* **Native conductivity via loss:** the candidate uses physical finite-
+* **Earlier full-volume conductivity candidate:** the diagnostic candidate uses physical finite-
   conductivity Maxwell currents over the full 400 µm square cross section,
   rather than substituting constant RPV. With conductivity 6250 S/m and
   height 500 µm, the actual native wall-source fixture approaches the 0.5 Ω
@@ -1632,3 +1635,214 @@ The native NOR material adapter retains finite thick-film RF limits after
 intermediate skin-depth overflow; its regression uses independent component
 truth at the existing 2e-12 gate and retains genuine output-range rejection.
 This material-equation limit is separate from native engine acceptance.
+
+
+## Native VOL material loss and sheet-resistance selectors
+
+Native `VOL` lowering supports conductivity (`CDVY`, including its default
+form), resistivity (`RSVY`, ohm-centimetres) and DC sheet resistance (`SRVY`,
+ohms/square) in the implemented SOLID, axis-aligned rectangular HOLLOW and
+simple thin polygonal HOLLOW domains. Existing VOL/ARR `RPV` behavior retains
+its constant axial-resistance contract. Scoped VOL endpoint pads are
+described below. Non-RPV ARR and general thick polygonal wall/topology
+adapters remain separate work.
+
+The effective axial conductivity uses the physical cross-sectional metal
+area, the retained mesh area and the complete DC/RF slab transition. SOLID
+uses the complete polygon area. Its equivalent bounding-rectangle wall is
+
+```math
+t_{\rm eq}=\frac{A}{w+b+\sqrt{(w+b)^2-4A}}.
+```
+
+Native SOLID sheet-resistance controls independently qualify conversion
+`sigma = 1/(Rs*t_eq)`; the retained wall field is inactive. HOLLOW instead
+uses the original declared physical wall in `sigma = 1/(Rs*t_declared)`.
+Rectangular overfill caps its cross-sectional/RF depth at half the shorter
+side while retaining the declared wall for sheet-to-conductivity conversion.
+The two operations are distinct. Native 100-by-100 and 200-by-100 micrometre
+controls at 50, 100 and 200 micrometre walls support that rectangular limit.
+It does not establish the same RF limit for other shapes.
+
+Thin nonrectangular walls use an inward mitered offset and the original
+physical wall as the RF depth. The scalar fast path normalizes coordinates
+and checks conditioning and boundary separation. Uncertain or extreme
+inputs use the original vertices/loss/wall/unit values in scoped wide
+precision. Both the outer and inset boundaries must remain simple, and
+offset edges must keep their direction. A closing nonlocal neck rejects
+before applying the thin-wall material law. This guard protects its domain;
+it does not implement the missing thick-wall topology adapter.
+
+The material calculation preserves representable real and imaginary
+conductivity components after reciprocal overflow or an underflowing wall
+times length-unit product. Independent 2400-bit equations use the stored
+Float64 input domain and retain the original `2e-12` component gate. The
+shared raster/conformal import preflight reserves precision-dependent owned
+wide scalar scratch for every VOL material path, including endpoint-film
+recovery, plus geometry
+workspace for general hollow polygons. A fixed 1 MB budget accepts the qualified 32/8192-bit
+caller cases and rejects the 1048576-bit case before that oversized material
+workspace is allocated. Precision scopes and borrowed project inputs remain
+unchanged. This accounting bounds declared raw workspace, not opaque memory
+or peak process RSS.
+
+`test/fixtures/native_volume_sheet_selector/manifest.json` records twelve
+original Sonnet 18.53-Lite source/native/process snapshots and SHA-256 hashes.
+All five captured frequencies and the original engine logs are retained.
+Two additional unchanged rectangle source files exercise expanded resource
+limits; those in-memory loss variants do not claim new native EM acceptance.
+Three SRVY/CDVY SOLID pairs agree under the preregistered `1e-9` complete
+matrix comparison; inactive SOLID-wall controls have identical native
+matrices. References are not phase-aligned, retagged or fitted.
+
+The new durable module `test_planar_sonnet_volume_material.jl` passes 489
+assertions on Julia 1.13.1 with four threads and Julia 1.12.7 with one thread.
+It includes provenance, independent material/range/ownership/PEC equations,
+both importers' general-HOLLOW/SOLID/rectangular precision budgets, the nonlocal-neck guard, 24 native raster
+RF matrices and two genuine-triangle RF consumers. The RF tests retain the
+original `0.06` complete-S, `0.05` real-series-loss and `1e-9` physical-equation
+gates. A separate source-pinned audit qualifies twelve conformal matrices
+across triangle, concave L and diamond SOLID/HOLLOW SRVY cases at 1/10 GHz.
+
+The earlier source-pinned native material audit compares 130 raster matrices per Julia
+version: 60 selector controls and 70 rectangular saturation controls. Their
+S/loss/reciprocity/passivity gates pass, with 52 high-frequency physical
+equation passes. The 78 physical residual failures at 1/10/100 MHz remain
+open; passing S/loss alone does not certify those low-frequency currents.
+Native mode/mesh convergence, broader geometry and measured RFIC acceptance
+remain separate from these captured controls. Earlier failed full-volume
+Maxwell-current candidates and the grounded ARR discrepancy remain preserved.
+
+Five earlier source-pinned warmed scalar allocation samples per case/version record
+CDVY thin-wall values: 448/608/512 bytes for triangle/L/diamond on Julia 1.13,
+and 768/928/832 bytes in the tested Julia 1.12 context. This is at least a
+99.49% reduction against the matched original wide-only scalar protocol.
+Rare wide cases retain their larger allocations. SOLID ordinary/tiny-height
+scalar controls allocate 5696 bytes after cold fallback closure removal,
+with the tested old RPV controls unchanged. These measurements exclude full
+model construction, SRVY-specific allocation contexts, timings, opaque
+allocations and peak memory; global optimality is not established.
+
+
+## Native VOL endpoint currents and shared contact films
+
+A via contacted by a narrower sheet needs tangential endpoint currents to
+reach its retained axial cells. VOL and PEC vias therefore add endpoint
+geometry at both physical interfaces. Original sheet conductors retain
+priority. Without `COVERS`, generated conductors follow the declared via
+subsection footprint; `COVERS` uses the original physical polygon. Box-cover
+interfaces use the existing cover boundary condition.
+
+In the captured Ring controls, SOLID finite-conductivity endpoints use the
+open-back half-height film, with conductivity from the native selector.
+The captured HOLLOW controls without `COVERS` use lossless tangential
+endpoint geometry; HOLLOW pads with `COVERS` use their physical conductivity
+and the half-height film. These controlled results do not establish the
+same law for every fill or topology. VOL RPV retains its constant axial
+resistance and uses endpoint conductivity `2/(RPV*height)`; zero RPV and PEC
+endpoints have zero sheet impedance.
+
+Generated finite films sharing an interface combine in parallel; PEC takes
+priority. The raster importer tracks generated cells separately from
+original physical sheets. The conformal importer decomposes generated
+backgrounds by their active via IDs, subtracts original sheets and keeps
+genuine sheet polygons. Reversing stacked source-via order preserves the
+response in the captured controls. Finite-film error checks use the full
+Hermitian admittance matrix for the grounded stacked case. Lossless PEC
+checks use the real part of full ABCD B because `100*S11/S21` can indicate
+spurious resistance for an asymmetric lossless network.
+
+`test/fixtures/native_via_endpoints/manifest.json` retains sixteen original
+Sonnet 18.53-Lite source/reference/process archives. Native Ring licensing
+limits these captures. The endpoint test module exercises actual public
+raster and conformal solves, partial contacts, finite pads, shared-film
+order and grounded dissipation. Its original gates are 0.06 complete-S,
+0.05 finite loss, 1e-9 physical residual/reciprocity and passive S. Native
+reference bytes remain unchanged. A finer grounded conformal check uses
+matching 40 actual native bulk cells and independently sized sheet
+triangles at 1 GHz. The coarser grounded native loss changed substantially
+under grid refinement; these controls do not certify continuum convergence
+or the corresponding fine conformal result at 10 GHz.
+
+Float64 conformal geometry uses scoped 8192-bit intersection and
+orientation fallback arithmetic. Degree-two/three numerators retain the
+stored coordinate domain before final division; caller BigFloat precision
+and original vertices remain unchanged. Independent 32768-bit primitive
+oracles and public triangle meshes at caller precisions 32/256/8192 cover
+rounding, exact zeros, near-collinearity and extreme exponents. Unrepresentable
+nonzero orientation rejects. The importer reserves owned scalar workspace
+before construction.
+
+Endpoint rectangle payload is counted before allocation, and retained
+background/overlay geometry is included in subsequent mesh reservations.
+The measured 10000-record rejection path fell from 1282495 allocated bytes
+to 1280 on Julia 1.13.1 and 1728 on Julia 1.12.7. The row-run counter itself
+allocates 64 bytes in the measured 2000-run control. These measurements
+bound these specific warmed calls; opaque memory, peak RSS and global
+optimization remain unverified.
+
+General thick HOLLOW topology, ARR grounded loss and conductivity, SFC
+horizontal endpoint behavior, BAR lowering, native non-Ring endpoint
+physics, low-frequency physical residuals, mode/mesh convergence and
+measured spiral/coupled RFIC acceptance remain open. A supported input or
+passing algebraic residual alone does not establish complete native
+physics or complete planar/RFIC design coverage.
+
+
+### Translated volume area and wide rectangle recovery
+
+Physical VOL area is evaluated after translating vertices to a local
+origin, avoiding cancellation between large absolute-coordinate products.
+A verified axis-aligned rectangle fills its bounding box exactly. Its
+normalized fill is retained before the square-root equivalent-depth law,
+and wide recovery reforms its physical area from the owned dimensions.
+This rectangle flag also follows cold sheet-resistance, resistivity and
+HOLLOW recovery. Other polygon shapes retain their separate geometry laws.
+
+The earlier public importer accepted a 10-mm translated SRVY square with
+axial component error 7.63e-7 and endpoint-film error 4.18e-7. A private
+1-m rectangle exposed 1.05e-8 depth error, and two accepted 1-mm public
+SRVY cases at 1e-308/1e-320 exposed 9.85e-9 axial wide-recovery error.
+Those negative results remain retained. Independent 32768-bit equations
+for actual stored polygon area, slab conductivity and open-back half-height
+film now pass eighteen public imports and sixteen private translation
+controls across Julia 1.13.1/1.12.7. The maximum public component error is
+8.89e-16 under the original 2e-12 gate. Native archives and borrowed
+coordinates remain unchanged. These are material/import controls; no
+translated native EM or continuum-convergence acceptance is inferred.
+
+
+### Bounded conformal modal assembly and refinement
+
+Conformal mesh refinement avoids captured boundary-loop coordinates. In
+matched warmed public fine-ground imports, Julia allocations fell from
+16.34/16.40 GB to 2.069 GB on Julia 1.13.1/1.12.7, at least 87.3 percent,
+with identical vertex, triangle, interface and area bytes. Eighteen
+adaptive/uniform/interface/band/interior/budget controls matched exactly
+on each version. This is Julia allocation telemetry for these calls;
+peak RSS, opaque memory and global optimization remain unverified.
+
+Dense conformal assembly shares triangle phase factors and barycentric
+Fourier weights across RWG halves. Cached weight filling allocates zero
+bytes after warm-up and matches scalar TE/TM weights bit for bit for PEC
+and PMC walls, zero/high modes and multiple interfaces. The phase cache
+fits the existing sequential per-triangle workspace reservation.
+
+When remaining `max_bytes` allows at least two columns, up to 64 modal
+contributions use grouped, nonconjugate matrix multiplication. Otherwise
+the established rank-one accumulation remains. Owned batch arrays are
+counted before allocation. Actual two-, three-, seven- and 64-column
+partial batches, finite triangle losses, tight-budget rejection and
+fallback, reciprocity and finite matrix controls pass on both versions.
+The 152 durable weight/cache/batch assertions retain the existing
+2e-14 matrix gate. The existing independent hybrid cross-reaction and
+triangle-integral tests remain required in the complete suite.
+
+A matched 2,468-unknown fine-ground sheet assembly with 64 by 64 modes
+fell from 68.2 to 17.7 seconds on Julia 1.13.1 and from 69.7 to 20.2
+seconds on Julia 1.12.7. Relative matrix error was 2.92e-15 on both.
+Those timings compare the phase-cached rank-one and batched assemblers
+on the same geometry, mode counts and process configuration. The full
+320-mode native grounded RF test, complete package timing, hosted CI,
+physical low-frequency limits and mode/mesh convergence remain separate
+qualification requirements; this benchmark does not certify them.

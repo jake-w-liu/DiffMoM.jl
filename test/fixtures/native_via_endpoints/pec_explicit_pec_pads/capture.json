@@ -1,0 +1,32 @@
+{
+  "case": "pec_explicit_pec_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\pec_explicit_pec_pads",
+  "material": "MET \"Array\" 77 VOL INF SOLID 0 CDVY",
+  "pad_mode": "explicit_pec_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:12.073212+00:00",
+  "ended_at": "2026-10-07T00:33:13.067275+00:00",
+  "seconds": 0.9849999999860302,
+  "exit_code": 0,
+  "source_sha256_before": "3ff77b3cd317dc6384777f6050c8b9dd13cab254f99976dbd062b3fc4d7ad763",
+  "source_sha256_after": "3ff77b3cd317dc6384777f6050c8b9dd13cab254f99976dbd062b3fc4d7ad763",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "9d7d0bda62a3a7cebcd00ec0a86e8ada5d6b293fd5b7ff454e6fca2982f0299d",
+    "native_raw.s2p": "f424f742c328223d2cd007b00b293fc6933f34f9d5e2d4733c09799a49ea7220",
+    "project.son": "3ff77b3cd317dc6384777f6050c8b9dd13cab254f99976dbd062b3fc4d7ad763",
+    "sondata/project/geo_response_d.sid": "17bb19082e2e24b0128305db0f08ee1bf6c2281177c732277b33a3b53f90b9ac",
+    "sondata/project/geo_response_nd.sid": "943d9a5a80fd49895b3defeee7565ee12885c85e0344f6011b8e1f21c792d589",
+    "sondata/project/info.log": "61e6ac08105f74fe7b1a4af864b78aa4c27310cce4fdad3fc9c1e31711cbf431",
+    "sondata/project/log_composite.log": "47c1d742191c8e3db4a41952427273c00a83e2678b5d6bd8bc1ad5009f2bbbe6",
+    "sondata/project/log_errors.log": "b0ba29de7c2d74619f29e95d834e467942c3e7518e21da7cdedf5f30b618f95f",
+    "sondata/project/log_response.log": "402cf9a6a2b643ac2d9fdfc26912053ce078288c241f57ca70526ba37f3f61d5",
+    "sondata/project/log_timing.log": "1dafece8d8e81d5acbac1660dea1d674eece7a2ae854563f2be32ae7a608eb5b"
+  }
+}

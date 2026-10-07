@@ -1,0 +1,22 @@
+{
+  "case": "reverse",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_endpoint_stacked_order_controls_v1_20261007\\reverse",
+  "exit_code": 0,
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "source_sha256_before": "18799366994dd626fca320260e427c799d15beadde1fc6c3c0a702eb9bb43e3e",
+  "source_sha256_after": "18799366994dd626fca320260e427c799d15beadde1fc6c3c0a702eb9bb43e3e",
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "6044e4ef2538e5671fb966c6e92f6aa2b5a7b702f2b2c664fc77a5fe02331ed6",
+    "native_raw.s2p": "8e80a770cdb5cea934c8fa6b2b1f7a021992ba0704f568eb7b4bc83cdf737eba",
+    "project.son": "18799366994dd626fca320260e427c799d15beadde1fc6c3c0a702eb9bb43e3e",
+    "sondata/project/geo_response_d.sid": "5b05d681146c2be8c24f6f9e684ea748facd4af28eebc704698daf108e46498a",
+    "sondata/project/geo_response_nd.sid": "90fb594e67e9fd51f47fc11b4f399abc94364a412278eca4c5674191053f27ce",
+    "sondata/project/info.log": "2c48b053c44cc6d9327286f24cf6bf0be0427269376ed75bd23f7bc8fbbc7bf0",
+    "sondata/project/log_composite.log": "487ec605b0921ee91bbb875781d8a49fb4289f4ad9b007cce00e1ca1c063d5c7",
+    "sondata/project/log_errors.log": "b887f7e96a71329c9b7d231587b5e6fe7432c6050af7b8239b20dd9ea73a23a2",
+    "sondata/project/log_response.log": "49ffc14cca5f31af9648bb5a1bac7ea0ddb0ab7eaabf2d13901d36b617c599e5",
+    "sondata/project/log_timing.log": "e70310362e4b5e1b1fa4efc3d2281802b619b72a37a43669847a856784a6ded3"
+  }
+}

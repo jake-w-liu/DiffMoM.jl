@@ -24,8 +24,15 @@ end
     abs(value)>bound && return value
     # Geometry predicates retain the exact sign of the input Float64
     # coordinates when an edge is collinear or nearly collinear.
-    return Float64((BigFloat(bx)-BigFloat(ax))*(BigFloat(cy)-BigFloat(ay))-
-        (BigFloat(by)-BigFloat(ay))*(BigFloat(cx)-BigFloat(ax)))
+    (ax==bx==cx || ay==by==cy) && return 0.0
+    return setprecision(BigFloat,8192) do
+        exact=(BigFloat(bx)-BigFloat(ax))*(BigFloat(cy)-BigFloat(ay))-
+            (BigFloat(by)-BigFloat(ay))*(BigFloat(cx)-BigFloat(ax))
+        stored=Float64(exact)
+        !iszero(exact) && iszero(stored) && throw(ArgumentError(
+            "conformal orientation magnitude is unrepresentable"))
+        stored
+    end
 end
 @inline _planar_tri_orientation(v,a,b,c)=_planar_orient2d(v[1,a],v[2,a],v[1,b],v[2,b],v[1,c],v[2,c])
 @inline function _planar_on_segment(v,a,b,c)
@@ -68,7 +75,8 @@ function PlanarConformalMesh(vertices::AbstractMatrix{<:Real},triangles::Abstrac
     size(vertices,1)==2 && size(triangles,1)==3 && size(vertices,2)>=3 && size(triangles,2)>=1 ||
         throw(ArgumentError("vertices must be 2×Nv and triangles 3×Nt"))
     nv,nt=size(vertices,2),size(triangles,2)
-    est=_checked_payload_sum("conformal mesh",_checked_array_payload_bytes(Float64,2,nv),
+    est=_checked_payload_sum("conformal mesh",_planar_conformal_exact_workspace(),
+        _checked_array_payload_bytes(Float64,2,nv),
         _checked_array_payload_bytes(Int,7,nt),_checked_array_payload_bytes(Float64,nt),
         _checked_array_payload_bytes(Int,2,nv))
     _enforce_payload_limit(est,max_bytes,"conformal mesh","max_bytes")
@@ -291,6 +299,48 @@ function _planar_conformal_weights!(te,tm,prob,kx,ky)
     end
     return te,tm
 end
+# Phase factors and barycentric exponential weights depend on the physical
+# triangle and mode, shared by every RWG half on that triangle.
+_planar_conformal_triangle_cache_bytes(prob)=
+    _checked_array_payload_bytes(ComplexF64,8,length(prob.mesh.interfaces))
+function _planar_conformal_triangle_cache(prob)
+    nt=length(prob.mesh.interfaces)
+    (factors=Matrix{ComplexF64}(undef,2,nt),weights=Array{ComplexF64}(undef,3,2,nt))
+end
+function _planar_conformal_cached_weights!(te,tm,prob,kx,ky,cache)
+    for t in eachindex(prob.mesh.interfaces)
+        vertices=view(prob.mesh.vertices,:,view(prob.mesh.triangles,:,t))
+        for (plane,sign) in ((1,1),(2,-1))
+            factor,weights=_planar_triangle_fourier_weights(vertices,kx,sign*ky)
+            cache.factors[plane,t]=factor
+            for j in 1:3
+                cache.weights[j,plane,t]=weights[j]
+            end
+        end
+    end
+    for b in eachindex(prob.basis.width)
+        px,py=0.,0.
+        for half in 1:2
+            prob.basis.triangles[half,b]==0 && continue
+            t,x,y=_planar_conformal_half_values(prob,b,half)
+            xp,yp,xm,ym=0.0im,0.0im,0.0im,0.0im
+            for j in 1:3
+                xp+=x[j]*cache.weights[j,1,t];yp+=y[j]*cache.weights[j,1,t]
+                xm+=x[j]*cache.weights[j,2,t];ym+=y[j]*cache.weights[j,2,t]
+            end
+            xp*=cache.factors[1,t];yp*=cache.factors[1,t]
+            xm*=cache.factors[2,t];ym*=cache.factors[2,t]
+            if prob.sidewalls===WALL_PEC
+                px+=(imag(xp)-imag(xm))/2;py+=(imag(yp)+imag(ym))/2
+            else
+                px+=(imag(xp)+imag(xm))/2;py+=(imag(yp)-imag(ym))/2
+            end
+        end
+        te[b]=ky*px-kx*py;tm[b]=kx*px+ky*py
+    end
+    te,tm
+end
+
 function _planar_conformal_weights(prob,kx,ky)
     nb=length(prob.basis.width)
     _planar_conformal_weights!(Vector{Float64}(undef,nb),Vector{Float64}(undef,nb),prob,kx,ky)
@@ -317,6 +367,29 @@ function _planar_conformal_loss_entries(emit,prob,surface_zs)
     end
 end
 
+function _planar_conformal_modal_batch(prob,groups,available)
+    nb=length(prob.basis.width);ng=length(groups)
+    percolumn=_checked_payload_sum("conformal modal batch",
+        _checked_array_payload_bytes(ComplexF64,2,nb),
+        _checked_array_payload_bytes(ComplexF64,ng,ng))
+    percolumn==0 && return nothing
+    capacity=Int(min(64,available÷percolumn))
+    capacity>=2 || return nothing
+    (weights=Matrix{ComplexF64}(undef,nb,capacity),
+     voltages=Array{ComplexF64}(undef,ng,ng,capacity),
+     scaled=Matrix{ComplexF64}(undef,nb,capacity),capacity=capacity)
+end
+function _planar_conformal_flush_batch!(Z,batch,groups,filled)
+    for (i,(_,rows)) in enumerate(groups),(j,(_,cols)) in enumerate(groups)
+        for k in 1:filled,b in rows
+            batch.scaled[b,k]=batch.voltages[i,j,k]*batch.weights[b,k]
+        end
+        mul!(view(Z,rows,cols),view(batch.scaled,rows,1:filled),
+            transpose(view(batch.weights,cols,1:filled)),1.0+0im,1.0+0im)
+    end
+    nothing
+end
+
 """Exact finite TE/TM Galerkin modal sum for genuine triangular currents.
 `surface_zs` is a scalar or one scalar per physical triangle. No Green or
 surface quadrature is used. Arbitrary triangle sizes are supported."""
@@ -338,9 +411,14 @@ function assemble_planar_conformal_z(prob::PlanarConformalProblem,freq::Number;
     Wte=Vector{Float64}(undef,nb);Wtm=similar(Wte);Wcomplex=Vector{ComplexF64}(undef,nb)
     groups=[(level,findfirst(==(level),prob.basis.interfaces):findlast(==(level),prob.basis.interfaces)) for level in unique(prob.basis.interfaces)]
     cte,ctm,scratch,_,_=_planar_mode_workspace(L,false,false)
+    # The existing24Float64/triangle loss allowance also bounds the
+    # sequential8ComplexF64/triangle phase cache after loss associations die.
+    cache=_planar_conformal_triangle_cache(prob)
+    batch=_planar_conformal_modal_batch(prob,groups,max_bytes-est)
+    filled=0
     for n in 1:mg.my,m in 1:mg.mx
         kx,ky=mg.kx[m],mg.ky[n];kc2=kx*kx+ky*ky
-        _planar_conformal_weights!(Wte,Wtm,prob,kx,ky)
+        _planar_conformal_cached_weights!(Wte,Wtm,prob,kx,ky,cache)
         pec=prob.sidewalls===WALL_PEC
         nte2=pec ? ky^2*mg.ic[m]*mg.js[n]+kx^2*mg.is[m]*mg.jc[n] : ky^2*mg.is[m]*mg.jc[n]+kx^2*mg.ic[m]*mg.js[n]
         ntm2=pec ? kx^2*mg.ic[m]*mg.js[n]+ky^2*mg.is[m]*mg.jc[n] : kx^2*mg.is[m]*mg.jc[n]+ky^2*mg.ic[m]*mg.js[n]
@@ -348,13 +426,28 @@ function assemble_planar_conformal_z(prob::PlanarConformalProblem,freq::Number;
             norm2==0 && continue
             cascade=pol===TE_POL ? cte : ctm
             planar_mode_cascade!(cascade,prob.stack,omega,kc2,pol,scratch)
-            Wcomplex.=W
-            for (f,rows) in groups,(s,cols) in groups
-                voltage=-planar_modal_voltage(cascade,f,s)/norm2
-                LinearAlgebra.BLAS.geru!(voltage,view(Wcomplex,rows),view(Wcomplex,cols),view(Z,rows,cols))
+            if batch===nothing
+                Wcomplex.=W
+                for (f,rows) in groups,(s,cols) in groups
+                    voltage=-planar_modal_voltage(cascade,f,s)/norm2
+                    LinearAlgebra.BLAS.geru!(voltage,view(Wcomplex,rows),view(Wcomplex,cols),view(Z,rows,cols))
+                end
+            else
+                filled+=1
+                for q in eachindex(W)
+                    batch.weights[q,filled]=W[q]
+                end
+                for (i,(f,_)) in enumerate(groups),(j,(s,_)) in enumerate(groups)
+                    batch.voltages[i,j,filled]=-planar_modal_voltage(cascade,f,s)/norm2
+                end
+                if filled==batch.capacity
+                    _planar_conformal_flush_batch!(Z,batch,groups,filled)
+                    filled=0
+                end
             end
         end
     end
+    filled==0 || _planar_conformal_flush_batch!(Z,batch,groups,filled)
     return Z
 end
 

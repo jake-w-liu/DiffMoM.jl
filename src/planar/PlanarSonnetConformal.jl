@@ -1,5 +1,171 @@
 export sonnet_conformal_layout,solve_sonnet_conformal
 
+# Decompose the generated background conductors once per interface. Every
+# region retains its active via IDs; original physical sheets have priority.
+function _sonnet_endpoint_overlay(backgrounds,occupied,max_bytes)
+    # Unique-level/index/filter arrays are owned staging, even if the
+    # later edge budget rejects. Check before constructing any of them.
+    reference_bytes=_checked_array_payload_bytes(UInt,8,length(backgrounds))
+    _enforce_payload_limit(_checked_payload_sum("native endpoint overlay staging",
+        reference_bytes,_planar_conformal_exact_workspace()),max_bytes,
+        "native endpoint overlay staging","max_bytes")
+    result=Tuple{Int,Tuple,Vector{_P2}}[]
+    total_vertices=0;total_ids=0
+    for level in unique(q.level for q in backgrounds)
+        level_backgrounds=filter(q->q.level==level,backgrounds)
+        ne=sum((BigInt(length(q.vertices)) for q in level_backgrounds);init=BigInt(0))+
+            sum((BigInt(length(q.vertices)) for q in occupied if q.level==level);init=BigInt(0))
+        budget(nx,parts,vertices,ids)=_planar_conformal_arrangement_budget(ne,nx,parts,vertices,0,
+            max_bytes-reference_bytes-_checked_array_payload_bytes(Int,ids))
+        budget(2ne,length(result),total_vertices,total_ids)
+        edges=Tuple{NTuple{2,Float64},NTuple{2,Float64}}[]
+        for q in Iterators.flatten((level_backgrounds,(q for q in occupied if q.level==level)))
+            for k in eachindex(q.vertices)
+                push!(edges,(Tuple(q.vertices[k]),Tuple(q.vertices[mod1(k+1,length(q.vertices))])))
+            end
+        end
+        xmin=minimum(v[1] for q in level_backgrounds for v in q.vertices)
+        xmax=maximum(v[1] for q in level_backgrounds for v in q.vertices)
+        cuts=Float64[xmin,xmax];intersections=Dict{Tuple{Int,Float64},Float64}()
+        for (a,b) in edges
+            xmin<a[1]<xmax && push!(cuts,a[1])
+            xmin<b[1]<xmax && push!(cuts,b[1])
+        end
+        for i in eachindex(edges),j in i+1:length(edges)
+            point=_planar_conformal_cross_point(edges[i]...,edges[j]...)
+            point===nothing && continue
+            x,y=point;xmin<x<xmax || continue
+            budget(length(cuts)+2length(intersections)+5,length(result),total_vertices,total_ids)
+            push!(cuts,x);intersections[(i,x)]=y;intersections[(j,x)]=y
+        end
+        edge_y(e,x)=get(intersections,(e,x)) do
+            _planar_conformal_line_y(edges[e]...,x)
+        end
+        sort!(unique!(cuts))
+        for slab in 1:length(cuts)-1
+            xl,xr=cuts[slab],cuts[slab+1];mid=xl+(xr-xl)/2
+            xl<mid<xr || throw(ArgumentError("native endpoint overlay is below Float64 resolution"))
+            active=[e for (e,(a,b)) in enumerate(edges) if min(a[1],b[1])<mid<max(a[1],b[1])]
+            sort!(active;by=e->edge_y(e,mid))
+            for k in 1:length(active)-1
+                lo,hi=active[k],active[k+1];yl,yu=edge_y(lo,mid),edge_y(hi,mid)
+                yl<yu || continue
+                point=_P2(mid,yl+(yu-yl)/2)
+                any(q->q.level==level && _p2_point_in_poly(point,q.vertices,0.),occupied) && continue
+                ids=sort!(unique(q.poly.id for q in level_backgrounds if _p2_point_in_poly(point,q.vertices,0.)))
+                isempty(ids) && continue
+                budget(length(cuts)+2length(intersections),length(result)+1,total_vertices+4,total_ids+length(ids))
+                points=_P2[_P2(xl,edge_y(lo,xl)),_P2(xr,edge_y(lo,xr)),
+                    _P2(xr,edge_y(hi,xr)),_P2(xl,edge_y(hi,xl))]
+                unique!(points);length(points)>=3 || continue
+                push!(result,(level,Tuple(ids),points));total_vertices+=length(points);total_ids+=length(ids)
+            end
+        end
+    end
+    result
+end
+
+function _sonnet_endpoint_combined_zs(p,polygons,ids,stack,freq,variables)
+    zs=_sonnet_via_endpoint_zs(p,polygons[first(ids)],stack,freq,variables)
+    for id in Iterators.drop(ids,1)
+        next=_sonnet_via_endpoint_zs(p,polygons[id],stack,freq,variables)
+        zs=_sonnet_via_parallel_zs(zs,next)
+    end
+    zs
+end
+
+
+# Subtract existing physical sheets from a generated endpoint footprint.
+# Vertical slabs use the same exact orientation/intersection primitives as
+# the conformal sheet arrangement, retaining genuine polygon coordinates.
+function _sonnet_endpoint_difference(vertices,level,occupied,max_bytes)
+    edges=Tuple{NTuple{2,Float64},NTuple{2,Float64}}[]
+    ne=BigInt(length(vertices))+sum((BigInt(length(q.vertices)) for q in occupied if q.level==level);init=BigInt(0))
+    _planar_conformal_arrangement_budget(ne,2ne,0,0,0,max_bytes)
+    for k in eachindex(vertices)
+        push!(edges,(Tuple(vertices[k]),Tuple(vertices[mod1(k+1,length(vertices))])))
+    end
+    for q in occupied
+        q.level==level || continue
+        for k in eachindex(q.vertices)
+            push!(edges,(Tuple(q.vertices[k]),Tuple(q.vertices[mod1(k+1,length(q.vertices))])))
+        end
+    end
+    xmin,xmax=extrema(v[1] for v in vertices)
+    cuts=Float64[xmin,xmax]
+    intersections=Dict{Tuple{Int,Float64},Float64}()
+    for (a,b) in edges
+        xmin<a[1]<xmax && push!(cuts,a[1])
+        xmin<b[1]<xmax && push!(cuts,b[1])
+    end
+    for i in eachindex(edges),j in i+1:length(edges)
+        point=_planar_conformal_cross_point(edges[i]...,edges[j]...)
+        point===nothing && continue
+        x,y=point;xmin<x<xmax || continue
+        _planar_conformal_arrangement_budget(ne,length(cuts)+2length(intersections)+5,0,0,0,max_bytes)
+        push!(cuts,x);intersections[(i,x)]=y;intersections[(j,x)]=y
+    end
+    edge_y(e,x)=get(intersections,(e,x)) do
+        _planar_conformal_line_y(edges[e]...,x)
+    end
+    sort!(unique!(cuts));parts=Vector{Vector{_P2}}()
+    for slab in 1:length(cuts)-1
+        xl,xr=cuts[slab],cuts[slab+1];mid=xl+(xr-xl)/2
+        xl<mid<xr || throw(ArgumentError("native endpoint subtraction is below Float64 resolution"))
+        active=[e for (e,(a,b)) in enumerate(edges) if min(a[1],b[1])<mid<max(a[1],b[1])]
+        sort!(active;by=e->edge_y(e,mid))
+        for k in 1:length(active)-1
+            lo,hi=active[k],active[k+1];yl,yu=edge_y(lo,mid),edge_y(hi,mid)
+            yl<yu || continue
+            point=_P2(mid,yl+(yu-yl)/2)
+            _p2_point_in_poly(point,vertices,0.) || continue
+            any(q->q.level==level && _p2_point_in_poly(point,q.vertices,0.),occupied) && continue
+            points=_P2[_P2(xl,edge_y(lo,xl)),_P2(xr,edge_y(lo,xr)),
+                _P2(xr,edge_y(hi,xr)),_P2(xl,edge_y(hi,xl))]
+            unique!(points);length(points)>=3 || continue
+            _planar_conformal_arrangement_budget(ne,length(cuts)+2length(intersections),length(parts)+1,4(length(parts)+1),0,max_bytes)
+            push!(parts,points)
+        end
+    end
+    parts
+end
+
+function _sonnet_endpoint_rectangle_payload(mask)
+    # Each run owns a distinct cell, so this counter cannot exceed the
+    # already stored array length. Widen only checked byte arithmetic.
+    rectangles=0
+    for j in axes(mask,2),i in axes(mask,1)
+        mask[i,j] && (i==first(axes(mask,1)) || !mask[i-1,j]) && (rectangles+=1)
+    end
+    _checked_payload_sum("native endpoint rectangles",
+        _checked_array_payload_bytes(_P2,4,rectangles),
+        _checked_array_payload_bytes(UInt,rectangles))
+end
+
+function _sonnet_endpoint_rectangles(mask,grid,max_bytes=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    # Count the exact row runs and reserve all coordinate/pointer payload
+    # before constructing any rectangle, including failed public imports.
+    _enforce_payload_limit(_sonnet_endpoint_rectangle_payload(mask),max_bytes,
+        "native endpoint rectangles","max_bytes")
+    # Coalesce contiguous occupied cells in each row. Physical sheet geometry
+    # is subtracted afterward; source polygons are never rasterized here.
+    rectangles=Vector{Vector{_P2}}()
+    for j in axes(mask,2)
+        i=first(axes(mask,1))
+        while i<=last(axes(mask,1))
+            if !mask[i,j];i+=1;continue;end
+            firstcell=i
+            while i<last(axes(mask,1)) && mask[i+1,j];i+=1;end
+            x1,x2=(firstcell-1)*grid.dx,i*grid.dx
+            y1,y2=(j-1)*grid.dy,j*grid.dy
+            push!(rectangles,_P2[_P2(x1,y1),_P2(x2,y1),_P2(x2,y2),_P2(x1,y2)])
+            i+=1
+        end
+    end
+    rectangles
+end
+
+
 """Lower a native Sonnet project onto genuine physical sheet triangles.
 The native stack/material helper preserves SI units, variable expressions,
 cover impedances, dielectric loss and physical two-face thick geometry.
@@ -11,8 +177,8 @@ Sheets extending beyond the box are clipped exactly. Source edge identities
 remain native; their driven attachment must still lie within the box band.
 `edge_size,interior_size` declare independent physical mesh bounds.
 
-Via columns retain the native uniform-grid SOLID/RING/CENTER/VERTICES/BAR
-footprint contract and exact axial kernels; their cell boundaries constrain
+Via columns retain the supported native uniform-grid footprints and exact
+axial kernels; BAR requires its dedicated adapter. Cell boundaries constrain
 the triangular contacts. This is exact sheet geometry, with a declared
 grid approximation for arbitrary via footprints. Bare open interior
 terminals require explicit physical return/bridge geometry. Components,
@@ -51,6 +217,11 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         _checked_array_payload_bytes(Int,8,ne),_checked_array_payload_bytes(UInt64,4+2nvia+nvpoly,cld(cells,64)),
         _checked_array_payload_bytes(ComplexF64,length(p.metals)+1),
         _sonnet_scalar_files(variables)===nothing ? 0 : _sonnet_scalar_payload(variables))
+    if _sonnet_has_volume_skin(p) || any(poly->_sonnet_via_endpoints(p,poly) && poly.material!=-1,p.polygons)
+        reserve=_checked_payload_sum("native complex via metadata",reserve,256nvia)
+        workspace=_sonnet_volume_polygon_workspace(p)
+        iszero(workspace) || (reserve=_checked_payload_sum("native volume material workspace",reserve,workspace))
+    end
     _enforce_payload_limit(reserve,max_bytes,"native conformal metadata","max_bytes")
     # Reserve geometry storage before copying any near-wall vertices.
     # Wall ownership uses source BOX counts rather than triangle/bulk sizes.
@@ -82,11 +253,11 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
                 "CENTER" in poly.flags ? :center : "BAR" in poly.flags ? :bar : :ring
             mask=_planar_via_mesh_mask(footprint.mask,poly.vertices,gr,mode);masks[poly.id]=mask
             rho_sigma=_sonnet_via_sigma(p,poly,gr,stack,mask,freq,variables)
-            if "COVERS" in poly.flags
-                for nativelevel in (poly.level,target)
-                    nativelevel in (-1,L-1) || add_sheet("native_via_pad_$(poly.id)_$nativelevel",L-1-nativelevel,poly.vertices,"pec")
-                end
+            if rho_sigma isa Complex && sigma isa Vector{Float64}
+                sigma=ComplexF64.(sigma)
+                via_group=Dict{Tuple{Int,ComplexF64},Int}((k[1],ComplexF64(k[2]))=>v for (k,v) in via_group)
             end
+
             for layer in (L-hi):(L-lo-1)
                 key=(layer,rho_sigma);index=get(via_group,key,0)
                 for (other,v) in enumerate(vias)
@@ -97,6 +268,65 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
                 end
                 vias[index].uni .|=mask;vias[index].tap .|=mask;via_indices[(poly.id,layer)]=index
             end
+        end
+    end
+    # Shared generated films are one physical interface, independently of
+    # polygon order. Exact overlay preserves original physical sheets.
+    physical_sheets=copy(polygons)
+    backgrounds=NamedTuple[];background_bytes=0
+    endpoint_polygons=Dict(poly.id=>poly for poly in p.polygons if _sonnet_via_endpoints(p,poly))
+    for poly in p.polygons
+        _sonnet_via_endpoints(p,poly) || continue
+        target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
+        endpoints=count(l->!(l in (-1,L-1)),(poly.level,target))
+        iszero(endpoints) && continue
+        covers="COVERS" in poly.flags
+        footprint_bytes=covers ? _checked_payload_sum("native endpoint polygon",
+            _checked_array_payload_bytes(_P2,size(poly.vertices,2)),sizeof(UInt)) :
+            _sonnet_endpoint_rectangle_payload(masks[poly.id])
+        # Source rectangles, canonical copies and background record slots
+        # stay live together until the complete interface overlay is built.
+        additional=_checked_payload_sum("native endpoint background",
+            (endpoints+1)*footprint_bytes,64endpoints*div(footprint_bytes,72)+256)
+        _enforce_payload_limit(_checked_payload_sum("native endpoint backgrounds",reserve,background_bytes,additional),
+            max_bytes,"native endpoint backgrounds","max_bytes")
+        footprints=covers ? [[_P2(poly.vertices[1,k],poly.vertices[2,k]) for k in axes(poly.vertices,2)]] :
+            _sonnet_endpoint_rectangles(masks[poly.id],gr,max_bytes-reserve-background_bytes)
+        for nativelevel in (poly.level,target)
+            nativelevel in (-1,L-1) && continue
+            level=L-1-nativelevel
+            for vertices in footprints
+                generated=covers ? vertices :
+                    [_P2(ntuple(dim->_planar_conformal_contact_coordinate(vertex[dim],level,dim,
+                        physical_sheets,PlanarPolygon[],Tuple[],0),2)) for vertex in vertices]
+                push!(backgrounds,(;poly,level,vertices=generated))
+            end
+        end
+        background_bytes=_checked_payload_sum("native endpoint backgrounds",background_bytes,additional)
+    end
+    if !isempty(backgrounds)
+        parts=_sonnet_endpoint_overlay(backgrounds,physical_sheets,max_bytes-reserve-background_bytes)
+        vertices_count=sum((BigInt(length(vertices)) for (_,_,vertices) in parts);init=BigInt(0))
+        ids_count=sum((BigInt(length(ids)) for (_,ids,_) in parts);init=BigInt(0))
+        # Overlay records and coordinates stay live while normalized
+        # polygons/providers/names are constructed, and during meshing.
+        endpoint_bytes=_checked_payload_sum("native retained endpoint geometry",
+            _checked_array_payload_bytes(_P2,2,vertices_count),
+            _checked_array_payload_bytes(UInt,8,length(parts)),
+            _checked_array_payload_bytes(Int,ids_count),
+            _checked_array_payload_bytes(PlanarPolygon,length(parts)),
+            _checked_array_payload_bytes(UInt8,192,length(parts)),
+            _checked_array_payload_bytes(UInt8,24,ids_count))
+        reserve=_checked_payload_sum("native retained endpoint geometry",reserve,background_bytes,endpoint_bytes)
+        _enforce_payload_limit(reserve,max_bytes,"native retained endpoint geometry","max_bytes")
+        for (index,(level,ids,vertices)) in enumerate(parts)
+            zs=_sonnet_endpoint_combined_zs(p,endpoint_polygons,ids,stack,freq,variables)
+            metal=iszero(zs) ? "pec" : "native_endpoint_$(level)_$(join(ids,'_'))"
+            if metal!="pec" && !haskey(metals,metal)
+                metals[metal]=f->_sonnet_endpoint_combined_zs(p,endpoint_polygons,ids,stack,f,variables)
+            end
+            v,b=planar_normalize_polygon(vertices;label="native via endpoint")
+            push!(polygons,PlanarPolygon("native_endpoint_$(level)_$index",level,metal,"",v,b))
         end
     end
     # PEC box walls ground every actual sheet boundary touching them,

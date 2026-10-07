@@ -1,0 +1,32 @@
+{
+  "case": "volume_solid_no_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_no_pads",
+  "material": "MET \"Array\" 77 VOL 10000 SOLID 0 CDVY",
+  "pad_mode": "no_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:01.704015+00:00",
+  "ended_at": "2026-10-07T00:33:02.085705+00:00",
+  "seconds": 0.375,
+  "exit_code": 0,
+  "source_sha256_before": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+  "source_sha256_after": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "527e90ebd9593dbf91e8edfa1cba7394940765a5b3a159ef276574dcb0d8e4f7",
+    "native_raw.s2p": "9c4b70a283b52b958177609e26ff77dd80e02b783a6184a28d38c7888acb1574",
+    "project.son": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+    "sondata/project/geo_response_d.sid": "580fddcc7478d8192543d665a83576b0563b9ac6cf70cabae0d8510e3508434b",
+    "sondata/project/geo_response_nd.sid": "65e3bb4abffb70afbde852daeeb6928be7b0e83df068fe3e302b1aa14f8183dc",
+    "sondata/project/info.log": "03dd5e0ce64de112888476ccd431becccb997859300512efd638001babcc1dbd",
+    "sondata/project/log_composite.log": "fb720a72d7ddbd3a6dba25aa3fab4155f3a65fff5f6e669ef98e0777e40b0c2b",
+    "sondata/project/log_errors.log": "e75c039d6cfa242e9d38057797b0fa58eae6949498576e17f839ee04e24d2081",
+    "sondata/project/log_response.log": "73fdb5ce6d82467084c9b6283a64b58ca34adb095cf4e04c188536b245c12150",
+    "sondata/project/log_timing.log": "f231c632c638ec600afa06a76d67eb491ba36bdc319650066d594508deae72cd"
+  }
+}

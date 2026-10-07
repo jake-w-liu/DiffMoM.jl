@@ -1,0 +1,29 @@
+{
+  "case": "inactive_wall_no_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_partial_contact_rpv_controls_v1_20261007\\inactive_wall_no_pads",
+  "material": "MET \"Array\" 77 VOL .25 0 RPV",
+  "pad_mode": "no_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_no_pads\\project.son",
+  "original_sha256": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+  "source_sha256_before": "ec95620b035a4c8d4051c5ecff8f5db77ba4cdf8435f0e0356c9b951bfaa19e6",
+  "source_sha256_after": "ec95620b035a4c8d4051c5ecff8f5db77ba4cdf8435f0e0356c9b951bfaa19e6",
+  "exit_code": 0,
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "82db24fe9a9c0dcd10410d0c21792c45f1a63e384e9aa95b8baa3ded88427702",
+    "native_raw.s2p": "d6f7a646057cc63d702b508c84ebc0b3b549563145eae20834b24c22e363134b",
+    "project.son": "ec95620b035a4c8d4051c5ecff8f5db77ba4cdf8435f0e0356c9b951bfaa19e6",
+    "sondata/project/geo_response_d.sid": "aaa3979577d27b19a61e492486d41b5183f947a4dc17fdee6f46c1dc32781755",
+    "sondata/project/geo_response_nd.sid": "0fe681d9324743b14d8d35805a91e6622654cae5c1b7aa50ce9503a9677d4d61",
+    "sondata/project/info.log": "0025216e9bb477c606a03615095a08562d0ef3813729b297050140e9e06a2779",
+    "sondata/project/log_composite.log": "942cf609afee3271d6414c0d2d6f9b6f39e3e5dbc6342b373359800c01e24056",
+    "sondata/project/log_errors.log": "698193d6dc8c18fc786143c8fb931c7e78ab3d06db2aed99337d4e732a92d08b",
+    "sondata/project/log_response.log": "0e94deab1d238b639e663070e690496a1ec1d95209823dd11e0f10d5ff0a11b1",
+    "sondata/project/log_timing.log": "3ad23f9999c579eedb5318eae4cd61b940d41607e79fd5c24b46a01ca470b1bb"
+  }
+}

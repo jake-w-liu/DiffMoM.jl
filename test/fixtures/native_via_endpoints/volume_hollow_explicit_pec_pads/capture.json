@@ -1,0 +1,32 @@
+{
+  "case": "volume_hollow_explicit_pec_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_hollow_explicit_pec_pads",
+  "material": "MET \"Array\" 77 VOL 10000 .01 CDVY",
+  "pad_mode": "explicit_pec_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:06.079329+00:00",
+  "ended_at": "2026-10-07T00:33:07.064105+00:00",
+  "seconds": 0.9849999999860302,
+  "exit_code": 0,
+  "source_sha256_before": "4ac116ddf7e10b32a5de1a5bb7bc6b7a90b1aaac4b7e1a08a8ec0861f9cf81c6",
+  "source_sha256_after": "4ac116ddf7e10b32a5de1a5bb7bc6b7a90b1aaac4b7e1a08a8ec0861f9cf81c6",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "dae4c5ec48b6d66b44670127ba0015da40ed51eccc11c08969785e47ab158270",
+    "native_raw.s2p": "3864278b3d32c0c6cd556c06f22ea45e72344676937afe37ad78f1861acff1ae",
+    "project.son": "4ac116ddf7e10b32a5de1a5bb7bc6b7a90b1aaac4b7e1a08a8ec0861f9cf81c6",
+    "sondata/project/geo_response_d.sid": "f9778457f75153542ee5473252c5721ccc633fb2d75907af720bc4ca884159c7",
+    "sondata/project/geo_response_nd.sid": "1c376e8ab8cd7b3d8ec13aa08813e65bd82dfe2515a7fc182a5b6e1e204d5041",
+    "sondata/project/info.log": "1054520b43eab186d84243381b17d5b4d08a2f58e9392f60d026eee600de3e7d",
+    "sondata/project/log_composite.log": "63e3624a0e90660a1c271b445bf29e3d24e355384c42d4ea23e67b7f724f353e",
+    "sondata/project/log_errors.log": "5111e96d2879ce1b741906e42e07cc81242e0a1323b1ced9666c48a47ff2f69c",
+    "sondata/project/log_response.log": "6faf184a2ecdc21b39cd5cf86f1fbd94454f0ea278cccf03a630acd601c79613",
+    "sondata/project/log_timing.log": "c5021f4d756d4debbd058960adb94a0e9efb0aa50a71f9f2d7bd544b8088d0ab"
+  }
+}

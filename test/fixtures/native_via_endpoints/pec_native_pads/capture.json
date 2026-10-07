@@ -1,0 +1,32 @@
+{
+  "case": "pec_native_pads",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\pec_native_pads",
+  "material": "MET \"Array\" 77 VOL INF SOLID 0 CDVY",
+  "pad_mode": "native_pads",
+  "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_array_skin_fixture_snapshot_v2_20261006\\triangle_volume_solid.son",
+  "original_sha256": "d26d778e9e3c79cbc5ee60a84d7cc8e5e71d756c49666d38f1d621c44bfb9f93",
+  "started_at": "2026-10-07T00:33:11.064699+00:00",
+  "ended_at": "2026-10-07T00:33:12.065251+00:00",
+  "seconds": 1.0,
+  "exit_code": 0,
+  "source_sha256_before": "b476733dcc877eb2611255482ed52466a32b9867f9adfeb27068d4231db67f62",
+  "source_sha256_after": "b476733dcc877eb2611255482ed52466a32b9867f9adfeb27068d4231db67f62",
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "03395973befc98021b5e5d6464c5e034040e19afc2df29f8374215e3b7f0f8ee",
+    "native_raw.s2p": "058098e566401002fe2d5624f46187c392aa2065c7159b16e08ee6484d36cc11",
+    "project.son": "b476733dcc877eb2611255482ed52466a32b9867f9adfeb27068d4231db67f62",
+    "sondata/project/geo_response_d.sid": "1aaed6f6be0e03b86466da4c7f69ee4ac641db43ca3c57538161c743c2940ddc",
+    "sondata/project/geo_response_nd.sid": "3255ff200175e375767400511bc414b8e1b3af21a00943a726fa73bee15afd98",
+    "sondata/project/info.log": "257a909630174ed9a1bd13059c4f89ce8dba2ee443a962663b1a2b984c951991",
+    "sondata/project/log_composite.log": "04dee811f898656a597f92da26779bee2e31285f42c4e813cb51afbd801431dc",
+    "sondata/project/log_errors.log": "73ceac9b63234308a8b3302b0decba326d24037242d510d22185b1b62a16107b",
+    "sondata/project/log_response.log": "358686370a914b9b52b0e0512e3709fc940fa4f28762c8a4730b0f6e09447c71",
+    "sondata/project/log_timing.log": "4ff50c20f2694b2d639b5165154ce59b1903ac257bd817e7075f275c0c35a531"
+  }
+}

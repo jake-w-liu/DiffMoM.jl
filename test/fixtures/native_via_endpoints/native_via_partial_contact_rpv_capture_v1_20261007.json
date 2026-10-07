@@ -1,0 +1,127 @@
+{
+  "status": "FOUR_NATIVE_RPV_PARTIAL_CONTACT_SCHEMA_PAD_CONTROLS_CAPTURED_NO_VERDICT",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_partial_contact_rpv_controls_v1_20261007",
+  "rows": [
+    {
+      "case": "inactive_wall_no_pads",
+      "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_partial_contact_rpv_controls_v1_20261007\\inactive_wall_no_pads",
+      "material": "MET \"Array\" 77 VOL .25 0 RPV",
+      "pad_mode": "no_pads",
+      "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_no_pads\\project.son",
+      "original_sha256": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+      "source_sha256_before": "ec95620b035a4c8d4051c5ecff8f5db77ba4cdf8435f0e0356c9b951bfaa19e6",
+      "source_sha256_after": "ec95620b035a4c8d4051c5ecff8f5db77ba4cdf8435f0e0356c9b951bfaa19e6",
+      "exit_code": 0,
+      "outputs": [
+        "native_raw.s2p"
+      ],
+      "completion_marker": true,
+      "zero_error_marker": true,
+      "inputs": {
+        "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine_stdout.log": "82db24fe9a9c0dcd10410d0c21792c45f1a63e384e9aa95b8baa3ded88427702",
+        "native_raw.s2p": "d6f7a646057cc63d702b508c84ebc0b3b549563145eae20834b24c22e363134b",
+        "project.son": "ec95620b035a4c8d4051c5ecff8f5db77ba4cdf8435f0e0356c9b951bfaa19e6",
+        "sondata/project/geo_response_d.sid": "aaa3979577d27b19a61e492486d41b5183f947a4dc17fdee6f46c1dc32781755",
+        "sondata/project/geo_response_nd.sid": "0fe681d9324743b14d8d35805a91e6622654cae5c1b7aa50ce9503a9677d4d61",
+        "sondata/project/info.log": "0025216e9bb477c606a03615095a08562d0ef3813729b297050140e9e06a2779",
+        "sondata/project/log_composite.log": "942cf609afee3271d6414c0d2d6f9b6f39e3e5dbc6342b373359800c01e24056",
+        "sondata/project/log_errors.log": "698193d6dc8c18fc786143c8fb931c7e78ab3d06db2aed99337d4e732a92d08b",
+        "sondata/project/log_response.log": "0e94deab1d238b639e663070e690496a1ec1d95209823dd11e0f10d5ff0a11b1",
+        "sondata/project/log_timing.log": "3ad23f9999c579eedb5318eae4cd61b940d41607e79fd5c24b46a01ca470b1bb"
+      }
+    },
+    {
+      "case": "inactive_wall_native_pads",
+      "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_partial_contact_rpv_controls_v1_20261007\\inactive_wall_native_pads",
+      "material": "MET \"Array\" 77 VOL .25 0 RPV",
+      "pad_mode": "native_pads",
+      "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_no_pads\\project.son",
+      "original_sha256": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+      "source_sha256_before": "2dd5ac5f1e051002bc0c5b434f87586c0ef47a7808d58083c5e1fbcc41de6367",
+      "source_sha256_after": "2dd5ac5f1e051002bc0c5b434f87586c0ef47a7808d58083c5e1fbcc41de6367",
+      "exit_code": 0,
+      "outputs": [
+        "native_raw.s2p"
+      ],
+      "completion_marker": true,
+      "zero_error_marker": true,
+      "inputs": {
+        "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine_stdout.log": "b59b97d56924828caf7abb617a69de93b816691ac3b0d26a9e004d1e8e059ce5",
+        "native_raw.s2p": "ac4d40122ca888733026cf3101516600715210dc02b15e205ff24aef55f96505",
+        "project.son": "2dd5ac5f1e051002bc0c5b434f87586c0ef47a7808d58083c5e1fbcc41de6367",
+        "sondata/project/geo_response_d.sid": "018f487e6c421ee3830508e511e7b89228fe44b8304e71e5936696c9464544bc",
+        "sondata/project/geo_response_nd.sid": "669a95d0ee9146d81b5bde28ebf397665860dae531ea06609a41b7d05fdc06ea",
+        "sondata/project/info.log": "9be1dfd7b72262d5978336f99e5dd0104e32633913cf83b5a203b6a87bc8a295",
+        "sondata/project/log_composite.log": "8b750d8d64b6647d0ba1209bec78fde1e9f084a6b6b1eeb9ac66d048df7e44cb",
+        "sondata/project/log_errors.log": "6d63499bbc2839288e142f97ccbdbc78a37d7a9a49c810b346182edfce3c69d4",
+        "sondata/project/log_response.log": "a2969ae49e547cf33f290a81fd109375bd36a6d0ed27b22bc6a33d4b78a554c5",
+        "sondata/project/log_timing.log": "bdd4c054a4f95e2e0862ee3db5a825de6e7ace9748efc233be806315737678e6"
+      }
+    },
+    {
+      "case": "solid_no_pads",
+      "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_partial_contact_rpv_controls_v1_20261007\\solid_no_pads",
+      "material": "MET \"Array\" 77 VOL .25 SOLID 0 RPV",
+      "pad_mode": "no_pads",
+      "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_no_pads\\project.son",
+      "original_sha256": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+      "source_sha256_before": "b005e06ac18f794ca99321ed22b99722fb89c16afa2238a29a1665da91c05a6d",
+      "source_sha256_after": "b005e06ac18f794ca99321ed22b99722fb89c16afa2238a29a1665da91c05a6d",
+      "exit_code": 0,
+      "outputs": [
+        "native_raw.s2p"
+      ],
+      "completion_marker": true,
+      "zero_error_marker": true,
+      "inputs": {
+        "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine_stdout.log": "6dfe976b775b55d6b49a4aed91ede82a8aad4b92f02734c563c804207dc935ce",
+        "native_raw.s2p": "758ceda988ad365dcac45f66fd6932d8ea33d4949237f6144f677ba33d502f2e",
+        "project.son": "b005e06ac18f794ca99321ed22b99722fb89c16afa2238a29a1665da91c05a6d",
+        "sondata/project/geo_response_d.sid": "7515d18a3bf72f953ad3f5925123f58b2a03cb307af8fc75610c9725b574ce4b",
+        "sondata/project/geo_response_nd.sid": "b7dbe1df4ecefa44d5530a5ecfb12100c57949cd21d545cc673fa7968dc9549a",
+        "sondata/project/info.log": "5854636959ebe991380837961820521b009c9bd36f3beb0c261f9aa04e403089",
+        "sondata/project/log_composite.log": "9f26af45136396a8f1a24d530848acac2ec02dd0cebc0e4d74993218735a747a",
+        "sondata/project/log_errors.log": "2b0c0c91e30b473a23cb619090eaa63eb80a1634d803e3a11dfb4eba618b1af1",
+        "sondata/project/log_response.log": "97e4913353c983cd53678fcd497242a552a928359121d11fe8f59085714c1d46",
+        "sondata/project/log_timing.log": "f88c32990ec7771e4add9b083b475ab15e325fd99b284144026cbefebf84d44f"
+      }
+    },
+    {
+      "case": "solid_native_pads",
+      "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_partial_contact_rpv_controls_v1_20261007\\solid_native_pads",
+      "material": "MET \"Array\" 77 VOL .25 SOLID 0 RPV",
+      "pad_mode": "native_pads",
+      "original_source": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_pad_material_controls_v1_20261007\\volume_solid_no_pads\\project.son",
+      "original_sha256": "dc52606191e36e50b23014a9affd30c5570dc1d1c9e38fd35ff1f71a012ab0a2",
+      "source_sha256_before": "dbf5bce90c97ce11ff6eb7a73b6bb99fefb8f3d366ce7c933ce3eb763c7a6860",
+      "source_sha256_after": "dbf5bce90c97ce11ff6eb7a73b6bb99fefb8f3d366ce7c933ce3eb763c7a6860",
+      "exit_code": 0,
+      "outputs": [
+        "native_raw.s2p"
+      ],
+      "completion_marker": true,
+      "zero_error_marker": true,
+      "inputs": {
+        "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "engine_stdout.log": "97edab947c02115ca4ef1d4c509317697cd119c05d62fee177518a5d2bdc7fe4",
+        "native_raw.s2p": "09c80686237482bc794c6f3d7c5d0dba8e95bbf576920655d6c85b48deb4d9b7",
+        "project.son": "dbf5bce90c97ce11ff6eb7a73b6bb99fefb8f3d366ce7c933ce3eb763c7a6860",
+        "sondata/project/geo_response_d.sid": "a852646f542cedeebe679de7796f052bfe4c2a86f9e7d6a00ca08e5821a72831",
+        "sondata/project/geo_response_nd.sid": "b6f4296b3508649ce035ae1404c9057903df037c735eed469cdf5fbf94834450",
+        "sondata/project/info.log": "73b4e667a57f9dfd67fbe5668e8432ee5fb1fc7244ad418a4765d5f257307516",
+        "sondata/project/log_composite.log": "b1696ede9faa12fceb40a736d1d8b584514fc35245b29a2c5bcb3e8f7598adba",
+        "sondata/project/log_errors.log": "cd81778a67eccdd44680271c9276f880bd81e5a57cca2778ea5419e6b31b749a",
+        "sondata/project/log_response.log": "7669b576eeca69ca6dc725920763893028d7351a1e270edfd9c0d135a129f8c1",
+        "sondata/project/log_timing.log": "1bc43211a161591f5bc9429015e1118961fa15f2348723922c5380570f7f503f"
+      }
+    }
+  ],
+  "captured_at": "2026-10-07T00:52:40.067522+00:00",
+  "parent_capture_sha256": "c7b99cf6425c2f60118f49c07832c5e67d96919886ea679dcb035ea0761d3e83",
+  "engine": "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe",
+  "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac",
+  "scope": "Actual unchanged200umsquarepartialcontactgeometry, fixedRPV.25ohm reference independentlyequivalenttoVOLsigma10000completecross-sectionDC100umheight. Nativeinactivewall andexplicitSOLIDwall schemas, eachNOCOVERS/COVERS,5frequencies. Material/pad-only changes andunroundedRI responses pinned. Nativeacceptance provesinputschemaonly; contact/horizontalloss/wholematrix/current/publicimport verification remainsseparate. No fitting or productionchange."
+}

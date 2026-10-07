@@ -1,24 +1,45 @@
 export PlanarConformalLayout,build_planar_conformal_layout
 
-@inline _planar_conformal_line_y(a,b,x)=x==a[1] ? a[2] : x==b[1] ? b[2] :
-    Float64(BigFloat(a[2])+(BigFloat(x)-BigFloat(a[1]))*(BigFloat(b[2])-BigFloat(a[2]))/(BigFloat(b[1])-BigFloat(a[1])))
+# Float64 segment coordinates have bounded binary exponents. At8192bits,
+# their degree-two/three numerators remain exact before the final division,
+# including extreme exponents and exact-zero/midpoint intersections.
+const _PLANAR_CONFORMAL_EXACT_BITS=8192
+function _planar_conformal_exact_workspace()
+    _checked_payload_sum("conformal exact scalar workspace",
+        _checked_array_payload_bytes(BigFloat,64),
+        _checked_array_payload_bytes(UInt64,64,cld(_PLANAR_CONFORMAL_EXACT_BITS,64)))
+end
+
+@inline function _planar_conformal_line_y(a,b,x)
+    x==a[1] && return a[2]
+    x==b[1] && return b[2]
+    a[2]==b[2] && return a[2]
+    setprecision(BigFloat,_PLANAR_CONFORMAL_EXACT_BITS) do
+        ax,ay,bx,by,xx=BigFloat(a[1]),BigFloat(a[2]),BigFloat(b[1]),BigFloat(b[2]),BigFloat(x)
+        den=bx-ax
+        Float64((ay*den+(xx-ax)*(by-ay))/den)
+    end
+end
 
 function _planar_conformal_cross_point(a,b,c,d)
-    # Exact signs and high precision intersections preserve the physical
-    # arrangement of the supplied Float64 line segments.
     o1=_planar_orient2d(a...,b...,c...);o2=_planar_orient2d(a...,b...,d...)
     o3=_planar_orient2d(c...,d...,a...);o4=_planar_orient2d(c...,d...,b...)
     ((o1>0 && o2<0)||(o1<0 && o2>0)) && ((o3>0 && o4<0)||(o3<0 && o4>0)) || return nothing
-    ax,ay=BigFloat.(a);bx,by=BigFloat.(b);cx,cy=BigFloat.(c);dx,dy=BigFloat.(d)
-    u=((cx-ax)*(dy-cy)-(cy-ay)*(dx-cx))/((bx-ax)*(dy-cy)-(by-ay)*(dx-cx))
-    # An axial segment supplies an exact coordinate, including box cuts.
-    x=a[1]==b[1] ? a[1] : c[1]==d[1] ? c[1] : Float64(ax+u*(bx-ax))
-    y=a[2]==b[2] ? a[2] : c[2]==d[2] ? c[2] : Float64(ay+u*(by-ay))
-    (x,y)
+    a[1]==b[1] && c[2]==d[2] && return (a[1],c[2])
+    a[2]==b[2] && c[1]==d[1] && return (c[1],a[2])
+    setprecision(BigFloat,_PLANAR_CONFORMAL_EXACT_BITS) do
+        ax,ay=BigFloat.(a);bx,by=BigFloat.(b);cx,cy=BigFloat.(c);dx,dy=BigFloat.(d)
+        den=(bx-ax)*(dy-cy)-(by-ay)*(dx-cx)
+        num=(cx-ax)*(dy-cy)-(cy-ay)*(dx-cx)
+        x=a[1]==b[1] ? a[1] : c[1]==d[1] ? c[1] : Float64((ax*den+num*(bx-ax))/den)
+        y=a[2]==b[2] ? a[2] : c[2]==d[2] ? c[2] : Float64((ay*den+num*(by-ay))/den)
+        (x,y)
+    end
 end
 
 function _planar_conformal_arrangement_budget(ne,nx,ntrap,nv,nt,max_bytes)
     _enforce_payload_limit(_checked_payload_sum("conformal polygon arrangement",
+        _planar_conformal_exact_workspace(),
         _checked_array_payload_bytes(Float64,8,ne),_checked_array_payload_bytes(Float64,4,nx),
         _checked_array_payload_bytes(Float64,12,ntrap),_checked_array_payload_bytes(Int,12,ntrap),
         _checked_array_payload_bytes(Float64,4,nv),_checked_array_payload_bytes(Int,4,nv),

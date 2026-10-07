@@ -1,0 +1,71 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+Run 1:  Wed Oct 07 06:25:48 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\native_volume_sheet_selector_controls_v1_20261007\ell_hollow\project.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+      Subsectioning time:  0 seconds.
+      Circuit requires 107 subsections and 1 MB of memory.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.002 seconds.
+      Matrix solve time:  0 seconds.
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 1.788e-4 3.2892 0.999821 0.0000 0.999821 0.0000 1.788e-4 3.2892
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+      Total time per frequency:  0.011 seconds.
+
+    Frequency:  0.01 GHZ
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.002 seconds.
+      Matrix solve time:  0 seconds.
+      0.01000000 2.055e-4 29.659 0.999821 -0.014 0.999821 -0.014 2.055e-4 29.659
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  0.1 GHZ
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.002 seconds.
+      Matrix solve time:  0 seconds.
+      0.10000000 0.001032 79.758 0.999819 -0.141 0.999819 -0.141 0.001032 79.759
+      ! P1 F=0.1 Standard port
+      ! P2 F=0.1 Standard port
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  1 GHZ
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.002 seconds.
+      Matrix solve time:  0 seconds.
+      1.00000000 0.010067 87.274 0.999718 -1.409 0.999718 -1.409 0.010067 87.280
+      ! P1 F=1.0 Eeff=(1.00013 + j0) Z0=(80.8016 + j0)
+      ! P2 F=1.0 Eeff=(1.00013 + j0) Z0=(80.8016 + j0)
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  10 GHZ
+      Waveguide mode time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0.001 seconds.
+      10.0000000 0.098824 75.696 0.994647 -14.01 0.994647 -14.01 0.098828 75.745
+      ! P1 F=10.0 Eeff=(1.0001 + j0) Z0=(80.7991 + j0)
+      ! P2 F=10.0 Eeff=(1.0001 + j0) Z0=(80.7991 + j0)
+      Total time per frequency:  0.004 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 5 frequencies:  0.031 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Wed Oct 07 06:25:48 2026.

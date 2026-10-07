@@ -153,14 +153,25 @@ end
         dr=solve_planar_conformal(d.problem,1e7;mx=24,my=24)
         @test imag(dr.y[1,1])>0
         @test abs(dr.s[1,1])≈1 rtol=1e-10
-        # Sheet-free native axial sources retain their established bulk
-        # route; the genuine-sheet adapter adds no artificial face sheet.
+        # Axial sources drive only the bulk ports. The implicit endpoint
+        # conductor retains the physical footprint without adding gap ports.
         axial=SonnetPortSpec(:via,10,0,1,["1","50","0","0","0",".5",".5"],SonnetRecord[])
         onlyvia=SonnetProject(grounded.source,grounded.units,grounded.length_scale,grounded.frequency_scale,grounded.box,grounded.layers,
             grounded.metals,grounded.top,grounded.bottom,[last(grounded.polygons)],[axial],grounded.variables,grounded.components,grounded.sweeps,grounded.records)
+        coordinates=copy(only(onlyvia.polygons).vertices)
         v=solve_sonnet_conformal(onlyvia,1e9;raw=true,sizes...,mx=24,my=24)
-        @test v.raw isa PlanarResult
-        @test isempty(v.raw.problem.sheets)
+        @test v.raw isa PlanarHybridResult
+        @test isempty(v.raw.problem.bulk.sheets)
+        @test isempty(v.raw.problem.conformal.ports)
+        @test all(==(0),v.raw.problem.conformal.basis.port)
+        @test all(port.wall===:via for port in v.raw.problem.bulk.ports)
+        @test Set(v.raw.problem.conformal.mesh.interfaces)==Set([1])
+        @test sum(v.raw.problem.conformal.mesh.areas)≈.25e-3^2 rtol=1e-14
+        @test v.port_numbers==[1] && size(v.y)==(1,1)
+        @test maximum(v.raw.relative_residuals)<=1e-9
+        @test opnorm(v.s)<=1+1e-9
+        @test v.raw.y≈transpose(v.raw.y) rtol=1e-9
+        @test only(onlyvia.polygons).vertices==coordinates
         @test all(isfinite,v.y)
         # A standard axial source is anchored at a physical cover;
         # an interlevel source requires the explicit via-port kind.

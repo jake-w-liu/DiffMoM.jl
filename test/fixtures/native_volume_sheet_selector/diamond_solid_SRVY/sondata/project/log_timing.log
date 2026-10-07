@@ -1,0 +1,106 @@
+Run 1:  Wed Oct 07 06:27:27 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\native_volume_sheet_selector_controls_v2_20261007\diamond_solid_SRVY\project.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+      Subsectioning at 10 GHz with Eeff of 1.
+      Subsectioning time:  0.001 seconds.
+      De-embedding information for left box wall port(s):
+        Left SOC Electric Wall: 0.5 mm length, 28 subsections, 1 MB.
+        Left SOC Magnetic Wall: 1 mm length, 25 subsections, 1 MB.
+      De-embedding information for right box wall port(s):
+        Right SOC Electric Wall: 0.5 mm length, 28 subsections, 1 MB.
+        Right SOC Magnetic Wall: 1 mm length, 25 subsections, 1 MB.
+      Em license feature:  emlite.
+
+      Circuit requires 82 subsections and 1 MB of memory.
+
+      Primary structure subsections by level and type:
+      Level 0:
+        Surface Staircase:  40
+      Level 1:
+        Surface Staircase:  40
+        Via:                2
+
+      Process memory by type:
+        System matrix:            0 MB
+        Elemental subsections:
+          Primary structure:      0 MB
+          Left standard:          0 MB
+          Right standard:         0 MB
+        Fourier transform:        0 MB
+        Waveguide mode:           0 MB
+        Adaptive band synthesis:  0 MB
+        Miscellaneous:            1 MB
+        TOTAL REQUIRED MEMORY:    1 MB
+
+      Amount of RAM installed on host computer:  64 GB
+      Number of logical processors:  20
+      Matrix solver:  internal 64-bit SSE with loss.
+      Simulation mode:  local machine.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0 seconds.
+      Fourier transform time:  0.001 seconds.
+      Coupling time:  0 seconds.
+      Loss time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0.001 seconds.
+      De-embedding time for left box wall:
+        SOC Electric Wall Std: 0 seconds.
+        SOC Magnetic Wall Std: 0 seconds.
+        Total:                 0 seconds.
+      De-embedding time for right box wall:
+        SOC Electric Wall Std: 0 seconds.
+        SOC Magnetic Wall Std: 0 seconds.
+        Total:                 0 seconds.
+      Frequency completed Wed Oct 07 06:27:27 2026.
+      Total time per frequency:  0.011 seconds.
+
+    Frequency:  0.01 GHZ
+      Waveguide mode time:  0 seconds.
+      Fourier transform time:  0 seconds.
+      Coupling time:  0 seconds.
+      Loss time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+      Frequency completed Wed Oct 07 06:27:27 2026.
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  0.1 GHZ
+      Waveguide mode time:  0 seconds.
+      Fourier transform time:  0.001 seconds.
+      Coupling time:  0 seconds.
+      Loss time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+      Frequency completed Wed Oct 07 06:27:27 2026.
+      Total time per frequency:  0.004 seconds.
+
+    Frequency:  1 GHZ
+      Waveguide mode time:  0.001 seconds.
+      Fourier transform time:  0 seconds.
+      Coupling time:  0.001 seconds.
+      Loss time:  0 seconds.
+      Matrix fill time:  0.002 seconds.
+      Matrix solve time:  0 seconds.
+      Frequency completed Wed Oct 07 06:27:27 2026.
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  10 GHZ
+      Waveguide mode time:  0 seconds.
+      Fourier transform time:  0.001 seconds.
+      Coupling time:  0 seconds.
+      Loss time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+      Frequency completed Wed Oct 07 06:27:27 2026.
+      Total time per frequency:  0.004 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 5 frequencies:  0.031 seconds.
+
+Em simulation completed Wed Oct 07 06:27:27 2026.

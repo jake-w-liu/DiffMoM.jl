@@ -1,0 +1,37 @@
+Run 1:  Wed Oct 07 06:27:22 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\native_volume_sheet_selector_controls_v2_20261007\ell_solid_CDVY\project.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 2.002e-4 2.9615 0.999800 0.0000 0.999800 0.0000 2.002e-4 2.9615
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+
+    Frequency:  0.01 GHZ
+      0.01000000 2.248e-4 27.142 0.999800 -0.014 0.999800 -0.014 2.248e-4 27.142
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+
+    Frequency:  0.1 GHZ
+      0.10000000 0.001044 78.689 0.999797 -0.142 0.999797 -0.142 0.001044 78.690
+      ! P1 F=0.1 Standard port
+      ! P2 F=0.1 Standard port
+
+    Frequency:  1 GHZ
+      1.00000000 0.010166 87.138 0.999692 -1.414 0.999692 -1.414 0.010166 87.144
+      ! P1 F=1.0 Eeff=(1.00013 + j0) Z0=(80.8016 + j0)
+      ! P2 F=1.0 Eeff=(1.00013 + j0) Z0=(80.8016 + j0)
+
+    Frequency:  10 GHZ
+      10.0000000 0.099175 75.468 0.994252 -14.03 0.994252 -14.03 0.099182 75.519
+      ! P1 F=10.0 Eeff=(1.0001 + j0) Z0=(80.7991 + j0)
+      ! P2 F=10.0 Eeff=(1.0001 + j0) Z0=(80.7991 + j0)
+
+Em simulation completed Wed Oct 07 06:27:22 2026.

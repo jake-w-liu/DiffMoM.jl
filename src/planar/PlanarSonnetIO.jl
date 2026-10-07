@@ -699,6 +699,38 @@ function _sonnet_termination(p,metal,freq,vars)
     return PlanarTerminator{ComplexF64}(TERM_SURFACE,zs,1+0im,1+0im)
 end
 
+function _sonnet_loss_transition(rdc,rs,what="SUP")
+    rf=complex(rs,rs)
+    if iszero(rdc)
+            !iszero(rs) || throw(ArgumentError("$what RF impedance underflows"))
+            rf
+        else
+            ratio=rs/rdc
+            if ratio<.25
+                # x*coth(x), x=(1+i)*ratio, has a finite DC limit even
+                # when the ratio rounds to zero. Scale its leading imaginary
+                # term separately so a finite tiny reactance is retained.
+                rm,re=frexp(rs);dm,de=frexp(rdc)
+                leading=ldexp((2/3)*rm*rm/dm,2re-de)
+                fourth=ratio^4
+                # Separating the even/odd coth series retains the small
+                # imaginary component without cancellation in complex tanh.
+                real_factor=evalpoly(fourth,(1.,4/45,-16/4725,88448/638512875,
+                    -925952/162820783125,357603328/1531329465290625,
+                    -1936294633472/201919571963756521875))
+                imaginary_factor=evalpoly(fourth,(1.,-8/315,32/31185,-256/6081075,
+                    22459904/12993098493375,-318189568/4482618980214375))
+                complex(rdc*real_factor,leading*imaginary_factor)
+            elseif ratio>20
+                # The relative coth correction is below 2exp(-40), already
+                # below Float64 precision. This also avoids tanh(Inf+iInf).
+                rf
+            else
+                rf/tanh(complex(ratio,ratio))
+            end
+        end
+end
+
 """Native RES/SUP/SEN sheet impedance and NOR finite-thickness loss interpolation.
 NOR's current ratio is I_top/I_bottom. Its zero-frequency limit is 1/(sigma*t),
 and its RF limit is Zskin*(1+r^2)/(1+r)^2. Covers carry one-sided current.
@@ -726,36 +758,7 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
         # Sonnet's general-loss Rdc/Rrf crossover is the conductor slab
         # reaction, with the DC and RF limits set independently.
         rs=rrf*sqrt(freq);rf=complex(rs,rs)
-        zr=if iszero(rrf)
-            complex(rdc)
-        elseif iszero(rdc)
-            !iszero(rs) || throw(ArgumentError("SUP RF impedance underflows"))
-            rf
-        else
-            ratio=rs/rdc
-            if ratio<.25
-                # x*coth(x), x=(1+i)*ratio, has a finite DC limit even
-                # when the ratio rounds to zero. Scale its leading imaginary
-                # term separately so a finite tiny reactance is retained.
-                rm,re=frexp(rs);dm,de=frexp(rdc)
-                leading=ldexp((2/3)*rm*rm/dm,2re-de)
-                fourth=ratio^4
-                # Separating the even/odd coth series retains the small
-                # imaginary component without cancellation in complex tanh.
-                real_factor=evalpoly(fourth,(1.,4/45,-16/4725,88448/638512875,
-                    -925952/162820783125,357603328/1531329465290625,
-                    -1936294633472/201919571963756521875))
-                imaginary_factor=evalpoly(fourth,(1.,-8/315,32/31185,-256/6081075,
-                    22459904/12993098493375,-318189568/4482618980214375))
-                complex(rdc*real_factor,leading*imaginary_factor)
-            elseif ratio>20
-                # The relative coth correction is below 2exp(-40), already
-                # below Float64 precision. This also avoids tanh(Inf+iInf).
-                rf
-            else
-                rf/tanh(complex(ratio,ratio))
-            end
-        end
+        zr=iszero(rrf) ? complex(rdc) : _sonnet_loss_transition(rdc,rs)
         # Evaluate kinetic pH reactance without an overflowing omega or an
         # underflowing SI inductance intermediate when the final result fits.
         lm,le=_circuit_omega_parts(freq,ls)
@@ -836,21 +839,505 @@ function _planar_via_mesh_mask(mask::BitMatrix,vertices,grid,mode::Symbol)
     return result
 end
 
+# VOL SOLID uses the complete polygon area and an equivalent wall
+# in its bounding rectangle. Separate native aspect/frequency/conductivity
+# controls qualify this constitutive response. Rectangular hollow walls
+# use exact cross-section loss; other wall shapes and horizontal via-pad
+# loss require their own geometry/material adapters.
+function _sonnet_volume_product(numerators,denominators;exponent::Int=0)
+    any(iszero,numerators) && return 0.0
+    mantissa=1.0
+    for value in numerators
+        m,e=frexp(value);mantissa*=m;exponent+=e
+    end
+    for value in denominators
+        m,e=frexp(value);mantissa/=m;exponent-=e
+    end
+    return ldexp(mantissa,exponent)
+end
+
+# Translate to a local origin before the shoelace sum. Absolute products
+# lose physical area when small vias lie far from the box origin.
+function _sonnet_volume_polygon_area(vertices)
+    x0,y0=vertices[1,1],vertices[2,1]
+    return abs(sum((vertices[1,k]-x0)*(vertices[2,mod1(k+1,size(vertices,2))]-y0)-
+        (vertices[1,mod1(k+1,size(vertices,2))]-x0)*(vertices[2,k]-y0)
+        for k in axes(vertices,2)))/2
+end
+
+function _sonnet_volume_wall_depth(area,fill,width,height,rectangle::Bool=false)
+    # A verified rectangular polygon fills its bounding box exactly;
+    # preserve that identity before the square-root depth formula.
+    fraction=rectangle ? fill : _sonnet_volume_product((area,fill),(width,height))
+    fraction=min(fraction,1.0)
+    shorter,longer=minmax(width,height);aspect=shorter/longer
+    return shorter*(fraction/(1+aspect+sqrt((1-aspect)^2+4aspect*(1-fraction))))
+end
+
+function _sonnet_volume_sigma_wide(sigma,freq,area,percent,width,breadth,mesh_area;
+        resistivity::Bool=false,sheet_resistance::Bool=false,declared_wall=nothing,rectangle::Bool=false)
+    return setprecision(BigFloat,max(4096,precision(BigFloat))) do
+        s,f,a,pct,w,b,am=BigFloat.((sigma,freq,area,percent,width,breadth,mesh_area))
+        rectangle && (a=w*b)
+        resistivity && (s=100/s)
+        phi=pct/100
+        shorter,longer=minmax(w,b);aspect=shorter/longer
+        fraction=rectangle ? phi : min(a*phi/(w*b),one(BigFloat))
+        depth=shorter*(fraction/(1+aspect+sqrt((1-aspect)^2+4aspect*(1-fraction))))
+        sheet_resistance && (s=inv(s*(declared_wall===nothing ? depth : BigFloat(declared_wall))))
+        rdc=one(BigFloat)
+        rs=depth*sqrt(BigFloat(pi)*BigFloat(_MU0)*f*s)
+        impedance=_sonnet_loss_transition(rdc,rs,"VOL")
+        exact=(s*phi*a/am)/impedance;stored=ComplexF64(exact)
+        isfinite(stored) && real(stored)>=0 && !iszero(stored) &&
+            (iszero(real(exact)) || !iszero(real(stored))) &&
+            (iszero(imag(exact)) || !iszero(imag(stored))) ||
+            throw(ArgumentError("native VOL effective conductivity is unrepresentable"))
+        return stored
+    end
+end
+
+# The polygon adapter still needs general inward offsets for hollow shapes.
+# Exact axis-aligned rectangular boundaries are handled without raster area.
+function _sonnet_volume_rectangle(vertices)
+    xmin,xmax=extrema(@view vertices[1,:]);ymin,ymax=extrema(@view vertices[2,:])
+    for k in axes(vertices,2)
+        x,y=vertices[1,k],vertices[2,k]
+        (x==xmin || x==xmax || y==ymin || y==ymax) || return false
+        next=mod1(k+1,size(vertices,2))
+        (x==vertices[1,next] || y==vertices[2,next]) || return false
+    end
+    return true
+end
+
+function _sonnet_volume_hollow_percent(wall,unit,width,breadth)
+    thickness=wall*unit
+    isfinite(thickness) && thickness>=floatmin(Float64) || return nothing
+    thickness>=min(width,breadth)/2 && return 100.0
+    u=thickness/width;v=thickness/breadth
+    percent=100*(2u+2v-4u*v)
+    isfinite(percent) && percent>0 || return nothing
+    return percent
+end
+
+function _sonnet_volume_hollow_wide(loss,freq,area,wall,unit,width,breadth,mesh_area;
+        resistivity=false,sheet_resistance=false,rectangle::Bool=false)
+    setprecision(BigFloat,max(4096,precision(BigFloat))) do
+        w,b,t=BigFloat(width),BigFloat(breadth),BigFloat(wall)*BigFloat(unit)
+        declared=t
+        t=min(t,min(w,b)/2)
+        percent=100*(2t*(w+b-2t)/(w*b))
+        _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity,sheet_resistance,declared_wall=declared,rectangle)
+    end
+end
+
+# General thin mitered wall. Offset edge reversals mark unresolved topology
+# changes; those cases retain an explicit failure until separately modeled.
+function _sonnet_volume_simple_wall(vertices,nvertices)
+    for i in 1:nvertices, j in i+1:nvertices
+        (j==i+1 || (i==1 && j==nvertices)) && continue
+        next_i=mod1(i+1,nvertices);next_j=mod1(j+1,nvertices)
+        ax,ay=vertices[1,i],vertices[2,i]
+        bx,by=vertices[1,next_i],vertices[2,next_i]
+        cx,cy=vertices[1,j],vertices[2,j]
+        dx,dy=vertices[1,next_j],vertices[2,next_j]
+        max(min(ax,bx),min(cx,dx))<=min(max(ax,bx),max(cx,dx)) &&
+            max(min(ay,by),min(cy,dy))<=min(max(ay,by),max(cy,dy)) || continue
+        a=(bx-ax)*(cy-ay)-(by-ay)*(cx-ax)
+        b=(bx-ax)*(dy-ay)-(by-ay)*(dx-ax)
+        ((a<=0 && b>=0)||(a>=0 && b<=0)) || continue
+        c=(dx-cx)*(ay-cy)-(dy-cy)*(ax-cx)
+        d=(dx-cx)*(by-cy)-(dy-cy)*(bx-cx)
+        ((c<=0 && d>=0)||(c>=0 && d<=0)) && return false
+    end
+    return true
+end
+
+# Return nothing when rounded geometry cannot certify the thin-wall domain.
+# The wide path then evaluates the original vertices, wall, units and loss.
+function _sonnet_volume_simple_wall_fast(vertices,nvertices,tolerance)
+    for i in 1:nvertices, j in i+1:nvertices
+        (j==i+1 || (i==1 && j==nvertices)) && continue
+        next_i=mod1(i+1,nvertices);next_j=mod1(j+1,nvertices)
+        ax,ay=vertices[1,i],vertices[2,i];bx,by=vertices[1,next_i],vertices[2,next_i]
+        cx,cy=vertices[1,j],vertices[2,j];dx,dy=vertices[1,next_j],vertices[2,next_j]
+        (max(min(ax,bx),min(cx,dx))-min(max(ax,bx),max(cx,dx))>2tolerance ||
+            max(min(ay,by),min(cy,dy))-min(max(ay,by),max(cy,dy))>2tolerance) && continue
+        a=(bx-ax)*(cy-ay)-(by-ay)*(cx-ax)
+        b=(bx-ax)*(dy-ay)-(by-ay)*(dx-ax)
+        all(abs(x)>64tolerance for x in (a,b)) || return nothing
+        signbit(a)==signbit(b) && continue
+        c=(dx-cx)*(ay-cy)-(dy-cy)*(ax-cx)
+        d=(dx-cx)*(by-cy)-(dy-cy)*(bx-cx)
+        all(abs(x)>64tolerance for x in (c,d)) || return nothing
+        signbit(c)==signbit(d) && continue
+        return nothing
+    end
+    return true
+end
+
+function _sonnet_volume_polygon_sigma_fast(p,poly,grid,mask,freq,loss,wall,selector)
+    source=poly.vertices;nvertices=size(source,2)
+    source[1,1]==source[1,end] && source[2,1]==source[2,end] && (nvertices-=1)
+    3<=nvertices<=64 || return nothing
+    xmin,xmax=extrema(@view source[1,:]);ymin,ymax=extrema(@view source[2,:])
+    scale=max(xmax-xmin,ymax-ymin)
+    isfinite(scale) && scale>=floatmin(Float64) || return nothing
+    thickness=wall*p.length_scale
+    isfinite(thickness) && thickness>=floatmin(Float64) || return nothing
+    t=thickness/scale;tolerance=512eps(Float64)*nvertices
+    isfinite(t) && t>tolerance || return nothing
+    conductivity=selector=="RSVY" ? _sonnet_volume_product((100.,),(loss,)) :
+        selector=="SRVY" ? _sonnet_volume_product((1.,),(loss,wall,p.length_scale)) : loss
+    isfinite(conductivity) && conductivity>=floatmin(Float64) || return nothing
+    vertices=Matrix{Float64}(undef,2,nvertices)
+    for k in 1:nvertices
+        vertices[1,k]=(source[1,k]-source[1,1])/scale
+        vertices[2,k]=(source[2,k]-source[2,1])/scale
+    end
+    _sonnet_volume_simple_wall_fast(vertices,nvertices,tolerance)===true || return nothing
+    signed=0.0;magnitude=0.0
+    for k in 1:nvertices
+        next=mod1(k+1,nvertices)
+        a=vertices[1,k]*vertices[2,next];b=vertices[1,next]*vertices[2,k]
+        signed+=a-b;magnitude+=abs(a)+abs(b)
+    end
+    abs(signed)>64tolerance*max(magnitude,1.0) || return nothing
+    orientation=sign(signed);area=abs(signed)/2
+    lengths=Vector{Float64}(undef,nvertices);corners=Vector{Float64}(undef,nvertices)
+    inset=Matrix{Float64}(undef,2,nvertices)
+    for k in 1:nvertices
+        previous=mod1(k-1,nvertices);following=mod1(k+1,nvertices)
+        ax=vertices[1,k]-vertices[1,previous];ay=vertices[2,k]-vertices[2,previous]
+        bx=vertices[1,following]-vertices[1,k];by=vertices[2,following]-vertices[2,k]
+        la=hypot(ax,ay);lb=hypot(bx,by)
+        la>sqrt(eps(Float64)) && lb>sqrt(eps(Float64)) || return nothing
+        ax/=la;ay/=la;bx/=lb;by/=lb
+        cosine=ax*bx+ay*by;sine=orientation*(ax*by-ay*bx)
+        denominator=1+cosine
+        denominator>=.125 || return nothing
+        lengths[k]=lb;corners[k]=sine/denominator
+        inset[1,k]=vertices[1,k]-t*orientation*(ay+by)/denominator
+        inset[2,k]=vertices[2,k]+t*orientation*(ax+bx)/denominator
+    end
+    _sonnet_volume_simple_wall_fast(inset,nvertices,32tolerance)===true || return nothing
+    for k in 1:nvertices
+        remaining=lengths[k]-t*(corners[k]+corners[mod1(k+1,nvertices)])
+        remaining>64tolerance || return nothing
+    end
+    metal_area=t*(sum(lengths)-t*sum(corners))
+    64tolerance<metal_area<area-64tolerance || return nothing
+    q=_sonnet_volume_product((thickness,sqrt(pi*_MU0),sqrt(freq),sqrt(conductivity)),())
+    isfinite(q) && q>=floatmin(Float64) || return nothing
+    transition=_sonnet_loss_transition(1.0,q,"VOL")
+    isfinite(transition) && !_planar_metal_subnormal(transition) &&
+        !iszero(real(transition)) && !iszero(imag(transition)) || return nothing
+    rm,re=frexp(real(transition));im,ie=frexp(imag(transition));exponent=max(re,ie)
+    denominator=ldexp(rm,re-exponent)^2+ldexp(im,ie-exponent)^2
+    mesh_count=count(mask)
+    real_sigma=_sonnet_volume_product((conductivity,metal_area,scale,scale,rm),
+        (Float64(mesh_count),grid.dx,grid.dy,denominator);exponent=re-2exponent)
+    imag_sigma=-_sonnet_volume_product((conductivity,metal_area,scale,scale,im),
+        (Float64(mesh_count),grid.dx,grid.dy,denominator);exponent=ie-2exponent)
+    stored=complex(real_sigma,imag_sigma)
+    isfinite(stored) && real(stored)>0 && !iszero(imag(stored)) &&
+        !_planar_metal_subnormal(stored) || return nothing
+    return stored
+end
+
+function _sonnet_volume_polygon_sigma(p,poly,grid,stack,mask,freq,loss,wall,selector)
+    fast=_sonnet_volume_polygon_sigma_fast(p,poly,grid,mask,freq,loss,wall,selector)
+    fast===nothing || return fast
+    return _sonnet_volume_polygon_sigma_wide(p,poly,grid,stack,mask,freq,loss,wall,selector)
+end
+
+function _sonnet_volume_polygon_sigma_wide(p,poly,grid,stack,mask,freq,loss,wall,selector)
+    return setprecision(BigFloat,max(4096,precision(BigFloat))) do
+        vertices=BigFloat.(poly.vertices)
+        nvertices=size(vertices,2)
+        vertices[:,1]==vertices[:,end] && (nvertices-=1)
+        nvertices>=3 || throw(ArgumentError("native hollow VOL polygon needs three distinct vertices"))
+        _sonnet_volume_simple_wall(vertices,nvertices) ||
+            throw(ArgumentError("native hollow VOL polygon has a crossing or touching boundary"))
+        signed=sum(vertices[1,k]*vertices[2,mod1(k+1,nvertices)]-vertices[1,mod1(k+1,nvertices)]*vertices[2,k] for k in 1:nvertices)
+        orientation=sign(signed);area=abs(signed)/2
+        area>0 || throw(ArgumentError("native hollow VOL polygon has zero area"))
+        lengths=Vector{BigFloat}(undef,nvertices);corners=Vector{BigFloat}(undef,nvertices)
+        inset=Matrix{BigFloat}(undef,2,nvertices)
+        thickness=BigFloat(wall)*BigFloat(p.length_scale)
+        for k in 1:nvertices
+            previous=mod1(k-1,nvertices);following=mod1(k+1,nvertices)
+            ax=vertices[1,k]-vertices[1,previous];ay=vertices[2,k]-vertices[2,previous]
+            bx=vertices[1,following]-vertices[1,k];by=vertices[2,following]-vertices[2,k]
+            la=hypot(ax,ay);lb=hypot(bx,by)
+            la>0 && lb>0 || throw(ArgumentError("native hollow VOL contains a repeated vertex"))
+            cosine=(ax*bx+ay*by)/(la*lb);sine=orientation*(ax*by-ay*bx)/(la*lb)
+            denominator=1+cosine
+            denominator>0 || throw(ArgumentError("native hollow VOL has a reversing boundary"))
+            lengths[k]=lb;corners[k]=sine/denominator
+            inset[1,k]=vertices[1,k]-thickness*orientation*(ay/la+by/lb)/denominator
+            inset[2,k]=vertices[2,k]+thickness*orientation*(ax/la+bx/lb)/denominator
+        end
+        _sonnet_volume_simple_wall(inset,nvertices) ||
+            throw(ArgumentError("native hollow VOL inset crosses or touches; its topology adapter is required"))
+        all(k->lengths[k]-thickness*(corners[k]+corners[mod1(k+1,nvertices)])>0,1:nvertices) ||
+            throw(ArgumentError("native hollow VOL wall changes polygon topology; its thick-wall adapter is required"))
+        metal_area=thickness*(sum(lengths)-thickness*sum(corners))
+        0<metal_area<area || throw(ArgumentError("native hollow VOL wall requires its saturation/topology adapter"))
+        conductivity=selector=="RSVY" ? BigFloat(100)/BigFloat(loss) :
+            selector=="SRVY" ? inv(BigFloat(loss)*thickness) : BigFloat(loss)
+        mesh=BigFloat(count(mask))*BigFloat(grid.dx)*BigFloat(grid.dy)
+        q=thickness*sqrt(BigFloat(pi)*BigFloat(_MU0)*BigFloat(freq)*conductivity)
+        transition=_sonnet_loss_transition(one(BigFloat),q,"VOL")
+        exact=conductivity*metal_area/(mesh*transition);stored=ComplexF64(exact)
+        isfinite(stored) && real(stored)>0 && !iszero(stored) &&
+            (iszero(real(exact)) || !iszero(real(stored))) &&
+            (iszero(imag(exact)) || !iszero(imag(stored))) ||
+            throw(ArgumentError("native hollow VOL effective conductivity is unrepresentable"))
+        return stored
+    end
+end
+
+# Evaluate cold wide recovery only when required; no captured hot-path closure.
+function _sonnet_volume_sigma_fallback(sigma,loss,freq,area,percent,width,breadth,mesh_area,wall,unit,selector,solid,rectangle::Bool=false)::ComplexF64
+    if selector=="SRVY"
+        return solid ? _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;sheet_resistance=true,rectangle) :
+            _sonnet_volume_hollow_wide(loss,freq,area,wall,unit,width,breadth,mesh_area;sheet_resistance=true,rectangle)
+    end
+    return _sonnet_volume_sigma_wide(sigma,freq,area,percent,width,breadth,mesh_area;rectangle)
+end
+
+function _sonnet_volume_sigma(p,poly,grid,stack,mask,freq,vars)
+    metal=p.metals[poly.material+1]
+    solid=length(metal)>=5 && metal[5]=="SOLID"
+    length(metal) in (solid ? (6,7) : (5,6)) || throw(ArgumentError("unsupported native VOL conductivity fields"))
+    selector=length(metal)==(solid ? 7 : 6) ? metal[end] : "CDVY"
+    selector in ("CDVY","RSVY","SRVY") || throw(ArgumentError("unsupported VOL loss selector $selector"))
+    val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
+    loss=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf : val(metal[4])
+    # A SOLID record retains an inactive wall-thickness field. Validate
+    # its domain while the complete polygon determines the physical area.
+    wall=val(metal[solid ? 6 : 5]);percent=100.0
+    isfinite(wall) && (solid ? wall>=0 : wall>0) && loss>=0 ||
+        throw(ArgumentError("VOL requires nonnegative loss and a positive hollow wall thickness"))
+
+    (selector=="CDVY" && loss==Inf) || (selector in ("RSVY","SRVY") && iszero(loss)) ? (return Inf) : nothing
+    rectangle=_sonnet_volume_rectangle(poly.vertices)
+    !solid && !rectangle &&
+        return _sonnet_volume_polygon_sigma(p,poly,grid,stack,mask,freq,loss,wall,selector)
+    sheet_resistance=selector=="SRVY"
+    sigma=selector=="CDVY" ? loss : sheet_resistance ? 0.0 : _sonnet_volume_product((100.,),(loss,))
+    (isfinite(sigma) && sigma>0) || (selector=="RSVY" && loss>0) || sheet_resistance ||
+        throw(ArgumentError("native VOL conductivity is unrepresentable"))
+    vertices=poly.vertices
+    area=_sonnet_volume_polygon_area(vertices)
+    xmin,xmax=extrema(@view vertices[1,:]);ymin,ymax=extrema(@view vertices[2,:])
+    width=xmax-xmin;breadth=ymax-ymin
+    layers=length(stack.layers)
+    target=poly.target=="GND" ? layers-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
+    lo,hi=minmax(poly.level,target)
+    height=sum(real(stack.layers[layers-lev].thickness) for lev in lo+1:hi)
+    mesh_area=count(mask)*grid.dx*grid.dy
+    all(x->isfinite(x) && x>0,(area,width,breadth,height,mesh_area)) ||
+        throw(ArgumentError("native VOL needs representable positive physical height and cross-sectional areas"))
+    if !solid
+        percent=_sonnet_volume_hollow_percent(wall,p.length_scale,width,breadth)
+        percent===nothing && return _sonnet_volume_hollow_wide(loss,freq,area,wall,p.length_scale,width,breadth,mesh_area;
+            resistivity=selector=="RSVY",sheet_resistance,rectangle)
+    end
+    fill=percent/100
+    if sheet_resistance
+        depth=solid ? _sonnet_volume_wall_depth(area,fill,width,breadth,rectangle) : wall*p.length_scale
+        sigma=solid ? _sonnet_volume_product((1.,),(loss,depth)) :
+            _sonnet_volume_product((1.,),(loss,wall,p.length_scale))
+    end
+    # Preserve the original sheet/volume resistivity before reciprocal or SI products.
+    if !(isfinite(sigma) && sigma>0)
+        return sheet_resistance ? _sonnet_volume_sigma_fallback(sigma,loss,freq,area,percent,width,breadth,mesh_area,wall,p.length_scale,selector,solid,rectangle) :
+            _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;resistivity=true,rectangle)
+    end
+    # Cancel physical height before forming the normalized slab transition.
+    # This also avoids unnecessary large/small total-resistance intermediates.
+    depth=_sonnet_volume_wall_depth(area,fill,width,breadth,rectangle)
+    rdc=1.0
+    rs=_sonnet_volume_product((depth,sqrt(pi*_MU0),sqrt(freq),sqrt(sigma)),())
+    all(isfinite,(rdc,rs,depth)) && depth>0 || return _sonnet_volume_sigma_fallback(sigma,loss,freq,area,percent,width,breadth,mesh_area,wall,p.length_scale,selector,solid,rectangle)
+    impedance=_sonnet_loss_transition(rdc,rs,"VOL")
+    isfinite(impedance) && !iszero(real(impedance)) && !iszero(imag(impedance)) &&
+        !_planar_metal_subnormal(impedance) || return _sonnet_volume_sigma_fallback(sigma,loss,freq,area,percent,width,breadth,mesh_area,wall,p.length_scale,selector,solid,rectangle)
+    rm,re=frexp(real(impedance));im,ie=frexp(imag(impedance));e=max(re,ie)
+    denominator=ldexp(rm,re-e)^2+ldexp(im,ie-e)^2
+    real_sigma=_sonnet_volume_product((sigma,fill,area,rm),(mesh_area,denominator);exponent=re-2e)
+    imag_sigma=-_sonnet_volume_product((sigma,fill,area,im),(mesh_area,denominator);exponent=ie-2e)
+    stored=complex(real_sigma,imag_sigma)
+    isfinite(stored) && real(stored)>0 && !iszero(imag(stored)) || return _sonnet_volume_sigma_fallback(sigma,loss,freq,area,percent,width,breadth,mesh_area,wall,p.length_scale,selector,solid,rectangle)
+    return stored
+end
+
+function _sonnet_volume_polygon_workspace(p)
+    peak_vertices=0;needs_wide=false
+    for poly in p.polygons
+        poly.kind===:via && 0<=poly.material<length(p.metals) || continue
+        metal=p.metals[poly.material+1]
+        length(metal)>=5 && metal[3]=="VOL" || continue
+        needs_wide=true
+        if !("RPV" in metal) && metal[5]!="SOLID" && !_sonnet_volume_rectangle(poly.vertices)
+            peak_vertices=max(peak_vertices,size(poly.vertices,2))
+        end
+    end
+    needs_wide || return 0
+    # One material is evaluated at a time. Every non-RPV VOL path can need
+    # wide scalar recovery; SOLID/rectangle need scratch without vertex copies.
+    # General hollow paths also reserve six scalars per vertex and fast arrays.
+    # BigFloat storage includes the MPFR limbs at the owned/caller precision;
+    # the header allowance covers the supported Julia1.12/1.13 representations.
+    limbs=8cld(BigInt(max(4096,precision(BigFloat))),64)
+    return _checked_payload_sum("native volume material workspace",
+        _checked_array_payload_bytes(Float64,6,peak_vertices),
+        (6BigInt(peak_vertices)+224)*(96+limbs),256)
+end
+
+function _sonnet_has_volume_skin(p)
+    return any(p.polygons) do poly
+        poly.kind===:via && 0<=poly.material<length(p.metals) &&
+            length(p.metals[poly.material+1])>=3 && p.metals[poly.material+1][3]=="VOL" &&
+            !("RPV" in p.metals[poly.material+1])
+    end
+end
+
 # RPV specifies a frequency-independent resistance for the complete axial
 # polygon, independent of the subsection mesh. Convert it to the Ohmic Gram
 # conductivity of the retained U/T cells, preserving the total resistance.
+# Native VOL endpoints carry tangential current as well as axial current.
+# COVERS fills the polygon; NOCOVERS retains the subsection Ring footprint.
+function _sonnet_via_endpoints(p,poly)
+    poly.kind===:via || return false
+    poly.material==-1 && return true
+    0<=poly.material<length(p.metals) || return false
+    metal=p.metals[poly.material+1]
+    return length(metal)>=3 && metal[3]=="VOL"
+end
+
+function _sonnet_via_parallel_zs(a,b)
+    (iszero(a) || iszero(b)) && return 0.0im
+    # Scale by the smaller impedance to avoid reciprocal overflow. Both
+    # native passive films share one tangential electric field.
+    scale(z)=max(abs(real(z)),abs(imag(z)))
+    small,large=scale(a)<=scale(b) ? (a,b) : (b,a)
+    combined=small/(1+small/large)
+    isfinite(combined) && real(combined)>0 || throw(ArgumentError(
+        "native parallel endpoint impedance is unrepresentable"))
+    return combined
+end
+
+function _sonnet_via_endpoint_height(p,poly,stack)
+    layers=length(stack.layers)
+    target=poly.target=="GND" ? layers-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
+    lo,hi=minmax(poly.level,target)
+    height=sum(real(stack.layers[layers-level].thickness) for level in lo+1:hi)
+    isfinite(height) && height>0 || throw(ArgumentError("native via endpoint needs a positive representable physical height"))
+    return height
+end
+
+function _sonnet_via_endpoint_sigma(p,poly,metal,loss,selector)
+    selector=="CDVY" && return loss
+    selector=="RSVY" && return _sonnet_volume_product((100.,),(loss,))
+    vertices=poly.vertices
+    xmin,xmax=extrema(@view vertices[1,:]);ymin,ymax=extrema(@view vertices[2,:])
+    area=_sonnet_volume_polygon_area(vertices)
+    depth=metal[5]=="SOLID" ? _sonnet_volume_wall_depth(area,1.0,xmax-xmin,ymax-ymin,_sonnet_volume_rectangle(vertices)) :
+        sonnet_variable_value(p,metal[5])*p.length_scale
+    return _sonnet_volume_product((1.,),(loss,depth))
+end
+
+function _sonnet_via_endpoint_wide(p,poly,stack,freq,loss,selector,wall)
+    setprecision(BigFloat,max(4096,precision(BigFloat))) do
+        height=BigFloat(_sonnet_via_endpoint_height(p,poly,stack))
+        value=BigFloat(loss)
+        sigma=if selector=="RPV"
+            2/(value*height)
+        elseif selector=="RSVY"
+            100/value
+        elseif selector=="SRVY"
+            metal=p.metals[poly.material+1]
+            depth=if metal[5]=="SOLID"
+                vertices=poly.vertices
+                xmin,xmax=extrema(@view vertices[1,:]);ymin,ymax=extrema(@view vertices[2,:])
+                xmin,xmax,ymin,ymax=BigFloat.((xmin,xmax,ymin,ymax))
+                area=zero(BigFloat)
+                x0,y0=BigFloat(vertices[1,1]),BigFloat(vertices[2,1])
+                for k in axes(vertices,2)
+                    next=mod1(k+1,size(vertices,2))
+                    ax,ay=BigFloat(vertices[1,k])-x0,BigFloat(vertices[2,k])-y0
+                    bx,by=BigFloat(vertices[1,next])-x0,BigFloat(vertices[2,next])-y0
+                    area+=ax*by-ay*bx
+                end
+                area=abs(area)/2
+                width,breadth=xmax-xmin,ymax-ymin
+                shorter,longer=minmax(width,breadth);aspect=shorter/longer
+                fraction=min(area/(width*breadth),one(BigFloat))
+                shorter*fraction/(1+aspect+sqrt((1-aspect)^2+4aspect*(1-fraction)))
+            else
+                BigFloat(wall)*BigFloat(p.length_scale)
+            end
+            inv(value*depth)
+        else
+            value
+        end
+        sigma>0 && isfinite(sigma) || throw(ArgumentError("native via endpoint conductivity is invalid"))
+        exact=planar_two_sheet_zs(BigFloat(freq),sigma,height)[1,1]
+        stored=ComplexF64(exact)
+        isfinite(stored) && (iszero(real(exact)) || !iszero(real(stored))) &&
+            (iszero(imag(exact)) || !iszero(imag(stored))) ||
+            throw(ArgumentError("native via endpoint film impedance is unrepresentable"))
+        return stored
+    end
+end
+
+function _sonnet_via_endpoint_zs(p,poly,stack,freq,variables)
+    poly.material==-1 && return 0.0im
+    metal=p.metals[poly.material+1]
+    metal[3]=="VOL" || throw(ArgumentError("native via endpoint material needs its own adapter"))
+    solid=length(metal)>=5 && metal[5]=="SOLID"
+    rpv="RPV" in metal
+    (!solid && !rpv && !("COVERS" in poly.flags)) && return 0.0im
+    selector=rpv ? "RPV" : length(metal)==(solid ? 7 : 6) ? metal[end] : "CDVY"
+    value=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf :
+        sonnet_variable_value(p,metal[4];variables,freq)
+    (selector=="CDVY" && value==Inf) || (selector!="CDVY" && iszero(value)) ? (return 0.0im) : nothing
+    value>0 && isfinite(value) || throw(ArgumentError("native via endpoint loss must be positive and finite"))
+    height=_sonnet_via_endpoint_height(p,poly,stack)
+    wall=solid ? 0.0 : sonnet_variable_value(p,metal[5];variables,freq)
+    sigma=if rpv
+        _sonnet_volume_product((2.,),(value,height))
+    elseif selector=="SRVY" && !solid
+        _sonnet_volume_product((1.,),(value,wall,p.length_scale))
+    else
+        _sonnet_via_endpoint_sigma(p,poly,metal,value,selector)
+    end
+    isfinite(sigma) && sigma>0 || return _sonnet_via_endpoint_wide(p,poly,stack,freq,value,selector,wall)
+    return ComplexF64(planar_two_sheet_zs(freq,sigma,height)[1,1])
+end
+
 function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
     poly.material==-1 && return Inf
     metal=p.metals[poly.material+1]
     val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
     model=metal[3]
+    if model=="VOL" && !("RPV" in metal)
+        return _sonnet_volume_sigma(p,poly,grid,stack,mask,freq,vars)
+    end
     "RPV" in metal || throw(ArgumentError("native $model via conductivity/skin loss requires its dedicated frequency-dependent adapter"))
-    "COVERS" in poly.flags && throw(ArgumentError("lossy native via covers require the horizontal pad-loss adapter"))
+    "COVERS" in poly.flags && model!="VOL" && throw(ArgumentError("lossy native via covers require the horizontal pad-loss adapter"))
     resistance=val(metal[4])
     resistance>=0 || throw(ArgumentError("negative native resistance per via"))
     if model=="VOL"
-        length(metal)==6 && metal[6]=="RPV" || throw(ArgumentError("unsupported VOL RPV fields"))
-        val(metal[5])==0 || throw(ArgumentError("VOL RPV wall-thickness semantics require the dedicated adapter"))
+        solid=length(metal)>=5 && metal[5]=="SOLID"
+        length(metal)==(solid ? 7 : 6) && metal[end]=="RPV" || throw(ArgumentError("unsupported VOL RPV fields"))
+        wall=val(metal[solid ? 6 : 5])
+        isfinite(wall) && wall>=0 || throw(ArgumentError("VOL RPV inactive wall thickness must be finite and nonnegative"))
+        solid || iszero(wall) || throw(ArgumentError("VOL RPV hollow wall-thickness semantics require the dedicated adapter"))
     elseif model=="ARR"
         length(metal)==7 && metal[6]=="RPV" || throw(ArgumentError("unsupported ARR RPV fields"))
         density=val(metal[7]);density>0 || throw(ArgumentError("ARR RPV density must be positive vias per square micron"))
@@ -1160,23 +1647,16 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             tmp=sheet_level(0,nx,ny)
             rasterize_poly!(tmp,gr,poly.vertices[1,:],poly.vertices[2,:])
             any(tmp.mask) || throw(ArgumentError("via polygon $(poly.id) vanished at raster resolution"))
-            if "COVERS" in poly.flags
-                # PEC via pads are ordinary XY sheets at interior endpoints.
-                # Box covers already supply the entire plane. Non-PEC via
-                # pad material is rejected with the via material above.
-                for native_level in (poly.level,target)
-                    native_level in (-1,L-1) && continue
-                    pad=native_sheet(native_level)
-                    pad.mask .|=tmp.mask
-                    store_surfaces && (surface_by_level[native_level][tmp.mask].=0)
-                end
-            end
             mode="SOLID" in poly.flags || "FULL" in poly.flags ? :full :
                 "VERTICES" in poly.flags ? :vertices : "CENTER" in poly.flags ? :center :
                 "BAR" in poly.flags ? :bar : :ring
             via_mask=_planar_via_mesh_mask(tmp.mask,poly.vertices,gr,mode)
             masks[poly.id]=via_mask
             sigma=_sonnet_via_sigma(p,poly,gr,st,via_mask,freq,variables)
+            if sigma isa Complex && via_sigma isa Vector{Float64}
+                via_sigma=ComplexF64.(via_sigma)
+                via_group=Dict{Tuple{Int,ComplexF64},Int}((k[1],ComplexF64(k[2]))=>v for (k,v) in via_group)
+            end
             for lev in lo+1:hi
                 layer=L-lev
                 key=(layer,sigma)
@@ -1193,6 +1673,53 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
                 vias[vi].uni .|= via_mask
                 vias[vi].tap .|= via_mask
                 via_polygon_level[(poly.id,layer)]=vi
+            end
+        end
+    end
+    # Existing physical sheets retain their material on overlaps. Generated
+    # films share one tangential field and their conductances add.
+    generated_endpoints=Dict{Int,BitMatrix}()
+    for poly in p.polygons
+        _sonnet_via_endpoints(p,poly) || continue
+        target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
+        endpoint=masks[poly.id]
+        if "COVERS" in poly.flags
+            footprint=sheet_level(0,nx,ny)
+            rasterize_poly!(footprint,gr,poly.vertices[1,:],poly.vertices[2,:])
+            endpoint=footprint.mask
+        end
+        # Fully covered endpoints already carry the original physical
+        # sheet current; avoid evaluating an unused film or wide fallback.
+        uncovered=false
+        for level in (poly.level,target)
+            level in (-1,L-1) && continue
+            index=get(sheetidx,level,0)
+            if iszero(index)
+                uncovered=any(endpoint)
+            else
+                mask=sheets[index].mask
+                generated=get(generated_endpoints,level,nothing)
+                uncovered=any(cell->endpoint[cell] && (!mask[cell] ||
+                    (generated!==nothing && generated[cell])),eachindex(endpoint))
+            end
+            uncovered && break
+        end
+        uncovered || continue
+        zs=_sonnet_via_endpoint_zs(p,poly,st,freq,variables)
+        for level in (poly.level,target)
+            level in (-1,L-1) && continue
+            pad=native_sheet(level)
+            generated=get!(generated_endpoints,level) do
+                falses(nx,ny)
+            end
+            for cell in eachindex(endpoint)
+                endpoint[cell] || continue
+                pad.mask[cell] && !generated[cell] && continue
+                if store_surfaces
+                    surface_by_level[level][cell]=generated[cell] ?
+                        _sonnet_via_parallel_zs(surface_by_level[level][cell],zs) : zs
+                end
+                pad.mask[cell]=true;generated[cell]=true
             end
         end
     end

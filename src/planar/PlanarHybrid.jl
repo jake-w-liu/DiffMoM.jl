@@ -96,11 +96,16 @@ function assemble_planar_hybrid_z(prob::PlanarHybridProblem,freq::Number;
     ct=Vector{ComplexF64}(undef,nc);cr=Vector{ComplexF64}(undef,nr)
     vt=Matrix{ComplexF64}(undef,1,length(meta.pairs));vm=similar(vt);ml=[1];nl=[1]
     cte,ctm,scratch,vsts,volsts=meta.workspace
+    # Cache only when its owned payload fits alongside the existing cross
+    # reservation; the scalar path preserves tight-budget acceptance.
+    cachebytes=_planar_conformal_triangle_cache_bytes(prob.conformal)
+    cache=cachebytes<=max_bytes-reserved ? _planar_conformal_triangle_cache(prob.conformal) : nothing
     groups=[(level,findfirst(==(level),prob.conformal.basis.interfaces):findlast(==(level),prob.conformal.basis.interfaces)) for level in meta.clevels]
     for nn in 1:mg.my,mm in 1:mg.mx
         ml[1]=mm;nl[1]=nn
         _planar_weight_block!(wt,wm,ml,nl,mg,meta.fxb,meta.fyb,rect.basis)
-        _planar_conformal_weights!(te,tm,prob.conformal,mg.kx[mm],mg.ky[nn])
+        cache===nothing ? _planar_conformal_weights!(te,tm,prob.conformal,mg.kx[mm],mg.ky[nn]) :
+            _planar_conformal_cached_weights!(te,tm,prob.conformal,mg.kx[mm],mg.ky[nn],cache)
         _planar_mode_voltages!(vt,vm,cte,ctm,scratch,prob.stack,omega,mg,ml,nl,
             meta.pairs,vsts,meta.vlay,volsts,meta.volay)
         for (Wc,Wr,V) in ((te,wt,vt),(tm,wm,vm)),(level,rows) in groups

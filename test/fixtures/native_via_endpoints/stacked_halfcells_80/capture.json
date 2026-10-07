@@ -1,0 +1,24 @@
+{
+  "case": "halfcells_80",
+  "root": "C:\\Users\\User\\DiffMoM.jl\\data\\native_via_endpoint_stacked_grid_controls_v1_20261007\\halfcells_80",
+  "native_halfcells": 80,
+  "actual_grid": 40,
+  "exit_code": 0,
+  "source_sha256_before": "af73c5bdb31d5abe49bf48d9b8ea6e2224624805c4cdbcee9417c91cd7f4485f",
+  "source_sha256_after": "af73c5bdb31d5abe49bf48d9b8ea6e2224624805c4cdbcee9417c91cd7f4485f",
+  "completion_marker": true,
+  "zero_error_marker": true,
+  "inputs": {
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "2433ef96d05f3b26b725b5f37965c3c4d65dbd76e88d459bd934da8073d3f6ff",
+    "native_raw.s2p": "25c458b118397c92d62f284a97ca5852e6d2bc45dcfe07e47320fa3f21c24abc",
+    "project.son": "af73c5bdb31d5abe49bf48d9b8ea6e2224624805c4cdbcee9417c91cd7f4485f",
+    "sondata/project/geo_response_d.sid": "2a2cd126baf44ff574822876cccf2b050768433fc636f3cf685b5ac6d759016e",
+    "sondata/project/geo_response_nd.sid": "782fd171e621048de74dc18b8b4d6a8eeef10268619f612beda7056a5436c3d9",
+    "sondata/project/info.log": "4c90adf6c29baf115e6cf6597b4aed520bd3d002413389b7b6406df475e9dd81",
+    "sondata/project/log_composite.log": "1fb456060347dd6673b3aea258e403ad1a84deca600c975d5a37aa6f98d85bd2",
+    "sondata/project/log_errors.log": "c5b2b2e283d90407fe08183dd073c871de4a67d7af0547d21f636b6486f286e4",
+    "sondata/project/log_response.log": "70fc4708d8480823b2306eecbd887da9459b9f975a8125a4501b9dbc265c44c8",
+    "sondata/project/log_timing.log": "81ed04ff99115ef283bad9ecd65a2febc11a2fb48f03402a725c05fa30e7c2c1"
+  }
+}
