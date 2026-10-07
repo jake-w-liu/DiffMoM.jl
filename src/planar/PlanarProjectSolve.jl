@@ -244,6 +244,14 @@ function _project_radiation_excitation(result::PlanarProjectResult;
         _checked_array_payload_bytes(ComplexF64,4,n,n),
         _checked_array_payload_bytes(ComplexF64,m+(result.circuit===nothing ?
             length(result.model.node_names) : size(result.circuit.voltages,1))))
+    raw_columns=result.em isa PlanarCalibratedResult ? result.em.raw.currents : result.em.currents
+    if eltype(raw_columns)!==ComplexF64
+        bits=_planar_current_precision(raw_columns)
+        reserve=_checked_payload_sum("wide project radiation excitation",reserve,
+            _planar_owned_current_product_payload(bits,nb),
+            result.em isa PlanarCalibratedResult ?
+                _planar_owned_current_product_payload(bits,nb,m) : 0)
+    end
     _enforce_payload_limit(reserve,max_bytes,"project radiation excitation","max_bytes")
     voltages===nothing || incident_waves===nothing || throw(ArgumentError("provide voltages or incident_waves"))
     supplied=voltages===nothing ? incident_waves : voltages
@@ -268,7 +276,7 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     reflected=result.s*waves;accepted=.5real(dot(waves,waves)-dot(reflected,reflected))
     tolerance=100eps(Float64)*norm(waves)^2
     isfinite(accepted) && accepted>=-tolerance || throw(ArgumentError("project radiation requires passive accepted power"))
-    coeff=_planar_coefficient_columns(result.em)*nodes
+    coeff=_planar_current_product(_planar_coefficient_columns(result.em),nodes)
     all(isfinite,coeff) || throw(ArgumentError("project radiation coefficients are nonfinite"))
     return (problem=source,coefficients=coeff,accepted=accepted>tolerance ? accepted : nothing,
         budget=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve))

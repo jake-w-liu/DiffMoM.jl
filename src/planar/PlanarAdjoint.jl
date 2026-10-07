@@ -1,3 +1,131 @@
+function _planar_gradient_wide_matrix(rows,cols,bits)
+    result=Matrix{Complex{BigFloat}}(undef,rows,cols)
+    for i in eachindex(result)
+        result[i]=complex(BigFloat(0.;precision=bits),BigFloat(0.;precision=bits))
+    end
+    result
+end
+function _planar_gradient_complex_mul!(out_re,out_im,ar,ai,br,bi,t1,t2)
+    _planar_wide_mul!(t1,ar,br);_planar_wide_mul!(t2,ai,bi)
+    _planar_wide_sub!(out_re,t1,t2)
+    _planar_wide_mul!(t1,ar,bi);_planar_wide_mul!(t2,ai,br)
+    _planar_wide_add!(out_im,t1,t2)
+    nothing
+end
+function _planar_gradient_weight_product!(output,W,rows,coefficients,count,scratch)
+    coefficient,product=scratch[1],scratch[2]
+    for q in axes(coefficients,2),i in 1:count
+        value=output[i,q];re=real(value);im=imag(value)
+        _planar_wide_set!(re,0.);_planar_wide_set!(im,0.)
+        for b in rows
+            _planar_wide_set!(coefficient,W[i,b])
+            source=coefficients[b,q]
+            _planar_wide_mul!(product,coefficient,real(source));_planar_wide_add!(re,re,product)
+            _planar_wide_mul!(product,coefficient,imag(source));_planar_wide_add!(im,im,product)
+        end
+    end
+    output
+end
+function _planar_gradient_mode_contraction!(C,Ub,Vb,G,count,pair,scratch)
+    ar,ai,ur,ui,vr,vi,t1,t2=scratch[1:8]
+    for i in 1:count
+        target=C[i,pair];re=real(target);im=imag(target)
+        _planar_wide_set!(re,0.);_planar_wide_set!(im,0.)
+        for q in axes(G,2),p in axes(G,1)
+            _planar_wide_set!(ar,real(G[p,q]));_planar_wide_set!(ai,imag(G[p,q]))
+            u=Ub[i,p];v=Vb[i,q]
+            _planar_gradient_complex_mul!(ur,ui,ar,ai,real(u),imag(u),t1,t2)
+            _planar_gradient_complex_mul!(vr,vi,ur,ui,real(v),imag(v),t1,t2)
+            _planar_wide_add!(re,re,vr);_planar_wide_add!(im,im,vi)
+        end
+    end
+    C
+end
+function _planar_gradient_parameter_contraction!(gradient,Cte,Ctm,dvte,dvtm,count,npair,scratch)
+    ar,ai,out_re,out_im,t1,t2=scratch[1:6]
+    for pair in 1:npair,i in 1:count
+        for (C,D) in ((Cte,dvte),(Ctm,dvtm))
+            value=C[i,pair];derivative=D[i,pair].d
+            _planar_wide_set!(ar,real(derivative));_planar_wide_set!(ai,imag(derivative))
+            _planar_gradient_complex_mul!(out_re,out_im,real(value),imag(value),ar,ai,t1,t2)
+            _planar_wide_add!(gradient,gradient,out_re)
+        end
+    end
+    gradient
+end
+function _planar_gradient_adjoint_rhs(prob,pbs,sgn)
+    E=zeros(ComplexF64,planar_basis_count(prob.basis),length(prob.ports))
+    for p in eachindex(pbs),b in pbs[p]
+        E[b,p]=sgn[p]*_planar_port_weight(prob.basis,b)
+    end
+    E
+end
+function _planar_gradient_checked_adjoint(result,prob,pbs,sgn,est,bits,max_bytes,kw)
+    result isa PlanarUFFTResult && return -result.currents
+    E=_planar_gradient_adjoint_rhs(prob,pbs,sgn)
+    eltype(result.currents)===ComplexF64 && return ldiv!(transpose(result.lu_fact),E)
+    nb,np=size(E)
+    reserved=_checked_payload_sum("wide gradient adjoint live arrays",est,
+        _planar_gradient_retained_payload(result,bits))
+    if eltype(result.lu_fact.factors)===Complex{BigFloat}
+        return setprecision(BigFloat,bits) do
+            setrounding(BigFloat,RoundNearest) do
+                wide=Complex{BigFloat}.(E)
+                scratch=_planar_wide_factor_scratch(bits)
+                _planar_owned_wide_factor_solve!(result.lu_fact,wide,scratch;transposed=true)
+            end
+        end
+    end
+    Z=result.z_mom
+    if Z===nothing
+        matrix_bytes=_checked_array_payload_bytes(ComplexF64,nb,nb)
+        _enforce_payload_limit(_checked_payload_sum("compact wide gradient matrix",reserved,matrix_bytes),max_bytes,"compact wide gradient matrix","max_bytes")
+        remaining=Int(BigInt(max_bytes)-reserved)
+        assembly_kw=(;kw...)
+        assembly_kw=(; (key=>value for (key,value) in pairs(assembly_kw) if key!==:method && key!==:retain_matrix)... )
+        Z=get(kw,:method,:dense)===:dense_fft ?
+            assemble_planar_z_ufft(prob,real(result.freq);max_bytes=remaining,assembly_kw...) :
+            assemble_planar_z(prob.stack,prob.grid,prob.sheets,prob.basis,result.omega;
+                vias=prob.vias,vols=prob.vols,max_bytes=remaining,assembly_kw...)
+        reserved=_checked_payload_sum("compact wide gradient original matrix",reserved,matrix_bytes)
+    end
+    ldiv!(transpose(result.lu_fact),E)
+    E .*= -1
+    setprecision(BigFloat,bits) do
+        setrounding(BigFloat,RoundNearest) do
+            negative,_,_=_planar_dense_checked_currents(E,transpose(Z),transpose(result.lu_fact),prob,reserved,max_bytes)
+            negative .*= -1
+            negative
+        end
+    end
+end
+function _planar_gradient_retained_payload(result,bits)
+    payload=0
+    for array in (result.z_mom,result.lu_fact.factors,result.lu_fact.ipiv,
+            result.currents,result.y,result.s,result.z0,result.relative_residuals)
+        array===nothing && continue
+        bytes=eltype(array)===Complex{BigFloat} ?
+            _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),size(array)...) :
+            _checked_array_payload_bytes(eltype(array),size(array)...)
+        payload=_checked_payload_sum("wide gradient retained result",payload,bytes)
+    end
+    payload
+end
+function _planar_gradient_wide_workspace(result,est,nb,np,blk,npair,nparams,max_bytes)
+    bits=_planar_current_precision(result.currents)
+    scalar=_planar_wide_scalar_payload(bits)
+    wide=_checked_payload_sum("wide gradient workspace",
+        _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),nb,np),
+        _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),2,blk,np),
+        _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),2,blk,npair),
+        # The gradient owns one scalar per parameter and the eight explicit
+        # ar/ai/ur/ui/vr/vi/t1/t2 temporaries used by its modal contractions.
+        _checked_array_payload_bytes(UInt8,scalar,nparams+8))
+    payload=_checked_payload_sum("wide planar gradient",est,wide,
+        _planar_gradient_retained_payload(result,bits))
+    _enforce_payload_limit(payload,max_bytes,"wide planar gradient","max_bytes")
+    bits
+end
 # PlanarAdjoint.jl — Parameter gradients for the planar solver
 #
 # Objective J(Y) is a real scalar of the short-circuit admittance (or of
@@ -482,6 +610,10 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
     remaining = Int(BigInt(_validated_resource_limit("max_bytes", max_bytes)) - est)
     r = solve_planar(prob, freq; mx=mx, my=my, block=block,
         max_bytes=remaining, kw...)
+    wide=eltype(r.currents)!==ComplexF64
+    bits=wide ? _planar_gradient_wide_workspace(r,est,nb,np,blk,npair,length(params),max_bytes) : 0
+    sgn = [_planar_port_sign(p) for p in prob.ports]
+    Λmat=_planar_gradient_checked_adjoint(r,prob,pbs,sgn,est,bits,max_bytes,(;mx,my,block,kw...))
     J = _checked_objective(f, r.y)
     G = gY === nothing ? _planar_wirtinger_fd(f, r.y, h) :
         begin
@@ -492,20 +624,10 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
                     "gY(Y) must return a finite $(size(r.y)) matrix"))
             ComplexF64.(gv)
         end
+    evaluate_gradient() = begin
+    T=wide ? Complex{BigFloat} : ComplexF64
+    R=wide ? BigFloat : Float64
     mg = planar_mode_grid(prob.grid, mx, my)
-
-    sgn = [_planar_port_sign(p) for p in prob.ports]
-    # The Galerkin matrix is complex symmetric and the forward RHS is -E.
-    # An FFT forward solve therefore already contains its port adjoints.
-    Λmat = if r isa PlanarUFFTResult
-        -r.currents
-    else
-        E = zeros(ComplexF64, nb, np)
-        @inbounds for p in 1:np, b in pbs[p]
-            E[b, p] = sgn[p] * _planar_port_weight(prob.basis, b)
-        end
-        ldiv!(transpose(r.lu_fact), E)
-    end
 
     pair_rows = Dict{Tuple{Int,Int},Vector{Int}}()
     pair_cols = Dict{Tuple{Int,Int},Vector{Int}}()
@@ -523,10 +645,10 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
 
     Wte = Matrix{Float64}(undef, blk, nb)
     Wtm = Matrix{Float64}(undef, blk, nb)
-    Ub = Matrix{ComplexF64}(undef, blk, np)
-    Vb = Matrix{ComplexF64}(undef, blk, np)
-    Cte = Matrix{ComplexF64}(undef, blk, npair)
-    Ctm = Matrix{ComplexF64}(undef, blk, npair)
+    Ub = wide ? _planar_gradient_wide_matrix(blk,np,bits) : Matrix{T}(undef, blk, np)
+    Vb = wide ? _planar_gradient_wide_matrix(blk,np,bits) : Matrix{T}(undef, blk, np)
+    Cte = wide ? _planar_gradient_wide_matrix(blk,npair,bits) : Matrix{T}(undef, blk, npair)
+    Ctm = wide ? _planar_gradient_wide_matrix(blk,npair,bits) : Matrix{T}(undef, blk, npair)
     D = _PlanarDual{ComplexF64}
     dvte = Matrix{D}(undef, blk, npair)
     dvtm = Matrix{D}(undef, blk, npair)
@@ -544,7 +666,8 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
         _VolLayerState{D}[]) :
         (Vector{_VolLayerState{D}}(undef, L),
          Vector{_VolLayerState{D}}(undef, L))
-    g = zeros(Float64, length(params))
+    g = wide ? [BigFloat(0.;precision=bits) for _ in params] : zeros(R,length(params))
+    wide_scratch=wide ? ntuple(_->BigFloat(0.;precision=bits),8) : nothing
     dual_stacks = [_planar_dual_stackup(prob.stack, p) for p in params]
 
     c = 0
@@ -561,16 +684,22 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
                 rows = pair_rows[pairs[pi_]]
                 cols = pair_cols[pairs[pi_]]
                 for (W, C) in ((Wte, Cte), (Wtm, Ctm))
+                    if wide
+                        _planar_gradient_weight_product!(Ub,W,rows,Λmat,cblk,wide_scratch)
+                        _planar_gradient_weight_product!(Vb,W,cols,r.currents,cblk,wide_scratch)
+                        _planar_gradient_mode_contraction!(C,Ub,Vb,G,cblk,pi_,wide_scratch)
+                    else
                     mul!(view(Ub, 1:cblk, :), view(W, 1:cblk, rows),
                         view(Λmat, rows, :))
                     mul!(view(Vb, 1:cblk, :), view(W, 1:cblk, cols),
                         view(r.currents, cols, :))
                     for cm in 1:cblk
-                        acc = zero(ComplexF64)
+                        acc = zero(T)
                         for q in 1:np, p in 1:np
                             acc += G[p, q] * Ub[cm, p] * Vb[cm, q]
                         end
                         C[cm, pi_] = acc
+                    end
                     end
                 end
             end
@@ -581,12 +710,16 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
                     scratch, ds, r.omega, mg, view(mlist, 1:cblk),
                     view(nlist, 1:cblk), pairs, vsts_d, vlay,
                     volsts_d, volay)
-                acc = zero(ComplexF64)
+                if wide
+                    _planar_gradient_parameter_contraction!(g[j],Cte,Ctm,dvte,dvtm,cblk,npair,wide_scratch)
+                else
+                acc = zero(T)
                 @inbounds for pi_ in 1:npair, cm in 1:cblk
                     acc += Cte[cm, pi_] * dvte[cm, pi_].d +
                            Ctm[cm, pi_] * dvtm[cm, pi_].d
                 end
                 g[j] += real(acc)
+                end
             end
             c = 0
         end
@@ -597,5 +730,12 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
     all(isfinite, g) || throw(ArgumentError(
         "planar gradient is non-finite: the frequency may sit on a " *
         "box resonance or a parameter may leave the model space"))
-    return (J, g)
+    stored=wide ? Float64.(g) : g
+    all(isfinite,stored) || throw(ArgumentError("planar gradient is outside finite Float64 range"))
+    return (J, stored)
+    end
+    eltype(r.currents)===ComplexF64 && return evaluate_gradient()
+    setprecision(BigFloat,bits) do
+        setrounding(evaluate_gradient,BigFloat,RoundNearest)
+    end
 end

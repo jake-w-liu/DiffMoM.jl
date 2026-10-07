@@ -202,6 +202,18 @@ function _planar_pair_indices(iface::Vector{Int}, pairs)
     return rows, cols
 end
 
+# One owned view retains exact real/imaginary reactions and the complex
+# factor buffer. Reusing it avoids separate tuple and residual-view objects.
+struct _PlanarAssemblyComponents <: AbstractMatrix{ComplexF64}
+    matrix::Matrix{ComplexF64}
+    re::Matrix{Float64}
+    im::Matrix{Float64}
+end
+Base.size(A::_PlanarAssemblyComponents)=size(A.re)
+Base.IndexStyle(::Type{_PlanarAssemblyComponents})=IndexLinear()
+@inline Base.getindex(A::_PlanarAssemblyComponents,i::Int)=complex(A.re[i],A.im[i])
+@inline Base.getindex(A::_PlanarAssemblyComponents,i::Int,j::Int)=complex(A.re[i,j],A.im[i,j])
+
 """
     assemble_planar_z(stack, grid, sheets, basis, omega; kw...) -> Matrix{ComplexF64}
 
@@ -222,6 +234,7 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
         surface_zs=zero(ComplexF64),
         sheet_coupling_zs=nothing,
         via_sigma=Inf, volume_sigma=Inf,
+        _retain_components::Bool=false,
         max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
     planar_validate(stack)
     # real(omega) > 0 admits complex-step perturbation omega = w0 + i*eps
@@ -232,7 +245,10 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
     _validate_planar_sheet_coupling(sheet_coupling_zs,length(sheets),grid)
     block >= 1 || throw(ArgumentError("block must be >= 1, got $block"))
     nb = planar_basis_count(basis)
-    nb == 0 && return zeros(ComplexF64, 0, 0)
+    if nb==0
+        Z=zeros(ComplexF64,0,0)
+        return _retain_components ? _PlanarAssemblyComponents(Z,zeros(Float64,0,0),zeros(Float64,0,0)) : Z
+    end
     mx >= 1 && my >= 1 || throw(ArgumentError("mode counts must be >= 1"))
     # Count overflow and the mode-grid arrays must be checked before
     # constructing them, including requests rejected by max_bytes.
@@ -352,6 +368,15 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
     Z = complex.(Zr, Zi)
     _add_gram!(Z, basis, grid, surface_zs,sheet_coupling_zs)
     _add_planar_bulk_loss!(Z, basis, grid, stack, vias, vols, via_rho, volume_rho)
+    if _retain_components
+        # Reuse the existing modal accumulators after every local loss term.
+        # These components retain the exact assembled ComplexF64 entries
+        # while the complex buffer is factored in place.
+        for i in eachindex(Z)
+            Zr[i]=real(Z[i]);Zi[i]=imag(Z[i])
+        end
+        return _PlanarAssemblyComponents(Z,Zr,Zi)
+    end
     return Z
 end
 

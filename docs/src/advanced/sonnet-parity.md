@@ -1707,8 +1707,9 @@ across triangle, concave L and diamond SOLID/HOLLOW SRVY cases at 1/10 GHz.
 The earlier source-pinned native material audit compares 130 raster matrices per Julia
 version: 60 selector controls and 70 rectangular saturation controls. Their
 S/loss/reciprocity/passivity gates pass, with 52 high-frequency physical
-equation passes. The 78 physical residual failures at 1/10/100 MHz remain
-open; passing S/loss alone does not certify those low-frequency currents.
+equation passes. That earlier snapshot has 78 physical residual failures at 1/10/100 MHz.
+The later checked-current repeat below closes those failures for these same
+130 controls; passing S/loss alone remains insufficient to certify currents.
 Native mode/mesh convergence, broader geometry and measured RFIC acceptance
 remain separate from these captured controls. Earlier failed full-volume
 Maxwell-current candidates and the grounded ARR discrepancy remain preserved.
@@ -1846,3 +1847,31 @@ on the same geometry, mode counts and process configuration. The full
 320-mode native grounded RF test, complete package timing, hosted CI,
 physical low-frequency limits and mode/mesh convergence remain separate
 qualification requirements; this benchmark does not certify them.
+
+
+### Checked low-frequency dense currents
+
+The checked dense-current solver, owned-precision consumers, resource bounds,
+and their current validation evidence are described in
+[Checked dense currents and numerical bounds](planar-wide-currents.md).
+
+
+## Spiral reference equations and empirical scope
+
+`planar_spiral_inductance` evaluates Mohan's empirical **DC inductance**
+references. The API's `:rectangular` coefficients are the publication's
+square coefficients; its geometry generator uses equal-sided square turns.
+The paper validates square, hexagonal, octagonal and circular spirals while
+neglecting conductor thickness in these reference formulas.
+
+Its simulation family uses outer diameters 100–480 μm, inductances
+0.5–100 nH, widths 2 μm–0.3 outer diameter, spacings 2 μm–3 widths,
+and inner diameters 0.1–0.9 outer diameter. Its current-sheet error rises
+with spacing/width; the reported maximum 8% applies for spacing ≤3 widths.
+These are published validation conditions, not new runtime rejection limits.
+
+Positive stored inputs outside that family evaluate an extrapolation. This
+reference alone does not predict RF loss, self-resonance, substrate coupling
+or measured RFIC performance; qualify those using the full EM workflow.
+
+Source: [Mohan et al., 1999, pp. 1419–1421](https://web.stanford.edu/~boyd/papers/pdf/inductance_expressions.pdf).

@@ -81,6 +81,7 @@ makedocs(
             "Robustness Studies" => "advanced/03-robustness-studies.md",
             "Debugging Playbook" => "advanced/04-debugging-playbook.md",
             "Sonnet Parity Ledger" => "advanced/sonnet-parity.md",
+            "Checked Planar Currents and Numerical Bounds" => "advanced/planar-wide-currents.md",
             "Planar TOML Projects" => "advanced/planar-projects.md",
             "Planar Fabrication Artwork" => "advanced/planar-artwork.md",
         ],

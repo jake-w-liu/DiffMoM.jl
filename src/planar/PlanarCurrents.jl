@@ -43,8 +43,118 @@ function _planar_excitation_voltages(result::Union{PlanarResult,PlanarUFFTResult
     return v
 end
 
-function _planar_map_add_rooftop!(map::PlanarCurrentMap,
-        basis::PlanarBasisSet, p::Int, coefficient::ComplexF64,
+function _planar_wide_map_accumulate!(array,i,j,coefficient,scale,scratch,shared_zero)
+    iszero(scale) && return nothing
+    iszero(coefficient) && return nothing
+    value=array[i,j]
+    if real(value)===real(shared_zero) && imag(value)===imag(shared_zero)
+        bits=precision(scratch[1])
+        value=complex(BigFloat(0.;precision=bits),BigFloat(0.;precision=bits))
+        array[i,j]=value
+    end
+    weight,product=scratch
+    _planar_wide_set!(weight,scale)
+    _planar_wide_mul!(product,real(coefficient),weight)
+    _planar_wide_add!(real(value),real(value),product)
+    _planar_wide_mul!(product,imag(coefficient),weight)
+    _planar_wide_add!(imag(value),imag(value),product)
+    nothing
+end
+function _planar_wide_map_add_rooftop!(map,basis,p,coefficient,scale,scratch,shared_zero)
+    kind=_sheet_kind(basis.kind[p]);i,j=basis.ei[p],basis.ej[p]
+    # Rooftop values at cell centres equal one half of the edge coefficient.
+    weight=0.5*scale
+    add!(array,i,j)=_planar_wide_map_accumulate!(array,i,j,coefficient,weight,scratch,shared_zero)
+    if kind==_BASIS_X_FULL
+        add!(map.jx,i,j);add!(map.jx,i+1,j)
+    elseif kind==_BASIS_X_LO
+        add!(map.jx,i+1,j)
+    elseif kind==_BASIS_X_HI
+        add!(map.jx,i,j)
+    elseif kind==_BASIS_Y_FULL
+        add!(map.jy,i,j);add!(map.jy,i,j+1)
+    elseif kind==_BASIS_Y_LO
+        add!(map.jy,i,j+1)
+    elseif kind==_BASIS_Y_HI
+        add!(map.jy,i,j)
+    end
+    nothing
+end
+
+struct _PlanarWideCurrentMap
+    jx::Matrix{Complex{BigFloat}}
+    jy::Matrix{Complex{BigFloat}}
+    jz::Matrix{Complex{BigFloat}}
+    zmin::Float64
+    zmax::Float64
+end
+function _planar_current_reconstruction_payload(prob)
+    grid=prob.grid;nl=length(prob.sheets)+length(prob.vols)+length(prob.vias)
+    _checked_payload_sum("planar current reconstruction",
+        _checked_array_payload_bytes(ComplexF64,3,nl,grid.nx,grid.ny),
+        _checked_array_payload_bytes(Float64,grid.nx+grid.ny),
+        _checked_array_payload_bytes(Float64,length(prob.stack.layers)+1),
+        _checked_array_payload_bytes(UInt64,nl,cld(_checked_array_payload_bytes(UInt8,grid.nx,grid.ny),64)))
+end
+# Consumers preserve the actual stored significand precision and at least
+# the Float64 precision of physical geometry/voltage inputs.
+function _planar_current_precision(coefficients)
+    bits=precision(Float64)
+    for x in coefficients
+        bits=max(bits,precision(real(x)),precision(imag(x)))
+    end
+    bits
+end
+function _planar_wide_map_payload(prob,bits)
+    nl=length(prob.sheets)+length(prob.vols)+length(prob.vias);grid=prob.grid
+    wide_complex_bytes=_planar_wide_complex_payload(bits)
+    _checked_payload_sum("wide planar current maps",_planar_current_reconstruction_payload(prob),
+        _checked_array_payload_bytes(ComplexF64,planar_basis_count(prob.basis)),
+        _checked_array_payload_bytes(UInt8,wide_complex_bytes,3,nl,grid.nx,grid.ny),
+        # One shared zero complex value plus the weight/product scalars.
+        _checked_array_payload_bytes(UInt8,_planar_wide_scalar_payload(bits),4))
+end
+function _planar_current_maps_from_coefficients(prob::PlanarProblem,
+        coefficients::AbstractVector{Complex{BigFloat}};z_fraction::Real=.5,
+        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    nb=planar_basis_count(prob.basis);grid=prob.grid
+    length(coefficients)==nb && all(isfinite,coefficients) || throw(ArgumentError("current coefficients must be finite and match the physical basis"))
+    isfinite(z_fraction) && 0<=z_fraction<=1 || throw(ArgumentError("z_fraction must lie in [0,1]"))
+    bits=_planar_current_precision(coefficients)
+    payload=_planar_wide_map_payload(prob,bits)
+    _enforce_payload_limit(payload,max_bytes,"wide planar current maps","max_bytes")
+    setprecision(BigFloat,bits) do
+        setrounding(BigFloat,RoundNearest) do
+            maps=_planar_current_maps_from_coefficients(prob,zeros(ComplexF64,nb);z_fraction,max_bytes)
+            shared_zero=complex(BigFloat(0.;precision=bits),BigFloat(0.;precision=bits))
+            scratch=(BigFloat(0.;precision=bits),BigFloat(0.;precision=bits))
+            wide=[_PlanarWideCurrentMap(fill(shared_zero,grid.nx,grid.ny),
+                fill(shared_zero,grid.nx,grid.ny),fill(shared_zero,grid.nx,grid.ny),m.zmin,m.zmax) for m in maps]
+            ns=length(prob.sheets);nv=length(prob.vols)
+            for p in 1:nb
+                k,lv=prob.basis.kind[p],prob.basis.level[p]
+                if _is_via_kind(k)
+                    profile=k==_BASIS_VIA_U ? 1. : Float64(z_fraction)
+                    _planar_wide_map_accumulate!(wide[ns+nv+lv].jz,prob.basis.ei[p],prob.basis.ej[p],coefficients[p],profile,scratch,shared_zero)
+                elseif _is_vol_kind(k)
+                    map=wide[ns+lv]
+                    _planar_wide_map_add_rooftop!(map,prob.basis,p,coefficients[p],1/(map.zmax-map.zmin),scratch,shared_zero)
+                else
+                    _planar_wide_map_add_rooftop!(wide[lv],prob.basis,p,coefficients[p],1.,scratch,shared_zero)
+                end
+            end
+            for (map,accurate) in zip(maps,wide),(target,source) in ((map.jx,accurate.jx),(map.jy,accurate.jy),(map.jz,accurate.jz))
+                for i in eachindex(target)
+                    target[i]=_planar_stored_phasor(source[i])
+                end
+            end
+            maps
+        end
+    end
+end
+
+function _planar_map_add_rooftop!(map::Union{PlanarCurrentMap,_PlanarWideCurrentMap},
+        basis::PlanarBasisSet, p::Int, coefficient::Number,
         grid::CellGrid, scale::Float64)
     k = _sheet_kind(basis.kind[p])
     i, j = basis.ei[p], basis.ej[p]
@@ -95,22 +205,20 @@ function planar_current_maps(result::Union{PlanarResult,PlanarUFFTResult};
     grid = prob.grid
     nb = planar_basis_count(prob.basis)
     nl = length(prob.sheets) + length(prob.vols) + length(prob.vias)
-    payload = _checked_payload_sum("planar current maps",
-        _checked_array_payload_bytes(ComplexF64, 3, nl, grid.nx, grid.ny),
-        _checked_array_payload_bytes(Float64, grid.nx + grid.ny),
-        _checked_array_payload_bytes(ComplexF64, nb),
-        _checked_array_payload_bytes(ComplexF64, 10, length(prob.ports)),
-        _checked_array_payload_bytes(Float64, length(prob.stack.layers) + 1),
-        # BitArray allocates complete 64-bit chunks even for a single cell.
-        _checked_array_payload_bytes(UInt64, nl,
-            cld(_checked_array_payload_bytes(UInt8, grid.nx, grid.ny), 64)))
-    _enforce_payload_limit(payload, max_bytes, "planar current maps", "max_bytes")
+    ordinary=eltype(result.currents)===ComplexF64
+    bits=ordinary ? precision(Float64) : _planar_current_precision(result.currents)
+    excitation=_checked_payload_sum("current excitation",
+        _checked_array_payload_bytes(ComplexF64,10,length(prob.ports)),
+        ordinary ? _checked_array_payload_bytes(ComplexF64,nb) :
+            _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),nb),
+        ordinary ? 0 : _checked_array_payload_bytes(UInt8,_planar_wide_scalar_payload(bits),4))
+    reconstruction=ordinary ? _planar_current_reconstruction_payload(prob) : _planar_wide_map_payload(prob,bits)
+    payload=_checked_payload_sum("planar current maps",excitation,reconstruction)
+    _enforce_payload_limit(payload,max_bytes,"planar current maps","max_bytes")
     v = _planar_excitation_voltages(result, voltages, incident_waves, port)
-    coefficients = result.currents * v
+    coefficients = _planar_current_product(result.currents,v)
     return _planar_current_maps_from_coefficients(prob,coefficients;
-        z_fraction,max_bytes=max_bytes-_checked_payload_sum("current excitation",
-            _checked_array_payload_bytes(ComplexF64,nb),
-            _checked_array_payload_bytes(ComplexF64,10,length(prob.ports))))
+        z_fraction,max_bytes=max_bytes-excitation)
 end
 
 # Shared reconstruction for solvers that drive physical voltage contracts

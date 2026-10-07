@@ -226,7 +226,11 @@ function _planar_farfield_direction(prob,coeff,stack,frequency,theta,phi)
     zface=side==1 ? sum(real(l.thickness) for l in stack.layers) : 0.
     factor=-1im*omega*_MU0*real(term.mur)/(4pi)*cis(side*k*c*zface)
     et,ep=factor*tm,factor*te
-    return et,ep,(abs2(et)+abs2(ep))/(2eta)
+    # Normalize each field before squaring. This preserves representable
+    # intensity when the unnormalized squares exceed Float64's range.
+    # The factor two is the peak-phasor time-average convention.
+    normalization=sqrt(2eta)
+    return et,ep,abs2(et/normalization)+abs2(ep/normalization)
 end
 
 """Compute polarized far fields by Lorentz reciprocity in the infinite
@@ -261,6 +265,8 @@ function planar_farfield(prob::Union{PlanarProblem,PlanarConformalProblem,Planar
     et=Matrix{ComplexF64}(undef,length(ts),length(ps));ep=similar(et);u=Matrix{Float64}(undef,size(et))
     for j in eachindex(ps),i in eachindex(ts)
         et[i,j],ep[i,j],u[i,j]=_planar_farfield_direction(prob,coeff,stack,Float64(freq),ts[i],ps[j])
+        all(isfinite,(et[i,j],ep[i,j],u[i,j])) || throw(ArgumentError(
+            "radiation fields and intensity must fit finite Float64 values"))
     end
     return PlanarRadiationPattern(ts,ps,et,ep,u,power,Float64(freq))
 end
@@ -283,6 +289,17 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
     extra=result isa PlanarCalibratedResult ? _checked_array_payload_bytes(ComplexF64,nb,n) : 0
     reserve=_checked_payload_sum("radiation excitation",_checked_array_payload_bytes(ComplexF64,nb),
         _checked_array_payload_bytes(ComplexF64,8,n),extra)
+    raw_columns=result isa PlanarCalibratedResult ? result.raw.currents : result.currents
+    if eltype(raw_columns)!==ComplexF64
+        bits=_planar_current_precision(raw_columns)
+        scalar=_planar_wide_scalar_payload(bits)
+        reserve=_checked_payload_sum("wide radiation excitation",reserve,
+            _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),nb),
+            # Calibrated columns and the final voltage contraction each call the
+            # four-scalar owned product; include both operation workspaces.
+            _checked_array_payload_bytes(UInt8,scalar,4*(result isa PlanarCalibratedResult ? 2 : 1)),
+            result isa PlanarCalibratedResult ? _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),nb,n) : 0)
+    end
     _enforce_payload_limit(reserve,max_bytes,"radiation excitation","max_bytes")
     refs=_planar_reference_values(hasproperty(result,:z0) ? result.z0 :
         [p.z0 for p in result.problem.ports],n;freq=real(result.freq))
@@ -302,7 +319,7 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
     current=result.y*v;pin=.5real(dot(v,current))
     tolerance=100eps(Float64)*norm(v)*norm(current)
     pin>=-tolerance || throw(ArgumentError("radiation gain requires nonnegative accepted power"))
-    return planar_farfield(source,X*v,real(result.freq);accepted_power=pin>tolerance ? pin : nothing,
+    return planar_farfield(source,_planar_current_product(X,v),real(result.freq);accepted_power=pin>tolerance ? pin : nothing,
         max_bytes=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve),kw...)
 end
 
