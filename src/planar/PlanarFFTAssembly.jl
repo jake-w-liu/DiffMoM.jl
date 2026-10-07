@@ -203,7 +203,7 @@ every modal contribution and its summation order are preserved. For factorizatio
 `solve_planar(...;method=:dense_fft)`;
 for storage without an Nb² matrix use `method=:ufft`."""
 function assemble_planar_z_ufft(prob::PlanarProblem,freq::Number;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     nb=planar_basis_count(prob.basis)
     matrix_bytes=_checked_array_payload_bytes(ComplexF64,nb,nb)
     _enforce_payload_limit(matrix_bytes,max_bytes,"FFT dense assembly","max_bytes")

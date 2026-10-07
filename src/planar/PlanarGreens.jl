@@ -235,7 +235,7 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
         sheet_coupling_zs=nothing,
         via_sigma=Inf, volume_sigma=Inf,
         _retain_components::Bool=false,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     planar_validate(stack)
     # real(omega) > 0 admits complex-step perturbation omega = w0 + i*eps
     isfinite(omega) && real(omega) > 0 ||

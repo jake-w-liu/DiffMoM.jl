@@ -1,5 +1,7 @@
 # API: Adjoint and Optimization
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 Reference for adjoint sensitivity analysis and optimization. This page covers:
@@ -193,7 +195,7 @@ Projected L-BFGS optimization for a single quadratic objective `J = Re(I' Q I)`.
 | `gmres_tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `200` | Maximum GMRES iterations per solve. |
 | `gmres_memory` | `Int` | `20` | Krylov restart/memory parameter for GMRES. |
-| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Aggregate raw-payload ceiling for optimizer-owned matrices, accepted/trial factors and pivots, field and objective buffers, parameter work vectors, and conditional exact direct solves. |
+| `max_workspace_bytes` | `Integer` | `Sys.free_memory()` | Aggregate raw-payload ceiling for optimizer-owned matrices, accepted/trial factors and pivots, field and objective buffers, parameter work vectors, and conditional exact direct solves. |
 
 **Mass-based conditioning options (advanced):**
 
@@ -303,7 +305,7 @@ matrix-free far-field Q builders satisfy this contract.
 | `objective` | `Symbol` | `:linear` | Scalarization: `:linear` (Σ w_a J_a), `:sum_log` (Σ w_a log(J_a/J_ref,a)), or `:smoothmax_log` (smooth worst-angle normalized log). |
 | `reference_objectives` | `Vector{Float64}` or `nothing` | `nothing` | Positive per-angle reference values for normalized objectives, such as values computed for a PEC reference. |
 | `smooth_beta` | `Float64` | `8.0` | Sharpness parameter for `:smoothmax_log`. |
-| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Aggregate raw-payload ceiling for dense optimization, including accepted/trial factors and pivots, per-angle fields and objective buffers, parameter work vectors, and conditional exact solves. Matrix-free ACA/MLFMA paths do not allocate this dense workspace. |
+| `max_workspace_bytes` | `Integer` | `Sys.free_memory()` | Aggregate raw-payload ceiling for dense optimization, including accepted/trial factors and pivots, per-angle fields and objective buffers, parameter work vectors, and conditional exact solves. Matrix-free ACA/MLFMA paths do not allocate this dense workspace. |
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized parameter vector.

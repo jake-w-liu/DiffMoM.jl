@@ -73,7 +73,7 @@ levels. No surface, volume or Green quadrature is used."""
 function assemble_planar_hybrid_z(prob::PlanarHybridProblem,freq::Number;
         mx::Integer=2prob.bulk.grid.nx,my::Integer=2prob.bulk.grid.ny,
         surface_zs=0.,via_sigma=Inf,volume_sigma=Inf,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     mx>=1 && my>=1 || throw(ArgumentError("hybrid mode counts must be positive"))
     omega=2pi*ComplexF64(freq);isfinite(omega) && real(omega)>0 || throw(ArgumentError("hybrid frequency must be positive and finite"))
     nc=length(prob.conformal.basis.width);nr=planar_basis_count(prob.bulk.basis);n=nc+nr;L=length(prob.stack.layers)
@@ -146,7 +146,7 @@ PlanarHybridResult(prob::PlanarHybridProblem,freq,omega,Z,F,scale,X,Y,S,residual
 All port traces are power conjugate, including via area and volume width.
 Retained coefficients preserve both physical source geometries."""
 function solve_planar_hybrid(prob::PlanarHybridProblem,freq::Number;
-        method::Symbol=:dense,retain_matrix::Bool=true,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        method::Symbol=:dense,retain_matrix::Bool=true,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     method===:ufft && return solve_planar_hybrid_ufft(prob,freq;max_bytes,kw...)
     method===:dense || throw(ArgumentError("hybrid method must be :dense or :ufft"))
     omega=2pi*ComplexF64(freq)
@@ -200,7 +200,7 @@ end
 Returns `(triangles=..., bulk=...)`; both use the same terminal voltages or
 incident power waves and preserve their physical interface/layer geometry."""
 function _planar_hybrid_current_maps(result;port::Integer=1,voltages=nothing,incident_waves=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     prob=result.problem;np=length(prob.ports);nc=length(prob.conformal.basis.width);n=size(result.currents,1)
     reserve=_checked_payload_sum("hybrid current excitation",_checked_array_payload_bytes(ComplexF64,n),
         _checked_array_payload_bytes(ComplexF64,10,np))

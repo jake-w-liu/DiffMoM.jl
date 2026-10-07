@@ -285,7 +285,7 @@ planar_project_dict(project::PlanarProject)=deepcopy(project.data)
 ASCENT top-to-bottom layers and level indices. The file size is checked
 before parsing; `max_bytes` bounds the input text size."""
 function load_planar_project(path::AbstractString;ascent::Bool=false,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     isfile(path) || throw(ArgumentError("planar project not found: $path"))
     _enforce_payload_limit(filesize(path),max_bytes,"planar project input","max_bytes")
     data=TOML.parsefile(path)

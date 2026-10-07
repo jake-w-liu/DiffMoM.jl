@@ -190,7 +190,7 @@ technology name. Image inversion is explicit over the later analysis grid.
 Unknown records reject the file; no conductive objects are silently omitted.
 `max_bytes` bounds input and a conservative owned geometry payload estimate."""
 function read_gerber(path::AbstractString;layer::AbstractString=splitext(basename(path))[1],
-        max_objects::Integer=1_000_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_objects::Integer=1_000_000,max_bytes::Integer=_default_max_dense_payload_bytes())
     max_objects>0 || throw(ArgumentError("max_objects must be positive"))
     limit=_validated_resource_limit("max_bytes",max_bytes);input=filesize(path)
     input_payload=_checked_array_payload_bytes(UInt8,3,input)

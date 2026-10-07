@@ -97,7 +97,7 @@ function condition_error_observations(
         observations::AbstractVector{<:Number};
         tau::Real=1.0, rank_rtol::Real=64eps(Float64),
         consistency_rtol::Real=1e-10,
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     m, q = size(mass, 1), size(information, 1)
     m > 0 && size(mass, 2) == m ||
         throw(DimensionMismatch("prior mass must be nonempty and square"))
@@ -193,7 +193,7 @@ All singular directions are retained; there is no variance truncation.
 """
 function sample_error_outputs(
         outputs::ErrorOutputs, rng::Random.AbstractRNG, count::Integer;
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     p, m = size(outputs.square_root)
     length(outputs.mean) == p ||
         throw(DimensionMismatch("output factor and mean dimensions do not match"))
@@ -254,7 +254,7 @@ function condition_discretization_error(
         system::GalerkinErrorSystem, probes::AbstractMatrix{<:Number};
         tau::Real,
         triangle_weights::Union{Nothing,AbstractVector{<:Real}}=nothing,
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_work_bytes::Integer=_default_max_dense_payload_bytes(),
         rank_rtol::Real=64eps(Float64), consistency_rtol::Real=1e-10)
     started = time_ns()
     _validate_error_system(system)
@@ -319,7 +319,7 @@ latent coordinates and cross-row covariance. No current covariance is formed.
 function evaluate_error_outputs(
         model::ConditionedErrorModel, fine_output_map::AbstractMatrix{<:Number};
         row_batch_size::Integer=24,
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     started = time_ns()
     prepared = prepare_error_outputs(
         model.system, fine_output_map; row_batch_size=row_batch_size,
@@ -339,7 +339,7 @@ end
 function evaluate_error_outputs(
         model::ConditionedErrorModel, prepared::PreparedErrorOutputs;
         row_batch_size::Integer=24,
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     started = time_ns()
     system, conditioning = model.system, model.conditioning
     _validate_error_model(model)
@@ -404,7 +404,7 @@ returns conditional means without random perturbations.
 """
 function sample_conditioned_error(
         conditioning::ResidualConditioning, rng::Random.AbstractRNG, count::Integer;
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     _validate_conditioning(conditioning)
     n = _validated_nonnegative_resource_limit("sample count", count)
     m = size(conditioning.mass, 1)

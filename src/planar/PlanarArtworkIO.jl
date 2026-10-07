@@ -309,7 +309,7 @@ analytic membership. `offset` is an explicit SI translation. All original
 layer names remain keys of the returned BitMatrix dictionary. Negative
 images are complemented only over this analysis grid."""
 function artwork_cell_masks(doc::PlanarArtwork,grid::CellGrid;offset=(0.,0.),
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     length(offset)==2 && all(isfinite,offset) || throw(ArgumentError("artwork offset must contain two finite SI coordinates"))
     layers=unique([o.layer for o in doc.objects]);append!(layers,setdiff(collect(doc.negative_layers),layers))
     payload=_checked_payload_sum("artwork cell masks",_checked_array_payload_bytes(UInt64,length(layers),cld(BigInt(grid.nx)*grid.ny,64)),
@@ -333,7 +333,7 @@ or `(;kind=:via,from_interface,to_interface)`. Wall connection flags follow
 the physically occupied boundaries. No automatic centering/scaling occurs.
 The explicit `ports` use the sorted sheet-interface or via-layer order."""
 function artwork_planar_problem(doc::PlanarArtwork,stack::PlanarStackup,grid::CellGrid,mapping::AbstractDict,
-        ports::Vector{PlanarPort};offset=(0.,0.),max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        ports::Vector{PlanarPort};offset=(0.,0.),max_bytes::Integer=_default_max_dense_payload_bytes())
     planar_validate(stack)
     stack.a==grid.a && stack.b==grid.b || throw(ArgumentError("artwork stack/grid dimensions differ"))
     levels=Set{Int}();vlevels=Set{Int}()

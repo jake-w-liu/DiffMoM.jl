@@ -257,7 +257,9 @@ function _planar_scaled_open_real_slab(f::Float64,sigma::Float64,h::Float64,mur:
     else
         xm,xe=_planar_metal_sqrt_parts((qparts[1]/2,qparts[2]));x=ldexp(xm,xe)
         vparts=_planar_metal_sqrt_parts(_planar_metal_product_parts((constant,f,mur,.5),sigma))
-        factor=if x>400
+        # An infinite propagation product has the exact thick-film limit;
+        # finite products use the exponential relation and IEEE underflow.
+        factor=if isinf(x)
             complex(1.,1.)
         else
             decay=exp(-complex(x,x));complex(1.,1.)*(1+decay^2)/(1-decay^2)

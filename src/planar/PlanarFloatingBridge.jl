@@ -43,7 +43,7 @@ owned masks, connectivity work, new basis and metadata before allocation.
 Bare port-free input geometry is supported."""
 function planar_floating_bridge(prob::PlanarProblem,signal::PlanarPort,reference::PlanarPort;
         source_edge::Union{Nothing,Integer}=nothing,z0=signal.z0,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     _is_planar_terminal(signal.wall) && _is_planar_terminal(reference.wall) || throw(ArgumentError("floating bridge endpoints require open sheet terminal contracts"))
     signal.level==reference.level && signal.cells==reference.cells &&
         _is_planar_x_terminal(signal.wall)==_is_planar_x_terminal(reference.wall) || throw(ArgumentError("floating bridge endpoints must share sheet, axis and complete transverse span"))

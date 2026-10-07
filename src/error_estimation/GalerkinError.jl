@@ -125,7 +125,7 @@ function prepare_galerkin_error(
         fine_operator::AbstractMatrix{<:Number}, fine_rhs::AbstractVector{<:Number};
         restriction_rtol::Real=0.0, restriction_atol::Real=0.0,
         rebuild_on_mismatch::Bool=true,
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     return lock(state.work_lock) do
         started = time_ns()
         _validate_retained_state(state)
@@ -301,7 +301,7 @@ rule. Geometry, RHS, operator or map changes invalidate the result.
 function prepare_error_outputs(
         system::GalerkinErrorSystem, fine_output_map::AbstractMatrix{<:Number};
         row_batch_size::Integer=24,
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     started = time_ns()
     _validate_error_system(system)
     nf, nc = size(system.pair.P)
@@ -350,7 +350,7 @@ preparation are part of its computational cost.
 function output_residual_probes(prepared::PreparedErrorOutputs;
         rows::Union{Nothing,AbstractVector{<:Integer}}=nothing,
         rank_rtol::Real=64eps(Float64),
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     _validate_prepared_outputs(prepared)
     p, m = size(prepared.rows)
     selected = rows === nothing ? collect(1:p) : Int.(rows)

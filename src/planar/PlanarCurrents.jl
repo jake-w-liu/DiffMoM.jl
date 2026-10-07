@@ -116,7 +116,7 @@ function _planar_wide_map_payload(prob,bits)
 end
 function _planar_current_maps_from_coefficients(prob::PlanarProblem,
         coefficients::AbstractVector{Complex{BigFloat}};z_fraction::Real=.5,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     nb=planar_basis_count(prob.basis);grid=prob.grid
     length(coefficients)==nb && all(isfinite,coefficients) || throw(ArgumentError("current coefficients must be finite and match the physical basis"))
     isfinite(z_fraction) && 0<=z_fraction<=1 || throw(ArgumentError("z_fraction must lie in [0,1]"))
@@ -198,7 +198,7 @@ A/m². No cell interpolation or smoothing is applied.
 function planar_current_maps(result::Union{PlanarResult,PlanarUFFTResult};
         port::Integer=1, voltages=nothing, incident_waves=nothing,
         z_fraction::Real=0.5,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(z_fraction) && 0 <= z_fraction <= 1 ||
         throw(ArgumentError("z_fraction must lie in [0,1]"))
     prob = result.problem
@@ -225,7 +225,7 @@ end
 # directly, without constructing separate raw-source coefficient columns.
 function _planar_current_maps_from_coefficients(prob::PlanarProblem,
         coefficients::AbstractVector;z_fraction::Real=.5,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(z_fraction) && 0<=z_fraction<=1 ||
         throw(ArgumentError("z_fraction must lie in [0,1]"))
     grid=prob.grid;nb=planar_basis_count(prob.basis)

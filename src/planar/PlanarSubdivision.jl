@@ -89,7 +89,7 @@ boxes). Raw dense matrices are omitted by default. Retaining results
 also retains their factors/operators for later current reconstruction."""
 function solve_planar_subdivision(plan::PlanarSubdivision,f::Real;
         retain_results::Bool=false,chains=nothing,part_keywords=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     isfinite(f) && f>0 || throw(ArgumentError("EM subdivision frequency must be positive"))
     n = length(plan.parts)
     chains===nothing || length(chains)==n || throw(ArgumentError("chains must match EM parts"))

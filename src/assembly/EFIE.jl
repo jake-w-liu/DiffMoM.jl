@@ -703,7 +703,7 @@ function assemble_Z_efie(mesh::TriMesh, rwg::RWGData, k;
                          require_closed::Bool=false,
                          area_tol_rel::Float64=1e-12,
                          max_output_bytes::Integer=
-                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                             _default_max_dense_payload_bytes(),
                          max_cache_bytes::Integer=
                              _DEFAULT_MAX_EFIE_CACHE_BYTES,
                          max_adjacency_pairs::Integer=

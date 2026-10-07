@@ -1642,7 +1642,7 @@ function assemble_full_Z(Z_efie::Matrix{<:Number},
                          Mp::Vector{<:AbstractMatrix},
                          theta::AbstractVector;
                          reactive::Bool=false,
-                         max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                         max_output_bytes::Integer=_default_max_dense_payload_bytes())
     output_bytes = _checked_array_payload_bytes(
         eltype(Z_efie), size(Z_efie)...;
         label="full impedance-loaded system matrix")
@@ -1749,7 +1749,7 @@ regularized solves.
 """
 function make_mass_regularizer(
         Mp::Vector{<:AbstractMatrix};
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     N = _validated_mass_matrix_size(Mp)
     output_bytes = _checked_array_payload_bytes(
         ComplexF64, N, N; label="mass regularizer matrix")
@@ -1836,7 +1836,7 @@ Build a simple mass-based left preconditioner matrix:
 """
 function make_left_preconditioner(Mp::Vector{<:AbstractMatrix};
                                   eps_rel::Float64=1e-8,
-                                  max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                  max_output_bytes::Integer=_default_max_dense_payload_bytes())
     (isfinite(eps_rel) && eps_rel > 0.0) ||
         throw(ArgumentError(
             "eps_rel must be finite and positive, got $eps_rel"))
@@ -1889,7 +1889,7 @@ function select_preconditioner(Mp::Vector{<:AbstractMatrix};
                                iterative_solver::Bool=false,
                                eps_rel::Float64=1e-6,
                                max_output_bytes::Integer=
-                                   _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                   _default_max_dense_payload_bytes())
     mode ∈ (:off, :on, :auto) ||
         throw(ArgumentError(
             "Invalid preconditioner mode: $mode (expected :off, :on, or :auto)"))
@@ -1952,7 +1952,7 @@ function transform_patch_matrices(Mp::Vector{<:AbstractMatrix};
                                   preconditioner_factor=nothing,
                                   exact_fallback_check=nothing,
                                   max_output_bytes::Integer=
-                                      _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                      _default_max_dense_payload_bytes())
     N = _validated_mass_matrix_size(Mp)
     if preconditioner_M === nothing && preconditioner_factor === nothing
         return Mp, nothing

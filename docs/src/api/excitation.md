@@ -1,5 +1,7 @@
 # Excitation API
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 Excitations produce the right-hand side in the MoM system
 
 \[
@@ -239,7 +241,7 @@ V = assemble_multiple_excitations(
     rwg,
     [source_a, source_b];
     quad_order=3,
-    max_output_bytes=2_000_000_000,
+    max_output_bytes=Sys.free_memory(),
     max_work_bytes=536_870_912,
     max_terms=200_000_000,
 )

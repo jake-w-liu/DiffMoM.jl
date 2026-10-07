@@ -200,7 +200,7 @@ end
 
 function fft_dda_kernel_3d(
         grid::VoxelGrid3D, k0::Real;
-        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     k = _finite_positive_k0_3d(k0)
     interaction_scale = grid.volumes[1]
 
@@ -245,7 +245,7 @@ a zero-padded block Toeplitz convolution over Cartesian grid offsets.
 function fft_dda_operator_3d(
         grid::VoxelGrid3D, k0::Real, eps_r;
         radiative_correction::Bool=false,
-        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     _validated_fft_dda_storage_3d(
         grid, 3, max_storage_bytes, "FFT DDA operator")
     k = _finite_positive_k0_3d(k0)
@@ -450,7 +450,7 @@ end
 function fft_em_dda_kernel_3d(
         grid::VoxelGrid3D, k0::Real;
         eta0::Real=_ETA0_DDA,
-        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     k = _finite_positive_k0_3d(k0)
     eta = _finite_positive_real_3d(eta0, "eta0")
     interaction_scale = grid.volumes[1]
@@ -506,7 +506,7 @@ uniform `VoxelGrid3D`.
 function fft_em_dda_operator_3d(
         grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
         radiative_correction::Bool=false,
-        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     _validated_fft_dda_storage_3d(
         grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     k = _finite_positive_k0_3d(k0)
@@ -525,7 +525,7 @@ end
 function fft_em_dda_operator_3d(
         grid::VoxelGrid3D, k0::Real, alpha6;
         radiative_correction::Bool=false,
-        max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     _validated_fft_dda_storage_3d(
         grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     k = _finite_positive_k0_3d(k0)
@@ -546,7 +546,7 @@ function fft_em_dda_operator_3d(grid::VoxelGrid3D, k0::Real,
                                                 AbstractVector{<:BianisotropicMaterial3D}};
                                 radiative_correction::Bool=false,
                                 eta0::Real=_ETA0_DDA,
-                                max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     _validated_fft_dda_storage_3d(
         grid, 6, max_storage_bytes, "FFT EM-DDA operator")
     k = _finite_positive_k0_3d(k0)

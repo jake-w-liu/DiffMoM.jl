@@ -99,7 +99,7 @@ at frequency `f` [Hz].  `planar_rlgc(cal, f)` uses the line parameters
 of a `DoubleDelayCal` directly."""
 function planar_rlgc(Y::AbstractMatrix, len::Real, f::Real;
         phase_hint::Union{Nothing,Real}=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     (isfinite(len) && len > 0) || throw(ArgumentError(
         "line length must be finite and > 0, got $len"))
     n = size(Y, 1)

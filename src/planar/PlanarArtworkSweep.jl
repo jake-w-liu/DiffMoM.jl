@@ -14,7 +14,7 @@ struct _ArtworkCompositeLine{S<:_ArtworkShape} <: _ArtworkShape
 end
 # Preserve the earlier private constructor used by geometric adapters.
 function _ArtworkCompositeLine(aperture,start,stop,count::Int)
-    bytes=max(0,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES-Base.summarysize(aperture)-256)
+    bytes=max(0,_default_max_dense_payload_bytes()-Base.summarysize(aperture)-256)
     _ArtworkCompositeLine(aperture,start,stop,count,bytes)
 end
 function _artwork_bounds(s::_ArtworkCompositeLine)
@@ -214,7 +214,7 @@ function _artwork_geometry_depth_guard(s::_ArtworkComposite,depth=0)
     end
     nothing
 end
-function _artwork_composite_line(aperture,start,stop;max_boundaries,max_bytes=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+function _artwork_composite_line(aperture,start,stop;max_boundaries,max_bytes=_default_max_dense_payload_bytes(),
         _copy_aperture::Bool=true)
     limit=_validated_resource_limit("max_stroke_boundaries",max_boundaries)
     all(isfinite,(start...,stop...)) || throw(ArgumentError("nonfinite artwork stroke endpoints"))

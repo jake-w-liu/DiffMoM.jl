@@ -176,7 +176,7 @@ The owned geometry, retained EM solve and loaded circuit share `max_bytes`."""
 function solve_planar_project(project::PlanarProject,freq::Real;grid=nothing,
         variables::AbstractDict=Dict{String,Any}(),component_response=nothing,
         terminal_ground::Symbol=:auto,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     freq=_project_stored_frequency(freq)
     model=planar_project_layout(project;freq,grid,variables,terminal_ground,max_bytes)
     owned=_project_model_payload(model);n=max(length(model.port_names),length(model.node_names))
@@ -206,7 +206,7 @@ function solve_planar_project(project::PlanarProject,freq::Real;grid=nothing,
 end
 
 function solve_planar_project(path::AbstractString,freq::Real;
-        ascent::Bool=false,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        ascent::Bool=false,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     freq=_project_stored_frequency(freq)
     return solve_planar_project(load_planar_project(path;ascent,max_bytes),freq;max_bytes,kw...)
 end
@@ -216,7 +216,7 @@ planar_connectivity(project::PlanarProject;kw...)=planar_connectivity(planar_pro
 """Reconstruct a project's loaded EM current maps. External incident
 power waves drive the actual solved internal component node voltages."""
 function planar_current_maps(result::PlanarProjectResult;port::Integer=1,incident_waves=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     result.circuit===nothing && return planar_current_maps(result.em;port,incident_waves,max_bytes,kw...)
     n=length(result.z0)
     reserve=_checked_array_payload_bytes(ComplexF64,n+size(result.circuit.voltages,1)+length(result.model.port_names))
@@ -289,7 +289,7 @@ specifies external reference-plane voltages with the solved loads retained.
 Supply an explicit `radiation_stack` to change the propagation boundaries;
 the current solution's box boundaries are preserved by default."""
 function planar_farfield(result::PlanarProjectResult;port::Integer=1,voltages=nothing,
-        incident_waves=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        incident_waves=nothing,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     excitation=_project_radiation_excitation(result;port,voltages,incident_waves,max_bytes)
     return planar_farfield(excitation.problem,excitation.coefficients,result.freq;
         accepted_power=excitation.accepted,max_bytes=excitation.budget,kw...)
@@ -298,7 +298,7 @@ end
 """Radiated power for a project's actual loaded EM currents. Excitation
 and reference-plane conventions match [`planar_farfield`](@ref)."""
 function planar_radiated_power(result::PlanarProjectResult;port::Integer=1,voltages=nothing,
-        incident_waves=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        incident_waves=nothing,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     excitation=_project_radiation_excitation(result;port,voltages,incident_waves,max_bytes)
     return planar_radiated_power(excitation.problem,excitation.coefficients,result.freq;
         max_bytes=excitation.budget,kw...)
@@ -310,7 +310,7 @@ frequency rebuilds its dispersive stack and loads. The retained output
 payload is reserved from the solve budget; raw frequency factors are
 discarded unless independently requested by a direct solve."""
 function planar_project_sweep(project::PlanarProject;variables::AbstractDict=Dict{String,Any}(),
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     frequencies=planar_project_frequencies(project;variables,max_bytes)
     sweep=get(project.data,"sweep",Dict());adaptive=get(sweep,"adaptive",false)
     ne=mp=0;relative_tolerance=0.
@@ -363,6 +363,6 @@ function planar_project_sweep(project::PlanarProject;variables::AbstractDict=Dic
 end
 
 function planar_project_sweep(path::AbstractString;ascent::Bool=false,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     return planar_project_sweep(load_planar_project(path;ascent,max_bytes);max_bytes,kw...)
 end

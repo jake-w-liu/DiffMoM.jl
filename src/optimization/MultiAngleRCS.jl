@@ -12,8 +12,6 @@
 
 export AngleConfig, build_multiangle_configs, optimize_multiangle_rcs
 
-const _DEFAULT_MAX_MULTIANGLE_CONFIG_WORK_BYTES =
-    _DEFAULT_MAX_DENSE_PAYLOAD_BYTES
 
 """
     AngleConfig
@@ -611,7 +609,7 @@ function build_multiangle_configs(mesh::TriMesh, rwg::RWGData, k::Float64,
                                    matrix_free_Q::Bool=false,
                                    rcs_component::Symbol=:copol,
                                    max_work_bytes::Integer=
-                                       _DEFAULT_MAX_MULTIANGLE_CONFIG_WORK_BYTES)
+                                       _default_max_dense_payload_bytes())
     _validate_mesh_rwg_pair(mesh, rwg)
     (isfinite(k) && k > 0.0) ||
         throw(ArgumentError(
@@ -827,7 +825,7 @@ function optimize_multiangle_rcs(Z_base::AbstractMatrix{ComplexF64},
                                   reference_objectives::Union{Nothing, Vector{Float64}}=nothing,
                                   smooth_beta::Float64=8.0,
                                   max_workspace_bytes::Integer=
-                                      _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                      _default_max_dense_payload_bytes())
     M = length(configs)    # number of angles
     P = length(theta0)     # number of design parameters
     M >= 1 ||

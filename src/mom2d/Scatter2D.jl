@@ -15,7 +15,7 @@ Observation points must be outside the scattering domain.
 """
 function green_obs_matrix(
         r_obs::AbstractVector{Vec2}, mesh::Mesh2D, k0::Float64;
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _validate_mesh_2d(mesh)
     _validate_positive_finite_2d(k0, "green_obs_matrix wavenumber")
     _validate_observation_points_2d(r_obs, mesh, "green_obs_matrix")
@@ -139,7 +139,7 @@ observation-point work is performed.
 """
 function scattered_field_2d(
         vr::VIEResult2D, r_obs::AbstractVector{Vec2};
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     M = length(r_obs)
     output_bytes = _checked_array_payload_bytes(
         ComplexF64, M; label="scattered_field_2d output")
@@ -199,7 +199,7 @@ end
 
 function jacobian_scattered_field_2d(
         vr::VIEResult2D, r_obs::AbstractVector{Vec2};
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     _validate_vie_result_2d(vr; require_system=true)
     _validate_observation_points_2d(
         r_obs, vr.mesh, "jacobian_scattered_field_2d")

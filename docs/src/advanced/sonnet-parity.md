@@ -1875,3 +1875,39 @@ reference alone does not predict RF loss, self-resonance, substrate coupling
 or measured RFIC performance; qualify those using the full EM workflow.
 
 Source: [Mohan et al., 1999, pp. 1419–1421](https://web.stanford.edu/~boyd/papers/pdf/inductance_expressions.pdf).
+
+### Derived bounds for material and triangle formulas
+
+The positive open-film conductor recovery uses its exponential slab relation
+for every finite propagation product. Float64 underflow supplies the vanishing
+decay naturally. An infinite propagation product uses the thick-film limit.
+This removes the former unexplained finite cutoff; the small-argument series
+and other material precision fallbacks retain their existing scope.
+
+Clustered triangle Fourier moments choose Taylor order from the actual
+centered imaginary-phase radius `r` and Float64 unit roundoff
+`u = eps(Float64)/2`. The
+[Genocchi-Hermite simplex identity](https://ftp.cs.wisc.edu/Approx/dvdsurvey.pdf)
+represents the divided difference as an exponential integral. For `r <= 1`,
+its normalized magnitude is at least `cos(r) >= 1-r^2/2`. After order `m`,
+the normalized omitted Taylor tail is bounded by
+
+```math
+\frac{r^{m+1}}{(m+1)!\left(1-r/(m+2)\right)}.
+```
+
+The chosen order makes this bound no larger than `u*(1-r^2/2)`. Outward
+rounding of the selection arithmetic preserves the inequality. The iteration count
+also retains the first coefficient-space orders of both sine and cosine
+components. Clustered affine fields contract each Taylor coefficient before
+rounding accumulated vertex weights, preserving small representable moments.
+Error-free three-term additions retain a small surviving constant coefficient
+and coefficient-sum roundoff. When a finite coefficient sum or product
+overflows before its simplex factorial division, the formula divides the
+coefficients first to retain the representable normalized moment.
+Scalar, paired, cached and pulse consumers use
+the same contraction, with the existing cache storage budget. Zero centered phase has only a constant moment.
+This controls series truncation;
+recurrence and summation rounding, modal and mesh convergence, and physical
+current-solve accuracy remain separate checks. Existing independent simplex,
+quadrature, modal-action, native and allocation tests retain their gates.

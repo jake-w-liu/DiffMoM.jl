@@ -1127,7 +1127,7 @@ function build_Q(
         G_mat::Matrix{ComplexF64}, grid::SphGrid,
         pol::Matrix{ComplexF64};
         mask=nothing,
-        max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_work_bytes::Integer=_default_max_dense_payload_bytes())
     NΩ, N = _validate_q_inputs(G_mat, grid, pol, mask)
     projection_bytes = _checked_array_payload_bytes(
         ComplexF64, NΩ, N; label="build_Q projection workspace")

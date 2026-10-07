@@ -18,7 +18,7 @@ and the voltage contraction before those arrays are constructed.
 No half-rooftop source is inserted without its physical return path."""
 function planar_terminal_returns(prob::PlanarProblem,terminals::AbstractVector{PlanarPort};
         ground_direction::Symbol=:auto,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     ground_direction in (:auto,:below,:above) || throw(ArgumentError(
         "ground_direction must be :auto, :below or :above"))
     !isempty(terminals) || throw(ArgumentError("at least one physical terminal is required"))
@@ -173,7 +173,7 @@ problem-based overload."""
 function planar_terminal_returns(stack::PlanarStackup,grid::CellGrid,
         sheets::Vector{SheetLevel},terminals::AbstractVector{PlanarPort};
         vias::Vector{ViaLevel}=ViaLevel[],vols::Vector{VolLevel}=VolLevel[],
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     planar_validate(stack)
     stack.a==grid.a && stack.b==grid.b || throw(ArgumentError("terminal stack/grid dimensions must match"))
     nb=_terminal_geometry_basis_count(grid,sheets,vias,vols)

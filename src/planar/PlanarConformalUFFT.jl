@@ -65,7 +65,7 @@ Nyquist. `surface_zs` is scalar or one value per triangle. `max_bytes`
 preflights owned array payloads before Fourier/FFT/kernel allocation."""
 function planar_conformal_ufft_operator(prob::PlanarConformalProblem,freq::Number;
         nx::Integer,ny::Integer,mx::Integer=2nx,my::Integer=2ny,surface_zs=0.,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     omega=2pi*ComplexF64(freq);nb=length(prob.basis.width);nv=size(prob.mesh.vertices,2);nt=length(prob.mesh.interfaces)
     isfinite(omega) && real(omega)>0 && nx>=1 && ny>=1 && mx>=1 && my>=1 && nb>0 ||
         throw(ArgumentError("conformal FFT needs positive lattice/mode counts, frequency and basis functions"))
@@ -207,7 +207,7 @@ Base.:*(A::PlanarConformalUFFTOperator,x::AbstractVector)=mul!(zeros(ComplexF64,
 
 # Exact diagonal: half/self terms and the cross term between a basis's two
 # triangles are each nine Fourier frequencies, evaluated by folded FFTs.
-function _planar_conformal_ufft_diagonal(A;max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+function _planar_conformal_ufft_diagonal(A;max_bytes::Integer=_default_max_dense_payload_bytes())
     nb=A.n;mg=A.modes;F=A.lattice;px,py=size(F);ne=size(A.source_te,2)
     _enforce_payload_limit(_checked_payload_sum("conformal FFT diagonal",
         _checked_array_payload_bytes(ComplexF64,nb),_checked_array_payload_bytes(Int,16,nb),
@@ -282,7 +282,7 @@ an independently recomputed complete operator residual in voltage units.
 `nx,ny` declare the physical vertex lattice; no geometry is rasterized."""
 function solve_planar_conformal_ufft(prob::PlanarConformalProblem,freq::Number;
         rtol::Real=1e-9,maxiter::Integer=0,memory::Integer=50,restart::Bool=true,
-        precondition::Bool=true,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        precondition::Bool=true,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     omega=2pi*ComplexF64(freq)
     isfinite(omega) && real(omega)>0 || throw(ArgumentError("conformal FFT solve frequency must be finite with positive real part"))
     nb=length(prob.basis.width);np=length(prob.ports)

@@ -1,5 +1,7 @@
 # API: Periodic Methods
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 Reference for 2D-periodic scattering APIs:
@@ -89,7 +91,7 @@ Supported scope:
 
 ## Periodic EFIE Assembly
 
-### `assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=3, eta0=376.730313668, max_work_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_green_terms=500_000_000)`
+### `assemble_Z_efie_periodic(mesh, rwg, k, lattice; quad_order=3, eta0=376.730313668, max_work_bytes=Sys.free_memory(), max_cache_bytes=Sys.free_memory(), max_adjacency_pairs=20_000_000, max_green_terms=500_000_000)`
 
 Assemble periodic EFIE matrix:
 
@@ -113,8 +115,8 @@ where:
 | `lattice` | `PeriodicLattice` | -- | Unit-cell periodic setup. |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
-| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of the free-space matrix, correction matrix, and returned sum, checked before assembly. |
-| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated peak ceiling for boundary-edge validation, EFIE quadrature/adjacency data, cached Ewald lattice terms, periodic quadrature data, row locks, and per-task scratch. The dense matrices are governed separately by `max_work_bytes`. |
+| `max_work_bytes` | `Integer` | `Sys.free_memory()` | Maximum combined raw payload of the free-space matrix, correction matrix, and returned sum, checked before assembly. |
+| `max_cache_bytes` | `Integer` | `Sys.free_memory()` | Estimated peak ceiling for boundary-edge validation, EFIE quadrature/adjacency data, cached Ewald lattice terms, periodic quadrature data, row locks, and per-task scratch. The dense matrices are governed separately by `max_work_bytes`. |
 | `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived triangle-pair records while constructing the free-space EFIE cache. |
 | `max_green_terms` | `Integer` | `500_000_000` | Maximum number of spatial/spectral Ewald-series terms across all triangle-quadrature Green-function evaluations. |
 

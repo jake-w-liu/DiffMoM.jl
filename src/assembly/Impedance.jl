@@ -451,7 +451,7 @@ Z_imp = -Σ_p θ_p M_p
 """
 function assemble_Z_impedance(
         Mp::Vector{<:AbstractMatrix}, theta::AbstractVector;
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     N = first(_validate_impedance_inputs(Mp, theta))
     CT = eltype(theta) <: Complex ? eltype(theta) : ComplexF64
     output_bytes = _checked_array_payload_bytes(

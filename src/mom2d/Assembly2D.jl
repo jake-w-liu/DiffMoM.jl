@@ -265,7 +265,7 @@ Returns (Z, D) where D is the Green's function integral matrix.
 """
 function assemble_vie_2d(
         mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64};
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _validate_mesh_2d(mesh)
     _validate_positive_finite_2d(k0, "assemble_vie_2d wavenumber")
     length(chi) == mesh.ncells ||
@@ -373,7 +373,7 @@ allocating that factor.
 function solve_vie_2d(
         mesh::Mesh2D, k0::Float64, chi::AbstractVector{Float64},
         E_inc::AbstractVector{ComplexF64};
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     length(E_inc) == mesh.ncells ||
         throw(DimensionMismatch(
             "E_inc length $(length(E_inc)) must match $(mesh.ncells) mesh cells."))

@@ -450,7 +450,7 @@ effective coordinates are validated before emission. The supplied project is
 never modified."""
 function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{String,Float64}();
         max_parameters::Integer=1024,max_points::Integer=100000,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     count=Base.count(r->r.tokens[1]=="GEOVAR",p.records);iszero(count) && return p
     nparameters=_sonnet_geovar_limit(max_parameters,"max_parameters")
     npoints=_sonnet_geovar_limit(max_points,"max_points")

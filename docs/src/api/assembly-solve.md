@@ -1,5 +1,7 @@
 # API: Assembly and Solve
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 Reference for EFIE system assembly, impedance loading, and linear solvers (direct and iterative). This page covers the core computational pipeline: building the MoM system matrix, applying surface impedance, and solving for surface currents.
@@ -159,7 +161,7 @@ This is a low-level internal helper; most users should call `assemble_Z_efie` wh
 
 ## EFIE Assembly
 
-### `assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, max_output_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000)`
+### `assemble_Z_efie(mesh, rwg, k; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, max_output_bytes=Sys.free_memory(), max_cache_bytes=Sys.free_memory(), max_adjacency_pairs=20_000_000)`
 
 Build the dense N x N EFIE impedance matrix. This is the core MoM system matrix: for a PEC scatterer with no impedance loading, the MoM equation is `Z_efie * I = v`.
 
@@ -178,8 +180,8 @@ Assembly is O(N^2) in both time and memory. Each entry `Z[m,n]` involves a doubl
 | `allow_boundary` | `Bool` | `true` | Allow boundary edges during precheck. |
 | `require_closed` | `Bool` | `false` | Require closed surface during precheck. |
 | `area_tol_rel` | `Float64` | `1e-12` | Relative tolerance for degenerate triangle detection. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the returned dense matrix, enforced before mesh/cache work. Use a matrix-free operator when exceeded. |
-| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated peak ceiling for EFIE quadrature, RWG-value, and adjacency storage/workspace. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Raw-payload ceiling for the returned dense matrix, enforced before mesh/cache work. Use a matrix-free operator when exceeded. |
+| `max_cache_bytes` | `Integer` | `Sys.free_memory()` | Estimated peak ceiling for EFIE quadrature, RWG-value, and adjacency storage/workspace. |
 | `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived triangle-pair records before deduplication. |
 
 **Returns:** `Matrix{ComplexF64}` of size `N x N` where `N = rwg.nedges`.
@@ -292,7 +294,7 @@ This is the overlap integral of two RWG basis functions restricted to patch `p`.
 
 ---
 
-### `assemble_Z_impedance(Mp, theta; max_output_bytes=2_000_000_000)`
+### `assemble_Z_impedance(Mp, theta; max_output_bytes=Sys.free_memory())`
 
 Build the impedance contribution from patch mass matrices and parameter vector:
 
@@ -326,7 +328,7 @@ Returns the exact derivative matrix `dZ/d(theta_p) = -Mp[p]`. This is used inter
 
 ---
 
-### `assemble_full_Z(Z_efie, Mp, theta; reactive=false, max_output_bytes=2_000_000_000)`
+### `assemble_full_Z(Z_efie, Mp, theta; reactive=false, max_output_bytes=Sys.free_memory())`
 
 Convenience function to assemble the full system matrix combining EFIE and impedance loading:
 
@@ -346,7 +348,7 @@ where the coefficients depend on the loading mode:
 | `Mp` | `Vector{<:AbstractMatrix}` | -- | Patch mass matrices. |
 | `theta` | `AbstractVector` | -- | Parameter vector (always real-valued; the `reactive` flag controls the mapping). |
 | `reactive` | `Bool` | `false` | If `true`, treat `theta` as reactive parameters (multiplied by `im` internally). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the returned dense matrix, checked before copying `Z_efie`. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Raw-payload ceiling for the returned dense matrix, checked before copying `Z_efie`. |
 
 **Returns:** `Matrix{ComplexF64}`.
 
@@ -524,7 +526,7 @@ Build the preconditioner directly from a matrix-free EFIE operator without alloc
 ### Overload 4: From geometry/physics inputs directly
 
 ```julia
-build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, factorization=:lu, ilu_tau=1e-3, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_green_cache_bytes=268_435_456, max_green_cache_entries=250_000)
+build_nearfield_preconditioner(mesh, rwg, k, cutoff; quad_order=3, eta0=376.730313668, mesh_precheck=true, allow_boundary=true, require_closed=false, area_tol_rel=1e-12, factorization=:lu, ilu_tau=1e-3, max_cache_bytes=Sys.free_memory(), max_adjacency_pairs=20_000_000, max_green_cache_bytes=268_435_456, max_green_cache_entries=250_000)
 ```
 
 Build the preconditioner directly from mesh, basis, and wavenumber — without requiring a pre-assembled matrix or explicit operator. Internally creates a `MatrixFreeEFIEOperator` and delegates to Overload 3 (spatial neighbor search, batched Green's evaluation).
@@ -545,7 +547,7 @@ Build the preconditioner directly from mesh, basis, and wavenumber — without r
 | `area_tol_rel` | `Float64` | `1e-12` | Degenerate triangle tolerance. |
 | `factorization` | `Symbol` | `:lu` | Factorization type (`:lu`, `:ilu`, or `:diag`). |
 | `ilu_tau` | `Float64` | `1e-3` | Drop tolerance for ILU (only used when `factorization=:ilu`). |
-| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated EFIE cache/workspace ceiling. |
+| `max_cache_bytes` | `Integer` | `Sys.free_memory()` | Estimated EFIE cache/workspace ceiling. |
 | `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum triangle-adjacency pair records. |
 | `max_green_cache_bytes` | `Integer` | `268_435_456` | Maximum cached/scratch Green-matrix raw payload. |
 | `max_green_cache_entries` | `Integer` | `250_000` | Maximum number of retained triangle-pair Green matrices. |
@@ -702,7 +704,7 @@ I, stats = solve_gmres(A_mlfma, v; preconditioner=P_mlfma)
 
 These advanced functions implement mass-based preconditioning and regularization. They are used internally by the optimizers but can also be called directly for custom workflows.
 
-### `make_mass_regularizer(Mp; max_output_bytes=2_000_000_000)`
+### `make_mass_regularizer(Mp; max_output_bytes=Sys.free_memory())`
 
 Build a Hermitian positive-semidefinite mass-based regularizer: `R = sum_p Mp[p]`.
 
@@ -714,7 +716,7 @@ Adding `alpha * R` to the system matrix improves conditioning at the cost of int
 
 ---
 
-### `make_left_preconditioner(Mp; eps_rel=1e-8, max_output_bytes=2_000_000_000)`
+### `make_left_preconditioner(Mp; eps_rel=1e-8, max_output_bytes=Sys.free_memory())`
 
 Build a simple mass-based left preconditioner: `M = R + eps * I`, where `R = sum_p Mp[p]` and `eps = eps_rel * max(tr(R)/N, 1.0)`.
 
@@ -723,7 +725,7 @@ The small diagonal shift ensures M is invertible even if R is rank-deficient.
 **Parameters:**
 - `Mp::Vector{<:AbstractMatrix}`: Patch mass matrices.
 - `eps_rel::Float64=1e-8`: Relative diagonal shift. Larger values improve numerical stability but reduce preconditioning effectiveness.
-- `max_output_bytes::Integer=2_000_000_000`: Raw-payload ceiling for the dense result, checked before allocation.
+- `max_output_bytes::Integer=Sys.free_memory()`: Raw-payload ceiling for the dense result, checked before allocation.
 
 **Returns:** `Matrix{ComplexF64}` `M`.
 
@@ -750,7 +752,7 @@ If `preconditioner_M` is explicitly provided, it takes precedence over the `mode
 
 ---
 
-### `transform_patch_matrices(Mp; preconditioner_M=nothing, preconditioner_factor=nothing, max_output_bytes=2_000_000_000)`
+### `transform_patch_matrices(Mp; preconditioner_M=nothing, preconditioner_factor=nothing, max_output_bytes=Sys.free_memory())`
 
 Transform derivative blocks under left preconditioning: `Mp_tilde[p] = M^{-1} * Mp[p]`.
 

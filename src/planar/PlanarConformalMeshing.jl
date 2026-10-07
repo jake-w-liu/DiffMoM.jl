@@ -9,7 +9,7 @@ solves. Adaptive independent edge/interior sizing is provided separately
 by [`planar_refine_conformal`](@ref). Array payload and `max_triangles` are
 checked for the final refinement before allocation."""
 function planar_refine_conformal_uniform(mesh::PlanarConformalMesh,levels::Integer;
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes())
     0<=levels<=32 || throw(ArgumentError("uniform refinement triangle count must fit integer indexing"))
     count=BigInt(length(mesh.interfaces))*BigInt(4)^Int(levels)
     count<=max_triangles || throw(ArgumentError("uniform conformal refinement exceeds max_triangles=$max_triangles"))
@@ -73,7 +73,7 @@ multiple sheet interfaces already represented by `mesh` are preserved.
 `max_triangles` and `max_bytes` bound growth before each bisection."""
 function planar_refine_conformal(mesh::PlanarConformalMesh;
         edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes())
     he,hi,band=Float64(edge_size),Float64(interior_size),Float64(edge_band)
     all(isfinite,(he,hi,band)) && 0<he<=hi && band>=0 && max_triangles>=length(mesh.interfaces) ||
         throw(ArgumentError("mesh sizes must be finite with 0<edge_size<=interior_size and edge_band>=0"))
@@ -140,7 +140,7 @@ For polygons with holes, supply a constrained triangle mesh directly to
 [`planar_refine_conformal`](@ref)."""
 function planar_conformal_mesh(polygon::AbstractMatrix{<:Real};interface::Integer=1,
         edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes())
     size(polygon,1)==2 && size(polygon,2)>=3 && interface>=0 && all(isfinite,polygon) ||
         throw(ArgumentError("conformal polygon must be a finite 2×N matrix"))
     n=size(polygon,2)

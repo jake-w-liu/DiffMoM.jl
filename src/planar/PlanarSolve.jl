@@ -535,7 +535,7 @@ payloads and is checked before assembly.
 function solve_planar(prob::PlanarProblem, freq::Number;
         method::Symbol=:dense,
         retain_matrix::Bool=true,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES, kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(), kw...)
     method === :ufft && return solve_planar_ufft(prob, freq;
         max_bytes=max_bytes, kw...)
     method in (:dense,:dense_fft) || throw(ArgumentError("method must be :dense, :dense_fft or :ufft"))

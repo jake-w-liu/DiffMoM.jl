@@ -6,11 +6,17 @@ export nvertices, ntriangles
 const Vec3 = SVector{3,Float64}
 const CVec3 = SVector{3,ComplexF64}
 
-# Public routines that materialize dense arrays use this as their default raw
-# payload ceiling.  The limit is deliberately configurable at each call site;
-# it bounds the arrays owned by that operation, not Julia object headers or
-# allocator bookkeeping.
-const _DEFAULT_MAX_DENSE_PAYLOAD_BYTES = 2_000_000_000
+# Compatibility bound for captured older private implementations. Active
+# routines query the process's OS-reported available memory at each default
+# invocation. Explicit caller budgets retain their original validation and
+# operation-owned raw-array accounting; this is not a memory reservation.
+const _DEFAULT_MAX_DENSE_PAYLOAD_BYTES = typemax(Int)
+
+@inline function _default_max_dense_payload_bytes(available::Integer=Sys.free_memory())
+    available > 0 || throw(ArgumentError(
+        "available memory is unknown or exhausted; provide an explicit byte budget"))
+    return Int(min(available, typemax(Int)))
+end
 const _INTERVAL_SPACING_FALLBACK_PRECISION = 2304
 
 function _checked_payload_sum(label::AbstractString, payloads::Vararg{Integer,N}) where {N}

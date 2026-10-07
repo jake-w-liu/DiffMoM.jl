@@ -1360,7 +1360,7 @@ function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
 end
 
 function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     any(q->q.kind===:sheet && 0<=q.material<length(p.metals) &&
         p.metals[q.material+1][3]=="TMM",p.polygons) || return p
     stack_workspace=_checked_payload_sum("native TMM stack preflight",
@@ -1491,7 +1491,7 @@ function _sonnet_dielectric_conduction(sigma::Real,freq::Real)
 end
 
 function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
-        expand_thick::Bool=true,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        expand_thick::Bool=true,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
     freq=_circuit_stored_real(freq,"native geometry frequency")
     if !(variables isa SonnetScalarVariables) && _sonnet_has_scalar_tables(p)
@@ -1565,7 +1565,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,
         scalar_max_storage::Integer=64*1024^2,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
     freq=_circuit_stored_real(freq,"native geometry frequency")
     limit=_spice_limit("max_bytes",max_bytes)
@@ -1933,7 +1933,7 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,kw...)
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
     freq=_circuit_stored_real(freq,"native solve frequency")
-    limit=_spice_limit("max_bytes",get(kw,:max_bytes,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES))
+    limit=_spice_limit("max_bytes",(haskey(kw,:max_bytes) ? kw[:max_bytes] : _default_max_dense_payload_bytes()))
     _enforce_payload_limit(1024,limit,"native raster source workspace","max_bytes")
     deembed_requested=any(r->r.tokens[1]=="OPTIONS" &&
         any(occursin("d",token) for token in r.tokens[2:end]),p.records)
@@ -1980,7 +1980,7 @@ end
 including floating-reference potentials and supplied calibration."""
 function planar_current_maps(result::SonnetPlanarResult;port::Integer=1,
         voltages=nothing,incident_waves=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     n=length(result.port_numbers)
     reserve=_checked_payload_sum("native current excitation",
         _checked_array_payload_bytes(ComplexF64,6,n),
@@ -2008,6 +2008,6 @@ function solve_sonnet_project(p::SonnetNetlistProject,freq::Real;
 end
 
 function solve_sonnet_project(path::AbstractString,freq::Real;kw...)
-    _spice_limit("max_bytes",get(kw,:max_bytes,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES))
+    _spice_limit("max_bytes",(haskey(kw,:max_bytes) ? kw[:max_bytes] : _default_max_dense_payload_bytes()))
     return solve_sonnet_project(read_sonnet_project(path),freq;kw...)
 end

@@ -288,7 +288,7 @@ All resources and file handles are bounded/closed on failure."""
 function read_odb_features(path::AbstractString;layer::AbstractString=basename(dirname(path)),
         default_unit_m::Real=.0254,symbol_resolver=nothing,font_directory=nothing,
         text_context=nothing,max_objects::Integer=1_000_000,max_stroke_boundaries::Integer=256,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),
         _font_resolver=nothing,_defer_text::Bool=false,_payload_observer=nothing,_remaining_budget=nothing)
     limit=_validated_resource_limit("max_bytes",max_bytes)
     entity=_odb_entity(path)
@@ -520,7 +520,7 @@ function read_odb_features(path::AbstractString;layer::AbstractString=basename(d
     return PlanarArtwork(abspath(path),objects,metadata,Set{String}(),unit)
 end
 
-function _odb_structured(path;max_bytes=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+function _odb_structured(path;max_bytes=_default_max_dense_payload_bytes())
     limit=_validated_resource_limit("max_bytes",max_bytes)
     entity=_odb_entity(path)
     if endswith(entity,".gz") || endswith(entity,".Z")
@@ -606,7 +606,7 @@ escaping archive paths reject. Temporary decompression/extraction is scoped
 to the call. Barcodes, dimensional resize and remaining unsupported symbol
 families reject. Vendor font rendering compatibility requires separate validation."""
 function read_odb(path::AbstractString;step=nothing,layers=nothing,
-        max_objects::Integer=1_000_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_objects::Integer=1_000_000,max_bytes::Integer=_default_max_dense_payload_bytes(),
         max_entities::Integer=100_000,max_stroke_boundaries::Integer=256,text_context=nothing,flip_layer_map=nothing)
     limit=_validated_resource_limit("max_bytes",max_bytes)
     max_objects>0 || throw(ArgumentError("max_objects must be positive"))

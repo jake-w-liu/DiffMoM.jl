@@ -47,7 +47,7 @@ reject ambiguous/inconsistent standards. Use the recovered `launch` with
 [`deembed_cocal_group`](@ref) for each N-port end group."""
 function planar_group_double_delay_calibrate(Y1::AbstractMatrix,Y2::AbstractMatrix;
         length::Real,tol::Real=1e-6,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(length) && length>0 || throw(ArgumentError("standard length must be positive"))
     length=_circuit_stored_real(length,"calibration standard length")
     isfinite(tol) && tol>0 || throw(ArgumentError("calibration tolerance must be positive"))
@@ -193,7 +193,7 @@ Existing calibrated launches compose into one global chain without
 changing their retained raw solve. `max_bytes` limits the new wrapper's
 workspace; reserve the raw result separately when budgeting a workflow."""
 function planar_cocalibrate(raw,groups::AbstractVector,launches::AbstractVector;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     hasproperty(raw,:y) && raw.y isa AbstractMatrix && hasproperty(raw,:s) &&
         hasproperty(raw,:freq) && (hasproperty(raw,:currents) || raw isa PlanarCalibratedResult) ||
         throw(ArgumentError("coupled calibration requires a solved physical admittance source network"))
@@ -228,7 +228,7 @@ function planar_reference_planes(raw::Union{PlanarResult,PlanarUFFTResult};kw...
 end
 
 function _planar_reference_planes(raw;chains=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     n = length(raw.problem.ports)
     _enforce_payload_limit(_checked_payload_sum("calibrated reference planes",
         _checked_array_payload_bytes(ComplexF64,18,n,n),
@@ -258,7 +258,7 @@ power waves at those planes. The resulting gap voltage is transferred
 through the calibrated launch before using the retained raw solution."""
 function planar_current_maps(result::PlanarCalibratedResult;port::Integer=1,
         voltages=nothing,incident_waves=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     n = size(result.y,1)
     reserve=_checked_array_payload_bytes(ComplexF64,4,n)
     _enforce_payload_limit(reserve,max_bytes,"calibrated current excitation","max_bytes")
@@ -294,7 +294,7 @@ network's Kurokawa references and may differ or be complex. The output
 references are the external left/right launch references. Exact thru,
 short and open blocks retain their native constitutive equations."""
 function planar_embed_2port(S,left,right;z0=50.,left_z0=z0,right_z0=z0,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     for (matrix,label) in ((S,"DUT"),(left,"left launch"),(right,"right launch"))
         _check_square(matrix,2,label);_check_finite(matrix,label)
     end
@@ -536,7 +536,7 @@ These are ordinary solver inputs and reuse the caller's solve settings."""
 function planar_line_standards(prob::PlanarProblem;
         extra_cells::Union{Nothing,Integer}=nothing,
         reflect_cells::Union{Nothing,Integer}=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     length(prob.ports)==2 || throw(ArgumentError("line standards require two ports"))
     p,q = prob.ports
     xaxis = Set((p.wall,q.wall))==Set((:west,:east))

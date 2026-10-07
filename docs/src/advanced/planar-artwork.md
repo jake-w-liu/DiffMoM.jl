@@ -306,3 +306,13 @@ cumulative Julia allocation, excluding peak process memory. Reproduction:
 `validation/planar_audit/artwork_general_composite_allocations.jl` and
 the locally archived `artwork_small_composite_prototype.jl`. The 9826 shared composite checks are
 separate from the format-specific Gerber/ODB++ totals.
+
+## Exact transformed bounds
+
+Cached bounds for transformed artwork enclose the stored coordinates through
+exact rational arithmetic. Their final Float64 conversion rounds the lower
+bound downward and the upper bound upward, including subnormal and overflow
+boundaries. Numerator and denominator precision follows their actual integer
+bit lengths; quotient precision follows the Float64 significand. Caller
+BigFloat precision and rounding settings remain unchanged. Public ODB symbol
+imports retain these bounds when raster membership is evaluated.

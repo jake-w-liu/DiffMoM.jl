@@ -91,7 +91,7 @@ returns an empty mesh when no positive-area metal remains."""
 function planar_conformal_mesh(polygons::AbstractVector{PlanarPolygon};
         holes::AbstractVector{PlanarPolygon}=PlanarPolygon[],constraints=Tuple[],
         edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes(),
         clip_box=nothing,allow_empty::Bool=false)
     isempty(polygons) && throw(ArgumentError("conformal layout requires physical sheet polygons"))
     all(isfinite,(edge_size,interior_size,edge_band)) && 0<edge_size<=interior_size && edge_band>=0 && max_triangles>=1 ||
@@ -237,7 +237,7 @@ descendant triangle's material, wall/interior source contracts and physical
 bulk contacts. The conductor models and original polygon geometry retain
 their names and frequency callbacks."""
 function planar_refine_conformal_uniform(layout::PlanarConformalLayout,levels::Integer;
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes())
     p=layout.problem;p isa PlanarProblem && throw(ArgumentError("uniform triangle refinement requires genuine sheet geometry"))
     c=p isa PlanarHybridProblem ? p.conformal : p
     mesh=planar_refine_conformal_uniform(c.mesh,levels;max_triangles,max_bytes)
@@ -268,7 +268,7 @@ function build_planar_conformal_layout(stack::PlanarStackup,polygons::AbstractVe
         bulk_grid=nothing,vias::Vector{ViaLevel}=ViaLevel[],vols::Vector{VolLevel}=VolLevel[],bulk_ports::Vector{PlanarPort}=PlanarPort[],
         sidewalls::SidewallKind=WALL_PEC,wall_contacts::AbstractVector{PlanarConformalPort}=PlanarConformalPort[],
         edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes(),
         clip_to_box::Bool=false)
     planar_validate(stack)
     _enforce_payload_limit(_checked_array_payload_bytes(UInt8,40,length(constraints)+length(ports)+length(wall_contacts)),
@@ -351,7 +351,7 @@ function build_planar_conformal_layout(stack::PlanarStackup,polygons::AbstractVe
     PlanarConformalLayout(problem,collect(polygons),ids,names,Any[metals[n] for n in names])
 end
 
-function solve_planar(layout::PlanarConformalLayout,freq::Number;max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+function solve_planar(layout::PlanarConformalLayout,freq::Number;max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     :surface_zs in keys(kw) && throw(ArgumentError("conformal layout sheet materials are supplied by the layout"))
     materialbytes=_checked_array_payload_bytes(ComplexF64,length(layout.triangle_materials)+length(layout.materials))
     _enforce_payload_limit(materialbytes,max_bytes,"conformal layout materials","max_bytes")

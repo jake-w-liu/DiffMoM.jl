@@ -1,5 +1,7 @@
 # API: Grounded (Half-Space) EFIE
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 Reference for the periodic EFIE subsystem that models a coplanar metasurface a
@@ -37,7 +39,7 @@ at a different frequency.
 
 ---
 
-### `assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3, eta0=376.730313668, max_work_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000, max_green_terms=500_000_000)`
+### `assemble_Z_efie_grounded(mesh, rwg, k, lattice; height, quad_order=3, eta0=376.730313668, max_work_bytes=Sys.free_memory(), max_cache_bytes=Sys.free_memory(), max_adjacency_pairs=20_000_000, max_green_terms=500_000_000)`
 
 Assemble the periodic EFIE impedance matrix for a coplanar metasurface a distance
 `height` (h) above an infinite PEC ground plane, via image theory. Internally it
@@ -57,8 +59,8 @@ evaluated with the full periodic Green's function at vertical separation `2*heig
 | `height` | `Real` | -- | Finite positive distance `h` above the PEC ground plane (meters). |
 | `quad_order` | `Int` | `3` | Triangle quadrature order. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance (Ohm). |
-| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of the three simultaneously resident dense matrices, checked before assembly. |
-| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated peak ceiling for each sequential direct/image auxiliary cache, including quadrature geometry, Ewald lattice terms, incidence storage, row locks, and task scratch. |
+| `max_work_bytes` | `Integer` | `Sys.free_memory()` | Maximum combined raw payload of the three simultaneously resident dense matrices, checked before assembly. |
+| `max_cache_bytes` | `Integer` | `Sys.free_memory()` | Estimated peak ceiling for each sequential direct/image auxiliary cache, including quadrature geometry, Ewald lattice terms, incidence storage, row locks, and task scratch. |
 | `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived triangle-pair records in the free-space EFIE cache. |
 | `max_green_terms` | `Integer` | `500_000_000` | Aggregate ceiling for spatial/spectral Ewald-series terms across both the direct periodic correction and the image block. |
 

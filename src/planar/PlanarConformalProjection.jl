@@ -142,6 +142,9 @@ function _planar_pulse_and_first_moments(v,kx,ky)
         moment=factor*weights[j]
         constant+=moment;x+=(v[1,j]-v[1,1])*moment;y+=(v[2,j]-v[2,1])*moment
     end
+    xv=ntuple(j->v[1,j]-v[1,1],Val(3));yv=ntuple(j->v[2,j]-v[2,1],Val(3))
+    series_pair=_planar_triangle_series_pair(v,xv,yv,kx,ky)
+    series_pair===nothing || ((x,y)=series_pair)
     constant,x,y
 end
 

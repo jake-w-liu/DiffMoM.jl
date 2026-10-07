@@ -33,7 +33,7 @@ proprietary Sonnet GLG wave algorithm or native floating calibration.
 function planar_floating_line_standards(prob::PlanarProblem,bridges::AbstractVector;
         left::AbstractVector{<:Integer},right::AbstractVector{<:Integer},
         uniform_cells::Union{Nothing,UnitRange{Int}}=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     n=length(left);np=length(prob.ports)
     n>0 && length(right)==n && 2BigInt(n)==np &&
         sort(vcat(left,right))==collect(1:np) || throw(ArgumentError(
@@ -188,7 +188,7 @@ floating local-ground source bridges or their proprietary calibration."""
 function planar_group_line_standards(prob::PlanarProblem;
         left::AbstractVector{<:Integer},right::AbstractVector{<:Integer},
         reflect_cells::Union{Nothing,Integer}=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     n=length(left);np=length(prob.ports)
     n>0 && length(right)==n && 2n==np &&
         sort(vcat(left,right))==collect(1:np) || throw(ArgumentError(

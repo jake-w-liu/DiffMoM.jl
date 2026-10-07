@@ -180,7 +180,7 @@ Open-edge ports use actual PEC-cover returns. Material expressions are
 reevaluated at `freq`; geometry and thickness may not reference `freq`."""
 function planar_project_layout(project::PlanarProject;freq::Real=1e9,grid=nothing,
         variables::AbstractDict=Dict{String,Any}(),
-        terminal_ground::Symbol=:auto,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        terminal_ground::Symbol=:auto,max_bytes::Integer=_default_max_dense_payload_bytes())
     freq=_project_stored_frequency(freq)
     _validated_resource_limit("max_bytes",max_bytes)
     _project_schema(project.data)
@@ -431,7 +431,7 @@ end
 knots or start/stop/points are accepted; `spacing="log"` is logarithmic.
 Geometry variables use the same SI expression rules as the project."""
 function planar_project_frequencies(project::PlanarProject;variables::AbstractDict=Dict{String,Any}(),
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     sweep=_project_keys(get(project.data,"sweep",Dict()),["frequencies","start","stop","points",
         "spacing","adaptive","rel_tol","max_points","n_eval"],"sweep")
     q(x)=_project_real(planar_project_value(project,x;dimension=:frequency,variables),"sweep frequency";positive=true)

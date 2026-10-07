@@ -128,7 +128,7 @@ function build_planar_layout(stack::PlanarStackup, grid::CellGrid,
         via_types::AbstractDict=Dict("uniform"=>(kind=VIA_UNIFORM, sigma=Inf)),
         terminal_ground::Symbol=:auto,
         _allow_portless::Bool=false,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     planar_validate(stack)
     terminal_ground in (:auto,:below,:above) || throw(ArgumentError("invalid terminal ground direction"))
     stack.a == grid.a && stack.b == grid.b ||
@@ -249,7 +249,7 @@ end
 """Solve a physical library layout, evaluating named surface and bulk metal
 models at `freq` [Hz] before invoking the dense or FFT EM solver."""
 function solve_planar(layout::PlanarLayout, freq::Number;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,volume_sigma=nothing,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),volume_sigma=nothing,kw...)
     prob = layout.source_problem
     payload = _checked_payload_sum("layout material values",
         _checked_array_payload_bytes(ComplexF64, length(prob.sheets), prob.grid.nx, prob.grid.ny),
@@ -273,7 +273,7 @@ planar_sparams(layout::PlanarLayout, freqs::AbstractVector; kw...) =
 
 function planar_sweep_abs(layout::PlanarLayout, fmin::Real, fmax::Real;
         rel_tol::Real=1e-2, n_eval::Integer=257, max_points::Integer=32,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES, solve_kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(), solve_kw...)
     fmin,fmax,n_eval,max_points=_planar_abs_parameters(fmin,fmax,rel_tol,n_eval,max_points)
     n=length(layout.problem.ports)
     storage = _checked_payload_sum("layout sweep storage",
@@ -297,7 +297,7 @@ end
 function planar_objective_gradient(layout::PlanarLayout, freq::Number, objective;
         params::AbstractVector{PlanarParam}=planar_default_params(layout.problem.stack),
         gY=nothing,h_fd::Real=1e-6,volume_sigma=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES, kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(), kw...)
     prob = layout.source_problem
     payload = _checked_payload_sum("layout gradient material values",
         _checked_array_payload_bytes(ComplexF64, length(prob.sheets), prob.grid.nx, prob.grid.ny),

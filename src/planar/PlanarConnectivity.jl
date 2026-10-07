@@ -48,7 +48,7 @@ geometric continuity audit; it does not replace an electromagnetic solve.
 """
 function planar_connectivity(prob::PlanarProblem;
         _sheet_cuts::AbstractVector=NamedTuple[],
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     grid = prob.grid
     nx, ny = grid.nx, grid.ny
     ns, nv, nc = length(prob.sheets), length(prob.vias), length(prob.vols)

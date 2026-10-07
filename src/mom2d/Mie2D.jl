@@ -976,7 +976,7 @@ function mie_scattered_field_2d(k0::Float64, a::Float64, eps_r::Float64,
                                  max_field_terms::Int=
                                      _DEFAULT_MAX_MIE2D_FIELD_TERMS,
                                  max_output_bytes::Integer=
-                                     _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                     _default_max_dense_payload_bytes())
     k0 = _validated_mie2d_positive(k0, "k0")
     a = _validated_mie2d_positive(a, "a")
     if !pec
@@ -1334,7 +1334,7 @@ function mie_total_field_2d(k0::Float64, a::Float64, eps_r::Float64,
                              max_field_terms::Int=
                                  _DEFAULT_MAX_MIE2D_FIELD_TERMS,
                              max_output_bytes::Integer=
-                                 _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                 _default_max_dense_payload_bytes())
     k0 = _validated_mie2d_positive(k0, "k0")
     a = _validated_mie2d_positive(a, "a")
     if !pec

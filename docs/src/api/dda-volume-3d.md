@@ -1,5 +1,7 @@
 # API: 3D Volume Material Solver (DDA / VIE-style)
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 Reference for the 3D material volume scattering subsystem. Unlike the surface
@@ -324,7 +326,7 @@ where `R = |r - rp|` and `r_hat = (r - rp)/R`.
 
 ---
 
-### `assemble_dda_3d(grid, k0, eps_r; radiative_correction=false, max_output_bytes=2_000_000_000)`
+### `assemble_dda_3d(grid, k0, eps_r; radiative_correction=false, max_output_bytes=Sys.free_memory())`
 
 Assemble the dense coupled-dipole system
 
@@ -344,7 +346,7 @@ threaded over source voxels when worker threads are available. Prefer
 | `k0` | `Real` | -- | Wavenumber (rad/m), must be positive. |
 | `eps_r` | scalar / tensor / vector | -- | Relative permittivity specification. |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the dense `3N x 3N` matrix, enforced before material vectors or matrix allocation. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Raw-payload ceiling for the dense `3N x 3N` matrix, enforced before material vectors or matrix allocation. |
 
 **Returns:** Tuple `(A, alpha, epsv)`:
 - `A::Matrix{ComplexF64}`: dense `3N x 3N` system matrix.
@@ -377,7 +379,7 @@ be `<= 1e-10`, else an error is raised).
 
 ---
 
-### `solve_dda_3d(grid, k0, eps_r, E_inc; radiative_correction=false, solver=:direct, max_matrix_bytes=2_000_000_000, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
+### `solve_dda_3d(grid, k0, eps_r, E_inc; radiative_correction=false, solver=:direct, max_matrix_bytes=Sys.free_memory(), tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the 3D vector electric material scattering problem for the total electric
 field at voxel centers.
@@ -392,7 +394,7 @@ field at voxel centers.
 | `E_inc` | `AbstractVector` (of `CVec3`) | -- | Incident E-field per voxel (e.g. from `planewave_dda_3d`). |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 | `solver` | `Symbol` | `:direct` | `:direct` (dense LU) or `:gmres` (matrix-free). |
-| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for the direct solver's retained dense matrix, LU factors/pivots, worst-case material vectors, and simultaneous field buffers. A larger 4352-bit factor/solve estimate is checked if that exceptional path is required. Ignored by `:gmres`. |
+| `max_matrix_bytes` | `Integer` | `Sys.free_memory()` | Combined raw-payload ceiling for the direct solver's retained dense matrix, LU factors/pivots, worst-case material vectors, and simultaneous field buffers. A larger 4352-bit factor/solve estimate is checked if that exceptional path is required. Ignored by `:gmres`. |
 | `tol` | `Float64` | `1e-8` | GMRES relative tolerance (`rtol`). |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
@@ -429,7 +431,7 @@ for each voxel of a `DDAResult3D`.
 
 ---
 
-### `scattered_field_dda_3d(result, r_obs; max_output_bytes=2_000_000_000)`
+### `scattered_field_dda_3d(result, r_obs; max_output_bytes=Sys.free_memory())`
 
 Compute the scattered electric field at observation points by summing the
 radiated field of all induced dipoles. Observation points must not coincide with
@@ -441,13 +443,13 @@ voxel centers.
 |-----------|------|---------|-------------|
 | `result` | `DDAResult3D` | -- | A solved electric DDA result. |
 | `r_obs` | `AbstractVector{Vec3}` | -- | Observation points (m). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned vector, checked before result or observation validation. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum raw payload of the returned vector, checked before result or observation validation. |
 
 **Returns:** `Vector{CVec3}` of length `length(r_obs)`.
 
 ---
 
-### `farfield_dda_3d(result, rhat; max_output_bytes=2_000_000_000)`
+### `farfield_dda_3d(result, rhat; max_output_bytes=Sys.free_memory())`
 
 Return the far-field amplitude `F(rhat)` such that
 
@@ -464,7 +466,7 @@ passed to obtain a `Vector{CVec3}` of amplitudes.
 |-----------|------|---------|-------------|
 | `result` | `DDAResult3D` | -- | A solved electric DDA result. |
 | `rhat` | `Vec3` or `AbstractVector{Vec3}` | -- | Observation direction(s); each is normalized internally. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload for the vector overload; the scalar overload does not accept this keyword. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum raw payload for the vector overload; the scalar overload does not accept this keyword. |
 
 **Returns:** `CVec3` (single direction) or `Vector{CVec3}` (multiple directions).
 
@@ -604,7 +606,7 @@ constitutive normalization and to every direct electric-magnetic interaction.
 
 ---
 
-### `assemble_em_dda_3d(grid, k0, eps_r, mu_r; radiative_correction=false, max_output_bytes=2_000_000_000)`
+### `assemble_em_dda_3d(grid, k0, eps_r, mu_r; radiative_correction=false, max_output_bytes=Sys.free_memory())`
 
 Assemble the dense coupled electric-magnetic DDA system. Prefer
 `em_dda_operator_3d` (or `fft_em_dda_operator_3d`) for larger grids to avoid
@@ -621,7 +623,7 @@ polarizabilities.
 | `eps_r` | scalar / tensor / vector | -- | Relative permittivity specification. |
 | `mu_r` | scalar / tensor / vector | -- | Relative permeability specification. |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the dense `6N x 6N` matrix, enforced before allocation. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Raw-payload ceiling for the dense `6N x 6N` matrix, enforced before allocation. |
 
 **Returns:** Tuple `(A, alpha)`:
 - `A::Matrix{ComplexF64}`: dense `6N x 6N` system matrix.
@@ -648,7 +650,7 @@ voxel centers, with `H = k_hat x E / eta0`.
 
 ---
 
-### `solve_em_dda_3d(grid, k0, eps_r, mu_r, E_inc, H_inc; radiative_correction=false, solver=:direct, max_matrix_bytes=2_000_000_000, tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
+### `solve_em_dda_3d(grid, k0, eps_r, mu_r, E_inc, H_inc; radiative_correction=false, solver=:direct, max_matrix_bytes=Sys.free_memory(), tol=1e-8, maxiter=200, memory=20, verbose=false, check_gmres_convergence=true)`
 
 Solve the coupled electric-magnetic volume DDA for magnetodielectric voxels.
 Additional methods accept explicit per-voxel `6x6` polarizabilities
@@ -669,7 +671,7 @@ scattered-field and far-field post-processing.
 | `H_inc` | `AbstractVector` (of `CVec3`) | -- | Incident H-field per voxel. |
 | `radiative_correction` | `Bool` | `false` | Apply the radiation-reaction correction. |
 | `solver` | `Symbol` | `:direct` | `:direct`, `:gmres`, or `:fft_gmres` (uses the FFT operator). |
-| `max_matrix_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for the direct solver's retained dense matrix, LU factors/pivots, polarizability vector, and simultaneous electric/magnetic field buffers. A larger 4352-bit factor/solve estimate is checked if that exceptional path is required. Ignored by iterative solvers. |
+| `max_matrix_bytes` | `Integer` | `Sys.free_memory()` | Combined raw-payload ceiling for the direct solver's retained dense matrix, LU factors/pivots, polarizability vector, and simultaneous electric/magnetic field buffers. A larger 4352-bit factor/solve estimate is checked if that exceptional path is required. Ignored by iterative solvers. |
 | `tol` | `Float64` | `1e-8` | GMRES relative tolerance. |
 | `maxiter` | `Int` | `200` | Maximum GMRES iterations. |
 | `memory` | `Int` | `20` | GMRES restart memory. |
@@ -703,7 +705,7 @@ electric and magnetic halves.
 
 ---
 
-### `scattered_fields_em_dda_3d(result, r_obs; max_output_bytes=2_000_000_000)`
+### `scattered_fields_em_dda_3d(result, r_obs; max_output_bytes=Sys.free_memory())`
 
 Compute the scattered electric and magnetic fields at observation points by
 summing the induced electric and magnetic dipoles. Observation points must not
@@ -715,13 +717,13 @@ coincide with voxel centers. Interactions use the impedance stored in `result`.
 |-----------|------|---------|-------------|
 | `result` | `EMDDAResult3D` | -- | A solved coupled EM DDA result. |
 | `r_obs` | `AbstractVector{Vec3}` | -- | Observation points (m). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of both returned vectors, checked before result or observation validation. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum combined raw payload of both returned vectors, checked before result or observation validation. |
 
 **Returns:** Tuple `(E_scat, H_scat)`, each a `Vector{CVec3}` of length `length(r_obs)`.
 
 ---
 
-### `farfield_em_dda_3d(result, rhat; eta0=result.eta0, max_output_bytes=2_000_000_000)`
+### `farfield_em_dda_3d(result, rhat; eta0=result.eta0, max_output_bytes=Sys.free_memory())`
 
 Return `(F_E, F_H)` such that `E_scat ~= exp(-i k r) F_E / r` and
 `H_scat ~= exp(-i k r) F_H / r` in observation direction `rhat`. A
@@ -734,7 +736,7 @@ Return `(F_E, F_H)` such that `E_scat ~= exp(-i k r) F_E / r` and
 | `result` | `EMDDAResult3D` | -- | A solved coupled EM DDA result. |
 | `rhat` | `Vec3` or `AbstractVector{Vec3}` | -- | Observation direction(s). |
 | `eta0` | `Real` | `result.eta0` | Background wave impedance (Ohm). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload for the vector overload; the scalar overload does not accept this keyword. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum combined raw payload for the vector overload; the scalar overload does not accept this keyword. |
 
 **Returns:** Tuple `(F_E, F_H)` of `CVec3` (single direction) or
 `Vector{CVec3}` (multiple directions). In the deep far zone these satisfy the
@@ -766,7 +768,7 @@ Constructed by `fft_dda_kernel_3d`.
 
 ---
 
-### `fft_dda_kernel_3d(grid, k0; max_storage_bytes=2_000_000_000)`
+### `fft_dda_kernel_3d(grid, k0; max_storage_bytes=Sys.free_memory())`
 
 Build the `FFTDDAKernel3D` for the electric DDA operator: it sweeps Cartesian
 grid offsets `(ox, oy, oz)` (excluding the origin), fills the `3x3` dyadic
@@ -808,7 +810,7 @@ FFT-accelerated coupled-dipole operator for a uniform `VoxelGrid3D`. It applies
 
 ---
 
-### `fft_dda_operator_3d(grid, k0, eps_r; radiative_correction=false, max_storage_bytes=2_000_000_000)`
+### `fft_dda_operator_3d(grid, k0, eps_r; radiative_correction=false, max_storage_bytes=Sys.free_memory())`
 
 Construct an `FFTDDAOperator3D`. The matvec matches `dda_operator_3d` while
 replacing the dense all-pairs sum by the zero-padded block-Toeplitz convolution.
@@ -854,7 +856,7 @@ interaction. The stored kernel maps induced `[q; m]` dipoles to scattered
 
 ---
 
-### `fft_em_dda_kernel_3d(grid, k0; eta0=376.730313668, max_storage_bytes=2_000_000_000)`
+### `fft_em_dda_kernel_3d(grid, k0; eta0=376.730313668, max_storage_bytes=Sys.free_memory())`
 
 Build the `FFTEMDDAKernel3D` for the coupled EM DDA operator by sweeping
 Cartesian grid offsets, evaluating the `6x6` electromagnetic interaction at each
@@ -896,7 +898,7 @@ FFT-accelerated coupled electric-magnetic DDA operator. It applies
 
 ---
 
-### `fft_em_dda_operator_3d(grid, k0, eps_r, mu_r; radiative_correction=false, max_storage_bytes=2_000_000_000)`
+### `fft_em_dda_operator_3d(grid, k0, eps_r, mu_r; radiative_correction=false, max_storage_bytes=Sys.free_memory())`
 
 Construct an `FFTEMDDAOperator3D`. Additional methods accept explicit per-voxel
 `6x6` polarizabilities (`fft_em_dda_operator_3d(grid, k0, alpha6; ...)`) or a

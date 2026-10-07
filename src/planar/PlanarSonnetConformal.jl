@@ -142,7 +142,7 @@ function _sonnet_endpoint_rectangle_payload(mask)
         _checked_array_payload_bytes(UInt,rectangles))
 end
 
-function _sonnet_endpoint_rectangles(mask,grid,max_bytes=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+function _sonnet_endpoint_rectangles(mask,grid,max_bytes=_default_max_dense_payload_bytes())
     # Count the exact row runs and reserve all coordinate/pointer payload
     # before constructing any rectangle, including failed public imports.
     _enforce_payload_limit(_sonnet_endpoint_rectangle_payload(mask),max_bytes,
@@ -189,7 +189,7 @@ negative terminals supply floating references with balanced total current."""
 function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         grid=nothing,variables=Dict{String,Float64}(),
         edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes(),
         scalar_files=nothing,scalar_root=dirname(project.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384)
@@ -417,7 +417,7 @@ current coefficients. `edge_size,interior_size` control physical meshing;
 no sheet grid approximation is introduced."""
 function solve_sonnet_conformal(project::SonnetProject,freq::Real;raw::Bool=false,calibration=nothing,
         grid=nothing,variables=Dict{String,Float64}(),edge_size::Real,interior_size::Real,edge_band::Real=2edge_size,
-        max_triangles::Integer=100_000,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_triangles::Integer=100_000,max_bytes::Integer=_default_max_dense_payload_bytes(),
         scalar_files=nothing,scalar_root=dirname(project.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,kw...)

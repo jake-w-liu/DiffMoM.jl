@@ -1098,7 +1098,7 @@ function make_pattern_feed(theta::AbstractVector{<:Real},
                            angles_in_degrees::Bool=false,
                            convention::Symbol=:exp_plus_iwt,
                            max_storage_bytes::Integer=
-                               _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                               _default_max_dense_payload_bytes())
     frequency_f = _validated_pattern_feed_metadata(
         frequency, phase_center, convention)
     nθ = length(theta)
@@ -1139,7 +1139,7 @@ function make_pattern_feed(Etheta_pattern, Ephi_pattern, frequency::Real;
                            angles_in_degrees::Bool=true,
                            convention::Symbol=:exp_plus_iwt,
                            max_storage_bytes::Integer=
-                               _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                               _default_max_dense_payload_bytes())
     frequency_f = _validated_pattern_feed_metadata(
         frequency, phase_center, convention)
     θ = getproperty(Etheta_pattern, :x)
@@ -1472,7 +1472,7 @@ function make_analytic_dipole_pattern_feed(dipole::DipoleExcitation,
                                            angles_in_degrees::Bool=false,
                                            convention::Symbol=:exp_plus_iwt,
                                            max_storage_bytes::Integer=
-                                               _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                               _default_max_dense_payload_bytes())
     _validate_excitation_model(dipole)
     frequency = _validated_pattern_feed_metadata(
         dipole.frequency, phase_center, convention)
@@ -2829,7 +2829,7 @@ Assemble RHS matrix V where each column corresponds to an excitation.
 function assemble_multiple_excitations(mesh::TriMesh, rwg::RWGData,
                                        excitations::Vector{<:AbstractExcitation};
                                        quad_order::Int=3,
-                                       max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                       max_output_bytes::Integer=_default_max_dense_payload_bytes(),
                                        max_work_bytes::Integer=
                                            _DEFAULT_MAX_EXCITATION_WORK_BYTES,
                                        max_terms::Integer=

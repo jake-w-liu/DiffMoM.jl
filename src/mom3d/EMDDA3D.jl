@@ -806,7 +806,7 @@ function _dense_em_dda_matrix(
 end
 
 Base.Matrix(A::EMDDAOperator3D) =
-    _dense_em_dda_matrix(A, _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+    _dense_em_dda_matrix(A, _default_max_dense_payload_bytes())
 
 """
     assemble_em_dda_3d(grid, k0, eps_r, mu_r; radiative_correction=false)
@@ -817,7 +817,7 @@ Assemble the dense coupled electric-magnetic DDA system. Prefer
 function assemble_em_dda_3d(
         grid::VoxelGrid3D, k0::Real, eps_r, mu_r;
         radiative_correction::Bool=false,
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _validated_dense_em_dda_system_size(grid, max_output_bytes)
     Aop = em_dda_operator_3d(
         grid, k0, eps_r, mu_r;
@@ -829,7 +829,7 @@ end
 function assemble_em_dda_3d(
         grid::VoxelGrid3D, k0::Real, alpha6;
         radiative_correction::Bool=false,
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _validated_dense_em_dda_system_size(grid, max_output_bytes)
     Aop = em_dda_operator_3d(
         grid, k0, alpha6;
@@ -868,7 +868,7 @@ function _solve_em_dda_from_operator(grid::VoxelGrid3D, k0::Real, Aop,
                                      solver::Symbol=:direct,
                                      reported_solver::Symbol=solver,
                                      max_matrix_bytes::Integer=
-                                         _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                         _default_max_dense_payload_bytes(),
                                      tol::Float64=1e-8,
                                      maxiter::Int=200,
                                      memory::Int=20,
@@ -944,7 +944,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, mu_r,
                          radiative_correction::Bool=false,
                          solver::Symbol=:direct,
                          max_matrix_bytes::Integer=
-                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                             _default_max_dense_payload_bytes(),
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
@@ -991,7 +991,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real, alpha6,
                          radiative_correction::Bool=false,
                          solver::Symbol=:direct,
                          max_matrix_bytes::Integer=
-                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                             _default_max_dense_payload_bytes(),
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
@@ -1034,7 +1034,7 @@ function solve_em_dda_3d(grid::VoxelGrid3D, k0::Real,
                          radiative_correction::Bool=false,
                          solver::Symbol=:direct,
                          max_matrix_bytes::Integer=
-                             _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                             _default_max_dense_payload_bytes(),
                          tol::Float64=1e-8,
                          maxiter::Int=200,
                          memory::Int=20,
@@ -1247,7 +1247,7 @@ end
 
 function scattered_fields_em_dda_3d(
         res::EMDDAResult3D, r_obs::AbstractVector{Vec3};
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _preflight_dda_field_output_3d(
         length(r_obs), 2, max_output_bytes,
         "EM DDA scattered-field outputs")
@@ -1502,7 +1502,7 @@ end
 function farfield_em_dda_3d(res::EMDDAResult3D, rhat::AbstractVector{Vec3};
                             eta0::Real=res.eta0,
                             max_output_bytes::Integer=
-                                _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                _default_max_dense_payload_bytes())
     _preflight_dda_field_output_3d(
         length(rhat), 2, max_output_bytes,
         "EM DDA far-field outputs")

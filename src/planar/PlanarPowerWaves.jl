@@ -180,7 +180,7 @@ may be complex with positive real part. `a=(V+Z I)/(2sqrt(real(Z)))`
 and `b=(V-conj(Z) I)/(2sqrt(real(Z)))`; consequently accepted power
 equals `.5(sum(abs2,a)-sum(abs2,b))`."""
 function planar_power_waves(voltages::AbstractVector,currents::AbstractVector;z0=50.,
-        freq=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        freq=nothing,max_bytes::Integer=_default_max_dense_payload_bytes())
     n=length(voltages)
     length(currents)==n && n>0 && all(isfinite,voltages) && all(isfinite,currents) ||
         throw(ArgumentError("power-wave voltages and currents must be finite matching vectors"))
@@ -203,7 +203,7 @@ network scattering matrix `S`: `V=(conj(Z)*a+Z*S*a)/sqrt(real(Z))`.
 The references are finite with positive real parts; real references
 reduce to `sqrt(Z)*(a+S*a)`."""
 function planar_wave_voltages(S::AbstractMatrix,a::AbstractVector;z0=50.,
-        freq=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        freq=nothing,max_bytes::Integer=_default_max_dense_payload_bytes())
     _enforce_payload_limit(_checked_payload_sum("power-wave voltage workspace",
         _checked_array_payload_bytes(ComplexF64,6,length(a)),
         eltype(S)===ComplexF64 ? 0 : _checked_array_payload_bytes(ComplexF64,size(S)...)),max_bytes,
@@ -216,7 +216,7 @@ end
 may be complex. Exact shorts/thrus can have singular terminal-voltage
 maps and reject; use native S constitutive equations for those networks."""
 function planar_s_to_y(S::AbstractMatrix,z0;
-        freq=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        freq=nothing,max_bytes::Integer=_default_max_dense_payload_bytes())
     n=size(S,1)
     n>0 && size(S,2)==n && all(isfinite,S) || throw(ArgumentError(
         "admittance conversion needs a finite nonempty square S matrix"))

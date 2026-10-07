@@ -491,7 +491,7 @@ function assemble_Z_efie_periodic(mesh::TriMesh, rwg::RWGData, k,
                                   lattice::PeriodicLattice;
                                   quad_order::Int=3,
                                   eta0::Float64=376.730313668,
-                                  max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                  max_work_bytes::Integer=_default_max_dense_payload_bytes(),
                                   max_cache_bytes::Integer=
                                       _DEFAULT_MAX_PERIODIC_EFIE_CACHE_BYTES,
                                   max_adjacency_pairs::Integer=

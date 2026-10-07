@@ -331,7 +331,7 @@ An explicit `requested_reference` only renormalizes the already evaluated
 physical response. An extracted archive tree can be supplied as `root`; native
 compressed-model formats are not inferred."""
 function sonnet_component_files(p::SonnetProject,frequency::Real;
-        root=dirname(abspath(p.source)),max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        root=dirname(abspath(p.source)),max_bytes::Integer=_default_max_dense_payload_bytes(),
         max_dependencies::Integer=16,max_project_depth::Integer=16,
         max_project_nodes::Integer=10000,max_project_elements::Integer=10000,
         requested_reference=nothing,grid=nothing,
@@ -474,7 +474,7 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
 end
 
 function sonnet_component_files(path::AbstractString,frequency::Real;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kwargs...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kwargs...)
     limit=_sonnet_files_limit("max_bytes",max_bytes)
     f=Float64(frequency);isfinite(f) && f>0 || throw(ArgumentError("native component frequency must be representable and positive"))
     source=realpath(path);budget=_SpiceBudget(0,limit,1,0,1)
@@ -492,7 +492,7 @@ function sonnet_component_files(path::AbstractString,frequency::Real;
 end
 
 function sonnet_component_files(linked::SonnetLinkedProject,frequency::Real;
-        technology_variables=Dict{String,Float64}(),max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kwargs...)
+        technology_variables=Dict{String,Float64}(),max_bytes::Integer=_default_max_dense_payload_bytes(),kwargs...)
     limit=_sonnet_files_limit("max_bytes",max_bytes)
     f=Float64(frequency);isfinite(f) && f>0 || throw(ArgumentError("native component frequency must be representable and positive"))
     preflight=_checked_payload_sum("linked native source materialization",
@@ -509,7 +509,7 @@ nodes. `labels[node]` is the native geometry label at that node. Ordered model
 pins map through these labels; every model port retains box node zero as its
 common return. Invalid maps/resources leave the supplied circuit unchanged."""
 function circuit_add_sonnet_files!(circuit::PlanarCircuit,files::SonnetComponentFiles,
-        labels::AbstractVector{<:Integer};max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        labels::AbstractVector{<:Integer};max_bytes::Integer=_default_max_dense_payload_bytes())
     limit=_sonnet_files_limit("max_bytes",max_bytes)
     needed=_checked_payload_sum("native transactional file attachment",files.payload,
         _spice_circuit_payload(circuit),4096,

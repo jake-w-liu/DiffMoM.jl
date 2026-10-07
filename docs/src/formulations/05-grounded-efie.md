@@ -1,5 +1,7 @@
 # Grounded (Half-Space) EFIE via Image Theory
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 A reflectarray or reconfigurable metasurface almost never floats in free space: it is a thin patterned conductor suspended a small height $h$ above a solid metal backplane. The backplane is essential to the device physics -- it forces all the incident power back into the upper half-space and turns the structure into a phase-only reflector -- but it is also electrically enormous (effectively infinite) and would be ruinously expensive to mesh directly. Image theory solves this exactly for a planar Perfect Electric Conductor (PEC) ground: the ground is removed and replaced by a single mirror copy of the unknown currents, so the discrete problem stays the size of one unit cell.
@@ -98,8 +100,8 @@ Discretizing with the same RWG basis as the free-standing problem, the grounded 
 function assemble_Z_efie_grounded(mesh, rwg, k, lattice;
                                   height, quad_order=3,
                                   eta0=376.730313668,
-                                  max_work_bytes=2_000_000_000,
-                                  max_cache_bytes=2_000_000_000,
+                                  max_work_bytes=Sys.free_memory(),
+                                  max_cache_bytes=Sys.free_memory(),
                                   max_adjacency_pairs=20_000_000,
                                   max_green_terms=500_000_000)
     height > 0 || throw(ArgumentError("ground-plane height must be positive (got $height)"))

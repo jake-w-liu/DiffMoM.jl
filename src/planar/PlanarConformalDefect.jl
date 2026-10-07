@@ -222,7 +222,7 @@ function solve_planar_conformal_defect(prob::PlanarConformalProblem,freq::Number
         modes::Integer=128,nx::Integer=64,ny::Integer=nx,order::Integer=7,
         sigma=.5prob.stack.a/nx,radius=6sigma,block::Integer=512,
         memory::Integer=200,maxiter::Integer=10000,max_outer::Integer=4,
-        rtol::Real=1e-10,surface_zs=0.,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        rtol::Real=1e-10,surface_zs=0.,max_bytes::Integer=_default_max_dense_payload_bytes(),
         max_pairs::Integer=2_000_000,max_references::Integer=8_000_000,
         max_visits::Integer=80_000_000,max_patch_visits::Integer=8_000_000,
         max_stencil_entries::Integer=5_000_000,max_modal_terms::Integer=4_000_000,

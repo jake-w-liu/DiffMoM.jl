@@ -285,7 +285,7 @@ For m = n: analytical self-cell integral with equivalent circular cell.
 """
 function assemble_D_matrix(
         mesh::Mesh2D, k::Float64;
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _validate_mesh_2d(mesh)
     _validate_positive_finite_2d(k, "assemble_D_matrix wavenumber")
     payload_bytes = _checked_array_payload_bytes(

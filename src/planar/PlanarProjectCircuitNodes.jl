@@ -54,7 +54,7 @@ reference source preserves that additional mode. These missing source
 modes are distinct from the arbitrary MNA gauges reported by the circuit
 solution; no common-mode response is synthesized from differential data."""
 function planar_project_source_modes(model::PlanarProjectModel;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     D=model.source_incidence;n,p=size(D)
     _enforce_payload_limit(_checked_array_payload_bytes(Float64,8,n+p,n+p),
         max_bytes,"project source-mode report","max_bytes")

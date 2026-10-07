@@ -52,7 +52,7 @@ both geometry operators and the cross kernels before allocation."""
 function planar_hybrid_ufft_operator(prob::PlanarHybridProblem,freq::Number;
         mx::Integer=2prob.bulk.grid.nx,my::Integer=2prob.bulk.grid.ny,
         surface_zs=0.,via_sigma=Inf,volume_sigma=Inf,block::Integer=512,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     mx>=1 && my>=1 && block>=1 || throw(ArgumentError("hybrid FFT mode counts and block must be positive"))
     omega=2pi*ComplexF64(freq);isfinite(omega) && real(omega)>0 || throw(ArgumentError("hybrid FFT frequency must be positive and finite"))
     nc=length(prob.conformal.basis.width);nr=planar_basis_count(prob.bulk.basis);nc+nr>0 || throw(ArgumentError("hybrid FFT requires physical currents"))
@@ -211,7 +211,7 @@ end
 LinearAlgebra.mul!(y::AbstractVector,A::PlanarHybridUFFTOperator,x::AbstractVector)=mul!(y,A,x,1.,0.)
 Base.:*(A::PlanarHybridUFFTOperator,x::AbstractVector)=mul!(zeros(ComplexF64,A.n),A,x)
 
-function _planar_hybrid_ufft_diagonal(A;max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+function _planar_hybrid_ufft_diagonal(A;max_bytes::Integer=_default_max_dense_payload_bytes())
     reserve=_checked_array_payload_bytes(ComplexF64,A.n)
     _enforce_payload_limit(reserve,max_bytes,"hybrid FFT diagonal","max_bytes")
     d=Vector{ComplexF64}(undef,A.n)
@@ -244,7 +244,7 @@ restarted GMRES. `rtol` gates a freshly recomputed full voltage residual;
 failure raises an error and retains no unconverged network response."""
 function solve_planar_hybrid_ufft(prob::PlanarHybridProblem,freq::Number;
         rtol::Real=1e-9,maxiter::Integer=0,memory::Integer=50,restart::Bool=true,
-        precondition::Bool=true,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        precondition::Bool=true,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     omega=2pi*ComplexF64(freq)
     isfinite(omega) && real(omega)>0 || throw(ArgumentError("hybrid FFT solve frequency must be finite with positive real part"))
     n=length(prob.conformal.basis.width)+planar_basis_count(prob.bulk.basis);np=length(prob.ports)

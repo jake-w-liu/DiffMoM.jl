@@ -1,5 +1,7 @@
 # API: MLFMA (Multi-Level Fast Multipole Algorithm)
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 The MLFMA module provides a hierarchical EFIE matrix-vector product with an
@@ -133,9 +135,9 @@ Build an MLFMA operator for the EFIE system. This is the main entry point for co
 | `precision` | `Int` | `3` | Translation truncation precision parameter (digits of accuracy). |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
 | `max_sampling_points` | `Int` | `2_100_000` | Maximum spherical-grid points at any level. |
-| `max_setup_bytes` | `Int` | `2_000_000_000` | Maximum estimated bytes for the octree plus MLFMA sampling, translation, filter, pattern, and workspace storage. |
+| `max_setup_bytes` | `Int` | `Sys.free_memory()` | Maximum estimated bytes for the octree plus MLFMA sampling, translation, filter, pattern, and workspace storage. |
 | `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact count of leaf-neighbor matrix entries. |
-| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw payload of the near-field CSC arrays. |
+| `max_nearfield_bytes` | `Int` | `Sys.free_memory()` | Maximum raw payload of the near-field CSC arrays. |
 | `max_adjacency_pairs` | `Int` | `20_000_000` | Maximum edge-derived triangle-pair records in the near-field EFIE cache. |
 | `max_translation_terms` | `Int` | `50_000_000` | Maximum Legendre recurrence terms for one unique translation offset. |
 | `max_matvec_scratch_bytes` | `Int` | `536_870_912` | Maximum raw temporary payload for an exceptional exponent-banded matvec. |
@@ -176,7 +178,7 @@ println("GMRES iters: ", stats.niter)
 
 ---
 
-### `assemble_mlfma_nearfield(octree, mesh, rwg, k; quad_order=3, eta0=376.730313668, max_nearfield_entries=50_000_000, max_nearfield_bytes=2_000_000_000, max_cache_bytes=2_000_000_000, max_adjacency_pairs=20_000_000)`
+### `assemble_mlfma_nearfield(octree, mesh, rwg, k; quad_order=3, eta0=376.730313668, max_nearfield_entries=50_000_000, max_nearfield_bytes=Sys.free_memory(), max_cache_bytes=Sys.free_memory(), max_adjacency_pairs=20_000_000)`
 
 Assemble the near-field (neighbor interaction) sparse matrix for MLFMA. Only computes EFIE entries `Z[m,n]` for BF pairs `(m, n)` that belong to neighboring leaf boxes in the octree. Returns a CSC sparse matrix in the original BF ordering.
 
@@ -191,8 +193,8 @@ Assemble the near-field (neighbor interaction) sparse matrix for MLFMA. Only com
 | `quad_order` | `Int` | `3` | Quadrature order for EFIE entry evaluation. |
 | `eta0` | `Float64` | `376.730313668` | Free-space impedance. |
 | `max_nearfield_entries` | `Int` | `50_000_000` | Maximum exact leaf-neighbor entry count. |
-| `max_nearfield_bytes` | `Int` | `2_000_000_000` | Maximum raw CSC-array payload. |
-| `max_cache_bytes` | `Integer` | `2_000_000_000` | Estimated EFIE quadrature/RWG/adjacency cache ceiling. |
+| `max_nearfield_bytes` | `Int` | `Sys.free_memory()` | Maximum raw CSC-array payload. |
+| `max_cache_bytes` | `Integer` | `Sys.free_memory()` | Estimated EFIE quadrature/RWG/adjacency cache ceiling. |
 | `max_adjacency_pairs` | `Integer` | `20_000_000` | Maximum edge-derived triangle-pair records. |
 
 **Returns:** `SparseMatrixCSC{ComplexF64, Int}` of size `(N, N)`.

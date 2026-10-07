@@ -1,5 +1,7 @@
 # API: Density Topology
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 Reference for the density-based topology optimization API:
@@ -74,7 +76,7 @@ Only basis functions supported on triangle `t` contribute to `M_t`.
 
 ---
 
-### `assemble_Z_penalty(Mt, rho_bar, config; max_output_bytes=2_000_000_000)`
+### `assemble_Z_penalty(Mt, rho_bar, config; max_output_bytes=Sys.free_memory())`
 
 Assemble the density penalty matrix:
 
@@ -91,7 +93,7 @@ with `p = config.p`, `Z_max = config.Z_max`.
 | `Mt` | `Vector{<:AbstractMatrix}` | Triangle mass matrices from `precompute_triangle_mass`. |
 | `rho_bar` | `AbstractVector{<:Real}` | Projected densities, length `Nt`. |
 | `config` | `DensityConfig` | Density optimization configuration. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Raw-payload ceiling for the dense penalty matrix, checked before allocation. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Raw-payload ceiling for the dense penalty matrix, checked before allocation. |
 
 **Returns:** `Matrix{ComplexF64}` dense penalty matrix.
 

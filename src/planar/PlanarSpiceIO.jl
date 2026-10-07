@@ -596,7 +596,7 @@ return gauges, including when F/H or K refer to later scalar current branches.
 This is not a DC operating-point solver."""
 function circuit_add_spice!(circuit::PlanarCircuit,pin_nodes::AbstractVector,
         model::PlanarSpiceModel;name="spice$(length(circuit.elements)+1)",
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     instance=_spice_identifier(name)
     any(e->e isa Union{_CircuitSpicePrimitive,_CircuitSpiceLine} && e.owner.instance==instance,circuit.elements) &&
         throw(ArgumentError("duplicate case-insensitive SPICE instance name"))
@@ -657,7 +657,7 @@ Returns [`PlanarCircuitResult`](@ref), with retained internal voltages.
 Use `floating_gauge=:auto` for physically floating differential networks.
 Unsupported nonlinear/behavioural features reject during library reading."""
 function planar_spice_sparams(model::PlanarSpiceModel,f::Real;pin_pairs,z0=50.0,
-        floating_gauge::Symbol=:auto,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        floating_gauge::Symbol=:auto,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(f) && f>=0 || throw(ArgumentError("SPICE frequency must be finite and nonnegative"))
     f=_circuit_stored_real(f,"SPICE frequency")
     _enforce_payload_limit(_checked_payload_sum("SPICE standalone",model.payload,

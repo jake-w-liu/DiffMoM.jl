@@ -414,7 +414,7 @@ off-diagonal coefficients are equal, so PMCHWT is unaffected.)
 """
 function _ncross_gram_3d(mesh::TriMesh, rwg::RWGData;
                          quad_order::Int=3,
-                         max_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                         max_storage_bytes::Integer=_default_max_dense_payload_bytes())
     xi, wq = tri_quad_rule(quad_order)
     Nt = ntriangles(mesh)
     N = rwg.nedges
@@ -540,7 +540,7 @@ function assemble_magnetic_field_operator_3d(mesh::TriMesh, rwg::RWGData, k;
                                              singular_quad_order::Int=7,
                                              mesh_precheck::Bool=true,
                                              area_tol_rel::Float64=1e-12,
-                                             max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                             max_output_bytes::Integer=_default_max_dense_payload_bytes(),
                                              max_cache_bytes::Integer=
                                                  _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                              max_near_pairs::Integer=
@@ -876,7 +876,7 @@ function _surface_sie_blocks_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                 eta0::Real=_ETA0_DDA,
                                 mesh_precheck::Bool=true,
                                 area_tol_rel::Float64=1e-12,
-                                max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                max_work_bytes::Integer=_default_max_dense_payload_bytes(),
                                 max_cache_bytes::Integer=
                                     _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                 max_adjacency_pairs::Integer=
@@ -1026,7 +1026,7 @@ function matrixfree_dielectric_sie_operator_3d(mesh::TriMesh, rwg::RWGData,
                                                eta0::Real=_ETA0_DDA,
                                                mesh_precheck::Bool=true,
                                                area_tol_rel::Float64=1e-12,
-                                               max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                               max_gram_storage_bytes::Integer=_default_max_dense_payload_bytes(),
                                                max_cache_bytes::Integer=
                                                    _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                                max_adjacency_pairs::Integer=
@@ -1455,7 +1455,7 @@ function assemble_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                     eta0::Real=_ETA0_DDA,
                                     mesh_precheck::Bool=true,
                                     area_tol_rel::Float64=1e-12,
-                                    max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                    max_work_bytes::Integer=_default_max_dense_payload_bytes(),
                                     max_cache_bytes::Integer=
                                         _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                     max_adjacency_pairs::Integer=
@@ -1516,8 +1516,8 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  memory::Int=20,
                                  verbose::Bool=false,
                                  check_gmres_convergence::Bool=true,
-                                 max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
-                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                 max_work_bytes::Integer=_default_max_dense_payload_bytes(),
+                                 max_gram_storage_bytes::Integer=_default_max_dense_payload_bytes(),
                                  max_cache_bytes::Integer=
                                      _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                  max_adjacency_pairs::Integer=
@@ -1608,8 +1608,8 @@ function solve_dielectric_sie_3d(mesh::TriMesh, rwg::RWGData, k0::Real,
                                  memory::Int=20,
                                  verbose::Bool=false,
                                  check_gmres_convergence::Bool=true,
-                                 max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
-                                 max_gram_storage_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                                 max_work_bytes::Integer=_default_max_dense_payload_bytes(),
+                                 max_gram_storage_bytes::Integer=_default_max_dense_payload_bytes(),
                                  max_cache_bytes::Integer=
                                      _DEFAULT_MAX_SURFACE_CACHE_BYTES_3D,
                                  max_adjacency_pairs::Integer=

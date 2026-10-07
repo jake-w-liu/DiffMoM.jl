@@ -64,7 +64,7 @@ and nodal current injection is `D*Iport`; an admittance stamps as
 `D*Y*transpose(D)`. This retains every represented source mode and does
 not create independent common modes absent from the EM source set."""
 function planar_port_incidence(nnodes::Integer,terminals;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     nnodes>=1 && nnodes<=typemax(Int) || throw(ArgumentError("invalid circuit node count"))
     _enforce_payload_limit(_checked_payload_sum("port incidence",
         _checked_array_payload_bytes(Float64,nnodes,length(terminals)),
@@ -415,7 +415,7 @@ same coordinate rule covers isolated allocated nodes, retaining their
 unexcited potential as zero without inventing a circuit response mode.
 default `:reject` retains the singular-circuit rejection contract."""
 function solve_planar_circuit(circuit::PlanarCircuit,f::Real;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,floating_gauge::Symbol=:reject)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),floating_gauge::Symbol=:reject)
     isfinite(f) && f >= 0 || throw(ArgumentError("circuit frequency must be finite and nonnegative"))
     f=_circuit_stored_real(f,"circuit frequency")
     floating_gauge in (:reject,:auto) || throw(ArgumentError("floating_gauge must be :reject or :auto"))

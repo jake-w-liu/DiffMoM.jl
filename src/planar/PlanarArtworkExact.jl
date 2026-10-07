@@ -425,6 +425,6 @@ function _artwork_exact_point(s,x::Float64,y::Float64)
     bits=_checked_array_payload_bytes(UInt8,128,inputbits+1,depth+1)
     payload=_checked_payload_sum("exact aperture point workspace",Base.summarysize(s),
         _checked_array_payload_bytes(UInt8,128*(depth+1),cld(bits,8)+64))
-    _enforce_payload_limit(payload,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,"exact aperture point workspace","max_bytes")
+    _enforce_payload_limit(payload,_default_max_dense_payload_bytes(),"exact aperture point workspace","max_bytes")
     _artwork_exact_qcontains(s,(_artwork_exact_q(x),_artwork_exact_q(y)))
 end

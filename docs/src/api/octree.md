@@ -1,5 +1,7 @@
 # API: Octree Spatial Decomposition
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 The octree module provides the spatial data structure used by MLFMA to partition the scatterer geometry into a hierarchy of boxes. The octree determines which BF pairs interact via near-field (direct computation) versus far-field (multipole translation), and provides the BF reordering for spatial locality.
@@ -98,7 +100,7 @@ end
 
 ## Functions
 
-### `build_octree(centers, k; leaf_lambda=0.25, max_boxes=30_000_000, max_storage_bytes=2_000_000_000)`
+### `build_octree(centers, k; leaf_lambda=0.25, max_boxes=30_000_000, max_storage_bytes=Sys.free_memory())`
 
 Build an octree over RWG basis function centers for MLFMA.
 
@@ -110,7 +112,7 @@ Build an octree over RWG basis function centers for MLFMA.
 | `k` | `Float64` | -- | Wavenumber (rad/m). |
 | `leaf_lambda` | `Float64` | `0.25` | Leaf box edge length in wavelengths. |
 | `max_boxes` | `Integer` | `30_000_000` | Maximum conservative count of nonempty boxes across all levels. |
-| `max_storage_bytes` | `Integer` | `2_000_000_000` | Maximum conservative octree payload and construction-workspace estimate. |
+| `max_storage_bytes` | `Integer` | `Sys.free_memory()` | Maximum conservative octree payload and construction-workspace estimate. |
 
 **Returns:** `Octree` with BFs permuted for spatial locality.
 

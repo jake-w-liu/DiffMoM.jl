@@ -242,7 +242,7 @@ This postprocessing does not remove finite-box errors in the input currents;
 box/cover convergence must be checked for radiating designs."""
 function planar_farfield(prob::Union{PlanarProblem,PlanarConformalProblem,PlanarHybridProblem},coefficients::AbstractVector,freq::Real;
         theta=range(0.,pi;length=181),phi=[0.],radiation_stack=prob.stack,
-        accepted_power=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        accepted_power=nothing,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(freq) && freq>0 || throw(ArgumentError("radiation frequency must be finite and positive"))
     power=_planar_radiation_power(accepted_power)
     nb=_planar_radiation_basis_count(prob)
@@ -281,7 +281,7 @@ includes the reflected-wave correction. Calibrated/contracted results
 retain their physical source coefficient mapping."""
 function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourceResult,PlanarContractedResult,PlanarCalibratedResult,PlanarConformalResult,PlanarConformalUFFTResult,PlanarConformalDefectResult,PlanarHybridResult,PlanarHybridUFFTResult};
         port::Integer=1,voltages=nothing,incident_waves=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     n=size(result.y,1)
     source=_planar_radiation_problem(result)
     direct=result isa Union{PlanarConformalResult,PlanarConformalUFFTResult,PlanarConformalDefectResult,PlanarHybridResult,PlanarHybridUFFTResult}
@@ -330,7 +330,7 @@ change when `refine=true`; the change is a quadrature estimate, not a
 certificate of current-solve accuracy."""
 function planar_radiated_power(prob::Union{PlanarProblem,PlanarConformalProblem,PlanarHybridProblem},coefficients::AbstractVector,freq::Real;
         ntheta::Integer=24,nphi::Integer=48,refine::Bool=true,radiation_stack=prob.stack,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     ntheta>=2 && nphi>=4 || throw(ArgumentError("radiation power needs ntheta>=2 and nphi>=4"))
     _checked_array_payload_bytes(Float64,refine ? 2BigInt(ntheta) : BigInt(ntheta),
         refine ? 2BigInt(ntheta) : BigInt(ntheta);label="radiation quadrature rule")
@@ -382,7 +382,7 @@ components are explicitly `(Etheta ± i*Ephi)/sqrt(2)`; `axial_ratio` is
 the major/minor polarization-ellipse amplitude ratio (infinite for linear
 polarization and undefined for a zero field)."""
 function planar_radiation_metrics(p::PlanarRadiationPattern;radiated_power=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     accepted=_planar_radiation_power(p.accepted_power)
     radiated=_planar_radiation_power(radiated_power,"radiated power")
     shape=size(p.etheta)

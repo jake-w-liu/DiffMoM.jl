@@ -447,7 +447,7 @@ function radiation_vectors(
         mesh::TriMesh, rwg::RWGData, grid::SphGrid, k;
         quad_order::Int=3,
         eta0=376.730313668,
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_output_bytes::Integer=_default_max_dense_payload_bytes(),
         max_work_bytes::Integer=_DEFAULT_MAX_RADIATION_WORK_BYTES,
         max_terms::Integer=_DEFAULT_MAX_RADIATION_TERMS,
         max_exact_work::Integer=_DEFAULT_MAX_RADIATION_EXACT_WORK)

@@ -267,7 +267,7 @@ Reject repeated calibration IDs and overlap with training IDs.
 function calibrate_rcs(scores::AbstractVector{<:Real}, context::RCSCalibrationContext;
         calibration_case_ids::AbstractVector{<:AbstractString},
         training_case_ids::AbstractVector{<:AbstractString}=String[],
-        epsilon::Real=0.05, max_work_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        epsilon::Real=0.05, max_work_bytes::Integer=_default_max_dense_payload_bytes())
     n = length(scores)
     length(calibration_case_ids) == n ||
         throw(DimensionMismatch("each calibration score needs one whole-case ID"))

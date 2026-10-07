@@ -1,5 +1,7 @@
 # Multi-Angle RCS Optimization
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 This chapter extends the single-objective optimization framework from Chapters 1--4 to **multi-angle monostatic RCS minimization**: simultaneously reducing backscatter radar cross section over multiple incidence angles. This is the core requirement for practical stealth and scattering control design, where a single-angle optimum often shifts energy to unprotected angles rather than truly reducing scattering.
@@ -149,7 +151,7 @@ configs = build_multiangle_configs(mesh, rwg, k, angles;
 | `backscatter_cone` | `Float64` | `15.0` | Half-angle of backscatter mask in degrees. |
 | `matrix_free_Q` | `Bool` | `false` | Store a `FarFieldQMatrix` instead of a dense `N x N` matrix for each angle. |
 | `rcs_component` | `Symbol` | `:copol` | Objective component: `:copol`, `:crosspol`, or `:total`. |
-| `max_work_bytes` | `Integer` | `2_000_000_000` | Ceiling for simultaneously live raw payload owned by the batch build, including shared radiation data, excitation quadrature, returned configurations, and dense-Q workspace. |
+| `max_work_bytes` | `Integer` | `Sys.free_memory()` | Ceiling for simultaneously live raw payload owned by the batch build, including shared radiation data, excitation quadrature, returned configurations, and dense-Q workspace. |
 
 **Angle specification format:**
 
@@ -213,7 +215,7 @@ Minimize total weighted backscatter RCS using projected L-BFGS with adjoint grad
 | `preconditioner` | `AbstractPreconditionerData` or `nothing` | `nothing` | GMRES preconditioner; compare iteration count and true residual for the target system. |
 | `gmres_tol` | `Float64` | `1e-6` | GMRES relative tolerance. |
 | `gmres_maxiter` | `Int` | `300` | Maximum GMRES iterations per solve. |
-| `max_workspace_bytes` | `Integer` | `2_000_000_000` | Aggregate raw-payload ceiling for dense optimization, including accepted/trial factors and pivots, per-angle fields and objective buffers, parameter work vectors, and conditional exact solves. Matrix-free ACA/MLFMA paths do not allocate this dense workspace. |
+| `max_workspace_bytes` | `Integer` | `Sys.free_memory()` | Aggregate raw-payload ceiling for dense optimization, including accepted/trial factors and pivots, per-angle fields and objective buffers, parameter work vectors, and conditional exact solves. Matrix-free ACA/MLFMA paths do not allocate this dense workspace. |
 
 **Returns:** Tuple `(theta_opt, trace)` where:
 - `theta_opt::Vector{Float64}`: Optimized impedance parameters.

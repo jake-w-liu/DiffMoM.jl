@@ -89,7 +89,7 @@ their payload separately."""
 function planar_contract_ports(raw::Union{PlanarResult,PlanarUFFTResult,
         PlanarCalibratedResult,PlanarContractedResult,PlanarSourceResult},C::AbstractMatrix{<:Real};
         z0=50.0,problem::Union{Nothing,PlanarProblem}=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     nraw,n=size(C)
     nraw==size(raw.y,1) && 1<=n<=nraw && all(isfinite,C) ||
         throw(ArgumentError("port contraction must be finite and match raw ports"))
@@ -277,7 +277,7 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
         z0=50.,problem::Union{Nothing,PlanarProblem}=nothing,method::Symbol=:dense,
         retain_matrix::Bool=true,rtol::Real=1e-9,maxiter::Integer=0,
         memory::Integer=50,restart::Bool=true,precondition::Bool=true,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     method in (:dense,:dense_fft,:ufft) || throw(ArgumentError("method must be :dense, :dense_fft or :ufft"))
     omega=2pi*ComplexF64(freq)
     isfinite(omega) && real(omega)>0 || throw(ArgumentError("frequency must be finite with Re>0"))
@@ -444,7 +444,7 @@ basis. `incident_waves` uses the stored physical reference impedances;
 the raw source geometry is retained for every conductor map."""
 function planar_current_maps(source::PlanarSourceResult;port::Integer=1,
         voltages=nothing,incident_waves=nothing,
-        z_fraction::Real=.5,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        z_fraction::Real=.5,max_bytes::Integer=_default_max_dense_payload_bytes())
     n=length(source.z0)
     voltages!==nothing && incident_waves!==nothing && throw(ArgumentError(
         "provide voltages or incident_waves"))

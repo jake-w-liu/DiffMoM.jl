@@ -161,7 +161,7 @@ reports its method and potential crossover frequencies, not a grid claim.
 The Hamiltonian criterion follows the positive-real state-space test;
 see Semlyen & Gustavsen, IEEE TPWRD 24(1), 2009, DOI 10.1109/TPWRD.2008.923406."""
 function planar_rational_certificate(model::PlanarRationalModel;
-        tol::Real=1e-8,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        tol::Real=1e-8,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(tol) && tol>0 || throw(ArgumentError("certificate tolerance must be finite and positive"))
     no = (certified=false,method=:none,crossings_hz=Float64[])
     n = size(model.d,1)
@@ -244,7 +244,7 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
         frequencies::AbstractVector{<:Real};format::Symbol=:y,z0=50.0,
         order::Integer=4,iterations::Integer=8,enforce_passivity::Bool=true,
         passivity_tol::Real=1e-9,n_passivity::Integer=max(257,8length(frequencies)),
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     m = length(series)
     m == length(frequencies) && m >= 3 || throw(ArgumentError("fit requires at least three matching samples"))
     order >= 1 && iterations >= 0 || throw(ArgumentError("order must be positive and iterations nonnegative"))

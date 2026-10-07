@@ -230,7 +230,7 @@ grid; it does not guarantee discovery of an unsampled narrow resonance.
 function planar_sweep_abs(prob::PlanarProblem,
         fmin::Real, fmax::Real; rel_tol::Real=1e-2,
         n_eval::Integer=257, max_points::Integer=32,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),
         solve_kw...)
     fmin,fmax,n_eval,max_points=_planar_abs_parameters(fmin,fmax,rel_tol,n_eval,max_points)
     n=length(prob.ports)
@@ -312,7 +312,7 @@ end
 function _planar_sweep_abs(response, nports::Int,
         fmin::Real, fmax::Real; rel_tol::Real=1e-2,
         n_eval::Integer=257, max_points::Integer=32,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,z0=nothing)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),z0=nothing)
     fmin,fmax,n_eval,max_points=_planar_abs_parameters(fmin,fmax,rel_tol,n_eval,max_points)
     nports >= 1 || throw(ArgumentError("nports must be positive"))
     _enforce_payload_limit(

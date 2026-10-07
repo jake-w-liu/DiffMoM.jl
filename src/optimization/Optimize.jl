@@ -969,7 +969,7 @@ function optimize_lbfgs(Z_efie::Matrix{ComplexF64},
                         gmres_maxiter::Int=200,
                         gmres_memory::Int=20,
                         max_workspace_bytes::Integer=
-                            _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                            _default_max_dense_payload_bytes())
     _validate_optimizer_controls(
         maxiter=maxiter,
         tol=tol,
@@ -1434,7 +1434,7 @@ function optimize_directivity(Z_efie::Matrix{ComplexF64},
                               gmres_maxiter::Int=200,
                               gmres_memory::Int=20,
                               max_workspace_bytes::Integer=
-                                  _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                                  _default_max_dense_payload_bytes())
     _validate_optimizer_controls(
         maxiter=maxiter,
         tol=tol,

@@ -1,5 +1,7 @@
 # API: 2D Volume Integral Equation (TM)
 
+Byte-budget defaults on this page query the process's OS-reported available memory at each call, clamped only to Julia's `Int` capacity. An explicit byte budget keeps the original operation-owned raw-array accounting and rejection checks. The default is a snapshot, not a reservation or a bound on total process memory; if the OS reports zero, provide an explicit budget.
+
 ## Purpose
 
 Reference for the 2D TM (transverse-magnetic, `E_z`-only) volume integral equation
@@ -247,7 +249,7 @@ D_self = self_cell_integral_2d(k, equivalent_radius(mesh))
 
 ## Assembly and Solve
 
-### `assemble_vie_2d(mesh, k0, chi; max_output_bytes=2_000_000_000)`
+### `assemble_vie_2d(mesh, k0, chi; max_output_bytes=Sys.free_memory())`
 
 Assemble the VIE system matrix using pulse basis / point matching:
 
@@ -266,7 +268,7 @@ where `D[m,n] = integral_{cell_n} G_2D(r_m, rp) dA'` is the Green's integral mat
 | `mesh` | `Mesh2D` | -- | The 2D grid. |
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
 | `chi` | `AbstractVector{Float64}` | -- | Per-cell dielectric contrast `eps_r - 1` (length `ncells`). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of the dense `Z` and `D` matrices, checked before allocation. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum combined raw payload of the dense `Z` and `D` matrices, checked before allocation. |
 
 **Returns:** Tuple `(Z, D)` of `Matrix{ComplexF64}`, each of size `ncells x ncells`:
 the system matrix `Z` and the Green's integral matrix `D`.
@@ -282,7 +284,7 @@ Z, D = assemble_vie_2d(mesh, k0, chi)
 
 ---
 
-### `solve_vie_2d(mesh, k0, chi, E_inc; max_output_bytes=2_000_000_000)`
+### `solve_vie_2d(mesh, k0, chi, E_inc; max_output_bytes=Sys.free_memory())`
 
 Solve the 2D VIE for the internal total field by assembling `Z` (via
 `assemble_vie_2d`), LU-factorizing it, and solving `Z * E_total = E_inc`. Bundles
@@ -297,7 +299,7 @@ Jacobian evaluation.
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
 | `chi` | `AbstractVector{Float64}` | -- | Per-cell dielectric contrast (length `ncells`). |
 | `E_inc` | `AbstractVector{ComplexF64}` | -- | Incident field at cell centers (length `ncells`), e.g. from `planewave_2d` or `linesource_2d`. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Combined raw-payload ceiling for retained `D`, `Z`, LU factors/pivots, field vectors, and contrast. The two-matrix assembly/output limit is checked separately; a larger 4352-bit factor/solve estimate is enforced only when that exceptional path is required. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Combined raw-payload ceiling for retained `D`, `Z`, LU factors/pivots, field vectors, and contrast. The two-matrix assembly/output limit is checked separately; a larger 4352-bit factor/solve estimate is enforced only when that exceptional path is required. |
 
 **Returns:** `VIEResult2D` with the total field `E_total`, the incident field, the
 contrast profile, the matrices `D` and `Z`, the verified factorization, the mesh, and
@@ -385,7 +387,7 @@ E_inc = linesource_2d(mesh, 2pi, Vec2(3.0, 0.0))
 
 ## Scattered Field and Jacobian
 
-### `green_obs_matrix(r_obs, mesh, k0; max_output_bytes=2_000_000_000)`
+### `green_obs_matrix(r_obs, mesh, k0; max_output_bytes=Sys.free_memory())`
 
 Compute the observation Green's function matrix `G_obs[m,n] = G_2D(r_obs[m], r_n)`,
 mapping each cell center `r_n` to each observation point. Observation points must
@@ -398,7 +400,7 @@ be outside the scattering domain.
 | `r_obs` | `AbstractVector{Vec2}` | -- | Observation points (m), length M. |
 | `mesh` | `Mesh2D` | -- | The 2D grid. |
 | `k0` | `Float64` | -- | Free-space wavenumber (rad/m). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned observation matrix. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum raw payload of the returned observation matrix. |
 
 **Returns:** `Matrix{ComplexF64}` of size `M x ncells`.
 
@@ -412,7 +414,7 @@ G_obs = green_obs_matrix(r_obs, mesh, 2pi)
 
 ---
 
-### `scattered_field_2d(vie_result, r_obs; max_output_bytes=2_000_000_000)`
+### `scattered_field_2d(vie_result, r_obs; max_output_bytes=Sys.free_memory())`
 
 Compute the scattered field at observation points from a solved VIE result:
 
@@ -429,7 +431,7 @@ where `A_n = cell_area`, `E_n = vr.E_total`, and the Green's values come from
 |-----------|------|---------|-------------|
 | `vie_result` | `VIEResult2D` | -- | Solved result from `solve_vie_2d`. |
 | `r_obs` | `AbstractVector{Vec2}` | -- | Observation points (m), length M (outside the domain). |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned vector, checked before observation-point work. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum raw payload of the returned vector, checked before observation-point work. |
 
 **Returns:** `Vector{ComplexF64}` of scattered-field values, length M.
 
@@ -443,7 +445,7 @@ E_scat = scattered_field_2d(vr, r_obs)
 
 ---
 
-### `jacobian_scattered_field_2d(vie_result, r_obs; max_work_bytes=2_000_000_000)`
+### `jacobian_scattered_field_2d(vie_result, r_obs; max_work_bytes=Sys.free_memory())`
 
 Compute the Jacobian of the scattered field with respect to the per-cell contrast,
 `J[m,p] = d E_scat(r_obs[m]) / d chi_p`, via implicit differentiation of the VIE
@@ -458,7 +460,7 @@ the equivalent factor `W = (I - k0^2 diag(chi) D)^-1 = Z^-T` through the cached
 |-----------|------|---------|-------------|
 | `vie_result` | `VIEResult2D` | -- | Solved result from `solve_vie_2d`. |
 | `r_obs` | `AbstractVector{Vec2}` | -- | Observation points (m), length M (outside the domain). |
-| `max_work_bytes` | `Integer` | `2_000_000_000` | Maximum combined raw payload of `G_obs`, the transposed-sensitivity workspace, and `J` on the ordinary path. With an exact cached VIE factor, it instead covers `G_obs`, `J`, and both 4352-bit RHS/sensitivity matrices. |
+| `max_work_bytes` | `Integer` | `Sys.free_memory()` | Maximum combined raw payload of `G_obs`, the transposed-sensitivity workspace, and `J` on the ordinary path. With an exact cached VIE factor, it instead covers `G_obs`, `J`, and both 4352-bit RHS/sensitivity matrices. |
 
 **Returns:** Tuple `(J, G_obs)`:
 - `J::Matrix{ComplexF64}` of size `M x ncells` (the Jacobian).
@@ -518,7 +520,7 @@ c0 = c[N + 1]   # n = 0 coefficient
 
 ---
 
-### `mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000, max_output_bytes=2_000_000_000)`
+### `mie_scattered_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000, max_output_bytes=Sys.free_memory())`
 
 Compute the exact scattered field at observation points for a circular cylinder:
 
@@ -540,7 +542,7 @@ evaluated with unit incident amplitude.
 | `nmax` | `Nothing` or `Int` | `nothing` | Maximum Mie order (auto if `nothing`). |
 | `pec` | `Bool` | `false` | If `true`, treat as a PEC cylinder. |
 | `max_field_terms` | `Int` | `50_000_000` | Maximum aggregate ordinary partial-wave terms across all observation points. |
-| `max_output_bytes` | `Integer` | `2_000_000_000` | Maximum raw payload of the returned vector, checked before field work. |
+| `max_output_bytes` | `Integer` | `Sys.free_memory()` | Maximum raw payload of the returned vector, checked before field work. |
 
 **Returns:** `Vector{ComplexF64}` of scattered-field values, length M.
 
@@ -560,7 +562,7 @@ E_scat_mie = mie_scattered_field_2d(2pi, a, 4.0, r_obs; phi_inc=0.0)
 
 ---
 
-### `mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000, max_output_bytes=2_000_000_000)`
+### `mie_total_field_2d(k0, a, eps_r, r_obs; phi_inc=0.0, nmax=nothing, pec=false, max_field_terms=50_000_000, max_output_bytes=Sys.free_memory())`
 
 Compute the exact total field (incident plus scattered) at observation points
 on or outside the cylinder (`rho >= a`). The incident term is the plane wave
@@ -569,7 +571,7 @@ scattered term is `mie_scattered_field_2d`.
 
 **Parameters:** Same as `mie_scattered_field_2d` (`k0`, `a`, `eps_r`, `r_obs`;
 keywords `phi_inc=0.0`, `nmax=nothing`, `pec=false`,
-`max_field_terms=50_000_000`, and `max_output_bytes=2_000_000_000`).
+`max_field_terms=50_000_000`, and `max_output_bytes=Sys.free_memory()`).
 
 **Returns:** `Vector{ComplexF64}` of total-field values, length M.
 

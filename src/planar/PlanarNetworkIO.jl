@@ -31,7 +31,7 @@ struct PlanarNetworkData{T<:Number}
     end
     function PlanarNetworkData(freqs::AbstractVector{<:Real},
             series::AbstractVector{<:AbstractMatrix}; z0=nothing, reference_series=nothing,port_names=nothing,
-            max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+            max_bytes::Integer=_default_max_dense_payload_bytes())
         n = _network_series_validate(freqs, series)
         previous=-Inf
         for frequency in freqs
@@ -191,7 +191,7 @@ function _touchstone_append_numbers!(target,text,other_owned,max_bytes;terminati
     return continued
 end
 
-function _touchstone_termination_values(text;max_bytes=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,other_owned=0)
+function _touchstone_termination_values(text;max_bytes=_default_max_dense_payload_bytes(),other_owned=0)
     values=Float64[]
     continued=_touchstone_append_numbers!(values,text,other_owned,max_bytes;termination=true)
     return values,continued
@@ -206,7 +206,7 @@ function _touchstone_minimum_workspace(n,max_bytes)
 end
 
 _touchstone_tryfloat(text)=tryparse(Float64,replace(text,'D'=>'E','d'=>'e'))
-function _touchstone_options(text;max_bytes=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,other_owned=0)
+function _touchstone_options(text;max_bytes=_default_max_dense_payload_bytes(),other_owned=0)
     # No array of tokens or uppercase copy of an arbitrarily long line.
     count=0;references=false
     for token in eachsplit(text)
@@ -335,7 +335,7 @@ before network data. These extensions require single-ended S data.
 records are counted before parsing/appending; version 2 matrix records
 retain their permitted arbitrary physical line length."""
 function planar_read_touchstone(path::AbstractString;nports::Union{Nothing,Integer}=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     isfile(path) || throw(ArgumentError("network file not found: $path"))
     suffix=match(r"\.s(\d+)p$"i,path)
     n=nports===nothing ? (suffix===nothing ? 0 : parse(Int,suffix.captures[1])) : Int(nports)
@@ -543,7 +543,7 @@ to one fixed real basis, defaulting to `real.(data.z0)`; `z0` overrides it.
 All data is validated before opening `path`. Numeric values
 are written with round-trip precision. Noise data is not synthesized."""
 function planar_write_touchstone(path::AbstractString,data::PlanarNetworkData;
-        z0=nothing,version::AbstractString="2.1",max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        z0=nothing,version::AbstractString="2.1",max_bytes::Integer=_default_max_dense_payload_bytes())
     _network_touchstone_version(version)
     n=_network_series_validate(data.frequencies,data.s)
     refs=_network_fixed_real_export(data,z0,max_bytes)
@@ -594,7 +594,7 @@ end
 
 function planar_write_touchstone(path::AbstractString,freqs::AbstractVector,series::AbstractVector;
         z0=nothing,output_z0=nothing,version::AbstractString="2.1",
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     _network_touchstone_version(version)
     data,reserve=_network_data_for_export(freqs,series;z0,max_bytes,kw...)
     return planar_write_touchstone(path,data;z0=output_z0,version,max_bytes=reserve)

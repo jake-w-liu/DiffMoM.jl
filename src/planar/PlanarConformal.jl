@@ -71,7 +71,7 @@ function _planar_check_triangle_pair(v,t,u)
 end
 
 function PlanarConformalMesh(vertices::AbstractMatrix{<:Real},triangles::AbstractMatrix{<:Integer};
-        interfaces=1,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        interfaces=1,max_bytes::Integer=_default_max_dense_payload_bytes())
     size(vertices,1)==2 && size(triangles,1)==3 && size(vertices,2)>=3 && size(triangles,2)>=1 ||
         throw(ArgumentError("vertices must be 2×Nv and triangles 3×Nt"))
     nv,nt=size(vertices,2),size(triangles,2)
@@ -202,7 +202,7 @@ end
 function PlanarConformalProblem(stack::PlanarStackup,mesh::PlanarConformalMesh,
         ports::AbstractVector{PlanarConformalPort};sidewalls::SidewallKind=WALL_PEC,
         wall_contacts::AbstractVector{PlanarConformalPort}=PlanarConformalPort[],
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     planar_validate(stack);L=length(stack.layers);nt=length(mesh.interfaces)
     all(i->0<=i<=L,mesh.interfaces) &&
         all(i->0<=i<=L,(p.interface for p in ports)) || throw(ArgumentError("conformal interface is outside the stack"))
@@ -311,6 +311,12 @@ function _planar_conformal_cached_weights!(te,tm,prob,kx,ky,cache)
     for t in eachindex(prob.mesh.interfaces)
         vertices=view(prob.mesh.vertices,:,view(prob.mesh.triangles,:,t))
         for (plane,sign) in ((1,1),(2,-1))
+            phases=ntuple(j->ComplexF64(1im*(kx*vertices[1,j]+sign*ky*vertices[2,j])),Val(3))
+            z=map(v->v-phases[1],phases)
+            sorted=_planar_sorted_phases3(z...)
+            # Clustered consumers contract Taylor coefficients directly below;
+            # they never read cached vertex weights for this plane.
+            abs(sorted[3]-sorted[1])<=1 && continue
             factor,weights=_planar_triangle_fourier_weights(vertices,kx,sign*ky)
             cache.factors[plane,t]=factor
             for j in 1:3
@@ -323,13 +329,27 @@ function _planar_conformal_cached_weights!(te,tm,prob,kx,ky,cache)
         for half in 1:2
             prob.basis.triangles[half,b]==0 && continue
             t,x,y=_planar_conformal_half_values(prob,b,half)
-            xp,yp,xm,ym=0.0im,0.0im,0.0im,0.0im
-            for j in 1:3
-                xp+=x[j]*cache.weights[j,1,t];yp+=y[j]*cache.weights[j,1,t]
-                xm+=x[j]*cache.weights[j,2,t];ym+=y[j]*cache.weights[j,2,t]
+            vertices=view(prob.mesh.vertices,:,view(prob.mesh.triangles,:,t))
+            plus=_planar_triangle_series_pair(vertices,x,y,kx,ky)
+            minus=_planar_triangle_series_pair(vertices,x,y,kx,-ky)
+            if plus===nothing
+                xp=yp=0.0im
+                for j in 1:3
+                    xp+=x[j]*cache.weights[j,1,t];yp+=y[j]*cache.weights[j,1,t]
+                end
+                xp*=cache.factors[1,t];yp*=cache.factors[1,t]
+            else
+                xp,yp=plus
             end
-            xp*=cache.factors[1,t];yp*=cache.factors[1,t]
-            xm*=cache.factors[2,t];ym*=cache.factors[2,t]
+            if minus===nothing
+                xm=ym=0.0im
+                for j in 1:3
+                    xm+=x[j]*cache.weights[j,2,t];ym+=y[j]*cache.weights[j,2,t]
+                end
+                xm*=cache.factors[2,t];ym*=cache.factors[2,t]
+            else
+                xm,ym=minus
+            end
             if prob.sidewalls===WALL_PEC
                 px+=(imag(xp)-imag(xm))/2;py+=(imag(yp)+imag(ym))/2
             else
@@ -395,7 +415,7 @@ end
 surface quadrature is used. Arbitrary triangle sizes are supported."""
 function assemble_planar_conformal_z(prob::PlanarConformalProblem,freq::Number;
         mx::Integer=64,my::Integer=64,surface_zs=0.,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     omega=2pi*ComplexF64(freq);nb=length(prob.basis.width);L=length(prob.stack.layers)
     isfinite(omega) && real(omega)>0 && mx>=1 && my>=1 || throw(ArgumentError("frequency and mode counts must be positive and finite"))
     _checked_array_payload_bytes(UInt8,mx,my;label="conformal mode count")
@@ -474,7 +494,7 @@ PlanarConformalResult(prob::PlanarConformalProblem,freq,omega,Z,F,scale,X,Y,S,re
 The coefficients have the RWG convention A/m; their normal edge current is
 coefficient×edge length. Every port voltage drives all its boundary edges."""
 function solve_planar_conformal(prob::PlanarConformalProblem,freq::Number;
-        method::Symbol=:dense,retain_matrix::Bool=true,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        method::Symbol=:dense,retain_matrix::Bool=true,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     method in (:dense,:ufft) || throw(ArgumentError("conformal method must be :dense or :ufft"))
     method===:ufft && return solve_planar_conformal_ufft(prob,freq;max_bytes,kw...)
     omega=2pi*ComplexF64(freq)
@@ -533,7 +553,7 @@ function _planar_conformal_map_payload(prob)
     _checked_payload_sum("conformal currents",_checked_array_payload_bytes(ComplexF64,14,nt),
         _checked_array_payload_bytes(Float64,6,nt))
 end
-function _planar_conformal_maps_from_coefficients(prob,coefficients;max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+function _planar_conformal_maps_from_coefficients(prob,coefficients;max_bytes::Integer=_default_max_dense_payload_bytes())
     length(coefficients)==length(prob.basis.width) && all(isfinite,coefficients) ||
         throw(ArgumentError("conformal coefficients must be finite and match the physical basis"))
     _enforce_payload_limit(_planar_conformal_map_payload(prob),max_bytes,"conformal currents","max_bytes")
@@ -551,7 +571,7 @@ function _planar_conformal_maps_from_coefficients(prob,coefficients;max_bytes::I
             prob.mesh.areas[t]/3*(currents[2,1,t]+currents[2,2,t]+currents[2,3,t])]) for t in 1:nt]
 end
 function _planar_conformal_current_maps(result;port::Integer=1,voltages=nothing,incident_waves=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     n=length(result.problem.ports)
     reserve=_checked_payload_sum("conformal current excitation",
         _checked_array_payload_bytes(ComplexF64,length(result.problem.basis.width)),

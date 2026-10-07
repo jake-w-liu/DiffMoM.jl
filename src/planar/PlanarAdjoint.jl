@@ -532,7 +532,7 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
         gY=nothing, h_fd::Real=1e-6,
         mx::Integer=2 * prob.grid.nx, my::Integer=2 * prob.grid.ny,
         block::Integer=512,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES, kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(), kw...)
     h = Float64(h_fd)
     isfinite(h) && h > 0 ||
         throw(ArgumentError("h_fd must be finite and positive"))

@@ -138,7 +138,7 @@ function solve_scattering(mesh::TriMesh, freq_hz::Real, excitation;
                           max_true_residual_exact_terms::Integer=
                               _DEFAULT_MAX_TRUE_RESIDUAL_EXACT_TERMS,
                           max_dense_matrix_bytes::Integer=
-                              _DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                              _default_max_dense_payload_bytes())
     exact_term_limit = _validated_nonnegative_resource_limit(
         "max_true_residual_exact_terms", max_true_residual_exact_terms)
     aca_storage_limit = _validated_resource_limit("max_aca_storage_bytes", max_aca_storage_bytes)

@@ -235,7 +235,7 @@ When ρ̄_t = 0 (void):  penalty contribution = Z_max * M_t (large impedance)
 function assemble_Z_penalty(Mt::Vector{<:AbstractMatrix},
                             rho_bar::AbstractVector{<:Real},
                             config::DensityConfig;
-                            max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+                            max_output_bytes::Integer=_default_max_dense_payload_bytes())
     Nt = length(Mt)
     N = first(_validate_density_mass_inputs(Mt, rho_bar))
     CT = ComplexF64

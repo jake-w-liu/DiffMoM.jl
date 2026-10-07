@@ -100,7 +100,7 @@ function _artwork_exact_region_point(s,x,y)
         _checked_array_payload_bytes(UInt8,8,bits+1,depth+1))
     payload=_checked_payload_sum("exact region point workspace",Base.summarysize(s),
         _checked_array_payload_bytes(UInt8,128,depth+1,cld(precision,8)+64))
-    _enforce_payload_limit(payload,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,"exact region point workspace","max_bytes")
+    _enforce_payload_limit(payload,_default_max_dense_payload_bytes(),"exact region point workspace","max_bytes")
     setprecision(BigFloat,precision) do
         _artwork_region_exact_contains(s,(BigFloat(x),BigFloat(y)))
     end

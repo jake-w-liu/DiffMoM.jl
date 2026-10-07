@@ -9,7 +9,7 @@ converted to fixed real `z0` (default `real.(data.z0)`) before writing.
 Per-port output reference impedances are
 recorded in comment lines. Validation precedes opening the output file."""
 function planar_write_databank_csv(path::AbstractString,data::PlanarNetworkData;
-        z0=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        z0=nothing,max_bytes::Integer=_default_max_dense_payload_bytes())
     n=_network_series_validate(data.frequencies,data.s)
     length(data.port_names)==n && length(unique(data.port_names))==n && all(!isempty,data.port_names) ||
         throw(ArgumentError("CSV port names must be nonempty, unique and match ports"))
@@ -30,7 +30,7 @@ function planar_write_databank_csv(path::AbstractString,data::PlanarNetworkData;
     return path
 end
 function planar_write_databank_csv(path::AbstractString,freqs,series;
-        z0=nothing,output_z0=nothing,max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        z0=nothing,output_z0=nothing,max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     data,reserve=_network_data_for_export(freqs,series;z0,max_bytes,kw...)
     return planar_write_databank_csv(path,data;z0=output_z0,max_bytes=reserve)
 end
@@ -70,7 +70,7 @@ indices and named ports are accepted; names retain first-appearance order.
 Optional extra columns are ignored. Returns [`PlanarNetworkData`](@ref).
 `z0` overrides the file's reference comment when supplied."""
 function planar_read_sparam_csv(path::AbstractString;z0=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     isfile(path) || throw(ArgumentError("S-parameter CSV not found: $path"))
     records=Tuple{Float64,String,String,ComplexF64}[]; labels=String[]
     refs=nothing;columns=nothing

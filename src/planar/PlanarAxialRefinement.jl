@@ -27,7 +27,7 @@ Via-port voltage is distributed across slices in proportion to thickness,
 so total voltage and its power-conjugate terminal current are preserved.
 No new metal sheets are inserted between slices."""
 function planar_refine_axial(prob::PlanarProblem,subdivisions;
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     L=length(prob.stack.layers)
     subdivisions isa Integer || subdivisions isa AbstractVector{<:Integer} ||
         throw(ArgumentError("subdivisions must be an integer or integer vector"))
@@ -135,7 +135,7 @@ The returned contracted response retains refined raw currents and maps
 original port excitations to their physical distributed sources."""
 function solve_planar_axial(refinement::PlanarAxialRefinement,freq::Number;
         via_sigma=Inf,volume_sigma=Inf,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     material_bytes=_checked_array_payload_bytes(ComplexF64,
         length(refinement.via_parent)+length(refinement.volume_parent))
     _enforce_payload_limit(material_bytes,max_bytes,"axial materials","max_bytes")

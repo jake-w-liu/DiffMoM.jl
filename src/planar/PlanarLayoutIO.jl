@@ -348,7 +348,7 @@ function layout_planar_layout(layout::PlanarLayoutDocument,stack::PlanarStackup,
         metals::AbstractDict=Dict("pec"=>0.),
         via_types::AbstractDict=Dict("uniform"=>(kind=VIA_UNIFORM,sigma=Inf),
             "taper"=>(kind=VIA_TAPER,sigma=Inf)),
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     length(origin)==2 && all(isfinite,origin) || throw(ArgumentError("layout origin must be two finite SI coordinates"))
     size(linear_transform)==(2,2) && all(isfinite,linear_transform) && !iszero(det(linear_transform)) ||
         throw(ArgumentError("layout transform must be a finite nonsingular 2x2 matrix"))

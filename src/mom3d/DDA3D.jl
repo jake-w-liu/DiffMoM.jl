@@ -1930,7 +1930,7 @@ Returns `(A, alpha, epsv)`, where `A` is a `3N x 3N` dense matrix.
 function assemble_dda_3d(
         grid::VoxelGrid3D, k0::Real, eps_r;
         radiative_correction::Bool=false,
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     k = _finite_positive_k0_3d(k0)
     N = grid.nvoxels
     system_size = _validated_dense_dda_system_size(
@@ -2041,7 +2041,7 @@ function solve_dda_3d(grid::VoxelGrid3D, k0::Real, eps_r, E_inc::AbstractVector;
                       radiative_correction::Bool=false,
                       solver::Symbol=:direct,
                       max_matrix_bytes::Integer=
-                          _DEFAULT_MAX_DENSE_PAYLOAD_BYTES,
+                          _default_max_dense_payload_bytes(),
                       tol::Float64=1e-8,
                       maxiter::Int=200,
                       memory::Int=20,
@@ -2273,7 +2273,7 @@ end
 
 function scattered_field_dda_3d(
         res::DDAResult3D, r_obs::AbstractVector{Vec3};
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _preflight_dda_field_output_3d(
         length(r_obs), 1, max_output_bytes,
         "DDA scattered-field output")
@@ -2482,7 +2482,7 @@ end
 
 function farfield_dda_3d(
         res::DDAResult3D, rhat::AbstractVector{Vec3};
-        max_output_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_output_bytes::Integer=_default_max_dense_payload_bytes())
     _preflight_dda_field_output_3d(
         length(rhat), 1, max_output_bytes,
         "DDA far-field output")

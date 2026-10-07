@@ -50,7 +50,7 @@ _planar_coefficient_columns(result::_SonnetBalancedSourceResult)=result.currents
 
 function planar_current_maps(result::_SonnetBalancedSourceResult;port::Integer=1,
         voltages=nothing,incident_waves=nothing,z_fraction::Real=.5,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     n=length(result.z0)
     voltages===nothing || incident_waves===nothing || throw(ArgumentError("provide voltages or incident_waves"))
     reserve=_checked_payload_sum("balanced native current excitation",
@@ -138,7 +138,7 @@ because the installed Lite engine rejects these features."""
 function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         variables=Dict{String,Float64}(),component_response=nothing,
         ground_direction::Symbol=:auto,bridge_zs::Number=0.,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,scalar_files=nothing,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),scalar_files=nothing,
         scalar_root=dirname(p.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384)
@@ -298,7 +298,7 @@ end
 function _solve_sonnet_floating(p::SonnetProject,freq::Real;grid=nothing,
         variables=Dict{String,Float64}(),calibration=nothing,component_response=nothing,
         ground_direction::Symbol=:auto,bridge_zs::Number=0.,pin_calibration=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,scalar_files=nothing,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),scalar_files=nothing,
         scalar_root=dirname(p.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,kw...)
@@ -355,7 +355,7 @@ end
 for external incident power waves, including coupled calibration transfer
 and explicit signal/reference circuit voltages."""
 function planar_current_maps(result::SonnetFloatingResult;port::Integer=1,incident_waves=nothing,
-        max_bytes::Integer=_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     n=length(result.z0)
     reserve=_checked_array_payload_bytes(ComplexF64,n+size(result.source_incidence,1)+size(result.source_incidence,2))
     _enforce_payload_limit(reserve,max_bytes,"native floating current excitation","max_bytes")

@@ -135,17 +135,30 @@ function _artwork_exact_bounds_preflight(s,extra=())
     bits=max(_artwork_exact_operand_bits(s),_artwork_exact_operand_bits(extra))
     payload=_checked_payload_sum("exact artwork bounds workspace",Base.summarysize(s),
         _checked_array_payload_bytes(UInt8,128,depth+1,16*(bits+1)+64))
-    _enforce_payload_limit(payload,_DEFAULT_MAX_DENSE_PAYLOAD_BYTES,"exact artwork bounds workspace","max_bytes")
+    _enforce_payload_limit(payload,_default_max_dense_payload_bytes(),"exact artwork bounds workspace","max_bytes")
 end
 function _artwork_exact_bounds_arc_direction(s,direction)
     _artwork_exact_bounds_preflight(s,direction)
     _artwork_exact_qarc_angle(s,_artwork_exact_qadd(_artwork_exact_qpoint(s.center),_artwork_exact_qpoint(direction)))
 end
+# MPFR's public C ABI fixes MPFR_RNDU=2 and MPFR_RNDD=3 (mpfr.h).
+# Dependency-boundary tests check these names in the loaded public MPFR_jll library.
+const _artwork_mpfr_up=Cint(2)
+const _artwork_mpfr_down=Cint(3)
 function _artwork_exact_bound_float(q,lower)
-    value=Float64(q)
-    !isfinite(value)&&return lower ? prevfloat(value) : nextfloat(value)
-    represented=_artwork_exact_q(value)
-    lower ? (represented>q ? prevfloat(value) : value) : (represented<q ? nextfloat(value) : value)
+    # Store the rational operands exactly, independent of caller MPFR state.
+    # Directed division at the output significand width and directed conversion
+    # preserve enclosure through Float64 subnormal and overflow boundaries.
+    n,d=numerator(q),denominator(q)
+    num=BigFloat(n;precision=ndigits(n;base=2))
+    den=BigFloat(d;precision=ndigits(d;base=2))
+    value=BigFloat(;precision=precision(Float64))
+    mode=lower ? RoundDown : RoundUp
+    mpfr_mode=lower ? _artwork_mpfr_down : _artwork_mpfr_up
+    ccall((:mpfr_div,_planar_mpfr_library),Cint,
+        (Ref{BigFloat},Ref{BigFloat},Ref{BigFloat},Cint),
+        value,num,den,Cint(mpfr_mode))
+    return Float64(value,mode)
 end
 function _artwork_exact_inverse_bounds(s,bounds)
     _artwork_exact_bounds_preflight(s,bounds)
