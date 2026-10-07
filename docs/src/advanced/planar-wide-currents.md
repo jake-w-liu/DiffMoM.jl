@@ -259,3 +259,20 @@ datatype, consumer, ownership and view controls pass on both Julia
 versions, and the registered current-source suite passes 520 focused
 assertions with the existing Aqua and import checks retained. Complete
 current-source and hosted qualification remain separate requirements.
+
+## Saved result compatibility
+
+Checked physical currents require changes to the result representation:
+`PlanarResult` retains a current/factor type and physical residuals, while
+`PlanarSourceResult` carries its current element type. Constructor compatibility
+does not imply binary compatibility for prior Julia `Serialization` caches.
+Actual caches written with the previous definitions fail to deserialize under
+these types on both supported Julia versions.
+
+Recover a cache in its original compatible code/dependency environment, then
+export supported network data through Touchstone or rebuild and solve from
+the original model inputs. Touchstone excludes geometry, currents, factors and
+accuracy evidence. The representative common-real-reference recovery/import
+checks preserve the stored network values exactly; opaque object graphs have
+no automatic cross-revision upgrader. See the [saved-object policy](../api/types.md#Saved-Julia-objects-and-portable-data)
+for the environment records to retain and the explicit migration boundary.

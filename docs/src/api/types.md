@@ -4,6 +4,35 @@
 
 Reference for the core data structures used across `DiffMoM.jl`. Understanding these types is essential for using the package effectively: they carry the geometry, basis-function connectivity, far-field sampling, and preconditioner data that flow through every stage of the simulation pipeline.
 
+## Saved Julia objects and portable data
+
+DiffMoM structs saved with Julia's `Serialization` are caches for a compatible
+code and dependency environment. They do not define a stable binary schema
+across DiffMoM revisions. Keep the generating DiffMoM commit, Julia version,
+architecture, `Project.toml`, `Manifest.toml` and original model inputs with
+the cache. A package version number alone does not identify an unreleased
+checkout. Julia documents package type changes as an exception to its
+[serialization compatibility](https://docs.julialang.org/en/v1/stdlib/Serialization/).
+
+When a struct's fields or type parameters change, load an old cache with its
+original compatible environment. Export the required values through a
+documented interchange format, or rebuild the model from its original inputs
+and run the current public solver. Automatic migration of an opaque Julia
+object graph is unsupported. Touchstone carries supported network data;
+it does not carry current coefficients, geometry, factorizations or solver
+accuracy evidence. Preserve those original inputs when a new solve is needed.
+
+The checked-current implementation changes `PlanarResult` to retain wider
+coefficients/factors and physical residuals, and adds a current element-type
+parameter to `PlanarSourceResult`. Binary objects written with the prior
+definitions require the recovery procedure above. Existing ordinary result
+constructors keep their supported coefficient conversion behavior. Actual
+old-code recovery followed by Touchstone export/current-code import preserves
+the checked common-real-reference examples' frequency, references and complex
+network values exactly on both supported Julia versions. This verifies the
+documented recovery route for those examples; it does not establish a general
+binary upgrader or certify an old solution's physical accuracy.
+
 ---
 
 ## `TriMesh` -- Triangle Mesh
