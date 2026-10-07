@@ -28,3 +28,17 @@ Primary API references:
 
 - https://docs.python.org/3/library/subprocess.html#subprocess.Popen.wait
 - https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes
+
+The exact deadline-fix main run37611819035 subsequently passed all seven
+hosted jobs and all four complete strict commands. Independent log review
+verified original assertion counts after stripping ANSI presentation.
+
+The platform120-minute override followed genuine Windows cancellations
+at30 and60 minutes, but those observations do not derive120 as a bound.
+No project requirement was recorded for the docs20-minute override. Both
+repository overrides are removed; every job now uses the documented
+GitHub hosting deadline. No new numeric timeout is introduced, and no
+job, step, numerical target or required command is skipped or softened.
+GitHub service policy remains an external operational constraint.
+
+https://docs.github.com/en/actions/reference/limits

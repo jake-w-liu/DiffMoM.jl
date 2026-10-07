@@ -17,7 +17,6 @@ jobs:
   test:
     name: Julia ${{ matrix.julia }} / ${{ matrix.os }} / ${{ matrix.threads }} thread(s)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +61,6 @@ jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     env:
       JULIA_NUM_THREADS: 1
       JULIA_NUM_PRECOMPILE_TASKS: 1
