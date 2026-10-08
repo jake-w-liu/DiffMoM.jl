@@ -250,13 +250,14 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     reserve=_checked_payload_sum("project physical accepted power",reserve,
         _checked_array_payload_bytes(ComplexF64,power_vectors,n))
     if result.y!==nothing && (voltages!==nothing || result.circuit===nothing)
-        # The stored reference vector is borrowed. A voltage request
-        # owns voltage/current vectors; an incident request owns one result
-        # vector. Both helpers own Float64 roots.
-        helper_vectors=voltages===nothing ? 1 : 2
+        # A voltage request owns voltage/current vectors and one root array.
+        # The S route owns reference/incident/reflected/voltage vectors; a
+        # retained recovery owns one voltage. Each incident route owns roots.
+        helper_vectors=voltages===nothing ? 4+1 : 2
+        helper_roots=voltages===nothing ? 1+1 : 1
         reserve=_checked_payload_sum("project retained admittance excitation",reserve,
             _checked_array_payload_bytes(ComplexF64,helper_vectors,n),
-            _checked_array_payload_bytes(Float64,n))
+            _checked_array_payload_bytes(Float64,helper_roots,n))
         if result.circuit===nothing && voltages===nothing
             reserve=_checked_payload_sum("project admittance voltage factor",reserve,
                 _checked_array_payload_bytes(ComplexF64,n,n),
@@ -291,7 +292,7 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     nodes=if result.circuit===nothing
         voltages!==nothing ? input : result.y===nothing ?
             _planar_wave_voltage(result.s,waves,result.z0) :
-            _planar_wave_voltage_admittance(result.y,waves,result.z0)
+            _planar_wave_voltage_retained(result.y,result.s,waves,result.z0)
     else
         node_voltages=result.circuit.voltages*waves
         transpose(result.model.source_incidence)*view(node_voltages,1:length(result.model.node_names))

@@ -1,8 +1,13 @@
 # Retained terminal excitation, power and geometry rounding
 
 Finite physical excitation and loss can survive after rounded S parameters
-reach an exact short or lossless boundary. Radiation now uses retained
-admittance for terminal excitation and peak V/I power, and loaded projects
+reach an exact short or lossless boundary. Incident conversion preserves
+ordinary declared-S arithmetic, including its existing current-to-field
+mapping. If S conversion produces a zero component while the retained-Y
+solution carries a nonzero component, radiation recovers that retained
+voltage. The choice uses exact component zero checks; it adds no selected
+conditioning, amplitude, or accuracy threshold. Peak V/I accepted power
+uses the physical retained response, and loaded projects
 use external differential terminal voltages and currents from their actual
 MNA solution. Explicit no-circuit voltages remain authoritative. The S-only
 route retains its declared S representation. Every computed positive power
@@ -39,3 +44,23 @@ Complete original suites, measured accounting/static gates, publication
 checks and this candidate's own CI remain required. Existing negative
 roundoff guards and the broader numeric/resource/RFIC audit remain open.
 Later rational-fit repairs are a separate isolated candidate scope.
+
+The earlier candidate used retained Y for every incident conversion. The
+unchanged original solved-wave comparison at 1e-13 exposed cancellation
+sensitivity when almost identical complex voltages rounded coefficient
+products differently. Independent analytic and promoted one-port voltages
+confirmed that changing the oracle would not resolve this discrepancy.
+Ordinary S mapping is preserved and exact component loss is recovered in
+the revised implementation. Both Julia versions now pass 1318 package
+assertions: all original 884 guard/resource/receiving/transfer/conformal/
+retained assertions and all 434 assertions from the five original radiation
+modules, with every original fixture and tolerance unchanged. Budget
+accounting follows the actual four owned S vectors, one recovery vector,
+two root arrays, and existing matrix/pivot storage.
+
+Current complete suites, measured/static accounting, native/docs/scoped
+qualification and publication checks remain pending. Earlier whole-suite
+failures and immutable snapshots are preserved. The scoped allocation
+numbers above describe the unchanged private admittance helper; the revised
+public selection route needs its own inference/ownership/allocation checks.
+Later rational fitting and nonfinite accepted-power guards remain separate.

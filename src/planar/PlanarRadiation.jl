@@ -403,8 +403,10 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
         reserve=_checked_payload_sum("retained admittance radiation excitation",reserve,
             _checked_array_payload_bytes(ComplexF64,n,n),
             _checked_array_payload_bytes(Int,n),
-            _checked_array_payload_bytes(ComplexF64,n),
-            _checked_array_payload_bytes(Float64,n))
+            # S conversion owns references, incident, reflected and voltage
+            # vectors; recovery owns its voltage. Each route owns roots.
+            _checked_array_payload_bytes(ComplexF64,4+1,n),
+            _checked_array_payload_bytes(Float64,1+1,n))
     end
     _enforce_payload_limit(reserve,max_bytes,"radiation excitation","max_bytes")
     refs=_planar_reference_values(hasproperty(result,:z0) ? result.z0 :
@@ -419,7 +421,7 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
         v=_planar_stored_phasor.(input)
         if incident_waves!==nothing
             v=result.y===nothing ? _planar_wave_voltage(result.s,v,refs) :
-                _planar_wave_voltage_admittance(result.y,v,refs)
+                _planar_wave_voltage_retained(result.y,result.s,v,refs)
         end
     end
     X=direct ? result.currents : _planar_coefficient_columns(result)

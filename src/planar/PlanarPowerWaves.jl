@@ -192,6 +192,22 @@ function _planar_wave_voltage_admittance(Y::AbstractMatrix,a::AbstractVector,ref
     return value
 end
 
+# Preserve ordinary declared-S voltage arithmetic and its current-field
+# mapping. A retained-Y solve recovers a component only when S conversion
+# has rounded it to zero. No selected conditioning or amplitude threshold.
+function _planar_wave_voltage_retained(Y::AbstractMatrix,S::AbstractMatrix,
+        a::AbstractVector,refs)
+    declared=_planar_wave_voltage(S,a,refs)
+    any(v->iszero(real(v)) || iszero(imag(v)),declared) || return declared
+    retained=_planar_wave_voltage_admittance(Y,a,refs)
+    for index in eachindex(declared,retained)
+        lost_real=iszero(real(declared[index])) && !iszero(real(retained[index]))
+        lost_imag=iszero(imag(declared[index])) && !iszero(imag(retained[index]))
+        (lost_real || lost_imag) && return retained
+    end
+    return declared
+end
+
 function _planar_incident_admittance(Y::AbstractMatrix,v::AbstractVector,refs)
     n=length(v)
     n>0 && size(Y)==(n,n) && all(isfinite,Y) && all(isfinite,v) ||
