@@ -125,6 +125,43 @@ function _planar_receive_direction(stack,omega,k,kc2,c,pol,vinc,zext)
     return _planar_receive_fields(stack,omega,kc2,pol,vinc,zext)
 end
 
+# Exact axial field-integral series in the unit disk. Successive term
+# ratios decrease factorially; retain terms to working-arithmetic nonprogress.
+@inline function _planar_receive_integral_series(q)
+    s=one(q);c2=one(q)/2;c3=one(q)/3
+    st=one(q);t2=one(q)/2;t3=one(q)/3;n=1
+    while true
+        st*=q/((2n)*(2n+1))
+        t2*=q/((2n+1)*(2n+2))
+        t3*=q*(n+1)/(n*(2n+2)*(2n+3))
+        ns,n2,n3=s+st,c2+t2,c3+t3
+        ns==s && n2==c2 && n3==c3 && return s,c2,c3
+        s,c2,c3=ns,n2,n3;n+=1
+    end
+end
+
+# Contract uniform/taper weights before rounding the moments. In particular,
+# a zero-mean linear current cancels the constant term exactly while its
+# separately representable higher-order field remains in the series.
+@inline function _planar_receive_current_series(q,h,hb,ys,vb,wu,wt)
+    hscale=h*hb;escale=ys*h*h*vb
+    hs=hscale*(wu+wt/2);es=escale*(wu/2+wt/3)
+    st=one(q);t2=one(q)/2;n=1
+    while true
+        st*=q/((2n)*(2n+1));t2*=q/((2n+1)*(2n+2))
+        ht=hscale*st*((2n+2)*wu+(2n+1)*wt)/(2n+2)
+        et=escale*t2*((2n+3)*wu+(2n+2)*wt)/(2n+3)
+        nh,ne=hs+ht,es+et
+        nh==hs && ne==es && return hs-es
+        hs,es=nh,ne;n+=1
+    end
+end
+
+@inline function _planar_receive_via_pair(b,p)
+    return p<length(b.kind) && b.kind[p]==_BASIS_VIA_U && b.kind[p+1]==_BASIS_VIA_T &&
+        b.level[p]==b.level[p+1] && b.ei[p]==b.ei[p+1] && b.ej[p]==b.ej[p+1]
+end
+
 @inline function _planar_receive_moments(layer,omega,kc2,pol,vb,vt,hb,ht,g2=_planar_gamma2_layer(pol,kc2,omega,layer))
     h=real(layer.thickness);x=sqrt(g2)*h
     zs=pol==TE_POL ? 1im*omega*_MU0*layer.mur : g2/(1im*omega*_EPS0*layer.epsr)
@@ -138,10 +175,8 @@ end
         return vm,hm,h*(cb*hb+ct*ht)
     end
     q=x*x
-    s,c2,c3=if abs(q)<1e-5
-        (1+q/6+q*q/120+q^3/5040,
-            .5+q/24+q*q/720+q^3/40320,
-            1/3+q/30+q*q/840+q^3/45360)
+    s,c2,c3=if abs2(q)<=one(abs2(q))
+        _planar_receive_integral_series(q)
     else
         (sinh(x)/x,(cosh(x)-1)/q,(cosh(x)-sinh(x)/x)/q)
     end
@@ -166,8 +201,9 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
     # norm still belongs to the layer dispersion relation below.
     kc=hypot(kx,ky)
     cp,sp=iszero(kc) ? normal_direction : (kx/kc,ky/kc)
-    overlap=0.0im;L=length(stack.layers);kc2=kx*kx+ky*ky
+    overlap=0.0im;L=length(stack.layers);kc2=kx*kx+ky*ky;paired_next=0
     for p in eachindex(coeff)
+        p==paired_next && continue
         iszero(coeff[p]) && continue
         kind=prob.basis.kind[p];elem=_basis_elem(prob.basis,p,prob.sheets,prob.vias,prob.vols)
         field=if _is_via_kind(kind)
@@ -175,7 +211,27 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
             origlayer=prob.vias[prob.basis.level[p]].layer
             j=side==1 ? origlayer : L-origlayer+1
             layer=stack.layers[j]
-            _,hu,ht=_planar_receive_moments(layer,omega,kc2,TM_POL,V[j],V[j+1],H[j],H[j+1],_planar_receive_moment_gamma2(stack,layer,omega,kc2,TM_POL,axial_direction))
+            g2=_planar_receive_moment_gamma2(stack,layer,omega,kc2,TM_POL,axial_direction)
+            h=real(layer.thickness);q=g2*h*h
+            if _planar_receive_via_pair(prob.basis,p) && !iszero(coeff[p+1]) &&
+                    abs2(q)<=one(abs2(q)) && axial_direction!==nothing
+                paired_next=p+1
+                # Binary scaling follows coefficient/angle representation,
+                # keeping the current contraction inside its finite range.
+                _,ce=frexp(max(abs(real(coeff[p])),abs(imag(coeff[p])),
+                    abs(real(coeff[p+1])),abs(imag(coeff[p+1]))))
+                cu=complex(ldexp(real(coeff[p]),-ce),ldexp(imag(coeff[p]),-ce))
+                ct=complex(ldexp(real(coeff[p+1]),-ce),ldexp(imag(coeff[p+1]),-ce))
+                wu,wt=side==1 ? (cu,ct) : (cu+ct,-ct)
+                ys=1im*omega*_EPS0*layer.epsr
+                moment=_planar_receive_current_series(q,h,H[j],ys,V[j],wu,wt)
+                k,_,sine=axial_direction;sm,se=frexp(sine)
+                weighted=moment*_planar_rooftop_fourier(prob,p,kx,ky)*
+                    (side*k*sm/(omega*_EPS0*layer.epsr_z))
+                overlap+=complex(ldexp(real(weighted),ce+se),ldexp(imag(weighted),ce+se))
+                continue
+            end
+            _,hu,ht=_planar_receive_moments(layer,omega,kc2,TM_POL,V[j],V[j+1],H[j],H[j+1],g2)
             moment=kind==_BASIS_VIA_U ? hu : side==1 ? ht : hu-ht
             value=side*kc/(omega*_EPS0*layer.epsr_z)*moment
             if (iszero(value) || issubnormal(real(value)) || issubnormal(imag(value))) && !iszero(moment) && axial_direction!==nothing

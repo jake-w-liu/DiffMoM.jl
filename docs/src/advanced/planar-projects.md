@@ -316,7 +316,10 @@ sine and cosine at grazing incidence. Matched-layer receiving moments retain
 the axial wave number, and PEC images use their antisymmetric exponential
 relation. The spherical-wave factor weights the receiving fields before
 rounding; binary scaling preserves representable fields from amplified
-currents when a unit via reaction would become zero or subnormal.
+currents when a unit via reaction would become zero or subnormal. Colocated
+uniform and tapered via currents are combined before axial moments round,
+preserving the smaller field of a zero-mean current. Axial field integrals
+use a convergent series in the unit disk, retaining the working precision.
 
 
 On macOS, the default raw-payload budget includes free, inactive, and
