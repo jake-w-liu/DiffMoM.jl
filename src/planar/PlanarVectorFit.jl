@@ -79,8 +79,48 @@ function _vf_basis(s,poles)
     return A
 end
 
+# Online scaled sum of squares, retaining finite magnitudes before squaring.
+# The state represents scale^2*squares; no selected range threshold is needed.
+@inline function _vf_scaled_square(state,value::Real)
+    scale,squares=state
+    magnitude=abs(value)
+    iszero(magnitude) && return state
+    return magnitude>scale ? (magnitude,1+squares*(scale/magnitude)^2) :
+        (scale,squares+(magnitude/scale)^2)
+end
+
+function _vf_fit_errors(model,fs,Ys)
+    errors=(0.0,0.0);data=(0.0,0.0)
+    for k in eachindex(fs)
+        predicted=planar_rational_eval(model,fs[k])
+        for index in eachindex(predicted,Ys[k])
+            difference=predicted[index]-Ys[k][index]
+            errors=_vf_scaled_square(_vf_scaled_square(errors,real(difference)),imag(difference))
+            value=Ys[k][index]
+            data=_vf_scaled_square(_vf_scaled_square(data,real(value)),imag(value))
+        end
+    end
+    rms=errors[1]*sqrt(errors[2]/(length(fs)*length(Ys[1])))
+    relative=if iszero(data[1])
+        rms
+    elseif iszero(errors[1])
+        0.0
+    else
+        # Form the scale ratio with binary exponents so its intermediate
+        # division cannot overflow or erase a representable final ratio.
+        em,ee=frexp(errors[1]);dm,de=frexp(data[1])
+        ldexp((em/dm)*sqrt(errors[2]/data[2]),ee-de)
+    end
+    return rms,relative
+end
+
 function _vf_shared_relocate(s,Ys,poles)
     order,m,nel = length(poles),length(s),length(Ys[1])
+    # Uniform response scaling cancels from C*x=b. Normalize before QR
+    # projection so representable small responses retain the same pole fit.
+    # Component maxima remain finite even when a complex magnitude overflows.
+    amplitude=maximum(Y->maximum(y->max(abs(real(y)),abs(imag(y))),Y;init=0.0),Ys;init=0.0)
+    iszero(amplitude) && return poles
     basis = _vf_basis(s,poles)
     Ar = vcat(real.(basis),imag.(basis))
     factor = LinearAlgebra.qr(Ar)
@@ -88,7 +128,7 @@ function _vf_shared_relocate(s,Ys,poles)
     C = zeros(Float64,length(omitted)*nel,order)
     b = zeros(Float64,size(C,1))
     for e in 1:nel
-        fe = ComplexF64[Y[e] for Y in Ys]
+        fe = ComplexF64[Y[e]/amplitude for Y in Ys]
         sigma = -fe .* view(basis,:,1:order)
         reduced = transpose(factor.Q)*hcat(vcat(real.(sigma),imag.(sigma)),
             vcat(real.(fe),imag.(fe)))
@@ -96,11 +136,13 @@ function _vf_shared_relocate(s,Ys,poles)
         C[rows,:] .= view(reduced,omitted,1:order)
         b[rows] .= view(reduced,omitted,order+1)
     end
-    maximum(abs,b;init=0.0) <= 1e-12*max(maximum(abs,Ys[1]),1e-12) && return poles
+    all(iszero,b) && return poles
     # Rank-revealing SVD prevents a constant/affine response or inactive
     # matrix entry from creating spurious poles through a singular fit.
     F = LinearAlgebra.svd(C;full=false)
-    cutoff = maximum(F.S;init=0.0)*1e-10
+    # Match the standard LinearAlgebra numerical-rank convention: the
+    # smaller matrix dimension times working epsilon and largest singular value.
+    cutoff = maximum(F.S;init=0.0)*min(size(C)...)*eps(eltype(F.S))
     x = F.V * [F.S[k] > cutoff ? dot(view(F.U,:,k),b)/F.S[k] : 0.0
         for k in eachindex(F.S)]
     H = zeros(Float64,order,order)
@@ -120,7 +162,12 @@ function _vf_shared_relocate(s,Ys,poles)
         end
     end
     H .-= drive*transpose(x)
-    return _vf_sort([complex(-max(abs(real(p)),1e-9),imag(p)) for p in eigvals(H)])
+    relocated=eigvals(H)
+    all(isfinite,relocated) || throw(ArgumentError("vector-fit relocation produced nonfinite poles"))
+    # Reflect unstable poles without imposing an unrelated decay rate.
+    # A transient zero real part remains available to subsequent relocation;
+    # strict stability is checked on the final physical pole set.
+    return _vf_sort([complex(-abs(real(p)),imag(p)) for p in relocated])
 end
 
 """Check the Hermitian part of the admittance on an explicit nonempty
@@ -268,7 +315,12 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
         max_bytes,"vector fit","max_bytes")
     Ys = Matrix{ComplexF64}[]
     for index in perm
-        H = Matrix{ComplexF64}(series[index])
+        # Preserve the same dense workspace while checking each stored
+        # component before it can disappear or become nonfinite.
+        H = Matrix{ComplexF64}(undef,n,n)
+        for (entry,value) in enumerate(series[index])
+            H[entry] = _planar_stored_phasor(value)
+        end
         if format === :s
             references=_circuit_z0(z0,n;freq=frequencies[index])
             H = planar_s_to_y(H,references;max_bytes)
@@ -289,6 +341,8 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
     for _ in 1:iterations
         poles = _vf_shared_relocate(s,Ys,poles)
     end
+    all(p->isfinite(p) && real(p)<0,poles) || throw(ArgumentError(
+        "vector fit does not determine finite strictly decaying poles"))
     basis = _vf_basis(s,poles)
     Ar = vcat(real.(basis),imag.(basis))
     rhs = Matrix{Float64}(undef,2m,n*n)
@@ -343,11 +397,10 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
         shift += extra
         certificate = planar_rational_certificate(provisional;max_bytes=max_bytes)
     end
-    num = sum(sum(abs2,planar_rational_eval(provisional,fs[k])-Ys[k]) for k in 1:m)
-    den = sum(sum(abs2,Y) for Y in Ys)
+    rms,relative = _vf_fit_errors(provisional,fs,Ys)
     margin = check.margin+shift
-    return PlanarRationalModel(poles,residues,d,e,fs,sqrt(num/(m*n*n)),
-        den>0 ? sqrt(num/den) : sqrt(num/(m*n*n)),margin>=-passivity_tol,
+    return PlanarRationalModel(poles,residues,d,e,fs,rms,
+        relative,margin>=-passivity_tol,
         certificate.certified,certificate.method,margin,shift,capacitance_adjustment)
 end
 
