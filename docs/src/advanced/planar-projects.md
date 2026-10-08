@@ -319,7 +319,7 @@ rounding; binary scaling preserves representable fields from amplified
 currents when a unit via reaction would become zero or subnormal. Colocated
 uniform and tapered via currents are combined before axial moments round,
 preserving the smaller field of a zero-mean current. Axial field integrals
-use a convergent series in the unit disk, retaining the working precision.
+use a convergent series in the unit disk, retaining the working precision. The receiving integrals stay analytic in the squared axial wave number at cutoff, preserving its parameter derivatives.
 
 
 On macOS, the default raw-payload budget includes free, inactive, and

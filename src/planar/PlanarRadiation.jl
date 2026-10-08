@@ -163,9 +163,18 @@ end
 end
 
 @inline function _planar_receive_moments(layer,omega,kc2,pol,vb,vt,hb,ht,g2=_planar_gamma2_layer(pol,kc2,omega,layer))
-    h=real(layer.thickness);x=sqrt(g2)*h
+    h=real(layer.thickness);q=g2*h*h
     zs=pol==TE_POL ? 1im*omega*_MU0*layer.mur : g2/(1im*omega*_EPS0*layer.epsr)
     ys=pol==TM_POL ? 1im*omega*_EPS0*layer.epsr : g2/(1im*omega*_MU0*layer.mur)
+    if abs2(q)<=one(abs2(q))
+        # The integrals are analytic in gamma squared at cutoff. Avoid
+        # differentiating sqrt(g2) and then squaring its singular derivative.
+        s,c2,c3=_planar_receive_integral_series(q)
+        return vb*s-zs*h*hb*c2,
+            h*hb*s-ys*h*h*vb*c2,
+            h*hb*(s-c2)-ys*h*h*vb*c3
+    end
+    x=sqrt(g2)*h
     if real(x)>20
         e=exp(-x);e2=e*e
         w=(1-e)/(x*(1+e))
@@ -174,12 +183,7 @@ end
         ct=(1+e2)/(x*(1-e2))-inv(x*x)
         return vm,hm,h*(cb*hb+ct*ht)
     end
-    q=x*x
-    s,c2,c3=if abs2(q)<=one(abs2(q))
-        _planar_receive_integral_series(q)
-    else
-        (sinh(x)/x,(cosh(x)-1)/q,(cosh(x)-sinh(x)/x)/q)
-    end
+    s,c2,c3=sinh(x)/x,(cosh(x)-1)/q,(cosh(x)-sinh(x)/x)/q
     return vb*s-zs*h*hb*c2,
         h*hb*s-ys*h*h*vb*c2,
         h*hb*(s-c2)-ys*h*h*vb*c3

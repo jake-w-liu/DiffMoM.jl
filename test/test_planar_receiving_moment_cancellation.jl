@@ -1,5 +1,5 @@
 module ReceivingMomentCancellationTests
-using DiffMoM,LinearAlgebra,Test
+using DiffMoM,LinearAlgebra,Test,ForwardDiff
 
 function centered_cosh_integral(q)
     result=zero(q);n=1
@@ -101,6 +101,29 @@ function run_tests()
         for (value,want) in zip(actual,expected)
             @test isapprox(value,want)
         end
+    end
+    # At exact cutoff the fields are analytic in gamma squared. These
+    # slopes are the differentiated Maxwell field integrals at q=0.
+    layer0=PlanarLayer(1.,1.,h)
+    for pol in (DiffMoM.TE_POL,DiffMoM.TM_POL),field in (:electric,:magnetic),quantity in 1:3,component in (:real,:imag)
+        vb=field===:electric ? 1.0+0im : 0.0+0im
+        hb=field===:magnetic ? 1.0+0im : 0.0+0im
+        part=component===:real ? real : imag
+        function sample(t)
+            result=DiffMoM._planar_receive_moments(layer0,omega,0.,pol,vb,vb,hb,hb,complex(t,zero(t)))
+            part(result[quantity])
+        end
+        actual=@inferred ForwardDiff.derivative(sample,0.)
+        expected=setprecision(BigFloat,2precision(Float64)) do
+            hh=BigFloat(h);ww=BigFloat(omega);vv=Complex{BigFloat}(vb);bb=Complex{BigFloat}(hb)
+            ze=im*ww*BigFloat(DiffMoM._MU0);ym=im*ww*BigFloat(DiffMoM._EPS0)
+            slopes=pol==DiffMoM.TE_POL ?
+                (vv*hh^2/6-ze*bb*hh^3/24,bb*hh^3/6-vv*hh^2/(2ze),bb*hh^3/8-vv*hh^2/(3ze)) :
+                (vv*hh^2/6-bb*hh/(2ym),bb*hh^3/6-ym*vv*hh^4/24,bb*hh^3/8-ym*vv*hh^4/30)
+            part(slopes[quantity])
+        end
+        @test isfinite(actual)
+        @test isapprox(actual,expected)
     end
     @test precision(BigFloat)==caller_bits
 end

@@ -35,6 +35,7 @@ Dates = "1"
 ExplicitImports = "1.15"
 EzXML = "1.2.3"
 FFTW = "1"
+ForwardDiff = "1"
 IncompleteLU = "0.2.1"
 JSON = "1"
 Krylov = "0.9"
@@ -56,6 +57,7 @@ XML2_jll = "2.13.9"
 julia = "1.12"
 
 [extras]
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 CRC32c = "8bf52ea8-c179-5cab-976a-9e18b702a9bc"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -66,4 +68,4 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "CRC32c", "Dates", "ExplicitImports", "Printf", "Profile", "Statistics", "Test"]
+test = ["ForwardDiff", "Aqua", "CRC32c", "Dates", "ExplicitImports", "Printf", "Profile", "Statistics", "Test"]

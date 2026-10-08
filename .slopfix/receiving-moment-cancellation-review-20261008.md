@@ -26,3 +26,16 @@ representation switch, remain separately open. Native-reference, full
 package, documentation, exact accounting, static gates and own hosted CI
 remain required before this candidate is published. No global correctness
 or performance optimality claim is made.
+
+The full receiving-moment gradient at exact cutoff exposed a separate
+sqrt-first NaN on both versions. q now derives directly from gamma squared
+times thickness squared before the unit-disk branch; sqrt is used only
+outside that analytic domain. This also removes an unnecessary root on
+ordinary small-argument calls. No unbounded-loop failure was observed.
+The durable regression checks all24 real/imaginary TE/TM cutoff slopes
+against differentiated exact Maxwell integrals, including finite output.
+ForwardDiff is a test-only dependency; its compatibility major and UUID
+come from the already-executed1.4.6 probe environments on both versions.
+Production dependency declarations remain identical. Older source28
+snapshots were frozen before this correction and never executed or pushed.
+They remain archived and cannot qualify the corrected head.
