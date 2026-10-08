@@ -149,6 +149,71 @@ function _planar_wave_voltage(S::AbstractMatrix,a::AbstractVector,refs)
     return value
 end
 
+# Physical terminal excitation from retained admittance. S can round to an
+# exact short while the admittance still carries a finite voltage/current.
+function _planar_wave_voltage_admittance(Y::AbstractMatrix,a::AbstractVector,refs)
+    n=length(a)
+    n>0 && size(Y)==(n,n) && all(isfinite,Y) && all(isfinite,a) ||
+        throw(ArgumentError("admittance excitation needs finite matching ports and incident waves"))
+    z=if refs isa AbstractVector{ComplexF64}
+        length(refs)==n || throw(DimensionMismatch("reference impedances must match the port count"))
+        all(ref->isfinite(ref) && real(ref)>0,refs) ||
+            throw(ArgumentError("power-wave references must be finite with positive real part"))
+        refs
+    else
+        _planar_reference_values(refs,n)
+    end
+    r=_planar_reference_roots(z)
+    # Stored ComplexF64 incident waves are read-only here; the solution
+    # has its own buffer. Wider inputs still use checked conversion.
+    incident=a isa AbstractVector{ComplexF64} ? a : _planar_stored_phasors(a)
+    K=Matrix{ComplexF64}(undef,n,n);value=Vector{ComplexF64}(undef,n)
+    for p in 1:n
+        scale=0.0
+        for q in 1:n
+            entry=z[p]*Y[p,q]+(p==q)
+            K[p,q]=entry
+            isfinite(K[p,q]) || throw(ArgumentError("admittance voltage coefficients exceed finite ComplexF64 values"))
+            scale=max(scale,abs(real(K[p,q])),abs(imag(K[p,q])))
+        end
+        iszero(scale) && throw(ArgumentError("admittance voltage system is singular"))
+        for q in 1:n;K[p,q]/=scale;end
+        # Scale the physical RHS with binary exponents before rounding.
+        # Dividing first could erase a small RHS that a large wave amplifies.
+        rm,re=frexp(r[p]);sm,se=frexp(scale)
+        am,ae=frexp(real(incident[p]));bm,be=frexp(imag(incident[p]))
+        value[p]=complex(ldexp(2rm*am/sm,re+ae-se),ldexp(2rm*bm/sm,re+be-se))
+    end
+    all(isfinite,value) || throw(ArgumentError("admittance incident RHS is nonfinite"))
+    factor=lu!(K;check=false)
+    issuccess(factor) || throw(ArgumentError("admittance voltage system is singular"))
+    ldiv!(factor,value)
+    all(isfinite,value) || throw(ArgumentError("admittance terminal voltages are nonfinite"))
+    return value
+end
+
+function _planar_incident_admittance(Y::AbstractMatrix,v::AbstractVector,refs)
+    n=length(v)
+    n>0 && size(Y)==(n,n) && all(isfinite,Y) && all(isfinite,v) ||
+        throw(ArgumentError("admittance excitation needs finite matching ports and terminal voltages"))
+    z=if refs isa AbstractVector{ComplexF64}
+        length(refs)==n || throw(DimensionMismatch("reference impedances must match the port count"))
+        all(ref->isfinite(ref) && real(ref)>0,refs) ||
+            throw(ArgumentError("power-wave references must be finite with positive real part"))
+        refs
+    else
+        _planar_reference_values(refs,n)
+    end
+    r=_planar_reference_roots(z)
+    voltage=_planar_stored_phasors(v);current=Y*voltage
+    all(isfinite,current) || throw(ArgumentError("admittance terminal currents are nonfinite"))
+    for p in 1:n
+        voltage[p]=(voltage[p]+z[p]*current[p])/(2r[p])
+    end
+    all(isfinite,voltage) || throw(ArgumentError("admittance incident waves are nonfinite"))
+    return voltage
+end
+
 function _planar_wave_voltage_matrix(S::AbstractMatrix,refs)
     n=size(S,1)
     n>0 && size(S,2)==n && all(isfinite,S) || throw(ArgumentError(

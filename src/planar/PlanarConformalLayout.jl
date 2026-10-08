@@ -1,9 +1,11 @@
 export PlanarConformalLayout,build_planar_conformal_layout
 
-# Float64 segment coordinates have bounded binary exponents. At8192bits,
-# their degree-two/three numerators remain exact before the final division,
-# including extreme exponents and exact-zero/midpoint intersections.
-const _PLANAR_CONFORMAL_EXACT_BITS=8192
+# The intersection numerator has degree three in coordinate differences.
+# Their IEEE-derived bit bound plus the two addition carries makes every
+# numerator exact. It also exceeds the denominator/range bound needed to
+# preserve the final Float64 rounding, including exact midpoints.
+const _PLANAR_CONFORMAL_EXACT_BITS=
+    3*(_PLANAR_CONFORMAL_COORDINATE_BITS+1)+2
 function _planar_conformal_exact_workspace()
     _checked_payload_sum("conformal exact scalar workspace",
         _checked_array_payload_bytes(BigFloat,64),
@@ -14,10 +16,10 @@ end
     x==a[1] && return a[2]
     x==b[1] && return b[2]
     a[2]==b[2] && return a[2]
-    setprecision(BigFloat,_PLANAR_CONFORMAL_EXACT_BITS) do
+    setprecision(BigFloat,_PLANAR_CONFORMAL_ORIENTATION_BITS) do
         ax,ay,bx,by,xx=BigFloat(a[1]),BigFloat(a[2]),BigFloat(b[1]),BigFloat(b[2]),BigFloat(x)
         den=bx-ax
-        Float64((ay*den+(xx-ax)*(by-ay))/den)
+        Float64((ay*den+(xx-ax)*(by-ay))/den,RoundNearest)
     end
 end
 
@@ -31,8 +33,8 @@ function _planar_conformal_cross_point(a,b,c,d)
         ax,ay=BigFloat.(a);bx,by=BigFloat.(b);cx,cy=BigFloat.(c);dx,dy=BigFloat.(d)
         den=(bx-ax)*(dy-cy)-(by-ay)*(dx-cx)
         num=(cx-ax)*(dy-cy)-(cy-ay)*(dx-cx)
-        x=a[1]==b[1] ? a[1] : c[1]==d[1] ? c[1] : Float64((ax*den+num*(bx-ax))/den)
-        y=a[2]==b[2] ? a[2] : c[2]==d[2] ? c[2] : Float64((ay*den+num*(by-ay))/den)
+        x=a[1]==b[1] ? a[1] : c[1]==d[1] ? c[1] : Float64((ax*den+num*(bx-ax))/den,RoundNearest)
+        y=a[2]==b[2] ? a[2] : c[2]==d[2] ? c[2] : Float64((ay*den+num*(by-ay))/den,RoundNearest)
         (x,y)
     end
 end

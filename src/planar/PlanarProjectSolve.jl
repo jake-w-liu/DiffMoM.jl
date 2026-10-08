@@ -244,6 +244,25 @@ function _project_radiation_excitation(result::PlanarProjectResult;
         _checked_array_payload_bytes(ComplexF64,4,n,n),
         _checked_array_payload_bytes(ComplexF64,m+(result.circuit===nothing ?
             length(result.model.node_names) : size(result.circuit.voltages,1))))
+    # Retained Y needs one current vector. A loaded circuit also needs
+    # one external terminal-voltage vector, distinct from its node values.
+    power_vectors=result.circuit===nothing ? (result.y===nothing ? 0 : 1) : 2
+    reserve=_checked_payload_sum("project physical accepted power",reserve,
+        _checked_array_payload_bytes(ComplexF64,power_vectors,n))
+    if result.y!==nothing && (voltages!==nothing || result.circuit===nothing)
+        # The stored reference vector is borrowed. A voltage request
+        # owns voltage/current vectors; an incident request owns one result
+        # vector. Both helpers own Float64 roots.
+        helper_vectors=voltages===nothing ? 1 : 2
+        reserve=_checked_payload_sum("project retained admittance excitation",reserve,
+            _checked_array_payload_bytes(ComplexF64,helper_vectors,n),
+            _checked_array_payload_bytes(Float64,n))
+        if result.circuit===nothing && voltages===nothing
+            reserve=_checked_payload_sum("project admittance voltage factor",reserve,
+                _checked_array_payload_bytes(ComplexF64,n,n),
+                _checked_array_payload_bytes(Int,n))
+        end
+    end
     raw_columns=result.em isa PlanarCalibratedResult ? result.em.raw.currents : result.em.currents
     if eltype(raw_columns)!==ComplexF64
         bits=_planar_current_precision(raw_columns)
@@ -266,19 +285,42 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     # Circuit voltages are solved per external incident power wave. An
     # external voltage request must therefore be transformed at the loaded
     # network's reference planes, before its internal node transfer.
-    waves=voltages===nothing ? input : _planar_incident_from_voltage(result.s,input,result.z0)
+    waves=voltages===nothing ? input : result.y===nothing ?
+        _planar_incident_from_voltage(result.s,input,result.z0) :
+        _planar_incident_admittance(result.y,input,result.z0)
     nodes=if result.circuit===nothing
-        _planar_wave_voltage(result.s,waves,result.z0)
+        voltages!==nothing ? input : result.y===nothing ?
+            _planar_wave_voltage(result.s,waves,result.z0) :
+            _planar_wave_voltage_admittance(result.y,waves,result.z0)
     else
         node_voltages=result.circuit.voltages*waves
         transpose(result.model.source_incidence)*view(node_voltages,1:length(result.model.node_names))
     end
-    reflected=result.s*waves;accepted=.5real(dot(waves,waves)-dot(reflected,reflected))
+    accepted=if result.circuit!==nothing
+        # Circuit currents are external currents into the network. Form
+        # physical differential port voltages from the same retained MNA
+        # solution, including floating/reference-return terminal pairs.
+        terminal_voltages=Vector{ComplexF64}(undef,n)
+        for p in 1:n
+            positive,negative=result.model.port_terminals[result.model.external[p]]
+            terminal_voltages[p]=(iszero(positive) ? 0.0im : node_voltages[positive])-
+                (iszero(negative) ? 0.0im : node_voltages[negative])
+        end
+        current=result.circuit.currents*waves
+        .5real(dot(terminal_voltages,current))
+    elseif result.y!==nothing
+        # Independently retained conductance can survive after S rounds to
+        # a lossless boundary. Keep the physical peak-phasor V†YV relation.
+        .5real(dot(nodes,result.y*nodes))
+    else
+        reflected=result.s*waves
+        .5real(dot(waves,waves)-dot(reflected,reflected))
+    end
     tolerance=100eps(Float64)*norm(waves)^2
     isfinite(accepted) && accepted>=-tolerance || throw(ArgumentError("project radiation requires passive accepted power"))
     coeff=_planar_current_product(_planar_coefficient_columns(result.em),nodes)
     all(isfinite,coeff) || throw(ArgumentError("project radiation coefficients are nonfinite"))
-    return (problem=source,coefficients=coeff,accepted=accepted>tolerance ? accepted : nothing,
+    return (problem=source,coefficients=coeff,accepted=accepted>0 ? accepted : nothing,
         budget=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve))
 end
 

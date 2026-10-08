@@ -17,6 +17,15 @@ struct PlanarConformalMesh
     areas::Vector{Float64}
 end
 
+# Every finite Float64 coordinate is an integer multiple of its least
+# subnormal. The integer occupies at most this IEEE-derived bit count.
+const _PLANAR_CONFORMAL_COORDINATE_BITS =
+    exponent(floatmax(Float64))-exponent(nextfloat(0.0))+1
+# Differences add one carry bit; the difference of two degree-two
+# products adds one more. This makes the orientation numerator exact.
+const _PLANAR_CONFORMAL_ORIENTATION_BITS =
+    2*(_PLANAR_CONFORMAL_COORDINATE_BITS+1)+1
+
 @inline function _planar_orient2d(ax,ay,bx,by,cx,cy)
     x1,y1,x2,y2=bx-ax,by-ay,cx-ax,cy-ay
     value=x1*y2-y1*x2
@@ -25,10 +34,10 @@ end
     # Geometry predicates retain the exact sign of the input Float64
     # coordinates when an edge is collinear or nearly collinear.
     (ax==bx==cx || ay==by==cy) && return 0.0
-    return setprecision(BigFloat,8192) do
+    return setprecision(BigFloat,_PLANAR_CONFORMAL_ORIENTATION_BITS) do
         exact=(BigFloat(bx)-BigFloat(ax))*(BigFloat(cy)-BigFloat(ay))-
             (BigFloat(by)-BigFloat(ay))*(BigFloat(cx)-BigFloat(ax))
-        stored=Float64(exact)
+        stored=Float64(exact,RoundNearest)
         !iszero(exact) && iszero(stored) && throw(ArgumentError(
             "conformal orientation magnitude is unrepresentable"))
         stored

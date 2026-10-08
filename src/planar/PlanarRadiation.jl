@@ -399,6 +399,13 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
             _checked_array_payload_bytes(UInt8,scalar,4*(result isa PlanarCalibratedResult ? 2 : 1)),
             result isa PlanarCalibratedResult ? _checked_array_payload_bytes(UInt8,_planar_wide_complex_payload(bits),nb,n) : 0)
     end
+    if incident_waves!==nothing && result.y!==nothing
+        reserve=_checked_payload_sum("retained admittance radiation excitation",reserve,
+            _checked_array_payload_bytes(ComplexF64,n,n),
+            _checked_array_payload_bytes(Int,n),
+            _checked_array_payload_bytes(ComplexF64,n),
+            _checked_array_payload_bytes(Float64,n))
+    end
     _enforce_payload_limit(reserve,max_bytes,"radiation excitation","max_bytes")
     refs=_planar_reference_values(hasproperty(result,:z0) ? result.z0 :
         [p.z0 for p in result.problem.ports],n;freq=real(result.freq))
@@ -411,7 +418,8 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
         input isa AbstractVector && length(input)==n && all(isfinite,input) || throw(ArgumentError("excitation must match solved ports and be finite"))
         v=_planar_stored_phasor.(input)
         if incident_waves!==nothing
-            v=_planar_wave_voltage(result.s,v,refs)
+            v=result.y===nothing ? _planar_wave_voltage(result.s,v,refs) :
+                _planar_wave_voltage_admittance(result.y,v,refs)
         end
     end
     X=direct ? result.currents : _planar_coefficient_columns(result)
