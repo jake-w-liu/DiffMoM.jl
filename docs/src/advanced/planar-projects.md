@@ -311,8 +311,12 @@ For nonzero angles near the axis, the transverse component uses
 fields even when `cos(theta)` rounds to one; no minimum transverse angle
 is imposed. The vertical-current projection retains the linear transverse
 norm with `hypot`; a separately representable field is preserved when the
-squared wave number underflows. The existing grazing-angle regularization is retained and
-its horizon limit requires separate verification.
+squared wave number underflows. Observation directions retain their physical
+sine and cosine at grazing incidence. Matched-layer receiving moments retain
+the axial wave number, and PEC images use their antisymmetric exponential
+relation. The spherical-wave factor weights the receiving fields before
+rounding; binary scaling preserves representable fields from amplified
+currents when a unit via reaction would become zero or subnormal.
 
 
 On macOS, the default raw-payload budget includes free, inactive, and

@@ -115,15 +115,18 @@ function _planar_receive_direction(stack,omega,k,kc2,c,pol,vinc,zext)
         for j in eachindex(heights)
             down=cis(kz*(heights[j]-height))
             up=lower.kind==TERM_PEC ? -cis(-kz*(heights[j]+height)) : 0.0im
-            V[j]=vinc*(down+up);H[j]=vinc*(-down+up)/zext
+            # The PEC image difference vanishes at grazing. expm1 retains
+            # that antisymmetric component before the final multiplication.
+            V[j]=lower.kind==TERM_PEC ? vinc*down*(-expm1(-2im*kz*heights[j])) : vinc*down
+            H[j]=vinc*(-down+up)/zext
         end
         return V,H
     end
     return _planar_receive_fields(stack,omega,kc2,pol,vinc,zext)
 end
 
-@inline function _planar_receive_moments(layer,omega,kc2,pol,vb,vt,hb,ht)
-    h=real(layer.thickness);g2=_planar_gamma2_layer(pol,kc2,omega,layer);x=sqrt(g2)*h
+@inline function _planar_receive_moments(layer,omega,kc2,pol,vb,vt,hb,ht,g2=_planar_gamma2_layer(pol,kc2,omega,layer))
+    h=real(layer.thickness);x=sqrt(g2)*h
     zs=pol==TE_POL ? 1im*omega*_MU0*layer.mur : g2/(1im*omega*_EPS0*layer.epsr)
     ys=pol==TM_POL ? 1im*omega*_EPS0*layer.epsr : g2/(1im*omega*_MU0*layer.mur)
     if real(x)>20
@@ -147,7 +150,18 @@ end
         h*hb*(s-c2)-ys*h*h*vb*c3
 end
 
-function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.))
+# For a layer matching the observation medium, retain the physical axial
+# wave number. Subtracting kc² from k² erases the horizon displacement.
+@inline function _planar_receive_moment_gamma2(stack,layer,omega,kc2,pol,axial_direction)
+    if axial_direction!==nothing && layer.epsr==stack.top.epsr && layer.mur==stack.top.mur &&
+            layer.epsr_z==layer.epsr && layer.mur_z==layer.mur
+        k,c=axial_direction[1],axial_direction[2]
+        return complex(-(k*c)^2)
+    end
+    return _planar_gamma2_layer(pol,kc2,omega,layer)
+end
+
+function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.),axial_direction=nothing)
     # Retain the linear norm even when its square underflows. The squared
     # norm still belongs to the layer dispersion relation below.
     kc=hypot(kx,ky)
@@ -161,13 +175,31 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
             origlayer=prob.vias[prob.basis.level[p]].layer
             j=side==1 ? origlayer : L-origlayer+1
             layer=stack.layers[j]
-            _,hu,ht=_planar_receive_moments(layer,omega,kc2,TM_POL,V[j],V[j+1],H[j],H[j+1])
-            side*kc/(omega*_EPS0*layer.epsr_z)*(kind==_BASIS_VIA_U ? hu : side==1 ? ht : hu-ht)
+            _,hu,ht=_planar_receive_moments(layer,omega,kc2,TM_POL,V[j],V[j+1],H[j],H[j+1],_planar_receive_moment_gamma2(stack,layer,omega,kc2,TM_POL,axial_direction))
+            moment=kind==_BASIS_VIA_U ? hu : side==1 ? ht : hu-ht
+            value=side*kc/(omega*_EPS0*layer.epsr_z)*moment
+            if (iszero(value) || issubnormal(real(value)) || issubnormal(imag(value))) && !iszero(moment) && axial_direction!==nothing
+                # A subnormal sine can erase the unit reaction before the
+                # solved current amplifies it. Split the physical sine and
+                # current into binary mantissas and restore their exponents
+                # after weighting, without a selected angular cutoff.
+                k,_,sine=axial_direction
+                if !iszero(sine)
+                    sm,se=frexp(sine)
+                    _,ce=frexp(max(abs(real(coeff[p])),abs(imag(coeff[p]))))
+                    normalized=complex(ldexp(real(coeff[p]),-ce),ldexp(imag(coeff[p]),-ce))
+                    weighted=normalized*_planar_rooftop_fourier(prob,p,kx,ky)*moment*
+                        (side*k*sm/(omega*_EPS0*layer.epsr_z))
+                    overlap+=complex(ldexp(real(weighted),ce+se),ldexp(imag(weighted),ce+se))
+                    continue
+                end
+            end
+            value
         else
             value=if _is_vol_kind(kind)
                 origlayer=prob.vols[prob.basis.level[p]].layer
                 j=side==1 ? origlayer : L-origlayer+1
-                first(_planar_receive_moments(stack.layers[j],omega,kc2,pol,V[j],V[j+1],H[j],H[j+1]))
+                first(_planar_receive_moments(stack.layers[j],omega,kc2,pol,V[j],V[j+1],H[j],H[j+1],_planar_receive_moment_gamma2(stack,stack.layers[j],omega,kc2,pol,axial_direction)))
             else
                 V[(side==1 ? elem : L-elem)+1]
             end
@@ -179,7 +211,7 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
     return overlap
 end
 
-function _planar_radiation_overlap(prob::PlanarConformalProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.))
+function _planar_radiation_overlap(prob::PlanarConformalProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.),axial_direction=nothing)
     kc=hypot(kx,ky);cp,sp=iszero(kc) ? normal_direction : (kx/kc,ky/kc)
     result=0.0im;L=length(stack.layers)
     for b in eachindex(coeff)
@@ -190,10 +222,10 @@ function _planar_radiation_overlap(prob::PlanarConformalProblem,coeff,stack,omeg
     end
     return result
 end
-function _planar_radiation_overlap(prob::PlanarHybridProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.))
+function _planar_radiation_overlap(prob::PlanarHybridProblem,coeff,stack,omega,kx,ky,pol,V,H,side,normal_direction=(1.,0.),axial_direction=nothing)
     nc=length(prob.conformal.basis.width)
-    return _planar_radiation_overlap(prob.conformal,view(coeff,1:nc),stack,omega,kx,ky,pol,V,H,side,normal_direction)+
-        _planar_radiation_overlap(prob.bulk,view(coeff,nc+1:length(coeff)),stack,omega,kx,ky,pol,V,H,side,normal_direction)
+    return _planar_radiation_overlap(prob.conformal,view(coeff,1:nc),stack,omega,kx,ky,pol,V,H,side,normal_direction,axial_direction)+
+        _planar_radiation_overlap(prob.bulk,view(coeff,nc+1:length(coeff)),stack,omega,kx,ky,pol,V,H,side,normal_direction,axial_direction)
 end
 _planar_radiation_basis_count(prob::PlanarProblem)=planar_basis_count(prob.basis)
 _planar_radiation_basis_count(prob::PlanarConformalProblem)=length(prob.basis.width)
@@ -206,27 +238,30 @@ function _planar_farfield_direction(prob,coeff,stack,frequency,theta,phi)
     term.kind==TERM_PEC && return 0.0im,0.0im,0.
     omega=2pi*frequency;k=omega/_C0*sqrt(real(term.epsr*term.mur))
     eta=sqrt(_MU0*real(term.mur)/(_EPS0*real(term.epsr)))
-    # Grazing incidence is the continuous one-sided limit. Keeping a
-    # small nonzero axial component resolves the TE/TM cutoff degeneracy.
-    axial=abs(cos(theta));c=max(axial,1e-7)
-    # Exact pole endpoints have zero transverse phase. Elsewhere sin(theta)
-    # preserves near-axis angles whose cosine rounds to one. The existing
-    # grazing regularization remains a separate qualification requirement.
+    # Use the physical angle directly. The homogeneous receiving solution
+    # retains its axial limit without clipping the observation direction.
+    c=abs(cos(theta))
+    # Exact pole endpoints have zero transverse phase; direct sine also
+    # preserves near-axis angles whose cosine rounds to one.
     pole=iszero(theta) || theta==Float64(pi)
-    s=c==axial ? (pole ? 0. : sin(theta)) : sqrt(max(0.,1-c*c))
+    s=pole ? 0. : sin(theta)
     normal_direction=(cos(phi),sin(phi))
     kx,ky=k*s*cos(phi),k*s*sin(phi);kc2=kx*kx+ky*ky
     receiving=side==1 ? stack : PlanarStackup(reverse(stack.layers),stack.top,stack.bottom,stack.a,stack.b)
-    vtm=side*c
-    Vtm,Htm=_planar_receive_direction(receiving,omega,k,kc2,c,TM_POL,vtm,eta*c)
-    Vte,Hte=_planar_receive_direction(receiving,omega,k,kc2,c,TE_POL,1.,eta/c)
-    tm=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TM_POL,Vtm,Htm,side,normal_direction)
-    te=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TE_POL,Vte,Hte,side,normal_direction)
-    # V/H are referenced at the exterior interface. Restore its physical
-    # origin to obtain the absolute phase of the outgoing spherical wave.
+    # Weight the linear receiving fields by the final spherical-wave
+    # factor before a subnormal reaction is rounded. A later multiplication
+    # cannot recover a separately representable field lost in that reaction.
     zface=side==1 ? sum(real(l.thickness) for l in stack.layers) : 0.
     factor=-1im*omega*_MU0*real(term.mur)/(4pi)*cis(side*k*c*zface)
-    et,ep=factor*tm,factor*te
+    vtm=side*c*factor
+    Vtm,Htm=_planar_receive_direction(receiving,omega,k,kc2,c,TM_POL,vtm,eta*c)
+    Vte,Hte=_planar_receive_direction(receiving,omega,k,kc2,c,TE_POL,factor,eta/c)
+    axial_direction=(k,c,s)
+    tm=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TM_POL,Vtm,Htm,side,normal_direction,axial_direction)
+    te=_planar_radiation_overlap(prob,coeff,receiving,omega,kx,ky,TE_POL,Vte,Hte,side,normal_direction,axial_direction)
+    # The receiving amplitudes already include the spherical-wave factor
+    # and the exterior interface's physical phase origin.
+    et,ep=tm,te
     # Normalize each field before squaring. This preserves representable
     # intensity when the unnormalized squares exceed Float64's range.
     # The factor two is the peak-phasor time-average convention.
@@ -238,7 +273,7 @@ end
 layered substrate. Exact analytic Fourier integrals are used for sheet,
 via, volume and conformal triangle currents. `coefficients` are solved
 peak-phasor basis amplitudes. Angles are radians; azimuth is measured from
-+x toward +y. Grazing angles use a one-sided axial-cosine limit of 1e-7.
++x toward +y. Observation angles retain their physical sine and cosine.
 This postprocessing does not remove finite-box errors in the input currents;
 box/cover convergence must be checked for radiating designs."""
 function planar_farfield(prob::Union{PlanarProblem,PlanarConformalProblem,PlanarHybridProblem},coefficients::AbstractVector,freq::Real;
