@@ -3,10 +3,12 @@
 Finite physical excitation and loss can survive after rounded S parameters
 reach an exact short or lossless boundary. Incident conversion preserves
 ordinary declared-S arithmetic, including its existing current-to-field
-mapping. If S conversion produces a zero component while the retained-Y
-solution carries a nonzero component, radiation recovers that retained
-voltage. The choice uses exact component zero checks; it adds no selected
-conditioning, amplitude, or accuracy threshold. Peak V/I accepted power
+mapping. If S conversion loses a nonzero component or violates the retained
+Kurokawa terminal equation beyond its operation-derived arithmetic bound,
+radiation recovers the retained voltage. Complex dot/scalar operation counts
+determine the gamma bound; adjacent IEEE values round positive magnitude
+estimates outward, and least-subnormal units cover underflow. No selected
+conditioning, amplitude, or accuracy threshold is introduced. Peak V/I accepted power
 uses the physical retained response, and loaded projects
 use external differential terminal voltages and currents from their actual
 MNA solution. Explicit no-circuit voltages remain authoritative. The S-only
@@ -55,7 +57,7 @@ the revised implementation. Both Julia versions now pass 1318 package
 assertions: all original 884 guard/resource/receiving/transfer/conformal/
 retained assertions and all 434 assertions from the five original radiation
 modules, with every original fixture and tolerance unchanged. Budget
-accounting follows the actual four owned S vectors, one recovery vector,
+accounting follows the actual four owned S vectors, one consistency-current vector, one recovery vector,
 two root arrays, and existing matrix/pivot storage.
 
 Current complete suites, measured/static accounting, native/docs/scoped
@@ -64,3 +66,17 @@ failures and immutable snapshots are preserved. The scoped allocation
 numbers above describe the unchanged private admittance helper; the revised
 public selection route needs its own inference/ownership/allocation checks.
 Later rational fitting and nonfinite accepted-power guards remain separate.
+
+The zero-only selection also missed eight coupled complex-reference cases
+with nonzero but inaccurate voltages. The corrected selector passes the
+original 20 forward/inverse/analytic-slope cases on both Julia versions,
+with inference and input ownership checked. A new 100-assertion regression
+exercises the actual selector: the earlier selection fails 24 assertions
+per Julia version and this correction passes all 100. Original package
+1318 assertions also pass both versions with every fixture and tolerance
+unchanged. Separate sampled arithmetic checks cover IEEE-derived normal
+and subnormal ranges; these samples are not a universal range proof.
+The actual selector allocation measurements include its consistency vector;
+private-helper measurements above do not imply an overall selector saving.
+Complete suites, native/docs, exact static accounting and publication remain
+required. Earlier failed candidates and all immutable inputs are preserved.

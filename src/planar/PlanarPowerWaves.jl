@@ -192,20 +192,66 @@ function _planar_wave_voltage_admittance(Y::AbstractMatrix,a::AbstractVector,ref
     return value
 end
 
-# Preserve ordinary declared-S voltage arithmetic and its current-field
-# mapping. A retained-Y solve recovers a component only when S conversion
-# has rounded it to zero. No selected conditioning or amplitude threshold.
+# Positive magnitude arithmetic rounds outward by one adjacent stored
+# value, so a computed magnitude cannot underestimate its exact inputs.
+@inline _planar_wave_upper_add(a,b)=iszero(a) && iszero(b) ? 0.0 : nextfloat(a+b)
+@inline _planar_wave_upper_mul(a,b)=iszero(a) || iszero(b) ? 0.0 : nextfloat(a*b)
+@inline _planar_wave_magnitude(z)=_planar_wave_upper_add(abs(real(z)),abs(imag(z)))
+
+function _planar_wave_boundary_consistent(Y,v,a,refs)
+    n=length(a)
+    current=Y*v
+    # A complex dot coordinate has a gamma_(2n) bound. The subsequent
+    # complex product contributes two rounding steps, voltage addition one,
+    # square root one, RHS product one, and residual subtraction one.
+    # gamma_k=k*u/(1-k*u), with IEEE nearest-rounding unit u=eps/2.
+    operations=2n+2+1+1+1+1
+    unit=eps(Float64)/2
+    factor=operations*unit
+    factor<1 || return false
+    gamma=nextfloat(factor/(1-factor))
+    tiny=nextfloat(0.0)
+    for p in 1:n
+        lhs=v[p]+refs[p]*current[p]
+        rhs=2sqrt(real(refs[p]))*a[p]
+        all(isfinite,(lhs,rhs)) || return false
+        terms=0.0
+        for q in 1:n
+            terms=_planar_wave_upper_add(terms,
+                _planar_wave_upper_mul(_planar_wave_magnitude(Y[p,q]),_planar_wave_magnitude(v[q])))
+        end
+        zsize=_planar_wave_magnitude(refs[p])
+        magnitude=_planar_wave_upper_add(_planar_wave_upper_add(_planar_wave_magnitude(v[p]),
+            _planar_wave_upper_mul(zsize,terms)),_planar_wave_magnitude(rhs))
+        # Each dot-coordinate underflow has at most one least-subnormal
+        # storage unit; its error is amplified by the following reference
+        # product. Account for the remaining scalar operation units too.
+        floor=_planar_wave_upper_add(_planar_wave_upper_mul(zsize,
+            _planar_wave_upper_mul(2n,tiny)),_planar_wave_upper_mul(2+1+1+1+1,tiny))
+        bound=_planar_wave_upper_add(_planar_wave_upper_mul(gamma,magnitude),floor)
+        isfinite(bound) && abs(lhs-rhs)<=bound || return false
+    end
+    return true
+end
+
+# Preserve ordinary declared-S voltage arithmetic when it satisfies the
+# retained terminal equation at its computed floating-point error bound.
+# Recover exact component loss and nonzero S quantization without a selected
+# conditioning, amplitude, accuracy threshold, retry count, or iteration.
 function _planar_wave_voltage_retained(Y::AbstractMatrix,S::AbstractMatrix,
         a::AbstractVector,refs)
     declared=_planar_wave_voltage(S,a,refs)
-    any(v->iszero(real(v)) || iszero(imag(v)),declared) || return declared
-    retained=_planar_wave_voltage_admittance(Y,a,refs)
-    for index in eachindex(declared,retained)
-        lost_real=iszero(real(declared[index])) && !iszero(real(retained[index]))
-        lost_imag=iszero(imag(declared[index])) && !iszero(imag(retained[index]))
-        (lost_real || lost_imag) && return retained
+    retained=nothing
+    if any(v->iszero(real(v)) || iszero(imag(v)),declared)
+        retained=_planar_wave_voltage_admittance(Y,a,refs)
+        for index in eachindex(declared,retained)
+            lost_real=iszero(real(declared[index])) && !iszero(real(retained[index]))
+            lost_imag=iszero(imag(declared[index])) && !iszero(imag(retained[index]))
+            (lost_real || lost_imag) && return retained
+        end
     end
-    return declared
+    _planar_wave_boundary_consistent(Y,declared,a,refs) && return declared
+    return retained===nothing ? _planar_wave_voltage_admittance(Y,a,refs) : retained
 end
 
 function _planar_incident_admittance(Y::AbstractMatrix,v::AbstractVector,refs)

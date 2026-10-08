@@ -252,8 +252,9 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     if result.y!==nothing && (voltages!==nothing || result.circuit===nothing)
         # A voltage request owns voltage/current vectors and one root array.
         # The S route owns reference/incident/reflected/voltage vectors; a
-        # retained recovery owns one voltage. Each incident route owns roots.
-        helper_vectors=voltages===nothing ? 4+1 : 2
+        # consistency check owns current, retained recovery owns voltage.
+        # Each incident voltage route owns roots.
+        helper_vectors=voltages===nothing ? 4+1+1 : 2
         helper_roots=voltages===nothing ? 1+1 : 1
         reserve=_checked_payload_sum("project retained admittance excitation",reserve,
             _checked_array_payload_bytes(ComplexF64,helper_vectors,n),
