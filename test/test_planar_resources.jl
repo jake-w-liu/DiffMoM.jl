@@ -1,4 +1,4 @@
-using DiffMoM, Test, LinearAlgebra
+using DiffMoM, Test, LinearAlgebra, Profile
 
 function _resource_planar_problem()
     a, b = 5e-3, 10e-3
@@ -21,11 +21,18 @@ function _rejected_planar_solve_allocation(prob)
     return nothing
 end
 
-Base.@noinline function _retained_planar_solve_batch(prob, retain::Bool)
-    for _ in 1:12
-        solve_planar(prob, 8e9; retain_matrix=retain)
+function _retained_planar_matrix_buffer_payload(prob, retain::Bool, payload::Int)
+    Profile.Allocs.clear()
+    try
+        # A sampling probability of one records every allocation. Measure
+        # whole matrix data buffers, independently of metadata and total-byte
+        # counter variation, using the same required matrix payload.
+        Profile.Allocs.@profile sample_rate=1.0 solve_planar(prob, 8e9; retain_matrix=retain)
+        return sum(a.size for a in Profile.Allocs.fetch().allocs
+            if a.type===Profile.Allocs.BufferType && a.size==payload)
+    finally
+        Profile.Allocs.clear()
     end
-    return nothing
 end
 
 @testset "planar: solve resource contract" begin
@@ -44,23 +51,10 @@ end
     @test compact.currents ≈ kept.currents rtol=1e-12
     @test norm(kept.z_mom * compact.currents -
         kept.z_mom * kept.currents) < 1e-12
-    # Use identical warmed call shapes and paired batches to avoid whole-solve
-    # allocation-counter variability. The full matrix payload is required for
-    # every solve; batching does not reduce the per-call threshold.
-    _retained_planar_solve_batch(prob, true)
-    _retained_planar_solve_batch(prob, false)
-    allocation_deltas = Int[]
-    for trial in 1:3
-        if isodd(trial)
-            kept_alloc = @allocated _retained_planar_solve_batch(prob, true)
-            compact_alloc = @allocated _retained_planar_solve_batch(prob, false)
-        else
-            compact_alloc = @allocated _retained_planar_solve_batch(prob, false)
-            kept_alloc = @allocated _retained_planar_solve_batch(prob, true)
-        end
-        push!(allocation_deltas, kept_alloc - compact_alloc)
-    end
-    @test minimum(allocation_deltas) >= 12sizeof(kept.z_mom)
+    matrix_payload=sizeof(kept.z_mom)
+    retained_payload=_retained_planar_matrix_buffer_payload(prob,true,matrix_payload)
+    compact_payload=_retained_planar_matrix_buffer_payload(prob,false,matrix_payload)
+    @test retained_payload-compact_payload >= matrix_payload
 end
 
 @testset "planar: normalized admittance conversion" begin

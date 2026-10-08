@@ -42,6 +42,7 @@ LinearAlgebra = "1"
 MPFR_jll = "4"
 PlotlySupply = "1.8.0"
 Printf = "1"
+Profile = "1"
 Random = "1"
 SHA = "0.7, 1"
 SparseArrays = "1"
@@ -60,8 +61,9 @@ CRC32c = "8bf52ea8-c179-5cab-976a-9e18b702a9bc"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "CRC32c", "Dates", "ExplicitImports", "Printf", "Statistics", "Test"]
+test = ["Aqua", "CRC32c", "Dates", "ExplicitImports", "Printf", "Profile", "Statistics", "Test"]
