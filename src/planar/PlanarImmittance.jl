@@ -107,9 +107,11 @@ end
     g2 = _planar_gamma2_layer(pol, kc2, omega, layer)
     h = layer.thickness
     q = g2 * h * h
-    if abs2(q) < 1e-8
-        a = 1 + q * (1 / 2 + q * (1 / 24 + q / 720))
-        sh = h * (1 + q * (1 / 6 + q * (1 / 120 + q / 5040)))
+    if abs2(q) <= one(abs2(q))
+        # The same exact cosh/sinh even series used by conductor transfer.
+        # Coefficients and termination retain the working scalar precision.
+        a, series = _planar_conductor_even_series(q)
+        sh = h * series
         scale = one(a)
     else
         x = sqrt(g2) * h

@@ -175,8 +175,11 @@ end
             h*hb*(s-c2)-ys*h*h*vb*c3
     end
     x=sqrt(g2)*h
-    if real(x)>20
-        e=exp(-x);e2=e*e
+    e=exp(-x);e2=e*e
+    # Use face interpolation only when both endpoint denominators retain
+    # at least the exponential's magnitude. This bounds their cancellation
+    # directly and leaves propagating half/full-wave nodes on the forward path.
+    if abs2(e)<=abs2(1-e) && abs2(e)<=abs2(1+e)
         w=(1-e)/(x*(1+e))
         vm=w*(vb+vt);hm=h*w*(hb+ht)
         cb=inv(x*x)-2e/(x*(1-e2))
@@ -415,7 +418,7 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
     current=result.y*v;pin=.5real(dot(v,current))
     tolerance=100eps(Float64)*norm(v)*norm(current)
     pin>=-tolerance || throw(ArgumentError("radiation gain requires nonnegative accepted power"))
-    return planar_farfield(source,_planar_current_product(X,v),real(result.freq);accepted_power=pin>tolerance ? pin : nothing,
+    return planar_farfield(source,_planar_current_product(X,v),real(result.freq);accepted_power=pin>0 ? pin : nothing,
         max_bytes=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve),kw...)
 end
 
