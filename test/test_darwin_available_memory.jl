@@ -11,6 +11,9 @@ function run_tests()
   @test all(fieldtype(S,i)==Cuint && fieldoffset(S,i)==(i-1)*sizeof(Cuint) for i in 1:fieldcount(S))
   eligible=(:free_count,:inactive_count,:purgeable_count)
   @test DiffMoM._PLANAR_DARWIN_HOST_VM_INFO==2
+  zero_stats=DiffMoM._planar_darwin_zero_statistics()
+  @test all(iszero(getfield(zero_stats,i)) for i in 1:fieldcount(S))
+  @test (@allocated DiffMoM._planar_darwin_zero_statistics())==0
   for free in (zero(Cuint),one(Cuint),typemax(Cuint)),inactive in (zero(Cuint),one(Cuint),typemax(Cuint)),purgeable in (zero(Cuint),one(Cuint),typemax(Cuint))
    values=(free,inactive,purgeable)
    stats=S(ntuple(i->names[i] in eligible ? values[findfirst(==(names[i]),eligible)] : typemax(Cuint),fieldcount(S))...)

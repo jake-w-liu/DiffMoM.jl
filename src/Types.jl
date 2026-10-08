@@ -42,8 +42,10 @@ const _PLANAR_DARWIN_HOST_VM_INFO=Cint(2) # Apple's HOST_VM_INFO ABI constant.
     pages=UInt128(stats.free_count)+UInt128(stats.inactive_count)+UInt128(stats.purgeable_count)
     return Base.Checked.checked_mul(pages,UInt128(page_size))
 end
+@inline _planar_darwin_zero_statistics()=_PlanarDarwinVMStatistics(
+    ntuple(_->zero(Cuint),Val(fieldcount(_PlanarDarwinVMStatistics)))...)
 function _planar_darwin_available_memory()
-    stats=Ref(_PlanarDarwinVMStatistics(ntuple(_->zero(Cuint),fieldcount(_PlanarDarwinVMStatistics))...))
+    stats=Ref(_planar_darwin_zero_statistics())
     expected=Cuint(sizeof(_PlanarDarwinVMStatistics)÷sizeof(Cint));count=Ref(expected)
     host=ccall(:mach_host_self,Cuint,())
     try
@@ -52,7 +54,7 @@ function _planar_darwin_available_memory()
         result==0 && count[]==expected || return Sys.free_memory()
         page_size=ccall(:getpagesize,Cint,())
         page_size>0 || return Sys.free_memory()
-        return min(_planar_darwin_reclaimable_bytes(stats[],page_size),UInt128(Sys.total_memory()))
+        return UInt64(min(_planar_darwin_reclaimable_bytes(stats[],page_size),UInt128(Sys.total_memory())))
     finally
         # Release the send right returned by mach_host_self.
         task=unsafe_load(cglobal(:mach_task_self_,Cuint))
