@@ -12,7 +12,56 @@ const CVec3 = SVector{3,ComplexF64}
 # operation-owned raw-array accounting; this is not a memory reservation.
 const _DEFAULT_MAX_DENSE_PAYLOAD_BYTES = typemax(Int)
 
-@inline function _default_max_dense_payload_bytes(available::Integer=Sys.free_memory())
+# Darwin's Julia-bundled libuv counts only currently free pages. The
+# current libuv availability calculation also counts inactive and
+# purgeable pages; speculative pages are already included in free_count.
+# https://github.com/libuv/libuv/blob/v1.x/src/unix/darwin.c
+# The public Mach layout and flavor come from Apple's headers:
+# https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/vm_statistics.h
+# https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/host_info.h
+struct _PlanarDarwinVMStatistics
+    free_count::Cuint
+    active_count::Cuint
+    inactive_count::Cuint
+    wire_count::Cuint
+    zero_fill_count::Cuint
+    reactivations::Cuint
+    pageins::Cuint
+    pageouts::Cuint
+    faults::Cuint
+    cow_faults::Cuint
+    lookups::Cuint
+    hits::Cuint
+    purgeable_count::Cuint
+    purges::Cuint
+    speculative_count::Cuint
+end
+const _PLANAR_DARWIN_HOST_VM_INFO=Cint(2) # Apple's HOST_VM_INFO ABI constant.
+@inline function _planar_darwin_reclaimable_bytes(stats::_PlanarDarwinVMStatistics,page_size::Integer)
+    page_size>0 || throw(ArgumentError("Darwin page size must be positive"))
+    pages=UInt128(stats.free_count)+UInt128(stats.inactive_count)+UInt128(stats.purgeable_count)
+    return Base.Checked.checked_mul(pages,UInt128(page_size))
+end
+function _planar_darwin_available_memory()
+    stats=Ref(_PlanarDarwinVMStatistics(ntuple(_->zero(Cuint),fieldcount(_PlanarDarwinVMStatistics))...))
+    expected=Cuint(sizeof(_PlanarDarwinVMStatistics)÷sizeof(Cint));count=Ref(expected)
+    host=ccall(:mach_host_self,Cuint,())
+    try
+        result=ccall(:host_statistics,Cint,(Cuint,Cint,Ref{_PlanarDarwinVMStatistics},Ref{Cuint}),
+            host,_PLANAR_DARWIN_HOST_VM_INFO,stats,count)
+        result==0 && count[]==expected || return Sys.free_memory()
+        page_size=ccall(:getpagesize,Cint,())
+        page_size>0 || return Sys.free_memory()
+        return min(_planar_darwin_reclaimable_bytes(stats[],page_size),UInt128(Sys.total_memory()))
+    finally
+        # Release the send right returned by mach_host_self.
+        task=unsafe_load(cglobal(:mach_task_self_,Cuint))
+        ccall(:mach_port_deallocate,Cint,(Cuint,Cuint),task,host)
+    end
+end
+@inline _planar_os_available_memory()=Sys.isapple() ? _planar_darwin_available_memory() : Sys.free_memory()
+
+@inline function _default_max_dense_payload_bytes(available::Integer=_planar_os_available_memory())
     available > 0 || throw(ArgumentError(
         "available memory is unknown or exhausted; provide an explicit byte budget"))
     return Int(min(available, typemax(Int)))

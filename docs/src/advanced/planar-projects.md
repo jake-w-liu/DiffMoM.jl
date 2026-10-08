@@ -313,3 +313,11 @@ is imposed. The vertical-current projection retains the linear transverse
 norm with `hypot`; a separately representable field is preserved when the
 squared wave number underflows. The existing grazing-angle regularization is retained and
 its horizon limit requires separate verification.
+
+
+On macOS, the default raw-payload budget includes free, inactive, and
+purgeable pages using the OS page size, bounded by physical memory. Julia's
+bundled libuv free-page query can understate the reclaimable memory and reject
+a supported solve. This estimate follows [libuv's Darwin availability
+calculation](https://github.com/libuv/libuv/blob/v1.x/src/unix/darwin.c).
+Explicit caller byte budgets keep the same checks and accounting.
