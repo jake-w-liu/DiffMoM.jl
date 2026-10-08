@@ -30,6 +30,21 @@ end
     return gamma2,gamma,zc
 end
 
+# In the unit disk, the even cosh and sinh(x)/x series have term
+# ratios at most 1/2 and 1/6, decreasing factorially. Preserve the
+# separately representable thin-film components and stop at actual
+# working-arithmetic nonprogress, without a fixed order or cutoff.
+@inline function _planar_conductor_even_series(q)
+    a=one(q);series=one(q);aterm=one(q);sterm=one(q);order=1
+    while true
+        aterm*=q/((2order-1)*(2order))
+        sterm*=q/((2order)*(2order+1))
+        next_a=a+aterm;next_series=series+sterm
+        next_a==a && next_series==series && return a,series
+        a=next_a;series=next_series;order+=1
+    end
+end
+
 function _planar_roughen_metal(z,f,sigma,mur,roughness,loss_only)
     roughness===nothing && return z
     k=roughness_factor(roughness,real(f),real(sigma);mur=real(mur))
@@ -45,15 +60,24 @@ function _planar_conductor_face_zs(f::Number,sigma::Number,thickness::Number;
     layer=PlanarConductorLayer(sigma,thickness;mur)
     g2,g,zc=_planar_conductor_line(f,layer.sigma,layer.mur)
     q=g2*layer.thickness^2
-    if abs2(q)<1e-8
+    if abs2(q)<=one(abs2(q))
+        a,series=_planar_conductor_even_series(q)
         dc=inv(layer.sigma*layer.thickness)
-        diagonal=dc*(1+q/3-q*q/45+2q*q*q/945)
-        coupling=dc*(1-q/6+7q*q/360-31q*q*q/15120)
+        diagonal=dc*a/series
+        coupling=dc/series
     else
-        e=exp(-g*layer.thickness)
-        den=1-e*e
-        diagonal=zc*(1+e*e)/den
-        coupling=zc*(2*e)/den
+        x=g*layer.thickness
+        if real(x)<0
+            e=exp(x)
+            difference=expm1(2x)
+            diagonal=zc*(2+difference)/difference
+            coupling=zc*(2*e)/difference
+        else
+            e=exp(-x)
+            difference=-expm1(-2x)
+            diagonal=zc*(2-difference)/difference
+            coupling=zc*(2*e)/difference
+        end
     end
     diagonal=_planar_roughen_metal(diagonal,f,layer.sigma,layer.mur,roughness,loss_only)
     coupling=_planar_roughen_metal(coupling,f,layer.sigma,layer.mur,roughness,loss_only)
@@ -131,26 +155,23 @@ function planar_layered_surface_zs(f::Number,layers::AbstractVector{<:PlanarCond
                  _planar_metal_subnormal(q) || _planar_metal_subnormal(zc))
             return _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only)
         end
-        if abs2(q)<1e-8
-            a=1+q/2+q*q/24+q*q*q/720
-            series=1+q/6+q*q/120+q*q*q/5040
+        if abs2(q)<=one(abs2(q))
+            a,series=_planar_conductor_even_series(q)
             sh=layer.thickness*series
-            b=1im*2pi*f*_MU0*layer.mur*sh
-            c=layer.sigma*sh
+            b=1im*2pi*f*_MU0*layer.mur*sh;c=layer.sigma*sh
             if !wide_parameters && (_planar_metal_product_lost(layer.thickness,series) ||
                     _planar_metal_product_lost(layer.sigma,sh) || _planar_metal_subnormal(b))
                 return _planar_layered_surface_wide(f,layers,substrate_sigma,substrate_mur,load,roughness,loss_only)
             end
         else
             x=g*layer.thickness
+            # Stable scaled transfer outside the unit-disk series domain.
             if real(x)<0
-                # Factor the growing exponential out of every ABCD entry.
-                e=exp(x);e2=e*e;a=1+e2
-                b=-zc*(1-e2);c=-(1-e2)/zc
+                difference=expm1(2x);a=2+difference
             else
-                e=exp(-x);e2=e*e;a=1+e2
-                b=zc*(1-e2);c=(1-e2)/zc
+                difference=-expm1(-2x);a=2-difference
             end
+            b=zc*difference;c=difference/zc
         end
         T=promote_type(typeof(a),typeof(b),typeof(c),typeof(z))
         z=_planar_input_abcd(T(a),T(b),T(c),T(z))
