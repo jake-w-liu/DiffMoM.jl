@@ -41,3 +41,12 @@ required. This candidate adds only PlanarVectorFit.jl to the preceding
 retained-excitation candidate. Remaining iteration, initialization,
 conjugate-pair sorting, sampled passivity and certificate numeric policies
 and the broad resource/physics/RFIC audit remain open.
+
+This candidate is rebased onto the corrected retained-wave selector after
+the earlier parent failed the unchanged original radiation comparison.
+The original scoped rational results above describe the earlier isolated
+runtime. The corrected combined runtime is being requalified with proper
+package 1635 assertions, current native references, documentation, complete
+suites and static checks. The obsolete old-parent accounting commit remains
+in the archive reference; the new ceiling requires an exact fresh count.
+No original fixture, tolerance, test gate or CI configuration is changed.
