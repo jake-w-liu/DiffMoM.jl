@@ -79,8 +79,48 @@ function _vf_basis(s,poles)
     return A
 end
 
+# Online scaled sum of squares, retaining finite magnitudes before squaring.
+# The state represents scale^2*squares; no selected range threshold is needed.
+@inline function _vf_scaled_square(state,value::Real)
+    scale,squares=state
+    magnitude=abs(value)
+    iszero(magnitude) && return state
+    return magnitude>scale ? (magnitude,1+squares*(scale/magnitude)^2) :
+        (scale,squares+(magnitude/scale)^2)
+end
+
+function _vf_fit_errors(model,fs,Ys)
+    errors=(0.0,0.0);data=(0.0,0.0)
+    for k in eachindex(fs)
+        predicted=planar_rational_eval(model,fs[k])
+        for index in eachindex(predicted,Ys[k])
+            difference=predicted[index]-Ys[k][index]
+            errors=_vf_scaled_square(_vf_scaled_square(errors,real(difference)),imag(difference))
+            value=Ys[k][index]
+            data=_vf_scaled_square(_vf_scaled_square(data,real(value)),imag(value))
+        end
+    end
+    rms=errors[1]*sqrt(errors[2]/(length(fs)*length(Ys[1])))
+    relative=if iszero(data[1])
+        rms
+    elseif iszero(errors[1])
+        0.0
+    else
+        # Form the scale ratio with binary exponents so its intermediate
+        # division cannot overflow or erase a representable final ratio.
+        em,ee=frexp(errors[1]);dm,de=frexp(data[1])
+        ldexp((em/dm)*sqrt(errors[2]/data[2]),ee-de)
+    end
+    return rms,relative
+end
+
 function _vf_shared_relocate(s,Ys,poles)
     order,m,nel = length(poles),length(s),length(Ys[1])
+    # Uniform response scaling cancels from C*x=b. Normalize before QR
+    # projection so representable small responses retain the same pole fit.
+    # Component maxima remain finite even when a complex magnitude overflows.
+    amplitude=maximum(Y->maximum(y->max(abs(real(y)),abs(imag(y))),Y;init=0.0),Ys;init=0.0)
+    iszero(amplitude) && return poles
     basis = _vf_basis(s,poles)
     Ar = vcat(real.(basis),imag.(basis))
     factor = LinearAlgebra.qr(Ar)
@@ -88,7 +128,7 @@ function _vf_shared_relocate(s,Ys,poles)
     C = zeros(Float64,length(omitted)*nel,order)
     b = zeros(Float64,size(C,1))
     for e in 1:nel
-        fe = ComplexF64[Y[e] for Y in Ys]
+        fe = ComplexF64[Y[e]/amplitude for Y in Ys]
         sigma = -fe .* view(basis,:,1:order)
         reduced = transpose(factor.Q)*hcat(vcat(real.(sigma),imag.(sigma)),
             vcat(real.(fe),imag.(fe)))
@@ -96,11 +136,13 @@ function _vf_shared_relocate(s,Ys,poles)
         C[rows,:] .= view(reduced,omitted,1:order)
         b[rows] .= view(reduced,omitted,order+1)
     end
-    maximum(abs,b;init=0.0) <= 1e-12*max(maximum(abs,Ys[1]),1e-12) && return poles
+    all(iszero,b) && return poles
     # Rank-revealing SVD prevents a constant/affine response or inactive
     # matrix entry from creating spurious poles through a singular fit.
     F = LinearAlgebra.svd(C;full=false)
-    cutoff = maximum(F.S;init=0.0)*1e-10
+    # Match the standard LinearAlgebra numerical-rank convention: the
+    # smaller matrix dimension times working epsilon and largest singular value.
+    cutoff = maximum(F.S;init=0.0)*min(size(C)...)*eps(eltype(F.S))
     x = F.V * [F.S[k] > cutoff ? dot(view(F.U,:,k),b)/F.S[k] : 0.0
         for k in eachindex(F.S)]
     H = zeros(Float64,order,order)
@@ -120,7 +162,12 @@ function _vf_shared_relocate(s,Ys,poles)
         end
     end
     H .-= drive*transpose(x)
-    return _vf_sort([complex(-max(abs(real(p)),1e-9),imag(p)) for p in eigvals(H)])
+    relocated=eigvals(H)
+    all(isfinite,relocated) || throw(ArgumentError("vector-fit relocation produced nonfinite poles"))
+    # Reflect unstable poles without imposing an unrelated decay rate.
+    # A transient zero real part remains available to subsequent relocation;
+    # strict stability is checked on the final physical pole set.
+    return _vf_sort([complex(-abs(real(p)),imag(p)) for p in relocated])
 end
 
 """Check the Hermitian part of the admittance on an explicit nonempty
@@ -160,6 +207,19 @@ reports its method and potential crossover frequencies, not a grid claim.
 
 The Hamiltonian criterion follows the positive-real state-space test;
 see Semlyen & Gustavsen, IEEE TPWRD 24(1), 2009, DOI 10.1109/TPWRD.2008.923406."""
+# Binary scaling keeps a finite x/(y*z) from overflowing or disappearing
+# in its intermediate product/divisions. y and z are positive scales.
+@inline function _vf_certificate_ratio(x::Float64,y::Float64,z::Float64)
+    iszero(x) && return x
+    xm,xe=frexp(x);ym,ye=frexp(y);zm,ze=frexp(z)
+    ldexp(xm/(ym*zm),xe-ye-ze)
+end
+@inline function _vf_certificate_product_ratio(x::Float64,y::Float64,z::Float64)
+    iszero(x) && return x
+    xm,xe=frexp(x);ym,ye=frexp(y);zm,ze=frexp(z)
+    ldexp((xm*ym)/zm,xe+ye-ze)
+end
+
 function planar_rational_certificate(model::PlanarRationalModel;
         tol::Real=1e-8,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(tol) && tol>0 || throw(ArgumentError("certificate tolerance must be finite and positive"))
@@ -181,32 +241,49 @@ function planar_rational_certificate(model::PlanarRationalModel;
         end
     end
     _vf_psd(model.e,tol) || return no
-    symmetric_d = (model.d+transpose(model.d))/2
-    minimum_d = minimum(eigvals(LinearAlgebra.Symmetric(symmetric_d)))
     # Every real negative pole with PSD residue is a positive-real term.
     if _vf_psd(model.d,tol) && all(k -> iszero(imag(model.poles[k])) &&
             all(iszero,imag.(model.residues[k])) &&
             _vf_psd(real.(model.residues[k]),tol),eachindex(model.poles))
         return (certified=true,method=:positive_residues,crossings_hz=Float64[])
     end
-    bound = sum(opnorm(model.residues[k],2)/(-real(model.poles[k]))
-        for k in eachindex(model.poles);init=0.0)
-    if minimum_d >= bound
-        return (certified=true,method=:uniform_bound,crossings_hz=Float64[])
-    end
-    minimum_d > tol*max(opnorm(symmetric_d,2),1e-30) || return no
     states = length(model.poles)*n
     _enforce_payload_limit(_checked_array_payload_bytes(Float64,16,states,states;
         label="positive-real certificate workspace"),max_bytes,"positive-real certificate","max_bytes")
+    # Positive admittance and frequency scaling preserve positive-realness.
+    # Keep the Hamiltonian in those dimensionless units, instead of mixing
+    # reciprocal conductance and its square across the Float64 range.
+    admittance_scale=maximum(abs,model.d;init=0.0)
+    iszero(admittance_scale) && return no
+    frequency_scale=maximum(p->max(abs(real(p)),abs(imag(p))),model.poles;init=0.0)
+    iszero(frequency_scale) && return no
+    d=model.d/admittance_scale
+    poles=ComplexF64[p/frequency_scale for p in model.poles]
+    all(k->isfinite(poles[k]) && real(poles[k])<0 &&
+        (iszero(imag(model.poles[k])) || !iszero(imag(poles[k]))),eachindex(poles)) || return no
+    symmetric_d=(d+transpose(d))/2
+    minimum_d=minimum(eigvals(LinearAlgebra.Symmetric(symmetric_d)))
+    bound=0.0
+    residue=Matrix{ComplexF64}(undef,n,n)
+    for k in eachindex(poles)
+        residue.=complex.(_vf_certificate_ratio.(real.(model.residues[k]),admittance_scale,frequency_scale),
+            _vf_certificate_ratio.(imag.(model.residues[k]),admittance_scale,frequency_scale))
+        all(isfinite,residue) || return no
+        all(i->(iszero(real(model.residues[k][i])) || !iszero(real(residue[i]))) &&
+            (iszero(imag(model.residues[k][i])) || !iszero(imag(residue[i]))),eachindex(residue)) || return no
+        bound+=opnorm(residue,2)/(-real(poles[k]))
+    end
+    minimum_d>=bound && return (certified=true,method=:uniform_bound,crossings_hz=Float64[])
+    minimum_d>tol*opnorm(symmetric_d,2) || return no
     A,B,C = zeros(Float64,states,states),zeros(Float64,states,n),zeros(Float64,n,states)
     k = 1
     while k<=length(model.poles)
         left = ((k-1)*n+1):(k*n)
-        p = model.poles[k]
+        p = poles[k]
         if ci[k]==0
             A[left,left] .= real(p)*Matrix{Float64}(I,n,n)
             B[left,:] .= Matrix{Float64}(I,n,n)
-            C[:,left] .= real.(model.residues[k])
+            C[:,left] .= _vf_certificate_ratio.(real.(model.residues[k]),admittance_scale,frequency_scale)
             k+=1
         else
             right = (k*n+1):((k+1)*n)
@@ -215,19 +292,25 @@ function planar_rational_certificate(model::PlanarRationalModel;
             A[left,right] .= imag(p)*Matrix{Float64}(I,n,n)
             A[right,left] .= -imag(p)*Matrix{Float64}(I,n,n)
             B[left,:] .= Matrix{Float64}(I,n,n)
-            C[:,left] .= 2real.(model.residues[k])
-            C[:,right] .= 2imag.(model.residues[k])
+            C[:,left] .= 2 .* _vf_certificate_ratio.(real.(model.residues[k]),admittance_scale,frequency_scale)
+            C[:,right] .= 2 .* _vf_certificate_ratio.(imag.(model.residues[k]),admittance_scale,frequency_scale)
             k+=2
         end
     end
-    R = model.d+transpose(model.d)
+    R = d+transpose(d)
     Abar = A-B*(R\C)
     G,Q = B*(R\transpose(B)),transpose(C)*(R\C)
-    balancing = sqrt(max(opnorm(Q,Inf),1e-30)/max(opnorm(G,Inf),1e-30))
+    qnorm,gnorm=opnorm(Q,Inf),opnorm(G,Inf)
+    isfinite(qnorm) && isfinite(gnorm) && qnorm>0 && gnorm>0 || return no
+    qm,qe=frexp(qnorm);gm,ge=frexp(gnorm);difference=qe-ge
+    balancing=ldexp(sqrt(ldexp(qm/gm,mod(difference,2))),fld(difference,2))
+    isfinite(balancing) && balancing>0 || return no
     H = [Abar -G*balancing; Q/balancing -transpose(Abar)]
+    all(isfinite,H) || return no
     values = eigvals(H)
-    crossings = sort!(unique([abs(imag(value))/(2pi) for value in values
-        if abs(real(value)) <= tol*max(abs(imag(value)),1.0)]))
+    all(isfinite,values) || return no
+    crossings = sort!(unique([_vf_certificate_product_ratio(abs(imag(value)),frequency_scale,2pi) for value in values
+        if abs(real(value)) <= tol*abs(imag(value))]))
     return (certified=isempty(crossings),method=:hamiltonian,crossings_hz=crossings)
 end
 
@@ -268,7 +351,12 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
         max_bytes,"vector fit","max_bytes")
     Ys = Matrix{ComplexF64}[]
     for index in perm
-        H = Matrix{ComplexF64}(series[index])
+        # Preserve the same dense workspace while checking each stored
+        # component before it can disappear or become nonfinite.
+        H = Matrix{ComplexF64}(undef,n,n)
+        for (entry,value) in enumerate(series[index])
+            H[entry] = _planar_stored_phasor(value)
+        end
         if format === :s
             references=_circuit_z0(z0,n;freq=frequencies[index])
             H = planar_s_to_y(H,references;max_bytes)
@@ -289,6 +377,8 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
     for _ in 1:iterations
         poles = _vf_shared_relocate(s,Ys,poles)
     end
+    all(p->isfinite(p) && real(p)<0,poles) || throw(ArgumentError(
+        "vector fit does not determine finite strictly decaying poles"))
     basis = _vf_basis(s,poles)
     Ar = vcat(real.(basis),imag.(basis))
     rhs = Matrix{Float64}(undef,2m,n*n)
@@ -343,11 +433,10 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
         shift += extra
         certificate = planar_rational_certificate(provisional;max_bytes=max_bytes)
     end
-    num = sum(sum(abs2,planar_rational_eval(provisional,fs[k])-Ys[k]) for k in 1:m)
-    den = sum(sum(abs2,Y) for Y in Ys)
+    rms,relative = _vf_fit_errors(provisional,fs,Ys)
     margin = check.margin+shift
-    return PlanarRationalModel(poles,residues,d,e,fs,sqrt(num/(m*n*n)),
-        den>0 ? sqrt(num/den) : sqrt(num/(m*n*n)),margin>=-passivity_tol,
+    return PlanarRationalModel(poles,residues,d,e,fs,rms,
+        relative,margin>=-passivity_tol,
         certificate.certified,certificate.method,margin,shift,capacitance_adjustment)
 end
 

@@ -16001,3 +16001,7 @@ include("test_planar_public_power_product_range.jl")
 include("test_planar_radiation_power_product_range.jl")
 
 include("test_planar_finite_accepted_power.jl")
+
+include("test_planar_rational_fit_scale.jl")
+
+include("test_planar_rational_certificate_scale.jl")
