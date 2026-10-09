@@ -607,7 +607,8 @@ reports the change when both angular rules are doubled.
 `planar_radiation_metrics` provides accepted-power gain, independently
 normalized directivity/efficiency, circular components and polarization
 ellipse axial ratio. Efficiencies above one remain visible diagnostics.
-Grazing incidence uses a one-sided axial-cosine limit of `1e-7`.
+Observation angles retain their physical sine and cosine. In uniform
+matched media, the receiving fields use the analytic horizon limit.
 The independent regression ladder includes a homogeneous dyadic Green
 oracle, PEC images, short-dipole total power, a separate layered 4×4 wave
 boundary system, axial quadrature and dense/FFT triangle result mappings.
