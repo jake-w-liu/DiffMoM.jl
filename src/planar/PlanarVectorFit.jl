@@ -222,6 +222,26 @@ function _vf_shared_relocate(s,Ys,poles)
     return _vf_sort([complex(-abs(real(p)),imag(p)) for p in relocated])
 end
 
+# A Hermitian pair owns one output entry. Preserve ordinary sum-then-half
+# arithmetic; finite overflow alone needs the equivalent halved operands.
+function _vf_hermitian_part(Y)
+    H=similar(Y)
+    for column in axes(Y,2),row in axes(Y,1)
+        left,right=Y[row,column],conj(Y[column,row])
+        value=(left+right)/2
+        if !isfinite(value) && isfinite(left) && isfinite(right)
+            value=if value isa Complex
+                complex(isfinite(real(value)) ? real(value) : real(left)/2+real(right)/2,
+                    isfinite(imag(value)) ? imag(value) : imag(left)/2+imag(right)/2)
+            else
+                left/2+right/2
+            end
+        end
+        H[row,column]=value
+    end
+    return H
+end
+
 """Check the Hermitian part of the admittance on an explicit nonempty
 frequency grid. Returns `(passive,margin,frequencies)`; this is a sampled
 check, and stable poles establish causality of the fitted rational model."""
@@ -234,19 +254,7 @@ function planar_rational_passivity(model::PlanarRationalModel,frequencies;
     margin = Inf
     for f in fs
         Y = planar_rational_eval(model,f)
-        # Average each Hermitian pair in one owned matrix. Preserve the
-        # ordinary sum before halving, including subnormal values. Only a
-        # finite-input overflow needs the equivalent halved-operand sum.
-        H=similar(Y)
-        for column in axes(Y,2),row in axes(Y,1)
-            left,right=Y[row,column],conj(Y[column,row])
-            value=(left+right)/2
-            if !isfinite(value) && isfinite(left) && isfinite(right)
-                value=complex(isfinite(real(value)) ? real(value) : real(left)/2+real(right)/2,
-                    isfinite(imag(value)) ? imag(value) : imag(left)/2+imag(right)/2)
-            end
-            H[row,column]=value
-        end
+        H=_vf_hermitian_part(Y)
         margin = min(margin,minimum(eigvals(Hermitian(H))))
     end
     return (passive=margin >= -tol,margin=margin,frequencies=fs)
@@ -312,6 +320,13 @@ function planar_rational_certificate(model::PlanarRationalModel;
             _vf_psd(real.(model.residues[k]),tol),eachindex(model.poles))
         return (certified=true,method=:positive_residues,crossings_hz=Float64[])
     end
+    # Constant real feedthrough can be nonreciprocal: only its Hermitian
+    # part contributes real power. It needs no pole-frequency scale.
+    if isempty(model.poles)
+        _vf_psd(_vf_hermitian_part(model.d),tol) &&
+            return (certified=true,method=:uniform_bound,crossings_hz=Float64[])
+        return no
+    end
     states = length(model.poles)*n
     _enforce_payload_limit(_checked_array_payload_bytes(Float64,16,states,states;
         label="positive-real certificate workspace"),max_bytes,"positive-real certificate","max_bytes")
@@ -323,6 +338,9 @@ function planar_rational_certificate(model::PlanarRationalModel;
     frequency_scale=maximum(p->max(abs(real(p)),abs(imag(p))),model.poles;init=0.0)
     iszero(frequency_scale) && return no
     d=model.d/admittance_scale
+    # A lost feedthrough component can erase a negative energy direction;
+    # such a normalized representation cannot certify the original model.
+    all(i->iszero(model.d[i]) || !iszero(d[i]),eachindex(d)) || return no
     poles=ComplexF64[p/frequency_scale for p in model.poles]
     all(k->isfinite(poles[k]) && real(poles[k])<0 &&
         (iszero(imag(model.poles[k])) || !iszero(imag(poles[k]))),eachindex(poles)) || return no

@@ -16011,3 +16011,5 @@ include("test_planar_exact_pole_grouping.jl")
 include("test_planar_rational_eval_frequency_range.jl")
 
 include("test_planar_sampled_passivity_ranges.jl")
+
+include("test_planar_constant_certificate_ranges.jl")
