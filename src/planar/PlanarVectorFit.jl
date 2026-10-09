@@ -244,7 +244,10 @@ end
 
 """Check the Hermitian part of the admittance on an explicit nonempty
 frequency grid. Returns `(passive,margin,frequencies)`; this is a sampled
-check, and stable poles establish causality of the fitted rational model."""
+check, and stable poles establish causality of the fitted rational model.
+
+At zero tolerance, passivity also checks exact stored Hermitian energy;
+the reported floating margin can round a subnormal direction to zero."""
 function planar_rational_passivity(model::PlanarRationalModel,frequencies;
         tol::Real=1e-9)
     isfinite(tol) && tol >= 0 || throw(ArgumentError("passivity tolerance must be finite and nonnegative"))
@@ -252,21 +255,142 @@ function planar_rational_passivity(model::PlanarRationalModel,frequencies;
     !isempty(fs) && all(f -> isfinite(f) && f >= 0,fs) ||
         throw(ArgumentError("passivity grid must be nonempty, finite, and nonnegative"))
     margin = Inf
+    exact_energy=true
     for f in fs
         Y = planar_rational_eval(model,f)
+        iszero(tol) && (exact_energy &= _vf_psd(Y,tol;hermitian=true))
         H=_vf_hermitian_part(Y)
         margin = min(margin,minimum(eigvals(Hermitian(H))))
     end
-    return (passive=margin >= -tol,margin=margin,frequencies=fs)
+    return (passive=margin >= -tol && exact_energy,margin=margin,frequencies=fs)
 end
 
-function _vf_psd(A,tol)
-    # A negative energy direction of any size is not a positive-real
-    # certificate. Approximate symmetry is also insufficient: an affine
-    # skew part creates an indefinite Hermitian response at large |omega|.
-    A == transpose(A) || return false
-    all(isfinite,A) && all(p -> A[p,p]>=0,axes(A,1)) || return false
-    return minimum(eigvals(LinearAlgebra.Symmetric(A))) >= 0
+# Hermitian energy is preserved by realification: [[Re(H),-Im(H)];
+# [Im(H),Re(H)]]. Return its two original stored operands, keeping sums
+# exact even when halving a subnormal value would erase its sign.
+@inline function _vf_psd_pair(A,i,j,hermitian)
+    !hermitian && return Float64(real(A[i,j])),0.0
+    n=size(A,1)
+    if eltype(A)<:Complex
+        row,column=mod1(i,n),mod1(j,n)
+        if (i<=n)==(j<=n)
+            return Float64(real(A[row,column])),Float64(real(A[column,row]))
+        elseif i<=n
+            return Float64(imag(A[column,row])),-Float64(imag(A[row,column]))
+        else
+            return Float64(imag(A[row,column])),-Float64(imag(A[column,row]))
+        end
+    end
+    return Float64(A[i,j]),Float64(A[j,i])
+end
+@inline _vf_psd_dimension(A,hermitian)=hermitian && eltype(A)<:Complex ? 2size(A,1) : size(A,1)
+
+# The common dyadic denominator turns stored IEEE components into integers.
+# k! times the largest entry to power k bounds every k-order minor;
+# n^n bounds k!, deriving capacity from dimensions and actual input range.
+function _vf_psd_integer_workspace(A;hermitian::Bool=false,diagonal_shift::Float64=0.0)
+    n=_vf_psd_dimension(A,hermitian)
+    denbits=maximum(x->max(_spice_dyadic_denbits(Float64(real(x))),
+        hermitian ? _spice_dyadic_denbits(Float64(imag(x))) : 0),A;init=0)
+    denbits=max(denbits,_spice_dyadic_denbits(diagonal_shift))
+    entrybits=maximum(x->max(iszero(real(x)) ? 0 : exponent(abs(Float64(real(x))))+1+denbits,
+        hermitian && !iszero(imag(x)) ? exponent(abs(Float64(imag(x))))+1+denbits : 0),A;init=0)
+    !iszero(diagonal_shift) && (entrybits=max(entrybits,exponent(abs(diagonal_shift))+1+denbits))
+    terms=hermitian ? 2 : 1
+    !iszero(diagonal_shift) && (terms+=hermitian ? 2 : 1)
+    terms>1 && (entrybits+=ndigits(terms-1;base=2))
+    minorbits=BigInt(n)*(entrybits+ndigits(n;base=2))
+    minorlimbs=cld(minorbits,Base.GMP.BITS_PER_LIMB)
+    limbs=2minorlimbs+1 # two minor products and one subtraction carry
+    bits=Int(limbs*Base.GMP.BITS_PER_LIMB)
+    entries=BigInt(n)*(n+1)÷2
+    roles=(:prior_pivot,:left_product,:right_product,:numerator,:remainder)
+    bytes=_checked_payload_sum("exact positive-semidefinite workspace",
+        _checked_array_payload_bytes(Ptr{Cvoid},n,n),
+        _checked_array_payload_bytes(UInt8,entries+length(roles),
+            sizeof(BigInt)+Int(limbs)*sizeof(Base.GMP.Limb)))
+    return denbits,bits,bytes
+end
+@inline function _vf_set_dyadic!(value,x,denbits)
+    mantissa,power=frexp(x)
+    Base.GMP.MPZ.set_d!(value,ldexp(mantissa,precision(Float64)))
+    shift=power-precision(Float64)+denbits
+    if shift>=0
+        Base.GMP.MPZ.mul_2exp!(value,shift)
+    else
+        Base.GMP.MPZ.fdiv_q_2exp!(value,-shift)
+    end
+    return value
+end
+
+function _vf_psd(A,tol;hermitian::Bool=false,diagonal_shift::Float64=0.0,max_bytes=nothing,retained_bytes::Integer=0)
+    all(isfinite,A) || return false
+    !hermitian && (A!=transpose(A) || any(x->!iszero(imag(x)),A)) && return false
+    isfinite(diagonal_shift) && all(i->real(A[i,i])>=diagonal_shift,axes(A,1)) || return false
+    n=_vf_psd_dimension(A,hermitian);diagonal=true
+    for i in 1:n,j in i+1:n
+        x,y=_vf_psd_pair(A,i,j,hermitian)
+        x==-y && continue
+        (real(A[mod1(i,size(A,1)),mod1(i,size(A,1))])==diagonal_shift ||
+            real(A[mod1(j,size(A,1)),mod1(j,size(A,1))])==diagonal_shift) && return false
+        diagonal=false
+    end
+    diagonal && return true
+    denbits,bits,bytes=_vf_psd_integer_workspace(A;hermitian,diagonal_shift)
+    total=_checked_payload_sum("exact positive-semidefinite workspace",bytes,retained_bytes)
+    limit=max_bytes===nothing ? _default_max_dense_payload_bytes() : max_bytes
+    _enforce_payload_limit(total,limit,"exact positive-semidefinite workspace","max_bytes")
+    previous=BigInt(;nbits=bits)
+    left=BigInt(;nbits=bits)
+    right=BigInt(;nbits=bits)
+    numerator=BigInt(;nbits=bits)
+    remainder=BigInt(;nbits=bits)
+    integers=Matrix{BigInt}(undef,n,n)
+    for i in 1:n,j in i:n
+        x,y=_vf_psd_pair(A,i,j,hermitian)
+        value=_vf_set_dyadic!(BigInt(;nbits=bits),x,denbits)
+        if hermitian
+            _vf_set_dyadic!(left,y,denbits)
+            Base.GMP.MPZ.add!(value,value,left)
+        end
+        if i==j && !iszero(diagonal_shift)
+            _vf_set_dyadic!(left,diagonal_shift,denbits)
+            hermitian && Base.GMP.MPZ.mul_2exp!(left,1)
+            Base.GMP.MPZ.sub!(value,value,left)
+        end
+        integers[i,j]=integers[j,i]=value
+    end
+    return _vf_psd_integer!(integers,previous,left,right,numerator,remainder)
+end
+
+# Frobenius norm bounds spectral norm. Every square and sum is exact in
+# the IEEE-derived product lattice; sqrt/division/accumulation round upward.
+# The returned Float64 also rounds upward, so it remains a true bound.
+function _vf_frobenius_bound(model;max_bytes,retained_bytes::Integer=0)
+    count=maximum(length,model.residues;init=0)
+    bits=_planar_terminal_product_precision(count)
+    roles=(:bound,:squares,:operand,:product,:decay)
+    payload=_checked_payload_sum("certified residue norm bound",retained_bytes,
+        _checked_array_payload_bytes(UInt8,length(roles),_planar_wide_scalar_payload(bits)))
+    _enforce_payload_limit(payload,max_bytes,"certified residue norm bound","max_bytes")
+    bound,squares,operand,product,decay=ntuple(_->BigFloat(0.;precision=bits),length(roles))
+    up=Cint(Base.MPFR.MPFRRoundUp)
+    for k in eachindex(model.residues)
+        _planar_wide_set!(squares,0.)
+        for value in model.residues[k],component in (real,imag)
+            _planar_wide_set!(operand,component(value))
+            _planar_wide_mul!(product,operand,operand)
+            _planar_wide_add!(squares,squares,product)
+        end
+        ccall((:mpfr_sqrt,_planar_mpfr_library),Cint,
+            (Ref{BigFloat},Ref{BigFloat},Cint),squares,squares,up)
+        _planar_wide_set!(decay,-real(model.poles[k]))
+        ccall((:mpfr_div,_planar_mpfr_library),Cint,
+            (Ref{BigFloat},Ref{BigFloat},Ref{BigFloat},Cint),product,squares,decay,up)
+        ccall((:mpfr_add,_planar_mpfr_library),Cint,
+            (Ref{BigFloat},Ref{BigFloat},Ref{BigFloat},Cint),bound,bound,product,up)
+    end
+    return Float64(bound,RoundUp)
 end
 
 # Binary scaling keeps a finite x/(y*z) from overflowing or disappearing
@@ -282,17 +406,218 @@ end
     ldexp((xm*ym)/zm,xe+ye-ze)
 end
 
+# Exact original-model KYP verification. All stored inputs share one
+# dyadic denominator. The largest polynomial degree is four (a*f*A*P).
+# Clearing its denominator multiplies the whole inequality by a positive
+# power of two; it cannot alter positive semidefiniteness.
+function _vf_storage_integer_workspace(model,P,a,f)
+    scalars=Iterators.flatten((P,model.d,model.poles,Iterators.flatten(model.residues),(a,f)))
+    denbits=maximum(x->max(_spice_dyadic_denbits(Float64(real(x))),
+        _spice_dyadic_denbits(Float64(imag(x)))),scalars;init=0)
+    inputbits=maximum(x->max(iszero(real(x)) ? 0 : exponent(abs(Float64(real(x))))+1+denbits,
+        iszero(imag(x)) ? 0 : exponent(abs(Float64(imag(x))))+1+denbits),scalars;init=0)
+    inputbits=max(inputbits,denbits)
+    # Each A column has at most two entries, giving four top-block terms.
+    # Cross-block sums have at most one driven state per pole and port;
+    # conjugate residue representation introduces an exact factor of two.
+    terms=max(4,length(model.poles)+1)
+    entrybits=4BigInt(inputbits)+ndigits(terms-1;base=2)+1
+    states=size(P,1);n=states+size(model.d,1)
+    minorbits=BigInt(n)*(entrybits+ndigits(n;base=2))
+    limbs=2cld(minorbits,Base.GMP.BITS_PER_LIMB)+1
+    bits=Int(limbs*Base.GMP.BITS_PER_LIMB)
+    entries=BigInt(n)*(n+1)÷2+BigInt(states)*(states+1)÷2
+    roles=(:prior_pivot,:left_operand,:right_operand,:product,:accumulator,
+        :admittance_scale,:frequency_scale)
+    bytes=_checked_payload_sum("exact positive-real storage workspace",
+        _checked_array_payload_bytes(Ptr{Cvoid},n,n),
+        _checked_array_payload_bytes(Ptr{Cvoid},states,states),
+        _checked_array_payload_bytes(UInt8,entries+length(roles),
+            sizeof(BigInt)+Int(limbs)*sizeof(Base.GMP.Limb)))
+    return denbits,bits,bytes
+end
+
+function _vf_psd_integer!(integers,previous,left,right,numerator,remainder)
+    n=size(integers,1)
+    Base.GMP.MPZ.set_ui!(previous,1)
+    for k in 1:n
+        pivot=integers[k,k]
+        pivot>=0 || return false
+        if iszero(pivot)
+            all(i->iszero(integers[k,i]),k+1:n) || return false
+            continue
+        end
+        for i in k+1:n,j in i:n
+            Base.GMP.MPZ.mul!(left,pivot,integers[i,j])
+            Base.GMP.MPZ.mul!(right,integers[i,k],integers[k,j])
+            Base.GMP.MPZ.sub!(numerator,left,right)
+            Base.GMP.MPZ.tdiv_qr!(integers[i,j],remainder,numerator,previous)
+            iszero(remainder) || error("exact positive-semidefinite elimination lost divisibility")
+        end
+        Base.GMP.MPZ.set!(previous,pivot)
+    end
+    true
+end
+
+function _vf_storage_exact(model,ci,P,a,f;max_bytes,retained_bytes::Integer=0)
+    _vf_psd(P,0.;max_bytes,retained_bytes) || return false
+    denbits,bits,bytes=_vf_storage_integer_workspace(model,P,a,f)
+    _enforce_payload_limit(_checked_payload_sum("exact positive-real storage workspace",bytes,retained_bytes),
+        max_bytes,"exact positive-real storage workspace","max_bytes")
+    roles=(:prior_pivot,:left_operand,:right_operand,:product,:accumulator,
+        :admittance_scale,:frequency_scale)
+    previous,left,right,product,accumulator,admittance,frequency=ntuple(_->BigInt(;nbits=bits),length(roles))
+    _vf_set_dyadic!(admittance,a,denbits);_vf_set_dyadic!(frequency,f,denbits)
+    states=size(P,1);ports=size(model.d,1);n=states+ports
+    storage=Matrix{BigInt}(undef,states,states)
+    for i in 1:states,j in i:states
+        value=_vf_set_dyadic!(BigInt(;nbits=bits),P[i,j],denbits)
+        storage[i,j]=storage[j,i]=value
+    end
+    integers=Matrix{BigInt}(undef,n,n)
+    for i in 1:n,j in i:n
+        value=BigInt(;nbits=bits)
+        if j<=states
+            # A'P+PA: each real pole contributes a diagonal, each
+            # conjugate mode contributes one additional coupling.
+            for (column,other) in ((i,j),(j,i))
+                k=cld(column,ports)
+                _vf_set_dyadic!(left,real(model.poles[k]),denbits)
+                Base.GMP.MPZ.mul!(product,left,storage[column,other])
+                Base.GMP.MPZ.add!(value,value,product)
+                if ci[k]!=0
+                    partner=column+(ci[k]==1 ? ports : -ports)
+                    _vf_set_dyadic!(left,-imag(model.poles[k]),denbits)
+                    Base.GMP.MPZ.mul!(product,left,storage[partner,other])
+                    Base.GMP.MPZ.add!(value,value,product)
+                end
+            end
+            Base.GMP.MPZ.mul!(value,value,admittance)
+            Base.GMP.MPZ.mul!(value,value,frequency)
+            Base.GMP.MPZ.neg!(value,value)
+        elseif i<=states
+            port=j-states;k=cld(i,ports);column=mod1(i,ports)
+            residue=ci[k]==2 ? imag(model.residues[k-1][port,column]) : real(model.residues[k][port,column])
+            _vf_set_dyadic!(value,residue,denbits)
+            ci[k]!=0 && Base.GMP.MPZ.mul_2exp!(value,1)
+            Base.GMP.MPZ.mul_2exp!(value,3denbits)
+            Base.GMP.MPZ.set_ui!(accumulator,0)
+            for pole in eachindex(ci)
+                ci[pole]==2 && continue
+                Base.GMP.MPZ.add!(accumulator,accumulator,storage[i,(pole-1)*ports+port])
+            end
+            Base.GMP.MPZ.mul!(product,admittance,frequency)
+            Base.GMP.MPZ.mul!(product,product,accumulator)
+            Base.GMP.MPZ.mul_2exp!(product,denbits)
+            Base.GMP.MPZ.sub!(value,value,product)
+        else
+            row,column=i-states,j-states
+            _vf_set_dyadic!(value,model.d[row,column],denbits)
+            _vf_set_dyadic!(left,model.d[column,row],denbits)
+            Base.GMP.MPZ.add!(value,value,left)
+            Base.GMP.MPZ.mul_2exp!(value,3denbits)
+        end
+        integers[i,j]=integers[j,i]=value
+    end
+    _vf_psd_integer!(integers,previous,left,right,product,accumulator)
+end
+
+
+# Reserve the named dense arrays owned by the Hamiltonian and storage
+# stages. Array shapes follow the realization; temporary results are
+# included conservatively. This is raw payload, excluding Julia headers
+# and opaque LAPACK workspace, as with the other dense resource guards.
+function _vf_hamiltonian_payload(states,n,npoles)
+    state_square=(:state_matrix,:shifted_state_matrix,:input_gram,:output_gram,
+        :storage_solve,:storage_symmetry,:input_gram_copy,:closed_state,
+        :closed_product,:closed_eigen_input,:lyapunov_storage,:lyapunov_identity,
+        :lyapunov_transpose,:curvature_left_product,:curvature_product,
+        :curvature_singular_input,:storage_increment,:storage_sum,
+        :scaled_input_gram,:scaled_output_gram,:negated_state_transpose)
+    hamiltonian_square=(:hamiltonian,:schur_form,:schur_vectors,
+        :ordered_schur_form,:ordered_schur_vectors,:hamiltonian_eigen_input)
+    port_square=(:normalized_feedthrough,:hermitian_feedthrough,:feedthrough_sum,
+        :feedthrough_factorization,:feedthrough_spectral_input)
+    state_port=(:input_matrix,:output_matrix,:feedthrough_output_solve,
+        :feedthrough_input_solve,:output_gram_solve)
+    total=0
+    for _ in state_square
+        total=_checked_payload_sum("positive-real dense workspace",total,
+            _checked_array_payload_bytes(Float64,states,states))
+    end
+    for _ in hamiltonian_square
+        total=_checked_payload_sum("positive-real dense workspace",total,
+            _checked_array_payload_bytes(Float64,2,states,2,states))
+    end
+    for _ in port_square
+        total=_checked_payload_sum("positive-real dense workspace",total,
+            _checked_array_payload_bytes(Float64,n,n))
+    end
+    for _ in state_port
+        total=_checked_payload_sum("positive-real dense workspace",total,
+            _checked_array_payload_bytes(Float64,states,n))
+    end
+    return _checked_payload_sum("positive-real dense workspace",total,
+        _checked_array_payload_bytes(ComplexF64,n,n),
+        _checked_array_payload_bytes(ComplexF64,npoles),
+        _checked_array_payload_bytes(Int,npoles),
+        _checked_array_payload_bytes(Int,states),
+        _checked_array_payload_bytes(Float64,states),
+        _checked_array_payload_bytes(Bool,2,states),
+        _checked_array_payload_bytes(ComplexF64,2,states),
+        _checked_array_payload_bytes(ComplexF64,2,states),
+        _checked_array_payload_bytes(ComplexF64,2,states),
+        _checked_array_payload_bytes(ComplexF64,states))
+end
+
+function _vf_storage_witness(model,ci,H,balancing,admittance_scale,frequency_scale;max_bytes,retained_bytes::Integer=0)
+    states=size(H,1)÷2;n=size(model.d,1)
+    factor=LinearAlgebra.schur(H)
+    all(value->!iszero(real(value)),factor.values) || return false
+    count(value->real(value)<0,factor.values)==states || return false
+    ordered=LinearAlgebra.ordschur(factor,[real(value)<0 for value in factor.values])
+    top=@view ordered.Z[1:states,1:states]
+    bottom=@view ordered.Z[states+1:2states,1:states]
+    P=try
+        -balancing*(bottom/top)
+    catch error
+        error isa LinearAlgebra.SingularException || rethrow()
+        return false
+    end
+    all(isfinite,P) || return false
+    P=_vf_hermitian_part(P)
+    Abar=@view H[1:states,1:states]
+    G=-(@view H[1:states,states+1:2states])/balancing
+    closed=Abar+G*P
+    all(value->real(value)<0,eigvals(closed)) || return false
+    # Moving into the storage-inequality interior avoids certifying a
+    # floating approximation of an equality. Lyapunov gives L>0 and the
+    # increment delta=1/(2*||LGL||) maximizes delta-delta^2*||LGL||.
+    L=LinearAlgebra.lyap(Matrix(transpose(closed)),Matrix{Float64}(I,states,states))
+    curvature=opnorm(L*G*L,2)
+    isfinite(curvature) && curvature>0 || return false
+    P+=ldexp.(L/curvature,-1)
+    for i in 1:states,j in i:states
+        P[i,j]=P[j,i]=(P[i,j]/2+P[j,i]/2)
+    end
+    all(isfinite,P) || return false
+    return _vf_storage_exact(model,ci,P,admittance_scale,frequency_scale;max_bytes,retained_bytes)
+end
+
 """Numerical positive-real certificate over all frequencies. A symmetric
 positive-semidefinite affine term is required. Sufficient positive-residue
 and uniform norm bounds also cover semidefinite feedthrough. Otherwise a
 balanced real Hamiltonian locates every potential imaginary-axis zero of
-the Hermitian admittance, and strict positive feedthrough plus absence of
-such zeros certifies the proper response. `certified=false` is not proof
+the Hermitian admittance, and an exact positive-real storage inequality must also verify the
+original stored model before the proper response is certified. `certified=false` is not proof
 of nonpassivity; it can indicate a zero/tolerance boundary. The certificate
 reports its method and potential crossover frequencies, not a grid claim.
 
 The Hamiltonian criterion follows the positive-real state-space test;
-see Semlyen & Gustavsen, IEEE TPWRD 24(1), 2009, DOI 10.1109/TPWRD.2008.923406."""
+see Semlyen & Gustavsen, IEEE TPWRD 24(1), 2009, DOI 10.1109/TPWRD.2008.923406. The exact original-model storage
+inequality follows the positive-real lemma in Boyd et al., *Linear Matrix
+Inequalities in System and Control Theory*, section 2.7.2 (1994).
+Numerical absence of an imaginary-axis crossing alone is not a proof."""
 function planar_rational_certificate(model::PlanarRationalModel;
         tol::Real=1e-8,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(tol) && tol>0 || throw(ArgumentError("certificate tolerance must be finite and positive"))
@@ -303,33 +628,39 @@ function planar_rational_certificate(model::PlanarRationalModel;
         all(isfinite,model.d) && all(isfinite,model.e) &&
         all(R -> size(R)==(n,n) && all(isfinite,R),model.residues) || return no
     all(p -> isfinite(p) && real(p)<0,model.poles) || return no
+    _enforce_payload_limit(_checked_array_payload_bytes(Int,length(model.poles)),
+        max_bytes,"positive-real certificate pole indexing","max_bytes")
     ci = _vf_pair_indices(model.poles)
     for k in eachindex(ci)
         if ci[k]==0
-            all(iszero,imag.(model.residues[k])) || return no
+            all(x->iszero(imag(x)),model.residues[k]) || return no
             iszero(imag(model.poles[k])) || return no
         elseif ci[k]==1
             model.poles[k+1]==conj(model.poles[k]) &&
-                model.residues[k+1]==conj.(model.residues[k]) || return no
+                all(i->model.residues[k+1][i]==conj(model.residues[k][i]),eachindex(model.residues[k])) || return no
         end
     end
-    _vf_psd(model.e,tol) || return no
-    # Every real negative pole with PSD residue is a positive-real term.
-    if _vf_psd(model.d,tol) && all(k -> iszero(imag(model.poles[k])) &&
-            all(iszero,imag.(model.residues[k])) &&
-            _vf_psd(real.(model.residues[k]),tol),eachindex(model.poles))
+    _vf_psd(model.e,tol;max_bytes,retained_bytes=_checked_array_payload_bytes(Int,length(ci))) || return no
+    # Feedthrough Hermitian PSD is necessary at infinite frequency.
+    reciprocal=model.d==transpose(model.d)
+    _vf_psd(model.d,tol;hermitian=!reciprocal,max_bytes,retained_bytes=_checked_array_payload_bytes(Int,length(ci))) || return no
+    # A stable pole with real PSD residue has nonnegative Hermitian energy.
+    # Exact conjugate partners keep the complete model a real transfer.
+    if (reciprocal || !isempty(model.poles)) && all(k ->
+            _vf_psd(model.residues[k],tol;max_bytes,retained_bytes=_checked_array_payload_bytes(Int,length(ci))),eachindex(model.poles))
         return (certified=true,method=:positive_residues,crossings_hz=Float64[])
     end
     # Constant real feedthrough can be nonreciprocal: only its Hermitian
     # part contributes real power. It needs no pole-frequency scale.
-    if isempty(model.poles)
-        _vf_psd(_vf_hermitian_part(model.d),tol) &&
-            return (certified=true,method=:uniform_bound,crossings_hz=Float64[])
-        return no
+    isempty(model.poles) && return (certified=true,method=:uniform_bound,crossings_hz=Float64[])
+    certified_bound=_vf_frobenius_bound(model;max_bytes,retained_bytes=_checked_array_payload_bytes(Int,length(ci)))
+    if isfinite(certified_bound) && _vf_psd(model.d,tol;hermitian=true,diagonal_shift=certified_bound,
+            max_bytes,retained_bytes=_checked_array_payload_bytes(Int,length(ci)))
+        return (certified=true,method=:uniform_bound,crossings_hz=Float64[])
     end
-    states = length(model.poles)*n
-    _enforce_payload_limit(_checked_array_payload_bytes(Float64,16,states,states;
-        label="positive-real certificate workspace"),max_bytes,"positive-real certificate","max_bytes")
+    states = _checked_array_payload_bytes(Float64,length(model.poles),n)÷sizeof(Float64)
+    dense_payload=_vf_hamiltonian_payload(states,n,length(model.poles))
+    _enforce_payload_limit(dense_payload,max_bytes,"positive-real certificate","max_bytes")
     # Positive admittance and frequency scaling preserve positive-realness.
     # Keep the Hamiltonian in those dimensionless units, instead of mixing
     # reciprocal conductance and its square across the Float64 range.
@@ -346,7 +677,6 @@ function planar_rational_certificate(model::PlanarRationalModel;
         (iszero(imag(model.poles[k])) || !iszero(imag(poles[k]))),eachindex(poles)) || return no
     symmetric_d=(d+transpose(d))/2
     minimum_d=minimum(eigvals(LinearAlgebra.Symmetric(symmetric_d)))
-    bound=0.0
     residue=Matrix{ComplexF64}(undef,n,n)
     for k in eachindex(poles)
         residue.=complex.(_vf_certificate_ratio.(real.(model.residues[k]),admittance_scale,frequency_scale),
@@ -354,9 +684,9 @@ function planar_rational_certificate(model::PlanarRationalModel;
         all(isfinite,residue) || return no
         all(i->(iszero(real(model.residues[k][i])) || !iszero(real(residue[i]))) &&
             (iszero(imag(model.residues[k][i])) || !iszero(imag(residue[i]))),eachindex(residue)) || return no
-        bound+=opnorm(residue,2)/(-real(poles[k]))
+        # Range validation above protects the Hamiltonian representation.
     end
-    minimum_d>=bound && return (certified=true,method=:uniform_bound,crossings_hz=Float64[])
+    # Approximate eigenvalues/norms are not sufficient uniform proofs.
     minimum_d>tol*opnorm(symmetric_d,2) || return no
     A,B,C = zeros(Float64,states,states),zeros(Float64,states,n),zeros(Float64,n,states)
     k = 1
@@ -394,7 +724,8 @@ function planar_rational_certificate(model::PlanarRationalModel;
     all(isfinite,values) || return no
     crossings = sort!(unique([_vf_certificate_product_ratio(abs(imag(value)),frequency_scale,2pi) for value in values
         if abs(real(value)) <= tol*abs(imag(value))]))
-    return (certified=isempty(crossings),method=:hamiltonian,crossings_hz=crossings)
+    verified=isempty(crossings) && _vf_storage_witness(model,ci,H,balancing,admittance_scale,frequency_scale;max_bytes,retained_bytes=dense_payload)
+    return (certified=verified,method=:hamiltonian,crossings_hz=crossings)
 end
 
 """Fit a real stable shared-pole N-port model from finite Y matrices
@@ -507,7 +838,7 @@ function planar_fit_rational(series::AbstractVector{<:AbstractMatrix},
     if enforce_passivity && !certificate.certified
         # A global norm bound is conservative but exact: each Hermitian
         # residue contribution is bounded below by -||R||/|Re(p)|.
-        bound = sum(opnorm(residues[k],2)/(-real(poles[k])) for k in eachindex(poles);init=0.0)
+        bound = _vf_frobenius_bound(provisional;max_bytes)
         smallest_d = minimum(eigvals(LinearAlgebra.Symmetric((d+transpose(d))/2)))
         extra = max(bound-smallest_d,0)+max(passivity_tol,1e-12*max(bound,1.0))
         for p in 1:n
@@ -568,11 +899,11 @@ function planar_write_spice(model::PlanarRationalModel,path::AbstractString;
     # conjugate residues at each complex pair.
     for k in eachindex(ci)
         if ci[k]==0
-            iszero(imag(model.poles[k])) && all(iszero,imag.(model.residues[k])) ||
+            iszero(imag(model.poles[k])) && all(x->iszero(imag(x)),model.residues[k]) ||
                 throw(ArgumentError("real pole has a complex residue"))
         elseif ci[k]==1
             model.poles[k+1]==conj(model.poles[k]) &&
-                model.residues[k+1]==conj.(model.residues[k]) ||
+                all(i->model.residues[k+1][i]==conj(model.residues[k][i]),eachindex(model.residues[k])) ||
                 throw(ArgumentError("pole residues are not conjugate pairs"))
         end
     end
