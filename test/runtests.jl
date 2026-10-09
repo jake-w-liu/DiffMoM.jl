@@ -16005,3 +16005,9 @@ include("test_planar_finite_accepted_power.jl")
 include("test_planar_rational_fit_scale.jl")
 
 include("test_planar_rational_certificate_scale.jl")
+
+include("test_planar_exact_pole_grouping.jl")
+
+include("test_planar_rational_eval_frequency_range.jl")
+
+include("test_planar_sampled_passivity_ranges.jl")

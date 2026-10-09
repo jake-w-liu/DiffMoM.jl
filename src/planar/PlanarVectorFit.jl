@@ -32,6 +32,24 @@ end
 function planar_rational_eval(model::PlanarRationalModel,f::Real)
     isfinite(f) || throw(ArgumentError("model frequency must be finite"))
     s = 2pi*1im*f
+    if !isfinite(s)
+        # A finite IEEE frequency can overflow angular frequency even when
+        # its final response fits. Promote only this intermediate range.
+        # Two Float64 significands retain the stored frequency/product;
+        # restore the caller's MPFR precision and rounding on return.
+        return setprecision(BigFloat,2precision(Float64)) do
+            setrounding(BigFloat,RoundNearest) do
+                wide_s=2pi*1im*BigFloat(f)
+                isfinite(wide_s) || throw(ArgumentError(
+                    "rational angular frequency exceeds the working exponent range"))
+                value=model.d .+ wide_s .* model.e
+                for k in eachindex(model.poles)
+                    value .+= model.residues[k] ./ (wide_s-model.poles[k])
+                end
+                ComplexF64.(value)
+            end
+        end
+    end
     Y = model.d .+ s .* model.e
     for k in eachindex(model.poles)
         Y .+= model.residues[k] ./ (s-model.poles[k])
@@ -55,8 +73,42 @@ function _vf_pair_indices(poles)
     return ci
 end
 
-_vf_sort(poles) = sort(ComplexF64.(poles);
-    by=p -> (round(real(p);sigdigits=8),abs(imag(p)),-imag(p)))
+# Interleave equal conjugate modes in place by rotating the middle blocks.
+# Divide at a pair boundary; recursion depth follows the number of modes.
+function _vf_interleave_conjugates!(poles,left,pairs)
+    pairs<=1 && return poles
+    first_pairs=pairs÷2;remaining=pairs-first_pairs
+    middle=left+first_pairs
+    reverse!(poles,middle,middle+remaining-1)
+    reverse!(poles,middle+remaining,middle+remaining+first_pairs-1)
+    reverse!(poles,middle,middle+remaining+first_pairs-1)
+    _vf_interleave_conjugates!(poles,left,first_pairs)
+    _vf_interleave_conjugates!(poles,left+2first_pairs,remaining)
+    return poles
+end
+
+function _vf_sort(poles)
+    # Exact real/imaginary coordinates keep distinct decay rates separate.
+    values=sort(ComplexF64.(poles);by=p->(real(p),abs(imag(p)),-imag(p)))
+    left=1
+    while left<=length(values)
+        p=values[left]
+        if iszero(imag(p));left+=1;continue;end
+        stop=left+1
+        while stop<=length(values) && real(values[stop])==real(p) && abs(imag(values[stop]))==abs(imag(p))
+            stop+=1
+        end
+        pairs=(stop-left)÷2
+        stop-left==2pairs || throw(ArgumentError("vector-fit poles must contain exact conjugate pairs"))
+        for k in 1:pairs
+            values[left+k-1]==conj(values[left+pairs+k-1]) ||
+                throw(ArgumentError("vector-fit poles must contain exact conjugate pairs"))
+        end
+        _vf_interleave_conjugates!(values,left,pairs)
+        left=stop
+    end
+    return values
+end
 
 function _vf_basis(s,poles)
     ci = _vf_pair_indices(poles)
@@ -182,7 +234,20 @@ function planar_rational_passivity(model::PlanarRationalModel,frequencies;
     margin = Inf
     for f in fs
         Y = planar_rational_eval(model,f)
-        margin = min(margin,minimum(eigvals(Hermitian((Y+adjoint(Y))/2))))
+        # Average each Hermitian pair in one owned matrix. Preserve the
+        # ordinary sum before halving, including subnormal values. Only a
+        # finite-input overflow needs the equivalent halved-operand sum.
+        H=similar(Y)
+        for column in axes(Y,2),row in axes(Y,1)
+            left,right=Y[row,column],conj(Y[column,row])
+            value=(left+right)/2
+            if !isfinite(value) && isfinite(left) && isfinite(right)
+                value=complex(isfinite(real(value)) ? real(value) : real(left)/2+real(right)/2,
+                    isfinite(imag(value)) ? imag(value) : imag(left)/2+imag(right)/2)
+            end
+            H[row,column]=value
+        end
+        margin = min(margin,minimum(eigvals(Hermitian(H))))
     end
     return (passive=margin >= -tol,margin=margin,frequencies=fs)
 end

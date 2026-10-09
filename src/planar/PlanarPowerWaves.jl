@@ -207,7 +207,9 @@ function _planar_wave_voltage(S::AbstractMatrix,a::AbstractVector,refs)
         "power-wave voltage needs finite matching S and incident waves"))
     z=_planar_reference_values(refs,n);r=_planar_reference_roots(z)
     matrix=eltype(S)===ComplexF64 ? S : Matrix{ComplexF64}(S)
-    incident=_planar_stored_phasors(a)
+    # Stored incident waves are read-only; reflected and output voltages
+    # use separate buffers. Wider storage still needs checked conversion.
+    incident=a isa AbstractVector{ComplexF64} ? a : _planar_stored_phasors(a)
     all(isfinite,matrix) && all(isfinite,incident) || throw(ArgumentError("power-wave data must fit finite ComplexF64 values"))
     reflected=matrix*incident;value=Vector{ComplexF64}(undef,n)
     for p in 1:n
