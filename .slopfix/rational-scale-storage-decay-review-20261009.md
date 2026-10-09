@@ -50,3 +50,14 @@ package 1635 assertions, current native references, documentation, complete
 suites and static checks. The obsolete old-parent accounting commit remains
 in the archive reference; the new ceiling requires an exact fresh count.
 No original fixture, tolerance, test gate or CI configuration is changed.
+
+The retained parent is now revised again to test terminal consistency before
+forming unnormalized retained-Y coefficients. The earlier cf1d parent and
+ce10 rational candidate passed both complete suites but a new passive
+normalized-reference control demonstrated eager coefficient overflow.
+Those full-pass logs and archived commits remain; they do not qualify the
+new source. This rebased candidate preserves the canonical per-coordinate
+15-assertion range regression and the unchanged four rational fixes/148 tests.
+Current combined proper1650, native130, documentation240, complete suites,
+exact static accounting and own hosted verification are required anew.
+No original fixture, tolerance, test gate or CI configuration was changed.
