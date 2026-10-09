@@ -116,6 +116,7 @@ makedocs(
             "Planar Artwork" => "api/planar-artwork.md",
             "Planar Native Projects" => "api/planar-native.md",
             "Planar Networks and Outputs" => "api/planar-networks.md",
+            "Planar Rational Models" => "api/planar-rational.md",
             "Spatial Patches" => "api/spatial-patches.md",
             "Adjoint and Optimization" => "api/adjoint-optimize.md",
             "Density Topology" => "api/density-topology.md",

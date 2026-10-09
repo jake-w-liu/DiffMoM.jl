@@ -7,6 +7,8 @@ for the formulation, conventions, and a worked example.
 Fabrication import APIs are listed in [Planar Artwork](planar-artwork.md).
 Native project APIs are listed in [Planar Native Projects](planar-native.md).
 Databank and response APIs are listed in [Planar Networks and Outputs](planar-networks.md).
+Rational fitting, passivity certification, and SPICE synthesis are listed in
+[Planar Rational Models](planar-rational.md).
 
 ```@docs
 PlanarLayer
@@ -180,12 +182,6 @@ PlanarSubdivisionResult
 planar_subdivide
 solve_planar_subdivision
 planar_subdivision_currents
-PlanarRationalModel
-planar_fit_rational
-planar_rational_eval
-planar_write_spice
-planar_rational_passivity
-planar_rational_certificate
 PlanarPolygon
 PlanarVia
 planar_normalize_polygon
