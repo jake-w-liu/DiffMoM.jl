@@ -6,21 +6,40 @@ permissions:
   contents: read
 jobs:
   observe:
-    runs-on: macos-latest
+    name: Selector repair / Julia ${{ matrix.julia }} / ${{ matrix.os }} / ${{ matrix.threads }} threads
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            julia: '1.13'
+            threads: 1
+          - os: ubuntu-latest
+            julia: '1.13'
+            threads: 1
+          - os: ubuntu-latest
+            julia: '1.13'
+            threads: 4
+          - os: ubuntu-latest
+            julia: '1.12'
+            threads: 1
     env:
-      JULIA_NUM_THREADS: 1
+      JULIA_NUM_THREADS: ${{ matrix.threads }}
       JULIA_NUM_PRECOMPILE_TASKS: 1
       OPENBLAS_NUM_THREADS: 1
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
         with:
-          version: '1.13'
+          version: ${{ matrix.julia }}
       - uses: julia-actions/cache@v3
         with:
           cache-name: diffmom-julia-cache-v2
           save-always: false
-      - name: Resolve the unchanged current package
+      - name: Resolve the current package
         run: julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
       - name: Report original gate and arithmetic stages
-        run: julia --startup-file=no --check-bounds=yes --threads=1 --project=. .github/scripts/macos_original_mapping_trace.jl
+        run: julia --startup-file=no --check-bounds=yes --threads=${{ matrix.threads }} --project=. .github/scripts/macos_original_mapping_trace.jl
+      - name: Run unchanged nearby scientific assertions
+        run: julia --startup-file=no --check-bounds=yes --threads=${{ matrix.threads }} --project=. .github/scripts/selector_nearby.jl . . selector_nearby.toml
