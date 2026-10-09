@@ -16021,3 +16021,5 @@ include("test_planar_exact_eval_values.jl")
 include("test_planar_exact_ieee_ratio.jl")
 
 include("test_planar_exact_eval_resources.jl")
+
+include("test_planar_layout_curve_geometry.jl")

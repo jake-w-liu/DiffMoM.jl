@@ -36,18 +36,49 @@ function _layout_polygon!(out,key,vertices,max_elements)
     push!(out,LayoutPolygon(key,Matrix{Float64}(vertices)))
 end
 
-function _layout_circle(center,radius,tolerance;segments=nothing)
-    radius>0 || throw(ArgumentError("layout circle radius must be positive"))
-    tolerance>0 || throw(ArgumentError("curve tolerance must be positive"))
-    step=2acos(clamp(1-tolerance/radius,-1.,1.))
-    n=segments===nothing ? max(12,ceil(Int,2pi/max(step,eps(Float64)))) : Int(segments)
-    n>=3 || throw(ArgumentError("circle_segments must be at least three"))
-    n<=1_000_000 || throw(ArgumentError("curve tolerance requires too many vertices"))
-    return hcat([center+radius*[cos(2pi*j/n),sin(2pi*j/n)] for j in 0:n-1]...)
+function _layout_curve_count(angle,half_step_sine,max_bytes;extra_vertex=0,minimum=1)
+    limit=_validated_resource_limit("max_bytes",max_bytes)
+    capacity=limit÷(2sizeof(Float64))-extra_vertex
+    capacity>=minimum || throw(ArgumentError("layout curve exceeds max_bytes"))
+    # Sagitta/r = 2sin(step/4)^2. This avoids subtracting a tiny ratio
+    # from one, and never substitutes an arbitrary minimum angular step.
+    step=4asin(clamp(half_step_sine,0.,1.))
+    # Strictly exceed the rounded quotient at integer boundaries.
+    # The extra segment follows the sagitta inequality, not a policy margin.
+    required=max(minimum,floor(angle/step)+1)
+    isfinite(required) && required<=capacity ||
+        throw(ArgumentError("layout curve requires too many vertices for max_bytes"))
+    return Int(required)
+end
+
+function _layout_circle(center,radius,tolerance;segments=nothing,
+        max_bytes::Integer=_default_max_dense_payload_bytes())
+    length(center)==2 && all(isfinite,center) && isfinite(radius) && radius>0 ||
+        throw(ArgumentError("layout circle requires a finite center and positive finite radius"))
+    if segments===nothing
+        tolerance isa Real && isfinite(tolerance) && tolerance>0 ||
+            throw(ArgumentError("curved DXF geometry requires a positive finite curve_tolerance or circle_segments"))
+        n=_layout_curve_count(2pi,sqrt(tolerance/radius)/sqrt(2.),max_bytes;minimum=3)
+    else
+        segments isa Integer && segments>=3 ||
+            throw(ArgumentError("circle_segments must be an integer of at least three"))
+        n=Int(min(segments,typemax(Int)))
+        segments<=typemax(Int) || throw(ArgumentError("circle_segments exceeds addressable storage"))
+        _enforce_payload_limit(_checked_payload_sum("layout circle",BigInt(n)*2sizeof(Float64)),
+            max_bytes,"layout circle","max_bytes")
+    end
+    vertices=Matrix{Float64}(undef,2,n)
+    for j in 0:n-1
+        s,c=sincos(2pi*j/n)
+        vertices[1,j+1]=center[1]+radius*c;vertices[2,j+1]=center[2]+radius*s
+    end
+    all(isfinite,vertices) || throw(ArgumentError("layout circle exceeds finite coordinates"))
+    return vertices
 end
 
 function _layout_stroke!(out,key,points,width,pathtype,tolerance,max_elements;
-        begin_extension=0.,end_extension=0.,closed=false)
+        begin_extension=0.,end_extension=0.,closed=false,
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     width>0 || throw(ArgumentError("zero-width paths cannot form planar metal"))
     size(points,2)>=2 || throw(ArgumentError("path needs two points"))
     pathtype in (0,1,2,4) || throw(ArgumentError("unsupported GDSII path type $pathtype"))
@@ -75,18 +106,25 @@ function _layout_stroke!(out,key,points,width,pathtype,tolerance,max_elements;
         _layout_polygon!(out,key,hcat(v,v+h*n1,miter,v+h*n2),max_elements)
     end
     if pathtype==1 && !closed
-        _layout_polygon!(out,key,_layout_circle(points[:,1],h,tolerance),max_elements)
-        _layout_polygon!(out,key,_layout_circle(points[:,end],h,tolerance),max_elements)
+        _layout_polygon!(out,key,_layout_circle(points[:,1],h,tolerance;max_bytes),max_elements)
+        _layout_polygon!(out,key,_layout_circle(points[:,end],h,tolerance;max_bytes),max_elements)
     end
 end
 
 """Read GDSII boundaries, boxes, paths, SREF/AREF hierarchy and annotations.
 `topcell` is required for libraries with multiple unreferenced roots. Reflection,
 rotation and magnification are propagated through hierarchy. Absolute transform
-flags reject explicitly. Curved caps use a specified SI sagitta tolerance."""
-function read_gdsii(path::AbstractString;topcell=nothing,curve_tolerance::Real=1e-8,
-        max_elements::Integer=1_000_000,max_bytes::Integer=128_000_000)
-    max_elements>0 && max_bytes>0 || throw(ArgumentError("layout limits must be positive"))
+flags reject explicitly. Curved caps use an SI sagitta tolerance; the default is half the declared
+database lattice spacing. `max_bytes` defaults to OS-reported available memory
+and limits the input file and each generated curve's raw coordinate payload.
+It does not reserve memory or bound parser objects and total retained geometry.
+`max_elements` defaults to the addressable integer range; callers can impose
+a smaller polygon count."""
+function read_gdsii(path::AbstractString;topcell=nothing,curve_tolerance=nothing,
+        max_elements::Integer=typemax(Int),max_bytes::Integer=_default_max_dense_payload_bytes())
+    max_elements>0 && max_bytes>0 && (curve_tolerance===nothing ||
+        (curve_tolerance isa Real && isfinite(curve_tolerance) && curve_tolerance>0)) ||
+        throw(ArgumentError("invalid layout limits"))
     filesize(path)<=max_bytes || throw(ArgumentError("GDSII file exceeds max_bytes"))
     bytes=read(path); i=1; unit=NaN; cell=""; current=nothing
     cells=Dict{String,Vector{Dict{Symbol,Any}}}(); ended=false; header=false
@@ -154,6 +192,9 @@ function read_gdsii(path::AbstractString;topcell=nothing,curve_tolerance::Real=1
         i+=n
     end
     header && ended && isfinite(unit) && i>length(bytes) || throw(ArgumentError("incomplete/trailing GDSII stream"))
+    # GDSII stores integer coordinates on its declared database lattice.
+    # Half one lattice spacing bounds the default curved-cap deviation.
+    curve_tolerance===nothing && (curve_tolerance=unit/2)
     referenced=Set(String(e[:name]) for es in values(cells) for e in es if e[:kind] in (10,11))
     roots=setdiff(Set(keys(cells)),referenced)
     root=topcell===nothing ? (length(roots)==1 ? only(roots) :
@@ -191,6 +232,7 @@ function read_gdsii(path::AbstractString;topcell=nothing,curve_tolerance::Real=1
                 points=(A*xy.+offset).*unit
                 width=abs(e[:width])*unit*(e[:width]<0 ? 1. : sqrt(abs(det(A))))
                 _layout_stroke!(polygons,key,points,width,e[:pathtype],curve_tolerance,max_elements;
+                    max_bytes,
                     begin_extension=e[:begin_extension]*unit*sqrt(abs(det(A))),
                     end_extension=e[:end_extension]*unit*sqrt(abs(det(A))))
             else
@@ -226,24 +268,59 @@ _dxf_field(row,code,default=nothing)=begin
 end
 _dxf_number(row,code,default=0.)=parse(Float64,_dxf_field(row,code,string(default)))
 
-function _dxf_arc_points(a,b,bulge,tolerance)
-    iszero(bulge) && return hcat(a,b)
-    chord=b-a; distance=norm(chord); distance>0 || throw(ArgumentError("bulged DXF edge has zero length"))
-    normal=[-chord[2],chord[1]]/distance
-    center=(a+b)/2+distance*(1-bulge^2)/(4bulge)*normal
-    radius=norm(a-center); theta=4atan(bulge); start=atan(a[2]-center[2],a[1]-center[1])
-    step=2acos(clamp(1-tolerance/radius,-1.,1.)); n=max(1,ceil(Int,abs(theta)/max(step,eps(Float64))))
-    n<=1_000_000 || throw(ArgumentError("bulge needs too many vertices"))
-    return hcat([center+radius*[cos(start+theta*j/n),sin(start+theta*j/n)] for j in 0:n]...)
+function _dxf_arc_points(a,b,bulge,tolerance;
+        max_bytes::Integer=_default_max_dense_payload_bytes())
+    all(isfinite,a) && all(isfinite,b) && isfinite(bulge) ||
+        throw(ArgumentError("DXF arc coordinates and bulge must be finite"))
+    if iszero(bulge)
+        _enforce_payload_limit(2*2sizeof(Float64),max_bytes,"DXF arc","max_bytes")
+        return hcat(a,b)
+    end
+    tolerance isa Real && isfinite(tolerance) && tolerance>0 ||
+        throw(ArgumentError("curved DXF geometry requires a positive finite curve_tolerance"))
+    chord=b-a;distance=hypot(chord...)
+    isfinite(distance) && distance>0 || throw(ArgumentError("bulged DXF edge requires finite nonzero chord length"))
+    theta=4atan(bulge);magnitude=abs(bulge)
+    # For this arc, sagitta = chord*abs(bulge)/2, including major arcs.
+    # Compare with the tolerance before constructing a remote circle center.
+    if magnitude<=2(tolerance/distance)
+        _enforce_payload_limit(2*2sizeof(Float64),max_bytes,"DXF arc","max_bytes")
+        return hcat(a,b)
+    end
+    ratio=magnitude<=1 ? magnitude : inv(magnitude)
+    half_step_sine=sqrt(2ratio/(1+ratio^2))*sqrt(tolerance/distance)
+    n=_layout_curve_count(abs(theta),half_step_sine,max_bytes;extra_vertex=1)
+    vertices=Matrix{Float64}(undef,2,n+1)
+    vertices[:,1]=a;vertices[:,end]=b
+    for j in 1:n-1
+        alpha=theta*j/n;s=sin(alpha);half=sin(alpha/2)
+        square=half*half
+        # Rotate relative to the chord. Form sin(alpha)/bulge and
+        # sin(alpha/2)^2/bulge before multiplying by chord length.
+        x=square+(s/bulge-bulge*s)/4
+        y=(half*(half/bulge)-half*(bulge*half)-s)/2
+        vertices[1,j+1]=a[1]+chord[1]*x-chord[2]*y
+        vertices[2,j+1]=a[2]+chord[2]*x+chord[1]*y
+    end
+    all(isfinite,vertices) || throw(ArgumentError("DXF arc exceeds finite coordinates"))
+    return vertices
 end
 
 """Read planar ASCII DXF closed polylines (including bulges), circles and
 filled solids. Unitless files require explicit `unit_m`. Nonplanar extrusion,
 open zero-width paths, variable-width curves, and unsupported entities reject.
-Text/dimension entities remain available as annotations."""
-function read_dxf(path::AbstractString;unit_m=nothing,curve_tolerance::Real=1e-8,circle_segments=nothing,
-        max_elements::Integer=1_000_000,max_bytes::Integer=128_000_000)
-    max_elements>0 && max_bytes>0 && curve_tolerance>0 || throw(ArgumentError("invalid layout limits"))
+Text/dimension entities remain available as annotations. Curved edges require
+an explicit positive finite SI `curve_tolerance`; circles can instead use an
+explicit integer `circle_segments`. Straight geometry needs no curve tolerance.
+`max_bytes` defaults to OS-reported available memory and limits the input file
+and each generated curve's raw coordinate payload, excluding parser objects
+and total retained geometry. `max_elements` defaults to the addressable integer
+range and can impose a smaller polygon count."""
+function read_dxf(path::AbstractString;unit_m=nothing,curve_tolerance=nothing,circle_segments=nothing,
+        max_elements::Integer=typemax(Int),max_bytes::Integer=_default_max_dense_payload_bytes())
+    max_elements>0 && max_bytes>0 && (curve_tolerance===nothing ||
+        (curve_tolerance isa Real && isfinite(curve_tolerance) && curve_tolerance>0)) ||
+        throw(ArgumentError("invalid layout limits"))
     pairs=_dxf_pairs(path,max_bytes)
     ui=findfirst(p->p==(9,"\$INSUNITS"),pairs)
     declared=ui===nothing ? 0 : parse(Int,pairs[ui+1][2])
@@ -302,19 +379,19 @@ function read_dxf(path::AbstractString;unit_m=nothing,curve_tolerance::Real=1e-8
             points=[p*unit for p in points]; vertices=Vector{Float64}[]
             n=length(points); count=closed ? n : n-1
             for j in 1:count
-                k=j==n ? 1 : j+1; arc=_dxf_arc_points(points[j],points[k],bulges[j],curve_tolerance)
+                k=j==n ? 1 : j+1; arc=_dxf_arc_points(points[j],points[k],bulges[j],curve_tolerance;max_bytes)
                 append!(vertices,[arc[:,v] for v in 1:size(arc,2)-1])
             end
             closed || push!(vertices,points[end])
             if constant>0
-                _layout_stroke!(polygons,layer,hcat(vertices...),constant,0,curve_tolerance,max_elements;closed)
+                _layout_stroke!(polygons,layer,hcat(vertices...),constant,0,curve_tolerance,max_elements;closed,max_bytes)
             else
                 closed || throw(ArgumentError("open zero-width DXF polyline is not filled metal"))
                 _layout_polygon!(polygons,layer,hcat(vertices...),max_elements)
             end
         elseif kind=="CIRCLE"
             center=unit*[_dxf_number(row,10),_dxf_number(row,20)]
-            _layout_polygon!(polygons,layer,_layout_circle(center,_dxf_number(row,40)*unit,curve_tolerance;segments=circle_segments),max_elements)
+            _layout_polygon!(polygons,layer,_layout_circle(center,_dxf_number(row,40)*unit,curve_tolerance;segments=circle_segments,max_bytes),max_elements)
         elseif kind in ("SOLID","TRACE","3DFACE")
             all(j->_dxf_number(row,30+j)==0,0:3) || throw(ArgumentError("nonplanar DXF filled face"))
             vertices=hcat([unit*[_dxf_number(row,10+j),_dxf_number(row,20+j)] for j in 0:3]...)
