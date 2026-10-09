@@ -309,12 +309,12 @@ function _project_radiation_excitation(result::PlanarProjectResult;
                 (iszero(negative) ? 0.0im : node_voltages[negative])
         end
         current=result.circuit.currents*waves
-        .5real(dot(terminal_voltages,current))
+        _planar_accepted_power(terminal_voltages,current;max_bytes,retained_bytes=reserve)
     elseif result.y!==nothing
         # Independently retained conductance can survive after S rounds to
         # a lossless boundary. Keep the physical peak-phasor V†YV relation.
         current=_planar_terminal_current(result.y,nodes;max_bytes,retained_bytes=reserve)
-        .5real(dot(nodes,current))
+        _planar_accepted_power(nodes,current;max_bytes,retained_bytes=reserve)
     else
         reflected=result.s*waves
         .5real(dot(waves,waves)-dot(reflected,reflected))

@@ -38,6 +38,35 @@ function _planar_terminal_current(Y::AbstractMatrix{T},v::AbstractVector{Complex
     current
 end
 
+# Every finite Float64 is an integer multiple of the least subnormal.
+# Two-factor products span twice that lattice-to-maximum exponent range;
+# a complex real dot has two scalar terms per coordinate. These bits
+# retain every product and sum exactly, including overflow cancellation.
+_planar_power_product_precision(n::Integer)=_planar_terminal_product_precision(n)
+
+function _planar_accepted_power(v,i;max_bytes,retained_bytes)
+    power=.5real(dot(v,i))
+    isfinite(power) && return power
+    bits=_planar_power_product_precision(length(v))
+    # Exactly four owned scalar roles: accumulator, two operands, product.
+    _enforce_payload_limit(_checked_payload_sum("accepted power recovery",retained_bytes,
+        _checked_array_payload_bytes(UInt8,_planar_wide_scalar_payload(bits),4)),
+        max_bytes,"accepted power recovery","max_bytes")
+    total,left,right,product=ntuple(_->BigFloat(0.;precision=bits),4)
+    for p in eachindex(v,i)
+        for component in (real,imag)
+            _planar_wide_set!(left,component(v[p]))
+            _planar_wide_set!(right,component(i[p]))
+            _planar_wide_mul!(product,left,right)
+            _planar_wide_add!(total,total,product)
+        end
+    end
+    # Divide before narrowing: the dot may exceed Float64 while power fits.
+    _planar_wide_set!(left,2.0)
+    _planar_wide_div!(total,total,left)
+    Float64(total)
+end
+
 export PlanarPortImpedance, planar_power_waves, planar_wave_voltages, planar_s_to_y
 
 # Excitations are stored before voltage/current transfers can amplify them.
@@ -357,8 +386,8 @@ function planar_power_waves(voltages::AbstractVector,currents::AbstractVector;z0
     n=length(voltages)
     length(currents)==n && n>0 && all(isfinite,voltages) && all(isfinite,currents) ||
         throw(ArgumentError("power-wave voltages and currents must be finite matching vectors"))
-    _enforce_payload_limit(_checked_array_payload_bytes(ComplexF64,6,n),max_bytes,
-        "power-wave conversion","max_bytes")
+    retained=_checked_array_payload_bytes(ComplexF64,6,n)
+    _enforce_payload_limit(retained,max_bytes,"power-wave conversion","max_bytes")
     z=_planar_reference_values(z0,n;freq);r=_planar_reference_roots(z)
     v=_planar_stored_phasors(voltages);i=_planar_stored_phasors(currents)
     all(isfinite,v) && all(isfinite,i) || throw(ArgumentError("power-wave phasors must fit finite ComplexF64 values"))
@@ -367,7 +396,8 @@ function planar_power_waves(voltages::AbstractVector,currents::AbstractVector;z0
         a[p]=(v[p]+z[p]*i[p])/(2r[p]);b[p]=(v[p]-conj(z[p])*i[p])/(2r[p])
     end
     all(isfinite,a) && all(isfinite,b) || throw(ArgumentError("power waves must fit finite ComplexF64 values"))
-    power=.5real(dot(v,i));isfinite(power) || throw(ArgumentError("accepted power is nonfinite"))
+    power=_planar_accepted_power(v,i;max_bytes,retained_bytes=retained)
+    isfinite(power) || throw(ArgumentError("accepted power is nonfinite"))
     return (a,b,accepted_power=power)
 end
 

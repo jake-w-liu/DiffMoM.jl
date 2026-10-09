@@ -15995,3 +15995,9 @@ println("="^60)
 include("test_planar_selector_scattering_roundoff.jl")
 
 include("test_planar_terminal_current_ranges.jl")
+
+include("test_planar_public_power_product_range.jl")
+
+include("test_planar_radiation_power_product_range.jl")
+
+include("test_planar_finite_accepted_power.jl")

@@ -426,9 +426,9 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
         end
     end
     X=direct ? result.currents : _planar_coefficient_columns(result)
-    current=_planar_terminal_current(result.y,v;max_bytes,retained_bytes=reserve);pin=.5real(dot(v,current))
+    current=_planar_terminal_current(result.y,v;max_bytes,retained_bytes=reserve);pin=_planar_accepted_power(v,current;max_bytes,retained_bytes=reserve)
     tolerance=100eps(Float64)*norm(v)*norm(current)
-    pin>=-tolerance || throw(ArgumentError("radiation gain requires nonnegative accepted power"))
+    isfinite(pin) && pin>=-tolerance || throw(ArgumentError("radiation gain requires finite nonnegative accepted power"))
     return planar_farfield(source,_planar_current_product(X,v),real(result.freq);accepted_power=pin>0 ? pin : nothing,
         max_bytes=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve),kw...)
 end
