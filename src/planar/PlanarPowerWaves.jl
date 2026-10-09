@@ -234,24 +234,16 @@ function _planar_wave_boundary_consistent(Y,v,a,refs)
     return true
 end
 
-# Preserve ordinary declared-S voltage arithmetic when it satisfies the
-# retained terminal equation at its computed floating-point error bound.
-# Recover exact component loss and nonzero S quantization without a selected
-# conditioning, amplitude, accuracy threshold, retry count, or iteration.
+# Preserve ordinary declared-S arithmetic when its terminal equation is
+# consistent at the operation-derived rounding bound. Test consistency
+# before forming a retained-Y system: normalized S can be representable
+# even when an unnormalized coefficient would overflow. Zero and nonzero
+# S quantization both recover through Y when this equation is inconsistent.
 function _planar_wave_voltage_retained(Y::AbstractMatrix,S::AbstractMatrix,
         a::AbstractVector,refs)
     declared=_planar_wave_voltage(S,a,refs)
-    retained=nothing
-    if any(v->iszero(real(v)) || iszero(imag(v)),declared)
-        retained=_planar_wave_voltage_admittance(Y,a,refs)
-        for index in eachindex(declared,retained)
-            lost_real=iszero(real(declared[index])) && !iszero(real(retained[index]))
-            lost_imag=iszero(imag(declared[index])) && !iszero(imag(retained[index]))
-            (lost_real || lost_imag) && return retained
-        end
-    end
     _planar_wave_boundary_consistent(Y,declared,a,refs) && return declared
-    return retained===nothing ? _planar_wave_voltage_admittance(Y,a,refs) : retained
+    return _planar_wave_voltage_admittance(Y,a,refs)
 end
 
 function _planar_incident_admittance(Y::AbstractMatrix,v::AbstractVector,refs)

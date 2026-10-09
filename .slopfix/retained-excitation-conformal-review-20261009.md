@@ -80,3 +80,17 @@ The actual selector allocation measurements include its consistency vector;
 private-helper measurements above do not imply an overall selector saving.
 Complete suites, native/docs, exact static accounting and publication remain
 required. Earlier failed candidates and all immutable inputs are preserved.
+
+Valid normalized reference ranges also require testing the terminal equation
+before constructing a retained-Y system. Two IEEE-derived passive two-port
+controls, including nearly reciprocal one-ulp asymmetry, have finite accurate
+S voltages while eager unnormalized coefficients overflow. The boundary-first
+selector preserves these voltages and retains quantization recovery through
+the existing operation-derived consistency bound. No threshold was added.
+The 15-assertion regression checks each port against a promoted-precision
+physical solve, exact Hermitian-part passivity, inference and input ownership.
+Both Julia versions pass this correction's proper package1433, coupled20,
+native130 and documentation240 checks. These range controls do not establish
+a realistic assembled RFIC design or a universal finite-input guarantee.
+This committed revision requires fresh complete-suite and hosted qualification;
+all original tests and gates, and the earlier full-pass evidence, remain.
