@@ -403,10 +403,11 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
         reserve=_checked_payload_sum("retained admittance radiation excitation",reserve,
             _checked_array_payload_bytes(ComplexF64,n,n),
             _checked_array_payload_bytes(Int,n),
-            # S conversion owns reference/incident/reflected/voltage vectors;
+            # S conversion owns reference/reflected/voltage vectors; stored
+            # incident waves are borrowed from the caller-owned input buffer.
             # its consistency check owns current, recovery owns voltage.
             # Both voltage routes own roots.
-            _checked_array_payload_bytes(ComplexF64,4+1+1,n),
+            _checked_array_payload_bytes(ComplexF64,3+1+1,n),
             _checked_array_payload_bytes(Float64,1+1,n))
     end
     _enforce_payload_limit(reserve,max_bytes,"radiation excitation","max_bytes")
@@ -428,7 +429,7 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
     X=direct ? result.currents : _planar_coefficient_columns(result)
     current=result.y*v;pin=.5real(dot(v,current))
     tolerance=100eps(Float64)*norm(v)*norm(current)
-    pin>=-tolerance || throw(ArgumentError("radiation gain requires nonnegative accepted power"))
+    isfinite(pin) && pin>=-tolerance || throw(ArgumentError("radiation gain requires finite nonnegative accepted power"))
     return planar_farfield(source,_planar_current_product(X,v),real(result.freq);accepted_power=pin>0 ? pin : nothing,
         max_bytes=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve),kw...)
 end
