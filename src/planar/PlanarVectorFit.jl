@@ -265,6 +265,58 @@ function planar_rational_passivity(model::PlanarRationalModel,frequencies;
     return (passive=margin >= -tol && exact_energy,margin=margin,frequencies=fs)
 end
 
+using GMP_jll: libgmp
+const _vf_gmp_library=libgmp
+# The loaded GMP ABI exposes its usable limb width. Its byte payload is
+# derived from the C unsigned-byte width, never from a chosen capacity.
+const _vf_gmp_limb_bits=Int(unsafe_load(cglobal((:__gmp_bits_per_limb,_vf_gmp_library),Cint)))
+const _vf_gmp_limb_bytes=cld(_vf_gmp_limb_bits,ndigits(typemax(UInt8);base=2))
+# MPFR_RNDU is the public C enumeration value 2 (mpfr.h). Dependency
+# tests check mpfr_print_rnd_mode against the loaded public library.
+const _vf_mpfr_up=Cint(2)
+
+@inline function _vf_mpz_set_d!(out,x)
+    ccall((:__gmpz_set_d,_vf_gmp_library),Cvoid,(Ref{BigInt},Cdouble),out,x)
+    out
+end
+@inline function _vf_mpz_set_ui!(out,x)
+    ccall((:__gmpz_set_ui,_vf_gmp_library),Cvoid,(Ref{BigInt},Culong),out,x)
+    out
+end
+@inline function _vf_mpz_set!(out,x)
+    ccall((:__gmpz_set,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt}),out,x)
+    out
+end
+@inline function _vf_mpz_mul_2exp!(out,bits)
+    ccall((:__gmpz_mul_2exp,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt},Culong),out,out,bits)
+    out
+end
+@inline function _vf_mpz_fdiv_q_2exp!(out,bits)
+    ccall((:__gmpz_fdiv_q_2exp,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt},Culong),out,out,bits)
+    out
+end
+@inline function _vf_mpz_add!(out,a,b)
+    ccall((:__gmpz_add,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt},Ref{BigInt}),out,a,b)
+    out
+end
+@inline function _vf_mpz_sub!(out,a,b)
+    ccall((:__gmpz_sub,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt},Ref{BigInt}),out,a,b)
+    out
+end
+@inline function _vf_mpz_mul!(out,a,b)
+    ccall((:__gmpz_mul,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt},Ref{BigInt}),out,a,b)
+    out
+end
+@inline function _vf_mpz_neg!(out,a)
+    ccall((:__gmpz_neg,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt}),out,a)
+    out
+end
+@inline function _vf_mpz_tdiv_qr!(quotient,remainder,numerator,denominator)
+    ccall((:__gmpz_tdiv_qr,_vf_gmp_library),Cvoid,
+        (Ref{BigInt},Ref{BigInt},Ref{BigInt},Ref{BigInt}),quotient,remainder,numerator,denominator)
+    quotient
+end
+
 # Hermitian energy is preserved by realification: [[Re(H),-Im(H)];
 # [Im(H),Re(H)]]. Return its two original stored operands, keeping sums
 # exact even when halving a subnormal value would erase its sign.
@@ -300,25 +352,25 @@ function _vf_psd_integer_workspace(A;hermitian::Bool=false,diagonal_shift::Float
     !iszero(diagonal_shift) && (terms+=hermitian ? 2 : 1)
     terms>1 && (entrybits+=ndigits(terms-1;base=2))
     minorbits=BigInt(n)*(entrybits+ndigits(n;base=2))
-    minorlimbs=cld(minorbits,Base.GMP.BITS_PER_LIMB)
+    minorlimbs=cld(minorbits,_vf_gmp_limb_bits)
     limbs=2minorlimbs+1 # two minor products and one subtraction carry
-    bits=Int(limbs*Base.GMP.BITS_PER_LIMB)
+    bits=Int(limbs*_vf_gmp_limb_bits)
     entries=BigInt(n)*(n+1)÷2
     roles=(:prior_pivot,:left_product,:right_product,:numerator,:remainder)
     bytes=_checked_payload_sum("exact positive-semidefinite workspace",
         _checked_array_payload_bytes(Ptr{Cvoid},n,n),
         _checked_array_payload_bytes(UInt8,entries+length(roles),
-            sizeof(BigInt)+Int(limbs)*sizeof(Base.GMP.Limb)))
+            sizeof(BigInt)+Int(limbs)*_vf_gmp_limb_bytes))
     return denbits,bits,bytes
 end
 @inline function _vf_set_dyadic!(value,x,denbits)
     mantissa,power=frexp(x)
-    Base.GMP.MPZ.set_d!(value,ldexp(mantissa,precision(Float64)))
+    _vf_mpz_set_d!(value,ldexp(mantissa,precision(Float64)))
     shift=power-precision(Float64)+denbits
     if shift>=0
-        Base.GMP.MPZ.mul_2exp!(value,shift)
+        _vf_mpz_mul_2exp!(value,shift)
     else
-        Base.GMP.MPZ.fdiv_q_2exp!(value,-shift)
+        _vf_mpz_fdiv_q_2exp!(value,-shift)
     end
     return value
 end
@@ -351,12 +403,12 @@ function _vf_psd(A,tol;hermitian::Bool=false,diagonal_shift::Float64=0.0,max_byt
         value=_vf_set_dyadic!(BigInt(;nbits=bits),x,denbits)
         if hermitian
             _vf_set_dyadic!(left,y,denbits)
-            Base.GMP.MPZ.add!(value,value,left)
+            _vf_mpz_add!(value,value,left)
         end
         if i==j && !iszero(diagonal_shift)
             _vf_set_dyadic!(left,diagonal_shift,denbits)
-            hermitian && Base.GMP.MPZ.mul_2exp!(left,1)
-            Base.GMP.MPZ.sub!(value,value,left)
+            hermitian && _vf_mpz_mul_2exp!(left,1)
+            _vf_mpz_sub!(value,value,left)
         end
         integers[i,j]=integers[j,i]=value
     end
@@ -374,7 +426,7 @@ function _vf_frobenius_bound(model;max_bytes,retained_bytes::Integer=0)
         _checked_array_payload_bytes(UInt8,length(roles),_planar_wide_scalar_payload(bits)))
     _enforce_payload_limit(payload,max_bytes,"certified residue norm bound","max_bytes")
     bound,squares,operand,product,decay=ntuple(_->BigFloat(0.;precision=bits),length(roles))
-    up=Cint(Base.MPFR.MPFRRoundUp)
+    up=_vf_mpfr_up
     for k in eachindex(model.residues)
         _planar_wide_set!(squares,0.)
         for value in model.residues[k],component in (real,imag)
@@ -424,8 +476,8 @@ function _vf_storage_integer_workspace(model,P,a,f)
     entrybits=4BigInt(inputbits)+ndigits(terms-1;base=2)+1
     states=size(P,1);n=states+size(model.d,1)
     minorbits=BigInt(n)*(entrybits+ndigits(n;base=2))
-    limbs=2cld(minorbits,Base.GMP.BITS_PER_LIMB)+1
-    bits=Int(limbs*Base.GMP.BITS_PER_LIMB)
+    limbs=2cld(minorbits,_vf_gmp_limb_bits)+1
+    bits=Int(limbs*_vf_gmp_limb_bits)
     entries=BigInt(n)*(n+1)÷2+BigInt(states)*(states+1)÷2
     roles=(:prior_pivot,:left_operand,:right_operand,:product,:accumulator,
         :admittance_scale,:frequency_scale)
@@ -433,13 +485,13 @@ function _vf_storage_integer_workspace(model,P,a,f)
         _checked_array_payload_bytes(Ptr{Cvoid},n,n),
         _checked_array_payload_bytes(Ptr{Cvoid},states,states),
         _checked_array_payload_bytes(UInt8,entries+length(roles),
-            sizeof(BigInt)+Int(limbs)*sizeof(Base.GMP.Limb)))
+            sizeof(BigInt)+Int(limbs)*_vf_gmp_limb_bytes))
     return denbits,bits,bytes
 end
 
 function _vf_psd_integer!(integers,previous,left,right,numerator,remainder)
     n=size(integers,1)
-    Base.GMP.MPZ.set_ui!(previous,1)
+    _vf_mpz_set_ui!(previous,1)
     for k in 1:n
         pivot=integers[k,k]
         pivot>=0 || return false
@@ -448,13 +500,13 @@ function _vf_psd_integer!(integers,previous,left,right,numerator,remainder)
             continue
         end
         for i in k+1:n,j in i:n
-            Base.GMP.MPZ.mul!(left,pivot,integers[i,j])
-            Base.GMP.MPZ.mul!(right,integers[i,k],integers[k,j])
-            Base.GMP.MPZ.sub!(numerator,left,right)
-            Base.GMP.MPZ.tdiv_qr!(integers[i,j],remainder,numerator,previous)
+            _vf_mpz_mul!(left,pivot,integers[i,j])
+            _vf_mpz_mul!(right,integers[i,k],integers[k,j])
+            _vf_mpz_sub!(numerator,left,right)
+            _vf_mpz_tdiv_qr!(integers[i,j],remainder,numerator,previous)
             iszero(remainder) || error("exact positive-semidefinite elimination lost divisibility")
         end
-        Base.GMP.MPZ.set!(previous,pivot)
+        _vf_mpz_set!(previous,pivot)
     end
     true
 end
@@ -483,39 +535,39 @@ function _vf_storage_exact(model,ci,P,a,f;max_bytes,retained_bytes::Integer=0)
             for (column,other) in ((i,j),(j,i))
                 k=cld(column,ports)
                 _vf_set_dyadic!(left,real(model.poles[k]),denbits)
-                Base.GMP.MPZ.mul!(product,left,storage[column,other])
-                Base.GMP.MPZ.add!(value,value,product)
+                _vf_mpz_mul!(product,left,storage[column,other])
+                _vf_mpz_add!(value,value,product)
                 if ci[k]!=0
                     partner=column+(ci[k]==1 ? ports : -ports)
                     _vf_set_dyadic!(left,-imag(model.poles[k]),denbits)
-                    Base.GMP.MPZ.mul!(product,left,storage[partner,other])
-                    Base.GMP.MPZ.add!(value,value,product)
+                    _vf_mpz_mul!(product,left,storage[partner,other])
+                    _vf_mpz_add!(value,value,product)
                 end
             end
-            Base.GMP.MPZ.mul!(value,value,admittance)
-            Base.GMP.MPZ.mul!(value,value,frequency)
-            Base.GMP.MPZ.neg!(value,value)
+            _vf_mpz_mul!(value,value,admittance)
+            _vf_mpz_mul!(value,value,frequency)
+            _vf_mpz_neg!(value,value)
         elseif i<=states
             port=j-states;k=cld(i,ports);column=mod1(i,ports)
             residue=ci[k]==2 ? imag(model.residues[k-1][port,column]) : real(model.residues[k][port,column])
             _vf_set_dyadic!(value,residue,denbits)
-            ci[k]!=0 && Base.GMP.MPZ.mul_2exp!(value,1)
-            Base.GMP.MPZ.mul_2exp!(value,3denbits)
-            Base.GMP.MPZ.set_ui!(accumulator,0)
+            ci[k]!=0 && _vf_mpz_mul_2exp!(value,1)
+            _vf_mpz_mul_2exp!(value,3denbits)
+            _vf_mpz_set_ui!(accumulator,0)
             for pole in eachindex(ci)
                 ci[pole]==2 && continue
-                Base.GMP.MPZ.add!(accumulator,accumulator,storage[i,(pole-1)*ports+port])
+                _vf_mpz_add!(accumulator,accumulator,storage[i,(pole-1)*ports+port])
             end
-            Base.GMP.MPZ.mul!(product,admittance,frequency)
-            Base.GMP.MPZ.mul!(product,product,accumulator)
-            Base.GMP.MPZ.mul_2exp!(product,denbits)
-            Base.GMP.MPZ.sub!(value,value,product)
+            _vf_mpz_mul!(product,admittance,frequency)
+            _vf_mpz_mul!(product,product,accumulator)
+            _vf_mpz_mul_2exp!(product,denbits)
+            _vf_mpz_sub!(value,value,product)
         else
             row,column=i-states,j-states
             _vf_set_dyadic!(value,model.d[row,column],denbits)
             _vf_set_dyadic!(left,model.d[column,row],denbits)
-            Base.GMP.MPZ.add!(value,value,left)
-            Base.GMP.MPZ.mul_2exp!(value,3denbits)
+            _vf_mpz_add!(value,value,left)
+            _vf_mpz_mul_2exp!(value,3denbits)
         end
         integers[i,j]=integers[j,i]=value
     end

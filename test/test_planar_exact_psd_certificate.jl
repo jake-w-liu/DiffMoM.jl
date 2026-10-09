@@ -48,6 +48,8 @@ function exercise(root,output)
         push!(matrices,[small off 0.;off small 0.;0. 0. large])
     end
     result=@testset "Exact rational certificates retain multiscale and singular stored energy" begin
+        @test unsafe_string(ccall((:mpfr_print_rnd_mode,DiffMoM._planar_mpfr_library),Cstring,(Cint,),DiffMoM._vf_mpfr_up))=="MPFR_RNDU"
+        @test DiffMoM._vf_gmp_limb_bits==sizeof(eltype(fieldtype(BigInt,:d)))*ndigits(typemax(UInt8);base=2)
         tiny=nextfloat(0.)
         for Y in ([0. tiny;0. 1.],[0. tiny*im;0. 1.],
                 ComplexF64[1. 1im;-1im 1.],ComplexF64[1. 1im;-1im prevfloat(1.)],
@@ -143,7 +145,7 @@ function exercise(root,output)
         @test !planar_rational_certificate(model(zeros(3,3);residue=indefinite)).certified
         for A in (ones(2,2),[1. .5;.5 1.])
             denbits,bits,payload=DiffMoM._vf_psd_integer_workspace(A)
-            @test bits%Base.GMP.BITS_PER_LIMB==0 && denbits>=0
+            @test bits%DiffMoM._vf_gmp_limb_bits==0 && denbits>=0
             @test DiffMoM._vf_psd(A,1e-8;max_bytes=payload)
             @test_throws ArgumentError DiffMoM._vf_psd(A,1e-8;max_bytes=payload-1)
             @test DiffMoM._vf_psd(A,1e-8;max_bytes=payload+sizeof(Float64),retained_bytes=sizeof(Float64))
