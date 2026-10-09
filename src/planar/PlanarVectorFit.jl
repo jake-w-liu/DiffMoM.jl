@@ -196,17 +196,6 @@ function _vf_psd(A,tol)
     return minimum(eigvals(LinearAlgebra.Symmetric(A))) >= 0
 end
 
-"""Numerical positive-real certificate over all frequencies. A symmetric
-positive-semidefinite affine term is required. Sufficient positive-residue
-and uniform norm bounds also cover semidefinite feedthrough. Otherwise a
-balanced real Hamiltonian locates every potential imaginary-axis zero of
-the Hermitian admittance, and strict positive feedthrough plus absence of
-such zeros certifies the proper response. `certified=false` is not proof
-of nonpassivity; it can indicate a zero/tolerance boundary. The certificate
-reports its method and potential crossover frequencies, not a grid claim.
-
-The Hamiltonian criterion follows the positive-real state-space test;
-see Semlyen & Gustavsen, IEEE TPWRD 24(1), 2009, DOI 10.1109/TPWRD.2008.923406."""
 # Binary scaling keeps a finite x/(y*z) from overflowing or disappearing
 # in its intermediate product/divisions. y and z are positive scales.
 @inline function _vf_certificate_ratio(x::Float64,y::Float64,z::Float64)
@@ -220,6 +209,17 @@ end
     ldexp((xm*ym)/zm,xe+ye-ze)
 end
 
+"""Numerical positive-real certificate over all frequencies. A symmetric
+positive-semidefinite affine term is required. Sufficient positive-residue
+and uniform norm bounds also cover semidefinite feedthrough. Otherwise a
+balanced real Hamiltonian locates every potential imaginary-axis zero of
+the Hermitian admittance, and strict positive feedthrough plus absence of
+such zeros certifies the proper response. `certified=false` is not proof
+of nonpassivity; it can indicate a zero/tolerance boundary. The certificate
+reports its method and potential crossover frequencies, not a grid claim.
+
+The Hamiltonian criterion follows the positive-real state-space test;
+see Semlyen & Gustavsen, IEEE TPWRD 24(1), 2009, DOI 10.1109/TPWRD.2008.923406."""
 function planar_rational_certificate(model::PlanarRationalModel;
         tol::Real=1e-8,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(tol) && tol>0 || throw(ArgumentError("certificate tolerance must be finite and positive"))
