@@ -15996,3 +15996,5 @@ include("test_mesh_plot_aspect.jl")
 println("\n" * "="^60)
 println("ALL TESTS PASSED")
 println("="^60)
+
+include("test_planar_public_power_product_range.jl")
