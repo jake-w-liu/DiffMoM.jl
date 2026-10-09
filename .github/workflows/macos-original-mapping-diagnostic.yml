@@ -1,0 +1,26 @@
+name: macOS original mapping diagnostic
+"on":
+  push:
+    branches: [audit/macos-original-mapping-diagnostic-20261009]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: macos-latest
+    env:
+      JULIA_NUM_THREADS: 1
+      JULIA_NUM_PRECOMPILE_TASKS: 1
+      OPENBLAS_NUM_THREADS: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@v3
+        with:
+          cache-name: diffmom-julia-cache-v2
+          save-always: false
+      - name: Resolve the unchanged current package
+        run: julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Report original gate and arithmetic stages
+        run: julia --startup-file=no --check-bounds=yes --threads=1 --project=. .github/scripts/macos_original_mapping_trace.jl

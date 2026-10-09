@@ -1,0 +1,41 @@
+using DiffMoM,LinearAlgebra,SHA,TOML
+original=joinpath(@__DIR__,"..","..","test","test_planar_radiation.jl")
+Base.include_string(Main,first(split(read(original,String),"@testset")),original)
+source=radiation_fixture(bottom=TERM_GND)
+raw=solve_planar(source,1e9;mx=16,my=16,surface_zs=.1)
+a=ComplexF64[1+.2im]
+standard=sqrt(50.)*(a+raw.s*a)
+declared=DiffMoM._planar_wave_voltage(raw.s,a,raw.z0)
+retained=DiffMoM._planar_wave_voltage_retained(raw.y,raw.s,a,raw.z0)
+physical=DiffMoM._planar_wave_voltage_admittance(raw.y,a,raw.z0)
+direct=raw.currents*standard
+owned_declared=DiffMoM._planar_current_product(raw.currents,declared)
+owned_retained=DiffMoM._planar_current_product(raw.currents,retained)
+fromwaves=planar_farfield(raw;incident_waves=a,theta=[.4,.8],phi=[.2])
+explicit=planar_farfield(source,direct,1e9;theta=[.4,.8],phi=[.2])
+declared_fields=planar_farfield(source,owned_declared,1e9;theta=[.4,.8],phi=[.2])
+retained_fields=planar_farfield(source,owned_retained,1e9;theta=[.4,.8],phi=[.2])
+report=Dict("version"=>string(VERSION),"architecture"=>string(Sys.ARCH),"kernel"=>string(Sys.KERNEL),
+ "test_sha256"=>bytes2hex(sha256(read(original))),"coefficient_type"=>string(eltype(raw.currents)),
+ "coefficient_bits"=>DiffMoM._planar_current_precision(raw.currents),"physical_residuals"=>raw.relative_residuals,
+ "boundary_consistent"=>DiffMoM._planar_wave_boundary_consistent(raw.y,declared,a,raw.z0),
+ "original_unchanged_field_gate_pass"=>isapprox(fromwaves.etheta,explicit.etheta;rtol=1e-13),
+ "original_unchanged_power_gate_pass"=>isapprox(fromwaves.accepted_power,.5*(sum(abs2,a)-sum(abs2,raw.s*a));rtol=2e-12),
+ "declared_to_standard_relative"=>norm(declared-standard)/norm(standard),
+ "retained_to_standard_relative"=>norm(retained-standard)/norm(standard),
+ "physical_to_standard_relative"=>norm(physical-standard)/norm(standard),
+ "owned_declared_to_direct_relative"=>Float64(norm(owned_declared-direct)/norm(direct)),
+ "owned_retained_to_direct_relative"=>Float64(norm(owned_retained-direct)/norm(direct)),
+ "declared_field_relative"=>norm(declared_fields.etheta-explicit.etheta)/norm(explicit.etheta),
+ "retained_field_relative"=>norm(retained_fields.etheta-explicit.etheta)/norm(explicit.etheta),
+ "public_field_relative"=>norm(fromwaves.etheta-explicit.etheta)/norm(explicit.etheta))
+for (name,value) in (("y",vec(raw.y)),("s",vec(raw.s)),("refs",raw.z0),("standard",standard),
+ ("declared",declared),("retained",retained),("physical",physical),("explicit_fields",vec(explicit.etheta)),("public_fields",vec(fromwaves.etheta)))
+ report[name*"_real"]=real.(value);report[name*"_imag"]=imag.(value)
+ report[name*"_real_bits"]=string.(reinterpret.(UInt64,real.(value));base=16)
+ report[name*"_imag_bits"]=string.(reinterpret.(UInt64,imag.(value));base=16)
+end
+println("MACOS_ORIGINAL_MAPPING_OBSERVATION_BEGIN")
+TOML.print(stdout,report)
+println("\nMACOS_ORIGINAL_MAPPING_OBSERVATION_END")
+println("This diagnostic reports the original gate result. It does not qualify a failing gate or replace the complete CI workflow.")
