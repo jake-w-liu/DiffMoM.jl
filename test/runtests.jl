@@ -16015,3 +16015,9 @@ include("test_planar_sampled_passivity_ranges.jl")
 include("test_planar_constant_certificate_ranges.jl")
 
 include("test_planar_exact_psd_certificate.jl")
+
+include("test_planar_exact_eval_values.jl")
+
+include("test_planar_exact_ieee_ratio.jl")
+
+include("test_planar_exact_eval_resources.jl")

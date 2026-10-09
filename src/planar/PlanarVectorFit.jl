@@ -28,33 +28,216 @@ struct PlanarRationalModel
     capacitance_adjustment::Float64
 end
 
+# Round an exact integer quotient directly to IEEE Float64. Integer
+# division/remainder selects the neighboring lattice point, with exact
+# ties to even; caller MPFR precision/rounding never participates.
+function _vf_ratio_scratch()
+    roles=(:absolute_numerator,:scaled_denominator,:quotient,:remainder,:comparison)
+    (buffers=ntuple(_->BigInt(),length(roles)),bits=Ref(0))
+end
+function _vf_float_ratio(numerator::BigInt,denominator::BigInt,scratch)
+    iszero(numerator) && return 0.0
+    denominator>0 || throw(ArgumentError("exact response denominator must be positive"))
+    nbits=ndigits(numerator;base=2);dbits=ndigits(denominator;base=2)
+    smallest=exponent(nextfloat(0.0))
+    bits=max(nbits-smallest,dbits)+1 # subnormal scaling and rounding carry
+    if bits>scratch.bits[]
+        for value in scratch.buffers
+            ccall((:__gmpz_realloc2,_vf_gmp_library),Cvoid,(Ref{BigInt},Culong),value,bits)
+        end
+        scratch.bits[]=bits
+    end
+    magnitude,scaled_denominator,quotient,remainder,comparison=scratch.buffers
+    negative=signbit(numerator)
+    _vf_mpz_set!(magnitude,numerator)
+    negative && _vf_mpz_neg!(magnitude,magnitude)
+    power=nbits-dbits
+    if power>=0
+        _vf_mpz_set!(comparison,denominator);_vf_mpz_mul_2exp!(comparison,power)
+        magnitude<comparison && (power-=1)
+    else
+        _vf_mpz_set!(comparison,magnitude);_vf_mpz_mul_2exp!(comparison,-power)
+        comparison<denominator && (power-=1)
+    end
+    spacing=max(power-(precision(Float64)-1),smallest)
+    _vf_mpz_set!(scaled_denominator,denominator)
+    if spacing>=0
+        _vf_mpz_mul_2exp!(scaled_denominator,spacing)
+    else
+        _vf_mpz_mul_2exp!(magnitude,-spacing)
+    end
+    _vf_mpz_tdiv_qr!(quotient,remainder,magnitude,scaled_denominator)
+    _vf_mpz_set!(comparison,remainder);_vf_mpz_mul_2exp!(comparison,1)
+    if comparison>scaled_denominator || (comparison==scaled_denominator && isodd(quotient))
+        ccall((:__gmpz_add_ui,_vf_gmp_library),Cvoid,(Ref{BigInt},Ref{BigInt},Culong),quotient,quotient,1)
+    end
+    value=ldexp(Float64(quotient),spacing)
+    negative ? -value : value
+end
+@inline function _vf_complex_ratio(value,scratch)
+    real_value,imag_value=real(value),imag(value)
+    complex(_vf_float_ratio(numerator(real_value),denominator(real_value),scratch),
+        _vf_float_ratio(numerator(imag_value),denominator(imag_value),scratch))
+end
+
+@inline function _vf_mpz_divexact!(out,numerator,denominator)
+    ccall((:__gmpz_divexact,_vf_gmp_library),Cvoid,
+        (Ref{BigInt},Ref{BigInt},Ref{BigInt}),out,numerator,denominator)
+    out
+end
+
+function _vf_exact_eval_integer_workspace(model,f,s)
+    angular=isfinite(s) ? (Float64(real(s)),Float64(imag(s))) : (Float64(f),Float64(2pi))
+    scalars=Iterators.flatten((model.d,model.e,model.poles,Iterators.flatten(model.residues),angular))
+    denbits=maximum(x->max(_spice_dyadic_denbits(Float64(real(x))),
+        _spice_dyadic_denbits(Float64(imag(x)))),scalars;init=0)
+    !isfinite(s) && (denbits=max(denbits,_spice_dyadic_denbits(Float64(f))+_spice_dyadic_denbits(Float64(2pi))))
+    inputbits=maximum(x->max(iszero(real(x)) ? 0 : exponent(abs(Float64(real(x))))+1+denbits,
+        iszero(imag(x)) ? 0 : exponent(abs(Float64(imag(x))))+1+denbits),scalars;init=0)
+    inputbits=max(inputbits,denbits)
+    coordinate_bits(x)=max(iszero(real(x)) ? 0 : exponent(abs(Float64(real(x))))+1+denbits,
+        iszero(imag(x)) ? 0 : exponent(abs(Float64(imag(x))))+1+denbits)
+    angularbits=isfinite(s) ? coordinate_bits(s) : sum(coordinate_bits,angular)
+    polebits=max(angularbits,maximum(coordinate_bits,model.poles;init=0))+1 # s-p addition carry
+    divisorbits=2polebits+1 # squared real/imaginary denominator sum
+    terms=length(model.poles)
+    commonbits=2BigInt(denbits)+BigInt(terms)*divisorbits+1
+    affinebits=max(inputbits+denbits,angularbits+inputbits)+1
+    numeratorbits=commonbits+max(affinebits,inputbits+polebits+1)+ndigits(terms+1;base=2)
+    # Quantization can shift a numerator to the minimum IEEE subnormal.
+    workbits=Int(numeratorbits-exponent(nextfloat(0.))+1)
+    smallbits=max(polebits,divisorbits)
+    roles=(:angular_real,:angular_imag,:common_divisor,:left_operand,:right_operand,
+        :left_product,:right_product,:real_sum,:imag_sum,:ratio_numerator,
+        :ratio_divisor,:ratio_quotient,:ratio_remainder,:ratio_comparison)
+    # Each pole owns two coordinates, one divisor and one shared weight.
+    widebytes=cld(workbits,_vf_gmp_limb_bits)*_vf_gmp_limb_bytes
+    smallbytes=cld(smallbits,_vf_gmp_limb_bits)*_vf_gmp_limb_bytes
+    payload=_checked_payload_sum("exact rational evaluation workspace",
+        _checked_array_payload_bytes(Ptr{Cvoid},4,terms),
+        _checked_array_payload_bytes(UInt8,3,terms,sizeof(BigInt)+smallbytes),
+        _checked_array_payload_bytes(UInt8,terms+length(roles),sizeof(BigInt)+widebytes),
+        _checked_array_payload_bytes(ComplexF64,size(model.d)...),
+        _checked_array_payload_bytes(ComplexF64,size(model.d)...))
+    return denbits,workbits,smallbits,payload
+end
+
+# Shared integer denominator replaces repeated rational reductions. Four
+# pole-coordinate/divisor/weight vectors are reused across every port
+# entry; fourteen named buffers assemble each entry and round it directly.
+function _vf_exact_eval_integer(model,f,s;max_bytes=nothing)
+    denbits,bits,smallbits,payload=_vf_exact_eval_integer_workspace(model,f,s)
+    limit=max_bytes===nothing ? _default_max_dense_payload_bytes() : max_bytes
+    _enforce_payload_limit(payload,limit,"exact rational evaluation workspace","max_bytes")
+    roles=(:angular_real,:angular_imag,:common_divisor,:left_operand,:right_operand,
+        :left_product,:right_product,:real_sum,:imag_sum,:ratio_numerator,
+        :ratio_divisor,:ratio_quotient,:ratio_remainder,:ratio_comparison)
+    sr,si,common,left,right,product,other,real_sum,imag_sum,ratio_num,ratio_den,quotient,remainder,comparison=
+        ntuple(_->BigInt(;nbits=bits),length(roles))
+    scratch=(buffers=(ratio_num,ratio_den,quotient,remainder,comparison),bits=Ref(bits))
+    if isfinite(s)
+        _vf_set_dyadic!(sr,Float64(real(s)),denbits);_vf_set_dyadic!(si,Float64(imag(s)),denbits)
+    else
+        _vf_set_dyadic!(left,Float64(2pi),denbits);_vf_set_dyadic!(right,Float64(f),denbits)
+        _vf_mpz_mul!(si,left,right);_vf_mpz_fdiv_q_2exp!(si,denbits)
+    end
+    count=length(model.poles)
+    real_poles=Vector{BigInt}(undef,count);imag_poles=similar(real_poles)
+    divisors=similar(real_poles);weights=similar(real_poles)
+    _vf_mpz_set_ui!(common,1);_vf_mpz_mul_2exp!(common,2denbits)
+    for k in eachindex(model.poles)
+        zr=BigInt(;nbits=smallbits);zi=BigInt(;nbits=smallbits);divisor=BigInt(;nbits=smallbits)
+        _vf_set_dyadic!(left,real(model.poles[k]),denbits);_vf_mpz_sub!(zr,sr,left)
+        _vf_set_dyadic!(left,imag(model.poles[k]),denbits);_vf_mpz_sub!(zi,si,left)
+        _vf_mpz_mul!(divisor,zr,zr);_vf_mpz_mul!(product,zi,zi);_vf_mpz_add!(divisor,divisor,product)
+        iszero(divisor) && return nothing # a true pole retains ordinary Inf/NaN
+        _vf_mpz_mul!(common,common,divisor)
+        real_poles[k]=zr;imag_poles[k]=zi;divisors[k]=divisor
+    end
+    for k in eachindex(divisors)
+        weights[k]=_vf_mpz_divexact!(BigInt(;nbits=bits),common,divisors[k])
+    end
+    result=Matrix{ComplexF64}(undef,size(model.d))
+    for i in eachindex(result)
+        _vf_set_dyadic!(left,model.d[i],denbits);_vf_mpz_mul_2exp!(left,denbits)
+        _vf_set_dyadic!(right,model.e[i],denbits)
+        _vf_mpz_mul!(real_sum,sr,right);_vf_mpz_add!(real_sum,real_sum,left)
+        _vf_mpz_mul!(imag_sum,si,right)
+        _vf_mpz_mul!(real_sum,real_sum,common);_vf_mpz_fdiv_q_2exp!(real_sum,2denbits)
+        _vf_mpz_mul!(imag_sum,imag_sum,common);_vf_mpz_fdiv_q_2exp!(imag_sum,2denbits)
+        for k in eachindex(weights)
+            r=model.residues[k][i]
+            _vf_set_dyadic!(left,real(r),denbits);_vf_set_dyadic!(right,imag(r),denbits)
+            _vf_mpz_mul!(product,left,real_poles[k]);_vf_mpz_mul!(other,right,imag_poles[k]);_vf_mpz_add!(product,product,other)
+            _vf_mpz_mul!(product,product,weights[k]);_vf_mpz_add!(real_sum,real_sum,product)
+            _vf_mpz_mul!(product,right,real_poles[k]);_vf_mpz_mul!(other,left,imag_poles[k]);_vf_mpz_sub!(product,product,other)
+            _vf_mpz_mul!(product,product,weights[k]);_vf_mpz_add!(imag_sum,imag_sum,product)
+        end
+        result[i]=complex(_vf_float_ratio(real_sum,common,scratch),_vf_float_ratio(imag_sum,common,scratch))
+    end
+    result
+end
+
+# Rare exact fallback for finite coefficients whose angular frequency,
+# denominator difference, affine product or partial sum exceeds storage.
+# Exact rationals require no selected precision and preserve cancellation.
+# Shared pole inverses are computed once; original matrices are borrowed.
+function _vf_exact_eval(model,f,s,ordinary)
+    all(isfinite,model.d) && all(isfinite,model.e) && all(isfinite,model.poles) &&
+        all(R->all(isfinite,R),model.residues) || return ordinary
+    if eltype(ordinary)===ComplexF64 && (isfinite(s) || f isa Union{Float16,Float32,Float64})
+        result=_vf_exact_eval_integer(model,f,s)
+        return result===nothing ? ordinary : result
+    end
+    X=Complex{Rational{BigInt}}
+    exact_s=isfinite(s) ? X(s) : complex(Rational{BigInt}(0),Rational{BigInt}(2pi)*Rational{BigInt}(f))
+    any(p->iszero(exact_s-X(p)),model.poles) && return ordinary
+    inverse=[inv(exact_s-X(p)) for p in model.poles]
+    T=eltype(ordinary);result=Matrix{T}(undef,size(model.d))
+    scratch=T===ComplexF64 ? _vf_ratio_scratch() : nothing
+    for i in eachindex(result)
+        value=X(model.d[i])+exact_s*X(model.e[i])
+        for k in eachindex(inverse)
+            value+=X(model.residues[k][i])*inverse[k]
+        end
+        result[i]=T===ComplexF64 ? _vf_complex_ratio(value,scratch) : T(value)
+    end
+    result
+end
+
 """Evaluate a real, stable N-port admittance model at frequency [Hz]."""
 function planar_rational_eval(model::PlanarRationalModel,f::Real)
     isfinite(f) || throw(ArgumentError("model frequency must be finite"))
-    s = 2pi*1im*f
-    if !isfinite(s)
-        # A finite IEEE frequency can overflow angular frequency even when
-        # its final response fits. Promote only this intermediate range.
-        # Two Float64 significands retain the stored frequency/product;
-        # restore the caller's MPFR precision and rounding on return.
-        return setprecision(BigFloat,2precision(Float64)) do
-            setrounding(BigFloat,RoundNearest) do
-                wide_s=2pi*1im*BigFloat(f)
-                isfinite(wide_s) || throw(ArgumentError(
-                    "rational angular frequency exceeds the working exponent range"))
-                value=model.d .+ wide_s .* model.e
-                for k in eachindex(model.poles)
-                    value .+= model.residues[k] ./ (wide_s-model.poles[k])
-                end
-                ComplexF64.(value)
-            end
+    s=2pi*1im*f
+    # Retain the existing MPFR exponent-range contract. An exact integer
+    # expansion beyond that boundary can require the full exponent's
+    # bit count even for a constant model; it is not a chosen cutoff.
+    !isfinite(s) && s isa Complex{BigFloat} && throw(ArgumentError(
+        "rational angular frequency exceeds the working exponent range"))
+    Y=model.d .+ s .* model.e
+    needs_exact=!isfinite(s)
+    for k in eachindex(model.poles)
+        denominator=s-model.poles[k]
+        needs_exact |= !isfinite(denominator)
+        residue=model.residues[k]
+        axes(residue)==axes(Y) || throw(DimensionMismatch("rational residue dimensions disagree"))
+        for i in eachindex(Y)
+            r=residue[i];value=r/denominator
+            # A zero component with a possible nonzero numerator can
+            # hide several individually rounded-away contributions.
+            # Exact fallback also resolves true phase cancellation; a
+            # structural zero needs no work and retains ordinary paths.
+            potential_real=(!iszero(real(r)) && !iszero(real(denominator))) ||
+                (!iszero(imag(r)) && !iszero(imag(denominator)))
+            potential_imag=(!iszero(imag(r)) && !iszero(real(denominator))) ||
+                (!iszero(real(r)) && !iszero(imag(denominator)))
+            needs_exact |= (iszero(real(value)) && potential_real) ||
+                (iszero(imag(value)) && potential_imag)
+            Y[i]+=value
         end
     end
-    Y = model.d .+ s .* model.e
-    for k in eachindex(model.poles)
-        Y .+= model.residues[k] ./ (s-model.poles[k])
-    end
-    return Y
+    needs_exact |= !all(isfinite,Y)
+    return needs_exact ? _vf_exact_eval(model,f,s,Y) : Y
 end
 
 function _vf_pair_indices(poles)
