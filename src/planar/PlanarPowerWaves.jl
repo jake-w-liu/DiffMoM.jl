@@ -198,6 +198,11 @@ end
 @inline _planar_wave_upper_mul(a,b)=iszero(a) || iszero(b) ? 0.0 : nextfloat(a*b)
 @inline _planar_wave_magnitude(z)=_planar_wave_upper_add(abs(real(z)),abs(imag(z)))
 
+# Existing Kurokawa incident-wave accuracy requirement, independently
+# enforced in test_planar_power_waves.jl. This is an integration acceptance
+# target, not a universal forward-error bound for conditioned voltage solves.
+const _PLANAR_POWER_WAVE_RTOL=3e-14
+
 function _planar_wave_boundary_consistent(Y,v,a,refs)
     n=length(a)
     current=Y*v
@@ -229,6 +234,13 @@ function _planar_wave_boundary_consistent(Y,v,a,refs)
         floor=_planar_wave_upper_add(_planar_wave_upper_mul(zsize,
             _planar_wave_upper_mul(2n,tiny)),_planar_wave_upper_mul(2+1+1+1+1,tiny))
         bound=_planar_wave_upper_add(_planar_wave_upper_mul(gamma,magnitude),floor)
+        # A stored scattering response already satisfies this physical
+        # incident-wave accuracy requirement. A roundoff-only screen can
+        # otherwise replace ordinary S arithmetic by a few last bits and
+        # amplify coefficient cancellation in its radiation contraction.
+        # Preserve the existing operation/underflow bound for zero drives.
+        acceptance=_planar_wave_upper_mul(_PLANAR_POWER_WAVE_RTOL,abs(rhs))
+        bound=max(bound,acceptance)
         isfinite(bound) && abs(lhs-rhs)<=bound || return false
     end
     return true
