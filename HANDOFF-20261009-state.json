@@ -1,0 +1,101 @@
+{
+  "status": "USER_HANDOFF_MAIN364_PUSH_CONFIRMED_ALL68_CLEAN_5_AUDIT_BRANCHES_PUSHED_NO_PUBLISHERS_SONNET_INCOMPLETE",
+  "checked_at": "2026-10-09T12:06:49.529194+00:00",
+  "main_head": "364e6b41fdbf8d2b52be25f983bac53b5452c6ee",
+  "origin_main": "364e6b41fdbf8d2b52be25f983bac53b5452c6ee",
+  "remote_refs": {
+    "refs/heads/audit/counter-completion-20261009": "5419c8286a9aae93600f2d123445befaea6c32e8",
+    "refs/heads/audit/exact-storage-public-gmp-20261009": "aef2426031f065a90224bf01a07d7ba7bea1e98a",
+    "refs/heads/audit/finite-rational-evaluation-20261009": "78ffcf4c5ea5b9a84469a63cc894d755c819c199",
+    "refs/heads/audit/local-mass-dyadic-draft-20261009": "173ecefc269ae086b8ba0eda34f213ded5b476cd",
+    "refs/heads/audit/stable-layout-curves-20261009": "090fa147be5891f08643e85d9cd6c0be778643d8",
+    "refs/heads/main": "364e6b41fdbf8d2b52be25f983bac53b5452c6ee"
+  },
+  "primary_worktree_clean": true,
+  "all68_worktrees_clean": true,
+  "clean_checkpoint": "native_planar_clean_checkpoint_v7_20261009.json",
+  "clean_checkpoint_sha256": "0fdc3d4fb2baff45bdca110f791230c865160f74d68389c40e2ec2e26a78c9e7",
+  "main_push_outcome": "git push origin main returned Everything up-to-date; mainpower364 remains actuallatestpushedproductionhead. Latercandidatesare backedup remoteauditbranches and notmainmerged beforeoutstandingchecks.",
+  "ci_run": {
+    "id": 37914488513,
+    "head_sha": "364e6b41fdbf8d2b52be25f983bac53b5452c6ee",
+    "status": "in_progress",
+    "conclusion": null,
+    "html_url": "https://github.com/jake-w-liu/DiffMoM.jl/actions/runs/37914488513"
+  },
+  "ci_jobs": [
+    {
+      "name": "Documentation",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Julia 1.13 / windows-latest / 1 thread(s)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Julia 1.13 / macos-latest / 1 thread(s)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Julia 1.13 / ubuntu-latest / 1 thread(s)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Julia 1.12 / ubuntu-latest / 1 thread(s)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Julia 1.13 / ubuntu-latest / 4 thread(s)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Slopfix quality contract",
+      "status": "in_progress",
+      "conclusion": null
+    }
+  ],
+  "ci_observation": "native_planar_public_power_consumers_hosted_observation_v6_20261009.json",
+  "ci_observation_sha256": "da79ae02c8cc2ca5a0bc272387c125eb61be002bf00fa043a6c4d43eed672d5a",
+  "ci_scope": "Atlatestactualobservation six test/docs jobsSUCCESS; final strict qualityIN_PROGRESS; noall7 verdict and no balance/failureinference.",
+  "stopped_queue_receipt": "native_planar_handoff_queue_stop_v3_20261009.json",
+  "stopped_queue_receipt_sha256": "2b2306a9ae43fa80c9af785164ba2f34ef4b91c6776574f3ac87a2a0c9266d2e",
+  "active_owned_read_only_jobs": [
+    {
+      "label": "power_ci_observer",
+      "pid": 22428,
+      "creation_time": 1791525442.6963067,
+      "identity": "native_planar_public_power_consumers_own_ci_identity_v2_20261009.json",
+      "command": [
+        "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-X",
+        "utf8",
+        "C:\\Users\\User\\DiffMoM.jl\\data\\native_planar_public_power_consumers_own_ci_watch_v2_20261009.py"
+      ],
+      "authority": "Read-only externalCI/proof qualification; no main edit/publication or automatic next heavy job"
+    },
+    {
+      "label": "evaluation12_qualification",
+      "pid": 27440,
+      "creation_time": 1791541490.5218692,
+      "identity": "native_planar_rational_exact_eval_full_identity_v1_20261009.json",
+      "command": [
+        "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-X",
+        "utf8",
+        "C:\\Users\\User\\DiffMoM.jl\\data\\native_planar_rational_exact_eval_full_wait_v1_20261009.py"
+      ],
+      "authority": "Read-only externalCI/proof qualification; no main edit/publication or automatic next heavy job"
+    }
+  ],
+  "handoff": "HANDOFF-20261009.md",
+  "handoff_sha256": "e48b9677583fb6abe579ebdb1dc515822408d679a0d3ff27c57b20115261550a",
+  "new_failures_scope": "No newlyfailed GitHub job observed. ExistingknownLocalMassMatrix precisionbug persists onmain, fixed/tested inunqualifieddraft; original35-projection/UTF8/helper/guard preparation failures preserved, notreclassified asscientificCI failures.",
+  "unfinished": "Sonnet/RFIC coverage/physics/optimization and numeric/resource acceptance; exact-energy mainpublication; Eval12full; layoutproper/full; counterparentproof publication; massdraftqualification/otherfallbacks. Exactsteps inhandoff.",
+  "finalizer_sha256": "8ea4a702a3f05629bdb8876c46a5f95962e01424c9c294d8e6f500ded138fe50"
+}
