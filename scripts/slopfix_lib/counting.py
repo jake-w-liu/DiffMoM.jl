@@ -56,7 +56,6 @@ from .langs import BlockComment, Language, StringSpec
 
 BUILTIN_COUNTER_VERSION = 2
 BUILTIN_COUNTER_ID = f"slopfix-builtin/{BUILTIN_COUNTER_VERSION}"
-_SCC_RUN_TIMEOUT_SECONDS = 900
 
 BLANK = "blank"
 COMMENT = "comment"
@@ -717,7 +716,7 @@ def scc_identity() -> str:
         raise SccUnavailable("scc is not on PATH")
     try:
         proc = subprocess.run(
-            [exe, "--version"], capture_output=True, text=True, timeout=30, check=False
+            [exe, "--version"], capture_output=True, text=True, timeout=None, check=False
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise SccUnavailable(f"could not run `scc --version`: {exc}") from exc
@@ -867,12 +866,12 @@ def run_scc(
             cmd,
             capture_output=True,
             text=True,
-            timeout=_SCC_RUN_TIMEOUT_SECONDS,
+            timeout=None,
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
         raise SccOutputError(
-            f"scc timed out after {_SCC_RUN_TIMEOUT_SECONDS} seconds"
+            f"scc timed out after {exc.timeout} seconds"
         ) from exc
     except (OSError, subprocess.SubprocessError) as exc:
         raise SccUnavailable(f"could not run scc: {exc}") from exc
@@ -922,7 +921,6 @@ class JuliaOutputError(RuntimeError):
 
 _JULIA_HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "julia_lines.jl")
-_JULIA_BATCH_TIMEOUT_SECONDS = 900
 
 
 def julia_path() -> str | None:
@@ -943,7 +941,7 @@ def julia_identity() -> str:
     try:
         proc = subprocess.run(
             [exe, "--startup-file=no", _JULIA_HELPER, "--version-id"],
-            capture_output=True, text=True, timeout=120, check=False,
+            capture_output=True, text=True, timeout=None, check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise JuliaUnavailable(f"could not run julia: {exc}") from exc
@@ -975,12 +973,12 @@ def run_julia(root: str, relpaths: list[str]) -> dict[str, FileCount]:
     try:
         proc = subprocess.run(
             cmd, input=path_input, capture_output=True, text=True,
-            timeout=_JULIA_BATCH_TIMEOUT_SECONDS, check=False,
+            timeout=None, check=False,
         )
     except subprocess.TimeoutExpired as exc:
         raise JuliaOutputError(
             "julia helper timed out after "
-            f"{_JULIA_BATCH_TIMEOUT_SECONDS} seconds while classifying "
+            f"{exc.timeout} seconds while classifying "
             f"{len(relpaths)} file(s)"
         ) from exc
     except (OSError, subprocess.SubprocessError) as exc:
