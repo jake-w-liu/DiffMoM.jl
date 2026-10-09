@@ -863,6 +863,42 @@ end
     end
 end
 
+# Bounds on the actual binary input lattice, including integer values.
+# Unsupported nondyadic types retain their separate legacy path.
+function _local_mass_dyadic_span(values)
+    lower=0;upper=0
+    for value in values,component in (real(value),imag(value))
+        iszero(component) && continue
+        if component isa AbstractFloat
+            isfinite(component) || return nothing
+            high=exponent(component);low=high-precision(component)+1
+        elseif component isa Integer
+            high=ndigits(abs(BigInt(component));base=2)-1;low=0
+        else
+            return nothing
+        end
+        lower=min(lower,low);upper=max(upper,high)
+    end
+    return lower,upper
+end
+
+function _local_mass_dyadic_mul_precision(M,x,alpha,beta,y)
+    ranges=(_local_mass_dyadic_span((alpha,)),_local_mass_dyadic_span(M.vals),
+        _local_mass_dyadic_span(x),_local_mass_dyadic_span((beta,)),
+        _local_mass_dyadic_span(iszero(beta) ? () : y))
+    any(isnothing,ranges) && return _LOCAL_MASS_FALLBACK_PRECISION
+    # α*M*x contains triple products and β*y contains double products.
+    # Each complex triple has four real terms; each double has two.
+    lower=min(BigInt(ranges[1][1])+ranges[2][1]+ranges[3][1],
+        BigInt(ranges[4][1])+ranges[5][1])
+    upper=max(BigInt(ranges[1][2])+ranges[2][2]+ranges[3][2]+3,
+        BigInt(ranges[4][2])+ranges[5][2]+2)
+    terms=BigInt(4)*length(M.vals)+2
+    bits=upper-lower+ndigits(terms-1;base=2)
+    bits<=typemax(Int) || throw(ArgumentError("LocalMassMatrix dyadic precision exceeds addressable range"))
+    return max(precision(Float64),Int(bits))
+end
+
 @noinline function _local_mass_mul_bigfloat!(
         y::AbstractVector{T},
         M::LocalMassMatrix,
@@ -870,7 +906,7 @@ end
         alpha::Number,
         beta::Number,
         adjoint_operator::Bool) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_mul_precision(M,x,alpha,beta,y)) do
         alpha_big = Complex{BigFloat}(alpha)
         beta_big = Complex{BigFloat}(beta)
         order = adjoint_operator ? M.col_order : eachindex(M.vals)
