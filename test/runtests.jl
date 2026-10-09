@@ -15993,3 +15993,5 @@ println("ALL TESTS PASSED")
 println("="^60)
 
 include("test_planar_selector_scattering_roundoff.jl")
+
+include("test_planar_terminal_current_ranges.jl")

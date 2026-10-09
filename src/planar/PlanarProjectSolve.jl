@@ -289,7 +289,7 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     # network's reference planes, before its internal node transfer.
     waves=voltages===nothing ? input : result.y===nothing ?
         _planar_incident_from_voltage(result.s,input,result.z0) :
-        _planar_incident_admittance(result.y,input,result.z0)
+        _planar_incident_admittance(result.y,input,result.z0;max_bytes,retained_bytes=reserve)
     nodes=if result.circuit===nothing
         voltages!==nothing ? input : result.y===nothing ?
             _planar_wave_voltage(result.s,waves,result.z0) :
@@ -313,7 +313,8 @@ function _project_radiation_excitation(result::PlanarProjectResult;
     elseif result.y!==nothing
         # Independently retained conductance can survive after S rounds to
         # a lossless boundary. Keep the physical peak-phasor V†YV relation.
-        .5real(dot(nodes,result.y*nodes))
+        current=_planar_terminal_current(result.y,nodes;max_bytes,retained_bytes=reserve)
+        .5real(dot(nodes,current))
     else
         reflected=result.s*waves
         .5real(dot(waves,waves)-dot(reflected,reflected))

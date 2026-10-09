@@ -1,3 +1,43 @@
+# A finite Float64 product is an integer multiple of the squared least
+# subnormal. Two such real terms form each complex-dot coordinate.
+# The full lattice span and term count therefore retain the exact sum.
+function _planar_terminal_product_precision(n::Integer)
+    n>=0 || throw(ArgumentError("terminal term count must be nonnegative"))
+    span=exponent(floatmax(Float64))+1-exponent(nextfloat(0.0))
+    2span+ndigits(max(2BigInt(n),1);base=2)
+end
+
+_planar_terminal_current(Y,v;max_bytes,retained_bytes)=Y*v
+function _planar_terminal_current(Y::AbstractMatrix{T},v::AbstractVector{ComplexF64};
+        max_bytes,retained_bytes) where {T<:Union{Float16,Float32,Float64,ComplexF16,ComplexF32,ComplexF64}}
+    current=Y*v
+    all(isfinite,current) && return current
+    bits=_planar_terminal_product_precision(size(Y,2))
+    budget=max_bytes===nothing ? _default_max_dense_payload_bytes() : max_bytes
+    # Two accumulators, two operands and one product are the five live
+    # owned scalar roles. The existing current buffer is reused.
+    _enforce_payload_limit(_checked_payload_sum("terminal current recovery",retained_bytes,
+        _checked_array_payload_bytes(UInt8,_planar_wide_scalar_payload(bits),5)),
+        budget,"terminal current recovery","max_bytes")
+    re,im,left,right,product=ntuple(_->BigFloat(0.;precision=bits),5)
+    for p in axes(Y,1)
+        isfinite(current[p]) && continue
+        _planar_wide_set!(re,0.0);_planar_wide_set!(im,0.0)
+        for q in axes(Y,2)
+            _planar_wide_set!(left,Float64(real(Y[p,q])));_planar_wide_set!(right,real(v[q]))
+            _planar_wide_mul!(product,left,right);_planar_wide_add!(re,re,product)
+            _planar_wide_set!(left,Float64(imag(Y[p,q])));_planar_wide_set!(right,imag(v[q]))
+            _planar_wide_mul!(product,left,right);_planar_wide_sub!(re,re,product)
+            _planar_wide_set!(left,Float64(real(Y[p,q])));_planar_wide_set!(right,imag(v[q]))
+            _planar_wide_mul!(product,left,right);_planar_wide_add!(im,im,product)
+            _planar_wide_set!(left,Float64(imag(Y[p,q])));_planar_wide_set!(right,real(v[q]))
+            _planar_wide_mul!(product,left,right);_planar_wide_add!(im,im,product)
+        end
+        current[p]=complex(Float64(re),Float64(im))
+    end
+    current
+end
+
 export PlanarPortImpedance, planar_power_waves, planar_wave_voltages, planar_s_to_y
 
 # Excitations are stored before voltage/current transfers can amplify them.
@@ -258,7 +298,8 @@ function _planar_wave_voltage_retained(Y::AbstractMatrix,S::AbstractMatrix,
     return _planar_wave_voltage_admittance(Y,a,refs)
 end
 
-function _planar_incident_admittance(Y::AbstractMatrix,v::AbstractVector,refs)
+function _planar_incident_admittance(Y::AbstractMatrix,v::AbstractVector,refs;
+        max_bytes=nothing,retained_bytes=0)
     n=length(v)
     n>0 && size(Y)==(n,n) && all(isfinite,Y) && all(isfinite,v) ||
         throw(ArgumentError("admittance excitation needs finite matching ports and terminal voltages"))
@@ -271,7 +312,8 @@ function _planar_incident_admittance(Y::AbstractMatrix,v::AbstractVector,refs)
         _planar_reference_values(refs,n)
     end
     r=_planar_reference_roots(z)
-    voltage=_planar_stored_phasors(v);current=Y*voltage
+    voltage=_planar_stored_phasors(v)
+    current=_planar_terminal_current(Y,voltage;max_bytes,retained_bytes)
     all(isfinite,current) || throw(ArgumentError("admittance terminal currents are nonfinite"))
     for p in 1:n
         voltage[p]=(voltage[p]+z[p]*current[p])/(2r[p])
