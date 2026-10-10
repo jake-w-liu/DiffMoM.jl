@@ -56,11 +56,19 @@ end
     a=planar_read_touchstone(joinpath(FIXTURE,"pec_native_pads","native_raw.s2p"))
     b=planar_read_touchstone(joinpath(FIXTURE,"pec_explicit_pec_pads","native_raw.s2p"))
     @test a.s==b.s
+    # A hollow rectangular wall saturates at half the shorter side: native
+    # treats wall>=min(width,breadth)/2 as the complete solid volume fill.
+    saturated=planar_read_touchstone(joinpath(FIXTURE,"volume_hollow_saturated_native_pads","native_raw.s2p"))
+    solid=planar_read_touchstone(joinpath(FIXTURE,"volume_solid_native_pads","native_raw.s2p"))
+    thin=planar_read_touchstone(joinpath(FIXTURE,"volume_hollow_native_pads","native_raw.s2p"))
+    @test saturated.frequencies==solid.frequencies && saturated.s==solid.s
+    @test maximum(abs,saturated.s[1]-thin.s[1])>1e-3
 end
 
 @testset "endpoint partial contacts and finite native pads at RF" begin
     names=("volume_solid_no_pads","volume_hollow_no_pads","pec_no_pads","rpv_solid_no_pads",
-        "volume_solid_native_pads","volume_hollow_native_pads","rpv_solid_native_pads","pec_native_pads")
+        "volume_solid_native_pads","volume_hollow_native_pads","rpv_solid_native_pads","pec_native_pads",
+        "volume_hollow_saturated_native_pads")
     for name in names,frequency in (1e9,1e10)
         p=project(name);coordinates=[copy(q.vertices) for q in p.polygons]
         result=solve_sonnet_project(p,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)

@@ -248,6 +248,19 @@ additive scaled-delta movements and each ordinary point taking a further
 share whose law is undecoded. Scaled moving references therefore stay
 rejected rather than approximated; the retained pairs and falsification
 data are in `test/fixtures/native_geovar_scaled_mixed_reference`.
+A separate decode pass on unscaled SYM explicit references partially
+decoded the law: the repeated `REF2` point takes `3*r*delta/4` (verified
+bit-identically for `r` in 1:2 across expansion and contraction), ordinary
+adjustable points deduplicate and take `ceil(c*r/2)` half-deltas for `c`
+occurrences, and PS2/PS1 list order and duplicates are irrelevant. The
+anchor-side ordinary movement, however, is non-monotonic in `delta` —
+resolved positions show it taking `-delta/2` at `delta = 0.0625` and
+`0.046875` but staying put at `0.0390625` and `0.03125` on the same box —
+and no cell-threshold, floored-count or ref-coupled rule tested reproduces
+that band. Unscaled SYM moving references therefore stay rejected as well;
+the confirmed fragments and the blocking counter-examples are retained in
+`test/fixtures/native_geovar_sym_moving_reference` (17 parameter cases, 14
+literals, 15 bit-identical pairs plus two nearest-basin bounds for `r=3`).
 The repeated-reference displacement subtracts quantities before SI conversion
 and uses bounded precision for range cases. Ordinary displacement calculations
 allocate no memory; aggregate point/storage guards remain in place. Exact
@@ -391,6 +404,12 @@ The native source/log/complete-SID evidence and hashes are retained under
 `test/fixtures/native_sproj_linear`. Native SMD SPROJ renderer and coupled
 pin-calibration acceptance remains blocked by the Lite license; arbitrary
 geometry children and parameter bindings still require explicit adapters.
+The installed `mmic_stage/Uses_ProjComp.son` parameter-binding example
+(`TYPE SPROJ MIM_cap_only.son Wt=65.0 Wb=85.0`) was probed on 2026-10-10:
+Sonnet 18.53-Lite rejects it at 256 MB against the 64 MB limit, and an
+8x cell-count reduction still fails on its three metalization levels
+against the two-level limit, so the stock project provides no Lite oracle
+for parameter-binding acceptance.
 
 Native `PRJ` records also accept an explicit common-return node after the
 signal pins. Each child pin maps to `(signal, REF)`; omission retains return
@@ -1670,7 +1689,18 @@ Rectangular overfill caps its cross-sectional/RF depth at half the shorter
 side while retaining the declared wall for sheet-to-conductivity conversion.
 The two operations are distinct. Native 100-by-100 and 200-by-100 micrometre
 controls at 50, 100 and 200 micrometre walls support that rectangular limit.
-It does not establish the same RF limit for other shapes.
+The retained `volume_hollow_saturated_native_pads` capture under
+`native_via_endpoints` extends this to a complete RF case: a 0.25 millimetre
+hollow wall on the 0.2-by-0.2 millimetre square via is bit-for-bit identical
+to the retained SOLID control across all five native frequencies, and the
+DiffMoM solve meets the complete native RF gates.
+
+The collapse is rectangle-specific. A wall sweep on a triangular via
+(wall 0.02–0.10 millimetres, beyond the inscribed-circle radius) shows
+native output departing from both SOLID and the thin-wall answer; it does
+not saturate to the solid fill. General polygonal thick walls therefore
+retain their "topology adapter required" rejection rather than an
+approximate collapse.
 
 Thin nonrectangular walls use an inward mitered offset and the original
 physical wall as the RF depth. The scalar fast path normalizes coordinates

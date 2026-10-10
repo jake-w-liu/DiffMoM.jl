@@ -1,0 +1,162 @@
+source_unchanged = true
+
+# Status legend: S_EQUIVALENT means the retained literal produces a complete
+# native S matrix bit-identical to the parameter's. NEAREST only bounds the
+# true resolved coordinates without matching. The reference-side movement law
+# (REF2 takes 3*r*delta/4) is confirmed across delta values; the ordinary-point
+# trigger is non-monotonic in delta and undecoded, so the adapter rejects every
+# explicit unscaled SYM moving-reference form.
+[[cases]]
+case = "only_d0625"
+ps2 = "3"
+delta = 0.0625
+matched = "literal_ref1_d0625"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "ref-only r=1: v1 takes -delta/2, REF2 takes +3*delta/4"
+[[cases]]
+case = "only_d046875"
+ps2 = "3"
+delta = 0.046875
+matched = "literal_ref1_d046875"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "ref-only r=1: v1 takes -delta/2 (sub-cell), REF2 takes +3*delta/4"
+[[cases]]
+case = "only_d0390625"
+ps2 = "3"
+delta = 0.0390625
+matched = "literal_ref1_d0390625"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "ref-only r=1: v1 stays put while REF2 still takes +3*delta/4; breaks every monotone threshold hypothesis"
+[[cases]]
+case = "only_d03125"
+ps2 = "3"
+delta = 0.03125
+matched = "literal_ref1_d03125"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "ref-only r=1: v1 stays put while REF2 still takes +3*delta/4"
+[[cases]]
+case = "only_d0234375"
+ps2 = "3"
+delta = 0.0234375
+matched = "literal_d0234375_moved and literal_d0234375_nomove"
+status = "S_AMBIGUOUS"
+bit_identical_s = true
+full_s_error = 0.0
+note = "both a moved and an unmoved v1 literal match bit-identically; sub-cell positions are S-indistinguishable here"
+[[cases]]
+case = "mixed"
+ps2 = "2 3"
+delta = 0.0625
+matched = "literal_dedup_mixed"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "deduplicated counts: v2 takes 1*(delta/2), REF2 takes 1.5*(delta/2)"
+[[cases]]
+case = "reversed"
+ps2 = "3 2"
+delta = 0.0625
+matched = "literal_dedup_mixed"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "identical multiset in different order resolves identically"
+[[cases]]
+case = "negative_direction"
+ps2 = "2 3"
+delta = -0.0625
+matched = "literal_dedup_mixed"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "direction -1 mirrors the law"
+[[cases]]
+case = "ps1_duplicate"
+ps1 = "1 1"
+ps2 = "2 3"
+delta = 0.0625
+matched = "literal_dedup_mixed"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "PS1 repetitions deduplicate the same way"
+[[cases]]
+case = "o2r1"
+ps2 = "2 2 3"
+delta = 0.0625
+matched = "literal_dedup_mixed"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "ordinary count c=2 with r=1 still takes ceil(c*r/2)=1 half-delta"
+[[cases]]
+case = "o2r2"
+ps2 = "2 2 3 3"
+delta = 0.0625
+matched = "literal_o2r2"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "v2 takes 2 half-deltas, REF2 takes 3 half-deltas: ceil(c*r/2) and 3*r/2 half-deltas confirmed at r=2"
+[[cases]]
+case = "o3r1"
+ps2 = "2 2 2 3"
+delta = 0.0625
+matched = "literal_o3r1"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "ordinary count c=3 with r=1 takes ceil(3/2)=2 half-deltas"
+[[cases]]
+case = "o1r3"
+ps2 = "2 3 3 3"
+delta = 0.0625
+matched = "literal_o1r3_best"
+status = "NEAREST"
+bit_identical_s = false
+full_s_error = 0.000409739
+note = "r=3: no swept literal matches; the r>=3 law is unconfirmed"
+[[cases]]
+case = "ref2_mixed"
+ps2 = "2 3 3"
+delta = 0.0625
+matched = "literal_ref2_mixed"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "v2 takes 1 half-delta, REF2 takes 3 half-deltas at r=2"
+[[cases]]
+case = "ref2_only"
+ps2 = "3 3"
+delta = 0.0625
+matched = "literal_ref2_only"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "ref-only r=2: REF2 takes 3*r*delta/4 = 3 half-deltas"
+[[cases]]
+case = "ref3_only"
+ps2 = "3 3 3"
+delta = 0.0625
+matched = "literal_ref3_best"
+status = "NEAREST"
+bit_identical_s = false
+full_s_error = 0.000235468
+note = "r=3 ref-only: basin flattens below the raster resolution; unconfirmed"
+[[cases]]
+case = "contract"
+ps2 = "2 3"
+delta = -0.0625
+matched = "literal_contract"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "contraction mirrors the law with the sign of delta"

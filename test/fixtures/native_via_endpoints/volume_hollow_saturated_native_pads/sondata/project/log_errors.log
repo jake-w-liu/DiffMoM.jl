@@ -1,0 +1,12 @@
+Run 1:  Sat Oct 10 16:08:16 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\vol_wall_KxfJIj\w0.25\w0.25.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Sat Oct 10 16:08:16 2026.

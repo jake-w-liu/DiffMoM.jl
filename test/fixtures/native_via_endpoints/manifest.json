@@ -17,7 +17,8 @@
     "rpv_solid_native_pads",
     "stacked_forward",
     "stacked_reverse",
-    "stacked_halfcells_80"
+    "stacked_halfcells_80",
+    "volume_hollow_saturated_native_pads"
   ],
   "files": [
     {
@@ -803,7 +804,55 @@
     {
       "path": "volume_solid_no_pads/sondata/project/log_timing.log",
       "sha256": "f231c632c638ec600afa06a76d67eb491ba36bdc319650066d594508deae72cd"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/capture.json",
+      "sha256": "9725be35bdd881440ca95c9883a3f6275a72f47a3943c22d7d688bb830b15669"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/engine_stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/engine_stdout.log",
+      "sha256": "4991cc11a8390fa5138139921e0b71841eaa4e687dd909f9f395a0ea6842871b"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/native_raw.s2p",
+      "sha256": "bc0b97435370098bd0af4b4925005ef9b456c90a9d3e1708cdaf99a7cdb2cb69"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/project.son",
+      "sha256": "1408de07a320dfad6f429e4886bfb9568c3cda48066fe19cb8276102b088fbb1"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/sondata/project/geo_response_d.sid",
+      "sha256": "647771aeeb0ba5b6f6972ae0dc3dd069334497743bbcefab8d22d332c60671dc"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/sondata/project/geo_response_nd.sid",
+      "sha256": "9737eef8b565de50d57312827ac7b2a456fa970998e211fce8816b2ad49ae957"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/sondata/project/info.log",
+      "sha256": "767f2f428b29149260b52b52c5126f94d7e3c3367d3860db0a524ef9008da152"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/sondata/project/log_composite.log",
+      "sha256": "3c4e08be9718a819f2caf3802aa5737ff7174cd11066d26580ed60a25c7530e2"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/sondata/project/log_errors.log",
+      "sha256": "86bd15eac5835e7476356fb9f5d0202655b82f719eb44da379135d63127b584a"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/sondata/project/log_response.log",
+      "sha256": "6458b6723d72184741b6d125933061cfb1f772bbe5d7ce011379568deb0ba6b3"
+    },
+    {
+      "path": "volume_hollow_saturated_native_pads/sondata/project/log_timing.log",
+      "sha256": "80ec2f78e9501698d4229679645395540a4156f0b202d7528d630409ebdef043"
     }
   ],
-  "scope": "Sixteen original native case/process archives, byte-identical source/reference/engine outputs. Ring-only installed license; original20grid is not continuum convergence. No reference fitted or retagged."
+  "scope": "Seventeen original native case/process archives, byte-identical source/reference/engine outputs. Ring-only installed license; original20grid is not continuum convergence. No reference fitted or retagged."
 }

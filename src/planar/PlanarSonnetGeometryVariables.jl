@@ -158,8 +158,12 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         # pairs falsify composed scaled movements, additive deltas and
         # deduplicated hypotheses alike — the exact movement law is still
         # undecoded and accepting an approximation would silently rasterize
-        # the wrong cells for other target widths.
-        (first in a || (second in b && !(t[3]=="RAD" || (t[3]=="ANC" && t[6]=="NSCD")))) && _sonnet_error(p.source,row.line,
+        # the wrong cells for other target widths. Unscaled symmetric
+        # repetitions also remain rejected: the repeated-reference movement
+        # 3*r*delta/4 is proved, but the ordinary-point trigger is
+        # non-monotonic in delta and remains undecoded.
+        (first in a || (second in b && !(t[3]=="RAD" || (t[3]=="ANC" && t[6]=="NSCD")))) &&
+            _sonnet_error(p.source,row.line,
             "explicit GEOVAR reference repetitions require their native movement adapter")
         _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
             _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR block")

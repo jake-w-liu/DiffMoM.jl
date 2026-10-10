@@ -1,0 +1,16 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\symref_lit_d3_nomove.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-10T08:51:45.059"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [145]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-10T08:51:44.207"
+source_sha256 = "91269beab8ad72fd08787333ecbbee678db30285ff940c9d8176131bc49096ec"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\symref_lit_d3_nomove_run\\symref_lit_d3_nomove.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\symref_lit_d3_nomove_run\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

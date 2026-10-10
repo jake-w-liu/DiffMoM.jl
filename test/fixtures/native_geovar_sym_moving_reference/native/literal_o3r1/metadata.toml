@@ -1,0 +1,16 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\symref_lit_o2r1_seq.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-10T08:35:46.036"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [105]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-10T08:35:45.035"
+source_sha256 = "21cfb4c456f87e847b08275d35b3c9141031c20c44aee0a2bef5326519452ab5"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\symref_lit_o2r1_seq_run\\symref_lit_o2r1_seq.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\symref_lit_o2r1_seq_run\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]
