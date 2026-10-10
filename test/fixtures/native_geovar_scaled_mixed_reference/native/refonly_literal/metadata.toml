@@ -1,0 +1,16 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_p3_UsR0S0\\p3_0.625_0.6875.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-10T07:05:35.046"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [154]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-10T07:05:34.055"
+source_sha256 = "cf427b6e8a02602301c2bcf08d9b64d8fb66d5fd5a7b8bbfe9505b74bf344483"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_p3_UsR0S0\\p3_0.625_0.6875\\p3_0.625_0.6875.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\geovar_p3_UsR0S0\\\\p3_0.625_0.6875\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

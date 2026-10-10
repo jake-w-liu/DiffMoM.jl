@@ -239,7 +239,15 @@ polygons and all RAD scaling headers. Ninety-four retained native
 parameter/literal pairs match their complete matrices bit for bit. Linear,
 triangular, exponential and simple sequential hypotheses retain their original
 failures. Other explicitly listed references, including scaled ANC and SYM
-references, still require separate adapters.
+references, still require separate adapters. A dedicated decode pass on
+single-occurrence scaled ANC mixed point sets falsified composed scaled
+passes, additive deltas and deduplicated hypotheses: the composed candidate
+matched one target width only by raster-cell coincidence and missed a second
+width by `1.4e-4`, while the exact match shows the reference taking two
+additive scaled-delta movements and each ordinary point taking a further
+share whose law is undecoded. Scaled moving references therefore stay
+rejected rather than approximated; the retained pairs and falsification
+data are in `test/fixtures/native_geovar_scaled_mixed_reference`.
 The repeated-reference displacement subtracts quantities before SI conversion
 and uses bounded precision for range cases. Ordinary displacement calculations
 allocate no memory; aggregate point/storage guards remain in place. Exact

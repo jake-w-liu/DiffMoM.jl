@@ -1,0 +1,16 @@
+source = "C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_scuni_basis_zrz32F\\p233.son"
+engine_version = "18.53-Lite (64-bit Windows) on X202605221330 local."
+ended_utc = "2026-10-10T07:03:44.047"
+response_nports = 2
+julia_version = "1.13.1"
+process_success = true
+native_subsections = [245]
+deembedded = false
+em = "C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe"
+actual_cell_counts = [32, 32]
+started_utc = "2026-10-10T07:03:43.217"
+source_sha256 = "653f65ea15ab06e71d8880a554c64e189a35519d51c6ca30ec7e8946eba13a63"
+command = "setenv(`'C:\\Program Files\\Sonnet Software\\18.53\\bin\\em.exe' -v 'C:\\Users\\User\\DiffMoM.jl\\data\\planar_audit\\geovar_scuni_basis_zrz32F\\p233\\p233.son'`; dir=\"C:\\\\Users\\\\User\\\\DiffMoM.jl\\\\data\\\\planar_audit\\\\geovar_scuni_basis_zrz32F\\\\p233\")"
+box_halfcell_counts = [64, 64]
+
+[dependency_sha256]

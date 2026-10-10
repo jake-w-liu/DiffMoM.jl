@@ -1,0 +1,33 @@
+source_unchanged = true
+
+# Status legend: S_EQUIVALENT means the retained literal produces a complete
+# native S matrix bit-identical to the parameter's — but only at the retained
+# target width, where the hypothesized coordinates rasterize to the same cells
+# as the true resolved coordinates. The composed-movement hypothesis was
+# falsified on a second width (see README), so the adapter rejects every case.
+[[cases]]
+case = "forward"
+ps2 = "2 3"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "literal is raster-cell-equivalent at this width only; falsified elsewhere"
+[[cases]]
+case = "reversed"
+ps2 = "3 2"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+full_s_error = 0.0
+note = "literal is raster-cell-equivalent at this width only; falsified elsewhere"
+[[cases]]
+case = "refonly"
+ps2 = "3"
+status = "S_EQUIVALENT"
+bit_identical_s = true
+note = "reference-only PS2 sets follow a different native rule; adapter rejects"
+[[cases]]
+case = "count2"
+ps2 = "2 3 3"
+status = "REJECTED"
+bit_identical_s = false
+note = "larger explicit reference counts retain native response but lack a confirmed literal; adapter rejects"

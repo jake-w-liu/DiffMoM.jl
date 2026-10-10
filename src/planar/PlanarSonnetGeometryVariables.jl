@@ -154,6 +154,11 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         end
         # The implicit moving reference is an additional movement for native
         # unscaled anchored dimensions and radial dimensions under any header.
+        # Scaled anchored dimensions remain rejected: the retained native
+        # pairs falsify composed scaled movements, additive deltas and
+        # deduplicated hypotheses alike — the exact movement law is still
+        # undecoded and accepting an approximation would silently rasterize
+        # the wrong cells for other target widths.
         (first in a || (second in b && !(t[3]=="RAD" || (t[3]=="ANC" && t[6]=="NSCD")))) && _sonnet_error(p.source,row.line,
             "explicit GEOVAR reference repetitions require their native movement adapter")
         _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
