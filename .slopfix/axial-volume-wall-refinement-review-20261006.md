@@ -1,7 +1,0 @@
-# Axial volume wall source refinement review
-
-Equal axial subdivision drove only the first volume slice and reused old volume ordinals. The preserved 15 ohm rectangular conductor became about 30 ohms with two slices and 60 ohms with four, in both x and y orientations. An independently built refined geometry with common wall voltage on every slice retained 15 ohms. Horizontal normalized volume basis traces use lateral width, so the power-conjugate terminal current adds over all depth slices.
-
-The fix expands each volume wall port over its corresponding refined volume ordinals and gives every raw port unit contraction weight. Sheet and via branches retain their behavior. The contraction payload reservation now counts all new volume ports before allocating geometry. New ports preserve the stored impedance provider, reference plane, polarity, cells and edge directly.
-
-Independent Python provenance and physical resistance reviews verify the before failure and both Julia after cases. The isolated durable module adds 81 assertions covering all four wall directions, identity and multiple-volume ordinals, current maps and terminal currents, RF dense/FFT agreement under the original physical residual gate, metadata and early budget rejection. Existing axial and volume source checks retain their gates. Native frequency-dependent volume loss, general unequal-slice meshing, peak RSS and universal performance remain separate and unverified by this fix. Full package, quality and hosted CI gates remain required for publication.
