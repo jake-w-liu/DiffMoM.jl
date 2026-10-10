@@ -68,7 +68,6 @@ end
         "available memory is unknown or exhausted; provide an explicit byte budget"))
     return Int(min(available, typemax(Int)))
 end
-const _INTERVAL_SPACING_FALLBACK_PRECISION = 2304
 
 function _checked_payload_sum(label::AbstractString, payloads::Vararg{Integer,N}) where {N}
     all(value -> value >= 0, payloads) ||
@@ -124,17 +123,65 @@ function _content_fingerprint(
     return _content_fingerprint(parent(matrix), hash(typeof(matrix), seed))
 end
 
+# Correctly rounded conversion of a positive Rational{BigInt} to Float64,
+# including subnormal and halfway cases (round-to-nearest, ties to even).
+function _rational_to_float64_rounded(sign::Int, n::BigInt, d::BigInt)
+    iszero(n) && return sign * zero(Float64)
+    exponent_guess = ndigits(n; base=2) - ndigits(d; base=2)
+    undershot = exponent_guess >= 0 ? n < d << exponent_guess :
+                (n << -exponent_guess) < d
+    undershot && (exponent_guess -= 1)
+    if exponent_guess >= -1022
+        shift = 52 - exponent_guess
+        scaled_num = shift >= 0 ? n << shift : n
+        scaled_den = shift >= 0 ? d : d << -shift
+        mantissa, remainder = divrem(scaled_num, scaled_den)
+        doubled = remainder << 1
+        if doubled > scaled_den || (doubled == scaled_den && isodd(mantissa))
+            mantissa += 1
+        end
+        if mantissa == BigInt(1) << 53
+            mantissa >>= 1
+            exponent_guess += 1
+        end
+        exponent_guess > 1023 && return sign * Inf
+        return sign * ldexp(Float64(mantissa), exponent_guess - 52)
+    end
+    scaled_num = n << 1074
+    mantissa, remainder = divrem(scaled_num, d)
+    doubled = remainder << 1
+    if doubled > d || (doubled == d && isodd(mantissa))
+        mantissa += 1
+    end
+    return sign * ldexp(Float64(mantissa), -1074)
+end
+
 @noinline function _interval_spacing_bigfloat(
         lower::Float64, upper::Float64, count::Int,
         label::AbstractString)
-    return setprecision(BigFloat, _INTERVAL_SPACING_FALLBACK_PRECISION) do
-        spacing = Float64(
-            (BigFloat(upper) - BigFloat(lower)) / BigFloat(count))
-        isfinite(spacing) && spacing > 0.0 ||
-            throw(ArgumentError(
-                "$label spacing is outside the positive finite Float64 range"))
-        return spacing
+    # The exact difference of two Float64 values is a dyadic rational
+    # num / 2^1074, so the quotient is the rational num / (2^1074 * count).
+    # Round that rational to Float64 exactly instead of approximating with a
+    # fixed-precision BigFloat division.
+    numerator = try
+        Rational{BigInt}(upper) - Rational{BigInt}(lower)
+    catch err
+        err isa InexactError || rethrow()
+        throw(ArgumentError(
+            "$label spacing is outside the positive finite Float64 range"))
     end
+    sign = xor(signbit(numerator.num), signbit(count)) ? -1 : 1
+    denominator = abs(numerator.den * BigInt(count))
+    spacing = if iszero(denominator)
+        numerator.num == 0 ? sign * zero(Float64) : sign * Inf
+    else
+        _rational_to_float64_rounded(
+            sign, abs(numerator.num), denominator)
+    end
+    isfinite(spacing) && spacing > 0.0 ||
+        throw(ArgumentError(
+            "$label spacing is outside the positive finite Float64 range"))
+    return spacing
 end
 
 @inline function _interval_spacing(
@@ -348,8 +395,136 @@ Base.eltype(::LocalMassMatrix{T}) where {T<:Number} = T
 # Each component of α * M[k] * x contains at most four real triple products.
 # Three finite Float64 coefficients need at most 6295 bits, and summing every
 # addressable triplet adds fewer than 64 bits. The remaining precision is a
-# guard margin for the exceptional accumulation path.
+# guard margin for the exceptional accumulation path. This bound is derived
+# for Float64 inputs; dyadic inputs of wider span use the derived precision
+# from _local_mass_dyadic_span instead, and nondyadic Number inputs keep this
+# constant as a documented approximation budget (the sum of non-dyadic
+# inputs is not exactly representable at any finite precision).
 const _LOCAL_MASS_FALLBACK_PRECISION = 6656
+
+# Binary exponent bounds [low, high] of a set of real/complex components on
+# the dyadic lattice: every nonzero component c satisfies |c| < 2^(high+1)
+# and is an integer multiple of 2^low. Returns nothing when any component is
+# nonfinite, nondyadic, or of unsupported Number type. Only binary formats
+# (IEEEFloat, BigFloat) and integers have the required binary-exponent
+# semantics; other AbstractFloat subtypes (e.g. decimal) and Rational or
+# Irrational values route to nothing.
+function _local_mass_dyadic_span(values)
+    lower = 0
+    upper = 0
+    for value in values, component in (real(value), imag(value))
+        iszero(component) && continue
+        if component isa Union{Base.IEEEFloat, BigFloat}
+            isfinite(component) || return nothing
+            high = exponent(component)
+            low = widen(high) - precision(component) + 1
+        elseif component isa Integer
+            high = ndigits(abs(BigInt(component)); base=2) - 1
+            low = 0
+        else
+            return nothing
+        end
+        lower = min(lower, low)
+        upper = max(upper, high)
+    end
+    return lower, upper
+end
+
+# Precision sufficient for an exact BigFloat accumulation of `terms` real
+# primitive terms, each of magnitude < 2^upper and an integer multiple of
+# 2^lower. Every intermediate partial sum then stays exactly representable,
+# so the final conversion to T is correctly rounded. terms must be >= 1.
+# The derived bit budget is also bounded by available memory: every fallback
+# body holds only a handful of full-precision values live at once (a scalar
+# accumulator plus transient term products), and MPFR aborts the process on
+# allocation failure, so spans that would require unallocatable precision are
+# rejected up front with a catchable ArgumentError.
+function _local_mass_dyadic_precision(upper::Integer, lower::Integer,
+        terms::Integer)
+    terms >= 1 || throw(ArgumentError(
+        "LocalMassMatrix dyadic precision requires at least one term"))
+    bits = BigInt(upper) - BigInt(lower) +
+           ndigits(BigInt(terms) - 1; base=2)
+    bits <= typemax(Int) || throw(ArgumentError(
+        "LocalMassMatrix dyadic precision exceeds the addressable range"))
+    budget = fld(BigInt(Sys.free_memory()) * 8, 32)
+    bits <= max(budget, 65536) || throw(ArgumentError(
+        "LocalMassMatrix dyadic precision requires $bits MPFR bits per " *
+        "value, exceeding the safe budget of $budget bits"))
+    return max(precision(Float64), Int(bits))
+end
+
+# Precision for y = alpha * M * x + beta * y. The triple products contribute
+# four real terms per complex entry and the double product two.
+function _local_mass_dyadic_mul_precision(M, x, alpha, beta, y)
+    ranges = (_local_mass_dyadic_span((alpha,)),
+              _local_mass_dyadic_span(M.vals),
+              _local_mass_dyadic_span(x),
+              _local_mass_dyadic_span((beta,)),
+              _local_mass_dyadic_span(iszero(beta) ? () : y))
+    any(isnothing, ranges) && return _LOCAL_MASS_FALLBACK_PRECISION
+    lower = min(BigInt(ranges[1][1]) + ranges[2][1] + ranges[3][1],
+                BigInt(ranges[4][1]) + ranges[5][1])
+    upper = max(BigInt(ranges[1][2]) + ranges[2][2] + ranges[3][2] + 3,
+                BigInt(ranges[4][2]) + ranges[5][2] + 2)
+    return _local_mass_dyadic_precision(upper, lower, 4 * length(M.vals) + 2)
+end
+
+# Precision for a sum of `count` stored values (no scaling factors).
+function _local_mass_dyadic_sum_precision(values, count::Integer)
+    range = _local_mass_dyadic_span(values)
+    range === nothing && return _LOCAL_MASS_FALLBACK_PRECISION
+    return _local_mass_dyadic_precision(range[2] + 1, range[1],
+        max(Int64(count), 2))
+end
+
+# Precision for a * v products summed over `count` complex entries.
+function _local_mass_dyadic_scaled_sum_precision(scale_values, factor_values,
+        count::Integer)
+    ranges = (_local_mass_dyadic_span(scale_values),
+              _local_mass_dyadic_span(factor_values))
+    any(isnothing, ranges) && return _LOCAL_MASS_FALLBACK_PRECISION
+    upper = BigInt(ranges[1][2]) + ranges[2][2] + 2
+    lower = BigInt(ranges[1][1]) + ranges[2][1]
+    return _local_mass_dyadic_precision(upper, lower, 2 * count)
+end
+
+# Precision for Y += alpha * A accumulations: prior Y entries add one term
+# per component on top of the two real terms of each complex product.
+function _local_mass_dyadic_scaled_add_precision(
+        prior_values, scale_values, factor_values, count::Integer)
+    ranges = (_local_mass_dyadic_span(prior_values),
+              _local_mass_dyadic_span(scale_values),
+              _local_mass_dyadic_span(factor_values))
+    any(isnothing, ranges) && return _LOCAL_MASS_FALLBACK_PRECISION
+    lower = min(BigInt(ranges[1][1]),
+                BigInt(ranges[2][1]) + ranges[3][1])
+    upper = max(BigInt(ranges[1][2]) + 1,
+                BigInt(ranges[2][2]) + ranges[3][2] + 2)
+    return _local_mass_dyadic_precision(upper, lower, 2 * count + 1)
+end
+
+# Precision for output = base + sum_i scales[i] * matrices[i]: each complex
+# scale * value product contributes two real terms per component and the
+# optional base contributes one. value_iterables yields each matrix's stored
+# values in turn.
+function _local_mass_dyadic_multi_sum_precision(
+        base, scales, value_iterables, count::Integer)
+    scale_range = _local_mass_dyadic_span(scales)
+    value_range = _local_mass_dyadic_span(
+        (v for values in value_iterables for v in values))
+    (scale_range === nothing || value_range === nothing) &&
+        return _LOCAL_MASS_FALLBACK_PRECISION
+    lower = BigInt(scale_range[1]) + value_range[1]
+    upper = BigInt(scale_range[2]) + value_range[2] + 2
+    if base !== nothing
+        base_range = _local_mass_dyadic_span(base)
+        base_range === nothing && return _LOCAL_MASS_FALLBACK_PRECISION
+        lower = min(lower, BigInt(base_range[1]))
+        upper = max(upper, BigInt(base_range[2]) + 1)
+    end
+    return _local_mass_dyadic_precision(upper, lower, 2 * count + 1)
+end
 
 @inline _local_mass_real_type(::Type{Complex{T}}) where {T<:AbstractFloat} = T
 @inline _local_mass_real_type(::Type{T}) where {T<:AbstractFloat} = T
@@ -476,7 +651,8 @@ function _local_mass_sum_group(
     end
     requires_exact || return total
 
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_sum_precision(
+            (vals[order[p]] for p in first:last), last - first + 1)) do
         exact = zero(Complex{BigFloat})
         @inbounds for position in first:last
             exact += Complex{BigFloat}(vals[order[position]])
@@ -542,7 +718,8 @@ end
         second::Number,
         label::AbstractString,
         index) where {T<:Number}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_scaled_sum_precision(
+            (first,), (second,), 1)) do
         value = Complex{BigFloat}(first) * Complex{BigFloat}(second)
         return _local_mass_convert_bigfloat(T, value, label, index)
     end
@@ -587,7 +764,8 @@ end
         a::Number,
         M::LocalMassMatrix,
         ::Type{T}) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_scaled_sum_precision(
+            (a,), M.vals, length(M.vals))) do
         rows = Int[]
         cols = Int[]
         vals = T[]
@@ -852,7 +1030,8 @@ end
 @noinline function _local_mass_scale_bigfloat!(
         y::AbstractVector{T},
         beta::Number) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_scaled_sum_precision(
+            (beta,), y, 1)) do
         scale = Complex{BigFloat}(beta)
         @inbounds for index in eachindex(y)
             total = scale * Complex{BigFloat}(y[index])
@@ -870,7 +1049,8 @@ end
         alpha::Number,
         beta::Number,
         adjoint_operator::Bool) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat,
+        _local_mass_dyadic_mul_precision(M, x, alpha, beta, y)) do
         alpha_big = Complex{BigFloat}(alpha)
         beta_big = Complex{BigFloat}(beta)
         order = adjoint_operator ? M.col_order : eachindex(M.vals)
@@ -1038,7 +1218,8 @@ end
         Y::AbstractMatrix{T},
         alpha::Number,
         A::AbstractMatrix) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_scaled_add_precision(
+            Y, (alpha,), A, 1)) do
         scale = Complex{BigFloat}(alpha)
         @inbounds for index in eachindex(Y, A)
             total = Complex{BigFloat}(Y[index]) +
@@ -1108,7 +1289,8 @@ end
         Y::AbstractMatrix{T},
         alpha::Number,
         A::LocalMassMatrix) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_scaled_add_precision(
+            Y, (alpha,), A.vals, 1)) do
         scale = Complex{BigFloat}(alpha)
         @inbounds for k in eachindex(A.vals)
             row = A.rows[k]
@@ -1301,7 +1483,10 @@ end
         matrices::AbstractVector,
         scale_at,
         label::AbstractString) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    scales = [scale_at(matrix_index) for matrix_index in eachindex(matrices)]
+    return setprecision(BigFloat, _local_mass_dyadic_multi_sum_precision(
+            base, scales,
+            (matrix.vals for matrix in matrices), length(matrices))) do
         _reset_scaled_matrix_sum!(output, base)
         positions = zeros(Int, length(matrices))
         heap = Int[]
@@ -1326,7 +1511,7 @@ end
                 matrix_index = heap[1]
                 matrix = matrices[matrix_index]::LocalMassMatrix
                 triplet = matrix.col_order[positions[matrix_index]]
-                total += Complex{BigFloat}(scale_at(matrix_index)) *
+                total += Complex{BigFloat}(scales[matrix_index]) *
                          Complex{BigFloat}(matrix.vals[triplet])
                 _advance_local_mass_cursor!(
                     heap, matrices, positions, row_count)
@@ -1344,12 +1529,14 @@ end
         matrices::AbstractVector,
         scale_at,
         label::AbstractString) where {T}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    scales = [scale_at(matrix_index) for matrix_index in eachindex(matrices)]
+    return setprecision(BigFloat, _local_mass_dyadic_multi_sum_precision(
+            base, scales, matrices, length(matrices))) do
         @inbounds for index in eachindex(output)
             total = base === nothing ? zero(Complex{BigFloat}) :
                     Complex{BigFloat}(base[index])
             for matrix_index in eachindex(matrices)
-                total += Complex{BigFloat}(scale_at(matrix_index)) *
+                total += Complex{BigFloat}(scales[matrix_index]) *
                          Complex{BigFloat}(matrices[matrix_index][index])
             end
             output[index] = _local_mass_convert_bigfloat(

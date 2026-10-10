@@ -34,6 +34,7 @@ Aqua.test_all(
 # and reference docs, although that Julia release does not export them.
 const _NONPUBLIC_QUALIFIED_ACCESS_ALLOWLIST = (
     :AbstractSparseMatrixCSC,
+    :IEEEFloat,
     :ILUFactorization,
     :RefValue,
     :StreamReader,
@@ -16023,3 +16024,5 @@ include("test_planar_exact_ieee_ratio.jl")
 include("test_planar_exact_eval_resources.jl")
 
 include("test_planar_layout_curve_geometry.jl")
+
+include("test_local_mass_dyadic_precision.jl")
