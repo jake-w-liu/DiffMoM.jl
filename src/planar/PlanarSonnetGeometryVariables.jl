@@ -73,13 +73,14 @@ function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used,max_expand
     length(t)==2 && t[1]==tag || _sonnet_error(p.source,row.line,"GEOVAR requires $tag")
     groups=_sonnet_geovar_groups(row,p)
     groups<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR point-set group count")
-    points=Tuple{Int,Int}[];index+=1
+    points=Tuple{Int,Int}[];index+=1;wildcard=false
     for _ in 1:groups
         row=_sonnet_geovar_row(rows,index,p);t=row.tokens
         length(t)==3 && t[1]=="POLY" || _sonnet_error(p.source,row.line,"unsupported GEOVAR point-set identity")
         count=tryparse(Int,t[3])
         count!==nothing && 0<=count<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR polygon point count")
         if iszero(count)
+            wildcard=true
             # POLY id 0 selects every vertex except the closing duplicate.
             id=tryparse(Int,t[2]);id!==nothing && haskey(polygons,id) ||
                 _sonnet_error(p.source,row.line,"GEOVAR references an unknown polygon")
@@ -105,7 +106,7 @@ function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used,max_expand
     _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
         _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR point set")
     # Native entries are movements: a repeated identity moves repeatedly.
-    return points,index+1,used,expanded
+    return points,index+1,used,expanded,wildcard
 end
 
 function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
@@ -146,8 +147,8 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
                 _sonnet_error(p.source,equation.line,"GEOVAR EQN disagrees with its quantity definition")
             index+=1
         end
-        a,index,used,expanded=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used,max_expanded,expanded)
-        b,index,used,expanded=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used,max_expanded,expanded)
+        a,index,used,expanded,awild=_sonnet_geovar_set(rows,index,p,polygons,"PS1",max_points,used,max_expanded,expanded)
+        b,index,used,expanded,bwild=_sonnet_geovar_set(rows,index,p,polygons,"PS2",max_points,used,max_expanded,expanded)
         explicit_references=0
         for point in b
             explicit_references+=Int(point==second)
@@ -159,10 +160,14 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         # deduplicated hypotheses alike — the exact movement law is still
         # undecoded and accepting an approximation would silently rasterize
         # the wrong cells for other target widths. Unscaled symmetric
-        # repetitions also remain rejected: the repeated-reference movement
-        # 3*r*delta/4 is proved, but the ordinary-point trigger is
-        # non-monotonic in delta and remains undecoded.
-        (first in a || (second in b && !(t[3]=="RAD" || (t[3]=="ANC" && t[6]=="NSCD")))) &&
+        # repetitions are decoded only for literal YDIR point lists with one
+        # or two explicit moving-reference entries; whole-polygon selectors,
+        # XDIR headers and r>=3 repetitions remain rejected (the r=3 basin
+        # deviates from the proved r<=2 movement).
+        sym_moving=t[3]=="SYM" && t[4]=="YDIR" && t[6]=="NSCD" &&
+            explicit_references in (1,2) && !awild && !bwild
+        (first in a || (explicit_references>0 && !(t[3]=="RAD" ||
+            (t[3]=="ANC" && t[6]=="NSCD") || sym_moving))) &&
             _sonnet_error(p.source,row.line,
             "explicit GEOVAR reference repetitions require their native movement adapter")
         _sonnet_geovar_row(rows,index,p).tokens==["END"] ||
@@ -450,7 +455,9 @@ points belong implicitly to their adjustable set. Ordinary repeated entries
 retain their movement multiplicity. RAD follows the native three-adjustment
 sequence, recomputing its reference radius. NSCD ANC moving-reference repetitions
 apply their native common-displacement factor; ANC follows its reference
-coordinate order, using the direction field for zero offsets. Other references,
+coordinate order, using the direction field for zero offsets. NSCD YDIR SYM
+moving references apply the native cell-quantized movement law proved against
+the installed engine. Other references,
 dependent/overlapping active dimensions and moved component/interior-port semantics
 require separate adapters. Whole-polygon selectors expand logical vertices
 within point/storage budgets before geometry copy;
@@ -485,7 +492,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
         displacement=parameter.kind=="RAD" ?
             _sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale,1) :
-            parameter.explicit_moving_references>1 ?
+            parameter.kind=="ANC" && parameter.explicit_moving_references>1 ?
             _sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale,
                 parameter.explicit_moving_references) : requested-nominal
         delta=(parameter.kind=="RAD" ? 1 : parameter.direction)*displacement
@@ -546,6 +553,68 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         end
         if parameter.kind=="RAD"
             _sonnet_geovar_apply_radial!(p,parameter,target,original,polygons,owners)
+            continue
+        end
+        if parameter.kind=="SYM" && !parameter.scaled &&
+                parameter.explicit_moving_references>0
+            # Native unscaled symmetric dimensions (Sonnet-verified law, ~130
+            # engine runs): REF2 repeats by 3*r*|delta|/4, floored to
+            # quantum=min(cell,box/32) in mixed lists once |delta|>=quantum.
+            # Each distinct ordinary PS2 point moves once by
+            # min(ceil(c*r/2)*d2, c*r*d2*ramp) with d2=|delta|/2 and
+            # ramp=clamp(|delta|/quantum-0.5,0.5,1), capped at 3*c*r*|delta|/8
+            # on coarse rasters (cell>box/32). The anchor side is gated by
+            # 3*r*|delta|/4>cell: REF1 then takes -|delta|/2 while ordinary PS1
+            # points quantize to box/64 steps of floor(|delta|/(box/32));
+            # ungated PS1 points still drop one box/64 step, sign-independent.
+            parsed=tryparse(Float64,p.box[parameter.axis+1])
+            boxdir=(parsed===nothing ? sonnet_variable_value(p,
+                p.box[parameter.axis+1];variables,freq=frequency) : parsed)*p.length_scale
+            cell=boxdir/(parse(Int,p.box[parameter.axis+3])÷2)
+            amount=abs(delta);sense=sign(delta)*parameter.direction
+            r=parameter.explicit_moving_references
+            quantum=min(cell,boxdir/32);step=boxdir/64
+            ramp=clamp(amount/quantum-0.5,0.5,1.0)
+            gate=3r*amount/4>cell
+            isfinite(boxdir) && boxdir>0 && isfinite(cell) && cell>0 &&
+                isfinite(amount) ||
+                _sonnet_error(p.source,parameter.line,"symmetric GEOVAR raster cell is unrepresentable")
+            for point in unique(parameter.points[1])
+                id,index=point;before=polygons[id][parameter.axis,index]
+                if point==parameter.references[1]
+                    gate || continue
+                    after=before-sense*amount/2
+                else
+                    after=gate ? before-sense*step*max(1,floor(amount/(boxdir/32))) :
+                        before-step
+                end
+                isfinite(after) && after!=before ||
+                    _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
+                polygons[id][parameter.axis,index]=after
+            end
+            explicit_ps2=parameter.points[2][1:end-1]
+            mixed=any(point->point!=parameter.references[2],explicit_ps2)
+            multiplicities=Dict{Tuple{Int,Int},Int}()
+            for point in explicit_ps2
+                multiplicities[point]=get(multiplicities,point,0)+1
+            end
+            for point in unique(parameter.points[2])
+                id,index=point;before=polygons[id][parameter.axis,index]
+                if point==parameter.references[2]
+                    share=3r*amount/4
+                    after=before+sense*(mixed && amount>=quantum ?
+                        max(share,quantum) : share)
+                else
+                    movements=multiplicities[point]
+                    share=min(cld(movements*r,2)*amount/2,
+                        movements*r*amount/2*ramp)
+                    cell>quantum && (share=min(share,3movements*r*amount/8))
+                    after=before+sense*share
+                end
+                isfinite(after) && after!=before ||
+                    _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
+                polygons[id][parameter.axis,index]=after
+            end
             continue
         end
         symmetric=parameter.kind=="SYM"
