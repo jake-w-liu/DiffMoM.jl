@@ -5,12 +5,12 @@ function _native_tmm_resource_project(base,count;wall=false)
     if wall
         old=polygons[2]
         polygons[2]=SonnetPolygon(old.kind,old.level,0,old.id,old.vertices,
-            old.target,old.technology,old.flags)
+            old.target,old.technology,old.technology_mode,old.flags)
     else
         vertices=[.00025 .0004375 .0004375 .00025 .00025;
             .00075 .00075 .000875 .000875 .00075]
         base.box[2]=="6" && (vertices.*=4)
-        push!(polygons,SonnetPolygon(:sheet,0,0,3,vertices,"","",String[]))
+        push!(polygons,SonnetPolygon(:sheet,0,0,3,vertices,"","","",String[]))
     end
     box=copy(base.box);box[1]=string(count-1)
     return SonnetProject(base.source,base.units,base.length_scale,base.frequency_scale,

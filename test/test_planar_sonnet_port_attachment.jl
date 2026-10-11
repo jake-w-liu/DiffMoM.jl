@@ -177,7 +177,7 @@ end
         push!(points,first(points))
         vertices=p.length_scale.*hcat(([q[1],q[2]] for q in points)...)
         old=only(p.polygons)
-        poly=SonnetPolygon(old.kind,old.level,old.material,old.id,vertices,old.target,old.technology,old.flags)
+        poly=SonnetPolygon(old.kind,old.level,old.material,old.id,vertices,old.target,old.technology,old.technology_mode,old.flags)
         ports=[SonnetPortSpec(q.kind,q.polygon,k==1 ? 3n : n,q.number,q.values,q.records)
             for (k,q) in enumerate(p.ports)]
         literal=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,

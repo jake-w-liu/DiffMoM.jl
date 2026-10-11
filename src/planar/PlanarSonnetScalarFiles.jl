@@ -53,7 +53,8 @@ function _sonnet_scalar_project_payload(p::SonnetProject)
     end
     for q in p.polygons
         n=_checked_payload_sum("native scalar project snapshot",n,256,
-            _checked_array_payload_bytes(Float64,size(q.vertices)...),ncodeunits(q.target),ncodeunits(q.technology))
+            _checked_array_payload_bytes(Float64,size(q.vertices)...),ncodeunits(q.target),
+            ncodeunits(q.technology),ncodeunits(q.technology_mode))
         for flag in q.flags;n=_checked_payload_sum("native scalar project snapshot",n,64,ncodeunits(flag));end
     end
     for pairs in (p.variables,p.units),(key,value) in pairs
@@ -92,7 +93,7 @@ function _sonnet_scalar_identity(p,source,tables,root,outside,
     end
     print(io,repr((p.box,p.layers,p.metals,p.top,p.bottom)))
     for q in p.polygons
-        print(io,repr((q.kind,q.level,q.material,q.id,q.vertices,q.target,q.technology,q.flags)))
+        print(io,repr((q.kind,q.level,q.material,q.id,q.vertices,q.target,q.technology,q.technology_mode,q.flags)))
     end
     for port in p.ports
         print(io,repr((port.kind,port.polygon,port.edge,port.number,port.values)))

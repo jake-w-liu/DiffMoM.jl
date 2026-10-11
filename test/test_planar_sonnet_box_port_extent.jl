@@ -122,7 +122,7 @@ end
     # Use a separate polygon so the native referenced edges remain unchanged.
     extension=SonnetPolygon(:sheet,poly.level,poly.material,2,
         [0. 1e-3 1e-3 0. 0.;-.0625e-3 -.0625e-3 .0625e-3 .0625e-3 -.0625e-3],
-        poly.target,poly.technology,poly.flags)
+        poly.target,poly.technology,poly.technology_mode,poly.flags)
     @test length(sonnet_planar_problem(changed_project(p;polygons=[poly,extension]);freq=1e9).ports)==2
 end
 end

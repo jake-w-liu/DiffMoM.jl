@@ -3,9 +3,9 @@ using DiffMoM,Test,LinearAlgebra
 function _native_floating_pad_project(;cup=false)
     r(t)=SonnetRecord(1,String.(t))
     left=SonnetPolygon(:sheet,0,-1,1,
-        [.00025 .0004375 .0004375 .00025 .00025;.0004375 .0004375 .0005625 .0005625 .0004375],"","",String[])
+        [.00025 .0004375 .0004375 .00025 .00025;.0004375 .0004375 .0005625 .0005625 .0004375],"","","",String[])
     right=SonnetPolygon(:sheet,0,-1,2,
-        [.0005625 .00075 .00075 .0005625 .0005625;.0004375 .0004375 .0005625 .0005625 .0004375],"","",String[])
+        [.0005625 .00075 .00075 .0005625 .0005625;.0004375 .0004375 .0005625 .0005625 .0004375],"","","",String[])
     pins=[r(["TYPE","NONE"]),r(["GNDREF","FLOAT"]),r(["TERMW","FEED"]),
         r(["SMDP","0",".4375",".5","L","1","1"]),r(["SMDP","0",".5625",".5","R","-1","2"])]
     ports=SonnetPortSpec[]

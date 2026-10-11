@@ -65,8 +65,8 @@ end
 
 function _synthetic_smd_project(kind="RES",value="10")
     records(tokens)=SonnetRecord(1,String.(tokens))
-    left=SonnetPolygon(:sheet,0,-1,1,[0.0 0.0 .0025 .0025;.0015 .0025 .0025 .0015],"","",String[])
-    right=SonnetPolygon(:sheet,0,-1,2,[.0035 .006 .006 .0035;.0015 .0015 .0025 .0025],"","",String[])
+    left=SonnetPolygon(:sheet,0,-1,1,[0.0 0.0 .0025 .0025;.0015 .0025 .0025 .0015],"","","",String[])
+    right=SonnetPolygon(:sheet,0,-1,2,[.0035 .006 .006 .0035;.0015 .0015 .0025 .0025],"","","",String[])
     ports=[SonnetPortSpec(:box,1,0,1,["1","50","0","0","0","0","2"],SonnetRecord[]),
         SonnetPortSpec(:box,2,1,2,["2","50","0","0","0","6","2"],SonnetRecord[])]
     component=[records(["TYPE","IDEAL",kind,value]),records(["GNDREF","AUTO"]),
@@ -120,7 +120,7 @@ end
     resistive=_synthetic_smd_project()
     push!(resistive.metals,["axial_resistor","0","VOL","25","0","RPV"])
     push!(resistive.polygons,SonnetPolygon(:via,0,0,3,
-        [.0005 .001 .001 .0005;.0015 .0015 .002 .002],"GND","",["NOCOVERS"]))
+        [.0005 .001 .001 .0005;.0015 .0015 .002 .002],"GND","","",["NOCOVERS"]))
     lossy=sonnet_component_model(resistive,1e8)
     @test isfinite(first(lossy.via_sigma))
     @test all(isinf,lossy.via_sigma[2:end])

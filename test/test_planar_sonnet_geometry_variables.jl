@@ -136,7 +136,7 @@ end
     end
     polygon=only(p.polygons)
     openpolygon=SonnetPolygon(polygon.kind,polygon.level,polygon.material,polygon.id,
-        polygon.vertices[:,1:end-1],polygon.target,polygon.technology,polygon.flags)
+        polygon.vertices[:,1:end-1],polygon.target,polygon.technology,polygon.technology_mode,polygon.flags)
     openproject=with_geometry(p,[openpolygon])
     @test DiffMoM._sonnet_geometry_project(openproject,1e9).polygons[1].vertices==
         DiffMoM._sonnet_geometry_project(p,1e9).polygons[1].vertices[:,1:end-1]
@@ -153,7 +153,7 @@ end
         [incomplete,last(p.ports)]),1e9)
     huge=copy(polygon.vertices);huge[2,:].=[2.0^50,2.0^50,2.0^50+.25,2.0^50+.25,2.0^50]
     shifted=SonnetPolygon(polygon.kind,polygon.level,polygon.material,polygon.id,huge,
-        polygon.target,polygon.technology,polygon.flags)
+        polygon.target,polygon.technology,polygon.technology_mode,polygon.flags)
     cancellation=with_geometry(p,[shifted]);saved=copy(huge)
     @test_throws ArgumentError DiffMoM._sonnet_geometry_project(cancellation,1e9)
     @test huge==saved

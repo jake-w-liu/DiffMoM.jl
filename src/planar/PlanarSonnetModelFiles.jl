@@ -91,7 +91,7 @@ function _sonnet_files_configuration_hash(p,f,grid,variables;scalar_files=nothin
     for poly in p.polygons
         scalar(poly.kind);scalar(poly.level);scalar(poly.material);scalar(poly.id)
         scalar(size(poly.vertices,1));scalar(size(poly.vertices,2));sequence(poly.vertices)
-        scalar(poly.target);scalar(poly.technology);sequence(poly.flags)
+        scalar(poly.target);scalar(poly.technology);scalar(poly.technology_mode);sequence(poly.flags)
     end
     scalar(length(p.ports))
     for port in p.ports
@@ -279,7 +279,7 @@ function _sonnet_files_project_payload(p)
     end
     for poly in p.polygons
         total+=256+8length(poly.vertices)+2ncodeunits(poly.target)+2ncodeunits(poly.technology)+
-            64length(poly.flags)+2sum(ncodeunits,poly.flags)
+            2ncodeunits(poly.technology_mode)+64length(poly.flags)+2sum(ncodeunits,poly.flags)
     end
     for port in p.ports
         total+=256+64length(port.values)+2sum(ncodeunits,port.values)

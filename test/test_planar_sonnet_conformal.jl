@@ -135,7 +135,7 @@ end
         # physical conformal API supports this actual diagonal constraint.
         va=[.25e-3 .75e-3 .75e-3 .25e-3;.25e-3 .25e-3 .75e-3 .25e-3]
         vb=[.25e-3 .75e-3 .25e-3 .25e-3;.25e-3 .75e-3 .75e-3 .25e-3]
-        polys=[SonnetPolygon(:sheet,0,-1,9,va,"","",String[]),SonnetPolygon(:sheet,0,-1,10,vb,"","",String[])]
+        polys=[SonnetPolygon(:sheet,0,-1,9,va,"","","",String[]),SonnetPolygon(:sheet,0,-1,10,vb,"","","",String[])]
         gap=SonnetPortSpec(:gap,9,2,1,["1","50","0","0","0",".5",".5"],SonnetRecord[])
         diagonal=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,p.metals,p.top,p.bottom,
             polys,[gap],p.variables,p.components,p.sweeps,p.records)
@@ -175,7 +175,7 @@ end
         @test all(isfinite,v.y)
         # A standard axial source is anchored at a physical cover;
         # an interlevel source requires the explicit via-port kind.
-        inter=SonnetPolygon(:via,0,-1,10,last(grounded.polygons).vertices,"1","",["SOLID","NOCOVERS"])
+        inter=SonnetPolygon(:via,0,-1,10,last(grounded.polygons).vertices,"1","","",["SOLID","NOCOVERS"])
         box=copy(p.box);box[1]="2";layers=vcat(p.layers,[copy(first(p.layers))])
         std=SonnetPortSpec(:std,10,0,1,axial.values,axial.records)
         @test_throws ArgumentError sonnet_conformal_layout(ports_project([std];polygons=[inter],box,layers);sizes...)

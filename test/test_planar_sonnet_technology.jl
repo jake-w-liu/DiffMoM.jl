@@ -209,7 +209,7 @@ end
         @test_throws ArgumentError sonnet_technology_stack(private,1e9,.001,.002)
         for bad in (_technology_test_xml(rootattrs="unknownphysics=\"yes\""),
             _technology_test_xml(materials="<dielectric name=\"Bad\" anisotropic=\"yes\"><params axes=\"x\"/></dielectric>"),
-            _technology_test_xml(stack="<diel name=\"Extra\" dielectric=\"Air\" thickness=\"10\"><metal_techlayer name=\"M\" layer_name=\"M\" material=\"Copper\" thickness=\"1\"/></diel>"))
+            _technology_test_xml(stack="<diel name=\"Extra\" dielectric=\"Air\" thickness=\"10\"><via_techlayer name=\"V\" layer_name=\"V\" material=\"Copper\" from=\"0\" to=\"1\"/></diel>"))
             write(path,bad);retained=read_sonnet_technology(path)
             if haskey(retained.materials,(:dielectric,"Bad"))
                 @test_throws ArgumentError sonnet_technology_material(retained,"Bad")
@@ -217,6 +217,10 @@ end
                 @test_throws ArgumentError sonnet_technology_stack(retained,1e9,.001,.002)
             end
         end
+        # A metal technology layer inside a dielectric is valid grammar; it
+        # does not change the dielectric stack the provider builds.
+        write(path,_technology_test_xml(stack="<diel name=\"Extra\" dielectric=\"Air\" thickness=\"10\"><metal_techlayer name=\"M\" layer_name=\"M\" material=\"Copper\" thickness=\"1\"/></diel>"))
+        @test sonnet_technology_stack(read_sonnet_technology(path),1e9,.001,.002) isa PlanarStackup
         # A separately supplied local schema is the sole validation source;
         # schemaLocation never triggers a network fetch.
         schema=joinpath(dir,"test.xsd")
@@ -294,8 +298,270 @@ end
         write(path,source)
         @test_throws ArgumentError read_sonnet_linked_project(path;max_project_bytes=1)
         @test read_sonnet_linked_project(path;max_project_bytes=typemax(Int)).sha256==linked.sha256
+        # Serialized literal materials are retained for polygons without a
+        # resolved technology layer, so a literal material index is valid.
         write(path,replace(source,"0 5 -1 N"=>"0 5 0 N"))
+        literal=sonnet_materialize_project(read_sonnet_linked_project(path))
+        @test only(literal.polygons).material==0
+    end
+end
+
+function _techlayer_test_stf(;metal_model="Normal",metal_extra="",via_model="Volume",
+        via_extra="",metal_direction="",mesh_fill="Default",bias="",
+        stack_extra="")
+    return """<?xml version="1.0"?>
+    <technology_file version="1700">
+      <units cunit="SM" lunit="UM" runit="OHUM" srunit="OHSQ"/>
+      <public>
+        <variables/>
+        <materials>
+          <dielectric name="Air"><params erel="1"/></dielectric>
+          <dielectric name="Ox"><params erel="4"/></dielectric>
+          <dielectric name="Sub"><params erel="11.9"/></dielectric>
+          <conductor name="Copper" condspec="cond" cond="4e7"/>
+          <conductor name="ViaMat" condspec="cond" cond="2.36e6"/>
+        </materials>
+        <mesh_defs>
+          <mesh fill_type="$mesh_fill" name="Default_metal" type="metal"/>
+          <mesh fill_type="Default" name="Default_via" type="via"/>
+          <mesh fill_type="Vertices" name="Vertices_def" type="via"/>
+        </mesh_defs>
+        <metal_model_defs>
+          <metal_model model_type="$metal_model" name="Thin_def" $metal_extra/>
+          <metal_model model_type="ThickMetal" name="Thick_def" num_sheets="2"/>
+          <via_model model_type="$via_model" name="Volume_def" $via_extra/>
+        </metal_model_defs>
+        <stackup>
+          <TOP material="Lossless" model="Thin_def"/>
+          <diel dielectric="Air" name="L1" thickness="30">
+            <metal_techlayer name="M1" layer_name="M1" material="Copper" model="Thin_def" thickness="1" mesh="Default_metal" $metal_direction $bias/>
+          </diel>
+          <diel dielectric="Ox" name="L2" thickness="5">
+            <metal_techlayer name="M2" layer_name="M2" material="Copper" model="Thick_def" thickness="4" mesh="Default_metal"/>
+          </diel>
+          <diel dielectric="Sub" name="L3" thickness="100"/>
+          <BOTTOM material="Lossless" model="Thin_def"/>
+          <vias>
+            <via_techlayer name="V12" layer_name="V12" material="ViaMat" model="Volume_def" from="M1" to="M2" mesh="Vertices_def" $bias/>
+          </vias>
+        </stackup>
+        $stack_extra
+      </public>
+    </technology_file>"""
+end
+
+function _techlayer_test_son(;via=true)
+    viapoly=via ? """VIA POLYGON
+1 5 -1 N 3 1 1 100 100 0 0 0 Y
+TOLEVEL 0 RING NOCOVERS
+TLAYNAM V12 INH
+190 190
+210 190
+210 210
+190 210
+190 190
+END
+""" : ""
+    npoly=via ? 5 : 4
+    return """FTYP SONPROJ 19
+DIM
+ANG DEG
+CAP PF
+CON /OH
+FREQ GHZ
+IND NH
+LNG UM
+RES OH
+END DIM
+CONTROL
+OPTIONS
+SPEED 0
+END CONTROL
+GEO
+STF rich.stf
+TMET "SerializedCover" 0 SUP 0.0 0 0 0
+BMET "SerializedCover" 0 SUP 0.0 0 0 0
+MET "Legacy" 3 NOR 5e7 0.5 1
+BOX 0 400 400 20 20 100 0
+POR1 STD
+POLY 1 1
+1
+2 50 0 0 0 400 200
+POR1 STD
+POLY 1 1
+3
+1 50 0 0 0 0 200
+NUM $npoly
+1 5 -1 N 1 1 1 100 100 0 0 0 Y
+TLAYNAM M1 INH
+0 180
+400 180
+400 220
+0 220
+0 180
+END
+0 5 -1 N 2 1 1 100 100 0 0 0 Y
+TLAYNAM M2 INH
+150 190
+250 190
+250 210
+150 210
+150 190
+END
+$(viapoly)0 5 0 N 4 1 1 100 100 0 0 0 Y
+TLAYNAM M2 NOH
+60 320
+120 320
+120 360
+60 360
+60 320
+END
+0 5 0 N 5 1 1 100 100 0 0 0 Y
+TLAYNAM Bogus INH
+280 320
+340 320
+340 360
+280 360
+280 320
+END
+END GEO
+VARSWP
+ENABLED Y
+FREQ Y AN SWEEP 1 2 1
+END
+END VARSWP
+FILEOUT
+TOUCH ND Y rich.s2p IC 15 S RI R 50
+FOLDER .
+END FILEOUT
+"""
+end
+
+@testset "Linked STF techlayer INH/NOH materialization and solve" begin
+    mktempdir() do dir
+        stf=_techlayer_test_stf();son=_techlayer_test_son()
+        write(joinpath(dir,"rich.stf"),stf)
+        path=joinpath(dir,"rich.son");write(path,son)
+        linked=read_sonnet_linked_project(path)
+        p=sonnet_materialize_project(linked)
+        @test length(p.polygons)==5
+        # INH inherits the technology layer's stack level, conductor and
+        # model; the literal polygon level/material are overridden.
+        @test p.polygons[1].level==0 && p.polygons[1].material==1
+        @test p.polygons[1].technology=="M1" && p.polygons[1].technology_mode=="INH"
+        @test p.polygons[2].level==1 && p.polygons[2].material==2
+        # The via resolves from/to metal names to stack levels, overriding
+        # the literal TOLEVEL, and inherits the via model's VOL material.
+        @test p.polygons[3].kind===:via && p.polygons[3].level==0
+        @test p.polygons[3].target=="1" && p.polygons[3].material==3
+        # NOH inherits only the metal level; the literal material stays.
+        @test p.polygons[4].level==1 && p.polygons[4].material==0
+        @test p.polygons[4].technology_mode=="NOH"
+        # An unresolved technology name keeps literal polygon data.
+        @test p.polygons[5].level==0 && p.polygons[5].material==0
+        @test p.polygons[5].technology=="Bogus"
+        # Generated MET rows follow the inherited Normal/ThickMetal/Volume
+        # model mapping with the STF conductor conductivity.
+        @test p.metals[2][1:3]==["\"M1\"","1","NOR"] && p.metals[2][4]=="4.0e7"
+        @test p.metals[3][1:3]==["\"M2\"","2","TMM"] && p.metals[3][4]=="4.0e7"
+        @test p.metals[3][6]=="4.0" && p.metals[3][7]=="2"
+        @test p.metals[4][1:3]==["\"V12\"","4","VOL"] && p.metals[4][4]=="2.36e6"
+        @test p.metals[4][5:6]==["SOLID","0"]
+        @test length(p.layers)==3
+        @test parse(Float64,p.layers[1][1])≈30 && parse(Float64,p.layers[2][2])≈4
+        @test p.records===linked.records
+        # The inherited ThickMetal pad grows a physical face into the via's
+        # span; the via lands on the grown face rather than colliding with
+        # the generated face-wall connector.
+        solved=solve_sonnet_project(p,2e9;raw=true,grid=(40,40),
+            method=:dense_fft,max_bytes=200_000_000)
+        @test all(isfinite,solved.s)
+        @test abs(solved.s[2,1])>.9
+        # Malformed or unsupported TLAYNAM tails reject when the polygon
+        # section is parsed during materialization.
+        for replacement in ("TLAYNAM M1","TLAYNAM M1 XXX","TLAYNAM M1 INH EXTRA")
+            write(path,replace(son,"TLAYNAM M1 INH"=>replacement;count=1))
+            @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        end
+        write(path,son)
+        # Unsupported model and mesh semantics reject on inheritance.
+        for kw in ((;via_model="Array"),(;via_model="Surface"),
+                (;metal_model="TrueVolume"),(;metal_model="RoughMetal"))
+            write(joinpath(dir,"rich.stf"),_techlayer_test_stf(;kw...))
+            err=try sonnet_materialize_project(read_sonnet_linked_project(path));nothing catch e;e end
+            @test err isa ArgumentError && occursin("physical adapter",sprint(showerror,err))
+        end
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf(metal_direction="direction=\"Down\""))
         @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf(mesh_fill="Ring"))
+        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf(bias="bias=\"B\""))
+        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        write(joinpath(dir,"rich.stf"),stf)
+        # NOH on a via techlayer has no single-level equivalent and rejects.
+        write(path,replace(son,"TLAYNAM V12 INH"=>"TLAYNAM V12 NOH"))
+        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        # Kind mismatches reject: metal layer on a via polygon and a via
+        # layer on a sheet polygon.
+        write(path,replace(son,"TLAYNAM M1 INH"=>"TLAYNAM V12 INH";count=1))
+        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        write(path,replace(son,"TLAYNAM V12 INH"=>"TLAYNAM M1 INH"))
+        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        write(path,son)
+        # An ignored techlayer leaves literal polygon data untouched. A via
+        # endpoint on an ignored layer still rejects, so this uses a
+        # via-free project.
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf(
+            stack_extra=" ",metal_direction="ignore=\"true\""))
+        write(path,_techlayer_test_son(via=false))
+        ignored=sonnet_materialize_project(read_sonnet_linked_project(path))
+        @test ignored.polygons[1].level==1 && ignored.polygons[1].material==-1
+        write(joinpath(dir,"rich.stf"),stf)
+        # The via mesh fill supplies a flag only when the polygon lacks one.
+        write(path,replace(son,"TOLEVEL 0 RING NOCOVERS"=>"TOLEVEL 0 NOCOVERS"))
+        meshed=sonnet_materialize_project(read_sonnet_linked_project(path))
+        @test "VERTICES" in meshed.polygons[3].flags
+        write(path,son)
+    end
+end
+
+@testset "Native via lands on grown thick-metal face" begin
+    # A two-sheet TMM conductor expands its base plane plus a grown face.
+    # A via ending on that level lands on the face nearest its column rather
+    # than tunneling through the slab into the generated PEC connector.
+    mktempdir() do dir
+        son=replace(_techlayer_test_son(),"STF rich.stf\n"=>"";count=1)
+        son=replace(son,"BOX 0 "=>"BOX 2 ";count=1)
+        layers="""30.0 1.0 1.0 0.0 0.0 0.0 2 "L1"
+5.0 4.0 1.0 0.0 0.0 0.0 2 "L2"
+100.0 11.9 1.0 0.0 0.0 0.0 2 "L3"
+"""
+        son=replace(son,"BOX 2 400 400 20 20 100 0\n"=>
+            "BOX 2 400 400 20 20 100 0\n"*layers;count=1)
+        for replacement in ("TLAYNAM M1 INH\n","TLAYNAM M2 INH\n","TLAYNAM M2 NOH\n","TLAYNAM Bogus INH\n","TLAYNAM V12 INH\n")
+            son=replace(son,replacement=>"";count=1)
+        end
+        son=replace(son,"TOLEVEL 0 RING NOCOVERS"=>"TOLEVEL 1 RING NOCOVERS")
+        son=replace(son,"1 5 -1 N 1 "=>"0 5 1 N 1 ";count=1)
+        son=replace(son,"0 5 -1 N 2 "=>"1 5 2 N 2 ";count=1)
+        son=replace(son,"1 5 -1 N 3 "=>"0 5 3 N 3 ";count=1)
+        son=replace(son,"""MET "Legacy" 3 NOR 5e7 0.5 1"""=>
+            """MET "Legacy" 3 NOR 5e7 0.5 1
+MET "M1" 1 NOR 4.0e7 0.5 1.0
+MET "M2" 2 TMM 4.0e7 0.5 4.0 2
+MET "V12" 4 VOL 2.36e6 SOLID 0""")
+        path=joinpath(dir,"literal.son");write(path,son)
+        p=read_sonnet_project(path)
+        solved=solve_sonnet_project(p,2e9;raw=true,grid=(40,40),
+            method=:dense_fft,max_bytes=200_000_000)
+        @test all(isfinite,solved.s)
+        @test abs(solved.s[2,1])>.9
+        expanded=DiffMoM._sonnet_thick_geometry(p,2e9,Dict{String,Float64}())
+        via=only(filter(q->q.kind===:via && q.id==3,expanded.polygons))
+        @test via.level==0 && via.target=="1"
+        # The face-wall connector spans the slab band below the via's stop.
+        connector=only(filter(q->q.kind===:via && q.id!=3,expanded.polygons))
+        @test connector.level==2 && connector.target=="1" && connector.material==-1
     end
 end
 

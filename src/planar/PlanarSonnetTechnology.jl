@@ -507,7 +507,7 @@ function _stf_static_rows(t,variables)
         node.name in ("TOP","BOTTOM","vias") && continue
         node.name=="diel" || throw(ArgumentError("unknown STF stack record $(node.name)"))
         _stf_known(node,["name","dielectric","thickness","zpart","is_conformal","measured_from","associated_cond",
-            "sidewall_thickness","topwall_thickness","bottomwall_thickness"])
+            "sidewall_thickness","topwall_thickness","bottomwall_thickness"];children=["metal_techlayer"])
         name=_stf_attr(node,"name");name in seen && throw(ArgumentError("duplicate STF stack layer $name"));push!(seen,name)
         _stf_attr(node,"is_conformal","false") in ("false","0") || throw(ArgumentError("conformal STF dielectric geometry is unsupported"))
         _stf_attr(node,"measured_from","N/A")=="N/A" && _stf_attr(node,"associated_cond","N/A")=="N/A" || throw(ArgumentError("STF wall/measurement geometry is unsupported"))
@@ -522,7 +522,12 @@ function _stf_static_rows(t,variables)
     end
     isempty(rows) && throw(ArgumentError("STF stack has no dielectrics"))
     vias=_stf_child(t.stack,"vias")
-    vias!==nothing && !isempty(vias.children) && throw(ArgumentError("STF via technology inheritance requires its physical adapter"))
+    if vias!==nothing
+        isempty(keys(vias.attributes)) && isempty(strip(vias.text)) ||
+            throw(ArgumentError("unsupported STF vias semantics"))
+        all(x->x.name=="via_techlayer",vias.children) ||
+            throw(ArgumentError("unsupported STF via technology child semantics"))
+    end
     return rows
 end
 function _stf_cover(t,name)
@@ -537,6 +542,311 @@ function _stf_cover(t,name)
     end
     _stf_attr(model,"cross_section","Thin")=="Thin" || throw(ArgumentError("STF cover cross-section is unsupported"))
     return TERM_GND
+end
+
+# A technology layer's GDS <map> leaf is retained GUI metadata; it must not
+# carry element children or text semantics.
+function _stf_map_leaves(node)
+    for child in node.children
+        child.name=="map" || throw(ArgumentError("unsupported STF $(node.name) child semantics"))
+        isempty(child.children) && isempty(strip(child.text)) ||
+            throw(ArgumentError("unsupported STF map semantics"))
+    end
+    return nothing
+end
+
+# Resolve a techlayer's optional mesh reference to its definition node. The
+# reference and its declared metal/via type are grammar and reject eagerly;
+# fill-type and subsection controls are physical semantics checked only when
+# a polygon actually inherits the layer.
+function _stf_techlayer_mesh(t,node,kind)
+    name=_stf_attr(node,"mesh")
+    name===nothing && return nothing
+    mesh=get(t.meshes,String(name),nothing)
+    mesh===nothing && throw(ArgumentError("unknown STF mesh $name"))
+    _stf_known(mesh,["name","type","fill_type","iso_type","xmin","xmax","ymin","ymax",
+        "use_edge_mesh","pads","usemaxlength","maxlen"])
+    expected=kind==:metal ? "metal" : "via"
+    _stf_attr(mesh,"type")==expected ||
+        throw(ArgumentError("STF $kind techlayer $(node.attributes["name"]) references a $(_stf_attr(mesh,"type")) mesh"))
+    return mesh
+end
+
+# Name resolution and required-attribute grammar for every declared STF
+# technology layer. Native em resolves a polygon's TLAYNAM against the layer
+# `name` only; an unmatched name silently keeps the polygon's literal data.
+# A metal technology layer sits at the dielectric boundary below its
+# containing <diel>: the i-th top-down dielectric owns level i-1 (verified
+# against native via-polygon levels, e.g. Metal3 in the 15th dielectric
+# produces level 14). Semantic capability checks stay lazy so an unused
+# layer cannot block materialization.
+function _stf_techlayers(t::SonnetTechnology,variables)
+    _stf_static_guard(t)
+    specs=Dict{String,NamedTuple}()
+    diel=0
+    for node in t.stack.children
+        node.name=="diel" || continue
+        diel+=1
+        for child in node.children
+            child.name=="metal_techlayer" || throw(ArgumentError("unsupported STF diel child semantics"))
+            _stf_known(child,["name","layer_name","purpose","material","model","thickness",
+                "bias","mesh","direction","color_pattern","color","pattern","ignore"];children=["map"])
+            _stf_map_leaves(child)
+            name=_stf_attr(child,"name")
+            name===nothing && throw(ArgumentError("STF metal techlayer requires a name"))
+            haskey(specs,name) && throw(ArgumentError("duplicate STF techlayer $name"))
+            for attr in ("layer_name","material","thickness")
+                _stf_attr(child,attr)!==nothing || throw(ArgumentError("STF metal techlayer $name lacks its $attr"))
+            end
+            material=_stf_attr(child,"material")
+            haskey(t.materials,(:conductor,String(material))) ||
+                throw(ArgumentError("unknown STF conductor $material"))
+            model=_stf_attr(child,"model")
+            if model!==nothing
+                node_model=get(t.models,String(model),nothing)
+                node_model===nothing && throw(ArgumentError("unknown STF metal model $model"))
+                node_model.name=="metal_model" ||
+                    throw(ArgumentError("STF metal techlayer $name references a via model"))
+            end
+            specs[name]=(;kind=:metal,name,level=diel-1,layer_name=_stf_attr(child,"layer_name"),
+                material,model,thickness=_stf_attr(child,"thickness"),
+                bias=_stf_attr(child,"bias",""),direction=_stf_attr(child,"direction","Up"),
+                ignored=_stf_attr(child,"ignore","false") in ("true","1"),
+                mesh=_stf_techlayer_mesh(t,child,:metal))
+        end
+    end
+    vias=_stf_child(t.stack,"vias")
+    if vias!==nothing
+        for child in vias.children
+            child.name=="via_techlayer" || throw(ArgumentError("unsupported STF vias child semantics"))
+            _stf_known(child,["name","material","model","layer_name","purpose","from","to",
+                "bias","mesh","color_pattern","color","pattern","ignore"];children=["map"])
+            _stf_map_leaves(child)
+            name=_stf_attr(child,"name")
+            name===nothing && throw(ArgumentError("STF via techlayer requires a name"))
+            haskey(specs,name) && throw(ArgumentError("duplicate STF techlayer $name"))
+            for attr in ("layer_name","material","from","to")
+                _stf_attr(child,attr)!==nothing || throw(ArgumentError("STF via techlayer $name lacks its $attr"))
+            end
+            material=_stf_attr(child,"material")
+            haskey(t.materials,(:conductor,String(material))) ||
+                throw(ArgumentError("unknown STF conductor $material"))
+            model=_stf_attr(child,"model")
+            if model!==nothing
+                node_model=get(t.models,String(model),nothing)
+                node_model===nothing && throw(ArgumentError("unknown STF via model $model"))
+                node_model.name=="via_model" ||
+                    throw(ArgumentError("STF via techlayer $name references a metal model"))
+            end
+            specs[name]=(;kind=:via,name,layer_name=_stf_attr(child,"layer_name"),
+                material,model,from=_stf_attr(child,"from"),to=_stf_attr(child,"to"),
+                bias=_stf_attr(child,"bias",""),
+                ignored=_stf_attr(child,"ignore","false") in ("true","1"),
+                mesh=_stf_techlayer_mesh(t,child,:via))
+        end
+    end
+    return specs
+end
+
+# Non-default mesh subsection controls cannot be applied per material by the
+# uniform solver grid; they reject only when a polygon inherits the layer.
+function _stf_mesh_static(node,kind)
+    node===nothing && return "Default"
+    _stf_attr(node,"iso_type","X and Y")=="X and Y" ||
+        throw(ArgumentError("anisotropic STF mesh subsectioning requires its physical adapter"))
+    for (key,fallback) in (("xmin","1"),("ymin","1"),("xmax","100"),("ymax","100"))
+        _stf_literal(_stf_attr(node,key,fallback))==_stf_literal(fallback) ||
+            throw(ArgumentError("STF mesh subsection bounds require their physical adapter"))
+    end
+    _stf_attr(node,"use_edge_mesh","on") in ("on","true","1") ||
+        throw(ArgumentError("STF edge-mesh control requires its physical adapter"))
+    _stf_attr(node,"pads","off") in ("off","false","0") ||
+        throw(ArgumentError("STF mesh pad control requires its physical adapter"))
+    _stf_attr(node,"usemaxlength","no") in ("no","false","0") ||
+        throw(ArgumentError("STF mesh length control requires its physical adapter"))
+    fill=_stf_attr(node,"fill_type")
+    fill===nothing && throw(ArgumentError("STF mesh lacks its fill_type"))
+    return fill
+end
+
+# Emit a generated SON MET row (tokens[2:end] form without the id field) for
+# an inherited metal technology layer. Normal maps to NOR and two-sheet
+# ThickMetal maps to TMM; resistivity conductivity is physically identical
+# once inverted to S/m, while sheet resistance keeps its SRVY selector for
+# NOR and folds into conductivity for TMM. Other models reject.
+function _stf_metal_tokens(t,spec,ls,variables)
+    mnode=spec.model===nothing ? nothing : get(t.models,String(spec.model),nothing)
+    spec.model!==nothing && mnode===nothing && throw(ArgumentError("unknown STF metal model $(spec.model)"))
+    kind="Normal";ratio=0.5;nsheets="2"
+    if mnode!==nothing
+        _stf_known(mnode,["name","model_type","top_roughness","bottom_roughness",
+            "current_ratio","cross_section","num_sheets","true_volume_mode"])
+        kind=_stf_attr(mnode,"model_type")
+        kind in ("Normal","ThickMetal") ||
+            throw(ArgumentError("STF metal model $kind requires its physical adapter"))
+        for key in ("top_roughness","bottom_roughness")
+            iszero(_stf_literal(_stf_attr(mnode,key,"0"))) ||
+                throw(ArgumentError("STF metal roughness requires its physical adapter"))
+        end
+        _stf_attr(mnode,"cross_section","Thin")=="Thin" ||
+            throw(ArgumentError("STF metal cross-section mapping is unsupported"))
+        _stf_attr(mnode,"true_volume_mode","3LYR")=="3LYR" ||
+            throw(ArgumentError("STF true-volume mode mapping is unsupported"))
+        ratio=_stf_literal(_stf_attr(mnode,"current_ratio","0.5"))
+        isfinite(ratio) && ratio>=0 || throw(ArgumentError("invalid STF metal current ratio"))
+        nsheets=_stf_attr(mnode,"num_sheets","2")
+    end
+    tdwn=if spec.direction in ("Up","up")
+        false
+    elseif spec.direction in ("Down","down")
+        kind=="ThickMetal" ||
+            throw(ArgumentError("STF Down metal direction requires the ThickMetal model"))
+        true
+    else
+        throw(ArgumentError("unsupported STF metal direction $(spec.direction)"))
+    end
+    thickness=sonnet_technology_value(t,spec.thickness;quantity=:length,variables)
+    isfinite(thickness) && thickness>0 || throw(ArgumentError("STF metal thickness must be positive"))
+    material=sonnet_technology_material(t,spec.material;kind=:conductor,variables)
+    fill=_stf_mesh_static(spec.mesh,:metal)
+    fill in ("Default","Staircase","Conformal") ||
+        throw(ArgumentError("STF metal mesh fill $fill requires its physical adapter"))
+    title="\"$(spec.name)\""
+    if kind=="Normal"
+        material.spec=="shres" &&
+            return [title,"NOR",string(material.resistance),string(ratio),string(thickness/ls),"SRVY"]
+        sigma=material.sigma
+        return [title,"NOR",sigma==Inf ? "INF" : string(sigma),string(ratio),string(thickness/ls)]
+    end
+    nsheets=="2" || throw(ArgumentError("STF ThickMetal num_sheets $nsheets requires its physical adapter"))
+    sigma=material.spec=="shres" ?
+        (iszero(material.resistance) ? Inf : inv(material.resistance*thickness)) : material.sigma
+    row=[title,"TMM",sigma==Inf ? "INF" : string(sigma),string(ratio),string(thickness/ls),"2"]
+    tdwn && push!(row,"TDWN")
+    return row
+end
+
+# Emit a generated SON MET row for an inherited via technology layer. The
+# Volume model maps to VOL: Solid vias carry the inactive wall slot while
+# Wall vias emit their physical wall thickness. Array and Surface models
+# lack a verified attribute mapping and reject. Sheet-resistance conductor
+# input has no axial meaning and also rejects.
+function _stf_via_tokens(t,spec,ls,variables)
+    vnode=spec.model===nothing ? nothing : get(t.models,String(spec.model),nothing)
+    spec.model!==nothing && vnode===nothing && throw(ArgumentError("unknown STF via model $(spec.model)"))
+    vtype="Solid";wall="0"
+    if vnode!==nothing
+        _stf_known(vnode,["name","model_type","fill_factor","volume_type","wall_thickness","via_density"])
+        kind=_stf_attr(vnode,"model_type")
+        kind=="Volume" ||
+            throw(ArgumentError("STF via model $kind requires its physical adapter"))
+        _stf_literal(_stf_attr(vnode,"fill_factor","100"))==100 ||
+            throw(ArgumentError("STF volume via fill factor requires its physical adapter"))
+        _stf_literal(_stf_attr(vnode,"via_density","1"))==1 ||
+            throw(ArgumentError("STF volume via density requires its physical adapter"))
+        vtype=_stf_attr(vnode,"volume_type","Solid")
+        vtype in ("Solid","Wall") || throw(ArgumentError("unsupported STF via volume type $vtype"))
+        wall=_stf_attr(vnode,"wall_thickness","0")
+    end
+    material=sonnet_technology_material(t,spec.material;kind=:conductor,variables)
+    material.spec=="shres" &&
+        throw(ArgumentError("STF via sheet-resistance material requires its physical adapter"))
+    sigma=material.sigma
+    token=sigma==Inf ? "INF" : string(sigma)
+    title="\"$(spec.name)\""
+    vtype=="Solid" && return [title,"VOL",token,"SOLID","0"]
+    depth=sonnet_technology_value(t,wall;quantity=:length,variables)
+    isfinite(depth) && depth>0 || throw(ArgumentError("STF hollow via wall thickness must be positive"))
+    return [title,"VOL",token,string(depth/ls)]
+end
+
+# Resolve a via techlayer's from/to endpoint. Metal techlayer names resolve
+# to their stack level; TOP/GND/BOT/BOTTOM resolve to cover targets (target
+# side only); digits are literal levels. Native files keep the declared
+# order: polygon level is the from level and TOLEVEL the to endpoint.
+function _stf_via_endpoint(specs,name,nlayers;target::Bool)
+    spec=get(specs,name,nothing)
+    if spec!==nothing
+        spec.kind==:metal ||
+            throw(ArgumentError("STF via endpoint $name is not a metal techlayer"))
+        spec.ignored && throw(ArgumentError("STF via endpoint $name is an ignored techlayer"))
+        return target ? string(spec.level) : spec.level
+    end
+    name in ("TOP","GND","BOT","BOTTOM") && return target ?
+        (name=="TOP" ? "TOP" : "GND") :
+        throw(ArgumentError("STF via cannot originate at $name"))
+    level=tryparse(Int,name)
+    level===nothing && throw(ArgumentError("unknown STF via endpoint $name"))
+    0<=level<nlayers || throw(ArgumentError("STF via endpoint level $name is outside the stack"))
+    return target ? name : level
+end
+
+const _SONNET_VIA_MESH_FLAGS=("SOLID","FULL","VERTICES","CENTER","BAR","RING")
+
+# The STF mesh definition supplies the polygon's default via fill; an
+# explicit flag on the polygon itself remains authoritative.
+function _stf_via_mesh_flags(flags,fill)
+    fill=="Default" && return flags
+    token=get(Dict("Ring"=>"RING","Bar"=>"BAR","Vertices"=>"VERTICES","Center"=>"CENTER",
+        "Full"=>"FULL","Solid"=>"SOLID"),fill,nothing)
+    token===nothing && throw(ArgumentError("STF via mesh fill $fill requires its physical adapter"))
+    any(f->f in _SONNET_VIA_MESH_FLAGS,flags) && return flags
+    return vcat(flags,token)
+end
+
+# Insert or reuse a generated MET row. The material field is the row's
+# zero-based ordinal position in the metals table; display ids stay unique
+# above any serialized ids.
+function _stf_metal_index!(metals,generated,row)
+    idx=get(generated,row,nothing)
+    idx===nothing || return idx
+    idx=length(metals)
+    used=Set(parse(Int,m[2]) for m in metals if tryparse(Int,m[2])!==nothing)
+    id=idx;id in used && (id=maximum(used;init=idx)+1)
+    push!(metals,[row[1],string(id),row[2:end]...])
+    generated[row]=idx
+    return idx
+end
+
+# Apply one polygon's TLAYNAM inheritance against its resolved STF layer.
+# INH performs native's full inherit (level or via endpoints, conductor and
+# model through a generated MET); NOH retains the literal material and only
+# moves a sheet to the technology layer's level. Applied bias tables, kind
+# mismatches and unmapped physical semantics reject before solving.
+function _stf_apply_techlayer(t,poly,spec,specs,metals,generated,ls,nlayers,variables)
+    poly.technology_mode=="NOH" &&
+        return _stf_noh(poly,spec)
+    poly.technology_mode=="INH" ||
+        throw(ArgumentError("unsupported TLAYNAM inheritance mode $(poly.technology_mode)"))
+    isempty(spec.bias) ||
+        throw(ArgumentError("STF techlayer $(spec.name) carries an applied bias table; etch/rho/RPV bias requires its physical adapter"))
+    if spec.kind==:metal
+        poly.kind==:sheet ||
+            throw(ArgumentError("polygon $(poly.id) inherits metal techlayer $(spec.name) on a non-sheet"))
+        idx=_stf_metal_index!(metals,generated,_stf_metal_tokens(t,spec,ls,variables))
+        return SonnetPolygon(:sheet,spec.level,idx,poly.id,poly.vertices,poly.target,
+            poly.technology,poly.technology_mode,poly.flags)
+    end
+    poly.kind==:via ||
+        throw(ArgumentError("polygon $(poly.id) inherits via techlayer $(spec.name) on a non-via"))
+    idx=_stf_metal_index!(metals,generated,_stf_via_tokens(t,spec,ls,variables))
+    level=_stf_via_endpoint(specs,spec.from,nlayers;target=false)
+    target=_stf_via_endpoint(specs,spec.to,nlayers;target=true)
+    flags=_stf_via_mesh_flags(poly.flags,_stf_mesh_static(spec.mesh,:via))
+    return SonnetPolygon(:via,level,idx,poly.id,poly.vertices,target,
+        poly.technology,poly.technology_mode,flags)
+end
+
+# NOH retains the serialized material and only inherits the metal layer's
+# stack level; via endpoints are not single-level data and reject.
+function _stf_noh(poly,spec)
+    spec.kind==:metal ||
+        throw(ArgumentError("NOH inheritance on via techlayer $(spec.name) requires its physical adapter"))
+    poly.kind==:sheet ||
+        throw(ArgumentError("polygon $(poly.id) inherits metal techlayer $(spec.name) on a non-sheet"))
+    spec.level==poly.level && return poly
+    return SonnetPolygon(:sheet,spec.level,poly.material,poly.id,poly.vertices,poly.target,
+        poly.technology,poly.technology_mode,poly.flags)
 end
 
 """Build the proven static isotropic STF dielectric stack at `freq` Hz.
@@ -585,15 +895,20 @@ function read_sonnet_linked_project(path::AbstractString;dependency_root=dirname
     return SonnetLinkedProject(source,raw,bytes2hex(SHA.sha256(raw)),records,declared,technology)
 end
 
-"""Materialize only a static linked STF subset into an ordinary SonnetProject.
-The linked stack and builtin Lossless covers replace serialized inline stack/
-cover data according to the primary STF contract. This subset requires PEC
-polygons without inherited technology layers; components and ports retain
-their original records and identities. Applied etch/rho/RPV bias, inherited
-metal/via models, encrypted data and unknown physical semantics reject before
-solving. Original SON records remain in the returned project; retain the
-SonnetLinkedProject alongside it for exact dependency provenance. STF overrides
-use STF units; project variable evaluation still uses native DIM units."""
+"""Materialize the supported static linked-STF subset into an ordinary
+SonnetProject. The linked stack and builtin Lossless covers replace
+serialized inline stack/cover data according to the primary STF contract.
+Polygons carrying `TLAYNAM name INH` inherit their technology layer's stack
+level (or via endpoints), conductor and metal/via model through generated
+MET rows; `NOH` inherits only a metal layer's level. Native resolves TLAYNAM
+by layer `name` alone and silently keeps literal polygon data when a name
+does not match; this materialization does the same. Serialized MET rows are
+retained for literal/NOH materials. Applied etch/rho/RPV bias, Array or
+Surface vias, >2-sheet ThickMetal, TrueVolume, brick layers, encrypted data
+and unknown physical semantics reject before solving. Original SON records
+remain in the returned project; retain the SonnetLinkedProject alongside it
+for exact dependency provenance. STF overrides use STF units; project
+variable evaluation still uses native DIM units."""
 function sonnet_materialize_project(linked::SonnetLinkedProject;
         technology_variables=Dict{String,Float64}())
     t=linked.technology;rows=_stf_static_rows(t,technology_variables)
@@ -632,10 +947,18 @@ function sonnet_materialize_project(linked::SonnetLinkedProject;
         push!(records,SonnetRecord(record.line,tokens))
     end
     project=_sonnet_read_records(linked.source,records)
-    all(p->p.material==-1 && isempty(p.technology),project.polygons) || throw(ArgumentError("linked STF polygon material/technology inheritance requires its physical adapter"))
-    isempty(project.metals) || throw(ArgumentError("linked STF metal-type replacement requires its physical adapter"))
+    specs=_stf_techlayers(t,technology_variables)
+    metals=Vector{String}[copy(row) for row in project.metals]
+    generated=Dict{Vector{String},Int}()
+    polygons=map(project.polygons) do poly
+        isempty(poly.technology) && return poly
+        spec=get(specs,poly.technology,nothing)
+        (spec===nothing || spec.ignored) && return poly
+        return _stf_apply_techlayer(t,poly,spec,specs,metals,generated,ls,
+            length(rows),technology_variables)
+    end
     return SonnetProject(project.source,project.units,project.length_scale,project.frequency_scale,
-        project.box,project.layers,project.metals,project.top,project.bottom,project.polygons,
+        project.box,project.layers,metals,project.top,project.bottom,polygons,
         project.ports,project.variables,project.components,project.sweeps,linked.records)
 end
 

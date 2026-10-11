@@ -153,7 +153,7 @@ end
     original=only(filter(q->q.kind===:via,p.polygons))
     outer=1e-5*[0. 4 4 6 6 10 10 6 6 4 4 0;0. 0 1.8 1.8 0 0 4 4 2.2 2.2 4 4]
     polygon=SonnetPolygon(original.kind,original.level,original.material,original.id,
-        outer,original.target,original.technology,original.flags)
+        outer,original.target,original.technology,original.technology_mode,original.flags)
     before=copy(outer);bits=precision(BigFloat)
     error=try
         DiffMoM._sonnet_volume_polygon_sigma(p,polygon,model.problem.grid,model.problem.stack,

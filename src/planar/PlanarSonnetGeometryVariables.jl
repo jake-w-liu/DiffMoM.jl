@@ -777,7 +777,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         planar_normalize_polygon([_P2(vertices[1,i],vertices[2,i]) for i in axes(vertices,2)];
             label="GEOVAR polygon $(polygon.id)")
         push!(emitted,SonnetPolygon(polygon.kind,polygon.level,polygon.material,polygon.id,
-            vertices,polygon.target,polygon.technology,polygon.flags))
+            vertices,polygon.target,polygon.technology,polygon.technology_mode,polygon.flags))
     end
     ports=SonnetPortSpec[]
     parseda=tryparse(Float64,p.box[2]);parsedb=tryparse(Float64,p.box[3])

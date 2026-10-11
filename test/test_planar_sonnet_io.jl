@@ -328,7 +328,7 @@ end
         base=read_sonnet_project(fixture);box=copy(base.box);box[1]="2"
         rows=deepcopy(base.layers);rows[2][1]=".2";push!(rows,copy(rows[2]));rows[3][1]=".3"
         via=SonnetPolygon(:via,0,-1,99,[.002 .003 .003 .002;.005 .005 .006 .006],
-            "GND","",["RING","NOCOVERS"])
+            "GND","","",["RING","NOCOVERS"])
         pv=SonnetPortSpec(:via,99,0,3,["3","50","0","0","0","2.5","5.5"],SonnetRecord[])
         multivia=SonnetProject(base.source,base.units,base.length_scale,base.frequency_scale,
             box,rows,base.metals,base.top,base.bottom,vcat(base.polygons,[via]),
@@ -346,7 +346,7 @@ end
         # The constant axial polygon resistance is independent of subsection
         # area and distributed by physical layer height across multiple layers.
         resistive=SonnetPolygon(via.kind,via.level,0,via.id,via.vertices,via.target,
-            via.technology,via.flags)
+            via.technology,via.technology_mode,via.flags)
         rpv=SonnetProject(base.source,base.units,base.length_scale,base.frequency_scale,
             box,rows,[["Via","1","VOL","2","0","RPV"]],base.top,base.bottom,
             vcat(base.polygons,[resistive]),vcat(base.ports,[pv]),base.variables,
@@ -389,8 +389,8 @@ end
         full=only(base.polygons);mid=base.length_scale*parse(Float64,base.box[2])/2
         leftv=copy(full.vertices);leftv[1,leftv[1,:].>mid].=mid
         rightv=copy(full.vertices);rightv[1,rightv[1,:].<mid].=mid
-        left=SonnetPolygon(:sheet,0,-1,9,leftv,"","",String[])
-        right=SonnetPolygon(:sheet,0,-1,10,rightv,"","",String[])
+        left=SonnetPolygon(:sheet,0,-1,9,leftv,"","","",String[])
+        right=SonnetPolygon(:sheet,0,-1,10,rightv,"","","",String[])
         gap=SonnetPortSpec(:gap,9,1,1,["1","50","0","0","0",string(mid/base.length_scale),
             string(parse(Float64,base.box[3])/2)],SonnetRecord[])
         gaps=SonnetProject(base.source,base.units,base.length_scale,base.frequency_scale,

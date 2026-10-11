@@ -38,7 +38,7 @@ end
     via=deepcopy(p)
     vertices=[.000375 .0005 .0005 .000375 .000375;
               .0004375 .0004375 .0005625 .0005625 .0004375]
-    push!(via.polygons,SonnetPolygon(:via,0,-1,2,vertices,"GND","",["SOLID","COVERS"]))
+    push!(via.polygons,SonnetPolygon(:via,0,-1,2,vertices,"GND","","",["SOLID","COVERS"]))
     bare=sonnet_planar_problem(via;grid=(16,16))
     model=sonnet_planar_problem(via;grid=(16,16),_details=true)
     _native_pec_same_problem(bare,model.problem)
@@ -56,7 +56,7 @@ end
     empty!(lossy.polygons)
     for material in (0,1)
         push!(lossy.polygons,SonnetPolygon(:sheet,source.level,material,material+1,
-            copy(source.vertices),source.target,source.technology,copy(source.flags)))
+            copy(source.vertices),source.target,source.technology,source.technology_mode,copy(source.flags)))
     end
     err=try sonnet_planar_problem(lossy;_materials=true);nothing catch err;err end
     @test err isa ArgumentError && occursin("different sheet materials overlap",sprint(showerror,err))

@@ -21,7 +21,7 @@ end
             for t in (i/subdivisions for i in 0:subdivisions-1)]
         push!(points,first(points));vertices=hcat(points...)
         poly=SonnetPolygon(old.kind,old.level,old.material,old.id,vertices,
-            old.target,old.technology,old.flags)
+            old.target,old.technology,old.technology_mode,old.flags)
         polygons=copy(p.polygons);polygons[2]=poly
         project=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,
             p.box,p.layers,p.metals,p.top,p.bottom,polygons,p.ports,p.variables,

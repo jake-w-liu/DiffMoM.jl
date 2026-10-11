@@ -161,7 +161,7 @@ for offset in (0.,.001,.01), loss in (".25","1e-308","1e-320")
                 q.vertices[1,k]==.001 && (v[1,k]=extent)
             end
         end
-        push!(polygons,SonnetPolygon(q.kind,q.level,q.material,q.id,v,q.target,q.technology,q.flags))
+        push!(polygons,SonnetPolygon(q.kind,q.level,q.material,q.id,v,q.target,q.technology,q.technology_mode,q.flags))
     end
     record=only(original.metals);metal=[record[1],record[2],"VOL",loss,"SOLID","0","SRVY"]
     p=SonnetProject(original.source,original.units,original.length_scale,original.frequency_scale,box,original.layers,[metal],original.top,original.bottom,polygons,original.ports,original.variables,original.components,original.sweeps,original.records)
@@ -203,7 +203,7 @@ metal=copy(p.metals[original.material+1]);metal[4]="0.25"
 length(metal)==6 ? push!(metal,"SRVY") : (metal[end]="SRVY")
 for offset in (0.,.001,.01,.1,1.,10.,100.,1000.)
     vertices=original.vertices.+offset
-    poly=SonnetPolygon(original.kind,original.level,original.material,original.id,vertices,original.target,original.technology,original.flags)
+    poly=SonnetPolygon(original.kind,original.level,original.material,original.id,vertices,original.target,original.technology,original.technology_mode,original.flags)
     expected=setprecision(BigFloat,32768) do
         v=BigFloat.(vertices);n=size(v,2)
         area=abs(sum(v[1,k]*v[2,mod1(k+1,n)]-v[1,mod1(k+1,n)]*v[2,k] for k in 1:n))/2

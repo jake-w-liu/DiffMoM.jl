@@ -27,7 +27,9 @@ end
 
 """A native polygon. Levels/material indices remain zero-based as in Sonnet.
 Coordinates are SI; closed endpoint and vertex order are preserved for ports.
-`kind` is :sheet, :via, or :brick. Via target is GND, TOP, or a level number."""
+`kind` is :sheet, :via, or :brick. Via target is GND, TOP, or a level number.
+`technology` retains a TLAYNAM technology-layer reference and
+`technology_mode` its native inheritance mode (INH or NOH)."""
 struct SonnetPolygon
     kind::Symbol
     level::Int
@@ -36,6 +38,7 @@ struct SonnetPolygon
     vertices::Matrix{Float64}
     target::String
     technology::String
+    technology_mode::String
     flags::Vector{String}
 end
 
@@ -154,7 +157,7 @@ function _sonnet_raster_wall_project(p,a,b,nx,ny)
         vertices===poly.vertices && continue
         polygons===p.polygons && (polygons=copy(polygons))
         polygons[index]=SonnetPolygon(poly.kind,poly.level,poly.material,poly.id,
-            vertices,poly.target,poly.technology,poly.flags)
+            vertices,poly.target,poly.technology,poly.technology_mode,poly.flags)
     end
     polygons===p.polygons && return p
     return SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,p.metals,
@@ -296,14 +299,17 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
         end
         coordinates==nv || _sonnet_error(source,header.line,
             "vertex count $coordinates differs from declared $nv")
-        vertices=Matrix{Float64}(undef,2,nv); k=0; target=""; technology=""; flags=copy(t[4:end])
+        vertices=Matrix{Float64}(undef,2,nv); k=0; target=""; technology=""; technology_mode=""
+        flags=copy(t[4:end])
         while i<endpoint
             row=geo[i]; q=row.tokens
             if q[1]=="TOLEVEL"
                 target=q[2]
                 append!(flags,q[3:end])
             elseif q[1]=="TLAYNAM"
-                technology=q[2]
+                length(q)==3 || _sonnet_error(source,row.line,"TLAYNAM requires a layer name and inheritance mode")
+                q[3] in ("INH","NOH") || _sonnet_error(source,row.line,"unsupported TLAYNAM inheritance mode $(q[3])")
+                technology=q[2]; technology_mode=q[3]
             elseif length(q)==2 && all(v->tryparse(Float64,v)!==nothing,q)
                 k+=1; k<=nv || _sonnet_error(source,row.line,"too many polygon vertices")
                 vertices[1,k]=parse(Float64,q[1])*ls
@@ -316,7 +322,7 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
         k==nv || _sonnet_error(source,header.line,"vertex count $k differs from declared $nv")
         all(isfinite,vertices) || _sonnet_error(source,header.line,"non-finite polygon vertex")
         kind==:via && isempty(target) && _sonnet_error(source,header.line,"via lacks TOLEVEL")
-        push!(polygons,SonnetPolygon(kind,level,mat,id,vertices,target,technology,flags))
+        push!(polygons,SonnetPolygon(kind,level,mat,id,vertices,target,technology,technology_mode,flags))
         i+=1
     end
     i>length(geo) || _sonnet_error(source,geo[i].line,"unparsed geometry after NUM polygons")
@@ -1529,6 +1535,48 @@ function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
     return sigma
 end
 
+# Polygon footprints overlap? Vertex containment is boundary-inclusive and
+# the segment test covers interlocking edges without containment.
+function _sonnet_poly_overlap(a::Matrix{Float64},b::Matrix{Float64})
+    na=size(a,2);nb=size(b,2)
+    (na>=3 && nb>=3) || return false
+    va=[_P2(a[1,i],a[2,i]) for i in 1:na]
+    vb=[_P2(b[1,i],b[2,i]) for i in 1:nb]
+    any(point->_p2_point_in_poly(point,vb,0.),va) && return true
+    any(point->_p2_point_in_poly(point,va,0.),vb) && return true
+    for i in 1:na-1,j in 1:nb-1
+        _p2_seg_intersect(va[i],va[i+1],vb[j],vb[j+1],0.) && return true
+    end
+    return false
+end
+
+# A thick sheet's grown face inserts a z-plane between its level plane and
+# the adjacent one. A via endpoint on such a level should adopt the grown
+# face nearest the span interior — the first conductor surface it meets —
+# rather than tunnel the column through the slab, where its cells would
+# collide with the generated face-wall connector via. The endpoint keeps
+# its original plane when every overlapping sheet at that level does not
+# grow a face into the span (mixed footprints keep the plane so the via
+# overlap check can reject genuinely ambiguous layouts).
+function _sonnet_via_endpoint_plane(p::SonnetProject,q::SonnetPolygon,
+        endpoints::Dict{Int,Float64},z_e::Float64,z_other::Float64,level::Int)
+    z_e==z_other && return z_e
+    zlo,zhi=minmax(z_e,z_other)
+    faces=Float64[];blocked=false
+    for s in p.polygons
+        (s.kind==:sheet && s.level==level) || continue
+        _sonnet_poly_overlap(q.vertices,s.vertices) || continue
+        face=get(endpoints,s.id,nothing)
+        if face!==nothing && zlo<face<zhi
+            push!(faces,face)
+        else
+            blocked=true
+        end
+    end
+    (blocked || isempty(faces)) && return z_e
+    z_other>z_e ? maximum(faces) : minimum(faces)
+end
+
 function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
         max_bytes::Integer=_default_max_dense_payload_bytes())
     any(q->q.kind===:sheet && 0<=q.material<length(p.metals) &&
@@ -1592,18 +1640,26 @@ function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
     nextid=maximum(q->q.id,p.polygons;init=0)+1
     polys=SonnetPolygon[];duplicate=Dict{Int,Int}()
     for q in p.polygons
-        target=q.kind==:via && !(q.target in ("GND","TOP")) ?
-            string(levelmap[parse(Int,q.target)]) : q.target
+        target=q.target;level=levelmap[q.level]
+        if q.kind==:via
+            z_other=q.target=="GND" ? boundaries[1] :
+                q.target=="TOP" ? boundaries[end] : zlevel(parse(Int,q.target))
+            q.target in ("GND","TOP") ||
+                (target=string(newlevel(_sonnet_via_endpoint_plane(p,q,endpoints,
+                    z_other,zlevel(q.level),parse(Int,q.target)))))
+            level=newlevel(_sonnet_via_endpoint_plane(p,q,endpoints,
+                zlevel(q.level),z_other,q.level))
+        end
         material=haskey(endpoints,q.id) ? face_material[q.material] : q.material
-        push!(polys,SonnetPolygon(q.kind,levelmap[q.level],material,q.id,q.vertices,
-            target,q.technology,copy(q.flags)))
+        push!(polys,SonnetPolygon(q.kind,level,material,q.id,q.vertices,
+            target,q.technology,q.technology_mode,copy(q.flags)))
         if haskey(endpoints,q.id)
             otherlevel=newlevel(endpoints[q.id]);otherid=nextid;nextid+=1
             duplicate[q.id]=otherid
             push!(polys,SonnetPolygon(:sheet,otherlevel,material,otherid,q.vertices,
-                "",q.technology,copy(q.flags)))
+                "",q.technology,q.technology_mode,copy(q.flags)))
             push!(polys,SonnetPolygon(:via,levelmap[q.level],-1,nextid,q.vertices,
-                string(otherlevel),"",["RING","NOCOVERS"]))
+                string(otherlevel),"","",["RING","NOCOVERS"]))
             nextid+=1
         end
     end
