@@ -1,0 +1,45 @@
+Run 1:  Sun Oct 11 13:49:09 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\arr_cu100_run\arr_cu100.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 1.981e-5 84.310 0.999998 0.0000 0.999998 0.0000 1.981e-5 84.310
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+
+    Frequency:  0.01 GHZ
+      0.01000000 1.898e-4 88.282 0.999994 -0.017 0.999994 -0.017 1.898e-4 88.282
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+
+    Frequency:  0.1 GHZ
+      0.10000000 0.001852 89.188 0.999978 -0.171 0.999978 -0.171 0.001852 89.188
+      ! P1 F=0.1 Standard port
+      ! P2 F=0.1 Standard port
+
+    Frequency:  1 GHZ
+      1.00000000 0.018351 88.068 0.999759 -1.704 0.999759 -1.704 0.018351 88.068
+      ! P1 F=1.0 Eeff=(1.00017 + j0) Z0=(121.309 + j0)
+      ! P2 F=1.0 Eeff=(1.00017 + j0) Z0=(121.309 + j0)
+
+    Frequency:  10 GHZ
+      10.0000000 0.178059 73.109 0.983785 -16.82 0.983785 -16.82 0.178059 73.109
+      ! P1 F=10.0 Eeff=(1.00014 + j0) Z0=(121.305 + j0)
+      ! P2 F=10.0 Eeff=(1.00014 + j0) Z0=(121.305 + j0)
+
+Em simulation completed Sun Oct 11 13:49:09 2026.
+
+
+Run 2:  Sun Oct 11 13:49:15 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\arr_cu100_run\arr_cu100.son.
+
+Analysis failed due to error Sun Oct 11 13:49:15 2026.

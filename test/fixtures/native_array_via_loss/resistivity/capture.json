@@ -1,0 +1,15 @@
+{
+  "case": "resistivity",
+  "engine": "18.53-Lite (64-bit Windows)",
+  "material": "MET \"Array\" 77 ARR 1e-4 .01 RSVY",
+  "exit_code": 0,
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "inputs": {
+    "project.son": "a57919ae4e5afb5b725a4a079416e561cb320db75b0e780d372de3c0898286c0",
+    "native_raw.s2p": "c0a22347cfa17987c45b978b0dcc1138e52b99e2dab7d00400ce2c8e2abbc33d",
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

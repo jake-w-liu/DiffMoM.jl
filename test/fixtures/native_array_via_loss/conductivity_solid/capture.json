@@ -1,0 +1,15 @@
+{
+  "case": "conductivity_solid",
+  "engine": "18.53-Lite (64-bit Windows)",
+  "material": "MET \"Array\" 77 ARR 58000000 100",
+  "exit_code": 0,
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "inputs": {
+    "project.son": "4ef355be73d0e14bce5756d43be80666d5dbf9ab2dd13ac2ae62b612922412c8",
+    "native_raw.s2p": "263f680b2f769ce583ed16cbc88c9b629e4758d91e0559624a92ffa81b9ae532",
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

@@ -366,10 +366,16 @@ end
             rpv.top,rpv.bottom,rpv.polygons,rpv.ports,rpv.variables,rpv.components,rpv.sweeps,rpv.records)
         amodel=sonnet_planar_problem(array;grid=(16,16),_materials=true,_details=true)
         @test amodel.via_sigma[1]/rmodel.via_sigma[1]≈.25e6
-        unsupported=SonnetProject(rpv.source,rpv.units,rpv.length_scale,rpv.frequency_scale,
+        # The translator's canonical array record carries only loss and fill
+        # factor; its effective conductivity is the volume skin law applied
+        # to the filled fraction of the polygon cross-section.
+        arrayfill=SonnetProject(rpv.source,rpv.units,rpv.length_scale,rpv.frequency_scale,
             rpv.box,rpv.layers,[["Array","1","ARR","58e6","16"]],
             rpv.top,rpv.bottom,rpv.polygons,rpv.ports,rpv.variables,rpv.components,rpv.sweeps,rpv.records)
-        @test_throws ArgumentError sonnet_planar_problem(unsupported;grid=(16,16),_materials=true)
+        fmodel=sonnet_planar_problem(arrayfill;grid=(16,16),freq=1e9,_materials=true,_details=true)
+        fmesh=count(fmodel.problem.vias[1].uni)*fmodel.problem.grid.dx*fmodel.problem.grid.dy
+        fexpected=DiffMoM._sonnet_volume_sigma_wide(58e6,1e9,1e-6,16.,1e-3,1e-3,fmesh)
+        @test all(s->isapprox(s,fexpected;rtol=1e-10),fmodel.via_sigma)
         grounded=copy(base.ports[1].values);grounded[1]="0"
         groundport=SonnetPortSpec(:std,9,3,0,grounded,base.ports[1].records)
         wallground=SonnetProject(base.source,base.units,base.length_scale,base.frequency_scale,

@@ -875,7 +875,7 @@ function _sonnet_volume_wall_depth(area,fill,width,height,rectangle::Bool=false)
 end
 
 function _sonnet_volume_sigma_wide(sigma,freq,area,percent,width,breadth,mesh_area;
-        resistivity::Bool=false,sheet_resistance::Bool=false,declared_wall=nothing,rectangle::Bool=false)
+        resistivity::Bool=false,sheet_resistance::Bool=false,declared_wall=nothing,rectangle::Bool=false,what="VOL")
     return setprecision(BigFloat,max(4096,precision(BigFloat))) do
         s,f,a,pct,w,b,am=BigFloat.((sigma,freq,area,percent,width,breadth,mesh_area))
         rectangle && (a=w*b)
@@ -887,12 +887,12 @@ function _sonnet_volume_sigma_wide(sigma,freq,area,percent,width,breadth,mesh_ar
         sheet_resistance && (s=inv(s*(declared_wall===nothing ? depth : BigFloat(declared_wall))))
         rdc=one(BigFloat)
         rs=depth*sqrt(BigFloat(pi)*BigFloat(_MU0)*f*s)
-        impedance=_sonnet_loss_transition(rdc,rs,"VOL")
+        impedance=_sonnet_loss_transition(rdc,rs,what)
         exact=(s*phi*a/am)/impedance;stored=ComplexF64(exact)
         isfinite(stored) && real(stored)>=0 && !iszero(stored) &&
             (iszero(real(exact)) || !iszero(real(stored))) &&
             (iszero(imag(exact)) || !iszero(imag(stored))) ||
-            throw(ArgumentError("native VOL effective conductivity is unrepresentable"))
+            throw(ArgumentError("native $what effective conductivity is unrepresentable"))
         return stored
     end
 end
@@ -1108,6 +1108,74 @@ function _sonnet_volume_sigma_fallback(sigma,loss,freq,area,percent,width,breadt
     return _sonnet_volume_sigma_wide(sigma,freq,area,percent,width,breadth,mesh_area;rectangle)
 end
 
+# The array model is the volume model with the conducting cross-section
+# declared directly as a fill-factor percentage of the polygon area instead
+# of a hollow wall thickness. The record's sixth field is polymorphic:
+# RPV selects the resistance-per-via path, a loss selector names the loss
+# field's units, and anything else is translator spacing/density data that
+# the engine warns on, defaults, and ignores (verified on 18.53-Lite). The
+# horizontal loss is infinite, so array vias generate perfect-conductor
+# endpoint pads and only the axial path is dissipative.
+function _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
+    metal=p.metals[poly.material+1]
+    length(metal)>=5 || throw(ArgumentError("ARR requires loss and fill-factor fields"))
+    selector=length(metal)>=6 && metal[6] in ("CDVY","RSVY","SRVY") ? metal[6] : "CDVY"
+    # Lite converts an ARR sheet-resistance record to a fixed conductivity
+    # independent of the entered loss; that conversion is not yet modeled.
+    selector=="SRVY" && throw(ArgumentError(
+        "native ARR sheet-resistance conversion requires its dedicated adapter"))
+    val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
+    loss=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf : val(metal[4])
+    percent=val(metal[5])
+    (isfinite(percent) && 0<percent<=100 && loss>=0) ||
+        throw(ArgumentError("ARR requires nonnegative loss and a fill factor in (0,100] percent"))
+    (selector=="CDVY" && loss==Inf) || (selector=="RSVY" && iszero(loss)) ? (return Inf) : nothing
+    # Zero conductivity is a perfect insulator; Lite runs it as an open
+    # column, but the via impedance model has no zero-sigma state.
+    selector=="CDVY" && iszero(loss) && throw(ArgumentError(
+        "native ARR zero conductivity is a perfect insulator; the open-via adapter is required"))
+    rectangle=_sonnet_volume_rectangle(poly.vertices)
+    sigma=selector=="CDVY" ? loss : _sonnet_volume_product((100.,),(loss,))
+    vertices=poly.vertices
+    area=_sonnet_volume_polygon_area(vertices)
+    xmin,xmax=extrema(@view vertices[1,:]);ymin,ymax=extrema(@view vertices[2,:])
+    width=xmax-xmin;breadth=ymax-ymin
+    layers=length(stack.layers)
+    target=poly.target=="GND" ? layers-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
+    lo,hi=minmax(poly.level,target)
+    height=sum(real(stack.layers[layers-lev].thickness) for lev in lo+1:hi)
+    mesh_area=count(mask)*grid.dx*grid.dy
+    all(x->isfinite(x) && x>0,(area,width,breadth,height,mesh_area)) ||
+        throw(ArgumentError("native ARR needs representable positive physical height and cross-sectional areas"))
+    if !(isfinite(sigma) && sigma>0)
+        selector=="RSVY" && loss>0 ||
+            throw(ArgumentError("native ARR conductivity is unrepresentable"))
+        return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity=true,rectangle,what="ARR")
+    end
+    fill=percent/100
+    depth=_sonnet_volume_wall_depth(area,fill,width,breadth,rectangle)
+    rdc=1.0
+    rs=_sonnet_volume_product((depth,sqrt(pi*_MU0),sqrt(freq),sqrt(sigma)),())
+    all(isfinite,(rdc,rs,depth)) && depth>0 ||
+        return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity=selector=="RSVY",rectangle,what="ARR")
+    impedance=_sonnet_loss_transition(rdc,rs,"ARR")
+    isfinite(impedance) && !iszero(real(impedance)) && !iszero(imag(impedance)) &&
+        !_planar_metal_subnormal(impedance) ||
+        return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity=selector=="RSVY",rectangle,what="ARR")
+    rm,re=frexp(real(impedance));xm,xe=frexp(imag(impedance));e=max(re,xe)
+    denominator=ldexp(rm,re-e)^2+ldexp(xm,xe-e)^2
+    real_sigma=_sonnet_volume_product((sigma,fill,area,rm),(mesh_area,denominator);exponent=re-2e)
+    imag_sigma=-_sonnet_volume_product((sigma,fill,area,xm),(mesh_area,denominator);exponent=xe-2e)
+    stored=complex(real_sigma,imag_sigma)
+    isfinite(stored) && real(stored)>0 && !iszero(imag(stored)) ||
+        return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity=selector=="RSVY",rectangle,what="ARR")
+    return stored
+end
+
 function _sonnet_volume_sigma(p,poly,grid,stack,mask,freq,vars)
     metal=p.metals[poly.material+1]
     solid=length(metal)>=5 && metal[5]=="SOLID"
@@ -1175,14 +1243,25 @@ function _sonnet_volume_sigma(p,poly,grid,stack,mask,freq,vars)
     return stored
 end
 
+# RPV selects constant-resistance loss. For ARR it is meaningful only in
+# the polymorphic sixth field; later matches are failed density entries.
+# Scanning loss fields rather than the whole record also skips a metal
+# whose quoted name happens to read RPV.
+function _sonnet_via_rpv(metal)
+    length(metal)>=4 || return false
+    metal[3]=="ARR" && return length(metal)>=6 && metal[6]=="RPV"
+    return any(==("RPV"),Iterators.drop(metal,3))
+end
+
 function _sonnet_volume_polygon_workspace(p)
     peak_vertices=0;needs_wide=false
     for poly in p.polygons
         poly.kind===:via && 0<=poly.material<length(p.metals) || continue
         metal=p.metals[poly.material+1]
-        length(metal)>=5 && metal[3]=="VOL" || continue
+        length(metal)>=5 && metal[3] in ("VOL","ARR") || continue
         needs_wide=true
-        if !("RPV" in metal) && metal[5]!="SOLID" && !_sonnet_volume_rectangle(poly.vertices)
+        if metal[3]=="VOL" && !_sonnet_via_rpv(metal) && metal[5]!="SOLID" &&
+                !_sonnet_volume_rectangle(poly.vertices)
             peak_vertices=max(peak_vertices,size(poly.vertices,2))
         end
     end
@@ -1200,9 +1279,10 @@ end
 
 function _sonnet_has_volume_skin(p)
     return any(p.polygons) do poly
-        poly.kind===:via && 0<=poly.material<length(p.metals) &&
-            length(p.metals[poly.material+1])>=3 && p.metals[poly.material+1][3]=="VOL" &&
-            !("RPV" in p.metals[poly.material+1])
+        poly.kind===:via && 0<=poly.material<length(p.metals) || return false
+        metal=p.metals[poly.material+1]
+        length(metal)>=3 && metal[3] in ("VOL","ARR") || return false
+        return !_sonnet_via_rpv(metal)
     end
 end
 
@@ -1216,7 +1296,7 @@ function _sonnet_via_endpoints(p,poly)
     poly.material==-1 && return true
     0<=poly.material<length(p.metals) || return false
     metal=p.metals[poly.material+1]
-    return length(metal)>=3 && metal[3]=="VOL"
+    return length(metal)>=3 && metal[3] in ("VOL","ARR")
 end
 
 function _sonnet_via_parallel_zs(a,b)
@@ -1298,9 +1378,12 @@ end
 function _sonnet_via_endpoint_zs(p,poly,stack,freq,variables)
     poly.material==-1 && return 0.0im
     metal=p.metals[poly.material+1]
+    # The array model's horizontal loss is infinite: its contact pads are
+    # perfect conductors and only the axial array resistance is dissipative.
+    metal[3]=="ARR" && return 0.0im
     metal[3]=="VOL" || throw(ArgumentError("native via endpoint material needs its own adapter"))
     solid=length(metal)>=5 && metal[5]=="SOLID"
-    rpv="RPV" in metal
+    rpv=_sonnet_via_rpv(metal)
     (!solid && !rpv && !("COVERS" in poly.flags)) && return 0.0im
     selector=rpv ? "RPV" : length(metal)==(solid ? 7 : 6) ? metal[end] : "CDVY"
     value=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf :
@@ -1325,11 +1408,18 @@ function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
     metal=p.metals[poly.material+1]
     val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
     model=metal[3]
-    if model=="VOL" && !("RPV" in metal)
+    rpv=_sonnet_via_rpv(metal)
+    if model=="VOL" && !rpv
         return _sonnet_volume_sigma(p,poly,grid,stack,mask,freq,vars)
     end
-    "RPV" in metal || throw(ArgumentError("native $model via conductivity/skin loss requires its dedicated frequency-dependent adapter"))
-    "COVERS" in poly.flags && model!="VOL" && throw(ArgumentError("lossy native via covers require the horizontal pad-loss adapter"))
+    if model=="ARR" && !rpv
+        return _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
+    end
+    rpv || throw(ArgumentError("native $model via conductivity/skin loss requires its dedicated frequency-dependent adapter"))
+    # Array pads are perfect conductors regardless of coverage; other lossy
+    # covers need their horizontal pad-loss adapter.
+    "COVERS" in poly.flags && !(model in ("VOL","ARR")) &&
+        throw(ArgumentError("lossy native via covers require the horizontal pad-loss adapter"))
     resistance=val(metal[4])
     resistance>=0 || throw(ArgumentError("negative native resistance per via"))
     if model=="VOL"

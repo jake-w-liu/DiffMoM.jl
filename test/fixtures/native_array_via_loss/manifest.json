@@ -1,0 +1,253 @@
+{
+ "engine_version": "18.53-Lite (64-bit Windows)",
+ "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac",
+ "cases": [
+  "conductivity_fill",
+  "conductivity_fill2x",
+  "conductivity_onepct",
+  "conductivity_solid",
+  "resistivity"
+ ],
+ "files": [
+  {
+   "path": "conductivity_fill/engine_stderr.log",
+   "sha256": "8ee2e1c9195f4fdc720f12f4be3ddb1618b17262695b84f611b5b22f243cd30d"
+  },
+  {
+   "path": "conductivity_fill/engine_stdout.log",
+   "sha256": "b98d49539ab0f7d16139b89793b1e4c0408ced5d026e1d495cbdb7ebac59706b"
+  },
+  {
+   "path": "conductivity_fill/native_raw.s2p",
+   "sha256": "559598ec374d2684220e255695b75a3f5071c8f5acdffd9a56d132510bf46b94"
+  },
+  {
+   "path": "conductivity_fill/project.son",
+   "sha256": "bbbeb269e74d53b715c9699e6af4f2a78e0146f1307dcdf5b85e559d125d4ed9"
+  },
+  {
+   "path": "conductivity_fill/sondata/arr_probe/geo_response_d.sid",
+   "sha256": "af268a91de34d603a1a31f4994f09976612797f8e2d3c30c98be0c7c178112e6"
+  },
+  {
+   "path": "conductivity_fill/sondata/arr_probe/geo_response_nd.sid",
+   "sha256": "6d3677b5fcae34f0b5ea69e1759141d936696f1ef31e6fcf56444fc7e45ecdac"
+  },
+  {
+   "path": "conductivity_fill/sondata/arr_probe/info.log",
+   "sha256": "1a19e23b6f2cacb2b50a5f12b7d7a43012841fc67f6efa455fa73ce00dc12190"
+  },
+  {
+   "path": "conductivity_fill/sondata/arr_probe/log_composite.log",
+   "sha256": "80d09ebd446f589aeb72a5c4a07822187beab25e667f02d8023d8ec97bd3cba7"
+  },
+  {
+   "path": "conductivity_fill/sondata/arr_probe/log_errors.log",
+   "sha256": "d1d3f1cc6696ddbf27d1eed9969c435bae3eb9bae0af28c4d1d8796eb9ac2f8a"
+  },
+  {
+   "path": "conductivity_fill/sondata/arr_probe/log_response.log",
+   "sha256": "beb6f08d18e352e3a90cc3c63f902dd2ab29b15ed2e8ac48a07a3e7d281fd5a0"
+  },
+  {
+   "path": "conductivity_fill/sondata/arr_probe/log_timing.log",
+   "sha256": "6b62901a7895d24cea7ad66deb1bff16af7fc96fff15f47d709fdfa4d726c055"
+  },
+  {
+   "path": "conductivity_fill/capture.json",
+   "sha256": "d68abf7065cbcc72ddfdde9ce12c6ceb1a8365a1d77f995fd4aefa2bc45d4119"
+  },
+  {
+   "path": "conductivity_fill2x/engine_stderr.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "conductivity_fill2x/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "conductivity_fill2x/native_raw.s2p",
+   "sha256": "843c0bf2b4c39aef219477b307652f26cc8693991b0120f6803fcbd3a2cd6dd9"
+  },
+  {
+   "path": "conductivity_fill2x/project.son",
+   "sha256": "852ae671f3e283809c167ed89cc2d6f94f6c340ee7f84e1b7b6ad6ae9c9b2a9f"
+  },
+  {
+   "path": "conductivity_fill2x/sondata/arr_f5x2/geo_response_d.sid",
+   "sha256": "c5a929c6c7597638693c7aba6b6d293c232ce7c88f8e895e6e1071bbad6cced2"
+  },
+  {
+   "path": "conductivity_fill2x/sondata/arr_f5x2/geo_response_nd.sid",
+   "sha256": "0030eebe4b806144d7669fe7ad8b8347c8959b3c34372ca60058583d4b15b6b1"
+  },
+  {
+   "path": "conductivity_fill2x/sondata/arr_f5x2/info.log",
+   "sha256": "0f0d2f0738228daeb59c5e034780c623825e48399ab374f21a24f23b7519f9bb"
+  },
+  {
+   "path": "conductivity_fill2x/sondata/arr_f5x2/log_composite.log",
+   "sha256": "98de2ea5fd4e1c43cf55b3323c8ee25313e60cdea9276727364dc803536b1731"
+  },
+  {
+   "path": "conductivity_fill2x/sondata/arr_f5x2/log_errors.log",
+   "sha256": "884878bd5b898ee523dca9d0dac4f311273350f2236f46f67b59ab64988f585c"
+  },
+  {
+   "path": "conductivity_fill2x/sondata/arr_f5x2/log_response.log",
+   "sha256": "d88c35dd91dfff9a8151b1190ae379961bad82d6cf17318a1ffa9bff0fd70cce"
+  },
+  {
+   "path": "conductivity_fill2x/sondata/arr_f5x2/log_timing.log",
+   "sha256": "c00e2facd98a8b7831bae5eca15415f602ceb90c72a14f7791157412a570ebaa"
+  },
+  {
+   "path": "conductivity_fill2x/capture.json",
+   "sha256": "559046b3741d200cecb37908f0e787e40695a2a8e3c3542b510cdcc616385e98"
+  },
+  {
+   "path": "conductivity_onepct/engine_stderr.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "conductivity_onepct/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "conductivity_onepct/native_raw.s2p",
+   "sha256": "7d2acc0c7d70ffeadd39f18e0a6099df319b8f58232152c2ee7852143f93b75b"
+  },
+  {
+   "path": "conductivity_onepct/project.son",
+   "sha256": "30ad068e3631ece3ef078b9ac1548ff3392f3a78310700d038595d81b8185d41"
+  },
+  {
+   "path": "conductivity_onepct/sondata/arr_cu1/geo_response_d.sid",
+   "sha256": "d8ccd203fbe63affb46ebbceab11d6529f2f1b8e542c67db05b6c0073cec9209"
+  },
+  {
+   "path": "conductivity_onepct/sondata/arr_cu1/geo_response_nd.sid",
+   "sha256": "5b1a83a81b756dccb303c3b23df369c89ed4cd9d2b578f0e4b778e935c7ae7e9"
+  },
+  {
+   "path": "conductivity_onepct/sondata/arr_cu1/info.log",
+   "sha256": "03487c06522add54c3c14dad4158f5d940272a863d671af89f45fcd78f70cccc"
+  },
+  {
+   "path": "conductivity_onepct/sondata/arr_cu1/log_composite.log",
+   "sha256": "92cf6df5042143c01e3b09050b7f2ee8bf393960577ee07af708ab687c7fd7a5"
+  },
+  {
+   "path": "conductivity_onepct/sondata/arr_cu1/log_errors.log",
+   "sha256": "d1123b297ac957b6d76509dcf67738580f94eac8d352d7fa930bdef30cc31965"
+  },
+  {
+   "path": "conductivity_onepct/sondata/arr_cu1/log_response.log",
+   "sha256": "b5496461d57279092dd5a70ae5727c00f7f0ba78dbdbdb80770fc0029902caa1"
+  },
+  {
+   "path": "conductivity_onepct/sondata/arr_cu1/log_timing.log",
+   "sha256": "84dfde1c69119a2841cf32281121b7b02afe821373edacfe96185a48eae673d3"
+  },
+  {
+   "path": "conductivity_onepct/capture.json",
+   "sha256": "4f062c8c927ebc230fed80e5c05907d9dfe34602fcb5e417c151f970f70de6a4"
+  },
+  {
+   "path": "conductivity_solid/engine_stderr.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "conductivity_solid/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "conductivity_solid/native_raw.s2p",
+   "sha256": "263f680b2f769ce583ed16cbc88c9b629e4758d91e0559624a92ffa81b9ae532"
+  },
+  {
+   "path": "conductivity_solid/project.son",
+   "sha256": "4ef355be73d0e14bce5756d43be80666d5dbf9ab2dd13ac2ae62b612922412c8"
+  },
+  {
+   "path": "conductivity_solid/sondata/arr_cu100/geo_response_d.sid",
+   "sha256": "8e295795c748a31176865809294044683a488aa9c0b176d916abecdc1223af8d"
+  },
+  {
+   "path": "conductivity_solid/sondata/arr_cu100/geo_response_nd.sid",
+   "sha256": "47027972a23ae217b228358003ce8201f973f784c408e4b353fb547fe25a4b39"
+  },
+  {
+   "path": "conductivity_solid/sondata/arr_cu100/info.log",
+   "sha256": "237042dc22235d4bad0997fe3969081b4a85c4d7ac2bba621a14766f60393ddc"
+  },
+  {
+   "path": "conductivity_solid/sondata/arr_cu100/log_composite.log",
+   "sha256": "4cd3f5ed088dde64ae61ea64d6e44beaecd03994f7b08977d350667bd5c55662"
+  },
+  {
+   "path": "conductivity_solid/sondata/arr_cu100/log_errors.log",
+   "sha256": "0e6dc9ade5d66863944cf286a9effc5a91afba8e884057d5090e552e5698e392"
+  },
+  {
+   "path": "conductivity_solid/sondata/arr_cu100/log_response.log",
+   "sha256": "da85499f1493b3fdc2643eacc3fadeb2b9cd0eecff003638f0b38fe12bf6fa6f"
+  },
+  {
+   "path": "conductivity_solid/sondata/arr_cu100/log_timing.log",
+   "sha256": "28ba84d7232c7171b028632ee0c57cfb184cd94912b65ff28845d58639f6a8fb"
+  },
+  {
+   "path": "conductivity_solid/capture.json",
+   "sha256": "4ea4fb5929b8e8b4110720f24a9440ca6725c5d749850dc631a2062de93d0315"
+  },
+  {
+   "path": "resistivity/engine_stderr.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "resistivity/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "resistivity/native_raw.s2p",
+   "sha256": "c0a22347cfa17987c45b978b0dcc1138e52b99e2dab7d00400ce2c8e2abbc33d"
+  },
+  {
+   "path": "resistivity/project.son",
+   "sha256": "a57919ae4e5afb5b725a4a079416e561cb320db75b0e780d372de3c0898286c0"
+  },
+  {
+   "path": "resistivity/sondata/arr_rsvy/geo_response_d.sid",
+   "sha256": "16637a26192160fb9d947ca268d488c1de8899c69d803ae20c898ff5764b4b92"
+  },
+  {
+   "path": "resistivity/sondata/arr_rsvy/geo_response_nd.sid",
+   "sha256": "8c51b3742fd731a783c8e2c7a4cc5f2ce9ee27902b50b2f2a265de688f57e5bc"
+  },
+  {
+   "path": "resistivity/sondata/arr_rsvy/info.log",
+   "sha256": "61c4797ad50e6c552c34dd1bba4d18b17422c3cd473a40593c84f54e214d3c6b"
+  },
+  {
+   "path": "resistivity/sondata/arr_rsvy/log_composite.log",
+   "sha256": "949d2a0c07cbdaae1abc218a907581110892e45a4c05a838565c7e2633e04813"
+  },
+  {
+   "path": "resistivity/sondata/arr_rsvy/log_errors.log",
+   "sha256": "af87e44c3b3f92e0017849094b8bdd334789b4ada4aa007fa0c057c7f16ca2dc"
+  },
+  {
+   "path": "resistivity/sondata/arr_rsvy/log_response.log",
+   "sha256": "ac39ed38e550eb4fe1731f5cdc32fa703960fbb8f33ae6cf91473f428c0c396a"
+  },
+  {
+   "path": "resistivity/sondata/arr_rsvy/log_timing.log",
+   "sha256": "f4e9471ee0cdadf8df07a9cb2e1b42d3c468aba06eef8d7ac72ce12449ccd83e"
+  },
+  {
+   "path": "resistivity/capture.json",
+   "sha256": "4e53170d9b7d6f92dce1a4fe8de2c34c8c04bae96a6d45d6800da768ff8917c3"
+  }
+ ]
+}

@@ -1,0 +1,15 @@
+{
+  "case": "conductivity_fill2x",
+  "engine": "18.53-Lite (64-bit Windows)",
+  "material": "MET \"Array\" 77 ARR 10000 .02 1 CDVY",
+  "exit_code": 0,
+  "outputs": [
+    "native_raw.s2p"
+  ],
+  "inputs": {
+    "project.son": "852ae671f3e283809c167ed89cc2d6f94f6c340ee7f84e1b7b6ad6ae9c9b2a9f",
+    "native_raw.s2p": "843c0bf2b4c39aef219477b307652f26cc8693991b0120f6803fcbd3a2cd6dd9",
+    "engine_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

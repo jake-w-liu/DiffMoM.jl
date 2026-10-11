@@ -1,0 +1,24 @@
+Run 1:  Sat Oct 10 16:05:27 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\planar_audit\arr_probe_run\arr_probe.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Array Via Density = CDVY) in equation CDVY
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Array Via Density = CDVY) in equation CDVY
+
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 3.
+
+Em simulation completed Sat Oct 10 16:05:27 2026.
