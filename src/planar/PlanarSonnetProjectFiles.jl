@@ -15,6 +15,13 @@ mutable struct _SonnetLinearProjects
 end
 _sonnet_project_path_key(path)=Sys.iswindows() ? lowercase(path) : path
 
+# Synchronous geometry-SPROJ solves spawn their own component-files
+# context, so the per-context `active` set cannot see cross-solve
+# recursion (A embeds B which embeds A). This chain carries every
+# project currently on the SPROJ resolution stack; it is restored
+# exactly when each nested solve returns.
+const _SPROJ_CHAIN=Set{String}()
+
 function _sonnet_files_project_source!(projects,path)
     haskey(projects.sources,path) && return projects.sources[path]
     length(projects.sources)<projects.max_dependencies ||
@@ -47,13 +54,16 @@ function _sonnet_files_project_network!(projects,p,row,np)
     return path,data
 end
 
-function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,depth=1)
+function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,depth=1,
+        bindings::Union{Nothing,Dict{String,Float64}}=nothing)
     key=_sonnet_project_path_key(path)
-    key in projects.active && throw(ArgumentError("recursive native project dependency"))
+    (key in projects.active || key in _SPROJ_CHAIN) &&
+        throw(ArgumentError("recursive native project dependency"))
     depth<=projects.max_depth || throw(ArgumentError("native project depth exceeds max_project_depth"))
-    if haskey(projects.circuits,path)
-        length(projects.circuits[path].ports)==np || throw(ArgumentError("shared project has inconsistent pin count"))
-        return projects.circuits[path]
+    if haskey(projects.responses,path)
+        size(projects.responses[path][1],1)==np ||
+            throw(ArgumentError("shared project has inconsistent pin count"))
+        return nothing
     end
     push!(projects.active,key)
     try
@@ -64,8 +74,40 @@ function _sonnet_files_linear_project!(projects::_SonnetLinearProjects,path,np,d
             tokens=_sonnet_tokens(text);isempty(tokens) || push!(records,SonnetRecord(line,tokens))
         end
         p=_sonnet_read_records(path,records)
+        if p isa SonnetProject
+            # Geometry child: the component is the child's own EM response
+            # evaluated at this frequency. Bound names must be declared
+            # child variables; their values were already resolved in the
+            # parent's scope by the caller. Cross-solve recursion is caught
+            # through _SPROJ_CHAIN because this solve spawns a fresh
+            # component-files context that cannot see our `active` set.
+            vars=bindings===nothing ? Dict{String,Float64}() : bindings
+            for name in keys(vars)
+                haskey(p.variables,name) ||
+                    throw(ArgumentError("SPROJ binding names undeclared child variable $name"))
+            end
+            global _SPROJ_CHAIN
+            added=[k for k in union(projects.active,[key]) if !(k in _SPROJ_CHAIN)]
+            union!(_SPROJ_CHAIN,added)
+            local result
+            try
+                result=solve_sonnet_project(p,projects.frequency;variables=vars,
+                    max_bytes=projects.budget.limit-projects.budget.used)
+            finally
+                for k in added; delete!(_SPROJ_CHAIN,k); end
+            end
+            sort(abs.(result.port_numbers))==collect(1:np) || throw(ArgumentError(
+                "geometry child port numbers must be exactly 1..$np to map the ordered model pins"))
+            _sonnet_files_reserve!(projects.budget,
+                _checked_array_payload_bytes(ComplexF64,12,np,np)+
+                _checked_array_payload_bytes(ComplexF64,12,np))
+            projects.responses[path]=(copy(result.s),copy(result.z0))
+            return nothing
+        end
         p isa SonnetNetlistProject || throw(ArgumentError(
-            "geometry SPROJ children require their explicit calibrated project adapter"))
+            "unrepresented SPROJ child project type"))
+        (bindings===nothing || isempty(bindings)) ||
+            throw(ArgumentError("SPROJ parameter bindings require a geometry child project"))
         scales=Dict("RES"=>get(Dict("OH"=>1.,"OHMS"=>1.,"KOH"=>1e3,"MOH"=>1e6),get(p.units,"RES","OH"),NaN),
             "CAP"=>get(Dict("F"=>1.,"PF"=>1e-12,"FF"=>1e-15,"NF"=>1e-9,"UF"=>1e-6),get(p.units,"CAP",""),NaN),
             "IND"=>get(Dict("H"=>1.,"NH"=>1e-9,"PH"=>1e-12,"UH"=>1e-6,"MH"=>1e-3),get(p.units,"IND",""),NaN))

@@ -205,3 +205,152 @@ end
         end
     end
 end
+
+function _sproj_geo_child(path;port2=2)
+    write(path,"""FTYP SONPROJ 19
+VER "18.53"
+DIM
+FREQ MHZ
+CAP PF
+IND NH
+LNG MIL
+RES OH
+CON /OH
+ANG DEG
+END DIM
+GEO
+TMET "Lossless" 0 SUP 0 0 0 0
+BMET "Lossless" 0 SUP 0 0 0 0
+MET "Copper" 1 NOR 58000000 .5 .01
+BOX 1 80 40 40 20 100 0
+1 1 1 0 0 0 0 "Air_bottom"
+1 1 1 0 0 0 0 "Air_top"
+VALVAR G LNG 4 "gap"
+GEOVAR G ANC XDIR 1 NSCD
+POS 0 0
+NOM 4
+REF1 POLY 9 1
+2
+REF2 POLY 10 1
+3
+PS1 0
+END
+PS2 1
+POLY 10 1
+0
+END
+END
+LORGN 0 1 U
+POR1 BOX
+POLY 9 1
+3
+1 50 0 0 0 0 21
+POR1 BOX
+POLY 10 1
+1
+$port2 50 0 0 0 80 24
+NUM 2
+0 5 -1 N 9 1 1 100 100 0 0 0 Y
+0 18
+20 18
+20 24
+0 24
+0 18
+END
+0 5 -1 N 10 1 1 100 100 0 0 0 Y
+24 18
+80 18
+80 30
+24 30
+24 18
+END
+END GEO
+""")
+end
+
+@testset "Geometry SPROJ children and parameter bindings" begin
+    fixture=joinpath(@__DIR__,"fixtures","native_sparam_model_files","native","sparameter.son")
+    mktempdir() do directory
+        parent=joinpath(directory,"parent.son");child=joinpath(directory,"child.son")
+        original=replace(read(fixture,String),"TYPE SPARAM 1"=>"TYPE SPROJ child.son\nINHSWP N")
+        write(parent,original)
+        _sproj_geo_child(child)
+        plan=sonnet_component_files(read_sonnet_project(parent),300e6)
+        b=only(plan.bindings)
+        @test size(b.response)==(2,2) && all(isfinite,b.response)
+        @test b.z0==ComplexF64[50,50] && b.pin_indices==[1,2] && b.geometry_labels==[3,4]
+        @test b.inherited_sweep===false && length(plan.sources)==2
+
+        # Bound variables drive the child's resolved geometry: identical
+        # bindings in both native token forms produce identical responses,
+        # and a different bound value produces a different response.
+        literal=replace(original,"TYPE SPROJ child.son"=>"TYPE SPROJ child.son G=8")
+        twotoken=replace(original,"TYPE SPROJ child.son"=>"TYPE SPROJ child.son G= 8")
+        write(parent,literal);ra=only(sonnet_component_files(read_sonnet_project(parent),10e9).bindings).response
+        write(parent,twotoken);rb=only(sonnet_component_files(read_sonnet_project(parent),10e9).bindings).response
+        @test ra==rb
+        write(parent,replace(original,"TYPE SPROJ child.son"=>"TYPE SPROJ child.son G=16"))
+        rc=only(sonnet_component_files(read_sonnet_project(parent),10e9).bindings).response
+        @test rc!=ra && all(isfinite,rc)
+
+        # Parent-scope expressions bind through the parent's declared
+        # variables, matching the native `Wt= W1` form.
+        write(parent,replace(read(fixture,String),
+            "TYPE SPARAM 1"=>"TYPE SPROJ child.son G= Gv\nINHSWP N",
+            "LORGN 0 500 U"=>"VALVAR Gv LNG 8 \"pg\"\nLORGN 0 500 U"))
+        rd=only(sonnet_component_files(read_sonnet_project(parent),10e9).bindings).response
+        @test rd==ra
+
+        # Malformed bindings, undeclared child names and unresolvable
+        # parent expressions all reject before any child work.
+        for tail in (" G="," G=8 G=9"," 1X=8"," ZZZ=8"," G= NOSUCH"," VARIABLE x=3")
+            write(parent,replace(original,"TYPE SPROJ child.son"=>"TYPE SPROJ child.son"*tail))
+            @test_throws ArgumentError sonnet_component_files(read_sonnet_project(parent),300e6)
+        end
+
+        # Bindings on a linear child have no bindable target.
+        _sproj_child(child,"RES 1 2 R=5\nDEF2P 1 2 Device R 50")
+        write(parent,replace(original,"TYPE SPROJ child.son"=>"TYPE SPROJ child.son G=8"))
+        @test_throws ArgumentError sonnet_component_files(read_sonnet_project(parent),300e6)
+        _sproj_geo_child(child)
+
+        # Child ports must be exactly 1..n so model pins map by number.
+        _sproj_geo_child(child;port2=5)
+        write(parent,original)
+        @test_throws ArgumentError sonnet_component_files(read_sonnet_project(parent),300e6)
+        _sproj_geo_child(child)
+
+        # A geometry child embedding an ancestor is a cross-solve cycle:
+        # the per-context active set cannot see it, the SPROJ chain does.
+        cyclic=joinpath(directory,"cyclic.son")
+        write(cyclic,replace(read(child,String),"END GEO"=>"""SMD 0 "P9"
+ID 99
+GNDREF AUTO
+SBOX 22 26 14 34
+PBSHW N
+LPOS 1 .5
+TYPE SPROJ parent.son
+INHSWP N
+SMDP 0 24 24 R 3 1
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+END
+END GEO"""))
+        write(parent,replace(original,"TYPE SPROJ child.son"=>"TYPE SPROJ cyclic.son"))
+        @test_throws ArgumentError sonnet_component_files(read_sonnet_project(parent),300e6)
+
+        # INHSWP metadata survives on geometry children, and a child
+        # shared by two components resolves once and binds twice.
+        write(parent,replace(original,"INHSWP N"=>"INHSWP Y"))
+        p=read_sonnet_project(parent)
+        @test only(sonnet_component_files(p,300e6).bindings).inherited_sweep===true
+        shared=deepcopy(p);second=deepcopy(p.components[1])
+        only(filter(r->first(r.tokens)=="ID",second)).tokens[2]="2"
+        push!(shared.components,second)
+        sharedplan=sonnet_component_files(shared,300e6)
+        @test length(sharedplan.bindings)==2 && length(sharedplan.sources)==2
+        @test sharedplan.bindings[1].response==sharedplan.bindings[2].response
+    end
+end

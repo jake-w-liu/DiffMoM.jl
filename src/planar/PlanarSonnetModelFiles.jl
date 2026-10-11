@@ -137,13 +137,15 @@ function _sonnet_files_contract(p,component)
     modelkind in ("SPARAM","SPROJ","IDEAL","NONE") || _sonnet_error(p.source,kind.line,
         "TYPE $modelkind requires its explicit model adapter")
     id=_sonnet_files_id(p,component)
+    sproj_bindings=Tuple{String,String}[]
     if modelkind=="SPARAM"
         length(kind.tokens)==3 || _sonnet_error(p.source,kind.line,"TYPE SPARAM requires one SMDFILES index")
         index=tryparse(Int,kind.tokens[3])
         index!==nothing && index>0 || _sonnet_error(p.source,kind.line,"SPARAM file index must be a positive literal integer")
     elseif modelkind=="SPROJ"
-        length(kind.tokens)==3 && endswith(lowercase(kind.tokens[3]),".son") ||
-            _sonnet_error(p.source,kind.line,"TYPE SPROJ requires one literal .son path; parameter bindings need their explicit adapter")
+        length(kind.tokens)>=3 && endswith(lowercase(kind.tokens[3]),".son") ||
+            _sonnet_error(p.source,kind.line,"TYPE SPROJ requires one literal .son path")
+        sproj_bindings=_sonnet_sproj_bindings(p,kind)
         index=0
     elseif modelkind=="IDEAL"
         length(kind.tokens)==4 && kind.tokens[3] in ("RES","CAP","IND") ||
@@ -197,7 +199,35 @@ function _sonnet_files_contract(p,component)
     all(k->pins[k][1]==k,eachindex(pins)) || _sonnet_error(p.source,kind.line,"model pin indices must be unique and contiguous from one")
     modelkind=="IDEAL" && length(pins)!=2 && _sonnet_error(p.source,kind.line,"IDEAL requires two model pins")
     modelkind=="SPROJ" && inherit===nothing && _sonnet_error(p.source,kind.line,"SPROJ requires explicit INHSWP N/Y")
-    return modelkind in ("SPARAM","SPROJ") ? (;id,index,kind,labels=last.(pins),inherit) : nothing
+    return modelkind in ("SPARAM","SPROJ") ? (;id,index,kind,labels=last.(pins),inherit,sproj_bindings) : nothing
+end
+
+# Native SPROJ parameter bindings appear after the .son path as either
+# `name=value` single tokens or `name=` `value` token pairs (native files
+# emit both forms). Values are parent-scope expressions resolved by the
+# caller; names must be identifiers and cannot repeat.
+function _sonnet_sproj_bindings(p,kind)
+    pairs=Tuple{String,String}[];i=4
+    while i<=length(kind.tokens)
+        token=kind.tokens[i]
+        if endswith(token,'=')
+            name=chop(token);i+=1
+            i<=length(kind.tokens) || _sonnet_error(p.source,kind.line,
+                "SPROJ binding $name requires a value")
+            value=kind.tokens[i]
+        else
+            m=match(r"^([^=]+)=(.*)$",token)
+            m===nothing && _sonnet_error(p.source,kind.line,"invalid SPROJ binding $token")
+            name,value=m[1],m[2]
+        end
+        match(r"^[A-Za-z_][A-Za-z0-9_]*$",name)!==nothing ||
+            _sonnet_error(p.source,kind.line,"invalid SPROJ binding name")
+        isempty(value) && _sonnet_error(p.source,kind.line,"SPROJ binding $name has an empty value")
+        any(pair->pair[1]==name,pairs) &&
+            _sonnet_error(p.source,kind.line,"duplicate SPROJ binding $name")
+        push!(pairs,(name,value));i+=1
+    end
+    return pairs
 end
 
 function _sonnet_files_pin_preflight(p,f,grid,variables)
@@ -322,11 +352,15 @@ Linear SPROJ children support literal R/L/C, Touchstone S<n>P, earlier DEF<n>P
 invocations and recursive PRJ children with literal 0/1 inheritance flags.
 They evaluate continuously at the requested frequency, retaining explicit
 INHSWP N/Y metadata; their saved child sweep is not interpolated. Shared
-dependencies parse once; cycles, root escapes, unsupported parameter bindings
-and geometry children reject. `max_project_depth` bounds project recursion,
+dependencies parse once; cycles, root escapes and parameter bindings on
+linear children reject. `max_project_depth` bounds project recursion,
 and `max_project_nodes/max_project_elements` bound retained definitions in
 each project. Dense nested solves also share the aggregate `max_bytes` bound.
-Geometry children still require their explicit calibrated model adapter.
+Geometry children are solved through the standard native solver at the
+requested frequency: `key=value`/`key= value` bindings on the TYPE record
+are evaluated in the parent's variable scope and override the child's
+declared variable values; child port numbers must be exactly 1..n so the
+ordered model pins map by number, and cross-solve recursion is rejected.
 An explicit `requested_reference` only renormalizes the already evaluated
 physical response. An extracted archive tree can be supplied as `root`; native
 compressed-model formats are not inferred."""
@@ -434,7 +468,11 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
     for d in descriptions
         d.kind.tokens[2]=="SPROJ" || continue
         path=_sonnet_files_path(directory,p,d.kind.tokens[3],d.kind)
-        _sonnet_files_linear_project!(projects,path,length(d.labels))
+        child_vars=Dict{String,Float64}()
+        for (name,value) in d.sproj_bindings
+            child_vars[name]=sonnet_variable_value(p,value;variables,freq=f)
+        end
+        _sonnet_files_linear_project!(projects,path,length(d.labels),1,child_vars)
         project_paths[d.id]=path
     end
     # Validate coverage and reserve every binding before any reference provider.
