@@ -196,4 +196,158 @@ end
         @test_throws ArgumentError DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
     end
 end
+
+@testset "Native component pins stay file-static under moved dimensions" begin
+    # Native never rewrites SMDP pin coordinates: a dimension may move any
+    # polygon that does not carry a pin or a port edge (native em run
+    # bit-identical to the resolved literal), while a move that takes a pinned
+    # edge away from its pin fails the native detached-pin check.
+    comp=raw"""FTYP SONPROJ 19
+VER "18.53"
+DIM
+ANG DEG
+CAP PF
+CON /OH
+FREQ MHZ
+IND NH
+LNG MIL
+RES OH
+END DIM
+CONTROL
+VARSWP
+OPTIONS
+SPEED 0
+END CONTROL
+GEO
+TMET "Lossless" 0 SUP 0 0 0 0
+BMET "Lossless" 0 SUP 0 0 0 0
+BOX 1 400 500 64 80 20 0
+250 1 1 0 0 0 1 "Air"
+25 9.8 1 0 0 0 1 "Alumina"
+LORGN 0 500 U
+POR1 BOX
+POLY 104 1
+3
+1 50 0 0 0 0 187.5
+POR1 BOX
+POLY 106 1
+1
+2 50 0 0 0 400 187.5
+SMD 0 "ManufacturedSeriesResistor"
+ID 100
+GNDREF AUTO
+SBOX 93.75 106.25 185.625 189.375
+PBSHW N
+LPOS 101.1060104 180.4625383
+TYPE IDEAL CAP 1
+SMDP 0 87.5 187.5 L 3 1
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+SMDP 0 112.5 187.5 R 4 2
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+END
+"""
+    tail=raw"""END GEO
+VARSWP
+ENABLED Y
+FREQ Y AN SWEEP 200
+END
+END VARSWP
+FILEOUT
+TOUCH ND Y native_device.s2p IC 15 S RI R 50
+FOLDER .
+END FILEOUT
+"""
+    strips=raw"""0 5 -1 N 104 1 1 100 100 0 0 0 Y
+0 175
+87.5 175
+87.5 200
+0 200
+0 175
+END
+0 5 -1 N 106 1 1 100 100 0 0 0 Y
+112.5 175
+400 175
+400 200
+112.5 200
+112.5 175
+END
+"""
+    floater=raw"""VALVAR FX LNG 275 "floater edge"
+GEOVAR FX ANC XDIR 1 NSCD
+POS 0 0
+NOM 250
+REF1 POLY 107 1
+0
+REF2 POLY 107 1
+1
+PS1 0
+END
+PS2 1
+POLY 107 1
+2
+END
+END
+NUM 3
+"""
+    poly107=raw"""0 5 -1 N 107 1 1 100 100 0 0 0 Y
+200 250
+250 250
+250 300
+200 300
+200 250
+END
+"""
+    pinned=raw"""VALVAR GapX LNG 100 "edge shift"
+GEOVAR GapX ANC XDIR 1 NSCD
+POS 0 0
+NOM 87.5
+REF1 POLY 104 1
+0
+REF2 POLY 104 1
+1
+PS1 0
+END
+PS2 1
+POLY 104 1
+2
+END
+END
+NUM 2
+"""
+    mktempdir() do directory
+        # A dimension on a polygon carrying no pin or port edge resolves like
+        # any other polygon: REF2 lands at REF1+target=475 (native-verified,
+        # the file's inconsistent NOM=250 is ignored by the engine).
+        file=joinpath(directory,"floater.son")
+        write(file,comp*floater*strips*poly107*tail)
+        project=read_sonnet_project(file)
+        resolved=DiffMoM._sonnet_geometry_project(project,1e9)
+        moved=only(filter(q->q.id==107,resolved.polygons))
+        scale=project.length_scale
+        @test moved.vertices./scale≈[200 475 475 200 200;250 250 300 300 250] rtol=8eps()
+        @test [q.id for q in resolved.polygons]==[104,106,107]
+        @test resolved.components==project.components
+        untouched=only(filter(q->q.id==104,resolved.polygons))
+        @test untouched.vertices./scale≈[0 87.5 87.5 0 0;175 175 200 200 175] rtol=8eps()
+        # A dimension whose resolved edge leaves its SMDP pin behind matches
+        # the native detached-pin rejection.
+        file=joinpath(directory,"pinned.son")
+        write(file,comp*pinned*strips*tail)
+        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(
+            read_sonnet_project(file),1e9)
+        # Moving the polygon's box-port edge is rejected too, either by the
+        # boundary allowance or because the reference itself leaves its set.
+        file=joinpath(directory,"ported.son")
+        write(file,comp*replace(pinned,"POLY 104 1\n2\nEND"=>
+            "POLY 104 1\n0\nEND")*strips*tail)
+        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(
+            read_sonnet_project(file),1e9)
+    end
+end
 end

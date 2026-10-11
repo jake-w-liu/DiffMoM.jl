@@ -161,9 +161,13 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         # unscaled anchored dimensions and radial dimensions under any header.
         # Scaled anchored dimensions remain rejected: the retained native
         # pairs falsify composed scaled movements, additive deltas and
-        # deduplicated hypotheses alike — the exact movement law is still
-        # undecoded and accepting an approximation would silently rasterize
-        # the wrong cells for other target widths. Unscaled symmetric
+        # deduplicated hypotheses alike, and fresh sweeps show scaled
+        # moving-reference projects rasterize through a different mesh path
+        # entirely (native SUBS counts match no literal candidate, leaving
+        # 1.6e-4–2.6e-4 residual floors after sweeping every vertex and port
+        # degree of freedom). The exact movement law is still undecoded and
+        # accepting an approximation would silently rasterize the wrong
+        # cells for other target widths. Unscaled symmetric
         # repetitions support literal lists with one or two explicit
         # moving-reference entries plus whole-polygon PS2 selectors; the
         # latter are native-verified only when the expanded set crosses
@@ -252,6 +256,11 @@ function _sonnet_geovar_nominal_geometry(p,frequency,variables)
             (isfinite(requested) && requested>0 &&
                 _sonnet_geovar_nominal_value_ok(saved,nominal,t[3],t[6]!="NSCD"))) ||
             _sonnet_error(p.source,row.line,"GEOVAR dimensions must preserve positive finite SI values")
+        # The native engine treats NOM as the activation record: a dimension
+        # is inactive exactly when its target equals NOM, even when the saved
+        # geometry's span differs (real parameterized projects keep their
+        # saved geometry). The geometric span only drives resolution once a
+        # dimension is active.
         unchanged &= target==nominal
     end
     return unchanged
@@ -405,7 +414,7 @@ function _sonnet_geovar_radial_linear_path(polygons,points,owners,referencex,ref
     return true
 end
 
-function _sonnet_geovar_apply_radial!(p,parameter,target,original,polygons,owners)
+function _sonnet_geovar_apply_radial!(p,parameter,target,gnominal,original,polygons,owners)
     firstid,firstpoint=parameter.references[1]
     secondid,secondpoint=parameter.references[2]
     firstvertices=original[firstid].vertices
@@ -431,8 +440,8 @@ function _sonnet_geovar_apply_radial!(p,parameter,target,original,polygons,owner
     reference=polygons[secondid]
     linear=_sonnet_geovar_radial_linear_path(polygons,parameter.points[2],owners,
         reference[1,secondpoint],reference[2,secondpoint],anchorx,anchory,
-        requested,parameter.nominal*(p.length_scale/unit),parameter.explicit_moving_references)
-    step=_sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale/unit,
+        requested,gnominal*(p.length_scale/unit),parameter.explicit_moving_references)
+    step=_sonnet_geovar_repeated_delta(target,gnominal,p.length_scale/unit,
         linear ? parameter.explicit_moving_references : 1)
     for pass in 1:(linear ? 1 : 3)
         if pass>1
@@ -499,7 +508,8 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     # Whole-polygon selectors expand beyond their source record count. Reserve
     # their point-list and ownership workspace before materializing those lists.
     parameters=_sonnet_geovar_parameters(p,nparameters,npoints,(limit-reserve)÷256)
-    deltas=Float64[];targets=Float64[]
+    original=Dict(q.id=>q for q in p.polygons)
+    deltas=Float64[];targets=Float64[];gnominals=Float64[]
     for parameter in parameters
         target=sonnet_variable_value(p,parameter.name;variables,freq=frequency)::Float64
         nominal=parameter.nominal*p.length_scale;requested=target*p.length_scale
@@ -507,14 +517,32 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             isfinite(requested) && (requested>0 ||
                 (iszero(target) && iszero(parameter.nominal) && iszero(requested))) ||
             _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
+        # Once active, the native engine resolves a dimension against the
+        # reference points' geometric span, not the file's NOM field
+        # (verified by running identical projects with inconsistent NOM
+        # values). ANC measures the signed span along its movement direction;
+        # SYM uses the absolute span regardless of reference order; RAD and
+        # both-axis dims use the reference distance. NOM only documents the
+        # original span.
+        firstid,firstpoint=parameter.references[1]
+        secondid,secondpoint=parameter.references[2]
+        fv=original[firstid].vertices;sv=original[secondid].vertices
+        gnominal=(parameter.kind=="RAD" || parameter.both_axes ?
+            hypot(sv[1,secondpoint]-fv[1,firstpoint],
+                sv[2,secondpoint]-fv[2,firstpoint]) :
+            parameter.kind=="SYM" ?
+            abs(sv[parameter.axis,secondpoint]-fv[parameter.axis,firstpoint]) :
+            parameter.direction*(sv[parameter.axis,secondpoint]-
+                fv[parameter.axis,firstpoint]))/p.length_scale
+        push!(gnominals,gnominal)
         displacement=parameter.kind=="RAD" ?
-            _sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale,1) :
+            _sonnet_geovar_repeated_delta(target,gnominal,p.length_scale,1) :
             parameter.kind=="ANC" && parameter.explicit_moving_references>1 ?
-            _sonnet_geovar_repeated_delta(target,parameter.nominal,p.length_scale,
-                parameter.explicit_moving_references) : requested-nominal
+            _sonnet_geovar_repeated_delta(target,gnominal,p.length_scale,
+                parameter.explicit_moving_references) : requested-gnominal*p.length_scale
         delta=(parameter.kind=="RAD" ? 1 : parameter.direction)*displacement
         isfinite(delta) || _sonnet_error(p.source,parameter.line,"GEOVAR displacement is unrepresentable")
-        target==parameter.nominal || !iszero(delta) ||
+        target==gnominal || !iszero(delta) ||
             _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost after SI conversion")
         parameter.kind=="SYM" && !iszero(delta) && iszero(delta/2) &&
             _sonnet_error(p.source,parameter.line,"symmetric GEOVAR displacement underflows")
@@ -522,8 +550,6 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         push!(targets,target)
     end
     all(iszero,deltas) && return p
-    isempty(p.components) || throw(ArgumentError("moved GEOVAR component pins require their physical placement adapter"))
-    original=Dict(q.id=>q for q in p.polygons)
     all(port->port.kind in (:box,:std) && haskey(original,port.polygon) &&
         original[port.polygon].kind==:sheet,p.ports) ||
         throw(ArgumentError("moved GEOVAR interior/via ports require their attachment adapter"))
@@ -549,7 +575,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             "dependent GEOVAR dimensions require their ordered geometry adapter")
     end
     polygons=Dict(q.id=>copy(q.vertices) for q in p.polygons)
-    for (parameter,delta,target) in zip(parameters,deltas,targets)
+    for (i,(parameter,delta,target)) in enumerate(zip(parameters,deltas,targets))
         iszero(delta) && continue
         firstid,firstpoint=parameter.references[1]
         secondid,secondpoint=parameter.references[2]
@@ -559,7 +585,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
                 owner,movements=owners[point]
                 movements>0 || continue
                 id,index=point;before=polygons[id][parameter.axis,index]
-                after=_sonnet_geovar_repeated_coordinate(before,target,parameter.nominal,p.length_scale,
+                after=_sonnet_geovar_repeated_coordinate(before,target,gnominals[i],p.length_scale,
                     parameter.explicit_moving_references,movements,parameter.direction)
                 isfinite(after) && after!=before ||
                     _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
@@ -569,7 +595,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             continue
         end
         if parameter.kind=="RAD"
-            _sonnet_geovar_apply_radial!(p,parameter,target,original,polygons,owners)
+            _sonnet_geovar_apply_radial!(p,parameter,target,gnominals[i],original,polygons,owners)
             continue
         end
         if parameter.kind=="SYM" && !parameter.scaled &&
@@ -682,6 +708,8 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     all(n->n>0 && iseven(n),halfcounts) ||
         throw(ArgumentError("native BOX half-cell counts must be positive even integers"))
     native_nx=halfcounts[1]÷2;native_ny=halfcounts[2]÷2
+    isempty(p.components) ||
+        _sonnet_geovar_validate_components(p,polygons,original;variables,freq=frequency)
     for port in p.ports
         new=polygons[port.polygon]
         first,second=_sonnet_port_edge_indices(new,port.edge)
@@ -700,4 +728,75 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     end
     return SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,p.metals,
         p.top,p.bottom,emitted,ports,p.variables,p.components,p.sweeps,p.records)
+end
+
+"""Native component pins (SMDP records) are file-static coordinates: they are
+never translated by a GEOVAR dimension, so a resolved project is only valid
+when every pin still lies on exactly one straight edge of a same-level sheet
+polygon and no moved metal edge crosses a component's SBOX interior (the
+native interference check). Throws when the resolved project would be
+rejected by the native engine."""
+function _sonnet_geovar_validate_components(p,polygons,original;variables,freq)
+    parseda=tryparse(Float64,p.box[2]);parsedb=tryparse(Float64,p.box[3])
+    boxa=(parseda===nothing ? sonnet_variable_value(p,p.box[2];variables,freq=freq) : parseda)*p.length_scale
+    boxb=(parsedb===nothing ? sonnet_variable_value(p,p.box[3];variables,freq=freq) : parsedb)*p.length_scale
+    tol=1e-9*max(boxa,boxb)
+    moved=Set{Tuple{Int,Int}}()
+    for polygon in p.polygons
+        ov=original[polygon.id].vertices;nv=polygons[polygon.id]
+        for j in axes(nv,2)
+            (nv[1,j]!=ov[1,j] || nv[2,j]!=ov[2,j]) && push!(moved,(polygon.id,j))
+        end
+    end
+    for component in p.components
+        sbox=nothing
+        for record in component
+            t=record.tokens
+            if t[1]=="SMDP" && length(t)>=4
+                level=parse(Int,t[2])
+                x=sonnet_variable_value(p,t[3];variables,freq=freq)*p.length_scale
+                y=sonnet_variable_value(p,t[4];variables,freq=freq)*p.length_scale
+                orient=length(t)>=5 ? t[5] : ""
+                xaxis=orient in ("L","R")
+                axial=xaxis ? x : y;transverse=xaxis ? y : x
+                found=0
+                for polygon in p.polygons
+                    polygon.kind===:sheet && polygon.level==level || continue
+                    v=polygons[polygon.id];n=size(v,2)
+                    for k in 1:n
+                        next=k==n ? 1 : k+1
+                        a1,a2=xaxis ? (v[1,k],v[1,next]) : (v[2,k],v[2,next])
+                        b1,b2=xaxis ? (v[2,k],v[2,next]) : (v[1,k],v[1,next])
+                        abs(a1-axial)<=tol && abs(a2-axial)<=tol || continue
+                        lo,hi=minmax(b1,b2)
+                        hi-lo>tol && lo-tol<=transverse<=hi+tol || continue
+                        found+=1
+                    end
+                end
+                found==1 || throw(ArgumentError(
+                    "moved GEOVAR detached a component pin from its polygon edge"))
+            elseif t[1]=="SBOX" && length(t)>=5
+                vals=(sonnet_variable_value(p,t[k];variables,freq=freq) for k in 2:5)
+                x1,x2,y1,y2=(v*p.length_scale for v in vals)
+                sbox=(min(x1,x2),max(x1,x2),min(y1,y2),max(y1,y2))
+            end
+        end
+        sbox===nothing && continue
+        xlo,xhi,ylo,yhi=sbox
+        for polygon in p.polygons
+            v=polygons[polygon.id];n=size(v,2)
+            for k in 1:n
+                next=k==n ? 1 : k+1
+                (polygon.id,k) in moved || (polygon.id,next) in moved || continue
+                x1,x2=v[1,k],v[1,next];y1,y2=v[2,k],v[2,next]
+                (x1<=xlo && x2<=xlo || x1>=xhi && x2>=xhi ||
+                 y1<=ylo && y2<=ylo || y1>=yhi && y2>=yhi) && continue
+                # Separating axes exclude the edge only when it stays entirely
+                # outside; anything else reaches the open SBOX interior.
+                throw(ArgumentError(
+                    "moved GEOVAR metal interferes with a component's SBOX region"))
+            end
+        end
+    end
+    return nothing
 end
