@@ -2228,6 +2228,60 @@ function planar_current_maps(result::SonnetPlanarResult;port::Integer=1,
         max_bytes=max_bytes-reserve,kw...)
 end
 
+# External native excitation to raw terminal voltages for field products.
+# The default drives one incident power wave at the requested external
+# port, matching the PlanarProjectResult far-field convention; supplied
+# voltages stay reference-plane voltages.
+function _sonnet_field_terminal_voltages(result::SonnetPlanarResult,what,port,voltages,incident_waves,max_bytes)
+    n=length(result.port_numbers)
+    reserve=_checked_payload_sum(what,
+        _checked_array_payload_bytes(ComplexF64,7,n),
+        _checked_array_payload_bytes(ComplexF64,2,size(result.voltage_transfer,1)),
+        _checked_array_payload_bytes(Float64,n))
+    _enforce_payload_limit(reserve,max_bytes,what,"max_bytes")
+    voltages!==nothing && incident_waves!==nothing && throw(ArgumentError("provide voltages or incident_waves"))
+    v=if voltages!==nothing
+        length(voltages)==n && all(isfinite,voltages) || throw(ArgumentError("native voltages must be finite and match ports"))
+        _planar_stored_phasor.(voltages)
+    else
+        waves=if incident_waves!==nothing
+            length(incident_waves)==n && all(isfinite,incident_waves) ||
+                throw(ArgumentError("native incident waves must be finite and match ports"))
+            incident_waves
+        else
+            1<=port<=n || throw(ArgumentError("native port index is invalid"))
+            excitation=zeros(ComplexF64,n);excitation[port]=1;excitation
+        end
+        _planar_wave_voltage(result.s,waves,result.z0)
+    end
+    return (voltages=result.voltage_transfer*v,budget=Int(BigInt(max_bytes)-reserve))
+end
+
+"""Far field of a solved native project at its external port excitations,
+including floating-reference potentials and supplied calibration. The
+default drives one incident power wave at the requested external port;
+reference-plane conventions match [`planar_farfield`](@ref)."""
+function planar_farfield(result::SonnetPlanarResult;port::Integer=1,
+        voltages=nothing,incident_waves=nothing,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
+    excitation=_sonnet_field_terminal_voltages(result,"native radiation excitation",
+        port,voltages,incident_waves,max_bytes)
+    return planar_farfield(result.raw;voltages=excitation.voltages,
+        max_bytes=excitation.budget,kw...)
+end
+
+"""Radiated power of a solved native project at its external port
+excitations. Excitation and reference-plane conventions match
+[`planar_farfield`](@ref)."""
+function planar_radiated_power(result::SonnetPlanarResult;port::Integer=1,
+        voltages=nothing,incident_waves=nothing,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
+    excitation=_sonnet_field_terminal_voltages(result,"native radiation power excitation",
+        port,voltages,incident_waves,max_bytes)
+    return planar_radiated_power(result.raw;voltages=excitation.voltages,
+        max_bytes=excitation.budget,kw...)
+end
+
 function solve_sonnet_project(p::SonnetNetlistProject,freq::Real;
         project_response=nothing,kw...)
     return solve_planar_circuit(sonnet_planar_circuit(p;project_response=project_response),freq;kw...)

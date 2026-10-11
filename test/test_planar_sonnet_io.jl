@@ -188,6 +188,28 @@ end
     invalid=copy(ports[1].values);invalid[2]="0";invalid[3:5].="0"
     bad=SonnetPortSpec(ports[1].kind,ports[1].polygon,ports[1].edge,ports[1].number,invalid,ports[1].records)
     @test_throws ArgumentError DiffMoM._sonnet_port_reference(p,bad,1e9)
+    field=planar_farfield(result;incident_waves=a,theta=[.4,.9],phi=[.2])
+    direct=planar_farfield(result.raw;voltages=result.voltage_transfer*v,theta=[.4,.9],phi=[.2])
+    @test field.intensity≈direct.intensity
+    @test field.etheta≈direct.etheta
+    @test field.ephi≈direct.ephi
+    @test field.accepted_power===direct.accepted_power
+    unit=planar_farfield(result;theta=[.4],phi=[.2])
+    onewave=planar_farfield(result;incident_waves=ComplexF64[1,0],theta=[.4],phi=[.2])
+    @test unit.intensity≈onewave.intensity
+    @test isfinite(unit.frequency)
+    voltagefield=planar_farfield(result;voltages=v,theta=[.4,.9],phi=[.2])
+    @test voltagefield.intensity≈field.intensity
+    power=planar_radiated_power(result;incident_waves=a,ntheta=8,nphi=16)
+    manual=planar_radiated_power(result.raw;voltages=result.voltage_transfer*v,ntheta=8,nphi=16)
+    @test power.power≈manual.power
+    @test power.coarse_power≈manual.coarse_power
+    @test power.relative_change===manual.relative_change
+    @test_throws ArgumentError planar_farfield(result;voltages=v,incident_waves=a)
+    @test_throws ArgumentError planar_farfield(result;port=3)
+    @test_throws ArgumentError planar_farfield(result;incident_waves=[NaN,0])
+    @test_throws ArgumentError planar_radiated_power(result;voltages=[1.])
+    @test_throws ArgumentError planar_radiated_power(result;max_bytes=1)
 end
 
 @testset "Native balanced current terminal contract" begin

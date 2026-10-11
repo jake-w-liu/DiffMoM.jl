@@ -373,14 +373,16 @@ end
 _planar_radiation_problem(result::Union{PlanarContractedResult,PlanarCalibratedResult})=_planar_radiation_problem(result.raw)
 _planar_radiation_problem(result)=result.problem
 
-"""Far field of a solved network. The default sets `port` to one volt and
-shorts the other gap voltages. `incident_waves` instead specifies incident
-power-wave amplitudes with matched port terminations; accepted power
-includes the reflected-wave correction. Calibrated/contracted results
-retain their physical source coefficient mapping."""
-function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourceResult,PlanarContractedResult,PlanarCalibratedResult,PlanarConformalResult,PlanarConformalUFFTResult,PlanarConformalDefectResult,PlanarHybridResult,PlanarHybridUFFTResult};
+const _PlanarFieldResult=Union{PlanarResult,PlanarUFFTResult,PlanarSourceResult,PlanarContractedResult,PlanarCalibratedResult,PlanarConformalResult,PlanarConformalUFFTResult,PlanarConformalDefectResult,PlanarHybridResult,PlanarHybridUFFTResult}
+
+# Shared excitation resolution for result-level far-field products. The
+# default sets `port` to one volt and shorts the other gap voltages;
+# `incident_waves` instead specifies incident power-wave amplitudes with
+# matched port terminations, so accepted power includes the reflected-wave
+# correction.
+function _planar_result_radiation_excitation(result::_PlanarFieldResult;
         port::Integer=1,voltages=nothing,incident_waves=nothing,
-        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
+        max_bytes::Integer=_default_max_dense_payload_bytes())
     n=size(result.y,1)
     source=_planar_radiation_problem(result)
     direct=result isa Union{PlanarConformalResult,PlanarConformalUFFTResult,PlanarConformalDefectResult,PlanarHybridResult,PlanarHybridUFFTResult}
@@ -430,8 +432,33 @@ function planar_farfield(result::Union{PlanarResult,PlanarUFFTResult,PlanarSourc
     current=_planar_terminal_current(result.y,v;max_bytes,retained_bytes=reserve);pin=_planar_accepted_power(v,current;max_bytes,retained_bytes=reserve)
     tolerance=100eps(Float64)*norm(v)*norm(current)
     isfinite(pin) && pin>=-tolerance || throw(ArgumentError("radiation gain requires finite nonnegative accepted power"))
-    return planar_farfield(source,_planar_current_product(X,v),real(result.freq);accepted_power=pin>0 ? pin : nothing,
-        max_bytes=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve),kw...)
+    return (problem=source,coefficients=_planar_current_product(X,v),freq=real(result.freq),
+        accepted_power=pin>0 ? pin : nothing,
+        budget=Int(BigInt(_validated_resource_limit("max_bytes",max_bytes))-reserve))
+end
+
+"""Far field of a solved network. The default sets `port` to one volt and
+shorts the other gap voltages. `incident_waves` instead specifies incident
+power-wave amplitudes with matched port terminations; accepted power
+includes the reflected-wave correction. Calibrated/contracted results
+retain their physical source coefficient mapping."""
+function planar_farfield(result::_PlanarFieldResult;
+        port::Integer=1,voltages=nothing,incident_waves=nothing,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
+    excitation=_planar_result_radiation_excitation(result;port,voltages,incident_waves,max_bytes)
+    return planar_farfield(excitation.problem,excitation.coefficients,excitation.freq;
+        accepted_power=excitation.accepted_power,max_bytes=excitation.budget,kw...)
+end
+
+"""Radiated power of a solved network, integrated over the sphere.
+Excitation and accepted-power conventions match [`planar_farfield`](@ref);
+quadrature controls follow the problem-level method."""
+function planar_radiated_power(result::_PlanarFieldResult;
+        port::Integer=1,voltages=nothing,incident_waves=nothing,
+        max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
+    excitation=_planar_result_radiation_excitation(result;port,voltages,incident_waves,max_bytes)
+    return planar_radiated_power(excitation.problem,excitation.coefficients,excitation.freq;
+        max_bytes=excitation.budget,kw...)
 end
 
 """Integrate the radiated power over the sphere using Gauss-Legendre
