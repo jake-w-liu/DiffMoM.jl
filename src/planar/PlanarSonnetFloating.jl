@@ -79,11 +79,12 @@ function _sonnet_float_validate(p,records)
             length(t)==2 && t[2] in ("FLOAT","F") || _sonnet_error(p.source,record.line,
                 "a floating group must use a consistent FLOAT reference")
         elseif key=="TERMW"
-            length(t)==2 && t[2]=="FEED" || _sonnet_error(p.source,record.line,
-                "native floating source requires FEED width; CELL/custom widths need explicit resolved terminal geometry")
-        elseif key in ("DRP1","DRP2","TWVALUE","TWTYPE","PKG")
+            (length(t)==2 && t[2] in ("FEED","CELL")) ||
+                (length(t)==3 && t[2]=="CUST") || _sonnet_error(p.source,record.line,
+                "native floating source supports FEED/CELL/CUST terminal widths")
+        elseif key in ("DRP1","DRP2","TWVALUE","TWTYPE","REFPLANE")
             _sonnet_error(p.source,record.line,"native floating $key requires its physical calibration/terminal adapter")
-        elseif !(key in ("POR1","POLY","SMD","ID","SBOX","PBSHW","LPOS","PBOX",
+        elseif !(key in ("POR1","POLY","SMD","ID","SBOX","PBSHW","LPOS","PBOX","PKG",
                 "TYPE","SMDP","EXSMDP","END") || (portrecord && key=="CUPGRP") ||
                 tryparse(Float64,key)!==nothing)
             _sonnet_error(p.source,record.line,"unrepresented native floating field $key")
@@ -113,7 +114,9 @@ function _sonnet_float_cup_pin(p,port,problem,variables,freq)
         (sign(area)*sign(dx)>0 ? "B" : "T")
     record=SonnetRecord(first(port.records).line,["SMDP",string(poly.level),
         port.values[6],port.values[7],orient,string(port.number),"1"])
-    pin=_sonnet_component_pin(p,record,problem,variables,freq)
+    widths=[join(r.tokens[2:end]," ") for r in port.records if r.tokens[1]=="TERMW"]
+    termw=isempty(widths) ? "FEED" : only(widths)
+    pin=_sonnet_component_pin(p,record,problem,variables,freq;termw)
     return merge(pin,(signed_number=port.number,z0=reference,group=first(port.records).tokens[end]))
 end
 
@@ -126,8 +129,8 @@ end
 positive/negative pad pairs to finite impressed-field bridges. Every pair
 has one physical differential voltage and equal/opposite source current;
 its reference is never clamped to a cover. Facing pads must share sheet,
-axis and complete FEED width. Duplicate/unmatched signed labels and
-unrepresented CELL/custom terminal widths reject.
+axis and their declared FEED/CELL/CUST width. Duplicate/unmatched signed
+labels and unknown terminal-width modes reject.
 
 NONE components expose their paired ports; ideal R/L/C and explicit
 `component_response(project,records,freq)` blocks load those pairs through
@@ -217,10 +220,12 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     end
     for component in floating_components
         _sonnet_float_validate(p,component)
-        pins=Any[]
+        pins=Any[];termw=_sonnet_component_termw(p,component)
         for record in component
             record.tokens[1]=="SMDP" || continue
-            pin=_sonnet_component_pin(p,record,problem,variables,freq)
+            pin=_sonnet_component_pin(p,record,problem,variables,freq;
+                termw=get(termw.widths,something(tryparse(Int,get(record.tokens,7,"")),0),
+                    termw.default))
             push!(pins,merge(pin,(signed_number=parse(Int,record.tokens[6]),z0=50.)))
         end
         sort!(pins;by=pin->pin.pin)

@@ -130,3 +130,48 @@ end
     @test norm(loaded.s-result.s)>.01
     @test_throws ArgumentError solve_sonnet_project(resistive,1e8;raw=true,via_sigma=Inf)
 end
+
+@testset "native component terminal widths resolve FEED/CELL/CUST" begin
+    cells(mode)=begin
+        p=_synthetic_smd_project();p.components[1][3]=SonnetRecord(1,["TERMW",split(mode)...])
+        [pin.terminal.cells for pin in sonnet_component_model(p,1e8).pins[1]]
+    end
+    @test cells("FEED")==[4:5,4:5]
+    @test cells("CELL")==[5:5,5:5]
+    @test cells("CUST 0.4")==[4:5,4:5]
+    @test cells("CUST 0.25")==[4:5,4:5]
+    # A TERMW inside a pin's EXSMDP block overrides the component default
+    # for that pin alone.
+    project=_synthetic_smd_project();component=project.components[1]
+    splice!(component,4:4,[component[4],SonnetRecord(1,["EXSMDP"]),
+        SonnetRecord(1,["TERMW","CELL"]),SonnetRecord(1,["END","EXSMDP"])])
+    @test [pin.terminal.cells for pin in sonnet_component_model(project,1e8).pins[1]]==[5:5,4:5]
+    for (tokens,message) in ((["TERMW","CUST","9"],"exceeds its pad edge"),
+            (["TERMW","CUST","-1"],"must be positive"),
+            (["TERMW","ODD"],"unsupported SMD terminal width"),
+            (["TERMW"],"requires a width mode"))
+        bad=_synthetic_smd_project();bad.components[1][3]=SonnetRecord(1,tokens)
+        e=try sonnet_component_model(bad,1e8);nothing catch error;error end
+        @test e isa ArgumentError && occursin(message,sprint(showerror,e))
+    end
+    # A bare EXSMDP TERMW with no preceding SMDP pin and malformed short
+    # SMDP records fail with controlled diagnostics, never BoundsError.
+    orphan=_synthetic_smd_project();splice!(orphan.components[1],3:3,
+        [SonnetRecord(1,["EXSMDP"]),SonnetRecord(1,["TERMW","CELL"]),
+         SonnetRecord(1,["END","EXSMDP"])])
+    @test_throws ArgumentError sonnet_component_model(orphan,1e8)
+    short=_synthetic_smd_project();short.components[1][4]=SonnetRecord(1,["SMDP","0","2.5"])
+    @test_throws ArgumentError sonnet_component_model(short,1e8)
+    # Unsupported physical component records reject instead of dropping.
+    for tag in ("DRP1","DRP2","REFPLANE","TWTYPE","TWVALUE")
+        bad=_synthetic_smd_project();push!(bad.components[1],SonnetRecord(1,[tag,"1"]))
+        @test_throws ArgumentError sonnet_component_model(bad,1e8)
+    end
+    unknown=_synthetic_smd_project();push!(unknown.components[1],SonnetRecord(1,["BOGUSKEY","1"]))
+    @test_throws ArgumentError sonnet_component_model(unknown,1e8)
+    # Both modes still solve through the full native path.
+    a=solve_sonnet_project(_synthetic_smd_project(),1e8;raw=true,mx=36,my=24)
+    cell=_synthetic_smd_project();cell.components[1][3]=SonnetRecord(1,["TERMW","CELL"])
+    b=solve_sonnet_project(cell,1e8;raw=true,mx=36,my=24)
+    @test a.s!=b.s && all(isfinite,b.s)
+end

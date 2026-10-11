@@ -166,14 +166,15 @@ function _sonnet_files_contract(p,component)
                 _sonnet_error(p.source,record.line,"SPROJ requires one literal INHSWP N/Y")
             inherit=t[2]=="Y"
         elseif tag=="TERMW"
-            t==["TERMW","FEED"] || _sonnet_error(p.source,record.line,
+            (t in (["TERMW","FEED"],["TERMW","CELL"]) ||
+                (length(t)==3 && t[2]=="CUST")) || _sonnet_error(p.source,record.line,
                 "TERMW $(join(t[2:end]," ")) needs a physical width adapter")
             pinblock || _sonnet_error(p.source,record.line,"TERMW must describe a model pin")
             width=true
         elseif tag=="SMDP"
             pinblock && _sonnet_error(p.source,record.line,"unterminated model-pin metadata")
             isempty(pins) || ground && width || _sonnet_error(p.source,record.line,
-                "each model pin requires explicit AUTO ground and FEED width")
+                "each model pin requires explicit AUTO ground and terminal width")
             length(t)==7 || _sonnet_error(p.source,record.line,"SMDP requires level,x,y,orientation,geometry label,model pin")
             t[5] in ("L","R","T","B") || _sonnet_error(p.source,record.line,"unrepresented terminal orientation")
             label=tryparse(Int,t[6]);pin=tryparse(Int,t[7]);level=tryparse(Int,t[2])
@@ -185,7 +186,7 @@ function _sonnet_files_contract(p,component)
             pinblock=true
         elseif tag=="END" && length(t)==2 && t[2]=="EXSMDP"
             pinblock && ground && width || _sonnet_error(p.source,record.line,
-                "each model pin requires explicit AUTO ground and FEED width")
+                "each model pin requires explicit AUTO ground and terminal width")
             pinblock=false
         elseif tag in ("DRP1","DRP2","REFPLANE")
             _sonnet_error(p.source,record.line,"native component reference planes require their coupled calibration transfer")
@@ -194,7 +195,7 @@ function _sonnet_files_contract(p,component)
         end
     end
     !pinblock && topground && !isempty(pins) && ground && width ||
-        _sonnet_error(p.source,kind.line,"SPARAM requires explicit component/pin ground and FEED metadata")
+        _sonnet_error(p.source,kind.line,"SPARAM requires explicit component/pin ground and terminal-width metadata")
     sort!(pins;by=first)
     all(k->pins[k][1]==k,eachindex(pins)) || _sonnet_error(p.source,kind.line,"model pin indices must be unique and contiguous from one")
     modelkind=="IDEAL" && length(pins)!=2 && _sonnet_error(p.source,kind.line,"IDEAL requires two model pins")
@@ -344,8 +345,9 @@ include("PlanarSonnetProjectFiles.jl")
 Dependencies resolve inside `root`; shared files are parsed once. Model-pin
 indices determine order independently of geometry labels. The represented
 automatic source contract requires PEC box AUTO return, explicit per-pin
-FEED width and no unrepresented pin reference plane. Other widths/grounds
-reject before geometry allocation or optional reference callbacks. Frequencies
+FEED/CELL/CUST width and no unrepresented pin reference plane. Other
+widths/grounds reject before geometry allocation or optional reference
+callbacks. Frequencies
 must be within model coverage. This stages raw physical attachment; native
 coupled pin calibration and licensed SMD renderer compatibility remain separate.
 Linear SPROJ children support literal R/L/C, Touchstone S<n>P, earlier DEF<n>P

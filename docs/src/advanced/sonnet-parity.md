@@ -144,7 +144,8 @@ oracle remain retained; the physical comparison declares `gmin=0` and has
 maximum error 9.23e-13. No tolerance or physical model was changed to hide it.
 
 Native SPARAM/SMDFILES now stages exact bounded dependencies automatically
-for the proved PEC AUTO+FEED pin contract. Ordered model pins remain separate
+for the proved PEC AUTO pin contract with resolved FEED/CELL/CUST pin
+widths. Ordered model pins remain separate
 from geometry labels; interpolation uses the declared file basis before
 optional output renormalization, and extrapolation rejects. Loaded results
 retain both raw source hashes and a distinct effective configuration hash,
@@ -152,9 +153,10 @@ owned model responses and physical circuit-node current projection. The
 213 public checks include independent hand-wired raw EM+Touchstone full
 matrix/current checks, complex/dynamic references, Y/Z records, stale source
 snapshots, shared files, root/resource guards and transactional attachment.
-Installed AUTO/FEED amp binding succeeds; the actual CUST40 example fails
-precisely before attachment. Linked static STF snapshots remain retained.
-Ordinary FLOAT model references, loss-aware AUTO, other width/reference-plane
+Installed AUTO/FEED amp binding succeeds; the actual CUST40 example now
+clears the width contract and fails precisely at the unresolved finite-loss
+AUTO cover selection before attachment. Linked static STF snapshots remain retained.
+Ordinary FLOAT model references, loss-aware AUTO, reference-plane
 contracts, geometry SPROJ traversal, other GEOVAR modes and licensed native pin-group
 calibration remain open implementation/acceptance items.
 
@@ -1082,8 +1084,13 @@ full coupled result calibration are implemented with charge, resistance,
 power, current and field regressions. Native CUP/component FLOAT lowering
 retains finite bridges and signed circuit incidence. Native GLG accuracy
 remains unverified: the installed Lite engine rejects calibration groups
-and ports-only components. CELL/custom widths and arbitrary local-ground
-geometry require explicit resolved contracts.
+and ports-only components. Component terminal widths now resolve the
+native FEED (complete straight pad edge), CELL (single pin-coordinate
+raster cell) and `CUST <width>` (declared width centered on the pin
+coordinate) contracts across ordinary, CUP and FLOAT pin paths, with
+per-pin `EXSMDP` overrides and explicit rejection of widths overhanging
+the pad edge; arbitrary local-ground geometry requires an explicit
+resolved contract.
 
 The emitted SPICE models have also been evaluated by actual ngspice 47.
 Two declared two-port models, with real and conjugate poles and affine

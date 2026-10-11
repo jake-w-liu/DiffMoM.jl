@@ -128,7 +128,60 @@ function _sonnet_component_retained_payload(model)
         (_subdivision_retained_payload(path.cells,seen) for path in model.reference_paths)...)
 end
 
-function _sonnet_component_pin(p,record,problem,variables,freq)
+# Resolve each pin's declared terminal width. A TERMW inside a pin's
+# EXSMDP block applies to that pin alone; a bare component-level TERMW is
+# the shared default. The native modes are FEED (the whole straight
+# edge), CELL (the single cell containing the pin coordinate) and
+# CUST <width> (the cells covering the declared width centered on the
+# pin coordinate); the resolved strip must stay inside the pad edge.
+function _sonnet_component_termw(p::SonnetProject,component)
+    default="FEED";widths=Dict{Int,String}();inside=false;pin=0
+    for record in component
+        t=record.tokens
+        if t[1]=="SMDP"
+            pin=length(t)>=7 ? something(tryparse(Int,t[7]),0) : 0
+        elseif t[1]=="EXSMDP"
+            inside=true
+        elseif t[1]=="END"
+            inside=false
+        elseif t[1]=="TERMW"
+            length(t)>=2 || _sonnet_error(p.source,record.line,"TERMW requires a width mode")
+            mode=join(t[2:end]," ")
+            if inside
+                pin==0 && _sonnet_error(p.source,record.line,"EXSMDP terminal width lacks its pin")
+                widths[pin]=mode
+            else
+                default=mode
+            end
+        end
+    end
+    return (default=default,widths=widths)
+end
+
+function _sonnet_termw_cells(p,record,termw,lo,hi,transverse,h,variables,freq)
+    m=split(termw)
+    edge_first=floor(Int,lo/h+1e-8)+1;edge_last=ceil(Int,hi/h-1e-8)
+    if m==["FEED"]
+        first_cell,last_cell=edge_first,edge_last
+    elseif m==["CELL"]
+        first_cell=last_cell=floor(Int,transverse/h+1e-8)+1
+    elseif length(m)==2 && m[1]=="CUST"
+        w=sonnet_variable_value(p,m[2];variables,freq)*p.length_scale
+        isfinite(w) && w>0 || _sonnet_error(p.source,record.line,
+            "custom SMD terminal width must be positive")
+        first_cell=floor(Int,(transverse-w/2)/h+1e-8)+1
+        last_cell=ceil(Int,(transverse+w/2)/h-1e-8)
+        (first_cell<edge_first || last_cell>edge_last) &&
+            _sonnet_error(p.source,record.line,"custom SMD terminal width exceeds its pad edge")
+    else
+        _sonnet_error(p.source,record.line,"unsupported SMD terminal width $termw")
+    end
+    first_cell=clamp(first_cell,edge_first,edge_last)
+    last_cell=clamp(last_cell,edge_first,edge_last)
+    return first_cell,last_cell
+end
+
+function _sonnet_component_pin(p,record,problem,variables,freq;termw="FEED")
     t=record.tokens
     length(t)==7 || _sonnet_error(p.source,record.line,"SMDP requires level,x,y,orientation,terminal,pin")
     val(s)=sonnet_variable_value(p,s;variables=variables,freq=freq)
@@ -167,7 +220,7 @@ function _sonnet_component_pin(p,record,problem,variables,freq)
         "SMD pin must identify one straight polygon edge; found $(length(candidates))")
     lo,hi=only(candidates)
     h=xaxis ? problem.grid.dy : problem.grid.dx
-    first_cell=floor(Int,lo/h+1e-8)+1;last_cell=ceil(Int,hi/h-1e-8)
+    first_cell,last_cell=_sonnet_termw_cells(p,record,termw,lo,hi,transverse,h,variables,freq)
     first_cell<=last_cell || _sonnet_error(p.source,record.line,"SMD pad vanished on raster")
     terminal=PlanarPort(lv,xaxis ? :terminal_x : :terminal_y,edge,first_cell:last_cell,50;
         metal_side=positive ? :positive : :negative,polarity=number<0 ? -1 : 1)
@@ -177,11 +230,13 @@ end
 """Lower native IDEAL R/L/C and NONE components to physical cover-ground
 reference vias and a circuit template. Explicit signed FLOAT pairs route
 through [`sonnet_floating_model`](@ref) and retain their finite references.
-All pad widths are inferred from
-the complete straight polygon edge. Unsupported ground references,
-non-feed terminal widths, misaligned/ambiguous pads fail explicitly.
-SPARAM/SMDFILES and literal linear CKT SPROJ models with explicit PEC AUTO+FEED pins are staged
-automatically through [`sonnet_component_files`](@ref). Other
+FEED pad widths are inferred from the complete straight polygon edge;
+CELL selects the pin coordinate's single cell and CUST the declared
+width centered on it, clamped inside the edge. Unsupported ground
+references, unknown terminal-width modes, misaligned/ambiguous pads fail
+explicitly.
+SPARAM/SMDFILES and literal linear CKT SPROJ models with explicit PEC
+AUTO pins are staged automatically through [`sonnet_component_files`](@ref). Other
 vendor/geometry-project/subcircuit models require
 `component_response(project,component_records,f_hz)` returning a named
 tuple `(response=matrix,format=:s,z0=...)`; no model is silently omitted.
@@ -251,10 +306,18 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
             t=record.tokens
             t[1]=="GNDREF" && t[end]!="AUTO" && _sonnet_error(p.source,record.line,
                 "SMD local ground reference requires its explicit return-terminal adapter")
-            t[1]=="TERMW" && t[end]!="FEED" && _sonnet_error(p.source,record.line,
-                "custom SMD terminal widths require their geometry adapter")
+            t[1] in ("DRP1","DRP2","REFPLANE","TWTYPE","TWVALUE") &&
+                _sonnet_error(p.source,record.line,
+                    "native component $(t[1]) requires its reference-plane/terminal adapter")
+            t[1] in ("SMD","ID","GNDREF","TERMW","SMDP","EXSMDP","END","TYPE",
+                "SBOX","PBSHW","PBOX","PKG","LPOS","INHSWP","CUPGRP") ||
+                tryparse(Float64,t[1])!==nothing || _sonnet_error(p.source,record.line,
+                    "unrepresented native component record $(t[1])")
         end
-        local_pins=Any[_sonnet_component_pin(p,r,base.problem,variables,freq)
+        termw=_sonnet_component_termw(p,component)
+        local_pins=Any[_sonnet_component_pin(p,r,base.problem,variables,freq;
+                termw=get(termw.widths,something(tryparse(Int,get(r.tokens,7,"")),0),
+                    termw.default))
             for r in component if r.tokens[1]=="SMDP"]
         !isempty(local_pins) || throw(ArgumentError("native component has no terminal pins"))
         sort!(local_pins;by=pin->pin.pin)

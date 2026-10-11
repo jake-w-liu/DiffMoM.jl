@@ -60,7 +60,12 @@ end
     bad=_native_floating_pad_project();bad.components[1][5]=SonnetRecord(1,["SMDP","0",".5625",".5","R","2","2"])
     @test_throws ArgumentError sonnet_floating_model(bad,1e9)
     width=_native_floating_pad_project();width.components[1][3]=SonnetRecord(1,["TERMW","CELL"])
-    @test_throws ArgumentError sonnet_floating_model(width,1e9)
+    cellmodel=sonnet_floating_model(width,1e9)
+    @test only(cellmodel.bridges).signal.cells==9:9
+    badmode=_native_floating_pad_project();badmode.components[1][3]=SonnetRecord(1,["TERMW","BOGUS"])
+    @test_throws ArgumentError sonnet_floating_model(badmode,1e9)
+    badcup=_native_floating_pad_project(;cup=true);badcup.ports[1].records[3]=SonnetRecord(1,["TERMW","ODD"])
+    @test_throws ArgumentError sonnet_floating_model(badcup,1e9)
     @test_throws ArgumentError sonnet_floating_model(cup,1e9;bridge_zs=-1)
     @test_throws ArgumentError sonnet_floating_model(cup,1e9;bridge_zs=big"1e400")
     unknown=_native_floating_pad_project();push!(unknown.components[1],SonnetRecord(1,["UNKNOWN_PHYSICS","1"]))

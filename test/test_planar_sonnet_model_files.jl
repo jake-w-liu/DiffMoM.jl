@@ -142,8 +142,8 @@ end
     thirdplan=sonnet_component_files(saved,300e6)
     @test norm(only(thirdplan.bindings).response-only(firstplan.bindings).response)>.1
     @test only(firstplan.bindings).response==only(plan.bindings).response
-    for (recordkind,tokens,message) in (("TERMW",["TERMW","CUST","40"],"TERMW CUST"),
-            ("TERMW",["TERMW","CELL"],"width adapter"),("GNDREF",["GNDREF","FLOAT"],"AUTO ground"),
+    for (recordkind,tokens,message) in (("TERMW",["TERMW","ODD","40"],"width adapter"),
+            ("TERMW",["TERMW","CUST"],"width adapter"),("GNDREF",["GNDREF","FLOAT"],"AUTO ground"),
             ("GNDREF",["GNDREF","POLYGON","AUTO"],"AUTO ground"),
             ("TYPE",["TYPE","SPARAM","999"],"unknown SMDFILES"))
         bad=deepcopy(project);record=first(filter(r->first(r.tokens)==recordkind,bad.components[1]))
@@ -246,7 +246,7 @@ end
     count=Ref(0);provider=f->(count[]+=1;50.)
     e=try sonnet_component_files(precise,7e9;requested_reference=provider);nothing catch error;error end
     @test e isa ArgumentError
-    @test occursin("TERMW CUST 40",sprint(showerror,e))
+    @test occursin("two PEC box covers",sprint(showerror,e))
     @test count[]==0
 end
 
