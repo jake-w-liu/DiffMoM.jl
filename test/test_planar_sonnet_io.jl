@@ -306,8 +306,8 @@ end
     @test sonnet_metal_zs(p,["PEC","1","SUP","0","0","0","0"],1e9)==0im
     space=["Free Space","0","FREESPACE","376.7303136","0","0","0"]
     termination=DiffMoM._sonnet_termination(p,space,1e9,Dict{String,Float64}())
-    @test termination.kind==DiffMoM.TERM_SURFACE
-    @test termination.zs==376.7303136+0im
+    @test termination===DiffMoM.TERM_SPACE
+    @test termination.kind==DiffMoM.TERM_OPEN
     @test_throws ArgumentError sonnet_metal_zs(p,space,1e9)
     @test sonnet_metal_zs(p,["PEC","1","NOR","INF",".5","0"],1e9)==0im
     @test imag(sonnet_metal_zs(p,["Kinetic","1","SUP","0","0","0",".11"],1e9))≈2pi*1e9*.11e-12

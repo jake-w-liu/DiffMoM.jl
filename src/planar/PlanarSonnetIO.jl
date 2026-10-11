@@ -785,6 +785,7 @@ end
 function _sonnet_termination(p,metal,freq,vars)
     length(metal)>=3 || throw(ArgumentError("incomplete box-cover material"))
     model=metal[3]
+    model=="FREESPACE" && return TERM_SPACE
     zs=sonnet_metal_zs(p,metal,freq;variables=vars,cover=true)
     iszero(zs) && return TERM_GND
     return PlanarTerminator{ComplexF64}(TERM_SURFACE,zs,1+0im,1+0im)

@@ -158,6 +158,83 @@ function _sonnet_component_termw(p::SonnetProject,component)
     return (default=default,widths=widths)
 end
 
+# Decode one GNDREF record. At component level the record selects the
+# component's ground-reference mode (`FLOAT`, `AUTO`, or `BOX` = via
+# returns to a cover); a `BOX` direction token does not select the cover
+# itself. Inside a pin's EXSMDP the record selects that pin's via
+# direction (`AUTO`/`BOX AUTO` = nearest conductive cover).
+function _sonnet_gndref_value(source,record)
+    t=record.tokens
+    t==["GNDREF","AUTO"] && return :auto
+    (t==["GNDREF","FLOAT"] || t==["GNDREF","F"]) && return :float
+    t==["GNDREF","BOX","AUTO"] && return :box_auto
+    t==["GNDREF","BOX","BELOW"] && return :below
+    t==["GNDREF","BOX","ABOVE"] && return :above
+    _sonnet_error(source,record.line,"unrepresented SMD ground reference $(join(t[2:end]," "))")
+end
+
+# Resolve a component's declared ground reference. A component-level
+# GNDREF selects the mode: `FLOAT` shares one floating local ground
+# across the pins, `BOX ...` puts the component in via mode where each
+# pin's own record chooses its cover, and `AUTO`/missing lets the model
+# kind decide (verified: IDEAL/NONE resolve floating; data-file models
+# resolve to a box-cover via). The component-level BOX direction token
+# is inert — native resolves each pin's cover separately. `dirs` maps
+# native pin index to `:auto`/`:below`/`:above` and only matters in
+# `:via` mode; per-pin records elsewhere carry no effect.
+function _sonnet_component_gndref(p::SonnetProject,component)
+    mode=:auto;dirs=Dict{Int,Symbol}();inside=false;pin=0;pinfloat=nothing
+    for record in component
+        t=record.tokens
+        if t[1]=="SMDP"
+            pin=length(t)>=7 ? something(tryparse(Int,t[7]),0) : 0
+        elseif t[1]=="EXSMDP"
+            inside=true
+        elseif t[1]=="END"
+            inside=false
+        elseif t[1]=="GNDREF"
+            value=_sonnet_gndref_value(p.source,record)
+            if inside
+                pin==0 && _sonnet_error(p.source,record.line,
+                    "EXSMDP ground reference lacks its pin")
+                value===:float && pinfloat===nothing && (pinfloat=record)
+                dirs[pin]=value in (:below,:above) ? value : :auto
+            else
+                m=value===:float ? :float : value===:auto ? :auto : :via
+                mode===:auto || m===:auto || mode===m ||
+                    _sonnet_error(p.source,record.line,
+                        "mixed component ground-reference modes")
+                mode=m===:auto ? mode : m
+            end
+        end
+    end
+    # A pin-level FLOAT is only meaningful under a FLOAT component (where
+    # it restates the shared local ground, as in the native corpus) and is
+    # inert under an unresolved AUTO component; on a via-mode component it
+    # is invalid grammar.
+    pinfloat!==nothing && mode===:via &&
+        _sonnet_error(p.source,pinfloat.line,
+            "pin ground reference cannot select FLOAT")
+    return (mode=mode,dirs=dirs)
+end
+
+_sonnet_component_name(component)=(k=findfirst(r->r.tokens[1]=="SMD",component);
+    k===nothing || length(component[k].tokens)<2 ? "SMD" : component[k].tokens[2])
+
+# Whether the component resolves to the floating local-ground adapter:
+# explicit FLOAT, or AUTO with a ground-free model (IDEAL R/L/C, NONE).
+# Components whose model consumes a real ground node resolve to a
+# box-cover via return under AUTO.
+function _sonnet_component_floating(p::SonnetProject,component)
+    gnd=_sonnet_component_gndref(p,component)
+    gnd.mode===:float && return true
+    gnd.mode===:via && return false
+    kind=findfirst(r->r.tokens[1]=="TYPE",component)
+    kind===nothing && return false
+    t=component[kind].tokens
+    return t==["TYPE","NONE"] || (length(t)==4 && t[2]=="IDEAL")
+end
+
 function _sonnet_termw_cells(p,record,termw,lo,hi,transverse,h,variables,freq)
     m=split(termw)
     edge_first=floor(Int,lo/h+1e-8)+1;edge_last=ceil(Int,hi/h-1e-8)
@@ -228,15 +305,22 @@ function _sonnet_component_pin(p,record,problem,variables,freq;termw="FEED")
 end
 
 """Lower native IDEAL R/L/C and NONE components to physical cover-ground
-reference vias and a circuit template. Explicit signed FLOAT pairs route
-through [`sonnet_floating_model`](@ref) and retain their finite references.
+reference vias and a circuit template. A component-level `GNDREF BOX
+...` selects this via mode and each pin's own `EXSMDP` record resolves
+its cover (`AUTO` picks the nearest conductive one; a forced cover must
+be conductive, and pins resolving to different covers reject like
+native). `GNDREF FLOAT` components, and `AUTO` components whose model
+needs no ground node (IDEAL R/L/C, NONE), route through
+[`sonnet_floating_model`](@ref) and share one floating local ground.
 FEED pad widths are inferred from the complete straight polygon edge;
 CELL selects the pin coordinate's single cell and CUST the declared
 width centered on it, clamped inside the edge. Unsupported ground
 references, unknown terminal-width modes, misaligned/ambiguous pads fail
 explicitly.
-SPARAM/SMDFILES and literal linear CKT SPROJ models with explicit PEC
-AUTO pins are staged automatically through [`sonnet_component_files`](@ref). Other
+SPARAM/SMDFILES and literal linear CKT SPROJ models with explicit
+ground/width metadata are staged automatically through
+[`sonnet_component_files`](@ref); under `AUTO` they keep via returns
+since their model consumes a real ground node. Other
 vendor/geometry-project/subcircuit models require
 `component_response(project,component_records,f_hz)` returning a named
 tuple `(response=matrix,format=:s,z0=...)`; no model is silently omitted.
@@ -287,7 +371,7 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
             "native component staged geometry","max_bytes")
     end
     _sonnet_has_floating(p) && return sonnet_floating_model(p,freq;
-        grid,variables,component_response,ground_direction,max_bytes)
+        grid,variables,component_response,ground_direction,max_bytes,_model_files)
     !isempty(p.components) || throw(ArgumentError("native project has no components"))
     # Expand physical thick faces before separating geometry and loads,
     # so SMD terminal levels follow the same remapped stack as polygons.
@@ -304,8 +388,7 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
     for component in p.components
         for record in component
             t=record.tokens
-            t[1]=="GNDREF" && t[end]!="AUTO" && _sonnet_error(p.source,record.line,
-                "SMD local ground reference requires its explicit return-terminal adapter")
+            t[1]=="GNDREF" && _sonnet_gndref_value(p.source,record)
             t[1] in ("DRP1","DRP2","REFPLANE","TWTYPE","TWVALUE") &&
                 _sonnet_error(p.source,record.line,
                     "native component $(t[1]) requires its reference-plane/terminal adapter")
@@ -315,6 +398,7 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
                     "unrepresented native component record $(t[1])")
         end
         termw=_sonnet_component_termw(p,component)
+        gndref=_sonnet_component_gndref(p,component)
         local_pins=Any[_sonnet_component_pin(p,r,base.problem,variables,freq;
                 termw=get(termw.widths,something(tryparse(Int,get(r.tokens,7,"")),0),
                     termw.default))
@@ -328,16 +412,31 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
                 push!(labels,pin.number);push!(refs,50.)
             end
         end
-        push!(pins,local_pins)
+        # Every component reaching this point resolves to the via-return
+        # mode (floating-resolution components are routed to the floating
+        # adapter upstream). Each pin takes its own EXSMDP direction or
+        # the caller's default (native: nearest conductive cover).
+        push!(pins,[merge(pin,(;direction=get(gndref.dirs,pin.pin,
+            ground_direction))) for pin in local_pins])
     end
     terminals=PlanarPort[pin.terminal for local_pins in pins for pin in local_pins]
+    directions=Symbol[pin.direction for local_pins in pins for pin in local_pins]
     live_prefix=_checked_payload_sum("native component live prefix",file_payload,
         variable_payload,_sonnet_component_base_payload(base))
     post_workspace=_sonnet_component_post_payload(base,pins,labels)
     _enforce_payload_limit(_checked_payload_sum("native component provider preflight",
         live_prefix,post_workspace),max_bytes,"native component provider preflight","max_bytes")
     physical=planar_terminal_returns(base.problem,terminals;
-        ground_direction=ground_direction,max_bytes=max_bytes-live_prefix-post_workspace)
+        ground_direction=directions,max_bytes=max_bytes-live_prefix-post_workspace)
+    # Native rejects a via-mode component whose pins resolve to different
+    # covers ("mixed combination of upper/lower ground references").
+    pidx=0
+    for (c,local_pins) in zip(p.components,pins)
+        resolved=unique(path.direction for path in physical.paths[pidx+1:pidx+length(local_pins)])
+        pidx+=length(local_pins)
+        length(resolved)<=1 || throw(ArgumentError(
+            "native component $(_sonnet_component_name(c)) has mixed combination of upper and lower ground references"))
+    end
     embedding=zeros(Float64,length(base.problem.ports)+length(terminals),length(labels))
     embedding[1:length(base.problem.ports),1:length(base.labels)].=base.contraction
     raw_index=length(base.problem.ports)
@@ -407,7 +506,7 @@ function _solve_sonnet_components(p::SonnetProject,freq::Real;grid=nothing,
     scalar_options=(;scalar_files,scalar_root,scalar_outside,scalar_max_files,scalar_max_bytes,
         scalar_max_nodes,scalar_max_line_bytes)
     _sonnet_has_floating(p) && return _solve_sonnet_floating(p,freq;
-        grid,variables,calibration,component_response,ground_direction,pin_calibration,max_bytes,scalar_options...,kw...)
+        grid,variables,calibration,component_response,ground_direction,pin_calibration,max_bytes,scalar_options...,_model_files,kw...)
     model=sonnet_component_model(p,freq;grid=grid,variables=variables,
         component_response=component_response,ground_direction=ground_direction,max_bytes=max_bytes,
         scalar_options...,_model_files=_model_files)

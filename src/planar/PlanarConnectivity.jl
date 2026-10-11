@@ -120,8 +120,12 @@ function planar_connectivity(prob::PlanarProblem;
                 found = true
             end
         end
-        if interface == 0 && prob.stack.bottom.kind == TERM_PEC ||
-                interface == length(prob.stack.layers) && prob.stack.top.kind == TERM_PEC
+        # Conductive covers galvanically join the shared return net;
+        # their finite surface impedance still appears in the Green's
+        # function boundary terms. PMC and open boundaries contact nothing.
+        if interface == 0 && prob.stack.bottom.kind in (TERM_PEC,TERM_SURFACE) ||
+                interface == length(prob.stack.layers) &&
+                prob.stack.top.kind in (TERM_PEC,TERM_SURFACE)
             _planar_net_join!(parent, node, ground)
             found = true
         end

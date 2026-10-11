@@ -57,7 +57,7 @@ end
     @test_throws ArgumentError sonnet_floating_model(cup,1e9;max_bytes=1)
     @test_throws ArgumentError solve_sonnet_project(smd,1e9;raw=true,max_bytes=1)
     @test_throws ArgumentError planar_current_maps(a;max_bytes=1)
-    bad=_native_floating_pad_project();bad.components[1][5]=SonnetRecord(1,["SMDP","0",".5625",".5","R","2","2"])
+    bad=_native_floating_pad_project();bad.components[1][5]=SonnetRecord(1,["SMDP","0",".5625",".5","R","-2","2"])
     @test_throws ArgumentError sonnet_floating_model(bad,1e9)
     width=_native_floating_pad_project();width.components[1][3]=SonnetRecord(1,["TERMW","CELL"])
     cellmodel=sonnet_floating_model(width,1e9)
@@ -90,12 +90,17 @@ end
     @test loaded.circuit.gauge_nodes==[3]
     @test loaded.s≈transpose(loaded.s) rtol=1e-10
     @test opnorm(loaded.s)<=1+1e-10
-    @test abs(loaded.s[2,1])>.8
-    # Native ideal resistor has the independent circuit value 10 ohms;
-    # no globally grounded approximation or invented common mode is used.
-    direct=PlanarCircuit(4,[(1,0),(2,0)])
+    # A negative-labeled terminal marks the reference side of its
+    # differential port: the ideal load lands between the positive pad
+    # and the component's isolated floating common, so the external pair
+    # stays open. Verified against installed Sonnet's `float_pair` probe
+    # (S21 ~ 1e-3), which also leaves the signed pair unloaded.
+    @test abs(loaded.s[2,1])<.01
+    # The reference node is the component's own floating common (node 5),
+    # not the negative pad's circuit terminal.
+    direct=PlanarCircuit(5,[(1,0),(2,0)])
     circuit_add_em!(direct,model.source_terminals,loaded.em)
-    circuit_add_rlc!(direct,3,4;r=10.)
+    circuit_add_rlc!(direct,3,5;r=10.)
     oracle=solve_planar_circuit(direct,1e8;floating_gauge=:auto)
     @test oracle.s≈loaded.s rtol=1e-12
     @test planar_current_maps(loaded;incident_waves=[1.,0.])[1].jx≈
@@ -121,4 +126,97 @@ end
     @test norm(transpose(model.floating_common)*r.raw.y*v)<1e-10norm(r.raw.y*v)
     @test planar_current_maps(r.raw;voltages=v)[1].jx≈sonnet_component_current_maps(r)[1].jx rtol=1e-12
     @test opnorm(r.s)<=1+1e-10
+end
+
+@testset "native GNDREF resolution and cover-selection contracts" begin
+    # Installed Lite probes: an IDEAL/NONE component under component-level
+    # AUTO resolves to the same floating local ground as explicit FLOAT
+    # (identical geometry and response), while BOX keeps via returns whose
+    # per-pin direction is resolved independently.
+    auto=_synthetic_smd_project()
+    auto.components[1][2]=SonnetRecord(1,["GNDREF","AUTO"])
+    resolved=sonnet_floating_model(auto,1e8)
+    @test resolved.labels==[1,2,3]
+    @test resolved.external_labels==[1,2]
+    @test isempty(resolved.problem.vias)
+    @test only(resolved.bridges).port>0
+    explicit=_synthetic_smd_project()
+    explicit.components[1][1]=SonnetRecord(1,["TYPE","NONE"])
+    explicit.components[1][2]=SonnetRecord(1,["GNDREF","FLOAT"])
+    twin=sonnet_floating_model(explicit,1e8)
+    @test twin.labels==resolved.labels
+    @test isempty(twin.circuit.elements)
+    @test twin.external_labels==[1,2,3]
+    # An IDEAL load on all-positive FLOAT pins lands between the two pad
+    # nodes; no isolated common node is allocated for it (native: the
+    # component common only matters when a terminal maps to it).
+    loaded=_synthetic_smd_project()
+    loaded.components[1][2]=SonnetRecord(1,["GNDREF","FLOAT"])
+    loadedmodel=sonnet_floating_model(loaded,1e8)
+    @test length(loadedmodel.circuit.elements)==1
+    @test loadedmodel.source_terminals==[(1,0),(2,0),(3,4)]
+    @test loadedmodel.circuit.nnodes==4
+    # A file-model component under AUTO keeps via returns (it cannot resolve
+    # to a floating ground without an adapter), verified with a callback.
+    vendor=_synthetic_smd_project()
+    vendor.components[1][1]=SonnetRecord(1,["TYPE","SPARAM","1"])
+    vendor.components[1][2]=SonnetRecord(1,["GNDREF","AUTO"])
+    staged=sonnet_component_model(vendor,1e8;
+        component_response=(p,c,f)->(response=ComplexF64[0 1;1 0],format=:s,z0=50))
+    @test !isempty(staged.problem.vias)
+    # Per-pin forced directions resolve independently of the component's
+    # BOX token; pins landing on different covers reject like native.
+    pin_gndref(dir)=[SonnetRecord(1,["EXSMDP"]),SonnetRecord(1,["GNDREF","BOX",dir]),
+        SonnetRecord(1,["END","EXSMDP"])]
+    mixed=_synthetic_smd_project()
+    splice!(mixed.components[1],5:4,pin_gndref("ABOVE"))
+    append!(mixed.components[1],pin_gndref("BELOW"))
+    @test_throws ArgumentError sonnet_component_model(mixed,1e8)
+    try
+        sonnet_component_model(mixed,1e8)
+    catch error
+        @test occursin("mixed combination of upper and lower ground references",
+            sprint(showerror,error))
+    end
+    # Forcing a pin at a non-conductive (free space) cover rejects like
+    # native; AUTO skips the non-conductive cover for the far conductive one.
+    free_top(p)=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,
+        p.box,p.layers,p.metals,["\"FreeSpace\"","0","FREESPACE","376.7303136","0","0","0"],
+        p.bottom,p.polygons,p.ports,p.variables,p.components,p.sweeps,p.records)
+    forced=free_top(_synthetic_smd_project())
+    append!(forced.components[1],pin_gndref("ABOVE"))
+    @test_throws ArgumentError sonnet_component_model(forced,1e8)
+    try
+        sonnet_component_model(forced,1e8)
+    catch error
+        @test occursin("no unobstructed physical return to its requested cover",
+            sprint(showerror,error))
+    end
+    skipmodel=sonnet_component_model(free_top(_synthetic_smd_project()),1e8)
+    @test !isempty(skipmodel.problem.vias)
+    @test all(path->path.direction===:below,skipmodel.reference_paths)
+end
+
+@testset "installed-Lite GNDREF probe corpus replay" begin
+    # Every archived native response in test/fixtures/native_gndref_probes
+    # was produced by the installed Sonnet Lite 18.53 engine. The probe
+    # matrix covers AUTO/FLOAT resolution, per-pin forced directions,
+    # lossy and free-space covers, and signed FLOAT pairs. Open-boundary
+    # cases carry a documented residual gate; all others stay below 0.02.
+    fixture=joinpath(@__DIR__,"fixtures","native_gndref_probes")
+    # Free-space/open-boundary covers carry the documented half-space
+    # residual (~0.05 complex, verified identical cover selection via the
+    # forced-direction native control); all other gates stay below 0.02.
+    openresidual=Dict("boxauto_freetop"=>.06,"forced_below_freetop"=>.06)
+    for name in sort([splitext(f)[1] for f in readdir(fixture) if endswith(f,".son")])
+        project=read_sonnet_project(joinpath(fixture,name*".son"))
+        if isfile(joinpath(fixture,name*".native.s2p"))
+            native=only(planar_read_touchstone(joinpath(fixture,name*".native.s2p");nports=2).s)
+            actual=solve_sonnet_project(project,1e9;raw=true)
+            @test abs(actual.s[2,1]-native[2,1])<get(openresidual,name,.02)
+            @test abs(actual.s[1,1]-native[1,1])<get(openresidual,name,.02)
+        else
+            @test_throws ArgumentError solve_sonnet_project(project,1e9;raw=true)
+        end
+    end
 end

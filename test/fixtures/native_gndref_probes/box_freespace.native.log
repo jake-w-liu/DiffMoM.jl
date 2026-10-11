@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 11 22:02:10 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\gndref_probes\box_freespace_run\box_freespace.son.
+
+    Pre-Analysis:
+
+      Sonnet Error:
+      Co-calibrated port ground reference error.
+      Unable to determine ground reference for port 4.
+      Bottom box cover is set to free space.
+      Therefore, bottom box cover is not a suitable ground reference.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Sun Oct 11 22:02:10 2026.

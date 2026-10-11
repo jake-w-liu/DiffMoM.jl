@@ -155,12 +155,17 @@ function _sonnet_files_contract(p,component)
     end
     pins=Tuple{Int,Int}[]
     topground=false;pinblock=false;ground=false;width=false;inherit=nothing
+    pinfloat=nothing
     for record in component
         t=record.tokens;tag=first(t)
         if tag=="GNDREF"
-            t in (["GNDREF","AUTO"],["GNDREF","BOX","AUTO"]) ||
-                _sonnet_error(p.source,record.line,"automatic SPARAM requires explicit PEC box AUTO ground")
-            pinblock ? (ground=true) : (topground=true)
+            value=_sonnet_gndref_value(p.source,record)
+            if pinblock
+                value===:float && pinfloat===nothing && (pinfloat=record)
+                ground=true
+            else
+                topground=true
+            end
         elseif tag=="INHSWP"
             modelkind=="SPROJ" && inherit===nothing && t in (["INHSWP","N"],["INHSWP","Y"]) ||
                 _sonnet_error(p.source,record.line,"SPROJ requires one literal INHSWP N/Y")
@@ -174,7 +179,7 @@ function _sonnet_files_contract(p,component)
         elseif tag=="SMDP"
             pinblock && _sonnet_error(p.source,record.line,"unterminated model-pin metadata")
             isempty(pins) || ground && width || _sonnet_error(p.source,record.line,
-                "each model pin requires explicit AUTO ground and terminal width")
+                "each model pin requires an explicit ground reference and terminal width")
             length(t)==7 || _sonnet_error(p.source,record.line,"SMDP requires level,x,y,orientation,geometry label,model pin")
             t[5] in ("L","R","T","B") || _sonnet_error(p.source,record.line,"unrepresented terminal orientation")
             label=tryparse(Int,t[6]);pin=tryparse(Int,t[7]);level=tryparse(Int,t[2])
@@ -186,7 +191,7 @@ function _sonnet_files_contract(p,component)
             pinblock=true
         elseif tag=="END" && length(t)==2 && t[2]=="EXSMDP"
             pinblock && ground && width || _sonnet_error(p.source,record.line,
-                "each model pin requires explicit AUTO ground and terminal width")
+                "each model pin requires an explicit ground reference and terminal width")
             pinblock=false
         elseif tag in ("DRP1","DRP2","REFPLANE")
             _sonnet_error(p.source,record.line,"native component reference planes require their coupled calibration transfer")
@@ -196,6 +201,16 @@ function _sonnet_files_contract(p,component)
     end
     !pinblock && topground && !isempty(pins) && ground && width ||
         _sonnet_error(p.source,kind.line,"SPARAM requires explicit component/pin ground and terminal-width metadata")
+    # A pin-level FLOAT is inert on components that resolve to the floating
+    # local ground; on a via-mode component (every file-backed model) it is
+    # invalid grammar.
+    pinfloat!==nothing && !_sonnet_component_floating(p,component) &&
+        _sonnet_error(p.source,pinfloat.line,
+            "pin ground reference cannot select FLOAT")
+    modelkind in ("SPARAM","SPROJ") &&
+        _sonnet_component_gndref(p,component).mode===:float &&
+        _sonnet_error(p.source,kind.line,
+            "file-backed FLOAT component requires the floating component_response adapter")
     sort!(pins;by=first)
     all(k->pins[k][1]==k,eachindex(pins)) || _sonnet_error(p.source,kind.line,"model pin indices must be unique and contiguous from one")
     modelkind=="IDEAL" && length(pins)!=2 && _sonnet_error(p.source,kind.line,"IDEAL requires two model pins")
@@ -409,9 +424,14 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
         haskey(table,index) && _sonnet_error(p.source,record.line,"duplicate SMDFILES index")
         table[index]=(record.tokens[2],record)
     end
-    for cover in (p.top,p.bottom)
-        _sonnet_termination(p,cover,f,variables).kind===TERM_PEC ||
-            throw(ArgumentError("automatic SPARAM requires two PEC box covers; finite-loss AUTO selection is unresolved"))
+    # Via-mode pins land on a cover, so the stack must offer at least one
+    # conductive cover (lossy surface-impedance covers qualify; PMC and
+    # free-space covers are skipped by direction resolution). Components
+    # that resolve to the floating local ground need no conductive cover.
+    if any(component->!_sonnet_component_floating(p,component),p.components)
+        any(cover->_sonnet_termination(p,cover,f,variables).kind in (TERM_PEC,TERM_SURFACE),
+            (p.top,p.bottom)) ||
+            throw(ArgumentError("box-referenced model pins need at least one conductive cover"))
     end
     geometrybytes=_sonnet_files_geometry_payload(p,grid)
     _enforce_payload_limit(_checked_payload_sum("native file geometry staging",budget.used,

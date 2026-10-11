@@ -143,8 +143,8 @@ end
     @test norm(only(thirdplan.bindings).response-only(firstplan.bindings).response)>.1
     @test only(firstplan.bindings).response==only(plan.bindings).response
     for (recordkind,tokens,message) in (("TERMW",["TERMW","ODD","40"],"width adapter"),
-            ("TERMW",["TERMW","CUST"],"width adapter"),("GNDREF",["GNDREF","FLOAT"],"AUTO ground"),
-            ("GNDREF",["GNDREF","POLYGON","AUTO"],"AUTO ground"),
+            ("TERMW",["TERMW","CUST"],"width adapter"),("GNDREF",["GNDREF","FLOAT"],"floating component_response adapter"),
+            ("GNDREF",["GNDREF","POLYGON","AUTO"],"unrepresented SMD ground reference"),
             ("TYPE",["TYPE","SPARAM","999"],"unknown SMDFILES"))
         bad=deepcopy(project);record=first(filter(r->first(r.tokens)==recordkind,bad.components[1]))
         empty!(record.tokens);append!(record.tokens,tokens)
@@ -157,9 +157,23 @@ end
         bad=deepcopy(project);push!(bad.components[1],SonnetRecord(500,[tag,"LEFT","FIX","50"]))
         @test_throws ArgumentError sonnet_component_files(bad,300e6)
     end
+    # A pin-level FLOAT is invalid grammar on a via-mode component (every
+    # file-backed model) but inert on components that resolve to the
+    # floating local ground, matching native per-pin semantics.
+    bad=deepcopy(project)
+    exsmdp=findfirst(r->r.tokens==["EXSMDP"],bad.components[1])
+    pinref=bad.components[1][exsmdp+1]
+    @test pinref.tokens==["GNDREF","AUTO"]
+    empty!(pinref.tokens);append!(pinref.tokens,["GNDREF","FLOAT"])
+    e=try sonnet_component_files(bad,300e6);nothing catch error;error end
+    @test e isa ArgumentError && occursin("pin ground reference cannot select FLOAT",sprint(showerror,e))
+    floatingcomp=deepcopy(project.components[1])
+    typerec=only(filter(r->r.tokens[1]=="TYPE",floatingcomp))
+    empty!(typerec.tokens);append!(typerec.tokens,["TYPE","IDEAL","RES","50"])
+    @test DiffMoM._sonnet_files_contract(project,floatingcomp)===nothing
     bad=deepcopy(project);pin=first(filter(r->first(r.tokens)=="SMDP",bad.components[1]));pin.tokens[7]="2"
     @test_throws ArgumentError sonnet_component_files(bad,300e6)
-    bad=deepcopy(project);bad.top[4]="1"
+    bad=deepcopy(project);bad.top[3]=bad.bottom[3]="FREESPACE"
     @test_throws ArgumentError sonnet_component_files(bad,300e6)
     bad=deepcopy(project);slot=findfirst(r->r.tokens==["END","SMDFILES"],bad.records)
     insert!(bad.records,slot,SonnetRecord(700,["1","device_model.s2p"]))
@@ -246,7 +260,7 @@ end
     count=Ref(0);provider=f->(count[]+=1;50.)
     e=try sonnet_component_files(precise,7e9;requested_reference=provider);nothing catch error;error end
     @test e isa ArgumentError
-    @test occursin("two PEC box covers",sprint(showerror,e))
+    @test occursin("SMD edge is not aligned",sprint(showerror,e))
     @test count[]==0
 end
 
@@ -399,6 +413,88 @@ end
     fresh=sonnet_component_files(read_sonnet_linked_project(linkedpath),300e6)
     @test fresh.sources[linked.technology.source].sha256!=files.sources[linked.technology.source].sha256
     @test only(fresh.bindings).response==only(files.bindings).response
+end
+
+@testset "Staged file snapshots survive floating-resolution routing" begin
+    # A project mixing a file-backed component with an AUTO-resolved floating
+    # component solves through the floating adapter; the ordinary subproject
+    # must consume the caller's frozen dependency snapshots, never re-stage
+    # from disk.
+    text=read(coupon,String)
+    text=replace(text,"""0 5 -1 N 106 1 1 100 100 0 0 0 Y
+112.5 175
+400 175
+400 200
+112.5 200
+112.5 175
+END"""=>"""0 5 -1 N 106 1 1 100 100 0 0 0 Y
+112.5 175
+137.5 175
+137.5 200
+112.5 200
+112.5 175
+END
+0 5 -1 N 107 1 1 100 100 0 0 0 Y
+162.5 175
+400 175
+400 200
+162.5 200
+162.5 175
+END""";count=1)
+    text=replace(text,"NUM 2"=>"NUM 3";count=1)
+    text=replace(text,"POLY 106 1"=>"POLY 107 1";count=1)
+    text=replace(text,"END\nNUM 3"=>"END\n"*"""SMD 0 "FloatingResistor"
+ID 200
+GNDREF AUTO
+SBOX 137.5 162.5 175 200
+PBSHW N
+LPOS 150 187.5
+TYPE IDEAL RES 50
+SMDP 0 137.5 187.5 L 5 1
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+SMDP 0 162.5 187.5 R 6 2
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+END
+"""*"NUM 3";count=1)
+    mktempdir() do directory
+        parent=joinpath(directory,"parent.son");child=joinpath(directory,"child.son")
+        write(parent,replace(text,"TYPE SPARAM 1"=>"TYPE SPROJ child.son\nINHSWP N";count=1))
+        write(child,"""FTYP SONNETPRJ 19
+VER "18.53"
+DIM
+FREQ MHZ
+CAP PF
+IND NH
+LNG MIL
+RES OH
+END DIM
+CKT
+RES 1 2 R=16.77
+DEF2P 1 2 Device R 50
+END CKT
+VARSWP
+ENABLED Y
+FREQ Y AN SWEEP 200 400 200
+END
+END VARSWP
+""")
+        p=read_sonnet_project(parent)
+        @test count(c->DiffMoM._sonnet_component_floating(p,c),p.components)==1
+        plan=sonnet_component_files(p,300e6;grid=(32,40))
+        @test length(plan.bindings)==1
+        write(child,"CORRUPT")
+        result=solve_sonnet_project(plan;raw=true,mx=32,my=40)
+        @test isfinite(result.s[2,1])
+        @test result isa DiffMoM.SonnetFloatingResult
+        @test result.model_files!==nothing &&
+            length(result.model_files.bindings)==1
+    end
 end
 
     end

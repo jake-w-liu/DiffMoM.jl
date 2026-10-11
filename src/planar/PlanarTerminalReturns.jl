@@ -4,8 +4,11 @@ export planar_terminal_returns
 `terminals` contains `PlanarPort(...,:terminal_x/:terminal_y,...)` contracts;
 the input problem retains its existing ports and conductor geometry.
 Each pad's metal-adjacent edge cells receive uniform+tapered reference
-via columns to an unobstructed PEC cover. `ground_direction=:below/:above`
-selects a cover; `:auto` selects the nearest available clear PEC cover.
+via columns to an unobstructed conductive cover. `ground_direction`
+selects each terminal's reference: `:below`/`:above` force a cover and
+`:auto` selects the nearest available conductive cover. A per-terminal
+vector may mix modes. PMC and free-space covers never accept a via;
+lossy surface-impedance covers do.
 
 Returns `problem,contraction,z0,paths`. The contraction maps one voltage
 per original port/terminal into the physical raw via sources. For a
@@ -17,10 +20,13 @@ calibrate these lead effects before comparing calibrated component data.
 and the voltage contraction before those arrays are constructed.
 No half-rooftop source is inserted without its physical return path."""
 function planar_terminal_returns(prob::PlanarProblem,terminals::AbstractVector{PlanarPort};
-        ground_direction::Symbol=:auto,
+        ground_direction=:auto,
         max_bytes::Integer=_default_max_dense_payload_bytes())
-    ground_direction in (:auto,:below,:above) || throw(ArgumentError(
-        "ground_direction must be :auto, :below or :above"))
+    dirs=ground_direction isa Symbol ? fill(ground_direction,length(terminals)) :
+        Symbol[d for d in ground_direction]
+    length(dirs)==length(terminals) &&
+        all(d->d in (:auto,:below,:above),dirs) || throw(ArgumentError(
+        "ground_direction must be :auto, :below, :above or a per-terminal vector"))
     !isempty(terminals) || throw(ArgumentError("at least one physical terminal is required"))
     grid=prob.grid;L=length(prob.stack.layers)
     np,nt=length(prob.ports),length(terminals)
@@ -80,9 +86,9 @@ function planar_terminal_returns(prob::PlanarProblem,terminals::AbstractVector{P
         end
         cells=[xaxis ? (cell,t) : (t,cell) for t in terminal.cells]
         candidates=Tuple{Float64,Symbol,UnitRange{Int}}[]
-        for direction in (ground_direction===:auto ? (:below,:above) : (ground_direction,))
+        for direction in (dirs[k]===:auto ? (:below,:above) : (dirs[k],))
             cover=direction===:below ? prob.stack.bottom : prob.stack.top
-            cover.kind===TERM_PEC || continue
+            cover.kind in (TERM_PEC,TERM_SURFACE) || continue
             layers=direction===:below ? (1:interface) : (interface+1:L)
             isempty(layers) && continue
             function clear_path()
@@ -103,7 +109,7 @@ function planar_terminal_returns(prob::PlanarProblem,terminals::AbstractVector{P
             push!(candidates,(sum(heights[layers]),direction,layers))
         end
         isempty(candidates) && throw(ArgumentError(
-            "terminal $k has no unobstructed physical return to its requested PEC cover"))
+            "terminal $k has no unobstructed physical return to its requested cover"))
         distance,direction,layers=first(sort(candidates;by=first))
         contacts=_checked_payload_sum("physical return contacts",contacts,
             BigInt(length(cells))*length(layers))

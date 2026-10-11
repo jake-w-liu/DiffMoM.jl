@@ -3,7 +3,7 @@ export SonnetFloatingResult,sonnet_floating_model
 _sonnet_float_records(records)=any(r->r.tokens[1]=="GNDREF" &&
     r.tokens[end] in ("FLOAT","F"),records)
 _sonnet_has_floating(p::SonnetProject)=any(port->_sonnet_float_records(port.records),p.ports) ||
-    any(_sonnet_float_records,p.components)
+    any(component->_sonnet_component_floating(p,component),p.components)
 
 """Native floating-port network with explicit finite source bridges and
 its loaded MNA response. `em` retains the physical source solve;
@@ -73,11 +73,21 @@ end
 
 function _sonnet_float_validate(p,records)
     portrecord=!isempty(records) && first(records).tokens[1]=="POR1"
+    inside=false
     for record in records
         t=record.tokens;key=first(t)
-        if key=="GNDREF"
-            length(t)==2 && t[2] in ("FLOAT","F") || _sonnet_error(p.source,record.line,
-                "a floating group must use a consistent FLOAT reference")
+        if key=="EXSMDP"
+            inside=true
+        elseif key=="END"
+            inside=false
+        elseif key=="GNDREF"
+            # A floating source keeps its FLOAT or AUTO component-level
+            # reference; per-pin records are inert under a shared local
+            # ground and only need valid syntax.
+            _sonnet_gndref_value(p.source,record)
+            inside || record.tokens==["GNDREF","FLOAT"] || record.tokens==["GNDREF","F"] ||
+                record.tokens==["GNDREF","AUTO"] || _sonnet_error(p.source,record.line,
+                "a floating group must use a FLOAT or AUTO reference")
         elseif key=="TERMW"
             (length(t)==2 && t[2] in ("FEED","CELL")) ||
                 (length(t)==3 && t[2]=="CUST") || _sonnet_error(p.source,record.line,
@@ -138,15 +148,19 @@ MNA. Ordinary cover-referenced ports/components can coexist, preserving
 their actual source modes and material losses. `bridge_zs` explicitly sets
 the added fixture's sheet impedance (default PEC). All bridge geometry
 and coupling remain in the raw solve. Native GLG effects require supplied
-joint launch calibration; native floating accuracy remains unverified
-because the installed Lite engine rejects these features."""
+joint launch calibration. Verified against installed Sonnet Lite 18.53:
+explicit FLOAT and AUTO-resolved floating components reproduce the native
+loaded response (signed pairs attach the model to the component's shared
+floating common; two unpaired positive pins form the single differential
+port, and a signed load sees no conductive return)."""
 function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         variables=Dict{String,Float64}(),component_response=nothing,
         ground_direction::Symbol=:auto,bridge_zs::Number=0.,
         max_bytes::Integer=_default_max_dense_payload_bytes(),scalar_files=nothing,
         scalar_root=dirname(p.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
-        scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384)
+        scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,
+        _model_files::Union{Nothing,SonnetComponentFiles}=nothing)
     max_bytes=_spice_limit("max_bytes",max_bytes)
     freq=_circuit_stored_real(freq,"native floating frequency")
     freq>0 || throw(ArgumentError("native floating frequency must be representable and positive"))
@@ -180,8 +194,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         max_bytes,"native floating geometry preflight","max_bytes")
     floating_ports=[port for port in p.ports if _sonnet_float_records(port.records)]
     ordinary_ports=[port for port in p.ports if !_sonnet_float_records(port.records)]
-    floating_components=[c for c in p.components if _sonnet_float_records(c)]
-    ordinary_components=[c for c in p.components if !_sonnet_float_records(c)]
+    floating_components=[c for c in p.components if _sonnet_component_floating(p,c)]
+    ordinary_components=[c for c in p.components if !_sonnet_component_floating(p,c)]
     geometry=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,
         p.metals,p.top,p.bottom,p.polygons,ordinary_ports,p.variables,ordinary_components,p.sweeps,p.records)
     if isempty(ordinary_components)
@@ -195,9 +209,21 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         circuit=nothing;external_pairs=copy(pairs);external_labels=copy(labels);external_z0=copy(refs)
         sheet_zs=[copy(zs) for zs in base.sheet_zs];via_sigma=copy(base.via_sigma);paths=Any[]
     else
+        # Staged file dependencies keep their frozen snapshots on this route;
+        # the staged object is rescoped to the ordinary-component subproject
+        # so its bindings cannot re-enter the floating adapter recursively.
+        sub_files=_model_files===nothing ? nothing :
+            SonnetComponentFiles(geometry,_model_files.frequency,_model_files.root,
+                _model_files.sources,_model_files.networks,_model_files.bindings,
+                _model_files.payload,_model_files.linked,_model_files.variables,
+                _model_files.grid,
+                _sonnet_files_configuration_hash(geometry,_model_files.frequency,
+                    _model_files.grid,_model_files.variables;
+                    scalar_files=_model_files.scalar_files),
+                _model_files.scalar_files,_model_files.circuits)
         base=sonnet_component_model(geometry,freq;grid,variables,component_response,ground_direction,
             max_bytes=max_bytes-variable_payload,
-            _preserve_scalar_geometry=true)
+            _preserve_scalar_geometry=true,_model_files=sub_files)
         problem=base.problem;C=copy(base.contraction);refs=copy(base.z0);labels=copy(base.labels)
         common=hasproperty(base,:floating_common) ? copy(base.floating_common) : zeros(length(problem.ports),0)
         circuit=base.circuit;nodes=circuit.nnodes;pairs=[(i,0) for i in 1:nodes]
@@ -238,13 +264,51 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     bridges=Any[];loads=Any[]
     for group in groups
         local_pairs=Tuple{Int,Int}[]
+        pairpins=Tuple{Any,Any,Int}[]
+        unpaired=Any[]
         for label in sort(unique(pin.number for pin in group.pins))
             selected=[pin for pin in group.pins if pin.number==label]
-            length(selected)==2 && sort([pin.signed_number for pin in selected])==[-label,label] ||
-                throw(ArgumentError("native FLOAT component requires explicit positive/negative pairs for every source label"))
+            pos=filter(pin->pin.signed_number>0,selected)
+            neg=filter(pin->pin.signed_number<0,selected)
+            if length(selected)==2 && length(pos)==1 && length(neg)==1
+                push!(pairpins,(only(pos),only(neg),label))
+            else
+                append!(unpaired,selected)
+            end
+        end
+        # Terminals whose labels carry no explicit negative partner share
+        # the component's one floating common node; their independent
+        # voltages are the star differences against the first positive
+        # terminal. Verified for the native two-pin AUTO/FLOAT case,
+        # where both positive pins form the single differential port.
+        if length(unpaired)>=2
+            sort!(unpaired;by=pin->pin.pin)
+            k=findfirst(pin->pin.signed_number>0,unpaired)
+            k===nothing && throw(ArgumentError(
+                "native FLOAT component has unpaired reference terminals"))
+            anchor=unpaired[k]
+            for other in unpaired
+                other===anchor && continue
+                other.signed_number<0 && throw(ArgumentError(
+                    "native FLOAT terminal has a negative label without its positive pair"))
+                push!(pairpins,(anchor,other,anchor.number))
+            end
+            length(unpaired)>2 && throw(ArgumentError(
+                "native FLOAT component has more than two unpaired positive terminals; multi-pin floating commons need their adapter"))
+        elseif !isempty(unpaired)
+            throw(ArgumentError(
+                "native FLOAT terminal has no paired return in its floating common"))
+        end
+        # A negative-labeled terminal marks its pin as the reference side
+        # of its differential port; a model terminal landing on it ties
+        # to the component's one floating common node (native-verified:
+        # such a load sees no conductive return). `gnode` owns that node,
+        # created only when a model-bearing component actually references
+        # it so the circuit never carries a dangling isolated node.
+        terminals=Dict{Int,Int}()
+        modelcomp=group.component!==nothing && !group.external
+        for (positive,negative,label) in pairpins
             label in labels && throw(ArgumentError("native FLOAT label collides with an ordinary or previously defined source mode"))
-            positive=only(pin for pin in selected if pin.signed_number>0)
-            negative=only(pin for pin in selected if pin.signed_number<0)
             payload=_subdivision_retained_payload(Any[problem,C,common,sheet_zs,via_sigma])
             reserve=_checked_payload_sum("native floating source model",payload,variable_payload,file_payload,
                 _checked_array_payload_bytes(Float64,length(problem.ports)+1,length(labels)+1),
@@ -261,13 +325,31 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
             C=next;common=nextcommon;problem=built.problem
             for (i,j) in built.bridge.cells;sheet_zs[built.bridge.sheet][i,j]=stored_bridge;end
             nodes+=2;pair=(nodes-1,nodes);push!(pairs,pair);push!(local_pairs,pair)
+            if modelcomp
+                terminals[positive.pin]=pair[1]
+                terminals[negative.pin]=negative.signed_number<0 ? -1 : pair[2]
+            end
             push!(labels,label);push!(refs,positive.z0)
-            push!(bridges,merge(built.bridge,(port=length(labels),label=label,kind=:floating_bridge)))
+            push!(bridges,merge(built.bridge,(;port=length(labels),label=label,kind=:floating_bridge)))
             if group.external
                 push!(external_pairs,pair);push!(external_labels,label);push!(external_z0,positive.z0)
             end
         end
-        group.component===nothing || push!(loads,(component=group.component,pairs=local_pairs))
+        if modelcomp
+            kindt=only(r for r in group.component if first(r.tokens)=="TYPE").tokens
+            gnode=(any(==(-1),values(terminals)) || (kindt!=["TYPE","NONE"] &&
+                !(length(kindt)==4 && kindt[2]=="IDEAL"))) ? (nodes+=1;nodes) : 0
+            for (pin,node) in terminals
+                node==-1 && (terminals[pin]=gnode)
+            end
+            push!(loads,(component=group.component,terminals=terminals,common=gnode,
+                ports=Tuple{Int,Int}[(terminals[pin.pin],gnode)
+                    for pin in group.pins if pin.signed_number>0]))
+        else
+            group.component===nothing ||
+                push!(loads,(component=group.component,terminals=terminals,
+                    common=0,ports=Tuple{Int,Int}[]))
+        end
     end
     !isempty(external_labels) || throw(ArgumentError("native floating project has no exposed ports; use NONE or explicit CUP source labels"))
     order=sortperm(external_labels)
@@ -280,8 +362,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         component=load.component;record=only(r for r in component if first(r.tokens)=="TYPE");t=record.tokens
         t==["TYPE","NONE"] && continue
         if length(t)==4 && t[2]=="IDEAL"
-            length(load.pairs)==1 || throw(ArgumentError("ideal FLOAT R/L/C requires one differential terminal pair"))
-            a,b=only(load.pairs)
+            length(load.terminals)==2 || throw(ArgumentError("ideal FLOAT R/L/C requires two component terminals"))
+            a,b=load.terminals[1],load.terminals[2]
             value=_sonnet_component_scalar(p,t[4],_sonnet_component_scale(p,t[3]),variables,freq)
             t[3]=="RES" ? circuit_add_rlc!(circuit,a,b;r=value) :
                 t[3]=="CAP" ? circuit_add_rlc!(circuit,a,b;c=value) :
@@ -289,17 +371,27 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
                 _sonnet_error(p.source,record.line,"unsupported FLOAT ideal component")
         else
             component_response===nothing && throw(ArgumentError("native FLOAT vendor/subcircuit needs component_response"))
+            load.common>0 || throw(ArgumentError("native FLOAT model needs a floating common reference"))
             supplied=component_response(p,component,freq)
             supplied isa NamedTuple && all(k->haskey(supplied,k),(:response,:format,:z0)) ||
                 throw(ArgumentError("component_response must return response,format,z0"))
-            circuit_add_network!(circuit,load.pairs,supplied.response;format=supplied.format,z0=supplied.z0)
+            circuit_add_network!(circuit,load.ports,supplied.response;
+                format=supplied.format,z0=supplied.z0)
         end
     end
     D=planar_port_incidence(nodes,pairs;max_bytes)
     scalar_files===nothing || _sonnet_check_scalar_files(scalar_files)
-    return (;project=owned_project,problem,contraction=C,floating_common=common,z0=refs,labels,circuit,sheet_zs,via_sigma,
+    model=(;project=owned_project,problem,contraction=C,floating_common=common,z0=refs,labels,circuit,sheet_zs,via_sigma,
         source_incidence=D,source_terminals=pairs,bridges,reference_paths=paths,external_labels=external_labels[order],
         scalar_files,model_files,variables=variables isa SonnetScalarVariables ? variables.overrides : variables)
+    payload=_checked_payload_sum("native floating retained model",
+        _subdivision_retained_payload(Any[model.problem,model.contraction,model.sheet_zs,
+            model.via_sigma,model.source_incidence,model.floating_common]),
+        model.scalar_files===nothing ? 0 : _sonnet_scalar_files_payload(model.scalar_files),
+        model.model_files===nothing ? 0 : model.model_files.payload,
+        _sonnet_component_variable_payload(model.variables))
+    _enforce_payload_limit(payload,max_bytes,"native floating retained model","max_bytes")
+    return merge(model,(;payload))
 end
 
 function _solve_sonnet_floating(p::SonnetProject,freq::Real;grid=nothing,
@@ -308,17 +400,13 @@ function _solve_sonnet_floating(p::SonnetProject,freq::Real;grid=nothing,
         max_bytes::Integer=_default_max_dense_payload_bytes(),scalar_files=nothing,
         scalar_root=dirname(p.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
-        scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,kw...)
+        scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,
+        _model_files::Union{Nothing,SonnetComponentFiles}=nothing,kw...)
     model=sonnet_floating_model(p,freq;grid,variables,component_response,ground_direction,bridge_zs,max_bytes,
-        scalar_files,scalar_root,scalar_outside,scalar_max_files,scalar_max_bytes,scalar_max_nodes,scalar_max_line_bytes)
+        scalar_files,scalar_root,scalar_outside,scalar_max_files,scalar_max_bytes,scalar_max_nodes,scalar_max_line_bytes,_model_files)
     :surface_zs in keys(kw) && throw(ArgumentError("native FLOAT retains project material losses"))
     :via_sigma in keys(kw) && throw(ArgumentError("native FLOAT retains axial resistance"))
-    payload=_checked_payload_sum("native floating retained model",
-        _subdivision_retained_payload(Any[model.problem,model.contraction,model.sheet_zs,
-            model.via_sigma,model.source_incidence,model.floating_common]),
-        model.scalar_files===nothing ? 0 : _sonnet_scalar_files_payload(model.scalar_files),
-        model.model_files===nothing ? 0 : model.model_files.payload,
-        _sonnet_component_variable_payload(model.variables))
+    payload=model.payload
     n=length(model.labels);nc=size(model.floating_common,2)
     workspace=_checked_payload_sum("native floating solve workspace",
         _checked_array_payload_bytes(ComplexF64,36,n+nc+model.circuit.nnodes,n+nc+model.circuit.nnodes),

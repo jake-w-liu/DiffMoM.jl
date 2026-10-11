@@ -1,0 +1,18 @@
+Run 1:  Sun Oct 11 21:13:09 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\gndref_probes\boxauto_mixed_run\boxauto_mixed.son.
+
+    Pre-Analysis:
+
+      Sonnet Error:
+      Co-calibrated port ground reference error.
+      Component R1 has mixed combination of upper ground references.
+      Upper ground reference for pin 1 is not defined.
+      Upper ground reference for pin 2 is top box cover.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Sun Oct 11 21:13:09 2026.

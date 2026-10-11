@@ -154,11 +154,39 @@ owned model responses and physical circuit-node current projection. The
 matrix/current checks, complex/dynamic references, Y/Z records, stale source
 snapshots, shared files, root/resource guards and transactional attachment.
 Installed AUTO/FEED amp binding succeeds; the actual CUST40 example now
-clears the width contract and fails precisely at the unresolved finite-loss
-AUTO cover selection before attachment. Linked static STF snapshots remain retained.
-Ordinary FLOAT model references, loss-aware AUTO, reference-plane
-contracts, geometry SPROJ traversal, other GEOVAR modes and licensed native pin-group
-calibration remain open implementation/acceptance items.
+clears the width contract and rejects at its off-grid SMD edge alignment,
+before model attachment. Linked static STF snapshots remain retained.
+Reference-plane contracts and licensed native pin-group calibration remain
+open implementation/acceptance items.
+
+Component ground references are now resolved with the installed 18.53
+engine as oracle across a 29-project probe corpus archived under
+`test/fixtures/native_gndref_probes` and replayed by regression test.
+A component-level `GNDREF BOX ...` selects the
+via-return mode; the component's own direction token is inert and each
+pin resolves its cover independently from its `EXSMDP` record (`BOX
+ABOVE`/`BOX BELOW` force a cover, `AUTO` or a missing record selects the
+nearest conductive one — distance dominates loss, non-conductive covers
+are skipped, and ties fall to the bottom cover). Pins resolving to
+different covers reject with the native mixed-direction diagnostic, and
+a forced pin at a free-space cover rejects with the native unsuitable-
+reference diagnostic; free-space covers map to the open termination
+instead of a conductive sheet. Component-level `GNDREF FLOAT`, and
+`AUTO` on a model that needs no ground node (IDEAL R/L/C, NONE), resolve
+to the shared floating local ground: signed pin pairs form one
+differential source, unpaired positive pins share the component common,
+and a model terminal landing on a negative pin attaches to that isolated
+common so the signed pair sees no conductive return. Per-pin records are
+inert outside via mode, including pin-level `FLOAT` under `FLOAT`/`AUTO`
+components as used by the native corpus; a pin-level `FLOAT` under a
+via-mode component is invalid grammar. File-backed FLOAT components keep
+rejecting without an explicit adapter. Twenty-five projects match the
+native loaded response within complex error 0.02 (typical 0.004) and
+the two native-error cases reject identically; the two open-cover cases
+select the same far conductive cover as a forced-direction native
+control while retaining a 0.052 residual attributable to the
+open-boundary model, and component-direction co-calibration residuals
+near 0.01 remain documented approximations.
 
 Independent native ANC/SYM XDIR/YDIR dimensions with NSCD/SCUNI/SCXY point sets now
 resolve into effective geometry before thick-metal expansion. Sparse polygon

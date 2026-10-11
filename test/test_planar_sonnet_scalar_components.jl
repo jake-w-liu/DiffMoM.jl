@@ -13,10 +13,9 @@ function project(directory;floating=false,sparam=false)
     if sparam
         cp(joinpath(dirname(fixture),"device_model.s2p"),joinpath(directory,"device_model.s2p");force=true)
     elseif floating
-        for r in only(p.components)
-            first(r.tokens)=="GNDREF" && (r.tokens[end]="FLOAT")
-        end
-        filter(r->r.tokens[1]=="SMDP",only(p.components))[2].tokens[6]="-3"
+        component=only(p.components)
+        component[findfirst(r->first(r.tokens)=="GNDREF",component)].tokens[end]="FLOAT"
+        filter(r->r.tokens[1]=="SMDP",component)[2].tokens[6]="-3"
     end
     p
 end
@@ -155,11 +154,17 @@ end
         write(joinpath(directory,"load.csv"),"200000000,16.77\n400000000,33.54\n")
         p.variables["Load"]="table1(\"load.csv\",FREQ)"
         only(r for r in only(p.components) if r.tokens[1]=="TYPE").tokens[end]="Load"
+        # The cover-referenced component keeps its via return; the pushed
+        # copy shares the floating common so the two ground modes coexist.
+        record=only(p.components)[findfirst(r->first(r.tokens)=="GNDREF",
+            only(p.components))]
+        empty!(record.tokens);append!(record.tokens,["GNDREF","BOX","AUTO"])
         floating=deepcopy(only(p.components))
         for r in floating
             r.tokens[1]=="ID" && (r.tokens[end]="200")
-            r.tokens[1]=="GNDREF" && (r.tokens[end]="FLOAT")
         end
+        gndref=floating[findfirst(r->first(r.tokens)=="GNDREF",floating)]
+        empty!(gndref.tokens);append!(gndref.tokens,["GNDREF","FLOAT"])
         pins=filter(r->r.tokens[1]=="SMDP",floating)
         pins[1].tokens[6]="5";pins[2].tokens[6]="-5"
         push!(p.components,floating)
@@ -187,9 +192,9 @@ end
         for record in floating
             t=record.tokens
             t[1]=="ID" && (t[end]="200")
-            t[1]=="GNDREF" && (t[end]="FLOAT")
             if t[1]=="TYPE";empty!(t);append!(t,["TYPE","NONE"]);end
         end
+        floating[findfirst(r->first(r.tokens)=="GNDREF",floating)].tokens[end]="FLOAT"
         pins=filter(r->r.tokens[1]=="SMDP",floating)
         pins[1].tokens[6]="5";pins[2].tokens[6]="-5"
         push!(p.components,floating)

@@ -2,6 +2,10 @@ using DiffMoM, Test, LinearAlgebra, SHA, TOML
 
 function _native_component_budget_project(kind=:ideal)
     p=read_sonnet_project(joinpath(@__DIR__,"fixtures","native_ideal_component_units","res","ohm","ohm.son"))
+    for record in only(p.components)
+        first(record.tokens)=="GNDREF" &&
+            (empty!(record.tokens);append!(record.tokens,["GNDREF","BOX","AUTO"]))
+    end
     t=only(filter(r->first(r.tokens)=="TYPE",only(p.components))).tokens
     kind===:ideal && return p
     empty!(t);append!(t,kind===:none ? ["TYPE","NONE"] : ["TYPE","SPROJ","child.son"])
@@ -13,7 +17,8 @@ function _native_component_float_project(kind,value,unit)
     type=only(filter(r->first(r.tokens)=="TYPE",only(p.components)))
     type.tokens[:]=["TYPE","IDEAL",kind,value]
     for record in only(p.components)
-        first(record.tokens)=="GNDREF" && (record.tokens[end]="FLOAT")
+        first(record.tokens)=="GNDREF" &&
+            (empty!(record.tokens);append!(record.tokens,["GNDREF","FLOAT"]))
     end
     pins=filter(r->first(r.tokens)=="SMDP",only(p.components))
     pins[2].tokens[6]="-3"

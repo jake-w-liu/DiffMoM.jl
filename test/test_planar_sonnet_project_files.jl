@@ -51,6 +51,11 @@ end
         filter!(r->first(r.tokens)!="INHSWP",ideal.components[1])
         type=only(filter(r->first(r.tokens)=="TYPE",ideal.components[1])).tokens
         empty!(type);append!(type,["TYPE","IDEAL","RES","16.77"])
+        # The staged file-backed component resolves GNDREF AUTO to the physical
+        # via-return mode; an IDEAL twin needs BOX AUTO to select the same mode.
+        smdp=findfirst(r->first(r.tokens)=="SMDP",ideal.components[1])
+        gndref=only(filter(r->r.tokens==["GNDREF","AUTO"],ideal.components[1][1:smdp-1]))
+        empty!(gndref.tokens);append!(gndref.tokens,["GNDREF","BOX","AUTO"])
         expected=solve_sonnet_project(ideal,300e6;raw=true,mx=64,my=80)
         @test maximum(abs,actual.s-expected.s)<1e-10
         waves=ComplexF64[.3+.2im,-.4im]

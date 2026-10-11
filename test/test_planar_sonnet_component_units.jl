@@ -29,7 +29,7 @@ end
         ("reactive","ind_same_literal",:l,1e-6),
         ("reactive","ind_same_physical",:l,1e-9))
     projects=Dict{String,SonnetProject}()
-    results=Dict{String,SonnetComponentResult}()
+    results=Dict{String,SonnetFloatingResult}()
     natives=Dict{String,Matrix{ComplexF64}}()
     waves=ComplexF64[.2+.1im,-.3im]
     @testset "Exact native sources, full complex response and loaded physical currents" begin
@@ -47,7 +47,7 @@ end
             p=read_sonnet_project(source);projects[tag]=p
             model=sonnet_component_model(p,200e6)
             @test getproperty(only(model.circuit.elements),field)≈value rtol=2eps(Float64)
-            @test model.external_labels==[1,2] && model.labels==[1,2,3,4]
+            @test model.external_labels==[1,2] && model.labels==[1,2,3]
             @test model.circuit.z0==ComplexF64[50,50]
             result=solve_sonnet_project(p,200e6;raw=true,mx=64,my=80)
             results[tag]=result
@@ -57,9 +57,10 @@ end
             @test maximum(abs,result.s-native)<.03
             @test result.s≈transpose(result.s) rtol=1e-10
             @test opnorm(result.s)<=1+1e-10
-            actual=sonnet_component_current_maps(result;incident_waves=waves)
-            physical_nodes=result.circuit.voltages*waves
-            independent=planar_current_maps(result.raw;voltages=result.contraction*physical_nodes)
+            actual=planar_current_maps(result;incident_waves=waves)
+            physical_nodes=transpose(result.source_incidence)*
+                (result.circuit.voltages*(result.incident_transfer*waves))
+            independent=planar_current_maps(result.em;voltages=physical_nodes)
             @test actual[1].jx≈independent[1].jx rtol=1e-10
             @test actual[1].jy≈independent[1].jy rtol=1e-10
             @test actual[end].jz≈independent[end].jz rtol=1e-10
@@ -73,8 +74,8 @@ end
             @test maximum(abs,results[base].s-results[equal].s)<1e-10
             @test maximum(abs,results[base].s-results[changed].s)>.8
             @test results[base].circuit.voltages≈results[equal].circuit.voltages rtol=1e-10
-            left=sonnet_component_current_maps(results[base];incident_waves=waves)
-            right=sonnet_component_current_maps(results[equal];incident_waves=waves)
+            left=planar_current_maps(results[base];incident_waves=waves)
+            right=planar_current_maps(results[equal];incident_waves=waves)
             @test left[1].jx≈right[1].jx rtol=1e-10
             # Compare the physical sheet-current vector in A/m. The
             # equivalent capacitor literals differ by one stored ulp;
