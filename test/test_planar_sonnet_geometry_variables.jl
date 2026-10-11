@@ -185,15 +185,19 @@ end
         write(file,bad)
         @test_throws ArgumentError DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
     end
-    # Two dimensions sharing a moving point are explicitly unproven rather
-    # than applied in arbitrary record order; rejected calls do not mutate.
+    # Two dimensions sharing each other's moving references are a circular
+    # definition under the native sequential law (engine-verified rejection);
+    # rejected calls do not mutate.
     mktempdir() do directory
         start=findfirst("GEOVAR",original);stop=findfirst("POR1",original)
         block=original[first(start):first(stop)-1]
         text=replace(original,"POR1 BOX"=>replace(block,"GEOVAR Width"=>"GEOVAR Other")*"POR1 BOX";count=1)
         text=replace(text,"VALVAR Width LNG 0.375"=>"VALVAR Other LNG 0.375\nVALVAR Width LNG 0.375")
         file=joinpath(directory,"dependent.son");write(file,text)
-        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
+        project=read_sonnet_project(file)
+        saved=deepcopy(project.polygons)
+        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(project,1e9)
+        @test all(a.vertices==b.vertices for (a,b) in zip(project.polygons,saved))
     end
 end
 
@@ -348,6 +352,225 @@ NUM 2
             "POLY 104 1\n0\nEND")*strips*tail)
         @test_throws ArgumentError DiffMoM._sonnet_geometry_project(
             read_sonnet_project(file),1e9)
+    end
+end
+
+@testset "Native sequential anchored dimensions and via ports" begin
+    # Native anchored dimensions resolve in record order: each dimension
+    # lands its moving reference at REF1_current+direction*target, then
+    # shifts every PS2 listing by that displacement. Inactive dimensions
+    # apply identically once any dimension is active, and inactive
+    # dimensions whose saved span disagrees with NOM still re-anchor at
+    # REF1+target. All cases below are engine runs whose resolved literal
+    # projects match the parameterized run bit-identically.
+    head=raw"""FTYP SONPROJ 19
+VER "18.53"
+DIM
+ANG DEG
+CAP PF
+CON /OH
+FREQ MHZ
+IND NH
+LNG MIL
+RES OH
+END DIM
+CONTROL
+VARSWP
+OPTIONS
+SPEED 0
+END CONTROL
+GEO
+TMET "Lossless" 0 SUP 0 0 0 0
+BMET "Lossless" 0 SUP 0 0 0 0
+BOX 1 400 500 64 80 20 0
+250 1 1 0 0 0 1 "Air"
+25 9.8 1 0 0 0 1 "Alumina"
+LORGN 0 500 U
+POR1 BOX
+POLY 104 1
+3
+1 50 0 0 0 0 187.5
+POR1 BOX
+POLY 106 1
+1
+2 50 0 0 0 400 187.5
+"""
+    tail=raw"""END GEO
+VARSWP
+ENABLED Y
+FREQ Y AN SWEEP 200
+END
+END VARSWP
+FILEOUT
+TOUCH ND Y native_device.s2p IC 15 S RI R 50
+FOLDER .
+END FILEOUT
+"""
+    strips=raw"""NUM 2
+0 5 -1 N 104 1 1 100 100 0 0 0 Y
+0 175
+87.5 175
+87.5 200
+0 200
+0 175
+END
+0 5 -1 N 106 1 1 100 100 0 0 0 Y
+112.5 175
+400 175
+400 200
+112.5 200
+112.5 175
+END
+"""
+    wdim=raw"""VALVAR W LNG 150 "strip width"
+GEOVAR W ANC XDIR 1 NSCD
+POS 0 0
+NOM 87.5
+REF1 POLY 104 1
+0
+REF2 POLY 104 1
+1
+PS1 0
+END
+PS2 1
+POLY 104 1
+2
+END
+END
+"""
+    xdim(target)=replace(raw"""VALVAR X LNG XT "gap"
+GEOVAR X ANC XDIR 1 NSCD
+POS 0 0
+NOM 25
+REF1 POLY 104 1
+2
+REF2 POLY 106 1
+0
+PS1 0
+END
+PS2 1
+POLY 106 1
+3
+END
+END
+""","XT"=>string(target))
+    mktempdir() do directory
+        # Active dependent chain: X's REF2 lands at REF1_resolved+target.
+        file=joinpath(directory,"dep.son")
+        write(file,head*wdim*xdim(200)*strips*tail)
+        project=read_sonnet_project(file)
+        resolved=DiffMoM._sonnet_geometry_project(project,1e9)
+        scale=project.length_scale
+        moved=only(filter(q->q.id==106,resolved.polygons))
+        @test moved.vertices./scale≈[350 400 400 350 350;175 175 200 200 175] rtol=8eps()
+        # Inactive consistent dimension propagates the same constraint:
+        # REF2 lands at REF1_resolved+NOM=175 and carries PS2 with it.
+        file=joinpath(directory,"depi.son")
+        write(file,head*wdim*xdim(25)*strips*tail)
+        resolved=DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
+        moved=only(filter(q->q.id==106,resolved.polygons))
+        @test moved.vertices./scale≈[175 400 400 175 175;175 175 200 200 175] rtol=8eps()
+        # Inactive inconsistent dimension still re-anchors at REF1+target
+        # rather than preserving its saved span.
+        file=joinpath(directory,"depj.son")
+        write(file,head*wdim*xdim(25)*replace(strips,
+            "112.5 175\n400"=>"117.5 175\n400",
+            "112.5 200\n112.5 175"=>"117.5 200\n117.5 175")*tail)
+        resolved=DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
+        moved=only(filter(q->q.id==106,resolved.polygons))
+        @test moved.vertices./scale≈[175 400 400 175 175;175 175 200 200 175] rtol=8eps()
+        # A moving reference already placed by a prior dimension leaves the
+        # later dimension's ordinary PS2 members untouched (zero extra shift).
+        file=joinpath(directory,"depk.son")
+        write(file,head*replace(wdim,"PS2 1\nPOLY 104 1\n2\nEND"=>
+            "PS2 2\nPOLY 104 1\n2\nPOLY 106 1\n0\nEND")*xdim(25)*strips*tail)
+        resolved=DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
+        moved=only(filter(q->q.id==106,resolved.polygons))
+        @test moved.vertices./scale≈[175 400 400 112.5 175;175 175 200 200 175] rtol=8eps()
+        # An untouched inconsistent dimension re-anchors at REF1+target once
+        # the sequential resolver runs (native-verified: 25, not 117.5).
+        file=joinpath(directory,"depn.son")
+        write(file,head*wdim*replace(xdim(25),"REF1 POLY 104 1\n2"=>
+            "REF1 POLY 104 1\n0")*replace(strips,
+            "112.5 175\n400"=>"117.5 175\n400",
+            "112.5 200\n112.5 175"=>"117.5 200\n117.5 175")*tail)
+        resolved=DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
+        moved=only(filter(q->q.id==106,resolved.polygons))
+        @test moved.vertices./scale≈[25 400 400 25 25;175 175 200 200 175] rtol=8eps()
+        # Record order does not drive resolution: a dependent dimension
+        # listed before its mover still resolves last (native-verified:
+        # poly106 reaches 175, not 112.5).
+        file=joinpath(directory,"depo.son")
+        write(file,head*xdim(25)*wdim*strips*tail)
+        resolved=DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
+        moved=only(filter(q->q.id==106,resolved.polygons))
+        @test moved.vertices./scale≈[175 400 400 175 175;175 175 200 200 175] rtol=8eps()
+        # Circular dependencies match the native circular-definition error.
+        file=joinpath(directory,"depcirc.son")
+        write(file,head*replace(wdim,"REF2 POLY 104 1\n1"=>"REF2 POLY 106 1\n0")*
+            xdim(25)*strips*tail)
+        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(
+            read_sonnet_project(file),1e9)
+        # A symmetric mover's points are still rejected when a non-anchored
+        # dimension references them; only anchored dependents compose.
+        file=joinpath(directory,"depmixed.son")
+        write(file,head*wdim*xdim(200)*replace(strips,
+            "0 5 -1 N 106"=>"0 5 -1 N 106")*tail |> s->
+            replace(s,"GEOVAR X ANC XDIR 1 NSCD"=>"GEOVAR X SYM XDIR 1 NSCD"))
+        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(
+            read_sonnet_project(file),1e9)
+        # A via port re-anchors to its resolved edge midpoint (engine-verified
+        # against the parameterized run).
+        viahead=replace(head,"""BMET "Lossless" 0 SUP 0 0 0 0
+BOX 1 400 500 64 80 20 0
+250 1 1 0 0 0 1 "Air"
+25 9.8 1 0 0 0 1 "Alumina"
+LORGN"""=>"""BMET "Lossless" 0 SUP 0 0 0 0
+MET "Copper" 1 NOR 58000000 0.5 1.4
+MET "Copper" 1 VOL 58000000 1.4
+BOX 1 400 500 64 80 20 0
+250 1 1 0 0 0 2 "Air"
+25 9.8 1 0.0009 0 0 2 "Alumina"
+TECHLAY METAL Copper Copper 0 0
+0 0 0 N 0 1 1 100 100 0 0 0 Y
+END
+END
+TECHLAY VIA Via Via 0 0
+VIA POLYGON
+0 0 1 N 0 1 1 100 100 0 0 0 Y
+TOLEVEL GND RING NOCOVERS
+END
+END
+LORGN""")
+        viahead=replace(viahead,"""POR1 BOX
+POLY 106 1
+1
+2 50 0 0 0 400 187.5
+"""=>"""POR1 VIA
+POLY 106 1
+0
+2 50 0 0 0 118.75 175
+""")
+        viapoly=raw"""VIA POLYGON
+0 5 1 N 106 1 1 100 100 0 0 0 Y
+TOLEVEL GND RING NOCOVERS
+TLAYNAM Via INH
+112.5 175
+125 175
+125 200
+112.5 200
+112.5 175
+END
+"""
+        file=joinpath(directory,"vp.son")
+        write(file,viahead*wdim*xdim(200)*replace(strips,
+            "0 5 -1 N 106 1 1 100 100 0 0 0 Y\n112.5 175\n400 175\n400 200\n112.5 200\n112.5 175\nEND\n"=>"")*
+            viapoly*tail)
+        resolved=DiffMoM._sonnet_geometry_project(read_sonnet_project(file),1e9)
+        moved=only(filter(q->q.id==106,resolved.polygons))
+        @test moved.vertices./scale≈[350 125 125 350 350;175 175 200 200 175] rtol=8eps()
+        port=only(filter(p->p.kind===:via,resolved.ports))
+        @test port.values[6:7]==["237.5","175.0"]
     end
 end
 end

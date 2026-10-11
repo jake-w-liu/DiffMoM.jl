@@ -22,6 +22,43 @@ end
     isfinite(value) && (value>0 ||
         (iszero(nominal) && iszero(value) && kind=="ANC" && !scaled))
 
+# Native anchored dimensions resolve sequentially in dependency order,
+# proved against the installed engine on active/inactive, consistent/
+# inconsistent and dependent chains alike: every unscaled ANC dimension
+# re-anchors its moving reference at REF1_current + direction*target,
+# then shifts every PS2 listing by that reference's displacement. A
+# dimension whose references are moved by another dimension resolves
+# after it, regardless of file order. Scaled and repeated
+# moving-reference dimensions keep their own adapters and still reject
+# cross-dimension interactions.
+@inline _sonnet_geovar_anc_sequential(parameter)=
+    parameter.kind=="ANC" && !parameter.scaled &&
+        parameter.explicit_moving_references<=1
+
+# Topological order of sequential anchored dimensions: a dimension depends
+# on every other sequential dimension whose moved point set contains one
+# of its references. Circular dependencies match the native circular
+# definition error. Independent dimensions keep record order.
+function _sonnet_geovar_sequential_order(parameters,source)
+    ids=[i for (i,parameter) in enumerate(parameters) if
+        _sonnet_geovar_anc_sequential(parameter)]
+    deps=Dict(i=>Set{Int}() for i in ids)
+    for i in ids, point in parameters[i].references, j in ids
+        i!=j && point in parameters[j].points[2] && push!(deps[i],j)
+    end
+    order=Int[];pending=copy(ids)
+    while !isempty(pending)
+        advanced=false
+        for i in copy(pending)
+            all(j->j in order,deps[i]) || continue
+            push!(order,i);deleteat!(pending,findfirst(==(i),pending));advanced=true
+        end
+        advanced || _sonnet_error(source,parameters[first(pending)].line,
+            "circular dependent GEOVAR dimensions")
+    end
+    return order
+end
+
 function _sonnet_geovar_limit(value::Integer,label)
     0<value<=typemax(Int) || throw(ArgumentError("$label must be a positive stored integer"))
     return Int(value)
@@ -483,8 +520,13 @@ sequence, recomputing its reference radius. NSCD ANC moving-reference repetition
 apply their native common-displacement factor; ANC follows its reference
 coordinate order, using the direction field for zero offsets. NSCD SYM
 moving references apply the native cell-quantized movement law proved against
-the installed engine on both axes. Other references,
-dependent/overlapping active dimensions and moved component/interior-port semantics
+the installed engine on both axes. Unscaled anchored dimensions resolve
+sequentially in their native dependency order, re-anchoring each moving
+reference at REF1+direction*target, so dependent anchored chains and
+inactive constraint dimensions apply identically; circular definitions are
+rejected like the native engine. Via ports re-anchor to their resolved edge
+midpoint like sheet ports. Other references, non-anchored
+dependent/overlapping dimensions and moved component/gap-port semantics
 require separate adapters. Whole-polygon selectors expand logical vertices
 within point/storage budgets before geometry copy;
 zero saved ANC/NSCD offsets require coincident reference coordinates on their axis;
@@ -550,8 +592,12 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         push!(targets,target)
     end
     all(iszero,deltas) && return p
-    all(port->port.kind in (:box,:std) && haskey(original,port.polygon) &&
-        original[port.polygon].kind==:sheet,p.ports) ||
+    # Sheet ports (box/std on sheet polygons) and via ports re-anchor to
+    # their referenced edge midpoint after resolution; gap ports and
+    # mixed-kind attachments still require their own adapters.
+    all(port->haskey(original,port.polygon) &&
+        ((port.kind in (:box,:std) && original[port.polygon].kind==:sheet) ||
+        (port.kind in (:via,:std) && original[port.polygon].kind==:via)),p.ports) ||
         throw(ArgumentError("moved GEOVAR interior/via ports require their attachment adapter"))
     for port in p.ports
         vertices=original[port.polygon].vertices
@@ -562,24 +608,60 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     end
     owners=Dict{Tuple{Int,Int},Tuple{Int,Int}}()
     for (i,parameter) in enumerate(parameters)
-        iszero(deltas[i]) && continue
+        iszero(deltas[i]) && !_sonnet_geovar_anc_sequential(parameter) && continue
         for point in Iterators.flatten(parameter.points)
-            haskey(owners,point) && owners[point][1]!=i && _sonnet_error(p.source,parameter.line,
-                "overlapping active GEOVAR dimensions require their ordered geometry adapter")
+            if haskey(owners,point) && owners[point][1]!=i &&
+                    !(_sonnet_geovar_anc_sequential(parameter) &&
+                        _sonnet_geovar_anc_sequential(parameters[owners[point][1]]))
+                _sonnet_error(p.source,parameter.line,
+                    "overlapping active GEOVAR dimensions require their ordered geometry adapter")
+            end
             movements=get(owners,point,(i,0))[2]
             owners[point]=(i,movements+1)
         end
     end
     for (i,parameter) in enumerate(parameters),point in parameter.references
-        haskey(owners,point) && owners[point][1]!=i && _sonnet_error(p.source,parameter.line,
-            "dependent GEOVAR dimensions require their ordered geometry adapter")
+        if haskey(owners,point) && owners[point][1]!=i &&
+                !(_sonnet_geovar_anc_sequential(parameter) &&
+                    _sonnet_geovar_anc_sequential(parameters[owners[point][1]]))
+            _sonnet_error(p.source,parameter.line,
+                "dependent GEOVAR dimensions require their ordered geometry adapter")
+        end
     end
     polygons=Dict(q.id=>copy(q.vertices) for q in p.polygons)
-    for (i,(parameter,delta,target)) in enumerate(zip(parameters,deltas,targets))
-        iszero(delta) && continue
+    # Non-anchored dimensions cannot share moved geometry with anything, so
+    # record order is safe for them; anchored dimensions resolve in their
+    # native dependency order.
+    applyorder=[i for (i,parameter) in enumerate(parameters) if
+        !_sonnet_geovar_anc_sequential(parameter)]
+    append!(applyorder,_sonnet_geovar_sequential_order(parameters,p.source))
+    for i in applyorder
+        parameter,delta,target=parameters[i],deltas[i],targets[i]
         firstid,firstpoint=parameter.references[1]
         secondid,secondpoint=parameter.references[2]
         firstvertices=original[firstid].vertices;secondvertices=original[secondid].vertices
+        if _sonnet_geovar_anc_sequential(parameter)
+            # Sequential anchored law (native-verified): REF2 lands at
+            # REF1's current coordinate plus direction*target; every PS2
+            # listing then shifts by that reference displacement. Inactive
+            # and dependent dimensions obey the same rule, so the shift is
+            # computed from the already-resolved coordinates.
+            anchor=polygons[firstid][parameter.axis,firstpoint]
+            reference=polygons[secondid][parameter.axis,secondpoint]
+            shift=anchor+parameter.direction*target*p.length_scale-reference
+            iszero(shift) && continue
+            isfinite(shift) ||
+                _sonnet_error(p.source,parameter.line,"GEOVAR displacement is unrepresentable")
+            for (id,index) in parameter.points[2]
+                before=polygons[id][parameter.axis,index]
+                after=before+shift
+                isfinite(after) && after!=before ||
+                    _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")
+                polygons[id][parameter.axis,index]=after
+            end
+            continue
+        end
+        iszero(delta) && continue
         if parameter.kind=="ANC" && !parameter.scaled && parameter.explicit_moving_references>1
             for point in parameter.points[2]
                 owner,movements=owners[point]
