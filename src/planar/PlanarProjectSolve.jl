@@ -299,7 +299,7 @@ function _project_radiation_excitation(result::PlanarProjectResult;
         node_voltages=result.circuit.voltages*waves
         transpose(result.model.source_incidence)*view(node_voltages,1:length(result.model.node_names))
     end
-    accepted=if result.circuit!==nothing
+    accepted,tolerance=if result.circuit!==nothing
         # Circuit currents are external currents into the network. Form
         # physical differential port voltages from the same retained MNA
         # solution, including floating/reference-return terminal pairs.
@@ -310,17 +310,19 @@ function _project_radiation_excitation(result::PlanarProjectResult;
                 (iszero(negative) ? 0.0im : node_voltages[negative])
         end
         current=result.circuit.currents*waves
-        _planar_accepted_power(terminal_voltages,current;max_bytes,retained_bytes=reserve)
+        (_planar_accepted_power(terminal_voltages,current;max_bytes,retained_bytes=reserve),
+            100eps(Float64)*norm(result.circuit.currents)*norm(waves)*norm(terminal_voltages))
     elseif result.y!==nothing
         # Independently retained conductance can survive after S rounds to
         # a lossless boundary. Keep the physical peak-phasor V†YV relation.
         current=_planar_terminal_current(result.y,nodes;max_bytes,retained_bytes=reserve)
-        _planar_accepted_power(nodes,current;max_bytes,retained_bytes=reserve)
+        (_planar_accepted_power(nodes,current;max_bytes,retained_bytes=reserve),
+            100eps(Float64)*norm(result.y)*sum(abs2,nodes))
     else
         reflected=result.s*waves
-        .5real(dot(waves,waves)-dot(reflected,reflected))
+        (.5real(dot(waves,waves)-dot(reflected,reflected)),
+            100eps(Float64)*(1+norm(result.s))*norm(waves)^2)
     end
-    tolerance=100eps(Float64)*norm(waves)^2
     isfinite(accepted) && accepted>=-tolerance || throw(ArgumentError("project radiation requires passive accepted power"))
     coeff=_planar_current_product(_planar_coefficient_columns(result.em),nodes)
     all(isfinite,coeff) || throw(ArgumentError("project radiation coefficients are nonfinite"))

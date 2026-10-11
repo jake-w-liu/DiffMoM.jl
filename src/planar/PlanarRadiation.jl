@@ -430,7 +430,7 @@ function _planar_result_radiation_excitation(result::_PlanarFieldResult;
     end
     X=direct ? result.currents : _planar_coefficient_columns(result)
     current=_planar_terminal_current(result.y,v;max_bytes,retained_bytes=reserve);pin=_planar_accepted_power(v,current;max_bytes,retained_bytes=reserve)
-    tolerance=100eps(Float64)*norm(v)*norm(current)
+    tolerance=100eps(Float64)*norm(result.y)*sum(abs2,v)
     isfinite(pin) && pin>=-tolerance || throw(ArgumentError("radiation gain requires finite nonnegative accepted power"))
     return (problem=source,coefficients=_planar_current_product(X,v),freq=real(result.freq),
         accepted_power=pin>0 ? pin : nothing,

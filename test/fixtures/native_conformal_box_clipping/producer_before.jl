@@ -17,8 +17,8 @@ function main()
  try
   for c in cases
    folder=joinpath(output,c.name);mkpath(folder);v=p.length_scale.*hcat(([q[1],q[2]] for q in c.points)...)
-   polys=[SonnetPolygon(:sheet,0,-1,1,v,"","","",String[])]
-   isempty(c.extra) || push!(polys,SonnetPolygon(:sheet,0,-1,2,p.length_scale.*hcat(([q[1],q[2]] for q in c.extra)...),"","","",String[]))
+   polys=[SonnetPolygon(:sheet,0,-1,1,v,"","",String[])]
+   isempty(c.extra) || push!(polys,SonnetPolygon(:sheet,0,-1,2,p.length_scale.*hcat(([q[1],q[2]] for q in c.extra)...),"","",String[]))
    i=c.edge+1;j=mod1(i+1,length(c.points)-1);a,b=c.points[i],c.points[j]
    port=SonnetPortSpec(:box,1,c.edge,1,["1","50","0","0","0",string((a[1]+b[1])/2),string((a[2]+b[2])/2)],SonnetRecord[])
    literal=SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,p.box,p.layers,p.metals,p.top,p.bottom,polys,[port],p.variables,p.components,p.sweeps,p.records)

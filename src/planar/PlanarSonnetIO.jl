@@ -42,6 +42,11 @@ struct SonnetPolygon
     flags::Vector{String}
 end
 
+# Polygons without a TLAYNAM reference predate the recorded inheritance
+# mode; the eight-argument form maps them to an empty (ordinary) mode.
+SonnetPolygon(kind,level,material,id,vertices,target,technology,flags)=
+    SonnetPolygon(kind,level,material,id,vertices,target,technology,"",flags)
+
 """Native gap/box/co-calibrated/via port including its complete metadata.
 `edge` is a zero-based native polygon-edge index; `values` retain R/X/L/C,
 position, and optional reference-plane settings without losing expressions.

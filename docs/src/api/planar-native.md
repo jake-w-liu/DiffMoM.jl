@@ -116,6 +116,7 @@ sonnet_variable_value
 sonnet_planar_circuit
 solve_sonnet_project
 sonnet_metal_zs
+sonnet_calibration_groups
 SonnetScalarSource
 SonnetScalarTable
 SonnetScalarFiles
