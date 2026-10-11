@@ -143,7 +143,7 @@ end
     @test norm(only(thirdplan.bindings).response-only(firstplan.bindings).response)>.1
     @test only(firstplan.bindings).response==only(plan.bindings).response
     for (recordkind,tokens,message) in (("TERMW",["TERMW","ODD","40"],"width adapter"),
-            ("TERMW",["TERMW","CUST"],"width adapter"),("GNDREF",["GNDREF","FLOAT"],"floating component_response adapter"),
+            ("TERMW",["TERMW","CUST"],"width adapter"),
             ("GNDREF",["GNDREF","POLYGON","AUTO"],"unrepresented SMD ground reference"),
             ("TYPE",["TYPE","SPARAM","999"],"unknown SMDFILES"))
         bad=deepcopy(project);record=first(filter(r->first(r.tokens)==recordkind,bad.components[1]))
@@ -153,6 +153,12 @@ end
         @test e isa ArgumentError && occursin(message,sprint(showerror,e))
         @test count[]==0
     end
+    # A component-level FLOAT on a file-backed component stages; its pins
+    # attach on the shared floating common instead of cover vias.
+    floatstaged=deepcopy(project)
+    record=first(filter(r->first(r.tokens)=="GNDREF",floatstaged.components[1]))
+    empty!(record.tokens);append!(record.tokens,["GNDREF","FLOAT"])
+    @test sonnet_component_files(floatstaged,300e6)!==nothing
     for tag in ("DRP1","DRP2","UNKNOWN")
         bad=deepcopy(project);push!(bad.components[1],SonnetRecord(500,[tag,"LEFT","FIX","50"]))
         @test_throws ArgumentError sonnet_component_files(bad,300e6)
@@ -258,7 +264,11 @@ end
     # Reading/model ordering succeeds independently of EM/native rendering acceptance.
     precise=read_sonnet_project(joinpath(corpus,"7GHz_amp","7GHz_amp.son"))
     count=Ref(0);provider=f->(count[]+=1;50.)
-    e=try sonnet_component_files(precise,7e9;requested_reference=provider);nothing catch error;error end
+    # The fixture's fine raster needs ~10.7 GiB of staging estimate; give an
+    # explicit budget so the edge-alignment rejection is reached on hosts
+    # whose free-memory default budget is tighter.
+    e=try sonnet_component_files(precise,7e9;requested_reference=provider,
+        max_bytes=16*1024^3);nothing catch error;error end
     @test e isa ArgumentError
     @test occursin("SMD edge is not aligned",sprint(showerror,e))
     @test count[]==0
@@ -494,6 +504,156 @@ END VARSWP
         @test result isa DiffMoM.SonnetFloatingResult
         @test result.model_files!==nothing &&
             length(result.model_files.bindings)==1
+    end
+end
+
+@testset "Staged FLOAT file models attach on the shared local ground" begin
+    # File-backed FLOAT components stage like via-mode ones; each declared
+    # model pin attaches as an independent port on the component's floating
+    # common. Native cannot verify this under Lite (data-file components are
+    # license-blocked); the port structure is the one verified for IDEAL/NONE
+    # floats, and the staged/callback paths must agree exactly.
+    floatfile=read_sonnet_project(coupon)
+    compref=only(floatfile.components)[findfirst(r->r.tokens==["GNDREF","AUTO"],
+        only(floatfile.components))]
+    empty!(compref.tokens);append!(compref.tokens,["GNDREF","FLOAT"])
+    @test DiffMoM._sonnet_component_floating(floatfile,only(floatfile.components))
+    plan=sonnet_component_files(floatfile,300e6;grid=(32,40))
+    @test length(plan.bindings)==1
+    result=solve_sonnet_project(plan;raw=true,mx=32,my=40)
+    @test result isa DiffMoM.SonnetFloatingResult
+    @test isfinite(result.s[2,1]) && isfinite(result.s[1,1])
+    @test result.model_files!==nothing &&
+        length(result.model_files.bindings)==1
+    # The coarse (1x) UFFT mode grid wraps the asymmetric geometry into a
+    # small non-reciprocity; the default 2x modes restore sub-1e-14
+    # symmetry. The gate below documents the coarse-spectral artifact.
+    @test abs(result.s[1,2]-result.s[2,1])<2e-3
+    @test opnorm(result.s)<=1+2e-3
+    full=solve_sonnet_project(plan;raw=true)
+    @test abs(full.s[1,2]-full.s[2,1])<1e-12
+    @test opnorm(full.s)<=1+1e-10
+    # The auto-staged solve consumes an identical frozen snapshot.
+    direct=solve_sonnet_project(floatfile,300e6;raw=true,mx=32,my=40)
+    @test direct.s≈result.s rtol=1e-12
+    # The callback path with the same network must agree with the staged
+    # binding (the common is identical, only the provider differs).
+    binding=only(plan.bindings)
+    callback=solve_sonnet_project(floatfile,300e6;raw=true,mx=32,my=40,
+        component_response=(p,c,f)->(response=binding.response,format=:s,z0=binding.z0))
+    @test callback.s≈result.s rtol=1e-12
+    # Staged guards mirror the ordinary path.
+    @test_throws ArgumentError solve_sonnet_project(plan,400e6;raw=true,mx=32,my=40)
+    @test_throws ArgumentError sonnet_floating_model(floatfile,300e6;grid=(16,16),
+        _model_files=plan)
+    @test_throws ArgumentError sonnet_floating_model(floatfile,300e6;grid=(32,40),
+        _model_files=plan,component_response=(a,b,c)->1)
+    # A negative-labeled pin cannot declare a file-model port; pin-level
+    # FLOAT stays inert on the floating component.
+    neg=deepcopy(floatfile)
+    pin=only(filter(r->first(r.tokens)=="SMDP" && last(r.tokens)=="2",
+        only(neg.components)))
+    pin.tokens[6]="-4"
+    @test_throws ArgumentError sonnet_component_files(neg,300e6)
+    pinfloat=deepcopy(floatfile)
+    exsmdp=findfirst(r->r.tokens==["EXSMDP"],only(pinfloat.components))
+    empty!(only(pinfloat.components)[exsmdp+1].tokens)
+    append!(only(pinfloat.components)[exsmdp+1].tokens,["GNDREF","FLOAT"])
+    @test sonnet_component_files(pinfloat,300e6;grid=(32,40))!==nothing
+    # A mixed project (via-mode SPROJ + FLOAT SPARAM) stages both bindings
+    # once; each component consumes its own frozen snapshot on its own
+    # route — the via path in the ordinary subproject, the floating
+    # adapter on the shared local ground.
+    text=read(coupon,String)
+    text=replace(text,"""0 5 -1 N 106 1 1 100 100 0 0 0 Y
+112.5 175
+400 175
+400 200
+112.5 200
+112.5 175
+END"""=>"""0 5 -1 N 106 1 1 100 100 0 0 0 Y
+112.5 175
+137.5 175
+137.5 200
+112.5 200
+112.5 175
+END
+0 5 -1 N 107 1 1 100 100 0 0 0 Y
+162.5 175
+400 175
+400 200
+162.5 200
+162.5 175
+END""";count=1)
+    text=replace(text,"NUM 2"=>"NUM 3";count=1)
+    text=replace(text,"POLY 106 1"=>"POLY 107 1";count=1)
+    text=replace(text,"END\nNUM 3"=>"END\n"*"""SMD 0 "FloatingDevice"
+ID 200
+GNDREF FLOAT
+SBOX 137.5 162.5 175 200
+PBSHW N
+LPOS 150 187.5
+TYPE SPARAM 1
+SMDP 0 137.5 187.5 L 5 1
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+SMDP 0 162.5 187.5 R 6 2
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+END
+"""*"NUM 3";count=1)
+    mktempdir() do directory
+        parent=joinpath(directory,"parent.son");child=joinpath(directory,"child.son")
+        write(parent,replace(text,"TYPE SPARAM 1"=>"TYPE SPROJ child.son\nINHSWP N";count=1))
+        write(child,"""FTYP SONNETPRJ 19
+VER "18.53"
+DIM
+FREQ MHZ
+CAP PF
+IND NH
+LNG MIL
+RES OH
+END DIM
+CKT
+RES 1 2 R=16.77
+DEF2P 1 2 Device R 50
+END CKT
+VARSWP
+ENABLED Y
+FREQ Y AN SWEEP 200 400 200
+END
+END VARSWP
+""")
+        cp(joinpath(dirname(coupon),"device_model.s2p"),
+            joinpath(directory,"device_model.s2p"))
+        p=read_sonnet_project(parent)
+        @test count(c->DiffMoM._sonnet_component_floating(p,c),p.components)==1
+        plan=sonnet_component_files(p,300e6;grid=(32,40))
+        @test length(plan.bindings)==2
+        result=solve_sonnet_project(plan;raw=true,mx=32,my=40)
+        @test result isa DiffMoM.SonnetFloatingResult
+        @test isfinite(result.s[2,1]) && isfinite(result.s[1,1])
+        # The model circuit carries exactly the two attached file networks;
+        # the EM network joins at solve time.
+        model=sonnet_floating_model(p,300e6;grid=(32,40),_model_files=plan)
+        @test count(e->e isa DiffMoM._CircuitNetwork,model.circuit.elements)==2
+        # The flipped split attaches the same way: a floating SPROJ child
+        # keeps its INHSWP record through floating validation.
+        flipped=read_sonnet_project(parent)
+        flipcomp=only(filter(c->any(r->r.tokens[1]=="SMD" &&
+            occursin("Floating",join(r.tokens," ")),c),flipped.components))
+        type=only(filter(r->r.tokens[1]=="TYPE",flipcomp))
+        empty!(type.tokens);append!(type.tokens,["TYPE","SPROJ","child.son"])
+        insert!(flipcomp,findfirst(r->r.tokens[1]=="TYPE",flipcomp)+1,
+            SonnetRecord(type.line,["INHSWP","N"]))
+        flipplan=sonnet_component_files(flipped,300e6;grid=(32,40))
+        @test length(flipplan.bindings)==2
+        flipmodel=sonnet_floating_model(flipped,300e6;grid=(32,40),_model_files=flipplan)
+        @test count(e->e isa DiffMoM._CircuitNetwork,flipmodel.circuit.elements)==2
     end
 end
 

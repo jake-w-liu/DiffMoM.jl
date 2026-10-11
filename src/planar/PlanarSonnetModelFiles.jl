@@ -154,6 +154,7 @@ function _sonnet_files_contract(p,component)
         length(kind.tokens)==2 || _sonnet_error(p.source,kind.line,"NONE requires no model fields")
     end
     pins=Tuple{Int,Int}[]
+    filebacked=modelkind in ("SPARAM","SPROJ")
     topground=false;pinblock=false;ground=false;width=false;inherit=nothing
     pinfloat=nothing
     for record in component
@@ -178,19 +179,22 @@ function _sonnet_files_contract(p,component)
             width=true
         elseif tag=="SMDP"
             pinblock && _sonnet_error(p.source,record.line,"unterminated model-pin metadata")
-            isempty(pins) || ground && width || _sonnet_error(p.source,record.line,
+            !filebacked || isempty(pins) || ground && width || _sonnet_error(p.source,record.line,
                 "each model pin requires an explicit ground reference and terminal width")
             length(t)==7 || _sonnet_error(p.source,record.line,"SMDP requires level,x,y,orientation,geometry label,model pin")
             t[5] in ("L","R","T","B") || _sonnet_error(p.source,record.line,"unrepresented terminal orientation")
             label=tryparse(Int,t[6]);pin=tryparse(Int,t[7]);level=tryparse(Int,t[2])
-            label!==nothing && label>0 && pin!==nothing && pin>0 && level!==nothing && level>=0 ||
-                _sonnet_error(p.source,record.line,"model pins require positive labels/indices and a literal nonnegative level")
+            # File-model pins declare positive geometry labels; ordinary
+            # components may carry signed FLOAT terminal labels instead.
+            validlabel=filebacked ? (label!==nothing && label>0) : (label!==nothing && label!=0)
+            validlabel && pin!==nothing && pin>0 && level!==nothing && level>=0 ||
+                _sonnet_error(p.source,record.line,"model pins require literal nonzero labels, positive indices and a nonnegative level")
             push!(pins,(pin,label));ground=false;width=false
         elseif tag=="EXSMDP"
             !isempty(pins) && !pinblock && length(t)==1 || _sonnet_error(p.source,record.line,"unexpected EXSMDP")
             pinblock=true
         elseif tag=="END" && length(t)==2 && t[2]=="EXSMDP"
-            pinblock && ground && width || _sonnet_error(p.source,record.line,
+            pinblock && (!filebacked || ground && width) || _sonnet_error(p.source,record.line,
                 "each model pin requires an explicit ground reference and terminal width")
             pinblock=false
         elseif tag in ("DRP1","DRP2","REFPLANE")
@@ -199,18 +203,16 @@ function _sonnet_files_contract(p,component)
             _sonnet_error(p.source,record.line,"unrepresented component record $tag")
         end
     end
-    !pinblock && topground && !isempty(pins) && ground && width ||
+    !pinblock && (!filebacked || topground && !isempty(pins) && ground && width) ||
         _sonnet_error(p.source,kind.line,"SPARAM requires explicit component/pin ground and terminal-width metadata")
     # A pin-level FLOAT is inert on components that resolve to the floating
-    # local ground; on a via-mode component (every file-backed model) it is
-    # invalid grammar.
+    # local ground; on a via-mode component it is invalid grammar.
     pinfloat!==nothing && !_sonnet_component_floating(p,component) &&
         _sonnet_error(p.source,pinfloat.line,
             "pin ground reference cannot select FLOAT")
-    modelkind in ("SPARAM","SPROJ") &&
-        _sonnet_component_gndref(p,component).mode===:float &&
-        _sonnet_error(p.source,kind.line,
-            "file-backed FLOAT component requires the floating component_response adapter")
+    # File-backed FLOAT components stage like via-mode ones; the floating
+    # adapter attaches each declared model pin as an independent port on
+    # the component's shared local ground.
     sort!(pins;by=first)
     all(k->pins[k][1]==k,eachindex(pins)) || _sonnet_error(p.source,kind.line,"model pin indices must be unique and contiguous from one")
     modelkind=="IDEAL" && length(pins)!=2 && _sonnet_error(p.source,kind.line,"IDEAL requires two model pins")

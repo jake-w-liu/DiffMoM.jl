@@ -13,8 +13,8 @@ delay, loss and coupling remain; this result does not claim the native
 GLG calibration or its unavailable Lite-license comparison.
 `scalar_files,scalar_overrides` retain owned native CSV dependencies and
 the numeric overrides used for the physical bridges and loads. `model_files`
-retains automatic SPARAM dependencies of ordinary cover-referenced components
-that coexist with the floating sources."""
+retains automatic SPARAM/SPROJ dependencies of both cover-referenced and
+floating components in the solved project."""
 struct SonnetFloatingResult{R}
     project::SonnetProject
     em::R
@@ -95,7 +95,7 @@ function _sonnet_float_validate(p,records)
         elseif key in ("DRP1","DRP2","TWVALUE","TWTYPE","REFPLANE")
             _sonnet_error(p.source,record.line,"native floating $key requires its physical calibration/terminal adapter")
         elseif !(key in ("POR1","POLY","SMD","ID","SBOX","PBSHW","LPOS","PBOX","PKG",
-                "TYPE","SMDP","EXSMDP","END") || (portrecord && key=="CUPGRP") ||
+                "TYPE","SMDP","EXSMDP","END","INHSWP") || (portrecord && key=="CUPGRP") ||
                 tryparse(Float64,key)!==nothing)
             _sonnet_error(p.source,record.line,"unrepresented native floating field $key")
         end
@@ -142,10 +142,12 @@ its reference is never clamped to a cover. Facing pads must share sheet,
 axis and their declared FEED/CELL/CUST width. Duplicate/unmatched signed
 labels and unknown terminal-width modes reject.
 
-NONE components expose their paired ports; ideal R/L/C and explicit
-`component_response(project,records,freq)` blocks load those pairs through
-MNA. Ordinary cover-referenced ports/components can coexist, preserving
-their actual source modes and material losses. `bridge_zs` explicitly sets
+NONE components expose their paired ports; ideal R/L/C, staged
+SPARAM/SPROJ snapshots (each declared model pin attaches as an
+independent port on the shared local ground) and explicit
+`component_response(project,records,freq)` blocks load those pairs
+through MNA. Ordinary cover-referenced ports/components can coexist,
+preserving their actual source modes and material losses. `bridge_zs` explicitly sets
 the added fixture's sheet impedance (default PEC). All bridge geometry
 and coupling remain in the raw solve. Native GLG effects require supplied
 joint launch calibration. Verified against installed Sonnet Lite 18.53:
@@ -164,6 +166,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     max_bytes=_spice_limit("max_bytes",max_bytes)
     freq=_circuit_stored_real(freq,"native floating frequency")
     freq>0 || throw(ArgumentError("native floating frequency must be representable and positive"))
+    scalar_files===nothing && _model_files!==nothing && (scalar_files=_model_files.scalar_files)
     variables=_sonnet_scalar_variables(p,variables;scalar_files,max_bytes,root=scalar_root,
         outside=scalar_outside,max_files=scalar_max_files,max_bytes_source=scalar_max_bytes,
         max_nodes=scalar_max_nodes,max_line_bytes=scalar_max_line_bytes)
@@ -177,6 +180,25 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         2BigInt(_sonnet_component_variable_payload(variables)))
     _enforce_payload_limit(variable_payload,max_bytes,"native floating owned variables","max_bytes")
     _sonnet_has_floating(p) || throw(ArgumentError("project has no native FLOAT sources"))
+    # The staged-snapshot guards mirror the ordinary component path:
+    # the staged object must belong to this frequency/configuration and
+    # cannot mix with a supplied component_response.
+    if _model_files!==nothing
+        _model_files.frequency==freq ||
+            throw(ArgumentError("staged native component files belong to another frequency"))
+        component_response===nothing ||
+            throw(ArgumentError("provide staged files or component_response"))
+        variables==_model_files.variables && grid==_model_files.grid ||
+            throw(ArgumentError("staged native files retain their grid and variable configuration"))
+    end
+    # Auto-stage file dependencies on the scalar-resolved project before
+    # thick geometry, matching the ordinary component path; floating
+    # components consume their bindings on the shared local ground.
+    if _model_files===nothing && component_response===nothing &&
+            any(c->_sonnet_files_kind(p,c).tokens[2] in ("SPARAM","SPROJ"),p.components)
+        _model_files=sonnet_component_files(p,freq;grid,variables,max_bytes,
+            _preserve_scalar_geometry=true)
+    end
     isfinite(bridge_zs) && real(bridge_zs)>=0 || throw(ArgumentError("floating bridge impedance must be finite and passive"))
     stored_bridge=ComplexF64(bridge_zs)
     isfinite(stored_bridge) || throw(ArgumentError("floating bridge impedance must fit finite ComplexF64"))
@@ -222,7 +244,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
                     scalar_files=_model_files.scalar_files),
                 _model_files.scalar_files,_model_files.circuits)
         base=sonnet_component_model(geometry,freq;grid,variables,component_response,ground_direction,
-            max_bytes=max_bytes-variable_payload,
+            max_bytes=max_bytes-variable_payload,scalar_files,scalar_root,scalar_outside,
+            scalar_max_files,scalar_max_bytes,scalar_max_nodes,scalar_max_line_bytes,
             _preserve_scalar_geometry=true,_model_files=sub_files)
         problem=base.problem;C=copy(base.contraction);refs=copy(base.z0);labels=copy(base.labels)
         common=hasproperty(base,:floating_common) ? copy(base.floating_common) : zeros(length(problem.ports),0)
@@ -230,7 +253,11 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         external_pairs=copy(circuit.ports);external_labels=copy(base.external_labels);external_z0=copy(circuit.z0)
         sheet_zs=[copy(zs) for zs in base.sheet_zs];via_sigma=copy(base.via_sigma);paths=copy(base.reference_paths)
     end
-    model_files=hasproperty(base,:model_files) ? base.model_files : nothing
+    # The caller's staged snapshot carries bindings for floating components
+    # too (each model pin attaches as a port on the shared local ground);
+    # `base.model_files` is the rescoped object consumed by ordinary ones.
+    model_files=_model_files===nothing ?
+        (hasproperty(base,:model_files) ? base.model_files : nothing) : _model_files
     file_payload=model_files===nothing ? 0 : model_files.payload
     groups=Any[]
     if !isempty(floating_ports)
@@ -343,12 +370,14 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
                 node==-1 && (terminals[pin]=gnode)
             end
             push!(loads,(component=group.component,terminals=terminals,common=gnode,
+                pinlabels=[pin.number for pin in group.pins],
                 ports=Tuple{Int,Int}[(terminals[pin.pin],gnode)
                     for pin in group.pins if pin.signed_number>0]))
         else
             group.component===nothing ||
                 push!(loads,(component=group.component,terminals=terminals,
-                    common=0,ports=Tuple{Int,Int}[]))
+                    common=0,pinlabels=[pin.number for pin in group.pins],
+                    ports=Tuple{Int,Int}[]))
         end
     end
     !isempty(external_labels) || throw(ArgumentError("native floating project has no exposed ports; use NONE or explicit CUP source labels"))
@@ -369,6 +398,22 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
                 t[3]=="CAP" ? circuit_add_rlc!(circuit,a,b;c=value) :
                 t[3]=="IND" ? circuit_add_rlc!(circuit,a,b;l=value) :
                 _sonnet_error(p.source,record.line,"unsupported FLOAT ideal component")
+        elseif t[2] in ("SPARAM","SPROJ") && model_files!==nothing
+            # A staged file model on a floating component attaches each
+            # declared model pin (positive labels only, enforced at staging)
+            # as an independent port on the shared local ground — the same
+            # per-pin port structure verified for IDEAL/NONE floats.
+            load.common>0 || throw(ArgumentError("native FLOAT model needs a floating common reference"))
+            id=_sonnet_files_id(p,component)
+            matches=filter(b->b.id==id,model_files.bindings)
+            length(matches)==1 || _sonnet_error(p.source,record.line,"missing unique staged component binding")
+            binding=only(matches)
+            binding.geometry_labels==load.pinlabels ||
+                _sonnet_error(p.source,record.line,"staged model-pin order disagrees with physical geometry labels")
+            size(binding.response,1)==length(load.ports) ||
+                _sonnet_error(p.source,record.line,
+                    "staged model port count disagrees with the component's floating terminals")
+            circuit_add_network!(circuit,load.ports,binding.response;format=:s,z0=binding.z0)
         else
             component_response===nothing && throw(ArgumentError("native FLOAT vendor/subcircuit needs component_response"))
             load.common>0 || throw(ArgumentError("native FLOAT model needs a floating common reference"))
