@@ -665,3 +665,57 @@ end
     @test count(DiffMoM._planar_via_mesh_mask(mask,v,grid,:center))==1
     @test_throws ArgumentError DiffMoM._planar_via_mesh_mask(mask,v,grid,:bar)
 end
+
+@testset "Native CUP calibration group records" begin
+    fixture=joinpath(@__DIR__,"fixtures","native_floating_power_waves","floating_raw.son")
+    template=replace(read(fixture,String),"\r\n"=>"\n")
+    project=read_sonnet_project(fixture)
+    @test [port.kind for port in project.ports]==[:cup,:cup]
+    for port in project.ports
+        keys=[record.tokens[1] for record in port.records]
+        @test keys[end-2:end]==["CUPGRP","ID","END"]
+        @test port.records[end-2].tokens==["CUPGRP","Auto","LOCAL"]
+    end
+    groups=sonnet_calibration_groups(project)
+    @test length(groups)==1
+    @test groups[1].name=="Auto" && groups[1].ports==[1,2]
+    @test groups[1].numbers==[1,-1] && groups[1].groundref===:float
+    # Coupled removal consumes member indices; this synthetic 2-port
+    # network orders members like `project.ports`.
+    Y=ComplexF64[-2im -im;-im -3im];launch=planar_line_abcd(50.,.02+.01im)
+    # The coupled 2k×2k chain indexes each ABCD block by port, so an
+    # uncoupled pair becomes four diagonal k×k blocks.
+    chain=[Diagonal(fill(launch[1,1],2)) Diagonal(fill(launch[1,2],2));
+           Diagonal(fill(launch[2,1],2)) Diagonal(fill(launch[2,2],2))]
+    lifted=deembed_cocal_group(Y,groups[1].ports,Matrix{ComplexF64}(chain))
+    @test lifted≈deembed_ports(Y,[launch,launch]) rtol=1e-13
+    mktempdir() do dir
+        path=joinpath(dir,"case.son")
+        write(path,replace(template,"Auto"=>"A"," LOCAL"=>""))
+        manual=sonnet_calibration_groups(read_sonnet_project(path))
+        @test only(manual).name=="A" && only(manual).groundref===:float
+        write(path,replace(template,"GNDREF FLOAT"=>"GNDREF BOX AUTO";count=1))
+        split_groups=sonnet_calibration_groups(read_sonnet_project(path))
+        @test length(split_groups)==2
+        @test sort([g.groundref for g in split_groups])==[:box_auto,:float]
+        @test sort([only(g.ports) for g in split_groups])==[1,2]
+        write(path,replace(template,"POR1 CUP Auto"=>"POR1 CUP Auto\nSIMPLE Y";count=1))
+        simplified=sonnet_calibration_groups(read_sonnet_project(path))
+        @test length(simplified)==1 && only(simplified).ports==[2]
+        for (name,text) in (
+            "no_cupgrp"=>replace(template,r"CUPGRP \"Auto\" LOCAL\nID 0\nEND\n"=>"END\n"),
+            "cupgrp_std"=>replace(template,"POR1 CUP Auto"=>"POR1 STD"),
+            "name_mismatch"=>replace(template,"POR1 CUP Auto"=>"POR1 CUP B";count=1),
+            "bad_flag"=>replace(template,"CUPGRP \"Auto\" LOCAL"=>"CUPGRP \"Auto\" REMOTE"),
+            "unterminated"=>replace(template,r"CUPGRP \"Auto\" LOCAL\nID 0\nEND\n"=>"CUPGRP \"Auto\" LOCAL\n"),
+            "extra_por1"=>replace(template,"POR1 CUP Auto"=>"POR1 CUP Auto X";count=1),
+            "stray_cupgrp"=>replace(template,"LORGN 0 1 U"=>"LORGN 0 1 U\nCUPGRP \"X\" LOCAL";count=1))
+            write(path,text)
+            @test_throws ArgumentError read_sonnet_project(path)
+        end
+        write(path,replace(template,"GNDREF FLOAT"=>"GNDREF BOX AUTO"))
+        boxref=read_sonnet_project(path)
+        @test only(sonnet_calibration_groups(boxref)).groundref===:box_auto
+        @test_throws ArgumentError solve_sonnet_project(boxref,1e9;mx=16,my=16)
+    end
+end

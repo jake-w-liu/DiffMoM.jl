@@ -3,7 +3,7 @@
 
 export SonnetRecord, SonnetPolygon, SonnetPortSpec, SonnetProject, SonnetNetlistProject
 export read_sonnet_project, sonnet_planar_problem, sonnet_variable_value, sonnet_planar_circuit
-export SonnetPlanarResult, solve_sonnet_project, sonnet_metal_zs
+export SonnetPlanarResult, solve_sonnet_project, sonnet_metal_zs, sonnet_calibration_groups
 
 function _sonnet_port_reference(p,ps,freq::Real,variables=Dict{String,Float64}())
     length(ps.values)>=5 || throw(ArgumentError("incomplete native port R/X/L/C reference"))
@@ -331,6 +331,14 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
             while j<ni && !(geo[j].tokens[1] in ("POR1","CUPGRP","SMD"))
                 j+=1
             end
+            if j<ni && geo[j].tokens[1]=="CUPGRP"
+                k=j+1
+                while k<ni && geo[k].tokens!=["END"] &&
+                        !(geo[k].tokens[1] in ("POR1","CUPGRP","SMD","NUM"));k+=1;end
+                k<ni && geo[k].tokens==["END"] || _sonnet_error(source,geo[j].line,
+                    "unterminated CUP calibration group")
+                j=k+1
+            end
             pr=geo[i:j-1]
             pi=findfirst(x->x.tokens[1]=="POLY",pr)
             pi===nothing && _sonnet_error(source,r.line,"port lacks POLY")
@@ -341,8 +349,12 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
             number=parse(Int,values[1])
             haskey(ids,polygon) || _sonnet_error(source,r.line,"unknown port polygon $polygon")
             0<=edge<_sonnet_polygon_edge_count(ids[polygon].vertices) || _sonnet_error(source,r.line,"invalid port edge")
-            push!(ports,SonnetPortSpec(Symbol(lowercase(r.tokens[2])),polygon,edge,number,copy(values),pr))
+            kind=Symbol(lowercase(r.tokens[2]))
+            _sonnet_cup_group_check(source,r,pr,kind)
+            push!(ports,SonnetPortSpec(kind,polygon,edge,number,copy(values),pr))
             i=j
+        elseif r.tokens[1]=="CUPGRP"
+            _sonnet_error(source,r.line,"CUPGRP requires a CUP port")
         elseif r.tokens[1]=="SMD" && i+1<ni && geo[i+1].tokens[1]=="ID"
             j=i+1
             while j<ni && geo[j].tokens!=["END"]
@@ -359,6 +371,74 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     sweeps=[r for r in records if r.tokens[1]=="FREQ" && length(r.tokens)>2]
     return SonnetProject(source,units,ls,fs,box,layers,metals,top,bottom,
         polygons,ports,vars,components,sweeps,records)
+end
+
+# Native `POR1 CUP <group>` blocks carry a CUPGRP record (quoted name plus an
+# optional LOCAL auto-group marker) and close with ID/END; the port's group
+# designator is duplicated on the POR1 line and must agree. CUPGRP anywhere
+# outside a CUP port block is malformed.
+function _sonnet_cup_group_check(source,r,pr,kind)
+    cups=findall(x->x.tokens[1]=="CUPGRP",pr)
+    if kind===:cup
+        length(cups)==1 || _sonnet_error(source,r.line,
+            "CUP port requires exactly one CUPGRP calibration group")
+        ct=pr[only(cups)].tokens
+        (length(ct)==2 || (length(ct)==3 && ct[3]=="LOCAL")) ||
+            _sonnet_error(source,pr[only(cups)].line,"unrepresented CUPGRP fields")
+        isempty(ct[2]) && _sonnet_error(source,pr[only(cups)].line,"empty CUPGRP group name")
+        for record in pr[only(cups)+1:end]
+            record.tokens[1]=="ID" || continue
+            length(record.tokens)==2 && tryparse(Int,record.tokens[2])!==nothing ||
+                _sonnet_error(source,record.line,"malformed CUP group ID")
+        end
+        length(r.tokens)==3 ||
+            _sonnet_error(source,r.line,"CUP port requires its calibration group name")
+        r.tokens[3]==ct[2] || _sonnet_error(source,pr[only(cups)].line,
+            "CUP port and CUPGRP name mismatch")
+    else
+        isempty(cups) || _sonnet_error(source,r.line,"CUPGRP requires a CUP port")
+    end
+    return nothing
+end
+
+"""Decoded CUPGRP calibration group name for a parsed CUP port, validated at
+parse time to mirror the POR1 record's group designator."""
+_sonnet_cup_group(port)=only(r.tokens[2] for r in port.records if r.tokens[1]=="CUPGRP")
+
+"""Ground-reference key (`:float`, `:box_auto`, ...) declared by a native
+CUP port's GNDREF record. Co-calibrated ports can only share a calibration
+group when their ground references agree."""
+function _sonnet_cup_groundref(source,port)
+    refs=filter(r->r.tokens[1]=="GNDREF",port.records)
+    length(refs)==1 || _sonnet_error(source,first(port.records).line,
+        "CUP port requires exactly one GNDREF record")
+    t=only(refs).tokens
+    length(t)>=2 || _sonnet_error(source,only(refs).line,"malformed GNDREF")
+    return Symbol(join(lowercase.(t[2:end]),"_"))
+end
+
+"""Calibration groups declared by native CUPGRP records. Returns one named
+tuple `(;name,ports,numbers,groundref)` per group; `ports` indexes
+`project.ports` in file order and `numbers` carries each member's signed
+native port label. Solved networks order ports by sorted unsigned label,
+so map `numbers` through a result's `port_numbers`/`labels` to obtain
+network indices for `planar_cocalibrate`/`deembed_cocal_group`. Members
+sharing a group name are split by ground reference (native grouping
+rule), so `Auto` yields one group per distinct reference — native auto
+sub-grouping by proximity is not representable in the file and remains
+Lite license-blocked to verify. Simplified co-calibrated ports
+(`SIMPLE Y`) are omitted: their de-embedding does not share a coupled
+launch."""
+function sonnet_calibration_groups(p::SonnetProject)
+    groups=Dict{Tuple{String,Symbol},Vector{Int}}()
+    for (index,port) in enumerate(p.ports)
+        port.kind===:cup || continue
+        any(r->r.tokens==["SIMPLE","Y"],port.records) && continue
+        key=(_sonnet_cup_group(port),_sonnet_cup_groundref(p.source,port))
+        push!(get!(Vector{Int},groups,key),index)
+    end
+    return [(name=key[1],ports=ports,numbers=[p.ports[i].number for i in ports],
+        groundref=key[2]) for (key,ports) in sort!(collect(groups),by=first)]
 end
 
 function _sonnet_math_real(value,quantity)

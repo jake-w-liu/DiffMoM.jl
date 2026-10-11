@@ -72,6 +72,7 @@ function planar_current_maps(result::_SonnetBalancedSourceResult;port::Integer=1
 end
 
 function _sonnet_float_validate(p,records)
+    portrecord=!isempty(records) && first(records).tokens[1]=="POR1"
     for record in records
         t=record.tokens;key=first(t)
         if key=="GNDREF"
@@ -83,7 +84,8 @@ function _sonnet_float_validate(p,records)
         elseif key in ("DRP1","DRP2","TWVALUE","TWTYPE","PKG")
             _sonnet_error(p.source,record.line,"native floating $key requires its physical calibration/terminal adapter")
         elseif !(key in ("POR1","POLY","SMD","ID","SBOX","PBSHW","LPOS","PBOX",
-                "TYPE","SMDP","EXSMDP","END") || tryparse(Float64,key)!==nothing)
+                "TYPE","SMDP","EXSMDP","END") || (portrecord && key=="CUPGRP") ||
+                tryparse(Float64,key)!==nothing)
             _sonnet_error(p.source,record.line,"unrepresented native floating field $key")
         end
     end
