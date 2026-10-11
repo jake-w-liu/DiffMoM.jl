@@ -20,8 +20,14 @@ end
     # 3*r*|delta|/4 floored to min(cell,box/32) in mixed lists, ordinary PS2
     # points move min(ceil(c*r/2), c*r*ramp)*delta/2 with a 3*c*r*delta/8
     # coarse-raster cap, the anchor side is gated by 3*r*|delta|/4>cell, and
-    # ungated PS1 points drop one box/64 raster step. Each admitted case ships
-    # a resolved_<case> literal whose native S is bit-identical to the case's.
+    # ungated PS1 points drop one box/64 raster step. When the expanded PS2
+    # set crosses the POS symmetry plane through REF1's own vertex (always
+    # true for POLY id 0 selectors), REF2 takes the full |delta| and dual
+    # memberships cancel; crossing lists without REF1, crossing r>=2, and
+    # PS1 wildcards are not literal-expressible and stay rejected. The
+    # identical law holds transposed on the x raster for XDIR headers. Each
+    # admitted case ships a resolved_<case> literal whose native S is
+    # bit-identical to the case's.
     hashes=TOML.parsefile(joinpath(fixture,"sha256.toml"))["sha256"]
     files=Set(replace(relpath(joinpath(d,f),fixture),'\\'=>'/')
         for (d,_,fs) in walkdir(fixture) for f in fs
@@ -32,7 +38,7 @@ end
     end
     proof=TOML.parsefile(joinpath(fixture,"comparison.toml"))
     @test proof["source_unchanged"]
-    @test length(proof["cases"])==17
+    @test length(proof["cases"])==30
     rejected=Set{String}()
     implemented=Set{String}()
     for row in proof["cases"]
@@ -80,18 +86,29 @@ end
         candidate=read_sonnet_project(path)
         @test_throws ArgumentError DiffMoM._sonnet_geometry_project(candidate,1e9)
     end
-    # XDIR moving references and whole-polygon selectors stay rejected.
-    xdir=replace(source,"GEOVAR Width SYM YDIR 1 NSCD"=>"GEOVAR Width SYM XDIR 1 NSCD")
+    # POLY id 0 in PS1 expands to every vertex on the anchor side; that set's
+    # native law is not literal-expressible, so the adapter stays rejected.
+    wild=replace(source,r"(?s)(PS1 1\r?\n)POLY 1 1\r?\n1"=>"\\1POLY 1 0")
     mktempdir() do directory
-        path=joinpath(directory,"sym_xdir.son");write(path,xdir)
+        path=joinpath(directory,"sym_wildcard_ps1.son");write(path,wild)
         candidate=read_sonnet_project(path)
         @test_throws ArgumentError DiffMoM._sonnet_geometry_project(candidate,1e9)
     end
-    # POLY id 0 expands to every vertex; the proved law only covers literal
-    # point lists, so whole-polygon selectors stay rejected.
-    wild=replace(source,r"POLY 1 2\r?\n2\r?\n3"=>"POLY 1 0")
+    # A PS2 set that crosses the symmetry plane without REF1's own vertex
+    # (ordinary anchor members only) is not literal-expressible natively.
+    crossing=replace(source,r"(?s)(PS2 1\r?\n)POLY 1 2\r?\n2\r?\n3"=>
+        "\\1POLY 1 3\r\n1\r\n2\r\n3")
     mktempdir() do directory
-        path=joinpath(directory,"sym_wildcard.son");write(path,wild)
+        path=joinpath(directory,"sym_crossing_ord.son");write(path,crossing)
+        candidate=read_sonnet_project(path)
+        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(candidate,1e9)
+    end
+    # Crossing through REF1 but with a repeated REF2 entry (r=2) deviates from
+    # every swept literal candidate and remains rejected.
+    crossing2=replace(source,r"(?s)(PS2 1\r?\n)POLY 1 2\r?\n2\r?\n3"=>
+        "\\1POLY 1 3\r\n0\r\n3\r\n3")
+    mktempdir() do directory
+        path=joinpath(directory,"sym_crossing_r2.son");write(path,crossing2)
         candidate=read_sonnet_project(path)
         @test_throws ArgumentError DiffMoM._sonnet_geometry_project(candidate,1e9)
     end

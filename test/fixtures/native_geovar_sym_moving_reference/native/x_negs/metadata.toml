@@ -1,0 +1,6 @@
+source = "C:\Users\User\DiffMoM.jl\test\fixtures\native_geovar_sym_moving_reference\native\x_negs.son"
+engine_version = "18.53-Lite (64-bit Windows)"
+em = "C:\Program Files\Sonnet Software\18.53\bin\em.exe"
+process_success = true
+deembedded = false
+source_sha256 = "ad35c1848ddb76c078f8411ddea10596ffa9458feaffc7fdfdedcf310b53bf44"

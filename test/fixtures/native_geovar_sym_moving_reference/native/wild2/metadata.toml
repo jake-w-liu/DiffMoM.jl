@@ -1,0 +1,6 @@
+source = "C:\Users\User\DiffMoM.jl\data\planar_audit\symref_wild2.son"
+engine_version = "18.53-Lite (64-bit Windows)"
+response_nports = 2
+process_success = true
+deembedded = false
+em = "C:\Program Files\Sonnet Software\18.53\bin\em.exe"

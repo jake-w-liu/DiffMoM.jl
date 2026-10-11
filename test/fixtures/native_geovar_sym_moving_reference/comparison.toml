@@ -7,7 +7,9 @@ source_unchanged = true
 # still rejected. The full law -> REF2 3*r*delta/4 floored to
 # min(cell,box/32) in mixed lists, ordinary ceil(c*r/2)-capped ramped shares
 # with a 3*c*r*delta/8 coarse-raster cap, the 3*r*delta/4>cell anchor gate ->
-# is bit-verified across grids, signs, and repetitions.
+# is bit-verified across grids, signs, axes, and repetitions. XDIR cases
+# mirror the law on the x raster (same cell/quantum/step definitions in the
+# movement axis).
 [[cases]]
 case = "only_d0625"
 ps2 = "3"
@@ -162,3 +164,120 @@ status = "IMPLEMENTED"
 bit_identical_s = true
 full_s_error = 0.0
 note = "contraction mirrors the law with the sign of delta"
+[[cases]]
+case = "x_mixed"
+ps2 = "2 1"
+delta = 0.0625
+matched = "resolved_x_mixed"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR mixed r=1 gated: identical transposed law, bit-identical"
+[[cases]]
+case = "x_only_d0625"
+ps2 = "1"
+delta = 0.0625
+matched = "resolved_x_only_d0625"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR ref-only gated: REF1 -delta/2, PS1 -2 steps, REF2 +3*delta/4"
+[[cases]]
+case = "x_only_d03125"
+ps2 = "1"
+delta = 0.03125
+matched = "resolved_x_only_d03125"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR ref-only ungated: REF1 stays, PS1 drops one step, REF2 +3*delta/4"
+[[cases]]
+case = "x_r2"
+ps2 = "2 1 1"
+delta = 0.0625
+matched = "resolved_x_r2"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR r=2: REF2 takes 3*delta/2"
+[[cases]]
+case = "x_ctr"
+ps2 = "2 1"
+delta = -0.0625
+matched = "resolved_x_ctr"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR contraction mirrors the law with the sign of delta"
+[[cases]]
+case = "x_negs"
+ps2 = "1"
+delta = -0.03125
+matched = "resolved_x_negs"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR ungated negative delta: PS1 still drops one step sign-independently"
+[[cases]]
+case = "x_o2r1"
+ps2 = "2 2 1"
+delta = 0.0625
+matched = "resolved_x_o2r1"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR deduplicated ordinary count c=2 with r=1"
+[[cases]]
+case = "wild2"
+ps2 = "POLY 1 0"
+delta = 0.0625
+matched = "resolved_wild2"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "whole-polygon PS2 expands to all vertices and crosses the POS plane through REF1: REF2 takes the full delta, dual members cancel"
+[[cases]]
+case = "wild2_neg"
+ps2 = "POLY 1 0"
+delta = -0.0625
+matched = "resolved_wild2_neg"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "wildcard crossing mirrors under negative delta"
+[[cases]]
+case = "lit03"
+ps2 = "0 3"
+delta = 0.0625
+matched = "resolved_lit03"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "literal REF1-in-PS2 crossing: REF1 gated share cancels its ordinary PS2 share (net 0); REF2 takes full delta"
+[[cases]]
+case = "litall"
+ps2 = "0 1 2 3"
+delta = 0.0625
+matched = "resolved_litall"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "literal all-vertex list matches the wildcard expansion bit-identically; the law is set-content, not syntax"
+[[cases]]
+case = "x_wild2"
+ps2 = "POLY 1 0"
+delta = 0.0625
+matched = "resolved_x_wild2"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR wildcard crossing transposes the same full-delta REF2 law"
+[[cases]]
+case = "x_lit01"
+ps2 = "0 1"
+delta = 0.0625
+matched = "resolved_x_lit01"
+status = "IMPLEMENTED"
+bit_identical_s = true
+full_s_error = 0.0
+note = "XDIR literal REF1-crossing verified"

@@ -12,6 +12,8 @@ struct _SonnetGeometryParameter
     points::NTuple{2,Vector{Tuple{Int,Int}}}
     explicit_moving_references::Int
     line::Int
+    position::NTuple{2,Float64}
+    crossing::Bool
 end
 
 # Zero saved offsets have a proved translation adapter for ANC/NSCD only.
@@ -32,10 +34,12 @@ end
 
 function _sonnet_geovar_position(rows,index,p)
     row=_sonnet_geovar_row(rows,index,p)
-    length(row.tokens)==3 && row.tokens[1]=="POS" &&
-        all(i->(v=tryparse(Float64,row.tokens[i]);v!==nothing && isfinite(v)),2:3) ||
+    length(row.tokens)==3 && row.tokens[1]=="POS" ||
         _sonnet_error(p.source,row.line,"invalid GEOVAR display position")
-    return nothing
+    position=ntuple(i->tryparse(Float64,row.tokens[i+1]),2)
+    all(v->v!==nothing && isfinite(v),position) ||
+        _sonnet_error(p.source,row.line,"invalid GEOVAR display position")
+    return something.(position)
 end
 
 function _sonnet_geovar_groups(row,p)
@@ -125,7 +129,7 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         name=t[2];haskey(p.variables,name) || _sonnet_error(p.source,row.line,"GEOVAR lacks its declared quantity variable")
         get(quantities,name,"")=="LNG" ||
             _sonnet_error(p.source,row.line,"GEOVAR variable must have one LNG declaration")
-        _sonnet_geovar_position(rows,index+1,p)
+        position=_sonnet_geovar_position(rows,index+1,p)
         nominalrow=_sonnet_geovar_row(rows,index+2,p)
         length(nominalrow.tokens)==2 && nominalrow.tokens[1]=="NOM" ||
             _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
@@ -160,12 +164,23 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         # deduplicated hypotheses alike — the exact movement law is still
         # undecoded and accepting an approximation would silently rasterize
         # the wrong cells for other target widths. Unscaled symmetric
-        # repetitions are decoded only for literal YDIR point lists with one
-        # or two explicit moving-reference entries; whole-polygon selectors,
-        # XDIR headers and r>=3 repetitions remain rejected (the r=3 basin
-        # deviates from the proved r<=2 movement).
-        sym_moving=t[3]=="SYM" && t[4]=="YDIR" && t[6]=="NSCD" &&
-            explicit_references in (1,2) && !awild && !bwild
+        # repetitions support literal lists with one or two explicit
+        # moving-reference entries plus whole-polygon PS2 selectors; the
+        # latter are native-verified only when the expanded set crosses
+        # the symmetry plane through REF1's own vertex with a single
+        # REF2 entry (whole-polygon sets always contain that vertex).
+        # Wildcard PS1 selectors, crossing lists lacking REF1, crossing
+        # repetitions r>=2 and all r>=3 repetitions remain rejected: their
+        # native geometry is not literal-expressible (flat residual basins
+        # persist after sweeping every vertex, port and rasterization
+        # degree of freedom).
+        posaxis=position[axis]*p.length_scale
+        ref2side=polygons[second[1]].vertices[axis,second[2]]-posaxis
+        crossing=!iszero(ref2side) && any(point->
+            (polygons[point[1]].vertices[axis,point[2]]-posaxis)*ref2side<0,b)
+        sym_moving=t[3]=="SYM" && t[6]=="NSCD" && !awild &&
+            (!crossing && !bwild && explicit_references in (1,2) ||
+            crossing && explicit_references==1 && first in b)
         (first in a || (explicit_references>0 && !(t[3]=="RAD" ||
             (t[3]=="ANC" && t[6]=="NSCD") || sym_moving))) &&
             _sonnet_error(p.source,row.line,
@@ -177,7 +192,8 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         t[3]=="SYM" && !(first in a) && push!(a,first)
         push!(b,second)
         bset=Set(b)
-        (first==second || any(point->point in bset,a) || first in bset) &&
+        (first==second || !sym_moving &&
+            (any(point->point in bset,a) || first in bset)) &&
             _sonnet_error(p.source,row.line,"GEOVAR adjustable sets conflict with their references")
         direction=parse(Int,t[5])
         if t[3]=="ANC" && t[6]=="NSCD"
@@ -189,7 +205,8 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
             fixed==moving || (direction=moving>fixed ? 1 : -1)
         end
         push!(parameters,_SonnetGeometryParameter(name,t[3],axis,
-            direction,t[6]!="NSCD",t[6]=="SCXY",nominal,(first,second),(a,b),explicit_references,row.line))
+            direction,t[6]!="NSCD",t[6]=="SCXY",nominal,(first,second),(a,b),
+            explicit_references,row.line,position,crossing))
     end
     return parameters
 end
@@ -455,9 +472,9 @@ points belong implicitly to their adjustable set. Ordinary repeated entries
 retain their movement multiplicity. RAD follows the native three-adjustment
 sequence, recomputing its reference radius. NSCD ANC moving-reference repetitions
 apply their native common-displacement factor; ANC follows its reference
-coordinate order, using the direction field for zero offsets. NSCD YDIR SYM
+coordinate order, using the direction field for zero offsets. NSCD SYM
 moving references apply the native cell-quantized movement law proved against
-the installed engine. Other references,
+the installed engine on both axes. Other references,
 dependent/overlapping active dimensions and moved component/interior-port semantics
 require separate adapters. Whole-polygon selectors expand logical vertices
 within point/storage budgets before geometry copy;
@@ -567,6 +584,10 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             # 3*r*|delta|/4>cell: REF1 then takes -|delta|/2 while ordinary PS1
             # points quantize to box/64 steps of floor(|delta|/(box/32));
             # ungated PS1 points still drop one box/64 step, sign-independent.
+            # When the expanded PS2 set contains a vertex strictly on REF1's
+            # side of the POS plane (crossing sets, always including REF1's
+            # own vertex under the parser admission rule), REF2 instead takes
+            # the full |delta| while ordinary shares are unchanged.
             parsed=tryparse(Float64,p.box[parameter.axis+1])
             boxdir=(parsed===nothing ? sonnet_variable_value(p,
                 p.box[parameter.axis+1];variables,freq=frequency) : parsed)*p.length_scale
@@ -601,7 +622,11 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             for point in unique(parameter.points[2])
                 id,index=point;before=polygons[id][parameter.axis,index]
                 if point==parameter.references[2]
-                    share=3r*amount/4
+                    # A PS2 set that crosses the symmetry plane through REF1's
+                    # own vertex moves REF2 by the full |delta| instead of the
+                    # 3*r*|delta|/4 share (native-verified on literal and
+                    # whole-polygon sets, both directions and deltas).
+                    share=parameter.crossing ? amount : 3r*amount/4
                     after=before+sense*(mixed && amount>=quantum ?
                         max(share,quantum) : share)
                 else
