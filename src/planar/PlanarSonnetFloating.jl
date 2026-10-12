@@ -399,7 +399,13 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
             nodes+=2;pair=(nodes-1,nodes);push!(pairs,pair);push!(local_pairs,pair)
             if modelcomp
                 terminals[positive.pin]=pair[1]
-                terminals[negative.pin]=negative.signed_number<0 ? -1 : pair[2]
+                # A signed label on a file-model pin names the return pad
+                # of its own file port: that port lands between the pin's
+                # bridge node and the common. Ordinary and callback-supplied
+                # loads keep the verified common-return convention instead.
+                filecomp=model_files!==nothing && kindt[2] in ("SPARAM","SPROJ")
+                terminals[negative.pin]=negative.signed_number<0 ?
+                    (filecomp ? pair[2] : -1) : pair[2]
             end
             push!(labels,label);push!(refs,positive.z0)
             push!(bridges,merge(built.bridge,(;port=length(labels),label=label,kind=:floating_bridge)))
@@ -414,9 +420,11 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
                 node==-1 && (terminals[pin]=gnode)
             end
             push!(loads,(component=group.component,terminals=terminals,common=gnode,
-                pinlabels=[pin.number for pin in group.pins],
+                pinlabels=[pin.signed_number for pin in group.pins],
                 ports=Tuple{Int,Int}[(terminals[pin.pin],gnode)
-                    for pin in group.pins if pin.signed_number>0]))
+                    for pin in group.pins
+                    if pin.signed_number>0 ||
+                        (model_files!==nothing && kindt[2] in ("SPARAM","SPROJ"))]))
         else
             group.component===nothing ||
                 push!(loads,(component=group.component,terminals=terminals,
@@ -444,9 +452,10 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
                 _sonnet_error(p.source,record.line,"unsupported FLOAT ideal component")
         elseif t[2] in ("SPARAM","SPROJ") && model_files!==nothing
             # A staged file model on a floating component attaches each
-            # declared model pin (positive labels only, enforced at staging)
-            # as an independent port on the shared local ground — the same
-            # per-pin port structure verified for IDEAL/NONE floats.
+            # declared model pin as an independent port on the shared local
+            # ground — the same per-pin port structure verified for
+            # IDEAL/NONE floats. Signed labels attach to the pin's own
+            # bridge node: each file port still references the common.
             load.common>0 || throw(ArgumentError("native FLOAT model needs a floating common reference"))
             id=_sonnet_files_id(p,component)
             matches=filter(b->b.id==id,model_files.bindings)

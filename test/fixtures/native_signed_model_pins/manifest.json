@@ -1,0 +1,23 @@
+{
+  "purpose": "Native evidence for signed labels on FLOAT file-model component pins (A4). amp_float_signed.son is the installed amp.son example with the SPARAM component's GNDREF records set to FLOAT and its second pin's geometry label changed from 4 to -3, forming project differential port 3. Sonnet Lite 18.53 ingests the signed FLOAT file-model pin grammar and halts only at its data-file-component license wall, recorded in native_em_stderr.log. Pin-level semantics are anchored by the installed rfid_tag_pro example: its FLOAT RFID_CHIP component declares SMDP labels +1 and -1 on pin indices 1 and 2 — the negative label marks the pin as the return side of its differential port while remaining its own file-model terminal.",
+  "files": [
+    {
+      "path": "amp_float_signed.son",
+      "original": "C:/Program Files/Sonnet Software/18.53/examples/amp/amp.son (GNDREF AUTO->FLOAT, pin label 4->-3)",
+      "sha256": "18d55293fa7f1f4229d41ef547908eb0babe4a4b1ef13be5de6236f47864086f",
+      "bytes": 2399
+    },
+    {
+      "path": "amp_dev.s2p",
+      "original": "C:/Program Files/Sonnet Software/18.53/examples/amp/amp_dev.s2p",
+      "sha256": "9b8d7b9d2cc74080f1e01a52874ebe09ad6f104be8fcc1502299f57b774d474c",
+      "bytes": 1943
+    },
+    {
+      "path": "native_em_stderr.log",
+      "original": "em amp_float_signed.son (Sonnet Lite 18.53) stderr",
+      "sha256": "cc8641a1d75d87750dbe4aa7ca415760de3aeaea5ced2267c50c56698f48aeb5",
+      "bytes": 362
+    }
+  ]
+}

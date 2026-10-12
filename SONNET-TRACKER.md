@@ -87,9 +87,23 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 - [ ] A3 ordered model pins + coupled pin-group calibration
       (ModelFiles:369, parity lines 148/159/445/726). Lite-blocked (GLG license)
       → Nexxim circuit equivalence + DocOnly on the licensed part.
-- [ ] A4 signed file-model pin terminals — degenerate-port adapter for `-pin`
-      SPARAM/SPROJ attaches. Oracle: analytic (port-reduction identity), Lite
-      if a file comp ever runs (license-blocked) → Nexxim.
+- [x] A4 signed file-model pin terminals — DONE. Signed labels are legal
+      intake on FLOAT-resolving SPARAM/SPROJ components only (via-mode file
+      comps keep the nonnegative gate). Native anchors: the installed
+      rfid_tag_pro FLOAT component declares SMDP labels {+1,-1} on pin
+      indices {1,2}; a signed FLOAT amp.son SPARAM variant passes Lite
+      intake and halts only at the data-file license wall (fixture
+      `test/fixtures/native_signed_model_pins`). A signed pin marks the
+      return side of its project differential port; its file port still
+      attaches between the pin's own bridge node and the component's
+      floating common — verified bit-identical to the unsigned two-pin
+      FLOAT attach in solved S-parameters. Signed pins without a
+      same-magnitude positive partner stage but fail loudly at model
+      build; label zero on FLOAT keeps its floating-common adapter
+      rejection; `circuit_add_sonnet_files!` fails signed labels on
+      lookup. Regressions: `test_planar_sonnet_model_files.jl` (signed
+      FLOAT staging/attach, solve identity, via-mode signed rejection,
+      unpaired and zero-label failures, fixture-hash testset).
 - [x] A5 multi-pin (>2 unpaired) FLOAT common — DONE. Model-bearing comps
       with ≥3 unpaired positive pins attach each pin as an open-edge port
       on the shared local ground (per-pin star; EM edge == model port).
@@ -471,7 +485,7 @@ prior ledgered items.
 
 Remaining (updated order):
 
-1. A4/A5/A7 port-and-pin residuals — small, Lite-verifiable.
+1. A7 port residual — small, Lite-verifiable (A2/A4/A5 done).
 2. E2 CUP calibration-group solve + E5 dielectric bricks — bounded.
 3. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
    DocOnly.

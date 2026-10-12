@@ -186,11 +186,15 @@ function _sonnet_files_contract(p,component)
             label=tryparse(Int,t[6]);pin=tryparse(Int,t[7]);level=tryparse(Int,t[2])
             # File-model pins declare nonnegative geometry labels (zero is
             # the documented grounded-terminal rule, Lite-solved on the
-            # component_lpf probe); ordinary components may carry signed
-            # FLOAT terminal labels instead.
-            validlabel=filebacked ? (label!==nothing && label>=0) : (label!==nothing && label!=0)
+            # component_lpf probe); a signed label is legal only when the
+            # component resolves to FLOAT, where it marks the differential
+            # reference side of its model port (Lite intake-verified).
+            signed_ok=filebacked && label!==nothing && label<0 &&
+                _sonnet_component_floating(p,component)
+            validlabel=filebacked ? (label!==nothing && (label>=0 || signed_ok)) :
+                (label!==nothing && label!=0)
             validlabel && pin!==nothing && pin>0 && level!==nothing && level>=0 ||
-                _sonnet_error(p.source,record.line,"model pins require literal nonnegative labels, positive indices and a nonnegative level")
+                _sonnet_error(p.source,record.line,"model pins require literal nonnegative labels (or signed labels on FLOAT components), positive indices and a nonnegative level")
             push!(pins,(pin,label));ground=false;width=false
         elseif tag=="EXSMDP"
             !isempty(pins) && !pinblock && length(t)==1 || _sonnet_error(p.source,record.line,"unexpected EXSMDP")
@@ -572,7 +576,9 @@ end
 nodes. `labels[node]` is the native geometry label at that node. Ordered model
 pins map through these labels; ungrounded model ports retain box node zero as
 their common return, while a geometry label of zero shorts that model port
-out of the attached response. Invalid maps/resources leave the supplied
+out of the attached response. Signed labels belong to FLOAT components and
+attach through the floating adapter instead — they have no physical node here
+and fail the lookup loudly. Invalid maps/resources leave the supplied
 circuit unchanged."""
 function circuit_add_sonnet_files!(circuit::PlanarCircuit,files::SonnetComponentFiles,
         labels::AbstractVector{<:Integer};max_bytes::Integer=_default_max_dense_payload_bytes())

@@ -182,6 +182,47 @@ end
     record=first(filter(r->first(r.tokens)=="GNDREF",floatstaged.components[1]))
     empty!(record.tokens);append!(record.tokens,["GNDREF","FLOAT"])
     @test sonnet_component_files(floatstaged,300e6)!==nothing
+    # A signed label on a FLOAT file-model pin declares the differential
+    # return pad of its project port (native grammar accepts it — the
+    # mutated amp probe halts only at Lite's data-file license). Its file
+    # port still lands between the pin's own bridge node and the floating
+    # common: identical physics to the unsigned two-pin float, verified
+    # bit-for-bit below, with only the external label bookkeeping apart.
+    signed=deepcopy(floatstaged)
+    signedpins=[r for r in signed.components[1] if first(r.tokens)=="SMDP"]
+    signedpins[2].tokens[6]="-3"
+    signedplan=sonnet_component_files(signed,300e6)
+    @test only(signedplan.bindings).geometry_labels==[3,-3] &&
+        only(signedplan.bindings).pin_indices==[1,2]
+    floatplan=sonnet_component_files(floatstaged,300e6)
+    smodel=sonnet_floating_model(signed,300e6;_model_files=signedplan)
+    fmodel=sonnet_floating_model(floatstaged,300e6;_model_files=floatplan)
+    snetworks=filter(el->el isa DiffMoM._CircuitNetwork,smodel.circuit.elements)
+    fnetworks=filter(el->el isa DiffMoM._CircuitNetwork,fmodel.circuit.elements)
+    @test length(snetworks)==1 && only(snetworks).terminals==only(fnetworks).terminals
+    @test solve_sonnet_project(signed,300e6;raw=true,_model_files=signedplan).s==
+        solve_sonnet_project(floatstaged,300e6;raw=true,_model_files=floatplan).s
+    # Signed labels stay illegal on via-mode file components — the pin's
+    # return is the cover, so a differential label cannot resolve there.
+    badsigned=deepcopy(project)
+    badpins=[r for r in badsigned.components[1] if first(r.tokens)=="SMDP"]
+    badpins[2].tokens[6]="-4"
+    @test_throws ArgumentError sonnet_component_files(badsigned,300e6)
+    # A signed label without its same-magnitude positive partner cannot
+    # form a differential port: intake stages the grammar but the
+    # floating model fails loudly instead of guessing a return.
+    unpaired=deepcopy(floatstaged)
+    unpins=[r for r in unpaired.components[1] if first(r.tokens)=="SMDP"]
+    unpins[2].tokens[6]="-4"
+    unplan=sonnet_component_files(unpaired,300e6)
+    @test_throws ArgumentError sonnet_floating_model(unpaired,300e6;_model_files=unplan)
+    # Label zero remains the FLOAT floating-common adapter gap: staging is
+    # legal grammar, but the model attach keeps its loud rejection.
+    grounded=deepcopy(floatstaged)
+    groundpins=[r for r in grounded.components[1] if first(r.tokens)=="SMDP"]
+    groundpins[2].tokens[6]="0"
+    groundplan=sonnet_component_files(grounded,300e6)
+    @test_throws ArgumentError sonnet_floating_model(grounded,300e6;_model_files=groundplan)
     for tag in ("DRP1","DRP2","UNKNOWN")
         bad=deepcopy(project);push!(bad.components[1],SonnetRecord(500,[tag,"LEFT","FIX","50"]))
         @test_throws ArgumentError sonnet_component_files(bad,300e6)
@@ -571,13 +612,16 @@ end
         _model_files=plan)
     @test_throws ArgumentError sonnet_floating_model(floatfile,300e6;grid=(32,40),
         _model_files=plan,component_response=(a,b,c)->1)
-    # A negative-labeled pin cannot declare a file-model port; pin-level
+    # A negative-labeled pin stages on a FLOAT file model but cannot
+    # attach without its same-magnitude positive partner; pin-level
     # FLOAT stays inert on the floating component.
     neg=deepcopy(floatfile)
     pin=only(filter(r->first(r.tokens)=="SMDP" && last(r.tokens)=="2",
         only(neg.components)))
     pin.tokens[6]="-4"
-    @test_throws ArgumentError sonnet_component_files(neg,300e6)
+    negplan=sonnet_component_files(neg,300e6;grid=(32,40))
+    @test_throws ArgumentError sonnet_floating_model(neg,300e6;grid=(32,40),
+        _model_files=negplan)
     pinfloat=deepcopy(floatfile)
     exsmdp=findfirst(r->r.tokens==["EXSMDP"],only(pinfloat.components))
     empty!(only(pinfloat.components)[exsmdp+1].tokens)
@@ -733,14 +777,17 @@ SMDP 0 137.5""";count=1),
         @test callback3.s≈staged3.s rtol=1e-12
         model3=sonnet_floating_model(p3,300e6;grid=(32,40),_model_files=plan3)
         @test count(e->e isa DiffMoM._CircuitNetwork,model3.circuit.elements)==2
-        # Signed labels still reject for file-model multi-pin floats;
+        # A signed label without its positive pair stages on file-model
+        # floats (native grammar) but fails at the floating attach;
         # ordinary components retain the native multi-pin rejection.
         signed3=read_sonnet_project(star)
         smdp=only(filter(r->r.tokens[1]=="SMDP" && r.tokens[7]=="3",
             only(filter(c->any(r->r.tokens[1]=="SMD" &&
                 occursin("Floating",join(r.tokens," ")),c),signed3.components))))
         smdp.tokens[6]="-7"
-        @test_throws ArgumentError sonnet_component_files(signed3,300e6;grid=(32,40))
+        signedplan=sonnet_component_files(signed3,300e6;grid=(32,40))
+        @test_throws ArgumentError sonnet_floating_model(signed3,300e6;grid=(32,40),
+            _model_files=signedplan)
         ideal3=read_sonnet_project(star)
         type3=only(filter(r->r.tokens[1]=="TYPE",
             only(filter(c->any(r->r.tokens[1]=="SMD" &&
@@ -748,6 +795,24 @@ SMDP 0 137.5""";count=1),
         empty!(type3.tokens);append!(type3.tokens,["TYPE","IDEAL","RES","10"])
         @test_throws ArgumentError solve_sonnet_project(ideal3,300e6;grid=(32,40))
     end
+
+@testset "Native signed FLOAT model-pin fixture" begin
+    fixture=joinpath(@__DIR__,"fixtures","native_signed_model_pins")
+    manifest=JSON.parsefile(joinpath(fixture,"manifest.json"))
+    for entry in manifest["files"]
+        @test bytes2hex(sha256(read(joinpath(fixture,entry["path"]))))==entry["sha256"]
+    end
+    # Lite ingests the signed FLOAT file-model grammar and stops only at
+    # its data-file license — the same wall the unsigned amp project hits.
+    log=read(joinpath(fixture,"native_em_stderr.log"),String)
+    @test occursin("does not allow data file components",log)
+    @test !occursin("Port Number",log) && !occursin("invalid",lowercase(log))
+    # The pinned fixture stages through the signed-label contract: its
+    # second pin (label -3) is the return side of differential port 3.
+    amp=read_sonnet_project(joinpath(fixture,"amp_float_signed.son"))
+    plan=sonnet_component_files(amp,2e9)
+    @test length(plan.bindings)==1 && only(plan.bindings).geometry_labels==[3,-3]
+end
 end
 
     end
