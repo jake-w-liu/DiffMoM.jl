@@ -548,6 +548,239 @@ function sonnet_calibration_groups(p::SonnetProject)
         groundref=key[2]) for (key,ports) in sort!(collect(groups),by=first)]
 end
 
+"""Co-calibrated (CUP) port staging for the raster solve path. A native
+CUP port is an open-edge interior terminal whose return reaches a box
+cover through a generated via; the calibration group's feed admittance
+is later removed by a feed-standard solve rather than attached as a gap
+source. Only BOX ground references and open polygon edges resolve here —
+wall ports, shared edges, floating and polygon-plane references keep
+their explicit adapter rejections."""
+function _sonnet_cup_terminal(p::SonnetProject,ps,poly,mask,padmask,level,gr,variables,freq,z0)
+    ps.number==0 && throw(ArgumentError("native CUP port cannot be a grounded port-zero terminal"))
+    refs=filter(r->uppercase(r.tokens[1])=="GNDREF",ps.records)
+    length(refs)==1 || throw(ArgumentError("native CUP port requires exactly one GNDREF record"))
+    gt=uppercase.(only(refs).tokens)
+    length(gt)==3 && gt[2]=="BOX" || throw(ArgumentError(
+        "native CUP port ground reference $(join(gt[2:end]," ")) requires its floating or polygon-plane adapter"))
+    direction=gt[3]=="AUTO" ? :auto : gt[3]=="ABOVE" ? :above : gt[3]=="BELOW" ? :below :
+        throw(ArgumentError("native CUP ground direction $(gt[3]) is unsupported"))
+    index,next=_sonnet_port_edge_indices(poly.vertices,ps.edge)
+    v=poly.vertices
+    dx,dy=v[1,next]-v[1,index],v[2,next]-v[2,index]
+    (dx!=0 || dy!=0) || throw(ArgumentError("native CUP port has a degenerate edge"))
+    abs(dx)<=1e-8*max(gr.a,gr.b) || abs(dy)<=1e-8*max(gr.a,gr.b) ||
+        throw(ArgumentError("diagonal native CUP port is rejected natively"))
+    xaxis=abs(dx)<abs(dy)
+    coordinate=(xaxis ? v[1,index] : v[2,index])/(xaxis ? gr.dx : gr.dy)
+    edge=round(Int,coordinate)
+    abs(coordinate-edge)<=1e-7 ||
+        throw(ArgumentError("native CUP port edge is not aligned to the raster grid"))
+    lo,hi=xaxis ? minmax(v[2,index],v[2,next]) : minmax(v[1,index],v[1,next])
+    termwr=filter(r->uppercase(r.tokens[1])=="TERMW",ps.records)
+    length(termwr)<=1 || throw(ArgumentError("native CUP port carries more than one TERMW record"))
+    termw=isempty(termwr) ? "FEED" : join(only(termwr).tokens[2:end]," ")
+    position=parse(Float64,ps.values[end])
+    isfinite(position) && 0<=position<=1 ||
+        throw(ArgumentError("native CUP port position is invalid"))
+    transverse=lo+position*(hi-lo)
+    first_cell,last_cell=_sonnet_termw_cells(p,first(ps.records),termw,lo,hi,
+        transverse,xaxis ? gr.dy : gr.dx,variables,freq)
+    span=first_cell:last_cell
+    axis_count=xaxis ? gr.nx : gr.ny
+    metal(shift)=1<=edge+shift<=axis_count &&
+        all(t->(xaxis ? mask[edge+shift,t] : mask[t,edge+shift]),span)
+    open_side(shift)=!(1<=edge+shift<=axis_count) ||
+        all(t->!(xaxis ? mask[edge+shift,t] : mask[t,edge+shift]),span)
+    positive=metal(1) && open_side(0)
+    negative=metal(0) && open_side(1)
+    positive ⊻ negative || throw(ArgumentError(
+        "native CUP port edge is not an open polygon edge"))
+    terminal=PlanarPort(level,xaxis ? :terminal_x : :terminal_y,edge,span,z0;
+        metal_side=positive ? :positive : :negative,polarity=ps.number<0 ? -1 : 1)
+    simple=any(r->uppercase(r.tokens[1])=="SIMPLE" && length(r.tokens)>=2 &&
+        uppercase(r.tokens[2])=="Y",ps.records)
+    hostcells=Tuple{Int,Int}[(c[1],c[2]) for c in findall(padmask)]
+    isempty(hostcells) && throw(ArgumentError(
+        "native CUP port polygon has no rasterized cells"))
+    return (;terminal,number=abs(ps.number),z0=ComplexF64(z0),direction,hostcells,
+        group=_sonnet_cup_group(ps),groundref=_sonnet_cup_groundref(p.source,ps),simple)
+end
+
+"""Calibration-group partitioning for staged CUP terminals. Simplified
+(`SIMPLE Y`) ports de-embed independently — each is its own singleton
+standard. Normal co-calibrated ports share one coupled standard per
+`CUPGRP` name and ground reference, mirroring the native common-ground
+grouping rule; Lite's additional proximity sub-grouping is not
+representable in the file and stays folded into the shared standard."""
+function _sonnet_cup_solve_groups(cup_terminals)
+    groups=Vector{Int}[];index=Dict{Tuple{String,Symbol},Int}()
+    for (i,t) in enumerate(cup_terminals)
+        if t.simple
+            push!(groups,[i]);continue
+        end
+        key=(t.group,t.groundref)
+        j=get(index,key,0)
+        if j==0
+            push!(groups,Int[]);index[key]=j=length(groups)
+        end
+        push!(groups[j],i)
+    end
+    return groups
+end
+
+"""Port-cell coordinates of a co-calibrated terminal in global raster
+order — the metal strip the port's launch junction occupies on its
+host pad."""
+function _sonnet_cup_terminal_cells(t)
+    xaxis=_is_planar_x_terminal(t.wall)
+    cell=t.edge+(_is_planar_positive_terminal(t.wall) ? 1 : 0)
+    return [xaxis ? (cell,c) : (c,cell) for c in t.cells]
+end
+
+"""Coarse feed-column standard: the group's terminal cells as isolated
+pads plus the same generated cover-return columns and per-cell via-port
+contract. The measured admittance is dominated by the columns' own
+surface parasitic — roughly four times Lite's junction-only removal in
+native fixture probes — so this form is only used where a pad leaves no
+non-junction cell for an in-situ measurement contact."""
+function _sonnet_cup_column_standard(st,gr,sheets,terminals,paths,surface_zs;max_bytes)
+    lvls=sort!(unique(t.level for t in terminals))
+    std_sheets=map(lvls) do lv
+        pad=sheet_level(sheets[lv].interface,gr.nx,gr.ny)
+        for t in terminals
+            t.level==lv || continue
+            for (i,j) in _sonnet_cup_terminal_cells(t)
+                pad.mask[i,j]=true
+            end
+        end
+        pad
+    end
+    remap=Dict(lv=>i for (i,lv) in enumerate(lvls))
+    std_terms=[PlanarPort(remap[t.level],t.wall,t.cells,t.z0;
+        edge=t.edge,polarity=t.polarity) for t in terminals]
+    basis=build_planar_basis(gr,std_sheets,PlanarPort[];vias=ViaLevel[])
+    planar_basis_count(basis)>0 || throw(ArgumentError("native CUP standard has no basis functions"))
+    bare=PlanarProblem(st,gr,std_sheets,PlanarPort[],ViaLevel[],basis,VolLevel[])
+    std=planar_terminal_returns(bare,std_terms;
+        ground_direction=[p.direction for p in paths],max_bytes=max_bytes)
+    return (;kind=:column,problem=std.problem,contraction=std.contraction,
+        sheet_zs=[surface_zs[lv] for lv in lvls],
+        via_sigma=fill(Inf,length(std.problem.vias)))
+end
+
+"""Junction-standard problems for one CUP calibration group. Sonnet
+documents the port discontinuity as a lumped shunt capacitance at the
+launch junction — the port cells' local self-capacitance in their host
+pad's environment. Each member's removal is therefore measured in situ:
+the full host-pad admittance through a separate cover-contact column
+minus the same pad stripped of that member's port cells. The contact
+column's own parasitic cancels exactly in the difference, and mutual
+junction terms fall out of the same contact set: the column of the
+junction matrix for member `m` is `y_full − y_minus_m` contracted
+through the shared contacts. Members whose pads leave no cell outside
+every port span (and no unobstructed contact cell) fall back to the
+feed-column standard."""
+function _sonnet_cup_standard(st,gr,sheets,members,paths,surface_zs;max_bytes)
+    K=length(members)
+    lvls=sort!(unique(m.terminal.level for m in members))
+    # Members on one pad can share launch cells where their edges meet —
+    # corner cells belong to exactly one marginal so their junction
+    # contribution is removed once.
+    portsets=Set{Tuple{Int,Int}}[];claimed=Set{Tuple{Int,Int}}()
+    for m in members
+        cells=setdiff(Set(_sonnet_cup_terminal_cells(m.terminal)),claimed)
+        union!(claimed,cells);push!(portsets,cells)
+    end
+    allport=reduce(union,portsets;init=Set{Tuple{Int,Int}}())
+    portadj=Set{Tuple{Int,Int}}()
+    for (i,j) in allport, di in -1:1, dj in -1:1
+        push!(portadj,(i+di,j+dj))
+    end
+    setdiff!(portadj,allport)
+    # Each member's contact column sits on its own pad outside every
+    # port span, with a clear path through its return layers — pads on
+    # intervening interfaces would short the column to another sheet. A
+    # contact touching a launch cell measures that cell's lateral
+    # coupling to the column rather than its junction capacitance, so
+    # cells adjacent to any launch are excluded as well.
+    used=Set{Tuple{Int,Int}}()
+    contacts=Vector{Union{Nothing,Tuple{Int,Int}}}(nothing,K)
+    for (k,m) in enumerate(members)
+        interface=sheets[m.terminal.level].interface
+        path=paths[k]
+        for c in m.hostcells
+            (c in allport || c in portadj || c in used) && continue
+            blocked=any(mm->sheets[mm.terminal.level].interface!=interface &&
+                sheets[mm.terminal.level].interface in path.layers &&
+                c in mm.hostcells,members)
+            blocked && continue
+            contacts[k]=c;push!(used,c);break
+        end
+    end
+    any(isnothing,contacts) && return _sonnet_cup_column_standard(st,gr,
+        sheets,[m.terminal for m in members],paths,surface_zs;max_bytes=max_bytes)
+    contacts=Tuple{Int,Int}[contacts...]
+    function build(minus)
+        pads=map(lvls) do lv
+            pad=sheet_level(sheets[lv].interface,gr.nx,gr.ny)
+            for (k,m) in enumerate(members)
+                m.terminal.level==lv || continue
+                for c in m.hostcells
+                    minus!=0 && c in portsets[minus] && continue
+                    pad.mask[c[1],c[2]]=true
+                end
+            end
+            pad
+        end
+        vias=ViaLevel[];ports=PlanarPort[];contraction=zeros(0,K)
+        for (k,path) in enumerate(paths)
+            i,j=contacts[k];linear=i+gr.nx*(j-1)
+            polarity=path.direction===:below ? 1 : -1
+            for layer in path.layers
+                via=via_level(layer,gr.nx,gr.ny)
+                via.uni[i,j]=true;via.tap[i,j]=true
+                push!(vias,via)
+                push!(ports,PlanarPort(length(vias),:via,linear:linear,
+                    members[k].terminal.z0;polarity))
+                contraction=[contraction;zeros(1,K)]
+                contraction[end,k]=1.0
+            end
+        end
+        basis=build_planar_basis(gr,pads,ports;vias=vias)
+        planar_basis_count(basis)>0 || throw(ArgumentError(
+            "native CUP standard has no basis functions"))
+        return PlanarProblem(st,gr,pads,ports,vias,basis,VolLevel[]),contraction
+    end
+    problem,contraction=build(0)
+    problems=Vector{typeof(problem)}(undef,K+1);problems[1]=problem
+    for k in 1:K
+        problems[k+1]=first(build(k))
+    end
+    return (;kind=:marginal,problems,contraction,
+        sheet_zs=[surface_zs[lv] for lv in lvls],
+        via_sigma=fill(Inf,length(problems[1].vias)))
+end
+
+# Retained workspace for one group's standard problems, its contraction
+# and the additional solve workspace the de-embed consumes per call.
+function _sonnet_cup_standard_payload(std,labels)
+    probs=std.kind===:marginal ? std.problems : (std.problem,)
+    first_prob=first(probs);nr=length(first_prob.ports);k=size(std.contraction,2)
+    solves=_checked_payload_sum("native CUP standard problems",
+        [_checked_payload_sum("native CUP standard problem",
+            _checked_array_payload_bytes(UInt8,prob.grid.nx,prob.grid.ny,
+                2*length(prob.sheets)+2*length(prob.vias)),
+            _checked_array_payload_bytes(Int,12,planar_basis_count(prob.basis)),
+            _checked_array_payload_bytes(Float64,9,planar_basis_count(prob.basis)),
+            _checked_array_payload_bytes(ComplexF64,16,length(prob.ports),
+                length(prob.ports)+1)) for prob in probs]...)
+    return _checked_payload_sum("native CUP standard retention",solves,
+        _checked_array_payload_bytes(Float64,nr,k),
+        _checked_array_payload_bytes(ComplexF64,first_prob.grid.nx,first_prob.grid.ny,
+            length(std.sheet_zs)),
+        _checked_array_payload_bytes(ComplexF64,8,labels,labels+1))
+end
+
 function _sonnet_math_real(value,quantity)
     value isa Complex && !iszero(imag(value)) &&
         throw(ArgumentError("native $quantity requires real arguments"))
@@ -2205,6 +2438,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         geometry_workspace,port_workspace),limit,"native raster source attachment","max_bytes")
     ports=PlanarPort[]
     numbers=Int[]; port_z0=ComplexF64[];port_weights=Float64[]
+    cup_terminals=NamedTuple[]
     # Programmatically assembled projects carry no records; parsed projects
     # always keep their GEO section for the reference-plane lookup.
     refplanes=NamedTuple[]
@@ -2218,14 +2452,15 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         # port by placement and ignores the token value (verified 18.53 —
         # arbitrary tokens on sheet, box-wall and via ports all parse and
         # solve silently as the geometry-determined type). The CUPGRP
-        # group block is the structural piece: any grouped port needs the
-        # co-calibrated group solve, which stays an adapter rejection here.
-        ps.kind==:cup &&
-            throw(ArgumentError("native CUP co-calibrated port requires its calibration-group adapter"))
+        # group block is the structural piece: a grouped port attaches as
+        # an open-edge terminal with a generated cover return and its
+        # group's feed admittance is removed by a standard solve.
         poly=polydict[ps.polygon]
         q=ps.values
         z0=_sonnet_port_reference(p,ps,freq,variables)
         if poly.kind==:via
+            ps.kind==:cup && throw(ArgumentError(
+                "native CUP via-polygon port requires its co-calibrated via adapter"))
             # A grounded (number 0) port on a via polygon shorts its
             # terminals: the column connects its levels exactly like a
             # portless via, which the via basis already provides.
@@ -2257,6 +2492,17 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
         wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
             v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north : nothing
+        if ps.kind==:cup
+            # Co-calibrated ports attach on open interior edges and return
+            # through a generated cover via; a wall placement uses the
+            # feed-line calibration family (A1 adapter), not this path.
+            wall===nothing || throw(ArgumentError(
+                "native CUP box-wall port requires its feed-line calibration adapter"))
+            push!(cup_terminals,_sonnet_cup_terminal(p,ps,poly,
+                sheets[sheetidx[poly.level]].mask,masks[poly.id],
+                sheetidx[poly.level],gr,variables,freq,z0))
+            continue
+        end
         if wall!==nothing
             rp=_sonnet_drp_wall(refplanes,wall)
             if rp!==nothing
@@ -2337,13 +2583,50 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     # Terminal adapters first lower a genuinely source-free geometry clone,
     # then attach their physical source. Do not invent a temporary driven
     # terminal or change the public requirement for a nonempty port list.
-    problem=if _allow_portless && isempty(ports)
+    problem=if _allow_portless && isempty(ports) && isempty(cup_terminals)
         planar_validate(st)
         basis=build_planar_basis(gr,sheets,ports;vias=vias)
         planar_basis_count(basis)>0 || throw(ArgumentError("no basis functions: check masks/connections"))
         PlanarProblem(st,gr,sheets,ports,vias,basis)
     else
         build_planar_problem(st,gr,sheets,ports;vias=vias)
+    end
+    cup_paths=NamedTuple[]
+    if !isempty(cup_terminals)
+        # The CUP label space needs the contraction bookkeeping: a plain
+        # problem lowering cannot carry its group's de-embed contract.
+        _details || throw(ArgumentError(
+            "native CUP co-calibrated port requires its calibration-group adapter"))
+        np=length(ports)
+        returns=planar_terminal_returns(problem,
+            PlanarPort[t.terminal for t in cup_terminals];
+            ground_direction=[t.direction for t in cup_terminals],
+            max_bytes=limit-geometry_workspace-port_workspace)
+        problem=returns.problem;cup_paths=returns.paths
+        # Each physical port — original or generated return — maps to
+        # exactly one contraction column carrying its label and weight.
+        # `map_polarities` holds the label rail sign: a via port's own
+        # polarity also encodes its return direction, which is internal
+        # to the physical problem and must not look like a negative rail.
+        ports=problem.ports
+        numbers2=Int[];z02=ComplexF64[];weights2=Float64[];map_polarities=Int[]
+        for i in eachindex(ports)
+            col=findfirst(!iszero,view(returns.contraction,i,:))
+            col===nothing && throw(ArgumentError("native CUP return port lacks its terminal mapping"))
+            w=returns.contraction[i,col]
+            if col<=np
+                push!(numbers2,numbers[col]);push!(z02,port_z0[col])
+                push!(weights2,port_weights[col]*w);push!(map_polarities,ports[i].polarity)
+            else
+                t=cup_terminals[col-np]
+                push!(numbers2,t.number);push!(z02,t.z0);push!(weights2,w)
+                push!(map_polarities,t.terminal.polarity)
+            end
+        end
+        numbers,port_z0,port_weights=numbers2,z02,weights2
+        added=length(problem.vias)-length(vias)
+        via_sigma=vcat(via_sigma,fill(Inf,added))
+        vias=problem.vias
     end
     if _details
         # Grounded terminals (number 0) get no label: their contraction row
@@ -2357,12 +2640,30 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         end
         sheet_zs=[surface_by_level[level]
             for level in sort(collect(keys(sheetidx));by=level->sheetidx[level])]
-        terminal_maps=_sonnet_terminal_maps(contraction,[port.polarity for port in ports])
+        terminal_maps=_sonnet_terminal_maps(contraction,
+            isempty(cup_terminals) ? [port.polarity for port in ports] : map_polarities)
+        cup_standards=NamedTuple[]
+        if !isempty(cup_terminals)
+            surface_zs=Dict(i=>sheet_zs[i] for i in eachindex(sheet_zs))
+            for members in _sonnet_cup_solve_groups(cup_terminals)
+                group_members=[cup_terminals[k] for k in members]
+                indices=Int[findfirst(==(cup_terminals[k].number),labels) for k in members]
+                all(i->i!==nothing,indices) || throw(ArgumentError(
+                    "native CUP terminal label is missing from the solved network"))
+                push!(cup_standards,(;indices,
+                    signs=[cup_terminals[k].terminal.polarity for k in members],
+                    standard=_sonnet_cup_standard(st,gr,sheets,group_members,
+                        [cup_paths[k] for k in members],surface_zs;
+                        max_bytes=limit-geometry_workspace-port_workspace)))
+            end
+        end
         model=(;problem,contraction=terminal_maps.contraction,
             floating_common=terminal_maps.floating_common,z0,sheet_zs,via_sigma,labels,geometry_project=p,
-            scalar_files=_sonnet_scalar_files(variables))
+            scalar_files=_sonnet_scalar_files(variables),cup_standards)
         payload=_checked_payload_sum("native retained raster model",
-            _sonnet_raster_retained_payload(model,source),scalar_workspace)
+            _sonnet_raster_retained_payload(model,source),scalar_workspace,
+            [_sonnet_cup_standard_payload(std.standard,length(labels))
+                for std in cup_standards]...)
         _enforce_payload_limit(payload,limit,"native retained raster model","max_bytes")
         return merge(model,(;payload))
     end
@@ -2475,7 +2776,11 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     _enforce_payload_limit(1024,limit,"native raster source workspace","max_bytes")
     deembed_requested=any(r->_sonnet_ieq(r.tokens[1],"OPTIONS") &&
         any(occursin("d",token) for token in r.tokens[2:end]),p.records)
-    !raw && deembed_requested && calibration===nothing && throw(ArgumentError(
+    # The native de-embedding the project declares is answered internally
+    # for co-calibrated (CUP) port groups by their feed-standard solves;
+    # projects without CUP ports still require an explicit calibration.
+    cup_declared=any(ps->ps.kind==:cup,p.ports)
+    !raw && deembed_requested && calibration===nothing && !cup_declared && throw(ArgumentError(
         "native project requests de-embedding; supply calibration or explicitly request raw=true"))
     scalar_options=scalar_files===nothing && !_sonnet_has_scalar_tables(p) ? (;) :
         (;scalar_files,scalar_root,scalar_outside,scalar_max_files,scalar_max_bytes,
@@ -2505,6 +2810,42 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     result=solve_planar(model.problem,freq;surface_zs=model.sheet_zs,via_sigma=model.via_sigma,remaining...)
     terminal=_sonnet_balanced_y(result.y,model)
     y=terminal.y;voltage_transfer=terminal.voltage_transfer
+    if !raw && !isempty(model.cup_standards)
+        # Co-calibrated groups remove their launch-junction admittance.
+        # A marginal standard's junction column m is the contracted
+        # difference of the full host-pad solve and the solve stripped
+        # of member m's port cells; a column standard removes its
+        # contracted feed admittance directly. Voltage transfer is
+        # unaffected by a pure shunt removal (V_raw = V_cal).
+        for std in model.cup_standards
+            s=std.standard
+            if s.kind===:marginal
+                contract(r)=transpose(s.contraction)*r.y*s.contraction
+                a=contract(solve_planar(s.problems[1],freq;
+                    surface_zs=s.sheet_zs,via_sigma=s.via_sigma,remaining...))
+                junction=zeros(ComplexF64,size(a))
+                for k in 1:length(s.problems)-1
+                    b=contract(solve_planar(s.problems[k+1],freq;
+                        surface_zs=s.sheet_zs,via_sigma=s.via_sigma,remaining...))
+                    junction[:,k].=a[:,k].-b[:,k]
+                end
+                junction.=0.5.*(junction.+transpose(junction))
+                block=junction
+            else
+                std_result=solve_planar(s.problem,freq;
+                    surface_zs=s.sheet_zs,via_sigma=s.via_sigma,remaining...)
+                block=transpose(s.contraction)*std_result.y*s.contraction
+            end
+            # Fold the member-space junction block into label space with
+            # the members' rail signs: rail b carries voltage s_b·V and
+            # rail a's signed current contributes s_a·I_a, so
+            # J_label = s'·J·s — a differential pair removes
+            # J_++ + J_-- - 2·J_+- rather than the plain block sum.
+            for (a,ia) in enumerate(std.indices),(b,ib) in enumerate(std.indices)
+                y[ia,ib]-=std.signs[a]*std.signs[b]*block[a,b]
+            end
+        end
+    end
     if calibration!==nothing
         y=deembed_ports(y,calibration)
         A,B,_,_=_calibration_chain_blocks(calibration,length(model.labels))

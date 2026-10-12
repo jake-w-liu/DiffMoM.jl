@@ -1,0 +1,29 @@
+{
+ "purpose": "Native evidence for the E2 CUP calibration-group solve. Sonnet Lite 18.53 solves an interior open-edge simplified co-calibrated port (CUPGRP g1, GNDREF BOX AUTO, SIMPLE Y) and reports both de-embedded (D) and raw (ND) responses. The D-minus-ND difference isolates Lite's port-discontinuity removal: a pure lumped launch-junction capacitance dy11 = -5.9545e-9*f Siemens (~0.95fF, exactly proportional to f across 1MHz-10GHz, quantized per contact cell). DiffMoM measures the same junction as the launch cells' in-situ self-capacitance marginal (full host pad minus pad stripped of port cells, through a separate cover-contact column) and removes ~1.5x Lite's value \u2014 a bounded basis-resolution residual in the same family as the A7 pin-feed gap. Parity bounds: calibrated-vs-D |dS| <= 2e-4 at 1GHz, <= 2e-3 at 10GHz; raw-vs-ND |dS| <= 2e-4 at 1GHz, <= 2e-3 at 10GHz.",
+ "files": [
+  {
+   "path": "cup.son",
+   "purpose": "interior open-edge simplified-CUP probe: pad9 west edge on level-0 sheet, CUPGRP g1, GNDREF BOX AUTO, SIMPLE Y, OPTIONS -d",
+   "sha256": "cc5005f5bc132240b269543f9a1c1433def90e3eea395994423433ff3853a138",
+   "bytes": 1056
+  },
+  {
+   "path": "cup_response.log",
+   "purpose": "Lite 18.53 solve log reporting de-embedded S-parameters per frequency (P1=CUP simplified port, P2=STD)",
+   "sha256": "6b783eb3ea0136b383a274703fbb4f1b44727e342741e2b15b6d7b8babc7aeb2",
+   "bytes": 1568
+  },
+  {
+   "path": "geo_response_d.sid",
+   "purpose": "Lite 18.53 de-embedded 2-port S response (D)",
+   "sha256": "b925e2db8f3d68dc7815328fc458c17726d73a14342ff9e5fceed56d50e73999",
+   "bytes": 1744
+  },
+  {
+   "path": "geo_response_nd.sid",
+   "purpose": "Lite 18.53 non-de-embedded 2-port S response (ND)",
+   "sha256": "71f493e342958c3fb7c9c8db45a39959e2f775f1f99847aa169935c8cd5c1f86",
+   "bytes": 1274
+  }
+ ]
+}

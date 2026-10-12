@@ -1159,9 +1159,34 @@ retained in `complex_reference_oKpoAC`.
 Physical paired FLOAT sources, uniform floating sister geometries and
 full coupled result calibration are implemented with charge, resistance,
 power, current and field regressions. Native CUP/component FLOAT lowering
-retains finite bridges and signed circuit incidence. Native GLG accuracy
-remains unverified: the installed Lite engine rejects calibration groups
-and ports-only components. Component terminal widths now resolve the
+retains finite bridges and signed circuit incidence. Co-calibrated (CUP)
+port groups now solve through a per-group junction standard: interior
+open-edge CUP terminals stage generated cover-return vias, `SIMPLE Y`
+ports de-embed independently and other members couple per (CUPGRP name,
+ground reference). Each member's removal is measured in situ as its port
+cells' self-capacitance marginal — the full host-pad admittance through a
+separate cover-contact column minus the same pad stripped of the port
+cells — matching Lite's documented lumped launch-junction capacitance
+(a pure susceptance proportional to frequency, ~0.95 fF on the archived
+fixture, quantized per contact cell). The measurement contact must clear
+every launch cell's neighborhood — a contact touching a launch measures
+the column's lateral coupling to that cell instead of its junction
+capacitance — and launch cells shared between members on one pad are
+stripped exactly once. Pads leaving no non-junction contact cell,
+including same-pad groups where every free cell touches a launch,
+degenerate to a coarser feed-column standard; wall-attached
+CUP ports keep the feed-line adapter rejection, and FLOAT/polygon-plane
+ground references, port-zero CUP, diagonal and non-open edges reject
+loudly. Against the installed Lite 18.53 archive
+(`test/fixtures/native_cup_junction`) the calibrated output matches the
+de-embedded response within |dS| ≤ 2e-4 at 1 GHz and ≤ 2e-3 at 10 GHz on
+the CUP-driven terms — a bounded ~1.5x junction-measurement residual in
+the same basis family as the pin-feed gap (Lite's ideal lumped contact
+versus the cell-column junction). A `CUPGRP` block after a non-CUP `POR1`
+token still routes to the adapter rejection, and a Lite-verified
+multi-port group fixture remains outstanding. Native GLG accuracy
+remains unverified: the installed Lite engine rejects ports-only
+components. Component terminal widths now resolve the
 native FEED (complete straight pad edge), CELL (single pin-coordinate
 raster cell) and `CUST <width>` (declared width centered on the pin
 coordinate) contracts across ordinary, CUP and FLOAT pin paths, with

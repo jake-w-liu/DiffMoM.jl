@@ -403,15 +403,47 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       (`mp_cup`). Fixed: geometry-keyed routing in raster+conformal port
       loops, the raster port-workspace estimator, the GEOVAR moved-port
       re-anchor, the TMM face-duplication gate; removed a false "standard
-      via port must terminate on a box cover" rejection; every grouped
-      port still reaches the co-calibrated adapter rejection (E2).
-- [ ] E2 CUP calibration-group solving — records parse. Refined boundary
-      (E1 probes, `fixtures/native_port_kind_token`): a CUPGRP block after
-      ANY POR1 token is accepted and de-embeds the port; a single-port
-      group SOLVES in Lite (not license-blocked). A two-port group with a
-      trailing shared CUPGRP rejects natively ("Calibration group
-      information not defined") — the correct multi-port group grammar
-      still needs decoding. Remaining: group de-embed implementation.
+      via port must terminate on a box cover" rejection; CUP ports now
+      solve through the group de-embed (E2), while grouped non-CUP
+      ports still reach the co-calibrated adapter rejection.
+- [x] E2 CUP calibration-group solving — DONE (group de-embed +
+      bounded residual). Interior open-edge `POR1 CUP` ports stage as
+      terminal ports with generated cover-return vias and a per-group
+      junction standard; `solve_sonnet_project` subtracts the standard's
+      contracted admittance block from the group's labels unless
+      `raw=true`. Grouping follows `sonnet_calibration_groups`:
+      `SIMPLE Y` ports are independent singletons, other CUP ports
+      couple per (CUPGRP name, ground reference). Standard form: Lite's
+      port discontinuity is a lumped launch-junction capacitance — pure
+      susceptance exactly ∝f (~0.95fF on the archive fixture, quantized
+      per contact cell) — so each member's removal is measured in situ
+      as the port cells' self-capacitance marginal: the full host-pad
+      solve through a separate cover-contact column minus the same pad
+      stripped of that member's port cells (the column's own parasitic
+      cancels exactly; mutual junction terms fall out of the same
+      contact set). Contacts must also clear every launch cell's
+      neighborhood — a contact touching a launch measures column-
+      lateral coupling, not junction capacitance — and launch cells
+      shared between members on one pad (corner cells where edges meet)
+      are stripped exactly once. Pads leaving no non-junction contact
+      cell, including same-pad groups where every free cell touches a
+      launch, degenerate to a coarser feed-column standard. Wall-attached CUP ports still
+      route to the A1 feed-line adapter rejection; FLOAT/polygon-plane
+      GNDREF, port-zero CUP, diagonal and non-open edges reject loudly.
+      Residual: our junction measurement runs ~1.5x Lite's value —
+      a basis-resolution gap in the A7 pin-feed family (Lite's ideal
+      lumped contact vs the cell-column junction), bounded by the
+      `fixtures/native_cup_junction` archive: calibrated-vs-D |dS| <=
+      2e-4 at 1GHz / <= 2e-3 at 10GHz on the CUP-driven terms (S22 is
+      excluded — Lite's D stream also removes the wall port's feed-line
+      discontinuity, the separate A1 item). Tests in
+      `test_planar_sonnet_io.jl` "Native CUP calibration-group solve
+      (E2)". Open sub-item: a CUPGRP block after ANY POR1 token is
+      accepted natively (single-port group solves in Lite), but our
+      parser still routes grouped non-CUP ports to the adapter
+      rejection; the multi-port CUPGRP file grammar is decoded for our
+      machinery but a Lite-verified multi-port fixture is outstanding —
+      Lite's trailing-shared-CUPGRP form rejects natively.
 - [x] E3 non-PEC metal material index path — DONE. Lite probes
       (`fixtures/native_material_index`, 35 cases): sheet↔via metal-type
       cross-references natively reject as "Material ID refers to the wrong
@@ -507,8 +539,9 @@ prior ledgered items.
 
 Remaining (updated order):
 
-1. E2 CUP calibration-group solve + E5 dielectric bricks — bounded
-   (A7 pin-feed residual closed as characterized evidence).
+1. E5 dielectric bricks — bounded (E2 CUP group solve and the A7
+   pin-feed residual both closed as implemented + characterized
+   evidence).
 2. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
    DocOnly.
 3. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.

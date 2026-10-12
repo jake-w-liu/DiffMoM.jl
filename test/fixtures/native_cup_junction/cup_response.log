@@ -1,0 +1,37 @@
+Run 1:  Tue Oct 13 03:20:38 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\cupfix\gin5.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 1.000000 0.0000 1.395e-7 90.000 1.395e-7 90.000 1.000000 0.0000
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+
+    Frequency:  0.01 GHZ
+      0.01000000 1.000000 0.0000 1.395e-6 89.997 1.395e-6 89.997 1.000000 0.0000
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+
+    Frequency:  0.1 GHZ
+      0.10000000 1.000000 -0.018 1.395e-5 89.967 1.395e-5 89.967 1.000000 -0.048
+      ! P1 F=0.1 Eeff=(6.08785 - j5.09449) Z0=(319.761 - j116.142)
+      ! P2 F=0.1 Eeff=(6.06012 - j5.07129) Z0=(320.492 - j116.407)
+
+    Frequency:  1 GHZ
+      1.00000000 1.000000 -0.182 1.395e-4 89.663 1.395e-4 89.663 0.999999 -0.481
+      ! P1 F=1.0 Eeff=(2.61297 - j1.60823) Z0=(203.505 - j57.6072)
+      ! P2 F=1.0 Eeff=(2.60107 - j1.60091) Z0=(203.97 - j57.7387)
+
+    Frequency:  10 GHZ
+      10.0000000 0.999986 -1.826 0.001406 86.504 0.001406 86.504 0.999838 -4.828
+      ! P1 F=10.0 Eeff=(1.51328 - j0.508625) Z0=(150.545 - j24.599)
+      ! P2 F=10.0 Eeff=(1.50637 - j0.506293) Z0=(150.883 - j24.6518)
+
+Em simulation completed Tue Oct 13 03:20:38 2026.

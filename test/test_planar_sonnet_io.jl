@@ -937,3 +937,261 @@ end
     @test e isa ArgumentError
     @test occursin("feed-line de-embedding adapter",sprint(showerror,e))
 end
+
+@testset "Native CUP calibration-group solve (E2)" begin
+    # Lite 18.53 archived evidence: an interior open-edge simplified
+    # co-calibrated port de-embeds a pure lumped launch-junction
+    # capacitance (~0.95fF on this fixture, exactly proportional to f).
+    # DiffMoM measures the same junction as the port cells' in-situ
+    # self-capacitance marginal — host pad present vs stripped of the
+    # port cells, driven through a separate cover-contact column so the
+    # column's own parasitic cancels — and removes ~1.5x Lite's value.
+    # The gap is a basis-resolution residual in the A7 family; this
+    # testset pins the model, the bookkeeping and the bounded residual.
+    fixture=joinpath(@__DIR__,"fixtures","native_cup_junction")
+    manifest=JSON.parsefile(joinpath(fixture,"manifest.json"))
+    for entry in manifest["files"]
+        @test bytes2hex(sha256(read(joinpath(fixture,entry["path"]))))==entry["sha256"]
+    end
+    project=read_sonnet_project(joinpath(fixture,"cup.son"))
+    template=replace(read(joinpath(fixture,"cup.son"),String),"\r\n"=>"\n")
+
+    # Staging: the interior open-edge CUP stages a marginal junction
+    # standard — one full host-pad solve plus one solve per member with
+    # that member's port cells stripped; contacts are cover-return
+    # columns outside every port span and clear of every launch cell's
+    # neighborhood (a contact touching a launch measures column-lateral
+    # coupling, not the junction capacitance).
+    model=sonnet_planar_problem(project;freq=1e9,_materials=true,_details=true)
+    @test length(model.cup_standards)==1
+    std=only(model.cup_standards)
+    @test std.indices==[1]
+    @test std.standard.kind===:marginal
+    @test length(std.standard.problems)==2
+    @test size(std.standard.contraction,2)==1
+    @test model.labels==[1,2]
+    # Every marginal variant must actually strip launch cells — a minus
+    # problem that kept the full mask would silently zero the removal.
+    @test count(std.standard.problems[2].sheets[1].mask)<
+        count(std.standard.problems[1].sheets[1].mask)
+
+    # The removal is the launch cells' self-capacitance: pure shunt
+    # susceptance, exactly proportional to frequency, bounded near the
+    # measured ~9uS at 1GHz (Lite removes 5.95uS on this fixture).
+    removed=f->imag((solve_sonnet_project(project,f;raw=true).y-
+        solve_sonnet_project(project,f).y)[1,1])
+    for (f,lo,hi) in ((1e6,5e-9,2e-8),(1e9,5e-6,2e-5),(1e10,5e-5,2e-4))
+        @test lo<removed(f)<hi
+    end
+    @test removed(1e10)/removed(1e9)≈10 rtol=0.05
+
+    # Parity against archived Lite data: calibrated output vs the
+    # de-embedded (D) response, raw output vs ND. Residual stays bounded
+    # and grows ~linearly with frequency (the 1.5x junction over-removal).
+    # Lite's D stream also de-embeds the wall STD port's feed-line
+    # discontinuity — a separate A1-family residual (~0.02 on S22 here) —
+    # so the D comparison covers only the CUP-driven terms.
+    function sid_rows(name)
+        [parse.(Float64,split(strip(l))) for l in
+            eachline(joinpath(fixture,name)) if occursin(r"^\d.*e",l)]
+    end
+    for (name,mode) in (("geo_response_d.sid",false),("geo_response_nd.sid",true))
+        for row in sid_rows(name)
+            f=row[1]
+            f in (1e9,1e10) || continue
+            native=ComplexF64[row[2]+row[3]im row[6]+row[7]im;
+                              row[4]+row[5]im row[8]+row[9]im]
+            ours=solve_sonnet_project(project,f;raw=mode)
+            terms=name=="geo_response_d.sid" ? ((1,1),(2,1),(1,2)) :
+                ((1,1),(2,1),(1,2),(2,2))
+            @test maximum(abs(ours.s[i...]-native[i...]) for i in terms)<=
+                (f==1e9 ? 2e-4 : 2e-3)
+        end
+    end
+
+    # raw=true leaves the network untouched: no standard is applied and
+    # the voltage transfer survives a pure shunt removal.
+    ours_raw=solve_sonnet_project(project,1e9;raw=true)
+    ours_cal=solve_sonnet_project(project,1e9)
+    @test ours_cal.y!=ours_raw.y
+    @test ours_cal.voltage_transfer==ours_raw.voltage_transfer
+
+    mktempdir() do dir
+        path=joinpath(dir,"case.son")
+        # A second open-edge CUP on the other pad sharing CUPGRP g1 makes
+        # one coupled group: K+1 problems, a K-by-K junction block over
+        # labels [1,2], mutual terms included.
+        coupled=replace(template,"SIMPLE Y\n"=>"")
+        coupled=replace(coupled,"""POR1 STD
+POLY 10 1
+1
+2 50 0 0 0 1 0.5
+NUM 2"""=>"""POR1 CUP g1
+GNDREF BOX AUTO
+TERMW FEED
+POLY 10 1
+3
+2 50 0 0 0 0 0.5
+CUPGRP g1
+END
+POR1 STD
+POLY 10 1
+1
+3 50 0 0 0 1 0.5
+NUM 2""")
+        write(path,coupled)
+        group_model=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,_materials=true,_details=true)
+        gstd=only(group_model.cup_standards)
+        @test group_model.labels==[1,2,3]
+        @test gstd.indices==[1,2]
+        @test gstd.standard.kind===:marginal
+        @test length(gstd.standard.problems)==3
+        @test size(gstd.standard.contraction,2)==2
+        gcal=solve_sonnet_project(read_sonnet_project(path),1e9)
+        graw=solve_sonnet_project(read_sonnet_project(path),1e9;raw=true)
+        dy=gcal.y-graw.y
+        @test imag(dy[1,1])<-4e-6 && imag(dy[2,2])<-4e-6
+        @test imag(dy[1,2])>1e-8
+        @test iszero(dy[1,3]) && iszero(dy[2,3]) && iszero(dy[3,3])
+        @test gcal.y≈transpose(gcal.y)
+
+        # A coupled group whose members carry opposite rails of one
+        # external label folds the member-space junction into label
+        # space by rail sign: the pair removes J11+J22−2J12 at label 1
+        # rather than dropping all but the last member through a
+        # duplicate-index block assignment.
+        diff=replace(coupled,"""POLY 10 1
+3
+2 50"""=>"""POLY 10 1
+3
+-1 50""")
+        write(path,diff)
+        diff_model=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,_materials=true,_details=true)
+        dstd=only(diff_model.cup_standards)
+        @test dstd.indices==[1,1]
+        @test dstd.signs==[1,-1]
+        @test dstd.standard.kind===:marginal
+        dcal=solve_sonnet_project(read_sonnet_project(path),1e9)
+        draw=solve_sonnet_project(read_sonnet_project(path),1e9;raw=true)
+        ddy=dcal.y-draw.y
+        # J11+J22−2J12 ≈ 2·9uS with the small mutual term subtracting.
+        @test imag(ddy[1,1])<-1e-5
+        @test iszero(ddy[1,2]) && iszero(ddy[2,2])
+        @test diff_model.labels==[1,3]
+
+        # Two members sharing one pad leave no contact cell outside
+        # every launch's neighborhood — adjacent contacts measure
+        # column-lateral coupling, not junction capacitance — so the
+        # standard degenerates to the feed-column form and the sign
+        # fold still applies to its member-space block.
+        samepad=replace(template,"""POR1 STD
+POLY 10 1
+1
+2 50 0 0 0 1 0.5
+NUM 2"""=>"""POR1 CUP g1
+GNDREF BOX AUTO
+TERMW FEED
+POLY 9 1
+2
+-1 50 0 0 0 0 0.5
+CUPGRP g1
+END
+POR1 STD
+POLY 10 1
+1
+2 50 0 0 0 1 0.5
+NUM 2""")
+        samepad=replace(samepad,"SIMPLE Y\n"=>"")
+        write(path,samepad)
+        sp_model=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,_materials=true,_details=true)
+        spstd=only(sp_model.cup_standards)
+        @test spstd.indices==[1,1]
+        @test spstd.signs==[1,-1]
+        @test spstd.standard.kind===:column
+        sp_d=imag((solve_sonnet_project(read_sonnet_project(path),1e9;raw=true).y-
+            solve_sonnet_project(read_sonnet_project(path),1e9).y)[1,1])
+        @test sp_d>1e-5
+
+        # SIMPLE Y splits the same CUPGRP into independent singleton
+        # standards even when the ports share a group name.
+        write(path,replace(template,"""POR1 STD
+POLY 10 1
+1
+2 50 0 0 0 1 0.5
+NUM 2"""=>"""POR1 CUP g1
+SIMPLE Y
+GNDREF BOX AUTO
+TERMW FEED
+POLY 10 1
+3
+2 50 0 0 0 0 0.5
+CUPGRP g1
+END
+POR1 STD
+POLY 10 1
+1
+3 50 0 0 0 1 0.5
+NUM 2"""))
+        simple_model=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,_materials=true,_details=true)
+        @test length(simple_model.cup_standards)==2
+        @test all(s->s.standard.kind===:marginal,simple_model.cup_standards)
+        @test sort!([only(s.indices) for s in simple_model.cup_standards])==[1,2]
+
+        # A pad fully covered by port cells leaves no non-junction
+        # contact: the standard degenerates to the coarser feed-column
+        # measure rather than inventing a contact.
+        shrunk=replace(template,"""0.3 0.45
+0.45 0.45
+0.45 0.55
+0.3 0.55
+0.3 0.45"""=>"""0.3 0.45
+0.35 0.45
+0.35 0.55
+0.3 0.55
+0.3 0.45""")
+        write(path,shrunk)
+        col_model=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,_materials=true,_details=true)
+        @test only(col_model.cup_standards).standard.kind===:column
+
+        # GNDREF direction selects the return cover: both forced covers
+        # stage and solve, and BELOW's two-layer column removes a
+        # different in-situ junction admittance than AUTO's near cover.
+        for token in ("ABOVE","BELOW")
+            write(path,replace(template,"GNDREF BOX AUTO"=>"GNDREF BOX $token"))
+            pdir=read_sonnet_project(path)
+            @test only(sonnet_planar_problem(pdir;freq=1e9,_materials=true,
+                _details=true).cup_standards).standard.kind===:marginal
+        end
+        write(path,replace(template,"GNDREF BOX AUTO"=>"GNDREF BOX BELOW"))
+        pdir=read_sonnet_project(path)
+        below_d=imag((solve_sonnet_project(pdir,1e9;raw=true).y-
+            solve_sonnet_project(pdir,1e9).y)[1,1])
+        @test below_d>removed(1e9)
+
+        # Unsupported forms stay loud.
+        write(path,replace(template,"GNDREF BOX AUTO"=>"GNDREF FLOAT"))
+        @test_throws ArgumentError sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,_materials=true,_details=true)
+        write(path,replace(template,"""3
+1 50 0 0 0 0 0.5"""=>"""3
+0 50 0 0 0 0 0.5"""))
+        @test_throws ArgumentError sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,_materials=true,_details=true)
+        # A wall-edge CUP belongs to the feed-line calibration family.
+        wallcup=replace(template,"POLY 9 1\n3\n1 50"=>"POLY 10 1\n1\n1 50")
+        write(path,wallcup)
+        @test_throws ArgumentError sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,_materials=true,_details=true)
+        # Payload accounting retains every standard problem.
+        @test_throws ArgumentError sonnet_planar_problem(project;
+            freq=1e9,_materials=true,_details=true,max_bytes=2^10)
+        # The non-details path cannot carry the group contract.
+        @test_throws ArgumentError sonnet_planar_problem(project;
+            freq=1e9,_materials=true,_details=false)
+    end
+end
