@@ -404,8 +404,15 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       loops, the raster port-workspace estimator, the GEOVAR moved-port
       re-anchor, the TMM face-duplication gate; removed a false "standard
       via port must terminate on a box cover" rejection; CUP ports now
-      solve through the group de-embed (E2), while grouped non-CUP
-      ports still reach the co-calibrated adapter rejection.
+      solve through the group de-embed (E2). Lite-verified refinement
+      (18.53): a `CUPGRP` block on a non-CUP token is inert — wall
+      STD+CUPGRP replays bit-identically to the group-less port and an
+      interior non-CUP port fails "no ground reference" either way —
+      and a wall-attached CUP token degrades to the standard wall port
+      (g2_cup/xg2_cup both log "Standard port"). Grouped non-CUP ports
+      now parse with structural validation and solve by placement;
+      wall-CUP degrades likewise and only non-wall CUP ports count
+      toward the `-d` de-embed gate.
 - [x] E2 CUP calibration-group solving — DONE (group de-embed +
       bounded residual). Interior open-edge `POR1 CUP` ports stage as
       terminal ports with generated cover-return vias and a per-group
@@ -413,7 +420,10 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       contracted admittance block from the group's labels unless
       `raw=true`. Grouping follows `sonnet_calibration_groups`:
       `SIMPLE Y` ports are independent singletons, other CUP ports
-      couple per (CUPGRP name, ground reference). Standard form: Lite's
+      couple per (CUPGRP name, resolved ground reference) — Lite keys
+      groups on the resolved cover, so a named group whose members
+      resolve to different covers rejects natively and `Auto`-named
+      members sub-group per resolved cover. Standard form: Lite's
       port discontinuity is a lumped launch-junction capacitance — pure
       susceptance exactly ∝f (~0.95fF on the archive fixture, quantized
       per contact cell) — so each member's removal is measured in situ
@@ -438,12 +448,24 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       excluded — Lite's D stream also removes the wall port's feed-line
       discontinuity, the separate A1 item). Tests in
       `test_planar_sonnet_io.jl` "Native CUP calibration-group solve
-      (E2)". Open sub-item: a CUPGRP block after ANY POR1 token is
-      accepted natively (single-port group solves in Lite), but our
-      parser still routes grouped non-CUP ports to the adapter
-      rejection; the multi-port CUPGRP file grammar is decoded for our
-      machinery but a Lite-verified multi-port fixture is outstanding —
-      Lite's trailing-shared-CUPGRP form rejects natively.
+      (E2)". Resolved sub-item: the multi-port CUPGRP grammar
+      (`POR1 CUP Auto` + `CUPGRP "Auto" LOCAL`, per installed example
+      `ind_cap_ports.son`) parses and passes Lite's physical validation
+      — aligned launches, shared resolved cover, clear restricted space
+      — but the analysis stops at the license boundary ("Sonnet Lite
+      does not allow calibration groups"), so no native multi-port
+      numerical oracle exists under Lite and coupled-group behavior is
+      verified internally. Resolved sub-item: a CUPGRP block after ANY
+      POR1 token parses natively, but Lite keys co-calibration on the
+      CUP token AND placement — on non-CUP ports the group is inert
+      (wall STD+CUPGRP replays bit-identically to the group-less port;
+      an interior non-CUP port fails "no ground reference" either way),
+      and a wall-attached CUP token degrades to the standard wall port
+      (g2_cup/xg2_cup both log "Standard port"). Our intake now parses
+      grouped non-CUP ports with structural validation, degrades
+      wall-CUP to the wall path, and counts only non-wall CUP ports
+      toward the `-d` de-embed gate. Lite's trailing-shared-CUPGRP form
+      rejects natively.
 - [x] E3 non-PEC metal material index path — DONE. Lite probes
       (`fixtures/native_material_index`, 35 cases): sheet↔via metal-type
       cross-references natively reject as "Material ID refers to the wrong

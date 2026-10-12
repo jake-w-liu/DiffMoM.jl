@@ -1163,7 +1163,10 @@ retains finite bridges and signed circuit incidence. Co-calibrated (CUP)
 port groups now solve through a per-group junction standard: interior
 open-edge CUP terminals stage generated cover-return vias, `SIMPLE Y`
 ports de-embed independently and other members couple per (CUPGRP name,
-ground reference). Each member's removal is measured in situ as its port
+resolved ground reference) — Lite keys groups on the resolved cover, so
+a named group whose members resolve to different covers rejects
+natively and `Auto`-named members sub-group per resolved cover. Each
+member's removal is measured in situ as its port
 cells' self-capacitance marginal — the full host-pad admittance through a
 separate cover-contact column minus the same pad stripped of the port
 cells — matching Lite's documented lumped launch-junction capacitance
@@ -1182,9 +1185,18 @@ loudly. Against the installed Lite 18.53 archive
 de-embedded response within |dS| ≤ 2e-4 at 1 GHz and ≤ 2e-3 at 10 GHz on
 the CUP-driven terms — a bounded ~1.5x junction-measurement residual in
 the same basis family as the pin-feed gap (Lite's ideal lumped contact
-versus the cell-column junction). A `CUPGRP` block after a non-CUP `POR1`
-token still routes to the adapter rejection, and a Lite-verified
-multi-port group fixture remains outstanding. Native GLG accuracy
+versus the cell-column junction). A `CUPGRP` block on a non-CUP `POR1`
+token is inert natively — Lite keys co-calibration on the CUP token and
+placement: a wall STD+CUPGRP replays bit-identically to the group-less
+port, an interior non-CUP port fails as ungrounded either way, and a
+wall-attached CUP token degrades to the standard wall port — so grouped
+non-CUP ports parse with structural validation and solve by placement.
+Lite's own multi-port
+group grammar (`POR1 CUP Auto` with `CUPGRP "Auto" LOCAL`) parses and
+passes physical validation on installed Lite 18.53, but the analysis
+stops at the license boundary — "Sonnet Lite does not allow calibration
+groups" — so a native multi-port numerical oracle is unavailable under
+Lite; coupled-group behavior is verified internally instead. Native GLG accuracy
 remains unverified: the installed Lite engine rejects ports-only
 components. Component terminal widths now resolve the
 native FEED (complete straight pad edge), CELL (single pin-coordinate

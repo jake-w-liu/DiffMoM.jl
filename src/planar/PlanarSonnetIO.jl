@@ -497,13 +497,24 @@ function _sonnet_cup_group_check(source,r,pr,kind)
             _sonnet_error(source,r.line,"CUP port requires its calibration group name")
         r.tokens[3]==ct[2] || _sonnet_error(source,pr[only(cups)].line,
             "CUP port and CUPGRP name mismatch")
-    else
-        # Lite accepts CUPGRP after any POR1 token (the token is
-        # descriptive — a non-CUP port followed by a group de-embeds just
-        # like CUP), so the token is not the gate: the unimplemented
-        # co-calibrated group solve is.
-        isempty(cups) || _sonnet_error(source,r.line,
-            "CUPGRP calibration group requires its co-calibrated port adapter")
+    elseif !isempty(cups)
+        # Lite ignores a CUPGRP block on a non-CUP port: the group record
+        # is inert and geometry still types the port (verified 18.53 — a
+        # wall STD+CUPGRP runs bit-identically to the same port without
+        # the group, and an interior STD+CUPGRP fails as an ungrounded
+        # standard port, not as a co-calibrated one). Validate the
+        # block's structure so malformed groups still reject.
+        length(cups)==1 || _sonnet_error(source,r.line,
+            "port carries more than one CUPGRP calibration group")
+        ct=pr[only(cups)].tokens
+        (length(ct)==2 || (length(ct)==3 && ct[3]=="LOCAL")) ||
+            _sonnet_error(source,pr[only(cups)].line,"unrepresented CUPGRP fields")
+        isempty(ct[2]) && _sonnet_error(source,pr[only(cups)].line,"empty CUPGRP group name")
+        for record in pr[only(cups)+1:end]
+            uppercase(record.tokens[1])=="ID" || continue
+            length(record.tokens)==2 && tryparse(Int,record.tokens[2])!==nothing ||
+                _sonnet_error(source,record.line,"malformed CUP group ID")
+        end
     end
     return nothing
 end
@@ -511,6 +522,35 @@ end
 """Decoded CUPGRP calibration group name for a parsed CUP port, validated at
 parse time to mirror the POR1 record's group designator."""
 _sonnet_cup_group(port)=only(r.tokens[2] for r in port.records if uppercase(r.tokens[1])=="CUPGRP")
+
+"""Whether a parsed port's sheet-polygon edge lies on a box wall — the
+placement Lite's port typing uses: a CUP token on a wall degrades to the
+standard wall port (Lite-verified `g2_cup`/`xg2_cup` both solve as
+"Standard port") and only non-wall edges co-calibrate. `polygons` maps
+polygon id to `SonnetPolygon`; via-polygon and missing targets are not
+wall edges."""
+function _sonnet_cup_port_on_wall(p::SonnetProject,ps,polygons;
+        variables=Dict{String,Float64}(),freq::Real=1e9,scalar_kw...)
+    poly=get(polygons,ps.polygon,nothing)
+    poly===nothing && return false
+    poly.kind===:sheet || return false
+    a,b=sonnet_variable_value(p,p.box[2];variables,freq,scalar_kw...)*p.length_scale,
+        sonnet_variable_value(p,p.box[3];variables,freq,scalar_kw...)*p.length_scale
+    index,next=_sonnet_port_edge_indices(poly.vertices,ps.edge)
+    v=poly.vertices
+    # The solve path classifies wall placement after snapping vertices
+    # within half a native box cell onto the boundary
+    # (_sonnet_raster_wall_project); reproduce the same snap here so the
+    # de-embed gate and the port loop agree.
+    nx,ny=parse(Int,p.box[4])÷2,parse(Int,p.box[5])÷2
+    snap(value,extent,count)=begin
+        cell=(value/extent)*count
+        -.5001<cell<.5001 ? 0. : count-.5001<cell<count+.5001 ? extent : value
+    end
+    x1,x2=snap(v[1,index],a,nx),snap(v[1,next],a,nx)
+    y1,y2=snap(v[2,index],b,ny),snap(v[2,next],b,ny)
+    return (x1==x2==0. || x1==x2==a || y1==y2==0. || y1==y2==b)
+end
 
 """Ground-reference key (`:float`, `:box_auto`, ...) declared by a native
 CUP port's GNDREF record. Co-calibrated ports can only share a calibration
@@ -530,12 +570,13 @@ tuple `(;name,ports,numbers,groundref)` per group; `ports` indexes
 native port label. Solved networks order ports by sorted unsigned label,
 so map `numbers` through a result's `port_numbers`/`labels` to obtain
 network indices for `planar_cocalibrate`/`deembed_cocal_group`. Members
-sharing a group name are split by ground reference (native grouping
-rule), so `Auto` yields one group per distinct reference — native auto
-sub-grouping by proximity is not representable in the file and remains
-Lite license-blocked to verify. Simplified co-calibrated ports
-(`SIMPLE Y`) are omitted: their de-embedding does not share a coupled
-launch."""
+sharing a group name are split by declared ground reference; the solve
+path re-keys on the resolved cover — Lite rejects a named group whose
+members resolve to different covers, and `Auto` members sub-group per
+resolved cover. Native proximity sub-grouping is not representable in
+the file and remains Lite license-blocked to verify. Simplified
+co-calibrated ports (`SIMPLE Y`) are omitted: their de-embedding does
+not share a coupled launch."""
 function sonnet_calibration_groups(p::SonnetProject)
     groups=Dict{Tuple{String,Symbol},Vector{Int}}()
     for (index,port) in enumerate(p.ports)
@@ -609,16 +650,31 @@ end
 """Calibration-group partitioning for staged CUP terminals. Simplified
 (`SIMPLE Y`) ports de-embed independently — each is its own singleton
 standard. Normal co-calibrated ports share one coupled standard per
-`CUPGRP` name and ground reference, mirroring the native common-ground
-grouping rule; Lite's additional proximity sub-grouping is not
-representable in the file and stays folded into the shared standard."""
-function _sonnet_cup_solve_groups(cup_terminals)
+`CUPGRP` name and resolved ground reference — Lite keys grouping on the
+resolved cover, not the declared token, and rejects a manually named
+group whose members resolve to different covers ("mixed ground
+references"). `Auto`-named members are split by resolved cover (Lite
+sub-groups automatically); Lite's additional proximity sub-grouping is
+not representable in the file and stays folded into the shared
+standard. `directions` carries each terminal's resolved return
+direction."""
+function _sonnet_cup_solve_groups(cup_terminals,directions)
+    resolved=Dict{String,Symbol}()
+    for (i,t) in enumerate(cup_terminals)
+        t.simple && continue
+        uppercase(t.group)=="AUTO" && continue
+        d=directions[i]
+        prev=get(resolved,t.group,nothing)
+        prev===nothing && (resolved[t.group]=d;continue)
+        prev==d || throw(ArgumentError(
+            "native CUP calibration group $(t.group) mixes resolved ground references"))
+    end
     groups=Vector{Int}[];index=Dict{Tuple{String,Symbol},Int}()
     for (i,t) in enumerate(cup_terminals)
         if t.simple
             push!(groups,[i]);continue
         end
-        key=(t.group,t.groundref)
+        key=(t.group,directions[i])
         j=get(index,key,0)
         if j==0
             push!(groups,Int[]);index[key]=j=length(groups)
@@ -2492,12 +2548,13 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
         wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
             v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north : nothing
-        if ps.kind==:cup
+        if ps.kind==:cup && wall===nothing
             # Co-calibrated ports attach on open interior edges and return
-            # through a generated cover via; a wall placement uses the
-            # feed-line calibration family (A1 adapter), not this path.
-            wall===nothing || throw(ArgumentError(
-                "native CUP box-wall port requires its feed-line calibration adapter"))
+            # through a generated cover via. A CUP token on a box wall
+            # degrades to the standard wall port natively (Lite-verified:
+            # g2_cup/xg2_cup both solve as "Standard port"), so wall
+            # placements skip this path entirely; an interior edge that
+            # is not open still rejects inside the terminal staging.
             push!(cup_terminals,_sonnet_cup_terminal(p,ps,poly,
                 sheets[sheetidx[poly.level]].mask,masks[poly.id],
                 sheetidx[poly.level],gr,variables,freq,z0))
@@ -2645,7 +2702,8 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         cup_standards=NamedTuple[]
         if !isempty(cup_terminals)
             surface_zs=Dict(i=>sheet_zs[i] for i in eachindex(sheet_zs))
-            for members in _sonnet_cup_solve_groups(cup_terminals)
+            for members in _sonnet_cup_solve_groups(cup_terminals,
+                    [path.direction for path in cup_paths])
                 group_members=[cup_terminals[k] for k in members]
                 indices=Int[findfirst(==(cup_terminals[k].number),labels) for k in members]
                 all(i->i!==nothing,indices) || throw(ArgumentError(
@@ -2779,7 +2837,19 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     # The native de-embedding the project declares is answered internally
     # for co-calibrated (CUP) port groups by their feed-standard solves;
     # projects without CUP ports still require an explicit calibration.
-    cup_declared=any(ps->ps.kind==:cup,p.ports)
+    # Lite types ports by placement, so only a CUP token on a non-wall
+    # edge counts — a wall placement degrades to the standard wall port
+    # and its `-d` request stays a wall feed-line de-embed. Floating and
+    # component dispatch keep their own de-embed semantics, so wall
+    # placements still count for projects routing there.
+    routed=_sonnet_has_floating(p) || !isempty(p.components)
+    polydict=Dict(q.id=>q for q in p.polygons)
+    cup_declared=any(ps->ps.kind==:cup &&
+        (routed || !_sonnet_cup_port_on_wall(p,ps,polydict;variables=variables,
+            freq=freq,scalar_files=scalar_files,scalar_root=scalar_root,
+            scalar_outside=scalar_outside,scalar_max_files=scalar_max_files,
+            scalar_max_bytes=scalar_max_bytes,scalar_max_nodes=scalar_max_nodes,
+            scalar_max_line_bytes=scalar_max_line_bytes)),p.ports)
     !raw && deembed_requested && calibration===nothing && !cup_declared && throw(ArgumentError(
         "native project requests de-embedding; supply calibration or explicitly request raw=true"))
     scalar_options=scalar_files===nothing && !_sonnet_has_scalar_tables(p) ? (;) :

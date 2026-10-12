@@ -744,7 +744,6 @@ end
         @test length(simplified)==1 && only(simplified).ports==[2]
         for (name,text) in (
             "no_cupgrp"=>replace(template,r"CUPGRP \"Auto\" LOCAL\nID 0\nEND\n"=>"END\n"),
-            "cupgrp_std"=>replace(template,"POR1 CUP Auto"=>"POR1 STD"),
             "name_mismatch"=>replace(template,"POR1 CUP Auto"=>"POR1 CUP B";count=1),
             "bad_flag"=>replace(template,"CUPGRP \"Auto\" LOCAL"=>"CUPGRP \"Auto\" REMOTE"),
             "unterminated"=>replace(template,r"CUPGRP \"Auto\" LOCAL\nID 0\nEND\n"=>"CUPGRP \"Auto\" LOCAL\n"),
@@ -753,6 +752,16 @@ end
             write(path,text)
             @test_throws ArgumentError read_sonnet_project(path)
         end
+        # A CUPGRP block on a non-CUP token is inert natively (verified:
+        # a wall STD+CUPGRP replays bit-identically without the group),
+        # so it parses — but Lite's port typing is geometric: these
+        # interior edges as standard ports are ungrounded and reject at
+        # the solve exactly like Lite's "Port has no ground reference".
+        write(path,replace(template,"POR1 CUP Auto"=>"POR1 STD"))
+        std_group=read_sonnet_project(path)
+        @test isempty(sonnet_calibration_groups(std_group))
+        @test_throws ArgumentError sonnet_planar_problem(std_group;
+            freq=1e9,grid=(16,16),_materials=true,_details=true)
         write(path,replace(template,"GNDREF FLOAT"=>"GNDREF BOX AUTO"))
         boxref=read_sonnet_project(path)
         @test only(sonnet_calibration_groups(boxref)).groundref===:box_auto
@@ -823,13 +832,25 @@ end
     # A bare POR1 and a group-less CUP are native parse rejections.
     @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"pk_BARE.son"))
     @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"pk_CUP.son"))
-    # CUPGRP is structural and token-independent: Lite accepts a group
-    # after a non-CUP token and de-embeds it exactly like CUP (xg2_cup,
-    # g2_cup both solve). Our parse/lowering still routes every grouped
-    # port to the co-calibrated adapter rejection.
-    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"xg2_cup.son"))
+    # CUPGRP is structural but inert on non-CUP ports (verified 18.53:
+    # a wall STD+CUPGRP replays bit-identically to the group-less port,
+    # and an interior non-CUP port rejects as ungrounded regardless of
+    # the group). The grouped non-CUP ports parse, keep their structural
+    # validation, and solve by placement — xg2_cup's XYZ token on the
+    # wall edge lowers to a standard wall port exactly like pk_XYZ.
+    xgrouped=read_sonnet_project(joinpath(fixture,"xg2_cup.son"))
+    xmodel=sonnet_planar_problem(xgrouped;freq=1e9,grid=(20,20),
+        _materials=true,_details=true)
+    @test xmodel.contraction==reference.contraction
+    @test isempty(xmodel.cup_standards)
+    # A wall-attached CUP token degrades to the standard wall port
+    # natively (g2_cup's log types both ports "Standard port"), so its
+    # `-d` request remains wall feed-line de-embedding and the solve
+    # still requires the unimplemented A1 calibration.
     grouped=read_sonnet_project(joinpath(fixture,"g2_cup.son"))
-    @test_throws ArgumentError sonnet_planar_problem(grouped;grid=(16,16))
+    @test sonnet_planar_problem(grouped;freq=1e9,grid=(20,20),
+        _materials=true,_details=true).contraction==reference.contraction
+    @test_throws ArgumentError solve_sonnet_project(grouped,1e9;grid=(16,16))
     # A two-port group with only a trailing CUPGRP rejects natively too
     # (mp_cup: "Illegal co-calibrated port / Calibration group information
     # not defined") and locally as the CUP-without-group parse error.
@@ -1020,14 +1041,17 @@ end
         path=joinpath(dir,"case.son")
         # A second open-edge CUP on the other pad sharing CUPGRP g1 makes
         # one coupled group: K+1 problems, a K-by-K junction block over
-        # labels [1,2], mutual terms included.
+        # labels [1,2], mutual terms included. The level-1 member must
+        # declare ABOVE: Lite groups by the resolved cover, and its AUTO
+        # would resolve to the bottom cover — a mixed-reference group
+        # Lite rejects natively.
         coupled=replace(template,"SIMPLE Y\n"=>"")
         coupled=replace(coupled,"""POR1 STD
 POLY 10 1
 1
 2 50 0 0 0 1 0.5
 NUM 2"""=>"""POR1 CUP g1
-GNDREF BOX AUTO
+GNDREF BOX ABOVE
 TERMW FEED
 POLY 10 1
 3
@@ -1085,7 +1109,11 @@ NUM 2""")
         # every launch's neighborhood — adjacent contacts measure
         # column-lateral coupling, not junction capacitance — so the
         # standard degenerates to the feed-column form and the sign
-        # fold still applies to its member-space block.
+        # fold still applies to its member-space block. The second
+        # member launches off the pad's east edge: its AUTO resolves to
+        # the top cover like the first member's — the north and south
+        # edges resolve below and a mixed-reference group rejects
+        # natively.
         samepad=replace(template,"""POR1 STD
 POLY 10 1
 1
@@ -1094,7 +1122,7 @@ NUM 2"""=>"""POR1 CUP g1
 GNDREF BOX AUTO
 TERMW FEED
 POLY 9 1
-2
+1
 -1 50 0 0 0 0 0.5
 CUPGRP g1
 END
@@ -1114,6 +1142,24 @@ NUM 2""")
         sp_d=imag((solve_sonnet_project(read_sonnet_project(path),1e9;raw=true).y-
             solve_sonnet_project(read_sonnet_project(path),1e9).y)[1,1])
         @test sp_d>1e-5
+
+        # Lite rejects a named group whose members resolve to different
+        # covers ("mixed ground references"): the level-1 member's AUTO
+        # resolves to the bottom cover while the level-0 member's
+        # resolves to the top. Auto-named members instead sub-group by
+        # resolved cover.
+        mixed=replace(coupled,"GNDREF BOX ABOVE\nTERMW FEED"=>
+            "GNDREF BOX AUTO\nTERMW FEED")
+        write(path,mixed)
+        @test_throws ArgumentError sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,_materials=true,_details=true)
+        auto=replace(mixed,"POR1 CUP g1"=>"POR1 CUP Auto")
+        auto=replace(auto,"CUPGRP g1"=>"CUPGRP \"Auto\" LOCAL")
+        write(path,auto)
+        auto_model=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,_materials=true,_details=true)
+        @test length(auto_model.cup_standards)==2
+        @test all(s->length(s.indices)==1,auto_model.cup_standards)
 
         # SIMPLE Y splits the same CUPGRP into independent singleton
         # standards even when the ports share a group name.
@@ -1182,11 +1228,20 @@ NUM 2"""))
 0 50 0 0 0 0 0.5"""))
         @test_throws ArgumentError sonnet_planar_problem(
             read_sonnet_project(path);freq=1e9,_materials=true,_details=true)
-        # A wall-edge CUP belongs to the feed-line calibration family.
+        # A wall-edge CUP degrades to the standard wall port natively —
+        # co-calibration needs an interior open edge — so the problem
+        # lowers with no calibration standard, and its `-d` request
+        # stays the feed-line family rejection at solve time. The wall
+        # pad's own port block drops away so the two wall launches do
+        # not share the edge's connected cell run.
         wallcup=replace(template,"POLY 9 1\n3\n1 50"=>"POLY 10 1\n1\n1 50")
+        wallcup=replace(wallcup,"POR1 STD\nPOLY 10 1\n1\n2 50 0 0 0 1 0.5\n"=>"")
         write(path,wallcup)
-        @test_throws ArgumentError sonnet_planar_problem(
-            read_sonnet_project(path);freq=1e9,_materials=true,_details=true)
+        wallmodel=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,_materials=true,_details=true)
+        @test isempty(wallmodel.cup_standards)
+        @test_throws ArgumentError solve_sonnet_project(
+            read_sonnet_project(path),1e9)
         # Payload accounting retains every standard problem.
         @test_throws ArgumentError sonnet_planar_problem(project;
             freq=1e9,_materials=true,_details=true,max_bytes=2^10)
