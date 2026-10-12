@@ -37,9 +37,26 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## A. Component / circuit grammar
 
-- [ ] A1 component REFPLANE contracts — DRP1/DRP2/TWTYPE/TWVALUE/REFPLANE
-      records currently reject ("reference-plane/terminal adapter"). Oracle:
-      Lite (probes on coupled calibration), Nexxim for de-embedding law.
+- [~] A1 component REFPLANE contracts — DRP1/DRP2/TWTYPE/TWVALUE/REFPLANE.
+      **Partially done (2026-10-12)** — GEO-level `DRP1` grammar decoded via
+      Lite 18.53 probes and now fully validated at intake (case-insensitive
+      keywords; `FIX <len>`, `NONE [callen]`, `LINK` + `POLY <id> 1` + vertex
+      continuation; first record per edge wins; malformed records intake-fail
+      like Lite). Verified-inert forms (`FIX<=0`, bare/`NONE<=0`) solve
+      unchanged; active forms (`FIX` above the 5-half-cell floor with the
+      native too-short diagnostic preserved below it, positive `NONE`
+      callen, `LINK`) now fail loudly at problem build naming the missing
+      feed-line de-embedding adapter — previously they were *silently
+      dropped*, producing wrong physics. The active physics (embed `len`
+      of the solved port feed line: log-exposed Eeff/Z0, e.g. 87.46−j4.29 Ω)
+      needs a per-port characterization solve the engine lacks → DocOnly
+      residual with full evidence archived. DRP2/REFPLANE/TWTYPE/TWVALUE
+      at GEO level reject (unprobed); component/floating/model-file sites
+      keep their existing loud rejections. Fixture+manifest:
+      `test/fixtures/native_drp_reference_planes/`; regression: 36 tests in
+      `test_planar_sonnet_io.jl`. Remaining: the actual feed-line de-embed
+      transform (needs port characterization machinery), DRP2 semantics,
+      SUBDIV-level REFPLANE.
 - [ ] A2 zero/ground SMD return terminals (`PlanarSonnetComponents.jl:270`)
       and interior port-zero ground-return adapters (IO:1967/1999, Conformal:365).
       Oracle: Lite.
@@ -113,11 +130,21 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       Residuals: CKT netlist contents not probed for case; value-position
       tokens (SONPROJ, INH/NOH, LOCAL, Y, STD, L/R) kept strict pending
       dedicated probes.
-- [ ] B2 explicit reference repetitions — scaled ANC moving-reference law
-      (`GeoVars:228`, undecoded; flat 1.6e-4 residual basins documented).
-      Unscaled SYM XDIR/YDIR/wildcard/literal already done bit-identically.
-      Oracle: Lite `em -N` + raster probes; may stay DocOnly if law remains
-      undecoded.
+- [x] B2 explicit reference repetitions — scaled ANC moving-reference law
+      (`GeoVars:228`). **Done as DocOnly loud rejection** — the law is not
+      literal-expressible. `native_geovar_scaled_mixed_reference/README.md`
+      archives the decode campaign: forward/reversed/refonly literals are
+      bit-identical only at cell-coincident width 0.28125; the second-width
+      experiment falsified composed scaled passes (1.4e-4), additive deltas
+      (7.6e-4) and deduplicated forms; an exact cell match exposes a mixed
+      law (REF takes two additive σ movements, the ordinary point takes σ
+      plus an undecoded ~3σ/16 share) that no two-width or asymmetric probe
+      completes. Official Lite docs pin only the single-application affine
+      law (`target/span` per-point scaling); repetition composition with
+      scaling has no native export channel — `em` emits S-responses and
+      SUBS counts but never resolved geometry. Regression:
+      `test_planar_sonnet_scaled_mixed_reference.jl` (45 assertions) pins
+      the rejection and the falsified-hypothesis suite.
 - [x] B3 moved GEOVAR interior/via port attachment — DONE. Lite probes
       (`fixtures/native_geovar_moved_port/`): POR1 STD and GAP on a
       shared edge whose polygon translates under an ANC YDIR GEOVAR

@@ -871,3 +871,69 @@ end
     end
     @test allequal(inner)
 end
+
+@testset "native DRP1 reference-plane intake and gating" begin
+    fixture=joinpath(@__DIR__,"fixtures","native_drp_reference_planes")
+    # Grammar validation happens at intake, matching Lite's "Project File
+    # Error" intake failures.
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"d_fixabc.son"))
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"d_bad.son"))
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"d_drp2.son"))
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"d_linkbare.son"))
+    e=try read_sonnet_project(joinpath(fixture,"d_fixabc.son"));nothing
+        catch error;error end
+    @test occursin("DRP1 FIX length is not numeric",sprint(showerror,e))
+    e=try read_sonnet_project(joinpath(fixture,"d_bad.son"));nothing
+        catch error;error end
+    @test occursin("invalid DRP1 reference plane type",sprint(showerror,e))
+    e=try read_sonnet_project(joinpath(fixture,"d_drp2.son"));nothing
+        catch error;error end
+    @test occursin("unrepresented native geometry record DRP2",sprint(showerror,e))
+    e=try read_sonnet_project(joinpath(fixture,"d_linkbare.son"));nothing
+        catch error;error end
+    @test occursin("POLY <id> 1 continuation",sprint(showerror,e))
+    # Verified-inert records keep the problem solvable and unchanged:
+    # nonpositive FIX, bare or nonpositive NONE (native output is
+    # bit-identical to base).
+    base=sonnet_planar_problem(read_sonnet_project(
+        joinpath(fixture,"drp_base.son"));freq=2.5e9,_materials=true)
+    for name in ("drp_fixm500","d_FIX_0","d_NONE","d_NONE_4")
+        variant=sonnet_planar_problem(read_sonnet_project(
+            joinpath(fixture,name*".son"));freq=2.5e9,_materials=true)
+        @test [s.mask for s in variant.sheets]==[s.mask for s in base.sheets]
+        @test length(variant.ports)==length(base.ports)
+    end
+    # Positive FIX below the five-half-cell floor fails with the native
+    # too-short diagnostic; at or above it the unimplemented feed-line
+    # de-embedding adapter rejects loudly instead of silently dropping the
+    # reference plane.
+    for name in ("drp_fix500","drp_fix600","d_f625")
+        e=try sonnet_planar_problem(
+                read_sonnet_project(joinpath(fixture,name*".son"));
+                freq=2.5e9,_materials=true);nothing
+            catch error;error end
+        @test e isa ArgumentError
+        @test occursin("on left box wall is too short",sprint(showerror,e))
+    end
+    for name in ("d_f630","drp_fix1000","d_lc","d_dup")
+        e=try sonnet_planar_problem(
+                read_sonnet_project(joinpath(fixture,name*".son"));
+                freq=2.5e9,_materials=true);nothing
+            catch error;error end
+        @test e isa ArgumentError
+        @test occursin("feed-line de-embedding adapter",sprint(showerror,e))
+    end
+    for name in ("drp_none500","drp_none1000")
+        e=try sonnet_planar_problem(
+                read_sonnet_project(joinpath(fixture,name*".son"));
+                freq=2.5e9,_materials=true);nothing
+            catch error;error end
+        @test e isa ArgumentError
+        @test occursin("port-discontinuity calibration adapter",sprint(showerror,e))
+    end
+    e=try sonnet_planar_problem(read_sonnet_project(joinpath(fixture,"d_link.son"));
+            freq=2.5e9,_materials=true);nothing
+        catch error;error end
+    @test e isa ArgumentError
+    @test occursin("feed-line de-embedding adapter",sprint(showerror,e))
+end

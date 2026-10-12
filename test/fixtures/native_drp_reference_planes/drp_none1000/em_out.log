@@ -1,0 +1,18 @@
+
+    Frequency:  2.5 GHZ
+
+      Sonnet Warning:
+      Potential problem with box parameter.
+      The X cell size (250 mils) is greater than
+      1/20 wavelength (133.3 mils) at 3.5 GHz.
+      You must decrease the cell size or reduce the required number
+      of subsections per wavelength to resolve this conflict.
+
+
+      Sonnet Warning:
+      Potential problem with box parameter.
+      The Y cell size (250 mils) is greater than
+      1/20 wavelength (133.3 mils) at 3.5 GHz.
+      You must decrease the cell size or reduce the required number
+      of subsections per wavelength to resolve this conflict.
+

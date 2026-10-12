@@ -344,19 +344,25 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     i>length(geo) || _sonnet_error(source,geo[i].line,"unparsed geometry after NUM polygons")
     length(unique(p.id for p in polygons))==length(polygons) || _sonnet_error(source,0,"duplicate polygon IDs")
     ids=Dict(p.id=>p for p in polygons)
+    # DRP1 reference-plane records are validated at intake (Lite rejects
+    # malformed records before solving); their POLY vertex continuations are
+    # consumed so a port-block scan can never capture them.
+    _sonnet_refplanes(geo,ni,source)
     ports=SonnetPortSpec[]; components=Vector{SonnetRecord}[]
     i=1
     while i<ni
         r=geo[i]
         if uppercase(r.tokens[1])=="POR1"
             j=i+1
-            while j<ni && !(uppercase(geo[j].tokens[1]) in ("POR1","CUPGRP","SMD"))
+            while j<ni && !(uppercase(geo[j].tokens[1]) in ("POR1","CUPGRP","SMD") ||
+                    uppercase(geo[j].tokens[1]) in _SONNET_DRP_KEYS)
                 j+=1
             end
             if j<ni && uppercase(geo[j].tokens[1])=="CUPGRP"
                 k=j+1
                 while k<ni && !(length(geo[k].tokens)==1 && uppercase(geo[k].tokens[1])=="END") &&
-                        !(uppercase(geo[k].tokens[1]) in ("POR1","CUPGRP","SMD","NUM"));k+=1;end
+                        !(uppercase(geo[k].tokens[1]) in ("POR1","CUPGRP","SMD","NUM") ||
+                        uppercase(geo[k].tokens[1]) in _SONNET_DRP_KEYS);k+=1;end
                 k<ni && length(geo[k].tokens)==1 && uppercase(geo[k].tokens[1])=="END" ||
                     _sonnet_error(source,geo[j].line,
                     "unterminated CUP calibration group")
@@ -395,6 +401,78 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     sweeps=[r for r in records if r.tokens[1]=="FREQ" && length(r.tokens)>2]
     return SonnetProject(source,units,ls,fs,box,layers,metals,top,bottom,
         polygons,ports,vars,components,sweeps,records)
+end
+
+# Native `DRP1 <edge> <type>` records declare automatic de-embedding reference
+# planes for the box-wall ports on one wall (`LEFT/RIGHT/TOP/BOTTOM` map to
+# west/east/north/south). Lite 18.53 intake semantics, verified by probe
+# matrix: keywords are case-insensitive; `FIX <len>` and `NONE <callen>` take
+# one finite numeric field (`NONE` also accepts the bare 3-token form); `LINK`
+# takes no inline field and must continue with a `POLY <id> 1` record followed
+# by one vertex-index record; the first record per edge wins. `FIX`/`NONE`
+# values <=0 are verified inert; positive values move the reference plane
+# (FIX) or set the port-discontinuity calibration length (NONE), both of which
+# require the port feed-line de-embedding adapter and therefore fail loudly at
+# problem build. `DRP2`/`REFPLANE`/`TWTYPE`/`TWVALUE` never occur in the GEO
+# section of any observed native file and reject at intake.
+const _SONNET_DRP_KEYS=("DRP1","DRP2","REFPLANE","TWTYPE","TWVALUE")
+
+function _sonnet_drp_record(geo,i,source,ni)
+    r=geo[i]; t=r.tokens
+    length(t)>=3 || _sonnet_error(source,r.line,"invalid DRP1 reference plane record")
+    edge_key=uppercase(t[2])
+    edge=edge_key=="LEFT" ? :west : edge_key=="RIGHT" ? :east :
+        edge_key=="TOP" ? :north : edge_key=="BOTTOM" ? :south : nothing
+    edge===nothing && _sonnet_error(source,r.line,"invalid DRP1 box wall $(t[2])")
+    mode=uppercase(t[3])
+    if mode=="FIX" || mode=="NONE"
+        want=mode=="FIX" ? 4 : (3,4)
+        length(t) in want || _sonnet_error(source,r.line,
+            "DRP1 $mode requires $(mode=="FIX" ? "a length" : "at most one calibration length")")
+        arg=length(t)==4 ? tryparse(Float64,t[4]) : 0.
+        arg===nothing && _sonnet_error(source,r.line,"DRP1 $mode length is not numeric")
+        isfinite(arg) || _sonnet_error(source,r.line,"DRP1 $mode length must be finite")
+        return (edge=edge,mode=Symbol(lowercase(mode)),arg=arg,record=r),1
+    end
+    mode=="LINK" || _sonnet_error(source,r.line,"invalid DRP1 reference plane type $(t[3])")
+    length(t)==3 || _sonnet_error(source,r.line,"DRP1 LINK takes no inline field")
+    (i+2<=length(geo) && i+2<ni) || _sonnet_error(source,r.line,
+        "DRP1 LINK lacks its POLY vertex continuation")
+    lt=geo[i+1].tokens; vt=geo[i+2].tokens
+    (length(lt)==3 && uppercase(lt[1])=="POLY" && tryparse(Int,lt[2])!==nothing &&
+        lt[3]=="1") || _sonnet_error(source,geo[i+1].line,
+        "DRP1 LINK requires a POLY <id> 1 continuation")
+    (length(vt)==1 && tryparse(Int,vt[1])!==nothing) ||
+        _sonnet_error(source,geo[i+2].line,"DRP1 LINK requires a vertex index record")
+    return (edge=edge,mode=:link,arg=NaN,link=(polygon=parse(Int,lt[2]),
+        vertex=parse(Int,vt[1])),record=r),3
+end
+
+"""All `DRP1` reference-plane declarations in the pre-NUM geometry records;
+validates grammar (intake-fail on malformed, matching Lite) and returns one
+named tuple per record in file order. The first record per wall is the active
+one (verified Lite 18.53)."""
+function _sonnet_refplanes(geo,ni,source)
+    refplanes=NamedTuple[]
+    i=1
+    while i<ni
+        r=geo[i];key=uppercase(r.tokens[1])
+        if key=="DRP1"
+            drp,consumed=_sonnet_drp_record(geo,i,source,ni)
+            push!(refplanes,drp);i+=consumed
+        elseif key in _SONNET_DRP_KEYS
+            _sonnet_error(source,r.line,"unrepresented native geometry record $key")
+        else
+            i+=1
+        end
+    end
+    return refplanes
+end
+
+"""The active `DRP1` record for a resolved wall, or `nothing`."""
+_sonnet_drp_wall(refplanes,wall)=begin
+    index=findfirst(rp->rp.edge===wall,refplanes)
+    index===nothing ? nothing : refplanes[index]
 end
 
 # Native `POR1 CUP <group>` blocks carry a CUPGRP record (quoted name plus an
@@ -2122,6 +2200,9 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         geometry_workspace,port_workspace),limit,"native raster source attachment","max_bytes")
     ports=PlanarPort[]
     numbers=Int[]; port_z0=ComplexF64[];port_weights=Float64[]
+    geo=_sonnet_section(p.records,"GEO",p.source)
+    refplanes=_sonnet_refplanes(geo,something(findfirst(
+        r->uppercase(r.tokens[1])=="NUM",geo),length(geo)+1),p.source)
     for ps in p.ports
         # The POR1 kind token is required but descriptive: Lite types every
         # port by placement and ignores the token value (verified 18.53 —
@@ -2164,6 +2245,27 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
         wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
             v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north : nothing
+        if wall!==nothing && ps.number!=0
+            rp=_sonnet_drp_wall(refplanes,wall)
+            if rp!==nothing
+                span=rp.arg*ls
+                perp=(wall in (:west,:east) ? a/native_nx : b/native_ny)/2
+                name=wall==:west ? "left" : wall==:east ? "right" :
+                    wall==:south ? "bottom" : "top"
+                if rp.mode===:fix && span>0
+                    span<=5*perp+1e-9*perp && throw(ArgumentError(
+                        "Reference plane for port $(abs(ps.number)) on $name box wall is too short."))
+                    throw(ArgumentError("native DRP1 FIX reference plane on port $(abs(ps.number)) "*
+                        "requires the port feed-line de-embedding adapter"))
+                elseif rp.mode===:none && span>0
+                    throw(ArgumentError("native DRP1 NONE calibration length on port $(abs(ps.number)) "*
+                        "requires the port-discontinuity calibration adapter"))
+                elseif rp.mode===:link
+                    throw(ArgumentError("native DRP1 LINK reference plane on port $(abs(ps.number)) "*
+                        "requires the port feed-line de-embedding adapter"))
+                end
+            end
+        end
         if wall===nothing
             ps.number!=0 || throw(ArgumentError("interior native port zero requires an explicit ground return adapter"))
             start,finish=_sonnet_shared_port_segment(p,poly,index,next)
