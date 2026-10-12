@@ -162,7 +162,7 @@ end
             ("REF1 POLY 1 1","REF1 POLY 999 1"),
             ("REF1 POLY 1 1","REF1 POLY 1 2"),
             ("POLY 1 1\n2\nEND","POLY 1 1\n99\nEND"),
-            ("PS2 1","PS2 999999999"),("NOM 0.25","NOM 0"),
+            ("PS2 1","PS2 999999999"),("NOM 0.25","NOM -0.25"),
             ("VALVAR Width LNG","VALVAR Width NONE"),
             ("PS1 0\nEND","PS1 1\nPOLY 1 1\n1\nEND"))
         mktempdir() do directory
@@ -603,5 +603,55 @@ end
         [DiffMoM.SonnetPortSpec(:cup,q.polygon,q.edge,q.number,q.values,q.records) for q in p.ports],
         p.variables,p.components,p.sweeps,p.records)
     @test_throws ArgumentError DiffMoM._sonnet_geometry_project(changed,1e9)
+end
+
+@testset "Native GEOVAR dimension interactions are axis- and side-aware" begin
+    # Lite 18.53 intake rules (fixture native_geovar_dim_interactions):
+    # the circular-definition verdict fires on moved points shared on the
+    # same axis AND same PS side, even when every dimension is inactive;
+    # cross-axis and opposite-side sharing resolve. A non-sequential
+    # dimension's same-axis reference on a moved point is an unorderable
+    # dependency; sequential anchored dimensions may depend on anything.
+    directory=joinpath(@__DIR__,"fixtures/native_geovar_dim_interactions")
+    @test isfile(joinpath(directory,"manifest.json"))
+    base=Dict("L"=>2600.0,"Y"=>1250.0,"X"=>600.0,"W2"=>1300.0,
+        "A2"=>600.0,"A3"=>600.0,"A4"=>600.0)
+    resolve(file,vars=Dict{String,Float64}())=
+        DiffMoM._sonnet_geometry_project(
+            read_sonnet_project(joinpath(directory,file)),1e9,
+            merge(base,vars))
+    # Circular verdicts: same-axis same-side overlap (even both-inactive),
+    # subset overlap, and same-axis dependency crossings (mutual or
+    # one-way, anchored or symmetric owner).
+    for (file,vars,msg) in (
+            ("b4_sym_sym.son",Dict("W"=>1300.0,"W2"=>700.0),"overlap"),
+            ("b4_ss_bothinact.son",Dict("W"=>1300.0,"W2"=>1300.0),"overlap"),
+            ("b4_part_act.son",Dict("W"=>1400.0,"A2"=>700.0,"W2"=>1400.0),"overlap"),
+            ("b4_dup_act.son",Dict("W"=>1400.0,"A2"=>700.0,"W2"=>1400.0),"overlap"),
+            ("b4_dep_anc_on_sym.son",Dict("W"=>1400.0,"A3"=>700.0),"depend"),
+            ("b4_sym_dep_on_anc.son",Dict("W"=>1400.0,"A4"=>700.0),"depend"),
+            ("b4_dep_oneway.son",Dict("W"=>1400.0,"A4"=>700.0),"depend"),
+            ("b4_dep_symowner.son",Dict("W"=>1400.0,"A2"=>700.0,"W2"=>1400.0),"circular"))
+        @test_throws ArgumentError resolve(file,vars)
+    end
+    # b4_sym_anc keeps its phantom-delta regression coverage: the W
+    # dimension is inactive (target==NOM) yet its SI round-trip leaves a
+    # ~1e-17 span delta that used to register false ownership and
+    # conflicts. Native accepts: the ANC anchor resolves after it.
+    resolved=resolve("b4_sym_anc.son",Dict("A2"=>700.0))
+    @test resolved!==nothing
+    # Pure cross-axis sharing with both dimensions active resolves: v3 of
+    # polygon 97 sits in W's XDIR PS1 and L's YDIR PS2, so each dimension
+    # moves its own axis component (manifest records the matching native
+    # acceptance and an 8.3e-5 literal residual for this composition).
+    resolved=resolve("b4_xaxis.son",Dict("W"=>1400.0,"L"=>2700.0,"X"=>100.0))
+    moved=only(filter(q->q.id==97,resolved.polygons))
+    @test moved.vertices[1,4]<0.23749  # v3.x took W's XDIR PS1 shift
+    @test moved.vertices[2,4]>0.28702  # v3.y took L's YDIR PS2 shift
+    # The undecoded same-axis active ANC+SYM joint ordering stays a loud
+    # residual (native accepts the combination; the composition law is
+    # not yet proven).
+    @test_throws ArgumentError resolve("b4_symL_act.son",
+        Dict("W"=>1400.0,"A2"=>700.0,"L"=>2700.0,"X"=>100.0))
 end
 end

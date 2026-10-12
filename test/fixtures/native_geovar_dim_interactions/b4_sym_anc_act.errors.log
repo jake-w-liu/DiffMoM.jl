@@ -1,0 +1,80 @@
+Run 1:  Mon Oct 12 15:42:50 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\viaprobe\b4_sym_anc_act.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      A2 = 700 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 100 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      A2 = 700 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 200 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      A2 = 700 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 300 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      A2 = 700 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 400 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      A2 = 700 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 500 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      A2 = 700 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 600 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Mon Oct 12 15:42:59 2026.
+
+
+Run 2:  Mon Oct 12 15:43:57 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\viaprobe\b4_sym_anc_act.son.
+
+    Post-Analysis information for em run 2:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Mon Oct 12 15:43:57 2026.

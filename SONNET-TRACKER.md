@@ -101,10 +101,40 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       adapter (E2 residual). The TMM `:gap` face-duplication gate
       (`IO:1781`) stays — Lite license-blocks all thick-metal polygons,
       so that path is DocOnly-verified conservative, not parity-testable.
-- [ ] B4 overlapping/dependent GEOVAR dims ordering (`GeoVars:617,628`). Oracle:
-      Lite probe corpus.
-- [ ] B5 zero saved-offset non-coincident references (partially handled; extend).
-      Oracle: Lite.
+- [x] B4 overlapping/dependent GEOVAR dims ordering (`GeoVars:617,628`).
+      **Done** — Lite 18.53 probe matrix fully decoded the structural rules
+      (`test/fixtures/native_geovar_dim_interactions/manifest.json`):
+      moved-point sharing is rejected only for same-axis same-PS-side pairs
+      of non-sequential dims (even when fully inactive — intake-level);
+      cross-axis and opposite-side sharing compose freely; non-sequential
+      same-axis ref-on-moved dependencies reject one-way and mutual alike
+      while sequential anchored dims may depend on anything (resolve last).
+      Inactivity is exact `target == NOM`, not `iszero(delta)` — ±1e-17
+      SI-roundtrip phantoms no longer register false owners. Structural
+      checks now run before the nominal-geometry early return, and the
+      sequential-order edges are axis-aware. 13-assert regression testset
+      `Native GEOVAR dimension interactions are axis- and side-aware`.
+      Literal end-to-end parity: cross-axis sharing 8.3e-5 (within the
+      SYM raster-law band). Residual: active ANC + non-sequential
+      same-axis moved-point sharing is natively accepted but its joint
+      application ordering stays undecoded after 15+ ordering probes —
+      kept as a loud rejection (DocOnly), not a silent acceptance.
+- [x] B5 zero saved-offset non-coincident references (partially handled; extend).
+      **Done** — Lite 18.53 probe campaign
+      (`test/fixtures/native_geovar_zero_offset/manifest.json`): NOM 0 is
+      legal for every kind and header (ANC/SYM/RAD, NSCD + scaled), the
+      coincident-REF gate and the ANC-only zero-NOM restriction were false
+      rejections. The delta baseline is the geometric span, never NOM
+      (bit-exact literal discrimination, ±350 each side landing). Inactive
+      dimensions still resolve real displacements — an inconsistent
+      inactive ANC collapses to its target (2.1e-6 vs collapse literal).
+      So `return p` now requires every dimension to be a stored no-op:
+      sub-cell deviations (~1e-9 relative) from file-write quantization
+      and SI round-trips are phantoms under a `sqrt(eps)`-relative bound.
+      Zero/negative targets also intake natively; degenerate resolved
+      geometry still rejects loudly at emission. Residual: Sonnet
+      tolerates zero-area polygons we cannot emit (loud gap, e.g.
+      full-collapse targets).
 
 ## C. Material loss / vias
 

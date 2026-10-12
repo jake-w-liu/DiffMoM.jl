@@ -76,10 +76,18 @@ end
     @test_throws ArgumentError DiffMoM._sonnet_geometry_project(p,1e9;max_bytes=1)
     mktempdir() do directory
         original=read(source,String)
+        # Native Lite 18.53 accepts a zero saved offset for every kind and
+        # header (probe-verified intake + solve); the geometric span is the
+        # delta baseline. Geometrically consistent zero-offset projects
+        # resolve to their saved object, while unsupported adapters and
+        # invalid grammar still reject loudly.
+        for (name,text) in (("two_axes",replace(original,"NSCD"=>"SCXY")),
+                ("radial",replace(original," ANC "=>" RAD ")))
+            file=joinpath(directory,name*".son");write(file,text);candidate=read_sonnet_project(file)
+            @test DiffMoM._sonnet_geometry_project(candidate,1e9)===candidate
+        end
         for (name,text) in (("scaled",replace(original,"NSCD"=>"SCUNI")),
-                ("two_axes",replace(original,"NSCD"=>"SCXY")),
                 ("symmetric",replace(original," ANC "=>" SYM ")),
-                ("radial",replace(original," ANC "=>" RAD ")),
                 ("distinct",replace(original,"REF1 POLY 1 1\n2"=>"REF1 POLY 1 1\n3")),
                 ("negative",replace(original,"NOM 0"=>"NOM -0.125")))
             file=joinpath(directory,name*".son");write(file,text);candidate=read_sonnet_project(file)
@@ -90,5 +98,41 @@ end
         p.top,p.bottom,p.polygons,p.ports,p.variables,p.components,p.sweeps,p.records)
     @test_throws ArgumentError DiffMoM._sonnet_geometry_project(tiny,1e9)
     @test all(a.vertices==b.vertices for (a,b) in zip(p.polygons,saved))
+end
+
+@testset "Native zero-offset semantics use the geometric span baseline" begin
+    directory=joinpath(@__DIR__,"fixtures/native_geovar_zero_offset")
+    manifest=joinpath(directory,"manifest.json")
+    @test isfile(manifest)
+    resolve(file,vars=Dict{String,Float64}())=
+        DiffMoM._sonnet_geometry_project(
+            read_sonnet_project(joinpath(directory,file)),1e9,vars)
+    # ANC NOM 0 with noncoincident references resolves natively.
+    @test resolve("z_nc.son")!==nothing
+    # A geometrically consistent SYM NOM 0 returns the saved object.
+    p=read_sonnet_project(joinpath(directory,"z_w.son"))
+    @test DiffMoM._sonnet_geometry_project(p,1e9)===p
+    # The delta baseline is the geometric span: target 600 against a
+    # 1300-wide saved span lands both PS sides +-350 inward
+    # (bit-identical to the native literal probe in the manifest).
+    resolved=resolve("z_w600.son")
+    @test resolved.polygons[1].vertices[1,:]./resolved.length_scale≈
+        [9700.,10300.,10300.,9700.,9700.]
+    # A scaled NOM 0 project with consistent geometry stays identical.
+    q=read_sonnet_project(joinpath(directory,"z_scu.son"))
+    @test DiffMoM._sonnet_geometry_project(q,1e9)===q
+    # Inactive-but-inconsistent dimensions still resolve: the native
+    # collapse of A2 onto REF1 is verified against a collapse literal
+    # (2.1e-6); our resolved geometry is degenerate there and rejects
+    # loudly rather than silently keeping the saved offset.
+    @test_throws ArgumentError resolve("z_inact.son")
+    # Archived native comparisons (manifest): parameter run is
+    # bit-identical to the no-move literal and to the +-350 literal.
+    read_s2p(file)=planar_read_touchstone(joinpath(directory,file)).s
+    sdiff(a,b)=maximum(x->maximum(abs,x),a .- b)
+    @test read_s2p("z_w_native.s2p")==read_s2p("litA_native.s2p")
+    @test read_s2p("z_w600_native.s2p")==read_s2p("l_delta_native.s2p")
+    @test sdiff(read_s2p("z_inact_native.s2p"),read_s2p("litC_native.s2p"))<1e-4
+    @test sdiff(read_s2p("z_inact_native.s2p"),read_s2p("litK_native.s2p"))>1e-2
 end
 end

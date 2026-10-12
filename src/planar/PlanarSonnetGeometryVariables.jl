@@ -16,11 +16,11 @@ struct _SonnetGeometryParameter
     crossing::Bool
 end
 
-# Zero saved offsets have a proved translation adapter for ANC/NSCD only.
-# A positive source dimension that underflows in SI remains invalid.
-@inline _sonnet_geovar_nominal_value_ok(value,nominal,kind,scaled)=
-    isfinite(value) && (value>0 ||
-        (iszero(nominal) && iszero(value) && kind=="ANC" && !scaled))
+# Native zero-offset dimensions are legal for every kind and header
+# (18.53-verified: unscaled ANC/SYM/RAD and scaled SYM intake and solve
+# with NOM 0); the geometric span - not NOM - is the delta baseline.
+# A negative saved dimension remains invalid.
+@inline _sonnet_geovar_nominal_value_ok(value)=isfinite(value) && value>=0
 
 # Native anchored dimensions resolve sequentially in dependency order,
 # proved against the installed engine on active/inactive, consistent/
@@ -44,7 +44,11 @@ function _sonnet_geovar_sequential_order(parameters,source)
         _sonnet_geovar_anc_sequential(parameter)]
     deps=Dict(i=>Set{Int}() for i in ids)
     for i in ids, point in parameters[i].references, j in ids
-        i!=j && point in parameters[j].points[2] && push!(deps[i],j)
+        i!=j && point in parameters[j].points[2] &&
+            (parameters[i].axis==parameters[j].axis ||
+                parameters[j].kind=="RAD" || parameters[j].both_axes ||
+                parameters[i].kind=="RAD" || parameters[i].both_axes) &&
+            push!(deps[i],j)
     end
     order=Int[];pending=copy(ids)
     while !isempty(pending)
@@ -171,14 +175,11 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         length(nominalrow.tokens)==2 && nominalrow.tokens[1]=="NOM" ||
             _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
         nominal=tryparse(Float64,nominalrow.tokens[2])
-        nominal!==nothing && _sonnet_geovar_nominal_value_ok(nominal,nominal,t[3],t[6]!="NSCD") ||
-            _sonnet_error(p.source,nominalrow.line,"GEOVAR nominal dimension needs a positive value or an unscaled anchored zero-offset adapter")
+        nominal!==nothing && _sonnet_geovar_nominal_value_ok(nominal) ||
+            _sonnet_error(p.source,nominalrow.line,"GEOVAR nominal dimension must be finite and nonnegative")
         first,index=_sonnet_geovar_reference(rows,index+3,p,polygons,"REF1")
         second,index=_sonnet_geovar_reference(rows,index,p,polygons,"REF2")
         axis=t[4]=="XDIR" ? 1 : 2
-        iszero(nominal) && polygons[first[1]].vertices[axis,first[2]]!=
-            polygons[second[1]].vertices[axis,second[2]] &&
-            _sonnet_error(p.source,row.line,"zero saved GEOVAR offsets require coincident reference coordinates on their axis")
         used<=max_points-2 || _sonnet_error(p.source,row.line,"GEOVAR reference budget exceeded")
         used+=2
         equation=_sonnet_geovar_row(rows,index,p)
@@ -289,15 +290,13 @@ function _sonnet_geovar_nominal_geometry(p,frequency,variables)
             _sonnet_error(p.source,nominalrow.line,"GEOVAR saved nominal dimension must be finite and nonnegative")
         target=sonnet_variable_value(p,t[2];variables,freq=frequency)
         requested=target*p.length_scale;saved=nominal*p.length_scale
-        ((iszero(nominal) && iszero(target)) ||
-            (isfinite(requested) && requested>0 &&
-                _sonnet_geovar_nominal_value_ok(saved,nominal,t[3],t[6]!="NSCD"))) ||
-            _sonnet_error(p.source,row.line,"GEOVAR dimensions must preserve positive finite SI values")
-        # The native engine treats NOM as the activation record: a dimension
-        # is inactive exactly when its target equals NOM, even when the saved
-        # geometry's span differs (real parameterized projects keep their
-        # saved geometry). The geometric span only drives resolution once a
-        # dimension is active.
+        isfinite(requested) && _sonnet_geovar_nominal_value_ok(saved) ||
+            _sonnet_error(p.source,row.line,"GEOVAR dimensions must preserve finite nonnegative SI values")
+        # NOM equality with the target marks a dimension as nominal, which
+        # only cheapens the all-nominal parse shortcut; the native engine
+        # still resolves any saved-geometry delta on inactive dimensions
+        # (18.53-verified collapse-to-target), so activity alone cannot
+        # decide whether the saved project is returned unchanged.
         unchanged &= target==nominal
     end
     return unchanged
@@ -525,13 +524,16 @@ sequentially in their native dependency order, re-anchoring each moving
 reference at REF1+direction*target, so dependent anchored chains and
 inactive constraint dimensions apply identically; circular definitions are
 rejected like the native engine. Via ports re-anchor to their resolved edge
-midpoint like sheet ports. Other references, non-anchored
-dependent/overlapping dimensions and moved component/gap-port semantics
-require separate adapters. Whole-polygon selectors expand logical vertices
-within point/storage budgets before geometry copy;
-zero saved ANC/NSCD offsets require coincident reference coordinates on their axis;
-effective coordinates are validated before emission. The supplied project is
-never modified."""
+midpoint like sheet ports. Dimensions share references, cross-axis
+moved points and opposite PS sides freely like the native engine, while
+same-axis same-side overlaps between non-sequential dimensions and
+same-axis non-sequential dependencies reject as circular. Other
+references and moved component/gap-port semantics require separate
+adapters. Whole-polygon selectors expand logical vertices
+within point/storage budgets before geometry copy; zero saved offsets are
+legal for every kind and resolve against the geometric span like the
+native engine; effective coordinates are validated before emission. The
+supplied project is never modified."""
 function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{String,Float64}();
         max_parameters::Integer=1024,max_points::Integer=100000,
         max_bytes::Integer=_default_max_dense_payload_bytes())
@@ -546,19 +548,74 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     _enforce_payload_limit(reserve,limit,"native geometry variable workspace","max_bytes")
     frequency=_circuit_stored_real(freq,"native geometry variable frequency")
     frequency>0 || throw(ArgumentError("native geometry variable frequency must be positive"))
-    _sonnet_geovar_nominal_geometry(p,frequency,variables) && return p
     # Whole-polygon selectors expand beyond their source record count. Reserve
     # their point-list and ownership workspace before materializing those lists.
-    parameters=_sonnet_geovar_parameters(p,nparameters,npoints,(limit-reserve)÷256)
+    unchanged=_sonnet_geovar_nominal_geometry(p,frequency,variables)
+    parameters=if unchanged
+        try
+            _sonnet_geovar_parameters(p,nparameters,npoints,(limit-reserve)÷256)
+        catch e
+            # A fully inactive project keeps its saved geometry even when
+            # its dimensions need an unsupported point-set adapter.
+            e isa ArgumentError || rethrow()
+            return p
+        end
+    else
+        _sonnet_geovar_parameters(p,nparameters,npoints,(limit-reserve)÷256)
+    end
+    # Lite's structural conflict rules are intake-level (18.53-verified):
+    # they fire even when every dimension is inactive. Dimensions share
+    # reference points freely, moved points across different axes commute
+    # and resolve independently, and moved points on opposite PS sides of
+    # the same axis expand in opposite directions. A moved point shared
+    # on the same axis and the same PS side is a circular definition
+    # between two non-sequential dimensions; anchored pairs keep their
+    # proved dependency order and share freely.
+    seq(i)=_sonnet_geovar_anc_sequential(parameters[i])
+    sameaxis(i,j)=parameters[i].axis==parameters[j].axis ||
+        parameters[i].kind=="RAD" || parameters[j].kind=="RAD" ||
+        parameters[i].both_axes || parameters[j].both_axes
+    # Every point that can move joins the moved set with the PS side that
+    # moves it: symmetric dimensions shift every listed point (REF2
+    # always, REF1 when gated); anchored and radial dimensions keep REF1
+    # as the fixed anchor and only their PS2 side - including the
+    # re-anchoring REF2 - moves.
+    movers=Dict{Tuple{Int,Int},Vector{Tuple{Int,Symbol}}}()
+    for (i,parameter) in enumerate(parameters)
+        for (side,points) in zip((:a,:b),
+                parameter.kind=="SYM" ? parameter.points :
+                    (parameters[i].points[1][1:0],parameter.points[2]))
+            for point in points
+                push!(get!(movers,point,Tuple{Int,Symbol}[]),(i,side))
+            end
+        end
+    end
+    for (point,entries) in movers,(i,aside) in entries,(j,bside) in entries
+        i<j && aside==bside && !seq(i) && !seq(j) && sameaxis(i,j) &&
+            _sonnet_error(p.source,parameters[j].line,
+                "overlapping GEOVAR dimensions require their ordered geometry adapter")
+    end
+    # A non-sequential dimension whose reference lies on a moved point
+    # along its own axis is an unorderable dependency - the native
+    # circular-definition error fires on one-way and mutual crossings
+    # alike. Cross-axis references never change the measured span and are
+    # inert; sequential anchored dimensions may depend on anything
+    # because they resolve last in dependency order.
+    for (i,parameter) in enumerate(parameters)
+        seq(i) && continue
+        any(point->haskey(movers,point) &&
+            any(entry->entry[1]!=i && sameaxis(i,entry[1]),movers[point]),
+            parameter.references) &&
+            _sonnet_error(p.source,parameter.line,
+                "dependent GEOVAR dimensions require their ordered geometry adapter")
+    end
     original=Dict(q.id=>q for q in p.polygons)
-    deltas=Float64[];targets=Float64[];gnominals=Float64[]
-    for parameter in parameters
+    deltas=Float64[];targets=Float64[];gnominals=Float64[];moves=falses(length(parameters))
+    for (i,parameter) in enumerate(parameters)
         target=sonnet_variable_value(p,parameter.name;variables,freq=frequency)::Float64
         nominal=parameter.nominal*p.length_scale;requested=target*p.length_scale
-        _sonnet_geovar_nominal_value_ok(nominal,parameter.nominal,parameter.kind,parameter.scaled) &&
-            isfinite(requested) && (requested>0 ||
-                (iszero(target) && iszero(parameter.nominal) && iszero(requested))) ||
-            _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve positive finite SI values")
+        _sonnet_geovar_nominal_value_ok(nominal) && isfinite(requested) ||
+            _sonnet_error(p.source,parameter.line,"GEOVAR dimensions must preserve finite nonnegative SI values")
         # Once active, the native engine resolves a dimension against the
         # reference points' geometric span, not the file's NOM field
         # (verified by running identical projects with inconsistent NOM
@@ -588,10 +645,28 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost after SI conversion")
         parameter.kind=="SYM" && !iszero(delta) && iszero(delta/2) &&
             _sonnet_error(p.source,parameter.line,"symmetric GEOVAR displacement underflows")
+        # The native engine resolves every dimension's real displacement
+        # regardless of NOM activity - an inconsistent inactive project
+        # still collapses/expands to its targets (18.53-verified), so the
+        # saved project is returned only when every law is a no-op.
+        moves[i]=_sonnet_geovar_anc_sequential(parameter) ?
+            abs(fv[parameter.axis,firstpoint]+parameter.direction*requested-
+                sv[parameter.axis,secondpoint])>
+                sqrt(eps(Float64))*max(abs(requested),abs(gnominal*p.length_scale)) :
+            abs(delta)>sqrt(eps(Float64))*max(abs(requested),abs(gnominal*p.length_scale))
         push!(deltas,delta)
         push!(targets,target)
     end
-    all(iszero,deltas) && return p
+    !any(moves) && return p
+    # A moved point shared on the same axis between an anchored and a
+    # non-anchored dimension resolves natively, but the ordering of that
+    # joint application is still undecoded; it stays rejected while both
+    # dimensions actually displace geometry.
+    for (point,entries) in movers,i in first.(entries),j in first.(entries)
+        i<j && seq(i)!=seq(j) && sameaxis(i,j) && moves[i] && moves[j] &&
+            _sonnet_error(p.source,parameters[j].line,
+                "overlapping active GEOVAR dimensions require their ordered geometry adapter")
+    end
     # Sheet and via ports re-anchor to their referenced edge midpoint
     # after resolution; the POR1 kind token is descriptive (Lite types by
     # placement), so every non-CUP token qualifies by polygon kind.
@@ -611,30 +686,15 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     end
     owners=Dict{Tuple{Int,Int},Tuple{Int,Int}}()
     for (i,parameter) in enumerate(parameters)
-        iszero(deltas[i]) && !_sonnet_geovar_anc_sequential(parameter) && continue
         for point in Iterators.flatten(parameter.points)
-            if haskey(owners,point) && owners[point][1]!=i &&
-                    !(_sonnet_geovar_anc_sequential(parameter) &&
-                        _sonnet_geovar_anc_sequential(parameters[owners[point][1]]))
-                _sonnet_error(p.source,parameter.line,
-                    "overlapping active GEOVAR dimensions require their ordered geometry adapter")
-            end
             movements=get(owners,point,(i,0))[2]
             owners[point]=(i,movements+1)
         end
     end
-    for (i,parameter) in enumerate(parameters),point in parameter.references
-        if haskey(owners,point) && owners[point][1]!=i &&
-                !(_sonnet_geovar_anc_sequential(parameter) &&
-                    _sonnet_geovar_anc_sequential(parameters[owners[point][1]]))
-            _sonnet_error(p.source,parameter.line,
-                "dependent GEOVAR dimensions require their ordered geometry adapter")
-        end
-    end
     polygons=Dict(q.id=>copy(q.vertices) for q in p.polygons)
-    # Non-anchored dimensions cannot share moved geometry with anything, so
-    # record order is safe for them; anchored dimensions resolve in their
-    # native dependency order.
+    # Non-anchored dimensions only share moved geometry across different
+    # axes or opposite PS sides, where record order is safe; anchored
+    # dimensions resolve last in their native dependency order.
     applyorder=[i for (i,parameter) in enumerate(parameters) if
         !_sonnet_geovar_anc_sequential(parameter)]
     append!(applyorder,_sonnet_geovar_sequential_order(parameters,p.source))
@@ -652,7 +712,11 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             anchor=polygons[firstid][parameter.axis,firstpoint]
             reference=polygons[secondid][parameter.axis,secondpoint]
             shift=anchor+parameter.direction*target*p.length_scale-reference
-            iszero(shift) && continue
+            # A consistent anchored dimension can still carry a sub-cell
+            # phantom shift from SI round-trips and file-write
+            # quantization (~1e-9 relative to the span); only a real
+            # displacement applies or errors as lost.
+            abs(shift)<=sqrt(eps(Float64))*max(abs(targets[i]),abs(gnominals[i]))*p.length_scale && continue
             isfinite(shift) ||
                 _sonnet_error(p.source,parameter.line,"GEOVAR displacement is unrepresentable")
             for (id,index) in parameter.points[2]
@@ -664,7 +728,11 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
             end
             continue
         end
-        iszero(delta) && continue
+        # Saved geometry can carry a sub-cell delta from SI round-trips
+        # and file-write quantization (~1e-9 relative); only a real
+        # displacement applies (a sub-quantum active delta is still the
+        # legitimate "displacement lost" error inside each law).
+        abs(delta)<=sqrt(eps(Float64))*max(abs(targets[i]),abs(gnominals[i]))*p.length_scale && continue
         if parameter.kind=="ANC" && !parameter.scaled && parameter.explicit_moving_references>1
             for point in parameter.points[2]
                 owner,movements=owners[point]
@@ -763,7 +831,7 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
                 for (id,index) in parameter.points[side]
                     before=polygons[id][axis,index]
                     after=parameter.scaled ? _sonnet_geovar_scaled_coordinate(before,first,second,
-                        parameter.nominal,target,symmetric) : before+shift
+                        gnominals[i],target,symmetric) : before+shift
                     isfinite(after) && (after!=before || (parameter.scaled ?
                         (before==anchor || _sonnet_geovar_fixed_coordinate(before,first,second,symmetric)) : iszero(shift))) ||
                         _sonnet_error(p.source,parameter.line,"GEOVAR displacement is lost in its stored coordinate")

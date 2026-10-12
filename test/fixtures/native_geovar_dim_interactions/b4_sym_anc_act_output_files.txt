@@ -1,0 +1,67 @@
+! Summary of output files for parameterized project.
+!
+! Project: b4_sym_anc_act.son
+! Folder:  C:\Users\User\AppData\Local\Temp\viaprobe
+! Date:    10/12/2026 15:43:57
+
+FTYP POFL 1
+HDATE 10/24/2012 09:32:25
+
+
+USER_FILE native_raw.s2p
+
+OUTPUT_FILE native_raw_param1.s2p
+PARAMS
+W = 1300.0
+A2 = 700.0
+L = 2600.0
+Y = 1250.0
+X = 100.0
+END PARAMS
+
+OUTPUT_FILE native_raw_param2.s2p
+PARAMS
+W = 1300.0
+A2 = 700.0
+L = 2600.0
+Y = 1250.0
+X = 200.0
+END PARAMS
+
+OUTPUT_FILE native_raw_param3.s2p
+PARAMS
+W = 1300.0
+A2 = 700.0
+L = 2600.0
+Y = 1250.0
+X = 300.0
+END PARAMS
+
+OUTPUT_FILE native_raw_param4.s2p
+PARAMS
+W = 1300.0
+A2 = 700.0
+L = 2600.0
+Y = 1250.0
+X = 400.0
+END PARAMS
+
+OUTPUT_FILE native_raw_param5.s2p
+PARAMS
+W = 1300.0
+A2 = 700.0
+L = 2600.0
+Y = 1250.0
+X = 500.0
+END PARAMS
+
+OUTPUT_FILE native_raw_param6.s2p
+PARAMS
+W = 1300.0
+A2 = 700.0
+L = 2600.0
+Y = 1250.0
+X = 600.0
+END PARAMS
+
+END USER_FILE

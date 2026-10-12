@@ -1,0 +1,79 @@
+{
+ "cases": {
+  "b4_sym_sym": {
+   "verdict": "project-file-error",
+   "note": "W(inactive)+W2(active): byte-identical SYM XDIR blocks sharing all moved points in the same PS roles - 'illegal (circular) definitions'"
+  },
+  "b4_sym_sym_act": {
+   "verdict": "project-file-error",
+   "note": "same identical-pair structure; circular reject regardless of activity"
+  },
+  "b4_ss_bothinact": {
+   "verdict": "project-file-error",
+   "note": "same pair with BOTH targets at NOM: circularity is intake-level and still rejects when every dimension is inactive"
+  },
+  "b4_part_act": {
+   "verdict": "project-file-error",
+   "note": "W2(active) with a strict-subset moved set {v3} sharing W's PS1 role on the same axis: partial same-role overlap rejects too"
+  },
+  "b4_dup_act": {
+   "verdict": "project-file-error",
+   "note": "duplicate W2(active) identical to W(active): reject"
+  },
+  "b4_sym_anc": {
+   "verdict": "solved",
+   "note": "ANC sharing moved points with inactive SYM on the same axis + SYM/SYM cross-axis and opposite-side sharing: accepted (swept values W=1300, A2=700 per b4_sym_anc_act_output_files.txt - the VALVAR base value is not what solves)"
+  },
+  "b4_sym_anc_act": {
+   "verdict": "solved",
+   "note": "same file as b4_sym_anc with VALVAR W 1400, but the actual solved sweep ran W=1300 (inactive): output_files.txt is the authoritative parameter record"
+  },
+  "b4_symL_act": {
+   "verdict": "solved",
+   "note": "ALL ACTIVE sharing: W=1400 XDIR SYM + L=2700 YDIR SYM sharing v3 on opposite PS sides + A2=700 ANC sharing v2 with W on the same axis (output_files.txt proves active values)"
+  },
+  "b4_xaxis": {
+   "verdict": "solved",
+   "note": "b4_symL_act minus A2: pure cross-axis SYM+SYM sharing of v3 (W XDIR PS1, L YDIR PS2) with both active: accepted"
+  },
+  "b4_dep_anc_on_sym": {
+   "verdict": "project-file-error",
+   "note": "A3 ANC references W-moved points while W references A3's moved point: mutual same-axis dependency - circular"
+  },
+  "b4_sym_dep_on_anc": {
+   "verdict": "project-file-error",
+   "note": "A4 ANC references a W-moved point while W references A4's moved point: mutual same-axis dependency - circular"
+  },
+  "b4_dep_oneway": {
+   "verdict": "project-file-error",
+   "note": "one-way same-axis dependency: W's REF2 lies on A4's moved point while A4 references nothing W moves - 'illegal (circular) definitions: W, A4'"
+  },
+  "b4_dep_symowner": {
+   "verdict": "project-file-error",
+   "note": "one-way dependency onto a SYM-moved point (W2's REF1 is W's PS2, same axis): circular - the rule is axis-aware, not ANC-ownership-aware"
+  },
+  "wilkinson_ebg (compatibility corpus, not archived here)": {
+   "verdict": "intake-accepted",
+   "note": "real-world file: a3 PS2 vertex (18,4) shared with a2 PS1 - opposite-side same-axis sharing passes Lite intake (run only fails the 64MB Lite memory limit downstream)"
+  },
+  "ord2_param7": {
+   "verdict": "solved",
+   "note": "discriminating ANC+SYM probe (via adjacent to the disputed corner): resolves to v2=(9450,10050) with the SYM dimension contributing NOTHING to any other vertex - bit-exact verified via literal ord2_lit_u_9350_10650_9350.son (max|dS|=0)"
+  }
+ },
+ "decoded_law": {
+  "inactivity": "a dimension is inactive exactly when target == NOM; SI round-trips still leave ~1e-17 phantom span deltas, so NOM equality - not iszero(delta) - decides who applies",
+  "moved_points": "the moved set is role-aware: for SYM every listed point can move (REF2 always shifts, REF1 shifts when the raster gate fires); for ANC/RAD only the PS2 side moves (REF1 is the fixed anchor)",
+  "conflict": "a point moved on the same axis and the same PS side by two non-sequential dimensions is a circular definition - intake-level, activity-independent",
+  "dependency": "a non-sequential dimension whose reference lies on a moved point along its own axis is unorderable - circular for one-way and mutual crossings alike; cross-axis references are inert; sequential ANC dimensions may depend on anything",
+  "ordering": "sequential ANC dimensions resolve last in dependency order (non-sequential movers first); same-axis sharing between an active ANC and an active non-sequential dimension is natively legal but the joint application order is still undecoded - conservative residual rejection"
+ },
+ "native_outputs": {
+  "b4_symL_act_param1.s2p": "parameterized run W=1400 A2=700 L=2700 Y=1250 X=100",
+  "b4_lit_mix.s2p": "DiffMoM-resolved literal of the same point: max|dS|=1.5e-4 (SYM raster-law floor; the W+A2 same-axis ordering is not separately decodable at this residual)",
+  "b4_xaxis_param1.s2p": "parameterized run W=1400 L=2700 Y=1250 X=100 (A2 removed)",
+  "b4_lit_xax.s2p": "DiffMoM-resolved literal of the same point: max|dS|=8.3e-5 - cross-axis shared vertices compose correctly"
+ },
+ "implementation_status": "DiffMoM accepts reference sharing, cross-axis moved sharing and opposite-side sharing; rejects same-axis same-side non-sequential overlap, same-axis non-sequential dependencies (one-way and mutual), and keeps a loud residual for active ANC+non-sequential same-axis moved sharing whose joint ordering is undecoded. Inactive dimensions are decided by exact NOM equality, fixing phantom ~1e-17 deltas that previously registered false owners and conflicts.",
+ "engine": "Sonnet em.exe 18.53-Lite, 2026-10-12"
+}

@@ -1,0 +1,17 @@
+Run 1:  Mon Oct 12 15:42:11 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\viaprobe\b4_sym_sym.son.
+
+    Pre-Analysis:
+
+      Sonnet Error:
+      Project file error.
+      The following parameters have illegal (circular) definitions:
+        .
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 15:42:11 2026.

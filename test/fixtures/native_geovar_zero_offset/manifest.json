@@ -1,0 +1,19 @@
+{
+  "tool": "Sonnet Lite 18.53 (64-bit Windows) em.exe",
+  "question": "Are zero saved GEOVAR offsets (NOM 0) legal, what is the delta baseline for inconsistent saved geometry, and do inactive dimensions still resolve?",
+  "probes": {
+    "z_nc.son": "ANC NSCD NOM 0 with noncoincident REF1/REF2 - native SOLVED (errors log archived)",
+    "z_w.son": "SYM NSCD NOM 0, geometric span 1300, target 1300 - native SOLVED; bit-identical to literal litA (no move)",
+    "z_w600.son": "SYM NSCD NOM 0, geometric span 1300, target 600 - native SOLVED; bit-identical to literal l_delta (delta = target - geometric span, +-350 each side)",
+    "z_scu.son": "SYM SCUNI NOM 0 - native SOLVED at intake and through the sweep",
+    "z_inact.son": "all dimensions inactive (target == NOM) but ANC A2 geometrically inconsistent (NOM 0, offset 700) - native collapsed REF2 onto REF1; param output matches literal litC within 2.1e-6, not litK (6.9e-2)",
+    "z_rad_errors.log": "RAD NSCD NOM 0 intake and solve, 0 errors (probe file had a nonempty PS1 left from the SYM template; native accepts it - our parser keeps a loud adapter rejection there)"
+  },
+  "conclusions": [
+    "NOM 0 is legal for every kind and header: ANC/SYM/RAD, NSCD and scaled alike.",
+    "The delta baseline is the geometric span between references, never the NOM field (bit-exact literal discrimination).",
+    "Dimensions resolve by real displacement regardless of NOM activity: an inconsistent inactive project still collapses/expands to its targets (A2 collapse verified at 2.1e-6 against a collapse literal).",
+    "A project is unchanged only when every dimension's application is a stored no-op; sub-cell deviations (~1e-9 relative) from file-write quantization and SI round-trips are phantoms.",
+    "Negative and zero targets intake and solve natively; degenerate resolved geometry still rejects loudly in our pipeline where Sonnet tolerates it."
+  ]
+}
