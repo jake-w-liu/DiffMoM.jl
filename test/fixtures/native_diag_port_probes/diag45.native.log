@@ -1,0 +1,20 @@
+Run 1:  Mon Oct 12 10:11:29 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\diag_port_probes\diag45\diag45.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      Port 2 is diagonal.
+      Sonnet: metal level 0; x=3.25, y=1.75 mm.
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 10:11:29 2026.

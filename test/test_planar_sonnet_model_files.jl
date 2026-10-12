@@ -654,6 +654,76 @@ END VARSWP
         @test length(flipplan.bindings)==2
         flipmodel=sonnet_floating_model(flipped,300e6;grid=(32,40),_model_files=flipplan)
         @test count(e->e isa DiffMoM._CircuitNetwork,flipmodel.circuit.elements)==2
+        # A model-bearing component with three or more unpaired positive
+        # pins cannot use pairwise bridges; each pin keeps its own
+        # open-edge port and returns through the shared local ground.
+        # Native Lite rejects multi-pin ordinary components outright, so
+        # this star is scoped to model-bearing components and verified
+        # bit-identically between the staged and callback routes.
+        text3=replace(text,"""SMDP 0 162.5 187.5 R 6 2
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+END"""=>"""SMDP 0 112.5 187.5 R 6 2
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+SMDP 0 162.5 187.5 R 7 3
+EXSMDP
+GNDREF AUTO
+TERMW FEED
+END EXSMDP
+END""";count=1)
+        star=joinpath(directory,"star.son")
+        write(star,replace(replace(text3,"""TYPE SPARAM 1
+SMDP 0 137.5"""=>"""TYPE SPARAM 2
+SMDP 0 137.5""";count=1),
+            "1 \"device_model.s2p\""=>"1 \"device_model.s2p\"\n2 \"device3.s3p\"";count=1))
+        R=150.
+        Y3=(1/R)*(Matrix{Float64}(I,3,3).-ones(3,3)/3)
+        s3=planar_y_to_s(Y3,fill(50.,3))
+        open(joinpath(directory,"device3.s3p"),"w") do io
+            println(io,"# HZ S RI R 50")
+            for f in (200e6,300e6,400e6)
+                print(io,f)
+                for i in 1:3 for j in 1:3
+                    print(io," ",real(s3[j,i])," ",imag(s3[j,i]))
+                end end
+                println(io)
+            end
+        end
+        p3=read_sonnet_project(star)
+        @test count(c->DiffMoM._sonnet_component_floating(p3,c),p3.components)==1
+        plan3=sonnet_component_files(p3,300e6;grid=(32,40))
+        @test length(plan3.bindings)==2 &&
+            any(b->b.geometry_labels==[5,6,7],plan3.bindings)
+        staged3=solve_sonnet_project(plan3;raw=true,mx=32,my=40)
+        @test staged3 isa DiffMoM.SonnetFloatingResult
+        @test all(isfinite,staged3.s)
+        s2=only(filter(b->length(b.geometry_labels)==2,plan3.bindings)).response
+        z2=only(filter(b->length(b.geometry_labels)==2,plan3.bindings)).z0
+        callback3=solve_sonnet_project(p3,300e6;grid=(32,40),raw=true,mx=32,my=40,
+            component_response=(pp,c,f)->count(r->first(r.tokens)=="SMDP",c)==3 ?
+                (response=s3,format=:s,z0=50.) : (response=s2,format=:s,z0=z2))
+        @test callback3.s≈staged3.s rtol=1e-12
+        model3=sonnet_floating_model(p3,300e6;grid=(32,40),_model_files=plan3)
+        @test count(e->e isa DiffMoM._CircuitNetwork,model3.circuit.elements)==2
+        # Signed labels still reject for file-model multi-pin floats;
+        # ordinary components retain the native multi-pin rejection.
+        signed3=read_sonnet_project(star)
+        smdp=only(filter(r->r.tokens[1]=="SMDP" && r.tokens[7]=="3",
+            only(filter(c->any(r->r.tokens[1]=="SMD" &&
+                occursin("Floating",join(r.tokens," ")),c),signed3.components))))
+        smdp.tokens[6]="-7"
+        @test_throws ArgumentError sonnet_component_files(signed3,300e6;grid=(32,40))
+        ideal3=read_sonnet_project(star)
+        type3=only(filter(r->r.tokens[1]=="TYPE",
+            only(filter(c->any(r->r.tokens[1]=="SMD" &&
+                occursin("Floating",join(r.tokens," ")),c),ideal3.components))))
+        empty!(type3.tokens);append!(type3.tokens,["TYPE","IDEAL","RES","10"])
+        @test_throws ArgumentError solve_sonnet_project(ideal3,300e6;grid=(32,40))
     end
 end
 

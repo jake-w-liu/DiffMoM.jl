@@ -1205,9 +1205,10 @@ end
 # of a hollow wall thickness. The record's sixth field is polymorphic:
 # RPV selects the resistance-per-via path, a loss selector names the loss
 # field's units, and anything else is translator spacing/density data that
-# the engine warns on, defaults, and ignores (verified on 18.53-Lite). The
-# horizontal loss is infinite, so array vias generate perfect-conductor
-# endpoint pads and only the axial path is dissipative.
+# the engine warns on, defaults, and ignores (verified on 18.53-Lite).
+# Endpoint pads are generated films of the same converted conductivity at
+# the via height: a zero-conductivity record is completely inert, an
+# infinite-conductivity one leaves perfect-conductor pads.
 function _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
     metal=p.metals[poly.material+1]
     length(metal)>=5 || throw(ArgumentError("ARR requires loss and fill-factor fields"))
@@ -1217,17 +1218,19 @@ function _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
     selector=="SRVY" && throw(ArgumentError(
         "native ARR sheet-resistance conversion requires its dedicated adapter"))
     val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
-    loss=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf : val(metal[4])
+    loss=uppercase(metal[4])=="INF" ? Inf : val(metal[4])
     percent=val(metal[5])
     (isfinite(percent) && 0<percent<=100 && loss>=0) ||
         throw(ArgumentError("ARR requires nonnegative loss and a fill factor in (0,100] percent"))
-    (selector=="CDVY" && loss==Inf) || (selector=="RSVY" && iszero(loss)) ? (return Inf) : nothing
-    # Zero conductivity is a perfect insulator; Lite runs it as an open
-    # column, but the via impedance model has no zero-sigma state.
-    selector=="CDVY" && iszero(loss) && throw(ArgumentError(
-        "native ARR zero conductivity is a perfect insulator; the open-via adapter is required"))
+    sigma=selector=="RSVY" ? _sonnet_volume_product((100.,),(loss,)) : loss
+    isinf(sigma) && return Inf
+    # Zero conductivity is a perfect insulator: Lite runs the polygon as a
+    # fully inert record — bit-equivalent to the via being absent, with no
+    # axial element and no generated endpoint pads (verified on Lite 18.53
+    # in test/fixtures/native_arr_open_via). Callers skip the polygon
+    # entirely on a zero return.
+    iszero(sigma) && return 0.
     rectangle=_sonnet_volume_rectangle(poly.vertices)
-    sigma=selector=="CDVY" ? loss : _sonnet_volume_product((100.,),(loss,))
     vertices=poly.vertices
     area=_sonnet_volume_polygon_area(vertices)
     xmin,xmax=extrema(@view vertices[1,:]);ymin,ymax=extrema(@view vertices[2,:])
@@ -1470,9 +1473,28 @@ end
 function _sonnet_via_endpoint_zs(p,poly,stack,freq,variables)
     poly.material==-1 && return 0.0im
     metal=p.metals[poly.material+1]
-    # The array model's horizontal loss is infinite: its contact pads are
-    # perfect conductors and only the axial array resistance is dissipative.
-    metal[3]=="ARR" && return 0.0im
+    if metal[3]=="ARR"
+        # Resistance-per-via records carry no conductivity field; their
+        # pads stay perfect conductors.
+        _sonnet_via_rpv(metal) && return 0.0im
+        # Native array pads carry the metal's converted conductivity as a
+        # film of the via height (Lite 18.53: RSVY ρ≡CDVY σ=100/ρ, and the
+        # σ→0 limit is the open column — see fixtures/native_arr_open_via).
+        selector=length(metal)>=6 && metal[6] in ("CDVY","RSVY","SRVY") ? metal[6] : "CDVY"
+        selector=="SRVY" && throw(ArgumentError(
+            "native ARR sheet-resistance conversion requires its dedicated adapter"))
+        value=uppercase(metal[4])=="INF" ? Inf :
+            sonnet_variable_value(p,metal[4];variables,freq)
+        sigma=selector=="RSVY" ? _sonnet_volume_product((100.,),(value,)) : value
+        isinf(sigma) && return 0.0im
+        iszero(sigma) && return Inf
+        sigma>0 && isfinite(sigma) ||
+            throw(ArgumentError("native ARR pad conductivity must be positive and finite"))
+        height=_sonnet_via_endpoint_height(p,poly,stack)
+        zs=ComplexF64(planar_two_sheet_zs(freq,sigma,height)[1,1])
+        isfinite(zs) || return _sonnet_via_endpoint_wide(p,poly,stack,freq,sigma,"CDVY",0.0)
+        return zs
+    end
     metal[3]=="VOL" || throw(ArgumentError("native via endpoint material needs its own adapter"))
     solid=length(metal)>=5 && metal[5]=="SOLID"
     rpv=_sonnet_via_rpv(metal)
@@ -1833,7 +1855,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     _enforce_payload_limit(geometry_workspace,limit,"native raster geometry workspace","max_bytes")
     sheets=SheetLevel[]; sheetidx=Dict{Int,Int}(); masks=Dict{Int,BitMatrix}()
     vias=ViaLevel[]; via_sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}()
-    via_polygon_level=Dict{Tuple{Int,Int},Int}()
+    via_polygon_level=Dict{Tuple{Int,Int},Int}();open_via_polygons=Set{Int}()
     surface_by_level=Dict{Int,Matrix{ComplexF64}}()
     function native_sheet(level)
         if !haskey(sheetidx,level)
@@ -1885,6 +1907,13 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             via_mask=_planar_via_mesh_mask(tmp.mask,poly.vertices,gr,mode)
             masks[poly.id]=via_mask
             sigma=_sonnet_via_sigma(p,poly,gr,st,via_mask,freq,variables)
+            # A zero-conductivity ARR column is a perfect insulator — Lite
+            # runs it as an open circuit, so the axial element and the
+            # generated endpoint pads are skipped.
+            if iszero(sigma)
+                push!(open_via_polygons,poly.id)
+                continue
+            end
             if sigma isa Complex && via_sigma isa Vector{Float64}
                 via_sigma=ComplexF64.(via_sigma)
                 via_group=Dict{Tuple{Int,ComplexF64},Int}((k[1],ComplexF64(k[2]))=>v for (k,v) in via_group)
@@ -1912,6 +1941,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     # films share one tangential field and their conductances add.
     generated_endpoints=Dict{Int,BitMatrix}()
     for poly in p.polygons
+        poly.id in open_via_polygons && continue
         _sonnet_via_endpoints(p,poly) || continue
         target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
         endpoint=masks[poly.id]
@@ -1999,8 +2029,12 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             ps.number!=0 || throw(ArgumentError("interior native port zero requires an explicit ground return adapter"))
             start,finish=_sonnet_shared_port_segment(p,poly,index,next)
             dx,dy=finish[1]-start[1],finish[2]-start[2]
+            # Native Lite 18.53 itself rejects diagonal source ports
+            # ("Illegal circuit configuration. Port is diagonal."), so the
+            # adapter rejection is parity, not a missing capability —
+            # archived probes live in test/fixtures/native_diag_port_probes.
             abs(dx)<=1e-8*max(a,b) || abs(dy)<=1e-8*max(a,b) ||
-                throw(ArgumentError("diagonal native gap port requires a conformal terminal adapter"))
+                throw(ArgumentError("diagonal native gap port is rejected natively"))
             direction=abs(dx)<abs(dy) ? :x : :y
             coordinate=direction==:x ? start[1]/gr.dx : start[2]/gr.dy
             edge=round(Int,coordinate)

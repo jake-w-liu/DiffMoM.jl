@@ -229,7 +229,7 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         parse(Int,p.box[4])÷2,parse(Int,p.box[5])÷2)
     polygons=PlanarPolygon[];metals=Dict{String,Any}("pec"=>0.)
     contacts=PlanarConformalPort[];cp=PlanarConformalPort[];bp=PlanarPort[]
-    vias=ViaLevel[];sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}();via_indices=Dict{Tuple{Int,Int},Int}();masks=Dict{Int,BitMatrix}()
+    vias=ViaLevel[];sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}();via_indices=Dict{Tuple{Int,Int},Int}();masks=Dict{Int,BitMatrix}();open_via_polygons=Set{Int}()
     numbers=Int[];refs=ComplexF64[];weights=Float64[];cnumbers=Int[];crefs=ComplexF64[]
     function add_sheet(name,level,vertices,metal)
         v,b=planar_normalize_polygon([_P2(vertices[1,i],vertices[2,i]) for i in axes(vertices,2)];label=name)
@@ -253,6 +253,12 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
                 "CENTER" in poly.flags ? :center : "BAR" in poly.flags ? :bar : :ring
             mask=_planar_via_mesh_mask(footprint.mask,poly.vertices,gr,mode);masks[poly.id]=mask
             rho_sigma=_sonnet_via_sigma(p,poly,gr,stack,mask,freq,variables)
+            # A zero-conductivity ARR column is a native open circuit —
+            # neither the axial element nor its endpoint pads exist.
+            if iszero(rho_sigma)
+                push!(open_via_polygons,poly.id)
+                continue
+            end
             if rho_sigma isa Complex && sigma isa Vector{Float64}
                 sigma=ComplexF64.(sigma)
                 via_group=Dict{Tuple{Int,ComplexF64},Int}((k[1],ComplexF64(k[2]))=>v for (k,v) in via_group)
@@ -274,8 +280,10 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
     # polygon order. Exact overlay preserves original physical sheets.
     physical_sheets=copy(polygons)
     backgrounds=NamedTuple[];background_bytes=0
-    endpoint_polygons=Dict(poly.id=>poly for poly in p.polygons if _sonnet_via_endpoints(p,poly))
+    endpoint_polygons=Dict(poly.id=>poly for poly in p.polygons if
+        !(poly.id in open_via_polygons) && _sonnet_via_endpoints(p,poly))
     for poly in p.polygons
+        poly.id in open_via_polygons && continue
         _sonnet_via_endpoints(p,poly) || continue
         target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
         endpoints=count(l->!(l in (-1,L-1)),(poly.level,target))
@@ -348,7 +356,9 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
                 throw(ArgumentError("native standard via port must terminate on a box cover"))
             lo,hi=minmax(poly.level,target);layers=(L-hi):(L-lo-1);height=sum(real(stack.layers[l].thickness) for l in layers)
             for l in layers,cell in findall(vec(masks[poly.id]))
-                push!(bp,PlanarPort(via_indices[(poly.id,l)],:via,cell:cell,z0;polarity=ps.number<0 ? -1 : 1))
+                vi=get(via_indices,(poly.id,l),0)
+                vi==0 && throw(ArgumentError("via port lacks current bases"))
+                push!(bp,PlanarPort(vi,:via,cell:cell,z0;polarity=ps.number<0 ? -1 : 1))
                 push!(numbers,abs(ps.number));push!(refs,z0);push!(weights,real(stack.layers[l].thickness)/height)
             end
             continue

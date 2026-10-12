@@ -49,14 +49,36 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 - [ ] A4 signed file-model pin terminals — degenerate-port adapter for `-pin`
       SPARAM/SPROJ attaches. Oracle: analytic (port-reduction identity), Lite
       if a file comp ever runs (license-blocked) → Nexxim.
-- [ ] A5 multi-pin (>2 unpaired) FLOAT common — currently 2-pin star only.
-      Oracle: analytic circuit reduction + Lite IDEAL twin control.
-- [ ] A6 diagonal native gap port (`IO:2003`). Oracle: Lite `em -N` + solve.
+- [x] A5 multi-pin (>2 unpaired) FLOAT common — DONE. Model-bearing comps
+      with ≥3 unpaired positive pins attach each pin as an open-edge port
+      on the shared local ground (per-pin star; EM edge == model port).
+      Lite-verified that native rejects multi-pin ordinary components, so
+      the star is scoped to model-bearing comps; staged↔callback agree at
+      ~1e-18. Regression: `test_planar_sonnet_model_files.jl` (3-pin
+      SPARAM + via SPROJ mixed project, signed-label and IDEAL rejects).
+- [x] A6 diagonal native gap port — DONE as parity-verified rejection.
+      Lite 18.53 itself rejects diagonal ports ("Illegal circuit
+      configuration. Port is diagonal.") at both 45° and shallow slopes;
+      DiffMoM throws the equivalent ArgumentError. Probes archived in
+      `test/fixtures/native_diag_port_probes` + replay testset in
+      `test_planar_sonnet_io.jl` (complements the conformal-route fixture
+      `native_internal_diagonal_rejection`).
 - [ ] A7 component-direction co-calibration residual ~0.01 (parity line 187/1167).
       Oracle: HFSS independent solve of materialized coupon.
-- [ ] A8 unsupported IDEAL component kinds/units (`Components:41,43`). Oracle:
-      Lite probe corpus per kind.
-- [ ] A9 unsupported TYPE models (`ModelFiles:138`) — S2P/etc. Oracle: Nexxim.
+- [x] A8 unsupported IDEAL component kinds/units — DONE. Lite probe corpus
+      (~30 value-bearing projects) decoded the full native unit tables:
+      RES GOH=1e9/TOH=1e12, CAP MF=1e-3, trailing-S plural aliases
+      (KOHMS/UFS/MHS...), case-insensitive spelling. Implemented in
+      `_sonnet_component_scale`. Known divergence (documented): native
+      silently defaults unrecognized units (AF→PF, GH→NH, K→OH); the
+      adapter keeps explicit rejection. Native rejects non-RLC IDEAL
+      kinds — parity. Fixtures: `test/fixtures/native_ideal_units` (12
+      value-bearing .son+.native.s2p) + replay testset.
+- [x] A9 unsupported TYPE models — DONE as parity-verified rejection.
+      Probed 12 candidate kinds (VENDOR/CKT/MODEL/S2P/TLINE/RLGC/CTL/SML/
+      NETLIST/MDLX/COIL/CAPACITOR) on Lite 18.53: all parse-reject as
+      Project File Error. Native grammar carries no other TYPE kinds in
+      Lite; any undiscovered kind still rejects loudly in our parser.
 
 ## B. GEOVAR
 
@@ -80,9 +102,18 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       algorithm. Oracle: Lite RF controls + analytic rectangle saturation
       limits already archived.
 - [ ] C2 ARR sheet-resistance conversion (`IO:1218`). Oracle: Lite.
-- [ ] C3 ARR zero-conductivity open-via (`IO:1228`). Oracle: Lite.
-- [ ] C4 ARR conductivity/skin loss, non-RPV ARR frequency dependence
-      (`IO:1510`). Oracle: Lite.
+- [x] C3 ARR zero-conductivity open-via. **Done** — Lite 18.53: a
+      zero-conductivity record is completely inert (no axial element, no
+      COVERS/RING endpoint pads); `cdvy_loss0` is bit-equivalent to the
+      absent-via control (~1e-6). Both raster and conformal import paths
+      skip the polygon; a via port on one throws "lacks current bases".
+      Evidence: `fixtures/native_arr_open_via` + replay testset.
+- [x] C4 ARR conductivity/skin loss, non-RPV ARR frequency dependence.
+      **Done for CDVY/RSVY** — native σ-sweep (σ=1e-6…1e6) showed endpoint
+      pads carry the converted conductivity as a `two_sheet_zs` film at
+      the via height (earlier "PEC pads" assumption was wrong); RSVY
+      converts σ=100/ρ bit-identically; INF→PEC pads+column; RPV records
+      carry no σ field so their pads stay PEC. SRVY residual stays in C2.
 - [ ] C5 VOL RPV hollow wall thickness (`IO:1522`). Oracle: Lite.
 - [ ] C6 TMM resistivity/sheet-resistance + unknown flags (`IO:1612`);
       further TMM semantics (face counts). Oracle: Lite.
@@ -152,7 +183,8 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       Nexxim circuit equivalence (EM+network attach law), HFSS EM of the
       stripped structure. Residual license claim stays DocOnly.
 - [ ] H2 REFPLANE on FLOAT comps — tied to A1.
-- [ ] H3 multi-pin FLOAT file models — tied to A5 (multi-pin common) + A4.
+- [x] H3 multi-pin FLOAT file models — DONE via A5 (positive-pin star).
+      Signed-pin variants remain under A4.
 
 ## I. Continuum / numerical acceptance
 

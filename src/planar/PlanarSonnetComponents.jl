@@ -35,11 +35,26 @@ SonnetComponentResult(p,r,n,y,s,c,network,nodes,a,g)=
     SonnetComponentResult(p,r,n,y,s,c,network,nodes,a,g,network.z0)
 
 function _sonnet_component_scale(p,kind)
-    units,default=kind=="RES" ? (Dict("OH"=>1.,"OHMS"=>1.,"KOH"=>1e3,"MOH"=>1e6),"OH") :
-        kind=="CAP" ? (Dict("F"=>1.,"PF"=>1e-12,"FF"=>1e-15,"NF"=>1e-9,"UF"=>1e-6),"PF") :
-        kind=="IND" ? (Dict("H"=>1.,"NH"=>1e-9,"PH"=>1e-12,"UH"=>1e-6,"MH"=>1e-3),"NH") :
+    # Native unit tables verified against installed Lite 18.53 (probe corpus
+    # in test/fixtures/native_ideal_units): case-insensitive, optional
+    # trailing-S aliases, and the extended RES decades GOH/TOH plus CAP
+    # MF. Native silently falls back to the dimension default for
+    # unrecognized tokens; the adapter still rejects them so a misspelled
+    # unit cannot quietly rescale a component.
+    units,default=kind=="RES" ? (Dict(
+            "OH"=>1.,"OHMS"=>1.,"KOH"=>1e3,"KOHMS"=>1e3,
+            "MOH"=>1e6,"MOHMS"=>1e6,"GOH"=>1e9,"GOHMS"=>1e9,
+            "TOH"=>1e12,"TOHMS"=>1e12),"OH") :
+        kind=="CAP" ? (Dict(
+            "F"=>1.,"FS"=>1.,"MF"=>1e-3,"MFS"=>1e-3,
+            "UF"=>1e-6,"UFS"=>1e-6,"NF"=>1e-9,"NFS"=>1e-9,
+            "PF"=>1e-12,"PFS"=>1e-12,"FF"=>1e-15,"FFS"=>1e-15),"PF") :
+        kind=="IND" ? (Dict(
+            "H"=>1.,"HS"=>1.,"MH"=>1e-3,"MHS"=>1e-3,
+            "UH"=>1e-6,"UHS"=>1e-6,"NH"=>1e-9,"NHS"=>1e-9,
+            "PH"=>1e-12,"PHS"=>1e-12),"NH") :
         throw(ArgumentError("unsupported native IDEAL component $kind"))
-    scale=get(units,get(p.units,kind,default),NaN)
+    scale=get(units,uppercase(get(p.units,kind,default)),NaN)
     isfinite(scale) || throw(ArgumentError("unsupported native IDEAL $kind units"))
     scale
 end

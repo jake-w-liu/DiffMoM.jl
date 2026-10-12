@@ -293,6 +293,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         local_pairs=Tuple{Int,Int}[]
         pairpins=Tuple{Any,Any,Int}[]
         unpaired=Any[]
+        terminals=Dict{Int,Int}()
         for label in sort(unique(pin.number for pin in group.pins))
             selected=[pin for pin in group.pins if pin.number==label]
             pos=filter(pin->pin.signed_number>0,selected)
@@ -303,12 +304,53 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
                 append!(unpaired,selected)
             end
         end
+        modelcomp=group.component!==nothing && !group.external
+        kindt=modelcomp ? only(r for r in group.component if first(r.tokens)=="TYPE").tokens :
+            nothing
+        needscommon=modelcomp && kindt!=["TYPE","NONE"] &&
+            !(length(kindt)==4 && kindt[2]=="IDEAL")
+        group_gnode=0
         # Terminals whose labels carry no explicit negative partner share
         # the component's one floating common node; their independent
         # voltages are the star differences against the first positive
         # terminal. Verified for the native two-pin AUTO/FLOAT case,
         # where both positive pins form the single differential port.
-        if length(unpaired)>=2
+        # Model-bearing components with three or more positive pins cannot
+        # use pairwise bridges (each pin's endpoint is a separate component
+        # gap), so each pin keeps its own open-edge port and returns
+        # through the shared local ground node — the same per-pin port
+        # structure native applies to model pins, extended to N pins.
+        # Native Lite rejects multi-pin ordinary components outright, so
+        # this branch is scoped to model-bearing components.
+        if needscommon && length(unpaired)>=3
+            sort!(unpaired;by=pin->pin.pin)
+            all(pin->pin.signed_number>0,unpaired) || throw(ArgumentError(
+                "native FLOAT model pins require positive labels"))
+            group_gnode=(nodes+=1;nodes)
+            for pin in unpaired
+                pin.number in labels && throw(ArgumentError(
+                    "native FLOAT label collides with an ordinary or previously defined source mode"))
+                payload=_subdivision_retained_payload(Any[problem,C,common,sheet_zs,via_sigma])
+                reserve=_checked_payload_sum("native floating source model",payload,
+                    variable_payload,file_payload,
+                    _checked_array_payload_bytes(Float64,length(problem.ports)+1,length(labels)+1),
+                    _checked_array_payload_bytes(Float64,length(problem.ports)+1,size(common,2)),
+                    _checked_array_payload_bytes(ComplexF64,length(problem.sheets),problem.grid.nx,problem.grid.ny))
+                _enforce_payload_limit(reserve,max_bytes,"native floating source model","max_bytes")
+                problem=build_planar_problem(problem.stack,problem.grid,problem.sheets,
+                    [problem.ports...,_sonnet_float_endpoint(pin)];
+                    vias=problem.vias,vols=problem.vols)
+                pidx=length(problem.ports)
+                next=zeros(Float64,pidx,length(labels)+1)
+                next[1:pidx-1,1:length(labels)].=C;next[pidx,end]=1
+                nextcommon=zeros(Float64,pidx,size(common,2))
+                nextcommon[1:pidx-1,:].=common
+                C=next;common=nextcommon
+                push!(labels,pin.number);push!(refs,pin.z0)
+                nodes+=1;push!(pairs,(nodes,group_gnode))
+                terminals[pin.pin]=nodes
+            end
+        elseif length(unpaired)>=2
             sort!(unpaired;by=pin->pin.pin)
             k=findfirst(pin->pin.signed_number>0,unpaired)
             k===nothing && throw(ArgumentError(
@@ -332,8 +374,6 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         # such a load sees no conductive return). `gnode` owns that node,
         # created only when a model-bearing component actually references
         # it so the circuit never carries a dangling isolated node.
-        terminals=Dict{Int,Int}()
-        modelcomp=group.component!==nothing && !group.external
         for (positive,negative,label) in pairpins
             label in labels && throw(ArgumentError("native FLOAT label collides with an ordinary or previously defined source mode"))
             payload=_subdivision_retained_payload(Any[problem,C,common,sheet_zs,via_sigma])
@@ -363,9 +403,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
             end
         end
         if modelcomp
-            kindt=only(r for r in group.component if first(r.tokens)=="TYPE").tokens
-            gnode=(any(==(-1),values(terminals)) || (kindt!=["TYPE","NONE"] &&
-                !(length(kindt)==4 && kindt[2]=="IDEAL"))) ? (nodes+=1;nodes) : 0
+            gnode=group_gnode>0 ? group_gnode :
+                (any(==(-1),values(terminals)) || needscommon) ? (nodes+=1;nodes) : 0
             for (pin,node) in terminals
                 node==-1 && (terminals[pin]=gnode)
             end

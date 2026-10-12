@@ -134,11 +134,12 @@ end
         @test_throws ArgumentError sonnet_planar_problem(metal_project(original,record);
             freq=1e9,grid=(20,20),_materials=true)
     end
-    # Zero conductivity is a perfect insulator; Lite runs it open, but the via
-    # impedance model has no zero-sigma state and rejects it explicitly.
-    @test_throws ArgumentError sonnet_planar_problem(
+    # Zero conductivity is a perfect insulator; Lite runs the polygon as a
+    # fully inert record — no axial element and no endpoint pads.
+    open_model=sonnet_planar_problem(
         metal_project(original,[base[1],base[2],"ARR","0",".01"]);
-        freq=1e9,grid=(20,20),_materials=true)
+        freq=1e9,grid=(20,20),_materials=true,_details=true)
+    @test isempty(open_model.problem.vias)
     # Zero resistivity and infinite conductivity are perfect conductors.
     for record in ([base[1],base[2],"ARR","0",".01","RSVY"],
             [base[1],base[2],"ARR","INF",".01"])
@@ -203,5 +204,40 @@ end
         end
     end
     @test precision(BigFloat)==outside
+end
+
+@testset "array conductivity pads, open column and RSVY conversion" begin
+    # Lite 18.53: ARR endpoint pads are generated films of the converted
+    # conductivity at the via height — a zero-sigma record is completely
+    # inert (bit-identical to the absent-via control), RSVY converts with
+    # sigma=100/rho, and INF leaves perfect-conductor pads and column.
+    fixture=joinpath(@__DIR__,"fixtures","native_arr_open_via")
+    names=("cdvy_loss0","cdvy_1e-6","novia","probe_s0.01","probe_s1",
+        "probe_s1e4","probe_s100","probe_s1000000","probe_inf",
+        "probe_f6_1_RSVY","probe_f6_0.01_RSVY","probe_f6_0.0001_RSVY",
+        "probe_f6_1_CDVY","probe_f6_1_none","probe_r0")
+    results=Dict{String,Any}()
+    for name in names
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        reference=planar_read_touchstone(joinpath(fixture,name*".native.s2p"))
+        for frequency in (1e9,1e10)
+            native=reference.s[only(findall(==(frequency),reference.frequencies))]
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+            @test maximum(abs,actual.s-native)<=.06
+            @test maximum(svdvals(actual.s))<=1+1e-6
+            frequency==1e10 && (results[name]=actual)
+        end
+    end
+    # The zero-sigma column must produce no axial elements and match the
+    # via-absent solve, not merely a small-sigma one.
+    @test isempty(results["cdvy_loss0"].raw.problem.vias)
+    @test maximum(abs,results["cdvy_loss0"].s-results["novia"].s)<=1e-6
+    # RSVY in the selector slot converts sigma=100/rho; the same token in
+    # the density slot is ignored (CDVY default), so probe_r0 runs open.
+    @test isempty(results["probe_r0"].raw.problem.vias)
+    @test maximum(abs,results["probe_f6_1_RSVY"].s-results["probe_s100"].s)<=1e-6
+    @test maximum(abs,results["probe_f6_0.01_RSVY"].s-results["probe_s1e4"].s)<=1e-6
+    @test maximum(abs,results["probe_f6_0.0001_RSVY"].s-results["probe_s1000000"].s)<=1e-6
+    @test maximum(abs,results["probe_f6_1_CDVY"].s-results["probe_f6_1_none"].s)<=1e-9
 end
 end

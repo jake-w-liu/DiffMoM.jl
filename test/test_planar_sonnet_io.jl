@@ -741,3 +741,15 @@ end
         @test_throws ArgumentError solve_sonnet_project(boxref,1e9;mx=16,my=16)
     end
 end
+
+@testset "installed-Lite diagonal port rejection replay" begin
+    # Native Lite 18.53 rejects a source port on a non-axis-aligned polygon
+    # edge ("Illegal circuit configuration. Port is diagonal." — archived
+    # in *.native.log). DiffMoM must reject the same geometry instead of
+    # silently staircasing the terminal; the adapter rejection is parity.
+    fixture=joinpath(@__DIR__,"fixtures","native_diag_port_probes")
+    for name in sort([splitext(f)[1] for f in readdir(fixture) if endswith(f,".son")])
+        project=read_sonnet_project(joinpath(fixture,name*".son"))
+        @test_throws ArgumentError solve_sonnet_project(project,1e9;raw=true,mx=24,my=16)
+    end
+end

@@ -146,3 +146,30 @@ end
         end
     end
 end
+
+@testset "installed-Lite extended IDEAL unit table replay" begin
+    # Sonnet Lite 18.53 accepts GOH/TOH (RES), MF (CAP), trailing-S plural
+    # aliases (KOHMS/UFS/MHS/...) and case-insensitive spellings — all
+    # decoded from value-bearing engine probes archived as .native.s2p.
+    # Each fixture .son replays through our parser and must match the
+    # archived native response; the engine's silent default-fallback for
+    # unrecognized tokens (AF→PF, GH→NH, K→OH) is intentionally not
+    # mirrored so a misspelled unit cannot quietly rescale a component.
+    fixture=joinpath(@__DIR__,"fixtures","native_ideal_units")
+    for name in sort([splitext(f)[1] for f in readdir(fixture) if endswith(f,".son")])
+        project=read_sonnet_project(joinpath(fixture,name*".son"))
+        native=only(planar_read_touchstone(joinpath(fixture,name*".native.s2p");nports=2).s)
+        actual=solve_sonnet_project(project,1e9;raw=true)
+        @test abs(actual.s[2,1]-native[2,1])<.02
+        @test abs(actual.s[1,1]-native[1,1])<.02
+    end
+    # Unrecognized units keep the explicit adapter rejection rather than
+    # the native silent default (documented divergence).
+    for (kind,unit) in (("RES","K"),("CAP","AF"),("IND","GH"))
+        p=read_sonnet_project(joinpath(fixture,"res_e-6_goh.son"))
+        record=only(filter(r->first(r.tokens)=="TYPE",only(p.components)))
+        record.tokens[3]=kind;record.tokens[4]="1"
+        p.units[kind]=unit
+        @test_throws ArgumentError solve_sonnet_project(p,1e9;raw=true)
+    end
+end

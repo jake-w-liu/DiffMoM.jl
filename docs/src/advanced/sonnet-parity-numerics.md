@@ -199,6 +199,25 @@ triangles at 1 GHz. The coarser grounded native loss changed substantially
 under grid refinement; these controls do not certify continuum convergence
 or the corresponding fine conformal result at 10 GHz.
 
+Native `ARR` endpoint pads are films of the record's converted
+conductivity at the via height, not perfect conductors: a Lite 18.53
+conductivity sweep from 1e-6 to 1e6 S/m on a gap-bridging RING+COVERS
+footprint reproduces the full native transition (s21 0.000125+0.00148i
+through 0.767-0.203i at 10 GHz) with the two-sheet film law. At exactly
+zero conductivity the entire record is inert — `cdvy_loss0` agrees with
+the absent-via control to 1e-6 — so zero-sigma array polygons generate
+neither axial elements nor endpoint pads on either importer, and a via
+port on one rejects with "lacks current bases". `RSVY` in the sixth field
+converts `sigma = 100/rho` bit-identically (rho=0.01, 1 and 1e-4 controls
+equal CDVY 1e4, 1e2 and 1e6 S/m respectively), infinite resistivity or
+zero conductivity runs open, and zero resistivity or `INF` conductivity
+leaves perfect-conductor pads and column. A selector token in the density
+slot is ignored as before, so `ARR 0 .01 1 RSVY` resolves CDVY and opens.
+`ARR RPV` records carry no conductivity field; their pads stay perfect
+conductors. Evidence: `test/fixtures/native_arr_open_via` (15 source,
+response and log triples) and the `test_planar_sonnet_array_loss.jl`
+replay testset.
+
 Float64 conformal geometry uses scoped 8192-bit intersection and
 orientation fallback arithmetic. Degree-two/three numerators retain the
 stored coordinate domain before final division; caller BigFloat precision
@@ -216,7 +235,8 @@ allocates 64 bytes in the measured 2000-run control. These measurements
 bound these specific warmed calls; opaque memory, peak RSS and global
 optimization remain unverified.
 
-General thick HOLLOW topology, ARR grounded loss and conductivity, SFC
+General thick HOLLOW topology, ARR SRVY conversion and non-CDVY/RSVY
+selectors, SFC
 horizontal endpoint behavior, BAR lowering, native non-Ring endpoint
 physics, low-frequency physical residuals, mode/mesh convergence and
 measured spiral/coupled RFIC acceptance remain open. A supported input or
