@@ -1,0 +1,12 @@
+Run 1:  Mon Oct 12 15:14:30 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\viaprobe\hn_sonproj.son.
+
+    Begin circuit-theory simulation using frequency sweep:
+      Linear Start = 6, Stop = 12, Step = 1 GHZ
+
+    Post-Analysis information for em run 1:
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Mon Oct 12 15:14:34 2026.

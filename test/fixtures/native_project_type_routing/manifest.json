@@ -1,0 +1,29 @@
+{
+ "cases": {
+  "sonnetprj_geo": {
+   "verdict": "solved",
+   "note": "SONNETPRJ token on a GEO file: Lite runs the EM solve (content routes, not the token)"
+  },
+  "sonproj_ckt": {
+   "verdict": "solved",
+   "note": "SONPROJ token on a CKT netlist file: Lite runs the circuit-theory sweep (identical to SONNETPRJ)"
+  },
+  "sonnetprj_ckt": {
+   "verdict": "solved",
+   "note": "baseline netlist project (halfnet example, run locally for reference)"
+  },
+  "ft_sonproj": {
+   "verdict": "project-file-error",
+   "note": "lowercase 'sonproj' type token rejects - FTYP is case-sensitive"
+  },
+  "ft_garbage": {
+   "verdict": "project-file-error",
+   "note": "arbitrary type token rejects 'not a valid project file'"
+  },
+  "ft_empty": {
+   "verdict": "project-file-error",
+   "note": "missing type token rejects"
+  }
+ },
+ "note": "Lite 18.53 probes: FTYP token must be SONPROJ or SONNETPRJ (exact case); project MODE is chosen by GEO-vs-CKT section presence, not the token"
+}

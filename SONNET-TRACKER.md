@@ -252,8 +252,18 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       via-metal records are degenerate-accepted natively and stay a loud
       local rejection. Fixed a BoundsError→ArgumentError on out-of-range
       sheet indices (`IO:1851`).
-- [ ] E4 unsupported project types (`IO:231`), SMD-components-in-plain-lowering
-      path (`IO:1818`). Oracle: Lite probes.
+- [x] E4 unsupported project types (`IO:231`), SMD-components-in-plain-lowering
+      path (`IO:1818`) — DONE. Lite probes: the `FTYP` token is
+      content-routed, not type-routed — `SONNETPRJ` on a GEO file runs
+      the EM solve and `SONPROJ` on a CKT file runs the netlist solve
+      (both verified end-to-end; only `SONPROJ`/`SONNETPRJ` exact-case
+      are valid tokens). Fixed `IO:243` to route on section presence
+      (GEO → geometry; else CKT → netlist) instead of the token,
+      removing false rejections in both directions. SMD audit:
+      `sonnet_planar_problem` (`IO:1960`) and `sonnet_conformal_layout`
+      (`Conformal:204`) reject components loudly while
+      `solve_sonnet_project` (`IO:2354`) routes to the verified
+      `_solve_sonnet_components` path — complete, no changes needed.
 - [ ] E5 dielectric bricks (`IO:1829`, `RasterResources:44`,
       `Conformal:181-185` incl. BAR). Oracle: Lite/HFSS.
 - [x] E6 scalar sign grammar — DONE. Lite probes (60-case accept/reject

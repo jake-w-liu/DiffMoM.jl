@@ -432,7 +432,13 @@ end
         @test_throws ArgumentError read_sonnet_project(path)
         write(path,replace(source,"4.996541 6.4907532"=>"NaN 6.4907532"))
         @test_throws ArgumentError read_sonnet_project(path)
+        # Lite routes by content, not the FTYP token: SONNETPRJ on a GEO
+        # file runs the EM solve and SONPROJ on a CKT file runs the
+        # netlist solve (installed-Lite probes). Both tokens accept both
+        # project kinds; only garbage/lowercase types reject.
         write(path,replace(source,"FTYP SONPROJ"=>"FTYP SONNETPRJ"))
+        @test read_sonnet_project(path) isa SonnetProject
+        write(path,replace(source,"FTYP SONPROJ"=>"FTYP garbage"))
         @test_throws ArgumentError read_sonnet_project(path)
         write(path,replace(source,"GEO\n"=>"GEO\nSTF missing.stf\n";count=1))
         @test_throws ArgumentError read_sonnet_project(path)
@@ -467,6 +473,13 @@ end
         result=solve_planar_circuit(circuit,1e9)
         @test result.s≈[.5 .5;.5 .5] atol=1e-12
         @test solve_sonnet_project(n,1e9).s≈result.s atol=1e-12
+        # The SONPROJ token on netlist content is equally valid natively
+        # (installed-Lite: halfnet.son retokened SONPROJ ran the identical
+        # circuit-theory sweep).
+        write(path,replace(netlist,"FTYP SONNETPRJ"=>"FTYP SONPROJ"))
+        n2=read_sonnet_project(path)
+        @test n2 isa SonnetNetlistProject
+        @test solve_sonnet_project(n2,1e9).s≈result.s atol=1e-12
         # Unknown circuits fail instead of disappearing during import.
         write(path,replace(netlist,"RES 1 2 R=50"=>"MAGIC 1 2 FOO=50"))
         @test_throws ArgumentError sonnet_planar_circuit(read_sonnet_project(path))

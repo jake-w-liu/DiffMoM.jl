@@ -240,7 +240,12 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     fs=get(Dict("HZ"=>1.,"KHZ"=>1e3,"MHZ"=>1e6,"GHZ"=>1e9,
         "THZ"=>1e12),get(units,"FREQ",""),NaN)
     isfinite(ls) && isfinite(fs) || _sonnet_error(source,0,"unsupported length/frequency units")
-    if records[1].tokens[2]=="SONNETPRJ"
+    # Lite routes by content, not the FTYP token: SONNETPRJ on a GEO file
+    # runs the EM solve and SONPROJ on a CKT file runs the netlist solve
+    # (verified 18.53 — both type tokens accept both project kinds).
+    if !any(r->r.tokens==["GEO"],records)
+        any(r->r.tokens==["CKT"],records) ||
+            _sonnet_error(source,0,"missing GEO or CKT section")
         circuit=_sonnet_section(records,"CKT",source)
         definitions=filter(r->occursin(r"^DEF\d+P$",r.tokens[1]),circuit)
         isempty(definitions) && _sonnet_error(source,0,"netlist requires a DEF<n>P definition")

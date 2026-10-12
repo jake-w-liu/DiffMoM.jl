@@ -1,0 +1,37 @@
+Run 1:  Mon Oct 12 15:13:57 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\viaprobe\ft_SONNETPRJ.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 0.999600 0.0000 3.997e-4 0.4010 3.997e-4 0.4010 0.999600 0.0000
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+
+    Frequency:  0.01 GHZ
+      0.01000000 0.999600 0.0000 4.007e-4 4.0037 4.007e-4 4.0037 0.999600 0.0000
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+
+    Frequency:  0.1 GHZ
+      0.10000000 0.999600 -0.081 4.884e-4 34.952 4.884e-4 34.952 0.999600 -0.081
+      ! P1 F=0.1 Eeff=(6.06012 - j5.07129) Z0=(320.492 - j116.407)
+      ! P2 F=0.1 Eeff=(6.06012 - j5.07129) Z0=(320.492 - j116.407)
+
+    Frequency:  1 GHZ
+      1.00000000 0.999567 -0.813 0.002836 80.730 0.002836 80.730 0.999567 -0.813
+      ! P1 F=1.0 Eeff=(2.60107 - j1.60091) Z0=(203.97 - j57.7387)
+      ! P2 F=1.0 Eeff=(2.60107 - j1.60091) Z0=(203.97 - j57.7387)
+
+    Frequency:  10 GHZ
+      10.0000000 0.995731 -8.225 0.028796 76.978 0.028796 76.978 0.995731 -8.225
+      ! P1 F=10.0 Eeff=(1.50637 - j0.506293) Z0=(150.883 - j24.6518)
+      ! P2 F=10.0 Eeff=(1.50637 - j0.506293) Z0=(150.883 - j24.6518)
+
+Em simulation completed Mon Oct 12 15:13:57 2026.
