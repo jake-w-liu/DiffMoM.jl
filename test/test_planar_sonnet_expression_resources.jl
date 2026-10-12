@@ -22,7 +22,11 @@ end
             ("ln(-exp(2))",2.),("log10(-100)",2.))
         @test sonnet_variable_value(p,expression)≈expected rtol=1e-15
     end
-    @test signbit(sonnet_variable_value(p,"+(-0.0)"))
+    # Signed zero survives the literal/unary-minus paths; a leading `+` is
+    # only legal as a whole-string literal sign, so `+(-0.0)` rejects
+    # natively (installed-Lite sign-grammar corpus).
+    @test signbit(sonnet_variable_value(p,"-0.0"))
+    @test_throws ArgumentError sonnet_variable_value(p,"+(-0.0)")
     p.variables["Leaf"]="3";p.variables["Branch"]="Leaf*Leaf"
     @test sonnet_variable_value(p,"Branch+Leaf")==12.
     @test sonnet_variable_value(p,"Branch+Leaf";variables=Dict("Leaf"=>4.))==20.

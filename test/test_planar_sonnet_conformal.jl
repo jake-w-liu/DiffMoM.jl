@@ -84,8 +84,14 @@ end
                 polygons,ports,p.variables,p.components,p.sweeps,p.records)
         end
         ps=first(p.ports)
-        @test_throws ArgumentError sonnet_conformal_layout(ports_project([
+        # A VIA token on a sheet-edge port is still the standard port —
+        # the kind token is descriptive, never a retyping switch
+        # (Lite-verified: pk_VIA solves as "Standard port").
+        via_token=sonnet_conformal_layout(ports_project([
             SonnetPortSpec(:via,ps.polygon,ps.edge,ps.number,ps.values,ps.records)]);sizes...)
+        std_token=sonnet_conformal_layout(ports_project([
+            SonnetPortSpec(:std,ps.polygon,ps.edge,ps.number,ps.values,ps.records)]);sizes...)
+        @test via_token.contraction==std_token.contraction
         values=copy(ps.values);values[7]=".9"
         annotated=ports_project([SonnetPortSpec(ps.kind,ps.polygon,ps.edge,ps.number,values,ps.records),last(p.ports)])
         amended=sonnet_conformal_layout(annotated;sizes...)
@@ -173,12 +179,16 @@ end
         @test v.raw.y≈transpose(v.raw.y) rtol=1e-9
         @test only(onlyvia.polygons).vertices==coordinates
         @test all(isfinite,v.y)
-        # A standard axial source is anchored at a physical cover;
-        # an interlevel source requires the explicit via-port kind.
+        # Lite types every port on a via polygon "Standard" regardless of
+        # the token or the via's termination depth (v3_* probes): an
+        # interlevel source no longer requires the via-port kind.
         inter=SonnetPolygon(:via,0,-1,10,last(grounded.polygons).vertices,"1","","",["SOLID","NOCOVERS"])
         box=copy(p.box);box[1]="2";layers=vcat(p.layers,[copy(first(p.layers))])
-        std=SonnetPortSpec(:std,10,0,1,axial.values,axial.records)
-        @test_throws ArgumentError sonnet_conformal_layout(ports_project([std];polygons=[inter],box,layers);sizes...)
+        inter_contractions=map((:std,:via,:xyz)) do kind
+            spec=SonnetPortSpec(kind,10,0,1,axial.values,axial.records)
+            sonnet_conformal_layout(ports_project([spec];polygons=[inter],box,layers);sizes...).contraction
+        end
+        @test allequal(inter_contractions)
     end
 end
 

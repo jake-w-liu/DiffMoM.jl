@@ -1,0 +1,77 @@
+{
+ "cases": {
+  "pk_STD": {
+   "verdict": "solved",
+   "note": "STD token on sheet-edge ports, reference run"
+  },
+  "pk_XYZ": {
+   "verdict": "solved",
+   "note": "garbage token on sheet-edge ports: parses and solves silently as Standard port"
+  },
+  "pk_VIA": {
+   "verdict": "solved",
+   "note": "VIA token on sheet-edge ports: solves as Standard port (token ignored)"
+  },
+  "pk_AGI": {
+   "verdict": "solved",
+   "note": "AGI token on sheet-edge ports: solves as Standard port"
+  },
+  "pk_BARE": {
+   "verdict": "project-file-error",
+   "note": "bare POR1 without a kind token rejects"
+  },
+  "pk_CUP": {
+   "verdict": "project-file-error",
+   "note": "POR1 CUP g1 without CUPGRP: \"Co-calibrated Ports do not have groups\""
+  },
+  "pk_gauto": {
+   "verdict": "solved",
+   "note": "GNDREF AUTO record tolerated inside a standard port block"
+  },
+  "pk_all": {
+   "verdict": "solved",
+   "note": "SIMPLE Y + GNDREF BOX AUTO + TERMW FEED records tolerated"
+  },
+  "v_xyz": {
+   "verdict": "solved",
+   "note": "garbage token on a via-polygon port: solves as Standard port"
+  },
+  "v_std": {
+   "verdict": "solved",
+   "note": "STD token on a via-polygon port: bit-identical to v_xyz"
+  },
+  "v_via": {
+   "verdict": "solved",
+   "note": "VIA token on a via-polygon port: bit-identical to v_xyz/v_std"
+  },
+  "v3_xyz": {
+   "verdict": "solved",
+   "note": "garbage token on an interior-terminating via (3-layer TOLEVEL 1): solves as Standard port"
+  },
+  "v3_std": {
+   "verdict": "solved",
+   "note": "STD token on interior-terminating via: bit-identical to v3_xyz"
+  },
+  "v3_via": {
+   "verdict": "solved",
+   "note": "VIA token on interior-terminating via: bit-identical to v3_xyz/v3_std"
+  },
+  "b_xyz": {
+   "verdict": "solved",
+   "note": "garbage token on a box-wall port: solves (box port)"
+  },
+  "g2_cup": {
+   "verdict": "solved",
+   "note": "POR1 CUP g1 + CUPGRP g1 block: solves natively WITH de-embedding (single-port group is not license-blocked)"
+  },
+  "xg2_cup": {
+   "verdict": "solved",
+   "note": "POR1 XYZ + CUPGRP g1 block: accepted and de-embeds — CUPGRP is structural regardless of the kind token"
+  },
+  "mp_cup": {
+   "verdict": "project-file-error",
+   "note": "two CUP ports sharing one trailing CUPGRP: 'Illegal co-calibrated port / Calibration group information not defined'"
+  }
+ },
+ "note": "Lite 18.53 em -v intake/solve probes: the POR1 kind token is required but descriptive; geometry determines port type; CUP is the only structural keyword"
+}

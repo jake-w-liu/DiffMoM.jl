@@ -217,10 +217,31 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## E. Ports / calibration / project intake
 
-- [ ] E1 non-(:box,:std,:gap,:via) port kinds in raster (`IO:1965`) and
-      conformal (`Conformal:341`). Oracle: Lite `-N` + solve.
-- [ ] E2 CUP calibration-group solving — records parse; coupled pin-group
-      calibration license-blocked. Nexxim-equivalent + DocOnly residual.
+- [x] E1 non-(:box,:std,:gap,:via) port kinds in raster (`IO:1965`) and
+      conformal (`Conformal:341`) — DONE. Lite probes
+      (`fixtures/native_port_kind_token`): a token after `POR1` is required
+      but descriptive — `XYZ`, `VIA`, `AGI`, `gauto`, `all`, `XYZ123` all
+      type by placement and solve as "Standard port" (log annotation) on
+      sheet-edge, box-wall and via-polygon ports; `VIA`/`STD`/`XYZ` on the
+      same via produce bit-identical output including an interior-
+      terminating via (`v3_*`, 3-layer `TOLEVEL 1`). Bare `POR1` and
+      group-less `CUP` are native parse rejections. The group structure,
+      not the token, is what carries calibration semantics: a `CUPGRP`
+      block after ANY token is accepted and de-embeds the port, and a
+      single-port group solves natively in Lite (`g2_cup`,`xg2_cup`);
+      a two-port group with only a trailing CUPGRP rejects natively
+      (`mp_cup`). Fixed: geometry-keyed routing in raster+conformal port
+      loops, the raster port-workspace estimator, the GEOVAR moved-port
+      re-anchor, the TMM face-duplication gate; removed a false "standard
+      via port must terminate on a box cover" rejection; every grouped
+      port still reaches the co-calibrated adapter rejection (E2).
+- [ ] E2 CUP calibration-group solving — records parse. Refined boundary
+      (E1 probes, `fixtures/native_port_kind_token`): a CUPGRP block after
+      ANY POR1 token is accepted and de-embeds the port; a single-port
+      group SOLVES in Lite (not license-blocked). A two-port group with a
+      trailing shared CUPGRP rejects natively ("Calibration group
+      information not defined") — the correct multi-port group grammar
+      still needs decoding. Remaining: group de-embed implementation.
 - [x] E3 non-PEC metal material index path — DONE. Lite probes
       (`fixtures/native_material_index`, 35 cases): sheet↔via metal-type
       cross-references natively reject as "Material ID refers to the wrong

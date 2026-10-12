@@ -71,7 +71,9 @@ function _sonnet_raster_port_workspace(p,grid,masks,polygons)
         push!(labels,abs(port.number))
         poly=get(polygons,port.polygon,nothing)
         poly===nothing && throw(ArgumentError("native port references a missing polygon"))
-        if port.kind===:via || (port.kind===:std && poly.kind===:via)
+        if poly.kind===:via
+            # The POR1 kind token is descriptive — the via path is chosen
+            # by the referenced polygon, not the token (Lite-verified).
             target=poly.target=="GND" ? layers-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
             raw+=BigInt(abs(poly.level-target))*count(masks[poly.id])
         else

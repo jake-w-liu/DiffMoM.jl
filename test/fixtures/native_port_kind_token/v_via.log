@@ -1,0 +1,235 @@
+Run 1:  Mon Oct 12 14:36:22 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\viaprobe\v_via.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 100 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      2.50000000 0.991604 148.97
+      ! P1 F=2.5 Standard port: not-de-embedded
+
+    Frequency:  3.5 GHZ
+      3.50000000 0.986134 174.64
+      ! P1 F=3.5 Standard port: not-de-embedded
+
+    Frequency:  3.14 GHZ
+      3.14000000 0.867589 -119.5
+      ! P1 F=3.14 Standard port: not-de-embedded
+
+    Frequency:  3.025 GHZ
+      3.02500000 0.409528 58.402
+      ! P1 F=3.025 Standard port: not-de-embedded
+
+    Frequency:  2.835 GHZ
+      2.83500000 0.931935 116.09
+      ! P1 F=2.835 Standard port: not-de-embedded
+
+    Frequency:  3.005 GHZ
+      3.00500000 0.159437 30.030
+      ! P1 F=3.005 Standard port: not-de-embedded
+
+    Frequency:  3.32 GHZ
+      3.32000000 0.968301 -169.6
+      ! P1 F=3.32 Standard port: not-de-embedded
+
+    Frequency:  2.665 GHZ
+      2.66500000 0.980685 139.22
+      ! P1 F=2.665 Standard port: not-de-embedded
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 200 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      2.50000000 0.992909 152.52
+      ! P1 F=2.5 Standard port: not-de-embedded
+
+    Frequency:  3.5 GHZ
+      3.50000000 0.987315 176.89
+      ! P1 F=3.5 Standard port: not-de-embedded
+
+    Frequency:  3.14 GHZ
+      3.14000000 0.874802 -121.5
+      ! P1 F=3.14 Standard port: not-de-embedded
+
+    Frequency:  3.03 GHZ
+      3.03000000 0.533988 46.732
+      ! P1 F=3.03 Standard port: not-de-embedded
+
+    Frequency:  2.89 GHZ
+      2.89000000 0.887597 106.76
+      ! P1 F=2.89 Standard port: not-de-embedded
+
+    Frequency:  3.005 GHZ
+      3.00500000 0.190747 66.888
+      ! P1 F=3.005 Standard port: not-de-embedded
+
+    Frequency:  2.695 GHZ
+      2.69500000 0.980337 141.35
+      ! P1 F=2.695 Standard port: not-de-embedded
+
+    Frequency:  3.32 GHZ
+      3.32000000 0.971516 -168.9
+      ! P1 F=3.32 Standard port: not-de-embedded
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 300 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      2.50000000 0.994343 155.56
+      ! P1 F=2.5 Standard port: not-de-embedded
+
+    Frequency:  3.5 GHZ
+      3.50000000 0.989213 177.08
+      ! P1 F=3.5 Standard port: not-de-embedded
+
+    Frequency:  3.14 GHZ
+      3.14000000 0.883911 -126.1
+      ! P1 F=3.14 Standard port: not-de-embedded
+
+    Frequency:  3.035 GHZ
+      3.03500000 0.613910 34.296
+      ! P1 F=3.035 Standard port: not-de-embedded
+
+    Frequency:  2.93 GHZ
+      2.93000000 0.823125 98.428
+      ! P1 F=2.93 Standard port: not-de-embedded
+
+    Frequency:  3 GHZ
+      3.00000000 0.295913 82.456
+      ! P1 F=3.0 Standard port: not-de-embedded
+
+    Frequency:  2.715 GHZ
+      2.71500000 0.982480 144.34
+      ! P1 F=2.715 Standard port: not-de-embedded
+
+    Frequency:  3.32 GHZ
+      3.32000000 0.976167 -170.4
+      ! P1 F=3.32 Standard port: not-de-embedded
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 400 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      2.50000000 0.995658 158.03
+      ! P1 F=2.5 Standard port: not-de-embedded
+
+    Frequency:  3.5 GHZ
+      3.50000000 0.991298 176.20
+      ! P1 F=3.5 Standard port: not-de-embedded
+
+    Frequency:  3.14 GHZ
+      3.14000000 0.894182 -131.5
+      ! P1 F=3.14 Standard port: not-de-embedded
+
+    Frequency:  3.045 GHZ
+      3.04500000 0.645827 10.042
+      ! P1 F=3.045 Standard port: not-de-embedded
+
+    Frequency:  2.84 GHZ
+      2.84000000 0.963935 135.54
+      ! P1 F=2.84 Standard port: not-de-embedded
+
+    Frequency:  2.995 GHZ
+      2.99500000 0.482345 91.471
+      ! P1 F=2.995 Standard port: not-de-embedded
+
+    Frequency:  3.32 GHZ
+      3.32000000 0.981132 -172.9
+      ! P1 F=3.32 Standard port: not-de-embedded
+
+    Frequency:  2.67 GHZ
+      2.67000000 0.990440 151.30
+      ! P1 F=2.67 Standard port: not-de-embedded
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 500 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      2.50000000 0.996624 159.73
+      ! P1 F=2.5 Standard port: not-de-embedded
+
+    Frequency:  3.5 GHZ
+      3.50000000 0.992989 175.11
+      ! P1 F=3.5 Standard port: not-de-embedded
+
+    Frequency:  3.14 GHZ
+      3.14000000 0.903209 -136.0
+      ! P1 F=3.14 Standard port: not-de-embedded
+
+    Frequency:  3.045 GHZ
+      3.04500000 0.650924 10.718
+      ! P1 F=3.045 Standard port: not-de-embedded
+
+    Frequency:  2.87 GHZ
+      2.87000000 0.966593 136.30
+      ! P1 F=2.87 Standard port: not-de-embedded
+
+    Frequency:  2.685 GHZ
+      2.68500000 0.992589 153.24
+      ! P1 F=2.685 Standard port: not-de-embedded
+
+    Frequency:  3.32 GHZ
+      3.32000000 0.985126 -175.1
+      ! P1 F=3.32 Standard port: not-de-embedded
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 600 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      2.50000000 0.997071 160.50
+      ! P1 F=2.5 Standard port: not-de-embedded
+
+    Frequency:  3.5 GHZ
+      3.50000000 0.993811 174.51
+      ! P1 F=3.5 Standard port: not-de-embedded
+
+    Frequency:  3.14 GHZ
+      3.14000000 0.907862 -138.3
+      ! P1 F=3.14 Standard port: not-de-embedded
+
+    Frequency:  3.045 GHZ
+      3.04500000 0.653441 11.028
+      ! P1 F=3.045 Standard port: not-de-embedded
+
+Em simulation completed Mon Oct 12 14:36:38 2026.

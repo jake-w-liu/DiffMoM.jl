@@ -592,12 +592,13 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
         push!(targets,target)
     end
     all(iszero,deltas) && return p
-    # Sheet ports (box/std on sheet polygons) and via ports re-anchor to
-    # their referenced edge midpoint after resolution; gap ports and
-    # mixed-kind attachments still require their own adapters.
+    # Sheet and via ports re-anchor to their referenced edge midpoint
+    # after resolution; the POR1 kind token is descriptive (Lite types by
+    # placement), so every non-CUP, non-gap token qualifies by polygon
+    # kind. Gap and CUP attachments still require their own adapters.
     all(port->haskey(original,port.polygon) &&
-        ((port.kind in (:box,:std) && original[port.polygon].kind==:sheet) ||
-        (port.kind in (:via,:std) && original[port.polygon].kind==:via)),p.ports) ||
+        !(port.kind in (:cup,:gap)) &&
+        original[port.polygon].kind in (:sheet,:via),p.ports) ||
         throw(ArgumentError("moved GEOVAR interior/via ports require their attachment adapter"))
     for port in p.ports
         vertices=original[port.polygon].vertices

@@ -362,12 +362,13 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
             number=parse(Int,values[1])
             haskey(ids,polygon) || _sonnet_error(source,r.line,"unknown port polygon $polygon")
             0<=edge<_sonnet_polygon_edge_count(ids[polygon].vertices) || _sonnet_error(source,r.line,"invalid port edge")
+            length(r.tokens)>=2 || _sonnet_error(source,r.line,"POR1 requires a port type token")
             kind=Symbol(lowercase(r.tokens[2]))
             _sonnet_cup_group_check(source,r,pr,kind)
             push!(ports,SonnetPortSpec(kind,polygon,edge,number,copy(values),pr))
             i=j
         elseif r.tokens[1]=="CUPGRP"
-            _sonnet_error(source,r.line,"CUPGRP requires a CUP port")
+            _sonnet_error(source,r.line,"CUPGRP calibration group requires its co-calibrated port adapter")
         elseif r.tokens[1]=="SMD" && i+1<ni && geo[i+1].tokens[1]=="ID"
             j=i+1
             while j<ni && geo[j].tokens!=["END"]
@@ -409,7 +410,12 @@ function _sonnet_cup_group_check(source,r,pr,kind)
         r.tokens[3]==ct[2] || _sonnet_error(source,pr[only(cups)].line,
             "CUP port and CUPGRP name mismatch")
     else
-        isempty(cups) || _sonnet_error(source,r.line,"CUPGRP requires a CUP port")
+        # Lite accepts CUPGRP after any POR1 token (the token is
+        # descriptive — a non-CUP port followed by a group de-embeds just
+        # like CUP), so the token is not the gate: the unimplemented
+        # co-calibrated group solve is.
+        isempty(cups) || _sonnet_error(source,r.line,
+            "CUPGRP calibration group requires its co-calibrated port adapter")
     end
     return nothing
 end
@@ -1764,7 +1770,11 @@ function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
     for port in p.ports
         push!(ports,port)
         if haskey(duplicate,port.polygon)
-            port.kind in (:box,:std) || throw(ArgumentError("thick metal interior ports require face-source calibration"))
+            # The kind token is descriptive — box/std/via and unrecognized
+            # tokens are standard ports on the duplicated faces; CUP and
+            # GAP attachments on thick metal keep their adapter gate.
+            port.kind in (:cup,:gap) &&
+                throw(ArgumentError("thick metal interior ports require face-source calibration"))
             push!(ports,SonnetPortSpec(port.kind,duplicate[port.polygon],port.edge,port.number,
                 copy(port.values),copy(port.records)))
         end
@@ -2103,17 +2113,25 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     ports=PlanarPort[]
     numbers=Int[]; port_z0=ComplexF64[];port_weights=Float64[]
     for ps in p.ports
-        ps.kind in (:box,:std,:gap,:via) || throw(ArgumentError("native $(ps.kind) port requires its terminal/calibration adapter"))
-        ps.number==0 && !(ps.kind in (:box,:std)) &&
-            throw(ArgumentError("interior native port zero requires an explicit ground return adapter"))
+        # The POR1 kind token is required but descriptive: Lite types every
+        # port by placement and ignores the token value (verified 18.53 —
+        # arbitrary tokens on sheet, box-wall and via ports all parse and
+        # solve silently as the geometry-determined type). The CUPGRP
+        # group block is the structural piece: any grouped port needs the
+        # co-calibrated group solve, which stays an adapter rejection here.
+        ps.kind==:cup &&
+            throw(ArgumentError("native CUP co-calibrated port requires its calibration-group adapter"))
         poly=polydict[ps.polygon]
         q=ps.values
         z0=_sonnet_port_reference(p,ps,freq,variables)
-        if ps.kind==:via || (ps.kind==:std && poly.kind==:via)
-            poly.kind==:via || throw(ArgumentError("via port requires a via polygon"))
+        if poly.kind==:via
+            ps.number!=0 ||
+                throw(ArgumentError("native port zero on a via polygon requires an explicit ground return adapter"))
+            # Every token solves as a standard port on a via polygon
+            # (Lite-verified: VIA/STD/XYZ on a via terminating at an
+            # interior level produce identical "Standard port" output), so
+            # no cover-termination gate applies.
             target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
-            ps.kind==:std && !(poly.level in (-1,L-1) || target in (-1,L-1)) &&
-                throw(ArgumentError("native standard via port must terminate on a box cover"))
             lo,hi=minmax(poly.level,target)
             path_layers=[L-lev for lev in lo+1:hi]
             height=sum(real(st.layers[layer].thickness) for layer in path_layers)

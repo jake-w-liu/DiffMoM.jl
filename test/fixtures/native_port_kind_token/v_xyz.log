@@ -1,0 +1,495 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+Run 1:  Mon Oct 12 14:21:30 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\portkinds\v_xyz.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 100 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      Subsectioning time:  0.003 seconds.
+      Circuit requires 930 subsections and 7 MB of memory.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.012 seconds.
+      Matrix fill time:  0.204 seconds.
+      Matrix solve time:  0.064 seconds.
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. Matrix Order (line #1: S11 S12 S13 ...).
+      2.50000000 0.991604 148.97
+      ! P1 F=2.5 Standard port: not-de-embedded
+      Total time per frequency:  0.276 seconds.
+
+    Frequency:  3.5 GHZ
+      Waveguide mode time:  0.019 seconds.
+      Matrix fill time:  0.218 seconds.
+      Matrix solve time:  0.063 seconds.
+      3.50000000 0.986134 174.64
+      ! P1 F=3.5 Standard port: not-de-embedded
+      Total time per frequency:  0.285 seconds.
+      ABS: SNR = -10.3321 dB (101.3 dB Goal) for S1_1 at 3.14 GHz.
+      ABS: Time = 0.027 seconds.
+
+    Frequency:  3.14 GHZ
+      Waveguide mode time:  0.015 seconds.
+      Matrix fill time:  0.214 seconds.
+      Matrix solve time:  0.062 seconds.
+      3.14000000 0.867589 -119.5
+      ! P1 F=3.14 Standard port: not-de-embedded
+      Total time per frequency:  0.307 seconds.
+      ABS: SNR = 14.8441 dB (63.3461 dB Goal) for S1_1 at 3.025 GHz.
+      ABS: Time = 0.029 seconds.
+
+    Frequency:  3.025 GHZ
+      Waveguide mode time:  0.014 seconds.
+      Matrix fill time:  0.205 seconds.
+      Matrix solve time:  0.059 seconds.
+      3.02500000 0.409528 58.402
+      ! P1 F=3.025 Standard port: not-de-embedded
+      Total time per frequency:  0.299 seconds.
+      ABS: Energy conservation for port 1 at 2.835 GHz.
+      ABS: Time = 0.034 seconds.
+
+    Frequency:  2.835 GHZ
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.207 seconds.
+      Matrix solve time:  0.060 seconds.
+      2.83500000 0.931935 116.09
+      ! P1 F=2.835 Standard port: not-de-embedded
+      Total time per frequency:  0.305 seconds.
+      ABS: SNR = 41.0708 dB (50 dB Goal) for S1_1 at 3.005 GHz.
+      ABS: Time = 0.044 seconds.
+
+    Frequency:  3.005 GHZ
+      Waveguide mode time:  0.014 seconds.
+      Matrix fill time:  0.204 seconds.
+      Matrix solve time:  0.061 seconds.
+      3.00500000 0.159437 30.030
+      ! P1 F=3.005 Standard port: not-de-embedded
+      Total time per frequency:  0.313 seconds.
+      ABS: Time = 0.053 seconds.
+
+    Frequency:  3.32 GHZ
+      Waveguide mode time:  0.018 seconds.
+      Matrix fill time:  0.213 seconds.
+      Matrix solve time:  0.078 seconds.
+      3.32000000 0.968301 -169.6
+      ! P1 F=3.32 Standard port: not-de-embedded
+      Total time per frequency:  0.350 seconds.
+      ABS: Time = 0.072 seconds.
+
+    Frequency:  2.665 GHZ
+      Waveguide mode time:  0.012 seconds.
+      Matrix fill time:  0.220 seconds.
+      Matrix solve time:  0.079 seconds.
+      2.66500000 0.980685 139.22
+      ! P1 F=2.665 Standard port: not-de-embedded
+      Total time per frequency:  0.379 seconds.
+      ABS: SNR = 56.8927 dB (50 dB Goal) for S1_1 at 3.39 GHz.
+      ABS: Time = 0.094 seconds.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 200 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      Subsectioning time:  0.004 seconds.
+      Circuit requires 896 subsections and 6 MB of memory.
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.271 seconds.
+      Matrix solve time:  0.069 seconds.
+      2.50000000 0.992909 152.52
+      ! P1 F=2.5 Standard port: not-de-embedded
+      Total time per frequency:  0.446 seconds.
+
+    Frequency:  3.5 GHZ
+      Waveguide mode time:  0.019 seconds.
+      Matrix fill time:  0.277 seconds.
+      Matrix solve time:  0.070 seconds.
+      3.50000000 0.987315 176.89
+      ! P1 F=3.5 Standard port: not-de-embedded
+      Total time per frequency:  0.351 seconds.
+      ABS: SNR = -18.8972 dB (101.034 dB Goal) for S1_1 at 3.14 GHz.
+      ABS: Time = 0.015 seconds.
+
+    Frequency:  3.14 GHZ
+      Waveguide mode time:  0.015 seconds.
+      Matrix fill time:  0.246 seconds.
+      Matrix solve time:  0.071 seconds.
+      3.14000000 0.874802 -121.5
+      ! P1 F=3.14 Standard port: not-de-embedded
+      Total time per frequency:  0.336 seconds.
+      ABS: SNR = 19.4063 dB (63.9454 dB Goal) for S1_1 at 3.03 GHz.
+      ABS: Time = 0.022 seconds.
+
+    Frequency:  3.03 GHZ
+      Waveguide mode time:  0.016 seconds.
+      Matrix fill time:  0.252 seconds.
+      Matrix solve time:  0.071 seconds.
+      3.03000000 0.533988 46.732
+      ! P1 F=3.03 Standard port: not-de-embedded
+      Total time per frequency:  0.349 seconds.
+      ABS: Energy conservation for port 1 at 2.89 GHz.
+      ABS: Time = 0.025 seconds.
+
+    Frequency:  2.89 GHZ
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.222 seconds.
+      Matrix solve time:  0.070 seconds.
+      2.89000000 0.887597 106.76
+      ! P1 F=2.89 Standard port: not-de-embedded
+      Total time per frequency:  0.322 seconds.
+      ABS: SNR = 46.1701 dB (50 dB Goal) for S1_1 at 3.005 GHz.
+      ABS: Time = 0.032 seconds.
+
+    Frequency:  3.005 GHZ
+      Waveguide mode time:  0.017 seconds.
+      Matrix fill time:  0.249 seconds.
+      Matrix solve time:  0.067 seconds.
+      3.00500000 0.190747 66.888
+      ! P1 F=3.005 Standard port: not-de-embedded
+      Total time per frequency:  0.351 seconds.
+      ABS: Time = 0.038 seconds.
+
+    Frequency:  2.695 GHZ
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.217 seconds.
+      Matrix solve time:  0.073 seconds.
+      2.69500000 0.980337 141.35
+      ! P1 F=2.695 Standard port: not-de-embedded
+      Total time per frequency:  0.332 seconds.
+      ABS: Time = 0.044 seconds.
+
+    Frequency:  3.32 GHZ
+      Waveguide mode time:  0.018 seconds.
+      Matrix fill time:  0.261 seconds.
+      Matrix solve time:  0.067 seconds.
+      3.32000000 0.971516 -168.9
+      ! P1 F=3.32 Standard port: not-de-embedded
+      Total time per frequency:  0.376 seconds.
+      ABS: SNR = 89.67 dB (50 dB Goal) for S1_1 at 3.07 GHz.
+      ABS: Time = 0.058 seconds.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 300 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      Subsectioning time:  0.004 seconds.
+      Circuit requires 896 subsections and 6 MB of memory.
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.261 seconds.
+      Matrix solve time:  0.070 seconds.
+      2.50000000 0.994343 155.56
+      ! P1 F=2.5 Standard port: not-de-embedded
+      Total time per frequency:  0.399 seconds.
+
+    Frequency:  3.5 GHZ
+      Waveguide mode time:  0.020 seconds.
+      Matrix fill time:  0.236 seconds.
+      Matrix solve time:  0.066 seconds.
+      3.50000000 0.989213 177.08
+      ! P1 F=3.5 Standard port: not-de-embedded
+      Total time per frequency:  0.304 seconds.
+      ABS: SNR = -20.0854 dB (102.091 dB Goal) for S1_1 at 3.14 GHz.
+      ABS: Time = 0.016 seconds.
+
+    Frequency:  3.14 GHZ
+      Waveguide mode time:  0.016 seconds.
+      Matrix fill time:  0.255 seconds.
+      Matrix solve time:  0.069 seconds.
+      3.14000000 0.883911 -126.1
+      ! P1 F=3.14 Standard port: not-de-embedded
+      Total time per frequency:  0.343 seconds.
+      ABS: SNR = 20.3892 dB (64.7687 dB Goal) for S1_1 at 3.035 GHz.
+      ABS: Time = 0.022 seconds.
+
+    Frequency:  3.035 GHZ
+      Waveguide mode time:  0.015 seconds.
+      Matrix fill time:  0.233 seconds.
+      Matrix solve time:  0.068 seconds.
+      3.03500000 0.613910 34.296
+      ! P1 F=3.035 Standard port: not-de-embedded
+      Total time per frequency:  0.327 seconds.
+      ABS: Energy conservation for port 1 at 2.93 GHz.
+      ABS: Time = 0.021 seconds.
+
+    Frequency:  2.93 GHZ
+      Waveguide mode time:  0.014 seconds.
+      Matrix fill time:  0.218 seconds.
+      Matrix solve time:  0.067 seconds.
+      2.93000000 0.823125 98.428
+      ! P1 F=2.93 Standard port: not-de-embedded
+      Total time per frequency:  0.310 seconds.
+      ABS: SNR = 47.23 dB (50 dB Goal) for S1_1 at 3 GHz.
+      ABS: Time = 0.028 seconds.
+
+    Frequency:  3 GHZ
+      Waveguide mode time:  0.015 seconds.
+      Matrix fill time:  0.222 seconds.
+      Matrix solve time:  0.063 seconds.
+      3.00000000 0.295913 82.456
+      ! P1 F=3.0 Standard port: not-de-embedded
+      Total time per frequency:  0.316 seconds.
+      ABS: Time = 0.036 seconds.
+
+    Frequency:  2.715 GHZ
+      Waveguide mode time:  0.012 seconds.
+      Matrix fill time:  0.251 seconds.
+      Matrix solve time:  0.071 seconds.
+      2.71500000 0.982480 144.34
+      ! P1 F=2.715 Standard port: not-de-embedded
+      Total time per frequency:  0.363 seconds.
+      ABS: Time = 0.043 seconds.
+
+    Frequency:  3.32 GHZ
+      Waveguide mode time:  0.018 seconds.
+      Matrix fill time:  0.224 seconds.
+      Matrix solve time:  0.067 seconds.
+      3.32000000 0.976167 -170.4
+      ! P1 F=3.32 Standard port: not-de-embedded
+      Total time per frequency:  0.338 seconds.
+      ABS: SNR = 96.3928 dB (50 dB Goal) for S1_1 at 3.015 GHz.
+      ABS: Time = 0.053 seconds.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 400 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      Subsectioning time:  0.003 seconds.
+      Circuit requires 895 subsections and 6 MB of memory.
+      Waveguide mode time:  0.012 seconds.
+      Matrix fill time:  0.239 seconds.
+      Matrix solve time:  0.069 seconds.
+      2.50000000 0.995658 158.03
+      ! P1 F=2.5 Standard port: not-de-embedded
+      Total time per frequency:  0.370 seconds.
+
+    Frequency:  3.5 GHZ
+      Waveguide mode time:  0.019 seconds.
+      Matrix fill time:  0.240 seconds.
+      Matrix solve time:  0.068 seconds.
+      3.50000000 0.991298 176.20
+      ! P1 F=3.5 Standard port: not-de-embedded
+      Total time per frequency:  0.311 seconds.
+      ABS: SNR = -20.8355 dB (104.074 dB Goal) for S1_1 at 3.14 GHz.
+      ABS: Time = 0.015 seconds.
+
+    Frequency:  3.14 GHZ
+      Waveguide mode time:  0.016 seconds.
+      Matrix fill time:  0.261 seconds.
+      Matrix solve time:  0.066 seconds.
+      3.14000000 0.894182 -131.5
+      ! P1 F=3.14 Standard port: not-de-embedded
+      Total time per frequency:  0.345 seconds.
+      ABS: SNR = 19.0419 dB (65.803 dB Goal) for S1_1 at 3.045 GHz.
+      ABS: Time = 0.017 seconds.
+
+    Frequency:  3.045 GHZ
+      Waveguide mode time:  0.016 seconds.
+      Matrix fill time:  0.234 seconds.
+      Matrix solve time:  0.067 seconds.
+      3.04500000 0.645827 10.042
+      ! P1 F=3.045 Standard port: not-de-embedded
+      Total time per frequency:  0.321 seconds.
+      ABS: SNR = 32.5689 dB (50.7531 dB Goal) for S1_1 at 2.84 GHz.
+      ABS: Time = 0.021 seconds.
+
+    Frequency:  2.84 GHZ
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.218 seconds.
+      Matrix solve time:  0.064 seconds.
+      2.84000000 0.963935 135.54
+      ! P1 F=2.84 Standard port: not-de-embedded
+      Total time per frequency:  0.307 seconds.
+      ABS: SNR = 49.8521 dB (50.7531 dB Goal) for S1_1 at 2.995 GHz.
+      ABS: Time = 0.026 seconds.
+
+    Frequency:  2.995 GHZ
+      Waveguide mode time:  0.014 seconds.
+      Matrix fill time:  0.239 seconds.
+      Matrix solve time:  0.066 seconds.
+      2.99500000 0.482345 91.471
+      ! P1 F=2.995 Standard port: not-de-embedded
+      Total time per frequency:  0.336 seconds.
+      ABS: Time = 0.033 seconds.
+
+    Frequency:  3.32 GHZ
+      Waveguide mode time:  0.019 seconds.
+      Matrix fill time:  0.242 seconds.
+      Matrix solve time:  0.065 seconds.
+      3.32000000 0.981132 -172.9
+      ! P1 F=3.32 Standard port: not-de-embedded
+      Total time per frequency:  0.343 seconds.
+      ABS: Time = 0.044 seconds.
+
+    Frequency:  2.67 GHZ
+      Waveguide mode time:  0.014 seconds.
+      Matrix fill time:  0.251 seconds.
+      Matrix solve time:  0.069 seconds.
+      2.67000000 0.990440 151.30
+      ! P1 F=2.67 Standard port: not-de-embedded
+      Total time per frequency:  0.369 seconds.
+      ABS: SNR = 96.8288 dB (50 dB Goal) for S1_1 at 2.97 GHz.
+      ABS: Time = 0.055 seconds.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 500 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      Subsectioning time:  0.004 seconds.
+      Circuit requires 895 subsections and 6 MB of memory.
+      Waveguide mode time:  0.012 seconds.
+      Matrix fill time:  0.243 seconds.
+      Matrix solve time:  0.070 seconds.
+      2.50000000 0.996624 159.73
+      ! P1 F=2.5 Standard port: not-de-embedded
+      Total time per frequency:  0.377 seconds.
+
+    Frequency:  3.5 GHZ
+      Waveguide mode time:  0.022 seconds.
+      Matrix fill time:  0.276 seconds.
+      Matrix solve time:  0.071 seconds.
+      3.50000000 0.992989 175.11
+      ! P1 F=3.5 Standard port: not-de-embedded
+      Total time per frequency:  0.350 seconds.
+      ABS: SNR = -21.2632 dB (106.291 dB Goal) for S1_1 at 3.14 GHz.
+      ABS: Time = 0.019 seconds.
+
+    Frequency:  3.14 GHZ
+      Waveguide mode time:  0.018 seconds.
+      Matrix fill time:  0.311 seconds.
+      Matrix solve time:  0.070 seconds.
+      3.14000000 0.903209 -136.0
+      ! P1 F=3.14 Standard port: not-de-embedded
+      Total time per frequency:  0.404 seconds.
+      ABS: SNR = 18.95 dB (66.8136 dB Goal) for S1_1 at 3.045 GHz.
+      ABS: Time = 0.021 seconds.
+
+    Frequency:  3.045 GHZ
+      Waveguide mode time:  0.018 seconds.
+      Matrix fill time:  0.306 seconds.
+      Matrix solve time:  0.068 seconds.
+      3.04500000 0.650924 10.718
+      ! P1 F=3.045 Standard port: not-de-embedded
+      Total time per frequency:  0.398 seconds.
+      ABS: SNR = 42.2378 dB (50.9017 dB Goal) for S1_1 at 2.87 GHz.
+      ABS: Time = 0.025 seconds.
+
+    Frequency:  2.87 GHZ
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.262 seconds.
+      Matrix solve time:  0.070 seconds.
+      2.87000000 0.966593 136.30
+      ! P1 F=2.87 Standard port: not-de-embedded
+      Total time per frequency:  0.361 seconds.
+      ABS: Time = 0.030 seconds.
+
+    Frequency:  2.685 GHZ
+      Waveguide mode time:  0.014 seconds.
+      Matrix fill time:  0.304 seconds.
+      Matrix solve time:  0.070 seconds.
+      2.68500000 0.992589 153.24
+      ! P1 F=2.685 Standard port: not-de-embedded
+      Total time per frequency:  0.408 seconds.
+      ABS: Time = 0.038 seconds.
+
+    Frequency:  3.32 GHZ
+      Waveguide mode time:  0.021 seconds.
+      Matrix fill time:  0.312 seconds.
+      Matrix solve time:  0.070 seconds.
+      3.32000000 0.985126 -175.1
+      ! P1 F=3.32 Standard port: not-de-embedded
+      Total time per frequency:  0.424 seconds.
+      ABS: SNR = 78.6784 dB (50.9017 dB Goal) for S1_1 at 2.985 GHz.
+      ABS: Time = 0.047 seconds.
+
+    Begin electromagnetic simulation using independent parameters:
+      W = 1300 mils
+      L = 2600 mils
+      Y = 1250 mils
+      X = 600 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 2.5, Stop = 3.5 GHZ
+
+    Frequency:  2.5 GHZ
+      Subsectioning time:  0.004 seconds.
+      Circuit requires 894 subsections and 6 MB of memory.
+      Waveguide mode time:  0.013 seconds.
+      Matrix fill time:  0.250 seconds.
+      Matrix solve time:  0.070 seconds.
+      2.50000000 0.997071 160.50
+      ! P1 F=2.5 Standard port: not-de-embedded
+      Total time per frequency:  0.378 seconds.
+
+    Frequency:  3.5 GHZ
+      Waveguide mode time:  0.022 seconds.
+      Matrix fill time:  0.313 seconds.
+      Matrix solve time:  0.066 seconds.
+      3.50000000 0.993811 174.51
+      ! P1 F=3.5 Standard port: not-de-embedded
+      Total time per frequency:  0.382 seconds.
+      ABS: SNR = -21.4319 dB (107.615 dB Goal) for S1_1 at 3.14 GHz.
+      ABS: Time = 0.016 seconds.
+
+    Frequency:  3.14 GHZ
+      Waveguide mode time:  0.016 seconds.
+      Matrix fill time:  0.264 seconds.
+      Matrix solve time:  0.067 seconds.
+      3.14000000 0.907862 -138.3
+      ! P1 F=3.14 Standard port: not-de-embedded
+      Total time per frequency:  0.350 seconds.
+      ABS: SNR = 18.9542 dB (67.3758 dB Goal) for S1_1 at 3.045 GHz.
+      ABS: Time = 0.017 seconds.
+
+    Frequency:  3.045 GHZ
+      Waveguide mode time:  0.014 seconds.
+      Matrix fill time:  0.295 seconds.
+      Matrix solve time:  0.068 seconds.
+      3.04500000 0.653441 11.028
+      ! P1 F=3.045 Standard port: not-de-embedded
+      Total time per frequency:  0.384 seconds.
+      ABS: SNR = 72.1881 dB (50.9767 dB Goal) for S1_1 at 2.71 GHz.
+      ABS: Time = 0.021 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 43 frequencies:  15 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Mon Oct 12 14:21:45 2026.

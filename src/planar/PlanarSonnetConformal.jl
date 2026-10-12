@@ -346,14 +346,18 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
     end
     polydict=Dict(poly.id=>poly for poly in p.polygons)
     for ps in p.ports
-        ps.kind in (:box,:std,:gap,:via) || throw(ArgumentError("native conformal $(ps.kind) port requires its physical return/calibration model"))
+        # The POR1 kind token is descriptive: Lite types ports by placement
+        # and ignores the token (verified 18.53 — arbitrary tokens on all
+        # port placements solve silently). The CUPGRP group block is the
+        # structural piece: any grouped port needs the co-calibrated group
+        # solve, which stays an adapter rejection here.
+        ps.kind===:cup && throw(ArgumentError("native conformal CUP port requires its physical return/calibration model"))
         poly=polydict[ps.polygon];q=ps.values;z0=_sonnet_port_reference(p,ps,freq,variables)
-        ps.kind===:via && poly.kind!==:via && throw(ArgumentError("native via port requires a via polygon"))
-        if poly.kind===:via && ps.kind in (:std,:via)
+        if poly.kind===:via
             ps.number!=0 || throw(ArgumentError("native interior port zero needs an explicit physical ground model"))
             target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
-            ps.kind===:std && !(poly.level in (-1,L-1) || target in (-1,L-1)) &&
-                throw(ArgumentError("native standard via port must terminate on a box cover"))
+            # Token descriptive on via polygons too — Lite types every port
+            # on a via polygon "Standard" regardless of termination depth.
             lo,hi=minmax(poly.level,target);layers=(L-hi):(L-lo-1);height=sum(real(stack.layers[l].thickness) for l in layers)
             for l in layers,cell in findall(vec(masks[poly.id]))
                 vi=get(via_indices,(poly.id,l),0)

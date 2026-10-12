@@ -782,3 +782,79 @@ end
         via_sigma=1.,method=:dense_fft,mx=160,my=160)
     @test abs(custom.s[1,2])<abs(native.s[1,2])/10
 end
+
+@testset "installed-Lite port kind token is descriptive" begin
+    # Lite 18.53 requires a token after POR1 but ignores its value: garbage
+    # and wrong-class kinds on sheet-edge, box-wall and via-polygon ports
+    # all solve silently as the geometry-determined type ("Standard port"
+    # annotations in the archived logs). The structural pieces are the
+    # group records, not the token: a CUPGRP block after ANY token
+    # de-embeds the port, and a single-port group solves natively in Lite.
+    fixture=joinpath(@__DIR__,"fixtures","native_port_kind_token")
+    base=read_sonnet_project(joinpath(fixture,"pk_STD.son"))
+    reference=sonnet_planar_problem(base;freq=1e9,grid=(20,20),_materials=true,_details=true)
+    # Every token variant lowers to the identical port contraction.
+    for name in ("pk_XYZ","pk_VIA","pk_AGI","pk_gauto","pk_all")
+        model=sonnet_planar_problem(read_sonnet_project(joinpath(fixture,name*".son"));
+            freq=1e9,grid=(20,20),_materials=true,_details=true)
+        @test model.contraction==reference.contraction
+        @test model.via_sigma==reference.via_sigma
+    end
+    # The shared native reference still replays inside the gate.
+    ts=planar_read_touchstone(joinpath(fixture,"pk_STD_raw.s2p"))
+    for frequency in (1e9,1e10)
+        native=ts.s[only(findall(==(frequency),ts.frequencies))]
+        actual=solve_sonnet_project(base,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+        @test maximum(abs,actual.s-native)<=.06
+    end
+    # A bare POR1 and a group-less CUP are native parse rejections.
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"pk_BARE.son"))
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"pk_CUP.son"))
+    # CUPGRP is structural and token-independent: Lite accepts a group
+    # after a non-CUP token and de-embeds it exactly like CUP (xg2_cup,
+    # g2_cup both solve). Our parse/lowering still routes every grouped
+    # port to the co-calibrated adapter rejection.
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"xg2_cup.son"))
+    grouped=read_sonnet_project(joinpath(fixture,"g2_cup.son"))
+    @test_throws ArgumentError sonnet_planar_problem(grouped;grid=(16,16))
+    # A two-port group with only a trailing CUPGRP rejects natively too
+    # (mp_cup: "Illegal co-calibrated port / Calibration group information
+    # not defined") and locally as the CUP-without-group parse error.
+    @test_throws ArgumentError read_sonnet_project(joinpath(fixture,"mp_cup.son"))
+    # A bogus token on a via polygon rides the via path identically to
+    # :via/:std (verified: v_xyz.son solves natively as a via port).
+    stripline=read_sonnet_project(joinpath(@__DIR__,"..","validation","sonnet_stripline","s50.son"))
+    via=SonnetPolygon(:via,0,-1,99,[.002 .003 .003 .002;.005 .005 .006 .006],
+        "GND","","",["RING","NOCOVERS"])
+    build_via_project(kind)=SonnetProject(stripline.source,stripline.units,
+        stripline.length_scale,stripline.frequency_scale,stripline.box,
+        stripline.layers,stripline.metals,stripline.top,stripline.bottom,
+        vcat(stripline.polygons,[via]),
+        vcat(stripline.ports,[SonnetPortSpec(kind,99,0,3,
+            ["3","50","0","0","0","2.5","5.5"],SonnetRecord[])]),
+        stripline.variables,stripline.components,stripline.sweeps,stripline.records)
+    contractions=map(kind->
+        sonnet_planar_problem(build_via_project(kind);grid=(16,16),_details=true).contraction,
+        (:xyz,:agi,:via,:std))
+    @test allequal(contractions)
+    # Interior-terminating vias accept every token natively too: v3_via,
+    # v3_std and v3_xyz (a 3-layer stack, via TOLEVEL 1) all solve as
+    # "Standard port" with identical output — the earlier cover-
+    # termination gate was a false rejection. The 50mil native via is
+    # enlarged to stay resolved on the coarse test grid.
+    v3=read_sonnet_project(joinpath(fixture,"v3_via.son"))
+    big=map(v3.polygons) do poly
+        poly.id==99 ? SonnetPolygon(poly.kind,poly.level,poly.material,poly.id,
+            [7000. 8000. 8000. 7000.; 7000. 7000. 8000. 8000.].*v3.length_scale,
+            poly.target,poly.technology,poly.technology_mode,poly.flags) : poly
+    end
+    inner=map(("v3_via","v3_std","v3_xyz")) do name
+        project=read_sonnet_project(joinpath(fixture,name*".son"))
+        variant=SonnetProject(project.source,project.units,project.length_scale,
+            project.frequency_scale,project.box,project.layers,project.metals,
+            project.top,project.bottom,big,project.ports,project.variables,
+            project.components,project.sweeps,project.records)
+        sonnet_planar_problem(variant;grid=(24,24),_materials=true,_details=true).contraction
+    end
+    @test allequal(inner)
+end
