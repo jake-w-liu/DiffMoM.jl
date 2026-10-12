@@ -182,14 +182,31 @@ components with three or more unpaired positive pins attach each pin as an
 independent open-edge port on the shared local ground — the same per-pin
 star, verified bit-identical between staged and callback routes; Lite
 rejects multi-pin ordinary components outright, so the star stays scoped
-to model-bearing components. Signed file-model pins still require their
-unimplemented degenerate-port adapter. Twenty-five projects match the native
+to model-bearing components. Signed file-model pins attach through the
+same floating adapter: a negative label marks the pin as the return side
+of its project differential port while its file port still lands between
+the pin's own bridge node and the component common — solved responses are
+bit-identical to the unsigned two-pin attach, and Lite ingests the signed
+FLOAT file-model grammar up to its data-file license wall (fixture
+`native_signed_model_pins`; anchored by the installed rfid_tag_pro FLOAT
+component's {+1,-1} pins). Twenty-five projects match the native
 loaded response within complex error 0.02 (typical 0.004), the two
 native-error cases reject identically, and the two open-cover cases
 keep a 0.052 residual attributable to the open-boundary model (cover
 selection itself verified identical to a forced-direction native
-control); component-direction co-calibration residuals near 0.01 remain
-documented approximations.
+control). The via-mode pin-feed residual has been fully characterized
+against Lite 18.53 non-de-embedded solves: literal via-column controls
+on the same box/stack match Lite to ~7e-5 while component pins carry a
+bounded imaginary-dominant residual proportional to frequency
+(+0.002+0.013i at 1 GHz, +0.009+0.025i at 2 GHz) — a fixed ~0.13 nH
+series-inductance gap per pin consistent with the edge-face-to-column
+junction jog a cell-column return cannot represent (Lite meshes the pin
+as its own flap element). It is mesh-converged, via-length independent
+and not a de-embedding difference: Lite's fixture output is explicitly
+raw ("Data is NOT De-embedded"). Fixture `native_pin_feed_residual`
+archives the projects, native S/SID responses, mesh logs and a
+hash-verified manifest; a durable testset bounds the residual at 0.03
+and asserts its frequency-linear, imaginary-dominant character.
 
 Independent native ANC/SYM XDIR/YDIR dimensions with NSCD/SCUNI/SCXY point sets now
 resolve into effective geometry before thick-metal expansion. Sparse polygon

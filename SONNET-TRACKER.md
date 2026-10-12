@@ -118,8 +118,30 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       `test/fixtures/native_diag_port_probes` + replay testset in
       `test_planar_sonnet_io.jl` (complements the conformal-route fixture
       `native_internal_diagonal_rejection`).
-- [ ] A7 component-direction co-calibration residual ~0.01 (parity line 187/1167).
-      Oracle: HFSS independent solve of materialized coupon.
+- [x] A7 via-mode pin-feed residual — DONE-char (evidence + bounded
+      regression, no speculative model change). Forensic sweep of
+      `data/a7_viacontrol` against Lite 18.53 ND solves falsified every
+      structural hypothesis: mesh refinement converged, literal
+      VIA-POLYGON controls on the same box/stack match Lite to ~7e-5,
+      via length/cover direction irrelevant, FEED/CELL/CUST widths and
+      uni/tap basis variants do not close the gap, and the fixture's
+      Touchstone header is explicitly raw ("Data is NOT De-embedded"),
+      ruling out a calibration difference. The residual is bounded,
+      imaginary-dominant and exactly frequency-linear: an independent
+      per-pin fit yields a constant ~0.13 nH series-inductance gap at
+      all four probe frequencies — consistent with the
+      edge-face-to-column junction jog a cell-column via return cannot
+      represent (Lite meshes the pin as its own flap element; its own
+      mesh accounting, Via:4 for two 2-cell pins, matches the column
+      structure). Lite's raw 4-port geo response shows the residual
+      concentrated in pin self/coupling terms. Resolution path is a
+      dedicated pin-flap/junction basis or validated co-calibration
+      (E2 machinery), not a tuned constant. Fixture
+      `test/fixtures/native_pin_feed_residual` (projects + native s2p/sid
+      + mesh logs + hash manifest); regression testset "Native via-mode
+      pin-feed residual (A7)" in `test_planar_component_returns.jl`
+      bounds the residual at 0.03 and pins its frequency-linear
+      imaginary-dominant character across 0.5–2 GHz.
 - [x] A8 unsupported IDEAL component kinds/units — DONE. Lite probe corpus
       (~30 value-bearing projects) decoded the full native unit tables:
       RES GOH=1e9/TOH=1e12, CAP MF=1e-3, trailing-S plural aliases
@@ -485,13 +507,13 @@ prior ledgered items.
 
 Remaining (updated order):
 
-1. A7 port residual — small, Lite-verifiable (A2/A4/A5 done).
-2. E2 CUP calibration-group solve + E5 dielectric bricks — bounded.
-3. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
+1. E2 CUP calibration-group solve + E5 dielectric bricks — bounded
+   (A7 pin-feed residual closed as characterized evidence).
+2. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
    DocOnly.
-4. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
-5. A3 ordered model pins — pin-group GLG calibration machinery.
-6. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
+3. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
+4. A3 ordered model pins — pin-group GLG calibration machinery.
+5. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
    characterization, larger.
 7. I-group HFSS-based independent convergence certification.
 

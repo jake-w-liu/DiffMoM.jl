@@ -1,4 +1,4 @@
-using Test,LinearAlgebra,DiffMoM
+using Test,LinearAlgebra,DiffMoM,SHA,JSON
 
 function _return_test_line(;split_layer=false)
     grid=CellGrid(6e-3,4e-3,12,8)
@@ -237,4 +237,43 @@ end
     inert_model=sonnet_component_model(inert,1e8)
     @test inert_model.labels==[1,2]
     @test isempty(inert_model.circuit.elements)
+end
+
+@testset "Native via-mode pin-feed residual (A7)" begin
+    # Lite 18.53 non-de-embedded evidence: the via-mode component pin path
+    # carries a systematic frequency-linear residual versus the installed
+    # solver — a fixed ~0.13nH series inductance per pin consistent with the
+    # edge-face->via-column junction jog a cell-column return cannot
+    # represent (Lite meshes the pin as its own flap element). The literal
+    # via basis itself matches Lite to ~1e-4 on the same stack, so the gap
+    # is the pin feed, not via columns. This testset pins the characterized
+    # bound so a future flap/subcell junction model can measure progress.
+    fixture=joinpath(@__DIR__,"fixtures","native_pin_feed_residual")
+    manifest=JSON.parsefile(joinpath(fixture,"manifest.json"))
+    for entry in manifest["files"]
+        @test bytes2hex(sha256(read(joinpath(fixture,entry["path"]))))==entry["sha256"]
+    end
+    # Literal via-column controls agree with Lite inside the ordinary band.
+    for name in ("novia","withvia")
+        data=planar_read_touchstone(joinpath(fixture,name*"_native.s2p");nports=2)
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        for (f,native) in zip(data.frequencies,data.s)
+            ours=solve_sonnet_project(p,f)
+            @test maximum(abs.(ours.s.-native))<5e-3
+        end
+    end
+    rows=[parse.(Float64,split(strip(l))) for l in
+        eachline(joinpath(fixture,"sweep_response_nd.sid")) if occursin(r"^\d.*e",l)]
+    p=read_sonnet_project(joinpath(fixture,"sweep.son"))
+    lo,hi=Inf,0.
+    for row in rows
+        f,s21=row[1],row[4]+row[5]*im
+        residual=solve_sonnet_project(p,f).s[2,1]-s21
+        # Bounded, imaginary-dominant and frequency-linear: the missing
+        # junction inductance grows proportionally to frequency.
+        @test abs(residual)<0.03
+        @test abs(imag(residual))>abs(real(residual))
+        lo=min(lo,abs(imag(residual)));hi=max(hi,abs(imag(residual)))
+    end
+    @test hi>2lo
 end

@@ -1,0 +1,65 @@
+{
+ "purpose": "Native evidence for the A7 via-mode SMD pin-feed residual. Sonnet Lite 18.53 non-de-embedded solves of a two-pad 10-ohm IDEAL component project (sweep.son, GNDREF BOX pins) versus two literal-via controls. The literal-via control path matches DiffMoM to ~7e-5, while the component pin path carries a systematic +0.002+0.013i (1 GHz) to +0.009+0.025i (2 GHz) frequency-linear residual per pin — a fixed ~0.13nH pin-feed/junction inductance difference between Lite's subcell pin-flap model and the cell-column via representation, independent of via length and mesh refinement. Lite's own mesh accounting (Via:4 at level 0 for two 2-cell pins) matches the cell-column structure, and the raw 4-port geo response shows the residual concentrated in the pin port self/coupling terms.",
+ "files": [
+  {
+   "path": "novia.son",
+   "purpose": "control: same box/stack, pads+wall ports, no vias",
+   "sha256": "25967404c33da169b482643ee533397c56449c05cb42173210ca9baa463395a7",
+   "bytes": 656
+  },
+  {
+   "path": "novia_log_composite.log",
+   "purpose": "Lite mesh/log for novia control",
+   "sha256": "25381db047c2915e268eecf9fdefb97428a391858ab59028920867a89afd3b85",
+   "bytes": 1934
+  },
+  {
+   "path": "novia_native.s2p",
+   "purpose": "Lite ND S-parameters for novia",
+   "sha256": "3e6035f4d62c4ec8cea66afd303657a4570624d6ff7e8225e2595d44570dbde2",
+   "bytes": 376
+  },
+  {
+   "path": "sweep.son",
+   "purpose": "probe: 2 pads + IDEAL RES 10 comp, pins GNDREF BOX, FREQ sweep 0.5-2GHz",
+   "sha256": "1f142f4196dce8620f41817f366aba234be39ed81464e545ae8f3032c6434638",
+   "bytes": 762
+  },
+  {
+   "path": "sweep_geo_response_nd.sid",
+   "purpose": "Lite 18.53 raw 4-port geometry response incl. pin ports 3,4",
+   "sha256": "87a2f90a061d76999eb425be6c7469a709df62a6169ac4f8028e8c8f02c57566",
+   "bytes": 3112
+  },
+  {
+   "path": "sweep_log_composite.log",
+   "purpose": "Lite mesh/log for sweep solve (Via:4 at level 0)",
+   "sha256": "cb0d566466d6a5f6858a856d81d61ea1c0b73d7f34e17b68775ac1ca02e1add7",
+   "bytes": 3300
+  },
+  {
+   "path": "sweep_response_nd.sid",
+   "purpose": "Lite 18.53 final 2-port S response for sweep.son (ND)",
+   "sha256": "ee238e25e248da20c73b499441ebbcbe03926a5dd24d9b4afb6b5f6966a08710",
+   "bytes": 1084
+  },
+  {
+   "path": "withvia.son",
+   "purpose": "control: same + 2 literal VIA POLYGONs at pin footprints",
+   "sha256": "adbe1715523e16df5bf04501fa89794da0802b90235f6921ca212e0eafe644e0",
+   "bytes": 849
+  },
+  {
+   "path": "withvia_log_composite.log",
+   "purpose": "Lite mesh/log for withvia control (Via:2 at ground plane)",
+   "sha256": "e0e6eb53ff53556e52b4157f81f5707acb6d1f80e1c167d311dfe1f0a3298edf",
+   "bytes": 2486
+  },
+  {
+   "path": "withvia_native.s2p",
+   "purpose": "Lite ND S-parameters for withvia",
+   "sha256": "d987932f0386cca877a219f7416405a5139ba8d830f3a45fb956b9be7ca0ad40",
+   "bytes": 378
+  }
+ ]
+}
