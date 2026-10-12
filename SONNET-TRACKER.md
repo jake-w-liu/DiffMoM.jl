@@ -89,7 +89,18 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       Unscaled SYM XDIR/YDIR/wildcard/literal already done bit-identically.
       Oracle: Lite `em -N` + raster probes; may stay DocOnly if law remains
       undecoded.
-- [ ] B3 moved GEOVAR interior/via port attachment (`GeoVars:601`). Oracle: Lite.
+- [x] B3 moved GEOVAR interior/via port attachment — DONE. Lite probes
+      (`fixtures/native_geovar_moved_port/`): POR1 STD and GAP on a
+      shared edge whose polygon translates under an ANC YDIR GEOVAR
+      solve with bit-identical S rows — the token is descriptive on
+      moved interior ports too, and the port rides its polygon. The
+      resolver re-anchors `values[6:7]` to the resolved edge midpoint
+      and `solve_sonnet_project` reproduces the native matrix to ~6e-6.
+      Removed the stale `:gap` exclusion in `GeoVars:599-604` (false
+      rejection); moved CUP ports still route to the calibration-group
+      adapter (E2 residual). The TMM `:gap` face-duplication gate
+      (`IO:1781`) stays — Lite license-blocks all thick-metal polygons,
+      so that path is DocOnly-verified conservative, not parity-testable.
 - [ ] B4 overlapping/dependent GEOVAR dims ordering (`GeoVars:617,628`). Oracle:
       Lite probe corpus.
 - [ ] B5 zero saved-offset non-coincident references (partially handled; extend).
@@ -337,7 +348,7 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 3. A6 diagonal gap port + E1/E6 intake items — small, Lite-verifiable.
 4. A8/A9 component kinds/model types — Lite probe corpus.
 5. C-group material items (C2/C3/C5 first — bounded), then C1 thick-wall.
-6. B-group GEOVAR residue (B3/B4/B5 tractable; B2 probe campaign).
+6. B-group GEOVAR residue (B3 done; B4/B5 tractable; B2 probe campaign).
 7. A1 REFPLANE contracts — needs calibration machinery, larger.
 8. D-group STF residue — `em -N` structural corpus.
 9. F/G-group netlist/layout breadth.

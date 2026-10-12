@@ -1,0 +1,19 @@
+{
+ "cases": {
+  "ip_move": {
+   "verdict": "solved",
+   "note": "POR1 STD on polygon-2 interior shared edge with ANC YDIR GEOVAR moving polygon 2 by +0.0625 mm: Lite accepts a port on a GEOVAR-moved polygon; the port rides its polygon (structural edge attachment)"
+  },
+  "ip_gap": {
+   "verdict": "solved",
+   "note": "same geometry with POR1 GAP token: bit-identical S-parameter rows to ip_move (only the project-name header differs) — the token is descriptive on moved interior ports too"
+  }
+ },
+ "derivation": "ip_move is native_geovar_whole_polygon/variants/nscd_ydir_positive_expand_parameter.son with port 2 moved from POLY 2 box-wall edge 1 to the shared interior edge 3 and POR1 BOX->STD; ip_gap retokens POR1 STD->GAP. GEOVAR Move ANC YDIR: VALVAR 0.1875, NOM 0.125, so polygon 2 (PS2 POLY 2 0) translates +0.0625 mm; the shared edge with polygon 1 (x=0.5, original y 0.4375-0.5625) lands at y 0.5-0.625, still overlapping polygon 1's right edge (0.375-0.75).",
+ "native_outputs": {
+  "ip_move.s2p": "native_raw.s2p renamed; |S11|=0.005591, |S21|=0.999984 at 1 GHz non-de-embedded",
+  "ip_gap.s2p": "native_raw.s2p renamed; S-parameter data rows bit-identical to ip_move.s2p"
+ },
+ "implementation": "DiffMoM._sonnet_geometry_project re-anchors the port coordinate annotation (values[6:7]) at the resolved edge midpoint (0.5, 0.5625); solve_sonnet_project at mx=my=128 reproduces the native matrix to ~6e-6. A moved POR1 CUP port still routes to the calibration-group adapter (E2 residual).",
+ "engine": "Sonnet em.exe 18.53-Lite, 2026-10-12"
+}

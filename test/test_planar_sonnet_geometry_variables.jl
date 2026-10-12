@@ -573,4 +573,35 @@ END
         @test port.values[6:7]==["237.5","175.0"]
     end
 end
+
+@testset "Native moved interior ports re-anchor by geometry, not token" begin
+    # Lite 18.53 accepts POR1 STD and POR1 GAP on a GEOVAR-moved interior
+    # edge identically: the token is descriptive, the port rides its
+    # polygon, and the coordinate annotation re-anchors at the resolved
+    # edge midpoint. The archived native matrices are bit-identical
+    # between the two tokens (manifest: fixtures/native_geovar_moved_port).
+    directory=joinpath(@__DIR__,"fixtures/native_geovar_moved_port")
+    reference=planar_read_touchstone(joinpath(directory,"ip_move.s2p"))
+    @test reference.s==planar_read_touchstone(joinpath(directory,"ip_gap.s2p")).s
+    for (file,kind) in (("ip_move.son",:std),("ip_gap.son",:gap))
+        p=read_sonnet_project(joinpath(directory,file))
+        resolved=DiffMoM._sonnet_geometry_project(p,1e9)
+        port=only(filter(q->q.number==2,resolved.ports))
+        @test port.kind==kind
+        # Polygon 2 translates +0.0625 mm; its shared edge midpoint moves
+        # from (0.5,0.5) to (0.5,0.5625) in project millimetres.
+        @test port.values[6:7]==["0.5","0.5625"]
+        moved=only(filter(q->q.id==2,resolved.polygons))
+        @test collect(extrema(moved.vertices[2,:]))≈[0.0005,0.000625] rtol=1e-9
+        result=solve_sonnet_project(p,1e9;raw=true,mx=128,my=128)
+        @test maximum(abs,result.s-only(reference.s))<=.005
+    end
+    # A moved CUP port still routes to its calibration-group adapter.
+    p=read_sonnet_project(joinpath(directory,"ip_gap.son"))
+    changed=DiffMoM.SonnetProject(p.source,p.units,p.length_scale,p.frequency_scale,
+        p.box,p.layers,p.metals,p.top,p.bottom,p.polygons,
+        [DiffMoM.SonnetPortSpec(:cup,q.polygon,q.edge,q.number,q.values,q.records) for q in p.ports],
+        p.variables,p.components,p.sweeps,p.records)
+    @test_throws ArgumentError DiffMoM._sonnet_geometry_project(changed,1e9)
+end
 end

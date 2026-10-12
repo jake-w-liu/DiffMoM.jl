@@ -594,12 +594,14 @@ function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{Str
     all(iszero,deltas) && return p
     # Sheet and via ports re-anchor to their referenced edge midpoint
     # after resolution; the POR1 kind token is descriptive (Lite types by
-    # placement), so every non-CUP, non-gap token qualifies by polygon
-    # kind. Gap and CUP attachments still require their own adapters.
+    # placement), so every non-CUP token qualifies by polygon kind.
+    # Lite 18.53 accepts STD and GAP tokens on a moved interior edge
+    # identically; only the CUP calibration-group port remains a residual.
     all(port->haskey(original,port.polygon) &&
-        !(port.kind in (:cup,:gap)) &&
         original[port.polygon].kind in (:sheet,:via),p.ports) ||
         throw(ArgumentError("moved GEOVAR interior/via ports require their attachment adapter"))
+    any(port->port.kind===:cup && haskey(original,port.polygon),p.ports) &&
+        throw(ArgumentError("native CUP co-calibrated port requires its calibration-group adapter"))
     for port in p.ports
         vertices=original[port.polygon].vertices
         closed=vertices[1,1]==vertices[1,end] && vertices[2,1]==vertices[2,end]
