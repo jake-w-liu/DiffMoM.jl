@@ -117,11 +117,15 @@ end
 @testset "array loss domain validation" begin
     original=read_sonnet_project(joinpath(FIXTURE,"conductivity_fill","project.son"))
     base=only(original.metals)
-    # Lite converts an array sheet-resistance record to a fixed conductivity;
-    # that conversion keeps an explicit rejection until separately modeled.
-    @test_throws ArgumentError sonnet_planar_problem(
+    # Lite converts an array sheet-resistance record to a fixed 3.72e7 S/m
+    # conductivity independent of the entered loss, so an SRVY record must
+    # produce exactly the CDVY record at that conductivity.
+    smodel=sonnet_planar_problem(
         metal_project(original,[base[1],base[2],"ARR","10000",".01","SRVY"]);
-        freq=1e9,grid=(20,20),_materials=true)
+        freq=1e9,grid=(20,20),_materials=true,_details=true)
+    sexpected=reference_array_sigma(original,smodel,1e9,"3.72e7",".01")
+    er,ei=component_errors(only(smodel.via_sigma),sexpected)
+    @test er<=2e-12 && ei<=2e-12
     # A selector token in the density slot is a failed entry and stays inert.
     buried=metal_project(original,[base[1],base[2],"ARR","10000",".01","2",".5","SRVY"])
     bmodel=sonnet_planar_problem(buried;freq=1e9,grid=(20,20),_materials=true,_details=true)
@@ -239,5 +243,67 @@ end
     @test maximum(abs,results["probe_f6_0.01_RSVY"].s-results["probe_s1e4"].s)<=1e-6
     @test maximum(abs,results["probe_f6_0.0001_RSVY"].s-results["probe_s1000000"].s)<=1e-6
     @test maximum(abs,results["probe_f6_1_CDVY"].s-results["probe_f6_1_none"].s)<=1e-9
+end
+
+@testset "native ARR sheet-resistance conversion" begin
+    # Lite 18.53 converts an ARR SRVY record to a fixed 3.72e7 S/m
+    # conductivity independent of the entered loss, fill factor, and via
+    # height (its log reports "Array via metal type converted from Sheet
+    # Resistance at DC to Conductivity"); INF still selects a perfect
+    # conductor. Every finite value — zero and negatives included — takes
+    # the same conversion, so SRVY records replay bit-identically against
+    # a CDVY record at sigma=3.72e7.
+    fixture=joinpath(@__DIR__,"fixtures","native_arr_srvy")
+    names=("as_1","as_100","ad_1_1_SRVY","an__5__01_SRVY","ad_INF__01_SRVY",
+        "ah_srvy","at372","ac_INF","ap_3.72e7")
+    results=Dict{String,Any}()
+    for name in names
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        reference=planar_read_touchstone(joinpath(fixture,name*".native.s2p"))
+        for frequency in (1e9,1e10)
+            native=reference.s[only(findall(==(frequency),reference.frequencies))]
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+            @test maximum(abs,actual.s-native)<=.06
+            @test maximum(svdvals(actual.s))<=1+1e-6
+            frequency==1e10 && (results[name]=actual)
+        end
+    end
+    # Finite losses of any value — including zero and negatives — all take
+    # the fixed conversion, so the records solve identically to the CDVY
+    # sigma=3.72e7 control and to each other.
+    @test maximum(abs,results["as_1"].s-results["ap_3.72e7"].s)<=1e-6
+    @test maximum(abs,results["as_100"].s-results["as_1"].s)<=1e-6
+    @test maximum(abs,results["an__5__01_SRVY"].s-results["as_1"].s)<=1e-6
+    # Halving the layer thicknesses leaves the converted conductivity
+    # unchanged: the thin-stack SRVY record is bit-equivalent to the
+    # thin-stack CDVY sigma=3.72e7 control.
+    @test maximum(abs,results["ah_srvy"].s-results["at372"].s)<=1e-6
+    # INF still selects a perfect conductor under SRVY: the record is
+    # bit-equivalent to a CDVY INF record.
+    @test maximum(abs,results["ad_INF__01_SRVY"].s-results["ac_INF"].s)<=1e-6
+end
+
+@testset "native metal selector case and fallback" begin
+    # Lite 18.53 matches loss selectors case-insensitively on ARR records
+    # (lowercase rsvy/srvy convert exactly like the uppercase tokens), and
+    # an unrecognized token in the selector slot resolves plain
+    # conductivity rather than rejecting the record.
+    fixture=joinpath(@__DIR__,"fixtures","native_metal_selector_case")
+    names=("acase_1__01_Srvy","acase_1__01_rsvy","actl_1__01_CDVY",
+        "actl_1__01_RSVY","actl_100__01_CDVY")
+    results=Dict{String,Any}()
+    for name in names
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        reference=planar_read_touchstone(joinpath(fixture,name*".native.s2p"))
+        for frequency in (1e9,1e10)
+            native=reference.s[only(findall(==(frequency),reference.frequencies))]
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+            @test maximum(abs,actual.s-native)<=.06
+            @test maximum(svdvals(actual.s))<=1+1e-6
+            frequency==1e10 && (results[name]=actual)
+        end
+    end
+    @test maximum(abs,results["acase_1__01_rsvy"].s-results["actl_1__01_RSVY"].s)<=1e-9
+    @test maximum(abs,results["actl_1__01_RSVY"].s-results["actl_100__01_CDVY"].s)<=1e-9
 end
 end

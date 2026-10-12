@@ -101,7 +101,20 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       crossing/saturation (`IO:1175-1179`). Needs real offset-with-topology
       algorithm. Oracle: Lite RF controls + analytic rectangle saturation
       limits already archived.
-- [ ] C2 ARR sheet-resistance conversion (`IO:1218`). Oracle: Lite.
+- [x] C2 ARR sheet-resistance conversion (`IO:1218`). **Done** — Lite
+      18.53 logs "Array via metal type converted from Sheet Resistance at
+      DC to Conductivity": every finite entered loss — zero and negatives
+      included — converts to a fixed σ=3.72e7 S/m independent of value,
+      fill factor, and via height (bit-identical against a CDVY σ=3.72e7
+      control at two fill levels and two stack heights); INF still selects
+      a perfect conductor. Selector is position 6; a token there that is
+      not CDVY/RSVY/SRVY is inert density data. Axial element and endpoint
+      pads both use the converted σ. Selector tokens are matched
+      case-insensitively on ARR, VOL and NOR records, and an unrecognized
+      token in the VOL/NOR selector slot resolves direct conductivity
+      rather than rejecting (VOL `X` ≡ `CDVY` bit-identically). Evidence:
+      `fixtures/native_arr_srvy` + `fixtures/native_metal_selector_case`
+      + replay testsets (41 + 22 + 17 tests).
 - [x] C3 ARR zero-conductivity open-via. **Done** — Lite 18.53: a
       zero-conductivity record is completely inert (no axial element, no
       COVERS/RING endpoint pads); `cdvy_loss0` is bit-equivalent to the
@@ -114,16 +127,75 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       the via height (earlier "PEC pads" assumption was wrong); RSVY
       converts σ=100/ρ bit-identically; INF→PEC pads+column; RPV records
       carry no σ field so their pads stay PEC. SRVY residual stays in C2.
-- [ ] C5 VOL RPV hollow wall thickness (`IO:1522`). Oracle: Lite.
-- [ ] C6 TMM resistivity/sheet-resistance + unknown flags (`IO:1612`);
-      further TMM semantics (face counts). Oracle: Lite.
-- [ ] C7 lossy via-cover horizontal pad loss (`IO:1514`). Oracle: Lite.
-- [ ] C8 dielectric loss/anisotropy flags (`IO:1702`). Oracle: Lite/HFSS.
-- [ ] C9 NOR remaining semantics: general current ratio, SEN reactance,
+- [x] C5 VOL RPV hollow wall thickness. **Done** — Lite 18.53: the field
+      is fully inert for RPV records (hollow and SOLID, five decades and
+      negative values all bit-identical, zero warnings). The
+      "dedicated adapter" rejection was removed; only non-finite values
+      still reject. Evidence: `fixtures/native_vol_rpv_wall` (8 captures)
+      + replay testset in `test_planar_sonnet_endpoints.jl`.
+- [~] C6 TMM selectors/flags/face counts. **License-blocked** — Lite
+      rejects any thick-metal polygon before solving, so flag semantics
+      (RSVY/SRVY/unknown — all parse silently) and >2-face expansion are
+      undecodable natively. Verified boundary: `nsheets=1` fails at
+      config level ("must be 2 or more"), nsheets≥2 parses. Rejections
+      stay; HFSS cannot decode Sonnet flag meaning.
+- [x] C7 lossy via-cover horizontal pad loss. **Done as verified
+      rejection** — Lite parse-rejects RPV via records on non-VOL/ARR
+      metals (SUP/NOR/RES probes all `Project File Error`, COVERS or
+      not), so no legal record can reach the pad-loss adapter. Also
+      plugged a NOCOVERS silent-solve hole: the importer now rejects the
+      class outright instead of computing an unverified number.
+      Evidence: `fixtures/native_vol_rpv_wall/rpv_{SUP,NOR,RES,SUPnc}`.
+- [x] C8 dielectric loss/anisotropy flags (`IO:1702`). **Done** — full
+      positional grammar and selector law decoded bit-identically in Lite:
+      the record is `t er mur dtan mtan eloss f7 name flags...` where the
+      eloss slot doubles as the short-form name (five-field + name or six
+      bare numerics close the record), `f7` is a parsed-but-inert
+      anisotropy slot that must stay a numeric expression, and exactly the
+      first token after the name is the selector — `RSVY` reads ohm-cm
+      (`sigma=100/rho`), `SRVY` reads ohms-per-square through the layer
+      thickness (`sigma=1/(Rs*t)`, same law as metal SRVY), `CDVY` and any
+      unknown token select plain conductivity, later tokens inert, all
+      case-insensitive. `INF` is a literal: plain-conductivity INF is the
+      degenerate all-conductor layer (reject), while reciprocal selectors
+      map it to sigma=0. Trailing anisotropy numerics are parsed but inert
+      in Lite (bit-identical with ErelZ=5, full rows, sigma_z=100), so the
+      selector position stays `row[9]` regardless of numeric count.
+      Negative fields reject natively; zero under RSVY/SRVY is the same
+      degenerate conductor layer and also rejects. Evidence:
+      `fixtures/native_dielectric_srvy` (30 captures, five bit-identical
+      SRVY/sigma pairs + selector-order + parse-boundary rejects) and the
+      replay/selector testset in `test_planar_sonnet_dielectric_scaling.jl`.
+      Remaining sub-parity: sub-six-token legacy short records still
+      reject at the reader floor.
+- [x] C9 NOR remaining semantics: general current ratio, SEN reactance,
       plated/roughness lowering, face counts (parity M5 row). Oracle:
       Lite probes + HFSS plated-line solve.
-- [ ] C10 `surface_zs`/`via_sigma` override coexistence policy (`IO:2191-2192`).
-      Oracle: analytic contract.
+      **Done** — current-ratio r↔1/r symmetry and SEN reactance
+      (positive/zero/negative) verified against Lite within the .06 gate.
+      Covers correctly force one-sided current (native strings: "Current
+      ratio set to infinite/zero for metal on top/bottom box cover").
+      Plated/roughness lowering is the `RUF` (RoughMetal) record family,
+      a thick-metal class: Lite rejects it on sheets ("thick metal polygon
+      touching the top of the box") and is license-blocked like TMM/TVM.
+      **Bonus decode — `NAT` (Rdc/Rrf) sheet metal implemented**: two
+      literal numerics (Rdc Ω/sq, Rrf Ω·√s) joined by the conductor-slab
+      loss transition; verified against the installed `mems_switch`
+      example's `NAT 0.035 1.287e-05` Nickel record. Missing/unparseable
+      entries warn→0, trailing tokens inert, signed entries normalize to
+      magnitudes, INF is an open film/cover, and `NAT`-on-via parse-rejects
+      natively like ours. Evidence: `fixtures/native_nat_loss` (15
+      captures) + "native NAT Rdc/Rrf sheet loss" testset (140 tests).
+- [x] C10 `surface_zs`/`via_sigma` override coexistence policy (`IO:2191-2192`).
+      **Done as verified contract** — `solve_sonnet_project` is the
+      project-faithful path; caller `surface_zs`/`via_sigma` keywords
+      reject with a clean ArgumentError (no defined coexistence for two
+      impedance sources on the same cells). The sanctioned override route
+      is `sonnet_planar_problem` + `solve_planar`: passing
+      `model.sheet_zs`/`model.via_sigma` reproduces the full-path solve
+      bit-exactly, and a custom `via_sigma` field measurably changes the
+      response (contract testset in `test_planar_sonnet_io.jl`, 4 tests).
+      Policy documented in the `solve_sonnet_project` docstring.
 
 ## D. Linked STF
 

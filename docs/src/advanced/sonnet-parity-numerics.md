@@ -218,6 +218,42 @@ conductors. Evidence: `test/fixtures/native_arr_open_via` (15 source,
 response and log triples) and the `test_planar_sonnet_array_loss.jl`
 replay testset.
 
+`ARR` `SRVY` is anomalous: Lite 18.53 logs "Array via metal type
+converted from Sheet Resistance at DC to Conductivity" and substitutes a
+fixed 3.72e7 S/m conductivity. Every finite entered loss — zero and
+negatives included — produces bit-identical output, as do changes to the
+fill factor and via height: the record replays bit-identically against a
+`CDVY` σ=3.72e7 control at fill percent 0.01 and 1 and at two stack
+heights. `INF` still selects a perfect conductor. The axial element and
+generated endpoint pads both carry the converted conductivity. Evidence:
+`test/fixtures/native_arr_srvy`.
+
+The `VOL` RPV wall field is fully inert: Lite accepts five decades of
+hollow and SOLID wall values, including negatives, with bit-identical
+output and no warning, so the importer ignores it after a finiteness
+check. Via RPV records on non-`VOL`/`ARR` metals fail the native parser
+outright (`Project File Error`); the importer now rejects that whole
+class rather than silently solving a NOCOVERS one. Evidence:
+`test/fixtures/native_vol_rpv_wall`.
+
+`NAT` records select the Rdc/Rrf sheet-loss model: two literal numeric
+entries, the DC sheet resistance and the skin-effect coefficient with
+Rrf*sqrt(f) high-frequency resistance, joined by the same conductor-slab
+loss transition the SUP general-loss path uses. The entries do not
+evaluate variables — Lite logs "Bad Argument" warnings and substitutes
+zero, as it does for absent fields — trailing tokens are inert, signed
+entries normalize to their magnitudes (the signed-coth law is
+rrf-symmetric and a negative rdc tracks the magnitude within the parity
+gate), and `INF` marks an open film: an INF sheet contributes no metal
+cells and an INF cover terminates to free space. `NAT` on a via record
+fails the native parser ("wrong material type"), matching the importer's
+rejection. Verified against Lite 18.53 replays of the installed
+`mems_switch` example's `NAT 0.035 1.287e-05` Nickel record — where
+Rrf = sqrt(pi*mu0*mur*rho) for mur≈600 — across the DC/RF transition,
+pure-DC and lossless limits, cover and signed edges. Evidence:
+`test/fixtures/native_nat_loss` and the "native NAT Rdc/Rrf sheet loss"
+testset in `test_planar_sonnet_scalar_units.jl`.
+
 Float64 conformal geometry uses scoped 8192-bit intersection and
 orientation fallback arithmetic. Degree-two/three numerators retain the
 stored coordinate domain before final division; caller BigFloat precision
@@ -235,8 +271,7 @@ allocates 64 bytes in the measured 2000-run control. These measurements
 bound these specific warmed calls; opaque memory, peak RSS and global
 optimization remain unverified.
 
-General thick HOLLOW topology, ARR SRVY conversion and non-CDVY/RSVY
-selectors, SFC
+General thick HOLLOW topology, non-CDVY/RSVY/SRVY selectors, SFC
 horizontal endpoint behavior, BAR lowering, native non-Ring endpoint
 physics, low-frequency physical residuals, mode/mesh convergence and
 measured spiral/coupled RFIC acceptance remain open. A supported input or

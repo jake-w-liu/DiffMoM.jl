@@ -234,4 +234,36 @@ end
     @test bytes2hex(sha256(reinterpret(UInt8,vec(mesh.areas))))=="70685987547787d6e1dd2b2c84c134c429ecbc28d282fb4ffb8f88e53c531fbf"
     @test all(q.vertices==v for (q,v) in zip(p.polygons,before))
 end
+
+@testset "VOL RPV wall field is completely inert" begin
+    # Lite 18.53: hollow and SOLID RPV records accept every wall value —
+    # including negatives — with bit-identical output and no warning.
+    fixture=joinpath(@__DIR__,"fixtures","native_vol_rpv_wall")
+    results=Dict{String,Any}()
+    for name in ("rpv_w0","rpv_w0.001","rpv_w0.05","rpv_w0.5","rpv_w5",
+            "rpv_wneg","rpv_solid_w0","rpv_solid_w0.5")
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        reference=planar_read_touchstone(joinpath(fixture,name*".native.s2p"))
+        for frequency in (1e9,1e10)
+            native=reference.s[only(findall(==(frequency),reference.frequencies))]
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+            @test maximum(abs,actual.s-native)<=.06
+            @test maximum(svdvals(actual.s))<=1+1e-6
+            frequency==1e10 && (results[name]=actual)
+        end
+    end
+    # Wall invariance in our own importer: every wall value, SOLID or
+    # hollow, must produce the same solved S matrix.
+    base=results["rpv_w0"].s
+    for name in ("rpv_w0.001","rpv_w0.05","rpv_w0.5","rpv_w5","rpv_wneg","rpv_solid_w0","rpv_solid_w0.5")
+        @test maximum(abs,results[name].s-base)<=1e-9
+    end
+    # Via RPV records on non-VOL/ARR metals fail the Lite parse outright
+    # (Project File Error, COVERS or not); the importer must reject too.
+    for name in ("rpv_SUP","rpv_NOR","rpv_RES","rpv_SUPnc")
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        @test_throws ArgumentError sonnet_planar_problem(p;
+            freq=1e9,grid=(20,20),_materials=true)
+    end
+end
 end

@@ -33,7 +33,7 @@ establish general continuum, measured-device or native workflow completeness.
 | M2/M3 matrix and direct solve | `PlanarGreens`, `PlanarFFTAssembly`, `PlanarSolve` | independent modal versus exact FFT retained matrix, all rooftop/via/volume families and losses; native complex S comparisons; 1008-unknown fill 2.6603 s→0.04132 s, relative error 3.9845e-16 | broad geometry acceptance; large-layout factorization resources |
 | M4 FFT solve | `PlanarUFFT` | exact finite modal operator versus dense; zero repeated matvec allocations; latest 8192-unknown operator uses 2,212,664 bytes of Julia payload versus 1,073,741,824 bytes for one dense matrix | fine-grid iterative convergence; measured sparse preconditioner prototype did not improve convergence and is not enabled |
 | M5 metal/dielectric loss | `PlanarSurface`, `PlanarConductorLoss`, `PlanarMetalModel`, `PlanarSonnetIO` | weighted Gram quadrature; published two-sheet line DC resistance oracle; native mixed films, NOR general current ratio, SEN reactance; physical two-face TMM expansion | licensed native TMM comparison, additional face counts, roughness/plating lowering and refined plated-line agreement |
-| M6 vias and volume current | `PlanarVias`, `PlanarVolumes`, `PlanarAxialRefinement` | independent Maxwell BVP and cutoff tests; native interlevel/ground vias and constant VOL/ARR resistance-per-via bridges; automated slab subdivision with source contraction; axial conductor profile error 0.08595% at 128 slices; finite bulk wall-source DC resistance; scoped native VOL CDVY/RSVY/SRVY material laws and RF matrix/loss controls | general thick-wall topology, broader VOL contact convergence, native ARR sheet-resistance conversion and grounded loss, arbitrary bulk contacts and broader material coverage |
+| M6 vias and volume current | `PlanarVias`, `PlanarVolumes`, `PlanarAxialRefinement` | independent Maxwell BVP and cutoff tests; native interlevel/ground vias and constant VOL/ARR resistance-per-via bridges; automated slab subdivision with source contraction; axial conductor profile error 0.08595% at 128 slices; finite bulk wall-source DC resistance; scoped native VOL CDVY/RSVY/SRVY material laws and RF matrix/loss controls | general thick-wall topology, broader VOL contact convergence, native ARR grounded loss, arbitrary bulk contacts and broader material coverage |
 | M7 adaptive sweep | `PlanarSweep` | full matrix ABS versus independent analytic cascades, zero/constant cases, callback/resource guards; barycentric fitting resolves three delayed resonances in 14 analyses with maximum full S error 4.217e-7; 12180 independent resonance, off-grid, passivity and resource checks, including a 107.96 dB notch | physical EM and measured broadband/resonance acceptance; finite candidate grids do not certify undiscovered narrow resonances |
 | M8 ports/calibration | `PlanarPowerWaves`, `PlanarBasis`, `PlanarTerminalReturns`, `PlanarPortContraction`, `PlanarCalibration`, `PlanarDeembed` | frequency-dependent complex Kurokawa references across six raw solvers, circuits, projects, calibration, retained current/field mappings and fixed-reference ABS; native R/X/L/C Graph oracle; general launch-box identification, coupled/mixed groups, physical return-path DC oracle, native IDEAL SMD and native four-port full complex matrix error 0.000851 | arbitrary nonuniform local-ground standards and calibrated native accuracy; TRL needs known line impedance to identify physical output references; installed Lite rejects non-50 Ω EM references, calibration groups and ports-only components |
 | M9 currents/radiation | `PlanarCurrents`, `PlanarRadiation` | physical current maps; exact continuous-angle sheet/via/volume/triangle spectra, receive-layer reciprocity, PEC image/short-dipole power oracles, calibrated/FFT mappings, polarization/gain/CSV/interactive outputs; installed RHP antenna raw S passes at refined modes with fresh native currents | native pattern comparison and finite-box/cover antenna convergence; installed far field viewer is disabled with fresh antenna current data, and its guide requires an optional license; substrate-edge/surface-wave scope remains infinite lateral layers |
@@ -41,7 +41,7 @@ establish general continuum, measured-device or native workflow completeness.
 | C2 extraction/models | `PlanarExtract`, `PlanarVectorFit` | coupled RLGC oracle, real SPICE restamping, positive-real certification and repair tests; actual ngspice47 complete two-port matrices at 37 frequencies for real-pole/affine-capacitance and conjugate-pole models, grounded and floating references; 444 external and 753 durable reference checks pass, maximum relative matrix error 1.025e-15 | complete measured RFIC model ladder; broader model and engine acceptance |
 | C3 subdivision | `PlanarSubdivision` | independently calibrated whole-line versus 8+16-cell circuit recombination | arbitrary filter acceptance and quantified inter-part EM coupling error |
 | C4 layout I/O | `PlanarLayoutIO`, `PlanarArtworkIO`, `PlanarArtworkAffine`, `PlanarGerberIO`, `PlanarODBIO`, `PlanarODBSymbolsExtra`, `PlanarODBFonts`, `PlanarODBLayers`, `PlanarODBCompression` | installed GDSII/DXF imports and independent hand geometry; GDS hierarchy/array transforms; GDS M4 native complex S error 0.000452; 19185 Gerber checks including legacy rectangle/ellipse strokes, all MI/SF/OF/IR orders, device-only AS and unchanged aperture/repeat semantics; official corpus and four previews; 62001 ODB++ checks on Windows including nested contours, clockwise regions, squared/rounded/line thermals, home-plate symbols, ordered numeric fillet parameters, legacy U unit records, bounded conductive font text, full-buildup FLIP, canonical matrix references, bounded JSON metadata, transport and an independent libarchive `.Z` exact SHA oracle; rounded square/rectangular annuli with selectable corners, independent signed-distance/area and swept-line raster checks; 9826 shared composite geometry/allocation checks; 27-point independent Gerber/ODB++ native clear-window coupon passes with maximum complex S error 0.000119 | matched-grid DXF complex S gate remains FAIL; full CT spiral process; remaining ODB++ thermal/stencil families, barcodes and dimensional resizing; font renderer/coordinate-format compatibility and broader vendor manufacturing corpus/native EM acceptance |
-| C5 native project I/O | `PlanarSonnetIO`, `PlanarSonnetTechnology` | 126/128 installed projects decoded as ordinary geometry/circuit projects; bounded linked-STF source/dependency snapshots retain the other two; all three installed public STFs validate against the captured official XSD; proven scalar/default and exact-node providers; 24 ordinary projects lower at 32×32 actual cells and 50 with aspect-preserving refinement to 256; BOX half-cell decoding verified in live GUI; constant VOL/ARR resistance-per-via loss preserved; scoped VOL conductivity/resistivity/sheet-resistance lowering | applied STF interpolation/etch/rho/RPV/technology geometry and encrypted materials; native linked-STF EM rejected by Lite; further TMM semantics, general VOL thick-wall/contact and ARR sheet-resistance/grounded loss, bricks, CUP and unsupported port/project semantics; intake and lowering counts do not certify actual solving |
+| C5 native project I/O | `PlanarSonnetIO`, `PlanarSonnetTechnology` | 126/128 installed projects decoded as ordinary geometry/circuit projects; bounded linked-STF source/dependency snapshots retain the other two; all three installed public STFs validate against the captured official XSD; proven scalar/default and exact-node providers; 24 ordinary projects lower at 32×32 actual cells and 50 with aspect-preserving refinement to 256; BOX half-cell decoding verified in live GUI; constant VOL/ARR resistance-per-via loss preserved; scoped VOL conductivity/resistivity/sheet-resistance lowering | applied STF interpolation/etch/rho/RPV/technology geometry and encrypted materials; native linked-STF EM rejected by Lite; further TMM semantics, general VOL thick-wall/contact and ARR grounded loss, bricks, CUP and unsupported port/project semantics; intake and lowering counts do not certify actual solving |
 | P0/P0' RFIC workflow | `PlanarProject`, `PlanarProjectModel`, `PlanarProjectSolve`, `PlanarLibrary`, `PlanarLayout`, `PlanarConnectivity` | safe SI expressions and units, TOML round trips, technology/material callbacks, physical thick/volume stack adapters, wall/interior and axial ports, loaded circuits/current maps, sweeps, bulk-aware gradients, declared opens/shorts; scoped native IDC/MIM full-matrix coupons and independent low-frequency MIM overlap reference | arbitrary volume interior contacts, broader technology presets and complete spiral/coupled-line/measured RFIC acceptance |
 | P3/P6 outputs/accuracy | `PlanarOutputs`, `PlanarPlots`, `PlanarRadiation`, `validation/planar_audit` | complex response comparison, equation curves, scoped convergence/report/DC model output, Cartesian/Smith/layout/current/radiation views; stripline width refinement; independent analytic 107.96 dB notch | independent modal/grid convergence, microstrip/coupled-line/measured ladder, physical EM notch acceptance and FEM cross-validation |
 
@@ -603,6 +603,28 @@ evidence, outputs and the original failures are retained in
 `test/fixtures/native_dielectric_resistivity_gui`. Licensed STF EM parity
 remains unverified.
 
+A later probe campaign decoded the complete dielectric layer grammar and
+selector law, archived under `test/fixtures/native_dielectric_srvy`. The
+record is positional — `thickness Erel MuRel DLossTan MLossTan DieElecLoss
+f7 name flags...` — where the loss slot doubles as the short-form name
+position (a non-numeric token there closes a five-field record with zero
+conductive loss, and six bare numerics also close the record), the seventh
+field is a parsed-but-inert anisotropy slot that must remain a numeric
+expression, and only the first token after the name selects the loss
+units: `RSVY` reads ohm centimetres (`sigma=100/rho`), `SRVY` reads ohms
+per square through the layer thickness (`sigma=1/(Rs*t)`, the same law as
+metal SRVY), `CDVY` and every unrecognized token select plain
+conductivity, and later tokens are inert — all case-insensitive and
+verified bit-identical against matched conductivity controls over five
+decades. A literal `INF` is not a variable: under the reciprocal
+selectors it becomes `sigma=0`, while under plain conductivity it is the
+degenerate all-conductor layer and rejects, as does a zero or negative
+value under `RSVY`/`SRVY`. Trailing anisotropy numerics (up to the full
+five-field `ErelZ MuRelZ DLossTanZ MLossTanZ DieElecLossZ` tail) parse
+silently and are bit-identically inert in Lite, so the selector position
+never shifts. Legacy records shorter than six tokens still reject at the
+reader floor.
+
 ### Native normal-metal selectors and frequency expressions
 
 Twenty-four independently authored native coupons provide 48 raw-R50
@@ -612,7 +634,14 @@ Eight selector coupons establish that `NOR` uses `CDVY` (or no selector)
 for S/m, `RSVY` for ohm centimetres and `SRVY` for ohms per square; thickness
 uses `DIM LNG`. Physically equivalent selector controls produce bit-identical
 native full matrices. Three zero-loss controls similarly establish
-`RSVY0`/`SRVY0` equivalence with native PEC.
+`RSVY0`/`SRVY0` equivalence with native PEC. Selector tokens on `NOR`,
+`VOL` and `ARR` records are matched case-insensitively, and an
+unrecognized token in the selector slot resolves direct conductivity
+bit-identically to an explicit `CDVY` record rather than rejecting
+(`fixtures/native_metal_selector_case`). `ARR` `SRVY` is anomalous: Lite
+converts the record to a fixed 3.72e7 S/m conductivity independent of the
+entered loss, fill factor and via height, with `INF` still selecting a
+perfect conductor (`fixtures/native_arr_srvy`).
 
 Nine frequency-expression coupons establish `FREQ` as SI hertz even when
 `DIM FREQ` is GHz or MHz. The previous project-unit interpretation failed

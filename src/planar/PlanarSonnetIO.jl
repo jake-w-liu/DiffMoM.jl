@@ -263,7 +263,9 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     nl=parse(Int,box[1])+1
     nl>0 && bi+nl<=length(geo) || _sonnet_error(source,geo[bi].line,"invalid layer count")
     layers=[copy(geo[bi+i].tokens) for i in 1:nl]
-    all(x->length(x)>=7,layers) || _sonnet_error(source,geo[bi].line,"incomplete dielectric layer record")
+    # Six tokens also close the record natively: either six numeric fields
+    # (no name) or five numerics plus the layer name.
+    all(x->length(x)>=6,layers) || _sonnet_error(source,geo[bi].line,"incomplete dielectric layer record")
     top_records=filter(r->r.tokens[1]=="TMET",geo)
     bot_records=filter(r->r.tokens[1]=="BMET",geo)
     length(top_records)==length(bot_records)==1 || _sonnet_error(source,0,"TMET/BMET must occur once")
@@ -788,6 +790,9 @@ function _sonnet_termination(p,metal,freq,vars)
     model=="FREESPACE" && return TERM_SPACE
     zs=sonnet_metal_zs(p,metal,freq;variables=vars,cover=true)
     iszero(zs) && return TERM_GND
+    # An infinite cover impedance is an open face: the lid does not
+    # conduct, so the box terminates to free space there.
+    isfinite(zs) || return TERM_SPACE
     return PlanarTerminator{ComplexF64}(TERM_SURFACE,zs,1+0im,1+0im)
 end
 
@@ -823,12 +828,26 @@ function _sonnet_loss_transition(rdc,rs,what="SUP")
         end
 end
 
-"""Native RES/SUP/SEN sheet impedance and NOR finite-thickness loss interpolation.
-NOR's current ratio is I_top/I_bottom. Its zero-frequency limit is 1/(sigma*t),
-and its RF limit is Zskin*(1+r^2)/(1+r)^2. Covers carry one-sided current.
+function _sonnet_nat_entry(metal,index)
+    # Lite reads NAT loss entries as literal numerics only: an absent field or
+    # an unparseable token (variables included) warns and behaves as zero.
+    index>length(metal) && return 0.
+    entry=metal[index]
+    uppercase(entry)=="INF" && return Inf
+    value=tryparse(Float64,entry)
+    return value===nothing || isnan(value) ? 0. : value
+end
+
+"""Native RES/SUP/SEN/NAT sheet impedance and NOR finite-thickness loss
+interpolation. NOR's current ratio is I_top/I_bottom. Its zero-frequency
+limit is 1/(sigma*t), and its RF limit is Zskin*(1+r^2)/(1+r)^2. Covers
+carry one-sided current.
 NOR supports absent/CDVY conductivity in S/m, RSVY resistivity in ohm
 centimetres, and SRVY DC sheet resistance in ohms/square. These selectors
 do not use primitive DIM RES units. Thickness uses project length units.
+NAT is the Rdc/Rrf model: two literal numeric entries (variables do not
+evaluate) giving the DC sheet resistance and the skin coefficient, joined
+by the conductor-slab transition; trailing tokens are inert.
 Other metal models reject rather than losing roughness/thickness/plating."""
 function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString},
         freq::Real;variables=Dict{String,Float64}(),cover::Bool=false)
@@ -862,10 +881,24 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
         zs=complex(real(zr),reactance)
         isfinite(zs) || throw(ArgumentError("SUP sheet impedance is not representable"))
         return zs
+    elseif model=="NAT"
+        # Lite's Rdc/Rrf model reads two literal numerics; an unparseable or
+        # absent entry warns and behaves as zero, and trailing tokens are
+        # inert. The signed-coth is rrf-sign symmetric and native probes track
+        # the magnitude of a negative rdc within the parity gate, so the
+        # entries are normalized to magnitudes like Lite's own response.
+        rdc=abs(_sonnet_nat_entry(metal,4));rrf=abs(_sonnet_nat_entry(metal,5))
+        (isfinite(rdc) && isfinite(rrf)) || return complex(Inf)
+        iszero(rrf) && return complex(rdc)
+        return _sonnet_loss_transition(rdc,rrf*sqrt(freq),"NAT")
     elseif model=="NOR"
         length(metal) in (6,7) || throw(ArgumentError("NOR loss/current-ratio/thickness with optional selector required"))
-        selector=length(metal)==7 ? metal[7] : "CDVY"
-        selector in ("CDVY","RSVY","SRVY") || throw(ArgumentError("unsupported NOR loss selector $selector"))
+        # Lite matches selectors case-insensitively and treats an
+        # unrecognized selector token as direct conductivity, consistent
+        # with the verified VOL/ARR/dielectric behavior; a native record
+        # with an unknown selector token is accepted, not a parse error.
+        selector=length(metal)==7 && uppercase(metal[7]) in ("CDVY","RSVY","SRVY") ?
+            uppercase(metal[7]) : "CDVY"
         loss=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf : val(metal[4])
         ratio,thickness=val.(metal[5:6]); thickness*=p.length_scale
         selector=="CDVY" && loss==Inf && ratio>=0 && thickness>=0 && return 0.0im
@@ -1206,23 +1239,30 @@ end
 # RPV selects the resistance-per-via path, a loss selector names the loss
 # field's units, and anything else is translator spacing/density data that
 # the engine warns on, defaults, and ignores (verified on 18.53-Lite).
+# SRVY is anomalous here: Lite converts the record to a fixed 3.72e7 S/m
+# conductivity regardless of the entered loss, fill, or via geometry.
 # Endpoint pads are generated films of the same converted conductivity at
 # the via height: a zero-conductivity record is completely inert, an
 # infinite-conductivity one leaves perfect-conductor pads.
 function _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
     metal=p.metals[poly.material+1]
     length(metal)>=5 || throw(ArgumentError("ARR requires loss and fill-factor fields"))
-    selector=length(metal)>=6 && metal[6] in ("CDVY","RSVY","SRVY") ? metal[6] : "CDVY"
-    # Lite converts an ARR sheet-resistance record to a fixed conductivity
-    # independent of the entered loss; that conversion is not yet modeled.
-    selector=="SRVY" && throw(ArgumentError(
-        "native ARR sheet-resistance conversion requires its dedicated adapter"))
+    selector=length(metal)>=6 && uppercase(metal[6]) in ("CDVY","RSVY","SRVY") ?
+        uppercase(metal[6]) : "CDVY"
     val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
     loss=uppercase(metal[4])=="INF" ? Inf : val(metal[4])
     percent=val(metal[5])
-    (isfinite(percent) && 0<percent<=100 && loss>=0) ||
-        throw(ArgumentError("ARR requires nonnegative loss and a fill factor in (0,100] percent"))
-    sigma=selector=="RSVY" ? _sonnet_volume_product((100.,),(loss,)) : loss
+    (isfinite(percent) && 0<percent<=100) ||
+        throw(ArgumentError("ARR requires a fill factor in (0,100] percent"))
+    # Lite converts an ARR sheet-resistance record to a fixed conductivity
+    # independent of the entered loss: every finite value, zero and
+    # negatives included, maps to 3.72e7 S/m, while INF still selects a
+    # perfect conductor (verified on 18.53-Lite; fixtures/native_arr_srvy).
+    # Under the other selectors the loss value itself must be nonnegative.
+    selector=="SRVY" || loss>=0 ||
+        throw(ArgumentError("ARR requires nonnegative loss"))
+    sigma=selector=="SRVY" ? (isinf(loss) ? Inf : 3.72e7) :
+        selector=="RSVY" ? _sonnet_volume_product((100.,),(loss,)) : loss
     isinf(sigma) && return Inf
     # Zero conductivity is a perfect insulator: Lite runs the polygon as a
     # fully inert record — bit-equivalent to the via being absent, with no
@@ -1248,26 +1288,31 @@ function _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
         return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
             resistivity=true,rectangle,what="ARR")
     end
+    # The wide-precision fallbacks take the raw loss field and a resistivity
+    # flag; under SRVY the converted fixed conductivity is what they must
+    # see, since the entered value carries no meaning once selected.
+    wide_loss=selector=="SRVY" ? sigma : loss
+    wide_resist=selector=="RSVY"
     fill=percent/100
     depth=_sonnet_volume_wall_depth(area,fill,width,breadth,rectangle)
     rdc=1.0
     rs=_sonnet_volume_product((depth,sqrt(pi*_MU0),sqrt(freq),sqrt(sigma)),())
     all(isfinite,(rdc,rs,depth)) && depth>0 ||
-        return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
-            resistivity=selector=="RSVY",rectangle,what="ARR")
+        return _sonnet_volume_sigma_wide(wide_loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity=wide_resist,rectangle,what="ARR")
     impedance=_sonnet_loss_transition(rdc,rs,"ARR")
     isfinite(impedance) && !iszero(real(impedance)) && !iszero(imag(impedance)) &&
         !_planar_metal_subnormal(impedance) ||
-        return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
-            resistivity=selector=="RSVY",rectangle,what="ARR")
+        return _sonnet_volume_sigma_wide(wide_loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity=wide_resist,rectangle,what="ARR")
     rm,re=frexp(real(impedance));xm,xe=frexp(imag(impedance));e=max(re,xe)
     denominator=ldexp(rm,re-e)^2+ldexp(xm,xe-e)^2
     real_sigma=_sonnet_volume_product((sigma,fill,area,rm),(mesh_area,denominator);exponent=re-2e)
     imag_sigma=-_sonnet_volume_product((sigma,fill,area,xm),(mesh_area,denominator);exponent=xe-2e)
     stored=complex(real_sigma,imag_sigma)
     isfinite(stored) && real(stored)>0 && !iszero(imag(stored)) ||
-        return _sonnet_volume_sigma_wide(loss,freq,area,percent,width,breadth,mesh_area;
-            resistivity=selector=="RSVY",rectangle,what="ARR")
+        return _sonnet_volume_sigma_wide(wide_loss,freq,area,percent,width,breadth,mesh_area;
+            resistivity=wide_resist,rectangle,what="ARR")
     return stored
 end
 
@@ -1275,8 +1320,11 @@ function _sonnet_volume_sigma(p,poly,grid,stack,mask,freq,vars)
     metal=p.metals[poly.material+1]
     solid=length(metal)>=5 && metal[5]=="SOLID"
     length(metal) in (solid ? (6,7) : (5,6)) || throw(ArgumentError("unsupported native VOL conductivity fields"))
-    selector=length(metal)==(solid ? 7 : 6) ? metal[end] : "CDVY"
-    selector in ("CDVY","RSVY","SRVY") || throw(ArgumentError("unsupported VOL loss selector $selector"))
+    # Lite matches loss selectors case-insensitively and treats any
+    # unrecognized token in the selector slot as direct conductivity
+    # (verified on 18.53: VOL ... X is bit-identical to VOL ... CDVY).
+    selector=length(metal)==(solid ? 7 : 6) && uppercase(metal[end]) in ("CDVY","RSVY","SRVY") ?
+        uppercase(metal[end]) : "CDVY"
     val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
     loss=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf : val(metal[4])
     # A SOLID record retains an inactive wall-thickness field. Validate
@@ -1480,12 +1528,14 @@ function _sonnet_via_endpoint_zs(p,poly,stack,freq,variables)
         # Native array pads carry the metal's converted conductivity as a
         # film of the via height (Lite 18.53: RSVY ρ≡CDVY σ=100/ρ, and the
         # σ→0 limit is the open column — see fixtures/native_arr_open_via).
-        selector=length(metal)>=6 && metal[6] in ("CDVY","RSVY","SRVY") ? metal[6] : "CDVY"
-        selector=="SRVY" && throw(ArgumentError(
-            "native ARR sheet-resistance conversion requires its dedicated adapter"))
+        # The SRVY selector converts to a fixed 3.72e7 S/m independent of
+        # the entered loss, exactly as the axial element does.
+        selector=length(metal)>=6 && uppercase(metal[6]) in ("CDVY","RSVY","SRVY") ?
+            uppercase(metal[6]) : "CDVY"
         value=uppercase(metal[4])=="INF" ? Inf :
             sonnet_variable_value(p,metal[4];variables,freq)
-        sigma=selector=="RSVY" ? _sonnet_volume_product((100.,),(value,)) : value
+        sigma=selector=="SRVY" ? (isinf(value) ? Inf : 3.72e7) :
+            selector=="RSVY" ? _sonnet_volume_product((100.,),(value,)) : value
         isinf(sigma) && return 0.0im
         iszero(sigma) && return Inf
         sigma>0 && isfinite(sigma) ||
@@ -1499,7 +1549,9 @@ function _sonnet_via_endpoint_zs(p,poly,stack,freq,variables)
     solid=length(metal)>=5 && metal[5]=="SOLID"
     rpv=_sonnet_via_rpv(metal)
     (!solid && !rpv && !("COVERS" in poly.flags)) && return 0.0im
-    selector=rpv ? "RPV" : length(metal)==(solid ? 7 : 6) ? metal[end] : "CDVY"
+    selector=rpv ? "RPV" :
+        length(metal)==(solid ? 7 : 6) && uppercase(metal[end]) in ("CDVY","RSVY","SRVY") ?
+            uppercase(metal[end]) : "CDVY"
     value=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf :
         sonnet_variable_value(p,metal[4];variables,freq)
     (selector=="CDVY" && value==Inf) || (selector!="CDVY" && iszero(value)) ? (return 0.0im) : nothing
@@ -1530,18 +1582,21 @@ function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
         return _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
     end
     rpv || throw(ArgumentError("native $model via conductivity/skin loss requires its dedicated frequency-dependent adapter"))
-    # Array pads are perfect conductors regardless of coverage; other lossy
-    # covers need their horizontal pad-loss adapter.
-    "COVERS" in poly.flags && !(model in ("VOL","ARR")) &&
-        throw(ArgumentError("lossy native via covers require the horizontal pad-loss adapter"))
+    # Lite parse-rejects via RPV records on non-VOL/ARR metals entirely;
+    # allowing a NOCOVERS one to reach the resistance path would silently
+    # solve a record the native parser refuses.
+    model in ("VOL","ARR") ||
+        throw(ArgumentError("native $model RPV via is rejected by the native parser"))
     resistance=val(metal[4])
     resistance>=0 || throw(ArgumentError("negative native resistance per via"))
     if model=="VOL"
         solid=length(metal)>=5 && metal[5]=="SOLID"
         length(metal)==(solid ? 7 : 6) && metal[end]=="RPV" || throw(ArgumentError("unsupported VOL RPV fields"))
+        # The VOL RPV wall field is fully inert: Lite accepts every value
+        # including negatives with bit-identical output and no warning
+        # (verified 18.53; fixtures/native_vol_rpv_wall).
         wall=val(metal[solid ? 6 : 5])
-        isfinite(wall) && wall>=0 || throw(ArgumentError("VOL RPV inactive wall thickness must be finite and nonnegative"))
-        solid || iszero(wall) || throw(ArgumentError("VOL RPV hollow wall-thickness semantics require the dedicated adapter"))
+        isfinite(wall) || throw(ArgumentError("VOL RPV inactive wall thickness must be finite"))
     elseif model=="ARR"
         length(metal)==7 && metal[6]=="RPV" || throw(ArgumentError("unsupported ARR RPV fields"))
         density=val(metal[7]);density>0 || throw(ArgumentError("ARR RPV density must be positive vias per square micron"))
@@ -1633,6 +1688,9 @@ function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
         all(t->t in ("CDVY","TDWN"),extras) ||
             throw(ArgumentError("TMM resistivity/sheet-resistance or unknown flags require their material adapter"))
         nsheets=val(row[7])
+        # Lite rejects a single-face TMM at circuit-configuration level and
+        # accepts 3+ faces syntactically, but thick metal is license-blocked
+        # so the multi-face expansion law cannot be decoded here.
         nsheets==2 || throw(ArgumentError("native TMM currently requires exactly two physical faces"))
         sigma=uppercase(row[4])=="INF" ? Inf : val(row[4])
         thickness=val(row[6])*p.length_scale
@@ -1717,20 +1775,40 @@ end
 
 function _sonnet_dielectric_sigma(p::SonnetProject,row,freq,variables)
     # Native GUI exports place the optional loss selection after the layer
-    # name. Actual engine controls establish dielectric RSVY as ohm-cm;
-    # these units are independent of project DIM LNG/RES and metal flags.
-    suffix=length(row)>8 ? row[9:end] : String[]
-    isempty(suffix) || suffix==["RSVY"] ||
-        throw(ArgumentError("unsupported native dielectric loss/anisotropy flags "*join(suffix,", ")))
-    value=sonnet_variable_value(p,row[6];variables,freq)
+    # name. Actual engine controls establish the first token there as the
+    # loss selector: RSVY reads the field as resistivity in ohm-cm and SRVY
+    # as sheet resistance in ohms per square converted through the layer
+    # thickness (sigma = 1/(Rs*t)); every other token, including CDVY,
+    # selects plain conductivity. Later tokens and the trailing anisotropy
+    # fields are parsed but inert in Lite, so only row[9] is interpreted.
+    # These units are independent of project DIM LNG/RES and metal flags.
+    selector=length(row)>8 ? uppercase(row[9]) : ""
+    # Field 7 is a parsed-but-inert anisotropy slot, but it must still be a
+    # numeric expression: a name or unknown token there is a native parse
+    # error once the loss field was consumed.
+    length(row)>=7 && (sonnet_variable_value(p,row[7];variables,freq); nothing)
+    # The loss slot doubles as the short-form name position: a token that is
+    # not a numeric expression there closes a bare five-field record with
+    # zero conductive loss, and anything after it is a native parse error.
+    # INF is a literal token, not a variable: plain conductivity maps it to
+    # a degenerate perfect-conductor layer, while the reciprocal selectors
+    # map it to sigma=0 and the layer stays lossless.
+    value=uppercase(row[6])=="INF" ? Inf : try
+        sonnet_variable_value(p,row[6];variables,freq)
+    catch e
+        e isa ArgumentError && occursin("unknown Sonnet variable",e.msg) || rethrow()
+        length(row)==6 || throw(ArgumentError("invalid native dielectric layer record"))
+        return 0.
+    end
+    if selector=="RSVY" || selector=="SRVY"
+        value>0 || throw(ArgumentError("native dielectric $selector loss must be positive"))
+        sigma=selector=="RSVY" ? _sonnet_volume_product((100.,),(value,)) :
+            _sonnet_volume_product((1.,),(value,sonnet_variable_value(p,row[1];variables,freq),p.length_scale))
+        isfinite(sigma) && sigma>=0 || throw(ArgumentError("native dielectric conductivity is unrepresentable"))
+        return sigma
+    end
     isfinite(value) && value>=0 || throw(ArgumentError("native dielectric loss must be finite and nonnegative"))
-    isempty(suffix) && return value
-    value>0 || throw(ArgumentError("native dielectric RSVY must be positive ohm-cm"))
-    rho=value*1e-2
-    isfinite(rho) && rho>0 || throw(ArgumentError("native dielectric resistivity is unrepresentable"))
-    sigma=inv(rho)
-    isfinite(sigma) && sigma>0 || throw(ArgumentError("native dielectric conductivity is unrepresentable"))
-    return sigma
+    return value
 end
 
 # Form sigma/(omega*epsilon0) without overflowing omega or rounding a tiny
@@ -1799,9 +1877,12 @@ include("PlanarSonnetRasterResources.jl")
 Native BOX counts are half-cell counts: `BOX ... 96 64 ...` specifies an
 actual 48 by 32 cell grid. Explicit `grid` counts are actual cells.
 Wall/gap/axial ports, PEC/impedance/free-space covers, stratified dielectric
-loss, and PEC vias are supported. Native dielectric `RSVY` selects positive
-resistivity in ohm centimetres; an unmarked loss field is conductivity in
-siemens per metre. Unknown layer loss/anisotropy flags reject. The internal material details used by
+loss, and PEC vias are supported. The first token after a layer name is the
+dielectric loss selector: `RSVY` selects positive resistivity in ohm
+centimetres, `SRVY` selects positive sheet resistance in ohms per square
+converted through the layer thickness, and any other token (or none)
+selects conductivity in siemens per metre; later tokens and the trailing
+anisotropy fields are parsed but inert. The internal material details used by
 `solve_sonnet_project` additionally preserve supported sheet models, physical
 two-face TMM geometry, and constant VOL/ARR resistance-per-via loss.
 Independent anchored/symmetric unscaled X/Y geometry dimensions are supported.
@@ -1878,6 +1959,12 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             rasterize_poly!(tmp,gr,poly.vertices[1,:],poly.vertices[2,:])
             any(tmp.mask) || throw(ArgumentError("polygon $(poly.id) vanished at raster resolution"))
             zs=poly.material==-1 ? 0.0im : sonnet_metal_zs(p,p.metals[poly.material+1],freq;variables=variables)
+            if !isfinite(zs)
+                # An infinite film impedance carries no current, so the sheet
+                # contributes no metal (verified native INF loss entries).
+                masks[poly.id]=falses(nx,ny)
+                continue
+            end
             surface=store_surfaces ? surface_by_level[poly.level] : nothing
             for cell in eachindex(tmp.mask)
                 tmp.mask[cell] || continue
@@ -2185,6 +2272,12 @@ terminal voltage to raw source voltage, including supplied calibration.
 R/X/L/C fields use Ω/Ω/nH/pF with parallel C; S uses Kurokawa power waves.
 Sonnet Lite only permits 50 Ω electromagnetic references; its Graph
 postprocessor separately supports these complex references.
+
+`sonnet_planar_problem` lowers a project to its problem and material
+fields; callers needing custom sheet or axial loss merge into
+`model.sheet_zs`/`model.via_sigma` and call `solve_planar` on
+`model.problem` directly — `surface_zs`/`via_sigma` keywords here would
+silently shadow declared project physics and therefore reject.
 
 For [`SonnetNetlistProject`](@ref), the R/L/C and data blocks lower through
 [`sonnet_planar_circuit`](@ref) and return [`PlanarCircuitResult`](@ref).

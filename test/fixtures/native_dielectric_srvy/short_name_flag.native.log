@@ -1,0 +1,16 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+
+      Sonnet Error:
+      Project File Error.
+      Line 31: Number of Z-partitions must be a valid integer.
+      Line 31: Failed to read Geometry
+
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 11:41:57 2026.

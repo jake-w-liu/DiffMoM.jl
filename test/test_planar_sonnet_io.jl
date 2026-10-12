@@ -70,9 +70,14 @@ include("test_planar_sonnet_complex_native_arguments.jl")
         changed=deepcopy(p);changed.units["RES"]=unit
         @test DiffMoM._sonnet_dielectric_sigma(changed,changed.layers[2],1e9,Dict())≈100/7
     end
-    for suffix in (["UNKNOWN"],["RSVY","RSVY"],["ANISO"])
-        bad=deepcopy(p);resize!(bad.layers[2],8);append!(bad.layers[2],suffix)
-        @test_throws ArgumentError sonnet_planar_problem(bad;freq=1e9)
+    # Lite 18.53: only the first token after the layer name is the loss
+    # selector — RSVY reads ohm-cm and SRVY reads ohms-per-square through
+    # the 0.1 mm layer; every other token, including CDVY, selects plain
+    # conductivity and later tokens are inert.
+    for (suffix,sigma) in ((["UNKNOWN"],7.),(["ANISO"],7.),(["CDVY","RSVY"],7.),
+            (["RSVY","UNKNOWN"],100/7),(["SRVY"],1/(7*.1*.001)))
+        changed=deepcopy(p);resize!(changed.layers[2],8);append!(changed.layers[2],suffix)
+        @test DiffMoM._sonnet_dielectric_sigma(changed,changed.layers[2],1e9,Dict())≈sigma
     end
     for value in ("0","-1","1e-320")
         bad=deepcopy(p);bad.variables["Rho"]=value
@@ -752,4 +757,28 @@ end
         project=read_sonnet_project(joinpath(fixture,name*".son"))
         @test_throws ArgumentError solve_sonnet_project(project,1e9;raw=true,mx=24,my=16)
     end
+end
+
+@testset "native material override coexistence policy" begin
+    # solve_sonnet_project is the project-faithful path: its sheet and via
+    # loss fields come from the project's own metal records, so caller
+    # surface_zs/via_sigma keywords must reject rather than silently
+    # shadow declared physics (two impedance sources cannot coexist on
+    # the same cells). The sanctioned override route is the lower-level
+    # API: sonnet_planar_problem lowers the project, then solve_planar
+    # accepts the caller's field — native-derived or custom.
+    fixture=joinpath(@__DIR__,"fixtures","native_arr_srvy")
+    p=read_sonnet_project(joinpath(fixture,"as_1.son"));f=1e10
+    @test_throws ArgumentError solve_sonnet_project(p,f;surface_zs=0.,raw=true,mx=16,my=16)
+    @test_throws ArgumentError solve_sonnet_project(p,f;via_sigma=1.,raw=true,mx=16,my=16)
+    model=sonnet_planar_problem(p;freq=f,grid=(20,20),_materials=true,_details=true)
+    native=solve_planar(model.problem,f;surface_zs=model.sheet_zs,
+        via_sigma=model.via_sigma,method=:dense_fft,mx=160,my=160)
+    full=solve_sonnet_project(p,f;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+    @test native.y==full.raw.y
+    # A caller-supplied field reaches the same solver: unit conductivity
+    # nearly opens the bridge the project's own record drives.
+    custom=solve_planar(model.problem,f;surface_zs=model.sheet_zs,
+        via_sigma=1.,method=:dense_fft,mx=160,my=160)
+    @test abs(custom.s[1,2])<abs(native.s[1,2])/10
 end

@@ -1,0 +1,156 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Unused Via Density = CDVY) in equation CDVY
+
+Run 1:  Mon Oct 12 11:27:23 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\diel_probe\d_s6_1.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+      Subsectioning time:  0 seconds.
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Unused Via Density = CDVY) in equation CDVY
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Unused Via Density = CDVY) in equation CDVY
+
+      Circuit requires 30 subsections and 1 MB of memory.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      left box wall standard at 0.001 GHz.
+      De-embedded s-parameters may not be valid.
+
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      right box wall standard at 0.001 GHz.
+      De-embedded s-parameters may not be valid.
+
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 0.985177 180.00 0.003907 0.0030 0.003907 0.0030 0.985177 180.00
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+      Total time per frequency:  0.011 seconds.
+
+    Frequency:  0.01 GHZ
+      Waveguide mode time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      left box wall standard at 0.01 GHz.
+      De-embedded s-parameters may not be valid.
+
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      right box wall standard at 0.01 GHz.
+      De-embedded s-parameters may not be valid.
+
+      0.01000000 0.985178 179.98 0.003907 0.0316 0.003907 0.0316 0.985178 179.98
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  0.1 GHZ
+      Waveguide mode time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      left box wall standard at 0.1 GHz.
+      De-embedded s-parameters may not be valid.
+
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      right box wall standard at 0.1 GHz.
+      De-embedded s-parameters may not be valid.
+
+      0.10000000 0.985282 179.81 0.003888 0.3358 0.003888 0.3358 0.985282 179.81
+      ! P1 F=0.1 Standard port
+      ! P2 F=0.1 Standard port
+      Total time per frequency:  0.004 seconds.
+
+    Frequency:  1 GHZ
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.002 seconds.
+      Matrix solve time:  0 seconds.
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      left box wall standard at 1 GHz.
+      De-embedded s-parameters may not be valid.
+
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      right box wall standard at 1 GHz.
+      De-embedded s-parameters may not be valid.
+
+      1.00000000 0.997335 178.31 0.002708 19.558 0.002708 19.558 0.997335 178.31
+      ! P1 F=1.0 Standard port
+      ! P2 F=1.0 Standard port
+      Total time per frequency:  0.006 seconds.
+
+    Frequency:  10 GHZ
+      Waveguide mode time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      left box wall standard at 10 GHz.
+      De-embedded s-parameters may not be valid.
+
+
+      Sonnet Warning:
+      Potential de-embedding problem.
+      Unable to determine Z0 and Eeff for
+      right box wall standard at 10 GHz.
+      De-embedded s-parameters may not be valid.
+
+      10.0000000 1.828592 99.132 0.079190 -92.42 0.079190 -92.42 1.828592 99.132
+      ! P1 F=10.0 Standard port
+      ! P2 F=10.0 Standard port
+      Total time per frequency:  0.004 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 5 frequencies:  0.031 seconds.
+      Em errors detected: 0    Em warnings detected: 13.
+
+Em simulation completed Mon Oct 12 11:27:23 2026.

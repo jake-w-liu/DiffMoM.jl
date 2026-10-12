@@ -1,0 +1,86 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Unused Via Density = CDVY) in equation CDVY
+
+Run 1:  Mon Oct 12 11:28:08 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\diel_probe\d_sg1.0.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+      Subsectioning time:  0 seconds.
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Unused Via Density = CDVY) in equation CDVY
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Unused Via Density = CDVY) in equation CDVY
+
+      Circuit requires 30 subsections and 1 MB of memory.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 0.971637 0.0000 0.007428 -0.012 0.007428 -0.012 0.971637 0.0000
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+      Total time per frequency:  0.011 seconds.
+
+    Frequency:  0.01 GHZ
+      Waveguide mode time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+      0.01000000 0.971637 0.0000 0.007428 -0.121 0.007428 -0.121 0.971637 0.0000
+      ! P1 F=0.01 Eeff=(2.03128 - j249.073) Z0=(5.46046 + j5.41611)
+      ! P2 F=0.01 Eeff=(2.03128 - j249.073) Z0=(5.46046 + j5.41611)
+      Total time per frequency:  0.006 seconds.
+
+    Frequency:  0.1 GHZ
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+      0.10000000 0.971616 -0.089 0.007424 -1.209 0.007424 -1.209 0.971616 -0.089
+      ! P1 F=0.1 Eeff=(2.02929 - j24.9275) Z0=(17.8368 + j16.4439)
+      ! P2 F=0.1 Eeff=(2.02929 - j24.9275) Z0=(17.8368 + j16.4439)
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  1 GHZ
+      Waveguide mode time:  0.001 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+      1.00000000 0.969698 -0.854 0.007006 -11.20 0.007006 -11.20 0.969698 -0.854
+      ! P1 F=1.0 Eeff=(1.935 - j2.77862) Z0=(58.4413 + j30.5209)
+      ! P2 F=1.0 Eeff=(1.935 - j2.77862) Z0=(58.4413 + j30.5209)
+      Total time per frequency:  0.005 seconds.
+
+    Frequency:  10 GHZ
+      Waveguide mode time:  0 seconds.
+      Matrix fill time:  0.001 seconds.
+      Matrix solve time:  0 seconds.
+      10.0000000 0.950430 -5.334 0.003441 0.8877 0.003441 0.8877 0.950430 -5.334
+      ! P1 F=10.0 Eeff=(1.12566 - j0.558045) Z0=(105.381 + j24.7028)
+      ! P2 F=10.0 Eeff=(1.12566 - j0.558045) Z0=(105.381 + j24.7028)
+      Total time per frequency:  0.005 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 5 frequencies:  0.033 seconds.
+      Em errors detected: 0    Em warnings detected: 3.
+
+Em simulation completed Mon Oct 12 11:28:08 2026.

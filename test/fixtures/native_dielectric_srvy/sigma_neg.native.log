@@ -1,0 +1,29 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Unused Via Density = CDVY) in equation CDVY
+
+Run 1:  Mon Oct 12 11:32:16 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\diel_probe\d_sgn.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      Sonnet Error:
+      Illegal box parameter.
+      The bulk conductivity of layer 1 is less than 0.0.
+
+      Em errors detected: 1    Em warnings detected: 1.
+
+Analysis failed due to error Mon Oct 12 11:32:16 2026.

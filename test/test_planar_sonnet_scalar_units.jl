@@ -107,10 +107,20 @@ end
         @test sonnet_metal_zs(p,["Sheet","0","NOR",loss,".5",".001",selector],1e9)≈
             sonnet_metal_zs(p,["Sheet","0","NOR","500000",".5",".001"],1e9)
     end
+    # Lite accepts unrecognized selector tokens as direct conductivity and
+    # matches recognized ones case-insensitively.
+    for selector in ("UNKNOWN","cdvy")
+        @test sonnet_metal_zs(p,["Sheet","0","NOR","2",".5",".001",selector],1e9)≈
+            sonnet_metal_zs(p,["Sheet","0","NOR","2",".5",".001"],1e9)
+    end
+    @test sonnet_metal_zs(p,["Sheet","0","NOR","2",".5",".001","srvy"],1e9)≈
+        sonnet_metal_zs(p,["Sheet","0","NOR","2",".5",".001","SRVY"],1e9)
+    @test sonnet_metal_zs(p,["Sheet","0","NOR",".0002",".5",".001","rsvy"],1e9)≈
+        sonnet_metal_zs(p,["Sheet","0","NOR","500000",".5",".001"],1e9)
     for (loss,ratio,thickness,selector) in (("-1",".5",".001","SRVY"),
             ("2","-1",".001","SRVY"),("2",".5","0","SRVY"),
             ("1e-320",".5",".001","SRVY"),("1e308",".5","1e308","SRVY"),
-            ("0",".5",".001","CDVY"),("2",".5",".001","UNKNOWN"))
+            ("0",".5",".001","CDVY"))
         bad=deepcopy(p);bad.metals[2]=["Sheet","0","NOR",loss,ratio,thickness,selector]
         # Invalid providers reject before attempting an impossible geometry.
         error=try
@@ -159,4 +169,57 @@ end
     for expression in ("h2p()","p2h(1,2)","m2p()","p2m(1,2)","unknown(1)")
         @test_throws ArgumentError sonnet_variable_value(p,expression)
     end
+end
+
+@testset "native NAT Rdc/Rrf sheet loss" begin
+    # Lite 18.53 reads NAT (Rdc/Rrf) entries as two literal numerics: the DC
+    # sheet resistance and the skin-effect coefficient with the standard
+    # conductor-slab transition between them. Missing or unparseable fields
+    # warn and behave as zero, trailing tokens are inert, and the signed
+    # entries resolve to their magnitudes.
+    fixture=joinpath(@__DIR__,"fixtures","native_nat_loss")
+    names=("nat_ni","natw","nd_1e3","nd_500","nd_100","nzz","nz1","nneg1",
+        "nneg2","n1f","nx4","nd_var","natcov","natcinf")
+    results=Dict{String,Any}()
+    for name in names
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        reference=planar_read_touchstone(joinpath(fixture,name*".native.s2p"))
+        for (index,frequency) in enumerate(reference.frequencies)
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(40,40),mx=160,my=160,method=:dense_fft)
+            # Above ~15GHz this small box enters its resonant nulls where
+            # element-wise mesh differences amplify, so the gate widens.
+            @test maximum(abs,actual.s-reference.s[index])<=(frequency>15e9 ? .1 : .06)
+            @test maximum(svdvals(actual.s))<=1+1e-6
+            isapprox(frequency,1e10;rtol=1e-9) && (results[name]=actual)
+        end
+    end
+    # Trailing tokens and unparseable variable fields are inert: the records
+    # replay like the zero/zero lossless limit.
+    @test maximum(abs,results["nx4"].s-results["nat_ni"].s)<=1e-6
+    @test maximum(abs,results["nd_var"].s-results["nzz"].s)<=1e-6
+    # rrf<0 is sign-symmetric under the signed-coth law, and rdc<0 tracks
+    # the magnitude-normalized film within the parity gate.
+    @test maximum(abs,results["nneg2"].s-results["nat_ni"].s)<=1e-6
+    @test maximum(abs,results["nneg1"].s-results["nat_ni"].s)<=.01
+    # A zero-field record is a perfect conductor, distinct from the lossy
+    # Rdc/Rrf film.
+    @test maximum(abs,results["nzz"].s-results["nat_ni"].s)>=1e-4
+    # Unit-level entries: a missing Rrf leaves the constant-DC sheet,
+    # unparseable fields and absent entries are zero, INF is an open film,
+    # and signed entries resolve to their magnitudes.
+    p=read_sonnet_project(joinpath(fixture,"nat_ni.son"))
+    nat(s...)=sonnet_metal_zs(p,["N","0","NAT",s...],1e10)
+    @test nat("0.035")==complex(0.035)
+    @test nat("0.035","0")==complex(0.035)
+    @test nat("0.035","-1.287e-5")==nat("0.035","1.287e-5")
+    @test nat("-0.035","1.287e-5")==nat("0.035","1.287e-5")
+    @test nat("\$r1","\$r2")==nat("0","0")==complex(0.0)
+    @test nat("INF","1.287e-5")==complex(Inf)
+    @test nat("0.035","INF")==complex(Inf)
+    @test nat("NaN","1e-4")==nat("0","1e-4")
+    # An INF loss entry is an open film; Lite accepts it and reports a
+    # through response of ~0 while the port on that film has no current
+    # basis, so the project-faithful path rejects loudly.
+    pinf=read_sonnet_project(joinpath(fixture,"ninf1.son"))
+    @test_throws ArgumentError solve_sonnet_project(pinf,1e10;raw=true,grid=(40,40))
 end

@@ -213,4 +213,26 @@ end
         @test maximum(abs,actual.s-transpose(actual.s))<=1e-9
     end
 end
+
+@testset "native volume selector case and fallback" begin
+    # Lite 18.53 matches VOL loss selectors case-insensitively, and an
+    # unrecognized token in the selector slot resolves direct conductivity
+    # bit-identically to an explicit CDVY record rather than rejecting.
+    fixture=joinpath(@__DIR__,"fixtures","native_metal_selector_case")
+    names=("v_srvy","v_rsvy","v_cdvy","v_X")
+    results=Dict{String,Any}()
+    for name in names
+        p=read_sonnet_project(joinpath(fixture,name*".son"))
+        reference=planar_read_touchstone(joinpath(fixture,name*".native.s2p"))
+        for frequency in (1e9,1e10)
+            native=reference.s[only(findall(==(frequency),reference.frequencies))]
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+            @test maximum(abs,actual.s-native)<=.06
+            @test maximum(svdvals(actual.s))<=1+1e-6
+            frequency==1e10 && (results[name]=actual)
+        end
+    end
+    # v_srvy/v_rsvy exercise the converted units; v_X must equal v_cdvy.
+    @test maximum(abs,results["v_X"].s-results["v_cdvy"].s)<=1e-9
+end
 end
