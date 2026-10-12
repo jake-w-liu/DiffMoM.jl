@@ -75,7 +75,7 @@ end
 
 function _sonnet_geovar_position(rows,index,p)
     row=_sonnet_geovar_row(rows,index,p)
-    length(row.tokens)==3 && uppercase(row.tokens[1])=="POS" ||
+    length(row.tokens)==3 && _sonnet_ieq(row.tokens[1],"POS") ||
         _sonnet_error(p.source,row.line,"invalid GEOVAR display position")
     position=ntuple(i->tryparse(Float64,row.tokens[i+1]),2)
     all(v->v!==nothing && isfinite(v),position) ||
@@ -92,7 +92,7 @@ end
 
 function _sonnet_geovar_point(p,polygons,row,index)
     t=row.tokens
-    length(t)==3 && uppercase(t[1])=="POLY" || _sonnet_error(p.source,row.line,"GEOVAR requires a literal POLY point identity")
+    length(t)==3 && _sonnet_ieq(t[1],"POLY") || _sonnet_error(p.source,row.line,"GEOVAR requires a literal POLY point identity")
     id=tryparse(Int,t[2]);id!==nothing && haskey(polygons,id) ||
         _sonnet_error(p.source,row.line,"GEOVAR references an unknown polygon")
     point=tryparse(Int,index)
@@ -105,7 +105,7 @@ end
 
 function _sonnet_geovar_reference(rows,index,p,polygons,tag)
     row=_sonnet_geovar_row(rows,index,p);t=row.tokens
-    length(t)==4 && uppercase(t[1])==tag && uppercase(t[2])=="POLY" && t[4]=="1" ||
+    length(t)==4 && _sonnet_ieq(t[1],tag) && _sonnet_ieq(t[2],"POLY") && t[4]=="1" ||
         _sonnet_error(p.source,row.line,"GEOVAR $tag requires exactly one literal polygon point")
     pointrow=_sonnet_geovar_row(rows,index+1,p)
     length(pointrow.tokens)==1 || _sonnet_error(p.source,pointrow.line,"invalid GEOVAR reference point")
@@ -115,13 +115,13 @@ end
 
 function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used,max_expanded,expanded)
     row=_sonnet_geovar_row(rows,index,p);t=row.tokens
-    length(t)==2 && uppercase(t[1])==tag || _sonnet_error(p.source,row.line,"GEOVAR requires $tag")
+    length(t)==2 && _sonnet_ieq(t[1],tag) || _sonnet_error(p.source,row.line,"GEOVAR requires $tag")
     groups=_sonnet_geovar_groups(row,p)
     groups<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR point-set group count")
     points=Tuple{Int,Int}[];index+=1;wildcard=false
     for _ in 1:groups
         row=_sonnet_geovar_row(rows,index,p);t=row.tokens
-        length(t)==3 && uppercase(t[1])=="POLY" || _sonnet_error(p.source,row.line,"unsupported GEOVAR point-set identity")
+        length(t)==3 && _sonnet_ieq(t[1],"POLY") || _sonnet_error(p.source,row.line,"unsupported GEOVAR point-set identity")
         count=tryparse(Int,t[3])
         count!==nothing && 0<=count<=length(rows)-index || _sonnet_error(p.source,row.line,"invalid GEOVAR polygon point count")
         if iszero(count)
@@ -148,7 +148,7 @@ function _sonnet_geovar_set(rows,index,p,polygons,tag,max_points,used,max_expand
             push!(points,_sonnet_geovar_point(p,polygons,row,only(pointrow.tokens)));index+=1
         end
     end
-    (r->length(r.tokens)==1 && uppercase(r.tokens[1])=="END")(_sonnet_geovar_row(rows,index,p)) ||
+    (r->length(r.tokens)==1 && _sonnet_ieq(r.tokens[1],"END"))(_sonnet_geovar_row(rows,index,p)) ||
         _sonnet_error(p.source,rows[index].line,"unterminated GEOVAR point set")
     # Native entries are movements: a repeated identity moves repeatedly.
     return points,index+1,used,expanded,wildcard
@@ -185,20 +185,20 @@ end
 function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
     rows=_sonnet_section(p.records,"GEO",p.source)
     polygons=Dict(q.id=>q for q in p.polygons)
-    quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && uppercase(r.tokens[1])=="VALVAR")
+    quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && _sonnet_ieq(r.tokens[1],"VALVAR"))
     length(polygons)==length(p.polygons) || throw(ArgumentError("duplicate GEOVAR polygon identities"))
     parameters=_SonnetGeometryParameter[];index=1;used=0;expanded=0
     while index<=length(rows)
         row=rows[index];t=row.tokens
-        if uppercase(t[1])!="GEOVAR";index+=1;continue;end
+        if !_sonnet_ieq(t[1],"GEOVAR");index+=1;continue;end
         length(parameters)<max_parameters || _sonnet_error(p.source,row.line,"GEOVAR parameter budget exceeded")
         kind,axiskw,direction,scale=_sonnet_geovar_header(t,p.source,row.line)
         name=t[2];haskey(p.variables,name) || _sonnet_error(p.source,row.line,"GEOVAR lacks its declared quantity variable")
-        uppercase(get(quantities,name,""))=="LNG" ||
+        _sonnet_ieq(get(quantities,name,""),"LNG") ||
             _sonnet_error(p.source,row.line,"GEOVAR variable must have one LNG declaration")
         position=_sonnet_geovar_position(rows,index+1,p)
         nominalrow=_sonnet_geovar_row(rows,index+2,p)
-        length(nominalrow.tokens)==2 && uppercase(nominalrow.tokens[1])=="NOM" ||
+        length(nominalrow.tokens)==2 && _sonnet_ieq(nominalrow.tokens[1],"NOM") ||
             _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
         nominal=tryparse(Float64,nominalrow.tokens[2])
         nominal!==nothing && _sonnet_geovar_nominal_value_ok(nominal) ||
@@ -207,7 +207,7 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         # sit directly after NOM or after REF2 (both positions verified).
         equation=_sonnet_geovar_row(rows,index+3,p)
         ref1index=index+3
-        if uppercase(equation.tokens[1])=="EQN"
+        if _sonnet_ieq(equation.tokens[1],"EQN")
             length(equation.tokens)==2 && isequal(_sonnet_parse_scalar(equation.tokens[2]),
                 _sonnet_parse_scalar(p.variables[name])) ||
                 _sonnet_error(p.source,equation.line,"GEOVAR EQN disagrees with its quantity definition")
@@ -219,7 +219,7 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
         used<=max_points-2 || _sonnet_error(p.source,row.line,"GEOVAR reference budget exceeded")
         used+=2
         equation=_sonnet_geovar_row(rows,index,p)
-        if uppercase(equation.tokens[1])=="EQN"
+        if _sonnet_ieq(equation.tokens[1],"EQN")
             length(equation.tokens)==2 && isequal(_sonnet_parse_scalar(equation.tokens[2]),
                 _sonnet_parse_scalar(p.variables[name])) ||
                 _sonnet_error(p.source,equation.line,"GEOVAR EQN disagrees with its quantity definition")
@@ -264,7 +264,7 @@ function _sonnet_geovar_parameters(p,max_parameters,max_points,max_expanded)
             _sonnet_error(p.source,row.line,
             "explicit GEOVAR reference repetitions require their native movement adapter")
         terminator=_sonnet_geovar_row(rows,index,p)
-        (length(terminator.tokens)==1 && uppercase(terminator.tokens[1])=="END") ||
+        (length(terminator.tokens)==1 && _sonnet_ieq(terminator.tokens[1],"END")) ||
             _sonnet_error(p.source,terminator.line,"unterminated GEOVAR block")
         index+=1
         kind in ("ANC","RAD") && !isempty(a) && _sonnet_error(p.source,row.line,"anchored/radial GEOVAR has an unsupported moving anchor set")
@@ -295,13 +295,13 @@ end
 function _sonnet_geovar_nominal_geometry(p,frequency,variables)
     rows=_sonnet_section(p.records,"GEO",p.source)
     polygons=Dict(q.id=>q for q in p.polygons)
-    quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && uppercase(r.tokens[1])=="VALVAR")
+    quantities=Dict(r.tokens[2]=>r.tokens[3] for r in rows if length(r.tokens)>=4 && _sonnet_ieq(r.tokens[1],"VALVAR"))
     unchanged=true
     for (index,row) in enumerate(rows)
         t=row.tokens
-        keyword=uppercase(t[1])
-        keyword in ("PS1","PS2") && _sonnet_geovar_groups(row,p)
-        if keyword in ("REF1","REF2") && length(t)==4 && uppercase(t[2])=="POLY" && t[4]=="1"
+        (_sonnet_ieq(t[1],"PS1") || _sonnet_ieq(t[1],"PS2")) && _sonnet_geovar_groups(row,p)
+        if (_sonnet_ieq(t[1],"REF1") || _sonnet_ieq(t[1],"REF2")) && length(t)==4 &&
+                _sonnet_ieq(t[2],"POLY") && t[4]=="1"
             id=tryparse(Int,t[3])
             if id!==nothing && haskey(polygons,id)
                 pointrow=_sonnet_geovar_row(rows,index+1,p)
@@ -312,13 +312,13 @@ function _sonnet_geovar_nominal_geometry(p,frequency,variables)
                     _sonnet_error(p.source,pointrow.line,"GEOVAR saved out-of-range reference needs its native point adapter")
             end
         end
-        keyword=="GEOVAR" || continue
+        _sonnet_ieq(t[1],"GEOVAR") || continue
         _sonnet_geovar_header(t,p.source,row.line)
         _sonnet_geovar_position(rows,index+1,p)
-        length(t)>=2 && haskey(p.variables,t[2]) && uppercase(get(quantities,t[2],""))=="LNG" ||
+        length(t)>=2 && haskey(p.variables,t[2]) && _sonnet_ieq(get(quantities,t[2],""),"LNG") ||
             _sonnet_error(p.source,row.line,"GEOVAR lacks its declared LNG quantity variable")
         nominalrow=_sonnet_geovar_row(rows,index+2,p)
-        length(nominalrow.tokens)==2 && uppercase(nominalrow.tokens[1])=="NOM" ||
+        length(nominalrow.tokens)==2 && _sonnet_ieq(nominalrow.tokens[1],"NOM") ||
             _sonnet_error(p.source,nominalrow.line,"GEOVAR requires a literal nominal dimension")
         nominal=tryparse(Float64,nominalrow.tokens[2])
         nominal!==nothing && isfinite(nominal) && nominal>=0 ||
@@ -572,7 +572,7 @@ supplied project is never modified."""
 function _sonnet_geometry_project(p::SonnetProject,freq::Real,variables=Dict{String,Float64}();
         max_parameters::Integer=1024,max_points::Integer=100000,
         max_bytes::Integer=_default_max_dense_payload_bytes())
-    count=Base.count(r->uppercase(r.tokens[1])=="GEOVAR",p.records);iszero(count) && return p
+    count=Base.count(r->_sonnet_ieq(r.tokens[1],"GEOVAR"),p.records);iszero(count) && return p
     nparameters=_sonnet_geovar_limit(max_parameters,"max_parameters")
     npoints=_sonnet_geovar_limit(max_points,"max_points")
     limit=_sonnet_geovar_limit(max_bytes,"max_bytes")
@@ -940,7 +940,7 @@ function _sonnet_geovar_validate_components(p,polygons,original;variables,freq)
         sbox=nothing
         for record in component
             t=record.tokens
-            if uppercase(t[1])=="SMDP" && length(t)>=4
+            if _sonnet_ieq(t[1],"SMDP") && length(t)>=4
                 level=parse(Int,t[2])
                 x=sonnet_variable_value(p,t[3];variables,freq=freq)*p.length_scale
                 y=sonnet_variable_value(p,t[4];variables,freq=freq)*p.length_scale
@@ -963,7 +963,7 @@ function _sonnet_geovar_validate_components(p,polygons,original;variables,freq)
                 end
                 found==1 || throw(ArgumentError(
                     "moved GEOVAR detached a component pin from its polygon edge"))
-            elseif uppercase(t[1])=="SBOX" && length(t)>=5
+            elseif _sonnet_ieq(t[1],"SBOX") && length(t)>=5
                 vals=(sonnet_variable_value(p,t[k];variables,freq=freq) for k in 2:5)
                 x1,x2,y1,y2=(v*p.length_scale for v in vals)
                 sbox=(min(x1,x2),max(x1,x2),min(y1,y2),max(y1,y2))

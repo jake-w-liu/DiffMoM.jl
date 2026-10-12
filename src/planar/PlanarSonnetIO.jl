@@ -198,10 +198,10 @@ end
 _sonnet_error(source,line,message)=throw(ArgumentError("$source:$line: $message"))
 function _sonnet_section(records,name,source)
     # Section markers are case-insensitive like every other record keyword.
-    first=findfirst(r->length(r.tokens)==1 && uppercase(r.tokens[1])==name,records)
+    first=findfirst(r->length(r.tokens)==1 && _sonnet_ieq(r.tokens[1],name),records)
     first===nothing && _sonnet_error(source,0,"missing $name section")
-    last=findnext(r->length(r.tokens)==2 && uppercase(r.tokens[1])=="END" &&
-        uppercase(r.tokens[2])==name,records,first+1)
+    last=findnext(r->length(r.tokens)==2 && _sonnet_ieq(r.tokens[1],"END") &&
+        _sonnet_ieq(r.tokens[2],name),records,first+1)
     last===nothing && _sonnet_error(source,records[first].line,"unterminated $name section")
     return records[first+1:last-1]
 end
@@ -456,12 +456,12 @@ function _sonnet_refplanes(geo,ni,source)
     refplanes=NamedTuple[]
     i=1
     while i<ni
-        r=geo[i];key=uppercase(r.tokens[1])
-        if key=="DRP1"
+        r=geo[i]
+        if _sonnet_ieq(r.tokens[1],"DRP1")
             drp,consumed=_sonnet_drp_record(geo,i,source,ni)
             push!(refplanes,drp);i+=consumed
-        elseif key in _SONNET_DRP_KEYS
-            _sonnet_error(source,r.line,"unrepresented native geometry record $key")
+        elseif any(k->_sonnet_ieq(r.tokens[1],k),_SONNET_DRP_KEYS)
+            _sonnet_error(source,r.line,"unrepresented native geometry record $(r.tokens[1])")
         else
             i+=1
         end
@@ -2205,9 +2205,14 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         geometry_workspace,port_workspace),limit,"native raster source attachment","max_bytes")
     ports=PlanarPort[]
     numbers=Int[]; port_z0=ComplexF64[];port_weights=Float64[]
-    geo=_sonnet_section(p.records,"GEO",p.source)
-    refplanes=_sonnet_refplanes(geo,something(findfirst(
-        r->uppercase(r.tokens[1])=="NUM",geo),length(geo)+1),p.source)
+    # Programmatically assembled projects carry no records; parsed projects
+    # always keep their GEO section for the reference-plane lookup.
+    refplanes=NamedTuple[]
+    if !isempty(p.records)
+        geo=_sonnet_section(p.records,"GEO",p.source)
+        refplanes=_sonnet_refplanes(geo,something(findfirst(
+            r->_sonnet_ieq(r.tokens[1],"NUM"),geo),length(geo)+1),p.source)
+    end
     for ps in p.ports
         # The POR1 kind token is required but descriptive: Lite types every
         # port by placement and ignores the token value (verified 18.53 —
@@ -2453,7 +2458,7 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     freq=_circuit_stored_real(freq,"native solve frequency")
     limit=_spice_limit("max_bytes",(haskey(kw,:max_bytes) ? kw[:max_bytes] : _default_max_dense_payload_bytes()))
     _enforce_payload_limit(1024,limit,"native raster source workspace","max_bytes")
-    deembed_requested=any(r->uppercase(r.tokens[1])=="OPTIONS" &&
+    deembed_requested=any(r->_sonnet_ieq(r.tokens[1],"OPTIONS") &&
         any(occursin("d",token) for token in r.tokens[2:end]),p.records)
     !raw && deembed_requested && calibration===nothing && throw(ArgumentError(
         "native project requests de-embedding; supply calibration or explicitly request raw=true"))
