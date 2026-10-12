@@ -2226,8 +2226,10 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         q=ps.values
         z0=_sonnet_port_reference(p,ps,freq,variables)
         if poly.kind==:via
-            ps.number!=0 ||
-                throw(ArgumentError("native port zero on a via polygon requires an explicit ground return adapter"))
+            # A grounded (number 0) port on a via polygon shorts its
+            # terminals: the column connects its levels exactly like a
+            # portless via, which the via basis already provides.
+            ps.number==0 && continue
             # Every token solves as a standard port on a via polygon
             # (Lite-verified: VIA/STD/XYZ on a via terminating at an
             # interior level produce identical "Standard port" output), so
@@ -2255,7 +2257,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
         wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
             v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north : nothing
-        if wall!==nothing && ps.number!=0
+        if wall!==nothing
             rp=_sonnet_drp_wall(refplanes,wall)
             if rp!==nothing
                 span=rp.arg*ls
@@ -2277,7 +2279,10 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             end
         end
         if wall===nothing
-            ps.number!=0 || throw(ArgumentError("interior native port zero requires an explicit ground return adapter"))
+            # Port zero is a normal port during the solve and is shorted
+            # out of the reported network (documented em behavior); the
+            # terminal carries no contraction label, so its gap voltage
+            # is clamped to zero — an ideal short at that location.
             start,finish=_sonnet_shared_port_segment(p,poly,index,next)
             dx,dy=finish[1]-start[1],finish[2]-start[2]
             # Native Lite 18.53 itself rejects diagonal source ports
@@ -2341,7 +2346,10 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         build_planar_problem(st,gr,sheets,ports;vias=vias)
     end
     if _details
-        labels=sort(unique(numbers)); contraction=zeros(length(ports),length(labels)); z0=ComplexF64[]
+        # Grounded terminals (number 0) get no label: their contraction row
+        # stays zero, clamping the port voltage to zero in the balanced
+        # solve — the documented port-zero shorting rule.
+        labels=sort!(filter!(!iszero,unique(numbers))); contraction=zeros(length(ports),length(labels)); z0=ComplexF64[]
         for (j,label) in enumerate(labels)
             inds=findall(==(label),numbers)
             all(port_z0[i]==port_z0[first(inds)] for i in inds) || throw(ArgumentError("native terminals sharing a port must have equal reference impedance"))
@@ -2358,7 +2366,10 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         _enforce_payload_limit(payload,limit,"native retained raster model","max_bytes")
         return merge(model,(;payload))
     end
-    length(unique(numbers))==length(numbers) || throw(ArgumentError("native shared terminals require solve_sonnet_project for network contraction"))
+    # Grounded terminals (number 0) share no external label, so any number
+    # of them is legal here; only driven labels require uniqueness.
+    allunique(n for n in numbers if !iszero(n)) ||
+        throw(ArgumentError("native shared terminals require solve_sonnet_project for network contraction"))
     return problem
 end
 
@@ -2428,7 +2439,11 @@ and a shared external voltage. Other sheet counts and unspecified material
 flags reject. This published approximation does not model lateral side loss.
 Native BOX fields store half-cell counts; an explicit `grid` uses actual cells.
 Interior via sources spanning multiple layers retain total-voltage excitation
-through layer-height weights. Wall port zero is an undriven ground connection.
+through layer-height weights. Numbered-zero ports are grounded connections:
+wall zeros connect their edge to the wall, via-polygon zeros reduce to a
+portless via, and interior zeros are solved as normal ports whose gap voltage
+is then clamped to zero (excluded from the reported network), matching the
+documented em port-zero shorting rule.
 Negative labels define floating references with equal/opposite summed currents.
 Their common voltage is solved jointly. `voltage_transfer` maps external
 terminal voltage to raw source voltage, including supplied calibration.

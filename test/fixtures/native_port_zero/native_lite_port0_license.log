@@ -1,0 +1,28 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+Run 1:  Mon Oct 12 10:24:34 2026.  SL6ac09225.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\port0_probe\port0.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      Linear Start = 1 GHZ
+
+    Frequency:  1 GHZ
+      Subsectioning time:  0.001 seconds.
+
+      Sonnet Error:
+      Sonnet Lite Limitation
+      port0.son exceeds your Sonnet Lite license because:
+      Circuit includes one or more grounded ports with number 0.
+      Sonnet Lite does not allow use of grounded ports with number 0.
+      Contact your Sonnet Software representative for information about upgrading your license.
+
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 10:24:34 2026.

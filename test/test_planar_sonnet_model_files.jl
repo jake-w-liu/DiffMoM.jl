@@ -108,6 +108,29 @@ end
     @test c.elements==old
     circuit_add_sonnet_files!(c,plan,[1,2,3,4])
     @test length(c.elements)==2 && c.elements[2].terminals==[(3,0),(4,0)]
+    # A geometry label of zero grounds that model port: the attached
+    # network is the response with that port terminated in a short.
+    binding=only(plan.bindings)
+    grounded=DiffMoM.SonnetComponentBinding(binding.id,binding.file_index,
+        [binding.geometry_labels[1],0],binding.pin_indices,binding.source,
+        binding.response,binding.z0,binding.inherited_sweep)
+    gplan=DiffMoM.SonnetComponentFiles(plan.project,plan.frequency,plan.root,
+        plan.sources,plan.networks,[grounded],plan.payload,plan.linked,
+        plan.variables,plan.grid,plan.configuration_sha256,plan.scalar_files)
+    gc=PlanarCircuit(4,[1,2])
+    circuit_add_sonnet_files!(gc,gplan,[1,2,3,4])
+    @test only(gc.elements).response==
+        DiffMoM._sonnet_ground_network(binding.response,:s,[false,true],binding.z0)
+    @test only(gc.elements).terminals==[(3,0)]
+    fully=DiffMoM.SonnetComponentBinding(binding.id,binding.file_index,
+        [0,0],binding.pin_indices,binding.source,binding.response,
+        binding.z0,binding.inherited_sweep)
+    fplan=DiffMoM.SonnetComponentFiles(plan.project,plan.frequency,plan.root,
+        plan.sources,plan.networks,[fully],plan.payload,plan.linked,
+        plan.variables,plan.grid,plan.configuration_sha256,plan.scalar_files)
+    fc=PlanarCircuit(4,[1,2])
+    circuit_add_sonnet_files!(fc,fplan,[1,2,3,4])
+    @test isempty(fc.elements)
     calls=Ref(0);provider=f->(calls[]+=1;50+3im)
     for f in (-1.,0.,NaN,Inf,BigFloat("1e1000"),BigFloat("1e-1000"))
         @test_throws ArgumentError sonnet_component_files(project,f;requested_reference=provider)

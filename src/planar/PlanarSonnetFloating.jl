@@ -284,6 +284,11 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         sort!(pins;by=pin->pin.pin)
         [pin.pin for pin in pins]==collect(1:length(pins)) && !isempty(pins) ||
             throw(ArgumentError("native FLOAT component pins must be unique and contiguous"))
+        # A grounded pin on a FLOAT component ties to the shared local
+        # common, not to box ground — a different adapter than the
+        # box-referenced port-zero path, so it stays an explicit rejection.
+        all(pin->pin.number!=0,pins) || throw(ArgumentError(
+            "grounded terminals on FLOAT components require their floating-common adapter"))
         kind=only(r for r in component if uppercase(first(r.tokens))=="TYPE")
         none=length(kind.tokens)==2 && kind.tokens[2]=="NONE"
         push!(groups,(pins=pins,component=component,external=none))

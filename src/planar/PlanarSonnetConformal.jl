@@ -354,7 +354,9 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         ps.kind===:cup && throw(ArgumentError("native conformal CUP port requires its physical return/calibration model"))
         poly=polydict[ps.polygon];q=ps.values;z0=_sonnet_port_reference(p,ps,freq,variables)
         if poly.kind===:via
-            ps.number!=0 || throw(ArgumentError("native interior port zero needs an explicit physical ground model"))
+            # A grounded via port shorts its terminals: the column conducts
+            # exactly like a portless via, which the layout already builds.
+            ps.number==0 && continue
             target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
             # Token descriptive on via polygons too — Lite types every port
             # on a via polygon "Standard" regardless of termination depth.
@@ -376,7 +378,9 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
         wall=a[1]==b[1]==0. ? :west : a[1]==b[1]==stack.a ? :east :
             a[2]==b[2]==0. ? :south : a[2]==b[2]==stack.b ? :north : nothing
         if wall===nothing
-            ps.number!=0 || throw(ArgumentError("native interior port zero requires its explicit reference conductor"))
+            # Port zero is solved normally and shorted out of the reported
+            # network: its terminal gets no contraction label, clamping the
+            # gap voltage to zero (the documented em port-zero rule).
             (a[1]==b[1] || a[2]==b[2]) ||
                 throw(ArgumentError("native internal port is diagonal"))
             a,b=_sonnet_shared_port_segment(p,poly,i,j)
@@ -414,7 +418,9 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
     _enforce_payload_limit(_checked_payload_sum("native conformal contraction",reserve,
         _planar_conformal_layout_payload(layout),_checked_array_payload_bytes(Float64,3,length(allnumbers),length(unique(allnumbers)))),
         max_bytes,"native conformal contraction","max_bytes")
-    labels=sort!(unique(allnumbers));C=zeros(Float64,length(allnumbers),length(labels));z0=ComplexF64[]
+    # Grounded terminals (number 0) receive no label; their zero contraction
+    # row clamps the terminal voltage to zero — the port-zero shorting rule.
+    labels=sort!(filter!(!iszero,unique(allnumbers)));C=zeros(Float64,length(allnumbers),length(labels));z0=ComplexF64[]
     for (j,label) in enumerate(labels)
         ids=findall(==(label),allnumbers);all(allrefs[i]==allrefs[first(ids)] for i in ids) || throw(ArgumentError("shared native terminal references must agree"))
         C[ids,j].=allweights[ids];push!(z0,allrefs[first(ids)])
@@ -435,7 +441,7 @@ function solve_sonnet_conformal(project::SonnetProject,freq::Real;raw::Bool=fals
         scalar_files=nothing,scalar_root=dirname(project.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,kw...)
-    requested=any(r->uppercase(r.tokens[1])=="OPTIONS" && any(occursin("d",t) for t in r.tokens[2:end]),project.records)
+    requested=any(r->_sonnet_ieq(r.tokens[1],"OPTIONS") && any(occursin("d",t) for t in r.tokens[2:end]),project.records)
     requested && !raw && calibration===nothing && throw(ArgumentError("native conformal project requests calibration; supply it or explicitly request raw=true"))
     model=sonnet_conformal_layout(project;freq,grid,variables,edge_size,interior_size,edge_band,max_triangles,max_bytes,
         scalar_files,scalar_root,scalar_outside,scalar_max_files,scalar_max_bytes,scalar_max_nodes,scalar_max_line_bytes)

@@ -57,9 +57,33 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       `test_planar_sonnet_io.jl`. Remaining: the actual feed-line de-embed
       transform (needs port characterization machinery), DRP2 semantics,
       SUBDIV-level REFPLANE.
-- [ ] A2 zero/ground SMD return terminals (`PlanarSonnetComponents.jl:270`)
-      and interior port-zero ground-return adapters (IO:1967/1999, Conformal:365).
-      Oracle: Lite.
+- [x] A2 zero/ground SMD return terminals - DONE. Documented em semantics
+     ("Using Port Number Zero for Ground Connections"): numbered-0 ports
+     simulate as normal ports, de-embed like any port, then short out of
+     the reported network. Implemented: wall zeros short their edge to the
+     box (undriven, physically connected); via-polygon zeros reduce to the
+     portless via (bit-identical S); interior zeros are solved normally
+     with no contraction label - the all-zero row clamps terminal voltage
+     to zero in the balanced solve. Conformal path mirrors all three.
+     Component SMDP terminal 0 grounds the model port: ideal R/L/C pass
+     circuit node 0, SPARAM/SPROJ/callback responses reduce via
+     `_sonnet_ground_network` (Y row/col drop, Z Schur complement, S
+     per-port power-wave short Gamma=-z0*/z0 - exact for complex refs;
+     singular terminations reject). File-backed model pins accept label 0
+     (Lite-verified solvable); FLOAT pin 0 stays a loud rejection pending
+     the floating-common adapter (its common is not box ground).
+     Lite evidence: POR port-0 grammar accepted then license-blocked
+     ("Sonnet Lite does not allow use of grounded ports with number 0");
+     SMDP terminal 0 *solves* natively (the license check does not cover
+     component terminals) - component_lpf with a grounded capacitor leg
+     produced shifted S-parameters. Fixture+manifest:
+     `test/fixtures/native_port_zero/`; regressions: port-zero testset in
+     `test_planar_sonnet_port_attachment.jl` (20), grounded-pin testset in
+     `test_planar_component_returns.jl` (18), transactional test in
+     `test_planar_sonnet_model_files.jl` (+3), FLOAT rejection testset (2).
+     Remaining: wall port-0 + active DRP1 stays gated to the de-embedding
+     adapter (documented short-shift combination), port-0 pin calibration
+     interactions untested natively (Lite-gated).
 - [ ] A3 ordered model pins + coupled pin-group calibration
       (ModelFiles:369, parity lines 148/159/445/726). Lite-blocked (GLG license)
       → Nexxim circuit equivalence + DocOnly on the licensed part.
@@ -441,12 +465,13 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## Execution order (current)
 
-Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 intake+gating), C1–C5 (VOL
-topology and material laws), C10, plus prior ledgered items.
+Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 intake+gating), A2
+(port-zero grounding), C1–C5 (VOL topology and material laws), C10, plus
+prior ledgered items.
 
 Remaining (updated order):
 
-1. A2/A4/A5/A7 port-and-pin residuals — small, Lite-verifiable.
+1. A4/A5/A7 port-and-pin residuals — small, Lite-verifiable.
 2. E2 CUP calibration-group solve + E5 dielectric bricks — bounded.
 3. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
    DocOnly.

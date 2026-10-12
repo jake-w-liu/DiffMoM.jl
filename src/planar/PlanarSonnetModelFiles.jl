@@ -184,11 +184,13 @@ function _sonnet_files_contract(p,component)
             length(t)==7 || _sonnet_error(p.source,record.line,"SMDP requires level,x,y,orientation,geometry label,model pin")
             t[5] in ("L","R","T","B") || _sonnet_error(p.source,record.line,"unrepresented terminal orientation")
             label=tryparse(Int,t[6]);pin=tryparse(Int,t[7]);level=tryparse(Int,t[2])
-            # File-model pins declare positive geometry labels; ordinary
-            # components may carry signed FLOAT terminal labels instead.
-            validlabel=filebacked ? (label!==nothing && label>0) : (label!==nothing && label!=0)
+            # File-model pins declare nonnegative geometry labels (zero is
+            # the documented grounded-terminal rule, Lite-solved on the
+            # component_lpf probe); ordinary components may carry signed
+            # FLOAT terminal labels instead.
+            validlabel=filebacked ? (label!==nothing && label>=0) : (label!==nothing && label!=0)
             validlabel && pin!==nothing && pin>0 && level!==nothing && level>=0 ||
-                _sonnet_error(p.source,record.line,"model pins require literal nonzero labels, positive indices and a nonnegative level")
+                _sonnet_error(p.source,record.line,"model pins require literal nonnegative labels, positive indices and a nonnegative level")
             push!(pins,(pin,label));ground=false;width=false
         elseif tag=="EXSMDP"
             !isempty(pins) && !pinblock && length(t)==1 || _sonnet_error(p.source,record.line,"unexpected EXSMDP")
@@ -568,8 +570,10 @@ end
 
 """Transactionally attach staged native SPARAM/SPROJ devices to physical circuit
 nodes. `labels[node]` is the native geometry label at that node. Ordered model
-pins map through these labels; every model port retains box node zero as its
-common return. Invalid maps/resources leave the supplied circuit unchanged."""
+pins map through these labels; ungrounded model ports retain box node zero as
+their common return, while a geometry label of zero shorts that model port
+out of the attached response. Invalid maps/resources leave the supplied
+circuit unchanged."""
 function circuit_add_sonnet_files!(circuit::PlanarCircuit,files::SonnetComponentFiles,
         labels::AbstractVector{<:Integer};max_bytes::Integer=_default_max_dense_payload_bytes())
     limit=_sonnet_files_limit("max_bytes",max_bytes)
@@ -583,6 +587,9 @@ function circuit_add_sonnet_files!(circuit::PlanarCircuit,files::SonnetComponent
     for binding in files.bindings
         nodes=Int[]
         for label in binding.geometry_labels
+            # Geometry label zero is the grounded-pin rule: that model port
+            # is shorted out of the response rather than mapped to a node.
+            iszero(label) && continue
             index=findfirst(==(label),labels)
             index===nothing && throw(ArgumentError("model geometry label has no physical circuit node"))
             push!(nodes,index)
@@ -592,7 +599,13 @@ function circuit_add_sonnet_files!(circuit::PlanarCircuit,files::SonnetComponent
     refs=circuit.z0 isa AbstractArray ? copy(circuit.z0) : circuit.z0
     staged=PlanarCircuit(circuit.nnodes,copy(circuit.ports),refs,copy(circuit.elements))
     for (binding,nodes) in zip(files.bindings,maps)
-        circuit_add_network!(staged,nodes,binding.response;format=:s,z0=binding.z0)
+        grounded=[iszero(label) for label in binding.geometry_labels]
+        # A fully grounded model reduces to the empty network — nothing
+        # to attach once every port is shorted.
+        all(grounded) && continue
+        circuit_add_network!(staged,nodes,
+            _sonnet_ground_network(binding.response,:s,grounded,binding.z0);format=:s,
+            z0=binding.z0 isa AbstractVector ? binding.z0[.!grounded] : binding.z0)
     end
     circuit.elements=staged.elements
     return circuit

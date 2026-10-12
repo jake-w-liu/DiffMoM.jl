@@ -175,3 +175,66 @@ end
     b=solve_sonnet_project(cell,1e8;raw=true,mx=36,my=24)
     @test a.s!=b.s && all(isfinite,b.s)
 end
+
+@testset "native grounded component pins short their model ports" begin
+    ground=DiffMoM._sonnet_ground_network
+    # Y blocks drop the grounded port's row/column (V=0) directly.
+    @test ground(ComplexF64[2 -1 0;-1 2 -1;0 -1 2],:y,[false,true,false],50)==
+        ComplexF64[2 0;0 2]
+    # Z blocks eliminate the shorted port by a Schur complement:
+    # V_u=(Z_uu−Z_ug·Z_gg⁻¹·Z_gu)I_u.
+    Z=[3.0+0im 1 2;1 4 1;2 1 5]
+    @test ground(Z,:z,[false,true,false],50)≈
+        [3-1/4 2-1/4;2-1/4 5-1/4]
+    # S blocks terminate the port with its power-wave short. A perfect
+    # thru grounded at port 2 reflects with Γ=−z0*/z0: −1 for real
+    # references and a unit-magnitude phase term for complex ones.
+    thru=ComplexF64[0 1;1 0]
+    @test ground(thru,:s,[false,true],50)≈fill(-1,1,1)
+    z0c=50+10im
+    @test ground(thru,:s,[false,true],z0c)≈fill(-conj(z0c)/z0c,1,1)
+    # Sequential per-port elimination agrees with the simultaneous
+    # multi-port reduction S_uu+S_ugΓ(I−S_ggΓ)⁻¹S_gu.
+    S=ComplexF64[.1 .2 .3;.2 .05 .1;.3 .1 .2]
+    g=[true,false,true]
+    direct=S[.!g,.!g]-S[.!g,g]*
+        ((Matrix{ComplexF64}(I,2,2)+S[g,g])\S[g,.!g])
+    @test ground(S,:s,g,50)≈direct rtol=1e-12
+    # An already-shorted port makes the termination singular.
+    @test_throws ArgumentError ground(ComplexF64[0 1;1 -1],:s,[false,true],50)
+    # Callable responses wrap the provider; an all-grounded model reduces
+    # to the empty network.
+    wrapped=ground(f->thru,:s,[false,true],50)
+    @test wrapped(1e9)≈fill(-1,1,1)
+    @test size(ground(ComplexF64[.1 .2;.2 .1],:s,[true,true],50))==(0,0)
+    @test ground(thru,:s,[false,false],50)===thru
+    # A grounded SMD pin takes circuit node 0: the ideal resistor becomes
+    # a shunt to box ground and the pin's embedding row stays zero.
+    project=_synthetic_smd_project()
+    project.components[1][5]=SonnetRecord(1,["SMDP","0","3.5","2","R","0","2"])
+    model=sonnet_component_model(project,1e8)
+    @test model.labels==[1,2,3]
+    @test model.circuit.elements[1].terminals==[(3,0)]
+    loaded=solve_sonnet_project(project,1e8;raw=true,mx=36,my=24)
+    baseline=solve_sonnet_project(_synthetic_smd_project(),1e8;raw=true,mx=36,my=24)
+    @test loaded.port_numbers==[1,2]
+    @test loaded.s≈transpose(loaded.s) rtol=1e-10
+    @test opnorm(loaded.s)<=1+1e-9
+    @test loaded.s!=baseline.s
+    # A grounded pin on a supplied SPARAM model reduces its network to the
+    # ungrounded ports.
+    vendor=_synthetic_smd_project()
+    vendor.components[1][1]=SonnetRecord(1,["TYPE","SPARAM","1"])
+    vendor.components[1][5]=SonnetRecord(1,["SMDP","0","3.5","2","R","0","2"])
+    reduced=sonnet_component_model(vendor,1e8;
+        component_response=(p,c,f)->(response=ComplexF64[0 1;1 0],format=:s,z0=50))
+    @test size(reduced.circuit.elements[1].response)==(1,1)
+    # Both pins grounded is inert: no branch is added and the pads remain
+    # clamped terminals.
+    inert=_synthetic_smd_project()
+    inert.components[1][4]=SonnetRecord(1,["SMDP","0","2.5","2","L","0","1"])
+    inert.components[1][5]=SonnetRecord(1,["SMDP","0","3.5","2","R","0","2"])
+    inert_model=sonnet_component_model(inert,1e8)
+    @test inert_model.labels==[1,2]
+    @test isempty(inert_model.circuit.elements)
+end

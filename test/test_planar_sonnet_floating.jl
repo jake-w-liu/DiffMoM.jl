@@ -220,3 +220,14 @@ end
         end
     end
 end
+
+@testset "native FLOAT grounded pins require the floating-common adapter" begin
+    # A zero terminal on a FLOAT component is not box ground: its local
+    # common floats, so the pin must route through the floating-common
+    # adapter rather than silently shorting to the box.
+    p=_synthetic_smd_project()
+    p.components[1][2]=SonnetRecord(1,["GNDREF","FLOAT"])
+    p.components[1][4]=SonnetRecord(1,["SMDP","0","2.5","2","L","0","1"])
+    @test_throws ArgumentError sonnet_component_model(p,1e8)
+    @test_throws ArgumentError solve_sonnet_project(p,1e8;raw=true,mx=36,my=24)
+end

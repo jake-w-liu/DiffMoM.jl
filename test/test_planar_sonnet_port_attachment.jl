@@ -198,4 +198,66 @@ end
         @test all(a.values==b.values for (a,b) in zip(large.ports,saved.ports))
     end
 end
+@testset "Native port-zero grounded terminals clamp without external labels" begin
+    folder=joinpath(@__DIR__,"fixtures/native_port_zero")
+    pz(name)=read_sonnet_project(joinpath(folder,name))
+    # An interior port 0 is solved as a normal port and shorted out of the
+    # reported network (documented em behavior): it carries no contraction
+    # label, so its gap voltage is clamped to zero. In the raster model the
+    # shared edge already conducts, so port 0, a merged polygon, and an
+    # unported shared edge are the same circuit.
+    interior=sonnet_planar_problem(pz("interior.son");_details=true)
+    @test interior.labels==[1]
+    @test size(interior.contraction,2)==1
+    @test any(all(iszero,row) for row in eachrow(interior.contraction))
+    s0=solve_sonnet_project(pz("interior.son"),1e9;raw=true)
+    merged=solve_sonnet_project(pz("merged.son"),1e9;raw=true)
+    open_gap=solve_sonnet_project(pz("open_gap.son"),1e9;raw=true)
+    @test s0.s==merged.s==open_gap.s
+    @test s0.port_numbers==[1]
+    # A wall port 0 shorts its edge to the box: undriven, physically
+    # connected, no external label.
+    wall=sonnet_planar_problem(pz("wall.son");_details=true)
+    @test wall.labels==[1]
+    @test any(only(wall.problem.sheets).connect_west)
+    s_wall=solve_sonnet_project(pz("wall.son"),1e9;raw=true)
+    @test s_wall.port_numbers==[1] && size(s_wall.s)==(1,1)
+    # A via port 0 is exactly a portless via: the conductive column is
+    # already present in the basis.
+    s_via=solve_sonnet_project(pz("via.son"),1e9;raw=true)
+    s_via_open=solve_sonnet_project(pz("via_open.son"),1e9;raw=true)
+    @test s_via.s==s_via_open.s
+    @test s_via.port_numbers==[1]
+    # Every port grounded leaves no external network: the balanced solve
+    # must reject loudly rather than emit an empty S block. Multiple
+    # numbered-0 ports share no label, so intake itself stays legal.
+    @test sonnet_planar_problem(pz("all_zero.son")) !== nothing
+    @test_throws ArgumentError solve_sonnet_project(pz("all_zero.son"),1e9;raw=true)
+    # The documented reference-plane short-shift combination still routes
+    # through the de-embedding adapter gate.
+    drp0=deepcopy(pz("wall.son"))
+    numrec=findfirst(r->first(r.tokens)=="NUM",drp0.records)
+    insert!(drp0.records,numrec,SonnetRecord(60,["DRP1","LEFT","FIX","1"]))
+    @test_throws ArgumentError sonnet_planar_problem(drp0)
+    # Conformal parity: same label exclusion and zero contraction row.
+    c_interior=sonnet_conformal_layout(pz("interior.son");
+        edge_size=.125e-3,interior_size=.25e-3,edge_band=.05e-3)
+    @test c_interior.labels==[1]
+    @test any(all(iszero,row) for row in eachrow(c_interior.contraction))
+    c_via=sonnet_conformal_layout(pz("via.son");
+        edge_size=.125e-3,interior_size=.25e-3,edge_band=.05e-3)
+    c_via_open=sonnet_conformal_layout(pz("via_open.son");
+        edge_size=.125e-3,interior_size=.25e-3,edge_band=.05e-3)
+    @test c_via.labels==c_via_open.labels==[1]
+    @test c_via.contraction==c_via_open.contraction
+    # Lite intake evidence: numbered-0 ports are legal grammar whose solve
+    # is Lite license-gated; component terminal 0 is solvable natively.
+    license_log=read(joinpath(folder,"native_lite_port0_license.log"),String)
+    @test occursin("Lite Limitation",license_log)
+    native_component=read(joinpath(folder,"component_grounded_nodrp_native_response.log"),String)
+    @test occursin("De-embedded S-Parameters",native_component)
+    grounded_component=pz("component_grounded.son")
+    @test any(r->first(r.tokens)=="SMDP" && r.tokens[6]=="0",
+        Iterators.flatten(grounded_component.components))
+end
 end

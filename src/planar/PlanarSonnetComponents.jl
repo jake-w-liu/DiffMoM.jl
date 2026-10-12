@@ -98,6 +98,43 @@ function _sonnet_component_variable_payload(variables)
         files===nothing ? 0 : _sonnet_scalar_files_payload(files))
 end
 
+"""Short the `grounded` ports of a component network response — the
+documented port-zero rule applied to model ports. `:y` blocks drop the
+rows/columns directly (V=0); `:z` reduces by a Schur complement; `:s`
+blocks terminate each grounded port with its power-wave short
+Γ=(0−z0*)/(0+z0)=−z0*/z0 in sequence. Callable responses wrap the
+provider. Reduced ports and their terminal entries are dropped together
+so node indices stay aligned."""
+function _sonnet_ground_network(response,format::Symbol,grounded::AbstractVector{Bool},
+        z0=50.0;freq=nothing)
+    any(grounded) || return response
+    response isa AbstractMatrix || return f->_sonnet_ground_network(response(f),format,grounded,z0;freq=f)
+    n=size(response,1)
+    keep=[k for k in 1:n if !grounded[k]]
+    if format===:y
+        return response[keep,keep]
+    elseif format===:z
+        g=findall(grounded)
+        return response[keep,keep]-response[keep,g]*(response[g,g]\response[g,keep])
+    elseif format===:s
+        refs=_planar_reference_values(z0,n;freq)
+        s=Matrix{ComplexF64}(response);order=sort(findall(grounded);rev=true)
+        for k in order
+            # Kurokawa power waves: a short (Z_L=0) reflects
+            # Γ=(0−z0*)/(0+z0), which equals −1 only for real references.
+            gamma=-conj(refs[k])/refs[k]
+            denominator=1-gamma*s[k,k]
+            iszero(denominator) && throw(ArgumentError(
+                "grounded component pin has a singular port termination"))
+            reduced=s[1:end .!=k,1:end .!=k]+
+                (gamma/denominator)*(s[1:end .!=k,k:k]*s[k:k,1:end .!=k])
+            s=reduced
+        end
+        return s
+    end
+    throw(ArgumentError("unsupported component response format $format"))
+end
+
 function _sonnet_component_base_payload(base)
     seen=Base.IdSet{Any}()
     values=(base.problem.basis,base.problem.sheets,base.problem.vias,base.problem.vols,
@@ -282,8 +319,11 @@ function _sonnet_component_pin(p,record,problem,variables,freq;termw="FEED")
     orient=t[5];orient in ("L","R","T","B") || _sonnet_error(p.source,record.line,
         "SMD terminal orientation must be L/R/T/B")
     number,pin=parse(Int,t[6]),parse(Int,t[7])
-    number!=0 && pin>0 || _sonnet_error(p.source,record.line,
-        "zero/ground SMD terminals require an explicit return-terminal adapter")
+    # Terminal zero is the documented grounded-pin rule: the component port
+    # is solved normally and shorted afterward. Pin indices are component
+    # terminals and must be positive sequential (Lite intake-verified).
+    pin>0 || _sonnet_error(p.source,record.line,
+        "component pin index must be a positive sequential terminal number")
     interface=length(p.layers)-1-native_level
     lv=findfirst(sh->sh.interface==interface,problem.sheets)
     lv===nothing && _sonnet_error(p.source,record.line,"SMD pin lacks its sheet level")
@@ -424,7 +464,9 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
         [pin.pin for pin in local_pins]==collect(1:length(local_pins)) ||
             throw(ArgumentError("component pin numbers must be unique and contiguous from one"))
         for pin in local_pins
-            if !(pin.number in labels)
+            # Terminal zero grounds the pin: no label, no circuit node —
+            # its embedding row stays zero so the port voltage is clamped.
+            if pin.number!=0 && !(pin.number in labels)
                 push!(labels,pin.number);push!(refs,50.)
             end
         end
@@ -457,7 +499,11 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
     embedding[1:length(base.problem.ports),1:length(base.labels)].=base.contraction
     raw_index=length(base.problem.ports)
     for local_pins in pins,pin in local_pins
-        raw_index+=1;embedding[raw_index,findfirst(==(pin.number),labels)]=1
+        raw_index+=1
+        idx=findfirst(==(pin.number),labels)
+        # A grounded pin's terminal keeps a zero embedding row: solved but
+        # clamped to zero terminal voltage (the port-zero shorting rule).
+        idx===nothing || (embedding[raw_index,idx]=1)
     end
     contraction=physical.contraction*embedding
     common_embedding=zeros(Float64,size(embedding,1),size(base.floating_common,2))
@@ -469,13 +515,17 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
         kind=findfirst(r->uppercase(r.tokens[1])=="TYPE",component)
         kind===nothing && throw(ArgumentError("native component lacks TYPE"))
         record=component[kind];t=record.tokens
-        terminals=[findfirst(==(pin.number),labels) for pin in local_pins]
+        # Terminal zero ties the model pin to circuit ground (node 0).
+        terminals=[pin.number==0 ? 0 : findfirst(==(pin.number),labels) for pin in local_pins]
         if length(t)>=2 && t[2]=="IDEAL"
             length(t)==4 && length(terminals)==2 || _sonnet_error(p.source,record.line,
                 "ideal SMD requires two pins and one R/L/C value")
             scale=_sonnet_component_scale(p,t[3])
             value=_sonnet_component_scalar(p,t[4],scale,variables,freq)
             a,b=terminals
+            # Both pins grounded is inert: the branch sits across the same
+            # node, the exact zero-terminal limit of the model reduction.
+            a==b && continue
             t[3]=="RES" ? circuit_add_rlc!(circuit,a,b;r=value) :
                 t[3]=="CAP" ? circuit_add_rlc!(circuit,a,b;c=value) :
                 t[3]=="IND" ? circuit_add_rlc!(circuit,a,b;l=value) :
@@ -489,15 +539,23 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
             binding=only(matches)
             binding.geometry_labels==[pin.number for pin in local_pins] ||
                 _sonnet_error(p.source,record.line,"staged model-pin order disagrees with physical geometry labels")
-            circuit_add_network!(circuit,terminals,binding.response;format=:s,z0=binding.z0)
+            grounded=[pin.number==0 for pin in local_pins]
+            # A fully grounded model reduces to the empty network: its
+            # ports are all shorted and it contributes nothing.
+            all(grounded) || circuit_add_network!(circuit,terminals[.!grounded],
+                _sonnet_ground_network(binding.response,:s,grounded,binding.z0);format=:s,
+                z0=binding.z0 isa AbstractVector ? binding.z0[.!grounded] : binding.z0)
         else
             component_response===nothing && _sonnet_error(p.source,record.line,
                 "vendor/project SMD requires component_response; its model cannot be omitted")
             supplied=component_response(p,component,freq)
             supplied isa NamedTuple && all(k->haskey(supplied,k),(:response,:format,:z0)) ||
                 throw(ArgumentError("component_response must return response,format,z0"))
-            circuit_add_network!(circuit,terminals,supplied.response;
-                format=supplied.format,z0=supplied.z0)
+            grounded=[pin.number==0 for pin in local_pins]
+            all(grounded) || circuit_add_network!(circuit,terminals[.!grounded],
+                _sonnet_ground_network(supplied.response,supplied.format,grounded,supplied.z0);
+                format=supplied.format,
+                z0=supplied.z0 isa AbstractVector ? supplied.z0[.!grounded] : supplied.z0)
         end
     end
     model=(;project=owned_project,problem=physical.problem,contraction,floating_common,z0=refs,labels,external_labels=base.labels,
@@ -542,7 +600,7 @@ function _solve_sonnet_components(p::SonnetProject,freq::Real;grid=nothing,
     Y=balanced.y
     gap_transfer=Matrix{ComplexF64}(I,length(model.labels),length(model.labels))
     if pin_calibration!==nothing
-        pin_labels=unique([pin.number for local_pins in model.pins for pin in local_pins])
+        pin_labels=unique([pin.number for local_pins in model.pins for pin in local_pins if pin.number!=0])
         indices=Int[findfirst(==(label),model.labels) for label in pin_labels]
         supplied=pin_calibration isa AbstractMatrix ? pin_calibration : pin_calibration(freq)
         k=length(indices)
