@@ -1,0 +1,206 @@
+{
+ "engine_version": "18.53-Lite (64-bit Windows)",
+ "files": [
+  {
+   "path": "dumbbell_neck/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "dumbbell_neck/native_raw.s2p",
+   "sha256": "e0ebd3f11bdbee0192e010c1aa02ef74244596372ff93a4b581b516aaa22f0ba"
+  },
+  {
+   "path": "dumbbell_neck/project.son",
+   "sha256": "f9b517eb26eb466b978c68bf99f6a3263727eb0a24fc20294d938fd9000b6623"
+  },
+  {
+   "path": "dumbbell_neck/sondata/project/geo_response_d.sid",
+   "sha256": "91a0a9fd7c695460d3e75efb71ea02b662650bd7889b3f5c20473eaeee4cfc61"
+  },
+  {
+   "path": "dumbbell_neck/sondata/project/geo_response_nd.sid",
+   "sha256": "dd6d04e82b0d881308663832c90a29ad55d4e1071f70c5c2870a7fac40dd8e84"
+  },
+  {
+   "path": "dumbbell_neck/sondata/project/info.log",
+   "sha256": "35ff7bb8ff8ab0989a4f430eadceb45a52472d3446e90861b97d5f8aeaaffa64"
+  },
+  {
+   "path": "dumbbell_neck/sondata/project/log_composite.log",
+   "sha256": "f81d57443a01d577d700538c1657b0adc4b334b0243c089e0c0a49043c379a4f"
+  },
+  {
+   "path": "dumbbell_neck/sondata/project/log_errors.log",
+   "sha256": "004911395a14d0492b3414a554741cf6951a268cb00c1c9f69e90936f530e3ae"
+  },
+  {
+   "path": "dumbbell_neck/sondata/project/log_response.log",
+   "sha256": "9bed0e60ffa7fa78f9a09715af8c3079011c16f59f821b87555ea7fa24f05804"
+  },
+  {
+   "path": "dumbbell_neck/sondata/project/log_timing.log",
+   "sha256": "002e68889f8010a7cfaa50760cf245ddd9072ee8ddc306463475d9bf6e0e0cd8"
+  },
+  {
+   "path": "dumbbell_negative/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "dumbbell_negative/native_raw.s2p",
+   "sha256": "a129468adeeef6eb2aac2bcb0db8b3ca570f3b088feb62116a98bfdec7e5fb27"
+  },
+  {
+   "path": "dumbbell_negative/project.son",
+   "sha256": "a225e907ec4e1cac3c875731ffa0b263a31e806f2091a510569fb6ab4f0400ae"
+  },
+  {
+   "path": "dumbbell_negative/sondata/project/geo_response_d.sid",
+   "sha256": "f19071268d6366d00bb747c34d5ba7ad9e414afe9b0bf12f9d4419472ce01613"
+  },
+  {
+   "path": "dumbbell_negative/sondata/project/geo_response_nd.sid",
+   "sha256": "d14776bf154b00151838929280bee2abefbd4d4d08e19f37bfdb849cfb970ba5"
+  },
+  {
+   "path": "dumbbell_negative/sondata/project/info.log",
+   "sha256": "abe7cdc2acf790452753880d65261393ed899f3d41badbe9db2072839895c615"
+  },
+  {
+   "path": "dumbbell_negative/sondata/project/log_composite.log",
+   "sha256": "ee96c481df8d3002c4a451f2cc797d4c18bbfeea4d2e4deb0bbc45a034efe6f7"
+  },
+  {
+   "path": "dumbbell_negative/sondata/project/log_errors.log",
+   "sha256": "72edc393e4a671dcae0e22da08f63ea66a02ab7dbc5df37785793e20ae53d95c"
+  },
+  {
+   "path": "dumbbell_negative/sondata/project/log_response.log",
+   "sha256": "275802b0c67135f4a91d57b7959859e33079da918379c0862cd6b491ffc5a0dd"
+  },
+  {
+   "path": "dumbbell_negative/sondata/project/log_timing.log",
+   "sha256": "357f17d554af469075c21ee9e1bc36cb37463e88d4501ffe0b1594ac21b9a2d2"
+  },
+  {
+   "path": "dumbbell_saturated/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "dumbbell_saturated/native_raw.s2p",
+   "sha256": "3833901166c5da701020e1a7d6b73f52e712c4a2fadfdecf2da8c1793ba29d1f"
+  },
+  {
+   "path": "dumbbell_saturated/project.son",
+   "sha256": "10fa4e8e0cbe60bab003f3856214eac3c6621e718e7a1e7a5bc1467076804684"
+  },
+  {
+   "path": "dumbbell_saturated/sondata/project/geo_response_d.sid",
+   "sha256": "870200bd28560a657f390cc1795be86a192ff03df6316d5aa50a691f016e5cab"
+  },
+  {
+   "path": "dumbbell_saturated/sondata/project/geo_response_nd.sid",
+   "sha256": "da0e0ef26401e871dad5b5efec8cda4528cabc66280be27244973775565bd545"
+  },
+  {
+   "path": "dumbbell_saturated/sondata/project/info.log",
+   "sha256": "fd3f73889cab5dfcec2c677100372c6ffa40a2e6e2c3d5241d4a7e15e08a6bab"
+  },
+  {
+   "path": "dumbbell_saturated/sondata/project/log_composite.log",
+   "sha256": "72782f2284f8e85829468dde4df5c56d201ffd0ca7a02018c2f0532cbb1c2981"
+  },
+  {
+   "path": "dumbbell_saturated/sondata/project/log_errors.log",
+   "sha256": "e9fc45d63ff772d084d888d8662f5c803769987e58a916500affe80199f5881f"
+  },
+  {
+   "path": "dumbbell_saturated/sondata/project/log_response.log",
+   "sha256": "809ac5988626abedf0948134220056b648ba1a15b862039c028077ecdcd7b2a9"
+  },
+  {
+   "path": "dumbbell_saturated/sondata/project/log_timing.log",
+   "sha256": "a8a0cac8c2ac0c1d8fe3c4250025d027c938ab0610200c8cde0f8ebc5905dbae"
+  },
+  {
+   "path": "notch_consumed/engine_stdout.log",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+   "path": "notch_consumed/native_raw.s2p",
+   "sha256": "8e8df07b4bf630c8d9a6fc770be385fcd65fc29dd14c4945fcadf5ab185a0386"
+  },
+  {
+   "path": "notch_consumed/project.son",
+   "sha256": "3b1adcbb1032401ad6edbe9a9057e7a561720baef093573c0e8e80971c42be92"
+  },
+  {
+   "path": "notch_consumed/sondata/project/geo_response_d.sid",
+   "sha256": "5d4a764ab66a7896a028068cc32420dc70c1b45fc1a27c51b9f758bb07364085"
+  },
+  {
+   "path": "notch_consumed/sondata/project/geo_response_nd.sid",
+   "sha256": "69cccd6c406491bbd70b2a4402098bd8e9034f5b31c3fbd8996d8298dc852ae3"
+  },
+  {
+   "path": "notch_consumed/sondata/project/info.log",
+   "sha256": "b385769e29d04c0c284d49c0fea81e85bc041650188a3a39650b68ef1a57a7dd"
+  },
+  {
+   "path": "notch_consumed/sondata/project/log_composite.log",
+   "sha256": "3af27f24e856750b3681b851aadbbdb0af3cc7f055f7aae5ea8e2f3f2edcefc4"
+  },
+  {
+   "path": "notch_consumed/sondata/project/log_errors.log",
+   "sha256": "57664efe430e95cbe29f51d2e3f52d421dfb415f16d2d798c1460fda9c5b7801"
+  },
+  {
+   "path": "notch_consumed/sondata/project/log_response.log",
+   "sha256": "712aea19df738d2b1f75d7e5f97d1e8594a904d4167a4d582632561a9afd72bc"
+  },
+  {
+   "path": "notch_consumed/sondata/project/log_timing.log",
+   "sha256": "5db81a2d422b93d6923d40f946b7b9597ac07c233d96e896bf621bbdb2d3fa66"
+  }
+ ],
+ "captures": [
+  {
+   "case": "dumbbell_neck",
+   "source_sha256": "f9b517eb26eb466b978c68bf99f6a3263727eb0a24fc20294d938fd9000b6623",
+   "capture_sha256": "e0ebd3f11bdbee0192e010c1aa02ef74244596372ff93a4b581b516aaa22f0ba",
+   "exit_code": 0,
+   "completion_marker": true,
+   "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+  },
+  {
+   "case": "dumbbell_negative",
+   "source_sha256": "a225e907ec4e1cac3c875731ffa0b263a31e806f2091a510569fb6ab4f0400ae",
+   "capture_sha256": "a129468adeeef6eb2aac2bcb0db8b3ca570f3b088feb62116a98bfdec7e5fb27",
+   "exit_code": 0,
+   "completion_marker": true,
+   "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+  },
+  {
+   "case": "dumbbell_saturated",
+   "source_sha256": "10fa4e8e0cbe60bab003f3856214eac3c6621e718e7a1e7a5bc1467076804684",
+   "capture_sha256": "3833901166c5da701020e1a7d6b73f52e712c4a2fadfdecf2da8c1793ba29d1f",
+   "exit_code": 0,
+   "completion_marker": true,
+   "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+  },
+  {
+   "case": "notch_consumed",
+   "source_sha256": "3b1adcbb1032401ad6edbe9a9057e7a561720baef093573c0e8e80971c42be92",
+   "capture_sha256": "8e8df07b4bf630c8d9a6fc770be385fcd65fc29dd14c4945fcadf5ab185a0386",
+   "exit_code": 0,
+   "completion_marker": true,
+   "engine_sha256": "c25fd7deb8d71b4b3df154088193b3ee6d1a963279d3dc8c95eab82e7f1c91ac"
+  }
+ ],
+ "scope": "Hollow VOL polygons whose wall offset changes topology. dumbbell_neck: narrow waist closes under the wall while lobe edges survive -> algebraic tube formula. dumbbell_saturated: tube formula overshoots the footprint -> clamped to full area. notch_consumed: every offset edge is consumed while the tube formula still yields 0.90 of the footprint -> fully plated at the footprint area. dumbbell_negative: tube formula goes negative with no surviving edge -> fully plated at the footprint area. Verified 18.53: the cross-section is the algebraic t*(P-t*sum(cot)) while any offset edge survives, else the footprint area.",
+ "resource_geometry_sources": {
+  "dumbbell_neck": "data/c1_dumbbell/series",
+  "dumbbell_saturated": "data/c1_dumbbell/series_sat",
+  "notch_consumed": "data/c1_dumbbell/series_notch",
+  "dumbbell_negative": "data/c1_dumbbell/series_neg"
+ }
+}

@@ -1,0 +1,37 @@
+Run 1:  Mon Oct 12 22:10:23 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\DiffMoM.jl\data\c1_dumbbell\series_neg\project.son.
+
+    Begin electromagnetic simulation using frequency sweep:
+      List Minimum = 0.001,  Maximum = 10 GHZ
+
+    Frequency:  0.001 GHZ
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.00100000 0.002251 0.2620 0.997749 0.0000 0.997749 0.0000 0.002251 0.2620
+      ! P1 F=0.001 Standard port
+      ! P2 F=0.001 Standard port
+
+    Frequency:  0.01 GHZ
+      0.01000000 0.002253 2.5948 0.997749 -0.014 0.997749 -0.014 0.002253 2.5948
+      ! P1 F=0.01 Standard port
+      ! P2 F=0.01 Standard port
+
+    Frequency:  0.1 GHZ
+      0.10000000 0.002473 24.333 0.997749 -0.142 0.997749 -0.142 0.002473 24.333
+      ! P1 F=0.1 Standard port
+      ! P2 F=0.1 Standard port
+
+    Frequency:  1 GHZ
+      1.00000000 0.010486 76.052 0.997672 -1.418 0.997672 -1.418 0.010486 76.048
+      ! P1 F=1.0 Eeff=(1.00013 + j0) Z0=(80.8016 + j0)
+      ! P2 F=1.0 Eeff=(1.00013 + j0) Z0=(80.8016 + j0)
+
+    Frequency:  10 GHZ
+      10.0000000 0.100227 74.133 0.991858 -14.09 0.991858 -14.09 0.100212 74.126
+      ! P1 F=10.0 Eeff=(1.0001 + j0) Z0=(80.7991 + j0)
+      ! P2 F=10.0 Eeff=(1.0001 + j0) Z0=(80.7991 + j0)
+
+Em simulation completed Mon Oct 12 22:10:23 2026.

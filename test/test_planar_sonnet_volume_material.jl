@@ -144,27 +144,71 @@ end
     @test precision(BigFloat)==outside
 end
 
-# The outer dumbbell is simple and all local offset edges keep their direction;
-# its narrow neck creates nonlocal inset crossings. The thin-wall law must not
-# silently accept that geometry. Thick/topology support remains unfinished.
-@testset "volume hollow rejects closing nonlocal neck" begin
+# Lite evaluates the thin-wall tube formula algebraically while any offset
+# edge survives; once every edge is consumed the remnant is empty and the via
+# is fully plated, saturating the cross-section at the footprint area.
+# Verified against 18.53 (fixtures/native_volume_sheet_topology).
+function tube_area(vertices,thickness)
+    v=BigFloat.(vertices)
+    v[:,1]==v[:,end] && (v=v[:,1:end-1])
+    n=size(v,2)
+    twice=sum(cross2(v[:,k],v[:,mod1(k+1,n)]) for k in 1:n)
+    orientation=sign(twice);lengths=zeros(BigFloat,n);corners=zeros(BigFloat,n)
+    for k in 1:n
+        previous=mod1(k-1,n);following=mod1(k+1,n)
+        e1=v[:,k]-v[:,previous];e2=v[:,following]-v[:,k]
+        l1,l2=norm(e1),norm(e2)
+        cosine=(e1⋅e2)/(l1*l2);sine=orientation*cross2(e1,e2)/(l1*l2)
+        lengths[k]=l2;corners[k]=sine/(1+cosine)
+    end
+    # Reflex vertices join the offset edges with an arc instead of trimming
+    # them, so only convex corner terms shorten a surviving segment.
+    alive=any(k->lengths[k]-thickness*(max(corners[k],zero(BigFloat))+
+        max(corners[mod1(k+1,n)],zero(BigFloat)))>0,1:n)
+    return alive,thickness*(sum(lengths)-thickness*sum(corners))
+end
+
+function algebraic_sigma(p,model,polygon,loss,wall,selector,frequency)
+    setprecision(BigFloat,2400) do
+        v=BigFloat.(polygon.vertices);n=size(v,2);v[:,1]==v[:,end] && (n-=1)
+        area=abs(sum(cross2(v[:,k],v[:,mod1(k+1,n)]) for k in 1:n))/2
+        depth=BigFloat(wall)*BigFloat(p.length_scale)
+        conductivity=selector=="SRVY" ? inv(BigFloat(loss)*depth) : BigFloat(loss)
+        alive,tube=tube_area(polygon.vertices,depth)
+        metal=alive && tube>0 ? min(tube,area) : area
+        via=only(model.problem.vias)
+        mesh=BigFloat(count(via.uni))*BigFloat(model.problem.grid.dx)*BigFloat(model.problem.grid.dy)
+        q=depth*sqrt(BigFloat(pi)*BigFloat(DiffMoM._MU0)*BigFloat(frequency)*conductivity)
+        u=complex(q,q);transition=q>100 ? u : u/tanh(u)
+        return conductivity*metal/(mesh*transition)
+    end
+end
+
+@testset "volume hollow closing neck keeps algebraic tube law" begin
     p=read_sonnet_project(joinpath(FIXTURE,"triangle_hollow","project.son"))
     model=sonnet_planar_problem(p;freq=1e10,grid=(20,20),_materials=true,_details=true)
     original=only(filter(q->q.kind===:via,p.polygons))
     outer=1e-5*[0. 4 4 6 6 10 10 6 6 4 4 0;0. 0 1.8 1.8 0 0 4 4 2.2 2.2 4 4]
-    polygon=SonnetPolygon(original.kind,original.level,original.material,original.id,
-        outer,original.target,original.technology,original.technology_mode,original.flags)
-    before=copy(outer);bits=precision(BigFloat)
-    error=try
-        DiffMoM._sonnet_volume_polygon_sigma(p,polygon,model.problem.grid,model.problem.stack,
-            only(model.problem.vias).uni,1e10,1e6,3e-6/p.length_scale,"CDVY")
-        nothing
-    catch exception
-        exception
+    for (loss,wall,selector) in ((1e6,3e-6/p.length_scale,"CDVY"),(1e-3,.2,"SRVY"))
+        polygon=SonnetPolygon(original.kind,original.level,original.material,original.id,
+            outer,original.target,original.technology,original.technology_mode,original.flags)
+        before=copy(outer);bits=precision(BigFloat)
+        sigma=DiffMoM._sonnet_volume_polygon_sigma(p,polygon,model.problem.grid,model.problem.stack,
+            only(model.problem.vias).uni,1e10,loss,wall,selector)
+        expected=algebraic_sigma(p,model,polygon,loss,wall,selector,1e10)
+        er,ei=component_errors(sigma,expected)
+        @test er<=2e-12
+        @test ei<=2e-12
+        @test outer==before && precision(BigFloat)==bits
     end
-    @test error isa ArgumentError
-    @test occursin("topology adapter",sprint(showerror,error))
-    @test outer==before && precision(BigFloat)==bits
+    # The thin wall leaves a surviving offset edge (algebraic regime); the
+    # .2-unit wall saturates — its remaining tube contribution is nonpositive
+    # even though a reflex-flanked notch edge still reports a local span.
+    v=outer[:,1:end-1];area=abs(sum(cross2(v[:,k],v[:,mod1(k+1,size(v,2))]) for k in axes(v,2)))/2
+    alive,tube=tube_area(outer,BigFloat(3e-6)*BigFloat(p.length_scale))
+    @test alive && 0<tube<area
+    alive,tube=tube_area(outer,BigFloat(".2")*BigFloat(p.length_scale))
+    @test !(alive && tube>0)
 end
 
 function physical_residuals(raw)
@@ -178,6 +222,33 @@ function physical_residuals(raw)
         rhs[b,q]=-sign*weights[b]
     end
     return [norm((raw.z_mom*raw.currents[:,q]-rhs[:,q])./weights)/norm(rhs[:,q]./weights) for q in axes(rhs,2)]
+end
+
+@testset "volume hollow topology native parity" begin
+    # All four fixtures drive the hollow VOL through a series via so the
+    # effective cross-section dominates the response. dumbbell_neck closes a
+    # narrow waist while lobe edges survive (algebraic tube regime);
+    # dumbbell_saturated overshoots the footprint; notch_consumed and
+    # dumbbell_negative leave no surviving offset edge (fully plated regime).
+    # fixtures/native_volume_sheet_topology.
+    fixture=joinpath(@__DIR__,"fixtures","native_volume_sheet_topology")
+    manifest=JSON.parsefile(joinpath(fixture,"manifest.json"))
+    @test manifest["engine_version"]=="18.53-Lite (64-bit Windows)"
+    for file in manifest["files"]
+        @test bytes2hex(sha256(read(joinpath(fixture,file["path"]))))==file["sha256"]
+    end
+    for name in ("dumbbell_neck","dumbbell_saturated","notch_consumed","dumbbell_negative")
+        directory=joinpath(fixture,name);p=read_sonnet_project(joinpath(directory,"project.son"))
+        reference=planar_read_touchstone(joinpath(directory,"native_raw.s2p"))
+        for frequency in (1e9,1e10)
+            native=reference.s[only(findall(==(frequency),reference.frequencies))]
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(40,40),mx=160,my=160,method=:dense_fft)
+            @test maximum(abs,actual.s-native)<=.06
+            @test maximum(physical_residuals(actual.raw))<=1e-9
+            @test maximum(svdvals(actual.s))<=1+1e-6
+            @test maximum(abs,actual.s-transpose(actual.s))<=1e-10
+        end
+    end
 end
 
 @testset "volume material native S, loss and physical equation at RF" begin

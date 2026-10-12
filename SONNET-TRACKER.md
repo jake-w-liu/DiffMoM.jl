@@ -194,10 +194,23 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## C. Material loss / vias
 
-- [ ] C1 non-rectangular thick-wall VOL topology adapter — inset
-      crossing/saturation (`IO:1175-1179`). Needs real offset-with-topology
-      algorithm. Oracle: Lite RF controls + analytic rectangle saturation
-      limits already archived.
+- [x] C1 non-rectangular thick-wall VOL topology — **Done**. Lite does not
+      resolve offset topology geometrically at all: it applies the
+      algebraic tube formula t·(P−t·Σcot(θ/2)) while any offset edge
+      survives, and the via is fully plated (cross-section = footprint
+      area) once every edge is consumed. Verified 18.53 on four series-via
+      probes (`fixtures/native_volume_sheet_topology`): dumbbell_neck
+      (waist closes, algebraic regime, 2.6e-6 at 1 MHz),
+      dumbbell_saturated (formula overshoots → clamp), notch_consumed
+      (remnant empty with formula still at 0.90·A → footprint, 2.8e-6),
+      dumbbell_negative (formula negative, no surviving edge → footprint,
+      1.1e-5). Surviving-edge test uses convex corner terms only — reflex
+      vertices join offsets with an arc instead of trimming. Residual:
+      the per-edge survival check is local; a remnant can in principle
+      die nonlocally (opposing walls <2t) while an edge still reports a
+      span — unobserved in native probes, auto-corrected to footprint
+      whenever the tube formula overshoots area. The inset matrix and its
+      crossing checks are gone, so the path is also strictly cheaper.
 - [x] C2 ARR sheet-resistance conversion (`IO:1218`). **Done** — Lite
       18.53 logs "Array via metal type converted from Sheet Resistance at
       DC to Conductivity": every finite entered loss — zero and negatives
@@ -428,17 +441,20 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## Execution order (current)
 
-1. A5 multi-pin FLOAT common — analytic, self-contained, adjacent to fresh code.
-2. A4 signed file-pin degenerate-port adapter — depends on A5 port-reduction
-   machinery.
-3. A6 diagonal gap port + E1/E6 intake items — small, Lite-verifiable.
-4. A8/A9 component kinds/model types — Lite probe corpus.
-5. C-group material items (C2/C3/C5 first — bounded), then C1 thick-wall.
-6. B-group GEOVAR residue (B3 done; B4/B5 tractable; B2 probe campaign).
-7. A1 REFPLANE contracts — needs calibration machinery, larger.
-8. D-group STF residue — `em -N` structural corpus.
-9. F/G-group netlist/layout breadth.
-10. I-group HFSS-based independent convergence certification.
+Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 intake+gating), C1–C5 (VOL
+topology and material laws), C10, plus prior ledgered items.
+
+Remaining (updated order):
+
+1. A2/A4/A5/A7 port-and-pin residuals — small, Lite-verifiable.
+2. E2 CUP calibration-group solve + E5 dielectric bricks — bounded.
+3. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
+   DocOnly.
+4. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
+5. A3 ordered model pins — pin-group GLG calibration machinery.
+6. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
+   characterization, larger.
+7. I-group HFSS-based independent convergence certification.
 
 Each landed item: implementation + deep-debug loop + tests + fixture evidence
 + ledger/docs update + full suite (1.13) + focused (1.12) + push + CI green.

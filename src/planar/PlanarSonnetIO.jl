@@ -1123,8 +1123,8 @@ function _sonnet_volume_sigma_wide(sigma,freq,area,percent,width,breadth,mesh_ar
     end
 end
 
-# The polygon adapter still needs general inward offsets for hollow shapes.
-# Exact axis-aligned rectangular boundaries are handled without raster area.
+# Exact axis-aligned rectangular boundaries are handled without the general
+# polygon tube-formula path.
 function _sonnet_volume_rectangle(vertices)
     xmin,xmax=extrema(@view vertices[1,:]);ymin,ymax=extrema(@view vertices[2,:])
     for k in axes(vertices,2)
@@ -1158,8 +1158,8 @@ function _sonnet_volume_hollow_wide(loss,freq,area,wall,unit,width,breadth,mesh_
     end
 end
 
-# General thin mitered wall. Offset edge reversals mark unresolved topology
-# changes; those cases retain an explicit failure until separately modeled.
+# Simple-boundary check shared by the hollow wall paths; the wall's own
+# topology is resolved algebraically without constructing the inset.
 function _sonnet_volume_simple_wall(vertices,nvertices)
     for i in 1:nvertices, j in i+1:nvertices
         (j==i+1 || (i==1 && j==nvertices)) && continue
@@ -1232,7 +1232,6 @@ function _sonnet_volume_polygon_sigma_fast(p,poly,grid,mask,freq,loss,wall,selec
     abs(signed)>64tolerance*max(magnitude,1.0) || return nothing
     orientation=sign(signed);area=abs(signed)/2
     lengths=Vector{Float64}(undef,nvertices);corners=Vector{Float64}(undef,nvertices)
-    inset=Matrix{Float64}(undef,2,nvertices)
     for k in 1:nvertices
         previous=mod1(k-1,nvertices);following=mod1(k+1,nvertices)
         ax=vertices[1,k]-vertices[1,previous];ay=vertices[2,k]-vertices[2,previous]
@@ -1244,16 +1243,23 @@ function _sonnet_volume_polygon_sigma_fast(p,poly,grid,mask,freq,loss,wall,selec
         denominator=1+cosine
         denominator>=.125 || return nothing
         lengths[k]=lb;corners[k]=sine/denominator
-        inset[1,k]=vertices[1,k]-t*orientation*(ay+by)/denominator
-        inset[2,k]=vertices[2,k]+t*orientation*(ax+bx)/denominator
     end
-    _sonnet_volume_simple_wall_fast(inset,nvertices,32tolerance)===true || return nothing
+    # Lite evaluates the tube formula algebraically while any offset edge
+    # survives: neck closure and other nonlocal topology changes still use
+    # t·(P−t·Σcot(θ/2)). When every edge is consumed the remnant is empty and
+    # the via is fully plated — the cross-section saturates at the footprint
+    # area (verified 18.53; fixtures/native_volume_sheet_topology).
+    # Reflex vertices join the offset edges with an arc instead of trimming
+    # them, so only convex corner terms shorten a surviving segment.
+    alive=false;dead=true
     for k in 1:nvertices
-        remaining=lengths[k]-t*(corners[k]+corners[mod1(k+1,nvertices)])
-        remaining>64tolerance || return nothing
+        remaining=lengths[k]-t*(max(corners[k],0.)+max(corners[mod1(k+1,nvertices)],0.))
+        remaining>64tolerance && (alive=true)
+        remaining<-64tolerance || (dead=false)
     end
-    metal_area=t*(sum(lengths)-t*sum(corners))
-    64tolerance<metal_area<area-64tolerance || return nothing
+    alive || dead || return nothing
+    metal_area=dead ? area : min(t*(sum(lengths)-t*sum(corners)),area)
+    metal_area>64tolerance || return nothing
     q=_sonnet_volume_product((thickness,sqrt(pi*_MU0),sqrt(freq),sqrt(conductivity)),())
     isfinite(q) && q>=floatmin(Float64) || return nothing
     transition=_sonnet_loss_transition(1.0,q,"VOL")
@@ -1290,7 +1296,6 @@ function _sonnet_volume_polygon_sigma_wide(p,poly,grid,stack,mask,freq,loss,wall
         orientation=sign(signed);area=abs(signed)/2
         area>0 || throw(ArgumentError("native hollow VOL polygon has zero area"))
         lengths=Vector{BigFloat}(undef,nvertices);corners=Vector{BigFloat}(undef,nvertices)
-        inset=Matrix{BigFloat}(undef,2,nvertices)
         thickness=BigFloat(wall)*BigFloat(p.length_scale)
         for k in 1:nvertices
             previous=mod1(k-1,nvertices);following=mod1(k+1,nvertices)
@@ -1302,15 +1307,15 @@ function _sonnet_volume_polygon_sigma_wide(p,poly,grid,stack,mask,freq,loss,wall
             denominator=1+cosine
             denominator>0 || throw(ArgumentError("native hollow VOL has a reversing boundary"))
             lengths[k]=lb;corners[k]=sine/denominator
-            inset[1,k]=vertices[1,k]-thickness*orientation*(ay/la+by/lb)/denominator
-            inset[2,k]=vertices[2,k]+thickness*orientation*(ax/la+bx/lb)/denominator
         end
-        _sonnet_volume_simple_wall(inset,nvertices) ||
-            throw(ArgumentError("native hollow VOL inset crosses or touches; its topology adapter is required"))
-        all(k->lengths[k]-thickness*(corners[k]+corners[mod1(k+1,nvertices)])>0,1:nvertices) ||
-            throw(ArgumentError("native hollow VOL wall changes polygon topology; its thick-wall adapter is required"))
-        metal_area=thickness*(sum(lengths)-thickness*sum(corners))
-        0<metal_area<area || throw(ArgumentError("native hollow VOL wall requires its saturation/topology adapter"))
+        # Lite evaluates the tube formula algebraically while any offset edge
+        # survives; once every edge is consumed the remnant is empty and the
+        # via is fully plated, saturating the cross-section at the footprint
+        # area (verified 18.53; fixtures/native_volume_sheet_topology).
+        alive=any(k->lengths[k]-thickness*(max(corners[k],zero(BigFloat))+
+            max(corners[mod1(k+1,nvertices)],zero(BigFloat)))>0,1:nvertices)
+        tube=thickness*(sum(lengths)-thickness*sum(corners))
+        metal_area=alive && tube>0 ? min(tube,area) : area
         conductivity=selector=="RSVY" ? BigFloat(100)/BigFloat(loss) :
             selector=="SRVY" ? inv(BigFloat(loss)*thickness) : BigFloat(loss)
         mesh=BigFloat(count(mask))*BigFloat(grid.dx)*BigFloat(grid.dy)
