@@ -152,14 +152,14 @@ end
 function _sonnet_component_termw(p::SonnetProject,component)
     default="FEED";widths=Dict{Int,String}();inside=false;pin=0
     for record in component
-        t=record.tokens
-        if t[1]=="SMDP"
+        t=record.tokens;key=uppercase(t[1])
+        if key=="SMDP"
             pin=length(t)>=7 ? something(tryparse(Int,t[7]),0) : 0
-        elseif t[1]=="EXSMDP"
+        elseif key=="EXSMDP"
             inside=true
-        elseif t[1]=="END"
+        elseif key=="END"
             inside=false
-        elseif t[1]=="TERMW"
+        elseif key=="TERMW"
             length(t)>=2 || _sonnet_error(p.source,record.line,"TERMW requires a width mode")
             mode=join(t[2:end]," ")
             if inside
@@ -180,11 +180,12 @@ end
 # direction (`AUTO`/`BOX AUTO` = nearest conductive cover).
 function _sonnet_gndref_value(source,record)
     t=record.tokens
-    t==["GNDREF","AUTO"] && return :auto
-    (t==["GNDREF","FLOAT"] || t==["GNDREF","F"]) && return :float
-    t==["GNDREF","BOX","AUTO"] && return :box_auto
-    t==["GNDREF","BOX","BELOW"] && return :below
-    t==["GNDREF","BOX","ABOVE"] && return :above
+    key=uppercase(t[1])=="GNDREF" ? t[2:end] : String[]
+    key==["AUTO"] && return :auto
+    (key==["FLOAT"] || key==["F"]) && return :float
+    key==["BOX","AUTO"] && return :box_auto
+    key==["BOX","BELOW"] && return :below
+    key==["BOX","ABOVE"] && return :above
     _sonnet_error(source,record.line,"unrepresented SMD ground reference $(join(t[2:end]," "))")
 end
 
@@ -200,14 +201,14 @@ end
 function _sonnet_component_gndref(p::SonnetProject,component)
     mode=:auto;dirs=Dict{Int,Symbol}();inside=false;pin=0;pinfloat=nothing
     for record in component
-        t=record.tokens
-        if t[1]=="SMDP"
+        t=record.tokens;key=uppercase(t[1])
+        if key=="SMDP"
             pin=length(t)>=7 ? something(tryparse(Int,t[7]),0) : 0
-        elseif t[1]=="EXSMDP"
+        elseif key=="EXSMDP"
             inside=true
-        elseif t[1]=="END"
+        elseif key=="END"
             inside=false
-        elseif t[1]=="GNDREF"
+        elseif key=="GNDREF"
             value=_sonnet_gndref_value(p.source,record)
             if inside
                 pin==0 && _sonnet_error(p.source,record.line,
@@ -233,7 +234,7 @@ function _sonnet_component_gndref(p::SonnetProject,component)
     return (mode=mode,dirs=dirs)
 end
 
-_sonnet_component_name(component)=(k=findfirst(r->r.tokens[1]=="SMD",component);
+_sonnet_component_name(component)=(k=findfirst(r->uppercase(r.tokens[1])=="SMD",component);
     k===nothing || length(component[k].tokens)<2 ? "SMD" : component[k].tokens[2])
 
 # Whether the component resolves to the floating local-ground adapter:
@@ -244,10 +245,10 @@ function _sonnet_component_floating(p::SonnetProject,component)
     gnd=_sonnet_component_gndref(p,component)
     gnd.mode===:float && return true
     gnd.mode===:via && return false
-    kind=findfirst(r->r.tokens[1]=="TYPE",component)
+    kind=findfirst(r->uppercase(r.tokens[1])=="TYPE",component)
     kind===nothing && return false
     t=component[kind].tokens
-    return t==["TYPE","NONE"] || (length(t)==4 && t[2]=="IDEAL")
+    return length(t)==2 && uppercase(t[1])=="TYPE" && t[2]=="NONE" || (length(t)==4 && t[2]=="IDEAL")
 end
 
 function _sonnet_termw_cells(p,record,termw,lo,hi,transverse,h,variables,freq)
@@ -403,11 +404,11 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
     for component in p.components
         for record in component
             t=record.tokens
-            t[1]=="GNDREF" && _sonnet_gndref_value(p.source,record)
-            t[1] in ("DRP1","DRP2","REFPLANE","TWTYPE","TWVALUE") &&
+            uppercase(t[1])=="GNDREF" && _sonnet_gndref_value(p.source,record)
+            uppercase(t[1]) in ("DRP1","DRP2","REFPLANE","TWTYPE","TWVALUE") &&
                 _sonnet_error(p.source,record.line,
                     "native component $(t[1]) requires its reference-plane/terminal adapter")
-            t[1] in ("SMD","ID","GNDREF","TERMW","SMDP","EXSMDP","END","TYPE",
+            uppercase(t[1]) in ("SMD","ID","GNDREF","TERMW","SMDP","EXSMDP","END","TYPE",
                 "SBOX","PBSHW","PBOX","PKG","LPOS","INHSWP","CUPGRP") ||
                 tryparse(Float64,t[1])!==nothing || _sonnet_error(p.source,record.line,
                     "unrepresented native component record $(t[1])")
@@ -417,7 +418,7 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
         local_pins=Any[_sonnet_component_pin(p,r,base.problem,variables,freq;
                 termw=get(termw.widths,something(tryparse(Int,get(r.tokens,7,"")),0),
                     termw.default))
-            for r in component if r.tokens[1]=="SMDP"]
+            for r in component if uppercase(r.tokens[1])=="SMDP"]
         !isempty(local_pins) || throw(ArgumentError("native component has no terminal pins"))
         sort!(local_pins;by=pin->pin.pin)
         [pin.pin for pin in local_pins]==collect(1:length(local_pins)) ||
@@ -465,7 +466,7 @@ function sonnet_component_model(p::SonnetProject,freq::Real;grid=nothing,
     external=collect(1:length(base.labels))
     circuit=PlanarCircuit(length(labels),external;z0=base.z0)
     for (component,local_pins) in zip(p.components,pins)
-        kind=findfirst(r->r.tokens[1]=="TYPE",component)
+        kind=findfirst(r->uppercase(r.tokens[1])=="TYPE",component)
         kind===nothing && throw(ArgumentError("native component lacks TYPE"))
         record=component[kind];t=record.tokens
         terminals=[findfirst(==(pin.number),labels) for pin in local_pins]

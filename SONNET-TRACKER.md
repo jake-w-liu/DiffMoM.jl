@@ -82,8 +82,37 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## B. GEOVAR
 
-- [ ] B1 GEOVAR header beyond `ANC/SYM/RAD XDIR/YDIR` point sets (`GeoVars:165`).
-      Oracle: Lite probe sweeps.
+- [x] B1 GEOVAR header beyond `ANC/SYM/RAD XDIR/YDIR` point sets (`GeoVars:165`).
+      **Done** — Lite 18.53 55-probe campaign
+      (`test/fixtures/native_geovar_header_grammar/manifest.json`):
+      kind/axis stay positional and case-insensitive (position swaps
+      reject "Type Keyword not understood"), while the tail is scanned —
+      the first NSCD/SCUNI/SCXY sets scaling, the first finite numeric
+      token sets the sign-normalized display direction; unknown tokens
+      reject only while scaling is unset (ignored after it); missing
+      fields default to NSCD/+1 including a bare four-token header, and
+      `+1`, `-1.7`, `1e2`, `0`, `99` all parse. The direction field is
+      ignored for application whenever the saved reference span is
+      nonzero — every dimension resolves `sign(span)*target` (bit-exact
+      verified on ANC/SYM/SCXY across -2..3); only a zero span falls
+      back to the field's sign. Structural record keywords are
+      case-insensitive end-to-end (`ftyp`, `geo`/`end geo`, `valvar`,
+      `geovar`, `pos`, `nom`, `eqn`, `ref1/2`, `ps1/2`, `poly`, `end`,
+      `box`, `tmet`, `bmet`, `met`, `num`, `via polygon`, `bri poly`,
+      `tlaynam`, `tolevel`, `por1`, `cupgrp`, `smd`, `id`, `type`,
+      `gndref`, `simple`, `smdp`, `sbox`, `stf`, `options`, `termw`,
+      `exsmdp`, `inhswp`, `cupgrp`); an all-lowercase project solves
+      bit-identically natively and resolves identically here. DIM unit
+      entries (`ANG`, `CAP`...) and VARSWP block contents (`SWPVARS`,
+      `ENABLED`, `FREQ`...) are case-SENSITIVE natively and remain
+      strict. EQN is optional after NOM or after REF2 (both verified).
+      SCUNI grammar path verified bit-identical: impl literal for
+      `1 SCUNI 5 NSCD` matches the native parameterized s2p
+      (0.999167/-22.89deg @3.315GHz). 90-assert regression testset
+      `Native GEOVAR header grammar scans and folds case`.
+      Residuals: CKT netlist contents not probed for case; value-position
+      tokens (SONPROJ, INH/NOH, LOCAL, Y, STD, L/R) kept strict pending
+      dedicated probes.
 - [ ] B2 explicit reference repetitions — scaled ANC moving-reference law
       (`GeoVars:228`, undecoded; flat 1.6e-4 residual basins documented).
       Unscaled SYM XDIR/YDIR/wildcard/literal already done bit-identically.

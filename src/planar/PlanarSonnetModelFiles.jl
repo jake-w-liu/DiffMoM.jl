@@ -117,7 +117,7 @@ function _sonnet_files_limit(name,value)
     return Int(value)
 end
 function _sonnet_files_id(p,component)
-    ids=filter(r->first(r.tokens)=="ID",component)
+    ids=filter(r->uppercase(first(r.tokens))=="ID",component)
     length(ids)==1 && length(only(ids).tokens)==2 ||
         _sonnet_error(p.source,first(component).line,"component requires one literal ID")
     id=tryparse(Int,only(ids).tokens[2])
@@ -126,7 +126,7 @@ function _sonnet_files_id(p,component)
 end
 function _sonnet_files_kind(p,component)
     isempty(component) && _sonnet_error(p.source,0,"empty component")
-    types=filter(r->first(r.tokens)=="TYPE",component)
+    types=filter(r->uppercase(first(r.tokens))=="TYPE",component)
     length(types)==1 && length(only(types).tokens)>=2 ||
         _sonnet_error(p.source,first(component).line,"component requires exactly one complete TYPE")
     return only(types)
@@ -158,7 +158,7 @@ function _sonnet_files_contract(p,component)
     topground=false;pinblock=false;ground=false;width=false;inherit=nothing
     pinfloat=nothing
     for record in component
-        t=record.tokens;tag=first(t)
+        t=record.tokens;tag=uppercase(first(t))
         if tag=="GNDREF"
             value=_sonnet_gndref_value(p.source,record)
             if pinblock
@@ -168,11 +168,11 @@ function _sonnet_files_contract(p,component)
                 topground=true
             end
         elseif tag=="INHSWP"
-            modelkind=="SPROJ" && inherit===nothing && t in (["INHSWP","N"],["INHSWP","Y"]) ||
+            modelkind=="SPROJ" && inherit===nothing && length(t)==2 && t[2] in ("N","Y") ||
                 _sonnet_error(p.source,record.line,"SPROJ requires one literal INHSWP N/Y")
             inherit=t[2]=="Y"
         elseif tag=="TERMW"
-            (t in (["TERMW","FEED"],["TERMW","CELL"]) ||
+            ((length(t)==2 && t[2] in ("FEED","CELL")) ||
                 (length(t)==3 && t[2]=="CUST")) || _sonnet_error(p.source,record.line,
                 "TERMW $(join(t[2:end]," ")) needs a physical width adapter")
             pinblock || _sonnet_error(p.source,record.line,"TERMW must describe a model pin")
@@ -257,7 +257,7 @@ function _sonnet_files_pin_preflight(p,f,grid,variables)
     tol=1e-9*max(a,b)
     for component in p.components
         for record in component
-            first(record.tokens)=="SMDP" || continue
+            uppercase(first(record.tokens))=="SMDP" || continue
             t=record.tokens;level=parse(Int,t[2]);axis=t[5] in ("L","R")
             x=sonnet_variable_value(p,t[3];variables,freq=f)*p.length_scale
             y=sonnet_variable_value(p,t[4];variables,freq=f)*p.length_scale
@@ -348,7 +348,7 @@ function _sonnet_files_geometry_payload(p,grid)
     # all rooftop/via basis indices and physical voltage contractions.
     nl=BigInt(length(p.layers))+2length(p.polygons)
     ns=BigInt(2length(p.polygons)+1)
-    np=BigInt(length(p.ports))+sum(count(r->first(r.tokens)=="SMDP",c) for c in p.components;init=0)
+    np=BigInt(length(p.ports))+sum(count(r->uppercase(first(r.tokens))=="SMDP",c) for c in p.components;init=0)
     cells=BigInt(nx)*ny
     rawports=BigInt(length(p.ports))+np*max(nl,1)
     needed=BigInt(4096)+cells*(BigInt(128)*ns+BigInt(256)*max(nl,1)*max(np,1))+
@@ -418,7 +418,7 @@ function sonnet_component_files(p::SonnetProject,frequency::Real;
     !isempty(descriptions) || throw(ArgumentError("project has no SPARAM or SPROJ component"))
     length(unique(d.id for d in descriptions))==length(descriptions) || throw(ArgumentError("duplicate native component ID"))
     has_sparam=any(d->d.kind.tokens[2]=="SPARAM",descriptions)
-    !has_sparam || count(r->r.tokens==["SMDFILES"],p.records)==1 || throw(ArgumentError("SPARAM requires one SMDFILES section"))
+    !has_sparam || count(r->length(r.tokens)==1 && uppercase(r.tokens[1])=="SMDFILES",p.records)==1 || throw(ArgumentError("SPARAM requires one SMDFILES section"))
     table=Dict{Int,Tuple{String,SonnetRecord}}()
     for record in (has_sparam ? _sonnet_section(p.records,"SMDFILES",p.source) : SonnetRecord[])
         length(record.tokens)==2 || _sonnet_error(p.source,record.line,"SMDFILES entry requires index and model path")

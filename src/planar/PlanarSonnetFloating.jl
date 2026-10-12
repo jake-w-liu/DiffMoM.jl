@@ -1,6 +1,6 @@
 export SonnetFloatingResult,sonnet_floating_model
 
-_sonnet_float_records(records)=any(r->r.tokens[1]=="GNDREF" &&
+_sonnet_float_records(records)=any(r->uppercase(r.tokens[1])=="GNDREF" &&
     r.tokens[end] in ("FLOAT","F"),records)
 _sonnet_has_floating(p::SonnetProject)=any(port->_sonnet_float_records(port.records),p.ports) ||
     any(component->_sonnet_component_floating(p,component),p.components)
@@ -72,10 +72,10 @@ function planar_current_maps(result::_SonnetBalancedSourceResult;port::Integer=1
 end
 
 function _sonnet_float_validate(p,records)
-    portrecord=!isempty(records) && first(records).tokens[1]=="POR1"
+    portrecord=!isempty(records) && uppercase(first(records).tokens[1])=="POR1"
     inside=false
     for record in records
-        t=record.tokens;key=first(t)
+        t=record.tokens;key=uppercase(first(t))
         if key=="EXSMDP"
             inside=true
         elseif key=="END"
@@ -85,8 +85,8 @@ function _sonnet_float_validate(p,records)
             # reference; per-pin records are inert under a shared local
             # ground and only need valid syntax.
             _sonnet_gndref_value(p.source,record)
-            inside || record.tokens==["GNDREF","FLOAT"] || record.tokens==["GNDREF","F"] ||
-                record.tokens==["GNDREF","AUTO"] || _sonnet_error(p.source,record.line,
+            inside || t[2:end]==["FLOAT"] || t[2:end]==["F"] ||
+                t[2:end]==["AUTO"] || _sonnet_error(p.source,record.line,
                 "a floating group must use a FLOAT or AUTO reference")
         elseif key=="TERMW"
             (length(t)==2 && t[2] in ("FEED","CELL")) ||
@@ -124,7 +124,7 @@ function _sonnet_float_cup_pin(p,port,problem,variables,freq)
         (sign(area)*sign(dx)>0 ? "B" : "T")
     record=SonnetRecord(first(port.records).line,["SMDP",string(poly.level),
         port.values[6],port.values[7],orient,string(port.number),"1"])
-    widths=[join(r.tokens[2:end]," ") for r in port.records if r.tokens[1]=="TERMW"]
+    widths=[join(r.tokens[2:end]," ") for r in port.records if uppercase(r.tokens[1])=="TERMW"]
     termw=isempty(widths) ? "FEED" : only(widths)
     pin=_sonnet_component_pin(p,record,problem,variables,freq;termw)
     return merge(pin,(signed_number=port.number,z0=reference,group=first(port.records).tokens[end]))
@@ -208,7 +208,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     cellcount=BigInt(physical.grid.nx)*physical.grid.ny
     sheets=length(unique(poly.level for poly in p.polygons if poly.kind===:sheet))
     vias=count(poly->poly.kind===:via,p.polygons)*BigInt(length(p.layers))
-    sourcecount=length(p.ports)+sum(count(r->r.tokens[1]=="SMDP",c) for c in p.components;init=0)
+    sourcecount=length(p.ports)+sum(count(r->uppercase(r.tokens[1])=="SMDP",c) for c in p.components;init=0)
     _enforce_payload_limit(_checked_payload_sum("native floating geometry preflight",variable_payload,
         _checked_array_payload_bytes(UInt8,228,cellcount,sheets+vias),
         _checked_array_payload_bytes(ComplexF64,2,cellcount,sheets),
@@ -275,7 +275,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         _sonnet_float_validate(p,component)
         pins=Any[];termw=_sonnet_component_termw(p,component)
         for record in component
-            record.tokens[1]=="SMDP" || continue
+            uppercase(record.tokens[1])=="SMDP" || continue
             pin=_sonnet_component_pin(p,record,problem,variables,freq;
                 termw=get(termw.widths,something(tryparse(Int,get(record.tokens,7,"")),0),
                     termw.default))
@@ -284,8 +284,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         sort!(pins;by=pin->pin.pin)
         [pin.pin for pin in pins]==collect(1:length(pins)) && !isempty(pins) ||
             throw(ArgumentError("native FLOAT component pins must be unique and contiguous"))
-        kind=only(r for r in component if first(r.tokens)=="TYPE")
-        none=kind.tokens==["TYPE","NONE"]
+        kind=only(r for r in component if uppercase(first(r.tokens))=="TYPE")
+        none=length(kind.tokens)==2 && kind.tokens[2]=="NONE"
         push!(groups,(pins=pins,component=component,external=none))
     end
     bridges=Any[];loads=Any[]
@@ -305,9 +305,9 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
             end
         end
         modelcomp=group.component!==nothing && !group.external
-        kindt=modelcomp ? only(r for r in group.component if first(r.tokens)=="TYPE").tokens :
+        kindt=modelcomp ? only(r for r in group.component if uppercase(first(r.tokens))=="TYPE").tokens :
             nothing
-        needscommon=modelcomp && kindt!=["TYPE","NONE"] &&
+        needscommon=modelcomp && !(length(kindt)==2 && kindt[2]=="NONE") &&
             !(length(kindt)==4 && kindt[2]=="IDEAL")
         group_gnode=0
         # Terminals whose labels carry no explicit negative partner share
@@ -427,8 +427,8 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         circuit.nnodes=nodes;circuit.ports=external_pairs[order];circuit.z0=external_z0[order]
     end
     for load in loads
-        component=load.component;record=only(r for r in component if first(r.tokens)=="TYPE");t=record.tokens
-        t==["TYPE","NONE"] && continue
+        component=load.component;record=only(r for r in component if uppercase(first(r.tokens))=="TYPE");t=record.tokens
+        length(t)==2 && t[2]=="NONE" && continue
         if length(t)==4 && t[2]=="IDEAL"
             length(load.terminals)==2 || throw(ArgumentError("ideal FLOAT R/L/C requires two component terminals"))
             a,b=load.terminals[1],load.terminals[2]

@@ -19,10 +19,17 @@ end
     for row in proof["cases"]
         folder=joinpath(@__DIR__,"fixtures/native_geovar_reference_count_law/cases",row["case"])
         p=read_sonnet_project(joinpath(folder,"parameter.son"));q=read_sonnet_project(joinpath(folder,"literal.son"))
-        # The effective project retains original records. Bind its dimension
-        # to NOM when lowering the old result so it is not moved a second time.
-        before=sonnet_planar_problem(PreviousGeometry._sonnet_geometry_project(p,1e9);
-            freq=1e9,variables=Dict("Move"=>.125))
+        # The effective project retains original records. An inactive bind no
+        # longer freezes a resolved project - native still applies its saved
+        # delta - so bind the dimension to its already-resolved reference
+        # span, which makes the displacement exactly zero.
+        resolved=PreviousGeometry._sonnet_geometry_project(p,1e9)
+        resolved_polys=Dict(qq.id=>qq for qq in resolved.polygons)
+        parameter=only(DiffMoM._sonnet_geovar_parameters(resolved,1024,100000,10_000_000))
+        (fixed_id,fixed_point),(moving_id,moving_point)=parameter.references
+        span=abs(resolved_polys[moving_id].vertices[parameter.axis,moving_point]-
+            resolved_polys[fixed_id].vertices[parameter.axis,fixed_point])/p.length_scale
+        before=sonnet_planar_problem(resolved;freq=1e9,variables=Dict("Move"=>span))
         literal=sonnet_planar_problem(q;freq=1e9);current=sonnet_planar_problem(p;freq=1e9)
         @test sum(count(a.mask .!= b.mask) for (a,b) in zip(before.sheets,literal.sheets))==row["cell_mismatch"]==16
         @test all(a.mask==b.mask for (a,b) in zip(current.sheets,literal.sheets))

@@ -881,8 +881,8 @@ function read_sonnet_linked_project(path::AbstractString;dependency_root=dirname
     for (line,text) in enumerate(split(raw,'\n'))
         tokens=_sonnet_tokens(text);isempty(tokens) || push!(records,SonnetRecord(line,tokens))
     end
-    !isempty(records) && length(records[1].tokens)>=2 && records[1].tokens[1:2]==["FTYP","SONPROJ"] || throw(ArgumentError("linked STF intake requires a SONPROJ geometry file"))
-    linked=filter(x->x.tokens[1]=="STF",_sonnet_section(records,"GEO",source))
+    !isempty(records) && length(records[1].tokens)>=2 && uppercase(records[1].tokens[1])=="FTYP" && records[1].tokens[2]=="SONPROJ" || throw(ArgumentError("linked STF intake requires a SONPROJ geometry file"))
+    linked=filter(x->uppercase(x.tokens[1])=="STF",_sonnet_section(records,"GEO",source))
     length(linked)==1 && length(only(linked).tokens)==2 || throw(ArgumentError("require exactly one complete STF dependency record"))
     declared=only(linked).tokens[2]
     isabspath(declared) && throw(ArgumentError("absolute STF dependency paths are forbidden"))
@@ -914,14 +914,14 @@ function sonnet_materialize_project(linked::SonnetLinkedProject;
     t=linked.technology;rows=_stf_static_rows(t,technology_variables)
     _stf_cover(t,"TOP");_stf_cover(t,"BOTTOM")
     records=SonnetRecord[];geo=_sonnet_section(linked.records,"GEO",linked.source)
-    boxindex=findfirst(r->r.tokens[1]=="BOX",geo)
+    boxindex=findfirst(r->uppercase(r.tokens[1])=="BOX",geo)
     boxindex!==nothing || throw(ArgumentError("linked SON project lacks BOX"))
     oldcount=parse(Int,geo[boxindex].tokens[2])+1
     # Linked BOX0 has no inline layers. If serialized inline layers are
     # present, recognize only numeric seven-field dielectric rows.
     skip=Set{Int}()
     for row in geo[boxindex+1:min(length(geo),boxindex+oldcount)]
-        length(row.tokens)>=7 && !(row.tokens[1] in ("TMET","BMET","MET","TECHLAY","VALVAR","GEOVAR","LORGN")) || break
+        length(row.tokens)>=7 && !(uppercase(row.tokens[1]) in ("TMET","BMET","MET","TECHLAY","VALVAR","GEOVAR","LORGN")) || break
         push!(skip,row.line)
     end
     dims=_sonnet_section(linked.records,"DIM",linked.source)
@@ -931,10 +931,10 @@ function sonnet_materialize_project(linked::SonnetLinkedProject;
     for record in linked.records
         tokens=copy(record.tokens)
         record.line in skip && continue
-        tokens[1]=="STF" && continue
-        if tokens[1] in ("TMET","BMET")
-            tokens=[tokens[1],"Lossless","0","SUP","0","0","0","0"]
-        elseif tokens[1]=="BOX"
+        uppercase(tokens[1])=="STF" && continue
+        if uppercase(tokens[1]) in ("TMET","BMET")
+            tokens=[uppercase(tokens[1]),"Lossless","0","SUP","0","0","0","0"]
+        elseif uppercase(tokens[1])=="BOX"
             tokens[2]=string(length(rows)-1)
             push!(records,SonnetRecord(record.line,tokens))
             for (i,row) in enumerate(rows)

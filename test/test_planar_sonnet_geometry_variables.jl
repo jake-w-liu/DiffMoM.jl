@@ -1,5 +1,5 @@
 module NativeSonnetGeometryVariableTests
-using Test,DiffMoM,SHA,TOML,LinearAlgebra
+using Test,DiffMoM,SHA,TOML,LinearAlgebra,JSON
 
 const fixture=joinpath(@__DIR__,"fixtures/native_sonnet_geometry_variables")
 
@@ -123,8 +123,8 @@ end
     mktempdir() do directory
         nominal=replace(original,"VALVAR Width LNG 0.375"=>"VALVAR Width LNG 0.25")
         for (from,to) in ((" NSCD"," SCD"),(" ANC "," INVALID "),
-                ("YDIR 1","ZDIR 1"),("YDIR 1","YDIR 0"),
-                ("YDIR 1 NSCD","YDIR 1 NSCD EXTRA"))
+                ("YDIR 1","ZDIR 1"),("YDIR 1","YDIR FOO"),
+                ("YDIR 1 NSCD","YDIR JUNK 1 NSCD"))
             file=joinpath(directory,"invalid_nominal.son")
             write(file,replace(nominal,from=>to))
             candidate=read_sonnet_project(file)
@@ -158,7 +158,7 @@ end
     @test_throws ArgumentError DiffMoM._sonnet_geometry_project(cancellation,1e9)
     @test huge==saved
     for (from,to) in ((" NSCD"," SCD"),
-            ("YDIR 1","ZDIR 1"),("YDIR 1","YDIR 0"),
+            ("YDIR 1","ZDIR 1"),("YDIR 1","YDIR FOO"),
             ("REF1 POLY 1 1","REF1 POLY 999 1"),
             ("REF1 POLY 1 1","REF1 POLY 1 2"),
             ("POLY 1 1\n2\nEND","POLY 1 1\n99\nEND"),
@@ -653,5 +653,59 @@ end
     # not yet proven).
     @test_throws ArgumentError resolve("b4_symL_act.son",
         Dict("W"=>1400.0,"A2"=>700.0,"L"=>2700.0,"X"=>100.0))
+end
+
+@testset "Native GEOVAR header grammar scans and folds case" begin
+    # Lite 18.53 (fixture native_geovar_header_grammar): kind and axis are
+    # positional and case-insensitive; trailing tokens are scanned - first
+    # NSCD/SCUNI/SCXY sets scaling, first finite numeric token sets the
+    # sign-normalized display direction; unknown tokens reject while
+    # scaling is unset and are ignored after it; missing fields default
+    # to NSCD/+1 including a bare four-token header. The direction field
+    # itself is ignored for application whenever the reference span is
+    # nonzero (all variants below land the via identically). Structural
+    # keywords fold case; DIM unit entries and VARSWP contents stay
+    # strict. EQN is optional after NOM or after REF2.
+    directory=joinpath(@__DIR__,"fixtures/native_geovar_header_grammar")
+    manifest=JSON.parsefile(joinpath(directory,"manifest.json"))
+    expected=[10550.0,10600.0,10600.0,10550.0]
+    for name in ("x1200","xdm1","xd0","xd2","xdm2","xd3","xh5","xh7",
+            "xdir_only","xlc","g_swaptok","dirstr","onlysc","dir_sc",
+            "j2","j5","j8","e1","e3","e4","e5","k4","geo_lc","all_lc3",
+            "eqn_pos1","eqn_pos2","poly_lc2")
+        file="b1_"*name*".son"
+        @test manifest["cases"]["b1_"*name]["verdict"]=="accept"
+        p=read_sonnet_project(joinpath(directory,file))
+        resolved=DiffMoM._sonnet_geometry_project(p,1e9)
+        via=only(filter(q->q.kind==:via,resolved.polygons))
+        @test isapprox(via.vertices[1,1:end-1]./p.length_scale,expected,atol=1e-9)
+    end
+    # First scaling keyword wins: SCUNI is the effective adapter here and
+    # lands one cell wider (native parameterized s2p is bit-identical to
+    # this literal per the manifest).
+    p=read_sonnet_project(joinpath(directory,"b1_j7.son"))
+    resolved=DiffMoM._sonnet_geometry_project(p,1e9)
+    via=only(filter(q->q.kind==:via,resolved.polygons))
+    @test isapprox(via.vertices[1,1:end-1]./p.length_scale,
+        [10550.0,10650.0,10650.0,10550.0],atol=1e-9)
+    # Lowercase kind on an active symmetric dimension resolves the
+    # symmetric expansion (impl literal s2p bit-identical to the native
+    # parameterized run per the manifest).
+    p=read_sonnet_project(joinpath(directory,"b1_casa.son"))
+    resolved=DiffMoM._sonnet_geometry_project(p,1e9)
+    sheet=only(filter(q->q.id==97,resolved.polygons))
+    @test isapprox(sheet.vertices[1,1:end-1]./p.length_scale,
+        [9050.0,10950.0,10950.0,9050.0],atol=1e-9)
+    # The reject set covers unsupported kinds/axes/scaling keywords,
+    # kind/axis position swaps, unknown tokens while scaling is unset,
+    # second numeric tokens and truncated headers - all with the native
+    # error evidence archived beside them.
+    for name in ("zdir","scd","kind_abs","kind_len","nc","scaled","g_foo",
+            "g_4tok","extra_mid","sw1","sw4","junk_sc","j1","j3","j4","j6","e2")
+        file="b1_"*name*".son"
+        @test manifest["cases"]["b1_"*name]["verdict"]=="reject"
+        @test_throws ArgumentError DiffMoM._sonnet_geometry_project(
+            read_sonnet_project(joinpath(directory,file)),1e9)
+    end
 end
 end

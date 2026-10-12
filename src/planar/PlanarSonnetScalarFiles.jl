@@ -219,7 +219,7 @@ function _sonnet_scalar_requests(p::SonnetProject,extra=String[])
     for rows in (p.layers,p.metals),row in rows;append!(expressions,row);end
     for port in p.ports;append!(expressions,port.values);end
     for component in p.components,r in component
-        length(r.tokens)>=4 && r.tokens[1]=="TYPE" && r.tokens[2]=="IDEAL" && push!(expressions,r.tokens[4])
+        length(r.tokens)>=4 && uppercase(r.tokens[1])=="TYPE" && r.tokens[2]=="IDEAL" && push!(expressions,r.tokens[4])
     end
     for text in expressions
         occursin(r"\btable[12]\s*\(",text) || continue
@@ -239,7 +239,7 @@ function _sonnet_scalar_expression_payload(p,extra)
     for rows in (p.layers,p.metals),row in rows;foreach(reserve,row);end
     for port in p.ports;foreach(reserve,port.values);end
     for component in p.components,r in component
-        length(r.tokens)>=4 && r.tokens[1]=="TYPE" && r.tokens[2]=="IDEAL" && reserve(r.tokens[4])
+        length(r.tokens)>=4 && uppercase(r.tokens[1])=="TYPE" && r.tokens[2]=="IDEAL" && reserve(r.tokens[4])
     end
     # Bounded expression ASTs, literal/token strings and the request map use
     # working storage in addition to the separately retained effective data.
@@ -259,7 +259,7 @@ function _sonnet_has_scalar_tables(p::SonnetProject)
         any(has,port.values) && return true
     end
     for component in p.components,r in component
-        length(r.tokens)>=4 && r.tokens[1]=="TYPE" && r.tokens[2]=="IDEAL" && has(r.tokens[4]) && return true
+        length(r.tokens)>=4 && uppercase(r.tokens[1])=="TYPE" && r.tokens[2]=="IDEAL" && has(r.tokens[4]) && return true
     end
     return false
 end

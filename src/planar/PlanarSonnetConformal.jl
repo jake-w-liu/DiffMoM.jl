@@ -435,7 +435,7 @@ function solve_sonnet_conformal(project::SonnetProject,freq::Real;raw::Bool=fals
         scalar_files=nothing,scalar_root=dirname(project.source),scalar_outside::Symbol=:reject,
         scalar_max_files::Integer=64,scalar_max_bytes::Integer=8*1024^2,
         scalar_max_nodes::Integer=100000,scalar_max_line_bytes::Integer=16384,kw...)
-    requested=any(r->r.tokens[1]=="OPTIONS" && any(occursin("d",t) for t in r.tokens[2:end]),project.records)
+    requested=any(r->uppercase(r.tokens[1])=="OPTIONS" && any(occursin("d",t) for t in r.tokens[2:end]),project.records)
     requested && !raw && calibration===nothing && throw(ArgumentError("native conformal project requests calibration; supply it or explicitly request raw=true"))
     model=sonnet_conformal_layout(project;freq,grid,variables,edge_size,interior_size,edge_band,max_triangles,max_bytes,
         scalar_files,scalar_root,scalar_outside,scalar_max_files,scalar_max_bytes,scalar_max_nodes,scalar_max_line_bytes)

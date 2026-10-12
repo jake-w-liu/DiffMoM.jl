@@ -197,9 +197,11 @@ end
 
 _sonnet_error(source,line,message)=throw(ArgumentError("$source:$line: $message"))
 function _sonnet_section(records,name,source)
-    first=findfirst(r->r.tokens==[name],records)
+    # Section markers are case-insensitive like every other record keyword.
+    first=findfirst(r->length(r.tokens)==1 && uppercase(r.tokens[1])==name,records)
     first===nothing && _sonnet_error(source,0,"missing $name section")
-    last=findnext(r->r.tokens==["END",name],records,first+1)
+    last=findnext(r->length(r.tokens)==2 && uppercase(r.tokens[1])=="END" &&
+        uppercase(r.tokens[2])==name,records,first+1)
     last===nothing && _sonnet_error(source,records[first].line,"unterminated $name section")
     return records[first+1:last-1]
 end
@@ -226,7 +228,7 @@ end
 # No filesystem rewrite or unsupported-feature bypass is exposed publicly.
 function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     isempty(records) && _sonnet_error(source,0,"empty project")
-    length(records[1].tokens)>=2 && records[1].tokens[1]=="FTYP" &&
+    length(records[1].tokens)>=2 && uppercase(records[1].tokens[1])=="FTYP" &&
         records[1].tokens[2] in ("SONPROJ","SONNETPRJ") ||
         _sonnet_error(source,records[1].line,"unsupported native project type")
     dims=_sonnet_section(records,"DIM",source)
@@ -243,8 +245,8 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     # Lite routes by content, not the FTYP token: SONNETPRJ on a GEO file
     # runs the EM solve and SONPROJ on a CKT file runs the netlist solve
     # (verified 18.53 — both type tokens accept both project kinds).
-    if !any(r->r.tokens==["GEO"],records)
-        any(r->r.tokens==["CKT"],records) ||
+    if !any(r->length(r.tokens)==1 && uppercase(r.tokens[1])=="GEO",records)
+        any(r->length(r.tokens)==1 && uppercase(r.tokens[1])=="CKT",records) ||
             _sonnet_error(source,0,"missing GEO or CKT section")
         circuit=_sonnet_section(records,"CKT",source)
         definitions=filter(r->occursin(r"^DEF\d+P$",r.tokens[1]),circuit)
@@ -259,9 +261,9 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
         return SonnetNetlistProject(source,units,fs,circuit,records)
     end
     geo=_sonnet_section(records,"GEO",source)
-    any(r->r.tokens[1]=="STF",geo) && _sonnet_error(source,0,
+    any(r->uppercase(r.tokens[1])=="STF",geo) && _sonnet_error(source,0,
         "external STF stack requires its technology-file importer")
-    bi=findfirst(r->r.tokens[1]=="BOX",geo)
+    bi=findfirst(r->uppercase(r.tokens[1])=="BOX",geo)
     bi===nothing && _sonnet_error(source,0,"missing BOX")
     box=geo[bi].tokens[2:end]
     length(box)>=5 || _sonnet_error(source,geo[bi].line,"invalid BOX")
@@ -271,28 +273,30 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     # Six tokens also close the record natively: either six numeric fields
     # (no name) or five numerics plus the layer name.
     all(x->length(x)>=6,layers) || _sonnet_error(source,geo[bi].line,"incomplete dielectric layer record")
-    top_records=filter(r->r.tokens[1]=="TMET",geo)
-    bot_records=filter(r->r.tokens[1]=="BMET",geo)
+    top_records=filter(r->uppercase(r.tokens[1])=="TMET",geo)
+    bot_records=filter(r->uppercase(r.tokens[1])=="BMET",geo)
     length(top_records)==length(bot_records)==1 || _sonnet_error(source,0,"TMET/BMET must occur once")
     top=top_records[1].tokens[2:end]; bottom=bot_records[1].tokens[2:end]
-    metals=[r.tokens[2:end] for r in geo if r.tokens[1]=="MET"]
+    metals=[r.tokens[2:end] for r in geo if uppercase(r.tokens[1])=="MET"]
     vars=Dict{String,String}()
     for r in geo
-        r.tokens[1]=="VALVAR" || continue
+        uppercase(r.tokens[1])=="VALVAR" || continue
         length(r.tokens)>=4 || _sonnet_error(source,r.line,"invalid VALVAR")
         haskey(vars,r.tokens[2]) && _sonnet_error(source,r.line,"duplicate VALVAR")
         vars[r.tokens[2]]=r.tokens[4]
     end
-    ni=findfirst(r->r.tokens[1]=="NUM",geo)
+    ni=findfirst(r->uppercase(r.tokens[1])=="NUM",geo)
     ni===nothing && _sonnet_error(source,0,"missing polygon NUM")
     np=parse(Int,geo[ni].tokens[2]); np>=0 || _sonnet_error(source,geo[ni].line,"negative NUM")
     polygons=SonnetPolygon[]; i=ni+1
     for _ in 1:np
         i<=length(geo) || _sonnet_error(source,0,"NUM exceeds polygon records")
         kind=:sheet
-        if geo[i].tokens==["VIA","POLYGON"]
+        if length(geo[i].tokens)==2 && uppercase(geo[i].tokens[1])=="VIA" &&
+                uppercase(geo[i].tokens[2])=="POLYGON"
             kind=:via; i+=1
-        elseif geo[i].tokens==["BRI","POLY"]
+        elseif length(geo[i].tokens)==2 && uppercase(geo[i].tokens[1])=="BRI" &&
+                uppercase(geo[i].tokens[2])=="POLY"
             kind=:brick; i+=1
         end
         i<=length(geo) || _sonnet_error(source,0,"polygon marker lacks its header")
@@ -300,14 +304,14 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
         length(t)>=5 || _sonnet_error(source,header.line,"incomplete polygon header")
         level,nv,mat=parse.(Int,t[1:3]); id=parse(Int,t[5])
         nv>=3 || _sonnet_error(source,header.line,"polygon requires >=3 vertices")
-        endpoint=findnext(r->length(r.tokens)==1 && r.tokens[1]=="END",geo,i)
+        endpoint=findnext(r->length(r.tokens)==1 && uppercase(r.tokens[1])=="END",geo,i)
         endpoint!==nothing || _sonnet_error(source,header.line,"unterminated polygon")
         # A serialized count must agree with the captured coordinate records
         # before it controls storage. A tiny malformed source can otherwise
         # allocate gigabytes solely from its untrusted nv header.
         coordinates=count(i:endpoint-1) do index
             q=geo[index].tokens
-            length(q)==2 && !(q[1] in ("TOLEVEL","TLAYNAM"))
+            length(q)==2 && !(uppercase(q[1]) in ("TOLEVEL","TLAYNAM"))
         end
         coordinates==nv || _sonnet_error(source,header.line,
             "vertex count $coordinates differs from declared $nv")
@@ -315,10 +319,10 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
         flags=copy(t[4:end])
         while i<endpoint
             row=geo[i]; q=row.tokens
-            if q[1]=="TOLEVEL"
+            if uppercase(q[1])=="TOLEVEL"
                 target=q[2]
                 append!(flags,q[3:end])
-            elseif q[1]=="TLAYNAM"
+            elseif uppercase(q[1])=="TLAYNAM"
                 length(q)==3 || _sonnet_error(source,row.line,"TLAYNAM requires a layer name and inheritance mode")
                 q[3] in ("INH","NOH") || _sonnet_error(source,row.line,"unsupported TLAYNAM inheritance mode $(q[3])")
                 technology=q[2]; technology_mode=q[3]
@@ -344,21 +348,22 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
     i=1
     while i<ni
         r=geo[i]
-        if r.tokens[1]=="POR1"
+        if uppercase(r.tokens[1])=="POR1"
             j=i+1
-            while j<ni && !(geo[j].tokens[1] in ("POR1","CUPGRP","SMD"))
+            while j<ni && !(uppercase(geo[j].tokens[1]) in ("POR1","CUPGRP","SMD"))
                 j+=1
             end
-            if j<ni && geo[j].tokens[1]=="CUPGRP"
+            if j<ni && uppercase(geo[j].tokens[1])=="CUPGRP"
                 k=j+1
-                while k<ni && geo[k].tokens!=["END"] &&
-                        !(geo[k].tokens[1] in ("POR1","CUPGRP","SMD","NUM"));k+=1;end
-                k<ni && geo[k].tokens==["END"] || _sonnet_error(source,geo[j].line,
+                while k<ni && !(length(geo[k].tokens)==1 && uppercase(geo[k].tokens[1])=="END") &&
+                        !(uppercase(geo[k].tokens[1]) in ("POR1","CUPGRP","SMD","NUM"));k+=1;end
+                k<ni && length(geo[k].tokens)==1 && uppercase(geo[k].tokens[1])=="END" ||
+                    _sonnet_error(source,geo[j].line,
                     "unterminated CUP calibration group")
                 j=k+1
             end
             pr=geo[i:j-1]
-            pi=findfirst(x->x.tokens[1]=="POLY",pr)
+            pi=findfirst(x->uppercase(x.tokens[1])=="POLY",pr)
             pi===nothing && _sonnet_error(source,r.line,"port lacks POLY")
             pi+2<=length(pr) || _sonnet_error(source,r.line,"port lacks edge/electrical data")
             polygon=parse(Int,pr[pi].tokens[2]); edge=parse(Int,pr[pi+1].tokens[1])
@@ -372,16 +377,16 @@ function _sonnet_read_records(source::String,records::Vector{SonnetRecord})
             _sonnet_cup_group_check(source,r,pr,kind)
             push!(ports,SonnetPortSpec(kind,polygon,edge,number,copy(values),pr))
             i=j
-        elseif r.tokens[1]=="CUPGRP"
+        elseif uppercase(r.tokens[1])=="CUPGRP"
             _sonnet_error(source,r.line,"CUPGRP calibration group requires its co-calibrated port adapter")
-        elseif r.tokens[1]=="SMD" && i+1<ni && geo[i+1].tokens[1]=="ID"
+        elseif uppercase(r.tokens[1])=="SMD" && i+1<ni && uppercase(geo[i+1].tokens[1])=="ID"
             j=i+1
-            while j<ni && geo[j].tokens!=["END"]
+            while j<ni && !(length(geo[j].tokens)==1 && uppercase(geo[j].tokens[1])=="END")
                 j+=1
             end
             j<ni || _sonnet_error(source,r.line,"unterminated SMD component")
             cr=geo[i:j]
-            count(x->x.tokens[1]=="TYPE",cr)==1 || _sonnet_error(source,r.line,"component requires exactly one TYPE")
+            count(x->uppercase(x.tokens[1])=="TYPE",cr)==1 || _sonnet_error(source,r.line,"component requires exactly one TYPE")
             push!(components,cr); i=j+1
         else
             i+=1
@@ -397,7 +402,7 @@ end
 # designator is duplicated on the POR1 line and must agree. CUPGRP anywhere
 # outside a CUP port block is malformed.
 function _sonnet_cup_group_check(source,r,pr,kind)
-    cups=findall(x->x.tokens[1]=="CUPGRP",pr)
+    cups=findall(x->uppercase(x.tokens[1])=="CUPGRP",pr)
     if kind===:cup
         length(cups)==1 || _sonnet_error(source,r.line,
             "CUP port requires exactly one CUPGRP calibration group")
@@ -406,7 +411,7 @@ function _sonnet_cup_group_check(source,r,pr,kind)
             _sonnet_error(source,pr[only(cups)].line,"unrepresented CUPGRP fields")
         isempty(ct[2]) && _sonnet_error(source,pr[only(cups)].line,"empty CUPGRP group name")
         for record in pr[only(cups)+1:end]
-            record.tokens[1]=="ID" || continue
+            uppercase(record.tokens[1])=="ID" || continue
             length(record.tokens)==2 && tryparse(Int,record.tokens[2])!==nothing ||
                 _sonnet_error(source,record.line,"malformed CUP group ID")
         end
@@ -427,13 +432,13 @@ end
 
 """Decoded CUPGRP calibration group name for a parsed CUP port, validated at
 parse time to mirror the POR1 record's group designator."""
-_sonnet_cup_group(port)=only(r.tokens[2] for r in port.records if r.tokens[1]=="CUPGRP")
+_sonnet_cup_group(port)=only(r.tokens[2] for r in port.records if uppercase(r.tokens[1])=="CUPGRP")
 
 """Ground-reference key (`:float`, `:box_auto`, ...) declared by a native
 CUP port's GNDREF record. Co-calibrated ports can only share a calibration
 group when their ground references agree."""
 function _sonnet_cup_groundref(source,port)
-    refs=filter(r->r.tokens[1]=="GNDREF",port.records)
+    refs=filter(r->uppercase(r.tokens[1])=="GNDREF",port.records)
     length(refs)==1 || _sonnet_error(source,first(port.records).line,
         "CUP port requires exactly one GNDREF record")
     t=only(refs).tokens
@@ -457,7 +462,7 @@ function sonnet_calibration_groups(p::SonnetProject)
     groups=Dict{Tuple{String,Symbol},Vector{Int}}()
     for (index,port) in enumerate(p.ports)
         port.kind===:cup || continue
-        any(r->r.tokens==["SIMPLE","Y"],port.records) && continue
+        any(r->length(r.tokens)==2 && uppercase(r.tokens[1])=="SIMPLE" && r.tokens[2]=="Y",port.records) && continue
         key=(_sonnet_cup_group(port),_sonnet_cup_groundref(p.source,port))
         push!(get!(Vector{Int},groups,key),index)
     end
@@ -1789,7 +1794,7 @@ function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
         records=SonnetRecord[]
         for record in component
             tokens=copy(record.tokens)
-            tokens[1]=="SMDP" && (tokens[2]=string(levelmap[parse(Int,tokens[2])]))
+            uppercase(tokens[1])=="SMDP" && (tokens[2]=string(levelmap[parse(Int,tokens[2])]))
             push!(records,SonnetRecord(record.line,tokens))
         end
         push!(components,records)
@@ -2341,7 +2346,7 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     freq=_circuit_stored_real(freq,"native solve frequency")
     limit=_spice_limit("max_bytes",(haskey(kw,:max_bytes) ? kw[:max_bytes] : _default_max_dense_payload_bytes()))
     _enforce_payload_limit(1024,limit,"native raster source workspace","max_bytes")
-    deembed_requested=any(r->r.tokens[1]=="OPTIONS" &&
+    deembed_requested=any(r->uppercase(r.tokens[1])=="OPTIONS" &&
         any(occursin("d",token) for token in r.tokens[2:end]),p.records)
     !raw && deembed_requested && calibration===nothing && throw(ArgumentError(
         "native project requests de-embedding; supply calibration or explicitly request raw=true"))

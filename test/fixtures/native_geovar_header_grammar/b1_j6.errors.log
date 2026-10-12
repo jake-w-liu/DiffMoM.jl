@@ -1,0 +1,18 @@
+
+      Sonnet Error:
+      Project File Error.
+      Line 48: Geo Variable Scaled Keyword not understood.
+      Line 96: Unexpected parameter sweep syntax.
+      unknown parameter W has been ignored
+      Line 97: Unexpected parameter sweep syntax.
+      unknown parameter A2 has been ignored
+      Line 98: Unexpected parameter sweep syntax.
+      unknown parameter L has been ignored
+      Line 99: Unexpected parameter sweep syntax.
+      unknown parameter Y has been ignored
+
+
+    Post-Analysis:
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 17:42:29 2026.
