@@ -70,11 +70,36 @@ function assemble_rwg_gram(mesh::TriMesh, rwg::RWGData;
     return result
 end
 
+# Precision for 2*area * sum_q weights[q] * sum_c conj(f[q][c]) * g[q][c]:
+# four factors per primitive term (2*area, weight, f, g) and two real terms
+# per complex product per component, 6 real terms per quadrature point.
+function _local_surface_mass_entry_precision(
+        rwg::RWGData, m::Int, n::Int, triangle::Int,
+        points::AbstractVector{Vec3}, weights::AbstractVector{Float64},
+        area::Float64)
+    twice_area_range = _local_mass_dyadic_span((BigFloat(2) * area,))
+    weight_range = _local_mass_dyadic_span(weights)
+    basis_range = _local_mass_dyadic_span(
+        (basis[component]
+         for q in eachindex(weights)
+         for basis in (eval_rwg(rwg, m, points[q], triangle),
+                       eval_rwg(rwg, n, points[q], triangle))
+         for component in 1:3))
+    any(isnothing, (twice_area_range, weight_range, basis_range)) &&
+        return _LOCAL_MASS_FALLBACK_PRECISION
+    lower = BigInt(twice_area_range[1]) + weight_range[1] +
+            2 * basis_range[1]
+    upper = BigInt(twice_area_range[2]) + weight_range[2] +
+            2 * basis_range[2] + 4
+    return _local_mass_dyadic_precision(upper, lower, 6 * length(weights))
+end
+
 @noinline function _local_surface_mass_entry_exact(
         ::Type{T}, rwg::RWGData, m::Int, n::Int, triangle::Int,
         points::AbstractVector{Vec3}, weights::AbstractVector{Float64},
         area::Float64) where {T<:Number}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_surface_mass_entry_precision(
+            rwg, m, n, triangle, points, weights, area)) do
         total = zero(Complex{BigFloat})
         @inbounds for quadrature_index in eachindex(weights)
             point = points[quadrature_index]
@@ -97,7 +122,8 @@ end
 @noinline function _local_surface_mass_scale_exact(
         value::T, area::Float64, triangle::Int, m::Int, n::Int) where
         {T<:Number}
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+    return setprecision(BigFloat, _local_mass_dyadic_scaled_sum_precision(
+            (value,), (BigFloat(2) * area,), 1)) do
         return _local_mass_convert_bigfloat(
             T, Complex{BigFloat}(value) * (2 * BigFloat(area)),
             "local surface mass entry", (triangle, m, n))

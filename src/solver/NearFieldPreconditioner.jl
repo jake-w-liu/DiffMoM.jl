@@ -1388,6 +1388,35 @@ end
     return false
 end
 
+# Precision for base - sum_p coeff_p * M_p[row, col]: each complex product
+# contributes two real terms per component and the base contributes one.
+function _loaded_matrix_entry_precision(
+        base::ComplexF64,
+        matrices::Vector{<:AbstractMatrix},
+        theta::AbstractVector,
+        reactive::Bool,
+        original_row::Int,
+        original_column::Int)
+    base_range = _local_mass_dyadic_span((base,))
+    base_range === nothing && return _LOCAL_MASS_FALLBACK_PRECISION
+    lower = BigInt(base_range[1])
+    upper = BigInt(base_range[2]) + 1
+    terms = 1
+    @inbounds for patch in eachindex(theta)
+        coefficient = _block_diag_impedance_coefficient(
+            theta, patch, reactive)
+        iszero(coefficient) && continue
+        ranges = (_local_mass_dyadic_span((coefficient,)),
+                  _local_mass_dyadic_span((
+                      matrices[patch][original_row, original_column],)))
+        any(isnothing, ranges) && return _LOCAL_MASS_FALLBACK_PRECISION
+        lower = min(lower, BigInt(ranges[1][1]) + ranges[2][1])
+        upper = max(upper, BigInt(ranges[1][2]) + ranges[2][2] + 2)
+        terms += 2
+    end
+    return _local_mass_dyadic_precision(upper, lower, terms)
+end
+
 @noinline function _loaded_matrix_entry_bigfloat(
         base::ComplexF64,
         matrices::Vector{<:AbstractMatrix},
@@ -1395,8 +1424,9 @@ end
         reactive::Bool,
         original_row::Int,
         original_column::Int,
-        label::AbstractString)
-    return setprecision(BigFloat, _LOCAL_MASS_FALLBACK_PRECISION) do
+        label::AbstractString,
+        precision_bits::Integer)
+    return setprecision(BigFloat, precision_bits) do
         total = Complex{BigFloat}(base)
         @inbounds for patch in eachindex(theta)
             coefficient = _block_diag_impedance_coefficient(
@@ -1458,11 +1488,12 @@ end
 @inline function _register_loaded_exact_work!(
         used_work::Base.RefValue{Int},
         term_count::Int,
+        entry_bits::Integer,
         work_limit::Int,
         label::AbstractString)
     try
         entry_work = Base.Checked.checked_mul(
-            term_count, _LOCAL_MASS_FALLBACK_PRECISION)
+            term_count, entry_bits)
         next_work = Base.Checked.checked_add(used_work[], entry_work)
         next_work <= work_limit ||
             throw(ArgumentError(
@@ -1506,13 +1537,16 @@ function _load_block_diag_matrix!(
             end
         end
         if needs_exact
+            precision_bits = _loaded_matrix_entry_precision(
+                base, matrices, theta, reactive,
+                original_row, original_column)
             _register_loaded_exact_work!(
-                exact_work, length(theta) + 1, exact_work_limit,
-                "loaded block-diagonal")
+                exact_work, length(theta) + 1, precision_bits,
+                exact_work_limit, "loaded block-diagonal")
             block[row, column] = _loaded_matrix_entry_bigfloat(
                 base, matrices, theta, reactive,
                 original_row, original_column,
-                "loaded block-diagonal")
+                "loaded block-diagonal", precision_bits)
         end
     end
     return block
@@ -1788,12 +1822,14 @@ function _loaded_nearfield_matrix(Z_near::SparseMatrixCSC,
                     base, Mp, theta, reactive, row, column)
             end
             if needs_exact
+                precision_bits = _loaded_matrix_entry_precision(
+                    base, Mp, theta, reactive, row, column)
                 _register_loaded_exact_work!(
-                    exact_work, length(theta) + 1, exact_work_limit,
-                    "loaded near-field")
+                    exact_work, length(theta) + 1, precision_bits,
+                    exact_work_limit, "loaded near-field")
                 value = _loaded_matrix_entry_bigfloat(
                     base, Mp, theta, reactive, row, column,
-                    "loaded near-field")
+                    "loaded near-field", precision_bits)
             end
             isfinite(value) ||
                 throw(OverflowError(
