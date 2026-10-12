@@ -1,0 +1,411 @@
+{
+ "probe": "em -v on VALVAR offset LNG \"<expr>\"",
+ "grammar": "accept=parse reaches solver(license-blocked or errors=0); reject=Bad Equation at intake; variable-resolution=grammar accepted, undefined var",
+ "cases": {
+  "q_3m": {
+   "expr": "1---2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1---2"
+  },
+  "q_dd": {
+   "expr": "--2",
+   "verdict": "reject",
+   "detail": "Bad Equation: --2"
+  },
+  "q_end": {
+   "expr": "1^-",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^-"
+  },
+  "q_mm": {
+   "expr": "1^--2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^--2"
+  },
+  "q_mp": {
+   "expr": "1^-+2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^-+2"
+  },
+  "q_mpp": {
+   "expr": "1-^-2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1-^-2"
+  },
+  "q_np": {
+   "expr": "-1^2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "q_par": {
+   "expr": "1^-(-2)",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^-(-2)"
+  },
+  "q_pm": {
+   "expr": "1^+-2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^+-2"
+  },
+  "q_pm2": {
+   "expr": "-+2",
+   "verdict": "reject",
+   "detail": "Bad Equation: -+2"
+  },
+  "q_pn": {
+   "expr": "1^--2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^--2"
+  },
+  "q_sp": {
+   "expr": "1 ^ -2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "q_t": {
+   "expr": "--(1+1)",
+   "verdict": "reject",
+   "detail": "Bad Equation: --(1+1)"
+  },
+  "r_a": {
+   "expr": "-(1+1)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_b": {
+   "expr": "1^-(2)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_c": {
+   "expr": "2*-3",
+   "verdict": "solved",
+   "detail": "errors=0"
+  },
+  "r_d": {
+   "expr": "2--3",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_e": {
+   "expr": "2+-3",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_f": {
+   "expr": "2/-3",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_g": {
+   "expr": "2^-3",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_h": {
+   "expr": "(2)^-3",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_i": {
+   "expr": "-x",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_j": {
+   "expr": "2*(-3)",
+   "verdict": "solved",
+   "detail": "errors=0"
+  },
+  "r_k": {
+   "expr": "2^ -3",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_l": {
+   "expr": "- (1)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_m": {
+   "expr": "2^-x",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_n": {
+   "expr": "--x",
+   "verdict": "reject",
+   "detail": "Bad Equation: --x"
+  },
+  "r_o": {
+   "expr": "abs(-2)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "r_p": {
+   "expr": "-abs(2)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "s_a": {
+   "expr": "+2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "s_b": {
+   "expr": "2++3",
+   "verdict": "reject",
+   "detail": "Bad Equation: 2++3"
+  },
+  "s_c": {
+   "expr": "2*-+3",
+   "verdict": "reject",
+   "detail": "Bad Equation: 2*-+3"
+  },
+  "s_d": {
+   "expr": "-(+2)",
+   "verdict": "reject",
+   "detail": "Bad Equation: -(+2)"
+  },
+  "s_e": {
+   "expr": "(+2)",
+   "verdict": "reject",
+   "detail": "Bad Equation: (+2)"
+  },
+  "s_f": {
+   "expr": "2+ +3",
+   "verdict": "reject",
+   "detail": "Bad Equation: 2+ +3"
+  },
+  "s_g": {
+   "expr": "x+-y",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "s_h": {
+   "expr": "-+x",
+   "verdict": "reject",
+   "detail": "Bad Equation: -+x"
+  },
+  "t_a": {
+   "expr": "1^(-2)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "t_b": {
+   "expr": "1^(2)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "t_c": {
+   "expr": "1^-(x+1)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "t_d": {
+   "expr": "1^((-2))",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "t_e": {
+   "expr": "1^(-x)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "t_f": {
+   "expr": "++2",
+   "verdict": "reject",
+   "detail": "Bad Equation: ++2"
+  },
+  "t_g": {
+   "expr": "(+2)*3",
+   "verdict": "reject",
+   "detail": "Bad Equation: (+2)*3"
+  },
+  "t_h": {
+   "expr": "2^-(-x)",
+   "verdict": "reject",
+   "detail": "Bad Equation: 2^-(-x)"
+  },
+  "u_a": {
+   "expr": "+-2",
+   "verdict": "reject",
+   "detail": "Bad Equation: +-2"
+  },
+  "u_b": {
+   "expr": " +2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "u_c": {
+   "expr": "+ 2",
+   "verdict": "reject",
+   "detail": "Bad Equation: + 2"
+  },
+  "u_d": {
+   "expr": "1^-((-2))",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^-((-2))"
+  },
+  "u_e": {
+   "expr": "abs(-2)+abs(+2)",
+   "verdict": "reject",
+   "detail": "Bad Equation: abs(-2)+abs(+2)"
+  },
+  "u_f": {
+   "expr": "-(-2)",
+   "verdict": "reject",
+   "detail": "Bad Equation: -(-2)"
+  },
+  "u_g": {
+   "expr": "1^-abs(2)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "u_h": {
+   "expr": "x*-y",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "u_i": {
+   "expr": "abs(2,-1)",
+   "verdict": "reject",
+   "detail": "Bad Equation: abs(2,-1)"
+  },
+  "u_j": {
+   "expr": "- -2",
+   "verdict": "reject",
+   "detail": "Bad Equation: - -2"
+  },
+  "u_k": {
+   "expr": "(+-2)",
+   "verdict": "reject",
+   "detail": "Bad Equation: (+-2)"
+  },
+  "u_l": {
+   "expr": "2^- -3",
+   "verdict": "reject",
+   "detail": "Bad Equation: 2^- -3"
+  },
+  "u_m": {
+   "expr": "1^- abs(-2)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_a": {
+   "expr": "+x",
+   "verdict": "reject",
+   "detail": "Bad Equation: +x"
+  },
+  "v_b": {
+   "expr": "+2e3",
+   "verdict": "evaluated",
+   "detail": "evaluated offset=2000; downstream geometry error"
+  },
+  "v_c": {
+   "expr": "+abs(2)",
+   "verdict": "reject",
+   "detail": "Bad Equation: +abs(2)"
+  },
+  "v_d": {
+   "expr": "- 2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_e": {
+   "expr": "2 + -3",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_f": {
+   "expr": "+2+3",
+   "verdict": "reject",
+   "detail": "Bad Equation: +2+3"
+  },
+  "v_g": {
+   "expr": "2e+3",
+   "verdict": "evaluated",
+   "detail": "evaluated offset=2000; downstream geometry error"
+  },
+  "v_h": {
+   "expr": "-(x)",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_i": {
+   "expr": "- ( -2 )",
+   "verdict": "reject",
+   "detail": "Bad Equation: - ( -2 )"
+  },
+  "v_j": {
+   "expr": "1e-2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_k": {
+   "expr": "1e+2",
+   "verdict": "evaluated",
+   "detail": "evaluated offset=100; downstream geometry error"
+  },
+  "v_l": {
+   "expr": "-.5",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_m": {
+   "expr": "+.5",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_n": {
+   "expr": "-x^2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "v_o": {
+   "expr": "2^-x^2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "vd": {
+   "expr": "1^+2.0",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^+2.0"
+  },
+  "vmm": {
+   "expr": "1^--2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^--2"
+  },
+  "vn": {
+   "expr": "1^-2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  },
+  "vnp": {
+   "expr": "(1)^+2",
+   "verdict": "reject",
+   "detail": "Bad Equation: (1)^+2"
+  },
+  "vp": {
+   "expr": "1^+2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^+2"
+  },
+  "vpm": {
+   "expr": "1^+ 2",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^+ 2"
+  },
+  "vqq": {
+   "expr": "1^+2+3",
+   "verdict": "reject",
+   "detail": "Bad Equation: 1^+2+3"
+  },
+  "vv": {
+   "expr": "1^2",
+   "verdict": "parse-ok",
+   "detail": "license-blocked solve"
+  }
+ }
+}

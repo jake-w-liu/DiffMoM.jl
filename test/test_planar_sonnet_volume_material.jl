@@ -235,4 +235,53 @@ end
     # v_srvy/v_rsvy exercise the converted units; v_X must equal v_cdvy.
     @test maximum(abs,results["v_X"].s-results["v_cdvy"].s)<=1e-9
 end
+
+@testset "native material index legality and cross-type references" begin
+    # Lite 18.53 rejects a sheet polygon carrying a VOL/ARR via-metal record
+    # and a via polygon carrying any sheet-metal record ("Material ID refers
+    # to the wrong material type"), rejects material indices outside
+    # 0:length(metals)-1 including -2, runs -1 as the PEC default on both
+    # polygon kinds, and ignores the cover-row index field entirely. The
+    # archived intake/solve logs live in fixtures/native_material_index.
+    fixture=joinpath(@__DIR__,"fixtures","native_material_index")
+    project(name)=read_sonnet_project(joinpath(fixture,name*".son"))
+    problem(name)=sonnet_planar_problem(project(name);freq=1e9,grid=(20,20),_materials=true)
+    for name in ("e3b_sheet_arr","e3b_sheet_vol","e3b_via_nat","e3b_via_nor",
+            "e3b_via_res","e3b_via_sen","e3b_via_sup","e3b_via_tmm","e3b_via_ruf",
+            "e3t_tvm1","e3t_tvm2","e3t_tvm3","e3t_tvm4","e3t_tvm5",
+            "e3b_idx_hi","e3b_sheet_m2","e3c_via_m2","e3c_tmet_tmm")
+        @test_throws ArgumentError problem(name)
+    end
+    # Degenerate cover rows carrying via-metal records are accepted and
+    # misread natively; the importer rejects them rather than emulating the
+    # misaligned field consumption.
+    for name in ("e3c_tmet_vol","e3c_tmet_arr","e3c_bmet_vol")
+        @test_throws ArgumentError problem(name)
+    end
+    # -1 selects the perfect-conductor default on sheets and on vias; the
+    # archived Lite outputs replay through the ordinary solve path.
+    for name in ("e3b_via_m1","e3b_sheet_m1","e3d_via_m1_nocov","e3d_novia",
+            "e3c_sheet_res","e3c_tmet_nat")
+        p=project(name)
+        reference=planar_read_touchstone(joinpath(fixture,name*"_raw.s2p"))
+        for frequency in (1e9,1e10)
+            native=reference.s[only(findall(==(frequency),reference.frequencies))]
+            actual=solve_sonnet_project(p,frequency;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+            @test maximum(abs,actual.s-native)<=.06
+        end
+    end
+    # Cover-row index fields are inert: all TMET/BMET index variants produce
+    # byte-identical solved columns natively and must agree locally.
+    covers=Dict{String,Any}()
+    for name in ("e3d_tmet_m2","e3d_tmet_m9","e3d_bmet_m2","e3d_bmet_m9","e3c_tmet_m1")
+        p=project(name)
+        reference=planar_read_touchstone(joinpath(fixture,name*"_raw.s2p"))
+        actual=solve_sonnet_project(p,1e9;raw=true,grid=(20,20),mx=160,my=160,method=:dense_fft)
+        native=reference.s[only(findall(==(1e9),reference.frequencies))]
+        @test maximum(abs,actual.s-native)<=.06
+        covers[name]=actual
+    end
+    @test maximum(abs,covers["e3d_tmet_m2"].s-covers["e3d_tmet_m9"].s)<=1e-9
+    @test maximum(abs,covers["e3d_bmet_m2"].s-covers["e3d_bmet_m9"].s)<=1e-9
+end
 end

@@ -1,0 +1,37 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+Run 1:  Mon Oct 12 13:18:13 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\geovar\g_v_j.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      offset = 0.01 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 0.1, Stop = 5 GHZ
+
+    Dependent parameter values:
+      Wa = 10.02 mils
+      L1 = 79.9973 mils
+      L2 = 82.6827 mils
+      L3 = 80.7173 mils
+      L4 = 83.4027 mils
+
+    Frequency:  0.1 GHZ
+      Subsectioning time:  0.070 seconds.
+
+      Sonnet Error:
+      Sonnet Lite Limitation
+      g_v_j.son exceeds your Sonnet Lite license because:
+      Analysis requires 96 MB. Sonnet Lite is restricted to 64 MB.
+      Contact your Sonnet Software representative for information about upgrading your license.
+
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 13:18:13 2026.

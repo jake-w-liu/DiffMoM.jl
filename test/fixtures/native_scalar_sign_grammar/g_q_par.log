@@ -1,0 +1,43 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Equation: 1^-(-2)
+      Unexpected operator '-' found. Detected at line 1, column 5
+
+Run 1:  Mon Oct 12 13:13:54 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\geovar\g_q_par.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      offset = 0 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 0.1, Stop = 5 GHZ
+
+    Dependent parameter values:
+      Wa = 10 mils
+      L1 = 80 mils
+      L2 = 82.68 mils
+      L3 = 80.72 mils
+      L4 = 83.4 mils
+
+    Frequency:  0.1 GHZ
+      Subsectioning time:  0.069 seconds.
+
+      Sonnet Error:
+      Sonnet Lite Limitation
+      g_q_par.son exceeds your Sonnet Lite license because:
+      Analysis requires 98 MB. Sonnet Lite is restricted to 64 MB.
+      Contact your Sonnet Software representative for information about upgrading your license.
+
+      Em errors detected: 1    Em warnings detected: 1.
+
+Analysis failed due to error Mon Oct 12 13:13:54 2026.

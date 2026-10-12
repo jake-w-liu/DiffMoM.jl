@@ -89,6 +89,12 @@ end
     for (text,value) in (("2^3^2",64.),("(2^3)^2",64.),("2^(3^2)",512.),
             ("2^3^2^1",64.),("2^-3^2",1/512), ("-2^2",-4.),("(-2)^2",4.),
             ("2^(-3)^2",1/64),("2^3*2",16.),("4+int(-2.9)",2.),
+            ("+2",2.),(" +2",2.),("+.5",.5),("+2e3",2000.),("-.5",-.5),
+            ("- 2",-2.),("-(1+1)",-2.),("- (1)",-1.),("1^-2",1.),
+            ("2^-3",1/8),("1^-(2)",1.),("1^(-2)",1.),("1^((-2))",1.),
+            ("1^-abs(2)",1.),("abs(-2)",2.),("2*-3",-6.),("2--3",5.),
+            ("2+-3",-1.),("2 + -3",-1.),("2-(-3)",5.),("2*(-3)",-6.),
+            ("1 ^ -2",1.),("2e+3",2000.),("1e-2",.01),("-( 1+1 )",-2.),
             ("4+fmod(-5,3)",2.),("fmod(5,-3)",2.),("atan2(-0,-1)",pi),
             ("deg(-1)",-180.),("deg(cmplx(-1,0))",180.),("deg(cmplx(-1,-0))",-180.),
             ("imag(sqrt(-4))",2.),("imag(asin(2))",-acosh(2.)),
@@ -124,6 +130,10 @@ end
     @test sonnet_variable_value(p,join(fill("1",3000),"+"))==3000.
     for text in ("1>0","1<0","1>=0","1<=0","1==0","1!=0","1 ? 2 : 3",
             "if(1,2,3)","ifelse(1,2,3)","2^+3^2","fmod(2,0)","db10(0)","db20(0)",
+            "--2","-+2","+-2","++2","-(-2)","-((-2))","-( -2 )","-(+2)","--(1+1)",
+            "--x","-+x","+x","+abs(2)","+2+3","+ 2","( +2)","(+2)","2++3","2+ +3",
+            "2*-+3","1^--2","1^-+2","1^+-2","1^-(-2)","1^-((-2))","2^- -3",
+            "1---2","1-^-2","- -2","1^-","1^","-","+","abs(2,-1)","abs(+2)",
             "real()","atan(1,2)","atan2(1)","hypot(1)","cmplx(1)","max(1,2,3)",
             "fmod(1,2,3)","int(1,2)","atan2(0,0)","atan2(cmplx(0,1),1)",
             "real(atan2(cmplx(0,1),1))","imag(atan2(cmplx(0,1),1))",
@@ -147,6 +157,31 @@ end
     end
     @test dynamic.variables==original
     @test_throws ArgumentError sonnet_variable_value(p,"1\0+2")
+end
+
+@testset "Installed-Lite scalar sign grammar verdict replay" begin
+    # Each archived probe is a Lite `-v` intake of VALVAR offset LNG "<expr>":
+    # Bad Equation rejects; parse-ok/evaluated/variable-resolution all prove
+    # the expression grammar accepted the token stream. Our parser must
+    # reproduce every verdict exactly.
+    fixture=joinpath(@__DIR__,"fixtures/native_scalar_sign_grammar")
+    manifest=JSON.parsefile(joinpath(fixture,"manifest.json"))["cases"]
+    @test length(manifest)>=75
+    p=read_sonnet_project(joinpath(@__DIR__,"fixtures/native_sonnet_scalar_logarithms/ln_positive/ln_positive.son"))
+    for case in values(manifest)
+        outcome=try
+            sonnet_variable_value(p,case["expr"]);:value
+        catch e
+            e isa ArgumentError ? e.msg : rethrow()
+        end
+        if case["verdict"]=="reject"
+            @test outcome isa String
+        elseif case["verdict"]=="variable-resolution"
+            @test outcome isa String && occursin("unknown Sonnet variable",outcome)
+        else
+            @test outcome==:value || (outcome isa String && occursin("unknown Sonnet variable",outcome))
+        end
+    end
 end
 
 @testset "Actual native real-axis phase normalization controls" begin

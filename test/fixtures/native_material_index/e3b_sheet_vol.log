@@ -1,0 +1,16 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+
+      Sonnet Error:
+      Project File Error.
+      Line 51: Material ID 2 refers to the wrong material type
+      Line 51: Failed to read Geometry
+
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 13:35:11 2026.

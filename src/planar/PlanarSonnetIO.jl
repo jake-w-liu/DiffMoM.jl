@@ -833,7 +833,7 @@ function _sonnet_nat_entry(metal,index)
     # an unparseable token (variables included) warns and behaves as zero.
     index>length(metal) && return 0.
     entry=metal[index]
-    uppercase(entry)=="INF" && return Inf
+    _sonnet_ieq(entry,"INF") && return Inf
     value=tryparse(Float64,entry)
     return value===nothing || isnan(value) ? 0. : value
 end
@@ -897,9 +897,9 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
         # unrecognized selector token as direct conductivity, consistent
         # with the verified VOL/ARR/dielectric behavior; a native record
         # with an unknown selector token is accepted, not a parse error.
-        selector=length(metal)==7 && uppercase(metal[7]) in ("CDVY","RSVY","SRVY") ?
-            uppercase(metal[7]) : "CDVY"
-        loss=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf : val(metal[4])
+        selector=length(metal)==7 ? (_sonnet_ieq(metal[7],"RSVY") ? "RSVY" :
+            _sonnet_ieq(metal[7],"SRVY") ? "SRVY" : "CDVY") : "CDVY"
+        loss=selector=="CDVY" && _sonnet_ieq(metal[4],"INF") ? Inf : val(metal[4])
         ratio,thickness=val.(metal[5:6]); thickness*=p.length_scale
         selector=="CDVY" && loss==Inf && ratio>=0 && thickness>=0 && return 0.0im
         loss>=0 && ratio>=0 && thickness>0 && isfinite(thickness) || throw(ArgumentError("invalid NOR material parameters"))
@@ -931,6 +931,13 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
         isfinite(zs) || throw(ArgumentError("NOR sheet impedance is not representable"))
         return zs
     end
+    # VOL/ARR records are via metals: a sheet polygon referencing one is a
+    # native parse rejection ("Material ID refers to the wrong material
+    # type"), verified on Lite 18.53 for both ARR and VOL. A cover row keeps
+    # the adapter message — Lite reads its fields into the cover model
+    # instead of rejecting the record.
+    !cover && model in ("VOL","ARR") &&
+        throw(ArgumentError("native $model via metal on a sheet polygon is rejected by the native parser as the wrong material type"))
     throw(ArgumentError("native $model metal requires its dedicated material adapter"))
 end
 
@@ -1247,10 +1254,10 @@ end
 function _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
     metal=p.metals[poly.material+1]
     length(metal)>=5 || throw(ArgumentError("ARR requires loss and fill-factor fields"))
-    selector=length(metal)>=6 && uppercase(metal[6]) in ("CDVY","RSVY","SRVY") ?
-        uppercase(metal[6]) : "CDVY"
+    selector=length(metal)>=6 ? (_sonnet_ieq(metal[6],"RSVY") ? "RSVY" :
+        _sonnet_ieq(metal[6],"SRVY") ? "SRVY" : "CDVY") : "CDVY"
     val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
-    loss=uppercase(metal[4])=="INF" ? Inf : val(metal[4])
+    loss=_sonnet_ieq(metal[4],"INF") ? Inf : val(metal[4])
     percent=val(metal[5])
     (isfinite(percent) && 0<percent<=100) ||
         throw(ArgumentError("ARR requires a fill factor in (0,100] percent"))
@@ -1323,10 +1330,10 @@ function _sonnet_volume_sigma(p,poly,grid,stack,mask,freq,vars)
     # Lite matches loss selectors case-insensitively and treats any
     # unrecognized token in the selector slot as direct conductivity
     # (verified on 18.53: VOL ... X is bit-identical to VOL ... CDVY).
-    selector=length(metal)==(solid ? 7 : 6) && uppercase(metal[end]) in ("CDVY","RSVY","SRVY") ?
-        uppercase(metal[end]) : "CDVY"
+    selector=length(metal)==(solid ? 7 : 6) ? (_sonnet_ieq(metal[end],"RSVY") ? "RSVY" :
+        _sonnet_ieq(metal[end],"SRVY") ? "SRVY" : "CDVY") : "CDVY"
     val(t)=sonnet_variable_value(p,t;variables=vars,freq=freq)
-    loss=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf : val(metal[4])
+    loss=selector=="CDVY" && _sonnet_ieq(metal[4],"INF") ? Inf : val(metal[4])
     # A SOLID record retains an inactive wall-thickness field. Validate
     # its domain while the complete polygon determines the physical area.
     wall=val(metal[solid ? 6 : 5]);percent=100.0
@@ -1530,9 +1537,9 @@ function _sonnet_via_endpoint_zs(p,poly,stack,freq,variables)
         # σ→0 limit is the open column — see fixtures/native_arr_open_via).
         # The SRVY selector converts to a fixed 3.72e7 S/m independent of
         # the entered loss, exactly as the axial element does.
-        selector=length(metal)>=6 && uppercase(metal[6]) in ("CDVY","RSVY","SRVY") ?
-            uppercase(metal[6]) : "CDVY"
-        value=uppercase(metal[4])=="INF" ? Inf :
+        selector=length(metal)>=6 ? (_sonnet_ieq(metal[6],"RSVY") ? "RSVY" :
+            _sonnet_ieq(metal[6],"SRVY") ? "SRVY" : "CDVY") : "CDVY"
+        value=_sonnet_ieq(metal[4],"INF") ? Inf :
             sonnet_variable_value(p,metal[4];variables,freq)
         sigma=selector=="SRVY" ? (isinf(value) ? Inf : 3.72e7) :
             selector=="RSVY" ? _sonnet_volume_product((100.,),(value,)) : value
@@ -1550,9 +1557,9 @@ function _sonnet_via_endpoint_zs(p,poly,stack,freq,variables)
     rpv=_sonnet_via_rpv(metal)
     (!solid && !rpv && !("COVERS" in poly.flags)) && return 0.0im
     selector=rpv ? "RPV" :
-        length(metal)==(solid ? 7 : 6) && uppercase(metal[end]) in ("CDVY","RSVY","SRVY") ?
-            uppercase(metal[end]) : "CDVY"
-    value=selector=="CDVY" && uppercase(metal[4])=="INF" ? Inf :
+        length(metal)==(solid ? 7 : 6) ? (_sonnet_ieq(metal[end],"RSVY") ? "RSVY" :
+            _sonnet_ieq(metal[end],"SRVY") ? "SRVY" : "CDVY") : "CDVY"
+    value=selector=="CDVY" && _sonnet_ieq(metal[4],"INF") ? Inf :
         sonnet_variable_value(p,metal[4];variables,freq)
     (selector=="CDVY" && value==Inf) || (selector!="CDVY" && iszero(value)) ? (return 0.0im) : nothing
     value>0 && isfinite(value) || throw(ArgumentError("native via endpoint loss must be positive and finite"))
@@ -1581,7 +1588,11 @@ function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
     if model=="ARR" && !rpv
         return _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
     end
-    rpv || throw(ArgumentError("native $model via conductivity/skin loss requires its dedicated frequency-dependent adapter"))
+    # Every verified non-VOL/ARR record on a via polygon is a native parse
+    # rejection ("Material ID refers to the wrong material type"): NOR, RES,
+    # SEN, SUP, NAT, TMM, RUF and TVM all reject identically on Lite 18.53.
+    # Keep the native legality failure rather than an adapter gap.
+    rpv || throw(ArgumentError("native $model metal on a via polygon is rejected by the native parser as the wrong material type"))
     # Lite parse-rejects via RPV records on non-VOL/ARR metals entirely;
     # allowing a NOCOVERS one to reach the resistance path would silently
     # solve a record the native parser refuses.
@@ -1692,7 +1703,7 @@ function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
         # accepts 3+ faces syntactically, but thick metal is license-blocked
         # so the multi-face expansion law cannot be decoded here.
         nsheets==2 || throw(ArgumentError("native TMM currently requires exactly two physical faces"))
-        sigma=uppercase(row[4])=="INF" ? Inf : val(row[4])
+        sigma=_sonnet_ieq(row[4],"INF") ? Inf : val(row[4])
         thickness=val(row[6])*p.length_scale
         thickness>0 && sigma>0 || throw(ArgumentError("invalid TMM conductivity or physical thickness"))
         base=zlevel(q.level);up=!("TDWN" in extras)
@@ -1773,6 +1784,14 @@ function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
         metals,p.top,p.bottom,polys,ports,p.variables,components,p.sweeps,p.records)
 end
 
+const _SONNET_DECIMAL_RE=r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$"
+
+# ASCII case-insensitive token compare without a String allocation; hot in
+# per-layer row parsing inside the preflight budget window.
+_sonnet_ieq(t::AbstractString,word::AbstractString)=
+    isascii(t) && ncodeunits(t)==ncodeunits(word) &&
+    all(i->uppercase(t[i])==word[i],1:ncodeunits(t))
+
 function _sonnet_dielectric_sigma(p::SonnetProject,row,freq,variables)
     # Native GUI exports place the optional loss selection after the layer
     # name. Actual engine controls establish the first token there as the
@@ -1782,18 +1801,21 @@ function _sonnet_dielectric_sigma(p::SonnetProject,row,freq,variables)
     # selects plain conductivity. Later tokens and the trailing anisotropy
     # fields are parsed but inert in Lite, so only row[9] is interpreted.
     # These units are independent of project DIM LNG/RES and metal flags.
-    selector=length(row)>8 ? uppercase(row[9]) : ""
+    selector=length(row)>8 ? (_sonnet_ieq(row[9],"RSVY") ? "RSVY" :
+        _sonnet_ieq(row[9],"SRVY") ? "SRVY" : "") : ""
     # Field 7 is a parsed-but-inert anisotropy slot, but it must still be a
     # numeric expression: a name or unknown token there is a native parse
-    # error once the loss field was consumed.
-    length(row)>=7 && (sonnet_variable_value(p,row[7];variables,freq); nothing)
+    # error once the loss field was consumed. Plain decimal literals pass
+    # the check without an expression evaluation.
+    length(row)>=7 && !occursin(_SONNET_DECIMAL_RE,row[7]) &&
+        (sonnet_variable_value(p,row[7];variables,freq); nothing)
     # The loss slot doubles as the short-form name position: a token that is
     # not a numeric expression there closes a bare five-field record with
     # zero conductive loss, and anything after it is a native parse error.
     # INF is a literal token, not a variable: plain conductivity maps it to
     # a degenerate perfect-conductor layer, while the reciprocal selectors
     # map it to sigma=0 and the layer stays lossless.
-    value=uppercase(row[6])=="INF" ? Inf : try
+    value=_sonnet_ieq(row[6],"INF") ? Inf : try
         sonnet_variable_value(p,row[6];variables,freq)
     catch e
         e isa ArgumentError && occursin("unknown Sonnet variable",e.msg) || rethrow()
@@ -1834,6 +1856,8 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
     # Retained unused definitions do not impose a physical material on a shape.
     checked=Set{Int}()
     for poly in p.polygons
+        -1<=poly.material<length(p.metals) ||
+            throw(ArgumentError("invalid metal index on polygon $(poly.id)"))
         poly.kind==:sheet && poly.material>=0 || continue
         poly.material in checked && continue
         push!(checked,poly.material)

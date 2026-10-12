@@ -1,0 +1,147 @@
+{
+ "probe": "em -v; material-index legality and cross-type references on nat_ni base",
+ "notes": "sheet<->via metal-type cross references reject \"wrong material type\"; -1 selects PEC defaults; cover index field inert; out-of-range and -2 indices reject",
+ "cases": {
+  "e3b_idx_hi": {
+   "verdict": "index-out-of-range",
+   "s2p": false
+  },
+  "e3b_sheet_arr": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_sheet_m1": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3b_sheet_m2": {
+   "verdict": "index-out-of-range",
+   "s2p": false
+  },
+  "e3b_sheet_vol": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_via_m1": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3b_via_nat": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_via_nor": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_via_res": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_via_ruf": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_via_sen": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_via_sup": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3b_via_tmm": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3c_bmet_vol": {
+   "verdict": "solved",
+   "s2p": false
+  },
+  "e3c_sheet_res": {
+   "verdict": "solved",
+   "s2p": false
+  },
+  "e3c_sheet_ruf": {
+   "verdict": "license-blocked",
+   "s2p": false
+  },
+  "e3c_sheet_tmm": {
+   "verdict": "license-blocked",
+   "s2p": false
+  },
+  "e3c_tmet_arr": {
+   "verdict": "solved",
+   "s2p": false
+  },
+  "e3c_tmet_m1": {
+   "verdict": "solved",
+   "s2p": false
+  },
+  "e3c_tmet_nat": {
+   "verdict": "solved",
+   "s2p": false
+  },
+  "e3c_tmet_tmm": {
+   "verdict": "illegal-box-parameter",
+   "s2p": false
+  },
+  "e3c_tmet_vol": {
+   "verdict": "solved",
+   "s2p": false
+  },
+  "e3c_via_m2": {
+   "verdict": "index-out-of-range",
+   "s2p": false
+  },
+  "e3d_bmet_m2": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3d_bmet_m9": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3d_novia": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3d_tmet_m2": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3d_tmet_m9": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3d_via_m1_nocov": {
+   "verdict": "solved",
+   "s2p": true
+  },
+  "e3t_sht": {
+   "verdict": "thick-geometry-error",
+   "s2p": false,
+   "note": "TVM sheet parses; solve fails \"thick metal polygon touching top of box\""
+  },
+  "e3t_tvm1": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3t_tvm2": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3t_tvm3": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3t_tvm4": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  },
+  "e3t_tvm5": {
+   "verdict": "wrong-material-type",
+   "s2p": false
+  }
+ }
+}

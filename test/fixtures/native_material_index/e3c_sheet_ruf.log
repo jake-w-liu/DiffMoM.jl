@@ -1,0 +1,20 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+
+      Sonnet Warning:
+      Invalid entry:
+      Bad Argument (Via Metal Array Via Density = CDVY) in equation CDVY
+
+
+      Sonnet Error:
+      Unable To Analyze Project.
+      A thick metal polygon on level 0 is touching the top of the box
+
+      Em errors detected: 1    Em warnings detected: 1.
+
+Analysis failed due to error Mon Oct 12 13:35:48 2026.

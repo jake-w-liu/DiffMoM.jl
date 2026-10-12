@@ -1,0 +1,99 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+Run 1:  Mon Oct 12 13:14:20 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\geovar\g_r_c.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      offset = -6 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 0.1, Stop = 5 GHZ
+
+    Dependent parameter values:
+      Wa = -2 mils
+      L1 = 81.6077 mils
+      L2 = 81.0723 mils
+      L3 = 82.3277 mils
+      L4 = 81.7923 mils
+
+    Frequency:  0.1 GHZ
+      Subsectioning time:  0.013 seconds.
+      Circuit requires 1461 subsections and 16 MB of memory.
+      Threads:  using 1 thread(s), 20 core(s) available.
+      Waveguide mode time:  0.003 seconds.
+      Matrix fill time:  0.098 seconds.
+      Matrix solve time:  0.223 seconds.
+
+      De-embedded S-Parameters. 50 Ohm Port Terminations.
+      Magnitude/Angle. Touchstone Format. (S11 S21 S12 S22).
+      0.10000000 0.024168 65.832 0.990777 -2.381 0.990777 -2.381 0.024168 65.832
+      ! P1 F=0.1 Eeff=(6.1775 - j1.66701) Z0=(92.4129 - j12.2498)
+      ! P2 F=0.1 Eeff=(6.1775 - j1.66701) Z0=(92.4129 - j12.2498)
+      Total time per frequency:  0.423 seconds.
+
+    Frequency:  5 GHZ
+      Waveguide mode time:  0.002 seconds.
+      Matrix fill time:  0.097 seconds.
+      Matrix solve time:  0.222 seconds.
+      5.00000000 0.526945 -8.752 0.840600 -98.23 0.840600 -98.23 0.526941 -8.763
+      ! P1 F=5.0 Eeff=(6.10247 - j0.0655869) Z0=(90.7504 - j0.486591)
+      ! P2 F=5.0 Eeff=(6.10247 - j0.0655869) Z0=(90.7504 - j0.486591)
+      Total time per frequency:  0.407 seconds.
+      ABS: Energy conservation for port 1 at 1.34 GHz.
+      ABS: Time = 0.025 seconds.
+
+    Frequency:  1.34 GHZ
+      Waveguide mode time:  0.002 seconds.
+      Matrix fill time:  0.096 seconds.
+      Matrix solve time:  0.220 seconds.
+      1.34000000 0.273990 57.227 0.952019 -30.76 0.952019 -30.76 0.273989 57.226
+      ! P1 F=1.34 Eeff=(6.10883 - j0.146954) Z0=(91.0711 - j1.09503)
+      ! P2 F=1.34 Eeff=(6.10883 - j0.146954) Z0=(91.0711 - j1.09503)
+      Total time per frequency:  0.442 seconds.
+      ABS: Energy conservation for port 1 at 0.68 GHz.
+      ABS: Time = 0.027 seconds.
+
+    Frequency:  0.68 GHZ
+      Waveguide mode time:  0.002 seconds.
+      Matrix fill time:  0.097 seconds.
+      Matrix solve time:  0.221 seconds.
+      0.68000000 0.147510 70.287 0.979359 -15.93 0.979359 -15.93 0.147510 70.286
+      ! P1 F=0.68 Eeff=(6.11564 - j0.271464) Z0=(91.1543 - j2.02201)
+      ! P2 F=0.68 Eeff=(6.11564 - j0.271464) Z0=(91.1543 - j2.02201)
+      Total time per frequency:  0.446 seconds.
+      ABS: SNR = 51.8962 dB (61.0148 dB Goal) for S1_2 at 4 GHz.
+      ABS: Time = 0.034 seconds.
+
+    Frequency:  4 GHZ
+      Waveguide mode time:  0.003 seconds.
+      Matrix fill time:  0.097 seconds.
+      Matrix solve time:  0.221 seconds.
+      4.00000000 0.527021 7.9907 0.840682 -81.25 0.840682 -81.25 0.527018 7.9834
+      ! P1 F=4.0 Eeff=(6.10288 - j0.0718559) Z0=(90.8527 - j0.534024)
+      ! P2 F=4.0 Eeff=(6.10288 - j0.0718559) Z0=(90.8527 - j0.534024)
+      Total time per frequency:  0.450 seconds.
+      ABS: Time = 0.045 seconds.
+
+    Frequency:  2.66 GHZ
+      Waveguide mode time:  0.002 seconds.
+      Matrix fill time:  0.110 seconds.
+      Matrix solve time:  0.250 seconds.
+      2.66000000 0.450635 31.407 0.883260 -57.47 0.883260 -57.47 0.450633 31.403
+      ! P1 F=2.66 Eeff=(6.10499 - j0.0886229) Z0=(90.9735 - j0.659792)
+      ! P2 F=2.66 Eeff=(6.10499 - j0.0886229) Z0=(90.9735 - j0.659792)
+      Total time per frequency:  0.532 seconds.
+      ABS: SNR = 91.3721 dB (50 dB Goal) for S1_1 at 0.22 GHz.
+      ABS: Time = 0.065 seconds.
+
+    Post-Analysis information for em run 1:
+      Total time for 6 frequencies:  2 seconds.
+      Em errors detected: 0    Em warnings detected: 0.
+
+Em simulation completed Mon Oct 12 13:14:22 2026.

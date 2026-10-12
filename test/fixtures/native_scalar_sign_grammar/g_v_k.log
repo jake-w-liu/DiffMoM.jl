@@ -1,0 +1,36 @@
+
+               ELECTROMAGNETIC ANALYSIS OF 3-D PLANAR CIRCUITS
+                                 Version 18.53-Lite
+
+                Copyright (c) 1986-2021 Sonnet Software Inc.
+                             All rights reserved.
+
+Run 1:  Mon Oct 12 13:18:14 2026.  sonnetexample.0000.
+        Em version 18.53-Lite (64-bit Windows) on X202605221330 local.
+
+  Project:  C:\Users\User\AppData\Local\Temp\geovar\g_v_k.son.
+
+    Begin electromagnetic simulation using independent parameters:
+      offset = 100 mils
+
+    Begin electromagnetic simulation using frequency sweep:
+      ABS Start = 0.1, Stop = 5 GHZ
+
+    Dependent parameter values:
+      Wa = 210 mils
+      L1 = 53.2051 mils
+      L2 = 109.475 mils
+      L3 = 53.9251 mils
+      L4 = 110.195 mils
+
+    Frequency:  0.1 GHZ
+
+      Sonnet Error:
+      Illegal circuit configuration.
+      The polygon edge to which port 1 is attached
+      is partially or entirely outside of the box.
+      Sonnet: tech layer Met1 (metal level 0); x=0, y=125 mils.
+
+      Em errors detected: 1    Em warnings detected: 0.
+
+Analysis failed due to error Mon Oct 12 13:18:14 2026.

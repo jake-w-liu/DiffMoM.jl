@@ -221,12 +221,30 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       conformal (`Conformal:341`). Oracle: Lite `-N` + solve.
 - [ ] E2 CUP calibration-group solving — records parse; coupled pin-group
       calibration license-blocked. Nexxim-equivalent + DocOnly residual.
-- [ ] E3 non-PEC metal material index path (`IO:1849` partial). Oracle: Lite.
+- [x] E3 non-PEC metal material index path — DONE. Lite probes
+      (`fixtures/native_material_index`, 35 cases): sheet↔via metal-type
+      cross-references natively reject as "Material ID refers to the wrong
+      material type" (sheet+VOL/ARR; via+NOR/RES/SEN/SUP/NAT/TMM/RUF/TVM);
+      indices outside `0:nmetal-1` including `-2` reject; `-1` is the PEC
+      default on sheets AND vias (replay bit-level `.06`-gate agreement);
+      cover-row index fields are inert byte-identically; cover rows carrying
+      via-metal records are degenerate-accepted natively and stay a loud
+      local rejection. Fixed a BoundsError→ArgumentError on out-of-range
+      sheet indices (`IO:1851`).
 - [ ] E4 unsupported project types (`IO:231`), SMD-components-in-plain-lowering
       path (`IO:1818`). Oracle: Lite probes.
 - [ ] E5 dielectric bricks (`IO:1829`, `RasterResources:44`,
       `Conformal:181-185` incl. BAR). Oracle: Lite/HFSS.
-- [ ] E6 scalar `+` exponent sign (`ScalarFiles:373`). Oracle: Lite parse.
+- [x] E6 scalar sign grammar — DONE. Lite probes (60-case accept/reject
+      matrix): `^` operand allows one `-` but never `+`, and a sign's operand
+      cannot itself begin with a sign even behind `(`/whitespace (`1^--2`,
+      `1^-(-2)`, `-(-2)`, `--x`, `1^-((-2))` all natively reject while
+      `1^(-2)`, `1^((-2))`, `1^-abs(-2)`, `2*(-3)`, `2--3`, `2-(-3)` parse).
+      Unary `+` is not a grammar token at all: `+2`/`" +2"`/`+2e3`/`+.5`
+      evaluate as whole-string decimal literals only (`+x`, `+2+3`, `+ 2`,
+      `(+2)`, `2++3`, `abs(+2)` reject). Implemented: shared sign-operand
+      head scan + leading-literal fast path in `ScalarFiles:369-475`;
+      regressions in `test_planar_sonnet_functions.jl`.
 
 ## F. Spectre / SPICE / netlists
 

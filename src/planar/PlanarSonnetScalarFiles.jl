@@ -366,12 +366,30 @@ function _sonnet_scalar_atom!(p,depth)
     throw(ArgumentError("unsupported Sonnet expression token"))
 end
 
+# A native unary sign's operand cannot itself begin with a sign, even behind
+# whitespace or opening parentheses: --x, -+x, -(-x), ^-(-x), -((-x)) and
+# ^- -x all fail to parse, while ^(-x), abs(-x), -(x+1) and 2*(-x) remain
+# legal. Descend through whitespace and '(' only; the first operand token
+# decides, so signs inside function call arguments are unaffected.
+function _sonnet_scalar_operand_head(p)
+    i=p.position
+    while i<=length(p.chars) && (isspace(p.chars[i]) || p.chars[i]=='(');i+=1;end
+    return i<=length(p.chars) ? p.chars[i] : '\0'
+end
+
+function _sonnet_scalar_signed!(p,depth,quantity)
+    p.position+=1
+    _sonnet_scalar_operand_head(p) in ('+','-') &&
+        throw(ArgumentError("native $quantity operand cannot begin with a sign"))
+    return Expr(:call,:-,_sonnet_scalar_power!(p,depth+1))
+end
+
 function _sonnet_scalar_power!(p,depth)
     value=_sonnet_scalar_atom!(p,depth)
     while _sonnet_scalar_peek(p)=='^'
         p.position+=1
         _sonnet_scalar_peek(p)=='+' && throw(ArgumentError("native positive exponent sign is unsupported"))
-        rhs=_sonnet_scalar_peek(p) in ('+','-') ? _sonnet_scalar_unary!(p,depth+1) : _sonnet_scalar_atom!(p,depth)
+        rhs=_sonnet_scalar_peek(p)=='-' ? _sonnet_scalar_signed!(p,depth,"exponent") : _sonnet_scalar_atom!(p,depth)
         value=Expr(:call,:^,value,rhs)
     end
     return value
@@ -380,10 +398,8 @@ end
 function _sonnet_scalar_unary!(p,depth)
     depth<=128 || throw(ArgumentError("native scalar expression depth budget exceeded"))
     c=_sonnet_scalar_peek(p)
-    if c in ('+','-')
-        p.position+=1
-        return Expr(:call,Symbol(c),_sonnet_scalar_unary!(p,depth+1))
-    end
+    c=='+' && throw(ArgumentError("native positive sign is unsupported"))
+    c=='-' && return _sonnet_scalar_signed!(p,depth,"unary")
     return _sonnet_scalar_power!(p,depth)
 end
 
@@ -451,6 +467,12 @@ function _sonnet_parse_scalar(text::AbstractString)
             i+=1
         end
     end
+    # The engine accepts a leading sign only as part of a whole-expression
+    # decimal literal: +2 and " +2" evaluate while +x, + 2 and +2+3 reject.
+    stripped=strip(text)
+    startswith(stripped,'+') &&
+        occursin(r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$",stripped) &&
+        return _sonnet_scalar_number(stripped)
     parser=_SonnetScalarParser(chars,1)
     ex=_sonnet_scalar_sum!(parser,0)
     _sonnet_scalar_peek(parser)=='\0' || throw(ArgumentError("unsupported Sonnet expression suffix"))
