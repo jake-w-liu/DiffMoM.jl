@@ -1412,6 +1412,36 @@ ladder remain open.
   `layout_cs7xRq`, `cell_geometry_vXCwHi`, `via_profile_SolY1C`,
   `layout_LuVtPU`, `layout_ZDXjQs`, `layout_FNzUCX`, and the retained GUI screenshot
   `layout_native_q7Tfgp/sonnet_box.png` under local `data/sonnet_validation`.
+  A three-engine frequency-sweep triangulation now diagnoses the residual.
+  Sonnet Lite `em.exe` 18.53 swept the unmodified project over 4.5-5.5 GHz
+  (explicitly *non-de-embedded* response, so the `DRP1 LINK` records play
+  no role in the raw comparison), DiffMoM solved the identical 192×128
+  raster at 4.95/5.05 GHz with the mode-converged 2048-mode UFFT
+  (|dS| vs the 4096-mode retained solve is 4e-4), and an independent
+  Ansys HFSS 2025R1 driven-modal FEM rebuild of the same geometry —
+  finite-conductivity sheets reproducing Sonnet's `NOR` surface-impedance
+  metal model, surface-solved via solids, PEC box, adaptive order-1
+  direct solve converged to DeltaS 0.03 with 170,245 tetrahedra — swept
+  the same band. The DiffMoM phase gap is a *constant* -4.9°/-4.2°
+  (S21/S11) across the rolloff; interpolated onto the unwrapped native
+  phase curve every well-conditioned estimate lands at the same
+  +3.3-3.8 MHz (0.07%) effective-frequency offset, while |S21|
+  magnitudes track native to ~0.001-0.01 at the steepest slope and
+  reciprocity holds to 1e-12. That is the signature of a sub-0.1%
+  effective-propagation-constant/placement difference between the
+  rectangular-cell Galerkin discretization and Sonnet's meshing —
+  consistent with all prior ablations returning null — and excludes a
+  port-normalization, reference-plane, or de-embedding defect. The
+  independent FEM method carries its own ~4× larger placement offset
+  (max|dS| vs native 0.26-0.36 vs ours 0.065-0.10), so the residual sits
+  at the small end of the observed cross-engine method-level envelope.
+  The retained 0.06492637 raw full-S comparison stays **FAIL** at the
+  unchanged 0.06 gate; this is a diagnosis, not a relabel. Evidence:
+  `validation/sonnet_stripline/dxf_triangulation_reference` (native sweep log,
+  HFSS script and exports, DiffMoM sweep CSV, DRP-stripped solve input,
+  sha256-anchored comparison); regression
+  `test_planar_dxf_triangulation.jl` asserts the uniform-offset model and
+  the ours-below-HFSS ordering.
 * **Fine stripline convergence:** 128 width cells, 32 length cells and modal
   factor 2 give `Zc=50.044527081 Ω`, `v/c=1.000001385`, and absolute
   `eT=0.089193%`. The 256-cell solve with GMRES restart 100 fails the
