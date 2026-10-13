@@ -579,7 +579,14 @@ All three installed public STFs validate against the captured official
 GDS maps and top-to-bottom stack order remain retained. Proven providers
 evaluate scalar/default isotropic materials and exact native-unit table
 nodes. They reject off-node interpolation/extrapolation, applied etch/rho/RPV
-geometry semantics, encrypted physical data and unknown models. No literal
+geometry semantics and unknown models. Declared root `private`/`privenc`
+sections are opaque and ignored — installed `soncmd -LoadTechnology`
+materializes the public section identically even with a divergent private
+materials/stackup (verified byte-identical output, fixture
+`native_stf_private`) — while undeclared private sections, malformed
+`has_private` flags and private payloads nested inside grammar-gated
+elements still reject; encrypted parameter payloads referenced by the
+stack resolve to nothing and reject as unknown materials. No literal
 SCAL record was found in the installed source/help corpus, so no inferred
 SCAL grammar is implemented. The two linked installed SON files have exact
 source/dependency envelopes; their inherited technology geometry remains

@@ -49,7 +49,9 @@ end
 
 """Native SON records plus one bounded, exact linked STF dependency snapshot.
 The declared path, resolved path and both source hashes are retained. Intake
-does not certify inherited etch, RPV, encrypted or meshing semantics. Use
+does not certify inherited etch, RPV or meshing semantics; declared root
+`private`/`privenc` sections are retained but treated as opaque exactly as
+native `soncmd -LoadTechnology` does. Use
 `sonnet_materialize_project` for the explicitly supported static subset."""
 struct SonnetLinkedProject
     source::String
@@ -531,9 +533,22 @@ function sonnet_technology_lookup(table::SonnetTechnologyTable,coordinates::Vara
 end
 
 function _stf_static_guard(t)
-    _stf_attr(t.root,"has_private","false") in ("false","0") || throw(ArgumentError("private STF physical semantics are unsupported"))
-    any(x->x.name in ("private","privenc"),t.root.children) && throw(ArgumentError("private/encrypted STF physical semantics are unsupported"))
-    all(x->x.name in ("source","units","comments","public"),t.root.children) || throw(ArgumentError("unknown STF root semantics"))
+    declared=_stf_attr(t.root,"has_private","false") in ("true","1")
+    _stf_attr(t.root,"has_private","false") in ("false","0","true","1") ||
+        throw(ArgumentError("unknown STF has_private semantics"))
+    # Root-level `private`/`privenc` sections are opaque: native
+    # `soncmd -LoadTechnology` materializes only the public section even
+    # when a private materials/stackup tree is present (verified
+    # byte-identical output), so the declared sections are ignored here
+    # exactly. Nested private elements cannot inject physical parameters:
+    # material/model/mesh/bias lookups are kind-and-name keyed against the
+    # public dictionaries, stackup children must be TOP/BOTTOM/diel/vias,
+    # and `_stf_known` child whitelists reject private payloads inside
+    # dielectric and technology-layer records — a private-only reference
+    # resolves to nothing and rejects loudly.
+    any(x->x.name in ("private","privenc"),t.root.children) && !declared &&
+        throw(ArgumentError("undeclared STF private/encrypted sections"))
+    all(x->x.name in ("source","units","comments","public","private","privenc"),t.root.children) || throw(ArgumentError("unknown STF root semantics"))
     all(k->k in ("version","has_private","writeable","{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation"),keys(t.root.attributes)) || throw(ArgumentError("unknown STF root attributes"))
     public=_stf_child(t.root,"public";required=true)
     isempty(public.attributes) || throw(ArgumentError("unknown STF public attributes"))

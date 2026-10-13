@@ -203,10 +203,27 @@ end
         @test_throws ArgumentError sonnet_technology_value(read_sonnet_technology(path),"Cycle")
         write(path,_technology_test_xml(variables="<var name=\"H\" value=\"100\"/>"))
         @test_throws ArgumentError read_sonnet_technology(path)
+        # Declared root private/privenc sections are opaque: installed
+        # `soncmd -LoadTechnology` materializes only the public section
+        # even with a schema-valid divergent private materials/stackup
+        # (verified byte-identical output), so the provider agrees.
+        write(path,xml)
+        baseline=sonnet_technology_stack(read_sonnet_technology(path),1e9,.001,.002).layers
         write(path,_technology_test_xml(extra="<privenc><enc>abcd</enc></privenc>",rootattrs="has_private=\"true\""))
         private=read_sonnet_technology(path)
         @test last(private.root.children).name=="privenc"
-        @test_throws ArgumentError sonnet_technology_stack(private,1e9,.001,.002)
+        @test sonnet_technology_stack(private,1e9,.001,.002).layers==baseline
+        # A private materials/stackup tree at root is ignored identically.
+        write(path,_technology_test_xml(extra="<private><materials><dielectric name=\"Air\"><params erel=\"9.99\"/></dielectric></materials><stackup><diel name=\"X\" dielectric=\"Air\" thickness=\"7\"/></stackup></private>",rootattrs="has_private=\"true\""))
+        @test sonnet_technology_stack(read_sonnet_technology(path),1e9,.001,.002).layers==baseline
+        # Undeclared private sections and malformed flags still reject.
+        write(path,_technology_test_xml(extra="<privenc><enc>abcd</enc></privenc>"))
+        @test_throws ArgumentError sonnet_technology_stack(read_sonnet_technology(path),1e9,.001,.002)
+        write(path,_technology_test_xml(extra="<private/>",rootattrs="has_private=\"maybe\""))
+        @test_throws ArgumentError sonnet_technology_stack(read_sonnet_technology(path),1e9,.001,.002)
+        # Private payloads nested inside grammar-gated elements reject.
+        write(path,_technology_test_xml(stack="<diel name=\"Extra\" dielectric=\"Air\" thickness=\"10\"><private/></diel>"))
+        @test_throws ArgumentError sonnet_technology_stack(read_sonnet_technology(path),1e9,.001,.002)
         for bad in (_technology_test_xml(rootattrs="unknownphysics=\"yes\""),
             _technology_test_xml(materials="<dielectric name=\"Bad\" anisotropic=\"yes\"><params axes=\"x\"/></dielectric>"),
             _technology_test_xml(stack="<diel name=\"Extra\" dielectric=\"Air\" thickness=\"10\"><via_techlayer name=\"V\" layer_name=\"V\" material=\"Copper\" from=\"0\" to=\"1\"/></diel>"))
@@ -612,6 +629,37 @@ end
         actual=solve_sonnet_project(q,frequency;raw=true,grid=(20,20))
         @test maximum(abs,actual.s-native)<=1e-3
     end
+end
+
+@testset "Linked STF private-section public materialization" begin
+    # input.stf declares has_private="true" and carries a schema-valid
+    # divergent private materials/stackup tree; native
+    # `soncmd -LoadTechnology` ignores it and emits the public stack
+    # (fixture native_stf_private/README.md).
+    fixture=joinpath(@__DIR__,"fixtures","native_stf_private")
+    # The two archived native outputs are content-identical: only the
+    # timestamp, builder, date and STF-name records may differ.
+    volatile(line)=any(p->startswith(line,p),("DAT ","BUILT_BY_","MDATE ","HDATE ","STF "))
+    native_priv=filter(!volatile,readlines(joinpath(fixture,"native_public_only.son")))
+    native_base=filter(!volatile,readlines(joinpath(fixture,"native_baseline.son")))
+    @test native_priv==native_base
+    # Our materializer ignores the private section identically: the
+    # private-bearing link produces the same project as the public
+    # baseline, field for field.
+    p=sonnet_materialize_project(read_sonnet_linked_project(joinpath(fixture,"input_link.son")))
+    q=sonnet_materialize_project(read_sonnet_linked_project(joinpath(fixture,"baseline_link.son")))
+    canon(x)=x
+    canon(r::SonnetRecord)=(r.line,r.tokens)
+    canon(g::SonnetPolygon)=(g.kind,g.level,g.material,g.id,g.vertices,g.target,g.technology,g.technology_mode,g.flags)
+    canon(s::SonnetPortSpec)=(s.kind,s.polygon,s.edge,s.number,s.values,canon.(s.records))
+    canon(v::AbstractVector)=map(canon,v)
+    canon(d::AbstractDict)=Dict(k=>canon(v) for (k,v) in d)
+    for name in setdiff(fieldnames(SonnetProject),(:source,:records))
+        @test canon(getfield(p,name))==canon(getfield(q,name))
+    end
+    # Raw records are identical apart from the STF filename record.
+    @test [r.tokens for r in p.records if r.tokens[1]!="STF"]==
+        [r.tokens for r in q.records if r.tokens[1]!="STF"]
 end
 
 @testset "Linked STF model/spec pairing materialization" begin

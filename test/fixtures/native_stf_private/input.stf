@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<technology_file version="1700" has_private="true">
+  <units cunit="SM" lunit="UM" runit="OHUM" srunit="OHSQ"/>
+  <public>
+    <variables/>
+    <materials>
+      <dielectric name="Air"><params erel="1"/></dielectric>
+      <dielectric name="Ox"><params erel="4"/></dielectric>
+      <dielectric name="Sub"><params erel="11.9"/></dielectric>
+      <conductor name="M1Mat" condspec="cond" cond="4e7" rsvy="2e-5" shres="1.5" rpv="1.2" rdc="2" rrf="3e-7" xdc="0.01" ls="5" />
+      <conductor name="Copper" condspec="cond" cond="4e7"/>
+      <conductor name="ViaMat" condspec="cond" cond="2.36e6" rsvy="2e-5" shres="1.5" rpv="1.2" rdc="0.03" rrf="2e-7" xdc="0.04" ls="5" />
+    </materials>
+    <mesh_defs>
+      <mesh fill_type="Default" name="Default_metal" type="metal"/>
+      <mesh fill_type="Default" name="Default_via" type="via"/>
+      <mesh fill_type="Ring" name="Vertices_def" type="via" />
+    </mesh_defs>
+    <metal_model_defs>
+      <metal_model model_type="Normal" name="Cover_def"/>
+      <metal_model model_type="Normal" name="Thin_def" />
+      <metal_model model_type="Normal" name="Thick_def" num_sheets="2"/>
+      <via_model model_type="Volume" name="Volume_def" />
+    </metal_model_defs>
+    <stackup>
+      <TOP material="Lossless" model="Cover_def"/>
+      <diel dielectric="Air" name="L1" thickness="30">
+        <metal_techlayer name="M1" layer_name="M1" material="M1Mat" model="Thin_def" thickness="1" mesh="Default_metal"  />
+      </diel>
+      <diel dielectric="Ox" name="L2" thickness="5">
+        <metal_techlayer name="M2" layer_name="M2" material="Copper" model="Thick_def" thickness="4" mesh="Default_metal"/>
+      </diel>
+      <diel dielectric="Sub" name="L3" thickness="100"/>
+      <BOTTOM material="Lossless" model="Cover_def"/>
+      <vias>
+        <via_techlayer name="V12" layer_name="V12" material="ViaMat" model="Volume_def" from="M1" to="M2" mesh="Vertices_def" />
+      </vias>
+    </stackup>
+    
+  </public><private><materials><dielectric name="Air"><params cond="0" erel="9.99" mrel="1" tane="0" tanm="0"/></dielectric></materials><stackup><TOP material="Lossless"/><diel dielectric="Air" name="PRIV" thickness="100"/><BOTTOM material="Lossless"/></stackup></private>
+</technology_file>

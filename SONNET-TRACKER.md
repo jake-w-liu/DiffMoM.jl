@@ -461,7 +461,20 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       TMM/non-Ring materialized solves have no Lite oracle. HFSS 2025R1
       batch mode is verified working as a fallback oracle. Residual:
       linked-STF native `-S` and TMM/non-Ring solve parity stay DocOnly.
-- [ ] D6 encrypted material entries — DocOnly (cannot decrypt).
+- [x] D6 private/encrypted sections — DONE for materialization. Probed
+      `soncmd -LoadTechnology` on STFs carrying declared `private` and
+      `privenc` root sections (including a schema-valid divergent private
+      materials/stackup): native output is byte-identical to the public
+      baseline — private sections are ignored during public
+      materialization. `_stf_static_guard` now treats declared root
+      private/privenc as opaque (public materialization unchanged);
+      undeclared private sections, malformed `has_private` and nested
+      private payloads still reject (name-keyed resolution can never
+      reach them). Fixture `test/fixtures/native_stf_private` (forged
+      STF, both native outputs, README); regression testsets in
+      `test_planar_sonnet_technology.jl`. Residual DocOnly: real
+      foundry `privenc` parameter blobs referenced by the stack cannot
+      be decrypted — they reject as unresolved material names.
 
 ## E. Ports / calibration / project intake
 
@@ -688,7 +701,9 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 - licensed GLG extraction + multi-port de-embed output (A3 residual; the
   coupled-group kernel itself is Nexxim-verified), SMD renderer compatibility,
   linked-STF native `-S` solve (D5), Conformal license (I2), S/current viewer
-  (I3), encrypted STF materials (D6), undecoded scaled GEOVAR law (B2 if it
+  (I3), encrypted STF parameter blobs referenced by the stack (D6 residual;
+  root private sections themselves materialize like native), undecoded
+  scaled GEOVAR law (B2 if it
   resists probing).
 
 ---
@@ -705,8 +720,9 @@ prior ledgered items.
 
 Remaining (updated order):
 
-1. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
-   DocOnly.
+1. ~~D-group STF residue (D1–D6)~~ — DONE: `em -N`/materialization corpus
+   complete; privenc parameter blobs stay DocOnly (undecryptable, reject
+   as unresolved materials).
 2. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
 3. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
    characterization, larger.
