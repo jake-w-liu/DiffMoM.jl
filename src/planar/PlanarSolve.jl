@@ -25,29 +25,40 @@ struct PlanarProblem
     vias::Vector{ViaLevel}
     basis::PlanarBasisSet
     vols::Vector{VolLevel}
+    bricks::Vector{BrickLevel}
 end
 
-# convenience constructors: no via/volume levels, or via only
+# convenience constructors: no via/volume/brick levels, or via only
 PlanarProblem(stack::PlanarStackup, grid::CellGrid,
     sheets::Vector{SheetLevel}, ports::Vector{PlanarPort},
     basis::PlanarBasisSet) =
     PlanarProblem(stack, grid, sheets, ports, ViaLevel[], basis,
-        VolLevel[])
+        VolLevel[], BrickLevel[])
 PlanarProblem(stack::PlanarStackup, grid::CellGrid,
     sheets::Vector{SheetLevel}, ports::Vector{PlanarPort},
     vias::Vector{ViaLevel}, basis::PlanarBasisSet) =
-    PlanarProblem(stack, grid, sheets, ports, vias, basis, VolLevel[])
+    PlanarProblem(stack, grid, sheets, ports, vias, basis, VolLevel[],
+        BrickLevel[])
+PlanarProblem(stack::PlanarStackup, grid::CellGrid,
+    sheets::Vector{SheetLevel}, ports::Vector{PlanarPort},
+    vias::Vector{ViaLevel}, basis::PlanarBasisSet,
+    vols::Vector{VolLevel}) =
+    PlanarProblem(stack, grid, sheets, ports, vias, basis, vols,
+        BrickLevel[])
 
 """Validate the stackup/ports and build the rooftop basis; every port must
 claim at least one wall-connected edge.  `vias` adds z-directed via
 columns on `ViaLevel`s (uniform and up-tapered profiles per cell);
 `vols` adds thick-metal volume rooftops on `VolLevel`s (x- and
 y-directed volume current distributed uniformly through each level's
-layer).  Every level's `layer` must lie inside the stackup."""
+layer).  `bricks` adds dielectric-brick polarization cells on
+`BrickLevel`s (x/y/z-directed pulses through each level's layer).
+Every level's `layer` must lie inside the stackup."""
 function build_planar_problem(stack::PlanarStackup, grid::CellGrid,
         sheets::Vector{SheetLevel}, ports::Vector{PlanarPort};
         vias::Vector{ViaLevel}=ViaLevel[],
-        vols::Vector{VolLevel}=VolLevel[])
+        vols::Vector{VolLevel}=VolLevel[],
+        bricks::Vector{BrickLevel}=BrickLevel[])
     planar_validate(stack)
     stack.a == grid.a && stack.b == grid.b || throw(ArgumentError(
         "stackup box dimensions must match the cell grid"))
@@ -62,7 +73,58 @@ function build_planar_problem(stack::PlanarStackup, grid::CellGrid,
         1 <= vlvl.layer <= L || throw(ArgumentError(
             "vols[$vl] layer $(vlvl.layer) outside 1:$L"))
     end
-    basis = build_planar_basis(grid, sheets, ports; vias=vias, vols=vols)
+    for (vl, brick) in enumerate(bricks)
+        1 <= brick.layer <= L || throw(ArgumentError(
+            "bricks[$vl] layer $(brick.layer) outside 1:$L"))
+        size(brick.mask) == (grid.nx, grid.ny) || throw(DimensionMismatch(
+            "bricks[$vl] mask must be $(grid.nx) x $(grid.ny)"))
+        all(v->isfinite(v) && real(v)>0, brick.epsr) ||
+            throw(ArgumentError(
+                "bricks[$vl] permittivity must be finite with Re > 0"))
+        any(brick.mask) || throw(ArgumentError(
+            "bricks[$vl] marks no cells"))
+        # A polarization axis without contrast is a singular VIE row; the
+        # unknown is only meaningful when the brick differs from its host.
+        host = stack.layers[brick.layer]
+        for (axis, contrast) in enumerate(
+                (brick.epsr[1]-host.epsr, brick.epsr[2]-host.epsr,
+                 brick.epsr[3]-host.epsr_z))
+            isfinite(contrast) && !iszero(contrast) || throw(ArgumentError(
+                "bricks[$vl] has zero or non-finite permittivity contrast " *
+                "on axis $(('x','y','z')[axis]) against host layer " *
+                "$(brick.layer); a brick cell without contrast carries " *
+                "no polarization current"))
+        end
+        # Conductor masks already occupying a brick cell make its
+        # polarization unknowns physically meaningless: the metal EFIE
+        # constrains E=0 where the VIE would still model dielectric.
+        for (u, via) in enumerate(vias)
+            via.layer == brick.layer || continue
+            any(v -> v[1] & v[2], zip(brick.mask, via.uni .| via.tap)) &&
+                throw(ArgumentError(
+                    "bricks[$vl] overlaps vias[$u] cells on layer " *
+                    "$(brick.layer); a cell cannot be both conductor " *
+                    "and dielectric"))
+        end
+        for (u, vol) in enumerate(vols)
+            vol.layer == brick.layer || continue
+            any(v -> v[1] & v[2], zip(brick.mask, vol.mask)) &&
+                throw(ArgumentError(
+                    "bricks[$vl] overlaps vols[$u] cells on layer " *
+                    "$(brick.layer); a cell cannot be both conductor " *
+                    "and dielectric"))
+        end
+        for (u, other) in enumerate(bricks)
+            u == vl && break
+            other.layer == brick.layer || continue
+            any(v -> v[1] & v[2], zip(brick.mask, other.mask)) &&
+                throw(ArgumentError(
+                    "bricks[$vl] overlaps bricks[$u] cells on layer " *
+                    "$(brick.layer); merge them into one BrickLevel"))
+        end
+    end
+    basis = build_planar_basis(grid, sheets, ports;
+        vias=vias, vols=vols, bricks=bricks)
     planar_basis_count(basis) == 0 &&
         throw(ArgumentError("no basis functions: check masks/connections"))
     # every port must claim at least one basis
@@ -74,7 +136,8 @@ function build_planar_problem(stack::PlanarStackup, grid::CellGrid,
         c || throw(ArgumentError(
             "port $i claimed no basis functions; check cells/edge/mask"))
     end
-    return PlanarProblem(stack, grid, sheets, ports, vias, basis, vols)
+    return PlanarProblem(stack, grid, sheets, ports, vias, basis, vols,
+        bricks)
 end
 
 """Result of `solve_planar`: retained problem, MoM matrix and LU
@@ -536,6 +599,11 @@ function solve_planar(prob::PlanarProblem, freq::Number;
         method::Symbol=:dense,
         retain_matrix::Bool=true,
         max_bytes::Integer=_default_max_dense_payload_bytes(), kw...)
+    if !isempty(prob.bricks)
+        method === :dense || throw(ArgumentError(
+            "dielectric bricks solve through the dense modal assembly; " *
+            "method=:$method requires its brick parity transform"))
+    end
     method === :ufft && return solve_planar_ufft(prob, freq;
         max_bytes=max_bytes, kw...)
     method in (:dense,:dense_fft) || throw(ArgumentError("method must be :dense, :dense_fft or :ufft"))
@@ -570,7 +638,8 @@ function solve_planar(prob::PlanarProblem, freq::Number;
         assemble_planar_z_ufft(prob,freq;max_bytes=max_bytes-(est-matrix_bytes),kw...)
     else
         assemble_planar_z(prob.stack,prob.grid,prob.sheets,prob.basis,omega;
-            vias=prob.vias,vols=prob.vols,_retain_components=compact_components,max_bytes,kw...)
+            vias=prob.vias,vols=prob.vols,bricks=prob.bricks,
+            _retain_components=compact_components,max_bytes,kw...)
     end
     Z=compact_components ? assembled.matrix : assembled
     physical=assembled

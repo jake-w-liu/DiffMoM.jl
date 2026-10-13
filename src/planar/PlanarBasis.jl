@@ -292,13 +292,29 @@ const _BASIS_VX_HI   = UInt8(11)
 const _BASIS_VY_FULL = UInt8(12)
 const _BASIS_VY_LO   = UInt8(13)
 const _BASIS_VY_HI   = UInt8(14)
+# dielectric-brick polarization bases: transverse rooftop families
+# (divergence conforming, same support rules as the sheet kinds) plus a
+# z-directed uniform-profile cell pulse.
+const _BASIS_BXF     = UInt8(15)  # x rooftop spanning two brick cells
+const _BASIS_BXL     = UInt8(16)  # x half rooftop on a brick boundary face
+const _BASIS_BXH     = UInt8(17)  # x half rooftop (peak at face, left cell)
+const _BASIS_BYF     = UInt8(18)
+const _BASIS_BYL     = UInt8(19)
+const _BASIS_BYH     = UInt8(20)
+const _BASIS_BZ      = UInt8(21)  # z pulse, uniform axial profile
 
-# same-direction map volume -> sheet kind for transform/weight reuse
+# same-direction map volume/brick -> sheet kind for transform/weight reuse
 @inline _sheet_kind(kind::UInt8) = kind <= _BASIS_Y_HI ? kind :
-    kind >= _BASIS_VX_FULL ? kind - UInt8(8) : kind
-@inline _is_vol_kind(kind::UInt8) = kind >= _BASIS_VX_FULL
+    kind <= _BASIS_VY_HI && kind >= _BASIS_VX_FULL ? kind - UInt8(8) :
+    kind <= _BASIS_BYH && kind >= _BASIS_BXF ? kind - UInt8(14) : kind
+@inline _is_vol_kind(kind::UInt8) =
+    kind >= _BASIS_VX_FULL && kind <= _BASIS_VY_HI
 @inline _is_via_kind(kind::UInt8) =
     kind == _BASIS_VIA_U || kind == _BASIS_VIA_T
+@inline _is_brick_kind(kind::UInt8) = kind >= _BASIS_BXF
+# transverse (x/y) brick kinds carry the volume element's 1/h axial profile
+@inline _is_brick_xy_kind(kind::UInt8) =
+    kind >= _BASIS_BXF && kind <= _BASIS_BYH
 
 """Flat storage of rooftop basis functions built by `build_planar_basis`:
 kind (direction/full/half-wall), cell-edge indices, sheet level, centre,
@@ -389,7 +405,8 @@ function _wall_port_maps(ports::Vector{PlanarPort}, lv::Int,
 end
 
 """
-    build_planar_basis(grid, sheets, ports; vias=ViaLevel[], vols=VolLevel[])
+    build_planar_basis(grid, sheets, ports; vias=ViaLevel[], vols=VolLevel[],
+        bricks=BrickLevel[])
         -> PlanarBasisSet
 
 Enumerate all x- and y-directed rooftop basis functions on every metal
@@ -402,10 +419,16 @@ per via kind present.  `vols[vl].layer` is the stackup layer the thick
 metal occupies through its full thickness; each marked cell contributes
 volume rooftops that carry a normalized uniform z-profile across the
 layer. Volume wall ports claim their wall-connected half rooftops.
+`bricks[vl].layer` is the stackup layer the dielectric brick fills;
+each face touched by the mask carries a transverse
+polarization-current rooftop (full between two marked cells, half
+where the current terminates on the material boundary) and each
+marked cell carries one z-directed uniform-profile pulse.
 """
 function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
         ports::Vector{PlanarPort}; vias::Vector{ViaLevel}=ViaLevel[],
-        vols::Vector{VolLevel}=VolLevel[])
+        vols::Vector{VolLevel}=VolLevel[],
+        bricks::Vector{BrickLevel}=BrickLevel[])
     nx, ny = grid.nx, grid.ny
     b = PlanarBasisSet(UInt8[], Int[], Int[], Int[], Float64[],
                        Float64[], Float64[], Int[])
@@ -568,6 +591,47 @@ function build_planar_basis(grid::CellGrid, sheets::Vector{SheetLevel},
                              (i - 0.5) * grid.dx, f * grid.dy, grid.dx, 0)
                 end
             end
+        end
+    end
+    # dielectric-brick polarization currents: divergence-conforming
+    # transverse rooftops on every face touched by the mask (full rooftop
+    # between two brick cells, half rooftop where J_p terminates on a
+    # material boundary and deposits its bound surface charge) plus one
+    # uniform-profile z pulse per cell.
+    for (vl, brick) in enumerate(bricks)
+        size(brick.mask) == (nx, ny) ||
+            throw(DimensionMismatch("bricks[$vl] mask must be $nx x $ny"))
+        @inbounds for j in 1:ny, e in 0:nx
+            left = e >= 1 ? brick.mask[e, j] : false
+            right = e <= nx - 1 ? brick.mask[e + 1, j] : false
+            x0 = e * grid.dx
+            y0 = (j - 0.5) * grid.dy
+            if left && right
+                _push_via!(b, _BASIS_BXF, e, j, vl, x0, y0, grid.dy)
+            elseif left
+                _push_via!(b, _BASIS_BXH, e, j, vl, x0, y0, grid.dy)
+            elseif right
+                _push_via!(b, _BASIS_BXL, e, j, vl, x0, y0, grid.dy)
+            end
+        end
+        @inbounds for f in 0:ny, i in 1:nx
+            below = f >= 1 ? brick.mask[i, f] : false
+            above = f <= ny - 1 ? brick.mask[i, f + 1] : false
+            x0 = (i - 0.5) * grid.dx
+            y0 = f * grid.dy
+            if below && above
+                _push_via!(b, _BASIS_BYF, i, f, vl, x0, y0, grid.dx)
+            elseif below
+                _push_via!(b, _BASIS_BYH, i, f, vl, x0, y0, grid.dx)
+            elseif above
+                _push_via!(b, _BASIS_BYL, i, f, vl, x0, y0, grid.dx)
+            end
+        end
+        @inbounds for j in 1:ny, i in 1:nx
+            brick.mask[i, j] || continue
+            _push_via!(b, _BASIS_BZ, i, j, vl,
+                (i - 0.5) * grid.dx, (j - 0.5) * grid.dy,
+                grid.dx * grid.dy)
         end
     end
     _assign_planar_internal_ports!(b, ports, grid)

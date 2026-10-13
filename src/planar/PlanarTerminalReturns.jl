@@ -130,7 +130,7 @@ function planar_terminal_returns(prob::PlanarProblem,terminals::AbstractVector{P
         end
         push!(paths,(direction=direction,layers=layers,cells=cells,length=distance,terminal=terminal))
     end
-    problem=build_planar_problem(prob.stack,grid,prob.sheets,ports;vias=vias,vols=prob.vols)
+    problem=build_planar_problem(prob.stack,grid,prob.sheets,ports;vias=vias,vols=prob.vols,bricks=prob.bricks)
     contraction=zeros(Float64,length(ports),length(prob.ports)+length(terminals))
     for (i,(terminal,weight)) in enumerate(weights)
         contraction[i,terminal]=weight
@@ -141,10 +141,11 @@ end
 
 # Exact count for a port-free geometry, without allocating a duplicate
 # basis merely to discover whether its construction fits the budget.
-function _terminal_geometry_basis_count(grid,sheets,vias,vols)
+function _terminal_geometry_basis_count(grid,sheets,vias,vols,
+        bricks::Vector{BrickLevel}=BrickLevel[])
     nx,ny=grid.nx,grid.ny
     _checked_payload_sum("terminal geometry basis count",
-        2BigInt(nx)*ny*(length(sheets)+length(vias)+length(vols)))
+        3BigInt(nx)*ny*(length(sheets)+length(vias)+length(vols)+length(bricks)))
     nb=0
     for levels in (sheets,vols),level in levels
         _validate_sheet_grid(level,grid)
@@ -169,6 +170,17 @@ function _terminal_geometry_basis_count(grid,sheets,vias,vols)
             throw(DimensionMismatch("terminal via masks must match the grid"))
         nb+=count(via.uni)+count(via.tap)
     end
+    for brick in bricks
+        size(brick.mask)==(nx,ny) ||
+            throw(DimensionMismatch("terminal brick masks must match the grid"))
+        for j in 1:ny, e in 0:nx
+            nb+=(e>=1 && brick.mask[e,j])|(e<=nx-1 && brick.mask[e+1,j])
+        end
+        for f in 0:ny, i in 1:nx
+            nb+=(f>=1 && brick.mask[i,f])|(f<=ny-1 && brick.mask[i,f+1])
+        end
+        nb+=count(brick.mask)
+    end
     return nb
 end
 
@@ -179,17 +191,18 @@ problem-based overload."""
 function planar_terminal_returns(stack::PlanarStackup,grid::CellGrid,
         sheets::Vector{SheetLevel},terminals::AbstractVector{PlanarPort};
         vias::Vector{ViaLevel}=ViaLevel[],vols::Vector{VolLevel}=VolLevel[],
+        bricks::Vector{BrickLevel}=BrickLevel[],
         max_bytes::Integer=_default_max_dense_payload_bytes(),kw...)
     planar_validate(stack)
     stack.a==grid.a && stack.b==grid.b || throw(ArgumentError("terminal stack/grid dimensions must match"))
-    nb=_terminal_geometry_basis_count(grid,sheets,vias,vols)
+    nb=_terminal_geometry_basis_count(grid,sheets,vias,vols,bricks)
     bare_bytes=_checked_payload_sum("physical terminal input basis",
         _checked_array_payload_bytes(UInt8,nb),
         _checked_array_payload_bytes(Int,4,nb),
         _checked_array_payload_bytes(Float64,3,nb),
         _checked_array_payload_bytes(Int,2,grid.nx+grid.ny))
     _enforce_payload_limit(bare_bytes,max_bytes,"physical terminal input basis","max_bytes")
-    basis=build_planar_basis(grid,sheets,PlanarPort[];vias=vias,vols=vols)
-    bare=PlanarProblem(stack,grid,sheets,PlanarPort[],vias,basis,vols)
+    basis=build_planar_basis(grid,sheets,PlanarPort[];vias=vias,vols=vols,bricks=bricks)
+    bare=PlanarProblem(stack,grid,sheets,PlanarPort[],vias,basis,vols,bricks)
     return planar_terminal_returns(bare,terminals;max_bytes=max_bytes-bare_bytes,kw...)
 end

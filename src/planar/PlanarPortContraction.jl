@@ -324,7 +324,8 @@ function solve_planar_contracted(prob::PlanarProblem,freq::Number,C::AbstractMat
         original=method===:dense_fft ?
             assemble_planar_z_ufft(prob,freq;max_bytes=max_bytes-assembly_reserve,kw...) :
             assemble_planar_z(prob.stack,prob.grid,prob.sheets,prob.basis,omega;
-                vias=prob.vias,vols=prob.vols,_retain_components=compact_components,
+                vias=prob.vias,vols=prob.vols,bricks=prob.bricks,
+                _retain_components=compact_components,
                 max_bytes=max_bytes-assembly_reserve,kw...)
         all(isfinite,original) || throw(ArgumentError("nonfinite planar source matrix"))
         scaled=compact_components ? original.matrix : copy(original)

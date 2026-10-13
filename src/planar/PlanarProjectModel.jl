@@ -398,7 +398,7 @@ function planar_project_layout(project::PlanarProject;freq::Real=1e9,grid=nothin
         push!(updated,PlanarPort(p.level,p.wall,p.cells,p.z0;edge=p.edge,
             polarity=p.polarity*Int(signs[k]),refplane=planes[k]))
     end
-    metadata=PlanarProblem(original.stack,original.grid,original.sheets,updated,original.vias,original.basis,original.vols)
+    metadata=PlanarProblem(original.stack,original.grid,original.sheets,updated,original.vias,original.basis,original.vols,original.bricks)
     layout=PlanarLayout(metadata,layout.shapes,layout.sheet_materials,layout.material_names,
         layout.materials,layout.via_models,layout.contraction===nothing ? metadata : layout.source_problem,
         layout.contraction===nothing ? nothing : layout.contraction*Diagonal(signs),layout.terminal_paths,layout.volume_models)

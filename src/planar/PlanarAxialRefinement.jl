@@ -38,6 +38,7 @@ function planar_refine_axial(prob::PlanarProblem,subdivisions;
     nlayer=sum(BigInt(n) for n in counts)
     nvia=sum((BigInt(counts[v.layer]) for v in prob.vias);init=BigInt(0))
     nvolume=sum((BigInt(counts[v.layer]) for v in prob.vols);init=BigInt(0))
+    nbrick=sum((BigInt(counts[b.layer]) for b in prob.bricks);init=BigInt(0))
     nport=sum(BigInt(p.wall===:via ? counts[prob.vias[p.level].layer] :
         _is_planar_volume_port(p.wall) ? counts[prob.vols[p.level].layer] : 1) for p in prob.ports)
     # Taper-only refinement gains a uniform component above the first
@@ -51,13 +52,15 @@ function planar_refine_axial(prob::PlanarProblem,subdivisions;
             via=prob.vias[prob.basis.level[p]];n=counts[via.layer]
             nbnew+=n
             k==_BASIS_VIA_T && !via.uni[prob.basis.ei[p],prob.basis.ej[p]] && (nbnew+=n-1)
+        elseif _is_brick_kind(k)
+            nbnew+=counts[prob.bricks[prob.basis.level[p]].layer]
         else
             nbnew+=1
         end
     end
     words=cld(BigInt(prob.grid.nx)*prob.grid.ny,64)
     metadata=_checked_payload_sum("axial refinement",
-        _checked_array_payload_bytes(UInt64,words,2nvia+nvolume+length(prob.sheets)),
+        _checked_array_payload_bytes(UInt64,words,2nvia+nvolume+nbrick+length(prob.sheets)),
         _checked_array_payload_bytes(UInt64,cld(BigInt(prob.grid.nx),64)+cld(BigInt(prob.grid.ny),64),
             2*(nvolume+length(prob.sheets))),
         _checked_array_payload_bytes(eltype(prob.stack.layers),nlayer),
@@ -97,6 +100,10 @@ function planar_refine_axial(prob::PlanarProblem,subdivisions;
             copy(old.connect_south),copy(old.connect_north)))
         push!(volume_parent,v)
     end
+    bricks=BrickLevel[]
+    for old in prob.bricks,j in ranges[old.layer]
+        push!(bricks,BrickLevel(j,copy(old.mask),old.epsr))
+    end
     ports=PlanarPort[];C=zeros(Float64,Int(nport),length(prob.ports));row=0
     for (col,p) in enumerate(prob.ports)
         if p.wall===:via
@@ -118,7 +125,7 @@ function planar_refine_axial(prob::PlanarProblem,subdivisions;
             push!(ports,p);row+=1;C[row,col]=1
         end
     end
-    refined=build_planar_problem(stack,prob.grid,sheets,ports;vias,vols)
+    refined=build_planar_problem(stack,prob.grid,sheets,ports;vias,vols,bricks)
     return PlanarAxialRefinement(prob,refined,C,layer_parent,via_parent,volume_parent)
 end
 

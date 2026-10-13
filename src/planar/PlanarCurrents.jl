@@ -89,7 +89,7 @@ struct _PlanarWideCurrentMap
     zmax::Float64
 end
 function _planar_current_reconstruction_payload(prob)
-    grid=prob.grid;nl=length(prob.sheets)+length(prob.vols)+length(prob.vias)
+    grid=prob.grid;nl=length(prob.sheets)+length(prob.vols)+length(prob.vias)+length(prob.bricks)
     _checked_payload_sum("planar current reconstruction",
         _checked_array_payload_bytes(ComplexF64,3,nl,grid.nx,grid.ny),
         _checked_array_payload_bytes(Float64,grid.nx+grid.ny),
@@ -106,7 +106,7 @@ function _planar_current_precision(coefficients)
     bits
 end
 function _planar_wide_map_payload(prob,bits)
-    nl=length(prob.sheets)+length(prob.vols)+length(prob.vias);grid=prob.grid
+    nl=length(prob.sheets)+length(prob.vols)+length(prob.vias)+length(prob.bricks);grid=prob.grid
     wide_complex_bytes=_planar_wide_complex_payload(bits)
     _checked_payload_sum("wide planar current maps",_planar_current_reconstruction_payload(prob),
         _checked_array_payload_bytes(ComplexF64,planar_basis_count(prob.basis)),
@@ -130,7 +130,7 @@ function _planar_current_maps_from_coefficients(prob::PlanarProblem,
             scratch=(BigFloat(0.;precision=bits),BigFloat(0.;precision=bits))
             wide=[_PlanarWideCurrentMap(fill(shared_zero,grid.nx,grid.ny),
                 fill(shared_zero,grid.nx,grid.ny),fill(shared_zero,grid.nx,grid.ny),m.zmin,m.zmax) for m in maps]
-            ns=length(prob.sheets);nv=length(prob.vols)
+            ns=length(prob.sheets);nv=length(prob.vols);nvia=length(prob.vias)
             for p in 1:nb
                 k,lv=prob.basis.kind[p],prob.basis.level[p]
                 if _is_via_kind(k)
@@ -139,6 +139,15 @@ function _planar_current_maps_from_coefficients(prob::PlanarProblem,
                 elseif _is_vol_kind(k)
                     map=wide[ns+lv]
                     _planar_wide_map_add_rooftop!(map,prob.basis,p,coefficients[p],1/(map.zmax-map.zmin),scratch,shared_zero)
+                elseif _is_brick_kind(k)
+                    map=wide[ns+nv+nvia+lv]
+                    if k == _BASIS_BZ
+                        _planar_wide_map_accumulate!(map.jz,prob.basis.ei[p],
+                            prob.basis.ej[p],coefficients[p],1.,scratch,shared_zero)
+                    else
+                        _planar_wide_map_add_rooftop!(map,prob.basis,p,
+                            coefficients[p],1/(map.zmax-map.zmin),scratch,shared_zero)
+                    end
                 else
                     _planar_wide_map_add_rooftop!(wide[lv],prob.basis,p,coefficients[p],1.,scratch,shared_zero)
                 end
@@ -204,7 +213,6 @@ function planar_current_maps(result::Union{PlanarResult,PlanarUFFTResult};
     prob = result.problem
     grid = prob.grid
     nb = planar_basis_count(prob.basis)
-    nl = length(prob.sheets) + length(prob.vols) + length(prob.vias)
     ordinary=eltype(result.currents)===ComplexF64
     bits=ordinary ? precision(Float64) : _planar_current_precision(result.currents)
     excitation=_checked_payload_sum("current excitation",
@@ -231,7 +239,7 @@ function _planar_current_maps_from_coefficients(prob::PlanarProblem,
     grid=prob.grid;nb=planar_basis_count(prob.basis)
     length(coefficients)==nb && all(isfinite,coefficients) ||
         throw(ArgumentError("current coefficients must be finite and match the physical basis"))
-    nl=length(prob.sheets)+length(prob.vols)+length(prob.vias)
+    nl=length(prob.sheets)+length(prob.vols)+length(prob.vias)+length(prob.bricks)
     payload=_checked_payload_sum("planar current reconstruction",
         _checked_array_payload_bytes(ComplexF64,3,nl,grid.nx,grid.ny),
         _checked_array_payload_bytes(Float64,grid.nx+grid.ny),
@@ -252,11 +260,13 @@ function _planar_current_maps_from_coefficients(prob::PlanarProblem,
             height, copy(sheet.mask), zeros(ComplexF64, grid.nx, grid.ny),
             zeros(ComplexF64, grid.nx, grid.ny), zeros(ComplexF64, grid.nx, grid.ny)))
     end
-    for (kind, levels) in ((:volume, prob.vols), (:via, prob.vias))
+    for (kind, levels) in ((:volume, prob.vols), (:via, prob.vias),
+            (:brick, prob.bricks))
         for (lv, level) in enumerate(levels)
             bottom, top = z[level.layer], z[level.layer + 1]
             height = bottom + z_fraction * (top - bottom)
-            mask = kind === :volume ? copy(level.mask) : level.uni .| level.tap
+            mask = kind === :volume ? copy(level.mask) :
+                kind === :brick ? copy(level.mask) : level.uni .| level.tap
             push!(maps, PlanarCurrentMap(kind, lv, x, y, height, bottom,
                 top, mask, zeros(ComplexF64, grid.nx, grid.ny),
                 zeros(ComplexF64, grid.nx, grid.ny), zeros(ComplexF64, grid.nx, grid.ny)))
@@ -264,6 +274,7 @@ function _planar_current_maps_from_coefficients(prob::PlanarProblem,
     end
     ns = length(prob.sheets)
     nv = length(prob.vols)
+    nvia = length(prob.vias)
     @inbounds for p in 1:nb
         k, lv = prob.basis.kind[p], prob.basis.level[p]
         if _is_via_kind(k)
@@ -274,6 +285,14 @@ function _planar_current_maps_from_coefficients(prob::PlanarProblem,
             map = maps[ns + lv]
             _planar_map_add_rooftop!(map, prob.basis, p, coefficients[p],
                 grid, 1 / (map.zmax - map.zmin))
+        elseif _is_brick_kind(k)
+            map = maps[ns + nv + nvia + lv]
+            if k == _BASIS_BZ
+                map.jz[prob.basis.ei[p], prob.basis.ej[p]] += coefficients[p]
+            else
+                _planar_map_add_rooftop!(map, prob.basis, p,
+                    coefficients[p], grid, 1 / (map.zmax - map.zmin))
+            end
         else
             _planar_map_add_rooftop!(maps[lv], prob.basis, p,
                 coefficients[p], grid, 1.0)
@@ -292,7 +311,7 @@ function write_planar_current_csv(path::AbstractString,
         shape = (length(map.x), length(map.y))
         all(a -> size(a) == shape, (map.mask, map.jx, map.jy, map.jz)) ||
             throw(DimensionMismatch("current-map arrays must match coordinate axes"))
-        map.kind in (:sheet, :via, :volume) ||
+        map.kind in (:sheet, :via, :volume, :brick) ||
             throw(ArgumentError("unknown current map kind $(map.kind)"))
         all(isfinite, map.x) && all(isfinite, map.y) &&
             all(isfinite, (map.z, map.zmin, map.zmax)) &&

@@ -54,6 +54,9 @@ function planar_hybrid_ufft_operator(prob::PlanarHybridProblem,freq::Number;
         surface_zs=0.,via_sigma=Inf,volume_sigma=Inf,block::Integer=512,
         max_bytes::Integer=_default_max_dense_payload_bytes())
     mx>=1 && my>=1 && block>=1 || throw(ArgumentError("hybrid FFT mode counts and block must be positive"))
+    isempty(prob.bulk.bricks) || throw(ArgumentError(
+        "dielectric bricks require the dense assembly; the hybrid FFT " *
+        "operator has no brick parity transform"))
     omega=2pi*ComplexF64(freq);isfinite(omega) && real(omega)>0 || throw(ArgumentError("hybrid FFT frequency must be positive and finite"))
     nc=length(prob.conformal.basis.width);nr=planar_basis_count(prob.bulk.basis);nc+nr>0 || throw(ArgumentError("hybrid FFT requires physical currents"))
     # This small topology pass has its own bound before building element lists.

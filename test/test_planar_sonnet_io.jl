@@ -1250,3 +1250,184 @@ NUM 2"""))
             freq=1e9,_materials=true,_details=false)
     end
 end
+
+@testset "Sonnet native dielectric bricks" begin
+    # Grammar verified against 18.53 examples (brickcap, chipcap): BRI
+    # declares an isotropic brick material, TECHLAY BRICK binds it to a
+    # named brick tech layer whose template header carries the assigned
+    # metal level, BRI POLY attaches through TLAYNAM, and the host
+    # dielectric record's Z-partition field (token 7) gates support.
+    template="""
+FTYP SONPROJ 19 ! test
+VER "18.53"
+HEADER
+LIC x
+END HEADER
+DIM
+ANG DEG
+CAP PF
+CON /OH
+FREQ GHZ
+IND NH
+LNG MM
+RES OH
+END DIM
+GEO
+TMET "Lossless" 0 SUP 0 0 0 0
+BMET "Lossless" 0 SUP 0 0 0 0
+BRI "HiK" 1 10 0.001 0
+BOX 3 1 1 16 16 100 0
+0.1 1 1 0 0 0 0 "Air_top"
+0.1 1 1 0 0 0 0 "Air_mid"
+0.1 4 1 0 0 0 1 "Host"
+0.1 1 1 0 0 0 0 "Air_bottom"
+TECHLAY BRICK "HiKbrick" "HiK" 0 0
+BRI POLY
+2 0 1 N 0 1 1 1 1 0 0 0 N
+END
+END
+LORGN 0 1 U
+POR1 STD
+POLY 10 1
+1
+1 50 0 0 0 1 0.5
+NUM 3
+0 5 -1 N 9 1 1 100 100 0 0 0 Y
+0.3 0.45
+0.45 0.45
+0.45 0.55
+0.3 0.55
+0.3 0.45
+END
+1 5 -1 N 10 1 1 100 100 0 0 0 Y
+0.55 0.45
+1 0.45
+1 0.55
+0.55 0.55
+0.55 0.45
+END
+BRI POLY
+2 4 1 N 11 1 1 1 1 0 0 0 N
+TLAYNAM "HiKbrick" INH
+0.3 0.3
+0.7 0.3
+0.7 0.7
+0.3 0.7
+END
+END GEO
+OPT
+MAX 100
+END OPT
+VARSWP
+ENABLED Y
+FREQ Y AN LIST 1
+END
+END VARSWP
+"""
+
+    mktempdir() do dir
+        path=joinpath(dir,"brick.son")
+        write(path,template)
+        project=read_sonnet_project(path)
+        problem=sonnet_planar_problem(project;freq=1e9,grid=(32,32))
+        @test length(problem.bricks)==1
+        brick=problem.bricks[1]
+        # Metal level 2 fills the dielectric below its plane: solver
+        # layer L-2 = 2 ("Host"; st.layers is bottom-up, verified on
+        # brickcap/chipcap layouts — level+1 would wrongly give 3).
+        @test brick.layer==2
+        # epsr 10 with tand 0.001 -> 10-0.01im on the e^{+iwt} convention.
+        @test brick.epsr[1]≈10-0.01im
+        @test brick.epsr[1]==brick.epsr[2]==brick.epsr[3]
+        @test 0<count(brick.mask)<32*32
+        # Every marked cell contributes a z pulse plus the touched
+        # transverse rooftop faces, so brick unknowns exceed one per
+        # direction and cell.
+        nb=count(DiffMoM._is_brick_kind,problem.basis.kind)
+        @test nb>3count(brick.mask)
+        result=solve_planar(problem,1e9)
+        @test all(x->abs(x)<=1+1e-8,result.s)
+        @test all(isfinite,result.s)
+
+        # The brick carries polarization current: a contrasting run
+        # without it must differ measurably.
+        basis0=DiffMoM.build_planar_basis(problem.grid,problem.sheets,
+            problem.ports;vias=problem.vias)
+        free=PlanarProblem(problem.stack,problem.grid,problem.sheets,
+            problem.ports,problem.vias,basis0)
+        @test solve_planar(free,1e9).s!=result.s
+
+        # Brick currents appear in the maps as a :brick payload.
+        maps=planar_current_maps(result)
+        brickmaps=filter(m->m.kind===:brick,maps)
+        @test length(brickmaps)==1
+        @test brickmaps[1].mask==brick.mask
+        @test any(!iszero,brickmaps[1].jz)
+
+        # zparts>1 needs the axial refinement adapter (chipcap grammar).
+        write(path,replace(template,"0.1 4 1 0 0 0 1 \"Host\""=>
+            "0.1 4 1 0 0 0 3 \"Host\""))
+        @test_throws r"Z-partition 3 > 1" sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+
+        # A zero/absent Z-partition keeps the brick inert natively: the
+        # adapter refuses to guess rather than silently dropping metal.
+        write(path,replace(template,"0.1 4 1 0 0 0 1 \"Host\""=>
+            "0.1 4 1 0 0 0 0 \"Host\""))
+        @test_throws ArgumentError sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+        write(path,replace(template,"0.1 4 1 0 0 0 1 \"Host\""=>
+            "0.1 4 1 0 0 0 \"Host\""))
+        @test_throws ArgumentError sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+
+        # A brick without its TLAYNAM tech-layer binding is inert
+        # natively; the adapter must not silently drop it.
+        write(path,replace(template,"TLAYNAM \"HiKbrick\" INH\n"=>""))
+        @test_throws r"lacks a brick tech layer" sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+        write(path,replace(template,"TLAYNAM \"HiKbrick\" INH"=>
+            "TLAYNAM \"bogus\" INH"))
+        @test_throws r"unknown brick tech layer" sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+        write(path,replace(template,"TECHLAY BRICK \"HiKbrick\" \"HiK\""=>
+            "TECHLAY BRICK \"HiKbrick\" \"NoSuchMat\""))
+        @test_throws r"undeclared" sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+
+        # Generated names Brick_<material>_<level> resolve back to the
+        # declared material (chipcap grammar).
+        write(path,replace(template,"TECHLAY BRICK \"HiKbrick\" \"HiK\""=>
+            "TECHLAY BRICK \"HiKbrick\" \"Brick_HiK_2\""))
+        generated=sonnet_planar_problem(read_sonnet_project(path);freq=1e9,grid=(32,32))
+        @test generated.bricks[1].epsr==brick.epsr
+
+        # Level disagreement between polygon and tech-layer template.
+        write(path,replace(template,"BRI POLY\n2 0 1 N 0"=>
+            "BRI POLY\n0 0 1 N 0"))
+        @test_throws r"disagrees" sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+
+        # Anisotropic BRI arity rejects rather than guessing semantics.
+        write(path,replace(template,"BRI \"HiK\" 1 10 0.001 0"=>
+            "BRI \"HiK\" 1 10 0.001 0 9 0.002 0"))
+        @test_throws r"anisotropic" sonnet_planar_problem(
+            read_sonnet_project(path);freq=1e9,grid=(32,32))
+
+        # Bricks have no parity transform: UFFT and dense_fft are
+        # explicit about it instead of mis-mapping elements.
+        write(path,template)
+        problem=sonnet_planar_problem(read_sonnet_project(path);freq=1e9,grid=(32,32))
+        @test_throws r"brick parity transform" solve_planar(problem,1e9;
+            method=:ufft)
+
+        # Zero-contrast and empty bricks are caught at problem build.
+        contrast=brick_level(2,32,32,4+0im)
+        contrast.mask[5:8,5:8].=true
+        @test_throws r"contrast" build_planar_problem(problem.stack,
+            problem.grid,problem.sheets,problem.ports;bricks=[contrast])
+        emptybrick=brick_level(2,32,32,9+0im)
+        @test_throws r"marks no cells" build_planar_problem(problem.stack,
+            problem.grid,problem.sheets,problem.ports;bricks=[emptybrick])
+    end
+end

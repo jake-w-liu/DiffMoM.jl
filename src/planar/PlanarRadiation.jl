@@ -49,7 +49,7 @@ end
     basis,grid=prob.basis,prob.grid
     kind=_sheet_kind(basis.kind[p]);i,j=basis.ei[p],basis.ej[p]
     dx,dy=grid.dx,grid.dy
-    if _is_via_kind(basis.kind[p])
+    if _is_via_kind(basis.kind[p]) || basis.kind[p]==_BASIS_BZ
         return dx*dy*_sinc0(kx*dx/2)*_sinc0(ky*dy/2)*
             cis(kx*(i-.5)*dx+ky*(j-.5)*dy)
     elseif kind==_BASIS_X_FULL
@@ -212,10 +212,11 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
     for p in eachindex(coeff)
         p==paired_next && continue
         iszero(coeff[p]) && continue
-        kind=prob.basis.kind[p];elem=_basis_elem(prob.basis,p,prob.sheets,prob.vias,prob.vols)
-        field=if _is_via_kind(kind)
+        kind=prob.basis.kind[p];elem=_basis_elem(prob.basis,p,prob.sheets,prob.vias,prob.vols,prob.bricks)
+        field=if _is_via_kind(kind) || kind==_BASIS_BZ
             pol==TE_POL && continue
-            origlayer=prob.vias[prob.basis.level[p]].layer
+            origlayer=kind==_BASIS_BZ ? prob.bricks[prob.basis.level[p]].layer :
+                prob.vias[prob.basis.level[p]].layer
             j=side==1 ? origlayer : L-origlayer+1
             layer=stack.layers[j]
             g2=_planar_receive_moment_gamma2(stack,layer,omega,kc2,TM_POL,axial_direction)
@@ -239,7 +240,8 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
                 continue
             end
             _,hu,ht=_planar_receive_moments(layer,omega,kc2,TM_POL,V[j],V[j+1],H[j],H[j+1],g2)
-            moment=kind==_BASIS_VIA_U ? hu : side==1 ? ht : hu-ht
+            moment=kind==_BASIS_VIA_U || kind==_BASIS_BZ ? hu :
+                side==1 ? ht : hu-ht
             value=side*kc/(omega*_EPS0*layer.epsr_z)*moment
             if (iszero(value) || issubnormal(real(value)) || issubnormal(imag(value))) && !iszero(moment) && axial_direction!==nothing
                 # A subnormal sine can erase the unit reaction before the
@@ -259,8 +261,9 @@ function _planar_radiation_overlap(prob::PlanarProblem,coeff,stack,omega,kx,ky,p
             end
             value
         else
-            value=if _is_vol_kind(kind)
-                origlayer=prob.vols[prob.basis.level[p]].layer
+            value=if _is_vol_kind(kind) || _is_brick_xy_kind(kind)
+                origlayer=_is_brick_kind(kind) ? prob.bricks[prob.basis.level[p]].layer :
+                    prob.vols[prob.basis.level[p]].layer
                 j=side==1 ? origlayer : L-origlayer+1
                 first(_planar_receive_moments(stack.layers[j],omega,kc2,pol,V[j],V[j+1],H[j],H[j+1],_planar_receive_moment_gamma2(stack,stack.layers[j],omega,kc2,pol,axial_direction)))
             else

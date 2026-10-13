@@ -699,7 +699,8 @@ contract. The measured admittance is dominated by the columns' own
 surface parasitic — roughly four times Lite's junction-only removal in
 native fixture probes — so this form is only used where a pad leaves no
 non-junction cell for an in-situ measurement contact."""
-function _sonnet_cup_column_standard(st,gr,sheets,terminals,paths,surface_zs;max_bytes)
+function _sonnet_cup_column_standard(st,gr,sheets,terminals,paths,surface_zs;
+        max_bytes,bricks::Vector{BrickLevel}=BrickLevel[])
     lvls=sort!(unique(t.level for t in terminals))
     std_sheets=map(lvls) do lv
         pad=sheet_level(sheets[lv].interface,gr.nx,gr.ny)
@@ -714,9 +715,9 @@ function _sonnet_cup_column_standard(st,gr,sheets,terminals,paths,surface_zs;max
     remap=Dict(lv=>i for (i,lv) in enumerate(lvls))
     std_terms=[PlanarPort(remap[t.level],t.wall,t.cells,t.z0;
         edge=t.edge,polarity=t.polarity) for t in terminals]
-    basis=build_planar_basis(gr,std_sheets,PlanarPort[];vias=ViaLevel[])
+    basis=build_planar_basis(gr,std_sheets,PlanarPort[];vias=ViaLevel[],bricks=bricks)
     planar_basis_count(basis)>0 || throw(ArgumentError("native CUP standard has no basis functions"))
-    bare=PlanarProblem(st,gr,std_sheets,PlanarPort[],ViaLevel[],basis,VolLevel[])
+    bare=PlanarProblem(st,gr,std_sheets,PlanarPort[],ViaLevel[],basis,VolLevel[],bricks)
     std=planar_terminal_returns(bare,std_terms;
         ground_direction=[p.direction for p in paths],max_bytes=max_bytes)
     return (;kind=:column,problem=std.problem,contraction=std.contraction,
@@ -736,7 +737,8 @@ junction matrix for member `m` is `y_full − y_minus_m` contracted
 through the shared contacts. Members whose pads leave no cell outside
 every port span (and no unobstructed contact cell) fall back to the
 feed-column standard."""
-function _sonnet_cup_standard(st,gr,sheets,members,paths,surface_zs;max_bytes)
+function _sonnet_cup_standard(st,gr,sheets,members,paths,surface_zs;
+        max_bytes,bricks::Vector{BrickLevel}=BrickLevel[])
     K=length(members)
     lvls=sort!(unique(m.terminal.level for m in members))
     # Members on one pad can share launch cells where their edges meet —
@@ -774,7 +776,8 @@ function _sonnet_cup_standard(st,gr,sheets,members,paths,surface_zs;max_bytes)
         end
     end
     any(isnothing,contacts) && return _sonnet_cup_column_standard(st,gr,
-        sheets,[m.terminal for m in members],paths,surface_zs;max_bytes=max_bytes)
+        sheets,[m.terminal for m in members],paths,surface_zs;
+        max_bytes=max_bytes,bricks=bricks)
     contacts=Tuple{Int,Int}[contacts...]
     function build(minus)
         pads=map(lvls) do lv
@@ -802,10 +805,10 @@ function _sonnet_cup_standard(st,gr,sheets,members,paths,surface_zs;max_bytes)
                 contraction[end,k]=1.0
             end
         end
-        basis=build_planar_basis(gr,pads,ports;vias=vias)
+        basis=build_planar_basis(gr,pads,ports;vias=vias,bricks=bricks)
         planar_basis_count(basis)>0 || throw(ArgumentError(
             "native CUP standard has no basis functions"))
-        return PlanarProblem(st,gr,pads,ports,vias,basis,VolLevel[]),contraction
+        return PlanarProblem(st,gr,pads,ports,vias,basis,VolLevel[],bricks),contraction
     end
     problem,contraction=build(0)
     problems=Vector{typeof(problem)}(undef,K+1);problems[1]=problem
@@ -2236,6 +2239,119 @@ function _sonnet_dielectric_conduction(sigma::Real,freq::Real)
     return loss
 end
 
+# ---------------- dielectric bricks ----------------
+#
+# Native grammar (verified against 18.53 examples):
+#   BRI "name" <num> <epsr> <tand> [<dielcond>]
+# declares a brick dielectric material in the GEO material block; `num`
+# is a serialized count (1 for project-defined, 0 in shipped libraries)
+# and carries no physical meaning.  `TECHLAY BRICK <name> <material> 0 0`
+# declares a brick tech layer; its template `BRI POLY` header's first
+# field is the assigned metal level.  Real `BRI POLY` polygons bind the
+# tech layer through `TLAYNAM <name> INH|NOH`.  A brick on metal level
+# `lev` fills the dielectric layer directly below that plane — native
+# row lev+1 in file order, solver layer L-lev (st.layers is bottom-up;
+# brickcap level 1 -> layer 2, chipcap level 2 -> layer 2).  The host
+# record's Z-partition field (token 7) controls the brick's axial
+# subsectioning.  The VIE model supports one z-partition (a brick
+# filling its full host layer); zparts > 1 needs the axial refinement
+# adapter and rejects loudly.
+
+function _sonnet_brick_tables(p::SonnetProject)
+    geo=_sonnet_section(p.records,"GEO",p.source)
+    materials=Dict{String,Vector{String}}()
+    techlayers=Dict{String,NamedTuple{(:material,:level),Tuple{String,Int}}}()
+    for (index,r) in enumerate(geo)
+        t=r.tokens
+        if uppercase(t[1])=="BRI" && length(t)>=2 && !_sonnet_ieq(t[2],"POLY")
+            haskey(materials,t[2]) &&
+                _sonnet_error(p.source,r.line,"duplicate BRI material $(t[2])")
+            5<=length(t)<=6 || _sonnet_error(p.source,r.line,
+                "BRI material $(t[2]) has $(length(t)-2) fields; anisotropic " *
+                "brick material records require their adapter")
+            materials[t[2]]=t
+        elseif uppercase(t[1])=="TECHLAY" && length(t)>=4 &&
+                uppercase(t[2])=="BRICK"
+            haskey(techlayers,t[3]) &&
+                _sonnet_error(p.source,r.line,"duplicate TECHLAY BRICK $(t[3])")
+            marker=index+1
+            (marker<=length(geo) && length(geo[marker].tokens)==2 &&
+                uppercase(geo[marker].tokens[1])=="BRI" &&
+                _sonnet_ieq(geo[marker].tokens[2],"POLY") &&
+                marker+1<=length(geo)) ||
+                _sonnet_error(p.source,r.line,
+                    "TECHLAY BRICK $(t[3]) lacks its BRI POLY template")
+            header=geo[marker+1].tokens
+            level=tryparse(Int,get(header,1,""))
+            level===nothing && _sonnet_error(p.source,geo[marker+1].line,
+                "TECHLAY BRICK $(t[3]) template lacks its level")
+            techlayers[t[3]]=(;material=t[4],level)
+        end
+    end
+    return materials,techlayers
+end
+
+# Resolve one brick polygon's complex relative permittivity.  TLAYNAM
+# binding is required (a brick polygon without its tech layer is inert
+# natively, which must not silently drop); generated names
+# Brick_<material>_<level> resolve back to the declared material.
+function _sonnet_brick_epsr(p::SonnetProject,materials,techlayers,
+        poly::SonnetPolygon,freq,variables,val)
+    isempty(poly.technology) && throw(ArgumentError(
+        "brick polygon $(poly.id) lacks a brick tech layer (TLAYNAM); " *
+        "native would ignore it, so the project must declare one"))
+    tl=get(techlayers,poly.technology,nothing)
+    tl===nothing && throw(ArgumentError(
+        "brick polygon $(poly.id) references unknown brick tech layer " *
+        "$(poly.technology)"))
+    poly.technology_mode in ("INH","NOH") || throw(ArgumentError(
+        "brick polygon $(poly.id) TLAYNAM mode $(poly.technology_mode) " *
+        "is unsupported"))
+    tl.level==poly.level || throw(ArgumentError(
+        "brick polygon $(poly.id) level $(poly.level) disagrees with " *
+        "brick tech layer $(poly.technology) level $(tl.level)"))
+    decl=get(materials,tl.material,nothing)
+    if decl===nothing
+        m=match(r"^Brick_(.+)_\d+$",tl.material)
+        m!==nothing && (decl=get(materials,m.captures[1],nothing))
+    end
+    decl===nothing && throw(ArgumentError(
+        "brick tech layer $(poly.technology) references undeclared " *
+        "dielectric material $(tl.material)"))
+    serial=val(decl[3])
+    isfinite(serial) || throw(ArgumentError(
+        "brick material $(decl[2]) count field must evaluate finite"))
+    e=val(decl[4]);te=val(decl[5])
+    sigma=length(decl)>=6 ? val(decl[6]) : 0.
+    isfinite(e) && e>0 || throw(ArgumentError(
+        "brick material $(decl[2]) epsr must be finite positive, got $e"))
+    isfinite(te) && te>=0 || throw(ArgumentError(
+        "brick material $(decl[2]) tand must be finite nonnegative, got $te"))
+    sigma isa Real && isfinite(sigma) && sigma>=0 || throw(ArgumentError(
+        "brick material $(decl[2]) conductivity must be finite " *
+        "nonnegative, got $sigma"))
+    return ComplexF64(e*(1-im*te)-
+        im*_sonnet_dielectric_conduction(sigma,freq))
+end
+
+# The host dielectric record's Z-partition field (token 7).  Bricks only
+# activate natively on layers declaring it; >1 partitions needs the
+# axial refinement adapter.
+function _sonnet_brick_zparts(p::SonnetProject,poly::SonnetPolygon,val)
+    row=p.layers[poly.level+1]
+    length(row)<7 && throw(ArgumentError(
+        "brick polygon $(poly.id) host dielectric layer lacks a " *
+        "Z-partition field; native keeps the brick inert"))
+    z=val(row[7])
+    isfinite(z) && z>=1 && isinteger(z) || throw(ArgumentError(
+        "brick polygon $(poly.id) Z-partition must be a positive " *
+        "integer, got $z"))
+    isone(z) || throw(ArgumentError(
+        "brick polygon $(poly.id) Z-partition $(Int(z)) > 1 requires its " *
+        "axial refinement adapter"))
+    return Int(z)
+end
+
 function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
         expand_thick::Bool=true,max_bytes::Integer=_default_max_dense_payload_bytes())
     isfinite(freq) && freq>0 || throw(ArgumentError("frequency must be positive and finite"))
@@ -2248,6 +2364,9 @@ function _sonnet_stack_geometry(p::SonnetProject,freq::Real,grid,variables;
     # Retained unused definitions do not impose a physical material on a shape.
     checked=Set{Int}()
     for poly in p.polygons
+        # A brick polygon's material field is a serialized brick flag, not
+        # a thin-metal index; its material binds through TLAYNAM.
+        poly.kind==:brick && continue
         -1<=poly.material<length(p.metals) ||
             throw(ArgumentError("invalid metal index on polygon $(poly.id)"))
         poly.kind==:sheet && poly.material>=0 || continue
@@ -2345,7 +2464,13 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     native_nx=parse(Int,p.box[4])÷2;native_ny=parse(Int,p.box[5])÷2
     p=_sonnet_raster_wall_project(p,a,b,native_nx,native_ny)
     L=length(layers)
-    any(poly->poly.kind==:brick,p.polygons) && throw(ArgumentError("native dielectric bricks require a volume dielectric adapter"))
+    brick_materials=Dict{String,Vector{String}}(); brick_techlayers=Dict{String,NamedTuple{(:material,:level),Tuple{String,Int}}}()
+    if any(poly->poly.kind==:brick,p.polygons)
+        isempty(p.records) && throw(ArgumentError(
+            "dielectric bricks require the parsed GEO tech-layer " *
+            "records; programmatic projects lack a brick material table"))
+        brick_materials,brick_techlayers=_sonnet_brick_tables(p)
+    end
     store_surfaces=_details || _materials
     geometry_workspace=_checked_payload_sum("native raster geometry workspace",
         source_workspace,scalar_workspace,_sonnet_raster_mask_workspace(p,gr;surfaces=store_surfaces))
@@ -2353,6 +2478,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     sheets=SheetLevel[]; sheetidx=Dict{Int,Int}(); masks=Dict{Int,BitMatrix}()
     vias=ViaLevel[]; via_sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}()
     via_polygon_level=Dict{Tuple{Int,Int},Int}();open_via_polygons=Set{Int}()
+    bricks=BrickLevel[];brick_group=Dict{Tuple{Int,ComplexF64},Int}()
     surface_by_level=Dict{Int,Matrix{ComplexF64}}()
     function native_sheet(level)
         if !haskey(sheetidx,level)
@@ -2363,7 +2489,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         return sheets[sheetidx[level]]
     end
     for poly in p.polygons
-        if poly.material!=-1
+        if poly.material!=-1 && poly.kind!=:brick
             0<=poly.material<length(p.metals) || throw(ArgumentError("invalid metal index on polygon $(poly.id)"))
             _materials || throw(ArgumentError("polygon $(poly.id) uses material index $(poly.material); non-PEC metal loss/thickness requires the material adapter"))
             poly.kind==:sheet && sonnet_metal_zs(p,p.metals[poly.material+1],freq;variables=variables)
@@ -2397,6 +2523,39 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             xmin<=a<=xmax && (sh.connect_east .|= tmp.mask[end,:])
             ymin<=0<=ymax && (sh.connect_south .|= tmp.mask[:,1])
             ymin<=b<=ymax && (sh.connect_north .|= tmp.mask[:,end])
+        elseif poly.kind==:brick
+            0<=poly.level<L || throw(ArgumentError(
+                "brick level $(poly.level) outside native stack"))
+            epsr=_sonnet_brick_epsr(p,brick_materials,brick_techlayers,
+                poly,freq,variables,val)
+            _sonnet_brick_zparts(p,poly,val)
+            tmp=sheet_level(0,nx,ny)
+            rasterize_poly!(tmp,gr,poly.vertices[1,:],poly.vertices[2,:])
+            any(tmp.mask) || throw(ArgumentError(
+                "brick polygon $(poly.id) vanished at raster resolution"))
+            # A brick on metal level lev extends upward through the
+            # dielectric layer directly below that plane: native row
+            # lev+1 in file order, solver layer L-lev (st.layers is
+            # bottom-up; brickcap level 1 -> layer 2, chipcap level 2 ->
+            # layer 2).  Bricks sharing (layer,epsr) merge into one
+            # BrickLevel; distinct materials on the same layer must not
+            # overlap in a cell.
+            layer=L-poly.level
+            key=(layer,epsr)
+            bi=get(brick_group,key,0)
+            if iszero(bi)
+                push!(bricks,brick_level(layer,nx,ny,epsr))
+                bi=length(bricks);brick_group[key]=bi
+            end
+            for (other,b) in enumerate(bricks)
+                (other==bi || b.layer!=layer) && continue
+                any(i->b.mask[i] && tmp.mask[i],eachindex(b.mask)) && throw(ArgumentError(
+                    "different brick materials overlap in cells on " *
+                    "native level $(poly.level); refine the raster or " *
+                    "define one brick material per cell"))
+            end
+            bricks[bi].mask .|= tmp.mask
+            masks[poly.id]=copy(tmp.mask)
         else
             target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
             lo,hi=minmax(poly.level,target)
@@ -2635,18 +2794,18 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     order=sortperm(numbers); ports=ports[order]; numbers=numbers[order]; port_z0=port_z0[order]
     port_weights=port_weights[order]
     _enforce_payload_limit(_checked_payload_sum("native raster basis construction",
-        geometry_workspace,port_workspace,_sonnet_raster_basis_workspace(gr,sheets,vias)),
+        geometry_workspace,port_workspace,_sonnet_raster_basis_workspace(gr,sheets,vias,bricks)),
         limit,"native raster basis construction","max_bytes")
     # Terminal adapters first lower a genuinely source-free geometry clone,
     # then attach their physical source. Do not invent a temporary driven
     # terminal or change the public requirement for a nonempty port list.
     problem=if _allow_portless && isempty(ports) && isempty(cup_terminals)
         planar_validate(st)
-        basis=build_planar_basis(gr,sheets,ports;vias=vias)
+        basis=build_planar_basis(gr,sheets,ports;vias=vias,bricks=bricks)
         planar_basis_count(basis)>0 || throw(ArgumentError("no basis functions: check masks/connections"))
-        PlanarProblem(st,gr,sheets,ports,vias,basis)
+        PlanarProblem(st,gr,sheets,ports,vias,basis,VolLevel[],bricks)
     else
-        build_planar_problem(st,gr,sheets,ports;vias=vias)
+        build_planar_problem(st,gr,sheets,ports;vias=vias,bricks=bricks)
     end
     cup_paths=NamedTuple[]
     if !isempty(cup_terminals)
@@ -2712,7 +2871,8 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
                     signs=[cup_terminals[k].terminal.polarity for k in members],
                     standard=_sonnet_cup_standard(st,gr,sheets,group_members,
                         [cup_paths[k] for k in members],surface_zs;
-                        max_bytes=limit-geometry_workspace-port_workspace)))
+                        max_bytes=limit-geometry_workspace-port_workspace,
+                        bricks=bricks)))
             end
         end
         model=(;problem,contraction=terminal_maps.contraction,

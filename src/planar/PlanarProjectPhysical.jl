@@ -219,7 +219,7 @@ function _project_physical_layout(project,stack,grid,shape,entries;
     meta_basis=PlanarBasisSet(raw.basis.kind,raw.basis.ei,raw.basis.ej,raw.basis.level,
         raw.basis.x0,raw.basis.y0,raw.basis.width,
         [iszero(p) ? 0 : something(findfirst(!iszero,view(C,p,:)),0) for p in raw.basis.port])
-    meta=PlanarProblem(raw.stack,raw.grid,raw.sheets,firstports,raw.vias,meta_basis,raw.vols)
+    meta=PlanarProblem(raw.stack,raw.grid,raw.sheets,firstports,raw.vias,meta_basis,raw.vols,raw.bricks)
     expanded_shape=PlanarShape(shape.name,vcat(polynomials,[p for p in shape.polygons if haskey(volume_for,p.name)]),
         allvias,shape.pins,shape.meta)
     return PlanarLayout(meta,[expanded_shape],mids,mnames,Any[metals[n] for n in mnames],

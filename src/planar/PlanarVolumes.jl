@@ -55,14 +55,21 @@
 @inline _is_inlayer_elem(e::Int) = e < 0   # via or volume element
 
 # element id for basis p (vol kinds index `vols`, via kinds index
-# `vias`, sheets index `sheets`)
+# `vias`, brick kinds index `bricks`, sheets index `sheets`)
 @inline function _basis_elem(basis::PlanarBasisSet, p::Int,
         sheets::Vector{SheetLevel}, vias::Vector{ViaLevel},
-        vols::Vector{VolLevel}=VolLevel[])
+        vols::Vector{VolLevel}=VolLevel[],
+        bricks::Vector{BrickLevel}=BrickLevel[])
     kind = basis.kind[p]
     return _is_vol_kind(kind) ? _vol_elem(vols[basis.level[p]].layer) :
         _is_via_kind(kind) ?
         _via_elem(vias[basis.level[p]].layer, kind) :
+        _is_brick_kind(kind) ?
+        (1 <= basis.level[p] <= length(bricks) || throw(ArgumentError(
+            "basis $p references missing brick $(basis.level[p])"));
+         _is_brick_xy_kind(kind) ?
+            _vol_elem(bricks[basis.level[p]].layer) :
+            _via_elem(bricks[basis.level[p]].layer, _BASIS_VIA_U)) :
         sheets[basis.level[p]].interface
 end
 

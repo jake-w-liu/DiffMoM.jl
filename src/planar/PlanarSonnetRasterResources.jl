@@ -25,7 +25,7 @@ end
 
 function _sonnet_raster_mask_workspace(p,grid;surfaces::Bool=true)
     nx,ny=grid.nx,grid.ny;layers=length(p.layers)
-    levels=Set{Int}();spans=BigInt(0)
+    levels=Set{Int}();spans=BigInt(0);bricklevels=Set{Int}()
     for poly in p.polygons
         if poly.kind===:sheet
             0<=poly.level<layers || throw(ArgumentError("sheet level $(poly.level) outside native stack"))
@@ -41,16 +41,20 @@ function _sonnet_raster_mask_workspace(p,grid;surfaces::Bool=true)
                 end
             end
         else
-            throw(ArgumentError("native dielectric bricks require a volume dielectric adapter"))
+            poly.kind===:brick || throw(ArgumentError("unsupported polygon kind $(poly.kind)"))
+            0<=poly.level<layers || throw(ArgumentError("brick $(poly.id) level $(poly.level) outside native stack"))
+            push!(bricklevels,poly.level)
         end
     end
     cells=BigInt(nx)*ny;mask=8cld(cells,64)
     connections=16(BigInt(cld(nx,64))+cld(ny,64))
     # Per-polygon masks remain live for port attachment. Temporary sheet,
     # via-mesh, overlap and index buffers are bounded before rasterization.
+    # Bricks retain their merged host-layer masks plus the material maps.
     payload=_checked_payload_sum("native raster mask workspace",
         BigInt(length(levels))*(2mask+connections+(surfaces ? 16cells : 0)),
         2spans*mask,BigInt(length(p.polygons))*mask,
+        BigInt(2length(bricklevels))*mask,
         4mask+connections+(spans>0 ? 8cells : 0),
         _checked_array_payload_bytes(Float64,2,
             maximum(q->size(q.vertices,2),p.polygons;init=0)))
@@ -87,8 +91,9 @@ function _sonnet_raster_port_workspace(p,grid,masks,polygons)
         _checked_array_payload_bytes(Int,max(grid.nx,grid.ny)))
 end
 
-function _sonnet_raster_basis_workspace(grid,sheets,vias)
-    count=_terminal_geometry_basis_count(grid,sheets,vias,VolLevel[])
+function _sonnet_raster_basis_workspace(grid,sheets,vias,
+        bricks::Vector{BrickLevel}=BrickLevel[])
+    count=_terminal_geometry_basis_count(grid,sheets,vias,VolLevel[],bricks)
     # push! growth and per-sheet wall lookup coexist with the final basis.
     return _checked_payload_sum("native raster basis workspace",
         _checked_array_payload_bytes(UInt8,3,count),

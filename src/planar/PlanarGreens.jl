@@ -170,7 +170,8 @@ end
 
 @inline _is_xdir(kind::UInt8) =
     kind == _BASIS_X_FULL || kind == _BASIS_X_LO || kind == _BASIS_X_HI ||
-    kind == _BASIS_VX_FULL || kind == _BASIS_VX_LO || kind == _BASIS_VX_HI
+    kind == _BASIS_VX_FULL || kind == _BASIS_VX_LO || kind == _BASIS_VX_HI ||
+    kind == _BASIS_BXF || kind == _BASIS_BXL || kind == _BASIS_BXH
 
 # ---------------- impedance assembly ----------------
 
@@ -231,6 +232,7 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
         vols::Vector{VolLevel}=VolLevel[],
         mx::Integer=2 * grid.nx, my::Integer=2 * grid.ny,
         block::Integer=512,
+        bricks::Vector{BrickLevel}=BrickLevel[],
         surface_zs=zero(ComplexF64),
         sheet_coupling_zs=nothing,
         via_sigma=Inf, volume_sigma=Inf,
@@ -282,6 +284,21 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
                 "via $lv layer $lay outside 1:$L"))
             iface[p] = _via_elem(lay, basis.kind[p])
             push!(vialayers, lay)
+        elseif _is_brick_kind(basis.kind[p])
+            1 <= lv <= length(bricks) ||
+                throw(ArgumentError("basis $p references missing brick $lv"))
+            lay = bricks[lv].layer
+            1 <= lay <= L || throw(ArgumentError(
+                "brick $lv layer $lay outside 1:$L"))
+            # x/y polarization cells carry the volume element's uniform
+            # axial profile; z cells carry the uniform via profile.
+            if _is_brick_xy_kind(basis.kind[p])
+                iface[p] = _vol_elem(lay)
+                push!(vollayers, lay)
+            else
+                iface[p] = _via_elem(lay, _BASIS_VIA_U)
+                push!(vialayers, lay)
+            end
         else
             1 <= lv <= length(sheets) ||
                 throw(ArgumentError("basis $p references missing sheet $lv"))
@@ -366,6 +383,7 @@ function assemble_planar_z(stack::PlanarStackup, grid::CellGrid,
     end
 
     Z = complex.(Zr, Zi)
+    _add_brick_constitutive!(Z, basis, grid, stack, bricks, omega)
     _add_gram!(Z, basis, grid, surface_zs,sheet_coupling_zs)
     _add_planar_bulk_loss!(Z, basis, grid, stack, vias, vols, via_rho, volume_rho)
     if _retain_components
@@ -538,7 +556,7 @@ function _planar_weight_block!(Wte::AbstractMatrix{Float64},
     cblk = length(mlist)
     for p in 1:nb
         xdir = _is_xdir(basis.kind[p])
-        via = _is_via_kind(basis.kind[p])
+        via = _is_via_kind(basis.kind[p]) || basis.kind[p] == _BASIS_BZ
         fx = view(fxb, :, p)
         fy = view(fyb, :, p)
         @inbounds for c in 1:cblk
@@ -619,6 +637,107 @@ field, so `E_induced + E_impressed = Zs*J` requires the negative sign.
 function _add_gram!(Z::Matrix{ComplexF64}, basis::PlanarBasisSet,
         grid::CellGrid, surface_zs,sheet_coupling_zs=nothing)
     _planar_sheet_loss_entries(basis, grid, surface_zs,sheet_coupling_zs) do p, q, value
+        Z[p, q] += value
+    end
+    return Z
+end
+
+"""
+Dielectric-brick constitutive Gram block for the polarization-current
+VIE.  On a brick row the field equation is
+`E_induced = J/(i*w*deps) - E_inc` with `deps = eps0*(epsr_brick,d -
+epsr_host,d)` the direction-resolved complex contrast against the host
+layer (transverse `epsr` for x/y rooftops, axial `epsr_z` for z pulses).
+Because neighbouring rooftop bases overlap, Galerkin testing
+`J = sum c_q f_q` gives the Gram matrix `G[p,q] = int f_p . f_q dV`:
+
+* transverse rooftop self moments are the sheet Gram values divided by
+  the layer height (the 1/h-normalized axial profile): full rooftops
+  `2*dx*dy/(3h)`, boundary half rooftops `dx*dy/(3h)`;
+* two co-directional rooftops on adjacent faces share one cell with
+  `s(1-s)` overlap `dx*dy/(6h)`;
+* z cell pulses are disjoint, `int|f|^2 dV = dx*dy*h` (unit axial
+  profile), purely diagonal.
+
+The block is added with a minus sign and scales as `-G/(i*w*deps)`.  As
+`deps -> Inf` it vanishes and each row degenerates to the equivalent
+volume-conductor EFIE row — the verified metal limit.  Zero contrast is
+rejected: the cell is physically invisible and its row would be
+singular.
+"""
+function _planar_brick_constitutive_entries(emit, basis::PlanarBasisSet,
+        grid::CellGrid, stack::PlanarStackup,
+        bricks::Vector{BrickLevel}, omega)
+    isempty(bricks) && return nothing
+    any(_is_brick_kind, basis.kind) || return nothing
+    nb = planar_basis_count(basis)
+    # per-(brick,row) face maps find co-directional rooftop neighbours:
+    # two x rooftops on faces e,e+1 share cell e+1 iff the first covers
+    # its right cell and the second covers its left cell (same for y).
+    xrow = Dict{Tuple{Int,Int},Vector{Tuple{Int,Int}}}()
+    yrow = Dict{Tuple{Int,Int},Vector{Tuple{Int,Int}}}()
+    deps = Vector{ComplexF64}(undef, nb)
+    @inbounds for p in 1:nb
+        kind = basis.kind[p]
+        _is_brick_kind(kind) || continue
+        brick = bricks[basis.level[p]]
+        layer = stack.layers[brick.layer]
+        dp = _EPS0 * (_is_xdir(kind) ? brick.epsr[1] - layer.epsr :
+            kind == _BASIS_BZ ? brick.epsr[3] - layer.epsr_z :
+            brick.epsr[2] - layer.epsr)
+        isfinite(dp) && !iszero(dp) || throw(ArgumentError(
+            "brick $(basis.level[p]) has zero or non-finite permittivity " *
+            "contrast against host layer $(brick.layer); remove the brick"))
+        deps[p] = dp
+        if kind != _BASIS_BZ
+            face = _is_xdir(kind) ? basis.ei[p] : basis.ej[p]
+            rowkey = _is_xdir(kind) ?
+                (basis.level[p], basis.ej[p]) :
+                (basis.level[p], basis.ei[p])
+            rows = get!(() -> Tuple{Int,Int}[],
+                _is_xdir(kind) ? xrow : yrow, rowkey)
+            push!(rows, (face, p))
+        end
+    end
+    A = grid.dx * grid.dy
+    @inbounds for p in 1:nb
+        kind = basis.kind[p]
+        _is_brick_kind(kind) || continue
+        h = stack.layers[bricks[basis.level[p]].layer].thickness
+        sk = _sheet_kind(kind)
+        T = kind == _BASIS_BZ ? A * h :
+            (sk == _BASIS_X_FULL || sk == _BASIS_Y_FULL ?
+                2 * A / (3h) : A / (3h))
+        emit(p, p, -T / (1im * omega * deps[p]),
+            kind == _BASIS_BZ ? 1 : -1, kind == _BASIS_BZ)
+    end
+    covers_right = kind -> kind == _BASIS_BXF || kind == _BASIS_BXL ||
+        kind == _BASIS_BYF || kind == _BASIS_BYL
+    covers_left = kind -> kind == _BASIS_BXF || kind == _BASIS_BXH ||
+        kind == _BASIS_BYF || kind == _BASIS_BYH
+    for rows in (xrow, yrow), faces in values(rows)
+        length(faces) < 2 && continue
+        sort!(faces, by = first)
+        h = stack.layers[bricks[basis.level[faces[1][2]]].layer].thickness
+        T = A / (6h)
+        for k in 2:length(faces)
+            (ep, p), (eq, q) = faces[k - 1], faces[k]
+            eq == ep + 1 || continue
+            covers_right(basis.kind[p]) && covers_left(basis.kind[q]) ||
+                continue
+            value = -T / (1im * omega * deps[p])
+            emit(p, q, value, -1, false)
+            emit(q, p, value, -1, false)
+        end
+    end
+    return nothing
+end
+
+function _add_brick_constitutive!(Z::Matrix{ComplexF64},
+        basis::PlanarBasisSet, grid::CellGrid, stack::PlanarStackup,
+        bricks::Vector{BrickLevel}, omega)
+    _planar_brick_constitutive_entries(basis, grid, stack, bricks,
+        omega) do p, q, value, power, axial
         Z[p, q] += value
     end
     return Z

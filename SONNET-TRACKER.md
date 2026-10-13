@@ -488,8 +488,42 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       (`Conformal:204`) reject components loudly while
       `solve_sonnet_project` (`IO:2354`) routes to the verified
       `_solve_sonnet_components` path — complete, no changes needed.
-- [ ] E5 dielectric bricks (`IO:1829`, `RasterResources:44`,
-      `Conformal:181-185` incl. BAR). Oracle: Lite/HFSS.
+- [x] E5 dielectric bricks (`IO:1829`, `RasterResources:44`,
+      `Conformal:181-185`) — DONE (zparts=1 `BRI` bricks; the BAR
+      via-footprint fill adapter remains open under E5d). Native
+      `BRI` material declarations, `TECHLAY BRICK` records and
+      `TLAYNAM`-bound `BRI POLY` polygons are parsed and validated
+      (level/mode/material binding, Z-parts==1 loud rejection of
+      unsupported partitions); geometry is rasterized onto the
+      analysis grid, host-layer-mapped (native level `lev` ↔ solver
+      layer `L-lev`), and merged into `BrickLevel`s with
+      per-direction complex contrast against the host layer.
+      Solver: new VIE basis family — divergence-conforming
+      transverse rooftops (full interior + half boundary) plus
+      axial z pulses — reusing the vol-elem/via-elem modal kernels;
+      the constitutive law enters as a shared Gram block
+      `-G/(iωΔε)` assembled into the dense modal Z (FFT/UFFT paths
+      reject bricks loudly). Bricks thread through
+      `PlanarProblem`/`build_planar_problem` (incl. brick-brick,
+      brick-via and brick-volume overlap rejection),
+      `planar_current_maps` (`:brick` maps, wide-precision too),
+      radiation/moments, adjoint gradients (constitutive entries
+      differentiated against host thickness and per-direction
+      `epsr`), axial refinement (per-slice `BrickLevel` split),
+      terminal-return/CUP problem adapters, and resource
+      estimators. Oracle: Lite is license-blocked for brick tech
+      layers ("Circuit contains brick tech layers"), so validation
+      used physics oracles: full-layer brick ≡ equivalent host
+      stack (converged equivalence), Δε→∞ metal limit ≡ identical
+      volume-conductor element (5 decimals), loss/passivity, plus
+      adjoint gradients vs finite differences (exact). BAR fill
+      mode (conformal `Vertices` fill per Lite doc) is split out
+      as E5d below. Regressions in
+      `test/test_planar_dielectric_bricks.jl` and
+      `test/test_planar_sonnet_io.jl` ("Sonnet native dielectric
+      bricks").
+- [ ] E5d BAR via meshing — merge adjacent bar-via groups into the
+      `Vertices` fill per the Lite doc (conformal adapter path).
 - [x] E6 scalar sign grammar — DONE. Lite probes (60-case accept/reject
       matrix): `^` operand allows one `-` but never `+`, and a sign's operand
       cannot itself begin with a sign even behind `(`/whitespace (`1^--2`,
@@ -556,14 +590,15 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 ## Execution order (current)
 
 Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 intake+gating), A2
-(port-zero grounding), C1–C5 (VOL topology and material laws), C10, plus
+(port-zero grounding), C1–C5 (VOL topology and material laws), C10,
+E1–E5 (E5 dielectric bricks: VIE rooftops + z pulses, dense assembly,
+adjoint/currents/radiation/axial-refinement/CUP threading), plus
 prior ledgered items.
 
 Remaining (updated order):
 
-1. E5 dielectric bricks — bounded (E2 CUP group solve and the A7
-   pin-feed residual both closed as implemented + characterized
-   evidence).
+1. E5d BAR via meshing — `Vertices` fill adapter for merged bar-via
+   groups (conformal path).
 2. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
    DocOnly.
 3. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.

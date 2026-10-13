@@ -102,6 +102,45 @@ function _add_planar_bulk_loss!(Z::Matrix{ComplexF64},
     return Z
 end
 
+# Dielectric-brick constitutive Gram derivatives. The entries share the
+# assembly's `_planar_brick_constitutive_entries`: value =
+# -G/(i*w*deps) with G proportional to h^power and deps built from the
+# host layer's transverse epsr (x/y rooftops) or axial epsr_z (z
+# pulses).  Brick material constants live on BrickLevel and are not
+# stack parameters.
+function _planar_brick_gradient!(g, params, G, lambda, X, prob, omega)
+    isempty(prob.bricks) && return g
+    any(_is_brick_kind, prob.basis.kind) || return g
+    _planar_brick_constitutive_entries(prob.basis, prob.grid, prob.stack,
+            prob.bricks, omega) do p, q, value, power, axial
+        brick = prob.bricks[prob.basis.level[p]]
+        layer = prob.stack.layers[brick.layer]
+        deps = _EPS0 * (axial ? brick.epsr[3] - layer.epsr_z :
+            (_is_xdir(prob.basis.kind[p]) ? brick.epsr[1] :
+                brick.epsr[2]) - layer.epsr)
+        contraction = zero(ComplexF64)
+        for b in axes(G, 2), a in axes(G, 1)
+            contraction += G[a, b] * lambda[p, a] * X[q, b]
+        end
+        for j in eachindex(params)
+            param = params[j]
+            param.index == brick.layer || continue
+            if param.field === :thickness
+                dh = param.part === :re ? 1.0 : 1im
+                g[j] -= real(contraction * (power * value /
+                    layer.thickness) * dh)
+            elseif param.field === :epsr && !axial
+                de = param.part === :re ? 1.0 : 1im
+                g[j] -= real(contraction * (value * _EPS0 / deps) * de)
+            elseif param.field === :epsr_z && axial
+                de = param.part === :re ? 1.0 : 1im
+                g[j] -= real(contraction * (value * _EPS0 / deps) * de)
+            end
+        end
+    end
+    return g
+end
+
 function _planar_bulk_loss_gradient!(g, params, G, lambda, X,
         prob, via_sigma, volume_sigma)
     via_rho = _planar_bulk_resistivities(via_sigma, length(prob.vias), "via_sigma")

@@ -55,7 +55,7 @@ function _planar_hybrid_cross_metadata(prob,mx,my)
         _basis_fx!(view(fxb,:,b),rect.basis,b,mg,rect.grid)
         _basis_fy!(view(fyb,:,b),rect.basis,b,mg,rect.grid)
     end
-    elems=[_basis_elem(rect.basis,b,rect.sheets,rect.vias,rect.vols) for b in 1:nr]
+    elems=[_basis_elem(rect.basis,b,rect.sheets,rect.vias,rect.vols,rect.bricks) for b in 1:nr]
     clevels=unique(prob.conformal.basis.interfaces);rlevels=unique(elems)
     pairs=[(f,s) for f in clevels for s in rlevels]
     pairindex=Dict(pair=>i for (i,pair) in enumerate(pairs))
@@ -89,7 +89,7 @@ function assemble_planar_hybrid_z(prob::PlanarHybridProblem,freq::Number;
     nc==0 || (Z[1:nc,1:nc].=assemble_planar_conformal_z(prob.conformal,freq;mx,my,surface_zs,max_bytes=max_bytes-reserved))
     rect=prob.bulk
     nr==0 || (Z[nc+1:n,nc+1:n].=assemble_planar_z(rect.stack,rect.grid,rect.sheets,rect.basis,omega;
-        mx,my,vias=rect.vias,vols=rect.vols,via_sigma,volume_sigma,max_bytes=max_bytes-reserved))
+        mx,my,vias=rect.vias,vols=rect.vols,bricks=rect.bricks,via_sigma,volume_sigma,max_bytes=max_bytes-reserved))
     (nc==0 || nr==0) && return Z
     meta=_planar_hybrid_cross_metadata(prob,Int(mx),Int(my));mg=meta.mg
     wt=Matrix{Float64}(undef,1,nr);wm=similar(wt);te=Vector{Float64}(undef,nc);tm=similar(te)

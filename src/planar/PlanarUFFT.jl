@@ -218,6 +218,9 @@ function _planar_fft_workspace(prob::PlanarProblem, freq::Number,::Val{dense};
         max_bytes::Integer=_default_max_dense_payload_bytes(),
         _fold_dense::Bool=false, _fold_iterative::Bool=true) where {dense}
     planar_validate(prob.stack)
+    isempty(prob.bricks) || throw(ArgumentError(
+        "dielectric bricks require method=:dense; the FFT operator " *
+        "has no brick parity transform"))
     omega = 2pi * ComplexF64(freq)
     isfinite(omega) && real(omega) > 0 ||
         throw(ArgumentError("freq must be finite with Re > 0"))
@@ -591,6 +594,9 @@ function solve_planar_ufft(prob::PlanarProblem, freq::Number;
         rtol::Real=1e-9, maxiter::Integer=0, memory::Integer=50,
         restart::Bool=true, precondition::Bool=true,
         max_bytes::Integer=_default_max_dense_payload_bytes(), kw...)
+    isempty(prob.bricks) || throw(ArgumentError(
+        "dielectric bricks require method=:dense; the FFT operator " *
+        "has no brick parity transform"))
     omega=2pi*ComplexF64(freq)
     isfinite(omega) && real(omega)>0 || throw(ArgumentError("FFT solve frequency must be finite with positive real part"))
     isfinite(rtol) && rtol > 0 || throw(ArgumentError("rtol must be finite and positive"))

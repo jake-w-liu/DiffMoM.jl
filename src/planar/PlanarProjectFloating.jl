@@ -58,6 +58,6 @@ function _project_floating_layout(project,layout,entries,ordinary;variables,max_
     basis=source.basis
     metadata_basis=PlanarBasisSet(basis.kind,basis.ei,basis.ej,basis.level,basis.x0,basis.y0,basis.width,
         [iszero(p) ? 0 : something(findfirst(!iszero,view(C,p,:)),0) for p in basis.port])
-    original=PlanarProblem(source.stack,source.grid,source.sheets,metadata,source.vias,metadata_basis,source.vols)
+    original=PlanarProblem(source.stack,source.grid,source.sheets,metadata,source.vias,metadata_basis,source.vols,source.bricks)
     return PlanarLayout(original,shapes,mids,names,materials,layout.via_models,source,C,paths,layout.volume_models)
 end

@@ -23,6 +23,7 @@ export TERM_GND, TERM_SPACE
 export SidewallKind, WALL_PEC, WALL_PMC
 export ViaKind, VIA_UNIFORM, VIA_TAPER, ViaLevel, via_level
 export VolLevel, vol_level
+export BrickLevel, brick_level
 export planar_interfaces, planar_k0_layer, planar_validate
 
 """Layer of the stratified medium: complex eps_r, mu_r, thickness [m].
@@ -270,4 +271,39 @@ function vol_level(layer::Integer, nx::Integer, ny::Integer)
     layer >= 1 || throw(ArgumentError("volume layer must be >= 1, got $layer"))
     return VolLevel(Int(layer), falses(nx, ny),
         falses(ny), falses(ny), falses(nx), falses(nx))
+end
+
+"""A dielectric brick volume on stackup `layer`: `mask` marks the raster
+cells the brick occupies through the layer's full thickness, and `epsr`
+holds its complex relative permittivity per Cartesian axis
+(`epsr*(1-i*tand) - i*sigma/(omega*eps0)`, e^{+iwt} convention).  Each
+marked cell carries x-, y- and z-directed polarization-current unknowns
+(equivalent volume-current formulation); the solver contrasts `epsr`
+against the host layer's complex permittivity.  Mur contrast is not
+supported: bricks are dielectric-only volumes."""
+struct BrickLevel
+    layer::Int
+    mask::BitMatrix
+    epsr::NTuple{3,ComplexF64}
+end
+
+"""Empty `BrickLevel` on `layer` for an `nx` x `ny` cell grid with
+isotropic complex relative permittivity `epsr`."""
+function brick_level(layer::Integer, nx::Integer, ny::Integer, epsr)
+    layer >= 1 || throw(ArgumentError("brick layer must be >= 1, got $layer"))
+    e=ComplexF64(epsr)
+    isfinite(e) && real(e)>0 || throw(ArgumentError(
+        "brick relative permittivity must be finite with Re > 0, got $epsr"))
+    return BrickLevel(Int(layer), falses(nx, ny), (e, e, e))
+end
+
+"""Anisotropic variant: per-axis complex relative permittivities
+`(ex, ey, ez)`."""
+function brick_level(layer::Integer, nx::Integer, ny::Integer,
+        epsr::NTuple{3,Number})
+    layer >= 1 || throw(ArgumentError("brick layer must be >= 1, got $layer"))
+    e=ComplexF64.(epsr)
+    all(v->isfinite(v) && real(v)>0, e) || throw(ArgumentError(
+        "brick relative permittivities must be finite with Re > 0, got $epsr"))
+    return BrickLevel(Int(layer), falses(nx, ny), Tuple(e))
 end

@@ -86,7 +86,7 @@ function _planar_gradient_checked_adjoint(result,prob,pbs,sgn,est,bits,max_bytes
         Z=get(kw,:method,:dense)===:dense_fft ?
             assemble_planar_z_ufft(prob,real(result.freq);max_bytes=remaining,assembly_kw...) :
             assemble_planar_z(prob.stack,prob.grid,prob.sheets,prob.basis,result.omega;
-                vias=prob.vias,vols=prob.vols,max_bytes=remaining,assembly_kw...)
+                vias=prob.vias,vols=prob.vols,bricks=prob.bricks,max_bytes=remaining,assembly_kw...)
         reserved=_checked_payload_sum("compact wide gradient original matrix",reserved,matrix_bytes)
     end
     ldiv!(transpose(result.lu_fact),E)
@@ -558,7 +558,7 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
     vollayers = Set{Int}()
     @inbounds for b in 1:nb
         iface[b] = _basis_elem(prob.basis, b, prob.sheets, prob.vias,
-            prob.vols)
+            prob.vols, prob.bricks)
         _is_vol_elem(iface[b]) &&
             push!(vollayers, _vol_elem_layer(iface[b]))
         iface[b] < 0 && !_is_vol_elem(iface[b]) &&
@@ -727,6 +727,7 @@ function planar_objective_gradient(prob::PlanarProblem, freq::Number,
 
     _planar_bulk_loss_gradient!(g, params, G, Λmat, r.currents, prob,
         get(kw, :via_sigma, Inf), get(kw, :volume_sigma, Inf))
+    _planar_brick_gradient!(g, params, G, Λmat, r.currents, prob, r.omega)
     all(isfinite, g) || throw(ArgumentError(
         "planar gradient is non-finite: the frequency may sit on a " *
         "box resonance or a parameter may leave the model space"))
