@@ -692,8 +692,15 @@ end
 
 # Non-default mesh subsection controls cannot be applied per material by the
 # uniform solver grid; they reject only when a polygon inherits the layer.
+# Verified live on Lite 18.53 through `em -N` subsection counts: iso_type,
+# xmin/xmax/ymin/ymax bounds and the via pad control all change the native
+# mesh; edge-mesh and usemaxlength/maxlen showed no count change on the
+# tested geometries but carry real semantics, so they still reject rather
+# than silently dropping. The pad control is representable: pads="on"
+# materializes the polygon's COVERS flag, which the solver already models
+# as endpoint pad footprints. Returns (fill_type, pads).
 function _stf_mesh_static(node,kind)
-    node===nothing && return "Default"
+    node===nothing && return ("Default",false)
     _stf_attr(node,"iso_type","X and Y")=="X and Y" ||
         throw(ArgumentError("anisotropic STF mesh subsectioning requires its physical adapter"))
     for (key,fallback) in (("xmin","1"),("ymin","1"),("xmax","100"),("ymax","100"))
@@ -702,13 +709,14 @@ function _stf_mesh_static(node,kind)
     end
     _stf_attr(node,"use_edge_mesh","on") in ("on","true","1") ||
         throw(ArgumentError("STF edge-mesh control requires its physical adapter"))
-    _stf_attr(node,"pads","off") in ("off","false","0") ||
-        throw(ArgumentError("STF mesh pad control requires its physical adapter"))
+    pads=_stf_attr(node,"pads","off")
+    pads in ("on","off","true","false","1","0") ||
+        throw(ArgumentError("invalid STF mesh pads value $pads"))
     _stf_attr(node,"usemaxlength","no") in ("no","false","0") ||
         throw(ArgumentError("STF mesh length control requires its physical adapter"))
     fill=_stf_attr(node,"fill_type")
     fill===nothing && throw(ArgumentError("STF mesh lacks its fill_type"))
-    return fill
+    return (fill,pads in ("on","true","1"))
 end
 
 # Emit a generated SON MET row (tokens[2:end] form without the id field) for
@@ -754,7 +762,7 @@ function _stf_metal_tokens(t,spec,ls,variables)
     thickness=sonnet_technology_value(t,spec.thickness;quantity=:length,variables)
     isfinite(thickness) && thickness>0 || throw(ArgumentError("STF metal thickness must be positive"))
     conductor=_stf_conductor(t,spec.material,variables)
-    fill=_stf_mesh_static(spec.mesh,:metal)
+    fill,_=_stf_mesh_static(spec.mesh,:metal)
     fill in ("Default","Staircase","Conformal") ||
         throw(ArgumentError("STF metal mesh fill $fill requires its physical adapter"))
     title="\"$(spec.name)\""
@@ -919,16 +927,22 @@ function _stf_via_endpoint(specs,name,nlayers;target::Bool)
 end
 
 const _SONNET_VIA_MESH_FLAGS=("SOLID","FULL","VERTICES","CENTER","BAR","RING")
+const _SONNET_VIA_COVER_FLAGS=("COVERS","NOCOVERS")
 
-# The STF mesh definition supplies the polygon's default via fill; an
-# explicit flag on the polygon itself remains authoritative.
-function _stf_via_mesh_flags(flags,fill)
-    fill=="Default" && return flags
-    token=get(Dict("Ring"=>"RING","Bar"=>"BAR","Vertices"=>"VERTICES","Center"=>"CENTER",
-        "Full"=>"FULL","Solid"=>"SOLID"),fill,nothing)
+# Under INH the via techlayer's mesh definition is authoritative for every
+# mesh flag: `soncmd -LoadTechnology` replaces the polygon's literal fill
+# and cover tokens with the techlayer's regardless of what was serialized
+# (verified on Lite 18.53 across the full fill×literal-flag matrix, where
+# mFull_*→SOLID, mDefault_*→RING, pads="on"→COVERS and everything else
+# →NOCOVERS). Unrecognized flags outside the mesh vocabulary pass through.
+function _stf_via_mesh_flags(flags,mesh)
+    fill,pads=mesh
+    token=fill=="Default" ? "RING" : get(Dict("Ring"=>"RING","Bar"=>"BAR",
+        "Vertices"=>"VERTICES","Center"=>"CENTER",
+        "Full"=>"SOLID","Solid"=>"SOLID"),fill,nothing)
     token===nothing && throw(ArgumentError("STF via mesh fill $fill requires its physical adapter"))
-    any(f->f in _SONNET_VIA_MESH_FLAGS,flags) && return flags
-    return vcat(flags,token)
+    kept=filter(f->!(f in _SONNET_VIA_MESH_FLAGS) && !(f in _SONNET_VIA_COVER_FLAGS),flags)
+    return vcat(kept,token,pads ? "COVERS" : "NOCOVERS")
 end
 
 # Insert or reuse a generated MET row. The material field is the row's

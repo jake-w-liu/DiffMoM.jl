@@ -307,8 +307,8 @@ end
 end
 
 function _techlayer_test_stf(;metal_model="Normal",metal_extra="",via_model="Volume",
-        via_extra="",metal_direction="",mesh_fill="Default",bias="",
-        m1_spec="cond",m1_attrs="",via_spec="cond",via_attrs="",
+        via_extra="",metal_direction="",mesh_fill="Default",via_fill="Vertices",
+        via_pads="",bias="",m1_spec="cond",m1_attrs="",via_spec="cond",via_attrs="",
         stack_extra="")
     return """<?xml version="1.0"?>
     <technology_file version="1700">
@@ -326,7 +326,7 @@ function _techlayer_test_stf(;metal_model="Normal",metal_extra="",via_model="Vol
         <mesh_defs>
           <mesh fill_type="$mesh_fill" name="Default_metal" type="metal"/>
           <mesh fill_type="Default" name="Default_via" type="via"/>
-          <mesh fill_type="Vertices" name="Vertices_def" type="via"/>
+          <mesh fill_type="$via_fill" name="Vertices_def" type="via" $via_pads/>
         </mesh_defs>
         <metal_model_defs>
           <metal_model model_type="Normal" name="Cover_def"/>
@@ -457,6 +457,9 @@ end
         # the literal TOLEVEL, and inherits the via model's VOL material.
         @test p.polygons[3].kind===:via && p.polygons[3].level==0
         @test p.polygons[3].target=="1" && p.polygons[3].material==3
+        # Under INH the techlayer mesh overrides the literal RING fill.
+        @test "VERTICES" in p.polygons[3].flags && !("RING" in p.polygons[3].flags)
+        @test "NOCOVERS" in p.polygons[3].flags
         # NOH inherits only the metal level; the literal material stays.
         @test p.polygons[4].level==1 && p.polygons[4].material==0
         @test p.polygons[4].technology_mode=="NOH"
@@ -526,10 +529,54 @@ end
         ignored=sonnet_materialize_project(read_sonnet_linked_project(path))
         @test ignored.polygons[1].level==1 && ignored.polygons[1].material==-1
         write(joinpath(dir,"rich.stf"),stf)
-        # The via mesh fill supplies a flag only when the polygon lacks one.
+        # A via polygon without a literal fill still receives the techlayer
+        # mesh's fill and cover tokens under INH.
         write(path,replace(son,"TOLEVEL 0 RING NOCOVERS"=>"TOLEVEL 0 NOCOVERS"))
         meshed=sonnet_materialize_project(read_sonnet_linked_project(path))
         @test "VERTICES" in meshed.polygons[3].flags
+        @test "NOCOVERS" in meshed.polygons[3].flags
+        write(path,son)
+    end
+end
+
+@testset "Linked STF via mesh flag precedence and pads" begin
+    # `soncmd -LoadTechnology` on Lite 18.53: under INH the techlayer mesh
+    # replaces the polygon's literal fill token (Full→SOLID, Default→RING)
+    # and its pad control selects COVERS/NOCOVERS, for every literal flag
+    # combination. Diagonal/Conformal fills are native via-mesh rejections.
+    mktempdir() do dir
+        son=_techlayer_test_son();path=joinpath(dir,"rich.son")
+        fills=(("Ring","RING"),("Vertices","VERTICES"),("Center","CENTER"),
+            ("Full","SOLID"),("Solid","SOLID"),("Bar","BAR"),("Default","RING"))
+        literals=("TOLEVEL 0 BAR NOCOVERS","TOLEVEL 0 RING NOCOVERS",
+            "TOLEVEL 0 VERTICES NOCOVERS","TOLEVEL 0 CENTER NOCOVERS",
+            "TOLEVEL 0 SOLID NOCOVERS","TOLEVEL 0 NOCOVERS",
+            "TOLEVEL 0 RING COVERS","TOLEVEL 0")
+        for (fill,token) in fills,literal in literals
+            write(joinpath(dir,"rich.stf"),_techlayer_test_stf(via_fill=fill))
+            write(path,replace(son,"TOLEVEL 0 RING NOCOVERS"=>literal))
+            flags=sonnet_materialize_project(read_sonnet_linked_project(path)).polygons[3].flags
+            @test token in flags
+            @test !any(f->f in ("SOLID","FULL","VERTICES","CENTER","BAR","RING") && f!=token,flags)
+            @test "NOCOVERS" in flags && !("COVERS" in flags)
+        end
+        # pads="on" emits COVERS over any literal cover flag; without it the
+        # materialized flag is NOCOVERS.
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf(via_pads="pads=\"on\""))
+        for literal in ("TOLEVEL 0 RING NOCOVERS","TOLEVEL 0 RING COVERS",
+                "TOLEVEL 0 RING","TOLEVEL 0 NOCOVERS")
+            write(path,replace(son,"TOLEVEL 0 RING NOCOVERS"=>literal))
+            flags=sonnet_materialize_project(read_sonnet_linked_project(path)).polygons[3].flags
+            @test "COVERS" in flags && !("NOCOVERS" in flags)
+            @test "VERTICES" in flags
+        end
+        # Native rejects non-via fill types on via meshes.
+        for fill in ("Diagonal","Conformal","Staircase")
+            write(joinpath(dir,"rich.stf"),_techlayer_test_stf(via_fill=fill))
+            write(path,son)
+            @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        end
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf())
         write(path,son)
     end
 end

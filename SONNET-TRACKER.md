@@ -412,9 +412,27 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       mesh flags never inherit under NOH.
       Regressions: `test_planar_sonnet_technology.jl` pairing + SFC
       testsets, `test_planar_sonnet_io.jl` SFC field-order contract.
-- [ ] D4 STF mesh controls: anisotropic subsectioning, bounds, edge-mesh,
-      pads, maxlength (`Technology:656-666`); metal mesh fill kinds (`:713`),
-      via mesh fills (`:792`). Oracle: `em -N` subsection counts.
+- [x] D4 STF mesh controls — DONE for the representable subset. Oracle:
+      `soncmd -LoadTechnology` (which drops every mesh control from the
+      serialized output except the via fill/cover tokens, materialized into
+      the polygon flags) plus `em -N` subsection counts on Lite 18.53.
+      Implemented: the full via mesh-fill matrix under INH is authoritative
+      over literal polygon flags — Ring→RING, Vertices→VERTICES,
+      Center→CENTER, Full→SOLID, Solid→SOLID, Bar→BAR, Default→RING
+      (verified across 7 fills × conflicting literals; the earlier
+      "explicit flag wins" rule was wrong and is fixed) — and the via pad
+      control, where pads="on" emits COVERS over any literal cover flag and
+      everything else emits NOCOVERS (COVERS is the existing endpoint-pad
+      footprint model in both raster and conformal paths). Diagonal,
+      Conformal and Staircase on a via mesh are native "Invalid fill type
+      in mesh definition" errors and reject identically; pads="on" on a
+      metal mesh is verified native-inert and accepted-inert.
+      Kept rejecting with evidence: iso_type (X Only changes subsections
+      114→66, Y Only is a native error), xmin/xmax/ymin/ymax bounds
+      (114→93), use_edge_mesh=off and usemaxlength/maxlen (114→114 inert on
+      the tested staircase geometry but semantically real controls).
+      Regressions: "Linked STF via mesh flag precedence and pads" (179
+      checks) plus the INH flag assertions in the techlayer testset.
 - [ ] D5 native linked-STF EM solving — Lite `-S` gate blocked; HFSS cannot
       decode STF. Verify materialized project physics vs HFSS where a coupon
       is buildable. Partly DocOnly.

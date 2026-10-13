@@ -597,6 +597,23 @@ Primary source/schema/help snapshots and 30 corpus checks are recorded in
 `data/prior_worker_validation_20261004/validation/planar_audit/sonnet_technology_corpus.toml`. Static XML intake is
 a scoped C5 implementation; general technology geometry remains open.
 
+`soncmd -LoadTechnology` on Lite 18.53 decodes the linked-STF
+materialization contract the `INH` path implements: the techlayer's model/
+condspec pair maps to a generated literal MET row under native field
+liveness (only the attributes the condspec exposes are read; unexposed
+fields emit zero), and the techlayer mesh is authoritative over every via
+mesh flag — the literal fill token is replaced (Ring→RING,
+Vertices→VERTICES, Center→CENTER, Full→SOLID, Solid→SOLID, Bar→BAR,
+Default→RING) and the pad control emits COVERS/NOCOVERS, for every literal
+flag combination. `NOH` inherits only the endpoint pair and keeps literal
+material and flags. Non-via fill types on a via mesh are native "Invalid
+fill type" errors. Live native controls the uniform cell grid cannot
+express — anisotropic iso_type, subsection bounds, edge-mesh and
+maxlength — reject with explicit errors rather than silently dropping;
+`em -N` subsection counts distinguish their effects (114→66 for X-only,
+114→93 for non-default bounds, +20 for via pads). Licensed linked-STF
+solving remains gated and unverified.
+
 Actual technology-editor maintain-physical exports in
 `test/fixtures/native_stf_unit_gui` prove `70000 OHUM = 0.07 OHMM` and
 `2 OHSQ = 2000 MOSQ`. The incorrect OHMM factor previously produced 1000 times
