@@ -19,6 +19,8 @@ makedocs(
         mathengine = Documenter.MathJax3(),
         edit_link = nothing,
         repolink = nothing,
+        size_threshold = 512 * 2^10,
+        size_threshold_warn = 256 * 2^10,
     ),
     pages = [
         "Home" => "index.md",
