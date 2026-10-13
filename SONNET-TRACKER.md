@@ -489,8 +489,8 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       `solve_sonnet_project` (`IO:2354`) routes to the verified
       `_solve_sonnet_components` path — complete, no changes needed.
 - [x] E5 dielectric bricks (`IO:1829`, `RasterResources:44`,
-      `Conformal:181-185`) — DONE (zparts=1 `BRI` bricks; the BAR
-      via-footprint fill adapter remains open under E5d). Native
+      `Conformal:181-185`) — DONE (zparts=1 `BRI` bricks; BAR via
+      fill closed under E5d below). Native
       `BRI` material declarations, `TECHLAY BRICK` records and
       `TLAYNAM`-bound `BRI POLY` polygons are parsed and validated
       (level/mode/material binding, Z-parts==1 loud rejection of
@@ -522,8 +522,23 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       `test/test_planar_dielectric_bricks.jl` and
       `test/test_planar_sonnet_io.jl` ("Sonnet native dielectric
       bricks").
-- [ ] E5d BAR via meshing — merge adjacent bar-via groups into the
-      `Vertices` fill per the Lite doc (conformal adapter path).
+- [x] E5d BAR via meshing — DONE. Per the Lite 18.53 "Simplifying Bar
+      Vias" doc, `TOLEVEL ... BAR` polygons sharing an endpoint span are
+      grouped by raster connectivity; each connected component meshes as
+      the outline-corner cells of its union (the raster analogue of the
+      `Vertices` fill on the merged outline). Uniform-material components
+      evaluate one loss model on the merged union outline; constant-RPV
+      metals instead sum per-member conductances so the merged column
+      preserves the parallel DC resistance (verified: two 2-ohm bars
+      merge to a 1-ohm group). Mixed-material components, lone bars,
+      disjoint bars and pinched/holed unions keep their per-polygon
+      vertex fills and vertex-exact loss. Implemented in
+      `PlanarSonnetIO.jl` (`_sonnet_bar_resolve`,
+      `_planar_region_corner_cells`, `_planar_region_components`,
+      `_planar_region_outline`) for both the raster and conformal
+      adapters; mask-workspace estimators account BAR temporaries.
+      Regressions in `test/test_planar_sonnet_io.jl` ("Sonnet native BAR
+      vias").
 - [x] E6 scalar sign grammar — DONE. Lite probes (60-case accept/reject
       matrix): `^` operand allows one `-` but never `+`, and a sign's operand
       cannot itself begin with a sign even behind `(`/whitespace (`1^--2`,
@@ -592,20 +607,19 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 intake+gating), A2
 (port-zero grounding), C1–C5 (VOL topology and material laws), C10,
 E1–E5 (E5 dielectric bricks: VIE rooftops + z pulses, dense assembly,
-adjoint/currents/radiation/axial-refinement/CUP threading), plus
+adjoint/currents/radiation/axial-refinement/CUP threading; E5d BAR
+merged-via grouping + Vertices fill), plus
 prior ledgered items.
 
 Remaining (updated order):
 
-1. E5d BAR via meshing — `Vertices` fill adapter for merged bar-via
-   groups (conformal path).
-2. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
+1. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
    DocOnly.
-3. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
-4. A3 ordered model pins — pin-group GLG calibration machinery.
-5. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
+2. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
+3. A3 ordered model pins — pin-group GLG calibration machinery.
+4. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
    characterization, larger.
-7. I-group HFSS-based independent convergence certification.
+5. I-group HFSS-based independent convergence certification.
 
 Each landed item: implementation + deep-debug loop + tests + fixture evidence
 + ledger/docs update + full suite (1.13) + focused (1.12) + push + CI green.

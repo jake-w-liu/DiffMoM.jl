@@ -1431,3 +1431,171 @@ END VARSWP
             problem.grid,problem.sheets,problem.ports;bricks=[emptybrick])
     end
 end
+
+@testset "Sonnet native BAR vias" begin
+    # Lite's "Simplifying Bar Vias" rule merges adjacent BAR polygons into
+    # one wider via meshed with the Vertices fill.  Two pads share the
+    # x=0.5 port edge (same geometry as the brick fixture); BAR vias sit
+    # under the driven pad on the level-0 to level-1 span.
+    function bar_source(fill,bars;material=-1,metal="")
+        head="""
+FTYP SONPROJ 19 ! bar tests
+VER "18.53"
+HEADER
+LIC x
+END HEADER
+DIM
+ANG DEG
+CAP PF
+CON /OH
+FREQ GHZ
+IND NH
+LNG MM
+RES OH
+END DIM
+GEO
+TMET "Lossless" 0 SUP 0 0 0 0
+BMET "Lossless" 0 SUP 0 0 0 0
+$(isempty(metal) ? "" : metal*"\n")BOX 3 1 1 16 16 100 0
+0.1 1 1 0 0 0 0 "Air_top"
+0.1 1 1 0 0 0 0 "Air_mid"
+0.1 4 1 0 0 0 1 "Host"
+0.1 1 1 0 0 0 0 "Air_bot"
+LORGN 0 1 U
+POR1 STD
+POLY 10 1
+1
+1 50 0 0 0 1 0.5
+NUM $(2+length(bars))
+0 5 -1 N 9 1 1 100 100 0 0 0 Y
+0.3 0.45
+0.45 0.45
+0.45 0.55
+0.3 0.55
+0.3 0.45
+END
+1 5 -1 N 10 1 1 100 100 0 0 0 Y
+0.55 0.45
+1 0.45
+1 0.55
+0.55 0.55
+0.55 0.45
+END
+"""
+        body=""
+        for (k,(x0,x1,y0,y1)) in enumerate(bars)
+            body*="""
+VIA POLYGON
+0 5 $(material) N $(10+k) 1 1 100 100 0 0 0 Y
+TOLEVEL 1 $(fill) NOCOVERS
+$(x0) $(y0)
+$(x1) $(y0)
+$(x1) $(y1)
+$(x0) $(y1)
+$(x0) $(y0)
+END
+"""
+        end
+        return head*body*"""
+END GEO
+OPT
+MAX 100
+END OPT
+"""
+    end
+    # Two 2x2-cell strips abutting at x=0.375: one 4x2 merged region with
+    # four outline-corner cells, versus eight cells as two vertex-filled
+    # polygons.
+    bars=[(0.3125,0.375,0.46875,0.53125),(0.375,0.4375,0.46875,0.53125)]
+    mktempdir() do dir
+        path=joinpath(dir,"bar.son")
+        write(path,bar_source("BAR",bars))
+        model=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_details=true)
+        @test length(model.problem.vias)==1
+        @test count(model.problem.vias[1].uni)==4
+        @test model.via_sigma==[Inf]
+        result=solve_planar(model.problem,1e9)
+        @test all(isfinite,result.s)
+        @test all(x->abs(x)<=1+1e-8,result.s)
+        write(path,bar_source("VERTICES",bars))
+        vertex=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_details=true)
+        @test count(vertex.problem.vias[1].uni)==8
+        @test solve_planar(vertex.problem,1e9).s!=result.s
+
+        # A lone BAR via is its own Vertices fill: identical mesh, sigma
+        # and S-parameters to the VERTICES declaration.
+        write(path,bar_source("BAR",bars[1:1]))
+        barmodel=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_details=true)
+        write(path,bar_source("VERTICES",bars[1:1]))
+        vertmodel=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_details=true)
+        @test barmodel.problem.vias[1].uni==vertmodel.problem.vias[1].uni
+        @test barmodel.via_sigma==vertmodel.via_sigma
+        @test solve_planar(barmodel.problem,1e9).s==
+            solve_planar(vertmodel.problem,1e9).s
+
+        # Disjoint bars never merge: each keeps its own polygon's fill
+        # (the second bar rasterizes to a 1x2 strip with two corners).
+        write(path,bar_source("BAR",
+            [(0.3125,0.375,0.46875,0.53125),(0.55,0.6,0.46875,0.53125)]))
+        far=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_details=true)
+        @test count(far.problem.vias[1].uni)==6
+
+        # An L-shaped union keeps the merged outline's six corners.
+        write(path,bar_source("BAR",
+            [(0.3125,0.375,0.46875,0.53125),(0.34375,0.4375,0.46875,0.5625)]))
+        ell=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_details=true)
+        @test count(ell.problem.vias[1].uni)==6
+
+        # Constant-RPV bars preserve the parallel DC conductance of the
+        # group: two 2-ohm bars merge to one column group totaling 1 ohm.
+        rpvmetal="""MET "Via" 1 VOL 2 0 RPV"""
+        write(path,bar_source("BAR",bars;material=0,metal=rpvmetal))
+        rmodel=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_materials=true,_details=true)
+        @test sum(real(rmodel.problem.stack.layers[v.layer].thickness)/
+            (rmodel.via_sigma[i]*count(v.uni)*rmodel.problem.grid.dx*rmodel.problem.grid.dy)
+            for (i,v) in enumerate(rmodel.problem.vias))≈1
+        write(path,bar_source("BAR",bars[1:1];material=0,metal=rpvmetal))
+        rmodel1=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_materials=true,_details=true)
+        @test sum(real(rmodel1.problem.stack.layers[v.layer].thickness)/
+            (rmodel1.via_sigma[i]*count(v.uni)*rmodel1.problem.grid.dx*rmodel1.problem.grid.dy)
+            for (i,v) in enumerate(rmodel1.problem.vias))≈2
+        # The merged sigma is the parallel sum of the member conductances.
+        @test rmodel.via_sigma[1]≈2rmodel1.via_sigma[1]
+
+        # A single loss model evaluates on the merged union outline for
+        # non-RPV metals (VOL SOLID and ARR both take this path).
+        for (metal,check) in (
+                ("""MET "Via" 1 VOL 5.8e7 SOLID 0""",
+                    (s2,s1)->isapprox(s2,2s1;rtol=1e-10)),
+                ("""MET "Array" 1 ARR 58e6 16""", (s2,s1)->s2!=s1))
+            write(path,bar_source("BAR",bars;material=0,metal=metal))
+            merged=sonnet_planar_problem(read_sonnet_project(path);
+                freq=1e9,grid=(32,32),_materials=true,_details=true)
+            write(path,bar_source("BAR",bars[1:1];material=0,metal=metal))
+            single=sonnet_planar_problem(read_sonnet_project(path);
+                freq=1e9,grid=(32,32),_materials=true,_details=true)
+            @test check(merged.via_sigma[1],single.via_sigma[1])
+            @test all(isfinite,solve_planar(merged.problem,1e9).s)
+        end
+
+        # Bars on different spans cannot form one column: a level-0->1
+        # member and a level-0->2 member keep their own fills.  On the
+        # shared layer their two four-cell fills land on the common
+        # ideal-conductor level (8 cells, not the merged 4); the longer
+        # member also emits its second-layer column.
+        spanned=replace(bar_source("BAR",bars),
+            "TOLEVEL 1 BAR"=>"TOLEVEL 2 BAR",count=1)
+        write(path,spanned)
+        span=sonnet_planar_problem(read_sonnet_project(path);
+            freq=1e9,grid=(32,32),_details=true)
+        @test sort([count(v.uni) for v in span.problem.vias])==[4,8]
+    end
+end

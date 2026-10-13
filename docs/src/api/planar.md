@@ -50,6 +50,8 @@ ViaLevel
 via_level
 VolLevel
 vol_level
+BrickLevel
+brick_level
 build_planar_basis
 planar_basis_count
 PlanarBasisSet

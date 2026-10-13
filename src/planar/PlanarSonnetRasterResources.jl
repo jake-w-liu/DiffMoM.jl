@@ -48,14 +48,18 @@ function _sonnet_raster_mask_workspace(p,grid;surfaces::Bool=true)
     end
     cells=BigInt(nx)*ny;mask=8cld(cells,64)
     connections=16(BigInt(cld(nx,64))+cld(ny,64))
+    nbar=count(q->q.kind===:via && "BAR" in q.flags,p.polygons)
     # Per-polygon masks remain live for port attachment. Temporary sheet,
     # via-mesh, overlap and index buffers are bounded before rasterization.
     # Bricks retain their merged host-layer masks plus the material maps.
+    # BAR grouping retains each member's footprint and corner mask while
+    # union, component and corner temporaries iterate per span.
     payload=_checked_payload_sum("native raster mask workspace",
         BigInt(length(levels))*(2mask+connections+(surfaces ? 16cells : 0)),
         2spans*mask,BigInt(length(p.polygons))*mask,
         BigInt(2length(bricklevels))*mask,
-        4mask+connections+(spans>0 ? 8cells : 0),
+        (4+(nbar>0 ? 5 : 0))*mask+connections+(spans>0 ? 8cells : 0)+
+            2BigInt(nbar)*mask,
         _checked_array_payload_bytes(Float64,2,
             maximum(q->size(q.vertices,2),p.polygons;init=0)))
     # Preserve the existing accounting call on healthy real contact models.

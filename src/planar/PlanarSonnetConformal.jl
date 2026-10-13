@@ -207,14 +207,17 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
     stack,gr=native.stack,native.grid;L=length(stack.layers);val(x)=sonnet_variable_value(p,x;variables,freq)
     any(poly->poly.kind==:brick,p.polygons) && throw(ArgumentError("native dielectric brick needs its physical volume dielectric model"))
     ne=sum((size(poly.vertices,2) for poly in p.polygons);init=0);cells=BigInt(gr.nx)*gr.ny
-    nvia=BigInt(0);nvpoly=0
+    nvia=BigInt(0);nvpoly=0;nbar=0
     for poly in p.polygons
         poly.kind===:via || continue
         target=poly.target=="GND" ? L-1 : poly.target=="TOP" ? -1 : parse(Int,poly.target)
         nvia+=abs(BigInt(poly.level)-target);nvpoly+=1
+        "BAR" in poly.flags && (nbar+=1)
     end
+    # BAR grouping retains each member's footprint and corner mask while
+    # union, component and corner temporaries iterate per span.
     reserve=_checked_payload_sum("native conformal metadata",_checked_array_payload_bytes(Float64,8,ne),
-        _checked_array_payload_bytes(Int,8,ne),_checked_array_payload_bytes(UInt64,4+2nvia+nvpoly,cld(cells,64)),
+        _checked_array_payload_bytes(Int,8,ne),_checked_array_payload_bytes(UInt64,4+2nvia+nvpoly+2nbar+(nbar>0 ? 5 : 0),cld(cells,64)),
         _checked_array_payload_bytes(ComplexF64,length(p.metals)+1),
         _sonnet_scalar_files(variables)===nothing ? 0 : _sonnet_scalar_payload(variables))
     if _sonnet_has_volume_skin(p) || any(poly->_sonnet_via_endpoints(p,poly) && poly.material!=-1,p.polygons)
@@ -230,6 +233,7 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
     polygons=PlanarPolygon[];metals=Dict{String,Any}("pec"=>0.)
     contacts=PlanarConformalPort[];cp=PlanarConformalPort[];bp=PlanarPort[]
     vias=ViaLevel[];sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}();via_indices=Dict{Tuple{Int,Int},Int}();masks=Dict{Int,BitMatrix}();open_via_polygons=Set{Int}()
+    bar_pending=Tuple{SonnetPolygon,Int,Int,BitMatrix}[]
     numbers=Int[];refs=ComplexF64[];weights=Float64[];cnumbers=Int[];crefs=ComplexF64[]
     function add_sheet(name,level,vertices,metal)
         v,b=planar_normalize_polygon([_P2(vertices[1,i],vertices[2,i]) for i in axes(vertices,2)];label=name)
@@ -251,6 +255,12 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
             any(footprint.mask) || throw(ArgumentError("native via footprint vanished at its declared bulk grid"))
             mode="SOLID" in poly.flags || "FULL" in poly.flags ? :full : "VERTICES" in poly.flags ? :vertices :
                 "CENTER" in poly.flags ? :center : "BAR" in poly.flags ? :bar : :ring
+            if mode==:bar
+                # Adjacent bars merge into one wider via resolved after all
+                # footprints exist ("Simplifying Bar Vias" grouping).
+                push!(bar_pending,(poly,lo,hi,copy(footprint.mask)))
+                continue
+            end
             mask=_planar_via_mesh_mask(footprint.mask,poly.vertices,gr,mode);masks[poly.id]=mask
             rho_sigma=_sonnet_via_sigma(p,poly,gr,stack,mask,freq,variables)
             # A zero-conductivity ARR column is a native open circuit —
@@ -273,6 +283,36 @@ function sonnet_conformal_layout(project::SonnetProject;freq::Real=1e9,
                     push!(vias,via_level(layer,gr.nx,gr.ny));push!(sigma,rho_sigma);index=length(vias);via_group[key]=index
                 end
                 vias[index].uni .|=mask;vias[index].tap .|=mask;via_indices[(poly.id,layer)]=index
+            end
+        end
+    end
+    if !isempty(bar_pending)
+        resolved=_sonnet_bar_resolve(p,gr,stack,freq,variables,bar_pending,masks,open_via_polygons)
+        # Every member of a merged group resolves to the same mask object;
+        # emit each merged column once per layer while mapping all member
+        # polygons.
+        emitted=Set{Tuple{UInt,Int}}()
+        for (poly,lo,hi,footprint) in bar_pending
+            haskey(resolved,poly.id) || continue
+            mask,rho_sigma=resolved[poly.id]
+            masks[poly.id]=mask
+            if rho_sigma isa Complex && sigma isa Vector{Float64}
+                sigma=ComplexF64.(sigma)
+                via_group=Dict{Tuple{Int,ComplexF64},Int}((k[1],ComplexF64(k[2]))=>v for (k,v) in via_group)
+            end
+            for layer in (L-hi):(L-lo-1)
+                key=(layer,rho_sigma);index=get(via_group,key,0)
+                if !((objectid(mask),layer) in emitted)
+                    push!(emitted,(objectid(mask),layer))
+                    for (other,v) in enumerate(vias)
+                        v.layer==layer && any(v.uni .& mask) && (other!=index || isfinite(rho_sigma)) && throw(ArgumentError("native via resistance footprints overlap in one physical layer"))
+                    end
+                    if index==0
+                        push!(vias,via_level(layer,gr.nx,gr.ny));push!(sigma,rho_sigma);index=length(vias);via_group[key]=index
+                    end
+                    vias[index].uni .|=mask;vias[index].tap .|=mask
+                end
+                via_indices[(poly.id,layer)]=index
             end
         end
     end

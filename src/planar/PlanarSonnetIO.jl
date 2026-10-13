@@ -1327,6 +1327,180 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
     throw(ArgumentError("native $model metal requires its dedicated material adapter"))
 end
 
+# Cells at the outline vertices of a cell region — the raster analogue
+# of the native Vertices mesh fill applied to a merged bar-via outline.
+# A grid vertex is a polygon corner unless its four incident cells form
+# a straight (two adjacent), solid or empty pattern; a concave vertex
+# marks the cell diagonally opposite the void.
+function _planar_region_corner_cells(mask::BitMatrix)
+    nx,ny=size(mask);result=falses(nx,ny)
+    for j in 0:ny, i in 0:nx
+        sw=i>=1 && j>=1 && mask[i,j]
+        se=i<nx && j>=1 && mask[i+1,j]
+        nw=i>=1 && j<ny && mask[i,j+1]
+        ne=i<nx && j<ny && mask[i+1,j+1]
+        cnt=sw+se+nw+ne
+        if cnt==1 || (cnt==2 && ((sw&&ne)||(se&&nw)))
+            sw && (result[i,j]=true);se && (result[i+1,j]=true)
+            nw && (result[i,j+1]=true);ne && (result[i+1,j+1]=true)
+        elseif cnt==3
+            !sw && (result[i+1,j+1]=true);!se && (result[i,j+1]=true)
+            !nw && (result[i+1,j]=true);!ne && (result[i,j]=true)
+        end
+    end
+    return result
+end
+
+# Four-connected components of a cell mask, returned as new masks.
+function _planar_region_components(mask::BitMatrix)
+    seen=falses(size(mask));comps=BitMatrix[]
+    for index in findall(mask)
+        seen[index] && continue
+        comp=falses(size(mask));todo=[index];seen[index]=true
+        while !isempty(todo)
+            cell=pop!(todo);comp[cell]=true
+            for offset in ((1,0),(-1,0),(0,1),(0,-1))
+                n=cell+CartesianIndex(offset)
+                checkbounds(Bool,mask,n) || continue
+                (mask[n] && !seen[n]) || continue
+                seen[n]=true;push!(todo,n)
+            end
+        end
+        push!(comps,comp)
+    end
+    return comps
+end
+
+# Ordered lattice outline of a simply-connected cell region with
+# collinear runs collapsed, or nothing when the topology is pinched or
+# holed.  Boundary edges are oriented with the interior on the right,
+# so a simply-connected region yields exactly one closed walk.
+function _planar_region_outline(mask::BitMatrix)
+    nx,ny=size(mask)
+    edges=Dict{Tuple{Int,Int},Tuple{Int,Int}}();ambiguous=false
+    function put(a,b)
+        haskey(edges,a) ? (ambiguous=true) : (edges[a]=b)
+    end
+    for j in 1:ny, i in 1:nx
+        mask[i,j] || continue
+        (j==ny || !mask[i,j+1]) && put((i-1,j),(i,j))
+        (i==nx || !mask[i+1,j]) && put((i,j),(i,j-1))
+        (j==1 || !mask[i,j-1]) && put((i,j-1),(i-1,j-1))
+        (i==1 || !mask[i-1,j]) && put((i-1,j-1),(i-1,j))
+    end
+    (ambiguous || isempty(edges)) && return nothing
+    start=first(edges).first;v=start;path=[v]
+    while true
+        v=get(edges,v,nothing)
+        v===nothing && return nothing
+        v==start && break
+        push!(path,v)
+        length(path)>length(edges) && return nothing
+    end
+    length(path)==length(edges) || return nothing
+    N=length(path);out=Tuple{Int,Int}[]
+    for k in 1:N
+        a=path[mod1(k-1,N)];b=path[k];c=path[mod1(k+1,N)]
+        (b[1]-a[1],b[2]-a[2])==(c[1]-b[1],c[2]-b[2]) || push!(out,b)
+    end
+    return out
+end
+
+# Native merges adjacent bar vias into one wider via which is then
+# modeled with the Vertices mesh fill ("Simplifying Bar Vias in the
+# Analysis Engine").  BAR polygons sharing their endpoint span group by
+# raster connectivity; each connected component meshes as the outline
+# corners of its union.  Uniform-material components evaluate one loss
+# model on the merged outline — constant-RPV metals instead sum per-via
+# conductances since the merged column must preserve the parallel DC
+# resistance.  Mixed-material components and unmergeable unions keep
+# their per-polygon fills.  Returns poly.id => (mask, sigma); open
+# members are recorded through masks/open_via_polygons like other vias.
+function _sonnet_bar_resolve(p,grid,stack,freq,variables,bar_pending,masks,open_via_polygons)
+    nx,ny=grid.nx,grid.ny
+    resolved=Dict{Int,Tuple{BitMatrix,Any}}()
+    byspan=Dict{Tuple{Int,Int},Vector{Int}}()
+    # A hollow nonrectangular VOL evaluation reserves wide workspace per
+    # vertex in _sonnet_volume_polygon_workspace; a merged outline longer
+    # than any input polygon would exceed that reservation, so such
+    # unions stay as separate per-polygon groups.
+    peak_vertices=0
+    for q in p.polygons
+        (q.kind===:via && 0<=q.material<length(p.metals)) || continue
+        m=p.metals[q.material+1]
+        if length(m)>=5 && m[3]=="VOL" && !_sonnet_via_rpv(m) &&
+                m[5]!="SOLID" && !_sonnet_volume_rectangle(q.vertices)
+            peak_vertices=max(peak_vertices,size(q.vertices,2))
+        end
+    end
+    members=[(;poly,lo,hi,footprint,
+        corners0=_planar_region_corner_cells(footprint)) for (poly,lo,hi,footprint) in bar_pending]
+    singles=Dict{Int,Tuple{BitMatrix,Any}}()
+    for (m,member) in enumerate(members)
+        sigma0=_sonnet_via_sigma(p,member.poly,grid,stack,member.corners0,freq,variables)
+        singles[member.poly.id]=(member.corners0,sigma0)
+        if iszero(sigma0)
+            push!(open_via_polygons,member.poly.id)
+            masks[member.poly.id]=member.corners0
+        else
+            push!(get!(()->Int[],byspan,(member.lo,member.hi)),m)
+        end
+    end
+    for member_ids in values(byspan)
+        union=falses(nx,ny)
+        for m in member_ids
+            union .|= members[m].footprint
+        end
+        for comp in _planar_region_components(union)
+            ids=[m for m in member_ids if any(members[m].footprint .& comp)]
+            mats=unique(members[m].poly.material for m in ids)
+            merged=false;corners=falses(nx,ny);sigma=nothing
+            # A lone bar has no merge partner — it keeps its own polygon's
+            # Vertices fill and vertex-exact loss like any other via.
+            if length(ids)>1 && length(mats)==1
+                corners=_planar_region_corner_cells(comp)
+                material=mats[1]
+                if material==-1
+                    sigma=Inf;merged=true
+                elseif _sonnet_via_rpv(p.metals[material+1])
+                    sigma=sum(_sonnet_via_sigma(p,members[m].poly,grid,stack,corners,
+                        freq,variables) for m in ids)
+                    merged=true
+                else
+                    outline=_planar_region_outline(comp)
+                    if outline!==nothing
+                        merged_vertices=mapreduce(v->[v[1]*grid.dx;v[2]*grid.dy;;],hcat,outline)
+                        hollow_vol=length(p.metals[material+1])>=5 &&
+                            p.metals[material+1][3]=="VOL" &&
+                            p.metals[material+1][5]!="SOLID" &&
+                            !_sonnet_volume_rectangle(merged_vertices)
+                        if !hollow_vol || size(merged_vertices,2)<=peak_vertices
+                            rep=members[ids[1]].poly
+                            merged_poly=SonnetPolygon(:via,rep.level,material,rep.id,
+                                merged_vertices,rep.target,rep.technology,
+                                rep.technology_mode,rep.flags)
+                            sigma=_sonnet_via_sigma(p,merged_poly,grid,stack,corners,freq,variables)
+                            merged=true
+                        end
+                    end
+                end
+            end
+            if merged && !iszero(sigma)
+                for m in ids
+                    resolved[members[m].poly.id]=(corners,sigma)
+                end
+            else
+                for m in ids
+                    id=members[m].poly.id
+                    resolved[id]=singles[id]
+                    iszero(resolved[id][2]) && push!(open_via_polygons,id)
+                end
+            end
+        end
+    end
+    return resolved
+end
+
 function _planar_via_mesh_mask(mask::BitMatrix,vertices,grid,mode::Symbol)
     mode==:full && return copy(mask)
     result=falses(size(mask))
@@ -2479,6 +2653,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     vias=ViaLevel[]; via_sigma=Float64[];via_group=Dict{Tuple{Int,Float64},Int}()
     via_polygon_level=Dict{Tuple{Int,Int},Int}();open_via_polygons=Set{Int}()
     bricks=BrickLevel[];brick_group=Dict{Tuple{Int,ComplexF64},Int}()
+    bar_pending=Tuple{SonnetPolygon,Int,Int,BitMatrix}[]
     surface_by_level=Dict{Int,Matrix{ComplexF64}}()
     function native_sheet(level)
         if !haskey(sheetidx,level)
@@ -2566,6 +2741,13 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             mode="SOLID" in poly.flags || "FULL" in poly.flags ? :full :
                 "VERTICES" in poly.flags ? :vertices : "CENTER" in poly.flags ? :center :
                 "BAR" in poly.flags ? :bar : :ring
+            if mode==:bar
+                # BAR polygons merge with adjacent bars into one wider via
+                # resolved after every footprint is rasterized (native
+                # "Simplifying Bar Vias" grouping), so they defer here.
+                push!(bar_pending,(poly,lo,hi,copy(tmp.mask)))
+                continue
+            end
             via_mask=_planar_via_mesh_mask(tmp.mask,poly.vertices,gr,mode)
             masks[poly.id]=via_mask
             sigma=_sonnet_via_sigma(p,poly,gr,st,via_mask,freq,variables)
@@ -2595,6 +2777,42 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
                 end
                 vias[vi].uni .|= via_mask
                 vias[vi].tap .|= via_mask
+                via_polygon_level[(poly.id,layer)]=vi
+            end
+        end
+    end
+    if !isempty(bar_pending)
+        resolved=_sonnet_bar_resolve(p,gr,st,freq,variables,bar_pending,masks,open_via_polygons)
+        # Every member of a merged group resolves to the same mask object;
+        # emit each merged column once per layer while mapping all member
+        # polygons.
+        emitted=Set{Tuple{UInt,Int}}()
+        for (poly,lo,hi,footprint) in bar_pending
+            haskey(resolved,poly.id) || continue
+            via_mask,sigma=resolved[poly.id]
+            masks[poly.id]=via_mask
+            if sigma isa Complex && via_sigma isa Vector{Float64}
+                via_sigma=ComplexF64.(via_sigma)
+                via_group=Dict{Tuple{Int,ComplexF64},Int}((k[1],ComplexF64(k[2]))=>v for (k,v) in via_group)
+            end
+            for lev in lo+1:hi
+                layer=L-lev
+                key=(layer,sigma)
+                vi=get(via_group,key,0)
+                if !((objectid(via_mask),layer) in emitted)
+                    push!(emitted,(objectid(via_mask),layer))
+                    for (other,v) in enumerate(vias)
+                        v.layer==layer && any(v.uni .& via_mask) &&
+                            (other!=vi || isfinite(sigma)) && throw(ArgumentError(
+                                "native via resistance polygons overlap in layer $layer; refine the raster or combine their physical models"))
+                    end
+                    if vi==0
+                        push!(vias,via_level(layer,nx,ny));push!(via_sigma,sigma)
+                        vi=length(vias);via_group[key]=vi
+                    end
+                    vias[vi].uni .|= via_mask
+                    vias[vi].tap .|= via_mask
+                end
                 via_polygon_level[(poly.id,layer)]=vi
             end
         end
