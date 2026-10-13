@@ -614,6 +614,22 @@ maxlength — reject with explicit errors rather than silently dropping;
 114→93 for non-default bounds, +20 for via pads). Licensed linked-STF
 solving remains gated and unverified.
 
+Solve-level verification runs on the materialized-equivalent literal:
+`test/fixtures/native_stf_linked_solve` pins a Lite-legal linked pair to
+its hand-written literal record for record, and Lite's actual `em` solve
+of that literal replays inside a 1e-3 complex-S gate at 1/2 GHz
+(observed |ΔS| ≤ 6.4e-4, a common-mode port-plane phase slope with
+magnitude agreement ~2e-5). The same probe decoded two Lite *solve-time*
+license gates beyond the linked-STF ban: solved vias must use Ring fill
+("via polygon which is not set to Ring meshing fill" — `em -N` meshes
+every flag, only the licensed solve restricts it) and no thick-metal
+polygon may solve ("thick metal polygon(s)"). Materialized projects
+containing TMM or non-Ring via fills therefore have no Lite solve oracle;
+their materialization stays byte-verified against `soncmd
+-LoadTechnology` and their solve parity is a DocOnly residual. Ansys
+Electronics Desktop 2025 R1 (HFSS/Nexxim) batch mode is verified
+available as a fallback oracle for cases Lite cannot reach.
+
 Actual technology-editor maintain-physical exports in
 `test/fixtures/native_stf_unit_gui` prove `70000 OHUM = 0.07 OHMM` and
 `2 OHSQ = 2000 MOSQ`. The incorrect OHMM factor previously produced 1000 times

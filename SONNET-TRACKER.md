@@ -433,9 +433,22 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       the tested staircase geometry but semantically real controls).
       Regressions: "Linked STF via mesh flag precedence and pads" (179
       checks) plus the INH flag assertions in the techlayer testset.
-- [ ] D5 native linked-STF EM solving — Lite `-S` gate blocked; HFSS cannot
-      decode STF. Verify materialized project physics vs HFSS where a coupon
-      is buildable. Partly DocOnly.
+- [x] D5 native linked-STF EM solving — DONE to the Lite-verifiable scope.
+      Linked projects cannot solve on Lite at all, so parity is checked on
+      the materialized-equivalent literal: fixture
+      `test/fixtures/native_stf_linked_solve` pins
+      `rich.son`/`rich.stf` → `literal_lite.son` record-for-record
+      (asserted in the "Linked STF materialized literal native solve
+      parity" testset) and Lite's actual `em` solve of the literal
+      replays inside a 1e-3 complex-S gate at 1/2 GHz (observed |ΔS|
+      ≤6.4e-4, common-mode port-plane phase slope; magnitude ~2e-5).
+      Newly decoded Lite *solve-time* gates on the same literal: vias
+      solve only under Ring fill ("via polygon which is not set to Ring
+      meshing fill" — `em -N` still meshes every flag) and no
+      thick-metal polygon may solve ("thick metal polygon(s)"), so
+      TMM/non-Ring materialized solves have no Lite oracle. HFSS 2025R1
+      batch mode is verified working as a fallback oracle. Residual:
+      linked-STF native `-S` and TMM/non-Ring solve parity stay DocOnly.
 - [ ] D6 encrypted material entries — DocOnly (cannot decrypt).
 
 ## E. Ports / calibration / project intake

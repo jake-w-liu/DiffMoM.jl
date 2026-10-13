@@ -581,6 +581,39 @@ end
     end
 end
 
+@testset "Linked STF materialized literal native solve parity" begin
+    # D5 evidence on Lite 18.53: linked-STF projects cannot solve natively
+    # ("Sonnet Lite does not allow use of linked STF files"), so parity is
+    # verified on the materialized-equivalent literal. rich.son+rich.stf is
+    # the Lite-legal linked pair (Normal models, Ring via fill);
+    # literal_lite.son is its hand-written literal equivalent and
+    # literal_lite.native.s2p is Lite's actual solve of that literal.
+    fixture=joinpath(@__DIR__,"fixtures","native_stf_linked_solve")
+    linked=read_sonnet_linked_project(joinpath(fixture,"rich.son"))
+    p=sonnet_materialize_project(linked)
+    q=read_sonnet_project(joinpath(fixture,"literal_lite.son"))
+    # The literal is exactly the materialized project: identical layer
+    # records, identical MET rows (modulo display ids), and identical
+    # per-polygon level/material/target/flags/vertices.
+    normalize(row)=map(t->something(tryparse(Float64,strip(t,'"')),strip(t,'"')),row)
+    @test normalize.(p.layers)==normalize.(q.layers)
+    @test [normalize([m[1];m[3:end]]) for m in p.metals]==
+        [normalize([m[1];m[3:end]]) for m in q.metals]
+    for (a,b) in zip(p.polygons,q.polygons)
+        @test (a.kind,a.level,a.material,a.target,a.vertices)==
+            (b.kind,b.level,b.material,b.target,b.vertices)
+        @test issetequal(a.flags,b.flags)
+    end
+    # Lite's own solve of the literal replays inside the unchanged
+    # complex-S gate at both sweep frequencies.
+    ts=planar_read_touchstone(joinpath(fixture,"literal_lite.native.s2p"))
+    for frequency in ts.frequencies
+        native=ts.s[only(findall(==(frequency),ts.frequencies))]
+        actual=solve_sonnet_project(q,frequency;raw=true,grid=(20,20))
+        @test maximum(abs,actual.s-native)<=1e-3
+    end
+end
+
 @testset "Linked STF model/spec pairing materialization" begin
     # Pairing matrix decoded from `soncmd -LoadTechnology` on Lite 18.53:
     # each model reads only the conductor attributes its condspec exposes,
