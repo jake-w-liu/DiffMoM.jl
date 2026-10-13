@@ -601,15 +601,39 @@ function _stf_cover(t,name)
     return TERM_GND
 end
 
-# A technology layer's GDS <map> leaf is retained GUI metadata; it must not
-# carry element children or text semantics.
+# A technology layer's <map> leaf is artwork-import translation metadata:
+# `dxf_layer`/`gerber_name`/`gds_stream`+`gds_datatype`/`mask` route an
+# imported entity onto this techlayer. matl-1.x declares at most one empty
+# leaf with optional attributes only; numeric fields are literal XSD
+# integers >=0 (variables are not allowed by the schema), and a layer with
+# no declared import channel retains `nothing`.
 function _stf_map_leaves(node)
+    found=nothing
     for child in node.children
         child.name=="map" || throw(ArgumentError("unsupported STF $(node.name) child semantics"))
+        found===nothing || throw(ArgumentError("STF $(node.name) declares duplicate map leaves"))
         isempty(child.children) && isempty(strip(child.text)) ||
             throw(ArgumentError("unsupported STF map semantics"))
+        _stf_known(child,["dxf_layer","gerber_name","gds_stream","gds_datatype","mask"])
+        fields=Dict{String,String}()
+        for attr in ("dxf_layer","gerber_name","gds_stream","gds_datatype","mask")
+            value=get(child.attributes,attr,nothing)
+            value===nothing && continue
+            fields[attr]=value
+        end
+        for attr in ("gds_stream","gds_datatype","mask")
+            haskey(fields,attr) || continue
+            value=tryparse(Int,fields[attr])
+            (value===nothing || value<0) &&
+                throw(ArgumentError("STF map $attr requires a nonnegative literal integer"))
+        end
+        found=isempty(fields) ? (;dxf_layer=nothing,gerber_name=nothing,gds_stream=nothing,
+            gds_datatype=nothing,mask=nothing) :
+            (;dxf_layer=get(fields,"dxf_layer",nothing),gerber_name=get(fields,"gerber_name",nothing),
+            gds_stream=get(fields,"gds_stream",nothing),gds_datatype=get(fields,"gds_datatype",nothing),
+            mask=get(fields,"mask",nothing))
     end
-    return nothing
+    return found
 end
 
 # Resolve a techlayer's optional mesh reference to its definition node. The
@@ -648,7 +672,7 @@ function _stf_techlayers(t::SonnetTechnology,variables)
             child.name=="metal_techlayer" || throw(ArgumentError("unsupported STF diel child semantics"))
             _stf_known(child,["name","layer_name","purpose","material","model","thickness",
                 "bias","mesh","direction","color_pattern","color","pattern","ignore"];children=["map"])
-            _stf_map_leaves(child)
+            map=_stf_map_leaves(child)
             name=_stf_attr(child,"name")
             name===nothing && throw(ArgumentError("STF metal techlayer requires a name"))
             haskey(specs,name) && throw(ArgumentError("duplicate STF techlayer $name"))
@@ -669,7 +693,7 @@ function _stf_techlayers(t::SonnetTechnology,variables)
                 material,model,thickness=_stf_attr(child,"thickness"),
                 bias=_stf_attr(child,"bias",""),direction=_stf_attr(child,"direction","Up"),
                 ignored=_stf_attr(child,"ignore","false") in ("true","1"),
-                mesh=_stf_techlayer_mesh(t,child,:metal))
+                mesh=_stf_techlayer_mesh(t,child,:metal),map)
         end
     end
     vias=_stf_child(t.stack,"vias")
@@ -678,7 +702,7 @@ function _stf_techlayers(t::SonnetTechnology,variables)
             child.name=="via_techlayer" || throw(ArgumentError("unsupported STF vias child semantics"))
             _stf_known(child,["name","material","model","layer_name","purpose","from","to",
                 "bias","mesh","color_pattern","color","pattern","ignore"];children=["map"])
-            _stf_map_leaves(child)
+            map=_stf_map_leaves(child)
             name=_stf_attr(child,"name")
             name===nothing && throw(ArgumentError("STF via techlayer requires a name"))
             haskey(specs,name) && throw(ArgumentError("duplicate STF techlayer $name"))
@@ -699,7 +723,7 @@ function _stf_techlayers(t::SonnetTechnology,variables)
                 material,model,from=_stf_attr(child,"from"),to=_stf_attr(child,"to"),
                 bias=_stf_attr(child,"bias",""),
                 ignored=_stf_attr(child,"ignore","false") in ("true","1"),
-                mesh=_stf_techlayer_mesh(t,child,:via))
+                mesh=_stf_techlayer_mesh(t,child,:via),map)
         end
     end
     return specs

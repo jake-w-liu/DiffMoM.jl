@@ -700,8 +700,19 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       convergence (lines 833/858/985). Oracle: generated coupons + HFSS.
 - [ ] G3 Sonnet artwork leaves: thermals, half-ovals, D-Pack, curved
       polygon-stroke (lines 913/928). Oracle: Lite GUI/BIT archives.
-- [ ] G4 GDS maps / top-to-bottom stack order residual gaps (line 554).
-      Oracle: generated coupons.
+- [x] G4 GDS maps / top-to-bottom stack order. Oracle: matl-1.4 XSD +
+      generated STFs. Techlayer `<map>` leaves now parse their
+      artwork-import translation attributes (`dxf_layer`, `gerber_name`,
+      `gds_stream`, `gds_datatype`, `mask`) with XSD grammar enforcement —
+      at most one empty leaf, literal nonnegative integers for the
+      numeric fields (variables are not schema-legal), and the resolved
+      map attaches to each metal/via spec for downstream routing.
+      Non-integer/negative/unknown-attribute/duplicate-leaf/child-content
+      cases reject with diagnostics (12 checks). Stack-order decoding was
+      already verified (i-th top-down diel owns level i-1). Applying maps
+      to an artwork-entity → techlayer import path remains future work —
+      no consumer exists yet and no installed fixture declares a
+      conflicting map to arbitrate.
 
 ## H. FLOAT / ground-reference residual
 
@@ -733,7 +744,12 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 - [ ] I2 conformal >1024-cell license limit (lines 1286); trapezoid
       refinement partial. HFSS substitute + DocOnly residual.
 - [ ] I3 S/current native viewer license (line 1308) — DocOnly.
-- [ ] I4 DXF mode4096 8 GB estimate (line 1460) — resource path decision.
+- [x] I4 DXF mode4096 8 GB estimate — DONE: matrix-free folding
+      (`dxf_folded_public_solve_3zDFGO`, `dxf_source_images_public_solve_zpuQlw`)
+      fits mode 4096 inside the unchanged 4 GB budget (240037168 B retained
+      vs the former 8060904784-byte rejection); public solve converges
+      (restart 1200, residuals <1e-10, dense-reference S drift 2.5e-9).
+      The remaining accuracy vs native and default-restart items are I1/I6.
 - [ ] I5 peak-process-RSS / opaque-memory acceptance (lines 889/258-numerics).
 - [ ] I6 iterative-solver restart defaults + broad spatial convergence
       (lines 1197-1222).

@@ -1,7 +1,7 @@
 using Test, DiffMoM, SHA, JSON
 using LinearAlgebra: I
 
-function _technology_test_xml(;extra="",units="",materials="",variables="",bias="",stack="",rootattrs="")
+function _technology_test_xml(;extra="",units="",materials="",variables="",bias="",stack="",rootattrs="",meshes="",models="")
     return """<?xml version="1.0"?>
     <technology_file version="1700" $rootattrs>
       <units $units/>
@@ -15,7 +15,8 @@ function _technology_test_xml(;extra="",units="",materials="",variables="",bias=
           <conductor name="Sheet" condspec="shres" shres="2"/>
           $materials
         </materials>
-        <metal_model_defs><metal_model name="Normal" model_type="Normal"/></metal_model_defs>
+        $meshes
+        <metal_model_defs><metal_model name="Normal" model_type="Normal"/>$models</metal_model_defs>
         <bias_defs>
           <bias name="Metal6_Bias">
             <lookup_table row_name="width" col_name="thickness" value_name="rho">
@@ -859,4 +860,50 @@ end
     @test_throws ArgumentError sonnet_technology_lookup(two,0.)
     copyvalue=sonnet_technology_lookup(one,0.);copyvalue[1]=99.
     @test sonnet_technology_lookup(one,0.)==[1.]
+end
+
+@testset "STF techlayer artwork maps parse, validate and retain" begin
+    mktempdir() do dir
+        path=joinpath(dir,"test.stf")
+        meshes="""<mesh_defs><mesh name="Default" type="metal" fill_type="Staircase"/>
+          <mesh name="Vmesh" type="via" fill_type="Default"/></mesh_defs>"""
+        stack="""<diel name="Tech" dielectric="Sub" thickness="50">
+            <metal_techlayer name="Metal3" layer_name="L3" material="Copper" model="Normal" mesh="Default" thickness="2">
+              <map gds_stream="14" gds_datatype="3" mask="1" dxf_layer="M3" gerber_name="m3.gbr"/>
+            </metal_techlayer>
+            <metal_techlayer name="Plain" layer_name="P" material="Copper" model="Normal" mesh="Default" thickness="1"/>
+          </diel>
+          <vias><via_techlayer name="Via3" layer_name="V3" material="Copper" model="Vol" mesh="Vmesh" from="Tech" to="Lower">
+            <map gds_stream="15"/>
+          </via_techlayer></vias>"""
+        write(path,_technology_test_xml(;stack,meshes,models="<via_model name=\"Vol\" model_type=\"Volume\"/>"))
+        t=read_sonnet_technology(path)
+        specs=DiffMoM._stf_techlayers(t,Dict{String,Float64}())
+        m3=specs["Metal3"].map
+        @test m3.gds_stream=="14" && m3.gds_datatype=="3" && m3.mask=="1"
+        @test m3.dxf_layer=="M3" && m3.gerber_name=="m3.gbr"
+        @test specs["Plain"].map===nothing
+        v3=specs["Via3"].map
+        @test v3.gds_stream=="15" && v3.gds_datatype===nothing && v3.dxf_layer===nothing
+        empty_stack="""<diel name="Tech" dielectric="Sub" thickness="50">
+            <metal_techlayer name="Metal3" layer_name="L3" material="Copper" model="Normal" mesh="Default" thickness="2"><map/></metal_techlayer>
+          </diel>"""
+        write(path,_technology_test_xml(;stack=empty_stack,meshes))
+        emptymap=DiffMoM._stf_techlayers(read_sonnet_technology(path),Dict{String,Float64}())["Metal3"].map
+        @test emptymap!==nothing && all(getfield(emptymap,k)===nothing for k in fieldnames(typeof(emptymap)))
+        # Invalid map grammar and values reject before any spec is built.
+        badcases=(
+            "<metal_techlayer name=\"M\" layer_name=\"L\" material=\"Copper\" mesh=\"Default\" thickness=\"1\"><map gds_stream=\"-1\"/></metal_techlayer>",
+            "<metal_techlayer name=\"M\" layer_name=\"L\" material=\"Copper\" mesh=\"Default\" thickness=\"1\"><map gds_stream=\"H\"/></metal_techlayer>",
+            "<metal_techlayer name=\"M\" layer_name=\"L\" material=\"Copper\" mesh=\"Default\" thickness=\"1\"><map gds_datatype=\"x\"/></metal_techlayer>",
+            "<metal_techlayer name=\"M\" layer_name=\"L\" material=\"Copper\" mesh=\"Default\" thickness=\"1\"><map mask=\"y\"/></metal_techlayer>",
+            "<metal_techlayer name=\"M\" layer_name=\"L\" material=\"Copper\" mesh=\"Default\" thickness=\"1\"><map unknown=\"1\"/></metal_techlayer>",
+            "<metal_techlayer name=\"M\" layer_name=\"L\" material=\"Copper\" mesh=\"Default\" thickness=\"1\"><map><sub/></map></metal_techlayer>",
+            "<metal_techlayer name=\"M\" layer_name=\"L\" material=\"Copper\" mesh=\"Default\" thickness=\"1\"><map gds_stream=\"1\"/><map gds_stream=\"2\"/></metal_techlayer>",
+        )
+        for (i,layer) in enumerate(badcases)
+            write(path,_technology_test_xml(;stack="<diel name=\"Tech\" dielectric=\"Sub\" thickness=\"50\">$layer</diel>",meshes))
+            @test_throws ArgumentError DiffMoM._stf_techlayers(read_sonnet_technology(path),Dict{String,Float64}())
+        end
+    end
 end

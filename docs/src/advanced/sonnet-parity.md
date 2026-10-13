@@ -600,7 +600,10 @@ failure evidence. Machine-maximum ceilings have separate regressions.
 
 All three installed public STFs validate against the captured official
 `matl-1.3.xsd`. Their complete XML, model/material/mesh identities, tables,
-GDS maps and top-to-bottom stack order remain retained. Proven providers
+GDS maps and top-to-bottom stack order remain retained; techlayer `<map>`
+artwork-import translations (`dxf_layer`/`gerber_name`/`gds_stream`/
+`gds_datatype`/`mask`) are parsed, XSD-validated and attached to each
+resolved metal/via spec. Proven providers
 evaluate scalar/default isotropic materials and exact native-unit table
 nodes. They reject off-node interpolation/extrapolation, applied etch/rho/RPV
 geometry semantics and unknown models. Declared root `private`/`privenc`
