@@ -1,0 +1,32 @@
+(status): Nexxim version: 2025.1.0 WIN64, build time: Nov 11 2024, 02:46:15
+
+simulation_options(warning): Unknown option batch ignored.
+simulation_options(warning): Unknown option ng ignored.
+simulation_options(warning): Unknown option batch ignored.
+simulation_options(warning): Unknown option ng ignored.
+(status): Analyzing test/fixtures/nexxim_spectre_nport_xfmr/xfmr.sp.
+(info): Processing circuit for new analysis.
+(info): Processing circuit for new analysis.
+parser(warning): First line ".option parhier='local'" will be ignored
+parser(warning): test\fixtures\nexxim_spectre_nport_xfmr\xfmr.sp:12: unrecognized .printlnafmt ignored
+parser(warning): First line ".option parhier='local'" will be ignored
+parser(warning): test\fixtures\nexxim_spectre_nport_xfmr\xfmr.sp:12: unrecognized .printlnafmt ignored
+omp(status): Requested number of threads in UI setting is 1
+circuit_details(status): Total device types: 3
+device type                                       number of devices
+----------------------------------------------------------------------
+inductor                                          2
+mutual_inductors                                  1
+port_impedance                                    2
+(status): License checkout took 16.047 seconds.
+models:inductor(warning): nexxim$$Int$$l1 . - Inductive element value exceeds 0.1H.
+models:inductor(warning): nexxim$$Int$$l2 . - Inductive element value exceeds 0.1H.
+(info): Starting analysis type LNA.
+models:inductor(warning): nexxim$$Int$$l1 . - Inductive element value exceeds 0.1H.
+models:inductor(warning): nexxim$$Int$$l2 . - Inductive element value exceeds 0.1H.
+(info): Starting analysis type LNA.
+analysis:dc(status): Total DC newton iterations = 4, DC conv = 1.
+(status): LNA cpu time = 0.016
+(info): Simulation succeeded. Total simulator time: 0:00:16
+(status): Start Time:  10/13/2026 16:07:41, End Time:  10/13/2026 16:07:57, Host X202605221330, 
+(info): Simulation succeeded. Total simulator time: 0:00:16

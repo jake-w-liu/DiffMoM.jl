@@ -44,12 +44,12 @@ function _spectre_assignments(fields,card)
 end
 
 const _SPECTRE_MASTERS=("resistor","capacitor","inductor","mutual_inductor",
-    "vcvs","vccs","cccs","ccvs","vsource","isource","tline")
+    "vcvs","vccs","cccs","ccvs","vsource","isource","tline","nport","transformer")
 
 # Vendor/nonlinear masters name themselves explicitly in readable exports;
 # they reject with their own diagnostic rather than "undefined subckt".
-const _SPECTRE_VENDOR=("diode","mosfet","bjt","jfet","bsim","nport","snp",
-    "transformer","behavioral_source","bsource","ahdl","relay","switch",
+const _SPECTRE_VENDOR=("diode","mosfet","bjt","jfet","bsim","snp",
+    "behavioral_source","bsource","ahdl","relay","switch",
     "diff_amp","vsource_ac","isource_ac","pwl","sin")
 
 # Lower one component record to the equivalent SPICE-token card. Spectre
@@ -136,6 +136,20 @@ function _spectre_component(card,fields,names,definitions)
             _spectre_identifier(nodes[3]),_spectre_identifier(nodes[4])]
         foreach(p->append!(tokens,(p.first,"=",_spectre_value(p.second))),props)
         return tokens
+    elseif master=="nport"
+        !isempty(nodes) && isempty(trailing) ||
+            _spice_failure(card,"Spectre nport requires only signal terminal nodes")
+        length(props)==1 && only(props).first=="file" ||
+            _spice_failure(card,"Spectre nport supports only file= Touchstone databanks")
+        path=only(props).second
+        return ["N_"*name;[_spectre_identifier(n) for n in nodes];"file";"=";path]
+    elseif master=="transformer"
+        length(nodes)==4 && isempty(trailing) ||
+            _spice_failure(card,"Spectre transformer requires primary and secondary node pairs")
+        length(props)==1 && only(props).first=="ratio" ||
+            _spice_failure(card,"Spectre transformer supports only ratio=")
+        return ["Z_"*name,_spectre_identifier(nodes[1]),_spectre_identifier(nodes[2]),
+            _spectre_identifier(nodes[3]),_spectre_identifier(nodes[4]),value("ratio")]
     end
     _spice_failure(card,"unsupported Spectre record; only linear primitives, controlled sources, DC sources, tline, instances and parameters are ingested")
 end
@@ -153,8 +167,11 @@ by `subckt`/`ends` definitions, literal scalar `resistor r=`, `capacitor
 c=`, `inductor l=` cards, named `mutual_inductor coupling= ind1= ind2=`,
 `vcvs`/`vccs` node-pair and `cccs`/`ccvs` `probe=` controlled sources,
 DC-only `vsource`/`isource` (`type=dc`), `tline` (`z0` plus `td` or
-`f`/`nl`), nested instances `name nodes... master [param=value]...` and
-`parameters` declarations at file or subckt scope. Parenthesized node
+`f`/`nl`), file-backed `nport file=` Touchstone databanks, ideal
+`transformer ratio=` sections, nested instances `name nodes... master
+[param=value]...` and `parameters` declarations at file or subckt
+scope. `nport` attaches its file's signal terminals to the common
+reference and interpolates inside sampled coverage only. Parenthesized node
 lists are optional; component labels must start with their R/L/C class,
 as in the retained native exports. Full-line semicolon comments are
 accepted. Unambiguous SI scales may have ignored unit suffixes; mixed

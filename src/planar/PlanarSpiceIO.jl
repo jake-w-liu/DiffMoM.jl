@@ -333,9 +333,10 @@ struct PlanarSpiceModel
     inductive_rows::Dict{Int,Vector{Tuple{Int,Float64}}}
     lines::Dict{Int,_SpiceLineSpec}
     coupled::Dict{Int,_SpiceCoupledSpec}
+    nports::Dict{Int,_SpiceNportSpec}
 end
 PlanarSpiceModel(e,n,p,h,b,l,s,v,c,r)=PlanarSpiceModel(e,n,p,h,b,l,s,v,c,r,Dict{Int,_SpiceLineSpec}(),
-    Dict{Int,_SpiceCoupledSpec}())
+    Dict{Int,_SpiceCoupledSpec}(),Dict{Int,_SpiceNportSpec}())
 PlanarSpiceModel(e,n,p,h,b,l,s,v)=PlanarSpiceModel(e,n,p,h,b,l,s,v,
     _SpiceCoupling[],Dict{Int,Vector{Tuple{Int,Float64}}}())
 include("PlanarSpiceCoupling.jl")
@@ -362,7 +363,9 @@ W `N=`-conductor cards resolve `.model ... W MODELTYPE=RLGC` constant
 unsupported. Matrices use Nexxim lower-triangular row-major order, must be
 positive semidefinite and share one common return per side. Duplicate model
 definitions, general RLCG, IC/transient instance fields and other line-card
-classes reject with source diagnostics."""
+classes reject with source diagnostics. Spectre-lowered `nport` records
+retain their Touchstone databank for interpolation inside sampled coverage;
+`transformer` records stamp their ideal finite ratio."""
 function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
         parameters=Dict{String,Float64}(),pin_nodes=Dict{String,String}(),
         max_bytes=16*1024^2,max_elements=10000,max_nodes=10000,max_depth=32,
@@ -378,6 +381,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
     elements=_SpiceElement[];nodes=Dict{String,Int}();names=Set{String}();pins=Dict{String,Int}();active=String[]
     pending=Tuple{String,Vector{String},Float64,_SpiceCard}[]
     lines=Dict{Int,_SpiceLineSpec}();coupled=Dict{Int,_SpiceCoupledSpec}()
+    nports=Dict{Int,_SpiceNportSpec}();nportfiles=Dict{String,String}()
     function node(key)
         key=="0" && return 0
         if !haskey(nodes,key)
@@ -465,6 +469,15 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
                     parsed=_spice_w_instance(c,values,models,b)
                     nds=localnode.(parsed.nodes)
                     coupled[length(elements)+1]=parsed.spec
+                elseif kind=='N'
+                    parsed=_spice_nport_instance(c,lib,b)
+                    nds=localnode.(parsed.nodes)
+                    nports[length(elements)+1]=parsed.spec
+                    nportfiles[parsed.spec.file]=parsed.spec.sha256
+                elseif kind=='Z'
+                    length(t)==6 || _spice_failure(c,"transformer requires four terminals and a ratio")
+                    nds=localnode.(t[2:5]);value=_spice_expression(t[6],values,b)
+                    isfinite(value) && !iszero(value) || _spice_failure(c,"transformer ratio must be finite and nonzero")
                 elseif kind in ('R','L','C')
                     length(t)==4 || _spice_failure(c,"only scalar R/L/C cards are supported")
                     nds=localnode.(t[2:3]);value=_spice_expression(t[4],values,b)
@@ -511,7 +524,8 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
     end
     _spice_reserve!(b,128length(lib.provenance))
     couplings,rows=_spice_compile_couplings(pending,elements,b,max_coupled_size,max_coupling_pairs)
-    PlanarSpiceModel(elements,nodes,pins,copy(lib.provenance),b.used,lib,top,over,couplings,rows,lines,coupled)
+    PlanarSpiceModel(elements,nodes,pins,merge(copy(lib.provenance),nportfiles),b.used,lib,top,over,
+        couplings,rows,lines,coupled,nports)
 end
 
 # Scalar primitives contribute one physical branch current; lines contribute
@@ -667,6 +681,25 @@ function circuit_add_spice!(circuit::PlanarCircuit,pin_nodes::AbstractVector,
                 f->_spice_coupled_line_y(spec,f)
             end
             push!(added,_CircuitNetwork(terminals,response,:y,_planar_store_references(50.0,2n)));continue
+        end
+        if e.kind=='Z'
+            terminals=[(mapping[e.nodes[1]+1],mapping[e.nodes[2]+1]),(mapping[e.nodes[3]+1],mapping[e.nodes[4]+1])]
+            push!(added,_CircuitTransformer(terminals,e.value));continue
+        end
+        if e.kind=='N'
+            haskey(model.nports,index) || _spice_failure(e.card,"compiled nport metadata missing")
+            spec=model.nports[index]
+            terminals=[(mapping[n+1],0) for n in e.nodes]
+            all(pair->pair[1]!=pair[2],terminals) ||
+                _spice_failure(e.card,"nport signal terminals must be nonzero nodes")
+            data=spec.data
+            response=let data=data
+                f->planar_network_response(data,f)
+            end
+            refs=let data=data
+                f->_network_reference_at(data,f)
+            end
+            push!(added,_CircuitNetwork(terminals,response,:s,_planar_store_references(refs,length(e.nodes))));continue
         end
         terminals=[(mapping[e.nodes[1]+1],mapping[e.nodes[2]+1])]
         control=e.kind in ('E','G') ? (mapping[e.nodes[3]+1],mapping[e.nodes[4]+1]) : (0,0)

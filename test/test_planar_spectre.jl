@@ -251,3 +251,81 @@ end
         end
     end
 end
+
+@testset "spectre nport databank and ideal transformer" begin
+    fixture=joinpath(@__DIR__,"fixtures","nexxim_spectre_nport_xfmr")
+    bank=joinpath(fixture,"databank.s2p")
+    mktempdir() do directory
+        cp(bank,joinpath(directory,"f3.s2p"))
+        deck=joinpath(directory,"f3.scs")
+        write(deck,"simulator lang=spectre\n"*
+            "subckt cell (a b c d)\nt1 (a b c d) transformer ratio=2\nends\n"*
+            "subckt topn (p1 p2)\nnp (p1 p2) nport file=\"f3.s2p\"\nends\n"*
+            "subckt topt (p1 p2)\nt1 (p1 0 p2 0) transformer ratio=2\nends\n"*
+            "subckt cas (in out)\nx1 (in 0 a 0) cell\nnp (a out) nport file=\"f3.s2p\"\nends\n")
+        lib=planar_read_spectre(deck;max_bytes=1<<20)
+        # nport reproduces its Touchstone samples exactly and interpolates.
+        mn=planar_spice_model(lib,"topn")
+        @test length(mn.nports)==1
+        spec=only(values(mn.nports))
+        @test spec.data.frequencies==[1e9,2e9]
+        @test realpath(spec.file)==realpath(joinpath(directory,"f3.s2p"))
+        @test length(spec.sha256)==64
+        @test mn.provenance[realpath(joinpath(directory,"f3.s2p"))]==spec.sha256
+        sknot=planar_spice_sparams(mn,1e9;pin_pairs=[("p1","0"),("p2","0")],z0=50.).s
+        @test sknot[1,1]≈0.9-0.1im && sknot[2,1]≈0.05+0.01im && sknot[2,2]≈0.9-0.1im
+        smid=planar_spice_sparams(mn,1.5e9;pin_pairs=[("p1","0"),("p2","0")],z0=50.).s
+        @test smid[2,1]≈0.075+0.015im && smid[1,1]≈0.875-0.15im
+        @test_throws ArgumentError planar_spice_sparams(mn,3e9;pin_pairs=[("p1","0"),("p2","0")],z0=50.)
+        # Ideal transformer ratio=2 (V1/V2=2): analytic S and the Nexxim
+        # unity-coupled-inductor oracle agree to CSV precision.
+        mt=planar_spice_model(lib,"topt")
+        st=planar_spice_sparams(mt,1e9;pin_pairs=[("p1","0"),("p2","0")],z0=50.).s
+        @test st[1,1]≈0.6 && st[2,1]≈0.8 && st[1,2]≈0.8 && st[2,2]≈-0.6
+        oracle=read(joinpath(fixture,"xfmr.csv"),String)
+        row=only(split(oracle,"\n";keepempty=false)[2:end])
+        fields=split(row,",");vals=parse.(Float64,fields[3:10])
+        @test abs(st[1,1]-(vals[1]+im*vals[2]))<1e-5
+        @test abs(st[1,2]-(vals[3]+im*vals[4]))<1e-5
+        @test abs(st[2,1]-(vals[5]+im*vals[6]))<1e-5
+        @test abs(st[2,2]-(vals[7]+im*vals[8]))<1e-5
+        # Cascade transformer->databank: independent ABCD-chain oracle.
+        function s2abcd(s,z0)
+            A=((1+s[1,1])*(1-s[2,2])+s[1,2]*s[2,1])/(2s[2,1])
+            B=z0*((1+s[1,1])*(1+s[2,2])-s[1,2]*s[2,1])/(2s[2,1])
+            C=((1-s[1,1])*(1-s[2,2])-s[1,2]*s[2,1])/(2z0*s[2,1])
+            D=((1-s[1,1])*(1+s[2,2])+s[1,2]*s[2,1])/(2s[2,1])
+            [A B;C D]
+        end
+        function abcd2s(m,z0)
+            den=m[1,1]+m[1,2]/z0+m[2,1]*z0+m[2,2]
+            [(m[1,1]+m[1,2]/z0-m[2,1]*z0-m[2,2])/den 2det(m)/den;
+             2/den (-m[1,1]+m[1,2]/z0-m[2,1]*z0+m[2,2])/den]
+        end
+        mcas=planar_spice_model(lib,"cas")
+        for f in (1e9,1.5e9)
+            sn=planar_spice_sparams(mn,f;pin_pairs=[("p1","0"),("p2","0")],z0=50.).s
+            chain=[2.0 0;0 0.5]*s2abcd(sn,50.0)
+            expect=abcd2s(chain,50.0)
+            got=planar_spice_sparams(mcas,f;pin_pairs=[("in","0"),("out","0")],z0=50.).s
+            @test got≈expect atol=1e-12
+        end
+        # Negative paths keep source:line diagnostics.
+        badcases=(
+            "subckt x (a b)\nn (a b) nport file=\"missing.s2p\"\nends",
+            "subckt x (a b)\nn (a b) nport file=\"../outside.s2p\"\nends",
+            "subckt x (a b)\nn (a b) nport file=\"f3.s2p\" extra=1\nends",
+            "subckt x (a b)\nn (a) nport file=\"f3.s2p\"\nends",
+            "subckt x (a b)\nt (a 0 b) transformer ratio=2\nends",
+            "subckt x (a b)\nt (a 0 b 0) transformer ratio=0\nends",
+            "subckt x (a b)\nt (a 0 b 0) transformer gain=2\nends",
+        )
+        for (i,body) in enumerate(badcases)
+            bad=joinpath(directory,"f3bad$i.scs")
+            write(bad,"simulator lang=spectre\nparameters bias=1\n$body\n")
+            error=try planar_spice_model(planar_read_spectre(bad),"x");nothing catch e;e end
+            @test error isa ArgumentError
+            @test occursin(realpath(bad)*":",sprint(showerror,error))
+        end
+    end
+end

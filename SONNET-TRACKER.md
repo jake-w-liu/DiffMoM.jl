@@ -670,8 +670,27 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       `include`, transient source types, expressions outside the
       parameter grammar and analysis cards reject loudly with
       source:line. Case-sensitive `1M`=mega semantics preserved.
-- [ ] F3 nonlinear/vendor model adapters. Oracle: Nexxim (linear subset),
-      DocOnly nonlinear residual.
+- [x] F3 linear vendor-library records (`nport`, `transformer`). Oracle:
+      file roundtrip + Nexxim 2025R1 coupled-inductor equivalent.
+      `nport file=` ingests root-confined relative Touchstone databanks
+      (`planar_read_touchstone`, any port count, quoted paths), retains
+      data + SHA256 provenance in `PlanarSpiceModel.provenance`, and
+      attaches as `_CircuitNetwork` with per-frequency reference
+      interpolation inside sampled coverage only. `transformer ratio=`
+      stamps the existing `_CircuitTransformer` (`V1/V2=ratio`,
+      `ratio·I1+I2=0`). Verified: databank samples reproduced exactly at
+      knots and linearly between them; bare transformer S =
+      (+0.6, 0.8, 0.8, −0.6) matches both the analytic ratio-2 matrix and
+      a Nexxim unity-coupled inductor oracle (L1/L2=4, K=1,
+      `test/fixtures/nexxim_spectre_nport_xfmr`, |Δ|<1e-5 CSV precision);
+      transformer→databank cascade matches an independent ABCD-chain
+      computation to 1e-12 at 1 GHz and 1.5 GHz; missing file, root
+      escape, absolute path, port-count mismatch, wrong property keys,
+      node-count and zero-ratio rejections all keep source:line
+      diagnostics (29 checks). Nonlinear/vendor masters (`diode`,
+      `bjt`, `mosfet`, `snp`, `bsource`, transient `vsource_ac`,
+      `pwl`, …) remain DocOnly: no linearizable Sonnet export emits them
+      and no linear oracle exists.
 
 ## G. Layout translation
 

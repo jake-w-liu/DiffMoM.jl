@@ -357,3 +357,42 @@ function _spice_line_stamp!(matrix,row,terminals,spec,f)
     end
     nothing
 end
+
+"""Retained Touchstone databank for a Spectre `nport` file element. The
+databank owns the parsed network plus the resolved file identity; frequency
+evaluation stays inside the sampled coverage (linear complex-S
+interpolation, no extrapolation)."""
+struct _SpiceNportSpec
+    data::PlanarNetworkData
+    file::String
+    sha256::String
+end
+
+# Lowered spectre nport tokens are `N_name n1 … nN file = path`.
+function _spice_nport_instance(c::_SpiceCard,lib,budget)
+    t=c.tokens
+    length(t)>=5 && t[end-2]=="file" && t[end-1]=="=" ||
+        _spice_failure(c,"nport requires terminal nodes and file= Touchstone path")
+    nodes=t[2:end-3]
+    path=t[end]
+    startswith(path,'"') && endswith(path,'"') && length(path)>=2 && (path=path[2:end-1])
+    startswith(path,'\'') && endswith(path,'\'') && length(path)>=2 && (path=path[2:end-1])
+    isempty(path) && _spice_failure(c,"nport file= requires a nonempty path")
+    isabspath(path) && _spice_failure(c,"nport file= requires a relative path")
+    full=normpath(joinpath(lib.root,path))
+    resolved=isfile(full) ? realpath(full) : full
+    first(splitpath(relpath(resolved,lib.root)))!=".." ||
+        _spice_failure(c,"nport file= resolves outside the library root")
+    isfile(resolved) || _spice_failure(c,"nport Touchstone file does not exist")
+    _spice_reserve!(budget,4096+2ncodeunits(resolved))
+    data=try
+        planar_read_touchstone(resolved;max_bytes=budget.limit-budget.used)
+    catch e
+        _spice_failure(c,"nport Touchstone read: $(sprint(showerror,e))")
+    end
+    length(data.z0)==length(nodes) ||
+        _spice_failure(c,"nport file port count does not match terminal nodes")
+    sha=open(io->bytes2hex(SHA.sha256(io)),resolved)
+    _spice_reserve!(budget,1024+_sonnet_files_data_payload(data)+2ncodeunits(sha))
+    (nodes=nodes,spec=_SpiceNportSpec(data,resolved,sha))
+end
