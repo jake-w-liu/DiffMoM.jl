@@ -281,9 +281,10 @@ function planar_read_spice(path::AbstractString;root=dirname(abspath(path)),max_
             pairs=_spice_assignments(fields[2:end])
             current===nothing ? append!(parameters,pairs) : push!(current.cards,c)
         elseif kind==".model"
-            length(fields)>=3 && lowercase(fields[3])=="ltra" || _spice_failure(c,"only linear .model LTRA is supported")
+            length(fields)>=3 && lowercase(fields[3]) in ("ltra","w") ||
+                _spice_failure(c,"only linear .model LTRA and W RLGC are supported")
             current===nothing || push!(current.cards,c)
-        elseif current!==nothing && uppercase(first(kind)) in ('R','L','C','E','G','F','H','V','I','X','K','T','O')
+        elseif current!==nothing && uppercase(first(kind)) in ('R','L','C','E','G','F','H','V','I','X','K','T','O','W')
             push!(current.cards,c)
         else
             _spice_failure(c,"unsupported SPICE card $kind; nonlinear, behavioural, model, analysis and global directives are not ingested")
@@ -316,7 +317,9 @@ and `couplings`; exact ideal constraints do not require finite admittance.
 K records are metadata referencing physical L branches. They add no
 unknowns or galvanic connections between isolated winding returns.
 `lines` retains ordered T/O physical coefficients, scoped model origins
-and transient controls; each line adds two physical current unknowns."""
+and transient controls; each line adds two physical current unknowns.
+`coupled` retains resolved N-conductor W RLGC models; each instance
+contributes a 2N-port admittance block evaluated per solve frequency."""
 struct PlanarSpiceModel
     elements::Vector{_SpiceElement}
     nodes::Dict{String,Int}
@@ -329,8 +332,10 @@ struct PlanarSpiceModel
     couplings::Vector{_SpiceCoupling}
     inductive_rows::Dict{Int,Vector{Tuple{Int,Float64}}}
     lines::Dict{Int,_SpiceLineSpec}
+    coupled::Dict{Int,_SpiceCoupledSpec}
 end
-PlanarSpiceModel(e,n,p,h,b,l,s,v,c,r)=PlanarSpiceModel(e,n,p,h,b,l,s,v,c,r,Dict{Int,_SpiceLineSpec}())
+PlanarSpiceModel(e,n,p,h,b,l,s,v,c,r)=PlanarSpiceModel(e,n,p,h,b,l,s,v,c,r,Dict{Int,_SpiceLineSpec}(),
+    Dict{Int,_SpiceCoupledSpec}())
 PlanarSpiceModel(e,n,p,h,b,l,s,v)=PlanarSpiceModel(e,n,p,h,b,l,s,v,
     _SpiceCoupling[],Dict{Int,Vector{Tuple{Int,Float64}}}())
 include("PlanarSpiceCoupling.jl")
@@ -351,8 +356,13 @@ Compiled magnetic coefficients must be representable in Float64.
 T/O preserve their two separate return coordinates. LTRA uses exact finite
 DC/small-length transfer equations and bounded travelling-wave equations
 otherwise; near-DC series resistance is retained without snapping frequency.
-Duplicate model definitions, general RLCG, IC/transient instance fields
-and other line-card classes reject with source diagnostics."""
+W `N=`-conductor cards resolve `.model ... W MODELTYPE=RLGC` constant
+`Lo/Co` per-unit-length matrices plus optional `Ro/Go`; `TABLEMODEL`,
+`FSMODEL`, `SMODEL`, `RLGCFILE` and frequency-dependent `Rs/Gd` terms are
+unsupported. Matrices use Nexxim lower-triangular row-major order, must be
+positive semidefinite and share one common return per side. Duplicate model
+definitions, general RLCG, IC/transient instance fields and other line-card
+classes reject with source diagnostics."""
 function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
         parameters=Dict{String,Float64}(),pin_nodes=Dict{String,String}(),
         max_bytes=16*1024^2,max_elements=10000,max_nodes=10000,max_depth=32,
@@ -367,7 +377,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
     b=_SpiceBudget(0,max_bytes,max_elements,0,max_depth);_spice_reserve!(b,lib.payload)
     elements=_SpiceElement[];nodes=Dict{String,Int}();names=Set{String}();pins=Dict{String,Int}();active=String[]
     pending=Tuple{String,Vector{String},Float64,_SpiceCard}[]
-    lines=Dict{Int,_SpiceLineSpec}()
+    lines=Dict{Int,_SpiceLineSpec}();coupled=Dict{Int,_SpiceCoupledSpec}()
     function node(key)
         key=="0" && return 0
         if !haskey(nodes,key)
@@ -451,6 +461,10 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
                         models[key]
                     end
                     _spice_reserve!(b,128);lines[length(elements)+1]=spec
+                elseif kind=='W'
+                    parsed=_spice_w_instance(c,values,models,b)
+                    nds=localnode.(parsed.nodes)
+                    coupled[length(elements)+1]=parsed.spec
                 elseif kind in ('R','L','C')
                     length(t)==4 || _spice_failure(c,"only scalar R/L/C cards are supported")
                     nds=localnode.(t[2:3]);value=_spice_expression(t[4],values,b)
@@ -497,7 +511,7 @@ function planar_spice_model(lib::PlanarSpiceLibrary,name::AbstractString;
     end
     _spice_reserve!(b,128length(lib.provenance))
     couplings,rows=_spice_compile_couplings(pending,elements,b,max_coupled_size,max_coupling_pairs)
-    PlanarSpiceModel(elements,nodes,pins,copy(lib.provenance),b.used,lib,top,over,couplings,rows,lines)
+    PlanarSpiceModel(elements,nodes,pins,copy(lib.provenance),b.used,lib,top,over,couplings,rows,lines,coupled)
 end
 
 # Scalar primitives contribute one physical branch current; lines contribute
@@ -593,7 +607,10 @@ including zero gains, ideal shorts and forward voltage-source controllers.
 Independent DC V/I values are retained as provenance; their homogeneous
 incremental AC excitation is zero. T/O retain physical currents and independent
 return gauges, including when F/H or K refer to later scalar current branches.
-This is not a DC operating-point solver."""
+W multiconductor sections stamp their exact uniform-RLGC 2N-port admittance
+through an eigen decomposition of the series/shunt matrix product; their two
+return nodes stay independent physical coordinates. This is not a DC
+operating-point solver."""
 function circuit_add_spice!(circuit::PlanarCircuit,pin_nodes::AbstractVector,
         model::PlanarSpiceModel;name="spice$(length(circuit.elements)+1)",
         max_bytes::Integer=_default_max_dense_payload_bytes())
@@ -633,6 +650,23 @@ function circuit_add_spice!(circuit::PlanarCircuit,pin_nodes::AbstractVector,
             haskey(model.lines,index) || _spice_failure(e.card,"compiled line metadata missing")
             terminals=[(mapping[e.nodes[1]+1],mapping[e.nodes[2]+1]),(mapping[e.nodes[3]+1],mapping[e.nodes[4]+1])]
             push!(added,_CircuitSpiceLine(terminals,model.lines[index],e,owner));continue
+        end
+        if e.kind=='W'
+            haskey(model.coupled,index) || _spice_failure(e.card,"compiled coupled-line metadata missing")
+            spec=model.coupled[index];n=spec.n
+            terminals=Tuple{Int,Int}[]
+            for k in 1:n
+                push!(terminals,(mapping[e.nodes[k]+1],mapping[e.nodes[n+1]+1]))
+            end
+            for k in 1:n
+                push!(terminals,(mapping[e.nodes[n+1+k]+1],mapping[e.nodes[2n+2]+1]))
+            end
+            all(pair->pair[1]!=pair[2],terminals) ||
+                _spice_failure(e.card,"W signal and return terminals must be distinct nodes")
+            response=let spec=spec
+                f->_spice_coupled_line_y(spec,f)
+            end
+            push!(added,_CircuitNetwork(terminals,response,:y,_planar_store_references(50.0,2n)));continue
         end
         terminals=[(mapping[e.nodes[1]+1],mapping[e.nodes[2]+1])]
         control=e.kind in ('E','G') ? (mapping[e.nodes[3]+1],mapping[e.nodes[4]+1]) : (0,0)

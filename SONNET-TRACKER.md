@@ -643,8 +643,16 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## F. Spectre / SPICE / netlists
 
-- [ ] F1 other SPICE line classes (parity line 128) — T/O done; L/K/W/etc.
-      Oracle: published line-model equations + Nexxim.
+- [x] F1 other SPICE line classes (parity line 128) — T/O done earlier;
+      W N-conductor coupled line implemented: `.model x W MODELTYPE=RLGC`
+      constant `Lo/Co` (+optional `Ro/Go`) lower-triangular symmetric PSD
+      matrices, `N<=64`, exact uniform-RLGC 2N-port admittance via modal
+      decomposition (analytic `gamma*coth`/`gamma*csch` coefficients),
+      independent return nodes as physical floating coordinates, Nexxim
+      2025R1 W-element oracle to ~7e-7 (fixture
+      `test/fixtures/nexxim_wline_coupled`, 51 checks). `TABLEMODEL`,
+      `FSMODEL`, `SMODEL`, `RLGCFILE` and frequency-dependent `Rs/Gd`
+      reject loudly; U/other line classes remain DocOnly scope.
 - [ ] F2 broader Spectre grammar + vendor-library adapters. Oracle: Nexxim
       netlist equivalence.
 - [ ] F3 nonlinear/vendor model adapters. Oracle: Nexxim (linear subset),

@@ -124,11 +124,17 @@ the signed coupling decks under `test/fixtures/spice_coupling_ngspice47`.
 Both preserve original source hashes, engine logs and SHA256 manifests.
 Scalar and coupled project loads also verify physical current/radiation
 node projection. This is an explicit linear export subset; arbitrary
-Spectre/vendor execution is not claimed. Nonlinear/behavioural models,
-other line classes and broader native vendor-library adapters remain implementation
-items. Manufactured native SMD SPARAM and SPROJ fixtures each hit an
-explicit Sonnet Lite license rejection, retained separately from their
-successful IDEAL/child-netlist controls.
+Spectre/vendor execution is not claimed. W-element N-conductor coupled
+lines (`MODELTYPE=RLGC` constant `Lo/Co[/Ro/Go]` matrices) stamp their
+exact uniform-RLGC 2N-port admittance through a modal decomposition of
+the series/shunt matrix product, verified against an independent Nexxim
+W-element solve (`test/fixtures/nexxim_wline_coupled`, ~7e-7 archived
+complex-S agreement); `TABLEMODEL`/`FSMODEL`/`SMODEL`/`RLGCFILE` sources
+and frequency-dependent `Rs/Gd` terms reject loudly. Nonlinear/behavioural
+models, other line classes and broader native vendor-library adapters
+remain implementation items. Manufactured native SMD SPARAM and SPROJ
+fixtures each hit an explicit Sonnet Lite license rejection, retained
+separately from their successful IDEAL/child-netlist controls.
 
 The bounded SPICE T/O subset adds 5023 durable checks, retaining 272 exact
 ngspice47 source/deck/log/voltage/current files and hashes under

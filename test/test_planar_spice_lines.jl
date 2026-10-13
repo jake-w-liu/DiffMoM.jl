@@ -160,9 +160,9 @@ end
             write(path,body(text))
             @test_throws ArgumentError planar_spice_model(planar_read_spice(path),"line")
         end
-        for text in (".model diode D IS=1e-14\n", ".subckt line a b\nW1 a b\n.ends line\n")
-            write(path,text);@test_throws ArgumentError planar_read_spice(path)
-        end
+        write(path,".model diode D IS=1e-14\n");@test_throws ArgumentError planar_read_spice(path)
+        write(path,".subckt line a b\nW1 a b\n.ends line\n")
+        @test_throws ArgumentError planar_spice_model(planar_read_spice(path),"line")
         write(path,body("T1 a ga b gb Z0=50 TD=1n"))
         library=planar_read_spice(path);model=planar_spice_model(library,"line")
         @test_throws ArgumentError planar_read_spice(path;max_bytes=1)
@@ -213,6 +213,107 @@ end
         @test length(many.nodes)==516
         @test_throws ArgumentError planar_spice_model(library,"line";max_bytes=many.payload-1)
         @test_throws ArgumentError planar_spice_model(library,"line";max_elements=127)
+    end
+end
+
+function _wline_nexxim_csv(path::AbstractString,n::Integer)
+    rows=Tuple{Float64,Matrix{ComplexF64}}[]
+    for line in readlines(path)[2:end]
+        tokens=split(line,",")
+        S=[let k=3+2((i-1)n+(j-1));parse(Float64,tokens[k])+im*parse(Float64,tokens[k+1]) end
+            for i in 1:n,j in 1:n]
+        push!(rows,(parse(Float64,tokens[2]),S))
+    end
+    rows
+end
+
+@testset "SPICE W coupled multiconductor line: modal RLGC + Nexxim oracle" begin
+    fixture=joinpath(@__DIR__,"fixtures","nexxim_wline_coupled")
+    model=planar_spice_model(planar_read_spice(joinpath(fixture,"cpl.spc")),"cpl")
+    @test length(model.elements)==1 && only(model.elements).kind=='W'
+    @test length(model.coupled)==1
+    spec=only(values(model.coupled))
+    @test spec.n==2 && spec.length==0.05 && spec.model_name=="cplw"
+    @test spec.l≈[4.0e-7 1.0e-7;1.0e-7 3.8e-7]
+    @test spec.c≈[1.3e-10 -3.5e-11;-3.5e-11 1.4e-10]
+    @test spec.r≈[2.0 0.5;0.5 2.0]
+    @test spec.g≈[1.0e-5 -2.0e-6;-2.0e-6 1.2e-5]
+    # The eigen-stamped 2N-port admittance is reciprocal with equal
+    # near/far diagonal blocks and nonzero physical coupling.
+    y=DiffMoM._spice_coupled_line_y(spec,1e9)
+    @test y≈transpose(y) rtol=1e-12 atol=1e-18
+    @test y[1:2,1:2]≈y[3:4,3:4] rtol=1e-12 atol=1e-18
+    @test all(!iszero,y[1:2,3:4])
+    # Stable hyperbolic helpers agree with literal x*coth/x*csch away from
+    # zero and give the analytic unit limit at the origin.
+    for x in (0.0+0im,1e-9,1e-4,0.01+0.5im,0.7+2im,2.0-1im,15+0im,80im)
+        a,b=DiffMoM._spice_coupled_hyperbolic(x)
+        if iszero(x)
+            @test a≈1 && b≈1
+        else
+            @test a≈x/tanh(x) rtol=1e-11 atol=1e-11
+            @test b≈x/sinh(x) rtol=1e-11 atol=1e-11
+        end
+    end
+    # Independent Nexxim W-element oracle at both archived frequencies.
+    pairs=[("a1","0"),("a2","0"),("b1","0"),("b2","0")]
+    for (f,S) in _wline_nexxim_csv(joinpath(fixture,"wline.csv"),4)
+        ours=planar_spice_sparams(model,f;pin_pairs=pairs)
+        @test ours.s≈S atol=1e-3 rtol=1e-3
+    end
+    # N=1 degenerates to the closed-form scalar RLGC admittance.
+    mktempdir() do directory
+        path=joinpath(directory,"w.lib")
+        write(path,".subckt single a b\nw1 a 0 b 0 n=1 l=0.05 rlgcmodel=onew\n"*
+            ".model onew w modeltype=rlgc n=1 fdie=1e9 lo=4.0e-7 co=1.3e-10 ro=2.0 go=1.0e-5\n.ends single\n")
+        single=planar_spice_model(planar_read_spice(path),"single")
+        onespec=only(values(single.coupled))
+        for f in (0.5e9,1.5e9)
+            z=2.0+1im*2pi*f*4.0e-7;yunit=1.0e-5+1im*2pi*f*1.3e-10
+            γ=sqrt(z*yunit);zc=sqrt(z/yunit)
+            ref=[coth(γ*0.05)/zc -csch(γ*0.05)/zc;-csch(γ*0.05)/zc coth(γ*0.05)/zc]
+            @test DiffMoM._spice_coupled_line_y(onespec,f)≈ref rtol=1e-12 atol=1e-18
+        end
+        # Independent return nodes remain floating physical coordinates:
+        # attaching with non-ground refs yields a finite reciprocal result.
+        write(path,".subckt cplf a1 a2 b1 b2\nw1 a1 a2 r1 b1 b2 r2 n=2 l=0.05 rlgcmodel=cplw\n"*
+            ".model cplw w modeltype=rlgc n=2 lo=4.0e-7 1.0e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10\n.ends cplf\n")
+        floating=planar_spice_model(planar_read_spice(path),"cplf")
+        circuit=PlanarCircuit(6,[(1,0),(2,0)];z0=50.)
+        circuit_add_spice!(circuit,[1,2,4,5],floating)
+        solved=solve_planar_circuit(circuit,1e9;floating_gauge=:auto)
+        @test all(isfinite,solved.s)
+        @test solved.s≈transpose(solved.s) rtol=1e-9 atol=1e-12
+        # Grammar bounds: unsupported sources/terms and malformed cards.
+        body(card)=".subckt w a1 a2 b1 b2\n$card\n.ends w\n"
+        goodmodel=".model m w modeltype=rlgc n=2 lo=4e-7 1e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10"
+        invalid=["w1 a1 a2 0 b1 b2 0 n=2 l=0.05 tablemodel=m",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 fsmodel=m",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 smodel=m",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcfile='m.dat'",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=absent",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05\n$goodmodel",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m foo=1\n$goodmodel",
+            "w1 a1 a2 0 b1 b2 0 n=3 l=0.05 rlgcmodel=m\n$goodmodel",
+            "w1 a1 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n$goodmodel",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=-1 rlgcmodel=m\n$goodmodel",
+            "w1 a1 a2 0 b1 b2 0 n=2.5 l=0.05 rlgcmodel=m\n$goodmodel",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=rlgc n=2 lo=4e-7 1e-7 3.8e-7",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=table n=2 lo=4e-7 1e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=rlgc n=2 lo=4e-7 1e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10 rs=1 0 1",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=rlgc n=2 lo=-4e-7 1e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=rlgc n=0 lo=0 co=0",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=rlgc n=2 fdie=-1 lo=4e-7 1e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=rlgc n=2 lo=4e-7 1e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10 ro=1",
+            "w1 a1 a2 0 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n.model m w modeltype=rlgc n=2 lo=4e-7 1e-7 3.8e-7 co=1.3e-10 -3.5e-11 1.4e-10 bogus=1"]
+        for text in invalid
+            write(path,body(text))
+            @test_throws ArgumentError planar_spice_model(planar_read_spice(path),"w")
+        end
+        # A signal node may not alias its own return on either side.
+        write(path,body("w1 a1 a2 a1 b1 b2 0 n=2 l=0.05 rlgcmodel=m\n$goodmodel"))
+        degenerate=planar_spice_model(planar_read_spice(path),"w")
+        @test_throws ArgumentError circuit_add_spice!(PlanarCircuit(4,[(1,0)]),[1,2,3,4],degenerate)
     end
 end
 

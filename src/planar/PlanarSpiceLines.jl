@@ -109,23 +109,111 @@ function _spice_t_spec(card,values,budget)
     _SpiceLineSpec(:T,parameters["z0"],td,0.,0.,0.,0.,0.,"",nothing,Pair{String,Float64}[])
 end
 
+# N-conductor RLGC multiconductor line (.model x W MODELTYPE=RLGC).
+# Matrices are per-unit-length, symmetric, and stored in full.
+struct _SpiceCoupledSpec
+    n::Int
+    length::Float64
+    r::Matrix{Float64}
+    l::Matrix{Float64}
+    g::Matrix{Float64}
+    c::Matrix{Float64}
+    model_name::String
+    model_card::Union{Nothing,_SpiceCard}
+end
+
+function _spice_w_matrix(values,key,n,card)
+    length(values)==n*(n+1)÷2 || _spice_failure(card,"W $key requires $(n*(n+1)÷2) lower-triangular entries")
+    result=Matrix{Float64}(undef,n,n);index=1
+    for row in 1:n, col in 1:row
+        result[row,col]=result[col,row]=values[index];index+=1
+    end
+    all(isfinite,result) || _spice_failure(card,"W $key entries must be finite")
+    scale=max(1.0,maximum(abs,result))
+    minimum(eigvals(Hermitian(result)))>=-1e-9*scale ||
+        _spice_failure(card,"W $key matrix must be positive semidefinite")
+    result
+end
+
+function _spice_w_model_spec(card,values,budget)
+    tokens=card.tokens
+    length(tokens)>=3 && lowercase(tokens[1])==".model" && lowercase(tokens[3])=="w" ||
+        _spice_failure(card,"W model card expected")
+    _spice_reserve!(budget,1024+128length(tokens)+2ncodeunits(tokens[2]))
+    fields=copy(tokens[4:end])
+    if !isempty(fields) && startswith(fields[1],"(")
+        endswith(fields[end],")") || _spice_failure(card,"unclosed W parameter list")
+        fields[1]=fields[1][2:end];fields[end]=fields[end][1:end-1]
+        filter!(!isempty,fields)
+    end
+    # Each parameter begins as key=value and consumes numeric entries until
+    # the next key boundary; matrix sizes are checked after N is known.
+    parameters=Dict{String,Vector{Float64}}();texts=Dict{String,String}()
+    index=1
+    while index<=length(fields)
+        key=_spice_identifier(fields[index])
+        index+1<=length(fields) && fields[index+1]=="=" ||
+            _spice_failure(card,"W model parameters require name=value")
+        haskey(parameters,key) && _spice_failure(card,"duplicate W model parameter $key")
+        stop=index+2
+        while stop<=length(fields) && !(stop+1<=length(fields) && fields[stop+1]=="=")
+            stop+=1
+        end
+        raw=fields[index+2:stop-1]
+        index=stop
+        isempty(raw) && _spice_failure(card,"W model parameter $key requires a value")
+        if key in ("n","fdie")
+            length(raw)==1 || _spice_failure(card,"W $key requires one value")
+            parameters[key]=[_spice_expression(raw[1],values,budget)]
+        elseif key=="modeltype"
+            length(raw)==1 || _spice_failure(card,"W MODELTYPE requires one value")
+            texts[key]=lowercase(_spice_identifier(raw[1]))
+        else
+            key in ("lo","co","ro","go","rs","gd") || _spice_failure(card,"unsupported W model parameter $key")
+            parameters[key]=[_spice_expression(token,values,budget) for token in raw]
+        end
+    end
+    get(texts,"modeltype","rlgc")=="rlgc" ||
+        _spice_failure(card,"only W MODELTYPE=RLGC is supported")
+    for key in ("rs","gd")
+        haskey(parameters,key) && (any(!iszero,parameters[key]) &&
+            _spice_failure(card,"frequency-dependent W $key terms are unsupported"))
+    end
+    haskey(parameters,"n") || _spice_failure(card,"W model requires N")
+    nraw=parameters["n"][1]
+    isfinite(nraw) && nraw>=1 && nraw==round(nraw) || _spice_failure(card,"W N must be a positive integer")
+    n=Int(nraw);n<=64 || _spice_failure(card,"W conductor count exceeds limit")
+    haskey(parameters,"lo") && haskey(parameters,"co") ||
+        _spice_failure(card,"W model requires Lo and Co")
+    l=_spice_w_matrix(get(parameters,"lo",Float64[]),"Lo",n,card)
+    c=_spice_w_matrix(get(parameters,"co",Float64[]),"Co",n,card)
+    r=_spice_w_matrix(get(parameters,"ro",zeros(n*(n+1)÷2)),"Ro",n,card)
+    g=_spice_w_matrix(get(parameters,"go",zeros(n*(n+1)÷2)),"Go",n,card)
+    haskey(parameters,"fdie") && parameters["fdie"][1]<=0 &&
+        _spice_failure(card,"W FDIE must be positive")
+    _spice_reserve!(budget,512+128n*n)
+    _SpiceCoupledSpec(n,0.,r,l,g,c,_spice_identifier(tokens[2]),card)
+end
+
 function _spice_line_scope(cards,values,inherited,budget)
     any(card->lowercase(card.tokens[1])==".model",cards) || return inherited
     _spice_reserve!(budget,512+128length(inherited)+128length(values))
-    models=copy(inherited);context=copy(values);seen=Set{String}()
+    models=Dict{String,Any}(k=>v for (k,v) in inherited);context=copy(values);seen=Set{String}()
     for card in cards
         tag=lowercase(card.tokens[1])
         tag==".param" && _spice_setparams!(context,_spice_assignments(card.tokens[2:end]),budget)
         if tag==".model"
             name=_spice_identifier(card.tokens[2])
             name in seen && _spice_failure(card,"duplicate case-insensitive local model $name")
-            push!(seen,name);models[name]=_spice_ltra_spec(card,context,budget)
+            push!(seen,name)
+            models[name]=lowercase(card.tokens[3])=="w" ?
+                _spice_w_model_spec(card,context,budget) : _spice_ltra_spec(card,context,budget)
         end
     end
     models
 end
 function _spice_global_models(lib,values,budget)
-    lib.dialect===:spice || return Dict{String,_SpiceLineSpec}()
+    lib.dialect===:spice || return Dict{String,Any}()
     count=0;inside=false
     for card in lib.records
         tag=lowercase(card.tokens[1])
@@ -133,7 +221,7 @@ function _spice_global_models(lib,values,budget)
         tag==".ends" && (inside=false)
         !inside && tag==".model" && (count+=1)
     end
-    iszero(count) && return Dict{String,_SpiceLineSpec}()
+    iszero(count) && return Dict{String,Any}()
     _spice_reserve!(budget,_checked_array_payload_bytes(UInt8,16,count))
     cards=_SpiceCard[];inside=false
     sizehint!(cards,count)
@@ -143,7 +231,7 @@ function _spice_global_models(lib,values,budget)
         tag==".ends" && (inside=false)
         !inside && tag==".model" && push!(cards,card)
     end
-    _spice_line_scope(cards,values,Dict{String,_SpiceLineSpec}(),budget)
+    _spice_line_scope(cards,values,Dict{String,Any}(),budget)
 end
 
 function _spice_ltra_coefficients(spec,f)
@@ -161,6 +249,94 @@ function _spice_ltra_coefficients(spec,f)
     end
     z=_circuit_line_value(left/right,"LTRA characteristic impedance";nonzero=true)
     (;small=false,a=0.0+0im,b=0.0+0im,c=0.0+0im,z,gl)
+end
+
+# x*coth(x) and x*csch(x) are analytic at x=0 (both limit to one); stable
+# exponential forms apply for Re(x)>=0, which sqrt-branch gamma guarantees.
+function _spice_coupled_hyperbolic(x)
+    ax=abs(x)
+    if ax<=1e-3
+        x2=x*x
+        return 1+x2/3-x2*x2/45,1-x2/6+7x2*x2/360
+    end
+    e2=exp(-2x)
+    return x*(1+e2)/(1-e2),2x*exp(-x)/(1-e2)
+end
+
+# Frequency response of a uniform N-conductor RLGC section. With Z=R+jwL,
+# Y=G+jwC and ZY=V*diag(gamma^2)*V^-1 the modal decomposition reduces each
+# conductor mode to a scalar line; the physical 2N-port admittance is
+# Z^-1*[A -B; -B A] where A=V*diag(gamma*coth) V^-1, B likewise for csch.
+# Both gamma*coth(gamma*len) and gamma*csch(gamma*len) are analytic in
+# gamma^2, so the formula stays regular for electrically short sections.
+function _spice_coupled_line_y(spec,f)
+    n=spec.n;omega=2pi*f
+    Z=spec.r.+1im.*(omega.*spec.l)
+    Y=spec.g.+1im.*(omega.*spec.c)
+    product=Matrix{ComplexF64}(Z*Matrix{ComplexF64}(Y))
+    factor=eigen(product)
+    gamma=sqrt.(factor.values);V=factor.vectors
+    inverse=try
+        inv(V)
+    catch
+        throw(ArgumentError("coupled W line modal decomposition is defective at $f Hz"))
+    end
+    # A defective or numerically singular eigenvector matrix must not
+    # silently produce a wrong admittance; verify the factorization.
+    scale=max(opnorm(product),eps(Float64))
+    opnorm(V*Diagonal(factor.values)*inverse-product)<=1e-7*scale ||
+        throw(ArgumentError("coupled W line modal decomposition is ill-conditioned at $f Hz"))
+    a=Vector{ComplexF64}(undef,n);b=Vector{ComplexF64}(undef,n)
+    for k in 1:n
+        a[k],b[k]=_spice_coupled_hyperbolic(gamma[k]*spec.length)./spec.length
+    end
+    Zi=try
+        inv(Z)
+    catch
+        throw(ArgumentError("coupled W line has a singular series-impedance matrix at $f Hz"))
+    end
+    left=Zi*V*Diagonal(a)*inverse
+    right=Zi*V*Diagonal(b)*inverse
+    result=[left -right;-right left]
+    all(isfinite,result) ||
+        throw(ArgumentError("coupled W line response must remain finite in ComplexF64 at $f Hz"))
+    result
+end
+
+# W in1..inN refin out1..outN refout N=k L=len RLGCMODEL=name
+function _spice_w_instance(card,values,models,budget)
+    t=card.tokens
+    split=findfirst(==("="),t)
+    split===nothing && _spice_failure(card,"W requires N, L and RLGCMODEL parameters")
+    nodes=t[2:split-2];parameters=t[split-1:end]
+    length(parameters)%3==0 || _spice_failure(card,"W parameters require name=value assignments")
+    entries=Dict{String,String}()
+    for k in 1:3:length(parameters)
+        parameters[k+1]=="=" || _spice_failure(card,"W parameters require name=value")
+        key=lowercase(_spice_identifier(parameters[k]))
+        haskey(entries,key) && _spice_failure(card,"duplicate W parameter $key")
+        key in ("n","l","rlgcmodel","tablemodel","fsmodel","smodel","rlgcfile") ||
+            _spice_failure(card,"unsupported W parameter $key")
+        entries[key]=parameters[k+2]
+    end
+    for key in ("tablemodel","fsmodel","smodel","rlgcfile")
+        haskey(entries,key) && _spice_failure(card,"unsupported W model source $key; only RLGCMODEL is supported")
+    end
+    haskey(entries,"n") && haskey(entries,"l") && haskey(entries,"rlgcmodel") ||
+        _spice_failure(card,"W requires N, L and RLGCMODEL")
+    nraw=_spice_expression(entries["n"],values,budget)
+    isfinite(nraw) && nraw>=1 && nraw==round(nraw) || _spice_failure(card,"W N must be a positive integer")
+    n=Int(nraw);n<=64 || _spice_failure(card,"W conductor count exceeds limit")
+    length(nodes)==2n+2 || _spice_failure(card,"W requires $(2n+2) terminal nodes")
+    len=_spice_expression(entries["l"],values,budget)
+    isfinite(len) && len>0 || _spice_failure(card,"W length must be finite and positive")
+    key=_spice_identifier(entries["rlgcmodel"])
+    haskey(models,key) && models[key] isa _SpiceCoupledSpec ||
+        _spice_failure(card,"undefined W RLGC model $key")
+    spec=models[key]
+    spec.n==n || _spice_failure(card,"W instance N does not match model $key")
+    _spice_reserve!(budget,512+128n*n)
+    (nodes=nodes,spec=_SpiceCoupledSpec(n,len,spec.r,spec.l,spec.g,spec.c,key,spec.model_card))
 end
 
 function _spice_line_stamp!(matrix,row,terminals,spec,f)
