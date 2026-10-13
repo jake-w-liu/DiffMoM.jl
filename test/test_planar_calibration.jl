@@ -1,4 +1,4 @@
-using Test,LinearAlgebra,DiffMoM
+using Test,LinearAlgebra,DiffMoM,CSV,DataFrames
 
 @testset "planar calibration: general reciprocal SOC launches" begin
     z0 = 50.0
@@ -131,4 +131,47 @@ end
     @test recovered≈dut rtol=1e-10
     @test_throws ArgumentError planar_group_double_delay_calibrate(first,second;
         length=0.002,max_bytes=128)
+end
+
+"""Read a Nexxim `sdf2csv` export into per-frequency complex S matrices.
+Columns are `r(Sij)`/`i(Sij)` in row-major order."""
+function _nexxim_csv_s(path::AbstractString,n::Integer)
+    table=CSV.read(path,DataFrame)
+    map(eachrow(table)) do row
+        S=zeros(ComplexF64,n,n)
+        for i in 1:n,j in 1:n
+            S[i,j]=row[Symbol("r(S$i$j)")]+im*row[Symbol("i(S$i$j)")]
+        end
+        S
+    end
+end
+
+@testset "planar calibration: Nexxim coupled launch-group oracle" begin
+    # Sonnet Lite cannot solve calibration groups, so this cross-checks
+    # `deembed_cocal_group` against Ansys Nexxim netlist solves of a
+    # physically coupled launch lattice, its DUT, and the cascade
+    # (see test/fixtures/nexxim_cocal_group/README.md).
+    fixture=joinpath(@__DIR__,"fixtures","nexxim_cocal_group")
+    launch=_nexxim_csv_s(joinpath(fixture,"launch.csv"),4)
+    dut=_nexxim_csv_s(joinpath(fixture,"dut.csv"),3)
+    composite=_nexxim_csv_s(joinpath(fixture,"composite.csv"),3)
+    z0=fill(50.0+0im,4)
+    I2=Matrix{ComplexF64}(I,2,2)
+    @test length(launch)==length(dut)==length(composite)==2
+    for k in eachindex(launch)
+        Ylaunch=planar_s_to_y(launch[k],z0)
+        Ydut=planar_s_to_y(dut[k],z0[1:3])
+        Ymeas=planar_s_to_y(composite[k],z0[1:3])
+        Ycc,Ycr,Yrc,Yrr=Ylaunch[1:2,1:2],Ylaunch[1:2,3:4],Ylaunch[3:4,1:2],Ylaunch[3:4,3:4]
+        # Voltage/current chain for [Vcal;Ical]=M*[Vraw;Iraw] built from
+        # the measured launch admittance — not a synthesized box.
+        M=[-Yrc\Yrr -Yrc\I2;Ycr-Ycc*(Yrc\Yrr) -Ycc/Yrc]
+        A3,D3=Matrix{ComplexF64}(I,3,3),Matrix{ComplexF64}(I,3,3)
+        B3,C3=zeros(ComplexF64,3,3),zeros(ComplexF64,3,3)
+        group=[1,2]
+        A3[group,group]=M[1:2,1:2];B3[group,group]=M[1:2,3:4]
+        C3[group,group]=M[3:4,1:2];D3[group,group]=M[3:4,3:4]
+        @test (C3+D3*Ydut)/(A3+B3*Ydut)≈Ymeas rtol=1e-3
+        @test deembed_cocal_group(Ymeas,group,M)≈Ydut rtol=1e-3
+    end
 end

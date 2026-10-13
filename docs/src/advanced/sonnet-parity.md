@@ -872,7 +872,8 @@ physical return fixture gate and the unchanged 1e-10 equivalent unit current,
 node-voltage and response gates. Finite nonzero values must survive SI
 conversion; invalid loads, frequencies and override values reject before
 geometry and optional model callbacks. This raw fixture evidence does not
-establish coupled pin-group calibration equivalence.
+establish coupled pin-group calibration equivalence; that equivalence is
+instead verified against the Nexxim oracle described below.
 
 Component lowering now reserves geometry and staged model storage together
 for IDEAL, NONE, supplied callbacks and automatic SPARAM files. A confirmed
@@ -1229,9 +1230,16 @@ group grammar (`POR1 CUP Auto` with `CUPGRP "Auto" LOCAL`) parses and
 passes physical validation on installed Lite 18.53, but the analysis
 stops at the license boundary — "Sonnet Lite does not allow calibration
 groups" — so a native multi-port numerical oracle is unavailable under
-Lite; coupled-group behavior is verified internally instead. Native GLG accuracy
-remains unverified: the installed Lite engine rejects ports-only
-components. Component terminal widths now resolve the
+Lite. The coupled-group kernel `deembed_cocal_group` is instead
+cross-checked against an independent Ansys Nexxim 2025 R1 circuit
+oracle (`test/fixtures/nexxim_cocal_group/`): a cross-coupled 4-port
+launch lattice, a 3-port DUT, and their cascade are solved natively at
+1/2 GHz, and the launch chain assembled from the measured launch
+admittance removes the measured composite down to the DUT admittance
+within the fixture's 1e-3 gate (observed ≤7.4e-5 relative error at
+both frequencies). Sonnet's own GLG extraction and licensed multi-port
+de-embed output remain unverified, as does native GLG accuracy: the
+installed Lite engine rejects ports-only components. Component terminal widths now resolve the
 native FEED (complete straight pad edge), CELL (single pin-coordinate
 raster cell) and `CUST <width>` (declared width centered on the pin
 coordinate) contracts across ordinary, CUP and FLOAT pin paths, with

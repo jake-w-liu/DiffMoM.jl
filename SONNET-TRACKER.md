@@ -84,9 +84,21 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
      Remaining: wall port-0 + active DRP1 stays gated to the de-embedding
      adapter (documented short-shift combination), port-0 pin calibration
      interactions untested natively (Lite-gated).
-- [ ] A3 ordered model pins + coupled pin-group calibration
-      (ModelFiles:369, parity lines 148/159/445/726). Lite-blocked (GLG license)
-      → Nexxim circuit equivalence + DocOnly on the licensed part.
+- [x] A3 ordered model pins + coupled pin-group calibration
+      (ModelFiles:369, parity lines 148/159/445/726). Ordered pins are
+      implemented and Lite-verified at intake. The licensed multi-port
+      CUPGRP solve stays Lite-gated ("Sonnet Lite does not allow
+      calibration groups"), so the coupled-group kernel
+      `deembed_cocal_group` is verified against an independent Nexxim
+      2025 R1 oracle instead: a cross-coupled 4-port launch lattice, a
+      3-port DUT, and their cascade were solved natively at 1/2 GHz;
+      the launch's voltage/current chain built from the measured
+      launch admittance recovers the DUT admittance from the measured
+      composite to <=7.4e-5 relative error (fixture
+      `test/fixtures/nexxim_cocal_group/`, testset "Nexxim coupled
+      launch-group oracle" in `test_planar_calibration.jl`). Residual
+      DocOnly: Sonnet's own GLG extraction path and licensed
+      multi-port de-embed output remain unverifiable under Lite.
 - [x] A4 signed file-model pin terminals — DONE. Signed labels are legal
       intake on FLOAT-resolving SPARAM/SPROJ components only (via-mode file
       comps keep the nonnegative gate). Native anchors: the installed
@@ -661,7 +673,8 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## J. License-blocked documentation ledger (DocOnly candidates)
 
-- pin-group GLG calibration (A3 residual), SMD renderer compatibility,
+- licensed GLG extraction + multi-port de-embed output (A3 residual; the
+  coupled-group kernel itself is Nexxim-verified), SMD renderer compatibility,
   linked-STF native `-S` solve (D5), Conformal license (I2), S/current viewer
   (I3), encrypted STF materials (D6), undecoded scaled GEOVAR law (B2 if it
   resists probing).
@@ -671,7 +684,8 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 ## Execution order (current)
 
 Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 intake+gating), A2
-(port-zero grounding), C1–C5 (VOL topology and material laws), C10,
+(port-zero grounding), A3 (coupled pin-group kernel, Nexxim oracle),
+C1–C5 (VOL topology and material laws), C10,
 E1–E5 (E5 dielectric bricks: VIE rooftops + z pulses, dense assembly,
 adjoint/currents/radiation/axial-refinement/CUP threading; E5d BAR
 merged-via grouping + Vertices fill), plus
@@ -682,10 +696,9 @@ Remaining (updated order):
 1. D-group STF residue (D1–D5) — `em -N` structural corpus; D6 encrypted
    DocOnly.
 2. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
-3. A3 ordered model pins — pin-group GLG calibration machinery.
-4. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
+3. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
    characterization, larger.
-5. I-group HFSS-based independent convergence certification.
+4. I-group HFSS-based independent convergence certification.
 
 Each landed item: implementation + deep-debug loop + tests + fixture evidence
 + ledger/docs update + full suite (1.13) + focused (1.12) + push + CI green.
