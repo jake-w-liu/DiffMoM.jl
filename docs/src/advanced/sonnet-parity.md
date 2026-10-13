@@ -1360,8 +1360,10 @@ ladder remain open.
   residuals are 9.986e-11/9.986e-11, and its full complex S differs from the
   retained dense reference by 2.504e-9. Native raw error is 0.06492637,
   still **FAIL** at 0.06. This establishes convergence for these declared
-  settings; default restart choices and broader spatial convergence remain
-  separate checks. Evidence: `dxf_folded_public_solve_3zDFGO`, anchored to
+  settings; `solve_planar_ufft` now also admits an opt-in `max_memory`
+  adaptive-restart ceiling (a failing port doubles its Krylov subspace
+  inside the reserved workspace up to `min(max_memory, nb)`), while
+  broader spatial convergence remains a separate check. Evidence: `dxf_folded_public_solve_3zDFGO`, anchored to
   source `a028459b`, under local `data/planar_audit`.
   Evidence: `dxf_folded_iterative_operator_audit_ZRgNgt` under local
   `data/planar_audit`, anchored to source `a028459b`.

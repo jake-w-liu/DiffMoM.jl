@@ -751,8 +751,17 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       (restart 1200, residuals <1e-10, dense-reference S drift 2.5e-9).
       The remaining accuracy vs native and default-restart items are I1/I6.
 - [ ] I5 peak-process-RSS / opaque-memory acceptance (lines 889/258-numerics).
-- [ ] I6 iterative-solver restart defaults + broad spatial convergence
-      (lines 1197-1222).
+- [x] I6 iterative-solver restart escalation — DONE: `solve_planar_ufft`
+      gains an opt-in `max_memory` ceiling. A port that fails its
+      independently recomputed residual gate doubles its Krylov restart
+      subspace up to `min(max_memory, nb)` inside the preflighted
+      workspace (the ceiling is reserved up front, so escalation never
+      exceeds `max_bytes`). Verified: memory=1 fails the 1e-10 gate but
+      escalated-to-nb solves match the dense reference (rr≈3e-14);
+      sub-convergent ceilings still fail loudly; the reserved-ceiling
+      budget threshold is strictly higher than the fixed-subspace one
+      (7 checks). The declared `memory` default is unchanged. Broad
+      spatial/continuum convergence remains I1's HFSS-certification item.
 
 ## J. License-blocked documentation ledger (DocOnly candidates)
 

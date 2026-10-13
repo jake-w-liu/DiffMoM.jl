@@ -586,13 +586,41 @@ PlanarUFFTResult(prob::PlanarProblem,freq,omega,A,X,Y,S,iterations,residuals)=
     PlanarUFFTResult(prob,freq,omega,A,X,Y,S,iterations,residuals,
         _planar_reference_values([p.z0 for p in prob.ports],length(prob.ports);freq=real(freq)))
 
+# Adaptive GMRES restart for one port. With `max_memory=0` the declared
+# `memory` is fixed (historical behavior). Otherwise a failed residual gate
+# doubles the restart subspace up to `min(max_memory, n)`; each attempt is
+# followed by an independently recomputed full residual. `restart=false`
+# disables escalation because the Krylov subspace is unused without
+# restarts. Returns (x, stats, relative_residual, total_iterations).
+function _planar_ufft_gmres_adaptive(A, rhs, rtol, itmax, memory, max_memory,
+        restart, N, residual)
+    mem = min(BigInt(memory), BigInt(A.n))
+    ceiling = restart && max_memory > 0 ? min(BigInt(max_memory), BigInt(A.n)) : mem
+    tot = 0
+    while true
+        xq, stats = Krylov.gmres(A, rhs; rtol=rtol/10, atol=0.0,
+            itmax=itmax, memory=min(Int(mem), typemax(Int)),
+            restart, reorthogonalization=true, N)
+        tot += stats.niter
+        mul!(residual, A, xq)
+        residual .-= rhs
+        rr = norm(residual) / norm(rhs)
+        done = (isfinite(rr) && rr <= rtol) || mem >= ceiling
+        done && return xq, stats, rr, tot
+        mem = min(2mem, ceiling)
+    end
+end
+
 """Solve the planar port problem by GMRES with the exact FFT operator.
 The complex-symmetric Galerkin matrix is generally indefinite, so the
 iteration uses GMRES rather than positive-definite CG.  `rtol` gates the
-independently recomputed full residual for every port."""
+independently recomputed full residual for every port. `max_memory=0`
+keeps the declared Krylov subspace fixed; a larger `max_memory` lets a
+failing port double its restart subspace up to `min(max_memory, nb)`
+inside the reserved workspace."""
 function solve_planar_ufft(prob::PlanarProblem, freq::Number;
         rtol::Real=1e-9, maxiter::Integer=0, memory::Integer=50,
-        restart::Bool=true, precondition::Bool=true,
+        restart::Bool=true, precondition::Bool=true, max_memory::Integer=0,
         max_bytes::Integer=_default_max_dense_payload_bytes(), kw...)
     isempty(prob.bricks) || throw(ArgumentError(
         "dielectric bricks require method=:dense; the FFT operator " *
@@ -601,10 +629,14 @@ function solve_planar_ufft(prob::PlanarProblem, freq::Number;
     isfinite(omega) && real(omega)>0 || throw(ArgumentError("FFT solve frequency must be finite with positive real part"))
     isfinite(rtol) && rtol > 0 || throw(ArgumentError("rtol must be finite and positive"))
     maxiter >= 0 && memory >= 1 || throw(ArgumentError("invalid Krylov iteration limits"))
+    max_memory >= 0 || throw(ArgumentError("invalid Krylov memory ceiling"))
     nb, np = planar_basis_count(prob.basis), length(prob.ports)
     memory <= typemax(Int) && maxiter <= typemax(Int) ||
         throw(ArgumentError("Krylov iteration limit overflows Int"))
-    mem = restart ? min(BigInt(memory), BigInt(nb)) :
+    # `max_memory=0` keeps the declared memory fixed; otherwise it is the
+    # adaptive restart ceiling, reserved up front so per-port escalation is
+    # already paid for.
+    mem = restart ? min(BigInt(max_memory>0 ? max(max_memory,memory) : memory), BigInt(nb)) :
         max(BigInt(memory), iszero(maxiter) ? 2BigInt(nb) : BigInt(maxiter))
     workbytes = _checked_payload_sum("planar FFT solve",
         _checked_array_payload_bytes(ComplexF64, nb, np),
@@ -641,16 +673,12 @@ function solve_planar_ufft(prob::PlanarProblem, freq::Number;
             rhs[b] = -sgn[q] * _planar_port_weight(prob.basis, b)
         end
         norm(rhs) > 0 || throw(ArgumentError("port $q has no excitation"))
-        xq, stats = Krylov.gmres(A, rhs; rtol=Float64(rtol)/10, atol=0.0,
-            itmax=Int(maxiter), memory=min(Int(memory), A.n),
-            restart, reorthogonalization=true, N)
-        mul!(residual, A, xq)
-        residual .-= rhs
-        rr = norm(residual) / norm(rhs)
+        xq, stats, rr, nits = _planar_ufft_gmres_adaptive(A, rhs, Float64(rtol),
+            Int(maxiter), memory, max_memory, restart, N, residual)
         isfinite(rr) && rr <= rtol || throw(ErrorException(
-            "FFT solve port $q failed residual gate: $rr > $rtol after $(stats.niter) iterations"))
+            "FFT solve port $q failed residual gate: $rr > $rtol after $nits iterations"))
         X[:, q] .= xq
-        its[q], residuals[q] = stats.niter, rr
+        its[q], residuals[q] = nits, rr
         for p in 1:np
             acc = 0.0im
             for b in pbs[p]

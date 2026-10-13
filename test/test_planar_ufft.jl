@@ -82,3 +82,43 @@ end
     @test_throws ArgumentError size(fast.operator, 0)
     @test_throws ArgumentError G.solve_planar_ufft(prob,5e9; max_bytes=1)
 end
+
+@testset "planar FFT: adaptive restart escalation" begin
+    G = DiffMoM
+    grid = CellGrid(4e-3, 3e-3, 6, 5)
+    stack = PlanarStackup([PlanarLayer(2.0-.02im, 1., .4e-3),
+        PlanarLayer(1.0, 1., .4e-3)], TERM_GND, TERM_GND, grid.a, grid.b)
+    sheet = sheet_level(1, 6, 5)
+    rasterize_rect!(sheet, grid, 0., grid.a, .6e-3, 2.4e-3)
+    rows = findall(sheet.mask[1, :])
+    sheet.connect_west[rows] .= true; sheet.connect_east[rows] .= true
+    prob = build_planar_problem(stack, grid, [sheet],
+        [PlanarPort(1,:west,first(rows):last(rows),50.),
+         PlanarPort(1,:east,first(rows):last(rows),75.)])
+    kw = (; mx=20, my=18, surface_zs=.1+.1im)
+    nb = planar_basis_count(prob.basis)
+    # Fixed tiny subspace fails the residual gate; escalation to nb converges.
+    @test_throws ErrorException G.solve_planar_ufft(prob, 5e9;
+        rtol=1e-10, memory=1, maxiter=40, kw...)
+    fast = G.solve_planar_ufft(prob, 5e9;
+        rtol=1e-10, memory=1, max_memory=nb, maxiter=40, kw...)
+    dense = solve_planar(prob, 5e9; kw...)
+    @test fast.y ≈ dense.y rtol=1e-9
+    @test fast.s ≈ dense.s rtol=1e-9
+    @test maximum(fast.relative_residuals) < 1e-10
+    # A ceiling below the converged subspace still fails loudly.
+    @test_throws ErrorException G.solve_planar_ufft(prob, 5e9;
+        rtol=1e-10, memory=1, max_memory=2, maxiter=40, kw...)
+    @test_throws ArgumentError G.solve_planar_ufft(prob, 5e9; max_memory=-1, kw...)
+    # The escalated ceiling is reserved at preflight: a budget fitting the
+    # declared subspace but not the ceiling rejects up front.
+    fits(b;mm)=try G.solve_planar_ufft(prob,5e9;rtol=1e-10,memory=1,
+        max_memory=mm,maxiter=40,max_bytes=b,kw...);true catch e
+        !(e isa ArgumentError) end
+    lo,hi=0,1<<30
+    while lo+1<hi; mid=(lo+hi)>>>1; fits(mid;mm=0) ? hi=mid : lo=mid; end
+    fixed=hi
+    lo,hi=0,1<<30
+    while lo+1<hi; mid=(lo+hi)>>>1; fits(mid;mm=nb) ? hi=mid : lo=mid; end
+    @test hi>fixed
+end
