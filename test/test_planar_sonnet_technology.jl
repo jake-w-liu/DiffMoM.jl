@@ -308,6 +308,7 @@ end
 
 function _techlayer_test_stf(;metal_model="Normal",metal_extra="",via_model="Volume",
         via_extra="",metal_direction="",mesh_fill="Default",bias="",
+        m1_spec="cond",m1_attrs="",via_spec="cond",via_attrs="",
         stack_extra="")
     return """<?xml version="1.0"?>
     <technology_file version="1700">
@@ -318,8 +319,9 @@ function _techlayer_test_stf(;metal_model="Normal",metal_extra="",via_model="Vol
           <dielectric name="Air"><params erel="1"/></dielectric>
           <dielectric name="Ox"><params erel="4"/></dielectric>
           <dielectric name="Sub"><params erel="11.9"/></dielectric>
+          <conductor name="M1Mat" condspec="$m1_spec" cond="4e7" rsvy="2e-5" shres="1.5" rpv="1.2" rdc="2" rrf="3e-7" xdc="0.01" ls="5" $m1_attrs/>
           <conductor name="Copper" condspec="cond" cond="4e7"/>
-          <conductor name="ViaMat" condspec="cond" cond="2.36e6"/>
+          <conductor name="ViaMat" condspec="$via_spec" cond="2.36e6" rsvy="2e-5" shres="1.5" rpv="1.2" rdc="0.03" rrf="2e-7" xdc="0.04" ls="5" $via_attrs/>
         </materials>
         <mesh_defs>
           <mesh fill_type="$mesh_fill" name="Default_metal" type="metal"/>
@@ -327,20 +329,21 @@ function _techlayer_test_stf(;metal_model="Normal",metal_extra="",via_model="Vol
           <mesh fill_type="Vertices" name="Vertices_def" type="via"/>
         </mesh_defs>
         <metal_model_defs>
+          <metal_model model_type="Normal" name="Cover_def"/>
           <metal_model model_type="$metal_model" name="Thin_def" $metal_extra/>
           <metal_model model_type="ThickMetal" name="Thick_def" num_sheets="2"/>
           <via_model model_type="$via_model" name="Volume_def" $via_extra/>
         </metal_model_defs>
         <stackup>
-          <TOP material="Lossless" model="Thin_def"/>
+          <TOP material="Lossless" model="Cover_def"/>
           <diel dielectric="Air" name="L1" thickness="30">
-            <metal_techlayer name="M1" layer_name="M1" material="Copper" model="Thin_def" thickness="1" mesh="Default_metal" $metal_direction $bias/>
+            <metal_techlayer name="M1" layer_name="M1" material="M1Mat" model="Thin_def" thickness="1" mesh="Default_metal" $metal_direction $bias/>
           </diel>
           <diel dielectric="Ox" name="L2" thickness="5">
             <metal_techlayer name="M2" layer_name="M2" material="Copper" model="Thick_def" thickness="4" mesh="Default_metal"/>
           </diel>
           <diel dielectric="Sub" name="L3" thickness="100"/>
-          <BOTTOM material="Lossless" model="Thin_def"/>
+          <BOTTOM material="Lossless" model="Cover_def"/>
           <vias>
             <via_techlayer name="V12" layer_name="V12" material="ViaMat" model="Volume_def" from="M1" to="M2" mesh="Vertices_def" $bias/>
           </vias>
@@ -485,22 +488,28 @@ end
         end
         write(path,son)
         # Unsupported model and mesh semantics reject on inheritance.
-        for kw in ((;via_model="Array"),(;via_model="Surface"),
-                (;metal_model="TrueVolume"),(;metal_model="RoughMetal"))
+        for kw in ((;metal_model="TrueVolume"),(;metal_model="RoughMetal"))
             write(joinpath(dir,"rich.stf"),_techlayer_test_stf(;kw...))
             err=try sonnet_materialize_project(read_sonnet_linked_project(path));nothing catch e;e end
             @test err isa ArgumentError && occursin("physical adapter",sprint(showerror,err))
         end
+        # A Down direction is inert outside ThickMetal (native accepts and
+        # ignores it), so the Normal M1 row materializes unchanged.
         write(joinpath(dir,"rich.stf"),_techlayer_test_stf(metal_direction="direction=\"Down\""))
-        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        down=sonnet_materialize_project(read_sonnet_linked_project(path))
+        @test down.metals[2][1:3]==["\"M1\"","1","NOR"]
         write(joinpath(dir,"rich.stf"),_techlayer_test_stf(mesh_fill="Ring"))
         @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
         write(joinpath(dir,"rich.stf"),_techlayer_test_stf(bias="bias=\"B\""))
         @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
         write(joinpath(dir,"rich.stf"),stf)
-        # NOH on a via techlayer has no single-level equivalent and rejects.
+        # NOH on a via techlayer inherits only the endpoint pair: the literal
+        # material (-1 here, the perfect-via sentinel) and flags stay.
         write(path,replace(son,"TLAYNAM V12 INH"=>"TLAYNAM V12 NOH"))
-        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        nohvia=sonnet_materialize_project(read_sonnet_linked_project(path))
+        @test nohvia.polygons[3].kind===:via && nohvia.polygons[3].level==0
+        @test nohvia.polygons[3].target=="1" && nohvia.polygons[3].material==-1
+        @test "RING" in nohvia.polygons[3].flags
         # Kind mismatches reject: metal layer on a via polygon and a via
         # layer on a sheet polygon.
         write(path,replace(son,"TLAYNAM M1 INH"=>"TLAYNAM V12 INH";count=1))
@@ -523,6 +532,134 @@ end
         @test "VERTICES" in meshed.polygons[3].flags
         write(path,son)
     end
+end
+
+@testset "Linked STF model/spec pairing materialization" begin
+    # Pairing matrix decoded from `soncmd -LoadTechnology` on Lite 18.53:
+    # each model reads only the conductor attributes its condspec exposes,
+    # and pairs outside the accepted set are native parse rejections.
+    mktempdir() do dir
+        son=_techlayer_test_son();path=joinpath(dir,"rich.son")
+        write(path,son)
+        function emit(;kw...)
+            write(joinpath(dir,"rich.stf"),_techlayer_test_stf(;kw...))
+            return sonnet_materialize_project(read_sonnet_linked_project(path))
+        end
+        # Resistor+res emits the DC sheet resistance; under shres the rdc
+        # field is not exposed and native emits a literal RES 0.
+        @test emit(metal_model="Resistor",m1_spec="res").metals[2][3:4]==["RES","2.0"]
+        @test emit(metal_model="Resistor",m1_spec="shres").metals[2][3:4]==["RES","0.0"]
+        # Rdc/Rrf requires the rdcrrf spec and emits NAT.
+        @test emit(metal_model="Rdc/Rrf",m1_spec="rdcrrf").metals[2][3:5]==["NAT","2.0","3.0e-7"]
+        # General accepts general and rdcrrf (xdc/ls read as 0 under rdcrrf).
+        @test emit(metal_model="General",m1_spec="general").metals[2][3:7]==
+            ["SUP","2.0","3.0e-7","0.01","5.0"]
+        @test emit(metal_model="General",m1_spec="rdcrrf").metals[2][3:7]==
+            ["SUP","2.0","3.0e-7","0.0","0.0"]
+        # Sense requires the sense spec and emits SEN xdc.
+        @test emit(metal_model="Sense",m1_spec="sense").metals[2][3:4]==["SEN","0.01"]
+        # Normal/ThickMetal carry the RSVY (ohm-cm) and SRVY (ohm/sq)
+        # selectors; TMM always emits its selector slot.
+        @test emit(m1_spec="rsvy").metals[2][3:end]==["NOR","2.0e-9","0.5","1.0","RSVY"]
+        @test emit(m1_spec="shres").metals[2][3:end]==["NOR","1.5","0.5","1.0","SRVY"]
+        @test emit(metal_model="ThickMetal",m1_spec="rsvy").metals[2][3:end]==
+            ["TMM","2.0e-9","0.5","1.0","2","RSVY"]
+        @test emit(metal_model="ThickMetal",m1_spec="shres").metals[2][3:end]==
+            ["TMM","1.5","0.5","1.0","2","SRVY"]
+        @test emit(metal_model="ThickMetal",metal_extra="num_sheets=\"1\"").metals[2][7]=="2"
+        @test emit(metal_model="ThickMetal",metal_direction="direction=\"Down\"").metals[2][end]=="TDWN"
+        # Native-invalid metal pairings reject like Lite's parser.
+        for kw in ((;metal_model="Resistor"),(;metal_model="Rdc/Rrf",m1_spec="general"),
+                (;metal_model="Sense",m1_spec="general"),(;m1_spec="res"),(;m1_spec="rpv"),
+                (;metal_model="Resistor",m1_spec="rdcrrf"),(;metal_model="Rdc/Rrf"),
+                (;metal_model="General"),(;metal_model="Sense"))
+            write(joinpath(dir,"rich.stf"),_techlayer_test_stf(;kw...))
+            @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        end
+        # Volume accepts cond/rsvy/shres/rpv on both Solid and Wall forms.
+        wall="volume_type=\"Wall\" wall_thickness=\"0.3\""
+        @test emit(via_spec="rsvy",via_extra=wall).metals[4][3:end]==
+            ["VOL","2.0e-9","0.3","RSVY"]
+        @test emit(via_spec="shres",via_extra=wall).metals[4][3:end]==
+            ["VOL","1.5","0.3","SRVY"]
+        @test emit(via_spec="rpv").metals[4][3:end]==["VOL","1.2","SOLID","0","RPV"]
+        @test emit(via_spec="rpv",via_extra=wall).metals[4][3:end]==
+            ["VOL","1.2","0.3","RPV"]
+        # Array serializes fill_factor and the RPV density tail; shres is a
+        # native rejection and via_density is inert without RPV.
+        @test emit(via_model="Array",via_extra="fill_factor=\"40\"").metals[4][3:end]==
+            ["ARR","2.36e6","40.0"]
+        @test emit(via_model="Array",via_spec="rsvy",via_extra="fill_factor=\"40\"").metals[4][3:end]==
+            ["ARR","2.0e-9","40.0","RSVY"]
+        @test emit(via_model="Array",via_spec="rpv",via_extra="fill_factor=\"40\" via_density=\"2\"").metals[4][3:end]==
+            ["ARR","1.2","100","RPV","2.0"]
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf(via_model="Array",via_spec="shres"))
+        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        write(joinpath(dir,"rich.stf"),_techlayer_test_stf(via_spec="res"))
+        @test_throws ArgumentError sonnet_materialize_project(read_sonnet_linked_project(path))
+        # Surface accepts every spec and reads only exposed fields:
+        # cond produces SFC 0 0 0, sense only xdc, rdcrrf rdc+rrf, and
+        # general/surface all three (native field order rdc/xdc/rrf).
+        @test emit(via_model="Surface").metals[4][3:end]==["SFC","0.0","0.0","0.0"]
+        @test emit(via_model="Surface",via_spec="sense").metals[4][3:end]==["SFC","0.0","0.04","0.0"]
+        @test emit(via_model="Surface",via_spec="rdcrrf").metals[4][3:end]==["SFC","0.03","0.0","2.0e-7"]
+        @test emit(via_model="Surface",via_spec="general").metals[4][3:end]==["SFC","0.03","0.04","2.0e-7"]
+        @test emit(via_model="Surface",via_spec="surface").metals[4][3:end]==["SFC","0.03","0.04","2.0e-7"]
+        @test emit(via_model="Surface",via_spec="res").metals[4][3:end]==["SFC","0.03","0.0","0.0"]
+    end
+end
+
+@testset "Native SFC via conductivity and sheet impedance" begin
+    p=DiffMoM.SonnetProject("t.son",Dict{String,String}(),1e-6,1e9,String[],
+        Vector{String}[],Vector{String}[],String[],String[],DiffMoM.SonnetPolygon[],
+        DiffMoM.SonnetPortSpec[],Dict{String,String}(),Vector{DiffMoM.SonnetRecord}[],
+        DiffMoM.SonnetRecord[],DiffMoM.SonnetRecord[])
+    f=2e9
+    # Sheet-side SFC is the planar surface impedance Zs=transition+jXdc.
+    zs=DiffMoM.sonnet_metal_zs(p,["\"F\"","0","SFC","0.03","0.04","2e-7"],f)
+    ref=DiffMoM._sonnet_loss_transition(0.03,2e-7*sqrt(f))
+    @test zs≈complex(real(ref),imag(ref)+0.04)
+    @test DiffMoM.sonnet_metal_zs(p,["\"F\"","0","SFC","0","0","0"],f)==0.0im
+    @test DiffMoM.sonnet_metal_zs(p,["\"F\"","0","SFC","0.03","0","0"],f)==complex(0.03)
+    # Trailing tokens are inert, as on Lite 18.53.
+    @test DiffMoM.sonnet_metal_zs(p,["\"F\"","0","SFC","0.03","0.04","2e-7","1"],f)==zs
+    @test_throws ArgumentError DiffMoM.sonnet_metal_zs(p,["\"F\"","0","SFC","0.03"],f)
+    @test_throws ArgumentError DiffMoM.sonnet_metal_zs(p,["\"F\"","0","SFC","-1","0","0"],f)
+    # Via-side SFC: sigma spreads the tube conductance P/(Zs*h) over the
+    # mask so that sigma*A_mesh/h = P/(Zs*h). A 50x50um tube on a 25um grid.
+    verts=Matrix{Float64}(undef,2,4)
+    verts[:,1].=[0,0];verts[:,2].=[50e-6,0];verts[:,3].=[50e-6,50e-6];verts[:,4].=[0,50e-6]
+    poly=DiffMoM.SonnetPolygon(:via,0,0,1,verts,"1","","",String[])
+    val(t)=DiffMoM.sonnet_variable_value(p,t;variables=Dict{String,Float64}(),freq=f)
+    mask=falses(4,4);mask[2:3,2:3].=true
+    grid=(dx=25e-6,dy=25e-6)
+    sigma=DiffMoM._sonnet_surface_via_sigma(p,poly,grid,
+        ["\"F\"","0","SFC","0.03","0.04","2e-7"],val,f,mask)
+    mesh_area=4*grid.dx*grid.dy
+    @test sigma*mesh_area≈200e-6/complex(real(ref),imag(ref)+0.04)
+    # The all-zero record is a perfect (infinite-conductivity) tube.
+    @test DiffMoM._sonnet_surface_via_sigma(p,poly,grid,
+        ["\"F\"","0","SFC","0","0","0"],val,f,mask)==Inf
+    # A purely reactive wall is a purely reactive column.
+    sre=DiffMoM._sonnet_surface_via_sigma(p,poly,grid,
+        ["\"F\"","0","SFC","0","0.04","0"],val,f,mask)
+    @test iszero(real(sre)) && imag(sre)<0
+    # SFC via is equivalent to a VOL RPV via at DC for the resistive part:
+    # RPV resistance rdc*h/P gives the identical mask conductivity. The
+    # project's metals[1] is the RPV record (poly.material=0).
+    h=5e-6
+    p3=DiffMoM.SonnetProject("t.son",Dict{String,String}(),1e-6,1e9,String[],Vector{String}[],
+        [["\"V\"","0","VOL",string(0.03*h/200e-6),"SOLID","0","RPV"]],String[],String[],
+        DiffMoM.SonnetPolygon[],DiffMoM.SonnetPortSpec[],Dict{String,String}(),
+        Vector{DiffMoM.SonnetRecord}[],DiffMoM.SonnetRecord[],DiffMoM.SonnetRecord[])
+    # The level-0 -> level-1 via spans stack.layers[L-1]; h is that layer's
+    # thickness and the second layer pads the stack to L=2.
+    stack=PlanarStackup([PlanarLayer(1.0+0im,1.0+0im,h),PlanarLayer(1.0+0im,1.0+0im,h)],
+        PlanarTerminator(TERM_PEC),PlanarTerminator(TERM_PEC),1e-3,1e-3)
+    σr=DiffMoM._sonnet_via_sigma(p3,poly,grid,stack,mask,f,Dict{String,Float64}())
+    σd=DiffMoM._sonnet_surface_via_sigma(p,poly,grid,
+        ["\"F\"","0","SFC","0.03","0","0"],val,f,mask)
+    @test σr≈σd
 end
 
 @testset "Native via lands on grown thick-metal face" begin

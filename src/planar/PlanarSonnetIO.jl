@@ -1242,15 +1242,29 @@ function sonnet_metal_zs(p::SonnetProject,metal::AbstractVector{<:AbstractString
     length(metal)>=3 || throw(ArgumentError("incomplete native metal definition"))
     model=metal[3]; val(t)=sonnet_variable_value(p,t;variables=variables,freq=freq)
     if model=="RES"
-        length(metal)==4 || throw(ArgumentError("RES requires one parameter"))
+        # Lite appends an inert thickness slot to generated RES rows;
+        # verified inert under em -N on 18.53.
+        length(metal)>=4 || throw(ArgumentError("RES requires one parameter"))
         r=val(metal[4]); r>=0 || throw(ArgumentError("negative sheet resistance"))
         return complex(r)
     elseif model=="SEN"
         length(metal)==4 || throw(ArgumentError("SEN requires DC reactance in ohms per square"))
         return im*val(metal[4])
+    elseif model=="SFC"
+        # SFC serializes the surface-loss record `SFC rdc xdc rrf` — the
+        # same Rdc/Rrf planar transition plus a fixed surface reactance the
+        # Surface via model uses for its tube wall (Lite 18.53 docs). em -N
+        # accepts the record on sheet polygons and ignores trailing tokens.
+        length(metal)>=6 || throw(ArgumentError("SFC requires rdc/xdc/rrf parameters"))
+        rdc,xdc,rrf=val.(metal[4:6])
+        rdc>=0 && rrf>=0 || throw(ArgumentError("negative SFC sheet resistance"))
+        iszero(rrf) && return complex(rdc,xdc)
+        zr=_sonnet_loss_transition(rdc,rrf*sqrt(freq),"SFC")
+        return complex(real(zr),imag(zr)+xdc)
     elseif model=="SUP" || (model=="FREESPACE" && cover)
-        length(metal)==7 || throw(ArgumentError("SUP requires four parameters"))
-        rdc,rrf,xdc,ls=val.(metal[4:end])
+        # Generated SUP rows append an inert thickness slot as well.
+        length(metal)>=7 || throw(ArgumentError("SUP requires four parameters"))
+        rdc,rrf,xdc,ls=val.(metal[4:7])
         rdc>=0 && rrf>=0 || throw(ArgumentError("negative sheet resistance"))
         # Sonnet's general-loss Rdc/Rrf crossover is the conductor slab
         # reaction, with the DC and RF limits set independently.
@@ -2001,6 +2015,37 @@ function _sonnet_has_volume_skin(p)
     end
 end
 
+# Native SFC (Surface via model, Lite 18.53 serialization `SFC rdc xdc rrf`)
+# is an infinitely thin hollow tube whose wall carries the sheet impedance
+# Zs = Rdc/Rrf-transition + jXdc. The axial tube resistance is Zs*h/P for
+# cross-section perimeter P; spreading that conductance over the retained
+# mask cells gives sigma = P/(Zs*A_mesh), complex when the wall is reactive.
+# A zero sheet impedance is a perfect tube (infinite conductivity). The
+# record has no wall/fill geometry, no endpoint pad films, and its three
+# fields must all be present and finite.
+function _sonnet_surface_via_sigma(p,poly,grid,metal,val,freq,mask)
+    length(metal)>=6 || throw(ArgumentError("native SFC via requires rdc/xdc/rrf parameters"))
+    rdc=val(metal[4]);xdc=val(metal[5]);rrf=val(metal[6])
+    isfinite(rdc) && isfinite(xdc) && isfinite(rrf) ||
+        throw(ArgumentError("native SFC sheet impedance must be finite"))
+    rdc>=0 && rrf>=0 || throw(ArgumentError("negative SFC sheet resistance"))
+    rs=rrf*sqrt(freq)
+    zr=iszero(rrf) ? complex(rdc) : _sonnet_loss_transition(rdc,rs,"SFC")
+    zs=complex(real(zr),imag(zr)+xdc)
+    iszero(zs) && return Inf
+    v=poly.vertices;n=size(v,2)
+    n>=3 || throw(ArgumentError("SFC via polygon needs at least three vertices"))
+    # poly.vertices are stored in SI metres already; no length_scale here.
+    perimeter=sum(hypot(v[1,mod1(i+1,n)]-v[1,i],v[2,mod1(i+1,n)]-v[2,i]) for i in 1:n)
+    perimeter>0 || throw(ArgumentError("SFC via polygon has zero physical perimeter"))
+    mesh_area=count(mask)*grid.dx*grid.dy
+    mesh_area>0 || throw(ArgumentError("SFC via mask has zero area"))
+    sigma=perimeter/(zs*mesh_area)
+    isfinite(sigma) && real(sigma)>=0 ||
+        throw(ArgumentError("native SFC via conductivity is unrepresentable"))
+    return sigma
+end
+
 # RPV specifies a frequency-independent resistance for the complete axial
 # polygon, independent of the subsection mesh. Convert it to the Ohmic Gram
 # conductivity of the retained U/T cells, preserving the total resistance.
@@ -2153,10 +2198,14 @@ function _sonnet_via_sigma(p,poly,grid,stack,mask,freq,vars)
     if model=="ARR" && !rpv
         return _sonnet_array_sigma(p,poly,grid,stack,mask,freq,vars)
     end
-    # Every verified non-VOL/ARR record on a via polygon is a native parse
-    # rejection ("Material ID refers to the wrong material type"): NOR, RES,
-    # SEN, SUP, NAT, TMM, RUF and TVM all reject identically on Lite 18.53.
-    # Keep the native legality failure rather than an adapter gap.
+    if model=="SFC" && !rpv
+        return _sonnet_surface_via_sigma(p,poly,grid,metal,val,freq,mask)
+    end
+    # Every verified non-VOL/ARR/SFC record on a via polygon is a native
+    # parse rejection ("Material ID refers to the wrong material type"):
+    # NOR, RES, SEN, SUP, NAT, TMM, RUF and TVM all reject identically on
+    # Lite 18.53. Keep the native legality failure rather than an adapter
+    # gap.
     rpv || throw(ArgumentError("native $model metal on a via polygon is rejected by the native parser as the wrong material type"))
     # Lite parse-rejects via RPV records on non-VOL/ARR metals entirely;
     # allowing a NOCOVERS one to reach the resistance path would silently
@@ -2261,16 +2310,31 @@ function _sonnet_thick_geometry(p::SonnetProject,freq,variables;
         row=p.metals[q.material+1]
         length(row)>=7 || throw(ArgumentError("incomplete TMM definition"))
         extras=row[8:end]
-        all(t->t in ("CDVY","TDWN"),extras) ||
-            throw(ArgumentError("TMM resistivity/sheet-resistance or unknown flags require their material adapter"))
+        # Lite serializes TMM with an explicit loss selector (CDVY, RSVY in
+        # ohm-cm or SRVY in ohms/square) plus an optional TDWN grow direction.
+        all(t->t in ("CDVY","TDWN","RSVY","SRVY"),extras) ||
+            throw(ArgumentError("TMM unknown flags require their material adapter"))
+        selectors=filter(t->t in ("CDVY","RSVY","SRVY"),extras)
+        length(selectors)<=1 || throw(ArgumentError("conflicting TMM loss selectors"))
+        selector=isempty(selectors) ? "CDVY" : only(selectors)
         nsheets=val(row[7])
         # Lite rejects a single-face TMM at circuit-configuration level and
         # accepts 3+ faces syntactically, but thick metal is license-blocked
         # so the multi-face expansion law cannot be decoded here.
         nsheets==2 || throw(ArgumentError("native TMM currently requires exactly two physical faces"))
-        sigma=_sonnet_ieq(row[4],"INF") ? Inf : val(row[4])
+        value=_sonnet_ieq(row[4],"INF") ? Inf : val(row[4])
         thickness=val(row[6])*p.length_scale
-        thickness>0 && sigma>0 || throw(ArgumentError("invalid TMM conductivity or physical thickness"))
+        thickness>0 || throw(ArgumentError("invalid TMM conductivity or physical thickness"))
+        sigma=if selector=="CDVY"
+            value
+        elseif selector=="RSVY"
+            value>=0 || throw(ArgumentError("invalid TMM resistivity"))
+            iszero(value) ? Inf : _sonnet_volume_product((100.,),(value,))
+        else
+            value>=0 || throw(ArgumentError("invalid TMM sheet resistance"))
+            iszero(value) ? Inf : _sonnet_volume_product((1.,),(value,thickness))
+        end
+        sigma>0 || throw(ArgumentError("invalid TMM conductivity or physical thickness"))
         base=zlevel(q.level);up=!("TDWN" in extras)
         face=base+(up ? thickness : -thickness)
         tolerance=64eps(maximum(boundaries))

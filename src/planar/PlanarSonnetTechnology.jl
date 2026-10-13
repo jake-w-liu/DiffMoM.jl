@@ -412,6 +412,48 @@ function sonnet_technology_material(t::SonnetTechnology,name::AbstractString;
     throw(ArgumentError("unsupported STF material class $kind"))
 end
 
+# Native conductor-loss specification liveness. `soncmd -LoadTechnology`
+# proves each condspec gates which conductor attributes a model can read:
+# attributes outside the selected spec read as 0 even when declared, and
+# model+spec pairs outside the pair's accepted set are native parse
+# rejections (e.g. Array+shres, Normal+res, Rdc/Rrf+general).
+const _STF_COND_FIELDS=Dict("cond"=>("cond",),"rsvy"=>("rsvy",),"shres"=>("shres",),
+    "rpv"=>("rpv",),"res"=>("rdc",),"rdcrrf"=>("rdc","rrf"),
+    "general"=>("rdc","rrf","xdc","ls"),"sense"=>("xdc",),"surface"=>("rdc","rrf","xdc"))
+
+# rpv is verified runit-invariant on Lite 18.53: identical STF files with
+# runit=OHUM/OHMM/OHCM all materialize the same literal ohms-per-via field.
+# rdc/rrf/xdc follow srunit like shres; ls serializes pH/square verbatim.
+const _STF_COND_QUANTITIES=Dict("cond"=>:conductivity,"rsvy"=>:resistivity,
+    "shres"=>:sheet_resistance,"rpv"=>:dimensionless,"rdc"=>:sheet_resistance,
+    "rrf"=>:sheet_resistance,"xdc"=>:sheet_resistance,"ls"=>:dimensionless)
+
+# Resolve a conductor node and its condspec; evaluate `field` only when the
+# spec's liveness table admits it (otherwise 0), converted to SI. Unknown
+# specs reject before any model pairing decision.
+function _stf_conductor(t,name,variables)
+    node=get(t.materials,(:conductor,String(name)),nothing)
+    node===nothing && throw(ArgumentError("missing STF conductor material $name"))
+    _stf_known(node,["name","condspec","cond","rsvy","shres","rpv","rdc","rrf","xdc","ls"])
+    spec=_stf_attr(node,"condspec","cond")
+    fields=get(_STF_COND_FIELDS,spec,nothing)
+    fields===nothing && throw(ArgumentError("STF conductor class $spec requires its physical adapter"))
+    function field(key;default="0")
+        key in fields || return 0.0
+        text=_stf_attr(node,key,default)
+        key=="cond" && uppercase(text)=="INF" && return Inf
+        return sonnet_technology_value(t,text;quantity=_STF_COND_QUANTITIES[key],variables)
+    end
+    return (;spec,node,field)
+end
+
+# A generated MET row must carry the literal numeric spelling Sonnet emits;
+# nonfinite or unrepresentable SI values cannot be serialized faithfully.
+function _stf_emit(value)
+    isfinite(value) || return "INF"
+    return string(value)
+end
+
 function _stf_table(node,budget;strict=true)
     nodes=Dict{Tuple,Vector{Float64}}();attrs=copy(node.attributes)
     rowname=_stf_attr(node,"row_name");_stf_attr(node,"value_name")
@@ -670,10 +712,16 @@ function _stf_mesh_static(node,kind)
 end
 
 # Emit a generated SON MET row (tokens[2:end] form without the id field) for
-# an inherited metal technology layer. Normal maps to NOR and two-sheet
-# ThickMetal maps to TMM; resistivity conductivity is physically identical
-# once inverted to S/m, while sheet resistance keeps its SRVY selector for
-# NOR and folds into conductivity for TMM. Other models reject.
+# an inherited metal technology layer. `soncmd -LoadTechnology` decodes the
+# native model/condspec pairing matrix on Lite 18.53: Normal and ThickMetal
+# accept cond/rsvy/shres; Resistor reads `rdc` under res (and emits 0 under
+# shres, whose spec does not expose rdc); Rdc/Rrf requires rdcrrf; General
+# accepts general or rdcrrf (xdc/ls read as 0 under rdcrrf); Sense requires
+# sense. Other pairings are native parse rejections and reject identically.
+# RSVY serializes resistivity in ohm-centimetres; SRVY keeps ohms/square;
+# Resistor and the res-family rows carry an inert trailing thickness slot in
+# native output, which the minimal emitted form omits. A Down direction is
+# inert outside ThickMetal (verified: native accepts and ignores it).
 function _stf_metal_tokens(t,spec,ls,variables)
     mnode=spec.model===nothing ? nothing : get(t.models,String(spec.model),nothing)
     spec.model!==nothing && mnode===nothing && throw(ArgumentError("unknown STF metal model $(spec.model)"))
@@ -682,7 +730,7 @@ function _stf_metal_tokens(t,spec,ls,variables)
         _stf_known(mnode,["name","model_type","top_roughness","bottom_roughness",
             "current_ratio","cross_section","num_sheets","true_volume_mode"])
         kind=_stf_attr(mnode,"model_type")
-        kind in ("Normal","ThickMetal") ||
+        kind in ("Normal","ThickMetal","Resistor","Rdc/Rrf","General","Sense") ||
             throw(ArgumentError("STF metal model $kind requires its physical adapter"))
         for key in ("top_roughness","bottom_roughness")
             iszero(_stf_literal(_stf_attr(mnode,key,"0"))) ||
@@ -699,65 +747,154 @@ function _stf_metal_tokens(t,spec,ls,variables)
     tdwn=if spec.direction in ("Up","up")
         false
     elseif spec.direction in ("Down","down")
-        kind=="ThickMetal" ||
-            throw(ArgumentError("STF Down metal direction requires the ThickMetal model"))
         true
     else
         throw(ArgumentError("unsupported STF metal direction $(spec.direction)"))
     end
     thickness=sonnet_technology_value(t,spec.thickness;quantity=:length,variables)
     isfinite(thickness) && thickness>0 || throw(ArgumentError("STF metal thickness must be positive"))
-    material=sonnet_technology_material(t,spec.material;kind=:conductor,variables)
+    conductor=_stf_conductor(t,spec.material,variables)
     fill=_stf_mesh_static(spec.mesh,:metal)
     fill in ("Default","Staircase","Conformal") ||
         throw(ArgumentError("STF metal mesh fill $fill requires its physical adapter"))
     title="\"$(spec.name)\""
-    if kind=="Normal"
-        material.spec=="shres" &&
-            return [title,"NOR",string(material.resistance),string(ratio),string(thickness/ls),"SRVY"]
-        sigma=material.sigma
-        return [title,"NOR",sigma==Inf ? "INF" : string(sigma),string(ratio),string(thickness/ls)]
+    invalid()=throw(ArgumentError(
+        "native $(conductor.spec) loss is invalid for STF $kind metal (native parser rejects the combination)"))
+    if kind in ("Normal","ThickMetal")
+        conductor.spec in ("cond","rsvy","shres") || invalid()
+        loss,selector=if conductor.spec=="rsvy"
+            rho=conductor.field("rsvy")
+            rho>0 || throw(ArgumentError("STF conductor resistivity must be positive"))
+            (rho*100,"RSVY")
+        elseif conductor.spec=="shres"
+            rs=conductor.field("shres")
+            rs>=0 || throw(ArgumentError("negative STF sheet resistance"))
+            (rs,"SRVY")
+        else
+            sigma=conductor.field("cond")
+            sigma>0 || throw(ArgumentError("STF conductor conductivity must be positive"))
+            (sigma,nothing)
+        end
+        if kind=="Normal"
+            row=[title,"NOR",_stf_emit(loss),string(ratio),string(thickness/ls)]
+            selector!==nothing && push!(row,selector)
+            return row
+        end
+        sheets=tryparse(Int,nsheets)
+        (sheets===nothing || sheets<1) &&
+            throw(ArgumentError("invalid STF ThickMetal num_sheets $nsheets"))
+        # Native clamps a single declared sheet to the physical two-face
+        # minimum; 3+ sheets materialize but cannot be decoded while Lite's
+        # thick-metal EM solve stays license-blocked.
+        sheets>2 &&
+            throw(ArgumentError("STF ThickMetal num_sheets $nsheets requires its physical adapter"))
+        row=[title,"TMM",_stf_emit(loss),string(ratio),string(thickness/ls),"2"]
+        push!(row,selector===nothing ? "CDVY" : selector)
+        tdwn && push!(row,"TDWN")
+        return row
+    elseif kind=="Resistor"
+        conductor.spec in ("res","shres") || invalid()
+        rdc=conductor.field("rdc")
+        rdc>=0 || throw(ArgumentError("negative STF resistor sheet resistance"))
+        return [title,"RES",_stf_emit(rdc)]
+    elseif kind=="Rdc/Rrf"
+        conductor.spec=="rdcrrf" || invalid()
+        rdc=conductor.field("rdc");rrf=conductor.field("rrf")
+        rdc>=0 && rrf>=0 || throw(ArgumentError("negative STF Rdc/Rrf sheet resistance"))
+        return [title,"NAT",_stf_emit(rdc),_stf_emit(rrf)]
+    elseif kind=="General"
+        conductor.spec in ("general","rdcrrf") || invalid()
+        rdc=conductor.field("rdc");rrf=conductor.field("rrf")
+        xdc=conductor.field("xdc");inductance=conductor.field("ls")
+        rdc>=0 && rrf>=0 || throw(ArgumentError("negative STF General sheet resistance"))
+        return [title,"SUP",_stf_emit(rdc),_stf_emit(rrf),_stf_emit(xdc),_stf_emit(inductance)]
+    else
+        conductor.spec=="sense" || invalid()
+        return [title,"SEN",_stf_emit(conductor.field("xdc"))]
     end
-    nsheets=="2" || throw(ArgumentError("STF ThickMetal num_sheets $nsheets requires its physical adapter"))
-    sigma=material.spec=="shres" ?
-        (iszero(material.resistance) ? Inf : inv(material.resistance*thickness)) : material.sigma
-    row=[title,"TMM",sigma==Inf ? "INF" : string(sigma),string(ratio),string(thickness/ls),"2"]
-    tdwn && push!(row,"TDWN")
-    return row
 end
 
-# Emit a generated SON MET row for an inherited via technology layer. The
-# Volume model maps to VOL: Solid vias carry the inactive wall slot while
-# Wall vias emit their physical wall thickness. Array and Surface models
-# lack a verified attribute mapping and reject. Sheet-resistance conductor
-# input has no axial meaning and also rejects.
+# Emit a generated SON MET row for an inherited via technology layer.
+# `soncmd -LoadTechnology` decodes the native model/condspec matrix on Lite
+# 18.53: Volume accepts cond/rsvy/shres/rpv (`VOL v wall [RSVY|SRVY|RPV]`,
+# Solid emits an inert 0 wall slot); Array accepts cond/rsvy (`ARR v fill`)
+# and rpv (`ARR r fill RPV density`, fill forced to 100 and via_density
+# landing after RPV); sheet resistance on an Array is a native rejection.
+# Surface accepts every condspec and emits `SFC rdc xdc rrf`, reading only
+# the fields its spec exposes — cond/rsvy/shres/rpv produce SFC 0 0 0, res
+# carries rdc, rdcrrf rdc+rrf, sense xdc, general and surface all three.
+# Volume ignores fill_factor/via_density entirely (verified inert).
 function _stf_via_tokens(t,spec,ls,variables)
     vnode=spec.model===nothing ? nothing : get(t.models,String(spec.model),nothing)
     spec.model!==nothing && vnode===nothing && throw(ArgumentError("unknown STF via model $(spec.model)"))
-    vtype="Solid";wall="0"
+    kind="Volume";vtype="Solid";wall="0";fill=100.;density=1.
     if vnode!==nothing
         _stf_known(vnode,["name","model_type","fill_factor","volume_type","wall_thickness","via_density"])
         kind=_stf_attr(vnode,"model_type")
-        kind=="Volume" ||
+        kind in ("Volume","Array","Surface") ||
             throw(ArgumentError("STF via model $kind requires its physical adapter"))
-        _stf_literal(_stf_attr(vnode,"fill_factor","100"))==100 ||
-            throw(ArgumentError("STF volume via fill factor requires its physical adapter"))
-        _stf_literal(_stf_attr(vnode,"via_density","1"))==1 ||
-            throw(ArgumentError("STF volume via density requires its physical adapter"))
+        fill=_stf_literal(_stf_attr(vnode,"fill_factor","100"))
+        density=_stf_literal(_stf_attr(vnode,"via_density","1"))
         vtype=_stf_attr(vnode,"volume_type","Solid")
         vtype in ("Solid","Wall") || throw(ArgumentError("unsupported STF via volume type $vtype"))
         wall=_stf_attr(vnode,"wall_thickness","0")
     end
-    material=sonnet_technology_material(t,spec.material;kind=:conductor,variables)
-    material.spec=="shres" &&
-        throw(ArgumentError("STF via sheet-resistance material requires its physical adapter"))
-    sigma=material.sigma
-    token=sigma==Inf ? "INF" : string(sigma)
+    conductor=_stf_conductor(t,spec.material,variables)
     title="\"$(spec.name)\""
-    vtype=="Solid" && return [title,"VOL",token,"SOLID","0"]
-    depth=sonnet_technology_value(t,wall;quantity=:length,variables)
-    isfinite(depth) && depth>0 || throw(ArgumentError("STF hollow via wall thickness must be positive"))
-    return [title,"VOL",token,string(depth/ls)]
+    invalid()=throw(ArgumentError(
+        "native $(conductor.spec) loss is invalid for STF $kind via (native parser rejects the combination)"))
+    if kind=="Volume"
+        conductor.spec in ("cond","rsvy","shres","rpv") || invalid()
+        loss,selector=if conductor.spec=="rsvy"
+            rho=conductor.field("rsvy")
+            rho>0 || throw(ArgumentError("STF conductor resistivity must be positive"))
+            (rho*100,"RSVY")
+        elseif conductor.spec=="shres"
+            rs=conductor.field("shres")
+            rs>=0 || throw(ArgumentError("negative STF sheet resistance"))
+            (rs,"SRVY")
+        elseif conductor.spec=="rpv"
+            rpv=conductor.field("rpv";default="0")
+            rpv>=0 || throw(ArgumentError("negative STF resistance per via"))
+            (rpv,"RPV")
+        else
+            sigma=conductor.field("cond")
+            sigma>0 || throw(ArgumentError("STF conductor conductivity must be positive"))
+            (sigma,nothing)
+        end
+        if vtype=="Solid"
+            row=[title,"VOL",_stf_emit(loss),"SOLID","0"]
+        else
+            depth=sonnet_technology_value(t,wall;quantity=:length,variables)
+            isfinite(depth) && depth>0 ||
+                throw(ArgumentError("STF hollow via wall thickness must be positive"))
+            row=[title,"VOL",_stf_emit(loss),string(depth/ls)]
+        end
+        selector!==nothing && push!(row,selector)
+        return row
+    elseif kind=="Array"
+        conductor.spec in ("cond","rsvy","rpv") || invalid()
+        if conductor.spec=="rpv"
+            rpv=conductor.field("rpv";default="0")
+            rpv>=0 || throw(ArgumentError("negative STF resistance per via"))
+            density>0 || throw(ArgumentError("STF array via density must be positive"))
+            return [title,"ARR",_stf_emit(rpv),"100","RPV",string(density)]
+        end
+        0<fill<=100 || throw(ArgumentError("STF array via fill factor must be in (0,100]"))
+        if conductor.spec=="rsvy"
+            rho=conductor.field("rsvy")
+            rho>0 || throw(ArgumentError("STF conductor resistivity must be positive"))
+            return [title,"ARR",string(rho*100),string(fill),"RSVY"]
+        end
+        sigma=conductor.field("cond")
+        sigma>0 || throw(ArgumentError("STF conductor conductivity must be positive"))
+        return [title,"ARR",_stf_emit(sigma),string(fill)]
+    end
+    # Surface via: field liveness alone decides each SFC entry (see header).
+    rdc=conductor.field("rdc");rrf=conductor.field("rrf");xdc=conductor.field("xdc")
+    rdc>=0 && rrf>=0 || throw(ArgumentError("negative STF surface via sheet resistance"))
+    isfinite(xdc) || throw(ArgumentError("STF surface via reactance must be finite"))
+    return [title,"SFC",_stf_emit(rdc),_stf_emit(xdc),_stf_emit(rrf)]
 end
 
 # Resolve a via techlayer's from/to endpoint. Metal techlayer names resolve
@@ -811,11 +948,12 @@ end
 # Apply one polygon's TLAYNAM inheritance against its resolved STF layer.
 # INH performs native's full inherit (level or via endpoints, conductor and
 # model through a generated MET); NOH retains the literal material and only
-# moves a sheet to the technology layer's level. Applied bias tables, kind
-# mismatches and unmapped physical semantics reject before solving.
+# inherits stack-level data — a sheet's level or a via's endpoint pair.
+# Applied bias tables, kind mismatches and unmapped physical semantics
+# reject before solving.
 function _stf_apply_techlayer(t,poly,spec,specs,metals,generated,ls,nlayers,variables)
     poly.technology_mode=="NOH" &&
-        return _stf_noh(poly,spec)
+        return _stf_noh(poly,spec,specs,nlayers)
     poly.technology_mode=="INH" ||
         throw(ArgumentError("unsupported TLAYNAM inheritance mode $(poly.technology_mode)"))
     isempty(spec.bias) ||
@@ -837,15 +975,25 @@ function _stf_apply_techlayer(t,poly,spec,specs,metals,generated,ls,nlayers,vari
         poly.technology,poly.technology_mode,flags)
 end
 
-# NOH retains the serialized material and only inherits the metal layer's
-# stack level; via endpoints are not single-level data and reject.
-function _stf_noh(poly,spec)
-    spec.kind==:metal ||
-        throw(ArgumentError("NOH inheritance on via techlayer $(spec.name) requires its physical adapter"))
-    poly.kind==:sheet ||
-        throw(ArgumentError("polygon $(poly.id) inherits metal techlayer $(spec.name) on a non-sheet"))
-    spec.level==poly.level && return poly
-    return SonnetPolygon(:sheet,spec.level,poly.material,poly.id,poly.vertices,poly.target,
+# NOH retains the serialized material and inherits only stack-level data: a
+# metal layer's level for sheets, the techlayer's from/to endpoints for
+# vias (verified on Lite 18.53 — a NOH via keeps its literal VOL material
+# and RING flag while its endpoints move to the inherited pair). Via mesh
+# flags stay fully literal under NOH; the techlayer mesh never applies.
+function _stf_noh(poly,spec,specs,nlayers)
+    if spec.kind==:metal
+        poly.kind==:sheet ||
+            throw(ArgumentError("polygon $(poly.id) inherits metal techlayer $(spec.name) on a non-sheet"))
+        spec.level==poly.level && return poly
+        return SonnetPolygon(:sheet,spec.level,poly.material,poly.id,poly.vertices,poly.target,
+            poly.technology,poly.technology_mode,poly.flags)
+    end
+    poly.kind==:via ||
+        throw(ArgumentError("polygon $(poly.id) inherits via techlayer $(spec.name) on a non-via"))
+    level=_stf_via_endpoint(specs,spec.from,nlayers;target=false)
+    target=_stf_via_endpoint(specs,spec.to,nlayers;target=true)
+    (level==poly.level && target==poly.target) && return poly
+    return SonnetPolygon(:via,level,poly.material,poly.id,poly.vertices,target,
         poly.technology,poly.technology_mode,poly.flags)
 end
 

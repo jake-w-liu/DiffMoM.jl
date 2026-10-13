@@ -1528,6 +1528,17 @@ ladder remain open.
   `surface_physical_bridge_iae13d`, `surface_physical_bridge_4aP1ka`,
   `surface_physical_bridge_gLlE7L`, `surface_physical_bridge_phiBUL`,
   `surface_physical_bridge_mnH3pI`, and `surface_reactive_controls_Nhf9O7`.
+  **Status update (2026-10-13):** the adapter is now implemented as the
+  validated uniform-tube candidate — `sigma = perimeter/(Zs*mask_area)`
+  with `Zs = transition(Rdc,Rrf*sqrt(f))+jXdc` — in
+  `_sonnet_surface_via_sigma`, and SFC sheet impedance in
+  `sonnet_metal_zs`. `soncmd -LoadTechnology` decodes the STF Surface
+  model to the identical `SFC rdc xdc rrf` record (D3), and `em -N`
+  accepts SFC vias under every fill flag with live subsection counts
+  (RING/FULL 726, VERTICES 607 on `planar_order_probe.son`). The
+  cover-target topology residual documented above remains open: it is a
+  mesh/topology divergence that also affects lossless and pure-reactance
+  controls, not evidence against the material law implemented here.
 * **Negative native port labels:** an asymmetric positive/negative wall
   coupon exposed the fixed signed-voltage contraction: complex S errors
   0.02435, 0.12147 and 0.24104 at 1, 5 and 10 GHz. Joint elimination of the

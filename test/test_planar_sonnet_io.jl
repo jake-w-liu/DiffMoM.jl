@@ -97,17 +97,20 @@ end
         "native_material_reference")
     p=read_sonnet_project(joinpath(directory,"planar_order_probe.son"))
     # Actual installed18.53 GUI displays SUP Rdc1/Rrf2/Xdc3/Ls4,
-    # and SFC Rdc1/Xdc1e-5/Rrf.2. This is a schema oracle, not an
-    # accepted Surface-via EM or nonzero kinetic-inductance solve.
+    # and SFC Rdc1/Xdc1e-5/Rrf.2 — matching the materialized row order
+    # `SFC rdc xdc rrf` decoded via soncmd -LoadTechnology.
     @test p.metals[1]==["Planar","1","SUP","1","2","3","4"]
     @test p.metals[2]==["Bulk","1","SFC","1","1e-5",".2"]
     f=1e9
     rf=(1+im)*2sqrt(f)
     @test sonnet_metal_zs(p,p.metals[1],f)≈
         rf/tanh(rf)+im*(3+2pi*f*4e-12)
-    @test_throws ArgumentError sonnet_metal_zs(p,p.metals[2],f)
-    @test_throws ArgumentError sonnet_planar_problem(p;grid=(8,8),freq=f,
-        _materials=true)
+    # SFC on a sheet is the surface impedance Zs=transition(Rdc,Rrf*f^.5)+jXdc.
+    ref=DiffMoM._sonnet_loss_transition(1,.2*sqrt(f))
+    @test sonnet_metal_zs(p,p.metals[2],f)≈complex(real(ref),imag(ref)+1e-5)
+    # The SFC-material RING via materializes as a surface tube.
+    prob=sonnet_planar_problem(p;grid=(8,8),freq=f,_materials=true)
+    @test !isempty(prob.vias)
 end
 
 @testset "Native primitive resistance units oracle" begin

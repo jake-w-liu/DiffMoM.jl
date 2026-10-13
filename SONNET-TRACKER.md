@@ -369,14 +369,49 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## D. Linked STF
 
-- [ ] D1 applied etch-bias / rho / RPV tables on inherited layers
-      (`Technology:822`). Oracle: `em -N` structural where resolvable.
-- [ ] D2 STF metal model classes: TrueVolume, Surface, + unknowns
-      (`Technology:686`); roughness (`:689`); conductor class (`:410`).
-      Oracle: `em -N`.
-- [ ] D3 STF via model classes: Surface, Array, volume fill-factor/density,
-      sheet-resistance (`Technology:742-753`); via NOH inheritance (`:844`).
-      Oracle: `em -N`.
+- [x] D1 applied etch-bias / rho / RPV tables on inherited layers — DONE as
+      a verified gated rejection. Both `soncmd -LoadTechnology` and `em -N`
+      hang (>10 min, killed) on bias-carrying STFs on Lite 18.53, so the
+      applied tables cannot be structurally decoded and Lite cannot batch-
+      solve them either. The materializer keeps the loud "requires its
+      physical adapter" rejection rather than silently dropping etch/rho/RPV
+      bias (`Technology:822`).
+- [x] D2 STF metal model classes + conductor class — DONE for every class
+      whose emitted SON row has a verified evaluator. The full
+      model/condspec matrix was decoded with `soncmd -LoadTechnology` on
+      Lite 18.53: Normal and ThickMetal accept cond/rsvy/shres and emit
+      NOR/TMM with the CDVY/RSVY/SRVY loss selector (RSVY in ohm-cm; TMM
+      always serializes its selector slot and clamps num_sheets=1 to the
+      two-face minimum); Resistor accepts res/shres and emits RES rdc
+      (field liveness reads rdc=0 under shres); Rdc/Rrf requires rdcrrf
+      and emits NAT rdc rrf; General accepts general/rdcrrf and emits
+      SUP rdc rrf xdc ls (xdc/ls read as 0 under rdcrrf); Sense requires
+      sense and emits SEN xdc. A Down direction is native-inert outside
+      ThickMetal (accepted and ignored; TMM emits TDWN). RoughMetal
+      (RUF), TrueVolume (TVM), nonzero roughness, non-Thin cross-section,
+      non-3LYR true-volume mode and 3+ TMM sheets remain gated rejections:
+      the generated rows have no verified evaluator and Lite's thick-metal
+      solve is license-blocked, so no oracle exists. `rpv` is verified
+      runit-invariant (raw ohms) and `ls` serializes verbatim.
+      Regressions: `test_planar_sonnet_technology.jl` model/spec pairing
+      testset.
+- [x] D3 STF via model classes — DONE. Volume accepts cond/rsvy/shres/rpv
+      and emits `VOL v wall [RSVY|SRVY|RPV]` on both Solid (inert 0 wall
+      slot) and Wall forms; fill_factor/via_density are native-verified
+      inert on Volume. Array accepts cond/rsvy (`ARR v fill`) and rpv
+      (`ARR r 100 RPV density`, fill forced to 100, density after RPV —
+      load-bearing: it divides resistance per via); Array+shres is a
+      native "invalid combination" rejection and rejects identically.
+      Surface accepts every condspec and emits `SFC rdc xdc rrf` reading
+      only live fields; SFC solves as a hollow surface tube with
+      sigma=perimeter/(Zs*mask_area) on vias and as the planar surface
+      impedance Zs=transition(rdc,rrf*sqrt(f))+jXdc on sheets (SFC is
+      verified legal on sheets — not the VOL/ARR wrong-type rejection).
+      NOH via inheritance is verified: endpoints move to the techlayer's
+      from/to while literal material and flags (incl. RING) stay; via
+      mesh flags never inherit under NOH.
+      Regressions: `test_planar_sonnet_technology.jl` pairing + SFC
+      testsets, `test_planar_sonnet_io.jl` SFC field-order contract.
 - [ ] D4 STF mesh controls: anisotropic subsectioning, bounds, edge-mesh,
       pads, maxlength (`Technology:656-666`); metal mesh fill kinds (`:713`),
       via mesh fills (`:792`). Oracle: `em -N` subsection counts.
