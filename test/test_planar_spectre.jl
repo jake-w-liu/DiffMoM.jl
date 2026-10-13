@@ -89,15 +89,22 @@ end
         compiled=planar_spice_model(forward,"Case")
         @test only(compiled.couplings).coefficient==-.8
         @test [compiled.elements[i].name for i in only(compiled.couplings).inductors]==["xroot/L_A","xroot/L_a"]
-        for body in ("include other.scs","parameters x=1","X1 A a child","D1 A gnd diode",
-                "R1 (A gnd) resistor r=1","R1 A gnd resistor r={1+2}","R1 A gnd resistor r=1 \$comment",
-                "R1 A gnd resistor r=1 ; comment","r1 A gnd resistor r=1\nr1 a gnd resistor r=2",
-                "M1 mutual_inductor coupling=.8 ind1=L1 ind1=L2","L1 A gnd inductor l=1e309",
+        for body in ("include other.scs","D1 A gnd diode","Q1 A a gnd bjt type=npn",
+                "R1 A gnd resistor r=1 \$comment","R1 A gnd resistor r=1 ; comment",
+                "r1 A gnd resistor r=1\nr1 a gnd resistor r=2","parameters x=1 x=2",
+                "M1 mutual_inductor coupling=.8 ind1=L1 ind1=L2",
+                "V1 A gnd vsource type=pulse dc=0","E1 A gnd vcvs vcvs=2",
                 "ends other","simulator lang=spectre","simulator lang=spice","tran stop=1n")
             error=try readcase(body);nothing catch e;e end
             @test error isa ArgumentError
             @test occursin(realpath(source)*":",sprint(showerror,error))
         end
+        # Reads that now parse must still fail loudly where the reference is invalid.
+        dangling=readcase("X1 A a child")
+        @test_throws ArgumentError planar_spice_model(dangling,"Case")
+        # Values defer to the expression context; nonfinite literals fail at compile.
+        overflow=readcase("L1 A gnd inductor l=1e309")
+        @test_throws ArgumentError planar_spice_model(overflow,"Case")
         valid=readcase("R1 A gnd resistor r=1")
         for kw in ((max_bytes=1,),(max_records=2,),(max_line_bytes=10,))
             @test_throws ArgumentError planar_read_spectre(source;kw...)
@@ -185,4 +192,62 @@ end
     @test maps[1].jy≈physical[1].jy rtol=1e-13
     excitation=DiffMoM._project_radiation_excitation(direct;incident_waves=waves,max_bytes=10^7)
     @test excitation.coefficients≈DiffMoM._planar_coefficient_columns(direct.em)*voltage rtol=1e-13
+end
+
+@testset "Spectre broader linear grammar and Nexxim netlist equivalence" begin
+    fixture=joinpath(@__DIR__,"fixtures","nexxim_spectre_grammar")
+    library=planar_read_spectre(joinpath(fixture,"ctrl.scs"))
+    @test library.dialect===:spectre
+    @test Set(keys(library.definitions))==Set(("gainstage","top"))
+    @test library.parameters==["rin"=>"50.0","rload"=>"100.0"]
+    @test library.definitions["gainstage"].defaults==["rg"=>"50.0"]
+    reference=planar_read_spice(joinpath(fixture,"ctrl_equiv.sp"))
+    smodel=planar_spice_model(library,"top");rmodel=planar_spice_model(reference,"top")
+    @test length(smodel.elements)==length(rmodel.elements)==11
+    @test "xroot/X_X1/E_Ev" in [e.name for e in smodel.elements]
+    circuit=PlanarCircuit(2,[(1,0),(2,0)];z0=50.)
+    DiffMoM.circuit_add_spice!(circuit,[1,2],smodel)
+    referencecircuit=PlanarCircuit(2,[(1,0),(2,0)];z0=50.)
+    DiffMoM.circuit_add_spice!(referencecircuit,[1,2],rmodel)
+    rows=[split(line,',') for line in readlines(joinpath(fixture,"oracle.csv"))[2:end]]
+    for row in rows
+        f=parse(Float64,row[2]);nexxim=Matrix{ComplexF64}(undef,2,2)
+        for (i,j,k) in ((1,1,3),(1,2,5),(2,1,7),(2,2,9))
+            nexxim[i,j]=complex(parse(Float64,row[k]),parse(Float64,row[k+1]))
+        end
+        ours=solve_planar_circuit(circuit,f).s
+        @test ours==solve_planar_circuit(referencecircuit,f).s
+        @test maximum(abs,ours-nexxim)<1e-5
+    end
+    # tline lowering: identical electrical response as the SPICE T card.
+    mktempdir() do directory
+        tl=joinpath(directory,"tl.scs")
+        write(tl,"simulator lang=spectre\nsubckt tl (a b)\nT1 (a 0 b 0) tline z0=50 td=1n\nends\n")
+        sp=joinpath(directory,"tl.sp")
+        write(sp,".subckt tl a b\nT1 a 0 b 0 z0=50 td=1n\n.ends tl\n")
+        a=planar_spice_model(planar_read_spectre(tl),"tl")
+        b=planar_spice_model(planar_read_spice(sp),"tl")
+        for f in (5e8,1e9,2e9)
+            sa=planar_spice_sparams(a,f;pin_pairs=[("a","0"),("b","0")],z0=50.).s
+            sb=planar_spice_sparams(b,f;pin_pairs=[("a","0"),("b","0")],z0=50.).s
+            @test sa==sb
+        end
+        # parameters inside a subckt are Spectre overridable cell parameters.
+        ov=joinpath(directory,"ov.scs")
+        write(ov,"simulator lang=spectre\nparameters bias=2\n"*
+            "subckt cell (x y)\nparameters r=7\nR1 x y resistor r={r*bias}\nends\n"*
+            "subckt top (p q)\nX1 (p q) cell r=9\nends top\n")
+        model=planar_spice_model(planar_read_spectre(ov),"top")
+        @test only(model.elements).value==18
+        # Rejection paths stay loud with source:line diagnostics.
+        badcases=("D1 a 0 diode model=d","include \"x.scs\"","V1 a 0 vsource type=pwl dc=0",
+            "E1 a 0 vcvs vcvs=2","T1 a 0 b tline z0=50","M1 a 0 mosfet w=1u")
+        for (i,body) in enumerate(badcases)
+            bad=joinpath(directory,"bad$i.scs")
+            write(bad,"simulator lang=spectre\nsubckt x (a b)\n$body\nends\n")
+            error=try planar_read_spectre(bad);nothing catch e;e end
+            @test error isa ArgumentError
+            @test occursin(realpath(bad)*":",sprint(showerror,error))
+        end
+    end
 end

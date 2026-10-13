@@ -653,8 +653,23 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       `test/fixtures/nexxim_wline_coupled`, 51 checks). `TABLEMODEL`,
       `FSMODEL`, `SMODEL`, `RLGCFILE` and frequency-dependent `Rs/Gd`
       reject loudly; U/other line classes remain DocOnly scope.
-- [ ] F2 broader Spectre grammar + vendor-library adapters. Oracle: Nexxim
-      netlist equivalence.
+- [x] F2 broader Spectre grammar + vendor-library adapters. Oracle: Nexxim
+      netlist equivalence — extended `planar_read_spectre` beyond literal
+      RLC/mutual records: `vcvs`/`vccs` node-pair and `cccs`/`ccvs`
+      `probe=` controlled sources, DC-only `vsource`/`isource` (`type=dc`),
+      `tline` (`z0`+`td` or `f`/`nl`), nested instances
+      `name (nodes…) master [param=value]…` with overridable Spectre
+      `parameters` at file and subckt scope, optional parenthesized node
+      lists and `{…}` parameter expressions. All records lower to the
+      verified SPICE machinery via class-prefixed names
+      (`E_/G_/F_/H_/V_/I_/T_/X_/`). Verified: `.scs` vs equivalent `.sp`
+      solve bit-identical; Nexxim 2025R1 oracle on the same controlled-
+      source subckt topology agrees to ~4.4e-6 (CSV print precision,
+      fixture `test/fixtures/nexxim_spectre_grammar`, 26 checks).
+      Vendor/nonlinear `model=` devices (`diode`, `bjt`, `mosfet`, …),
+      `include`, transient source types, expressions outside the
+      parameter grammar and analysis cards reject loudly with
+      source:line. Case-sensitive `1M`=mega semantics preserved.
 - [ ] F3 nonlinear/vendor model adapters. Oracle: Nexxim (linear subset),
       DocOnly nonlinear residual.
 

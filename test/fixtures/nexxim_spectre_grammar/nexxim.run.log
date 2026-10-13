@@ -1,0 +1,30 @@
+(status): Nexxim version: 2025.1.0 WIN64, build time: Nov 11 2024, 02:46:15
+
+simulation_options(warning): Unknown option ng ignored.
+(status): Analyzing nexxim_deck.sp.
+(info): Processing circuit for new analysis.
+simulation_options(warning): Unknown option ng ignored.
+(info): Processing circuit for new analysis.
+omp(status): Requested number of threads in UI setting is 1
+circuit_details(status): Total device types: 9
+device type                                       number of devices
+----------------------------------------------------------------------
+capacitor                                         1
+cccs                                              1
+ccvs                                              1
+isource                                           1
+port_impedance                                    2
+resistor                                          4
+vccs                                              1
+vcvs                                              1
+vsource                                           1
+(status): License checkout took 15.212 seconds.
+(info): Starting analysis type LNA.
+analysis:dc(status): Total DC newton iterations = 4, DC conv = 1.
+analysis:small_signal:lna(warning): Z parameters invalid due to singularity that may be caused by floating nodes/ports.
+(status): LNA cpu time = 0.003
+(info): Simulation succeeded. Total simulator time: 0:00:15
+(status): Start Time:  10/13/2026 15:43:53, End Time:  10/13/2026 15:44:09, Host X202605221330, 
+(info): Starting analysis type LNA.
+analysis:small_signal:lna(warning): Z parameters invalid due to singularity that may be caused by floating nodes/ports.
+(info): Simulation succeeded. Total simulator time: 0:00:15
