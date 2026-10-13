@@ -1,0 +1,5 @@
+nnodes 5
+source_terminals [(1, 0), (2, 0), (3, 4)]
+model_terminals [(3, 5), (4, 5)]
+external [(1, 0), (2, 0)]
+external_z0 ComplexF64[50.0 + 0.0im, 50.0 + 0.0im]

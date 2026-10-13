@@ -1,0 +1,20 @@
+(status): Nexxim version: 2025.1.0 WIN64, build time: Nov 11 2024, 02:46:15
+
+(status): Analyzing attach.sp.
+(info): Processing circuit for new analysis.
+(info): Processing circuit for new analysis.
+omp(status): Requested number of threads in UI setting is 1
+circuit_details(status): Total device types: 3
+device type                                       number of devices
+----------------------------------------------------------------------
+port_impedance                                    2
+resistor                                          3
+s_element                                         2
+(status): License checkout took 15.69 seconds.
+(info): Starting analysis type LNA.
+analysis:dc(status): Total DC newton iterations = 4, DC conv = 1.
+(status): LNA cpu time = 0.001
+(info): Simulation succeeded. Total simulator time: 0:00:15
+(status): Start Time:  10/13/2026 14:32:47, End Time:  10/13/2026 14:33:03, Host X202605221330, 
+(info): Starting analysis type LNA.
+(info): Simulation succeeded. Total simulator time: 0:00:15

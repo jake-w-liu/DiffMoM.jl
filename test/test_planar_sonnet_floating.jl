@@ -231,3 +231,108 @@ end
     @test_throws ArgumentError sonnet_component_model(p,1e8)
     @test_throws ArgumentError solve_sonnet_project(p,1e8;raw=true,mx=36,my=24)
 end
+
+"""Read `em_s.txt`/`dev_s.txt` block fixtures: a frequency line followed by
+`i j re im` rows per n×n matrix."""
+function _float_fixture_blocks(path::AbstractString,n::Integer)
+    lines=readlines(path);freqs=Float64[];blocks=Matrix{ComplexF64}[];k=1
+    while k<=length(lines)
+        push!(freqs,parse(Float64,strip(lines[k])));k+=1
+        S=zeros(ComplexF64,n,n)
+        for _ in 1:n*n
+            i,j,a,b=parse.(Float64,split(lines[k]));S[Int(i),Int(j)]=a+im*b;k+=1
+        end
+        push!(blocks,S)
+    end
+    return freqs,blocks
+end
+
+"""Read a Nexxim `sdf2csv` export into per-frequency complex S matrices.
+Columns are `r(Sij)`/`i(Sij)` in row-major order (same layout as
+`_nexxim_csv_s` in test_planar_calibration.jl; this file is included
+earlier so it keeps a local copy)."""
+function _float_nexxim_csv(path::AbstractString,n::Integer)
+    rows=readlines(path);header=split(rows[1],",")
+    col(name)=findfirst(==(name),header)
+    return map(rows[2:end]) do row
+        fields=split(row,",")
+        S=zeros(ComplexF64,n,n)
+        for i in 1:n,j in 1:n
+            S[i,j]=parse(Float64,fields[col("r(S$i$j)")])+
+                im*parse(Float64,fields[col("i(S$i$j)")])
+        end
+        S
+    end
+end
+
+@testset "FLOAT file-model attach law: Nexxim oracle" begin
+    # Sonnet Lite cannot solve a FLOAT SPARAM component, so the archived
+    # test/fixtures/nexxim_float_attach netlist replays the exact
+    # multi-reference wiring through Ansys Nexxim: the 3-port EM block on
+    # [(1,0),(2,0),(3,4)] plus the 2-port file model on [(3,5),(4,5)]
+    # sharing the floating common node 5 (see the fixture README).
+    fixture=joinpath(@__DIR__,"fixtures","nexxim_float_attach")
+    freqs,emblocks=_float_fixture_blocks(joinpath(fixture,"em_s.txt"),3)
+    _,devblocks=_float_fixture_blocks(joinpath(fixture,"dev_s.txt"),2)
+    lines=readlines(joinpath(fixture,"expected.txt"))
+    expected=Matrix{ComplexF64}[]
+    k=1
+    while k<=length(lines)
+        @test parse(Float64,strip(lines[k]))≈freqs[length(expected)+1]
+        push!(expected,reshape(parse.(ComplexF64,strip.(lines[k+1:k+4])),2,2))
+        k+=5
+    end
+    nexxim=_float_nexxim_csv(joinpath(fixture,"attach.csv"),2)
+    # The netlist's embedded .MODEL DATA rows must be the stored blocks.
+    data=Float64[]
+    for line in readlines(joinpath(fixture,"attach.sp"))
+        row=strip(line)
+        startswith(row,"+ ") || continue
+        row=strip(row[3:end])
+        (isempty(row) || row=="]" || startswith(row,"DATA") ) && continue
+        append!(data,parse.(Float64,split(row)))
+    end
+    q=0
+    for (block,n) in Iterators.flatten((((b,3) for b in emblocks),((b,2) for b in devblocks)))
+        for i in 1:n,j in 1:n
+            @test block[i,j]≈data[q+1]+im*data[q+2]
+            q+=2
+        end
+    end
+    @test q==length(data)
+    resp=(p,c,f)->begin
+        s=1im*f/1e8
+        (response=ComplexF64[0.1+0.02im*s 0.85-0.05im*s;0.80-0.06im*s 0.15+0.03im*s],
+            format=:s,z0=fill(50.0+0im,2))
+    end
+    p=_synthetic_smd_project()
+    p.components[1][1]=SonnetRecord(1,["TYPE","SPARAM","2"])
+    p.components[1][2]=SonnetRecord(1,["GNDREF","FLOAT"])
+    model=sonnet_floating_model(p,1e8;component_response=resp)
+    # Wiring asserted in the netlist header must match the lowered model.
+    @test model.circuit.nnodes==5
+    @test model.source_terminals==[(1,0),(2,0),(3,4)]
+    @test only(model.circuit.elements).terminals==[(3,5),(4,5)]
+    @test model.circuit.ports==[(1,0),(2,0)]
+    @test model.external_labels==[1,2]
+    for (f,Sexp,Snex,em_s,dev_s) in zip(freqs,expected,nexxim,emblocks,devblocks)
+        r=solve_sonnet_project(p,f;raw=true,component_response=resp,mx=36,my=24)
+        @test r.em.s≈em_s rtol=1e-8
+        @test resp(nothing,nothing,f).response≈dev_s
+        @test r.s≈Sexp atol=1e-10
+        # Nexxim's independent MNA on the same wiring (gate 1e-3 for the
+        # ~6-digit CSV; observed agreement is ~1e-7).
+        @test r.s≈Snex atol=1e-3
+        # Replaying the archived blocks through PlanarCircuit with the same
+        # floating gauge reproduces the composite, matching the netlist.
+        circuit=PlanarCircuit(5,[(1,0),(2,0)];z0=model.circuit.z0)
+        circuit_add_em!(circuit,[(1,0),(2,0),(3,4)],(s=em_s,z0=r.em.z0))
+        circuit_add_network!(circuit,[(3,5),(4,5)],dev_s;format=:s,z0=fill(50.0,2))
+        replay=solve_planar_circuit(circuit,f;floating_gauge=:auto)
+        @test replay.s≈Sexp atol=1e-10
+        @test replay.s≈Snex atol=1e-3
+        # The symmetric EM geometry symmetrizes the composite even though
+        # the file model itself is nonreciprocal.
+        @test Sexp[1,2]≈Sexp[2,1] rtol=1e-10
+    end
+end

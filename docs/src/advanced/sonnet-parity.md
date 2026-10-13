@@ -177,7 +177,11 @@ outside via mode; pin-level `FLOAT` under a via-mode component is
 invalid grammar. File-backed FLOAT components stage through the same
 frozen-snapshot path, each declared pin attaching as a port on the
 shared common (the IDEAL/NONE port structure; Lite cannot run data-file
-components, so this stays a license-blocked extrapolation). Model-bearing
+components, but the multi-reference attach law is independently verified
+by an Ansys Nexxim replay of the lowered circuit — EM block plus
+file-model block sharing the floating common node — agreeing to ~1e-7,
+fixture `test/fixtures/nexxim_float_attach`; the native-solve claim
+itself stays license-blocked). Model-bearing
 components with three or more unpaired positive pins attach each pin as an
 independent open-edge port on the shared local ground — the same per-pin
 star, verified bit-identical between staged and callback routes; Lite

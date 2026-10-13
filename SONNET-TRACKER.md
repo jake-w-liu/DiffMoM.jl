@@ -650,10 +650,22 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## H. FLOAT / ground-reference residual
 
-- [ ] H1 FLOAT file-backed comps — implementation done; native acceptance is
-      Lite-license-blocked extrapolation (parity line 180). Upgrade evidence:
-      Nexxim circuit equivalence (EM+network attach law), HFSS EM of the
-      stripped structure. Residual license claim stays DocOnly.
+- [x] H1 FLOAT file-backed comps — DONE for the attach law. Lite cannot
+      solve a FLOAT SPARAM component, so the multi-reference wiring was
+      replayed through Ansys Nexxim 2025.1: the lowered 5-node circuit
+      (EM 3-port on [(1,0),(2,0),(3,4)] + file-model 2-port on
+      [(3,5),(4,5)] sharing floating common node 5) was rebuilt as
+      Nexxim multi-reference S-elements plus 1e9-ohm bleeders matching
+      the `:auto` floating gauge. Nexxim LNA agrees with
+      `solve_sonnet_project` to ~1e-7 at 0.1/0.15 GHz (gate 1e-3 for
+      the ~6-digit sdf2csv output). Fixture
+      `test/fixtures/nexxim_float_attach` (netlist, CSV, run log,
+      stored block matrices, generator, README); regression testset
+      in `test_planar_sonnet_floating.jl` (+48) asserts wiring
+      topology, netlist↔block-matrix integrity, stored-vs-live drift,
+      `PlanarCircuit` replay, and Nexxim agreement. The residual
+      license claim (native Sonnet solve of a FLOAT file model) stays
+      DocOnly.
 - [ ] H2 REFPLANE on FLOAT comps — tied to A1.
 - [x] H3 multi-pin FLOAT file models — DONE via A5 (positive-pin star).
       Signed-pin variants remain under A4.
