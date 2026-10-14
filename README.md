@@ -9,6 +9,12 @@ scattering, dielectric surface integral equations, physical-optics/PTD
 approximations, periodic EFIE utilities, topology optimization helpers, and
 analytical/external validation workflows.
 
+It also ships a shielded multilayer planar-circuit solver aimed at
+Sonnet/RFIC-style problems: native `.son` project ingestion, fabrication
+artwork import (Gerber, ODB++, DXF, GDS), FFT-accelerated rectangular-grid
+and conformal triangular-mesh solvers, port calibration/de-embedding, and
+rational model fitting with SPICE/Spectre export.
+
 ## Installation
 
 Use a Julia version allowed by the `julia` compatibility entry in
@@ -108,6 +114,23 @@ res_sie = solve_dielectric_sie_3d(
     mesh_closed, rwg_closed, k, 2.5 + 0im, pw; solver=:direct)
 ```
 
+Native Sonnet `.son` project solve (FFT-accelerated):
+
+```julia
+proj = read_sonnet_project("coupon.son")
+prob = sonnet_planar_problem(proj; freq=5e9)
+res  = solve_planar_ufft(prob, 5e9; precondition=true)
+res.s   # S-parameters at the declared ports
+```
+
+The conformal triangular-mesh path handles polygons that do not align
+with the rectangular cell grid:
+
+```julia
+res = solve_sonnet_conformal("coupon.son", 10e9;
+                             edge_size=6e-5, interior_size=1.2e-4)
+```
+
 ## Implemented Capabilities
 
 - Surface EFIE with RWG basis functions, triangle quadrature, singular/near-singular handling, impedance loading, and periodic EFIE corrections.
@@ -119,7 +142,11 @@ res_sie = solve_dielectric_sie_3d(
 - 2D TM VIE assembly/solves, 2D Green functions, line/plane-wave excitation, scattered-field Jacobians, and cylindrical Mie references.
 - 3D DDA/VIE-style material solvers for isotropic, diagonal anisotropic, tensor anisotropic, magnetodielectric, explicit bianisotropic polarizability, and normalized bianisotropic constitutive models.
 - Dense and matrix-free PMCHWT/Muller dielectric SIE assembly/solves for closed homogeneous isotropic surfaces.
-- Validation scripts for internal consistency, Mie sphere benchmarks, Bempp-cl comparisons, Meep periodic comparisons, physical-optics checks, cost scaling, and robustness studies.
+- Shielded multilayer planar circuits: spectral-domain rectangular-grid MoM with UFFT acceleration, conformal triangular-mesh solves for arbitrary polygons, vias/volumes/bricks, wall/CPW/floating ports, and calibration-standard de-embedding (TRL-style FIX/NONE/LINK).
+- Native Sonnet `.son` project files, technology/STF materialization, scalar variable files, SPICE/Spectre netlists, and component/FLOAT networks.
+- Fabrication artwork import: Gerber RS-274X, ODB++ (including vendor symbols, thermals, D-Packs, barcodes), DXF, and GDS maps — with certified region, sweep, and exact-arithmetic membership engines.
+- Rational fitting, passivity certification, and equivalent-circuit export for S-parameter responses.
+- Validation scripts for internal consistency, Mie sphere benchmarks, Bempp-cl comparisons, Meep periodic comparisons, Sonnet Lite 18.53 and Ansys HFSS 2025.1 oracles, physical-optics checks, cost scaling, and robustness studies.
 
 ## Validation
 
@@ -162,9 +189,11 @@ listed under `validation/meep/requirements.txt`.
 ## Repository Layout
 
 - `src/` - package source, module entrypoint, solvers, assembly, postprocessing, optimization, and material models.
-- `test/` - sequential regression tests covering surface MoM, periodic topology, 2D/3D material solvers, FFT DDA, EM DDA, and dielectric SIE.
+- `test/` - sequential regression tests covering surface MoM, periodic topology, 2D/3D material solvers, FFT DDA, EM DDA, dielectric SIE, and the planar/Sonnet/artwork stack.
 - `examples/` - runnable examples from basic PEC plates through periodic topology optimization and PO/PTD comparisons.
-- `docs/` - Documenter.jl manual and API reference.
+- `docs/` - Documenter.jl manual and API reference, including the Sonnet
+  parity ledger (`docs/src/advanced/sonnet-parity.md`) recording
+  feature-by-feature verification against Sonnet Lite, HFSS, and Nexxim.
 - `validation/` - analytical, external-solver, paper, scaling, robustness, and consistency workflows.
 - `data/` and `figures/` - generated-output locations created by examples and
   validation scripts when needed.

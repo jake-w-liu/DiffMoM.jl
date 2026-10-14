@@ -1,7 +1,7 @@
 # Native DRP1 wall de-embedding, independent port-row reference planes, and
 # FLOAT/CUP pin reference planes: physical feed-line adapters verified against
 # installed Sonnet Lite 18.53 run logs and documented in
-# data/HANDOFF-20261009.md / SONNET-TRACKER.md. Independent reference planes
+# docs/src/advanced/sonnet-parity.md. Independent reference planes
 # are Lite-license-blocked for ROW fields and CUP pins, so those paths anchor
 # to Lite's verified feed-law structure plus internal consistency checks.
 
