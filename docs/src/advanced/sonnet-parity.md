@@ -236,6 +236,40 @@ archives the projects, native S/SID responses, mesh logs and a
 hash-verified manifest; a durable testset bounds the residual at 0.03
 and asserts its frequency-linear, imaginary-dominant character.
 
+Physical reference-plane de-embedding (`DRP1` wall records, per-port
+electrical-row `[NONE|FIX] <len>` planes on wall, CUP and FLOAT pin
+terminals, and the `OPTIONS -d` stream) is implemented and Lite-verified.
+A probe matrix decoded the native feed law: the removed per-port network
+is a fixed launch junction cascaded with the feed strip —
+`F = E·line(γs, Z0s, L)` — where `E` is the full symmetric-reciprocal
+launch box (narrow pad launches carry a strong series term — ~50Ω
+through a 2-cell strip — that a pure-shunt `yd` model cannot represent)
+and the strip's propagation constant and impedance are extracted in situ
+by the general double-delay launch extraction on generated
+thru-standards sharing the port's wall-edge cross-section
+(`planar_group_double_delay_calibrate`; both length-n and 2n solves per
+unique section, cached, with user modal-grid overrides rescaled as a
+density on each standard's own feed length). `-d` removes
+every wall launch even without `DRP` records (Lite de-embeds `nodrp`
+identically); `FIX` unrolls the declared length and keeps the native
+too-short diagnostic below five half-cells; `LINK` resolves the plane
+through the referenced polygon's NUM-ordinal zero-based vertex
+projected on the feed normal — the vertex may belong to another
+polygon entirely (Lite vertex-index probe: inner-edge vertices fully
+de-embed, wall-edge vertices degrade to the `NONE` behavior); `NONE`
+and bare `-d` remove only the launch junction. CUP pin planes unroll
+just the pad-edge strip — the launch junction is the group
+co-calibration's job — and apply without `-d` as part of the
+co-calibrated contract; FLOAT pins compose with a user `calibration`
+instrument-side (`cal·pin` per-label chains). Against the Lite-solved
+`native_drp_reference_planes` oracle the `FIX 1000` de-embed phase
+tracks native within ~3° (the residual is the known baseline
+discretization gap, not the de-embed), and the verified-inert forms
+(`FIX ≤ 0`, bare/`NONE ≤ 0`, duplicate records' first-wins) reproduce
+bit-identically. Interior gap-port planes reject loudly pending a
+strip-feed adapter; DRP2, TWTYPE/TWVALUE and SUBDIV-level REFPLANE stay
+rejected.
+
 Independent native ANC/SYM XDIR/YDIR dimensions with NSCD/SCUNI/SCXY point sets now
 resolve into effective geometry before thick-metal expansion. Sparse polygon
 identities, implicit reference points and attached sheet wall-port coordinates
@@ -1250,7 +1284,7 @@ capacitance — and launch cells shared between members on one pad are
 stripped exactly once. Pads leaving no non-junction contact cell,
 including same-pad groups where every free cell touches a launch,
 degenerate to a coarser feed-column standard; wall-attached
-CUP ports keep the feed-line adapter rejection, and FLOAT/polygon-plane
+CUP ports degrade to ordinary wall ports natively, and FLOAT/polygon-plane
 ground references, port-zero CUP, diagonal and non-open edges reject
 loudly. Against the installed Lite 18.53 archive
 (`test/fixtures/native_cup_junction`) the calibrated output matches the

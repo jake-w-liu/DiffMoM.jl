@@ -37,26 +37,41 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## A. Component / circuit grammar
 
-- [~] A1 component REFPLANE contracts — DRP1/DRP2/TWTYPE/TWVALUE/REFPLANE.
-      **Partially done (2026-10-12)** — GEO-level `DRP1` grammar decoded via
-      Lite 18.53 probes and now fully validated at intake (case-insensitive
-      keywords; `FIX <len>`, `NONE [callen]`, `LINK` + `POLY <id> 1` + vertex
-      continuation; first record per edge wins; malformed records intake-fail
-      like Lite). Verified-inert forms (`FIX<=0`, bare/`NONE<=0`) solve
-      unchanged; active forms (`FIX` above the 5-half-cell floor with the
-      native too-short diagnostic preserved below it, positive `NONE`
-      callen, `LINK`) now fail loudly at problem build naming the missing
-      feed-line de-embedding adapter — previously they were *silently
-      dropped*, producing wrong physics. The active physics (embed `len`
-      of the solved port feed line: log-exposed Eeff/Z0, e.g. 87.46−j4.29 Ω)
-      needs a per-port characterization solve the engine lacks → DocOnly
-      residual with full evidence archived. DRP2/REFPLANE/TWTYPE/TWVALUE
-      at GEO level reject (unprobed); component/floating/model-file sites
-      keep their existing loud rejections. Fixture+manifest:
-      `test/fixtures/native_drp_reference_planes/`; regression: 36 tests in
-      `test_planar_sonnet_io.jl`. Remaining: the actual feed-line de-embed
-      transform (needs port characterization machinery), DRP2 semantics,
-      SUBDIV-level REFPLANE.
+- [x] A1 component REFPLANE contracts — DRP1/DRP2/TWTYPE/TWVALUE/REFPLANE.
+      **Done (2026-10-14)** — physical de-embedding implemented and
+      Lite-verified. Feed law decoded from a Lite probe matrix: the
+      removed per-port network is a fixed launch junction cascaded with
+      the feed strip — `F = E·line(γs,Z0s,L)`, where `E` is the full
+      symmetric-reciprocal launch box (shunt AND series terms — narrow
+      pad launches carry ~50Ω series impedance that a pure-shunt model
+      cannot represent) and the strip's (γs,Z0s) are extracted in-situ
+      by the general double-delay launch extraction
+      (`planar_group_double_delay_calibrate` on two thru-standards
+      sharing the port's wall-edge cross-section — `_sonnet_feed_
+      standard`/`_sonnet_feed_params`/`_sonnet_wall_feed_chains` in
+      PlanarSonnetIO.jl). User modal overrides (mx/my) rescale as a
+      density on each standard's own feed length, keeping the n and 2n
+      standards a consistent pair. `OPTIONS -d`
+      removes every wall launch (Lite: `nodrp -d` de-embeds too);
+      `DRP1 FIX <len>` adds the line unroll (native too-short diagnostic
+      below 5 half-cells preserved); `DRP1 LINK` resolves the plane
+      through the referenced polygon's NUM-ordinal zero-based vertex
+      projected on the feed normal (Lite vertex-matrix probe: inner-edge
+      vertices fully de-embed, wall-edge vertices ≈ NONE); `NONE
+      [callen]`/bare `-d` remove the junction only. Port electrical rows
+      carry the same plane in fields 8/9 (`<type> <len>`) on wall, CUP
+      and FLOAT pin sites; interior gap-port rows reject loudly (no
+      strip-feed adapter); CUP pin planes unroll only the pad-edge strip
+      (launch removal is the co-calibration standard's job) and apply
+      without `-d` (intrinsic contract). User `calibration` composes
+      instrument-side of the feed chains. Lite oracle anchors on
+      `native_drp_reference_planes`: `drp_fix1000` de-embed phase tracks
+      native within ~3° (residual is the known G1 baseline gap);
+      `fixm500`/`fix0` bitwise-inert matching native. Remaining: DRP2
+      semantics, TWTYPE/TWVALUE, SUBDIV-level REFPLANE stay rejected;
+      row tails >9 fields and unrecognized types reject by design
+      (stricter than Lite intake). Regression: `test_planar_sonnet_
+      drp_refplane.jl` (44 checks) + updated io testsets.
 - [x] A2 zero/ground SMD return terminals - DONE. Documented em semantics
      ("Using Port Number Zero for Ground Connections"): numbered-0 ports
      simulate as normal ports, de-embed like any port, then short out of
@@ -751,7 +766,18 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       `PlanarCircuit` replay, and Nexxim agreement. The residual
       license claim (native Sonnet solve of a FLOAT file model) stays
       DocOnly.
-- [ ] H2 REFPLANE on FLOAT comps — tied to A1.
+- [x] H2 REFPLANE on FLOAT comps — **done with A1 (2026-10-14)**. FLOAT
+      CUP pin rows accept the `[NONE|FIX] <len>` tail (`_sonnet_port_
+      refplane`, shared grammar); paired rails must declare matching
+      planes else the per-label chain would be ambiguous (loud reject).
+      `_sonnet_float_pin_chains` characterizes the pin's pad-edge strip
+      (own edge-column surface-impedance profile) and unrolls the
+      declared length on the external label; composes with user
+      `calibration` as `cal*pin` (cal instrument-side). Probes showed
+      SMDP `FIX <num>` is a mesh modifier, not a refplane — pin planes
+      live on the POR row only. Tests in `test_planar_sonnet_drp_
+      refplane.jl` (FLOAT pin testset: inert NONE, single-sided and
+      matched FIX, mismatched-pair rejection).
 - [x] H3 multi-pin FLOAT file models — DONE via A5 (positive-pin star).
       Signed-pin variants remain under A4.
 
@@ -796,9 +822,11 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## Execution order (current)
 
-Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 intake+gating), A2
+Done so far: B1/B2/B3/B4/B5 (GEOVAR), A1 (DRP1 FIX/NONE/LINK feed
+de-embedding + port-row planes on wall/CUP/FLOAT), A2
 (port-zero grounding), A3 (coupled pin-group kernel, Nexxim oracle),
-C1–C5 (VOL topology and material laws), C10,
+C1–C5 (VOL topology and material laws), C10, G1 (DXF residual
+triangulated), D4–D6, F1–F3, H1, H2 (FLOAT pin planes),
 E1–E5 (E5 dielectric bricks: VIE rooftops + z pulses, dense assembly,
 adjoint/currents/radiation/axial-refinement/CUP threading; E5d BAR
 merged-via grouping + Vertices fill), plus
@@ -809,10 +837,10 @@ Remaining (updated order):
 1. ~~D-group STF residue (D1–D6)~~ — DONE: `em -N`/materialization corpus
    complete; privenc parameter blobs stay DocOnly (undecryptable, reject
    as unresolved materials).
-2. F/G-group netlist/layout breadth + H1/H2 FLOAT/REFPLANE components.
-3. A1 physical de-embedding adapters (FIX/NONE/LINK) — needs port feed-line
-   characterization, larger.
-4. I-group HFSS-based independent convergence certification.
+2. F/G-group netlist/layout breadth — G2/G3 ODB++ artwork leaves
+   (thermals, half-ovals, D-Pack, curved strokes).
+3. ~~A1 physical de-embedding adapters (FIX/NONE/LINK)~~ — DONE.
+4. I-group HFSS-based independent convergence certification (I1/I2/I5).
 
 Each landed item: implementation + deep-debug loop + tests + fixture evidence
 + ledger/docs update + full suite (1.13) + focused (1.12) + push + CI green.

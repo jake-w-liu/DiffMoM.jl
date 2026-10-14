@@ -105,13 +105,13 @@ end
 function _sonnet_float_cup_pin(p,port,problem,variables,freq)
     _sonnet_float_validate(p,port.records)
     port.kind===:cup || throw(ArgumentError("FLOAT source requires a native CUP or component contract"))
-    length(port.values) in (7,9) || throw(ArgumentError("floating CUP has unsupported termination/reference fields"))
-    val(s)=sonnet_variable_value(p,s;variables,freq)
+    length(port.values) in (7,8,9) || throw(ArgumentError("floating CUP has unsupported termination/reference fields"))
     reference=_sonnet_port_reference(p,port,freq,variables)
-    if length(port.values)==9
-        port.values[8]=="NONE" && iszero(val(port.values[9])) || throw(ArgumentError(
-            "native FLOAT ports cannot silently apply reference planes"))
-    end
+    # A FLOAT CUP electrical row may carry the standard independent
+    # reference-plane tail `<type> <len>`; the pin's pad-edge feed is
+    # characterized per-frequency in _sonnet_float_pin_chains.
+    refplane=_sonnet_port_refplane(p,port.values,variables,freq,p.source,
+        isempty(port.records) ? 0 : first(port.records).line)
     poly=only(poly for poly in p.polygons if poly.id==port.polygon)
     poly.kind===:sheet || throw(ArgumentError("floating CUP must attach to sheet metal"))
     v=poly.vertices;n=size(v,2);k=port.edge+1
@@ -127,7 +127,9 @@ function _sonnet_float_cup_pin(p,port,problem,variables,freq)
     widths=[join(r.tokens[2:end]," ") for r in port.records if uppercase(r.tokens[1])=="TERMW"]
     termw=isempty(widths) ? "FEED" : only(widths)
     pin=_sonnet_component_pin(p,record,problem,variables,freq;termw)
-    return merge(pin,(signed_number=port.number,z0=reference,group=first(port.records).tokens[end]))
+    return merge(pin,(signed_number=port.number,z0=reference,group=first(port.records).tokens[end],
+        refplane=refplane===nothing ? nothing :
+            (mode=refplane.mode,length=refplane.length,record=refplane.record)))
 end
 
 function _sonnet_float_endpoint(pin)
@@ -293,7 +295,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         none=length(kind.tokens)==2 && kind.tokens[2]=="NONE"
         push!(groups,(pins=pins,component=component,external=none))
     end
-    bridges=Any[];loads=Any[]
+    bridges=Any[];loads=Any[];pin_refplanes=Dict{Int,NamedTuple}()
     for group in groups
         local_pairs=Tuple{Int,Int}[]
         pairpins=Tuple{Any,Any,Int}[]
@@ -409,6 +411,20 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
             end
             push!(labels,label);push!(refs,positive.z0)
             push!(bridges,merge(built.bridge,(;port=length(labels),label=label,kind=:floating_bridge)))
+            pspec=get(positive,:refplane,nothing);nspec=get(negative,:refplane,nothing)
+            if pspec!==nothing || nspec!==nothing
+                # A reference plane on either rail of the pair shifts that
+                # rail's pad edge; both rails declaring must agree so the
+                # single per-label chain is unambiguous.
+                (pspec===nothing || nspec===nothing ||
+                    (pspec.mode==nspec.mode && pspec.length==nspec.length)) ||
+                    throw(ArgumentError("native FLOAT paired reference planes must carry matching plane specs"))
+                spec=pspec===nothing ? nspec : pspec
+                pin_refplanes[label]=(mode=spec.mode,length=spec.length,
+                    terminal=(pspec===nothing ? negative : positive).terminal,
+                    z0=(pspec===nothing ? negative : positive).z0,
+                    record=spec.record)
+            end
             if group.external
                 push!(external_pairs,pair);push!(external_labels,label);push!(external_z0,positive.z0)
             end
@@ -481,7 +497,7 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
     scalar_files===nothing || _sonnet_check_scalar_files(scalar_files)
     model=(;project=owned_project,problem,contraction=C,floating_common=common,z0=refs,labels,circuit,sheet_zs,via_sigma,
         source_incidence=D,source_terminals=pairs,bridges,reference_paths=paths,external_labels=external_labels[order],
-        scalar_files,model_files,variables=variables isa SonnetScalarVariables ? variables.overrides : variables)
+        pin_refplanes,scalar_files,model_files,variables=variables isa SonnetScalarVariables ? variables.overrides : variables)
     payload=_checked_payload_sum("native floating retained model",
         _subdivision_retained_payload(Any[model.problem,model.contraction,model.sheet_zs,
             model.via_sigma,model.source_incidence,model.floating_common]),
@@ -490,6 +506,48 @@ function sonnet_floating_model(p::SonnetProject,freq::Real;grid=nothing,
         _sonnet_component_variable_payload(model.variables))
     _enforce_payload_limit(payload,max_bytes,"native floating retained model","max_bytes")
     return merge(model,(;payload))
+end
+
+"""Contiguous metal extent on a terminal port's edge column containing its
+excited span — the cross-section a pin reference plane slides through."""
+function _sonnet_pin_edge_extent(problem,port)
+    mask=problem.sheets[port.level].mask
+    xaxis=_is_planar_x_terminal(port.wall)
+    rng=xaxis ? (@view mask[port.edge,:]) : (@view mask[:,port.edge])
+    lo,hi=first(port.cells),last(port.cells)
+    while lo>1 && rng[lo-1];lo-=1;end
+    while hi<length(rng) && rng[hi+1];hi+=1;end
+    return lo:hi
+end
+
+"""Per-external-label ABCD chains for FLOAT pin reference planes. A `FIX`
+plane unrolls the pad-edge strip of the declared length — the launch
+junction itself remains the joint co-calibration's (pin_calibration) job.
+`NONE` planes and unlabeled columns are identity."""
+function _sonnet_float_pin_chains(model,freq;solve_kw...)
+    n=length(model.external_labels)
+    chains=[Matrix{ComplexF64}(I,2,2) for _ in 1:n]
+    cache=Dict{Any,PlanarDoubleDelayCalibration}()
+    for (label,spec) in model.pin_refplanes
+        k=findfirst(==(label),model.external_labels)
+        k===nothing && throw(ArgumentError(
+            "native FLOAT model-pin reference plane requires its model-level adapter"))
+        spec.mode===:none && continue
+        spec.mode===:fix && spec.length>0 || throw(ArgumentError(
+            "unrecognized native FLOAT pin reference plane $(spec.mode)"))
+        port=spec.terminal
+        padedge=_sonnet_pin_edge_extent(model.problem,port)
+        feed=PlanarPort(port.level,_is_planar_x_terminal(port.wall) ? :west : :south,
+            padedge,spec.z0)
+        key=(port.level,_is_planar_x_terminal(port.wall) ? :x : :y,
+            first(padedge),last(padedge),spec.z0,port.edge)
+        cal=get!(()->_sonnet_feed_params(model.problem,feed,freq;
+                sheet_zs=get(model,:sheet_zs,nothing),profile_edge=port.edge,
+                solve_kw...),cache,key)
+        zc,gl=_line_params_of_abcd(cal.line)
+        chains[k]=planar_line_abcd(zc,gl*(spec.length/cal.length))
+    end
+    return chains
 end
 
 function _solve_sonnet_floating(p::SonnetProject,freq::Real;grid=nothing,
@@ -531,13 +589,24 @@ function _solve_sonnet_floating(p::SonnetProject,freq::Real;grid=nothing,
     circuit_add_em!(model.circuit,model.source_terminals,em)
     circuit=solve_planar_circuit(model.circuit,freq;floating_gauge=:auto,
         max_bytes=max_bytes-payload-workspace-_subdivision_retained_payload(em))
-    y=calibration===nothing ? circuit.y :
-        circuit.y===nothing ? throw(ArgumentError("native external calibration requires finite admittance")) :
-        deembed_ports(circuit.y,calibration)
-    s=calibration===nothing ? circuit.s : planar_y_to_s(y,circuit.z0)
+    # Pin reference planes sit board-side of the port plane; an external
+    # calibration sits instrument-side — the removed cascade is cal then
+    # pin, so the per-port chain product is cal*pin (Möbius composition).
+    y=circuit.y;s=circuit.s
     transfer=Matrix{ComplexF64}(I,size(s,1),size(s,1))
+    combined=isempty(model.pin_refplanes) ? nothing :
+        _sonnet_float_pin_chains(model,freq;max_bytes=max_bytes-payload-workspace,kw...)
     if calibration!==nothing
-        A,B,C,D=_calibration_chain_blocks(calibration,size(s,1))
+        length(calibration)==length(model.external_labels) ||
+            throw(DimensionMismatch("native external calibration needs one chain per external label"))
+        combined=combined===nothing ? Matrix{ComplexF64}.(calibration) :
+            [Matrix{ComplexF64}(c)*p for (p,c) in zip(combined,calibration)]
+    end
+    if combined!==nothing && any(c->!isone(c),combined)
+        circuit.y===nothing && throw(ArgumentError("native de-embedding requires finite admittance"))
+        y=deembed_ports(circuit.y,combined)
+        s=planar_y_to_s(y,circuit.z0)
+        A,B,C,D=_calibration_chain_blocks(combined,size(s,1))
         transfer=_planar_calibration_incident_transfer(A,B,C,D,y,s,circuit.z0)
     end
     return SonnetFloatingResult(model.project,em,circuit,model.external_labels,circuit.z0,y,s,

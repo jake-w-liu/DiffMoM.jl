@@ -308,7 +308,12 @@ end
     @test_throws ArgumentError sonnet_variable_value(p,"missing_parameter")
     @test_throws ArgumentError sonnet_variable_value(p,"Inf")
     @test_throws ArgumentError sonnet_planar_problem(p;freq=0.)
-    @test_throws ArgumentError solve_sonnet_project(p,15e9;grid=(8,8))
+    # `OPTIONS -d` auto-de-embeds wall-port launch sections natively (Lite
+    # 18.53: de-embedded output even without DRP records) — no longer a
+    # calibration-required rejection.
+    deembedded=solve_sonnet_project(p,15e9;grid=(8,8))
+    uncalibrated=solve_sonnet_project(p,15e9;grid=(8,8),raw=true)
+    @test deembedded.s!=uncalibrated.s
     @test sonnet_metal_zs(p,["Sheet","1","RES","2"],1e9)==2+0im
     @test sonnet_metal_zs(p,["Sense","1","SEN","1000000"],1e9)==im*1e6
     @test sonnet_metal_zs(p,["PEC","1","SUP","0","0","0","0"],1e9)==0im
@@ -848,12 +853,13 @@ end
     @test isempty(xmodel.cup_standards)
     # A wall-attached CUP token degrades to the standard wall port
     # natively (g2_cup's log types both ports "Standard port"), so its
-    # `-d` request remains wall feed-line de-embedding and the solve
-    # still requires the unimplemented A1 calibration.
+    # `-d` request is wall feed-line de-embedding — served by the DRP1
+    # feed-chain adapter.
     grouped=read_sonnet_project(joinpath(fixture,"g2_cup.son"))
     @test sonnet_planar_problem(grouped;freq=1e9,grid=(20,20),
         _materials=true,_details=true).contraction==reference.contraction
-    @test_throws ArgumentError solve_sonnet_project(grouped,1e9;grid=(16,16))
+    @test solve_sonnet_project(grouped,1e9;grid=(16,16)).s!=
+        solve_sonnet_project(grouped,1e9;grid=(16,16),raw=true).s
     # A two-port group with only a trailing CUPGRP rejects natively too
     # (mp_cup: "Illegal co-calibrated port / Calibration group information
     # not defined") and locally as the CUP-without-group parse error.
@@ -928,9 +934,8 @@ end
         @test length(variant.ports)==length(base.ports)
     end
     # Positive FIX below the five-half-cell floor fails with the native
-    # too-short diagnostic; at or above it the unimplemented feed-line
-    # de-embedding adapter rejects loudly instead of silently dropping the
-    # reference plane.
+    # too-short diagnostic; at or above it the record now lowers to a
+    # physical feed spec the solve unrolls after the raw model.
     for name in ("drp_fix500","drp_fix600","d_f625")
         e=try sonnet_planar_problem(
                 read_sonnet_project(joinpath(fixture,name*".son"));
@@ -939,27 +944,24 @@ end
         @test e isa ArgumentError
         @test occursin("on left box wall is too short",sprint(showerror,e))
     end
-    for name in ("d_f630","drp_fix1000","d_lc","d_dup")
-        e=try sonnet_planar_problem(
-                read_sonnet_project(joinpath(fixture,name*".son"));
-                freq=2.5e9,_materials=true);nothing
-            catch error;error end
-        @test e isa ArgumentError
-        @test occursin("feed-line de-embedding adapter",sprint(showerror,e))
+    # `feed_drp` carries each wall's active spec: FIX declares the plane
+    # length, NONE keeps a zero-length marker (its calibration length does
+    # not move the plane), LINK resolves its wall-to-vertex distance and
+    # duplicate records keep the verified first-wins intake semantics.
+    mils=2.54e-5
+    for (name,mode,len) in (("d_f630",:fix,630mils),("drp_fix1000",:fix,1000mils),
+            ("d_lc",:fix,1000mils),("d_dup",:fix,1000mils),
+            ("drp_none500",:none,0.0),("drp_none1000",:none,0.0),
+            ("d_link",:link,0.0))
+        model=sonnet_planar_problem(
+            read_sonnet_project(joinpath(fixture,name*".son"));
+            freq=2.5e9,_materials=true,_details=true)
+        spec=model.feed_drp[1]
+        @test spec!==nothing
+        @test spec.mode==mode
+        @test spec.length≈len
+        @test spec.kind==:wall
     end
-    for name in ("drp_none500","drp_none1000")
-        e=try sonnet_planar_problem(
-                read_sonnet_project(joinpath(fixture,name*".son"));
-                freq=2.5e9,_materials=true);nothing
-            catch error;error end
-        @test e isa ArgumentError
-        @test occursin("port-discontinuity calibration adapter",sprint(showerror,e))
-    end
-    e=try sonnet_planar_problem(read_sonnet_project(joinpath(fixture,"d_link.son"));
-            freq=2.5e9,_materials=true);nothing
-        catch error;error end
-    @test e isa ArgumentError
-    @test occursin("feed-line de-embedding adapter",sprint(showerror,e))
 end
 
 @testset "Native CUP calibration-group solve (E2)" begin
@@ -1033,12 +1035,13 @@ end
         end
     end
 
-    # raw=true leaves the network untouched: no standard is applied and
-    # the voltage transfer survives a pure shunt removal.
+    # raw=true leaves the network untouched: no standard is applied. The
+    # launch-box removal moves the wall port's reference plane, so the
+    # voltage transfer shifts only at machine level.
     ours_raw=solve_sonnet_project(project,1e9;raw=true)
     ours_cal=solve_sonnet_project(project,1e9)
     @test ours_cal.y!=ours_raw.y
-    @test ours_cal.voltage_transfer==ours_raw.voltage_transfer
+    @test ours_cal.voltage_transfer≈ours_raw.voltage_transfer
 
     mktempdir() do dir
         path=joinpath(dir,"case.son")
@@ -1080,7 +1083,9 @@ NUM 2""")
         dy=gcal.y-graw.y
         @test imag(dy[1,1])<-4e-6 && imag(dy[2,2])<-4e-6
         @test imag(dy[1,2])>1e-8
-        @test iszero(dy[1,3]) && iszero(dy[2,3]) && iszero(dy[3,3])
+        # Label 3 is the wall STD port — `-d` also removes its launch
+        # discontinuity now (feed-chain adapter), so its column moves too.
+        @test !iszero(dy[3,3])
         @test gcal.y≈transpose(gcal.y)
 
         # A coupled group whose members carry opposite rails of one
@@ -1105,7 +1110,8 @@ NUM 2""")
         ddy=dcal.y-draw.y
         # J11+J22−2J12 ≈ 2·9uS with the small mutual term subtracting.
         @test imag(ddy[1,1])<-1e-5
-        @test iszero(ddy[1,2]) && iszero(ddy[2,2])
+        # Column 2 is the wall STD port's label — launch de-embedded by `-d`.
+        @test !iszero(ddy[2,2])
         @test diff_model.labels==[1,3]
 
         # Two members sharing one pad leave no contact cell outside
@@ -1233,18 +1239,18 @@ NUM 2"""))
             read_sonnet_project(path);freq=1e9,_materials=true,_details=true)
         # A wall-edge CUP degrades to the standard wall port natively —
         # co-calibration needs an interior open edge — so the problem
-        # lowers with no calibration standard, and its `-d` request
-        # stays the feed-line family rejection at solve time. The wall
-        # pad's own port block drops away so the two wall launches do
-        # not share the edge's connected cell run.
+        # lowers with no calibration standard, and its `-d` request is
+        # wall feed-line de-embedding. The wall pad's own port block
+        # drops away so the two wall launches do not share the edge's
+        # connected cell run.
         wallcup=replace(template,"POLY 9 1\n3\n1 50"=>"POLY 10 1\n1\n1 50")
         wallcup=replace(wallcup,"POR1 STD\nPOLY 10 1\n1\n2 50 0 0 0 1 0.5\n"=>"")
         write(path,wallcup)
         wallmodel=sonnet_planar_problem(read_sonnet_project(path);
             freq=1e9,_materials=true,_details=true)
         @test isempty(wallmodel.cup_standards)
-        @test_throws ArgumentError solve_sonnet_project(
-            read_sonnet_project(path),1e9)
+        @test solve_sonnet_project(read_sonnet_project(path),1e9).s!=
+            solve_sonnet_project(read_sonnet_project(path),1e9;raw=true).s
         # Payload accounting retains every standard problem.
         @test_throws ArgumentError sonnet_planar_problem(project;
             freq=1e9,_materials=true,_details=true,max_bytes=2^10)

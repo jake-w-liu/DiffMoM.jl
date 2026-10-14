@@ -475,6 +475,61 @@ _sonnet_drp_wall(refplanes,wall)=begin
     index===nothing ? nothing : refplanes[index]
 end
 
+"""Resolve a `DRP1 <wall> LINK / POLY <id> 1 / <vertex>` reference plane to a
+physical feed length [m]. Lite 18.53 probe matrix: the continuation names any
+project polygon and a zero-based vertex index on it; the reference plane runs
+through that vertex perpendicular to the port's feed direction, so the feed
+length is the wall-to-vertex distance along the wall normal (west `v.x`,
+east `a-v.x`, south `v.y`, north `b-v.y`). The vertex may belong to a polygon
+other than the port's own — it only supplies the plane coordinate."""
+function _sonnet_drp_link_length(rp,polydict,wall,a,b,source)
+    poly=get(polydict,rp.link.polygon,nothing)
+    poly===nothing && _sonnet_error(source,rp.record.line,
+        "DRP1 LINK references undefined polygon $(rp.link.polygon)")
+    # Native vertex indices are zero-based on the stored vertex list (the
+    # closing repeat counts like any other row).
+    k=rp.link.vertex+1
+    1<=k<=size(poly.vertices,2) || _sonnet_error(source,rp.record.line,
+        "DRP1 LINK vertex $(rp.link.vertex) outside polygon $(rp.link.polygon)")
+    L=wall===:west ? poly.vertices[1,k] :
+        wall===:east ? a-poly.vertices[1,k] :
+        wall===:south ? poly.vertices[2,k] : b-poly.vertices[2,k]
+    isfinite(L) || _sonnet_error(source,rp.record.line,
+        "DRP1 LINK vertex coordinate is non-finite")
+    return max(L,0.0)
+end
+
+# Native port electrical rows carry an optional independent reference plane
+# in fields 8/9: `<num> <z0> <r> <x> <l> <c> <xp> <yp> [<type> <len>]`.
+# Lite 18.53 probe (data/refplane_probe): `FIX <len>` and `NONE <len>` on a
+# box-wall port both trip "has independent reference plane" license gates,
+# `NONE` alone or `NONE 0` is inert, and stray numeric or unrecognized
+# trailing tokens are ignored by intake. The semantics mirror the DRP wall
+# records (Sonnet user guide: the type drop-list is None/Fixed/Linked and
+# None+length selects a fixed calibration length), applied to this port
+# alone rather than shared per wall.
+"""Independent reference-plane spec parsed from a port electrical row, or
+`nothing` when the row is inert (`NONE`/absent/zero length). `mode` is
+`:fix` or `:none`; `length` [m] is the declared plane (FIX) or calibration
+(NONE) length."""
+function _sonnet_port_refplane(p,values,variables,freq,source,line)
+    length(values)>9 && _sonnet_error(source,line,
+        "native port carries unrepresented trailing fields")
+    length(values)<8 && return nothing
+    rtype=uppercase(values[8])
+    rtype=="NONE" && length(values)==8 && return nothing
+    length(values)==9 || _sonnet_error(source,line,
+        "native port reference plane $rtype requires a length field")
+    rlen=sonnet_variable_value(p,values[9];variables,freq)*p.length_scale
+    (isfinite(rlen) && rlen>=0) || _sonnet_error(source,line,
+        "native port reference plane length must be finite and nonnegative")
+    rtype=="NONE" && return rlen>0 ? (mode=:none,length=rlen,record=nothing) : nothing
+    rtype=="FIX" || _sonnet_error(source,line,
+        "unrecognized native port reference plane type $(values[8])")
+    rlen>0 || return nothing
+    return (mode=:fix,length=rlen,record=nothing)
+end
+
 # Native `POR1 CUP <group>` blocks carry a CUPGRP record (quoted name plus an
 # optional LOCAL auto-group marker) and close with ID/END; the port's group
 # designator is duplicated on the POR1 line and must agree. CUPGRP anywhere
@@ -620,7 +675,11 @@ function _sonnet_cup_terminal(p::SonnetProject,ps,poly,mask,padmask,level,gr,var
     termwr=filter(r->uppercase(r.tokens[1])=="TERMW",ps.records)
     length(termwr)<=1 || throw(ArgumentError("native CUP port carries more than one TERMW record"))
     termw=isempty(termwr) ? "FEED" : join(only(termwr).tokens[2:end]," ")
-    position=parse(Float64,ps.values[end])
+    # CUP electrical rows share the standard grammar plus a terminal-position
+    # field: <num> <z0> <r> <x> <l> <xp> <position> [<type> <len>], so the
+    # position is field 7, not the row tail (ref-plane fields may follow).
+    length(ps.values)>=7 || throw(ArgumentError("incomplete native CUP port row"))
+    position=parse(Float64,ps.values[7])
     isfinite(position) && 0<=position<=1 ||
         throw(ArgumentError("native CUP port position is invalid"))
     transverse=lo+position*(hi-lo)
@@ -643,8 +702,14 @@ function _sonnet_cup_terminal(p::SonnetProject,ps,poly,mask,padmask,level,gr,var
     hostcells=Tuple{Int,Int}[(c[1],c[2]) for c in findall(padmask)]
     isempty(hostcells) && throw(ArgumentError(
         "native CUP port polygon has no rasterized cells"))
+    # Full metal extent on the terminal's edge column — the cross-section a
+    # reference plane slides through when it shifts into the pad.
+    padedge=let cells=xaxis ? findall(padmask[edge,:]) : findall(padmask[:,edge])
+        isempty(cells) ? span : first(cells):last(cells)
+    end
     return (;terminal,number=abs(ps.number),z0=ComplexF64(z0),direction,hostcells,
-        group=_sonnet_cup_group(ps),groundref=_sonnet_cup_groundref(p.source,ps),simple)
+        padedge,group=_sonnet_cup_group(ps),
+        groundref=_sonnet_cup_groundref(p.source,ps),simple)
 end
 
 """Calibration-group partitioning for staged CUP terminals. Simplified
@@ -2936,6 +3001,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     ports=PlanarPort[]
     numbers=Int[]; port_z0=ComplexF64[];port_weights=Float64[]
     cup_terminals=NamedTuple[]
+    port_drp=Dict{Int,NamedTuple}()
     # Programmatically assembled projects carry no records; parsed projects
     # always keep their GEO section for the reference-plane lookup.
     refplanes=NamedTuple[]
@@ -2955,9 +3021,13 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         poly=polydict[ps.polygon]
         q=ps.values
         z0=_sonnet_port_reference(p,ps,freq,variables)
+        row=_sonnet_port_refplane(p,ps.values,variables,freq,p.source,
+            isempty(ps.records) ? 0 : first(ps.records).line)
         if poly.kind==:via
             ps.kind==:cup && throw(ArgumentError(
                 "native CUP via-polygon port requires its co-calibrated via adapter"))
+            row===nothing || throw(ArgumentError(
+                "native via port $(abs(ps.number)) independent reference plane requires its via-feed adapter"))
             # A grounded (number 0) port on a via polygon shorts its
             # terminals: the column connects its levels exactly like a
             # portless via, which the via basis already provides.
@@ -2989,6 +3059,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             throw(ArgumentError("native box-port edge is partially or entirely outside the box"))
         wall=v[1,index]==v[1,next]==0. ? :west : v[1,index]==v[1,next]==a ? :east :
             v[2,index]==v[2,next]==0. ? :south : v[2,index]==v[2,next]==b ? :north : nothing
+        drp_spec=nothing
         if ps.kind==:cup && wall===nothing
             # Co-calibrated ports attach on open interior edges and return
             # through a generated cover via. A CUP token on a box wall
@@ -2996,30 +3067,62 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             # g2_cup/xg2_cup both solve as "Standard port"), so wall
             # placements skip this path entirely; an interior edge that
             # is not open still rejects inside the terminal staging.
-            push!(cup_terminals,_sonnet_cup_terminal(p,ps,poly,
+            cup=_sonnet_cup_terminal(p,ps,poly,
                 sheets[sheetidx[poly.level]].mask,masks[poly.id],
-                sheetidx[poly.level],gr,variables,freq,z0))
+                sheetidx[poly.level],gr,variables,freq,z0)
+            # A CUP terminal's independent reference plane shifts into the pad
+            # by the declared length. The launch junction is already removed by
+            # the group's co-calibration standard, so the terminal's feed spec
+            # only carries the pad-edge strip the plane slides through.
+            row===nothing ||
+                (cup=(;cup...,refplane=(mode=row.mode,length=row.length,
+                    record=isempty(ps.records) ? nothing : first(ps.records),
+                    kind=:pin,padedge=cup.padedge,
+                    level=cup.terminal.level,edge=cup.terminal.edge,
+                    xaxis=_is_planar_x_terminal(cup.terminal.wall))))
+            push!(cup_terminals,cup)
             continue
+        end
+        if wall===nothing && row!==nothing
+            throw(ArgumentError(
+                "native gap port $(abs(ps.number)) independent reference plane requires its strip-feed adapter"))
         end
         if wall!==nothing
             rp=_sonnet_drp_wall(refplanes,wall)
+            rp!==nothing && row!==nothing && throw(ArgumentError(
+                "native port $(abs(ps.number)) reference plane conflicts with the DRP1 record on the $wall box wall"))
             if rp!==nothing
                 span=rp.arg*ls
                 perp=(wall in (:west,:east) ? a/native_nx : b/native_ny)/2
                 name=wall==:west ? "left" : wall==:east ? "right" :
                     wall==:south ? "bottom" : "top"
+                drp_length=0.0
                 if rp.mode===:fix && span>0
                     span<=5*perp+1e-9*perp && throw(ArgumentError(
                         "Reference plane for port $(abs(ps.number)) on $name box wall is too short."))
-                    throw(ArgumentError("native DRP1 FIX reference plane on port $(abs(ps.number)) "*
-                        "requires the port feed-line de-embedding adapter"))
-                elseif rp.mode===:none && span>0
-                    throw(ArgumentError("native DRP1 NONE calibration length on port $(abs(ps.number)) "*
-                        "requires the port-discontinuity calibration adapter"))
+                    drp_length=span
                 elseif rp.mode===:link
-                    throw(ArgumentError("native DRP1 LINK reference plane on port $(abs(ps.number)) "*
-                        "requires the port feed-line de-embedding adapter"))
+                    # LINK's POLY continuation names the polygon's NUM
+                    # ordinal, not its POLY id.
+                    drp_length=_sonnet_drp_link_length(rp,
+                        Dict(i=>q for (i,q) in enumerate(p.polygons)),wall,a,b,p.source)
                 end
+                drp_spec=rp.mode===:fix && span<=0 ? nothing :
+                    rp.mode===:none && span<=0 ? nothing :
+                    (mode=rp.mode,length=drp_length,record=rp.record,kind=:wall)
+            elseif row!==nothing
+                span=row.length
+                row.mode===:fix || (span=0.0)
+                if span>0
+                    perp=(wall in (:west,:east) ? a/native_nx : b/native_ny)/2
+                    name=wall==:west ? "left" : wall==:east ? "right" :
+                        wall==:south ? "bottom" : "top"
+                    span<=5*perp+1e-9*perp && throw(ArgumentError(
+                        "Reference plane for port $(abs(ps.number)) on $name box wall is too short."))
+                end
+                drp_spec=(mode=row.mode,length=span,
+                    record=isempty(ps.records) ? nothing : first(ps.records),
+                    kind=:wall)
             end
         end
         if wall===nothing
@@ -3067,14 +3170,21 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         sh=sheets[sheetidx[poly.level]]
         flags=wall==:west ? sh.connect_west : wall==:east ? sh.connect_east : wall==:south ? sh.connect_south : sh.connect_north
         flags[firstcell:lastcell].=true
-        ps.number==0 && continue # The undriven wall half-rooftops impose V=0.
+        # The undriven wall half-rooftops impose V=0 — a row reference plane
+        # declared on a grounded terminal is meaningless, so it must not be
+        # silently eaten. A wall-scoped DRP still serves the other ports.
+        ps.number==0 && (row===nothing ||
+            throw(ArgumentError("native grounded port 0 cannot carry a reference plane")))
+        ps.number==0 && continue
         push!(ports,PlanarPort(sheetidx[poly.level],wall,firstcell:lastcell,z0;
             polarity=ps.number<0 ? -1 : 1))
         push!(numbers,abs(ps.number)); push!(port_z0,z0)
         push!(port_weights,1.)
+        drp_spec!==nothing && (port_drp[length(ports)]=drp_spec)
     end
     order=sortperm(numbers); ports=ports[order]; numbers=numbers[order]; port_z0=port_z0[order]
     port_weights=port_weights[order]
+    feed_drp=[get(port_drp,i,nothing) for i in order]
     _enforce_payload_limit(_checked_payload_sum("native raster basis construction",
         geometry_workspace,port_workspace,_sonnet_raster_basis_workspace(gr,sheets,vias,bricks)),
         limit,"native raster basis construction","max_bytes")
@@ -3108,6 +3218,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         # to the physical problem and must not look like a negative rail.
         ports=problem.ports
         numbers2=Int[];z02=ComplexF64[];weights2=Float64[];map_polarities=Int[]
+        feed_drp2=Vector{Any}(undef,length(ports));fill!(feed_drp2,nothing)
         for i in eachindex(ports)
             col=findfirst(!iszero,view(returns.contraction,i,:))
             col===nothing && throw(ArgumentError("native CUP return port lacks its terminal mapping"))
@@ -3115,13 +3226,16 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
             if col<=np
                 push!(numbers2,numbers[col]);push!(z02,port_z0[col])
                 push!(weights2,port_weights[col]*w);push!(map_polarities,ports[i].polarity)
+                feed_drp2[i]=feed_drp[col]
             else
                 t=cup_terminals[col-np]
                 push!(numbers2,t.number);push!(z02,t.z0);push!(weights2,w)
                 push!(map_polarities,t.terminal.polarity)
+                feed_drp2[i]=get(t,:refplane,nothing)
             end
         end
         numbers,port_z0,port_weights=numbers2,z02,weights2
+        feed_drp=feed_drp2
         added=length(problem.vias)-length(vias)
         via_sigma=vcat(via_sigma,fill(Inf,added))
         vias=problem.vias
@@ -3159,7 +3273,7 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
         end
         model=(;problem,contraction=terminal_maps.contraction,
             floating_common=terminal_maps.floating_common,z0,sheet_zs,via_sigma,labels,geometry_project=p,
-            scalar_files=_sonnet_scalar_files(variables),cup_standards)
+            scalar_files=_sonnet_scalar_files(variables),cup_standards,feed_drp)
         payload=_checked_payload_sum("native retained raster model",
             _sonnet_raster_retained_payload(model,source),scalar_workspace,
             [_sonnet_cup_standard_payload(std.standard,length(labels))
@@ -3172,6 +3286,167 @@ function sonnet_planar_problem(p::SonnetProject;freq::Real=1e9,grid=nothing,
     allunique(n for n in numbers if !iszero(n)) ||
         throw(ArgumentError("native shared terminals require solve_sonnet_project for network contraction"))
     return problem
+end
+
+# ---------------- wall feed-line de-embedding (DRP1) ----------------
+#
+# Lite 18.53 probe findings (validation/sonnet_stripline/drp_feed_reference):
+# `OPTIONS -d` emits de-embedded S for every wall port even without DRP
+# records — the default removes the launch discontinuity only. `DRP1 <wall>
+# NONE [callen]` is the same removal; the optional calibration length only
+# re-selects the reported feed parameters. `DRP1 <wall> FIX <len>` unrolls a
+# feed line of the declared length (the native too-short diagnostic below 5
+# half-cells is preserved at problem build). `DRP1 <wall> LINK` unrolls a
+# feed line whose length is the wall-to-vertex distance projected on the
+# feed direction. The removed per-port network is the launch junction
+# admittance cascaded with the uniform feed-line section — both extracted
+# here from double-delay thru-standards sharing the port's wall-edge strip
+# cross-section, the physical characterization solve the de-embed needs.
+
+"""Thru-standard [`PlanarProblem`](@ref) for a wall port's feed cross-section:
+the port's wall-edge strip continued uniformly across a box of the same
+stackup and transverse extent, fed by the same wall-port type on both
+ends. `nfeed` is the feed-direction cell count."""
+function _sonnet_feed_standard(prob::PlanarProblem,port::PlanarPort,nfeed::Integer)
+    nfeed>=2 || throw(ArgumentError("feed standard needs at least 2 cells"))
+    gr=prob.grid; sheet=prob.sheets[port.level]
+    mark(n,cells)=begin v=falses(n); v[cells].=true; v end
+    if port.wall in (:west,:east)
+        grid_s=CellGrid(nfeed*gr.dx,gr.b,nfeed,gr.ny;walls=gr.walls)
+        sm=falses(nfeed,gr.ny); sm[:,port.cells].=true
+        c=mark(gr.ny,port.cells)
+        sh=SheetLevel(sheet.interface,sm,c,c,falses(nfeed),falses(nfeed))
+        ports=[PlanarPort(1,:west,port.cells,port.z0),
+            PlanarPort(1,:east,port.cells,port.z0)]
+    else
+        grid_s=CellGrid(gr.a,nfeed*gr.dy,gr.nx,nfeed;walls=gr.walls)
+        sm=falses(gr.nx,nfeed); sm[port.cells,:].=true
+        c=mark(gr.nx,port.cells)
+        sh=SheetLevel(sheet.interface,sm,falses(nfeed),falses(nfeed),c,c)
+        ports=[PlanarPort(1,:south,port.cells,port.z0),
+            PlanarPort(1,:north,port.cells,port.z0)]
+    end
+    st=prob.stack
+    return build_planar_problem(
+        PlanarStackup(st.layers,st.bottom,st.top,grid_s.a,grid_s.b),
+        grid_s,[sh],ports)
+end
+
+"""Feed-line characterization `(yd, zc, gamma)` for a wall port's launch
+section, extracted by Rautio double-delay on two thru-standards of length
+`nfeed` and `2*nfeed` feed-direction cells. `nfeed` defaults to enough cells
+for ~0.3 rad of electrical length at the highest stackup epsilon."""
+function _sonnet_feed_params(prob::PlanarProblem,port::PlanarPort,freq;
+        nfeed::Union{Nothing,Integer}=nothing,sheet_zs=nothing,profile_edge=nothing,
+        solve_kw...)
+    gr=prob.grid
+    if nfeed===nothing
+        ee=maximum(real(l.epsr*l.mur) for l in prob.stack.layers)
+        k0=2π*freq/299792458.0
+        spacing=port.wall in (:west,:east) ? gr.dx : gr.dy
+        nfeed=clamp(ceil(Int,0.35/(k0*sqrt(ee)*spacing)),8,512)
+    end
+    len=nfeed*(port.wall in (:west,:east) ? gr.dx : gr.dy)
+    # Modal-grid overrides (mx/my) name a density on the *solved* problem's
+    # feed axis — re-emit them at the same density on each standard's own
+    # length or the longer 2n standard is under-resolved and the pair stops
+    # being consistent (the mx=my=2nx default already does this).
+    modescale(nf)=let x=port.wall in (:west,:east)
+        x ? (;mx=ceil(Int,get(solve_kw,:mx,2*gr.nx)*nf/gr.nx)) :
+            (;my=ceil(Int,get(solve_kw,:my,2*gr.ny)*nf/gr.ny))
+    end
+    # The standard's strip carries the port's launch-edge surface impedance
+    # profile, extended uniformly along the feed direction. `profile_edge`
+    # names a different source column — a pin's own pad edge rather than the
+    # box wall its feed port faces.
+    profile=nothing
+    if sheet_zs!==nothing
+        src=sheet_zs[port.level]
+        profile=profile_edge===nothing ?
+            (port.wall===:west ? src[1,:] : port.wall===:east ? src[gr.nx,:] :
+                port.wall===:south ? src[:,1] : src[:,gr.ny]) :
+            (port.wall in (:west,:east) ? src[profile_edge,:] : src[:,profile_edge])
+    end
+    function solve(prob2)
+        nf=port.wall in (:west,:east) ? prob2.grid.nx : prob2.grid.ny
+        skw=merge((;solve_kw...),modescale(nf))
+        profile===nothing && return solve_planar(prob2,freq;skw...)
+        z=port.wall in (:west,:east) ? repeat(profile',nf,1) : repeat(profile,1,nf)
+        return solve_planar(prob2,freq;surface_zs=[z],skw...)
+    end
+    yl=solve(_sonnet_feed_standard(prob,port,nfeed)).y
+    y2=solve(_sonnet_feed_standard(prob,port,2*nfeed)).y
+    # A narrow wall launch carries a series term as well as the shunt
+    # junction — the group extractor recovers the full symmetric launch
+    # box `E` from `T1 = E L E`, `T2 = E L^2 E`, not just a shunt `yd`.
+    return planar_group_double_delay_calibrate(yl,y2;length=len,tol=0.05,
+        max_bytes=get(solve_kw,:max_bytes,_default_max_dense_payload_bytes()))
+end
+
+"""Per-label-column ABCD de-embedding chains for a solved native model.
+With `deembed` (the `OPTIONS -d` stream) every wall port gets its launch
+discontinuity removed (`Md`); ports whose wall carries an active `DRP1
+FIX`/`LINK` or independent reference-plane row additionally unroll the
+feed line of the declared length. CUP terminals carrying a pin reference
+plane only unroll their pad-edge strip — their launch junction is already
+removed by the group's co-calibration standard, and the pin plane applies
+with or without `-d` (it is part of the co-calibrated port contract).
+Ports without a characterized feed (via, gap, plain CUP) receive the
+identity chain."""
+function _sonnet_wall_feed_chains(model,freq;deembed::Bool=true,solve_kw...)
+    n=length(model.labels)
+    chains=[Matrix{ComplexF64}(I,2,2) for _ in 1:n]
+    prob=model.problem
+    cache=Dict{Any,PlanarDoubleDelayCalibration}()
+    for j in 1:n
+        inds=findall(!iszero,view(model.contraction,:,j))
+        isempty(inds) && continue
+        # Terminals sharing a label must agree on their declared plane —
+        # a single per-label chain cannot express asymmetric member planes.
+        specs=[model.feed_drp[i] for i in inds
+            if i<=length(model.feed_drp) && model.feed_drp[i]!==nothing]
+        spec=isempty(specs) ? nothing : first(specs)
+        spec===nothing || all(s->s.mode==spec.mode && s.length==spec.length &&
+            get(s,:kind,:wall)==get(spec,:kind,:wall) &&
+            get(s,:padedge,nothing)==get(spec,:padedge,nothing),specs) ||
+            throw(ArgumentError("native terminals sharing a port label declare conflicting reference planes"))
+        # A CUP label also collects the terminal's return-via port — the
+        # spec declares which physical port's feed it characterizes.
+        pi=spec===nothing ? first(inds) : begin
+            k=findfirst(i->model.feed_drp[i]===spec,inds)
+            k===nothing ? first(inds) : inds[k]
+        end
+        port=prob.ports[pi]
+        if spec!==nothing && spec.kind===:pin
+            spec.mode===:fix && spec.length>0 || continue
+            (_is_planar_terminal(port.wall) || port.wall===:via) ||
+                throw(ArgumentError("native pin reference plane requires a CUP terminal port"))
+            # Cross-section is the pad's metal extent on the terminal edge,
+            # fed like a wall port on the same level; the launch junction is
+            # the co-calibration standard's job, so only the line unrolls.
+            # SIMPLE terminals realized as via ports keep their pad metadata
+            # on the spec rather than the physical port.
+            feed=PlanarPort(spec.level,spec.xaxis ? :west : :south,
+                spec.padedge,port.z0)
+            key=(spec.level,spec.xaxis ? :x : :y,
+                first(spec.padedge),last(spec.padedge),port.z0,spec.edge)
+            cal=get!(()->_sonnet_feed_params(prob,feed,freq;
+                    sheet_zs=get(model,:sheet_zs,nothing),profile_edge=spec.edge,
+                    solve_kw...),cache,key)
+            zc,gl=_line_params_of_abcd(cal.line)
+            chains[j]=planar_line_abcd(zc,gl*(spec.length/cal.length))
+        elseif deembed && port.wall in (:west,:east,:south,:north)
+            key=(port.level,port.wall in (:west,:east) ? :x : :y,
+                first(port.cells),last(port.cells),port.z0)
+            cal=get!(()->_sonnet_feed_params(prob,port,freq;
+                    sheet_zs=get(model,:sheet_zs,nothing),solve_kw...),cache,key)
+            zc,gl=_line_params_of_abcd(cal.line)
+            len=spec===nothing || spec.mode===:none ? 0.0 : spec.length
+            chains[j]=len<=0 ? cal.launch :
+                cal.launch*planar_line_abcd(zc,gl*(len/cal.length))
+        end
+    end
+    return chains
 end
 
 # Same positive label means a common voltage. A corresponding negative
@@ -3286,13 +3561,21 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
     # placements still count for projects routing there.
     routed=_sonnet_has_floating(p) || !isempty(p.components)
     polydict=Dict(q.id=>q for q in p.polygons)
-    cup_declared=any(ps->ps.kind==:cup &&
-        (routed || !_sonnet_cup_port_on_wall(p,ps,polydict;variables=variables,
-            freq=freq,scalar_files=scalar_files,scalar_root=scalar_root,
-            scalar_outside=scalar_outside,scalar_max_files=scalar_max_files,
-            scalar_max_bytes=scalar_max_bytes,scalar_max_nodes=scalar_max_nodes,
-            scalar_max_line_bytes=scalar_max_line_bytes)),p.ports)
-    !raw && deembed_requested && calibration===nothing && !cup_declared && throw(ArgumentError(
+    on_wall=[_sonnet_cup_port_on_wall(p,ps,polydict;variables=variables,
+        freq=freq,scalar_files=scalar_files,scalar_root=scalar_root,
+        scalar_outside=scalar_outside,scalar_max_files=scalar_max_files,
+        scalar_max_bytes=scalar_max_bytes,scalar_max_nodes=scalar_max_nodes,
+        scalar_max_line_bytes=scalar_max_line_bytes) for ps in p.ports]
+    wall_ports=any(on_wall)
+    cup_declared=any(i->p.ports[i].kind==:cup &&
+        (routed || !on_wall[i]),eachindex(p.ports))
+    # Wall feed de-embedding is served on the plain and CUP paths; the
+    # floating and components paths have no wall-feed adapter there and
+    # keep the calibration-required rejection instead of silently
+    # returning raw output.
+    feed_served=wall_ports && isempty(p.components) && !_sonnet_has_floating(p)
+    !raw && deembed_requested && calibration===nothing && !cup_declared &&
+        !feed_served && throw(ArgumentError(
         "native project requests de-embedding; supply calibration or explicitly request raw=true"))
     scalar_options=scalar_files===nothing && !_sonnet_has_scalar_tables(p) ? (;) :
         (;scalar_files,scalar_root,scalar_outside,scalar_max_files,scalar_max_bytes,
@@ -3362,6 +3645,22 @@ function solve_sonnet_project(p::SonnetProject,freq::Real;
         y=deembed_ports(y,calibration)
         A,B,_,_=_calibration_chain_blocks(calibration,length(model.labels))
         voltage_transfer=voltage_transfer*(A+B*y)
+    end
+    # `-d` removes every wall launch; CUP pin planes apply unconditionally
+    # (intrinsic to the co-calibrated contract). Both compose after any
+    # user-supplied calibration — the calibration sits instrument-side of
+    # the port plane, the feed chains board-side.
+    feed_active=!raw && haskey(model,:feed_drp) && (deembed_requested ||
+        any(s->s!==nothing && get(s,:kind,:wall)===:pin,model.feed_drp))
+    if feed_active
+        chains=_sonnet_wall_feed_chains(model,freq;
+            deembed=deembed_requested,remaining...)
+        any(c->!isone(c),chains) || (chains=nothing)
+        if chains!==nothing
+            y=deembed_ports(y,chains)
+            A,B,_,_=_calibration_chain_blocks(chains,length(model.labels))
+            voltage_transfer=voltage_transfer*(A+B*y)
+        end
     end
     s=planar_y_to_s(y,model.z0)
     return SonnetPlanarResult(p,result,model.labels,y,s,voltage_transfer,model.z0,model.scalar_files)
