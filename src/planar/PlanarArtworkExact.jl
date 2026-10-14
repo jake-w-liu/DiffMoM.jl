@@ -415,10 +415,21 @@ function _artwork_exact_qevents!(w,s::_ArtworkODBHalfOval,a,b)
 end
 _artwork_exact_qtrait(::_ArtworkODBHalfOval,depth=0)=depth
 
+# Pad windows only need a Float64 neighborhood; exact coordinates convert to
+# an enclosing double with the helper's one-pad margin absorbing the rest.
+_artwork_exact_window_coordinate(x::_ArtworkDyadic)=Float64(x)
+_artwork_exact_window_coordinate(x::_ArtworkQuadratic)=
+    Float64(x.a)+Float64(x.b)*sqrt(Float64(x.d))
+function _artwork_exact_dpack_window(s::_ArtworkODBDPack,x0,x1,y0,y1)
+    _odb_dpack_window(s,
+        _artwork_exact_window_coordinate(x0),_artwork_exact_window_coordinate(x1),
+        _artwork_exact_window_coordinate(y0),_artwork_exact_window_coordinate(y1))
+end
 function _artwork_exact_qcontains(s::_ArtworkODBDPack,p)
     pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
     q=_artwork_exact_q;px,py,cx,cy=_odb_dpack_pads(s)
-    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+    ir,jr=_artwork_exact_dpack_window(s,p[1],p[1],p[2],p[2])
+    for j in jr,i in ir
         o=(q(cx+i*px),q(cy+j*py))
         _artwork_exact_qcontains(pad,_artwork_exact_qsub(p,o))&&return true
     end
@@ -427,7 +438,8 @@ end
 function _artwork_exact_qevents!(w,s::_ArtworkODBDPack,a,b)
     pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
     q=_artwork_exact_q;px,py,cx,cy=_odb_dpack_pads(s)
-    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+    ir,jr=_artwork_exact_dpack_window(s,min(a[1],b[1]),max(a[1],b[1]),min(a[2],b[2]),max(a[2],b[2]))
+    for j in jr,i in ir
         o=(q(cx+i*px),q(cy+j*py))
         _artwork_exact_qevents!(w,pad,_artwork_exact_qsub(a,o),_artwork_exact_qsub(b,o))
     end
@@ -439,8 +451,11 @@ function _artwork_exact_qcontains(s::_ArtworkODBSquaredThermal,p)
     _artwork_exact_qcontains(s.inside,p)&&return false
     iszero(s.gap)&&return true
     q=_artwork_exact_q;step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=q(s.gap)/2
-    for k in 0:s.count-1
-        ux,uy=_odb_thermal_spoke(base,k,step);u=(q(ux),q(uy))
+    fx=_artwork_exact_window_coordinate(p[1]);fy=_artwork_exact_window_coordinate(p[2])
+    slack=_odb_thermal_squared_slack(s.gap/2,step,fx,fx,fy,fy)
+    k0,kn=_odb_thermal_spoke_window(base,step,s.count,slack,fx,fx,fy,fy)
+    for t in 0:kn-1
+        ux,uy=_odb_thermal_spoke(base,mod(k0+t,s.count),step);u=(q(ux),q(uy))
         _artwork_exact_qdot(u,p)<0 && continue
         cr=_artwork_exact_qcross(u,p)
         -g<cr<g && return false
@@ -452,8 +467,12 @@ function _artwork_exact_qevents!(w,s::_ArtworkODBSquaredThermal,a,b)
     _artwork_exact_qevents!(w,s.inside,a,b)
     iszero(s.gap)&&return
     q=_artwork_exact_q;step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=q(s.gap)/2
-    for k in 0:s.count-1
-        ux,uy=_odb_thermal_spoke(base,k,step);u=(q(ux),q(uy));n=(q(-uy),q(ux))
+    x0,x1=extrema((_artwork_exact_window_coordinate(a[1]),_artwork_exact_window_coordinate(b[1])))
+    y0,y1=extrema((_artwork_exact_window_coordinate(a[2]),_artwork_exact_window_coordinate(b[2])))
+    slack=_odb_thermal_squared_slack(s.gap/2,step,x0,x1,y0,y1)
+    k0,kn=_odb_thermal_spoke_window(base,step,s.count,slack,x0,x1,y0,y1)
+    for t in 0:kn-1
+        ux,uy=_odb_thermal_spoke(base,mod(k0+t,s.count),step);u=(q(ux),q(uy));n=(q(-uy),q(ux))
         for sgn in (-1,1)
             c=_artwork_exact_qscale(n,sgn*g)
             _artwork_exact_qedge_events!(w,c,_artwork_exact_qadd(c,u),a,b)
@@ -471,8 +490,11 @@ function _artwork_exact_qcontains(s::_ArtworkODBRoundedThermal,p)
     dist=_artwork_exact_qdot(p,p);lin=cr-cap<0 ? q(0) : cr-cap
     (dist>(cr+cap)^2||dist<lin*lin)&&return false
     step=2Float64(pi)/s.count
-    for k in 0:s.count-1
-        thc=s.angle+k*step
+    fx=_artwork_exact_window_coordinate(p[1]);fy=_artwork_exact_window_coordinate(p[2])
+    slack=_odb_thermal_rounded_slack(s,step)
+    k0,kn=_odb_thermal_spoke_window(s.angle,step,s.count,slack,fx,fx,fy,fy)
+    for t in 0:kn-1
+        thc=s.angle+mod(k0+t,s.count)*step
         thl,thr=thc-s.half_gap_angle,thc+s.half_gap_angle
         uL=(q(cos(thl)),q(sin(thl)));uR=(q(cos(thr)),q(sin(thr)))
         crL=_artwork_exact_qcross(uL,p);crR=_artwork_exact_qcross(uR,p)
@@ -491,8 +513,12 @@ function _artwork_exact_qevents!(w,s::_ArtworkODBRoundedThermal,a,b)
     rin=max(q(0),cr-cap)
     rin>0&&_artwork_exact_qcircle_events!(w,z,rin,a,b)
     step=2Float64(pi)/s.count
-    for k in 0:s.count-1
-        thc=s.angle+k*step
+    x0,x1=extrema((_artwork_exact_window_coordinate(a[1]),_artwork_exact_window_coordinate(b[1])))
+    y0,y1=extrema((_artwork_exact_window_coordinate(a[2]),_artwork_exact_window_coordinate(b[2])))
+    slack=_odb_thermal_rounded_slack(s,step)
+    k0,kn=_odb_thermal_spoke_window(s.angle,step,s.count,slack,x0,x1,y0,y1)
+    for t in 0:kn-1
+        thc=s.angle+mod(k0+t,s.count)*step
         for sgn in (-1,1)
             th=thc+sgn*s.half_gap_angle
             u=(q(cos(th)),q(sin(th)))

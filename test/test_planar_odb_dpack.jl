@@ -124,6 +124,14 @@ end
     doc=read_fixture(huge;max_bytes=8192)
     @test length(doc.objects)==1
     @test occupied(doc,0.,0.)
+    @test occupied(doc,49.4e-6,-49.4e-6)
+    @test !occupied(doc,50.5e-6,0.)
     @test Base.summarysize(doc)<8192
+    # The canonical engine enumerates only the pads near a query, so huge
+    # counts stay bounded. A stroke aperture still rejects the pad count.
+    shape=doc.objects[1].shape
+    @test shape isa DM._ArtworkTransform
+    @test_throws ArgumentError DM._artwork_composite_line(shape.shape,(0.,0.),(1e-3,1e-3);
+        max_boundaries=256)
 end
 end

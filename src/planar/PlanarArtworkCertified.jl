@@ -237,7 +237,8 @@ function _artwork_certified_contains(s::_ArtworkODBDPack,x,y)
     box==0&&return box
     pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
     px,py,cx,cy=_odb_dpack_pads(s);state=Int8(0)
-    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+    ir,jr=_odb_dpack_window(s,x.lo,x.hi,y.lo,y.hi)
+    for j in jr,i in ir
         part=_artwork_certified_contains(pad,x-_ArtworkInterval(cx+i*px),y-_ArtworkInterval(cy+j*py))
         state=_artwork_interval_union(state,part)
         state==1&&break
@@ -257,8 +258,10 @@ function _artwork_certified_contains(s::_ArtworkODBSquaredThermal,x,y)
     removed=Int8(0)
     if !iszero(s.gap)
         step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=s.gap/2
-        for k in 0:s.count-1
-            ux,uy=_odb_thermal_spoke(base,k,step)
+        slack=_odb_thermal_squared_slack(g,step,x.lo,x.hi,y.lo,y.hi)
+        k0,kn=_odb_thermal_spoke_window(base,step,s.count,slack,x.lo,x.hi,y.lo,y.hi)
+        for t in 0:kn-1
+            ux,uy=_odb_thermal_spoke(base,mod(k0+t,s.count),step)
             u=(_ArtworkInterval(ux),_ArtworkInterval(uy))
             slot=_artwork_interval_intersection(_artwork_trit_strict_positive(_artwork_interval_dot(u,(x,y))),
                 _artwork_trit_strict_less(_artwork_interval_abs(_artwork_interval_cross(u,(x,y))),_ArtworkInterval(g)))
@@ -277,8 +280,10 @@ function _artwork_certified_contains(s::_ArtworkODBRoundedThermal,x,y)
         _artwork_interval_le(_artwork_interval_square(_ArtworkInterval(lo)),dist))
     band==0&&return band
     step=2Float64(pi)/s.count;removed=Int8(0)
-    for k in 0:s.count-1
-        thc=s.angle+k*step
+    slack=_odb_thermal_rounded_slack(s,step)
+    k0,kn=_odb_thermal_spoke_window(s.angle,step,s.count,slack,x.lo,x.hi,y.lo,y.hi)
+    for t in 0:kn-1
+        thc=s.angle+mod(k0+t,s.count)*step
         thl,thr=thc-s.half_gap_angle,thc+s.half_gap_angle
         uL=(_ArtworkInterval(cos(thl)),_ArtworkInterval(sin(thl)))
         uR=(_ArtworkInterval(cos(thr)),_ArtworkInterval(sin(thr)))
@@ -539,7 +544,10 @@ end
 function _artwork_interval_next(s::_ArtworkODBDPack,a,v,cursor,current)
     pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
     px,py,cx,cy=_odb_dpack_pads(s)
-    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+    t=_ArtworkInterval(max(cursor,0.),1.)
+    xr=a[1]+t*v[1];yr=a[2]+t*v[2]
+    ir,jr=_odb_dpack_window(s,xr.lo,xr.hi,yr.lo,yr.hi)
+    for j in jr,i in ir
         aa=(a[1]-_ArtworkInterval(cx+i*px),a[2]-_ArtworkInterval(cy+j*py))
         current=_artwork_interval_next(pad,aa,v,cursor,current)
     end
@@ -550,8 +558,12 @@ function _artwork_interval_next(s::_ArtworkODBSquaredThermal,a,v,cursor,current)
     current=_artwork_interval_next(s.inside,a,v,cursor,current)
     iszero(s.gap) && return current
     step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=s.gap/2
-    for k in 0:s.count-1
-        ux,uy=_odb_thermal_spoke(base,k,step);nx,ny=-uy,ux
+    t=_ArtworkInterval(max(cursor,0.),1.)
+    xr=a[1]+t*v[1];yr=a[2]+t*v[2]
+    slack=_odb_thermal_squared_slack(g,step,xr.lo,xr.hi,yr.lo,yr.hi)
+    k0,kn=_odb_thermal_spoke_window(base,step,s.count,slack,xr.lo,xr.hi,yr.lo,yr.hi)
+    for tt in 0:kn-1
+        ux,uy=_odb_thermal_spoke(base,mod(k0+tt,s.count),step);nx,ny=-uy,ux
         for sgn in (-1.,1.)
             c=(sgn*g*nx,sgn*g*ny)
             current=_artwork_interval_edge_roots(_artwork_interval_point(c),
@@ -568,8 +580,12 @@ function _artwork_interval_next(s::_ArtworkODBRoundedThermal,a,v,cursor,current)
     rin=max(0.,cr-cap)
     rin>0&&(current=_artwork_interval_circle_roots((z,z),_ArtworkInterval(rin),a,v,cursor,current))
     step=2Float64(pi)/s.count
-    for k in 0:s.count-1
-        thc=s.angle+k*step
+    t=_ArtworkInterval(max(cursor,0.),1.)
+    xr=a[1]+t*v[1];yr=a[2]+t*v[2]
+    slack=_odb_thermal_rounded_slack(s,step)
+    k0,kn=_odb_thermal_spoke_window(s.angle,step,s.count,slack,xr.lo,xr.hi,yr.lo,yr.hi)
+    for tt in 0:kn-1
+        thc=s.angle+mod(k0+tt,s.count)*step
         for sgn in (-1.,1.)
             th=thc+sgn*s.half_gap_angle;ux,uy=cos(th),sin(th)
             current=_artwork_interval_edge_roots((z,z),_artwork_interval_point((ux,uy)),a,v,cursor,current)

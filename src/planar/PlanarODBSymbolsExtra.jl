@@ -397,10 +397,28 @@ end
     (s.pad_width+s.horizontal_gap,s.pad_height+s.vertical_gap,
         -s.width/2+s.pad_width/2,-s.height/2+s.pad_height/2)
 end
+# Pads form a periodic grid, so a point or segment engine only needs the index
+# window covering the query box — never hn*vn enumeration. A one-pad margin
+# absorbs boundary rounding; non-finite boxes fall back to the full range.
+function _odb_dpack_axis_window(x0,x1,center,pitch,half,count)
+    lo=(x0-half-center)/pitch
+    hi=(x1+half-center)/pitch
+    (isfinite(lo)&&isfinite(hi))||return 0:count-1
+    i0=clamp(floor(lo)-1,0.,Float64(count-1))
+    i1=clamp(ceil(hi)+1,0.,Float64(count-1))
+    i0>i1&&return 0:-1
+    Int(i0):Int(i1)
+end
+function _odb_dpack_window(s::_ArtworkODBDPack,x0,x1,y0,y1)
+    px,py,cx,cy=_odb_dpack_pads(s)
+    (_odb_dpack_axis_window(x0,x1,cx,px,s.pad_width/2,s.horizontal_count),
+        _odb_dpack_axis_window(y0,y1,cy,py,s.pad_height/2,s.vertical_count))
+end
 function _artwork_stroke_next_boundary(s::_ArtworkODBDPack,a,b,left,right)
     pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
     px,py,cx,cy=_odb_dpack_pads(s)
-    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+    ir,jr=_odb_dpack_window(s,min(a[1],b[1]),max(a[1],b[1]),min(a[2],b[2]),max(a[2],b[2]))
+    for j in jr,i in ir
         ox,oy=cx+i*px,cy+j*py
         right=_artwork_stroke_next_boundary(pad,(a[1]-ox,a[2]-oy),(b[1]-ox,b[2]-oy),left,right)
     end
@@ -419,13 +437,51 @@ end
 # A thermal slot is a parallel-sided strip along a positive spoke ray. Its
 # candidates are the two offset side lines and the perpendicular origin cap.
 @inline _odb_thermal_spoke(angle,k,step)=(cos(angle+k*step),sin(angle+k*step))
+
+# Spoke directions are periodic, so an engine only needs the window covering a
+# query box's angular span about the origin — never a per-spoke enumeration.
+# The window is (start,length) for indices mod(start+i,count), i=0:length-1.
+function _odb_thermal_box_angles(x0,x1,y0,y1)
+    (x0<=0<=x1&&y0<=0<=y1)&&return (0.,2Float64(pi))
+    lo=min(atan(y0,x0),atan(y0,x1),atan(y1,x0),atan(y1,x1))
+    hi=max(atan(y0,x0),atan(y0,x1),atan(y1,x0),atan(y1,x1))
+    # A box touching the negative x axis wraps its span across ±pi.
+    x1<0&&y0<=0<=y1&&return (hi,lo+2Float64(pi))
+    return (lo,hi)
+end
+function _odb_thermal_spoke_window(base,step,count,slack,x0,x1,y0,y1)
+    θ0,θ1=_odb_thermal_box_angles(x0,x1,y0,y1)
+    θ1-θ0+2slack>=2Float64(pi)&&return (0,count)
+    lo=(θ0-slack-base)/step;hi=(θ1+slack-base)/step
+    (isfinite(lo)&&isfinite(hi))||return (0,count)
+    f0=floor(lo)-1;f1=ceil(hi)+1
+    f1-f0+1>=count&&return (0,count)
+    return (floor(Int,mod(f0,count)),floor(Int,f1-f0+1))
+end
+# A squared-thermal slot reaches a query point only within asin(g/r) of the
+# spoke direction for r>g, or within the dot>0 half-plane nearer the origin.
+function _odb_thermal_squared_slack(g,step,x0,x1,y0,y1)
+    rx=x0<=0<=x1 ? 0. : min(abs(x0),abs(x1))
+    ry=y0<=0<=y1 ? 0. : min(abs(y0),abs(y1))
+    rmin=hypot(rx,ry)
+    return (rmin<=g ? Float64(pi)/2 : asin(g/rmin))+step+1e-12
+end
+# Rounded thermal per-spoke features live within half_gap_angle of the spoke
+# plus the cap circle subtense; a cap enclosing the origin covers all angles.
+function _odb_thermal_rounded_slack(s,step)
+    s.cap_radius>=s.center_radius&&return Inf
+    return s.half_gap_angle+asin(min(1.,s.cap_radius/s.center_radius))+step+1e-12
+end
 function _artwork_stroke_next_boundary(s::_ArtworkODBSquaredThermal,a,b,left,right)
     right=_artwork_stroke_next_boundary(s.outside,a,b,left,right)
     right=_artwork_stroke_next_boundary(s.inside,a,b,left,right)
     iszero(s.gap) && return right
     step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=s.gap/2
-    for k in 0:s.count-1
-        ux,uy=_odb_thermal_spoke(base,k,step);nx,ny=-uy,ux
+    x0,x1=min(a[1],b[1]),max(a[1],b[1]);y0,y1=min(a[2],b[2]),max(a[2],b[2])
+    slack=_odb_thermal_squared_slack(g,step,x0,x1,y0,y1)
+    k0,kn=_odb_thermal_spoke_window(base,step,s.count,slack,x0,x1,y0,y1)
+    for t in 0:kn-1
+        ux,uy=_odb_thermal_spoke(base,mod(k0+t,s.count),step);nx,ny=-uy,ux
         for sgn in (-1.,1.)
             c=(sgn*g*nx,sgn*g*ny)
             right=_artwork_stroke_edge_next(c,(c[1]+ux,c[2]+uy),a,b,left,right)
@@ -448,8 +504,11 @@ function _artwork_stroke_next_boundary(s::_ArtworkODBRoundedThermal,a,b,left,rig
     right=_artwork_stroke_circle_next((0.,0.),cr+cap,a,b,left,right)
     right=_artwork_stroke_circle_next((0.,0.),max(0.,cr-cap),a,b,left,right)
     step=2Float64(pi)/s.count
-    for k in 0:s.count-1
-        thc=s.angle+k*step
+    x0,x1=min(a[1],b[1]),max(a[1],b[1]);y0,y1=min(a[2],b[2]),max(a[2],b[2])
+    slack=_odb_thermal_rounded_slack(s,step)
+    k0,kn=_odb_thermal_spoke_window(s.angle,step,s.count,slack,x0,x1,y0,y1)
+    for t in 0:kn-1
+        thc=s.angle+mod(k0+t,s.count)*step
         for sgn in (-1.,1.)
             ux,uy=cos(thc+sgn*s.half_gap_angle),sin(thc+sgn*s.half_gap_angle)
             right=_artwork_stroke_edge_next((0.,0.),(ux,uy),a,b,left,right)
