@@ -200,3 +200,120 @@ function _odb_resolve_symbol_text(shape,context,layer,matrix,origin;max_strokes,
         return _ArtworkComposite(parts)
     end
 end
+
+# UPC39 (Code 39) barcode records. The primary's element table names only
+# the narrow element width w; the wide:narrow ratio below is the published
+# Code 39 default of 3:1, retained as a named constant for future vendor
+# evidence. Each character occupies nine alternating bar/space elements
+# followed by one narrow inter-character gap.
+const _ODB_CODE39_PATTERNS=Dict{Char,String}(
+    '0'=>"nnnwwnwnn",'1'=>"wnnwnnnnw",'2'=>"nnwwnnnnw",'3'=>"wnwwnnnnn",
+    '4'=>"nnnwwnnnw",'5'=>"wnnwwnnnn",'6'=>"nnwwwnnnn",'7'=>"nnnwnnwnw",
+    '8'=>"wnnwnnwnn",'9'=>"nnwwnnwnn",'A'=>"wnnnnwnnw",'B'=>"nnwnnwnnw",
+    'C'=>"wnwnnwnnn",'D'=>"nnnnwwnnw",'E'=>"wnnnwwnnn",'F'=>"nnwnwwnnn",
+    'G'=>"nnnnnwwnw",'H'=>"wnnnnwwnn",'I'=>"nnwnnwwnn",'J'=>"nnnnwwwnn",
+    'K'=>"wnnnnnnww",'L'=>"nnwnnnnww",'M'=>"wnwnnnnwn",'N'=>"nnnnwnnww",
+    'O'=>"wnnnwnnwn",'P'=>"nnwnwnnwn",'Q'=>"nnnnnnwww",'R'=>"wnnnnnwwn",
+    'S'=>"nnwnnnwwn",'T'=>"nnnnwnwwn",'U'=>"wwnnnnnnw",'V'=>"nwwnnnnnw",
+    'W'=>"wwwnnnnnn",'X'=>"nwnnwnnnw",'Y'=>"wwnnwnnnn",'Z'=>"nwwnwnnnn",
+    '-'=>"nwnnnnwnw",'.'=>"wwnnnnwnn",' '=>"nwwnnnwnn",'$'=>"nwnwnwnnn",
+    '/'=>"nwnwnnnwn",'+'=>"nwnnnwnwn",'%'=>"nnnwnwnwn",'*'=>"nwnnwnwnn")
+const _ODB_CODE39_VALUES="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. \$/+%"
+const _ODB_BARCODE_WIDE_RATIO=3.
+
+function _odb_barcode_record(line)
+    m=match(r"^B\s+(.*?)\s+'(.*)'\s*(;.*)?$",line)
+    m===nothing && throw(ArgumentError("invalid quoted ODB barcode record"))
+    h=split(m[1]);length(h) in (14,15) || throw(ArgumentError("invalid ODB barcode fields"))
+    orient=parse(Int,h[6]);0<=orient<=9 || throw(ArgumentError("invalid ODB barcode orientation"))
+    dynamic=orient>=8;length(h)==(dynamic ? 15 : 14) || throw(ArgumentError("invalid ODB barcode angle field"))
+    h[5] in ("P","N") || throw(ArgumentError("invalid ODB barcode polarity"))
+    String(h[3])=="UPC39" || throw(ArgumentError("unsupported ODB barcode symbology $(h[3])"))
+    i=dynamic ? 8 : 7
+    h[i]=="E" || throw(ArgumentError("missing ODB barcode E field"))
+    dims=_odb_font_number.(h[[i+1,i+2]])
+    dims[1]>0 && dims[2]>0 || throw(ArgumentError("invalid ODB barcode element dimensions"))
+    flags=h[i+3:i+6];all(f->f in ("Y","N"),flags) || throw(ArgumentError("invalid ODB barcode flags"))
+    h[i+7] in ("T","B") || throw(ArgumentError("invalid ODB barcode text position"))
+    return (;x=_odb_font_number(h[1]),y=_odb_font_number(h[2]),font=String(h[4]),
+        positive=h[5]=="P",orientation=orient,angle=dynamic ? _odb_font_number(h[7]) : 0.,
+        width=dims[1],height=dims[2],full_ascii=flags[1]=="Y",checksum=flags[2]=="Y",
+        background=flags[3]=="Y",add_string=flags[4]=="Y",text_top=h[i+7]=="T",
+        text=String(m[2]),suffix=something(m[3],""))
+end
+
+# Extended Code 39 shifts every character outside the 43-symbol basic set
+# into a two-character sequence from the basic set.
+function _odb_code39_encode(text,full_ascii)
+    out=IOBuffer()
+    for char in text
+        if haskey(_ODB_CODE39_PATTERNS,char) && char!='*'
+            print(out,char);continue
+        end
+        full_ascii || throw(ArgumentError("ODB barcode character $(repr(char)) requires full ASCII"))
+        code=Int(char)
+        pair=if code==0;('%', 'U')
+        elseif code<27;('$',Char(Int('A')+code-1))      # SOH..SUB -> $A..$Z
+        elseif code<32;('%',Char(Int('A')+code-27))     # ESC..US -> %A..%E
+        elseif 33<=code<=47;('/',Char(Int('A')+code-33))
+        elseif code==58;('/', 'Z')
+        elseif 59<=code<=63;('%',Char(Int('F')+code-59))
+        elseif code==64;('%', 'V')
+        elseif 91<=code<=95;('%',Char(Int('K')+code-91))
+        elseif code==96;('%', 'W')
+        elseif 97<=code<=122;('+',Char(Int('A')+code-97))
+        elseif 123<=code<=126;('%',Char(Int('P')+code-123))
+        elseif code==127;('%', 'T')
+        else throw(ArgumentError("unencodable ODB barcode character $(repr(char))"))
+        end
+        print(out,pair[1],pair[2])
+    end
+    String(take!(out))
+end
+
+function _odb_barcode_shape(font,record,unit,context;max_strokes,max_bytes)
+    text=_odb_dynamic_text(record.text,context,max_bytes)
+    encoded=_odb_code39_encode(text,record.full_ascii)
+    if record.checksum
+        total=sum(findfirst(==(c),_ODB_CODE39_VALUES)-1 for c in encoded)
+        encoded*=_ODB_CODE39_VALUES[mod(total,43)+1]
+    end
+    narrow=record.width*unit;height=record.height*unit
+    all(isfinite,(narrow,height)) && narrow>0 && height>0 || throw(ArgumentError("ODB barcode dimensions do not fit finite SI coordinates"))
+    sequence='*'*encoded*'*'
+    5*length(sequence)<=max_strokes || throw(ArgumentError("ODB barcode expansion exceeds max_objects"))
+    parts=Tuple{Bool,_ArtworkShape}[]
+    x=0.;bars_top=height
+    for char in sequence
+        bar=true
+        for element in _ODB_CODE39_PATTERNS[char]
+            w=narrow*(element=='w' ? _ODB_BARCODE_WIDE_RATIO : 1.)
+            if bar
+                push!(parts,(true,_artwork_rectangle(w,height;center=(x+w/2,height/2))))
+            end
+            x+=w;bar=!bar
+        end
+        x+=narrow
+    end
+    width=x-narrow
+    ymin,ymax=0.,bars_top
+    if record.add_string && !isempty(text)
+        font===nothing && throw(ArgumentError("ODB barcode astr text requires the declared font"))
+        label=_odb_text_shape(font,(;record...,
+            x=0.,y=0.,positive=true,orientation=0,angle=0.,
+            xsize=record.height,ysize=record.height,width_factor=1.,
+            text=record.text,version=0),unit,context;
+            max_strokes=max_strokes-5*length(sequence),max_bytes)
+        lx0,lx1,ly0,ly1=_artwork_bounds(label)
+        dy=record.text_top ? bars_top+narrow-ly0 : -narrow-ly1
+        label=_artwork_transform(label;origin=((width-(lx1-lx0))/2-lx0,dy))
+        push!(parts,(true,label))
+        ymin=min(ymin,dy+ly0);ymax=max(ymax,dy+ly1)
+    end
+    if record.background
+        pushfirst!(parts,(false,_artwork_rectangle(width+20narrow,ymax-ymin;
+            center=(width/2,(ymax+ymin)/2))))
+    end
+    shape=isempty(parts) ? _ArtworkEmpty() : _ArtworkComposite(parts)
+    return _odb_orientation(shape,record.orientation,record.angle,(record.x*unit,record.y*unit))
+end

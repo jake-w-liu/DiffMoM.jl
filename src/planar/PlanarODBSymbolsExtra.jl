@@ -281,6 +281,99 @@ function _odb_extra_standard_symbol(name::AbstractString,unit)
         points=[(-w/2,-h/2),(w/2-hc,-h/2),(w/2,-h/2+vc),(w/2,h/2-vc),(w/2-hc,h/2),(-w/2,h/2)]
         return _odb_stencil_region(points,[ra,ro,ro,ro,ro,ra])
     end
+    # Update 3 p211: nr concentric rings of width rw separated by gap rg,
+    # innermost ring a solid disc; crossed by a two-line crosshair of width
+    # lw and length ll rotated la degrees clockwise (ODB angle sense).
+    m=match(Regex("^moire"*number*"x"*number*"x([0-9]+)x"*number*"x"*number*"x"*number*raw"$"),name)
+    if m!==nothing
+        rw,rg,lw,ll=parse.(Float64,m.captures[[1,2,4,5]]).*unit
+        la=parse(Float64,m[6]);nr=tryparse(Int,m[3])
+        nr!==nothing && 1<=nr<=10_000 && all(isfinite,(rw,rg,lw,ll,la)) &&
+            rw>0 && rg>=0 && lw>=0 && ll>=0 || throw(ArgumentError("invalid ODB moire parameters"))
+        parts=Tuple{Bool,_ArtworkShape}[]
+        for k in 1:nr
+            outer=rw+(k-1)*(rw+rg)
+            inner=outer-rw
+            # Each ring is a self-contained annulus: a flat (false,inner)
+            # part would also erase the previously drawn rings beneath it.
+            push!(parts,(true,inner>0 ? _ArtworkComposite(Tuple{Bool,_ArtworkShape}[
+                (true,_ArtworkCircle((0.,0.),outer)),
+                (false,_ArtworkCircle((0.,0.),inner))]) :
+                _ArtworkCircle((0.,0.),outer)))
+        end
+        if lw>0 && ll>0
+            bar=_artwork_rectangle(ll,lw)
+            cross=_ArtworkComposite(Tuple{Bool,_ArtworkShape}[(true,bar),
+                (true,_artwork_transform(bar;rotation=90.))])
+            push!(parts,(true,_artwork_transform(cross;rotation=-la)))
+        end
+        return _ArtworkComposite(parts)
+    end
+    # Update 3 p210-211: cross and dogbone are unions of orthogonal
+    # constant-width strokes clipped to the declared w x h extent. The
+    # cross point (hc[,vc]) shifts the vertical bar skeleton (and the
+    # horizontal bar for cross) relative to the symbol origin. Style r
+    # gives round stroke caps, s square ends; ra rounds the inside
+    # (re-entrant) corners where the bars meet.
+    function stroke_bar(a,b,t,round_ends)
+        round_ends && return _ArtworkRoundLine(a,b,t/2)
+        ux,uy=b[1]-a[1],b[2]-a[2];l=hypot(ux,uy)
+        l>0 || throw(ArgumentError("degenerate ODB stencil bar"))
+        nx,ny=(-uy/l*t/2,ux/l*t/2)
+        _ArtworkRegion(Union{_ArtworkRoundLine,_ArtworkRoundArc}[
+            _ArtworkRoundLine((a[1]+nx,a[2]+ny),(b[1]+nx,b[2]+ny),0.),
+            _ArtworkRoundLine((b[1]+nx,b[2]+ny),(b[1]-nx,b[2]-ny),0.),
+            _ArtworkRoundLine((b[1]-nx,b[2]-ny),(a[1]-nx,a[2]-ny),0.),
+            _ArtworkRoundLine((a[1]-nx,a[2]-ny),(a[1]+nx,a[2]+ny),0.)])
+    end
+    function inside_fillet(cx,cy,sx,sy,ra)
+        t1=(cx+sx*ra,cy);t2=(cx,cy+sy*ra);c=(cx+sx*ra,cy+sy*ra)
+        _ArtworkRegion(Union{_ArtworkRoundLine,_ArtworkRoundArc}[
+            _ArtworkRoundLine(c,t1,0.),
+            _ArtworkRoundArc(t1,t2,c,sx*sy>0,0.),
+            _ArtworkRoundLine(t2,c,0.)])
+    end
+    m=match(Regex("^cross"*number*"x"*number*"x"*number*"x"*number*"x"*number*"x"*number*
+        "x([rs])(?:x"*number*")?"*raw"$"),name)
+    if m!==nothing
+        w,h,hs,vs,hc,vc=parse.(Float64,m.captures[1:6]).*unit
+        ra=m[8]===nothing ? 0. : parse(Float64,m[8])*unit
+        all(isfinite,(w,h,hs,vs,hc,vc,ra)) && w>0 && h>0 && 0<hs<h && 0<vs<w &&
+            ra>=0 || throw(ArgumentError("invalid ODB cross parameters"))
+        bars=Tuple{Bool,_ArtworkShape}[]
+        span_h,span_v=(m[7]=="r" ? (w-hs,h-vs) : (w,h))
+        push!(bars,(true,stroke_bar((-span_h/2,vc),(span_h/2,vc),hs,m[7]=="r")))
+        push!(bars,(true,stroke_bar((hc,-span_v/2),(hc,span_v/2),vs,m[7]=="r")))
+        if ra>0
+            for sy in (-1.,1.),sx in (-1.,1.)
+                abs(hc+sx*vs/2)<w/2 && abs(vc+sy*hs/2)<h/2 &&
+                    push!(bars,(true,inside_fillet(hc+sx*vs/2,vc+sy*hs/2,sx,sy,ra)))
+            end
+        end
+        return _ArtworkComposite(bars)
+    end
+    m=match(Regex("^dogbone"*number*"x"*number*"x"*number*"x"*number*"x"*number*
+        "x([rs])(?:x"*number*")?"*raw"$"),name)
+    if m!==nothing
+        w,h,hs,vs,hc=parse.(Float64,m.captures[1:5]).*unit
+        ra=m[7]===nothing ? 0. : parse(Float64,m[7])*unit
+        all(isfinite,(w,h,hs,vs,hc,ra)) && w>0 && h>0 && 0<hs<h/2 && 0<vs<w &&
+            ra>=0 || throw(ArgumentError("invalid ODB dogbone parameters"))
+        bars=Tuple{Bool,_ArtworkShape}[]
+        yoff=(h-hs)/2;span_h=m[6]=="r" ? w-hs : w
+        push!(bars,(true,stroke_bar((-span_h/2,yoff),(span_h/2,yoff),hs,m[6]=="r")))
+        push!(bars,(true,stroke_bar((-span_h/2,-yoff),(span_h/2,-yoff),hs,m[6]=="r")))
+        push!(bars,(true,stroke_bar((hc,-yoff),(hc,yoff),vs,m[6]=="r")))
+        if ra>0
+            for sy in (-1.,1.),sx in (-1.,1.)
+                # the notch opens toward the mid-plane: the fillet bulges
+                # inward (-sy) from the h-bar's inner edge
+                abs(hc+sx*vs/2)<w/2 &&
+                    push!(bars,(true,inside_fillet(hc+sx*vs/2,sy*(yoff-hs/2),sx,-sy,ra)))
+            end
+        end
+        return _ArtworkComposite(bars)
+    end
     return nothing
 end
 

@@ -409,8 +409,9 @@ function read_odb_features(path::AbstractString;layer::AbstractString=basename(d
                     continue
                 end
                 record=startswith(line,"T ") || startswith(line,"T\t") ? _odb_text_record(line) : nothing
-                parts=record===nothing ? split(line,';') : split(record.suffix,';')
-                p=record===nothing ? split(parts[1]) : ["T"];kind=p[1]
+                bcode=record===nothing && (startswith(line,"B ") || startswith(line,"B\t")) ? _odb_barcode_record(line) : nothing
+                parts=record===nothing ? (bcode===nothing ? split(line,';') : split(bcode.suffix,';')) : split(record.suffix,';')
+                p=record===nothing ? (bcode===nothing ? split(parts[1]) : ["B"]) : ["T"];kind=p[1]
                 attributes=_odb_attributes(parts[2:end],names,texts)
                 if kind=="F"
                     length(p)==2 || throw(ArgumentError("invalid ODB feature count"));declared=parse(Int,p[2])
@@ -467,6 +468,18 @@ function read_odb_features(path::AbstractString;layer::AbstractString=basename(d
                             max_strokes=max_objects,max_bytes=available()-payload)
                     end
                     emit(_odb_orientation(shape,orientation,angle,point(p[2],p[3])),positive(p[5]),attributes);records+=1
+                elseif kind=="B"
+                    bcode===nothing && throw(ArgumentError("invalid ODB barcode record"))
+                    !surface || throw(ArgumentError("ODB barcode cannot be inside a surface record"))
+                    font=bcode.add_string ? get_font(bcode.font) : nothing
+                    shape=_odb_barcode_shape(font,bcode,unit,
+                        _odb_text_context(text_context,layer,bcode.x*unit,bcode.y*unit;
+                            max_bytes=available()-payload);
+                        max_strokes=max_objects,
+                        max_bytes=available()-payload-256-Base.summarysize(attributes))
+                    attributes["ODB.text.font"]=[bcode.font];attributes["ODB.text.source"]=[bcode.text]
+                    attributes["ODB.barcode.symbology"]=["UPC39"]
+                    emit(shape,bcode.positive,attributes);records+=1
                 elseif kind=="T"
                     !surface || throw(ArgumentError("ODB text cannot be inside a surface record"))
                     font=get_font(record.font)

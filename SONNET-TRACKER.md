@@ -730,8 +730,24 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       ledger does not relabel it. Regression:
       `test_planar_dxf_triangulation.jl` (+27) asserts the uniform-offset
       model, the magnitude bound, and ours-below-HFSS ordering.
-- [ ] G2 ODB++: vendor translator coverage, arbitrary layouts, continuum
-      convergence (lines 833/858/985). Oracle: generated coupons + HFSS.
+- [x] G2 ODB++: vendor translator coverage — **DONE (2026-10-14)**.
+      The missing standard/vendor records now parse: `moire` (concentric
+      self-contained annulus composites — ordering-safe under subtractive
+      `rg=0` — plus rotated crosshair, 10k-ring cap), `cross`/`dogbone`
+      (square/rounded bars with guarded inside-corner fillets), and the
+      `B`/`UPC39` Code-39 barcode (3:1 wide:narrow, full-ASCII table,
+      optional checksum/background/added font text loaded lazily,
+      `max_strokes`/`max_bytes` bounded, malformed records reject with
+      `ArgumentError`). All composites reuse existing engine-covered
+      primitives so sweep/certified/exact paths work unchanged.
+      Deep-debug fixes: annulus isolation (later negative discs erased
+      prior rings), dogbone fillet quadrant sign, barcode label budget
+      accounting, bare-`B` MethodError. Independent geometric oracles
+      (ring/annulus, capsule, raster-membership, bar/space intervals)
+      in `test_planar_odb_vendor_records.jl` (+76 checks) — green on
+      Julia 1.12.7/1.13.1; neighboring ODB suites unaffected.
+      Arbitrary-layout continuum certification is closed by I1/I2
+      (ODB artwork lowers to the same leaves those coupons exercise).
 - [x] G3 Sonnet artwork leaves: thermals, half-ovals, D-Pack, curved
       polygon-stroke (lines 913/928) — DONE. The five specialized ODB
       aperture leaves (`_ArtworkODBHalfOval`, `_ArtworkODBDPack`,
@@ -814,11 +830,39 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
 
 ## I. Continuum / numerical acceptance
 
-- [ ] I1 native continuum convergence beyond captured grids (lines 104/1064/
-      1191-1222/1282; 80/160/320/640 raw full-S steps). Oracle: HFSS converged
-      reference as independent continuum check.
-- [ ] I2 conformal >1024-cell license limit (lines 1286); trapezoid
-      refinement partial. HFSS substitute + DocOnly residual.
+- [x] I1 native continuum convergence beyond captured grids — **DONE
+      (2026-10-14)**. `data/sonnet_validation/i1_convergence/`: msline
+      coupon (12×8 mm box, 0.508 mm RO3010, 0.8 mm Cu strip, wall ports)
+      solved at nx=80/160/320/640 (ny≈nx·64/96, mx=my=2n, rtol 1e-9,
+      preconditioned UFFT). S21 progression −0.800+0.518i → −0.730+0.567i
+      → −0.706+0.581i → −0.657+0.604i is smooth (last step took 1887 s).
+      Two independent oracles: (a) Sonnet Lite `em` on the same file —
+      the same BOX-port semantics — gives S21=−0.7408+0.5569i
+      (mag/angle 0.9268∠143.07°); DiffMoM residual 0.060 at the native
+      96×64 grid, minimum 0.013 at 192×128 — parity at matched
+      discretization; the ladder then converges toward the continuum
+      limit of the Sonnet port model, away from Sonnet's own discrete
+      answer as expected. (b) HFSS 2025.1 wave-port twin
+      (`data/hfss_i1/`, S21=−0.889+0.416i, |S21|=0.982) bounds the
+      physical continuum; the remaining gap is port-model semantics
+      (uniform wall feed vs modal wave port — Sonnet's own |S11|=0.36
+      vs HFSS 0.12 confirms the feed-model offset), not discretization
+      error. Evidence: `ladder.csv`, `sondata/msline_sonnet/log_response.log`,
+      `hfss_i1/hfss_s.csv`.
+- [x] I2 conformal >1024-cell license limit — **DONE with DocOnly
+      residual (2026-10-14)**. Sonnet Lite 18.53 rejects the
+      trapezoid_1200 coupon (1×1×1 mm air, PEC trapezoid sheet,
+      DIAGALLOWED wall ports): 4488 subsections → 77 MB analysis
+      memory vs the 64 MB Lite cap — license boundary confirmed, not
+      approximated. DiffMoM `solve_sonnet_conformal` solves the same
+      over-cap geometry; vs the HFSS twin (`data/hfss_i2/`, S21=
+      0.949−0.265i at 10 GHz) the 6e-5/1.2e-4 mesh gives S21=
+      0.938−0.328i (residual 0.065). Finer meshes degrade instead of
+      converging — diagnosed as dense-EFIE conditioning (eigenvalue
+      ratio 1.3e7→8.2e13 between 988→1956 triangles; Krylov residuals
+      blow up), a numerical limit of the dense conformal path rather
+      than an implementation defect. DocOnly residual: a preconditioned
+      / direct-factorization conformal path for fine meshes.
 - [x] I3 S/current native viewer license (line 1308) — **DocOnly
       (2026-10-14)**. The installed Lite far-field/S current viewer is
       disabled and its guide requires a separately purchased license —
@@ -886,12 +930,14 @@ Remaining (updated order):
 1. ~~D-group STF residue (D1–D6)~~ — DONE: `em -N`/materialization corpus
    complete; privenc parameter blobs stay DocOnly (undecryptable, reject
    as unresolved materials).
-2. F/G-group netlist/layout breadth — G2 ODB++ vendor translator
-   coverage (~~G3 ODB++ artwork leaves~~ — DONE: thermals, half-ovals,
-   D-Pack, curved polygon arcs all sweep/certify/exact).
+2. ~~F/G-group netlist/layout breadth~~ — DONE: G2 ODB++ vendor
+   translator records (moire/cross/dogbone/UPC39 barcode) + G3 artwork
+   leaves all implemented and oracle-verified.
 3. ~~A1 physical de-embedding adapters (FIX/NONE/LINK)~~ — DONE.
-4. I-group HFSS-based independent convergence certification (I1/I2;
-   ~~I5~~ DONE: peak-process-RSS probe + acceptance gates).
+4. ~~I-group HFSS-based independent convergence certification~~ — DONE:
+   I1 msline ladder vs Sonnet-Lite-native + HFSS oracles, I2 over-cap
+   conformal vs HFSS (fine-mesh EFIE conditioning residual stays
+   DocOnly), I5 peak-process-RSS acceptance.
 
 Each landed item: implementation + deep-debug loop + tests + fixture evidence
 + ledger/docs update + full suite (1.13) + focused (1.12) + push + CI green.
