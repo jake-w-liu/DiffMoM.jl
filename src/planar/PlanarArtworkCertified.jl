@@ -223,6 +223,88 @@ function _artwork_certified_contains(s::_ArtworkCornerRectangle,x,y)
     end
     state
 end
+@inline _artwork_trit_not(a)=a==1 ? Int8(0) : a==0 ? Int8(1) : Int8(-1)
+function _artwork_certified_contains(s::_ArtworkODBHalfOval,x,y)
+    w,h=s.width/2,s.height/2;c=(s.width-s.height)/2
+    box=_artwork_interval_box(x,y,-w,w,-h,h)
+    box==0&&return box
+    part=_artwork_interval_union(_artwork_interval_le(x,_ArtworkInterval(c)),
+        _artwork_certified_circle((c,0.),h,x,y))
+    _artwork_interval_intersection(box,part)
+end
+function _artwork_certified_contains(s::_ArtworkODBDPack,x,y)
+    box=_artwork_interval_box(x,y,-s.width/2,s.width/2,-s.height/2,s.height/2)
+    box==0&&return box
+    pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
+    px,py,cx,cy=_odb_dpack_pads(s);state=Int8(0)
+    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+        part=_artwork_certified_contains(pad,x-_ArtworkInterval(cx+i*px),y-_ArtworkInterval(cy+j*py))
+        state=_artwork_interval_union(state,part)
+        state==1&&break
+    end
+    _artwork_interval_intersection(box,state)
+end
+# A strict trit for open conditions: certain inside, certain nonmembership
+# or boundary uncertainty. Closed-boundary points therefore defer exactly.
+@inline _artwork_trit_strict_positive(a)=_artwork_interval_sign(a)==1 ? Int8(1) :
+    _artwork_interval_sign(a)==-1 ? Int8(0) : Int8(-1)
+@inline _artwork_trit_strict_less(a,b)=a.hi<b.lo ? Int8(1) : a.lo>=b.hi ? Int8(0) : Int8(-1)
+function _artwork_certified_contains(s::_ArtworkODBSquaredThermal,x,y)
+    outside=_artwork_certified_contains(s.outside,x,y)
+    outside==0&&return outside
+    inside=_artwork_certified_contains(s.inside,x,y)
+    inside==1&&return Int8(0)
+    removed=Int8(0)
+    if !iszero(s.gap)
+        step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=s.gap/2
+        for k in 0:s.count-1
+            ux,uy=_odb_thermal_spoke(base,k,step)
+            u=(_ArtworkInterval(ux),_ArtworkInterval(uy))
+            slot=_artwork_interval_intersection(_artwork_trit_strict_positive(_artwork_interval_dot(u,(x,y))),
+                _artwork_trit_strict_less(_artwork_interval_abs(_artwork_interval_cross(u,(x,y))),_ArtworkInterval(g)))
+            removed=_artwork_interval_union(removed,slot)
+            removed==1&&return Int8(0)
+        end
+    end
+    _artwork_interval_intersection(outside,
+        _artwork_interval_intersection(_artwork_trit_not(inside),_artwork_trit_not(removed)))
+end
+function _artwork_certified_contains(s::_ArtworkODBRoundedThermal,x,y)
+    dist=_artwork_interval_square(x)+_artwork_interval_square(y)
+    lo=max(0.,s.center_radius-s.cap_radius)
+    band=_artwork_interval_intersection(
+        _artwork_interval_le(dist,_artwork_interval_square(_ArtworkInterval(s.center_radius+s.cap_radius))),
+        _artwork_interval_le(_artwork_interval_square(_ArtworkInterval(lo)),dist))
+    band==0&&return band
+    step=2Float64(pi)/s.count;removed=Int8(0)
+    for k in 0:s.count-1
+        thc=s.angle+k*step
+        thl,thr=thc-s.half_gap_angle,thc+s.half_gap_angle
+        uL=(_ArtworkInterval(cos(thl)),_ArtworkInterval(sin(thl)))
+        uR=(_ArtworkInterval(cos(thr)),_ArtworkInterval(sin(thr)))
+        left=_artwork_trit_strict_positive(_artwork_interval_cross(uL,(x,y)))
+        right=_artwork_trit_strict_positive(-_artwork_interval_cross(uR,(x,y)))
+        wedge=2s.half_gap_angle<=Float64(pi) ? _artwork_interval_intersection(left,right) :
+            _artwork_interval_union(left,right)
+        cl=(s.center_radius*cos(thl),s.center_radius*sin(thl))
+        cr=(s.center_radius*cos(thr),s.center_radius*sin(thr))
+        rem=_artwork_interval_intersection(wedge,
+            _artwork_interval_intersection(
+                _artwork_trit_not(_artwork_certified_circle(cl,s.cap_radius,x,y)),
+                _artwork_trit_not(_artwork_certified_circle(cr,s.cap_radius,x,y))))
+        removed=_artwork_interval_union(removed,rem)
+        removed==1&&return Int8(0)
+    end
+    _artwork_interval_intersection(band,_artwork_trit_not(removed))
+end
+function _artwork_certified_contains(s::_ArtworkODBLineThermal,x,y)
+    state=Int8(0)
+    for (c,d) in _odb_thermal_line_arms(s)
+        state=_artwork_interval_union(state,_artwork_certified_contains(_ArtworkRoundLine(c,d,s.radius),x,y))
+        state==1&&return state
+    end
+    state
+end
 @inline function _artwork_interval_half(x::Float64)
     h=x/2
     # Binary scaling is exact except when its result enters the subnormal
@@ -362,7 +444,10 @@ function _artwork_interval_next(s::_ArtworkComposite,a,v,cursor,current)
 end
 _artwork_canonical_leaf(::_ArtworkShape)=false
 _artwork_canonical_leaf(::Union{_ArtworkEmpty,_ArtworkCircle,_ArtworkPolygon,_ArtworkPolygonLine,_ArtworkRoundLine,
-    _ArtworkRoundArc,_ArtworkRegion,_ArtworkCornerRectangle,_ArtworkODBNull,_ArtworkODBDrill})=true
+    _ArtworkRoundArc,_ArtworkRegion,_ArtworkCornerRectangle,_ArtworkODBNull,_ArtworkODBDrill,
+    _ArtworkODBDPack,_ArtworkODBHalfOval,_ArtworkODBRoundedThermal,_ArtworkODBLineThermal})=true
+_artwork_canonical_leaf(s::_ArtworkODBSquaredThermal)=
+    _artwork_canonical_leaf(s.outside)&&_artwork_canonical_leaf(s.inside)
 _artwork_canonical_leaf(s::_ArtworkODBButterfly)=_artwork_canonical_leaf(s.outside)
 _artwork_canonical_leaf(s::_ArtworkStrokeReference)=_artwork_canonical_leaf(s.geometry)
 _artwork_canonical_leaf(s::_ArtworkTransform)=_artwork_canonical_leaf(s.shape)
@@ -441,6 +526,62 @@ function _artwork_interval_next(s::_ArtworkCornerRectangle,a,v,cursor,current)
         s.corners[i]||continue
         current=s.chamfer ? _artwork_interval_edge_roots((sx*(w-r),sy*h),(sx*w,sy*(h-r)),a,v,cursor,current) :
             _artwork_interval_circle_roots((sx*(w-r),sy*(h-r)),r,a,v,cursor,current)
+    end
+    current
+end
+function _artwork_interval_next(s::_ArtworkODBHalfOval,a,v,cursor,current)
+    w,h=s.width/2,s.height/2;c=(s.width-s.height)/2
+    for (p,q) in (((-w,-h),(w,-h)),((-w,h),(w,h)),((-w,-h),(-w,h)))
+        current=_artwork_interval_edge_roots(_artwork_interval_point(p),_artwork_interval_point(q),a,v,cursor,current)
+    end
+    _artwork_interval_circle_roots((_ArtworkInterval(c),_ArtworkInterval(0.)),_ArtworkInterval(h),a,v,cursor,current)
+end
+function _artwork_interval_next(s::_ArtworkODBDPack,a,v,cursor,current)
+    pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
+    px,py,cx,cy=_odb_dpack_pads(s)
+    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+        aa=(a[1]-_ArtworkInterval(cx+i*px),a[2]-_ArtworkInterval(cy+j*py))
+        current=_artwork_interval_next(pad,aa,v,cursor,current)
+    end
+    current
+end
+function _artwork_interval_next(s::_ArtworkODBSquaredThermal,a,v,cursor,current)
+    current=_artwork_interval_next(s.outside,a,v,cursor,current)
+    current=_artwork_interval_next(s.inside,a,v,cursor,current)
+    iszero(s.gap) && return current
+    step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=s.gap/2
+    for k in 0:s.count-1
+        ux,uy=_odb_thermal_spoke(base,k,step);nx,ny=-uy,ux
+        for sgn in (-1.,1.)
+            c=(sgn*g*nx,sgn*g*ny)
+            current=_artwork_interval_edge_roots(_artwork_interval_point(c),
+                _artwork_interval_point((c[1]+ux,c[2]+uy)),a,v,cursor,current)
+        end
+        current=_artwork_interval_edge_roots(_artwork_interval_point((0.,0.)),
+            _artwork_interval_point((nx,ny)),a,v,cursor,current)
+    end
+    current
+end
+function _artwork_interval_next(s::_ArtworkODBRoundedThermal,a,v,cursor,current)
+    z=_ArtworkInterval(0.);cr,cap=s.center_radius,s.cap_radius
+    current=_artwork_interval_circle_roots((z,z),_ArtworkInterval(cr+cap),a,v,cursor,current)
+    rin=max(0.,cr-cap)
+    rin>0&&(current=_artwork_interval_circle_roots((z,z),_ArtworkInterval(rin),a,v,cursor,current))
+    step=2Float64(pi)/s.count
+    for k in 0:s.count-1
+        thc=s.angle+k*step
+        for sgn in (-1.,1.)
+            th=thc+sgn*s.half_gap_angle;ux,uy=cos(th),sin(th)
+            current=_artwork_interval_edge_roots((z,z),_artwork_interval_point((ux,uy)),a,v,cursor,current)
+            current=_artwork_interval_circle_roots(_artwork_interval_point((cr*ux,cr*uy)),
+                _ArtworkInterval(cap),a,v,cursor,current)
+        end
+    end
+    current
+end
+function _artwork_interval_next(s::_ArtworkODBLineThermal,a,v,cursor,current)
+    for (c,d) in _odb_thermal_line_arms(s)
+        current=_artwork_interval_next(_ArtworkRoundLine(c,d,s.radius),a,v,cursor,current)
     end
     current
 end

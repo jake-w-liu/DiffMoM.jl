@@ -506,7 +506,13 @@ function read_odb_features(path::AbstractString;layer::AbstractString=basename(d
                         _artwork_composite_line(shape,a,b;max_boundaries=max_stroke_boundaries,
                             max_bytes=available()-payload-256-Base.summarysize(attributes),_copy_aperture=false)
                     else
-                        throw(ArgumentError("ODB arcs require a round symbol"))
+                        polygon=shape isa _ArtworkPolygon ? shape :
+                            shape isa _ArtworkTransform && shape.shape isa _ArtworkPolygon ?
+                            _ArtworkPolygon(shape.matrix*shape.shape.vertices .+ shape.origin) : nothing
+                        polygon===nothing && throw(ArgumentError("ODB arcs require a round or solid polygon symbol"))
+                        center=point(p[6],p[7]);p[11] in ("Y","N") || throw(ArgumentError("invalid ODB arc direction"))
+                        arc=_gerber_arc(a,b,center[1]-a[1],center[2]-a[2],p[11]=="Y",false,1e-9*unit)
+                        stroke=_ArtworkPolygonArc(polygon,arc)
                     end
                     emit(stroke,positive(p[index+1]),attributes);records+=1
                 else

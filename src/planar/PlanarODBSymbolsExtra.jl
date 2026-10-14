@@ -74,6 +74,7 @@ function _artwork_contains(s::_ArtworkODBSquaredThermal,x,y)
     return radius*cos(delta)<0 || abs(radius*sin(delta))>=s.gap/2
 end
 
+
 # Rounded thermals are swept circular arcs with circular end caps. The
 # declared gap is the minimum distance between adjacent caps, not their
 # centerline separation. Store only periodic geometry: count never allocates
@@ -281,4 +282,111 @@ function _odb_extra_standard_symbol(name::AbstractString,unit)
         return _odb_stencil_region(points,[ra,ro,ro,ro,ro,ra])
     end
     return nothing
+end
+
+# Ordered aperture sweep support. Candidates only partition the query
+# segment; interval membership remains the authority, so supporting lines
+# rather than finite pieces keep the implementation small and safe.
+function _artwork_stroke_next_boundary(s::_ArtworkODBHalfOval,a,b,left,right)
+    w,h=s.width/2,s.height/2;c=(s.width-s.height)/2
+    for (p,q) in (((-w,-h),(w,-h)),((-w,h),(w,h)),((-w,-h),(-w,h)))
+        right=_artwork_stroke_edge_next(p,q,a,b,left,right)
+    end
+    _artwork_stroke_circle_next((c,0.),h,a,b,left,right)
+end
+function _artwork_stroke_boundaries(s::_ArtworkODBHalfOval,limit,depth)
+    all(isfinite,(s.width,s.height)) && s.height>0 && s.width>=s.height/2 ||
+        throw(ArgumentError("invalid ODB half oval aperture"))
+    _artwork_stroke_count(8,limit)
+end
+
+@inline function _odb_dpack_pads(s::_ArtworkODBDPack)
+    (s.pad_width+s.horizontal_gap,s.pad_height+s.vertical_gap,
+        -s.width/2+s.pad_width/2,-s.height/2+s.pad_height/2)
+end
+function _artwork_stroke_next_boundary(s::_ArtworkODBDPack,a,b,left,right)
+    pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
+    px,py,cx,cy=_odb_dpack_pads(s)
+    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+        ox,oy=cx+i*px,cy+j*py
+        right=_artwork_stroke_next_boundary(pad,(a[1]-ox,a[2]-oy),(b[1]-ox,b[2]-oy),left,right)
+    end
+    right
+end
+function _artwork_stroke_boundaries(s::_ArtworkODBDPack,limit,depth)
+    all(isfinite,(s.width,s.height,s.pad_width,s.pad_height,s.horizontal_gap,
+            s.vertical_gap,s.radius)) && s.horizontal_count>=1 && s.vertical_count>=1 ||
+        throw(ArgumentError("invalid ODB D-Pack aperture"))
+    pad=_artwork_stroke_boundaries(_ArtworkCornerRectangle(s.pad_width,s.pad_height,
+        s.radius,(true,true,true,true),false),limit,depth)
+    _artwork_stroke_count(_checked_array_payload_bytes(UInt8,pad,
+        s.horizontal_count,s.vertical_count),limit)
+end
+
+# A thermal slot is a parallel-sided strip along a positive spoke ray. Its
+# candidates are the two offset side lines and the perpendicular origin cap.
+@inline _odb_thermal_spoke(angle,k,step)=(cos(angle+k*step),sin(angle+k*step))
+function _artwork_stroke_next_boundary(s::_ArtworkODBSquaredThermal,a,b,left,right)
+    right=_artwork_stroke_next_boundary(s.outside,a,b,left,right)
+    right=_artwork_stroke_next_boundary(s.inside,a,b,left,right)
+    iszero(s.gap) && return right
+    step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=s.gap/2
+    for k in 0:s.count-1
+        ux,uy=_odb_thermal_spoke(base,k,step);nx,ny=-uy,ux
+        for sgn in (-1.,1.)
+            c=(sgn*g*nx,sgn*g*ny)
+            right=_artwork_stroke_edge_next(c,(c[1]+ux,c[2]+uy),a,b,left,right)
+        end
+        right=_artwork_stroke_edge_next((0.,0.),(nx,ny),a,b,left,right)
+    end
+    right
+end
+function _artwork_stroke_boundaries(s::_ArtworkODBSquaredThermal,limit,depth)
+    depth<64 || throw(ArgumentError("artwork aperture nesting exceeds 64 levels"))
+    count=_checked_payload_sum("squared thermal boundary count",
+        _artwork_stroke_boundaries(s.outside,limit,depth+1),
+        _artwork_stroke_boundaries(s.inside,limit,depth+1))
+    iszero(s.gap) || (count=_checked_payload_sum("squared thermal boundary count",count,6s.count))
+    _artwork_stroke_count(count,limit)
+end
+
+function _artwork_stroke_next_boundary(s::_ArtworkODBRoundedThermal,a,b,left,right)
+    cr,cap=s.center_radius,s.cap_radius
+    right=_artwork_stroke_circle_next((0.,0.),cr+cap,a,b,left,right)
+    right=_artwork_stroke_circle_next((0.,0.),max(0.,cr-cap),a,b,left,right)
+    step=2Float64(pi)/s.count
+    for k in 0:s.count-1
+        thc=s.angle+k*step
+        for sgn in (-1.,1.)
+            ux,uy=cos(thc+sgn*s.half_gap_angle),sin(thc+sgn*s.half_gap_angle)
+            right=_artwork_stroke_edge_next((0.,0.),(ux,uy),a,b,left,right)
+            right=_artwork_stroke_circle_next((cr*ux,cr*uy),cap,a,b,left,right)
+        end
+    end
+    right
+end
+function _artwork_stroke_boundaries(s::_ArtworkODBRoundedThermal,limit,depth)
+    all(isfinite,(s.center_radius,s.cap_radius,s.angle,s.half_gap_angle,s.outer_radius)) &&
+        s.count>=1 && s.cap_radius>0 && s.center_radius>s.cap_radius ||
+        throw(ArgumentError("invalid ODB rounded thermal aperture"))
+    _artwork_stroke_count(_checked_payload_sum("rounded thermal boundary count",4,8s.count),limit)
+end
+
+# The four line-thermal arms are full capsules crossing the aperture center.
+@inline _odb_thermal_line_arms(s::_ArtworkODBLineThermal)=(
+    ((-s.endpoint,s.center),(s.endpoint,s.center)),
+    ((-s.endpoint,-s.center),(s.endpoint,-s.center)),
+    ((s.center,-s.endpoint),(s.center,s.endpoint)),
+    ((-s.center,-s.endpoint),(-s.center,s.endpoint)))
+function _artwork_stroke_next_boundary(s::_ArtworkODBLineThermal,a,b,left,right)
+    for (c,d) in _odb_thermal_line_arms(s)
+        right=_artwork_stroke_next_boundary(_ArtworkRoundLine(c,d,s.radius),a,b,left,right)
+    end
+    right
+end
+function _artwork_stroke_boundaries(s::_ArtworkODBLineThermal,limit,depth)
+    all(isfinite,(s.center,s.endpoint,s.radius,s.outer_extent)) &&
+        s.center>=0 && s.endpoint>=0 && s.radius>0 ||
+        throw(ArgumentError("invalid ODB line thermal aperture"))
+    _artwork_stroke_count(32,limit)
 end

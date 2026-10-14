@@ -71,6 +71,15 @@ function _artwork_certified_bounds(s::_ArtworkStrokeReference,depth=0)
 end
 _artwork_certified_bounds(s::_ArtworkODBDrill,depth=0)=_artwork_certified_bounds(s.circle,depth)
 _artwork_certified_bounds(s::_ArtworkODBButterfly,depth=0)=_artwork_certified_bounds(s.outside,depth)
+_artwork_certified_bounds(s::_ArtworkODBSquaredThermal,depth=0)=_artwork_certified_bounds(s.outside,depth+1)
+function _artwork_certified_bounds(s::Union{_ArtworkODBDPack,_ArtworkODBHalfOval},depth=0)
+    x,y=_artwork_interval_half(s.width),_artwork_interval_half(s.height)
+    (-x.hi,x.hi,-y.hi,y.hi)
+end
+_artwork_certified_bounds(s::_ArtworkODBRoundedThermal,depth=0)=
+    (-s.outer_radius,s.outer_radius,-s.outer_radius,s.outer_radius)
+_artwork_certified_bounds(s::_ArtworkODBLineThermal,depth=0)=
+    (-s.outer_extent,s.outer_extent,-s.outer_extent,s.outer_extent)
 function _artwork_certified_translated_bounds(s,depth)
     bounds=_artwork_certified_bounds(s.aperture,depth)
     x=_ArtworkInterval(bounds[1],bounds[2])+_ArtworkInterval(min(s.start[1],s.stop[1]),max(s.start[1],s.stop[1]))

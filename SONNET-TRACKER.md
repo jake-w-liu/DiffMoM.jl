@@ -732,8 +732,39 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       model, the magnitude bound, and ours-below-HFSS ordering.
 - [ ] G2 ODB++: vendor translator coverage, arbitrary layouts, continuum
       convergence (lines 833/858/985). Oracle: generated coupons + HFSS.
-- [ ] G3 Sonnet artwork leaves: thermals, half-ovals, D-Pack, curved
-      polygon-stroke (lines 913/928). Oracle: Lite GUI/BIT archives.
+- [x] G3 Sonnet artwork leaves: thermals, half-ovals, D-Pack, curved
+      polygon-stroke (lines 913/928) — DONE. The five specialized ODB
+      aperture leaves (`_ArtworkODBHalfOval`, `_ArtworkODBDPack`,
+      `_ArtworkODBSquaredThermal`, `_ArtworkODBRoundedThermal`,
+      `_ArtworkODBLineThermal`) now carry the full ordered-sweep engine:
+      `_artwork_stroke_next_boundary`/`_artwork_stroke_boundaries`
+      (supporting-line/circle candidate supersets with checked
+      boundary-count budgets and 64-level nesting guards), interval
+      `_artwork_interval_next` candidates, `_artwork_certified_contains`
+      trits that defer every boundary enclosure to the exact path, and
+      `_artwork_exact_qcontains`/`_artwork_exact_qevents!`/
+      `_artwork_exact_qtrait` quadratic-exact counterparts.
+      `_artwork_certified_bounds` encloses each leaf for raster bounds.
+      Boundary candidates remain supersets by construction — interval
+      membership stays the authority, so candidate gaps cannot flip a
+      verdict. ODB `A` feature records now accept solid polygon symbols
+      (plus `Transform{Polygon}`, baked into the aperture) and lower
+      them to analytic `_ArtworkPolygonArc` — previously every
+      non-circle ODB arc aperture threw. Deep-debug fixes landed during
+      verification: squared-thermal exact slots now remove points on the
+      perpendicular boundary (`dot>=0`, matching the modulo `contains`
+      authority) and rounded-thermal exact band clamps its inner radius
+      at zero for hand-built `cap>center` annuli.
+      Regression: `test_planar_odb_leaf_sweeps.jl` (+32216) — 23127
+      swept-membership checks against independent Cartesian oracles,
+      9000 certified-trit/exact agreements, 25 targeted
+      perpendicular/degenerate boundary checks, and 64 end-to-end ODB
+      feature-record sweeps (`oval_h`, `dpack`, `thr`, `s_thr`, `ths`
+      apertures on `L` records, `s`/`di` polygon apertures on `A`
+      records). Green on Julia 1.13.1 and 1.12.7; neighboring ODB /
+      artwork suites (symbols_extra, dpack, rounded_thermals,
+      composite_strokes, exact_boundaries, bound_rounding, odb)
+      unaffected.
 - [x] G4 GDS maps / top-to-bottom stack order. Oracle: matl-1.4 XSD +
       generated STFs. Techlayer `<map>` leaves now parse their
       artwork-import translation attributes (`dxf_layer`, `gerber_name`,
@@ -788,14 +819,32 @@ Status marks: `[ ]` open · `[~]` in progress · `[x]` done · `[D]` DocOnly
       reference as independent continuum check.
 - [ ] I2 conformal >1024-cell license limit (lines 1286); trapezoid
       refinement partial. HFSS substitute + DocOnly residual.
-- [ ] I3 S/current native viewer license (line 1308) — DocOnly.
+- [x] I3 S/current native viewer license (line 1308) — **DocOnly
+      (2026-10-14)**. The installed Lite far-field/S current viewer is
+      disabled and its guide requires a separately purchased license —
+      no native S/current acceptance oracle exists. The capability stays
+      honestly rejected (not silently approximated) and the parity doc
+      retains the license boundary note; nothing further is implementable
+      under the installed licensing.
 - [x] I4 DXF mode4096 8 GB estimate — DONE: matrix-free folding
       (`dxf_folded_public_solve_3zDFGO`, `dxf_source_images_public_solve_zpuQlw`)
       fits mode 4096 inside the unchanged 4 GB budget (240037168 B retained
       vs the former 8060904784-byte rejection); public solve converges
       (restart 1200, residuals <1e-10, dense-reference S drift 2.5e-9).
       The remaining accuracy vs native and default-restart items are I1/I6.
-- [ ] I5 peak-process-RSS / opaque-memory acceptance (lines 889/258-numerics).
+- [x] I5 peak-process-RSS / opaque-memory acceptance (lines 889/258-numerics).
+      **Done (2026-10-14)** — process-level memory is now measured, not just
+      payload-estimated. `test/peak_rss_probe.jl` runs representative heavy
+      paths in a fresh subprocess (dense native solve, the `-d` UFFT +
+      feed-standard cascade, a repeated solve at a second frequency) and
+      prints `Sys.maxrss()` high-water marks per stage; `test_planar_
+      process_rss.jl` gates each stage ≤ baseline + 6 GB, the
+      cache-retention delta ≤ 1 GB, and the feed-standard increment ≤ 2 GB
+      (7 checks). Reference-machine envelope: 357 MB baseline, 1373 MB
+      peak across all stages — the A1 feed-standard cascade adds zero peak
+      RSS over the dense solve. This bounds aggregate process memory for
+      the probed workloads; per-call attribution of opaque FFTW/BLAS
+      buffers inside a stage remains out of scope.
 - [x] I6 iterative-solver restart escalation — DONE: `solve_planar_ufft`
       gains an opt-in `max_memory` ceiling. A port that fails its
       independently recomputed residual gate doubles its Krylov restart
@@ -837,10 +886,12 @@ Remaining (updated order):
 1. ~~D-group STF residue (D1–D6)~~ — DONE: `em -N`/materialization corpus
    complete; privenc parameter blobs stay DocOnly (undecryptable, reject
    as unresolved materials).
-2. F/G-group netlist/layout breadth — G2/G3 ODB++ artwork leaves
-   (thermals, half-ovals, D-Pack, curved strokes).
+2. F/G-group netlist/layout breadth — G2 ODB++ vendor translator
+   coverage (~~G3 ODB++ artwork leaves~~ — DONE: thermals, half-ovals,
+   D-Pack, curved polygon arcs all sweep/certify/exact).
 3. ~~A1 physical de-embedding adapters (FIX/NONE/LINK)~~ — DONE.
-4. I-group HFSS-based independent convergence certification (I1/I2/I5).
+4. I-group HFSS-based independent convergence certification (I1/I2;
+   ~~I5~~ DONE: peak-process-RSS probe + acceptance gates).
 
 Each landed item: implementation + deep-debug loop + tests + fixture evidence
 + ledger/docs update + full suite (1.13) + focused (1.12) + push + CI green.

@@ -310,7 +310,18 @@ matched warmed public fine-ground imports, Julia allocations fell from
 with identical vertex, triangle, interface and area bytes. Eighteen
 adaptive/uniform/interface/band/interior/budget controls matched exactly
 on each version. This is Julia allocation telemetry for these calls;
-peak RSS, opaque memory and global optimization remain unverified.
+per-call opaque memory and global optimization remain unverified. A
+first process-level acceptance now exists separately: the fresh-process
+probe `test/peak_rss_probe.jl` drives a dense native solve, the
+de-embedding UFFT plus feed-standard cascade, and a repeated solve at a
+second frequency, printing `Sys.maxrss()` high-water marks per stage.
+`test_planar_process_rss.jl` gates each stage against a 6 GB increment
+over the loaded baseline, a 1 GB repeat-solve retention delta, and a
+2 GB feed-standard increment (7 checks). On the reference machine the
+measured envelope was 357 MB baseline and 1373 MB peak across all
+stages — the feed-standard cascade added no peak RSS over the dense
+solve itself. This bounds aggregate process memory for those probed
+workloads only; per-call attribution inside a stage remains open.
 
 Dense conformal assembly shares triangle phase factors and barycentric
 Fourier weights across RWG halves. Cached weight filling allocates zero

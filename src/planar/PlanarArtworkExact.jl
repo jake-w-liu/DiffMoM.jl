@@ -396,6 +396,125 @@ function _artwork_exact_qtrait(s::_ArtworkODBButterfly,depth=0)
     depth<64||throw(ArgumentError("exact artwork nesting exceeds 64 levels"))
     _artwork_exact_qtrait(s.outside,depth+1)
 end
+
+# The specialized ODB aperture leaves decompose into edges and circles
+# along their stored directions. Exact spoke and cap coordinates retain
+# the same Float64 values as the defining membership predicates.
+function _artwork_exact_qcontains(s::_ArtworkODBHalfOval,p)
+    q=_artwork_exact_q;w,h,c=q(s.width)/2,q(s.height)/2,q(s.width-s.height)/2
+    (p[1]<-w||p[1]>w||p[2]<-h||p[2]>h)&&return false
+    p[1]<=c&&return true
+    z=(p[1]-c,p[2]);_artwork_exact_qdot(z,z)<=h*h
+end
+function _artwork_exact_qevents!(w,s::_ArtworkODBHalfOval,a,b)
+    q=_artwork_exact_q;ww,hh,c=q(s.width)/2,q(s.height)/2,q(s.width-s.height)/2
+    for (p,d) in (((-ww,-hh),(ww,-hh)),((-ww,hh),(ww,hh)),((-ww,-hh),(-ww,hh)))
+        _artwork_exact_qedge_events!(w,p,d,a,b)
+    end
+    _artwork_exact_qcircle_events!(w,(c,q(0)),hh,a,b)
+end
+_artwork_exact_qtrait(::_ArtworkODBHalfOval,depth=0)=depth
+
+function _artwork_exact_qcontains(s::_ArtworkODBDPack,p)
+    pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
+    q=_artwork_exact_q;px,py,cx,cy=_odb_dpack_pads(s)
+    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+        o=(q(cx+i*px),q(cy+j*py))
+        _artwork_exact_qcontains(pad,_artwork_exact_qsub(p,o))&&return true
+    end
+    false
+end
+function _artwork_exact_qevents!(w,s::_ArtworkODBDPack,a,b)
+    pad=_ArtworkCornerRectangle(s.pad_width,s.pad_height,s.radius,(true,true,true,true),false)
+    q=_artwork_exact_q;px,py,cx,cy=_odb_dpack_pads(s)
+    for j in 0:s.vertical_count-1,i in 0:s.horizontal_count-1
+        o=(q(cx+i*px),q(cy+j*py))
+        _artwork_exact_qevents!(w,pad,_artwork_exact_qsub(a,o),_artwork_exact_qsub(b,o))
+    end
+end
+_artwork_exact_qtrait(::_ArtworkODBDPack,depth=0)=depth
+
+function _artwork_exact_qcontains(s::_ArtworkODBSquaredThermal,p)
+    _artwork_exact_qcontains(s.outside,p)||return false
+    _artwork_exact_qcontains(s.inside,p)&&return false
+    iszero(s.gap)&&return true
+    q=_artwork_exact_q;step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=q(s.gap)/2
+    for k in 0:s.count-1
+        ux,uy=_odb_thermal_spoke(base,k,step);u=(q(ux),q(uy))
+        _artwork_exact_qdot(u,p)<0 && continue
+        cr=_artwork_exact_qcross(u,p)
+        -g<cr<g && return false
+    end
+    true
+end
+function _artwork_exact_qevents!(w,s::_ArtworkODBSquaredThermal,a,b)
+    _artwork_exact_qevents!(w,s.outside,a,b)
+    _artwork_exact_qevents!(w,s.inside,a,b)
+    iszero(s.gap)&&return
+    q=_artwork_exact_q;step=2Float64(pi)/s.count;base=deg2rad(s.angle);g=q(s.gap)/2
+    for k in 0:s.count-1
+        ux,uy=_odb_thermal_spoke(base,k,step);u=(q(ux),q(uy));n=(q(-uy),q(ux))
+        for sgn in (-1,1)
+            c=_artwork_exact_qscale(n,sgn*g)
+            _artwork_exact_qedge_events!(w,c,_artwork_exact_qadd(c,u),a,b)
+        end
+        _artwork_exact_qedge_events!(w,(q(0),q(0)),n,a,b)
+    end
+end
+function _artwork_exact_qtrait(s::_ArtworkODBSquaredThermal,depth=0)
+    depth<64||throw(ArgumentError("exact artwork nesting exceeds 64 levels"))
+    max(_artwork_exact_qtrait(s.outside,depth+1),_artwork_exact_qtrait(s.inside,depth+1))
+end
+
+function _artwork_exact_qcontains(s::_ArtworkODBRoundedThermal,p)
+    q=_artwork_exact_q;cr,cap=q(s.center_radius),q(s.cap_radius)
+    dist=_artwork_exact_qdot(p,p);lin=cr-cap<0 ? q(0) : cr-cap
+    (dist>(cr+cap)^2||dist<lin*lin)&&return false
+    step=2Float64(pi)/s.count
+    for k in 0:s.count-1
+        thc=s.angle+k*step
+        thl,thr=thc-s.half_gap_angle,thc+s.half_gap_angle
+        uL=(q(cos(thl)),q(sin(thl)));uR=(q(cos(thr)),q(sin(thr)))
+        crL=_artwork_exact_qcross(uL,p);crR=_artwork_exact_qcross(uR,p)
+        interior=2s.half_gap_angle<=Float64(pi) ? (crL>0 && crR<0) : (crL>0 || crR<0)
+        interior||continue
+        cL=(q(s.center_radius*cos(thl)),q(s.center_radius*sin(thl)))
+        cR=(q(s.center_radius*cos(thr)),q(s.center_radius*sin(thr)))
+        zL=_artwork_exact_qsub(p,cL);zR=_artwork_exact_qsub(p,cR)
+        (_artwork_exact_qdot(zL,zL)<=cap*cap||_artwork_exact_qdot(zR,zR)<=cap*cap)||return false
+    end
+    true
+end
+function _artwork_exact_qevents!(w,s::_ArtworkODBRoundedThermal,a,b)
+    q=_artwork_exact_q;cr,cap=q(s.center_radius),q(s.cap_radius);z=(q(0),q(0))
+    _artwork_exact_qcircle_events!(w,z,cr+cap,a,b)
+    rin=max(q(0),cr-cap)
+    rin>0&&_artwork_exact_qcircle_events!(w,z,rin,a,b)
+    step=2Float64(pi)/s.count
+    for k in 0:s.count-1
+        thc=s.angle+k*step
+        for sgn in (-1,1)
+            th=thc+sgn*s.half_gap_angle
+            u=(q(cos(th)),q(sin(th)))
+            _artwork_exact_qedge_events!(w,z,u,a,b)
+            _artwork_exact_qcircle_events!(w,_artwork_exact_qscale(u,cr),cap,a,b)
+        end
+    end
+end
+_artwork_exact_qtrait(::_ArtworkODBRoundedThermal,depth=0)=depth
+
+function _artwork_exact_qcontains(s::_ArtworkODBLineThermal,p)
+    for (c,d) in _odb_thermal_line_arms(s)
+        _artwork_exact_qcontains(_ArtworkRoundLine(c,d,s.radius),p)&&return true
+    end
+    false
+end
+function _artwork_exact_qevents!(w,s::_ArtworkODBLineThermal,a,b)
+    for (c,d) in _odb_thermal_line_arms(s)
+        _artwork_exact_qevents!(w,_ArtworkRoundLine(c,d,s.radius),a,b)
+    end
+end
+_artwork_exact_qtrait(::_ArtworkODBLineThermal,depth=0)=depth
 _artwork_exact_operand_bits(::Any)=0
 function _artwork_exact_operand_bits(x::Float64)
     isfinite(x)||throw(ArgumentError("nonfinite exact artwork coordinate"))
