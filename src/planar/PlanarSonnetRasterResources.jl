@@ -164,29 +164,8 @@ end
 
 # The raw result remains part of SonnetPlanarResult while launch standards
 # run. Its arrays therefore cannot also fund those standards' workspace.
-# Dense fallback currents/factors can own MPFR scalars; count actual stored
-# precision, and visit shared arrays/scalars only once.
-function _sonnet_retained_result_array(array::AbstractArray{Complex{BigFloat}},seen)
-    array in seen && return 0
-    push!(seen,array)
-    bytes=_checked_array_payload_bytes(Complex{BigFloat},length(array))
-    for value in array,component in (real(value),imag(value))
-        component in seen && continue
-        push!(seen,component)
-        bytes=_checked_payload_sum("native retained wide result",bytes,
-            _planar_wide_scalar_payload(precision(component)))
-    end
-    return bytes
-end
-_sonnet_retained_result_array(array,seen)=_subdivision_retained_payload(array,seen)
-
-function _sonnet_retained_solve_payload(result::PlanarResult)
-    seen=Base.IdSet{Any}()
-    return _checked_payload_sum("native retained raw solve",
-        (_sonnet_retained_result_array(array,seen) for array in
-            (result.z_mom,result.lu_fact.factors,result.lu_fact.ipiv,
-                result.currents,result.y,result.s,result.z0,result.relative_residuals))...)
-end
+# The shared walker excludes borrowed problems, deduplicates buffers and
+# counts owned MPFR components at their stored precision for dense recovery.
 _sonnet_retained_solve_payload(result)=_subdivision_retained_payload(result)
 
 function _sonnet_child_solve_budget(result,reserve,limit)

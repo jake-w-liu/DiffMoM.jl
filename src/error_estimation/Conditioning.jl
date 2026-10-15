@@ -56,6 +56,18 @@ function _conditioning_work_bytes(m::Int, q::Int)
         _checked_array_payload_bytes(Int, 8, m))
 end
 
+@inline function _conditioning_can_defer_collection(
+        released_bytes::Int, work_bytes::Int, input_bytes::Int,
+        remaining_budget::Int, available_bytes::Integer)
+    # Subtract only after each comparison so neither a tight budget nor a
+    # large unsigned OS estimate can overflow the decision arithmetic.
+    work_bytes <= remaining_budget || return false
+    input_bytes <= remaining_budget - work_bytes || return false
+    released_bytes <= remaining_budget - work_bytes - input_bytes || return false
+    available_bytes > 0 && work_bytes <= available_bytes || return false
+    return released_bytes <= available_bytes - work_bytes
+end
+
 function _whiten_error_rows(lower, permutation, tau, rows)
     # rhs[i, j] = conj(rows[j, permutation[i]]): fuse the adjoint and the
     # row permutation into a single fill instead of materializing both.
@@ -249,6 +261,9 @@ actions, assemble the weighted fine-space mass, restrict it with Q, and
 condition unresolved coefficients. Probes are a matrix R or a vector of
 unresolved row indices. No reference errors guide row selection.
 Omitted triangle weights mean unit precision on every fine triangle.
+When budget and available-memory estimates allow it, the discarded fine mass
+remains charged against the conditioning workspace until automatic collection;
+tighter or memory-constrained calls collect it before sparse factorization.
 """
 function condition_discretization_error(
         system::GalerkinErrorSystem, probes::AbstractMatrix{<:Number};
@@ -284,14 +299,26 @@ function condition_discretization_error(
         system.pair.fine_mesh, system.pair.fine_rwg;
         triangle_weights=triangle_weights, max_work_bytes=limit - retained - rows_bytes)
     mass = sparse(adjoint(system.pair.Q) * fine_mass * system.pair.Q)
-    # The restricted mass is what conditioning consumes; release the
-    # fine-space mass before the sparse Cholesky allocates its factors.
+    released_mass_bytes = Base.summarysize(fine_mass)
+    conditioning_budget = limit - retained - Base.summarysize((r, v, t))
+    condition_work = _conditioning_work_bytes(m, q)
+    condition_inputs = Base.summarysize((mass, v, t))
+    defer_collection = _conditioning_can_defer_collection(
+        released_mass_bytes, condition_work, condition_inputs,
+        conditioning_budget, _planar_os_available_memory())
     fine_mass = nothing
-    GC.gc()
+    if defer_collection
+        # Charge the whole discarded object even if automatic GC reclaims it
+        # sooner. Together with the child's input/work preflight, this keeps
+        # the same total ceiling without forcing a process-wide collection.
+        conditioning_budget -= released_mass_bytes
+    else
+        GC.gc()
+    end
     conditioning = condition_error_observations(
         mass, v, t; tau=tau, rank_rtol=rank_rtol,
         consistency_rtol=consistency_rtol,
-        max_work_bytes=limit - retained - Base.summarysize((r, v, t)))
+        max_work_bytes=conditioning_budget)
     _validate_error_system(system)
     return ConditionedErrorModel(
         system, conditioning, r, (time_ns() - started) / 1e9,

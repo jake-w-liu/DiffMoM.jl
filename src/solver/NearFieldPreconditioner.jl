@@ -1842,6 +1842,12 @@ function _loaded_nearfield_matrix(Z_near::SparseMatrixCSC,
     return Z_loaded
 end
 
+@inline function _nearfield_can_defer_collection(
+        released_bytes::Int, pending_bytes::Int, available_bytes::Integer)
+    available_bytes > 0 && pending_bytes <= available_bytes || return false
+    return released_bytes <= available_bytes - pending_bytes
+end
+
 function _build_mlfma_preconditioner_from_nearfield(A_mlfma,
                                                     Z_near::SparseMatrixCSC;
                                                     factorization::Symbol=:ilu,
@@ -1873,16 +1879,24 @@ function _build_mlfma_preconditioner_from_nearfield(A_mlfma,
     if factorization == :ilu
         println("  Running ILU(τ=$(ilu_tau)) on reordered matrix ($(nnz(Z_perm)) nnz)...")
         t = @elapsed ilu_fac = IncompleteLU.ilu(Z_perm, τ = ilu_tau)
-        Z_perm = nothing; GC.gc()  # free the reordered copy to save memory
         inner = ILUPreconditionerData(ilu_fac, Inf, nnz_ratio, ilu_tau)
         println("  ILU done in $(round(t, digits=1))s")
     elseif factorization == :lu
         println("  Running sparse LU on reordered matrix...")
         t = @elapsed Z_fac = lu(Z_perm)
-        Z_perm = nothing; GC.gc()
         inner = NearFieldPreconditionerData(Z_fac, Inf, nnz_ratio)
         println("  LU done in $(round(t, digits=1))s")
     end
+
+    released_bytes = Base.summarysize(Z_perm)
+    pending_bytes = _checked_array_payload_bytes(
+        ComplexF64, N; label="permuted near-field work vector")
+    Z_perm = nothing
+    # Keep the old pressure-relief path when the discarded matrix and the
+    # wrapper's pending work vector do not fit the current OS headroom.
+    # Tiny repeated builds with ample headroom need no process-wide pause.
+    _nearfield_can_defer_collection(
+        released_bytes, pending_bytes, _planar_os_available_memory()) || GC.gc()
 
     return PermutedPrecondData(inner, perm, iperm, N, nnz_ratio)
 end

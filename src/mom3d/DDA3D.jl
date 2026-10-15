@@ -14,6 +14,8 @@ export electric_dipole_dyadic_3d, assemble_dda_3d, solve_dda_3d
 export planewave_dda_3d, induced_dipoles_dda_3d
 export scattered_field_dda_3d, farfield_dda_3d
 
+using MPFR_jll: libmpfr
+
 const _CI3_DDA = @SMatrix [1.0 + 0im 0.0 + 0im 0.0 + 0im;
                            0.0 + 0im 1.0 + 0im 0.0 + 0im;
                            0.0 + 0im 0.0 + 0im 1.0 + 0im]
@@ -1724,6 +1726,166 @@ end
     end
 end
 
+# The cancellation kernel owns fixed-precision MPFR values for one matvec.
+# Reuse their significands instead of allocating immutable BigFloat products
+# for every source/target pair. No workspace is shared with the operator.
+const _DDAWideScratch = NTuple{46,BigFloat}
+function _dda_wide_scratch()
+    work = ntuple(_ -> BigFloat(0.; precision=_DDA_ACCUMULATION_FALLBACK_PRECISION), 46)
+    pi_value = BigFloat(pi; precision=_DDA_ACCUMULATION_FALLBACK_PRECISION)
+    ccall((:mpfr_mul_ui, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Culong, Cint), work[7], pi_value, 4, 0)
+    work
+end
+
+@inline function _dda_wide_set!(out::BigFloat, value::Float64)
+    ccall((:mpfr_set_d, libmpfr), Cint,
+        (Ref{BigFloat}, Cdouble, Cint), out, value, 0)
+    nothing
+end
+@inline function _dda_wide_add!(out::BigFloat, a::BigFloat, b::BigFloat)
+    ccall((:mpfr_add, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Ref{BigFloat}, Cint), out, a, b, 0)
+    nothing
+end
+@inline function _dda_wide_sub!(out::BigFloat, a::BigFloat, b::BigFloat)
+    ccall((:mpfr_sub, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Ref{BigFloat}, Cint), out, a, b, 0)
+    nothing
+end
+@inline function _dda_wide_mul!(out::BigFloat, a::BigFloat, b::BigFloat)
+    ccall((:mpfr_mul, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Ref{BigFloat}, Cint), out, a, b, 0)
+    nothing
+end
+@inline function _dda_wide_div!(out::BigFloat, a::BigFloat, b::BigFloat)
+    ccall((:mpfr_div, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Ref{BigFloat}, Cint), out, a, b, 0)
+    nothing
+end
+@inline function _dda_wide_scale!(out::BigFloat, value::BigFloat, scale::Int)
+    ccall((:mpfr_mul_ui, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Culong, Cint), out, value, scale, 0)
+    nothing
+end
+
+@inline function _dda_wide_complex_product!(out_re, out_im, ar, ai, br, bi, t1, t2)
+    _dda_wide_mul!(t1, ar, br); _dda_wide_mul!(t2, ai, bi)
+    _dda_wide_sub!(out_re, t1, t2)
+    _dda_wide_mul!(t1, ar, bi); _dda_wide_mul!(t2, ai, br)
+    _dda_wide_add!(out_im, t1, t2)
+    nothing
+end
+
+function _dda_wide_moment!(s::_DDAWideScratch, alpha::Number, field::CVec3)
+    _dda_wide_set!(s[31], Float64(real(alpha)))
+    _dda_wide_set!(s[32], Float64(imag(alpha)))
+    for axis in 1:3
+        _dda_wide_set!(s[33], real(field[axis])); _dda_wide_set!(s[34], imag(field[axis]))
+        _dda_wide_complex_product!(s[23+2axis], s[24+2axis],
+            s[31], s[32], s[33], s[34], s[35], s[36])
+    end
+    nothing
+end
+function _dda_wide_moment!(s::_DDAWideScratch, alpha::_CMat3DDA, field::CVec3)
+    for row in 1:3
+        re, im = s[23+2row], s[24+2row]
+        _dda_wide_set!(re, 0.); _dda_wide_set!(im, 0.)
+        for column in 1:3
+            _dda_wide_set!(s[31], real(alpha[row,column]))
+            _dda_wide_set!(s[32], imag(alpha[row,column]))
+            _dda_wide_set!(s[33], real(field[column])); _dda_wide_set!(s[34], imag(field[column]))
+            _dda_wide_complex_product!(s[39], s[40],
+                s[31], s[32], s[33], s[34], s[35], s[36])
+            _dda_wide_add!(re, re, s[39]); _dda_wide_add!(im, im, s[40])
+        end
+    end
+    nothing
+end
+
+function _dda_wide_geometry!(s::_DDAWideScratch, r::Vec3, rp::Vec3, k::Float64)
+    _dda_wide_set!(s[4], 0.)
+    for axis in 1:3
+        _dda_wide_set!(s[31], r[axis]); _dda_wide_set!(s[32], rp[axis])
+        _dda_wide_sub!(s[axis], s[31], s[32])
+        _dda_wide_mul!(s[35], s[axis], s[axis])
+        _dda_wide_add!(s[4], s[4], s[35])
+    end
+    ccall((:mpfr_sqrt, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Cint), s[5], s[4], 0)
+    s[5] > 0 || error("electric_dipole_dyadic_3d requires distinct finite points.")
+    _dda_wide_set!(s[6], k)
+    _dda_wide_mul!(s[8], s[6], s[6]); _dda_wide_div!(s[8], s[8], s[5])
+    # Preserve BigFloat's single-rounded integer powers before inversion.
+    ccall((:mpfr_pow_ui, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Culong, Cint), s[38], s[5], 3, 0)
+    ccall((:mpfr_ui_div, libmpfr), Cint,
+        (Ref{BigFloat}, Culong, Ref{BigFloat}, Cint), s[9], 1, s[38], 0)
+    _dda_wide_mul!(s[38], s[5], s[5]); _dda_wide_div!(s[10], s[6], s[38])
+    _dda_wide_mul!(s[38], s[6], s[5])
+    ccall((:mpfr_neg, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Cint), s[38], s[38], 0)
+    ccall((:mpfr_sin_cos, libmpfr), Cint,
+        (Ref{BigFloat}, Ref{BigFloat}, Ref{BigFloat}, Cint), s[12], s[11], s[38], 0)
+    _dda_wide_div!(s[11], s[11], s[7]); _dda_wide_div!(s[12], s[12], s[7])
+    nothing
+end
+
+function _dda_wide_interaction_component!(s::_DDAWideScratch, component::Int)
+    second = component == 1 ? 2 : component == 2 ? 3 : 1
+    third = component == 1 ? 3 : component == 2 ? 1 : 2
+    qr, qi = s[23+2component], s[24+2component]
+    # cross(cross(displacement, moment), displacement), in the same order
+    # as the immutable component oracle; no longitudinal subtraction.
+    for (part, qcomponent) in ((0, qr), (1, qi))
+        _dda_wide_mul!(s[35], s[third], qcomponent)
+        _dda_wide_mul!(s[36], s[component], s[23+2third+part])
+        _dda_wide_sub!(s[13+part], s[35], s[36])
+        _dda_wide_mul!(s[35], s[component], s[23+2second+part])
+        _dda_wide_mul!(s[36], s[second], qcomponent)
+        _dda_wide_sub!(s[15+part], s[35], s[36])
+        _dda_wide_mul!(s[35], s[13+part], s[third])
+        _dda_wide_mul!(s[36], s[15+part], s[second])
+        _dda_wide_sub!(s[17+part], s[35], s[36])
+        _dda_wide_div!(s[17+part], s[17+part], s[4])
+        _dda_wide_scale!(s[35], qcomponent, 2)
+        _dda_wide_scale!(s[36], s[17+part], 3)
+        _dda_wide_sub!(s[19+part], s[35], s[36])
+    end
+    _dda_wide_complex_product!(s[21], s[22], s[9], s[10], s[19], s[20], s[35], s[36])
+    _dda_wide_mul!(s[35], s[8], s[17]); _dda_wide_add!(s[21], s[35], s[21])
+    _dda_wide_mul!(s[35], s[8], s[18]); _dda_wide_add!(s[22], s[35], s[22])
+    _dda_wide_complex_product!(s[39], s[40], s[11], s[12], s[21], s[22], s[35], s[36])
+    nothing
+end
+
+function _dda_operator_wide_3d!(s::_DDAWideScratch, A::DDAOperator3D,
+        x::AbstractVector{ComplexF64}, voxel::Int, selected::Int)
+    components = selected > 0 ? (selected:selected) : (1:3)
+    for component in 1:3
+        value = x[_dda_index(voxel, component)]
+        _dda_wide_set!(s[39+2component], real(value))
+        _dda_wide_set!(s[40+2component], imag(value))
+    end
+    for source in 1:A.grid.nvoxels
+        source == voxel && continue
+        alpha = A.alpha[source]
+        iszero(alpha) && continue
+        _dda_wide_moment!(s, alpha, _read_field_component(x, source))
+        _dda_wide_geometry!(s, A.grid.centers[voxel], A.grid.centers[source], A.k0)
+        for component in components
+            _dda_wide_interaction_component!(s, component)
+            _dda_wide_sub!(s[39+2component], s[39+2component], s[39])
+            _dda_wide_sub!(s[40+2component], s[40+2component], s[40])
+        end
+    end
+    converted = CVec3(ntuple(component -> ComplexF64(
+        Float64(s[39+2component]), Float64(s[40+2component])), 3))
+    all(isfinite, converted) || throw(OverflowError(
+        "DDA operator output at voxel $voxel is outside the representable ComplexF64 range."))
+    converted
+end
+
 @noinline function _dda_adjoint_operator_field_bigfloat_3d(
         A::DDAOperator3D,
         x::AbstractVector{ComplexF64},
@@ -1785,6 +1947,9 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
     xread = Base.mightalias(y, x) ? copy(x) : x
     overwrite = iszero(beta_scale)
     N = A.grid.nvoxels
+    wide_scratch = nothing
+    reuse_wide = rounding(BigFloat) == RoundNearest &&
+        eltype(A.alpha) <: Union{Float64,ComplexF64,_CMat3DDA}
     # Output voxels are independent, but the matrix-free alloc budget
     # (test/test_mom3d.jl asserts < 1024 bytes) is tighter than the task-spawn
     # overhead of `Threads.@threads` (>= ~1.5 KB even for an empty loop), so
@@ -1822,16 +1987,30 @@ function LinearAlgebra.mul!(y::AbstractVector{ComplexF64},
             needs_fallback = true
         end
         if needs_fallback
-            Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
+            if reuse_wide
+                wide_scratch === nothing && (wide_scratch = _dda_wide_scratch())
+                Ei = _dda_operator_wide_3d!(wide_scratch, A, xread, i, 0)
+            else
+                Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
+            end
         else
             component = _dda_single_cancelling_component(
                 Ei, real_magnitude, imag_magnitude, N)
             if component > 0
-                exact_component = _dda_operator_component_bigfloat_3d(
-                    A, xread, i, component)
+                exact_component = if reuse_wide
+                    wide_scratch === nothing && (wide_scratch = _dda_wide_scratch())
+                    _dda_operator_wide_3d!(wide_scratch, A, xread, i, component)[component]
+                else
+                    _dda_operator_component_bigfloat_3d(A, xread, i, component)
+                end
                 Ei = Base.setindex(Ei, exact_component, component)
             elseif component < 0
-                Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
+                if reuse_wide
+                    wide_scratch === nothing && (wide_scratch = _dda_wide_scratch())
+                    Ei = _dda_operator_wide_3d!(wide_scratch, A, xread, i, 0)
+                else
+                    Ei = _dda_operator_field_bigfloat_3d(A, xread, i)
+                end
             end
         end
 

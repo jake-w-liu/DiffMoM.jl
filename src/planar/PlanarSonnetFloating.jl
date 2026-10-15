@@ -47,6 +47,8 @@ struct _SonnetBalancedSourceResult{R}
     voltage_transfer::Matrix{ComplexF64}
 end
 _planar_coefficient_columns(result::_SonnetBalancedSourceResult)=result.currents
+_subdivision_retained_payload(result::_SonnetBalancedSourceResult,seen=Base.IdSet{Any}())=
+    _subdivision_retained_fields(result,seen)
 
 function planar_current_maps(result::_SonnetBalancedSourceResult;port::Integer=1,
         voltages=nothing,incident_waves=nothing,z_fraction::Real=.5,

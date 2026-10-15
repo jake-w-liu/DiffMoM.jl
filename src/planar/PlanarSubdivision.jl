@@ -52,10 +52,26 @@ PlanarSubdivisionResult(p,f,s,y,c,r)=PlanarSubdivisionResult(p,f,s,y,c,r,copy(c.
 # Count unique retained Julia array payloads, excluding caller-owned
 # problems and opaque FFT plans. Sparse storage and shared mode/family
 # arrays are visited explicitly, so aliases do not double-count storage.
+# Non-isbits arrays also own backing slots, and wide coefficients own
+# MPFR scalars at their stored precision rather than caller precision.
+function _subdivision_retained_fields(value,seen)
+    return _checked_payload_sum("retained subdivision result",
+        (_subdivision_retained_payload(getfield(value,k),seen)
+            for k in 1:fieldcount(typeof(value)))...)
+end
+
 function _subdivision_retained_payload(value,seen=Base.IdSet{Any}())
     value===nothing && return 0
     value isa PlanarProblem && return 0
-    if value isa SparseMatrixCSC
+    if value isa BigFloat
+        value in seen && return 0
+        push!(seen,value)
+        return _planar_wide_scalar_payload(precision(value))
+    elseif value isa Complex{BigFloat}
+        return _checked_payload_sum("retained wide subdivision scalar",
+            _subdivision_retained_payload(real(value),seen),
+            _subdivision_retained_payload(imag(value),seen))
+    elseif value isa SparseMatrixCSC
         return _checked_payload_sum("retained sparse subdivision loss",
             _subdivision_retained_payload(value.colptr,seen),
             _subdivision_retained_payload(value.rowval,seen),
@@ -64,9 +80,7 @@ function _subdivision_retained_payload(value,seen=Base.IdSet{Any}())
             PlanarContractedResult,PlanarSourceResult,
             PlanarUFFTOperator,PlanarModeGrid,_PlanarUFFTFamily,_PlanarUFFTFoldedWorkspace,LinearAlgebra.LU,
             PlanarBasisSet,SheetLevel,ViaLevel,VolLevel}
-        return _checked_payload_sum("retained subdivision result",
-            (_subdivision_retained_payload(getfield(value,k),seen)
-                for k in 1:fieldcount(typeof(value)))...)
+        return _subdivision_retained_fields(value,seen)
     elseif value isa AbstractArray
         value in seen && return 0
         push!(seen,value)
@@ -74,8 +88,12 @@ function _subdivision_retained_payload(value,seen=Base.IdSet{Any}())
             return value isa BitArray ? 8cld(length(value),64) :
                 _checked_array_payload_bytes(eltype(value),length(value))
         end
-        return _checked_payload_sum("retained subdivision arrays",
-            (_subdivision_retained_payload(v,seen) for v in value)...)
+        bytes=_checked_array_payload_bytes(UInt8,Base.elsize(value),length(value))
+        for item in value
+            bytes=_checked_payload_sum("retained subdivision arrays",bytes,
+                _subdivision_retained_payload(item,seen))
+        end
+        return bytes
     end
     return 0
 end

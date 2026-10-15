@@ -72,16 +72,18 @@ function main()
         record("derivative, beta=$beta/N=1000", () -> heaviside_derivative(projected, beta))
     end
 
-    voxels = VoxelGrid3D((-0.2, 0.2), (-0.2, 0.2), (-0.2, 0.2), 2, 2, 2)
-    incident = planewave_dda_3d(voxels, Vec3(0, 0, k), 1.0 + 0.2im, Vec3(1, 0.3, 0))
-    solved = solve_dda_3d(voxels, k, 2.5 - 0.05im, incident)
-    dda = dda_operator_3d(voxels, k, 2.5 - 0.05im)
-    dda_x = reduce(vcat, solved.E_total)
-    dda_y = similar(dda_x)
-    record("DDA near-solved mul!, 8 voxels", () -> mul!(dda_y, dda, dda_x);
-           iterations=1, samples=3)
-    random_x = randn(rng, ComplexF64, length(dda_x))
-    record("DDA random mul!, 8 voxels", () -> mul!(dda_y, dda, random_x))
+    for side in (2, 4)
+        voxels = VoxelGrid3D((-0.2, 0.2), (-0.2, 0.2), (-0.2, 0.2), side, side, side)
+        incident = planewave_dda_3d(voxels, Vec3(0, 0, k), 1.0 + 0.2im, Vec3(1, 0.3, 0))
+        solved = solve_dda_3d(voxels, k, 2.5 - 0.05im, incident)
+        dda = dda_operator_3d(voxels, k, 2.5 - 0.05im)
+        dda_x = reduce(vcat, solved.E_total)
+        dda_y = similar(dda_x)
+        record("DDA near-solved mul!, $(side^3) voxels", () -> mul!(dda_y, dda, dda_x);
+               iterations=1, samples=3)
+        random_x = randn(rng, ComplexF64, length(dda_x))
+        record("DDA random mul!, $(side^3) voxels", () -> mul!(dda_y, dda, random_x))
+    end
 
     mesh2d = Mesh2D((-0.15, 0.15), (-0.15, 0.15), 8, 8)
     contrast = fill(1.5, mesh2d.ncells)
